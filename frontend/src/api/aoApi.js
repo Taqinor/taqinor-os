@@ -126,11 +126,13 @@ const aoApi = {
      il n'y a rien à charger par identifiant.
 
      Ce bloc n'est donc plus une impasse à l'usage — il ne subsiste que pour
-     les écrans encore écrits contre le document persisté imaginaire :
-     `variantes/HistoriqueVersions.jsx` (`list`, `update`) et
-     `variantes/SensibilitesPanel.jsx` (`sensibilites`). Chaque entrée reste
-     un 501 MOTIVÉ, sans requête réseau : un 404 anonyme est précisément ce
-     qu'on répare, et une URL devinée le recréerait. */
+     l'écran encore écrit contre le document persisté imaginaire :
+     `variantes/HistoriqueVersions.jsx` (`list`, `update`). RÉPARATION
+     07/08/2026 (PACT172) — `variantes/SensibilitesPanel.jsx` appelle
+     désormais le VRAI endpoint ci-dessous (`aoApi.calepinage.variantes.
+     sensibilites`) ; `sensibilites` n'a donc plus aucun appelant. Chaque
+     entrée reste un 501 MOTIVÉ, sans requête réseau : un 404 anonyme est
+     précisément ce qu'on répare, et une URL devinée le recréerait. */
   calepinages: {
     // Plus AUCUN appelant depuis le 03/08/2026 (l'atelier est recâblé).
     get: nonConstruit('/ao/calepinages/<id>/',
@@ -152,7 +154,8 @@ const aoApi = {
     // route ne le publie — l'atelier n'affiche donc aucune suggestion.
     suggestions: nonConstruit('/ao/calepinages/<id>/suggestions/',
       'aucune route ne publie les recommandations du moteur'),
-    // Appelé par variantes/SensibilitesPanel.jsx.
+    // Plus AUCUN appelant depuis le 07/08/2026 (PACT172) — SensibilitesPanel.jsx
+    // appelle désormais aoApi.calepinage.variantes.sensibilites(varianteId).
     sensibilites: nonConstruit('/ao/calepinages/<id>/sensibilites/',
       'les sensibilités se calculent sur une VARIANTE : utiliser '
       + 'aoApi.calepinage.variantes.sensibilites(varianteId) — la réponse '

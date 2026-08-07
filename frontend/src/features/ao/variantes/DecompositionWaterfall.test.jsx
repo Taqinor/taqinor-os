@@ -2,41 +2,54 @@ import { describe, it, expect, vi } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 
-import DecompositionWaterfall, { geometrie, marchesNonReproduites } from './DecompositionWaterfall'
+import DecompositionWaterfall, { geometrie, marchesFautives } from './DecompositionWaterfall'
 
 /* ============================================================================
-   AOF104 — Done = le cas réel 112 → 126 se rend avec ses 8 marches, le bandeau
-   d'échec est testé, le composant est exportable en image pour la planche.
+   AOF104 + PACT172 — Done = le cas réel 112 → 126 se rend avec ses 8 marches,
+   le bandeau d'échec est testé, le composant est exportable en image pour la
+   planche. RÉPARATION 07/08/2026 : la forme des fixtures est désormais celle
+   RÉELLEMENT rendue par `GET /ao/calepinage/variantes/:id/marches/`
+   (`calepinage_service.calculer_marches` / `core/calepinage/echelle.py`) —
+   `depart`/`arrivee` sont des ENTIERS, chaque marche porte `code`/`modules`/
+   `attendu` (jamais `lettre`/`valeur_apres`/`reproduit`), et le récit + les
+   motifs d'honnêteté sont des phrases SERVEUR (`recit`, `motifs`).
    ========================================================================== */
 
 // Cas RÉEL de la session AO : 112 (calcul historique) → 126 (calcul courant),
-// 8 marches A→H. Toutes les valeurs viennent du serveur.
+// 8 marches A→H. Toutes les valeurs viennent du serveur. `attendu` n'est posé
+// que sur les marches dont un ancien calcul avait figé un chiffre (ici :
+// toutes, pour rejouer le contrôle d'honnêteté).
 const MARCHES_112_126 = [
-  { lettre: 'A', libelle: 'Faîtage relevé', delta: 6, valeur_apres: 118, reproduit: true },
-  { lettre: 'B', libelle: 'Muret est écarté', delta: 4, valeur_apres: 122, reproduit: true },
-  { lettre: 'C', libelle: 'Allée ramenée à 1,20 m', delta: 5, valeur_apres: 127, reproduit: true },
-  { lettre: 'D', libelle: 'Rive nord recotée', delta: -3, valeur_apres: 124, reproduit: true },
-  { lettre: 'E', libelle: 'Segment court fusionné', delta: 3, valeur_apres: 127, reproduit: true },
-  { lettre: 'F', libelle: 'Dégagement cheminée', delta: -2, valeur_apres: 125, reproduit: true },
-  { lettre: 'G', libelle: 'Kit paysage en rive', delta: 4, valeur_apres: 129, reproduit: true },
-  { lettre: 'H', libelle: 'Contrainte onduleur', delta: -3, valeur_apres: 126, reproduit: true },
+  { code: 'A', libelle: 'Faîtage relevé', modules: 118, delta: 6, attendu: 118 },
+  { code: 'B', libelle: 'Muret est écarté', modules: 122, delta: 4, attendu: 122 },
+  { code: 'C', libelle: 'Allée ramenée à 1,20 m', modules: 127, delta: 5, attendu: 127 },
+  { code: 'D', libelle: 'Rive nord recotée', modules: 124, delta: -3, attendu: 124 },
+  { code: 'E', libelle: 'Segment court fusionné', modules: 127, delta: 3, attendu: 127 },
+  { code: 'F', libelle: 'Dégagement cheminée', modules: 125, delta: -2, attendu: 125 },
+  { code: 'G', libelle: 'Kit paysage en rive', modules: 129, delta: 4, attendu: 129 },
+  { code: 'H', libelle: 'Contrainte onduleur', modules: 126, delta: -3, attendu: 126 },
 ]
 
 const DECOMPOSITION = {
-  depart: { libelle: 'Calcul historique', valeur: 112 },
-  arrivee: { libelle: 'Calcul courant', valeur: 126 },
-  verifie: true,
+  recit: 'A (112) → H (126) : +14 modules en 8 marches',
+  depart: 112,
+  arrivee: 126,
+  gain_total: 14,
+  honnete: true,
+  motifs: [],
   marches: MARCHES_112_126,
 }
 
 const AVEC_MARCHE_FAUTIVE = {
   ...DECOMPOSITION,
-  verifie: false,
-  marches: MARCHES_112_126.map((m) => (m.lettre === 'C' ? { ...m, reproduit: false } : m)),
+  honnete: false,
+  motifs: ["marche C (Allée ramenée à 1,20 m) : attendu 127 modules, le moteur courant en rend 130 — "
+    + 'le récit « ancien → aujourd’hui » serait FAUX'],
+  marches: MARCHES_112_126.map((m) => (m.code === 'C' ? { ...m, modules: 130 } : m)),
 }
 
 describe('geometrie — dessin pur, aucune valeur métier inventée', () => {
-  it('chaîne les marches depuis le départ et retombe sur la valeur d’arrivée', () => {
+  it('chaîne les marches depuis le départ (nombre) et retombe sur la valeur d’arrivée', () => {
     const geo = geometrie({ depart: DECOMPOSITION.depart, marches: MARCHES_112_126 })
     expect(geo.barres).toHaveLength(8)
     expect(geo.barres[0].avant).toBe(112)
@@ -44,35 +57,35 @@ describe('geometrie — dessin pur, aucune valeur métier inventée', () => {
     expect(geo.total).toBe(126)
   })
 
-  it('déduit `valeur_apres` du delta quand le serveur ne l’envoie pas', () => {
-    const geo = geometrie({ depart: { valeur: 100 }, marches: [{ lettre: 'A', delta: 12 }] })
+  it('déduit `modules` du delta quand le serveur ne l’envoie pas', () => {
+    const geo = geometrie({ depart: 100, marches: [{ code: 'A', delta: 12 }] })
     expect(geo.barres[0].apres).toBe(112)
   })
 
   it('une marche descendante est marquée comme telle (couleur distincte)', () => {
     const geo = geometrie({ depart: DECOMPOSITION.depart, marches: MARCHES_112_126 })
-    expect(geo.barres.find((b) => b.lettre === 'D').monte).toBe(false)
-    expect(geo.barres.find((b) => b.lettre === 'A').monte).toBe(true)
+    expect(geo.barres.find((b) => b.code === 'D').monte).toBe(false)
+    expect(geo.barres.find((b) => b.code === 'A').monte).toBe(true)
   })
 })
 
-describe('marchesNonReproduites', () => {
-  it('ne retient QUE les marches explicitement signalées `reproduit: false`', () => {
-    expect(marchesNonReproduites(MARCHES_112_126)).toEqual([])
-    expect(marchesNonReproduites(AVEC_MARCHE_FAUTIVE.marches).map((m) => m.lettre)).toEqual(['C'])
+describe('marchesFautives', () => {
+  it('ne retient QUE les marches dont `modules` diverge de leur `attendu` déclaré', () => {
+    expect(marchesFautives(MARCHES_112_126)).toEqual([])
+    expect(marchesFautives(AVEC_MARCHE_FAUTIVE.marches).map((m) => m.code)).toEqual(['C'])
   })
 
-  it('une marche sans champ `reproduit` n’est PAS traitée comme fautive', () => {
-    expect(marchesNonReproduites([{ lettre: 'A' }])).toEqual([])
+  it('une marche sans `attendu` n’est JAMAIS traitée comme fautive', () => {
+    expect(marchesFautives([{ code: 'A', modules: 5 }])).toEqual([])
   })
 })
 
 describe('DecompositionWaterfall — le cas réel 112 → 126', () => {
-  it('rend les 8 marches A→H avec leur lettre, leur libellé et leur delta SIGNÉ', () => {
+  it('rend les 8 marches A→H avec leur code, leur libellé et leur delta SIGNÉ', () => {
     const { container } = render(<DecompositionWaterfall decomposition={DECOMPOSITION} />)
     expect(container.querySelectorAll('svg g[data-marche]')).toHaveLength(8)
-    for (const lettre of ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H']) {
-      expect(container.querySelector(`g[data-marche="${lettre}"]`)).not.toBeNull()
+    for (const code of ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H']) {
+      expect(container.querySelector(`g[data-marche="${code}"]`)).not.toBeNull()
     }
     // Delta SIGNÉ, lu dans la marche concernée (deux marches valent -3 : on
     // n'interroge jamais le document entier pour un chiffre non unique).
@@ -83,20 +96,20 @@ describe('DecompositionWaterfall — le cas réel 112 → 126', () => {
     expect(screen.getByText('Allée ramenée à 1,20 m')).toBeInTheDocument()
   })
 
-  it('annonce le récit 112 → 126 en texte ET dans le nom accessible du dessin', () => {
+  it('annonce le récit SERVEUR en texte ET dans le nom accessible du dessin', () => {
     render(<DecompositionWaterfall decomposition={DECOMPOSITION} />)
-    expect(screen.getByText(/Calcul historique 112/)).toBeInTheDocument()
+    expect(screen.getByText(DECOMPOSITION.recit)).toBeInTheDocument()
     expect(screen.getByRole('img', { name: /de 112 à 126/ })).toBeInTheDocument()
   })
 
-  it('affiche le badge « reproduit l’ancien calcul ✓ » quand le serveur a vérifié', () => {
+  it('affiche le badge « reproduit l’ancien calcul ✓ » quand le serveur a vérifié (`honnete`)', () => {
     render(<DecompositionWaterfall decomposition={DECOMPOSITION} />)
     expect(screen.getByText(/Reproduit l’ancien calcul/)).toBeInTheDocument()
     expect(screen.queryByRole('alert')).not.toBeInTheDocument()
   })
 
   it('sans marche renvoyée : message explicite, jamais un dessin vide', () => {
-    render(<DecompositionWaterfall decomposition={{ depart: { valeur: 1 }, marches: [] }} />)
+    render(<DecompositionWaterfall decomposition={{ depart: 1, marches: [] }} />)
     expect(screen.getByText(/Décomposition indisponible/)).toBeInTheDocument()
   })
 })
@@ -110,18 +123,19 @@ describe('DecompositionWaterfall — GARDE D’HONNÊTETÉ', () => {
     expect(screen.queryByText(/Reproduit l’ancien calcul/)).not.toBeInTheDocument()
   })
 
-  it('`verifie: false` seul (sans marche fautive nommée) suffit à lever le bandeau', () => {
-    render(<DecompositionWaterfall decomposition={{ ...DECOMPOSITION, verifie: false }} />)
-    expect(screen.getByRole('alert')).toHaveTextContent('Récit non vérifié — ne pas publier')
+  it('`honnete: false` seul (sans marche fautive nommable) suffit à lever le bandeau', () => {
+    render(<DecompositionWaterfall decomposition={{ ...DECOMPOSITION, honnete: false, motifs: ['le serveur signale une incohérence'] }} />)
+    const alerte = screen.getByRole('alert')
+    expect(alerte).toHaveTextContent('Récit non vérifié — ne pas publier')
+    expect(alerte).toHaveTextContent('le serveur signale une incohérence')
   })
 
-  it('BLOQUE l’export, et le bouton porte SON MOTIF (jamais un bouton grisé muet)', async () => {
+  it('BLOQUE l’export, et le bouton porte le MOTIF SERVEUR (jamais un bouton grisé muet)', async () => {
     const exporterImage = vi.fn()
     render(<DecompositionWaterfall decomposition={AVEC_MARCHE_FAUTIVE} exporterImage={exporterImage} />)
     const bouton = screen.getByRole('button', { name: /Export bloqué/ })
     expect(bouton).toBeDisabled()
-    expect(screen.getByText(/Récit non vérifié — 1 marche\(s\) ne reproduisent pas le chiffre attendu/))
-      .toBeInTheDocument()
+    expect(screen.getByText(AVEC_MARCHE_FAUTIVE.motifs[0])).toBeInTheDocument()
     await userEvent.click(bouton)
     expect(exporterImage).not.toHaveBeenCalled()
   })

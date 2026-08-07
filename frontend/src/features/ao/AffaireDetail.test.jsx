@@ -199,6 +199,15 @@ describe('AffaireDetail', () => {
     expect(screen.getAllByRole('tab').map((t) => t.textContent)).toEqual(ONGLETS)
   })
 
+  it('ajoute « Variantes » (PACT171) en 11e onglet, APRÈS les 10 précédents', async () => {
+    renderScreen()
+    await screen.findByText('AO-2026-001')
+    expect(screen.getByRole('tab', { name: 'Variantes' })).toBeInTheDocument()
+    const onglets = screen.getAllByRole('tab').map((t) => t.textContent)
+    expect(onglets).toEqual(ONGLETS)
+    expect(onglets[onglets.length - 1]).toBe('Variantes')
+  })
+
   it('n’a JAMAIS un onglet ou un mot « rentabilité » dans l’arbre (route séparée AOF161)', async () => {
     renderScreen()
     await screen.findByText('AO-2026-001')

@@ -24,6 +24,8 @@ const mocks = vi.hoisted(() => ({
   create: vi.fn(),
   update: vi.fn(),
   retenir: vi.fn(),
+  decomposition: vi.fn(),
+  sensibilites: vi.fn(),
   hasPermission: vi.fn(),
   colonneProps: [],
 }))
@@ -32,7 +34,12 @@ vi.mock('../../../api/aoApi', () => ({
   default: {
     variantes: {
       list: mocks.list, create: mocks.create, update: mocks.update,
-      retenir: mocks.retenir,
+      retenir: mocks.retenir, decomposition: mocks.decomposition,
+    },
+    calepinage: { variantes: { sensibilites: mocks.sensibilites } },
+    calepinages: {
+      list: () => Promise.reject(Object.assign(new Error('non construit'), { response: { data: { detail: 'non construit' } } })),
+      update: () => Promise.reject(Object.assign(new Error('non construit'), { response: { data: { detail: 'non construit' } } })),
     },
   },
 }))
@@ -53,6 +60,9 @@ vi.mock('./VarianteColonne', () => ({
         <span>{`miniature:${props.miniatureIndisponible}`}</span>
         <button type="button" onClick={() => props.onDefinirRetenue?.(props.variante)}>
           {`Retenir ${props.variante.nom}`}
+        </button>
+        <button type="button" onClick={() => props.onDetails?.(props.variante)}>
+          {`Détails ${props.variante.nom}`}
         </button>
       </div>
     )
@@ -117,6 +127,26 @@ beforeEach(() => {
   mocks.update.mockResolvedValue({ data: {} })
   mocks.create.mockResolvedValue({ data: {} })
   mocks.retenir.mockResolvedValue({ data: {} })
+  mocks.decomposition.mockResolvedValue({
+    data: {
+      recit: 'A (112) → B (118) : +6 modules en 2 marches',
+      depart: 112,
+      arrivee: 118,
+      honnete: true,
+      motifs: [],
+      marches: [
+        { code: 'A', libelle: 'État initial', modules: 112, delta: 0, attendu: 112 },
+        { code: 'B', libelle: 'Correction', modules: 118, delta: 6, attendu: 118 },
+      ],
+    },
+  })
+  mocks.sensibilites.mockResolvedValue({
+    data: {
+      reference_modules: 314, plancher_modules: 288, engagement_modules: 280,
+      verdict: 'engagement tenu partout : plancher 288 modules pour un engagement de 280 (0 variante(s) défavorable(s) rejouée(s))',
+      non_applicables: [], sensibilites: [],
+    },
+  })
 })
 
 const renderCompare = (props = {}) => render(<VariantesCompare affaireId={7} {...props} />)
@@ -287,6 +317,57 @@ describe('VariantesCompare — miniature INJECTÉE (svgToPng/AOF75 hors de cette
     renderCompare({ exporterImage })
     await waitFor(() => expect(exporterImage).toHaveBeenCalled())
     expect(exporterImage).toHaveBeenCalledWith('<svg/>', { largeur: 320 })
+  })
+})
+
+/* ── Dialogue de détail (PACT172) — DiffPlan/DecompositionWaterfall/
+      SensibilitesPanel/HistoriqueVersions étaient tous les 4 injoignables :
+      `VariantesCompare` n'importait que `VarianteColonne`. ─────────────── */
+describe('VariantesCompare — dialogue de détail d’une variante (PACT172)', () => {
+  it('« Détails » ouvre le dialogue avec le nom de la variante et ses 3 onglets', async () => {
+    const user = userEvent.setup()
+    renderCompare()
+    await screen.findByText('Colonne Variante A')
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Détails Variante A' }))
+
+    const dialogue = await screen.findByRole('dialog')
+    expect(within(dialogue).getByText('Détails — Variante A')).toBeInTheDocument()
+    expect(within(dialogue).getByRole('tab', { name: 'Décomposition' })).toBeInTheDocument()
+    expect(within(dialogue).getByRole('tab', { name: 'Sensibilités' })).toBeInTheDocument()
+    expect(within(dialogue).getByRole('tab', { name: /Historique/ })).toBeInTheDocument()
+  })
+
+  it('onglet Décomposition (actif par défaut) : le VRAI endpoint est appelé et le récit SERVEUR s’affiche', async () => {
+    const user = userEvent.setup()
+    renderCompare()
+    await screen.findByText('Colonne Variante A')
+    await user.click(screen.getByRole('button', { name: 'Détails Variante A' }))
+
+    await waitFor(() => expect(mocks.decomposition).toHaveBeenCalledWith(1))
+    expect(await screen.findByText('A (112) → B (118) : +6 modules en 2 marches')).toBeInTheDocument()
+  })
+
+  it('onglet Sensibilités : appelle `aoApi.calepinage.variantes.sensibilites`, jamais l’ancien endpoint', async () => {
+    const user = userEvent.setup()
+    renderCompare()
+    await screen.findByText('Colonne Variante A')
+    await user.click(screen.getByRole('button', { name: 'Détails Variante A' }))
+    await user.click(screen.getByRole('tab', { name: 'Sensibilités' }))
+
+    await waitFor(() => expect(mocks.sensibilites).toHaveBeenCalledWith(1))
+  })
+
+  it('fermer le dialogue efface la variante en détail (réouverture propre)', async () => {
+    const user = userEvent.setup()
+    renderCompare()
+    await screen.findByText('Colonne Variante A')
+    await user.click(screen.getByRole('button', { name: 'Détails Variante A' }))
+    await screen.findByRole('dialog')
+
+    await user.keyboard('{Escape}')
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
   })
 })
 

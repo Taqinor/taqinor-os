@@ -1,11 +1,25 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react'
 import { LayoutGrid, AlertTriangle } from 'lucide-react'
 import aoApi from '../../../api/aoApi'
 import useResource from '../../../hooks/useResource'
 import { unwrapList } from '../../../api/resource'
 import { useHasPermission } from '../../../hooks/useHasPermission'
-import { Card, Checkbox, EmptyState, Skeleton, toast } from '../../../ui'
+import {
+  Card, Checkbox, EmptyState, Skeleton, toast,
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
+  Tabs, TabsList, TabsTrigger, TabsContent,
+} from '../../../ui'
 import VarianteColonne from './VarianteColonne'
+
+/* ── Détail d'une variante (PACT172, 07/08/2026) — chargé À L'OUVERTURE ────
+   `DecompositionWaterfall`/`SensibilitesPanel`/`HistoriqueVersions` (qui
+   monte lui-même `DiffPlan` pour la superposition A/B, AOF105 1/2 et 2/2)
+   restaient sur le disque, importés par AUCUN écran réel — même patron que
+   les onglets `lazy()` d'`AffaireDetail.jsx` : le dialogue de détail ne tire
+   ces panneaux qu'à son ouverture, jamais au premier rendu du comparateur. */
+const DecompositionWaterfall = lazy(() => import('./DecompositionWaterfall'))
+const SensibilitesPanel = lazy(() => import('./SensibilitesPanel'))
+const HistoriqueVersions = lazy(() => import('./HistoriqueVersions'))
 
 /* ============================================================================
    AOF102 — Comparateur de variantes côte à côte (2 à 4 colonnes).
@@ -43,6 +57,17 @@ import VarianteColonne from './VarianteColonne'
    lieu d'être importée : un import statique vers un fichier non encore livré
    casserait le build de toute l'app. Sans exporteur, la colonne affiche une
    miniature indisponible NOMMÉE (jamais une image cassée).
+
+   ── DÉTAILS D'UNE VARIANTE (PACT172, 07/08/2026) ──────────────────────────
+   L'action « Détails » de `VarianteColonne` ouvre un dialogue à onglets :
+   Décomposition (`DecompositionWaterfall`, fetch propre via
+   `OngletDecomposition` sur `aoApi.variantes.decomposition`), Sensibilités
+   (`SensibilitesPanel`, désormais branché sur le VRAI endpoint porté par la
+   variante) et Historique (`HistoriqueVersions`, qui monte lui-même `DiffPlan`
+   pour la superposition A/B — les deux moitiés d'AOF105 restent ensemble).
+   Les trois panneaux sont chargés en DIFFÉRÉ (`lazy`/`Suspense`, même patron
+   que les onglets d'`AffaireDetail.jsx`) : le comparateur ne les tire qu'à
+   l'ouverture du dialogue, jamais au premier rendu.
    ========================================================================== */
 
 // Champs d'ÉCONOMIE (interne/directeur). Liste EXACTE — voir l'en-tête.
@@ -82,6 +107,24 @@ export function retirerEconomie(valeur) {
 
 const errMsg = (e, fallback) => e?.response?.data?.detail || fallback
 
+/* ── Onglet « Décomposition » du dialogue de détail (PACT172) ───────────────
+   `DecompositionWaterfall` est un composant de PUR AFFICHAGE (`decomposition`
+   en prop) : le fetch vers l'endpoint RÉEL
+   (`aoApi.variantes.decomposition`, `GET /ao/calepinage/variantes/:id/
+   marches/`) vit ici, même discipline que le reste de `features/ao/`
+   (ARC44 — jamais un `axios` direct dans le composant de présentation). */
+function OngletDecomposition({ varianteId }) {
+  const { data, loading, error } = useResource(
+    () => aoApi.variantes.decomposition(varianteId), varianteId,
+    { select: (res) => res.data, errorMessage: 'Impossible de charger la décomposition.' },
+  )
+  if (loading) return <Skeleton className="h-48 w-full" />
+  if (error) {
+    return <EmptyState icon={AlertTriangle} title="Décomposition indisponible" description={error} />
+  }
+  return <DecompositionWaterfall decomposition={data} />
+}
+
 export function VariantesCompare({ affaireId, exporterImage = null }) {
   const peutVoirEconomie = useHasPermission('ao_rentabilite_voir')
   const [selection, setSelection] = useState([])
@@ -92,6 +135,8 @@ export function VariantesCompare({ affaireId, exporterImage = null }) {
   const [variantesAjustees, setVariantesAjustees] = useState(null)
   const [miniatures, setMiniatures] = useState({})
   const [enCours, setEnCours] = useState(false)
+  // Variante dont le dialogue « Détails » (PACT172) est ouvert — `null` = fermé.
+  const [detailVariante, setDetailVariante] = useState(null)
 
   // RÉPARATION 03/08/2026 — le filtre serveur s'appelle `appel_offre`
   // (`VarianteCalepinageViewSet`). `affaire` était IGNORÉ en silence : la
@@ -278,6 +323,7 @@ export function VariantesCompare({ affaireId, exporterImage = null }) {
                   : 'Aperçu indisponible sur cet écran'
               }
               onDefinirRetenue={enCours ? undefined : definirRetenue}
+              onDetails={setDetailVariante}
             />
           ))}
         </div>
@@ -286,6 +332,46 @@ export function VariantesCompare({ affaireId, exporterImage = null }) {
       <p className="text-xs text-muted-foreground">
         Seule la variante retenue alimente le bordereau des prix et les planches du dossier.
       </p>
+
+      {/* ── Dialogue de détail (PACT172) — diff de plan, décomposition,
+          sensibilités, historique de versions ──────────────────────────── */}
+      <Dialog open={detailVariante != null} onOpenChange={(ouvert) => { if (!ouvert) setDetailVariante(null) }}>
+        <DialogContent className="max-w-3xl">
+          <DialogHeader>
+            <DialogTitle>{`Détails — ${detailVariante?.nom ?? ''}`}</DialogTitle>
+            <DialogDescription>
+              Décomposition du compte, sensibilités et historique des versions de cette variante.
+            </DialogDescription>
+          </DialogHeader>
+          {detailVariante && (
+            <Tabs defaultValue="decomposition">
+              <TabsList>
+                <TabsTrigger value="decomposition">Décomposition</TabsTrigger>
+                <TabsTrigger value="sensibilites">Sensibilités</TabsTrigger>
+                <TabsTrigger value="historique">Historique &amp; comparaison</TabsTrigger>
+              </TabsList>
+              <TabsContent value="decomposition">
+                <Suspense fallback={<Skeleton className="h-48 w-full" />}>
+                  <OngletDecomposition varianteId={detailVariante.id} />
+                </Suspense>
+              </TabsContent>
+              <TabsContent value="sensibilites">
+                <Suspense fallback={<Skeleton className="h-48 w-full" />}>
+                  <SensibilitesPanel varianteId={detailVariante.id} />
+                </Suspense>
+              </TabsContent>
+              <TabsContent value="historique">
+                {/* AOF105 (1/2) — monte elle-même `DiffPlan` (2/2) dès que
+                    deux versions sont choisies : les DEUX moitiés de la
+                    même fonctionnalité restent dans le MÊME onglet. */}
+                <Suspense fallback={<Skeleton className="h-48 w-full" />}>
+                  <HistoriqueVersions calepinageId={detailVariante.id} />
+                </Suspense>
+              </TabsContent>
+            </Tabs>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
