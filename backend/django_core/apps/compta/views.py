@@ -43,7 +43,7 @@ from .models import (
     Campagne, CautionBancaire, CentreCout, CessionImmobilisation, CodePromotion,
     CommissionPayoutRun, EnvoiCampagne,
     CompteComptable, CompteTresorerie, ContratAvancement, DeclarationTVA,
-    DemandeApprobationConfig,
+    DemandeApprobationConfig, DemandeApprobationRib,
     DotationAmortissement, ECatalogue, EcritureComptable, Effet,
     EntiteConsolidation, EtapeSequence, InscriptionSequence,
     ListeDiffusion, AbonnementListe, SegmentMarketing,
@@ -119,6 +119,7 @@ from .serializers import (
     CommissionPayoutRunSerializer, CompteComptableSerializer,
     CompteTresorerieSerializer, ContratAvancementSerializer,
     DeclarationTVASerializer, DemandeApprobationConfigSerializer,
+    DemandeApprobationRibSerializer,
     DotationAmortissementSerializer, ECatalogueSerializer,
     EcritureComptableSerializer, EffetSerializer, EntiteConsolidationSerializer,
     EtapeSequenceSerializer, InscriptionSequenceSerializer,
@@ -7028,6 +7029,42 @@ class DemandeApprobationConfigViewSet(_ComptaBaseViewSet):
             demande, approuver=False, user=request.user,
             commentaire=request.data.get('commentaire') or '')
         return Response(DemandeApprobationConfigSerializer(demande).data)
+
+
+# ── PACT160 / XACC24 — Approbation des changements de RIB fournisseur ──────
+
+class DemandeApprobationRibViewSet(_ComptaBaseViewSet):
+    """File d'approbation des changements de RIB fournisseur (XACC24, principe
+    4-yeux) : ``approuver``/``refuser`` clôturent la demande via
+    ``services.approuver_demande_rib``/``refuser_demande_rib`` (idempotent —
+    une demande déjà décidée n'est pas re-décidée). Tant qu'une demande n'est
+    pas ``approuvee``, le payment run continue d'utiliser l'ancien RIB
+    (``services._coordonnees_fournisseur``)."""
+    queryset = DemandeApprobationRib.objects.select_related(
+        'demandeur', 'decideur').all()
+    serializer_class = DemandeApprobationRibSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['date_creation', 'statut']
+
+    def perform_create(self, serializer):
+        serializer.save(
+            company=self.request.user.company, demandeur=self.request.user)
+
+    @action(detail=True, methods=['post'])
+    def approuver(self, request, pk=None):
+        demande = self.get_object()
+        services.approuver_demande_rib(
+            demande, decideur=request.user,
+            commentaire=request.data.get('commentaire') or '')
+        return Response(DemandeApprobationRibSerializer(demande).data)
+
+    @action(detail=True, methods=['post'])
+    def refuser(self, request, pk=None):
+        demande = self.get_object()
+        services.refuser_demande_rib(
+            demande, decideur=request.user,
+            commentaire=request.data.get('commentaire') or '')
+        return Response(DemandeApprobationRibSerializer(demande).data)
 
 
 # ── FG214 — E-catalogue à prix publics (tokenisé) ──────────────────────────

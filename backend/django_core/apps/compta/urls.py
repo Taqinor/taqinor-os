@@ -38,6 +38,7 @@ from .views import (
     CommissionPayoutRunViewSet, ComparateurDevisViewSet,
     CompteComptableViewSet, CompteTresorerieViewSet, ContratAvancementViewSet,
     DeclarationTVAViewSet, DemandeApprobationConfigViewSet,
+    DemandeApprobationRibViewSet,
     DotationAmortissementViewSet, ECatalogueViewSet,
     EcritureComptableViewSet, EffetViewSet, EntiteConsolidationViewSet,
     EtapeSequenceViewSet, InscriptionSequenceViewSet,
@@ -174,6 +175,8 @@ router.register(r'guided-selling', SessionGuidedSellingViewSet)
 router.register(r'comparateur-devis', ComparateurDevisViewSet,
                 basename='comparateur-devis')
 router.register(r'approbations-config', DemandeApprobationConfigViewSet)
+# PACT160 / XACC24 — approbation des changements de RIB fournisseur.
+router.register(r'approbations-rib', DemandeApprobationRibViewSet)
 router.register(r'ecatalogues', ECatalogueViewSet)
 # ── Financement, appels d'offres & portail (FG215–FG228) ────────────────────
 router.register(r'documents-proposition', DocumentPropositionViewSet)

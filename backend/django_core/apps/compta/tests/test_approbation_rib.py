@@ -5,15 +5,24 @@ Couvre : un changement de RIB fournisseur non approuvé n'apparaît pas dans
 le fichier de virement (le payment run continue d'utiliser l'ancien RIB),
 l'approbation admin le bascule, et un RIB de compte de trésorerie à clé
 fausse est signalé en warning (jamais un blocage).
+
+PACT160 ajoute la couverture API (``DemandeApprobationRibViewSet``) : la
+surface était construite côté service mais totalement inatteignable (aucune
+route, aucun sérialiseur, aucun écran) avant cette tâche.
 """
 from decimal import Decimal
 
+from django.contrib.auth import get_user_model
 from django.test import TestCase
+from rest_framework.test import APIClient
+from rest_framework_simplejwt.tokens import AccessToken
 
 from authentication.models import Company
 
 from apps.compta import selectors, services
 from apps.compta.models import CompteTresorerie, DemandeApprobationRib
+
+User = get_user_model()
 
 RIB_VALIDE_ANCIEN = '123456789012345678901213'
 RIB_VALIDE_NOUVEAU = '070001234598765432109842'
@@ -116,3 +125,95 @@ class CompteTresorerieRibTests(TestCase):
             company=self.co, libelle='Ancien compte', rib=RIB_INVALIDE,
             compte_comptable=self.compte_comptable, solde_initial=Decimal('0'))
         self.assertEqual(compte.rib, RIB_INVALIDE)
+
+
+def make_user(company, username, role='responsable'):
+    return User.objects.create_user(
+        username=username, password='x', company=company, role_legacy=role)
+
+
+def auth(user):
+    api = APIClient()
+    api.credentials(HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(user)}')
+    return api
+
+
+# ── PACT160 — API de la file d'approbation RIB (XACC24) ────────────────────
+
+class DemandeApprobationRibApiTests(TestCase):
+    def setUp(self):
+        self.co = make_company('pact160', 'PACT160 Co')
+        self.autre_co = make_company('pact160-autre', 'PACT160 Autre')
+        self.user = make_user(self.co, 'pact160-user')
+
+    def test_creation_pose_company_et_demandeur_serveur(self):
+        api = auth(self.user)
+        resp = api.post('/api/django/compta/approbations-rib/', {
+            'fournisseur_id': 501, 'fournisseur_nom': 'ACME',
+            'ancien_rib': RIB_VALIDE_ANCIEN, 'nouveau_rib': RIB_VALIDE_NOUVEAU,
+            'company': 99999,  # doit être ignoré
+        }, format='json')
+        self.assertEqual(resp.status_code, 201, resp.content)
+        demande = DemandeApprobationRib.objects.get(id=resp.data['id'])
+        self.assertEqual(demande.company_id, self.co.id)
+        self.assertEqual(demande.demandeur_id, self.user.id)
+        self.assertEqual(demande.statut, DemandeApprobationRib.Statut.EN_ATTENTE)
+
+    def test_approuver_bascule_le_statut_et_trace_le_decideur(self):
+        demande = services.demander_changement_rib(
+            self.co, fournisseur_id=502, fournisseur_nom='Fournisseur X',
+            ancien_rib=RIB_VALIDE_ANCIEN, nouveau_rib=RIB_VALIDE_NOUVEAU)
+        api = auth(self.user)
+        resp = api.post(
+            f'/api/django/compta/approbations-rib/{demande.id}/approuver/',
+            {'commentaire': 'RIB vérifié par téléphone.'}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.content)
+        self.assertEqual(resp.data['statut'], DemandeApprobationRib.Statut.APPROUVEE)
+        self.assertEqual(resp.data['rib_actif'], RIB_VALIDE_NOUVEAU)
+        demande.refresh_from_db()
+        self.assertEqual(demande.decideur_id, self.user.id)
+        self.assertEqual(demande.commentaire_decision, 'RIB vérifié par téléphone.')
+        self.assertIsNotNone(demande.date_decision)
+
+    def test_refuser_bascule_le_statut(self):
+        demande = services.demander_changement_rib(
+            self.co, fournisseur_id=503, fournisseur_nom='Fournisseur Y',
+            ancien_rib=RIB_VALIDE_ANCIEN, nouveau_rib=RIB_VALIDE_NOUVEAU)
+        api = auth(self.user)
+        resp = api.post(
+            f'/api/django/compta/approbations-rib/{demande.id}/refuser/',
+            {'commentaire': 'RIB non confirmé.'}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.content)
+        self.assertEqual(resp.data['statut'], DemandeApprobationRib.Statut.REFUSEE)
+        self.assertEqual(resp.data['rib_actif'], RIB_VALIDE_ANCIEN)
+
+    def test_decision_idempotente_via_api(self):
+        demande = services.demander_changement_rib(
+            self.co, fournisseur_id=504, fournisseur_nom='Fournisseur Z',
+            ancien_rib=RIB_VALIDE_ANCIEN, nouveau_rib=RIB_VALIDE_NOUVEAU)
+        api = auth(self.user)
+        api.post(f'/api/django/compta/approbations-rib/{demande.id}/approuver/',
+                 {}, format='json')
+        autre_user = make_user(self.co, 'pact160-user2')
+        api2 = auth(autre_user)
+        resp = api2.post(
+            f'/api/django/compta/approbations-rib/{demande.id}/refuser/',
+            {}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.content)
+        # Déjà décidée : le second appel (refus) ne change rien.
+        self.assertEqual(resp.data['statut'], DemandeApprobationRib.Statut.APPROUVEE)
+        demande.refresh_from_db()
+        self.assertEqual(demande.decideur_id, self.user.id)
+
+    def test_scopee_par_societe(self):
+        demande_autre = services.demander_changement_rib(
+            self.autre_co, fournisseur_id=505, fournisseur_nom='Hors société',
+            ancien_rib=RIB_VALIDE_ANCIEN, nouveau_rib=RIB_VALIDE_NOUVEAU)
+        api = auth(self.user)
+        resp = api.get('/api/django/compta/approbations-rib/')
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.data['count'], 0)
+        resp = api.post(
+            f'/api/django/compta/approbations-rib/{demande_autre.id}/approuver/',
+            {}, format='json')
+        self.assertEqual(resp.status_code, 404)
