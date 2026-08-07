@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 8780, operations: 15995, components: 4321}
+counts: {paths: 8476, operations: 15443, components: 4366}
 securitySchemes:
 - cookieJWT
 - publicApiKey
@@ -347,6 +347,13 @@ operations:
 - post /api/django/adsengine/reconciliation/backfill/ -> django_adsengine_reconciliation_backfill_create
 - get /api/django/adsengine/reconciliations/ -> django_adsengine_reconciliations_list
 - get /api/django/adsengine/reconciliations/{id}/ -> django_adsengine_reconciliations_retrieve
+- get /api/django/adsengine/regles-mot-cle/ -> django_adsengine_regles_mot_cle_list
+- post /api/django/adsengine/regles-mot-cle/ -> django_adsengine_regles_mot_cle_create
+- post /api/django/adsengine/regles-mot-cle/proposer/ -> django_adsengine_regles_mot_cle_proposer_create
+- delete /api/django/adsengine/regles-mot-cle/{id}/ -> django_adsengine_regles_mot_cle_destroy
+- get /api/django/adsengine/regles-mot-cle/{id}/ -> django_adsengine_regles_mot_cle_retrieve
+- patch /api/django/adsengine/regles-mot-cle/{id}/ -> django_adsengine_regles_mot_cle_partial_update
+- put /api/django/adsengine/regles-mot-cle/{id}/ -> django_adsengine_regles_mot_cle_update
 - get /api/django/adsengine/regles/ -> django_adsengine_regles_list
 - post /api/django/adsengine/regles/ -> django_adsengine_regles_create
 - get /api/django/adsengine/regles/catalogue/ -> django_adsengine_regles_catalogue_retrieve
@@ -523,6 +530,7 @@ operations:
 - post /api/django/ao/calepinage/variantes/{id}/sensibilites/ -> django_ao_calepinage_variantes_sensibilites_create
 - get /api/django/ao/cautions-soumission/ -> django_ao_cautions_soumission_list
 - post /api/django/ao/cautions-soumission/ -> django_ao_cautions_soumission_create
+- post /api/django/ao/cautions-soumission/deriver-definitive/ -> django_ao_cautions_soumission_deriver_definitive_create
 - delete /api/django/ao/cautions-soumission/{id}/ -> django_ao_cautions_soumission_destroy
 - get /api/django/ao/cautions-soumission/{id}/ -> django_ao_cautions_soumission_retrieve
 - patch /api/django/ao/cautions-soumission/{id}/ -> django_ao_cautions_soumission_partial_update
@@ -697,6 +705,7 @@ operations:
 - put /api/django/ao/plans-source/{id}/ -> django_ao_plans_source_update
 - get /api/django/ao/plans-source/{id}/chatter/historique/ -> django_ao_plans_source_chatter_historique_retrieve
 - post /api/django/ao/plans-source/{id}/chatter/noter/ -> django_ao_plans_source_chatter_noter_create
+- post /api/django/ao/plans-source/{id}/upload/ -> django_ao_plans_source_upload_create
 - get /api/django/ao/presets-calepinage/ -> django_ao_presets_calepinage_list
 - post /api/django/ao/presets-calepinage/ -> django_ao_presets_calepinage_create
 - delete /api/django/ao/presets-calepinage/{id}/ -> django_ao_presets_calepinage_destroy
@@ -1060,12 +1069,6 @@ operations:
 - get /api/django/compta/abonnements-ecriture/{id}/ -> django_compta_abonnements_ecriture_retrieve
 - patch /api/django/compta/abonnements-ecriture/{id}/ -> django_compta_abonnements_ecriture_partial_update
 - put /api/django/compta/abonnements-ecriture/{id}/ -> django_compta_abonnements_ecriture_update
-- get /api/django/compta/abonnements-liste/ -> django_compta_abonnements_liste_list
-- post /api/django/compta/abonnements-liste/ -> django_compta_abonnements_liste_create
-- delete /api/django/compta/abonnements-liste/{id}/ -> django_compta_abonnements_liste_destroy
-- get /api/django/compta/abonnements-liste/{id}/ -> django_compta_abonnements_liste_retrieve
-- patch /api/django/compta/abonnements-liste/{id}/ -> django_compta_abonnements_liste_partial_update
-- put /api/django/compta/abonnements-liste/{id}/ -> django_compta_abonnements_liste_update
 - get /api/django/compta/abonnements-monitoring/ -> django_compta_abonnements_monitoring_list
 - post /api/django/compta/abonnements-monitoring/ -> django_compta_abonnements_monitoring_create
 - get /api/django/compta/abonnements-monitoring/a_echeance/ -> django_compta_abonnements_monitoring_a_echeance_retrieve
@@ -1077,13 +1080,6 @@ operations:
 - post /api/django/compta/abonnements-monitoring/{id}/renouveler/ -> django_compta_abonnements_monitoring_renouveler_create
 - post /api/django/compta/abonnements-monitoring/{id}/resilier/ -> django_compta_abonnements_monitoring_resilier_create
 - post /api/django/compta/abonnements-monitoring/{id}/suspendre/ -> django_compta_abonnements_monitoring_suspendre_create
-- get /api/django/compta/acceptations-devis-portail/ -> django_compta_acceptations_devis_portail_list
-- post /api/django/compta/acceptations-devis-portail/ -> django_compta_acceptations_devis_portail_create
-- delete /api/django/compta/acceptations-devis-portail/{id}/ -> django_compta_acceptations_devis_portail_destroy
-- get /api/django/compta/acceptations-devis-portail/{id}/ -> django_compta_acceptations_devis_portail_retrieve
-- patch /api/django/compta/acceptations-devis-portail/{id}/ -> django_compta_acceptations_devis_portail_partial_update
-- put /api/django/compta/acceptations-devis-portail/{id}/ -> django_compta_acceptations_devis_portail_update
-- post /api/django/compta/acceptations-devis-portail/{id}/signer/ -> django_compta_acceptations_devis_portail_signer_create
 - get /api/django/compta/accruals-cloture/ -> django_compta_accruals_cloture_list
 - post /api/django/compta/accruals-cloture/ -> django_compta_accruals_cloture_create
 - delete /api/django/compta/accruals-cloture/{id}/ -> django_compta_accruals_cloture_destroy
@@ -1113,26 +1109,6 @@ operations:
 - post /api/django/compta/allocations/executer/ -> django_compta_allocations_executer_create
 - get /api/django/compta/allocations/{id}/ -> django_compta_allocations_retrieve
 - post /api/django/compta/allocations/{id}/reverser/ -> django_compta_allocations_reverser_create
-- get /api/django/compta/appels-offres/ -> django_compta_appels_offres_list
-- post /api/django/compta/appels-offres/ -> django_compta_appels_offres_create
-- delete /api/django/compta/appels-offres/{id}/ -> django_compta_appels_offres_destroy
-- get /api/django/compta/appels-offres/{id}/ -> django_compta_appels_offres_retrieve
-- patch /api/django/compta/appels-offres/{id}/ -> django_compta_appels_offres_partial_update
-- put /api/django/compta/appels-offres/{id}/ -> django_compta_appels_offres_update
-- post /api/django/compta/appels-offres/{id}/changer-statut/ -> django_compta_appels_offres_changer_statut_create
-- get /api/django/compta/appels-offres/{id}/chatter/historique/ -> django_compta_appels_offres_chatter_historique_retrieve
-- post /api/django/compta/appels-offres/{id}/chatter/noter/ -> django_compta_appels_offres_chatter_noter_create
-- post /api/django/compta/appels-offres/{id}/dupliquer/ -> django_compta_appels_offres_dupliquer_create
-- get /api/django/compta/appels-offres/{id}/lead/ -> django_compta_appels_offres_lead_retrieve
-- get /api/django/compta/appels-offres/{id}/points-a-lever/ -> django_compta_appels_offres_points_a_lever_retrieve
-- post /api/django/compta/appels-offres/{id}/rattacher-lead/ -> django_compta_appels_offres_rattacher_lead_create
-- get /api/django/compta/appels-offres/{id}/transitions/ -> django_compta_appels_offres_transitions_retrieve
-- get /api/django/compta/appels/ -> django_compta_appels_list
-- post /api/django/compta/appels/ -> django_compta_appels_create
-- delete /api/django/compta/appels/{id}/ -> django_compta_appels_destroy
-- get /api/django/compta/appels/{id}/ -> django_compta_appels_retrieve
-- patch /api/django/compta/appels/{id}/ -> django_compta_appels_partial_update
-- put /api/django/compta/appels/{id}/ -> django_compta_appels_update
 - get /api/django/compta/approbations-config/ -> django_compta_approbations_config_list
 - post /api/django/compta/approbations-config/ -> django_compta_approbations_config_create
 - delete /api/django/compta/approbations-config/{id}/ -> django_compta_approbations_config_destroy
@@ -1141,20 +1117,14 @@ operations:
 - put /api/django/compta/approbations-config/{id}/ -> django_compta_approbations_config_update
 - post /api/django/compta/approbations-config/{id}/approuver/ -> django_compta_approbations_config_approuver_create
 - post /api/django/compta/approbations-config/{id}/refuser/ -> django_compta_approbations_config_refuser_create
-- get /api/django/compta/approbations-envoi-campagne/ -> django_compta_approbations_envoi_campagne_list
-- post /api/django/compta/approbations-envoi-campagne/ -> django_compta_approbations_envoi_campagne_create
-- get /api/django/compta/approbations-envoi-campagne/journal-audit/ -> django_compta_approbations_envoi_campagne_journal_audit_retrieve
-- get /api/django/compta/approbations-envoi-campagne/{id}/ -> django_compta_approbations_envoi_campagne_retrieve
-- post /api/django/compta/approbations-envoi-campagne/{id}/approuver/ -> django_compta_approbations_envoi_campagne_approuver_create
-- post /api/django/compta/approbations-envoi-campagne/{id}/rejeter/ -> django_compta_approbations_envoi_campagne_rejeter_create
-- get /api/django/compta/avis-clients/ -> django_compta_avis_clients_list
-- post /api/django/compta/avis-clients/ -> django_compta_avis_clients_create
-- delete /api/django/compta/avis-clients/{id}/ -> django_compta_avis_clients_destroy
-- get /api/django/compta/avis-clients/{id}/ -> django_compta_avis_clients_retrieve
-- patch /api/django/compta/avis-clients/{id}/ -> django_compta_avis_clients_partial_update
-- put /api/django/compta/avis-clients/{id}/ -> django_compta_avis_clients_update
-- post /api/django/compta/avis-clients/{id}/pousser_google/ -> django_compta_avis_clients_pousser_google_create
-- post /api/django/compta/avis-clients/{id}/recevoir/ -> django_compta_avis_clients_recevoir_create
+- get /api/django/compta/approbations-rib/ -> django_compta_approbations_rib_list
+- post /api/django/compta/approbations-rib/ -> django_compta_approbations_rib_create
+- delete /api/django/compta/approbations-rib/{id}/ -> django_compta_approbations_rib_destroy
+- get /api/django/compta/approbations-rib/{id}/ -> django_compta_approbations_rib_retrieve
+- patch /api/django/compta/approbations-rib/{id}/ -> django_compta_approbations_rib_partial_update
+- put /api/django/compta/approbations-rib/{id}/ -> django_compta_approbations_rib_update
+- post /api/django/compta/approbations-rib/{id}/approuver/ -> django_compta_approbations_rib_approuver_create
+- post /api/django/compta/approbations-rib/{id}/refuser/ -> django_compta_approbations_rib_refuser_create
 - get /api/django/compta/axes-analytiques/ -> django_compta_axes_analytiques_list
 - post /api/django/compta/axes-analytiques/ -> django_compta_axes_analytiques_create
 - delete /api/django/compta/axes-analytiques/{id}/ -> django_compta_axes_analytiques_destroy
@@ -1169,22 +1139,6 @@ operations:
 - get /api/django/compta/baremes-indemnite/{id}/ -> django_compta_baremes_indemnite_retrieve
 - patch /api/django/compta/baremes-indemnite/{id}/ -> django_compta_baremes_indemnite_partial_update
 - put /api/django/compta/baremes-indemnite/{id}/ -> django_compta_baremes_indemnite_update
-- get /api/django/compta/billets-evenement/ -> django_compta_billets_evenement_list
-- post /api/django/compta/billets-evenement/ -> django_compta_billets_evenement_create
-- delete /api/django/compta/billets-evenement/{id}/ -> django_compta_billets_evenement_destroy
-- get /api/django/compta/billets-evenement/{id}/ -> django_compta_billets_evenement_retrieve
-- patch /api/django/compta/billets-evenement/{id}/ -> django_compta_billets_evenement_partial_update
-- put /api/django/compta/billets-evenement/{id}/ -> django_compta_billets_evenement_update
-- get /api/django/compta/bordereaux-prix/ -> django_compta_bordereaux_prix_list
-- post /api/django/compta/bordereaux-prix/ -> django_compta_bordereaux_prix_create
-- delete /api/django/compta/bordereaux-prix/{id}/ -> django_compta_bordereaux_prix_destroy
-- get /api/django/compta/bordereaux-prix/{id}/ -> django_compta_bordereaux_prix_retrieve
-- patch /api/django/compta/bordereaux-prix/{id}/ -> django_compta_bordereaux_prix_partial_update
-- put /api/django/compta/bordereaux-prix/{id}/ -> django_compta_bordereaux_prix_update
-- get /api/django/compta/bordereaux-prix/{id}/chatter/historique/ -> django_compta_bordereaux_prix_chatter_historique_retrieve
-- post /api/django/compta/bordereaux-prix/{id}/chatter/noter/ -> django_compta_bordereaux_prix_chatter_noter_create
-- get /api/django/compta/bordereaux-prix/{id}/controles/ -> django_compta_bordereaux_prix_controles_retrieve
-- get /api/django/compta/bordereaux-prix/{id}/totaux/ -> django_compta_bordereaux_prix_totaux_retrieve
 - get /api/django/compta/bordereaux/ -> django_compta_bordereaux_list
 - post /api/django/compta/bordereaux/ -> django_compta_bordereaux_create
 - get /api/django/compta/bordereaux/{id}/ -> django_compta_bordereaux_retrieve
@@ -1195,6 +1149,7 @@ operations:
 - get /api/django/compta/budgets/{id}/ -> django_compta_budgets_retrieve
 - patch /api/django/compta/budgets/{id}/ -> django_compta_budgets_partial_update
 - put /api/django/compta/budgets/{id}/ -> django_compta_budgets_update
+- post /api/django/compta/budgets/{id}/generer-ligne-repartie/ -> django_compta_budgets_generer_ligne_repartie_create
 - get /api/django/compta/budgets/{id}/vs_realise/ -> django_compta_budgets_vs_realise_retrieve
 - get /api/django/compta/caisses/ -> django_compta_caisses_list
 - post /api/django/compta/caisses/ -> django_compta_caisses_create
@@ -1210,33 +1165,6 @@ operations:
 - get /api/django/compta/caisses/{id}/resume/ -> django_compta_caisses_resume_retrieve
 - get /api/django/compta/calendrier-marketing/ -> django_compta_calendrier_marketing_retrieve
 - post /api/django/compta/calendrier-marketing/reschedule/ -> django_compta_calendrier_marketing_reschedule_create
-- get /api/django/compta/campagnes/ -> django_compta_campagnes_list
-- post /api/django/compta/campagnes/ -> django_compta_campagnes_create
-- get /api/django/compta/campagnes/generer-ia-disponible/ -> django_compta_campagnes_generer_ia_disponible_retrieve
-- post /api/django/compta/campagnes/generer-ia/ -> django_compta_campagnes_generer_ia_create
-- get /api/django/compta/campagnes/kanban/ -> django_compta_campagnes_kanban_retrieve
-- get /api/django/compta/campagnes/modeles/ -> django_compta_campagnes_modeles_retrieve
-- get /api/django/compta/campagnes/reporting/ -> django_compta_campagnes_reporting_retrieve
-- get /api/django/compta/campagnes/reporting/export/ -> django_compta_campagnes_reporting_export_retrieve
-- delete /api/django/compta/campagnes/{id}/ -> django_compta_campagnes_destroy
-- get /api/django/compta/campagnes/{id}/ -> django_compta_campagnes_retrieve
-- patch /api/django/compta/campagnes/{id}/ -> django_compta_campagnes_partial_update
-- put /api/django/compta/campagnes/{id}/ -> django_compta_campagnes_update
-- post /api/django/compta/campagnes/{id}/annuler/ -> django_compta_campagnes_annuler_create
-- get /api/django/compta/campagnes/{id}/apercu_fusion/ -> django_compta_campagnes_apercu_fusion_retrieve
-- get /api/django/compta/campagnes/{id}/clics-par-lien/ -> django_compta_campagnes_clics_par_lien_retrieve
-- get /api/django/compta/campagnes/{id}/cout-sms/ -> django_compta_campagnes_cout_sms_retrieve
-- post /api/django/compta/campagnes/{id}/creer-depuis-modele/ -> django_compta_campagnes_creer_depuis_modele_create
-- post /api/django/compta/campagnes/{id}/dupliquer/ -> django_compta_campagnes_dupliquer_create
-- post /api/django/compta/campagnes/{id}/envoyer-test/ -> django_compta_campagnes_envoyer_test_create
-- post /api/django/compta/campagnes/{id}/envoyer/ -> django_compta_campagnes_envoyer_create
-- get /api/django/compta/campagnes/{id}/kpi-mere/ -> django_compta_campagnes_kpi_mere_retrieve
-- get /api/django/compta/campagnes/{id}/precheck/ -> django_compta_campagnes_precheck_retrieve
-- post /api/django/compta/campagnes/{id}/rattacher/ -> django_compta_campagnes_rattacher_create
-- get /api/django/compta/campagnes/{id}/rendu-lead/ -> django_compta_campagnes_rendu_lead_retrieve
-- post /api/django/compta/campagnes/{id}/renvoyer-echecs/ -> django_compta_campagnes_renvoyer_echecs_create
-- get /api/django/compta/campagnes/{id}/roi/ -> django_compta_campagnes_roi_retrieve
-- get /api/django/compta/campagnes/{id}/roi/leads-sources/ -> django_compta_campagnes_roi_leads_sources_retrieve
 - get /api/django/compta/cautions-bancaires/ -> django_compta_cautions_bancaires_list
 - post /api/django/compta/cautions-bancaires/ -> django_compta_cautions_bancaires_create
 - get /api/django/compta/cautions-bancaires/a-restituer/ -> django_compta_cautions_bancaires_a_restituer_retrieve
@@ -1246,14 +1174,6 @@ operations:
 - patch /api/django/compta/cautions-bancaires/{id}/ -> django_compta_cautions_bancaires_partial_update
 - put /api/django/compta/cautions-bancaires/{id}/ -> django_compta_cautions_bancaires_update
 - post /api/django/compta/cautions-bancaires/{id}/mainlevee/ -> django_compta_cautions_bancaires_mainlevee_create
-- get /api/django/compta/cautions-soumission/ -> django_compta_cautions_soumission_list
-- post /api/django/compta/cautions-soumission/ -> django_compta_cautions_soumission_create
-- delete /api/django/compta/cautions-soumission/{id}/ -> django_compta_cautions_soumission_destroy
-- get /api/django/compta/cautions-soumission/{id}/ -> django_compta_cautions_soumission_retrieve
-- patch /api/django/compta/cautions-soumission/{id}/ -> django_compta_cautions_soumission_partial_update
-- put /api/django/compta/cautions-soumission/{id}/ -> django_compta_cautions_soumission_update
-- get /api/django/compta/cautions-soumission/{id}/chatter/historique/ -> django_compta_cautions_soumission_chatter_historique_retrieve
-- post /api/django/compta/cautions-soumission/{id}/chatter/noter/ -> django_compta_cautions_soumission_chatter_noter_create
 - get /api/django/compta/centres-cout/ -> django_compta_centres_cout_list
 - post /api/django/compta/centres-cout/ -> django_compta_centres_cout_create
 - get /api/django/compta/centres-cout/resultat/ -> django_compta_centres_cout_resultat_retrieve
@@ -1265,6 +1185,12 @@ operations:
 - post /api/django/compta/cessions/ -> django_compta_cessions_create
 - get /api/django/compta/cessions/{id}/ -> django_compta_cessions_retrieve
 - post /api/django/compta/cessions/{id}/poster/ -> django_compta_cessions_poster_create
+- get /api/django/compta/charges-avance/ -> django_compta_charges_avance_list
+- post /api/django/compta/charges-avance/ -> django_compta_charges_avance_create
+- delete /api/django/compta/charges-avance/{id}/ -> django_compta_charges_avance_destroy
+- get /api/django/compta/charges-avance/{id}/ -> django_compta_charges_avance_retrieve
+- patch /api/django/compta/charges-avance/{id}/ -> django_compta_charges_avance_partial_update
+- put /api/django/compta/charges-avance/{id}/ -> django_compta_charges_avance_update
 - get /api/django/compta/cles-repartition/ -> django_compta_cles_repartition_list
 - post /api/django/compta/cles-repartition/ -> django_compta_cles_repartition_create
 - delete /api/django/compta/cles-repartition/{id}/ -> django_compta_cles_repartition_destroy
@@ -1294,12 +1220,6 @@ operations:
 - patch /api/django/compta/commissions-partenaire/{id}/ -> django_compta_commissions_partenaire_partial_update
 - put /api/django/compta/commissions-partenaire/{id}/ -> django_compta_commissions_partenaire_update
 - post /api/django/compta/commissions-partenaire/{id}/marquer_payee/ -> django_compta_commissions_partenaire_marquer_payee_create
-- get /api/django/compta/communications-evenement/ -> django_compta_communications_evenement_list
-- post /api/django/compta/communications-evenement/ -> django_compta_communications_evenement_create
-- delete /api/django/compta/communications-evenement/{id}/ -> django_compta_communications_evenement_destroy
-- get /api/django/compta/communications-evenement/{id}/ -> django_compta_communications_evenement_retrieve
-- patch /api/django/compta/communications-evenement/{id}/ -> django_compta_communications_evenement_partial_update
-- put /api/django/compta/communications-evenement/{id}/ -> django_compta_communications_evenement_update
 - get /api/django/compta/comparateur-devis/comparer/ -> django_compta_comparateur_devis_comparer_retrieve
 - get /api/django/compta/comparateur-financement/comparer/ -> django_compta_comparateur_financement_comparer_retrieve
 - get /api/django/compta/compensations/ -> django_compta_compensations_list
@@ -1320,19 +1240,6 @@ operations:
 - get /api/django/compta/comptes-auxiliaires/{id}/ -> django_compta_comptes_auxiliaires_retrieve
 - patch /api/django/compta/comptes-auxiliaires/{id}/ -> django_compta_comptes_auxiliaires_partial_update
 - put /api/django/compta/comptes-auxiliaires/{id}/ -> django_compta_comptes_auxiliaires_update
-- get /api/django/compta/comptes-fidelite/ -> django_compta_comptes_fidelite_list
-- post /api/django/compta/comptes-fidelite/ -> django_compta_comptes_fidelite_create
-- delete /api/django/compta/comptes-fidelite/{id}/ -> django_compta_comptes_fidelite_destroy
-- get /api/django/compta/comptes-fidelite/{id}/ -> django_compta_comptes_fidelite_retrieve
-- patch /api/django/compta/comptes-fidelite/{id}/ -> django_compta_comptes_fidelite_partial_update
-- put /api/django/compta/comptes-fidelite/{id}/ -> django_compta_comptes_fidelite_update
-- post /api/django/compta/comptes-fidelite/{id}/crediter/ -> django_compta_comptes_fidelite_crediter_create
-- get /api/django/compta/comptes-portail/ -> django_compta_comptes_portail_list
-- post /api/django/compta/comptes-portail/ -> django_compta_comptes_portail_create
-- delete /api/django/compta/comptes-portail/{id}/ -> django_compta_comptes_portail_destroy
-- get /api/django/compta/comptes-portail/{id}/ -> django_compta_comptes_portail_retrieve
-- patch /api/django/compta/comptes-portail/{id}/ -> django_compta_comptes_portail_partial_update
-- put /api/django/compta/comptes-portail/{id}/ -> django_compta_comptes_portail_update
 - get /api/django/compta/comptes/ -> django_compta_comptes_list
 - post /api/django/compta/comptes/ -> django_compta_comptes_create
 - delete /api/django/compta/comptes/{id}/ -> django_compta_comptes_destroy
@@ -1397,15 +1304,6 @@ operations:
 - post /api/django/compta/declarations-tva/{id}/deposer/ -> django_compta_declarations_tva_deposer_create
 - get /api/django/compta/declarations-tva/{id}/export-simpl/ -> django_compta_declarations_tva_export_simpl_retrieve
 - get /api/django/compta/declarations-tva/{id}/export/ -> django_compta_declarations_tva_export_retrieve
-- get /api/django/compta/demandes-ticket-portail/ -> django_compta_demandes_ticket_portail_list
-- post /api/django/compta/demandes-ticket-portail/ -> django_compta_demandes_ticket_portail_create
-- post /api/django/compta/demandes-ticket-portail/consulter-article-kb/ -> django_compta_demandes_ticket_portail_consulter_article_kb_create
-- get /api/django/compta/demandes-ticket-portail/suggestions-kb/ -> django_compta_demandes_ticket_portail_suggestions_kb_retrieve
-- delete /api/django/compta/demandes-ticket-portail/{id}/ -> django_compta_demandes_ticket_portail_destroy
-- get /api/django/compta/demandes-ticket-portail/{id}/ -> django_compta_demandes_ticket_portail_retrieve
-- patch /api/django/compta/demandes-ticket-portail/{id}/ -> django_compta_demandes_ticket_portail_partial_update
-- put /api/django/compta/demandes-ticket-portail/{id}/ -> django_compta_demandes_ticket_portail_update
-- post /api/django/compta/demandes-ticket-portail/{id}/prendre_en_charge/ -> django_compta_demandes_ticket_portail_prendre_en_charge_create
 - get /api/django/compta/depreciations-immobilisation/ -> django_compta_depreciations_immobilisation_list
 - post /api/django/compta/depreciations-immobilisation/ -> django_compta_depreciations_immobilisation_create
 - delete /api/django/compta/depreciations-immobilisation/{id}/ -> django_compta_depreciations_immobilisation_destroy
@@ -1416,35 +1314,12 @@ operations:
 - post /api/django/compta/depreciations-immobilisation/{id}/reprendre/ -> django_compta_depreciations_immobilisation_reprendre_create
 - get /api/django/compta/desinscription/{token}/ -> django_compta_desinscription_retrieve
 - post /api/django/compta/desinscription/{token}/ -> django_compta_desinscription_create
-- get /api/django/compta/documents-client-portail/ -> django_compta_documents_client_portail_list
-- post /api/django/compta/documents-client-portail/ -> django_compta_documents_client_portail_create
-- delete /api/django/compta/documents-client-portail/{id}/ -> django_compta_documents_client_portail_destroy
-- get /api/django/compta/documents-client-portail/{id}/ -> django_compta_documents_client_portail_retrieve
-- patch /api/django/compta/documents-client-portail/{id}/ -> django_compta_documents_client_portail_partial_update
-- put /api/django/compta/documents-client-portail/{id}/ -> django_compta_documents_client_portail_update
-- post /api/django/compta/documents-client-portail/{id}/marquer_traite/ -> django_compta_documents_client_portail_marquer_traite_create
 - get /api/django/compta/documents-proposition/ -> django_compta_documents_proposition_list
 - post /api/django/compta/documents-proposition/ -> django_compta_documents_proposition_create
 - delete /api/django/compta/documents-proposition/{id}/ -> django_compta_documents_proposition_destroy
 - get /api/django/compta/documents-proposition/{id}/ -> django_compta_documents_proposition_retrieve
 - patch /api/django/compta/documents-proposition/{id}/ -> django_compta_documents_proposition_partial_update
 - put /api/django/compta/documents-proposition/{id}/ -> django_compta_documents_proposition_update
-- get /api/django/compta/domaines-envoi/ -> django_compta_domaines_envoi_list
-- post /api/django/compta/domaines-envoi/ -> django_compta_domaines_envoi_create
-- delete /api/django/compta/domaines-envoi/{id}/ -> django_compta_domaines_envoi_destroy
-- get /api/django/compta/domaines-envoi/{id}/ -> django_compta_domaines_envoi_retrieve
-- patch /api/django/compta/domaines-envoi/{id}/ -> django_compta_domaines_envoi_partial_update
-- put /api/django/compta/domaines-envoi/{id}/ -> django_compta_domaines_envoi_update
-- get /api/django/compta/domaines-envoi/{id}/enregistrements-attendus/ -> django_compta_domaines_envoi_enregistrements_attendus_retrieve
-- post /api/django/compta/domaines-envoi/{id}/verifier/ -> django_compta_domaines_envoi_verifier_create
-- get /api/django/compta/dossiers-soumission/ -> django_compta_dossiers_soumission_list
-- post /api/django/compta/dossiers-soumission/ -> django_compta_dossiers_soumission_create
-- delete /api/django/compta/dossiers-soumission/{id}/ -> django_compta_dossiers_soumission_destroy
-- get /api/django/compta/dossiers-soumission/{id}/ -> django_compta_dossiers_soumission_retrieve
-- patch /api/django/compta/dossiers-soumission/{id}/ -> django_compta_dossiers_soumission_partial_update
-- put /api/django/compta/dossiers-soumission/{id}/ -> django_compta_dossiers_soumission_update
-- get /api/django/compta/dossiers-soumission/{id}/chatter/historique/ -> django_compta_dossiers_soumission_chatter_historique_retrieve
-- post /api/django/compta/dossiers-soumission/{id}/chatter/noter/ -> django_compta_dossiers_soumission_chatter_noter_create
 - get /api/django/compta/dotations/ -> django_compta_dotations_list
 - post /api/django/compta/dotations/ -> django_compta_dotations_create
 - get /api/django/compta/dotations/{id}/ -> django_compta_dotations_retrieve
@@ -1457,15 +1332,6 @@ operations:
 - get /api/django/compta/ecatalogues/{id}/ -> django_compta_ecatalogues_retrieve
 - patch /api/django/compta/ecatalogues/{id}/ -> django_compta_ecatalogues_partial_update
 - put /api/django/compta/ecatalogues/{id}/ -> django_compta_ecatalogues_update
-- get /api/django/compta/echeances-ao/ -> django_compta_echeances_ao_list
-- post /api/django/compta/echeances-ao/ -> django_compta_echeances_ao_create
-- get /api/django/compta/echeances-ao/dues/ -> django_compta_echeances_ao_dues_retrieve
-- delete /api/django/compta/echeances-ao/{id}/ -> django_compta_echeances_ao_destroy
-- get /api/django/compta/echeances-ao/{id}/ -> django_compta_echeances_ao_retrieve
-- patch /api/django/compta/echeances-ao/{id}/ -> django_compta_echeances_ao_partial_update
-- put /api/django/compta/echeances-ao/{id}/ -> django_compta_echeances_ao_update
-- get /api/django/compta/echeances-ao/{id}/chatter/historique/ -> django_compta_echeances_ao_chatter_historique_retrieve
-- post /api/django/compta/echeances-ao/{id}/chatter/noter/ -> django_compta_echeances_ao_chatter_noter_create
 - get /api/django/compta/echeances-reconnaissance/ -> django_compta_echeances_reconnaissance_list
 - post /api/django/compta/echeances-reconnaissance/ -> django_compta_echeances_reconnaissance_create
 - delete /api/django/compta/echeances-reconnaissance/{id}/ -> django_compta_echeances_reconnaissance_destroy
@@ -1515,29 +1381,8 @@ operations:
 - patch /api/django/compta/engagements/{id}/ -> django_compta_engagements_partial_update
 - put /api/django/compta/engagements/{id}/ -> django_compta_engagements_update
 - post /api/django/compta/engagements/{id}/liquider/ -> django_compta_engagements_liquider_create
-- get /api/django/compta/enquetes-nps/ -> django_compta_enquetes_nps_list
-- post /api/django/compta/enquetes-nps/ -> django_compta_enquetes_nps_create
-- get /api/django/compta/enquetes-nps/score/ -> django_compta_enquetes_nps_score_retrieve
-- delete /api/django/compta/enquetes-nps/{id}/ -> django_compta_enquetes_nps_destroy
-- get /api/django/compta/enquetes-nps/{id}/ -> django_compta_enquetes_nps_retrieve
-- patch /api/django/compta/enquetes-nps/{id}/ -> django_compta_enquetes_nps_partial_update
-- put /api/django/compta/enquetes-nps/{id}/ -> django_compta_enquetes_nps_update
-- post /api/django/compta/enquetes-nps/{id}/repondre/ -> django_compta_enquetes_nps_repondre_create
 - get /api/django/compta/enquetes-publiques/{token}/ -> django_compta_enquetes_publiques_retrieve
 - post /api/django/compta/enquetes-publiques/{token}/soumettre/ -> django_compta_enquetes_publiques_soumettre_create
-- get /api/django/compta/enquetes/ -> django_compta_enquetes_list
-- post /api/django/compta/enquetes/ -> django_compta_enquetes_create
-- delete /api/django/compta/enquetes/{id}/ -> django_compta_enquetes_destroy
-- get /api/django/compta/enquetes/{id}/ -> django_compta_enquetes_retrieve
-- patch /api/django/compta/enquetes/{id}/ -> django_compta_enquetes_partial_update
-- put /api/django/compta/enquetes/{id}/ -> django_compta_enquetes_update
-- post /api/django/compta/enquetes/{id}/emettre-jeton-invite/ -> django_compta_enquetes_emettre_jeton_invite_create
-- post /api/django/compta/enquetes/{id}/inviter/ -> django_compta_enquetes_inviter_create
-- get /api/django/compta/enquetes/{id}/participations/ -> django_compta_enquetes_participations_retrieve
-- get /api/django/compta/enquetes/{id}/qr/ -> django_compta_enquetes_qr_retrieve
-- get /api/django/compta/enquetes/{id}/resultats/ -> django_compta_enquetes_resultats_retrieve
-- get /api/django/compta/enquetes/{id}/resultats/export/ -> django_compta_enquetes_resultats_export_retrieve
-- get /api/django/compta/enquetes/{id}/tester/ -> django_compta_enquetes_tester_retrieve
 - get /api/django/compta/entites-consolidation/ -> django_compta_entites_consolidation_list
 - post /api/django/compta/entites-consolidation/ -> django_compta_entites_consolidation_create
 - get /api/django/compta/entites-consolidation/cpc_consolide/ -> django_compta_entites_consolidation_cpc_consolide_retrieve
@@ -1545,14 +1390,6 @@ operations:
 - get /api/django/compta/entites-consolidation/{id}/ -> django_compta_entites_consolidation_retrieve
 - patch /api/django/compta/entites-consolidation/{id}/ -> django_compta_entites_consolidation_partial_update
 - put /api/django/compta/entites-consolidation/{id}/ -> django_compta_entites_consolidation_update
-- get /api/django/compta/envois-campagne/ -> django_compta_envois_campagne_list
-- get /api/django/compta/envois-campagne/{id}/ -> django_compta_envois_campagne_retrieve
-- get /api/django/compta/etapes-sequence/ -> django_compta_etapes_sequence_list
-- post /api/django/compta/etapes-sequence/ -> django_compta_etapes_sequence_create
-- delete /api/django/compta/etapes-sequence/{id}/ -> django_compta_etapes_sequence_destroy
-- get /api/django/compta/etapes-sequence/{id}/ -> django_compta_etapes_sequence_retrieve
-- patch /api/django/compta/etapes-sequence/{id}/ -> django_compta_etapes_sequence_partial_update
-- put /api/django/compta/etapes-sequence/{id}/ -> django_compta_etapes_sequence_update
 - get /api/django/compta/etats/aide-is/ -> django_compta_etats_aide_is_retrieve
 - get /api/django/compta/etats/analyse-variation/ -> django_compta_etats_analyse_variation_retrieve
 - get /api/django/compta/etats/anomalies-ecritures/ -> django_compta_etats_anomalies_ecritures_retrieve
@@ -1594,20 +1431,7 @@ operations:
 - get /api/django/compta/etats/resultat-analytique/ -> django_compta_etats_resultat_analytique_retrieve
 - get /api/django/compta/etats/tableau-flux/ -> django_compta_etats_tableau_flux_retrieve
 - get /api/django/compta/etats/tableau-immobilisations/ -> django_compta_etats_tableau_immobilisations_retrieve
-- get /api/django/compta/evenements-marketing/ -> django_compta_evenements_marketing_list
-- post /api/django/compta/evenements-marketing/ -> django_compta_evenements_marketing_create
-- get /api/django/compta/evenements-marketing/kanban/ -> django_compta_evenements_marketing_kanban_retrieve
-- get /api/django/compta/evenements-marketing/reporting/ -> django_compta_evenements_marketing_reporting_retrieve
-- get /api/django/compta/evenements-marketing/reporting/export/ -> django_compta_evenements_marketing_reporting_export_retrieve
 - post /api/django/compta/evenements-marketing/{evenement_id}/inscription-publique/ -> django_compta_evenements_marketing_inscription_publique_create
-- delete /api/django/compta/evenements-marketing/{id}/ -> django_compta_evenements_marketing_destroy
-- get /api/django/compta/evenements-marketing/{id}/ -> django_compta_evenements_marketing_retrieve
-- patch /api/django/compta/evenements-marketing/{id}/ -> django_compta_evenements_marketing_partial_update
-- put /api/django/compta/evenements-marketing/{id}/ -> django_compta_evenements_marketing_update
-- post /api/django/compta/evenements-marketing/{id}/avancer-etape/ -> django_compta_evenements_marketing_avancer_etape_create
-- get /api/django/compta/evenements-marketing/{id}/badges/ -> django_compta_evenements_marketing_badges_retrieve
-- get /api/django/compta/evenements-marketing/{id}/borne/ -> django_compta_evenements_marketing_borne_retrieve
-- post /api/django/compta/evenements-marketing/{id}/cloturer-presences/ -> django_compta_evenements_marketing_cloturer_presences_create
 - get /api/django/compta/exercices/ -> django_compta_exercices_list
 - post /api/django/compta/exercices/ -> django_compta_exercices_create
 - post /api/django/compta/exercices/ecriture-od/ -> django_compta_exercices_ecriture_od_create
@@ -1624,12 +1448,6 @@ operations:
 - get /api/django/compta/familles-tva-non-deductibles/{id}/ -> django_compta_familles_tva_non_deductibles_retrieve
 - patch /api/django/compta/familles-tva-non-deductibles/{id}/ -> django_compta_familles_tva_non_deductibles_partial_update
 - put /api/django/compta/familles-tva-non-deductibles/{id}/ -> django_compta_familles_tva_non_deductibles_update
-- get /api/django/compta/formulaires-intake/ -> django_compta_formulaires_intake_list
-- post /api/django/compta/formulaires-intake/ -> django_compta_formulaires_intake_create
-- delete /api/django/compta/formulaires-intake/{id}/ -> django_compta_formulaires_intake_destroy
-- get /api/django/compta/formulaires-intake/{id}/ -> django_compta_formulaires_intake_retrieve
-- patch /api/django/compta/formulaires-intake/{id}/ -> django_compta_formulaires_intake_partial_update
-- put /api/django/compta/formulaires-intake/{id}/ -> django_compta_formulaires_intake_update
 - get /api/django/compta/guided-selling/ -> django_compta_guided_selling_list
 - post /api/django/compta/guided-selling/ -> django_compta_guided_selling_create
 - delete /api/django/compta/guided-selling/{id}/ -> django_compta_guided_selling_destroy
@@ -1654,6 +1472,8 @@ operations:
 - post /api/django/compta/immobilisations/{id}/ceder/ -> django_compta_immobilisations_ceder_create
 - get /api/django/compta/immobilisations/{id}/plan-amortissement/ -> django_compta_immobilisations_plan_amortissement_retrieve
 - post /api/django/compta/immobilisations/{id}/plan-amortissement/ -> django_compta_immobilisations_plan_amortissement_create
+- get /api/django/compta/immobilisations/{id}/plan-fiscal/ -> django_compta_immobilisations_plan_fiscal_retrieve
+- post /api/django/compta/immobilisations/{id}/plan-fiscal/ -> django_compta_immobilisations_plan_fiscal_create
 - get /api/django/compta/imputations-axes/ -> django_compta_imputations_axes_list
 - post /api/django/compta/imputations-axes/ -> django_compta_imputations_axes_create
 - delete /api/django/compta/imputations-axes/{id}/ -> django_compta_imputations_axes_destroy
@@ -1670,22 +1490,6 @@ operations:
 - post /api/django/compta/indemnites-chantier/{id}/rembourser/ -> django_compta_indemnites_chantier_rembourser_create
 - post /api/django/compta/indemnites-chantier/{id}/soumettre/ -> django_compta_indemnites_chantier_soumettre_create
 - post /api/django/compta/indemnites-chantier/{id}/valider/ -> django_compta_indemnites_chantier_valider_create
-- get /api/django/compta/inscriptions-evenement/ -> django_compta_inscriptions_evenement_list
-- post /api/django/compta/inscriptions-evenement/ -> django_compta_inscriptions_evenement_create
-- delete /api/django/compta/inscriptions-evenement/{id}/ -> django_compta_inscriptions_evenement_destroy
-- get /api/django/compta/inscriptions-evenement/{id}/ -> django_compta_inscriptions_evenement_retrieve
-- patch /api/django/compta/inscriptions-evenement/{id}/ -> django_compta_inscriptions_evenement_partial_update
-- put /api/django/compta/inscriptions-evenement/{id}/ -> django_compta_inscriptions_evenement_update
-- get /api/django/compta/inscriptions-evenement/{id}/badge/ -> django_compta_inscriptions_evenement_badge_retrieve
-- post /api/django/compta/inscriptions-evenement/{id}/pointer/ -> django_compta_inscriptions_evenement_pointer_create
-- get /api/django/compta/inscriptions-sequence/ -> django_compta_inscriptions_sequence_list
-- post /api/django/compta/inscriptions-sequence/ -> django_compta_inscriptions_sequence_create
-- post /api/django/compta/inscriptions-sequence/inscrire/ -> django_compta_inscriptions_sequence_inscrire_create
-- delete /api/django/compta/inscriptions-sequence/{id}/ -> django_compta_inscriptions_sequence_destroy
-- get /api/django/compta/inscriptions-sequence/{id}/ -> django_compta_inscriptions_sequence_retrieve
-- patch /api/django/compta/inscriptions-sequence/{id}/ -> django_compta_inscriptions_sequence_partial_update
-- put /api/django/compta/inscriptions-sequence/{id}/ -> django_compta_inscriptions_sequence_update
-- post /api/django/compta/inscriptions-sequence/{id}/sortir/ -> django_compta_inscriptions_sequence_sortir_create
 - get /api/django/compta/instances-cloture/ -> django_compta_instances_cloture_list
 - post /api/django/compta/instances-cloture/ -> django_compta_instances_cloture_create
 - post /api/django/compta/instances-cloture/instancier/ -> django_compta_instances_cloture_instancier_create
@@ -1693,13 +1497,6 @@ operations:
 - get /api/django/compta/instances-cloture/{id}/ -> django_compta_instances_cloture_retrieve
 - patch /api/django/compta/instances-cloture/{id}/ -> django_compta_instances_cloture_partial_update
 - put /api/django/compta/instances-cloture/{id}/ -> django_compta_instances_cloture_update
-- get /api/django/compta/jalons-chantier-portail/ -> django_compta_jalons_chantier_portail_list
-- post /api/django/compta/jalons-chantier-portail/ -> django_compta_jalons_chantier_portail_create
-- delete /api/django/compta/jalons-chantier-portail/{id}/ -> django_compta_jalons_chantier_portail_destroy
-- get /api/django/compta/jalons-chantier-portail/{id}/ -> django_compta_jalons_chantier_portail_retrieve
-- patch /api/django/compta/jalons-chantier-portail/{id}/ -> django_compta_jalons_chantier_portail_partial_update
-- put /api/django/compta/jalons-chantier-portail/{id}/ -> django_compta_jalons_chantier_portail_update
-- post /api/django/compta/jalons-chantier-portail/{id}/marquer_atteint/ -> django_compta_jalons_chantier_portail_marquer_atteint_create
 - get /api/django/compta/journaux/ -> django_compta_journaux_list
 - post /api/django/compta/journaux/ -> django_compta_journaux_create
 - delete /api/django/compta/journaux/{id}/ -> django_compta_journaux_destroy
@@ -1716,14 +1513,6 @@ operations:
 - post /api/django/compta/lettrage/lettrer/ -> django_compta_lettrage_lettrer_create
 - get /api/django/compta/liasses-remontee/ -> django_compta_liasses_remontee_list
 - get /api/django/compta/liasses-remontee/{id}/ -> django_compta_liasses_remontee_retrieve
-- get /api/django/compta/lignes-bordereau/ -> django_compta_lignes_bordereau_list
-- post /api/django/compta/lignes-bordereau/ -> django_compta_lignes_bordereau_create
-- delete /api/django/compta/lignes-bordereau/{id}/ -> django_compta_lignes_bordereau_destroy
-- get /api/django/compta/lignes-bordereau/{id}/ -> django_compta_lignes_bordereau_retrieve
-- patch /api/django/compta/lignes-bordereau/{id}/ -> django_compta_lignes_bordereau_partial_update
-- put /api/django/compta/lignes-bordereau/{id}/ -> django_compta_lignes_bordereau_update
-- get /api/django/compta/lignes-bordereau/{id}/chatter/historique/ -> django_compta_lignes_bordereau_chatter_historique_retrieve
-- post /api/django/compta/lignes-bordereau/{id}/chatter/noter/ -> django_compta_lignes_bordereau_chatter_noter_create
 - get /api/django/compta/lignes-cle-repartition/ -> django_compta_lignes_cle_repartition_list
 - post /api/django/compta/lignes-cle-repartition/ -> django_compta_lignes_cle_repartition_create
 - delete /api/django/compta/lignes-cle-repartition/{id}/ -> django_compta_lignes_cle_repartition_destroy
@@ -1754,14 +1543,6 @@ operations:
 - get /api/django/compta/lignes-modele-ecriture/{id}/ -> django_compta_lignes_modele_ecriture_retrieve
 - patch /api/django/compta/lignes-modele-ecriture/{id}/ -> django_compta_lignes_modele_ecriture_partial_update
 - put /api/django/compta/lignes-modele-ecriture/{id}/ -> django_compta_lignes_modele_ecriture_update
-- get /api/django/compta/listes-diffusion/ -> django_compta_listes_diffusion_list
-- post /api/django/compta/listes-diffusion/ -> django_compta_listes_diffusion_create
-- delete /api/django/compta/listes-diffusion/{id}/ -> django_compta_listes_diffusion_destroy
-- get /api/django/compta/listes-diffusion/{id}/ -> django_compta_listes_diffusion_retrieve
-- patch /api/django/compta/listes-diffusion/{id}/ -> django_compta_listes_diffusion_partial_update
-- put /api/django/compta/listes-diffusion/{id}/ -> django_compta_listes_diffusion_update
-- get /api/django/compta/listes-diffusion/{id}/abonnes/ -> django_compta_listes_diffusion_abonnes_retrieve
-- post /api/django/compta/listes-diffusion/{id}/importer/ -> django_compta_listes_diffusion_importer_create
 - get /api/django/compta/mappings-compte/ -> django_compta_mappings_compte_list
 - post /api/django/compta/mappings-compte/ -> django_compta_mappings_compte_create
 - post /api/django/compta/mappings-compte/seed/ -> django_compta_mappings_compte_seed_create
@@ -1782,8 +1563,6 @@ operations:
 - patch /api/django/compta/marges-internes-stock/{id}/ -> django_compta_marges_internes_stock_partial_update
 - put /api/django/compta/marges-internes-stock/{id}/ -> django_compta_marges_internes_stock_update
 - post /api/django/compta/marges-internes-stock/{id}/eliminer/ -> django_compta_marges_internes_stock_eliminer_create
-- get /api/django/compta/messages-whatsapp/ -> django_compta_messages_whatsapp_list
-- get /api/django/compta/messages-whatsapp/{id}/ -> django_compta_messages_whatsapp_retrieve
 - get /api/django/compta/modeles-cloture/ -> django_compta_modeles_cloture_list
 - post /api/django/compta/modeles-cloture/ -> django_compta_modeles_cloture_create
 - post /api/django/compta/modeles-cloture/seed/ -> django_compta_modeles_cloture_seed_create
@@ -1811,12 +1590,6 @@ operations:
 - patch /api/django/compta/modeles-rapprochement/{id}/ -> django_compta_modeles_rapprochement_partial_update
 - put /api/django/compta/modeles-rapprochement/{id}/ -> django_compta_modeles_rapprochement_update
 - post /api/django/compta/modeles-rapprochement/{id}/appliquer/ -> django_compta_modeles_rapprochement_appliquer_create
-- get /api/django/compta/mouvements-fidelite/ -> django_compta_mouvements_fidelite_list
-- post /api/django/compta/mouvements-fidelite/ -> django_compta_mouvements_fidelite_create
-- delete /api/django/compta/mouvements-fidelite/{id}/ -> django_compta_mouvements_fidelite_destroy
-- get /api/django/compta/mouvements-fidelite/{id}/ -> django_compta_mouvements_fidelite_retrieve
-- patch /api/django/compta/mouvements-fidelite/{id}/ -> django_compta_mouvements_fidelite_partial_update
-- put /api/django/compta/mouvements-fidelite/{id}/ -> django_compta_mouvements_fidelite_update
 - get /api/django/compta/mutations-immobilisation/ -> django_compta_mutations_immobilisation_list
 - post /api/django/compta/mutations-immobilisation/ -> django_compta_mutations_immobilisation_create
 - delete /api/django/compta/mutations-immobilisation/{id}/ -> django_compta_mutations_immobilisation_destroy
@@ -1861,20 +1634,6 @@ operations:
 - get /api/django/compta/operations-interco/{id}/ -> django_compta_operations_interco_retrieve
 - patch /api/django/compta/operations-interco/{id}/ -> django_compta_operations_interco_partial_update
 - put /api/django/compta/operations-interco/{id}/ -> django_compta_operations_interco_update
-- get /api/django/compta/ouvertures-partage/ -> django_compta_ouvertures_partage_list
-- post /api/django/compta/ouvertures-partage/ -> django_compta_ouvertures_partage_create
-- post /api/django/compta/ouvertures-partage/ping/ -> django_compta_ouvertures_partage_ping_create
-- delete /api/django/compta/ouvertures-partage/{id}/ -> django_compta_ouvertures_partage_destroy
-- get /api/django/compta/ouvertures-partage/{id}/ -> django_compta_ouvertures_partage_retrieve
-- patch /api/django/compta/ouvertures-partage/{id}/ -> django_compta_ouvertures_partage_partial_update
-- put /api/django/compta/ouvertures-partage/{id}/ -> django_compta_ouvertures_partage_update
-- get /api/django/compta/paiements-facture-portail/ -> django_compta_paiements_facture_portail_list
-- post /api/django/compta/paiements-facture-portail/ -> django_compta_paiements_facture_portail_create
-- delete /api/django/compta/paiements-facture-portail/{id}/ -> django_compta_paiements_facture_portail_destroy
-- get /api/django/compta/paiements-facture-portail/{id}/ -> django_compta_paiements_facture_portail_retrieve
-- patch /api/django/compta/paiements-facture-portail/{id}/ -> django_compta_paiements_facture_portail_partial_update
-- put /api/django/compta/paiements-facture-portail/{id}/ -> django_compta_paiements_facture_portail_update
-- post /api/django/compta/paiements-facture-portail/{id}/rapprocher/ -> django_compta_paiements_facture_portail_rapprocher_create
 - get /api/django/compta/parametres-tresorerie/ -> django_compta_parametres_tresorerie_retrieve
 - patch /api/django/compta/parametres-tresorerie/ -> django_compta_parametres_tresorerie_partial_update
 - get /api/django/compta/partenaires/ -> django_compta_partenaires_list
@@ -1910,14 +1669,6 @@ operations:
 - get /api/django/compta/pieces-justificatives/{id}/ -> django_compta_pieces_justificatives_retrieve
 - patch /api/django/compta/pieces-justificatives/{id}/ -> django_compta_pieces_justificatives_partial_update
 - put /api/django/compta/pieces-justificatives/{id}/ -> django_compta_pieces_justificatives_update
-- get /api/django/compta/pieces-soumission/ -> django_compta_pieces_soumission_list
-- post /api/django/compta/pieces-soumission/ -> django_compta_pieces_soumission_create
-- delete /api/django/compta/pieces-soumission/{id}/ -> django_compta_pieces_soumission_destroy
-- get /api/django/compta/pieces-soumission/{id}/ -> django_compta_pieces_soumission_retrieve
-- patch /api/django/compta/pieces-soumission/{id}/ -> django_compta_pieces_soumission_partial_update
-- put /api/django/compta/pieces-soumission/{id}/ -> django_compta_pieces_soumission_update
-- get /api/django/compta/pieces-soumission/{id}/chatter/historique/ -> django_compta_pieces_soumission_chatter_historique_retrieve
-- post /api/django/compta/pieces-soumission/{id}/chatter/noter/ -> django_compta_pieces_soumission_chatter_noter_create
 - get /api/django/compta/pilotage/cockpit/ -> django_compta_pilotage_cockpit_retrieve
 - get /api/django/compta/pistes-audit/ -> django_compta_pistes_audit_list
 - post /api/django/compta/pistes-audit/sceller/ -> django_compta_pistes_audit_sceller_create
@@ -1983,12 +1734,6 @@ operations:
 - patch /api/django/compta/provisions/{id}/ -> django_compta_provisions_partial_update
 - put /api/django/compta/provisions/{id}/ -> django_compta_provisions_update
 - post /api/django/compta/provisions/{id}/reprendre/ -> django_compta_provisions_reprendre_create
-- get /api/django/compta/questions-evenement/ -> django_compta_questions_evenement_list
-- post /api/django/compta/questions-evenement/ -> django_compta_questions_evenement_create
-- delete /api/django/compta/questions-evenement/{id}/ -> django_compta_questions_evenement_destroy
-- get /api/django/compta/questions-evenement/{id}/ -> django_compta_questions_evenement_retrieve
-- patch /api/django/compta/questions-evenement/{id}/ -> django_compta_questions_evenement_partial_update
-- put /api/django/compta/questions-evenement/{id}/ -> django_compta_questions_evenement_update
 - get /api/django/compta/r/{token}/ -> django_compta_r_retrieve
 - get /api/django/compta/rapports-notes-frais/ -> django_compta_rapports_notes_frais_list
 - post /api/django/compta/rapports-notes-frais/ -> django_compta_rapports_notes_frais_create
@@ -2041,30 +1786,7 @@ operations:
 - get /api/django/compta/referentiels-comptables/{id}/ -> django_compta_referentiels_comptables_retrieve
 - patch /api/django/compta/referentiels-comptables/{id}/ -> django_compta_referentiels_comptables_partial_update
 - put /api/django/compta/referentiels-comptables/{id}/ -> django_compta_referentiels_comptables_update
-- get /api/django/compta/regles-upsell/ -> django_compta_regles_upsell_list
-- post /api/django/compta/regles-upsell/ -> django_compta_regles_upsell_create
-- post /api/django/compta/regles-upsell/suggestions/ -> django_compta_regles_upsell_suggestions_create
-- delete /api/django/compta/regles-upsell/{id}/ -> django_compta_regles_upsell_destroy
-- get /api/django/compta/regles-upsell/{id}/ -> django_compta_regles_upsell_retrieve
-- patch /api/django/compta/regles-upsell/{id}/ -> django_compta_regles_upsell_partial_update
-- put /api/django/compta/regles-upsell/{id}/ -> django_compta_regles_upsell_update
-- get /api/django/compta/relances-devis-abandonnes/ -> django_compta_relances_devis_abandonnes_list
-- post /api/django/compta/relances-devis-abandonnes/ -> django_compta_relances_devis_abandonnes_create
-- delete /api/django/compta/relances-devis-abandonnes/{id}/ -> django_compta_relances_devis_abandonnes_destroy
-- get /api/django/compta/relances-devis-abandonnes/{id}/ -> django_compta_relances_devis_abandonnes_retrieve
-- patch /api/django/compta/relances-devis-abandonnes/{id}/ -> django_compta_relances_devis_abandonnes_partial_update
-- put /api/django/compta/relances-devis-abandonnes/{id}/ -> django_compta_relances_devis_abandonnes_update
 - get /api/django/compta/reponses-enquete/{reponse_id}/certificat/ -> django_compta_reponses_enquete_certificat_retrieve
-- get /api/django/compta/resultats-ao/ -> django_compta_resultats_ao_list
-- post /api/django/compta/resultats-ao/ -> django_compta_resultats_ao_create
-- post /api/django/compta/resultats-ao/enregistrer/ -> django_compta_resultats_ao_enregistrer_create
-- get /api/django/compta/resultats-ao/stats/ -> django_compta_resultats_ao_stats_retrieve
-- delete /api/django/compta/resultats-ao/{id}/ -> django_compta_resultats_ao_destroy
-- get /api/django/compta/resultats-ao/{id}/ -> django_compta_resultats_ao_retrieve
-- patch /api/django/compta/resultats-ao/{id}/ -> django_compta_resultats_ao_partial_update
-- put /api/django/compta/resultats-ao/{id}/ -> django_compta_resultats_ao_update
-- get /api/django/compta/resultats-ao/{id}/chatter/historique/ -> django_compta_resultats_ao_chatter_historique_retrieve
-- post /api/django/compta/resultats-ao/{id}/chatter/noter/ -> django_compta_resultats_ao_chatter_noter_create
 - get /api/django/compta/retenues-garantie/ -> django_compta_retenues_garantie_list
 - post /api/django/compta/retenues-garantie/ -> django_compta_retenues_garantie_create
 - get /api/django/compta/retenues-garantie/echeances/ -> django_compta_retenues_garantie_echeances_retrieve
@@ -2086,24 +1808,6 @@ operations:
 - put /api/django/compta/retenues-source/{id}/ -> django_compta_retenues_source_update
 - get /api/django/compta/retenues-source/{id}/attestation/ -> django_compta_retenues_source_attestation_retrieve
 - post /api/django/compta/retenues-source/{id}/verser/ -> django_compta_retenues_source_verser_create
-- get /api/django/compta/segments-marketing/ -> django_compta_segments_marketing_list
-- post /api/django/compta/segments-marketing/ -> django_compta_segments_marketing_create
-- delete /api/django/compta/segments-marketing/{id}/ -> django_compta_segments_marketing_destroy
-- get /api/django/compta/segments-marketing/{id}/ -> django_compta_segments_marketing_retrieve
-- patch /api/django/compta/segments-marketing/{id}/ -> django_compta_segments_marketing_partial_update
-- put /api/django/compta/segments-marketing/{id}/ -> django_compta_segments_marketing_update
-- post /api/django/compta/segments-marketing/{id}/exporter-audience-meta/ -> django_compta_segments_marketing_exporter_audience_meta_create
-- get /api/django/compta/segments-marketing/{id}/previsualiser/ -> django_compta_segments_marketing_previsualiser_retrieve
-- get /api/django/compta/sequences-relance/ -> django_compta_sequences_relance_list
-- post /api/django/compta/sequences-relance/ -> django_compta_sequences_relance_create
-- delete /api/django/compta/sequences-relance/{id}/ -> django_compta_sequences_relance_destroy
-- get /api/django/compta/sequences-relance/{id}/ -> django_compta_sequences_relance_retrieve
-- patch /api/django/compta/sequences-relance/{id}/ -> django_compta_sequences_relance_partial_update
-- put /api/django/compta/sequences-relance/{id}/ -> django_compta_sequences_relance_update
-- get /api/django/compta/sequences-relance/{id}/compteurs-par-etape/ -> django_compta_sequences_relance_compteurs_par_etape_retrieve
-- get /api/django/compta/sequences-relance/{id}/participants/ -> django_compta_sequences_relance_participants_retrieve
-- get /api/django/compta/sequences-relance/{id}/planifier/ -> django_compta_sequences_relance_planifier_retrieve
-- get /api/django/compta/sequences-relance/{id}/traces/ -> django_compta_sequences_relance_traces_retrieve
 - get /api/django/compta/simulations-financement/ -> django_compta_simulations_financement_list
 - post /api/django/compta/simulations-financement/ -> django_compta_simulations_financement_create
 - delete /api/django/compta/simulations-financement/{id}/ -> django_compta_simulations_financement_destroy
@@ -2124,14 +1828,6 @@ operations:
 - patch /api/django/compta/soumissions-lead-partenaire/{id}/ -> django_compta_soumissions_lead_partenaire_partial_update
 - put /api/django/compta/soumissions-lead-partenaire/{id}/ -> django_compta_soumissions_lead_partenaire_update
 - post /api/django/compta/soumissions-lead-partenaire/{id}/qualifier/ -> django_compta_soumissions_lead_partenaire_qualifier_create
-- get /api/django/compta/supports-offline/ -> django_compta_supports_offline_list
-- post /api/django/compta/supports-offline/ -> django_compta_supports_offline_create
-- get /api/django/compta/supports-offline/scans-par-support/ -> django_compta_supports_offline_scans_par_support_retrieve
-- delete /api/django/compta/supports-offline/{id}/ -> django_compta_supports_offline_destroy
-- get /api/django/compta/supports-offline/{id}/ -> django_compta_supports_offline_retrieve
-- patch /api/django/compta/supports-offline/{id}/ -> django_compta_supports_offline_partial_update
-- put /api/django/compta/supports-offline/{id}/ -> django_compta_supports_offline_update
-- get /api/django/compta/supports-offline/{id}/qr/ -> django_compta_supports_offline_qr_retrieve
 - get /api/django/compta/taches-cloture-modele/ -> django_compta_taches_cloture_modele_list
 - post /api/django/compta/taches-cloture-modele/ -> django_compta_taches_cloture_modele_create
 - delete /api/django/compta/taches-cloture-modele/{id}/ -> django_compta_taches_cloture_modele_destroy
@@ -2183,13 +1879,6 @@ operations:
 - patch /api/django/compta/tresorerie/{id}/ -> django_compta_tresorerie_partial_update
 - put /api/django/compta/tresorerie/{id}/ -> django_compta_tresorerie_update
 - get /api/django/compta/tresorerie/{id}/solde/ -> django_compta_tresorerie_solde_retrieve
-- get /api/django/compta/types-evenement/ -> django_compta_types_evenement_list
-- post /api/django/compta/types-evenement/ -> django_compta_types_evenement_create
-- delete /api/django/compta/types-evenement/{id}/ -> django_compta_types_evenement_destroy
-- get /api/django/compta/types-evenement/{id}/ -> django_compta_types_evenement_retrieve
-- patch /api/django/compta/types-evenement/{id}/ -> django_compta_types_evenement_partial_update
-- put /api/django/compta/types-evenement/{id}/ -> django_compta_types_evenement_update
-- post /api/django/compta/types-evenement/{id}/creer-evenement/ -> django_compta_types_evenement_creer_evenement_create
 - get /api/django/compta/virements/ -> django_compta_virements_list
 - post /api/django/compta/virements/ -> django_compta_virements_create
 - delete /api/django/compta/virements/{id}/ -> django_compta_virements_destroy
@@ -3757,6 +3446,7 @@ operations:
 - get /api/django/ged/demandes-signature/{id}/ -> django_ged_demandes_signature_retrieve
 - post /api/django/ged/demandes-signature/{id}/annuler/ -> django_ged_demandes_signature_annuler_create
 - post /api/django/ged/demandes-signature/{id}/marquer-signe/ -> django_ged_demandes_signature_marquer_signe_create
+- get /api/django/ged/demandes-signature/{id}/pdf-signe/ -> django_ged_demandes_signature_pdf_signe_retrieve
 - post /api/django/ged/demandes-signature/{id}/prolonger/ -> django_ged_demandes_signature_prolonger_create
 - get /api/django/ged/depot/{token}/ -> django_ged_depot_retrieve
 - post /api/django/ged/depot/{token}/ -> django_ged_depot_create
@@ -6309,6 +5999,7 @@ operations:
 - get /api/django/qhse/non-conformites/{id}/ -> django_qhse_non_conformites_retrieve
 - patch /api/django/qhse/non-conformites/{id}/ -> django_qhse_non_conformites_partial_update
 - put /api/django/qhse/non-conformites/{id}/ -> django_qhse_non_conformites_update
+- post /api/django/qhse/non-conformites/{id}/analyse/ -> django_qhse_non_conformites_analyse_create
 - post /api/django/qhse/non-conformites/{id}/cloturer/ -> django_qhse_non_conformites_cloturer_create
 - post /api/django/qhse/non-conformites/{id}/creer-intervention/ -> django_qhse_non_conformites_creer_intervention_create
 - get /api/django/qhse/non-conformites/{id}/historique/ -> django_qhse_non_conformites_historique_retrieve
@@ -6383,6 +6074,7 @@ operations:
 - get /api/django/qhse/procedures-qualite/ -> django_qhse_procedures_qualite_list
 - post /api/django/qhse/procedures-qualite/ -> django_qhse_procedures_qualite_create
 - get /api/django/qhse/procedures-qualite/courante/ -> django_qhse_procedures_qualite_courante_retrieve
+- get /api/django/qhse/procedures-qualite/mes-lectures-en-attente/ -> django_qhse_procedures_qualite_mes_lectures_en_attente_list
 - delete /api/django/qhse/procedures-qualite/{id}/ -> django_qhse_procedures_qualite_destroy
 - get /api/django/qhse/procedures-qualite/{id}/ -> django_qhse_procedures_qualite_retrieve
 - patch /api/django/qhse/procedures-qualite/{id}/ -> django_qhse_procedures_qualite_partial_update
@@ -6432,6 +6124,14 @@ operations:
 - patch /api/django/qhse/revues-veille/{id}/ -> django_qhse_revues_veille_partial_update
 - put /api/django/qhse/revues-veille/{id}/ -> django_qhse_revues_veille_update
 - post /api/django/qhse/revues-veille/{id}/conclure/ -> django_qhse_revues_veille_conclure_create
+- get /api/django/qhse/risques-opportunites/ -> django_qhse_risques_opportunites_list
+- post /api/django/qhse/risques-opportunites/ -> django_qhse_risques_opportunites_create
+- get /api/django/qhse/risques-opportunites/revues-dues/ -> django_qhse_risques_opportunites_revues_dues_list
+- delete /api/django/qhse/risques-opportunites/{id}/ -> django_qhse_risques_opportunites_destroy
+- get /api/django/qhse/risques-opportunites/{id}/ -> django_qhse_risques_opportunites_retrieve
+- patch /api/django/qhse/risques-opportunites/{id}/ -> django_qhse_risques_opportunites_partial_update
+- put /api/django/qhse/risques-opportunites/{id}/ -> django_qhse_risques_opportunites_update
+- post /api/django/qhse/risques-opportunites/{id}/lier-capa/ -> django_qhse_risques_opportunites_lier_capa_create
 - get /api/django/qhse/secouristes/ -> django_qhse_secouristes_list
 - post /api/django/qhse/secouristes/ -> django_qhse_secouristes_create
 - delete /api/django/qhse/secouristes/{id}/ -> django_qhse_secouristes_destroy
@@ -7738,6 +7438,30 @@ operations:
 - patch /api/django/uxviews/saved-views/{id}/ -> django_uxviews_saved_views_partial_update
 - put /api/django/uxviews/saved-views/{id}/ -> django_uxviews_saved_views_update
 - post /api/django/uxviews/saved-views/{id}/definir-par-defaut-role/ -> django_uxviews_saved_views_definir_par_defaut_role_create
+- get /api/django/veille_ao/avis/ -> django_veille_ao_avis_list
+- post /api/django/veille_ao/avis/ -> django_veille_ao_avis_create
+- delete /api/django/veille_ao/avis/{id}/ -> django_veille_ao_avis_destroy
+- get /api/django/veille_ao/avis/{id}/ -> django_veille_ao_avis_retrieve
+- patch /api/django/veille_ao/avis/{id}/ -> django_veille_ao_avis_partial_update
+- put /api/django/veille_ao/avis/{id}/ -> django_veille_ao_avis_update
+- get /api/django/veille_ao/mots-cles/ -> django_veille_ao_mots_cles_list
+- post /api/django/veille_ao/mots-cles/ -> django_veille_ao_mots_cles_create
+- delete /api/django/veille_ao/mots-cles/{id}/ -> django_veille_ao_mots_cles_destroy
+- get /api/django/veille_ao/mots-cles/{id}/ -> django_veille_ao_mots_cles_retrieve
+- patch /api/django/veille_ao/mots-cles/{id}/ -> django_veille_ao_mots_cles_partial_update
+- put /api/django/veille_ao/mots-cles/{id}/ -> django_veille_ao_mots_cles_update
+- get /api/django/veille_ao/regles-exclusion/ -> django_veille_ao_regles_exclusion_list
+- post /api/django/veille_ao/regles-exclusion/ -> django_veille_ao_regles_exclusion_create
+- delete /api/django/veille_ao/regles-exclusion/{id}/ -> django_veille_ao_regles_exclusion_destroy
+- get /api/django/veille_ao/regles-exclusion/{id}/ -> django_veille_ao_regles_exclusion_retrieve
+- patch /api/django/veille_ao/regles-exclusion/{id}/ -> django_veille_ao_regles_exclusion_partial_update
+- put /api/django/veille_ao/regles-exclusion/{id}/ -> django_veille_ao_regles_exclusion_update
+- get /api/django/veille_ao/sources/ -> django_veille_ao_sources_list
+- post /api/django/veille_ao/sources/ -> django_veille_ao_sources_create
+- delete /api/django/veille_ao/sources/{id}/ -> django_veille_ao_sources_destroy
+- get /api/django/veille_ao/sources/{id}/ -> django_veille_ao_sources_retrieve
+- patch /api/django/veille_ao/sources/{id}/ -> django_veille_ao_sources_partial_update
+- put /api/django/veille_ao/sources/{id}/ -> django_veille_ao_sources_update
 - get /api/django/ventes/attestations-conformite/ -> django_ventes_attestations_conformite_list
 - post /api/django/ventes/attestations-conformite/ -> django_ventes_attestations_conformite_create
 - delete /api/django/ventes/attestations-conformite/{id}/ -> django_ventes_attestations_conformite_destroy
@@ -8376,6 +8100,13 @@ operations:
 - post /api/v1/adsengine/reconciliation/backfill/ -> v1_adsengine_reconciliation_backfill_create
 - get /api/v1/adsengine/reconciliations/ -> v1_adsengine_reconciliations_list
 - get /api/v1/adsengine/reconciliations/{id}/ -> v1_adsengine_reconciliations_retrieve
+- get /api/v1/adsengine/regles-mot-cle/ -> v1_adsengine_regles_mot_cle_list
+- post /api/v1/adsengine/regles-mot-cle/ -> v1_adsengine_regles_mot_cle_create
+- post /api/v1/adsengine/regles-mot-cle/proposer/ -> v1_adsengine_regles_mot_cle_proposer_create
+- delete /api/v1/adsengine/regles-mot-cle/{id}/ -> v1_adsengine_regles_mot_cle_destroy
+- get /api/v1/adsengine/regles-mot-cle/{id}/ -> v1_adsengine_regles_mot_cle_retrieve
+- patch /api/v1/adsengine/regles-mot-cle/{id}/ -> v1_adsengine_regles_mot_cle_partial_update
+- put /api/v1/adsengine/regles-mot-cle/{id}/ -> v1_adsengine_regles_mot_cle_update
 - get /api/v1/adsengine/regles/ -> v1_adsengine_regles_list
 - post /api/v1/adsengine/regles/ -> v1_adsengine_regles_create
 - get /api/v1/adsengine/regles/catalogue/ -> v1_adsengine_regles_catalogue_retrieve
@@ -8552,6 +8283,7 @@ operations:
 - post /api/v1/ao/calepinage/variantes/{id}/sensibilites/ -> v1_ao_calepinage_variantes_sensibilites_create
 - get /api/v1/ao/cautions-soumission/ -> v1_ao_cautions_soumission_list
 - post /api/v1/ao/cautions-soumission/ -> v1_ao_cautions_soumission_create
+- post /api/v1/ao/cautions-soumission/deriver-definitive/ -> v1_ao_cautions_soumission_deriver_definitive_create
 - delete /api/v1/ao/cautions-soumission/{id}/ -> v1_ao_cautions_soumission_destroy
 - get /api/v1/ao/cautions-soumission/{id}/ -> v1_ao_cautions_soumission_retrieve
 - patch /api/v1/ao/cautions-soumission/{id}/ -> v1_ao_cautions_soumission_partial_update
@@ -8726,6 +8458,7 @@ operations:
 - put /api/v1/ao/plans-source/{id}/ -> v1_ao_plans_source_update
 - get /api/v1/ao/plans-source/{id}/chatter/historique/ -> v1_ao_plans_source_chatter_historique_retrieve
 - post /api/v1/ao/plans-source/{id}/chatter/noter/ -> v1_ao_plans_source_chatter_noter_create
+- post /api/v1/ao/plans-source/{id}/upload/ -> v1_ao_plans_source_upload_create
 - get /api/v1/ao/presets-calepinage/ -> v1_ao_presets_calepinage_list
 - post /api/v1/ao/presets-calepinage/ -> v1_ao_presets_calepinage_create
 - delete /api/v1/ao/presets-calepinage/{id}/ -> v1_ao_presets_calepinage_destroy
@@ -9089,12 +8822,6 @@ operations:
 - get /api/v1/compta/abonnements-ecriture/{id}/ -> v1_compta_abonnements_ecriture_retrieve
 - patch /api/v1/compta/abonnements-ecriture/{id}/ -> v1_compta_abonnements_ecriture_partial_update
 - put /api/v1/compta/abonnements-ecriture/{id}/ -> v1_compta_abonnements_ecriture_update
-- get /api/v1/compta/abonnements-liste/ -> v1_compta_abonnements_liste_list
-- post /api/v1/compta/abonnements-liste/ -> v1_compta_abonnements_liste_create
-- delete /api/v1/compta/abonnements-liste/{id}/ -> v1_compta_abonnements_liste_destroy
-- get /api/v1/compta/abonnements-liste/{id}/ -> v1_compta_abonnements_liste_retrieve
-- patch /api/v1/compta/abonnements-liste/{id}/ -> v1_compta_abonnements_liste_partial_update
-- put /api/v1/compta/abonnements-liste/{id}/ -> v1_compta_abonnements_liste_update
 - get /api/v1/compta/abonnements-monitoring/ -> v1_compta_abonnements_monitoring_list
 - post /api/v1/compta/abonnements-monitoring/ -> v1_compta_abonnements_monitoring_create
 - get /api/v1/compta/abonnements-monitoring/a_echeance/ -> v1_compta_abonnements_monitoring_a_echeance_retrieve
@@ -9106,13 +8833,6 @@ operations:
 - post /api/v1/compta/abonnements-monitoring/{id}/renouveler/ -> v1_compta_abonnements_monitoring_renouveler_create
 - post /api/v1/compta/abonnements-monitoring/{id}/resilier/ -> v1_compta_abonnements_monitoring_resilier_create
 - post /api/v1/compta/abonnements-monitoring/{id}/suspendre/ -> v1_compta_abonnements_monitoring_suspendre_create
-- get /api/v1/compta/acceptations-devis-portail/ -> v1_compta_acceptations_devis_portail_list
-- post /api/v1/compta/acceptations-devis-portail/ -> v1_compta_acceptations_devis_portail_create
-- delete /api/v1/compta/acceptations-devis-portail/{id}/ -> v1_compta_acceptations_devis_portail_destroy
-- get /api/v1/compta/acceptations-devis-portail/{id}/ -> v1_compta_acceptations_devis_portail_retrieve
-- patch /api/v1/compta/acceptations-devis-portail/{id}/ -> v1_compta_acceptations_devis_portail_partial_update
-- put /api/v1/compta/acceptations-devis-portail/{id}/ -> v1_compta_acceptations_devis_portail_update
-- post /api/v1/compta/acceptations-devis-portail/{id}/signer/ -> v1_compta_acceptations_devis_portail_signer_create
 - get /api/v1/compta/accruals-cloture/ -> v1_compta_accruals_cloture_list
 - post /api/v1/compta/accruals-cloture/ -> v1_compta_accruals_cloture_create
 - delete /api/v1/compta/accruals-cloture/{id}/ -> v1_compta_accruals_cloture_destroy
@@ -9142,26 +8862,6 @@ operations:
 - post /api/v1/compta/allocations/executer/ -> v1_compta_allocations_executer_create
 - get /api/v1/compta/allocations/{id}/ -> v1_compta_allocations_retrieve
 - post /api/v1/compta/allocations/{id}/reverser/ -> v1_compta_allocations_reverser_create
-- get /api/v1/compta/appels-offres/ -> v1_compta_appels_offres_list
-- post /api/v1/compta/appels-offres/ -> v1_compta_appels_offres_create
-- delete /api/v1/compta/appels-offres/{id}/ -> v1_compta_appels_offres_destroy
-- get /api/v1/compta/appels-offres/{id}/ -> v1_compta_appels_offres_retrieve
-- patch /api/v1/compta/appels-offres/{id}/ -> v1_compta_appels_offres_partial_update
-- put /api/v1/compta/appels-offres/{id}/ -> v1_compta_appels_offres_update
-- post /api/v1/compta/appels-offres/{id}/changer-statut/ -> v1_compta_appels_offres_changer_statut_create
-- get /api/v1/compta/appels-offres/{id}/chatter/historique/ -> v1_compta_appels_offres_chatter_historique_retrieve
-- post /api/v1/compta/appels-offres/{id}/chatter/noter/ -> v1_compta_appels_offres_chatter_noter_create
-- post /api/v1/compta/appels-offres/{id}/dupliquer/ -> v1_compta_appels_offres_dupliquer_create
-- get /api/v1/compta/appels-offres/{id}/lead/ -> v1_compta_appels_offres_lead_retrieve
-- get /api/v1/compta/appels-offres/{id}/points-a-lever/ -> v1_compta_appels_offres_points_a_lever_retrieve
-- post /api/v1/compta/appels-offres/{id}/rattacher-lead/ -> v1_compta_appels_offres_rattacher_lead_create
-- get /api/v1/compta/appels-offres/{id}/transitions/ -> v1_compta_appels_offres_transitions_retrieve
-- get /api/v1/compta/appels/ -> v1_compta_appels_list
-- post /api/v1/compta/appels/ -> v1_compta_appels_create
-- delete /api/v1/compta/appels/{id}/ -> v1_compta_appels_destroy
-- get /api/v1/compta/appels/{id}/ -> v1_compta_appels_retrieve
-- patch /api/v1/compta/appels/{id}/ -> v1_compta_appels_partial_update
-- put /api/v1/compta/appels/{id}/ -> v1_compta_appels_update
 - get /api/v1/compta/approbations-config/ -> v1_compta_approbations_config_list
 - post /api/v1/compta/approbations-config/ -> v1_compta_approbations_config_create
 - delete /api/v1/compta/approbations-config/{id}/ -> v1_compta_approbations_config_destroy
@@ -9170,20 +8870,14 @@ operations:
 - put /api/v1/compta/approbations-config/{id}/ -> v1_compta_approbations_config_update
 - post /api/v1/compta/approbations-config/{id}/approuver/ -> v1_compta_approbations_config_approuver_create
 - post /api/v1/compta/approbations-config/{id}/refuser/ -> v1_compta_approbations_config_refuser_create
-- get /api/v1/compta/approbations-envoi-campagne/ -> v1_compta_approbations_envoi_campagne_list
-- post /api/v1/compta/approbations-envoi-campagne/ -> v1_compta_approbations_envoi_campagne_create
-- get /api/v1/compta/approbations-envoi-campagne/journal-audit/ -> v1_compta_approbations_envoi_campagne_journal_audit_retrieve
-- get /api/v1/compta/approbations-envoi-campagne/{id}/ -> v1_compta_approbations_envoi_campagne_retrieve
-- post /api/v1/compta/approbations-envoi-campagne/{id}/approuver/ -> v1_compta_approbations_envoi_campagne_approuver_create
-- post /api/v1/compta/approbations-envoi-campagne/{id}/rejeter/ -> v1_compta_approbations_envoi_campagne_rejeter_create
-- get /api/v1/compta/avis-clients/ -> v1_compta_avis_clients_list
-- post /api/v1/compta/avis-clients/ -> v1_compta_avis_clients_create
-- delete /api/v1/compta/avis-clients/{id}/ -> v1_compta_avis_clients_destroy
-- get /api/v1/compta/avis-clients/{id}/ -> v1_compta_avis_clients_retrieve
-- patch /api/v1/compta/avis-clients/{id}/ -> v1_compta_avis_clients_partial_update
-- put /api/v1/compta/avis-clients/{id}/ -> v1_compta_avis_clients_update
-- post /api/v1/compta/avis-clients/{id}/pousser_google/ -> v1_compta_avis_clients_pousser_google_create
-- post /api/v1/compta/avis-clients/{id}/recevoir/ -> v1_compta_avis_clients_recevoir_create
+- get /api/v1/compta/approbations-rib/ -> v1_compta_approbations_rib_list
+- post /api/v1/compta/approbations-rib/ -> v1_compta_approbations_rib_create
+- delete /api/v1/compta/approbations-rib/{id}/ -> v1_compta_approbations_rib_destroy
+- get /api/v1/compta/approbations-rib/{id}/ -> v1_compta_approbations_rib_retrieve
+- patch /api/v1/compta/approbations-rib/{id}/ -> v1_compta_approbations_rib_partial_update
+- put /api/v1/compta/approbations-rib/{id}/ -> v1_compta_approbations_rib_update
+- post /api/v1/compta/approbations-rib/{id}/approuver/ -> v1_compta_approbations_rib_approuver_create
+- post /api/v1/compta/approbations-rib/{id}/refuser/ -> v1_compta_approbations_rib_refuser_create
 - get /api/v1/compta/axes-analytiques/ -> v1_compta_axes_analytiques_list
 - post /api/v1/compta/axes-analytiques/ -> v1_compta_axes_analytiques_create
 - delete /api/v1/compta/axes-analytiques/{id}/ -> v1_compta_axes_analytiques_destroy
@@ -9198,22 +8892,6 @@ operations:
 - get /api/v1/compta/baremes-indemnite/{id}/ -> v1_compta_baremes_indemnite_retrieve
 - patch /api/v1/compta/baremes-indemnite/{id}/ -> v1_compta_baremes_indemnite_partial_update
 - put /api/v1/compta/baremes-indemnite/{id}/ -> v1_compta_baremes_indemnite_update
-- get /api/v1/compta/billets-evenement/ -> v1_compta_billets_evenement_list
-- post /api/v1/compta/billets-evenement/ -> v1_compta_billets_evenement_create
-- delete /api/v1/compta/billets-evenement/{id}/ -> v1_compta_billets_evenement_destroy
-- get /api/v1/compta/billets-evenement/{id}/ -> v1_compta_billets_evenement_retrieve
-- patch /api/v1/compta/billets-evenement/{id}/ -> v1_compta_billets_evenement_partial_update
-- put /api/v1/compta/billets-evenement/{id}/ -> v1_compta_billets_evenement_update
-- get /api/v1/compta/bordereaux-prix/ -> v1_compta_bordereaux_prix_list
-- post /api/v1/compta/bordereaux-prix/ -> v1_compta_bordereaux_prix_create
-- delete /api/v1/compta/bordereaux-prix/{id}/ -> v1_compta_bordereaux_prix_destroy
-- get /api/v1/compta/bordereaux-prix/{id}/ -> v1_compta_bordereaux_prix_retrieve
-- patch /api/v1/compta/bordereaux-prix/{id}/ -> v1_compta_bordereaux_prix_partial_update
-- put /api/v1/compta/bordereaux-prix/{id}/ -> v1_compta_bordereaux_prix_update
-- get /api/v1/compta/bordereaux-prix/{id}/chatter/historique/ -> v1_compta_bordereaux_prix_chatter_historique_retrieve
-- post /api/v1/compta/bordereaux-prix/{id}/chatter/noter/ -> v1_compta_bordereaux_prix_chatter_noter_create
-- get /api/v1/compta/bordereaux-prix/{id}/controles/ -> v1_compta_bordereaux_prix_controles_retrieve
-- get /api/v1/compta/bordereaux-prix/{id}/totaux/ -> v1_compta_bordereaux_prix_totaux_retrieve
 - get /api/v1/compta/bordereaux/ -> v1_compta_bordereaux_list
 - post /api/v1/compta/bordereaux/ -> v1_compta_bordereaux_create
 - get /api/v1/compta/bordereaux/{id}/ -> v1_compta_bordereaux_retrieve
@@ -9224,6 +8902,7 @@ operations:
 - get /api/v1/compta/budgets/{id}/ -> v1_compta_budgets_retrieve
 - patch /api/v1/compta/budgets/{id}/ -> v1_compta_budgets_partial_update
 - put /api/v1/compta/budgets/{id}/ -> v1_compta_budgets_update
+- post /api/v1/compta/budgets/{id}/generer-ligne-repartie/ -> v1_compta_budgets_generer_ligne_repartie_create
 - get /api/v1/compta/budgets/{id}/vs_realise/ -> v1_compta_budgets_vs_realise_retrieve
 - get /api/v1/compta/caisses/ -> v1_compta_caisses_list
 - post /api/v1/compta/caisses/ -> v1_compta_caisses_create
@@ -9239,33 +8918,6 @@ operations:
 - get /api/v1/compta/caisses/{id}/resume/ -> v1_compta_caisses_resume_retrieve
 - get /api/v1/compta/calendrier-marketing/ -> v1_compta_calendrier_marketing_retrieve
 - post /api/v1/compta/calendrier-marketing/reschedule/ -> v1_compta_calendrier_marketing_reschedule_create
-- get /api/v1/compta/campagnes/ -> v1_compta_campagnes_list
-- post /api/v1/compta/campagnes/ -> v1_compta_campagnes_create
-- get /api/v1/compta/campagnes/generer-ia-disponible/ -> v1_compta_campagnes_generer_ia_disponible_retrieve
-- post /api/v1/compta/campagnes/generer-ia/ -> v1_compta_campagnes_generer_ia_create
-- get /api/v1/compta/campagnes/kanban/ -> v1_compta_campagnes_kanban_retrieve
-- get /api/v1/compta/campagnes/modeles/ -> v1_compta_campagnes_modeles_retrieve
-- get /api/v1/compta/campagnes/reporting/ -> v1_compta_campagnes_reporting_retrieve
-- get /api/v1/compta/campagnes/reporting/export/ -> v1_compta_campagnes_reporting_export_retrieve
-- delete /api/v1/compta/campagnes/{id}/ -> v1_compta_campagnes_destroy
-- get /api/v1/compta/campagnes/{id}/ -> v1_compta_campagnes_retrieve
-- patch /api/v1/compta/campagnes/{id}/ -> v1_compta_campagnes_partial_update
-- put /api/v1/compta/campagnes/{id}/ -> v1_compta_campagnes_update
-- post /api/v1/compta/campagnes/{id}/annuler/ -> v1_compta_campagnes_annuler_create
-- get /api/v1/compta/campagnes/{id}/apercu_fusion/ -> v1_compta_campagnes_apercu_fusion_retrieve
-- get /api/v1/compta/campagnes/{id}/clics-par-lien/ -> v1_compta_campagnes_clics_par_lien_retrieve
-- get /api/v1/compta/campagnes/{id}/cout-sms/ -> v1_compta_campagnes_cout_sms_retrieve
-- post /api/v1/compta/campagnes/{id}/creer-depuis-modele/ -> v1_compta_campagnes_creer_depuis_modele_create
-- post /api/v1/compta/campagnes/{id}/dupliquer/ -> v1_compta_campagnes_dupliquer_create
-- post /api/v1/compta/campagnes/{id}/envoyer-test/ -> v1_compta_campagnes_envoyer_test_create
-- post /api/v1/compta/campagnes/{id}/envoyer/ -> v1_compta_campagnes_envoyer_create
-- get /api/v1/compta/campagnes/{id}/kpi-mere/ -> v1_compta_campagnes_kpi_mere_retrieve
-- get /api/v1/compta/campagnes/{id}/precheck/ -> v1_compta_campagnes_precheck_retrieve
-- post /api/v1/compta/campagnes/{id}/rattacher/ -> v1_compta_campagnes_rattacher_create
-- get /api/v1/compta/campagnes/{id}/rendu-lead/ -> v1_compta_campagnes_rendu_lead_retrieve
-- post /api/v1/compta/campagnes/{id}/renvoyer-echecs/ -> v1_compta_campagnes_renvoyer_echecs_create
-- get /api/v1/compta/campagnes/{id}/roi/ -> v1_compta_campagnes_roi_retrieve
-- get /api/v1/compta/campagnes/{id}/roi/leads-sources/ -> v1_compta_campagnes_roi_leads_sources_retrieve
 - get /api/v1/compta/cautions-bancaires/ -> v1_compta_cautions_bancaires_list
 - post /api/v1/compta/cautions-bancaires/ -> v1_compta_cautions_bancaires_create
 - get /api/v1/compta/cautions-bancaires/a-restituer/ -> v1_compta_cautions_bancaires_a_restituer_retrieve
@@ -9275,14 +8927,6 @@ operations:
 - patch /api/v1/compta/cautions-bancaires/{id}/ -> v1_compta_cautions_bancaires_partial_update
 - put /api/v1/compta/cautions-bancaires/{id}/ -> v1_compta_cautions_bancaires_update
 - post /api/v1/compta/cautions-bancaires/{id}/mainlevee/ -> v1_compta_cautions_bancaires_mainlevee_create
-- get /api/v1/compta/cautions-soumission/ -> v1_compta_cautions_soumission_list
-- post /api/v1/compta/cautions-soumission/ -> v1_compta_cautions_soumission_create
-- delete /api/v1/compta/cautions-soumission/{id}/ -> v1_compta_cautions_soumission_destroy
-- get /api/v1/compta/cautions-soumission/{id}/ -> v1_compta_cautions_soumission_retrieve
-- patch /api/v1/compta/cautions-soumission/{id}/ -> v1_compta_cautions_soumission_partial_update
-- put /api/v1/compta/cautions-soumission/{id}/ -> v1_compta_cautions_soumission_update
-- get /api/v1/compta/cautions-soumission/{id}/chatter/historique/ -> v1_compta_cautions_soumission_chatter_historique_retrieve
-- post /api/v1/compta/cautions-soumission/{id}/chatter/noter/ -> v1_compta_cautions_soumission_chatter_noter_create
 - get /api/v1/compta/centres-cout/ -> v1_compta_centres_cout_list
 - post /api/v1/compta/centres-cout/ -> v1_compta_centres_cout_create
 - get /api/v1/compta/centres-cout/resultat/ -> v1_compta_centres_cout_resultat_retrieve
@@ -9294,6 +8938,12 @@ operations:
 - post /api/v1/compta/cessions/ -> v1_compta_cessions_create
 - get /api/v1/compta/cessions/{id}/ -> v1_compta_cessions_retrieve
 - post /api/v1/compta/cessions/{id}/poster/ -> v1_compta_cessions_poster_create
+- get /api/v1/compta/charges-avance/ -> v1_compta_charges_avance_list
+- post /api/v1/compta/charges-avance/ -> v1_compta_charges_avance_create
+- delete /api/v1/compta/charges-avance/{id}/ -> v1_compta_charges_avance_destroy
+- get /api/v1/compta/charges-avance/{id}/ -> v1_compta_charges_avance_retrieve
+- patch /api/v1/compta/charges-avance/{id}/ -> v1_compta_charges_avance_partial_update
+- put /api/v1/compta/charges-avance/{id}/ -> v1_compta_charges_avance_update
 - get /api/v1/compta/cles-repartition/ -> v1_compta_cles_repartition_list
 - post /api/v1/compta/cles-repartition/ -> v1_compta_cles_repartition_create
 - delete /api/v1/compta/cles-repartition/{id}/ -> v1_compta_cles_repartition_destroy
@@ -9323,12 +8973,6 @@ operations:
 - patch /api/v1/compta/commissions-partenaire/{id}/ -> v1_compta_commissions_partenaire_partial_update
 - put /api/v1/compta/commissions-partenaire/{id}/ -> v1_compta_commissions_partenaire_update
 - post /api/v1/compta/commissions-partenaire/{id}/marquer_payee/ -> v1_compta_commissions_partenaire_marquer_payee_create
-- get /api/v1/compta/communications-evenement/ -> v1_compta_communications_evenement_list
-- post /api/v1/compta/communications-evenement/ -> v1_compta_communications_evenement_create
-- delete /api/v1/compta/communications-evenement/{id}/ -> v1_compta_communications_evenement_destroy
-- get /api/v1/compta/communications-evenement/{id}/ -> v1_compta_communications_evenement_retrieve
-- patch /api/v1/compta/communications-evenement/{id}/ -> v1_compta_communications_evenement_partial_update
-- put /api/v1/compta/communications-evenement/{id}/ -> v1_compta_communications_evenement_update
 - get /api/v1/compta/comparateur-devis/comparer/ -> v1_compta_comparateur_devis_comparer_retrieve
 - get /api/v1/compta/comparateur-financement/comparer/ -> v1_compta_comparateur_financement_comparer_retrieve
 - get /api/v1/compta/compensations/ -> v1_compta_compensations_list
@@ -9349,19 +8993,6 @@ operations:
 - get /api/v1/compta/comptes-auxiliaires/{id}/ -> v1_compta_comptes_auxiliaires_retrieve
 - patch /api/v1/compta/comptes-auxiliaires/{id}/ -> v1_compta_comptes_auxiliaires_partial_update
 - put /api/v1/compta/comptes-auxiliaires/{id}/ -> v1_compta_comptes_auxiliaires_update
-- get /api/v1/compta/comptes-fidelite/ -> v1_compta_comptes_fidelite_list
-- post /api/v1/compta/comptes-fidelite/ -> v1_compta_comptes_fidelite_create
-- delete /api/v1/compta/comptes-fidelite/{id}/ -> v1_compta_comptes_fidelite_destroy
-- get /api/v1/compta/comptes-fidelite/{id}/ -> v1_compta_comptes_fidelite_retrieve
-- patch /api/v1/compta/comptes-fidelite/{id}/ -> v1_compta_comptes_fidelite_partial_update
-- put /api/v1/compta/comptes-fidelite/{id}/ -> v1_compta_comptes_fidelite_update
-- post /api/v1/compta/comptes-fidelite/{id}/crediter/ -> v1_compta_comptes_fidelite_crediter_create
-- get /api/v1/compta/comptes-portail/ -> v1_compta_comptes_portail_list
-- post /api/v1/compta/comptes-portail/ -> v1_compta_comptes_portail_create
-- delete /api/v1/compta/comptes-portail/{id}/ -> v1_compta_comptes_portail_destroy
-- get /api/v1/compta/comptes-portail/{id}/ -> v1_compta_comptes_portail_retrieve
-- patch /api/v1/compta/comptes-portail/{id}/ -> v1_compta_comptes_portail_partial_update
-- put /api/v1/compta/comptes-portail/{id}/ -> v1_compta_comptes_portail_update
 - get /api/v1/compta/comptes/ -> v1_compta_comptes_list
 - post /api/v1/compta/comptes/ -> v1_compta_comptes_create
 - delete /api/v1/compta/comptes/{id}/ -> v1_compta_comptes_destroy
@@ -9426,15 +9057,6 @@ operations:
 - post /api/v1/compta/declarations-tva/{id}/deposer/ -> v1_compta_declarations_tva_deposer_create
 - get /api/v1/compta/declarations-tva/{id}/export-simpl/ -> v1_compta_declarations_tva_export_simpl_retrieve
 - get /api/v1/compta/declarations-tva/{id}/export/ -> v1_compta_declarations_tva_export_retrieve
-- get /api/v1/compta/demandes-ticket-portail/ -> v1_compta_demandes_ticket_portail_list
-- post /api/v1/compta/demandes-ticket-portail/ -> v1_compta_demandes_ticket_portail_create
-- post /api/v1/compta/demandes-ticket-portail/consulter-article-kb/ -> v1_compta_demandes_ticket_portail_consulter_article_kb_create
-- get /api/v1/compta/demandes-ticket-portail/suggestions-kb/ -> v1_compta_demandes_ticket_portail_suggestions_kb_retrieve
-- delete /api/v1/compta/demandes-ticket-portail/{id}/ -> v1_compta_demandes_ticket_portail_destroy
-- get /api/v1/compta/demandes-ticket-portail/{id}/ -> v1_compta_demandes_ticket_portail_retrieve
-- patch /api/v1/compta/demandes-ticket-portail/{id}/ -> v1_compta_demandes_ticket_portail_partial_update
-- put /api/v1/compta/demandes-ticket-portail/{id}/ -> v1_compta_demandes_ticket_portail_update
-- post /api/v1/compta/demandes-ticket-portail/{id}/prendre_en_charge/ -> v1_compta_demandes_ticket_portail_prendre_en_charge_create
 - get /api/v1/compta/depreciations-immobilisation/ -> v1_compta_depreciations_immobilisation_list
 - post /api/v1/compta/depreciations-immobilisation/ -> v1_compta_depreciations_immobilisation_create
 - delete /api/v1/compta/depreciations-immobilisation/{id}/ -> v1_compta_depreciations_immobilisation_destroy
@@ -9445,35 +9067,12 @@ operations:
 - post /api/v1/compta/depreciations-immobilisation/{id}/reprendre/ -> v1_compta_depreciations_immobilisation_reprendre_create
 - get /api/v1/compta/desinscription/{token}/ -> v1_compta_desinscription_retrieve
 - post /api/v1/compta/desinscription/{token}/ -> v1_compta_desinscription_create
-- get /api/v1/compta/documents-client-portail/ -> v1_compta_documents_client_portail_list
-- post /api/v1/compta/documents-client-portail/ -> v1_compta_documents_client_portail_create
-- delete /api/v1/compta/documents-client-portail/{id}/ -> v1_compta_documents_client_portail_destroy
-- get /api/v1/compta/documents-client-portail/{id}/ -> v1_compta_documents_client_portail_retrieve
-- patch /api/v1/compta/documents-client-portail/{id}/ -> v1_compta_documents_client_portail_partial_update
-- put /api/v1/compta/documents-client-portail/{id}/ -> v1_compta_documents_client_portail_update
-- post /api/v1/compta/documents-client-portail/{id}/marquer_traite/ -> v1_compta_documents_client_portail_marquer_traite_create
 - get /api/v1/compta/documents-proposition/ -> v1_compta_documents_proposition_list
 - post /api/v1/compta/documents-proposition/ -> v1_compta_documents_proposition_create
 - delete /api/v1/compta/documents-proposition/{id}/ -> v1_compta_documents_proposition_destroy
 - get /api/v1/compta/documents-proposition/{id}/ -> v1_compta_documents_proposition_retrieve
 - patch /api/v1/compta/documents-proposition/{id}/ -> v1_compta_documents_proposition_partial_update
 - put /api/v1/compta/documents-proposition/{id}/ -> v1_compta_documents_proposition_update
-- get /api/v1/compta/domaines-envoi/ -> v1_compta_domaines_envoi_list
-- post /api/v1/compta/domaines-envoi/ -> v1_compta_domaines_envoi_create
-- delete /api/v1/compta/domaines-envoi/{id}/ -> v1_compta_domaines_envoi_destroy
-- get /api/v1/compta/domaines-envoi/{id}/ -> v1_compta_domaines_envoi_retrieve
-- patch /api/v1/compta/domaines-envoi/{id}/ -> v1_compta_domaines_envoi_partial_update
-- put /api/v1/compta/domaines-envoi/{id}/ -> v1_compta_domaines_envoi_update
-- get /api/v1/compta/domaines-envoi/{id}/enregistrements-attendus/ -> v1_compta_domaines_envoi_enregistrements_attendus_retrieve
-- post /api/v1/compta/domaines-envoi/{id}/verifier/ -> v1_compta_domaines_envoi_verifier_create
-- get /api/v1/compta/dossiers-soumission/ -> v1_compta_dossiers_soumission_list
-- post /api/v1/compta/dossiers-soumission/ -> v1_compta_dossiers_soumission_create
-- delete /api/v1/compta/dossiers-soumission/{id}/ -> v1_compta_dossiers_soumission_destroy
-- get /api/v1/compta/dossiers-soumission/{id}/ -> v1_compta_dossiers_soumission_retrieve
-- patch /api/v1/compta/dossiers-soumission/{id}/ -> v1_compta_dossiers_soumission_partial_update
-- put /api/v1/compta/dossiers-soumission/{id}/ -> v1_compta_dossiers_soumission_update
-- get /api/v1/compta/dossiers-soumission/{id}/chatter/historique/ -> v1_compta_dossiers_soumission_chatter_historique_retrieve
-- post /api/v1/compta/dossiers-soumission/{id}/chatter/noter/ -> v1_compta_dossiers_soumission_chatter_noter_create
 - get /api/v1/compta/dotations/ -> v1_compta_dotations_list
 - post /api/v1/compta/dotations/ -> v1_compta_dotations_create
 - get /api/v1/compta/dotations/{id}/ -> v1_compta_dotations_retrieve
@@ -9486,15 +9085,6 @@ operations:
 - get /api/v1/compta/ecatalogues/{id}/ -> v1_compta_ecatalogues_retrieve
 - patch /api/v1/compta/ecatalogues/{id}/ -> v1_compta_ecatalogues_partial_update
 - put /api/v1/compta/ecatalogues/{id}/ -> v1_compta_ecatalogues_update
-- get /api/v1/compta/echeances-ao/ -> v1_compta_echeances_ao_list
-- post /api/v1/compta/echeances-ao/ -> v1_compta_echeances_ao_create
-- get /api/v1/compta/echeances-ao/dues/ -> v1_compta_echeances_ao_dues_retrieve
-- delete /api/v1/compta/echeances-ao/{id}/ -> v1_compta_echeances_ao_destroy
-- get /api/v1/compta/echeances-ao/{id}/ -> v1_compta_echeances_ao_retrieve
-- patch /api/v1/compta/echeances-ao/{id}/ -> v1_compta_echeances_ao_partial_update
-- put /api/v1/compta/echeances-ao/{id}/ -> v1_compta_echeances_ao_update
-- get /api/v1/compta/echeances-ao/{id}/chatter/historique/ -> v1_compta_echeances_ao_chatter_historique_retrieve
-- post /api/v1/compta/echeances-ao/{id}/chatter/noter/ -> v1_compta_echeances_ao_chatter_noter_create
 - get /api/v1/compta/echeances-reconnaissance/ -> v1_compta_echeances_reconnaissance_list
 - post /api/v1/compta/echeances-reconnaissance/ -> v1_compta_echeances_reconnaissance_create
 - delete /api/v1/compta/echeances-reconnaissance/{id}/ -> v1_compta_echeances_reconnaissance_destroy
@@ -9544,29 +9134,8 @@ operations:
 - patch /api/v1/compta/engagements/{id}/ -> v1_compta_engagements_partial_update
 - put /api/v1/compta/engagements/{id}/ -> v1_compta_engagements_update
 - post /api/v1/compta/engagements/{id}/liquider/ -> v1_compta_engagements_liquider_create
-- get /api/v1/compta/enquetes-nps/ -> v1_compta_enquetes_nps_list
-- post /api/v1/compta/enquetes-nps/ -> v1_compta_enquetes_nps_create
-- get /api/v1/compta/enquetes-nps/score/ -> v1_compta_enquetes_nps_score_retrieve
-- delete /api/v1/compta/enquetes-nps/{id}/ -> v1_compta_enquetes_nps_destroy
-- get /api/v1/compta/enquetes-nps/{id}/ -> v1_compta_enquetes_nps_retrieve
-- patch /api/v1/compta/enquetes-nps/{id}/ -> v1_compta_enquetes_nps_partial_update
-- put /api/v1/compta/enquetes-nps/{id}/ -> v1_compta_enquetes_nps_update
-- post /api/v1/compta/enquetes-nps/{id}/repondre/ -> v1_compta_enquetes_nps_repondre_create
 - get /api/v1/compta/enquetes-publiques/{token}/ -> v1_compta_enquetes_publiques_retrieve
 - post /api/v1/compta/enquetes-publiques/{token}/soumettre/ -> v1_compta_enquetes_publiques_soumettre_create
-- get /api/v1/compta/enquetes/ -> v1_compta_enquetes_list
-- post /api/v1/compta/enquetes/ -> v1_compta_enquetes_create
-- delete /api/v1/compta/enquetes/{id}/ -> v1_compta_enquetes_destroy
-- get /api/v1/compta/enquetes/{id}/ -> v1_compta_enquetes_retrieve
-- patch /api/v1/compta/enquetes/{id}/ -> v1_compta_enquetes_partial_update
-- put /api/v1/compta/enquetes/{id}/ -> v1_compta_enquetes_update
-- post /api/v1/compta/enquetes/{id}/emettre-jeton-invite/ -> v1_compta_enquetes_emettre_jeton_invite_create
-- post /api/v1/compta/enquetes/{id}/inviter/ -> v1_compta_enquetes_inviter_create
-- get /api/v1/compta/enquetes/{id}/participations/ -> v1_compta_enquetes_participations_retrieve
-- get /api/v1/compta/enquetes/{id}/qr/ -> v1_compta_enquetes_qr_retrieve
-- get /api/v1/compta/enquetes/{id}/resultats/ -> v1_compta_enquetes_resultats_retrieve
-- get /api/v1/compta/enquetes/{id}/resultats/export/ -> v1_compta_enquetes_resultats_export_retrieve
-- get /api/v1/compta/enquetes/{id}/tester/ -> v1_compta_enquetes_tester_retrieve
 - get /api/v1/compta/entites-consolidation/ -> v1_compta_entites_consolidation_list
 - post /api/v1/compta/entites-consolidation/ -> v1_compta_entites_consolidation_create
 - get /api/v1/compta/entites-consolidation/cpc_consolide/ -> v1_compta_entites_consolidation_cpc_consolide_retrieve
@@ -9574,14 +9143,6 @@ operations:
 - get /api/v1/compta/entites-consolidation/{id}/ -> v1_compta_entites_consolidation_retrieve
 - patch /api/v1/compta/entites-consolidation/{id}/ -> v1_compta_entites_consolidation_partial_update
 - put /api/v1/compta/entites-consolidation/{id}/ -> v1_compta_entites_consolidation_update
-- get /api/v1/compta/envois-campagne/ -> v1_compta_envois_campagne_list
-- get /api/v1/compta/envois-campagne/{id}/ -> v1_compta_envois_campagne_retrieve
-- get /api/v1/compta/etapes-sequence/ -> v1_compta_etapes_sequence_list
-- post /api/v1/compta/etapes-sequence/ -> v1_compta_etapes_sequence_create
-- delete /api/v1/compta/etapes-sequence/{id}/ -> v1_compta_etapes_sequence_destroy
-- get /api/v1/compta/etapes-sequence/{id}/ -> v1_compta_etapes_sequence_retrieve
-- patch /api/v1/compta/etapes-sequence/{id}/ -> v1_compta_etapes_sequence_partial_update
-- put /api/v1/compta/etapes-sequence/{id}/ -> v1_compta_etapes_sequence_update
 - get /api/v1/compta/etats/aide-is/ -> v1_compta_etats_aide_is_retrieve
 - get /api/v1/compta/etats/analyse-variation/ -> v1_compta_etats_analyse_variation_retrieve
 - get /api/v1/compta/etats/anomalies-ecritures/ -> v1_compta_etats_anomalies_ecritures_retrieve
@@ -9623,20 +9184,7 @@ operations:
 - get /api/v1/compta/etats/resultat-analytique/ -> v1_compta_etats_resultat_analytique_retrieve
 - get /api/v1/compta/etats/tableau-flux/ -> v1_compta_etats_tableau_flux_retrieve
 - get /api/v1/compta/etats/tableau-immobilisations/ -> v1_compta_etats_tableau_immobilisations_retrieve
-- get /api/v1/compta/evenements-marketing/ -> v1_compta_evenements_marketing_list
-- post /api/v1/compta/evenements-marketing/ -> v1_compta_evenements_marketing_create
-- get /api/v1/compta/evenements-marketing/kanban/ -> v1_compta_evenements_marketing_kanban_retrieve
-- get /api/v1/compta/evenements-marketing/reporting/ -> v1_compta_evenements_marketing_reporting_retrieve
-- get /api/v1/compta/evenements-marketing/reporting/export/ -> v1_compta_evenements_marketing_reporting_export_retrieve
 - post /api/v1/compta/evenements-marketing/{evenement_id}/inscription-publique/ -> v1_compta_evenements_marketing_inscription_publique_create
-- delete /api/v1/compta/evenements-marketing/{id}/ -> v1_compta_evenements_marketing_destroy
-- get /api/v1/compta/evenements-marketing/{id}/ -> v1_compta_evenements_marketing_retrieve
-- patch /api/v1/compta/evenements-marketing/{id}/ -> v1_compta_evenements_marketing_partial_update
-- put /api/v1/compta/evenements-marketing/{id}/ -> v1_compta_evenements_marketing_update
-- post /api/v1/compta/evenements-marketing/{id}/avancer-etape/ -> v1_compta_evenements_marketing_avancer_etape_create
-- get /api/v1/compta/evenements-marketing/{id}/badges/ -> v1_compta_evenements_marketing_badges_retrieve
-- get /api/v1/compta/evenements-marketing/{id}/borne/ -> v1_compta_evenements_marketing_borne_retrieve
-- post /api/v1/compta/evenements-marketing/{id}/cloturer-presences/ -> v1_compta_evenements_marketing_cloturer_presences_create
 - get /api/v1/compta/exercices/ -> v1_compta_exercices_list
 - post /api/v1/compta/exercices/ -> v1_compta_exercices_create
 - post /api/v1/compta/exercices/ecriture-od/ -> v1_compta_exercices_ecriture_od_create
@@ -9653,12 +9201,6 @@ operations:
 - get /api/v1/compta/familles-tva-non-deductibles/{id}/ -> v1_compta_familles_tva_non_deductibles_retrieve
 - patch /api/v1/compta/familles-tva-non-deductibles/{id}/ -> v1_compta_familles_tva_non_deductibles_partial_update
 - put /api/v1/compta/familles-tva-non-deductibles/{id}/ -> v1_compta_familles_tva_non_deductibles_update
-- get /api/v1/compta/formulaires-intake/ -> v1_compta_formulaires_intake_list
-- post /api/v1/compta/formulaires-intake/ -> v1_compta_formulaires_intake_create
-- delete /api/v1/compta/formulaires-intake/{id}/ -> v1_compta_formulaires_intake_destroy
-- get /api/v1/compta/formulaires-intake/{id}/ -> v1_compta_formulaires_intake_retrieve
-- patch /api/v1/compta/formulaires-intake/{id}/ -> v1_compta_formulaires_intake_partial_update
-- put /api/v1/compta/formulaires-intake/{id}/ -> v1_compta_formulaires_intake_update
 - get /api/v1/compta/guided-selling/ -> v1_compta_guided_selling_list
 - post /api/v1/compta/guided-selling/ -> v1_compta_guided_selling_create
 - delete /api/v1/compta/guided-selling/{id}/ -> v1_compta_guided_selling_destroy
@@ -9683,6 +9225,8 @@ operations:
 - post /api/v1/compta/immobilisations/{id}/ceder/ -> v1_compta_immobilisations_ceder_create
 - get /api/v1/compta/immobilisations/{id}/plan-amortissement/ -> v1_compta_immobilisations_plan_amortissement_retrieve
 - post /api/v1/compta/immobilisations/{id}/plan-amortissement/ -> v1_compta_immobilisations_plan_amortissement_create
+- get /api/v1/compta/immobilisations/{id}/plan-fiscal/ -> v1_compta_immobilisations_plan_fiscal_retrieve
+- post /api/v1/compta/immobilisations/{id}/plan-fiscal/ -> v1_compta_immobilisations_plan_fiscal_create
 - get /api/v1/compta/imputations-axes/ -> v1_compta_imputations_axes_list
 - post /api/v1/compta/imputations-axes/ -> v1_compta_imputations_axes_create
 - delete /api/v1/compta/imputations-axes/{id}/ -> v1_compta_imputations_axes_destroy
@@ -9699,22 +9243,6 @@ operations:
 - post /api/v1/compta/indemnites-chantier/{id}/rembourser/ -> v1_compta_indemnites_chantier_rembourser_create
 - post /api/v1/compta/indemnites-chantier/{id}/soumettre/ -> v1_compta_indemnites_chantier_soumettre_create
 - post /api/v1/compta/indemnites-chantier/{id}/valider/ -> v1_compta_indemnites_chantier_valider_create
-- get /api/v1/compta/inscriptions-evenement/ -> v1_compta_inscriptions_evenement_list
-- post /api/v1/compta/inscriptions-evenement/ -> v1_compta_inscriptions_evenement_create
-- delete /api/v1/compta/inscriptions-evenement/{id}/ -> v1_compta_inscriptions_evenement_destroy
-- get /api/v1/compta/inscriptions-evenement/{id}/ -> v1_compta_inscriptions_evenement_retrieve
-- patch /api/v1/compta/inscriptions-evenement/{id}/ -> v1_compta_inscriptions_evenement_partial_update
-- put /api/v1/compta/inscriptions-evenement/{id}/ -> v1_compta_inscriptions_evenement_update
-- get /api/v1/compta/inscriptions-evenement/{id}/badge/ -> v1_compta_inscriptions_evenement_badge_retrieve
-- post /api/v1/compta/inscriptions-evenement/{id}/pointer/ -> v1_compta_inscriptions_evenement_pointer_create
-- get /api/v1/compta/inscriptions-sequence/ -> v1_compta_inscriptions_sequence_list
-- post /api/v1/compta/inscriptions-sequence/ -> v1_compta_inscriptions_sequence_create
-- post /api/v1/compta/inscriptions-sequence/inscrire/ -> v1_compta_inscriptions_sequence_inscrire_create
-- delete /api/v1/compta/inscriptions-sequence/{id}/ -> v1_compta_inscriptions_sequence_destroy
-- get /api/v1/compta/inscriptions-sequence/{id}/ -> v1_compta_inscriptions_sequence_retrieve
-- patch /api/v1/compta/inscriptions-sequence/{id}/ -> v1_compta_inscriptions_sequence_partial_update
-- put /api/v1/compta/inscriptions-sequence/{id}/ -> v1_compta_inscriptions_sequence_update
-- post /api/v1/compta/inscriptions-sequence/{id}/sortir/ -> v1_compta_inscriptions_sequence_sortir_create
 - get /api/v1/compta/instances-cloture/ -> v1_compta_instances_cloture_list
 - post /api/v1/compta/instances-cloture/ -> v1_compta_instances_cloture_create
 - post /api/v1/compta/instances-cloture/instancier/ -> v1_compta_instances_cloture_instancier_create
@@ -9722,13 +9250,6 @@ operations:
 - get /api/v1/compta/instances-cloture/{id}/ -> v1_compta_instances_cloture_retrieve
 - patch /api/v1/compta/instances-cloture/{id}/ -> v1_compta_instances_cloture_partial_update
 - put /api/v1/compta/instances-cloture/{id}/ -> v1_compta_instances_cloture_update
-- get /api/v1/compta/jalons-chantier-portail/ -> v1_compta_jalons_chantier_portail_list
-- post /api/v1/compta/jalons-chantier-portail/ -> v1_compta_jalons_chantier_portail_create
-- delete /api/v1/compta/jalons-chantier-portail/{id}/ -> v1_compta_jalons_chantier_portail_destroy
-- get /api/v1/compta/jalons-chantier-portail/{id}/ -> v1_compta_jalons_chantier_portail_retrieve
-- patch /api/v1/compta/jalons-chantier-portail/{id}/ -> v1_compta_jalons_chantier_portail_partial_update
-- put /api/v1/compta/jalons-chantier-portail/{id}/ -> v1_compta_jalons_chantier_portail_update
-- post /api/v1/compta/jalons-chantier-portail/{id}/marquer_atteint/ -> v1_compta_jalons_chantier_portail_marquer_atteint_create
 - get /api/v1/compta/journaux/ -> v1_compta_journaux_list
 - post /api/v1/compta/journaux/ -> v1_compta_journaux_create
 - delete /api/v1/compta/journaux/{id}/ -> v1_compta_journaux_destroy
@@ -9745,14 +9266,6 @@ operations:
 - post /api/v1/compta/lettrage/lettrer/ -> v1_compta_lettrage_lettrer_create
 - get /api/v1/compta/liasses-remontee/ -> v1_compta_liasses_remontee_list
 - get /api/v1/compta/liasses-remontee/{id}/ -> v1_compta_liasses_remontee_retrieve
-- get /api/v1/compta/lignes-bordereau/ -> v1_compta_lignes_bordereau_list
-- post /api/v1/compta/lignes-bordereau/ -> v1_compta_lignes_bordereau_create
-- delete /api/v1/compta/lignes-bordereau/{id}/ -> v1_compta_lignes_bordereau_destroy
-- get /api/v1/compta/lignes-bordereau/{id}/ -> v1_compta_lignes_bordereau_retrieve
-- patch /api/v1/compta/lignes-bordereau/{id}/ -> v1_compta_lignes_bordereau_partial_update
-- put /api/v1/compta/lignes-bordereau/{id}/ -> v1_compta_lignes_bordereau_update
-- get /api/v1/compta/lignes-bordereau/{id}/chatter/historique/ -> v1_compta_lignes_bordereau_chatter_historique_retrieve
-- post /api/v1/compta/lignes-bordereau/{id}/chatter/noter/ -> v1_compta_lignes_bordereau_chatter_noter_create
 - get /api/v1/compta/lignes-cle-repartition/ -> v1_compta_lignes_cle_repartition_list
 - post /api/v1/compta/lignes-cle-repartition/ -> v1_compta_lignes_cle_repartition_create
 - delete /api/v1/compta/lignes-cle-repartition/{id}/ -> v1_compta_lignes_cle_repartition_destroy
@@ -9783,14 +9296,6 @@ operations:
 - get /api/v1/compta/lignes-modele-ecriture/{id}/ -> v1_compta_lignes_modele_ecriture_retrieve
 - patch /api/v1/compta/lignes-modele-ecriture/{id}/ -> v1_compta_lignes_modele_ecriture_partial_update
 - put /api/v1/compta/lignes-modele-ecriture/{id}/ -> v1_compta_lignes_modele_ecriture_update
-- get /api/v1/compta/listes-diffusion/ -> v1_compta_listes_diffusion_list
-- post /api/v1/compta/listes-diffusion/ -> v1_compta_listes_diffusion_create
-- delete /api/v1/compta/listes-diffusion/{id}/ -> v1_compta_listes_diffusion_destroy
-- get /api/v1/compta/listes-diffusion/{id}/ -> v1_compta_listes_diffusion_retrieve
-- patch /api/v1/compta/listes-diffusion/{id}/ -> v1_compta_listes_diffusion_partial_update
-- put /api/v1/compta/listes-diffusion/{id}/ -> v1_compta_listes_diffusion_update
-- get /api/v1/compta/listes-diffusion/{id}/abonnes/ -> v1_compta_listes_diffusion_abonnes_retrieve
-- post /api/v1/compta/listes-diffusion/{id}/importer/ -> v1_compta_listes_diffusion_importer_create
 - get /api/v1/compta/mappings-compte/ -> v1_compta_mappings_compte_list
 - post /api/v1/compta/mappings-compte/ -> v1_compta_mappings_compte_create
 - post /api/v1/compta/mappings-compte/seed/ -> v1_compta_mappings_compte_seed_create
@@ -9811,8 +9316,6 @@ operations:
 - patch /api/v1/compta/marges-internes-stock/{id}/ -> v1_compta_marges_internes_stock_partial_update
 - put /api/v1/compta/marges-internes-stock/{id}/ -> v1_compta_marges_internes_stock_update
 - post /api/v1/compta/marges-internes-stock/{id}/eliminer/ -> v1_compta_marges_internes_stock_eliminer_create
-- get /api/v1/compta/messages-whatsapp/ -> v1_compta_messages_whatsapp_list
-- get /api/v1/compta/messages-whatsapp/{id}/ -> v1_compta_messages_whatsapp_retrieve
 - get /api/v1/compta/modeles-cloture/ -> v1_compta_modeles_cloture_list
 - post /api/v1/compta/modeles-cloture/ -> v1_compta_modeles_cloture_create
 - post /api/v1/compta/modeles-cloture/seed/ -> v1_compta_modeles_cloture_seed_create
@@ -9840,12 +9343,6 @@ operations:
 - patch /api/v1/compta/modeles-rapprochement/{id}/ -> v1_compta_modeles_rapprochement_partial_update
 - put /api/v1/compta/modeles-rapprochement/{id}/ -> v1_compta_modeles_rapprochement_update
 - post /api/v1/compta/modeles-rapprochement/{id}/appliquer/ -> v1_compta_modeles_rapprochement_appliquer_create
-- get /api/v1/compta/mouvements-fidelite/ -> v1_compta_mouvements_fidelite_list
-- post /api/v1/compta/mouvements-fidelite/ -> v1_compta_mouvements_fidelite_create
-- delete /api/v1/compta/mouvements-fidelite/{id}/ -> v1_compta_mouvements_fidelite_destroy
-- get /api/v1/compta/mouvements-fidelite/{id}/ -> v1_compta_mouvements_fidelite_retrieve
-- patch /api/v1/compta/mouvements-fidelite/{id}/ -> v1_compta_mouvements_fidelite_partial_update
-- put /api/v1/compta/mouvements-fidelite/{id}/ -> v1_compta_mouvements_fidelite_update
 - get /api/v1/compta/mutations-immobilisation/ -> v1_compta_mutations_immobilisation_list
 - post /api/v1/compta/mutations-immobilisation/ -> v1_compta_mutations_immobilisation_create
 - delete /api/v1/compta/mutations-immobilisation/{id}/ -> v1_compta_mutations_immobilisation_destroy
@@ -9890,20 +9387,6 @@ operations:
 - get /api/v1/compta/operations-interco/{id}/ -> v1_compta_operations_interco_retrieve
 - patch /api/v1/compta/operations-interco/{id}/ -> v1_compta_operations_interco_partial_update
 - put /api/v1/compta/operations-interco/{id}/ -> v1_compta_operations_interco_update
-- get /api/v1/compta/ouvertures-partage/ -> v1_compta_ouvertures_partage_list
-- post /api/v1/compta/ouvertures-partage/ -> v1_compta_ouvertures_partage_create
-- post /api/v1/compta/ouvertures-partage/ping/ -> v1_compta_ouvertures_partage_ping_create
-- delete /api/v1/compta/ouvertures-partage/{id}/ -> v1_compta_ouvertures_partage_destroy
-- get /api/v1/compta/ouvertures-partage/{id}/ -> v1_compta_ouvertures_partage_retrieve
-- patch /api/v1/compta/ouvertures-partage/{id}/ -> v1_compta_ouvertures_partage_partial_update
-- put /api/v1/compta/ouvertures-partage/{id}/ -> v1_compta_ouvertures_partage_update
-- get /api/v1/compta/paiements-facture-portail/ -> v1_compta_paiements_facture_portail_list
-- post /api/v1/compta/paiements-facture-portail/ -> v1_compta_paiements_facture_portail_create
-- delete /api/v1/compta/paiements-facture-portail/{id}/ -> v1_compta_paiements_facture_portail_destroy
-- get /api/v1/compta/paiements-facture-portail/{id}/ -> v1_compta_paiements_facture_portail_retrieve
-- patch /api/v1/compta/paiements-facture-portail/{id}/ -> v1_compta_paiements_facture_portail_partial_update
-- put /api/v1/compta/paiements-facture-portail/{id}/ -> v1_compta_paiements_facture_portail_update
-- post /api/v1/compta/paiements-facture-portail/{id}/rapprocher/ -> v1_compta_paiements_facture_portail_rapprocher_create
 - get /api/v1/compta/parametres-tresorerie/ -> v1_compta_parametres_tresorerie_retrieve
 - patch /api/v1/compta/parametres-tresorerie/ -> v1_compta_parametres_tresorerie_partial_update
 - get /api/v1/compta/partenaires/ -> v1_compta_partenaires_list
@@ -9939,14 +9422,6 @@ operations:
 - get /api/v1/compta/pieces-justificatives/{id}/ -> v1_compta_pieces_justificatives_retrieve
 - patch /api/v1/compta/pieces-justificatives/{id}/ -> v1_compta_pieces_justificatives_partial_update
 - put /api/v1/compta/pieces-justificatives/{id}/ -> v1_compta_pieces_justificatives_update
-- get /api/v1/compta/pieces-soumission/ -> v1_compta_pieces_soumission_list
-- post /api/v1/compta/pieces-soumission/ -> v1_compta_pieces_soumission_create
-- delete /api/v1/compta/pieces-soumission/{id}/ -> v1_compta_pieces_soumission_destroy
-- get /api/v1/compta/pieces-soumission/{id}/ -> v1_compta_pieces_soumission_retrieve
-- patch /api/v1/compta/pieces-soumission/{id}/ -> v1_compta_pieces_soumission_partial_update
-- put /api/v1/compta/pieces-soumission/{id}/ -> v1_compta_pieces_soumission_update
-- get /api/v1/compta/pieces-soumission/{id}/chatter/historique/ -> v1_compta_pieces_soumission_chatter_historique_retrieve
-- post /api/v1/compta/pieces-soumission/{id}/chatter/noter/ -> v1_compta_pieces_soumission_chatter_noter_create
 - get /api/v1/compta/pilotage/cockpit/ -> v1_compta_pilotage_cockpit_retrieve
 - get /api/v1/compta/pistes-audit/ -> v1_compta_pistes_audit_list
 - post /api/v1/compta/pistes-audit/sceller/ -> v1_compta_pistes_audit_sceller_create
@@ -10012,12 +9487,6 @@ operations:
 - patch /api/v1/compta/provisions/{id}/ -> v1_compta_provisions_partial_update
 - put /api/v1/compta/provisions/{id}/ -> v1_compta_provisions_update
 - post /api/v1/compta/provisions/{id}/reprendre/ -> v1_compta_provisions_reprendre_create
-- get /api/v1/compta/questions-evenement/ -> v1_compta_questions_evenement_list
-- post /api/v1/compta/questions-evenement/ -> v1_compta_questions_evenement_create
-- delete /api/v1/compta/questions-evenement/{id}/ -> v1_compta_questions_evenement_destroy
-- get /api/v1/compta/questions-evenement/{id}/ -> v1_compta_questions_evenement_retrieve
-- patch /api/v1/compta/questions-evenement/{id}/ -> v1_compta_questions_evenement_partial_update
-- put /api/v1/compta/questions-evenement/{id}/ -> v1_compta_questions_evenement_update
 - get /api/v1/compta/r/{token}/ -> v1_compta_r_retrieve
 - get /api/v1/compta/rapports-notes-frais/ -> v1_compta_rapports_notes_frais_list
 - post /api/v1/compta/rapports-notes-frais/ -> v1_compta_rapports_notes_frais_create
@@ -10070,30 +9539,7 @@ operations:
 - get /api/v1/compta/referentiels-comptables/{id}/ -> v1_compta_referentiels_comptables_retrieve
 - patch /api/v1/compta/referentiels-comptables/{id}/ -> v1_compta_referentiels_comptables_partial_update
 - put /api/v1/compta/referentiels-comptables/{id}/ -> v1_compta_referentiels_comptables_update
-- get /api/v1/compta/regles-upsell/ -> v1_compta_regles_upsell_list
-- post /api/v1/compta/regles-upsell/ -> v1_compta_regles_upsell_create
-- post /api/v1/compta/regles-upsell/suggestions/ -> v1_compta_regles_upsell_suggestions_create
-- delete /api/v1/compta/regles-upsell/{id}/ -> v1_compta_regles_upsell_destroy
-- get /api/v1/compta/regles-upsell/{id}/ -> v1_compta_regles_upsell_retrieve
-- patch /api/v1/compta/regles-upsell/{id}/ -> v1_compta_regles_upsell_partial_update
-- put /api/v1/compta/regles-upsell/{id}/ -> v1_compta_regles_upsell_update
-- get /api/v1/compta/relances-devis-abandonnes/ -> v1_compta_relances_devis_abandonnes_list
-- post /api/v1/compta/relances-devis-abandonnes/ -> v1_compta_relances_devis_abandonnes_create
-- delete /api/v1/compta/relances-devis-abandonnes/{id}/ -> v1_compta_relances_devis_abandonnes_destroy
-- get /api/v1/compta/relances-devis-abandonnes/{id}/ -> v1_compta_relances_devis_abandonnes_retrieve
-- patch /api/v1/compta/relances-devis-abandonnes/{id}/ -> v1_compta_relances_devis_abandonnes_partial_update
-- put /api/v1/compta/relances-devis-abandonnes/{id}/ -> v1_compta_relances_devis_abandonnes_update
 - get /api/v1/compta/reponses-enquete/{reponse_id}/certificat/ -> v1_compta_reponses_enquete_certificat_retrieve
-- get /api/v1/compta/resultats-ao/ -> v1_compta_resultats_ao_list
-- post /api/v1/compta/resultats-ao/ -> v1_compta_resultats_ao_create
-- post /api/v1/compta/resultats-ao/enregistrer/ -> v1_compta_resultats_ao_enregistrer_create
-- get /api/v1/compta/resultats-ao/stats/ -> v1_compta_resultats_ao_stats_retrieve
-- delete /api/v1/compta/resultats-ao/{id}/ -> v1_compta_resultats_ao_destroy
-- get /api/v1/compta/resultats-ao/{id}/ -> v1_compta_resultats_ao_retrieve
-- patch /api/v1/compta/resultats-ao/{id}/ -> v1_compta_resultats_ao_partial_update
-- put /api/v1/compta/resultats-ao/{id}/ -> v1_compta_resultats_ao_update
-- get /api/v1/compta/resultats-ao/{id}/chatter/historique/ -> v1_compta_resultats_ao_chatter_historique_retrieve
-- post /api/v1/compta/resultats-ao/{id}/chatter/noter/ -> v1_compta_resultats_ao_chatter_noter_create
 - get /api/v1/compta/retenues-garantie/ -> v1_compta_retenues_garantie_list
 - post /api/v1/compta/retenues-garantie/ -> v1_compta_retenues_garantie_create
 - get /api/v1/compta/retenues-garantie/echeances/ -> v1_compta_retenues_garantie_echeances_retrieve
@@ -10115,24 +9561,6 @@ operations:
 - put /api/v1/compta/retenues-source/{id}/ -> v1_compta_retenues_source_update
 - get /api/v1/compta/retenues-source/{id}/attestation/ -> v1_compta_retenues_source_attestation_retrieve
 - post /api/v1/compta/retenues-source/{id}/verser/ -> v1_compta_retenues_source_verser_create
-- get /api/v1/compta/segments-marketing/ -> v1_compta_segments_marketing_list
-- post /api/v1/compta/segments-marketing/ -> v1_compta_segments_marketing_create
-- delete /api/v1/compta/segments-marketing/{id}/ -> v1_compta_segments_marketing_destroy
-- get /api/v1/compta/segments-marketing/{id}/ -> v1_compta_segments_marketing_retrieve
-- patch /api/v1/compta/segments-marketing/{id}/ -> v1_compta_segments_marketing_partial_update
-- put /api/v1/compta/segments-marketing/{id}/ -> v1_compta_segments_marketing_update
-- post /api/v1/compta/segments-marketing/{id}/exporter-audience-meta/ -> v1_compta_segments_marketing_exporter_audience_meta_create
-- get /api/v1/compta/segments-marketing/{id}/previsualiser/ -> v1_compta_segments_marketing_previsualiser_retrieve
-- get /api/v1/compta/sequences-relance/ -> v1_compta_sequences_relance_list
-- post /api/v1/compta/sequences-relance/ -> v1_compta_sequences_relance_create
-- delete /api/v1/compta/sequences-relance/{id}/ -> v1_compta_sequences_relance_destroy
-- get /api/v1/compta/sequences-relance/{id}/ -> v1_compta_sequences_relance_retrieve
-- patch /api/v1/compta/sequences-relance/{id}/ -> v1_compta_sequences_relance_partial_update
-- put /api/v1/compta/sequences-relance/{id}/ -> v1_compta_sequences_relance_update
-- get /api/v1/compta/sequences-relance/{id}/compteurs-par-etape/ -> v1_compta_sequences_relance_compteurs_par_etape_retrieve
-- get /api/v1/compta/sequences-relance/{id}/participants/ -> v1_compta_sequences_relance_participants_retrieve
-- get /api/v1/compta/sequences-relance/{id}/planifier/ -> v1_compta_sequences_relance_planifier_retrieve
-- get /api/v1/compta/sequences-relance/{id}/traces/ -> v1_compta_sequences_relance_traces_retrieve
 - get /api/v1/compta/simulations-financement/ -> v1_compta_simulations_financement_list
 - post /api/v1/compta/simulations-financement/ -> v1_compta_simulations_financement_create
 - delete /api/v1/compta/simulations-financement/{id}/ -> v1_compta_simulations_financement_destroy
@@ -10153,14 +9581,6 @@ operations:
 - patch /api/v1/compta/soumissions-lead-partenaire/{id}/ -> v1_compta_soumissions_lead_partenaire_partial_update
 - put /api/v1/compta/soumissions-lead-partenaire/{id}/ -> v1_compta_soumissions_lead_partenaire_update
 - post /api/v1/compta/soumissions-lead-partenaire/{id}/qualifier/ -> v1_compta_soumissions_lead_partenaire_qualifier_create
-- get /api/v1/compta/supports-offline/ -> v1_compta_supports_offline_list
-- post /api/v1/compta/supports-offline/ -> v1_compta_supports_offline_create
-- get /api/v1/compta/supports-offline/scans-par-support/ -> v1_compta_supports_offline_scans_par_support_retrieve
-- delete /api/v1/compta/supports-offline/{id}/ -> v1_compta_supports_offline_destroy
-- get /api/v1/compta/supports-offline/{id}/ -> v1_compta_supports_offline_retrieve
-- patch /api/v1/compta/supports-offline/{id}/ -> v1_compta_supports_offline_partial_update
-- put /api/v1/compta/supports-offline/{id}/ -> v1_compta_supports_offline_update
-- get /api/v1/compta/supports-offline/{id}/qr/ -> v1_compta_supports_offline_qr_retrieve
 - get /api/v1/compta/taches-cloture-modele/ -> v1_compta_taches_cloture_modele_list
 - post /api/v1/compta/taches-cloture-modele/ -> v1_compta_taches_cloture_modele_create
 - delete /api/v1/compta/taches-cloture-modele/{id}/ -> v1_compta_taches_cloture_modele_destroy
@@ -10212,13 +9632,6 @@ operations:
 - patch /api/v1/compta/tresorerie/{id}/ -> v1_compta_tresorerie_partial_update
 - put /api/v1/compta/tresorerie/{id}/ -> v1_compta_tresorerie_update
 - get /api/v1/compta/tresorerie/{id}/solde/ -> v1_compta_tresorerie_solde_retrieve
-- get /api/v1/compta/types-evenement/ -> v1_compta_types_evenement_list
-- post /api/v1/compta/types-evenement/ -> v1_compta_types_evenement_create
-- delete /api/v1/compta/types-evenement/{id}/ -> v1_compta_types_evenement_destroy
-- get /api/v1/compta/types-evenement/{id}/ -> v1_compta_types_evenement_retrieve
-- patch /api/v1/compta/types-evenement/{id}/ -> v1_compta_types_evenement_partial_update
-- put /api/v1/compta/types-evenement/{id}/ -> v1_compta_types_evenement_update
-- post /api/v1/compta/types-evenement/{id}/creer-evenement/ -> v1_compta_types_evenement_creer_evenement_create
 - get /api/v1/compta/virements/ -> v1_compta_virements_list
 - post /api/v1/compta/virements/ -> v1_compta_virements_create
 - delete /api/v1/compta/virements/{id}/ -> v1_compta_virements_destroy
@@ -11786,6 +11199,7 @@ operations:
 - get /api/v1/ged/demandes-signature/{id}/ -> v1_ged_demandes_signature_retrieve
 - post /api/v1/ged/demandes-signature/{id}/annuler/ -> v1_ged_demandes_signature_annuler_create
 - post /api/v1/ged/demandes-signature/{id}/marquer-signe/ -> v1_ged_demandes_signature_marquer_signe_create
+- get /api/v1/ged/demandes-signature/{id}/pdf-signe/ -> v1_ged_demandes_signature_pdf_signe_retrieve
 - post /api/v1/ged/demandes-signature/{id}/prolonger/ -> v1_ged_demandes_signature_prolonger_create
 - get /api/v1/ged/depot/{token}/ -> v1_ged_depot_retrieve
 - post /api/v1/ged/depot/{token}/ -> v1_ged_depot_create
@@ -14301,6 +13715,7 @@ operations:
 - get /api/v1/qhse/non-conformites/{id}/ -> v1_qhse_non_conformites_retrieve
 - patch /api/v1/qhse/non-conformites/{id}/ -> v1_qhse_non_conformites_partial_update
 - put /api/v1/qhse/non-conformites/{id}/ -> v1_qhse_non_conformites_update
+- post /api/v1/qhse/non-conformites/{id}/analyse/ -> v1_qhse_non_conformites_analyse_create
 - post /api/v1/qhse/non-conformites/{id}/cloturer/ -> v1_qhse_non_conformites_cloturer_create
 - post /api/v1/qhse/non-conformites/{id}/creer-intervention/ -> v1_qhse_non_conformites_creer_intervention_create
 - get /api/v1/qhse/non-conformites/{id}/historique/ -> v1_qhse_non_conformites_historique_retrieve
@@ -14375,6 +13790,7 @@ operations:
 - get /api/v1/qhse/procedures-qualite/ -> v1_qhse_procedures_qualite_list
 - post /api/v1/qhse/procedures-qualite/ -> v1_qhse_procedures_qualite_create
 - get /api/v1/qhse/procedures-qualite/courante/ -> v1_qhse_procedures_qualite_courante_retrieve
+- get /api/v1/qhse/procedures-qualite/mes-lectures-en-attente/ -> v1_qhse_procedures_qualite_mes_lectures_en_attente_list
 - delete /api/v1/qhse/procedures-qualite/{id}/ -> v1_qhse_procedures_qualite_destroy
 - get /api/v1/qhse/procedures-qualite/{id}/ -> v1_qhse_procedures_qualite_retrieve
 - patch /api/v1/qhse/procedures-qualite/{id}/ -> v1_qhse_procedures_qualite_partial_update
@@ -14424,6 +13840,14 @@ operations:
 - patch /api/v1/qhse/revues-veille/{id}/ -> v1_qhse_revues_veille_partial_update
 - put /api/v1/qhse/revues-veille/{id}/ -> v1_qhse_revues_veille_update
 - post /api/v1/qhse/revues-veille/{id}/conclure/ -> v1_qhse_revues_veille_conclure_create
+- get /api/v1/qhse/risques-opportunites/ -> v1_qhse_risques_opportunites_list
+- post /api/v1/qhse/risques-opportunites/ -> v1_qhse_risques_opportunites_create
+- get /api/v1/qhse/risques-opportunites/revues-dues/ -> v1_qhse_risques_opportunites_revues_dues_list
+- delete /api/v1/qhse/risques-opportunites/{id}/ -> v1_qhse_risques_opportunites_destroy
+- get /api/v1/qhse/risques-opportunites/{id}/ -> v1_qhse_risques_opportunites_retrieve
+- patch /api/v1/qhse/risques-opportunites/{id}/ -> v1_qhse_risques_opportunites_partial_update
+- put /api/v1/qhse/risques-opportunites/{id}/ -> v1_qhse_risques_opportunites_update
+- post /api/v1/qhse/risques-opportunites/{id}/lier-capa/ -> v1_qhse_risques_opportunites_lier_capa_create
 - get /api/v1/qhse/secouristes/ -> v1_qhse_secouristes_list
 - post /api/v1/qhse/secouristes/ -> v1_qhse_secouristes_create
 - delete /api/v1/qhse/secouristes/{id}/ -> v1_qhse_secouristes_destroy
@@ -15727,6 +15151,30 @@ operations:
 - patch /api/v1/uxviews/saved-views/{id}/ -> v1_uxviews_saved_views_partial_update
 - put /api/v1/uxviews/saved-views/{id}/ -> v1_uxviews_saved_views_update
 - post /api/v1/uxviews/saved-views/{id}/definir-par-defaut-role/ -> v1_uxviews_saved_views_definir_par_defaut_role_create
+- get /api/v1/veille_ao/avis/ -> v1_veille_ao_avis_list
+- post /api/v1/veille_ao/avis/ -> v1_veille_ao_avis_create
+- delete /api/v1/veille_ao/avis/{id}/ -> v1_veille_ao_avis_destroy
+- get /api/v1/veille_ao/avis/{id}/ -> v1_veille_ao_avis_retrieve
+- patch /api/v1/veille_ao/avis/{id}/ -> v1_veille_ao_avis_partial_update
+- put /api/v1/veille_ao/avis/{id}/ -> v1_veille_ao_avis_update
+- get /api/v1/veille_ao/mots-cles/ -> v1_veille_ao_mots_cles_list
+- post /api/v1/veille_ao/mots-cles/ -> v1_veille_ao_mots_cles_create
+- delete /api/v1/veille_ao/mots-cles/{id}/ -> v1_veille_ao_mots_cles_destroy
+- get /api/v1/veille_ao/mots-cles/{id}/ -> v1_veille_ao_mots_cles_retrieve
+- patch /api/v1/veille_ao/mots-cles/{id}/ -> v1_veille_ao_mots_cles_partial_update
+- put /api/v1/veille_ao/mots-cles/{id}/ -> v1_veille_ao_mots_cles_update
+- get /api/v1/veille_ao/regles-exclusion/ -> v1_veille_ao_regles_exclusion_list
+- post /api/v1/veille_ao/regles-exclusion/ -> v1_veille_ao_regles_exclusion_create
+- delete /api/v1/veille_ao/regles-exclusion/{id}/ -> v1_veille_ao_regles_exclusion_destroy
+- get /api/v1/veille_ao/regles-exclusion/{id}/ -> v1_veille_ao_regles_exclusion_retrieve
+- patch /api/v1/veille_ao/regles-exclusion/{id}/ -> v1_veille_ao_regles_exclusion_partial_update
+- put /api/v1/veille_ao/regles-exclusion/{id}/ -> v1_veille_ao_regles_exclusion_update
+- get /api/v1/veille_ao/sources/ -> v1_veille_ao_sources_list
+- post /api/v1/veille_ao/sources/ -> v1_veille_ao_sources_create
+- delete /api/v1/veille_ao/sources/{id}/ -> v1_veille_ao_sources_destroy
+- get /api/v1/veille_ao/sources/{id}/ -> v1_veille_ao_sources_retrieve
+- patch /api/v1/veille_ao/sources/{id}/ -> v1_veille_ao_sources_partial_update
+- put /api/v1/veille_ao/sources/{id}/ -> v1_veille_ao_sources_update
 - get /api/v1/ventes/attestations-conformite/ -> v1_ventes_attestations_conformite_list
 - post /api/v1/ventes/attestations-conformite/ -> v1_ventes_attestations_conformite_create
 - delete /api/v1/ventes/attestations-conformite/{id}/ -> v1_ventes_attestations_conformite_destroy
@@ -16039,6 +15487,7 @@ components:
 - AccrualClotureRequest
 - AccuseCharte
 - AccuseCharteRequest
+- AccuseLecture
 - AclGed
 - AclGedRequest
 - AcompteFournisseur
@@ -16101,6 +15550,7 @@ components:
 - AnalyseIncidentMethodeEnum
 - AnalyseIncidentRequest
 - AnalyseIncidentStatutEnum
+- AnalyseNcr
 - AnalyseRisquesChantier
 - AnalyseRisquesChantierRequest
 - AnneeScolaire
@@ -16237,6 +15687,10 @@ components:
 - AvisClientRequest
 - AvisClientStatutEnum
 - AvisEnum
+- AvisMarche
+- AvisMarcheCategorieEnum
+- AvisMarcheRequest
+- AvisMarcheStatutEnum
 - Avoir
 - AvoirFournisseur
 - AvoirFournisseurRequest
@@ -16425,6 +15879,8 @@ components:
 - ChangelogEntry
 - ChangelogEntryCategorieEnum
 - ChangelogEntryRequest
+- ChargeConstateeAvance
+- ChargeConstateeAvanceRequest
 - CharteVehicule
 - CharteVehiculeRequest
 - CheckinSecurite
@@ -16478,6 +15934,8 @@ components:
 - CommandeRetraitRequest
 - CommandeRetraitStatutEnum
 - Comment
+- CommentKeywordRule
+- CommentKeywordRuleRequest
 - CommentRequest
 - CommentaireProjet
 - CommentaireProjetCibleTypeEnum
@@ -16713,6 +16171,8 @@ components:
 - DemandeApprobationConfig
 - DemandeApprobationConfigRequest
 - DemandeApprobationRequest
+- DemandeApprobationRib
+- DemandeApprobationRibRequest
 - DemandeApprobationStatutEnum
 - DemandeCalepinageRequest
 - DemandeChangement
@@ -16756,6 +16216,7 @@ components:
 - DepotPublicRequest
 - DepreciationImmobilisation
 - DepreciationImmobilisationRequest
+- DeriverCautionDefinitiveRequest
 - Derogation
 - DerogationCredit
 - DerogationCreditRequest
@@ -16828,6 +16289,7 @@ components:
 - DotationAmortissement
 - DotationEpi
 - DotationEpiRequest
+- DotationEtalement
 - ECatalogue
 - ECatalogueRequest
 - EcheanceAO
@@ -17543,6 +17005,9 @@ components:
 - MonitoringConfigRequest
 - MonitoringSettings
 - MonitoringSettingsRequest
+- MotCleVeille
+- MotCleVeilleNiveauEnum
+- MotCleVeilleRequest
 - MotifConsultation
 - MotifConsultationRequest
 - MotifEnum
@@ -17678,6 +17143,7 @@ components:
 - PaginatedAccidentTravailList
 - PaginatedAccrualClotureList
 - PaginatedAccuseCharteList
+- PaginatedAccuseLectureList
 - PaginatedAclGedList
 - PaginatedAcompteFournisseurList
 - PaginatedAcompteISList
@@ -17749,6 +17215,7 @@ components:
 - PaginatedAvenantChantierList
 - PaginatedAvenantList
 - PaginatedAvisClientList
+- PaginatedAvisMarcheList
 - PaginatedAvoirFournisseurList
 - PaginatedAvoirList
 - PaginatedAxeAnalytiqueList
@@ -17814,6 +17281,7 @@ components:
 - PaginatedChaineCotesList
 - PaginatedChambreList
 - PaginatedChampSignatureList
+- PaginatedChargeConstateeAvanceList
 - PaginatedCharteVehiculeList
 - PaginatedCheckinSecuriteList
 - PaginatedChecklistEtapeModeleList
@@ -17836,6 +17304,7 @@ components:
 - PaginatedCommandeCadreLigneList
 - PaginatedCommandeCadreList
 - PaginatedCommandeRetraitList
+- PaginatedCommentKeywordRuleList
 - PaginatedCommentList
 - PaginatedCommentaireProjetList
 - PaginatedCommentaireVarianceList
@@ -17919,6 +17388,7 @@ components:
 - PaginatedDemandeAllocationList
 - PaginatedDemandeApprobationConfigList
 - PaginatedDemandeApprobationList
+- PaginatedDemandeApprobationRibList
 - PaginatedDemandeChangementList
 - PaginatedDemandeCongeList
 - PaginatedDemandeDispositionList
@@ -18203,6 +17673,7 @@ components:
 - PaginatedModeleVehiculeList
 - PaginatedMonitoringConfigList
 - PaginatedMonitoringSettingsList
+- PaginatedMotCleVeilleList
 - PaginatedMotifConsultationList
 - PaginatedMotifPerteList
 - PaginatedMotifResiliationList
@@ -18388,6 +17859,7 @@ components:
 - PaginatedRegleApprobationRemiseList
 - PaginatedRegleCodeBarresList
 - PaginatedRegleDossierList
+- PaginatedRegleExclusionList
 - PaginatedRegleProduitCPQList
 - PaginatedRegleRangementList
 - PaginatedRegleReapproList
@@ -18434,6 +17906,7 @@ components:
 - PaginatedRevueCompteList
 - PaginatedRevueVeilleReglementaireList
 - PaginatedRisqueList
+- PaginatedRisqueOpportuniteList
 - PaginatedRoleList
 - PaginatedRoleSignataireList
 - PaginatedRoofLayoutList
@@ -18484,6 +17957,7 @@ components:
 - PaginatedSoldeCongeList
 - PaginatedSoumissionBudgetDepartementList
 - PaginatedSoumissionLeadPartenaireList
+- PaginatedSourceVeilleList
 - PaginatedSousTraitantList
 - PaginatedStageModeleList
 - PaginatedStatutConfigList
@@ -18664,6 +18138,7 @@ components:
 - PatchedAvantageSocialRequest
 - PatchedAvenantChantierRequest
 - PatchedAvisClientRequest
+- PatchedAvisMarcheRequest
 - PatchedAvoirFournisseurRequest
 - PatchedAxeAnalytiqueRequest
 - PatchedAyantDroitRequest
@@ -18726,6 +18201,7 @@ components:
 - PatchedChambreRequest
 - PatchedChampSignatureRequest
 - PatchedChangelogEntryRequest
+- PatchedChargeConstateeAvanceRequest
 - PatchedCharteVehiculeRequest
 - PatchedCheckinSecuriteRequest
 - PatchedChecklistEtapeModeleRequest
@@ -18748,6 +18224,7 @@ components:
 - PatchedCommandeCadreLigneRequest
 - PatchedCommandeCadreRequest
 - PatchedCommandeRetraitRequest
+- PatchedCommentKeywordRuleRequest
 - PatchedCommentRequest
 - PatchedCommentaireProjetRequest
 - PatchedCommentaireVarianceRequest
@@ -18826,6 +18303,7 @@ components:
 - PatchedDemandeActionFournisseurRequest
 - PatchedDemandeAllocationRequest
 - PatchedDemandeApprobationConfigRequest
+- PatchedDemandeApprobationRibRequest
 - PatchedDemandeChangementRequest
 - PatchedDemandeCongeRequest
 - PatchedDemandeDocumentRequest
@@ -19083,6 +18561,7 @@ components:
 - PatchedModuleToggleRequest
 - PatchedMonitoringConfigRequest
 - PatchedMonitoringSettingsRequest
+- PatchedMotCleVeilleRequest
 - PatchedMotifConsultationRequest
 - PatchedMotifPerteRequest
 - PatchedMotifResiliationRequest
@@ -19252,6 +18731,7 @@ components:
 - PatchedRegleApprobationRequest
 - PatchedRegleCodeBarresRequest
 - PatchedRegleDossierRequest
+- PatchedRegleExclusionRequest
 - PatchedRegleProduitCPQRequest
 - PatchedRegleRangementRequest
 - PatchedRegleReapproRequest
@@ -19294,6 +18774,7 @@ components:
 - PatchedRevisionDocumentRequest
 - PatchedRevueCompteRequest
 - PatchedRevueVeilleReglementaireRequest
+- PatchedRisqueOpportuniteRequest
 - PatchedRisqueRequest
 - PatchedRoleRequest
 - PatchedRoleSignataireRequest
@@ -19341,6 +18822,7 @@ components:
 - PatchedSodRuleRequest
 - PatchedSoldeCongeRequest
 - PatchedSoumissionLeadPartenaireRequest
+- PatchedSourceVeilleRequest
 - PatchedSousTraitantRequest
 - PatchedStageModeleRequest
 - PatchedStatutConfigRequest
@@ -19524,6 +19006,7 @@ components:
 - PointControleReceptionRequest
 - PointIrrigation
 - PointIrrigationRequest
+- PointIrrigationTypeSourceEnum
 - Pointage
 - PointageAgricole
 - PointageAgricoleRequest
@@ -19746,6 +19229,9 @@ components:
 - RegleCodeBarresRequest
 - RegleDossier
 - RegleDossierRequest
+- RegleExclusion
+- RegleExclusionPorteeEnum
+- RegleExclusionRequest
 - RegleListePrix
 - RegleListePrixRequest
 - RegleProduitCPQ
@@ -19870,6 +19356,9 @@ components:
 - RevueVeilleReglementaireRequest
 - Risque
 - RisqueCategorieEnum
+- RisqueOpportunite
+- RisqueOpportuniteCapa
+- RisqueOpportuniteRequest
 - RisqueRequest
 - RisqueStatutEnum
 - Role
@@ -20018,6 +19507,9 @@ components:
 - SoumissionLeadPartenaireStatutEnum
 - Source0d6Enum
 - SourceTypeEnum
+- SourceVeille
+- SourceVeilleRequest
+- SourceVeilleTypeSourceEnum
 - SousGarantieEnum
 - SousTraitant
 - SousTraitantRequest
@@ -20092,6 +19584,7 @@ components:
 - TauxTVA
 - TauxTVARequest
 - TauxTvaEnum
+- TeleversementPlanSourceRequest
 - TemplateKeyEnum
 - TenantConsoleCreateReponse
 - TenantConsoleCreateRequeteRequest
@@ -20250,10 +19743,10 @@ components:
 - TypeRegleEnum
 - TypeReleveEnum
 - TypeRemunerationEnum
+- TypeRoEnum
 - TypeRunEnum
 - TypeSanctionEnum
 - TypeSignalementEnum
-- TypeSourceEnum
 - TypeTacheEnum
 - TypeTerritoireEnum
 - TypeTicketApplicableEnum
