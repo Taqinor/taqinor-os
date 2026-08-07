@@ -8,5 +8,9 @@
 # d'ajouter une ligne ; il faut `--autoriser-croissance` (fondateur), visible
 # en revue. La signature est `fonction|champ`, jamais `fichier:ligne` : un
 # deplacement de ligne ne doit pas invalider la base.
-getFournisseur360|solde_total_du
-performanceFournisseur|total_achats_ht
+#
+# PACT23 (2 -> 0) : les deux dernieres dettes (getFournisseur360|solde_total_du,
+# performanceFournisseur|total_achats_ht) etaient des mocks de test qui
+# ecrivaient un nombre JS la ou le serveur renvoie un `str(Decimal)`
+# (views/fournisseur.py:395, services.py:2910) ; les mocks reproduisent
+# desormais le texte decimal reel (formatMAD le parse deja correctement).
