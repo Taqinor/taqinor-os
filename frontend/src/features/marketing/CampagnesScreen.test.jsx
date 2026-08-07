@@ -12,7 +12,7 @@ const mocks = vi.hoisted(() => ({
   genererIa: vi.fn(),
 }))
 
-vi.mock('../../api/comptaApi', () => ({
+vi.mock('../../api/marketingApi', () => ({
   default: {
     campagnes: {
       list: mocks.list,

@@ -5,7 +5,7 @@ import { createElement, lazy } from 'react'
 import {
   LayoutDashboard, BookOpen, PencilLine, FileBarChart2,
   Landmark, ReceiptText, Building2, Scale, Receipt, HandCoins, ShieldCheck,
-  ListChecks, Repeat, BadgeCheck,
+  ListChecks, Repeat, BadgeCheck, CalendarClock, PieChart,
   Calculator,
 } from 'lucide-react'
 import { appGlyph } from '../../lib/apps/appGlyph'
@@ -37,6 +37,9 @@ const EcrituresRecurrentesPage = lazy(
   () => import('./pages/EcrituresRecurrentesPage.jsx'))
 // PACT160 — file d'approbation des changements de RIB fournisseur (XACC24).
 const ApprobationsRibPage = lazy(() => import('./pages/ApprobationsRibPage.jsx'))
+// PACT163 — charges constatées d'avance (XACC15) et budgets (XACC22).
+const ChargesAvancePage = lazy(() => import('./pages/ChargesAvancePage.jsx'))
+const BudgetsPage = lazy(() => import('./pages/BudgetsPage.jsx'))
 
 const ROLES = ['responsable', 'admin']
 
@@ -71,6 +74,8 @@ const config = {
       { to: '/comptabilite/engagements', label: 'Engagements', icon: icon(ShieldCheck), roles: ROLES },
       { to: '/comptabilite/cloture', label: 'Clôture', icon: icon(ListChecks), roles: ROLES },
       { to: '/comptabilite/approbations-rib', label: 'Approbations RIB', icon: icon(BadgeCheck), roles: ROLES },
+      { to: '/comptabilite/charges-avance', label: 'Charges d’avance', icon: icon(CalendarClock), roles: ROLES },
+      { to: '/comptabilite/budgets', label: 'Budgets', icon: icon(PieChart), roles: ROLES },
     ],
   },
   // Titres de page : du plus spécifique au plus général (routes.meta).
@@ -79,6 +84,8 @@ const config = {
     // se fait par préfixe, l'entrée la plus spécifique doit passer d'abord.
     ['/comptabilite/ecritures-recurrentes', 'Écritures récurrentes — Comptabilité'],
     ['/comptabilite/approbations-rib', 'Approbations RIB — Comptabilité'],
+    ['/comptabilite/charges-avance', 'Charges d’avance — Comptabilité'],
+    ['/comptabilite/budgets', 'Budgets — Comptabilité'],
     ['/comptabilite/cloture', 'Clôture — Comptabilité'],
     ['/comptabilite/engagements', 'Engagements — Comptabilité'],
     ['/comptabilite/effets', 'Effets & règlements — Comptabilité'],
@@ -108,6 +115,8 @@ const config = {
     { path: '/comptabilite/cloture', component: CloturePage, roles: ROLES },
     { path: '/comptabilite/ecritures-recurrentes', component: EcrituresRecurrentesPage, roles: ROLES },
     { path: '/comptabilite/approbations-rib', component: ApprobationsRibPage, roles: ROLES },
+    { path: '/comptabilite/charges-avance', component: ChargesAvancePage, roles: ROLES },
+    { path: '/comptabilite/budgets', component: BudgetsPage, roles: ROLES },
   ],
 }
 

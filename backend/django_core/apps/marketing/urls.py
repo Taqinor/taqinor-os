@@ -1,13 +1,16 @@
 """Routes du module Marketing (``apps.marketing``) — ODX10.
 
-Nouveau préfixe ``/api/django/marketing/…``. Les mêmes ViewSets/vues publiques
-sont AUSSI servis par ``apps.compta.urls`` sous ``/api/django/compta/…`` (routes
-historiques conservées à l'identique pour ne casser aucun client). Les ViewSets
-gardent le scoping ``request.user.company`` + l'assignation forcée de
-``company`` (hérité de ``_ComptaBaseViewSet`` = ``TenantMixin``).
+Préfixe ``/api/django/marketing/…``. PACT26 — le double montage historique
+qui re-servait ces mêmes ViewSets/vues publiques sous ``apps.compta.urls``
+(``/api/django/compta/…``) a été retiré : seul ``campagnes`` avait un
+appelant frontend vivant (``CampagnesScreen.jsx`` via ``comptaApi``), migré
+vers ce module. Les ViewSets gardent le scoping ``request.user.company`` +
+l'assignation forcée de ``company`` (hérité de ``_ComptaBaseViewSet`` =
+``TenantMixin``).
 
-Basenames explicitement préfixés ``mkt-…`` pour NE PAS entrer en collision avec
-les noms d'URL du routeur compta (qui reverse ``campagne-list`` etc.).
+Basenames explicitement préfixés ``mkt-…`` (héritage de l'époque où le routeur
+compta reversait ``campagne-list`` etc. sous les mêmes noms) : conservé pour
+ne pas risquer de collision ailleurs.
 """
 
 from django.urls import include, path
