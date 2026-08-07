@@ -26,11 +26,13 @@ test('zéro table écrite à la main dans features/compta/pages/', () => {
   assert.deepEqual(offenders, [], `table nue restante : ${offenders.join(', ')}`)
 })
 
-test('les SIX tables sont migrées, la 6ᵉ (journal de caisse) comprise', () => {
+test('les SEPT tables sont migrées (6 APX33 + le plan fiscal PACT163)', () => {
   const attendu = {
     'TresoreriePage.jsx': 3, // Position, Prévisionnel, Journal de caisse
     'EngagementsPage.jsx': 1, // Provisions FNP/FAE
-    'ImmobilisationsPage.jsx': 1, // Plan d'amortissement (dialogue)
+    // PACT163 (XACC16) a ajouté le PLAN FISCAL dérogatoire à côté du plan
+    // comptable : deux tableaux distincts, deux bases légales distinctes.
+    'ImmobilisationsPage.jsx': 2, // Plan d'amortissement + plan fiscal
     'RapprochementsPage.jsx': 1, // Suggestions d'appariement (dialogue)
   }
   let total = 0
@@ -41,7 +43,8 @@ test('les SIX tables sont migrées, la 6ᵉ (journal de caisse) comprise', () =>
     assert.equal(count, n, `${f} : ${count} table(s) migrée(s) au lieu de ${n}`)
     total += count
   }
-  assert.equal(total, 6)
+  // 6 tables APX33 d'origine + le plan fiscal ajouté par PACT163.
+  assert.equal(total, 7)
 })
 
 test('ComptaTable s’appuie sur le primitif partagé, sans le réécrire', () => {
