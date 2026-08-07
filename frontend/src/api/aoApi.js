@@ -185,6 +185,15 @@ const aoApi = {
   // appelait `series-qr` (404), et filtrait sur `affaire` alors que le
   // ViewSet ne connaît que `appel_offre`.
   seriesQR: crud('series-questions'),
+  /* PACT170 — les QUESTIONS elles-mêmes. Le routeur les publie depuis
+     toujours (`router.register(r'questions', QuestionAOViewSet)`,
+     `apps/ao/urls.py`) ; seul le client manquait, si bien que l'écran
+     « Questions terrain » ne pouvait qu'AFFICHER les questions imbriquées
+     dans leur série, jamais en créer ni en corriger une. Création : `serie`,
+     `texte`, et AU MOINS un impact chiffré (`impact_min_modules` et/ou
+     `impact_max_modules`) — le sérialiseur refuse le reste, et c'est la règle
+     produit : on ne pose une question que si sa réponse change le compte. */
+  questions: crud('questions'),
   /* ── `equipements` — CONSTRUIT le 03/08/2026 (AOF118 + AOF141) ───────────
      Le trou est comblé : `EquipementAO` a désormais son sérialiseur, son
      ViewSet `equipements` et l'action atomique `bascule`
