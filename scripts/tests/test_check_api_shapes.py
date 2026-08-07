@@ -167,6 +167,177 @@ dryRun.mockResolvedValueOnce({ data: PAYLOAD })
         self.assertEqual(shapes.mocked_payloads(test), [])
 
 
+class EcranVersChampTests(unittest.TestCase):
+    """PACT9 — attraper l'ecran qui lit un champ fantome SANS avoir de test.
+
+    Le contrat AO est celui REELLEMENT publie par le depot (voir
+    `docs/api-contracts.md`) : six cles, `echeances_dues` en NOMBRE,
+    `marches_en_execution` en OBJET. Les ecrans ci-dessous sont des
+    reconstitutions fideles de ce qui etait en production le 03/08/2026.
+    """
+
+    CONTRAT_AO = {
+        "en_cours": shapes.OBJET,
+        "echeances_dues": shapes.NOMBRE,
+        "reussite": shapes.OBJET,
+        "capacite": shapes.OBJET,
+        "cautions": shapes.OBJET,
+        "marches_en_execution": shapes.OBJET,
+    }
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.base = Path(self.tmp.name)
+        self.client = write(self.base / "src" / "api" / "aoApi.js",
+                            "export default { tableauMarches: () => "
+                            "api.get('/ao/tableau-marches/') }\n")
+        self.contrat = {(self.client.resolve(), "tableauMarches"):
+                        ("/api/django/ao/tableau-marches", dict(self.CONTRAT_AO))}
+        self._root, self._src = shapes.ROOT, shapes.FRONT_SRC
+        shapes.ROOT = self.base
+        shapes.FRONT_SRC = self.base / "src"
+
+    def tearDown(self):
+        shapes.ROOT, shapes.FRONT_SRC = self._root, self._src
+        self.tmp.cleanup()
+
+    def _constats(self, source: str, nom="DashboardPage.jsx"):
+        write(self.base / "src" / "features" / "ao" / nom, source)
+        return shapes.champs_fantomes(self.contrat)
+
+    ECRAN_CASSE = """
+import aoApi from '../../api/aoApi'
+export default function DashboardPage() {
+  const { data } = useResource(() => aoApi.tableauMarches(), undefined, {
+    select: (res) => res.data,
+  })
+  return (
+    <div>
+      <b>{data.ao_en_cours}</b>
+      <b>{data.taux_reussite}</b>
+      <b>{data.cautions_immobilisees}</b>
+      <b>{data.capacite_vs_engagement}</b>
+      {data.echeances_dues.map((e) => <li key={e.id}>{e.libelle}</li>)}
+      <span>{data.marches_en_execution}</span>
+    </div>
+  )
+}
+"""
+
+    def test_les_quatre_champs_fantomes_de_l_AO_sont_retrouves(self):
+        champs = {c[4] for c in self._constats(self.ECRAN_CASSE)}
+        self.assertLessEqual(
+            {"ao_en_cours", "taux_reussite", "cautions_immobilisees",
+             "capacite_vs_engagement"}, champs)
+
+    def test_le_premier_plantage_map_sur_un_nombre_est_retrouve(self):
+        motifs = {c[4]: c[5] for c in self._constats(self.ECRAN_CASSE)}
+        self.assertIn("echeances_dues", motifs)
+        self.assertIn("map is not a function", motifs["echeances_dues"])
+
+    def test_le_second_plantage_objet_rendu_en_JSX_est_retrouve(self):
+        motifs = {c[4]: c[5] for c in self._constats(self.ECRAN_CASSE)}
+        self.assertIn("marches_en_execution", motifs)
+        self.assertIn("not valid as a React child",
+                      motifs["marches_en_execution"])
+
+    def test_l_ecran_CORRIGE_ne_produit_aucun_constat(self):
+        # Le meme ecran, tel qu'il est aujourd'hui : zero constat. Une garde
+        # qui rougirait ici serait desactivee dans la semaine.
+        correct = """
+import aoApi from '../../api/aoApi'
+export default function DashboardPage() {
+  const { data } = useResource(() => aoApi.tableauMarches(), undefined, {
+    select: (res) => res.data,
+  })
+  const enCours = data.en_cours ?? {}
+  const reussite = data.reussite ?? {}
+  const cautions = data.cautions ?? {}
+  const marches = data.marches_en_execution ?? {}
+  const capacite = data.capacite ?? {}
+  return <b>{entier(data.echeances_dues)}{enCours.total}{reussite.gagnes}
+    {cautions.nombre}{marches.total}{capacite.ecart_modules}</b>
+}
+"""
+        self.assertEqual(self._constats(correct), [])
+
+    # ── Les trois faux positifs que l'appariement par NOM produisait ────────
+    def test_homonymie_un_champ_du_MEME_nom_sur_un_AUTRE_endpoint(self):
+        # POS, paie et flotte publient tous un champ `total` : apparier par nom
+        # de champ tombait sous 10 % de precision. Ici l'ecran lit `total` sur
+        # un endpoint QUI NE PORTE PAS DE CONTRAT -> aucun constat, jamais.
+        autre = """
+import posApi from '../../api/posApi'
+export default function Caisse() {
+  const { data } = useResource(() => posApi.tableauCaisse(), undefined, {
+    select: (res) => res.data,
+  })
+  return <b>{data.total}{data.echeances_dues}</b>
+}
+"""
+        write(self.base / "src" / "api" / "posApi.js", "export default {}\n")
+        self.assertEqual(self._constats(autre, nom="Caisse.jsx"), [])
+
+    def test_un_nom_de_variable_aussi_utilise_comme_parametre_est_abandonne(self):
+        # LE piege mesure : `const r = await aoApi.tableauMarches()` lie `r`,
+        # mais `.then((r) => r.data.results)` ailleurs dans le MEME fichier
+        # designe un AUTRE endpoint. Cinq faux positifs sur cinq (ged, audit,
+        # ia, monitoring, ventes) venaient de la.
+        ambigu = """
+import aoApi from '../../api/aoApi'
+export default function Ecran() {
+  const charger = async () => {
+    const r = await aoApi.tableauMarches()
+    setStats(r.data.en_cours)
+  }
+  autreApi.getAcls().then((r) => setEntries(r.data?.results ?? []))
+}
+"""
+        self.assertEqual(self._constats(ambigu, nom="Ecran.jsx"), [])
+
+    def test_sans_select_data_on_n_apparie_pas(self):
+        # Sans `select: (r) => r.data`, la variable porte peut-etre la reponse
+        # axios entiere : accuser reviendrait a deviner.
+        sans_select = """
+import aoApi from '../../api/aoApi'
+export default function Ecran() {
+  const { data } = useResource(() => aoApi.tableauMarches())
+  return <b>{data.champ_invente}</b>
+}
+"""
+        self.assertEqual(self._constats(sans_select, nom="Ecran.jsx"), [])
+
+    def test_une_variable_liee_deux_fois_est_abandonnee(self):
+        deux_fois = """
+import aoApi from '../../api/aoApi'
+function A() {
+  const { data } = useResource(() => aoApi.tableauMarches(), undefined, {
+    select: (res) => res.data,
+  })
+  return <b>{data.champ_invente}</b>
+}
+function B() {
+  const { data } = useResource(() => autreApi.autre(), undefined, {
+    select: (res) => res.data,
+  })
+  return <b>{data.autre_champ}</b>
+}
+"""
+        self.assertEqual(self._constats(deux_fois, nom="Deux.jsx"), [])
+
+    def test_le_depot_reel_ne_produit_AUCUN_constat(self):
+        # L'exigence de PACT9 : zero faux positif. Cette garde n'est livrable
+        # qu'a cette condition — une garde bruyante sera desactivee, et la
+        # recidive serait la cinquieme.
+        shapes.ROOT, shapes.FRONT_SRC = self._root, self._src
+        try:
+            constats = shapes.champs_fantomes(shapes.build_contract())
+        finally:
+            shapes.ROOT = self.base
+            shapes.FRONT_SRC = self.base / "src"
+        self.assertEqual(constats, [], f"faux positifs PACT9 : {constats}")
+
+
 class DepotReelTests(unittest.TestCase):
     def test_contrat_versionne_present(self):
         contenu = shapes.CONTRACT_PATH.read_text(encoding="utf-8")
