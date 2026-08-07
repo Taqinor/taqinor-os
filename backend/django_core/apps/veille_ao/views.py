@@ -104,10 +104,21 @@ class DeclencherCollecteView(_BaseVeilleView):
                 status=status.HTTP_200_OK)
 
         # EXACTEMENT la tâche du beat — jamais une variante « pour le bouton ».
-        job = submit(KIND_COLLECTE, collecte_quotidienne,
-                     company=company, user=request.user,
-                     company_id=getattr(company, 'pk', None),
-                     user_id=request.user.pk)
+        try:
+            job = submit(KIND_COLLECTE, collecte_quotidienne,
+                         company=company, user=request.user,
+                         company_id=getattr(company, 'pk', None),
+                         user_id=request.user.pk)
+        except Exception as erreur:  # noqa: BLE001 — broker injoignable
+            # ``core.jobs.submit`` a déjà marqué le job en ÉCHEC ; il reste à
+            # le DIRE à l'écran. Un 503 explicite en français vaut infiniment
+            # mieux qu'un 500 : l'utilisateur sait que ce n'est pas sa faute
+            # et qu'il peut réessayer.
+            return Response(
+                {'detail': ("Le service de tâches de fond est injoignable : "
+                            f"la collecte n'a pas pu être lancée ({erreur}). "
+                            'Réessayez dans un instant.')},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE)
         return Response(
             self._charge(job, deja_en_cours=False,
                          armee=collecte_active(),

@@ -9,6 +9,7 @@ Le « Done = » de la tâche, point par point :
 """
 import ast
 import pathlib
+from unittest import mock
 
 from django.test import SimpleTestCase, TestCase, override_settings
 from django.urls import reverse
@@ -109,6 +110,21 @@ class DoubleClicTests(_Base):
 
         self.assertEqual(reponse.status_code, 202)
         self.assertFalse(reponse.data['deja_en_cours'])
+
+
+class BrokerInjoignableTests(_Base):
+    @override_settings(VEILLE_AO_COLLECTE_ACTIVE=False)
+    def test_un_broker_injoignable_repond_503_en_francais_pas_500(self):
+        """L'utilisateur doit savoir que ce n'est pas sa faute."""
+        api = self._api(['veille_ao_voir', 'veille_ao_gerer'], 'broker')
+
+        with mock.patch('core.jobs.submit',
+                        side_effect=RuntimeError('broker down')):
+            reponse = api.post(URL)
+
+        self.assertEqual(reponse.status_code, 503)
+        self.assertIn('injoignable', reponse.data['detail'])
+        self.assertIn('Réessayez', reponse.data['detail'])
 
 
 class UneSeuleMecaniqueTests(SimpleTestCase):
