@@ -769,19 +769,26 @@ def _notifier(company, event_type, titre, corps, lien=''):
 
 
 def destinataires_veille(company):
-    """Les utilisateurs actifs de la société porteurs de ``veille_ao_voir``.
+    """Les utilisateurs actifs de la société qui PEUVENT lire la veille.
 
-    Paramétrable au sens où la permission EST le paramètre : donner ou
-    retirer ``veille_ao_voir`` à un rôle change les destinataires, sans
-    liste codée en dur ni réglage parallèle à maintenir.
+    Paramétrable au sens fort : la permission EST le paramètre. Donner ou
+    retirer ``veille_ao_voir`` à un rôle change les destinataires, sans liste
+    codée en dur ni réglage parallèle à maintenir.
+
+    Le test d'appartenance passe par ``core.permissions._user_has_or_legacy``
+    — la MÊME fonction que ``ScopedPermission`` applique aux routes. Les
+    destinataires sont donc, par construction, exactement ceux qui peuvent
+    ouvrir l'écran : on ne notifie jamais quelqu'un à propos d'une page qu'il
+    recevrait en 403, et on n'oublie jamais un compte hérité sans rôle fin.
     """
     from django.contrib.auth import get_user_model
+
+    from core.permissions import _user_has_or_legacy
 
     utilisateurs = get_user_model().objects.filter(
         company=company, is_active=True).select_related('role')
     return [u for u in utilisateurs
-            if 'veille_ao_voir' in (getattr(u.role, 'permissions', None) or [])
-            or getattr(u, 'role_legacy', '') in ('admin', 'responsable')]
+            if _user_has_or_legacy(u, 'veille_ao_voir')]
 
 
 def notifier_nouveaux_avis(company, rapports):
