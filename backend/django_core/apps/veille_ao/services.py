@@ -27,8 +27,9 @@ from rest_framework.exceptions import ValidationError
 
 from .hashing import empreinte_avis
 from .models import (
-    AvisMarche, DeclencheurCollecte, ExecutionCollecte, PorteeExclusion,
-    RegleExclusion, StatutAvis, VerdictExecution,
+    AvisMarche, DeclencheurCollecte, ExecutionCollecte, Informateur,
+    PorteeExclusion, RegleExclusion, SourceVeille, StatutAvis, TypeSource,
+    TYPES_COLLECTABLES, VerdictExecution,
 )
 from .scoring import normaliser
 
@@ -272,6 +273,10 @@ CHAMPS_RECTIFIABLES = (
     'acheteur', 'lieu', 'region', 'procedure', 'categorie', 'lot',
     'date_publication', 'date_limite_remise', 'date_ouverture',
     'montant_estime', 'caution_provisoire', 'url_detail',
+    # VAO27 — l'informateur est rectifiable : un avis d'abord collecté puis
+    # signalé à la main doit pouvoir GAGNER son tuyau. Il n'est jamais EFFACÉ
+    # par une re-collecte, qui ne le porte simplement pas.
+    'informateur',
 )
 
 
@@ -581,8 +586,6 @@ def collecter_toutes_les_sources(company, *, user=None, lecteur=None,
     L'alarme de silence (VAO24) est évaluée UNE fois, à la fin du passage :
     c'est le moment où l'on sait si la veille a ramené quelque chose.
     """
-    from .models import SourceVeille
-
     sources = SourceVeille.objects.filter(company=company).collectables()
     rapports = [collecter(source, company, user=user, lecteur=lecteur,
                           declencheur=declencheur)
@@ -692,8 +695,6 @@ def sante(company):
     douter de l'ensemble.
     """
     from django.conf import settings
-
-    from .models import SourceVeille
 
     maintenant = timezone.now()
     derniere_reussie = ExecutionCollecte.objects.filter(
@@ -823,3 +824,128 @@ def notifier_nouveaux_avis(company, rapports):
     envoyees = _notifier(company, 'veille_ao_nouveaux_avis', titre, corps,
                          lien='/veille-ao/avis?statut=nouveau')
     return len(envoyees)
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# VAO27 — LA PORTE MANUELLE : capter en 30 secondes un AO reçu par WhatsApp,
+# SMS ou appel — avec sa SOURCE.
+#
+# C'est la leçon FRDISI, et elle est chère : l'appel d'offres qui a réellement
+# occupé le fondateur n'est passé par AUCUN portail. Il est arrivé par un
+# partenaire, sur une liste d'invitation, et aucun dispositif de veille —
+# gratuit ou payant — ne l'aurait fait remonter. La porte automatique ne peut
+# donc jamais être la seule.
+# ─────────────────────────────────────────────────────────────────────────
+
+#: Libellés des sources créées à la volée par la saisie manuelle.
+LIBELLES_PORTE_HUMAINE = {
+    TypeSource.TUYAU_PARTENAIRE: 'Tuyau partenaire',
+    TypeSource.SAISIE_MANUELLE: 'Saisie manuelle',
+    TypeSource.IMPORT_CSV: 'Import de fichier',
+}
+
+
+def resoudre_source(company, valeur, defaut=TypeSource.TUYAU_PARTENAIRE):
+    """Rend la ``SourceVeille`` désignée par ``valeur`` — PK ou TYPE.
+
+    Une saisie faite depuis un chantier ne connaît pas la clé primaire d'une
+    source : elle sait seulement « c'est un partenaire qui me l'a dit ». Cette
+    fonction accepte donc l'identifiant TECHNIQUE (un entier, pour l'écran
+    complet) **ou** le code de TYPE (``tuyau_partenaire``…), et crée la source
+    de ce type à la volée si elle n'existe pas encore — idempotent, une seule
+    ligne par société et par type.
+
+    Une source d'une AUTRE société est introuvable : rien ne fuit entre
+    locataires, même par un identifiant deviné.
+    """
+    if isinstance(valeur, SourceVeille):
+        if valeur.company_id != getattr(company, 'pk', None):
+            raise ValidationError(
+                {'source': 'Cette source appartient à une autre société.'})
+        return valeur
+
+    brut = '' if valeur is None else str(valeur).strip()
+
+    if brut.isdigit():
+        source = SourceVeille.objects.filter(
+            company=company, pk=int(brut)).first()
+        if source is None:
+            raise ValidationError({'source': 'Source introuvable.'})
+        return source
+
+    type_source = brut or defaut
+    if type_source not in {c for c, _ in TypeSource.choices}:
+        connus = ', '.join(c for c, _ in TypeSource.choices)
+        raise ValidationError({'source': (
+            f'Type de source inconnu : « {type_source} ». '
+            f'Valeurs acceptées : {connus}.')})
+
+    source, _cree = SourceVeille.objects.get_or_create(
+        company=company, code=str(type_source),
+        defaults={
+            'libelle': LIBELLES_PORTE_HUMAINE.get(
+                type_source, TypeSource(type_source).label),
+            'type_source': type_source,
+            # Une porte HUMAINE est active d'emblée : elle n'interroge rien,
+            # elle reçoit. Une source réseau, elle, naît DÉSARMÉE (règle #5).
+            'actif': type_source not in TYPES_COLLECTABLES,
+        })
+    return source
+
+
+def creer_avis_manuel(company, donnees, user=None):
+    """Crée un avis SIGNALÉ par un humain, en quatre champs.
+
+    Le minimum vital, et rien de plus : objet, acheteur, date limite,
+    informateur. ``informateur`` est le SEUL champ bloquant (400 en français
+    sinon) — savoir QUI l'a signalé est la matière même de la mesure
+    d'attribution (VAO31), et c'est la seule information qu'on ne pourra plus
+    jamais retrouver après coup.
+
+    **Aucune autre validation ne bloque.** Une saisie faite debout sur un
+    chantier, entre deux appels, doit passer : un formulaire qui refuse parce
+    qu'une date est incomplète est un formulaire qu'on n'utilise pas, et l'AO
+    est perdu.
+
+    L'avis manuel entre dans le MÊME sas et suit le MÊME cycle que les avis
+    collectés — dédoublonnage de niveau 2 compris (VAO11) : le même avis saisi
+    à la main puis collecté automatiquement FUSIONNE au lieu de doubler.
+    """
+    donnees = dict(donnees or {})
+
+    informateur = (donnees.pop('informateur', '') or '').strip()
+    if not informateur:
+        raise ValidationError({'informateur': (
+            "Qui vous a signalé cet avis ? L'informateur est obligatoire : "
+            "c'est la seule information qu'on ne pourra plus retrouver plus "
+            'tard, et celle qui mesure ce que la veille automatique ne voit '
+            'pas.')})
+    if informateur not in {c for c, _ in Informateur.choices}:
+        connus = ', '.join(c for c, _ in Informateur.choices)
+        raise ValidationError({'informateur': (
+            f'Informateur inconnu : « {informateur} ». '
+            f'Valeurs acceptées : {connus}.')})
+
+    source = resoudre_source(company, donnees.pop('source', None))
+
+    if not (donnees.get('objet') or donnees.get('acheteur')):
+        raise ValidationError({'objet': (
+            "Indiquez au moins l'objet ou l'acheteur — sans l'un des deux, "
+            "l'avis serait introuvable dans le sas.")})
+
+    champs = {k: v for k, v in donnees.items() if k in CHAMPS_RECTIFIABLES}
+    champs['informateur'] = informateur
+
+    avis, cree, _niveau = enregistrer_avis(company, source, champs)
+    if cree:
+        from .scoring import scorer_avis
+
+        scorer_avis(avis)
+        avis.save(update_fields=['score', 'mots_cles_declenches',
+                                 'updated_at'])
+    elif informateur and not avis.informateur:
+        # Un avis d'abord COLLECTÉ puis signalé à la main garde la trace du
+        # tuyau : c'est précisément ce que la mesure d'attribution cherche.
+        avis.informateur = informateur
+        avis.save(update_fields=['informateur', 'updated_at'])
+    return avis, cree

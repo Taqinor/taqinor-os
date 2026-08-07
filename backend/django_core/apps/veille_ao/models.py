@@ -152,6 +152,23 @@ class CategorieAvis(models.TextChoices):
     AUTRE = 'autre', 'Autre / non précisée'
 
 
+class Informateur(models.TextChoices):
+    """VAO27 — QUI a signalé cet avis. La question qui vaut le module.
+
+    L'avis qui a réellement occupé le fondateur (FRDISI) n'est passé par aucun
+    portail : il est arrivé par un partenaire. Sans ce champ, la mesure
+    d'attribution (VAO31) ne pourrait pas répondre à « d'où vient réellement
+    le chiffre d'affaires » — et on continuerait à croire que le portail
+    couvre tout.
+    """
+
+    PARTENAIRE = 'partenaire', 'Partenaire'
+    CLIENT = 'client', 'Client'
+    EMPLOYE = 'employe', 'Employé'
+    PRESSE = 'presse', 'Presse'
+    AUTRE = 'autre', 'Autre'
+
+
 class AvisMarcheQuerySet(models.QuerySet):
     def ouverts(self):
         return self.filter(statut__in=STATUTS_OUVERTS)
@@ -246,6 +263,17 @@ class AvisMarche(TenantModel):
 
     url_detail = models.URLField("URL de la page de détail", max_length=500,
                                  blank=True, default='')
+
+    # VAO27 — QUI me l'a signalé. Vide pour un avis COLLECTÉ (personne ne l'a
+    # signalé, une machine l'a lu) ; OBLIGATOIRE pour une saisie manuelle,
+    # exigé par le service, pas par la colonne — une contrainte NOT NULL ici
+    # bloquerait toute collecte automatique.
+    informateur = models.CharField(
+        'Informateur', max_length=20, choices=Informateur.choices,
+        blank=True, default='',
+        help_text="Qui a signalé cet avis. C'est la seule porte qui aurait "
+                  "capté l'avis FRDISI — et la matière de la mesure "
+                  "d'attribution (VAO31).")
 
     # ── Pourquoi cet avis est remonté (VAO9 remplit ces deux champs)
     mots_cles_declenches = models.JSONField(

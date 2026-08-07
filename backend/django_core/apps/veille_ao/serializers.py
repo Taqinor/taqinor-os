@@ -58,6 +58,23 @@ class RegleExclusionSerializer(serializers.ModelSerializer):
 
 
 class AvisMarcheSerializer(serializers.ModelSerializer):
+    """Le SAS vu par l'API — et la porte MANUELLE de VAO27.
+
+    Trois choix de contrat, chacun pour une raison mesurée :
+
+    * ``source`` accepte un identifiant technique **ou** un code de TYPE
+      (``tuyau_partenaire``…). Une saisie faite debout sur un chantier ne
+      connaît pas la clé primaire d'une source ; elle sait seulement « c'est
+      un partenaire qui me l'a dit ». Le service résout, et crée la porte
+      humaine correspondante si besoin (idempotent).
+    * ``date_limite`` est l'ALIAS d'écriture et de lecture de
+      ``date_limite_remise`` : c'est le nom que porte l'écran (et le même que
+      côté ``apps.ao``). Les deux noms restent servis — retirer l'ancien
+      casserait ce qui existe.
+    * ``cree_le`` est l'alias de ``created_at`` — convention déjà en vigueur
+      dans le reste du dépôt côté client.
+    """
+
     source_libelle = serializers.CharField(
         source='source.libelle', read_only=True)
     type_source = serializers.CharField(
@@ -71,6 +88,18 @@ class AvisMarcheSerializer(serializers.ModelSerializer):
     # un avis a été écarté.
     regle_exclusion_motif = serializers.CharField(
         source='regle_exclusion.motif', read_only=True, default='')
+    # VAO27 — la source peut être désignée par son TYPE, pas seulement par sa
+    # clé. ``CharField`` (et non ``PrimaryKeyRelatedField``) parce que le
+    # schéma doit dire honnêtement qu'une chaîne est acceptée.
+    source = serializers.CharField(
+        required=False, allow_blank=True,
+        help_text="Identifiant de la source OU code de type "
+                  "(« tuyau_partenaire », « saisie_manuelle »…).")
+    date_limite = serializers.DateTimeField(
+        source='date_limite_remise', required=False, allow_null=True)
+    cree_le = serializers.DateTimeField(source='created_at', read_only=True)
+    informateur_libelle = serializers.CharField(
+        source='get_informateur_display', read_only=True)
 
     class Meta:
         model = AvisMarche
@@ -79,13 +108,15 @@ class AvisMarcheSerializer(serializers.ModelSerializer):
             'ref_consultation', 'org_acronyme', 'reference_avis',
             'objet', 'acheteur', 'lieu', 'region', 'procedure',
             'categorie', 'categorie_libelle', 'lot',
-            'date_publication', 'date_limite_remise', 'date_ouverture',
+            'date_publication', 'date_limite_remise', 'date_limite',
+            'date_ouverture',
             'montant_estime', 'caution_provisoire', 'url_detail',
+            'informateur', 'informateur_libelle',
             'mots_cles_declenches', 'score',
             'statut', 'statut_libelle', 'est_depasse',
             'appel_offre_id', 'donnees_brutes',
             'regle_exclusion', 'regle_exclusion_motif',
-            'empreinte', 'created_at', 'updated_at',
+            'empreinte', 'created_at', 'cree_le', 'updated_at',
         ]
         read_only_fields = [
             # Le statut ne bouge QUE par le service de transition (VAO14) ;
@@ -96,6 +127,56 @@ class AvisMarcheSerializer(serializers.ModelSerializer):
             'donnees_brutes', 'regle_exclusion', 'empreinte',
             'created_at', 'updated_at',
         ]
+        extra_kwargs = {
+            # Le minimum vital, et rien de plus : une validation de plus est
+            # une saisie de chantier perdue (VAO27).
+            'objet': {'required': False, 'allow_blank': True},
+        }
+
+    def to_representation(self, instance):
+        """``source`` se LIT comme un identifiant, malgré son ``CharField``.
+
+        L'écran affiche ``source_libelle`` ; ce champ-ci reste la clé, pour
+        que la liste déroulante des sources continue de s'y accrocher.
+        """
+        donnees = super().to_representation(instance)
+        donnees['source'] = instance.source_id
+        return donnees
+
+    def create(self, validated_data):
+        """La création via l'API est TOUJOURS une saisie manuelle (VAO27).
+
+        Elle passe donc par ``services.creer_avis_manuel`` : informateur
+        obligatoire, source résolue par type, dédoublonnage de niveau 2. Les
+        avis COLLECTÉS, eux, n'empruntent jamais cette route — ils sont écrits
+        par le service de collecte.
+        """
+        from .services import creer_avis_manuel
+
+        requete = self.context.get('request')
+        donnees = dict(validated_data)
+        # ``company`` est FORCÉE côté serveur par ``TenantMixin`` : on la
+        # reprend de là, jamais du corps de la requête.
+        company = (donnees.pop('company', None)
+                   or getattr(getattr(requete, 'user', None), 'company', None))
+        avis, _cree = creer_avis_manuel(
+            company, donnees, user=getattr(requete, 'user', None))
+        return avis
+
+    def update(self, instance, validated_data):
+        """``source`` reste résoluble par TYPE en modification, elle aussi.
+
+        Sans cela, un PATCH portant ``source`` écrirait une CHAÎNE dans une
+        clé étrangère — le genre de 500 qui ne se voit qu'en production.
+        """
+        from .services import resoudre_source
+
+        donnees = dict(validated_data)
+        donnees.pop('company', None)
+        if 'source' in donnees:
+            donnees['source'] = resoudre_source(
+                instance.company, donnees.pop('source'))
+        return super().update(instance, donnees)
 
 
 class ExecutionCollecteSerializer(serializers.ModelSerializer):
