@@ -1,0 +1,46 @@
+{
+  "endpoint": "GET /api/django/ao/tableau-marches/",
+  "pourquoi": "Le tableau de bord des marchés, en UN SEUL appel agrégé. C'est l'endpoint qui a fait planter l'écran le 03/08/2026 : ce fichier est le document que les deux moitiés n'avaient pas sous les yeux. Source de vérité : apps/ao/selectors.py::tableau_marches (et son jumeau tableau_marches_vide, qui publie les MÊMES clés à zéro).",
+  "exemple": {
+    "en_cours": {
+      "total": 3,
+      "sous_7_jours": 1,
+      "en_retard": 0,
+      "par_echeance": [
+        {
+          "id": 12,
+          "reference": "AO-2026-0007",
+          "objet": "Centrale photovoltaïque 250 kWc — lycée FRDISI",
+          "acheteur": "Ministère de l'Éducation nationale",
+          "statut": "en_preparation",
+          "statut_display": "En préparation",
+          "date_limite": "2026-08-14",
+          "jours_restants": 6
+        }
+      ]
+    },
+    "echeances_dues": 2,
+    "reussite": {
+      "gagnes": 4,
+      "perdus": 6,
+      "total_decides": 10,
+      "total_resultats": 11,
+      "taux_reussite_pct": "40.00"
+    },
+    "capacite": {
+      "demontree_modules": 462,
+      "engagee_modules": 480,
+      "ecart_modules": -18,
+      "toitures_prouvees": 3
+    },
+    "cautions": {
+      "montant_immobilise": "125000.00",
+      "nombre": 2,
+      "expirant_avant_ouverture": 1
+    },
+    "marches_en_execution": {
+      "total": 2,
+      "montant_offre_ht": "2340000.00"
+    }
+  }
+}

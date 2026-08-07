@@ -815,6 +815,112 @@ def champs_fantomes(shapes):
 
 
 # ===========================================================================
+# 3 ter. PACT10 — L'EXEMPLE PARTAGE : `apps/<x>/contract_samples/*.json`
+# ===========================================================================
+#
+# POURQUOI. `plan_lanes.py` force les lanes a etre disjointes en fichiers —
+# c'est ce qui permet a 8 agents de travailler sans conflit. Or un contrat
+# front<->back ne partage AUCUN fichier par construction (`urls.py` d'un cote,
+# `frontend/src/api/*.js` de l'autre) : la regle qui protege des conflits de
+# fusion garantit mecaniquement que les deux moities travaillent en aveugle.
+# L'en-tete d'`aoApi.js` declarait « ce fichier PUBLIE le contrat que le backend
+# enregistre ensuite » — une obligation adressee a une lane parallele qui ne l'a
+# jamais recue. L'obligation n'avait aucun PORTEUR.
+#
+# `apps/<x>/contract_samples/<endpoint>.json` EST ce porteur : un exemple de
+# reponse, versionne, que les deux moities lisent. Le backend affirme que sa
+# vraie reponse egale l'exemple ; le frontend l'IMPORTE au lieu d'inventer son
+# `PAYLOAD` (PACT13). Si le serveur change de forme, l'exemple change, et le
+# test frontend casse tout seul — sans reunion, sans discipline humaine.
+#
+# La fonction ci-dessous est ce qui rend l'exemple DIGNE DE CONFIANCE : elle
+# echoue si l'exemple et le dictionnaire reellement renvoye divergent (cle en
+# trop, cle manquante, nature incompatible). Un exemple qui pourrit dans son
+# coin serait pire que pas d'exemple du tout.
+
+APPS_ROOT = ROOT / "backend" / "django_core" / "apps"
+DOSSIER_ECHANTILLONS = "contract_samples"
+
+_ENDPOINT = re.compile(r"^(?P<verbe>[A-Z]+)\s+(?P<chemin>/\S*)$")
+
+
+def _nature_json(valeur) -> str:
+    if isinstance(valeur, bool):
+        return BOOLEEN
+    if isinstance(valeur, dict):
+        return OBJET
+    if isinstance(valeur, list):
+        return LISTE
+    if isinstance(valeur, (int, float)):
+        return NOMBRE
+    if isinstance(valeur, str):
+        return TEXTE
+    return INCONNU          # `null` : le serveur peut le rendre en toute nature
+
+
+def fichiers_echantillons(racine: Path = None):
+    racine = APPS_ROOT if racine is None else racine
+    if not racine.is_dir():
+        return []
+    return sorted(racine.glob(f"*/{DOSSIER_ECHANTILLONS}/*.json"))
+
+
+def echantillons_de_contrat(shapes, racine: Path = None):
+    """[(fichier, ligne, endpoint, chemin, champ, motif)] — exemples qui derivent."""
+    import json
+
+    par_route = {}
+    for _, (route, forme) in shapes.items():
+        par_route.setdefault(route, forme)
+
+    constats = []
+    for fichier in fichiers_echantillons(racine):
+        relatif = fichier.relative_to(ROOT).as_posix() \
+            if ROOT in fichier.parents or fichier.is_relative_to(ROOT) else fichier.name
+        try:
+            document = json.loads(fichier.read_text(encoding="utf-8"))
+        except (OSError, ValueError) as erreur:
+            constats.append((relatif, 1, fichier.stem, "?", "<fichier>",
+                             f"JSON illisible : {erreur}"))
+            continue
+        endpoint = (document or {}).get("endpoint", "")
+        exemple = (document or {}).get("exemple")
+        entete = _ENDPOINT.match(str(endpoint).strip())
+        if not entete or not isinstance(exemple, dict):
+            constats.append((
+                relatif, 1, fichier.stem, "?", "<fichier>",
+                "l'echantillon doit porter `endpoint` (« GET /api/... ») et "
+                "`exemple` (un objet). Voir apps/ao/contract_samples/README.md"))
+            continue
+        route = normalise_call(entete.group("chemin"), "api/django")
+        chemin = "/" + "/".join(route) if route else entete.group("chemin")
+        forme = par_route.get(chemin)
+        if forme is None:
+            # Endpoint hors contrat (forme non certaine statiquement) : un doute
+            # ne rougit JAMAIS. L'exemple reste utile au frontend.
+            continue
+        for champ in sorted(set(exemple) - set(forme)):
+            constats.append((
+                relatif, 1, fichier.stem, chemin, champ,
+                f"l'exemple declare '{champ}', que le serveur ne renvoie PAS "
+                f"(il renvoie : {', '.join(sorted(forme))})"))
+        for champ in sorted(set(forme) - set(exemple)):
+            constats.append((
+                relatif, 1, fichier.stem, chemin, champ,
+                f"le serveur renvoie '{champ}' et l'exemple l'OMET : un "
+                f"exemple incomplet laisse un champ hors contrat"))
+        for champ in sorted(set(exemple) & set(forme)):
+            attendue, trouvee = forme[champ], _nature_json(exemple[champ])
+            if INCONNU in (attendue, trouvee) or attendue == trouvee:
+                continue
+            constats.append((
+                relatif, 1, fichier.stem, chemin, champ,
+                f"le serveur renvoie '{champ}' en {attendue}, l'exemple le "
+                f"declare en {trouvee}"))
+    return constats
+
+
+# ===========================================================================
 # 4. Rapprochement + contrat versionne
 # ===========================================================================
 
@@ -868,6 +974,9 @@ def analyse(shapes=None):
     # de reference : un ecran qui lit un champ fantome SANS avoir de test est
     # exactement le meme defaut qu'un mock qui ment, vu depuis l'autre bout.
     findings.extend(champs_fantomes(shapes))
+    # PACT10 — l'exemple partage ne peut pas pourrir : il derive du serveur ou
+    # il rougit. C'est ce qui le rend digne d'etre importe par les deux moities.
+    findings.extend(echantillons_de_contrat(shapes))
     return findings, shapes
 
 

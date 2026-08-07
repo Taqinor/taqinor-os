@@ -26,6 +26,21 @@ def write(path: Path, text: str):
     return path
 
 
+_CONTRAT_REEL = None
+
+
+def contrat_reel():
+    """Le contrat derive du VRAI depot, construit UNE SEULE FOIS.
+
+    `build_contract()` relit tout le backend (~40 s) : le rappeler dans chaque
+    test qui en a besoin triplait la duree du fichier.
+    """
+    global _CONTRAT_REEL
+    if _CONTRAT_REEL is None:
+        _CONTRAT_REEL = shapes.build_contract()
+    return _CONTRAT_REEL
+
+
 class ShapeReaderTests(unittest.TestCase):
     """Lecture du dictionnaire REELLEMENT renvoye par une vue."""
 
@@ -331,11 +346,83 @@ function B() {
         # recidive serait la cinquieme.
         shapes.ROOT, shapes.FRONT_SRC = self._root, self._src
         try:
-            constats = shapes.champs_fantomes(shapes.build_contract())
+            constats = shapes.champs_fantomes(contrat_reel())
         finally:
             shapes.ROOT = self.base
             shapes.FRONT_SRC = self.base / "src"
         self.assertEqual(constats, [], f"faux positifs PACT9 : {constats}")
+
+
+class EchantillonDeContratTests(unittest.TestCase):
+    """PACT10 — l'exemple partage derive du serveur, ou il rougit.
+
+    Un exemple qui pourrit dans son coin serait pire que pas d'exemple du tout :
+    les deux moities le liraient en croyant lire le serveur.
+    """
+
+    ROUTE = "/api/django/ao/tableau-marches"
+    CONTRAT = {(Path("aoApi.js"), "tableauMarches"): (
+        ROUTE, {"en_cours": shapes.OBJET, "echeances_dues": shapes.NOMBRE})}
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.apps = Path(self.tmp.name) / "apps"
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def _constats(self, document: str):
+        write(self.apps / "ao" / "contract_samples" / "tableau_marches.json",
+              document)
+        return shapes.echantillons_de_contrat(self.CONTRAT, self.apps)
+
+    def test_un_exemple_conforme_ne_produit_rien(self):
+        self.assertEqual(self._constats(
+            '{"endpoint": "GET /api/django/ao/tableau-marches/",'
+            ' "exemple": {"en_cours": {"total": 3}, "echeances_dues": 2}}'), [])
+
+    def test_une_cle_inventee_par_l_exemple_rougit(self):
+        constats = self._constats(
+            '{"endpoint": "GET /api/django/ao/tableau-marches/",'
+            ' "exemple": {"en_cours": {}, "echeances_dues": 2, "ao_en_cours": 7}}')
+        self.assertEqual([c[4] for c in constats], ["ao_en_cours"])
+
+    def test_une_cle_omise_par_l_exemple_rougit(self):
+        # Un exemple incomplet laisse un champ HORS contrat : la moitie qui le
+        # lit croit que le champ n'existe pas.
+        constats = self._constats(
+            '{"endpoint": "GET /api/django/ao/tableau-marches/",'
+            ' "exemple": {"en_cours": {}}}')
+        self.assertEqual([c[4] for c in constats], ["echeances_dues"])
+
+    def test_une_nature_incompatible_rougit(self):
+        # LE plantage du 03/08 : `echeances_dues` est un NOMBRE cote serveur,
+        # une LISTE dans la charge utile inventee par le frontend.
+        constats = self._constats(
+            '{"endpoint": "GET /api/django/ao/tableau-marches/",'
+            ' "exemple": {"en_cours": {}, "echeances_dues": []}}')
+        self.assertEqual(len(constats), 1)
+        self.assertIn("en nombre", constats[0][5])
+        self.assertIn("en liste", constats[0][5])
+
+    def test_un_endpoint_hors_contrat_ne_rougit_jamais(self):
+        # Un doute ne rougit JAMAIS : la forme de cet endpoint n'est pas
+        # certaine statiquement, donc on n'accuse pas son exemple.
+        self.assertEqual(self._constats(
+            '{"endpoint": "GET /api/django/ao/inconnu/",'
+            ' "exemple": {"quoi": 1}}'), [])
+
+    def test_un_fichier_malforme_rougit_avec_le_format_attendu(self):
+        constats = self._constats('{"exemple": {}}')
+        self.assertEqual(len(constats), 1)
+        self.assertIn("contract_samples/README.md", constats[0][5])
+
+    def test_l_echantillon_pilote_du_depot_est_conforme(self):
+        # Le module pilote de PACT10 : `apps/ao/contract_samples/`.
+        fichiers = shapes.fichiers_echantillons()
+        self.assertTrue(any(f.name == "tableau_marches.json" for f in fichiers),
+                        "l'echantillon pilote AO a disparu")
+        self.assertEqual(shapes.echantillons_de_contrat(contrat_reel()), [])
 
 
 class DepotReelTests(unittest.TestCase):
