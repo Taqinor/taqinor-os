@@ -592,6 +592,10 @@
     clusters:inconnu, count:nombre
 - frontend/src/api/uxviewsApi.js :: importSavedViews -> /api/django/uxviews/saved-views/importer
     created:inconnu, erreurs:inconnu
+- frontend/src/api/veilleAoApi.js :: ignorer -> /api/django/veille_ao/avis/<>/ignorer
+    id:inconnu, regle_proposee:inconnu, statut:inconnu
+- frontend/src/api/veilleAoApi.js :: retenir -> /api/django/veille_ao/avis/<>/retenir
+    appel_offre_cree:inconnu, appel_offre_id:inconnu, id:inconnu, statut:inconnu
 - frontend/src/api/ventesApi.js :: applyPreset -> /api/django/ventes/devis/<>/apply-preset
     detail:texte, lignes_created:nombre, skipped_priceless:nombre
 - frontend/src/api/ventesApi.js :: approuverEtapeDevis -> /api/django/ventes/devis/<>/approuver-etape
