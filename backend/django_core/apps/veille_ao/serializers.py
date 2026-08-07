@@ -10,7 +10,9 @@ que par le service unique de transition (VAO14).
 """
 from rest_framework import serializers
 
-from .models import AvisMarche, MotCleVeille, RegleExclusion, SourceVeille
+from .models import (
+    AvisMarche, ExecutionCollecte, MotCleVeille, RegleExclusion, SourceVeille,
+)
 
 
 class SourceVeilleSerializer(serializers.ModelSerializer):
@@ -94,6 +96,66 @@ class AvisMarcheSerializer(serializers.ModelSerializer):
             'donnees_brutes', 'regle_exclusion', 'empreinte',
             'created_at', 'updated_at',
         ]
+
+
+class ExecutionCollecteSerializer(serializers.ModelSerializer):
+    """VAO24 — une ligne du journal d'exécution (LECTURE seule côté API).
+
+    Le journal est écrit par le service de collecte, jamais par un client :
+    un journal qu'on peut réécrire depuis l'extérieur ne prouve plus rien.
+    """
+
+    source_libelle = serializers.CharField(
+        source='source.libelle', read_only=True, default='')
+    verdict_libelle = serializers.CharField(
+        source='get_verdict_display', read_only=True)
+    declencheur_libelle = serializers.CharField(
+        source='get_declencheur_display', read_only=True)
+
+    class Meta:
+        model = ExecutionCollecte
+        fields = [
+            'id', 'source', 'source_libelle', 'debut', 'fin',
+            'mots_cles_interroges', 'examines', 'nouveaux', 'mis_a_jour',
+            'auto_ignores', 'erreurs', 'verdict', 'verdict_libelle',
+            'message', 'declencheur', 'declencheur_libelle',
+            'alarme_notifiee', 'created_at', 'updated_at',
+        ]
+        read_only_fields = fields
+
+
+class SanteVeilleSerializer(serializers.Serializer):
+    """VAO24/VAO35/VAO37 — l'état de la veille, en UN appel agrégé.
+
+    Un sérialiseur RÉEL, jamais ``response=dict`` : un endpoint agrégé sans
+    schéma déclaré est un contrat que le frontend doit deviner — la faute
+    exacte que ``scripts/check_api_contract.py`` existe pour empêcher.
+
+    Le bandeau de santé (VAO37) ET l'écran de paramètres (VAO35) consomment
+    CE calcul, jamais un agrégat dérivé côté client à partir de la liste des
+    exécutions : deux calculs finiraient par diverger, et un désaccord entre
+    écrans fait douter de l'ensemble.
+    """
+
+    derniere_collecte_reussie = serializers.DateTimeField(
+        read_only=True, allow_null=True,
+        help_text='Null = la veille n\'a jamais rien collecté avec succès.')
+    age_heures = serializers.FloatField(
+        read_only=True, allow_null=True,
+        help_text="L'ÂGE de cette collecte — visible sans clic (VAO37).")
+    avis_examines_hier = serializers.IntegerField(read_only=True)
+    alarme_active = serializers.BooleanField(
+        read_only=True,
+        help_text='Alarme de collecte silencieuse (VAO24) : la veille ne '
+                  'ramène plus rien.')
+    alarme_message = serializers.CharField(read_only=True, allow_blank=True)
+    collecte_active = serializers.BooleanField(
+        read_only=True,
+        help_text="Armement de la collecte automatique (règle #5, VAO4).")
+    dernier_verdict = serializers.CharField(read_only=True, allow_blank=True)
+    dernier_message = serializers.CharField(read_only=True, allow_blank=True)
+    sources_collectables = serializers.IntegerField(read_only=True)
+    avis_nouveaux = serializers.IntegerField(read_only=True)
 
 
 class LancementCollecteSerializer(serializers.Serializer):

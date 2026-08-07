@@ -18,6 +18,7 @@ d'écrire ``avis.statut``.
 from __future__ import annotations
 
 import logging
+from datetime import timedelta
 
 from django.db import transaction
 from django.db.models import F
@@ -25,7 +26,10 @@ from django.utils import timezone
 from rest_framework.exceptions import ValidationError
 
 from .hashing import empreinte_avis
-from .models import AvisMarche, PorteeExclusion, RegleExclusion, StatutAvis
+from .models import (
+    AvisMarche, DeclencheurCollecte, ExecutionCollecte, PorteeExclusion,
+    RegleExclusion, StatutAvis, VerdictExecution,
+)
 from .scoring import normaliser
 
 logger = logging.getLogger(__name__)
@@ -376,9 +380,9 @@ def enregistrer_avis(company, source, donnees):
 #: structure inattendue » est une anomalie à signaler, « échouée » est une
 #: erreur. Un collecteur qui casse sans le dire est PIRE que pas de
 #: collecteur : c'est ainsi qu'on rate un AO en se croyant couvert.
-VERDICT_SUCCES = 'succes'
-VERDICT_ANOMALIE = 'anomalie'
-VERDICT_ECHEC = 'echec'
+VERDICT_SUCCES = VerdictExecution.SUCCES.value
+VERDICT_ANOMALIE = VerdictExecution.ANOMALIE.value
+VERDICT_ECHEC = VerdictExecution.ECHEC.value
 
 
 def rapport_vide(source=None):
@@ -426,19 +430,60 @@ def _enregistrer_un_avis(company, source, donnees, mots_cles, regles,
     return cree, (not cree), auto_ignore
 
 
-def collecter(source, company, *, user=None, lecteur=None):
-    """Collecte UNE source et rend un compte-rendu structuré.
+def collecter(source, company, *, user=None, lecteur=None,
+              declencheur=DeclencheurCollecte.PLANIFIE):
+    """Collecte UNE source, JOURNALISE l'exécution et rend le compte-rendu.
 
     Enchaîne : mots-clés actifs → lecteur → dédoublonnage (VAO11) → scoring
     (VAO9) → règles d'exclusion (VAO10) → écriture. **Ne lève pas** sur une
     panne de lecteur : elle la RANGE dans le compte-rendu avec le verdict
-    ``echec``, pour que le journal d'exécution (VAO24) puisse la raconter.
+    ``echec``.
+
+    VAO24 — une ligne ``ExecutionCollecte`` est écrite à CHAQUE passage, y
+    compris (et surtout) sur échec : c'est ici, au point de passage unique,
+    que le journal est garanti — pas dans les appelants, où un chemin
+    oublierait de le faire un jour.
 
     Le ``lecteur`` est injectable (tests, et futur branchement du collecteur
     portail) ; par défaut il est résolu par le registre ``lecteurs.py``. Ce
     service ne connaît AUCUNE URL et n'importe AUCUN client HTTP : c'est ce
     qui le rend testable hors ligne et ce qui laisse la règle #5 entièrement
     du côté du lecteur.
+    """
+    debut = timezone.now()
+    rapport = _collecter_sans_journal(source, company, user=user,
+                                      lecteur=lecteur)
+    rapport['execution_id'] = journaliser_execution(
+        company, source, rapport, debut=debut,
+        declencheur=declencheur).pk
+    return rapport
+
+
+def journaliser_execution(company, source, rapport, *, debut=None,
+                          declencheur=DeclencheurCollecte.PLANIFIE):
+    """Écrit la ligne de journal d'UNE exécution (VAO24).
+
+    Le message est TRONQUÉ, jamais rejeté : un journal qui refuse de s'écrire
+    parce qu'un message est trop long est un journal qui n'existe pas le jour
+    où il compte.
+    """
+    return ExecutionCollecte.objects.create(
+        company=company, source=source,
+        debut=debut or timezone.now(), fin=timezone.now(),
+        mots_cles_interroges=list(rapport.get('mots_cles') or []),
+        examines=rapport.get('examines', 0),
+        nouveaux=rapport.get('nouveaux', 0),
+        mis_a_jour=rapport.get('mis_a_jour', 0),
+        auto_ignores=rapport.get('auto_ignores', 0),
+        erreurs=[str(e) for e in (rapport.get('erreurs') or [])][:50],
+        verdict=rapport.get('verdict', VERDICT_SUCCES),
+        message=(rapport.get('message') or '')[:500],
+        declencheur=declencheur)
+
+
+def _collecter_sans_journal(source, company, *, user=None, lecteur=None):
+    """Le corps de la collecte. Séparé pour que le JOURNAL soit inévitable :
+    aucun chemin de sortie de ``collecter`` ne peut sauter l'écriture.
     """
     from .lecteurs import LecteurIndisponible, lecteur_pour
     from .scoring import mots_cles_actifs
@@ -524,16 +569,250 @@ def collecter(source, company, *, user=None, lecteur=None):
     return rapport
 
 
-def collecter_toutes_les_sources(company, *, user=None, lecteur=None):
+def collecter_toutes_les_sources(company, *, user=None, lecteur=None,
+                                 declencheur=DeclencheurCollecte.PLANIFIE):
     """Collecte toutes les sources COLLECTABLES d'une société.
 
     ``SourceVeilleQuerySet.collectables()`` est le seul filtre : une source
     désactivée n'est jamais interrogée, et personne n'a à s'en souvenir.
     Rend la liste des comptes-rendus, un par source — jamais un total agrégé
     qui masquerait une source en panne au milieu de trois sources vertes.
+
+    L'alarme de silence (VAO24) est évaluée UNE fois, à la fin du passage :
+    c'est le moment où l'on sait si la veille a ramené quelque chose.
     """
     from .models import SourceVeille
 
     sources = SourceVeille.objects.filter(company=company).collectables()
-    return [collecter(source, company, user=user, lecteur=lecteur)
-            for source in sources]
+    rapports = [collecter(source, company, user=user, lecteur=lecteur,
+                          declencheur=declencheur)
+                for source in sources]
+    signaler_alarme_si_besoin(company)
+    notifier_nouveaux_avis(company, rapports)
+    return rapports
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# VAO24 — L'ALARME DE COLLECTE SILENCIEUSE.
+#
+# La tâche la plus importante du groupe, et la raison est un scénario RÉEL,
+# pas une hypothèse : le portail change, la collecte renvoie vide, l'écran
+# reste calme — et on se croit couvert pendant des semaines. Un dispositif de
+# veille qui casse sans le dire est PIRE que pas de dispositif du tout,
+# puisqu'il fabrique une fausse tranquillité.
+# ─────────────────────────────────────────────────────────────────────────
+
+#: Nombre d'échecs consécutifs qui déclenchent l'alarme.
+ECHECS_CONSECUTIFS_ALARME = 2
+#: Nombre de JOURS consécutifs sans le moindre résultat qui la déclenchent.
+JOURS_MUETS_ALARME = 2
+
+
+def _jours_muets(company, jours=JOURS_MUETS_ALARME):
+    """Les N derniers jours où la veille a tourné ont-ils TOUS été muets ?
+
+    « Muet » = une exécution réussie qui n'a RIEN examiné, sur tous les
+    mots-clés. On raisonne en JOURS CALENDAIRES de collecte (pas en « N
+    dernières exécutions ») parce que la collecte est quotidienne : deux
+    exécutions vides le même matin ne font pas deux jours de silence.
+    """
+    recentes = ExecutionCollecte.objects.filter(
+        company=company).reussies().recentes()[:50]
+    par_jour = {}
+    for execution in recentes:
+        jour = timezone.localtime(execution.debut).date()
+        par_jour.setdefault(jour, []).append(execution)
+        if len(par_jour) > jours:
+            break
+    journees = sorted(par_jour, reverse=True)[:jours]
+    if len(journees) < jours:
+        return False
+    return all(all(e.examines == 0 for e in par_jour[j]) for j in journees)
+
+
+def _echecs_consecutifs(company, combien=ECHECS_CONSECUTIFS_ALARME):
+    """Les ``combien`` dernières exécutions sont-elles TOUTES en échec ?"""
+    dernieres = list(ExecutionCollecte.objects.filter(
+        company=company).recentes()[:combien])
+    if len(dernieres) < combien:
+        return False
+    return all(e.verdict == VERDICT_ECHEC for e in dernieres)
+
+
+def evaluer_alarme(company):
+    """``(active, message)`` — l'alarme de silence de CETTE société.
+
+    Le message est en français et ACTIONNABLE : il dit ce qui s'est passé et
+    ce qu'il faut aller vérifier. Un « alerte » nu ne fait rien bouger.
+    """
+    if _echecs_consecutifs(company):
+        return True, (
+            f'La collecte a échoué {ECHECS_CONSECUTIFS_ALARME} fois de suite. '
+            'La veille ne ramène plus rien — vérifiez la source et le journal '
+            "d'exécution.")
+    if _jours_muets(company):
+        return True, (
+            f'Aucun avis remonté depuis {JOURS_MUETS_ALARME} jours, sur tous '
+            'les mots-clés. La veille ne ramène plus rien — vérifiez les '
+            'mots-clés et la source.')
+    return False, ''
+
+
+def signaler_alarme_si_besoin(company):
+    """Notifie le directeur si l'alarme vient de s'allumer. Idempotent.
+
+    Une alarme qui crie tous les matins est une alarme qu'on apprend à
+    ignorer : le drapeau ``alarme_notifiee`` porté par la DERNIÈRE exécution
+    garantit une seule notification par épisode de silence.
+    """
+    active, message = evaluer_alarme(company)
+    derniere = ExecutionCollecte.objects.filter(
+        company=company).recentes().first()
+    if derniere is None:
+        return None
+    if not active:
+        return None
+    if derniere.alarme_notifiee:
+        return None
+
+    _notifier(company, 'veille_ao_alarme_silence',
+              'Veille appels d\'offres : plus rien ne remonte', message,
+              lien='/veille-ao/avis')
+    ExecutionCollecte.objects.filter(pk=derniere.pk).update(
+        alarme_notifiee=True)
+    return message
+
+
+def sante(company):
+    """VAO24/VAO35/VAO37 — l'état de la veille en UN appel agrégé.
+
+    Un seul calcul côté serveur, consommé identiquement par le bandeau de
+    santé et par l'écran de paramètres : deux calculs séparés finiraient par
+    diverger, et c'est précisément un désaccord entre écrans qui ferait
+    douter de l'ensemble.
+    """
+    from django.conf import settings
+
+    from .models import SourceVeille
+
+    maintenant = timezone.now()
+    derniere_reussie = ExecutionCollecte.objects.filter(
+        company=company).reussies().recentes().first()
+    horodatage = derniere_reussie.fin or derniere_reussie.debut \
+        if derniere_reussie else None
+    if horodatage is None:
+        # Repli : une source peut porter une réussite antérieure au journal.
+        horodatage = SourceVeille.objects.filter(
+            company=company, derniere_collecte_reussie__isnull=False
+        ).order_by('-derniere_collecte_reussie').values_list(
+            'derniere_collecte_reussie', flat=True).first()
+
+    # « Hier » se lit au jour CALENDAIRE LOCAL, pas en « il y a 24 h »
+    # glissantes. La requête est bornée à une fenêtre de 3 jours (jamais un
+    # balayage du journal entier) puis affinée en Python, parce que la
+    # frontière de journée dépend du fuseau et non de la colonne stockée.
+    hier = (timezone.localtime(maintenant) - timedelta(days=1)).date()
+    fenetre = ExecutionCollecte.objects.filter(
+        company=company,
+        debut__gte=maintenant - timedelta(days=3),
+        debut__lte=maintenant + timedelta(days=1))
+    examines_hier = sum(
+        e.examines for e in fenetre
+        if timezone.localtime(e.debut).date() == hier)
+
+    active, message = evaluer_alarme(company)
+    derniere = ExecutionCollecte.objects.filter(
+        company=company).recentes().first()
+
+    return {
+        'derniere_collecte_reussie': horodatage,
+        'age_heures': (
+            round((maintenant - horodatage).total_seconds() / 3600, 1)
+            if horodatage else None),
+        'avis_examines_hier': examines_hier,
+        'alarme_active': active,
+        'alarme_message': message,
+        'collecte_active': bool(
+            getattr(settings, 'VEILLE_AO_COLLECTE_ACTIVE', False)),
+        'dernier_verdict': derniere.verdict if derniere else '',
+        'dernier_message': derniere.message if derniere else '',
+        'sources_collectables': SourceVeille.objects.filter(
+            company=company).collectables().count(),
+        'avis_nouveaux': AvisMarche.objects.filter(
+            company=company, statut=StatutAvis.NOUVEAU).count(),
+    }
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# VAO25 — la notification quotidienne : utile, en français, NON bruyante.
+# ─────────────────────────────────────────────────────────────────────────
+
+#: Fenêtre d'urgence mise en avant dans la notification (jours).
+FENETRE_URGENCE_JOURS = 15
+
+
+def _notifier(company, event_type, titre, corps, lien=''):
+    """Envoi via ``apps.notifications`` — JAMAIS un envoi réseau d'ici.
+
+    Destinataires : les porteurs de ``veille_ao_voir`` de cette société. Le
+    service de collecte n'ouvre aucune connexion lui-même : il demande, la
+    plateforme livre (et respecte les préférences, les heures calmes et les
+    canaux de chacun).
+    """
+    from apps.notifications.services import notify_many
+
+    destinataires = destinataires_veille(company)
+    if not destinataires:
+        return []
+    return notify_many(destinataires, event_type, titre, body=corps,
+                       link=lien, company=company)
+
+
+def destinataires_veille(company):
+    """Les utilisateurs actifs de la société porteurs de ``veille_ao_voir``.
+
+    Paramétrable au sens où la permission EST le paramètre : donner ou
+    retirer ``veille_ao_voir`` à un rôle change les destinataires, sans
+    liste codée en dur ni réglage parallèle à maintenir.
+    """
+    from django.contrib.auth import get_user_model
+
+    utilisateurs = get_user_model().objects.filter(
+        company=company, is_active=True).select_related('role')
+    return [u for u in utilisateurs
+            if 'veille_ao_voir' in (getattr(u.role, 'permissions', None) or [])
+            or getattr(u, 'role_legacy', '') in ('admin', 'responsable')]
+
+
+def notifier_nouveaux_avis(company, rapports):
+    """« 3 nouveaux avis solaires — dont 1 à échéance J-12 ».
+
+    **Rien à dire = rien à envoyer.** Une notification quotidienne vide
+    apprend à ignorer les notifications — et le jour où elle compte, personne
+    ne la lit. Renvoie le nombre de notifications émises (0 si silence).
+    """
+    nouveaux = sum(r.get('nouveaux', 0) for r in (rapports or []))
+    if nouveaux <= 0:
+        return 0
+
+    limite = timezone.now() + timedelta(days=FENETRE_URGENCE_JOURS)
+    urgents = AvisMarche.objects.filter(
+        company=company, statut=StatutAvis.NOUVEAU,
+        date_limite_remise__isnull=False,
+        date_limite_remise__lte=limite,
+        date_limite_remise__gte=timezone.now()).order_by(
+            'date_limite_remise')
+
+    libelle = ('1 nouvel avis' if nouveaux == 1
+               else f'{nouveaux} nouveaux avis')
+    titre = f'Veille appels d\'offres : {libelle}'
+    premier = urgents.first()
+    if premier is not None:
+        jours = max((premier.date_limite_remise - timezone.now()).days, 0)
+        corps = f'{libelle} — dont 1 à échéance J-{jours}.'
+    else:
+        corps = f'{libelle} à trier dans le sas.'
+
+    envoyees = _notifier(company, 'veille_ao_nouveaux_avis', titre, corps,
+                         lien='/veille-ao/avis?statut=nouveau')
+    return len(envoyees)

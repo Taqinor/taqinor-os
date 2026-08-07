@@ -243,6 +243,17 @@ class EventType(models.TextChoices):
     # et l'audience traverse les sociétés.
     PRODUCT_ANNOUNCEMENT = (
         'product_announcement', 'Nouveauté produit')
+    # VAO25 — la collecte du matin a ramené du NOUVEAU. Émise seulement s'il
+    # y a quelque chose à dire : une notification quotidienne vide apprend à
+    # ignorer les notifications.
+    VEILLE_AO_NOUVEAUX_AVIS = (
+        'veille_ao_nouveaux_avis', "Nouveaux avis d'appel d'offres")
+    # VAO24 — la veille NE RAMÈNE PLUS RIEN (deux jours muets ou deux échecs
+    # consécutifs). C'est le seul garde-fou contre le scénario réel : le
+    # portail change, la collecte renvoie vide, l'écran reste calme et on se
+    # croit couvert pendant des semaines.
+    VEILLE_AO_ALARME_SILENCE = (
+        'veille_ao_alarme_silence', "Veille appels d'offres muette")
 
 
 class Channel(models.TextChoices):

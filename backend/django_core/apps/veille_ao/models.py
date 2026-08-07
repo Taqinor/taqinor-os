@@ -326,6 +326,112 @@ class AvisMarche(TenantModel):
         return self.date_limite_remise < timezone.now()
 
 
+class VerdictExecution(models.TextChoices):
+    """Les TROIS issues d'une collecte, jamais confondues (VAO20/VAO24).
+
+    Confondre « réussie, 0 nouveauté » et « cassée, 0 résultat » est
+    exactement le scénario qui fait rater un AO en se croyant couvert : le
+    portail change, la collecte renvoie vide, l'écran reste calme, et
+    personne ne s'en aperçoit pendant des semaines.
+    """
+
+    SUCCES = 'succes', 'Réussie'
+    ANOMALIE = 'anomalie', 'Réussie avec anomalie'
+    ECHEC = 'echec', 'Échouée'
+
+
+class DeclencheurCollecte(models.TextChoices):
+    """Qui a lancé cette collecte — le beat de nuit ou un humain."""
+
+    PLANIFIE = 'planifie', 'Tâche planifiée (06:00)'
+    MANUEL = 'manuel', 'Déclenchement manuel'
+
+
+class ExecutionCollecteQuerySet(models.QuerySet):
+    def reussies(self):
+        return self.exclude(verdict=VerdictExecution.ECHEC)
+
+    def recentes(self):
+        """De la plus récente à la plus ancienne — l'ordre de lecture."""
+        return self.order_by('-debut', '-id')
+
+
+class ExecutionCollecte(TenantModel):
+    """Le JOURNAL d'exécution de la veille — la table qui empêche le silence.
+
+    Écrit à CHAQUE exécution, réussie ou non : c'est le seul garde-fou contre
+    le scénario réel où la veille ne ramène plus rien et où l'écran, resté
+    calme, laisse croire à une couverture qui n'existe plus.
+
+    Aucun champ de coût ni de marge : une exécution décrit un travail de
+    lecture, pas une affaire.
+    """
+
+    source = models.ForeignKey(
+        'veille_ao.SourceVeille',
+        on_delete=models.SET_NULL,  # on_delete: le JOURNAL survit à la source
+        null=True, blank=True, related_name='executions',
+        verbose_name='Source')
+
+    debut = models.DateTimeField('Début', default=timezone.now)
+    fin = models.DateTimeField('Fin', null=True, blank=True)
+
+    mots_cles_interroges = models.JSONField(
+        'Mots-clés interrogés', default=list, blank=True,
+        help_text="Ce qui a réellement été demandé — sans quoi « 0 résultat » "
+                  "est illisible.")
+
+    examines = models.PositiveIntegerField('Avis examinés', default=0)
+    nouveaux = models.PositiveIntegerField('Avis nouveaux', default=0)
+    mis_a_jour = models.PositiveIntegerField('Avis mis à jour', default=0)
+    auto_ignores = models.PositiveIntegerField('Avis auto-ignorés', default=0)
+
+    erreurs = models.JSONField('Erreurs', default=list, blank=True)
+    verdict = models.CharField(
+        'Verdict', max_length=12, choices=VerdictExecution.choices,
+        default=VerdictExecution.SUCCES)
+    message = models.CharField('Message', max_length=500, blank=True,
+                               default='')
+    declencheur = models.CharField(
+        'Déclencheur', max_length=12, choices=DeclencheurCollecte.choices,
+        default=DeclencheurCollecte.PLANIFIE)
+
+    #: VAO24 — l'alarme de silence a-t-elle DÉJÀ été signalée pour cet état ?
+    #: Empêche de renotifier le directeur à chaque passage : une alarme qui
+    #: crie tous les jours est une alarme qu'on apprend à ignorer.
+    alarme_notifiee = models.BooleanField(
+        "Alarme déjà notifiée", default=False)
+
+    objects = ExecutionCollecteQuerySet.as_manager()
+
+    class Meta:
+        verbose_name = 'Exécution de collecte'
+        verbose_name_plural = 'Exécutions de collecte'
+        ordering = ['-debut', '-id']
+        indexes = [
+            models.Index(fields=['company', '-debut'],
+                         name='veille_ao_exec_co_debut_idx'),
+            models.Index(fields=['company', 'verdict'],
+                         name='veille_ao_exec_co_verdict_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.debut:%d/%m/%Y %H:%M} — {self.get_verdict_display()}'
+
+    @property
+    def reussie(self):
+        return self.verdict != VerdictExecution.ECHEC
+
+    @property
+    def muette(self):
+        """Réussie mais RIEN vu : ni nouveau, ni mis à jour, ni examiné.
+
+        C'est le signal faible de l'alarme : deux jours de suite ainsi, la
+        veille ne ramène plus rien et il faut aller vérifier.
+        """
+        return self.reussie and self.examines == 0
+
+
 class NiveauMotCle(models.TextChoices):
     """Deux niveaux, mesurés sur le portail réel (VAO9).
 

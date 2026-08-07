@@ -27,10 +27,10 @@ from rest_framework.response import Response
 
 from core.permissions import ScopedPermission
 
-from .serializers import LancementCollecteSerializer
+from .serializers import LancementCollecteSerializer, SanteVeilleSerializer
 from .viewsets import VEILLE_AO_GERER, VEILLE_AO_VOIR
 
-__all__ = ['DeclencherCollecteView', 'KIND_COLLECTE']
+__all__ = ['DeclencherCollecteView', 'KIND_COLLECTE', 'SanteVeilleView']
 
 #: Type logique du job de fond (``BackgroundJob.kind``). Le MÊME quel que soit
 #: le déclencheur — c'est ce qui rend les deux chemins comparables dans
@@ -127,3 +127,26 @@ class DeclencherCollecteView(_BaseVeilleView):
             'collecte_active': (collecte_active() if armee is None else armee),
             'motif': motif,
         }
+
+
+class SanteVeilleView(_BaseVeilleView):
+    """``GET /api/django/veille_ao/sante/`` — l'état de la veille en UN appel.
+
+    Agrège, côté SERVEUR : dernière collecte réussie et son ÂGE, avis
+    examinés hier, alarme de silence (VAO24), armement de la collecte
+    (règle #5). Le bandeau de santé (VAO37) et l'écran de paramètres (VAO35)
+    consomment la MÊME réponse — jamais un agrégat recalculé côté client à
+    partir de la liste des exécutions, qui divergerait tôt ou tard.
+
+    Lecture : ``veille_ao_voir``. L'état de la veille intéresse tous ceux qui
+    la lisent, pas seulement ceux qui la règlent.
+    """
+
+    serializer_class = SanteVeilleSerializer
+
+    @extend_schema(responses=SanteVeilleSerializer)
+    def get(self, request, *args, **kwargs):
+        from .services import sante
+
+        return Response(
+            SanteVeilleSerializer(sante(self.societe())).data)

@@ -50,7 +50,7 @@ def _lignes(*objets):
 
 class CollecteTests(TestCase):
     def setUp(self):
-        self.company = Company.objects.create(name='Taqinor Test')
+        self.company = Company.objects.create(nom='Taqinor Test')
         self.source = SourceVeille.objects.create(
             company=self.company, code='pmmp', libelle='Portail test',
             type_source=TypeSource.PORTAIL_OFFICIEL,
@@ -186,7 +186,7 @@ class CollecteTests(TestCase):
         self.assertEqual([r['source_id'] for r in rapports], [self.source.pk])
 
     def test_isolation_multi_tenant_la_collecte_n_ecrit_que_sa_societe(self):
-        autre = Company.objects.create(name='Autre société')
+        autre = Company.objects.create(nom='Autre société')
         collecter(self.source, self.company,
                   lecteur=_lignes('Pompage solaire'))
         self.assertEqual(
@@ -199,7 +199,7 @@ class RegistreDeLecteursTests(TestCase):
     """Le registre est la PRISE du futur collecteur portail — pas un ``if``."""
 
     def setUp(self):
-        self.company = Company.objects.create(name='Taqinor Registre')
+        self.company = Company.objects.create(nom='Taqinor Registre')
         self.source = SourceVeille.objects.create(
             company=self.company, code='pmmp', libelle='Portail test',
             type_source=TypeSource.PORTAIL_OFFICIEL,
