@@ -363,3 +363,177 @@ def enregistrer_avis(company, source, donnees):
         _journaliser_rectification(existant, changements, niveau)
         existant.save()
     return existant, False, niveau
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# VAO21 — le service de collecte : la SEULE fonction du module qui touche la
+# base pour le compte d'une source. Le lecteur (réseau ou non) est branché,
+# jamais codé ici.
+# ─────────────────────────────────────────────────────────────────────────
+
+#: Verdicts d'une collecte. Les trois cas sont DISTINCTS et ne se confondent
+#: jamais (VAO20/VAO24) : « réussie, 0 nouveauté » est normal, « réussie mais
+#: structure inattendue » est une anomalie à signaler, « échouée » est une
+#: erreur. Un collecteur qui casse sans le dire est PIRE que pas de
+#: collecteur : c'est ainsi qu'on rate un AO en se croyant couvert.
+VERDICT_SUCCES = 'succes'
+VERDICT_ANOMALIE = 'anomalie'
+VERDICT_ECHEC = 'echec'
+
+
+def rapport_vide(source=None):
+    """Le gabarit d'un compte-rendu de collecte (jamais un dict improvisé)."""
+    return {
+        'source_id': getattr(source, 'pk', None),
+        'source': getattr(source, 'libelle', ''),
+        'mots_cles': [],
+        'examines': 0,
+        'nouveaux': 0,
+        'mis_a_jour': 0,
+        'auto_ignores': 0,
+        'erreurs': [],
+        'verdict': VERDICT_SUCCES,
+        'message': '',
+    }
+
+
+def _enregistrer_un_avis(company, source, donnees, mots_cles, regles,
+                         user=None):
+    """Traite UN avis de bout en bout, dans SA propre transaction.
+
+    Une transaction PAR AVIS, jamais une pour toute la collecte : un avis
+    fautif (date illisible, champ manquant) ne doit pas faire perdre les 33
+    autres. C'est la raison d'être de ce découpage.
+
+    Renvoie ``(cree, mis_a_jour, auto_ignore)``.
+    """
+    from .scoring import scorer_avis
+
+    with transaction.atomic():
+        avis, cree, _niveau = enregistrer_avis(company, source, donnees)
+        scorer_avis(avis, mots_cles)
+        avis.save(update_fields=['score', 'mots_cles_declenches',
+                                 'updated_at'])
+        # VAO10 — les règles d'exclusion s'appliquent APRÈS le scoring et
+        # passent par ``changer_statut_avis`` : un avis auto-ignoré garde la
+        # trace de la règle qui l'a filtré (jamais un filtrage muet). Un avis
+        # déjà trié par un humain n'est PAS re-basculé — la table de
+        # transitions refuse ``ignore``→``ignore`` et ``retenu``→``ignore``.
+        auto_ignore = False
+        if avis.statut == StatutAvis.NOUVEAU:
+            auto_ignore = appliquer_regles_exclusion(
+                avis, regles, user=user) is not None
+    return cree, (not cree), auto_ignore
+
+
+def collecter(source, company, *, user=None, lecteur=None):
+    """Collecte UNE source et rend un compte-rendu structuré.
+
+    Enchaîne : mots-clés actifs → lecteur → dédoublonnage (VAO11) → scoring
+    (VAO9) → règles d'exclusion (VAO10) → écriture. **Ne lève pas** sur une
+    panne de lecteur : elle la RANGE dans le compte-rendu avec le verdict
+    ``echec``, pour que le journal d'exécution (VAO24) puisse la raconter.
+
+    Le ``lecteur`` est injectable (tests, et futur branchement du collecteur
+    portail) ; par défaut il est résolu par le registre ``lecteurs.py``. Ce
+    service ne connaît AUCUNE URL et n'importe AUCUN client HTTP : c'est ce
+    qui le rend testable hors ligne et ce qui laisse la règle #5 entièrement
+    du côté du lecteur.
+    """
+    from .lecteurs import LecteurIndisponible, lecteur_pour
+    from .scoring import mots_cles_actifs
+
+    rapport = rapport_vide(source)
+
+    if not source.est_collectable_automatiquement:
+        rapport['verdict'] = VERDICT_ECHEC
+        rapport['message'] = (
+            f'Source « {source.libelle} » inactive ou sans URL : rien n\'a '
+            'été interrogé.')
+        rapport['erreurs'].append(rapport['message'])
+        return rapport
+
+    mots = mots_cles_actifs(company)
+    rapport['mots_cles'] = [m.libelle for m in mots]
+    if not mots:
+        # Interroger un portail SANS mot-clé restrictif est interdit par le
+        # fichier de risque (requête restreinte, < 10 requêtes/jour) : on
+        # s'arrête ici plutôt que de laisser le lecteur décider.
+        rapport['verdict'] = VERDICT_ECHEC
+        rapport['message'] = (
+            'Aucun mot-clé actif : une collecte sans mot-clé restrictif est '
+            'refusée (balayage complet interdit).')
+        rapport['erreurs'].append(rapport['message'])
+        return rapport
+
+    if lecteur is None:
+        try:
+            lecteur = lecteur_pour(source)
+        except LecteurIndisponible as erreur:
+            rapport['verdict'] = VERDICT_ECHEC
+            rapport['message'] = str(erreur)
+            rapport['erreurs'].append(str(erreur))
+            return rapport
+
+    try:
+        lignes = list(lecteur(source, mots))
+    except Exception as erreur:  # noqa: BLE001 — toute panne = ÉCHEC FRANC
+        logger.exception('veille_ao: lecture de la source %s échouée',
+                         source.pk)
+        rapport['verdict'] = VERDICT_ECHEC
+        rapport['message'] = f'Lecture de la source impossible : {erreur}'
+        rapport['erreurs'].append(rapport['message'])
+        return rapport
+
+    regles = regles_actives(company)
+    for donnees in lignes:
+        rapport['examines'] += 1
+        try:
+            cree, maj, auto_ignore = _enregistrer_un_avis(
+                company, source, dict(donnees or {}), mots, regles, user=user)
+        except Exception as erreur:  # noqa: BLE001 — un avis fautif ne perd
+            # pas la collecte : il est journalisé et les autres passent.
+            logger.warning('veille_ao: avis ignoré (source %s) — %s',
+                           source.pk, erreur)
+            rapport['erreurs'].append(str(erreur))
+            continue
+        if cree:
+            rapport['nouveaux'] += 1
+        elif maj:
+            rapport['mis_a_jour'] += 1
+        if auto_ignore:
+            rapport['auto_ignores'] += 1
+
+    if rapport['erreurs']:
+        # Des lignes sont passées, d'autres non : ce n'est ni un succès plein
+        # ni un échec — c'est une ANOMALIE, et elle doit se voir.
+        rapport['verdict'] = VERDICT_ANOMALIE
+        rapport['message'] = (
+            f'{len(rapport["erreurs"])} ligne(s) rejetée(s) sur '
+            f'{rapport["examines"]} examinée(s).')
+    else:
+        rapport['message'] = (
+            f'{rapport["nouveaux"]} nouveau(x), '
+            f'{rapport["mis_a_jour"]} mis à jour sur '
+            f'{rapport["examines"]} examiné(s).')
+
+    if rapport['verdict'] != VERDICT_ECHEC:
+        source.derniere_collecte_reussie = timezone.now()
+        source.save(update_fields=['derniere_collecte_reussie', 'updated_at'])
+
+    return rapport
+
+
+def collecter_toutes_les_sources(company, *, user=None, lecteur=None):
+    """Collecte toutes les sources COLLECTABLES d'une société.
+
+    ``SourceVeilleQuerySet.collectables()`` est le seul filtre : une source
+    désactivée n'est jamais interrogée, et personne n'a à s'en souvenir.
+    Rend la liste des comptes-rendus, un par source — jamais un total agrégé
+    qui masquerait une source en panne au milieu de trois sources vertes.
+    """
+    from .models import SourceVeille
+
+    sources = SourceVeille.objects.filter(company=company).collectables()
+    return [collecter(source, company, user=user, lecteur=lecteur)
+            for source in sources]
