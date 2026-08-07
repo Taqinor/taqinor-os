@@ -28,6 +28,7 @@ from drf_spectacular.utils import extend_schema
 from rest_framework import filters, serializers, status
 from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError as DrfValidationError
+from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.response import Response
 from rest_framework.settings import api_settings
 from rest_framework.views import APIView
@@ -87,6 +88,7 @@ from .serializers import (
     SectionBordereauSerializer,
     SectionMemoireSerializer,
     SerieQuestionsSerializer,
+    TeleversementPlanSourceSerializer,
     ToitureAOSerializer,
     VarianteCalepinageSerializer,
 )
@@ -678,6 +680,41 @@ class PlanSourceViewSet(AoBaseViewSet):
         plan_source.recalculer_echelle()
         plan_source.save(update_fields=[
             'echelle_m_par_px', 'etat', 'updated_at'])
+
+    @extend_schema(request=TeleversementPlanSourceSerializer,
+                   responses=PlanSourceSerializer)
+    @action(detail=True, methods=['post'], url_path='upload',
+            parser_classes=[MultiPartParser, FormParser])
+    def upload(self, request, pk=None):
+        """AOF20 — le fichier du plan, envoyé en MULTIPART.
+
+        Jusqu'ici le support n'avait qu'un CRUD JSON : le service qui range le
+        binaire (``attacher_fichier_plan_source``) n'avait AUCUN appelant, donc
+        aucun plan fourni ne pouvait entrer par l'API. C'est ce trou que cette
+        action ferme.
+
+        Le binaire ne touche jamais ``apps/ao`` : il part dans
+        ``records.Attachment`` (MinIO, clé préfixée par société) et seul
+        l'attachement est référencé — jamais un ``FileField`` (garde ARC26).
+        L'empreinte SHA-256 est calculée côté serveur : un plan DÉJÀ reçu par
+        la même société (erratum, dossier re-téléchargé) RÉUTILISE son
+        attachement au lieu d'en téléverser un doublon.
+
+        Un format refusé par le stockage partagé (ou un fichier trop lourd)
+        donne un 400 motivé en français — jamais un 500 muet.
+        """
+        plan_source = self.get_object()
+        entree = TeleversementPlanSourceSerializer(data=request.data)
+        entree.is_valid(raise_exception=True)
+        try:
+            plan_source = services.attacher_fichier_plan_source(
+                plan_source, entree.validated_data['fichier'],
+                user=request.user)
+        except DjangoValidationError as exc:
+            erreurs = getattr(exc, 'message_dict', None) or {
+                api_settings.NON_FIELD_ERRORS_KEY: exc.messages}
+            return Response(erreurs, status=status.HTTP_400_BAD_REQUEST)
+        return Response(self.get_serializer(plan_source).data)
 
 
 # ── AOF21 — Pièces du dossier de consultation reçues ───────────────────────
