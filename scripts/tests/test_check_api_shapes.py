@@ -425,6 +425,93 @@ class EchantillonDeContratTests(unittest.TestCase):
         self.assertEqual(shapes.echantillons_de_contrat(contrat_reel()), [])
 
 
+class MocksLitterauxTests(unittest.TestCase):
+    """PACT13 — un mock écrit à la main est une DEUXIÈME source de vérité.
+
+    Dès que l'endpoint porte un exemple committé (PACT10), le test l'importe.
+    """
+
+    ROUTE = "/api/django/ao/tableau-marches"
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.base = Path(self.tmp.name)
+        self.apps = self.base / "apps"
+        write(self.apps / "ao" / "contract_samples" / "tableau_marches.json",
+              '{"endpoint": "GET /api/django/ao/tableau-marches/",'
+              ' "exemple": {"echeances_dues": 2}}')
+        self.client = write(self.base / "src" / "api" / "aoApi.js", "\n")
+        self.contrat = {(self.client.resolve(), "tableauMarches"):
+                        (self.ROUTE, {"echeances_dues": shapes.NOMBRE})}
+        self._root, self._src = shapes.ROOT, shapes.FRONT_SRC
+        shapes.ROOT, shapes.FRONT_SRC = self.base, self.base / "src"
+
+    def tearDown(self):
+        shapes.ROOT, shapes.FRONT_SRC = self._root, self._src
+        self.tmp.cleanup()
+
+    def _constats(self, source: str):
+        write(self.base / "src" / "features" / "ao" / "DashboardPage.test.jsx",
+              source)
+        return shapes.mocks_litteraux_sous_contrat(self.contrat, self.apps)
+
+    TEST_LITTERAL = """
+vi.mock('../../api/aoApi', () => ({ default: { tableauMarches } }))
+const PAYLOAD = { ao_en_cours: 7, echeances_dues: [1, 2] }
+tableauMarches.mockResolvedValue({ data: PAYLOAD })
+"""
+
+    def test_une_charge_utile_ecrite_a_la_main_est_REFUSEE(self):
+        constats = self._constats(self.TEST_LITTERAL)
+        self.assertEqual(len(constats), 1)
+        motif = constats[0][5]
+        self.assertIn("ECRITE A LA MAIN", motif)
+
+    def test_le_message_NOMME_la_fixture_a_importer(self):
+        # Une garde qui refuse sans dire par quoi remplacer est une garde qu'on
+        # contourne. Le message porte l'import ET l'appel exacts.
+        motif = self._constats(self.TEST_LITTERAL)[0][5]
+        self.assertIn(shapes.FIXTURE_CONTRAT, motif)
+        self.assertIn("reponseContrat('ao', 'tableau_marches')", motif)
+        self.assertIn("contract_samples/tableau_marches.json", motif)
+
+    def test_un_test_qui_IMPORTE_la_fixture_passe(self):
+        source = (
+            "import { reponseContrat } from '../../test/fixtures/contractSamples'\n"
+            + self.TEST_LITTERAL)
+        self.assertEqual(self._constats(source), [])
+
+    def test_un_endpoint_SANS_exemple_committe_n_est_jamais_refuse(self):
+        # Portée délibérée : exiger une fixture qui n'existe pas serait
+        # commander du travail impossible. La migration se fait app par app.
+        contrat = {(self.client.resolve(), "autreFonction"):
+                   ("/api/django/ao/autre", {"x": shapes.NOMBRE})}
+        write(self.base / "src" / "features" / "ao" / "Autre.test.jsx",
+              "vi.mock('../../api/aoApi', () => ({ default: { autreFonction } }))\n"
+              "autreFonction.mockResolvedValue({ data: { x: 1 } })\n")
+        self.assertEqual(
+            shapes.mocks_litteraux_sous_contrat(contrat, self.apps), [])
+
+    def test_le_depot_reel_ne_produit_aucun_constat(self):
+        # Le module pilote AO est migré : la garde doit être verte, sinon elle
+        # commande une migration qui n'a pas de fixture.
+        shapes.ROOT, shapes.FRONT_SRC = self._root, self._src
+        try:
+            constats = shapes.mocks_litteraux_sous_contrat(contrat_reel())
+        finally:
+            shapes.ROOT, shapes.FRONT_SRC = self.base, self.base / "src"
+        self.assertEqual(constats, [], f"tests à migrer (PACT13) : {constats}")
+
+    def test_le_pilote_AO_importe_bien_la_fixture(self):
+        pilote = (self._root / "frontend" / "src" / "features" / "ao"
+                  / "DashboardPage.test.jsx")
+        source = pilote.read_text(encoding="utf-8")
+        self.assertIn(shapes.FIXTURE_CONTRAT, source)
+        self.assertIn("exempleContrat('ao', 'tableau_marches')", source)
+        # La charge utile ne doit plus être retapée dans le fichier.
+        self.assertNotIn("const PAYLOAD = {", source)
+
+
 class DepotReelTests(unittest.TestCase):
     def test_contrat_versionne_present(self):
         contenu = shapes.CONTRACT_PATH.read_text(encoding="utf-8")

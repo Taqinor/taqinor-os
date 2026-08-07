@@ -921,6 +921,98 @@ def echantillons_de_contrat(shapes, racine: Path = None):
 
 
 # ===========================================================================
+# 3 quater. PACT13 — INTERDIRE LES MOCKS DE FORME ECRITS A LA MAIN
+# ===========================================================================
+#
+# C'est la cause racine PROUVEE : `DashboardPage.test.jsx` declarait a la main
+# `PAYLOAD = { ao_en_cours: 7, …, echeances_dues: [ … ] }` — l'INVERSE EXACT de
+# ce que le backend renvoie — et restait VERT ; en face,
+# `apps/ao/tests/test_kpis_ao.py` affirmait `echeances_dues == 1`. Les deux
+# suites vertes, se contredisant, l'ecran mort en production.
+#
+# LA REGLE. Des qu'un endpoint agrege porte un exemple de contrat committe
+# (`apps/<x>/contract_samples/*.json`, PACT10), un test frontend qui mocke sa
+# fonction DOIT importer cette fixture ; il ne peut plus taper sa charge utile.
+#
+# PORTEE DELIBEREMENT LIEE A L'EXISTENCE DE L'EXEMPLE. La garde ne parle QUE
+# des endpoints qui ont deja leur document partage : « les tests existants sont
+# migres app par app, la base de reference ne pouvant que retrecir ». Exiger une
+# fixture qui n'existe pas serait une garde qui commande du travail impossible
+# — et une garde impossible finit desactivee.
+#
+# NIVEAU FICHIER, pas occurrence. Un test qui importe la fixture reste libre de
+# mocker un AUTRE ETAT du serveur (`exemple_vide`) : c'est un etat, pas une
+# forme inventee. Et si ce litteral mentait sur la forme, le controle de mocks
+# ci-dessus (section 3) l'attrape deja. Les deux regles se composent.
+
+FIXTURE_CONTRAT = "test/fixtures/contractSamples"
+_IMPORTE_FIXTURE = re.compile(re.escape(FIXTURE_CONTRAT))
+
+
+def _routes_sous_exemple(racine: Path = None) -> dict:
+    """chemin normalise -> fichier d'exemple committe."""
+    import json
+
+    out = {}
+    for fichier in fichiers_echantillons(racine):
+        try:
+            document = json.loads(fichier.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        entete = _ENDPOINT.match(str((document or {}).get("endpoint", "")).strip())
+        if not entete:
+            continue
+        route = normalise_call(entete.group("chemin"), "api/django")
+        if route:
+            out["/" + "/".join(route)] = fichier
+    return out
+
+
+def mocks_litteraux_sous_contrat(shapes, racine: Path = None):
+    """[(fichier, ligne, fonction, chemin, champ, motif)] — tests a migrer."""
+    sous_exemple = _routes_sous_exemple(racine)
+    if not sous_exemple:
+        return []
+    par_module = {}
+    for (module, nom), (route, _) in shapes.items():
+        if route in sous_exemple:
+            par_module.setdefault(module, {})[nom] = (route, sous_exemple[route])
+
+    constats = []
+    for path in test_files():
+        charges = mocked_payloads(path)
+        if not charges:
+            continue
+        try:
+            source = path.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        if _IMPORTE_FIXTURE.search(source):
+            continue        # le test lit deja le document partage
+        relatif = path.relative_to(ROOT).as_posix()
+        vus = set()
+        for ligne, modules, nom, _forme in charges:
+            candidats = [par_module[m][nom] for m in modules
+                         if nom in par_module.get(m, {})]
+            if len(candidats) != 1 or nom in vus:
+                continue
+            vus.add(nom)
+            route, fichier = candidats[0]
+            app = fichier.parent.parent.name
+            constats.append((
+                relatif, ligne, nom, route, "<charge utile>",
+                f"charge utile ECRITE A LA MAIN pour {nom}() ({route}), alors "
+                f"que cet endpoint porte un exemple de contrat committe. "
+                f"IMPORTER la fixture au lieu de la retaper :\n"
+                f"      import {{ exempleContrat, reponseContrat }} from "
+                f"'…/{FIXTURE_CONTRAT}'\n"
+                f"      {nom}.mockResolvedValue(reponseContrat("
+                f"'{app}', '{fichier.stem}'))\n"
+                f"      (source : {fichier.relative_to(ROOT).as_posix()})"))
+    return constats
+
+
+# ===========================================================================
 # 4. Rapprochement + contrat versionne
 # ===========================================================================
 
@@ -977,6 +1069,9 @@ def analyse(shapes=None):
     # PACT10 — l'exemple partage ne peut pas pourrir : il derive du serveur ou
     # il rougit. C'est ce qui le rend digne d'etre importe par les deux moities.
     findings.extend(echantillons_de_contrat(shapes))
+    # PACT13 — un mock ecrit a la main est une DEUXIEME source de verite : des
+    # que l'endpoint porte un exemple committe, le test l'importe.
+    findings.extend(mocks_litteraux_sous_contrat(shapes))
     return findings, shapes
 
 

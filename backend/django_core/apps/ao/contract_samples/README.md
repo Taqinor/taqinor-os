@@ -37,7 +37,8 @@ Un fichier `<nom_endpoint>.json` par endpoint agrégé :
 {
   "endpoint": "GET /api/django/ao/tableau-marches/",
   "pourquoi": "une phrase : à quoi sert cet agrégat",
-  "exemple": { "…": "une réponse complète et réaliste" }
+  "exemple": { "…": "une réponse complète et réaliste" },
+  "exemple_vide": { "…": "facultatif : un AUTRE ÉTAT du serveur" }
 }
 ```
 
@@ -46,6 +47,9 @@ Un fichier `<nom_endpoint>.json` par endpoint agrégé :
   chemin et compare l'exemple au dictionnaire RÉELLEMENT renvoyé.
 - `exemple` — une réponse complète. Les valeurs sont illustratives ; ce sont les
   **clés et leurs natures** qui font le contrat.
+- `exemple_*` — variantes facultatives décrivant un autre **état** du serveur
+  (société vide, liste sans résultat…). Jamais une autre **forme** : les clés
+  restent celles du contrat.
 
 ## Ce qui rend le fichier digne de confiance
 

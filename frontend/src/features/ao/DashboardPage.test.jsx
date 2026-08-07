@@ -4,6 +4,7 @@ import { MemoryRouter } from 'react-router-dom'
 import { existsSync, readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
+import { exempleContrat, reponseContrat } from '../../test/fixtures/contractSamples'
 
 const mocks = vi.hoisted(() => ({ tableauMarches: vi.fn() }))
 
@@ -23,59 +24,21 @@ const SELECTORS_PY = join(
 )
 
 /* ============================================================================
-   PAYLOAD — copie CONFORME de ce que rend le serveur.
+   PACT13 — la charge utile est IMPORTÉE, plus jamais inventée.
    ----------------------------------------------------------------------------
-   La version précédente de ce fichier inventait sa propre forme (`ao_en_cours`,
-   `taux_reussite`, `echeances_dues` en TABLEAU…). L'écran passait au vert en
-   test et plantait en production : un mock qui invente sa réponse ne prouve
-   rien sur le contrat réel. Cette forme-ci est calquée sur
-   `apps/ao/selectors.py::tableau_marches` / `tableau_marches_vide` (six blocs,
-   `echeances_dues` ENTIER), et le test « contrat serveur » plus bas échoue si
-   les deux divergent à nouveau. Les Decimal Python arrivent en NOMBRES JSON
-   (encodeur DRF).
+   La toute première version de ce fichier déclarait à la main
+   `PAYLOAD = { ao_en_cours: 7, …, echeances_dues: [ … ] }` — l'INVERSE EXACT de
+   ce que le backend renvoie — et restait VERT : il vérifiait l'écran contre
+   l'hypothèse de l'écran. Un mock écrit à la main est une DEUXIÈME source de
+   vérité ; c'est elle qu'il fallait supprimer.
+
+   La forme vient désormais de l'exemple COMMITTÉ dans l'app
+   (`backend/django_core/apps/ao/contract_samples/tableau_marches.json`), le
+   même fichier que le backend affirme et que `scripts/check_api_shapes.py`
+   compare au dictionnaire RÉELLEMENT renvoyé par la vue. Si le serveur change
+   de forme, l'exemple change, et ce test casse tout seul.
    ========================================================================== */
-const PAYLOAD = {
-  en_cours: {
-    total: 7,
-    sous_7_jours: 2,
-    en_retard: 1,
-    par_echeance: [
-      {
-        id: 5, reference: 'AO-2026-005',
-        objet: 'Centrale PV 500 kWc — lycée Ibn Sina',
-        acheteur: 'AREF Casablanca', statut: 'chiffrage',
-        statut_display: 'Chiffrage', date_limite: '2026-08-10',
-        jours_restants: 7,
-      },
-      {
-        id: 6, reference: 'AO-2026-006',
-        objet: 'Pompage solaire — 12 forages',
-        acheteur: 'ORMVA Tadla', statut: 'dossier',
-        statut_display: 'Dossier', date_limite: '2026-07-28',
-        jours_restants: -6,
-      },
-      {
-        // Sans date limite : le serveur renvoie null/null (cf. _en_cours).
-        id: 9, reference: 'AO-2026-009', objet: 'Ombrières parking',
-        acheteur: 'Commune de Rabat', statut: 'etude',
-        statut_display: 'Étude', date_limite: null, jours_restants: null,
-      },
-    ],
-  },
-  echeances_dues: 3,
-  reussite: {
-    gagnes: 17, perdus: 23, total_decides: 40, total_resultats: 44,
-    taux_reussite_pct: 42.5,
-  },
-  capacite: {
-    demontree_modules: 1240, engagee_modules: 1500, ecart_modules: -260,
-    toitures_prouvees: 6,
-  },
-  cautions: {
-    montant_immobilise: 250000, nombre: 4, expirant_avant_ouverture: 1,
-  },
-  marches_en_execution: { total: 3, montant_offre_ht: 8400000 },
-}
+const PAYLOAD = exempleContrat('ao', 'tableau_marches')
 
 beforeEach(() => {
   vi.clearAllMocks()
@@ -130,16 +93,10 @@ describe('DashboardPage', () => {
   })
 
   it('un payload vide (utilisateur sans société) affiche des zéros, sans planter', async () => {
-    mocks.tableauMarches.mockResolvedValue({
-      data: {
-        en_cours: { total: 0, sous_7_jours: 0, en_retard: 0, par_echeance: [] },
-        echeances_dues: 0,
-        reussite: { gagnes: 0, perdus: 0, total_decides: 0, total_resultats: 0, taux_reussite_pct: 0 },
-        capacite: { demontree_modules: 0, engagee_modules: 0, ecart_modules: 0, toitures_prouvees: 0 },
-        cautions: { montant_immobilise: 0, nombre: 0, expirant_avant_ouverture: 0 },
-        marches_en_execution: { total: 0, montant_offre_ht: 0 },
-      },
-    })
+    // Un autre ÉTAT du serveur (`tableau_marches_vide`), jamais une autre
+    // FORME : la variante vit dans le même document de contrat.
+    mocks.tableauMarches.mockResolvedValue(
+      reponseContrat('ao', 'tableau_marches', 'exemple_vide'))
     renderScreen()
     await screen.findByText('AO en cours')
     expect(screen.getByText('0 %')).toBeInTheDocument()

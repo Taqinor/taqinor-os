@@ -1,46 +1,74 @@
 {
   "endpoint": "GET /api/django/ao/tableau-marches/",
-  "pourquoi": "Le tableau de bord des marchés, en UN SEUL appel agrégé. C'est l'endpoint qui a fait planter l'écran le 03/08/2026 : ce fichier est le document que les deux moitiés n'avaient pas sous les yeux. Source de vérité : apps/ao/selectors.py::tableau_marches (et son jumeau tableau_marches_vide, qui publie les MÊMES clés à zéro).",
+  "pourquoi": "Le tableau de bord des marchés, en UN SEUL appel agrégé. C'est l'endpoint qui a fait planter l'écran le 03/08/2026 : ce fichier est le document que les deux moitiés n'avaient pas sous les yeux. Source de vérité : apps/ao/selectors.py::tableau_marches (et son jumeau tableau_marches_vide, qui publie les MÊMES clés à zéro). Les Decimal Python arrivent en NOMBRES JSON (encodeur DRF).",
   "exemple": {
     "en_cours": {
-      "total": 3,
-      "sous_7_jours": 1,
-      "en_retard": 0,
+      "total": 7,
+      "sous_7_jours": 2,
+      "en_retard": 1,
       "par_echeance": [
         {
-          "id": 12,
-          "reference": "AO-2026-0007",
-          "objet": "Centrale photovoltaïque 250 kWc — lycée FRDISI",
-          "acheteur": "Ministère de l'Éducation nationale",
-          "statut": "en_preparation",
-          "statut_display": "En préparation",
-          "date_limite": "2026-08-14",
-          "jours_restants": 6
+          "id": 5,
+          "reference": "AO-2026-005",
+          "objet": "Centrale PV 500 kWc — lycée Ibn Sina",
+          "acheteur": "AREF Casablanca",
+          "statut": "chiffrage",
+          "statut_display": "Chiffrage",
+          "date_limite": "2026-08-10",
+          "jours_restants": 7
+        },
+        {
+          "id": 6,
+          "reference": "AO-2026-006",
+          "objet": "Pompage solaire — 12 forages",
+          "acheteur": "ORMVA Tadla",
+          "statut": "dossier",
+          "statut_display": "Dossier",
+          "date_limite": "2026-07-28",
+          "jours_restants": -6
+        },
+        {
+          "id": 9,
+          "reference": "AO-2026-009",
+          "objet": "Ombrières parking",
+          "acheteur": "Commune de Rabat",
+          "statut": "etude",
+          "statut_display": "Étude",
+          "date_limite": null,
+          "jours_restants": null
         }
       ]
     },
-    "echeances_dues": 2,
+    "echeances_dues": 3,
     "reussite": {
-      "gagnes": 4,
-      "perdus": 6,
-      "total_decides": 10,
-      "total_resultats": 11,
-      "taux_reussite_pct": "40.00"
+      "gagnes": 17,
+      "perdus": 23,
+      "total_decides": 40,
+      "total_resultats": 44,
+      "taux_reussite_pct": 42.5
     },
     "capacite": {
-      "demontree_modules": 462,
-      "engagee_modules": 480,
-      "ecart_modules": -18,
-      "toitures_prouvees": 3
+      "demontree_modules": 1240,
+      "engagee_modules": 1500,
+      "ecart_modules": -260,
+      "toitures_prouvees": 6
     },
     "cautions": {
-      "montant_immobilise": "125000.00",
-      "nombre": 2,
+      "montant_immobilise": 250000,
+      "nombre": 4,
       "expirant_avant_ouverture": 1
     },
     "marches_en_execution": {
-      "total": 2,
-      "montant_offre_ht": "2340000.00"
+      "total": 3,
+      "montant_offre_ht": 8400000
     }
+  },
+  "exemple_vide": {
+    "en_cours": { "total": 0, "sous_7_jours": 0, "en_retard": 0, "par_echeance": [] },
+    "echeances_dues": 0,
+    "reussite": { "gagnes": 0, "perdus": 0, "total_decides": 0, "total_resultats": 0, "taux_reussite_pct": 0 },
+    "capacite": { "demontree_modules": 0, "engagee_modules": 0, "ecart_modules": 0, "toitures_prouvees": 0 },
+    "cautions": { "montant_immobilise": 0, "nombre": 0, "expirant_avant_ouverture": 0 },
+    "marches_en_execution": { "total": 0, "montant_offre_ht": 0 }
   }
 }
