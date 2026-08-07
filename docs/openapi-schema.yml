@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 8385, operations: 15398, components: 4160}
+counts: {paths: 8780, operations: 15995, components: 4300}
 securitySchemes:
 - cookieJWT
 - publicApiKey
@@ -106,14 +106,35 @@ operations:
 - post /api/django/achats/retours-fournisseur/{id}/generer-avoir/ -> django_achats_retours_fournisseur_generer_avoir_create
 - post /api/django/achats/retours-fournisseur/{id}/valider/ -> django_achats_retours_fournisseur_valider_create
 - get /api/django/adminops/adoption/ -> django_adminops_adoption_retrieve
+- get /api/django/adminops/annonces/ -> django_adminops_annonces_retrieve
+- post /api/django/adminops/annonces/ -> django_adminops_annonces_create
+- post /api/django/adminops/annonces/{id}/marquer-lu/ -> django_adminops_annonces_marquer_lu_create
 - get /api/django/adminops/config-packages/ -> django_adminops_config_packages_list
 - post /api/django/adminops/config-packages/appliquer/ -> django_adminops_config_packages_appliquer_create
 - post /api/django/adminops/config-packages/exporter/ -> django_adminops_config_packages_exporter_create
 - post /api/django/adminops/config-packages/previsualiser/ -> django_adminops_config_packages_previsualiser_create
 - get /api/django/adminops/config-packages/{id}/ -> django_adminops_config_packages_retrieve
+- get /api/django/adminops/demandes-inscription/ -> django_adminops_demandes_inscription_retrieve
+- post /api/django/adminops/demandes-inscription/{id}/approuver/ -> django_adminops_demandes_inscription_approuver_create
+- post /api/django/adminops/demandes-inscription/{id}/refuser/ -> django_adminops_demandes_inscription_refuser_create
 - get /api/django/adminops/diagnostic/ -> django_adminops_diagnostic_retrieve
 - get /api/django/adminops/diagnostic/support-bundle/ -> django_adminops_diagnostic_support_bundle_retrieve
+- get /api/django/adminops/facturation-licences/ -> django_adminops_facturation_licences_retrieve
+- post /api/django/adminops/facturation-licences/ -> django_adminops_facturation_licences_create
+- get /api/django/adminops/facturation-licences/export-csv/ -> django_adminops_facturation_licences_export_csv_retrieve
+- post /api/django/adminops/facturation-licences/{id}/marquer-payee/ -> django_adminops_facturation_licences_marquer_payee_create
 - get /api/django/adminops/health-score/ -> django_adminops_health_score_retrieve
+- get /api/django/adminops/impersonation/ -> django_adminops_impersonation_retrieve
+- post /api/django/adminops/impersonation/ -> django_adminops_impersonation_create
+- get /api/django/adminops/impersonation/cibles/ -> django_adminops_impersonation_cibles_retrieve
+- get /api/django/adminops/impersonation/en-attente/ -> django_adminops_impersonation_en_attente_retrieve
+- get /api/django/adminops/impersonation/session-active/ -> django_adminops_impersonation_session_active_retrieve
+- post /api/django/adminops/impersonation/{id}/consentir/ -> django_adminops_impersonation_consentir_create
+- post /api/django/adminops/impersonation/{id}/demarrer/ -> django_adminops_impersonation_demarrer_create
+- post /api/django/adminops/impersonation/{id}/refuser/ -> django_adminops_impersonation_refuser_create
+- post /api/django/adminops/impersonation/{id}/terminer/ -> django_adminops_impersonation_terminer_create
+- get /api/django/adminops/licences/ -> django_adminops_licences_retrieve
+- get /api/django/adminops/licences/pdf/ -> django_adminops_licences_pdf_retrieve
 - get /api/django/adminops/rapports/journal-admin/ -> django_adminops_rapports_journal_admin_retrieve
 - get /api/django/adminops/sandbox/ -> django_adminops_sandbox_list
 - post /api/django/adminops/sandbox/creer/ -> django_adminops_sandbox_creer_create
@@ -467,24 +488,95 @@ operations:
 - get /api/django/ao/appels-offres/{id}/ -> django_ao_appels_offres_retrieve
 - patch /api/django/ao/appels-offres/{id}/ -> django_ao_appels_offres_partial_update
 - put /api/django/ao/appels-offres/{id}/ -> django_ao_appels_offres_update
+- post /api/django/ao/appels-offres/{id}/changer-statut/ -> django_ao_appels_offres_changer_statut_create
+- get /api/django/ao/appels-offres/{id}/chatter/historique/ -> django_ao_appels_offres_chatter_historique_retrieve
+- post /api/django/ao/appels-offres/{id}/chatter/noter/ -> django_ao_appels_offres_chatter_noter_create
+- post /api/django/ao/appels-offres/{id}/dupliquer/ -> django_ao_appels_offres_dupliquer_create
+- get /api/django/ao/appels-offres/{id}/lead/ -> django_ao_appels_offres_lead_retrieve
+- get /api/django/ao/appels-offres/{id}/points-a-lever/ -> django_ao_appels_offres_points_a_lever_retrieve
+- post /api/django/ao/appels-offres/{id}/rattacher-lead/ -> django_ao_appels_offres_rattacher_lead_create
+- get /api/django/ao/appels-offres/{id}/transitions/ -> django_ao_appels_offres_transitions_retrieve
+- get /api/django/ao/batiments/ -> django_ao_batiments_list
+- post /api/django/ao/batiments/ -> django_ao_batiments_create
+- delete /api/django/ao/batiments/{id}/ -> django_ao_batiments_destroy
+- get /api/django/ao/batiments/{id}/ -> django_ao_batiments_retrieve
+- patch /api/django/ao/batiments/{id}/ -> django_ao_batiments_partial_update
+- put /api/django/ao/batiments/{id}/ -> django_ao_batiments_update
+- get /api/django/ao/batiments/{id}/chatter/historique/ -> django_ao_batiments_chatter_historique_retrieve
+- post /api/django/ao/batiments/{id}/chatter/noter/ -> django_ao_batiments_chatter_noter_create
 - get /api/django/ao/bordereaux-prix/ -> django_ao_bordereaux_prix_list
 - post /api/django/ao/bordereaux-prix/ -> django_ao_bordereaux_prix_create
 - delete /api/django/ao/bordereaux-prix/{id}/ -> django_ao_bordereaux_prix_destroy
 - get /api/django/ao/bordereaux-prix/{id}/ -> django_ao_bordereaux_prix_retrieve
 - patch /api/django/ao/bordereaux-prix/{id}/ -> django_ao_bordereaux_prix_partial_update
 - put /api/django/ao/bordereaux-prix/{id}/ -> django_ao_bordereaux_prix_update
+- get /api/django/ao/bordereaux-prix/{id}/chatter/historique/ -> django_ao_bordereaux_prix_chatter_historique_retrieve
+- post /api/django/ao/bordereaux-prix/{id}/chatter/noter/ -> django_ao_bordereaux_prix_chatter_noter_create
+- get /api/django/ao/bordereaux-prix/{id}/controles/ -> django_ao_bordereaux_prix_controles_retrieve
+- get /api/django/ao/bordereaux-prix/{id}/totaux/ -> django_ao_bordereaux_prix_totaux_retrieve
+- post /api/django/ao/calepinage/calculer/ -> django_ao_calepinage_calculer_create
+- post /api/django/ao/calepinage/lancer/ -> django_ao_calepinage_lancer_create
+- get /api/django/ao/calepinage/resultat/{job_id}/ -> django_ao_calepinage_resultat_retrieve
+- get /api/django/ao/calepinage/variantes/comparer/ -> django_ao_calepinage_variantes_comparer_retrieve
+- get /api/django/ao/calepinage/variantes/{id}/marches/ -> django_ao_calepinage_variantes_marches_retrieve
+- post /api/django/ao/calepinage/variantes/{id}/retenir/ -> django_ao_calepinage_variantes_retenir_create
+- post /api/django/ao/calepinage/variantes/{id}/sensibilites/ -> django_ao_calepinage_variantes_sensibilites_create
 - get /api/django/ao/cautions-soumission/ -> django_ao_cautions_soumission_list
 - post /api/django/ao/cautions-soumission/ -> django_ao_cautions_soumission_create
 - delete /api/django/ao/cautions-soumission/{id}/ -> django_ao_cautions_soumission_destroy
 - get /api/django/ao/cautions-soumission/{id}/ -> django_ao_cautions_soumission_retrieve
 - patch /api/django/ao/cautions-soumission/{id}/ -> django_ao_cautions_soumission_partial_update
 - put /api/django/ao/cautions-soumission/{id}/ -> django_ao_cautions_soumission_update
+- get /api/django/ao/cautions-soumission/{id}/chatter/historique/ -> django_ao_cautions_soumission_chatter_historique_retrieve
+- post /api/django/ao/cautions-soumission/{id}/chatter/noter/ -> django_ao_cautions_soumission_chatter_noter_create
+- get /api/django/ao/chaines-cotes/ -> django_ao_chaines_cotes_list
+- post /api/django/ao/chaines-cotes/ -> django_ao_chaines_cotes_create
+- delete /api/django/ao/chaines-cotes/{id}/ -> django_ao_chaines_cotes_destroy
+- get /api/django/ao/chaines-cotes/{id}/ -> django_ao_chaines_cotes_retrieve
+- patch /api/django/ao/chaines-cotes/{id}/ -> django_ao_chaines_cotes_partial_update
+- put /api/django/ao/chaines-cotes/{id}/ -> django_ao_chaines_cotes_update
+- get /api/django/ao/chaines-cotes/{id}/chatter/historique/ -> django_ao_chaines_cotes_chatter_historique_retrieve
+- post /api/django/ao/chaines-cotes/{id}/chatter/noter/ -> django_ao_chaines_cotes_chatter_noter_create
+- get /api/django/ao/chaines-cotes/{id}/compensation/ -> django_ao_chaines_cotes_compensation_retrieve
+- post /api/django/ao/chaines-cotes/{id}/deduire/ -> django_ao_chaines_cotes_deduire_create
+- get /api/django/ao/checklist-partenaire/ -> django_ao_checklist_partenaire_list
+- post /api/django/ao/checklist-partenaire/ -> django_ao_checklist_partenaire_create
+- delete /api/django/ao/checklist-partenaire/{id}/ -> django_ao_checklist_partenaire_destroy
+- get /api/django/ao/checklist-partenaire/{id}/ -> django_ao_checklist_partenaire_retrieve
+- patch /api/django/ao/checklist-partenaire/{id}/ -> django_ao_checklist_partenaire_partial_update
+- put /api/django/ao/checklist-partenaire/{id}/ -> django_ao_checklist_partenaire_update
+- get /api/django/ao/checklist-partenaire/{id}/chatter/historique/ -> django_ao_checklist_partenaire_chatter_historique_retrieve
+- post /api/django/ao/checklist-partenaire/{id}/chatter/noter/ -> django_ao_checklist_partenaire_chatter_noter_create
+- post /api/django/ao/checklist-partenaire/{id}/pointer/ -> django_ao_checklist_partenaire_pointer_create
+- get /api/django/ao/cibles-financieres/ -> django_ao_cibles_financieres_list
+- post /api/django/ao/cibles-financieres/ -> django_ao_cibles_financieres_create
+- delete /api/django/ao/cibles-financieres/{id}/ -> django_ao_cibles_financieres_destroy
+- get /api/django/ao/cibles-financieres/{id}/ -> django_ao_cibles_financieres_retrieve
+- patch /api/django/ao/cibles-financieres/{id}/ -> django_ao_cibles_financieres_partial_update
+- put /api/django/ao/cibles-financieres/{id}/ -> django_ao_cibles_financieres_update
+- get /api/django/ao/contrat/ -> django_ao_contrat_retrieve
+- get /api/django/ao/dossiers-ao/ -> django_ao_dossiers_ao_list
+- post /api/django/ao/dossiers-ao/ -> django_ao_dossiers_ao_create
+- delete /api/django/ao/dossiers-ao/{id}/ -> django_ao_dossiers_ao_destroy
+- get /api/django/ao/dossiers-ao/{id}/ -> django_ao_dossiers_ao_retrieve
+- patch /api/django/ao/dossiers-ao/{id}/ -> django_ao_dossiers_ao_partial_update
+- put /api/django/ao/dossiers-ao/{id}/ -> django_ao_dossiers_ao_update
+- post /api/django/ao/dossiers-ao/{id}/changer-statut/ -> django_ao_dossiers_ao_changer_statut_create
+- get /api/django/ao/dossiers-ao/{id}/chatter/historique/ -> django_ao_dossiers_ao_chatter_historique_retrieve
+- post /api/django/ao/dossiers-ao/{id}/chatter/noter/ -> django_ao_dossiers_ao_chatter_noter_create
+- get /api/django/ao/dossiers-ao/{id}/completude/ -> django_ao_dossiers_ao_completude_retrieve
+- get /api/django/ao/dossiers-ao/{id}/controle-administratif/ -> django_ao_dossiers_ao_controle_administratif_retrieve
+- post /api/django/ao/dossiers-ao/{id}/controler/ -> django_ao_dossiers_ao_controler_create
+- get /api/django/ao/dossiers-ao/{id}/controles-avant-depot/ -> django_ao_dossiers_ao_controles_avant_depot_retrieve
+- post /api/django/ao/dossiers-ao/{id}/initialiser-checklist/ -> django_ao_dossiers_ao_initialiser_checklist_create
 - get /api/django/ao/dossiers-soumission/ -> django_ao_dossiers_soumission_list
 - post /api/django/ao/dossiers-soumission/ -> django_ao_dossiers_soumission_create
 - delete /api/django/ao/dossiers-soumission/{id}/ -> django_ao_dossiers_soumission_destroy
 - get /api/django/ao/dossiers-soumission/{id}/ -> django_ao_dossiers_soumission_retrieve
 - patch /api/django/ao/dossiers-soumission/{id}/ -> django_ao_dossiers_soumission_partial_update
 - put /api/django/ao/dossiers-soumission/{id}/ -> django_ao_dossiers_soumission_update
+- get /api/django/ao/dossiers-soumission/{id}/chatter/historique/ -> django_ao_dossiers_soumission_chatter_historique_retrieve
+- post /api/django/ao/dossiers-soumission/{id}/chatter/noter/ -> django_ao_dossiers_soumission_chatter_noter_create
 - get /api/django/ao/echeances-ao/ -> django_ao_echeances_ao_list
 - post /api/django/ao/echeances-ao/ -> django_ao_echeances_ao_create
 - get /api/django/ao/echeances-ao/dues/ -> django_ao_echeances_ao_dues_retrieve
@@ -492,25 +584,199 @@ operations:
 - get /api/django/ao/echeances-ao/{id}/ -> django_ao_echeances_ao_retrieve
 - patch /api/django/ao/echeances-ao/{id}/ -> django_ao_echeances_ao_partial_update
 - put /api/django/ao/echeances-ao/{id}/ -> django_ao_echeances_ao_update
+- get /api/django/ao/echeances-ao/{id}/chatter/historique/ -> django_ao_echeances_ao_chatter_historique_retrieve
+- post /api/django/ao/echeances-ao/{id}/chatter/noter/ -> django_ao_echeances_ao_chatter_noter_create
+- get /api/django/ao/economie/ -> django_ao_economie_list
+- post /api/django/ao/economie/ -> django_ao_economie_create
+- delete /api/django/ao/economie/{id}/ -> django_ao_economie_destroy
+- get /api/django/ao/economie/{id}/ -> django_ao_economie_retrieve
+- patch /api/django/ao/economie/{id}/ -> django_ao_economie_partial_update
+- put /api/django/ao/economie/{id}/ -> django_ao_economie_update
+- post /api/django/ao/economie/{id}/deverrouiller/ -> django_ao_economie_deverrouiller_create
+- get /api/django/ao/economie/{id}/synthese/ -> django_ao_economie_synthese_retrieve
+- get /api/django/ao/economie/{id}/telecharger/ -> django_ao_economie_telecharger_retrieve
+- post /api/django/ao/economie/{id}/telecharger/ -> django_ao_economie_telecharger_create
+- post /api/django/ao/economie/{id}/verrouiller/ -> django_ao_economie_verrouiller_create
+- get /api/django/ao/equipements/ -> django_ao_equipements_list
+- post /api/django/ao/equipements/ -> django_ao_equipements_create
+- delete /api/django/ao/equipements/{id}/ -> django_ao_equipements_destroy
+- get /api/django/ao/equipements/{id}/ -> django_ao_equipements_retrieve
+- patch /api/django/ao/equipements/{id}/ -> django_ao_equipements_partial_update
+- put /api/django/ao/equipements/{id}/ -> django_ao_equipements_update
+- post /api/django/ao/equipements/{id}/bascule/ -> django_ao_equipements_bascule_create
+- get /api/django/ao/equipements/{id}/chatter/historique/ -> django_ao_equipements_chatter_historique_retrieve
+- post /api/django/ao/equipements/{id}/chatter/noter/ -> django_ao_equipements_chatter_noter_create
+- get /api/django/ao/exigences-cps/ -> django_ao_exigences_cps_list
+- post /api/django/ao/exigences-cps/ -> django_ao_exigences_cps_create
+- delete /api/django/ao/exigences-cps/{id}/ -> django_ao_exigences_cps_destroy
+- get /api/django/ao/exigences-cps/{id}/ -> django_ao_exigences_cps_retrieve
+- patch /api/django/ao/exigences-cps/{id}/ -> django_ao_exigences_cps_partial_update
+- put /api/django/ao/exigences-cps/{id}/ -> django_ao_exigences_cps_update
+- get /api/django/ao/exigences-cps/{id}/chatter/historique/ -> django_ao_exigences_cps_chatter_historique_retrieve
+- post /api/django/ao/exigences-cps/{id}/chatter/noter/ -> django_ao_exigences_cps_chatter_noter_create
+- get /api/django/ao/kits-calepinage/ -> django_ao_kits_calepinage_list
+- post /api/django/ao/kits-calepinage/ -> django_ao_kits_calepinage_create
+- delete /api/django/ao/kits-calepinage/{id}/ -> django_ao_kits_calepinage_destroy
+- get /api/django/ao/kits-calepinage/{id}/ -> django_ao_kits_calepinage_retrieve
+- patch /api/django/ao/kits-calepinage/{id}/ -> django_ao_kits_calepinage_partial_update
+- put /api/django/ao/kits-calepinage/{id}/ -> django_ao_kits_calepinage_update
+- get /api/django/ao/kits-calepinage/{id}/chatter/historique/ -> django_ao_kits_calepinage_chatter_historique_retrieve
+- post /api/django/ao/kits-calepinage/{id}/chatter/noter/ -> django_ao_kits_calepinage_chatter_noter_create
 - get /api/django/ao/lignes-bordereau/ -> django_ao_lignes_bordereau_list
 - post /api/django/ao/lignes-bordereau/ -> django_ao_lignes_bordereau_create
 - delete /api/django/ao/lignes-bordereau/{id}/ -> django_ao_lignes_bordereau_destroy
 - get /api/django/ao/lignes-bordereau/{id}/ -> django_ao_lignes_bordereau_retrieve
 - patch /api/django/ao/lignes-bordereau/{id}/ -> django_ao_lignes_bordereau_partial_update
 - put /api/django/ao/lignes-bordereau/{id}/ -> django_ao_lignes_bordereau_update
+- get /api/django/ao/lignes-bordereau/{id}/chatter/historique/ -> django_ao_lignes_bordereau_chatter_historique_retrieve
+- post /api/django/ao/lignes-bordereau/{id}/chatter/noter/ -> django_ao_lignes_bordereau_chatter_noter_create
+- get /api/django/ao/lignes-cout-revient/ -> django_ao_lignes_cout_revient_list
+- post /api/django/ao/lignes-cout-revient/ -> django_ao_lignes_cout_revient_create
+- delete /api/django/ao/lignes-cout-revient/{id}/ -> django_ao_lignes_cout_revient_destroy
+- get /api/django/ao/lignes-cout-revient/{id}/ -> django_ao_lignes_cout_revient_retrieve
+- patch /api/django/ao/lignes-cout-revient/{id}/ -> django_ao_lignes_cout_revient_partial_update
+- put /api/django/ao/lignes-cout-revient/{id}/ -> django_ao_lignes_cout_revient_update
+- get /api/django/ao/modeles-pack/ -> django_ao_modeles_pack_list
+- post /api/django/ao/modeles-pack/ -> django_ao_modeles_pack_create
+- delete /api/django/ao/modeles-pack/{id}/ -> django_ao_modeles_pack_destroy
+- get /api/django/ao/modeles-pack/{id}/ -> django_ao_modeles_pack_retrieve
+- patch /api/django/ao/modeles-pack/{id}/ -> django_ao_modeles_pack_partial_update
+- put /api/django/ao/modeles-pack/{id}/ -> django_ao_modeles_pack_update
+- get /api/django/ao/modeles-pack/{id}/chatter/historique/ -> django_ao_modeles_pack_chatter_historique_retrieve
+- post /api/django/ao/modeles-pack/{id}/chatter/noter/ -> django_ao_modeles_pack_chatter_noter_create
+- get /api/django/ao/obstacles/ -> django_ao_obstacles_list
+- post /api/django/ao/obstacles/ -> django_ao_obstacles_create
+- delete /api/django/ao/obstacles/{id}/ -> django_ao_obstacles_destroy
+- get /api/django/ao/obstacles/{id}/ -> django_ao_obstacles_retrieve
+- patch /api/django/ao/obstacles/{id}/ -> django_ao_obstacles_partial_update
+- put /api/django/ao/obstacles/{id}/ -> django_ao_obstacles_update
+- get /api/django/ao/obstacles/{id}/chatter/historique/ -> django_ao_obstacles_chatter_historique_retrieve
+- post /api/django/ao/obstacles/{id}/chatter/noter/ -> django_ao_obstacles_chatter_noter_create
+- post /api/django/ao/obstacles/{id}/ecarter/ -> django_ao_obstacles_ecarter_create
+- post /api/django/ao/obstacles/{id}/reintegrer/ -> django_ao_obstacles_reintegrer_create
+- get /api/django/ao/pieces-administratives/ -> django_ao_pieces_administratives_list
+- post /api/django/ao/pieces-administratives/ -> django_ao_pieces_administratives_create
+- get /api/django/ao/pieces-administratives/a-renouveler/ -> django_ao_pieces_administratives_a_renouveler_retrieve
+- delete /api/django/ao/pieces-administratives/{id}/ -> django_ao_pieces_administratives_destroy
+- get /api/django/ao/pieces-administratives/{id}/ -> django_ao_pieces_administratives_retrieve
+- patch /api/django/ao/pieces-administratives/{id}/ -> django_ao_pieces_administratives_partial_update
+- put /api/django/ao/pieces-administratives/{id}/ -> django_ao_pieces_administratives_update
+- get /api/django/ao/pieces-administratives/{id}/chatter/historique/ -> django_ao_pieces_administratives_chatter_historique_retrieve
+- post /api/django/ao/pieces-administratives/{id}/chatter/noter/ -> django_ao_pieces_administratives_chatter_noter_create
+- post /api/django/ao/pieces-administratives/{id}/rattacher/ -> django_ao_pieces_administratives_rattacher_create
+- get /api/django/ao/pieces-consultation/ -> django_ao_pieces_consultation_list
+- post /api/django/ao/pieces-consultation/ -> django_ao_pieces_consultation_create
+- delete /api/django/ao/pieces-consultation/{id}/ -> django_ao_pieces_consultation_destroy
+- get /api/django/ao/pieces-consultation/{id}/ -> django_ao_pieces_consultation_retrieve
+- patch /api/django/ao/pieces-consultation/{id}/ -> django_ao_pieces_consultation_partial_update
+- put /api/django/ao/pieces-consultation/{id}/ -> django_ao_pieces_consultation_update
+- post /api/django/ao/pieces-consultation/{id}/additif/ -> django_ao_pieces_consultation_additif_create
+- get /api/django/ao/pieces-consultation/{id}/chatter/historique/ -> django_ao_pieces_consultation_chatter_historique_retrieve
+- post /api/django/ao/pieces-consultation/{id}/chatter/noter/ -> django_ao_pieces_consultation_chatter_noter_create
+- get /api/django/ao/pieces-dossier-ao/ -> django_ao_pieces_dossier_ao_list
+- post /api/django/ao/pieces-dossier-ao/ -> django_ao_pieces_dossier_ao_create
+- delete /api/django/ao/pieces-dossier-ao/{id}/ -> django_ao_pieces_dossier_ao_destroy
+- get /api/django/ao/pieces-dossier-ao/{id}/ -> django_ao_pieces_dossier_ao_retrieve
+- patch /api/django/ao/pieces-dossier-ao/{id}/ -> django_ao_pieces_dossier_ao_partial_update
+- put /api/django/ao/pieces-dossier-ao/{id}/ -> django_ao_pieces_dossier_ao_update
+- get /api/django/ao/pieces-dossier-ao/{id}/chatter/historique/ -> django_ao_pieces_dossier_ao_chatter_historique_retrieve
+- post /api/django/ao/pieces-dossier-ao/{id}/chatter/noter/ -> django_ao_pieces_dossier_ao_chatter_noter_create
 - get /api/django/ao/pieces-soumission/ -> django_ao_pieces_soumission_list
 - post /api/django/ao/pieces-soumission/ -> django_ao_pieces_soumission_create
 - delete /api/django/ao/pieces-soumission/{id}/ -> django_ao_pieces_soumission_destroy
 - get /api/django/ao/pieces-soumission/{id}/ -> django_ao_pieces_soumission_retrieve
 - patch /api/django/ao/pieces-soumission/{id}/ -> django_ao_pieces_soumission_partial_update
 - put /api/django/ao/pieces-soumission/{id}/ -> django_ao_pieces_soumission_update
+- get /api/django/ao/pieces-soumission/{id}/chatter/historique/ -> django_ao_pieces_soumission_chatter_historique_retrieve
+- post /api/django/ao/pieces-soumission/{id}/chatter/noter/ -> django_ao_pieces_soumission_chatter_noter_create
+- get /api/django/ao/plans-source/ -> django_ao_plans_source_list
+- post /api/django/ao/plans-source/ -> django_ao_plans_source_create
+- delete /api/django/ao/plans-source/{id}/ -> django_ao_plans_source_destroy
+- get /api/django/ao/plans-source/{id}/ -> django_ao_plans_source_retrieve
+- patch /api/django/ao/plans-source/{id}/ -> django_ao_plans_source_partial_update
+- put /api/django/ao/plans-source/{id}/ -> django_ao_plans_source_update
+- get /api/django/ao/plans-source/{id}/chatter/historique/ -> django_ao_plans_source_chatter_historique_retrieve
+- post /api/django/ao/plans-source/{id}/chatter/noter/ -> django_ao_plans_source_chatter_noter_create
+- get /api/django/ao/presets-calepinage/ -> django_ao_presets_calepinage_list
+- post /api/django/ao/presets-calepinage/ -> django_ao_presets_calepinage_create
+- delete /api/django/ao/presets-calepinage/{id}/ -> django_ao_presets_calepinage_destroy
+- get /api/django/ao/presets-calepinage/{id}/ -> django_ao_presets_calepinage_retrieve
+- patch /api/django/ao/presets-calepinage/{id}/ -> django_ao_presets_calepinage_partial_update
+- put /api/django/ao/presets-calepinage/{id}/ -> django_ao_presets_calepinage_update
+- get /api/django/ao/presets-calepinage/{id}/chatter/historique/ -> django_ao_presets_calepinage_chatter_historique_retrieve
+- post /api/django/ao/presets-calepinage/{id}/chatter/noter/ -> django_ao_presets_calepinage_chatter_noter_create
+- get /api/django/ao/questions/ -> django_ao_questions_list
+- post /api/django/ao/questions/ -> django_ao_questions_create
+- delete /api/django/ao/questions/{id}/ -> django_ao_questions_destroy
+- get /api/django/ao/questions/{id}/ -> django_ao_questions_retrieve
+- patch /api/django/ao/questions/{id}/ -> django_ao_questions_partial_update
+- put /api/django/ao/questions/{id}/ -> django_ao_questions_update
+- get /api/django/ao/questions/{id}/chatter/historique/ -> django_ao_questions_chatter_historique_retrieve
+- post /api/django/ao/questions/{id}/chatter/noter/ -> django_ao_questions_chatter_noter_create
+- post /api/django/ao/questions/{id}/trancher/ -> django_ao_questions_trancher_create
+- get /api/django/ao/releves/ -> django_ao_releves_list
+- post /api/django/ao/releves/ -> django_ao_releves_create
+- delete /api/django/ao/releves/{id}/ -> django_ao_releves_destroy
+- get /api/django/ao/releves/{id}/ -> django_ao_releves_retrieve
+- patch /api/django/ao/releves/{id}/ -> django_ao_releves_partial_update
+- put /api/django/ao/releves/{id}/ -> django_ao_releves_update
+- get /api/django/ao/releves/{id}/chatter/historique/ -> django_ao_releves_chatter_historique_retrieve
+- post /api/django/ao/releves/{id}/chatter/noter/ -> django_ao_releves_chatter_noter_create
 - get /api/django/ao/resultats-ao/ -> django_ao_resultats_ao_list
 - post /api/django/ao/resultats-ao/ -> django_ao_resultats_ao_create
+- post /api/django/ao/resultats-ao/enregistrer/ -> django_ao_resultats_ao_enregistrer_create
 - get /api/django/ao/resultats-ao/stats/ -> django_ao_resultats_ao_stats_retrieve
 - delete /api/django/ao/resultats-ao/{id}/ -> django_ao_resultats_ao_destroy
 - get /api/django/ao/resultats-ao/{id}/ -> django_ao_resultats_ao_retrieve
 - patch /api/django/ao/resultats-ao/{id}/ -> django_ao_resultats_ao_partial_update
 - put /api/django/ao/resultats-ao/{id}/ -> django_ao_resultats_ao_update
+- get /api/django/ao/resultats-ao/{id}/chatter/historique/ -> django_ao_resultats_ao_chatter_historique_retrieve
+- post /api/django/ao/resultats-ao/{id}/chatter/noter/ -> django_ao_resultats_ao_chatter_noter_create
+- get /api/django/ao/sections-bordereau/ -> django_ao_sections_bordereau_list
+- post /api/django/ao/sections-bordereau/ -> django_ao_sections_bordereau_create
+- delete /api/django/ao/sections-bordereau/{id}/ -> django_ao_sections_bordereau_destroy
+- get /api/django/ao/sections-bordereau/{id}/ -> django_ao_sections_bordereau_retrieve
+- patch /api/django/ao/sections-bordereau/{id}/ -> django_ao_sections_bordereau_partial_update
+- put /api/django/ao/sections-bordereau/{id}/ -> django_ao_sections_bordereau_update
+- get /api/django/ao/sections-bordereau/{id}/chatter/historique/ -> django_ao_sections_bordereau_chatter_historique_retrieve
+- post /api/django/ao/sections-bordereau/{id}/chatter/noter/ -> django_ao_sections_bordereau_chatter_noter_create
+- get /api/django/ao/sections-memoire/ -> django_ao_sections_memoire_list
+- post /api/django/ao/sections-memoire/ -> django_ao_sections_memoire_create
+- delete /api/django/ao/sections-memoire/{id}/ -> django_ao_sections_memoire_destroy
+- get /api/django/ao/sections-memoire/{id}/ -> django_ao_sections_memoire_retrieve
+- patch /api/django/ao/sections-memoire/{id}/ -> django_ao_sections_memoire_partial_update
+- put /api/django/ao/sections-memoire/{id}/ -> django_ao_sections_memoire_update
+- get /api/django/ao/sections-memoire/{id}/chatter/historique/ -> django_ao_sections_memoire_chatter_historique_retrieve
+- post /api/django/ao/sections-memoire/{id}/chatter/noter/ -> django_ao_sections_memoire_chatter_noter_create
+- get /api/django/ao/sections-memoire/{id}/dossiers-impactes/ -> django_ao_sections_memoire_dossiers_impactes_retrieve
+- get /api/django/ao/series-questions/ -> django_ao_series_questions_list
+- post /api/django/ao/series-questions/ -> django_ao_series_questions_create
+- delete /api/django/ao/series-questions/{id}/ -> django_ao_series_questions_destroy
+- get /api/django/ao/series-questions/{id}/ -> django_ao_series_questions_retrieve
+- patch /api/django/ao/series-questions/{id}/ -> django_ao_series_questions_partial_update
+- put /api/django/ao/series-questions/{id}/ -> django_ao_series_questions_update
+- get /api/django/ao/series-questions/{id}/chatter/historique/ -> django_ao_series_questions_chatter_historique_retrieve
+- post /api/django/ao/series-questions/{id}/chatter/noter/ -> django_ao_series_questions_chatter_noter_create
+- get /api/django/ao/tableau-marches/ -> django_ao_tableau_marches_retrieve
+- get /api/django/ao/toitures/ -> django_ao_toitures_list
+- post /api/django/ao/toitures/ -> django_ao_toitures_create
+- delete /api/django/ao/toitures/{id}/ -> django_ao_toitures_destroy
+- get /api/django/ao/toitures/{id}/ -> django_ao_toitures_retrieve
+- patch /api/django/ao/toitures/{id}/ -> django_ao_toitures_partial_update
+- put /api/django/ao/toitures/{id}/ -> django_ao_toitures_update
+- post /api/django/ao/toitures/{id}/appliquer-preset/ -> django_ao_toitures_appliquer_preset_create
+- get /api/django/ao/toitures/{id}/chatter/historique/ -> django_ao_toitures_chatter_historique_retrieve
+- post /api/django/ao/toitures/{id}/chatter/noter/ -> django_ao_toitures_chatter_noter_create
+- get /api/django/ao/variantes-calepinage/ -> django_ao_variantes_calepinage_list
+- post /api/django/ao/variantes-calepinage/ -> django_ao_variantes_calepinage_create
+- delete /api/django/ao/variantes-calepinage/{id}/ -> django_ao_variantes_calepinage_destroy
+- get /api/django/ao/variantes-calepinage/{id}/ -> django_ao_variantes_calepinage_retrieve
+- patch /api/django/ao/variantes-calepinage/{id}/ -> django_ao_variantes_calepinage_partial_update
+- put /api/django/ao/variantes-calepinage/{id}/ -> django_ao_variantes_calepinage_update
+- get /api/django/ao/variantes-calepinage/{id}/chatter/historique/ -> django_ao_variantes_calepinage_chatter_historique_retrieve
+- post /api/django/ao/variantes-calepinage/{id}/chatter/noter/ -> django_ao_variantes_calepinage_chatter_noter_create
+- post /api/django/ao/variantes-calepinage/{id}/publier/ -> django_ao_variantes_calepinage_publier_create
+- post /api/django/ao/variantes-calepinage/{id}/retenir/ -> django_ao_variantes_calepinage_retenir_create
 - get /api/django/assurances/actifs-couverts/ -> django_assurances_actifs_couverts_list
 - post /api/django/assurances/actifs-couverts/ -> django_assurances_actifs_couverts_create
 - delete /api/django/assurances/actifs-couverts/{id}/ -> django_assurances_actifs_couverts_destroy
@@ -596,6 +862,7 @@ operations:
 - get /api/django/auth/2fa/status/ -> django_auth_2fa_status_retrieve
 - post /api/django/auth/change-password/ -> django_auth_change_password_create
 - get /api/django/auth/console/tenants/ -> django_auth_console_tenants_retrieve
+- post /api/django/auth/console/tenants/creer/ -> django_auth_console_tenants_creer_create
 - post /api/django/auth/console/tenants/{id}/note/ -> django_auth_console_tenants_note_create
 - post /api/django/auth/console/tenants/{id}/statut/ -> django_auth_console_tenants_statut_create
 - post /api/django/auth/logout/ -> django_auth_logout_create
@@ -604,6 +871,7 @@ operations:
 - post /api/django/auth/register-company/ -> django_auth_register_company_create
 - get /api/django/auth/sessions/ -> django_auth_sessions_list
 - post /api/django/auth/sessions/{id}/revoke/ -> django_auth_sessions_revoke_create
+- post /api/django/auth/signup-demande/ -> django_auth_signup_demande_create
 - post /api/django/auth/switch-company/ -> django_auth_switch_company_create
 - post /api/django/auth/token/refresh/ -> django_auth_token_refresh_create
 - get /api/django/automation/approval-delegations/ -> django_automation_approval_delegations_list
@@ -851,6 +1119,14 @@ operations:
 - get /api/django/compta/appels-offres/{id}/ -> django_compta_appels_offres_retrieve
 - patch /api/django/compta/appels-offres/{id}/ -> django_compta_appels_offres_partial_update
 - put /api/django/compta/appels-offres/{id}/ -> django_compta_appels_offres_update
+- post /api/django/compta/appels-offres/{id}/changer-statut/ -> django_compta_appels_offres_changer_statut_create
+- get /api/django/compta/appels-offres/{id}/chatter/historique/ -> django_compta_appels_offres_chatter_historique_retrieve
+- post /api/django/compta/appels-offres/{id}/chatter/noter/ -> django_compta_appels_offres_chatter_noter_create
+- post /api/django/compta/appels-offres/{id}/dupliquer/ -> django_compta_appels_offres_dupliquer_create
+- get /api/django/compta/appels-offres/{id}/lead/ -> django_compta_appels_offres_lead_retrieve
+- get /api/django/compta/appels-offres/{id}/points-a-lever/ -> django_compta_appels_offres_points_a_lever_retrieve
+- post /api/django/compta/appels-offres/{id}/rattacher-lead/ -> django_compta_appels_offres_rattacher_lead_create
+- get /api/django/compta/appels-offres/{id}/transitions/ -> django_compta_appels_offres_transitions_retrieve
 - get /api/django/compta/appels/ -> django_compta_appels_list
 - post /api/django/compta/appels/ -> django_compta_appels_create
 - delete /api/django/compta/appels/{id}/ -> django_compta_appels_destroy
@@ -905,6 +1181,10 @@ operations:
 - get /api/django/compta/bordereaux-prix/{id}/ -> django_compta_bordereaux_prix_retrieve
 - patch /api/django/compta/bordereaux-prix/{id}/ -> django_compta_bordereaux_prix_partial_update
 - put /api/django/compta/bordereaux-prix/{id}/ -> django_compta_bordereaux_prix_update
+- get /api/django/compta/bordereaux-prix/{id}/chatter/historique/ -> django_compta_bordereaux_prix_chatter_historique_retrieve
+- post /api/django/compta/bordereaux-prix/{id}/chatter/noter/ -> django_compta_bordereaux_prix_chatter_noter_create
+- get /api/django/compta/bordereaux-prix/{id}/controles/ -> django_compta_bordereaux_prix_controles_retrieve
+- get /api/django/compta/bordereaux-prix/{id}/totaux/ -> django_compta_bordereaux_prix_totaux_retrieve
 - get /api/django/compta/bordereaux/ -> django_compta_bordereaux_list
 - post /api/django/compta/bordereaux/ -> django_compta_bordereaux_create
 - get /api/django/compta/bordereaux/{id}/ -> django_compta_bordereaux_retrieve
@@ -972,6 +1252,8 @@ operations:
 - get /api/django/compta/cautions-soumission/{id}/ -> django_compta_cautions_soumission_retrieve
 - patch /api/django/compta/cautions-soumission/{id}/ -> django_compta_cautions_soumission_partial_update
 - put /api/django/compta/cautions-soumission/{id}/ -> django_compta_cautions_soumission_update
+- get /api/django/compta/cautions-soumission/{id}/chatter/historique/ -> django_compta_cautions_soumission_chatter_historique_retrieve
+- post /api/django/compta/cautions-soumission/{id}/chatter/noter/ -> django_compta_cautions_soumission_chatter_noter_create
 - get /api/django/compta/centres-cout/ -> django_compta_centres_cout_list
 - post /api/django/compta/centres-cout/ -> django_compta_centres_cout_create
 - get /api/django/compta/centres-cout/resultat/ -> django_compta_centres_cout_resultat_retrieve
@@ -1161,6 +1443,8 @@ operations:
 - get /api/django/compta/dossiers-soumission/{id}/ -> django_compta_dossiers_soumission_retrieve
 - patch /api/django/compta/dossiers-soumission/{id}/ -> django_compta_dossiers_soumission_partial_update
 - put /api/django/compta/dossiers-soumission/{id}/ -> django_compta_dossiers_soumission_update
+- get /api/django/compta/dossiers-soumission/{id}/chatter/historique/ -> django_compta_dossiers_soumission_chatter_historique_retrieve
+- post /api/django/compta/dossiers-soumission/{id}/chatter/noter/ -> django_compta_dossiers_soumission_chatter_noter_create
 - get /api/django/compta/dotations/ -> django_compta_dotations_list
 - post /api/django/compta/dotations/ -> django_compta_dotations_create
 - get /api/django/compta/dotations/{id}/ -> django_compta_dotations_retrieve
@@ -1180,6 +1464,8 @@ operations:
 - get /api/django/compta/echeances-ao/{id}/ -> django_compta_echeances_ao_retrieve
 - patch /api/django/compta/echeances-ao/{id}/ -> django_compta_echeances_ao_partial_update
 - put /api/django/compta/echeances-ao/{id}/ -> django_compta_echeances_ao_update
+- get /api/django/compta/echeances-ao/{id}/chatter/historique/ -> django_compta_echeances_ao_chatter_historique_retrieve
+- post /api/django/compta/echeances-ao/{id}/chatter/noter/ -> django_compta_echeances_ao_chatter_noter_create
 - get /api/django/compta/echeances-reconnaissance/ -> django_compta_echeances_reconnaissance_list
 - post /api/django/compta/echeances-reconnaissance/ -> django_compta_echeances_reconnaissance_create
 - delete /api/django/compta/echeances-reconnaissance/{id}/ -> django_compta_echeances_reconnaissance_destroy
@@ -1436,6 +1722,8 @@ operations:
 - get /api/django/compta/lignes-bordereau/{id}/ -> django_compta_lignes_bordereau_retrieve
 - patch /api/django/compta/lignes-bordereau/{id}/ -> django_compta_lignes_bordereau_partial_update
 - put /api/django/compta/lignes-bordereau/{id}/ -> django_compta_lignes_bordereau_update
+- get /api/django/compta/lignes-bordereau/{id}/chatter/historique/ -> django_compta_lignes_bordereau_chatter_historique_retrieve
+- post /api/django/compta/lignes-bordereau/{id}/chatter/noter/ -> django_compta_lignes_bordereau_chatter_noter_create
 - get /api/django/compta/lignes-cle-repartition/ -> django_compta_lignes_cle_repartition_list
 - post /api/django/compta/lignes-cle-repartition/ -> django_compta_lignes_cle_repartition_create
 - delete /api/django/compta/lignes-cle-repartition/{id}/ -> django_compta_lignes_cle_repartition_destroy
@@ -1628,6 +1916,8 @@ operations:
 - get /api/django/compta/pieces-soumission/{id}/ -> django_compta_pieces_soumission_retrieve
 - patch /api/django/compta/pieces-soumission/{id}/ -> django_compta_pieces_soumission_partial_update
 - put /api/django/compta/pieces-soumission/{id}/ -> django_compta_pieces_soumission_update
+- get /api/django/compta/pieces-soumission/{id}/chatter/historique/ -> django_compta_pieces_soumission_chatter_historique_retrieve
+- post /api/django/compta/pieces-soumission/{id}/chatter/noter/ -> django_compta_pieces_soumission_chatter_noter_create
 - get /api/django/compta/pilotage/cockpit/ -> django_compta_pilotage_cockpit_retrieve
 - get /api/django/compta/pistes-audit/ -> django_compta_pistes_audit_list
 - post /api/django/compta/pistes-audit/sceller/ -> django_compta_pistes_audit_sceller_create
@@ -1767,11 +2057,14 @@ operations:
 - get /api/django/compta/reponses-enquete/{reponse_id}/certificat/ -> django_compta_reponses_enquete_certificat_retrieve
 - get /api/django/compta/resultats-ao/ -> django_compta_resultats_ao_list
 - post /api/django/compta/resultats-ao/ -> django_compta_resultats_ao_create
+- post /api/django/compta/resultats-ao/enregistrer/ -> django_compta_resultats_ao_enregistrer_create
 - get /api/django/compta/resultats-ao/stats/ -> django_compta_resultats_ao_stats_retrieve
 - delete /api/django/compta/resultats-ao/{id}/ -> django_compta_resultats_ao_destroy
 - get /api/django/compta/resultats-ao/{id}/ -> django_compta_resultats_ao_retrieve
 - patch /api/django/compta/resultats-ao/{id}/ -> django_compta_resultats_ao_partial_update
 - put /api/django/compta/resultats-ao/{id}/ -> django_compta_resultats_ao_update
+- get /api/django/compta/resultats-ao/{id}/chatter/historique/ -> django_compta_resultats_ao_chatter_historique_retrieve
+- post /api/django/compta/resultats-ao/{id}/chatter/noter/ -> django_compta_resultats_ao_chatter_noter_create
 - get /api/django/compta/retenues-garantie/ -> django_compta_retenues_garantie_list
 - post /api/django/compta/retenues-garantie/ -> django_compta_retenues_garantie_create
 - get /api/django/compta/retenues-garantie/echeances/ -> django_compta_retenues_garantie_echeances_retrieve
@@ -2236,6 +2529,7 @@ operations:
 - patch /api/django/core/module-toggles/{id}/ -> django_core_module_toggles_partial_update
 - put /api/django/core/module-toggles/{id}/ -> django_core_module_toggles_update
 - get /api/django/core/modules/ -> django_core_modules_retrieve
+- get /api/django/core/modules/journal/ -> django_core_modules_journal_retrieve
 - post /api/django/core/modules/{id}/activer/ -> django_core_modules_activer_create
 - post /api/django/core/modules/{id}/desactiver/ -> django_core_modules_desactiver_create
 - get /api/django/core/outbox/ -> django_core_outbox_list
@@ -2826,7 +3120,9 @@ operations:
 - get /api/django/entites/entites/ -> django_entites_entites_list
 - post /api/django/entites/entites/ -> django_entites_entites_create
 - get /api/django/entites/entites/export/ -> django_entites_entites_export_retrieve
+- get /api/django/entites/entites/groupe/ -> django_entites_entites_groupe_retrieve
 - post /api/django/entites/entites/importer/ -> django_entites_entites_importer_create
+- get /api/django/entites/entites/mes-entites/ -> django_entites_entites_mes_entites_retrieve
 - delete /api/django/entites/entites/{id}/ -> django_entites_entites_destroy
 - get /api/django/entites/entites/{id}/ -> django_entites_entites_retrieve
 - patch /api/django/entites/entites/{id}/ -> django_entites_entites_partial_update
@@ -7340,6 +7636,8 @@ operations:
 - post /api/django/stock/produits/{id}/dupliquer/ -> django_stock_produits_dupliquer_create
 - get /api/django/stock/produits/{id}/emplacements/ -> django_stock_produits_emplacements_retrieve
 - delete /api/django/stock/produits/{id}/force-delete/ -> django_stock_produits_force_delete_destroy
+- delete /api/django/stock/produits/{id}/photo/ -> django_stock_produits_photo_destroy
+- post /api/django/stock/produits/{id}/photo/ -> django_stock_produits_photo_create
 - get /api/django/stock/produits/{id}/previsionnel/ -> django_stock_produits_previsionnel_retrieve
 - get /api/django/stock/produits/{id}/prix-fournisseurs/ -> django_stock_produits_prix_fournisseurs_retrieve
 - post /api/django/stock/produits/{id}/rebuter/ -> django_stock_produits_rebuter_create
@@ -7744,6 +8042,7 @@ operations:
 - get /api/public/produits/ -> public_produits_list
 - get /api/public/produits/{id}/ -> public_produits_retrieve
 - post /api/public/sandbox/reset/ -> public_sandbox_reset_create
+- get /api/public/v1/licence/statut/ -> public_v1_licence_statut_retrieve
 - get /api/public/v1/openapi.json -> public_v1_openapi.json_retrieve
 - get /api/v1/accessreview/campaigns/ -> v1_accessreview_campaigns_list
 - post /api/v1/accessreview/campaigns/ -> v1_accessreview_campaigns_create
@@ -7836,14 +8135,35 @@ operations:
 - post /api/v1/achats/retours-fournisseur/{id}/generer-avoir/ -> v1_achats_retours_fournisseur_generer_avoir_create
 - post /api/v1/achats/retours-fournisseur/{id}/valider/ -> v1_achats_retours_fournisseur_valider_create
 - get /api/v1/adminops/adoption/ -> v1_adminops_adoption_retrieve
+- get /api/v1/adminops/annonces/ -> v1_adminops_annonces_retrieve
+- post /api/v1/adminops/annonces/ -> v1_adminops_annonces_create
+- post /api/v1/adminops/annonces/{id}/marquer-lu/ -> v1_adminops_annonces_marquer_lu_create
 - get /api/v1/adminops/config-packages/ -> v1_adminops_config_packages_list
 - post /api/v1/adminops/config-packages/appliquer/ -> v1_adminops_config_packages_appliquer_create
 - post /api/v1/adminops/config-packages/exporter/ -> v1_adminops_config_packages_exporter_create
 - post /api/v1/adminops/config-packages/previsualiser/ -> v1_adminops_config_packages_previsualiser_create
 - get /api/v1/adminops/config-packages/{id}/ -> v1_adminops_config_packages_retrieve
+- get /api/v1/adminops/demandes-inscription/ -> v1_adminops_demandes_inscription_retrieve
+- post /api/v1/adminops/demandes-inscription/{id}/approuver/ -> v1_adminops_demandes_inscription_approuver_create
+- post /api/v1/adminops/demandes-inscription/{id}/refuser/ -> v1_adminops_demandes_inscription_refuser_create
 - get /api/v1/adminops/diagnostic/ -> v1_adminops_diagnostic_retrieve
 - get /api/v1/adminops/diagnostic/support-bundle/ -> v1_adminops_diagnostic_support_bundle_retrieve
+- get /api/v1/adminops/facturation-licences/ -> v1_adminops_facturation_licences_retrieve
+- post /api/v1/adminops/facturation-licences/ -> v1_adminops_facturation_licences_create
+- get /api/v1/adminops/facturation-licences/export-csv/ -> v1_adminops_facturation_licences_export_csv_retrieve
+- post /api/v1/adminops/facturation-licences/{id}/marquer-payee/ -> v1_adminops_facturation_licences_marquer_payee_create
 - get /api/v1/adminops/health-score/ -> v1_adminops_health_score_retrieve
+- get /api/v1/adminops/impersonation/ -> v1_adminops_impersonation_retrieve
+- post /api/v1/adminops/impersonation/ -> v1_adminops_impersonation_create
+- get /api/v1/adminops/impersonation/cibles/ -> v1_adminops_impersonation_cibles_retrieve
+- get /api/v1/adminops/impersonation/en-attente/ -> v1_adminops_impersonation_en_attente_retrieve
+- get /api/v1/adminops/impersonation/session-active/ -> v1_adminops_impersonation_session_active_retrieve
+- post /api/v1/adminops/impersonation/{id}/consentir/ -> v1_adminops_impersonation_consentir_create
+- post /api/v1/adminops/impersonation/{id}/demarrer/ -> v1_adminops_impersonation_demarrer_create
+- post /api/v1/adminops/impersonation/{id}/refuser/ -> v1_adminops_impersonation_refuser_create
+- post /api/v1/adminops/impersonation/{id}/terminer/ -> v1_adminops_impersonation_terminer_create
+- get /api/v1/adminops/licences/ -> v1_adminops_licences_retrieve
+- get /api/v1/adminops/licences/pdf/ -> v1_adminops_licences_pdf_retrieve
 - get /api/v1/adminops/rapports/journal-admin/ -> v1_adminops_rapports_journal_admin_retrieve
 - get /api/v1/adminops/sandbox/ -> v1_adminops_sandbox_list
 - post /api/v1/adminops/sandbox/creer/ -> v1_adminops_sandbox_creer_create
@@ -8197,24 +8517,95 @@ operations:
 - get /api/v1/ao/appels-offres/{id}/ -> v1_ao_appels_offres_retrieve
 - patch /api/v1/ao/appels-offres/{id}/ -> v1_ao_appels_offres_partial_update
 - put /api/v1/ao/appels-offres/{id}/ -> v1_ao_appels_offres_update
+- post /api/v1/ao/appels-offres/{id}/changer-statut/ -> v1_ao_appels_offres_changer_statut_create
+- get /api/v1/ao/appels-offres/{id}/chatter/historique/ -> v1_ao_appels_offres_chatter_historique_retrieve
+- post /api/v1/ao/appels-offres/{id}/chatter/noter/ -> v1_ao_appels_offres_chatter_noter_create
+- post /api/v1/ao/appels-offres/{id}/dupliquer/ -> v1_ao_appels_offres_dupliquer_create
+- get /api/v1/ao/appels-offres/{id}/lead/ -> v1_ao_appels_offres_lead_retrieve
+- get /api/v1/ao/appels-offres/{id}/points-a-lever/ -> v1_ao_appels_offres_points_a_lever_retrieve
+- post /api/v1/ao/appels-offres/{id}/rattacher-lead/ -> v1_ao_appels_offres_rattacher_lead_create
+- get /api/v1/ao/appels-offres/{id}/transitions/ -> v1_ao_appels_offres_transitions_retrieve
+- get /api/v1/ao/batiments/ -> v1_ao_batiments_list
+- post /api/v1/ao/batiments/ -> v1_ao_batiments_create
+- delete /api/v1/ao/batiments/{id}/ -> v1_ao_batiments_destroy
+- get /api/v1/ao/batiments/{id}/ -> v1_ao_batiments_retrieve
+- patch /api/v1/ao/batiments/{id}/ -> v1_ao_batiments_partial_update
+- put /api/v1/ao/batiments/{id}/ -> v1_ao_batiments_update
+- get /api/v1/ao/batiments/{id}/chatter/historique/ -> v1_ao_batiments_chatter_historique_retrieve
+- post /api/v1/ao/batiments/{id}/chatter/noter/ -> v1_ao_batiments_chatter_noter_create
 - get /api/v1/ao/bordereaux-prix/ -> v1_ao_bordereaux_prix_list
 - post /api/v1/ao/bordereaux-prix/ -> v1_ao_bordereaux_prix_create
 - delete /api/v1/ao/bordereaux-prix/{id}/ -> v1_ao_bordereaux_prix_destroy
 - get /api/v1/ao/bordereaux-prix/{id}/ -> v1_ao_bordereaux_prix_retrieve
 - patch /api/v1/ao/bordereaux-prix/{id}/ -> v1_ao_bordereaux_prix_partial_update
 - put /api/v1/ao/bordereaux-prix/{id}/ -> v1_ao_bordereaux_prix_update
+- get /api/v1/ao/bordereaux-prix/{id}/chatter/historique/ -> v1_ao_bordereaux_prix_chatter_historique_retrieve
+- post /api/v1/ao/bordereaux-prix/{id}/chatter/noter/ -> v1_ao_bordereaux_prix_chatter_noter_create
+- get /api/v1/ao/bordereaux-prix/{id}/controles/ -> v1_ao_bordereaux_prix_controles_retrieve
+- get /api/v1/ao/bordereaux-prix/{id}/totaux/ -> v1_ao_bordereaux_prix_totaux_retrieve
+- post /api/v1/ao/calepinage/calculer/ -> v1_ao_calepinage_calculer_create
+- post /api/v1/ao/calepinage/lancer/ -> v1_ao_calepinage_lancer_create
+- get /api/v1/ao/calepinage/resultat/{job_id}/ -> v1_ao_calepinage_resultat_retrieve
+- get /api/v1/ao/calepinage/variantes/comparer/ -> v1_ao_calepinage_variantes_comparer_retrieve
+- get /api/v1/ao/calepinage/variantes/{id}/marches/ -> v1_ao_calepinage_variantes_marches_retrieve
+- post /api/v1/ao/calepinage/variantes/{id}/retenir/ -> v1_ao_calepinage_variantes_retenir_create
+- post /api/v1/ao/calepinage/variantes/{id}/sensibilites/ -> v1_ao_calepinage_variantes_sensibilites_create
 - get /api/v1/ao/cautions-soumission/ -> v1_ao_cautions_soumission_list
 - post /api/v1/ao/cautions-soumission/ -> v1_ao_cautions_soumission_create
 - delete /api/v1/ao/cautions-soumission/{id}/ -> v1_ao_cautions_soumission_destroy
 - get /api/v1/ao/cautions-soumission/{id}/ -> v1_ao_cautions_soumission_retrieve
 - patch /api/v1/ao/cautions-soumission/{id}/ -> v1_ao_cautions_soumission_partial_update
 - put /api/v1/ao/cautions-soumission/{id}/ -> v1_ao_cautions_soumission_update
+- get /api/v1/ao/cautions-soumission/{id}/chatter/historique/ -> v1_ao_cautions_soumission_chatter_historique_retrieve
+- post /api/v1/ao/cautions-soumission/{id}/chatter/noter/ -> v1_ao_cautions_soumission_chatter_noter_create
+- get /api/v1/ao/chaines-cotes/ -> v1_ao_chaines_cotes_list
+- post /api/v1/ao/chaines-cotes/ -> v1_ao_chaines_cotes_create
+- delete /api/v1/ao/chaines-cotes/{id}/ -> v1_ao_chaines_cotes_destroy
+- get /api/v1/ao/chaines-cotes/{id}/ -> v1_ao_chaines_cotes_retrieve
+- patch /api/v1/ao/chaines-cotes/{id}/ -> v1_ao_chaines_cotes_partial_update
+- put /api/v1/ao/chaines-cotes/{id}/ -> v1_ao_chaines_cotes_update
+- get /api/v1/ao/chaines-cotes/{id}/chatter/historique/ -> v1_ao_chaines_cotes_chatter_historique_retrieve
+- post /api/v1/ao/chaines-cotes/{id}/chatter/noter/ -> v1_ao_chaines_cotes_chatter_noter_create
+- get /api/v1/ao/chaines-cotes/{id}/compensation/ -> v1_ao_chaines_cotes_compensation_retrieve
+- post /api/v1/ao/chaines-cotes/{id}/deduire/ -> v1_ao_chaines_cotes_deduire_create
+- get /api/v1/ao/checklist-partenaire/ -> v1_ao_checklist_partenaire_list
+- post /api/v1/ao/checklist-partenaire/ -> v1_ao_checklist_partenaire_create
+- delete /api/v1/ao/checklist-partenaire/{id}/ -> v1_ao_checklist_partenaire_destroy
+- get /api/v1/ao/checklist-partenaire/{id}/ -> v1_ao_checklist_partenaire_retrieve
+- patch /api/v1/ao/checklist-partenaire/{id}/ -> v1_ao_checklist_partenaire_partial_update
+- put /api/v1/ao/checklist-partenaire/{id}/ -> v1_ao_checklist_partenaire_update
+- get /api/v1/ao/checklist-partenaire/{id}/chatter/historique/ -> v1_ao_checklist_partenaire_chatter_historique_retrieve
+- post /api/v1/ao/checklist-partenaire/{id}/chatter/noter/ -> v1_ao_checklist_partenaire_chatter_noter_create
+- post /api/v1/ao/checklist-partenaire/{id}/pointer/ -> v1_ao_checklist_partenaire_pointer_create
+- get /api/v1/ao/cibles-financieres/ -> v1_ao_cibles_financieres_list
+- post /api/v1/ao/cibles-financieres/ -> v1_ao_cibles_financieres_create
+- delete /api/v1/ao/cibles-financieres/{id}/ -> v1_ao_cibles_financieres_destroy
+- get /api/v1/ao/cibles-financieres/{id}/ -> v1_ao_cibles_financieres_retrieve
+- patch /api/v1/ao/cibles-financieres/{id}/ -> v1_ao_cibles_financieres_partial_update
+- put /api/v1/ao/cibles-financieres/{id}/ -> v1_ao_cibles_financieres_update
+- get /api/v1/ao/contrat/ -> v1_ao_contrat_retrieve
+- get /api/v1/ao/dossiers-ao/ -> v1_ao_dossiers_ao_list
+- post /api/v1/ao/dossiers-ao/ -> v1_ao_dossiers_ao_create
+- delete /api/v1/ao/dossiers-ao/{id}/ -> v1_ao_dossiers_ao_destroy
+- get /api/v1/ao/dossiers-ao/{id}/ -> v1_ao_dossiers_ao_retrieve
+- patch /api/v1/ao/dossiers-ao/{id}/ -> v1_ao_dossiers_ao_partial_update
+- put /api/v1/ao/dossiers-ao/{id}/ -> v1_ao_dossiers_ao_update
+- post /api/v1/ao/dossiers-ao/{id}/changer-statut/ -> v1_ao_dossiers_ao_changer_statut_create
+- get /api/v1/ao/dossiers-ao/{id}/chatter/historique/ -> v1_ao_dossiers_ao_chatter_historique_retrieve
+- post /api/v1/ao/dossiers-ao/{id}/chatter/noter/ -> v1_ao_dossiers_ao_chatter_noter_create
+- get /api/v1/ao/dossiers-ao/{id}/completude/ -> v1_ao_dossiers_ao_completude_retrieve
+- get /api/v1/ao/dossiers-ao/{id}/controle-administratif/ -> v1_ao_dossiers_ao_controle_administratif_retrieve
+- post /api/v1/ao/dossiers-ao/{id}/controler/ -> v1_ao_dossiers_ao_controler_create
+- get /api/v1/ao/dossiers-ao/{id}/controles-avant-depot/ -> v1_ao_dossiers_ao_controles_avant_depot_retrieve
+- post /api/v1/ao/dossiers-ao/{id}/initialiser-checklist/ -> v1_ao_dossiers_ao_initialiser_checklist_create
 - get /api/v1/ao/dossiers-soumission/ -> v1_ao_dossiers_soumission_list
 - post /api/v1/ao/dossiers-soumission/ -> v1_ao_dossiers_soumission_create
 - delete /api/v1/ao/dossiers-soumission/{id}/ -> v1_ao_dossiers_soumission_destroy
 - get /api/v1/ao/dossiers-soumission/{id}/ -> v1_ao_dossiers_soumission_retrieve
 - patch /api/v1/ao/dossiers-soumission/{id}/ -> v1_ao_dossiers_soumission_partial_update
 - put /api/v1/ao/dossiers-soumission/{id}/ -> v1_ao_dossiers_soumission_update
+- get /api/v1/ao/dossiers-soumission/{id}/chatter/historique/ -> v1_ao_dossiers_soumission_chatter_historique_retrieve
+- post /api/v1/ao/dossiers-soumission/{id}/chatter/noter/ -> v1_ao_dossiers_soumission_chatter_noter_create
 - get /api/v1/ao/echeances-ao/ -> v1_ao_echeances_ao_list
 - post /api/v1/ao/echeances-ao/ -> v1_ao_echeances_ao_create
 - get /api/v1/ao/echeances-ao/dues/ -> v1_ao_echeances_ao_dues_retrieve
@@ -8222,25 +8613,199 @@ operations:
 - get /api/v1/ao/echeances-ao/{id}/ -> v1_ao_echeances_ao_retrieve
 - patch /api/v1/ao/echeances-ao/{id}/ -> v1_ao_echeances_ao_partial_update
 - put /api/v1/ao/echeances-ao/{id}/ -> v1_ao_echeances_ao_update
+- get /api/v1/ao/echeances-ao/{id}/chatter/historique/ -> v1_ao_echeances_ao_chatter_historique_retrieve
+- post /api/v1/ao/echeances-ao/{id}/chatter/noter/ -> v1_ao_echeances_ao_chatter_noter_create
+- get /api/v1/ao/economie/ -> v1_ao_economie_list
+- post /api/v1/ao/economie/ -> v1_ao_economie_create
+- delete /api/v1/ao/economie/{id}/ -> v1_ao_economie_destroy
+- get /api/v1/ao/economie/{id}/ -> v1_ao_economie_retrieve
+- patch /api/v1/ao/economie/{id}/ -> v1_ao_economie_partial_update
+- put /api/v1/ao/economie/{id}/ -> v1_ao_economie_update
+- post /api/v1/ao/economie/{id}/deverrouiller/ -> v1_ao_economie_deverrouiller_create
+- get /api/v1/ao/economie/{id}/synthese/ -> v1_ao_economie_synthese_retrieve
+- get /api/v1/ao/economie/{id}/telecharger/ -> v1_ao_economie_telecharger_retrieve
+- post /api/v1/ao/economie/{id}/telecharger/ -> v1_ao_economie_telecharger_create
+- post /api/v1/ao/economie/{id}/verrouiller/ -> v1_ao_economie_verrouiller_create
+- get /api/v1/ao/equipements/ -> v1_ao_equipements_list
+- post /api/v1/ao/equipements/ -> v1_ao_equipements_create
+- delete /api/v1/ao/equipements/{id}/ -> v1_ao_equipements_destroy
+- get /api/v1/ao/equipements/{id}/ -> v1_ao_equipements_retrieve
+- patch /api/v1/ao/equipements/{id}/ -> v1_ao_equipements_partial_update
+- put /api/v1/ao/equipements/{id}/ -> v1_ao_equipements_update
+- post /api/v1/ao/equipements/{id}/bascule/ -> v1_ao_equipements_bascule_create
+- get /api/v1/ao/equipements/{id}/chatter/historique/ -> v1_ao_equipements_chatter_historique_retrieve
+- post /api/v1/ao/equipements/{id}/chatter/noter/ -> v1_ao_equipements_chatter_noter_create
+- get /api/v1/ao/exigences-cps/ -> v1_ao_exigences_cps_list
+- post /api/v1/ao/exigences-cps/ -> v1_ao_exigences_cps_create
+- delete /api/v1/ao/exigences-cps/{id}/ -> v1_ao_exigences_cps_destroy
+- get /api/v1/ao/exigences-cps/{id}/ -> v1_ao_exigences_cps_retrieve
+- patch /api/v1/ao/exigences-cps/{id}/ -> v1_ao_exigences_cps_partial_update
+- put /api/v1/ao/exigences-cps/{id}/ -> v1_ao_exigences_cps_update
+- get /api/v1/ao/exigences-cps/{id}/chatter/historique/ -> v1_ao_exigences_cps_chatter_historique_retrieve
+- post /api/v1/ao/exigences-cps/{id}/chatter/noter/ -> v1_ao_exigences_cps_chatter_noter_create
+- get /api/v1/ao/kits-calepinage/ -> v1_ao_kits_calepinage_list
+- post /api/v1/ao/kits-calepinage/ -> v1_ao_kits_calepinage_create
+- delete /api/v1/ao/kits-calepinage/{id}/ -> v1_ao_kits_calepinage_destroy
+- get /api/v1/ao/kits-calepinage/{id}/ -> v1_ao_kits_calepinage_retrieve
+- patch /api/v1/ao/kits-calepinage/{id}/ -> v1_ao_kits_calepinage_partial_update
+- put /api/v1/ao/kits-calepinage/{id}/ -> v1_ao_kits_calepinage_update
+- get /api/v1/ao/kits-calepinage/{id}/chatter/historique/ -> v1_ao_kits_calepinage_chatter_historique_retrieve
+- post /api/v1/ao/kits-calepinage/{id}/chatter/noter/ -> v1_ao_kits_calepinage_chatter_noter_create
 - get /api/v1/ao/lignes-bordereau/ -> v1_ao_lignes_bordereau_list
 - post /api/v1/ao/lignes-bordereau/ -> v1_ao_lignes_bordereau_create
 - delete /api/v1/ao/lignes-bordereau/{id}/ -> v1_ao_lignes_bordereau_destroy
 - get /api/v1/ao/lignes-bordereau/{id}/ -> v1_ao_lignes_bordereau_retrieve
 - patch /api/v1/ao/lignes-bordereau/{id}/ -> v1_ao_lignes_bordereau_partial_update
 - put /api/v1/ao/lignes-bordereau/{id}/ -> v1_ao_lignes_bordereau_update
+- get /api/v1/ao/lignes-bordereau/{id}/chatter/historique/ -> v1_ao_lignes_bordereau_chatter_historique_retrieve
+- post /api/v1/ao/lignes-bordereau/{id}/chatter/noter/ -> v1_ao_lignes_bordereau_chatter_noter_create
+- get /api/v1/ao/lignes-cout-revient/ -> v1_ao_lignes_cout_revient_list
+- post /api/v1/ao/lignes-cout-revient/ -> v1_ao_lignes_cout_revient_create
+- delete /api/v1/ao/lignes-cout-revient/{id}/ -> v1_ao_lignes_cout_revient_destroy
+- get /api/v1/ao/lignes-cout-revient/{id}/ -> v1_ao_lignes_cout_revient_retrieve
+- patch /api/v1/ao/lignes-cout-revient/{id}/ -> v1_ao_lignes_cout_revient_partial_update
+- put /api/v1/ao/lignes-cout-revient/{id}/ -> v1_ao_lignes_cout_revient_update
+- get /api/v1/ao/modeles-pack/ -> v1_ao_modeles_pack_list
+- post /api/v1/ao/modeles-pack/ -> v1_ao_modeles_pack_create
+- delete /api/v1/ao/modeles-pack/{id}/ -> v1_ao_modeles_pack_destroy
+- get /api/v1/ao/modeles-pack/{id}/ -> v1_ao_modeles_pack_retrieve
+- patch /api/v1/ao/modeles-pack/{id}/ -> v1_ao_modeles_pack_partial_update
+- put /api/v1/ao/modeles-pack/{id}/ -> v1_ao_modeles_pack_update
+- get /api/v1/ao/modeles-pack/{id}/chatter/historique/ -> v1_ao_modeles_pack_chatter_historique_retrieve
+- post /api/v1/ao/modeles-pack/{id}/chatter/noter/ -> v1_ao_modeles_pack_chatter_noter_create
+- get /api/v1/ao/obstacles/ -> v1_ao_obstacles_list
+- post /api/v1/ao/obstacles/ -> v1_ao_obstacles_create
+- delete /api/v1/ao/obstacles/{id}/ -> v1_ao_obstacles_destroy
+- get /api/v1/ao/obstacles/{id}/ -> v1_ao_obstacles_retrieve
+- patch /api/v1/ao/obstacles/{id}/ -> v1_ao_obstacles_partial_update
+- put /api/v1/ao/obstacles/{id}/ -> v1_ao_obstacles_update
+- get /api/v1/ao/obstacles/{id}/chatter/historique/ -> v1_ao_obstacles_chatter_historique_retrieve
+- post /api/v1/ao/obstacles/{id}/chatter/noter/ -> v1_ao_obstacles_chatter_noter_create
+- post /api/v1/ao/obstacles/{id}/ecarter/ -> v1_ao_obstacles_ecarter_create
+- post /api/v1/ao/obstacles/{id}/reintegrer/ -> v1_ao_obstacles_reintegrer_create
+- get /api/v1/ao/pieces-administratives/ -> v1_ao_pieces_administratives_list
+- post /api/v1/ao/pieces-administratives/ -> v1_ao_pieces_administratives_create
+- get /api/v1/ao/pieces-administratives/a-renouveler/ -> v1_ao_pieces_administratives_a_renouveler_retrieve
+- delete /api/v1/ao/pieces-administratives/{id}/ -> v1_ao_pieces_administratives_destroy
+- get /api/v1/ao/pieces-administratives/{id}/ -> v1_ao_pieces_administratives_retrieve
+- patch /api/v1/ao/pieces-administratives/{id}/ -> v1_ao_pieces_administratives_partial_update
+- put /api/v1/ao/pieces-administratives/{id}/ -> v1_ao_pieces_administratives_update
+- get /api/v1/ao/pieces-administratives/{id}/chatter/historique/ -> v1_ao_pieces_administratives_chatter_historique_retrieve
+- post /api/v1/ao/pieces-administratives/{id}/chatter/noter/ -> v1_ao_pieces_administratives_chatter_noter_create
+- post /api/v1/ao/pieces-administratives/{id}/rattacher/ -> v1_ao_pieces_administratives_rattacher_create
+- get /api/v1/ao/pieces-consultation/ -> v1_ao_pieces_consultation_list
+- post /api/v1/ao/pieces-consultation/ -> v1_ao_pieces_consultation_create
+- delete /api/v1/ao/pieces-consultation/{id}/ -> v1_ao_pieces_consultation_destroy
+- get /api/v1/ao/pieces-consultation/{id}/ -> v1_ao_pieces_consultation_retrieve
+- patch /api/v1/ao/pieces-consultation/{id}/ -> v1_ao_pieces_consultation_partial_update
+- put /api/v1/ao/pieces-consultation/{id}/ -> v1_ao_pieces_consultation_update
+- post /api/v1/ao/pieces-consultation/{id}/additif/ -> v1_ao_pieces_consultation_additif_create
+- get /api/v1/ao/pieces-consultation/{id}/chatter/historique/ -> v1_ao_pieces_consultation_chatter_historique_retrieve
+- post /api/v1/ao/pieces-consultation/{id}/chatter/noter/ -> v1_ao_pieces_consultation_chatter_noter_create
+- get /api/v1/ao/pieces-dossier-ao/ -> v1_ao_pieces_dossier_ao_list
+- post /api/v1/ao/pieces-dossier-ao/ -> v1_ao_pieces_dossier_ao_create
+- delete /api/v1/ao/pieces-dossier-ao/{id}/ -> v1_ao_pieces_dossier_ao_destroy
+- get /api/v1/ao/pieces-dossier-ao/{id}/ -> v1_ao_pieces_dossier_ao_retrieve
+- patch /api/v1/ao/pieces-dossier-ao/{id}/ -> v1_ao_pieces_dossier_ao_partial_update
+- put /api/v1/ao/pieces-dossier-ao/{id}/ -> v1_ao_pieces_dossier_ao_update
+- get /api/v1/ao/pieces-dossier-ao/{id}/chatter/historique/ -> v1_ao_pieces_dossier_ao_chatter_historique_retrieve
+- post /api/v1/ao/pieces-dossier-ao/{id}/chatter/noter/ -> v1_ao_pieces_dossier_ao_chatter_noter_create
 - get /api/v1/ao/pieces-soumission/ -> v1_ao_pieces_soumission_list
 - post /api/v1/ao/pieces-soumission/ -> v1_ao_pieces_soumission_create
 - delete /api/v1/ao/pieces-soumission/{id}/ -> v1_ao_pieces_soumission_destroy
 - get /api/v1/ao/pieces-soumission/{id}/ -> v1_ao_pieces_soumission_retrieve
 - patch /api/v1/ao/pieces-soumission/{id}/ -> v1_ao_pieces_soumission_partial_update
 - put /api/v1/ao/pieces-soumission/{id}/ -> v1_ao_pieces_soumission_update
+- get /api/v1/ao/pieces-soumission/{id}/chatter/historique/ -> v1_ao_pieces_soumission_chatter_historique_retrieve
+- post /api/v1/ao/pieces-soumission/{id}/chatter/noter/ -> v1_ao_pieces_soumission_chatter_noter_create
+- get /api/v1/ao/plans-source/ -> v1_ao_plans_source_list
+- post /api/v1/ao/plans-source/ -> v1_ao_plans_source_create
+- delete /api/v1/ao/plans-source/{id}/ -> v1_ao_plans_source_destroy
+- get /api/v1/ao/plans-source/{id}/ -> v1_ao_plans_source_retrieve
+- patch /api/v1/ao/plans-source/{id}/ -> v1_ao_plans_source_partial_update
+- put /api/v1/ao/plans-source/{id}/ -> v1_ao_plans_source_update
+- get /api/v1/ao/plans-source/{id}/chatter/historique/ -> v1_ao_plans_source_chatter_historique_retrieve
+- post /api/v1/ao/plans-source/{id}/chatter/noter/ -> v1_ao_plans_source_chatter_noter_create
+- get /api/v1/ao/presets-calepinage/ -> v1_ao_presets_calepinage_list
+- post /api/v1/ao/presets-calepinage/ -> v1_ao_presets_calepinage_create
+- delete /api/v1/ao/presets-calepinage/{id}/ -> v1_ao_presets_calepinage_destroy
+- get /api/v1/ao/presets-calepinage/{id}/ -> v1_ao_presets_calepinage_retrieve
+- patch /api/v1/ao/presets-calepinage/{id}/ -> v1_ao_presets_calepinage_partial_update
+- put /api/v1/ao/presets-calepinage/{id}/ -> v1_ao_presets_calepinage_update
+- get /api/v1/ao/presets-calepinage/{id}/chatter/historique/ -> v1_ao_presets_calepinage_chatter_historique_retrieve
+- post /api/v1/ao/presets-calepinage/{id}/chatter/noter/ -> v1_ao_presets_calepinage_chatter_noter_create
+- get /api/v1/ao/questions/ -> v1_ao_questions_list
+- post /api/v1/ao/questions/ -> v1_ao_questions_create
+- delete /api/v1/ao/questions/{id}/ -> v1_ao_questions_destroy
+- get /api/v1/ao/questions/{id}/ -> v1_ao_questions_retrieve
+- patch /api/v1/ao/questions/{id}/ -> v1_ao_questions_partial_update
+- put /api/v1/ao/questions/{id}/ -> v1_ao_questions_update
+- get /api/v1/ao/questions/{id}/chatter/historique/ -> v1_ao_questions_chatter_historique_retrieve
+- post /api/v1/ao/questions/{id}/chatter/noter/ -> v1_ao_questions_chatter_noter_create
+- post /api/v1/ao/questions/{id}/trancher/ -> v1_ao_questions_trancher_create
+- get /api/v1/ao/releves/ -> v1_ao_releves_list
+- post /api/v1/ao/releves/ -> v1_ao_releves_create
+- delete /api/v1/ao/releves/{id}/ -> v1_ao_releves_destroy
+- get /api/v1/ao/releves/{id}/ -> v1_ao_releves_retrieve
+- patch /api/v1/ao/releves/{id}/ -> v1_ao_releves_partial_update
+- put /api/v1/ao/releves/{id}/ -> v1_ao_releves_update
+- get /api/v1/ao/releves/{id}/chatter/historique/ -> v1_ao_releves_chatter_historique_retrieve
+- post /api/v1/ao/releves/{id}/chatter/noter/ -> v1_ao_releves_chatter_noter_create
 - get /api/v1/ao/resultats-ao/ -> v1_ao_resultats_ao_list
 - post /api/v1/ao/resultats-ao/ -> v1_ao_resultats_ao_create
+- post /api/v1/ao/resultats-ao/enregistrer/ -> v1_ao_resultats_ao_enregistrer_create
 - get /api/v1/ao/resultats-ao/stats/ -> v1_ao_resultats_ao_stats_retrieve
 - delete /api/v1/ao/resultats-ao/{id}/ -> v1_ao_resultats_ao_destroy
 - get /api/v1/ao/resultats-ao/{id}/ -> v1_ao_resultats_ao_retrieve
 - patch /api/v1/ao/resultats-ao/{id}/ -> v1_ao_resultats_ao_partial_update
 - put /api/v1/ao/resultats-ao/{id}/ -> v1_ao_resultats_ao_update
+- get /api/v1/ao/resultats-ao/{id}/chatter/historique/ -> v1_ao_resultats_ao_chatter_historique_retrieve
+- post /api/v1/ao/resultats-ao/{id}/chatter/noter/ -> v1_ao_resultats_ao_chatter_noter_create
+- get /api/v1/ao/sections-bordereau/ -> v1_ao_sections_bordereau_list
+- post /api/v1/ao/sections-bordereau/ -> v1_ao_sections_bordereau_create
+- delete /api/v1/ao/sections-bordereau/{id}/ -> v1_ao_sections_bordereau_destroy
+- get /api/v1/ao/sections-bordereau/{id}/ -> v1_ao_sections_bordereau_retrieve
+- patch /api/v1/ao/sections-bordereau/{id}/ -> v1_ao_sections_bordereau_partial_update
+- put /api/v1/ao/sections-bordereau/{id}/ -> v1_ao_sections_bordereau_update
+- get /api/v1/ao/sections-bordereau/{id}/chatter/historique/ -> v1_ao_sections_bordereau_chatter_historique_retrieve
+- post /api/v1/ao/sections-bordereau/{id}/chatter/noter/ -> v1_ao_sections_bordereau_chatter_noter_create
+- get /api/v1/ao/sections-memoire/ -> v1_ao_sections_memoire_list
+- post /api/v1/ao/sections-memoire/ -> v1_ao_sections_memoire_create
+- delete /api/v1/ao/sections-memoire/{id}/ -> v1_ao_sections_memoire_destroy
+- get /api/v1/ao/sections-memoire/{id}/ -> v1_ao_sections_memoire_retrieve
+- patch /api/v1/ao/sections-memoire/{id}/ -> v1_ao_sections_memoire_partial_update
+- put /api/v1/ao/sections-memoire/{id}/ -> v1_ao_sections_memoire_update
+- get /api/v1/ao/sections-memoire/{id}/chatter/historique/ -> v1_ao_sections_memoire_chatter_historique_retrieve
+- post /api/v1/ao/sections-memoire/{id}/chatter/noter/ -> v1_ao_sections_memoire_chatter_noter_create
+- get /api/v1/ao/sections-memoire/{id}/dossiers-impactes/ -> v1_ao_sections_memoire_dossiers_impactes_retrieve
+- get /api/v1/ao/series-questions/ -> v1_ao_series_questions_list
+- post /api/v1/ao/series-questions/ -> v1_ao_series_questions_create
+- delete /api/v1/ao/series-questions/{id}/ -> v1_ao_series_questions_destroy
+- get /api/v1/ao/series-questions/{id}/ -> v1_ao_series_questions_retrieve
+- patch /api/v1/ao/series-questions/{id}/ -> v1_ao_series_questions_partial_update
+- put /api/v1/ao/series-questions/{id}/ -> v1_ao_series_questions_update
+- get /api/v1/ao/series-questions/{id}/chatter/historique/ -> v1_ao_series_questions_chatter_historique_retrieve
+- post /api/v1/ao/series-questions/{id}/chatter/noter/ -> v1_ao_series_questions_chatter_noter_create
+- get /api/v1/ao/tableau-marches/ -> v1_ao_tableau_marches_retrieve
+- get /api/v1/ao/toitures/ -> v1_ao_toitures_list
+- post /api/v1/ao/toitures/ -> v1_ao_toitures_create
+- delete /api/v1/ao/toitures/{id}/ -> v1_ao_toitures_destroy
+- get /api/v1/ao/toitures/{id}/ -> v1_ao_toitures_retrieve
+- patch /api/v1/ao/toitures/{id}/ -> v1_ao_toitures_partial_update
+- put /api/v1/ao/toitures/{id}/ -> v1_ao_toitures_update
+- post /api/v1/ao/toitures/{id}/appliquer-preset/ -> v1_ao_toitures_appliquer_preset_create
+- get /api/v1/ao/toitures/{id}/chatter/historique/ -> v1_ao_toitures_chatter_historique_retrieve
+- post /api/v1/ao/toitures/{id}/chatter/noter/ -> v1_ao_toitures_chatter_noter_create
+- get /api/v1/ao/variantes-calepinage/ -> v1_ao_variantes_calepinage_list
+- post /api/v1/ao/variantes-calepinage/ -> v1_ao_variantes_calepinage_create
+- delete /api/v1/ao/variantes-calepinage/{id}/ -> v1_ao_variantes_calepinage_destroy
+- get /api/v1/ao/variantes-calepinage/{id}/ -> v1_ao_variantes_calepinage_retrieve
+- patch /api/v1/ao/variantes-calepinage/{id}/ -> v1_ao_variantes_calepinage_partial_update
+- put /api/v1/ao/variantes-calepinage/{id}/ -> v1_ao_variantes_calepinage_update
+- get /api/v1/ao/variantes-calepinage/{id}/chatter/historique/ -> v1_ao_variantes_calepinage_chatter_historique_retrieve
+- post /api/v1/ao/variantes-calepinage/{id}/chatter/noter/ -> v1_ao_variantes_calepinage_chatter_noter_create
+- post /api/v1/ao/variantes-calepinage/{id}/publier/ -> v1_ao_variantes_calepinage_publier_create
+- post /api/v1/ao/variantes-calepinage/{id}/retenir/ -> v1_ao_variantes_calepinage_retenir_create
 - get /api/v1/assurances/actifs-couverts/ -> v1_assurances_actifs_couverts_list
 - post /api/v1/assurances/actifs-couverts/ -> v1_assurances_actifs_couverts_create
 - delete /api/v1/assurances/actifs-couverts/{id}/ -> v1_assurances_actifs_couverts_destroy
@@ -8326,6 +8891,7 @@ operations:
 - get /api/v1/auth/2fa/status/ -> v1_auth_2fa_status_retrieve
 - post /api/v1/auth/change-password/ -> v1_auth_change_password_create
 - get /api/v1/auth/console/tenants/ -> v1_auth_console_tenants_retrieve
+- post /api/v1/auth/console/tenants/creer/ -> v1_auth_console_tenants_creer_create
 - post /api/v1/auth/console/tenants/{id}/note/ -> v1_auth_console_tenants_note_create
 - post /api/v1/auth/console/tenants/{id}/statut/ -> v1_auth_console_tenants_statut_create
 - post /api/v1/auth/logout/ -> v1_auth_logout_create
@@ -8334,6 +8900,7 @@ operations:
 - post /api/v1/auth/register-company/ -> v1_auth_register_company_create
 - get /api/v1/auth/sessions/ -> v1_auth_sessions_list
 - post /api/v1/auth/sessions/{id}/revoke/ -> v1_auth_sessions_revoke_create
+- post /api/v1/auth/signup-demande/ -> v1_auth_signup_demande_create
 - post /api/v1/auth/switch-company/ -> v1_auth_switch_company_create
 - post /api/v1/auth/token/refresh/ -> v1_auth_token_refresh_create
 - get /api/v1/automation/approval-delegations/ -> v1_automation_approval_delegations_list
@@ -8581,6 +9148,14 @@ operations:
 - get /api/v1/compta/appels-offres/{id}/ -> v1_compta_appels_offres_retrieve
 - patch /api/v1/compta/appels-offres/{id}/ -> v1_compta_appels_offres_partial_update
 - put /api/v1/compta/appels-offres/{id}/ -> v1_compta_appels_offres_update
+- post /api/v1/compta/appels-offres/{id}/changer-statut/ -> v1_compta_appels_offres_changer_statut_create
+- get /api/v1/compta/appels-offres/{id}/chatter/historique/ -> v1_compta_appels_offres_chatter_historique_retrieve
+- post /api/v1/compta/appels-offres/{id}/chatter/noter/ -> v1_compta_appels_offres_chatter_noter_create
+- post /api/v1/compta/appels-offres/{id}/dupliquer/ -> v1_compta_appels_offres_dupliquer_create
+- get /api/v1/compta/appels-offres/{id}/lead/ -> v1_compta_appels_offres_lead_retrieve
+- get /api/v1/compta/appels-offres/{id}/points-a-lever/ -> v1_compta_appels_offres_points_a_lever_retrieve
+- post /api/v1/compta/appels-offres/{id}/rattacher-lead/ -> v1_compta_appels_offres_rattacher_lead_create
+- get /api/v1/compta/appels-offres/{id}/transitions/ -> v1_compta_appels_offres_transitions_retrieve
 - get /api/v1/compta/appels/ -> v1_compta_appels_list
 - post /api/v1/compta/appels/ -> v1_compta_appels_create
 - delete /api/v1/compta/appels/{id}/ -> v1_compta_appels_destroy
@@ -8635,6 +9210,10 @@ operations:
 - get /api/v1/compta/bordereaux-prix/{id}/ -> v1_compta_bordereaux_prix_retrieve
 - patch /api/v1/compta/bordereaux-prix/{id}/ -> v1_compta_bordereaux_prix_partial_update
 - put /api/v1/compta/bordereaux-prix/{id}/ -> v1_compta_bordereaux_prix_update
+- get /api/v1/compta/bordereaux-prix/{id}/chatter/historique/ -> v1_compta_bordereaux_prix_chatter_historique_retrieve
+- post /api/v1/compta/bordereaux-prix/{id}/chatter/noter/ -> v1_compta_bordereaux_prix_chatter_noter_create
+- get /api/v1/compta/bordereaux-prix/{id}/controles/ -> v1_compta_bordereaux_prix_controles_retrieve
+- get /api/v1/compta/bordereaux-prix/{id}/totaux/ -> v1_compta_bordereaux_prix_totaux_retrieve
 - get /api/v1/compta/bordereaux/ -> v1_compta_bordereaux_list
 - post /api/v1/compta/bordereaux/ -> v1_compta_bordereaux_create
 - get /api/v1/compta/bordereaux/{id}/ -> v1_compta_bordereaux_retrieve
@@ -8702,6 +9281,8 @@ operations:
 - get /api/v1/compta/cautions-soumission/{id}/ -> v1_compta_cautions_soumission_retrieve
 - patch /api/v1/compta/cautions-soumission/{id}/ -> v1_compta_cautions_soumission_partial_update
 - put /api/v1/compta/cautions-soumission/{id}/ -> v1_compta_cautions_soumission_update
+- get /api/v1/compta/cautions-soumission/{id}/chatter/historique/ -> v1_compta_cautions_soumission_chatter_historique_retrieve
+- post /api/v1/compta/cautions-soumission/{id}/chatter/noter/ -> v1_compta_cautions_soumission_chatter_noter_create
 - get /api/v1/compta/centres-cout/ -> v1_compta_centres_cout_list
 - post /api/v1/compta/centres-cout/ -> v1_compta_centres_cout_create
 - get /api/v1/compta/centres-cout/resultat/ -> v1_compta_centres_cout_resultat_retrieve
@@ -8891,6 +9472,8 @@ operations:
 - get /api/v1/compta/dossiers-soumission/{id}/ -> v1_compta_dossiers_soumission_retrieve
 - patch /api/v1/compta/dossiers-soumission/{id}/ -> v1_compta_dossiers_soumission_partial_update
 - put /api/v1/compta/dossiers-soumission/{id}/ -> v1_compta_dossiers_soumission_update
+- get /api/v1/compta/dossiers-soumission/{id}/chatter/historique/ -> v1_compta_dossiers_soumission_chatter_historique_retrieve
+- post /api/v1/compta/dossiers-soumission/{id}/chatter/noter/ -> v1_compta_dossiers_soumission_chatter_noter_create
 - get /api/v1/compta/dotations/ -> v1_compta_dotations_list
 - post /api/v1/compta/dotations/ -> v1_compta_dotations_create
 - get /api/v1/compta/dotations/{id}/ -> v1_compta_dotations_retrieve
@@ -8910,6 +9493,8 @@ operations:
 - get /api/v1/compta/echeances-ao/{id}/ -> v1_compta_echeances_ao_retrieve
 - patch /api/v1/compta/echeances-ao/{id}/ -> v1_compta_echeances_ao_partial_update
 - put /api/v1/compta/echeances-ao/{id}/ -> v1_compta_echeances_ao_update
+- get /api/v1/compta/echeances-ao/{id}/chatter/historique/ -> v1_compta_echeances_ao_chatter_historique_retrieve
+- post /api/v1/compta/echeances-ao/{id}/chatter/noter/ -> v1_compta_echeances_ao_chatter_noter_create
 - get /api/v1/compta/echeances-reconnaissance/ -> v1_compta_echeances_reconnaissance_list
 - post /api/v1/compta/echeances-reconnaissance/ -> v1_compta_echeances_reconnaissance_create
 - delete /api/v1/compta/echeances-reconnaissance/{id}/ -> v1_compta_echeances_reconnaissance_destroy
@@ -9166,6 +9751,8 @@ operations:
 - get /api/v1/compta/lignes-bordereau/{id}/ -> v1_compta_lignes_bordereau_retrieve
 - patch /api/v1/compta/lignes-bordereau/{id}/ -> v1_compta_lignes_bordereau_partial_update
 - put /api/v1/compta/lignes-bordereau/{id}/ -> v1_compta_lignes_bordereau_update
+- get /api/v1/compta/lignes-bordereau/{id}/chatter/historique/ -> v1_compta_lignes_bordereau_chatter_historique_retrieve
+- post /api/v1/compta/lignes-bordereau/{id}/chatter/noter/ -> v1_compta_lignes_bordereau_chatter_noter_create
 - get /api/v1/compta/lignes-cle-repartition/ -> v1_compta_lignes_cle_repartition_list
 - post /api/v1/compta/lignes-cle-repartition/ -> v1_compta_lignes_cle_repartition_create
 - delete /api/v1/compta/lignes-cle-repartition/{id}/ -> v1_compta_lignes_cle_repartition_destroy
@@ -9358,6 +9945,8 @@ operations:
 - get /api/v1/compta/pieces-soumission/{id}/ -> v1_compta_pieces_soumission_retrieve
 - patch /api/v1/compta/pieces-soumission/{id}/ -> v1_compta_pieces_soumission_partial_update
 - put /api/v1/compta/pieces-soumission/{id}/ -> v1_compta_pieces_soumission_update
+- get /api/v1/compta/pieces-soumission/{id}/chatter/historique/ -> v1_compta_pieces_soumission_chatter_historique_retrieve
+- post /api/v1/compta/pieces-soumission/{id}/chatter/noter/ -> v1_compta_pieces_soumission_chatter_noter_create
 - get /api/v1/compta/pilotage/cockpit/ -> v1_compta_pilotage_cockpit_retrieve
 - get /api/v1/compta/pistes-audit/ -> v1_compta_pistes_audit_list
 - post /api/v1/compta/pistes-audit/sceller/ -> v1_compta_pistes_audit_sceller_create
@@ -9497,11 +10086,14 @@ operations:
 - get /api/v1/compta/reponses-enquete/{reponse_id}/certificat/ -> v1_compta_reponses_enquete_certificat_retrieve
 - get /api/v1/compta/resultats-ao/ -> v1_compta_resultats_ao_list
 - post /api/v1/compta/resultats-ao/ -> v1_compta_resultats_ao_create
+- post /api/v1/compta/resultats-ao/enregistrer/ -> v1_compta_resultats_ao_enregistrer_create
 - get /api/v1/compta/resultats-ao/stats/ -> v1_compta_resultats_ao_stats_retrieve
 - delete /api/v1/compta/resultats-ao/{id}/ -> v1_compta_resultats_ao_destroy
 - get /api/v1/compta/resultats-ao/{id}/ -> v1_compta_resultats_ao_retrieve
 - patch /api/v1/compta/resultats-ao/{id}/ -> v1_compta_resultats_ao_partial_update
 - put /api/v1/compta/resultats-ao/{id}/ -> v1_compta_resultats_ao_update
+- get /api/v1/compta/resultats-ao/{id}/chatter/historique/ -> v1_compta_resultats_ao_chatter_historique_retrieve
+- post /api/v1/compta/resultats-ao/{id}/chatter/noter/ -> v1_compta_resultats_ao_chatter_noter_create
 - get /api/v1/compta/retenues-garantie/ -> v1_compta_retenues_garantie_list
 - post /api/v1/compta/retenues-garantie/ -> v1_compta_retenues_garantie_create
 - get /api/v1/compta/retenues-garantie/echeances/ -> v1_compta_retenues_garantie_echeances_retrieve
@@ -9966,6 +10558,7 @@ operations:
 - patch /api/v1/core/module-toggles/{id}/ -> v1_core_module_toggles_partial_update
 - put /api/v1/core/module-toggles/{id}/ -> v1_core_module_toggles_update
 - get /api/v1/core/modules/ -> v1_core_modules_retrieve
+- get /api/v1/core/modules/journal/ -> v1_core_modules_journal_retrieve
 - post /api/v1/core/modules/{id}/activer/ -> v1_core_modules_activer_create
 - post /api/v1/core/modules/{id}/desactiver/ -> v1_core_modules_desactiver_create
 - get /api/v1/core/outbox/ -> v1_core_outbox_list
@@ -10556,7 +11149,9 @@ operations:
 - get /api/v1/entites/entites/ -> v1_entites_entites_list
 - post /api/v1/entites/entites/ -> v1_entites_entites_create
 - get /api/v1/entites/entites/export/ -> v1_entites_entites_export_retrieve
+- get /api/v1/entites/entites/groupe/ -> v1_entites_entites_groupe_retrieve
 - post /api/v1/entites/entites/importer/ -> v1_entites_entites_importer_create
+- get /api/v1/entites/entites/mes-entites/ -> v1_entites_entites_mes_entites_retrieve
 - delete /api/v1/entites/entites/{id}/ -> v1_entites_entites_destroy
 - get /api/v1/entites/entites/{id}/ -> v1_entites_entites_retrieve
 - patch /api/v1/entites/entites/{id}/ -> v1_entites_entites_partial_update
@@ -15033,6 +15628,8 @@ operations:
 - post /api/v1/stock/produits/{id}/dupliquer/ -> v1_stock_produits_dupliquer_create
 - get /api/v1/stock/produits/{id}/emplacements/ -> v1_stock_produits_emplacements_retrieve
 - delete /api/v1/stock/produits/{id}/force-delete/ -> v1_stock_produits_force_delete_destroy
+- delete /api/v1/stock/produits/{id}/photo/ -> v1_stock_produits_photo_destroy
+- post /api/v1/stock/produits/{id}/photo/ -> v1_stock_produits_photo_create
 - get /api/v1/stock/produits/{id}/previsionnel/ -> v1_stock_produits_previsionnel_retrieve
 - get /api/v1/stock/produits/{id}/prix-fournisseurs/ -> v1_stock_produits_prix_fournisseurs_retrieve
 - post /api/v1/stock/produits/{id}/rebuter/ -> v1_stock_produits_rebuter_create
@@ -15429,6 +16026,7 @@ components:
 - AcceptationDevisPortail
 - AcceptationDevisPortailRequest
 - AccessReviewCampaign
+- AccessReviewCampaignPerimetreEnum
 - AccessReviewCampaignRequest
 - AccessReviewCampaignStatutEnum
 - AccessReviewItem
@@ -15511,6 +16109,7 @@ components:
 - Annonce
 - AnnonceCibleTypeEnum
 - AnnonceProduit
+- AnnonceProduitPlateforme
 - AnnonceProduitRequest
 - AnnonceRequest
 - Annotation
@@ -15633,7 +16232,6 @@ components:
 - AvoirStatutEnum
 - AxeAnalytique
 - AxeAnalytiqueRequest
-- AxeEnum
 - AyantDroit
 - AyantDroitRequest
 - BackgroundJob
@@ -15658,6 +16256,8 @@ components:
 - BaselinePlanning
 - BaselinePlanningRequest
 - Batiment
+- BatimentAO
+- BatimentAORequest
 - BatimentRequest
 - BatterieSouhaiteeEnum
 - BeneficiaireEffectif
@@ -15676,6 +16276,7 @@ components:
 - BinLocation
 - BinLocationRequest
 - BlankEnum
+- BlocEnum
 - BlocReutilisable
 - BlocReutilisablePorteeEnum
 - BlocReutilisableRequest
@@ -15700,6 +16301,7 @@ components:
 - BrandedTemplateRequest
 - Budget
 - BudgetCharges
+- BudgetChargesPosteEnum
 - BudgetChargesRequest
 - BudgetEngagement
 - BudgetEngagementRequest
@@ -15792,11 +16394,15 @@ components:
 - CautionStatutEnum
 - CautionTypeCautionEnum
 - CentreCout
+- CentreCoutAxeEnum
 - CentreCoutRequest
 - CertificatDestruction
 - Certification
 - CertificationRequest
 - CessionImmobilisation
+- ChaineCotes
+- ChaineCotesAxeEnum
+- ChaineCotesRequest
 - Chambre
 - ChambreRequest
 - ChambreStatutEnum
@@ -15815,6 +16421,8 @@ components:
 - ChecklistTemplate
 - ChecklistTemplateRequest
 - CibleEnum
+- CibleFinanciere
+- CibleFinanciereRequest
 - CircuitTransport
 - CircuitTransportRequest
 - Classe
@@ -15990,6 +16598,7 @@ components:
 - ControleReception
 - ControleReceptionRequest
 - ControleReceptionVerdictEnum
+- ControleeEnum
 - Convention
 - ConventionFiscale
 - ConventionFiscaleRequest
@@ -16090,9 +16699,9 @@ components:
 - DemandeApprobation
 - DemandeApprobationConfig
 - DemandeApprobationConfigRequest
-- DemandeApprobationConfigStatutEnum
 - DemandeApprobationRequest
 - DemandeApprobationStatutEnum
+- DemandeCalepinageRequest
 - DemandeChangement
 - DemandeChangementRequest
 - DemandeChangementStatutEnum
@@ -16106,6 +16715,8 @@ components:
 - DemandeDocument
 - DemandeDocumentRequest
 - DemandeDocumentStatutEnum
+- DemandeInscription
+- DemandeJobCalepinageRequest
 - DemandeRH
 - DemandeRHRequest
 - DemandeRHStatutEnum
@@ -16183,6 +16794,9 @@ components:
 - DocumentVersionRequest
 - DomaineEnvoi
 - DomaineEnvoiRequest
+- DossierAO
+- DossierAORequest
+- DossierAOStatutEnum
 - DossierChecklistItem
 - DossierChecklistItemEtapeEnum
 - DossierChecklistItemRequest
@@ -16236,6 +16850,8 @@ components:
 - EcheancierReconnaissanceRequest
 - EcheancierReconnaissanceStatutEnum
 - EcheancierScolarite
+- EconomieAO
+- EconomieAORequest
 - EcritureComptable
 - EcritureComptableRequest
 - Effet
@@ -16317,6 +16933,9 @@ components:
 - EquipeSaisonniere
 - EquipeSaisonniereRequest
 - Equipement
+- EquipementAO
+- EquipementAORequest
+- EquipementAORoleEnum
 - EquipementRequest
 - EquipementStatutEnum
 - Etape6e8Enum
@@ -16374,6 +16993,8 @@ components:
 - ExerciceUrgenceRequest
 - ExigenceAssuranceMarche
 - ExigenceAssuranceMarcheRequest
+- ExigenceCPS
+- ExigenceCPSRequest
 - ExigenceDossier
 - ExigenceDossierRequest
 - Experiment
@@ -16402,6 +17023,8 @@ components:
 - FactureFournisseur
 - FactureFournisseurRequest
 - FactureFournisseurStatutEnum
+- FactureLicence
+- FactureLicenceStatutEnum
 - FactureRequest
 - FactureSante
 - FactureSanteRequest
@@ -16448,6 +17071,7 @@ components:
 - ForecastEntryRequest
 - FormatExportEnum
 - FormatExportVirementDefautEnum
+- FormeEnum
 - FormulaireIntake
 - FormulaireIntakeRequest
 - Fournisseur
@@ -16509,6 +17133,7 @@ components:
 - ImmobilisationEnCoursRequest
 - ImmobilisationEnCoursStatutEnum
 - ImmobilisationRequest
+- ImpersonationCibles
 - ImputationAvoirFournisseur
 - ImputationAvoirFournisseurRequest
 - ImputationAxe
@@ -16603,6 +17228,7 @@ components:
 - JalonProjetRequest
 - JalonRequest
 - JalonStatutEnum
+- JobCalepinage
 - JourBloqueConge
 - JourBloqueCongeRequest
 - JourFerie
@@ -16625,6 +17251,7 @@ components:
 - KbArticleRequest
 - KbArticleStatutEnum
 - KbArticleVersion
+- KbArticleVisibiliteEnum
 - KbFavori
 - KbFavoriRequest
 - KbLectureObligatoire
@@ -16638,6 +17265,9 @@ components:
 - KindC26Enum
 - KindD6fEnum
 - Kit
+- KitCalepinage
+- KitCalepinageModeEnum
+- KitCalepinageRequest
 - KitComposant
 - KitComposantRequest
 - KitOutillage
@@ -16664,6 +17294,8 @@ components:
 - LegalHoldRequest
 - LiasseRemontee
 - LiasseRemonteeStatutEnum
+- LicenceStatut
+- LicenceStatutPublic
 - LienEnum
 - LienSignalementPublic
 - LienSignalementPublicRequest
@@ -16681,12 +17313,17 @@ components:
 - LigneBudgetProjet
 - LigneBudgetProjetRequest
 - LigneBulletin
+- LigneChecklistPartenaire
+- LigneChecklistPartenaireRequest
 - LigneCleRepartition
 - LigneCleRepartitionRequest
 - LigneCommandeRetrait
 - LigneCommandeRetraitRequest
 - LigneCompensation
 - LigneCompensationTypeFactureEnum
+- LigneCoutRevient
+- LigneCoutRevientPosteEnum
+- LigneCoutRevientRequest
 - LigneDevis
 - LigneDevisRequest
 - LigneEcheance
@@ -16837,6 +17474,7 @@ components:
 - ModeInstallationEnum
 - ModePaginationEnum
 - ModePaiementReglementEnum
+- ModePassationEnum
 - ModePenaliteEnum
 - ModePrixEnum
 - ModeRepartitionEnum
@@ -16866,6 +17504,8 @@ components:
 - ModeleInspectionRequest
 - ModeleIntegration
 - ModeleIntegrationRequest
+- ModelePack
+- ModelePackRequest
 - ModeleProjet
 - ModeleProjetRequest
 - ModeleProjetTypeInstallationEnum
@@ -16955,6 +17595,9 @@ components:
 - ObservationSecurite
 - ObservationSecuriteCategorieEnum
 - ObservationSecuriteRequest
+- ObstacleAO
+- ObstacleAONatureEnum
+- ObstacleAORequest
 - OffreFinancement
 - OffreFinancementRequest
 - OffreGroupee
@@ -16993,6 +17636,7 @@ components:
 - OrdreVirement
 - OrdreVirementStatutEnum
 - OrientationF17Enum
+- OrientationPanneauEnum
 - OutboxEvent
 - OutboxEventStatutEnum
 - Outillage
@@ -17096,6 +17740,7 @@ components:
 - PaginatedBaremeIndemniteList
 - PaginatedBaremeVignetteList
 - PaginatedBaselinePlanningList
+- PaginatedBatimentAOList
 - PaginatedBatimentList
 - PaginatedBeneficiaireEffectifList
 - PaginatedBesoinFormationList
@@ -17145,12 +17790,14 @@ components:
 - PaginatedCentreCoutList
 - PaginatedCertificationList
 - PaginatedCessionImmobilisationList
+- PaginatedChaineCotesList
 - PaginatedChambreList
 - PaginatedChampSignatureList
 - PaginatedCharteVehiculeList
 - PaginatedCheckinSecuriteList
 - PaginatedChecklistEtapeModeleList
 - PaginatedChecklistTemplateList
+- PaginatedCibleFinanciereList
 - PaginatedCircuitTransportList
 - PaginatedClasseList
 - PaginatedClasseurList
@@ -17283,6 +17930,7 @@ components:
 - PaginatedDocumentTagList
 - PaginatedDocumentVersionList
 - PaginatedDomaineEnvoiList
+- PaginatedDossierAOList
 - PaginatedDossierChecklistItemList
 - PaginatedDossierEmployeList
 - PaginatedDossierExchangeList
@@ -17302,6 +17950,7 @@ components:
 - PaginatedEcheancierPaiementList
 - PaginatedEcheancierReconnaissanceList
 - PaginatedEcheancierScolariteList
+- PaginatedEconomieAOList
 - PaginatedEcritureComptableList
 - PaginatedEffetList
 - PaginatedElementEtatLieuxList
@@ -17334,6 +17983,7 @@ components:
 - PaginatedEquipeList
 - PaginatedEquipeMaintenanceList
 - PaginatedEquipeSaisonniereList
+- PaginatedEquipementAOList
 - PaginatedEquipementList
 - PaginatedEtapeAssemblageList
 - PaginatedEtapeCampagneList
@@ -17351,6 +18001,7 @@ components:
 - PaginatedExerciceComptableList
 - PaginatedExerciceUrgenceList
 - PaginatedExigenceAssuranceMarcheList
+- PaginatedExigenceCPSList
 - PaginatedExigenceDossierList
 - PaginatedExperimentArmList
 - PaginatedExperimentList
@@ -17450,6 +18101,7 @@ components:
 - PaginatedKbParcoursArticleList
 - PaginatedKbParcoursAssignationList
 - PaginatedKbParcoursList
+- PaginatedKitCalepinageList
 - PaginatedKitComposantList
 - PaginatedKitList
 - PaginatedKitOutillageItemList
@@ -17466,7 +18118,9 @@ components:
 - PaginatedLigneBordereauList
 - PaginatedLigneBudgetDepartementList
 - PaginatedLigneBudgetProjetList
+- PaginatedLigneChecklistPartenaireList
 - PaginatedLigneCleRepartitionList
+- PaginatedLigneCoutRevientList
 - PaginatedLigneDevisList
 - PaginatedLigneEcheanceList
 - PaginatedLigneEvaluationRisqueList
@@ -17521,6 +18175,7 @@ components:
 - PaginatedModeleEvaluationList
 - PaginatedModeleInspectionList
 - PaginatedModeleIntegrationList
+- PaginatedModelePackList
 - PaginatedModeleProjetList
 - PaginatedModeleRapprochementList
 - PaginatedModeleTacheList
@@ -17551,6 +18206,7 @@ components:
 - PaginatedObligationList
 - PaginatedObligationPerformanceList
 - PaginatedObservationSecuriteList
+- PaginatedObstacleAOList
 - PaginatedOffreFinancementList
 - PaginatedOffreGroupeeList
 - PaginatedOperationIntercoList
@@ -17599,7 +18255,10 @@ components:
 - PaginatedPhaseProjetList
 - PaginatedPickListLigneList
 - PaginatedPickListList
+- PaginatedPieceAdministrativeList
 - PaginatedPieceConformiteList
+- PaginatedPieceConsultationList
+- PaginatedPieceDossierAOList
 - PaginatedPieceEtatLieuxList
 - PaginatedPieceFlotteList
 - PaginatedPieceJustificativeList
@@ -17616,6 +18275,7 @@ components:
 - PaginatedPlanInspectionModeleList
 - PaginatedPlanRecurrentList
 - PaginatedPlanRelanceTresorerieList
+- PaginatedPlanSourceList
 - PaginatedPlanTarifaireList
 - PaginatedPlanUrgenceList
 - PaginatedPlanificationDocumentList
@@ -17643,6 +18303,7 @@ components:
 - PaginatedPraticienSiteList
 - PaginatedPresenceChantierList
 - PaginatedPresenceList
+- PaginatedPresetCalepinageList
 - PaginatedPresquAccidentList
 - PaginatedPreuveLivraisonList
 - PaginatedPrevisionGlissanteList
@@ -17674,6 +18335,7 @@ components:
 - PaginatedPublicProduitList
 - PaginatedPutAwayList
 - PaginatedQhseChatterEntryList
+- PaginatedQuestionAOList
 - PaginatedQuestionConfigurateurList
 - PaginatedQuestionEvenementList
 - PaginatedQuizFormationList
@@ -17714,6 +18376,7 @@ components:
 - PaginatedRegulatoryDossierList
 - PaginatedRelanceDevisAbandonneList
 - PaginatedRelanceLoyerList
+- PaginatedReleveAOList
 - PaginatedReleveConsommationList
 - PaginatedReleveControleList
 - PaginatedReleveCourbeIVList
@@ -17771,11 +18434,14 @@ components:
 - PaginatedScheduledMessageList
 - PaginatedSeanceList
 - PaginatedSecouristeList
+- PaginatedSectionBordereauList
+- PaginatedSectionMemoireList
 - PaginatedSegmentClientCreditList
 - PaginatedSegmentMarketingList
 - PaginatedSequenceDunningList
 - PaginatedSequenceRelanceList
 - PaginatedSerieEntrepotList
+- PaginatedSerieQuestionsList
 - PaginatedServiceAccountList
 - PaginatedSessionCaisseList
 - PaginatedSessionComptageList
@@ -17822,6 +18488,7 @@ components:
 - PaginatedTiersList
 - PaginatedTimbreFiscalList
 - PaginatedTimesheetList
+- PaginatedToitureAOList
 - PaginatedTrajetChantierList
 - PaginatedTrajetTelematiqueList
 - PaginatedTranchePaiementList
@@ -17843,6 +18510,7 @@ components:
 - PaginatedUserList
 - PaginatedUtilisationMaterielList
 - PaginatedValidationOcrDocumentList
+- PaginatedVarianteCalepinageList
 - PaginatedVehiculeList
 - PaginatedVeilleReglementaireList
 - PaginatedVenteComptoirList
@@ -17985,6 +18653,7 @@ components:
 - PatchedBaremeIndemniteRequest
 - PatchedBaremeVignetteRequest
 - PatchedBaselinePlanningRequest
+- PatchedBatimentAORequest
 - PatchedBatimentRequest
 - PatchedBeneficiaireEffectifRequest
 - PatchedBesoinFormationRequest
@@ -18032,6 +18701,7 @@ components:
 - PatchedCautionSoumissionRequest
 - PatchedCentreCoutRequest
 - PatchedCertificationRequest
+- PatchedChaineCotesRequest
 - PatchedChambreRequest
 - PatchedChampSignatureRequest
 - PatchedChangelogEntryRequest
@@ -18039,6 +18709,7 @@ components:
 - PatchedCheckinSecuriteRequest
 - PatchedChecklistEtapeModeleRequest
 - PatchedChecklistTemplateRequest
+- PatchedCibleFinanciereRequest
 - PatchedCircuitTransportRequest
 - PatchedClasseRequest
 - PatchedClasseurRequest
@@ -18162,6 +18833,7 @@ components:
 - PatchedDocumentTagRequest
 - PatchedDocumentVersionRequest
 - PatchedDomaineEnvoiRequest
+- PatchedDossierAORequest
 - PatchedDossierChecklistItemRequest
 - PatchedDossierEmployeRequest
 - PatchedDossierExchangeRequest
@@ -18178,6 +18850,7 @@ components:
 - PatchedEcheancierContratRequest
 - PatchedEcheancierPaiementRequest
 - PatchedEcheancierReconnaissanceRequest
+- PatchedEconomieAORequest
 - PatchedEcritureComptableRequest
 - PatchedEffetRequest
 - PatchedElementEtatLieuxRequest
@@ -18207,6 +18880,7 @@ components:
 - PatchedEquipeMaintenanceRequest
 - PatchedEquipeRequest
 - PatchedEquipeSaisonniereRequest
+- PatchedEquipementAORequest
 - PatchedEquipementRequest
 - PatchedEtapeAssemblageRequest
 - PatchedEtapeCampagneRequest
@@ -18224,6 +18898,7 @@ components:
 - PatchedExerciceComptableRequest
 - PatchedExerciceUrgenceRequest
 - PatchedExigenceAssuranceMarcheRequest
+- PatchedExigenceCPSRequest
 - PatchedExigenceDossierRequest
 - PatchedExperimentArmRequest
 - PatchedExperimentRequest
@@ -18313,6 +18988,7 @@ components:
 - PatchedKbParcoursArticleRequest
 - PatchedKbParcoursAssignationRequest
 - PatchedKbParcoursRequest
+- PatchedKitCalepinageRequest
 - PatchedKitComposantRequest
 - PatchedKitOutillageItemRequest
 - PatchedKitOutillageRequest
@@ -18327,7 +19003,9 @@ components:
 - PatchedLigneBordereauRequest
 - PatchedLigneBudgetDepartementRequest
 - PatchedLigneBudgetProjetRequest
+- PatchedLigneChecklistPartenaireRequest
 - PatchedLigneCleRepartitionRequest
+- PatchedLigneCoutRevientRequest
 - PatchedLigneDevisRequest
 - PatchedLigneEvaluationRisqueRequest
 - PatchedLigneFactureRequest
@@ -18376,6 +19054,7 @@ components:
 - PatchedModeleEvaluationRequest
 - PatchedModeleInspectionRequest
 - PatchedModeleIntegrationRequest
+- PatchedModelePackRequest
 - PatchedModeleProjetRequest
 - PatchedModeleRapprochementRequest
 - PatchedModeleTacheRequest
@@ -18404,6 +19083,7 @@ components:
 - PatchedObligationPerformanceRequest
 - PatchedObligationRequest
 - PatchedObservationSecuriteRequest
+- PatchedObstacleAORequest
 - PatchedOffreFinancementRequest
 - PatchedOffreGroupeeRequest
 - PatchedOperationIntercoRequest
@@ -18449,7 +19129,10 @@ components:
 - PatchedPhaseProjetRequest
 - PatchedPickListLigneRequest
 - PatchedPickListRequest
+- PatchedPieceAdministrativeRequest
 - PatchedPieceConformiteRequest
+- PatchedPieceConsultationRequest
+- PatchedPieceDossierAORequest
 - PatchedPieceEtatLieuxRequest
 - PatchedPieceFlotteRequest
 - PatchedPieceJustificativeRequest
@@ -18465,6 +19148,7 @@ components:
 - PatchedPlanInspectionModeleRequest
 - PatchedPlanRecurrentRequest
 - PatchedPlanRelanceTresorerieRequest
+- PatchedPlanSourceRequest
 - PatchedPlanTarifaireRequest
 - PatchedPlanUrgenceRequest
 - PatchedPlanificationDocumentRequest
@@ -18491,6 +19175,7 @@ components:
 - PatchedPraticienSiteRequest
 - PatchedPresenceChantierRequest
 - PatchedPresenceRequest
+- PatchedPresetCalepinageRequest
 - PatchedPresquAccidentRequest
 - PatchedPreuveLivraisonRequest
 - PatchedPrevisionGlissanteRequest
@@ -18515,6 +19200,7 @@ components:
 - PatchedProvisionCreanceRequest
 - PatchedProvisionRequest
 - PatchedPutAwayRequest
+- PatchedQuestionAORequest
 - PatchedQuestionConfigurateurRequest
 - PatchedQuestionEvenementRequest
 - PatchedQuizFormationRequest
@@ -18552,6 +19238,7 @@ components:
 - PatchedRegularisation8221Request
 - PatchedRegulatoryDossierRequest
 - PatchedRelanceDevisAbandonneRequest
+- PatchedReleveAORequest
 - PatchedReleveConsommationRequest
 - PatchedReleveControleRequest
 - PatchedReleveCourbeIVRequest
@@ -18607,11 +19294,14 @@ components:
 - PatchedScheduledExportRequest
 - PatchedSeanceRequest
 - PatchedSecouristeRequest
+- PatchedSectionBordereauRequest
+- PatchedSectionMemoireRequest
 - PatchedSegmentClientCreditRequest
 - PatchedSegmentMarketingRequest
 - PatchedSequenceDunningRequest
 - PatchedSequenceRelanceRequest
 - PatchedSerieEntrepotRequest
+- PatchedSerieQuestionsRequest
 - PatchedServiceAccountRequest
 - PatchedSessionCaisseRequest
 - PatchedSessionComptageRequest
@@ -18654,6 +19344,7 @@ components:
 - PatchedTiersRequest
 - PatchedTimbreFiscalRequest
 - PatchedTimesheetRequest
+- PatchedToitureAORequest
 - PatchedTrajetChantierRequest
 - PatchedTrajetTelematiqueRequest
 - PatchedTranchePaiementRequest
@@ -18672,6 +19363,7 @@ components:
 - PatchedUserRequest
 - PatchedUtilisationMaterielRequest
 - PatchedUxParametresRequest
+- PatchedVarianteCalepinageRequest
 - PatchedVehiculeRequest
 - PatchedVeilleReglementaireRequest
 - PatchedVenteComptoirRequest
@@ -18698,7 +19390,6 @@ components:
 - PaymentTransaction
 - PaymentTransactionRequest
 - PaymentTransactionStatutEnum
-- PerimetreEnum
 - PeriodTypeEnum
 - PeriodeComptable
 - PeriodeComptableRequest
@@ -18732,10 +19423,20 @@ components:
 - PickListLigneRequest
 - PickListRequest
 - PickListStatutEnum
+- PieceAdministrative
+- PieceAdministrativeRequest
+- PieceAdministrativeTypePieceEnum
 - PieceConformite
 - PieceConformiteRequest
 - PieceConformiteStatutEnum
 - PieceConformiteTypePieceEnum
+- PieceConsultation
+- PieceConsultationRequest
+- PieceConsultationTypePieceEnum
+- PieceDossierAO
+- PieceDossierAORequest
+- PieceDossierAOTypePieceEnum
+- PieceDossierAOVisibiliteEnum
 - PieceEtatLieux
 - PieceEtatLieuxRequest
 - PieceFlotte
@@ -18769,6 +19470,10 @@ components:
 - PlanRecurrentRequest
 - PlanRelanceTresorerie
 - PlanRelanceTresorerieRequest
+- PlanSource
+- PlanSourceEtatEnum
+- PlanSourceOrigineEnum
+- PlanSourceRequest
 - PlanTarifaire
 - PlanTarifaireCanalEnum
 - PlanTarifaireRequest
@@ -18820,7 +19525,6 @@ components:
 - PostSocialRequest
 - PostSocialStatutEnum
 - Poste
-- PosteEnum
 - PosteRequest
 - PouvoirBancaire
 - PouvoirBancaireRequest
@@ -18835,9 +19539,13 @@ components:
 - PresenceChantierStatutEnum
 - PresenceRequest
 - PresenceStatutEnum
+- PresetCalepinage
+- PresetCalepinagePorteeEnum
+- PresetCalepinageRequest
 - PresquAccident
 - PresquAccidentRequest
 - PresquAccidentStatutEnum
+- PreuveCalepinage
 - PreuveLivraison
 - PreuveLivraisonRequest
 - PrevisionGlissante
@@ -18897,6 +19605,7 @@ components:
 - ProposalTemplate
 - ProposalTemplateRequest
 - ProtocolEnum
+- ProvenanceEnum
 - Provision
 - ProvisionCreance
 - ProvisionCreanceRequest
@@ -18916,6 +19625,10 @@ components:
 - QhseChatterEntry
 - QhseChatterEntryCibleTypeEnum
 - QhseChatterEntryKindEnum
+- QuantiteSourceEnum
+- QuestionAO
+- QuestionAORequest
+- QuestionAOStatutEnum
 - QuestionConfigurateur
 - QuestionConfigurateurRequest
 - QuestionConfigurateurTypeEnum
@@ -18995,6 +19708,7 @@ components:
 - RegimeMutuelleModeEnum
 - RegimeMutuellePalierEnum
 - RegimeMutuelleRequest
+- RegimeTvaEnum
 - Register
 - RegisterRequest
 - RegistreTraitement
@@ -19036,6 +19750,8 @@ components:
 - RelanceLoyerNiveauEnum
 - RelationEnum
 - RelationModuleEnum
+- ReleveAO
+- ReleveAORequest
 - ReleveConsommation
 - ReleveConsommationRequest
 - ReleveConsommationSourceEnum
@@ -19092,6 +19808,7 @@ components:
 - ResultatAO
 - ResultatAOIssueEnum
 - ResultatAORequest
+- ResultatCalepinage
 - ResultatCommissioningEnum
 - RetentionPolicy
 - RetentionPolicyRequest
@@ -19139,11 +19856,11 @@ components:
 - RoleCibleEnum
 - RoleE35Enum
 - RoleLegacyEnum
+- RolePerimetreEnum
 - RoleRequest
 - RoleSignataire
 - RoleSignataireRequest
 - RoofLayout
-- RoofLayoutOrientationEnum
 - RoofLayoutRequest
 - RoutageDocumentaire
 - RoutageDocumentaireRequest
@@ -19199,6 +19916,10 @@ components:
 - SeanceRequest
 - Secouriste
 - SecouristeRequest
+- SectionBordereau
+- SectionBordereauRequest
+- SectionMemoire
+- SectionMemoireRequest
 - SegmentClientCredit
 - SegmentClientCreditRequest
 - SegmentMarketing
@@ -19213,6 +19934,9 @@ components:
 - SerieEntrepot
 - SerieEntrepotRequest
 - SerieEntrepotStatutEnum
+- SerieQuestions
+- SerieQuestionsCanalEnum
+- SerieQuestionsRequest
 - ServiceAccount
 - ServiceAccountRequest
 - SessionCaisse
@@ -19224,6 +19948,7 @@ components:
 - SessionFormationTypeEnum
 - SessionGuidedSelling
 - SessionGuidedSellingRequest
+- SessionImpersonation
 - SeuilApprobationBCF
 - SeuilApprobationBCFRequest
 - SeuilMargeFamille
@@ -19287,6 +20012,7 @@ components:
 - Statut484Enum
 - Statut562Enum
 - Statut589Enum
+- Statut6e6Enum
 - Statut95fEnum
 - Statut9f8Enum
 - StatutAffectationEnum
@@ -19344,7 +20070,10 @@ components:
 - TargetRoleEnum
 - TauxTVA
 - TauxTVARequest
+- TauxTvaEnum
 - TemplateKeyEnum
+- TenantConsoleCreateReponse
+- TenantConsoleCreateRequeteRequest
 - TenantTheme
 - TenantThemeRequest
 - TenantUsageSnapshot
@@ -19376,6 +20105,8 @@ components:
 - Timesheet
 - TimesheetRequest
 - TimesheetStatutEnum
+- ToitureAO
+- ToitureAORequest
 - TokenRefresh
 - TokenRefreshRequest
 - TokenVerifyRequest
@@ -19440,6 +20171,7 @@ components:
 - TypeContratDefautEnum
 - TypeContratDf9Enum
 - TypeControleEnum
+- TypeCouvertureEnum
 - TypeCycleEnum
 - TypeDependanceEnum
 - TypeDocEnum
@@ -19457,7 +20189,9 @@ components:
 - TypeEvenementEnum
 - TypeEvenementRequest
 - TypeExerciceEnum
+- TypeExigenceEnum
 - TypeFactureAf3Enum
+- TypeFichierEnum
 - TypeFinancementEnum
 - TypeFiscalEnum
 - TypeHabilitationEnum
@@ -19521,6 +20255,10 @@ components:
 - UxParametres
 - ValidationOcrDocument
 - ValidationOcrDocumentRequest
+- VarianteCalepinage
+- VarianteCalepinageRequest
+- VarianteCalepinageRoleEnum
+- VarianteCalepinageStatutEnum
 - Vehicule
 - VehiculeRequest
 - VehiculeStatutEnum
@@ -19538,7 +20276,6 @@ components:
 - VisaDocument
 - VisaDocumentRequest
 - VisaDocumentStatutEnum
-- VisibiliteEnum
 - VisitWindowPartEnum
 - VisitWindowWeekEnum
 - VisiteMedicale
