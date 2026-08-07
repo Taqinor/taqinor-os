@@ -1,14 +1,17 @@
 """Routes du module Portail client (``apps.portail``) — ODX12.
 
-Nouveau préfixe ``/api/django/portail/…``. Les mêmes ViewSets sont AUSSI servis
-par ``apps.compta.urls`` sous ``/api/django/compta/…`` (routes historiques
-conservées à l'identique pour ne casser aucun client, y compris les vues
-publiques tokenisées ``portail/<token>/…`` qui restent servies par compta). Les
+Préfixe ``/api/django/portail/…``. PACT26 — le double montage historique qui
+re-servait ces mêmes ViewSets sous ``apps.compta.urls``
+(``/api/django/compta/…``) a été retiré : aucun appelant frontend ne
+l'utilisait (vérifié). Les vues publiques tokenisées ``portail/<token>/…``
+(relevé, contestation facture) restent servies par ``apps.compta.urls`` —
+elles n'ont JAMAIS été dupliquées ici, donc hors périmètre de ce retrait. Les
 ViewSets gardent le scoping ``request.user.company`` + l'assignation forcée de
 ``company`` (hérité de ``_ComptaBaseViewSet`` = ``TenantMixin``).
 
-Basenames explicitement préfixés ``portail-…`` pour NE PAS entrer en collision
-avec les noms d'URL du routeur compta.
+Basenames explicitement préfixés ``portail-…`` (héritage de l'époque où le
+routeur compta enregistrait les mêmes ViewSets) : conservé pour ne pas
+risquer de collision ailleurs.
 """
 
 from django.urls import include, path

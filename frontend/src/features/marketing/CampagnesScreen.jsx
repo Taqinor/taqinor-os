@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from 'react'
-import comptaApi from '../../api/comptaApi'
+import marketingApi from '../../api/marketingApi'
 
 /* ============================================================================
    FG201/XMKT10/XMKT34 — Éditeur de campagnes marketing (email/SMS/WhatsApp).
@@ -35,7 +35,7 @@ export default function CampagnesScreen() {
 
   const load = useCallback(() => {
     setLoading(true)
-    comptaApi.campagnes.list()
+    marketingApi.campagnes.list()
       .then(r => setCampagnes(Array.isArray(r.data) ? r.data : (r.data.results || [])))
       .catch(() => setCampagnes([]))
       .finally(() => setLoading(false))
@@ -46,7 +46,7 @@ export default function CampagnesScreen() {
 
   useEffect(() => {
     // Sonde gating IA (aucun appel LLM) : sans clé → bouton jamais rendu.
-    comptaApi.campagnes.genererIaDisponible()
+    marketingApi.campagnes.genererIaDisponible()
       .then(r => setIaDisponible(!!r.data?.configured))
       .catch(() => setIaDisponible(false))
   }, [])
@@ -65,8 +65,8 @@ export default function CampagnesScreen() {
     e.preventDefault()
     setErr('')
     try {
-      if (editingId) await comptaApi.campagnes.update(editingId, form)
-      else await comptaApi.campagnes.create(form)
+      if (editingId) await marketingApi.campagnes.update(editingId, form)
+      else await marketingApi.campagnes.create(form)
       reset()
       load()
     } catch {
@@ -78,7 +78,7 @@ export default function CampagnesScreen() {
     setIaLoading(true)
     setErr('')
     try {
-      const r = await comptaApi.campagnes.genererIa(iaOptions)
+      const r = await marketingApi.campagnes.genererIa(iaOptions)
       if (r.data?.ok) {
         // SUGGESTION éditable : remplit les champs, ne sauvegarde rien.
         setForm(f => ({

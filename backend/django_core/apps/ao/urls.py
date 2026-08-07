@@ -1,15 +1,15 @@
 """Routes du module Appels d'offres (``apps.ao``) — ODX11 puis AOF31.
 
-Préfixe ``/api/django/ao/…``. Les 8 ViewSets HISTORIQUES sont AUSSI servis par
-``apps.compta.urls`` sous ``/api/django/compta/…`` (routes conservées à
-l'identique pour ne casser aucun client) — les classes, elles, vivent
-désormais dans ``apps.ao.views`` (AOF1).
+Préfixe ``/api/django/ao/…``. Les classes vivent dans ``apps.ao.views``
+(AOF1). PACT26 — le double montage historique qui re-servait les 8 ViewSets
+HISTORIQUES sous ``apps.compta.urls`` (``/api/django/compta/…``) a été
+retiré : aucun appelant frontend ne l'utilisait (vérifié). Ces 8 ressources
+ne sont désormais servies que sous ce préfixe-ci.
 
-**Tous les basenames sont préfixés ``ao-``.** Ce n'est pas de la cosmétique :
-le routeur compta enregistre les mêmes ViewSets et reverse ``appeloffre-list``
-etc. Sans le préfixe, deux entrées porteraient le même nom d'URL et
-``reverse()`` renverrait silencieusement la mauvaise — un test explicite
-(``test_routes_ao``) vérifie qu'aucune collision n'existe.
+**Tous les basenames restent préfixés ``ao-``** (héritage de l'époque où le
+routeur compta enregistrait les mêmes ViewSets sous ``appeloffre-list`` etc.) :
+conservé pour ne pas risquer une collision de basename ailleurs et parce que
+``test_routes_ao`` continue de le vérifier explicitement.
 
 AOF31 — le contrat d'API (``/contrat/``) est DÉRIVÉ de ce routeur : il ne peut
 pas se désynchroniser de la réalité. La pagination est celle du projet

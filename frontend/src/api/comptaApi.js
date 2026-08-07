@@ -339,19 +339,9 @@ const comptaApi = {
     sceller: (data) => api.post('/compta/pistes-audit/sceller/', data),
   },
 
-  // ── FG201/XMKT10/XMKT34 — Campagnes marketing (email/SMS/WhatsApp) ──
-  // La génération IA (XMKT34) est key-gated : `genererIaDisponible` sonde la
-  // config (aucun appel LLM) — sans clé, le bouton « Générer avec l'IA » est
-  // entièrement masqué ; `genererIa` renvoie une SUGGESTION éditable
-  // (objet/corps), jamais auto-appliquée à la campagne.
-  campagnes: {
-    ...resource('campagnes'),
-    envoyer: (id, data) => api.post(`/compta/campagnes/${id}/envoyer/`, data),
-    genererIaDisponible: () =>
-      api.get('/compta/campagnes/generer-ia-disponible/'),
-    genererIa: (payload) =>
-      api.post('/compta/campagnes/generer-ia/', payload),
-  },
+  // PACT26 — `campagnes` (FG201/XMKT10/XMKT34) est retiré d'ici : le double
+  // montage `/compta/campagnes/...` a été supprimé, `CampagnesScreen.jsx`
+  // consomme désormais `marketingApi.campagnes` (`/marketing/campagnes/...`).
 
   // ── XMKT30 / WIR65 — Calendrier marketing unifié ──
   // Agrège les 5 sources company-scoped servies par CalendrierMarketingView
