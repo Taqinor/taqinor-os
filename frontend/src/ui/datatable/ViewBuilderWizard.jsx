@@ -15,7 +15,12 @@
 // `useServerSavedViews().createView` pour un `onCreate` prêt à l'emploi.
 import { useState } from 'react'
 import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Check } from 'lucide-react'
-import { Button, Checkbox, Input, Segmented } from '..'
+// PACT174 — imports DIRECTS (jamais le baril `..`), cf. BulkEditDialog.jsx :
+// le baril `ui/index.js` réexporte `./datatable` et refermerait un cycle.
+import { Button } from '../Button'
+import { Checkbox } from '../Checkbox'
+import { Input } from '../Input'
+import { Segmented } from '../Segmented'
 import FilterBuilder from './FilterBuilder'
 import { emptyGroup } from './filterLogic'
 

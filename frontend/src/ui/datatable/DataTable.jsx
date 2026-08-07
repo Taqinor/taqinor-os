@@ -4,7 +4,7 @@ import {
 import {
   ArrowUp, ArrowDown, ChevronsUpDown, Search, MoreHorizontal, MoreVertical,
   ChevronRight, Pin, PinOff, EyeOff, Download, ChevronLeft, Inbox, AlertTriangle,
-  ArrowLeft, ArrowRight,
+  ArrowLeft, ArrowRight, Pencil, StickyNote, LayoutList,
 } from 'lucide-react'
 import { cn } from '../../lib/cn'
 import { useDensity } from '../../design/theme-context'
@@ -37,6 +37,17 @@ import { rowsToCSV, exportFileName } from './csv.js'
 import { useDataTable } from './useDataTable.js'
 import { ColumnManager } from './ColumnManager.jsx'
 import { BulkActionBar } from './BulkActionBar.jsx'
+// PACT174 — les trois tiroirs livrés avec le moteur mais jamais montés
+// (NTUX5 aperçu AVANT/APRÈS, NTUX20 note groupée, NTUX25 assistant de vue au
+// dessus de FilterBuilder/NTUX3). Ils vivent désormais DANS le moteur, en
+// opt-in : un écran qui ne passe ni `bulkEdit`, ni `bulkNote`, ni
+// `viewBuilder` rend exactement comme avant.
+import BulkEditDialog from './BulkEditDialog.jsx'
+import BulkNoteDialog from './BulkNoteDialog.jsx'
+import ViewBuilderWizard from './ViewBuilderWizard.jsx'
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
+} from '../Dialog'
 // NTUX11 — mémoire des « récents » unifiée (déjà alimentée par la palette
 // ⌘K) ; réutilisée ici (jamais dupliquée) via la prop opt-in `trackRecent`.
 import { pushRecentEntity } from '../../providers/commandActions.js'
@@ -262,6 +273,36 @@ export const DataTable = forwardRef(function DataTable(
     // sélection / actions
     selectable = false,
     bulkActions, // (selectedRows, selectedKeys, clear) => [{ id,label,icon,onClick,... }]
+    /* ---- PACT174 — édition en masse et note groupée AVEC aperçu ------------
+       Trois échappatoires ADDITIVES (100 % opt-in) qui montent enfin les
+       tiroirs livrés avec le moteur. Non fournies, le rendu et la barre
+       d'actions groupées restent STRICTEMENT identiques à avant.
+
+       - bulkEdit (NTUX5, BulkEditDialog.jsx) : une action par valeur cible est
+         ajoutée à la barre de sélection ; le clic n'écrit RIEN — il ouvre
+         d'abord l'aperçu AVANT/APRÈS ligne à ligne, l'écriture n'a lieu qu'à
+         la confirmation. Un échec partiel n'annule pas le reste (les lignes en
+         échec sont listées avec leur raison).
+         { fieldLabel, options: [{ value, label }],
+           getOldValue(row), formatValue?(v), getRowLabel?(row),
+           onConfirm(rows, newValue) -> { updated:[{id}], failed:[{id,label?,reason}] },
+           icon?, onDone?(result) }
+         La sélection n'est vidée QUE si `failed` est vide (sur échec partiel
+         elle reste, pour que l'utilisateur voie encore qui a échoué).
+       - bulkNote (NTUX20, BulkNoteDialog.jsx) : ajoute « Ajouter une note » ;
+         la même note part dans l'historique (chatter) de chaque ligne
+         sélectionnée via l'endpoint `noter` DE L'ÉCRAN — le moteur n'écrit
+         jamais lui-même.
+         { label?, getRowLabel?(row), onConfirm(rows, note) -> { updated, failed } }
+       - viewBuilder (NTUX25, ViewBuilderWizard.jsx + FilterBuilder.jsx) :
+         ajoute « Nouvelle vue » à la barre d'outils ; l'assistant 3 étapes
+         (colonnes / filtres visuels / nom + visibilité) construit la
+         `SavedView.configuration` à partir des colonnes DÉJÀ connues du
+         moteur. `onCreate` = `useServerSavedViews(ecran).createView`.
+         { ecran, canShareTeam?, onCreate({ecran,nom,visibilite,configuration}) } */
+    bulkEdit,
+    bulkNote,
+    viewBuilder,
     rowActions, // (row) => [{ id, label, icon, onClick, destructive }] (max 3 + overflow)
     // VX43 — swipe-to-action sur les cartes mobiles (data-dt-cards) : maison,
     // touchstart/move/end, zéro dépendance. 100 % opt-in / rétrocompatible :
@@ -581,6 +622,59 @@ export const DataTable = forwardRef(function DataTable(
   // (sinon un seul export possible : « tout », bouton simple inchangé).
   const canChooseExportScope = selectable && selectedKeys.length > 0
 
+  /* ---- PACT174 — tiroirs groupés (NTUX5/NTUX20) et assistant de vue (NTUX25) ----
+     Trois états inertes tant que les props correspondantes ne sont pas
+     fournies : `bulkEditValue` porte la valeur cible CHOISIE (l'aperçu est
+     ouvert dès qu'elle n'est plus `null`, `''`/`0`/`false` inclus). */
+  const [bulkEditValue, setBulkEditValue] = useState(null)
+  const [bulkNoteOpen, setBulkNoteOpen] = useState(false)
+  const [viewBuilderOpen, setViewBuilderOpen] = useState(false)
+
+  // Les actions groupées réellement affichées = celles de l'écran, PLUS
+  // celles dérivées de `bulkEdit`/`bulkNote`. Le clic n'écrit rien : il ouvre
+  // le tiroir d'aperçu, l'écriture est le fait de la confirmation.
+  const buildBulkActions = useCallback((selRows, selKeys, clear) => {
+    const base = bulkActions ? (bulkActions(selRows, selKeys, clear) ?? []) : []
+    const extra = []
+    if (bulkEdit?.options?.length && bulkEdit.onConfirm) {
+      for (const opt of bulkEdit.options) {
+        extra.push({
+          id: `bulk-edit-${String(opt.value)}`,
+          label: `${bulkEdit.fieldLabel} → ${opt.label}`,
+          icon: bulkEdit.icon ?? Pencil,
+          onClick: () => setBulkEditValue(opt.value),
+        })
+      }
+    }
+    if (bulkNote?.onConfirm) {
+      extra.push({
+        id: 'bulk-note',
+        label: bulkNote.label ?? 'Ajouter une note',
+        icon: StickyNote,
+        onClick: () => setBulkNoteOpen(true),
+      })
+    }
+    return [...base, ...extra]
+  }, [bulkActions, bulkEdit, bulkNote])
+
+  // Une sélection vidée (action appliquée, ou « Tout désélectionner ») ne doit
+  // jamais laisser un tiroir ouvert sur zéro ligne.
+  useEffect(() => {
+    if (selectedKeys.length === 0) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- referme les tiroirs groupés quand la sélection disparaît
+      setBulkEditValue(null)
+      setBulkNoteOpen(false)
+    }
+  }, [selectedKeys.length])
+
+  // Colonnes proposées à l'assistant de vue : celles que le moteur connaît
+  // déjà (aucune redéclaration côté écran). `type` alimente les opérateurs de
+  // FilterBuilder (texte par défaut).
+  const viewBuilderColumns = useMemo(
+    () => resolvedColumns.map((c) => ({ id: c.id, header: c.header ?? c.id, type: c.type ?? 'text' })),
+    [resolvedColumns],
+  )
+
   /* ---- Réordonnancement par glisser-déposer (HTML5, sans dépendance) ---- */
   const onHeaderDrop = useCallback(
     (toId) => {
@@ -775,8 +869,10 @@ export const DataTable = forwardRef(function DataTable(
     [rows, activeRow, onRowClick, handleRowClick],
   )
 
+  const hasViewBuilder = !!viewBuilder?.onCreate
   const hasToolbar = !hideToolbar
-    && (searchable || savedViews || columns.some((c) => c.hideable !== false) || onExport !== undefined)
+    && (searchable || savedViews || columns.some((c) => c.hideable !== false)
+      || onExport !== undefined || hasViewBuilder)
 
   return (
     <div ref={ref} className={cn('flex flex-col gap-3', className)}>
@@ -811,6 +907,14 @@ export const DataTable = forwardRef(function DataTable(
             </div>
           )}
           <div className="ml-auto flex items-center gap-2">
+            {/* PACT174 — assistant de vue (NTUX25) : construit la
+                configuration d'une vue enregistrée sans formulaire technique. */}
+            {hasViewBuilder && (
+              <Button variant="outline" size="sm" onClick={() => setViewBuilderOpen(true)}>
+                <LayoutList />
+                <span className="hidden sm:inline">Nouvelle vue</span>
+              </Button>
+            )}
             {columns.some((c) => c.hideable !== false) && (
               <ColumnManager columns={columns} columnState={columnState} dispatch={dispatchColumns} />
             )}
@@ -1516,12 +1620,73 @@ export const DataTable = forwardRef(function DataTable(
       )}
 
       {/* -------- Barre d'actions groupées (H32) -------- */}
-      {selectable && bulkActions && (
+      {selectable && (bulkActions || bulkEdit || bulkNote) && (
         <BulkActionBar
           count={selectedKeys.length}
-          actions={bulkActions(selectedRows, selectedKeys, clearSelection)}
+          actions={buildBulkActions(selectedRows, selectedKeys, clearSelection)}
           onClear={clearSelection}
         />
+      )}
+
+      {/* -------- PACT174 — aperçu AVANT/APRÈS de l'édition en masse (NTUX5) -------- */}
+      {bulkEdit?.onConfirm && bulkEditValue !== null && (
+        <BulkEditDialog
+          open
+          onOpenChange={(o) => { if (!o) setBulkEditValue(null) }}
+          rows={selectedRows}
+          fieldLabel={bulkEdit.fieldLabel}
+          getRowLabel={bulkEdit.getRowLabel}
+          getOldValue={bulkEdit.getOldValue ?? ((row) => row?.[bulkEdit.field])}
+          newValue={bulkEditValue}
+          formatValue={bulkEdit.formatValue}
+          onConfirm={bulkEdit.onConfirm}
+          onDone={(res) => {
+            // Tout est passé : la sélection n'a plus de raison d'être. Un échec
+            // partiel la GARDE (l'utilisateur voit encore qui a échoué).
+            if (!res.failed.length) clearSelection()
+            bulkEdit.onDone?.(res)
+          }}
+        />
+      )}
+
+      {/* -------- PACT174 — note groupée (NTUX20) -------- */}
+      {bulkNote?.onConfirm && bulkNoteOpen && (
+        <BulkNoteDialog
+          open
+          onOpenChange={setBulkNoteOpen}
+          rows={selectedRows}
+          getRowLabel={bulkNote.getRowLabel}
+          onConfirm={bulkNote.onConfirm}
+          onDone={(res) => {
+            if (!res.failed.length) clearSelection()
+            bulkNote.onDone?.(res)
+          }}
+        />
+      )}
+
+      {/* -------- PACT174 — assistant de création de vue (NTUX25) -------- */}
+      {hasViewBuilder && (
+        <Dialog open={viewBuilderOpen} onOpenChange={setViewBuilderOpen}>
+          <DialogContent className="sm:max-w-xl">
+            <DialogHeader>
+              <DialogTitle>Nouvelle vue</DialogTitle>
+              <DialogDescription>
+                Choisissez les colonnes, posez vos filtres, nommez la vue — aucune
+                configuration technique à écrire.
+              </DialogDescription>
+            </DialogHeader>
+            <ViewBuilderWizard
+              columns={viewBuilderColumns}
+              ecran={viewBuilder.ecran}
+              canShareTeam={viewBuilder.canShareTeam}
+              onCancel={() => setViewBuilderOpen(false)}
+              onCreate={async (payload) => {
+                await viewBuilder.onCreate(payload)
+                setViewBuilderOpen(false)
+              }}
+            />
+          </DialogContent>
+        </Dialog>
       )}
 
     </div>

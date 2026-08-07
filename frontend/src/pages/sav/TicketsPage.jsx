@@ -30,6 +30,12 @@ import importApi from '../../api/importApi'
 import { downloadBlobInGesture } from '../../utils/downloadBlob'
 import installationsApi from '../../api/installationsApi'
 import AttachmentsPanel from '../../components/AttachmentsPanel'
+// PACT174 — tags de l'enregistrement (records.TaggedItem, FG9), voisin direct
+// d'AttachmentsPanel : même contrat `model`/`id`, même feuille de style
+// `records-panels.css`. Écriture réservée responsable/admin côté serveur, d'où
+// le `readOnly` piloté par le rôle.
+import TagChipInput from '../../components/TagChipInput'
+import { useIsAdminOrResponsable } from '../../hooks/useHasPermission'
 // WIR19 — historique AuditLog record-scopé (visible au propriétaire du ticket
 // sans la permission globale journal_activite_voir).
 import ObjectHistoryButton from '../../features/audit/ObjectHistoryButton'
@@ -326,6 +332,10 @@ export function TicketDetail({ ticket, onClose, onSaved }) {
   const allTickets = useSelector((s) => s.tickets.items)
   const id = ticket.id
   const [current, setCurrent] = useState(ticket)
+  // PACT174 — poser/retirer un tag est réservé responsable/admin côté serveur
+  // (records.TaggedItemViewSet) : le champ reste en lecture seule pour les
+  // autres rôles au lieu de proposer une action qui finirait en 403.
+  const peutTaguer = useIsAdminOrResponsable()
   const F = (k, d = '') => current?.[k] ?? d
 
   // VX216(b) — l'intervention qui a RÉSOLU ce ticket : la plus récemment
@@ -1015,8 +1025,11 @@ export function TicketDetail({ ticket, onClose, onSaved }) {
           </FormSection>
         </Form>
 
-        {/* ── Pièces jointes ── */}
+        {/* ── Tags & pièces jointes ── */}
         <section className="flex flex-col gap-3">
+          {/* PACT174 — TagChipInput (FG9) enfin monté : même modèle/id que les
+              pièces jointes juste en dessous. */}
+          <TagChipInput model="sav.ticket" id={id} readOnly={!peutTaguer} />
           <AttachmentsPanel model="sav.ticket" id={id} />
         </section>
 
@@ -1658,6 +1671,9 @@ export default function TicketsPage() {
   // WIR21 — vues sauvegardées côté serveur (remplace le localStorage FG11 :
   // vues EQUIPE désormais visibles par l'équipe, cf. ViewsManagerPopover).
   const { createView: createTicketView } = useServerSavedViews(TP_ECRAN)
+  // PACT174 — l'assistant ne propose « Partagée à l'équipe » qu'aux rôles qui
+  // ont réellement ce droit (SavedViewViewSet répond 403 sinon).
+  const peutPartagerVue = useIsAdminOrResponsable()
   const saveCurrentTicketView = () => {
     const name = window.prompt('Nom de la vue enregistrée :')
     const trimmed = (name || '').trim()
@@ -1795,6 +1811,87 @@ export default function TicketsPage() {
     }
     // Toujours recharger : certains tickets ont pu changer côté serveur.
     reload()
+  }
+
+  /* PACT174 — le changement de STATUT en lot passe désormais par l'aperçu
+     AVANT/APRÈS du moteur (BulkEditDialog/NTUX5) : même requête atomique
+     `actions-groupees` qu'avant (ZSAV10), mais l'utilisateur voit ligne à
+     ligne ce qui va changer AVANT toute écriture, et un échec partiel reste
+     affiché avec sa raison au lieu d'un simple compteur dans un toast.
+     Traduit la réponse serveur ({traites, echecs:[{id, raison}]}) dans le
+     contrat attendu par le tiroir ({updated, failed:[{id,label,reason}]}). */
+  const bulkEditStatut = async (selRows, statut) => {
+    const parId = new Map(selRows.map((r) => [String(r.id), r]))
+    try {
+      const { data } = await savApi.actionsGroupeesTickets(
+        selRows.map((r) => r.id), 'statut', { statut })
+      return {
+        updated: (data?.traites ?? []).map((tid) => ({ id: tid })),
+        failed: (data?.echecs ?? []).map((e) => ({
+          id: e.id,
+          label: parId.get(String(e.id))?.reference,
+          reason: e.raison || 'Transition refusée.',
+        })),
+      }
+    } catch {
+      return {
+        updated: [],
+        failed: selRows.map((r) => ({
+          id: r.id, label: r.reference, reason: 'Mise à jour groupée impossible.',
+        })),
+      }
+    } finally {
+      reload()
+    }
+  }
+
+  /* PACT174 — note groupée (BulkNoteDialog/NTUX20) : la MÊME note part dans
+     l'historique de chaque ticket sélectionné via l'endpoint `noter` qui
+     existe déjà (savApi.noterTicket) — aucun nouveau modèle, aucune écriture
+     cross-app. `allSettled` : un ticket refusé n'annule pas les autres. */
+  const bulkNoteTickets = async (selRows, note) => {
+    const issues = await Promise.allSettled(
+      selRows.map((r) => savApi.noterTicket(r.id, note)))
+    const updated = []
+    const failed = []
+    issues.forEach((res, i) => {
+      const row = selRows[i]
+      if (res.status === 'fulfilled') updated.push({ id: row.id })
+      else failed.push({ id: row.id, label: row.reference, reason: 'Note refusée.' })
+    })
+    reload()
+    return { updated, failed }
+  }
+
+  /* PACT174 — YDOCF1/ZSAV10 : le statut en lot quitte la liste plate d'actions
+     pour l'aperçu AVANT/APRÈS du moteur. Même endpoint gardé (machine d'états
+     respectée côté serveur), une confirmation explicite en plus. */
+  const ticketsBulkEdit = {
+    fieldLabel: 'Statut',
+    options: TICKET_STATUSES.map((k) => ({ value: k, label: TICKET_STATUS_LABELS[k] })),
+    getRowLabel: (row) => row.reference,
+    getOldValue: (row) => row.statut,
+    formatValue: (v) => TICKET_STATUS_LABELS[v] ?? String(v ?? '—'),
+    onConfirm: bulkEditStatut,
+  }
+
+  // PACT174 — note groupée dans l'historique de chaque ticket sélectionné.
+  const ticketsBulkNote = { getRowLabel: (row) => row.reference, onConfirm: bulkNoteTickets }
+
+  /* PACT174 — assistant de vue (colonnes / filtres / nom) branché sur les vues
+     serveur déjà listées par <ViewsManagerPopover> juste au-dessus. On conserve
+     les filtres d'écran EN COURS à côté de la configuration de l'assistant :
+     `applyTicketView` ne sait ré-appliquer que ceux-là aujourd'hui, les colonnes
+     et filtres visuels sont persistés pour le côté application (NTUX1) qui en
+     est propriétaire. Un échec REMONTE : l'assistant reste ouvert et affiche sa
+     propre erreur au lieu de se fermer sur une vue inexistante. */
+  const ticketsViewBuilder = {
+    ecran: TP_ECRAN,
+    canShareTeam: peutPartagerVue,
+    onCreate: (payload) => createTicketView({
+      ...payload,
+      configuration: { ...payload.configuration, filters },
+    }).then(() => toast.success('Vue enregistrée.')),
   }
 
   const columns = useMemo(() => [
@@ -2084,13 +2181,6 @@ export default function TicketsPage() {
                     icon: Wrench,
                     onClick: () => bulkAction(selKeys, 'technicien', { technicien: tid }, clear),
                   })),
-                  // YDOCF1/ZSAV10 — changement de statut en lot, désormais via
-                  // l'action groupée gardée (respecte la machine d'états).
-                  ...TICKET_STATUSES.map((k) => ({
-                    id: `statut-${k}`,
-                    label: `Statut → ${TICKET_STATUS_LABELS[k]}`,
-                    onClick: () => bulkAction(selKeys, 'statut', { statut: k }, clear),
-                  })),
                   // ZSAV10 — priorité en lot (nouveau, n'existait pas avant).
                   ...TICKET_PRIORITES.map((p) => ({
                     id: `priorite-${p}`,
@@ -2104,6 +2194,9 @@ export default function TicketsPage() {
                     onClick: () => bulkAction(selKeys, 'annuler', {}, clear),
                   },
                 ]}
+                bulkEdit={ticketsBulkEdit}
+                bulkNote={ticketsBulkNote}
+                viewBuilder={ticketsViewBuilder}
               />
             )}
           </div>

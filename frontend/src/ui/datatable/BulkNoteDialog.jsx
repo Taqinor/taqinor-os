@@ -10,10 +10,13 @@
 // gardent leur note, les échecs sont listés avec leur raison.
 import { useState } from 'react'
 import { AlertTriangle, CheckCircle2 } from 'lucide-react'
+// PACT174 — imports DIRECTS (jamais le baril `..`), cf. BulkEditDialog.jsx :
+// le baril `ui/index.js` réexporte `./datatable` et refermerait un cycle.
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
-  Button, Textarea,
-} from '..'
+} from '../Dialog'
+import { Button } from '../Button'
+import { Textarea } from '../Textarea'
 
 export default function BulkNoteDialog({
   open, onOpenChange, rows = [],

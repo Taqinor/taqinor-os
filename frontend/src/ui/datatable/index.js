@@ -4,6 +4,13 @@ export { useDataTable } from './useDataTable.js'
 export { EditableCell } from './EditableCell.jsx'
 export { BulkActionBar } from './BulkActionBar.jsx'
 export { ColumnManager } from './ColumnManager.jsx'
+// PACT174 — tiroirs groupés + assistant de vue, montés par <DataTable> via les
+// props `bulkEdit`/`bulkNote`/`viewBuilder` ; exportés ici pour les écrans qui
+// veulent les poser eux-mêmes hors du moteur.
+export { default as BulkEditDialog } from './BulkEditDialog.jsx'
+export { default as BulkNoteDialog } from './BulkNoteDialog.jsx'
+export { default as FilterBuilder } from './FilterBuilder.jsx'
+export { default as ViewBuilderWizard } from './ViewBuilderWizard.jsx'
 
 // Logique pure (réutilisable/testable hors React).
 export * from './logic.js'
