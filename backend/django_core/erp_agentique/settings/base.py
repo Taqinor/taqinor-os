@@ -927,6 +927,8 @@ CELERY_TASK_ROUTES = {
     'kb.sweep_articles_perimes': {'queue': 'scheduled'},
     # QHSE — escalade des check-ins en retard.
     'qhse.escalader_checkins_en_retard': {'queue': 'scheduled'},
+    # PACT184 — rappel légal de réunion CSH trimestrielle (Code du travail).
+    'qhse.relancer_csh_du_jour': {'queue': 'scheduled'},
     # Notifications — balayage des leads chauds.
     'notifications.sweep_hot_leads': {'queue': 'scheduled'},
     # ENG6 — synchro quotidienne des insights publicitaires.

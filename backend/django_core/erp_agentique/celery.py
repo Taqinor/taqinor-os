@@ -437,6 +437,14 @@ app.conf.beat_schedule = {
         'task': 'qhse.escalader_checkins_en_retard',
         'schedule': crontab(minute='*/30'),
     },
+    # PACT184 (XQHS12) — rappel légal de réunion CSH trimestrielle (Code du
+    # travail, ≥50 salariés). ``csh_relance_due`` était testé mais sans
+    # aucun appelant : la relance restait invisible même cadence dépassée.
+    # Quotidien, heure creuse (dédup au jour via Notification).
+    'qhse-relancer-csh-du-jour': {
+        'task': 'qhse.relancer_csh_du_jour',
+        'schedule': crontab(hour=7, minute=48),
+    },
     # QX36 — relève des boîtes email entrantes (dispatch bus core.email_intake :
     # SAV email→ticket, ventes réponse→devis). No-op sans boîte configurée.
     'ventes-poll-inbound-mailboxes': {

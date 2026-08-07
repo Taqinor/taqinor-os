@@ -10,18 +10,23 @@ import { formatDateTime } from '../../lib/format'
    Alimente le panneau `activity` de la DetailShell : liste l'historique QHSE
    (créations, changements de champ auto, notes manuelles) via
    `non-conformites/<id>/historique`, et permet d'ajouter une note via `noter`.
-   Chaque entrée : kind (creation / field_change / note), acteur, horodatage.
+   Chaque entrée : kind (creation / modification / note), acteur, horodatage.
    ========================================================================== */
 
+/* PACT158 — le serveur écrit kind='modification' (apps/qhse/chatter.py +
+   QhseChatterEntry.Kind), jamais 'field_change' : la clé doit matcher la
+   valeur RÉELLE du modèle, sinon la branche « Champ : ancienne → nouvelle »
+   ne se déclenche jamais et chaque changement automatique s'affiche à tort
+   « Enregistrement créé » avec une pastille montrant le mot brut. */
 const KIND_LABEL = {
   creation: 'Création',
-  field_change: 'Modification',
+  modification: 'Modification',
   note: 'Note',
 }
 
 function entryText(e) {
   if (e.kind === 'note') return e.body
-  if (e.kind === 'field_change') {
+  if (e.kind === 'modification') {
     const label = e.field_label || e.field || 'Champ'
     return `${label} : ${e.old_value ?? '—'} → ${e.new_value ?? '—'}`
   }

@@ -7,7 +7,8 @@ appartenant à la société de l'utilisateur.
 from rest_framework import serializers
 
 from .models import (
-    ActionCorrectivePreventive, AnalyseIncident, AspectEnvironnemental, Audit,
+    AccuseLecture, ActionCorrectivePreventive, AnalyseIncident,
+    AnalyseNcr, AspectEnvironnemental, Audit,
     CauseIncident,
     CodeDefaut,
     ConsignationLoto, ContactUrgence, ControleReception,
@@ -28,7 +29,8 @@ from .models import (
     QhseChatterEntry,
     RecyclageModule, ReleveConsommation, ReleveControle,
     ReleveCourbeIV, ReponseCritere, RetourClientQualite,
-    RevueVeilleReglementaire, Secouriste,
+    RevueVeilleReglementaire, RisqueOpportunite, RisqueOpportuniteCapa,
+    Secouriste,
     SignalementPublic, VeilleReglementaire,
     CheckinSecurite, DemandeActionFournisseur,
 )
@@ -1520,3 +1522,76 @@ class DemandeActionFournisseurSerializer(serializers.ModelSerializer):
 
     def validate_ncr_source(self, value):
         return _meme_societe(self, value, 'NCR source')
+
+
+# ── PACT181 (XQHS15) — accusés de lecture (« mes lectures en attente ») ─────
+class AccuseLectureSerializer(serializers.ModelSerializer):
+    """XQHS15 — accusé de lecture d'une diffusion de procédure. Lecture
+    seule : la confirmation de lecture passe par le service ``accuser_lecture``
+    (jamais un PATCH direct sur ``lu_le``, qui est une signature serveur)."""
+    procedure_reference = serializers.CharField(
+        source='diffusion.procedure.reference', read_only=True)
+    procedure_titre = serializers.CharField(
+        source='diffusion.procedure.titre', read_only=True)
+    procedure_version = serializers.IntegerField(
+        source='diffusion.procedure.version', read_only=True)
+    date_diffusion = serializers.DateTimeField(
+        source='diffusion.date_diffusion', read_only=True)
+
+    class Meta:
+        model = AccuseLecture
+        fields = [
+            'id', 'diffusion', 'procedure_reference', 'procedure_titre',
+            'procedure_version', 'date_diffusion', 'lu_le', 'date_creation',
+        ]
+        read_only_fields = fields
+
+
+# ── PACT182 (XQHS7) — analyse 5-Pourquoi / 8D d'une NCR ─────────────────────
+class AnalyseNcrSerializer(serializers.ModelSerializer):
+    """XQHS7 — analyse 5-Pourquoi / 8D d'une NCR. Lecture/écriture passe
+    exclusivement par l'action ``analyse/`` du ``NonConformiteViewSet`` (jamais
+    un CRUD direct — le service merge sur les disciplines 8D fournies, les
+    autres sont conservées)."""
+
+    class Meta:
+        model = AnalyseNcr
+        fields = [
+            'id', 'non_conformite', 'cinq_pourquoi', 'huit_d',
+            'date_creation', 'date_modification',
+        ]
+        read_only_fields = fields
+
+
+# ── PACT183 (XQHS14) — registre des risques/opportunités SMQ ────────────────
+class RisqueOpportuniteSerializer(serializers.ModelSerializer):
+    """XQHS14 — risque/opportunité niveau SMQ (ISO 6.1). Les criticités
+    (inhérente/résiduelle) sont calculées côté serveur (``save()``), jamais
+    reçues en écriture."""
+    type_ro_display = serializers.CharField(
+        source='get_type_ro_display', read_only=True)
+
+    class Meta:
+        model = RisqueOpportunite
+        fields = [
+            'id', 'type_ro', 'type_ro_display', 'processus', 'description',
+            'probabilite_inherente', 'gravite_inherente',
+            'criticite_inherente', 'probabilite_residuelle',
+            'gravite_residuelle', 'criticite_residuelle',
+            'actions_traitement', 'date_revue', 'frequence_revue_jours',
+            'responsable', 'date_creation',
+        ]
+        read_only_fields = [
+            'criticite_inherente', 'criticite_residuelle', 'date_creation',
+        ]
+
+
+class RisqueOpportuniteCapaSerializer(serializers.ModelSerializer):
+    """XQHS14 — lien CAPA↔risque/opportunité (lecture seule : créé
+    exclusivement par l'action ``lier-capa/``, idempotent via la contrainte
+    unique du modèle)."""
+
+    class Meta:
+        model = RisqueOpportuniteCapa
+        fields = ['id', 'risque_opportunite', 'capa', 'date_creation']
+        read_only_fields = fields

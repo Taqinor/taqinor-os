@@ -6,6 +6,7 @@ Couvre :
 * la validation ``clean()`` (5-Pourquoi borné) ;
 * le HTML de rendu (pur, sans WeasyPrint) reprend le 5-Pourquoi, le 8D et
   les CAPA liées, sans jeton brut — jamais de prix d'achat ;
+* l'action API ``analyse/`` (PACT182) ;
 * le scoping société.
 """
 from unittest.mock import patch
@@ -13,6 +14,8 @@ from unittest.mock import patch
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
 from django.test import TestCase
+from rest_framework.test import APIClient
+from rest_framework_simplejwt.tokens import AccessToken
 
 from authentication.models import Company
 
@@ -24,6 +27,12 @@ from apps.qhse.services import (
 )
 
 User = get_user_model()
+
+
+def auth_client(user):
+    api = APIClient()
+    api.credentials(HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(user)}')
+    return api
 
 
 def make_company(slug, nom):
@@ -146,3 +155,54 @@ class RendreAnalyseNcrPdfTests(TestCase):
         with patch.dict(sys.modules, {'weasyprint': fake_module}):
             pdf_bytes = rendre_analyse_ncr_pdf(analyse)
         self.assertEqual(pdf_bytes, b'%PDF-1.4 fake')
+
+
+class AnalyseNcrApiTests(TestCase):
+    """PACT182 — action ``POST …/non-conformites/<id>/analyse/`` (le service
+    ``enregistrer_analyse_ncr`` n'avait aucun appelant hors tests)."""
+
+    def setUp(self):
+        self.company = make_company('co-xqhs7-api', 'CoXqhs7Api')
+        self.user = User.objects.create_user(
+            username='resp-xqhs7-api', password='x', company=self.company,
+            role_legacy='responsable')
+
+    def _url(self, ncr):
+        return f'/api/django/qhse/non-conformites/{ncr.id}/analyse/'
+
+    def test_enregistre_5_pourquoi_via_api(self):
+        ncr = make_ncr(self.company)
+        resp = auth_client(self.user).post(self._url(ncr), {
+            'cinq_pourquoi': [{'pourquoi': 'Pourquoi 1', 'reponse': 'R1'}],
+        }, format='json')
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(len(resp.data['cinq_pourquoi']), 1)
+        self.assertEqual(
+            AnalyseNcr.objects.filter(non_conformite=ncr).count(), 1)
+
+    def test_merge_8d_conserve_disciplines_existantes_via_api(self):
+        ncr = make_ncr(self.company)
+        client = auth_client(self.user)
+        client.post(self._url(ncr), {
+            'huit_d': {'D1': {'texte': 'Équipe', 'statut': 'fait'}},
+        }, format='json')
+        resp = client.post(self._url(ncr), {
+            'huit_d': {'D2': {'texte': 'Problème', 'statut': 'fait'}},
+        }, format='json')
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn('D1', resp.data['huit_d'])
+        self.assertIn('D2', resp.data['huit_d'])
+
+    def test_plus_de_5_pourquoi_400_via_api(self):
+        ncr = make_ncr(self.company)
+        trop = [{'pourquoi': f'P{i}', 'reponse': f'R{i}'} for i in range(6)]
+        resp = auth_client(self.user).post(
+            self._url(ncr), {'cinq_pourquoi': trop}, format='json')
+        self.assertEqual(resp.status_code, 400)
+
+    def test_isolation_societe_404(self):
+        autre = make_company('co-xqhs7-api-autre', 'CoXqhs7ApiAutre')
+        ncr = make_ncr(autre)
+        resp = auth_client(self.user).post(
+            self._url(ncr), {'cinq_pourquoi': []}, format='json')
+        self.assertEqual(resp.status_code, 404)

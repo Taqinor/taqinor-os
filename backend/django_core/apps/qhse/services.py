@@ -1872,6 +1872,48 @@ def csh_relance_due(company, cadence_jours=90, today=None):
     return today >= derniere.date_reunion + timedelta(days=cadence_jours)
 
 
+def relancer_csh_du_jour(company=None, today=None, cadence_jours=90):
+    """PACT184 (XQHS12) — balaye les sociétés dont la relance CSH est due
+    (Code du travail, ≥50 salariés) et notifie via ``_notifier_csh_relance``,
+    au plus UNE fois par jour et par société.
+
+    ``csh_relance_due`` et ``_notifier_csh_relance`` existaient déjà (testés)
+    SANS AUCUN appelant — cette fonction est leur premier câblage réel
+    (appelée par la tâche Celery Beat ``qhse.relancer_csh_du_jour``).
+    Dédup au jour via la ``Notification`` déjà émise aujourd'hui pour ce lien
+    (``notify()`` ne déduplique pas lui-même — même pattern que
+    ``credit.alerter_exposition_globale_pour_societe``).
+
+    ``company`` restreint le balayage à une société ; ``None`` balaye toutes
+    les sociétés. Renvoie la liste des sociétés relancées dans cet appel."""
+    from django.utils import timezone
+
+    from apps.notifications.models import EventType, Notification
+    from authentication.models import Company, CustomUser
+
+    if today is None:
+        today = timezone.localdate()
+    societes = (
+        [company] if company is not None else list(Company.objects.all()))
+
+    relancees = []
+    for societe in societes:
+        if not csh_relance_due(
+                societe, cadence_jours=cadence_jours, today=today):
+            continue
+        deja_notifie = Notification.objects.filter(
+            company=societe, event_type=EventType.MAINTENANCE_DUE,
+            link='/qhse/reunions', created_at__date=today).exists()
+        if deja_notifie:
+            continue
+        membres = list(CustomUser.admins_actifs_qs(societe))
+        if not membres:
+            continue
+        _notifier_csh_relance(societe, membres)
+        relancees.append(societe)
+    return relancees
+
+
 # ── XQHS14 — Registre des risques & opportunités SMQ ────────────────────────
 
 @transaction.atomic
