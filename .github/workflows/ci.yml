@@ -472,6 +472,19 @@ jobs:
         run: python scripts/check_api_shapes.py
       - name: Test the API-shapes checker itself
         run: python -m unittest scripts.tests.test_check_api_shapes -v
+      # PACT7 — pour que le schéma OpenAPI PUISSE un jour jouer ce rôle, il
+      # faut d'abord qu'il cesse de se taire et de mentir : `response=dict`
+      # documente « type: object » SANS AUCUNE PROPRIÉTÉ (c'était la
+      # déclaration exacte de /ao/tableau-marches/ le jour du plantage), et un
+      # agrégat sans `@extend_schema` est publié avec le `serializer_class` du
+      # ViewSet — `/flotte/vehicules/tableau-bord/` était documenté
+      # VehiculeSerializer alors qu'il renvoie {vehicules, engins, echeances,
+      # couts, entretien, pool}. Analyse statique pure (~35 s), sans base de
+      # données ni dépendance, comme les autres check_*.py de ce job.
+      - name: Check OpenAPI response shapes (aucun agrégat ne se déclare « un objet »)
+        run: python scripts/check_openapi_shapes.py
+      - name: Test the OpenAPI-shapes checker itself (PACT7)
+        run: python -m unittest scripts.tests.test_check_openapi_shapes -v
       # ÉCRANS ATTEIGNABLES (incident du 03/08/2026, troisième défaut du même
       # jour) : le module « Appels d'offres » a été livré et déclaré TERMINÉ —
       # 194 tâches cochées, CI verte, déployé — alors que 68 écrans existaient

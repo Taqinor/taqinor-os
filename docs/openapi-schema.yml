@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 8780, operations: 15995, components: 4300}
+counts: {paths: 8780, operations: 15995, components: 4321}
 securitySchemes:
 - cookieJWT
 - publicApiKey
@@ -16120,6 +16120,19 @@ components:
 - AnnuleParEnum
 - AnomalyEvent
 - AnomalyEventKindEnum
+- AoCalepinageComparaison
+- AoCalepinageComparaisonLigne
+- AoCalepinageMarche
+- AoCalepinageMarches
+- AoCalepinageSensibilite
+- AoCalepinageSensibilites
+- AoTableauMarches
+- AoTableauMarchesCapacite
+- AoTableauMarchesCautions
+- AoTableauMarchesEcheance
+- AoTableauMarchesEnCours
+- AoTableauMarchesExecution
+- AoTableauMarchesReussite
 - ApiKey
 - ApiUsagePlan
 - ApiUsagePlanCodeEnum
@@ -17057,6 +17070,13 @@ components:
 - FlightPlan
 - FlightPlanRequest
 - FlightPlanStatusEnum
+- FlotteTableauBord
+- FlotteTableauBordCouts
+- FlotteTableauBordEcheances
+- FlotteTableauBordEngins
+- FlotteTableauBordEntretien
+- FlotteTableauBordPool
+- FlotteTableauBordVehicules
 - Folder
 - FolderRequest
 - Folio
@@ -17391,6 +17411,7 @@ components:
 - ListeDiffusionRequest
 - ListePrix
 - ListePrixRequest
+- LitigesTableauBord
 - Livraison
 - LivraisonLigne
 - LivraisonLigneRequest
