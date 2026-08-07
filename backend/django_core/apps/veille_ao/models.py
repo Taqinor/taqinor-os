@@ -166,19 +166,19 @@ class AvisMarcheQuerySet(models.QuerySet):
             date_limite_remise__isnull=False,
             date_limite_remise__lt=maintenant)
 
-    def expirer_les_depasses(self, maintenant=None):
+    def expirer_les_depasses(self, maintenant=None, user=None):
         """Bascule en ``expire`` tout avis ouvert dont la date limite est
         dépassée. Renvoie le nombre d'avis basculés.
 
         Un avis sans date limite n'expire jamais tout seul : on ne devine pas
         une échéance qu'on n'a pas lue.
+
+        VAO14 — DÉLÈGUE au service : le statut ne se mute qu'à un seul
+        endroit du dépôt (``services.changer_statut_avis``). Import
+        fonction-local, pour ne pas créer de cycle models ↔ services.
         """
-        bascules = 0
-        for avis in self.depasses(maintenant):
-            avis.statut = StatutAvis.EXPIRE
-            avis.save(update_fields=['statut', 'updated_at'])
-            bascules += 1
-        return bascules
+        from .services import expirer_avis_depasses
+        return expirer_avis_depasses(self, maintenant=maintenant, user=user)
 
 
 class AvisMarche(TenantModel):

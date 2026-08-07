@@ -9,6 +9,11 @@ VAO10 — les règles d'exclusion. Le principe qui gouverne tout ce fichier :
 de la règle qui l'a écarté, et la règle compte ses applications. Un utilisateur
 doit toujours pouvoir répondre à « pourquoi je ne vois pas cet avis ? » et
 faire marche arrière en un geste (désactiver la règle).
+
+VAO14 — ``changer_statut_avis`` est le **SEUL** point de mutation du statut
+d'un avis, dans tout le dépôt. Une garde d'introspection le vérifie
+(``tests/test_statuts.py``) : aucun autre fichier du module n'a le droit
+d'écrire ``avis.statut``.
 """
 from __future__ import annotations
 
@@ -17,12 +22,124 @@ import logging
 from django.db import transaction
 from django.db.models import F
 from django.utils import timezone
+from rest_framework.exceptions import ValidationError
 
 from .hashing import empreinte_avis
 from .models import AvisMarche, PorteeExclusion, RegleExclusion, StatutAvis
 from .scoring import normaliser
 
 logger = logging.getLogger(__name__)
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# VAO14 — le SEUL point de mutation du statut d'un avis.
+# ─────────────────────────────────────────────────────────────────────────
+
+#: Table de transitions DÉCLARATIVE. Elle se lit, elle ne se déduit pas.
+#: Un avis « nouveau » se trie (retenu ou ignoré) ; un avis « retenu » se
+#: convertit en appel d'offres ; **tout** avis peut expirer.
+#: Volontairement STRICTE : élargir un chemin est un choix explicite, pas un
+#: effet de bord. Un statut vers LUI-MÊME n'est pas une transition — il est
+#: refusé, pour qu'un appelant distrait ne réécrive pas un historique plat.
+TRANSITIONS_AVIS = {
+    StatutAvis.NOUVEAU: (StatutAvis.RETENU, StatutAvis.IGNORE,
+                         StatutAvis.EXPIRE),
+    StatutAvis.RETENU: (StatutAvis.CONVERTI, StatutAvis.EXPIRE),
+    StatutAvis.IGNORE: (StatutAvis.EXPIRE,),
+    StatutAvis.CONVERTI: (StatutAvis.EXPIRE,),
+    StatutAvis.EXPIRE: (),
+}
+
+#: Motif écrit au chatter quand c'est le SYSTÈME qui expire un avis.
+MOTIF_EXPIRATION_AUTOMATIQUE = 'Date limite de remise dépassée.'
+
+
+def transitions_possibles(statut):
+    """Les statuts atteignables depuis ``statut`` (jamais une devinette)."""
+    return TRANSITIONS_AVIS.get(statut, ())
+
+
+def _journaliser_statut(avis, ancien, nouveau, user, motif):
+    """Trace la transition au chatter générique ``records`` (ARC8).
+
+    JAMAIS une classe ``*Activity`` maison : ``veille_ao.avismarche`` est
+    déclaré dans ``platform.record_targets`` (VAO13), ce qui suffit à ouvrir
+    ``records.Activity`` sur ce modèle. L'utilisateur agissant et la société
+    sont posés CÔTÉ SERVEUR, jamais lus d'une requête.
+    """
+    from apps.records.models import Activity
+    from apps.records.services import log_activity
+
+    libelles = dict(StatutAvis.choices)
+    log_activity(
+        avis, Activity.Kind.MODIFICATION, user=user,
+        field='statut', field_label='Statut',
+        old_value=libelles.get(ancien, ancien),
+        new_value=libelles.get(nouveau, nouveau),
+        body=motif or '', company=avis.company)
+
+
+def changer_statut_avis(avis, nouveau, user=None, motif='',
+                        champs_supplementaires=None):
+    """LE point de mutation du statut d'un avis — il n'y en a pas d'autre.
+
+    Refuse en **400 avec un message en français** toute transition absente de
+    ``TRANSITIONS_AVIS``, et écrit à chaque transition réussie une activité
+    ``records`` (qui, quand, pourquoi).
+
+    ``champs_supplementaires`` permet à un appelant d'écrire, DANS LA MÊME
+    sauvegarde, les champs qui accompagnent la transition (la règle qui a
+    filtré l'avis, l'identifiant de l'appel d'offres créé) — sans jamais
+    ouvrir une seconde porte sur le statut lui-même.
+
+    **Aucun signal ``core/events.py`` n'est déclaré ni émis** : le dépôt fait
+    rougir la CI sur tout signal sans abonné réel, et rien ici n'a besoin d'un
+    abonné cross-app.
+    """
+    libelles = dict(StatutAvis.choices)
+    if nouveau not in libelles:
+        raise ValidationError(
+            {'statut': f'Statut inconnu : « {nouveau} ».'})
+
+    ancien = avis.statut
+    autorises = transitions_possibles(ancien)
+    if nouveau not in autorises:
+        atteignables = ', '.join(
+            f'« {libelles[s]} »' for s in autorises) or 'aucun'
+        raise ValidationError({'statut': (
+            f'Transition interdite : « {libelles.get(ancien, ancien)} » → '
+            f'« {libelles[nouveau]} ». Statuts atteignables : '
+            f'{atteignables}.')})
+
+    champs = dict(champs_supplementaires or {})
+    if 'statut' in champs:
+        raise ValidationError({'statut': (
+            'Le statut ne se pose pas par un champ supplémentaire : il passe '
+            'par ce service et par lui seul.')})
+
+    avis.statut = nouveau
+    for nom, valeur in champs.items():
+        setattr(avis, nom, valeur)
+    avis.save(update_fields=['statut', *champs, 'updated_at'])
+
+    _journaliser_statut(avis, ancien, nouveau, user, motif)
+    return avis
+
+
+def expirer_avis_depasses(queryset, maintenant=None, user=None):
+    """Fait expirer les avis ouverts dont la date limite est passée.
+
+    Passe par ``changer_statut_avis`` comme tout le monde : l'expiration
+    automatique n'est PAS une exception au point de passage unique, elle en
+    est simplement l'appelant SYSTÈME (``user=None``). Chaque bascule laisse
+    donc sa trace au chatter, avec son motif.
+    """
+    bascules = 0
+    for avis in queryset.depasses(maintenant):
+        changer_statut_avis(avis, StatutAvis.EXPIRE, user=user,
+                            motif=MOTIF_EXPIRATION_AUTOMATIQUE)
+        bascules += 1
+    return bascules
 
 
 def _valeur_de_l_avis(avis, portee):
@@ -72,27 +189,36 @@ def regle_correspondante(avis, regles=None):
     return None
 
 
-def appliquer_regles_exclusion(avis, regles=None, enregistrer=True):
+def appliquer_regles_exclusion(avis, regles=None, user=None):
     """Marque l'avis ``ignore`` s'il est capté par une règle active.
 
     Renvoie la règle appliquée, ou ``None`` si aucune ne mord.
 
-    Deux garanties non négociables :
-      * l'avis ENREGISTRE quelle règle l'a filtré (jamais un filtrage muet) ;
+    Trois garanties non négociables :
+      * la bascule passe par ``changer_statut_avis`` (VAO14) comme toutes les
+        autres — l'exclusion automatique n'a pas sa propre porte ;
+      * l'avis ENREGISTRE quelle règle l'a filtré (jamais un filtrage muet),
+        et le motif de la règle part au chatter ;
       * la règle incrémente son compteur d'application de façon atomique
         (``F()``), jamais par lecture-modification-écriture.
+
+    Un avis déjà ignoré n'est pas re-basculé : la table de transitions refuse
+    ``ignore`` → ``ignore``, et une re-collecte ne doit pas empiler des
+    activités identiques au chatter.
     """
     regle = regle_correspondante(avis, regles)
     if regle is None:
         return None
+    if avis.statut == StatutAvis.IGNORE:
+        return regle
 
-    avis.statut = StatutAvis.IGNORE
-    avis.regle_exclusion = regle
-    if enregistrer:
-        avis.save(update_fields=['statut', 'regle_exclusion', 'updated_at'])
-        RegleExclusion.objects.filter(pk=regle.pk).update(
-            compteur_application=F('compteur_application') + 1)
-        regle.refresh_from_db(fields=['compteur_application'])
+    changer_statut_avis(
+        avis, StatutAvis.IGNORE, user=user,
+        motif=f'Règle d\'exclusion : {regle.motif}',
+        champs_supplementaires={'regle_exclusion': regle})
+    RegleExclusion.objects.filter(pk=regle.pk).update(
+        compteur_application=F('compteur_application') + 1)
+    regle.refresh_from_db(fields=['compteur_application'])
     return regle
 
 
