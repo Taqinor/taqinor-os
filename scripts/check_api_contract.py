@@ -37,14 +37,28 @@ CE QU'ELLE FAIT (analyse statique pure, sans base de donnees, sans dependance)
    l'onglet « Grand-livre » de la compta, appele avec un tiret.
    Les routes FastAPI (``/api/fastapi/...``) sont resolues de la meme facon
    depuis ``backend/fastapi_ia/app/main.py``.
-2. Extrait les chemins appeles par les clients API du frontend, en resolvant
-   les quatre mecanismes qui rendaient les mesures naives fausses :
+2. Extrait les chemins appeles par TOUT ``frontend/src`` (PACT5), en resolvant
+   les cinq mecanismes qui rendaient les mesures naives fausses :
    constantes de base (``const P = '/gestion-projet'``), fabriques partagees
    (``makeResourceFactory(api, '/ao')`` puis ``crud('appels-offres')``),
-   fabriques locales (``function crud(slug) { `/qhse/${slug}/` }``) et
-   litteraux gabarits. Les COMMENTAIRES sont retires avant analyse : sans cela
-   une simple mention d'une route d'ECRAN dans un commentaire devient un faux
-   positif (mesure : c'etait le cas de ``/reporting/quote-to-cash``).
+   fabriques locales (``function crud(slug) { `/qhse/${slug}/` }``),
+   litteraux gabarits, et ternaires de suffixe HISSES dans une variable
+   (``const mode = x ? '?mode=overwrite' : ''``). Les COMMENTAIRES sont retires
+   avant analyse : sans cela une simple mention d'une route d'ECRAN dans un
+   commentaire devient un faux positif (mesure : c'etait le cas de
+   ``/reporting/quote-to-cash``).
+
+   PERIMETRE — POURQUOI TOUT ``frontend/src`` (PACT5, 03/08/2026)
+   Jusqu'ici la garde ne lisait que les clients API (``frontend/src/api/*.js``
+   plus les cinq ``*Api.js`` vivant dans ``features/``). Un ``api.get(...)``
+   ecrit DANS le corps d'un composant lui echappait entierement — et c'est
+   exactement la forme du bouton « Export Excel » de la valorisation du stock,
+   qui appelait ``/stock/valorisation-xlsx/`` alors que l'action vit sur le
+   ViewSet des produits (``/stock/produits/valorisation-xlsx/``) : mort en
+   silence, invisible a la garde. L'elargissement a coute UN mecanisme de
+   resolution (le ternaire hisse ci-dessus) et zero ligne d'exception.
+   Les fichiers de test sont exclus : un test ne joint pas le serveur, sa
+   forme est l'affaire de ``check_api_shapes.py``.
 3. Echoue sur tout chemin appele qui ne correspond a aucune route enregistree.
 
 PRINCIPE ANTI-FAUX-POSITIF (assume, delibere)
@@ -717,6 +731,40 @@ _TERNARY_SUFFIX = re.compile(
     r"^[^?]+\?\s*(?P<a>'[^']*'|\"[^\"]*\")\s*:\s*(?P<b>'[^']*'|\"[^\"]*\")$")
 
 
+def _est_suffixe_optionnel(valeur: str) -> bool:
+    """Vrai si cette branche ne peut JAMAIS etre un segment de chemin."""
+    return valeur == "" or valeur.startswith("?") or valeur.startswith("#")
+
+
+def ternaire_hisse(expression: str) -> str | None:
+    """`cond ? '?mode=overwrite' : ''` -> `''`, sinon None (PACT5).
+
+    Meme raisonnement que `_TERNARY_SUFFIX` dans `resolve_template`, mais pour
+    un ternaire HISSE hors du gabarit, dans une variable :
+
+        const mode = overwrite ? '?mode=overwrite' : ''
+        api.post(`/parametres/config-import/${mode}`, bundle)
+
+    Sans ce mecanisme, `${mode}` devient un trou, donc un segment joker, et la
+    garde accuse `/parametres/config-import/<>` alors que la route reelle est
+    `/parametres/config-import/` : un faux positif sur du code CORRECT. C'est
+    le SEUL faux positif qu'a produit l'elargissement du perimetre a tout
+    `frontend/src` (PACT5), et il est resolu par un mecanisme, jamais par une
+    ligne d'exception.
+
+    Regle deliberement STRICTE : on ne replie le ternaire que si AUCUNE de ses
+    deux branches ne peut etre un segment de chemin (vide, `?requete`,
+    `#ancre`). Un ternaire mixte (`x ? 'archive' : ''`) decrit un segment
+    reellement optionnel : le replier masquerait un vrai appel, donc il reste
+    non resolu — comportement identique a avant PACT5.
+    """
+    match = _TERNARY_SUFFIX.match(expression.strip())
+    if not match:
+        return None
+    branches = [match.group("a")[1:-1], match.group("b")[1:-1]]
+    return "" if all(_est_suffixe_optionnel(b) for b in branches) else None
+
+
 def resolve_template(raw: str, quote: str, consts: dict) -> str | None:
     """Litteral -> chemin, `${X}` resolu par constante sinon marque HOLE."""
     if quote != "`":
@@ -765,7 +813,7 @@ class FrontendCalls:
         code, tokens, masked = scan_js(src)
         token_at = {start: (end, quote, raw) for start, end, quote, raw in tokens}
         default_mount = FASTAPI_MOUNT if "/api/fastapi" in code else "api/django"
-        consts = self._constants(code, token_at, tokens)
+        consts = self._constants(code, token_at, tokens, masked)
         rel = path.relative_to(ROOT).as_posix()
 
         def record(offset, value):
@@ -798,11 +846,16 @@ class FrontendCalls:
                     continue
                 record(start, f"{prefix}{raw}{suffix}")
 
-    def _constants(self, code, token_at, tokens):
+    def _constants(self, code, token_at, tokens, masked=None):
         consts = {}
         for match in re.finditer(r"\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*", code):
             start = match.end()
             if start not in token_at:
+                # PACT5 — pas une chaine : peut-etre un ternaire de suffixe
+                # hisse (`const mode = x ? '?mode=overwrite' : ''`).
+                value = ternaire_hisse(code[start:_fin_instruction(masked or code, start)])
+                if value is not None:
+                    consts[match.group(1)] = value
                 continue
             _, quote, raw = token_at[start]
             value = resolve_template(raw, quote, consts)
@@ -860,6 +913,20 @@ class FrontendCalls:
         if re.fullmatch(r"[A-Za-z_$][\w$]*", name):
             return consts.get(name)
         return None
+
+
+def _fin_instruction(masked, start):
+    """Fin de l'instruction commencant a `start` (`;` ou fin de ligne).
+
+    Le balayage se fait sur le code MASQUE (contenu des chaines efface) : un
+    `;` ou un saut de ligne A L'INTERIEUR d'une chaine ne doit pas couper
+    l'expression.
+    """
+    end = len(masked)
+    for index in range(start, end):
+        if masked[index] in ";\n":
+            return index
+    return end
 
 
 def _next_token_start(code, index):
@@ -960,13 +1027,25 @@ class RouteTrie:
         return self._walk(self.root, tuple(call), stop_on_terminal=True)
 
 
+# PACT5 — perimetre : TOUT le source frontend, pas seulement les clients API.
+FRONT_EXTENSIONS = ("*.js", "*.jsx", "*.mjs")
+# Un test ne joint jamais le serveur : sa charge utile est mockee, donc son
+# chemin n'est pas un contrat. La forme des mocks est l'affaire de
+# check_api_shapes.py. Les inclure n'ajouterait que du bruit (mesure : 3
+# appels, 0 constat).
+FRONT_SKIP = (".test.", ".spec.")
+
+
 def frontend_files():
     seen = {}
-    for path in sorted((FRONT_SRC / "api").glob("*.js")):
-        seen[path] = True
-    for path in sorted(FRONT_SRC.rglob("*Api.js")):
-        seen.setdefault(path, True)
-    return [p for p in seen if ".test." not in p.name]
+    for pattern in FRONT_EXTENSIONS:
+        for path in sorted(FRONT_SRC.rglob(pattern)):
+            if any(marker in path.name for marker in FRONT_SKIP):
+                continue
+            if "node_modules" in path.parts:
+                continue
+            seen.setdefault(path, True)
+    return list(seen)
 
 
 def analyse():

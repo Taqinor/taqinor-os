@@ -130,6 +130,51 @@ class ExtractionTests(unittest.TestCase):
         self.assertEqual(cac.normalise_call(resolved, "api/django"),
                          ("api", "django", "core", "modules", cac.ANY, "desactiver"))
 
+    def test_ternaire_hisse_dans_une_variable(self):
+        # PACT5 — LE seul faux positif produit par l'elargissement du perimetre
+        # a tout `frontend/src` : `pages/parametres/ExportSauvegarde.jsx` hisse
+        # le ternaire de suffixe hors du gabarit. Sans mecanisme, la garde
+        # accusait `/parametres/config-import/<>` sur du code CORRECT.
+        source = ("const mode = overwrite ? '?mode=overwrite' : ''\n"
+                  "api.post(`/parametres/config-import/${mode}`, bundle)")
+        resolved = self._paths(source)[0]
+        self.assertEqual(cac.normalise_call(resolved, "api/django"),
+                         ("api", "django", "parametres", "config-import"))
+
+    def test_ternaire_hisse_mixte_reste_un_segment(self):
+        # Regle STRICTE : une branche qui PEUT etre un segment de chemin n'est
+        # jamais repliee — sinon la garde masquerait un appel reel.
+        source = ("const seg = flag ? 'archive' : ''\n"
+                  "api.get(`/stock/produits/${seg}/`)")
+        resolved = self._paths(source)[0]
+        self.assertEqual(cac.normalise_call(resolved, "api/django"),
+                         ("api", "django", "stock", "produits", cac.ANY))
+
+    def test_ternaire_hisse_ne_saute_pas_l_instruction(self):
+        # Le balayage de fin d'instruction se fait sur le code MASQUE : un `;`
+        # a l'interieur d'une chaine ne doit pas couper l'expression.
+        self.assertEqual(cac.ternaire_hisse("x ? '?a=1;b=2' : ''"), "")
+        self.assertIsNone(cac.ternaire_hisse("x ? 'archive' : 'brouillon'"))
+        self.assertIsNone(cac.ternaire_hisse("unAppel()"))
+
+    def test_appel_ecrit_directement_dans_un_ecran(self):
+        # PACT5 — la forme qui echappait a la garde : un `api.get` dans le
+        # corps d'un composant, pas dans un client `*Api.js`.
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            ecran = write(base / "frontend" / "src" / "pages" / "stock" / "StockList.jsx",
+                          "const exportXlsx = () => api.get('/stock/valorisation-xlsx/')")
+            write(base / "frontend" / "src" / "features" / "x" / "X.test.jsx",
+                  "api.get('/faux/chemin/')")
+            ancien_root, ancien_src = cac.ROOT, cac.FRONT_SRC
+            cac.ROOT, cac.FRONT_SRC = base, base / "frontend" / "src"
+            try:
+                fichiers = cac.frontend_files()
+            finally:
+                cac.ROOT, cac.FRONT_SRC = ancien_root, ancien_src
+            self.assertIn(ecran, fichiers)
+            self.assertTrue(all(".test." not in p.name for p in fichiers))
+
 
 class BackendResolutionTests(unittest.TestCase):
     """Resolution de l'URLconf : routeur, @action, include, router.urls."""
