@@ -9,6 +9,8 @@ import TiroirAllees from './TiroirAllees'
 import TiroirRives from './TiroirRives'
 import TiroirOrientation from './TiroirOrientation'
 import TiroirElectrique from './TiroirElectrique'
+import ModeExpert from './ModeExpert'
+import SuggestionsPanel from './SuggestionsPanel'
 import useCalepinage from './useCalepinage'
 import planDepuisResultat from './planDepuisResultat'
 
@@ -42,6 +44,27 @@ import planDepuisResultat from './planDepuisResultat'
    Les paramètres restent donc, aujourd'hui, ceux du preset de la toiture
    (`ToitureAO.parametres_calepinage`), appliqués côté SERVEUR quand le corps
    n'envoie pas de `params`.
+
+   ── PACT168 — MODE EXPERT ET SUGGESTIONS, MONTÉS ─────────────────────────
+   `ModeExpert` (AOF101, qui révèle `RobustesseBadges`) et `SuggestionsPanel`
+   (AOF100) étaient livrés et importés par PERSONNE : l'inspecteur s'arrêtait
+   aux 5 tiroirs débutant. Ils sont désormais montés À CÔTÉ d'eux, avec
+   exactement le même principe que les tiroirs — montés, alimentés par ce que
+   le moteur publie, et silencieux quand il ne publie rien :
+
+     · `ModeExpert` pilote de VRAIS paramètres (pas de recherche, seuils,
+       phase, mode de pose, forçage de rangée) : son `onChange` est le MÊME
+       `majParametres` que les tiroirs, donc le serveur recalcule (AOF94). Son
+       interrupteur est mémorisé côté navigateur (`safeStorage`) ;
+     · `RobustesseBadges` n'affiche des marges que si le moteur en publie
+       (`resultat.marges`, `Optional[Marges]` dans `core/calepinage/types.py`) ;
+       les seuils sont la CONVERSION en centimètres des paramètres courants,
+       jamais une valeur inventée ;
+     · `SuggestionsPanel` reste vide tant qu'aucune route ne publie de
+       recommandations (`aoApi.calepinages.suggestions` est `nonConstruit` :
+       `core/calepinage/recommandations.py` existe, l'endpoint non). « Appliquer »
+       rejoue le `patch_entree` par la voie normale des paramètres — le gain
+       est donc RE-VÉRIFIÉ par le moteur, jamais cru sur parole.
    ========================================================================== */
 
 const ZOOM_MIN = 0.25
@@ -73,6 +96,42 @@ export default function CalepinageStudio({ toitureId, onConformite }) {
   const majParametres = useCallback((patch) => {
     setParametres((courants) => ({ ...(courants || {}), ...patch }))
   }, [])
+
+  /* ── PACT168 — suggestions du moteur ──────────────────────────────────────
+     `historique` est tenu ICI : une suggestion appliquée quitte la liste
+     actionnable et se retrouve marquée dans l'historique, exactement comme le
+     contrat d'AOF100 le décrit — sans quoi on pourrait « appliquer » deux fois
+     le même patch et croire avoir gagné deux fois les mêmes modules. */
+  const [historiqueSuggestions, setHistoriqueSuggestions] = useState([])
+  const [codeApplique, setCodeApplique] = useState(null)
+  const [questionSuggeree, setQuestionSuggeree] = useState(null)
+
+  const appliquerSuggestion = useCallback((suggestion) => {
+    setCodeApplique(suggestion.code)
+    setHistoriqueSuggestions((liste) => (
+      liste.some((s) => s.code === suggestion.code)
+        ? liste
+        : [...liste, {
+          code: suggestion.code,
+          titre: suggestion.titre,
+          gain_modules: suggestion.gain_modules,
+          gain_kwc: suggestion.gain_kwc,
+        }]
+    ))
+    // La voie NORMALE des paramètres : c'est le moteur qui recalcule et qui
+    // dira si le gain annoncé était réel (AOF94).
+    majParametres(suggestion.patch_entree ?? {})
+  }, [majParametres])
+
+  // Seuils de robustesse : simple CONVERSION m → cm des paramètres courants
+  // (`RobustesseBadges` les compare aux marges du moteur). Aucun seuil par
+  // défaut n'est inventé : sans paramètre, le badge s'affiche sans seuil.
+  const seuilsRobustesse = useMemo(() => ({
+    troncon_min_cm: Number.isFinite(parametres?.marge_troncon_min_m)
+      ? parametres.marge_troncon_min_m * 100 : undefined,
+    bande_min_cm: Number.isFinite(parametres?.marge_bande_min_m)
+      ? parametres.marge_bande_min_m * 100 : undefined,
+  }), [parametres])
 
   const onWheel = useCallback((event) => {
     if (!event.ctrlKey && !event.metaKey) return
@@ -172,9 +231,10 @@ export default function CalepinageStudio({ toitureId, onConformite }) {
             tiroirs restent donc masqués, et l'atelier le DIT. */}
         <aside className="flex w-full flex-col gap-1 overflow-y-auto lg:w-96" aria-label="Tiroirs de paramètres">
           <p className="rounded-md border border-dashed border-border p-3 text-xs text-muted-foreground" data-tiroirs="absents">
-            Les tiroirs de paramètres attendent un endpoint qui n’existe pas encore :
+            Les CINQ tiroirs débutant attendent un endpoint qui n’existe pas encore :
             aucune route ne publie leurs descripteurs (champs, bornes, presets, impacts).
-            Le calcul utilise donc le preset enregistré sur la toiture.
+            Le calcul utilise donc le preset enregistré sur la toiture. Le mode expert,
+            plus bas, pilote lui directement les paramètres du moteur.
           </p>
           <TiroirKits
             donnees={resultat?.tiroirs?.kits}
@@ -204,6 +264,39 @@ export default function CalepinageStudio({ toitureId, onConformite }) {
             onChange={majParametres}
             onConformite={onConformite}
           />
+
+          {/* PACT168 — l'expert a tout : réglages fins + marges de robustesse
+              (affichées seulement si le moteur en publie). */}
+          <ModeExpert
+            valeurs={parametres || {}}
+            onChange={majParametres}
+            marges={resultat?.marges}
+            seuils={seuilsRobustesse}
+          />
+
+          {/* PACT168 — suggestions du moteur. Vide tant qu'aucune route ne les
+              publie : monté quand même, comme les tiroirs, pour s'allumer sans
+              modification le jour où l'endpoint existe. */}
+          <SuggestionsPanel
+            suggestions={resultat?.suggestions ?? []}
+            historique={historiqueSuggestions}
+            enCours={enVol ? codeApplique : null}
+            onAppliquer={appliquerSuggestion}
+            onPoserQuestion={(s) => setQuestionSuggeree(s.question_a_poser ?? null)}
+          />
+
+          {questionSuggeree && (
+            <div
+              className="rounded-md border border-border bg-muted p-3 text-xs text-muted-foreground"
+              data-suggestion-question=""
+            >
+              <p className="whitespace-pre-line">{questionSuggeree}</p>
+              <p className="mt-1">
+                Question PRÉ-REMPLIE, pas encore envoyée : elle se crée dans la série
+                Q/R de l’affaire (onglet « Questions terrain »).
+              </p>
+            </div>
+          )}
         </aside>
       </div>
     </div>
