@@ -1,11 +1,12 @@
 # Base de reference de check_ecrans_atteignables.py — DETTE HISTORIQUE, RIEN D'AUTRE.
 #
 # Chaque ligne est un ecran livre puis jamais branche au menu (« inatteignable »),
-# ou un placeholder rendu devant un vrai ecran du meme sujet (« bouchon-* »).
-# Cette liste est l'inventaire VERIFIE de la dette du 03/08/2026 : 68 ecrans sur
-# le disque dans features/ao, 7 atteignables, 61 non. La garde n'echoue que sur
-# une occurrence ABSENTE de cette liste : elle empeche la RECIDIVE, elle ne
-# repare pas le passif.
+# un placeholder rendu devant un vrai ecran du meme sujet (« bouchon-* »), ou une
+# route reelle qu'aucune entree de nav ni aucun lien entrant reel ne mene jamais
+# (« sans-nav », PACT150 — route != menu). Cette liste est l'inventaire VERIFIE de
+# la dette du 03/08/2026 : 68 ecrans sur le disque dans features/ao, 7 atteignables,
+# 61 non. La garde n'echoue que sur une occurrence ABSENTE de cette liste : elle
+# empeche la RECIDIVE, elle ne repare pas le passif.
 #
 # REGLE ABSOLUE : CETTE LISTE NE PEUT QUE RETRECIR.
 #   - brancher un ecran puis `python scripts/check_ecrans_atteignables.py
@@ -39,3 +40,7 @@ inatteignable|frontend/src/features/marketing/CampagnesScreen.jsx
 inatteignable|frontend/src/features/messaging/RecordCard.jsx
 inatteignable|frontend/src/features/messaging/ShareRecord.jsx
 inatteignable|frontend/src/features/messaging/VoiceRecorder.jsx
+sans-nav|frontend/src/features/admin/module.config.jsx::/admin/impersonation
+sans-nav|frontend/src/features/admin/module.config.jsx::/admin/tenants
+sans-nav|frontend/src/features/credit/module.config.jsx::/credit/conditions
+sans-nav|frontend/src/features/reporting/module.config.jsx::/reporting/dashboards

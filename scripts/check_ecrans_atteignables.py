@@ -56,6 +56,51 @@ CE QU'ELLE FAIT (analyse statique pure, stdlib, sans build, sans node)
    remplissage (squelette defini dans le module.config, ``TabPlaceholder``,
    etat vide « en construction »...) alors qu'un vrai ecran du MEME SUJET
    existe dans le dossier de l'app.
+4. CLASSE 3 « route sans nav » (PACT150, 07/08/2026) — ROUTE != MENU. Une
+   route declaree dans ``routes:`` et menant a un vrai ecran satisfait le
+   graphe d'imports (classe 1 muette) meme si AUCUNE entree de menu ni AUCUN
+   lien entrant ne mene jamais dessus : un utilisateur ne peut toujours pas
+   l'ouvrir. Cas vivant trouve et corrige le jour meme :
+   ``/parametres/achats`` (``AchatsParametresPage``, 182 lignes, WIR26)
+   declaree a ``features/parametres/module.config.jsx:155`` sans aucun
+   ``nav.items`` ni ``Link``/``navigate`` y menant nulle part (seul un
+   commentaire de prose la citait). Pour chaque route LITTERALE (segment
+   dynamique ``:id`` exempte) d'un config NON opaque menant a un vrai ecran,
+   la garde cherche : (a) un ``nav.items[].to`` egal, dans N'IMPORTE QUEL
+   ``module.config.jsx`` (la nav d'une route peut vivre dans un AUTRE module,
+   ex. ``/journal`` navigue depuis ``features/reporting``) ; (b) un lien
+   entrant reel — ``to="..."``/``to: '...'`` (``Link``/``NavLink``),
+   ``navigate(...)`` et ses alias reels (``goto`` — cas mesure de
+   ``NotificationBell.jsx``), ``href="..."`` — dans un fichier LUI-MEME
+   atteignable (un lien ecrit dans un composant mort ne rend rien reel) et
+   JAMAIS un fichier de test (un grep naif a compte un fichier de test comme
+   lien — mesure) ni un commentaire (le code lu est deja depouille de ses
+   commentaires) ; (c) a defaut, un marqueur explicite ``// contextuelle:
+   <raison>`` sur la meme ligne que la route ou la ligne juste au-dessus —
+   pour une route volontairement sans nav (ex. atteinte par un chemin que la
+   garde ne sait pas suivre statiquement).
+
+TROU STRUCTUREL FERME (PACT173, 07/08/2026) — jusqu'ici, ``atteignables()``
+ajoutait ``config.path`` (le ``module.config.jsx`` lui-meme) aux racines de la
+BFS, donc des qu'il etait depile, TOUS ses imports bruts etaient credites —
+y compris un composant lie par ``lazy()`` jamais place dans ``routes:``. Un
+ecran orphelin AURAIT ete invisible pour la garde tant qu'il restait importe
+quelque part dans le fichier, meme sans jamais etre route. Ferme : pour une
+config NON opaque, la BFS part desormais de ``ecrans_routes`` (ce qui est
+REELLEMENT route) plus ``credits_hors_routes`` (un composant lie rendu
+ailleurs dans le MEME fichier — balise JSX ``<X/>`` dans un wrapper local,
+ou prop ``mot={X}`` — jamais son seul VOISINAGE dans le fichier). Le fichier
+``module.config.jsx`` reste marque « vu » (le scan de nav de PACT150 en
+depend) mais ne propage plus ses imports bruts. Sonde le 03/08/2026 avant
+correctif : 4 candidats, 4 FAUX positifs verifies a la main —
+``PortalClientLayout``/``PortalFournisseurLayout``/``PortalPartenaireLayout``
+passes en prop ``shell={…}`` a ``router/index.jsx`` (hors du perimetre de ce
+correctif : ce fichier n'est pas un ``module.config.jsx``, deja credite
+normalement via le graphe ``main.jsx``) et ``AdsCockpitScreen`` rendu par le
+wrapper routE ``AdsCockpitScreenPrintable`` DANS
+``features/adsengine/module.config.jsx`` (couvert par
+``credits_hors_routes`` : ``<AdsCockpitScreen/>`` est une balise JSX dans le
+corps du wrapper).
 
 PRINCIPE ANTI-FAUX-POSITIF (assume, delibere)
 ---------------------------------------------
@@ -250,6 +295,14 @@ _DECLARATION = re.compile(
     r"""\b(?:function|class|const|let|var)\s+([A-Za-z_$][\w$]*)""")
 _CLE_ROUTES = re.compile(r"\broutes\s*:\s*\[")
 _CHAINE = re.compile(r"""(['"])([^'"\n]*)\1""")
+# PACT173 : un composant lie par `lazy()`/import-defaut peut etre credite
+# SANS passer par `routes:` — rendu par un wrapper local (`<AdsCockpitScreen
+# />` dans une fonction declaree dans le meme fichier) ou passe en prop JSX
+# (`shell={PortalClientLayout}`). Les deux formes reelles mesurees le
+# 03/08/2026.
+_JSX_BALISE = re.compile(r"<([A-Za-z_$][\w$]*)\b")
+_JSX_PROP_IDENTIFIANT = re.compile(
+    r"""\b[A-Za-z_$][\w$]*\s*=\s*\{\s*([A-Za-z_$][\w$]*)\s*\}""")
 
 
 def _bloc_equilibre(masked: str, debut: int) -> int | None:
@@ -316,6 +369,17 @@ class ConfigModule:
         self.opaque = False
         self.ecrans_routes: set = set()      # fichiers reellement routes
         self.bouchons: list = []             # (chemin de route, sujets)
+        # PACT150 : (chemin litteral, fichier reel, ligne debut, ligne fin)
+        # de chaque route qui mene a un vrai ecran — pour la verification
+        # nav.items/lien-entrant/marqueur-contextuel, distincte du graphe
+        # d'atteignabilite (celui-ci ne sait pas qu'une route existe SANS
+        # menu, seulement qu'un fichier est importe).
+        self.routes_reelles: list = []
+        # PACT173 : fichiers reels credites SANS passer par `routes:` — un
+        # composant lie par `lazy()`/import-defaut, rendu comme balise JSX
+        # (`<X/>`) ou passe en prop (`shell={X}`) AILLEURS dans ce meme
+        # fichier (wrapper local, layout partage...).
+        self.credits_hors_routes: set = set()
         self._lire()
 
     def _lire(self):
@@ -330,6 +394,18 @@ class ConfigModule:
         for match in _IMPORT_DEFAUT.finditer(code):
             liaisons[match.group(1)] = resoudre(match.group(3), self.path)
         declares = {m.group(1) for m in _DECLARATION.finditer(code)}
+
+        # PACT173 : credite tout `liaisons[...]` reellement utilise ailleurs
+        # dans ce fichier — balise JSX (`<AdsCockpitScreen/>` dans un wrapper
+        # local) ou prop (`shell={PortalClientLayout}`) — AVANT tout retour
+        # anticipe pour opacite, pour qu'une config opaque garde elle aussi
+        # ces credits (elle credite deja tout via `imports_de`, sans effet).
+        utilises = {m.group(1) for m in _JSX_BALISE.finditer(code)}
+        utilises |= {m.group(1) for m in _JSX_PROP_IDENTIFIANT.finditer(code)}
+        self.credits_hors_routes = {
+            liaisons[nom] for nom in utilises
+            if isinstance(liaisons.get(nom), Path)
+        }
 
         cle = _CLE_ROUTES.search(masked)
         if not cle:
@@ -354,6 +430,11 @@ class ConfigModule:
                 cible = liaisons.get(composant, "absent")
                 if isinstance(cible, Path):
                     self.ecrans_routes.add(cible)
+                    if chemin:
+                        self.routes_reelles.append((
+                            chemin, cible,
+                            code.count("\n", 0, debut) + 1,
+                            code.count("\n", 0, borne) + 1))
                     continue
                 if cible is None or composant in declares:
                     # Composant defini DANS le module.config (jamais un vrai
@@ -468,6 +549,103 @@ def bouchons_dans(path: Path) -> list:
 
 
 # ===========================================================================
+# 4bis. Route != menu : nav.items / lien entrant reel / marqueur (PACT150)
+# ===========================================================================
+
+# `to="..."` (Link/NavLink JSX) et `to: '...'` (nav.items[], et tout objet
+# qui declare une cible de navigation par cle `to`).
+_LIEN_TO = re.compile(r"""\bto\s*[:=]\s*(['"])([^'"\n]+)\1""")
+# `href="..."` (ancre brute, ouverture de PDF/ICS...).
+_LIEN_HREF = re.compile(r"""\bhref\s*=\s*(['"])([^'"\n]+)\1""")
+# Tout litteral qui RESSEMBLE a un chemin absolu, hors `module.config.jsx` —
+# voir la note anti-auto-verification dans `liens_entrants()`. Couvre
+# `navigate(...)`/`goto(...)`/tout alias reel (cas mesure :
+# `NotificationBell.jsx:451` `const goto = (path) => { navigate(path) }` —
+# un nom de variable different ne doit pas transformer un lien reel en faux
+# negatif) ET une table de routage par donnee (cas mesure : `mobileHome.js`
+# `Directeur: '/mobile/cockpit'`, jamais un appel a route litterale).
+_LIEN_LITTERAL = re.compile(r"""(['"])(/[^'"\n]*)\1""")
+
+_MARQUEUR_CONTEXTUEL = re.compile(r"//\s*contextuelle\s*:\s*(.+)")
+
+
+def _chemin_nu(spec: str) -> str:
+    return spec.split("?", 1)[0].split("#", 1)[0]
+
+
+def liens_entrants(vus: set) -> set:
+    """Chemins reellement references comme lien/navigation quelque part dans
+    un fichier LUI-MEME atteignable (jamais un fichier de test, jamais un
+    commentaire — `lire()` les a deja retires).
+
+    Ne scanne QUE `vus` (le graphe d'atteignabilite deja calcule), pas tout
+    `frontend/src` : un `<Link to="/x">` ecrit dans un composant mort ne rend
+    rien reel, ce serait le meme defaut que celui que cette tache ferme.
+
+    Deux regimes, JAMAIS le meme fichier dans les deux : un `module.config.jsx`
+    est la ou une route DECLARE son propre `path: '/x'` — un balayage large y
+    trouverait toujours la route qui s'auto-justifie (`/x` linked parce que
+    `/x` y est ecrit, trivialement vrai pour CHAQUE route). Seuls des
+    mots-cles de navigation EXPLICITE y comptent (`to`, `href` — jamais
+    `path`). Partout ailleurs, aucune route n'est jamais declaree : un
+    balayage large (tout litteral en forme de chemin) est donc sans risque
+    d'auto-verification et couvre les formes que la fabrique de scripts ne
+    peut pas deviner par mot-cle (alias de `navigate`, table de routage par
+    donnee).
+    """
+    cibles = set()
+    for path in vus:
+        if est_test(path):
+            continue
+        code, _ = lire(path)
+        if path.name == "module.config.jsx":
+            for motif in (_LIEN_TO, _LIEN_HREF):
+                for match in motif.finditer(code):
+                    cibles.add(_chemin_nu(match.group(2)))
+        else:
+            for match in _LIEN_LITTERAL.finditer(code):
+                cibles.add(_chemin_nu(match.group(2)))
+    return cibles
+
+
+def marqueurs_contextuels(path: Path) -> list:
+    """[(numero de ligne, raison)] des `// contextuelle: <raison>` du fichier
+    SOURCE BRUT (jamais `lire()`, qui retire justement les commentaires)."""
+    try:
+        brut = path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return []
+    trouves = []
+    for numero, ligne in enumerate(brut.splitlines(), start=1):
+        match = _MARQUEUR_CONTEXTUEL.search(ligne)
+        if match:
+            trouves.append((numero, match.group(1).strip()))
+    return trouves
+
+
+def routes_sans_nav(configs: list, vus: set) -> list:
+    """[(chemin de config relatif::route, app)] des routes reelles qu'aucune
+    entree de nav, aucun lien entrant reel ni marqueur ne justifie."""
+    liens = liens_entrants(vus)
+    trouvailles = []
+    for config in configs:
+        if config.opaque or not config.routes_reelles:
+            continue
+        marqueurs = marqueurs_contextuels(config.path)
+        for chemin, _cible, ligne_debut, ligne_fin in config.routes_reelles:
+            if not chemin or ":" in chemin:
+                continue    # segment dynamique, ou path non litteral : exempte
+            if chemin in liens:
+                continue
+            if any(ligne_debut - 1 <= numero <= ligne_fin + 1
+                   for numero, _raison in marqueurs):
+                continue
+            trouvailles.append((
+                f"{relatif(config.path)}::{chemin}", config.app))
+    return trouvailles
+
+
+# ===========================================================================
 # 5. Analyse
 # ===========================================================================
 
@@ -475,14 +653,27 @@ def atteignables() -> tuple:
     """(fichiers atteignables, configs lues)."""
     configs = [ConfigModule(p) for p in sorted(FEATURES.glob("*/module.config.jsx"))]
     racines = set()
+    # PACT173 : un `module.config.jsx` NON opaque reste marque « vu » (le
+    # scan de nav de PACT150 en depend) mais n'entre JAMAIS dans `racines` —
+    # ajoute a `vus` seulement APRES la BFS ci-dessous, pour ne jamais passer
+    # par `pile.extend(imports_de(courant) - vus)` : sinon TOUS ses imports
+    # bruts seraient credites des qu'il se depile, y compris un `lazy()`
+    # jamais place dans `routes:` (le trou structurel que cette tache ferme :
+    # sonde le 03/08/2026, 4 candidats, 0 vrai defaut — voir docstring du
+    # module). Une config OPAQUE, elle, reste dans `racines`/la BFS comme
+    # avant : on ne sait pas lire ses routes, principe anti-faux-positif —
+    # on credite tout plutot que d'accuser a tort.
+    vus_apres_bfs = set()
     if ENTRY.is_file():
         racines.add(ENTRY.resolve())
     for config in configs:
-        racines.add(config.path.resolve())
         if config.opaque:
-            racines |= imports_de(config.path)
+            racines.add(config.path.resolve())
         else:
+            if config.path.is_file():
+                vus_apres_bfs.add(config.path.resolve())
             racines |= {p for p in config.ecrans_routes if p is not None}
+            racines |= config.credits_hors_routes
     vus = set()
     pile = [p for p in racines if p.is_file()]
     while pile:
@@ -491,6 +682,7 @@ def atteignables() -> tuple:
             continue
         vus.add(courant)
         pile.extend(imports_de(courant) - vus)
+    vus |= vus_apres_bfs
     return vus, configs
 
 
@@ -579,6 +771,10 @@ def analyse():
                     "bouchon-onglet", f"{relatif(path)}::{ardoise(libelle)}",
                     app, ", ".join(sorted(relatif(c) for c in cibles)[:3])))
 
+    sans_nav = routes_sans_nav(configs, vus)
+    for cible, app in sans_nav:
+        constats.append(("sans-nav", cible, app, ""))
+
     stats = {
         "ecrans": len(ecrans),
         "atteignables": len(ecrans) - len(orphelins),
@@ -588,6 +784,7 @@ def analyse():
         "noeuds": len(vus),
         "ecrans_features": len(ecrans_de_features()),
         "ecrans_pages": len(ecrans_de_pages()),
+        "sans_nav": len(sans_nav),
     }
     return constats, stats
 
@@ -610,11 +807,12 @@ ENTETE_BASE = """\
 # Base de reference de check_ecrans_atteignables.py — DETTE HISTORIQUE, RIEN D'AUTRE.
 #
 # Chaque ligne est un ecran livre puis jamais branche au menu (« inatteignable »),
-# ou un placeholder rendu devant un vrai ecran du meme sujet (« bouchon-* »).
-# Cette liste est l'inventaire VERIFIE de la dette du 03/08/2026 : 68 ecrans sur
-# le disque dans features/ao, 7 atteignables, 61 non. La garde n'echoue que sur
-# une occurrence ABSENTE de cette liste : elle empeche la RECIDIVE, elle ne
-# repare pas le passif.
+# un placeholder rendu devant un vrai ecran du meme sujet (« bouchon-* »), ou une
+# route reelle qu'aucune entree de nav ni aucun lien entrant reel ne mene jamais
+# (« sans-nav », PACT150 — route != menu). Cette liste est l'inventaire VERIFIE de
+# la dette du 03/08/2026 : 68 ecrans sur le disque dans features/ao, 7 atteignables,
+# 61 non. La garde n'echoue que sur une occurrence ABSENTE de cette liste : elle
+# empeche la RECIDIVE, elle ne repare pas le passif.
 #
 # REGLE ABSOLUE : CETTE LISTE NE PEUT QUE RETRECIR.
 #   - brancher un ecran puis `python scripts/check_ecrans_atteignables.py
@@ -687,6 +885,8 @@ def main(argv=None) -> int:
         print(f"module.config.jsx lus : {stats['configs']} "
               f"({stats['opaques']} opaque(s), credites en entier). "
               f"Graphe : {stats['noeuds']} module(s) atteints.")
+        print(f"Routes sans nav.items ni lien entrant reel ni marqueur "
+              f"contextuel (PACT150) : {stats['sans_nav']}.")
         compte = _par_app(constats)
         if compte:
             totaux: dict[str, int] = {}
@@ -721,11 +921,15 @@ def main(argv=None) -> int:
 
     if nouveaux:
         orphelins = [c for c in nouveaux if c[0] == "inatteignable"]
-        bouchons = [c for c in nouveaux if c[0] != "inatteignable"]
+        sans_nav = [c for c in nouveaux if c[0] == "sans-nav"]
+        bouchons = [c for c in nouveaux if c[0] not in ("inatteignable", "sans-nav")]
         parties = []
         if orphelins:
             parties.append(f"{len(orphelins)} ecran(s) livre(s) mais "
                            f"INATTEIGNABLE(s) depuis le menu")
+        if sans_nav:
+            parties.append(f"{len(sans_nav)} route(s) SANS aucune entree de "
+                           f"nav ni lien entrant reel")
         if bouchons:
             parties.append(f"{len(bouchons)} placeholder(s) rendu(s) DEVANT un "
                            f"ecran reel")
@@ -734,6 +938,12 @@ def main(argv=None) -> int:
             print(f"  {cible}")
             print(f"      aucune chaine d'imports ne relie ce fichier a une route "
                   f"declaree dans features/{app}/module.config.jsx")
+        for _, cible, app, _ in sorted(sans_nav):
+            fichier, _, chemin = cible.partition("::")
+            print(f"  {fichier}  (route : {chemin})")
+            print("      mene a un vrai ecran mais aucun nav.items[].to, aucun "
+                  "Link/navigate/href reel ne pointe dessus — route != menu "
+                  "(PACT150)")
         for classe, cible, app, preuve in sorted(bouchons):
             fichier, _, sujet = cible.partition("::")
             quoi = "une route" if classe == "bouchon-route" else "un onglet"
@@ -744,6 +954,10 @@ def main(argv=None) -> int:
         print("  - declarez une route dans `features/<app>/module.config.jsx` "
               "(`routes: [{ path, component: lazy(() => import('./<Ecran>')) }]`) "
               "et l'entree de nav correspondante ;")
+        print("  - une route SANS nav : ajoutez une entree `nav.items` (ici ou "
+              "dans un autre module.config.jsx), un vrai lien entrant, ou — si "
+              "elle est volontairement hors menu — un commentaire `// "
+              "contextuelle: <raison>` sur sa ligne ;")
         print("  - ou montez-le dans un onglet de l'ecran parent, a la place du "
               "placeholder ;")
         print("  - ou supprimez le fichier s'il est mort — mais ne le laissez "
