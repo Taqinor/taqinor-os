@@ -4,6 +4,8 @@ Les viewsets filtrent par ``request.user.company`` (TenantMixin) et posent la
 société côté serveur ; la non-conformité enregistre aussi son signaleur
 (``signale_par``) côté serveur.
 """
+from drf_spectacular.utils import extend_schema
+
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from rest_framework import filters, status, viewsets
@@ -21,7 +23,8 @@ from core.permissions import WriteScopedPermissionMixin
 from apps.ventes.utils.references import create_with_reference
 
 from .models import (
-    ActionCorrectivePreventive, AnalyseIncident, AspectEnvironnemental, Audit,
+    ActionCorrectivePreventive, AnalyseIncident,
+    AspectEnvironnemental, Audit,
     BilanCarbone, BordereauSuiviDechet, CauseIncident,
     CodeDefaut,
     ConformiteEnvironnementale, ConsignationLoto, ContactUrgence,
@@ -45,6 +48,7 @@ from .models import (
     CheckinSecurite, DemandeActionFournisseur,
 )
 from .serializers import (
+    AccuseLectureSerializer,
     ActionCorrectivePreventiveSerializer, AnalyseIncidentSerializer,
     AspectEnvironnementalSerializer,
     AuditSerializer, BilanCarboneSerializer, BordereauSuiviDechetSerializer,
@@ -112,6 +116,7 @@ from .services import (
     creer_signalement_public, generer_qr_signalement,
     incidents_notification_en_retard, initialiser_prochaine_revue,
     instancier_plan_chantier,
+    lectures_en_attente,
     lever_ncr_audit, lever_ncr_inspection, nouvelle_version_procedure,
     plans_exercices_dus, poser_disposition,
     realiser_exercice_urgence,
@@ -865,6 +870,19 @@ class ProcedureQualiteViewSet(_QhseBaseViewSet):
         qs = procedure_qualite_versions(
             request.user.company, procedure.reference)
         return Response(self.get_serializer(qs, many=True).data)
+
+    @extend_schema(responses=AccuseLectureSerializer(many=True))
+    @action(detail=False, methods=['get'], url_path='mes-lectures-en-attente')
+    def mes_lectures_en_attente(self, request):
+        """PACT181 (XQHS15) — « mes lectures en attente » : les diffusions de
+        procédure non lues par l'utilisateur courant, scopées à sa société.
+
+        ``lectures_en_attente`` (services.py) le nommait déjà dans son
+        docstring, mais aucun endpoint ne l'exposait.
+        """
+        qs = lectures_en_attente(request.user).filter(
+            company=request.user.company)
+        return Response(AccuseLectureSerializer(qs, many=True).data)
 
 
 class RetourClientQualiteViewSet(_QhseBaseViewSet):

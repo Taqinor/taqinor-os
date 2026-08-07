@@ -7,7 +7,8 @@ appartenant à la société de l'utilisateur.
 from rest_framework import serializers
 
 from .models import (
-    ActionCorrectivePreventive, AnalyseIncident, AspectEnvironnemental, Audit,
+    AccuseLecture, ActionCorrectivePreventive, AnalyseIncident,
+    AspectEnvironnemental, Audit,
     CauseIncident,
     CodeDefaut,
     ConsignationLoto, ContactUrgence, ControleReception,
@@ -28,7 +29,8 @@ from .models import (
     QhseChatterEntry,
     RecyclageModule, ReleveConsommation, ReleveControle,
     ReleveCourbeIV, ReponseCritere, RetourClientQualite,
-    RevueVeilleReglementaire, Secouriste,
+    RevueVeilleReglementaire,
+    Secouriste,
     SignalementPublic, VeilleReglementaire,
     CheckinSecurite, DemandeActionFournisseur,
 )
@@ -1520,3 +1522,26 @@ class DemandeActionFournisseurSerializer(serializers.ModelSerializer):
 
     def validate_ncr_source(self, value):
         return _meme_societe(self, value, 'NCR source')
+
+
+# ── PACT181 (XQHS15) — accusés de lecture (« mes lectures en attente ») ─────
+class AccuseLectureSerializer(serializers.ModelSerializer):
+    """XQHS15 — accusé de lecture d'une diffusion de procédure. Lecture
+    seule : la confirmation de lecture passe par le service ``accuser_lecture``
+    (jamais un PATCH direct sur ``lu_le``, qui est une signature serveur)."""
+    procedure_reference = serializers.CharField(
+        source='diffusion.procedure.reference', read_only=True)
+    procedure_titre = serializers.CharField(
+        source='diffusion.procedure.titre', read_only=True)
+    procedure_version = serializers.IntegerField(
+        source='diffusion.procedure.version', read_only=True)
+    date_diffusion = serializers.DateTimeField(
+        source='diffusion.date_diffusion', read_only=True)
+
+    class Meta:
+        model = AccuseLecture
+        fields = [
+            'id', 'diffusion', 'procedure_reference', 'procedure_titre',
+            'procedure_version', 'date_diffusion', 'lu_le', 'date_creation',
+        ]
+        read_only_fields = fields
