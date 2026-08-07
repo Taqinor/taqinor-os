@@ -7,6 +7,8 @@ import { dirname, join } from 'node:path'
 
 const mocks = vi.hoisted(() => ({
   list: vi.fn(),
+  sante: vi.fn(),
+  create: vi.fn(),
   navigate: vi.fn(),
 }))
 
@@ -15,9 +17,13 @@ vi.mock('react-router-dom', async () => {
   return { ...actual, useNavigate: () => mocks.navigate }
 })
 
+// SanteVeille (VAO37, monté en bandeau par CETTE tâche) appelle aussi
+// `veilleAoApi.sante()`/`avis.create` — même mock partagé, son propre
+// comportement est couvert par `SanteVeille.test.jsx`.
 vi.mock('../../api/veilleAoApi', () => ({
   default: {
-    avis: { list: mocks.list },
+    avis: { list: mocks.list, create: mocks.create },
+    sante: mocks.sante,
   },
 }))
 
@@ -51,6 +57,7 @@ const ROWS = [
 beforeEach(() => {
   vi.clearAllMocks()
   mocks.list.mockResolvedValue({ data: ROWS })
+  mocks.sante.mockResolvedValue({ data: { alarme_active: false } })
 })
 
 async function findRow(objet) {
@@ -94,6 +101,12 @@ describe('AvisList', () => {
     const { fireEvent } = await import('@testing-library/react')
     fireEvent.click(await findRow('Fourniture et pose de panneaux solaires'))
     expect(mocks.navigate).toHaveBeenCalledWith('/veille-ao/avis/1')
+  })
+
+  it('monte le bandeau de santé (VAO37, SanteVeille) au-dessus de la liste', async () => {
+    renderScreen()
+    await waitFor(() => expect(mocks.sante).toHaveBeenCalled())
+    expect(await screen.findByText('Ce que la veille automatique ne voit pas')).toBeInTheDocument()
   })
 })
 

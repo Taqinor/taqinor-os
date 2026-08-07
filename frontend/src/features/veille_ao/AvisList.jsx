@@ -6,17 +6,17 @@ import { unwrapList } from '../../api/resource'
 import { Badge } from '../../ui'
 import { ListShell, statusPill, daysUntil, urgencyLevel, urgencyTone, urgencyLabel } from '../../ui/module'
 import { formatDate, formatMAD } from '../../lib/format'
+import SanteVeille from './SanteVeille'
 
 /* ============================================================================
    VAO33 — La liste des avis (`ListShell`) : la page qu'on ouvre le matin.
    ----------------------------------------------------------------------------
    Données via `useResource` + `veilleAoApi` (zéro `useState`/`useEffect` de
    fetch, ARC45), tri/filtre persistés en URL (`persistToUrl` + `urlKey`,
-   moteur DataTable H33). Le bandeau de santé (VAO37, `SanteVeille`) sera monté
-   EN HAUT via le slot `children` de `ListShell` par la tâche VAO37 elle-même
-   (c'est un bandeau, pas un écran séparé — le module n'a que 3 routes, VAO32) :
-   pas de référence en avant ici, `SanteVeille.jsx` n'existe pas encore à ce
-   stade de la lane.
+   moteur DataTable H33). Le bandeau de santé (VAO37, `SanteVeille`) est monté
+   EN HAUT via le slot `children` de `ListShell` — c'est un bandeau, pas un
+   écran séparé (le module n'a que 3 routes, VAO32). Câblage ajouté par VAO37
+   (même agent, même dossier) une fois `SanteVeille.jsx` construit.
 
    `STATUT_AVIS`/`StatutAvis` sont définis ICI (pas de fichier `statusAvis.js`
    séparé — aucune tâche VAO32-37 n'en déclare un) et RÉ-EXPORTÉS pour
@@ -60,7 +60,7 @@ const SAVED_VIEWS = [
 export default function AvisList() {
   const navigate = useNavigate()
 
-  const { data: rows, loading, error } = useResource(
+  const { data: rows, loading, error, refetch } = useResource(
     () => veilleAoApi.avis.list(),
     undefined,
     { initialData: [], select: unwrapList, errorMessage: 'Impossible de charger les avis.' },
@@ -191,6 +191,8 @@ export default function AvisList() {
       emptyTitle="Aucun avis"
       emptyDescription="Aucun avis ne correspond à cette vue — la collecte automatique ne couvre pas tout, voir le bandeau de santé ci-dessus."
       onRowClick={(r) => navigate(`/veille-ao/avis/${r.id}`)}
-    />
+    >
+      <SanteVeille onAvisAjoute={refetch} />
+    </ListShell>
   )
 }
