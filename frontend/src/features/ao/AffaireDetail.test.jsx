@@ -65,6 +65,17 @@ vi.mock('./dossier/PiecePreview', () => ({
   default: ({ piece }) => <div data-testid="apercu-cps">{piece ? piece.libelle : 'aucune pièce'}</div>,
 }))
 
+/* `VariantesCompare` (onglet « Variantes ») lit la permission élevée
+   `ao_rentabilite_voir` via `useHasPermission`, qui passe par le store Redux —
+   absent de ce rendu. On la refuse : c'est le cas par défaut de la fiche, et
+   celui qui garantit qu'aucune donnée d'économie n'entre dans l'arbre. */
+vi.mock('../../hooks/useHasPermission', () => ({
+  useHasPermission: () => false,
+  useHasRole: () => false,
+  useIsAdmin: () => false,
+  useIsAdminOrResponsable: () => false,
+}))
+
 vi.mock('../../api/recordsApi', () => ({
   default: {
     getComments: mocks.getComments,
@@ -148,12 +159,14 @@ beforeEach(() => {
   mocks.controlesAvantDepot.mockResolvedValue({ data: { controles: [] } })
 })
 
-// Les 10 onglets de la fiche, dans leur ordre RÉEL : les 7 d'origine, puis les
-// 3 ajoutés le 03/08/2026 — l'ordre des 7 premiers ne bouge jamais.
+// Les 11 onglets de la fiche, dans leur ordre RÉEL : les 7 d'origine, les 3
+// ajoutés le 03/08/2026, puis « Variantes » — l'ordre des 10 premiers ne bouge
+// jamais (un onglet nouveau s'ajoute EN QUEUE, il ne s'intercale pas).
 const ONGLETS = [
   'Synthèse', 'Toitures & relevés', 'Calepinages', 'Bordereau',
   'Dossier', 'Questions terrain', 'Historique',
   'Administratif', 'Équipements', 'CPS & exigences',
+  'Variantes',
 ]
 
 describe('AffaireDetail', () => {
@@ -438,6 +451,50 @@ describe('AffaireDetail', () => {
     })
   })
 
+  /* ══ 11ᵉ onglet — le comparateur de variantes était monté NULLE PART ══════
+     `VariantesCompare` et `VarianteColonne` existaient, testés, sans aucune
+     route ni aucun onglet pour les atteindre. */
+  describe('l’onglet « Variantes »', () => {
+    const variante = (id, nom, compte) => ({
+      id, nom, statut: 'calculee', est_retenue: false,
+      technique: { compte_modules: compte, puissance_kwc: compte * 0.55, kits: [], allee_m: 1.2 },
+      conformite: {},
+    })
+
+    it('monte le VRAI comparateur, filtré sur appel_offre (jamais toute la société)', async () => {
+      mocks.variantesList.mockResolvedValue({
+        data: [variante(11, 'Portrait 4 rangées', 314), variante(12, 'Paysage 5 rangées', 296)],
+      })
+      renderScreen()
+      await screen.findByText('AO-2026-001')
+      await userEvent.click(onglet('Variantes'))
+
+      // `affaire` serait IGNORÉ en silence par `VarianteCalepinageViewSet`.
+      await waitFor(
+        () => expect(mocks.variantesList).toHaveBeenCalledWith({ appel_offre: '1' }),
+        { timeout: 15000 },
+      )
+      for (const appel of mocks.variantesList.mock.calls) {
+        expect(appel[0]).not.toHaveProperty('affaire')
+      }
+      expect(await screen.findByRole('heading', { name: 'Comparer les variantes' })).toBeInTheDocument()
+      // Les colonnes réelles (`VarianteColonne`) et leur bande CONFORMITÉ AO.
+      expect(screen.getAllByText('Conformité AO').length).toBeGreaterThan(0)
+      expect(screen.getByRole('region', { name: 'Variante Portrait 4 rangées' })).toBeInTheDocument()
+      expect(codeSeul).toMatch(/<VariantesCompare\s+affaireId=\{id\}/)
+    })
+
+    it('affiche un état vide MOTIVÉ quand l’affaire n’a pas assez de variantes', async () => {
+      renderScreen()
+      await screen.findByText('AO-2026-001')
+      await userEvent.click(onglet('Variantes'))
+
+      expect(await screen.findByText('Pas assez de variantes à comparer', {}, { timeout: 15000 }))
+        .toBeInTheDocument()
+      expect(screen.getByText(/au moins 2 variantes calculées/)).toBeInTheDocument()
+    })
+  })
+
   describe('gardes de structure', () => {
     it('plus AUCUN TabPlaceholder ne subsiste dans la fiche', () => {
       expect(codeSeul).not.toMatch(/TabPlaceholder/)
@@ -457,6 +514,7 @@ describe('AffaireDetail', () => {
         './administratif/AdministratifPage',
         './equipements/EquipementsPage',
         './cps/ExigencesPage',
+        './variantes/VariantesCompare',
       ]) {
         // lazy(() => import('<chemin>')…
         expect(codeSeul).toMatch(
@@ -476,9 +534,10 @@ describe('AffaireDetail', () => {
       const lazyDeclares = codeSeul.match(/=\s*lazy\(/g) || []
       const montages = codeSeul.match(/<PanneauDiffere>/g) || []
       // 5 panneaux de la 1re vague + 3 de la 2de (Administratif, Équipements,
-      // CPS & exigences) — l'ÉGALITÉ est la garde : un panneau déclaré `lazy`
-      // et monté hors Suspense ferait planter la fiche entière.
-      expect(lazyDeclares.length).toBe(8)
+      // CPS & exigences) + le comparateur de variantes — l'ÉGALITÉ est la
+      // garde : un panneau déclaré `lazy` et monté hors Suspense ferait
+      // planter la fiche entière.
+      expect(lazyDeclares.length).toBe(9)
       expect(montages.length).toBe(lazyDeclares.length)
     })
 

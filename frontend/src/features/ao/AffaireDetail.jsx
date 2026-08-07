@@ -80,6 +80,19 @@ const AdministratifPage = lazy(() => import('./administratif/AdministratifPage')
 const EquipementsPage = lazy(() => import('./equipements/EquipementsPage'))
 const ExigencesPage = lazy(() => import('./cps/ExigencesPage'))
 
+/* ── TROISIÈME VAGUE — l'onglet « Variantes » (11ᵉ) ────────────────────────
+   `variantes/VariantesCompare.jsx` (et `variantes/VarianteColonne.jsx`, qu'il
+   est seul à importer) n'étaient montés sur AUCUNE route et dans AUCUN onglet :
+   le comparateur de variantes existait, testé, atteignable par personne. Il
+   rejoint les 10 onglets EXISTANTS sans en changer l'ordre ni le contenu, même
+   patron `lazy` + `PanneauDiffere`.
+
+   `exporterImage` n'est délibérément PAS passé : la conversion SVG → PNG
+   (AOF75, `studio/svgToPng.js`) appartient à la lane de l'atelier. Sans
+   exporteur, la colonne affiche une miniature indisponible NOMMÉE — c'est le
+   contrat que `VariantesCompare` déclare lui-même, jamais une image cassée. */
+const VariantesCompare = lazy(() => import('./variantes/VariantesCompare'))
+
 const errMsg = (e, fallback) => e?.response?.data?.detail || fallback
 
 const VERDICT_TONE = { confirme: 'success', tendu: 'warning' }
@@ -504,6 +517,20 @@ export default function AffaireDetail() {
           content: (
             <PanneauDiffere>
               <ExigencesPage affaireId={id} />
+            </PanneauDiffere>
+          ),
+        },
+        /* ── 11ᵉ onglet, APRÈS les 10 ci-dessus ─────────────────────────── */
+        {
+          value: 'variantes',
+          label: 'Variantes',
+          /* Signature déclarée : `({ affaireId, exporterImage })`. Le
+             comparateur filtre `?appel_offre=` (le champ réel honoré par
+             `VarianteCalepinageViewSet`) — les variantes d'une AUTRE affaire
+             ne peuvent donc pas apparaître sous le titre de celle-ci. */
+          content: (
+            <PanneauDiffere>
+              <VariantesCompare affaireId={id} />
             </PanneauDiffere>
           ),
         },
