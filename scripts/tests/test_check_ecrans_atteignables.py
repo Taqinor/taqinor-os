@@ -189,6 +189,99 @@ class AtteignabiliteTests(BaseDepot):
 
 
 # ===========================================================================
+# credits_hors_routes — extension PACT173 (07/08/2026)
+# ===========================================================================
+
+class CreditsHorsRoutesTests(BaseDepot):
+    """``atteignables()`` ajoutait ``config.path`` (le ``module.config.jsx``
+    lui-meme) aux racines de la BFS : des qu'il etait depile, TOUS ses
+    imports bruts etaient credites — y compris un ``lazy()`` jamais place
+    dans ``routes:``. Ces tests verrouillent le trou ferme (le composant
+    orphelin doit desormais sortir) SANS casser les deux cas reels mesures
+    (wrapper local, prop JSX) ni le cas opaque (credit total inchange)."""
+
+    def test_lazy_jamais_route_est_desormais_signale(self):
+        """LE controle negatif exige par PACT150/PACT173 : un `lazy()`
+        ajoute sans jamais etre place dans `routes:`, ni rendu comme JSX, ni
+        passe en prop, doit desormais sortir en inatteignable — AVANT ce
+        correctif, il etait credite par son seul VOISINAGE dans le fichier
+        (`imports_de(config.path)` credit tout, sans regarder l'usage)."""
+        self.depot.fichier("features/x/module.config.jsx", (
+            "const Ecran = lazy(() => import('./Ecran'))\n"
+            "const Fantome = lazy(() => import('./Fantome'))\n"
+            "const config = { key:'x', routes: "
+            "[{ path:'/x', component: Ecran }] }\n"
+            "export default config\n"))
+        self.depot.fichier("features/x/Ecran.jsx", "export default 1\n")
+        self.depot.fichier("features/x/Fantome.jsx", "export default 1\n")
+        self.assertEqual(self.orphelins(),
+                         ["frontend/src/features/x/Fantome.jsx"])
+
+    def test_lazy_rendu_par_un_wrapper_local_est_credite(self):
+        """Cas reel mesure : `adsengine/module.config.jsx` — un wrapper
+        (`AdsCockpitScreenPrintable`) DECLARE dans le fichier et utilise
+        comme `component:` rend `<AdsCockpitScreen/>`, un AUTRE composant
+        `lazy()` jamais cite dans `routes:` directement."""
+        self.depot.fichier("features/x/module.config.jsx", (
+            "const Ecran = lazy(() => import('./Ecran'))\n"
+            "function EcranImprimable() {\n"
+            "  return <PrintWrapper><Ecran /></PrintWrapper>\n"
+            "}\n"
+            "const config = { key:'x', routes: "
+            "[{ path:'/x', component: EcranImprimable }] }\n"
+            "export default config\n"))
+        self.depot.fichier("features/x/Ecran.jsx", "export default 1\n")
+        self.assertEqual(self.orphelins(), [])
+        self.assertEqual(self.bouchons(), [])
+
+    def test_lazy_passe_en_prop_jsx_est_credite(self):
+        """Cas reel mesure : `router/index.jsx` — `PortalClientLayout` (un
+        `lazy()`) n'est jamais rendu comme balise JSX, seulement passe en
+        prop `shell={PortalClientLayout}`."""
+        self.depot.fichier("features/x/module.config.jsx", (
+            "const Layout = lazy(() => import('./Layout'))\n"
+            "function Ecran() {\n"
+            "  return <WithShell shell={Layout}><Contenu /></WithShell>\n"
+            "}\n"
+            "const config = { key:'x', routes: "
+            "[{ path:'/x', component: Ecran }] }\n"
+            "export default config\n"))
+        self.depot.fichier("features/x/Layout.jsx", "export default 1\n")
+        self.assertEqual(self.orphelins(), [])
+
+    def test_lazy_non_route_et_non_rendu_reste_signale_meme_avec_wrapper(self):
+        """Un wrapper local qui rend UN SEUL composant ne credite QUE
+        celui-la — un troisieme `lazy()` sans lien nulle part reste rouge."""
+        self.depot.fichier("features/x/module.config.jsx", (
+            "const Ecran = lazy(() => import('./Ecran'))\n"
+            "const Fantome = lazy(() => import('./Fantome'))\n"
+            "function EcranImprimable() {\n"
+            "  return <PrintWrapper><Ecran /></PrintWrapper>\n"
+            "}\n"
+            "const config = { key:'x', routes: "
+            "[{ path:'/x', component: EcranImprimable }] }\n"
+            "export default config\n"))
+        self.depot.fichier("features/x/Ecran.jsx", "export default 1\n")
+        self.depot.fichier("features/x/Fantome.jsx", "export default 1\n")
+        self.assertEqual(self.orphelins(),
+                         ["frontend/src/features/x/Fantome.jsx"])
+
+    def test_config_opaque_credite_toujours_tout_avec_ou_sans_wrapper(self):
+        """Non-regression du cas opaque (piege reel rencontre en ecrivant ce
+        correctif : pre-marquer `module.config.jsx` comme « vu » AVANT la BFS
+        empechait par erreur la propagation de ses imports bruts pour une
+        config opaque — casserait le principe anti-faux-positif existant)."""
+        self.depot.fichier("features/x/module.config.jsx", (
+            "import Ecran from './Ecran'\n"
+            "const config = { key:'x', routes: baseRoutes.concat(extra) }\n"
+            "export default config\n"))
+        self.depot.fichier("features/x/Ecran.jsx", "export default 1\n")
+        config = cea.ConfigModule(self.depot.features / "x" / "module.config.jsx")
+        self.assertTrue(config.opaque)
+        self.assertEqual(self.orphelins(), [])
+
+
+# ===========================================================================
 # pages/** — extension PACT149 (07/08/2026)
 # ===========================================================================
 

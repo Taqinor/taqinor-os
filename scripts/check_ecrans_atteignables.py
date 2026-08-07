@@ -80,6 +80,28 @@ CE QU'ELLE FAIT (analyse statique pure, stdlib, sans build, sans node)
    pour une route volontairement sans nav (ex. atteinte par un chemin que la
    garde ne sait pas suivre statiquement).
 
+TROU STRUCTUREL FERME (PACT173, 07/08/2026) — jusqu'ici, ``atteignables()``
+ajoutait ``config.path`` (le ``module.config.jsx`` lui-meme) aux racines de la
+BFS, donc des qu'il etait depile, TOUS ses imports bruts etaient credites —
+y compris un composant lie par ``lazy()`` jamais place dans ``routes:``. Un
+ecran orphelin AURAIT ete invisible pour la garde tant qu'il restait importe
+quelque part dans le fichier, meme sans jamais etre route. Ferme : pour une
+config NON opaque, la BFS part desormais de ``ecrans_routes`` (ce qui est
+REELLEMENT route) plus ``credits_hors_routes`` (un composant lie rendu
+ailleurs dans le MEME fichier — balise JSX ``<X/>`` dans un wrapper local,
+ou prop ``mot={X}`` — jamais son seul VOISINAGE dans le fichier). Le fichier
+``module.config.jsx`` reste marque « vu » (le scan de nav de PACT150 en
+depend) mais ne propage plus ses imports bruts. Sonde le 03/08/2026 avant
+correctif : 4 candidats, 4 FAUX positifs verifies a la main —
+``PortalClientLayout``/``PortalFournisseurLayout``/``PortalPartenaireLayout``
+passes en prop ``shell={…}`` a ``router/index.jsx`` (hors du perimetre de ce
+correctif : ce fichier n'est pas un ``module.config.jsx``, deja credite
+normalement via le graphe ``main.jsx``) et ``AdsCockpitScreen`` rendu par le
+wrapper routE ``AdsCockpitScreenPrintable`` DANS
+``features/adsengine/module.config.jsx`` (couvert par
+``credits_hors_routes`` : ``<AdsCockpitScreen/>`` est une balise JSX dans le
+corps du wrapper).
+
 PRINCIPE ANTI-FAUX-POSITIF (assume, delibere)
 ---------------------------------------------
 Une garde qui crie au loup finit desactivee, et le defaut reviendra. Donc :
@@ -273,6 +295,14 @@ _DECLARATION = re.compile(
     r"""\b(?:function|class|const|let|var)\s+([A-Za-z_$][\w$]*)""")
 _CLE_ROUTES = re.compile(r"\broutes\s*:\s*\[")
 _CHAINE = re.compile(r"""(['"])([^'"\n]*)\1""")
+# PACT173 : un composant lie par `lazy()`/import-defaut peut etre credite
+# SANS passer par `routes:` — rendu par un wrapper local (`<AdsCockpitScreen
+# />` dans une fonction declaree dans le meme fichier) ou passe en prop JSX
+# (`shell={PortalClientLayout}`). Les deux formes reelles mesurees le
+# 03/08/2026.
+_JSX_BALISE = re.compile(r"<([A-Za-z_$][\w$]*)\b")
+_JSX_PROP_IDENTIFIANT = re.compile(
+    r"""\b[A-Za-z_$][\w$]*\s*=\s*\{\s*([A-Za-z_$][\w$]*)\s*\}""")
 
 
 def _bloc_equilibre(masked: str, debut: int) -> int | None:
@@ -345,6 +375,11 @@ class ConfigModule:
         # d'atteignabilite (celui-ci ne sait pas qu'une route existe SANS
         # menu, seulement qu'un fichier est importe).
         self.routes_reelles: list = []
+        # PACT173 : fichiers reels credites SANS passer par `routes:` — un
+        # composant lie par `lazy()`/import-defaut, rendu comme balise JSX
+        # (`<X/>`) ou passe en prop (`shell={X}`) AILLEURS dans ce meme
+        # fichier (wrapper local, layout partage...).
+        self.credits_hors_routes: set = set()
         self._lire()
 
     def _lire(self):
@@ -359,6 +394,18 @@ class ConfigModule:
         for match in _IMPORT_DEFAUT.finditer(code):
             liaisons[match.group(1)] = resoudre(match.group(3), self.path)
         declares = {m.group(1) for m in _DECLARATION.finditer(code)}
+
+        # PACT173 : credite tout `liaisons[...]` reellement utilise ailleurs
+        # dans ce fichier — balise JSX (`<AdsCockpitScreen/>` dans un wrapper
+        # local) ou prop (`shell={PortalClientLayout}`) — AVANT tout retour
+        # anticipe pour opacite, pour qu'une config opaque garde elle aussi
+        # ces credits (elle credite deja tout via `imports_de`, sans effet).
+        utilises = {m.group(1) for m in _JSX_BALISE.finditer(code)}
+        utilises |= {m.group(1) for m in _JSX_PROP_IDENTIFIANT.finditer(code)}
+        self.credits_hors_routes = {
+            liaisons[nom] for nom in utilises
+            if isinstance(liaisons.get(nom), Path)
+        }
 
         cle = _CLE_ROUTES.search(masked)
         if not cle:
@@ -606,14 +653,27 @@ def atteignables() -> tuple:
     """(fichiers atteignables, configs lues)."""
     configs = [ConfigModule(p) for p in sorted(FEATURES.glob("*/module.config.jsx"))]
     racines = set()
+    # PACT173 : un `module.config.jsx` NON opaque reste marque « vu » (le
+    # scan de nav de PACT150 en depend) mais n'entre JAMAIS dans `racines` —
+    # ajoute a `vus` seulement APRES la BFS ci-dessous, pour ne jamais passer
+    # par `pile.extend(imports_de(courant) - vus)` : sinon TOUS ses imports
+    # bruts seraient credites des qu'il se depile, y compris un `lazy()`
+    # jamais place dans `routes:` (le trou structurel que cette tache ferme :
+    # sonde le 03/08/2026, 4 candidats, 0 vrai defaut — voir docstring du
+    # module). Une config OPAQUE, elle, reste dans `racines`/la BFS comme
+    # avant : on ne sait pas lire ses routes, principe anti-faux-positif —
+    # on credite tout plutot que d'accuser a tort.
+    vus_apres_bfs = set()
     if ENTRY.is_file():
         racines.add(ENTRY.resolve())
     for config in configs:
-        racines.add(config.path.resolve())
         if config.opaque:
-            racines |= imports_de(config.path)
+            racines.add(config.path.resolve())
         else:
+            if config.path.is_file():
+                vus_apres_bfs.add(config.path.resolve())
             racines |= {p for p in config.ecrans_routes if p is not None}
+            racines |= config.credits_hors_routes
     vus = set()
     pile = [p for p in racines if p.is_file()]
     while pile:
@@ -622,6 +682,7 @@ def atteignables() -> tuple:
             continue
         vus.add(courant)
         pile.extend(imports_de(courant) - vus)
+    vus |= vus_apres_bfs
     return vus, configs
 
 
