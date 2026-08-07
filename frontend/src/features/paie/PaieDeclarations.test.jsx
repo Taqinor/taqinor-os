@@ -96,3 +96,31 @@ describe('PaieDeclarations — Charges & GL (WIR37, journal de paie → comptabi
       expect(await screen.findByText(/PAIE-2026-07/)).toBeInTheDocument()
     })
 })
+
+describe('PaieDeclarations — Cumuls annuels (PACT154, reprise go-live)', () => {
+  it('affiche le compte réel de lignes du dry-run (total_lignes, jamais 0 par défaut)', async () => {
+    // dry_run_reprise_cumuls (apps/paie/services.py:6322-6356) renvoie
+    // {colonnes, mapping, non_mappees, total_lignes, matricules_inconnus,
+    // apercu} — jamais un champ `lignes`.
+    paieApi.repriseDryRun.mockResolvedValueOnce({
+      data: {
+        colonnes: ['matricule', 'annee', 'brut'],
+        mapping: { matricule: 0, annee: 1, brut: 2 },
+        non_mappees: [],
+        total_lignes: 137,
+        matricules_inconnus: [],
+        apercu: [{ matricule: 'M001', annee: 2025, brut: 12000 }],
+      },
+    })
+    wrap(<PaieDeclarations />)
+    await userEvent.click(screen.getByRole('tab', { name: 'Cumuls annuels' }))
+
+    const input = document.querySelector('input[type="file"]')
+    const file = new File(['matricule,annee,brut\nM001,2025,12000'], 'cumuls.csv', { type: 'text/csv' })
+    await userEvent.upload(input, file)
+    await userEvent.click(await screen.findByRole('button', { name: /Aperçu \(dry-run\)/ }))
+
+    await waitFor(() => expect(paieApi.repriseDryRun).toHaveBeenCalledWith(file))
+    expect(await screen.findByText('137 ligne(s) à importer.')).toBeInTheDocument()
+  })
+})
