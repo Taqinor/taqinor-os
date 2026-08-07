@@ -628,10 +628,10 @@ export default function VehiculeDetail({ vehicule, onClose, onChanged }) {
               render={(d) => (
                 <DefinitionList
                   items={[
-                    { term: 'Consommation moyenne', description: d.consommation_moyenne != null ? `${formatNumber(d.consommation_moyenne, { decimals: 1 })} L/100km` : '—' },
+                    { term: 'Consommation moyenne', description: d.conso_l_100km != null ? `${formatNumber(d.conso_l_100km, { decimals: 1 })} L/100km` : '—' },
                     { term: 'CO₂ (g/km)', description: d.co2_g_km != null ? `${formatNumber(d.co2_g_km)} g/km` : '—' },
-                    { term: 'CO₂ total', description: d.co2_total_kg != null ? `${formatNumber(d.co2_total_kg)} kg` : '—' },
-                    { term: 'Score éco', description: d.eco_score != null ? formatNumber(d.eco_score) : '—' },
+                    { term: 'CO₂ total', description: d.co2_kg != null ? `${formatNumber(d.co2_kg)} kg` : '—' },
+                    { term: 'Score éco', description: d.score_eco != null ? formatNumber(d.score_eco) : '—' },
                   ]}
                 />
               )}

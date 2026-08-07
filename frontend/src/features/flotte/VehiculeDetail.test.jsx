@@ -21,7 +21,8 @@ beforeAll(() => {
 
 const {
   changerStatut, ceder, vehiculeHistorique, vehiculeLedger, contratsList,
-  actifsList, detenteursCourants, remisesList, remisesCreate, conducteursList, empty,
+  actifsList, detenteursCourants, remisesList, remisesCreate, conducteursList,
+  vehiculeEcoConduite, empty,
 } = vi.hoisted(() => ({
   changerStatut: vi.fn(() => Promise.resolve({ data: { id: 1, statut: 'actif' } })),
   ceder: vi.fn(() => Promise.resolve({ data: { id: 1, statut: 'vendu' } })),
@@ -35,6 +36,7 @@ const {
   remisesList: vi.fn(() => Promise.resolve({ data: [] })),
   remisesCreate: vi.fn(() => Promise.resolve({ data: { id: 5 } })),
   conducteursList: vi.fn(() => Promise.resolve({ data: [{ id: 1, nom: 'Karim' }] })),
+  vehiculeEcoConduite: vi.fn(() => Promise.resolve({ data: null })),
   empty: () => Promise.resolve({ data: null }),
 }))
 
@@ -46,7 +48,7 @@ vi.mock('../../api/flotteApi', () => ({
     vehiculeLedger: (...args) => vehiculeLedger(...args),
     vehiculeTco: empty,
     vehiculeTsav: empty,
-    vehiculeEcoConduite: empty,
+    vehiculeEcoConduite: (...args) => vehiculeEcoConduite(...args),
     vehiculeAmortissement: empty,
     contratsVehicule: { list: (...args) => contratsList(...args) },
     actifs: {
@@ -140,6 +142,28 @@ describe('VehiculeDetail — Accessoires (XFLT20)', () => {
     await waitFor(() => expect(detenteursCourants).toHaveBeenCalledWith(77))
     await waitFor(() => expect(remisesList).toHaveBeenCalledWith({ actif_flotte: 77 }))
     await waitFor(() => expect(screen.getByText('Karim', { exact: false })).toBeInTheDocument())
+  })
+})
+
+describe('VehiculeDetail — Éco-conduite (PACT21)', () => {
+  it('affiche les valeurs réelles du sélecteur eco_conduite_co2 (score_eco/co2_kg/conso_l_100km), pas des tirets', async () => {
+    const user = userEvent.setup()
+    vehiculeEcoConduite.mockImplementationOnce(() => Promise.resolve({
+      data: {
+        // Forme réelle de apps/flotte/selectors.eco_conduite_co2 —
+        // jamais les noms eco_score/co2_total_kg/consommation_moyenne
+        // qu'écrivait l'écran avant PACT21.
+        score_eco: 87.5, co2_kg: 42.3, conso_l_100km: 6.8, co2_g_par_km: 120,
+      },
+    }))
+    withProviders(<VehiculeDetail vehicule={VEHICULE} onClose={() => {}} />)
+
+    await user.click(screen.getByRole('tab', { name: 'Éco-conduite' }))
+    await waitFor(() => expect(vehiculeEcoConduite).toHaveBeenCalledWith(42))
+
+    await waitFor(() => expect(screen.getByText('6,8 L/100km', { exact: false })).toBeInTheDocument())
+    expect(screen.getByText('42,3 kg', { exact: false })).toBeInTheDocument()
+    expect(screen.getByText('87,5', { exact: false })).toBeInTheDocument()
   })
 })
 
