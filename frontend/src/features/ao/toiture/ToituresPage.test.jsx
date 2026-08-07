@@ -385,3 +385,110 @@ describe('ToituresPage — atelier de traçage (PACT166)', () => {
     ).toBe('0:0'))
   })
 })
+
+/* ============================================================================
+   PACT167 — la BOÎTE À OUTILS de l'atelier (calage, tracé, obstacles, zones,
+   cotes, import).
+   ----------------------------------------------------------------------------
+   Seize fichiers d'outils de relevé étaient livrés et importés par personne.
+   Ce que ces tests protègent :
+     1. chaque famille d'outils est RÉELLEMENT montée dans un onglet de la boîte
+        à outils, pas seulement importée ;
+     2. le tracé écrit dans le MÊME contour que les deux autres voies — un outil
+        qui garderait son tracé pour lui serait un atelier à deux vérités ;
+     3. les refus sont MOTIVÉS et LISIBLES (« prête à publier » n'existe pas au
+        serveur) — jamais un bouton qui ne fait rien sans le dire.
+
+   Deux outils sont volontairement chargés en `lazy()` (`UnderlayPdf` fabrique
+   un worker pdf.js au chargement du module, `RepriseCarte` tire l'alias
+   `@roofpro` absent de la config Vitest) : l'onglet « Import » n'est donc pas
+   ouvert ici — un test qui l'ouvrirait paierait ces deux modules.
+   ========================================================================== */
+
+const TOITURE_VIERGE = { ...TOITURE, contour_local_m: [] }
+
+async function ouvrirAtelier(toiture) {
+  mocks.toituresList.mockResolvedValue({ data: [toiture] })
+  render(<ToituresPage affaireId={7} />)
+  await screen.findByText('Toiture atelier')
+}
+
+describe('ToituresPage — boîte à outils de l’atelier (PACT167)', () => {
+  it('onglet « Calage » : fond de calque image + calibration deux points', async () => {
+    await ouvrirAtelier(TOITURE_VIERGE)
+
+    await userEvent.click(screen.getByRole('tab', { name: 'Calage' }))
+
+    expect(screen.getByLabelText('Plan à caler (image ou PDF)')).toBeInTheDocument()
+    expect(document.querySelector('[data-ao-underlay="image"]')).not.toBeNull()
+    expect(document.querySelector('[data-ao-calibration]')).not.toBeNull()
+    // Sans fond de calque, l'échelle n'est pas « inconnue » : elle est SANS OBJET.
+    expect(screen.getByText('Tracé direct')).toBeInTheDocument()
+  })
+
+  it('onglet « Tracé » : ce que l’outil trace devient LE contour de l’atelier', async () => {
+    await ouvrirAtelier(TOITURE_VIERGE)
+
+    await userEvent.click(screen.getByRole('tab', { name: 'Tracé' }))
+    expect(document.querySelector('[data-ao-outil-trace]')).not.toBeNull()
+
+    await userEvent.type(screen.getByLabelText('Longueur (m)'), '10')
+    await userEvent.click(document.querySelector('[data-ao-trace-direction="0"]'))
+
+    // Retour à la voie clavier : le contour tracé y est, sur la MÊME géométrie.
+    await userEvent.click(screen.getByRole('tab', { name: 'Géométrie' }))
+    await waitFor(() => expect(
+      document.querySelector('[data-tableau-geometrie]').dataset.tableauGeometrie,
+    ).toBe('2:0'))
+    expect(screen.getByLabelText('x (m) — Sommet B')).toHaveValue('10')
+  })
+
+  it('onglet « Obstacles » : planche de pose + liste synchronisée', async () => {
+    await ouvrirAtelier(TOITURE_TRACEE)
+
+    await userEvent.click(screen.getByRole('tab', { name: 'Obstacles' }))
+
+    expect(document.querySelector('[data-ao-outils-obstacles]')).not.toBeNull()
+    expect(document.querySelector('[data-ao-inspecteur]')).not.toBeNull()
+    expect(document.querySelector('[data-ao-obstacles]')).not.toBeNull()
+  })
+
+  it('un obstacle saisi au TABLEAU apparaît dans la liste d’obstacles (une seule vérité)', async () => {
+    await ouvrirAtelier(TOITURE_TRACEE)
+
+    await userEvent.click(screen.getByRole('button', { name: 'Ajouter un obstacle' }))
+    await waitFor(() => expect(
+      document.querySelector('[data-tableau-geometrie]').dataset.tableauGeometrie,
+    ).toBe('4:1'))
+
+    await userEvent.click(screen.getByRole('tab', { name: 'Obstacles' }))
+    await waitFor(() => expect(
+      document.querySelector('[data-ao-obstacles]').dataset.aoObstacles,
+    ).toBe('1'))
+  })
+
+  it('« prête à publier » → REFUS motivé et lisible (le serveur ne modélise pas cet état)', async () => {
+    await ouvrirAtelier(TOITURE_TRACEE)
+
+    await userEvent.click(screen.getByRole('tab', { name: 'Obstacles' }))
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Marquer la toiture prête à publier' }),
+    )
+
+    const note = await screen.findByText(/ne porte AUCUN état/)
+    expect(note).toBeInTheDocument()
+    expect(document.querySelector('[data-ao-atelier-note]')).not.toBeNull()
+  })
+
+  it('onglets « Zones » et « Cotes » : les outils sont montés, pas seulement importés', async () => {
+    await ouvrirAtelier(TOITURE_TRACEE)
+
+    await userEvent.click(screen.getByRole('tab', { name: 'Zones' }))
+    expect(document.querySelector('[data-ao-zones]')).not.toBeNull()
+
+    await userEvent.click(screen.getByRole('tab', { name: 'Cotes' }))
+    expect(document.querySelector('[data-ao-chaines]')).not.toBeNull()
+    expect(document.querySelector('[data-ao-fermetures]')).not.toBeNull()
+    expect(document.querySelector('[data-ao-points-lever]')).not.toBeNull()
+  })
+})
