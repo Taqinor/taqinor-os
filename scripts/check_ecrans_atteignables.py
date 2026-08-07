@@ -43,8 +43,14 @@ CE QU'ELLE FAIT (analyse statique pure, stdlib, sans build, sans node)
    ``import()`` dynamique des ``lazy()``). Un sous-composant — une ligne de
    tableau, un badge, un tiroir — est donc credite PAR SON PARENT, comme un
    utilisateur l'atteint reellement.
-2. CLASSE 1 « ecran inatteignable » : tout ``.jsx`` non-test sous
-   ``frontend/src/features/<app>/`` que ce graphe n'atteint pas.
+2. CLASSE 1 « ecran inatteignable » : tout ``.jsx``/``.tsx`` non-test sous
+   ``frontend/src/features/<app>/`` OU ``frontend/src/pages/<dossier>/`` que
+   ce graphe n'atteint pas (PACT149, 07/08/2026 : avant cette date, seul
+   ``features/`` etait inventorie — ``pages/`` etait construit par le meme
+   graphe mais jamais compare a l'inventaire, un angle mort permanent. Cas
+   reel trouve et corrige le jour meme : ``pages/credit/ExpositionCreditPage
+   .jsx``, jumeau perime du vivant ``features/credit/ExpositionCreditPage
+   .jsx``, jamais branche, invisible pour toujours sans cette extension).
 3. CLASSE 2 « placeholder devant un ecran reel » — le cas le plus grave, le
    travail est fait ET cache : une route ou un onglet qui rend un composant de
    remplissage (squelette defini dans le module.config, ``TabPlaceholder``,
@@ -65,6 +71,22 @@ Une garde qui crie au loup finit desactivee, et le defaut reviendra. Donc :
   - les fichiers de test ne sont jamais des points d'entree : un ecran
     importe uniquement par son propre test reste inatteignable, et c'est la
     verite.
+
+PORTEE — CE QU'ELLE NE COUVRE PAS, DELIBEREMENT (PACT149)
+-----------------------------------------------------------
+``features/**`` et ``pages/**`` sont les deux SEULS points d'entree utilisateur
+du frontend (le routeur n'en connait pas d'autre). ``frontend/src/ui/`` et
+``frontend/src/components/`` sont des BIBLIOTHEQUES de composants partages,
+jamais des ecrans : la quasi-totalite de leur contenu est legitimement sans
+route propre (une cellule de tableau, un bouton). Les y inclure produirait une
+explosion de faux positifs, l'exact defaut que la garde interdit (voir
+PRINCIPE ANTI-FAUX-POSITIF). L'ilot mort verifie le 07/08/2026 dans
+``frontend/src/ui/datatable/`` (BulkEditDialog.jsx, BulkNoteDialog.jsx,
+ViewBuilderWizard.jsx, FilterBuilder.jsx) et ``frontend/src/components/
+TagChipInput.jsx`` reste donc HORS PERIMETRE de cette garde par construction
+— PACT149 l'a arbitre ainsi plutot que d'etendre l'inventaire a ces dossiers ;
+son sort (brancher ou supprimer) est traite fichier par fichier par une tache
+dediee (PACT174), pas par une extension structurelle de cette garde.
 
 BASE DE REFERENCE — ELLE NE PEUT QUE RETRECIR
 ---------------------------------------------
@@ -92,11 +114,18 @@ from check_api_contract import scan_js
 ROOT = Path(__file__).resolve().parent.parent
 FRONT_SRC = ROOT / "frontend" / "src"
 FEATURES = FRONT_SRC / "features"
+# PACT149 : deuxieme dossier inventorie, au meme titre que FEATURES — voir
+# PORTEE ci-dessus. Route directement par router/index.jsx, jamais par un
+# module.config.jsx.
+PAGES = FRONT_SRC / "pages"
 ENTRY = FRONT_SRC / "main.jsx"
 BASELINE_PATH = ROOT / "scripts" / "ecrans_atteignables_allow.txt"
 
 # Extensions qu'un specificateur relatif peut designer sans etre ecrit.
-EXTENSIONS = (".jsx", ".js", ".mjs")
+# ``.tsx`` (PACT149) : aucun fichier de ce type n'existe encore au 07/08/2026
+# dans le depot — ajoute par anticipation pour qu'un futur ecran TypeScript
+# soit resolu et inventorie comme les autres, jamais un angle mort silencieux.
+EXTENSIONS = (".jsx", ".tsx", ".js", ".mjs")
 
 # Un fichier de test n'est JAMAIS un chemin d'acces utilisateur.
 TEST_MARKERS = (".test.", ".spec.")
@@ -465,13 +494,49 @@ def atteignables() -> tuple:
     return vus, configs
 
 
-def ecrans_de_features() -> list:
+def _ecrans_sous(dossier: Path) -> list:
+    """Tous les ``.jsx``/``.tsx`` non-test d'un dossier (hors module.config)."""
     ecrans = []
-    for path in sorted(FEATURES.rglob("*.jsx")):
-        if est_test(path) or path.name == "module.config.jsx":
-            continue
-        ecrans.append(path.resolve())
-    return ecrans
+    for extension in (".jsx", ".tsx"):
+        for path in sorted(dossier.rglob(f"*{extension}")):
+            if est_test(path) or path.name == "module.config.jsx":
+                continue
+            ecrans.append(path.resolve())
+    return sorted(set(ecrans))
+
+
+def ecrans_de_features() -> list:
+    return _ecrans_sous(FEATURES)
+
+
+def ecrans_de_pages() -> list:
+    """Ecrans routes directement par router/index.jsx (PACT149).
+
+    ``pages/`` n'a pas de module.config.jsx : verifie sans sous-dossier
+    technique (``components``/``hooks``/``utils``...) contrairement a
+    ``features/<app>/`` — chaque fichier y est donc soit un ecran atteint
+    (par router/index.jsx ou par un ecran qu'il monte), soit du code mort.
+    """
+    return _ecrans_sous(PAGES)
+
+
+def ecrans_livres() -> list:
+    """L'inventaire complet des ecrans livres : features/** + pages/**."""
+    return sorted(set(ecrans_de_features()) | set(ecrans_de_pages()))
+
+
+def app_de(path: Path) -> str:
+    """Etiquette d'app pour le regroupement --stats (PACT149).
+
+    Un ecran ``features/<app>/...`` garde son nom d'app tel quel (compatible
+    avec l'usage existant) ; un ecran ``pages/<dossier>/...`` est etiquete
+    ``pages/<dossier>`` — jamais le meme bac qu'une app features du meme nom
+    (``features/credit`` et ``pages/credit`` sont deux choses distinctes).
+    """
+    try:
+        return path.relative_to(FEATURES).parts[0]
+    except ValueError:
+        return f"pages/{path.relative_to(PAGES).parts[0]}"
 
 
 def relatif(path: Path) -> str:
@@ -480,13 +545,12 @@ def relatif(path: Path) -> str:
 
 def analyse():
     vus, configs = atteignables()
-    ecrans = ecrans_de_features()
+    ecrans = ecrans_livres()
     orphelins = [p for p in ecrans if p not in vus]
 
     constats = []
     for path in orphelins:
-        app = path.relative_to(FEATURES).parts[0]
-        constats.append(("inatteignable", relatif(path), app, ""))
+        constats.append(("inatteignable", relatif(path), app_de(path), ""))
 
     index_par_app = {}
     for config in configs:
@@ -522,6 +586,8 @@ def analyse():
         "configs": len(configs),
         "opaques": sum(1 for c in configs if c.opaque),
         "noeuds": len(vus),
+        "ecrans_features": len(ecrans_de_features()),
+        "ecrans_pages": len(ecrans_de_pages()),
     }
     return constats, stats
 
@@ -614,16 +680,18 @@ def main(argv=None) -> int:
     constats, stats = analyse()
 
     if args.stats:
-        print(f"Ecrans .jsx sous frontend/src/features : {stats['ecrans']} "
-              f"({stats['atteignables']} atteignables, {stats['orphelins']} non).")
+        print(f"Ecrans .jsx/.tsx sous frontend/src/{{features,pages}} : "
+              f"{stats['ecrans']} ({stats['atteignables']} atteignables, "
+              f"{stats['orphelins']} non) — dont {stats['ecrans_features']} "
+              f"en features/, {stats['ecrans_pages']} en pages/.")
         print(f"module.config.jsx lus : {stats['configs']} "
               f"({stats['opaques']} opaque(s), credites en entier). "
               f"Graphe : {stats['noeuds']} module(s) atteints.")
         compte = _par_app(constats)
         if compte:
             totaux: dict[str, int] = {}
-            for path in ecrans_de_features():
-                app = path.relative_to(FEATURES).parts[0]
+            for path in ecrans_livres():
+                app = app_de(path)
                 totaux[app] = totaux.get(app, 0) + 1
             print("\nEcrans inatteignables par app :")
             for app, nombre in sorted(compte.items(), key=lambda kv: (-kv[1], kv[0])):
@@ -687,8 +755,8 @@ def main(argv=None) -> int:
               "NE LA DESACTIVEZ PAS.")
         return 1
 
-    print(f"OK : {stats['ecrans']} ecran(s) sous features, aucun NOUVEL ecran "
-          f"inatteignable ni placeholder devant un ecran reel "
+    print(f"OK : {stats['ecrans']} ecran(s) sous features/+pages/, aucun "
+          f"NOUVEL ecran inatteignable ni placeholder devant un ecran reel "
           f"({len(base)} dette(s) historique(s) gelee(s), "
           f"dont {len(corriges)} desormais branchee(s)).")
     if corriges:
