@@ -26,6 +26,7 @@ const mocks = vi.hoisted(() => ({
   affairesList: vi.fn(),
   toituresList: vi.fn(),
   toituresCreate: vi.fn(),
+  toituresUpdate: vi.fn(),
   batimentsList: vi.fn(),
 }))
 const toastMocks = vi.hoisted(() => ({ success: vi.fn(), error: vi.fn() }))
@@ -33,7 +34,11 @@ const toastMocks = vi.hoisted(() => ({ success: vi.fn(), error: vi.fn() }))
 vi.mock('../../../api/aoApi', () => ({
   default: {
     affaires: { list: mocks.affairesList },
-    toitures: { list: mocks.toituresList, create: mocks.toituresCreate },
+    toitures: {
+      list: mocks.toituresList,
+      create: mocks.toituresCreate,
+      update: mocks.toituresUpdate,
+    },
     batiments: { list: mocks.batimentsList },
   },
 }))
@@ -68,6 +73,7 @@ beforeEach(() => {
   mocks.toituresList.mockResolvedValue({ data: [TOITURE] })
   mocks.batimentsList.mockResolvedValue({ data: BATIMENTS })
   mocks.toituresCreate.mockResolvedValue({ data: { id: 99 } })
+  mocks.toituresUpdate.mockResolvedValue({ data: { id: 41 } })
 })
 
 /* Ouvre le wizard, remplit ses deux champs et valide. Le wizard se ferme
@@ -239,5 +245,143 @@ describe('ToituresPage — création via NouvelleToitureWizard', () => {
 
     expect(await screen.findByText(/Ce bâtiment n’existe pas dans votre société./))
       .toBeInTheDocument()
+  })
+})
+
+/* ============================================================================
+   PACT166 — l'atelier de traçage, assemblé et ATTEIGNABLE.
+   ----------------------------------------------------------------------------
+   Six composants d'atelier étaient livrés et importés par personne : la page
+   affichait à leur place un `EmptyState` disant que le canvas existait « dans
+   une autre lane ». Ce que ces tests protègent :
+     1. l'atelier est RÉELLEMENT monté sur écran large (canvas + tableau de
+        géométrie + barre d'état), et l'ancien renvoi à une autre lane a
+        disparu ;
+     2. le contour du SERVEUR (`contour_local_m`, liste de `[x, y]`) est chargé
+        dans la voie clavier — un atelier qui repartirait d'un contour vide
+        effacerait le relevé au premier enregistrement ;
+     3. « Enregistrer » écrit `contour_local_m` et RIEN d'autre : jamais
+        `surface_m2` (recalculée par le serveur), jamais `company` ;
+     4. l'historique est PARTAGÉ : un ajout fait au tableau s'annule depuis la
+        barre d'actions de la coquille.
+   ========================================================================== */
+
+const TOITURE_TRACEE = {
+  ...TOITURE,
+  contour_local_m: [[0, 0], [10, 0], [10, 5], [0, 5]],
+}
+
+describe('ToituresPage — atelier de traçage (PACT166)', () => {
+  it('monte l’atelier (canvas + géométrie + barre d’état) au lieu du renvoi à une autre lane', async () => {
+    mocks.toituresList.mockResolvedValue({ data: [TOITURE_TRACEE] })
+    render(<ToituresPage affaireId={7} />)
+    await screen.findByText('Toiture atelier')
+
+    expect(await screen.findByLabelText(/Atelier de traçage — contour de la toiture/))
+      .toBeInTheDocument()
+    expect(document.querySelector('[data-ao-canvas]')).not.toBeNull()
+    expect(document.querySelector('[data-tableau-geometrie]')).not.toBeNull()
+    expect(screen.getByRole('toolbar', { name: "Outils de l'atelier" })).toBeInTheDocument()
+    expect(screen.getByRole('status', { name: "État de l'atelier" })).toBeInTheDocument()
+
+    // Le message qui renvoyait le traçage à « sa propre lane » n'existe plus.
+    expect(screen.queryByText(/livré par sa propre lane/)).toBeNull()
+  })
+
+  it('rend la légende de provenance avec le composant qui en est la source (ProvenanceBadge)', async () => {
+    mocks.toituresList.mockResolvedValue({ data: [TOITURE_TRACEE] })
+    render(<ToituresPage affaireId={7} />)
+    await screen.findByText('Toiture atelier')
+
+    expect(document.querySelector('[data-ao-legende-provenance]')).not.toBeNull()
+    for (const libelle of ['Mesuré', 'À confirmer', 'Plan / déduit', 'Deviné']) {
+      expect(screen.getByText(libelle)).toBeInTheDocument()
+    }
+  })
+
+  it('charge le contour du SERVEUR dans la voie clavier (jamais un contour vide)', async () => {
+    mocks.toituresList.mockResolvedValue({ data: [TOITURE_TRACEE] })
+    render(<ToituresPage affaireId={7} />)
+    await screen.findByText('Toiture atelier')
+
+    // 4 sommets, 0 obstacle.
+    expect(document.querySelector('[data-tableau-geometrie]').dataset.tableauGeometrie)
+      .toBe('4:0')
+    expect(screen.getByLabelText('x (m) — Sommet B')).toHaveValue('10')
+    expect(screen.getByLabelText('y (m) — Sommet C')).toHaveValue('5')
+  })
+
+  it('« Enregistrer » écrit contour_local_m en [x, y] — jamais surface_m2, jamais company', async () => {
+    mocks.toituresList.mockResolvedValue({ data: [TOITURE_TRACEE] })
+    render(<ToituresPage affaireId={7} />)
+    await screen.findByText('Toiture atelier')
+
+    await userEvent.click(screen.getByRole('button', { name: 'Enregistrer' }))
+
+    await waitFor(() => expect(mocks.toituresUpdate).toHaveBeenCalled())
+    const [id, corps] = mocks.toituresUpdate.mock.calls[0]
+    expect(id).toBe(41)
+    expect(corps).toEqual({ contour_local_m: [[0, 0], [10, 0], [10, 5], [0, 5]] })
+    expect(corps).not.toHaveProperty('surface_m2')
+    expect(corps).not.toHaveProperty('company')
+  })
+
+  it('refus du serveur à l’enregistrement → son motif est AFFICHÉ, jamais un échec muet', async () => {
+    mocks.toituresList.mockResolvedValue({ data: [TOITURE_TRACEE] })
+    mocks.toituresUpdate.mockRejectedValue({
+      response: { data: { contour_local_m: ['Le contour se croise (nœud papillon).'] } },
+    })
+    render(<ToituresPage affaireId={7} />)
+    await screen.findByText('Toiture atelier')
+
+    await userEvent.click(screen.getByRole('button', { name: 'Enregistrer' }))
+
+    expect(await screen.findByText(/Le contour se croise/)).toBeInTheDocument()
+  })
+
+  it('historique PARTAGÉ : un sommet ajouté au tableau s’annule depuis la coquille', async () => {
+    mocks.toituresList.mockResolvedValue({ data: [TOITURE_TRACEE] })
+    render(<ToituresPage affaireId={7} />)
+    await screen.findByText('Toiture atelier')
+
+    expect(screen.getByRole('button', { name: 'Annuler' })).toBeDisabled()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Ajouter un sommet' }))
+    await waitFor(() => expect(
+      document.querySelector('[data-tableau-geometrie]').dataset.tableauGeometrie,
+    ).toBe('5:0'))
+    expect(screen.getByRole('button', { name: 'Annuler' })).toBeEnabled()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Annuler' }))
+    await waitFor(() => expect(
+      document.querySelector('[data-tableau-geometrie]').dataset.tableauGeometrie,
+    ).toBe('4:0'))
+  })
+
+  it('aucune toiture → état vide EXPLICITE, jamais un atelier vide qui a l’air prêt', async () => {
+    mocks.toituresList.mockResolvedValue({ data: [] })
+    render(<ToituresPage affaireId={7} />)
+    await screen.findByText('Aucune toiture relevée pour cette affaire.')
+
+    expect(document.querySelector('[data-ao-canvas]')).toBeNull()
+    expect(screen.getByText(/Relevez une première toiture/)).toBeInTheDocument()
+  })
+
+  it('plusieurs toitures → un sélecteur ouvre l’autre toiture dans l’atelier', async () => {
+    const AUTRE = { ...TOITURE, id: 42, designation: 'Toiture bureaux', contour_local_m: [] }
+    mocks.toituresList.mockResolvedValue({ data: [TOITURE_TRACEE, AUTRE] })
+    render(<ToituresPage affaireId={7} />)
+    // Deux toitures : « Toiture atelier » apparaît en carte ET en option du
+    // sélecteur — on attend donc le sélecteur lui-même, jamais un texte ambigu.
+    await screen.findByLabelText('Toiture')
+
+    expect(document.querySelector('[data-tableau-geometrie]').dataset.tableauGeometrie)
+      .toBe('4:0')
+
+    await userEvent.selectOptions(screen.getByLabelText('Toiture'), '42')
+
+    await waitFor(() => expect(
+      document.querySelector('[data-tableau-geometrie]').dataset.tableauGeometrie,
+    ).toBe('0:0'))
   })
 })
