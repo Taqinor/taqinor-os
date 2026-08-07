@@ -529,6 +529,17 @@ jobs:
       # pure, sans base de données ni dépendance, comme les autres check_*.py.
       - name: Check tâches de plan (aucune ne commande du travail mort)
         run: python scripts/check_taches_cablage.py
+      # PACT12 — une tâche dont `Files:` nomme un fichier backend ET un fichier
+      # frontend ANNONCE deux moitiés. En juillet 2026,
+      # docs/FRONTEND_GAP_PLAN.md a constaté que « the paired frontend half of
+      # each task was never built, EVEN THOUGH most tasks named a `frontend/`
+      # file in their own Files: line » : la ligne annonçait les deux moitiés
+      # et RIEN ne vérifiait qu'elles avaient été touchées toutes les deux.
+      # 147 tâches de rattrapage écrites, 145 encore ouvertes un mois plus tard.
+      - name: Check tâches mixtes (une moitié livrée ne peut pas être cochée)
+        run: python scripts/check_plan_taches_mixtes.py
+      - name: Test the mixed-task checker itself (PACT12)
+        run: python -m unittest scripts.tests.test_check_plan_taches_mixtes -v
       - name: Test the plan-task wiring checker itself
         run: python -m unittest scripts.tests.test_check_taches_cablage -v
       - name: Check no raw JSON / bare error object is shown to the user (EZ16)
