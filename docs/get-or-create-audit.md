@@ -49,7 +49,7 @@ Généré par `python scripts/check_get_or_create.py`. Chaque appel liste ses cl
 | `backend/django_core/apps/adsengine/whatsapp_webhook.py:203` | update_or_create | CtwaReferral.objects | company, wa_message_id |
 | `backend/django_core/apps/ai_governance/drift.py:118` | update_or_create | DriftSnapshot.objects | company, date, modele |
 | `backend/django_core/apps/ao/calepinage_service.py:457` | update_or_create | VarianteCalepinage.objects | company, nom, parent, role, toiture |
-| `backend/django_core/apps/ao/calepinage_views.py:300` | get_or_create | IdempotencyRecord.objects | company, endpoint, key |
+| `backend/django_core/apps/ao/calepinage_views.py:361` | get_or_create | IdempotencyRecord.objects | company, endpoint, key |
 | `backend/django_core/apps/ao/management/commands/seed_ao_demo.py:283` | get_or_create | ReleveAO.objects | appel_offre, company, date_visite |
 | `backend/django_core/apps/ao/management/commands/seed_ao_demo.py:292` | update_or_create | BatimentAO.objects | appel_offre, code, company |
 | `backend/django_core/apps/ao/management/commands/seed_ao_demo.py:299` | update_or_create | ToitureAO.objects | batiment, code_document, company |
@@ -73,7 +73,7 @@ Généré par `python scripts/check_get_or_create.py`. Chaque appel liste ses cl
 | `backend/django_core/apps/chat/views.py:74` | get_or_create | ConversationMember.objects | conversation, user |
 | `backend/django_core/apps/chat/views.py:83` | get_or_create | ConversationMember.objects | conversation, user |
 | `backend/django_core/apps/chat/views.py:171` | get_or_create | ConversationMember.objects | conversation, user |
-| `backend/django_core/apps/compta/receivers.py:285` | get_or_create | EnqueteNPS.objects | chantier_id, company |
+| `backend/django_core/apps/compta/receivers.py:289` | get_or_create | EnqueteNPS.objects | chantier_id, company |
 | `backend/django_core/apps/compta/services.py:231` | get_or_create | PlanComptable.objects | code, company |
 | `backend/django_core/apps/compta/services.py:236` | get_or_create | CompteComptable.objects | company, numero |
 | `backend/django_core/apps/compta/services.py:271` | get_or_create | Journal.objects | code, company |

@@ -58,10 +58,6 @@
     detail:inconnu, postees:inconnu
 - frontend/src/api/comptaApi.js :: genererFnp -> /api/django/compta/provisions-periode/generer-fnp
     detail:inconnu, postees:inconnu
-- frontend/src/api/comptaApi.js :: genererIa -> /api/django/compta/campagnes/generer-ia
-    configured:inconnu, corps:inconnu, langue:inconnu, objet:inconnu, ok:inconnu, source:inconnu
-- frontend/src/api/comptaApi.js :: genererIaDisponible -> /api/django/compta/campagnes/generer-ia-disponible
-    configured:inconnu
 - frontend/src/api/comptaApi.js :: genererOd -> /api/django/compta/taches-cloture/<>/generer-od
     detail:inconnu, ecriture_id:inconnu, tache:inconnu
 - frontend/src/api/comptaApi.js :: ocr -> /api/django/compta/notes-frais/ocr
@@ -330,6 +326,10 @@
     corps_fusionne:inconnu, detail:texte
 - frontend/src/api/marketingApi.js :: cloturerPresences -> /api/django/marketing/evenements-marketing/<>/cloturer-presences
     absents_marques:inconnu
+- frontend/src/api/marketingApi.js :: genererIa -> /api/django/marketing/campagnes/generer-ia
+    configured:inconnu, corps:inconnu, langue:inconnu, objet:inconnu, ok:inconnu, source:inconnu
+- frontend/src/api/marketingApi.js :: genererIaDisponible -> /api/django/marketing/campagnes/generer-ia-disponible
+    configured:inconnu
 - frontend/src/api/marketingApi.js :: participants -> /api/django/marketing/sequences-relance/<>/participants
     nb_actifs:inconnu, participants:inconnu
 - frontend/src/api/marketingApi.js :: planifier -> /api/django/marketing/sequences-relance/<>/planifier

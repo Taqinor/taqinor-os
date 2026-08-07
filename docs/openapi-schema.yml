@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 8476, operations: 15443, components: 4366}
+counts: {paths: 8494, operations: 15469, components: 4385}
 securitySchemes:
 - cookieJWT
 - publicApiKey
@@ -7438,12 +7438,24 @@ operations:
 - patch /api/django/uxviews/saved-views/{id}/ -> django_uxviews_saved_views_partial_update
 - put /api/django/uxviews/saved-views/{id}/ -> django_uxviews_saved_views_update
 - post /api/django/uxviews/saved-views/{id}/definir-par-defaut-role/ -> django_uxviews_saved_views_definir_par_defaut_role_create
+- get /api/django/veille_ao/acheteurs-cibles/ -> django_veille_ao_acheteurs_cibles_list
+- post /api/django/veille_ao/acheteurs-cibles/ -> django_veille_ao_acheteurs_cibles_create
+- delete /api/django/veille_ao/acheteurs-cibles/{id}/ -> django_veille_ao_acheteurs_cibles_destroy
+- get /api/django/veille_ao/acheteurs-cibles/{id}/ -> django_veille_ao_acheteurs_cibles_retrieve
+- patch /api/django/veille_ao/acheteurs-cibles/{id}/ -> django_veille_ao_acheteurs_cibles_partial_update
+- put /api/django/veille_ao/acheteurs-cibles/{id}/ -> django_veille_ao_acheteurs_cibles_update
+- get /api/django/veille_ao/attribution/ -> django_veille_ao_attribution_retrieve
 - get /api/django/veille_ao/avis/ -> django_veille_ao_avis_list
 - post /api/django/veille_ao/avis/ -> django_veille_ao_avis_create
 - delete /api/django/veille_ao/avis/{id}/ -> django_veille_ao_avis_destroy
 - get /api/django/veille_ao/avis/{id}/ -> django_veille_ao_avis_retrieve
 - patch /api/django/veille_ao/avis/{id}/ -> django_veille_ao_avis_partial_update
 - put /api/django/veille_ao/avis/{id}/ -> django_veille_ao_avis_update
+- post /api/django/veille_ao/avis/{id}/ignorer/ -> django_veille_ao_avis_ignorer_create
+- post /api/django/veille_ao/avis/{id}/retenir/ -> django_veille_ao_avis_retenir_create
+- post /api/django/veille_ao/collecter/ -> django_veille_ao_collecter_create
+- get /api/django/veille_ao/executions/ -> django_veille_ao_executions_list
+- get /api/django/veille_ao/executions/{id}/ -> django_veille_ao_executions_retrieve
 - get /api/django/veille_ao/mots-cles/ -> django_veille_ao_mots_cles_list
 - post /api/django/veille_ao/mots-cles/ -> django_veille_ao_mots_cles_create
 - delete /api/django/veille_ao/mots-cles/{id}/ -> django_veille_ao_mots_cles_destroy
@@ -7456,6 +7468,7 @@ operations:
 - get /api/django/veille_ao/regles-exclusion/{id}/ -> django_veille_ao_regles_exclusion_retrieve
 - patch /api/django/veille_ao/regles-exclusion/{id}/ -> django_veille_ao_regles_exclusion_partial_update
 - put /api/django/veille_ao/regles-exclusion/{id}/ -> django_veille_ao_regles_exclusion_update
+- get /api/django/veille_ao/sante/ -> django_veille_ao_sante_retrieve
 - get /api/django/veille_ao/sources/ -> django_veille_ao_sources_list
 - post /api/django/veille_ao/sources/ -> django_veille_ao_sources_create
 - delete /api/django/veille_ao/sources/{id}/ -> django_veille_ao_sources_destroy
@@ -15151,12 +15164,24 @@ operations:
 - patch /api/v1/uxviews/saved-views/{id}/ -> v1_uxviews_saved_views_partial_update
 - put /api/v1/uxviews/saved-views/{id}/ -> v1_uxviews_saved_views_update
 - post /api/v1/uxviews/saved-views/{id}/definir-par-defaut-role/ -> v1_uxviews_saved_views_definir_par_defaut_role_create
+- get /api/v1/veille_ao/acheteurs-cibles/ -> v1_veille_ao_acheteurs_cibles_list
+- post /api/v1/veille_ao/acheteurs-cibles/ -> v1_veille_ao_acheteurs_cibles_create
+- delete /api/v1/veille_ao/acheteurs-cibles/{id}/ -> v1_veille_ao_acheteurs_cibles_destroy
+- get /api/v1/veille_ao/acheteurs-cibles/{id}/ -> v1_veille_ao_acheteurs_cibles_retrieve
+- patch /api/v1/veille_ao/acheteurs-cibles/{id}/ -> v1_veille_ao_acheteurs_cibles_partial_update
+- put /api/v1/veille_ao/acheteurs-cibles/{id}/ -> v1_veille_ao_acheteurs_cibles_update
+- get /api/v1/veille_ao/attribution/ -> v1_veille_ao_attribution_retrieve
 - get /api/v1/veille_ao/avis/ -> v1_veille_ao_avis_list
 - post /api/v1/veille_ao/avis/ -> v1_veille_ao_avis_create
 - delete /api/v1/veille_ao/avis/{id}/ -> v1_veille_ao_avis_destroy
 - get /api/v1/veille_ao/avis/{id}/ -> v1_veille_ao_avis_retrieve
 - patch /api/v1/veille_ao/avis/{id}/ -> v1_veille_ao_avis_partial_update
 - put /api/v1/veille_ao/avis/{id}/ -> v1_veille_ao_avis_update
+- post /api/v1/veille_ao/avis/{id}/ignorer/ -> v1_veille_ao_avis_ignorer_create
+- post /api/v1/veille_ao/avis/{id}/retenir/ -> v1_veille_ao_avis_retenir_create
+- post /api/v1/veille_ao/collecter/ -> v1_veille_ao_collecter_create
+- get /api/v1/veille_ao/executions/ -> v1_veille_ao_executions_list
+- get /api/v1/veille_ao/executions/{id}/ -> v1_veille_ao_executions_retrieve
 - get /api/v1/veille_ao/mots-cles/ -> v1_veille_ao_mots_cles_list
 - post /api/v1/veille_ao/mots-cles/ -> v1_veille_ao_mots_cles_create
 - delete /api/v1/veille_ao/mots-cles/{id}/ -> v1_veille_ao_mots_cles_destroy
@@ -15169,6 +15194,7 @@ operations:
 - get /api/v1/veille_ao/regles-exclusion/{id}/ -> v1_veille_ao_regles_exclusion_retrieve
 - patch /api/v1/veille_ao/regles-exclusion/{id}/ -> v1_veille_ao_regles_exclusion_partial_update
 - put /api/v1/veille_ao/regles-exclusion/{id}/ -> v1_veille_ao_regles_exclusion_update
+- get /api/v1/veille_ao/sante/ -> v1_veille_ao_sante_retrieve
 - get /api/v1/veille_ao/sources/ -> v1_veille_ao_sources_list
 - post /api/v1/veille_ao/sources/ -> v1_veille_ao_sources_create
 - delete /api/v1/veille_ao/sources/{id}/ -> v1_veille_ao_sources_destroy
@@ -15488,6 +15514,9 @@ components:
 - AccuseCharte
 - AccuseCharteRequest
 - AccuseLecture
+- AcheteurCible
+- AcheteurCibleRequest
+- AcheteurCibleTypeEnum
 - AclGed
 - AclGedRequest
 - AcompteFournisseur
@@ -15654,6 +15683,7 @@ components:
 - AttestationSousTraitantTypePieceEnum
 - AttestationTenant
 - AttestationTenantRequest
+- Attribution
 - AttributionBadge
 - AttributionBadgeRequest
 - Audit
@@ -16151,7 +16181,6 @@ components:
 - DeclarationTVAMethodeEnum
 - DeclarationTVARequest
 - DeclarationTVAStatutEnum
-- DeclencheurEnum
 - DecompteGeneral
 - DecompteGeneralRequest
 - DecompteGeneralStatutEnum
@@ -16459,6 +16488,9 @@ components:
 - EvenementMarketingEtapeEnum
 - EvenementMarketingRequest
 - EventTypeEnum
+- ExecutionCollecte
+- ExecutionCollecteDeclencheurEnum
+- ExecutionCollecteVerdictEnum
 - ExecutionEtapeSequence
 - ExecutionEtapeSequenceRequest
 - ExerciceComptable
@@ -16609,6 +16641,7 @@ components:
 - IdeeRequest
 - IdentityProvider
 - IdentityProviderRequest
+- IgnorerAvis
 - Immobilisation
 - ImmobilisationCategorieEnum
 - ImmobilisationEnCours
@@ -16652,6 +16685,7 @@ components:
 - IndisponibiliteTypeIndispoEnum
 - InductionSecurite
 - InductionSecuriteRequest
+- InformateurEnum
 - Infraction
 - InfractionRequest
 - InfractionStatutEnum
@@ -16762,6 +16796,7 @@ components:
 - KpiAlerte
 - KpiAlerteRequest
 - KpiEnum
+- LancementCollecte
 - LandedCostLigne
 - LandedCostLigneRequest
 - LanguageEnum
@@ -16781,6 +16816,7 @@ components:
 - LienEnum
 - LienSignalementPublic
 - LienSignalementPublicRequest
+- LigneAttribution
 - LigneAvoir
 - LigneAvoirRequest
 - LigneBilanCarbone
@@ -17015,6 +17051,7 @@ components:
 - MotifPerteRequest
 - MotifPrincipalEnum
 - MotifRebutEnum
+- MotifRequest
 - MotifResiliation
 - MotifResiliationCategorieEnum
 - MotifResiliationRequest
@@ -17144,6 +17181,7 @@ components:
 - PaginatedAccrualClotureList
 - PaginatedAccuseCharteList
 - PaginatedAccuseLectureList
+- PaginatedAcheteurCibleList
 - PaginatedAclGedList
 - PaginatedAcompteFournisseurList
 - PaginatedAcompteISList
@@ -17489,6 +17527,7 @@ components:
 - PaginatedEvaluationSousTraitantList
 - PaginatedEvenementBanquetList
 - PaginatedEvenementMarketingList
+- PaginatedExecutionCollecteList
 - PaginatedExerciceComptableList
 - PaginatedExerciceUrgenceList
 - PaginatedExigenceAssuranceMarcheList
@@ -18080,6 +18119,7 @@ components:
 - PatchedAccidentTravailRequest
 - PatchedAccrualClotureRequest
 - PatchedAccuseCharteRequest
+- PatchedAcheteurCibleRequest
 - PatchedAclGedRequest
 - PatchedAcompteFournisseurRequest
 - PatchedActeMedicalRequest
@@ -19236,11 +19276,13 @@ components:
 - RegleListePrixRequest
 - RegleProduitCPQ
 - RegleProduitCPQRequest
+- RegleProposition
 - RegleRangement
 - RegleRangementRequest
 - RegleReappro
 - RegleReapproRequest
 - RegleUpsell
+- RegleUpsellDeclencheurEnum
 - RegleUpsellRequest
 - Regularisation8221
 - Regularisation8221Request
@@ -19317,6 +19359,7 @@ components:
 - ResultatAORequest
 - ResultatCalepinage
 - ResultatCommissioningEnum
+- RetenirAvis
 - RetentionPolicy
 - RetentionPolicyRequest
 - RetenueGarantie
@@ -19403,6 +19446,7 @@ components:
 - SandboxEnvironment
 - SandboxEnvironmentStatutEnum
 - SanteEnum
+- SanteVeille
 - SavSlaSettings
 - SavSlaSettingsRequest
 - SavedQuery
@@ -19548,6 +19592,7 @@ components:
 - StatutLegacyEnum
 - StatutOnboardingEnum
 - StatutPublicationEnum
+- StatutRelationEnum
 - StatutTeledeclarationEnum
 - StatutValidationEnum
 - StatutVerificationEnum
