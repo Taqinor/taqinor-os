@@ -24,6 +24,7 @@ from core.events import (
     facture_emise,
     facture_fournisseur_creee,
     facture_payee,
+    lead_stage_changed,
     mouvement_stock_enregistre,
     paiement_enregistre,
     paiement_fournisseur_enregistre,
@@ -50,6 +51,9 @@ from .services import (  # noqa: F401  (ré-export du point d'intégration)
     # YSERV4 — envoi (gated Brevo) de l'enquête NPS créée à la réception.
     envoyer_enquete_nps,
     extourner_ecriture,
+    # PACT161/XMKT1 — inscrit un lead entrant dans une étape sur toute
+    # séquence de relance active déclenchée par cette étape.
+    inscrire_leads_pour_stage,
     # XACC1 — transfert TVA attente→définitif (régime encaissement). Même
     # point d'ancrage : appel de service explicite depuis ``ventes`` tant
     # qu'aucun événement dédié « paiement enregistré » n'existe sur le bus.
@@ -287,3 +291,35 @@ def _creer_enquete_nps_a_reception(sender, installation, user, ancien_statut,
         defaults={'client_id': client_id})
     if created:
         envoyer_enquete_nps(enquete)
+
+
+# ── PACT161 / XMKT1 — inscription réelle aux séquences de relance ──────────
+# Constat : ``inscrire_leads_pour_stage`` n'avait AUCUN appelant hors tests et
+# ``executer_sequences_relance_task`` (compta/tasks.py) n'exécute que des
+# participants DÉJÀ inscrits — qui n'existaient donc jamais. S'abonne à
+# ``core.events.lead_stage_changed`` (NTCRM12, émis par ``crm.services.
+# _emit_stage_changed`` à CHAQUE point d'entrée qui fait bouger ``Lead.stage``,
+# jamais quand l'étape ne change pas) — même patron émetteur=abonné-ailleurs
+# que ``crm/receivers.py`` :: ``_generer_playbook_progress_on_stage_change``.
+# ``new_stage`` est déjà une clé canonique ``STAGES.py`` (jamais recalculée
+# ici) ; ``inscrire_lead_sequence`` est idempotente (une inscription ACTIVE
+# par (séquence, lead) — contrainte d'unicité), donc un ré-envoi du signal ne
+# double jamais l'inscription. Best-effort : l'échec d'une inscription
+# marketing ne doit jamais faire échouer la transition de stage déjà actée.
+
+@receiver(lead_stage_changed, dispatch_uid="compta_inscrire_sequences_on_lead_stage_changed")
+def _inscrire_sequences_on_lead_stage_changed(sender, lead, old_stage,
+                                              new_stage, user, **kwargs):
+    company = getattr(lead, 'company', None)
+    lead_id = getattr(lead, 'pk', None)
+    if company is None or lead_id is None:
+        return
+    try:
+        inscrire_leads_pour_stage(
+            company, new_stage, lead_id=lead_id,
+            lead_reference=getattr(lead, 'nom', '') or '')
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+        import logging
+        logging.getLogger('compta').warning(
+            'PACT161: inscription aux séquences de relance échouée pour '
+            'le lead #%s (étape %s)', lead_id, new_stage, exc_info=True)
