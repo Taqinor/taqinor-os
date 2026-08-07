@@ -32,9 +32,18 @@ réellement dans le dépôt aujourd'hui :
 Et **ce qui n'est PAS déclaré, avec sa raison** (une surface vide qui porte
 sa raison n'est pas un oubli) :
 
-* ``import_specs`` reste VIDE. L'import de fichiers d'avis est VAO28 (spec
-  sur ``apps.dataimport.parsing.iter_rows`` + ``FIELD_MAPS``) : la clé sera
-  déclarée ici **dans le commit qui la câble**, jamais avant.
+* ``import_specs`` — ``avis_veille``, CÂBLÉE par VAO28
+  (``apps/veille_ao/imports.py`` : lecture par
+  ``apps.dataimport.parsing.iter_rows``, carte d'en-têtes locale
+  ``FIELD_MAPS_VEILLE``, validations et rejets propres). Cible « à lecteur
+  propre » — comme ``obstacles``/``chaines``/``avis`` côté ``apps.ao`` : elle
+  apparaît dans ``dataimport.TARGETS`` (l'union paresseuse du registre) mais
+  PAS dans ``dataimport.FIELD_MAPS``, puisque son écriture passe par les
+  modèles de la veille et non par l'import générique. La clé est déclarée ici
+  dans le commit MÊME qui la câble, jamais avant (règle d'honnêteté ARC41).
+  Elle alimente le SAS, jamais des affaires : la création d'``AppelOffre``
+  depuis un fichier est l'autre chemin (AOF169) et les deux ne fusionnent
+  pas.
 * ``customfield_models`` reste VIDE. La lecture/écriture des valeurs passe
   par un champ ``custom_data`` (``JSONField``) porté PAR LE MODÈLE CIBLE ;
   aucun modèle de cette app n'en a. Déclarer la surface donnerait un écran
@@ -55,9 +64,11 @@ PLATFORM = {
     'searchable_models': ['veille_ao.avismarche'],
     'record_targets': ['veille_ao.avismarche'],
 
+    # VAO28 — import de fichier d'avis DANS LE SAS (cible à lecteur propre).
+    'import_specs': ['avis_veille'],
+
     # Surfaces non câblées : vides, avec leur raison dans le docstring.
     'customfield_models': [],
-    'import_specs': [],
     'agent_actions_module': '',
     'automation_state_fields': [],
     'kpi_providers': [],

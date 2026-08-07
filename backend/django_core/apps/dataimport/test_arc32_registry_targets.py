@@ -52,8 +52,16 @@ HISTORICAL_TARGETS = {
 #   troisième importe les AVIS de marchés publiés (l'amont du tunnel AO).
 #   Aucune n'est un import générique dataimport : leur écriture passe par les
 #   modèles AO, pas par ``dataimport.services``.
+#
+#   VAO28 — 'avis_veille' : déclarée par ``apps/veille_ao/platform.py`` et
+#   servie par ``apps/veille_ao/imports.py`` (``FIELD_MAPS_VEILLE``, ses
+#   propres en-têtes et ses propres validations de dates/montants). Elle
+#   alimente le SAS de la veille (un humain trie), là où 'avis' d'``apps.ao``
+#   crée directement des AFFAIRES : les deux cibles coexistent délibérément et
+#   ne doivent jamais fusionner — un fichier d'agrégateur de 400 lignes
+#   ouvrirait sinon 400 dossiers dont 380 seraient du bruit.
 REGISTRY_ONLY_TARGETS = {
-    'obstacles', 'chaines', 'avis',
+    'obstacles', 'chaines', 'avis', 'avis_veille',
 }
 
 # Référence de non-régression du set RÉSOLU par ``_LazyTargets`` : les cibles
@@ -70,6 +78,7 @@ TARGET_OWNER_MODULE = {
     'dossiers_rh': 'rh',
     'eleves_education': 'education',
     'obstacles': 'ao', 'chaines': 'ao', 'avis': 'ao',
+    'avis_veille': 'veille_ao',
 }
 
 
