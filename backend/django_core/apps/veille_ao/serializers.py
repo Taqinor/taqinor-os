@@ -317,6 +317,34 @@ class SanteVeilleSerializer(serializers.Serializer):
     avis_nouveaux = serializers.IntegerField(read_only=True)
 
 
+class LigneAttributionSerializer(serializers.Serializer):
+    """VAO31 — une ligne du tableau « canal → avis → affaires → gagnés »."""
+
+    cle = serializers.CharField(read_only=True)
+    libelle = serializers.CharField(read_only=True)
+    avis = serializers.IntegerField(read_only=True)
+    retenus = serializers.IntegerField(read_only=True)
+    affaires = serializers.IntegerField(read_only=True)
+    gagnes = serializers.IntegerField(read_only=True)
+    perdus = serializers.IntegerField(read_only=True)
+    en_cours = serializers.IntegerField(read_only=True)
+
+
+class AttributionSerializer(serializers.Serializer):
+    """VAO31 — les DEUX axes de la mesure, plus le total.
+
+    Un sérialiseur RÉEL, jamais ``response=dict``. ``par_informateur``
+    apparaît à ÉGALITÉ avec ``par_source`` — c'est tout l'intérêt de la
+    mesure : rendre visible ce que la veille automatique ne voit pas, jamais
+    en note de bas de page.
+    """
+
+    depuis = serializers.DateTimeField(read_only=True, allow_null=True)
+    par_source = LigneAttributionSerializer(many=True, read_only=True)
+    par_informateur = LigneAttributionSerializer(many=True, read_only=True)
+    total = LigneAttributionSerializer(read_only=True)
+
+
 class LancementCollecteSerializer(serializers.Serializer):
     """VAO23 — la réponse du bouton « Rafraîchir maintenant ».
 

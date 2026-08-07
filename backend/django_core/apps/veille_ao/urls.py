@@ -16,7 +16,7 @@ mauvaise URL à ``reverse()``.
 from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 
-from .views import DeclencherCollecteView, SanteVeilleView
+from .views import AttributionView, DeclencherCollecteView, SanteVeilleView
 from .viewsets import (
     AcheteurCibleViewSet, AvisMarcheViewSet, ExecutionCollecteViewSet,
     MotCleVeilleViewSet, RegleExclusionViewSet, SourceVeilleViewSet,
@@ -44,5 +44,8 @@ urlpatterns = [
          name='veille-ao-collecter'),
     # VAO24/VAO35/VAO37 — l'état agrégé, calculé UNE fois côté serveur.
     path('sante/', SanteVeilleView.as_view(), name='veille-ao-sante'),
+    # VAO31 — l'attribution : d'où vient réellement le chiffre d'affaires.
+    path('attribution/', AttributionView.as_view(),
+         name='veille-ao-attribution'),
     path('', include(router.urls)),
 ]

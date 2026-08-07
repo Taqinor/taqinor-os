@@ -27,10 +27,13 @@ from rest_framework.response import Response
 
 from core.permissions import ScopedPermission
 
-from .serializers import LancementCollecteSerializer, SanteVeilleSerializer
+from .serializers import (
+    AttributionSerializer, LancementCollecteSerializer, SanteVeilleSerializer,
+)
 from .viewsets import VEILLE_AO_GERER, VEILLE_AO_VOIR
 
-__all__ = ['DeclencherCollecteView', 'KIND_COLLECTE', 'SanteVeilleView']
+__all__ = ['AttributionView', 'DeclencherCollecteView', 'KIND_COLLECTE',
+           'SanteVeilleView']
 
 #: Type logique du job de fond (``BackgroundJob.kind``). Le MÊME quel que soit
 #: le déclencheur — c'est ce qui rend les deux chemins comparables dans
@@ -150,3 +153,26 @@ class SanteVeilleView(_BaseVeilleView):
 
         return Response(
             SanteVeilleSerializer(sante(self.societe())).data)
+
+
+class AttributionView(_BaseVeilleView):
+    """``GET /api/django/veille_ao/attribution/`` — d'où vient le chiffre.
+
+    VAO31 : « canal → avis → affaires → gagnés », CALCULÉ côté serveur et
+    jamais saisi. L'issue des affaires est lue par le ``selectors.py``
+    d'``apps.ao``, jamais par ses modèles.
+
+    Deux axes rendus ENSEMBLE — par source ET par informateur : le second est
+    tout l'intérêt de la mesure, puisqu'il rend visible ce que la veille
+    automatique ne voit pas. Un agrégat recalculé côté client sur la liste des
+    avis ne pourrait pas connaître l'issue des affaires.
+    """
+
+    serializer_class = AttributionSerializer
+
+    @extend_schema(responses=AttributionSerializer)
+    def get(self, request, *args, **kwargs):
+        from .selectors import attribution
+
+        return Response(
+            AttributionSerializer(attribution(self.societe())).data)

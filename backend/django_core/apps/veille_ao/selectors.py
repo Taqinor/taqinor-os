@@ -53,3 +53,17 @@ def derniere_collecte_reussie(company):
     if execution is None:
         return None
     return execution.fin or execution.debut
+
+
+# ── VAO31 — l'attribution : d'où vient réellement le chiffre d'affaires ────
+
+def attribution(company, depuis=None):
+    """« canal → avis → affaires → gagnés », CALCULÉ et jamais saisi.
+
+    L'ISSUE des affaires est lue par le ``selectors.py`` d'``apps.ao``, jamais
+    par ses modèles : c'est la frontière inter-apps du dépôt, et c'est ce qui
+    garde le contrat import-linter vert.
+    """
+    from .kpis import attribution as calculer
+
+    return calculer(company, depuis=depuis)
