@@ -628,10 +628,10 @@ export default function VehiculeDetail({ vehicule, onClose, onChanged }) {
               render={(d) => (
                 <DefinitionList
                   items={[
-                    { term: 'Consommation moyenne', description: d.consommation_moyenne != null ? `${formatNumber(d.consommation_moyenne, { decimals: 1 })} L/100km` : '—' },
+                    { term: 'Consommation moyenne', description: d.conso_l_100km != null ? `${formatNumber(d.conso_l_100km, { decimals: 1 })} L/100km` : '—' },
                     { term: 'CO₂ (g/km)', description: d.co2_g_km != null ? `${formatNumber(d.co2_g_km)} g/km` : '—' },
-                    { term: 'CO₂ total', description: d.co2_total_kg != null ? `${formatNumber(d.co2_total_kg)} kg` : '—' },
-                    { term: 'Score éco', description: d.eco_score != null ? formatNumber(d.eco_score) : '—' },
+                    { term: 'CO₂ total', description: d.co2_kg != null ? `${formatNumber(d.co2_kg)} kg` : '—' },
+                    { term: 'Score éco', description: d.score_eco != null ? formatNumber(d.score_eco) : '—' },
                   ]}
                 />
               )}
@@ -646,9 +646,9 @@ export default function VehiculeDetail({ vehicule, onClose, onChanged }) {
               render={(d) => (
                 <DefinitionList
                   items={[
-                    { term: 'Valeur d’acquisition', description: d.valeur_acquisition != null ? formatMAD(d.valeur_acquisition, { decimals: 0 }) : '—' },
-                    { term: 'Amortissement cumulé', description: d.amortissement_cumule != null ? formatMAD(d.amortissement_cumule, { decimals: 0 }) : '—' },
-                    { term: 'Valeur nette comptable', description: d.vnc != null ? formatMAD(d.vnc, { decimals: 0 }) : '—' },
+                    { term: 'Valeur d’acquisition', description: d.valeur_origine != null ? formatMAD(d.valeur_origine, { decimals: 0 }) : '—' },
+                    { term: 'Amortissement cumulé', description: d.cumul_amortissements != null ? formatMAD(d.cumul_amortissements, { decimals: 0 }) : '—' },
+                    { term: 'Valeur nette comptable', description: d.valeur_nette_comptable != null ? formatMAD(d.valeur_nette_comptable, { decimals: 0 }) : '—' },
                     { term: 'Part non déductible (plafond CGI)', description: d.part_non_deductible != null ? formatMAD(d.part_non_deductible, { decimals: 0 }) : '—' },
                   ]}
                 />

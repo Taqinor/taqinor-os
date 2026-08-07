@@ -93,7 +93,11 @@ describe('XPUR25 — panneau résumé (agrégat vue-360, BLOCKED côté serveur)
     stockApi.getFournisseur360.mockResolvedValue({
       data: {
         bcf_ouverts: 3, bcf_en_retard: 1, receptions_attendues: 2,
-        solde_total_du: 1234.5, factures_ouvertes: 4, score_performance: 87,
+        // PACT23 — `solde_total_du` est un `str(Decimal)` côté serveur
+        // (views/fournisseur.py:395, `str(solde_total_du)`), jamais un
+        // nombre JS : le mock doit refléter le texte décimal réel, formatMAD
+        // (lib/format.toNumber) le parse déjà correctement des deux côtés.
+        solde_total_du: '1234.50', factures_ouvertes: 4, score_performance: 87,
         nb_retours_avoirs: 2, accords_prix_actifs: 5, accords_prix: [],
       },
     })
@@ -118,7 +122,12 @@ describe('XPUR25 — onglets détaillés (endpoints réels existants)', () => {
   it('Performance (FG59) : rend les indicateurs sans planter', async () => {
     stockApi.getFournisseur360.mockImplementation(rejectNotFound)
     stockApi.performanceFournisseur.mockResolvedValue({
-      data: { nb_bons: 5, avg_lead_time_days: 4, fill_rate_pct: 92, nb_retours: 1, return_rate_pct: 2, total_achats_ht: 5000 },
+      data: {
+        nb_bons: 5, avg_lead_time_days: 4, fill_rate_pct: 92, nb_retours: 1, return_rate_pct: 2,
+        // PACT23 — `total_achats_ht` est un `str(Decimal)` côté serveur
+        // (services.py:2910, `str(total_achats)`), jamais un nombre JS.
+        total_achats_ht: '5000.00',
+      },
     })
     stockApi.getBonsCommandeFournisseurDe.mockResolvedValue({ data: [] })
     stockApi.getFacturesFournisseurDe.mockResolvedValue({ data: [] })
@@ -130,6 +139,9 @@ describe('XPUR25 — onglets détaillés (endpoints réels existants)', () => {
     const panel = await screen.findByTestId('f360-tab-performance')
     expect(within(panel).getByText('5')).toBeInTheDocument()
     expect(within(panel).getByText('4 j')).toBeInTheDocument()
+    // PACT23 — le texte décimal du serveur est bien formaté en MAD, jamais
+    // comparé numériquement à la chaîne brute.
+    expect(within(panel).getByText('5 000,00 MAD')).toBeInTheDocument()
   })
 
   it('Factures/solde : ne plante pas quand l\'API rejette (500)', async () => {

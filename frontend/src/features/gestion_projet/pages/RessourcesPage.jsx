@@ -141,16 +141,33 @@ export default function RessourcesPage() {
   }
 
   // ZPRJ4 — Auto-affectation (simulation puis confirmation demandée à l'utilisateur).
+  // PACT22 — `services.auto_affecter` renvoie {simule, deplacements, creations,
+  // non_resolues} (jamais `propositions`/`nb_propositions`/`nb_appliquees`) : le
+  // décompte se fait sur les tableaux réels, et le message d'après-confirmation
+  // utilise le décompte de LA RÉPONSE CONFIRMÉE, jamais celui de la simulation —
+  // sinon un chiffre simulé s'affiche comme s'il avait été appliqué.
+  const compterPlan = (data) => ({
+    total: (data?.deplacements?.length ?? 0) + (data?.creations?.length ?? 0),
+    nonResolues: data?.non_resolues?.length ?? 0,
+  })
+
   const autoAffecter = async () => {
     setAffectBusy(true)
     try {
       const simulation = await gestionProjetApi.autoAffecter({ debut, fin }, false)
-      const nb = simulation.data?.propositions?.length ?? simulation.data?.nb_propositions ?? 0
+      const { total: nbSimule, nonResolues: nbNonResoluesSimule } = compterPlan(simulation.data)
+      const suffixeSimule = nbNonResoluesSimule > 0
+        ? ` (${nbNonResoluesSimule} tâche(s) sans ressource disponible, non résolue(s))`
+        : ''
       const ok = window.confirm(
-        `${nb} proposition(s) d'affectation — confirmer l'application (statut brouillon) ?`)
+        `${nbSimule} proposition(s) d'affectation SIMULÉE(S)${suffixeSimule} — confirmer l'application (statut brouillon) ?`)
       if (!ok) return
       const res = await gestionProjetApi.autoAffecter({ debut, fin }, true)
-      toast.success(`${res.data?.nb_appliquees ?? nb} affectation(s) créée(s)/déplacée(s).`)
+      const { total: nbAppliquees, nonResolues: nbNonResoluesAppliquees } = compterPlan(res.data)
+      const suffixeAppliquees = nbNonResoluesAppliquees > 0
+        ? ` (${nbNonResoluesAppliquees} tâche(s) restée(s) sans ressource, non résolue(s))`
+        : ''
+      toast.success(`${nbAppliquees} affectation(s) APPLIQUÉE(S) (créée(s)/déplacée(s))${suffixeAppliquees}.`)
       load()
     } catch (err) {
       toast.error(errMessage(err, 'Auto-affectation impossible.'))
