@@ -156,6 +156,24 @@ export const ACTION_TYPE_LABELS = {
   create_ad_study: 'Étude A/B native',
   set_schedule: 'Horaire de diffusion (dayparting)',
   duplicate: "Duplication d'ad set",
+  // Les `kind` de contenu social et de cadence, eux aussi écrits par
+  // `EngineAction.objects.create(kind=…)` (services.py, pacing.py) : sans
+  // libellé ils tombaient dans le repli et affichaient la clé anglaise brute,
+  // ce que l'en-tête de ce bloc interdit.
+  create_post: 'Publication de post',
+  edit_post: 'Modification de post',
+  boost_post: 'Sponsorisation de post',
+  publish_ig: 'Publication Instagram',
+  reply_comment: 'Réponse à un commentaire',
+  hide_comment: 'Masquage de commentaire',
+  delete_comment: 'Suppression de commentaire',
+  private_reply: 'Réponse en message privé',
+  reply_ig_comment: 'Réponse à un commentaire Instagram',
+  hide_ig_comment: 'Masquage de commentaire Instagram',
+  delete_ig_comment: 'Suppression de commentaire Instagram',
+  toggle_ig_comments: 'Ouverture/fermeture des commentaires Instagram',
+  increase_pace: 'Accélération de la cadence de dépense',
+  rebalance_adset_budget: "Rééquilibrage du budget d'ensemble",
 }
 export function actionTypeLabel(kind) {
   return ACTION_TYPE_LABELS[kind] || kind || 'Action'
