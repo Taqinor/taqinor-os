@@ -11,7 +11,8 @@ que par le service unique de transition (VAO14).
 from rest_framework import serializers
 
 from .models import (
-    AvisMarche, ExecutionCollecte, MotCleVeille, RegleExclusion, SourceVeille,
+    AcheteurCible, AvisMarche, ExecutionCollecte, MotCleVeille,
+    RegleExclusion, SourceVeille,
 )
 
 
@@ -177,6 +178,31 @@ class AvisMarcheSerializer(serializers.ModelSerializer):
             donnees['source'] = resoudre_source(
                 instance.company, donnees.pop('source'))
         return super().update(instance, donnees)
+
+
+class AcheteurCibleSerializer(serializers.ModelSerializer):
+    """VAO29 — le carnet à démarcher.
+
+    ``lead_id`` est un entier OPAQUE vers le CRM : l'écran ouvre le lead
+    EXISTANT, il n'en crée jamais un second en douce. Aucune FK, donc aucun
+    import de ``apps.crm.models`` — le contrat import-linter reste vert.
+    """
+
+    type_libelle = serializers.CharField(
+        source='get_type_display', read_only=True)
+    statut_relation_display = serializers.CharField(
+        source='get_statut_relation_display', read_only=True)
+    relance_due = serializers.BooleanField(read_only=True)
+
+    class Meta:
+        model = AcheteurCible
+        fields = [
+            'id', 'nom', 'type', 'type_libelle', 'contact',
+            'dernier_contact', 'prochaine_relance', 'relance_due',
+            'statut_relation', 'statut_relation_display', 'lead_id',
+            'notes', 'created_at', 'updated_at',
+        ]
+        read_only_fields = ['created_at', 'updated_at']
 
 
 class ExecutionCollecteSerializer(serializers.ModelSerializer):

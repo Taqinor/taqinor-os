@@ -527,6 +527,112 @@ class MotCleVeille(TenantModel):
         return self.libelle
 
 
+class TypeAcheteur(models.TextChoices):
+    """VAO29 — les CATÉGORIES d'organismes à démarcher.
+
+    Des catégories, jamais des noms : le seed d'amorçage ne doit inventer
+    aucun organisme. Un nom faux dans un carnet de prospection est pire qu'un
+    carnet vide — il se recopie, il se démarche, et il fait perdre du temps.
+    """
+
+    FONDATION = 'fondation', 'Fondation'
+    UNIVERSITE_PRIVEE = 'universite_privee', 'Université privée'
+    CLINIQUE = 'clinique', 'Clinique'
+    GROUPE_HOTELIER = 'groupe_hotelier', 'Groupe hôtelier'
+    INDUSTRIEL = 'industriel', 'Industriel'
+    COOPERATIVE_AGRICOLE = 'cooperative_agricole', 'Coopérative agricole'
+    PROMOTEUR = 'promoteur', 'Promoteur'
+    COLLECTIVITE = 'collectivite', 'Collectivité'
+
+
+class StatutRelation(models.TextChoices):
+    """Où en est la relation — le seul indicateur qui compte ici.
+
+    Être sur la liste d'invitation d'une consultation privée ne se surveille
+    pas : ça se construit. Ce champ dit à quelle distance on est de cette
+    liste.
+    """
+
+    A_CONTACTER = 'a_contacter', 'À contacter'
+    CONTACTE = 'contacte', 'Contacté'
+    EN_DISCUSSION = 'en_discussion', 'En discussion'
+    REFERENCE = 'reference', 'Référencé (reçoit les consultations)'
+    CLIENT = 'client', 'Client'
+    SANS_SUITE = 'sans_suite', 'Sans suite'
+
+
+class AcheteurCibleQuerySet(models.QuerySet):
+    def relances_dues(self, a_la_date=None):
+        """Les relances échues — l'ordre d'urgence, jamais l'ordre alphabétique."""
+        return self.filter(
+            prochaine_relance__isnull=False,
+            prochaine_relance__lte=(a_la_date or timezone.localdate()),
+        ).exclude(statut_relation=StatutRelation.SANS_SUITE).order_by(
+            'prochaine_relance', 'id')
+
+
+class AcheteurCible(TenantModel):
+    """Le carnet des acheteurs à DÉMARCHER — la vraie contre-mesure FRDISI.
+
+    Constat central du groupe : ce marché-là ne se surveille pas, il se
+    démarche. La seule façon de recevoir la PROCHAINE consultation FRDISI est
+    d'être sur la liste d'invitation — et aucun collecteur, aucun agrégateur,
+    aucun flux RSS ne peut y mettre Taqinor. C'est un travail de relation, et
+    ce carnet est l'outil de ce travail.
+
+    Le lien vers le CRM est un **entier opaque** (``lead_id``), jamais une FK
+    vers ``apps.crm`` : les apps restent découplées et le contrat
+    import-linter reste vert.
+    """
+
+    nom = models.CharField('Nom de l\'organisme', max_length=255)
+    type = models.CharField(
+        'Type', max_length=32, choices=TypeAcheteur.choices,
+        default=TypeAcheteur.FONDATION)
+    contact = models.CharField(
+        'Contact', max_length=255, blank=True, default='',
+        help_text='Nom, téléphone ou e-mail de la personne à joindre.')
+    dernier_contact = models.DateField('Dernier contact', null=True,
+                                       blank=True)
+    prochaine_relance = models.DateField('Prochaine relance', null=True,
+                                         blank=True)
+    statut_relation = models.CharField(
+        'Statut de la relation', max_length=20,
+        choices=StatutRelation.choices, default=StatutRelation.A_CONTACTER)
+    lead_id = models.PositiveIntegerField(
+        'Lead CRM', null=True, blank=True,
+        help_text='Entier OPAQUE vers apps.crm — jamais une clé étrangère : '
+                  'les deux apps restent découplées.')
+    notes = models.TextField('Notes', blank=True, default='')
+
+    objects = AcheteurCibleQuerySet.as_manager()
+
+    class Meta:
+        verbose_name = 'Acheteur cible'
+        verbose_name_plural = 'Acheteurs cibles'
+        ordering = ['nom', 'id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'nom'],
+                name='veille_ao_acheteur_co_nom_uniq'),
+        ]
+        indexes = [
+            models.Index(fields=['company', 'prochaine_relance'],
+                         name='veille_ao_ach_co_relance_idx'),
+            models.Index(fields=['company', 'statut_relation'],
+                         name='veille_ao_ach_co_statut_idx'),
+        ]
+
+    def __str__(self):
+        return self.nom
+
+    @property
+    def relance_due(self):
+        if not self.prochaine_relance:
+            return False
+        return self.prochaine_relance <= timezone.localdate()
+
+
 class PorteeExclusion(models.TextChoices):
     """Sur QUOI une règle d'exclusion mord (VAO10)."""
 

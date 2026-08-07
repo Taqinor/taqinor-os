@@ -18,8 +18,8 @@ from rest_framework.routers import DefaultRouter
 
 from .views import DeclencherCollecteView, SanteVeilleView
 from .viewsets import (
-    AvisMarcheViewSet, ExecutionCollecteViewSet, MotCleVeilleViewSet,
-    RegleExclusionViewSet, SourceVeilleViewSet,
+    AcheteurCibleViewSet, AvisMarcheViewSet, ExecutionCollecteViewSet,
+    MotCleVeilleViewSet, RegleExclusionViewSet, SourceVeilleViewSet,
 )
 
 router = DefaultRouter()
@@ -33,6 +33,9 @@ router.register(r'regles-exclusion', RegleExclusionViewSet,
 # VAO24 — le journal d'exécution, en lecture seule.
 router.register(r'executions', ExecutionCollecteViewSet,
                 basename='veille-ao-execution')
+# VAO29 — le carnet des acheteurs à démarcher.
+router.register(r'acheteurs-cibles', AcheteurCibleViewSet,
+                basename='veille-ao-acheteur-cible')
 
 urlpatterns = [
     # VAO23 — le chemin est LITTÉRAL, fixé par le texte de tâche et déjà

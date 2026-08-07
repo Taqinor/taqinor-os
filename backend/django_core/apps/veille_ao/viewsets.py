@@ -18,11 +18,12 @@ Le contrôle d'accès est exprimé d'UNE seule façon, jamais un mélange ad hoc
 from core.viewsets import CompanyScopedModelViewSet
 
 from .models import (
-    AvisMarche, ExecutionCollecte, MotCleVeille, RegleExclusion, SourceVeille,
+    AcheteurCible, AvisMarche, ExecutionCollecte, MotCleVeille,
+    RegleExclusion, SourceVeille,
 )
 from .serializers import (
-    AvisMarcheSerializer, ExecutionCollecteSerializer, MotCleVeilleSerializer,
-    RegleExclusionSerializer, SourceVeilleSerializer,
+    AcheteurCibleSerializer, AvisMarcheSerializer, ExecutionCollecteSerializer,
+    MotCleVeilleSerializer, RegleExclusionSerializer, SourceVeilleSerializer,
 )
 
 VEILLE_AO_VOIR = 'veille_ao_voir'
@@ -75,6 +76,23 @@ class RegleExclusionViewSet(CompanyScopedModelViewSet):
     search_fields = ['valeur', 'motif']
     ordering_fields = ['portee', 'valeur', 'compteur_application', 'actif',
                        'id']
+
+
+class AcheteurCibleViewSet(CompanyScopedModelViewSet):
+    """Le carnet à démarcher (VAO29) — la vraie contre-mesure FRDISI.
+
+    Écriture au palier ``veille_ao_gerer`` comme le reste du module ; lecture
+    largement distribuée, parce qu'un commercial doit voir qui il faut aller
+    voir.
+    """
+
+    queryset = AcheteurCible.objects.all()
+    serializer_class = AcheteurCibleSerializer
+    read_permission = VEILLE_AO_VOIR
+    write_permission = VEILLE_AO_GERER
+    search_fields = ['nom', 'contact', 'notes']
+    ordering_fields = ['nom', 'type', 'prochaine_relance', 'dernier_contact',
+                       'statut_relation', 'id']
 
 
 class ExecutionCollecteViewSet(CompanyScopedModelViewSet):
