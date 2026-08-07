@@ -7,6 +7,8 @@ Couvre :
 * la clôture d'une revue de direction exige la checklist ISO 9.3 complète ;
 * les autres types de réunion clôturent sans condition ;
 * la relance trimestrielle CSH (due / non due) ;
+* le câblage réel de la relance CSH (PACT184 — balayage + notification +
+  dédup au jour + planification Celery Beat) ;
 * le scoping société.
 """
 from datetime import date, timedelta
@@ -16,11 +18,14 @@ from django.test import TestCase
 
 from authentication.models import Company
 
+from apps.notifications.models import EventType, Notification
+
 from apps.qhse.models import (
     ActionCorrectivePreventive, DecisionReunion, ReunionQhse,
 )
 from apps.qhse.services import (
     cloturer_reunion_qhse, creer_capa_depuis_decision, csh_relance_due,
+    relancer_csh_du_jour,
 )
 
 User = get_user_model()
@@ -127,3 +132,68 @@ class CshRelanceDueTests(TestCase):
             statut=ReunionQhse.Statut.TENUE,
             date_reunion=date.today())
         self.assertTrue(csh_relance_due(autre))
+
+
+class RelancerCshDuJourTests(TestCase):
+    """PACT184 — ``csh_relance_due`` n'avait aucun appelant : cette classe
+    couvre le premier câblage réel (balayage + notification + dédup)."""
+
+    def setUp(self):
+        self.company = make_company('co-xqhs12-relance', 'CoXqhs12Relance')
+        self.admin = make_user(
+            self.company, 'admin-xqhs12-relance', role='admin')
+
+    def test_notifie_quand_du(self):
+        relancees = relancer_csh_du_jour(self.company)
+        self.assertEqual(relancees, [self.company])
+        self.assertTrue(
+            Notification.objects.filter(
+                company=self.company, recipient=self.admin,
+                event_type=EventType.MAINTENANCE_DUE,
+                link='/qhse/reunions').exists())
+
+    def test_ne_notifie_pas_quand_pas_du(self):
+        ReunionQhse.objects.create(
+            company=self.company,
+            type_reunion=ReunionQhse.TypeReunion.COMITE_HYGIENE_SECURITE,
+            statut=ReunionQhse.Statut.TENUE,
+            date_reunion=date.today() - timedelta(days=10))
+        relancees = relancer_csh_du_jour(self.company)
+        self.assertEqual(relancees, [])
+        self.assertFalse(
+            Notification.objects.filter(
+                company=self.company, event_type=EventType.MAINTENANCE_DUE,
+                link='/qhse/reunions').exists())
+
+    def test_dedup_au_jour_deuxieme_appel_ne_double_pas(self):
+        relancer_csh_du_jour(self.company)
+        relancer_csh_du_jour(self.company)
+        self.assertEqual(
+            Notification.objects.filter(
+                company=self.company, recipient=self.admin,
+                event_type=EventType.MAINTENANCE_DUE,
+                link='/qhse/reunions').count(), 1)
+
+    def test_isolation_societe(self):
+        autre = make_company('co-xqhs12-relance-autre', 'CoXqhs12RelanceAutre')
+        make_user(autre, 'admin-xqhs12-relance-autre', role='administrateur')
+        relancer_csh_du_jour(self.company)
+        self.assertFalse(
+            Notification.objects.filter(company=autre).exists())
+
+
+class RelancerCshDuJourBeatTests(TestCase):
+    """PACT184 — la tâche est réellement planifiée (le mode de défaillance
+    dominant : une tâche testée mais absente du beat ne tourne jamais)."""
+
+    def test_task_registered_in_beat_schedule_and_routes(self):
+        from django.conf import settings
+
+        from erp_agentique.celery import app
+
+        task_names = {
+            entry['task'] for entry in app.conf.beat_schedule.values()}
+        self.assertIn('qhse.relancer_csh_du_jour', task_names)
+        self.assertEqual(
+            settings.CELERY_TASK_ROUTES['qhse.relancer_csh_du_jour']['queue'],
+            'scheduled')
