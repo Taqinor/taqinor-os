@@ -123,7 +123,7 @@ class StopEntrantTests(TestCase):
             corps='Bonjour, offre spéciale !')
         api = auth(self.user)
         resp = api.get(
-            f'/api/django/compta/campagnes/{camp.id}/cout-sms/'
+            f'/api/django/marketing/campagnes/{camp.id}/cout-sms/'
             f'?nb_destinataires=5')
         self.assertEqual(resp.status_code, 200, resp.content)
         self.assertEqual(resp.data['nb_segments'], 1)

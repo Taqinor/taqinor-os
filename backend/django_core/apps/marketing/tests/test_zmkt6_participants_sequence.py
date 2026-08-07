@@ -70,7 +70,7 @@ class ParticipantsSequenceTests(TestCase):
         api = APIClient()
         api.credentials(HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(user)}')
         resp = api.get(
-            f'/api/django/compta/sequences-relance/{self.seq.id}/participants/')
+            f'/api/django/marketing/sequences-relance/{self.seq.id}/participants/')
         self.assertEqual(resp.status_code, 200, resp.content)
         self.assertEqual(resp.json()['nb_actifs'], 1)
 

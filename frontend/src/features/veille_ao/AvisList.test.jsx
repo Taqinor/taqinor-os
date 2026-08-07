@@ -27,7 +27,8 @@ vi.mock('../../api/veilleAoApi', () => ({
   },
 }))
 
-import AvisList, { avisNouveauxDepuisHier, STATUT_AVIS, StatutAvis } from './AvisList'
+import AvisList from './AvisList'
+import { avisNouveauxDepuisHier, STATUT_AVIS, StatutAvis } from './veilleAoShared'
 import { ThemeProvider } from '../../design/ThemeProvider.jsx'
 
 // `ListShell` rend un `DataTable`, qui lit la densité via `useDensity()` →

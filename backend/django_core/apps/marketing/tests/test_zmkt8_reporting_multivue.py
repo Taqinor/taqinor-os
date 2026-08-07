@@ -99,7 +99,7 @@ class ReportingMultivueTests(TestCase):
             role_legacy='responsable')
         api = APIClient()
         api.credentials(HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(user)}')
-        resp = api.get('/api/django/compta/campagnes/reporting/')
+        resp = api.get('/api/django/marketing/campagnes/reporting/')
         self.assertEqual(resp.status_code, 200, resp.content)
 
     def test_endpoint_export_xlsx(self):
@@ -113,6 +113,6 @@ class ReportingMultivueTests(TestCase):
             role_legacy='responsable')
         api = APIClient()
         api.credentials(HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(user)}')
-        resp = api.get('/api/django/compta/campagnes/reporting/export/')
+        resp = api.get('/api/django/marketing/campagnes/reporting/export/')
         self.assertEqual(resp.status_code, 200)
         self.assertIn('spreadsheet', resp['Content-Type'])

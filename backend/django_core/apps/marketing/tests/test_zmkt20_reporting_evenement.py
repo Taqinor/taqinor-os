@@ -77,6 +77,6 @@ class ReportingEvenementTests(TestCase):
         api = APIClient()
         api.credentials(HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(user)}')
         resp = api.get(
-            '/api/django/compta/evenements-marketing/reporting/export/')
+            '/api/django/marketing/evenements-marketing/reporting/export/')
         self.assertEqual(resp.status_code, 200)
         self.assertIn('spreadsheet', resp['Content-Type'])

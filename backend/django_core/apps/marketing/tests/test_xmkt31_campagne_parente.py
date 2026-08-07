@@ -87,7 +87,7 @@ class CampagneParenteTests(TestCase):
         api = APIClient()
         api.credentials(HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(user)}')
         resp = api.post(
-            f'/api/django/compta/campagnes/{self.mere.id}/rattacher/',
+            f'/api/django/marketing/campagnes/{self.mere.id}/rattacher/',
             data={'type': 'formulaire', 'id': 5}, format='json')
         self.assertEqual(resp.status_code, 200, resp.content)
         self.mere.refresh_from_db()

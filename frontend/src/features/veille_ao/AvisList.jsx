@@ -4,9 +4,10 @@ import veilleAoApi from '../../api/veilleAoApi'
 import useResource from '../../hooks/useResource'
 import { unwrapList } from '../../api/resource'
 import { Badge } from '../../ui'
-import { ListShell, statusPill, daysUntil, urgencyLevel, urgencyTone, urgencyLabel } from '../../ui/module'
+import { ListShell, daysUntil, urgencyLevel, urgencyTone, urgencyLabel } from '../../ui/module'
 import { formatDate, formatMAD } from '../../lib/format'
 import SanteVeille from './SanteVeille'
+import { STATUT_AVIS, StatutAvis, avisNouveauxDepuisHier } from './veilleAoShared'
 
 /* ============================================================================
    VAO33 — La liste des avis (`ListShell`) : la page qu'on ouvre le matin.
@@ -24,30 +25,12 @@ import SanteVeille from './SanteVeille'
    AO (`nouveau → retenu|ignore ; retenu → converti ; tout → expire`, VAO14).
    ========================================================================== */
 
-export const STATUT_AVIS = {
-  nouveau: { label: 'Nouveau', tone: 'info' },
-  retenu: { label: 'Retenu', tone: 'success' },
-  ignore: { label: 'Ignoré', tone: 'neutral' },
-  converti: { label: 'Converti', tone: 'success' },
-  expire: { label: 'Expiré', tone: 'danger' },
-}
-export const StatutAvis = statusPill(STATUT_AVIS)
 
 // VAO33 (Done=) — « la pastille compte juste (test) » : logique PURE, testable
 // hors React. Compte les avis au statut `nouveau` dont l'horodatage de
 // création (`cree_le`, convention déjà en vigueur — cf. `ContratDetail.jsx`
 // `v.cree_le`) tombe depuis minuit HIER (jamais un « depuis 24 h » glissant :
 // « depuis hier » se lit au jour calendaire, comme `daysUntil`/`urgency.js`).
-export function avisNouveauxDepuisHier(rows = [], now = new Date()) {
-  const base = now instanceof Date ? now : new Date(now)
-  if (Number.isNaN(base.getTime())) return 0
-  const hier = new Date(base.getFullYear(), base.getMonth(), base.getDate() - 1)
-  return rows.filter((r) => {
-    if (r?.statut !== 'nouveau' || !r?.cree_le) return false
-    const cree = new Date(r.cree_le)
-    return !Number.isNaN(cree.getTime()) && cree >= hier
-  }).length
-}
 
 // H33 — vues sauvegardées : `columnFilters` = `{ [colId]: valeurs[] }`.
 const SAVED_VIEWS = [

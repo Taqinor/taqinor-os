@@ -109,23 +109,23 @@ def changer_statut_avis(avis, nouveau, user=None, motif='',
     libelles = dict(StatutAvis.choices)
     if nouveau not in libelles:
         raise ValidationError(
-            {'statut': f'Statut inconnu : « {nouveau} ».'})
+            {'statut': [f'Statut inconnu : « {nouveau} ».']})
 
     ancien = avis.statut
     autorises = transitions_possibles(ancien)
     if nouveau not in autorises:
         atteignables = ', '.join(
             f'« {libelles[s]} »' for s in autorises) or 'aucun'
-        raise ValidationError({'statut': (
+        raise ValidationError({'statut': [
             f'Transition interdite : « {libelles.get(ancien, ancien)} » → '
             f'« {libelles[nouveau]} ». Statuts atteignables : '
-            f'{atteignables}.')})
+            f'{atteignables}.']})
 
     champs = dict(champs_supplementaires or {})
     if 'statut' in champs:
-        raise ValidationError({'statut': (
+        raise ValidationError({'statut': [
             'Le statut ne se pose pas par un champ supplémentaire : il passe '
-            'par ce service et par lui seul.')})
+            'par ce service et par lui seul.']})
 
     avis.statut = nouveau
     for nom, valeur in champs.items():
@@ -875,15 +875,15 @@ def resoudre_source(company, valeur, defaut=TypeSource.TUYAU_PARTENAIRE):
         source = SourceVeille.objects.filter(
             company=company, pk=int(brut)).first()
         if source is None:
-            raise ValidationError({'source': 'Source introuvable.'})
+            raise ValidationError({'source': ['Source introuvable.']})
         return source
 
     type_source = brut or defaut
     if type_source not in {c for c, _ in TypeSource.choices}:
         connus = ', '.join(c for c, _ in TypeSource.choices)
-        raise ValidationError({'source': (
+        raise ValidationError({'source': [
             f'Type de source inconnu : « {type_source} ». '
-            f'Valeurs acceptées : {connus}.')})
+            f'Valeurs acceptées : {connus}.']})
 
     source, _cree = SourceVeille.objects.get_or_create(
         company=company, code=str(type_source),
@@ -920,23 +920,23 @@ def creer_avis_manuel(company, donnees, user=None):
 
     informateur = (donnees.pop('informateur', '') or '').strip()
     if not informateur:
-        raise ValidationError({'informateur': (
+        raise ValidationError({'informateur': [
             "Qui vous a signalé cet avis ? L'informateur est obligatoire : "
             "c'est la seule information qu'on ne pourra plus retrouver plus "
             'tard, et celle qui mesure ce que la veille automatique ne voit '
-            'pas.')})
+            'pas.']})
     if informateur not in {c for c, _ in Informateur.choices}:
         connus = ', '.join(c for c, _ in Informateur.choices)
-        raise ValidationError({'informateur': (
+        raise ValidationError({'informateur': [
             f'Informateur inconnu : « {informateur} ». '
-            f'Valeurs acceptées : {connus}.')})
+            f'Valeurs acceptées : {connus}.']})
 
     source = resoudre_source(company, donnees.pop('source', None))
 
     if not (donnees.get('objet') or donnees.get('acheteur')):
-        raise ValidationError({'objet': (
+        raise ValidationError({'objet': [
             "Indiquez au moins l'objet ou l'acheteur — sans l'un des deux, "
-            "l'avis serait introuvable dans le sas.")})
+            "l'avis serait introuvable dans le sas."]})
 
     champs = {k: v for k, v in donnees.items() if k in CHAMPS_RECTIFIABLES}
     champs['informateur'] = informateur
@@ -1014,22 +1014,37 @@ def retenir_avis(avis, user=None, motif=''):
     if avis.appel_offre_id:
         return avis, avis.appel_offre_id, False
 
-    if avis.statut in (StatutAvis.NOUVEAU, StatutAvis.IGNORE):
+    # La transition se VALIDE AVANT la moindre écriture cross-app. Sans cette
+    # garde, un avis EXPIRÉ traversait la fonction, faisait créer l'affaire,
+    # et n'échouait qu'au passage en CONVERTI : le refus laissait derrière lui
+    # un appel d'offres ORPHELIN, créé pour une conversion qui n'a pas eu
+    # lieu. On refuse d'abord, on écrit ensuite.
+    if avis.statut not in (StatutAvis.NOUVEAU, StatutAvis.IGNORE,
+                           StatutAvis.RETENU):
+        libelles = dict(StatutAvis.choices)
+        raise ValidationError({'statut': [
+            f'Transition interdite : un avis « {libelles.get(avis.statut, avis.statut)} » '
+            'ne se retient plus.']})
+
+    # Tout ou rien : si la conversion échoue en cours de route, aucune affaire
+    # ne survit à l'échec.
+    with transaction.atomic():
+        if avis.statut in (StatutAvis.NOUVEAU, StatutAvis.IGNORE):
+            changer_statut_avis(
+                avis, StatutAvis.RETENU, user=user,
+                motif=motif or 'Retenu pour chiffrage.')
+
+        # L'UNIQUE appel cross-app du groupe — par le ``services.py`` de l'app
+        # cible, jamais par ses modèles.
+        from apps.ao.services import creer_appel_offre_depuis_avis
+
+        appel_offre, cree = creer_appel_offre_depuis_avis(
+            avis.company, _avis_vers_affaire(avis), user=user)
+
         changer_statut_avis(
-            avis, StatutAvis.RETENU, user=user,
-            motif=motif or 'Retenu pour chiffrage.')
-
-    # L'UNIQUE appel cross-app du groupe — par le ``services.py`` de l'app
-    # cible, jamais par ses modèles.
-    from apps.ao.services import creer_appel_offre_depuis_avis
-
-    appel_offre, cree = creer_appel_offre_depuis_avis(
-        avis.company, _avis_vers_affaire(avis), user=user)
-
-    changer_statut_avis(
-        avis, StatutAvis.CONVERTI, user=user,
-        motif=(f"Converti en appel d'offres {appel_offre.reference}."),
-        champs_supplementaires={'appel_offre_id': appel_offre.pk})
+            avis, StatutAvis.CONVERTI, user=user,
+            motif=(f"Converti en appel d'offres {appel_offre.reference}."),
+            champs_supplementaires={'appel_offre_id': appel_offre.pk})
     return avis, appel_offre.pk, cree
 
 

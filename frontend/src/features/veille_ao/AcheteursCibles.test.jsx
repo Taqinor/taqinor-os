@@ -16,7 +16,8 @@ vi.mock('../../api/veilleAoApi', () => ({
   default: { acheteursCibles: { list: mocks.list, create: mocks.create } },
 }))
 
-import AcheteursCibles, { TYPES_ACHETEUR } from './AcheteursCibles'
+import AcheteursCibles from './AcheteursCibles'
+import { TYPES_ACHETEUR } from './veilleAoShared'
 
 const renderScreen = () => render(
   <MemoryRouter><ThemeProvider><AcheteursCibles /></ThemeProvider></MemoryRouter>,

@@ -18,7 +18,8 @@ vi.mock('../../api/veilleAoApi', () => ({
   default: { sante: mocks.sante, avis: { create: mocks.create } },
 }))
 
-import SanteVeille, { ageLabel } from './SanteVeille'
+import SanteVeille from './SanteVeille'
+import { ageLabel } from './veilleAoShared'
 
 const renderScreen = (props) => render(<ThemeProvider><SanteVeille {...props} /></ThemeProvider>)
 

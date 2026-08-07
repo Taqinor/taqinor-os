@@ -23,7 +23,11 @@ import { aire, perimetre as perimetreDe, azimutAretePrincipale } from '../studio
 import ProvenanceBadge from '../components/ProvenanceBadge'
 import { PROVENANCE_ORDER } from '../provenance'
 import NouvelleToitureWizard from './NouvelleToitureWizard'
-import Calibration from './Calibration'
+// Extensions EXPLICITES : `Calibration.jsx` (le composant) et `calibration.js`
+// (les maths pures) ne different que par la CASSE. Linux les distingue, mais
+// Windows et macOS non — un specifier nu resolvait vers le mauvais module et
+// cassait `vite build` hors CI. Ne jamais reduire ces deux imports.
+import Calibration from './Calibration.jsx'
 import UnderlayImage from './UnderlayImage'
 import OutilTrace from './OutilTrace'
 import OutilsObstacles from './OutilsObstacles'
@@ -35,7 +39,7 @@ import PointsALever from './PointsALever'
 import EnveloppeArc from './EnveloppeArc'
 import EnveloppeL from './EnveloppeL'
 import ImportDxf from './ImportDxf'
-import { estCalibree, peutTracer, reechelonner } from './calibration'
+import { estCalibree, peutTracer, reechelonner } from './calibration.js'
 import { estPdf } from './rasteriserPdf'
 
 /* Deux outils sont chargés À LA DEMANDE, et pour une raison PRÉCISE — pas par

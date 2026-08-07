@@ -119,7 +119,7 @@ class PrecheckSanteApiTests(TestCase):
         camp = Campagne.objects.create(
             company=self.co, nom='C', canal=Campagne.Canal.EMAIL, corps='Hi')
         api = auth(self.user)
-        resp = api.get(f'/api/django/compta/campagnes/{camp.id}/precheck/')
+        resp = api.get(f'/api/django/marketing/campagnes/{camp.id}/precheck/')
         self.assertEqual(resp.status_code, 200, resp.content)
         self.assertTrue(resp.data['bloque'])
 
@@ -128,7 +128,7 @@ class PrecheckSanteApiTests(TestCase):
             company=self.co, nom='C', canal=Campagne.Canal.EMAIL, corps='Hi')
         api = auth(self.user)
         resp = api.post(
-            f'/api/django/compta/campagnes/{camp.id}/envoyer-test/',
+            f'/api/django/marketing/campagnes/{camp.id}/envoyer-test/',
             {'adresses_seed': ['seed@x.ma']}, format='json')
         self.assertEqual(resp.status_code, 200, resp.content)
         self.assertEqual(resp.data['seeds'], ['seed@x.ma'])

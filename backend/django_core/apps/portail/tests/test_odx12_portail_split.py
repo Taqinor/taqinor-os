@@ -93,11 +93,13 @@ class TestODX12Routes(TestCase):
         }, format='json')
         self.assertEqual(r.status_code, 400, r.data)
 
-    def test_legacy_compta_route_still_serves_same_data(self):
+    def test_la_route_canonique_sert_la_donnee(self):
+        """PACT26 — l'ancien double montage /compta/ a été retiré ;
+        seule la route canonique de l'app sert cette ressource."""
         from apps.portail.models import DemandeTicketPortail
         obj = DemandeTicketPortail.objects.create(
             company=self.company, client_id=self.client_obj.id,
             sujet='Onduleur en défaut')
-        r = self.api.get('/api/django/compta/demandes-ticket-portail/')
+        r = self.api.get('/api/django/portail/demandes-ticket-portail/')
         self.assertEqual(r.status_code, 200, r.data)
         self.assertIn(obj.id, ids_of(r))

@@ -115,19 +115,24 @@ class TestAOF1RoutesIdentiques(TestCase):
         return AppelOffre.objects.create(
             company=self.company, reference=reference, objet=objet)
 
-    def test_liste_identique_sur_les_deux_prefixes(self):
+    def test_servie_sous_le_seul_prefixe_canonique(self):
+        """PACT26 — fin du double montage : /ao/ sert, /compta/ ne sert plus.
+
+        Ce test pinait auparavant l'ÉGALITÉ des deux préfixes (garantie de
+        transition du découpage ODX11). PACT26 met fin à cette transition : le
+        double montage faussait tout comptage automatique et forçait chaque
+        écran à choisir arbitrairement entre deux URLs pour la même donnée.
+        L'invariant utile est désormais l'UNICITÉ du préfixe.
+        """
         ao = self._creer_ao('AO-AOF1-01')
         r_ao = self.api.get('/api/django/ao/appels-offres/')
-        r_compta = self.api.get('/api/django/compta/appels-offres/')
         self.assertEqual(r_ao.status_code, 200, r_ao.data)
-        self.assertEqual(r_compta.status_code, 200, r_compta.data)
-        self.assertEqual(
-            [x['id'] for x in rows_of(r_ao)],
-            [x['id'] for x in rows_of(r_compta)])
         self.assertIn(ao.id, [x['id'] for x in rows_of(r_ao)])
+        r_compta = self.api.get('/api/django/compta/appels-offres/')
+        self.assertEqual(r_compta.status_code, 404)
 
     def test_creation_force_la_societe_cote_serveur(self):
-        r = self.api.post('/api/django/compta/appels-offres/', {
+        r = self.api.post('/api/django/ao/appels-offres/', {
             'reference': 'AO-AOF1-02', 'objet': 'Pompage',
             'type_marche': 'public',
         }, format='json')
@@ -137,26 +142,22 @@ class TestAOF1RoutesIdentiques(TestCase):
             AppelOffre.objects.get(id=r.data['id']).company_id,
             self.company.id)
 
-    def test_isolation_multi_societe_sur_les_deux_prefixes(self):
+    def test_isolation_multi_societe_sur_le_prefixe_canonique(self):
         autre = make_company('aof1-autre', 'Autre Co')
         from apps.ao.models import AppelOffre
         AppelOffre.objects.create(
             company=autre, reference='AO-AOF1-X', objet='Autre société')
-        for url in ('/api/django/ao/appels-offres/',
-                    '/api/django/compta/appels-offres/'):
-            r = self.api.get(url)
-            self.assertEqual(r.status_code, 200, url)
-            self.assertEqual(rows_of(r), [], url)
+        r = self.api.get('/api/django/ao/appels-offres/')
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(rows_of(r), [])
 
     def test_actions_metier_conservees(self):
         """``dues`` (échéancier) et ``stats`` (taux de réussite) répondent."""
-        for url in ('/api/django/ao/echeances-ao/dues/',
-                    '/api/django/compta/echeances-ao/dues/'):
+        for url in ('/api/django/ao/echeances-ao/dues/',):
             r = self.api.get(url)
             self.assertEqual(r.status_code, 200, url)
             self.assertEqual(r.data, [], url)
-        for url in ('/api/django/ao/resultats-ao/stats/',
-                    '/api/django/compta/resultats-ao/stats/'):
+        for url in ('/api/django/ao/resultats-ao/stats/',):
             r = self.api.get(url)
             self.assertEqual(r.status_code, 200, url)
             self.assertEqual(r.data['total_decides'], 0, url)

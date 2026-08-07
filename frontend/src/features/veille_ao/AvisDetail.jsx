@@ -11,7 +11,7 @@ import {
 } from '../../ui'
 import { RecordShell, daysUntil, urgencyLevel, urgencyTone, urgencyLabel } from '../../ui/module'
 import { formatDate, formatDateTime, formatMAD } from '../../lib/format'
-import { StatutAvis } from './AvisList'
+import { StatutAvis } from './veilleAoShared'
 
 /* ============================================================================
    VAO34 — Fiche avis + les deux gestes qui comptent : « Retenir » et « Ignorer ».

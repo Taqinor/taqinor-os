@@ -84,7 +84,9 @@ class TestODX13Routes(TestCase):
         # Token généré côté serveur (surface AUTH inchangée) — jamais du corps.
         self.assertTrue(obj.token_acces)
 
-    def test_legacy_compta_route_still_serves_same_data(self):
+    def test_la_route_canonique_sert_la_donnee(self):
+        """PACT26 — l'ancien double montage /compta/ a été retiré ;
+        seule la route canonique de l'app sert cette ressource."""
         from apps.crm.models import Partenaire
         obj = Partenaire.objects.create(
             company=self.company, nom='Sous-revendeur Historique',

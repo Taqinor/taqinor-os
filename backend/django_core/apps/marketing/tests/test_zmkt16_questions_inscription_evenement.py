@@ -65,7 +65,7 @@ class QuestionsInscriptionEvenementTests(TestCase):
             company=self.co, evenement=self.evt, libelle='Obligatoire',
             obligatoire=True)
         resp = self.client.post(
-            f'/api/django/compta/evenements-marketing/{self.evt.id}/'
+            f'/api/django/marketing/evenements-marketing/{self.evt.id}/'
             'inscription-publique/',
             data={'nom': 'Test'}, content_type='application/json')
         self.assertEqual(resp.status_code, 400)

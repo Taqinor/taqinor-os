@@ -99,7 +99,7 @@ class ListeDiffusionTests(TestCase):
         liste_a = services.creer_liste_diffusion(self.co, nom='A')
         liste_b = services.creer_liste_diffusion(other, nom='B')
         api = auth(self.user)
-        resp = api.get('/api/django/compta/listes-diffusion/')
+        resp = api.get('/api/django/marketing/listes-diffusion/')
         noms = {r['nom'] for r in resp.data.get(
             'results', resp.data if isinstance(resp.data, list) else [])}
         self.assertIn('A', noms)
@@ -114,7 +114,7 @@ class ListeDiffusionApiTests(TestCase):
 
     def test_creer_liste_endpoint_pose_company_serveur(self):
         api = auth(self.user)
-        resp = api.post('/api/django/compta/listes-diffusion/', {
+        resp = api.post('/api/django/marketing/listes-diffusion/', {
             'nom': 'VIP', 'company': 999,
         }, format='json')
         self.assertEqual(resp.status_code, 201, resp.content)
@@ -125,7 +125,7 @@ class ListeDiffusionApiTests(TestCase):
         liste = services.creer_liste_diffusion(self.co, nom='L')
         api = auth(self.user)
         resp = api.post(
-            f'/api/django/compta/listes-diffusion/{liste.id}/importer/', {
+            f'/api/django/marketing/listes-diffusion/{liste.id}/importer/', {
                 'lignes': [
                     {'destinataire': 'a@x.ma'},
                     {'destinataire': 'a@x.ma'},
@@ -141,7 +141,7 @@ class ListeDiffusionApiTests(TestCase):
             liste, 'a@x.ma', contact_ref='lead:7')
         api = auth(self.user)
         resp = api.get(
-            f'/api/django/compta/listes-diffusion/{liste.id}/abonnes/')
+            f'/api/django/marketing/listes-diffusion/{liste.id}/abonnes/')
         self.assertEqual(resp.status_code, 200, resp.content)
         self.assertEqual(len(resp.data), 1)
         self.assertEqual(resp.data[0]['contact_ref'], 'lead:7')

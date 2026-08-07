@@ -112,7 +112,7 @@ class EnvoiCampagneTests(TestCase):
             evenement='opened')
         api = auth(self.user)
         resp = api.get(
-            f'/api/django/compta/envois-campagne/?campagne={camp.id}&statut=ouvert')
+            f'/api/django/marketing/envois-campagne/?campagne={camp.id}&statut=ouvert')
         self.assertEqual(resp.status_code, 200, resp.content)
         results = resp.data['results'] if 'results' in resp.data else resp.data
         self.assertEqual(len(results), 1)
@@ -128,7 +128,7 @@ class EnvoiCampagneTests(TestCase):
         services.envoyer_campagne(camp_a, destinataires=['a@x.ma'])
         services.envoyer_campagne(camp_b, destinataires=['b@x.ma'])
         api = auth(other_user)
-        resp = api.get('/api/django/compta/envois-campagne/')
+        resp = api.get('/api/django/marketing/envois-campagne/')
         results = resp.data['results'] if 'results' in resp.data else resp.data
         destinataires = {r['destinataire'] for r in results}
         self.assertEqual(destinataires, {'b@x.ma'})

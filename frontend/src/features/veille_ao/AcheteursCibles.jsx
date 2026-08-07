@@ -11,6 +11,7 @@ import {
 } from '../../ui'
 import { ListShell, EcheanceCenter, daysUntil } from '../../ui/module'
 import { formatDate } from '../../lib/format'
+import { TYPES_ACHETEUR } from './veilleAoShared'
 
 /* ============================================================================
    VAO36 — Écran « Acheteurs cibles » + relances : la prospection qui capte
@@ -25,17 +26,6 @@ import { formatDate } from '../../lib/format'
 
 const errMsg = (e, fallback) => e?.response?.data?.detail || fallback
 
-// VAO29 — les catégories du carnet d'amorçage (jamais un nom d'organisme).
-export const TYPES_ACHETEUR = [
-  { value: 'fondation', label: 'Fondation' },
-  { value: 'universite_privee', label: 'Université privée' },
-  { value: 'clinique', label: 'Clinique' },
-  { value: 'groupe_hotelier', label: 'Groupe hôtelier' },
-  { value: 'industriel', label: 'Industriel' },
-  { value: 'cooperative_agricole', label: 'Coopérative agricole' },
-  { value: 'promoteur', label: 'Promoteur' },
-  { value: 'collectivite', label: 'Collectivité' },
-]
 
 const typeLabel = (v) => TYPES_ACHETEUR.find((t) => t.value === v)?.label || v
 

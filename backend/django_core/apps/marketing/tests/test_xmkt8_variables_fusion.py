@@ -75,14 +75,14 @@ class VariablesFusionTests(TestCase):
             corps='Bonjour {prenom} !')
         api = auth(self.user)
         resp = api.get(
-            f'/api/django/compta/campagnes/{camp.id}/apercu_fusion/'
+            f'/api/django/marketing/campagnes/{camp.id}/apercu_fusion/'
             f'?lead_id={lead.id}')
         self.assertEqual(resp.status_code, 200, resp.content)
         self.assertEqual(resp.data['corps_fusionne'], 'Bonjour Youssef !')
 
     def test_creation_campagne_rejette_variable_inconnue(self):
         api = auth(self.user)
-        resp = api.post('/api/django/compta/campagnes/', {
+        resp = api.post('/api/django/marketing/campagnes/', {
             'nom': 'C', 'canal': 'email', 'corps': 'Bonjour {prix_achat}',
         }, format='json')
         self.assertEqual(resp.status_code, 400)

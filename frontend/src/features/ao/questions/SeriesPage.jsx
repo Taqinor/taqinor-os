@@ -355,7 +355,7 @@ export function SeriesPage({ affaireId }) {
           </div>
 
           <Annotateur
-            refSvg={svgAnnotateur}
+            onSvgRef={(noeud) => { svgAnnotateur.current = noeud }}
             onChange={setReperes}
             onOuvrirFiche={(id, lettre) => {
               setNoteQuestion(null)

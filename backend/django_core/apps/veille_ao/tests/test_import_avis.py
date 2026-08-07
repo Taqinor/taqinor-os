@@ -11,6 +11,7 @@ Coordination AOF169 : ce chemin alimente le SAS (un humain trie) ;
 jamais — un fichier d'agrégateur de 400 lignes ouvrirait sinon 400 dossiers
 dont 380 seraient du bruit. Un test le verrouille.
 """
+from decimal import Decimal
 from django.test import SimpleTestCase, TestCase
 
 from authentication.models import Company
@@ -80,7 +81,9 @@ class ImportTests(_Base):
         self.assertEqual(avis.acheteur, 'Commune de Figuig')
         self.assertEqual(avis.statut, StatutAvis.NOUVEAU)
         self.assertIsNotNone(avis.date_limite_remise)
-        self.assertEqual(str(avis.montant_estime), '450000')
+        # Comparaison de VALEUR, pas de mise en forme : le champ est un
+        # DecimalField(decimal_places=2), donc la base rend 450000.00.
+        self.assertEqual(avis.montant_estime, Decimal('450000'))
 
     def test_la_virgule_decimale_francaise_est_lue(self):
         self._importer()

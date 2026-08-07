@@ -78,13 +78,13 @@ class BilletsEvenementTests(TestCase):
             company=self.co, evenement=self.evt, libelle='Public',
             prix_ttc_mad=Decimal('50'), quota=1)
         resp = self.client.post(
-            f'/api/django/compta/evenements-marketing/{self.evt.id}/'
+            f'/api/django/marketing/evenements-marketing/{self.evt.id}/'
             'inscription-publique/',
             data={'nom': 'Test', 'billet_id': billet.id},
             content_type='application/json')
         self.assertEqual(resp.status_code, 201, resp.content)
         resp2 = self.client.post(
-            f'/api/django/compta/evenements-marketing/{self.evt.id}/'
+            f'/api/django/marketing/evenements-marketing/{self.evt.id}/'
             'inscription-publique/',
             data={'nom': 'Test2', 'billet_id': billet.id},
             content_type='application/json')

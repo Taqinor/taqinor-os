@@ -91,7 +91,7 @@ class CampagnesMultilinguesTests(TestCase):
             langue_preferee='ar')
         user = make_user(self.co, 'xmkt11-user')
         resp = auth(user).get(
-            f'/api/django/compta/campagnes/{self.camp.id}/rendu-lead/'
+            f'/api/django/marketing/campagnes/{self.camp.id}/rendu-lead/'
             f'?lead_id={lead.id}')
         self.assertEqual(resp.status_code, 200, resp.content)
         self.assertEqual(resp.json()['langue'], 'ar')

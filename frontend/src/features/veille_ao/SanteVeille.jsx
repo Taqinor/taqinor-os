@@ -8,6 +8,7 @@ import {
   Label, Input, Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
 } from '../../ui'
 import { formatDateTime } from '../../lib/format'
+import { ageLabel } from './veilleAoShared'
 
 /* ============================================================================
    VAO37 — Bandeau de santé de la collecte + la carte d'honnêteté.
@@ -27,21 +28,6 @@ const INFORMATEURS = [
   { value: 'autre', label: 'Autre' },
 ]
 
-// VAO37 (Done=) — logique PURE, testable hors React : « l'âge de la dernière
-// collecte est visible sans clic » exige un libellé, pas une date brute.
-export function ageLabel(iso, now = new Date()) {
-  if (!iso) return null
-  const d = new Date(iso)
-  const base = now instanceof Date ? now : new Date(now)
-  if (Number.isNaN(d.getTime()) || Number.isNaN(base.getTime())) return null
-  const ms = base.getTime() - d.getTime()
-  if (ms < 0) return 'à l’instant'
-  const heures = Math.floor(ms / (1000 * 60 * 60))
-  if (heures < 1) return 'à l’instant'
-  if (heures < 24) return `il y a ${heures} h`
-  const jours = Math.floor(heures / 24)
-  return `il y a ${jours} j`
-}
 
 const errMsg = (e, fallback) => e?.response?.data?.detail || fallback
 
