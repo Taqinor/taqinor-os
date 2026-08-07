@@ -35,10 +35,14 @@ class FauxDepot:
         self.src = Path(self.tmp.name) / "frontend" / "src"
         self.features = self.src / "features"
         self.features.mkdir(parents=True)
+        self.pages = self.src / "pages"
+        self.pages.mkdir(parents=True)
         write(self.src / "main.jsx", "import router from './router'\n")
-        self._sauvegarde = (cea.FRONT_SRC, cea.FEATURES, cea.ENTRY, cea.ROOT)
+        self._sauvegarde = (
+            cea.FRONT_SRC, cea.FEATURES, cea.PAGES, cea.ENTRY, cea.ROOT)
         cea.FRONT_SRC = self.src
         cea.FEATURES = self.features
+        cea.PAGES = self.pages
         cea.ENTRY = self.src / "main.jsx"
         cea.ROOT = Path(self.tmp.name)
         cea._CACHE.clear()
@@ -47,7 +51,7 @@ class FauxDepot:
         return write(self.src / relatif, contenu)
 
     def close(self):
-        cea.FRONT_SRC, cea.FEATURES, cea.ENTRY, cea.ROOT = self._sauvegarde
+        cea.FRONT_SRC, cea.FEATURES, cea.PAGES, cea.ENTRY, cea.ROOT = self._sauvegarde
         cea._CACHE.clear()
         self.tmp.cleanup()
 
@@ -177,6 +181,53 @@ class AtteignabiliteTests(BaseDepot):
         config = cea.ConfigModule(self.depot.features / "x" / "module.config.jsx")
         self.assertTrue(config.opaque)
         self.assertEqual(self.orphelins(), [])
+
+
+# ===========================================================================
+# pages/** — extension PACT149 (07/08/2026)
+# ===========================================================================
+
+class PagesTests(BaseDepot):
+    """`pages/**` est desormais inventorie au meme titre que `features/**`.
+
+    Avant PACT149, `ecrans_de_features()` n'inventoriait QUE `features/` :
+    un ecran mort sous `pages/` etait invisible pour toujours, meme s'il
+    apparaissait dans le graphe d'atteignabilite (qui, lui, suit deja
+    `pages/**` depuis `main.jsx` -> `router/index.jsx`). Cas reel trouve et
+    corrige le meme jour : `pages/credit/ExpositionCreditPage.jsx`, jumeau
+    perime du vivant `features/credit/ExpositionCreditPage.jsx`, supprime.
+    """
+
+    def test_ecran_pages_non_route_est_signale(self):
+        """Controle negatif : le trou structurel que PACT149 ferme."""
+        self.depot.fichier("router/index.jsx",
+                           "const Vivant = lazy(() => import('../pages/Vivant'))\n")
+        self.depot.fichier("pages/Vivant.jsx", "export default 1\n")
+        self.depot.fichier("pages/Orphelin.jsx", "export default 1\n")
+        self.assertEqual(self.orphelins(),
+                         ["frontend/src/pages/Orphelin.jsx"])
+
+    def test_ecran_pages_route_est_atteignable(self):
+        self.depot.fichier("router/index.jsx",
+                           "const Vivant = lazy(() => import('../pages/Vivant'))\n")
+        self.depot.fichier("pages/Vivant.jsx", "export default 1\n")
+        self.assertEqual(self.orphelins(), [])
+
+    def test_extension_tsx_est_inventoriee(self):
+        """`.tsx` est resolu et inventorie, meme si le depot n'en a pas encore."""
+        self.depot.fichier("router/index.jsx",
+                           "const Vivant = lazy(() => import('../pages/Vivant'))\n")
+        self.depot.fichier("pages/Vivant.tsx", "export default 1\n")
+        self.depot.fichier("pages/Orphelin.tsx", "export default 1\n")
+        self.assertEqual(self.orphelins(),
+                         ["frontend/src/pages/Orphelin.tsx"])
+
+    def test_app_de_distingue_features_et_pages(self):
+        """`pages/credit` et `features/credit` ne sont jamais le meme bac."""
+        cible_features = cea.FEATURES / "credit" / "X.jsx"
+        cible_pages = cea.PAGES / "credit" / "X.jsx"
+        self.assertEqual(cea.app_de(cible_features), "credit")
+        self.assertEqual(cea.app_de(cible_pages), "pages/credit")
 
 
 # ===========================================================================
@@ -396,7 +447,7 @@ class DepotReelTests(unittest.TestCase):
         """Si une config devient illisible, la garde s'aveugle en silence."""
         _, stats = analyse_reelle()
         self.assertEqual(stats["opaques"], 0)
-        self.assertEqual(stats["configs"], 44)
+        self.assertEqual(stats["configs"], 45)
 
     def test_la_base_de_reference_couvre_le_passif(self):
         """Le passif est GELE : sur un depot propre, la garde est verte."""
