@@ -1,4 +1,5 @@
-"""VAO7 — seed du catalogue des sources de veille (idempotent, ADDITIF).
+"""VAO7/VAO9 — seed des données de référence de la veille AO (idempotent,
+ADDITIF) : le catalogue des SOURCES et les MOTS-CLÉS des deux niveaux.
 
 Ce fichier est **le seul endroit du module** où une URL de portail est écrite
 en clair : elle est semée EN BASE, et le reste du code (collecteur compris) la
@@ -30,7 +31,9 @@ Lancer ::
 from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
 
-from apps.veille_ao.models import SourceVeille, TypeSource
+from apps.veille_ao.models import (
+    POIDS_PAR_DEFAUT, MotCleVeille, NiveauMotCle, SourceVeille, TypeSource,
+)
 
 # (code, libellé, type, url_base, actif, notes)
 #
@@ -95,6 +98,54 @@ SOURCES = [
 ]
 
 
+# VAO9 — les mots-clés de départ, MESURÉS sur le portail réel le 2026-08-01.
+# Ce fichier est aussi la table de référence des mots-clés : le code de
+# scoring n'en contient AUCUN littéral (garde de test), pour qu'ajouter un
+# mot-clé reste un geste d'écran et jamais un déploiement.
+#
+# NOYAU = précision haute. LARGE = bruit accepté, donc poids plus faible.
+MOTS_CLES = [
+    (libelle, NiveauMotCle.NOYAU) for libelle in (
+        'solaire',
+        'photovolta',
+        'pompage solaire',
+        'kwc',
+        'chauffe-eau solaire',
+    )
+] + [
+    (libelle, NiveauMotCle.LARGE) for libelle in (
+        'photovoltaïque',
+        'énergie renouvelable',
+        'éclairage public solaire',
+        'onduleur',
+        'batterie',
+        'stockage',
+        'électrification',
+    )
+]
+
+
+def seed_mots_cles_pour_societe(company):
+    """Sème les mots-clés des DEUX niveaux (idempotent, additif).
+
+    Renvoie le nombre de mots-clés réellement créés. Un mot-clé existant
+    (apparié par ``(company, libelle)``) n'est ni repondéré ni réactivé : un
+    réglage fait à l'écran survit à un re-seed.
+    """
+    existants = set(
+        MotCleVeille.objects.filter(company=company)
+        .values_list('libelle', flat=True))
+    crees = 0
+    for libelle, niveau in MOTS_CLES:
+        if libelle in existants:
+            continue
+        MotCleVeille.objects.create(
+            company=company, libelle=libelle, niveau=niveau,
+            poids=POIDS_PAR_DEFAUT[niveau], actif=True)
+        crees += 1
+    return crees
+
+
 def seed_sources_pour_societe(company):
     """Sème les sources connues pour UNE société (idempotent, additif).
 
@@ -145,8 +196,11 @@ class Command(BaseCommand):
                 'Aucune société à semer — rien fait.'))
             return
 
-        total = sum(seed_sources_pour_societe(co) for co in societes)
+        total_sources = sum(
+            seed_sources_pour_societe(co) for co in societes)
+        total_mots = sum(
+            seed_mots_cles_pour_societe(co) for co in societes)
         self.stdout.write(self.style.SUCCESS(
-            f'Sources de veille semées pour {len(societes)} société(s) : '
-            f'{total} source(s) créée(s) ; les sources existantes sont '
-            'restées intactes.'))
+            f'Veille AO semée pour {len(societes)} société(s) : '
+            f'{total_sources} source(s) et {total_mots} mot(s)-clé(s) '
+            'créé(s) ; les lignes existantes sont restées intactes.'))

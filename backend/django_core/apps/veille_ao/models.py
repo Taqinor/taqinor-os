@@ -293,3 +293,70 @@ class AvisMarche(TenantModel):
         if not self.date_limite_remise:
             return False
         return self.date_limite_remise < timezone.now()
+
+
+class NiveauMotCle(models.TextChoices):
+    """Deux niveaux, mesurés sur le portail réel (VAO9).
+
+    Le NOYAU est de haute précision : ce qu'il attrape est presque toujours
+    pour nous. Le LARGE accepte du bruit en échange de la couverture — il
+    pèse donc moins lourd, jamais autant qu'un mot du noyau.
+    """
+
+    NOYAU = 'noyau', 'Noyau (précision haute)'
+    LARGE = 'large', 'Large (bruit accepté)'
+
+
+#: Poids par défaut d'un mot-clé selon son niveau. C'est un DÉFAUT de
+#: création, pas une règle figée : le poids vit sur la ligne, et l'écran peut
+#: le changer sans redéploiement.
+POIDS_PAR_DEFAUT = {
+    NiveauMotCle.NOYAU: 10,
+    NiveauMotCle.LARGE: 3,
+}
+
+#: Plafond du score. Un avis qui déclenche huit mots n'est pas huit fois plus
+#: intéressant qu'un avis qui en déclenche deux — le score est un indice de
+#: tri, pas une mesure.
+SCORE_MAX = 100
+
+
+class MotCleVeilleQuerySet(models.QuerySet):
+    def actifs(self):
+        return self.filter(actif=True)
+
+
+class MotCleVeille(TenantModel):
+    """Les mots-clés sont de la DONNÉE, jamais une constante du code.
+
+    Ajouter « ombrière photovoltaïque » doit être un geste d'écran, pas un
+    déploiement — sinon la veille se périme au rythme des livraisons.
+    """
+
+    libelle = models.CharField('Mot-clé', max_length=120)
+    niveau = models.CharField(
+        'Niveau', max_length=10, choices=NiveauMotCle.choices,
+        default=NiveauMotCle.LARGE)
+    poids = models.PositiveIntegerField(
+        'Poids', default=POIDS_PAR_DEFAUT[NiveauMotCle.LARGE],
+        help_text="Contribution du mot-clé au score de l'avis.")
+    actif = models.BooleanField('Actif', default=True)
+
+    objects = MotCleVeilleQuerySet.as_manager()
+
+    class Meta:
+        verbose_name = 'Mot-clé de veille'
+        verbose_name_plural = 'Mots-clés de veille'
+        ordering = ['niveau', 'libelle', 'id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'libelle'],
+                name='veille_ao_motcle_co_libelle_uniq'),
+        ]
+        indexes = [
+            models.Index(fields=['company', 'actif'],
+                         name='veille_ao_mc_co_actif_idx'),
+        ]
+
+    def __str__(self):
+        return self.libelle
