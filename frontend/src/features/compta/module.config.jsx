@@ -5,7 +5,7 @@ import { createElement, lazy } from 'react'
 import {
   LayoutDashboard, BookOpen, PencilLine, FileBarChart2,
   Landmark, ReceiptText, Building2, Scale, Receipt, HandCoins, ShieldCheck,
-  ListChecks, Repeat,
+  ListChecks, Repeat, BadgeCheck,
   Calculator,
 } from 'lucide-react'
 import { appGlyph } from '../../lib/apps/appGlyph'
@@ -35,6 +35,8 @@ const EngagementsPage = lazy(() => import('./pages/EngagementsPage.jsx'))
 const CloturePage = lazy(() => import('./pages/CloturePage.jsx'))
 const EcrituresRecurrentesPage = lazy(
   () => import('./pages/EcrituresRecurrentesPage.jsx'))
+// PACT160 — file d'approbation des changements de RIB fournisseur (XACC24).
+const ApprobationsRibPage = lazy(() => import('./pages/ApprobationsRibPage.jsx'))
 
 const ROLES = ['responsable', 'admin']
 
@@ -68,6 +70,7 @@ const config = {
       { to: '/comptabilite/effets', label: 'Effets & règlements', icon: icon(HandCoins), roles: ROLES },
       { to: '/comptabilite/engagements', label: 'Engagements', icon: icon(ShieldCheck), roles: ROLES },
       { to: '/comptabilite/cloture', label: 'Clôture', icon: icon(ListChecks), roles: ROLES },
+      { to: '/comptabilite/approbations-rib', label: 'Approbations RIB', icon: icon(BadgeCheck), roles: ROLES },
     ],
   },
   // Titres de page : du plus spécifique au plus général (routes.meta).
@@ -75,6 +78,7 @@ const config = {
     // WIR107 — « ecritures-recurrentes » AVANT « ecritures » : la résolution
     // se fait par préfixe, l'entrée la plus spécifique doit passer d'abord.
     ['/comptabilite/ecritures-recurrentes', 'Écritures récurrentes — Comptabilité'],
+    ['/comptabilite/approbations-rib', 'Approbations RIB — Comptabilité'],
     ['/comptabilite/cloture', 'Clôture — Comptabilité'],
     ['/comptabilite/engagements', 'Engagements — Comptabilité'],
     ['/comptabilite/effets', 'Effets & règlements — Comptabilité'],
@@ -103,6 +107,7 @@ const config = {
     { path: '/comptabilite/engagements', component: EngagementsPage, roles: ROLES },
     { path: '/comptabilite/cloture', component: CloturePage, roles: ROLES },
     { path: '/comptabilite/ecritures-recurrentes', component: EcrituresRecurrentesPage, roles: ROLES },
+    { path: '/comptabilite/approbations-rib', component: ApprobationsRibPage, roles: ROLES },
   ],
 }
 

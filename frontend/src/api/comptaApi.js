@@ -318,6 +318,15 @@ const comptaApi = {
     valider: (id) => api.post(`/compta/compensations/${id}/valider/`),
   },
 
+  // ── PACT160 / XACC24 — Approbation des changements de RIB fournisseur ──
+  approbationsRib: {
+    ...resource('approbations-rib'),
+    approuver: (id, data) =>
+      api.post(`/compta/approbations-rib/${id}/approuver/`, data || {}),
+    refuser: (id, data) =>
+      api.post(`/compta/approbations-rib/${id}/refuser/`, data || {}),
+  },
+
   // ── XACC26 — Provisions FNP/FAE de fin de période ──
   provisionsPeriode: {
     genererFnp: (data) =>

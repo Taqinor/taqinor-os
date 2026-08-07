@@ -17,7 +17,7 @@ from .models import (
     ClotureCaisse, CodePromotion,
     CommissionPayoutLine, CommissionPayoutRun, CompteComptable,
     CompteTresorerie, ContratAvancement, DeclarationTVA,
-    DemandeApprobationConfig, DotationAmortissement,
+    DemandeApprobationConfig, DemandeApprobationRib, DotationAmortissement,
     ECatalogue, EcritureComptable, Effet, EntiteConsolidation, EtapeSequence,
     ExecutionEtapeSequence, InscriptionSequence,
     ListeDiffusion, AbonnementListe, SegmentMarketing,
@@ -1944,6 +1944,31 @@ class DemandeApprobationConfigSerializer(serializers.ModelSerializer):
             'statut_display', 'demandeur', 'demandeur_nom', 'decideur',
             'decideur_nom', 'commentaire_decision', 'date_creation',
             'date_decision',
+        ]
+        read_only_fields = [
+            'statut', 'demandeur', 'demandeur_nom', 'decideur', 'decideur_nom',
+            'commentaire_decision', 'date_creation', 'date_decision',
+        ]
+
+
+# ── PACT160 / XACC24 — Approbation des changements de RIB fournisseur ──────
+
+class DemandeApprobationRibSerializer(serializers.ModelSerializer):
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+    demandeur_nom = serializers.CharField(
+        source='demandeur.username', read_only=True)
+    decideur_nom = serializers.CharField(
+        source='decideur.username', read_only=True)
+    rib_actif = serializers.CharField(read_only=True)
+
+    class Meta:
+        model = DemandeApprobationRib
+        fields = [
+            'id', 'fournisseur_id', 'fournisseur_nom', 'ancien_rib',
+            'nouveau_rib', 'statut', 'statut_display', 'rib_actif',
+            'demandeur', 'demandeur_nom', 'decideur', 'decideur_nom',
+            'commentaire_decision', 'date_creation', 'date_decision',
         ]
         read_only_fields = [
             'statut', 'demandeur', 'demandeur_nom', 'decideur', 'decideur_nom',
