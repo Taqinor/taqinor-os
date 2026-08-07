@@ -18,6 +18,10 @@ const mocks = vi.hoisted(() => ({
   dossiersList: vi.fn(),
   dossierGet: vi.fn(),
   genererPiece: vi.fn(),
+  // AOF176 — appelé par le contenu PAR DÉFAUT de l'emplacement « actions » de
+  // `DossierPage` (contrôles avant dépôt + ZIP), désormais monté sans que le
+  // monteur ait à le passer.
+  controlesAvantDepot: vi.fn(),
   seriesList: vi.fn(),
   seriesCreate: vi.fn(),
   calepinageGet: vi.fn(),
@@ -44,7 +48,10 @@ vi.mock('../../api/aoApi', () => ({
     // rattache à un BÂTIMENT (ToitureAO n'a aucune FK vers l'affaire).
     batiments: { list: mocks.batimentsList },
     variantes: { list: mocks.variantesList },
-    dossiers: { list: mocks.dossiersList, get: mocks.dossierGet, genererPiece: mocks.genererPiece },
+    dossiers: {
+      list: mocks.dossiersList, get: mocks.dossierGet, genererPiece: mocks.genererPiece,
+      controlesAvantDepot: mocks.controlesAvantDepot,
+    },
     seriesQR: { list: mocks.seriesList, create: mocks.seriesCreate },
     calepinages: { get: mocks.calepinageGet, calculer: mocks.calepinageCalculer },
     equipements: { list: mocks.equipementsList, bascule: vi.fn() },
@@ -138,6 +145,7 @@ beforeEach(() => {
   mocks.toituresCreate.mockResolvedValue({ data: { id: 900 } })
   mocks.equipementsList.mockResolvedValue({ data: [] })
   mocks.exigencesList.mockResolvedValue({ data: [] })
+  mocks.controlesAvantDepot.mockResolvedValue({ data: { controles: [] } })
 })
 
 // Les 10 onglets de la fiche, dans leur ordre RÉEL : les 7 d'origine, puis les
@@ -290,6 +298,28 @@ describe('AffaireDetail', () => {
       await waitFor(() => expect(mocks.dossierGet).toHaveBeenCalledWith(77), { timeout: 15000 })
       expect(mocks.dossierGet).not.toHaveBeenCalledWith('1')
       expect(await screen.findByRole('heading', { name: /Dossier de soumission/ })).toBeInTheDocument()
+    })
+
+    /* Les 3 emplacements de `DossierPage` (contrôles avant dépôt, ZIP,
+       échéances) restaient VIDES aux deux points de montage : les panneaux
+       AOF176/177/178 existaient sur le disque, importés par personne. */
+    it('« Dossier » affiche les contrôles avant dépôt, le ZIP et les échéances — avec la date limite de l’AFFAIRE', async () => {
+      renderScreen()
+      await screen.findByText('AO-2026-001')
+      await userEvent.click(onglet('Dossier'))
+
+      // Les contrôles portent sur le DOSSIER (77), jamais sur l'affaire (1).
+      await waitFor(
+        () => expect(mocks.controlesAvantDepot).toHaveBeenCalledWith(77),
+        { timeout: 15000 },
+      )
+      expect(await screen.findByRole('heading', { name: 'Contrôles avant dépôt' })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: /Constituer le ZIP de dépôt/ })).toBeInTheDocument()
+      // `DossierAOSerializer` ne publie aucune date limite : elle vient de
+      // l'affaire, passée explicitement par l'onglet.
+      expect(screen.getByText('Date limite de remise des plis')).toBeInTheDocument()
+      expect(screen.getAllByText('15/09/2026').length).toBeGreaterThan(0)
+      expect(codeSeul).toMatch(/<DossierPage\s+dossierId=\{courant\}\s+dateLimite=\{dateLimite\}/)
     })
 
     it('« Dossier » affiche un état vide motivé quand l’affaire n’a aucun dossier (et ne monte rien)', async () => {

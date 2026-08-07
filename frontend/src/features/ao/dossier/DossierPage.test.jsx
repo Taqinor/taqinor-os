@@ -16,6 +16,7 @@ import { MemoryRouter } from 'react-router-dom'
 const mocks = vi.hoisted(() => ({
   get: vi.fn(),
   genererPiece: vi.fn(),
+  controlesAvantDepot: vi.fn(),
 }))
 
 vi.mock('react-router-dom', async () => {
@@ -24,7 +25,19 @@ vi.mock('react-router-dom', async () => {
 })
 
 vi.mock('../../../api/aoApi', () => ({
-  default: { dossiers: { get: mocks.get, genererPiece: mocks.genererPiece } },
+  default: {
+    dossiers: {
+      get: mocks.get,
+      genererPiece: mocks.genererPiece,
+      // AOF176 — endpoint RÉEL, appelé par le contenu par défaut de
+      // l'emplacement « actions ».
+      controlesAvantDepot: mocks.controlesAvantDepot,
+    },
+    // `EcheancesDossier` ne l'appelle que depuis le formulaire de prorogation,
+    // que cet écran ne monte pas (`peutProroger={false}` — le serveur ne
+    // connaît pas les champs de prorogation).
+    affaires: { update: vi.fn() },
+  },
 }))
 
 import DossierPage from './DossierPage'
@@ -82,6 +95,9 @@ beforeEach(() => {
   vi.clearAllMocks()
   mocks.get.mockResolvedValue({ data: DOSSIER_V1 })
   mocks.genererPiece.mockResolvedValue({ data: {} })
+  mocks.controlesAvantDepot.mockResolvedValue({
+    data: { controles: [{ id: 1, code: 'caution', libelle: 'Caution constituée', severite: 'ok' }] },
+  })
 })
 
 describe('DossierPage (AOF174)', () => {
@@ -152,5 +168,84 @@ describe('DossierPage (AOF174)', () => {
     expect(
       screen.getByRole('button', { name: /Régénérer « Mémoire technique »/ }),
     ).toBeDisabled()
+  })
+})
+
+/* ══ Les 3 EMPLACEMENTS ont un contenu PAR DÉFAUT ═══════════════════════════
+   `renderEcheances` et `actions` étaient facultatifs et AUCUN des deux
+   monteurs réels (l'onglet « Dossier » de la fiche affaire, la route
+   `/ao/dossiers/:id`) ne les remplissait : `ControlesAvantDepot` (AOF176),
+   `ZipButton` (AOF177) et `EcheancesDossier` (AOF178) n'étaient importés par
+   AUCUN fichier de l'application. Ils sont désormais le contenu par défaut —
+   et les props gardent la priorité pour qui veut la main. */
+describe('DossierPage — contenu par défaut des emplacements (AOF176/177/178)', () => {
+  it('monte les contrôles avant dépôt, le bouton ZIP et les échéances sans qu’un monteur ait à les passer', async () => {
+    renderScreen()
+
+    // AOF176 — l'endpoint est RÉEL, il est appelé avec l'id du DOSSIER.
+    await waitFor(() => expect(mocks.controlesAvantDepot).toHaveBeenCalledWith(7))
+    expect(await screen.findByRole('heading', { name: 'Contrôles avant dépôt' })).toBeInTheDocument()
+    expect(screen.getByText('Caution constituée')).toBeInTheDocument()
+    // AOF177 — le ZIP est rendu DANS le panneau de contrôles (`zipSlot`).
+    expect(screen.getByRole('button', { name: /Constituer le ZIP de dépôt/ })).toBeInTheDocument()
+    // AOF178 — les échéances du dossier, pas le simple centre d'échéances.
+    expect(screen.getByText('Date limite de remise des plis')).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Jalons' })).toBeInTheDocument()
+  })
+
+  it('écrit le motif SUR le bouton ZIP quand un contrôle bloquant est rouge (jamais un bouton grisé muet)', async () => {
+    mocks.controlesAvantDepot.mockResolvedValue({
+      data: {
+        controles: [{
+          id: 2, code: 'caution', libelle: 'Caution constituée',
+          severite: 'bloquant', message: 'caution expirée le 01/09',
+        }],
+      },
+    })
+    renderScreen()
+
+    const zip = await screen.findByRole('button', { name: /ZIP bloqué — caution expirée le 01\/09/ })
+    expect(zip).toBeDisabled()
+  })
+
+  it('bloque aussi le ZIP quand le dossier porte un verrou, en le DISANT', async () => {
+    mocks.get.mockResolvedValue({
+      data: { ...DOSSIER_V1, verrou: { porteur: 'Sami B.', operation_label: 'cascade de prix' } },
+    })
+    renderScreen()
+
+    expect(
+      await screen.findByRole('button', { name: /ZIP bloqué — une opération est déjà en cours/ }),
+    ).toBeDisabled()
+  })
+
+  it('le compte à rebours n’invente aucune date : « — » sans `dateLimite`, la date fournie sinon', async () => {
+    const { unmount } = renderScreen()
+    await screen.findByText('Date limite de remise des plis')
+    // `DossierAOSerializer` ne publie AUCUNE date limite : sans la prop, rien.
+    expect(screen.getAllByText('—').length).toBeGreaterThan(0)
+    unmount()
+
+    renderScreen({ dateLimite: '2026-09-15' })
+    expect((await screen.findAllByText('15/09/2026')).length).toBeGreaterThan(0)
+  })
+
+  it('n’affiche AUCUN formulaire de prorogation (AppelOffre ne porte pas ces champs)', async () => {
+    renderScreen()
+    await screen.findByRole('heading', { name: 'Jalons' })
+    expect(screen.queryByText(/Prorogation écrite/)).not.toBeInTheDocument()
+    expect(screen.queryByLabelText(/Référence du courrier/)).not.toBeInTheDocument()
+  })
+
+  it('les props gardent la PRIORITÉ : un monteur qui injecte ses emplacements les garde', async () => {
+    renderScreen({
+      renderEcheances: () => <p>Échéances injectées</p>,
+      actions: () => <p>Actions injectées</p>,
+    })
+
+    expect(await screen.findByText('Échéances injectées')).toBeInTheDocument()
+    expect(screen.getByText('Actions injectées')).toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'Contrôles avant dépôt' })).not.toBeInTheDocument()
+    expect(mocks.controlesAvantDepot).not.toHaveBeenCalled()
   })
 })
