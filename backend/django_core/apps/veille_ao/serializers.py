@@ -180,6 +180,58 @@ class AvisMarcheSerializer(serializers.ModelSerializer):
         return super().update(instance, donnees)
 
 
+class MotifSerializer(serializers.Serializer):
+    """Le corps commun de « Retenir » et « Ignorer » : un motif, facultatif.
+
+    Facultatif à dessein — exiger un motif transformerait un geste de tri
+    d'une seconde en formulaire, et la liste ne serait plus triée du tout. Le
+    chatter enregistre un motif par défaut quand l'utilisateur n'en donne pas.
+    """
+
+    motif = serializers.CharField(required=False, allow_blank=True,
+                                  max_length=500)
+
+
+class RetenirAvisSerializer(serializers.Serializer):
+    """VAO30 — la réponse de « Retenir » : l'affaire créée, et son identifiant.
+
+    ``appel_offre_id`` est ce que l'écran suit pour ouvrir la fiche. Un
+    sérialiseur RÉEL, jamais ``response=dict``.
+    """
+
+    id = serializers.IntegerField(read_only=True, help_text="L'avis retenu.")
+    statut = serializers.CharField(read_only=True)
+    appel_offre_id = serializers.IntegerField(
+        read_only=True,
+        help_text="Identifiant OPAQUE de l'appel d'offres créé (apps.ao).")
+    appel_offre_cree = serializers.BooleanField(
+        read_only=True,
+        help_text='Faux quand l\'affaire existait déjà : re-cliquer ne '
+                  'duplique jamais.')
+
+
+class ReglePropositionSerializer(serializers.Serializer):
+    """VAO10 — la règle d'exclusion PROPOSÉE, jamais créée en douce."""
+
+    portee = serializers.CharField(read_only=True)
+    portee_libelle = serializers.CharField(read_only=True)
+    valeur = serializers.CharField(read_only=True, allow_blank=True)
+    motif_suggere = serializers.CharField(read_only=True, allow_blank=True)
+    existe_deja = serializers.BooleanField(read_only=True)
+    regle_existante_id = serializers.IntegerField(read_only=True,
+                                                  allow_null=True)
+    regle_existante_active = serializers.BooleanField(read_only=True,
+                                                      allow_null=True)
+
+
+class IgnorerAvisSerializer(serializers.Serializer):
+    """VAO14/VAO10 — la réponse d'« Ignorer », avec sa règle PROPOSÉE."""
+
+    id = serializers.IntegerField(read_only=True)
+    statut = serializers.CharField(read_only=True)
+    regle_proposee = ReglePropositionSerializer(read_only=True)
+
+
 class AcheteurCibleSerializer(serializers.ModelSerializer):
     """VAO29 — le carnet à démarcher.
 

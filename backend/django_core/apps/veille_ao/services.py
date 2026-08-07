@@ -46,11 +46,16 @@ logger = logging.getLogger(__name__)
 #: Volontairement STRICTE : élargir un chemin est un choix explicite, pas un
 #: effet de bord. Un statut vers LUI-MÊME n'est pas une transition — il est
 #: refusé, pour qu'un appelant distrait ne réécrive pas un historique plat.
+#: ``ignore`` → ``retenu`` est OUVERT (VAO30) : la marche arrière doit être
+#: triviale. « Ignorer » est un geste rapide, fait le matin sur une liste ;
+#: s'en dédire une heure plus tard ne doit pas demander de recréer l'avis à la
+#: main — c'est exactement le même principe qu'une règle d'exclusion qu'on
+#: désactive (VAO10). Le chatter garde la trace des deux gestes.
 TRANSITIONS_AVIS = {
     StatutAvis.NOUVEAU: (StatutAvis.RETENU, StatutAvis.IGNORE,
                          StatutAvis.EXPIRE),
     StatutAvis.RETENU: (StatutAvis.CONVERTI, StatutAvis.EXPIRE),
-    StatutAvis.IGNORE: (StatutAvis.EXPIRE,),
+    StatutAvis.IGNORE: (StatutAvis.RETENU, StatutAvis.EXPIRE),
     StatutAvis.CONVERTI: (StatutAvis.EXPIRE,),
     StatutAvis.EXPIRE: (),
 }
@@ -949,3 +954,92 @@ def creer_avis_manuel(company, donnees, user=None):
         avis.informateur = informateur
         avis.save(update_fields=['informateur', 'updated_at'])
     return avis, cree
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# VAO30 — « RETENIR » : l'UNIQUE point de contact cross-app de tout le groupe.
+#
+# La conversion passe par ``apps.ao.services.creer_appel_offre_depuis_avis``
+# — le point de contact que l'app cible EXPOSE dans son ``services.py``
+# (AOF169), déjà emprunté par l'import de fichier et la saisie manuelle d'AO.
+# Aucun modèle ni aucune vue d'``apps.ao`` n'est importé ici : le lien
+# retourne un ENTIER opaque (``appel_offre_id``), ce qui garde le contrat
+# import-linter vert et la chaîne de migrations d'``apps.ao`` mono-écrivain.
+#
+# La référence de NOTRE dossier (AO-YYYYMM-0001) est générée par la
+# plateforme (``core.numbering``) à l'intérieur de ce service — jamais un
+# ``count()+1``, le dépôt a déjà payé une collision en production.
+# ─────────────────────────────────────────────────────────────────────────
+
+#: Les champs d'un avis que l'affaire reprend. Les NOMS sont ceux du contrat
+#: d'``apps.ao`` (``date_limite``, ``date_ouverture_plis``), pas les nôtres :
+#: c'est la fonction d'accueil qui fixe le vocabulaire, pas l'appelant.
+def _avis_vers_affaire(avis):
+    """Traduit un avis du sas vers le dictionnaire attendu par ``apps.ao``."""
+    reference = (avis.reference_avis or avis.ref_consultation or '').strip()
+    if not reference:
+        # Un avis capté par WhatsApp n'a souvent AUCUNE référence publiée
+        # (c'est le cas FRDISI : une consultation privée sur invitation).
+        # Refuser la conversion ici viderait le groupe de son sens ; on pose
+        # donc une référence interne STABLE et traçable, qui déduplique tout
+        # aussi bien qu'une référence d'acheteur.
+        reference = f'VEILLE-{avis.pk}'
+
+    donnees = {
+        'reference_acheteur': reference,
+        'objet': avis.objet or '',
+        'acheteur': avis.acheteur or '',
+        'lot': avis.lot or '',
+        'date_limite': avis.date_limite_remise,
+        'date_ouverture_plis': avis.date_ouverture,
+    }
+    if avis.montant_estime is not None:
+        donnees['montant_estime'] = avis.montant_estime
+    if avis.caution_provisoire is not None:
+        donnees['caution_provisoire'] = avis.caution_provisoire
+    return {k: v for k, v in donnees.items() if v not in (None, '')}
+
+
+def retenir_avis(avis, user=None, motif=''):
+    """Retient un avis et crée l'affaire correspondante. IDEMPOTENT.
+
+    Re-cliquer ne crée pas de doublon : si l'avis porte déjà un
+    ``appel_offre_id``, on rend ce lien tel quel sans rien créer ni muter.
+
+    Un avis IGNORÉ peut être retenu (marche arrière triviale, VAO10) ; un avis
+    EXPIRÉ ne bouge plus, et le service de transition le dit en français.
+
+    Rend ``(avis, appel_offre_id, cree)``.
+    """
+    if avis.appel_offre_id:
+        return avis, avis.appel_offre_id, False
+
+    if avis.statut in (StatutAvis.NOUVEAU, StatutAvis.IGNORE):
+        changer_statut_avis(
+            avis, StatutAvis.RETENU, user=user,
+            motif=motif or 'Retenu pour chiffrage.')
+
+    # L'UNIQUE appel cross-app du groupe — par le ``services.py`` de l'app
+    # cible, jamais par ses modèles.
+    from apps.ao.services import creer_appel_offre_depuis_avis
+
+    appel_offre, cree = creer_appel_offre_depuis_avis(
+        avis.company, _avis_vers_affaire(avis), user=user)
+
+    changer_statut_avis(
+        avis, StatutAvis.CONVERTI, user=user,
+        motif=(f"Converti en appel d'offres {appel_offre.reference}."),
+        champs_supplementaires={'appel_offre_id': appel_offre.pk})
+    return avis, appel_offre.pk, cree
+
+
+def ignorer_avis(avis, user=None, motif=''):
+    """Ignore un avis et PROPOSE la règle d'exclusion — sans jamais la créer.
+
+    « Ignorer » doit APPRENDRE (VAO10), mais l'apprentissage ne se fait pas en
+    douce : le service rend un brouillon de règle, l'écran le propose, et
+    l'utilisateur décide. Rend ``(avis, proposition)``.
+    """
+    changer_statut_avis(avis, StatutAvis.IGNORE, user=user,
+                        motif=motif or 'Ignoré manuellement.')
+    return avis, proposer_regle_pour_avis(avis)
