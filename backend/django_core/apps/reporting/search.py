@@ -175,6 +175,26 @@ def _spec_contrat(co, q):
         'sublabel': c.get_type_contrat_display()}
 
 
+def _spec_avis_marche(co, q):
+    """VAO13 — avis de marché du sas de veille (``veille_ao.AvisMarche``).
+
+    Ajout PUR en fin de registre : sans cette spec, la clé
+    ``veille_ao.avismarche`` déclarée dans ``apps/veille_ao/platform.py``
+    rendrait une surface de recherche VIDE (``global_search`` n'interroge un
+    modèle que s'il est présent DANS LES DEUX). Cherché par objet, acheteur ou
+    référence ; sous-libellé = acheteur + statut lisible."""
+    from apps.veille_ao.models import AvisMarche
+    qs = AvisMarche.objects.filter(**co).filter(
+        Q(objet__icontains=q) | Q(acheteur__icontains=q)
+        | Q(reference_avis__icontains=q) | Q(ref_consultation__icontains=q)
+    ).order_by('-date_publication', '-id')
+    return 'avis_marche', 'Avis de marché', qs, lambda a: {
+        'id': a.id,
+        'label': a.reference_avis or a.ref_consultation or a.objet[:80],
+        'sublabel': ' — '.join(
+            p for p in (a.acheteur, a.get_statut_display()) if p)}
+
+
 def _spec_campagne(co, q):
     """PUB99 — campagnes publicitaires miroir (``adsengine.AdCampaignMirror``).
     Cherchées par nom ou id Meta ; sous-libellé = statut lisible."""
@@ -216,6 +236,8 @@ _SEARCH_SPECS = [
     ('contrats.contrat', _spec_contrat),
     # PUB99 — campagnes publicitaires miroir (moteur adsengine).
     ('adsengine.adcampaignmirror', _spec_campagne),
+    # VAO13 — avis de marché du sas de veille appels d'offres.
+    ('veille_ao.avismarche', _spec_avis_marche),
 ]
 
 
