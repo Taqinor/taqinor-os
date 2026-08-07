@@ -49,4 +49,15 @@ class VeilleAoConfig(AppConfig):
         # M6 — aucun abonnement au bus ``core.events`` pour l'instant : le
         # dépôt fait rougir la CI sur tout signal sans abonné réel, et rien
         # ici n'a besoin d'un abonné cross-app.
-        pass
+
+        # VAO26 — politique de rétention du sas, déclarée dans le registre
+        # PARTAGÉ (``core.retention``, YOPSB10) sur le patron d'``apps/crm``.
+        # Purge les avis « nouveau »/« ignoré » dont la date limite est
+        # dépassée depuis VEILLE_AO_RETENTION_MOIS (défaut 12) ; un avis
+        # RETENU, CONVERTI ou lié à un appel d'offres n'est JAMAIS purgé — il
+        # porte l'historique commercial et la mesure d'attribution (VAO31).
+        from core.retention import register_retention_policy
+
+        from .retention import purger_avis
+
+        register_retention_policy('veille_ao_avis_perimes', purger_avis)

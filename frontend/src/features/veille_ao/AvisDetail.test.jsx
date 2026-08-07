@@ -8,7 +8,9 @@ import authReducer from '../../features/auth/store/authSlice'
 
 /* ============================================================================
    VAO34 — Fiche avis : « Retenir », « Ignorer » (+ règle d'exclusion proposée),
-   « Charger le détail » (échec propre), chatter `records` (ChatterWidget).
+   chatter `records` (ChatterWidget). « Charger le détail » (VAO18) N'EXISTE
+   PAS : il appartient au collecteur portail, gaté derrière l'action fondateur
+   VAO2 — un test vérifie explicitement son ABSENCE.
    Même patron de test que `ArticleDetail.test.jsx` (kb) : Provider Redux +
    MemoryRouter + ThemeProvider, `recordsApi` mocké pour le chatter.
    ========================================================================== */
@@ -17,7 +19,6 @@ const mocks = vi.hoisted(() => ({
   get: vi.fn(),
   retenir: vi.fn(),
   ignorer: vi.fn(),
-  chargerDetail: vi.fn(),
   reglesCreate: vi.fn(),
   navigate: vi.fn(),
 }))
@@ -30,7 +31,7 @@ vi.mock('react-router-dom', async () => {
 vi.mock('../../api/veilleAoApi', () => ({
   default: {
     avis: {
-      get: mocks.get, retenir: mocks.retenir, ignorer: mocks.ignorer, chargerDetail: mocks.chargerDetail,
+      get: mocks.get, retenir: mocks.retenir, ignorer: mocks.ignorer,
     },
     reglesExclusion: { create: mocks.reglesCreate },
   },
@@ -139,14 +140,15 @@ describe('AvisDetail', () => {
     ))
   })
 
-  it('« Charger le détail » : un échec laisse l’avis INTACT et affiche un message FR', async () => {
-    mocks.chargerDetail.mockRejectedValue({ response: { data: { detail: 'Délai dépassé.' } } })
+  it('n’offre PAS « Charger le détail » : le collecteur portail est gaté (VAO2)', async () => {
+    // L'enrichissement à la demande (VAO18) appartient au collecteur portail
+    // (VAO15-VAO20), qui n'est pas construit : il attend l'action fondateur
+    // VAO2 (compte entreprise + vérification du flux RSS authentifié). Offrir
+    // le bouton appellerait une route que le backend ne sert pas — le défaut
+    // exact qui a tué l'écran « AO > Bibliothèque » en production.
     renderScreen()
     await screen.findByText('Fourniture et pose de panneaux solaires')
-    fireEvent.click(screen.getByRole('button', { name: /Charger le détail/ }))
-    expect(await screen.findByText('Délai dépassé.')).toBeInTheDocument()
-    // L'avis reste affiché intact — l'objet est toujours là.
-    expect(screen.getByText('Fourniture et pose de panneaux solaires')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Charger le détail/ })).toBeNull()
   })
 
   it('affiche un lien sortant vers l’avis d’origine quand url_detail est connue', async () => {

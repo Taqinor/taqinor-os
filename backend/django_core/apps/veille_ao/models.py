@@ -152,6 +152,23 @@ class CategorieAvis(models.TextChoices):
     AUTRE = 'autre', 'Autre / non précisée'
 
 
+class Informateur(models.TextChoices):
+    """VAO27 — QUI a signalé cet avis. La question qui vaut le module.
+
+    L'avis qui a réellement occupé le fondateur (FRDISI) n'est passé par aucun
+    portail : il est arrivé par un partenaire. Sans ce champ, la mesure
+    d'attribution (VAO31) ne pourrait pas répondre à « d'où vient réellement
+    le chiffre d'affaires » — et on continuerait à croire que le portail
+    couvre tout.
+    """
+
+    PARTENAIRE = 'partenaire', 'Partenaire'
+    CLIENT = 'client', 'Client'
+    EMPLOYE = 'employe', 'Employé'
+    PRESSE = 'presse', 'Presse'
+    AUTRE = 'autre', 'Autre'
+
+
 class AvisMarcheQuerySet(models.QuerySet):
     def ouverts(self):
         return self.filter(statut__in=STATUTS_OUVERTS)
@@ -247,6 +264,17 @@ class AvisMarche(TenantModel):
     url_detail = models.URLField("URL de la page de détail", max_length=500,
                                  blank=True, default='')
 
+    # VAO27 — QUI me l'a signalé. Vide pour un avis COLLECTÉ (personne ne l'a
+    # signalé, une machine l'a lu) ; OBLIGATOIRE pour une saisie manuelle,
+    # exigé par le service, pas par la colonne — une contrainte NOT NULL ici
+    # bloquerait toute collecte automatique.
+    informateur = models.CharField(
+        'Informateur', max_length=20, choices=Informateur.choices,
+        blank=True, default='',
+        help_text="Qui a signalé cet avis. C'est la seule porte qui aurait "
+                  "capté l'avis FRDISI — et la matière de la mesure "
+                  "d'attribution (VAO31).")
+
     # ── Pourquoi cet avis est remonté (VAO9 remplit ces deux champs)
     mots_cles_declenches = models.JSONField(
         'Mots-clés déclenchés', default=list, blank=True,
@@ -326,6 +354,112 @@ class AvisMarche(TenantModel):
         return self.date_limite_remise < timezone.now()
 
 
+class VerdictExecution(models.TextChoices):
+    """Les TROIS issues d'une collecte, jamais confondues (VAO20/VAO24).
+
+    Confondre « réussie, 0 nouveauté » et « cassée, 0 résultat » est
+    exactement le scénario qui fait rater un AO en se croyant couvert : le
+    portail change, la collecte renvoie vide, l'écran reste calme, et
+    personne ne s'en aperçoit pendant des semaines.
+    """
+
+    SUCCES = 'succes', 'Réussie'
+    ANOMALIE = 'anomalie', 'Réussie avec anomalie'
+    ECHEC = 'echec', 'Échouée'
+
+
+class DeclencheurCollecte(models.TextChoices):
+    """Qui a lancé cette collecte — le beat de nuit ou un humain."""
+
+    PLANIFIE = 'planifie', 'Tâche planifiée (06:00)'
+    MANUEL = 'manuel', 'Déclenchement manuel'
+
+
+class ExecutionCollecteQuerySet(models.QuerySet):
+    def reussies(self):
+        return self.exclude(verdict=VerdictExecution.ECHEC)
+
+    def recentes(self):
+        """De la plus récente à la plus ancienne — l'ordre de lecture."""
+        return self.order_by('-debut', '-id')
+
+
+class ExecutionCollecte(TenantModel):
+    """Le JOURNAL d'exécution de la veille — la table qui empêche le silence.
+
+    Écrit à CHAQUE exécution, réussie ou non : c'est le seul garde-fou contre
+    le scénario réel où la veille ne ramène plus rien et où l'écran, resté
+    calme, laisse croire à une couverture qui n'existe plus.
+
+    Aucun champ de coût ni de marge : une exécution décrit un travail de
+    lecture, pas une affaire.
+    """
+
+    source = models.ForeignKey(
+        'veille_ao.SourceVeille',
+        on_delete=models.SET_NULL,  # on_delete: le JOURNAL survit à la source
+        null=True, blank=True, related_name='executions',
+        verbose_name='Source')
+
+    debut = models.DateTimeField('Début', default=timezone.now)
+    fin = models.DateTimeField('Fin', null=True, blank=True)
+
+    mots_cles_interroges = models.JSONField(
+        'Mots-clés interrogés', default=list, blank=True,
+        help_text="Ce qui a réellement été demandé — sans quoi « 0 résultat » "
+                  "est illisible.")
+
+    examines = models.PositiveIntegerField('Avis examinés', default=0)
+    nouveaux = models.PositiveIntegerField('Avis nouveaux', default=0)
+    mis_a_jour = models.PositiveIntegerField('Avis mis à jour', default=0)
+    auto_ignores = models.PositiveIntegerField('Avis auto-ignorés', default=0)
+
+    erreurs = models.JSONField('Erreurs', default=list, blank=True)
+    verdict = models.CharField(
+        'Verdict', max_length=12, choices=VerdictExecution.choices,
+        default=VerdictExecution.SUCCES)
+    message = models.CharField('Message', max_length=500, blank=True,
+                               default='')
+    declencheur = models.CharField(
+        'Déclencheur', max_length=12, choices=DeclencheurCollecte.choices,
+        default=DeclencheurCollecte.PLANIFIE)
+
+    #: VAO24 — l'alarme de silence a-t-elle DÉJÀ été signalée pour cet état ?
+    #: Empêche de renotifier le directeur à chaque passage : une alarme qui
+    #: crie tous les jours est une alarme qu'on apprend à ignorer.
+    alarme_notifiee = models.BooleanField(
+        "Alarme déjà notifiée", default=False)
+
+    objects = ExecutionCollecteQuerySet.as_manager()
+
+    class Meta:
+        verbose_name = 'Exécution de collecte'
+        verbose_name_plural = 'Exécutions de collecte'
+        ordering = ['-debut', '-id']
+        indexes = [
+            models.Index(fields=['company', '-debut'],
+                         name='veille_ao_exec_co_debut_idx'),
+            models.Index(fields=['company', 'verdict'],
+                         name='veille_ao_exec_co_verdict_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.debut:%d/%m/%Y %H:%M} — {self.get_verdict_display()}'
+
+    @property
+    def reussie(self):
+        return self.verdict != VerdictExecution.ECHEC
+
+    @property
+    def muette(self):
+        """Réussie mais RIEN vu : ni nouveau, ni mis à jour, ni examiné.
+
+        C'est le signal faible de l'alarme : deux jours de suite ainsi, la
+        veille ne ramène plus rien et il faut aller vérifier.
+        """
+        return self.reussie and self.examines == 0
+
+
 class NiveauMotCle(models.TextChoices):
     """Deux niveaux, mesurés sur le portail réel (VAO9).
 
@@ -391,6 +525,112 @@ class MotCleVeille(TenantModel):
 
     def __str__(self):
         return self.libelle
+
+
+class TypeAcheteur(models.TextChoices):
+    """VAO29 — les CATÉGORIES d'organismes à démarcher.
+
+    Des catégories, jamais des noms : le seed d'amorçage ne doit inventer
+    aucun organisme. Un nom faux dans un carnet de prospection est pire qu'un
+    carnet vide — il se recopie, il se démarche, et il fait perdre du temps.
+    """
+
+    FONDATION = 'fondation', 'Fondation'
+    UNIVERSITE_PRIVEE = 'universite_privee', 'Université privée'
+    CLINIQUE = 'clinique', 'Clinique'
+    GROUPE_HOTELIER = 'groupe_hotelier', 'Groupe hôtelier'
+    INDUSTRIEL = 'industriel', 'Industriel'
+    COOPERATIVE_AGRICOLE = 'cooperative_agricole', 'Coopérative agricole'
+    PROMOTEUR = 'promoteur', 'Promoteur'
+    COLLECTIVITE = 'collectivite', 'Collectivité'
+
+
+class StatutRelation(models.TextChoices):
+    """Où en est la relation — le seul indicateur qui compte ici.
+
+    Être sur la liste d'invitation d'une consultation privée ne se surveille
+    pas : ça se construit. Ce champ dit à quelle distance on est de cette
+    liste.
+    """
+
+    A_CONTACTER = 'a_contacter', 'À contacter'
+    CONTACTE = 'contacte', 'Contacté'
+    EN_DISCUSSION = 'en_discussion', 'En discussion'
+    REFERENCE = 'reference', 'Référencé (reçoit les consultations)'
+    CLIENT = 'client', 'Client'
+    SANS_SUITE = 'sans_suite', 'Sans suite'
+
+
+class AcheteurCibleQuerySet(models.QuerySet):
+    def relances_dues(self, a_la_date=None):
+        """Les relances échues — l'ordre d'urgence, jamais l'ordre alphabétique."""
+        return self.filter(
+            prochaine_relance__isnull=False,
+            prochaine_relance__lte=(a_la_date or timezone.localdate()),
+        ).exclude(statut_relation=StatutRelation.SANS_SUITE).order_by(
+            'prochaine_relance', 'id')
+
+
+class AcheteurCible(TenantModel):
+    """Le carnet des acheteurs à DÉMARCHER — la vraie contre-mesure FRDISI.
+
+    Constat central du groupe : ce marché-là ne se surveille pas, il se
+    démarche. La seule façon de recevoir la PROCHAINE consultation FRDISI est
+    d'être sur la liste d'invitation — et aucun collecteur, aucun agrégateur,
+    aucun flux RSS ne peut y mettre Taqinor. C'est un travail de relation, et
+    ce carnet est l'outil de ce travail.
+
+    Le lien vers le CRM est un **entier opaque** (``lead_id``), jamais une FK
+    vers ``apps.crm`` : les apps restent découplées et le contrat
+    import-linter reste vert.
+    """
+
+    nom = models.CharField('Nom de l\'organisme', max_length=255)
+    type = models.CharField(
+        'Type', max_length=32, choices=TypeAcheteur.choices,
+        default=TypeAcheteur.FONDATION)
+    contact = models.CharField(
+        'Contact', max_length=255, blank=True, default='',
+        help_text='Nom, téléphone ou e-mail de la personne à joindre.')
+    dernier_contact = models.DateField('Dernier contact', null=True,
+                                       blank=True)
+    prochaine_relance = models.DateField('Prochaine relance', null=True,
+                                         blank=True)
+    statut_relation = models.CharField(
+        'Statut de la relation', max_length=20,
+        choices=StatutRelation.choices, default=StatutRelation.A_CONTACTER)
+    lead_id = models.PositiveIntegerField(
+        'Lead CRM', null=True, blank=True,
+        help_text='Entier OPAQUE vers apps.crm — jamais une clé étrangère : '
+                  'les deux apps restent découplées.')
+    notes = models.TextField('Notes', blank=True, default='')
+
+    objects = AcheteurCibleQuerySet.as_manager()
+
+    class Meta:
+        verbose_name = 'Acheteur cible'
+        verbose_name_plural = 'Acheteurs cibles'
+        ordering = ['nom', 'id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'nom'],
+                name='veille_ao_acheteur_co_nom_uniq'),
+        ]
+        indexes = [
+            models.Index(fields=['company', 'prochaine_relance'],
+                         name='veille_ao_ach_co_relance_idx'),
+            models.Index(fields=['company', 'statut_relation'],
+                         name='veille_ao_ach_co_statut_idx'),
+        ]
+
+    def __str__(self):
+        return self.nom
+
+    @property
+    def relance_due(self):
+        if not self.prochaine_relance:
+            return False
+        return self.prochaine_relance <= timezone.localdate()
 
 
 class PorteeExclusion(models.TextChoices):

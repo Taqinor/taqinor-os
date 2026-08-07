@@ -142,7 +142,9 @@ function SourcesSection() {
           <li key={s.id} className="flex items-center justify-between gap-3 py-2">
             <div className="min-w-0">
               <p className="truncate font-medium">{s.libelle || s.code}</p>
-              <p className="truncate text-xs text-muted-foreground">{s.type_display || s.type}</p>
+              {/* Le serveur publie `type_source_libelle` / `type_source`
+                  (convention `<champ>_libelle` du module), jamais `type`. */}
+              <p className="truncate text-xs text-muted-foreground">{s.type_source_libelle || s.type_source}</p>
             </div>
             <Switch
               checked={Boolean(s.actif)}

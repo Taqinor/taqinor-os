@@ -305,3 +305,44 @@ def tableau_marches(company, *, a_la_date=None):
         'cautions': _cautions(company),
         'marches_en_execution': _marches_en_execution(company),
     }
+
+
+# ── VAO31 — l'ISSUE d'un lot d'affaires, pour la mesure d'attribution ──────
+#
+# La veille (``apps.veille_ao``) doit répondre à « d'où vient réellement le
+# chiffre d'affaires » : avis reçus → retenus → convertis → GAGNÉS. Le dernier
+# maillon est une donnée d'``apps.ao``, et il se lit ICI — jamais en important
+# ``apps.ao.models`` depuis une autre app (frontière CLAUDE.md).
+#
+# Ces fonctions prennent des IDENTIFIANTS (le lien veille→AO est un entier
+# opaque, jamais une FK) et restent bornées à la société de l'appelant.
+
+def issues_par_ids(company, appel_offre_ids):
+    """``{id: statut}`` pour ces affaires, bornées à ``company``.
+
+    Un identifiant inconnu — ou appartenant à une AUTRE société — est
+    simplement ABSENT du résultat : l'appelant ne peut donc rien déduire de
+    l'existence d'une affaire qui ne lui appartient pas.
+    """
+    from .models import AppelOffre
+
+    identifiants = [i for i in (appel_offre_ids or []) if i]
+    if company is None or not identifiants:
+        return {}
+    return dict(
+        AppelOffre.objects.filter(company=company, pk__in=identifiants)
+        .values_list('pk', 'statut'))
+
+
+def statuts_gagnes():
+    """Les statuts qui comptent comme GAGNÉS (source unique de vérité)."""
+    from .models import AppelOffre
+
+    return (AppelOffre.Statut.GAGNE,)
+
+
+def statuts_perdus():
+    """Les statuts qui comptent comme PERDUS ou abandonnés."""
+    from .models import AppelOffre
+
+    return (AppelOffre.Statut.PERDU, AppelOffre.Statut.ABANDONNE)

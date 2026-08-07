@@ -9,13 +9,12 @@ import { dirname, join } from 'node:path'
 // (baseURL/intercepteurs) qu'on ne veut pas déclencher pour un simple test de
 // contrat URL/forme. Zéro appel réseau, zéro mock du graphe ESM.
 //
-// PAS de garde « chaque chemin existe dans apps/veille_ao/urls.py » (patron
-// `aoApi.test.mjs` / `contratServeur.js`) : le backend VAO6-14 est construit
-// dans une lane PARALLÈLE, absente de CE worktree — un tel test lirait un
-// fichier inexistant et échouerait pour la mauvaise raison. Cette garde
-// revient dès que la lane backend est repliée sur `main` (même geste que pour
-// `aoApi.js`, dont l'en-tête raconte l'incident inverse : neuf chemins appelés
-// sans route serveur).
+// La garde « chaque chemin existe côté serveur » n'est PAS dupliquée ici : elle
+// vit désormais dans `scripts/check_api_contract.py`, qui résout l'inventaire
+// RÉEL des routes depuis `erp_agentique/urls.py` (routeurs + `@action` +
+// `path()`) et tourne à chaque commit. Le backend de la veille (VAO21-VAO31)
+// sert tous les chemins ci-dessous, `chargerDetail` excepté — retiré parce que
+// le collecteur portail reste gaté (voir le test dédié plus bas).
 
 const here = dirname(fileURLToPath(import.meta.url))
 const src = readFileSync(join(here, 'veilleAoApi.js'), 'utf8')
@@ -48,8 +47,16 @@ test('VAO14/VAO34 — retenir/ignorer sont des ACTIONS de service réel, jamais 
   assert.doesNotMatch(bloc, /\.\.\.crud\('avis'\)[\s\S]*update:.*retenir/)
 })
 
-test('VAO18 — le détail ne se charge QUE sur clic explicite (une action nommée, jamais dans le CRUD list/get)', () => {
-  assert.match(src, /chargerDetail:\s*\(id\)\s*=>\s*api\.post\(`\/veille_ao\/avis\/\$\{id\}\/charger-detail\/`\)/)
+test('VAO18 — `chargerDetail` est ABSENT tant que le collecteur portail est gaté (VAO2)', () => {
+  // L'enrichissement du détail appartient au collecteur portail
+  // (VAO15-VAO20), qui attend l'action fondateur VAO2 : ouvrir le compte
+  // entreprise du portail et vérifier si le flux RSS authentifié existe — si
+  // oui, le collecteur n'est jamais construit. Publier ici un appel vers une
+  // route que le backend ne sert pas est le défaut exact qui a tué l'écran
+  // « AO > Bibliothèque » en production le 03/08/2026. Ce test garde la place
+  // au chaud : il redeviendra une assertion de PRÉSENCE avec le collecteur.
+  assert.doesNotMatch(sansCommentaires(src), /chargerDetail/)
+  assert.doesNotMatch(sansCommentaires(src), /charger-detail/)
 })
 
 test('sante() est un appel agrégé UNIQUE (VAO24/VAO35/VAO37), jamais un axios.get inline dans un écran', () => {

@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { ExternalLink, RefreshCw } from 'lucide-react'
+import { ExternalLink } from 'lucide-react'
 import veilleAoApi from '../../api/veilleAoApi'
 import useResource from '../../hooks/useResource'
 import ChatterWidget from '../../components/ChatterWidget'
@@ -132,8 +132,6 @@ export default function AvisDetail() {
   const navigate = useNavigate()
   const [dialog, setDialog] = useState(null)
   const [busy, setBusy] = useState(false)
-  const [detailBusy, setDetailBusy] = useState(false)
-  const [detailErreur, setDetailErreur] = useState(null)
 
   const { data: avis, loading, error, refetch } = useResource(
     () => veilleAoApi.avis.get(id),
@@ -152,19 +150,6 @@ export default function AvisDetail() {
     } catch (e) {
       toast.error(errMsg(e, 'Impossible de retenir cet avis.'))
     } finally { setBusy(false) }
-  }
-
-  // VAO18 — enrichissement à la demande. Un échec (délai, 403, structure
-  // inattendue) laisse `avis` INTACT — jamais un état vidé.
-  const chargerDetail = async () => {
-    setDetailBusy(true)
-    setDetailErreur(null)
-    try {
-      await veilleAoApi.avis.chargerDetail(id)
-      await refetch()
-    } catch (e) {
-      setDetailErreur(errMsg(e, 'Détail indisponible, réessayez.'))
-    } finally { setDetailBusy(false) }
   }
 
   if (loading) {
@@ -200,10 +185,12 @@ export default function AvisDetail() {
           Ignorer
         </Button>
       )}
-      <Button size="sm" variant="outline" onClick={chargerDetail} disabled={detailBusy} loading={detailBusy}>
-        <RefreshCw aria-hidden="true" />
-        {detailBusy ? 'Chargement…' : 'Charger le détail'}
-      </Button>
+      {/* Pas de bouton « Charger le détail » : l'enrichissement à la demande
+          (VAO18) appartient au COLLECTEUR PORTAIL (VAO15-VAO20), gaté derrière
+          l'action fondateur VAO2 — ouvrir le compte entreprise du portail et
+          vérifier si le flux RSS authentifié existe (auquel cas le collecteur
+          n'est même jamais construit). Le bouton revient AVEC le collecteur.
+          En attendant, « Voir l'avis d'origine » ouvre la page publique. */}
       {avis.url_detail && (
         <Button size="sm" variant="outline" asChild>
           <a href={avis.url_detail} target="_blank" rel="noopener noreferrer">
@@ -227,11 +214,6 @@ export default function AvisDetail() {
         activity={<ChatterWidget model="veille_ao.avismarche" id={avis.id} />}
       >
         <div className="flex flex-col gap-4">
-          {detailErreur && (
-            <div role="alert" className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
-              {detailErreur}
-            </div>
-          )}
           {/* VAO10/VAO34 — un avis auto-ignoré affiche la règle qui l'a filtré. */}
           {avis.statut === 'ignore' && avis.regle_exclusion_motif && (
             <div className="rounded-lg border border-border bg-muted/40 p-3 text-sm">
@@ -245,7 +227,9 @@ export default function AvisDetail() {
               <Info label="Acronyme" value={avis.org_acronyme} />
               <Info label="Lieu / région" value={avis.lieu || avis.region} />
               <Info label="Procédure" value={avis.procedure} />
-              <Info label="Catégorie" value={avis.categorie_display || avis.categorie} />
+              {/* Le serveur publie `<champ>_libelle` (convention du module :
+                  statut_libelle, type_source_libelle…), jamais `_display`. */}
+              <Info label="Catégorie" value={avis.categorie_libelle || avis.categorie} />
               <Info label="Publié le" value={avis.date_publication ? formatDate(avis.date_publication) : null} />
               <Info
                 label="Date limite"
@@ -261,8 +245,8 @@ export default function AvisDetail() {
               <Info label="Caution provisoire" value={avis.caution_provisoire ? formatMAD(avis.caution_provisoire) : null} />
               <Info label="Lot" value={avis.lot} />
               <Info label="Score" value={avis.score} />
-              <Info label="Source" value={avis.source_libelle || avis.source_nom} />
-              <Info label="Informateur" value={avis.informateur} />
+              <Info label="Source" value={avis.source_libelle} />
+              <Info label="Informateur" value={avis.informateur_libelle || avis.informateur} />
             </dl>
             {Array.isArray(avis.mots_cles_declenches) && avis.mots_cles_declenches.length > 0 && (
               <div className="mt-3">

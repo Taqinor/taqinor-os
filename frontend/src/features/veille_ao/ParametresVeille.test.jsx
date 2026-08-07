@@ -41,7 +41,11 @@ const renderScreen = () => render(
   <MemoryRouter><ThemeProvider><ParametresVeille /></ThemeProvider></MemoryRouter>,
 )
 
-const SOURCES = [{ id: 1, code: 'pmmp', libelle: 'Portail officiel', type: 'portail_officiel', actif: true }]
+// `type_source` est le nom RÉELLEMENT servi par `apps/veille_ao` (le libellé
+// lisible arrive en `type_source_libelle`) — la fixture suit le serveur.
+// Volontairement SANS `type_source_libelle` : le rendre égal à `libelle`
+// ferait matcher « Portail officiel » deux fois et casserait la recherche.
+const SOURCES = [{ id: 1, code: 'pmmp', libelle: 'Portail officiel', type_source: 'portail_officiel', actif: true }]
 const MOTS = [{ id: 1, libelle: 'solaire', niveau: 'noyau', poids: 3, actif: true }]
 const REGLES = [{ id: 1, portee: 'acheteur', valeur: 'ONEE-Eau', motif: 'hors zone', actif: true, compteur_application: 4 }]
 

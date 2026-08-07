@@ -16,9 +16,10 @@ mauvaise URL à ``reverse()``.
 from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 
+from .views import AttributionView, DeclencherCollecteView, SanteVeilleView
 from .viewsets import (
-    AvisMarcheViewSet, MotCleVeilleViewSet, RegleExclusionViewSet,
-    SourceVeilleViewSet,
+    AcheteurCibleViewSet, AvisMarcheViewSet, ExecutionCollecteViewSet,
+    MotCleVeilleViewSet, RegleExclusionViewSet, SourceVeilleViewSet,
 )
 
 router = DefaultRouter()
@@ -29,7 +30,22 @@ router.register(r'mots-cles', MotCleVeilleViewSet,
                 basename='veille-ao-mot-cle')
 router.register(r'regles-exclusion', RegleExclusionViewSet,
                 basename='veille-ao-regle-exclusion')
+# VAO24 — le journal d'exécution, en lecture seule.
+router.register(r'executions', ExecutionCollecteViewSet,
+                basename='veille-ao-execution')
+# VAO29 — le carnet des acheteurs à démarcher.
+router.register(r'acheteurs-cibles', AcheteurCibleViewSet,
+                basename='veille-ao-acheteur-cible')
 
 urlpatterns = [
+    # VAO23 — le chemin est LITTÉRAL, fixé par le texte de tâche et déjà
+    # publié par le client frontend : « POST /api/django/veille_ao/collecter/ ».
+    path('collecter/', DeclencherCollecteView.as_view(),
+         name='veille-ao-collecter'),
+    # VAO24/VAO35/VAO37 — l'état agrégé, calculé UNE fois côté serveur.
+    path('sante/', SanteVeilleView.as_view(), name='veille-ao-sante'),
+    # VAO31 — l'attribution : d'où vient réellement le chiffre d'affaires.
+    path('attribution/', AttributionView.as_view(),
+         name='veille-ao-attribution'),
     path('', include(router.urls)),
 ]

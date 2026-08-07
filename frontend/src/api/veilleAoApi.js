@@ -18,6 +18,13 @@ import { makeResourceFactory } from './resource'
    `apps/veille_ao/urls.py` dès que la lane backend est mergée sur `main`
    (même geste que `aoApi.js` après ODX11 — voir son en-tête).
 
+   MISE À JOUR (lane VAO21-31) : le backend EXISTE désormais et cette liste a
+   été réconciliée avec `apps/veille_ao/urls.py`. Tous les chemins ci-dessous
+   sont servis, et `scripts/check_api_contract.py` le vérifie mécaniquement à
+   chaque commit. Le seul appel RETIRÉ est `chargerDetail` (VAO18) : il
+   appartient au collecteur portail, encore gaté (voir le commentaire dans le
+   bloc `avis`).
+
    `sante()` est un appel AGRÉGÉ unique (même patron que `aoApi.tableauMarches`,
    AOF172/166) : dernière collecte réussie + son âge, état d'armement de la
    collecte, alarme de silence (VAO24), avis examinés hier — VAO35 (état
@@ -36,10 +43,15 @@ const veilleAoApi = {
     // D'EXCLUSION proposée (VAO10) — jamais créée sans confirmation explicite.
     retenir: (id, data) => api.post(`/veille_ao/avis/${id}/retenir/`, data),
     ignorer: (id, data) => api.post(`/veille_ao/avis/${id}/ignorer/`, data),
-    // VAO18 — enrichissement du détail À LA DEMANDE seulement (jamais en
-    // masse) : deux délais de 110 s observés sur ce point de terminaison côté
-    // portail, donc appelé uniquement sur clic utilisateur.
-    chargerDetail: (id) => api.post(`/veille_ao/avis/${id}/charger-detail/`),
+    // PAS de `chargerDetail` ici, et c'est VOLONTAIRE. L'enrichissement du
+    // détail (VAO18) fait partie du COLLECTEUR PORTAIL (VAO15-VAO20), qui est
+    // gaté derrière une action fondateur : ouvrir le compte entreprise gratuit
+    // du portail et aller voir si le flux RSS authentifié existe (VAO2). Si ce
+    // flux existe, le collecteur n'est même jamais construit. Publier ici un
+    // appel vers une route que le backend ne sert pas est exactement le défaut
+    // qui a tué l'écran « AO > Bibliothèque » en production le 03/08/2026 —
+    // `scripts/check_api_contract.py` le refuse désormais. Ce bouton revient
+    // avec le collecteur, jamais avant.
   },
 
   // ── SourceVeille — le catalogue des sources (VAO7) ──
