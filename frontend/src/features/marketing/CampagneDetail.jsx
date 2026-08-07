@@ -150,7 +150,9 @@ export default function CampagneDetail() {
         </div>
         {testResultat && (
           <p data-testid="campagne-test-resultat" style={{ color: '#16a34a' }}>
-            Test envoyé ({testResultat.nb_envoyes ?? testResultat.envoyes ?? 'ok'}).
+            {/* PACT153 — envoyer_test_campagne (apps/compta/services.py:8312-8326)
+                renvoie {seeds, corps_fusionne} — jamais nb_envoyes/envoyes. */}
+            Test envoyé ({(testResultat.seeds || []).length} destinataire(s) de test).
           </p>
         )}
       </section>
@@ -165,18 +167,20 @@ export default function CampagneDetail() {
           <div data-testid="campagne-precheck-resultat"
             style={{ marginTop: 8, border: '1px solid #e2e8f0', borderRadius: 8,
               padding: '0.6rem' }}>
+            {/* PACT153 — precheck_sante_campagne (apps/compta/services.py:8342-8393)
+                renvoie {bloque, avertissements} — jamais un tableau `bloquants`
+                distinct (la raison du blocage, ex. lien de désinscription
+                manquant, vit DANS `avertissements`). */}
             {(precheck.avertissements || []).map((a, i) => (
-              <p key={i} style={{ color: '#b45309', margin: '2px 0' }}>⚠ {a}</p>
+              <p key={i} style={{ color: precheck.bloque ? '#dc2626' : '#b45309', margin: '2px 0' }}>
+                {precheck.bloque ? '✖' : '⚠'} {a}
+              </p>
             ))}
-            {(precheck.bloquants || []).map((b, i) => (
-              <p key={i} style={{ color: '#dc2626', margin: '2px 0' }}>✖ {b}</p>
-            ))}
-            {!(precheck.bloquants || []).length
-              && !(precheck.avertissements || []).length && (
+            {!precheck.bloque && !(precheck.avertissements || []).length && (
               <p style={{ color: '#16a34a', margin: 0 }}>Aucun problème détecté.</p>
             )}
             <button className="btn btn-primary" data-testid="campagne-confirmer-envoi"
-              disabled={(precheck.bloquants || []).length > 0}
+              disabled={precheck.bloque === true}
               style={{ marginTop: 8 }}
               onClick={confirmerEnvoi}>
               Confirmer l'envoi
