@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useMemo, useRef, useState } from 'react'
 import { MessageSquare, AlertTriangle, Plus } from 'lucide-react'
 import aoApi from '../../../api/aoApi'
 import useResource from '../../../hooks/useResource'
@@ -8,6 +8,10 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from '../../../ui'
 import { formatDate, formatNumber } from '../../../lib/format'
+import { svgVersPng } from '../studio/svgToPng'
+import Annotateur from './Annotateur'
+import QuestionFiche from './QuestionFiche'
+import ExportQR from './ExportQR'
 
 /* ============================================================================
    AOF106 (1/2) — Écran « Questions terrain » : les séries datées.
@@ -37,9 +41,43 @@ import { formatDate, formatNumber } from '../../../lib/format'
    Le front n'agrège rien qu'il n'ait reçu : les deux compteurs sont la
    longueur de la liste que le serveur a envoyée et le nombre de ses éléments
    déjà répondus — jamais une estimation.
+
+   ── PACT170 — LE FLUX RÉEL : REPÈRE → FICHE → EXPORT ─────────────────────
+   `Annotateur` (AOF106, qui porte `RepereMarker`), `QuestionFiche` (AOF107
+   1/3) et `ExportQR` (AOF107 2/3) étaient livrés, testés, et importés par
+   PERSONNE : cet écran n'affichait que le tableau des séries. Le flux écrit
+   dans leurs en-têtes est désormais monté ICI, de bout en bout :
+
+     1. on charge une photo dans l'annotateur et on pose des repères (un clic
+        = un repère, ou la voie clavier) ;
+     2. « Ouvrir la fiche du repère X » ouvre la QUESTION de ce repère — celle
+        que le serveur a déjà, sinon un brouillon rattaché à la série ;
+     3. « Enregistrer » écrit VRAIMENT (`aoApi.questions`, la ressource que le
+        routeur publiait depuis toujours et que le client n'exposait pas). Le
+        refus produit est tenu des deux côtés : sans impact chiffré, la
+        question n'est pas créée, et le motif est celui de la règle ;
+     4. « Préparer l'image annotée » rasterise le SVG de l'annotateur
+        (`svgToPng`, AOF75) et le donne à `ExportQR`, qui aplatit l'image ET
+        la liste numérotée en un seul bitmap « prêt à coller ».
+
+   Ce qui n'est PAS fait, et qui est dit à l'écran : le RECALCUL après réponse
+   appartient à l'atelier de calepinage, pas à cet écran.
    ========================================================================== */
 
-const errMsg = (e, fallback) => e?.response?.data?.detail || fallback
+/* Le motif du SERVEUR, tel quel. DRF renvoie soit `{detail}`, soit un objet
+   `{champ: [messages]}` : ne lire que `detail` transformait le refus NOMMÉ du
+   sérialiseur de questions (« chiffrez son impact prévisionnel ») en un
+   générique « Création impossible ». */
+const errMsg = (e, fallback) => {
+  const donnees = e?.response?.data
+  if (typeof donnees === 'string') return donnees
+  if (donnees?.detail) return donnees.detail
+  if (donnees && typeof donnees === 'object') {
+    const [champ, valeur] = Object.entries(donnees)[0] || []
+    if (champ) return `${champ} : ${[].concat(valeur).join(' ')}`
+  }
+  return fallback
+}
 
 const signe = (v) => (v > 0 ? `+${formatNumber(v, { decimals: 0 })}` : formatNumber(v, { decimals: 0 }))
 
@@ -96,6 +134,34 @@ export function SeriesPage({ affaireId }) {
   const [canal, setCanal] = useState(CANAUX[0].value)
   const [enCours, setEnCours] = useState(false)
 
+  // ── PACT170 — annotateur, fiche question, export ────────────────────────
+  const svgAnnotateur = useRef(null)
+  const [reperes, setReperes] = useState([])
+  const [repereOuvert, setRepereOuvert] = useState(null) // { id, lettre }
+  const [imageAnnotee, setImageAnnotee] = useState(null)
+  const [preparation, setPreparation] = useState(false)
+  const [enregistrementQuestion, setEnregistrementQuestion] = useState(false)
+  // Ce que cet écran REFUSE de faire, avec son motif — jamais un bouton muet.
+  const [noteQuestion, setNoteQuestion] = useState(null)
+
+  /* L'export « prêt à coller » a besoin de l'image ANNOTÉE (photo + repères),
+     pas de la photo nue : on rasterise le SVG de l'annotateur avec la brique
+     partagée `svgToPng`. Un clic explicite, jamais une rasterisation à chaque
+     repère posé (coûteuse, et elle transformerait un geste en attente). */
+  const preparerImageAnnotee = useCallback(async () => {
+    const svg = svgAnnotateur.current
+    if (!svg) return
+    setPreparation(true)
+    try {
+      const { dataUrl } = await svgVersPng(svg, { largeur: 1000 })
+      setImageAnnotee(dataUrl)
+    } catch {
+      toast.error('Image annotée non préparée — réessayez.')
+    } finally {
+      setPreparation(false)
+    }
+  }, [])
+
   // Le filtre serveur s'appelle `appel_offre` (`SerieQuestionsViewSet`) —
   // `affaire` est un mot d'écran, il était ignoré en silence.
   const params = useMemo(() => ({ appel_offre: affaireId }), [affaireId])
@@ -132,6 +198,63 @@ export function SeriesPage({ affaireId }) {
   }
 
   const serieOuverte = series.find((s) => s.id === ouverte)
+
+  /* La question du repère ouvert : celle que le SERVEUR a déjà pour ce repère
+     dans cette série, sinon un BROUILLON local rattaché à la série. Jamais un
+     repli sur la question d'un autre repère — ce serait éditer la mauvaise. */
+  const questionCourante = (() => {
+    if (!repereOuvert || !serieOuverte) return null
+    const existante = (serieOuverte.questions ?? [])
+      .find((q) => (q.repere ?? '') === repereOuvert.lettre)
+    return existante ?? {
+      id: null,
+      repere: repereOuvert.lettre,
+      texte: '',
+      impact_min_modules: null,
+      impact_max_modules: null,
+      reponse: '',
+      decision: '',
+      date_decision: null,
+      statut: 'posee',
+    }
+  })()
+
+  /* Écriture RÉELLE. Le sérialiseur refuse une question sans impact chiffré :
+     on tient le MÊME refus à la création, avec le même motif, plutôt que de
+     laisser partir un 400 que l'écran traduirait en « erreur ». */
+  const enregistrerQuestion = async (patch) => {
+    if (!serieOuverte || !questionCourante) return
+    const sansImpact = patch.impact_min_modules == null && patch.impact_max_modules == null
+    if (!questionCourante.id && sansImpact) {
+      setNoteQuestion(
+        'Question non créée : chiffrez d’abord son impact prévisionnel en modules. '
+        + 'On ne pose une question que si sa réponse change le compte.',
+      )
+      return
+    }
+    setEnregistrementQuestion(true)
+    try {
+      if (questionCourante.id) {
+        await aoApi.questions.update(questionCourante.id, patch)
+      } else {
+        await aoApi.questions.create({
+          serie: serieOuverte.id,
+          repere: questionCourante.repere,
+          texte: patch.texte ?? '',
+          ...patch,
+        })
+      }
+      setNoteQuestion(null)
+      toast.success('Question enregistrée.')
+      await refetch()
+    } catch (e) {
+      const motif = errMsg(e, 'Enregistrement de la question impossible.')
+      setNoteQuestion(motif)
+      toast.error(motif)
+    } finally {
+      setEnregistrementQuestion(false)
+    }
+  }
 
   return (
     <div className="flex flex-col gap-4">
@@ -215,6 +338,72 @@ export function SeriesPage({ affaireId }) {
             {`Questions — série ${formatNumber(serieOuverte.numero, { decimals: 0 })}`}
           </h2>
           <Questions questions={serieOuverte.questions} />
+        </Card>
+      )}
+
+      {/* PACT170 — le flux réel : poser un repère → ouvrir sa fiche → exporter
+          l'image annotée et sa liste numérotée. */}
+      {serieOuverte && (
+        <Card className="flex flex-col gap-4 p-4" data-ao-annotation-serie={serieOuverte.id}>
+          <div>
+            <h2 className="font-medium">Annoter une image</h2>
+            <p className="mt-0.5 text-sm text-muted-foreground">
+              Le client répond SUR l’image : posez un repère, ouvrez sa fiche et
+              chiffrez l’impact de la réponse. Une question sans impact chiffré
+              n’est pas créée.
+            </p>
+          </div>
+
+          <Annotateur
+            refSvg={svgAnnotateur}
+            onChange={setReperes}
+            onOuvrirFiche={(id, lettre) => {
+              setNoteQuestion(null)
+              setRepereOuvert({ id, lettre })
+            }}
+          />
+
+          {questionCourante && (
+            <div className="flex flex-col gap-2 border-t border-border pt-3">
+              <QuestionFiche
+                question={questionCourante}
+                onChange={enregistrerQuestion}
+                recalculEnCours={enregistrementQuestion}
+                onRecalculer={() => setNoteQuestion(
+                  'Le recalcul appartient à l’atelier de calepinage (onglet « Calepinages ») : '
+                  + 'rien n’est recalculé depuis les questions. La décision, elle, est enregistrée.',
+                )}
+              />
+              {noteQuestion && (
+                <p role="status" className="text-sm text-muted-foreground" data-ao-note-question="">
+                  {noteQuestion}
+                </p>
+              )}
+            </div>
+          )}
+
+          <div className="flex flex-wrap items-center gap-2 border-t border-border pt-3">
+            <Button
+              size="sm"
+              variant="outline"
+              loading={preparation}
+              disabled={reperes.length === 0 || preparation}
+              onClick={preparerImageAnnotee}
+            >
+              Préparer l’image annotée
+            </Button>
+            {reperes.length === 0 && (
+              <span className="text-xs text-muted-foreground">
+                Posez au moins un repère : l’export porte l’image ET la liste numérotée.
+              </span>
+            )}
+          </div>
+
+          <ExportQR
+            imageSrc={imageAnnotee}
+            questions={serieOuverte.questions ?? []}
+            date={serieOuverte.date_envoi}
+          />
         </Card>
       )}
 

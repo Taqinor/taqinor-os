@@ -56,6 +56,12 @@ export function Annotateur({
   reperesInitiaux = [],
   onChange,
   onOuvrirFiche,
+  // PACT170 — `refSvg` expose le NŒUD SVG (image de fond + repères) à
+  // l'appelant, pour que l'export « prêt à coller » (AOF107) puisse le
+  // rasteriser avec `svgToPng` (AOF75). Sans lui, l'export ne pouvait porter
+  // que la photo NUE : la liste numérotée aurait renvoyé à des repères
+  // invisibles sur l'image — exactement ce que la méthode évite.
+  refSvg = null,
   legende = 'Cliquez sur l’image pour poser un repère.',
 }) {
   const svgRef = useRef(null)
@@ -165,7 +171,10 @@ export function Annotateur({
           </Button>
         </div>
         <svg
-          ref={svgRef}
+          ref={(noeud) => {
+            svgRef.current = noeud
+            if (refSvg) refSvg.current = noeud
+          }}
           viewBox={`0 0 ${TAILLE} ${TAILLE}`}
           className="w-full rounded-md border border-border bg-muted/20"
           role="group"
