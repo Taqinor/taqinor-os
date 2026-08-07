@@ -36,6 +36,7 @@ from .views import (
     ReleveConsommationViewSet, ReleveControleViewSet, ReleveCourbeIVViewSet,
     ReponseCritereViewSet,
     RetourClientQualiteViewSet, RevueVeilleReglementaireViewSet,
+    RisqueOpportuniteViewSet,
     SecouristeViewSet, SignalementPublicViewSet,
     VeilleReglementaireViewSet,
     CheckinSecuriteViewSet, DemandeActionFournisseurViewSet,
@@ -61,6 +62,8 @@ router.register(r'procedures-qualite', ProcedureQualiteViewSet)
 router.register(r'retours-client', RetourClientQualiteViewSet)
 router.register(r'evaluations-risque', EvaluationRisqueViewSet)
 router.register(r'lignes-evaluation-risque', LigneEvaluationRisqueViewSet)
+# PACT183 — registre des risques/opportunités SMQ (XQHS14).
+router.register(r'risques-opportunites', RisqueOpportuniteViewSet)
 router.register(r'permis-travail', PermisTravailViewSet)
 router.register(r'consignations-loto', ConsignationLotoViewSet)
 router.register(r'inductions-securite', InductionSecuriteViewSet)

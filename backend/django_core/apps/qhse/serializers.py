@@ -29,7 +29,7 @@ from .models import (
     QhseChatterEntry,
     RecyclageModule, ReleveConsommation, ReleveControle,
     ReleveCourbeIV, ReponseCritere, RetourClientQualite,
-    RevueVeilleReglementaire,
+    RevueVeilleReglementaire, RisqueOpportunite, RisqueOpportuniteCapa,
     Secouriste,
     SignalementPublic, VeilleReglementaire,
     CheckinSecurite, DemandeActionFournisseur,
@@ -1560,4 +1560,38 @@ class AnalyseNcrSerializer(serializers.ModelSerializer):
             'id', 'non_conformite', 'cinq_pourquoi', 'huit_d',
             'date_creation', 'date_modification',
         ]
+        read_only_fields = fields
+
+
+# ── PACT183 (XQHS14) — registre des risques/opportunités SMQ ────────────────
+class RisqueOpportuniteSerializer(serializers.ModelSerializer):
+    """XQHS14 — risque/opportunité niveau SMQ (ISO 6.1). Les criticités
+    (inhérente/résiduelle) sont calculées côté serveur (``save()``), jamais
+    reçues en écriture."""
+    type_ro_display = serializers.CharField(
+        source='get_type_ro_display', read_only=True)
+
+    class Meta:
+        model = RisqueOpportunite
+        fields = [
+            'id', 'type_ro', 'type_ro_display', 'processus', 'description',
+            'probabilite_inherente', 'gravite_inherente',
+            'criticite_inherente', 'probabilite_residuelle',
+            'gravite_residuelle', 'criticite_residuelle',
+            'actions_traitement', 'date_revue', 'frequence_revue_jours',
+            'responsable', 'date_creation',
+        ]
+        read_only_fields = [
+            'criticite_inherente', 'criticite_residuelle', 'date_creation',
+        ]
+
+
+class RisqueOpportuniteCapaSerializer(serializers.ModelSerializer):
+    """XQHS14 — lien CAPA↔risque/opportunité (lecture seule : créé
+    exclusivement par l'action ``lier-capa/``, idempotent via la contrainte
+    unique du modèle)."""
+
+    class Meta:
+        model = RisqueOpportuniteCapa
+        fields = ['id', 'risque_opportunite', 'capa', 'date_creation']
         read_only_fields = fields

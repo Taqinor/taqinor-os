@@ -43,7 +43,7 @@ from .models import (
     QhseChatterEntry,
     RecyclageModule, ReleveConsommation, ReleveControle,
     ReleveCourbeIV, ReponseCritere, RetourClientQualite,
-    RevueVeilleReglementaire, Secouriste,
+    RevueVeilleReglementaire, RisqueOpportunite, Secouriste,
     SignalementPublic, VeilleReglementaire,
     CheckinSecurite, DemandeActionFournisseur,
 )
@@ -81,6 +81,7 @@ from .serializers import (
     ReleveCourbeIVSerializer,
     ReponseCritereSerializer, RetourClientQualiteSerializer,
     RevueVeilleReglementaireSerializer,
+    RisqueOpportuniteCapaSerializer, RisqueOpportuniteSerializer,
     SecouristeSerializer, SignalementPublicSerializer,
     VeilleReglementaireSerializer,
     CheckinSecuriteSerializer, DemandeActionFournisseurSerializer,
@@ -119,13 +120,15 @@ from .services import (
     incidents_notification_en_retard, initialiser_prochaine_revue,
     instancier_plan_chantier,
     lectures_en_attente,
-    lever_ncr_audit, lever_ncr_inspection, nouvelle_version_procedure,
+    lever_ncr_audit, lever_ncr_inspection,
+    lier_capa_risque_opportunite, nouvelle_version_procedure,
     plans_exercices_dus, poser_disposition,
     realiser_exercice_urgence,
     relancer_capa_en_retard, relancer_conformites, relancer_demandes_changement,
     relancer_exercices_urgence,
     relancer_notifications_environnement,
     resolve_lien_signalement_public,
+    risques_opportunites_revue_due,
     statuer_controle_reception,
     suggerer_analyse_capa, suggerer_classification_incident,
     transitionner_demande_changement,
@@ -1105,6 +1108,58 @@ class LigneEvaluationRisqueViewSet(_QhseBaseViewSet):
         if evaluation not in (None, ''):
             qs = qs.filter(evaluation_id=evaluation)
         return qs
+
+
+# ── PACT183 (XQHS14) — registre des risques/opportunités SMQ ────────────────
+class RisqueOpportuniteViewSet(_QhseBaseViewSet):
+    """Registre des risques/opportunités niveau SMQ (XQHS14, ISO 6.1) —
+    distinct du document unique opérationnel (``EvaluationRisqueViewSet``).
+    CRUD scopé société ; les criticités inhérente/résiduelle sont calculées
+    côté serveur (``save()`` du modèle), jamais reçues en écriture.
+
+    Actions :
+    * ``GET …/revues-dues/`` — risques/opportunités dont la revue périodique
+      est due (``date_revue`` absente ou dépassée de sa fréquence) ;
+    * ``POST …/<id>/lier-capa/`` — lie une CAPA existante (idempotent, ne
+      duplique jamais le lien).
+    """
+    queryset = RisqueOpportunite.objects.all()
+    serializer_class = RisqueOpportuniteSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['id', 'date_revue', 'criticite_inherente']
+
+    @extend_schema(responses=RisqueOpportuniteSerializer(many=True))
+    @action(detail=False, methods=['get'], url_path='revues-dues')
+    def revues_dues(self, request):
+        """PACT183 — risques/opportunités dont la revue est due.
+        ``risques_opportunites_revue_due`` (services.py) n'avait aucun
+        appelant."""
+        qs = risques_opportunites_revue_due(request.user.company)
+        return Response(self.get_serializer(qs, many=True).data)
+
+    @extend_schema(responses=RisqueOpportuniteCapaSerializer)
+    @action(detail=True, methods=['post'], url_path='lier-capa')
+    def lier_capa(self, request, pk=None):
+        """PACT183 — lie une CAPA existante à ce risque/opportunité
+        (idempotent — un second appel avec la même CAPA ne duplique pas le
+        lien, contrainte unique du modèle).
+
+        Corps : ``capa`` (id, requis) — doit appartenir à la même société.
+        ``lier_capa_risque_opportunite`` (services.py) n'avait aucun appelant.
+        """
+        risque_opportunite = self.get_object()
+        capa_id = request.data.get('capa')
+        if capa_id in (None, ''):
+            return Response(
+                {'detail': 'capa est requis.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        capa = get_object_or_404(
+            ActionCorrectivePreventive, pk=capa_id,
+            company=request.user.company)
+        lien = lier_capa_risque_opportunite(risque_opportunite, capa)
+        return Response(
+            RisqueOpportuniteCapaSerializer(lien).data,
+            status=status.HTTP_201_CREATED)
 
 
 class PermisTravailViewSet(_QhseBaseViewSet):
@@ -3038,10 +3093,13 @@ class DemandeActionFournisseurViewSet(_QhseBaseViewSet):
 # écran) et DemandeActionFournisseur (SCAR) — tous deux exposés ci-dessus.
 # AnalyseNcr est exposée (PACT182, action ``analyse/`` de
 # NonConformiteViewSet — jamais un CRUD direct, un seul enregistrement par NCR).
+# RisqueOpportunite est exposée (PACT183, RisqueOpportuniteViewSet complet +
+# actions ``revues-dues``/``lier-capa``) ; RisqueOpportuniteCapa reste SANS
+# CRUD propre (créée uniquement via ``lier-capa/``, jamais un POST direct).
 # Les suivants restent en scaffolding différé (à exposer par un lot ultérieur,
 # un viewset ``_QhseBaseViewSet`` par modèle sur le même patron) et NE doivent
 # jamais être re-listés comme « backend sombre non traité » :
 #   CampagneRappel, Certification, AuditCertification,
-#   ProgrammeAudit, ClauseNorme, ReunionQhse, ObjectifQhse, RisqueOpportunite,
+#   ProgrammeAudit, ClauseNorme, ReunionQhse, ObjectifQhse,
 #   RisqueOpportuniteCapa, PartieInteressee, ContexteOrganisation,
 #   DiffusionProcedure.
