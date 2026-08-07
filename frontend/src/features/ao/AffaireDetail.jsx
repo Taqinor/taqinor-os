@@ -80,6 +80,15 @@ const AdministratifPage = lazy(() => import('./administratif/AdministratifPage')
 const EquipementsPage = lazy(() => import('./equipements/EquipementsPage'))
 const ExigencesPage = lazy(() => import('./cps/ExigencesPage'))
 
+/* ── PACT171 (07/08/2026) — le comparateur de variantes rejoint les 10
+   onglets existants. `VariantesCompare.jsx` (AOF102) et sa colonne
+   (`VarianteColonne.jsx`) n'étaient importés par aucun écran réel. Même
+   patron que les 3 onglets ci-dessus : `lazy` + `PanneauDiffere`, `affaireId`
+   passé explicitement (aucun repli `useParams`). L'exporteur SVG→PNG de
+   miniature (AOF75, lane `frontend/ao-studio`) n'est PAS livré ici : la
+   colonne annonce honnêtement une miniature indisponible en son absence. */
+const VariantesCompare = lazy(() => import('./variantes/VariantesCompare'))
+
 const errMsg = (e, fallback) => e?.response?.data?.detail || fallback
 
 const VERDICT_TONE = { confirme: 'success', tendu: 'warning' }
@@ -493,6 +502,18 @@ export default function AffaireDetail() {
           content: (
             <PanneauDiffere>
               <ExigencesPage affaireId={id} />
+            </PanneauDiffere>
+          ),
+        },
+        {
+          value: 'variantes',
+          label: 'Variantes',
+          /* PACT171 — 11e onglet, même patron que les 3 précédents.
+             `VariantesCompare` filtre lui-même sur `?appel_offre=` (le champ
+             réel du modèle `VarianteCalepinage`). */
+          content: (
+            <PanneauDiffere>
+              <VariantesCompare affaireId={id} />
             </PanneauDiffere>
           ),
         },

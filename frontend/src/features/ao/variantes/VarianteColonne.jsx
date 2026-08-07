@@ -1,4 +1,4 @@
-import { Image as ImageIcon, Lock, Copy, Pin, CheckCircle2 } from 'lucide-react'
+import { Image as ImageIcon, Lock, Copy, Pin, CheckCircle2, Info } from 'lucide-react'
 import { Card, Button, Badge, Skeleton } from '../../../ui'
 import { StatutVariante, StatutControle } from '../statusAo'
 import { formatMAD, formatNumber } from '../../../lib/format'
@@ -35,6 +35,13 @@ import { formatMAD, formatNumber } from '../../../lib/format'
    réutiliser ici ferait matcher DEUX éléments à une spec qui vise ces
    panneaux-là. Une spec qui vise une colonne la cible par son
    `data-ao-variante` ou par le nom accessible de la section.
+
+   ── ACTION « DÉTAILS » (PACT172, 07/08/2026) ──────────────────────────────
+   Ouvre, via `onDetails` (fourni par `VariantesCompare`), le détail complet
+   de la variante : diff de plan, décomposition (AOF104), sensibilités
+   (AOF103) et historique de versions (AOF105) — même patron que
+   `onDupliquer`/`onEpingler` : le bouton n'apparaît QUE si un gestionnaire est
+   fourni, jamais un bouton qui ne peut rien honorer.
    ========================================================================== */
 
 // Les 4 contrôles de la bande CONFORMITÉ AO, dans l'ordre normatif d'AOF102.
@@ -89,6 +96,7 @@ export function VarianteColonne({
   onDupliquer,
   onDefinirRetenue,
   onEpingler,
+  onDetails,
 }) {
   const t = variante.technique || {}
   const verdict = t.verdict || {}
@@ -195,6 +203,11 @@ export function VarianteColonne({
             réapparaissent dès qu'un appelant fournit le gestionnaire — donc
             dès que l'endpoint existe. */}
         <div className="mt-auto flex flex-wrap gap-2 border-t border-border pt-2">
+          {onDetails && (
+            <Button size="sm" variant="outline" onClick={() => onDetails(variante)}>
+              <Info size={14} aria-hidden="true" /> Détails
+            </Button>
+          )}
           {onDupliquer && (
             <Button size="sm" variant="outline" onClick={() => onDupliquer(variante)}>
               <Copy size={14} aria-hidden="true" /> Dupliquer

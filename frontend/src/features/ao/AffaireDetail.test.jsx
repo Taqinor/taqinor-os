@@ -52,6 +52,13 @@ vi.mock('../../api/aoApi', () => ({
   },
 }))
 
+// PACT171 — l'onglet « Variantes » monte le VRAI `VariantesCompare`, qui lit
+// `ao_rentabilite_voir` via `useHasPermission` (ARC47, `useSelector` sur le
+// store redux). Cette fiche ne monte aucun `<Provider>` : bouché comme le
+// fait `VariantesCompare.test.jsx` lui-même, jamais un store redux minimal
+// recréé ici.
+vi.mock('../../hooks/useHasPermission', () => ({ useHasPermission: () => false }))
+
 // L'aperçu du CPS (AOF175) importe pdfjs : hors sujet ici, on prouve seulement
 // que l'onglet monte le VRAI ExigencesPage (même bouchon que son propre test).
 vi.mock('./dossier/PiecePreview', () => ({
@@ -140,12 +147,13 @@ beforeEach(() => {
   mocks.exigencesList.mockResolvedValue({ data: [] })
 })
 
-// Les 10 onglets de la fiche, dans leur ordre RÉEL : les 7 d'origine, puis les
-// 3 ajoutés le 03/08/2026 — l'ordre des 7 premiers ne bouge jamais.
+// Les 11 onglets de la fiche, dans leur ordre RÉEL : les 7 d'origine, puis les
+// 3 ajoutés le 03/08/2026, puis « Variantes » (PACT171, 07/08/2026) — l'ordre
+// des 10 premiers ne bouge jamais.
 const ONGLETS = [
   'Synthèse', 'Toitures & relevés', 'Calepinages', 'Bordereau',
   'Dossier', 'Questions terrain', 'Historique',
-  'Administratif', 'Équipements', 'CPS & exigences',
+  'Administratif', 'Équipements', 'CPS & exigences', 'Variantes',
 ]
 
 describe('AffaireDetail', () => {
@@ -176,6 +184,15 @@ describe('AffaireDetail', () => {
     }
     // L'ordre RENDU est l'ordre déclaré : les 7 d'origine d'abord, intacts.
     expect(screen.getAllByRole('tab').map((t) => t.textContent)).toEqual(ONGLETS)
+  })
+
+  it('ajoute « Variantes » (PACT171) en 11e onglet, APRÈS les 10 précédents', async () => {
+    renderScreen()
+    await screen.findByText('AO-2026-001')
+    expect(screen.getByRole('tab', { name: 'Variantes' })).toBeInTheDocument()
+    const onglets = screen.getAllByRole('tab').map((t) => t.textContent)
+    expect(onglets).toEqual(ONGLETS)
+    expect(onglets[onglets.length - 1]).toBe('Variantes')
   })
 
   it('n’a JAMAIS un onglet ou un mot « rentabilité » dans l’arbre (route séparée AOF161)', async () => {
@@ -408,6 +425,27 @@ describe('AffaireDetail', () => {
     })
   })
 
+  /* ══ PACT171 (07/08/2026) — l'onglet « Variantes » rend le VRAI comparateur ══ */
+  describe('l’onglet Variantes ajouté (PACT171)', () => {
+    it('« Variantes » monte le VRAI VariantesCompare, filtré sur appel_offre', async () => {
+      renderScreen()
+      await screen.findByText('AO-2026-001')
+      await userEvent.click(onglet('Variantes'))
+
+      await waitFor(
+        () => expect(mocks.variantesList).toHaveBeenCalledWith({ appel_offre: '1' }),
+        { timeout: 15000 },
+      )
+      // Une seule variante mockée : le VRAI comparateur refuse honnêtement
+      // (il exige au moins 2 variantes) — la preuve que c'est le panneau réel,
+      // pas un TabPlaceholder muet.
+      expect(await screen.findByText('Pas assez de variantes à comparer', {}, { timeout: 15000 }))
+        .toBeInTheDocument()
+      // Propriété passée explicitement, jamais un repli `useParams()`.
+      expect(codeSeul).toMatch(/<VariantesCompare\s+affaireId=\{id\}/)
+    })
+  })
+
   describe('gardes de structure', () => {
     it('plus AUCUN TabPlaceholder ne subsiste dans la fiche', () => {
       expect(codeSeul).not.toMatch(/TabPlaceholder/)
@@ -427,6 +465,7 @@ describe('AffaireDetail', () => {
         './administratif/AdministratifPage',
         './equipements/EquipementsPage',
         './cps/ExigencesPage',
+        './variantes/VariantesCompare',
       ]) {
         // lazy(() => import('<chemin>')…
         expect(codeSeul).toMatch(
@@ -446,9 +485,10 @@ describe('AffaireDetail', () => {
       const lazyDeclares = codeSeul.match(/=\s*lazy\(/g) || []
       const montages = codeSeul.match(/<PanneauDiffere>/g) || []
       // 5 panneaux de la 1re vague + 3 de la 2de (Administratif, Équipements,
-      // CPS & exigences) — l'ÉGALITÉ est la garde : un panneau déclaré `lazy`
-      // et monté hors Suspense ferait planter la fiche entière.
-      expect(lazyDeclares.length).toBe(8)
+      // CPS & exigences) + 1 (Variantes, PACT171) — l'ÉGALITÉ est la garde :
+      // un panneau déclaré `lazy` et monté hors Suspense ferait planter la
+      // fiche entière.
+      expect(lazyDeclares.length).toBe(9)
       expect(montages.length).toBe(lazyDeclares.length)
     })
 
