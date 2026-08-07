@@ -71,7 +71,11 @@ export default function ActionsLogScreen() {
     const params = { debut: range.debut || undefined, fin: range.fin || undefined }
     adsengineApi.actions.log(params)
       .then(r => {
-        setActions(Array.isArray(r.data) ? r.data : (r.data?.results || []))
+        const raw = Array.isArray(r.data) ? r.data : (r.data?.results || [])
+        // PACT157 — l'API EngineAction expose le genre dans `kind` (jamais
+        // `type`) : même normalisation déjà posée par ApprovalsScreen.jsx:117,
+        // appliquée ici pour que actionTypeLabel(a.type) affiche le vrai libellé.
+        setActions(raw.map(a => ({ ...a, type: a.type ?? a.kind })))
         setLoadError(false)
       })
       .catch(() => setLoadError(true))

@@ -114,8 +114,12 @@ describe('CampagneDetail', () => {
     expect(screen.queryByText('b@x.ma')).toBeNull()
   })
 
-  it("« Envoyer un test » appelle l'action envoyer-test et affiche le résultat", async () => {
-    mocks.envoyerTest.mockResolvedValue({ data: { nb_envoyes: 2 } })
+  it("« Envoyer un test » appelle l'action envoyer-test et affiche le nombre réel de seeds (PACT153)", async () => {
+    // envoyer_test_campagne (apps/compta/services.py:8312-8326) renvoie
+    // {seeds, corps_fusionne} — jamais nb_envoyes/envoyes.
+    mocks.envoyerTest.mockResolvedValue({
+      data: { seeds: ['a@x.ma', 'b@x.ma'], corps_fusionne: 'Bonjour...' },
+    })
     renderScreen()
     await screen.findByText('Relance été')
     fireEvent.change(screen.getByTestId('campagne-test-adresses'),
@@ -123,22 +127,29 @@ describe('CampagneDetail', () => {
     fireEvent.click(screen.getByTestId('campagne-envoyer-test'))
     await waitFor(() => expect(mocks.envoyerTest).toHaveBeenCalledWith(
       '7', { adresses_seed: ['a@x.ma', 'b@x.ma'] }))
-    expect(await screen.findByTestId('campagne-test-resultat')).toBeInTheDocument()
+    expect(await screen.findByTestId('campagne-test-resultat'))
+      .toHaveTextContent('Test envoyé (2 destinataire(s) de test).')
   })
 
-  it('le pré-check bloquant désactive la confirmation d\'envoi', async () => {
+  it('le pré-check bloquant (bloque=true) désactive la confirmation d\'envoi (PACT153)', async () => {
+    // precheck_sante_campagne (apps/compta/services.py:8342-8393) renvoie
+    // {bloque, avertissements} — jamais un tableau `bloquants` séparé.
     mocks.precheck.mockResolvedValue({
-      data: { bloquants: ['Domaine non authentifié'], avertissements: [] },
+      data: {
+        bloque: true,
+        avertissements: ['Lien de désinscription manquant — envoi email bloqué (loi 09-08).'],
+      },
     })
     renderScreen()
     await screen.findByText('Relance été')
     fireEvent.click(screen.getByTestId('campagne-precheck-btn'))
     await screen.findByTestId('campagne-precheck-resultat')
     expect(screen.getByTestId('campagne-confirmer-envoi')).toBeDisabled()
+    expect(screen.getByText(/Lien de désinscription manquant/)).toBeInTheDocument()
   })
 
-  it('le pré-check propre laisse confirmer l\'envoi', async () => {
-    mocks.precheck.mockResolvedValue({ data: { bloquants: [], avertissements: [] } })
+  it('le pré-check propre (bloque=false) laisse confirmer l\'envoi (PACT153)', async () => {
+    mocks.precheck.mockResolvedValue({ data: { bloque: false, avertissements: [] } })
     mocks.envoyer.mockResolvedValue({ data: {} })
     renderScreen()
     await screen.findByText('Relance été')

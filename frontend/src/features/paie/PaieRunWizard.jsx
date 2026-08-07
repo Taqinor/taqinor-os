@@ -239,7 +239,9 @@ export default function PaieRunWizard() {
     setBusy('gratification')
     try {
       const { data } = await paieApi.runGratification(periode.id)
-      const n = Array.isArray(data) ? data.length : data?.crees ?? 0
+      // PACT154 — run_gratification (apps/paie/views.py:670-671) renvoie
+      // {bulletins, nombre} — jamais `crees`.
+      const n = Array.isArray(data) ? data.length : (data?.nombre ?? 0)
       toast.success(`${n} bulletin(s) de 13e mois généré(s).`)
       await loadBulletins(periode)
     } catch (e) {

@@ -4,7 +4,12 @@ import { MemoryRouter } from 'react-router-dom'
 import { filterActionLog, actionMode, actionResultKey } from './adsengine'
 
 /* ENG28 — Journal d'actions : timeline EngineAction (raison, résultat, qui a
-   approuvé, auto/manuel), filtrable par statut et par mode. */
+   approuvé, auto/manuel), filtrable par statut et par mode.
+   PACT157 — les fixtures portent les VRAIES clés du serializer (`kind`/
+   `status`, backend/django_core/apps/adsengine/serializers.py:181), jamais
+   `type`/`statut` inventés : `EngineActionSerializer` n'expose que `kind` et
+   `status` (`proposee`/`approuvee`/`rejetee`/`appliquee`/`echouee` — voir
+   `EngineAction.Statut`, models.py:726-731). */
 
 const mocks = vi.hoisted(() => ({ log: vi.fn(), cancel: vi.fn() }))
 
@@ -18,9 +23,9 @@ const renderScreen = () => render(
   <MemoryRouter><ActionsLogScreen /></MemoryRouter>)
 
 const LOG = [
-  { id: 1, type: 'adjust_budget', reason_fr: 'CPL en baisse', statut: 'approuve', approuve_par: 'Reda', mode: 'manuel', created_at: '2026-07-10' },
-  { id: 2, type: 'pause_campaign', reason_fr: 'Fréquence trop haute', statut: 'applique', auto: true, created_at: '2026-07-11' },
-  { id: 3, type: 'swap_creative', reason_fr: 'Créatif fatigué', statut: 'rejete', approuve_par: 'Meryem', mode: 'manuel', created_at: '2026-07-12' },
+  { id: 1, kind: 'rebalance_budget', reason_fr: 'CPL en baisse', status: 'approuvee', approuve_par: 'Reda', mode: 'manuel', created_at: '2026-07-10' },
+  { id: 2, kind: 'pause', reason_fr: 'Fréquence trop haute', status: 'appliquee', auto: true, created_at: '2026-07-11' },
+  { id: 3, kind: 'rotate_creative', reason_fr: 'Créatif fatigué', status: 'rejetee', approuve_par: 'Meryem', mode: 'manuel', created_at: '2026-07-12' },
 ]
 
 beforeEach(() => {
@@ -35,10 +40,14 @@ describe('helpers de journal (purs)', () => {
     expect(actionMode({ approuve_par: 'Reda' })).toBe('manuel')
     expect(actionMode({})).toBe('auto')
   })
-  it('actionResultKey normalise les variantes de statut', () => {
-    expect(actionResultKey({ statut: 'approuvee' })).toBe('approuve')
-    expect(actionResultKey({ statut: 'rejetée' })).toBe('rejete')
-    expect(actionResultKey({ statut: 'pending' })).toBe('en_attente')
+  it('actionResultKey normalise les variantes de statut (champ réel `status`)', () => {
+    expect(actionResultKey({ status: 'approuvee' })).toBe('approuve')
+    expect(actionResultKey({ status: 'rejetee' })).toBe('rejete')
+    expect(actionResultKey({ status: 'proposee' })).toBe('en_attente')
+    expect(actionResultKey({ status: 'echouee' })).toBe('echec')
+    // `statut` (inventé) et `result` (JSONField, pas un statut) ne doivent
+    // jamais être lus comme source du statut.
+    expect(actionResultKey({ statut: 'approuvee', result: { ok: true } })).toBe('en_attente')
   })
   it('filterActionLog filtre par statut et par mode', () => {
     expect(filterActionLog(LOG, { statut: 'rejete' })).toHaveLength(1)
@@ -56,6 +65,10 @@ describe('ActionsLogScreen (ENG28)', () => {
     expect(screen.getAllByTestId('ae-log-result')[0]).toHaveTextContent('Approuvée')
     // L'action auto porte le badge Auto.
     expect(screen.getAllByTestId('ae-log-mode').some(el => el.textContent === 'Auto')).toBe(true)
+    // PACT157 — le libellé du `kind` réel s'affiche (jamais "Action" en repli).
+    expect(screen.getByText('Rééquilibrage de budget')).toBeInTheDocument()
+    expect(screen.getByText('Mise en pause')).toBeInTheDocument()
+    expect(screen.getByText('Rotation de créatif')).toBeInTheDocument()
   })
 
   it('filtrer par statut (rejetées) réduit la timeline', async () => {
@@ -99,8 +112,8 @@ describe('ActionsLogScreen (ENG28)', () => {
 
   it('PUB7 — une action échouée montre sa raison réelle (`error`, pas `result_detail`)', async () => {
     mocks.log.mockResolvedValue({ data: [
-      { id: 4, type: 'adjust_budget', reason_fr: 'Rééquilibrage automatique',
-        statut: 'echec', mode: 'manuel', created_at: '2026-07-13',
+      { id: 4, kind: 'rebalance_budget', reason_fr: 'Rééquilibrage automatique',
+        status: 'echouee', mode: 'manuel', created_at: '2026-07-13',
         error: 'Meta a refusé : jeton expiré.', result_detail: 'jamais affiché' },
     ] })
     renderScreen()
@@ -111,7 +124,7 @@ describe('ActionsLogScreen (ENG28)', () => {
 
   it('PUB7 — un rejet montre le motif porté dans `error`', async () => {
     mocks.log.mockResolvedValue({ data: [
-      { id: 5, type: 'pause', reason_fr: 'Fréquence élevée', statut: 'rejete',
+      { id: 5, kind: 'pause', reason_fr: 'Fréquence élevée', status: 'rejetee',
         approuve_par: 'Meryem', mode: 'manuel', created_at: '2026-07-13',
         error: 'Trop tôt — laisser la phase apprentissage se terminer.' },
     ] })
@@ -126,7 +139,7 @@ describe('ActionsLogScreen (ENG28)', () => {
   describe('PUB44 — lien croisé vers la fiche ad', () => {
     it('action avec payload.ad_id résoluble -> lien affiché', async () => {
       mocks.log.mockResolvedValue({ data: [
-        { id: 4, type: 'edit_copy', reason_fr: 'Nouvelle accroche', statut: 'approuve',
+        { id: 4, kind: 'edit_copy', reason_fr: 'Nouvelle accroche', status: 'approuvee',
           payload: { ad_id: 'ad-42' } },
       ] })
       renderScreen()
@@ -136,7 +149,7 @@ describe('ActionsLogScreen (ENG28)', () => {
 
     it('action avec target_type=ad résoluble -> lien affiché', async () => {
       mocks.log.mockResolvedValue({ data: [
-        { id: 5, type: 'pause', reason_fr: 'Fatigue', statut: 'approuve',
+        { id: 5, kind: 'pause', reason_fr: 'Fatigue', status: 'approuvee',
           payload: { target_type: 'ad', target_meta_id: 'ad-7' } },
       ] })
       renderScreen()

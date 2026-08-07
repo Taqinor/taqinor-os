@@ -131,26 +131,34 @@ export function rankCreatives(list) {
 
 // ── ENG25 — Boîte d'approbation (EngineAction) ──
 // Libellés FR déterministes des types d'action (jamais un type brut à l'écran).
+// PACT157 — clés alignées sur les `kind` RÉELLEMENT produits : les 9 valeurs
+// de `EngineAction.Kind` (backend/django_core/apps/adsengine/models.py:733-753)
+// + 5 constantes de kind délibérément posées HORS de cet enum (voir le
+// commentaire services.py:600-601 : `pacing.KIND_ENABLE_CBO`,
+// `services.KIND_PAUSE_FOR_MONTH/KIND_CREATE_AD_STUDY/KIND_SET_SCHEDULE/
+// KIND_DUPLICATE` — vérifiées réellement écrites via `EngineAction.objects
+// .create(kind=...)`, donc gardées). Les 5 clés qui n'apparaissent nulle part
+// comme `kind` réel (update_campaign, pause_campaign, adjust_budget,
+// create_creative, swap_creative) sont retirées.
 export const ACTION_TYPE_LABELS = {
   create_campaign: 'Création de campagne',
-  update_campaign: 'Modification de campagne',
-  pause_campaign: 'Mise en pause de campagne',
-  adjust_budget: 'Ajustement de budget',
+  create_adset: "Création d'ensemble de publicités",
   create_ad: "Création d'annonce",
-  create_creative: 'Nouveau créatif',
-  swap_creative: 'Rotation de créatif',
-  enable_cbo: 'Activation du budget de campagne (CBO)',
-  pause_for_month: "Mise en pause jusqu'à la fin du mois",
+  rotate_creative: 'Rotation de créatif',
+  rebalance_budget: 'Rééquilibrage de budget',
+  pause: 'Mise en pause',
   // ADSDEEP31/34/36/37 — surface d'édition + étude native + horaire + duplication.
   edit_copy: 'Édition du texte / créatif',
   set_spend_cap: 'Plafond de dépense',
   rename: 'Renommage',
+  enable_cbo: 'Activation du budget de campagne (CBO)',
+  pause_for_month: "Mise en pause jusqu'à la fin du mois",
   create_ad_study: 'Étude A/B native',
   set_schedule: 'Horaire de diffusion (dayparting)',
   duplicate: "Duplication d'ad set",
 }
-export function actionTypeLabel(type) {
-  return ACTION_TYPE_LABELS[type] || type || 'Action'
+export function actionTypeLabel(kind) {
+  return ACTION_TYPE_LABELS[kind] || kind || 'Action'
 }
 
 function numOrNull(v) {
@@ -297,13 +305,20 @@ export const ACTION_RESULT_LABELS = {
 }
 
 // Normalise le statut/résultat d'une action en une clé de bucket stable.
+// PACT157 — `EngineActionSerializer` (backend/django_core/apps/adsengine/
+// serializers.py:181) expose `status`, JAMAIS `statut` ; `result` est un
+// JSONField (le résultat de l'application, pas le statut) — le lire comme
+// chaîne produisait "[object Object]". Valeurs réelles de
+// `EngineAction.Statut` (models.py:726-731) : proposee/approuvee/rejetee/
+// appliquee/echouee — PAS `en_attente`/`echec` (repli purement local à
+// l'écran, jamais envoyé par le serveur).
 export function actionResultKey(action) {
-  const s = String(action?.statut ?? action?.result ?? '').toLowerCase()
+  const s = String(action?.status ?? '').toLowerCase()
   if (s.startsWith('approuv')) return 'approuve'
   if (s.startsWith('rejet')) return 'rejete'
   if (s.startsWith('appliqu')) return 'applique'
-  if (s.startsWith('echec') || s.startsWith('éch')) return 'echec'
-  if (s.startsWith('attente') || s.startsWith('en_attente') || s === 'pending') return 'en_attente'
+  if (s.startsWith('echou') || s.startsWith('éch')) return 'echec'
+  if (s.startsWith('propos') || s.startsWith('attente') || s === 'pending') return 'en_attente'
   return s || 'en_attente'
 }
 
