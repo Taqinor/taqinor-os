@@ -159,7 +159,8 @@ export const ACTION_TYPE_LABELS = {
   // Les `kind` de contenu social et de cadence, eux aussi écrits par
   // `EngineAction.objects.create(kind=…)` (services.py, pacing.py) : sans
   // libellé ils tombaient dans le repli et affichaient la clé anglaise brute,
-  // ce que l'en-tête de ce bloc interdit.
+  // ce que l'en-tête de ce bloc interdit. Les trois premiers sont les posts
+  // organiques de Page que PACT164 vient de câbler (ADSDEEP50/51/52).
   create_post: 'Publication de post',
   edit_post: 'Modification de post',
   boost_post: 'Sponsorisation de post',

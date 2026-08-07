@@ -17,7 +17,9 @@ from authentication.models import Company
 from apps.crm.models import Client, Lead, LeadActivity
 from apps.installations.models import Installation
 from apps.sav.models import ContratMaintenance
-from apps.ventes.models import Devis, LigneDevis, Facture, LigneFacture
+from apps.ventes.models import (
+    Devis, LigneDevis, Facture, LigneFacture, PlanCommission,
+)
 from apps.stock.models import Produit
 from apps.parametres.models import CompanyProfile
 
@@ -295,6 +297,155 @@ class TestCommissions(InsightsBase):
             HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(resp_user)}')
         resp = api.get(f'{BASE}/commissions/')
         self.assertEqual(resp.status_code, 403)
+
+    # ── PACT186/XSAL6 — resoudre_plan_commission enfin consommé ──────────────
+    def _devis_for_commercial(self, commercial, *, prix_vente=Decimal('1000'),
+                              prix_achat=Decimal('0'), quantite=Decimal('10'),
+                              reference='DEV-CM-XSAL6'):
+        client = Client.objects.create(company=self.company, nom='C-XSAL6')
+        lead = Lead.objects.create(
+            company=self.company, nom='L-XSAL6', stage='NEW', owner=commercial)
+        produit = Produit.objects.create(
+            company=self.company, nom='Panneau', sku=f'{reference}-P',
+            prix_vente=prix_vente, prix_achat=prix_achat, quantite_stock=0)
+        devis = Devis.objects.create(
+            company=self.company, reference=reference, client=client,
+            lead=lead, statut=Devis.Statut.ACCEPTE,
+            date_acceptation=date.today())
+        LigneDevis.objects.create(
+            devis=devis, produit=produit, designation='P',
+            quantite=quantite, prix_unitaire=prix_vente)
+        return devis
+
+    def test_dedicated_plan_overrides_company_mode(self):
+        """Un plan DÉDIÉ actif prime sur le mode société, même actif."""
+        self._set_commission('pct_devis', Decimal('5'))
+        commercial = User.objects.create_user(
+            username='comm-plan', password='x', role_legacy='responsable',
+            company=self.company)
+        PlanCommission.objects.create(
+            company=self.company, owner=commercial,
+            base=PlanCommission.Base.CA_DEVIS_SIGNE,
+            taux_pct=Decimal('10'), actif=True)
+        self._devis_for_commercial(commercial)
+
+        resp = self.api.get(f'{BASE}/commissions/')
+        self.assertEqual(resp.status_code, 200)
+        self.assertTrue(resp.data['enabled'])
+        row = resp.data['rows'][0]
+        # 10 % (plan dédié) de 10×1000 = 1000 — PAS 5 % (mode société) = 500.
+        self.assertEqual(Decimal(row['commission']), Decimal('1000'))
+
+    def test_dedicated_plan_active_even_when_company_mode_off(self):
+        """Un plan actif fait apparaître des commissions même mode='off'."""
+        commercial = User.objects.create_user(
+            username='comm-plan-off', password='x', role_legacy='responsable',
+            company=self.company)
+        PlanCommission.objects.create(
+            company=self.company, owner=commercial,
+            base=PlanCommission.Base.CA_DEVIS_SIGNE,
+            taux_pct=Decimal('8'), actif=True)
+        self._devis_for_commercial(commercial)
+
+        resp = self.api.get(f'{BASE}/commissions/')
+        self.assertEqual(resp.status_code, 200)
+        self.assertTrue(resp.data['enabled'])
+        row = resp.data['rows'][0]
+        self.assertEqual(Decimal(row['commission']), Decimal('800'))
+
+    def test_default_company_plan_used_when_no_dedicated(self):
+        """Sans plan dédié, le plan par défaut (owner=None) actif de la
+        société s'applique — priorité plan dédié > plan défaut, prouvée par
+        `test_dedicated_plan_overrides_company_mode` ci-dessus."""
+        commercial = User.objects.create_user(
+            username='comm-default-plan', password='x',
+            role_legacy='responsable', company=self.company)
+        PlanCommission.objects.create(
+            company=self.company, owner=None,
+            base=PlanCommission.Base.CA_DEVIS_SIGNE,
+            taux_pct=Decimal('6'), actif=True)
+        self._devis_for_commercial(commercial)
+
+        resp = self.api.get(f'{BASE}/commissions/')
+        self.assertEqual(resp.status_code, 200)
+        row = resp.data['rows'][0]
+        self.assertEqual(Decimal(row['commission']), Decimal('600'))
+
+    def test_plan_par_kwc_base(self):
+        commercial = User.objects.create_user(
+            username='comm-kwc', password='x', role_legacy='responsable',
+            company=self.company)
+        PlanCommission.objects.create(
+            company=self.company, owner=commercial,
+            base=PlanCommission.Base.PAR_KWC,
+            montant_par_kwc=Decimal('100'), actif=True)
+        devis = self._devis_for_commercial(commercial, reference='DEV-CM-KWC')
+        client = devis.client
+        Installation.objects.create(
+            company=self.company, reference='CH-XSAL6', client=client,
+            devis=devis, statut=Installation.Statut.RECEPTIONNE,
+            date_reception=date.today(),
+            puissance_installee_kwc=Decimal('5'))
+
+        resp = self.api.get(f'{BASE}/commissions/')
+        self.assertEqual(resp.status_code, 200)
+        row = resp.data['rows'][0]
+        # 5 kWc × 100 MAD/kWc = 500.
+        self.assertEqual(Decimal(row['commission']), Decimal('500'))
+
+    def test_plan_marge_interne_base(self):
+        commercial = User.objects.create_user(
+            username='comm-marge', password='x', role_legacy='responsable',
+            company=self.company)
+        PlanCommission.objects.create(
+            company=self.company, owner=commercial,
+            base=PlanCommission.Base.MARGE_INTERNE,
+            taux_pct=Decimal('20'), actif=True)
+        self._devis_for_commercial(
+            commercial, reference='DEV-CM-MARGE',
+            prix_vente=Decimal('1000'), prix_achat=Decimal('600'))
+
+        resp = self.api.get(f'{BASE}/commissions/')
+        self.assertEqual(resp.status_code, 200)
+        row = resp.data['rows'][0]
+        # Marge = (1000-600)×10 = 4000 ; commission = 20 % de 4000 = 800.
+        self.assertEqual(Decimal(row['commission']), Decimal('800'))
+
+    def test_inactive_plan_ignored_falls_back_to_mode(self):
+        self._set_commission('pct_devis', Decimal('5'))
+        commercial = User.objects.create_user(
+            username='comm-inactive', password='x', role_legacy='responsable',
+            company=self.company)
+        PlanCommission.objects.create(
+            company=self.company, owner=commercial,
+            base=PlanCommission.Base.CA_DEVIS_SIGNE,
+            taux_pct=Decimal('99'), actif=False)
+        self._devis_for_commercial(commercial, reference='DEV-CM-INACTIVE')
+
+        resp = self.api.get(f'{BASE}/commissions/')
+        self.assertEqual(resp.status_code, 200)
+        row = resp.data['rows'][0]
+        # Plan inactif ignoré -> repli mode société (5 %) = 500, jamais 99 %.
+        self.assertEqual(Decimal(row['commission']), Decimal('500'))
+
+    def test_other_company_plan_never_applies(self):
+        """Un PlanCommission d'une AUTRE société n'influence jamais le calcul
+        (isolation garantie par `resoudre_plan_commission`, re-vérifiée ici
+        au niveau de l'endpoint)."""
+        self._set_commission('pct_devis', Decimal('5'))
+        commercial = User.objects.create_user(
+            username='comm-scoped', password='x', role_legacy='responsable',
+            company=self.company)
+        PlanCommission.objects.create(
+            company=self.other, owner=None,
+            base=PlanCommission.Base.CA_DEVIS_SIGNE,
+            taux_pct=Decimal('99'), actif=True)
+        self._devis_for_commercial(commercial, reference='DEV-CM-SCOPED')
+
+        resp = self.api.get(f'{BASE}/commissions/')
+        self.assertEqual(resp.status_code, 200)
+        row = resp.data['rows'][0]
+        self.assertEqual(Decimal(row['commission']), Decimal('500'))
 
 
 class TestSalesLeaderboard(InsightsBase):

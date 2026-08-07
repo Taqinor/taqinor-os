@@ -2487,7 +2487,7 @@ class DemandeSignatureDocumentViewSet(TenantMixin,
     ordering_fields = ['date_demande', 'id']
 
     def get_permissions(self):
-        if self.action in READ_ACTIONS:
+        if self.action in READ_ACTIONS or self.action == 'pdf_signe':
             return [IsAnyRole()]
         return [IsResponsableOrAdmin()]
 
@@ -2591,6 +2591,33 @@ class DemandeSignatureDocumentViewSet(TenantMixin,
         return Response(
             DemandeSignatureDocumentSerializer(
                 demande, context={'request': request}).data)
+
+    @action(detail=True, methods=['get'], url_path='pdf-signe')
+    def pdf_signe(self, request, pk=None):
+        """XGED3/PACT185 — Télécharge le PDF final AVEC les champs de
+        signature APLATIS (valeurs + signature) pour une demande COMPLÉTÉE.
+        Réutilise ``services.rendre_pdf_signe_avec_champs`` (best-effort :
+        ne lève jamais — `(None, False)` si le contenu est introuvable).
+        Refuse (409) si la demande n'est pas encore `signe` ; renvoie 404 si
+        le contenu est introuvable — JAMAIS un 500. Lecture : tout rôle
+        authentifié."""
+        demande = self.get_object()  # borné à la société (TenantMixin)
+        from .models import SIGNATURE_SIGNE
+        if demande.statut != SIGNATURE_SIGNE:
+            return Response(
+                {'detail': "Cette demande n'est pas encore signée."},
+                status=status.HTTP_409_CONFLICT)
+        pdf_bytes, _aplati = services.rendre_pdf_signe_avec_champs(demande)
+        if pdf_bytes is None:
+            return Response(
+                {'detail': "Contenu du document introuvable."},
+                status=status.HTTP_404_NOT_FOUND)
+        safe_name = (demande.document.nom or 'document').replace('"', '')
+        resp = HttpResponse(pdf_bytes, content_type='application/pdf')
+        resp['Content-Disposition'] = (
+            f'attachment; filename="{safe_name}-signe.pdf"')
+        resp['X-Content-Type-Options'] = 'nosniff'
+        return resp
 
     @action(detail=False, methods=['post'], url_path='creer-multi')
     def creer_multi(self, request):

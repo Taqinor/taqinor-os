@@ -8,7 +8,7 @@ from rest_framework import serializers
 from .models import (
     AdCampaignMirror, AdMirror, AdSetMirror, Annotation, AnomalyEvent,
     ArmDailyStat,
-    AssumptionNode, BrandKit, CommentMirror,
+    AssumptionNode, BrandKit, CommentKeywordRule, CommentMirror,
     CompetitorAdObservation, CompetitorPage, ConsentRecord, CreativeAsset,
     CreativeBacklogItem,
     CreativeGenerationBatch, CreativePolicy, DecisionLog, EngineAction,
@@ -813,6 +813,20 @@ class CommentMirrorSerializer(serializers.ModelSerializer):
         if obj.source != CommentMirror.Source.AD:
             return None
         return self.context.get('story_to_ad', {}).get(obj.object_meta_id)
+
+
+# PACT164 — Règles de masquage automatique par mot-clé (ADSDEEP53) : CRUD
+# écrit/lu depuis l'API, ``company`` posée côté serveur (jamais du corps).
+class CommentKeywordRuleSerializer(serializers.ModelSerializer):
+    """PACT164 — CRUD des règles de masquage par mot-clé. ``keyword`` est
+    comparé en minuscules « contient » (``comments.matched_keyword``) ;
+    ``auto=False`` (défaut) ne fait que PROPOSER un masquage — ``auto=True``
+    est un opt-in explicite fondateur pour le masquage automatique."""
+
+    class Meta:
+        model = CommentKeywordRule
+        fields = ['id', 'keyword', 'enabled', 'auto', 'created_at', 'updated_at']
+        read_only_fields = ['created_at', 'updated_at']
 
 
 # ── ADSDEEP55/56 — Instagram (compte Business relié) ──────────────────────────

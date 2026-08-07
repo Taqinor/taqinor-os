@@ -519,38 +519,79 @@ def analytics(request):
     })
 
 
+def _marge_interne_devis(devis, ligne_produit_choice):
+    """XSAL6 — Marge interne (CA − coût d'achat) des lignes PRODUIT d'un devis
+    signé, pour la base `PlanCommission.Base.MARGE_INTERNE` (ADMIN-ONLY :
+    l'unique appelant, `commissions`, est déjà gated `IsAdminRole` — `prix_achat`
+    n'est lu ici que côté serveur, jamais rendu dans un export/PDF client).
+    Utilise `devis.lignes` déjà PREFETCHÉES (`select_related('produit')`) —
+    aucune requête supplémentaire par ligne."""
+    total = Decimal('0')
+    for ligne in devis.lignes.all():
+        if ligne.type_ligne != ligne_produit_choice:
+            continue
+        produit = ligne.produit
+        if produit is None or produit.prix_achat is None:
+            continue
+        quantite = ligne.quantite or Decimal('0')
+        prix_unitaire = ligne.prix_unitaire or Decimal('0')
+        total += (Decimal(prix_unitaire) - Decimal(produit.prix_achat)) * Decimal(quantite)
+    return total
+
+
 @api_view(['GET'])
 @permission_classes([IsAdminRole])
 def commissions(request):
-    """N99 — commissions commerciales (ADMIN UNIQUEMENT, donnée sensible).
+    """N99/XSAL6 — commissions commerciales (ADMIN UNIQUEMENT, donnée sensible).
 
-    Configurable dans Paramètres (mode + valeur) : 'pct_devis' (% du HT des
-    devis signés) ou 'par_kwc' (MAD par kWc installé des chantiers issus des
-    devis signés). Désactivé par défaut (mode 'off') → aucune commission. Le
-    commercial = le responsable du lead du devis, sinon son créateur. Période
-    optionnelle sur la date d'acceptation : ?from=&to=.
+    Mode SOCIÉTÉ configurable dans Paramètres (mode + valeur) : 'pct_devis' (%
+    du HT des devis signés) ou 'par_kwc' (MAD par kWc installé des chantiers
+    issus des devis signés). Désactivé par défaut (mode 'off') → aucune
+    commission par ce chemin. Le commercial = le responsable du lead du devis,
+    sinon son créateur. Période optionnelle sur la date d'acceptation :
+    ?from=&to=.
+
+    XSAL6 — pour CHAQUE devis, ``apps.ventes.selectors.resoudre_plan_commission``
+    résout D'ABORD un ``PlanCommission`` actif du commercial (dédié, puis
+    défaut société) ; s'il existe, la commission de CE devis est calculée
+    depuis SON `base`/`taux_pct`/`montant_par_kwc` — jamais le mode société.
+    Comportement HISTORIQUE inchangé pour tout commercial sans plan actif
+    (résolveur → `None`, on retombe alors sur le mode société ci-dessus,
+    identique en tous points au calcul d'avant XSAL6).
     """
     co = _co(request.user)
     if co is None:
         return Response({'detail': 'Accès refusé.'}, status=403)
+    from django.db.models import Prefetch
+
     from apps.parametres.models import CompanyProfile
-    from apps.ventes.models import Devis
+    from apps.ventes.models import Devis, LigneDevis, PlanCommission
+    from apps.ventes.selectors import resoudre_plan_commission
     from apps.installations.models import Installation
 
-    profile = CompanyProfile.get(getattr(request.user, 'company', None))
+    company = getattr(request.user, 'company', None)
+    profile = CompanyProfile.get(company)
     mode = getattr(profile, 'commission_mode', 'off') or 'off'
     valeur = profile.commission_valeur
-    if mode not in ('pct_devis', 'par_kwc') or valeur is None:
+    mode_active = mode in ('pct_devis', 'par_kwc') and valeur is not None
+    # XSAL6 — un PlanCommission actif (dédié ou par défaut société) peut
+    # activer des commissions MÊME quand le mode société est 'off' ; sans
+    # AUCUN plan actif, ce booléen reste False et le comportement historique
+    # (court-circuit ci-dessous) est byte-identique à avant XSAL6.
+    has_plans = PlanCommission.objects.filter(company=company, actif=True).exists()
+    if not mode_active and not has_plans:
         return Response({
             'enabled': False, 'mode': mode,
             'valeur': str(valeur) if valeur is not None else None,
             'rows': [], 'total': '0',
         })
-    valeur = Decimal(valeur)
+    valeur = Decimal(valeur) if valeur is not None else None
 
     signed = (Devis.objects.filter(**co, statut=Devis.Statut.ACCEPTE)
               .select_related('lead', 'lead__owner', 'created_by')
-              .prefetch_related('lignes'))
+              .prefetch_related(
+                  Prefetch('lignes', queryset=LigneDevis.objects
+                           .select_related('produit'))))
     start = _qdate(request.query_params.get('from'))
     end = _qdate(request.query_params.get('to'))
     if start:
@@ -558,15 +599,16 @@ def commissions(request):
     if end:
         signed = signed.filter(date_acceptation__lte=end)
 
-    # kWc installé par devis (chemin devis→chantier), si mode par_kwc.
+    # kWc installé par devis (chemin devis→chantier) — calculé dans TOUS les
+    # cas désormais (un PlanCommission PAR_KWC peut s'appliquer même si le
+    # mode société n'est pas 'par_kwc').
     kwc_by_devis = defaultdict(Decimal)
-    if mode == 'par_kwc':
-        insts = (Installation.objects.filter(**co)
-                 .exclude(devis__isnull=True)
-                 .values_list('devis_id', 'puissance_installee_kwc'))
-        for devis_id, kwc in insts:
-            if kwc:
-                kwc_by_devis[devis_id] += Decimal(kwc)
+    insts = (Installation.objects.filter(**co)
+             .exclude(devis__isnull=True)
+             .values_list('devis_id', 'puissance_installee_kwc'))
+    for devis_id, kwc in insts:
+        if kwc:
+            kwc_by_devis[devis_id] += Decimal(kwc)
 
     agg = {}
     for d in signed:
@@ -575,10 +617,34 @@ def commissions(request):
         else:
             owner = d.created_by
         uid = owner.id if owner else 0
+
+        plan = resoudre_plan_commission(company, owner) if owner is not None else None
+        if plan is None and not mode_active:
+            # Ni plan dédié/défaut, ni mode société actif : rien à ajouter
+            # pour ce devis (comportement historique — pas de ligne fantôme).
+            continue
+
         slot = agg.setdefault(uid, {
             'commercial': _username(owner) or '—', 'base': Decimal('0'),
             'commission': Decimal('0'), 'count': 0})
         slot['count'] += 1
+
+        if plan is not None:
+            if plan.base == PlanCommission.Base.CA_DEVIS_SIGNE:
+                base = Decimal(d.total_ht)
+                slot['base'] += base
+                slot['commission'] += base * (plan.taux_pct or Decimal('0')) / Decimal('100')
+            elif plan.base == PlanCommission.Base.PAR_KWC:
+                kwc = kwc_by_devis.get(d.id, Decimal('0'))
+                slot['base'] += kwc
+                slot['commission'] += kwc * (plan.montant_par_kwc or Decimal('0'))
+            elif plan.base == PlanCommission.Base.MARGE_INTERNE:
+                marge = _marge_interne_devis(d, LigneDevis.TypeLigne.PRODUIT)
+                slot['base'] += marge
+                slot['commission'] += marge * (plan.taux_pct or Decimal('0')) / Decimal('100')
+            continue
+
+        # Repli : comportement historique (mode société), inchangé.
         if mode == 'pct_devis':
             base = Decimal(d.total_ht)
             slot['base'] += base
@@ -595,7 +661,14 @@ def commissions(request):
         'base': str(r['base']), 'commission': str(r['commission']),
     } for r in rows]
     total = sum((r['commission'] for r in rows), Decimal('0'))
-    base_label = 'HT signé' if mode == 'pct_devis' else 'kWc installé'
+    if mode == 'pct_devis':
+        base_label = 'HT signé'
+    elif mode == 'par_kwc':
+        base_label = 'kWc installé'
+    else:
+        # XSAL6 — mode société 'off' mais des PlanCommission actifs pilotent
+        # les lignes ci-dessus (bases potentiellement mixtes par commercial).
+        base_label = 'Base du plan'
 
     x = _maybe_xlsx(
         request, 'commissions.xlsx',
@@ -607,7 +680,8 @@ def commissions(request):
         return x
 
     return Response({
-        'enabled': True, 'mode': mode, 'valeur': str(valeur),
+        'enabled': True, 'mode': mode,
+        'valeur': str(valeur) if valeur is not None else None,
         'base_label': base_label, 'rows': out, 'total': str(total),
     })
 
