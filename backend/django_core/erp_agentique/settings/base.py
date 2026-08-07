@@ -279,6 +279,15 @@ INSTALLED_APPS = [
     # qui PROPOSENT des brouillons (jamais d'écriture métier implicite) et
     # surveillance des modèles. Sans clé, chaque surface dégrade proprement.
     'apps.ai_governance',
+    # Groupe VAO — Veille appels d'offres : le SAS où atterrissent les avis de
+    # marché, quelle que soit la porte (portail public, tuyau partenaire,
+    # import). App NEUVE et DÉLIBÉRÉMENT DISTINCTE de `apps.ao` : la chaîne de
+    # migrations d'`apps.ao` est mono-écrivain et réservée au groupe AOF
+    # (`docs/PLAN.md`) — une migration VAO y décalerait toute la chaîne déjà
+    # déclarée. Aucun avis ne devient automatiquement un `AppelOffre` : c'est
+    # un sas, et c'est un humain qui tranche. Couplage vers `ao` par entier
+    # opaque (`appel_offre_id`), jamais par FK.
+    'apps.veille_ao',
 ]
 
 MIDDLEWARE = [
