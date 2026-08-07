@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Plus, Pencil, CalendarRange, LogOut } from 'lucide-react'
+import { Plus, Pencil, CalendarRange, LogOut, Scale } from 'lucide-react'
 import { ListShell } from '../../../ui/module'
 import {
   Button, EmptyState,
@@ -89,9 +89,97 @@ function PlanAmortissementDialog({ immo, onClose }) {
   )
 }
 
+function PlanFiscalDialog({ immo, onClose }) {
+  const [plan, setPlan] = useState(null)
+  const [loading, setLoading] = useState(true)
+  const [notFound, setNotFound] = useState(false)
+  const [generating, setGenerating] = useState(false)
+
+  const load = useCallback(() => {
+    setLoading(true)
+    setNotFound(false)
+    comptaApi.immobilisations.planFiscal(immo.id)
+      .then((res) => setPlan(res.data))
+      .catch((err) => {
+        if (err?.response?.status === 404) setNotFound(true)
+        else toast.error('Plan fiscal indisponible.')
+      })
+      .finally(() => setLoading(false))
+  }, [immo.id])
+
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement au montage
+  useEffect(() => load(), [load])
+
+  const generer = async () => {
+    const duree = window.prompt(
+      "Durée fiscale (années) — 5 pour un dégressif marocain courant :", '5')
+    if (duree == null) return
+    setGenerating(true)
+    try {
+      await comptaApi.immobilisations.genererPlanFiscal(
+        immo.id, { duree_annees: Number(duree) || undefined })
+      toast.success('Plan fiscal généré.')
+      load()
+    } catch (err) {
+      const d = err?.response?.data
+      toast.error(typeof d === 'string' ? d : (d?.detail || 'Génération impossible.'))
+    } finally {
+      setGenerating(false)
+    }
+  }
+
+  const dotations = plan?.dotations_derogatoires || []
+
+  return (
+    <Dialog open onOpenChange={(o) => { if (!o) onClose() }}>
+      <DialogContent className="max-w-2xl">
+        <DialogHeader>
+          <DialogTitle>Plan fiscal (dérogatoire) — {immo.libelle}</DialogTitle>
+        </DialogHeader>
+        {loading ? (
+          <p className="py-6 text-center text-sm text-muted-foreground">Chargement…</p>
+        ) : notFound ? (
+          <EmptyState
+            icon={Scale}
+            title="Aucun plan fiscal"
+            description="Le plan comptable diverge parfois du plan fiscal (mode/durée). Générez le plan fiscal pour calculer l'amortissement dérogatoire."
+            action={(
+              <Button onClick={generer} disabled={generating}>
+                {generating ? 'Génération…' : 'Générer le plan fiscal'}
+              </Button>
+            )}
+          />
+        ) : (
+          <ComptaTable
+            aria-label="Amortissement dérogatoire"
+            exportName="plan-fiscal"
+            rows={dotations}
+            getRowKey={(d) => d.id ?? d.annee}
+            columns={[
+              { key: 'annee', label: 'Année', sortValue: (d) => Number(d.annee) || 0,
+                cell: (d) => d.annee },
+              { key: 'dotation_comptable', label: 'Dotation comptable', align: 'right',
+                numeric: true, sortValue: (d) => Number(d.dotation_comptable) || 0,
+                cell: (d) => formatMAD(d.dotation_comptable) },
+              { key: 'dotation_fiscale', label: 'Dotation fiscale', align: 'right',
+                numeric: true, sortValue: (d) => Number(d.dotation_fiscale) || 0,
+                cell: (d) => formatMAD(d.dotation_fiscale) },
+              { key: 'difference', label: 'Dérogatoire (fiscal − compt.)', align: 'right',
+                numeric: true, sortValue: (d) => Number(d.difference) || 0,
+                cell: (d) => formatMAD(d.difference) },
+              { key: 'posted', label: 'Postée', cell: (d) => (d.posted ? 'Oui' : 'Non') },
+            ]}
+          />
+        )}
+      </DialogContent>
+    </Dialog>
+  )
+}
+
 export default function ImmobilisationsPage() {
   const [dialog, setDialog] = useState(null)  // édition CRUD
   const [planImmo, setPlanImmo] = useState(null) // plan d'amortissement
+  const [planFiscalImmo, setPlanFiscalImmo] = useState(null) // plan fiscal (dérogatoire)
 
   const list = useComptaList(comptaApi.immobilisations.list, undefined)
 
@@ -125,6 +213,9 @@ export default function ImmobilisationsPage() {
   const rowActions = (row) => [
     { id: 'plan', label: 'Plan d’amortissement', icon: CalendarRange,
       onClick: () => setPlanImmo(row) },
+    // PACT163 / XACC16 — plan fiscal parallèle (amortissement dérogatoire).
+    { id: 'plan-fiscal', label: 'Plan fiscal (dérogatoire)', icon: Scale,
+      onClick: () => setPlanFiscalImmo(row) },
     { id: 'edit', label: 'Éditer', icon: Pencil, onClick: () => setDialog({ row }) },
     ...(row.actif !== false ? [{
       id: 'ceder', label: 'Céder / mettre au rebut', icon: LogOut, onClick: () => ceder(row),
@@ -174,6 +265,11 @@ export default function ImmobilisationsPage() {
 
       {planImmo && (
         <PlanAmortissementDialog immo={planImmo} onClose={() => setPlanImmo(null)} />
+      )}
+
+      {planFiscalImmo && (
+        <PlanFiscalDialog
+          immo={planFiscalImmo} onClose={() => setPlanFiscalImmo(null)} />
       )}
     </div>
   )

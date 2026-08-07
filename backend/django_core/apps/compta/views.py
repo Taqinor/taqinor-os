@@ -42,6 +42,8 @@ from .models import (
     BaremeIndemnite, BordereauRemise, Budget, BudgetLigne, Caisse,
     Campagne, CautionBancaire, CentreCout, CessionImmobilisation, CodePromotion,
     CommissionPayoutRun, EnvoiCampagne,
+    # PACT163 / XACC15 — charges constatées d'avance (étalement).
+    ChargeConstateeAvance,
     CompteComptable, CompteTresorerie, ContratAvancement, DeclarationTVA,
     DemandeApprobationConfig,
     DotationAmortissement, ECatalogue, EcritureComptable, Effet,
@@ -105,6 +107,7 @@ from .serializers import (
     BordereauRemiseSerializer, BudgetSerializer, CaisseSerializer,
     CampagneSerializer, CautionBancaireSerializer, CentreCoutSerializer,
     CessionImmobilisationSerializer, ClotureCaisseSerializer,
+    ChargeConstateeAvanceSerializer, PlanAmortissementFiscalSerializer,
     CodePromotionSerializer, EnvoiCampagneSerializer,
     ApprobationEnvoiCampagneSerializer,
     EnqueteSerializer,
@@ -2107,6 +2110,54 @@ class ImmobilisationViewSet(_ComptaBaseViewSet):
                 plan, context={'request': request}).data,
             status=status.HTTP_200_OK)
 
+    @action(detail=True, methods=['get', 'post'], url_path='plan-fiscal')
+    def plan_fiscal(self, request, pk=None):
+        """PACT163 / XACC16 — Plan fiscal parallèle (amortissement dérogatoire).
+
+        GET : renvoie le plan fiscal + ses différences dérogatoires par
+        exercice (ou 404 si aucun plan comptable, ou aucun plan fiscal).
+        POST : crée/génère le plan fiscal ET matérialise les dotations
+        dérogatoires de l'exercice en cours. Corps : ``{mode?, duree_annees,
+        coefficient_degressif?}``. Requiert un plan d'amortissement COMPTABLE
+        déjà généré (FG119) — 400 sinon. Idempotent (``creer_plan_
+        amortissement_fiscal``/``generer_dotations_derogatoires`` le sont).
+        """
+        immo = self.get_object()  # déjà scopée société par TenantMixin.
+        plan_comptable = getattr(immo, 'plan_amortissement', None)
+        if request.method == 'GET':
+            plan_fiscal = (
+                getattr(plan_comptable, 'plan_fiscal', None)
+                if plan_comptable else None)
+            if plan_fiscal is None:
+                return Response(
+                    {'detail': 'Aucun plan fiscal.'},
+                    status=status.HTTP_404_NOT_FOUND)
+            return Response(PlanAmortissementFiscalSerializer(
+                plan_fiscal, context={'request': request}).data)
+        if plan_comptable is None:
+            return Response(
+                {'detail': "Aucun plan d'amortissement comptable : "
+                 "générez-le d'abord (FG119)."},
+                status=status.HTTP_400_BAD_REQUEST)
+        data = request.data
+        try:
+            plan_fiscal = services.creer_plan_amortissement_fiscal(
+                plan_comptable,
+                mode=data.get('mode') or None,
+                duree_annees=data.get('duree_annees') or plan_comptable.duree_annees,
+                coefficient_degressif=data.get('coefficient_degressif'),
+            )
+            services.generer_dotations_derogatoires(plan_fiscal)
+        except DjangoValidationError as exc:
+            return Response(
+                {'detail': exc.messages[0] if exc.messages else str(exc)},
+                status=status.HTTP_400_BAD_REQUEST)
+        plan_fiscal.refresh_from_db()
+        return Response(
+            PlanAmortissementFiscalSerializer(
+                plan_fiscal, context={'request': request}).data,
+            status=status.HTTP_200_OK)
+
     @action(detail=True, methods=['post'])
     def ceder(self, request, pk=None):
         """Enregistre et poste la cession / mise au rebut de l'actif (FG120).
@@ -2259,6 +2310,52 @@ class DotationAmortissementViewSet(_ComptaBaseViewSet):
             'dotation': self.get_serializer(dotation).data,
             'ecriture_id': ecriture.id if ecriture else None,
         })
+
+
+# ── PACT163 / XACC15 — Charges constatées d'avance (étalement des charges) ──
+
+class ChargeConstateeAvanceViewSet(_ComptaBaseViewSet):
+    """Charges prépayées étalées sur plusieurs mois (XACC15).
+
+    Constat qui a motivé PACT163 : ``services.etaler_charge_avance`` n'avait
+    aucun appelant hors tests — cette surface était inutilisable par l'API.
+    La création calcule l'échéancier de dotations et poste l'écriture
+    d'origine 3491 (sauf ``poster_origine=false``) via le service — jamais
+    une simple création de ligne. Société scopée ; Admin/Responsable.
+    """
+    queryset = ChargeConstateeAvance.objects.select_related(
+        'compte_charge', 'ecriture_origine', 'created_by').prefetch_related(
+        'dotations').all()
+    serializer_class = ChargeConstateeAvanceSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['reference', 'libelle']
+    ordering_fields = ['date_debut', 'id']
+
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        vd = serializer.validated_data
+        poster_origine = request.data.get('poster_origine', True)
+        if isinstance(poster_origine, str):
+            poster_origine = poster_origine.lower() not in ('false', '0', 'no', '')
+        try:
+            charge = services.etaler_charge_avance(
+                request.user.company,
+                montant_total=vd['montant_total'],
+                date_debut=vd['date_debut'],
+                nb_mois=vd['nb_mois'],
+                libelle=vd.get('libelle', '') or '',
+                facture_fournisseur_id=vd.get('facture_fournisseur_id'),
+                compte_charge=vd.get('compte_charge'),
+                poster_origine=bool(poster_origine),
+                user=request.user,
+            )
+        except DjangoValidationError as exc:
+            return Response(
+                {'detail': exc.messages[0] if exc.messages else str(exc)},
+                status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            self.get_serializer(charge).data, status=status.HTTP_201_CREATED)
 
 
 # ── FG123 — Rapprochement bancaire (relevé ↔ écritures) ────────────────────
@@ -5212,6 +5309,42 @@ class BudgetViewSet(_ComptaBaseViewSet):
                 'attachment; filename="budget_vs_realise.csv"')
             return resp
         return Response(data)
+
+    @action(detail=True, methods=['post'], url_path='generer-ligne-repartie')
+    def generer_ligne_repartie(self, request, pk=None):
+        """PACT163 / XACC22 — Ajoute une ligne au budget en RÉPARTISSANT un
+        montant annuel sur les 12 mois via une courbe (``services.
+        generer_ligne_budget_repartie``), au lieu d'une saisie manuelle
+        mois par mois. Corps : ``{compte, montant_annuel, centre_cout?,
+        libelle?, courbe?, poids?}`` — ``courbe`` = ``egale`` (défaut),
+        ``saisonniere`` ou ``pourcentage`` (``poids`` = 12 valeurs sommant
+        à 100). Renvoie le budget mis à jour (lignes incluses).
+        """
+        budget = self.get_object()  # déjà scopé société par TenantMixin.
+        company = request.user.company
+        data = request.data
+        compte = CompteComptable.objects.filter(
+            company=company, id=data.get('compte')).first()
+        if compte is None:
+            return Response(
+                {'detail': 'Compte inconnu.'}, status=status.HTTP_400_BAD_REQUEST)
+        centre_cout = None
+        if data.get('centre_cout'):
+            centre_cout = CentreCout.objects.filter(
+                company=company, id=data.get('centre_cout')).first()
+        try:
+            services.generer_ligne_budget_repartie(
+                budget, compte=compte, montant_annuel=data.get('montant_annuel'),
+                centre_cout=centre_cout, libelle=data.get('libelle', '') or '',
+                courbe=data.get('courbe') or 'egale', poids=data.get('poids'),
+            )
+        except DjangoValidationError as exc:
+            return Response(
+                {'detail': exc.messages[0] if exc.messages else str(exc)},
+                status=status.HTTP_400_BAD_REQUEST)
+        budget.refresh_from_db()
+        return Response(
+            self.get_serializer(budget).data, status=status.HTTP_201_CREATED)
 
 
 class CentreCoutViewSet(_ComptaBaseViewSet):

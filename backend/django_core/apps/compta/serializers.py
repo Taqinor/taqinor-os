@@ -13,6 +13,8 @@ from .models import (
     AppelTelephonique, AvancementRevenu, BaremeIndemnite, BordereauRemise,
     Budget, BudgetLigne,
     Caisse, Campagne, CautionBancaire, CentreCout, CessionImmobilisation,
+    ChargeConstateeAvance, DotationDerogatoire, DotationEtalement,
+    PlanAmortissementFiscal,
     EnvoiCampagne,
     ClotureCaisse, CodePromotion,
     CommissionPayoutLine, CommissionPayoutRun, CompteComptable,
@@ -401,6 +403,109 @@ class CessionImmobilisationSerializer(serializers.ModelSerializer):
             'ecriture', 'date_creation',
         ]
         read_only_fields = fields
+
+
+# ── PACT163 / XACC16 — Amortissements dérogatoires (double plan compt./fiscal)
+
+class DotationDerogatoireSerializer(serializers.ModelSerializer):
+    """Différence annuelle comptable-vs-fiscal (XACC16) — lecture seule.
+
+    Calculée par ``services.generer_dotations_derogatoires`` à partir du plan
+    fiscal, jamais saisie à la main.
+    """
+    class Meta:
+        model = DotationDerogatoire
+        fields = [
+            'id', 'plan_fiscal', 'annee', 'date_dotation',
+            'dotation_comptable', 'dotation_fiscale', 'difference', 'posted',
+            'ecriture',
+        ]
+        read_only_fields = fields
+
+
+class PlanAmortissementFiscalSerializer(serializers.ModelSerializer):
+    """Plan fiscal parallèle d'une immobilisation (XACC16).
+
+    ``company`` posée côté serveur. Expose les différences dérogatoires
+    imbriquées (lecture seule). La création/génération passe par l'action
+    ``plan-fiscal`` de l'immobilisation (service idempotent, comme le plan
+    comptable FG119).
+    """
+    mode_display = serializers.CharField(
+        source='get_mode_display', read_only=True)
+    dotations_derogatoires = DotationDerogatoireSerializer(
+        many=True, read_only=True)
+
+    class Meta:
+        model = PlanAmortissementFiscal
+        fields = [
+            'id', 'plan_comptable', 'mode', 'mode_display', 'duree_annees',
+            'coefficient_degressif', 'dotations_derogatoires',
+            'date_creation',
+        ]
+        read_only_fields = [
+            'coefficient_degressif', 'dotations_derogatoires', 'date_creation',
+        ]
+
+    def validate_plan_comptable(self, value):
+        return _meme_societe(self, value, 'Plan comptable')
+
+    def validate_duree_annees(self, value):
+        if value is not None and value < 1:
+            raise serializers.ValidationError(
+                "La durée fiscale doit être d'au moins 1 an.")
+        return value
+
+
+# ── PACT163 / XACC15 — Charges constatées d'avance (étalement des charges) ──
+
+class DotationEtalementSerializer(serializers.ModelSerializer):
+    """Dotation mensuelle d'étalement d'une charge prépayée (XACC15) —
+    lecture seule. Calculée par ``services.etaler_charge_avance``."""
+    class Meta:
+        model = DotationEtalement
+        fields = [
+            'id', 'charge', 'numero', 'date_dotation', 'montant', 'posted',
+            'ecriture',
+        ]
+        read_only_fields = fields
+
+
+class ChargeConstateeAvanceSerializer(serializers.ModelSerializer):
+    """Charge prépayée à étaler sur plusieurs mois (XACC15).
+
+    ``company``/``reference`` posées côté serveur. La création passe par
+    ``services.etaler_charge_avance`` (génère l'échéancier de dotations et
+    poste l'écriture d'origine 3491, sauf ``poster_origine=false``) — jamais
+    une simple création de ligne. Expose les dotations imbriquées.
+    """
+    dotations = DotationEtalementSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = ChargeConstateeAvance
+        fields = [
+            'id', 'reference', 'libelle', 'facture_fournisseur_id',
+            'montant_total', 'date_debut', 'nb_mois', 'compte_charge',
+            'ecriture_origine', 'dotations', 'date_creation',
+        ]
+        read_only_fields = [
+            'reference', 'ecriture_origine', 'dotations', 'date_creation',
+        ]
+
+    def validate_compte_charge(self, value):
+        return _meme_societe(self, value, 'Compte de charge')
+
+    def validate_montant_total(self, value):
+        if value is not None and value <= 0:
+            raise serializers.ValidationError(
+                "Le montant total à étaler doit être positif.")
+        return value
+
+    def validate_nb_mois(self, value):
+        if value is not None and value < 1:
+            raise serializers.ValidationError(
+                "Le nombre de mois d'étalement doit être d'au moins 1.")
+        return value
 
 
 class LigneReleveSerializer(serializers.ModelSerializer):

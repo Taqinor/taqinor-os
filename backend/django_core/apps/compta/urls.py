@@ -22,6 +22,8 @@ from .views import (
     AcompteISViewSet, ConventionFiscaleViewSet,
     CaisseViewSet, CautionBancaireViewSet, CentreCoutViewSet,
     CessionImmobilisationViewSet, CodePromotionViewSet,
+    # PACT163 / XACC15 — charges constatées d'avance (étalement).
+    ChargeConstateeAvanceViewSet,
     CommissionPayoutRunViewSet, ComparateurDevisViewSet,
     CompteComptableViewSet, CompteTresorerieViewSet, ContratAvancementViewSet,
     DeclarationTVAViewSet, DemandeApprobationConfigViewSet,
@@ -89,6 +91,8 @@ router.register(r'exercices', ExerciceComptableViewSet)
 router.register(r'immobilisations', ImmobilisationViewSet)
 router.register(r'dotations', DotationAmortissementViewSet)
 router.register(r'cessions', CessionImmobilisationViewSet)
+# PACT163 / XACC15 — étalement des charges constatées d'avance.
+router.register(r'charges-avance', ChargeConstateeAvanceViewSet)
 router.register(r'rapprochements', RapprochementBancaireViewSet)
 router.register(r'modeles-rapprochement', ModeleRapprochementViewSet)
 router.register(r'rapprochements-3voies', RapprochementViewSet,

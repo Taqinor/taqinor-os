@@ -157,6 +157,10 @@ const comptaApi = {
     ceder: (id, data) => api.post(`/compta/immobilisations/${id}/ceder/`, data),
     depuisFactureFournisseur: (data) =>
       api.post('/compta/immobilisations/depuis-facture-fournisseur/', data),
+    // PACT163 / XACC16 — plan fiscal parallèle (amortissement dérogatoire).
+    planFiscal: (id) => api.get(`/compta/immobilisations/${id}/plan-fiscal/`),
+    genererPlanFiscal: (id, data) =>
+      api.post(`/compta/immobilisations/${id}/plan-fiscal/`, data),
   },
   dotations: {
     ...resource('dotations'),
@@ -165,6 +169,10 @@ const comptaApi = {
   cessions: {
     ...resource('cessions'),
     poster: (id) => api.post(`/compta/cessions/${id}/poster/`),
+  },
+  // ── PACT163 / XACC15 — Charges constatées d'avance (étalement) ──
+  chargesAvance: {
+    ...resource('charges-avance'),
   },
 
   // ── UX9 — Rapprochements, budgets & clôtures ──
@@ -192,7 +200,13 @@ const comptaApi = {
     valider: (id, data) =>
       api.post(`/compta/rapprochements-3voies/${id}/valider/`, data),
   },
-  budgets: resource('budgets'),
+  budgets: {
+    ...resource('budgets'),
+    // PACT163 / XACC22 — génère une ligne par courbe de répartition (au lieu
+    // d'une saisie manuelle des 12 mois).
+    genererLigneRepartie: (id, data) =>
+      api.post(`/compta/budgets/${id}/generer-ligne-repartie/`, data),
+  },
   centresCout: resource('centres-cout'),
   provisionsCreances: resource('provisions-creances'),
   comptesAuxiliaires: resource('comptes-auxiliaires'),
