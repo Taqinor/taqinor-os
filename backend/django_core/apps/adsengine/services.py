@@ -308,6 +308,13 @@ def propose_native_schedule(company, *, adset_id, grid, reason_fr=None):
         company, kind=KIND_SET_SCHEDULE, reason_fr=reason_fr, payload=payload)
 
 
+# PACT164 — kind de DEMANDE (jamais stocké tel quel : le producteur matérialise
+# toujours ``EngineAction.Kind.PAUSE``) utilisé par le dispatch curé PUB22 pour
+# router vers ``propose_internal_dayparting_pause`` sans confondre ce chemin
+# avec une pause manuelle brute.
+KIND_DAYPARTING_PAUSE_INTERNE = 'dayparting_pause_interne'
+
+
 def propose_internal_dayparting_pause(company, *, adset, grid, now=None,
                                       reason_fr=None):
     """ADSDEEP36 — Chemin INTERNE (ad set à budget QUOTIDIEN, le natif exige un
@@ -429,12 +436,27 @@ def _resolve_adset(company, meta_id):
     return adset
 
 
+def _resolve_post(company, meta_id):
+    """PACT164 — Post de Page miroir de la société par son ``meta_id`` (jamais
+    cross-société). Lève ``ActionPayloadInvalid`` (→ 400) si introuvable."""
+    from .models import PagePostMirror
+    if not meta_id or not str(meta_id).strip():
+        raise ActionPayloadInvalid("Champ requis manquant : l'id du post.")
+    post = PagePostMirror.objects.filter(
+        company=company, meta_id=str(meta_id).strip()).first()
+    if post is None:
+        raise ActionPayloadInvalid("Post introuvable pour cette société.")
+    return post
+
+
 def propose_manual_curated(company, *, kind, params, reason_fr=None):
     """PUB22 — Route une proposition d'action CURÉE (``duplicate`` /
-    ``set_schedule`` / ``create_ad_study``) vers son producteur dédié — lequel
-    passe TOUJOURS par ``propose_action`` (naissance PAUSED intacte, aucune
-    activation). Company-scopé : les objets référencés sont bornés à la société.
-    Un producteur lève ``ValueError`` sur entrée invalide (→ 400)."""
+    ``set_schedule`` / ``create_ad_study`` / PACT164 : ``pause_for_month`` /
+    ``dayparting_pause_interne`` / ``edit_post`` / ``create_post`` /
+    ``boost_post``) vers son producteur dédié — lequel passe TOUJOURS par
+    ``propose_action`` (naissance PAUSED intacte, aucune activation).
+    Company-scopé : les objets référencés sont bornés à la société. Un
+    producteur lève ``ValueError`` sur entrée invalide (→ 400)."""
     params = params or {}
     if kind == KIND_DUPLICATE:
         adset = _resolve_adset(company, params.get('adset_id'))
@@ -450,6 +472,57 @@ def propose_manual_curated(company, *, kind, params, reason_fr=None):
         return propose_ad_study(
             company, name=(params.get('name') or ''),
             cells=params.get('cells'), reason_fr=reason_fr)
+    # PACT164 — ADSDEEP36 : pause interne dérivée d'une grille de dayparting,
+    # évaluée à la demande (aucune grille n'est stockée sur l'ad set — la
+    # grille est fournie par l'appelant, exactement comme ``set_schedule``).
+    if kind == KIND_DAYPARTING_PAUSE_INTERNE:
+        adset = _resolve_adset(company, params.get('adset_id'))
+        grid = params.get('grid')
+        if not isinstance(grid, dict):
+            raise ActionPayloadInvalid(
+                "Grille de dayparting requise (7 jours × 24 heures).")
+        action = propose_internal_dayparting_pause(
+            company, adset=adset, grid=grid, reason_fr=reason_fr)
+        if action is None:
+            raise ActionPayloadInvalid(
+                "Aucune pause nécessaire : l'ad set est déjà en pause ou "
+                "dans sa fenêtre autorisée.")
+        return action
+    # PACT164 — ADSENG22 : pause « pour le mois » (chemin breach-imminent du
+    # pacing) — cible explicite (campagne ou ad set), jamais résolue en base
+    # ici (même contrat que ``set_schedule`` ci-dessus : le payload porte
+    # l'id Meta brut, revalidé au dispatch).
+    if kind == KIND_PAUSE_FOR_MONTH:
+        target_meta_id = str(params.get('target_meta_id') or '').strip()
+        if not target_meta_id:
+            raise ActionPayloadInvalid(
+                "Champ requis manquant : l'id de la cible à mettre en pause.")
+        return propose_pause_for_month(
+            company, target_meta_id=target_meta_id,
+            target_type=(params.get('target_type') or 'campaign'),
+            reason_fr=reason_fr)
+    # PACT164 — ADSDEEP50/51/52 : posts organiques de Page.
+    if kind == KIND_EDIT_POST:
+        post = _resolve_post(company, params.get('post_id'))
+        return propose_edit_post(
+            company, post=post, message=(params.get('message') or ''),
+            reason_fr=reason_fr)
+    if kind == KIND_CREATE_POST:
+        try:
+            return propose_create_post(
+                company, message=(params.get('message') or ''),
+                link=(params.get('link') or ''),
+                mode=(params.get('mode') or 'published'),
+                scheduled_publish_time=params.get('scheduled_publish_time'),
+                media=params.get('media'), reason_fr=reason_fr)
+        except ValueError as exc:
+            raise ActionPayloadInvalid(str(exc)) from exc
+    if kind == KIND_BOOST_POST:
+        post = _resolve_post(company, params.get('post_id'))
+        adset = _resolve_adset(company, params.get('adset_id'))
+        return propose_boost_post(
+            company, post=post, adset=adset, name=params.get('name'),
+            reason_fr=reason_fr)
     raise ActionPayloadInvalid(f"Kind curé inconnu : {kind}.")
 
 

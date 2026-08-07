@@ -22,7 +22,7 @@ from core.viewsets import CompanyScopedModelViewSet
 from .models import (
     AdCampaignMirror, AdEngineActivity,
     Annotation, AnomalyEvent, ArmDailyStat, AssumptionNode,
-    BrandKit, CommentMirror,
+    BrandKit, CommentKeywordRule, CommentMirror,
     CompetitorAdObservation, CompetitorPage, ConsentRecord,
     CreativeAsset, CreativeBacklogItem, CreativeGenerationBatch,
     CreativePolicy, DecisionLog, EngineAction, EngineAlert, Experiment,
@@ -37,7 +37,8 @@ from .serializers import (
     ArmDailyStatSerializer,
     AssumptionNodeSerializer, BrandKitSerializer,
     CompetitorAdObservationSerializer, CompetitorPageSerializer,
-    CommentMirrorSerializer, ConsentRecordSerializer, CreativeAssetSerializer,
+    CommentKeywordRuleSerializer, CommentMirrorSerializer,
+    ConsentRecordSerializer, CreativeAssetSerializer,
     CreativeBacklogItemSerializer, CreativeGenerationBatchSerializer,
     CreativePolicySerializer, DecisionLogSerializer, EngineActionSerializer,
     EngineAlertSerializer, ExperimentArmSerializer, ExperimentSerializer,
@@ -1568,7 +1569,9 @@ class EngineActionViewSet(AdsengineViewSet):
 
 class ProposeCuratedActionView(APIView):
     """PUB22 — Propose une action CURÉE (``duplicate`` / ``set_schedule`` /
-    ``create_ad_study``) via son producteur backend (résolution + validation),
+    ``create_ad_study`` / PACT164 : ``pause_for_month`` /
+    ``dayparting_pause_interne`` / ``edit_post`` / ``create_post`` /
+    ``boost_post``) via son producteur backend (résolution + validation),
     toujours à travers ``propose_action``. Ces kinds ne peuvent PAS être proposés
     par POST brut (ils exigent une résolution DB, ex. le créatif LIVE d'une
     duplication) — d'où cet endpoint dédié.
@@ -3444,6 +3447,35 @@ class CommentPrivateReplyView(APIView):
         except ValueError as exc:
             return Response({'detail': str(exc)}, status=400)
         return Response(EngineActionSerializer(action).data, status=201)
+
+
+class CommentKeywordRuleViewSet(AdsengineViewSet):
+    """PACT164 — CRUD des règles de masquage automatique par mot-clé
+    (ADSDEEP53) : ``CommentKeywordRule.objects`` n'avait jusqu'ici AUCUN
+    appelant hors tests (ni admin, ni serializer, ni vue) — le moteur de règles
+    ``comments.plan_keyword_hides``/``services.propose_keyword_hides`` restait
+    donc injoignable en pratique.
+
+    L'action ``proposer/`` (POST, ``adsengine_manage``) exécute
+    ``services.propose_keyword_hides`` sur les règles ACTIVES de la société :
+    chaque commentaire visible qui matche une règle activée devient une
+    ``EngineAction`` HIDE_COMMENT à approuver (jamais un masquage silencieux,
+    sauf règle explicitement ``auto=True`` — trace d'audit ``auto=True``
+    posée par le producteur, le masquage réellement automatique reste géré
+    par le chemin garde-fou ENG8, jamais ici)."""
+
+    queryset = CommentKeywordRule.objects.all()
+    serializer_class = CommentKeywordRuleSerializer
+
+    @extend_schema(responses=EngineActionSerializer(many=True))
+    @action(detail=False, methods=['post'], url_path='proposer')
+    def proposer(self, request):
+        from .services import propose_keyword_hides
+        company = request.user.company
+        auto_only = bool(request.data.get('auto_only', False))
+        actions = propose_keyword_hides(company, auto_only=auto_only)
+        return Response(
+            EngineActionSerializer(actions, many=True).data, status=201)
 
 
 # ══ ADSDEEP55/56 — Instagram (câblage front↔back) ═════════════════════════════

@@ -148,6 +148,10 @@ export const ACTION_TYPE_LABELS = {
   create_ad_study: 'Étude A/B native',
   set_schedule: 'Horaire de diffusion (dayparting)',
   duplicate: "Duplication d'ad set",
+  // PACT164 — posts organiques de Page (ADSDEEP50/51/52), nouvellement câblés.
+  edit_post: 'Édition de post',
+  create_post: 'Création de post',
+  boost_post: 'Boost de post',
 }
 export function actionTypeLabel(type) {
   return ACTION_TYPE_LABELS[type] || type || 'Action'
