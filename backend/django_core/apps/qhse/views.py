@@ -50,6 +50,7 @@ from .models import (
 from .serializers import (
     AccuseLectureSerializer,
     ActionCorrectivePreventiveSerializer, AnalyseIncidentSerializer,
+    AnalyseNcrSerializer,
     AspectEnvironnementalSerializer,
     AuditSerializer, BilanCarboneSerializer, BordereauSuiviDechetSerializer,
     CauseIncidentSerializer,
@@ -111,6 +112,7 @@ from .services import (
     convertir_observation_en_capa, convertir_observation_en_ncr,
     creer_capa_depuis_ecart_exercice,
     demandes_changement_a_reverser,
+    enregistrer_analyse_ncr,
     generer_capa_depuis_analyse, generer_lignes_bilan,
     generer_revues_veille_dues,
     creer_signalement_public, generer_qr_signalement,
@@ -349,6 +351,33 @@ class NonConformiteViewSet(_ChatterMixin, _QhseBaseViewSet):
             return Response(
                 {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
         return Response(self.get_serializer(ncr).data)
+
+    @extend_schema(responses=AnalyseNcrSerializer)
+    @action(detail=True, methods=['post'])
+    def analyse(self, request, pk=None):
+        """PACT182 (XQHS7) — enregistre/complète l'analyse 5-Pourquoi et/ou
+        8D de cette NCR.
+
+        Corps : ``cinq_pourquoi`` (liste optionnelle de
+        ``{'pourquoi', 'reponse'}``, ≤5 entrées) et/ou ``huit_d`` (dict
+        optionnel des disciplines D1-D8 fournies — merge sur les disciplines
+        fournies, les autres déjà enregistrées sont conservées).
+        ``enregistrer_analyse_ncr`` (services.py) n'avait aucun appelant.
+        """
+        from django.core.exceptions import ValidationError as DjangoValidationError
+
+        ncr = self.get_object()
+        try:
+            analyse = enregistrer_analyse_ncr(
+                ncr,
+                cinq_pourquoi=request.data.get('cinq_pourquoi'),
+                huit_d=request.data.get('huit_d'),
+            )
+        except DjangoValidationError as exc:
+            detail = getattr(exc, 'messages', None) or [str(exc)]
+            return Response(
+                {'detail': detail}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(AnalyseNcrSerializer(analyse).data)
 
 
 class DerogationViewSet(_QhseBaseViewSet):
@@ -3006,11 +3035,13 @@ class DemandeActionFournisseurViewSet(_QhseBaseViewSet):
 # Les modèles QHSE ci-dessous (services testés, aucune exposition REST) sont
 # volontairement laissés SANS API dans ce lot : la priorité WIR115 était
 # CheckinSecurite (une tâche beat d'escalade tournait contre une table sans
-# écran) et DemandeActionFournisseur (SCAR) — tous deux exposés ci-dessus. Les
-# suivants restent en scaffolding différé (à exposer par un lot ultérieur, un
-# viewset ``_QhseBaseViewSet`` par modèle sur le même patron) et NE doivent
+# écran) et DemandeActionFournisseur (SCAR) — tous deux exposés ci-dessus.
+# AnalyseNcr est exposée (PACT182, action ``analyse/`` de
+# NonConformiteViewSet — jamais un CRUD direct, un seul enregistrement par NCR).
+# Les suivants restent en scaffolding différé (à exposer par un lot ultérieur,
+# un viewset ``_QhseBaseViewSet`` par modèle sur le même patron) et NE doivent
 # jamais être re-listés comme « backend sombre non traité » :
-#   CampagneRappel, AnalyseNcr, Certification, AuditCertification,
+#   CampagneRappel, Certification, AuditCertification,
 #   ProgrammeAudit, ClauseNorme, ReunionQhse, ObjectifQhse, RisqueOpportunite,
 #   RisqueOpportuniteCapa, PartieInteressee, ContexteOrganisation,
 #   DiffusionProcedure.

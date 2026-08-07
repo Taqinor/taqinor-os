@@ -8,7 +8,7 @@ from rest_framework import serializers
 
 from .models import (
     AccuseLecture, ActionCorrectivePreventive, AnalyseIncident,
-    AspectEnvironnemental, Audit,
+    AnalyseNcr, AspectEnvironnemental, Audit,
     CauseIncident,
     CodeDefaut,
     ConsignationLoto, ContactUrgence, ControleReception,
@@ -1543,5 +1543,21 @@ class AccuseLectureSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'diffusion', 'procedure_reference', 'procedure_titre',
             'procedure_version', 'date_diffusion', 'lu_le', 'date_creation',
+        ]
+        read_only_fields = fields
+
+
+# ── PACT182 (XQHS7) — analyse 5-Pourquoi / 8D d'une NCR ─────────────────────
+class AnalyseNcrSerializer(serializers.ModelSerializer):
+    """XQHS7 — analyse 5-Pourquoi / 8D d'une NCR. Lecture/écriture passe
+    exclusivement par l'action ``analyse/`` du ``NonConformiteViewSet`` (jamais
+    un CRUD direct — le service merge sur les disciplines 8D fournies, les
+    autres sont conservées)."""
+
+    class Meta:
+        model = AnalyseNcr
+        fields = [
+            'id', 'non_conformite', 'cinq_pourquoi', 'huit_d',
+            'date_creation', 'date_modification',
         ]
         read_only_fields = fields
