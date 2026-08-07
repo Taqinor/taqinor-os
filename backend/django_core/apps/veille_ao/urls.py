@@ -16,6 +16,7 @@ mauvaise URL à ``reverse()``.
 from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 
+from .views import DeclencherCollecteView
 from .viewsets import (
     AvisMarcheViewSet, MotCleVeilleViewSet, RegleExclusionViewSet,
     SourceVeilleViewSet,
@@ -31,5 +32,9 @@ router.register(r'regles-exclusion', RegleExclusionViewSet,
                 basename='veille-ao-regle-exclusion')
 
 urlpatterns = [
+    # VAO23 — le chemin est LITTÉRAL, fixé par le texte de tâche et déjà
+    # publié par le client frontend : « POST /api/django/veille_ao/collecter/ ».
+    path('collecter/', DeclencherCollecteView.as_view(),
+         name='veille-ao-collecter'),
     path('', include(router.urls)),
 ]

@@ -94,3 +94,34 @@ class AvisMarcheSerializer(serializers.ModelSerializer):
             'donnees_brutes', 'regle_exclusion', 'empreinte',
             'created_at', 'updated_at',
         ]
+
+
+class LancementCollecteSerializer(serializers.Serializer):
+    """VAO23 — la réponse du bouton « Rafraîchir maintenant ».
+
+    Un sérialiseur RÉEL, jamais ``response=dict`` dans ``@extend_schema`` : un
+    endpoint agrégé sans schéma est un contrat que le frontend doit deviner —
+    exactement le défaut que ``scripts/check_api_contract.py`` existe pour
+    empêcher.
+
+    ``id`` ET ``job_id`` portent la même valeur : l'écran suit le job par le
+    sondage GÉNÉRIQUE des jobs de fond (qui cherche ``id``), et ``job_id`` est
+    le nom explicite du contrat.
+    """
+
+    id = serializers.IntegerField(read_only=True, help_text='Job de fond créé.')
+    job_id = serializers.IntegerField(read_only=True)
+    kind = serializers.CharField(read_only=True)
+    statut = serializers.CharField(read_only=True)
+    progress_pct = serializers.IntegerField(read_only=True)
+    deja_en_cours = serializers.BooleanField(
+        read_only=True,
+        help_text="Vrai si une collecte tournait déjà : aucun second job "
+                  "n'a été lancé (double clic sans effet).")
+    collecte_active = serializers.BooleanField(
+        read_only=True,
+        help_text="Armement de la collecte automatique (règle #5). Faux = le "
+                  "job sortira sans aucun appel réseau.")
+    motif = serializers.CharField(
+        read_only=True, allow_blank=True,
+        help_text="Message français quand rien ne sera collecté.")
