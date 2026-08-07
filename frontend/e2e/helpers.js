@@ -1,6 +1,9 @@
 // Shared helpers + constants for the Taqinor OS E2E suite.
 // Selectors mirror the REAL components (no data-testids exist in the app, so we
 // lean on visible text, placeholders, stable CSS classes and ARIA roles).
+import { existsSync, readdirSync, readFileSync } from 'node:fs'
+import { join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { expect } from '@playwright/test'
 import AxeBuilder from '@axe-core/playwright'
 
@@ -263,3 +266,70 @@ export function aoPiece(page, cle) {
 export function firstAoControleBloquant(page) {
   return page.locator('[data-ao-controle][data-ao-etat="bloquant"]').first()
 }
+
+// ── PACT8 — Fumée des écrans : les routes LUES, jamais tenues à la main ─────
+//
+// Constat du 03/08/2026 : `AO_ROUTES.dashboard = '/ao'` est DÉCLARÉ plus haut
+// dans ce fichier et AUCUNE spec ne le visite — l'écran qui a planté en
+// production n'est ouvert par aucun test, nulle part. Une liste d'écrans tenue
+// à la main périme le jour même où elle est écrite.
+//
+// Ces fonctions lisent donc la SOURCE DE VÉRITÉ : les `routes:` des
+// `features/<app>/module.config.jsx`, exactement les déclarations que
+// `router/moduleRoutes.jsx` monte dans l'application. Ajouter un écran l'ajoute
+// à la fumée ; en supprimer un l'en retire. Rien à maintenir.
+//
+// Lecture par expression régulière et non par `import` : importer un
+// `module.config.jsx` tirerait tout l'arbre React (imports paresseux compris)
+// dans le processus Playwright. `path:` n'apparaît QUE dans les entrées de
+// route (la navigation utilise `to:`), donc l'extraction est sans ambiguïté.
+
+const DOSSIER_FEATURES = fileURLToPath(new URL('../src/features/', import.meta.url))
+
+// `path: '/x/y'` — guillemets simples uniquement (convention du dépôt, vérifiée).
+const MOTIF_ROUTE = /path:\s*'([^']+)'/g
+
+// Un segment `:param` ne peut pas être visité à l'aveugle : un identifiant
+// inventé ouvrirait un écran « introuvable » légitime, donc un rouge sur du
+// code CORRECT. Ces routes restent couvertes par les specs de parcours
+// (devis, ao-parcours, leads…), qui les ouvrent avec de VRAIES données.
+export const estRouteParametree = (chemin) => chemin.includes(':')
+
+// [{ module: 'stock', chemin: '/stock/mouvements' }, …] — trié, dédupliqué.
+export function routesDesModules({ inclureParametrees = false } = {}) {
+  const routes = []
+  const vues = new Set()
+  for (const entree of readdirSync(DOSSIER_FEATURES, { withFileTypes: true })) {
+    if (!entree.isDirectory()) continue
+    const config = join(DOSSIER_FEATURES, entree.name, 'module.config.jsx')
+    if (!existsSync(config)) continue
+    for (const trouve of readFileSync(config, 'utf8').matchAll(MOTIF_ROUTE)) {
+      const chemin = trouve[1]
+      if (!chemin.startsWith('/')) continue
+      if (!inclureParametrees && estRouteParametree(chemin)) continue
+      if (vues.has(chemin)) continue
+      vues.add(chemin)
+      routes.push({ module: entree.name, chemin })
+    }
+  }
+  return routes.sort((a, b) => (a.module === b.module
+    ? a.chemin.localeCompare(b.chemin)
+    : a.module.localeCompare(b.module)))
+}
+
+// Regroupe par module : un test Playwright par module donne un rouge qui NOMME
+// l'application fautive, et un budget de temps par test plutôt qu'un unique
+// test de 300 navigations qui expirerait avant de rien dire.
+export function routesParModule(options) {
+  const parModule = new Map()
+  for (const { module, chemin } of routesDesModules(options)) {
+    if (!parModule.has(module)) parModule.set(module, [])
+    parModule.get(module).push(chemin)
+  }
+  return parModule
+}
+
+// Titre de `components/RouteErrorBoundary.jsx` — l'écran de récupération FR
+// affiché quand une page plante au rendu (`.map is not a function`, « objects
+// are not valid as a React child »…). Sa présence EST le défaut.
+export const TITRE_ECRAN_ERREUR = 'Une erreur est survenue'

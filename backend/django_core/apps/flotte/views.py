@@ -6,7 +6,8 @@ acceptée du corps de requête (multi-tenant).
 """
 import datetime
 
-from rest_framework import filters, viewsets
+from drf_spectacular.utils import extend_schema, inline_serializer
+from rest_framework import filters, serializers, viewsets
 from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.exceptions import ValidationError as DRFValidationError
 from rest_framework.response import Response
@@ -369,6 +370,41 @@ class VehiculeViewSet(ChatterViewSetMixin, _FlotteBaseViewSet):
         data['source_calcul'] = resultat['source']
         return Response(data)
 
+    # PACT7 — SANS cette déclaration, le schéma OpenAPI publiait cet agrégat
+    # avec le `VehiculeSerializer` (le `serializer_class` du ViewSet) alors
+    # qu'il renvoie {vehicules, engins, echeances, couts, entretien, pool} :
+    # un schéma qui MENT est pire qu'un schéma vide, car un garde-fou qui s'y
+    # fierait produirait des rouges sur du code correct.
+    @extend_schema(responses=inline_serializer('FlotteTableauBord', {
+        'today': serializers.DateField(),
+        'vehicules': inline_serializer('FlotteTableauBordVehicules', {
+            'total': serializers.IntegerField(),
+            'total_actifs': serializers.IntegerField(),
+            'disponibles': serializers.IntegerField(),
+            'par_statut': serializers.DictField(child=serializers.IntegerField()),
+        }),
+        'engins': inline_serializer('FlotteTableauBordEngins', {
+            'total': serializers.IntegerField(),
+            'par_statut': serializers.DictField(child=serializers.IntegerField()),
+        }),
+        'echeances': inline_serializer('FlotteTableauBordEcheances', {
+            'total': serializers.IntegerField(),
+            'echu': serializers.IntegerField(),
+            'j7': serializers.IntegerField(),
+            'j15': serializers.IntegerField(),
+            'j30': serializers.IntegerField(),
+        }),
+        'couts': inline_serializer('FlotteTableauBordCouts', {
+            'reparations_total': serializers.FloatField(),
+            'carburant_total': serializers.FloatField(),
+        }),
+        'entretien': inline_serializer('FlotteTableauBordEntretien', {
+            'echeances_ouvertes': serializers.IntegerField(),
+        }),
+        'pool': inline_serializer('FlotteTableauBordPool', {
+            'demandes_en_attente': serializers.IntegerField(),
+        }),
+    }))
     @action(detail=False, methods=['get'], url_path='tableau-bord')
     def tableau_bord(self, request):
         """FLOTTE35 — Tableau de bord flotte (dispo / échéances / coûts / conso).

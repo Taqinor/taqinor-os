@@ -25,9 +25,8 @@ from __future__ import annotations
 import json
 
 from django.http import Http404
-from drf_spectacular.types import OpenApiTypes
-from drf_spectacular.utils import extend_schema
-from rest_framework import status, viewsets
+from drf_spectacular.utils import extend_schema, inline_serializer
+from rest_framework import serializers, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.generics import GenericAPIView
 from rest_framework.response import Response
@@ -68,6 +67,68 @@ BUDGET = BudgetCalcul()
 
 #: Type logique du job de fond (``BackgroundJob.kind``).
 KIND_CALEPINAGE = 'ao_calepinage'
+
+# ── PACT7 — les trois agrégats de calepinage DÉCLARENT leur forme ────────────
+# Ils étaient publiés `responses=OpenApiTypes.OBJECT`, c'est-à-dire
+# « type: object » SANS AUCUNE PROPRIÉTÉ : un schéma qui ne dit rien ne
+# contredit rien, et c'est exactement ce qui a laissé passer l'incident du
+# 03/08/2026. Ces trois blocs sont le miroir EXACT des dictionnaires renvoyés
+# par ``calepinage_service`` — ils doivent changer avec lui.
+
+COMPARAISON_RESPONSE = inline_serializer('AoCalepinageComparaison', {
+    'lignes': inline_serializer('AoCalepinageComparaisonLigne', {
+        'id': serializers.IntegerField(),
+        'nom': serializers.CharField(),
+        'role': serializers.CharField(),
+        'statut': serializers.CharField(),
+        'est_retenue': serializers.BooleanField(),
+        'toiture': serializers.IntegerField(),
+        'total_modules': serializers.IntegerField(),
+        'kwc': serializers.FloatField(),
+        'total_optimal': serializers.IntegerField(allow_null=True),
+        'optimal': serializers.BooleanField(allow_null=True),
+        'methode': serializers.CharField(allow_null=True),
+        'marge_troncon_min': serializers.FloatField(allow_null=True),
+        'marge_bande_min': serializers.FloatField(allow_null=True),
+        'version_moteur': serializers.CharField(),
+        'entree_hash': serializers.CharField(),
+        'delta_modules': serializers.IntegerField(),
+    }, many=True),
+    'introuvables': serializers.ListField(child=serializers.IntegerField()),
+    'reference_modules': serializers.IntegerField(),
+})
+
+SENSIBILITES_RESPONSE = inline_serializer('AoCalepinageSensibilites', {
+    'reference_modules': serializers.IntegerField(),
+    'plancher_modules': serializers.IntegerField(),
+    'engagement_modules': serializers.IntegerField(allow_null=True),
+    'verdict': serializers.CharField(),
+    'non_applicables': serializers.ListField(child=serializers.CharField()),
+    'sensibilites': inline_serializer('AoCalepinageSensibilite', {
+        'id': serializers.IntegerField(),
+        'code': serializers.CharField(),
+        'libelle': serializers.CharField(),
+        'modules': serializers.IntegerField(),
+        'delta': serializers.IntegerField(),
+        'tenu': serializers.BooleanField(),
+    }, many=True),
+})
+
+MARCHES_RESPONSE = inline_serializer('AoCalepinageMarches', {
+    'recit': serializers.CharField(),
+    'depart': serializers.IntegerField(),
+    'arrivee': serializers.IntegerField(),
+    'gain_total': serializers.IntegerField(),
+    'honnete': serializers.BooleanField(),
+    'motifs': serializers.ListField(child=serializers.CharField()),
+    'marches': inline_serializer('AoCalepinageMarche', {
+        'code': serializers.CharField(),
+        'libelle': serializers.CharField(),
+        'modules': serializers.IntegerField(),
+        'delta': serializers.IntegerField(),
+        'attendu': serializers.IntegerField(allow_null=True),
+    }, many=True),
+})
 
 
 def _societe(request):
@@ -362,7 +423,7 @@ class CalepinageVarianteViewSet(IdempotentActionMixin, viewsets.GenericViewSet):
         return self.executer_idempotent(request, calcul)
 
     @extend_schema(parameters=[ComparaisonVariantesSerializer],
-                   responses=OpenApiTypes.OBJECT)
+                   responses=COMPARAISON_RESPONSE)
     @action(detail=False, methods=['get'], url_path='comparer')
     def comparer(self, request):
         """Compare N variantes EN UN APPEL (``?ids=1,2,3``)."""
@@ -371,7 +432,7 @@ class CalepinageVarianteViewSet(IdempotentActionMixin, viewsets.GenericViewSet):
         return Response(calepinage_service.comparer_variantes(
             _societe(request), demande.validated_data['ids']))
 
-    @extend_schema(request=None, responses=OpenApiTypes.OBJECT)
+    @extend_schema(request=None, responses=SENSIBILITES_RESPONSE)
     @action(detail=True, methods=['post'], url_path='sensibilites')
     def sensibilites(self, request, pk=None):
         """Rejoue la batterie défavorable et publie le PLANCHER."""
@@ -389,7 +450,7 @@ class CalepinageVarianteViewSet(IdempotentActionMixin, viewsets.GenericViewSet):
 
         return self.executer_idempotent(request, calcul)
 
-    @extend_schema(responses=OpenApiTypes.OBJECT)
+    @extend_schema(responses=MARCHES_RESPONSE)
     @action(detail=True, methods=['get'], url_path='marches')
     def marches(self, request, pk=None):
         """L'échelle de décomposition, deltas SIGNÉS et contrôle d'honnêteté."""

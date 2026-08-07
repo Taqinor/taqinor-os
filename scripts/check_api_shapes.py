@@ -61,6 +61,13 @@ CE QU'ELLE FAIT (analyse statique pure, sans base de donnees, sans dependance)
 3. Lit les mocks des tests frontend (``X.maFonction.mockResolvedValue({data:
    ...})``) et ECHOUE si le mock nomme une cle que le serveur ne renvoie pas,
    ou lui donne une nature incompatible.
+3 bis. PACT9 — ECHOUE AUSSI sur un ECRAN qui lit un champ fantome, MEME SANS
+   TEST. Controler les mocks laisse invisible l'ecran qui n'en a pas : les
+   4 tuiles muettes de ``features/rh/Recrutement.jsx`` et les 4 lignes vides de
+   ``features/flotte/VehiculeDetail.jsx`` n'affichent AUCUNE erreur, juste des
+   tirets pour toujours. La condition de fiabilite est ecrite et mesuree :
+   **apparier par ENDPOINT, jamais par nom de champ** (le second tombe sous
+   10 % de precision des qu'il y a homonymie). Voir la section 3 bis du code.
 4. ``--write`` fige le contrat lisible dans ``docs/api-contracts.md`` : le
    dictionnaire d'un agregat devient un fichier VERSIONNE, donc un changement
    de forme apparait dans le diff de la PR au lieu de casser un ecran.
@@ -502,6 +509,510 @@ def _payload_of_data(code, masked, brace, objects):
 
 
 # ===========================================================================
+# 3 bis. PACT9 — ECRAN -> ENDPOINT -> CHAMP (sans passer par un test)
+# ===========================================================================
+#
+# POURQUOI. La garde ci-dessus controle les MOCKS : un ecran qui lit un champ
+# inexistant et n'a AUCUN test lui reste invisible. C'est le cas de
+# `features/rh/Recrutement.jsx` (4 tuiles KPI muettes) et de
+# `features/flotte/VehiculeDetail.jsx` (4 lignes vides) : aucune erreur, aucune
+# alerte, juste des tirets pour toujours.
+#
+# LA CONDITION MESUREE POUR QUE CETTE GARDE SOIT FIABLE. Un balayage a trouve
+# 70 fichiers d'ecran sur 881 lisant au moins un champ `snake_case` absent du
+# backend ; verification manuelle sur 10 tirages : 40 a 50 % de VRAIS defauts
+# seulement. Ce taux INTERDIT d'en faire une garde en l'etat, et la raison est
+# connue : apparier par NOM DE CHAMP tombe sous 10 % de precision des qu'il y a
+# homonymie (`total` sur POS, sur la paie et sur la flotte n'est pas le meme
+# champ). D'ou la regle absolue ci-dessous.
+#
+# ON APPARIE PAR ENDPOINT, JAMAIS PAR NOM DE CHAMP. La chaine complete est
+# suivie : ecran -> fonction du client API -> URL -> vue -> dictionnaire. Un
+# champ n'est accuse que si l'endpoint EXACT qui alimente la variable lue est
+# identifie sans ambiguite ET que son contrat est certain. Tout maillon
+# incertain fait ABANDONNER la variable entiere.
+#
+# DEUX LIENS SEULEMENT, les deux mecaniques et sans ambiguite :
+#   A. `const { data } = useResource(() => client.fn(), …, {select: r => r.data})`
+#      puis `data.champ` — la forme du tableau de bord AO qui a plante.
+#   B. `const r = await client.fn(…)` puis `r.data.champ`.
+# Les chaines a plus d'un relais (`Promise.all` -> `setState` -> etat lu
+# ailleurs) sont DELIBEREMENT ignorees : les suivre statiquement demanderait de
+# deviner, et une garde qui devine crie au loup, puis finit desactivee.
+
+# Hooks du depot qui rendent `{ data, loading, error }`.
+_HOOKS_RESSOURCE = ("useResource", "useApiQuery", "useQuery", "useFetch")
+
+_DESTRUCTURATION = re.compile(
+    r"\b(?:const|let)\s*\{([^{}]*)\}\s*=\s*(?:await\s+)?(%s)\s*\("
+    % "|".join(_HOOKS_RESSOURCE))
+# `select: (res) => res.data` — le marqueur qui prouve que la variable porte la
+# CHARGE UTILE et non la reponse axios entiere. Sans lui, on n'apparie pas.
+_SELECT_DATA = re.compile(
+    r"select\s*:\s*\(?\s*([A-Za-z_$][\w$]*)\s*\)?\s*=>\s*\1\s*\??\.\s*data\b")
+_AWAIT_APPEL = re.compile(
+    r"\b(?:const|let)\s+([A-Za-z_$][\w$]*)\s*=\s*await\s+"
+    r"([A-Za-z_$][\w$]*)\s*\.\s*([A-Za-z_$][\w$]*)\s*\(")
+_APPEL_CLIENT = re.compile(r"\b([A-Za-z_$][\w$]*)\s*\.\s*([A-Za-z_$][\w$]*)\s*\(")
+_IMPORT_CLIENT = re.compile(
+    r"\bimport\s+(?P<defaut>[A-Za-z_$][\w$]*)?\s*,?\s*(?:\{(?P<nommes>[^{}]*)\})?\s*"
+    r"from\s*['\"](?P<cible>\.[^'\"]*)['\"]")
+
+# Proprietes du langage / de la bibliotheque : jamais des champs de reponse.
+_NON_CHAMPS = frozenset({
+    "data", "length", "map", "filter", "forEach", "find", "findIndex", "reduce",
+    "some", "every", "includes", "indexOf", "slice", "splice", "concat", "join",
+    "sort", "reverse", "push", "pop", "shift", "unshift", "flat", "flatMap",
+    "at", "keys", "values", "entries", "toString", "valueOf", "hasOwnProperty",
+    "constructor", "then", "catch", "finally", "toFixed", "toLocaleString",
+    "trim", "split", "replace", "padStart", "padEnd", "startsWith", "endsWith",
+    "toLowerCase", "toUpperCase", "charAt", "repeat", "match", "test",
+})
+
+
+def screen_files():
+    """Ecrans : tout `frontend/src` SAUF les clients API et les tests.
+
+    Les clients (`src/api/`) sont deja l'affaire de la garde de contrat ; les
+    tests, celle des mocks ci-dessus.
+    """
+    seen = {}
+    for pattern in ("*.jsx", "*.js"):
+        for path in sorted(FRONT_SRC.rglob(pattern)):
+            if ".test." in path.name or ".spec." in path.name:
+                continue
+            if "node_modules" in path.parts:
+                continue
+            seen.setdefault(path, True)
+    return list(seen)
+
+
+def _clients_importes(code: str, path: Path, modules_connus: set) -> dict:
+    """nom local -> chemin resolu du client API, pour CE fichier d'ecran.
+
+    On ne devine JAMAIS a quel client appartient `xApi.fn()` : on lit l'import.
+    C'est ce qui evite l'homonymie mesuree (`dryRun` existe dans `importApi`
+    ET dans `adsengineApi`).
+    """
+    clients = {}
+    for match in _IMPORT_CLIENT.finditer(code):
+        candidat = (path.parent / match.group("cible")).resolve()
+        sonde = None
+        for suffixe in ("", ".js", ".jsx", ".mjs"):
+            probe = Path(str(candidat) + suffixe)
+            if probe.is_file() and probe in modules_connus:
+                sonde = probe
+                break
+        if sonde is None:
+            continue
+        noms = []
+        if match.group("defaut"):
+            noms.append(match.group("defaut"))
+        for specificateur in (match.group("nommes") or "").split(","):
+            specificateur = specificateur.strip()
+            if not specificateur:
+                continue
+            # `xApi as client` : c'est le nom LOCAL qui compte.
+            noms.append(specificateur.split(" as ")[-1].strip())
+        for nom in noms:
+            if re.fullmatch(r"[A-Za-z_$][\w$]*", nom):
+                clients[nom] = sonde
+    return clients
+
+
+def _liaisons(code: str, masked: str, clients: dict) -> list:
+    """[(variable, prefixe de lecture, module, fonction)] — liens CERTAINS."""
+    liaisons = []
+
+    # LIEN A — hook de ressource avec `select: r => r.data`.
+    for match in _DESTRUCTURATION.finditer(masked):
+        fin = contract._first_argument(masked, match.end() - 1)[1]
+        if fin is None:
+            continue
+        profondeur, borne = 0, match.end() - 1
+        for index in range(match.end() - 1, len(masked)):
+            if masked[index] in "([{":
+                profondeur += 1
+            elif masked[index] in ")]}":
+                profondeur -= 1
+                if profondeur == 0:
+                    borne = index
+                    break
+        appel = code[match.end() - 1:borne + 1]
+        if not _SELECT_DATA.search(appel):
+            continue        # la variable porte peut-etre la reponse axios entiere
+        variable = _variable_de_data(match.group(1))
+        if variable is None:
+            continue
+        cible = _premier_appel_client(appel, clients)
+        if cible is None:
+            continue
+        liaisons.append((variable, variable, cible[0], cible[1]))
+
+    # LIEN B — `const r = await client.fn(…)` puis `r.data.champ`.
+    for match in _AWAIT_APPEL.finditer(masked):
+        variable, client, fonction = match.groups()
+        if client not in clients:
+            continue
+        liaisons.append((variable, f"{variable}.data", clients[client], fonction))
+    return liaisons
+
+
+def _variable_de_data(destructuration: str):
+    """`{ data: tableau, loading }` -> `tableau` ; `{ data }` -> `data`."""
+    for morceau in destructuration.split(","):
+        morceau = morceau.strip()
+        if morceau == "data":
+            return "data"
+        alias = re.fullmatch(r"data\s*:\s*([A-Za-z_$][\w$]*)", morceau)
+        if alias:
+            return alias.group(1)
+    return None
+
+
+def _premier_appel_client(appel: str, clients: dict):
+    for match in _APPEL_CLIENT.finditer(appel):
+        nom, fonction = match.groups()
+        if nom in clients:
+            return (clients[nom], fonction)
+    return None
+
+
+def _lie_une_seule_fois(masked: str, variable: str) -> bool:
+    """La variable n'est-elle liee QU'UNE fois dans ce fichier ?
+
+    Deux liaisons du meme nom (deux `const data = …` dans deux composants d'un
+    meme fichier) rendraient l'appariement incertain : on abandonne.
+    """
+    motif = re.compile(r"\b(?:const|let|var)\b[^=;\n]*\b%s\b[^=;\n]*="
+                       % re.escape(variable))
+    return len(motif.findall(masked)) == 1
+
+
+def _jamais_un_parametre(masked: str, variable: str) -> bool:
+    """Le nom sert-il AUSSI de parametre quelque part dans ce fichier ?
+
+    LE piege mesure de PACT9, et il aurait suffi a rendre la garde bruyante
+    donc morte. `const r = await gedApi.toggleFavoriDocument(…)` lie `r`, mais
+    le MEME fichier ecrit ailleurs
+    `gedApi.getAcls(…).then((r) => setEntries(r.data?.results ?? …))` : ce `r`
+    est un AUTRE endpoint. Sans ce controle, la garde accusait `results` sur
+    `toggleFavoriDocument` — cinq faux positifs sur cinq (ged, audit, ia,
+    monitoring, ventes), tous sur du code CORRECT.
+
+    Le nom d'une variable ne suffit donc pas a designer une portee : des qu'il
+    est aussi un parametre, l'appariement redevient un appariement par NOM, et
+    on abandonne. Sous-detecter est le comportement voulu.
+    """
+    nom = re.escape(variable)
+    motifs = (
+        # `r => …`
+        r"(?<![\w$.])%s\s*=>" % nom,
+        # `(r, i) => …` / `({ data }) => …`
+        r"\(\s*[^()]*\b%s\b[^()]*\)\s*=>" % nom,
+        # `function f(r) {` / `async function f(a, r) {`
+        r"\bfunction\b[^(){}]*\(\s*[^()]*\b%s\b[^()]*\)" % nom,
+    )
+    return not any(re.search(motif, masked) for motif in motifs)
+
+
+def _acces(prefixe: str) -> str:
+    """Fragment d'expression reguliere pour `prefixe.champ` / `prefixe?.champ`."""
+    return (r"(?<![\w$.])%s\s*\??\s*\.\s*"
+            % re.escape(prefixe).replace(r"\.", r"\s*\??\s*\."))
+
+
+def _champs_lus(code: str, prefixe: str) -> dict:
+    """champ -> premiere ligne de lecture, pour `prefixe.champ` / `prefixe?.champ`."""
+    motif = re.compile(_acces(prefixe) + r"([A-Za-z_$][\w$]*)")
+    champs = {}
+    for match in motif.finditer(code):
+        champ = match.group(1)
+        if champ in _NON_CHAMPS:
+            continue
+        champs.setdefault(champ, code.count("\n", 0, match.start()) + 1)
+    return champs
+
+
+# Les deux usages qui ont TUE l'ecran AO le 03/08/2026, et eux seuls : aucun
+# autre n'est assez univoque pour accuser sans deviner.
+#   * `.map(` sur un champ que le serveur renvoie en NOMBRE
+#     -> « x.map is not a function » ;
+#   * `{champ}` seul dans une accolade JSX alors que le serveur renvoie un OBJET
+#     ou une LISTE -> « objects are not valid as a React child ».
+_NATURES_NON_ITERABLES = frozenset({NOMBRE, TEXTE, BOOLEEN, OBJET})
+_NATURES_NON_AFFICHABLES = frozenset({OBJET, LISTE})
+
+
+def _usages_incompatibles(code: str, prefixe: str, forme: dict) -> list:
+    """[(champ, ligne, motif)] — le champ existe mais l'ecran le MALTRAITE."""
+    constats = []
+    acces = _acces(prefixe)
+    for champ, nature in sorted(forme.items()):
+        if nature == INCONNU:
+            continue
+        borne = re.escape(champ) + r"(?![\w$])"
+        if nature in _NATURES_NON_ITERABLES:
+            itere = re.compile(acces + borne + r"\s*\??\s*\.\s*(?:map|forEach|filter)\s*\(")
+            trouve = itere.search(code)
+            if trouve:
+                constats.append((
+                    champ, code.count("\n", 0, trouve.start()) + 1,
+                    f"l'ecran itere sur '{champ}' (.map/.forEach/.filter) alors "
+                    f"que le serveur le renvoie en {nature} — c'est le "
+                    f"« x.map is not a function » du 03/08/2026"))
+        if nature in _NATURES_NON_AFFICHABLES:
+            rendu = re.compile(r"\{\s*" + acces + borne + r"\s*\}")
+            trouve = rendu.search(code)
+            if trouve:
+                constats.append((
+                    champ, code.count("\n", 0, trouve.start()) + 1,
+                    f"l'ecran rend '{champ}' tel quel dans le JSX alors que le "
+                    f"serveur le renvoie en {nature} — c'est le « objects are "
+                    f"not valid as a React child » du 03/08/2026"))
+    return constats
+
+
+def champs_fantomes(shapes):
+    """[(fichier, ligne, fonction, chemin, champ, motif)] — ecrans fautifs."""
+    par_module = {}
+    for (module, nom), (route, forme) in shapes.items():
+        par_module.setdefault(module, {})[nom] = (route, forme)
+    if not par_module:
+        return []
+
+    constats = []
+    for path in screen_files():
+        try:
+            src = path.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        code, _, masked = scan_js(src)
+        clients = _clients_importes(code, path, set(par_module))
+        if not clients:
+            continue
+        relatif = path.relative_to(ROOT).as_posix()
+        for variable, prefixe, module, fonction in _liaisons(code, masked, clients):
+            contrat = par_module.get(module, {}).get(fonction)
+            if contrat is None:
+                continue            # forme incertaine : on n'accuse pas
+            if not _lie_une_seule_fois(masked, variable):
+                continue
+            if not _jamais_un_parametre(masked, variable):
+                continue
+            route, forme = contrat
+            for champ, ligne in sorted(_champs_lus(code, prefixe).items()):
+                if champ in forme:
+                    continue
+                constats.append((
+                    relatif, ligne, fonction, route, champ,
+                    f"l'ecran lit '{champ}' sur la reponse de {fonction}() "
+                    f"({route}), que le serveur ne renvoie PAS "
+                    f"(il renvoie : {', '.join(sorted(forme))})"))
+            for champ, ligne, motif in _usages_incompatibles(code, prefixe, forme):
+                constats.append((relatif, ligne, fonction, route, champ, motif))
+    return constats
+
+
+# ===========================================================================
+# 3 ter. PACT10 — L'EXEMPLE PARTAGE : `apps/<x>/contract_samples/*.json`
+# ===========================================================================
+#
+# POURQUOI. `plan_lanes.py` force les lanes a etre disjointes en fichiers —
+# c'est ce qui permet a 8 agents de travailler sans conflit. Or un contrat
+# front<->back ne partage AUCUN fichier par construction (`urls.py` d'un cote,
+# `frontend/src/api/*.js` de l'autre) : la regle qui protege des conflits de
+# fusion garantit mecaniquement que les deux moities travaillent en aveugle.
+# L'en-tete d'`aoApi.js` declarait « ce fichier PUBLIE le contrat que le backend
+# enregistre ensuite » — une obligation adressee a une lane parallele qui ne l'a
+# jamais recue. L'obligation n'avait aucun PORTEUR.
+#
+# `apps/<x>/contract_samples/<endpoint>.json` EST ce porteur : un exemple de
+# reponse, versionne, que les deux moities lisent. Le backend affirme que sa
+# vraie reponse egale l'exemple ; le frontend l'IMPORTE au lieu d'inventer son
+# `PAYLOAD` (PACT13). Si le serveur change de forme, l'exemple change, et le
+# test frontend casse tout seul — sans reunion, sans discipline humaine.
+#
+# La fonction ci-dessous est ce qui rend l'exemple DIGNE DE CONFIANCE : elle
+# echoue si l'exemple et le dictionnaire reellement renvoye divergent (cle en
+# trop, cle manquante, nature incompatible). Un exemple qui pourrit dans son
+# coin serait pire que pas d'exemple du tout.
+
+APPS_ROOT = ROOT / "backend" / "django_core" / "apps"
+DOSSIER_ECHANTILLONS = "contract_samples"
+
+_ENDPOINT = re.compile(r"^(?P<verbe>[A-Z]+)\s+(?P<chemin>/\S*)$")
+
+
+def _nature_json(valeur) -> str:
+    if isinstance(valeur, bool):
+        return BOOLEEN
+    if isinstance(valeur, dict):
+        return OBJET
+    if isinstance(valeur, list):
+        return LISTE
+    if isinstance(valeur, (int, float)):
+        return NOMBRE
+    if isinstance(valeur, str):
+        return TEXTE
+    return INCONNU          # `null` : le serveur peut le rendre en toute nature
+
+
+def fichiers_echantillons(racine: Path = None):
+    racine = APPS_ROOT if racine is None else racine
+    if not racine.is_dir():
+        return []
+    return sorted(racine.glob(f"*/{DOSSIER_ECHANTILLONS}/*.json"))
+
+
+def echantillons_de_contrat(shapes, racine: Path = None):
+    """[(fichier, ligne, endpoint, chemin, champ, motif)] — exemples qui derivent."""
+    import json
+
+    par_route = {}
+    for _, (route, forme) in shapes.items():
+        par_route.setdefault(route, forme)
+
+    constats = []
+    for fichier in fichiers_echantillons(racine):
+        relatif = fichier.relative_to(ROOT).as_posix() \
+            if ROOT in fichier.parents or fichier.is_relative_to(ROOT) else fichier.name
+        try:
+            document = json.loads(fichier.read_text(encoding="utf-8"))
+        except (OSError, ValueError) as erreur:
+            constats.append((relatif, 1, fichier.stem, "?", "<fichier>",
+                             f"JSON illisible : {erreur}"))
+            continue
+        endpoint = (document or {}).get("endpoint", "")
+        exemple = (document or {}).get("exemple")
+        entete = _ENDPOINT.match(str(endpoint).strip())
+        if not entete or not isinstance(exemple, dict):
+            constats.append((
+                relatif, 1, fichier.stem, "?", "<fichier>",
+                "l'echantillon doit porter `endpoint` (« GET /api/... ») et "
+                "`exemple` (un objet). Voir apps/ao/contract_samples/README.md"))
+            continue
+        route = normalise_call(entete.group("chemin"), "api/django")
+        chemin = "/" + "/".join(route) if route else entete.group("chemin")
+        forme = par_route.get(chemin)
+        if forme is None:
+            # Endpoint hors contrat (forme non certaine statiquement) : un doute
+            # ne rougit JAMAIS. L'exemple reste utile au frontend.
+            continue
+        for champ in sorted(set(exemple) - set(forme)):
+            constats.append((
+                relatif, 1, fichier.stem, chemin, champ,
+                f"l'exemple declare '{champ}', que le serveur ne renvoie PAS "
+                f"(il renvoie : {', '.join(sorted(forme))})"))
+        for champ in sorted(set(forme) - set(exemple)):
+            constats.append((
+                relatif, 1, fichier.stem, chemin, champ,
+                f"le serveur renvoie '{champ}' et l'exemple l'OMET : un "
+                f"exemple incomplet laisse un champ hors contrat"))
+        for champ in sorted(set(exemple) & set(forme)):
+            attendue, trouvee = forme[champ], _nature_json(exemple[champ])
+            if INCONNU in (attendue, trouvee) or attendue == trouvee:
+                continue
+            constats.append((
+                relatif, 1, fichier.stem, chemin, champ,
+                f"le serveur renvoie '{champ}' en {attendue}, l'exemple le "
+                f"declare en {trouvee}"))
+    return constats
+
+
+# ===========================================================================
+# 3 quater. PACT13 — INTERDIRE LES MOCKS DE FORME ECRITS A LA MAIN
+# ===========================================================================
+#
+# C'est la cause racine PROUVEE : `DashboardPage.test.jsx` declarait a la main
+# `PAYLOAD = { ao_en_cours: 7, …, echeances_dues: [ … ] }` — l'INVERSE EXACT de
+# ce que le backend renvoie — et restait VERT ; en face,
+# `apps/ao/tests/test_kpis_ao.py` affirmait `echeances_dues == 1`. Les deux
+# suites vertes, se contredisant, l'ecran mort en production.
+#
+# LA REGLE. Des qu'un endpoint agrege porte un exemple de contrat committe
+# (`apps/<x>/contract_samples/*.json`, PACT10), un test frontend qui mocke sa
+# fonction DOIT importer cette fixture ; il ne peut plus taper sa charge utile.
+#
+# PORTEE DELIBEREMENT LIEE A L'EXISTENCE DE L'EXEMPLE. La garde ne parle QUE
+# des endpoints qui ont deja leur document partage : « les tests existants sont
+# migres app par app, la base de reference ne pouvant que retrecir ». Exiger une
+# fixture qui n'existe pas serait une garde qui commande du travail impossible
+# — et une garde impossible finit desactivee.
+#
+# NIVEAU FICHIER, pas occurrence. Un test qui importe la fixture reste libre de
+# mocker un AUTRE ETAT du serveur (`exemple_vide`) : c'est un etat, pas une
+# forme inventee. Et si ce litteral mentait sur la forme, le controle de mocks
+# ci-dessus (section 3) l'attrape deja. Les deux regles se composent.
+
+FIXTURE_CONTRAT = "test/fixtures/contractSamples"
+_IMPORTE_FIXTURE = re.compile(re.escape(FIXTURE_CONTRAT))
+
+
+def _routes_sous_exemple(racine: Path = None) -> dict:
+    """chemin normalise -> fichier d'exemple committe."""
+    import json
+
+    out = {}
+    for fichier in fichiers_echantillons(racine):
+        try:
+            document = json.loads(fichier.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        entete = _ENDPOINT.match(str((document or {}).get("endpoint", "")).strip())
+        if not entete:
+            continue
+        route = normalise_call(entete.group("chemin"), "api/django")
+        if route:
+            out["/" + "/".join(route)] = fichier
+    return out
+
+
+def mocks_litteraux_sous_contrat(shapes, racine: Path = None):
+    """[(fichier, ligne, fonction, chemin, champ, motif)] — tests a migrer."""
+    sous_exemple = _routes_sous_exemple(racine)
+    if not sous_exemple:
+        return []
+    par_module = {}
+    for (module, nom), (route, _) in shapes.items():
+        if route in sous_exemple:
+            par_module.setdefault(module, {})[nom] = (route, sous_exemple[route])
+
+    constats = []
+    for path in test_files():
+        charges = mocked_payloads(path)
+        if not charges:
+            continue
+        try:
+            source = path.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        if _IMPORTE_FIXTURE.search(source):
+            continue        # le test lit deja le document partage
+        relatif = path.relative_to(ROOT).as_posix()
+        vus = set()
+        for ligne, modules, nom, _forme in charges:
+            candidats = [par_module[m][nom] for m in modules
+                         if nom in par_module.get(m, {})]
+            if len(candidats) != 1 or nom in vus:
+                continue
+            vus.add(nom)
+            route, fichier = candidats[0]
+            app = fichier.parent.parent.name
+            constats.append((
+                relatif, ligne, nom, route, "<charge utile>",
+                f"charge utile ECRITE A LA MAIN pour {nom}() ({route}), alors "
+                f"que cet endpoint porte un exemple de contrat committe. "
+                f"IMPORTER la fixture au lieu de la retaper :\n"
+                f"      import {{ exempleContrat, reponseContrat }} from "
+                f"'…/{FIXTURE_CONTRAT}'\n"
+                f"      {nom}.mockResolvedValue(reponseContrat("
+                f"'{app}', '{fichier.stem}'))\n"
+                f"      (source : {fichier.relative_to(ROOT).as_posix()})"))
+    return constats
+
+
+# ===========================================================================
 # 4. Rapprochement + contrat versionne
 # ===========================================================================
 
@@ -551,6 +1062,16 @@ def analyse(shapes=None):
                     findings.append((relative, line, name, route, field,
                                      f"le serveur renvoie '{field}' en {real[field]}, "
                                      f"le mock le declare en {kind}"))
+    # PACT9 — meme forme de constat, meme signature `fonction|champ`, meme base
+    # de reference : un ecran qui lit un champ fantome SANS avoir de test est
+    # exactement le meme defaut qu'un mock qui ment, vu depuis l'autre bout.
+    findings.extend(champs_fantomes(shapes))
+    # PACT10 — l'exemple partage ne peut pas pourrir : il derive du serveur ou
+    # il rougit. C'est ce qui le rend digne d'etre importe par les deux moities.
+    findings.extend(echantillons_de_contrat(shapes))
+    # PACT13 — un mock ecrit a la main est une DEUXIEME source de verite : des
+    # que l'endpoint porte un exemple committe, le test l'importe.
+    findings.extend(mocks_litteraux_sous_contrat(shapes))
     return findings, shapes
 
 

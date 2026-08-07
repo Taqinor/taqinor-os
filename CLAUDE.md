@@ -227,6 +227,14 @@ above where they conflict; the mechanics are CODED into `plan_lanes.py`, read th
   each fold, kill stale 6-8h+ agent processes at run START (never mid-run, never broadly), and on
   a heavy fold conflict DROP & REQUEUE the task on the merged base — never hand-merge 100+-line
   collisions (both build-breakers of the 2026-07-11 batch were manual resolutions).
+- **CONTRAT D'ABORD (PACT10, incident du 03/08/2026 — l'écran AO Tableau de bord, 0 clé sur 6
+  concordante).** Toute fonctionnalité à deux moitiés livre son **contrat d'abord, SEUL, sur `main`**
+  (`apps/<x>/contract_samples/*.json`) : sans fichier partagé, deux lanes file-disjointes inventent
+  mécaniquement deux contrats — appliqué par `check_api_shapes.py`, ne le défaites pas en « simplifiant ».
+- **`@after` SUR LA MOITIÉ BACKEND (PACT11, même incident).** Une tâche frontend qui consomme les
+  données d'une tâche backend du même run **doit** porter `@after` sur ELLE (AOF172 déclarait `@after`
+  sur la liste AOF170, jamais sur AOF166 qui produit ses données → départ en parallèle, écran mort) —
+  refusé par `plan_lanes.py`, en français ; ajouter la dépendance, jamais `--force-wave`.
 
 1. **Plan the lanes once.** Run `python scripts/plan_lanes.py <planfile>` for the file-ownership
    + dependency graph. A **lane** = tasks sharing a file/migration that must run in sequence;

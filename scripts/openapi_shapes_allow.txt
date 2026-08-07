@@ -1,0 +1,68 @@
+# PACT7 — base de reference de check_openapi_shapes.py : DETTE HISTORIQUE.
+#
+# Chaque ligne est un endpoint AGREGE (tableau de bord, KPI, synthese...) qui
+# ne declare pas la forme de sa reponse : le schema OpenAPI publie donc pour
+# lui soit rien, soit le serializer_class du ViewSet — c'est-a-dire un
+# MENSONGE (`/flotte/vehicules/tableau-bord/` etait documente en
+# VehiculeSerializer alors qu'il renvoie {vehicules, engins, echeances, ...}).
+#
+# REGLE ABSOLUE : CETTE LISTE NE PEUT QUE RETRECIR.
+#   - declarer `@extend_schema(responses=inline_serializer(...))` sur la vue,
+#     puis `python scripts/check_openapi_shapes.py --write-baseline` retire sa
+#     ligne ;
+#   - `--write-baseline` REFUSE d'ajouter une ligne. Assumer une nouvelle
+#     dette exige `--autoriser-croissance`, drapeau reserve au fondateur,
+#     visible en revue.
+#
+# La signature est `module:Classe.methode` — jamais `fichier:ligne`, qu'un
+# simple decalage de lignes invaliderait (lecon du depot).
+apps.ao.views:ResultatAOViewSet.stats
+apps.ao.views_directeur:EconomieAOViewSet.synthese
+apps.assurances.views:tableau_bord
+apps.audit.views:stats
+apps.compta.views:CampagneViewSet.kpi_mere
+apps.compta.views:CycleConsolidationViewSet.tableau_flux
+apps.compta.views:EtatsComptablesViewSet.analyse_variation
+apps.compta.views:EtatsComptablesViewSet.cockpit_cloture
+apps.compta.views:EtatsComptablesViewSet.tableau_flux
+apps.compta.views:EtatsComptablesViewSet.tableau_immobilisations
+apps.compta.views:NoteFraisViewSet.analyse
+apps.compta.views:PilotageViewSet.cockpit
+apps.compta.views:TimbreFiscalViewSet.synthese_mensuelle
+apps.contrats.views:ContratViewSet.tableau_de_bord
+apps.crm.views:ParrainageViewSet.stats
+apps.crm.views:equipes_statistiques
+apps.esg.views:PeriodeReportingESGViewSet.indicateurs
+apps.fiscal.views:ObligationFiscaleViewSet.tableau_conformite_action
+apps.fiscal.views:tableau_conformite_view
+apps.flotte.views:PieceFlotteViewSet.synthese
+apps.flotte.views:PleinCarburantViewSet.synthese_tva
+apps.ged.views:DemandeSignatureDocumentViewSet.tableau_bord
+apps.gestion_projet.views:ProjetViewSet.synthese_temps
+apps.innovation.views:CampagneInnovationViewSet.tableau_bord
+apps.innovation.views:IdeeViewSet.tableau_bord
+apps.installations.views.kitting:OrdreAssemblageViewSet.analyse
+apps.installations.views.program:BudgetProjetViewSet.synthese
+apps.litiges.views:ReclamationViewSet.analyse_concurrents
+apps.paie.views:BulletinPaieViewSet.analyse
+apps.portail.views_externes:tableau_de_bord_fournisseur
+apps.portail.views_externes:tableau_de_bord_partenaire
+apps.pos.views:VenteComptoirViewSet.dashboard
+apps.pos.views:VenteComptoirViewSet.dashboard_export
+apps.qhse.views:IncidentViewSet.statistiques_tf_tg
+apps.qhse.views:ia_suggestion_analyse
+apps.reporting.commercial:commercial_dashboard
+apps.reporting.reports:kpi_federes
+apps.reporting.views:dashboard
+apps.rh.views:PresquAccidentViewSet.stats
+apps.rh.views:RetourFeedback360ViewSet.synthese
+apps.rh.views:TableauBordHseViewSet.tableau_bord_hse
+apps.sante.viewsets:FactureSanteViewSet.statistiques
+apps.stock.views.fournisseur:FournisseurViewSet.vue_360
+apps.stock.views.produit:ProduitViewSet.analyse_achats
+apps.stock.views.produit:ProduitViewSet.analyse_achats_export_xlsx
+apps.stock.views.produit:ProduitViewSet.analyse_achats_pdf
+apps.ventes.dashboard_view:dashboard_quote_to_cash
+apps.ventes.insights_view:analyse_facturation_view
+core.dashboard_partage:dashboard_public
+core.dashboard_partage:dashboard_tv

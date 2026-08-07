@@ -200,7 +200,9 @@ function ValorisationModal({ onClose }) {
     const pending = downloadBlobInGesture()
     setExporting(true)
     try {
-      const res = await api.get('/stock/valorisation-xlsx/', { responseType: 'blob' })
+      // PACT5 — l'action vit sur le ViewSet des PRODUITS (`/stock/produits/`) :
+      // `/stock/valorisation-xlsx/` n'a jamais existe, ce bouton etait mort.
+      const res = await api.get('/stock/produits/valorisation-xlsx/', { responseType: 'blob' })
       pending.deliver(new Blob([res.data]), 'valorisation.xlsx')
     } catch { setError('Export indisponible.') } finally { setExporting(false) }
   }

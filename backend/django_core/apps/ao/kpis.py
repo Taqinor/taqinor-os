@@ -24,7 +24,10 @@ Trois règles gravées dans ce module
 """
 from __future__ import annotations
 
-from drf_spectacular.utils import OpenApiResponse, extend_schema
+from drf_spectacular.utils import (
+    OpenApiResponse, extend_schema, inline_serializer,
+)
+from rest_framework import serializers
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import BasePermission
 from rest_framework.response import Response
@@ -96,19 +99,73 @@ class TableauMarchesPermission(BasePermission):
         return _user_has_or_legacy(user, AO_VOIR)
 
 
+# PACT7 — la forme du tableau de bord, DÉCLARÉE clé par clé.
+#
+# Elle était publiée `response=dict`, c'est-à-dire « type: object » SANS AUCUNE
+# PROPRIÉTÉ : le jour où l'écran a planté (03/08/2026), le schéma OpenAPI ne
+# contredisait rien parce qu'il ne disait rien. Une forme vide valide tout,
+# donc elle ne protège rien. Ce bloc est le miroir EXACT de
+# ``selectors.tableau_marches`` / ``tableau_marches_vide`` : si le sélecteur
+# change de clé, ce contrat doit changer avec lui — c'est le point.
+TABLEAU_MARCHES_RESPONSE = inline_serializer('AoTableauMarches', {
+    'en_cours': inline_serializer('AoTableauMarchesEnCours', {
+        'total': serializers.IntegerField(),
+        'sous_7_jours': serializers.IntegerField(),
+        'en_retard': serializers.IntegerField(),
+        'par_echeance': inline_serializer('AoTableauMarchesEcheance', {
+            'id': serializers.IntegerField(),
+            'reference': serializers.CharField(),
+            'objet': serializers.CharField(),
+            'acheteur': serializers.CharField(),
+            'statut': serializers.CharField(),
+            'statut_display': serializers.CharField(),
+            'date_limite': serializers.DateField(allow_null=True),
+            'jours_restants': serializers.IntegerField(allow_null=True),
+        }, many=True),
+    }),
+    'echeances_dues': serializers.IntegerField(),
+    'reussite': inline_serializer('AoTableauMarchesReussite', {
+        'gagnes': serializers.IntegerField(),
+        'perdus': serializers.IntegerField(),
+        'total_decides': serializers.IntegerField(),
+        'total_resultats': serializers.IntegerField(),
+        'taux_reussite_pct': serializers.DecimalField(max_digits=5,
+                                                      decimal_places=2),
+    }),
+    'capacite': inline_serializer('AoTableauMarchesCapacite', {
+        'demontree_modules': serializers.IntegerField(),
+        'engagee_modules': serializers.IntegerField(),
+        'ecart_modules': serializers.IntegerField(),
+        'toitures_prouvees': serializers.IntegerField(),
+    }),
+    'cautions': inline_serializer('AoTableauMarchesCautions', {
+        'montant_immobilise': serializers.DecimalField(max_digits=14,
+                                                       decimal_places=2),
+        'nombre': serializers.IntegerField(),
+        'expirant_avant_ouverture': serializers.IntegerField(),
+    }),
+    'marches_en_execution': inline_serializer('AoTableauMarchesExecution', {
+        'total': serializers.IntegerField(),
+        'montant_offre_ht': serializers.DecimalField(max_digits=14,
+                                                     decimal_places=2),
+    }),
+})
+
+
 @extend_schema(
     # Vue de fonction : drf-spectacular ne peut pas deviner de sérialiseur.
-    # Le tableau est un agrégat calculé (aucun modèle ne lui correspond), on
-    # décrit donc sa forme explicitement plutôt que de laisser un trou.
+    # Le tableau est un agrégat calculé (aucun modèle ne lui correspond), sa
+    # forme est donc décrite EN LIGNE ci-dessus, jamais laissée en trou.
     # PAS d'operation_id explicite : la vue est montée sous DEUX
     # préfixes d'URL (/api/django/ et /api/v#/), un identifiant figé
     # entrerait donc en collision avec lui-même.
     summary="Tableau de bord des appels d'offres (un seul appel)",
     responses={200: OpenApiResponse(
-        response=dict,
-        description="Compteurs par statut, échéances à venir et alertes de "
-                    "la société de l'utilisateur ; objet vide si l'utilisateur "
-                    "n'a pas de société.")},
+        response=TABLEAU_MARCHES_RESPONSE,
+        description="Six blocs : AO en cours par échéance de remise, échéances "
+                    "dues, réussite CALCULÉE, capacité démontrée vs engagée, "
+                    "cautions immobilisées, marchés en exécution. Un compte "
+                    "sans société reçoit la même forme, à zéro.")},
 )
 @api_view(['GET'])
 @permission_classes([TableauMarchesPermission])

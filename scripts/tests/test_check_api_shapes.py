@@ -26,6 +26,21 @@ def write(path: Path, text: str):
     return path
 
 
+_CONTRAT_REEL = None
+
+
+def contrat_reel():
+    """Le contrat derive du VRAI depot, construit UNE SEULE FOIS.
+
+    `build_contract()` relit tout le backend (~40 s) : le rappeler dans chaque
+    test qui en a besoin triplait la duree du fichier.
+    """
+    global _CONTRAT_REEL
+    if _CONTRAT_REEL is None:
+        _CONTRAT_REEL = shapes.build_contract()
+    return _CONTRAT_REEL
+
+
 class ShapeReaderTests(unittest.TestCase):
     """Lecture du dictionnaire REELLEMENT renvoye par une vue."""
 
@@ -165,6 +180,336 @@ dryRun.mockResolvedValueOnce({ data: PAYLOAD })
         test = write(self.base / "pages" / "Autre.test.jsx",
                      "dryRun.mockResolvedValue({ data: { apercu: [] } })\n")
         self.assertEqual(shapes.mocked_payloads(test), [])
+
+
+class EcranVersChampTests(unittest.TestCase):
+    """PACT9 — attraper l'ecran qui lit un champ fantome SANS avoir de test.
+
+    Le contrat AO est celui REELLEMENT publie par le depot (voir
+    `docs/api-contracts.md`) : six cles, `echeances_dues` en NOMBRE,
+    `marches_en_execution` en OBJET. Les ecrans ci-dessous sont des
+    reconstitutions fideles de ce qui etait en production le 03/08/2026.
+    """
+
+    CONTRAT_AO = {
+        "en_cours": shapes.OBJET,
+        "echeances_dues": shapes.NOMBRE,
+        "reussite": shapes.OBJET,
+        "capacite": shapes.OBJET,
+        "cautions": shapes.OBJET,
+        "marches_en_execution": shapes.OBJET,
+    }
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.base = Path(self.tmp.name)
+        self.client = write(self.base / "src" / "api" / "aoApi.js",
+                            "export default { tableauMarches: () => "
+                            "api.get('/ao/tableau-marches/') }\n")
+        self.contrat = {(self.client.resolve(), "tableauMarches"):
+                        ("/api/django/ao/tableau-marches", dict(self.CONTRAT_AO))}
+        self._root, self._src = shapes.ROOT, shapes.FRONT_SRC
+        shapes.ROOT = self.base
+        shapes.FRONT_SRC = self.base / "src"
+
+    def tearDown(self):
+        shapes.ROOT, shapes.FRONT_SRC = self._root, self._src
+        self.tmp.cleanup()
+
+    def _constats(self, source: str, nom="DashboardPage.jsx"):
+        write(self.base / "src" / "features" / "ao" / nom, source)
+        return shapes.champs_fantomes(self.contrat)
+
+    ECRAN_CASSE = """
+import aoApi from '../../api/aoApi'
+export default function DashboardPage() {
+  const { data } = useResource(() => aoApi.tableauMarches(), undefined, {
+    select: (res) => res.data,
+  })
+  return (
+    <div>
+      <b>{data.ao_en_cours}</b>
+      <b>{data.taux_reussite}</b>
+      <b>{data.cautions_immobilisees}</b>
+      <b>{data.capacite_vs_engagement}</b>
+      {data.echeances_dues.map((e) => <li key={e.id}>{e.libelle}</li>)}
+      <span>{data.marches_en_execution}</span>
+    </div>
+  )
+}
+"""
+
+    def test_les_quatre_champs_fantomes_de_l_AO_sont_retrouves(self):
+        champs = {c[4] for c in self._constats(self.ECRAN_CASSE)}
+        self.assertLessEqual(
+            {"ao_en_cours", "taux_reussite", "cautions_immobilisees",
+             "capacite_vs_engagement"}, champs)
+
+    def test_le_premier_plantage_map_sur_un_nombre_est_retrouve(self):
+        motifs = {c[4]: c[5] for c in self._constats(self.ECRAN_CASSE)}
+        self.assertIn("echeances_dues", motifs)
+        self.assertIn("map is not a function", motifs["echeances_dues"])
+
+    def test_le_second_plantage_objet_rendu_en_JSX_est_retrouve(self):
+        motifs = {c[4]: c[5] for c in self._constats(self.ECRAN_CASSE)}
+        self.assertIn("marches_en_execution", motifs)
+        self.assertIn("not valid as a React child",
+                      motifs["marches_en_execution"])
+
+    def test_l_ecran_CORRIGE_ne_produit_aucun_constat(self):
+        # Le meme ecran, tel qu'il est aujourd'hui : zero constat. Une garde
+        # qui rougirait ici serait desactivee dans la semaine.
+        correct = """
+import aoApi from '../../api/aoApi'
+export default function DashboardPage() {
+  const { data } = useResource(() => aoApi.tableauMarches(), undefined, {
+    select: (res) => res.data,
+  })
+  const enCours = data.en_cours ?? {}
+  const reussite = data.reussite ?? {}
+  const cautions = data.cautions ?? {}
+  const marches = data.marches_en_execution ?? {}
+  const capacite = data.capacite ?? {}
+  return <b>{entier(data.echeances_dues)}{enCours.total}{reussite.gagnes}
+    {cautions.nombre}{marches.total}{capacite.ecart_modules}</b>
+}
+"""
+        self.assertEqual(self._constats(correct), [])
+
+    # ── Les trois faux positifs que l'appariement par NOM produisait ────────
+    def test_homonymie_un_champ_du_MEME_nom_sur_un_AUTRE_endpoint(self):
+        # POS, paie et flotte publient tous un champ `total` : apparier par nom
+        # de champ tombait sous 10 % de precision. Ici l'ecran lit `total` sur
+        # un endpoint QUI NE PORTE PAS DE CONTRAT -> aucun constat, jamais.
+        autre = """
+import posApi from '../../api/posApi'
+export default function Caisse() {
+  const { data } = useResource(() => posApi.tableauCaisse(), undefined, {
+    select: (res) => res.data,
+  })
+  return <b>{data.total}{data.echeances_dues}</b>
+}
+"""
+        write(self.base / "src" / "api" / "posApi.js", "export default {}\n")
+        self.assertEqual(self._constats(autre, nom="Caisse.jsx"), [])
+
+    def test_un_nom_de_variable_aussi_utilise_comme_parametre_est_abandonne(self):
+        # LE piege mesure : `const r = await aoApi.tableauMarches()` lie `r`,
+        # mais `.then((r) => r.data.results)` ailleurs dans le MEME fichier
+        # designe un AUTRE endpoint. Cinq faux positifs sur cinq (ged, audit,
+        # ia, monitoring, ventes) venaient de la.
+        ambigu = """
+import aoApi from '../../api/aoApi'
+export default function Ecran() {
+  const charger = async () => {
+    const r = await aoApi.tableauMarches()
+    setStats(r.data.en_cours)
+  }
+  autreApi.getAcls().then((r) => setEntries(r.data?.results ?? []))
+}
+"""
+        self.assertEqual(self._constats(ambigu, nom="Ecran.jsx"), [])
+
+    def test_sans_select_data_on_n_apparie_pas(self):
+        # Sans `select: (r) => r.data`, la variable porte peut-etre la reponse
+        # axios entiere : accuser reviendrait a deviner.
+        sans_select = """
+import aoApi from '../../api/aoApi'
+export default function Ecran() {
+  const { data } = useResource(() => aoApi.tableauMarches())
+  return <b>{data.champ_invente}</b>
+}
+"""
+        self.assertEqual(self._constats(sans_select, nom="Ecran.jsx"), [])
+
+    def test_une_variable_liee_deux_fois_est_abandonnee(self):
+        deux_fois = """
+import aoApi from '../../api/aoApi'
+function A() {
+  const { data } = useResource(() => aoApi.tableauMarches(), undefined, {
+    select: (res) => res.data,
+  })
+  return <b>{data.champ_invente}</b>
+}
+function B() {
+  const { data } = useResource(() => autreApi.autre(), undefined, {
+    select: (res) => res.data,
+  })
+  return <b>{data.autre_champ}</b>
+}
+"""
+        self.assertEqual(self._constats(deux_fois, nom="Deux.jsx"), [])
+
+    def test_le_depot_reel_ne_produit_AUCUN_constat(self):
+        # L'exigence de PACT9 : zero faux positif. Cette garde n'est livrable
+        # qu'a cette condition — une garde bruyante sera desactivee, et la
+        # recidive serait la cinquieme.
+        shapes.ROOT, shapes.FRONT_SRC = self._root, self._src
+        try:
+            constats = shapes.champs_fantomes(contrat_reel())
+        finally:
+            shapes.ROOT = self.base
+            shapes.FRONT_SRC = self.base / "src"
+        self.assertEqual(constats, [], f"faux positifs PACT9 : {constats}")
+
+
+class EchantillonDeContratTests(unittest.TestCase):
+    """PACT10 — l'exemple partage derive du serveur, ou il rougit.
+
+    Un exemple qui pourrit dans son coin serait pire que pas d'exemple du tout :
+    les deux moities le liraient en croyant lire le serveur.
+    """
+
+    ROUTE = "/api/django/ao/tableau-marches"
+    CONTRAT = {(Path("aoApi.js"), "tableauMarches"): (
+        ROUTE, {"en_cours": shapes.OBJET, "echeances_dues": shapes.NOMBRE})}
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.apps = Path(self.tmp.name) / "apps"
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def _constats(self, document: str):
+        write(self.apps / "ao" / "contract_samples" / "tableau_marches.json",
+              document)
+        return shapes.echantillons_de_contrat(self.CONTRAT, self.apps)
+
+    def test_un_exemple_conforme_ne_produit_rien(self):
+        self.assertEqual(self._constats(
+            '{"endpoint": "GET /api/django/ao/tableau-marches/",'
+            ' "exemple": {"en_cours": {"total": 3}, "echeances_dues": 2}}'), [])
+
+    def test_une_cle_inventee_par_l_exemple_rougit(self):
+        constats = self._constats(
+            '{"endpoint": "GET /api/django/ao/tableau-marches/",'
+            ' "exemple": {"en_cours": {}, "echeances_dues": 2, "ao_en_cours": 7}}')
+        self.assertEqual([c[4] for c in constats], ["ao_en_cours"])
+
+    def test_une_cle_omise_par_l_exemple_rougit(self):
+        # Un exemple incomplet laisse un champ HORS contrat : la moitie qui le
+        # lit croit que le champ n'existe pas.
+        constats = self._constats(
+            '{"endpoint": "GET /api/django/ao/tableau-marches/",'
+            ' "exemple": {"en_cours": {}}}')
+        self.assertEqual([c[4] for c in constats], ["echeances_dues"])
+
+    def test_une_nature_incompatible_rougit(self):
+        # LE plantage du 03/08 : `echeances_dues` est un NOMBRE cote serveur,
+        # une LISTE dans la charge utile inventee par le frontend.
+        constats = self._constats(
+            '{"endpoint": "GET /api/django/ao/tableau-marches/",'
+            ' "exemple": {"en_cours": {}, "echeances_dues": []}}')
+        self.assertEqual(len(constats), 1)
+        self.assertIn("en nombre", constats[0][5])
+        self.assertIn("en liste", constats[0][5])
+
+    def test_un_endpoint_hors_contrat_ne_rougit_jamais(self):
+        # Un doute ne rougit JAMAIS : la forme de cet endpoint n'est pas
+        # certaine statiquement, donc on n'accuse pas son exemple.
+        self.assertEqual(self._constats(
+            '{"endpoint": "GET /api/django/ao/inconnu/",'
+            ' "exemple": {"quoi": 1}}'), [])
+
+    def test_un_fichier_malforme_rougit_avec_le_format_attendu(self):
+        constats = self._constats('{"exemple": {}}')
+        self.assertEqual(len(constats), 1)
+        self.assertIn("contract_samples/README.md", constats[0][5])
+
+    def test_l_echantillon_pilote_du_depot_est_conforme(self):
+        # Le module pilote de PACT10 : `apps/ao/contract_samples/`.
+        fichiers = shapes.fichiers_echantillons()
+        self.assertTrue(any(f.name == "tableau_marches.json" for f in fichiers),
+                        "l'echantillon pilote AO a disparu")
+        self.assertEqual(shapes.echantillons_de_contrat(contrat_reel()), [])
+
+
+class MocksLitterauxTests(unittest.TestCase):
+    """PACT13 — un mock écrit à la main est une DEUXIÈME source de vérité.
+
+    Dès que l'endpoint porte un exemple committé (PACT10), le test l'importe.
+    """
+
+    ROUTE = "/api/django/ao/tableau-marches"
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.base = Path(self.tmp.name)
+        self.apps = self.base / "apps"
+        write(self.apps / "ao" / "contract_samples" / "tableau_marches.json",
+              '{"endpoint": "GET /api/django/ao/tableau-marches/",'
+              ' "exemple": {"echeances_dues": 2}}')
+        self.client = write(self.base / "src" / "api" / "aoApi.js", "\n")
+        self.contrat = {(self.client.resolve(), "tableauMarches"):
+                        (self.ROUTE, {"echeances_dues": shapes.NOMBRE})}
+        self._root, self._src = shapes.ROOT, shapes.FRONT_SRC
+        shapes.ROOT, shapes.FRONT_SRC = self.base, self.base / "src"
+
+    def tearDown(self):
+        shapes.ROOT, shapes.FRONT_SRC = self._root, self._src
+        self.tmp.cleanup()
+
+    def _constats(self, source: str):
+        write(self.base / "src" / "features" / "ao" / "DashboardPage.test.jsx",
+              source)
+        return shapes.mocks_litteraux_sous_contrat(self.contrat, self.apps)
+
+    TEST_LITTERAL = """
+vi.mock('../../api/aoApi', () => ({ default: { tableauMarches } }))
+const PAYLOAD = { ao_en_cours: 7, echeances_dues: [1, 2] }
+tableauMarches.mockResolvedValue({ data: PAYLOAD })
+"""
+
+    def test_une_charge_utile_ecrite_a_la_main_est_REFUSEE(self):
+        constats = self._constats(self.TEST_LITTERAL)
+        self.assertEqual(len(constats), 1)
+        motif = constats[0][5]
+        self.assertIn("ECRITE A LA MAIN", motif)
+
+    def test_le_message_NOMME_la_fixture_a_importer(self):
+        # Une garde qui refuse sans dire par quoi remplacer est une garde qu'on
+        # contourne. Le message porte l'import ET l'appel exacts.
+        motif = self._constats(self.TEST_LITTERAL)[0][5]
+        self.assertIn(shapes.FIXTURE_CONTRAT, motif)
+        self.assertIn("reponseContrat('ao', 'tableau_marches')", motif)
+        self.assertIn("contract_samples/tableau_marches.json", motif)
+
+    def test_un_test_qui_IMPORTE_la_fixture_passe(self):
+        source = (
+            "import { reponseContrat } from '../../test/fixtures/contractSamples'\n"
+            + self.TEST_LITTERAL)
+        self.assertEqual(self._constats(source), [])
+
+    def test_un_endpoint_SANS_exemple_committe_n_est_jamais_refuse(self):
+        # Portée délibérée : exiger une fixture qui n'existe pas serait
+        # commander du travail impossible. La migration se fait app par app.
+        contrat = {(self.client.resolve(), "autreFonction"):
+                   ("/api/django/ao/autre", {"x": shapes.NOMBRE})}
+        write(self.base / "src" / "features" / "ao" / "Autre.test.jsx",
+              "vi.mock('../../api/aoApi', () => ({ default: { autreFonction } }))\n"
+              "autreFonction.mockResolvedValue({ data: { x: 1 } })\n")
+        self.assertEqual(
+            shapes.mocks_litteraux_sous_contrat(contrat, self.apps), [])
+
+    def test_le_depot_reel_ne_produit_aucun_constat(self):
+        # Le module pilote AO est migré : la garde doit être verte, sinon elle
+        # commande une migration qui n'a pas de fixture.
+        shapes.ROOT, shapes.FRONT_SRC = self._root, self._src
+        try:
+            constats = shapes.mocks_litteraux_sous_contrat(contrat_reel())
+        finally:
+            shapes.ROOT, shapes.FRONT_SRC = self.base, self.base / "src"
+        self.assertEqual(constats, [], f"tests à migrer (PACT13) : {constats}")
+
+    def test_le_pilote_AO_importe_bien_la_fixture(self):
+        pilote = (self._root / "frontend" / "src" / "features" / "ao"
+                  / "DashboardPage.test.jsx")
+        source = pilote.read_text(encoding="utf-8")
+        self.assertIn(shapes.FIXTURE_CONTRAT, source)
+        self.assertIn("exempleContrat('ao', 'tableau_marches')", source)
+        # La charge utile ne doit plus être retapée dans le fichier.
+        self.assertNotIn("const PAYLOAD = {", source)
 
 
 class DepotReelTests(unittest.TestCase):
