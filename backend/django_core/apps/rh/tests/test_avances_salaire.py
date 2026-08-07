@@ -17,11 +17,12 @@ from rest_framework_simplejwt.tokens import AccessToken
 
 from authentication.models import Company
 from apps.rh import selectors
-from apps.rh.models import AvanceSalaire, DossierEmploye
+from apps.rh.models import AvanceSalaire, DossierEmploye, ElementsVariablesPaie
 
 User = get_user_model()
 
 URL = '/api/django/rh/avances-salaire/'
+EVP_URL = '/api/django/rh/elements-variables-paie/'
 
 
 def make_company(slug, nom):
@@ -149,3 +150,42 @@ class AvanceSalaireTests(TestCase):
     def test_role_normal_refuse(self):
         normal = make_user(self.co_a, 'av-normal', role='normal')
         self.assertEqual(auth(normal).get(URL).status_code, 403)
+
+    def test_avance_approuvee_arrive_dans_export_paie_csv(self):
+        """PACT162 — une avance APPROUVÉE change la colonne Retenues du CSV.
+
+        Régression FG192 : ``avances_a_deduire`` n'avait aucun appelant hors
+        tests — l'export au prestataire de paie omettait l'avance.
+        """
+        ElementsVariablesPaie.objects.create(
+            company=self.co_a, employe=self.emp_a, annee=2026, mois=7,
+            retenues=Decimal('50.00'))
+        api = auth(self.user_a)
+
+        # Avant approbation : la colonne Retenues ne porte que la saisie
+        # manuelle du bordereau (50.00).
+        resp_avant = api.get(f'{EVP_URL}export-paie-csv/?annee=2026&mois=7')
+        self.assertEqual(resp_avant.status_code, 200)
+        ligne_avant = self._ligne_csv(resp_avant, 'AV1')
+        self.assertEqual(ligne_avant[10], '50.00')
+
+        av = AvanceSalaire.objects.create(
+            company=self.co_a, employe=self.emp_a, montant=Decimal('300.00'),
+            annee_deduction=2026, mois_deduction=7)
+        api.post(f'{URL}{av.id}/approuver/')
+
+        resp_apres = api.get(f'{EVP_URL}export-paie-csv/?annee=2026&mois=7')
+        ligne_apres = self._ligne_csv(resp_apres, 'AV1')
+        # 50.00 (saisie manuelle) + 300.00 (avance approuvée) = 350.00.
+        self.assertEqual(ligne_apres[10], '350.00')
+
+    @staticmethod
+    def _ligne_csv(resp, matricule):
+        import csv
+        import io
+
+        body = resp.content.decode('utf-8-sig')
+        for ligne in csv.reader(io.StringIO(body)):
+            if ligne and ligne[0] == matricule:
+                return ligne
+        raise AssertionError(f'ligne {matricule} absente du CSV : {body!r}')
