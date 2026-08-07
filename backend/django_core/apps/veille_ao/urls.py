@@ -9,13 +9,26 @@ un underscore, pas un tiret) : le gatage 404 des modules désactivés
 segment en tiret imposerait une entrée ``core/permissions.PREFIX_TO_MODULE``.
 Une garde le vérifie dans ``tests/test_smoke.py``.
 
-Le routeur est vide à la création du module : les ViewSets s'enregistrent ici
-au fur et à mesure (sources, avis, mots-clés, règles d'exclusion).
+VAO12 — les basenames sont préfixés ``veille-ao-`` : le dépôt monte plusieurs
+routeurs et deux entrées de même nom feraient renvoyer silencieusement la
+mauvaise URL à ``reverse()``.
 """
 from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 
+from .viewsets import (
+    AvisMarcheViewSet, MotCleVeilleViewSet, RegleExclusionViewSet,
+    SourceVeilleViewSet,
+)
+
 router = DefaultRouter()
+router.register(r'sources', SourceVeilleViewSet,
+                basename='veille-ao-source')
+router.register(r'avis', AvisMarcheViewSet, basename='veille-ao-avis')
+router.register(r'mots-cles', MotCleVeilleViewSet,
+                basename='veille-ao-mot-cle')
+router.register(r'regles-exclusion', RegleExclusionViewSet,
+                basename='veille-ao-regle-exclusion')
 
 urlpatterns = [
     path('', include(router.urls)),

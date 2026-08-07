@@ -10,7 +10,7 @@ que par le service unique de transition (VAO14).
 """
 from rest_framework import serializers
 
-from .models import AvisMarche, SourceVeille
+from .models import AvisMarche, MotCleVeille, RegleExclusion, SourceVeille
 
 
 class SourceVeilleSerializer(serializers.ModelSerializer):
@@ -30,6 +30,31 @@ class SourceVeilleSerializer(serializers.ModelSerializer):
                             'updated_at']
 
 
+class MotCleVeilleSerializer(serializers.ModelSerializer):
+    niveau_libelle = serializers.CharField(
+        source='get_niveau_display', read_only=True)
+
+    class Meta:
+        model = MotCleVeille
+        fields = ['id', 'libelle', 'niveau', 'niveau_libelle', 'poids',
+                  'actif', 'created_at', 'updated_at']
+        read_only_fields = ['created_at', 'updated_at']
+
+
+class RegleExclusionSerializer(serializers.ModelSerializer):
+    portee_libelle = serializers.CharField(
+        source='get_portee_display', read_only=True)
+
+    class Meta:
+        model = RegleExclusion
+        fields = ['id', 'portee', 'portee_libelle', 'valeur', 'motif',
+                  'actif', 'compteur_application', 'created_at',
+                  'updated_at']
+        # Le compteur est tenu par le service, jamais posé par le client.
+        read_only_fields = ['compteur_application', 'created_at',
+                            'updated_at']
+
+
 class AvisMarcheSerializer(serializers.ModelSerializer):
     source_libelle = serializers.CharField(
         source='source.libelle', read_only=True)
@@ -40,6 +65,10 @@ class AvisMarcheSerializer(serializers.ModelSerializer):
     categorie_libelle = serializers.CharField(
         source='get_categorie_display', read_only=True)
     est_depasse = serializers.BooleanField(read_only=True)
+    # VAO10 — jamais un filtrage muet : l'écran doit pouvoir dire POURQUOI
+    # un avis a été écarté.
+    regle_exclusion_motif = serializers.CharField(
+        source='regle_exclusion.motif', read_only=True, default='')
 
     class Meta:
         model = AvisMarche
@@ -53,12 +82,15 @@ class AvisMarcheSerializer(serializers.ModelSerializer):
             'mots_cles_declenches', 'score',
             'statut', 'statut_libelle', 'est_depasse',
             'appel_offre_id', 'donnees_brutes',
-            'created_at', 'updated_at',
+            'regle_exclusion', 'regle_exclusion_motif',
+            'empreinte', 'created_at', 'updated_at',
         ]
         read_only_fields = [
             # Le statut ne bouge QUE par le service de transition (VAO14) ;
             # le score et les mots-clés déclenchés sont calculés (VAO9) ;
-            # l'identifiant d'appel d'offres est posé par la conversion.
+            # l'identifiant d'appel d'offres est posé par la conversion ;
+            # l'empreinte et la règle d'exclusion sont calculées côté serveur.
             'statut', 'score', 'mots_cles_declenches', 'appel_offre_id',
-            'donnees_brutes', 'created_at', 'updated_at',
+            'donnees_brutes', 'regle_exclusion', 'empreinte',
+            'created_at', 'updated_at',
         ]

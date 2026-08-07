@@ -1,30 +1,75 @@
-"""ViewSets du module « veille_ao » (généré par startapp_erp — ARC42).
+"""ViewSets du module « Veille appels d'offres » (VAO12).
 
-CONVENTION (playbook) — un NOUVEAU viewset scopé société hérite de
-``core.viewsets.CompanyScopedModelViewSet`` (ARC2 : queryset filtré sur
-``request.user.company`` + ``company`` forcée côté serveur dans
-``perform_create``/``perform_update``, jamais lue du corps de la requête).
+Tous héritent de ``core.viewsets.CompanyScopedModelViewSet`` (ARC2) : queryset
+filtré sur ``request.user.company`` et ``company`` FORCÉE côté serveur dans
+``perform_create``, jamais lue du corps de la requête.
+``scripts/check_platform.py`` refuse tout NOUVEAU ``ModelViewSet`` hors de ce
+socle.
 
-Il exprime son contrôle d'accès d'UNE SEULE façon, jamais un mélange ad hoc :
-  * lecture ≠ écriture par méthode HTTP → poser ``read_permission`` /
-    ``write_permission`` (le défaut ``ScopedPermission`` les lit) ;
-  * grain par action (ex. ``destroy`` admin-only) → surcharger
-    ``get_permissions`` (prime sur le défaut, DRF standard) ;
-  * cas simple « authentifié suffit » → ne rien poser (défaut ARC55).
+Le contrôle d'accès est exprimé d'UNE seule façon, jamais un mélange ad hoc :
+``read_permission`` / ``write_permission`` (lus par ``ScopedPermission``).
+
+  * ``veille_ao_voir``  — LIRE les avis. Distribué largement : un commercial
+    doit voir passer les avis, sinon la veille ne sert à personne.
+  * ``veille_ao_gerer`` — ÉCRIRE : sources, mots-clés, règles d'exclusion et
+    arbitrages. Palier Responsable/Directeur — ces réglages décident de ce que
+    TOUTE la société voit.
 """
-from core.viewsets import CompanyScopedModelViewSet  # noqa: F401
+from core.viewsets import CompanyScopedModelViewSet
+
+from .models import AvisMarche, MotCleVeille, RegleExclusion, SourceVeille
+from .serializers import (
+    AvisMarcheSerializer, MotCleVeilleSerializer, RegleExclusionSerializer,
+    SourceVeilleSerializer,
+)
+
+VEILLE_AO_VOIR = 'veille_ao_voir'
+VEILLE_AO_GERER = 'veille_ao_gerer'
 
 
-# Exemple (décommenter quand ``models.Exemple`` + son serializer existent) :
-#
-# from .models import Exemple
-# from .serializers import ExempleSerializer
-#
-# class ExempleViewSet(CompanyScopedModelViewSet):
-#     """CRUD scopé société sur ``Exemple`` (isolation ARC2 garantie)."""
-#
-#     queryset = Exemple.objects.all()
-#     serializer_class = ExempleSerializer
-#     # Contrôle d'accès lecture ≠ écriture (sinon : authentifié suffit) :
-#     # read_permission = 'veille_ao_voir'
-#     # write_permission = 'veille_ao_gerer'
+class SourceVeilleViewSet(CompanyScopedModelViewSet):
+    """Le catalogue des sources (VAO7) — réglage, donc palier gestion."""
+
+    queryset = SourceVeille.objects.all()
+    serializer_class = SourceVeilleSerializer
+    read_permission = VEILLE_AO_VOIR
+    write_permission = VEILLE_AO_GERER
+    search_fields = ['code', 'libelle', 'notes']
+    ordering_fields = ['libelle', 'type_source', 'actif',
+                       'derniere_collecte_reussie', 'id']
+
+
+class AvisMarcheViewSet(CompanyScopedModelViewSet):
+    """Le SAS (VAO8) — la liste des avis à trier."""
+
+    queryset = AvisMarche.objects.select_related('source', 'regle_exclusion')
+    serializer_class = AvisMarcheSerializer
+    read_permission = VEILLE_AO_VOIR
+    write_permission = VEILLE_AO_GERER
+    search_fields = ['objet', 'acheteur', 'reference_avis',
+                     'ref_consultation', 'lieu', 'region']
+    ordering_fields = ['date_publication', 'date_limite_remise', 'score',
+                       'acheteur', 'statut', 'id']
+
+
+class MotCleVeilleViewSet(CompanyScopedModelViewSet):
+    """Les mots-clés (VAO9) — de la DONNÉE, réglable sans redéploiement."""
+
+    queryset = MotCleVeille.objects.all()
+    serializer_class = MotCleVeilleSerializer
+    read_permission = VEILLE_AO_VOIR
+    write_permission = VEILLE_AO_GERER
+    search_fields = ['libelle']
+    ordering_fields = ['libelle', 'niveau', 'poids', 'actif', 'id']
+
+
+class RegleExclusionViewSet(CompanyScopedModelViewSet):
+    """Les règles d'exclusion (VAO10) — « Ignorer » qui apprend."""
+
+    queryset = RegleExclusion.objects.all()
+    serializer_class = RegleExclusionSerializer
+    read_permission = VEILLE_AO_VOIR
+    write_permission = VEILLE_AO_GERER
+    search_fields = ['valeur', 'motif']
+    ordering_fields = ['portee', 'valeur', 'compteur_application', 'actif',
+                       'id']

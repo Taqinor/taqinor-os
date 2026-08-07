@@ -234,6 +234,20 @@ ALL_PERMISSIONS = [
     'adminops_config_package_exporter',
     'adminops_config_package_importer',
     'adminops_licences_voir',
+    # ── VAO12 — Veille appels d'offres (apps/veille_ao). Deux codes, et le
+    # partage entre les deux n'est pas cosmétique :
+    #   * ``veille_ao_voir``  — LIRE les avis du sas. Mappé LARGEMENT : un
+    #     commercial doit voir passer les avis, sinon la veille ne sert à
+    #     personne. C'est de l'information PUBLIQUE (des avis de marché
+    #     publiés), pas une donnée sensible.
+    #   * ``veille_ao_gerer`` — ÉCRIRE : modifier les mots-clés, les sources,
+    #     les règles d'exclusion, trancher un avis. Palier Responsable /
+    #     Directeur : ces réglages décident de ce que TOUTE la société voit,
+    #     et l'armement de la collecte en dépend (règle #5).
+    # Aucun accès n'est ÉLARGI par rapport à aujourd'hui : le module est neuf,
+    # ces deux codes n'ouvrent que ses propres routes.
+    'veille_ao_voir',
+    'veille_ao_gerer',
 ]
 
 # Permissions de portée : un rôle qui en porte une voit un sous-ensemble ; sans
@@ -314,6 +328,8 @@ RESPONSABLE_PERMISSIONS = [
     'kb_voir', 'kb_gerer',
     # ENG — accès complet au moteur de publicités (y compris approbation).
     'adsengine_view', 'adsengine_manage', 'adsengine_approve',
+    # VAO12 — veille AO : lecture ET réglage (mots-clés, sources, règles).
+    'veille_ao_voir', 'veille_ao_gerer',
 ]
 
 UTILISATEUR_PERMISSIONS = [
@@ -382,6 +398,9 @@ COMMERCIAL_RESP_PERMISSIONS = [
     # ADSENG47 — gestion des plans de vol (palier responsable). L'ACTIVATION de
     # l'autonomie (``adsengine_autonomy_toggle``) reste admin-seul, non ici.
     'adsengine_flightplan_manage',
+    # VAO12 — veille AO : un commercial responsable lit les avis ET règle la
+    # veille de son équipe (palier responsable).
+    'veille_ao_voir', 'veille_ao_gerer',
     SCOPE_SUBTREE,
 ]
 
@@ -403,6 +422,9 @@ COMMERCIAL_PERMISSIONS = [
     'kb_voir', 'kb_gerer',
     # ENG — gestion des campagnes (l'approbation reste au palier admin).
     'adsengine_view', 'adsengine_manage',
+    # VAO12 — veille AO en LECTURE : un commercial doit voir passer les avis
+    # (c'est le but du module) ; le réglage reste au palier responsable.
+    'veille_ao_voir',
     SCOPE_TEAM,
 ]
 
