@@ -68,6 +68,26 @@ stderr). This is **strictly additive**: with no ``BUILD_ORDER.yml``, or for a
 task whose prefix is absent from the file entirely or listed under
 ``unmapped_ok``, or one with no ``after:`` edge, gating is a pure no-op and
 the schedule is byte-identical to before SCA3.
+
+PACT11 — appariement front<->back
+----------------------------------
+Une tâche FRONTEND (elle déclare un fichier sous ``frontend/src/``) est refusée
+tant qu'elle ne porte pas ``@after`` sur chaque tâche BACKEND du même run qui
+produit les données de la même app (celle qui touche ``apps/<app>/urls.py`` ou
+``apps/<app>/selectors.py``). Le refus vit dans son propre seau
+``pairing_blocked``, avec un motif en français, exactement comme SCA3.
+
+Le cas réel, ligne à ligne : la tâche de l'écran du tableau de bord AO (AOF172)
+déclarait dépendre de la tâche de la LISTE des affaires (AOF170) — et PAS de
+AOF166, la tâche backend qui produit exactement les données qu'il affiche. Ce
+script savait déjà lire ces déclarations de dépendance ; la dépendance existait
+dans la réalité, elle n'a simplement jamais été écrite, donc les deux tâches ont
+été planifiées SIMULTANÉMENT et chaque moitié a inventé son contrat. L'écran a
+planté en production le 03/08/2026. Cette seule vérification l'aurait empêché.
+
+Strictement additif : sans lignes ``Files:``, ou sans tâche backend
+correspondante dans le même run, la porte est un no-op exact. ``--force-wave``
+l'outrepasse (même échappatoire fondateur que SCA3, consignée sur stderr).
 """
 from __future__ import annotations
 
@@ -876,6 +896,11 @@ def parse_tasks(path: Path) -> list[dict]:
             "model": _model_tier(label, lane or "UNASSIGNED", m.group("id"), reasons),
             "cost": _task_cost(label),
             "files": sorted(_task_files(label)),
+            # PACT11 — les MÊMES chemins, surfaces append-only comprises :
+            # `files` sert à forcer la disjonction des lanes (donc exclut
+            # index.css & co.), `files_bruts` sert à savoir ce que la tâche
+            # touche vraiment, front et back.
+            "files_bruts": sorted(_task_files_brut(label)),
         })
     return tasks
 
@@ -911,6 +936,138 @@ def apply_build_order_gate(
         else:
             allowed.append(t)
     return allowed, blocked
+
+
+# ---------------------------------------------------------------------------
+# PACT11 — une lane FRONTEND ne part pas en parallèle de la lane BACKEND qui
+# produit ses données sans `@after` déclaré.
+# ---------------------------------------------------------------------------
+#
+# LE CONSTAT, LIGNE À LIGNE. La tâche de l'écran du tableau de bord AO (AOF172)
+# déclarait dépendre de la tâche de la LISTE des affaires (AOF170) — et PAS de
+# AOF166, la tâche backend qui produit exactement les données qu'il affiche.
+# `plan_lanes.py` sait déjà lire ces déclarations de dépendance. La dépendance
+# EXISTAIT dans la réalité, elle n'a jamais été écrite, donc les deux tâches ont
+# été planifiées SIMULTANÉMENT, chaque moitié inventant son propre contrat.
+# Cette seule vérification aurait bloqué le départ en parallèle.
+#
+# La détection est purement MÉCANIQUE (les lignes `Files:`, rien d'autre) :
+#   * une tâche est FRONTEND si elle déclare un fichier sous `frontend/src/` ;
+#   * une tâche est PRODUCTRICE si elle déclare l'`urls.py` ou le `selectors.py`
+#     d'une app backend (c'est là que naissent les routes et les agrégats) ;
+#   * les deux sont rapprochées par le NOM DE L'APP, présent des deux côtés
+#     (`apps/ao/…` ↔ `frontend/src/api/aoApi.js`, `frontend/src/features/ao/…`).
+# Une tâche MIXTE (les deux moitiés dans la même ligne `Files:`) n'est jamais
+# refusée contre elle-même : elle porte déjà son propre contrat (voir PACT12).
+
+_FRONT_PREFIXE = "frontend/src/"
+_PRODUCTEURS_BACKEND = ("urls.py", "selectors.py")
+_BACKEND_APP_RE = re.compile(r"(?:backend/django_core/)?apps/([\w]+)/")
+_FRONT_API_RE = re.compile(r"frontend/src/api/([\w]+?)Api\.jsx?$")
+_FRONT_DOSSIER_RE = re.compile(r"frontend/src/(?:features|pages)/([\w]+)/")
+
+
+def _task_files_brut(label: str) -> frozenset[str]:
+    """Tous les chemins déclarés par `Files:`, surfaces append-only COMPRISES.
+
+    `_task_files` retire les surfaces append-only (index.css, router/index.jsx…)
+    parce qu'elles ne doivent pas fusionner deux lanes. Ici on veut savoir ce
+    que la tâche TOUCHE, pas ce qui la ferait entrer en conflit.
+    """
+    idx = label.rfind("Files:")
+    if idx < 0:
+        idx = label.rfind("Files :")
+    if idx < 0:
+        return frozenset()
+    return frozenset(
+        raw.strip("`'\" ") for raw in _FILE_PATH_RE.findall(label[idx:])
+    )
+
+
+def _apps_backend(fichiers) -> set[str]:
+    """Apps dont la tâche touche l'`urls.py` ou les `selectors.py`."""
+    out = set()
+    for chemin in fichiers:
+        if not chemin.endswith(_PRODUCTEURS_BACKEND):
+            continue
+        m = _BACKEND_APP_RE.search(chemin)
+        if m:
+            out.add(m.group(1))
+    return out
+
+
+def _apps_frontend(fichiers) -> set[str]:
+    """Apps dont la tâche touche un client API ou un écran."""
+    out = set()
+    for chemin in fichiers:
+        if not chemin.startswith(_FRONT_PREFIXE):
+            continue
+        for motif in (_FRONT_API_RE, _FRONT_DOSSIER_RE):
+            m = motif.search(chemin)
+            if m:
+                out.add(m.group(1))
+                break
+    return out
+
+
+def apply_contract_pairing_gate(
+    tasks: list[dict], force_wave: bool = False,
+) -> tuple[list[dict], list[dict]]:
+    """PACT11 — sépare ``tasks`` en ``(autorisées, refusées)``.
+
+    Une tâche FRONTEND d'une app est refusée tant qu'elle ne porte pas `@after`
+    sur CHAQUE tâche backend du même run qui produit les données de cette app
+    (son `urls.py` / ses `selectors.py`). Refuser, ici, veut dire « ne pas la
+    donner à un agent AUJOURD'HUI » — pas « ne jamais la construire » : soit la
+    dépendance est écrite et l'ordre devient correct, soit le contrat part
+    d'abord (PACT10) et les deux moitiés le partagent.
+
+    Rétro-compatible par construction : sans lignes `Files:` (ou sans tâche
+    backend correspondante dans le même run), la fonction renvoie
+    ``(tasks, [])``, soit exactement le comportement d'avant PACT11.
+    """
+    if force_wave:
+        return tasks, []
+
+    producteurs: dict[str, list[dict]] = {}
+    for t in tasks:
+        for app in _apps_backend(t.get("files_bruts", ())):
+            producteurs.setdefault(app, []).append(t)
+    if not producteurs:
+        return tasks, []
+
+    autorisees: list[dict] = []
+    refusees: list[dict] = []
+    for t in tasks:
+        apps_front = _apps_frontend(t.get("files_bruts", ()))
+        manquantes = []
+        for app in sorted(apps_front):
+            for producteur in producteurs.get(app, []):
+                if producteur is t:
+                    continue        # tâche MIXTE : elle porte ses deux moitiés
+                if producteur["id"] in t.get("deps", set()):
+                    continue
+                manquantes.append((app, producteur["id"]))
+        if not manquantes:
+            autorisees.append(t)
+            continue
+        raisons = [
+            f"moitié FRONTEND de « {app} » planifiée en même temps que "
+            f"{autre}, la tâche backend qui produit ses données "
+            f"(apps/{app}/urls.py ou selectors.py), sans `@after: {autre}` "
+            f"déclaré sur elle"
+            for app, autre in manquantes
+        ]
+        raisons.append(
+            "c'est EXACTEMENT la configuration du 03/08/2026 : AOF172 (l'écran "
+            "du tableau de bord AO) déclarait dépendre d'AOF170 (la liste), "
+            "jamais d'AOF166 qui produit ses données — les deux moitiés sont "
+            "parties en parallèle et ont inventé deux contrats différents. "
+            "CORRIGER : ajouter `(@after: <ID backend>)` sur la ligne de la "
+            "tâche, ou livrer le contrat d'abord (PACT10, "
+            "apps/<x>/contract_samples/)")
+        refusees.append({**t, "pairing_block_reasons": raisons})
+    return autorisees, refusees
 
 
 def count_malformed(path: Path) -> int:
@@ -1003,6 +1160,7 @@ def schedule(
     wave_blocked: list[dict] | None = None,
     n_workers: int | None = None,
     wave_size: int = 80,
+    pairing_blocked: list[dict] | None = None,
 ) -> dict:
     """Build lanes and a cross-category, longest-lane-first wave plan.
 
@@ -1014,6 +1172,9 @@ def schedule(
     rendered as its own section, but never re-added to ``buildable``.
     """
     wave_blocked = wave_blocked or []
+    # PACT11 — même contrat que ``wave_blocked`` : déjà retirées de ``tasks``,
+    # surfacées dans leur propre section, jamais réinjectées dans ``buildable``.
+    pairing_blocked = pairing_blocked or []
     buildable = [t for t in tasks if t["gate"] == "buildable" and t["lane"] != "UNASSIGNED"]
     gated = [t for t in tasks if t["gate"] == "gated"]
     unassigned = [t for t in tasks if t["lane"] == "UNASSIGNED" and t["gate"] == "buildable"]
@@ -1119,6 +1280,7 @@ def schedule(
         "gated": gated,
         "unassigned": unassigned,
         "wave_blocked": wave_blocked,
+        "pairing_blocked": pairing_blocked,
         "counts": {
             "buildable": len(buildable),
             "lanes": len(lanes),
@@ -1126,6 +1288,7 @@ def schedule(
             "gated": len(gated),
             "unassigned": len(unassigned),
             "wave_blocked": len(wave_blocked),
+            "pairing_blocked": len(pairing_blocked),
             "max_parallel": max((len(w) for w in waves), default=0),
             "models": model_counts,
             "workers": len(worker_out),
@@ -1232,6 +1395,15 @@ def render(plan: dict, max_lanes: int, source: str) -> str:
         ]
         for t in plan["wave_blocked"]:
             out.append(f"- `{t['id']}`  [{t['lane']}] — " + " ; ".join(t["wave_block_reasons"]))
+    if plan.get("pairing_blocked"):
+        out += [
+            "",
+            "## Refusé — moitié frontend sans `@after` sur sa moitié backend "
+            "(PACT11) — utiliser --force-wave pour outrepasser (fondateur, consigné)",
+        ]
+        for t in plan["pairing_blocked"]:
+            out.append(f"- `{t['id']}`  [{t['lane']}] — "
+                       + " ; ".join(t["pairing_block_reasons"]))
     return "\n".join(out)
 
 
@@ -1328,9 +1500,22 @@ def main(argv: list[str] | None = None) -> int:
                 file=sys.stderr,
             )
 
+    # PACT11 — après la porte d'ordre de vague : une tâche déjà refusée pour
+    # ordre de vague n'a pas besoin d'un second motif.
+    allowed_tasks, pairing_blocked = apply_contract_pairing_gate(
+        allowed_tasks, force_wave=args.force_wave,
+    )
+    for t in pairing_blocked:
+        print(
+            f"REFUSÉ (contrat front↔back, PACT11) : {t['id']} — "
+            + " ; ".join(t["pairing_block_reasons"]),
+            file=sys.stderr,
+        )
+
     plan = schedule(
         allowed_tasks, max(1, args.max_lanes), wave_blocked=wave_blocked,
         n_workers=args.workers, wave_size=args.wave_size,
+        pairing_blocked=pairing_blocked,
     )
     source = ", ".join(
         p.relative_to(ROOT).as_posix() if p.is_relative_to(ROOT) else str(p)
