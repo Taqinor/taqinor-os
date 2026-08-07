@@ -454,6 +454,8 @@
     results:liste
 - frontend/src/api/publicapiApi.js :: getDocs -> /api/django/publicapi/docs
     authentification:objet, base_url:texte, endpoints:liste, endpoints_bulk:objet, endpoints_ecriture:objet, endpoints_lecture_simple:objet, introduction:texte, parametres_communs:objet, scopes:liste, titre:texte, version:texte, webhooks:objet
+- frontend/src/api/publicapiApi.js :: getOpenApiSchema -> /api/public/v1/openapi.json
+    components:objet, info:objet, openapi:inconnu, paths:inconnu, security:liste, servers:liste
 - frontend/src/api/publicapiApi.js :: ocrToCrm -> /api/django/publicapi/ocr-to-crm
     detail:texte, lead_id:inconnu, mode:inconnu
 - frontend/src/api/publicapiApi.js :: sandboxTry -> /api/django/publicapi/sandbox/try
