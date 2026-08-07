@@ -268,6 +268,15 @@ class AvisMarche(TenantModel):
         help_text="Ce qui a été lu tel quel, pour pouvoir rejouer une "
                   "analyse sans retourner sur la source.")
 
+    # VAO11 — dédoublonnage de NIVEAU 2 (le filet). Voir ``hashing.py`` :
+    # empreinte SHA-256 de (référence + acheteur + date limite), pour les
+    # deux cas où l'identifiant de portail est aveugle — l'avis RECTIFIÉ qui
+    # ressort avec un nouvel identifiant, et la saisie manuelle / l'import
+    # qui n'en ont aucun. NON unique : une collision doit METTRE À JOUR, pas
+    # rejeter.
+    empreinte = models.CharField(
+        'Empreinte', max_length=64, blank=True, default='', db_index=True)
+
     # VAO10 — quelle règle a filtré cet avis. Un filtrage MUET est interdit :
     # sans cette trace, l'utilisateur ne peut ni comprendre ni corriger.
     regle_exclusion = models.ForeignKey(
@@ -281,6 +290,19 @@ class AvisMarche(TenantModel):
         verbose_name = 'Avis de marché'
         verbose_name_plural = 'Avis de marché'
         ordering = ['-date_publication', '-id']
+        constraints = [
+            # VAO11 — dédoublonnage de NIVEAU 1 : l'identité propre du
+            # portail, lue directement dans l'URL de détail. La contrainte
+            # est PARTIELLE à dessein : une saisie manuelle et un import de
+            # fichier n'ont AUCUN identifiant de portail, et sans la
+            # condition ils entreraient tous en collision sur la chaîne
+            # vide — c'est le niveau 2 (empreinte) qui les couvre.
+            models.UniqueConstraint(
+                fields=['company', 'source', 'ref_consultation',
+                        'org_acronyme'],
+                condition=~models.Q(ref_consultation=''),
+                name='veille_ao_avis_identite_portail_uniq'),
+        ]
         indexes = [
             models.Index(fields=['company', 'statut'],
                          name='veille_ao_avis_co_statut_idx'),
@@ -288,6 +310,8 @@ class AvisMarche(TenantModel):
                          name='veille_ao_avis_co_limite_idx'),
             models.Index(fields=['company', '-score'],
                          name='veille_ao_avis_co_score_idx'),
+            models.Index(fields=['company', 'empreinte'],
+                         name='veille_ao_avis_co_empr_idx'),
         ]
 
     def __str__(self):

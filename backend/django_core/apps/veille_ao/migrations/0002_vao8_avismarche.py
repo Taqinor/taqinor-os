@@ -39,6 +39,11 @@ class Migration(migrations.Migration):
                 ('statut', models.CharField(choices=[('nouveau', 'Nouveau'), ('retenu', 'Retenu'), ('ignore', 'Ignoré'), ('converti', "Converti en appel d'offres"), ('expire', 'Expiré')], default='nouveau', max_length=20, verbose_name='Statut')),
                 ('appel_offre_id', models.PositiveIntegerField(blank=True, help_text='Entier OPAQUE vers apps.ao — jamais une clé étrangère : les deux apps restent découplées.', null=True, verbose_name="Appel d'offres créé")),
                 ('donnees_brutes', models.JSONField(blank=True, default=dict, help_text='Ce qui a été lu tel quel, pour pouvoir rejouer une analyse sans retourner sur la source.', verbose_name='Données brutes')),
+                # VAO11 — empreinte de dédoublonnage de niveau 2. Posée DANS
+                # le CreateModel (et non par un AddIndex ultérieur) : l'app
+                # est neuve et jamais déployée, la table naît donc avec son
+                # index — aucun verrou d'écriture sur une table vivante.
+                ('empreinte', models.CharField(blank=True, db_index=True, default='', max_length=64, verbose_name='Empreinte')),
                 ('company', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='%(app_label)s_%(class)s_set', to='authentication.company', verbose_name='Société')),
                 ('source', models.ForeignKey(on_delete=django.db.models.deletion.PROTECT, related_name='avis', to='veille_ao.sourceveille', verbose_name='Source')),
             ],
@@ -46,7 +51,12 @@ class Migration(migrations.Migration):
                 'verbose_name': 'Avis de marché',
                 'verbose_name_plural': 'Avis de marché',
                 'ordering': ['-date_publication', '-id'],
-                'indexes': [models.Index(fields=['company', 'statut'], name='veille_ao_avis_co_statut_idx'), models.Index(fields=['company', 'date_limite_remise'], name='veille_ao_avis_co_limite_idx'), models.Index(fields=['company', '-score'], name='veille_ao_avis_co_score_idx')],
+                'indexes': [models.Index(fields=['company', 'statut'], name='veille_ao_avis_co_statut_idx'), models.Index(fields=['company', 'date_limite_remise'], name='veille_ao_avis_co_limite_idx'), models.Index(fields=['company', '-score'], name='veille_ao_avis_co_score_idx'), models.Index(fields=['company', 'empreinte'], name='veille_ao_avis_co_empr_idx')],
+                # VAO11 — dédoublonnage de NIVEAU 1 : l'identité propre du
+                # portail. PARTIELLE : une saisie manuelle ou un import n'a
+                # aucun identifiant de portail et entrerait sinon en
+                # collision sur la chaîne vide.
+                'constraints': [models.UniqueConstraint(condition=models.Q(('ref_consultation', ''), _negated=True), fields=('company', 'source', 'ref_consultation', 'org_acronyme'), name='veille_ao_avis_identite_portail_uniq')],
             },
         ),
     ]

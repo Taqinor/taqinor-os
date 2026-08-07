@@ -12,10 +12,17 @@ faire marche arrière en un geste (désactiver la règle).
 """
 from __future__ import annotations
 
-from django.db.models import F
+import logging
 
+from django.db import transaction
+from django.db.models import F
+from django.utils import timezone
+
+from .hashing import empreinte_avis
 from .models import AvisMarche, PorteeExclusion, RegleExclusion, StatutAvis
 from .scoring import normaliser
+
+logger = logging.getLogger(__name__)
 
 
 def _valeur_de_l_avis(avis, portee):
@@ -121,3 +128,112 @@ def avis_ignores_par(regle):
     """Les avis que CETTE règle a écartés (pour l'écran de la règle)."""
     return AvisMarche.objects.filter(
         company=regle.company, regle_exclusion=regle)
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# VAO11 — dédoublonnage à DEUX niveaux : le cœur de fiabilité du groupe.
+# ─────────────────────────────────────────────────────────────────────────
+
+#: Les champs qu'une rectification a le droit de mettre à jour sur un avis
+#: déjà connu. Le STATUT n'y est PAS : un avis que l'utilisateur a retenu ou
+#: ignoré ne doit jamais être ramené à « nouveau » par une re-collecte.
+CHAMPS_RECTIFIABLES = (
+    'ref_consultation', 'org_acronyme', 'reference_avis', 'objet',
+    'acheteur', 'lieu', 'region', 'procedure', 'categorie', 'lot',
+    'date_publication', 'date_limite_remise', 'date_ouverture',
+    'montant_estime', 'caution_provisoire', 'url_detail',
+)
+
+
+def calculer_empreinte(donnees):
+    """L'empreinte de niveau 2 d'un dictionnaire d'avis."""
+    reference = (donnees.get('reference_avis')
+                 or donnees.get('ref_consultation') or '')
+    return empreinte_avis(
+        reference, donnees.get('acheteur') or '',
+        donnees.get('date_limite_remise'))
+
+
+def trouver_avis_existant(company, source, donnees):
+    """Le SAS a-t-il déjà cet avis ? Renvoie ``(avis, niveau)``.
+
+    ``niveau`` vaut 1 (identité de portail), 2 (empreinte) ou 0 (inconnu).
+    """
+    ref = (donnees.get('ref_consultation') or '').strip()
+    if ref:
+        existant = AvisMarche.objects.filter(
+            company=company, source=source, ref_consultation=ref,
+            org_acronyme=(donnees.get('org_acronyme') or '')).first()
+        if existant is not None:
+            return existant, 1
+
+    empreinte = calculer_empreinte(donnees)
+    if empreinte:
+        # Le filet de niveau 2 traverse les SOURCES à dessein : c'est ainsi
+        # qu'un avis saisi à la main fusionne avec le même avis collecté
+        # ensuite, au lieu de doubler.
+        existant = AvisMarche.objects.filter(
+            company=company, empreinte=empreinte).first()
+        if existant is not None:
+            return existant, 2
+
+    return None, 0
+
+
+def _journaliser_rectification(avis, changements, niveau):
+    """Trace la rectification DANS l'avis — une fusion silencieuse est un
+    bug qu'on ne peut plus expliquer trois mois plus tard.
+    """
+    brutes = dict(avis.donnees_brutes or {})
+    historique = list(brutes.get('rectifications') or [])
+    historique.append({
+        'date': timezone.now().isoformat(),
+        'niveau_dedoublonnage': niveau,
+        'changements': changements,
+    })
+    brutes['rectifications'] = historique
+    avis.donnees_brutes = brutes
+    logger.info(
+        'veille_ao: avis %s rectifié (niveau %s) — champs modifiés : %s',
+        avis.pk, niveau, ', '.join(sorted(changements)) or 'aucun')
+
+
+@transaction.atomic
+def enregistrer_avis(company, source, donnees):
+    """Enregistre UN avis dans le sas, sans jamais créer de doublon.
+
+    Renvoie ``(avis, cree, niveau)`` :
+      * ``cree=True`` → un avis neuf a été inséré (``niveau=0``) ;
+      * ``cree=False`` → un avis déjà connu a été MIS À JOUR, et ``niveau``
+        dit lequel des deux filets l'a reconnu (1 = identité de portail,
+        2 = empreinte).
+
+    Une collision de niveau 2 sans collision de niveau 1 — l'avis rectifié
+    qui ressort avec un NOUVEL identifiant — met à jour l'existant et
+    journalise la rectification, elle ne duplique pas.
+    """
+    champs = {k: v for k, v in donnees.items()
+              if k in CHAMPS_RECTIFIABLES}
+    existant, niveau = trouver_avis_existant(company, source, donnees)
+
+    if existant is None:
+        avis = AvisMarche(company=company, source=source, **champs)
+        avis.empreinte = calculer_empreinte(donnees)
+        avis.save()
+        return avis, True, 0
+
+    changements = []
+    for nom, valeur in champs.items():
+        if getattr(existant, nom) != valeur:
+            setattr(existant, nom, valeur)
+            changements.append(nom)
+
+    nouvelle_empreinte = calculer_empreinte(donnees)
+    if nouvelle_empreinte and existant.empreinte != nouvelle_empreinte:
+        existant.empreinte = nouvelle_empreinte
+        changements.append('empreinte')
+
+    if changements:
+        _journaliser_rectification(existant, changements, niveau)
+        existant.save()
+    return existant, False, niveau
