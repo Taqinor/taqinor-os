@@ -268,6 +268,13 @@ class AvisMarche(TenantModel):
         help_text="Ce qui a été lu tel quel, pour pouvoir rejouer une "
                   "analyse sans retourner sur la source.")
 
+    # VAO10 — quelle règle a filtré cet avis. Un filtrage MUET est interdit :
+    # sans cette trace, l'utilisateur ne peut ni comprendre ni corriger.
+    regle_exclusion = models.ForeignKey(
+        'veille_ao.RegleExclusion', on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='avis_ignores',
+        verbose_name="Règle d'exclusion appliquée")
+
     objects = AvisMarcheQuerySet.as_manager()
 
     class Meta:
@@ -360,3 +367,64 @@ class MotCleVeille(TenantModel):
 
     def __str__(self):
         return self.libelle
+
+
+class PorteeExclusion(models.TextChoices):
+    """Sur QUOI une règle d'exclusion mord (VAO10)."""
+
+    ACHETEUR = 'acheteur', 'Acheteur'
+    LIBELLE = 'libelle', "Mot de l'objet"
+    CATEGORIE = 'categorie', 'Catégorie'
+    REGION = 'region', 'Région'
+
+
+class RegleExclusionQuerySet(models.QuerySet):
+    def actives(self):
+        return self.filter(actif=True)
+
+
+class RegleExclusion(TenantModel):
+    """« Ignorer » doit APPRENDRE, sinon l'écran se remplit de bruit.
+
+    Constat de conception (VAO10) : un avis ignoré qui remonte à chaque
+    collecte tue l'usage de l'écran en deux semaines. Une règle mémorise
+    l'arbitrage — et **le motif est obligatoire** : une exclusion sans raison
+    écrite est indéfendable six mois plus tard.
+
+    Une règle DÉSACTIVÉE cesse immédiatement de mordre : les avis suivants
+    réapparaissent (la marche arrière doit être triviale).
+    """
+
+    portee = models.CharField(
+        'Portée', max_length=20, choices=PorteeExclusion.choices)
+    valeur = models.CharField(
+        'Valeur', max_length=200,
+        help_text="Ce qui est comparé : acheteur, mot de l'objet, catégorie "
+                  "ou région.")
+    motif = models.CharField(
+        'Motif', max_length=255,
+        help_text="Pourquoi cet arbitrage — en français, obligatoire.")
+    actif = models.BooleanField('Active', default=True)
+    compteur_application = models.PositiveIntegerField(
+        "Nombre d'applications", default=0,
+        help_text="Combien d'avis cette règle a filtrés — une règle qui ne "
+                  "sert jamais est une règle à supprimer.")
+
+    objects = RegleExclusionQuerySet.as_manager()
+
+    class Meta:
+        verbose_name = "Règle d'exclusion"
+        verbose_name_plural = "Règles d'exclusion"
+        ordering = ['portee', 'valeur', 'id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'portee', 'valeur'],
+                name='veille_ao_regle_co_portee_valeur_uniq'),
+        ]
+        indexes = [
+            models.Index(fields=['company', 'actif'],
+                         name='veille_ao_regle_co_actif_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.get_portee_display()} : {self.valeur}'
