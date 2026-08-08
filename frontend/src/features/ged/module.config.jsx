@@ -5,7 +5,7 @@
 import { lazy } from 'react'
 import {
   FolderOpen, FileSignature, ShieldCheck, Tags, ScanLine, Trash2, ClipboardList,
-  Files, Vault, Workflow, KeyRound,
+  Files, Vault, Workflow, KeyRound, Route,
 } from 'lucide-react'
 import { appGlyph } from '../../lib/apps/appGlyph'
 
@@ -51,6 +51,8 @@ const CoffresPage = lazy(() => import('./advanced/CoffresPage.jsx'))
 const ReglesDossierPage = lazy(() => import('./advanced/ReglesDossierPage.jsx'))
 // PACT133 — règles d'accès par métadonnée (XGED21), couche ACL dynamique.
 const ReglesAclPage = lazy(() => import('./advanced/ReglesAclPage.jsx'))
+// PACT136 — routage documentaire automatique (ZGED6).
+const RoutagesPage = lazy(() => import('./advanced/RoutagesPage.jsx'))
 
 const ROLES = ['responsable', 'admin']
 const TOUS = ['normal', 'responsable', 'admin']
@@ -79,6 +81,7 @@ export default {
       { to: '/ged/coffres', label: 'Coffres-forts', icon: <Vault size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
       { to: '/ged/regles-dossier', label: 'Règles de dossier', icon: <Workflow size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
       { to: '/ged/regles-acl', label: 'Règles ACL métadonnée', icon: <KeyRound size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
+      { to: '/ged/routages', label: 'Routage documentaire', icon: <Route size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
     ],
   },
   titles: [
@@ -91,6 +94,7 @@ export default {
     ['/ged/coffres', 'Coffres-forts'],
     ['/ged/regles-dossier', 'Règles de dossier'],
     ['/ged/regles-acl', 'Règles ACL métadonnée'],
+    ['/ged/routages', 'Routage documentaire'],
     ['/ged', 'Documents (GED)'],
   ],
   sectionLabels: { ged: 'Documents (GED)' },
@@ -104,5 +108,6 @@ export default {
     { path: '/ged/coffres', component: CoffresPage, roles: ROLES },
     { path: '/ged/regles-dossier', component: ReglesDossierPage, roles: ROLES },
     { path: '/ged/regles-acl', component: ReglesAclPage, roles: ROLES },
+    { path: '/ged/routages', component: RoutagesPage, roles: ROLES },
   ],
 }

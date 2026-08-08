@@ -425,6 +425,19 @@ const gedApi = {
       modele, libelle, clients: clientIds ?? [],
     })
   },
+
+  // ══════════════════════════════════════════════════════════════════════
+  // PACT136 — Routage documentaire automatique (ZGED6).
+  // ══════════════════════════════════════════════════════════════════════
+  getRoutagesDocumentaires: (params) =>
+    api.get('/ged/routages-documentaires/', { params }),
+  // `data` : { source, cabinet_cible, dossier_cible, tags_defaut?, actif? }.
+  createRoutageDocumentaire: (data) =>
+    api.post('/ged/routages-documentaires/', data),
+  updateRoutageDocumentaire: (id, data) =>
+    api.patch(`/ged/routages-documentaires/${id}/`, data),
+  deleteRoutageDocumentaire: (id) =>
+    api.delete(`/ged/routages-documentaires/${id}/`),
 }
 
 export default gedApi
