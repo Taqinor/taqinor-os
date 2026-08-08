@@ -5,7 +5,7 @@
    module.config.jsx`. */
 import { lazy } from 'react'
 import {
-  Construction, FileEdit, FileQuestion, MapPin, NotebookPen, Stamp,
+  Calculator, Construction, FileEdit, FileQuestion, MapPin, NotebookPen, Stamp,
 } from 'lucide-react'
 import { appGlyph } from '../../lib/apps/appGlyph'
 
@@ -35,6 +35,7 @@ const RFIPage = lazy(() => import('./RFI'))
 const VisasDocumentsPage = lazy(() => import('./VisasDocuments'))
 const JournalChantierPage = lazy(() => import('./JournalChantier'))
 const AvenantsChantierPage = lazy(() => import('./AvenantsChantier'))
+const DecompteGeneralPage = lazy(() => import('./DecompteGeneral'))
 
 const ROLES = ['normal', 'responsable', 'admin']
 
@@ -78,6 +79,12 @@ const config = {
         icon: <FileEdit size={17} strokeWidth={1.75} aria-hidden="true" />,
         roles: ['responsable', 'admin'],
       },
+      {
+        to: '/btp-chantier/dgd',
+        label: 'Décompte général et définitif',
+        icon: <Calculator size={17} strokeWidth={1.75} aria-hidden="true" />,
+        roles: ['responsable', 'admin'],
+      },
     ],
   },
   titles: [
@@ -86,6 +93,7 @@ const config = {
     ['/btp-chantier/visas', 'Visas de documents techniques'],
     ['/btp-chantier/journal', 'Journal de chantier'],
     ['/btp-chantier/avenants', 'Avenants de chantier'],
+    ['/btp-chantier/dgd', 'Décompte général et définitif'],
   ],
   sectionLabels: { 'btp-chantier': 'BTP Chantier' },
   routes: [
@@ -94,6 +102,7 @@ const config = {
     { path: '/btp-chantier/visas', component: VisasDocumentsPage, roles: ['responsable', 'admin'] },
     { path: '/btp-chantier/journal', component: JournalChantierPage, roles: ROLES },
     { path: '/btp-chantier/avenants', component: AvenantsChantierPage, roles: ['responsable', 'admin'] },
+    { path: '/btp-chantier/dgd', component: DecompteGeneralPage, roles: ['responsable', 'admin'] },
   ],
 }
 

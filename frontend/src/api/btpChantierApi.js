@@ -92,6 +92,34 @@ const btpChantierApi = {
     refuser: (id, motif) =>
       api.post(`/btp-chantier/avenants-chantier/${id}/refuser/`, { motif }),
   },
+
+  // ── PACT67 — Décompte général et définitif (DGD) — NTCON9/10/11 ─────────
+  decomptes: {
+    // `params` : { chantier } — optionnel.
+    list: (params) => api.get('/btp-chantier/decomptes-generaux/', { params }),
+    // `data` : { chantier, montant_marche_initial_ht?, situations_incluses?,
+    // retenue_garantie_id? } — `reference` (préfixe DGD) + totaux recalculés
+    // côté serveur à la création.
+    create: (data) => api.post('/btp-chantier/decomptes-generaux/', data),
+    notifier: (id) => api.post(`/btp-chantier/decomptes-generaux/${id}/notifier/`),
+    contester: (id, motif, montantConteste) =>
+      api.post(`/btp-chantier/decomptes-generaux/${id}/contester/`, {
+        motif, montant_conteste: montantConteste,
+      }),
+    finaliser: (id) => api.post(`/btp-chantier/decomptes-generaux/${id}/finaliser/`),
+    // Réservé admin (403 serveur sinon) — DGD verrouillé (statut définitif).
+    deverrouiller: (id, motif) =>
+      api.post(`/btp-chantier/decomptes-generaux/${id}/deverrouiller/`, { motif }),
+    exportPdf: (id) =>
+      api.get(`/btp-chantier/decomptes-generaux/${id}/export-pdf/`, {
+        responseType: 'blob',
+      }),
+  },
+  // NTCON11 — comparatif déboursé sec vs facturé (admin/responsable only —
+  // jamais un coût dans une sortie client). Route hors du routeur DRF du
+  // module (vue fonction dédiée par chantier).
+  debourseVsFacture: (chantierId) =>
+    api.get(`/btp-chantier/chantiers/${chantierId}/debourse-vs-facture/`),
 }
 
 export default btpChantierApi
