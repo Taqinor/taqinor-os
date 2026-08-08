@@ -32,6 +32,12 @@ const mocks = vi.hoisted(() => ({
   equipementsList: vi.fn(),
   exigencesList: vi.fn(),
   exigencesCreate: vi.fn(),
+  // PACT69 — le panneau « Bordereau » interroge désormais la VRAIE ressource
+  // (`aoApi.bordereaux`), publiée par cette même tâche.
+  bordereauxList: vi.fn(),
+  bordereauxGet: vi.fn(),
+  bordereauxControles: vi.fn(),
+  lignesBordereauUpdate: vi.fn(),
 }))
 
 vi.mock('react-router-dom', async () => {
@@ -56,6 +62,10 @@ vi.mock('../../api/aoApi', () => ({
     calepinages: { get: mocks.calepinageGet, calculer: mocks.calepinageCalculer },
     equipements: { list: mocks.equipementsList, bascule: vi.fn() },
     exigencesCps: { list: mocks.exigencesList, create: mocks.exigencesCreate },
+    bordereaux: {
+      list: mocks.bordereauxList, get: mocks.bordereauxGet, controles: mocks.bordereauxControles,
+    },
+    lignesBordereau: { update: mocks.lignesBordereauUpdate },
   },
 }))
 
@@ -157,6 +167,7 @@ beforeEach(() => {
   mocks.equipementsList.mockResolvedValue({ data: [] })
   mocks.exigencesList.mockResolvedValue({ data: [] })
   mocks.controlesAvantDepot.mockResolvedValue({ data: { controles: [] } })
+  mocks.bordereauxList.mockResolvedValue({ data: [] })
 })
 
 // Les 11 onglets de la fiche, dans leur ordre RÉEL : les 7 d'origine, les 3
@@ -355,16 +366,21 @@ describe('AffaireDetail', () => {
       expect(mocks.dossierGet).not.toHaveBeenCalled()
     })
 
-    it('« Bordereau » monte le VRAI BordereauPage, qui NOMME son motif d’indisponibilité', async () => {
+    // PACT69 — `aoApi.bordereaux` est désormais PUBLIÉ : l'onglet monte le
+    // VRAI `BordereauAffairePanel`, qui interroge le serveur au lieu d'un
+    // motif d'indisponibilité figé.
+    it('« Bordereau » monte le VRAI BordereauAffairePanel, filtré sur CETTE affaire', async () => {
       renderScreen()
       await screen.findByText('AO-2026-001')
       await userEvent.click(onglet('Bordereau'))
 
-      // Titre d'état vide propre à BordereauPage (aucun placeholder ne le rend).
-      expect(await screen.findByText('Bordereau indisponible', {}, { timeout: 15000 })).toBeInTheDocument()
-      // Le motif est EXPLICITE (client API sans ressource bordereau), pas un
-      // « écran en construction » muet.
-      expect(screen.getByText(/ne publie pas encore de ressource bordereau/)).toBeInTheDocument()
+      await waitFor(
+        () => expect(mocks.bordereauxList).toHaveBeenCalledWith({ appel_offre: '1' }),
+        { timeout: 15000 },
+      )
+      // Aucun bordereau pour cette affaire (mock par défaut) : état vide
+      // HONNÊTE, propre à `BordereauAffairePanel` — jamais un motif figé.
+      expect(await screen.findByText('Aucun bordereau des prix')).toBeInTheDocument()
     })
 
     // 03/08/2026 — CE TEST A CHANGÉ DE SENS, volontairement. Il épinglait
@@ -517,7 +533,7 @@ describe('AffaireDetail', () => {
       for (const chemin of [
         './toiture/ToituresPage',
         './calepinage/CalepinageStudio',
-        './bordereau/BordereauPage',
+        './bordereau/BordereauAffairePanel',
         './dossier/DossierPage',
         './questions/SeriesPage',
         './administratif/AdministratifPage',

@@ -290,6 +290,20 @@ const aoApi = {
   // tableaux de bord AO concurrents) : AO en cours, taux de réussite, cautions
   // immobilisées, marchés en exécution, capacité vs engagement, échéances dues.
   tableauMarches: () => api.get('/ao/tableau-marches/'),
+
+  /* ── PACT69 — Bordereau des prix (AOF120, `bordereaux-prix`) ──────────────
+     Le routeur les enregistre depuis toujours ; `BordereauPage.jsx` (AOF179)
+     avait été construit AVANT que ce client ne les publie et montait un motif
+     d'indisponibilité permanent (voir `AffaireDetail.jsx`). `totaux`/
+     `controles` sont les DEUX `@action` réelles du ViewSet — jamais un total
+     recalculé côté front (AOF94). */
+  bordereaux: {
+    ...crud('bordereaux-prix'),
+    totaux: (id) => api.get(`/ao/bordereaux-prix/${id}/totaux/`),
+    controles: (id) => api.get(`/ao/bordereaux-prix/${id}/controles/`),
+  },
+  sectionsBordereau: crud('sections-bordereau'),
+  lignesBordereau: crud('lignes-bordereau'),
 }
 
 /* ============================================================================
