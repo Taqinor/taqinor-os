@@ -209,6 +209,12 @@ const crmApi = {
     api.post(`/crm/commissions-partenaire/${id}/marquer_payee/`),
   getReleveCommissionsPartenaire: () =>
     api.get('/crm/commissions-partenaire/releve/'),
+
+  // PACT103 — Concurrents sur affaires perdues (FG242) : `?lead=<id>` filtre.
+  // Lecture tout rôle, écriture responsable/admin (serveur) ; `company` et
+  // `saisi_par` posés côté serveur.
+  getConcurrentsPerte: (params) => api.get('/crm/concurrents-perte/', { params }),
+  createConcurrentPerte: (data) => api.post('/crm/concurrents-perte/', data),
 }
 
 export default crmApi

@@ -4,7 +4,7 @@
 import { lazy } from 'react'
 import {
   CalendarDays, Users, Target, Map, UserPlus, TrendingUp, LayoutDashboard, Globe,
-  Handshake,
+  Handshake, Swords,
 } from 'lucide-react'
 
 /* ============================================================================
@@ -52,6 +52,9 @@ const SiteProfilePage = lazy(() => import('../../pages/crm/SiteProfilePage'))
 // PACT102 — Partenaires (FG234/235/237) : agrément, soumissions, commissions
 // — le backend est complet, aucun écran interne n'existait avant ce lot.
 const PartenairesPage = lazy(() => import('./Partenaires'))
+// PACT103 — Concurrents sur affaires perdues (FG242) : aucun écran, y
+// compris le popover « perdu » existant, ne l'appelait avant ce lot.
+const ConcurrentsPertePage = lazy(() => import('./ConcurrentsPerte'))
 
 const config = {
   key: 'crm',
@@ -88,6 +91,8 @@ const config = {
       { to: '/crm/profils-site',     label: 'Profils site',     k: 'nav.profils_site', icon: navIcon(Users),   roles: ['normal','responsable','admin'] },
       // PACT102 — agrément partenaire + soumissions + commissions (argent : responsable/admin).
       { to: '/crm/partenaires',      label: 'Partenaires',      k: 'nav.partenaires', icon: navIcon(Handshake), roles: ['responsable','admin'] },
+      // PACT103 — intelligence concurrentielle par lead perdu.
+      { to: '/crm/concurrents-perte', label: 'Concurrents (perdus)', k: 'nav.concurrents_perte', icon: navIcon(Swords), roles: ['normal','responsable','admin'] },
     ],
   },
   routes: [
@@ -109,6 +114,8 @@ const config = {
     { path: '/crm/forecast', component: ForecastPage },
     // PACT102 — Partenaires (agrément, soumissions, commissions).
     { path: '/crm/partenaires', component: PartenairesPage, roles: ['responsable', 'admin'] },
+    // PACT103 — Concurrents sur affaires perdues.
+    { path: '/crm/concurrents-perte', component: ConcurrentsPertePage },
   ],
 }
 
