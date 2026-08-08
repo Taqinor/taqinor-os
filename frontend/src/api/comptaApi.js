@@ -568,6 +568,12 @@ const comptaApi = {
 
   // ── PACT37 / FG209 — Codes promotionnels datés sur devis ──
   codesPromotion: resource('codes-promotion'),
+
+  // ── PACT38 / FG211 — Assistant de vente guidée (configurateur pas-à-pas) ──
+  sessionsGuidedSelling: {
+    ...resource('guided-selling'),
+    evaluer: (id) => api.post(`/compta/guided-selling/${id}/evaluer/`),
+  },
 }
 
 export default comptaApi

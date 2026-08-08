@@ -7,7 +7,7 @@ import {
   Landmark, ReceiptText, Building2, Scale, Receipt, HandCoins, ShieldCheck,
   ListChecks, Repeat, BadgeCheck, CalendarClock, PieChart,
   Calculator, Percent, Layers3, UserCheck, GitBranch, Split, Network, TrendingUp,
-  UploadCloud, GitCompare, Tag,
+  UploadCloud, GitCompare, Tag, Wand2,
 } from 'lucide-react'
 import { appGlyph } from '../../lib/apps/appGlyph'
 
@@ -76,6 +76,8 @@ const BalanceOuverturePage = lazy(() => import('./pages/BalanceOuverturePage.jsx
 const ComparateursPage = lazy(() => import('./pages/ComparateursPage.jsx'))
 // PACT37 — codes promotionnels datés sur devis (FG209).
 const CodesPromotionPage = lazy(() => import('./pages/CodesPromotionPage.jsx'))
+// PACT38 — assistant de vente guidée (FG211), configurateur pas-à-pas.
+const GuidedSellingPage = lazy(() => import('./pages/GuidedSellingPage.jsx'))
 
 const ROLES = ['responsable', 'admin']
 
@@ -122,6 +124,7 @@ const config = {
       { to: '/comptabilite/balance-ouverture', label: "Balance d'ouverture", icon: icon(UploadCloud), roles: ROLES },
       { to: '/comptabilite/comparateurs', label: 'Comparateurs', icon: icon(GitCompare), roles: ROLES },
       { to: '/comptabilite/codes-promotion', label: 'Codes promotion', icon: icon(Tag), roles: ROLES },
+      { to: '/comptabilite/vente-guidee', label: 'Vente guidée', icon: icon(Wand2), roles: ROLES },
     ],
   },
   // Titres de page : du plus spécifique au plus général (routes.meta).
@@ -142,6 +145,7 @@ const config = {
     ['/comptabilite/balance-ouverture', "Balance d'ouverture — Comptabilité"],
     ['/comptabilite/comparateurs', 'Comparateurs — Comptabilité'],
     ['/comptabilite/codes-promotion', 'Codes promotion — Comptabilité'],
+    ['/comptabilite/vente-guidee', 'Vente guidée — Comptabilité'],
     ['/comptabilite/cloture', 'Clôture — Comptabilité'],
     ['/comptabilite/engagements', 'Engagements — Comptabilité'],
     ['/comptabilite/effets', 'Effets & règlements — Comptabilité'],
@@ -183,6 +187,7 @@ const config = {
     { path: '/comptabilite/balance-ouverture', component: BalanceOuverturePage, roles: ROLES },
     { path: '/comptabilite/comparateurs', component: ComparateursPage, roles: ROLES },
     { path: '/comptabilite/codes-promotion', component: CodesPromotionPage, roles: ROLES },
+    { path: '/comptabilite/vente-guidee', component: GuidedSellingPage, roles: ROLES },
   ],
 }
 
