@@ -6,7 +6,7 @@ import {
   LayoutDashboard, BookOpen, PencilLine, FileBarChart2,
   Landmark, ReceiptText, Building2, Scale, Receipt, HandCoins, ShieldCheck,
   ListChecks, Repeat, BadgeCheck, CalendarClock, PieChart,
-  Calculator, Percent, Layers3,
+  Calculator, Percent, Layers3, UserCheck,
 } from 'lucide-react'
 import { appGlyph } from '../../lib/apps/appGlyph'
 
@@ -47,6 +47,10 @@ const FiscaliteAvanceePage = lazy(() => import('./pages/FiscaliteAvanceePage.jsx
 // encours CIP) : 5 ressources NTFIN40-43 greffées sur le module existant.
 const ImmobilisationsAvanceesPage = lazy(
   () => import('./pages/ImmobilisationsAvanceesPage.jsx'))
+// PACT30 — rapprochements de comptes de bilan (NTFIN35-37, contrôle 4 yeux) :
+// distinct du rapprochement bancaire déjà écranté (homonymie de nom).
+const RapprochementsComptePage = lazy(
+  () => import('./pages/RapprochementsComptePage.jsx'))
 
 const ROLES = ['responsable', 'admin']
 
@@ -85,6 +89,7 @@ const config = {
       { to: '/comptabilite/budgets', label: 'Budgets', icon: icon(PieChart), roles: ROLES },
       { to: '/comptabilite/fiscalite-avancee', label: 'Fiscalité avancée', icon: icon(Percent), roles: ROLES },
       { to: '/comptabilite/immobilisations-avancees', label: 'Immobilisations avancées', icon: icon(Layers3), roles: ROLES },
+      { to: '/comptabilite/rapprochements-compte', label: 'Rapprochements de comptes', icon: icon(UserCheck), roles: ROLES },
     ],
   },
   // Titres de page : du plus spécifique au plus général (routes.meta).
@@ -97,6 +102,7 @@ const config = {
     ['/comptabilite/budgets', 'Budgets — Comptabilité'],
     ['/comptabilite/fiscalite-avancee', 'Fiscalité avancée — Comptabilité'],
     ['/comptabilite/immobilisations-avancees', 'Immobilisations avancées — Comptabilité'],
+    ['/comptabilite/rapprochements-compte', 'Rapprochements de comptes — Comptabilité'],
     ['/comptabilite/cloture', 'Clôture — Comptabilité'],
     ['/comptabilite/engagements', 'Engagements — Comptabilité'],
     ['/comptabilite/effets', 'Effets & règlements — Comptabilité'],
@@ -130,6 +136,7 @@ const config = {
     { path: '/comptabilite/budgets', component: BudgetsPage, roles: ROLES },
     { path: '/comptabilite/fiscalite-avancee', component: FiscaliteAvanceePage, roles: ROLES },
     { path: '/comptabilite/immobilisations-avancees', component: ImmobilisationsAvanceesPage, roles: ROLES },
+    { path: '/comptabilite/rapprochements-compte', component: RapprochementsComptePage, roles: ROLES },
   ],
 }
 

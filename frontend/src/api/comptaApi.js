@@ -226,6 +226,17 @@ const comptaApi = {
     valider: (id, data) =>
       api.post(`/compta/rapprochements-3voies/${id}/valider/`, data),
   },
+  // ── PACT30 / NTFIN35-37 — Rapprochements de comptes de bilan (4 yeux) ──
+  rapprochementsCompte: {
+    ...resource('rapprochements-compte'),
+    ouvrir: (data) => api.post('/compta/rapprochements-compte/ouvrir/', data),
+    recalculer: (id) => api.post(`/compta/rapprochements-compte/${id}/recalculer/`),
+    soumettre: (id) => api.post(`/compta/rapprochements-compte/${id}/soumettre/`),
+    valider: (id) => api.post(`/compta/rapprochements-compte/${id}/valider/`),
+    rejeter: (id, data) =>
+      api.post(`/compta/rapprochements-compte/${id}/rejeter/`, data),
+  },
+  lignesJustificationCompte: resource('lignes-justification-compte'),
   budgets: {
     ...resource('budgets'),
     // PACT163 / XACC22 — génère une ligne par courbe de répartition (au lieu
