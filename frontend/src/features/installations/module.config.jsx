@@ -43,6 +43,8 @@ const AteliersPage = lazy(() => import('../../pages/installations/AteliersPage')
 // PACT55 — sous-traitance chantier : ordres, factures, attestations,
 // évaluations, retenues de garantie (FG304-309), aucun appelant jusqu'ici.
 const SousTraitanceChantier = lazy(() => import('./SousTraitanceChantier'))
+// PACT56 — import et douane : dossiers, frais, coût débarqué (FG315-316).
+const SuiviImport = lazy(() => import('./SuiviImport'))
 const ProductionPage = lazy(() => import('../../pages/monitoring/ProductionPage'))
 const FleetPage = lazy(() => import('../../pages/monitoring/FleetPage'))
 const OmAnalyticsPage = lazy(() => import('../../pages/monitoring/OmAnalyticsPage'))
@@ -93,6 +95,7 @@ const config = {
       { to: '/chantiers/demandes-achat', label: "Demandes d'achat", k: 'nav.demandes_achat', icon: navIcon(ClipboardList), roles: ['normal','responsable','admin'] },
       { to: '/chantiers/approvisionnement', label: 'Approvisionnement', icon: navIcon(ClipboardList), roles: ['responsable','admin'] },
       { to: '/chantiers/sous-traitance', label: 'Sous-traitance', icon: navIcon(HardHat), roles: ['responsable','admin'] },
+      { to: '/chantiers/import', label: 'Import & douane', icon: navIcon(Boxes), roles: ['responsable','admin'] },
       { to: '/interventions',        label: 'Interventions',    k: 'nav.interventions', icon: navIcon(Wrench), roles: ['normal','responsable','admin'] },
       { to: '/planification',        label: 'Planification',    k: 'nav.planification', icon: navIcon(CalendarClock),    roles: ['normal','responsable','admin'] },
       { to: '/planification/astreintes', label: 'Astreintes',   icon: navIcon(CalendarClock), roles: ['responsable','admin'] },
@@ -109,6 +112,7 @@ const config = {
     { path: '/chantiers/demandes-achat', component: DemandesAchatList },
     { path: '/chantiers/approvisionnement', component: ApprovisionnementPage, roles: ['responsable', 'admin'] },
     { path: '/chantiers/sous-traitance', component: SousTraitanceChantier, roles: ['responsable', 'admin'] },
+    { path: '/chantiers/import', component: SuiviImport, roles: ['responsable', 'admin'] },
     { path: '/interventions', component: InterventionsPage },
     { path: '/planification', component: PlanificationPage },
     { path: '/planification/astreintes', component: AstreintesPage, roles: ['responsable', 'admin'] },

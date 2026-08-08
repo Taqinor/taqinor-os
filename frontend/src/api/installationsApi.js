@@ -656,6 +656,28 @@ const installationsApi = {
     api.post('/installations/retenues-garantie-sous-traitant/', data),
   leverRetenueGarantieSousTraitant: (id) =>
     api.post(`/installations/retenues-garantie-sous-traitant/${id}/lever/`, {}),
+
+  // ── PACT56 — Import et douane : dossiers d'import (FG315), frais et coût de
+  // revient débarqué (FG316). Donnée interne, jamais montrée au client. ──
+  getDossiersImport: (params) => api.get('/installations/dossiers-import/', { params }),
+  getDossierImport: (id) => api.get(`/installations/dossiers-import/${id}/`),
+  createDossierImport: (data) => api.post('/installations/dossiers-import/', data),
+  updateDossierImport: (id, data) => api.patch(`/installations/dossiers-import/${id}/`, data),
+  avancerDossierImport: (id, statutDouane) =>
+    api.post(`/installations/dossiers-import/${id}/avancer/`,
+      statutDouane ? { statut_douane: statutDouane } : {}),
+  getLandedCostDossier: (id) =>
+    api.get(`/installations/dossiers-import/${id}/landed-cost/`),
+  appliquerCoutStockDossier: (id) =>
+    api.post(`/installations/dossiers-import/${id}/appliquer-cout-stock/`, {}),
+
+  getFraisImport: (params) => api.get('/installations/frais-import/', { params }),
+  createFraisImport: (data) => api.post('/installations/frais-import/', data),
+  deleteFraisImport: (id) => api.delete(`/installations/frais-import/${id}/`),
+
+  getLandedCostLignes: (params) => api.get('/installations/landed-cost-lignes/', { params }),
+  createLandedCostLigne: (data) => api.post('/installations/landed-cost-lignes/', data),
+  deleteLandedCostLigne: (id) => api.delete(`/installations/landed-cost-lignes/${id}/`),
 }
 
 export default installationsApi
