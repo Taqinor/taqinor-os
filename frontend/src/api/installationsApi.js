@@ -759,6 +759,32 @@ const installationsApi = {
   createRFQOffre: (data) => api.post('/installations/rfq-offres/', data),
 
   getRFQConsultations: (params) => api.get('/installations/rfq-consultations/', { params }),
+
+  // ── PACT61 — Paramétrage des kits d'assemblage : le kit lui-même (FG328),
+  // sa nomenclature (composants), sa gamme d'étapes (XMFG14) et son modèle
+  // de contrôle qualité (XMFG13). L'Atelier existant ne fait que SÉLECTIONNER
+  // un kit déjà créé — cette capacité manquait en amont. ──
+  createKit: (data) => api.post('/installations/kits/', data),
+  updateKit: (id, data) => api.patch(`/installations/kits/${id}/`, data),
+
+  getKitComposants: (params) => api.get('/installations/kit-composants/', { params }),
+  createKitComposant: (data) => api.post('/installations/kit-composants/', data),
+  updateKitComposant: (id, data) => api.patch(`/installations/kit-composants/${id}/`, data),
+  deleteKitComposant: (id) => api.delete(`/installations/kit-composants/${id}/`),
+
+  // Gamme d'étapes du KIT (mode opératoire, XMFG14) — distinct de
+  // `getEtapesAssemblage(ordreId)` qui lit la gamme INSTANCIÉE d'un ordre.
+  getEtapesAssemblageKit: (params) => api.get('/installations/etapes-assemblage/', { params }),
+  createEtapeAssemblageKit: (data) => api.post('/installations/etapes-assemblage/', data),
+  updateEtapeAssemblageKit: (id, data) => api.patch(`/installations/etapes-assemblage/${id}/`, data),
+  deleteEtapeAssemblageKit: (id) => api.delete(`/installations/etapes-assemblage/${id}/`),
+
+  getControleQualiteModeles: (params) =>
+    api.get('/installations/controle-qualite-modeles/', { params }),
+  createControleQualiteModele: (data) =>
+    api.post('/installations/controle-qualite-modeles/', data),
+  updateControleQualiteModele: (id, data) =>
+    api.patch(`/installations/controle-qualite-modeles/${id}/`, data),
 }
 
 export default installationsApi

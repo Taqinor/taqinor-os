@@ -54,6 +54,9 @@ const DocumentsProjet = lazy(() => import('./DocumentsProjet'))
 const SuiviProjetChantier = lazy(() => import('./SuiviProjetChantier'))
 // PACT60 — consultation fournisseurs (RFQ) et comparatif d'offres (FG311).
 const RFQ = lazy(() => import('./RFQ'))
+// PACT61 — paramétrage des kits d'assemblage : le kit, sa nomenclature, sa
+// gamme d'étapes et son modèle de contrôle qualité (FG328, XMFG13/14).
+const ParametrageKits = lazy(() => import('./ParametrageKits'))
 const ProductionPage = lazy(() => import('../../pages/monitoring/ProductionPage'))
 const FleetPage = lazy(() => import('../../pages/monitoring/FleetPage'))
 const OmAnalyticsPage = lazy(() => import('../../pages/monitoring/OmAnalyticsPage'))
@@ -115,6 +118,7 @@ const config = {
       { to: '/planification/suivi-gps', label: 'Suivi GPS',     icon: navIcon(MapPin), roles: ['responsable','admin'] },
       { to: '/parc',                 label: 'Parc installé',    k: 'nav.parc',       icon: navIcon(Boxes),  roles: ['normal','responsable','admin'] },
       { to: '/atelier',              label: 'Atelier',          k: 'nav.atelier',    icon: navIcon(Wrench),    roles: ['normal','responsable','admin'] },
+      { to: '/atelier/kits',         label: 'Paramétrage des kits', icon: navIcon(Wrench), roles: ['responsable','admin'] },
       { to: '/production',           label: 'Production',       k: 'nav.production', icon: navIcon(BarChart3),   roles: ['normal','responsable','admin'] },
       { to: '/production/abonnements', label: 'Abonnements',    icon: navIcon(BarChart3), roles: ['responsable','admin'] },
       { to: '/outillage',            label: 'Outillage',        k: 'nav.outillage',  icon: navIcon(Wrench),  roles: ['normal','responsable','admin'] },
@@ -137,6 +141,7 @@ const config = {
     { path: '/ma-journee', component: MaJourneePage },
     { path: '/parc', component: ParcInstallePage },
     { path: '/atelier', component: AteliersPage },
+    { path: '/atelier/kits', component: ParametrageKits, roles: ['responsable', 'admin'] },
     { path: '/production', component: ProductionPage },
     { path: '/production/parc', component: FleetPage },
     { path: '/production/analytique', component: OmAnalyticsPage },
