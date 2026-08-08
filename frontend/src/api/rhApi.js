@@ -135,10 +135,21 @@ const rhApi = {
   pointagerArrivee: (data) => api.post('/rh/pointages/pointager-arrivee/', data ?? {}),
   pointagerDepart: (id, data) =>
     api.post(`/rh/pointages/${id}/pointager-depart/`, data ?? {}),
-  getCalendrierPointages: (params) =>
-    api.get('/rh/pointages/calendrier-equipe/', { params }),
-  exportPaiePointages: (params) =>
-    api.get('/rh/pointages/export-paie/', { params }),
+  // PACT19 — DEUX 404 statués, tous deux de type (b) « désaccord de nom » :
+  // les actions EXISTENT, mais sur un AUTRE ViewSet que `pointages`.
+  //   * `calendrier-equipe` vit sur `DemandeCongeViewSet`
+  //     (apps/rh/views.py:1160) → `/rh/demandes-conge/calendrier-equipe/`,
+  //     déjà appelé correctement par `getCalendrierConges` ci-dessus.
+  //     L'ancien `getCalendrierPointages` pointait sur `/rh/pointages/…`,
+  //     n'avait AUCUN appelant, et doublait `getCalendrierConges` : retiré
+  //     plutôt que redirigé — deux noms pour une seule route, c'est le
+  //     prochain défaut.
+  //   * `export-paie` vit sur `HeuresSuppViewSet` (apps/rh/views.py:1437,
+  //     `selectors.heures_supp_pour_paie`) → `/rh/heures-supp/export-paie/`.
+  //     C'est bien un export de PAIE d'heures supplémentaires, pas de
+  //     pointages : le nom de la fonction le dit désormais.
+  exportPaieHeuresSupp: (params) =>
+    api.get('/rh/heures-supp/export-paie/', { params }),
   getFeuillesTemps: (params) => api.get('/rh/feuilles-temps/', { params }),
   getHeuresSupp: (params) => api.get('/rh/heures-supp/', { params }),
   getRoster: (params) => api.get('/rh/roster/', { params }),

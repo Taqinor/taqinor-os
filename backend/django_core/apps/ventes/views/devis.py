@@ -4,6 +4,7 @@ from django.utils import timezone  # noqa: F401
 from rest_framework import viewsets, status, filters  # noqa: F401
 from rest_framework.decorators import action, api_view, permission_classes  # noqa: F401
 from rest_framework.response import Response  # noqa: F401
+from drf_spectacular.utils import extend_schema  # noqa: F401
 from apps.stock.services import (  # noqa: F401
     mouvement_type_sortie, record_stock_movement,
 )
@@ -23,6 +24,7 @@ from ..serializers import (  # noqa: F401
     AvoirSerializer,
     RelanceLogSerializer,
     DevisActivitySerializer,
+    DevisActionRequiseSerializer,  # PACT17 — forme déclarée de l'agrégat
 )
 from authentication.permissions import (  # noqa: F401
     IsAnyRole,
@@ -151,6 +153,16 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
             # pour tout rôle portant une écriture). get_permissions PRIME sur le
             # permission_classes de l'@action, donc la garde fine doit être ICI.
             return [HasPermissionOrLegacy('ventes_valider')()]
+        elif self.action == 'action_requise':
+            # PACT17 — « Relances du jour » est une LECTURE agrégée réservée au
+            # même périmètre que son entrée de menu (features/ventes/
+            # module.config.jsx : roles responsable + admin), exactement comme
+            # son miroir SAV `/sav/tickets/file-action/` (ZSAV6). La garde doit
+            # être ICI : get_permissions PRIME sur le `permission_classes` de
+            # l'@action (son repli est IsAdminRole, qui fermerait l'écran aux
+            # responsables) — l'@action déclare donc la MÊME classe pour ne
+            # jamais mentir sur la garde effective.
+            return [IsResponsableOrAdmin()]
         elif self.action == 'proposal':
             # NTPRT10 — ``/proposal`` reste l'UNIQUE chemin PDF client (règle
             # #4) : plutôt qu'un second rendu pour le portail, on OUVRE ce
@@ -1300,6 +1312,32 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
         devis = self.get_object()
         return Response(
             DevisActivitySerializer(devis.activites.all(), many=True).data)
+
+    @extend_schema(responses=DevisActionRequiseSerializer)
+    @action(detail=False, methods=['get'], url_path='action-requise',
+            permission_classes=[IsResponsableOrAdmin])
+    def action_requise(self, request):
+        """PACT17 (QX29/QX30) — « Relances du jour » : les devis nécessitant
+        une action, groupés par MOTIF.
+
+        L'écran ``DevisActionBoardPage`` appelait cet agrégat depuis sa
+        création et l'entrée de menu était publiée aux rôles responsable/admin
+        — mais la moitié serveur n'avait jamais été construite : le chemin
+        retombait sur la route de DÉTAIL du routeur (``devis/<pk>/`` accepte
+        n'importe quel segment), donc un 404, donc un écran mort. Cette action
+        est cette moitié manquante, miroir de ``/sav/tickets/file-action/``
+        (ZSAV6).
+
+        Lecture PURE via ``selectors.devis_action_requise``, bornée à
+        ``request.user.company`` — jamais de devis d'une autre société. RÈGLE
+        #4 : aucune écriture, aucun statut touché.
+
+        Renvoie ``{'buckets': {clé: {'count', 'ids'}, …}, 'wa_drafts':
+        {id: message}}`` — forme déclarée par ``DevisActionRequiseSerializer``
+        (PACT7 : jamais ``response=dict``).
+        """
+        from ..selectors import devis_action_requise
+        return Response(devis_action_requise(request.user.company))
 
     @action(detail=False, methods=['get'], url_path='prefill-site',
             permission_classes=[IsAnyRole])

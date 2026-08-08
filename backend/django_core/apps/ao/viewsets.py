@@ -178,6 +178,107 @@ class DossierAOViewSet(AoBaseViewSet):
 
         return Response(passe_en_lecture(self.get_object()))
 
+    # ── PACT25 — les trois chemins enfin OUVERTS ────────────────────────────
+    #
+    # Ils étaient délibérément fermés tant que `services.producteurs_de_pack`
+    # n'existait pas : ouvrir la porte aurait produit un job « terminé » avec
+    # zéro pièce, donc un écran affichant « pack prêt » sur une archive vide.
+    # Le monteur existe désormais, ET la tâche part en ÉCHEC sur un pack vide
+    # ou incomplet — la porte peut s'ouvrir sans mentir.
+
+    @action(detail=True, methods=['post'], url_path='generer-piece')
+    def generer_piece(self, request, pk=None):
+        """Lance la production du pack en tâche de fond (idempotente).
+
+        Renvoie l'identifiant du ``BackgroundJob`` à suivre via
+        ``statut-de-job``. Refus 400 MOTIVÉ quand le dossier ne déclare aucune
+        pièce générable : un job sans rien à produire est un faux succès en
+        attente.
+        """
+        dossier = self.get_object()
+        try:
+            job = services.generer_pack_ao(dossier, user=request.user)
+        except DjangoValidationError as exc:
+            donnees = getattr(exc, 'message_dict', None) or {
+                api_settings.NON_FIELD_ERRORS_KEY: exc.messages}
+            return Response(donnees, status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            {'job_id': job.pk, 'statut': job.statut,
+             'dossier': dossier.pk},
+            status=status.HTTP_202_ACCEPTED)
+
+    @action(detail=True, methods=['get'], url_path='statut-de-job')
+    def statut_de_job(self, request, pk=None):
+        """Suivi d'un job de pack — SCOPÉ SOCIÉTÉ. ``?job=<id>``.
+
+        Un job d'une autre société est INTROUVABLE (404), jamais « interdit » :
+        un 403 confirmerait son existence. Même patron que
+        ``ResultatCalepinageView``.
+
+        Le job est un PARAMÈTRE DE REQUÊTE, pas un second segment de chemin :
+        un ``url_path`` à groupe nommé rend la route illisible aux gardes de
+        contrat front↔back (``scripts/check_ao_api_contract.py``), et une route
+        qu'un garde ne sait pas lire est une route qu'il ne protège pas.
+        """
+        from core.models import BackgroundJob
+
+        dossier = self.get_object()
+        job_id = request.query_params.get('job')
+        if not job_id:
+            return Response(
+                {api_settings.NON_FIELD_ERRORS_KEY: [
+                    'Paramètre `job` requis.']},
+                status=status.HTTP_400_BAD_REQUEST)
+        job = BackgroundJob.objects.filter(
+            pk=job_id, company=dossier.company).first()
+        if job is None:
+            return Response({'detail': 'Tâche introuvable.'},
+                            status=status.HTTP_404_NOT_FOUND)
+        return Response({
+            'job_id': job.pk,
+            'statut': job.statut,
+            'progression': job.progress_pct,
+            'message_erreur': job.message_erreur,
+        })
+
+    @action(detail=True, methods=['get'], url_path='zip')
+    def zip(self, request, pk=None):
+        """Archive de dépôt — REFUSÉE si un contrôle est rouge ou si vide.
+
+        ``fabrique.pack_zip.ecrire_pack_zip`` porte les deux refus (contrôle
+        bloquant, aucune pièce déposable) et écrit le ``MANIFESTE.json`` : on
+        ne réimplémente rien ici, on lui fournit enfin ses pièces.
+        """
+        import io
+
+        from django.http import HttpResponse
+
+        from .fabrique.coherence import empreinte_dossier, passe_en_lecture
+        from .fabrique.pack_zip import PackRefuse, ecrire_pack_zip
+
+        dossier = self.get_object()
+        empreinte = empreinte_dossier(dossier)
+        entrees = services.pieces_du_pack_en_flux(dossier, empreinte=empreinte)
+        tampon = io.BytesIO()
+        try:
+            ecrire_pack_zip(
+                tampon, entrees, controle=passe_en_lecture(dossier),
+                reference_dossier=dossier.reference or dossier.intitule,
+                empreinte_pack=empreinte)
+        except PackRefuse as exc:
+            return Response(
+                {api_settings.NON_FIELD_ERRORS_KEY: [str(exc)]},
+                status=status.HTTP_400_BAD_REQUEST)
+        except DjangoValidationError as exc:
+            return Response(
+                {api_settings.NON_FIELD_ERRORS_KEY: exc.messages},
+                status=status.HTTP_400_BAD_REQUEST)
+        reponse = HttpResponse(tampon.getvalue(),
+                               content_type='application/zip')
+        nom = (dossier.reference or f'dossier-{dossier.pk}').replace(' ', '-')
+        reponse['Content-Disposition'] = f'attachment; filename="{nom}.zip"'
+        return reponse
+
     @action(detail=True, methods=['get'], url_path='controle-administratif')
     def controle_administratif(self, request, pk=None):
         """AOF137 — péremption contrôlée à la DATE DE REMISE DES PLIS."""

@@ -1654,3 +1654,185 @@ def ca_par_entite(company, entite_ids):
             pass
         entry['nb_factures'] += 1
     return out
+
+
+# ── QX29/QX30/PACT17 — « Relances du jour » : file d'action des devis ────────
+
+def devis_action_requise(company, *, today=None, jours_sans_reponse=3,
+                         jours_avant_expiration=7, jours_non_facture=7):
+    """PACT17 — Regroupe les devis d'une société par ACTION ATTENDUE, miroir
+    exact de ``apps.sav.selectors.file_action`` (ZSAV6, parité Odoo « Activity
+    view »). C'est l'agrégat que ``DevisActionBoardPage`` consomme : il
+    n'avait jamais été construit côté serveur, donc l'écran — pourtant publié
+    au menu des rôles responsable/admin — était mort.
+
+    Chaque devis tombe dans EXACTEMENT UN panier (le premier qui matche, dans
+    l'ordre ci-dessous), pour qu'un même devis ne soit jamais compté deux
+    fois :
+
+      * ``acceptes_non_factures`` — accepté depuis plus de
+        ``jours_non_facture`` jours sans aucune ``Facture`` liée (réutilise
+        ``devis_a_facturer``, ZFAC12 — aucune logique dupliquée) ;
+      * ``refuses_sans_motif``    — refusé sans ``motif_refus`` (QX26 : un
+        refus sans motif est une information perdue pour toujours) ;
+      * ``engagement_relance``    — envoyé et le moteur d'engagement (QX30be,
+        ``ShareLink.engagement_triggers_fired``) a déjà tiré au moins un
+        déclencheur (non ouvert 24 h / ouvert non signé 48 h / rouvert 3×) ;
+      * ``expirant_bientot``      — envoyé, ``date_validite`` dans les
+        ``jours_avant_expiration`` jours (échéance non encore dépassée) ;
+      * ``envoyes_sans_reponse``  — envoyé depuis plus de
+        ``jours_sans_reponse`` jours sans aucun des signaux ci-dessus (palier
+        de cadence).
+
+    Les devis ``brouillon`` et ``expire`` ne sont JAMAIS dans un panier : le
+    premier n'est pas encore parti, le second n'appelle plus de relance.
+
+    Renvoie ``{'buckets': {clé: {'count': int, 'ids': [int, …]}, …},
+    'wa_drafts': {devis_id: 'message'}, 'devis': {devis_id: {…}}}``.
+
+      * ``wa_drafts`` ne porte QUE la file ``engagement_relance`` (le seul cas
+        où le serveur sait quoi dire) ; l'écran retombe sur le lien wa.me nu
+        partout ailleurs.
+      * ``devis`` porte de quoi RENDRE chaque ligne (référence, client,
+        téléphone, WhatsApp, total) pour les ids cités. Sans lui l'écran
+        devait re-télécharger la liste des devis et n'y trouvait ni
+        ``client_telephone`` ni ``client_whatsapp`` (``DevisSerializer`` ne
+        les publie pas) : les raccourcis « Appeler » / WhatsApp ne
+        s'affichaient JAMAIS, et une référence au-delà de la première page de
+        50 tombait sur « #42 ». Le serveur sert donc ce dont l'écran a besoin,
+        en un seul appel.
+
+    Lecture seule, bornée à ``company`` — jamais de fuite cross-société.
+    Aucun prix d'achat ni marge n'est exposé (règle #4) : seul le total TTC,
+    déjà visible du client, accompagne la ligne.
+    """
+    from datetime import timedelta
+
+    from django.utils import timezone
+
+    from .models import Devis
+
+    today = today or timezone.localdate()
+    now = timezone.now()
+
+    envoyes_sans_reponse = []
+    acceptes_non_factures = []
+    refuses_sans_motif = []
+    expirant_bientot = []
+    engagement_relance = []
+    wa_drafts = {}
+
+    # ── Acceptés non facturés : ZFAC12 tel quel (jamais recodé ici) ──
+    for devis in devis_a_facturer(company, jours=jours_non_facture,
+                                  today=today):
+        acceptes_non_factures.append(devis.id)
+
+    # ── Refusés sans motif (QX26) ──
+    refuses_sans_motif.extend(
+        Devis.objects
+        .filter(company=company, statut=Devis.Statut.REFUSE)
+        .exclude(motif_refus__gt='')
+        .order_by('id')
+        .values_list('id', flat=True)
+    )
+
+    # ── Devis ENVOYÉS : un seul panier par devis, priorité au signal le plus
+    # fort (engagement mesuré > échéance qui approche > simple cadence).
+    envoyes = (Devis.objects
+               .filter(company=company, statut=Devis.Statut.ENVOYE)
+               .select_related('client')
+               .prefetch_related('share_links')
+               .order_by('id'))
+    limite_expiration = today + timedelta(days=jours_avant_expiration)
+
+    for devis in envoyes:
+        declencheurs = set()
+        for link in devis.share_links.all():
+            declencheurs.update(link.engagement_triggers_fired or [])
+        if declencheurs:
+            engagement_relance.append(devis.id)
+            wa_drafts[devis.id] = _brouillon_relance_engagement(
+                devis, declencheurs)
+            continue
+        if (devis.date_validite is not None
+                and today <= devis.date_validite <= limite_expiration):
+            expirant_bientot.append(devis.id)
+            continue
+        envoye_le = devis.date_envoi
+        if (envoye_le is not None
+                and (now - envoye_le) >= timedelta(days=jours_sans_reponse)):
+            envoyes_sans_reponse.append(devis.id)
+
+    paniers = {
+        'envoyes_sans_reponse': envoyes_sans_reponse,
+        'acceptes_non_factures': acceptes_non_factures,
+        'refuses_sans_motif': refuses_sans_motif,
+        'expirant_bientot': expirant_bientot,
+        'engagement_relance': engagement_relance,
+    }
+    cites = {i for ids in paniers.values() for i in ids}
+    # `prefetch_related('lignes')` : `Devis.total_ttc` itère les lignes — sans
+    # ce préchargement, une requête PAR devis affiché (N+1).
+    lignes = (Devis.objects
+              .filter(company=company, pk__in=cites)
+              .select_related('client', 'lead')
+              .prefetch_related('lignes'))
+    return {
+        'buckets': {
+            cle: {'count': len(ids), 'ids': list(ids)}
+            for cle, ids in paniers.items()
+        },
+        'wa_drafts': wa_drafts,
+        'devis': {d.id: _ligne_action_requise(d) for d in lignes},
+    }
+
+
+def _ligne_action_requise(devis):
+    """PACT17 — de quoi RENDRE une ligne de « Relances du jour », rien de plus.
+
+    Le WhatsApp vient du lead lié quand il existe (``crm.Lead.whatsapp``, lu
+    par la relation string-FK déjà déclarée — jamais un import de
+    ``apps.crm.models``, même motif que ``DevisSerializer.get_lead_nom``),
+    sinon le téléphone du client fait office de numéro joignable. Le total est
+    rendu en TEXTE décimal (jamais un flottant) — ``formatMAD`` le lit tel
+    quel côté écran.
+    """
+    client = getattr(devis, 'client', None)
+    telephone = (getattr(client, 'telephone', '') or '') if client else ''
+    whatsapp = ''
+    if devis.lead_id:
+        whatsapp = getattr(devis.lead, 'whatsapp', '') or ''
+    total = devis.total_ttc
+    return {
+        'id': devis.id,
+        'reference': devis.reference or '',
+        'client_nom': (getattr(client, 'nom', '') or '') if client else '',
+        'client_telephone': telephone,
+        'client_whatsapp': whatsapp,
+        'total_ttc': str(total) if total is not None else None,
+    }
+
+
+def _brouillon_relance_engagement(devis, declencheurs):
+    """PACT17/QX30 — message WhatsApp pré-rempli pour la file d'engagement.
+
+    Le texte suit le déclencheur le plus parlant (jamais un message générique
+    quand le serveur sait quoi dire) et ne cite AUCUN prix : un brouillon part
+    tel quel dans WhatsApp, il doit rester une relance, pas une offre.
+    """
+    client = getattr(devis, 'client', None)
+    nom = (getattr(client, 'nom', '') or '').strip() if client else ''
+    salutation = f'Bonjour {nom}' if nom else 'Bonjour'
+    reference = getattr(devis, 'reference', '') or ''
+    suffixe = f' (réf. {reference})' if reference else ''
+
+    if 'reopened_3x' in declencheurs:
+        corps = ('vous avez consulté votre proposition plusieurs fois'
+                 f'{suffixe} — puis-je répondre à une question ?')
+    elif 'opened_not_signed_48h' in declencheurs:
+        corps = (f'avez-vous pu parcourir votre proposition{suffixe} ? '
+                 'Je reste disponible pour en discuter.')
+    else:
+        corps = (f'votre proposition{suffixe} vous attend toujours — '
+                 'souhaitez-vous que je vous la présente ?')
+    return f'{salutation}, {corps}'
