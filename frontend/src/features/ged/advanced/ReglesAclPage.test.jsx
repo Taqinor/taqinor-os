@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import { ThemeProvider } from '../../../design/ThemeProvider.jsx'
@@ -11,7 +11,10 @@ import ReglesAclPage from './ReglesAclPage.jsx'
 /* PACT133 — Règles d'accès par métadonnée (XGED21) : condition simple
    champ/valeur, rôle cible (jamais un utilisateur nommé), niveau, priorité,
    activables. Mocks alignés sur `RegleAclMetadonneeSerializer` (id, nom,
-   condition_group, role, role_nom, niveau, priorite, actif). */
+   condition_group, role, role_nom, niveau, priorite, actif). Comme
+   `CorbeillePage.test.jsx` : ListShell rend une vue table + une vue carte,
+   donc toute assertion sur une cellule/action de ligne passe par
+   `findAllByText`/`getAllByRole(...)`. */
 
 vi.mock('../../../api/gedApi', () => ({
   default: {
@@ -54,7 +57,7 @@ beforeEach(() => {
 describe('PACT133 ReglesAclPage', () => {
   it('liste les règles avec condition, rôle, niveau et priorité', async () => {
     renderPage()
-    expect(await screen.findByText('Contrats confidentiels')).toBeInTheDocument()
+    expect((await screen.findAllByText('Contrats confidentiels')).length).toBeGreaterThan(0)
     expect(screen.getAllByText(/tags contient confidentiel/).length).toBeGreaterThan(0)
     expect(screen.getAllByText('Commercial').length).toBeGreaterThan(0)
     expect(screen.getAllByText('Lecture').length).toBeGreaterThan(0)
@@ -62,15 +65,16 @@ describe('PACT133 ReglesAclPage', () => {
 
   it('crée une règle ACL par métadonnée pour un rôle', async () => {
     renderPage()
-    await screen.findByText('Contrats confidentiels')
+    await screen.findAllByText('Contrats confidentiels')
 
     await userEvent.click(screen.getByRole('button', { name: /Nouvelle règle/i }))
-    await userEvent.type(screen.getByLabelText('Nom de la règle'), 'Devis sensibles')
-    await userEvent.type(screen.getByLabelText('Champ de la condition'), 'type')
-    await userEvent.type(screen.getByLabelText('Valeur de la condition'), 'devis')
-    await userEvent.click(screen.getByRole('combobox', { name: 'Choisir un rôle cible' }))
-    await userEvent.click(await screen.findByText('Commercial'))
-    await userEvent.click(screen.getByRole('button', { name: 'Créer' }))
+    const dialog = await screen.findByRole('dialog')
+    await userEvent.type(within(dialog).getByLabelText('Nom de la règle'), 'Devis sensibles')
+    await userEvent.type(within(dialog).getByLabelText('Champ de la condition'), 'type')
+    await userEvent.type(within(dialog).getByLabelText('Valeur de la condition'), 'devis')
+    await userEvent.click(within(dialog).getByRole('combobox', { name: 'Choisir un rôle cible' }))
+    await userEvent.click(within(await screen.findByRole('listbox')).getByText('Commercial'))
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Créer' }))
 
     await waitFor(() => {
       expect(gedApi.createRegleAclMetadonnee).toHaveBeenCalledWith({
@@ -86,9 +90,9 @@ describe('PACT133 ReglesAclPage', () => {
 
   it('désactive une règle active', async () => {
     renderPage()
-    await screen.findByText('Contrats confidentiels')
+    await screen.findAllByText('Contrats confidentiels')
 
-    await userEvent.click(screen.getByRole('button', { name: 'Désactiver' }))
+    await userEvent.click(screen.getAllByRole('button', { name: 'Désactiver' })[0])
     await waitFor(() => {
       expect(gedApi.updateRegleAclMetadonnee).toHaveBeenCalledWith(4, { actif: false })
       expect(toast.success).toHaveBeenCalledWith('Règle désactivée.')

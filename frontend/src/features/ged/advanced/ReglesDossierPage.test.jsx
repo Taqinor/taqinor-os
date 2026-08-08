@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import { ThemeProvider } from '../../../design/ThemeProvider.jsx'
@@ -12,7 +12,10 @@ import ReglesDossierPage from './ReglesDossierPage.jsx'
    lui-même ce trou comme « en attente d'arbitrage du fondateur » — cette
    tâche EST cet arbitrage. gedApi mocké : la forme des mocks (`condition_group`,
    `actions`, journal `{document_nom, declenchee, created_at}`) reproduit EXACTEMENT
-   `RegleDossierSerializer`/`ExecutionRegleDossierSerializer`. */
+   `RegleDossierSerializer`/`ExecutionRegleDossierSerializer`. Comme
+   `CorbeillePage.test.jsx` : ListShell rend une vue table + une vue carte, donc
+   toute assertion sur une cellule/action de ligne passe par les variantes
+   `findAllByText`/`getAllByRole(...)`. */
 
 vi.mock('../../../api/gedApi', () => ({
   default: {
@@ -53,28 +56,30 @@ beforeEach(() => {
 describe('PACT132 ReglesDossierPage', () => {
   it('liste les règles avec leur condition et leur nombre d’actions', async () => {
     renderPage()
-    expect(await screen.findByText('Marquer urgent')).toBeInTheDocument()
+    expect((await screen.findAllByText('Marquer urgent')).length).toBeGreaterThan(0)
     expect(screen.getAllByText(/nom contient URGENT/).length).toBeGreaterThan(0)
   })
 
   it('crée une règle : condition champ/valeur + une action en séquence', async () => {
     renderPage()
-    await screen.findByText('Marquer urgent')
+    await screen.findAllByText('Marquer urgent')
 
     await userEvent.click(screen.getByRole('button', { name: /Nouvelle règle/i }))
-    await userEvent.click(screen.getByRole('combobox', { name: 'Choisir un dossier' }))
-    await userEvent.click(await screen.findByText('Contrats'))
-    await userEvent.type(screen.getByLabelText('Nom de la règle'), 'Classer les factures')
-    await userEvent.type(screen.getByLabelText('Champ de la condition'), 'nom')
-    await userEvent.type(screen.getByLabelText('Valeur de la condition'), 'FACTURE')
+    const dialog = await screen.findByRole('dialog')
+
+    await userEvent.click(within(dialog).getByRole('combobox', { name: 'Choisir un dossier' }))
+    await userEvent.click(within(await screen.findByRole('listbox')).getByText('Contrats'))
+    await userEvent.type(within(dialog).getByLabelText('Nom de la règle'), 'Classer les factures')
+    await userEvent.type(within(dialog).getByLabelText('Champ de la condition'), 'nom')
+    await userEvent.type(within(dialog).getByLabelText('Valeur de la condition'), 'FACTURE')
 
     // Action : tag "urgent".
-    await userEvent.click(screen.getByRole('combobox', { name: 'Choisir un tag' }))
-    await userEvent.click(await screen.findByText('Urgent'))
-    await userEvent.click(screen.getByRole('button', { name: /Ajouter l'action/i }))
-    expect(await screen.findByText(/Ajouter un tag — Urgent/)).toBeInTheDocument()
+    await userEvent.click(within(dialog).getByRole('combobox', { name: 'Choisir un tag' }))
+    await userEvent.click(within(await screen.findByRole('listbox')).getByText('Urgent'))
+    await userEvent.click(within(dialog).getByRole('button', { name: /Ajouter l'action/i }))
+    expect(await within(dialog).findByText(/Ajouter un tag — Urgent/)).toBeInTheDocument()
 
-    await userEvent.click(screen.getByRole('button', { name: 'Créer' }))
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Créer' }))
 
     await waitFor(() => {
       expect(gedApi.createRegleDossier).toHaveBeenCalledWith({
@@ -90,9 +95,9 @@ describe('PACT132 ReglesDossierPage', () => {
 
   it('désactive une règle active', async () => {
     renderPage()
-    await screen.findByText('Marquer urgent')
+    await screen.findAllByText('Marquer urgent')
 
-    await userEvent.click(screen.getByRole('button', { name: 'Désactiver' }))
+    await userEvent.click(screen.getAllByRole('button', { name: 'Désactiver' })[0])
     await waitFor(() => {
       expect(gedApi.updateRegleDossier).toHaveBeenCalledWith(5, { actif: false })
       expect(toast.success).toHaveBeenCalledWith('Règle désactivée.')
@@ -104,9 +109,9 @@ describe('PACT132 ReglesDossierPage', () => {
       data: [{ id: 71, regle: 5, document: 12, document_nom: 'Facture-0012.pdf', declenchee: true, resultats: [], created_at: '2026-08-01T09:00:00Z' }],
     })
     renderPage()
-    await screen.findByText('Marquer urgent')
+    await screen.findAllByText('Marquer urgent')
 
-    await userEvent.click(screen.getByRole('button', { name: 'Journal d’exécution' }))
+    await userEvent.click(screen.getAllByRole('button', { name: 'Journal d’exécution' })[0])
     expect(await screen.findByText('Facture-0012.pdf')).toBeInTheDocument()
     expect(gedApi.getExecutionsRegleDossier).toHaveBeenCalledWith(5)
   })

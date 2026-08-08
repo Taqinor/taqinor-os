@@ -65,7 +65,7 @@ describe('PACT134 RetentionPage — Dispositions', () => {
   it('liste les demandes de disposition et propose un nouveau lot', async () => {
     renderPage()
     await userEvent.click(await screen.findByRole('tab', { name: 'Dispositions' }))
-    expect(await screen.findByText('Purge devis 2023')).toBeInTheDocument()
+    expect((await screen.findAllByText('Purge devis 2023')).length).toBeGreaterThan(0)
 
     await userEvent.click(screen.getByRole('button', { name: /Nouvelle demande/i }))
     await userEvent.type(screen.getByLabelText('Libellé du lot'), 'Purge devis 2022')
@@ -85,9 +85,9 @@ describe('PACT134 RetentionPage — Dispositions', () => {
   it('approuve une demande en attente', async () => {
     renderPage()
     await userEvent.click(await screen.findByRole('tab', { name: 'Dispositions' }))
-    await screen.findByText('Purge devis 2023')
+    await screen.findAllByText('Purge devis 2023')
 
-    await userEvent.click(screen.getByRole('button', { name: 'Approuver' }))
+    await userEvent.click(screen.getAllByRole('button', { name: 'Approuver' })[0])
     const dialog = await screen.findByRole('dialog')
     await userEvent.click(within(dialog).getByRole('button', { name: 'Approuver' }))
 
@@ -107,9 +107,9 @@ describe('PACT134 RetentionPage — Dispositions', () => {
     })
     renderPage()
     await userEvent.click(await screen.findByRole('tab', { name: 'Dispositions' }))
-    await screen.findByText('Purge devis 2021')
+    await screen.findAllByText('Purge devis 2021')
 
-    await userEvent.click(screen.getByRole('button', { name: 'Exécuter' }))
+    await userEvent.click(screen.getAllByRole('button', { name: 'Exécuter' })[0])
     const dialog = await screen.findByRole('dialog')
     await userEvent.click(
       await within(dialog).findByRole('button', { name: 'Exécuter définitivement' }))
@@ -135,9 +135,9 @@ describe('PACT134 RetentionPage — Dispositions', () => {
     })
     renderPage()
     await userEvent.click(await screen.findByRole('tab', { name: 'Dispositions' }))
-    await screen.findByText('Purge devis 2020')
+    await screen.findAllByText('Purge devis 2020')
 
-    await userEvent.click(screen.getByRole('button', { name: 'Voir les certificats' }))
+    await userEvent.click(screen.getAllByRole('button', { name: 'Voir les certificats' })[0])
     expect(await screen.findByText('Devis (365 j)')).toBeInTheDocument()
   })
 })
