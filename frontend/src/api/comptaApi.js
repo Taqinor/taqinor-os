@@ -43,7 +43,15 @@ const comptaApi = {
 
   // ── UX5 — États comptables CGNC (blob quand export fichier) ──
   etats: {
-    grandLivre: (params) => api.get('/compta/etats/grand-livre/', { params }),
+    // PACT18 — SOULIGNÉ, pas tiret : `def grand_livre` (apps/compta/views.py)
+    // est la SEULE @action de ce ViewSet sans `url_path=` explicite, et le
+    // `url_path` par défaut d'une @action DRF est le NOM DE LA MÉTHODE, tel
+    // quel, souligné compris (rest_framework/decorators.py : `func.url_path =
+    // url_path if url_path else func.__name__`). Un tiret ici a rendu l'onglet
+    // « Comptabilité → États → Grand-livre » muet, sans le moindre message.
+    // Ne pas « harmoniser » avec ses voisines tant que le serveur ne déclare
+    // pas `url_path='grand-livre'` : ce serait rouvrir le trou.
+    grandLivre: (params) => api.get('/compta/etats/grand_livre/', { params }),
     balance: (params) => api.get('/compta/etats/balance/', { params }),
     cpc: (params) => api.get('/compta/etats/cpc/', { params }),
     bilan: (params) => api.get('/compta/etats/bilan/', { params }),
