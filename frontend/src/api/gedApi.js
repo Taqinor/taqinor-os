@@ -358,6 +358,20 @@ const gedApi = {
   deleteCoffre: (id) => api.delete(`/ged/coffres/${id}/`),
   // Documents classés dans ce coffre (ACL déjà appliquée par `get_queryset`).
   getCoffreDocuments: (id) => api.get(`/ged/coffres/${id}/documents/`),
+
+  // ══════════════════════════════════════════════════════════════════════
+  // PACT132 — Règles de dossier : action automatique au dépôt (XGED19).
+  // ══════════════════════════════════════════════════════════════════════
+  // `params` : { folder }.
+  getReglesDossier: (params) => api.get('/ged/regles-dossier/', { params }),
+  // `data` : { folder, nom, condition_group, actions, actif?, ordre? } —
+  // `condition_group` validé côté serveur (`core.rules`), `actions` = liste
+  // ordonnée `[{type, params}]` exécutée en séquence.
+  createRegleDossier: (data) => api.post('/ged/regles-dossier/', data),
+  updateRegleDossier: (id, data) => api.patch(`/ged/regles-dossier/${id}/`, data),
+  deleteRegleDossier: (id) => api.delete(`/ged/regles-dossier/${id}/`),
+  // Journal des 20 dernières exécutions de cette règle (le plus récent d'abord).
+  getExecutionsRegleDossier: (id) => api.get(`/ged/regles-dossier/${id}/executions/`),
 }
 
 export default gedApi

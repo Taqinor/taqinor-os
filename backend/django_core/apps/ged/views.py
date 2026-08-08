@@ -39,7 +39,8 @@ from .models import (
     ChampSignature, Coffre, DemandeApprobation, DemandeDisposition,
     DemandeDispositionError, DemandeDocument,
     DemandeSignatureDocument, DepotPublic, Document, DocumentLien,
-    DocumentTag, DocumentTagAssignment, DocumentVersion, ExigenceDossier,
+    DocumentTag, DocumentTagAssignment, DocumentVersion,
+    ExigenceDossier,
     FavoriGed, Folder, JournalAcces, LegalHold, LegalHoldError, LotEnvoi,
     ModeleDocument,
     PartageGed, PlanificationDocument, PolitiqueRetention,
@@ -56,7 +57,8 @@ from .serializers import (
     DemandeSignatureDocumentSerializer,
     DepotPublicSerializer, DocumentLienSerializer, DocumentSerializer,
     DocumentTagAssignmentSerializer, DocumentTagSerializer,
-    DocumentVersionSerializer, ExigenceDossierSerializer, FolderSerializer,
+    DocumentVersionSerializer, ExecutionRegleDossierSerializer,
+    ExigenceDossierSerializer, FolderSerializer,
     JournalAccesSerializer, LegalHoldSerializer, LotEnvoiSerializer,
     ModeleDocumentSerializer,
     PartageGedSerializer, PlanificationDocumentSerializer,
@@ -3229,6 +3231,17 @@ class RegleDossierViewSet(TenantMixin, viewsets.ModelViewSet):
             raise ValidationError({'condition_group': errors})
         serializer.save(
             company=self.request.user.company, created_by=self.request.user)
+
+    @action(detail=True, methods=['get'], url_path='executions')
+    def executions(self, request, pk=None):
+        """PACT132 — Dernières exécutions de cette règle (journal, lecture
+        seule). `GET …/regles-dossier/<id>/executions/` — les 20 plus
+        récentes, les plus récentes d'abord."""
+        regle = self.get_object()
+        qs = (regle.executions.select_related('document')
+              .order_by('-created_at', '-id')[:20])
+        return Response(
+            ExecutionRegleDossierSerializer(qs, many=True).data)
 
 
 class RegleApprobationGedViewSet(TenantMixin, viewsets.ModelViewSet):
