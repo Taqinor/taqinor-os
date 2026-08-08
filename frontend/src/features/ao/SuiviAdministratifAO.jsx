@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react'
+import { useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { Banknote, CalendarClock, Trophy } from 'lucide-react'
 import aoApi from '../../api/aoApi'

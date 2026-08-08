@@ -3,7 +3,6 @@ import { render, screen, waitFor, fireEvent } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { ThemeProvider } from '../../design/ThemeProvider.jsx'
 import rhApi from '../../api/rhApi'
-import flotteApi from '../../api/flotteApi'
 import VehiculesPermis from './VehiculesPermis.jsx'
 
 /* PACT81 — Affectation véhicule & permis de conduire. Le refus serveur (permis
