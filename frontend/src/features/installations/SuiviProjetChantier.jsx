@@ -289,7 +289,6 @@ export default function SuiviProjetChantier() {
 
   useEffect(() => {
     let alive = true
-    setLoadingChantiers(true)
     installationsApi.getInstallations({ page_size: 200 })
       .then((res) => {
         if (!alive) return

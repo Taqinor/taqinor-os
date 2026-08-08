@@ -376,20 +376,22 @@ export default function ParametrageKits() {
   const [showCreate, setShowCreate] = useState(false)
   const [produits, setProduits] = useState([])
 
+  const fetchKits = useCallback(() => installationsApi.getKitsAssemblage({ page_size: 200 })
+    .then((res) => {
+      const rows = unwrap(res)
+      setKits(rows)
+      setSelected((cur) => (cur != null && rows.some((r) => r.id === cur))
+        ? cur : (rows[0]?.id ?? null))
+    })
+    .catch(() => {})
+    .finally(() => setLoadingKits(false)), [])
+
   const loadKits = useCallback(() => {
     setLoadingKits(true)
-    installationsApi.getKitsAssemblage({ page_size: 200 })
-      .then((res) => {
-        const rows = unwrap(res)
-        setKits(rows)
-        setSelected((cur) => (cur != null && rows.some((r) => r.id === cur))
-          ? cur : (rows[0]?.id ?? null))
-      })
-      .catch(() => {})
-      .finally(() => setLoadingKits(false))
-  }, [])
+    return fetchKits()
+  }, [fetchKits])
 
-  useEffect(() => { loadKits() }, [loadKits])
+  useEffect(() => { fetchKits() }, [fetchKits])
   useEffect(() => {
     let alive = true
     stockApi.getProduits({ page_size: 200 }).then((res) => {

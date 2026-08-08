@@ -215,7 +215,6 @@ export default function DocumentsProjet() {
 
   useEffect(() => {
     let alive = true
-    setLoadingChantiers(true)
     installationsApi.getInstallations({ page_size: 200 })
       .then((res) => {
         if (!alive) return

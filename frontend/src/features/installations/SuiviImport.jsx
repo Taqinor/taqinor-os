@@ -368,20 +368,22 @@ export default function SuiviImport() {
   const [selected, setSelected] = useState(null)
   const [showCreate, setShowCreate] = useState(false)
 
+  const fetchDossiers = useCallback(() => installationsApi.getDossiersImport({ page_size: 200 })
+    .then((res) => {
+      const rows = unwrap(res)
+      setDossiers(rows)
+      setSelected((cur) => (cur != null && rows.some((r) => r.id === cur))
+        ? cur : (rows[0]?.id ?? null))
+    })
+    .catch(() => {})
+    .finally(() => setLoadingList(false)), [])
+
   const loadDossiers = useCallback(() => {
     setLoadingList(true)
-    installationsApi.getDossiersImport({ page_size: 200 })
-      .then((res) => {
-        const rows = unwrap(res)
-        setDossiers(rows)
-        setSelected((cur) => (cur != null && rows.some((r) => r.id === cur))
-          ? cur : (rows[0]?.id ?? null))
-      })
-      .catch(() => {})
-      .finally(() => setLoadingList(false))
-  }, [])
+    return fetchDossiers()
+  }, [fetchDossiers])
 
-  useEffect(() => { loadDossiers() }, [loadDossiers])
+  useEffect(() => { fetchDossiers() }, [fetchDossiers])
 
   const current = dossiers.find((d) => d.id === selected) || null
 

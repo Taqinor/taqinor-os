@@ -637,7 +637,7 @@ function CreateRetenueDialog({ ordreId, onClose, onCreated }) {
   )
 }
 
-function RetenuesTab({ sousTraitantId, chantiers }) {
+function RetenuesTab({ sousTraitantId }) {
   const { rows: ordres } = useFilteredList(
     installationsApi.getOrdresSousTraitance, { sous_traitant: sousTraitantId })
   const [ordreId, setOrdreId] = useState('')
@@ -738,20 +738,22 @@ export default function SousTraitanceChantier() {
   const [chantiers, setChantiers] = useState([])
   const [showCreateSt, setShowCreateSt] = useState(false)
 
+  const fetchSousTraitants = useCallback(() => installationsApi.getSousTraitants({ page_size: 200 })
+    .then((res) => {
+      const rows = unwrap(res)
+      setSousTraitants(rows)
+      setSelected((cur) => (cur != null && rows.some((r) => r.id === cur))
+        ? cur : (rows[0]?.id ?? null))
+    })
+    .catch(() => {})
+    .finally(() => setLoadingSt(false)), [])
+
   const loadSousTraitants = useCallback(() => {
     setLoadingSt(true)
-    installationsApi.getSousTraitants({ page_size: 200 })
-      .then((res) => {
-        const rows = unwrap(res)
-        setSousTraitants(rows)
-        setSelected((cur) => (cur != null && rows.some((r) => r.id === cur))
-          ? cur : (rows[0]?.id ?? null))
-      })
-      .catch(() => {})
-      .finally(() => setLoadingSt(false))
-  }, [])
+    return fetchSousTraitants()
+  }, [fetchSousTraitants])
 
-  useEffect(() => { loadSousTraitants() }, [loadSousTraitants])
+  useEffect(() => { fetchSousTraitants() }, [fetchSousTraitants])
   useEffect(() => {
     let alive = true
     installationsApi.getInstallations({ page_size: 200 })

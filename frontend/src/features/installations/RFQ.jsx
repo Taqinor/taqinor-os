@@ -276,20 +276,22 @@ export default function RFQ() {
   const [fournisseurs, setFournisseurs] = useState([])
   const [demandes, setDemandes] = useState([])
 
+  const fetchRFQs = useCallback(() => installationsApi.getRFQs({ page_size: 200 })
+    .then((res) => {
+      const rows = unwrap(res)
+      setRfqs(rows)
+      setSelected((cur) => (cur != null && rows.some((r) => r.id === cur))
+        ? cur : (rows[0]?.id ?? null))
+    })
+    .catch(() => {})
+    .finally(() => setLoadingList(false)), [])
+
   const loadRFQs = useCallback(() => {
     setLoadingList(true)
-    installationsApi.getRFQs({ page_size: 200 })
-      .then((res) => {
-        const rows = unwrap(res)
-        setRfqs(rows)
-        setSelected((cur) => (cur != null && rows.some((r) => r.id === cur))
-          ? cur : (rows[0]?.id ?? null))
-      })
-      .catch(() => {})
-      .finally(() => setLoadingList(false))
-  }, [])
+    return fetchRFQs()
+  }, [fetchRFQs])
 
-  useEffect(() => { loadRFQs() }, [loadRFQs])
+  useEffect(() => { fetchRFQs() }, [fetchRFQs])
   useEffect(() => {
     let alive = true
     Promise.all([
