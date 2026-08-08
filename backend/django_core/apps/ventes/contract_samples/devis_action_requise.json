@@ -1,0 +1,77 @@
+{
+  "endpoint": "GET /api/django/ventes/devis/action-requise/",
+  "pourquoi": "« Relances du jour » (Ventes → Action requise) : les devis nécessitant une action, groupés par motif, en UN SEUL appel agrégé. Cet endpoint est le trou de PACT17 — l'écran DevisActionBoardPage l'appelait depuis sa création alors que la moitié serveur n'avait jamais été construite. Source de vérité : apps/ventes/selectors.py::devis_action_requise, forme déclarée par DevisActionRequiseSerializer. Les 5 paniers sont TOUJOURS présents (un panier vide vaut count 0 / ids vide, jamais une clé absente) ; wa_drafts ne porte QUE la file engagement_relance (QX30) ; devis porte la ligne d'affichage de chaque id cité (total_ttc en TEXTE décimal, jamais un flottant — jamais de prix d'achat ni de marge).",
+  "exemple": {
+    "buckets": {
+      "envoyes_sans_reponse": { "count": 2, "ids": [41, 44] },
+      "acceptes_non_factures": { "count": 1, "ids": [37] },
+      "refuses_sans_motif": { "count": 1, "ids": [29] },
+      "expirant_bientot": { "count": 1, "ids": [46] },
+      "engagement_relance": { "count": 1, "ids": [52] }
+    },
+    "wa_drafts": {
+      "52": "Bonjour Amine Benali, votre proposition (réf. DEV-2026-052) vous attend toujours — souhaitez-vous que je vous la présente ?"
+    },
+    "devis": {
+      "29": {
+        "id": 29,
+        "reference": "DEV-2026-029",
+        "client_nom": "Coopérative Tazarine",
+        "client_telephone": "+212661000029",
+        "client_whatsapp": "",
+        "total_ttc": "184320.00"
+      },
+      "37": {
+        "id": 37,
+        "reference": "DEV-2026-037",
+        "client_nom": "Hôtel Atlas Rissani",
+        "client_telephone": "+212661000037",
+        "client_whatsapp": "+212661000037",
+        "total_ttc": "612400.00"
+      },
+      "41": {
+        "id": 41,
+        "reference": "DEV-2026-041",
+        "client_nom": "Youssef Alaoui",
+        "client_telephone": "+212661000041",
+        "client_whatsapp": "",
+        "total_ttc": "78600.00"
+      },
+      "44": {
+        "id": 44,
+        "reference": "DEV-2026-044",
+        "client_nom": "Ferme Doukkala",
+        "client_telephone": "",
+        "client_whatsapp": "",
+        "total_ttc": "245900.00"
+      },
+      "46": {
+        "id": 46,
+        "reference": "DEV-2026-046",
+        "client_nom": "Résidence Anfa Park",
+        "client_telephone": "+212661000046",
+        "client_whatsapp": "",
+        "total_ttc": "132750.00"
+      },
+      "52": {
+        "id": 52,
+        "reference": "DEV-2026-052",
+        "client_nom": "Amine Benali",
+        "client_telephone": "+212661000052",
+        "client_whatsapp": "+212661000052",
+        "total_ttc": "96300.00"
+      }
+    }
+  },
+  "exemple_vide": {
+    "buckets": {
+      "envoyes_sans_reponse": { "count": 0, "ids": [] },
+      "acceptes_non_factures": { "count": 0, "ids": [] },
+      "refuses_sans_motif": { "count": 0, "ids": [] },
+      "expirant_bientot": { "count": 0, "ids": [] },
+      "engagement_relance": { "count": 0, "ids": [] }
+    },
+    "wa_drafts": {},
+    "devis": {}
+  }
+}

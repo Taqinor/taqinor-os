@@ -620,6 +620,8 @@
     buckets:inconnu, rows:inconnu, total_en_cours:inconnu
 - frontend/src/api/ventesApi.js :: getClientReleve -> /api/django/ventes/clients/<>/releve
     avoirs:inconnu, client:objet, detail:texte, lignes:inconnu, paiements:inconnu, totaux:objet
+- frontend/src/api/ventesApi.js :: getDevisActionBoard -> /api/django/ventes/devis/action-requise
+    buckets:inconnu, devis:inconnu, wa_drafts:inconnu
 - frontend/src/api/ventesApi.js :: getPrefillSite -> /api/django/ventes/devis/prefill-site
     client:inconnu, detail:texte, profil:inconnu
 - frontend/src/api/ventesApi.js :: getSuiviPartageDevis -> /api/django/ventes/devis/<>/suivi-partage

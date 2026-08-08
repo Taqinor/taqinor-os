@@ -11,6 +11,12 @@
 // tel:/wa.me directs — le wa.me est PRÉ-REMPLI (`?text=`) quand le backend
 // fournit un brouillon (board.wa_drafts[id], contrat QX30 côté serveur) ;
 // repli sur le lien nu sinon (comportement QX29 inchangé).
+// PACT17 — l'agrégat serveur (`GET /ventes/devis/action-requise/`) n'avait
+// JAMAIS été construit : cet écran était mort alors que son entrée de menu
+// était publiée aux rôles responsable/admin. Il existe désormais, forme
+// déclarée (DevisActionRequiseSerializer) et exemple committé dans
+// `apps/ventes/contract_samples/devis_action_requise.json`, et il sert aussi
+// `devis[id]` — un seul appel, plus de re-téléchargement de toute la liste.
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
@@ -54,24 +60,20 @@ const waHref = (raw, draft) => {
 export default function DevisActionBoardPage() {
   const navigate = useNavigate()
   const [board, setBoard] = useState(null)
-  const [devisMap, setDevisMap] = useState({})
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState(false)
 
+  // PACT17 — UN SEUL appel : le serveur renvoie `devis[id]` (référence,
+  // client, téléphone, WhatsApp, total) pour chaque id cité dans un panier.
+  // L'écran re-téléchargeait auparavant la liste complète des devis, où il
+  // cherchait des champs que `DevisSerializer` ne publie pas
+  // (`client_telephone`, `client_whatsapp`) : les raccourcis « Appeler » et
+  // WhatsApp ne s'affichaient jamais, et toute référence au-delà de la
+  // première page (50) retombait sur « #42 ».
+  const devisMap = board?.devis ?? {}
+
   const load = () => ventesApi.getDevisActionBoard()
-    .then((r) => {
-      setBoard(r.data)
-      const allIds = Object.values(r.data.buckets ?? {}).flatMap((b) => b.ids)
-      if (allIds.length === 0) { setDevisMap({}); return }
-      // Le volume attendu (devis nécessitant une action) ne justifie pas de
-      // pagination — même approche que ZSAV6 (getTickets({ ouvert: 'tous' })).
-      return ventesApi.getDevis({}).then((dr) => {
-        const rows = dr.data.results ?? dr.data ?? []
-        const map = {}
-        for (const d of rows) map[d.id] = d
-        setDevisMap(map)
-      })
-    })
+    .then((r) => { setBoard(r.data) })
     .catch(() => setLoadError(true))
     .finally(() => setLoading(false))
 
@@ -107,7 +109,7 @@ export default function DevisActionBoardPage() {
         <header>
           <h1 className="font-display text-2xl font-bold tracking-tight">Relances du jour</h1>
           <p className="text-sm text-muted-foreground">
-            {totalCount} devis{totalCount > 1 ? '' : ''} nécessitant une action
+            {totalCount} devis nécessitant une action
           </p>
         </header>
 
@@ -130,8 +132,8 @@ export default function DevisActionBoardPage() {
                       // QX30 — brouillon wa.me pré-rempli fourni par le backend
                       // pour cette file (queue engagement) ; absent ailleurs.
                       const draft = board.wa_drafts?.[id]
-                      const tel = telHref(d?.client_telephone ?? d?.telephone)
-                      const wa = waHref(d?.client_whatsapp ?? d?.client_telephone ?? d?.telephone, draft)
+                      const tel = telHref(d?.client_telephone)
+                      const wa = waHref(d?.client_whatsapp || d?.client_telephone, draft)
                       return (
                         <li key={id} className="flex items-center gap-1.5">
                           <button
