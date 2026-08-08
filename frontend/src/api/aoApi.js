@@ -403,6 +403,10 @@ export const aoRentabiliteApi = {
   parAffaire: (affaireId) => api.get('/ao/economie/', { params: { appel_offre: affaireId } }),
   get: (economieId) => api.get(`/ao/economie/${economieId}/`),
   update: (economieId, data) => api.patch(`/ao/economie/${economieId}/`, data),
+  // PACT75 — l'économie d'une affaire n'existe pas d'office : `EconomieAOViewSet`
+  // est un ModelViewSet ordinaire, `create` fonctionne tel quel (les taux de
+  // TVA ont un défaut serveur — seul `appel_offre` est requis).
+  creer: (affaireId) => api.post('/ao/economie/', { appel_offre: affaireId }),
 
   /* Le classeur interne se PRODUIT (job de fond) avant de se retirer : il
      n'est jamais rendu dans le temps d'une requête. `produireClasseur` renvoie
@@ -414,6 +418,20 @@ export const aoRentabiliteApi = {
     { params: { job: jobId } }),
   download: (economieId, jobId) => api.get(`/ao/economie/${economieId}/telecharger/`,
     { params: { job: jobId, fichier: 1 }, responseType: 'blob' }),
+
+  // PACT75 — verrou de l'économie : une cascade de prix déjà propagée ne se
+  // modifie plus (`_refuser_si_verrouillee`, appliqué aux lignes ET aux
+  // cibles).
+  verrouiller: (economieId) => api.post(`/ao/economie/${economieId}/verrouiller/`),
+  deverrouiller: (economieId) => api.post(`/ao/economie/${economieId}/deverrouiller/`),
+
+  // PACT75 — postes du coût de revient, scopés à UNE économie (`?economie=`).
+  lignesCoutRevient: crud('lignes-cout-revient'),
+  // PACT75 — cibles de bénéfice VERSIONNÉES : `create` route vers
+  // `services_directeur.nouvelle_cible` côté serveur (incrémente la version,
+  // désactive la précédente, trace l'auteur) — jamais un POST qui écraserait
+  // une version existante.
+  ciblesFinancieres: crud('cibles-financieres'),
 }
 
 export default aoApi
