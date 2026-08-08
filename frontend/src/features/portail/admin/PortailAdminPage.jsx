@@ -14,6 +14,7 @@ import {
 } from '../../../ui'
 import ComptesPortailAdmin from './ComptesPortailAdmin'
 import AcceptationsDevisPortailAdmin from './AcceptationsDevisPortailAdmin'
+import PaiementsFacturePortailAdmin from './PaiementsFacturePortailAdmin'
 
 export default function PortailAdminPage() {
   const [tab, setTab] = useState('comptes')
@@ -36,6 +37,7 @@ export default function PortailAdminPage() {
           <TabsList className="flex w-full flex-wrap justify-start">
             <TabsTrigger value="comptes">Comptes d'accès</TabsTrigger>
             <TabsTrigger value="acceptations-devis">Acceptations de devis</TabsTrigger>
+            <TabsTrigger value="paiements-facture">Paiements de facture</TabsTrigger>
           </TabsList>
 
           <TabsContent value="comptes">
@@ -43,6 +45,9 @@ export default function PortailAdminPage() {
           </TabsContent>
           <TabsContent value="acceptations-devis">
             <AcceptationsDevisPortailAdmin />
+          </TabsContent>
+          <TabsContent value="paiements-facture">
+            <PaiementsFacturePortailAdmin />
           </TabsContent>
         </Tabs>
       </div>
