@@ -31,6 +31,18 @@ const btpChantierApi = {
     contester: (id, motif) =>
       api.post(`/btp-chantier/reserves-chantier/${id}/contester/`, { motif }),
   },
+
+  // ── PACT63 — Demandes d'information technique (RFI) — NTCON3/4 ──────────
+  rfi: {
+    // `params` : { chantier, statut } — tous optionnels.
+    list: (params) => api.get('/btp-chantier/rfi/', { params }),
+    // `data` : { chantier, question, destinataire_texte?, destinataire_user?,
+    // delai_jours?, impact_cout?, impact_delai_jours? } — `numero` et
+    // `date_limite_reponse` posés côté serveur (jours OUVRÉS).
+    create: (data) => api.post('/btp-chantier/rfi/', data),
+    repondre: (id, texte) => api.post(`/btp-chantier/rfi/${id}/repondre/`, { texte }),
+    clore: (id) => api.post(`/btp-chantier/rfi/${id}/clore/`),
+  },
 }
 
 export default btpChantierApi
