@@ -5,7 +5,8 @@
    module.config.jsx`. */
 import { lazy } from 'react'
 import {
-  Calculator, Construction, FileEdit, FileQuestion, MapPin, NotebookPen, Stamp,
+  Calculator, Construction, FileEdit, FileQuestion, MapPin, NotebookPen,
+  Share2, Stamp,
 } from 'lucide-react'
 import { appGlyph } from '../../lib/apps/appGlyph'
 
@@ -36,6 +37,7 @@ const VisasDocumentsPage = lazy(() => import('./VisasDocuments'))
 const JournalChantierPage = lazy(() => import('./JournalChantier'))
 const AvenantsChantierPage = lazy(() => import('./AvenantsChantier'))
 const DecompteGeneralPage = lazy(() => import('./DecompteGeneral'))
+const DiffusionPlansPage = lazy(() => import('./DiffusionPlans'))
 
 const ROLES = ['normal', 'responsable', 'admin']
 
@@ -85,6 +87,12 @@ const config = {
         icon: <Calculator size={17} strokeWidth={1.75} aria-hidden="true" />,
         roles: ['responsable', 'admin'],
       },
+      {
+        to: '/btp-chantier/diffusion-plans',
+        label: 'Diffusion de plans',
+        icon: <Share2 size={17} strokeWidth={1.75} aria-hidden="true" />,
+        roles: ['responsable', 'admin'],
+      },
     ],
   },
   titles: [
@@ -94,6 +102,7 @@ const config = {
     ['/btp-chantier/journal', 'Journal de chantier'],
     ['/btp-chantier/avenants', 'Avenants de chantier'],
     ['/btp-chantier/dgd', 'Décompte général et définitif'],
+    ['/btp-chantier/diffusion-plans', 'Diffusion contrôlée de plans'],
   ],
   sectionLabels: { 'btp-chantier': 'BTP Chantier' },
   routes: [
@@ -103,6 +112,7 @@ const config = {
     { path: '/btp-chantier/journal', component: JournalChantierPage, roles: ROLES },
     { path: '/btp-chantier/avenants', component: AvenantsChantierPage, roles: ['responsable', 'admin'] },
     { path: '/btp-chantier/dgd', component: DecompteGeneralPage, roles: ['responsable', 'admin'] },
+    { path: '/btp-chantier/diffusion-plans', component: DiffusionPlansPage, roles: ['responsable', 'admin'] },
   ],
 }
 

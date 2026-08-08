@@ -120,6 +120,24 @@ const btpChantierApi = {
   // module (vue fonction dédiée par chantier).
   debourseVsFacture: (chantierId) =>
     api.get(`/btp-chantier/chantiers/${chantierId}/debourse-vs-facture/`),
+
+  // ── PACT68 — Diffusion contrôlée de plans — NTCON12/13 ───────────────────
+  diffusions: {
+    // `params` : { chantier, document } — tous optionnels.
+    list: (params) => api.get('/btp-chantier/diffusions-plan/', { params }),
+    // `data` : { chantier, document_ged_id, version_diffusee,
+    // destinataires_internes?, destinataires_externes? } — `partage_ged_id`/
+    // `date_diffusion`/`accuse_reception` posés côté serveur.
+    create: (data) => api.post('/btp-chantier/diffusions-plan/', data),
+    // Crée le partage GED externe (si destinataires externes) + notifie les
+    // internes ; pose `date_diffusion` côté serveur.
+    diffuser: (id) => api.post(`/btp-chantier/diffusions-plan/${id}/diffuser/`),
+    // NTCON13 — alerte « plan périmé encore consulté » pour un chantier.
+    plansPerimes: (chantierId) =>
+      api.get('/btp-chantier/diffusions-plan/plans-perimes/', {
+        params: { chantier: chantierId },
+      }),
+  },
 }
 
 export default btpChantierApi
