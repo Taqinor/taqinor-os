@@ -293,6 +293,19 @@ const aoApi = {
     pointer: (id, corps) => api.post(`/ao/checklist-partenaire/${id}/pointer/`, corps),
   },
 
+  /* ── PACT73 — Bibliothèque des pièces administratives (AOF137) ────────────
+     `pieces-administratives`, SCOPÉE SOCIÉTÉ (jamais une affaire) : une pièce
+     datée (attestation fiscale, CNSS, RC…) s'enregistre UNE fois et se
+     RATTACHE à plusieurs AO sans dupliquer un octet. `rattacher` ajoute la
+     pièce à un dossier ; `aRenouveler` liste celles qui entrent dans leur
+     fenêtre de rappel. */
+  piecesAdministratives: {
+    ...crud('pieces-administratives'),
+    rattacher: (id, dossierId) =>
+      api.post(`/ao/pieces-administratives/${id}/rattacher/`, { dossier: dossierId }),
+    aRenouveler: () => api.get('/ao/pieces-administratives/a-renouveler/'),
+  },
+
   // ── Bibliothèque : kits, presets, gabarits, textes normalisés ──
   //
   // RÉPARATION 03/08/2026 — `crud('bibliotheque')` appelait

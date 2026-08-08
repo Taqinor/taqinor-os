@@ -4,7 +4,10 @@
    fast-refresh ne s'y applique pas (même dérogation que `moduleRoutes.jsx`). */
 import { lazy } from 'react'
 import { Link } from 'react-router-dom'
-import { Trophy, LayoutDashboard, Briefcase, Building2, LayoutGrid, FolderKanban, BookOpen, Wallet, Gavel } from 'lucide-react'
+import {
+  Trophy, LayoutDashboard, Briefcase, Building2, LayoutGrid, FolderKanban, BookOpen, Wallet, Gavel,
+  FileCheck2,
+} from 'lucide-react'
 import { appGlyph } from '../../lib/apps/appGlyph'
 import { Button, EmptyState } from '../../ui'
 
@@ -64,6 +67,10 @@ const DossierPage = lazy(() => import('./dossier/DossierPage'))
 // écran rend la lecture réelle des toitures et, sous 768 px, le mode MOBILE
 // (refus explicites AVEC leur raison + capture photo → repère conservée).
 const ToituresPage = lazy(() => import('./toiture/ToituresPage'))
+// PACT73 — bibliothèque des pièces administratives (AOF137), scopée société :
+// une pièce (attestation fiscale, CNSS, RC…) s'enregistre une fois et se
+// rattache à plusieurs affaires. Écran de premier niveau, comme Bibliothèque.
+const PiecesAdministratives = lazy(() => import('./PiecesAdministratives'))
 
 // Squelette pour une destination dont l'écran n'existe PAS ENCORE sur le
 // disque. Il dit la vérité à l'utilisateur — « pas encore construit », et non
@@ -127,6 +134,12 @@ const config = {
       { to: '/ao/calepinages', label: 'Calepinages', icon: <LayoutGrid size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
       { to: '/ao/dossiers', label: 'Dossiers', icon: <FolderKanban size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
       { to: '/ao/bibliotheque', label: 'Bibliothèque', icon: <BookOpen size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
+      {
+        to: '/ao/pieces-administratives',
+        label: 'Pièces administratives',
+        icon: <FileCheck2 size={17} strokeWidth={1.75} aria-hidden="true" />,
+        roles: ROLES,
+      },
       // L'ÉCONOMIE EST RÉSERVÉE AU DIRECTEUR (en-tête du Groupe AOF) — absente
       // de la nav pour quiconque n'a pas `ao_rentabilite_voir` (jamais un rôle
       // Responsable/Commercial/Technicien).
@@ -146,6 +159,7 @@ const config = {
     ['/ao/dossiers/', "Appels d'offres — Dossier de soumission"],
     ['/ao/dossiers', "Appels d'offres — Dossiers"],
     ['/ao/bibliotheque', "Appels d'offres — Bibliothèque"],
+    ['/ao/pieces-administratives', "Appels d'offres — Pièces administratives"],
     ['/ao/rentabilite', "Appels d'offres — Rentabilité"],
     ['/ao', "Appels d'offres — Tableau de bord"],
   ],
@@ -191,6 +205,7 @@ const config = {
     // Écran réel, deep-link (il lit `:id` via `useParams`).
     { path: '/ao/dossiers/:id', component: DossierPage, roles: ROLES },
     { path: '/ao/bibliotheque', component: BibliothequePage, roles: ROLES },
+    { path: '/ao/pieces-administratives', component: PiecesAdministratives, roles: ROLES },
     // RENTABILITÉ — VÉRIFIÉ 2026-08-03 : AUCUN écran de rentabilité n'existe
     // sur le disque (`rentabilite/RentabiliteRoute.jsx` et tout équivalent sont
     // absents ; seul `aoRentabiliteApi` est prêt côté client). Le squelette est
