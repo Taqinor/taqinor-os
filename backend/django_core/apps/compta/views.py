@@ -2111,7 +2111,8 @@ class ImmobilisationViewSet(_ComptaBaseViewSet):
                 plan, context={'request': request}).data,
             status=status.HTTP_200_OK)
 
-    @action(detail=True, methods=['get', 'post'], url_path='plan-fiscal')
+    @action(detail=True, methods=['get', 'post'], url_path='plan-fiscal',
+            permission_classes=[IsResponsableOrAdmin])
     def plan_fiscal(self, request, pk=None):
         """PACT163 / XACC16 — Plan fiscal parallèle (amortissement dérogatoire).
 
@@ -5311,7 +5312,8 @@ class BudgetViewSet(_ComptaBaseViewSet):
             return resp
         return Response(data)
 
-    @action(detail=True, methods=['post'], url_path='generer-ligne-repartie')
+    @action(detail=True, methods=['post'], url_path='generer-ligne-repartie',
+            permission_classes=[IsResponsableOrAdmin])
     def generer_ligne_repartie(self, request, pk=None):
         """PACT163 / XACC22 — Ajoute une ligne au budget en RÉPARTISSANT un
         montant annuel sur les 12 mois via une courbe (``services.
@@ -6050,7 +6052,8 @@ class ApprobationEnvoiCampagneViewSet(_ComptaBaseViewSet):
     filter_backends = [filters.OrderingFilter]
     ordering_fields = ['date_creation']
 
-    @action(detail=True, methods=['post'])
+    @action(detail=True, methods=['post'],
+            permission_classes=[IsResponsableOrAdmin])
     def approuver(self, request, pk=None):
         approbation = self.get_object()
         services.approuver_envoi_campagne(approbation, user=request.user)
@@ -7155,7 +7158,8 @@ class DemandeApprobationConfigViewSet(_ComptaBaseViewSet):
             commentaire=request.data.get('commentaire') or '')
         return Response(DemandeApprobationConfigSerializer(demande).data)
 
-    @action(detail=True, methods=['post'])
+    @action(detail=True, methods=['post'],
+            permission_classes=[IsResponsableOrAdmin])
     def refuser(self, request, pk=None):
         demande = self.get_object()
         services.decider_approbation_config(

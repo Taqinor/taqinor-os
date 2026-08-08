@@ -18,7 +18,7 @@ from rest_framework.throttling import SimpleRateThrottle
 
 from authentication.mixins import TenantMixin
 from authentication.permissions import HasPermissionOrLegacy
-from core.permissions import WriteScopedPermissionMixin
+from core.permissions import ScopedPermission, WriteScopedPermissionMixin
 
 from apps.ventes.utils.references import create_with_reference
 
@@ -356,7 +356,8 @@ class NonConformiteViewSet(_ChatterMixin, _QhseBaseViewSet):
         return Response(self.get_serializer(ncr).data)
 
     @extend_schema(responses=AnalyseNcrSerializer)
-    @action(detail=True, methods=['post'])
+    @action(detail=True, methods=['post'],
+            permission_classes=[ScopedPermission])
     def analyse(self, request, pk=None):
         """PACT182 (XQHS7) — enregistre/complète l'analyse 5-Pourquoi et/ou
         8D de cette NCR.
@@ -904,7 +905,8 @@ class ProcedureQualiteViewSet(_QhseBaseViewSet):
         return Response(self.get_serializer(qs, many=True).data)
 
     @extend_schema(responses=AccuseLectureSerializer(many=True))
-    @action(detail=False, methods=['get'], url_path='mes-lectures-en-attente')
+    @action(detail=False, methods=['get'], url_path='mes-lectures-en-attente',
+            permission_classes=[ScopedPermission])
     def mes_lectures_en_attente(self, request):
         """PACT181 (XQHS15) — « mes lectures en attente » : les diffusions de
         procédure non lues par l'utilisateur courant, scopées à sa société.
@@ -1129,7 +1131,8 @@ class RisqueOpportuniteViewSet(_QhseBaseViewSet):
     ordering_fields = ['id', 'date_revue', 'criticite_inherente']
 
     @extend_schema(responses=RisqueOpportuniteSerializer(many=True))
-    @action(detail=False, methods=['get'], url_path='revues-dues')
+    @action(detail=False, methods=['get'], url_path='revues-dues',
+            permission_classes=[ScopedPermission])
     def revues_dues(self, request):
         """PACT183 — risques/opportunités dont la revue est due.
         ``risques_opportunites_revue_due`` (services.py) n'avait aucun
@@ -1138,7 +1141,8 @@ class RisqueOpportuniteViewSet(_QhseBaseViewSet):
         return Response(self.get_serializer(qs, many=True).data)
 
     @extend_schema(responses=RisqueOpportuniteCapaSerializer)
-    @action(detail=True, methods=['post'], url_path='lier-capa')
+    @action(detail=True, methods=['post'], url_path='lier-capa',
+            permission_classes=[ScopedPermission])
     def lier_capa(self, request, pk=None):
         """PACT183 — lie une CAPA existante à ce risque/opportunité
         (idempotent — un second appel avec la même CAPA ne duplique pas le
