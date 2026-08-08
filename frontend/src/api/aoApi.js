@@ -304,6 +304,31 @@ const aoApi = {
   },
   sectionsBordereau: crud('sections-bordereau'),
   lignesBordereau: crud('lignes-bordereau'),
+
+  /* ── PACT70 — Suivi administratif de l'AO : cautions, échéances, résultat ─
+     Trois ressources FG224/FG226/FG227, enregistrées depuis toujours côté
+     serveur (`apps/ao/urls.py`), jamais publiées ici : le tableau de bord
+     (`tableauMarches` ci-dessus) les AGRÈGE (taux de réussite, cautions
+     immobilisées, échéances dues) sans qu'aucun écran ne permette d'en créer
+     une seule — ses indicateurs restent donc à zéro. */
+  cautionsSoumission: {
+    ...crud('cautions-soumission'),
+    // AOF16 — chemin d'ÉCRITURE unique du montant DÉFINITIF (dérivé du taux
+    // de la clause CPS, jamais saisi à la main). Idempotent côté serveur.
+    deriverDefinitive: (corps) =>
+      api.post('/ao/cautions-soumission/deriver-definitive/', corps),
+  },
+  echeancesAo: {
+    ...crud('echeances-ao'),
+    dues: () => api.get('/ao/echeances-ao/dues/'),
+  },
+  resultatsAo: {
+    ...crud('resultats-ao'),
+    stats: () => api.get('/ao/resultats-ao/stats/'),
+    // AOF32 — chemin d'ÉCRITURE unique du résultat d'ouverture des plis
+    // (upsert idempotent côté serveur, cf. `ResultatAOViewSet.enregistrer`).
+    enregistrer: (corps) => api.post('/ao/resultats-ao/enregistrer/', corps),
+  },
 }
 
 /* ============================================================================

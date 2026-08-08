@@ -38,6 +38,10 @@ const mocks = vi.hoisted(() => ({
   bordereauxGet: vi.fn(),
   bordereauxControles: vi.fn(),
   lignesBordereauUpdate: vi.fn(),
+  // PACT70 — l'onglet « Suivi administratif » (SuiviAdministratifAO).
+  cautionsList: vi.fn(),
+  echeancesAoList: vi.fn(),
+  resultatsAoList: vi.fn(),
 }))
 
 vi.mock('react-router-dom', async () => {
@@ -66,6 +70,9 @@ vi.mock('../../api/aoApi', () => ({
       list: mocks.bordereauxList, get: mocks.bordereauxGet, controles: mocks.bordereauxControles,
     },
     lignesBordereau: { update: mocks.lignesBordereauUpdate },
+    cautionsSoumission: { list: mocks.cautionsList, create: vi.fn(), deriverDefinitive: vi.fn() },
+    echeancesAo: { list: mocks.echeancesAoList, create: vi.fn(), update: vi.fn() },
+    resultatsAo: { list: mocks.resultatsAoList, enregistrer: vi.fn() },
   },
 }))
 
@@ -168,16 +175,20 @@ beforeEach(() => {
   mocks.exigencesList.mockResolvedValue({ data: [] })
   mocks.controlesAvantDepot.mockResolvedValue({ data: { controles: [] } })
   mocks.bordereauxList.mockResolvedValue({ data: [] })
+  mocks.cautionsList.mockResolvedValue({ data: [] })
+  mocks.echeancesAoList.mockResolvedValue({ data: [] })
+  mocks.resultatsAoList.mockResolvedValue({ data: [] })
 })
 
-// Les 11 onglets de la fiche, dans leur ordre RÉEL : les 7 d'origine, les 3
-// ajoutés le 03/08/2026, puis « Variantes » — l'ordre des 10 premiers ne bouge
-// jamais (un onglet nouveau s'ajoute EN QUEUE, il ne s'intercale pas).
+// Les 12 onglets de la fiche, dans leur ordre RÉEL : les 7 d'origine, les 3
+// ajoutés le 03/08/2026, « Variantes » (PACT171), puis « Suivi administratif »
+// (PACT70) — l'ordre des 11 premiers ne bouge jamais (un onglet nouveau
+// s'ajoute EN QUEUE, il ne s'intercale pas).
 const ONGLETS = [
   'Synthèse', 'Toitures & relevés', 'Calepinages', 'Bordereau',
   'Dossier', 'Questions terrain', 'Historique',
   'Administratif', 'Équipements', 'CPS & exigences',
-  'Variantes',
+  'Variantes', 'Suivi administratif',
 ]
 
 describe('AffaireDetail', () => {
@@ -216,7 +227,15 @@ describe('AffaireDetail', () => {
     expect(screen.getByRole('tab', { name: 'Variantes' })).toBeInTheDocument()
     const onglets = screen.getAllByRole('tab').map((t) => t.textContent)
     expect(onglets).toEqual(ONGLETS)
-    expect(onglets[onglets.length - 1]).toBe('Variantes')
+    expect(onglets[onglets.length - 2]).toBe('Variantes')
+  })
+
+  it('ajoute « Suivi administratif » (PACT70) en 12e et dernier onglet', async () => {
+    renderScreen()
+    await screen.findByText('AO-2026-001')
+    const onglets = screen.getAllByRole('tab').map((t) => t.textContent)
+    expect(onglets).toEqual(ONGLETS)
+    expect(onglets[onglets.length - 1]).toBe('Suivi administratif')
   })
 
   it('n’a JAMAIS un onglet ou un mot « rentabilité » dans l’arbre (route séparée AOF161)', async () => {
@@ -520,6 +539,28 @@ describe('AffaireDetail', () => {
     })
   })
 
+  /* ══ 12ᵉ onglet — PACT70 : cautions, échéances, résultat étaient sans écran ══
+     Le tableau de bord AGRÈGE ces trois ressources sans qu'aucun écran ne
+     permette d'en créer une seule. */
+  describe('l’onglet « Suivi administratif »', () => {
+    it('monte le VRAI SuiviAdministratifAO, filtré sur CETTE affaire pour les trois ressources', async () => {
+      renderScreen()
+      await screen.findByText('AO-2026-001')
+      await userEvent.click(onglet('Suivi administratif'))
+
+      await waitFor(
+        () => expect(mocks.cautionsList).toHaveBeenCalledWith({ appel_offre: '1' }),
+        { timeout: 15000 },
+      )
+      expect(mocks.echeancesAoList).toHaveBeenCalledWith({ appel_offre: '1' })
+      expect(mocks.resultatsAoList).toHaveBeenCalledWith({ appel_offre: '1' })
+      expect(await screen.findByRole('heading', { name: 'Suivi administratif' })).toBeInTheDocument()
+      expect(screen.getByRole('heading', { name: 'Cautions' })).toBeInTheDocument()
+      expect(screen.getByRole('heading', { name: 'Échéances' })).toBeInTheDocument()
+      expect(screen.getByRole('heading', { name: 'Résultat (ouverture des plis)' })).toBeInTheDocument()
+    })
+  })
+
   describe('gardes de structure', () => {
     it('plus AUCUN TabPlaceholder ne subsiste dans la fiche', () => {
       expect(codeSeul).not.toMatch(/TabPlaceholder/)
@@ -540,6 +581,7 @@ describe('AffaireDetail', () => {
         './equipements/EquipementsPage',
         './cps/ExigencesPage',
         './variantes/VariantesCompare',
+        './SuiviAdministratifAO',
       ]) {
         // lazy(() => import('<chemin>')…
         expect(codeSeul).toMatch(

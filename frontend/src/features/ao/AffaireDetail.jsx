@@ -97,6 +97,15 @@ const ExigencesPage = lazy(() => import('./cps/ExigencesPage'))
    contrat que `VariantesCompare` déclare lui-même, jamais une image cassée. */
 const VariantesCompare = lazy(() => import('./variantes/VariantesCompare'))
 
+/* ── QUATRIÈME VAGUE — l'onglet « Suivi administratif » (12ᵉ), PACT70 ──────
+   `SuiviAdministratifAO` (racine `features/ao/`, pas `administratif/` : le
+   dossier existant est un panneau de LECTURE sur des champs embarqués de
+   l'affaire, jamais retouché ici) est le premier écran qui ÉCRIT sur les
+   ressources `cautions-soumission`/`echeances-ao`/`resultats-ao` — celles-là
+   mêmes que le tableau de bord agrège sans qu'aucun écran ne permette d'en
+   créer une seule. */
+const SuiviAdministratifAO = lazy(() => import('./SuiviAdministratifAO'))
+
 const errMsg = (e, fallback) => e?.response?.data?.detail || fallback
 
 const VERDICT_TONE = { confirme: 'success', tendu: 'warning' }
@@ -522,6 +531,16 @@ export default function AffaireDetail() {
           content: (
             <PanneauDiffere>
               <VariantesCompare affaireId={id} />
+            </PanneauDiffere>
+          ),
+        },
+        /* ── 12ᵉ onglet, APRÈS les 11 ci-dessus (PACT70) ─────────────────── */
+        {
+          value: 'suivi_administratif',
+          label: 'Suivi administratif',
+          content: (
+            <PanneauDiffere>
+              <SuiviAdministratifAO affaireId={id} />
             </PanneauDiffere>
           ),
         },
