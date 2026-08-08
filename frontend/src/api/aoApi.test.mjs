@@ -60,10 +60,18 @@ test('AOF28/AOF62 — les variantes pointent `variantes-calepinage`, et l’éch
 
 test('les ressources de relevé pointent le NOM SERVEUR (plans-source au singulier, chaines-cotes)', () => {
   const body = aoApiBody()
-  assert.match(body, /plansSources:\s*crud\('plans-source'\)/)
+  // PACT76 — `plansSources` porte désormais aussi l'action `upload` : le CRUD
+  // de base reste `crud('plans-source')`, étalé (spread) dans l'objet.
+  assert.match(body, /plansSources:\s*\{\s*\n\s*\.\.\.crud\('plans-source'\)/)
   assert.match(body, /chaines:\s*crud\('chaines-cotes'\)/)
   assert.doesNotMatch(sansCommentaires(src), /crud\('plans-sources'\)/)
   assert.doesNotMatch(sansCommentaires(src), /crud\('chaines'\)/)
+})
+
+test('PACT76 — plansSources.upload publie l’action MULTIPART réelle (PlanSourceViewSet.upload)', () => {
+  const body = aoApiBody()
+  assert.match(body, /upload:\s*\(id,\s*fichier\)\s*=>\s*\{/)
+  assert.match(body, /api\.post\(`\/ao\/plans-source\/\$\{id\}\/upload\/`,\s*fd\)/)
 })
 
 test('AOF89 — `zones` n’est PAS publiée : aucun modèle ni route ne persiste les zones', () => {

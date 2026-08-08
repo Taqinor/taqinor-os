@@ -32,6 +32,23 @@ const mocks = vi.hoisted(() => ({
   equipementsList: vi.fn(),
   exigencesList: vi.fn(),
   exigencesCreate: vi.fn(),
+  // PACT69 — le panneau « Bordereau » interroge désormais la VRAIE ressource
+  // (`aoApi.bordereaux`), publiée par cette même tâche.
+  bordereauxList: vi.fn(),
+  bordereauxGet: vi.fn(),
+  bordereauxControles: vi.fn(),
+  lignesBordereauUpdate: vi.fn(),
+  // PACT70 — l'onglet « Suivi administratif » (SuiviAdministratifAO).
+  cautionsList: vi.fn(),
+  echeancesAoList: vi.fn(),
+  resultatsAoList: vi.fn(),
+  // PACT71/PACT72 — `DossierPage` monte désormais aussi `ChecklistPartenaire`
+  // et `PiecesFournies` PAR DÉFAUT (pleine largeur, sous sa grille).
+  completude: vi.fn(),
+  checklistList: vi.fn(),
+  piecesFourniesList: vi.fn(),
+  // PACT74 — l'onglet « Pièces du DCE » (PiecesConsultation).
+  piecesConsultationList: vi.fn(),
 }))
 
 vi.mock('react-router-dom', async () => {
@@ -50,12 +67,22 @@ vi.mock('../../api/aoApi', () => ({
     variantes: { list: mocks.variantesList },
     dossiers: {
       list: mocks.dossiersList, get: mocks.dossierGet, genererPiece: mocks.genererPiece,
-      controlesAvantDepot: mocks.controlesAvantDepot,
+      controlesAvantDepot: mocks.controlesAvantDepot, completude: mocks.completude,
     },
+    checklistPartenaire: { list: mocks.checklistList, pointer: vi.fn() },
+    piecesDossierAo: { list: mocks.piecesFourniesList, update: vi.fn() },
+    piecesConsultation: { list: mocks.piecesConsultationList, create: vi.fn(), update: vi.fn(), additif: vi.fn() },
     seriesQR: { list: mocks.seriesList, create: mocks.seriesCreate },
     calepinages: { get: mocks.calepinageGet, calculer: mocks.calepinageCalculer },
     equipements: { list: mocks.equipementsList, bascule: vi.fn() },
     exigencesCps: { list: mocks.exigencesList, create: mocks.exigencesCreate },
+    bordereaux: {
+      list: mocks.bordereauxList, get: mocks.bordereauxGet, controles: mocks.bordereauxControles,
+    },
+    lignesBordereau: { update: mocks.lignesBordereauUpdate },
+    cautionsSoumission: { list: mocks.cautionsList, create: vi.fn(), deriverDefinitive: vi.fn() },
+    echeancesAo: { list: mocks.echeancesAoList, create: vi.fn(), update: vi.fn() },
+    resultatsAo: { list: mocks.resultatsAoList, enregistrer: vi.fn() },
   },
 }))
 
@@ -157,16 +184,25 @@ beforeEach(() => {
   mocks.equipementsList.mockResolvedValue({ data: [] })
   mocks.exigencesList.mockResolvedValue({ data: [] })
   mocks.controlesAvantDepot.mockResolvedValue({ data: { controles: [] } })
+  mocks.bordereauxList.mockResolvedValue({ data: [] })
+  mocks.cautionsList.mockResolvedValue({ data: [] })
+  mocks.echeancesAoList.mockResolvedValue({ data: [] })
+  mocks.resultatsAoList.mockResolvedValue({ data: [] })
+  mocks.completude.mockResolvedValue({ data: { complet: false, raisons_de_non_depot: [] } })
+  mocks.checklistList.mockResolvedValue({ data: [] })
+  mocks.piecesFourniesList.mockResolvedValue({ data: [] })
+  mocks.piecesConsultationList.mockResolvedValue({ data: [] })
 })
 
-// Les 11 onglets de la fiche, dans leur ordre RÉEL : les 7 d'origine, les 3
-// ajoutés le 03/08/2026, puis « Variantes » — l'ordre des 10 premiers ne bouge
-// jamais (un onglet nouveau s'ajoute EN QUEUE, il ne s'intercale pas).
+// Les 13 onglets de la fiche, dans leur ordre RÉEL : les 7 d'origine, les 3
+// ajoutés le 03/08/2026, « Variantes » (PACT171), « Suivi administratif »
+// (PACT70), puis « Pièces du DCE » (PACT74) — l'ordre des 12 premiers ne
+// bouge jamais (un onglet nouveau s'ajoute EN QUEUE, il ne s'intercale pas).
 const ONGLETS = [
   'Synthèse', 'Toitures & relevés', 'Calepinages', 'Bordereau',
   'Dossier', 'Questions terrain', 'Historique',
   'Administratif', 'Équipements', 'CPS & exigences',
-  'Variantes',
+  'Variantes', 'Suivi administratif', 'Pièces du DCE',
 ]
 
 describe('AffaireDetail', () => {
@@ -205,7 +241,23 @@ describe('AffaireDetail', () => {
     expect(screen.getByRole('tab', { name: 'Variantes' })).toBeInTheDocument()
     const onglets = screen.getAllByRole('tab').map((t) => t.textContent)
     expect(onglets).toEqual(ONGLETS)
-    expect(onglets[onglets.length - 1]).toBe('Variantes')
+    expect(onglets[onglets.length - 2]).toBe('Variantes')
+  })
+
+  it('ajoute « Suivi administratif » (PACT70) en 12e onglet', async () => {
+    renderScreen()
+    await screen.findByText('AO-2026-001')
+    const onglets = screen.getAllByRole('tab').map((t) => t.textContent)
+    expect(onglets).toEqual(ONGLETS)
+    expect(onglets[onglets.length - 2]).toBe('Suivi administratif')
+  })
+
+  it('ajoute « Pièces du DCE » (PACT74) en 13e et dernier onglet', async () => {
+    renderScreen()
+    await screen.findByText('AO-2026-001')
+    const onglets = screen.getAllByRole('tab').map((t) => t.textContent)
+    expect(onglets).toEqual(ONGLETS)
+    expect(onglets[onglets.length - 1]).toBe('Pièces du DCE')
   })
 
   it('n’a JAMAIS un onglet ou un mot « rentabilité » dans l’arbre (route séparée AOF161)', async () => {
@@ -355,16 +407,21 @@ describe('AffaireDetail', () => {
       expect(mocks.dossierGet).not.toHaveBeenCalled()
     })
 
-    it('« Bordereau » monte le VRAI BordereauPage, qui NOMME son motif d’indisponibilité', async () => {
+    // PACT69 — `aoApi.bordereaux` est désormais PUBLIÉ : l'onglet monte le
+    // VRAI `BordereauAffairePanel`, qui interroge le serveur au lieu d'un
+    // motif d'indisponibilité figé.
+    it('« Bordereau » monte le VRAI BordereauAffairePanel, filtré sur CETTE affaire', async () => {
       renderScreen()
       await screen.findByText('AO-2026-001')
       await userEvent.click(onglet('Bordereau'))
 
-      // Titre d'état vide propre à BordereauPage (aucun placeholder ne le rend).
-      expect(await screen.findByText('Bordereau indisponible', {}, { timeout: 15000 })).toBeInTheDocument()
-      // Le motif est EXPLICITE (client API sans ressource bordereau), pas un
-      // « écran en construction » muet.
-      expect(screen.getByText(/ne publie pas encore de ressource bordereau/)).toBeInTheDocument()
+      await waitFor(
+        () => expect(mocks.bordereauxList).toHaveBeenCalledWith({ appel_offre: '1' }),
+        { timeout: 15000 },
+      )
+      // Aucun bordereau pour cette affaire (mock par défaut) : état vide
+      // HONNÊTE, propre à `BordereauAffairePanel` — jamais un motif figé.
+      expect(await screen.findByText('Aucun bordereau des prix')).toBeInTheDocument()
     })
 
     // 03/08/2026 — CE TEST A CHANGÉ DE SENS, volontairement. Il épinglait
@@ -504,6 +561,43 @@ describe('AffaireDetail', () => {
     })
   })
 
+  /* ══ 12ᵉ onglet — PACT70 : cautions, échéances, résultat étaient sans écran ══
+     Le tableau de bord AGRÈGE ces trois ressources sans qu'aucun écran ne
+     permette d'en créer une seule. */
+  describe('l’onglet « Suivi administratif »', () => {
+    it('monte le VRAI SuiviAdministratifAO, filtré sur CETTE affaire pour les trois ressources', async () => {
+      renderScreen()
+      await screen.findByText('AO-2026-001')
+      await userEvent.click(onglet('Suivi administratif'))
+
+      await waitFor(
+        () => expect(mocks.cautionsList).toHaveBeenCalledWith({ appel_offre: '1' }),
+        { timeout: 15000 },
+      )
+      expect(mocks.echeancesAoList).toHaveBeenCalledWith({ appel_offre: '1' })
+      expect(mocks.resultatsAoList).toHaveBeenCalledWith({ appel_offre: '1' })
+      expect(await screen.findByRole('heading', { name: 'Suivi administratif' })).toBeInTheDocument()
+      expect(screen.getByRole('heading', { name: 'Cautions' })).toBeInTheDocument()
+      expect(screen.getByRole('heading', { name: 'Échéances' })).toBeInTheDocument()
+      expect(screen.getByRole('heading', { name: 'Résultat (ouverture des plis)' })).toBeInTheDocument()
+    })
+  })
+
+  /* ══ 13ᵉ onglet — PACT74 : le DCE reçu de l'acheteur n'était stocké nulle part ══ */
+  describe('l’onglet « Pièces du DCE »', () => {
+    it('monte le VRAI PiecesConsultation, filtré sur CETTE affaire', async () => {
+      renderScreen()
+      await screen.findByText('AO-2026-001')
+      await userEvent.click(onglet('Pièces du DCE'))
+
+      await waitFor(
+        () => expect(mocks.piecesConsultationList).toHaveBeenCalledWith({ appel_offre: '1' }),
+        { timeout: 15000 },
+      )
+      expect(await screen.findByRole('heading', { name: 'Pièces du dossier de consultation' })).toBeInTheDocument()
+    })
+  })
+
   describe('gardes de structure', () => {
     it('plus AUCUN TabPlaceholder ne subsiste dans la fiche', () => {
       expect(codeSeul).not.toMatch(/TabPlaceholder/)
@@ -517,13 +611,15 @@ describe('AffaireDetail', () => {
       for (const chemin of [
         './toiture/ToituresPage',
         './calepinage/CalepinageStudio',
-        './bordereau/BordereauPage',
+        './bordereau/BordereauAffairePanel',
         './dossier/DossierPage',
         './questions/SeriesPage',
         './administratif/AdministratifPage',
         './equipements/EquipementsPage',
         './cps/ExigencesPage',
         './variantes/VariantesCompare',
+        './SuiviAdministratifAO',
+        './PiecesConsultation',
       ]) {
         // lazy(() => import('<chemin>')…
         expect(codeSeul).toMatch(

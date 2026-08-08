@@ -80,7 +80,18 @@ const aoApi = {
   // RÉPARATION 03/08/2026 — le routeur enregistre `plans-source` et
   // `chaines-cotes` (AU SINGULIER pour le premier) ; le front appelait
   // `plans-sources` et `chaines`, deux 404 silencieuses.
-  plansSources: crud('plans-source'),
+  // PACT76 — `upload` publie l'action MULTIPART réelle
+  // (`PlanSourceViewSet.upload`) : le fichier part en `records.Attachment`,
+  // JAMAIS un `FileField` local ; le serveur recalcule l'échelle à CHAQUE
+  // écriture de calibration (`create`/`update` appellent `_recalibrer`).
+  plansSources: {
+    ...crud('plans-source'),
+    upload: (id, fichier) => {
+      const fd = new FormData()
+      fd.append('fichier', fichier)
+      return api.post(`/ao/plans-source/${id}/upload/`, fd)
+    },
+  },
   releves: crud('releves'),
   obstacles: crud('obstacles'),
   chaines: crud('chaines-cotes'),
@@ -183,6 +194,16 @@ const aoApi = {
     retenir: (id) => api.post(`/ao/variantes-calepinage/${id}/retenir/`),
   },
 
+  /* ── PACT74 — Pièces du dossier de CONSULTATION reçu de l'acheteur (AOF21) ─
+     `pieces-consultation`, enregistrée depuis toujours : CPS, règlement,
+     plans d'architecte, cadre de bordereau vierge, ADDITIFS — jamais exposée.
+     `additif` enregistre un erratum ET marque « à revérifier » les exigences
+     CPS qui en dérivent, en une seule action serveur. */
+  piecesConsultation: {
+    ...crud('pieces-consultation'),
+    additif: (id, corps) => api.post(`/ao/pieces-consultation/${id}/additif/`, corps),
+  },
+
   // ── Bordereau / équipements / exigences CPS ──
   // RÉPARATION 03/08/2026 — le routeur publie `series-questions` ; le front
   // appelait `series-qr` (404), et filtrait sur `affaire` alors que le
@@ -221,6 +242,13 @@ const aoApi = {
   },
   exigencesCps: crud('exigences-cps'),
 
+  /* ── PACT72 — Pièces du dossier de dépôt, GÉNÉRÉES et FOURNIES ────────────
+     `pieces-dossier-ao` (AOF115), enregistrée depuis toujours. `DossierPage`
+     lit déjà les pièces GÉNÉRÉES via `dossiers.get(id).pieces` (imbriquées) ;
+     aucun écran n'offrait de marquer une pièce FOURNIE « présente » ni d'y
+     attacher son fichier — pas même un wrapper client. */
+  piecesDossierAo: crud('pieces-dossier-ao'),
+
   // ── Dossier de DÉPÔT (AOF115 — `dossiers-ao`, kit `core/documents.py`) ──
   //
   // RÉPARATION 03/08/2026 — `dossiers` visait `dossiers-soumission`, qui est
@@ -236,6 +264,14 @@ const aoApi = {
     ...crud('dossiers-ao'),
     controlesAvantDepot: (id) =>
       api.get(`/ao/dossiers-ao/${id}/controles-avant-depot/`),
+    // PACT71 — complétude DÉRIVÉE (`DossierAO.raisons_de_non_depot`, en
+    // français) : pièces obligatoires manquantes, checklist partenaire encore
+    // ouverte, pièces administratives expirées à la date de remise des plis.
+    completude: (id) => api.get(`/ao/dossiers-ao/${id}/completude/`),
+    // AOF136 — sème les points de checklist partenaire manquants (idempotent :
+    // un second appel ne recrée rien).
+    initialiserChecklist: (id) =>
+      api.post(`/ao/dossiers-ao/${id}/initialiser-checklist/`),
     // ENDPOINT À CONSTRUIRE — pas un renommage. Vérifié le 03/08/2026 : AUCUN
     // producteur de pièce n'existe côté serveur. Les rendus
     // (`fabrique/rendus/*`) prennent tous un CONTEXTE déjà assemblé, et le
@@ -267,6 +303,30 @@ const aoApi = {
   },
   pieces: crud('pieces-soumission'),
 
+  /* ── PACT71 — Checklist partenaire du dossier de dépôt (AOF136) ───────────
+     `checklist-partenaire`, enregistrée depuis toujours côté serveur : un
+     point obligatoire encore ouvert BLOQUE la transition « prêt à déposer »
+     (`DossierAO.raisons_de_non_depot`), mais aucun écran ne l'affichait — la
+     porte de blocage était invisible, contournée par l'API en croyant bien
+     faire. `pointer` trace TOUJOURS le responsable côté serveur. */
+  checklistPartenaire: {
+    ...crud('checklist-partenaire'),
+    pointer: (id, corps) => api.post(`/ao/checklist-partenaire/${id}/pointer/`, corps),
+  },
+
+  /* ── PACT73 — Bibliothèque des pièces administratives (AOF137) ────────────
+     `pieces-administratives`, SCOPÉE SOCIÉTÉ (jamais une affaire) : une pièce
+     datée (attestation fiscale, CNSS, RC…) s'enregistre UNE fois et se
+     RATTACHE à plusieurs AO sans dupliquer un octet. `rattacher` ajoute la
+     pièce à un dossier ; `aRenouveler` liste celles qui entrent dans leur
+     fenêtre de rappel. */
+  piecesAdministratives: {
+    ...crud('pieces-administratives'),
+    rattacher: (id, dossierId) =>
+      api.post(`/ao/pieces-administratives/${id}/rattacher/`, { dossier: dossierId }),
+    aRenouveler: () => api.get('/ao/pieces-administratives/a-renouveler/'),
+  },
+
   // ── Bibliothèque : kits, presets, gabarits, textes normalisés ──
   //
   // RÉPARATION 03/08/2026 — `crud('bibliotheque')` appelait
@@ -290,6 +350,45 @@ const aoApi = {
   // tableaux de bord AO concurrents) : AO en cours, taux de réussite, cautions
   // immobilisées, marchés en exécution, capacité vs engagement, échéances dues.
   tableauMarches: () => api.get('/ao/tableau-marches/'),
+
+  /* ── PACT69 — Bordereau des prix (AOF120, `bordereaux-prix`) ──────────────
+     Le routeur les enregistre depuis toujours ; `BordereauPage.jsx` (AOF179)
+     avait été construit AVANT que ce client ne les publie et montait un motif
+     d'indisponibilité permanent (voir `AffaireDetail.jsx`). `totaux`/
+     `controles` sont les DEUX `@action` réelles du ViewSet — jamais un total
+     recalculé côté front (AOF94). */
+  bordereaux: {
+    ...crud('bordereaux-prix'),
+    totaux: (id) => api.get(`/ao/bordereaux-prix/${id}/totaux/`),
+    controles: (id) => api.get(`/ao/bordereaux-prix/${id}/controles/`),
+  },
+  sectionsBordereau: crud('sections-bordereau'),
+  lignesBordereau: crud('lignes-bordereau'),
+
+  /* ── PACT70 — Suivi administratif de l'AO : cautions, échéances, résultat ─
+     Trois ressources FG224/FG226/FG227, enregistrées depuis toujours côté
+     serveur (`apps/ao/urls.py`), jamais publiées ici : le tableau de bord
+     (`tableauMarches` ci-dessus) les AGRÈGE (taux de réussite, cautions
+     immobilisées, échéances dues) sans qu'aucun écran ne permette d'en créer
+     une seule — ses indicateurs restent donc à zéro. */
+  cautionsSoumission: {
+    ...crud('cautions-soumission'),
+    // AOF16 — chemin d'ÉCRITURE unique du montant DÉFINITIF (dérivé du taux
+    // de la clause CPS, jamais saisi à la main). Idempotent côté serveur.
+    deriverDefinitive: (corps) =>
+      api.post('/ao/cautions-soumission/deriver-definitive/', corps),
+  },
+  echeancesAo: {
+    ...crud('echeances-ao'),
+    dues: () => api.get('/ao/echeances-ao/dues/'),
+  },
+  resultatsAo: {
+    ...crud('resultats-ao'),
+    stats: () => api.get('/ao/resultats-ao/stats/'),
+    // AOF32 — chemin d'ÉCRITURE unique du résultat d'ouverture des plis
+    // (upsert idempotent côté serveur, cf. `ResultatAOViewSet.enregistrer`).
+    enregistrer: (corps) => api.post('/ao/resultats-ao/enregistrer/', corps),
+  },
 }
 
 /* ============================================================================
@@ -315,6 +414,10 @@ export const aoRentabiliteApi = {
   parAffaire: (affaireId) => api.get('/ao/economie/', { params: { appel_offre: affaireId } }),
   get: (economieId) => api.get(`/ao/economie/${economieId}/`),
   update: (economieId, data) => api.patch(`/ao/economie/${economieId}/`, data),
+  // PACT75 — l'économie d'une affaire n'existe pas d'office : `EconomieAOViewSet`
+  // est un ModelViewSet ordinaire, `create` fonctionne tel quel (les taux de
+  // TVA ont un défaut serveur — seul `appel_offre` est requis).
+  creer: (affaireId) => api.post('/ao/economie/', { appel_offre: affaireId }),
 
   /* Le classeur interne se PRODUIT (job de fond) avant de se retirer : il
      n'est jamais rendu dans le temps d'une requête. `produireClasseur` renvoie
@@ -326,6 +429,20 @@ export const aoRentabiliteApi = {
     { params: { job: jobId } }),
   download: (economieId, jobId) => api.get(`/ao/economie/${economieId}/telecharger/`,
     { params: { job: jobId, fichier: 1 }, responseType: 'blob' }),
+
+  // PACT75 — verrou de l'économie : une cascade de prix déjà propagée ne se
+  // modifie plus (`_refuser_si_verrouillee`, appliqué aux lignes ET aux
+  // cibles).
+  verrouiller: (economieId) => api.post(`/ao/economie/${economieId}/verrouiller/`),
+  deverrouiller: (economieId) => api.post(`/ao/economie/${economieId}/deverrouiller/`),
+
+  // PACT75 — postes du coût de revient, scopés à UNE économie (`?economie=`).
+  lignesCoutRevient: crud('lignes-cout-revient'),
+  // PACT75 — cibles de bénéfice VERSIONNÉES : `create` route vers
+  // `services_directeur.nouvelle_cible` côté serveur (incrémente la version,
+  // désactive la précédente, trace l'auteur) — jamais un POST qui écraserait
+  // une version existante.
+  ciblesFinancieres: crud('cibles-financieres'),
 }
 
 export default aoApi
