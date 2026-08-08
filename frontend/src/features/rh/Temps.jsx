@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { LogOut, Upload, Pencil, MonitorSmartphone, Ban } from 'lucide-react'
+import { LogOut, Upload, Download, Pencil, MonitorSmartphone, Ban } from 'lucide-react'
 import { ListShell } from '../../ui/module'
 import {
   Segmented, Button, Badge, toast,
@@ -8,6 +8,7 @@ import {
 } from '../../ui'
 import { useConfirmDialog } from '../../ui/confirm'
 import { formatNumber, formatDate, formatDateTime } from '../../lib/format'
+import { rowsToCSV, exportFileName } from '../../ui/datatable/csv.js'
 import rhApi from '../../api/rhApi'
 
 /* ============================================================================
@@ -25,6 +26,18 @@ const VUES = [
   { value: 'presences', label: 'Présences chantier' },
   { value: 'heures_supp', label: 'Heures supp.' },
   { value: 'devices', label: 'Kiosque' },
+]
+
+/* PACT19 — colonnes du CSV « Export paie ». La forme vient du serveur
+   (`selectors.heures_supp_pour_paie` : employe_id / hs_25 / hs_50 / hs_100 /
+   total_hs / montant_majore) — jamais inventée ici. */
+const COLONNES_EXPORT_PAIE = [
+  { id: 'employe_id', header: 'Employé (id)' },
+  { id: 'hs_25', header: 'HS 25%' },
+  { id: 'hs_50', header: 'HS 50%' },
+  { id: 'hs_100', header: 'HS 100%' },
+  { id: 'total_hs', header: 'Total HS' },
+  { id: 'montant_majore', header: 'Montant majoré' },
 ]
 
 export default function Temps() {
@@ -128,13 +141,30 @@ export default function Temps() {
     }
   }
 
+  // PACT19 — « Export paie » : le bouton appelait `/rh/pointages/export-paie/`,
+  // qui n'existe pas. L'action réelle vit sur `HeuresSuppViewSet`
+  // (`/rh/heures-supp/export-paie/`, apps/rh/views.py) et renvoie les totaux
+  // d'heures supplémentaires majorées PAR EMPLOYÉ — c'est donc une sortie de
+  // la vue « Heures supp. », pas de la vue « Pointages » : le bouton y a été
+  // déplacé. Et il TÉLÉCHARGE désormais réellement le fichier qu'il annonce,
+  // au lieu de n'afficher qu'un compte (un bouton doit faire ce qu'il dit).
+  const [exportEnCours, setExportEnCours] = useState(false)
+
   const exporterPaie = async () => {
+    setExportEnCours(true)
     try {
-      const res = await rhApi.exportPaiePointages()
-      const n = Array.isArray(res.data) ? res.data.length : (res.data?.results?.length ?? 0)
-      toast.success(`Export paie prêt : ${n} ligne(s).`)
-    } catch {
-      toast.error('Export paie indisponible.')
+      const res = await rhApi.exportPaieHeuresSupp()
+      const rows = unwrap(res.data)
+      if (rows.length === 0) {
+        toast.info('Aucune heure supplémentaire à exporter sur la période.')
+        return
+      }
+      telechargerCsv(rows, COLONNES_EXPORT_PAIE, 'export-paie-heures-supp')
+      toast.success(`Export paie téléchargé : ${rows.length} employé(s).`)
+    } catch (err) {
+      toast.error(err?.response?.data?.detail ?? 'Export paie impossible.')
+    } finally {
+      setExportEnCours(false)
     }
   }
 
@@ -229,8 +259,15 @@ export default function Temps() {
         <Upload size={15} strokeWidth={1.75} aria-hidden="true" />
         Importer CSV
       </Button>
-      <Button variant="outline" onClick={exporterPaie}>Export paie</Button>
     </div>
+  )
+
+  // PACT19 — l'export vit avec la donnée qu'il exporte (heures supp. majorées).
+  const heuresSuppActions = (
+    <Button variant="outline" onClick={exporterPaie} disabled={exportEnCours}>
+      <Download size={15} strokeWidth={1.75} aria-hidden="true" />
+      {exportEnCours ? 'Export en cours…' : 'Export paie (CSV)'}
+    </Button>
   )
 
   const config = {
@@ -238,7 +275,8 @@ export default function Temps() {
       actions: pointagesActions },
     roster: { title: 'Roster', columns: rosterColumns, rows: roster, exportName: 'roster' },
     presences: { title: 'Présences chantier', columns: presenceColumns, rows: presences, exportName: 'presences-chantier' },
-    heures_supp: { title: 'Heures supplémentaires', columns: heuresColumns, rows: heuresSupp, exportName: 'heures-supp' },
+    heures_supp: { title: 'Heures supplémentaires', columns: heuresColumns, rows: heuresSupp, exportName: 'heures-supp',
+      actions: heuresSuppActions },
     devices: { title: 'Devices kiosque', columns: deviceColumns, rows: devices, rowActions: deviceActions, exportName: 'devices-kiosque',
       actions: <Button variant="outline" onClick={emettreDevice}><MonitorSmartphone size={15} strokeWidth={1.75} aria-hidden="true" />Émettre un device</Button> },
   }[vue]
@@ -373,4 +411,18 @@ function unwrap(data) {
   if (Array.isArray(data)) return data
   if (data && Array.isArray(data.results)) return data.results
   return []
+}
+
+/* PACT19 — téléchargement CSV côté client, même mécanique que l'export de
+   `DataTable` (`rowsToCSV` + `exportFileName`, BOM UTF-8 pour Excel fr) :
+   aucune sérialisation dupliquée, aucun endpoint de fichier à inventer. */
+function telechargerCsv(rows, columns, base) {
+  const blob = new Blob([rowsToCSV(rows, columns)],
+    { type: 'text/csv;charset=utf-8;' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = exportFileName(base)
+  a.click()
+  URL.revokeObjectURL(url)
 }
