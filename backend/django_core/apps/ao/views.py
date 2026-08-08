@@ -684,7 +684,8 @@ class PlanSourceViewSet(AoBaseViewSet):
     @extend_schema(request=TeleversementPlanSourceSerializer,
                    responses=PlanSourceSerializer)
     @action(detail=True, methods=['post'], url_path='upload',
-            parser_classes=[MultiPartParser, FormParser])
+            parser_classes=[MultiPartParser, FormParser],
+            permission_classes=[ScopedPermission])
     def upload(self, request, pk=None):
         """AOF20 — le fichier du plan, envoyé en MULTIPART.
 
@@ -1064,7 +1065,8 @@ class CautionSoumissionViewSet(AoBaseViewSet):
 
     @extend_schema(request=DeriverCautionDefinitiveSerializer,
                    responses=CautionSoumissionSerializer)
-    @action(detail=False, methods=['post'], url_path='deriver-definitive')
+    @action(detail=False, methods=['post'], url_path='deriver-definitive',
+            permission_classes=[ScopedPermission])
     def deriver_definitive(self, request):
         """AOF16 — dérive (ou MET À JOUR) la caution DÉFINITIVE du taux CPS.
 
