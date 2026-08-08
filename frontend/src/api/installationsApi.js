@@ -721,6 +721,22 @@ const installationsApi = {
 
   getRevisionsDocument: (params) => api.get('/installations/revisions-document/', { params }),
   createRevisionDocument: (data) => api.post('/installations/revisions-document/', data),
+
+  // ── PACT59 — Suivi projet du chantier : jalons (FG293), modèles de projet
+  // (FG296) et comptes-rendus de réunion de chantier (FG298). ──
+  getJalonsProjet: (params) => api.get('/installations/jalons-projet/', { params }),
+  createJalonProjet: (data) => api.post('/installations/jalons-projet/', data),
+  updateJalonProjet: (id, data) => api.patch(`/installations/jalons-projet/${id}/`, data),
+  deleteJalonProjet: (id) => api.delete(`/installations/jalons-projet/${id}/`),
+
+  getModelesProjet: (params) => api.get('/installations/modeles-projet/', { params }),
+  createModeleProjet: (data) => api.post('/installations/modeles-projet/', data),
+  instancierModeleProjet: (id, installationId) =>
+    api.post(`/installations/modeles-projet/${id}/instancier/`,
+      { installation: installationId }),
+
+  getReunionsChantier: (params) => api.get('/installations/reunions-chantier/', { params }),
+  createReunionChantier: (data) => api.post('/installations/reunions-chantier/', data),
 }
 
 export default installationsApi
