@@ -73,6 +73,10 @@ HISTORICAL_TARGETS = {
     # politique environnementale…) via ``records.Attachment``, ciblé par
     # ``apps/esg/platform.py``.
     ('esg', 'documentpolitiqueesg'),
+    # VAO13/VAO14 — l'avis de veille journalise CHAQUE changement de statut
+    # (qui, quand, pourquoi) via le chatter générique records (ARC8) : jamais
+    # une classe ``*Activity`` maison. Ciblé par ``apps/veille_ao/platform.py``.
+    ('veille_ao', 'avismarche'),
 }
 
 
@@ -87,7 +91,7 @@ class TestAllowedTargetsNonRegression(SimpleTestCase):
             f"en trop: {resolved - HISTORICAL_TARGETS}")
 
     def test_len_matches(self):
-        self.assertEqual(len(ALLOWED_TARGETS), 32)
+        self.assertEqual(len(ALLOWED_TARGETS), 33)
 
     def test_contains_works_for_each_historical_pair(self):
         for pair in HISTORICAL_TARGETS:

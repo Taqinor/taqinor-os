@@ -210,12 +210,21 @@ class TestApiDerivationCautionDefinitive(TestCase):
             montant_offre_ht=Decimal('4200000.00'))
 
     def _clause_taux(self, taux='3', appel_offre=None, company=None):
-        return ExigenceCPS.objects.create(
+        # La clause est UNIQUE par (societe, AO, code) : un second appel MET A
+        # JOUR le taux, il n'en cree pas un deuxieme (c'est exactement ce que
+        # le test d'idempotence rejoue).
+        exigence, _cree = ExigenceCPS.objects.update_or_create(
             company=company or self.company,
             appel_offre=appel_offre or self.ao,
-            code='CAUTION_DEFINITIVE_TAUX', libelle='Cautionnement définitif',
-            type_exigence=ExigenceCPS.TypeExigence.CAUTION_DEFINITIVE_TAUX,
-            valeur_num=taux, unite='%')
+            code='CAUTION_DEFINITIVE_TAUX',
+            defaults={
+                'libelle': 'Cautionnement définitif',
+                'type_exigence':
+                    ExigenceCPS.TypeExigence.CAUTION_DEFINITIVE_TAUX,
+                'valeur_num': taux,
+                'unite': '%',
+            })
+        return exigence
 
     def test_le_taux_du_cps_calcule_la_caution_via_l_api(self):
         self._clause_taux('3')

@@ -255,7 +255,11 @@ class Pact164CommentKeywordRuleApiTests(TestCase):
             company=self.other_company, keyword='autre-societe')
         resp = auth(self.manager).get(self._list_url())
         self.assertEqual(resp.status_code, 200)
-        keywords = [r['keyword'] for r in resp.data]
+        # La liste est PAGINEE : resp.data est un dict {count, results...},
+        # pas un tableau — iterer dessus donnerait les CLES (des chaines).
+        lignes = (resp.data['results'] if isinstance(resp.data, dict)
+                  else resp.data)
+        keywords = [r['keyword'] for r in lignes]
         self.assertIn('insulte', keywords)
         self.assertNotIn('autre-societe', keywords)
 
