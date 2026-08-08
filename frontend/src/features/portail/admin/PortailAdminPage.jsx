@@ -13,6 +13,7 @@ import {
   TooltipProvider, Tabs, TabsList, TabsTrigger, TabsContent,
 } from '../../../ui'
 import ComptesPortailAdmin from './ComptesPortailAdmin'
+import AcceptationsDevisPortailAdmin from './AcceptationsDevisPortailAdmin'
 
 export default function PortailAdminPage() {
   const [tab, setTab] = useState('comptes')
@@ -34,10 +35,14 @@ export default function PortailAdminPage() {
         <Tabs value={tab} onValueChange={setTab}>
           <TabsList className="flex w-full flex-wrap justify-start">
             <TabsTrigger value="comptes">Comptes d'accès</TabsTrigger>
+            <TabsTrigger value="acceptations-devis">Acceptations de devis</TabsTrigger>
           </TabsList>
 
           <TabsContent value="comptes">
             <ComptesPortailAdmin />
+          </TabsContent>
+          <TabsContent value="acceptations-devis">
+            <AcceptationsDevisPortailAdmin />
           </TabsContent>
         </Tabs>
       </div>
