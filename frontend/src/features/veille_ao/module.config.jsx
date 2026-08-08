@@ -50,14 +50,12 @@ const config = {
         label: 'Avis',
         icon: <FileSearch size={17} strokeWidth={1.75} aria-hidden="true" />,
         roles: ROLES,
-        perm: 'veille_ao_voir',
       },
       {
         to: '/veille-ao/acheteurs-cibles',
         label: 'Acheteurs cibles',
         icon: <Building2 size={17} strokeWidth={1.75} aria-hidden="true" />,
         roles: ROLES,
-        perm: 'veille_ao_voir',
       },
       {
         to: '/veille-ao/parametres',

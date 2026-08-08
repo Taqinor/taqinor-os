@@ -84,7 +84,9 @@ describe('AvisDetail', () => {
     renderScreen()
     await waitFor(() => expect(mocks.get).toHaveBeenCalledWith('1'))
     expect(await screen.findByText('Fourniture et pose de panneaux solaires')).toBeInTheDocument()
-    expect(screen.getByText('Commune X')).toBeInTheDocument()
+    // Affiche en sous-titre de page ET dans le bloc « Infos » — les deux
+    // sont voulus ; on verifie la presence, pas le nombre d'emplacements.
+    expect(screen.getAllByText('Commune X').length).toBeGreaterThan(0)
   })
 
   it('monte le chatter records (ChatterWidget) sur le modèle veille_ao.avismarche', async () => {
@@ -116,7 +118,7 @@ describe('AvisDetail', () => {
     // Le bouton du dialogue (portail Radix) est le DERNIER « Ignorer » du DOM.
     const boutons = screen.getAllByRole('button', { name: 'Ignorer' })
     fireEvent.click(boutons[boutons.length - 1])
-    await waitFor(() => expect(mocks.ignorer).toHaveBeenCalledWith('1', { motif: 'hors zone' }))
+    await waitFor(() => expect(mocks.ignorer).toHaveBeenCalledWith(1, { motif: 'hors zone' }))
     expect(mocks.reglesCreate).not.toHaveBeenCalled()
   })
 
@@ -134,7 +136,7 @@ describe('AvisDetail', () => {
     const boutons = screen.getAllByRole('button', { name: 'Ignorer' })
     fireEvent.click(boutons[boutons.length - 1])
 
-    await waitFor(() => expect(mocks.ignorer).toHaveBeenCalledWith('1', { motif: 'hors zone' }))
+    await waitFor(() => expect(mocks.ignorer).toHaveBeenCalledWith(1, { motif: 'hors zone' }))
     await waitFor(() => expect(mocks.reglesCreate).toHaveBeenCalledWith(
       expect.objectContaining({ portee: 'acheteur', valeur: 'Commune X', motif: 'hors zone' }),
     ))

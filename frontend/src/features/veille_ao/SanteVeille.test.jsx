@@ -129,7 +129,9 @@ describe('SanteVeille — « Ajouter un avis » (VAO27)', () => {
 
     fireEvent.click(await screen.findByRole('button', { name: /Ajouter un avis/ }))
     await user.click(screen.getByRole('combobox'))
-    fireEvent.click(await screen.findByText('Partenaire'))
+    // Radix rend le libelle DANS le declencheur ET dans la liste : viser
+    // l'OPTION, jamais le texte brut (sinon deux noeuds correspondent).
+    fireEvent.click(await screen.findByRole('option', { name: 'Partenaire' }))
     fireEvent.click(screen.getByRole('button', { name: 'Ajouter' }))
 
     await waitFor(() => expect(mocks.create).toHaveBeenCalledWith(
