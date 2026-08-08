@@ -6,7 +6,7 @@ import {
   LayoutDashboard, BookOpen, PencilLine, FileBarChart2,
   Landmark, ReceiptText, Building2, Scale, Receipt, HandCoins, ShieldCheck,
   ListChecks, Repeat, BadgeCheck, CalendarClock, PieChart,
-  Calculator, Percent, Layers3, UserCheck,
+  Calculator, Percent, Layers3, UserCheck, GitBranch,
 } from 'lucide-react'
 import { appGlyph } from '../../lib/apps/appGlyph'
 
@@ -51,6 +51,10 @@ const ImmobilisationsAvanceesPage = lazy(
 // distinct du rapprochement bancaire déjà écranté (homonymie de nom).
 const RapprochementsComptePage = lazy(
   () => import('./pages/RapprochementsComptePage.jsx'))
+// PACT31 — référentiels comptables parallèles & analytique multi-axes
+// (NTFIN13/15-17), jusqu'ici « API-only » dans comptaApi.js.
+const ReferentielsAnalytiquePage = lazy(
+  () => import('./pages/ReferentielsAnalytiquePage.jsx'))
 
 const ROLES = ['responsable', 'admin']
 
@@ -90,6 +94,7 @@ const config = {
       { to: '/comptabilite/fiscalite-avancee', label: 'Fiscalité avancée', icon: icon(Percent), roles: ROLES },
       { to: '/comptabilite/immobilisations-avancees', label: 'Immobilisations avancées', icon: icon(Layers3), roles: ROLES },
       { to: '/comptabilite/rapprochements-compte', label: 'Rapprochements de comptes', icon: icon(UserCheck), roles: ROLES },
+      { to: '/comptabilite/referentiels-analytique', label: 'Référentiels & analytique', icon: icon(GitBranch), roles: ROLES },
     ],
   },
   // Titres de page : du plus spécifique au plus général (routes.meta).
@@ -103,6 +108,7 @@ const config = {
     ['/comptabilite/fiscalite-avancee', 'Fiscalité avancée — Comptabilité'],
     ['/comptabilite/immobilisations-avancees', 'Immobilisations avancées — Comptabilité'],
     ['/comptabilite/rapprochements-compte', 'Rapprochements de comptes — Comptabilité'],
+    ['/comptabilite/referentiels-analytique', 'Référentiels & analytique — Comptabilité'],
     ['/comptabilite/cloture', 'Clôture — Comptabilité'],
     ['/comptabilite/engagements', 'Engagements — Comptabilité'],
     ['/comptabilite/effets', 'Effets & règlements — Comptabilité'],
@@ -137,6 +143,7 @@ const config = {
     { path: '/comptabilite/fiscalite-avancee', component: FiscaliteAvanceePage, roles: ROLES },
     { path: '/comptabilite/immobilisations-avancees', component: ImmobilisationsAvanceesPage, roles: ROLES },
     { path: '/comptabilite/rapprochements-compte', component: RapprochementsComptePage, roles: ROLES },
+    { path: '/comptabilite/referentiels-analytique', component: ReferentielsAnalytiquePage, roles: ROLES },
   ],
 }
 
