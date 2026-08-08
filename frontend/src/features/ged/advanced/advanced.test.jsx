@@ -21,12 +21,16 @@ vi.mock('../../../api/gedApi', () => ({
     getDemandesSignature: vi.fn(() => Promise.resolve({ data: [] })),
     getModelesDocument: vi.fn(() => Promise.resolve({ data: [] })),
     getDocumentsList: vi.fn(() => Promise.resolve({ data: [] })),
+    // PACT135 — onglet Envoi en masse (les cas complets vivent dans ApprobationPage.test.jsx).
+    getLotsEnvoi: vi.fn(() => Promise.resolve({ data: [] })),
     getPolitiquesRetention: vi.fn(() => Promise.resolve({ data: [] })),
     getDocumentsEchus: vi.fn(() => Promise.resolve({ data: [] })),
     getArchivagesLegaux: vi.fn(() => Promise.resolve({ data: [] })),
     getLegalHolds: vi.fn(() => Promise.resolve({ data: [] })),
     getPartages: vi.fn(() => Promise.resolve({ data: [] })),
     getJournalAcces: vi.fn(() => Promise.resolve({ data: [] })),
+    // PACT134 — onglet Dispositions (les cas complets vivent dans RetentionPage.test.jsx).
+    getDemandesDisposition: vi.fn(() => Promise.resolve({ data: [] })),
     getQuotaEtat: vi.fn(() => Promise.resolve({
       data: { usage_octets: 0, quota_octets: 0, restant_octets: 0, depasse: false, illimite: true },
     })),

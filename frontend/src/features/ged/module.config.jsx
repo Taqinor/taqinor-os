@@ -5,7 +5,7 @@
 import { lazy } from 'react'
 import {
   FolderOpen, FileSignature, ShieldCheck, Tags, ScanLine, Trash2, ClipboardList,
-  Files,
+  Files, Vault, Workflow, KeyRound, Route, CalendarClock,
 } from 'lucide-react'
 import { appGlyph } from '../../lib/apps/appGlyph'
 
@@ -44,6 +44,17 @@ const CorbeillePage = lazy(() => import('./advanced/CorbeillePage.jsx'))
 // WIR164 — checklist de pièces (XGED8), validation OCR (XGED13), tampons
 // société (XGED16) : groupe (a) monté côté backend sans écran jusqu'ici.
 const ChecklistPage = lazy(() => import('./advanced/ChecklistPage.jsx'))
+// PACT131 — coffres-forts documentaires (GED8), monté côté backend sans
+// écran jusqu'ici.
+const CoffresPage = lazy(() => import('./advanced/CoffresPage.jsx'))
+// PACT132 — règles de dossier (XGED19), action automatique au dépôt.
+const ReglesDossierPage = lazy(() => import('./advanced/ReglesDossierPage.jsx'))
+// PACT133 — règles d'accès par métadonnée (XGED21), couche ACL dynamique.
+const ReglesAclPage = lazy(() => import('./advanced/ReglesAclPage.jsx'))
+// PACT136 — routage documentaire automatique (ZGED6).
+const RoutagesPage = lazy(() => import('./advanced/RoutagesPage.jsx'))
+// PACT137 — planifications de document (XGED15).
+const PlanificationsPage = lazy(() => import('./advanced/PlanificationsPage.jsx'))
 
 const ROLES = ['responsable', 'admin']
 const TOUS = ['normal', 'responsable', 'admin']
@@ -69,6 +80,11 @@ export default {
       { to: '/ged/retention', label: 'Rétention & archivage', icon: <ShieldCheck size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
       { to: '/ged/tags', label: 'Tags & liens', icon: <Tags size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
       { to: '/ged/corbeille', label: 'Corbeille', icon: <Trash2 size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
+      { to: '/ged/coffres', label: 'Coffres-forts', icon: <Vault size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
+      { to: '/ged/regles-dossier', label: 'Règles de dossier', icon: <Workflow size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
+      { to: '/ged/regles-acl', label: 'Règles ACL métadonnée', icon: <KeyRound size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
+      { to: '/ged/routages', label: 'Routage documentaire', icon: <Route size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
+      { to: '/ged/planifications', label: 'Planifications', icon: <CalendarClock size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
     ],
   },
   titles: [
@@ -78,6 +94,11 @@ export default {
     ['/ged/retention', 'Rétention & archivage'],
     ['/ged/tags', 'Tags & liens'],
     ['/ged/corbeille', 'Corbeille'],
+    ['/ged/coffres', 'Coffres-forts'],
+    ['/ged/regles-dossier', 'Règles de dossier'],
+    ['/ged/regles-acl', 'Règles ACL métadonnée'],
+    ['/ged/routages', 'Routage documentaire'],
+    ['/ged/planifications', 'Planifications'],
     ['/ged', 'Documents (GED)'],
   ],
   sectionLabels: { ged: 'Documents (GED)' },
@@ -88,5 +109,10 @@ export default {
     { path: '/ged/retention', component: RetentionPage, roles: ROLES },
     { path: '/ged/tags', component: TagsPage, roles: ROLES },
     { path: '/ged/corbeille', component: CorbeillePage, roles: ROLES },
+    { path: '/ged/coffres', component: CoffresPage, roles: ROLES },
+    { path: '/ged/regles-dossier', component: ReglesDossierPage, roles: ROLES },
+    { path: '/ged/regles-acl', component: ReglesAclPage, roles: ROLES },
+    { path: '/ged/routages', component: RoutagesPage, roles: ROLES },
+    { path: '/ged/planifications', component: PlanificationsPage, roles: ROLES },
   ],
 }
