@@ -556,6 +556,15 @@ const comptaApi = {
     ...resource('echeances-reconnaissance'),
     reconnaitre: (id) => api.post(`/compta/echeances-reconnaissance/${id}/reconnaitre/`),
   },
+
+  // ── PACT36 / FG212 / FG221 — Comparateurs commerciaux (calcul pur, aucun
+  // stockage) ──
+  comparateurDevis: {
+    comparer: (a, b) => api.get('/compta/comparateur-devis/comparer/', { params: { a, b } }),
+  },
+  comparateurFinancement: {
+    comparer: (params) => api.get('/compta/comparateur-financement/comparer/', { params }),
+  },
 }
 
 export default comptaApi

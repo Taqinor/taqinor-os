@@ -7,7 +7,7 @@ import {
   Landmark, ReceiptText, Building2, Scale, Receipt, HandCoins, ShieldCheck,
   ListChecks, Repeat, BadgeCheck, CalendarClock, PieChart,
   Calculator, Percent, Layers3, UserCheck, GitBranch, Split, Network, TrendingUp,
-  UploadCloud,
+  UploadCloud, GitCompare,
 } from 'lucide-react'
 import { appGlyph } from '../../lib/apps/appGlyph'
 
@@ -71,6 +71,9 @@ const RevenuIfrs15Page = lazy(() => import('./pages/RevenuIfrs15Page.jsx'))
 // PACT35 — import guidé de la balance d'ouverture (COMPTA3, migration
 // tooling) : gabarit CSV + import idempotent par exercice.
 const BalanceOuverturePage = lazy(() => import('./pages/BalanceOuverturePage.jsx'))
+// PACT36 — comparateurs commerciaux (FG212 versions de devis, FG221 cash vs
+// financement) : calcul pur, aucun stockage.
+const ComparateursPage = lazy(() => import('./pages/ComparateursPage.jsx'))
 
 const ROLES = ['responsable', 'admin']
 
@@ -115,6 +118,7 @@ const config = {
       { to: '/comptabilite/consolidation-groupe', label: 'Consolidation groupe', icon: icon(Network), roles: ROLES },
       { to: '/comptabilite/revenu-ifrs15', label: 'Revenu (IFRS 15)', icon: icon(TrendingUp), roles: ROLES },
       { to: '/comptabilite/balance-ouverture', label: "Balance d'ouverture", icon: icon(UploadCloud), roles: ROLES },
+      { to: '/comptabilite/comparateurs', label: 'Comparateurs', icon: icon(GitCompare), roles: ROLES },
     ],
   },
   // Titres de page : du plus spécifique au plus général (routes.meta).
@@ -133,6 +137,7 @@ const config = {
     ['/comptabilite/consolidation-groupe', 'Consolidation groupe — Comptabilité'],
     ['/comptabilite/revenu-ifrs15', 'Revenu (IFRS 15) — Comptabilité'],
     ['/comptabilite/balance-ouverture', "Balance d'ouverture — Comptabilité"],
+    ['/comptabilite/comparateurs', 'Comparateurs — Comptabilité'],
     ['/comptabilite/cloture', 'Clôture — Comptabilité'],
     ['/comptabilite/engagements', 'Engagements — Comptabilité'],
     ['/comptabilite/effets', 'Effets & règlements — Comptabilité'],
@@ -172,6 +177,7 @@ const config = {
     { path: '/comptabilite/consolidation-groupe', component: ConsolidationGroupePage, roles: ROLES },
     { path: '/comptabilite/revenu-ifrs15', component: RevenuIfrs15Page, roles: ROLES },
     { path: '/comptabilite/balance-ouverture', component: BalanceOuverturePage, roles: ROLES },
+    { path: '/comptabilite/comparateurs', component: ComparateursPage, roles: ROLES },
   ],
 }
 
