@@ -34,13 +34,11 @@ export default function DecompteGeneral() {
   // ── Déboursé sec vs facturé (admin/responsable only) ────────────────────
   const [debourse, setDebourse] = useState(null)
   const [debourseErreur, setDebourseErreur] = useState('')
+  const debourseAffiche = chantierId ? debourse : null
+  const debourseErreurAffichee = chantierId ? debourseErreur : ''
 
   useEffect(() => {
-    if (!chantierId) {
-      setDebourse(null)
-      setDebourseErreur('')
-      return
-    }
+    if (!chantierId) return
     let cancelled = false
     btpChantierApi.debourseVsFacture(chantierId)
       .then((res) => { if (!cancelled) setDebourse(res.data) })
@@ -140,18 +138,18 @@ export default function DecompteGeneral() {
       {chantierId && (
         <div style={{ border: '1px solid #e2e8f0', borderRadius: 8, padding: 16, marginBottom: 16 }}>
           <h2 style={{ fontSize: 14, fontWeight: 600, marginTop: 0 }}>Déboursé sec vs facturé</h2>
-          {debourseErreur && <p style={{ color: '#ef4444' }}>{debourseErreur}</p>}
-          {debourse && (
+          {debourseErreurAffichee && <p style={{ color: '#ef4444' }}>{debourseErreurAffichee}</p>}
+          {debourseAffiche && (
             <table style={{ borderCollapse: 'collapse' }}>
               <tbody>
-                <tr><td>Main-d'œuvre</td><td>{debourse.main_oeuvre}</td></tr>
-                <tr><td>Sous-traitance</td><td>{debourse.sous_traitance}</td></tr>
-                <tr><td>Matériel</td><td>{debourse.materiel}</td></tr>
-                <tr><td><strong>Déboursé sec total</strong></td><td><strong>{debourse.debourse_sec_total}</strong></td></tr>
-                <tr><td>Situations facturées</td><td>{debourse.situations_facturees}</td></tr>
-                <tr><td>Avenants approuvés</td><td>{debourse.avenants_approuves}</td></tr>
-                <tr><td><strong>Facturé total</strong></td><td><strong>{debourse.facture_total}</strong></td></tr>
-                <tr><td><strong>Marge</strong></td><td><strong>{debourse.marge}</strong></td></tr>
+                <tr><td>Main-d'œuvre</td><td>{debourseAffiche.main_oeuvre}</td></tr>
+                <tr><td>Sous-traitance</td><td>{debourseAffiche.sous_traitance}</td></tr>
+                <tr><td>Matériel</td><td>{debourseAffiche.materiel}</td></tr>
+                <tr><td><strong>Déboursé sec total</strong></td><td><strong>{debourseAffiche.debourse_sec_total}</strong></td></tr>
+                <tr><td>Situations facturées</td><td>{debourseAffiche.situations_facturees}</td></tr>
+                <tr><td>Avenants approuvés</td><td>{debourseAffiche.avenants_approuves}</td></tr>
+                <tr><td><strong>Facturé total</strong></td><td><strong>{debourseAffiche.facture_total}</strong></td></tr>
+                <tr><td><strong>Marge</strong></td><td><strong>{debourseAffiche.marge}</strong></td></tr>
               </tbody>
             </table>
           )}

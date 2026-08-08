@@ -19,14 +19,11 @@ export default function ConcurrentsPerte() {
   const [recherche, setRecherche] = useState('')
   const [leads, setLeads] = useState([])
   const [chargementLeads, setChargementLeads] = useState(false)
+  const leadsAffiches = recherche.trim() ? leads : []
 
   useEffect(() => {
-    if (!recherche.trim()) {
-      setLeads([])
-      return
-    }
+    if (!recherche.trim()) return
     let cancelled = false
-    setChargementLeads(true)
     crmApi.getLeads({ search: recherche })
       .then((res) => {
         if (cancelled) return
@@ -95,13 +92,17 @@ export default function ConcurrentsPerte() {
           <input
             placeholder="Rechercher un lead perdu (nom, société…)"
             value={recherche}
-            onChange={(e) => setRecherche(e.target.value)}
+            onChange={(e) => {
+              const valeur = e.target.value
+              if (valeur.trim()) setChargementLeads(true)
+              setRecherche(valeur)
+            }}
             aria-label="Rechercher un lead perdu"
             style={{ width: '100%', marginBottom: 8 }}
           />
           {chargementLeads && <p>Recherche…</p>}
           <ul style={{ listStyle: 'none', padding: 0 }}>
-            {leads.map((l) => (
+            {leadsAffiches.map((l) => (
               <li key={l.id}>
                 <Button
                   type="button"
@@ -113,7 +114,7 @@ export default function ConcurrentsPerte() {
                 </Button>
               </li>
             ))}
-            {!chargementLeads && recherche.trim() && leads.length === 0 && (
+            {!chargementLeads && recherche.trim() && leadsAffiches.length === 0 && (
               <li style={{ color: '#64748b' }}>Aucun lead perdu trouvé.</li>
             )}
           </ul>

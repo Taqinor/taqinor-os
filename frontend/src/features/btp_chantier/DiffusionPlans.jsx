@@ -28,12 +28,10 @@ export default function DiffusionPlans() {
 
   // ── Plans périmés encore consultés (NTCON13) ────────────────────────────
   const [alertes, setAlertes] = useState([])
+  const alertesAffichees = chantierId ? alertes : []
 
   useEffect(() => {
-    if (!chantierId) {
-      setAlertes([])
-      return
-    }
+    if (!chantierId) return
     let cancelled = false
     btpChantierApi.diffusions.plansPerimes(chantierId)
       .then((res) => { if (!cancelled) setAlertes(res.data || []) })
@@ -113,14 +111,14 @@ export default function DiffusionPlans() {
         />
       </div>
 
-      {alertes.length > 0 && (
+      {alertesAffichees.length > 0 && (
         <div style={{ border: '1px solid #ef4444', borderRadius: 8, padding: 12, marginBottom: 16 }}>
           <p style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 600, margin: 0 }}>
             <AlertTriangle size={16} strokeWidth={1.75} aria-hidden="true" />
             Plans périmés encore consultés
           </p>
           <ul>
-            {alertes.map((a, i) => (
+            {alertesAffichees.map((a, i) => (
               <li key={`${a.document_ged_id}-${a.destinataire}-${i}`}>
                 Document #{a.document_ged_id} — {a.destinataire} a consulté la version {a.version_consultee}{' '}
                 (dernière : {a.derniere_version})

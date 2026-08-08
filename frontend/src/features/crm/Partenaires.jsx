@@ -32,15 +32,17 @@ export default function Partenaires() {
   const [partenaires, setPartenaires] = useState([])
   const [loading, setLoading] = useState(true)
 
+  const fetchPartenaires = () => crmApi.getPartenaires()
+    .then((res) => setPartenaires(res.data?.results ?? res.data ?? []))
+    .catch(() => toast.error('Impossible de charger les partenaires.'))
+    .finally(() => setLoading(false))
+
   const chargerPartenaires = () => {
     setLoading(true)
-    crmApi.getPartenaires()
-      .then((res) => setPartenaires(res.data?.results ?? res.data ?? []))
-      .catch(() => toast.error('Impossible de charger les partenaires.'))
-      .finally(() => setLoading(false))
+    return fetchPartenaires()
   }
 
-  useEffect(() => { chargerPartenaires() }, [])
+  useEffect(() => { fetchPartenaires() }, [])
 
   const [form, setForm] = useState({
     nom: '', type_partenaire: 'apporteur', email: '', telephone: '', taux_commission: '',
@@ -75,13 +77,11 @@ export default function Partenaires() {
   const [soumissions, setSoumissions] = useState([])
   const [commissions, setCommissions] = useState([])
   const [acting, setActing] = useState(false)
+  const soumissionsAffichees = selectedId ? soumissions : []
+  const commissionsAffichees = selectedId ? commissions : []
 
   useEffect(() => {
-    if (!selectedId) {
-      setSoumissions([])
-      setCommissions([])
-      return
-    }
+    if (!selectedId) return
     crmApi.getSoumissionsLeadPartenaire({ partenaire: selectedId })
       .then((res) => setSoumissions(res.data?.results ?? res.data ?? []))
       .catch(() => setSoumissions([]))
@@ -222,7 +222,7 @@ export default function Partenaires() {
           <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: 16 }}>
             <thead><tr><th>Prospect</th><th>Ville</th><th>Statut</th><th /></tr></thead>
             <tbody>
-              {soumissions.map((s) => (
+              {soumissionsAffichees.map((s) => (
                 <tr key={s.id}>
                   <td>{s.nom_prospect}</td>
                   <td>{s.ville || '—'}</td>
@@ -236,7 +236,7 @@ export default function Partenaires() {
                   </td>
                 </tr>
               ))}
-              {soumissions.length === 0 && (
+              {soumissionsAffichees.length === 0 && (
                 <tr><td colSpan={4} style={{ textAlign: 'center', color: '#64748b' }}>Aucune soumission</td></tr>
               )}
             </tbody>
@@ -246,7 +246,7 @@ export default function Partenaires() {
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead><tr><th>Base HT</th><th>Taux</th><th>Montant</th><th>Statut</th><th /></tr></thead>
             <tbody>
-              {commissions.map((c) => (
+              {commissionsAffichees.map((c) => (
                 <tr key={c.id}>
                   <td>{c.base_ht}</td>
                   <td>{c.taux}%</td>
@@ -261,7 +261,7 @@ export default function Partenaires() {
                   </td>
                 </tr>
               ))}
-              {commissions.length === 0 && (
+              {commissionsAffichees.length === 0 && (
                 <tr><td colSpan={5} style={{ textAlign: 'center', color: '#64748b' }}>Aucune commission</td></tr>
               )}
             </tbody>
