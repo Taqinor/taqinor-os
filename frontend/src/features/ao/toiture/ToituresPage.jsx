@@ -39,6 +39,10 @@ import PointsALever from './PointsALever'
 import EnveloppeArc from './EnveloppeArc'
 import EnveloppeL from './EnveloppeL'
 import ImportDxf from './ImportDxf'
+// PACT76 — plans sources RÉELLEMENT persistés (`PlanSource`, AOF20) : le
+// calage ci-dessus reste un état React local, perdu au rechargement ; cet
+// onglet est le premier consommateur de la ressource serveur.
+import PlanSourcePanel from './PlanSourcePanel'
 import { estCalibree, peutTracer, reechelonner } from './calibration.js'
 import { estPdf } from './rasteriserPdf'
 
@@ -688,6 +692,10 @@ function AtelierToiture({ toiture, selecteur, onEnregistre }) {
     </div>
   )
 
+  // PACT76 — onglet « Plans sources », APRÈS les 7 existants (ordre inchangé
+  // pour les autres, un onglet nouveau s'ajoute en queue).
+  const ongletPlans = <PlanSourcePanel toitureId={toitureId} />
+
   const onglets = [
     { id: 'geometrie', label: 'Géométrie', contenu: ongletGeometrie },
     { id: 'calage', label: 'Calage', contenu: ongletCalage },
@@ -696,6 +704,7 @@ function AtelierToiture({ toiture, selecteur, onEnregistre }) {
     { id: 'zones', label: 'Zones', contenu: ongletZones },
     { id: 'cotes', label: 'Cotes', contenu: ongletCotes },
     { id: 'import', label: 'Import', contenu: ongletImport },
+    { id: 'plans', label: 'Plans sources', contenu: ongletPlans },
   ]
 
   const etatCalibration = plan

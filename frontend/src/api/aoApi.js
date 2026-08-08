@@ -80,7 +80,18 @@ const aoApi = {
   // RÉPARATION 03/08/2026 — le routeur enregistre `plans-source` et
   // `chaines-cotes` (AU SINGULIER pour le premier) ; le front appelait
   // `plans-sources` et `chaines`, deux 404 silencieuses.
-  plansSources: crud('plans-source'),
+  // PACT76 — `upload` publie l'action MULTIPART réelle
+  // (`PlanSourceViewSet.upload`) : le fichier part en `records.Attachment`,
+  // JAMAIS un `FileField` local ; le serveur recalcule l'échelle à CHAQUE
+  // écriture de calibration (`create`/`update` appellent `_recalibrer`).
+  plansSources: {
+    ...crud('plans-source'),
+    upload: (id, fichier) => {
+      const fd = new FormData()
+      fd.append('fichier', fichier)
+      return api.post(`/ao/plans-source/${id}/upload/`, fd)
+    },
+  },
   releves: crud('releves'),
   obstacles: crud('obstacles'),
   chaines: crud('chaines-cotes'),
