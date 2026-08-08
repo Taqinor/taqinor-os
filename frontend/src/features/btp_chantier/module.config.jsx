@@ -4,7 +4,7 @@
    `features/education/module.config.jsx` / `features/agriculture/
    module.config.jsx`. */
 import { lazy } from 'react'
-import { Construction, FileQuestion, MapPin } from 'lucide-react'
+import { Construction, FileQuestion, MapPin, Stamp } from 'lucide-react'
 import { appGlyph } from '../../lib/apps/appGlyph'
 
 /* ============================================================================
@@ -30,6 +30,7 @@ import { appGlyph } from '../../lib/apps/appGlyph'
 
 const ReservesChantierPage = lazy(() => import('./ReservesChantier'))
 const RFIPage = lazy(() => import('./RFI'))
+const VisasDocumentsPage = lazy(() => import('./VisasDocuments'))
 
 const ROLES = ['normal', 'responsable', 'admin']
 
@@ -55,16 +56,24 @@ const config = {
         icon: <FileQuestion size={17} strokeWidth={1.75} aria-hidden="true" />,
         roles: ['responsable', 'admin'],
       },
+      {
+        to: '/btp-chantier/visas',
+        label: 'Visas de documents',
+        icon: <Stamp size={17} strokeWidth={1.75} aria-hidden="true" />,
+        roles: ['responsable', 'admin'],
+      },
     ],
   },
   titles: [
     ['/btp-chantier/reserves', 'Réserves de chantier'],
     ['/btp-chantier/rfi', "Demandes d'information technique (RFI)"],
+    ['/btp-chantier/visas', 'Visas de documents techniques'],
   ],
   sectionLabels: { 'btp-chantier': 'BTP Chantier' },
   routes: [
     { path: '/btp-chantier/reserves', component: ReservesChantierPage, roles: ROLES },
     { path: '/btp-chantier/rfi', component: RFIPage, roles: ['responsable', 'admin'] },
+    { path: '/btp-chantier/visas', component: VisasDocumentsPage, roles: ['responsable', 'admin'] },
   ],
 }
 

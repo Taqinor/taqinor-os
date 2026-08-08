@@ -43,6 +43,23 @@ const btpChantierApi = {
     repondre: (id, texte) => api.post(`/btp-chantier/rfi/${id}/repondre/`, { texte }),
     clore: (id) => api.post(`/btp-chantier/rfi/${id}/clore/`),
   },
+
+  // ── PACT64 — Visas de documents techniques — NTCON5 ──────────────────────
+  visas: {
+    // `params` : { chantier, statut } — tous optionnels.
+    list: (params) => api.get('/btp-chantier/visas/', { params }),
+    // `data` : { chantier, document_ged_id, type_visa, delai_revue_jours? } —
+    // `reference` (préfixe VIS) posée côté serveur.
+    create: (data) => api.post('/btp-chantier/visas/', data),
+    soumettreObservations: (id, observations) =>
+      api.post(`/btp-chantier/visas/${id}/soumettre-observations/`, { observations }),
+    approuver: (id, { avecObservations = false, observations = '' } = {}) =>
+      api.post(`/btp-chantier/visas/${id}/approuver/`, {
+        avec_observations: avecObservations, observations,
+      }),
+    refuser: (id, observations) =>
+      api.post(`/btp-chantier/visas/${id}/refuser/`, { observations }),
+  },
 }
 
 export default btpChantierApi
