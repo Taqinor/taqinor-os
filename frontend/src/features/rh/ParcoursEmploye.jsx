@@ -37,12 +37,14 @@ export default function ParcoursEmploye() {
   const [typeOpen, setTypeOpen] = useState(false)
   const [ligneOpen, setLigneOpen] = useState(false)
 
-  const recharger = () => setReloadTick((t) => t + 1)
+  const recharger = () => {
+    setLoading(true)
+    setError(null)
+    setReloadTick((t) => t + 1)
+  }
 
   useEffect(() => {
     let vivant = true
-    setLoading(true)
-    setError(null)
     Promise.all([
       rhApi.getTypesLigneParcours(),
       rhApi.getLignesParcours(),

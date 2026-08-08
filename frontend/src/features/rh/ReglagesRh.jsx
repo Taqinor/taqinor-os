@@ -24,8 +24,6 @@ export default function ReglagesRh() {
 
   useEffect(() => {
     let vivant = true
-    setLoading(true)
-    setError(null)
     rhApi.getMonReglageRh()
       .then((res) => {
         if (!vivant) return

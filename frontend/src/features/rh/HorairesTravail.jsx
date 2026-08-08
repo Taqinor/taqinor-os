@@ -44,12 +44,14 @@ export default function HorairesTravail() {
   const [reloadTick, setReloadTick] = useState(0)
   const [open, setOpen] = useState(false)
 
-  const recharger = () => setReloadTick((t) => t + 1)
+  const recharger = () => {
+    setLoading(true)
+    setError(null)
+    setReloadTick((t) => t + 1)
+  }
 
   useEffect(() => {
     let vivant = true
-    setLoading(true)
-    setError(null)
     rhApi.getHorairesTravail()
       .then((res) => { if (vivant) setHoraires(unwrapList(res)) })
       .catch(() => {

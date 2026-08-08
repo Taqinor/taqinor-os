@@ -33,12 +33,14 @@ export default function ModelesIntegration() {
   const [modeleOpen, setModeleOpen] = useState(false)
   const [elementOpen, setElementOpen] = useState(false)
 
-  const recharger = () => setReloadTick((t) => t + 1)
+  const recharger = () => {
+    setLoading(true)
+    setError(null)
+    setReloadTick((t) => t + 1)
+  }
 
   useEffect(() => {
     let vivant = true
-    setLoading(true)
-    setError(null)
     Promise.all([
       rhApi.getModelesIntegration(),
       rhApi.getPostes(),

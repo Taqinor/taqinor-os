@@ -39,12 +39,14 @@ export default function EntretiensSortie() {
   const [reloadTick, setReloadTick] = useState(0)
   const [open, setOpen] = useState(false)
 
-  const recharger = () => setReloadTick((t) => t + 1)
+  const recharger = () => {
+    setLoading(true)
+    setError(null)
+    setReloadTick((t) => t + 1)
+  }
 
   useEffect(() => {
     let vivant = true
-    setLoading(true)
-    setError(null)
     Promise.all([rhApi.getEntretiensSortie(), rhApi.getEmployes()])
       .then(([e, emp]) => {
         if (!vivant) return

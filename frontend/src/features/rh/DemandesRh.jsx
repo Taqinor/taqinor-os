@@ -25,12 +25,14 @@ export default function DemandesRh() {
   const [error, setError] = useState(null)
   const [reloadTick, setReloadTick] = useState(0)
 
-  const recharger = () => setReloadTick((t) => t + 1)
+  const recharger = () => {
+    setLoading(true)
+    setError(null)
+    setReloadTick((t) => t + 1)
+  }
 
   useEffect(() => {
     let vivant = true
-    setLoading(true)
-    setError(null)
     rhApi.getDemandesRh()
       .then((res) => { if (vivant) setDemandes(unwrapList(res)) })
       .catch(() => {

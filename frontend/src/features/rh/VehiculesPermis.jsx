@@ -51,12 +51,14 @@ export default function VehiculesPermis() {
   const [permisOpen, setPermisOpen] = useState(false)
   const [affectationOpen, setAffectationOpen] = useState(false)
 
-  const recharger = () => setReloadTick((t) => t + 1)
+  const recharger = () => {
+    setLoading(true)
+    setError(null)
+    setReloadTick((t) => t + 1)
+  }
 
   useEffect(() => {
     let vivant = true
-    setLoading(true)
-    setError(null)
     Promise.all([
       rhApi.getPermisConduire(),
       rhApi.getAffectationsVehicule(),

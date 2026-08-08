@@ -36,12 +36,14 @@ export default function PrimesIndemnites() {
   const [attribOpen, setAttribOpen] = useState(false)
   const [typeOpen, setTypeOpen] = useState(false)
 
-  const recharger = () => setReloadTick((t) => t + 1)
+  const recharger = () => {
+    setLoading(true)
+    setError(null)
+    setReloadTick((t) => t + 1)
+  }
 
   useEffect(() => {
     let vivant = true
-    setLoading(true)
-    setError(null)
     Promise.all([
       rhApi.getPrimesAttribuees(),
       rhApi.getTypesPrime(),

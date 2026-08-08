@@ -25,12 +25,14 @@ export default function DemandesAllocation() {
   const [error, setError] = useState(null)
   const [reloadTick, setReloadTick] = useState(0)
 
-  const recharger = () => setReloadTick((t) => t + 1)
+  const recharger = () => {
+    setLoading(true)
+    setError(null)
+    setReloadTick((t) => t + 1)
+  }
 
   useEffect(() => {
     let vivant = true
-    setLoading(true)
-    setError(null)
     Promise.all([rhApi.getDemandesAllocation(), rhApi.getSoldesConge()])
       .then(([d, s]) => {
         if (!vivant) return
