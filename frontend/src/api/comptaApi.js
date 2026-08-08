@@ -565,6 +565,9 @@ const comptaApi = {
   comparateurFinancement: {
     comparer: (params) => api.get('/compta/comparateur-financement/comparer/', { params }),
   },
+
+  // ── PACT37 / FG209 — Codes promotionnels datés sur devis ──
+  codesPromotion: resource('codes-promotion'),
 }
 
 export default comptaApi
