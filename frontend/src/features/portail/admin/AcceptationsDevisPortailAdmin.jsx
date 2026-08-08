@@ -18,16 +18,18 @@ export default function AcceptationsDevisPortailAdmin() {
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState(false)
 
+  const fetchAcceptations = () => portailApi.admin.acceptationsDevis.liste()
+    .then((r) => setRows(r.data?.results ?? r.data ?? []))
+    .catch(() => setLoadError(true))
+    .finally(() => setLoading(false))
+
   const load = () => {
     setLoading(true)
     setLoadError(false)
-    return portailApi.admin.acceptationsDevis.liste()
-      .then((r) => setRows(r.data?.results ?? r.data ?? []))
-      .catch(() => setLoadError(true))
-      .finally(() => setLoading(false))
+    return fetchAcceptations()
   }
 
-  useEffect(() => { load() }, [])
+  useEffect(() => { fetchAcceptations() }, [])
 
   const columns = [
     { id: 'devis', header: 'Devis', width: 110, accessor: (r) => `Devis #${r.devis_id}` },

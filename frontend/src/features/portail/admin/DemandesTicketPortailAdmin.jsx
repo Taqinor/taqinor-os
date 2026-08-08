@@ -31,16 +31,18 @@ export default function DemandesTicketPortailAdmin() {
   const [edit, setEdit] = useState(null) // { id, ticketId }
   const [busyId, setBusyId] = useState(null)
 
+  const fetchDemandesTicket = () => portailApi.admin.demandesTicket.liste()
+    .then((r) => setRows(r.data?.results ?? r.data ?? []))
+    .catch(() => setLoadError(true))
+    .finally(() => setLoading(false))
+
   const load = () => {
     setLoading(true)
     setLoadError(false)
-    return portailApi.admin.demandesTicket.liste()
-      .then((r) => setRows(r.data?.results ?? r.data ?? []))
-      .catch(() => setLoadError(true))
-      .finally(() => setLoading(false))
+    return fetchDemandesTicket()
   }
 
-  useEffect(() => { load() }, [])
+  useEffect(() => { fetchDemandesTicket() }, [])
 
   const confirmerPriseEnCharge = async (row) => {
     const ticketId = Number(edit?.ticketId)

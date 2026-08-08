@@ -22,16 +22,18 @@ export default function DocumentsClientPortailAdmin() {
   const [loadError, setLoadError] = useState(false)
   const [busyId, setBusyId] = useState(null)
 
+  const fetchDocumentsClient = () => portailApi.admin.documentsClient.liste()
+    .then((r) => setRows(r.data?.results ?? r.data ?? []))
+    .catch(() => setLoadError(true))
+    .finally(() => setLoading(false))
+
   const load = () => {
     setLoading(true)
     setLoadError(false)
-    return portailApi.admin.documentsClient.liste()
-      .then((r) => setRows(r.data?.results ?? r.data ?? []))
-      .catch(() => setLoadError(true))
-      .finally(() => setLoading(false))
+    return fetchDocumentsClient()
   }
 
-  useEffect(() => { load() }, [])
+  useEffect(() => { fetchDocumentsClient() }, [])
 
   const marquerTraite = async (row) => {
     setBusyId(row.id)

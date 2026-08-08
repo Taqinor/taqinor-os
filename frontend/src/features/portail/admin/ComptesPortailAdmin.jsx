@@ -25,16 +25,18 @@ export default function ComptesPortailAdmin() {
   const [clientChoisi, setClientChoisi] = useState('')
   const [busyId, setBusyId] = useState(null)
 
+  const fetchComptes = () => portailApi.admin.comptes.liste()
+    .then((r) => setRows(r.data?.results ?? r.data ?? []))
+    .catch(() => setLoadError(true))
+    .finally(() => setLoading(false))
+
   const load = () => {
     setLoading(true)
     setLoadError(false)
-    return portailApi.admin.comptes.liste()
-      .then((r) => setRows(r.data?.results ?? r.data ?? []))
-      .catch(() => setLoadError(true))
-      .finally(() => setLoading(false))
+    return fetchComptes()
   }
 
-  useEffect(() => { load() }, [])
+  useEffect(() => { fetchComptes() }, [])
   useEffect(() => {
     crmApi.getClients().then((r) => setClients(r.data?.results ?? r.data ?? [])).catch(() => {})
   }, [])

@@ -26,16 +26,18 @@ export default function JalonsChantierPortailAdmin() {
   const [busyId, setBusyId] = useState(null)
   const [form, setForm] = useState({ chantier: '', libelle: '', ordre: '0' })
 
+  const fetchJalons = () => portailApi.admin.jalonsChantier.liste()
+    .then((r) => setRows(r.data?.results ?? r.data ?? []))
+    .catch(() => setLoadError(true))
+    .finally(() => setLoading(false))
+
   const load = () => {
     setLoading(true)
     setLoadError(false)
-    return portailApi.admin.jalonsChantier.liste()
-      .then((r) => setRows(r.data?.results ?? r.data ?? []))
-      .catch(() => setLoadError(true))
-      .finally(() => setLoading(false))
+    return fetchJalons()
   }
 
-  useEffect(() => { load() }, [])
+  useEffect(() => { fetchJalons() }, [])
   useEffect(() => {
     installationsApi.getInstallations()
       .then((r) => setChantiers(r.data?.results ?? r.data ?? []))

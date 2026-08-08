@@ -6,7 +6,7 @@
 // dans l'ERP. Trou (c) à respecter : le statut `echoue` existe dans le
 // modèle mais n'est posé par AUCUN code serveur — cet écran ne propose donc
 // QUE « Rapprocher », jamais un bouton « Rejeter » sans service derrière.
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { Check, Banknote } from 'lucide-react'
 import portailApi from '../../../api/portailApi'
 import { formatMAD } from '../../../lib/format'
@@ -29,17 +29,18 @@ export default function PaiementsFacturePortailAdmin() {
   const [statutFiltre, setStatutFiltre] = useState('initie')
   const [busyId, setBusyId] = useState(null)
 
+  const fetchPaiements = useCallback(() => portailApi.admin.paiementsFacture.liste(statutFiltre ? { statut: statutFiltre } : {})
+    .then((r) => setRows(r.data?.results ?? r.data ?? []))
+    .catch(() => setLoadError(true))
+    .finally(() => setLoading(false)), [statutFiltre])
+
   const load = () => {
     setLoading(true)
     setLoadError(false)
-    return portailApi.admin.paiementsFacture.liste(statutFiltre ? { statut: statutFiltre } : {})
-      .then((r) => setRows(r.data?.results ?? r.data ?? []))
-      .catch(() => setLoadError(true))
-      .finally(() => setLoading(false))
+    return fetchPaiements()
   }
 
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(() => { load() }, [statutFiltre])
+  useEffect(() => { fetchPaiements() }, [fetchPaiements])
 
   const rapprocher = async (row) => {
     setBusyId(row.id)
@@ -91,7 +92,11 @@ export default function PaiementsFacturePortailAdmin() {
 
       <div className="flex items-center gap-2">
         <Select value={statutFiltre || '__all'}
-                onValueChange={(v) => setStatutFiltre(v === '__all' ? '' : v)}>
+                onValueChange={(v) => {
+                  setLoading(true)
+                  setLoadError(false)
+                  setStatutFiltre(v === '__all' ? '' : v)
+                }}>
           <SelectTrigger aria-label="Statut" className="w-56"><SelectValue /></SelectTrigger>
           <SelectContent>
             <SelectItem value="__all">Tous les statuts</SelectItem>
