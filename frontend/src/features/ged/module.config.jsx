@@ -5,7 +5,7 @@
 import { lazy } from 'react'
 import {
   FolderOpen, FileSignature, ShieldCheck, Tags, ScanLine, Trash2, ClipboardList,
-  Files, Vault, Workflow, KeyRound, Route,
+  Files, Vault, Workflow, KeyRound, Route, CalendarClock,
 } from 'lucide-react'
 import { appGlyph } from '../../lib/apps/appGlyph'
 
@@ -53,6 +53,8 @@ const ReglesDossierPage = lazy(() => import('./advanced/ReglesDossierPage.jsx'))
 const ReglesAclPage = lazy(() => import('./advanced/ReglesAclPage.jsx'))
 // PACT136 — routage documentaire automatique (ZGED6).
 const RoutagesPage = lazy(() => import('./advanced/RoutagesPage.jsx'))
+// PACT137 — planifications de document (XGED15).
+const PlanificationsPage = lazy(() => import('./advanced/PlanificationsPage.jsx'))
 
 const ROLES = ['responsable', 'admin']
 const TOUS = ['normal', 'responsable', 'admin']
@@ -82,6 +84,7 @@ export default {
       { to: '/ged/regles-dossier', label: 'Règles de dossier', icon: <Workflow size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
       { to: '/ged/regles-acl', label: 'Règles ACL métadonnée', icon: <KeyRound size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
       { to: '/ged/routages', label: 'Routage documentaire', icon: <Route size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
+      { to: '/ged/planifications', label: 'Planifications', icon: <CalendarClock size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
     ],
   },
   titles: [
@@ -95,6 +98,7 @@ export default {
     ['/ged/regles-dossier', 'Règles de dossier'],
     ['/ged/regles-acl', 'Règles ACL métadonnée'],
     ['/ged/routages', 'Routage documentaire'],
+    ['/ged/planifications', 'Planifications'],
     ['/ged', 'Documents (GED)'],
   ],
   sectionLabels: { ged: 'Documents (GED)' },
@@ -109,5 +113,6 @@ export default {
     { path: '/ged/regles-dossier', component: ReglesDossierPage, roles: ROLES },
     { path: '/ged/regles-acl', component: ReglesAclPage, roles: ROLES },
     { path: '/ged/routages', component: RoutagesPage, roles: ROLES },
+    { path: '/ged/planifications', component: PlanificationsPage, roles: ROLES },
   ],
 }

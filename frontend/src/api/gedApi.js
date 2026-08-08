@@ -438,6 +438,20 @@ const gedApi = {
     api.patch(`/ged/routages-documentaires/${id}/`, data),
   deleteRoutageDocumentaire: (id) =>
     api.delete(`/ged/routages-documentaires/${id}/`),
+
+  // ══════════════════════════════════════════════════════════════════════
+  // PACT137 — Planifications de document (XGED15, notification J-échéance).
+  // ══════════════════════════════════════════════════════════════════════
+  // `params` : { document }.
+  getPlanificationsDocument: (params) =>
+    api.get('/ged/planifications/', { params }),
+  // `data` : { document, libelle, echeance, assigne_a? }.
+  createPlanificationDocument: (data) =>
+    api.post('/ged/planifications/', data),
+  updatePlanificationDocument: (id, data) =>
+    api.patch(`/ged/planifications/${id}/`, data),
+  deletePlanificationDocument: (id) =>
+    api.delete(`/ged/planifications/${id}/`),
 }
 
 export default gedApi
