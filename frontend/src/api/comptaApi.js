@@ -590,6 +590,13 @@ const comptaApi = {
     ...resource('tranches-paiement'),
     regler: (id, data) => api.post(`/compta/tranches-paiement/${id}/regler/`, data || {}),
   },
+
+  // ── PACT42 / FG213 — Approbation des configurations non standard ──
+  approbationsConfig: {
+    ...resource('approbations-config'),
+    approuver: (id, data) => api.post(`/compta/approbations-config/${id}/approuver/`, data || {}),
+    refuser: (id, data) => api.post(`/compta/approbations-config/${id}/refuser/`, data || {}),
+  },
 }
 
 export default comptaApi

@@ -8,6 +8,7 @@ import {
   ListChecks, Repeat, BadgeCheck, CalendarClock, PieChart,
   Calculator, Percent, Layers3, UserCheck, GitBranch, Split, Network, TrendingUp,
   UploadCloud, GitCompare, Tag, Wand2, Link2, FileStack, CalendarRange,
+  ClipboardCheck,
 } from 'lucide-react'
 import { appGlyph } from '../../lib/apps/appGlyph'
 
@@ -87,6 +88,9 @@ const DocumentsPropositionPage = lazy(
 // PACT41 — échéanciers de paiement en tranches (FG220, type Tayssir).
 const EcheanciersPaiementPage = lazy(
   () => import('./pages/EcheanciersPaiementPage.jsx'))
+// PACT42 — approbation des configurations non standard (FG213).
+const ApprobationsConfigPage = lazy(
+  () => import('./pages/ApprobationsConfigPage.jsx'))
 
 const ROLES = ['responsable', 'admin']
 
@@ -137,6 +141,7 @@ const config = {
       { to: '/comptabilite/e-catalogue', label: 'Catalogue public', icon: icon(Link2), roles: ROLES },
       { to: '/comptabilite/documents-proposition', label: 'Annexes de proposition', icon: icon(FileStack), roles: ROLES },
       { to: '/comptabilite/echeanciers-paiement', label: 'Échéanciers de paiement', icon: icon(CalendarRange), roles: ROLES },
+      { to: '/comptabilite/approbations-config', label: 'Approbations config', icon: icon(ClipboardCheck), roles: ROLES },
     ],
   },
   // Titres de page : du plus spécifique au plus général (routes.meta).
@@ -161,6 +166,7 @@ const config = {
     ['/comptabilite/e-catalogue', 'Catalogue public — Comptabilité'],
     ['/comptabilite/documents-proposition', 'Annexes de proposition — Comptabilité'],
     ['/comptabilite/echeanciers-paiement', 'Échéanciers de paiement — Comptabilité'],
+    ['/comptabilite/approbations-config', 'Approbations config — Comptabilité'],
     ['/comptabilite/cloture', 'Clôture — Comptabilité'],
     ['/comptabilite/engagements', 'Engagements — Comptabilité'],
     ['/comptabilite/effets', 'Effets & règlements — Comptabilité'],
@@ -206,6 +212,7 @@ const config = {
     { path: '/comptabilite/e-catalogue', component: ECataloguePage, roles: ROLES },
     { path: '/comptabilite/documents-proposition', component: DocumentsPropositionPage, roles: ROLES },
     { path: '/comptabilite/echeanciers-paiement', component: EcheanciersPaiementPage, roles: ROLES },
+    { path: '/comptabilite/approbations-config', component: ApprobationsConfigPage, roles: ROLES },
   ],
 }
 
