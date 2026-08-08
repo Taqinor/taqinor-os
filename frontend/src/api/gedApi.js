@@ -403,6 +403,28 @@ const gedApi = {
   // certificat immuable par document réellement détruit.
   executerDisposition: (id) =>
     api.post(`/ged/demandes-disposition/${id}/executer/`),
+
+  // ══════════════════════════════════════════════════════════════════════
+  // PACT135 — Envoi en masse de demandes de signature (XGED27).
+  // ══════════════════════════════════════════════════════════════════════
+  getLotsEnvoi: (params) => api.get('/ged/lots-envoi/', { params }),
+  // Un modèle + N destinataires (CSV `nom,email,…` OU une sélection de
+  // clients CRM) → un document + une demande de signature PAR destinataire,
+  // suivis sous CE lot (compteurs envoyé/vu/signé/refusé).
+  envoyerLotSignature: ({ modele, libelle, csvFile, clientIds }) => {
+    if (csvFile) {
+      const fd = new FormData()
+      fd.append('modele', modele)
+      if (libelle) fd.append('libelle', libelle)
+      fd.append('csv', csvFile)
+      return api.post('/ged/lots-envoi/envoi-masse/', fd, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      })
+    }
+    return api.post('/ged/lots-envoi/envoi-masse/', {
+      modele, libelle, clients: clientIds ?? [],
+    })
+  },
 }
 
 export default gedApi
