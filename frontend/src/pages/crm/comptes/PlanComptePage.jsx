@@ -54,6 +54,37 @@ export default function PlanComptePage({ clientId, planId }) {
   // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement initial au montage
   useEffect(() => { load() }, [load])
 
+  // PACT105 — la timeline des revues s'affichait déjà EN LECTURE (`plan.
+  // revues`, nested read-only sur PlanCompteSerializer) mais aucun formulaire
+  // n'écrivait jamais sur `/crm/revues-compte/` : l'historique restait vide
+  // tant que rien n'était créé. Une revue créée apparaît dans la MÊME liste
+  // déjà affichée (rechargement du plan via `load()`), jamais un état local
+  // dupliqué.
+  const [revueForm, setRevueForm] = useState({
+    date_revue: '', participants: '', decisions: '',
+    prochaine_action: '', prochaine_action_date: '',
+  })
+  const [savingRevue, setSavingRevue] = useState(false)
+
+  const creerRevue = async (e) => {
+    e.preventDefault()
+    if (!plan || !revueForm.date_revue) return
+    setSavingRevue(true)
+    try {
+      await api.post('/crm/revues-compte/', { ...revueForm, plan: plan.id })
+      toast.success('Revue de compte enregistrée.')
+      setRevueForm({
+        date_revue: '', participants: '', decisions: '',
+        prochaine_action: '', prochaine_action_date: '',
+      })
+      load()
+    } catch {
+      toast.error("Impossible d'enregistrer la revue de compte.")
+    } finally {
+      setSavingRevue(false)
+    }
+  }
+
   const handleSave = async (e) => {
     e.preventDefault()
     setSaving(true)
@@ -150,17 +181,53 @@ export default function PlanComptePage({ clientId, planId }) {
         </Button>
       </form>
 
-      {plan?.revues?.length > 0 && (
-        <Card className="p-4">
-          <h3 className="font-medium mb-2">Timeline des revues</h3>
-          <ul className="space-y-2 text-sm">
-            {plan.revues.map((r) => (
-              <li key={r.id} className="border-b pb-2">
-                <div className="font-medium">{r.date_revue}</div>
-                <div className="text-muted-foreground">{r.decisions}</div>
-              </li>
-            ))}
-          </ul>
+      {plan && (
+        <Card className="p-4 space-y-3">
+          <h3 className="font-medium">Timeline des revues</h3>
+
+          <form onSubmit={creerRevue} className="flex flex-wrap items-end gap-2">
+            <Input
+              type="date"
+              aria-label="Date de la revue"
+              value={revueForm.date_revue}
+              onChange={(e) => setRevueForm((f) => ({ ...f, date_revue: e.target.value }))}
+              required
+            />
+            <Input
+              placeholder="Participants"
+              aria-label="Participants de la revue"
+              value={revueForm.participants}
+              onChange={(e) => setRevueForm((f) => ({ ...f, participants: e.target.value }))}
+            />
+            <Input
+              placeholder="Décisions"
+              aria-label="Décisions de la revue"
+              value={revueForm.decisions}
+              onChange={(e) => setRevueForm((f) => ({ ...f, decisions: e.target.value }))}
+            />
+            <Input
+              placeholder="Prochaine action"
+              aria-label="Prochaine action"
+              value={revueForm.prochaine_action}
+              onChange={(e) => setRevueForm((f) => ({ ...f, prochaine_action: e.target.value }))}
+            />
+            <Button type="submit" disabled={savingRevue}>
+              {savingRevue ? 'Enregistrement…' : 'Ajouter une revue'}
+            </Button>
+          </form>
+
+          {plan.revues?.length > 0 ? (
+            <ul className="space-y-2 text-sm">
+              {plan.revues.map((r) => (
+                <li key={r.id} className="border-b pb-2">
+                  <div className="font-medium">{r.date_revue}</div>
+                  <div className="text-muted-foreground">{r.decisions}</div>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="text-muted-foreground">Aucune revue enregistrée.</p>
+          )}
         </Card>
       )}
     </div>
