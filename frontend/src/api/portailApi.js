@@ -41,6 +41,45 @@ const portailApi = {
   partenaire: {
     tableauDeBord: () => api.get('/portail/partenaire/tableau-de-bord/'),
   },
+  // PACT96-101 — administration ERP du portail (ComptePortailClient et son
+  // provisioning, preuve d'acceptation de devis, rapprochement des paiements,
+  // documents client, jalons de chantier, demandes de ticket SAV). Distinct
+  // de la surface self-service CLIENT ci-dessus : ces ViewSets restent gardés
+  // `IsResponsableOrAdmin` côté serveur (`IsAdminRole` en plus pour
+  // `provisionner-acces`) — voir apps/portail/views.py + apps/compta/views.py.
+  admin: {
+    comptes: {
+      liste: (params) => api.get('/portail/comptes-portail/', { params }),
+      creer: (payload) => api.post('/portail/comptes-portail/', payload),
+      patch: (id, payload) => api.patch(`/portail/comptes-portail/${id}/`, payload),
+      provisionnerAcces: (id) =>
+        api.post(`/portail/comptes-portail/${id}/provisionner-acces/`, {}),
+    },
+    acceptationsDevis: {
+      liste: (params) => api.get('/portail/acceptations-devis-portail/', { params }),
+    },
+    paiementsFacture: {
+      liste: (params) => api.get('/portail/paiements-facture-portail/', { params }),
+      rapprocher: (id, payload) =>
+        api.post(`/portail/paiements-facture-portail/${id}/rapprocher/`, payload ?? {}),
+    },
+    documentsClient: {
+      liste: (params) => api.get('/portail/documents-client-portail/', { params }),
+      marquerTraite: (id) =>
+        api.post(`/portail/documents-client-portail/${id}/marquer_traite/`, {}),
+    },
+    jalonsChantier: {
+      liste: (params) => api.get('/portail/jalons-chantier-portail/', { params }),
+      creer: (payload) => api.post('/portail/jalons-chantier-portail/', payload),
+      marquerAtteint: (id) =>
+        api.post(`/portail/jalons-chantier-portail/${id}/marquer_atteint/`, {}),
+    },
+    demandesTicket: {
+      liste: (params) => api.get('/portail/demandes-ticket-portail/', { params }),
+      prendreEnCharge: (id, payload) =>
+        api.post(`/portail/demandes-ticket-portail/${id}/prendre_en_charge/`, payload ?? {}),
+    },
+  },
 }
 
 export default portailApi
