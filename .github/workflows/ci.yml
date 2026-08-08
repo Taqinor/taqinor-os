@@ -260,6 +260,17 @@ jobs:
         run: pip install -r requirements.txt
       - name: Test the OpenAPI-schema checker itself (YAPIC6)
         run: python -m unittest scripts.tests.test_check_openapi_schema -v
+      # TEMPORAIRE (PR #508) — publie l'instantane GENERE PAR CI pour pouvoir le
+      # committer : il n'est pas reproductible hors de cette image (WeasyPrint
+      # reel + deps epinglees). Ces deux etapes sont retirees dans le commit
+      # suivant, avant la fusion.
+      - name: (temporaire) generer l'instantane OpenAPI
+        run: python scripts/check_openapi_schema.py --write || true
+      - name: (temporaire) publier l'instantane genere
+        uses: actions/upload-artifact@v4
+        with:
+          name: openapi-schema-genere
+          path: docs/openapi-schema.yml
       - name: OpenAPI schema — generate, validate, no NEW warning (YAPIC6)
         run: python scripts/check_openapi_schema.py
 
