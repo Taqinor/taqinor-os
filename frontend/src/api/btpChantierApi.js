@@ -1,0 +1,36 @@
+import api from './axios'
+
+/* ============================================================================
+   BTP / Chantier (apps.btp_chantier, Groupe NTCON) — client API.
+   ----------------------------------------------------------------------------
+   Groupe PACT §E2 — le backend (7 ressources : réserves de chantier, RFI,
+   visas de documents techniques, journal de chantier, avenants, DGD,
+   diffusion de plans) était COMPLET et testé mais l'app n'avait AUCUN fichier
+   client : ses ressources étaient toutes invisibles. Ce fichier grandit tâche
+   par tâche (PACT62-68), une section par ressource — les chemins reprennent
+   EXACTEMENT `apps/btp_chantier/urls.py` (préfixe `/btp-chantier/`, monté
+   dans `erp_agentique/urls.py`), jamais un endpoint réinventé.
+   ========================================================================== */
+
+const btpChantierApi = {
+  // ── PACT62 — Réserves de chantier (punch-list géo-localisée) — NTCON1/2 ──
+  reserves: {
+    // `params` : { lot, statut, gravite, chantier } — tous optionnels.
+    list: (params) => api.get('/btp-chantier/reserves-chantier/', { params }),
+    get: (id) => api.get(`/btp-chantier/reserves-chantier/${id}/`),
+    // `data` : { chantier, lot?, localisation_plan:{document_ged_id,x,y},
+    // description, gravite, responsable_leve?, date_limite? }.
+    create: (data) => api.post('/btp-chantier/reserves-chantier/', data),
+    photos: (id) => api.get(`/btp-chantier/reserves-chantier/${id}/photos/`),
+    // Requiert côté serveur : une photo `records.Attachment` phase=apres déjà
+    // déposée, et `signataire_nom` (loi 53-05) — sinon 400 avec le motif exact.
+    lever: (id, signataireNom) =>
+      api.post(`/btp-chantier/reserves-chantier/${id}/lever/`, {
+        signataire_nom: signataireNom,
+      }),
+    contester: (id, motif) =>
+      api.post(`/btp-chantier/reserves-chantier/${id}/contester/`, { motif }),
+  },
+}
+
+export default btpChantierApi
