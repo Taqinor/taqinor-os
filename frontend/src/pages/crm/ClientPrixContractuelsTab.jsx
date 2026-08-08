@@ -18,19 +18,31 @@ export default function ClientPrixContractuelsTab({ clientId }) {
   const [loading, setLoading] = useState(true)
   const [erreur, setErreur] = useState('')
 
+  // Le client affiché a changé : on remet loading/erreur à zéro PENDANT le
+  // rendu (jamais dans l'effet ci-dessous) pour éviter un second rendu en
+  // cascade — l'effet ne fait plus que déclencher le fetch.
+  const [clientCharge, setClientCharge] = useState(clientId)
+  if (clientId !== clientCharge) {
+    setClientCharge(clientId)
+    setLoading(true)
+    setErreur('')
+  }
+
+  const fetchPrixContractuels = () => cpqApi.getPrixContractuels()
+    .then((res) => {
+      const rows = res.data?.results ?? res.data ?? []
+      setPrix(rows.filter((p) => Number(p.client) === Number(clientId)))
+    })
+    .catch((err) => setErreur(frenchError(err, 'Impossible de charger les tarifs négociés.')))
+    .finally(() => setLoading(false))
+
   const charger = () => {
     setLoading(true)
     setErreur('')
-    cpqApi.getPrixContractuels()
-      .then((res) => {
-        const rows = res.data?.results ?? res.data ?? []
-        setPrix(rows.filter((p) => Number(p.client) === Number(clientId)))
-      })
-      .catch((err) => setErreur(frenchError(err, 'Impossible de charger les tarifs négociés.')))
-      .finally(() => setLoading(false))
+    return fetchPrixContractuels()
   }
 
-  useEffect(() => { if (clientId) charger() }, [clientId])
+  useEffect(() => { if (clientId) fetchPrixContractuels() }, [clientId])
 
   const [produits, setProduits] = useState([])
   useEffect(() => {
