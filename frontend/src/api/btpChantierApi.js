@@ -75,6 +75,23 @@ const btpChantierApi = {
         params, responseType: 'blob',
       }),
   },
+
+  // ── PACT66 — Avenants de chantier (chiffrage + approbation) — NTCON7/8 ──
+  avenants: {
+    // `params` : { chantier, statut } — tous optionnels.
+    list: (params) => api.get('/btp-chantier/avenants-chantier/', { params }),
+    // `data` : { chantier, description, montant_ht, impact_delai_jours?,
+    // impact_budget?, avenant_contrat_id?, lignes? } — `reference` (préfixe
+    // AVC) posée côté serveur.
+    create: (data) => api.post('/btp-chantier/avenants-chantier/', data),
+    // Passe en « soumis au client » + (re)génère le lien public tokenisé.
+    faireApprouver: (id) =>
+      api.post(`/btp-chantier/avenants-chantier/${id}/faire-approuver/`),
+    // Décision INTERNE (sans passer par le lien public).
+    approuver: (id) => api.post(`/btp-chantier/avenants-chantier/${id}/approuver/`),
+    refuser: (id, motif) =>
+      api.post(`/btp-chantier/avenants-chantier/${id}/refuser/`, { motif }),
+  },
 }
 
 export default btpChantierApi
