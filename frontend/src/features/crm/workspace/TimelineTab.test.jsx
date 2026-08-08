@@ -16,10 +16,11 @@ const { apiGet, apiPost } = vi.hoisted(() => ({
 }))
 vi.mock('../../../api/axios', () => ({ default: { get: apiGet, post: apiPost } }))
 
-const { getLeadPointsContact } = vi.hoisted(() => ({
+const { getLeadPointsContact, createPointContact } = vi.hoisted(() => ({
   getLeadPointsContact: vi.fn(() => Promise.resolve({ data: { count: 0, timeline: [] } })),
+  createPointContact: vi.fn(() => Promise.resolve({ data: { id: 1 } })),
 }))
-vi.mock('../../../api/crmApi', () => ({ default: { getLeadPointsContact } }))
+vi.mock('../../../api/crmApi', () => ({ default: { getLeadPointsContact, createPointContact } }))
 
 vi.mock('../../../api/marketingApi', () => ({
   default: {
@@ -243,5 +244,44 @@ describe('LW20 — source des entrées (chatter_recent en 1er rendu, historique 
     })
     expect(screen.getByText(/À jour/)).toBeInTheDocument()
     expect(screen.queryByText(/Ancien/)).toBeNull()
+  })
+})
+
+describe('PACT104 — ajout manuel d’un point de contact (collection racine, aucun appelant avant)', () => {
+  it('le formulaire est replié par défaut', () => {
+    renderTab()
+    expect(screen.queryByLabelText('Canal du point de contact')).toBeNull()
+  })
+
+  it('crée un point de contact puis recharge le résumé déjà affiché (jamais un second calcul client)', async () => {
+    const user = userEvent.setup()
+    getLeadPointsContact
+      .mockResolvedValueOnce({ data: { count: 0, timeline: [] } })
+      .mockResolvedValueOnce({
+        data: { count: 1, timeline: [{ date_contact: '2026-02-01T09:00:00Z' }] },
+      })
+    renderTab()
+
+    await user.click(screen.getByRole('button', { name: 'Ajouter un point de contact' }))
+    await user.selectOptions(screen.getByLabelText('Canal du point de contact'), 'whatsapp_ctwa')
+    await user.type(screen.getByLabelText('Source du point de contact'), 'Campagne WA')
+    await user.click(screen.getByRole('button', { name: 'Enregistrer' }))
+
+    await waitFor(() => expect(createPointContact).toHaveBeenCalledWith(expect.objectContaining({
+      lead: 7, canal: 'whatsapp_ctwa', source: 'Campagne WA',
+    })))
+    await waitFor(() => expect(getLeadPointsContact).toHaveBeenCalledTimes(2))
+    expect(await screen.findByText(/1 touche/)).toBeInTheDocument()
+  })
+
+  it('échec de la création : toast, formulaire reste exploitable', async () => {
+    const user = userEvent.setup()
+    createPointContact.mockRejectedValueOnce({ response: { data: {} } })
+    renderTab()
+
+    await user.click(screen.getByRole('button', { name: 'Ajouter un point de contact' }))
+    await user.click(screen.getByRole('button', { name: 'Enregistrer' }))
+
+    await waitFor(() => expect(toastError).toHaveBeenCalled())
   })
 })

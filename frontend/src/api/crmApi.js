@@ -215,6 +215,14 @@ const crmApi = {
   // `saisi_par` posés côté serveur.
   getConcurrentsPerte: (params) => api.get('/crm/concurrents-perte/', { params }),
   createConcurrentPerte: (data) => api.post('/crm/concurrents-perte/', data),
+
+  // PACT104 — Points de contact (FG204) : la lecture agrégée (`getLead
+  // PointsContact`, ci-dessus) est déjà câblée ; la collection racine
+  // (créer manuellement un point de contact) n'avait aucun appelant.
+  // `data` : { lead, canal, source?, date_contact?, detail?, cout? } —
+  // `ordre` auto-incrémenté et `date_contact` par défaut (maintenant) posés
+  // côté serveur si absents.
+  createPointContact: (data) => api.post('/crm/points-contact/', data),
 }
 
 export default crmApi
