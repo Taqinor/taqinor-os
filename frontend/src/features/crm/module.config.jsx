@@ -4,6 +4,7 @@
 import { lazy } from 'react'
 import {
   CalendarDays, Users, Target, Map, UserPlus, TrendingUp, LayoutDashboard, Globe,
+  Handshake,
 } from 'lucide-react'
 
 /* ============================================================================
@@ -48,6 +49,9 @@ const ForecastPage = lazy(() => import('../../pages/crm/forecast/ForecastPage'))
 // WIR99/DC12 — création/édition du profil site réutilisable par client
 // (`SiteProfile`), qui pré-remplit le générateur de devis SANS lead.
 const SiteProfilePage = lazy(() => import('../../pages/crm/SiteProfilePage'))
+// PACT102 — Partenaires (FG234/235/237) : agrément, soumissions, commissions
+// — le backend est complet, aucun écran interne n'existait avant ce lot.
+const PartenairesPage = lazy(() => import('./Partenaires'))
 
 const config = {
   key: 'crm',
@@ -82,6 +86,8 @@ const config = {
       { to: '/crm/parrainage',       label: 'Parrainage',       k: 'nav.parrainage', icon: navIcon(UserPlus),   roles: ['normal','responsable','admin'] },
       // WIR99/DC12 — profil site réutilisable par client (pré-remplit le devis).
       { to: '/crm/profils-site',     label: 'Profils site',     k: 'nav.profils_site', icon: navIcon(Users),   roles: ['normal','responsable','admin'] },
+      // PACT102 — agrément partenaire + soumissions + commissions (argent : responsable/admin).
+      { to: '/crm/partenaires',      label: 'Partenaires',      k: 'nav.partenaires', icon: navIcon(Handshake), roles: ['responsable','admin'] },
     ],
   },
   routes: [
@@ -101,6 +107,8 @@ const config = {
     { path: '/crm/payloads-site-web', component: WebsiteLeadPayloadsPage },
     // WIR15/NTCRM7 — Forecast (manager rollup).
     { path: '/crm/forecast', component: ForecastPage },
+    // PACT102 — Partenaires (agrément, soumissions, commissions).
+    { path: '/crm/partenaires', component: PartenairesPage, roles: ['responsable', 'admin'] },
   ],
 }
 
