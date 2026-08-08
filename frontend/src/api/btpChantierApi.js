@@ -60,6 +60,21 @@ const btpChantierApi = {
     refuser: (id, observations) =>
       api.post(`/btp-chantier/visas/${id}/refuser/`, { observations }),
   },
+
+  // ── PACT65 — Journal de chantier quotidien — NTCON6 ──────────────────────
+  journal: {
+    // `params` : { chantier, du, au } — tous optionnels.
+    list: (params) => api.get('/btp-chantier/journal-chantier/', { params }),
+    // `data` : { chantier, date, meteo?, effectif_interne?,
+    // effectif_sous_traitant?, materiel_present?, evenements?, visiteurs? } —
+    // une entrée par jour/chantier (contrainte serveur, 400 sur doublon).
+    create: (data) => api.post('/btp-chantier/journal-chantier/', data),
+    // `params` : { chantier (requis), du?, au? } — PDF interne WeasyPrint.
+    exportPdf: (params) =>
+      api.get('/btp-chantier/journal-chantier/export-pdf/', {
+        params, responseType: 'blob',
+      }),
+  },
 }
 
 export default btpChantierApi
