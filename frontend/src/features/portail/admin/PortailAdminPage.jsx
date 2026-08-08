@@ -17,6 +17,7 @@ import AcceptationsDevisPortailAdmin from './AcceptationsDevisPortailAdmin'
 import PaiementsFacturePortailAdmin from './PaiementsFacturePortailAdmin'
 import DocumentsClientPortailAdmin from './DocumentsClientPortailAdmin'
 import JalonsChantierPortailAdmin from './JalonsChantierPortailAdmin'
+import DemandesTicketPortailAdmin from './DemandesTicketPortailAdmin'
 
 export default function PortailAdminPage() {
   const [tab, setTab] = useState('comptes')
@@ -42,6 +43,7 @@ export default function PortailAdminPage() {
             <TabsTrigger value="paiements-facture">Paiements de facture</TabsTrigger>
             <TabsTrigger value="documents-client">Documents client</TabsTrigger>
             <TabsTrigger value="jalons-chantier">Jalons de chantier</TabsTrigger>
+            <TabsTrigger value="demandes-ticket">Demandes de ticket</TabsTrigger>
           </TabsList>
 
           <TabsContent value="comptes">
@@ -58,6 +60,9 @@ export default function PortailAdminPage() {
           </TabsContent>
           <TabsContent value="jalons-chantier">
             <JalonsChantierPortailAdmin />
+          </TabsContent>
+          <TabsContent value="demandes-ticket">
+            <DemandesTicketPortailAdmin />
           </TabsContent>
         </Tabs>
       </div>
