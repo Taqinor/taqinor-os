@@ -22,6 +22,8 @@ const mocks = vi.hoisted(() => ({
   // méthodes non définies dès son montage.
   checklistList: vi.fn(),
   completude: vi.fn(),
+  // PACT72 — `PiecesFournies` est désormais monté PAR DÉFAUT (pleine largeur).
+  piecesFourniesList: vi.fn(),
 }))
 
 vi.mock('react-router-dom', async () => {
@@ -45,6 +47,7 @@ vi.mock('../../../api/aoApi', () => ({
     // connaît pas les champs de prorogation).
     affaires: { update: vi.fn() },
     checklistPartenaire: { list: mocks.checklistList, pointer: vi.fn() },
+    piecesDossierAo: { list: mocks.piecesFourniesList, update: vi.fn() },
   },
 }))
 
@@ -108,6 +111,7 @@ beforeEach(() => {
   })
   mocks.checklistList.mockResolvedValue({ data: [] })
   mocks.completude.mockResolvedValue({ data: { complet: false, raisons_de_non_depot: [] } })
+  mocks.piecesFourniesList.mockResolvedValue({ data: [] })
 })
 
 describe('DossierPage (AOF174)', () => {

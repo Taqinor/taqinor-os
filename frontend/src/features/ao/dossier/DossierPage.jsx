@@ -83,6 +83,10 @@ const ZipButton = lazy(() => import('./ZipButton'))
 // PACT71 — la checklist partenaire (AOF136) : sans elle, un point obligatoire
 // encore ouvert bloque le dépôt SANS QUE RIEN ne le montre sur cet écran.
 const ChecklistPartenaire = lazy(() => import('./ChecklistPartenaire'))
+// PACT72 — les pièces FOURNIES (partenaire/acheteur) : la colonne 1 les liste
+// déjà en lecture (`PieceRow`), mais aucun écran ne permettait de les marquer
+// présentes ni d'y attacher un fichier.
+const PiecesFournies = lazy(() => import('./PiecesFournies'))
 
 const errMsg = (e, fallback) => e?.response?.data?.detail || fallback
 
@@ -271,6 +275,12 @@ export default function DossierPage({
           )}
         </div>
       </div>
+
+      {/* PACT72 — pièces fournies (partenaire/acheteur), PLEINE LARGEUR : le
+          panneau se tait lui-même (aucun rendu) si le dossier n'en a aucune. */}
+      <Suspense fallback={null}>
+        <PiecesFournies dossierId={dossier.id} />
+      </Suspense>
 
       {/* PACT71 — checklist partenaire, PLEINE LARGEUR sous la grille : ses
           sept blocs (CPS, acte d'engagement, bordereau, lettre de soumission,

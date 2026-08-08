@@ -42,6 +42,11 @@ const mocks = vi.hoisted(() => ({
   cautionsList: vi.fn(),
   echeancesAoList: vi.fn(),
   resultatsAoList: vi.fn(),
+  // PACT71/PACT72 — `DossierPage` monte désormais aussi `ChecklistPartenaire`
+  // et `PiecesFournies` PAR DÉFAUT (pleine largeur, sous sa grille).
+  completude: vi.fn(),
+  checklistList: vi.fn(),
+  piecesFourniesList: vi.fn(),
 }))
 
 vi.mock('react-router-dom', async () => {
@@ -60,8 +65,10 @@ vi.mock('../../api/aoApi', () => ({
     variantes: { list: mocks.variantesList },
     dossiers: {
       list: mocks.dossiersList, get: mocks.dossierGet, genererPiece: mocks.genererPiece,
-      controlesAvantDepot: mocks.controlesAvantDepot,
+      controlesAvantDepot: mocks.controlesAvantDepot, completude: mocks.completude,
     },
+    checklistPartenaire: { list: mocks.checklistList, pointer: vi.fn() },
+    piecesDossierAo: { list: mocks.piecesFourniesList, update: vi.fn() },
     seriesQR: { list: mocks.seriesList, create: mocks.seriesCreate },
     calepinages: { get: mocks.calepinageGet, calculer: mocks.calepinageCalculer },
     equipements: { list: mocks.equipementsList, bascule: vi.fn() },
@@ -178,6 +185,9 @@ beforeEach(() => {
   mocks.cautionsList.mockResolvedValue({ data: [] })
   mocks.echeancesAoList.mockResolvedValue({ data: [] })
   mocks.resultatsAoList.mockResolvedValue({ data: [] })
+  mocks.completude.mockResolvedValue({ data: { complet: false, raisons_de_non_depot: [] } })
+  mocks.checklistList.mockResolvedValue({ data: [] })
+  mocks.piecesFourniesList.mockResolvedValue({ data: [] })
 })
 
 // Les 12 onglets de la fiche, dans leur ordre RÉEL : les 7 d'origine, les 3

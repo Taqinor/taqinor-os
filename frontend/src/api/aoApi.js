@@ -221,6 +221,13 @@ const aoApi = {
   },
   exigencesCps: crud('exigences-cps'),
 
+  /* ── PACT72 — Pièces du dossier de dépôt, GÉNÉRÉES et FOURNIES ────────────
+     `pieces-dossier-ao` (AOF115), enregistrée depuis toujours. `DossierPage`
+     lit déjà les pièces GÉNÉRÉES via `dossiers.get(id).pieces` (imbriquées) ;
+     aucun écran n'offrait de marquer une pièce FOURNIE « présente » ni d'y
+     attacher son fichier — pas même un wrapper client. */
+  piecesDossierAo: crud('pieces-dossier-ao'),
+
   // ── Dossier de DÉPÔT (AOF115 — `dossiers-ao`, kit `core/documents.py`) ──
   //
   // RÉPARATION 03/08/2026 — `dossiers` visait `dossiers-soumission`, qui est
