@@ -48,6 +48,8 @@ const SuiviImport = lazy(() => import('./SuiviImport'))
 // PACT57 — prix négociés fournisseurs : écriture commandes-cadres/contrats
 // de prix (FG314/FG318), lecture seule existante avant cette tâche.
 const PrixNegocies = lazy(() => import('./PrixNegocies'))
+// PACT58 — contrôle documentaire de projet : registre + révisions (FG297).
+const DocumentsProjet = lazy(() => import('./DocumentsProjet'))
 const ProductionPage = lazy(() => import('../../pages/monitoring/ProductionPage'))
 const FleetPage = lazy(() => import('../../pages/monitoring/FleetPage'))
 const OmAnalyticsPage = lazy(() => import('../../pages/monitoring/OmAnalyticsPage'))
@@ -100,6 +102,7 @@ const config = {
       { to: '/chantiers/sous-traitance', label: 'Sous-traitance', icon: navIcon(HardHat), roles: ['responsable','admin'] },
       { to: '/chantiers/import', label: 'Import & douane', icon: navIcon(Boxes), roles: ['responsable','admin'] },
       { to: '/chantiers/prix-negocies', label: 'Prix négociés', icon: navIcon(ClipboardList), roles: ['responsable','admin'] },
+      { to: '/chantiers/documents-projet', label: 'Documents projet', icon: navIcon(ClipboardList), roles: ['responsable','admin'] },
       { to: '/interventions',        label: 'Interventions',    k: 'nav.interventions', icon: navIcon(Wrench), roles: ['normal','responsable','admin'] },
       { to: '/planification',        label: 'Planification',    k: 'nav.planification', icon: navIcon(CalendarClock),    roles: ['normal','responsable','admin'] },
       { to: '/planification/astreintes', label: 'Astreintes',   icon: navIcon(CalendarClock), roles: ['responsable','admin'] },
@@ -118,6 +121,7 @@ const config = {
     { path: '/chantiers/sous-traitance', component: SousTraitanceChantier, roles: ['responsable', 'admin'] },
     { path: '/chantiers/import', component: SuiviImport, roles: ['responsable', 'admin'] },
     { path: '/chantiers/prix-negocies', component: PrixNegocies, roles: ['responsable', 'admin'] },
+    { path: '/chantiers/documents-projet', component: DocumentsProjet, roles: ['responsable', 'admin'] },
     { path: '/interventions', component: InterventionsPage },
     { path: '/planification', component: PlanificationPage },
     { path: '/planification/astreintes', component: AstreintesPage, roles: ['responsable', 'admin'] },

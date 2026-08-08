@@ -711,6 +711,16 @@ const installationsApi = {
     api.patch(`/installations/contrats-prix-lignes/${id}/`, data),
   deleteContratPrixLigne: (id) =>
     api.delete(`/installations/contrats-prix-lignes/${id}/`),
+
+  // ── PACT58 — Contrôle documentaire de projet : registre (FG297) et
+  // révisions (indice/date/auteur/fichier) d'un document technique. ──
+  getDocumentsProjet: (params) => api.get('/installations/documents-projet/', { params }),
+  createDocumentProjet: (data) => api.post('/installations/documents-projet/', data),
+  updateDocumentProjet: (id, data) => api.patch(`/installations/documents-projet/${id}/`, data),
+  deleteDocumentProjet: (id) => api.delete(`/installations/documents-projet/${id}/`),
+
+  getRevisionsDocument: (params) => api.get('/installations/revisions-document/', { params }),
+  createRevisionDocument: (data) => api.post('/installations/revisions-document/', data),
 }
 
 export default installationsApi
