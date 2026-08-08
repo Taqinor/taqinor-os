@@ -17,6 +17,9 @@ import OrgChartTab from './clients/OrgChartTab'
 // revues), conçu pour `clientId`/`planId` en props — `plans-compte/`/
 // `revues-compte/` déjà complets côté API.
 import PlanComptePage from './comptes/PlanComptePage'
+// PACT129 — Prix contractuels négociés par client (NTCPQ5) : un onglet plus
+// cohérent qu'un écran autonome (la fiche a déjà des onglets).
+import ClientPrixContractuelsTab from './ClientPrixContractuelsTab'
 import { formatMAD } from '../../lib/format'
 import { telHref, waHref } from '../../lib/contactLinks'
 
@@ -166,6 +169,7 @@ export default function ClientDetailPanel({ client, onClose, onNewDevis, onChang
               <TabsTrigger value="documents">Documents</TabsTrigger>
               <TabsTrigger value="organigramme">Organigramme</TabsTrigger>
               <TabsTrigger value="plan-compte">Plan de compte</TabsTrigger>
+              <TabsTrigger value="prix-contractuels">Tarifs négociés</TabsTrigger>
             </TabsList>
             <TabsContent value="documents">
               {loading && (
@@ -248,6 +252,9 @@ export default function ClientDetailPanel({ client, onClose, onNewDevis, onChang
             </TabsContent>
             <TabsContent value="plan-compte">
               <PlanComptePage clientId={client.id} />
+            </TabsContent>
+            <TabsContent value="prix-contractuels">
+              <ClientPrixContractuelsTab clientId={client.id} />
             </TabsContent>
           </Tabs>
         </div>
