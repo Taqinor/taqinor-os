@@ -345,6 +345,19 @@ const gedApi = {
   // Lien de dépôt public tokenisé (la page publique PublicDepotPage fonctionne).
   getDepotsPublics: (params) => api.get('/ged/depots-publics/', { params }),
   createDepotPublic: (data) => api.post('/ged/depots-publics/', data),
+
+  // ══════════════════════════════════════════════════════════════════════
+  // PACT131 — Coffres-forts documentaires (GED8, employé OU client).
+  // ══════════════════════════════════════════════════════════════════════
+  // `params` : pas de filtre serveur particulier — la liste est déjà bornée
+  // par ACL (`selectors.coffres_for_user`, employé = ses coffres, admin = tous).
+  getCoffres: (params) => api.get('/ged/coffres/', { params }),
+  // Crée un coffre. `data` : { nom, description?, proprietaire? , client? }
+  // (exactement l'un des deux, jamais les deux — revalidé côté serveur).
+  createCoffre: (data) => api.post('/ged/coffres/', data),
+  deleteCoffre: (id) => api.delete(`/ged/coffres/${id}/`),
+  // Documents classés dans ce coffre (ACL déjà appliquée par `get_queryset`).
+  getCoffreDocuments: (id) => api.get(`/ged/coffres/${id}/documents/`),
 }
 
 export default gedApi

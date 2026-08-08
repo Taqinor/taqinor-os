@@ -5,7 +5,7 @@
 import { lazy } from 'react'
 import {
   FolderOpen, FileSignature, ShieldCheck, Tags, ScanLine, Trash2, ClipboardList,
-  Files,
+  Files, Vault,
 } from 'lucide-react'
 import { appGlyph } from '../../lib/apps/appGlyph'
 
@@ -44,6 +44,9 @@ const CorbeillePage = lazy(() => import('./advanced/CorbeillePage.jsx'))
 // WIR164 — checklist de pièces (XGED8), validation OCR (XGED13), tampons
 // société (XGED16) : groupe (a) monté côté backend sans écran jusqu'ici.
 const ChecklistPage = lazy(() => import('./advanced/ChecklistPage.jsx'))
+// PACT131 — coffres-forts documentaires (GED8), monté côté backend sans
+// écran jusqu'ici.
+const CoffresPage = lazy(() => import('./advanced/CoffresPage.jsx'))
 
 const ROLES = ['responsable', 'admin']
 const TOUS = ['normal', 'responsable', 'admin']
@@ -69,6 +72,7 @@ export default {
       { to: '/ged/retention', label: 'Rétention & archivage', icon: <ShieldCheck size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
       { to: '/ged/tags', label: 'Tags & liens', icon: <Tags size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
       { to: '/ged/corbeille', label: 'Corbeille', icon: <Trash2 size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
+      { to: '/ged/coffres', label: 'Coffres-forts', icon: <Vault size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
     ],
   },
   titles: [
@@ -78,6 +82,7 @@ export default {
     ['/ged/retention', 'Rétention & archivage'],
     ['/ged/tags', 'Tags & liens'],
     ['/ged/corbeille', 'Corbeille'],
+    ['/ged/coffres', 'Coffres-forts'],
     ['/ged', 'Documents (GED)'],
   ],
   sectionLabels: { ged: 'Documents (GED)' },
@@ -88,5 +93,6 @@ export default {
     { path: '/ged/retention', component: RetentionPage, roles: ROLES },
     { path: '/ged/tags', component: TagsPage, roles: ROLES },
     { path: '/ged/corbeille', component: CorbeillePage, roles: ROLES },
+    { path: '/ged/coffres', component: CoffresPage, roles: ROLES },
   ],
 }
