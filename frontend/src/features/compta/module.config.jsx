@@ -6,7 +6,7 @@ import {
   LayoutDashboard, BookOpen, PencilLine, FileBarChart2,
   Landmark, ReceiptText, Building2, Scale, Receipt, HandCoins, ShieldCheck,
   ListChecks, Repeat, BadgeCheck, CalendarClock, PieChart,
-  Calculator, Percent, Layers3, UserCheck, GitBranch,
+  Calculator, Percent, Layers3, UserCheck, GitBranch, Split,
 } from 'lucide-react'
 import { appGlyph } from '../../lib/apps/appGlyph'
 
@@ -55,6 +55,11 @@ const RapprochementsComptePage = lazy(
 // (NTFIN13/15-17), jusqu'ici « API-only » dans comptaApi.js.
 const ReferentielsAnalytiquePage = lazy(
   () => import('./pages/ReferentielsAnalytiquePage.jsx'))
+// PACT32 — clés de répartition & engagements comptables (NTFIN20-24) : le
+// backend /compta/engagements/ est un HOMONYME sans rapport avec la page
+// « Engagements & clôtures avancées » (retenues de garantie…) déjà existante.
+const AllocationsEngagementsPage = lazy(
+  () => import('./pages/AllocationsEngagementsPage.jsx'))
 
 const ROLES = ['responsable', 'admin']
 
@@ -95,6 +100,7 @@ const config = {
       { to: '/comptabilite/immobilisations-avancees', label: 'Immobilisations avancées', icon: icon(Layers3), roles: ROLES },
       { to: '/comptabilite/rapprochements-compte', label: 'Rapprochements de comptes', icon: icon(UserCheck), roles: ROLES },
       { to: '/comptabilite/referentiels-analytique', label: 'Référentiels & analytique', icon: icon(GitBranch), roles: ROLES },
+      { to: '/comptabilite/allocations-engagements', label: 'Allocations & engagements', icon: icon(Split), roles: ROLES },
     ],
   },
   // Titres de page : du plus spécifique au plus général (routes.meta).
@@ -109,6 +115,7 @@ const config = {
     ['/comptabilite/immobilisations-avancees', 'Immobilisations avancées — Comptabilité'],
     ['/comptabilite/rapprochements-compte', 'Rapprochements de comptes — Comptabilité'],
     ['/comptabilite/referentiels-analytique', 'Référentiels & analytique — Comptabilité'],
+    ['/comptabilite/allocations-engagements', 'Allocations & engagements — Comptabilité'],
     ['/comptabilite/cloture', 'Clôture — Comptabilité'],
     ['/comptabilite/engagements', 'Engagements — Comptabilité'],
     ['/comptabilite/effets', 'Effets & règlements — Comptabilité'],
@@ -144,6 +151,7 @@ const config = {
     { path: '/comptabilite/immobilisations-avancees', component: ImmobilisationsAvanceesPage, roles: ROLES },
     { path: '/comptabilite/rapprochements-compte', component: RapprochementsComptePage, roles: ROLES },
     { path: '/comptabilite/referentiels-analytique', component: ReferentielsAnalytiquePage, roles: ROLES },
+    { path: '/comptabilite/allocations-engagements', component: AllocationsEngagementsPage, roles: ROLES },
   ],
 }
 

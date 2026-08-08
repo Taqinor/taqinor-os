@@ -520,6 +520,16 @@ const comptaApi = {
     reverser: (id) => api.post(`/compta/allocations/${id}/reverser/`),
   },
   allocationsRecurrentes: resource('allocations-recurrentes'),
+  // PACT32 — engagements comptables (encumbrance, NTFIN23-24) : « engagements »
+  // sert DÉJÀ un ancien homonyme français côté écran (retenues de garantie…,
+  // cf. EngagementsPage.jsx) — cette clé porte le VRAI backend
+  // /compta/engagements/ (EngagementComptableViewSet), jusqu'ici sans wrapper.
+  engagementsComptables: {
+    ...resource('engagements'),
+    liquider: (id, data) => api.post(`/compta/engagements/${id}/liquider/`, data),
+    verifierDisponible: (data) =>
+      api.post('/compta/engagements/verifier-disponible/', data),
+  },
 
   // ── NTFIN47-48 — Reconnaissance du revenu IFRS 15 (API-only) ──
   contratsRevenu: {
