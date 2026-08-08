@@ -737,6 +737,28 @@ const installationsApi = {
 
   getReunionsChantier: (params) => api.get('/installations/reunions-chantier/', { params }),
   createReunionChantier: (data) => api.post('/installations/reunions-chantier/', data),
+
+  // ── PACT60 — Consultation fournisseurs et comparatif d'offres (FG311,
+  // XPUR20/21). `offres`/`consultations`/`comparatif` sont imbriqués en
+  // lecture dans chaque RFQ (aucun fetch séparé nécessaire pour comparer). ──
+  getRFQs: (params) => api.get('/installations/rfq/', { params }),
+  getRFQ: (id) => api.get(`/installations/rfq/${id}/`),
+  createRFQ: (data) => api.post('/installations/rfq/', data),
+  envoyerRFQ: (id) => api.post(`/installations/rfq/${id}/envoyer/`, {}),
+  cloturerRFQ: (id) => api.post(`/installations/rfq/${id}/cloturer/`, {}),
+  retenirOffreRFQ: (id, offreId) =>
+    api.post(`/installations/rfq/${id}/retenir/`, { offre: offreId }),
+  consulterFournisseurRFQ: (id, fournisseurId) =>
+    api.post(`/installations/rfq/${id}/consulter/`, { fournisseur: fournisseurId }),
+  envoyerConsultationsRFQ: (id, consultationIds) =>
+    api.post(`/installations/rfq/${id}/envoyer-consultations/`,
+      consultationIds ? { consultations: consultationIds } : {}),
+  relancerNonRepondantsRFQ: (id) =>
+    api.post(`/installations/rfq/${id}/relancer-non-repondants/`, {}),
+
+  createRFQOffre: (data) => api.post('/installations/rfq-offres/', data),
+
+  getRFQConsultations: (params) => api.get('/installations/rfq-consultations/', { params }),
 }
 
 export default installationsApi
