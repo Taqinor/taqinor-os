@@ -6,7 +6,7 @@ import {
   LayoutDashboard, BookOpen, PencilLine, FileBarChart2,
   Landmark, ReceiptText, Building2, Scale, Receipt, HandCoins, ShieldCheck,
   ListChecks, Repeat, BadgeCheck, CalendarClock, PieChart,
-  Calculator,
+  Calculator, Percent,
 } from 'lucide-react'
 import { appGlyph } from '../../lib/apps/appGlyph'
 
@@ -40,6 +40,9 @@ const ApprobationsRibPage = lazy(() => import('./pages/ApprobationsRibPage.jsx')
 // PACT163 — charges constatées d'avance (XACC15) et budgets (XACC22).
 const ChargesAvancePage = lazy(() => import('./pages/ChargesAvancePage.jsx'))
 const BudgetsPage = lazy(() => import('./pages/BudgetsPage.jsx'))
+// PACT28 — fiscalité avancée (acomptes IS, conventions fiscales, TVA non
+// déductible) : trois référentiels sans écran (NTMAR12/18, XACC11).
+const FiscaliteAvanceePage = lazy(() => import('./pages/FiscaliteAvanceePage.jsx'))
 
 const ROLES = ['responsable', 'admin']
 
@@ -76,6 +79,7 @@ const config = {
       { to: '/comptabilite/approbations-rib', label: 'Approbations RIB', icon: icon(BadgeCheck), roles: ROLES },
       { to: '/comptabilite/charges-avance', label: 'Charges d’avance', icon: icon(CalendarClock), roles: ROLES },
       { to: '/comptabilite/budgets', label: 'Budgets', icon: icon(PieChart), roles: ROLES },
+      { to: '/comptabilite/fiscalite-avancee', label: 'Fiscalité avancée', icon: icon(Percent), roles: ROLES },
     ],
   },
   // Titres de page : du plus spécifique au plus général (routes.meta).
@@ -86,6 +90,7 @@ const config = {
     ['/comptabilite/approbations-rib', 'Approbations RIB — Comptabilité'],
     ['/comptabilite/charges-avance', 'Charges d’avance — Comptabilité'],
     ['/comptabilite/budgets', 'Budgets — Comptabilité'],
+    ['/comptabilite/fiscalite-avancee', 'Fiscalité avancée — Comptabilité'],
     ['/comptabilite/cloture', 'Clôture — Comptabilité'],
     ['/comptabilite/engagements', 'Engagements — Comptabilité'],
     ['/comptabilite/effets', 'Effets & règlements — Comptabilité'],
@@ -117,6 +122,7 @@ const config = {
     { path: '/comptabilite/approbations-rib', component: ApprobationsRibPage, roles: ROLES },
     { path: '/comptabilite/charges-avance', component: ChargesAvancePage, roles: ROLES },
     { path: '/comptabilite/budgets', component: BudgetsPage, roles: ROLES },
+    { path: '/comptabilite/fiscalite-avancee', component: FiscaliteAvanceePage, roles: ROLES },
   ],
 }
 

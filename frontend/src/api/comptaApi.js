@@ -147,6 +147,15 @@ const comptaApi = {
     rappels: () => api.post('/compta/obligations-fiscales/rappels/'),
   },
 
+  // ── PACT28 / NTMAR12/18 / XACC11 — Fiscalité avancée (acomptes IS,
+  // conventions fiscales, familles TVA non déductible) ──
+  acomptesIS: {
+    ...resource('acomptes-is'),
+    marquerPaye: (id) => api.post(`/compta/acomptes-is/${id}/marquer-paye/`),
+  },
+  conventionsFiscales: resource('conventions-fiscales'),
+  famillesTvaNonDeductibles: resource('familles-tva-non-deductibles'),
+
   // ── UX8 — Immobilisations ──
   immobilisations: {
     ...resource('immobilisations'),
