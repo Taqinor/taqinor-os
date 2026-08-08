@@ -17,6 +17,11 @@ const mocks = vi.hoisted(() => ({
   get: vi.fn(),
   genererPiece: vi.fn(),
   controlesAvantDepot: vi.fn(),
+  // PACT71 — `ChecklistPartenaire` est désormais monté PAR DÉFAUT (pleine
+  // largeur, sous la grille) : sans ces bouchons, l'écran appellerait des
+  // méthodes non définies dès son montage.
+  checklistList: vi.fn(),
+  completude: vi.fn(),
 }))
 
 vi.mock('react-router-dom', async () => {
@@ -32,11 +37,14 @@ vi.mock('../../../api/aoApi', () => ({
       // AOF176 — endpoint RÉEL, appelé par le contenu par défaut de
       // l'emplacement « actions ».
       controlesAvantDepot: mocks.controlesAvantDepot,
+      // PACT71 — complétude dérivée, lue par `ChecklistPartenaire`.
+      completude: mocks.completude,
     },
     // `EcheancesDossier` ne l'appelle que depuis le formulaire de prorogation,
     // que cet écran ne monte pas (`peutProroger={false}` — le serveur ne
     // connaît pas les champs de prorogation).
     affaires: { update: vi.fn() },
+    checklistPartenaire: { list: mocks.checklistList, pointer: vi.fn() },
   },
 }))
 
@@ -98,6 +106,8 @@ beforeEach(() => {
   mocks.controlesAvantDepot.mockResolvedValue({
     data: { controles: [{ id: 1, code: 'caution', libelle: 'Caution constituée', severite: 'ok' }] },
   })
+  mocks.checklistList.mockResolvedValue({ data: [] })
+  mocks.completude.mockResolvedValue({ data: { complet: false, raisons_de_non_depot: [] } })
 })
 
 describe('DossierPage (AOF174)', () => {

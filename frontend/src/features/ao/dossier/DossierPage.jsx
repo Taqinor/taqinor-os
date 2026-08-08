@@ -80,6 +80,9 @@ import { piecesVisibles } from './DossierPage.utils'
 const ControlesAvantDepot = lazy(() => import('./ControlesAvantDepot'))
 const EcheancesDossier = lazy(() => import('./EcheancesDossier'))
 const ZipButton = lazy(() => import('./ZipButton'))
+// PACT71 — la checklist partenaire (AOF136) : sans elle, un point obligatoire
+// encore ouvert bloque le dépôt SANS QUE RIEN ne le montre sur cet écran.
+const ChecklistPartenaire = lazy(() => import('./ChecklistPartenaire'))
 
 const errMsg = (e, fallback) => e?.response?.data?.detail || fallback
 
@@ -268,6 +271,14 @@ export default function DossierPage({
           )}
         </div>
       </div>
+
+      {/* PACT71 — checklist partenaire, PLEINE LARGEUR sous la grille : ses
+          sept blocs (CPS, acte d'engagement, bordereau, lettre de soumission,
+          mémoire, dossier administratif, vérifications) ne tiennent pas dans
+          une colonne de 20rem sans devenir illisibles. */}
+      <Suspense fallback={<Skeleton className="h-40 w-full" />}>
+        <ChecklistPartenaire dossierId={dossier.id} />
+      </Suspense>
     </div>
   )
 }

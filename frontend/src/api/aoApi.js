@@ -236,6 +236,14 @@ const aoApi = {
     ...crud('dossiers-ao'),
     controlesAvantDepot: (id) =>
       api.get(`/ao/dossiers-ao/${id}/controles-avant-depot/`),
+    // PACT71 — complétude DÉRIVÉE (`DossierAO.raisons_de_non_depot`, en
+    // français) : pièces obligatoires manquantes, checklist partenaire encore
+    // ouverte, pièces administratives expirées à la date de remise des plis.
+    completude: (id) => api.get(`/ao/dossiers-ao/${id}/completude/`),
+    // AOF136 — sème les points de checklist partenaire manquants (idempotent :
+    // un second appel ne recrée rien).
+    initialiserChecklist: (id) =>
+      api.post(`/ao/dossiers-ao/${id}/initialiser-checklist/`),
     // ENDPOINT À CONSTRUIRE — pas un renommage. Vérifié le 03/08/2026 : AUCUN
     // producteur de pièce n'existe côté serveur. Les rendus
     // (`fabrique/rendus/*`) prennent tous un CONTEXTE déjà assemblé, et le
@@ -266,6 +274,17 @@ const aoApi = {
       'aucun job de pack ne peut être lancé tant que `zip` ne construit rien'),
   },
   pieces: crud('pieces-soumission'),
+
+  /* ── PACT71 — Checklist partenaire du dossier de dépôt (AOF136) ───────────
+     `checklist-partenaire`, enregistrée depuis toujours côté serveur : un
+     point obligatoire encore ouvert BLOQUE la transition « prêt à déposer »
+     (`DossierAO.raisons_de_non_depot`), mais aucun écran ne l'affichait — la
+     porte de blocage était invisible, contournée par l'API en croyant bien
+     faire. `pointer` trace TOUJOURS le responsable côté serveur. */
+  checklistPartenaire: {
+    ...crud('checklist-partenaire'),
+    pointer: (id, corps) => api.post(`/ao/checklist-partenaire/${id}/pointer/`, corps),
+  },
 
   // ── Bibliothèque : kits, presets, gabarits, textes normalisés ──
   //
