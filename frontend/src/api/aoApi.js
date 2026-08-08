@@ -183,6 +183,16 @@ const aoApi = {
     retenir: (id) => api.post(`/ao/variantes-calepinage/${id}/retenir/`),
   },
 
+  /* ── PACT74 — Pièces du dossier de CONSULTATION reçu de l'acheteur (AOF21) ─
+     `pieces-consultation`, enregistrée depuis toujours : CPS, règlement,
+     plans d'architecte, cadre de bordereau vierge, ADDITIFS — jamais exposée.
+     `additif` enregistre un erratum ET marque « à revérifier » les exigences
+     CPS qui en dérivent, en une seule action serveur. */
+  piecesConsultation: {
+    ...crud('pieces-consultation'),
+    additif: (id, corps) => api.post(`/ao/pieces-consultation/${id}/additif/`, corps),
+  },
+
   // ── Bordereau / équipements / exigences CPS ──
   // RÉPARATION 03/08/2026 — le routeur publie `series-questions` ; le front
   // appelait `series-qr` (404), et filtrait sur `affaire` alors que le

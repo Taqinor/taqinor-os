@@ -106,6 +106,13 @@ const VariantesCompare = lazy(() => import('./variantes/VariantesCompare'))
    créer une seule. */
 const SuiviAdministratifAO = lazy(() => import('./SuiviAdministratifAO'))
 
+/* ── CINQUIÈME VAGUE — l'onglet « Pièces du DCE » (13ᵉ), PACT74 ────────────
+   `PiecesConsultation` : le DCE (CPS, règlement, plans reçus de l'acheteur)
+   n'était stocké nulle part, si bien qu'un additif reçu après téléchargement
+   ne marquait rien « à revérifier » et que l'écran « CPS & exigences »
+   référence une pièce (« la page du CPS ») qui n'existait jamais. */
+const PiecesConsultation = lazy(() => import('./PiecesConsultation'))
+
 const errMsg = (e, fallback) => e?.response?.data?.detail || fallback
 
 const VERDICT_TONE = { confirme: 'success', tendu: 'warning' }
@@ -541,6 +548,16 @@ export default function AffaireDetail() {
           content: (
             <PanneauDiffere>
               <SuiviAdministratifAO affaireId={id} />
+            </PanneauDiffere>
+          ),
+        },
+        /* ── 13ᵉ onglet, APRÈS les 12 ci-dessus (PACT74) ─────────────────── */
+        {
+          value: 'pieces_consultation',
+          label: 'Pièces du DCE',
+          content: (
+            <PanneauDiffere>
+              <PiecesConsultation affaireId={id} />
             </PanneauDiffere>
           ),
         },

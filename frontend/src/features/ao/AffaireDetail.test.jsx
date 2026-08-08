@@ -47,6 +47,8 @@ const mocks = vi.hoisted(() => ({
   completude: vi.fn(),
   checklistList: vi.fn(),
   piecesFourniesList: vi.fn(),
+  // PACT74 — l'onglet « Pièces du DCE » (PiecesConsultation).
+  piecesConsultationList: vi.fn(),
 }))
 
 vi.mock('react-router-dom', async () => {
@@ -69,6 +71,7 @@ vi.mock('../../api/aoApi', () => ({
     },
     checklistPartenaire: { list: mocks.checklistList, pointer: vi.fn() },
     piecesDossierAo: { list: mocks.piecesFourniesList, update: vi.fn() },
+    piecesConsultation: { list: mocks.piecesConsultationList, create: vi.fn(), update: vi.fn(), additif: vi.fn() },
     seriesQR: { list: mocks.seriesList, create: mocks.seriesCreate },
     calepinages: { get: mocks.calepinageGet, calculer: mocks.calepinageCalculer },
     equipements: { list: mocks.equipementsList, bascule: vi.fn() },
@@ -188,17 +191,18 @@ beforeEach(() => {
   mocks.completude.mockResolvedValue({ data: { complet: false, raisons_de_non_depot: [] } })
   mocks.checklistList.mockResolvedValue({ data: [] })
   mocks.piecesFourniesList.mockResolvedValue({ data: [] })
+  mocks.piecesConsultationList.mockResolvedValue({ data: [] })
 })
 
-// Les 12 onglets de la fiche, dans leur ordre RÉEL : les 7 d'origine, les 3
-// ajoutés le 03/08/2026, « Variantes » (PACT171), puis « Suivi administratif »
-// (PACT70) — l'ordre des 11 premiers ne bouge jamais (un onglet nouveau
-// s'ajoute EN QUEUE, il ne s'intercale pas).
+// Les 13 onglets de la fiche, dans leur ordre RÉEL : les 7 d'origine, les 3
+// ajoutés le 03/08/2026, « Variantes » (PACT171), « Suivi administratif »
+// (PACT70), puis « Pièces du DCE » (PACT74) — l'ordre des 12 premiers ne
+// bouge jamais (un onglet nouveau s'ajoute EN QUEUE, il ne s'intercale pas).
 const ONGLETS = [
   'Synthèse', 'Toitures & relevés', 'Calepinages', 'Bordereau',
   'Dossier', 'Questions terrain', 'Historique',
   'Administratif', 'Équipements', 'CPS & exigences',
-  'Variantes', 'Suivi administratif',
+  'Variantes', 'Suivi administratif', 'Pièces du DCE',
 ]
 
 describe('AffaireDetail', () => {
@@ -240,12 +244,20 @@ describe('AffaireDetail', () => {
     expect(onglets[onglets.length - 2]).toBe('Variantes')
   })
 
-  it('ajoute « Suivi administratif » (PACT70) en 12e et dernier onglet', async () => {
+  it('ajoute « Suivi administratif » (PACT70) en 12e onglet', async () => {
     renderScreen()
     await screen.findByText('AO-2026-001')
     const onglets = screen.getAllByRole('tab').map((t) => t.textContent)
     expect(onglets).toEqual(ONGLETS)
-    expect(onglets[onglets.length - 1]).toBe('Suivi administratif')
+    expect(onglets[onglets.length - 2]).toBe('Suivi administratif')
+  })
+
+  it('ajoute « Pièces du DCE » (PACT74) en 13e et dernier onglet', async () => {
+    renderScreen()
+    await screen.findByText('AO-2026-001')
+    const onglets = screen.getAllByRole('tab').map((t) => t.textContent)
+    expect(onglets).toEqual(ONGLETS)
+    expect(onglets[onglets.length - 1]).toBe('Pièces du DCE')
   })
 
   it('n’a JAMAIS un onglet ou un mot « rentabilité » dans l’arbre (route séparée AOF161)', async () => {
@@ -571,6 +583,21 @@ describe('AffaireDetail', () => {
     })
   })
 
+  /* ══ 13ᵉ onglet — PACT74 : le DCE reçu de l'acheteur n'était stocké nulle part ══ */
+  describe('l’onglet « Pièces du DCE »', () => {
+    it('monte le VRAI PiecesConsultation, filtré sur CETTE affaire', async () => {
+      renderScreen()
+      await screen.findByText('AO-2026-001')
+      await userEvent.click(onglet('Pièces du DCE'))
+
+      await waitFor(
+        () => expect(mocks.piecesConsultationList).toHaveBeenCalledWith({ appel_offre: '1' }),
+        { timeout: 15000 },
+      )
+      expect(await screen.findByRole('heading', { name: 'Pièces du dossier de consultation' })).toBeInTheDocument()
+    })
+  })
+
   describe('gardes de structure', () => {
     it('plus AUCUN TabPlaceholder ne subsiste dans la fiche', () => {
       expect(codeSeul).not.toMatch(/TabPlaceholder/)
@@ -592,6 +619,7 @@ describe('AffaireDetail', () => {
         './cps/ExigencesPage',
         './variantes/VariantesCompare',
         './SuiviAdministratifAO',
+        './PiecesConsultation',
       ]) {
         // lazy(() => import('<chemin>')…
         expect(codeSeul).toMatch(
