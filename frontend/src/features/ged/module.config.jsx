@@ -5,7 +5,7 @@
 import { lazy } from 'react'
 import {
   FolderOpen, FileSignature, ShieldCheck, Tags, ScanLine, Trash2, ClipboardList,
-  Files, Vault, Workflow,
+  Files, Vault, Workflow, KeyRound,
 } from 'lucide-react'
 import { appGlyph } from '../../lib/apps/appGlyph'
 
@@ -49,6 +49,8 @@ const ChecklistPage = lazy(() => import('./advanced/ChecklistPage.jsx'))
 const CoffresPage = lazy(() => import('./advanced/CoffresPage.jsx'))
 // PACT132 — règles de dossier (XGED19), action automatique au dépôt.
 const ReglesDossierPage = lazy(() => import('./advanced/ReglesDossierPage.jsx'))
+// PACT133 — règles d'accès par métadonnée (XGED21), couche ACL dynamique.
+const ReglesAclPage = lazy(() => import('./advanced/ReglesAclPage.jsx'))
 
 const ROLES = ['responsable', 'admin']
 const TOUS = ['normal', 'responsable', 'admin']
@@ -76,6 +78,7 @@ export default {
       { to: '/ged/corbeille', label: 'Corbeille', icon: <Trash2 size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
       { to: '/ged/coffres', label: 'Coffres-forts', icon: <Vault size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
       { to: '/ged/regles-dossier', label: 'Règles de dossier', icon: <Workflow size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
+      { to: '/ged/regles-acl', label: 'Règles ACL métadonnée', icon: <KeyRound size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
     ],
   },
   titles: [
@@ -87,6 +90,7 @@ export default {
     ['/ged/corbeille', 'Corbeille'],
     ['/ged/coffres', 'Coffres-forts'],
     ['/ged/regles-dossier', 'Règles de dossier'],
+    ['/ged/regles-acl', 'Règles ACL métadonnée'],
     ['/ged', 'Documents (GED)'],
   ],
   sectionLabels: { ged: 'Documents (GED)' },
@@ -99,5 +103,6 @@ export default {
     { path: '/ged/corbeille', component: CorbeillePage, roles: ROLES },
     { path: '/ged/coffres', component: CoffresPage, roles: ROLES },
     { path: '/ged/regles-dossier', component: ReglesDossierPage, roles: ROLES },
+    { path: '/ged/regles-acl', component: ReglesAclPage, roles: ROLES },
   ],
 }

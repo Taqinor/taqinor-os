@@ -372,6 +372,19 @@ const gedApi = {
   deleteRegleDossier: (id) => api.delete(`/ged/regles-dossier/${id}/`),
   // Journal des 20 dernières exécutions de cette règle (le plus récent d'abord).
   getExecutionsRegleDossier: (id) => api.get(`/ged/regles-dossier/${id}/executions/`),
+
+  // ══════════════════════════════════════════════════════════════════════
+  // PACT133 — Règles ACL par métadonnée (XGED21, couche dynamique).
+  // ══════════════════════════════════════════════════════════════════════
+  getReglesAclMetadonnee: (params) =>
+    api.get('/ged/regles-acl-metadonnee/', { params }),
+  // `data` : { nom, condition_group, role, niveau, priorite?, actif? }.
+  createRegleAclMetadonnee: (data) =>
+    api.post('/ged/regles-acl-metadonnee/', data),
+  updateRegleAclMetadonnee: (id, data) =>
+    api.patch(`/ged/regles-acl-metadonnee/${id}/`, data),
+  deleteRegleAclMetadonnee: (id) =>
+    api.delete(`/ged/regles-acl-metadonnee/${id}/`),
 }
 
 export default gedApi
