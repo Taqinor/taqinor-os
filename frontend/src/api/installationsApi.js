@@ -678,6 +678,39 @@ const installationsApi = {
   getLandedCostLignes: (params) => api.get('/installations/landed-cost-lignes/', { params }),
   createLandedCostLigne: (data) => api.post('/installations/landed-cost-lignes/', data),
   deleteLandedCostLigne: (id) => api.delete(`/installations/landed-cost-lignes/${id}/`),
+
+  // ── PACT57 — Prix négociés fournisseurs : écriture des commandes-cadres
+  // (FG314) et contrats de prix (FG318) + leurs lignes. `getCommandesCadre`/
+  // `getContratsPrixFournisseur` (lecture) existent déjà (WIR110). ──
+  createCommandeCadre: (data) => api.post('/installations/commandes-cadre/', data),
+  updateCommandeCadre: (id, data) => api.patch(`/installations/commandes-cadre/${id}/`, data),
+  activerCommandeCadre: (id) => api.post(`/installations/commandes-cadre/${id}/activer/`, {}),
+  cloturerCommandeCadre: (id) => api.post(`/installations/commandes-cadre/${id}/cloturer/`, {}),
+  getCommandeCadreLignes: (params) =>
+    api.get('/installations/commandes-cadre-lignes/', { params }),
+  createCommandeCadreLigne: (data) =>
+    api.post('/installations/commandes-cadre-lignes/', data),
+  updateCommandeCadreLigne: (id, data) =>
+    api.patch(`/installations/commandes-cadre-lignes/${id}/`, data),
+  deleteCommandeCadreLigne: (id) =>
+    api.delete(`/installations/commandes-cadre-lignes/${id}/`),
+
+  createContratPrixFournisseur: (data) =>
+    api.post('/installations/contrats-prix-fournisseur/', data),
+  updateContratPrixFournisseur: (id, data) =>
+    api.patch(`/installations/contrats-prix-fournisseur/${id}/`, data),
+  activerContratPrixFournisseur: (id) =>
+    api.post(`/installations/contrats-prix-fournisseur/${id}/activer/`, {}),
+  expirerContratPrixFournisseur: (id) =>
+    api.post(`/installations/contrats-prix-fournisseur/${id}/expirer/`, {}),
+  getContratPrixLignes: (params) =>
+    api.get('/installations/contrats-prix-lignes/', { params }),
+  createContratPrixLigne: (data) =>
+    api.post('/installations/contrats-prix-lignes/', data),
+  updateContratPrixLigne: (id, data) =>
+    api.patch(`/installations/contrats-prix-lignes/${id}/`, data),
+  deleteContratPrixLigne: (id) =>
+    api.delete(`/installations/contrats-prix-lignes/${id}/`),
 }
 
 export default installationsApi
