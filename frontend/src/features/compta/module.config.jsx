@@ -7,7 +7,7 @@ import {
   Landmark, ReceiptText, Building2, Scale, Receipt, HandCoins, ShieldCheck,
   ListChecks, Repeat, BadgeCheck, CalendarClock, PieChart,
   Calculator, Percent, Layers3, UserCheck, GitBranch, Split, Network, TrendingUp,
-  UploadCloud, GitCompare, Tag, Wand2,
+  UploadCloud, GitCompare, Tag, Wand2, Link2,
 } from 'lucide-react'
 import { appGlyph } from '../../lib/apps/appGlyph'
 
@@ -78,6 +78,9 @@ const ComparateursPage = lazy(() => import('./pages/ComparateursPage.jsx'))
 const CodesPromotionPage = lazy(() => import('./pages/CodesPromotionPage.jsx'))
 // PACT38 — assistant de vente guidée (FG211), configurateur pas-à-pas.
 const GuidedSellingPage = lazy(() => import('./pages/GuidedSellingPage.jsx'))
+// PACT39 — catalogue public à jeton (FG214/XPOS14) : côté admin (le rendu
+// public réel est servi par apps.ventes.public_views.ecatalogue_public).
+const ECataloguePage = lazy(() => import('./pages/ECataloguePage.jsx'))
 
 const ROLES = ['responsable', 'admin']
 
@@ -125,6 +128,7 @@ const config = {
       { to: '/comptabilite/comparateurs', label: 'Comparateurs', icon: icon(GitCompare), roles: ROLES },
       { to: '/comptabilite/codes-promotion', label: 'Codes promotion', icon: icon(Tag), roles: ROLES },
       { to: '/comptabilite/vente-guidee', label: 'Vente guidée', icon: icon(Wand2), roles: ROLES },
+      { to: '/comptabilite/e-catalogue', label: 'Catalogue public', icon: icon(Link2), roles: ROLES },
     ],
   },
   // Titres de page : du plus spécifique au plus général (routes.meta).
@@ -146,6 +150,7 @@ const config = {
     ['/comptabilite/comparateurs', 'Comparateurs — Comptabilité'],
     ['/comptabilite/codes-promotion', 'Codes promotion — Comptabilité'],
     ['/comptabilite/vente-guidee', 'Vente guidée — Comptabilité'],
+    ['/comptabilite/e-catalogue', 'Catalogue public — Comptabilité'],
     ['/comptabilite/cloture', 'Clôture — Comptabilité'],
     ['/comptabilite/engagements', 'Engagements — Comptabilité'],
     ['/comptabilite/effets', 'Effets & règlements — Comptabilité'],
@@ -188,6 +193,7 @@ const config = {
     { path: '/comptabilite/comparateurs', component: ComparateursPage, roles: ROLES },
     { path: '/comptabilite/codes-promotion', component: CodesPromotionPage, roles: ROLES },
     { path: '/comptabilite/vente-guidee', component: GuidedSellingPage, roles: ROLES },
+    { path: '/comptabilite/e-catalogue', component: ECataloguePage, roles: ROLES },
   ],
 }
 

@@ -574,6 +574,12 @@ const comptaApi = {
     ...resource('guided-selling'),
     evaluer: (id) => api.post(`/compta/guided-selling/${id}/evaluer/`),
   },
+
+  // ── PACT39 / FG214 / XPOS14 — Catalogue public à jeton ──
+  // Rendu public réel (JSON, prix TTC seulement — jamais prix_achat) servi par
+  // apps.ventes.public_views.ecatalogue_public, monté hors /compta/ à
+  // /api/django/public/ecatalogue/<token>/ (voir erp_agentique/urls.py).
+  ecatalogues: resource('ecatalogues'),
 }
 
 export default comptaApi
