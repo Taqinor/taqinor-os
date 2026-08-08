@@ -159,7 +159,7 @@ class NotificationAlarmeTests(_Base):
         self.assertIsNone(signaler_alarme_si_besoin(self.company))
 
         notifications = Notification.objects.filter(
-            user=self.directeur,
+            recipient=self.directeur,
             event_type=EventType.VEILLE_AO_ALARME_SILENCE)
         self.assertEqual(notifications.count(), 1)
         self.assertIn('ne ramène plus rien', notifications.first().body)

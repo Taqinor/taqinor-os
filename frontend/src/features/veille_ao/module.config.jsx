@@ -43,7 +43,10 @@ const config = {
   nav: {
     icon: appGlyph(Radar),
     label: 'VEILLE AO',
-    accent: 'brass', // VX8 — croissance/commercial, même famille que ao/ventes/marketing.
+    // VX8/ODY34 — `nuit` et non `brass` : la veille est rendue JUSTE À CÔTÉ
+    // de l'app « Appels d'offres » dans la grille, et deux tuiles voisines de
+    // même couleur sont indistinguables (garde `AppIcon.voisinage`).
+    accent: 'nuit',
     items: [
       {
         to: '/veille-ao/avis',

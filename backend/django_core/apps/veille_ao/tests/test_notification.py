@@ -109,7 +109,7 @@ class TexteFrancaisTests(_Base):
 
         self.assertEqual(envoyees, 1)
         notification = Notification.objects.get(
-            user=self.commercial,
+            recipient=self.commercial,
             event_type=EventType.VEILLE_AO_NOUVEAUX_AVIS)
         self.assertIn('3 nouveaux avis', notification.title)
         self.assertIn('3 nouveaux avis', notification.body)
@@ -119,7 +119,7 @@ class TexteFrancaisTests(_Base):
         self._avis()
         notifier_nouveaux_avis(self.company, [{'nouveaux': 1}])
         notification = Notification.objects.get(
-            user=self.commercial,
+            recipient=self.commercial,
             event_type=EventType.VEILLE_AO_NOUVEAUX_AVIS)
         self.assertIn('1 nouvel avis', notification.title)
         self.assertNotIn('nouveaux', notification.body)
@@ -128,7 +128,7 @@ class TexteFrancaisTests(_Base):
         self._avis(jours_restants=200)
         notifier_nouveaux_avis(self.company, [{'nouveaux': 1}])
         notification = Notification.objects.get(
-            user=self.commercial,
+            recipient=self.commercial,
             event_type=EventType.VEILLE_AO_NOUVEAUX_AVIS)
         self.assertNotIn('J-', notification.body)
         self.assertIn('à trier', notification.body)
@@ -137,7 +137,7 @@ class TexteFrancaisTests(_Base):
         self._avis(jours_restants=-3)
         notifier_nouveaux_avis(self.company, [{'nouveaux': 1}])
         notification = Notification.objects.get(
-            user=self.commercial,
+            recipient=self.commercial,
             event_type=EventType.VEILLE_AO_NOUVEAUX_AVIS)
         self.assertNotIn('J-', notification.body)
 
@@ -145,7 +145,7 @@ class TexteFrancaisTests(_Base):
         self._avis()
         notifier_nouveaux_avis(self.company, [{'nouveaux': 1}])
         notification = Notification.objects.get(
-            user=self.commercial,
+            recipient=self.commercial,
             event_type=EventType.VEILLE_AO_NOUVEAUX_AVIS)
         self.assertEqual(notification.link,
                          '/veille-ao/avis?statut=nouveau')
