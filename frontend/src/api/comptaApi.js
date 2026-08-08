@@ -583,6 +583,13 @@ const comptaApi = {
 
   // ── PACT40 / FG215 — Bibliothèque d'annexes de proposition ──
   documentsProposition: resource('documents-proposition'),
+
+  // ── PACT41 / FG220 — Échéanciers de paiement en tranches ──
+  echeanciersPaiement: resource('echeanciers-paiement'),
+  tranchesPaiement: {
+    ...resource('tranches-paiement'),
+    regler: (id, data) => api.post(`/compta/tranches-paiement/${id}/regler/`, data || {}),
+  },
 }
 
 export default comptaApi
