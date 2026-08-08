@@ -6,7 +6,7 @@ import {
   LayoutDashboard, BookOpen, PencilLine, FileBarChart2,
   Landmark, ReceiptText, Building2, Scale, Receipt, HandCoins, ShieldCheck,
   ListChecks, Repeat, BadgeCheck, CalendarClock, PieChart,
-  Calculator, Percent,
+  Calculator, Percent, Layers3,
 } from 'lucide-react'
 import { appGlyph } from '../../lib/apps/appGlyph'
 
@@ -43,6 +43,10 @@ const BudgetsPage = lazy(() => import('./pages/BudgetsPage.jsx'))
 // PACT28 — fiscalité avancée (acomptes IS, conventions fiscales, TVA non
 // déductible) : trois référentiels sans écran (NTMAR12/18, XACC11).
 const FiscaliteAvanceePage = lazy(() => import('./pages/FiscaliteAvanceePage.jsx'))
+// PACT29 — immobilisations avancées (composants, dépréciation, mutations,
+// encours CIP) : 5 ressources NTFIN40-43 greffées sur le module existant.
+const ImmobilisationsAvanceesPage = lazy(
+  () => import('./pages/ImmobilisationsAvanceesPage.jsx'))
 
 const ROLES = ['responsable', 'admin']
 
@@ -80,6 +84,7 @@ const config = {
       { to: '/comptabilite/charges-avance', label: 'Charges d’avance', icon: icon(CalendarClock), roles: ROLES },
       { to: '/comptabilite/budgets', label: 'Budgets', icon: icon(PieChart), roles: ROLES },
       { to: '/comptabilite/fiscalite-avancee', label: 'Fiscalité avancée', icon: icon(Percent), roles: ROLES },
+      { to: '/comptabilite/immobilisations-avancees', label: 'Immobilisations avancées', icon: icon(Layers3), roles: ROLES },
     ],
   },
   // Titres de page : du plus spécifique au plus général (routes.meta).
@@ -91,6 +96,7 @@ const config = {
     ['/comptabilite/charges-avance', 'Charges d’avance — Comptabilité'],
     ['/comptabilite/budgets', 'Budgets — Comptabilité'],
     ['/comptabilite/fiscalite-avancee', 'Fiscalité avancée — Comptabilité'],
+    ['/comptabilite/immobilisations-avancees', 'Immobilisations avancées — Comptabilité'],
     ['/comptabilite/cloture', 'Clôture — Comptabilité'],
     ['/comptabilite/engagements', 'Engagements — Comptabilité'],
     ['/comptabilite/effets', 'Effets & règlements — Comptabilité'],
@@ -123,6 +129,7 @@ const config = {
     { path: '/comptabilite/charges-avance', component: ChargesAvancePage, roles: ROLES },
     { path: '/comptabilite/budgets', component: BudgetsPage, roles: ROLES },
     { path: '/comptabilite/fiscalite-avancee', component: FiscaliteAvanceePage, roles: ROLES },
+    { path: '/comptabilite/immobilisations-avancees', component: ImmobilisationsAvanceesPage, roles: ROLES },
   ],
 }
 

@@ -184,6 +184,23 @@ const comptaApi = {
     ...resource('charges-avance'),
   },
 
+  // ── PACT29 / NTFIN40-43 — Immobilisations avancées (composants,
+  // dépréciation, mutations, encours) ──
+  composantsImmobilisation: resource('composants-immobilisation'),
+  depreciationsImmobilisation: {
+    ...resource('depreciations-immobilisation'),
+    poster: (id) => api.post(`/compta/depreciations-immobilisation/${id}/poster/`),
+    reprendre: (id, data) =>
+      api.post(`/compta/depreciations-immobilisation/${id}/reprendre/`, data),
+  },
+  mutationsImmobilisation: resource('mutations-immobilisation'),
+  immobilisationsEnCours: {
+    ...resource('immobilisations-en-cours'),
+    mettreEnService: (id, data) =>
+      api.post(`/compta/immobilisations-en-cours/${id}/mettre-en-service/`, data || {}),
+  },
+  lignesImmobilisationEnCours: resource('lignes-immobilisation-en-cours'),
+
   // ── UX9 — Rapprochements, budgets & clôtures ──
   rapprochements: {
     ...resource('rapprochements'),
