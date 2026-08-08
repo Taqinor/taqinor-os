@@ -580,6 +580,9 @@ const comptaApi = {
   // apps.ventes.public_views.ecatalogue_public, monté hors /compta/ à
   // /api/django/public/ecatalogue/<token>/ (voir erp_agentique/urls.py).
   ecatalogues: resource('ecatalogues'),
+
+  // ── PACT40 / FG215 — Bibliothèque d'annexes de proposition ──
+  documentsProposition: resource('documents-proposition'),
 }
 
 export default comptaApi
