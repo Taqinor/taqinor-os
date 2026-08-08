@@ -6,7 +6,9 @@ import {
   LayoutDashboard, BookOpen, PencilLine, FileBarChart2,
   Landmark, ReceiptText, Building2, Scale, Receipt, HandCoins, ShieldCheck,
   ListChecks, Repeat, BadgeCheck, CalendarClock, PieChart,
-  Calculator,
+  Calculator, Percent, Layers3, UserCheck, GitBranch, Split, Network, TrendingUp,
+  UploadCloud, GitCompare, Tag, Wand2, Link2, FileStack, CalendarRange,
+  ClipboardCheck,
 } from 'lucide-react'
 import { appGlyph } from '../../lib/apps/appGlyph'
 
@@ -40,6 +42,55 @@ const ApprobationsRibPage = lazy(() => import('./pages/ApprobationsRibPage.jsx')
 // PACT163 — charges constatées d'avance (XACC15) et budgets (XACC22).
 const ChargesAvancePage = lazy(() => import('./pages/ChargesAvancePage.jsx'))
 const BudgetsPage = lazy(() => import('./pages/BudgetsPage.jsx'))
+// PACT28 — fiscalité avancée (acomptes IS, conventions fiscales, TVA non
+// déductible) : trois référentiels sans écran (NTMAR12/18, XACC11).
+const FiscaliteAvanceePage = lazy(() => import('./pages/FiscaliteAvanceePage.jsx'))
+// PACT29 — immobilisations avancées (composants, dépréciation, mutations,
+// encours CIP) : 5 ressources NTFIN40-43 greffées sur le module existant.
+const ImmobilisationsAvanceesPage = lazy(
+  () => import('./pages/ImmobilisationsAvanceesPage.jsx'))
+// PACT30 — rapprochements de comptes de bilan (NTFIN35-37, contrôle 4 yeux) :
+// distinct du rapprochement bancaire déjà écranté (homonymie de nom).
+const RapprochementsComptePage = lazy(
+  () => import('./pages/RapprochementsComptePage.jsx'))
+// PACT31 — référentiels comptables parallèles & analytique multi-axes
+// (NTFIN13/15-17), jusqu'ici « API-only » dans comptaApi.js.
+const ReferentielsAnalytiquePage = lazy(
+  () => import('./pages/ReferentielsAnalytiquePage.jsx'))
+// PACT32 — clés de répartition & engagements comptables (NTFIN20-24) : le
+// backend /compta/engagements/ est un HOMONYME sans rapport avec la page
+// « Engagements & clôtures avancées » (retenues de garantie…) déjà existante.
+const AllocationsEngagementsPage = lazy(
+  () => import('./pages/AllocationsEngagementsPage.jsx'))
+// PACT33 — consolidation groupe multi-sociétés (NTFIN1-9). EntiteConsolidation
+// (périmètre de filiales, mécanisme séparé et plus ancien) reste hors écran.
+const ConsolidationGroupePage = lazy(
+  () => import('./pages/ConsolidationGroupePage.jsx'))
+// PACT34 — reconnaissance du revenu IFRS 15 (NTFIN46-48), utile pour les
+// contrats pluriannuels (maintenance solaire, monitoring).
+const RevenuIfrs15Page = lazy(() => import('./pages/RevenuIfrs15Page.jsx'))
+// PACT35 — import guidé de la balance d'ouverture (COMPTA3, migration
+// tooling) : gabarit CSV + import idempotent par exercice.
+const BalanceOuverturePage = lazy(() => import('./pages/BalanceOuverturePage.jsx'))
+// PACT36 — comparateurs commerciaux (FG212 versions de devis, FG221 cash vs
+// financement) : calcul pur, aucun stockage.
+const ComparateursPage = lazy(() => import('./pages/ComparateursPage.jsx'))
+// PACT37 — codes promotionnels datés sur devis (FG209).
+const CodesPromotionPage = lazy(() => import('./pages/CodesPromotionPage.jsx'))
+// PACT38 — assistant de vente guidée (FG211), configurateur pas-à-pas.
+const GuidedSellingPage = lazy(() => import('./pages/GuidedSellingPage.jsx'))
+// PACT39 — catalogue public à jeton (FG214/XPOS14) : côté admin (le rendu
+// public réel est servi par apps.ventes.public_views.ecatalogue_public).
+const ECataloguePage = lazy(() => import('./pages/ECataloguePage.jsx'))
+// PACT40 — bibliothèque d'annexes de proposition (FG215), purement additive.
+const DocumentsPropositionPage = lazy(
+  () => import('./pages/DocumentsPropositionPage.jsx'))
+// PACT41 — échéanciers de paiement en tranches (FG220, type Tayssir).
+const EcheanciersPaiementPage = lazy(
+  () => import('./pages/EcheanciersPaiementPage.jsx'))
+// PACT42 — approbation des configurations non standard (FG213).
+const ApprobationsConfigPage = lazy(
+  () => import('./pages/ApprobationsConfigPage.jsx'))
 
 const ROLES = ['responsable', 'admin']
 
@@ -76,6 +127,21 @@ const config = {
       { to: '/comptabilite/approbations-rib', label: 'Approbations RIB', icon: icon(BadgeCheck), roles: ROLES },
       { to: '/comptabilite/charges-avance', label: 'Charges d’avance', icon: icon(CalendarClock), roles: ROLES },
       { to: '/comptabilite/budgets', label: 'Budgets', icon: icon(PieChart), roles: ROLES },
+      { to: '/comptabilite/fiscalite-avancee', label: 'Fiscalité avancée', icon: icon(Percent), roles: ROLES },
+      { to: '/comptabilite/immobilisations-avancees', label: 'Immobilisations avancées', icon: icon(Layers3), roles: ROLES },
+      { to: '/comptabilite/rapprochements-compte', label: 'Rapprochements de comptes', icon: icon(UserCheck), roles: ROLES },
+      { to: '/comptabilite/referentiels-analytique', label: 'Référentiels & analytique', icon: icon(GitBranch), roles: ROLES },
+      { to: '/comptabilite/allocations-engagements', label: 'Allocations & engagements', icon: icon(Split), roles: ROLES },
+      { to: '/comptabilite/consolidation-groupe', label: 'Consolidation groupe', icon: icon(Network), roles: ROLES },
+      { to: '/comptabilite/revenu-ifrs15', label: 'Revenu (IFRS 15)', icon: icon(TrendingUp), roles: ROLES },
+      { to: '/comptabilite/balance-ouverture', label: "Balance d'ouverture", icon: icon(UploadCloud), roles: ROLES },
+      { to: '/comptabilite/comparateurs', label: 'Comparateurs', icon: icon(GitCompare), roles: ROLES },
+      { to: '/comptabilite/codes-promotion', label: 'Codes promotion', icon: icon(Tag), roles: ROLES },
+      { to: '/comptabilite/vente-guidee', label: 'Vente guidée', icon: icon(Wand2), roles: ROLES },
+      { to: '/comptabilite/e-catalogue', label: 'Catalogue public', icon: icon(Link2), roles: ROLES },
+      { to: '/comptabilite/documents-proposition', label: 'Annexes de proposition', icon: icon(FileStack), roles: ROLES },
+      { to: '/comptabilite/echeanciers-paiement', label: 'Échéanciers de paiement', icon: icon(CalendarRange), roles: ROLES },
+      { to: '/comptabilite/approbations-config', label: 'Approbations config', icon: icon(ClipboardCheck), roles: ROLES },
     ],
   },
   // Titres de page : du plus spécifique au plus général (routes.meta).
@@ -86,6 +152,21 @@ const config = {
     ['/comptabilite/approbations-rib', 'Approbations RIB — Comptabilité'],
     ['/comptabilite/charges-avance', 'Charges d’avance — Comptabilité'],
     ['/comptabilite/budgets', 'Budgets — Comptabilité'],
+    ['/comptabilite/fiscalite-avancee', 'Fiscalité avancée — Comptabilité'],
+    ['/comptabilite/immobilisations-avancees', 'Immobilisations avancées — Comptabilité'],
+    ['/comptabilite/rapprochements-compte', 'Rapprochements de comptes — Comptabilité'],
+    ['/comptabilite/referentiels-analytique', 'Référentiels & analytique — Comptabilité'],
+    ['/comptabilite/allocations-engagements', 'Allocations & engagements — Comptabilité'],
+    ['/comptabilite/consolidation-groupe', 'Consolidation groupe — Comptabilité'],
+    ['/comptabilite/revenu-ifrs15', 'Revenu (IFRS 15) — Comptabilité'],
+    ['/comptabilite/balance-ouverture', "Balance d'ouverture — Comptabilité"],
+    ['/comptabilite/comparateurs', 'Comparateurs — Comptabilité'],
+    ['/comptabilite/codes-promotion', 'Codes promotion — Comptabilité'],
+    ['/comptabilite/vente-guidee', 'Vente guidée — Comptabilité'],
+    ['/comptabilite/e-catalogue', 'Catalogue public — Comptabilité'],
+    ['/comptabilite/documents-proposition', 'Annexes de proposition — Comptabilité'],
+    ['/comptabilite/echeanciers-paiement', 'Échéanciers de paiement — Comptabilité'],
+    ['/comptabilite/approbations-config', 'Approbations config — Comptabilité'],
     ['/comptabilite/cloture', 'Clôture — Comptabilité'],
     ['/comptabilite/engagements', 'Engagements — Comptabilité'],
     ['/comptabilite/effets', 'Effets & règlements — Comptabilité'],
@@ -117,6 +198,21 @@ const config = {
     { path: '/comptabilite/approbations-rib', component: ApprobationsRibPage, roles: ROLES },
     { path: '/comptabilite/charges-avance', component: ChargesAvancePage, roles: ROLES },
     { path: '/comptabilite/budgets', component: BudgetsPage, roles: ROLES },
+    { path: '/comptabilite/fiscalite-avancee', component: FiscaliteAvanceePage, roles: ROLES },
+    { path: '/comptabilite/immobilisations-avancees', component: ImmobilisationsAvanceesPage, roles: ROLES },
+    { path: '/comptabilite/rapprochements-compte', component: RapprochementsComptePage, roles: ROLES },
+    { path: '/comptabilite/referentiels-analytique', component: ReferentielsAnalytiquePage, roles: ROLES },
+    { path: '/comptabilite/allocations-engagements', component: AllocationsEngagementsPage, roles: ROLES },
+    { path: '/comptabilite/consolidation-groupe', component: ConsolidationGroupePage, roles: ROLES },
+    { path: '/comptabilite/revenu-ifrs15', component: RevenuIfrs15Page, roles: ROLES },
+    { path: '/comptabilite/balance-ouverture', component: BalanceOuverturePage, roles: ROLES },
+    { path: '/comptabilite/comparateurs', component: ComparateursPage, roles: ROLES },
+    { path: '/comptabilite/codes-promotion', component: CodesPromotionPage, roles: ROLES },
+    { path: '/comptabilite/vente-guidee', component: GuidedSellingPage, roles: ROLES },
+    { path: '/comptabilite/e-catalogue', component: ECataloguePage, roles: ROLES },
+    { path: '/comptabilite/documents-proposition', component: DocumentsPropositionPage, roles: ROLES },
+    { path: '/comptabilite/echeanciers-paiement', component: EcheanciersPaiementPage, roles: ROLES },
+    { path: '/comptabilite/approbations-config', component: ApprobationsConfigPage, roles: ROLES },
   ],
 }
 
