@@ -2301,3 +2301,214 @@ def creer_appel_offre_depuis_avis(company, avis, *, user=None):
             statut=AppelOffre.Statut.IDENTIFIE, **valeurs)
 
     return (creer_appel_offre_avec_reference(company, _creer), True)
+
+
+# ── PACT25 — LE MONTEUR : ce qui fournit enfin ses pièces à la fabrique ──────
+#
+# ``tasks.produire_pack`` (l'orchestrateur idempotent) et
+# ``fabrique/pack_zip.ecrire_pack_zip`` existaient et étaient testés, mais RIEN
+# ne leur passait de pièces : la tâche importait ``producteurs_de_pack`` dans un
+# ``try/except ImportError``, ne le trouvait pas, et marquait le job TERMINÉ.
+# Un pack à zéro pièce se serait donc affiché « prêt » sur une archive vide.
+# C'est ce monteur, et lui seul, qui manquait.
+
+#: Suite d'indices d'artefact (``ArtefactAO.indice``) — A, B, C…
+_INDICES = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
+
+
+def _indice_suivant(dossier, code):
+    """Le prochain indice libre pour cette pièce — un artefact ne s'écrase pas.
+
+    ``ArtefactAO`` est UNIQUE par ``(dossier, code, indice)`` ET par clé objet :
+    reproduire une pièce sous une nouvelle empreinte exige donc un indice
+    supérieur, jamais une réécriture (AOF150).
+    """
+    from .models import ArtefactAO
+
+    utilises = set(
+        ArtefactAO.objects
+        .filter(dossier=dossier, code=code)
+        .values_list('indice', flat=True))
+    for lettre in _INDICES:
+        if lettre not in utilises:
+            return lettre
+    # Au-delà de Z (jamais vu en production) : suffixe numérique stable.
+    return f'Z{len(utilises)}'[:4]
+
+
+def _generateur_de_piece(dossier, piece):
+    """Le nom logique du générateur d'une pièce du dossier.
+
+    Source de vérité : ``PieceModele.generateur`` du gabarit de pack (AOF116,
+    seed ``seed_pack_ao``), apparié par CODE dans la société — le générateur
+    est une DONNÉE, jamais un ``if`` en dur. Repli sur le code de la pièce
+    quand aucun gabarit ne la déclare (dossier monté à la main).
+    """
+    from .models import PieceModele
+
+    modele = (PieceModele.objects
+              .filter(company=dossier.company, code=piece.code)
+              .order_by('modele_id').first())
+    if modele is not None and (modele.generateur or '').strip():
+        return modele.generateur.strip(), modele.format
+    return (piece.code or '').strip(), ''
+
+
+def _monter_producteur(dossier, piece, producteur, format_declare, empreinte):
+    """Emballe un producteur en callable SANS ARGUMENT pour l'orchestrateur.
+
+    Le callable produit les octets, les ARCHIVE en flux (``ecrire_artefact``,
+    mémoire bornée) puis marque la pièce présente sous CETTE empreinte. Toute
+    absence d'entrée lève ``ProducteurIndisponible`` : la pièce est alors
+    ``echouee`` et le pack INCOMPLET — jamais une pièce vide comptée verte.
+    """
+    from .fabrique import producteurs as registre
+    from .fabrique.stockage import ecrire_artefact
+
+    extension, mime = registre.MIME_PAR_FORMAT.get(
+        (format_declare or '').strip() or 'pdf',
+        registre.MIME_PAR_FORMAT['pdf'])
+
+    def _produire():
+        contenu = producteur.octets(dossier, piece)
+        if not contenu:
+            raise registre.ProducteurIndisponible(
+                f'Le producteur « {producteur.generateur} » a rendu un '
+                f'contenu VIDE pour la pièce {piece.code} : refusé (une pièce '
+                f'vide déposée est pire qu\'une pièce absente).')
+        artefact = ecrire_artefact(
+            dossier, code=piece.code,
+            indice=_indice_suivant(dossier, piece.code),
+            empreinte=empreinte, morceaux=[contenu],
+            extension=extension, mime=mime)
+        piece.presente = True
+        piece.empreinte_source = empreinte
+        piece.save(update_fields=['presente', 'empreinte_source'])
+        return artefact
+
+    return _produire
+
+
+def producteurs_de_pack(dossier_id):
+    """PACT25 — monte les producteurs du pack d'un dossier.
+
+    C'est LE point d'entrée que ``tasks.produire_pack_task`` cherchait sans le
+    trouver. Renvoie ``(pieces, empreinte, deja_produites)`` :
+
+    * ``pieces`` — ``[{'code', 'libelle', 'producteur'}]`` dans l'ordre du
+      gabarit. Une pièce dont le générateur n'est PAS déclaré au registre
+      (``fabrique.producteurs.REGISTRE``) part **sans** ``producteur`` :
+      l'orchestrateur la marque ``echouee`` en nommant le motif, ce qui rend le
+      pack incomplet. C'est délibéré — le silence est le défaut à tuer.
+    * ``empreinte`` — l'empreinte du dossier (``coherence.empreinte_dossier``),
+      clé d'idempotence : une pièce déjà produite sous cette empreinte est
+      reprise, pas refabriquée.
+    * ``deja_produites`` — ``{code: {'empreinte', 'artefact'}}`` lu des
+      ``ArtefactAO`` en base.
+
+    Les pièces FOURNIES (``type_piece='fournie'``, régime hors contrôle) sont
+    exclues : la fabrique ne prétend pas produire ce qu'un tiers apporte.
+    """
+    from .fabrique import producteurs as registre
+    from .fabrique.coherence import empreinte_dossier
+    from .models import ArtefactAO, DossierAO, PieceDossierAO
+
+    dossier = (DossierAO.objects
+               .select_related('appel_offre', 'company')
+               .filter(pk=dossier_id).first())
+    if dossier is None:
+        return ([], '', {})
+
+    empreinte = empreinte_dossier(dossier)
+
+    deja = {}
+    for artefact in ArtefactAO.objects.filter(dossier=dossier):
+        courant = deja.get(artefact.code)
+        if courant is None or artefact.indice >= courant['indice']:
+            deja[artefact.code] = {
+                'indice': artefact.indice,
+                'empreinte': artefact.empreinte,
+                'artefact': artefact,
+            }
+
+    pieces = []
+    for piece in dossier.pieces.filter(
+            type_piece=PieceDossierAO.TypePiece.GENEREE).order_by(
+                'ordre', 'code'):
+        generateur, format_declare = _generateur_de_piece(dossier, piece)
+        producteur = registre.producteur_pour(generateur)
+        entree = {'code': piece.code, 'libelle': piece.libelle}
+        if producteur is None:
+            # PAS de clé `producteur` : l'orchestrateur écrit « aucun
+            # producteur fourni » et le pack devient incomplet. On ne
+            # fabrique jamais un succès à partir d'un générateur inconnu.
+            pieces.append(entree)
+            continue
+        entree['producteur'] = _monter_producteur(
+            dossier, piece, producteur, format_declare, empreinte)
+        pieces.append(entree)
+    return (pieces, empreinte, deja)
+
+
+def generer_pack_ao(dossier, *, user):
+    """PACT25 — lance la production du pack en tâche de fond.
+
+    Refuse AVANT de lancer quoi que ce soit quand le dossier ne déclare aucune
+    pièce générable : lancer un job qui n'a rien à produire, c'est exactement
+    le faux succès que ce groupe supprime.
+    """
+    from core.jobs import submit
+
+    from .models import PieceDossierAO
+    from .tasks import produire_pack_task
+
+    generables = dossier.pieces.filter(
+        type_piece=PieceDossierAO.TypePiece.GENEREE).count()
+    if not generables:
+        raise ValidationError(
+            'Ce dossier ne déclare aucune pièce à générer : initialiser son '
+            'gabarit de pack avant de lancer la production.')
+    return submit('ao_pack', produire_pack_task,
+                  company=dossier.company, user=user, dossier_id=dossier.pk)
+
+
+def pieces_du_pack_en_flux(dossier, *, empreinte=None):
+    """PACT25 — les pièces du manifeste courant, en FLUX, pour le ZIP.
+
+    Chaque entrée porte un ``flux`` : un callable SANS ARGUMENT rendant un
+    itérable de morceaux d'octets — c'est le contrat de
+    ``fabrique.pack_zip.ecrire_pack_zip`` (mémoire bornée, jamais tout le pack
+    en RAM). Les octets sont relus de MinIO par ``records.storage``, app de
+    FONDATION (jamais ``apps.ventes``).
+    """
+    from apps.records.storage import fetch_attachment
+
+    from .fabrique.coherence import empreinte_dossier
+    from .models import ArtefactAO
+
+    empreinte = empreinte or empreinte_dossier(dossier)
+    par_code = {piece.code: piece for piece in dossier.pieces.all()}
+    entrees = []
+    artefacts = (ArtefactAO.objects
+                 .filter(dossier=dossier, empreinte=empreinte)
+                 .order_by('code', 'indice'))
+    for artefact in artefacts:
+        piece = par_code.get(artefact.code)
+        cle = artefact.cle
+
+        def _flux(cle=cle):
+            octets, erreur = fetch_attachment(cle)
+            if erreur or octets is None:
+                raise ValidationError(
+                    f'Artefact introuvable dans le stockage : {cle}.')
+            return [octets]
+
+        entrees.append({
+            'code': artefact.code,
+            'libelle': getattr(piece, 'libelle', artefact.code),
+            'visibilite': getattr(piece, 'visibilite', 'client'),
+            'format': (artefact.mime or '').rsplit('/', 1)[-1],
+            'empreinte': artefact.empreinte,
+            'flux': _flux,
+        })
+    return entrees
