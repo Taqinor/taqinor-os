@@ -3,7 +3,7 @@ import { Plus, Lock, Unlock, DownloadCloud, Link2, Combine } from 'lucide-react'
 import { useTabParam } from '../components/useTabParam'
 import { ListShell } from '../../../ui/module'
 import {
-  Button, Segmented, Input, Label, Combobox, toast,
+  Button, Segmented, Label, Combobox, toast,
 } from '../../../ui'
 import { formatMAD, formatDate } from '../../../lib/format'
 import comptaApi from '../../../api/comptaApi'
