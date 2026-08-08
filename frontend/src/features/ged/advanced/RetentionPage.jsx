@@ -1,13 +1,14 @@
 import { useEffect, useMemo, useState } from 'react'
 import {
   Plus, Trash2, Archive, Lock, Unlock, Link2, XCircle, ShieldAlert,
+  CheckCircle2, PlayCircle, FileCheck2,
 } from 'lucide-react'
-import { ListShell } from '../../../ui/module'
+import { ListShell, statusPill } from '../../../ui/module'
 import {
   Button, Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
   Label, Input, Textarea, Select, SelectTrigger, SelectValue, SelectContent,
   SelectItem, Checkbox, Tabs, TabsList, TabsTrigger, TabsContent,
-  Card, Stat, StatusPill, toast,
+  Card, Stat, StatusPill, MultiSelect, toast,
 } from '../../../ui'
 import { formatDateTime, formatNumber } from '../../../lib/format'
 import gedApi from '../../../api/gedApi'
@@ -19,9 +20,23 @@ import { ActionEcheance, errMessage, formatOctets } from './shared.js'
    Onglets : Politiques (durées de conservation GED22), Échus (documents
    dépassés — consultatif), Archivages légaux (write-once GED23), Legal holds
    (gel anti-suppression GED24 — la levée peut renvoyer 403, surfacé en toast),
-   Partages (liens publics tokenisés GED20 : expiry/quota/révocation), et
+   Partages (liens publics tokenisés GED20 : expiry/quota/révocation),
+   Dispositions (PACT134 — revue humaine avant destruction/archivage en fin de
+   rétention XGED23 : demandeur → approbateur, certificat immuable à
+   l'exécution, opération IRRÉVERSIBLE donc confirmation explicite), et
    Stockage (quota GED36 + journal d'accès GED35).
    ========================================================================== */
+
+// PACT134 — statuts d'une demande de disposition (backend : en_attente/
+// approuvee/rejetee/executee).
+const StatutDisposition = statusPill({
+  en_attente: { label: 'En attente', tone: 'warning' },
+  approuvee: { label: 'Approuvée', tone: 'info' },
+  rejetee: { label: 'Rejetée', tone: 'danger' },
+  executee: { label: 'Exécutée', tone: 'success' },
+})
+
+const ACTION_DISPOSITION_LABELS = { detruire: 'Détruire', archiver: 'Archiver' }
 
 function unpage(data) {
   if (Array.isArray(data)) return data
@@ -37,6 +52,7 @@ export default function RetentionPage() {
   const [journal, setJournal] = useState([])
   const [documents, setDocuments] = useState([])
   const [quota, setQuota] = useState(null)
+  const [dispositions, setDispositions] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
 
@@ -44,12 +60,16 @@ export default function RetentionPage() {
   const [showPartage, setShowPartage] = useState(false)
   const [showHold, setShowHold] = useState(false)
   const [showArchivage, setShowArchivage] = useState(false)
+  const [showDisposition, setShowDisposition] = useState(false)
+  const [decisionDisposition, setDecisionDisposition] = useState(null) // { demande, type:'approuver'|'rejeter' }
+  const [executeDisposition, setExecuteDisposition] = useState(null)   // demande à exécuter (confirmation)
+  const [certificatsFor, setCertificatsFor] = useState(null)
 
   const load = async () => {
     setLoading(true)
     setError(null)
     try {
-      const [p, e, a, h, pa, j, docs, q] = await Promise.all([
+      const [p, e, a, h, pa, j, docs, q, disp] = await Promise.all([
         gedApi.getPolitiquesRetention(),
         gedApi.getDocumentsEchus(),
         gedApi.getArchivagesLegaux(),
@@ -58,6 +78,7 @@ export default function RetentionPage() {
         gedApi.getJournalAcces(),
         gedApi.getDocumentsList(),
         gedApi.getQuotaEtat(),
+        gedApi.getDemandesDisposition(),
       ])
       setPolitiques(unpage(p.data))
       setEchus(unpage(e.data))
@@ -67,6 +88,7 @@ export default function RetentionPage() {
       setJournal(unpage(j.data))
       setDocuments(unpage(docs.data))
       setQuota(q.data)
+      setDispositions(unpage(disp.data))
     } catch (err) {
       setError(errMessage(err, 'Impossible de charger la rétention.'))
     } finally {
@@ -213,6 +235,46 @@ export default function RetentionPage() {
     },
   ], [])
 
+  // ── PACT134 — Dispositions (revue humaine avant destruction/archivage) ──
+  const dispositionColumns = useMemo(() => [
+    { id: 'libelle', header: 'Lot', accessor: (r) => r.libelle },
+    {
+      id: 'action', header: 'Action', width: 110,
+      accessor: (r) => ACTION_DISPOSITION_LABELS[r.action] || r.action,
+    },
+    {
+      id: 'documents', header: 'Documents', width: 100, align: 'right',
+      accessor: (r) => r.documents?.length ?? 0,
+    },
+    {
+      id: 'statut', header: 'Statut', width: 120,
+      accessor: (r) => r.statut, cell: (v) => <StatutDisposition status={v} />,
+    },
+    { id: 'demandeur', header: 'Demandeur', accessor: (r) => r.demandeur_nom || '—', width: 140 },
+    { id: 'approbateur', header: 'Approbateur', accessor: (r) => r.approbateur_nom || '—', width: 140 },
+    {
+      id: 'certificats', header: 'Certificats', width: 100, align: 'right',
+      accessor: (r) => r.certificats?.length ?? 0,
+    },
+  ], [])
+
+  const dispositionActions = (r) => {
+    const acts = []
+    if (r.statut === 'en_attente') {
+      acts.push(
+        { id: 'approuver', label: 'Approuver', icon: CheckCircle2, onClick: () => setDecisionDisposition({ demande: r, type: 'approuver' }) },
+        { id: 'rejeter', label: 'Rejeter', icon: XCircle, destructive: true, onClick: () => setDecisionDisposition({ demande: r, type: 'rejeter' }) },
+      )
+    }
+    if (r.statut === 'approuvee') {
+      acts.push({ id: 'executer', label: 'Exécuter', icon: PlayCircle, destructive: true, onClick: () => setExecuteDisposition(r) })
+    }
+    if (r.certificats?.length > 0) {
+      acts.push({ id: 'certificats', label: 'Voir les certificats', icon: FileCheck2, onClick: () => setCertificatsFor(r) })
+    }
+    return acts
+  }
+
   return (
     <>
       <Tabs defaultValue="politiques">
@@ -222,6 +284,7 @@ export default function RetentionPage() {
           <TabsTrigger value="archivages">Archivages légaux</TabsTrigger>
           <TabsTrigger value="holds">Legal holds</TabsTrigger>
           <TabsTrigger value="partages">Partages</TabsTrigger>
+          <TabsTrigger value="dispositions">Dispositions</TabsTrigger>
           <TabsTrigger value="stockage">Stockage</TabsTrigger>
         </TabsList>
 
@@ -279,6 +342,17 @@ export default function RetentionPage() {
           />
         </TabsContent>
 
+        <TabsContent value="dispositions">
+          <ListShell
+            title="Demandes de disposition"
+            subtitle="Revue humaine avant destruction/archivage en fin de rétention (circuit demandeur → approbateur, certificat immuable à l'exécution)."
+            actions={<Button onClick={() => setShowDisposition(true)}><Plus /> Nouvelle demande</Button>}
+            columns={dispositionColumns} rows={dispositions} loading={loading} error={error}
+            rowActions={dispositionActions} searchable exportName="demandes-disposition"
+            emptyTitle="Aucune demande de disposition" emptyDescription="Proposez un lot de documents échus à destruction ou archivage."
+          />
+        </TabsContent>
+
         <TabsContent value="stockage">
           <div className="flex flex-col gap-4">
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -321,6 +395,26 @@ export default function RetentionPage() {
       )}
       {showPartage && (
         <PartageDialog documents={documents} onClose={() => setShowPartage(false)} onDone={() => { setShowPartage(false); load() }} />
+      )}
+      {showDisposition && (
+        <DispositionDialog echus={echus} onClose={() => setShowDisposition(false)} onDone={() => { setShowDisposition(false); load() }} />
+      )}
+      {decisionDisposition && (
+        <DecisionDispositionDialog
+          decision={decisionDisposition}
+          onClose={() => setDecisionDisposition(null)}
+          onDone={() => { setDecisionDisposition(null); load() }}
+        />
+      )}
+      {executeDisposition && (
+        <ExecuterDispositionDialog
+          demande={executeDisposition}
+          onClose={() => setExecuteDisposition(null)}
+          onDone={() => { setExecuteDisposition(null); load() }}
+        />
+      )}
+      {certificatsFor && (
+        <CertificatsDialog demande={certificatsFor} onClose={() => setCertificatsFor(null)} />
       )}
     </>
   )
@@ -533,6 +627,168 @@ function PartageDialog({ documents, onClose, onDone }) {
         <DialogFooter>
           <Button variant="outline" onClick={onClose}>Annuler</Button>
           <Button onClick={submit} disabled={saving}>{saving ? 'Création…' : 'Créer le lien'}</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+// ── PACT134 — Dispositions (revue humaine avant destruction/archivage) ─────
+
+function DispositionDialog({ echus, onClose, onDone }) {
+  const [libelle, setLibelle] = useState('')
+  const [action, setAction] = useState('detruire')
+  const [documentIds, setDocumentIds] = useState([])
+  const [saving, setSaving] = useState(false)
+
+  const options = useMemo(() => echus.map((e) => ({
+    value: String(e.document), label: e.document_nom || `#${e.document}`,
+  })), [echus])
+
+  const submit = async () => {
+    if (!libelle.trim()) { toast.error('Libellé requis.'); return }
+    if (documentIds.length === 0) { toast.error('Sélectionnez au moins un document échu.'); return }
+    setSaving(true)
+    try {
+      await gedApi.createDemandeDisposition({
+        libelle: libelle.trim(), action, documents: documentIds,
+      })
+      toast.success('Demande de disposition créée.')
+      onDone()
+    } catch (err) { toast.error(errMessage(err)) } finally { setSaving(false) }
+  }
+
+  return (
+    <Dialog open onOpenChange={(o) => !o && onClose()}>
+      <DialogContent>
+        <DialogHeader><DialogTitle>Nouvelle demande de disposition</DialogTitle></DialogHeader>
+        <div className="flex flex-col gap-3">
+          <div>
+            <Label>Libellé</Label>
+            <Input aria-label="Libellé du lot" value={libelle} onChange={(e) => setLibelle(e.target.value)} />
+          </div>
+          <div>
+            <Label>Action</Label>
+            <Select value={action} onValueChange={setAction}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="detruire">Détruire</SelectItem>
+                <SelectItem value="archiver">Archiver</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div>
+            <Label htmlFor="disposition-documents">Documents échus concernés</Label>
+            <MultiSelect
+              id="disposition-documents"
+              options={options}
+              value={documentIds}
+              onChange={setDocumentIds}
+              placeholder="Choisir des documents échus…"
+            />
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>Annuler</Button>
+          <Button onClick={submit} disabled={saving}>{saving ? 'Création…' : 'Proposer'}</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+function DecisionDispositionDialog({ decision, onClose, onDone }) {
+  const [commentaire, setCommentaire] = useState('')
+  const [saving, setSaving] = useState(false)
+  const approuver = decision.type === 'approuver'
+
+  const submit = async () => {
+    setSaving(true)
+    try {
+      if (approuver) await gedApi.approuverDisposition(decision.demande.id, { commentaire })
+      else await gedApi.rejeterDisposition(decision.demande.id, { commentaire })
+      toast.success(approuver ? 'Demande approuvée.' : 'Demande rejetée.')
+      onDone()
+    } catch (err) { toast.error(errMessage(err)) } finally { setSaving(false) }
+  }
+
+  return (
+    <Dialog open onOpenChange={(o) => !o && onClose()}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>{approuver ? 'Approuver la disposition' : 'Rejeter la disposition'}</DialogTitle>
+        </DialogHeader>
+        <div className="flex flex-col gap-3">
+          <p className="text-sm text-muted-foreground">
+            Lot : <strong>{decision.demande.libelle}</strong> ({decision.demande.documents?.length ?? 0} document(s))
+          </p>
+          <div>
+            <Label>Commentaire (optionnel)</Label>
+            <Textarea value={commentaire} onChange={(e) => setCommentaire(e.target.value)} rows={3} />
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>Annuler</Button>
+          <Button variant={approuver ? 'default' : 'destructive'} onClick={submit} disabled={saving}>
+            {saving ? '…' : (approuver ? 'Approuver' : 'Rejeter')}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+function ExecuterDispositionDialog({ demande, onClose, onDone }) {
+  const [saving, setSaving] = useState(false)
+
+  const confirmer = async () => {
+    setSaving(true)
+    try {
+      await gedApi.executerDisposition(demande.id)
+      toast.success('Disposition exécutée.')
+      onDone()
+    } catch (err) { toast.error(errMessage(err)) } finally { setSaving(false) }
+  }
+
+  return (
+    <Dialog open onOpenChange={(o) => !o && onClose()}>
+      <DialogContent>
+        <DialogHeader><DialogTitle>Exécuter la disposition ?</DialogTitle></DialogHeader>
+        <p className="text-sm text-muted-foreground">
+          « {demande.libelle} » — {demande.documents?.length ?? 0} document(s)
+          {demande.action === 'detruire' ? ' seront détruits' : ' seront archivés'}. Un certificat
+          immuable sera émis par document réellement traité. <strong>Cette opération est
+          irréversible.</strong>
+        </p>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>Annuler</Button>
+          <Button variant="destructive" onClick={confirmer} disabled={saving}>
+            {saving ? 'Exécution…' : 'Exécuter définitivement'}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+function CertificatsDialog({ demande, onClose }) {
+  return (
+    <Dialog open onOpenChange={(o) => !o && onClose()}>
+      <DialogContent>
+        <DialogHeader><DialogTitle>Certificats — {demande.libelle}</DialogTitle></DialogHeader>
+        <ul className="flex flex-col gap-2">
+          {(demande.certificats || []).map((c) => (
+            <li key={c.id} className="text-sm">
+              <span className="font-medium">{c.document_nom}</span>
+              {' — '}{c.politique_appliquee || 'sans politique'}
+              {' — '}
+              <span className="text-muted-foreground">détruit le {formatDateTime(c.detruit_le)}</span>
+              {c.detruit_par_nom && <span className="text-muted-foreground"> par {c.detruit_par_nom}</span>}
+            </li>
+          ))}
+        </ul>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>Fermer</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

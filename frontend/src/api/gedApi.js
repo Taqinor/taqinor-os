@@ -385,6 +385,24 @@ const gedApi = {
     api.patch(`/ged/regles-acl-metadonnee/${id}/`, data),
   deleteRegleAclMetadonnee: (id) =>
     api.delete(`/ged/regles-acl-metadonnee/${id}/`),
+
+  // ══════════════════════════════════════════════════════════════════════
+  // PACT134 — Demandes de disposition en fin de rétention (XGED23).
+  // ══════════════════════════════════════════════════════════════════════
+  // `params` : { statut }.
+  getDemandesDisposition: (params) =>
+    api.get('/ged/demandes-disposition/', { params }),
+  // Propose un lot. `data` : { libelle, action:'detruire'|'archiver', documents:[<id>,...] }.
+  createDemandeDisposition: (data) =>
+    api.post('/ged/demandes-disposition/', data),
+  approuverDisposition: (id, data) =>
+    api.post(`/ged/demandes-disposition/${id}/approuver/`, data ?? {}),
+  rejeterDisposition: (id, data) =>
+    api.post(`/ged/demandes-disposition/${id}/rejeter/`, data ?? {}),
+  // Exécute une demande APPROUVÉE : détruit/archive le lot, émet un
+  // certificat immuable par document réellement détruit.
+  executerDisposition: (id) =>
+    api.post(`/ged/demandes-disposition/${id}/executer/`),
 }
 
 export default gedApi

@@ -27,6 +27,8 @@ vi.mock('../../../api/gedApi', () => ({
     getLegalHolds: vi.fn(() => Promise.resolve({ data: [] })),
     getPartages: vi.fn(() => Promise.resolve({ data: [] })),
     getJournalAcces: vi.fn(() => Promise.resolve({ data: [] })),
+    // PACT134 — onglet Dispositions (les cas complets vivent dans RetentionPage.test.jsx).
+    getDemandesDisposition: vi.fn(() => Promise.resolve({ data: [] })),
     getQuotaEtat: vi.fn(() => Promise.resolve({
       data: { usage_octets: 0, quota_octets: 0, restant_octets: 0, depasse: false, illimite: true },
     })),
