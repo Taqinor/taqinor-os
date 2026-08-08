@@ -16,7 +16,8 @@ résout qu'une réclamation ``en_traitement`` ; on rejette une réclamation
 transition journalise automatiquement une entrée de chatter (ancien → nouveau
 statut, auteur côté serveur).
 """
-from rest_framework import filters, status, viewsets
+from drf_spectacular.utils import extend_schema, inline_serializer
+from rest_framework import filters, serializers, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
@@ -71,6 +72,28 @@ class ReclamationViewSet(UsageGuardedDestroyMixin, _LitigesBaseViewSet):
         return None
 
     # ── Tableau de bord (LITIGE6) ────────────────────────────────────────────
+    # PACT7 — SANS cette déclaration, le schéma OpenAPI publiait cet agrégat
+    # avec le `ReclamationSerializer` (le `serializer_class` du ViewSet) alors
+    # qu'il renvoie des compteurs et des moyennes : un schéma qui MENT est pire
+    # qu'un schéma vide, car un garde-fou qui s'y fierait produirait des rouges
+    # sur du code correct.
+    #
+    # `montant_conteste_total` est déclaré CharField, et c'est délibéré : le
+    # sélecteur renvoie `str(Decimal)`. Le schéma dit ce que le serveur fait —
+    # jamais ce qu'on aimerait qu'il fasse.
+    @extend_schema(responses=inline_serializer('LitigesTableauBord', {
+        'ouvertes': serializers.IntegerField(),
+        'en_traitement': serializers.IntegerField(),
+        'resolues': serializers.IntegerField(),
+        'rejetees': serializers.IntegerField(),
+        'total': serializers.IntegerField(),
+        'montant_conteste_total': serializers.CharField(),
+        'delai_resolution_moyen_jours': serializers.FloatField(allow_null=True),
+        'delai_resolution_moyen_heures': serializers.FloatField(allow_null=True),
+        'nb_resolues_avec_delai': serializers.IntegerField(),
+        'debut': serializers.CharField(allow_null=True),
+        'fin': serializers.CharField(allow_null=True),
+    }))
     @action(detail=False, methods=['get'], url_path='tableau-bord')
     def tableau_bord(self, request):
         """Indicateurs litiges : ouverts, montant contesté, délai de résolution.

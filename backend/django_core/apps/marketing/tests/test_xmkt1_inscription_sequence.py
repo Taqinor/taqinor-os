@@ -197,7 +197,7 @@ class InscriptionSequenceApiTests(TestCase):
     def test_inscrire_endpoint_scope_company(self):
         seq = make_sequence(self.co)
         api = auth(self.user)
-        resp = api.post('/api/django/compta/inscriptions-sequence/inscrire/', {
+        resp = api.post('/api/django/marketing/inscriptions-sequence/inscrire/', {
             'sequence': seq.id, 'lead_id': 21, 'lead_reference': 'Lead 21',
         }, format='json')
         self.assertEqual(resp.status_code, 201, resp.content)
@@ -208,7 +208,7 @@ class InscriptionSequenceApiTests(TestCase):
         other = make_company('xmkt1-other', 'Other')
         seq = make_sequence(other)
         api = auth(self.user)
-        resp = api.post('/api/django/compta/inscriptions-sequence/inscrire/', {
+        resp = api.post('/api/django/marketing/inscriptions-sequence/inscrire/', {
             'sequence': seq.id, 'lead_id': 22,
         }, format='json')
         self.assertEqual(resp.status_code, 404)
@@ -218,7 +218,7 @@ class InscriptionSequenceApiTests(TestCase):
         insc = services.inscrire_lead_sequence(self.co, seq, lead_id=23)
         api = auth(self.user)
         resp = api.post(
-            f'/api/django/compta/inscriptions-sequence/{insc.id}/sortir/',
+            f'/api/django/marketing/inscriptions-sequence/{insc.id}/sortir/',
             {'motif': 'desinscription'}, format='json')
         self.assertEqual(resp.status_code, 200, resp.content)
         self.assertEqual(resp.data['statut'], InscriptionSequence.Statut.SORTI)
@@ -229,7 +229,7 @@ class InscriptionSequenceApiTests(TestCase):
         services.executer_etapes_dues(self.co)
         api = auth(self.user)
         resp = api.get(
-            f'/api/django/compta/inscriptions-sequence/?sequence={seq.id}')
+            f'/api/django/marketing/inscriptions-sequence/?sequence={seq.id}')
         self.assertEqual(resp.status_code, 200, resp.content)
         results = resp.data['results'] if 'results' in resp.data else resp.data
         self.assertEqual(len(results), 1)

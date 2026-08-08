@@ -23,7 +23,7 @@ from .views import (
     AttributionBilanView, LeadsTimeseriesView, AudienceView,
     BreakdownsView, BriefLatestView, CampaignFunnelView, CohortReportView,
     CommentCountsView, CommentDeleteView, CommentFaqView, CommentHideView,
-    CommentListView,
+    CommentKeywordRuleViewSet, CommentListView,
     CommentPrivateReplyView, CommentReplyView,
     AudienceDeliveryEstimateView, EngagementAudienceView,
     CostPerSignatureView, CoverageReportView, CreativeLeaderboardView,
@@ -106,6 +106,9 @@ router.register(r'reconciliations', ReconciliationSnapshotViewSet,
 # ADSENGINT2 — miroirs de campagne (liste + sync-now + creative-ranking).
 router.register(r'campaigns', AdCampaignMirrorViewSet,
                 basename='ad-campaign-mirror')
+# PACT164 — règles de masquage automatique par mot-clé (ADSDEEP53).
+router.register(r'regles-mot-cle', CommentKeywordRuleViewSet,
+                basename='comment-keyword-rule')
 
 urlpatterns = [
     path('status/', StatusView.as_view(), name='adsengine-status'),

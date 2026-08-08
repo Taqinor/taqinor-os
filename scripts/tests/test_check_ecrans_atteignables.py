@@ -35,10 +35,14 @@ class FauxDepot:
         self.src = Path(self.tmp.name) / "frontend" / "src"
         self.features = self.src / "features"
         self.features.mkdir(parents=True)
+        self.pages = self.src / "pages"
+        self.pages.mkdir(parents=True)
         write(self.src / "main.jsx", "import router from './router'\n")
-        self._sauvegarde = (cea.FRONT_SRC, cea.FEATURES, cea.ENTRY, cea.ROOT)
+        self._sauvegarde = (
+            cea.FRONT_SRC, cea.FEATURES, cea.PAGES, cea.ENTRY, cea.ROOT)
         cea.FRONT_SRC = self.src
         cea.FEATURES = self.features
+        cea.PAGES = self.pages
         cea.ENTRY = self.src / "main.jsx"
         cea.ROOT = Path(self.tmp.name)
         cea._CACHE.clear()
@@ -47,7 +51,7 @@ class FauxDepot:
         return write(self.src / relatif, contenu)
 
     def close(self):
-        cea.FRONT_SRC, cea.FEATURES, cea.ENTRY, cea.ROOT = self._sauvegarde
+        cea.FRONT_SRC, cea.FEATURES, cea.PAGES, cea.ENTRY, cea.ROOT = self._sauvegarde
         cea._CACHE.clear()
         self.tmp.cleanup()
 
@@ -63,7 +67,12 @@ class BaseDepot(unittest.TestCase):
 
     def bouchons(self):
         constats, _ = cea.analyse()
-        return sorted((c[0], c[1]) for c in constats if c[0] != "inatteignable")
+        return sorted((c[0], c[1]) for c in constats
+                      if c[0] not in ("inatteignable", "sans-nav"))
+
+    def sans_nav(self):
+        constats, _ = cea.analyse()
+        return sorted(c[1] for c in constats if c[0] == "sans-nav")
 
 
 # ===========================================================================
@@ -177,6 +186,308 @@ class AtteignabiliteTests(BaseDepot):
         config = cea.ConfigModule(self.depot.features / "x" / "module.config.jsx")
         self.assertTrue(config.opaque)
         self.assertEqual(self.orphelins(), [])
+
+
+# ===========================================================================
+# credits_hors_routes — extension PACT173 (07/08/2026)
+# ===========================================================================
+
+class CreditsHorsRoutesTests(BaseDepot):
+    """``atteignables()`` ajoutait ``config.path`` (le ``module.config.jsx``
+    lui-meme) aux racines de la BFS : des qu'il etait depile, TOUS ses
+    imports bruts etaient credites — y compris un ``lazy()`` jamais place
+    dans ``routes:``. Ces tests verrouillent le trou ferme (le composant
+    orphelin doit desormais sortir) SANS casser les deux cas reels mesures
+    (wrapper local, prop JSX) ni le cas opaque (credit total inchange)."""
+
+    def test_lazy_jamais_route_est_desormais_signale(self):
+        """LE controle negatif exige par PACT150/PACT173 : un `lazy()`
+        ajoute sans jamais etre place dans `routes:`, ni rendu comme JSX, ni
+        passe en prop, doit desormais sortir en inatteignable — AVANT ce
+        correctif, il etait credite par son seul VOISINAGE dans le fichier
+        (`imports_de(config.path)` credit tout, sans regarder l'usage)."""
+        self.depot.fichier("features/x/module.config.jsx", (
+            "const Ecran = lazy(() => import('./Ecran'))\n"
+            "const Fantome = lazy(() => import('./Fantome'))\n"
+            "const config = { key:'x', routes: "
+            "[{ path:'/x', component: Ecran }] }\n"
+            "export default config\n"))
+        self.depot.fichier("features/x/Ecran.jsx", "export default 1\n")
+        self.depot.fichier("features/x/Fantome.jsx", "export default 1\n")
+        self.assertEqual(self.orphelins(),
+                         ["frontend/src/features/x/Fantome.jsx"])
+
+    def test_lazy_rendu_par_un_wrapper_local_est_credite(self):
+        """Cas reel mesure : `adsengine/module.config.jsx` — un wrapper
+        (`AdsCockpitScreenPrintable`) DECLARE dans le fichier et utilise
+        comme `component:` rend `<AdsCockpitScreen/>`, un AUTRE composant
+        `lazy()` jamais cite dans `routes:` directement."""
+        self.depot.fichier("features/x/module.config.jsx", (
+            "const Ecran = lazy(() => import('./Ecran'))\n"
+            "function EcranImprimable() {\n"
+            "  return <PrintWrapper><Ecran /></PrintWrapper>\n"
+            "}\n"
+            "const config = { key:'x', routes: "
+            "[{ path:'/x', component: EcranImprimable }] }\n"
+            "export default config\n"))
+        self.depot.fichier("features/x/Ecran.jsx", "export default 1\n")
+        self.assertEqual(self.orphelins(), [])
+        self.assertEqual(self.bouchons(), [])
+
+    def test_lazy_passe_en_prop_jsx_est_credite(self):
+        """Cas reel mesure : `router/index.jsx` — `PortalClientLayout` (un
+        `lazy()`) n'est jamais rendu comme balise JSX, seulement passe en
+        prop `shell={PortalClientLayout}`."""
+        self.depot.fichier("features/x/module.config.jsx", (
+            "const Layout = lazy(() => import('./Layout'))\n"
+            "function Ecran() {\n"
+            "  return <WithShell shell={Layout}><Contenu /></WithShell>\n"
+            "}\n"
+            "const config = { key:'x', routes: "
+            "[{ path:'/x', component: Ecran }] }\n"
+            "export default config\n"))
+        self.depot.fichier("features/x/Layout.jsx", "export default 1\n")
+        self.assertEqual(self.orphelins(), [])
+
+    def test_lazy_non_route_et_non_rendu_reste_signale_meme_avec_wrapper(self):
+        """Un wrapper local qui rend UN SEUL composant ne credite QUE
+        celui-la — un troisieme `lazy()` sans lien nulle part reste rouge."""
+        self.depot.fichier("features/x/module.config.jsx", (
+            "const Ecran = lazy(() => import('./Ecran'))\n"
+            "const Fantome = lazy(() => import('./Fantome'))\n"
+            "function EcranImprimable() {\n"
+            "  return <PrintWrapper><Ecran /></PrintWrapper>\n"
+            "}\n"
+            "const config = { key:'x', routes: "
+            "[{ path:'/x', component: EcranImprimable }] }\n"
+            "export default config\n"))
+        self.depot.fichier("features/x/Ecran.jsx", "export default 1\n")
+        self.depot.fichier("features/x/Fantome.jsx", "export default 1\n")
+        self.assertEqual(self.orphelins(),
+                         ["frontend/src/features/x/Fantome.jsx"])
+
+    def test_config_opaque_credite_toujours_tout_avec_ou_sans_wrapper(self):
+        """Non-regression du cas opaque (piege reel rencontre en ecrivant ce
+        correctif : pre-marquer `module.config.jsx` comme « vu » AVANT la BFS
+        empechait par erreur la propagation de ses imports bruts pour une
+        config opaque — casserait le principe anti-faux-positif existant)."""
+        self.depot.fichier("features/x/module.config.jsx", (
+            "import Ecran from './Ecran'\n"
+            "const config = { key:'x', routes: baseRoutes.concat(extra) }\n"
+            "export default config\n"))
+        self.depot.fichier("features/x/Ecran.jsx", "export default 1\n")
+        config = cea.ConfigModule(self.depot.features / "x" / "module.config.jsx")
+        self.assertTrue(config.opaque)
+        self.assertEqual(self.orphelins(), [])
+
+
+# ===========================================================================
+# pages/** — extension PACT149 (07/08/2026)
+# ===========================================================================
+
+class PagesTests(BaseDepot):
+    """`pages/**` est desormais inventorie au meme titre que `features/**`.
+
+    Avant PACT149, `ecrans_de_features()` n'inventoriait QUE `features/` :
+    un ecran mort sous `pages/` etait invisible pour toujours, meme s'il
+    apparaissait dans le graphe d'atteignabilite (qui, lui, suit deja
+    `pages/**` depuis `main.jsx` -> `router/index.jsx`). Cas reel trouve et
+    corrige le meme jour : `pages/credit/ExpositionCreditPage.jsx`, jumeau
+    perime du vivant `features/credit/ExpositionCreditPage.jsx`, supprime.
+    """
+
+    def test_ecran_pages_non_route_est_signale(self):
+        """Controle negatif : le trou structurel que PACT149 ferme."""
+        self.depot.fichier("router/index.jsx",
+                           "const Vivant = lazy(() => import('../pages/Vivant'))\n")
+        self.depot.fichier("pages/Vivant.jsx", "export default 1\n")
+        self.depot.fichier("pages/Orphelin.jsx", "export default 1\n")
+        self.assertEqual(self.orphelins(),
+                         ["frontend/src/pages/Orphelin.jsx"])
+
+    def test_ecran_pages_route_est_atteignable(self):
+        self.depot.fichier("router/index.jsx",
+                           "const Vivant = lazy(() => import('../pages/Vivant'))\n")
+        self.depot.fichier("pages/Vivant.jsx", "export default 1\n")
+        self.assertEqual(self.orphelins(), [])
+
+    def test_extension_tsx_est_inventoriee(self):
+        """`.tsx` est resolu et inventorie, meme si le depot n'en a pas encore."""
+        self.depot.fichier("router/index.jsx",
+                           "const Vivant = lazy(() => import('../pages/Vivant'))\n")
+        self.depot.fichier("pages/Vivant.tsx", "export default 1\n")
+        self.depot.fichier("pages/Orphelin.tsx", "export default 1\n")
+        self.assertEqual(self.orphelins(),
+                         ["frontend/src/pages/Orphelin.tsx"])
+
+    def test_app_de_distingue_features_et_pages(self):
+        """`pages/credit` et `features/credit` ne sont jamais le meme bac."""
+        cible_features = cea.FEATURES / "credit" / "X.jsx"
+        cible_pages = cea.PAGES / "credit" / "X.jsx"
+        self.assertEqual(cea.app_de(cible_features), "credit")
+        self.assertEqual(cea.app_de(cible_pages), "pages/credit")
+
+
+# ===========================================================================
+# Route != menu — extension PACT150 (07/08/2026)
+# ===========================================================================
+
+class NavigationTests(BaseDepot):
+    """Une route dans ``routes:`` menant a un vrai ecran satisfait deja le
+    graphe d'imports (classe 1 muette) meme si AUCUNE entree de menu n'y mene
+    jamais — cas vivant : ``/parametres/achats`` (182 lignes, WIR26) routee
+    mais sans ``nav.items`` ni ``Link``/``navigate``. Ces tests verrouillent
+    le detecteur ``routes_sans_nav`` : la route litterale doit avoir soit un
+    ``nav.items[].to`` (n'importe quel module.config.jsx), soit un lien
+    entrant reel dans un fichier LUI-MEME atteignable (jamais un test, jamais
+    un fichier mort), soit un marqueur ``// contextuelle: <raison>``.
+    """
+
+    def _config_routee(self, app: str, chemin: str, extra_nav: str = "") -> Path:
+        return self.depot.fichier(f"features/{app}/module.config.jsx", (
+            "const Ecran = lazy(() => import('./Ecran'))\n"
+            f"const config = {{ key:'{app}', nav: {{ label:'{app}', items: ["
+            f"{extra_nav}] }}, routes: [{{ path:'{chemin}', component: Ecran }}] }}\n"
+            "export default config\n"))
+
+    def test_route_sans_nav_est_signalee(self):
+        """Controle negatif : le trou structurel que PACT150 ferme.
+
+        La route est bien ECRITE dans ce module.config.jsx (``path:
+        '/x/rapport'``) — la garde ne doit PAS s'auto-verifier en trouvant sa
+        propre declaration : seul un mot-cle de navigation EXPLICITE
+        (``to``/``href``) compte dans un module.config.jsx.
+        """
+        self._config_routee("x", "/x/rapport")
+        self.depot.fichier("features/x/Ecran.jsx", "export default 1\n")
+        self.assertEqual(
+            self.sans_nav(),
+            ["frontend/src/features/x/module.config.jsx::/x/rapport"])
+
+    def test_route_avec_nav_item_est_ok(self):
+        self._config_routee(
+            "x", "/x/rapport",
+            "{ to: '/x/rapport', label: 'Rapport' }")
+        self.depot.fichier("features/x/Ecran.jsx", "export default 1\n")
+        self.assertEqual(self.sans_nav(), [])
+
+    def test_nav_item_d_un_AUTRE_module_config_compte(self):
+        """Cas reel : ``/journal`` est routee dans `parametres`, sa nav vit
+        dans `reporting` (``features/reporting/module.config.jsx``)."""
+        self._config_routee("x", "/x/rapport")
+        self.depot.fichier("features/x/Ecran.jsx", "export default 1\n")
+        self.depot.fichier("features/y/module.config.jsx", (
+            "const config = { key:'y', nav: { label:'y', items: ["
+            "{ to: '/x/rapport', label: 'Rapport (depuis Y)' }"
+            "] }, routes: [] }\nexport default config\n"))
+        self.assertEqual(self.sans_nav(), [])
+
+    def test_lien_reel_dans_un_autre_fichier_atteignable_est_ok(self):
+        """``<Link to="...">`` ecrit ailleurs (pas nav.items) suffit."""
+        self._config_routee("x", "/x/rapport")
+        self.depot.fichier("features/x/Ecran.jsx",
+                           "import Barre from './Barre'\nexport default 1\n")
+        self.depot.fichier("features/x/Barre.jsx",
+                           "export default () => <Link to=\"/x/rapport\">R</Link>\n")
+        self.assertEqual(self.sans_nav(), [])
+
+    def test_href_compte_comme_lien(self):
+        self._config_routee("x", "/x/rapport")
+        self.depot.fichier("features/x/Ecran.jsx",
+                           "import Barre from './Barre'\nexport default 1\n")
+        self.depot.fichier("features/x/Barre.jsx",
+                           "export default () => <a href=\"/x/rapport\">R</a>\n")
+        self.assertEqual(self.sans_nav(), [])
+
+    def test_table_de_routage_par_donnee_est_reconnue(self):
+        """Cas reel mesure : `mobileHome.js` — `Directeur: '/mobile/cockpit'`
+        dans un objet de donnees, jamais un appel `navigate()` litteral ni un
+        `to=`/`href=`. Hors d'un module.config.jsx, tout litteral en forme de
+        chemin compte (aucun risque d'auto-verification : ce fichier ne
+        declare pas de route)."""
+        self._config_routee("x", "/x/rapport")
+        self.depot.fichier("features/x/Ecran.jsx",
+                           "import { TABLE } from './routage'\nexport default 1\n")
+        self.depot.fichier("features/x/routage.jsx",
+                           "export const TABLE = { Directeur: '/x/rapport' }\n")
+        self.assertEqual(self.sans_nav(), [])
+
+    def test_alias_de_navigate_est_reconnu(self):
+        """Cas reel mesure : `NotificationBell.jsx:451` — `const goto = (p)
+        => { navigate(p) }` puis `goto('/x/rapport')` : un nom de variable
+        different du mot `navigate` ne doit pas produire un faux negatif."""
+        self._config_routee("x", "/x/rapport")
+        self.depot.fichier("features/x/Ecran.jsx",
+                           "import Cloche from './Cloche'\nexport default 1\n")
+        self.depot.fichier("features/x/Cloche.jsx", (
+            "const goto = (p) => { navigate(p) }\n"
+            "export default () => <button onClick={() => "
+            "goto('/x/rapport')}>Aller</button>\n"))
+        self.assertEqual(self.sans_nav(), [])
+
+    def test_lien_dans_un_fichier_mort_ne_compte_pas(self):
+        """Un `<Link>` ecrit dans un composant MORT (jamais importe) ne rend
+        rien reel — meme defaut que celui que cette tache ferme si on le
+        laissait compter : seuls les fichiers de `vus` sont scannes."""
+        self._config_routee("x", "/x/rapport")
+        self.depot.fichier("features/x/Ecran.jsx", "export default 1\n")
+        self.depot.fichier("features/x/Mort.jsx",
+                           "export default () => <Link to=\"/x/rapport\">R</Link>\n")
+        self.assertEqual(
+            self.sans_nav(),
+            ["frontend/src/features/x/module.config.jsx::/x/rapport"])
+
+    def test_lien_dans_un_test_ne_compte_pas(self):
+        """Le piege mesure par l'audit : un grep naif compte un fichier de
+        test comme lien. `Barre.jsx` est atteignable (importe par Ecran), son
+        test l'est « aussi » au sens du glob mais JAMAIS un point d'entree."""
+        self._config_routee("x", "/x/rapport")
+        self.depot.fichier("features/x/Ecran.jsx",
+                           "import Barre from './Barre'\nexport default 1\n")
+        self.depot.fichier("features/x/Barre.jsx", "export default 1\n")
+        self.depot.fichier("features/x/Barre.test.jsx",
+                           "export default () => <Link to=\"/x/rapport\">R</Link>\n")
+        self.assertEqual(
+            self.sans_nav(),
+            ["frontend/src/features/x/module.config.jsx::/x/rapport"])
+
+    def test_route_dynamique_exemptee(self):
+        """Un segment `:id` est exempte — la garde ne sait pas resoudre un
+        lien concret vers une instance particuliere."""
+        self._config_routee("x", "/x/rapport/:id")
+        self.depot.fichier("features/x/Ecran.jsx", "export default 1\n")
+        self.assertEqual(self.sans_nav(), [])
+
+    def test_marqueur_contextuel_justifie(self):
+        """Route volontairement hors menu, marquee explicitement."""
+        self.depot.fichier("features/x/module.config.jsx", (
+            "const Ecran = lazy(() => import('./Ecran'))\n"
+            "const config = { key:'x', nav: { label:'x', items: [] }, "
+            "routes: [\n"
+            "  { path:'/x/rapport', component: Ecran }, "
+            "// contextuelle: lien envoye par email, jamais statique\n"
+            "] }\nexport default config\n"))
+        self.depot.fichier("features/x/Ecran.jsx", "export default 1\n")
+        self.assertEqual(self.sans_nav(), [])
+
+    def test_marqueur_sur_une_AUTRE_route_ne_justifie_pas_celle_ci(self):
+        """Le marqueur est positionnel : il ne justifie QUE la route a
+        proximite, jamais tout le fichier."""
+        self.depot.fichier("features/x/module.config.jsx", (
+            "const Ecran = lazy(() => import('./Ecran'))\n"
+            "const Autre = lazy(() => import('./Autre'))\n"
+            "const config = { key:'x', nav: { label:'x', items: [] }, "
+            "routes: [\n"
+            "  { path:'/x/rapport', component: Ecran },\n"
+            "\n\n\n\n\n"
+            "  { path:'/x/autre', component: Autre }, "
+            "// contextuelle: lien envoye par email\n"
+            "] }\nexport default config\n"))
+        self.depot.fichier("features/x/Ecran.jsx", "export default 1\n")
+        self.depot.fichier("features/x/Autre.jsx", "export default 1\n")
+        self.assertEqual(
+            self.sans_nav(),
+            ["frontend/src/features/x/module.config.jsx::/x/rapport"])
 
 
 # ===========================================================================
@@ -396,7 +707,38 @@ class DepotReelTests(unittest.TestCase):
         """Si une config devient illisible, la garde s'aveugle en silence."""
         _, stats = analyse_reelle()
         self.assertEqual(stats["opaques"], 0)
-        self.assertEqual(stats["configs"], 44)
+        self.assertEqual(stats["configs"], 45)
+
+    def test_parametres_achats_est_desormais_navigable(self):
+        """PACT150 : cas vivant du 07/08/2026 — `AchatsParametresPage` (182
+        lignes, WIR26) etait routee sans aucune entree de nav ni lien entrant
+        reel. Corrige par un `nav.items` dans `features/parametres/
+        module.config.jsx` — ce test verrouille la reparation, pas seulement
+        l'absence de rouge (que `test_la_base_de_reference_couvre_le_passif`
+        prouve deja generiquement)."""
+        constats, _ = analyse_reelle()
+        sans_nav = {c[1] for c in constats if c[0] == "sans-nav"}
+        self.assertNotIn(
+            "frontend/src/features/parametres/module.config.jsx::"
+            "/parametres/achats", sans_nav)
+
+    def test_le_passif_sans_nav_ne_peut_que_diminuer(self):
+        """4 routes reelles restent sans nav le 07/08/2026 (triage PACT150,
+        chacune verifiee a la main) : `/admin/impersonation` (consentement
+        d'impersonation, atteint par un lien externe hors code frontend),
+        `/admin/tenants` (console fondateur SCA22, deliberement hors menu),
+        `/credit/conditions` et `/reporting/dashboards` (ecrans reels sans
+        entree de menu, dette pre-existante, hors perimetre de cette tache).
+        Meme discipline de « sens de variation » que le passif AO : ce compte
+        ne doit jamais REMONTER."""
+        constats, _ = analyse_reelle()
+        sans_nav = [c for c in constats if c[0] == "sans-nav"]
+        self.assertLessEqual(
+            len(sans_nav), 4,
+            "le nombre de routes sans nav a AUGMENTE depuis le passif mesure "
+            "le 07/08/2026 (4) : une route reelle a ete livree sans etre "
+            "reliee au menu",
+        )
 
     def test_la_base_de_reference_couvre_le_passif(self):
         """Le passif est GELE : sur un depot propre, la garde est verte."""

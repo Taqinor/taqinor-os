@@ -80,6 +80,6 @@ class BadgeInscritPdfTests(TestCase):
                 'apps.compta.pdf_badge_evenement._html_to_pdf',
                 return_value=b'%PDF-OK'):
             resp = api.get(
-                f'/api/django/compta/inscriptions-evenement/{inscription.id}/badge/')
+                f'/api/django/marketing/inscriptions-evenement/{inscription.id}/badge/')
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(resp['Content-Type'], 'application/pdf')

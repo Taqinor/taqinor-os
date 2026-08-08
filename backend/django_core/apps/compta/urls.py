@@ -1,51 +1,40 @@
 from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 
-# AOF1 — les 8 ViewSets AO sont relogés dans ``apps.ao.views`` ; les routes
-# historiques ``/api/django/compta/…`` restent enregistrées à l'IDENTIQUE
-# (mêmes préfixes, mêmes basenames dérivés du queryset) en important la classe
-# à sa nouvelle adresse plutôt que via le shim de ré-export de ``.views``.
-from apps.ao.views import (
-    AppelOffreViewSet, BordereauPrixViewSet, LigneBordereauViewSet,
-    CautionSoumissionViewSet, DossierSoumissionViewSet, PieceSoumissionViewSet,
-    EcheanceAOViewSet, ResultatAOViewSet,
-)
+# PACT26 — les 8 ViewSets AO (AOF1) ainsi que les ViewSets marketing (ODX10)
+# et portail (ODX12) NE SONT PLUS ré-enregistrés ici : le double montage
+# historique sous ``/api/django/compta/…`` a été retiré (139 doubles montages
+# mesurés) après vérification qu'aucun appelant frontend n'utilisait la
+# variante ``/compta/…`` de ces ressources. Chacune n'est plus servie que sous
+# son PROPRE préfixe : ``apps.ao.urls`` (``/ao/…``), ``apps.marketing.urls``
+# (``/marketing/…``), ``apps.portail.urls`` (``/portail/…``).
 
 from .views import (
     desinscription_publique, double_optin_confirmer,
     redirection_lien_tracke,
-    enquete_publique, enquete_soumettre, enquete_certificat_pdf, EnqueteViewSet,
-    evenement_inscription_publique, EvenementMarketingViewSet,
-    InscriptionEvenementViewSet,
-    SupportOfflineViewSet,
-    DomaineEnvoiViewSet,
-    TypeEvenementViewSet,
-    BilletEvenementViewSet,
-    QuestionEvenementViewSet,
-    CommunicationEvenementViewSet,
+    enquete_publique, enquete_soumettre, enquete_certificat_pdf,
+    evenement_inscription_publique,
     PostSocialViewSet,
     CalendrierMarketingView, CalendrierMarketingRescheduleView,
     webhook_brevo_campagne, webhook_sms_stop,
     portail_mon_releve, portail_mon_releve_pdf, portail_contester_facture,
-    AppelTelephoniqueViewSet,
     BaremeIndemniteViewSet, BordereauRemiseViewSet, BudgetViewSet,
     AcompteISViewSet, ConventionFiscaleViewSet,
-    CaisseViewSet, CampagneViewSet, CautionBancaireViewSet, CentreCoutViewSet,
-    EnvoiCampagneViewSet, ListeDiffusionViewSet, AbonnementListeViewSet,
-    ApprobationEnvoiCampagneViewSet,
-    SegmentMarketingViewSet,
+    CaisseViewSet, CautionBancaireViewSet, CentreCoutViewSet,
     CessionImmobilisationViewSet, CodePromotionViewSet,
+    # PACT163 / XACC15 — charges constatées d'avance (étalement).
+    ChargeConstateeAvanceViewSet,
     CommissionPayoutRunViewSet, ComparateurDevisViewSet,
     CompteComptableViewSet, CompteTresorerieViewSet, ContratAvancementViewSet,
     DeclarationTVAViewSet, DemandeApprobationConfigViewSet,
+    DemandeApprobationRibViewSet,
     DotationAmortissementViewSet, ECatalogueViewSet,
     EcritureComptableViewSet, EffetViewSet, EntiteConsolidationViewSet,
-    EtapeSequenceViewSet, InscriptionSequenceViewSet,
-    EtatsComptablesViewSet, ExerciceComptableViewSet, FormulaireIntakeViewSet,
+    EtatsComptablesViewSet, ExerciceComptableViewSet,
     ImmobilisationViewSet,
     IndemniteChantierViewSet, JournalViewSet,
-    LignePrevisionnelTresorerieViewSet, MessageWhatsAppEntrantViewSet,
-    ModeleDevisViewSet, NoteFraisViewSet, OuverturePartageViewSet,
+    LignePrevisionnelTresorerieViewSet,
+    ModeleDevisViewSet, NoteFraisViewSet,
     ParametresTresorerieView, PaymentRunViewSet, PouvoirBancaireViewSet,
     PlanRelanceTresorerieViewSet,
     PeriodeComptableViewSet, PilotageViewSet, PlafondNoteFraisViewSet,
@@ -53,22 +42,16 @@ from .views import (
     ProvisionCreanceViewSet, ProvisionViewSet,
     RapportNoteFraisViewSet,
     RapprochementBancaireViewSet, RapprochementViewSet,
-    RelanceDevisAbandonneViewSet,
-    RetenueGarantieViewSet, RetenueSourceViewSet, SequenceRelanceViewSet,
+    RetenueGarantieViewSet, RetenueSourceViewSet,
     SessionGuidedSellingViewSet, TimbreFiscalViewSet,
     TravauxEnCoursViewSet, VirementInterneViewSet,
     DocumentPropositionViewSet, SimulationPubliqueViewSet,
     SimulationFinancementViewSet, OffreFinancementViewSet,
     LigneIncitationViewSet, EcheancierPaiementViewSet, TranchePaiementViewSet,
     ComparateurCashFinancementViewSet,
-    ComptePortailClientViewSet, AcceptationDevisPortailViewSet,
-    PaiementFacturePortailViewSet, DocumentClientPortailViewSet,
-    JalonChantierPortailViewSet, DemandeTicketPortailViewSet,
     PartenaireViewSet, SoumissionLeadPartenaireViewSet,
     CommissionPartenaireViewSet, TerritoireCommercialViewSet,
-    EnqueteNPSViewSet, AvisClientViewSet,
-    CompteFideliteViewSet, MouvementFideliteViewSet,
-    RegleUpsellViewSet, AbonnementMonitoringViewSet,
+    AbonnementMonitoringViewSet,
     MappingCompteViewSet, CompteAuxiliaireViewSet,
     PieceJustificativeViewSet,
     PisteAuditComptableViewSet,
@@ -109,6 +92,8 @@ router.register(r'exercices', ExerciceComptableViewSet)
 router.register(r'immobilisations', ImmobilisationViewSet)
 router.register(r'dotations', DotationAmortissementViewSet)
 router.register(r'cessions', CessionImmobilisationViewSet)
+# PACT163 / XACC15 — étalement des charges constatées d'avance.
+router.register(r'charges-avance', ChargeConstateeAvanceViewSet)
 router.register(r'rapprochements', RapprochementBancaireViewSet)
 router.register(r'modeles-rapprochement', ModeleRapprochementViewSet)
 router.register(r'rapprochements-3voies', RapprochementViewSet,
@@ -151,29 +136,18 @@ router.register(r'provisions-periode', ProvisionsPeriodeViewSet,
 router.register(r'obligations-fiscales', ObligationFiscaleViewSet)
 router.register(r'familles-tva-non-deductibles', FamilleTvaNonDeductibleViewSet)
 # ── Croissance commerciale / marketing / CPQ (FG201–FG214) ──────────────────
-router.register(r'campagnes', CampagneViewSet)
+# PACT26 — campagnes/envois-campagne/…/appels : double montage retiré, ces
+# ressources ne sont plus servies que sous ``apps.marketing.urls`` (ODX10).
 # XMKT35 — posts réseaux sociaux (calendrier de contenu, publication gated).
 router.register(r'posts-sociaux', PostSocialViewSet)
-router.register(r'envois-campagne', EnvoiCampagneViewSet)
-router.register(r'approbations-envoi-campagne', ApprobationEnvoiCampagneViewSet)
-router.register(r'listes-diffusion', ListeDiffusionViewSet)
-router.register(r'abonnements-liste', AbonnementListeViewSet)
-router.register(r'segments-marketing', SegmentMarketingViewSet)
-router.register(r'sequences-relance', SequenceRelanceViewSet)
-router.register(r'etapes-sequence', EtapeSequenceViewSet)
-router.register(r'inscriptions-sequence', InscriptionSequenceViewSet)
-router.register(r'relances-devis-abandonnes', RelanceDevisAbandonneViewSet)
-router.register(r'ouvertures-partage', OuverturePartageViewSet)
-router.register(r'formulaires-intake', FormulaireIntakeViewSet)
-router.register(r'messages-whatsapp', MessageWhatsAppEntrantViewSet,
-                basename='message-whatsapp')
-router.register(r'appels', AppelTelephoniqueViewSet)
 router.register(r'codes-promotion', CodePromotionViewSet)
 router.register(r'modeles-devis', ModeleDevisViewSet)
 router.register(r'guided-selling', SessionGuidedSellingViewSet)
 router.register(r'comparateur-devis', ComparateurDevisViewSet,
                 basename='comparateur-devis')
 router.register(r'approbations-config', DemandeApprobationConfigViewSet)
+# PACT160 / XACC24 — approbation des changements de RIB fournisseur.
+router.register(r'approbations-rib', DemandeApprobationRibViewSet)
 router.register(r'ecatalogues', ECatalogueViewSet)
 # ── Financement, appels d'offres & portail (FG215–FG228) ────────────────────
 router.register(r'documents-proposition', DocumentPropositionViewSet)
@@ -185,21 +159,11 @@ router.register(r'echeanciers-paiement', EcheancierPaiementViewSet)
 router.register(r'tranches-paiement', TranchePaiementViewSet)
 router.register(r'comparateur-financement', ComparateurCashFinancementViewSet,
                 basename='comparateur-financement')
-router.register(r'appels-offres', AppelOffreViewSet)
-router.register(r'bordereaux-prix', BordereauPrixViewSet)
-router.register(r'lignes-bordereau', LigneBordereauViewSet)
-router.register(r'cautions-soumission', CautionSoumissionViewSet)
-router.register(r'dossiers-soumission', DossierSoumissionViewSet)
-router.register(r'pieces-soumission', PieceSoumissionViewSet)
-router.register(r'echeances-ao', EcheanceAOViewSet)
-router.register(r'resultats-ao', ResultatAOViewSet)
-router.register(r'comptes-portail', ComptePortailClientViewSet)
+# PACT26 — appels-offres/…/resultats-ao : double montage retiré (AOF1), ne
+# sont plus servis que sous ``apps.ao.urls`` (préfixe ``/ao/…``).
+# PACT26 — comptes-portail/…/demandes-ticket-portail : double montage retiré
+# (ODX12), ne sont plus servis que sous ``apps.portail.urls``.
 # ── Portail client, partenaires & fidélité (FG229–FG244) ────────────────────
-router.register(r'acceptations-devis-portail', AcceptationDevisPortailViewSet)
-router.register(r'paiements-facture-portail', PaiementFacturePortailViewSet)
-router.register(r'documents-client-portail', DocumentClientPortailViewSet)
-router.register(r'jalons-chantier-portail', JalonChantierPortailViewSet)
-router.register(r'demandes-ticket-portail', DemandeTicketPortailViewSet)
 router.register(r'partenaires', PartenaireViewSet)
 router.register(r'soumissions-lead-partenaire', SoumissionLeadPartenaireViewSet)
 router.register(r'commissions-partenaire', CommissionPartenaireViewSet)
@@ -208,11 +172,8 @@ router.register(r'commissions-partenaire', CommissionPartenaireViewSet)
 # a été retiré : ce modèle n'est qu'un référentiel de zones (legacy) et NON le
 # moteur d'assignation des leads, qui est ``apps.territoires.Territoire``.
 router.register(r'territoires-commerciaux', TerritoireCommercialViewSet)
-router.register(r'enquetes-nps', EnqueteNPSViewSet)
-router.register(r'avis-clients', AvisClientViewSet)
-router.register(r'comptes-fidelite', CompteFideliteViewSet)
-router.register(r'mouvements-fidelite', MouvementFideliteViewSet)
-router.register(r'regles-upsell', RegleUpsellViewSet)
+# PACT26 — enquetes-nps/…/regles-upsell : double montage retiré (ODX10), ne
+# sont plus servis que sous ``apps.marketing.urls``.
 router.register(r'abonnements-monitoring', AbonnementMonitoringViewSet)
 # ── Comptabilité générale — mappings, auxiliaires & pièces (COMPTA2/3/10) ────
 router.register(r'mappings-compte', MappingCompteViewSet)
@@ -222,19 +183,8 @@ router.register(r'pistes-audit', PisteAuditComptableViewSet,
                 basename='pisteaudit')
 # ── XFAC14 — Compensation AR/AP (netting) ───────────────────────────────────
 router.register(r'compensations', CompensationViewSet)
-# ── XMKT27 — Constructeur d'enquêtes ────────────────────────────────────────
-router.register(r'enquetes', EnqueteViewSet)
-# ── XMKT28 — Événements marketing légers ────────────────────────────────────
-router.register(r'evenements-marketing', EvenementMarketingViewSet)
-router.register(r'inscriptions-evenement', InscriptionEvenementViewSet)
-router.register(r'types-evenement', TypeEvenementViewSet)
-router.register(r'billets-evenement', BilletEvenementViewSet)
-router.register(r'questions-evenement', QuestionEvenementViewSet)
-router.register(r'communications-evenement', CommunicationEvenementViewSet)
-# ── XMKT29 — Ponts QR pour supports offline ─────────────────────────────────
-router.register(r'supports-offline', SupportOfflineViewSet)
-# ── XMKT33 — Assistant d'authentification du domaine d'envoi ───────────────
-router.register(r'domaines-envoi', DomaineEnvoiViewSet)
+# PACT26 — enquetes/evenements-marketing/…/domaines-envoi (XMKT27-33) :
+# double montage retiré, ne sont plus servis que sous ``apps.marketing.urls``.
 # ── NTFIN — Consolidation multi-sociétés (grand groupe) ────────────────────
 router.register(r'cycles-consolidation', CycleConsolidationViewSet,
                 basename='cycle-consolidation')

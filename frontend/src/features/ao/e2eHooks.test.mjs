@@ -34,6 +34,13 @@ const DOC_PATH = join(HERE, 'E2E_HOOKS.md')
 // exprimer. Ordre : socle, puis un groupe par écran dans l'ordre des tâches,
 // alphabétique à l'intérieur de chaque groupe.
 export const ALL_HOOKS = [
+  // ── PACT166/167/170 — atelier toiture + questions terrain ────────────────
+  'data-ao-annotation-serie',
+  'data-ao-note-question',
+  'data-ao-legende-provenance',
+  'data-ao-enveloppe-arc-retenue',
+  'data-ao-question-proposee',
+  'data-ao-atelier-note',
   // ── Socle transverse (AOF8) ──────────────────────────────────────────────
   'data-ao-canvas',
   'data-ao-outil',

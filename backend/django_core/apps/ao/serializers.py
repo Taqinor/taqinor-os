@@ -293,6 +293,18 @@ class PlanSourceSerializer(serializers.ModelSerializer):
         return attrs
 
 
+class TeleversementPlanSourceSerializer(serializers.Serializer):
+    """AOF20 — entrée MULTIPART de ``plans-source/{id}/upload``.
+
+    Un seul champ, et c'est délibéré : le binaire ne devient JAMAIS une
+    colonne de ``PlanSource`` (garde ARC26). Il part dans ``records.Attachment``
+    (MinIO) et c'est son empreinte SHA-256, posée côté serveur, qui reconnaît
+    un plan déjà reçu — donc ni ``attachment`` ni ``empreinte_sha256`` ne sont
+    saisissables ici.
+    """
+    fichier = serializers.FileField(label='Fichier du plan (PDF ou image)')
+
+
 class BatimentAOSerializer(serializers.ModelSerializer):
     toitures = ToitureAOSerializer(many=True, read_only=True)
     #: Agrégat CALCULÉ (somme des toitures), jamais une colonne recopiée.

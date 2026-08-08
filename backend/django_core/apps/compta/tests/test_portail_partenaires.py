@@ -64,7 +64,7 @@ class AcceptationDevisPortailTests(TestCase):
 
     def test_creation_pose_company_serveur(self):
         api = auth(self.user)
-        resp = api.post('/api/django/compta/acceptations-devis-portail/', {
+        resp = api.post('/api/django/portail/acceptations-devis-portail/', {
             'devis_id': 41001, 'option_choisie': 'Hybride 5 kWc',
             'nom_signataire': 'Reda K.',
             'company': 99999,  # doit être ignoré
@@ -80,7 +80,7 @@ class AcceptationDevisPortailTests(TestCase):
         acc = AcceptationDevisPortail.objects.create(
             company=self.co, devis_id=41002, nom_signataire='Sami')
         resp = api.post(
-            f'/api/django/compta/acceptations-devis-portail/{acc.id}/signer/',
+            f'/api/django/portail/acceptations-devis-portail/{acc.id}/signer/',
             {'nom_signataire': 'Sami B.'}, format='json')
         self.assertEqual(resp.status_code, 200, resp.content)
         acc.refresh_from_db()
@@ -105,7 +105,7 @@ class AcceptationDevisPortailTests(TestCase):
         AcceptationDevisPortail.objects.create(
             company=autre, devis_id=41004, nom_signataire='Autre')
         api = auth(self.user)
-        resp = api.get('/api/django/compta/acceptations-devis-portail/')
+        resp = api.get('/api/django/portail/acceptations-devis-portail/')
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(resp.data['count'], 0)
 
@@ -119,7 +119,7 @@ class PaiementFacturePortailTests(TestCase):
 
     def test_creation_pose_company_et_reference(self):
         api = auth(self.user)
-        resp = api.post('/api/django/compta/paiements-facture-portail/', {
+        resp = api.post('/api/django/portail/paiements-facture-portail/', {
             'facture_id': 42001, 'montant': '12500.00', 'methode': 'carte',
             'company': 88888,  # doit être ignoré
         }, format='json')
@@ -140,7 +140,7 @@ class PaiementFacturePortailTests(TestCase):
             company=self.co, facture_id=42002, montant=999,
             methode=PaiementFacturePortail.Methode.VIREMENT)
         resp = api.post(
-            f'/api/django/compta/paiements-facture-portail/{pf.id}/rapprocher/',
+            f'/api/django/portail/paiements-facture-portail/{pf.id}/rapprocher/',
             {'reference': 'VIR-2026-001'}, format='json')
         self.assertEqual(resp.status_code, 200, resp.content)
         pf.refresh_from_db()
@@ -168,7 +168,7 @@ class DocumentClientPortailTests(TestCase):
 
     def test_creation_pose_company_serveur(self):
         api = auth(self.user)
-        resp = api.post('/api/django/compta/documents-client-portail/', {
+        resp = api.post('/api/django/portail/documents-client-portail/', {
             'client_id': 43001, 'type_document': 'facture_onee',
             'libelle': 'Facture ONEE janvier',
             'company': 77777,  # doit être ignoré
@@ -183,7 +183,7 @@ class DocumentClientPortailTests(TestCase):
         doc = DocumentClientPortail.objects.create(
             company=self.co, client_id=43002)
         resp = api.post(
-            f'/api/django/compta/documents-client-portail/{doc.id}'
+            f'/api/django/portail/documents-client-portail/{doc.id}'
             '/marquer_traite/', {}, format='json')
         self.assertEqual(resp.status_code, 200, resp.content)
         doc.refresh_from_db()
@@ -193,7 +193,7 @@ class DocumentClientPortailTests(TestCase):
         autre = make_company('fg231-b', 'FG231B')
         DocumentClientPortail.objects.create(company=autre, client_id=43003)
         api = auth(self.user)
-        resp = api.get('/api/django/compta/documents-client-portail/')
+        resp = api.get('/api/django/portail/documents-client-portail/')
         self.assertEqual(resp.data['count'], 0)
 
 
@@ -206,7 +206,7 @@ class JalonChantierPortailTests(TestCase):
 
     def test_creation_pose_company_serveur(self):
         api = auth(self.user)
-        resp = api.post('/api/django/compta/jalons-chantier-portail/', {
+        resp = api.post('/api/django/portail/jalons-chantier-portail/', {
             'chantier_id': 44001, 'libelle': 'Installation', 'ordre': 3,
             'company': 66666,  # doit être ignoré
         }, format='json')
@@ -220,7 +220,7 @@ class JalonChantierPortailTests(TestCase):
         jalon = JalonChantierPortail.objects.create(
             company=self.co, chantier_id=44002, libelle='Réception')
         resp = api.post(
-            f'/api/django/compta/jalons-chantier-portail/{jalon.id}'
+            f'/api/django/portail/jalons-chantier-portail/{jalon.id}'
             '/marquer_atteint/', {}, format='json')
         self.assertEqual(resp.status_code, 200, resp.content)
         jalon.refresh_from_db()
@@ -234,7 +234,7 @@ class JalonChantierPortailTests(TestCase):
             company=self.co, chantier_id=44003, libelle='A', ordre=1)
         api = auth(self.user)
         resp = api.get(
-            '/api/django/compta/jalons-chantier-portail/?ordering=ordre')
+            '/api/django/portail/jalons-chantier-portail/?ordering=ordre')
         self.assertEqual(resp.data['count'], 2)
         libelles = [r['libelle'] for r in resp.data['results']]
         self.assertEqual(libelles, ['A', 'B'])
@@ -244,7 +244,7 @@ class JalonChantierPortailTests(TestCase):
         JalonChantierPortail.objects.create(
             company=autre, chantier_id=44004, libelle='X')
         api = auth(self.user)
-        resp = api.get('/api/django/compta/jalons-chantier-portail/')
+        resp = api.get('/api/django/portail/jalons-chantier-portail/')
         self.assertEqual(resp.data['count'], 0)
 
 
@@ -257,7 +257,7 @@ class DemandeTicketPortailTests(TestCase):
 
     def test_creation_pose_company_serveur(self):
         api = auth(self.user)
-        resp = api.post('/api/django/compta/demandes-ticket-portail/', {
+        resp = api.post('/api/django/portail/demandes-ticket-portail/', {
             'client_id': 45001, 'sujet': 'Onduleur en défaut',
             'description': 'Voyant rouge depuis hier',
             'company': 55555,  # doit être ignoré
@@ -272,7 +272,7 @@ class DemandeTicketPortailTests(TestCase):
         d = DemandeTicketPortail.objects.create(
             company=self.co, client_id=45002, sujet='X')
         resp = api.post(
-            f'/api/django/compta/demandes-ticket-portail/{d.id}'
+            f'/api/django/portail/demandes-ticket-portail/{d.id}'
             '/prendre_en_charge/', {'ticket_id': 909}, format='json')
         self.assertEqual(resp.status_code, 200, resp.content)
         d.refresh_from_db()
@@ -284,7 +284,7 @@ class DemandeTicketPortailTests(TestCase):
         DemandeTicketPortail.objects.create(
             company=autre, client_id=45003, sujet='Y')
         api = auth(self.user)
-        resp = api.get('/api/django/compta/demandes-ticket-portail/')
+        resp = api.get('/api/django/portail/demandes-ticket-portail/')
         self.assertEqual(resp.data['count'], 0)
 
 
@@ -306,7 +306,7 @@ class Xsav22KbDeflectionActionsTests(TestCase):
     def test_suggestions_kb_returns_only_flagged_articles(self):
         api = auth(self.user)
         resp = api.get(
-            '/api/django/compta/demandes-ticket-portail/suggestions-kb/'
+            '/api/django/portail/demandes-ticket-portail/suggestions-kb/'
             '?q=onduleur')
         self.assertEqual(resp.status_code, 200, resp.content)
         ids = {s['id'] for s in resp.data['suggestions']}
@@ -317,14 +317,14 @@ class Xsav22KbDeflectionActionsTests(TestCase):
         autre_user = make_user(autre, 'xsav22-b-user')
         api = auth(autre_user)
         resp = api.get(
-            '/api/django/compta/demandes-ticket-portail/suggestions-kb/'
+            '/api/django/portail/demandes-ticket-portail/suggestions-kb/'
             '?q=onduleur')
         self.assertEqual(resp.data['suggestions'], [])
 
     def test_consulter_article_kb_increments_counter(self):
         api = auth(self.user)
         resp = api.post(
-            '/api/django/compta/demandes-ticket-portail/'
+            '/api/django/portail/demandes-ticket-portail/'
             'consulter-article-kb/',
             {'article_id': self.article.id}, format='json')
         self.assertEqual(resp.status_code, 200, resp.content)
@@ -335,7 +335,7 @@ class Xsav22KbDeflectionActionsTests(TestCase):
     def test_consulter_article_kb_requires_article_id(self):
         api = auth(self.user)
         resp = api.post(
-            '/api/django/compta/demandes-ticket-portail/'
+            '/api/django/portail/demandes-ticket-portail/'
             'consulter-article-kb/', {}, format='json')
         self.assertEqual(resp.status_code, 400)
 
@@ -584,7 +584,7 @@ class EnqueteNPSTests(TestCase):
     @override_settings(BREVO_ENABLED=False)
     def test_creation_envoi_noop(self):
         api = auth(self.user)
-        resp = api.post('/api/django/compta/enquetes-nps/', {
+        resp = api.post('/api/django/marketing/enquetes-nps/', {
             'client_id': 47001, 'chantier_id': 88,
             'company': 12321,  # ignoré
         }, format='json')
@@ -599,7 +599,7 @@ class EnqueteNPSTests(TestCase):
         api = auth(self.user)
         e = EnqueteNPS.objects.create(company=self.co, client_id=47002)
         resp = api.post(
-            f'/api/django/compta/enquetes-nps/{e.id}/repondre/',
+            f'/api/django/marketing/enquetes-nps/{e.id}/repondre/',
             {'score': 15, 'commentaire': 'Excellent'}, format='json')
         self.assertEqual(resp.status_code, 200, resp.content)
         e.refresh_from_db()
@@ -616,7 +616,7 @@ class EnqueteNPSTests(TestCase):
         e = EnqueteNPS.objects.create(company=self.co, client_id=2)
         services.repondre_enquete_nps(e, score=3)
         api = auth(self.user)
-        resp = api.get('/api/django/compta/enquetes-nps/score/')
+        resp = api.get('/api/django/marketing/enquetes-nps/score/')
         self.assertEqual(resp.status_code, 200, resp.content)
         self.assertEqual(resp.data['total'], 4)
         self.assertEqual(resp.data['nps'], 50)
@@ -625,7 +625,7 @@ class EnqueteNPSTests(TestCase):
         autre = make_company('fg238-b', 'FG238B')
         EnqueteNPS.objects.create(company=autre, client_id=47003)
         api = auth(self.user)
-        resp = api.get('/api/django/compta/enquetes-nps/')
+        resp = api.get('/api/django/marketing/enquetes-nps/')
         self.assertEqual(resp.data['count'], 0)
 
 
@@ -638,7 +638,7 @@ class AvisClientTests(TestCase):
 
     def test_creation_pose_company_serveur(self):
         api = auth(self.user)
-        resp = api.post('/api/django/compta/avis-clients/', {
+        resp = api.post('/api/django/marketing/avis-clients/', {
             'client_id': 48001,
             'company': 32123,  # ignoré
         }, format='json')
@@ -651,7 +651,7 @@ class AvisClientTests(TestCase):
         api = auth(self.user)
         a = AvisClient.objects.create(company=self.co, client_id=48002)
         resp = api.post(
-            f'/api/django/compta/avis-clients/{a.id}/recevoir/',
+            f'/api/django/marketing/avis-clients/{a.id}/recevoir/',
             {'note': 9, 'temoignage': 'Super équipe'}, format='json')
         self.assertEqual(resp.status_code, 200, resp.content)
         a.refresh_from_db()
@@ -665,7 +665,7 @@ class AvisClientTests(TestCase):
             company=self.co, client_id=48003,
             statut=AvisClient.Statut.RECU)
         resp = api.post(
-            f'/api/django/compta/avis-clients/{a.id}/pousser_google/', {},
+            f'/api/django/marketing/avis-clients/{a.id}/pousser_google/', {},
             format='json')
         self.assertEqual(resp.status_code, 200, resp.content)
         a.refresh_from_db()
@@ -680,7 +680,7 @@ class AvisClientTests(TestCase):
             company=self.co, client_id=48004,
             statut=AvisClient.Statut.RECU)
         resp = api.post(
-            f'/api/django/compta/avis-clients/{a.id}/pousser_google/', {},
+            f'/api/django/marketing/avis-clients/{a.id}/pousser_google/', {},
             format='json')
         self.assertEqual(resp.status_code, 200, resp.content)
         a.refresh_from_db()
@@ -691,7 +691,7 @@ class AvisClientTests(TestCase):
         autre = make_company('fg239-b', 'FG239B')
         AvisClient.objects.create(company=autre, client_id=48005)
         api = auth(self.user)
-        resp = api.get('/api/django/compta/avis-clients/')
+        resp = api.get('/api/django/marketing/avis-clients/')
         self.assertEqual(resp.data['count'], 0)
 
 
@@ -704,7 +704,7 @@ class FideliteTests(TestCase):
 
     def test_creation_compte_pose_company(self):
         api = auth(self.user)
-        resp = api.post('/api/django/compta/comptes-fidelite/', {
+        resp = api.post('/api/django/marketing/comptes-fidelite/', {
             'client_id': 49001,
             'company': 21212, 'points': 9999,  # ignorés (read-only)
         }, format='json')
@@ -718,7 +718,7 @@ class FideliteTests(TestCase):
         api = auth(self.user)
         c = CompteFidelite.objects.create(company=self.co, client_id=49002)
         resp = api.post(
-            f'/api/django/compta/comptes-fidelite/{c.id}/crediter/',
+            f'/api/django/marketing/comptes-fidelite/{c.id}/crediter/',
             {'points': 2500, 'motif': 'Parrainage réussi'}, format='json')
         self.assertEqual(resp.status_code, 200, resp.content)
         c.refresh_from_db()
@@ -729,7 +729,7 @@ class FideliteTests(TestCase):
         api = auth(self.user)
         c = CompteFidelite.objects.create(
             company=self.co, client_id=49003, points=600, palier='argent')
-        resp = api.post('/api/django/compta/mouvements-fidelite/', {
+        resp = api.post('/api/django/marketing/mouvements-fidelite/', {
             'compte': c.id, 'points': -100, 'motif': 'Remise convertie',
         }, format='json')
         self.assertEqual(resp.status_code, 201, resp.content)
@@ -752,7 +752,7 @@ class FideliteTests(TestCase):
         c_autre = CompteFidelite.objects.create(
             company=autre, client_id=49005)
         api = auth(self.user)
-        resp = api.post('/api/django/compta/mouvements-fidelite/', {
+        resp = api.post('/api/django/marketing/mouvements-fidelite/', {
             'compte': c_autre.id, 'points': 10,
         }, format='json')
         self.assertEqual(resp.status_code, 400)
@@ -761,7 +761,7 @@ class FideliteTests(TestCase):
         autre = make_company('fg240-c', 'FG240C')
         CompteFidelite.objects.create(company=autre, client_id=49006)
         api = auth(self.user)
-        resp = api.get('/api/django/compta/comptes-fidelite/')
+        resp = api.get('/api/django/marketing/comptes-fidelite/')
         self.assertEqual(resp.data['count'], 0)
 
 
@@ -774,7 +774,7 @@ class RegleUpsellTests(TestCase):
 
     def test_creation_pose_company_serveur(self):
         api = auth(self.user)
-        resp = api.post('/api/django/compta/regles-upsell/', {
+        resp = api.post('/api/django/marketing/regles-upsell/', {
             'declencheur': 'sans_batterie',
             'produit_suggere': 'Batterie LiFePO4 5 kWh',
             'message': 'Stockez votre surplus', 'priorite': 5,
@@ -795,7 +795,7 @@ class RegleUpsellTests(TestCase):
             company=self.co, declencheur='site_unique',
             produit_suggere='2e site', actif=False)
         api = auth(self.user)
-        resp = api.post('/api/django/compta/regles-upsell/suggestions/', {
+        resp = api.post('/api/django/marketing/regles-upsell/suggestions/', {
             'contexte': {
                 'sans_batterie': True, 'sans_contrat_om': True,
                 'site_unique': True,  # règle inactive → exclue
@@ -819,7 +819,7 @@ class RegleUpsellTests(TestCase):
             company=autre, declencheur='sans_batterie',
             produit_suggere='X')
         api = auth(self.user)
-        resp = api.get('/api/django/compta/regles-upsell/')
+        resp = api.get('/api/django/marketing/regles-upsell/')
         self.assertEqual(resp.data['count'], 0)
 
 

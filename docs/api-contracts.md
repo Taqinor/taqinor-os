@@ -58,10 +58,6 @@
     detail:inconnu, postees:inconnu
 - frontend/src/api/comptaApi.js :: genererFnp -> /api/django/compta/provisions-periode/generer-fnp
     detail:inconnu, postees:inconnu
-- frontend/src/api/comptaApi.js :: genererIa -> /api/django/compta/campagnes/generer-ia
-    configured:inconnu, corps:inconnu, langue:inconnu, objet:inconnu, ok:inconnu, source:inconnu
-- frontend/src/api/comptaApi.js :: genererIaDisponible -> /api/django/compta/campagnes/generer-ia-disponible
-    configured:inconnu
 - frontend/src/api/comptaApi.js :: genererOd -> /api/django/compta/taches-cloture/<>/generer-od
     detail:inconnu, ecriture_id:inconnu, tache:inconnu
 - frontend/src/api/comptaApi.js :: ocr -> /api/django/compta/notes-frais/ocr
@@ -330,6 +326,10 @@
     corps_fusionne:inconnu, detail:texte
 - frontend/src/api/marketingApi.js :: cloturerPresences -> /api/django/marketing/evenements-marketing/<>/cloturer-presences
     absents_marques:inconnu
+- frontend/src/api/marketingApi.js :: genererIa -> /api/django/marketing/campagnes/generer-ia
+    configured:inconnu, corps:inconnu, langue:inconnu, objet:inconnu, ok:inconnu, source:inconnu
+- frontend/src/api/marketingApi.js :: genererIaDisponible -> /api/django/marketing/campagnes/generer-ia-disponible
+    configured:inconnu
 - frontend/src/api/marketingApi.js :: participants -> /api/django/marketing/sequences-relance/<>/participants
     nb_actifs:inconnu, participants:inconnu
 - frontend/src/api/marketingApi.js :: planifier -> /api/django/marketing/sequences-relance/<>/planifier
@@ -454,6 +454,8 @@
     results:liste
 - frontend/src/api/publicapiApi.js :: getDocs -> /api/django/publicapi/docs
     authentification:objet, base_url:texte, endpoints:liste, endpoints_bulk:objet, endpoints_ecriture:objet, endpoints_lecture_simple:objet, introduction:texte, parametres_communs:objet, scopes:liste, titre:texte, version:texte, webhooks:objet
+- frontend/src/api/publicapiApi.js :: getOpenApiSchema -> /api/public/v1/openapi.json
+    components:objet, info:objet, openapi:inconnu, paths:inconnu, security:liste, servers:liste
 - frontend/src/api/publicapiApi.js :: ocrToCrm -> /api/django/publicapi/ocr-to-crm
     detail:texte, lead_id:inconnu, mode:inconnu
 - frontend/src/api/publicapiApi.js :: sandboxTry -> /api/django/publicapi/sandbox/try
@@ -590,6 +592,10 @@
     clusters:inconnu, count:nombre
 - frontend/src/api/uxviewsApi.js :: importSavedViews -> /api/django/uxviews/saved-views/importer
     created:inconnu, erreurs:inconnu
+- frontend/src/api/veilleAoApi.js :: ignorer -> /api/django/veille_ao/avis/<>/ignorer
+    id:inconnu, regle_proposee:inconnu, statut:inconnu
+- frontend/src/api/veilleAoApi.js :: retenir -> /api/django/veille_ao/avis/<>/retenir
+    appel_offre_cree:inconnu, appel_offre_id:inconnu, id:inconnu, statut:inconnu
 - frontend/src/api/ventesApi.js :: applyPreset -> /api/django/ventes/devis/<>/apply-preset
     detail:texte, lignes_created:nombre, skipped_priceless:nombre
 - frontend/src/api/ventesApi.js :: approuverEtapeDevis -> /api/django/ventes/devis/<>/approuver-etape

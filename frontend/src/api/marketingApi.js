@@ -6,9 +6,9 @@ import { downloadBlobInGesture } from '../utils/downloadBlob'
    NTMKT1 — Client API du module « Marketing » (apps/marketing).
    ----------------------------------------------------------------------------
    axios préfixe déjà « /api/django » : on appelle donc « /marketing/... »
-   (préfixe ODX10, `apps/marketing/urls.py` — sert les MÊMES ViewSets que
-   l'ancien préfixe historique `/compta/...` consommé par
-   `CampagnesScreen.jsx`/`comptaApi.campagnes`, jamais touché ici). Un seul
+   (préfixe ODX10, `apps/marketing/urls.py`). PACT26 — l'ancien préfixe
+   historique `/compta/...` qui servait les MÊMES ViewSets a été retiré
+   (double montage) ; `CampagnesScreen.jsx` a été migré ici. Un seul
    point d'import pour tous les écrans marketing NTMKT1-11+. Aucune donnée
    sensible (`Produit.prix_achat`/marge) n'est demandée ni rendue nulle part
    dans ce module.
@@ -36,6 +36,12 @@ const marketingApi = {
       api.get(`/marketing/campagnes/${id}/apercu_fusion/`, { params }),
     roi: (id) => api.get(`/marketing/campagnes/${id}/roi/`),
     clicsParLien: (id) => api.get(`/marketing/campagnes/${id}/clics-par-lien/`),
+    // XMKT34 — sonde de gating (aucun appel LLM) + génération SUGGESTION
+    // éditable (jamais auto-appliquée). Migré depuis comptaApi (PACT26).
+    genererIaDisponible: () =>
+      api.get('/marketing/campagnes/generer-ia-disponible/'),
+    genererIa: (payload) =>
+      api.post('/marketing/campagnes/generer-ia/', payload),
   },
   envoisCampagne: {
     list: (params) => api.get('/marketing/envois-campagne/', { params }),

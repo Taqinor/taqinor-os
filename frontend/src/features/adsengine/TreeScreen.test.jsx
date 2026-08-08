@@ -32,7 +32,7 @@ beforeEach(() => {
   mocks.nodes.mockResolvedValue({ data: [
     { id: 11, enonce_fr: "Le hook « facture d'été » convertit mieux", classe: 'creatif',
       statut: 'validated', fraicheur_jours: 12 },
-    { id: 12, enonce_fr: 'Le lookalike 1% sature à 30 j', classe: 'audience',
+    { id: 12, enonce_fr: 'Le lookalike 1% sature à 30 j', classe: 'audience_structure',
       statut: 'stale', fraicheur_jours: 190 },
   ] })
   mocks.queue.mockResolvedValue({ data: [
@@ -56,6 +56,9 @@ describe('TreeScreen (ASG6)', () => {
     // L'énoncé apparaît DEUX fois (dans la file VoI et dans son groupe de statut) — attendu.
     expect(screen.getAllByText(/facture d'été/).length).toBeGreaterThan(0)
     expect(screen.getByText(/il y a 190 j/)).toBeInTheDocument()
+    // PACT157 — classe='audience_structure' (valeur réelle du modèle) affiche
+    // bien son libellé FR, jamais un tiret cadratin.
+    expect(screen.getByText(/Audience \/ structure/)).toBeInTheDocument()
   })
 
   it('affiche la file de priorité VoI ordonnée par rang avec les scores de l\'API', async () => {
@@ -132,7 +135,7 @@ describe('TreeScreen (PUB11) — cartes de croyance', () => {
 
   it('n\'affiche aucune croyance/statistique quand l\'API ne les fournit pas', async () => {
     mocks.nodes.mockResolvedValue({ data: [
-      { id: 12, enonce_fr: 'Nœud sans stats', classe: 'audience', statut: 'assumed' },
+      { id: 12, enonce_fr: 'Nœud sans stats', classe: 'audience_structure', statut: 'assumed' },
     ] })
     mocks.queue.mockResolvedValue({ data: [] })
     renderScreen()

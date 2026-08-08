@@ -159,6 +159,11 @@ _APP_URLS = [
     # Groupe NTAI — copilotes IA (brouillons proposés, jamais d'écriture
     # implicite ; 503 douce sans clé LLM/STT configurée).
     path('ai/', include('apps.ai_governance.urls')),
+    # Groupe VAO — Veille appels d'offres (sas des avis de marché). Le segment
+    # d'URL est IDENTIQUE à la clé de manifeste (`veille_ao`, avec underscore)
+    # à dessein : le gatage 404 des modules désactivés dérive du 2ᵉ segment, et
+    # un segment en tiret imposerait une entrée `core/permissions.PREFIX_TO_MODULE`.
+    path('veille_ao/', include('apps.veille_ao.urls')),
 ]
 
 urlpatterns = [

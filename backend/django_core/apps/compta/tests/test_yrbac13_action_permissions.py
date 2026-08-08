@@ -121,7 +121,7 @@ class CampagneEnvoyerAllowDenyTests(_ComptaActionAllowDenyMixin, TestCase):
     """CampagneViewSet.envoyer (marketing-en-compta, ré-exportée par
     ``apps/marketing/views.py``) — déclenche un envoi réel."""
     label = "campagne-envoyer"
-    action_path = "/api/django/compta/campagnes/999999/envoyer/"
+    action_path = "/api/django/marketing/campagnes/999999/envoyer/"
     required_code = "compta_valider"
 
 

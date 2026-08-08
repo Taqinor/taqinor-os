@@ -143,7 +143,7 @@ class SegmentMarketingApiTests(TestCase):
 
     def test_creation_rejette_regle_inconnue(self):
         api = auth(self.user)
-        resp = api.post('/api/django/compta/segments-marketing/', {
+        resp = api.post('/api/django/marketing/segments-marketing/', {
             'nom': 'Bad', 'regles': {'champ_inconnu': 'x'},
         }, format='json')
         self.assertEqual(resp.status_code, 400)
@@ -151,12 +151,12 @@ class SegmentMarketingApiTests(TestCase):
     def test_previsualiser_endpoint(self):
         make_lead(self.co, 'A', ville='Casablanca')
         api = auth(self.user)
-        resp = api.post('/api/django/compta/segments-marketing/', {
+        resp = api.post('/api/django/marketing/segments-marketing/', {
             'nom': 'Casa', 'regles': {'ville': 'casablanca'},
         }, format='json')
         self.assertEqual(resp.status_code, 201, resp.content)
         seg_id = resp.data['id']
         resp2 = api.get(
-            f'/api/django/compta/segments-marketing/{seg_id}/previsualiser/')
+            f'/api/django/marketing/segments-marketing/{seg_id}/previsualiser/')
         self.assertEqual(resp2.status_code, 200, resp2.content)
         self.assertEqual(resp2.data['count'], 1)

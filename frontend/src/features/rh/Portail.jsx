@@ -242,7 +242,7 @@ export default function Portail() {
             empty="Aucune demande RH."
             renderRow={(d) => (
               <RowLine
-                title={d.type_demande_display || d.type_demande || 'Demande'}
+                title={d.type_display || d.type || 'Demande'}
                 meta={d.date_creation ? formatDate(d.date_creation) : ''}
                 icon={FileText}
                 right={d.attachment
@@ -427,7 +427,7 @@ function AttestationDialog({ onClose, onSaved }) {
   const TYPES = [
     { value: 'attestation_travail', label: 'Attestation de travail' },
     { value: 'attestation_salaire', label: 'Attestation de salaire' },
-    { value: 'domiciliation', label: 'Attestation de domiciliation' },
+    { value: 'attestation_domiciliation', label: 'Attestation de domiciliation' },
     { value: 'autre', label: 'Autre' },
   ]
 
@@ -436,7 +436,7 @@ function AttestationDialog({ onClose, onSaved }) {
     setSaving(true)
     setServerError(null)
     try {
-      await rhApi.demanderAttestation({ type_demande: type, motif: motif || '' })
+      await rhApi.demanderAttestation({ type, message: motif || '' })
       toast.success('Demande envoyée.')
       onSaved?.()
     } catch (err) {

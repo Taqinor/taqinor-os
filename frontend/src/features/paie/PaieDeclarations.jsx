@@ -1082,7 +1082,9 @@ function CumulsTab() {
               <p className="text-success">Aucun matricule inconnu.</p>
             )}
             <p className="mt-1 text-muted-foreground">
-              {apercu.lignes?.length ?? 0} ligne(s) à importer.
+              {/* PACT154 — dry_run_reprise_cumuls (apps/paie/services.py:6349-6356)
+                  renvoie total_lignes (compte réel) — jamais un champ `lignes`. */}
+              {apercu.total_lignes ?? 0} ligne(s) à importer.
             </p>
           </div>
         )}

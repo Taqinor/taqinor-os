@@ -65,6 +65,10 @@ EVENT_MODULE = {
     # paie
     EventType.PAIE_RIB_DIVERGENCE: 'paie',
     EventType.PAIE_RUN_PRET: 'paie',
+    # veille_ao — une société qui n'a pas le module ne doit recevoir ni les
+    # nouveaux avis ni l'alarme de silence d'une veille qu'elle n'a pas.
+    EventType.VEILLE_AO_NOUVEAUX_AVIS: 'veille_ao',
+    EventType.VEILLE_AO_ALARME_SILENCE: 'veille_ao',
 }
 
 

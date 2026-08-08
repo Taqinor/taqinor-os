@@ -12,8 +12,28 @@ What it does (one pass, DB-free):
      fields, enum/operationId collisions) that no single task can clear, but a
      NEW unresolved serializer or a NEW ``operationId`` collision turns the job
      red — which is exactly the regression YAPIC6 is about;
-  3. reports (advisory, never fails) how the freshly generated operation
-     inventory differs from the committed snapshot ``docs/openapi-schema.yml``.
+  3. FAILS when the freshly generated operation inventory differs from the
+     committed snapshot ``docs/openapi-schema.yml`` (PACT6).
+
+PACT6 — POURQUOI LA DERIVE DE L'INSTANTANE EST BLOQUANTE (03/08/2026)
+--------------------------------------------------------------------
+Cette comparaison etait « advisory, never fails », au motif qu'exiger une
+regeneration de ~3 min a chaque PR bloquerait la file de construction. Le prix
+mesure de ce confort : l'instantane a ete regenere pour la derniere fois le
+31/07, AVANT la fusion du module Appels d'offres du 02/08. **Un module entier
+est entre en production sans que le fichier de contrat bouge d'une ligne** —
+29 ressources presentes dans le code en etaient absentes, dont 21 dans
+``apps/ao``. Tant que l'instantane est en retard, AUCUNE garde front<->back ne
+peut s'appuyer dessus : c'est un document qui a l'air d'etre le contrat sans
+l'etre.
+
+La regeneration est donc desormais une obligation de la PR qui ajoute la route,
+et le message d'echec porte la commande exacte :
+
+    python scripts/check_openapi_schema.py --write
+
+Ne repassez pas ce controle en « advisory ». Si la regeneration est trop lente,
+accelerez-la ; ne rendez pas le contrat facultatif.
 
 Why the snapshot is an INVENTORY and not the raw document: the full schema is
 ~20 MB / 8 100 paths — git-hostile and un-renderable in a PR. The inventory
@@ -180,6 +200,73 @@ def _operation_lines(text: str) -> set[str]:
     return {ln for ln in text.splitlines() if ln.startswith("- ") and " -> " in ln}
 
 
+def _component_lines(text: str) -> set[str]:
+    """Noms de composants : la queue `components:` de l'instantane."""
+    _, _, tail = text.partition("\ncomponents:\n")
+    return {ln for ln in tail.splitlines() if ln.startswith("- ")}
+
+
+REGEN_COMMAND = "python scripts/check_openapi_schema.py --write"
+
+
+def derive_instantane(previous: str, inventory: str) -> dict | None:
+    """PACT6 — decrit la derive entre l'instantane versionne et le code.
+
+    Retourne None si l'instantane est a jour, sinon un dictionnaire nomme :
+    les operations et composants ABSENTS de l'instantane (routes livrees sans
+    regeneration — le cas du module AO du 02/08) et ceux qui y sont EN TROP
+    (routes retirees du code). `identique` distingue une derive de contenu
+    d'une simple derive d'en-tete (compteurs, titre, version).
+    """
+    if previous == inventory:
+        return None
+    anciennes, nouvelles = _operation_lines(previous), _operation_lines(inventory)
+    anciens, nouveaux = _component_lines(previous), _component_lines(inventory)
+    return {
+        "operations_manquantes": sorted(nouvelles - anciennes),
+        "operations_en_trop": sorted(anciennes - nouvelles),
+        "composants_manquants": sorted(nouveaux - anciens),
+        "composants_en_trop": sorted(anciens - nouveaux),
+    }
+
+
+def rapporter_derive(derive: dict, snapshot_rel: str) -> None:
+    """Message d'echec : les routes NOMMEES + la commande de regeneration."""
+    manquantes = derive["operations_manquantes"]
+    en_trop = derive["operations_en_trop"]
+    comp_manquants = derive["composants_manquants"]
+    comp_en_trop = derive["composants_en_trop"]
+    print(f"\nECHEC : l'instantane de contrat {snapshot_rel} est EN RETARD "
+          f"sur le code (PACT6).\n")
+    print(f"  +{len(manquantes)} operation(s) presente(s) dans le code et ABSENTE(s) "
+          f"de l'instantane")
+    print(f"  -{len(en_trop)} operation(s) presente(s) dans l'instantane et "
+          f"DISPARUE(s) du code")
+    if comp_manquants or comp_en_trop:
+        print(f"  composants : +{len(comp_manquants)} / -{len(comp_en_trop)}")
+    for titre, lignes in (("ABSENTES de l'instantane", manquantes),
+                          ("DISPARUES du code", en_trop),
+                          ("composants absents", comp_manquants),
+                          ("composants disparus", comp_en_trop)):
+        if not lignes:
+            continue
+        print(f"\n  {titre} :")
+        for ligne in lignes[:40]:
+            print(f"    {ligne}")
+        if len(lignes) > 40:
+            print(f"    ... et {len(lignes) - 40} autre(s).")
+    if not (manquantes or en_trop or comp_manquants or comp_en_trop):
+        print("\n  (aucune operation ni composant ne differe : seul l'en-tete de "
+              "l'instantane — compteurs, titre, version — a bouge.)")
+    print(f"\nREGENERER L'INSTANTANE, PUIS LE COMMITTER :\n    {REGEN_COMMAND}\n")
+    print("POURQUOI C'EST BLOQUANT : le 02/08/2026 le module Appels d'offres est "
+          "entre en production\nsans que l'instantane bouge d'une ligne "
+          "(29 ressources absentes, dont 21 dans apps/ao).\nUn contrat en retard "
+          "est un contrat qui ment : aucune garde front<->back ne peut s'appuyer\n"
+          "dessus. Ne repassez pas ce controle en « advisory » — voir l'en-tete "
+          "de ce script.")
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--write", action="store_true",
@@ -215,21 +302,27 @@ def main() -> int:
         )
         print(f"Base de reference reecrite : {BASELINE_PATH.relative_to(ROOT)}")
 
+    derive = None
     if inventory is not None:
+        snapshot_rel = SNAPSHOT_PATH.relative_to(ROOT).as_posix()
         previous = SNAPSHOT_PATH.read_text(encoding="utf-8") if SNAPSHOT_PATH.is_file() else ""
         if args.write:
             SNAPSHOT_PATH.parent.mkdir(parents=True, exist_ok=True)
             SNAPSHOT_PATH.write_text(inventory, encoding="utf-8", newline="\n")
-            print(f"Instantane ecrit : {SNAPSHOT_PATH.relative_to(ROOT)}")
-        elif previous:
-            # Advisory only — NEVER fails. Requiring every endpoint-adding PR to
-            # regenerate a 2-3 min schema would block the whole build queue.
-            old, new = _operation_lines(previous), _operation_lines(inventory)
-            added, removed = len(new - old), len(old - new)
-            if added or removed:
-                print(f"Info : instantane docs/openapi-schema.yml en retard de "
-                      f"+{added} / -{removed} operation(s) "
-                      f"(regenerer : python scripts/check_openapi_schema.py --write).")
+            print(f"Instantane ecrit : {snapshot_rel}")
+        elif not previous:
+            print(f"\nECHEC : l'instantane de contrat {snapshot_rel} est absent "
+                  f"(PACT6).\n    {REGEN_COMMAND}")
+            derive = {"operations_manquantes": [], "operations_en_trop": [],
+                      "composants_manquants": [], "composants_en_trop": []}
+        else:
+            # PACT6 — BLOQUANT (etait « advisory, never fails » : voir l'en-tete).
+            derive = derive_instantane(previous, inventory)
+            if derive is not None:
+                rapporter_derive(derive, snapshot_rel)
+            else:
+                print(f"OK : instantane {snapshot_rel} a jour du code "
+                      f"({len(_operation_lines(inventory))} operations).")
 
     baseline = load_baseline()
     new_findings = sorted(found - baseline)
@@ -249,7 +342,7 @@ def main() -> int:
     stale = len(baseline - found)
     print(f"OK : aucun avertissement de schema nouveau "
           f"({len(baseline)} en base de reference, dont {stale} desormais corrige(s)).")
-    return 0
+    return 1 if derive is not None else 0
 
 
 if __name__ == "__main__":

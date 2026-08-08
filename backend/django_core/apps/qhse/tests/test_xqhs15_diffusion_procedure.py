@@ -5,7 +5,7 @@ Couvre :
 * une diffusion cible N employés (accusés créés) ;
 * l'accusé de lecture est idempotent (ne duplique pas, ne change pas
   ``lu_le`` une fois posé) ;
-* « mes lectures en attente » ;
+* « mes lectures en attente » (service ET endpoint API — PACT181) ;
 * la relance des retardataires ;
 * le % de conformité par procédure ;
 * une nouvelle version re-déclenche la diffusion sur la même population ;
@@ -13,6 +13,8 @@ Couvre :
 """
 from django.contrib.auth import get_user_model
 from django.test import TestCase
+from rest_framework.test import APIClient
+from rest_framework_simplejwt.tokens import AccessToken
 
 from authentication.models import Company
 
@@ -24,6 +26,21 @@ from apps.qhse.services import (
 )
 
 User = get_user_model()
+
+MES_LECTURES_URL = (
+    '/api/django/qhse/procedures-qualite/mes-lectures-en-attente/')
+
+
+def auth_client(user):
+    api = APIClient()
+    api.credentials(HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(user)}')
+    return api
+
+
+def rows(resp):
+    data = resp.data
+    return (data['results']
+            if isinstance(data, dict) and 'results' in data else data)
 
 
 def make_company(slug, nom):
@@ -102,6 +119,50 @@ class LecturesEnAttenteTests(TestCase):
         accuser_lecture(diffusion, self.user)
         en_attente = lectures_en_attente(self.user)
         self.assertEqual(en_attente.count(), 0)
+
+
+class MesLecturesEnAttenteApiTests(TestCase):
+    """PACT181 — endpoint « mes lectures en attente » (l'action existait dans
+    le docstring de ``lectures_en_attente`` depuis XQHS15 sans jamais être
+    câblée à aucune route)."""
+
+    def setUp(self):
+        self.company = make_company('co-xqhs15-api', 'CoXqhs15Api')
+        self.procedure = make_procedure(self.company)
+        self.user = User.objects.create_user(
+            username='resp-xqhs15-api', password='x', company=self.company,
+            role_legacy='responsable')
+
+    def test_liste_les_diffusions_non_lues_de_l_utilisateur(self):
+        diffuser_procedure(self.procedure, [self.user])
+        resp = auth_client(self.user).get(MES_LECTURES_URL)
+        self.assertEqual(resp.status_code, 200)
+        data = rows(resp)
+        self.assertEqual(len(data), 1)
+        self.assertEqual(data[0]['procedure_reference'], 'PRO-QUAL-001')
+
+    def test_exclut_les_lus_et_les_autres_utilisateurs(self):
+        autre = User.objects.create_user(
+            username='resp2-xqhs15-api', password='x', company=self.company,
+            role_legacy='responsable')
+        diffusion = diffuser_procedure(self.procedure, [self.user, autre])
+        accuser_lecture(diffusion, self.user)
+        resp = auth_client(self.user).get(MES_LECTURES_URL)
+        self.assertEqual(rows(resp), [])
+        # L'autre utilisateur, lui, a toujours sa lecture en attente.
+        resp_autre = auth_client(autre).get(MES_LECTURES_URL)
+        self.assertEqual(len(rows(resp_autre)), 1)
+
+    def test_isolation_societe(self):
+        autre_societe = make_company('co-xqhs15-api-autre', 'CoXqhs15ApiAutre')
+        autre_procedure = make_procedure(
+            autre_societe, reference='PRO-QUAL-AUTRE')
+        autre_user = User.objects.create_user(
+            username='resp-xqhs15-api-autre', password='x',
+            company=autre_societe, role_legacy='responsable')
+        diffuser_procedure(autre_procedure, [autre_user])
+        resp = auth_client(self.user).get(MES_LECTURES_URL)
+        self.assertEqual(rows(resp), [])
 
 
 class RelancerRetardatairesLectureTests(TestCase):

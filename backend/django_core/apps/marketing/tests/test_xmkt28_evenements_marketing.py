@@ -42,7 +42,7 @@ class EvenementsMarketingTests(TestCase):
 
     def test_inscription_publique_endpoint(self):
         resp = self.client.post(
-            f'/api/django/compta/evenements-marketing/{self.evt.id}/'
+            f'/api/django/marketing/evenements-marketing/{self.evt.id}/'
             'inscription-publique/',
             data={'nom': 'Fatima', 'email': 'fatima@x.ma'},
             content_type='application/json')

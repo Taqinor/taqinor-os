@@ -7,31 +7,42 @@ import { StatutControle } from '../statusAo'
 import { formatNumber } from '../../../lib/format'
 
 /* ============================================================================
-   AOF103 — Panneau « Sensibilités » : le plancher, et la phrase GÉNÉRÉE.
+   AOF103 — Panneau « Sensibilités » : le plancher, et la phrase SERVEUR.
    ----------------------------------------------------------------------------
+   RÉPARATION 07/08/2026 (PACT172) — BUG RÉEL trouvé en branchant ce panneau :
+   il appelait `aoApi.calepinages.sensibilites(calepinageId)`, un endpoint
+   NON CONSTRUIT (`aoApi.js` le documentait déjà comme tel). Le vrai endpoint
+   est PORTÉ PAR LA VARIANTE — `aoApi.calepinage.variantes.sensibilites
+   (varianteId)`, POST `/ao/calepinage/variantes/<id>/sensibilites/`
+   (`CalepinageVarianteViewSet.sensibilites`, `calepinage_service.
+   calculer_sensibilites`) — et sa réponse n'a JAMAIS eu la forme que ce
+   composant lisait : `lignes`/`plancher` n'existent pas côté serveur, qui
+   rend `{reference_modules, plancher_modules, engagement_modules, verdict,
+   non_applicables, sensibilites}`. Brancher sans corriger l'appel ET la
+   lecture aurait produit un refus serveur permanent (l'ancien endpoint) puis,
+   une fois l'URL seule corrigée, un tableau vide silencieux (l'ancienne forme
+   ne matchant plus rien) — les deux sont pires qu'un panneau non monté.
+
    Les variantes défavorables (100 % portrait, 100 % paysage, dégagement
    maximal partout, allées 1,00 / 1,20 / 1,90, cotes douteuses au pire,
-   segments raccourcis) sont recalculées par LE MÊME MOTEUR côté serveur
-   (`GET /ao/calepinages/:id/sensibilites/`, AOF11). Ce panneau ne connaît
-   AUCUN de ces scénarios : leurs libellés, leurs comptes et leur verdict
-   `tenu` viennent tous du payload — un scénario ajouté côté serveur apparaît
-   ici sans toucher au front, et aucun libellé de scénario n'est écrit dans ce
-   fichier (gardé par le contrat de source de `SensibilitesPanel.test.jsx`).
+   segments raccourcis) sont recalculées par LE MÊME MOTEUR côté serveur.
+   Ce panneau ne connaît AUCUN de ces scénarios : leurs libellés (déjà
+   « … — impact chiffré de +N module(s) », `core/calepinage/sensibilites.py`)
+   et leur verdict `tenu` viennent tous du payload — un scénario ajouté côté
+   serveur apparaît ici sans toucher au front, et aucun libellé de scénario
+   n'est écrit dans ce fichier (gardé par le contrat de source de
+   `SensibilitesPanel.test.jsx`).
 
-   ── LA PHRASE EST GÉNÉRÉE, JAMAIS RÉDIGÉE ─────────────────────────────────
-   `construirePhrase()` COMPOSE le verdict à partir des données :
-     • tous les scénarios tenus  → « Engagement tenu partout … »
-     • au moins un scénario non tenu → « Engagement tenu sauf : » + les
-       libellés SERVEUR des scénarios fautifs, énumérés depuis le payload ;
-     • au moins un scénario non évalué → le verdict est déclaré INCOMPLET
-       (jamais un « tenu partout » optimiste fondé sur un trou de données).
-   Il n'existe donc AUCUNE phrase de verdict pré-écrite couvrant un cas
-   particulier : la seule chose figée est la charpente de la phrase.
+   ── LA PHRASE EST SERVEUR, JAMAIS COMPOSÉE ICI ────────────────────────────
+   `resultat.verdict()` (`core/calepinage/sensibilites.py`) rend déjà la
+   phrase complète, GÉNÉRÉE à partir des nombres — ce panneau se contente de
+   l'AFFICHER (`data.verdict`), il ne la reconstruit plus d'aucune façon.
 
    ── LE PLANCHER ───────────────────────────────────────────────────────────
-   `plancher` est renvoyé par le serveur (`{ cle, compte_modules }`). À défaut,
-   le front SÉLECTIONNE la ligne au plus petit compte — une sélection parmi des
-   valeurs serveur, jamais une arithmétique de calepinage — et le signale.
+   `plancher_modules` est un NOMBRE publié par le serveur (le pire compte
+   obtenu, référence comprise) — jamais recalculé ici. La/les ligne(s) qui
+   l'atteignent sont repérées par égalité de `modules`, une comparaison
+   d'AFFICHAGE entre deux nombres serveur, pas une arithmétique de calepinage.
    ========================================================================== */
 
 const NON_EVALUE = 'non_evalue'
@@ -42,56 +53,47 @@ function etatLigne(ligne) {
   return ligne.tenu ? 'ok' : 'bloquant'
 }
 
-// Charpente de la phrase — les libellés énumérés viennent TOUS du payload.
+// Lignes du tableau : la RÉFÉRENCE (calcul retenu, `reference_modules`) suivie
+// de chaque sensibilité défavorable rejouée par le serveur (`sensibilites`).
 // eslint-disable-next-line react-refresh/only-export-components -- logique pure co-localisée (testable), même motif que DevisTab.devisTrackCurrent
-export function construirePhrase({ lignes = [], engagementModules = null } = {}) {
-  if (!lignes.length) return ''
-  const nonEvaluees = lignes.filter((l) => etatLigne(l) === NON_EVALUE)
-  const fautives = lignes.filter((l) => etatLigne(l) === 'bloquant')
-
-  const suffixeEngagement = engagementModules != null
-    ? ` (engagement : ${formatNumber(engagementModules, { decimals: 0 })} modules)`
-    : ''
-
-  if (nonEvaluees.length) {
-    return `Verdict incomplet : ${formatNumber(nonEvaluees.length, { decimals: 0 })} scénario(s) non évalué(s)`
-      + ` — ${nonEvaluees.map((l) => l.libelle).join(', ')}.`
-  }
-  if (!fautives.length) {
-    return `Engagement tenu partout${suffixeEngagement} — `
-      + `${formatNumber(lignes.length, { decimals: 0 })} scénario(s) défavorable(s) testé(s).`
-  }
-  return `Engagement tenu sauf : ${fautives.map((l) => l.libelle).join(', ')}${suffixeEngagement}.`
+export function lignesSensibilites({ referenceModules = null, engagementModules = null, sensibilites = [] } = {}) {
+  if (referenceModules == null) return []
+  const tenuReference = engagementModules == null ? null : referenceModules >= engagementModules
+  return [
+    {
+      cle: 'reference', libelle: 'Référence (calcul retenu)', modules: referenceModules,
+      delta: 0, tenu: tenuReference, reference: true,
+    },
+    ...sensibilites.map((s) => ({
+      cle: s.code, libelle: s.libelle, modules: s.modules, delta: s.delta, tenu: s.tenu,
+    })),
+  ]
 }
 
-// Ligne-plancher : celle désignée par le serveur, sinon le plus petit compte.
+// Ligne(s) au PLANCHER publié par le serveur (`plancher_modules`) — une
+// SÉLECTION parmi des valeurs serveur, jamais un recalcul.
 // eslint-disable-next-line react-refresh/only-export-components -- logique pure co-localisée (testable), même motif que DevisTab.devisTrackCurrent
-export function lignePlancher(lignes = [], plancher = null) {
-  if (!lignes.length) return null
-  if (plancher?.cle) {
-    const trouvee = lignes.find((l) => l.cle === plancher.cle)
-    if (trouvee) return { ligne: trouvee, deduit: false }
-  }
-  const mini = lignes.reduce(
-    (acc, l) => (acc == null || (l.compte_modules ?? Infinity) < (acc.compte_modules ?? Infinity) ? l : acc),
-    null,
-  )
-  return mini ? { ligne: mini, deduit: true } : null
+export function lignesPlancher(lignes = [], plancherModules = null) {
+  if (plancherModules == null) return []
+  return lignes.filter((l) => l.modules === plancherModules)
 }
 
-export function SensibilitesPanel({ calepinageId }) {
+export function SensibilitesPanel({ varianteId }) {
   const { data, loading, error } = useResource(
-    () => aoApi.calepinages.sensibilites(calepinageId), calepinageId,
+    () => aoApi.calepinage.variantes.sensibilites(varianteId), varianteId,
     { select: (res) => res.data, errorMessage: 'Impossible de charger les sensibilités.' },
   )
 
-  const lignes = useMemo(() => data?.lignes ?? [], [data])
-  const engagementModules = data?.engagement_modules ?? null
-  const plancher = useMemo(() => lignePlancher(lignes, data?.plancher), [lignes, data])
-  const phrase = useMemo(
-    () => construirePhrase({ lignes, engagementModules }),
-    [lignes, engagementModules],
+  const lignes = useMemo(() => lignesSensibilites({
+    referenceModules: data?.reference_modules ?? null,
+    engagementModules: data?.engagement_modules ?? null,
+    sensibilites: data?.sensibilites ?? [],
+  }), [data])
+  const planchers = useMemo(
+    () => lignesPlancher(lignes, data?.plancher_modules ?? null), [lignes, data],
   )
+  const clesPlancher = useMemo(() => new Set(planchers.map((l) => l.cle)), [planchers])
+  const nonApplicables = data?.non_applicables ?? []
 
   if (loading) {
     return <Card className="p-4"><Skeleton className="h-5 w-1/2" /><Skeleton className="mt-3 h-32 w-full" /></Card>
@@ -118,12 +120,12 @@ export function SensibilitesPanel({ calepinageId }) {
         </p>
       </div>
 
-      {/* Phrase GÉNÉRÉE (annoncée aux lecteurs d'écran après chaque recalcul). */}
+      {/* Verdict GÉNÉRÉ PAR LE SERVEUR (`resultat.verdict()`) — jamais rédigé ici. */}
       <p
         aria-live="polite"
         className="rounded-md border border-border bg-muted/30 px-3 py-2 text-sm font-medium"
       >
-        {phrase}
+        {data.verdict}
       </p>
 
       {/* Tablette : le tableau défile HORIZONTALEMENT dans son propre conteneur,
@@ -131,20 +133,19 @@ export function SensibilitesPanel({ calepinageId }) {
       <div className="-mx-1 overflow-x-auto px-1">
         <table className="w-full min-w-[34rem] border-collapse text-sm">
           <caption className="sr-only">
-            Scénarios défavorables, compte de modules obtenu et verdict vis-à-vis de l’engagement.
+            Référence et scénarios défavorables, compte de modules obtenu et verdict vis-à-vis de l’engagement.
           </caption>
           <thead>
             <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-muted-foreground">
               <th scope="col" className="py-2 pr-3 font-medium">Scénario</th>
               <th scope="col" className="py-2 pr-3 text-right font-medium">Modules</th>
-              <th scope="col" className="py-2 pr-3 text-right font-medium">Puissance</th>
-              <th scope="col" className="py-2 pr-3 text-right font-medium">Écart à l’engagement</th>
+              <th scope="col" className="py-2 pr-3 text-right font-medium">Delta vs référence</th>
               <th scope="col" className="py-2 font-medium">Verdict</th>
             </tr>
           </thead>
           <tbody>
             {lignes.map((l) => {
-              const estPlancher = plancher?.ligne === l
+              const estPlancher = clesPlancher.has(l.cle)
               return (
                 <tr
                   key={l.cle}
@@ -159,15 +160,10 @@ export function SensibilitesPanel({ calepinageId }) {
                     )}
                   </th>
                   <td className="py-2 pr-3 text-right tabular-nums">
-                    {formatNumber(l.compte_modules, { decimals: 0 })}
+                    {formatNumber(l.modules, { decimals: 0 })}
                   </td>
                   <td className="py-2 pr-3 text-right tabular-nums">
-                    {l.puissance_kwc != null ? `${formatNumber(l.puissance_kwc, { decimals: 2 })} kWc` : '—'}
-                  </td>
-                  <td className="py-2 pr-3 text-right tabular-nums">
-                    {l.ecart_engagement_modules != null
-                      ? formatNumber(l.ecart_engagement_modules, { decimals: 0 })
-                      : '—'}
+                    {l.reference ? '—' : `${l.delta > 0 ? '+' : ''}${formatNumber(l.delta, { decimals: 0 })}`}
                   </td>
                   <td className="py-2">
                     <StatutControle
@@ -183,10 +179,12 @@ export function SensibilitesPanel({ calepinageId }) {
         </table>
       </div>
 
-      {plancher?.deduit && (
-        <p className="text-xs text-muted-foreground">
-          Plancher déduit de la liste (le serveur ne l’a pas désigné).
-        </p>
+      {/* Scénarios non applicables à ce relevé — phrases COMPLÈTES, déjà
+          rédigées par le serveur (`batterie()`), jamais recomposées ici. */}
+      {nonApplicables.length > 0 && (
+        <ul className="flex flex-col gap-0.5 text-xs text-muted-foreground">
+          {nonApplicables.map((motif) => <li key={motif}>{motif}</li>)}
+        </ul>
       )}
     </Card>
   )

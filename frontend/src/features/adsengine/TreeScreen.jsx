@@ -43,10 +43,13 @@ function statutTone(statut) {
   }
 }
 
+// PACT157 — clés alignées sur AssumptionNode.Classe (backend/django_core/apps/
+// adsengine/models.py:2284-2287) : 'audience' n'existe pas côté serveur, la
+// vraie valeur est 'audience_structure' — le libellé ne s'affichait jamais.
 const CLASSE_LABELS = {
   creatif: 'Créatif',
   angle: 'Angle',
-  audience: 'Audience/structure',
+  audience_structure: 'Audience / structure',
 }
 
 // Normalise la liste des nœuds — lecture seule, aucun statut/score inventé.

@@ -6,6 +6,7 @@ viewsets filtrent par ``request.user.company`` (TenantMixin) et posent la socié
 côté serveur ; le ``cout_horaire`` (paie/marge) ne quitte jamais cette API.
 """
 from datetime import timedelta
+from decimal import Decimal
 
 from django.contrib.contenttypes.models import ContentType
 from django.utils import timezone
@@ -4401,12 +4402,34 @@ class ElementsVariablesPaieViewSet(_RhBaseViewSet):
 
         On garde ``?export``/un endpoint dédié (et NON ``?format=``, réservé
         par DRF) comme déclencheur d'export.
+
+        PACT162 — la colonne Retenues additionne, en plus de
+        ``evp.retenues`` (saisie manuelle), les avances sur salaire
+        APPROUVÉES dont la déduction est planifiée sur le même (année, mois)
+        via ``selectors.avances_a_deduire`` (FG192 : c'était documenté comme
+        déjà branché, mais aucun appelant n'existait — l'argent réel
+        n'atteignait jamais le prestataire de paie).
         """
         import csv
 
         from django.http import HttpResponse
 
-        rows = self.filter_queryset(self.get_queryset())
+        rows = list(self.filter_queryset(self.get_queryset()))
+        company = request.user.company
+
+        # Une requête par (année, mois) distinct présent dans l'export,
+        # jamais une par ligne — évite le N+1 sur un bordereau à plusieurs
+        # dizaines d'employés.
+        periodes = {(evp.annee, evp.mois) for evp in rows}
+        avances_par_periode = {}
+        for annee, mois in periodes:
+            avances_par_periode[(annee, mois)] = {}
+            for av in selectors.avances_a_deduire(company, annee, mois):
+                cle = av['employe']
+                avances_par_periode[(annee, mois)][cle] = (
+                    avances_par_periode[(annee, mois)].get(
+                        cle, Decimal('0')) + av['montant'])
+
         response = HttpResponse(content_type='text/csv; charset=utf-8')
         response['Content-Disposition'] = (
             'attachment; filename="elements-variables-paie.csv"')
@@ -4421,12 +4444,15 @@ class ElementsVariablesPaieViewSet(_RhBaseViewSet):
         ])
         for evp in rows:
             emp = evp.employe
+            avances_du_mois = avances_par_periode.get(
+                (evp.annee, evp.mois), {}).get(emp.id, Decimal('0'))
+            retenues_totales = (evp.retenues or Decimal('0')) + avances_du_mois
             writer.writerow([
                 emp.matricule, emp.nom, emp.prenom,
                 evp.annee, evp.mois,
                 evp.heures_normales, evp.heures_supp,
                 evp.jours_absence, evp.jours_conges,
-                evp.primes, evp.retenues,
+                evp.primes, retenues_totales,
                 evp.get_statut_display(), evp.commentaire,
             ])
         return response

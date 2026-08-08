@@ -13,15 +13,20 @@ Invariants verrouillés :
   3. le fichier passe par ``records.Attachment`` — aucun ``FileField`` neuf
      (garde ARC26, ``check_platform.py``) ;
   4. un même fichier reçu deux fois RÉUTILISE l'attachement (empreinte
-     SHA-256) au lieu d'en stocker un doublon.
+     SHA-256) au lieu d'en stocker un doublon ;
+  5. ce rangement a une PORTE D'ENTRÉE HTTP (``upload``, multipart) — le
+     service existait mais n'avait aucun appelant, donc aucun plan fourni ne
+     pouvait entrer par l'API.
 
 Run :
     python manage.py test apps.ao.tests.test_plan_source -v2
 """
 from decimal import Decimal
+from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.db import models as dj_models
 from django.test import SimpleTestCase, TestCase
 from rest_framework.test import APIClient
@@ -29,12 +34,32 @@ from rest_framework_simplejwt.tokens import AccessToken
 
 from apps.ao import services
 from apps.ao.models import AppelOffre, BatimentAO, PlanSource, ToitureAO
+from apps.records.models import Attachment
 from apps.roles.models import DIRECTEUR_PERMISSIONS, Role
 from authentication.models import Company
 
 User = get_user_model()
 
 URL = '/api/django/ao/plans-source/'
+
+#: Un PDF minimal : ce sont les octets magiques qui décident du format côté
+#: stockage partagé, jamais l'extension du nom de fichier.
+PDF = b'%PDF-1.4\nplan de toiture 05H\n%%EOF\n'
+
+
+def _stockage_factice(mime='application/pdf'):
+    """Remplace MinIO : compte les téléversements RÉELS, sans réseau."""
+    ecrits = []
+
+    def store(fichier, audio=False, company=None):
+        donnees = fichier.read()
+        ecrits.append(donnees)
+        return ({'file_key': 'attachments/%s/plan-%d'
+                 % (getattr(company, 'id', 0), len(ecrits)),
+                 'filename': getattr(fichier, 'name', 'plan.pdf'),
+                 'size': len(donnees), 'mime': mime}, None)
+
+    return store, ecrits
 
 
 class TestModelePlanSource(SimpleTestCase):
@@ -210,6 +235,149 @@ class TestApiPlanSource(TestCase):
         lignes = r.data['results'] if isinstance(r.data, dict) \
             and 'results' in r.data else r.data
         self.assertEqual(lignes, [])
+
+
+class TestApiUploadPlanSource(TestCase):
+    """AOF20 — ``POST /plans-source/{id}/upload/`` (multipart).
+
+    Constat qui motive ces tests : ``attacher_fichier_plan_source`` rangeait
+    déjà proprement le binaire (empreinte + dédup + ``records.Attachment``),
+    mais AUCUNE route ne l'appelait — l'écran d'import n'avait donc pas
+    d'endpoint et le plan fourni ne pouvait pas entrer.
+    """
+
+    def setUp(self):
+        self.company = Company.objects.create(nom='AOF20 Up', slug='aof20-up')
+        role = Role.objects.create(
+            company=self.company, nom='Directeur',
+            permissions=list(DIRECTEUR_PERMISSIONS))
+        self.user = User.objects.create_user(
+            username='aof20_up', password='x', company=self.company,
+            role=role)
+        self.api = APIClient()
+        self.api.credentials(
+            HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(self.user)}')
+        ao = AppelOffre.objects.create(
+            company=self.company, reference='AO-20-UP', objet='Upload')
+        self.batiment = BatimentAO.objects.create(
+            company=self.company, appel_offre=ao, code='U')
+        self.toiture = ToitureAO.objects.create(
+            company=self.company, batiment=self.batiment)
+        self.plan = self._plan()
+
+    def _plan(self, company=None, toiture=None):
+        return PlanSource.objects.create(
+            company=company or self.company,
+            toiture=toiture or self.toiture,
+            origine=PlanSource.Origine.PLAN_FOURNI,
+            type_fichier=PlanSource.TypeFichier.PDF)
+
+    @staticmethod
+    def _fichier(contenu=PDF, nom='plan.pdf'):
+        return SimpleUploadedFile(nom, contenu, content_type='application/pdf')
+
+    def _upload(self, plan, store, contenu=PDF, nom='plan.pdf'):
+        with patch('apps.records.storage.store_attachment', store):
+            return self.api.post(
+                f'{URL}{plan.id}/upload/',
+                {'fichier': self._fichier(contenu, nom)}, format='multipart')
+
+    def test_un_pdf_produit_un_attachment_reference(self):
+        store, ecrits = _stockage_factice()
+        r = self._upload(self.plan, store)
+        self.assertEqual(r.status_code, 200, r.data)
+        self.plan.refresh_from_db()
+        self.assertIsNotNone(self.plan.attachment_id)
+        self.assertEqual(r.data['attachment'], self.plan.attachment_id)
+        self.assertEqual(self.plan.empreinte_sha256,
+                         services.empreinte_fichier(PDF))
+        attachement = Attachment.objects.get(pk=self.plan.attachment_id)
+        self.assertEqual(attachement.company_id, self.company.id)
+        self.assertEqual(attachement.object_id, self.plan.pk)
+        self.assertEqual(attachement.uploaded_by_id, self.user.id)
+        self.assertEqual(len(ecrits), 1)
+
+    def test_un_second_envoi_du_meme_contenu_reutilise_l_attachment(self):
+        """Dédup : l'erratum re-téléversé ne stocke PAS un second binaire."""
+        store, ecrits = _stockage_factice()
+        premier = self._upload(self.plan, store)
+        second_plan = self._plan()
+        second = self._upload(second_plan, store)
+        self.assertEqual(second.status_code, 200, second.data)
+        self.assertEqual(second.data['attachment'],
+                         premier.data['attachment'])
+        self.assertEqual(len(ecrits), 1)
+        self.assertEqual(
+            Attachment.objects.filter(company=self.company).count(), 1)
+
+    def test_un_contenu_different_stocke_bien_un_second_attachment(self):
+        """Contrôle négatif : la dédup ne confond pas deux plans distincts."""
+        store, ecrits = _stockage_factice()
+        premier = self._upload(self.plan, store)
+        autre_plan = self._plan()
+        second = self._upload(autre_plan, store,
+                              contenu=b'%PDF-1.4\nplan 06H\n%%EOF\n')
+        self.assertEqual(second.status_code, 200, second.data)
+        self.assertNotEqual(second.data['attachment'],
+                            premier.data['attachment'])
+        self.assertEqual(len(ecrits), 2)
+
+    def test_l_empreinte_n_est_pas_saisissable_depuis_le_corps(self):
+        """``empreinte_sha256`` est POSÉE côté serveur, jamais reçue."""
+        store, _ecrits = _stockage_factice()
+        with patch('apps.records.storage.store_attachment', store):
+            r = self.api.post(
+                f'{URL}{self.plan.id}/upload/',
+                {'fichier': self._fichier(),
+                 'empreinte_sha256': 'a' * 64}, format='multipart')
+        self.assertEqual(r.status_code, 200, r.data)
+        self.plan.refresh_from_db()
+        self.assertEqual(self.plan.empreinte_sha256,
+                         services.empreinte_fichier(PDF))
+
+    def test_sans_fichier_l_appel_est_un_400_motive(self):
+        r = self.api.post(f'{URL}{self.plan.id}/upload/',
+                          {'fourni_par': 'Le maître d\'ouvrage'},
+                          format='multipart')
+        self.assertEqual(r.status_code, 400, r.data)
+        self.assertIn('fichier', r.data)
+        self.plan.refresh_from_db()
+        self.assertIsNone(self.plan.attachment_id)
+
+    def test_un_format_refuse_par_le_stockage_donne_un_400_motive(self):
+        """Un DXF n'est pas dans l'allowlist du stockage PARTAGÉ.
+
+        Le refus vient de ``records.storage`` (octets magiques), AVANT tout
+        réseau : le motif remonte en français, jamais un 500 muet. Élargir
+        cette allowlist est une décision de ``apps/records``, pas d'``ao``.
+        """
+        r = self.api.post(
+            f'{URL}{self.plan.id}/upload/',
+            {'fichier': SimpleUploadedFile(
+                'toiture.dxf', b'0\nSECTION\n2\nHEADER\n',
+                content_type='application/dxf')},
+            format='multipart')
+        self.assertEqual(r.status_code, 400, r.data)
+        self.assertIn('fichier', r.data)
+        self.assertIn('Format non supporté', str(r.data['fichier']))
+        self.plan.refresh_from_db()
+        self.assertIsNone(self.plan.attachment_id)
+        self.assertFalse(Attachment.objects.exists())
+
+    def test_le_plan_d_une_autre_societe_est_introuvable(self):
+        autre = Company.objects.create(nom='AOF20 UX', slug='aof20-ux')
+        ao = AppelOffre.objects.create(
+            company=autre, reference='AO-20-UX', objet='X')
+        batiment = BatimentAO.objects.create(
+            company=autre, appel_offre=ao, code='X')
+        toiture = ToitureAO.objects.create(company=autre, batiment=batiment)
+        plan = self._plan(company=autre, toiture=toiture)
+        store, ecrits = _stockage_factice()
+        r = self._upload(plan, store)
+        self.assertEqual(r.status_code, 404, r.data)
+        self.assertEqual(ecrits, [])
+        plan.refresh_from_db()
+        self.assertIsNone(plan.attachment_id)
 
 
 class TestEmpreinteFichier(TestCase):

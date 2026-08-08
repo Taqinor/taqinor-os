@@ -8,9 +8,11 @@ le job » SANS payer les ~3 min de generation du schema : le ratchet est teste
 sur des journaux drf-spectacular synthetiques + la vraie base de reference
 versionnee.
 """
+import io
 import sys
 import tempfile
 import unittest
+from contextlib import redirect_stdout
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent.parent
@@ -168,6 +170,125 @@ components:
         self.assertIn("operations:", text)
         self.assertIn("securitySchemes:", text)
         self.assertTrue(cos._operation_lines(text))
+
+
+class DeriveInstantaneTests(unittest.TestCase):
+    """PACT6 — la derive de docs/openapi-schema.yml est BLOQUANTE.
+
+    Le cas reel : l'instantane a ete regenere le 31/07, le module Appels
+    d'offres a fusionne le 02/08, et le fichier de contrat n'a pas bouge d'une
+    ligne (29 ressources absentes, dont 21 dans apps/ao). Ces tests prouvent
+    que la meme situation rougit desormais, et que le message NOMME les routes.
+    """
+
+    ANCIEN = ("counts: {paths: 1, operations: 1, components: 1}\n"
+              "operations:\n"
+              "- get /api/django/crm/leads/ -> crm_leads_list\n"
+              "components:\n"
+              "- Lead\n")
+    NOUVEAU = ("counts: {paths: 2, operations: 3, components: 2}\n"
+               "operations:\n"
+               "- get /api/django/ao/appels-offres/ -> ao_appels_offres_list\n"
+               "- get /api/django/crm/leads/ -> crm_leads_list\n"
+               "components:\n"
+               "- AppelOffre\n"
+               "- Lead\n")
+
+    def test_instantane_a_jour_ne_derive_pas(self):
+        self.assertIsNone(cos.derive_instantane(self.ANCIEN, self.ANCIEN))
+
+    def test_route_ajoutee_sans_regeneration_est_une_derive(self):
+        derive = cos.derive_instantane(self.ANCIEN, self.NOUVEAU)
+        self.assertIsNotNone(derive)
+        self.assertEqual(
+            derive["operations_manquantes"],
+            ["- get /api/django/ao/appels-offres/ -> ao_appels_offres_list"])
+        self.assertEqual(derive["operations_en_trop"], [])
+        self.assertEqual(derive["composants_manquants"], ["- AppelOffre"])
+
+    def test_route_retiree_du_code_est_une_derive(self):
+        derive = cos.derive_instantane(self.NOUVEAU, self.ANCIEN)
+        self.assertIsNotNone(derive)
+        self.assertEqual(
+            derive["operations_en_trop"],
+            ["- get /api/django/ao/appels-offres/ -> ao_appels_offres_list"])
+        self.assertEqual(derive["operations_manquantes"], [])
+
+    def test_derive_d_entete_seule_est_detectee(self):
+        # Un compteur qui bouge sans qu'aucune operation ne change : l'instantane
+        # reste FAUX, donc rouge — mais le message le dit explicitement.
+        modifie = self.ANCIEN.replace("paths: 1", "paths: 2")
+        derive = cos.derive_instantane(self.ANCIEN, modifie)
+        self.assertIsNotNone(derive)
+        self.assertEqual(derive["operations_manquantes"], [])
+        self.assertEqual(derive["operations_en_trop"], [])
+
+    def test_le_message_nomme_les_routes_et_la_commande_de_regeneration(self):
+        derive = cos.derive_instantane(self.ANCIEN, self.NOUVEAU)
+        flux = io.StringIO()
+        with redirect_stdout(flux):
+            cos.rapporter_derive(derive, "docs/openapi-schema.yml")
+        texte = flux.getvalue()
+        self.assertIn("ao_appels_offres_list", texte)
+        self.assertIn("ECHEC", texte)
+        self.assertIn(cos.REGEN_COMMAND, texte)
+        self.assertIn("02/08", texte)
+
+    def _main_avec(self, instantane_versionne, inventaire_genere, argv):
+        """Joue `main()` sans generer le schema : seul le verdict est teste."""
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            snapshot = base / "docs" / "openapi-schema.yml"
+            if instantane_versionne is not None:
+                snapshot.parent.mkdir(parents=True)
+                snapshot.write_text(instantane_versionne, encoding="utf-8", newline="\n")
+            anciens = (cos.ROOT, cos.SNAPSHOT_PATH, cos.generate,
+                       cos.build_inventory, sys.argv)
+            cos.ROOT, cos.SNAPSHOT_PATH = base, snapshot
+            cos.generate = lambda target: ""
+            cos.build_inventory = lambda target: inventaire_genere
+            sys.argv = ["check_openapi_schema.py"] + argv
+            flux = io.StringIO()
+            try:
+                with redirect_stdout(flux):
+                    code = cos.main()
+            finally:
+                (cos.ROOT, cos.SNAPSHOT_PATH, cos.generate,
+                 cos.build_inventory, sys.argv) = anciens
+            texte = flux.getvalue()
+            gele = snapshot.read_text(encoding="utf-8") if snapshot.is_file() else None
+            return code, texte, gele
+
+    def test_une_route_ajoutee_sans_regeneration_rend_le_controle_ROUGE(self):
+        # LE critere de PACT6. Avant, ce meme cas imprimait « Info : ... » et
+        # renvoyait 0 — c'est ainsi que le module AO est passe en production
+        # sans que docs/openapi-schema.yml bouge.
+        code, texte, _ = self._main_avec(self.ANCIEN, self.NOUVEAU, [])
+        self.assertEqual(code, 1)
+        self.assertIn("ECHEC", texte)
+        self.assertIn("ao_appels_offres_list", texte)
+        self.assertIn(cos.REGEN_COMMAND, texte)
+
+    def test_instantane_a_jour_reste_VERT(self):
+        code, texte, _ = self._main_avec(self.ANCIEN, self.ANCIEN, [])
+        self.assertEqual(code, 0)
+        self.assertNotIn("ECHEC", texte)
+
+    def test_instantane_absent_est_ROUGE(self):
+        code, texte, _ = self._main_avec(None, self.NOUVEAU, [])
+        self.assertEqual(code, 1)
+        self.assertIn(cos.REGEN_COMMAND, texte)
+
+    def test_write_regenere_et_repasse_au_vert(self):
+        code, _, gele = self._main_avec(self.ANCIEN, self.NOUVEAU, ["--write"])
+        self.assertEqual(code, 0)
+        self.assertEqual(gele, self.NOUVEAU)
+
+    def test_composants_lus_depuis_la_queue_de_l_instantane(self):
+        # `_component_lines` ne doit pas confondre une operation avec un
+        # composant : seule la section finale `components:` compte.
+        self.assertEqual(cos._component_lines(self.NOUVEAU),
+                         {"- AppelOffre", "- Lead"})
 
 
 if __name__ == "__main__":

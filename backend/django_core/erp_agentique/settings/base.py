@@ -279,6 +279,15 @@ INSTALLED_APPS = [
     # qui PROPOSENT des brouillons (jamais d'écriture métier implicite) et
     # surveillance des modèles. Sans clé, chaque surface dégrade proprement.
     'apps.ai_governance',
+    # Groupe VAO — Veille appels d'offres : le SAS où atterrissent les avis de
+    # marché, quelle que soit la porte (portail public, tuyau partenaire,
+    # import). App NEUVE et DÉLIBÉRÉMENT DISTINCTE de `apps.ao` : la chaîne de
+    # migrations d'`apps.ao` est mono-écrivain et réservée au groupe AOF
+    # (`docs/PLAN.md`) — une migration VAO y décalerait toute la chaîne déjà
+    # déclarée. Aucun avis ne devient automatiquement un `AppelOffre` : c'est
+    # un sas, et c'est un humain qui tranche. Couplage vers `ao` par entier
+    # opaque (`appel_offre_id`), jamais par FK.
+    'apps.veille_ao',
 ]
 
 MIDDLEWARE = [
@@ -927,6 +936,12 @@ CELERY_TASK_ROUTES = {
     'kb.sweep_articles_perimes': {'queue': 'scheduled'},
     # QHSE — escalade des check-ins en retard.
     'qhse.escalader_checkins_en_retard': {'queue': 'scheduled'},
+    # PACT184 — rappel légal de réunion CSH trimestrielle (Code du travail).
+    'qhse.relancer_csh_du_jour': {'queue': 'scheduled'},
+    # VAO22 — collecte quotidienne de la veille AO. Livrée DÉSARMÉE
+    # (`VEILLE_AO_COLLECTE_ACTIVE=0`) : l'entrée beat existe et est routée,
+    # la tâche sort immédiatement avec un motif tant que le drapeau est à 0.
+    'veille_ao.collecte_quotidienne': {'queue': 'scheduled'},
     # Notifications — balayage des leads chauds.
     'notifications.sweep_hot_leads': {'queue': 'scheduled'},
     # ENG6 — synchro quotidienne des insights publicitaires.
@@ -1050,6 +1065,23 @@ INBOUND_EMAIL_HOST = os.environ.get('INBOUND_EMAIL_HOST', '')
 # Public contact form — PARKED by default. When off, the /api/django/contact/
 # endpoint returns 404 and sends no email. Flip to '1' to re-enable (see CLAUDE.md).
 CONTACT_FORM_ENABLED = os.environ.get('CONTACT_FORM_ENABLED', '0') == '1'
+
+# VAO22/VAO4 — veille appels d'offres : interrupteur d'ARMEMENT de la collecte
+# automatique, DÉSARMÉ par défaut (règle #5 volet (b) — l'accord explicite et
+# daté du fondateur est requis AVANT la première exécution réelle). À 0, la
+# tâche planifiée de 06:00 sort immédiatement, sans toucher la base et sans le
+# moindre appel réseau ; le déclenchement manuel (bouton « Rafraîchir
+# maintenant ») est soumis au MÊME drapeau. Passer à '1' est l'acte d'armement
+# (VAO4) : il se consigne dans tos_risk/marchespublics_gov_ma.md.
+VEILLE_AO_COLLECTE_ACTIVE = (
+    os.environ.get('VEILLE_AO_COLLECTE_ACTIVE', '0') == '1')
+
+# VAO26 — rétention du sas de veille : un avis « nouveau »/« ignoré » dont la
+# date limite est dépassée depuis N mois est purgé. Un avis RETENU ou CONVERTI
+# n'est JAMAIS purgé (il porte l'historique commercial et la mesure
+# d'attribution de VAO31). 0 = purge désactivée.
+VEILLE_AO_RETENTION_MOIS = int(
+    os.environ.get('VEILLE_AO_RETENTION_MOIS', '12') or 12)
 
 # VX209 — heures calmes des notifications (mise en sourdine des canaux hors-app
 # email/WhatsApp/push hors heures ouvrées), OPT-IN, OFF par défaut : sans ceci

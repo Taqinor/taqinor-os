@@ -7,28 +7,35 @@ import { formatNumber } from '../../../lib/format'
    AOF104 — Échelle de décomposition (waterfall) A→H, AVEC GARDE D'HONNÊTETÉ.
    ----------------------------------------------------------------------------
    Raconte le passage du calcul HISTORIQUE au calcul COURANT marche par marche
-   (« 112 → 126 » sur le cas réel), chaque marche portant sa lettre, son
+   (« 112 → 126 » sur le cas réel), chaque marche portant son code, son
    libellé et son delta SIGNÉ. Tous ces chiffres viennent du serveur : ce
    composant ne calcule que la GÉOMÉTRIE du dessin, jamais une valeur métier.
 
-   ── D'OÙ VIENNENT LES CHIFFRES (corrigé le 03/08/2026) ────────────────────
-   L'endpoint RÉEL est `GET /ao/calepinage/variantes/:id/marches/` (AOF62,
-   `calepinage_service.calculer_marches`) — et NON `/ao/variantes/:id/
-   decomposition/`, qui n'a jamais été routé. `aoApi.variantes.decomposition()`
-   pointe désormais la bonne URL.
-
-   ATTENTION, le contrat n'est PAS encore aligné et ce composant n'est branché
-   à aucun écran : le serveur renvoie `depart`/`arrivee` en ENTIERS,
-   `marches: [{code, libelle, modules, delta, attendu}]` et un booléen
-   `honnete` + ses `motifs`, alors que ce composant attend `depart.valeur`,
-   `marche.valeur_apres`, `marche.reproduit` et `verifie`. Il manque donc un
-   adaptateur (ou un alignement des noms côté serveur) : il n'est PAS écrit
-   ici plutôt que deviné à la va-vite, et surtout pas caché.
+   ── D'OÙ VIENNENT LES CHIFFRES, ET LA FORME RÉELLE (RÉPARATION 07/08/2026,
+      PACT172) ─────────────────────────────────────────────────────────────
+   L'endpoint est `GET /ao/calepinage/variantes/:id/marches/` (AOF62,
+   `calepinage_service.calculer_marches`, `aoApi.variantes.decomposition()`).
+   Ce composant a longtemps attendu `depart.valeur`, `marche.lettre`,
+   `marche.valeur_apres`, `marche.reproduit` et `decomposition.verifie` —
+   une forme qui n'a JAMAIS existé côté serveur. La forme RÉELLE, lue dans
+   `core/calepinage/echelle.py` :
+     { recit, depart: <int>, arrivee: <int>, gain_total: <int>,
+       honnete: <bool>, motifs: [<string>…],
+       marches: [{code, libelle, modules, delta, attendu}] }
+   `recit` (`Echelle.recit()`) et les `motifs` (`verifier_honnetete()`) sont
+   des phrases COMPLÈTES déjà rédigées côté serveur — ce composant les AFFICHE,
+   il ne compose plus rien. `depart`/`arrivee` sont des ENTIERS, pas des objets
+   `{libelle, valeur}` : brancher tel quel sans corriger la lecture aurait
+   laissé le bandeau d'honnêteté INERTE (`decomposition?.verifie !== false`
+   vaut toujours vrai sur un payload qui ne porte jamais `verifie`) — un
+   « Reproduit l'ancien calcul ✓ » qui pourrait mentir devant un maître
+   d'ouvrage, exactement le risque que cette garde existe pour supprimer.
 
    ── LA GARDE D'HONNÊTETÉ (le cœur de la tâche) ────────────────────────────
-   Le serveur signale, marche par marche (`reproduit: false`) et globalement
-   (`verifie: false`), qu'une marche NE REPRODUIT PAS le chiffre qu'elle doit
-   reproduire. Dans ce cas :
+   Une marche est FAUTIVE quand le serveur lui a déclaré un `attendu` (issu
+   d'un ancien calcul figé) que le moteur COURANT ne reproduit plus
+   (`marche.modules !== marche.attendu`) ; `honnete` (calculé serveur) reflète
+   la même vérité au niveau du récit entier. Dans ce cas :
      • un bandeau rouge « récit non vérifié — ne pas publier » s'affiche,
      • les marches fautives sont NOMMÉES,
      • l'export du panneau est BLOQUÉ, et le bouton porte SON MOTIF (jamais un
@@ -55,19 +62,24 @@ const MARGE_BAS = 64
 
 const signe = (v) => (v > 0 ? `+${formatNumber(v, { decimals: 0 })}` : formatNumber(v, { decimals: 0 }))
 
+// Marches FAUTIVES : un `attendu` a été déclaré et le moteur courant ne le
+// reproduit plus. Une marche sans `attendu` (aucune attente figée) n'est
+// JAMAIS traitée comme fautive.
 // eslint-disable-next-line react-refresh/only-export-components -- logique pure co-localisée (testable), même motif que DevisTab.devisTrackCurrent
-export function marchesNonReproduites(marches = []) {
-  return marches.filter((m) => m.reproduit === false)
+export function marchesFautives(marches = []) {
+  return marches.filter((m) => m.attendu != null && m.modules !== m.attendu)
 }
 
 // Barres du waterfall : positions calculées depuis les valeurs SERVEUR.
+// `depart` est un NOMBRE (voir en-tête) ; `marche.modules` porte déjà l'état
+// CUMULATIF après la marche (même rôle que l'ancien `valeur_apres`).
 // eslint-disable-next-line react-refresh/only-export-components -- logique pure co-localisée (testable), même motif que DevisTab.devisTrackCurrent
-export function geometrie({ depart, marches = [] }) {
-  const valeurs = [depart?.valeur ?? 0]
-  let courant = depart?.valeur ?? 0
+export function geometrie({ depart = 0, marches = [] }) {
+  const valeurs = [depart]
+  let courant = depart
   const barres = marches.map((m) => {
     const avant = courant
-    const apres = m.valeur_apres != null ? m.valeur_apres : avant + (m.delta ?? 0)
+    const apres = m.modules != null ? m.modules : avant + (m.delta ?? 0)
     courant = apres
     valeurs.push(apres)
     return { ...m, avant, apres }
@@ -90,7 +102,7 @@ export function geometrie({ depart, marches = [] }) {
       }
     }),
     largeur: Math.max(marches.length * (MARCHE_L + MARCHE_ECART) - MARCHE_ECART, MARCHE_L),
-    ySocle: y(depart?.valeur ?? 0),
+    ySocle: y(depart),
     yFin: y(courant),
     total: courant,
   }
@@ -103,14 +115,17 @@ export function DecompositionWaterfall({ decomposition, exporterImage = null, on
   const depart = decomposition?.depart
   const arrivee = decomposition?.arrivee
   const marches = useMemo(() => decomposition?.marches ?? [], [decomposition])
-  const fautives = useMemo(() => marchesNonReproduites(marches), [marches])
-  // Le serveur reste l'autorité : `verifie === false` OU une marche fautive.
-  const verifie = decomposition?.verifie !== false && fautives.length === 0
-  const geo = useMemo(() => geometrie({ depart, marches }), [depart, marches])
+  const fautives = useMemo(() => marchesFautives(marches), [marches])
+  // Le serveur reste l'autorité : `honnete === false` (déclaré) OU une marche
+  // fautive (attendu déclaré et non reproduit) suffit à lever le bandeau.
+  const verifie = decomposition?.honnete !== false && fautives.length === 0
+  const geo = useMemo(() => geometrie({ depart: depart ?? 0, marches }), [depart, marches])
 
   const motifBlocage = verifie
     ? null
-    : `Récit non vérifié — ${formatNumber(fautives.length || 1, { decimals: 0 })} marche(s) ne reproduisent pas le chiffre attendu.`
+    : (decomposition?.motifs?.length
+      ? decomposition.motifs.join(' ')
+      : `Récit non vérifié — ${formatNumber(fautives.length || 1, { decimals: 0 })} marche(s) ne reproduisent pas le chiffre attendu.`)
 
   const exporter = async () => {
     if (!verifie || typeof exporterImage !== 'function' || !svgRef.current) return
@@ -123,7 +138,7 @@ export function DecompositionWaterfall({ decomposition, exporterImage = null, on
     }
   }
 
-  if (!depart || !marches.length) {
+  if (depart == null || !marches.length) {
     return (
       <Card className="p-4 text-sm text-muted-foreground">
         Décomposition indisponible : le serveur n’a renvoyé aucune marche.
@@ -136,11 +151,8 @@ export function DecompositionWaterfall({ decomposition, exporterImage = null, on
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div>
           <h2 className="font-display text-lg font-semibold tracking-tight">Décomposition du compte</h2>
-          <p className="mt-0.5 text-sm text-muted-foreground">
-            {`${depart.libelle} ${formatNumber(depart.valeur, { decimals: 0 })} `}
-            &rarr;
-            {` ${arrivee?.libelle ?? 'Calcul courant'} ${formatNumber(arrivee?.valeur ?? geo.total, { decimals: 0 })}`}
-          </p>
+          {/* Récit GÉNÉRÉ par le serveur (`Echelle.recit()`) — jamais composé ici. */}
+          <p className="mt-0.5 text-sm text-muted-foreground">{decomposition?.recit}</p>
         </div>
         {verifie ? (
           <span className="inline-flex items-center gap-1.5 rounded-md bg-success/10 px-2 py-1 text-xs font-medium text-success">
@@ -157,8 +169,8 @@ export function DecompositionWaterfall({ decomposition, exporterImage = null, on
           </p>
           <p className="text-sm text-destructive">
             {fautives.length
-              ? `Marche(s) fautive(s) : ${fautives.map((m) => `${m.lettre} — ${m.libelle}`).join(' ; ')}.`
-              : 'Le serveur signale que ce récit ne reproduit pas le calcul historique.'}
+              ? `Marche(s) fautive(s) : ${fautives.map((m) => `${m.code} — ${m.libelle}`).join(' ; ')}.`
+              : motifBlocage}
           </p>
         </div>
       )}
@@ -172,7 +184,7 @@ export function DecompositionWaterfall({ decomposition, exporterImage = null, on
           height={HAUTEUR}
           role="img"
           aria-label={`Décomposition en ${formatNumber(marches.length, { decimals: 0 })} marches, de `
-            + `${formatNumber(depart.valeur, { decimals: 0 })} à ${formatNumber(arrivee?.valeur ?? geo.total, { decimals: 0 })}.`}
+            + `${formatNumber(depart, { decimals: 0 })} à ${formatNumber(arrivee ?? geo.total, { decimals: 0 })}.`}
           className="max-w-none"
         >
           <line
@@ -180,11 +192,11 @@ export function DecompositionWaterfall({ decomposition, exporterImage = null, on
             style={{ stroke: 'var(--border)' }} strokeDasharray="4 4"
           />
           {geo.barres.map((b) => (
-            <g key={b.lettre} data-marche={b.lettre}>
+            <g key={b.code} data-marche={b.code}>
               <rect
                 x={b.x} y={b.y} width={MARCHE_L} height={b.hauteur} rx="3"
                 style={{
-                  fill: b.reproduit === false
+                  fill: fautives.some((f) => f.code === b.code)
                     ? 'var(--destructive)'
                     : b.monte ? 'var(--success)' : 'var(--warning)',
                 }}
@@ -199,7 +211,7 @@ export function DecompositionWaterfall({ decomposition, exporterImage = null, on
                 x={b.x + MARCHE_L / 2} y={HAUTEUR - MARGE_BAS + 20} textAnchor="middle"
                 style={{ fill: 'var(--foreground)', fontSize: '13px', fontWeight: 700 }}
               >
-                {b.lettre}
+                {b.code}
               </text>
               <text
                 x={b.x + MARCHE_L / 2} y={HAUTEUR - MARGE_BAS + 38} textAnchor="middle"

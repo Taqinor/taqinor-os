@@ -169,14 +169,14 @@ class ExportSegmentTests(TestCase):
         other_user = make_user(other_co, 'xmkt36-user-b')
         api_b = auth(other_user)
         resp = api_b.post(
-            f'/api/django/compta/segments-marketing/{self.segment.id}/'
+            f'/api/django/marketing/segments-marketing/{self.segment.id}/'
             'exporter-audience-meta/')
         self.assertIn(resp.status_code, (403, 404))
 
     def test_endpoint_renvoie_resume(self):
         api = auth(self.user)
         resp = api.post(
-            f'/api/django/compta/segments-marketing/{self.segment.id}/'
+            f'/api/django/marketing/segments-marketing/{self.segment.id}/'
             'exporter-audience-meta/')
         self.assertEqual(resp.status_code, 200, resp.content)
         self.assertFalse(resp.data['configured'])

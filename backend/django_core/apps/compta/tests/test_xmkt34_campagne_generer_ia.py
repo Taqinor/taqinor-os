@@ -1,4 +1,4 @@
-"""XMKT34 — endpoint ``POST /api/django/compta/campagnes/generer-ia/``.
+"""XMKT34 — endpoint ``POST /api/django/marketing/campagnes/generer-ia/``.
 
 Couvre le contrat HTTP : sans clé LLM configurée, ``configured: false`` (le
 frontend masque le bouton) ; avec un faux fournisseur LLM, l'objet/corps
@@ -54,7 +54,7 @@ class GenererIaEndpointTests(TestCase):
     def test_sans_cle_configured_false(self):
         api = auth(self.user)
         resp = api.post(
-            '/api/django/compta/campagnes/generer-ia/',
+            '/api/django/marketing/campagnes/generer-ia/',
             {'segment_label': 'Leads froids', 'offre': '-20%'}, format='json')
         self.assertEqual(resp.status_code, 200, resp.content)
         self.assertFalse(resp.data['configured'])
@@ -68,7 +68,7 @@ class GenererIaEndpointTests(TestCase):
         api = auth(self.user)
         with override_settings(AI_PROVIDERS={'llm': 'fake_llm_xmkt34_view'}):
             resp = api.post(
-                '/api/django/compta/campagnes/generer-ia/',
+                '/api/django/marketing/campagnes/generer-ia/',
                 {'segment_label': 'Leads froids', 'offre': '-20%',
                  'langue': 'fr'}, format='json')
         self.assertEqual(resp.status_code, 200, resp.content)
@@ -80,13 +80,13 @@ class GenererIaEndpointTests(TestCase):
     def test_requiert_authentification(self):
         api = APIClient()
         resp = api.post(
-            '/api/django/compta/campagnes/generer-ia/',
+            '/api/django/marketing/campagnes/generer-ia/',
             {'segment_label': 'S'}, format='json')
         self.assertIn(resp.status_code, (401, 403))
 
     def test_probe_disponible_sans_cle_false(self):
         api = auth(self.user)
-        resp = api.get('/api/django/compta/campagnes/generer-ia-disponible/')
+        resp = api.get('/api/django/marketing/campagnes/generer-ia-disponible/')
         self.assertEqual(resp.status_code, 200, resp.content)
         self.assertFalse(resp.data['configured'])
 
@@ -97,6 +97,6 @@ class GenererIaEndpointTests(TestCase):
         api = auth(self.user)
         with override_settings(AI_PROVIDERS={'llm': 'fake_llm_xmkt34_view'}):
             resp = api.get(
-                '/api/django/compta/campagnes/generer-ia-disponible/')
+                '/api/django/marketing/campagnes/generer-ia-disponible/')
         self.assertEqual(resp.status_code, 200, resp.content)
         self.assertTrue(resp.data['configured'])

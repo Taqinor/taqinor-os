@@ -75,7 +75,7 @@ class CampagneModeleTests(TestCase):
         api = APIClient()
         api.credentials(HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(user)}')
         resp = api.post(
-            f'/api/django/compta/campagnes/{modele.id}/creer-depuis-modele/')
+            f'/api/django/marketing/campagnes/{modele.id}/creer-depuis-modele/')
         self.assertEqual(resp.status_code, 201, resp.content)
         self.assertFalse(resp.json()['est_modele'])
 
@@ -95,7 +95,7 @@ class CampagneModeleTests(TestCase):
             role_legacy='responsable')
         api = APIClient()
         api.credentials(HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(user)}')
-        resp = api.get('/api/django/compta/campagnes/modeles/')
+        resp = api.get('/api/django/marketing/campagnes/modeles/')
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(len(resp.json()), 1)
 

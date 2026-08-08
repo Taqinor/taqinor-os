@@ -494,7 +494,9 @@ function PisteAuditPanel() {
     try {
       const res = await comptaApi.pistesAudit.verifier()
       setIntegrite(res.data)
-      toast.success(res.data?.intacte === false ? 'Rupture détectée.' : 'Chaîne intacte.')
+      // PACT152 — verifier_integrite_piste (apps/compta/services.py:10197)
+      // renvoie {valide, nb_maillons, rupture} — jamais `intacte`/`detail`.
+      toast.success(res.data?.valide === false ? 'Rupture détectée.' : 'Chaîne intacte.')
     } catch {
       toast.error('Vérification impossible.')
     }
@@ -518,9 +520,9 @@ function PisteAuditPanel() {
         </Button>
       </div>
       {integrite && (
-        <Card className={`p-3 text-sm ${integrite.intacte === false ? 'border-destructive/40 bg-destructive/5' : 'border-success/40 bg-success/5'}`}>
-          {integrite.intacte === false
-            ? `Rupture détectée : ${integrite.detail || 'voir maillon en cause.'}`
+        <Card className={`p-3 text-sm ${integrite.valide === false ? 'border-destructive/40 bg-destructive/5' : 'border-success/40 bg-success/5'}`}>
+          {integrite.valide === false
+            ? `Rupture détectée : maillon n° ${integrite.rupture} (sur ${integrite.nb_maillons}).`
             : 'Chaîne d’audit intacte — aucune altération détectée.'}
         </Card>
       )}

@@ -219,6 +219,53 @@ class PublicApiTests(XGed3Base):
         self.assertEqual(resp.data['statut'], SIGNATURE_SIGNE)
 
 
+class Pact185PdfSigneDownloadTests(XGed3Base):
+    """PACT185 — `rendre_pdf_signe_avec_champs` n'avait aucun appelant réel :
+    le bouton de téléchargement du PDF final aplati (valeurs + signature)
+    d'une demande COMPLÉTÉE."""
+
+    def _url(self, demande=None):
+        d = demande or self.demande
+        return f'/api/django/ged/demandes-signature/{d.id}/pdf-signe/'
+
+    def test_not_yet_signed_returns_409(self):
+        resp = auth(self.admin_a).get(self._url())
+        self.assertEqual(resp.status_code, 409, resp.data)
+
+    def test_signed_demande_returns_pdf(self):
+        with mock.patch('apps.records.storage.fetch_attachment',
+                        return_value=(b'%PDF data', None)):
+            services.signer_demande_publique_avec_champs(
+                self.demande, consentement=True, signature_texte='Jean')
+        with mock.patch('apps.records.storage.fetch_attachment',
+                        return_value=(b'%PDF data', None)):
+            resp = auth(self.admin_a).get(self._url())
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp['Content-Type'], 'application/pdf')
+        self.assertIn('attachment', resp['Content-Disposition'])
+        self.assertEqual(resp.content, b'%PDF data')
+
+    def test_signed_but_content_missing_returns_404_never_500(self):
+        with mock.patch('apps.records.storage.fetch_attachment',
+                        return_value=(b'%PDF data', None)):
+            services.signer_demande_publique_avec_champs(
+                self.demande, consentement=True, signature_texte='Jean')
+        with mock.patch('apps.records.storage.fetch_attachment',
+                        return_value=(None, 'unreachable')):
+            resp = auth(self.admin_a).get(self._url())
+        self.assertEqual(resp.status_code, 404)
+
+    def test_scoped_to_company(self):
+        admin_b = make_user(self.co_b, 'xged3-pdf-admin-b', 'admin')
+        resp = auth(admin_b).get(self._url())
+        self.assertEqual(resp.status_code, 404)
+
+    def test_requires_authentication(self):
+        from rest_framework.test import APIClient
+        resp = APIClient().get(self._url())
+        self.assertIn(resp.status_code, (401, 403))
+
+
 class ScopingApiTests(XGed3Base):
     def test_champ_signature_scoped_by_company(self):
         ChampSignature.objects.create(

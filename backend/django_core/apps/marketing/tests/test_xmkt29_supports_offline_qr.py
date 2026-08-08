@@ -118,7 +118,7 @@ class SupportsOfflineViewSetTests(TestCase):
 
     def test_post_cree_support_avec_url_taguee(self):
         resp = self.api.post(
-            '/api/django/compta/supports-offline/',
+            '/api/django/marketing/supports-offline/',
             {'nom': 'Flyer SIAM 2026',
              'url_cible': 'https://taqinor.ma/contact'},
             format='json')
@@ -134,12 +134,12 @@ class SupportsOfflineViewSetTests(TestCase):
 
     def test_qr_de_lobjet_cree_est_telechargeable(self):
         resp = self.api.post(
-            '/api/django/compta/supports-offline/',
+            '/api/django/marketing/supports-offline/',
             {'nom': 'Bâche stand', 'url_cible': 'https://taqinor.ma'},
             format='json')
         self.assertEqual(resp.status_code, 201, resp.content)
         qr = self.api.get(
-            f"/api/django/compta/supports-offline/{resp.data['id']}/qr/")
+            f"/api/django/marketing/supports-offline/{resp.data['id']}/qr/")
         self.assertEqual(qr.status_code, 200, qr.content)
         self.assertTrue(qr.content.decode().startswith('<svg'))
 

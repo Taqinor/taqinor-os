@@ -1,4 +1,5 @@
-import { useCallback, useMemo, useState } from 'react'
+import { Suspense, lazy, useCallback, useMemo, useRef, useState } from 'react'
+import { Hand, MousePointer2 } from 'lucide-react'
 import aoApi from '../../../api/aoApi'
 import recordsApi from '../../../api/recordsApi'
 import useResource from '../../../hooks/useResource'
@@ -7,7 +8,53 @@ import { Button, Card, EmptyState, Skeleton, toast } from '../../../ui'
 import PageHeader from '../../../components/layout/PageHeader'
 import { useIsMobile } from '../../../ui/ResponsiveDialog'
 import ModeMobile from '../studio/ModeMobile'
+import StudioShell from '../studio/StudioShell'
+import CanvasSvg from '../studio/CanvasSvg'
+import Selection from '../studio/Selection'
+import BarreEtat from '../studio/BarreEtat'
+import TableauGeometrie from '../studio/TableauGeometrie'
+import useHistoire from '../studio/useHistoire'
+import {
+  bboxDePoints,
+  ecranVersMonde,
+  metresParPixel as metresParPixelDe,
+} from '../studio/useViewport'
+import { aire, perimetre as perimetreDe, azimutAretePrincipale } from '../studio/snap'
+import ProvenanceBadge from '../components/ProvenanceBadge'
+import { PROVENANCE_ORDER } from '../provenance'
 import NouvelleToitureWizard from './NouvelleToitureWizard'
+// Extensions EXPLICITES : `Calibration.jsx` (le composant) et `calibration.js`
+// (les maths pures) ne different que par la CASSE. Linux les distingue, mais
+// Windows et macOS non — un specifier nu resolvait vers le mauvais module et
+// cassait `vite build` hors CI. Ne jamais reduire ces deux imports.
+import Calibration from './Calibration.jsx'
+import UnderlayImage from './UnderlayImage'
+import OutilTrace from './OutilTrace'
+import OutilsObstacles from './OutilsObstacles'
+import ObstaclesList from './ObstaclesList'
+import OutilsZones from './OutilsZones'
+import ChainesCotes from './ChainesCotes'
+import FermeturesPanel from './FermeturesPanel'
+import PointsALever from './PointsALever'
+import EnveloppeArc from './EnveloppeArc'
+import EnveloppeL from './EnveloppeL'
+import ImportDxf from './ImportDxf'
+import { estCalibree, peutTracer, reechelonner } from './calibration.js'
+import { estPdf } from './rasteriserPdf'
+
+/* Deux outils sont chargés À LA DEMANDE, et pour une raison PRÉCISE — pas par
+   goût du découpage :
+     · `UnderlayPdf` instancie un worker pdf.js AU CHARGEMENT DU MODULE
+       (`new PdfWorker()` en tête de fichier) : un import statique ferait donc
+       fabriquer un worker à tout écran qui monte cette page, y compris sous
+       jsdom (qui n'a pas `Worker`) ;
+     · `RepriseCarte` tire le builder de toiture du site public via l'alias
+       `@roofpro` — résolu par `vite.config.js`, ABSENT de `vitest.config.js`.
+   Chargés en `lazy()`, ils n'entrent dans le graphe que si l'utilisateur ouvre
+   vraiment l'outil. `check_ecrans_atteignables.py` compte l'import dynamique
+   comme un import (`_SPEC_DYNAMIQUE`) : ils restent donc bien ATTEIGNABLES. */
+const UnderlayPdf = lazy(() => import('./UnderlayPdf'))
+const RepriseCarte = lazy(() => import('./RepriseCarte'))
 
 /* ============================================================================
    AOF190 — Écran « Toitures & relevés », et son MODE MOBILE réel.
@@ -27,11 +74,11 @@ import NouvelleToitureWizard from './NouvelleToitureWizard'
      · chaque édition lourde refusée affiche SA RAISON
        (`data-ao-tiroir="refus-mobile-…"`, contrat AOF8).
 
-   Au-dessus de 768 px, l'écran rend la même lecture SANS enveloppe de mode :
-   l'atelier de traçage interactif (canvas, outils, pose d'obstacles) est
-   livré par la lane `frontend/ao-toiture` — l'annoncer ici par des contrôles
-   inertes serait la façade que le mode mobile existe précisément pour éviter.
-   AUCUN contrôle mort n'est donc rendu à AUCUNE largeur.
+   Au-dessus de 768 px, l'écran rend la même lecture PLUS l'atelier de traçage
+   interactif (PACT166, plus bas dans ce fichier) : c'est le seul endroit d'où
+   il s'ouvre. AUCUN contrôle mort n'est rendu à AUCUNE largeur — chaque
+   commande de l'atelier agit vraiment, et ce que l'atelier n'enregistre pas
+   encore est ÉCRIT à l'écran avant qu'on y saisisse quoi que ce soit.
 
    Données : `useResource` + `aoApi` (ARC45/ARC44, zéro fetch manuel). Aucun
    chiffre n'est recalculé côté front (AOF94) — `surface_m2` est la valeur
@@ -195,6 +242,594 @@ function FicheToitures({ toitures, loading, error }) {
   )
 }
 
+/* ============================================================================
+   PACT166 — L'ATELIER DE TRAÇAGE, ENFIN ASSEMBLÉ.
+   ----------------------------------------------------------------------------
+   Six composants d'atelier étaient livrés, testés… et importés par PERSONNE :
+   `StudioShell` (AOF73, la coquille à slots), `CanvasSvg` (AOF74, la surface
+   SVG en mètres), `Selection` (AOF76, la voie SOURIS), `TableauGeometrie`
+   (AOF77, la voie CLAVIER — condition du plancher a11y), `BarreEtat` (AOF74)
+   et `ProvenanceBadge` (AOF9). Cet écran les met ENSEMBLE, à la place de
+   l'ancien `EmptyState` « Atelier de traçage » qui disait que le canvas
+   existait ailleurs.
+
+   UN SEUL historique pour les DEUX voies (`useHistoire`, AOF76) : « annuler »
+   défait indifféremment un glissement de souris et une frappe de tableau —
+   deux piles séparées produiraient un annuler qui ne défait pas ce que
+   l'utilisateur vient de faire.
+
+   PERSISTANCE, et ses LIMITES, dites franchement :
+     · « Enregistrer » écrit `contour_local_m` via `aoApi.toitures.update` —
+       le MÊME champ que le wizard de création, une liste de `[x, y]` en
+       mètres dans le repère local (`apps/ao/models.py:619`). La surface est
+       RECALCULÉE par le serveur à chaque écriture : elle n'est jamais
+       envoyée, jamais devinée ici ;
+     · les OBSTACLES, ZONES et CHAÎNES DE COTES de la boîte à outils (PACT167)
+       restent LOCAUX à l'atelier : aucune des trois n'a de chemin d'écriture
+       ici (les zones n'ont même AUCUN endpoint — `aoApi` le dit noir sur
+       blanc). L'écran l'ANNONCE avant qu'on en saisisse une, plutôt que de
+       les laisser croire enregistrées.
+   ========================================================================== */
+
+// Le modèle sert le contour en `[x, y]` (mètres, repère local, y↑ nord) ;
+// l'atelier manipule des `{ x, y }` (contrat commun de `Selection` et de
+// `TableauGeometrie`). La traduction vit ICI, aux deux bouts, jamais à moitié.
+function contourVersPoints(contour) {
+  if (!Array.isArray(contour)) return []
+  return contour
+    .map((p) => (Array.isArray(p)
+      ? { x: Number(p[0]), y: Number(p[1]) }
+      : { x: Number(p?.x), y: Number(p?.y) }))
+    .filter((p) => Number.isFinite(p.x) && Number.isFinite(p.y))
+}
+
+// Millimètre : la précision d'un relevé de toiture. Au-delà, on n'écrirait que
+// du bruit de virgule flottante dans un champ JSON.
+const arrondiMm = (v) => Math.round(v * 1000) / 1000
+
+function pointsVersContour(points) {
+  return points.map((p) => [arrondiMm(p.x), arrondiMm(p.y)])
+}
+
+const nb = (v) => (Number.isFinite(Number(v)) ? Number(v) : 0)
+
+const nomToiture = (t) => t?.designation || t?.code_document || `Toiture #${t?.id}`
+
+/* ── PACT167 — UN SEUL obstacle, DEUX écritures ────────────────────────────
+   La boîte à outils a deux voies vers le même obstacle : le TABLEAU (AOF77)
+   l'écrit en rectangle (`rectX0M…rectY1M`), la PLANCHE (AOF88) en polygone
+   (`sommets`). `gardePublication.surfaceObstacle` (AOF90) lit `sommets` en
+   priorité : laisser les deux écritures diverger ferait compter une surface
+   d'emprise qui ne correspond plus à ce qu'on voit. On les tient donc
+   SYNCHRONES à la frontière, dans le sens de la voie qui vient d'écrire. */
+function obstacleDepuisRect(o) {
+  const x0 = Math.min(nb(o.rectX0M), nb(o.rectX1M))
+  const x1 = Math.max(nb(o.rectX0M), nb(o.rectX1M))
+  const y0 = Math.min(nb(o.rectY0M), nb(o.rectY1M))
+  const y1 = Math.max(nb(o.rectY0M), nb(o.rectY1M))
+  return {
+    ...o,
+    sommets: [{ x: x0, y: y0 }, { x: x1, y: y0 }, { x: x1, y: y1 }, { x: x0, y: y1 }],
+  }
+}
+
+function obstacleDepuisSommets(o) {
+  const b = bboxDePoints(o?.sommets ?? [])
+  if (!b) return o
+  return { ...o, rectX0M: b.xMin, rectX1M: b.xMax, rectY0M: b.yMin, rectY1M: b.yMax }
+}
+
+const sommetsSvg = (sommets) => (sommets ?? []).map((p) => `${nb(p.x)},${nb(p.y)}`).join(' ')
+
+/* Export d'un CSV produit par un helper PUR (`exporterPointsALever`) : le
+   fichier part du navigateur, aucun aller-retour serveur — donc aucune
+   promesse d'enregistrement qui n'aurait pas lieu. */
+function telechargerCsv(nomFichier, contenu) {
+  if (typeof document === 'undefined' || typeof URL.createObjectURL !== 'function') return
+  const url = URL.createObjectURL(new Blob([contenu], { type: 'text/csv;charset=utf-8' }))
+  const lien = document.createElement('a')
+  lien.href = url
+  lien.download = nomFichier
+  lien.click()
+  URL.revokeObjectURL(url)
+}
+
+const OUTILS_ATELIER = [
+  { id: 'selection', label: 'Sélectionner', icon: MousePointer2, raccourci: 's' },
+  { id: 'panoramique', label: 'Main (panoramique)', icon: Hand, raccourci: 'h' },
+]
+
+/* Légende de provenance — le vocabulaire du tableau d'obstacles, rendu par le
+   composant qui en est la SEULE source de vérité (`ProvenanceBadge`, AOF9),
+   jamais recopié en pastilles locales. */
+function LegendeProvenance() {
+  return (
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-1" data-ao-legende-provenance="">
+      {PROVENANCE_ORDER.map((niveau) => (
+        <ProvenanceBadge key={niveau} level={niveau} />
+      ))}
+    </div>
+  )
+}
+
+function AtelierToiture({ toiture, selecteur, onEnregistre }) {
+  const toitureId = toiture?.id
+  const contourServeur = toiture?.contour_local_m
+  const contourInitial = useMemo(() => contourVersPoints(contourServeur), [contourServeur])
+
+  // Monté avec `key={toiture.id}` : changer de toiture REMONTE l'atelier, donc
+  // remet l'historique à zéro — jamais un `reinitialiser` dans un effet, qui
+  // laisserait un rendu intermédiaire montrer le contour de l'autre toiture.
+  const histoire = useHistoire({ points: contourInitial, obstacles: [] })
+  const { appliquer, terminer, annuler, retablir } = histoire
+  const { points, obstacles } = histoire.etat
+
+  const svgRef = useRef(null)
+  const [vue, setVue] = useState(null)
+  const [curseur, setCurseur] = useState(null)
+  const [selection, setSelection] = useState([])
+  const [survol, setSurvol] = useState(null)
+  const [outil, setOutil] = useState('selection')
+  const [refus, setRefus] = useState(null)
+  const [enregistrement, setEnregistrement] = useState(false)
+
+  /* ── PACT167 — état de la BOÎTE À OUTILS ────────────────────────────────
+     Onglet contrôlé : les deux écrans d'import (DXF, carte) proposent « tracer
+     à la main » — sans onglet contrôlé, ce bouton n'aurait nulle part où
+     emmener l'utilisateur, c.-à-d. un bouton mort de plus. */
+  const [onglet, setOnglet] = useState('geometrie')
+  const [plan, setPlan] = useState(null) // fichier du fond de calque
+  const [calibration, setCalibration] = useState(null)
+  const [chaines, setChaines] = useState([])
+  const [zones, setZones] = useState([])
+  const [enveloppeArc, setEnveloppeArc] = useState(null)
+  const [survolObstacle, setSurvolObstacle] = useState(null)
+  const [questionProposee, setQuestionProposee] = useState(null)
+  // Ce que l'atelier REFUSE de faire, avec son motif — jamais un bouton qui ne
+  // fait rien sans le dire.
+  const [note, setNote] = useState(null)
+
+  // `CanvasSvg` remonte sa vue par callback (jamais par un état recopié dans un
+  // effet de CE composant) : la surface reste propriétaire de son viewport.
+  const majVue = useCallback((viewport, taille) => setVue({ viewport, taille }), [])
+
+  const mesure = Boolean(vue) && vue.taille.largeur > 0 && vue.taille.hauteur > 0
+  const mpp = mesure ? metresParPixelDe(vue.viewport, vue.taille) : 0.05
+
+  // Conversion écran → monde pour la voie souris : `Selection` reçoit l'event
+  // brut et délègue, la matrice de vue restant la seule vérité de position.
+  const versMonde = useCallback((e) => {
+    const el = svgRef.current
+    if (!el || !mesure) return { x: 0, y: 0 }
+    const r = el.getBoundingClientRect()
+    return ecranVersMonde(
+      { x: e.clientX - r.left, y: e.clientY - r.top }, vue.viewport, vue.taille,
+    )
+  }, [mesure, vue])
+
+  const zone = mesure
+    ? {
+      xMin: vue.viewport.x,
+      yMin: vue.viewport.y,
+      xMax: vue.viewport.x + vue.viewport.l,
+      yMax: vue.viewport.y + vue.viewport.h,
+    }
+    : null
+
+  const majPoints = useCallback((suivants, libelle, opts) => {
+    setRefus(null)
+    appliquer((prec) => ({ ...prec, points: suivants }), libelle, opts)
+  }, [appliquer])
+
+  // Voie TABLEAU (clavier) : le rectangle vient d'être écrit → il fait foi.
+  const majObstacles = useCallback((suivants, libelle, opts) => {
+    setRefus(null)
+    appliquer(
+      (prec) => ({ ...prec, obstacles: suivants.map(obstacleDepuisRect) }), libelle, opts,
+    )
+  }, [appliquer])
+
+  // Voie PLANCHE (souris) : les sommets viennent d'être posés → ils font foi.
+  const majObstaclesPlanche = useCallback((suivants) => {
+    setRefus(null)
+    appliquer(
+      (prec) => ({ ...prec, obstacles: suivants.map(obstacleDepuisSommets) }),
+      'Modifier les obstacles',
+    )
+  }, [appliquer])
+
+  const bbox = useMemo(() => bboxDePoints(points), [points])
+
+  // Les cotes de TOUTES les chaînes : c'est sur elles que `deduction.js`
+  // calcule les points à lever (cote déduite ou écart au-delà du seuil).
+  const cotes = useMemo(
+    () => chaines.flatMap((c) => (c.segments ?? []).map((s) => ({ ...s }))),
+    [chaines],
+  )
+
+  const modifie = useMemo(
+    () => JSON.stringify(pointsVersContour(points))
+      !== JSON.stringify(pointsVersContour(contourInitial)),
+    [points, contourInitial],
+  )
+
+  const enregistrer = useCallback(async () => {
+    if (!toitureId) return
+    setEnregistrement(true)
+    try {
+      // JAMAIS `surface_m2` (read_only, recalculée par `ToitureAOViewSet`),
+      // jamais `company` (forcée par le serveur) : seul le contour part.
+      await aoApi.toitures.update(toitureId, { contour_local_m: pointsVersContour(points) })
+      setRefus(null)
+      toast.success('Contour enregistré — la surface est recalculée par le serveur.')
+      onEnregistre?.()
+    } catch (e) {
+      const motif = errMsg(e, 'Contour non enregistré — le serveur a refusé l’écriture.')
+      setRefus(motif)
+      toast.error(motif)
+    } finally {
+      setEnregistrement(false)
+    }
+  }, [toitureId, points, onEnregistre])
+
+  const ongletGeometrie = (
+    <div className="flex flex-col gap-3">
+      <LegendeProvenance />
+      <p className="rounded-md border border-border bg-muted p-2 text-xs text-muted-foreground">
+        « Enregistrer » écrit le CONTOUR de cette toiture, et lui seul. Les
+        obstacles, zones et chaînes de cotes saisis dans la boîte à outils
+        restent LOCAUX à l’atelier : les y raccorder au serveur est une tâche à
+        part. Ils ne sont pas conservés en quittant l’écran — c’est dit ici,
+        avant d’en saisir un.
+      </p>
+      <TableauGeometrie
+        points={points}
+        obstacles={obstacles}
+        onGeometrie={majPoints}
+        onObstacles={majObstacles}
+        onRefus={setRefus}
+        onRefusObstacle={setRefus}
+        onTerminer={terminer}
+      />
+    </div>
+  )
+
+  /* ── PACT167 — LA BOÎTE À OUTILS ─────────────────────────────────────────
+     Seize outils de relevé étaient livrés et importés par personne. Ils sont
+     ici, chacun branché sur l'état RÉEL de l'atelier — jamais rendus « pour la
+     forme ». Radix démonte l'onglet inactif : chaque outil non contrôlé
+     (planche d'obstacles, chaînes) est donc RE-SEMÉ depuis l'état de l'atelier
+     à chaque ouverture de son onglet, ce qui interdit la dérive silencieuse
+     entre sa copie interne et la vérité de l'atelier. */
+
+  const appliquerReechelonnage = (ancienne, nouvelle) => {
+    majPoints(reechelonner(points, ancienne, nouvelle), 'Ré-échelonner le tracé')
+    terminer()
+  }
+
+  const ongletCalage = (
+    <div className="flex flex-col gap-3">
+      <p className="text-xs text-muted-foreground">
+        Un fond de calque (photo, scan ou PDF du plan) se cale à l’échelle par
+        deux points de distance connue. Sans fond de calque, le relevé se saisit
+        directement en mètres et l’échelle reste « Tracé direct ».
+      </p>
+      <div className="flex flex-col gap-1">
+        <label htmlFor="ao-atelier-plan" className="text-xs text-muted-foreground">
+          Plan à caler (image ou PDF)
+        </label>
+        <input
+          id="ao-atelier-plan"
+          type="file"
+          accept="image/*,application/pdf"
+          className="text-sm"
+          onChange={(e) => setPlan(e.target.files?.[0] ?? null)}
+        />
+      </div>
+      {plan && estPdf(plan) ? (
+        <Suspense fallback={<Skeleton className="h-24 w-full" />}>
+          <UnderlayPdf fichier={plan} onErreur={setRefus} />
+        </Suspense>
+      ) : (
+        <UnderlayImage fichier={plan} onFichier={setPlan} />
+      )}
+      <Calibration
+        calibration={calibration}
+        onCalibration={setCalibration}
+        onReechelonner={appliquerReechelonnage}
+        aUnTrace={points.length > 0}
+      />
+    </div>
+  )
+
+  const ongletTrace = (
+    <div className="flex flex-col gap-4">
+      {/* Porte n°2 : le relevé se SAISIT (longueur + direction), il ne se
+          dessine pas au pixel. Ce que l'outil publie devient le contour de
+          l'atelier — donc ce qui partira à l'enregistrement. */}
+      <OutilTrace
+        actif={!plan || peutTracer(calibration)}
+        onChange={({ sommets_m: sommets }) => {
+          majPoints(sommets, 'Tracer le contour')
+          terminer()
+        }}
+      />
+      <EnveloppeL
+        onValider={({ sommets }) => {
+          majPoints(sommets, 'Enveloppe en L')
+          terminer()
+        }}
+      />
+      <EnveloppeArc
+        onValider={(enveloppe) => {
+          setEnveloppeArc(enveloppe)
+          setNote(
+            'Enveloppe en arc retenue pour le calepinage. Elle décrit un DÉVELOPPÉ '
+            + '(segments et murets), pas un contour fermé : « Enregistrer » n’écrit '
+            + 'que le contour, cette enveloppe reste donc locale à l’atelier.',
+          )
+        }}
+      />
+      {enveloppeArc && (
+        <p className="text-xs text-muted-foreground" data-ao-enveloppe-arc-retenue="">
+          Enveloppe en arc retenue : {(enveloppeArc.segments ?? []).length} segment(s),
+          {' '}
+          {(enveloppeArc.murets ?? []).length} muret(s).
+        </p>
+      )}
+    </div>
+  )
+
+  const ongletObstacles = (
+    <div className="flex flex-col gap-4">
+      <OutilsObstacles
+        obstaclesInitiaux={obstacles}
+        metresParPixel={mpp}
+        onChange={majObstaclesPlanche}
+      />
+      <ObstaclesList
+        obstacles={obstacles}
+        survolId={survolObstacle}
+        onSurvol={setSurvolObstacle}
+        onSelection={setSurvolObstacle}
+        onPoserQuestion={(question) => setQuestionProposee(question)}
+        onPretAPublier={() => setNote(
+          'Refus : le modèle de toiture ne porte AUCUN état « prête à publier » '
+          + '(aucun champ de ce nom au serveur). Rien n’a été enregistré — la garde '
+          + 'ci-dessus reste le verdict à lire avant de s’engager.',
+        )}
+      />
+      {questionProposee && (
+        <div
+          className="rounded-md border border-border bg-muted p-2 text-xs"
+          data-ao-question-proposee=""
+        >
+          <p className="font-medium text-foreground">{questionProposee.objet}</p>
+          <p className="mt-1 whitespace-pre-line text-muted-foreground">
+            {questionProposee.corps}
+          </p>
+          <p className="mt-1 text-muted-foreground">
+            Question PRÉ-REMPLIE, pas encore envoyée : elle se crée dans l’onglet
+            « Questions terrain » de la fiche affaire.
+          </p>
+        </div>
+      )}
+    </div>
+  )
+
+  const ongletZones = (
+    <div className="flex flex-col gap-3">
+      <p className="text-xs text-muted-foreground">
+        Zones interdites, réservées ou préférées du relevé. Le serveur ne
+        modélise PAS encore de ressource « zones » (le moteur de calepinage en
+        reçoit une liste vide) : elles restent locales à l’atelier.
+      </p>
+      <OutilsZones
+        zonesInitiales={zones}
+        metresParPixel={mpp}
+        onChange={setZones}
+      />
+    </div>
+  )
+
+  const ongletCotes = (
+    <div className="flex flex-col gap-4">
+      <ChainesCotes
+        chainesInitiales={chaines}
+        pixelsParMetre={mpp > 0 ? 1 / mpp : 1}
+        onChange={setChaines}
+      />
+      <FermeturesPanel
+        chaines={chaines}
+        onChaines={setChaines}
+        onCalepiner={() => setNote(
+          'Chaînes arbitrées. Le calepinage se lance depuis l’onglet « Calepinages » '
+          + 'de la fiche affaire (le calcul est sans état, piloté par la toiture) : '
+          + 'rien n’a été lancé depuis ici.',
+        )}
+      />
+      <PointsALever
+        cotes={cotes}
+        onExport={(csv) => telechargerCsv(
+          `points-a-lever-${toitureId ?? 'toiture'}.csv`, csv,
+        )}
+      />
+    </div>
+  )
+
+  const ongletImport = (
+    <div className="flex flex-col gap-4">
+      {/* Aucun `analyserDxf` n'est passé : il n'existe AUCUN endpoint serveur
+          d'analyse de plan (vérifié). L'écran rend alors son propre état
+          dégradé, qui NOMME l'empêchement et propose le tracé à la main —
+          c'est exactement ce pour quoi il a été écrit. */}
+      <ImportDxf
+        onImporter={({ sommets }) => {
+          majPoints(
+            (sommets ?? []).map(([x, y]) => ({ x: Number(x), y: Number(y) })),
+            'Importer le contour DXF',
+          )
+          terminer()
+          setOnglet('geometrie')
+        }}
+        onTracerAlaMain={() => setOnglet('trace')}
+      />
+      <Suspense fallback={<Skeleton className="h-24 w-full" />}>
+        <RepriseCarte
+          onContour={() => setNote(
+            'Contour repris de la carte, mais NON appliqué : il est en latitude / '
+            + 'longitude, et le modèle de toiture ne stocke qu’un contour en mètres '
+            + 'dans un repère local, sans point d’origine géographique. Convertir '
+            + 'l’un en l’autre demande ce point d’origine — il n’existe pas encore.',
+          )}
+          onTracerAlaMain={() => setOnglet('trace')}
+        />
+      </Suspense>
+    </div>
+  )
+
+  const onglets = [
+    { id: 'geometrie', label: 'Géométrie', contenu: ongletGeometrie },
+    { id: 'calage', label: 'Calage', contenu: ongletCalage },
+    { id: 'trace', label: 'Tracé', contenu: ongletTrace },
+    { id: 'obstacles', label: 'Obstacles', contenu: ongletObstacles },
+    { id: 'zones', label: 'Zones', contenu: ongletZones },
+    { id: 'cotes', label: 'Cotes', contenu: ongletCotes },
+    { id: 'import', label: 'Import', contenu: ongletImport },
+  ]
+
+  const etatCalibration = plan
+    ? (estCalibree(calibration) ? 'calibre' : 'non_calibre')
+    : 'sans_objet'
+
+  return (
+    <StudioShell
+      titre={`Atelier de traçage — ${nomToiture(toiture)}`}
+      sousTitre="Contour en mètres, repère local de la toiture (x vers l’est, y vers le nord)."
+      outils={OUTILS_ATELIER}
+      outilActif={outil}
+      onOutilChange={setOutil}
+      actions={selecteur}
+      onAnnuler={annuler}
+      onRetablir={retablir}
+      peutAnnuler={histoire.peutAnnuler}
+      peutRetablir={histoire.peutRetablir}
+      onEnregistrer={enregistrer}
+      enregistrementEnCours={enregistrement}
+      verdict={(refus || note) ? (
+        <div className="flex flex-col gap-1">
+          {refus && (
+            <p role="alert" className="text-sm font-medium text-destructive">{refus}</p>
+          )}
+          {/* Un refus MOTIVÉ n'est pas une erreur : c'est ce que l'atelier ne
+              fait pas, et pourquoi. Il reste lisible, jamais un toast fugace. */}
+          {note && (
+            <p role="status" className="text-sm text-muted-foreground" data-ao-atelier-note="">
+              {note}
+            </p>
+          )}
+        </div>
+      ) : null}
+      onglets={onglets}
+      ongletActif={onglet}
+      onOngletChange={setOnglet}
+      inspecteurTitre="Boîte à outils"
+      etat={(
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+          {/* Surface/périmètre/azimut du BROUILLON en cours, calculés par les
+              helpers PURS partagés (`snap.js`) — un éditeur sans retour de
+              mesure ne se pilote pas. Le chiffre qui ENGAGE reste celui du
+              serveur : il le recalcule à l'enregistrement, et l'écran le dit. */}
+          <BarreEtat
+            viewport={vue?.viewport}
+            taille={vue?.taille}
+            curseur={curseur}
+            surface={points.length >= 3 ? aire(points) : undefined}
+            perimetre={points.length >= 2 ? perimetreDe(points) : undefined}
+            azimut={azimutAretePrincipale(points) ?? undefined}
+            calibration={etatCalibration}
+          />
+          {modifie && (
+            <span className="font-medium text-muted-foreground">
+              Contour modifié — la surface définitive est recalculée par le
+              serveur à l’enregistrement.
+            </span>
+          )}
+        </div>
+      )}
+    >
+      <CanvasSvg
+        ref={svgRef}
+        bbox={bbox}
+        onCurseur={setCurseur}
+        onViewportChange={majVue}
+        ariaLabel="Atelier de traçage — contour de la toiture, en mètres"
+      >
+        {points.length >= 3 && (
+          <polygon
+            points={points.map((p) => `${p.x},${p.y}`).join(' ')}
+            className="fill-primary/10 stroke-primary"
+            strokeWidth={1.5}
+            vectorEffect="non-scaling-stroke"
+            pointerEvents="none"
+          />
+        )}
+        {points.length === 2 && (
+          <line
+            x1={points[0].x}
+            y1={points[0].y}
+            x2={points[1].x}
+            y2={points[1].y}
+            className="stroke-primary"
+            strokeWidth={1.5}
+            vectorEffect="non-scaling-stroke"
+            pointerEvents="none"
+          />
+        )}
+        {/* Zones (AOF89) puis obstacles (AOF88) : les DEUX voies d'écriture
+            tiennent `sommets` à jour, le canvas n'a donc qu'une forme à lire. */}
+        {zones.map((z) => (
+          <polygon
+            key={z.id}
+            points={sommetsSvg(z.sommets)}
+            className="fill-muted-foreground/10 stroke-muted-foreground"
+            strokeWidth={1}
+            strokeDasharray="4 3"
+            vectorEffect="non-scaling-stroke"
+            pointerEvents="none"
+          />
+        ))}
+        {obstacles.map((o) => (
+          <polygon
+            key={o.id}
+            points={sommetsSvg(o.sommets ?? obstacleDepuisRect(o).sommets)}
+            className={`stroke-destructive ${
+              survolObstacle === (o.id ?? o.repere) ? 'fill-destructive/40' : 'fill-destructive/20'
+            }`}
+            strokeWidth={1}
+            vectorEffect="non-scaling-stroke"
+            pointerEvents="none"
+          />
+        ))}
+        <Selection
+          points={points}
+          selection={selection}
+          onSelectionChange={setSelection}
+          survol={survol}
+          onSurvol={setSurvol}
+          versMonde={versMonde}
+          metresParPixel={mpp}
+          zone={zone}
+          actif={outil === 'selection'}
+          onGeometrie={majPoints}
+          onTerminer={terminer}
+          onRefus={setRefus}
+        />
+      </CanvasSvg>
+    </StudioShell>
+  )
+}
+
 export default function ToituresPage({ affaireId } = {}) {
   const surTelephone = useIsMobile(REQUETE_TELEPHONE)
   const [affaireChoisie, setAffaireChoisie] = useState('')
@@ -255,6 +890,16 @@ export default function ToituresPage({ affaireId } = {}) {
 
   const [wizardOuvert, setWizardOuvert] = useState(false)
   const [refus, setRefus] = useState(null)
+
+  /* Toiture ouverte dans l'atelier (PACT166) — DÉRIVÉE au rendu comme
+     l'affaire : le choix explicite gagne, sinon la première toiture chargée.
+     Une toiture disparue de la liste (rechargement) ne laisse jamais l'atelier
+     sur un objet fantôme : `find` échoue, on retombe sur la première. */
+  const [toitureChoisie, setToitureChoisie] = useState('')
+  const toitureActive = useMemo(
+    () => toitures.find((t) => String(t.id) === String(toitureChoisie)) || toitures[0] || null,
+    [toitures, toitureChoisie],
+  )
 
   /* Un bouton n'est JAMAIS grisé sans explication : quand la création est
      impossible, la raison est écrite à côté (et portée par `title`). */
@@ -330,6 +975,26 @@ export default function ToituresPage({ affaireId } = {}) {
     </div>
   )
 
+  /* Choix de la toiture ouverte dans l'atelier — rendu SEULEMENT quand il y a
+     vraiment un choix : un sélecteur à une seule option est un contrôle mort. */
+  const selecteurToiture = toitures.length > 1 ? (
+    <div className="flex flex-wrap items-center gap-2">
+      <label htmlFor="ao-atelier-toiture" className="text-xs text-muted-foreground">
+        Toiture
+      </label>
+      <select
+        id="ao-atelier-toiture"
+        className="h-9 min-w-0 max-w-full rounded-md border border-input bg-card px-2 text-sm text-foreground focus-ring"
+        value={String(toitureActive?.id ?? '')}
+        onChange={(e) => setToitureChoisie(e.target.value)}
+      >
+        {toitures.map((t) => (
+          <option key={t.id} value={t.id}>{nomToiture(t)}</option>
+        ))}
+      </select>
+    </div>
+  ) : null
+
   const actionCreer = (
     <div className="flex flex-col items-start gap-1 sm:items-end">
       <Button
@@ -380,10 +1045,23 @@ export default function ToituresPage({ affaireId } = {}) {
       ) : (
         <>
           {lecture}
-          <EmptyState
-            title="Atelier de traçage"
-            description="Le traçage interactif (contour, obstacles, cotes) est livré par sa propre lane du Groupe AOF — cet écran en présente aujourd'hui la lecture."
-          />
+          {toitureActive ? (
+            /* Hauteur EXPLICITE : `StudioShell` est une coquille `h-full` (canvas
+               élastique) — dans un flux ordinaire elle s'écraserait à zéro. */
+            <div className="h-[70vh] min-h-[30rem]">
+              <AtelierToiture
+                key={toitureActive.id}
+                toiture={toitureActive}
+                selecteur={selecteurToiture}
+                onEnregistre={rechargerToitures}
+              />
+            </div>
+          ) : (
+            <EmptyState
+              title="Atelier de traçage"
+              description="Relevez une première toiture : l’atelier de traçage (contour, sélection, tableau de géométrie) s’ouvre sur la toiture choisie."
+            />
+          )}
         </>
       )}
     </div>

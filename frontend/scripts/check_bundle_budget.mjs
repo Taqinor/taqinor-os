@@ -88,7 +88,18 @@ const PER_CHUNK_BUDGET_KB = 350
 // code applicatif. AUCUNE nouvelle dépendance npm (contrainte tenue par les 9
 // lanes). Palier généreux habituel (~110 Ko) pour ne pas re-bumper à chaque
 // vague ; le garde per-chunk + les budgets vendors restent les vrais garde-fous.
-const TOTAL_BUDGET_KB = 2900
+// 2026-08-07 : 2900 -> 2990. Lot PACT + VAO (75 tâches) : le module NEUF
+// « Veille appels d'offres » (6 écrans : liste du matin, fiche avis, paramètres,
+// acheteurs cibles, bandeau de santé) et — surtout — ~14 composants DÉJÀ
+// LIVRÉS mais morts que ce lot a enfin CÂBLÉS (atelier toiture, studio
+// calepinage, comparateur de variantes, dialogues d'édition en masse et
+// constructeur de vues de la DataTable). Ces derniers ne sont pas du code
+// nouveau : ils étaient dans le dépôt, exclus du bundle parce qu'aucune route
+// n'y menait — les rendre atteignables les fait légitimement entrer. Plus 5
+// écrans compta/crédit/fiscal manquants. Réel ~2940.1 Ko. Croissance RÉPARTIE :
+// aucun chunk gonflé, PER_CHUNK_BUDGET_KB (350) passe sans marge consommée par
+// le code applicatif. AUCUNE nouvelle dépendance npm.
+const TOTAL_BUDGET_KB = 2990
 const VENDOR_CHUNK_BUDGETS_KB = {
   recharts: 450,
   'pdfjs-dist': 450,
@@ -159,7 +170,12 @@ const MODULEPRELOAD_ALLOWLIST = new Set([
 // réel ~586. Croissance une-route-un-chunk, pas une prolifération de structure ;
 // le budget gzip (2900) + PER_CHUNK_BUDGET_KB (350) restent les vrais
 // garde-fous de poids.
-export const MAX_CHUNK_COUNT = 610
+// 2026-08-07 : 610 -> 625. Lot PACT + VAO : un chunk par écran lazy nouvellement
+// ATTEIGNABLE (les 6 écrans veille_ao, l'atelier toiture et ses 16 outils, le
+// comparateur de variantes, les écrans compta/crédit/fiscal) — réel ~611.
+// Croissance une-route-un-chunk, pas une prolifération de structure ; le budget
+// gzip (2990) + PER_CHUNK_BUDGET_KB (350) restent les vrais garde-fous.
+export const MAX_CHUNK_COUNT = 625
 
 // Extrait les `<link rel="modulepreload" href="...">` de `dist/index.html` et
 // signale tout vendor lourd nommé qui s'y trouve (hors allowlist). Silencieux

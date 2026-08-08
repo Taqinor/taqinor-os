@@ -60,7 +60,7 @@ class CampagneTests(TestCase):
 
     def test_creation_pose_company_serveur(self):
         api = auth(self.user)
-        resp = api.post('/api/django/compta/campagnes/', {
+        resp = api.post('/api/django/marketing/campagnes/', {
             'nom': 'Réveil base froide', 'canal': 'email',
             'objet': 'Offre', 'corps': 'Bonjour',
             'company': 999,  # doit être ignoré
@@ -119,7 +119,7 @@ class SequenceRelanceTests(TestCase):
             company=self.co, sequence=seq, ordre=1, delai_jours=0)
         api = auth(self.user)
         resp = api.get(
-            f'/api/django/compta/sequences-relance/{seq.id}/planifier/')
+            f'/api/django/marketing/sequences-relance/{seq.id}/planifier/')
         self.assertEqual(resp.status_code, 200, resp.content)
         self.assertEqual(len(resp.data['etapes']), 1)
 
@@ -142,7 +142,7 @@ class RelanceDevisAbandonneTests(TestCase):
         co2 = make_company('fg203b', 'FG203B')
         RelanceDevisAbandonne.objects.create(company=co2, devis_id=1)
         api = auth(self.user)
-        resp = api.get('/api/django/compta/relances-devis-abandonnes/')
+        resp = api.get('/api/django/marketing/relances-devis-abandonnes/')
         self.assertEqual(resp.status_code, 200)
         # Réponse paginée → on lit le compte (l'isolation société renvoie 0).
         self.assertEqual(resp.data['count'], 0)
@@ -158,7 +158,7 @@ class OuverturePartageTests(TestCase):
     def test_ping_idempotent_incremente(self):
         api = auth(self.user)
         for _ in range(3):
-            resp = api.post('/api/django/compta/ouvertures-partage/ping/', {
+            resp = api.post('/api/django/marketing/ouvertures-partage/ping/', {
                 'token': 'abc123', 'cible': 'devis',
                 'cible_reference': 'DV-1',
             }, format='json')
@@ -172,7 +172,7 @@ class OuverturePartageTests(TestCase):
 
     def test_ping_sans_token_400(self):
         api = auth(self.user)
-        resp = api.post('/api/django/compta/ouvertures-partage/ping/', {},
+        resp = api.post('/api/django/marketing/ouvertures-partage/ping/', {},
                         format='json')
         self.assertEqual(resp.status_code, 400)
 
@@ -186,7 +186,7 @@ class FormulaireIntakeTests(TestCase):
 
     def test_creation_avec_pretag(self):
         api = auth(self.user)
-        resp = api.post('/api/django/compta/formulaires-intake/', {
+        resp = api.post('/api/django/marketing/formulaires-intake/', {
             'nom': 'Pompage agricole', 'slug': 'pompage',
             'tag_prefill': 'agricole', 'type_installation': 'pompage',
         }, format='json')
@@ -235,7 +235,7 @@ class AppelTelephoniqueTests(TestCase):
 
     def test_auteur_pose_serveur(self):
         api = auth(self.user)
-        resp = api.post('/api/django/compta/appels/', {
+        resp = api.post('/api/django/marketing/appels/', {
             'numero': '+212600000000', 'direction': 'sortant',
             'issue': 'repondu', 'duree_secondes': 120,
             'auteur': 999,  # doit être ignoré
@@ -378,5 +378,5 @@ class RoleGateTests(TestCase):
 
     def test_commercial_refuse(self):
         api = auth(self.commercial)
-        resp = api.get('/api/django/compta/campagnes/')
+        resp = api.get('/api/django/marketing/campagnes/')
         self.assertIn(resp.status_code, (403, 401))

@@ -94,6 +94,6 @@ class DashboardResultatsEnqueteTests(TestCase):
         api = APIClient()
         api.credentials(HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(user)}')
         resp = api.get(
-            f'/api/django/compta/enquetes/{enquete.id}/resultats/export/')
+            f'/api/django/marketing/enquetes/{enquete.id}/resultats/export/')
         self.assertEqual(resp.status_code, 200)
         self.assertIn('spreadsheet', resp['Content-Type'])

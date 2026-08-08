@@ -472,6 +472,19 @@ jobs:
         run: python scripts/check_api_shapes.py
       - name: Test the API-shapes checker itself
         run: python -m unittest scripts.tests.test_check_api_shapes -v
+      # PACT7 — pour que le schéma OpenAPI PUISSE un jour jouer ce rôle, il
+      # faut d'abord qu'il cesse de se taire et de mentir : `response=dict`
+      # documente « type: object » SANS AUCUNE PROPRIÉTÉ (c'était la
+      # déclaration exacte de /ao/tableau-marches/ le jour du plantage), et un
+      # agrégat sans `@extend_schema` est publié avec le `serializer_class` du
+      # ViewSet — `/flotte/vehicules/tableau-bord/` était documenté
+      # VehiculeSerializer alors qu'il renvoie {vehicules, engins, echeances,
+      # couts, entretien, pool}. Analyse statique pure (~35 s), sans base de
+      # données ni dépendance, comme les autres check_*.py de ce job.
+      - name: Check OpenAPI response shapes (aucun agrégat ne se déclare « un objet »)
+        run: python scripts/check_openapi_shapes.py
+      - name: Test the OpenAPI-shapes checker itself (PACT7)
+        run: python -m unittest scripts.tests.test_check_openapi_shapes -v
       # ÉCRANS ATTEIGNABLES (incident du 03/08/2026, troisième défaut du même
       # jour) : le module « Appels d'offres » a été livré et déclaré TERMINÉ —
       # 194 tâches cochées, CI verte, déployé — alors que 68 écrans existaient
@@ -516,6 +529,17 @@ jobs:
       # pure, sans base de données ni dépendance, comme les autres check_*.py.
       - name: Check tâches de plan (aucune ne commande du travail mort)
         run: python scripts/check_taches_cablage.py
+      # PACT12 — une tâche dont `Files:` nomme un fichier backend ET un fichier
+      # frontend ANNONCE deux moitiés. En juillet 2026,
+      # docs/FRONTEND_GAP_PLAN.md a constaté que « the paired frontend half of
+      # each task was never built, EVEN THOUGH most tasks named a `frontend/`
+      # file in their own Files: line » : la ligne annonçait les deux moitiés
+      # et RIEN ne vérifiait qu'elles avaient été touchées toutes les deux.
+      # 147 tâches de rattrapage écrites, 145 encore ouvertes un mois plus tard.
+      - name: Check tâches mixtes (une moitié livrée ne peut pas être cochée)
+        run: python scripts/check_plan_taches_mixtes.py
+      - name: Test the mixed-task checker itself (PACT12)
+        run: python -m unittest scripts.tests.test_check_plan_taches_mixtes -v
       - name: Test the plan-task wiring checker itself
         run: python -m unittest scripts.tests.test_check_taches_cablage -v
       - name: Check no raw JSON / bare error object is shown to the user (EZ16)
@@ -682,7 +706,16 @@ jobs:
           # `leads.spec` (E7 → Signé) dépend d'un devis créé par un spec antérieur
           # dans la matrice ordonnée → reste en e2e COMPLET (release-verify), pas
           # en smoke. La matrice complète + mobile tourne dans release-verify.yml.
-          npx playwright test --project=chromium devis.spec.js health.spec.js
+          # PACT8 — `fumee-ecrans.spec.js` ouvre CHAQUE route déclarée par les
+          # `features/*/module.config.jsx` (302 écrans lus automatiquement,
+          # aucune liste à tenir) sur ce vrai Django et cette vraie base, et
+          # échoue sur un ErrorBoundary affiché, une exception non rattrapée,
+          # un lien `…/undefined` ou une page blanche. C'est LE filet
+          # transversal que ce commentaire promettait sans l'avoir : le
+          # 03/08/2026, `/ao` était déclaré dans `e2e/helpers.js` et visité par
+          # AUCUNE spec, nulle part. Ne le retirez pas de cette ligne.
+          npx playwright test --project=chromium \
+            devis.spec.js health.spec.js fumee-ecrans.spec.js
           # VX68 — passage WebKit RÉEL (Safari) sur le spec mobile : capte les
           # régressions qui n'apparaissent que sur Safari (VX48 window.open
           # post-await, sticky, backdrop-blur). PR-only, hors matrice complète.

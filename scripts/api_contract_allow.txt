@@ -12,5 +12,3 @@
 #
 # La signature est le CHEMIN, jamais `fichier:ligne` : un deplacement de ligne
 # ne doit pas invalider la base (lecon du depot).
-/api/django/rh/demandes-conge/<>/soumettre
-/api/public/openapi.json

@@ -72,7 +72,7 @@ class ColonnesPerformanceTests(TestCase):
             role_legacy='responsable')
         api = APIClient()
         api.credentials(HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(user)}')
-        resp = api.get('/api/django/compta/campagnes/?groupby=statut')
+        resp = api.get('/api/django/marketing/campagnes/?groupby=statut')
         self.assertEqual(resp.status_code, 200, resp.content)
         statuts = [c['statut'] for c in resp.json()['results']]
         self.assertEqual(statuts, sorted(statuts))

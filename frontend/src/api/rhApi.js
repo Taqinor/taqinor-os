@@ -117,9 +117,11 @@ const rhApi = {
   getTypesAbsence: (params) => api.get('/rh/types-absence/', { params }),
   getSoldesConge: (params) => api.get('/rh/soldes-conge/', { params }),
   getDemandesConge: (params) => api.get('/rh/demandes-conge/', { params }),
+  // PACT24 — pas de fonction ``soumettreDemandeConge`` : le modèle
+  // ``DemandeConge`` n'a pas d'état brouillon, une demande est créée déjà
+  // ``soumise`` (statut par défaut) ; aucun appelant frontend n'existait pour
+  // l'ancien `.../soumettre/`, qui n'a jamais été une route du ViewSet.
   createDemandeConge: (data) => api.post('/rh/demandes-conge/', data),
-  soumettreDemandeConge: (id, data) =>
-    api.post(`/rh/demandes-conge/${id}/soumettre/`, data ?? {}),
   validerDemandeConge: (id, data) =>
     api.post(`/rh/demandes-conge/${id}/valider/`, data ?? {}),
   refuserDemandeConge: (id, data) =>

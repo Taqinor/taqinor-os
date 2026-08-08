@@ -254,3 +254,9 @@ Un hook retiré du code se retire des deux listes en même temps ; un hook
 renommé est un hook retiré plus un hook ajouté. Le test refuse toute
 divergence entre ce document, `ALL_HOOKS` et le code de `features/ao/**`, dans
 les deux sens.
+| `data-ao-annotation-serie` | Annotateur de la série de questions (`SeriesPage`, PACT170) | Le repère posé sur l'image annotée — un par marqueur, portant sa lettre. |
+| `data-ao-note-question` | Fiche question ouverte depuis un repère (`SeriesPage`, PACT170) | La saisie de la question rattachée à UN repère (texte + impact chiffré). |
+| `data-ao-legende-provenance` | Bandeau de provenance de l'atelier toiture (`ToituresPage`, PACT166) | La légende qui NOMME d'où vient chaque cote (relevée, lue sur plan, devinée). |
+| `data-ao-enveloppe-arc-retenue` | Outil enveloppe en arc (`ToituresPage`, PACT167) | L'enveloppe arc RETENUE, une fois publiée dans le contour de l'atelier. |
+| `data-ao-question-proposee` | Atelier toiture (`ToituresPage`, PACT167) | Une question terrain PROPOSÉE par l'atelier, pas encore créée côté serveur. |
+| `data-ao-atelier-note` | Atelier toiture (`ToituresPage`, PACT166/167) | Une limite ÉCRITE de l'atelier (ce qu'il ne sait pas faire), jamais un bouton mort. |

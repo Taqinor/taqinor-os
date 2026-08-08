@@ -103,6 +103,6 @@ class ActionsRenvoyerDupliquerAnnulerTests(TestCase):
             role_legacy='responsable')
         api = APIClient()
         api.credentials(HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(user)}')
-        resp = api.post(f'/api/django/compta/campagnes/{camp.id}/annuler/')
+        resp = api.post(f'/api/django/marketing/campagnes/{camp.id}/annuler/')
         self.assertEqual(resp.status_code, 200, resp.content)
         self.assertEqual(resp.json()['statut'], Campagne.Statut.ANNULEE)

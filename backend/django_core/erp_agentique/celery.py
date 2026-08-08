@@ -113,6 +113,18 @@ app.conf.beat_schedule = {
         'task': 'ao.rappeler_echeances',
         'schedule': crontab(hour=6, minute=30),
     },
+    # VAO22 — veille appels d'offres, collecte du matin. 06:00 parce que les
+    # remises de plis sont à 10 h-11 h : l'information du matin est
+    # actionnable LE JOUR MÊME. L'entrée est présente et la tâche est
+    # INERTE tant que VEILLE_AO_COLLECTE_ACTIVE vaut 0 (le défaut) — l'acte
+    # d'armement est une décision fondateur datée (règle #5, VAO4), jamais
+    # celle d'un agent. Planifier la tâche désarmée est délibéré : une tâche
+    # absente du beat est le mode de défaillance dominant du dépôt (bâtie,
+    # testée, jamais exécutée).
+    'veille-ao-collecte-quotidienne': {
+        'task': 'veille_ao.collecte_quotidienne',
+        'schedule': crontab(hour=6, minute=0),
+    },
     'notifications-daily-digest': {
         'task': 'notifications.daily_digest',
         'schedule': crontab(hour=7, minute=30),
@@ -436,6 +448,14 @@ app.conf.beat_schedule = {
     'qhse-escalader-checkins-en-retard': {
         'task': 'qhse.escalader_checkins_en_retard',
         'schedule': crontab(minute='*/30'),
+    },
+    # PACT184 (XQHS12) — rappel légal de réunion CSH trimestrielle (Code du
+    # travail, ≥50 salariés). ``csh_relance_due`` était testé mais sans
+    # aucun appelant : la relance restait invisible même cadence dépassée.
+    # Quotidien, heure creuse (dédup au jour via Notification).
+    'qhse-relancer-csh-du-jour': {
+        'task': 'qhse.relancer_csh_du_jour',
+        'schedule': crontab(hour=7, minute=48),
     },
     # QX36 — relève des boîtes email entrantes (dispatch bus core.email_intake :
     # SAV email→ticket, ventes réponse→devis). No-op sans boîte configurée.

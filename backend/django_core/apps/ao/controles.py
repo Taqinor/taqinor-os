@@ -350,6 +350,35 @@ def _pieces_obligatoires(ctx):
     return anomalies
 
 
+@regle('AO_CAUTION_EXPIREE',
+       "Aucune caution n'expire AVANT l'ouverture des plis")
+def _caution_expiree(ctx):
+    """AOF16 — une caution périmée à l'ouverture fait REJETER le pli.
+
+    C'est le dossier ENTIER qui tombe, pour une date : la règle est donc
+    BLOQUANTE, au même rang que les pièces obligatoires absentes.
+
+    ``services.cautions_expirant_avant_ouverture`` est la SEULE source de ce
+    constat — le modèle rend ``None`` (jamais un faux « tout va bien ») quand
+    l'une des deux dates manque, et une caution sans échéance connue n'est
+    donc jamais signalée ici à tort.
+    """
+    from . import services
+
+    ao = ctx['appel_offre']
+    ouverture = ao.date_ouverture_plis
+    return [
+        _anomalie(
+            f'La caution {caution.get_type_caution_display().lower()} '
+            f'({caution.banque or "banque non renseignée"}) expire le '
+            f'{caution.date_echeance} alors que les plis ouvrent le '
+            f'{ouverture} : un pli déposé avec une caution périmée est '
+            f'REJETÉ.',
+            objet=f'caution {caution.get_type_caution_display().lower()}')
+        for caution in services.cautions_expirant_avant_ouverture(ao)
+    ]
+
+
 @regle('AO_OBSTACLES_NON_MESURES',
        'Aucun obstacle « lu sur plan » ou « deviné » encore actif')
 def _obstacles_non_mesures(ctx):

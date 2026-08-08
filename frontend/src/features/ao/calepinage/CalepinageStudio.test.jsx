@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import resultatReel from './resultatReel.fixture'
 
 /* ============================================================================
@@ -72,5 +73,102 @@ describe('CalepinageStudio', () => {
   it("nomme l'absence des tiroirs au lieu de laisser une colonne vide", async () => {
     const { container } = render(<CalepinageStudio toitureId={7} />)
     await waitFor(() => expect(container.querySelector('[data-tiroirs="absents"]')).toBeInTheDocument())
+  })
+})
+
+/* ============================================================================
+   PACT168 — Mode expert et Suggestions, MONTÉS dans l'atelier.
+   ----------------------------------------------------------------------------
+   `ModeExpert` (qui révèle `RobustesseBadges`) et `SuggestionsPanel` étaient
+   livrés et importés par personne : l'inspecteur s'arrêtait aux 5 tiroirs
+   débutant. Ce que ces tests protègent :
+     1. les deux panneaux sont RÉELLEMENT montés à côté des tiroirs ;
+     2. le mode expert est replié par défaut et mémorisé côté navigateur ;
+     3. un réglage expert repart au SERVEUR par la voie normale des paramètres
+        — aucun chiffre n'est recalculé côté écran (AOF94) ;
+     4. une suggestion « appliquée » passe par ce même chemin, et quitte la
+        liste actionnable pour l'historique (jamais appliquée deux fois).
+   ========================================================================== */
+describe('CalepinageStudio — mode expert et suggestions (PACT168)', () => {
+  // L'interrupteur du mode expert est mémorisé (`safeStorage`) : sans purge,
+  // le test suivant hériterait de l'état laissé par le précédent.
+  beforeEach(() => {
+    try { window.localStorage.clear() } catch { /* stockage indisponible */ }
+  })
+
+  it('monte le mode expert à côté des cinq tiroirs, REPLIÉ par défaut', async () => {
+    const { container } = render(<CalepinageStudio toitureId={7} />)
+
+    await waitFor(() => expect(container.querySelector('[data-ao-tiroir="expert"]')).toBeInTheDocument())
+    expect(screen.getByLabelText('Mode expert')).toBeInTheDocument()
+    expect(screen.queryByLabelText('Pas de recherche (m)')).toBeNull()
+  })
+
+  it('activer le mode expert révèle les réglages fins ET les marges du moteur', async () => {
+    axiosMock.post.mockResolvedValue({
+      status: 200,
+      data: { ...resultatReel, marges: { troncon_min_cm: 1.2, bande_min_cm: 8 } },
+    })
+    render(<CalepinageStudio toitureId={7} />)
+    await waitFor(() => expect(screen.getByLabelText('Mode expert')).toBeInTheDocument())
+
+    await userEvent.click(screen.getByLabelText('Mode expert'))
+
+    expect(screen.getByLabelText('Pas de recherche (m)')).toBeInTheDocument()
+    expect(document.querySelector('[data-marge-robustesse="Marge tronçon"]')).not.toBeNull()
+    expect(document.querySelector('[data-marge-robustesse="Marge bande"]')).not.toBeNull()
+  })
+
+  it('un réglage expert repart au SERVEUR (jamais un recalcul côté écran)', async () => {
+    render(<CalepinageStudio toitureId={7} />)
+    await waitFor(() => expect(screen.getByLabelText('Mode expert')).toBeInTheDocument())
+    await userEvent.click(screen.getByLabelText('Mode expert'))
+
+    await userEvent.type(screen.getByLabelText('Pas de recherche (m)'), '3')
+
+    await waitFor(
+      () => expect(axiosMock.post).toHaveBeenCalledWith(
+        CALCULER, { toiture: 7, params: { pas_recherche_m: 3 } },
+      ),
+      { timeout: 5000 },
+    )
+  })
+
+  it('le panneau de suggestions est monté et DIT qu’il n’y en a aucune', async () => {
+    const { container } = render(<CalepinageStudio toitureId={7} />)
+
+    await waitFor(() => expect(container.querySelector('[data-suggestions-panel]')).toBeInTheDocument())
+    expect(container.querySelector('[data-suggestions-panel]').dataset.suggestionsPanel).toBe('0')
+    expect(screen.getByText('Aucune suggestion en attente')).toBeInTheDocument()
+  })
+
+  it('une suggestion du moteur s’applique par la VOIE DES PARAMÈTRES et rejoint l’historique', async () => {
+    axiosMock.post.mockResolvedValue({
+      status: 200,
+      data: {
+        ...resultatReel,
+        suggestions: [{
+          code: 'AO-REC-1',
+          titre: 'Réduire l’allée à 0,55 m',
+          gain_modules: 2,
+          confiance: 'HAUTE',
+          patch_entree: { allee_m: 0.55 },
+        }],
+      },
+    })
+    render(<CalepinageStudio toitureId={7} />)
+    await screen.findByText('Réduire l’allée à 0,55 m')
+
+    await userEvent.click(screen.getByRole('button', { name: 'Appliquer' }))
+
+    await waitFor(
+      () => expect(axiosMock.post).toHaveBeenCalledWith(
+        CALCULER, { toiture: 7, params: { allee_m: 0.55 } },
+      ),
+      { timeout: 5000 },
+    )
+    await waitFor(() => expect(
+      document.querySelector('[data-suggestion-appliquee]'),
+    ).not.toBeNull())
   })
 })

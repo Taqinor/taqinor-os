@@ -154,12 +154,14 @@ describe('PlanComptablePage — rendu smoke (UX3)', () => {
 })
 
 describe('module.config — enregistrement (UX2–UX9 + XACC/ZACC round 2)', () => {
-  it('déclare 13 routes/nav gatées responsable+admin sous /comptabilite', async () => {
+  it('déclare 16 routes/nav gatées responsable+admin sous /comptabilite', async () => {
     const { default: config } = await import('./module.config.jsx')
     expect(config.key).toBe('compta')
     // WIR107 a ajouté « Clôture » + « Écritures récurrentes » (11 → 13).
-    expect(config.routes).toHaveLength(13)
-    expect(config.nav.items).toHaveLength(13)
+    // 13 d'origine + PACT160 (approbations RIB) + PACT163 (charges d'avance,
+    // budgets) — trois écrans réellement ajoutés, pas une dérive.
+    expect(config.routes).toHaveLength(16)
+    expect(config.nav.items).toHaveLength(16)
     // Chaque item de nav correspond à une route.
     const navTargets = config.nav.items.map((i) => i.to).sort()
     const routePaths = config.routes.map((r) => r.path).sort()

@@ -484,5 +484,128 @@ class PipelinedWavesTests(unittest.TestCase):
         self.assertEqual(plan["pipelined_waves"][0]["tasks_total"], 20)
 
 
+class ContractPairingGateTests(unittest.TestCase):
+    """PACT11 — le refus est testé sur le CAS RÉEL AOF172 / AOF166.
+
+    Ligne à ligne, ce qui s'est passé le 03/08/2026 : la tâche de l'écran du
+    tableau de bord AO (AOF172) déclarait dépendre de la tâche de la LISTE des
+    affaires (AOF170) — et PAS de AOF166, la tâche backend qui produit
+    exactement les données qu'il affiche. La dépendance existait dans la
+    réalité, elle n'a jamais été écrite, donc les deux tâches ont été
+    planifiées SIMULTANÉMENT et chaque moitié a inventé son contrat.
+    """
+
+    AOF166 = ("- [ ] AOF166 — KPI d'appels d'offres + tableau de bord des "
+              "marchés. Files: `backend/django_core/apps/ao/selectors.py`, "
+              "`backend/django_core/apps/ao/urls.py`. (ARCH) (@lane: ao-back)")
+    # AOF170 porte `@after: AOF166` : c'est la déclaration qui MANQUAIT sur
+    # AOF172. Elle sert ici de témoin — la même tâche, correctement déclarée,
+    # passe la porte.
+    AOF170 = ("- [ ] AOF170 — Liste des affaires. "
+              "Files: `frontend/src/features/ao/AffairesList.jsx`. "
+              "(ROUTINE) (@lane: ao-front) (@after: AOF166)")
+    AOF172_SANS = ("- [ ] AOF172 — Écran du tableau de bord AO. "
+                   "Files: `frontend/src/features/ao/DashboardPage.jsx`, "
+                   "`frontend/src/api/aoApi.js`. (ROUTINE) (@lane: ao-front) "
+                   "(@after: AOF170)")
+    AOF172_AVEC = AOF172_SANS.replace("(@after: AOF170)",
+                                      "(@after: AOF170, AOF166)")
+
+    def _tasks(self, *lignes):
+        chemin = Path(tempfile.mkdtemp()) / "PLAN.md"
+        chemin.write_text("## BUILD QUEUE\n\n" + "\n".join(lignes) + "\n",
+                          encoding="utf-8")
+        self.addCleanup(lambda: chemin.unlink(missing_ok=True))
+        return pl.parse_tasks(chemin)
+
+    def test_le_cas_reel_AOF172_sans_after_sur_AOF166_est_REFUSE(self):
+        tasks = self._tasks(self.AOF166, self.AOF170, self.AOF172_SANS)
+        allowed, blocked = pl.apply_contract_pairing_gate(tasks)
+        self.assertEqual([t["id"] for t in blocked], ["AOF172"])
+        self.assertEqual(sorted(t["id"] for t in allowed), ["AOF166", "AOF170"])
+        motif = " ".join(blocked[0]["pairing_block_reasons"])
+        self.assertIn("AOF166", motif)
+        self.assertIn("FRONTEND", motif)
+        self.assertIn("apps/ao/urls.py", motif)
+
+    def test_avec_after_sur_AOF166_la_tache_passe(self):
+        tasks = self._tasks(self.AOF166, self.AOF170, self.AOF172_AVEC)
+        allowed, blocked = pl.apply_contract_pairing_gate(tasks)
+        self.assertEqual(blocked, [])
+        self.assertEqual(len(allowed), 3)
+
+    def test_sans_la_tache_backend_dans_le_run_rien_n_est_refuse(self):
+        # L'écran seul (le backend est déjà sur `main`) : aucune raison de
+        # refuser. La porte ne parle QUE du parallélisme d'un même run.
+        tasks = self._tasks(self.AOF170, self.AOF172_SANS)
+        allowed, blocked = pl.apply_contract_pairing_gate(tasks)
+        self.assertEqual(blocked, [])
+        self.assertEqual(len(allowed), 2)
+
+    def test_une_autre_app_n_est_jamais_appariee(self):
+        # Le backend `crm` ne produit rien pour l'écran `ao` : appariement par
+        # APP, jamais par proximité dans le fichier de plan.
+        crm = ("- [ ] X1 — selectors crm. "
+               "Files: `backend/django_core/apps/crm/selectors.py`. (ARCH)")
+        tasks = self._tasks(crm, self.AOF172_SANS)
+        _, blocked = pl.apply_contract_pairing_gate(tasks)
+        self.assertEqual(blocked, [])
+
+    def test_une_tache_backend_qui_ne_touche_ni_urls_ni_selectors_ne_gate_pas(self):
+        # Une migration ou un modèle ne PRODUIT pas de contrat d'API : seules
+        # les routes (`urls.py`) et les agrégats (`selectors.py`) le font.
+        modeles = ("- [ ] X2 — modèle AO. "
+                   "Files: `backend/django_core/apps/ao/models.py`. (SCHEMA)")
+        tasks = self._tasks(modeles, self.AOF172_SANS)
+        _, blocked = pl.apply_contract_pairing_gate(tasks)
+        self.assertEqual(blocked, [])
+
+    def test_une_tache_MIXTE_n_est_jamais_refusee_contre_elle_meme(self):
+        # Les deux moitiés dans la MÊME ligne `Files:` : elle porte déjà son
+        # propre contrat, il n'y a aucun parallélisme à empêcher (PACT12).
+        mixte = ("- [ ] X3 — endpoint + écran. "
+                 "Files: `backend/django_core/apps/ao/urls.py`, "
+                 "`frontend/src/features/ao/Ecran.jsx`. (ARCH)")
+        tasks = self._tasks(mixte)
+        allowed, blocked = pl.apply_contract_pairing_gate(tasks)
+        self.assertEqual(blocked, [])
+        self.assertEqual(len(allowed), 1)
+
+    def test_force_wave_outrepasse_la_porte(self):
+        tasks = self._tasks(self.AOF166, self.AOF170, self.AOF172_SANS)
+        allowed, blocked = pl.apply_contract_pairing_gate(tasks, force_wave=True)
+        self.assertEqual(blocked, [])
+        self.assertEqual(len(allowed), 3)
+
+    def test_sans_lignes_Files_le_comportement_est_inchange(self):
+        # Rétro-compatibilité stricte : un plan sans `Files:` ne peut rien
+        # apparier, donc la porte est un no-op exact.
+        tasks = self._tasks("- [ ] Y1 — quelque chose. (ROUTINE) (@lane: a)",
+                            "- [ ] Y2 — autre chose. (ROUTINE) (@lane: b)")
+        allowed, blocked = pl.apply_contract_pairing_gate(tasks)
+        self.assertEqual(blocked, [])
+        self.assertEqual(len(allowed), 2)
+
+    def test_le_refus_est_surface_dans_le_plan_rendu(self):
+        tasks = self._tasks(self.AOF166, self.AOF170, self.AOF172_SANS)
+        allowed, blocked = pl.apply_contract_pairing_gate(tasks)
+        plan = pl.schedule(allowed, max_lanes=4, pairing_blocked=blocked)
+        self.assertEqual(plan["counts"]["pairing_blocked"], 1)
+        rendu = pl.render(plan, 4, "PLAN.md")
+        self.assertIn("PACT11", rendu)
+        self.assertIn("AOF172", rendu)
+        self.assertIn("--force-wave", rendu)
+
+    def test_les_fichiers_bruts_gardent_les_surfaces_append_only(self):
+        # `files` retire index.css & co. pour ne pas fusionner deux lanes ;
+        # `files_bruts` doit les garder, sinon un écran déclaré uniquement via
+        # `router/index.jsx` échapperait à l'appariement.
+        tache = ("- [ ] Z1 — écran. Files: `frontend/src/api/aoApi.js`, "
+                 "`frontend/src/index.css`. (ROUTINE)")
+        t = self._tasks(tache)[0]
+        self.assertNotIn("frontend/src/index.css", t["files"])
+        self.assertIn("frontend/src/index.css", t["files_bruts"])
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -77,12 +77,14 @@ class TestODX11Routes(TestCase):
         obj = AppelOffre.objects.get(id=r.data['id'])
         self.assertEqual(obj.company_id, self.company.id)
 
-    def test_legacy_compta_route_still_serves_same_data(self):
+    def test_la_route_canonique_sert_la_donnee(self):
+        """PACT26 — l'ancien double montage /compta/ a été retiré ;
+        seule la route canonique de l'app sert cette ressource."""
         from apps.ao.models import AppelOffre
         obj = AppelOffre.objects.create(
             company=self.company, reference='AO-2026-02',
             objet='Pompage agricole')
-        r = self.api.get('/api/django/compta/appels-offres/')
+        r = self.api.get('/api/django/ao/appels-offres/')
         self.assertEqual(r.status_code, 200, r.data)
         self.assertIn(obj.id, ids_of(r))
 

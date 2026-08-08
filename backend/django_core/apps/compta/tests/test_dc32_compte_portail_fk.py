@@ -21,7 +21,9 @@ from apps.compta.models import ComptePortailClient
 from apps.crm.models import Client
 
 User = get_user_model()
-BASE = '/api/django/compta'
+# PACT26 — `comptes-portail` n'est plus double-monte sous /compta/ : la
+# ressource est servie par SON app, sous son seul prefixe canonique.
+BASE = '/api/django/portail'
 
 
 def make_company(slug, nom):

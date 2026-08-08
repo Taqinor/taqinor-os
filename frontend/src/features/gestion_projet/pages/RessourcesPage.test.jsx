@@ -24,7 +24,12 @@ vi.mock('../../../api/gestionProjetApi', () => ({
     updateReglageTemps: vi.fn(() => Promise.resolve({ data: {} })),
     publierAffectations: vi.fn(() => Promise.resolve({ data: { nb_publiees: 3 } })),
     copierSemaineAffectations: vi.fn(() => Promise.resolve({ data: { nb_copiees: 2 } })),
-    autoAffecter: vi.fn(() => Promise.resolve({ data: { propositions: [], nb_appliquees: 0 } })),
+    // PACT22 — forme réelle de services.auto_affecter : {simule, deplacements,
+    // creations, non_resolues} — jamais `propositions`/`nb_propositions`/
+    // `nb_appliquees`, qui n'ont jamais existé côté serveur.
+    autoAffecter: vi.fn(() => Promise.resolve({
+      data: { simule: true, deplacements: [], creations: [], non_resolues: [] },
+    })),
   },
 }))
 
@@ -32,6 +37,8 @@ vi.mock('../../../ui', async (importOriginal) => {
   const actual = await importOriginal()
   return { ...actual, toast: { success: vi.fn(), error: vi.fn() } }
 })
+
+import { toast } from '../../../ui'
 
 afterEach(() => { cleanup(); vi.clearAllMocks() })
 
@@ -77,6 +84,50 @@ describe('RessourcesPage — ZPRJ1-4', () => {
     await waitFor(() => expect(gestionProjetApi.autoAffecter).toHaveBeenCalledWith(
       expect.any(Object), true,
     ))
+    confirmSpy.mockRestore()
+  })
+
+  it('PACT22 — le message d\'après-confirmation utilise le décompte APPLIQUÉ, jamais le décompte SIMULÉ', async () => {
+    const user = userEvent.setup()
+    // Simulation (confirmer=false) : 1 déplacement + 1 création proposés,
+    // 1 tâche non résolue. Application (confirmer=true) : la réponse RÉELLE
+    // n'a que 2 créations (déplacement retombé caduc, cas volontairement
+    // DIFFÉRENT du chiffre simulé) pour prouver que le message n'affiche
+    // jamais le nombre simulé comme s'il avait été appliqué.
+    gestionProjetApi.autoAffecter
+      .mockResolvedValueOnce({
+        data: {
+          simule: true,
+          deplacements: [{ affectation: 1, vers_ressource: 2 }],
+          creations: [{ tache: 10, ressource: 2 }],
+          non_resolues: [{ tache: 99, tache_libelle: 'Sans ressource' }],
+        },
+      })
+      .mockResolvedValueOnce({
+        data: {
+          simule: false,
+          deplacements: [],
+          creations: [{ tache: 10, ressource: 2 }, { tache: 11, ressource: 3 }],
+          non_resolues: [],
+        },
+      })
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true)
+    withProviders(<RessourcesPage />)
+    await user.click(await screen.findByRole('tab', { name: 'Affectations' }))
+    await user.click(await screen.findByRole('button', { name: /Auto-affecter/ }))
+
+    await waitFor(() => expect(confirmSpy).toHaveBeenCalledWith(
+      expect.stringContaining('2 proposition(s) d\'affectation SIMULÉE(S)'),
+    ))
+    expect(confirmSpy).toHaveBeenCalledWith(expect.stringContaining('1 tâche(s)'))
+
+    await waitFor(() => expect(toast.success).toHaveBeenCalledWith(
+      expect.stringContaining('2 affectation(s) APPLIQUÉE(S)'),
+    ))
+    // Jamais le chiffre simulé (2 déplacements/créations dont 1 déplacement)
+    // affiché comme si le déplacement avait été appliqué.
+    expect(toast.success).not.toHaveBeenCalledWith(expect.stringContaining('non résolue(s))'))
+
     confirmSpy.mockRestore()
   })
 })

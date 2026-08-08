@@ -80,6 +80,19 @@ const AdministratifPage = lazy(() => import('./administratif/AdministratifPage')
 const EquipementsPage = lazy(() => import('./equipements/EquipementsPage'))
 const ExigencesPage = lazy(() => import('./cps/ExigencesPage'))
 
+/* ── TROISIÈME VAGUE — l'onglet « Variantes » (11ᵉ) ────────────────────────
+   `variantes/VariantesCompare.jsx` (et `variantes/VarianteColonne.jsx`, qu'il
+   est seul à importer) n'étaient montés sur AUCUNE route et dans AUCUN onglet :
+   le comparateur de variantes existait, testé, atteignable par personne. Il
+   rejoint les 10 onglets EXISTANTS sans en changer l'ordre ni le contenu, même
+   patron `lazy` + `PanneauDiffere`.
+
+   `exporterImage` n'est délibérément PAS passé : la conversion SVG → PNG
+   (AOF75, `studio/svgToPng.js`) appartient à la lane de l'atelier. Sans
+   exporteur, la colonne affiche une miniature indisponible NOMMÉE — c'est le
+   contrat que `VariantesCompare` déclare lui-même, jamais une image cassée. */
+const VariantesCompare = lazy(() => import('./variantes/VariantesCompare'))
+
 const errMsg = (e, fallback) => e?.response?.data?.detail || fallback
 
 const VERDICT_TONE = { confirme: 'success', tendu: 'warning' }
@@ -247,8 +260,16 @@ function OngletCalepinages({ affaireId }) {
    c'est-à-dire un dossier au hasard (ou un 404) présenté comme celui de cette
    affaire. On lui passe donc TOUJOURS un `dossierId` explicite, résolu depuis
    la liste des dossiers de l'affaire (`?appel_offre=`), et on ne le monte pas
-   du tout tant qu'il n'y en a aucun. */
-function OngletDossier({ affaireId }) {
+   du tout tant qu'il n'y en a aucun.
+
+   `dateLimite` est passée à `DossierPage` parce que `DossierAOSerializer` n'en
+   publie AUCUNE : la date limite de remise des plis appartient à l'affaire.
+   C'est le seul ingrédient que cet onglet possède et que la route autonome
+   `/ao/dossiers/:id` n'a pas ; tout le reste de la colonne de droite (contrôles
+   avant dépôt, ZIP, échéances) est le contenu PAR DÉFAUT des emplacements de
+   `DossierPage` — les deux monteurs l'obtiennent donc à l'identique, sans que
+   ce câblage soit recopié à deux endroits. */
+function OngletDossier({ affaireId, dateLimite }) {
   const params = useMemo(() => ({ appel_offre: affaireId }), [affaireId])
   const [choisi, setChoisi] = useState(null)
 
@@ -290,7 +311,7 @@ function OngletDossier({ affaireId }) {
         />
       )}
       <PanneauDiffere>
-        <DossierPage dossierId={courant} />
+        <DossierPage dossierId={courant} dateLimite={dateLimite} />
       </PanneauDiffere>
     </div>
   )
@@ -438,7 +459,10 @@ export default function AffaireDetail() {
         {
           value: 'dossier',
           label: 'Dossier',
-          content: <OngletDossier affaireId={id} />,
+          /* `dateLimite` vient de l'AFFAIRE : `DossierAOSerializer` ne publie
+             aucune date limite, et le compte à rebours d'`EcheancesDossier` ne
+             doit pas en inventer une. */
+          content: <OngletDossier affaireId={id} dateLimite={affaire.date_limite} />,
         },
         {
           value: 'questions_terrain',
@@ -493,6 +517,20 @@ export default function AffaireDetail() {
           content: (
             <PanneauDiffere>
               <ExigencesPage affaireId={id} />
+            </PanneauDiffere>
+          ),
+        },
+        /* ── 11ᵉ onglet, APRÈS les 10 ci-dessus ─────────────────────────── */
+        {
+          value: 'variantes',
+          label: 'Variantes',
+          /* Signature déclarée : `({ affaireId, exporterImage })`. Le
+             comparateur filtre `?appel_offre=` (le champ réel honoré par
+             `VarianteCalepinageViewSet`) — les variantes d'une AUTRE affaire
+             ne peuvent donc pas apparaître sous le titre de celle-ci. */
+          content: (
+            <PanneauDiffere>
+              <VariantesCompare affaireId={id} />
             </PanneauDiffere>
           ),
         },

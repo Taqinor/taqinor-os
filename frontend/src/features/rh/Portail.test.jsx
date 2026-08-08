@@ -33,6 +33,8 @@ vi.mock('../../api/rhApi', () => {
       demanderConge: vi.fn(),
       demanderAllocation: vi.fn(),
       declarerFrais: vi.fn(),
+      demanderAttestation: vi.fn(),
+      telechargerDemandeUrl: vi.fn((id) => `/rh/portail/${id}/mes-demandes-telecharger/`),
     },
   }
 })
@@ -117,5 +119,45 @@ describe('Portail RH (UX28)', () => {
     await waitFor(() => expect(rhApi.declarerFrais).toHaveBeenCalledWith(
       expect.objectContaining({ montant: '150', date_frais: '2026-08-01' }),
     ))
+  })
+
+  it('soumet une demande d’attestation avec les champs réels du serveur (PACT155)', async () => {
+    rhApi.getMesInfos.mockResolvedValueOnce({ data: { nom: 'Alaoui', prenom: 'Sara' } })
+    rhApi.demanderAttestation.mockResolvedValueOnce({ data: { id: 1 } })
+    renderPortail()
+    await screen.findByText('Mon portail RH')
+
+    fireEvent.click(screen.getByRole('radio', { name: 'Mes demandes' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Demander une attestation' }))
+    fireEvent.change(screen.getByLabelText('Type de document'), { target: { value: 'attestation_domiciliation' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Envoyer la demande' }))
+
+    // DemandeRHSerializer (backend/django_core/apps/rh/serializers.py) n'accepte
+    // que `type`/`message` — jamais `type_demande`/`motif`.
+    await waitFor(() => expect(rhApi.demanderAttestation).toHaveBeenCalledWith(
+      expect.objectContaining({ type: 'attestation_domiciliation', message: '' }),
+    ))
+    expect(rhApi.demanderAttestation).toHaveBeenCalledWith(
+      expect.not.objectContaining({ type_demande: expect.anything() }),
+    )
+  })
+
+  it('affiche le libellé serveur `type_display` dans la liste des demandes (PACT155)', async () => {
+    rhApi.getMesInfos.mockResolvedValueOnce({ data: { nom: 'Alaoui', prenom: 'Sara' } })
+    rhApi.getMesDemandes.mockResolvedValueOnce({
+      data: [{
+        id: 5,
+        type: 'attestation_domiciliation',
+        type_display: 'Attestation de domiciliation',
+        statut: 'soumise',
+        statut_display: 'Soumise',
+        date_creation: '2026-08-01',
+      }],
+    })
+    renderPortail()
+    await screen.findByText('Mon portail RH')
+
+    fireEvent.click(screen.getByRole('radio', { name: 'Mes demandes' }))
+    expect(await screen.findByText('Attestation de domiciliation')).toBeInTheDocument()
   })
 })
