@@ -7,6 +7,7 @@ import {
   Landmark, ReceiptText, Building2, Scale, Receipt, HandCoins, ShieldCheck,
   ListChecks, Repeat, BadgeCheck, CalendarClock, PieChart,
   Calculator, Percent, Layers3, UserCheck, GitBranch, Split, Network, TrendingUp,
+  UploadCloud,
 } from 'lucide-react'
 import { appGlyph } from '../../lib/apps/appGlyph'
 
@@ -67,6 +68,9 @@ const ConsolidationGroupePage = lazy(
 // PACT34 — reconnaissance du revenu IFRS 15 (NTFIN46-48), utile pour les
 // contrats pluriannuels (maintenance solaire, monitoring).
 const RevenuIfrs15Page = lazy(() => import('./pages/RevenuIfrs15Page.jsx'))
+// PACT35 — import guidé de la balance d'ouverture (COMPTA3, migration
+// tooling) : gabarit CSV + import idempotent par exercice.
+const BalanceOuverturePage = lazy(() => import('./pages/BalanceOuverturePage.jsx'))
 
 const ROLES = ['responsable', 'admin']
 
@@ -110,6 +114,7 @@ const config = {
       { to: '/comptabilite/allocations-engagements', label: 'Allocations & engagements', icon: icon(Split), roles: ROLES },
       { to: '/comptabilite/consolidation-groupe', label: 'Consolidation groupe', icon: icon(Network), roles: ROLES },
       { to: '/comptabilite/revenu-ifrs15', label: 'Revenu (IFRS 15)', icon: icon(TrendingUp), roles: ROLES },
+      { to: '/comptabilite/balance-ouverture', label: "Balance d'ouverture", icon: icon(UploadCloud), roles: ROLES },
     ],
   },
   // Titres de page : du plus spécifique au plus général (routes.meta).
@@ -127,6 +132,7 @@ const config = {
     ['/comptabilite/allocations-engagements', 'Allocations & engagements — Comptabilité'],
     ['/comptabilite/consolidation-groupe', 'Consolidation groupe — Comptabilité'],
     ['/comptabilite/revenu-ifrs15', 'Revenu (IFRS 15) — Comptabilité'],
+    ['/comptabilite/balance-ouverture', "Balance d'ouverture — Comptabilité"],
     ['/comptabilite/cloture', 'Clôture — Comptabilité'],
     ['/comptabilite/engagements', 'Engagements — Comptabilité'],
     ['/comptabilite/effets', 'Effets & règlements — Comptabilité'],
@@ -165,6 +171,7 @@ const config = {
     { path: '/comptabilite/allocations-engagements', component: AllocationsEngagementsPage, roles: ROLES },
     { path: '/comptabilite/consolidation-groupe', component: ConsolidationGroupePage, roles: ROLES },
     { path: '/comptabilite/revenu-ifrs15', component: RevenuIfrs15Page, roles: ROLES },
+    { path: '/comptabilite/balance-ouverture', component: BalanceOuverturePage, roles: ROLES },
   ],
 }
 

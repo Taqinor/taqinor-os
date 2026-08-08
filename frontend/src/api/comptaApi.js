@@ -254,6 +254,17 @@ const comptaApi = {
     cloturer: (id) => api.post(`/compta/exercices/${id}/cloturer/`),
     rouvrir: (id) => api.post(`/compta/exercices/${id}/rouvrir/`),
   },
+  // ── PACT35 / COMPTA3 — Import guidé de la balance d'ouverture ──
+  balanceOuverture: {
+    gabarit: () =>
+      api.get('/compta/balance-ouverture/gabarit/', { responseType: 'blob' }),
+    importer: (file, exerciceId) => {
+      const fd = new FormData()
+      fd.append('file', file)
+      fd.append('exercice', exerciceId)
+      return api.post('/compta/balance-ouverture/importer/', fd)
+    },
+  },
   periodes: {
     ...resource('periodes'),
     cloturer: (id) => api.post(`/compta/periodes/${id}/cloturer/`),
