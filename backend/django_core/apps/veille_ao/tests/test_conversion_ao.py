@@ -284,7 +284,13 @@ class DecouplageCrossAppTests(SimpleTestCase):
                     module = ' '.join(a.name for a in noeud.names)
                 if module.startswith('apps.ao'):
                     imports.append(module)
-        self.assertEqual(sorted(set(imports)), ['apps.ao.services'])
+        # La frontière inter-apps du dépôt autorise DEUX portes, et deux
+        # seulement : `services` pour ÉCRIRE/orchestrer (VAO30 crée l'affaire)
+        # et `selectors` pour LIRE (VAO31 lit l'issue de l'AO pour attribuer le
+        # chiffre d'affaires). Ce qui reste interdit — et ce que ce test
+        # attrape — c'est un import de `apps.ao.models` ou `apps.ao.views`.
+        self.assertEqual(sorted(set(imports)),
+                         ['apps.ao.selectors', 'apps.ao.services'])
 
     def test_le_lien_vers_l_affaire_reste_un_ENTIER(self):
         from apps.veille_ao.models import AvisMarche as Modele

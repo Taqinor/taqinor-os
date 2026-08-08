@@ -188,13 +188,34 @@ class CoordinationAof169Tests(SimpleTestCase):
     """
 
     def test_l_import_du_sas_ne_cree_AUCUN_appel_d_offres(self):
+        """Garde sur le CODE, pas sur le texte.
+
+        La version « chercher la chaîne » se déclenchait sur le docstring du
+        module, qui EXPLIQUE précisément pourquoi il ne crée pas d'affaire —
+        elle punissait donc la documentation de la règle qu'elle protège. On
+        lit l'AST : ce qui compte est un import ou un appel RÉEL.
+        """
+        import ast
         import pathlib
 
-        source = (pathlib.Path(__file__).resolve().parents[1]
-                  / 'imports.py').read_text(encoding='utf-8')
-        for interdit in ('creer_appel_offre_depuis_avis', 'AppelOffre',
-                         'apps.ao.models'):
-            self.assertNotIn(interdit, source, interdit)
+        chemin = (pathlib.Path(__file__).resolve().parents[1] / 'imports.py')
+        arbre = ast.parse(chemin.read_text(encoding='utf-8'))
+        noms, modules = set(), set()
+        for noeud in ast.walk(arbre):
+            if isinstance(noeud, ast.ImportFrom):
+                modules.add(noeud.module or '')
+                noms.update(a.name for a in noeud.names)
+            elif isinstance(noeud, ast.Import):
+                modules.update(a.name for a in noeud.names)
+            elif isinstance(noeud, ast.Name):
+                noms.add(noeud.id)
+            elif isinstance(noeud, ast.Attribute):
+                noms.add(noeud.attr)
+        for interdit in ('creer_appel_offre_depuis_avis', 'AppelOffre'):
+            self.assertNotIn(interdit, noms, interdit)
+        self.assertEqual(
+            [m for m in modules if m.startswith('apps.ao')], [],
+            "l'import du sas ne touche jamais apps.ao")
 
     def test_aucun_appel_reseau_dans_l_import(self):
         """Règle #5 : la source d'un import est un FICHIER, jamais un portail."""

@@ -821,7 +821,14 @@ def notifier_nouveaux_avis(company, rapports):
     titre = f'Veille appels d\'offres : {libelle}'
     premier = urgents.first()
     if premier is not None:
-        jours = max((premier.date_limite_remise - timezone.now()).days, 0)
+        # ARRONDI AU SUPÉRIEUR, jamais `.days` (qui tronque) : une échéance
+        # dans 11 j 23 h 59 est lue « J-12 » par un humain, et `.days` en
+        # ferait « J-11 ». Le troncage rendait aussi le texte instable — la
+        # même échéance changeait de libellé selon les microsecondes écoulées
+        # entre la création de l'avis et l'envoi.
+        restant = premier.date_limite_remise - timezone.now()
+        jours = max(-(-restant.total_seconds() // 86400), 0)
+        jours = int(jours)
         corps = f'{libelle} — dont 1 à échéance J-{jours}.'
     else:
         corps = f'{libelle} à trier dans le sas.'

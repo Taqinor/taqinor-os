@@ -938,6 +938,10 @@ CELERY_TASK_ROUTES = {
     'qhse.escalader_checkins_en_retard': {'queue': 'scheduled'},
     # PACT184 — rappel légal de réunion CSH trimestrielle (Code du travail).
     'qhse.relancer_csh_du_jour': {'queue': 'scheduled'},
+    # VAO22 — collecte quotidienne de la veille AO. Livrée DÉSARMÉE
+    # (`VEILLE_AO_COLLECTE_ACTIVE=0`) : l'entrée beat existe et est routée,
+    # la tâche sort immédiatement avec un motif tant que le drapeau est à 0.
+    'veille_ao.collecte_quotidienne': {'queue': 'scheduled'},
     # Notifications — balayage des leads chauds.
     'notifications.sweep_hot_leads': {'queue': 'scheduled'},
     # ENG6 — synchro quotidienne des insights publicitaires.

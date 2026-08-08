@@ -34,9 +34,20 @@ class ManifesteDeclareTests(SimpleTestCase):
         self.assertEqual(PLATFORM['record_targets'], [CLE_AVIS])
         self.assertEqual(PLATFORM['searchable_models'], [CLE_AVIS])
 
+    def test_l_import_de_fichier_est_declare_ET_cable(self):
+        """VAO28 a CÂBLÉ l'import : la surface doit donc etre declaree.
+
+        Elle figurait d'abord parmi les surfaces vides — c'etait juste tant
+        que ``imports.py`` n'existait pas. Une surface declaree sans cablage
+        est un mensonge (ARC41) ; une surface cablee mais NON declaree en est
+        un aussi, dans l'autre sens.
+        """
+        from apps.veille_ao.imports import SPEC_AVIS_VEILLE
+
+        self.assertEqual(PLATFORM['import_specs'], [SPEC_AVIS_VEILLE])
+
     def test_les_surfaces_non_cablees_restent_vides(self):
         """Une surface déclarée sans câblage est un mensonge (ARC41)."""
-        self.assertEqual(PLATFORM['import_specs'], [])
         self.assertEqual(PLATFORM['customfield_models'], [])
         self.assertEqual(PLATFORM['agent_actions_module'], '')
         self.assertEqual(PLATFORM['automation_state_fields'], [])

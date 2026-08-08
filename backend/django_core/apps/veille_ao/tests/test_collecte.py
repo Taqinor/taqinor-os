@@ -264,7 +264,13 @@ class AucunReseauDansLeModuleTests(SimpleTestCase):
         fautifs = []
         for chemin in sorted(MODULE_DIR.rglob('*.py')):
             relatif = chemin.relative_to(MODULE_DIR).as_posix()
-            if relatif.startswith(('migrations/', 'tests/')):
+            # Le SEEDER est la seule exception légitime, et elle est le
+            # contraire d'une URL « en dur » : sa raison d'être est justement
+            # d'écrire l'URL DANS la table `SourceVeille` pour que plus aucun
+            # autre fichier n'ait à la connaître. L'exclure ici, c'est faire
+            # respecter VAO7, pas y déroger.
+            if relatif.startswith(('migrations/', 'tests/')) \
+                    or relatif == 'management/commands/seed_veille_sources.py':
                 continue
             texte = chemin.read_text(encoding='utf-8')
             if 'marchespublics' in texte or 'gov.ma' in texte:

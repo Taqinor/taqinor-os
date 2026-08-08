@@ -3468,8 +3468,13 @@ class CommentKeywordRuleViewSet(AdsengineViewSet):
     serializer_class = CommentKeywordRuleSerializer
 
     @extend_schema(responses=EngineActionSerializer(many=True))
-    @action(detail=False, methods=['post'], url_path='proposer')
+    @action(detail=False, methods=['post'], url_path='proposer',
+            permission_classes=[HasPermissionOrLegacy('adsengine_manage')])
     def proposer(self, request):
+        """Gardée EXPLICITEMENT : proposer des masquages est un geste de
+        gestion, pas de lecture. Sans cette garde l'action retombait sur la
+        permission de la vue (lecture) — c'est ce que la base de référence des
+        @action non gardées a attrapé."""
         from .services import propose_keyword_hides
         company = request.user.company
         auto_only = bool(request.data.get('auto_only', False))
