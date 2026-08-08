@@ -40,6 +40,9 @@ const PlanificationPage = lazy(() => import('../../pages/installations/Planifica
 const MaJourneePage = lazy(() => import('../../pages/interventions/MaJourneePage'))
 const ParcInstallePage = lazy(() => import('../../pages/installations/ParcInstallePage'))
 const AteliersPage = lazy(() => import('../../pages/installations/AteliersPage'))
+// PACT55 — sous-traitance chantier : ordres, factures, attestations,
+// évaluations, retenues de garantie (FG304-309), aucun appelant jusqu'ici.
+const SousTraitanceChantier = lazy(() => import('./SousTraitanceChantier'))
 const ProductionPage = lazy(() => import('../../pages/monitoring/ProductionPage'))
 const FleetPage = lazy(() => import('../../pages/monitoring/FleetPage'))
 const OmAnalyticsPage = lazy(() => import('../../pages/monitoring/OmAnalyticsPage'))
@@ -89,6 +92,7 @@ const config = {
       { to: '/chantiers',            label: 'Chantiers',        k: 'nav.chantiers',  icon: navIcon(HardHat),    roles: ['normal','responsable','admin'] },
       { to: '/chantiers/demandes-achat', label: "Demandes d'achat", k: 'nav.demandes_achat', icon: navIcon(ClipboardList), roles: ['normal','responsable','admin'] },
       { to: '/chantiers/approvisionnement', label: 'Approvisionnement', icon: navIcon(ClipboardList), roles: ['responsable','admin'] },
+      { to: '/chantiers/sous-traitance', label: 'Sous-traitance', icon: navIcon(HardHat), roles: ['responsable','admin'] },
       { to: '/interventions',        label: 'Interventions',    k: 'nav.interventions', icon: navIcon(Wrench), roles: ['normal','responsable','admin'] },
       { to: '/planification',        label: 'Planification',    k: 'nav.planification', icon: navIcon(CalendarClock),    roles: ['normal','responsable','admin'] },
       { to: '/planification/astreintes', label: 'Astreintes',   icon: navIcon(CalendarClock), roles: ['responsable','admin'] },
@@ -104,6 +108,7 @@ const config = {
     { path: '/chantiers', component: InstallationsPage },
     { path: '/chantiers/demandes-achat', component: DemandesAchatList },
     { path: '/chantiers/approvisionnement', component: ApprovisionnementPage, roles: ['responsable', 'admin'] },
+    { path: '/chantiers/sous-traitance', component: SousTraitanceChantier, roles: ['responsable', 'admin'] },
     { path: '/interventions', component: InterventionsPage },
     { path: '/planification', component: PlanificationPage },
     { path: '/planification/astreintes', component: AstreintesPage, roles: ['responsable', 'admin'] },

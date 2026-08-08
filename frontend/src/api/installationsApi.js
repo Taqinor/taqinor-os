@@ -595,6 +595,67 @@ const installationsApi = {
     api.get('/installations/geofence-alertes/', { params }),
   acquitterGeofenceAlerte: (id) =>
     api.post(`/installations/geofence-alertes/${id}/acquitter/`, {}),
+
+  // ── PACT55 — Sous-traitance chantier : annuaire (FG304), ordres de travaux
+  // (FG305), factures/paiements en façade sur la chaîne AP standard (DC34,
+  // FG306), attestations obligatoires (FG307), évaluations (FG308) et
+  // retenues de garantie (FG309). Montants sous-traitant INTERNES uniquement.
+  getSousTraitants: (params) => api.get('/installations/sous-traitants/', { params }),
+  getSousTraitant: (id) => api.get(`/installations/sous-traitants/${id}/`),
+  createSousTraitant: (data) => api.post('/installations/sous-traitants/', data),
+  updateSousTraitant: (id, data) => api.patch(`/installations/sous-traitants/${id}/`, data),
+
+  getOrdresSousTraitance: (params) =>
+    api.get('/installations/ordres-sous-traitance/', { params }),
+  createOrdreSousTraitance: (data) =>
+    api.post('/installations/ordres-sous-traitance/', data),
+  emettreOrdreSousTraitance: (id) =>
+    api.post(`/installations/ordres-sous-traitance/${id}/emettre/`, {}),
+  receptionnerOrdreSousTraitance: (id, montantRealise) =>
+    api.post(`/installations/ordres-sous-traitance/${id}/receptionner/`,
+      montantRealise != null && montantRealise !== ''
+        ? { montant_realise: montantRealise } : {}),
+  cloturerOrdreSousTraitance: (id) =>
+    api.post(`/installations/ordres-sous-traitance/${id}/cloturer/`, {}),
+
+  getFacturesSousTraitant: (params) =>
+    api.get('/installations/factures-sous-traitant/', { params }),
+  createFactureSousTraitant: (data) =>
+    api.post('/installations/factures-sous-traitant/', data),
+  annulerFactureSousTraitant: (id) =>
+    api.post(`/installations/factures-sous-traitant/${id}/annuler/`, {}),
+
+  getPaiementsSousTraitant: (params) =>
+    api.get('/installations/paiements-sous-traitant/', { params }),
+  createPaiementSousTraitant: (data) =>
+    api.post('/installations/paiements-sous-traitant/', data),
+  deletePaiementSousTraitant: (id) =>
+    api.delete(`/installations/paiements-sous-traitant/${id}/`),
+
+  getAttestationsSousTraitant: (params) =>
+    api.get('/installations/attestations-sous-traitant/', { params }),
+  createAttestationSousTraitant: (data) =>
+    api.post('/installations/attestations-sous-traitant/', data),
+  getAffectabiliteSousTraitant: (sousTraitantId, dateStr) =>
+    api.get('/installations/attestations-sous-traitant/affectabilite/',
+      { params: dateStr
+        ? { sous_traitant: sousTraitantId, date: dateStr }
+        : { sous_traitant: sousTraitantId } }),
+
+  getEvaluationsSousTraitant: (params) =>
+    api.get('/installations/evaluations-sous-traitant/', { params }),
+  createEvaluationSousTraitant: (data) =>
+    api.post('/installations/evaluations-sous-traitant/', data),
+  getScorecardSousTraitant: (sousTraitantId) =>
+    api.get('/installations/evaluations-sous-traitant/scorecard/',
+      { params: { sous_traitant: sousTraitantId } }),
+
+  getRetenuesGarantieSousTraitant: (params) =>
+    api.get('/installations/retenues-garantie-sous-traitant/', { params }),
+  createRetenueGarantieSousTraitant: (data) =>
+    api.post('/installations/retenues-garantie-sous-traitant/', data),
+  leverRetenueGarantieSousTraitant: (id) =>
+    api.post(`/installations/retenues-garantie-sous-traitant/${id}/lever/`, {}),
 }
 
 export default installationsApi
