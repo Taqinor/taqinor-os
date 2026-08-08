@@ -330,7 +330,9 @@ export default function Recrutement() {
           searchable exportName="vivier" emptyTitle="Vivier vide"
           emptyDescription="Aucun candidat au vivier. Mettez des candidatures au vivier pour les réutiliser." />
       )}
-      {vue === 'stats' && <StatsRecrutement stats={stats} loading={loading} />}
+      {/* PACT20 — `postes` alimente la tuile « Ouvertures actives » : la donnée
+          vient du serveur (`getOuverturesPoste`), pas d'un calcul inventé. */}
+      {vue === 'stats' && <StatsRecrutement stats={stats} postes={postes} loading={loading} />}
       {vue === 'gabarits' && (
         <div className="flex flex-col gap-4">
           <ListShell title="Gabarits d’email (par étape)" columns={gabaritColumns} rows={gabarits} loading={loading} error={error}
@@ -406,8 +408,39 @@ export default function Recrutement() {
   )
 }
 
-/* ── XRH22 — Statistiques de recrutement ── */
-function StatsRecrutement({ stats, loading }) {
+/* ── XRH22 — Statistiques de recrutement ──────────────────────────────────────
+   PACT20 — les 4 tuiles affichaient « — » POUR TOUJOURS, sans aucune erreur ni
+   alerte : elles lisaient `delai_embauche_moyen`, `total_candidatures`,
+   `total_embauches` et `ouvertures_actives`, quatre clés que
+   `selectors.stats_recrutement` (apps/rh/selectors.py) ne renvoie PAS. Il
+   renvoie `delai_embauche_moyen_jours`, `entonnoir`,
+   `candidatures_par_ouverture` et `sources`.
+
+   Un seul défaut était un simple désaccord de nom (le suffixe `_jours`, type
+   b). Les trois autres étaient de type (a') : la donnée EXISTE mais sous une
+   autre forme — un entonnoir, pas des totaux. Les tuiles sont donc DÉRIVÉES de
+   ce que le serveur sait dire, jamais forcées à afficher un chiffre qu'il n'a
+   pas :
+     * Candidatures reçues = `entonnoir.recu` + `entonnoir.rejete` — le
+       sélecteur compte les rejetées HORS entonnoir (elles n'ont pas franchi
+       les étapes), la somme est donc le total exact de la période ;
+     * Embauches = `entonnoir.embauche`, le dernier étage de l'entonnoir ;
+     * Ouvertures actives = les ouvertures au statut `ouvert`, comptées sur la
+       liste que l'écran charge DÉJÀ (`getOuverturesPoste`) — le serveur le
+       sait, simplement par un autre endpoint ; rien n'est inventé côté client.
+   Une tuile sans donnée dit « — » : ça n'arrive plus que si le serveur n'a
+   vraiment rien renvoyé. */
+
+const ETAPES_ENTONNOIR = [
+  ['recu', 'Reçues'],
+  ['preselection', 'Présélection'],
+  ['entretien', 'Entretien'],
+  ['offre', 'Offre'],
+  ['embauche', 'Embauchées'],
+  ['rejete', 'Rejetées'],
+]
+
+function StatsRecrutement({ stats, postes = [], loading }) {
   if (loading) {
     return <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
       {Array.from({ length: 4 }).map((_u, i) => <Card key={i} className="h-24 animate-pulse" />)}
@@ -416,23 +449,80 @@ function StatsRecrutement({ stats, loading }) {
   if (!stats) {
     return <p className="text-sm text-muted-foreground">Aucune statistique disponible.</p>
   }
-  const entonnoir = stats.entonnoir || stats.funnel || {}
+  const entonnoir = stats.entonnoir || {}
+  const nombre = (cle) => (typeof entonnoir[cle] === 'number' ? entonnoir[cle] : null)
+  const recues = nombre('recu')
+  const rejetees = nombre('rejete')
+  const totalCandidatures = recues == null && rejetees == null
+    ? null : (recues ?? 0) + (rejetees ?? 0)
+  const embauches = nombre('embauche')
+  const delai = stats.delai_embauche_moyen_jours
+  const ouverturesActives = postes.filter((p) => p.statut === 'ouvert').length
+  const parOuverture = Array.isArray(stats.candidatures_par_ouverture)
+    ? stats.candidatures_par_ouverture : []
+  const sources = Array.isArray(stats.sources) ? stats.sources : []
+
   return (
     <div className="flex flex-col gap-4">
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <Card className="p-4"><Stat label="Délai d’embauche moyen" value={stats.delai_embauche_moyen != null ? `${stats.delai_embauche_moyen} j` : '—'} icon={CalendarClock} /></Card>
-        <Card className="p-4"><Stat label="Candidatures" value={stats.total_candidatures ?? '—'} icon={UserPlus} /></Card>
-        <Card className="p-4"><Stat label="Embauches" value={stats.total_embauches ?? '—'} icon={UserPlus} /></Card>
-        <Card className="p-4"><Stat label="Ouvertures actives" value={stats.ouvertures_actives ?? '—'} icon={BarChart3} /></Card>
+        <Card className="p-4">
+          <Stat label="Délai d’embauche moyen"
+                value={delai != null ? `${delai} j` : '—'} icon={CalendarClock} />
+        </Card>
+        <Card className="p-4">
+          <Stat label="Candidatures reçues"
+                value={totalCandidatures ?? '—'} icon={UserPlus} />
+        </Card>
+        <Card className="p-4">
+          <Stat label="Embauches" value={embauches ?? '—'} icon={UserPlus} />
+        </Card>
+        <Card className="p-4">
+          <Stat label="Ouvertures actives" value={ouverturesActives} icon={BarChart3} />
+        </Card>
       </div>
       {Object.keys(entonnoir).length > 0 && (
         <Card className="p-4">
           <h3 className="mb-3 text-sm font-medium">Entonnoir par étape</h3>
           <ul className="flex flex-col gap-2">
-            {Object.entries(entonnoir).map(([etape, n]) => (
-              <li key={etape} className="flex items-center justify-between text-sm">
-                <span className="text-muted-foreground">{etape}</span>
-                <Badge tone="info">{n}</Badge>
+            {ETAPES_ENTONNOIR
+              .filter(([cle]) => entonnoir[cle] !== undefined)
+              .map(([cle, libelle]) => (
+                <li key={cle} className="flex items-center justify-between text-sm">
+                  <span className="text-muted-foreground">{libelle}</span>
+                  <Badge tone="info">{entonnoir[cle]}</Badge>
+                </li>
+              ))}
+          </ul>
+        </Card>
+      )}
+      {parOuverture.length > 0 && (
+        <Card className="p-4">
+          <h3 className="mb-3 text-sm font-medium">Candidatures par ouverture</h3>
+          <ul className="flex flex-col gap-2">
+            {parOuverture.map((o) => (
+              <li key={o.ouverture_id ?? o.intitule} className="flex items-center justify-between text-sm">
+                <span className="text-muted-foreground">{o.intitule || '— (sans ouverture)'}</span>
+                <Badge tone="info">{o.nb}</Badge>
+              </li>
+            ))}
+          </ul>
+        </Card>
+      )}
+      {sources.length > 0 && (
+        <Card className="p-4">
+          <h3 className="mb-3 text-sm font-medium">Efficacité par source</h3>
+          <ul className="flex flex-col gap-2">
+            {sources.map((s) => (
+              <li key={s.source || '(sans source)'} className="flex items-center justify-between text-sm">
+                <span className="text-muted-foreground">{s.source || '(sans source)'}</span>
+                <span className="flex items-center gap-2">
+                  <span className="text-muted-foreground">
+                    {s.embauches}/{s.candidatures}
+                  </span>
+                  <Badge tone="info">
+                    {formatNumber(s.taux_embauche_pct ?? 0, { decimals: 1 })} %
+                  </Badge>
+                </span>
               </li>
             ))}
           </ul>
