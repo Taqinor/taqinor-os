@@ -7,6 +7,7 @@
 // modèle mais n'est posé par AUCUN code serveur — cet écran ne propose donc
 // QUE « Rapprocher », jamais un bouton « Rejeter » sans service derrière.
 import { useCallback, useEffect, useState } from 'react'
+import { formatDateTime } from '../../../lib/format'
 import { Check, Banknote } from 'lucide-react'
 import portailApi from '../../../api/portailApi'
 import { formatMAD } from '../../../lib/format'
@@ -15,7 +16,7 @@ import {
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem, DataTable, toast,
 } from '../../../ui'
 
-const formatDateHeure = (iso) => (iso ? new Date(iso).toLocaleString('fr-FR') : '—')
+const formatDateHeure = (iso) => formatDateTime(iso)
 
 // Libellés FR — copiés tels quels des TextChoices serveur (PaiementFacturePortail.Statut/Methode).
 const STATUT_LABELS = { initie: 'Initié', paye: 'Payé', echoue: 'Échoué' }

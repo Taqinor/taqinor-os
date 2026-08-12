@@ -7,11 +7,12 @@
 // recalculées côté client (pas de formulaire de création ici — la preuve
 // naît de l'action `signer` du portail, jamais d'une saisie ERP).
 import { useEffect, useState } from 'react'
+import { formatDateTime } from '../../../lib/format'
 import { ShieldCheck } from 'lucide-react'
 import portailApi from '../../../api/portailApi'
 import { Button, Card, EmptyState, Skeleton, StatusPill, DataTable } from '../../../ui'
 
-const formatDateHeure = (iso) => (iso ? new Date(iso).toLocaleString('fr-FR') : '—')
+const formatDateHeure = (iso) => formatDateTime(iso)
 
 export default function AcceptationsDevisPortailAdmin() {
   const [rows, setRows] = useState([])

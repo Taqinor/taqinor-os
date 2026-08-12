@@ -133,7 +133,7 @@ export default function DevisActionBoardPage() {
                       // pour cette file (queue engagement) ; absent ailleurs.
                       const draft = board.wa_drafts?.[id]
                       const tel = telHref(d?.client_telephone)
-                      const wa = waHref(d?.client_whatsapp || d?.client_telephone, draft)
+                      const wa = waHref(d?.client_whatsapp ?? d?.client_telephone ?? d?.telephone, draft)
                       return (
                         <li key={id} className="flex items-center gap-1.5">
                           <button

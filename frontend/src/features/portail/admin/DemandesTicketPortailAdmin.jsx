@@ -7,6 +7,7 @@
 // affiché après coup vient du `ticket_id` renvoyé par la RÉPONSE serveur —
 // jamais un ticket fictif construit côté client.
 import { useEffect, useState } from 'react'
+import { formatDateTime } from '../../../lib/format'
 import { Check, X, Ticket as TicketIcon } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import portailApi from '../../../api/portailApi'
@@ -14,7 +15,7 @@ import {
   Button, Card, EmptyState, Skeleton, StatusPill, NumberInput, DataTable, toast,
 } from '../../../ui'
 
-const formatDateHeure = (iso) => (iso ? new Date(iso).toLocaleString('fr-FR') : '—')
+const formatDateHeure = (iso) => formatDateTime(iso)
 
 // Libellés FR — copiés tels quels du TextChoices serveur (DemandeTicketPortail.Statut).
 const STATUT_LABELS = {

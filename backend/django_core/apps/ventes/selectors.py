@@ -1821,7 +1821,13 @@ def _brouillon_relance_engagement(devis, declencheurs):
     tel quel dans WhatsApp, il doit rester une relance, pas une offre.
     """
     client = getattr(devis, 'client', None)
-    nom = (getattr(client, 'nom', '') or '').strip() if client else ''
+    # Prénom + nom, comme partout ailleurs dans ce fichier : « Bonjour Benali »
+    # (le patronyme seul) ne se dit pas en français — on salue quelqu'un par
+    # son prénom, ou par son nom complet. Un brouillon part TEL QUEL dans
+    # WhatsApp : la salutation est la première chose que le client lit.
+    prenom = (getattr(client, 'prenom', '') or '').strip() if client else ''
+    patronyme = (getattr(client, 'nom', '') or '').strip() if client else ''
+    nom = f'{prenom} {patronyme}'.strip()
     salutation = f'Bonjour {nom}' if nom else 'Bonjour'
     reference = getattr(devis, 'reference', '') or ''
     suffixe = f' (réf. {reference})' if reference else ''

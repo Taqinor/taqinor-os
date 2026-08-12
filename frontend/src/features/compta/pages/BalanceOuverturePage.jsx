@@ -13,7 +13,7 @@ import { unwrap } from '../components/useComptaList.js'
    ----------------------------------------------------------------------------
    COMPTA3 : télécharge un gabarit CSV, puis importe la balance d'ouverture en
    une écriture « À-Nouveaux » unique et équilibrée — l'outil dont a besoin
-   toute société qui migre sa comptabilité vers TAQINOR en cours d'exercice.
+   toute société qui migre sa comptabilité vers l'ERP en cours d'exercice.
    IDEMPOTENT par exercice : un second import sur le même exercice ne
    duplique rien, `services.importer_balance_ouverture` renvoie l'écriture
    déjà postée (`deja_importee: true`) — affiché ici distinctement d'un

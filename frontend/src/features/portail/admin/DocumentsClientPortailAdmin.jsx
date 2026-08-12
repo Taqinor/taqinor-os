@@ -7,11 +7,12 @@
 // DÉPÔT ; cet écran construit UNIQUEMENT le côté ERP (consultation + marquage
 // traité), le dépôt côté client reste hors périmètre.
 import { useEffect, useState } from 'react'
+import { formatDateTime } from '../../../lib/format'
 import { Check, FileText } from 'lucide-react'
 import portailApi from '../../../api/portailApi'
 import { Button, Card, EmptyState, Skeleton, StatusPill, DataTable, toast } from '../../../ui'
 
-const formatDateHeure = (iso) => (iso ? new Date(iso).toLocaleString('fr-FR') : '—')
+const formatDateHeure = (iso) => formatDateTime(iso)
 
 // Libellés FR — copiés tels quels du TextChoices serveur (DocumentClientPortail.TypeDoc).
 const TYPE_LABELS = { facture_onee: 'Facture ONEE', plan: 'Plan / schéma', autre: 'Autre' }

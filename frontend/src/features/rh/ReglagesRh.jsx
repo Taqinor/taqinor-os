@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { formatDateTime } from '../../lib/format'
 import { Card, Label, Input, Button, Checkbox, toast } from '../../ui'
 import rhApi from '../../api/rhApi'
 
@@ -95,7 +96,7 @@ export default function ReglagesRh() {
             </div>
             {reglage?.date_modification && (
               <p className="text-xs text-muted-foreground">
-                Dernière modification serveur : {new Date(reglage.date_modification).toLocaleString('fr-FR')}
+                Dernière modification serveur : {formatDateTime(reglage.date_modification)}
               </p>
             )}
           </form>

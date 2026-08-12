@@ -7,6 +7,7 @@
 // serveur) : cet écran ne fait QUE relayer l'action serveur, aucune logique
 // de réactivation côté client.
 import { useEffect, useState } from 'react'
+import { formatDateTime } from '../../../lib/format'
 import { Plus, KeyRound } from 'lucide-react'
 import portailApi from '../../../api/portailApi'
 import crmApi from '../../../api/crmApi'
@@ -15,7 +16,7 @@ import {
   SelectValue, SelectContent, SelectItem, Form, FormField, DataTable, toast,
 } from '../../../ui'
 
-const formatDateHeure = (iso) => (iso ? new Date(iso).toLocaleString('fr-FR') : '—')
+const formatDateHeure = (iso) => formatDateTime(iso)
 
 export default function ComptesPortailAdmin() {
   const [rows, setRows] = useState([])

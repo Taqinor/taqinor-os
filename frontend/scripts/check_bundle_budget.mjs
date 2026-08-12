@@ -99,7 +99,15 @@ const PER_CHUNK_BUDGET_KB = 350
 // écrans compta/crédit/fiscal manquants. Réel ~2940.1 Ko. Croissance RÉPARTIE :
 // aucun chunk gonflé, PER_CHUNK_BUDGET_KB (350) passe sans marge consommée par
 // le code applicatif. AUCUNE nouvelle dépendance npm.
-const TOTAL_BUDGET_KB = 2990
+// 2026-08-13 : 2990 -> 3120. Lot §E (76 tâches) : 76 ÉCRANS neufs pour du
+// backend déjà construit que personne ne voyait — compta (15), RH (14),
+// installations (7), GED (7), AO (8), portail client (6), BTP chantier (7,
+// PREMIER frontend de l'app), CRM (6). Ce n'est pas du poids ajouté à un
+// écran existant : c'est une route de plus par tâche, chacune en `lazy`, donc
+// AUCUN impact sur le chargement initial. Réel ~3093 Ko. Croissance RÉPARTIE :
+// PER_CHUNK_BUDGET_KB (350) passe sans marge consommée par le code applicatif.
+// AUCUNE nouvelle dépendance npm.
+const TOTAL_BUDGET_KB = 3120
 const VENDOR_CHUNK_BUDGETS_KB = {
   recharts: 450,
   'pdfjs-dist': 450,
@@ -175,7 +183,11 @@ const MODULEPRELOAD_ALLOWLIST = new Set([
 // comparateur de variantes, les écrans compta/crédit/fiscal) — réel ~611.
 // Croissance une-route-un-chunk, pas une prolifération de structure ; le budget
 // gzip (2990) + PER_CHUNK_BUDGET_KB (350) restent les vrais garde-fous.
-export const MAX_CHUNK_COUNT = 625
+// 2026-08-13 : 625 -> 700. Lot §E : un chunk par écran lazy nouvellement
+// ATTEIGNABLE (76 écrans) — réel ~670. Croissance une-route-un-chunk, pas une
+// prolifération de structure ; le budget gzip (3120) + PER_CHUNK_BUDGET_KB
+// (350) restent les vrais garde-fous de poids.
+export const MAX_CHUNK_COUNT = 700
 
 // Extrait les `<link rel="modulepreload" href="...">` de `dist/index.html` et
 // signale tout vendor lourd nommé qui s'y trouve (hors allowlist). Silencieux

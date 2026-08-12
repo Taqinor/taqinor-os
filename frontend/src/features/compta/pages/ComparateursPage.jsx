@@ -4,6 +4,7 @@ import { useTabParam } from '../components/useTabParam'
 import { Button, Card, Segmented, EmptyState, Input, Label, toast } from '../../../ui'
 import { formatMAD } from '../../../lib/format'
 import comptaApi from '../../../api/comptaApi'
+import ComptaTable from '../ComptaTable'
 
 /* ============================================================================
    PACT36 — Comparateurs commerciaux : versions de devis, cash vs financement.
@@ -58,26 +59,20 @@ function ComparateurDevisPanel() {
         diffEntries.length === 0 ? (
           <EmptyState title="Aucune différence" description="Les deux devis sont identiques champ à champ." />
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-border text-left text-muted-foreground">
-                  <th className="py-2 pr-3">Champ</th>
-                  <th className="py-2 pr-3">Devis A</th>
-                  <th className="py-2">Devis B</th>
-                </tr>
-              </thead>
-              <tbody>
-                {diffEntries.map(([champ, { a: va, b: vb }]) => (
-                  <tr key={champ} className="border-b border-border/60">
-                    <td className="py-2 pr-3 font-mono text-xs">{champ}</td>
-                    <td className="py-2 pr-3">{String(va ?? '—')}</td>
-                    <td className="py-2">{String(vb ?? '—')}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <ComptaTable
+            aria-label="Différences entre les deux devis"
+            exportName="comparatif-devis"
+            rows={diffEntries}
+            getRowKey={([champ]) => champ}
+            columns={[
+              { key: 'champ', label: 'Champ', sortValue: ([champ]) => champ,
+                cell: ([champ]) => <span className="font-mono text-xs">{champ}</span> },
+              { key: 'a', label: 'Devis A', sortValue: ([, { a }]) => String(a ?? ''),
+                cell: ([, { a }]) => String(a ?? '—') },
+              { key: 'b', label: 'Devis B', sortValue: ([, { b }]) => String(b ?? ''),
+                cell: ([, { b }]) => String(b ?? '—') },
+            ]}
+          />
         )
       )}
     </Card>
