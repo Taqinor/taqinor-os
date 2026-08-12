@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, beforeAll } from 'vitest'
-import { render, screen, waitFor, fireEvent } from '@testing-library/react'
+import { render, screen, waitFor, fireEvent, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import { ThemeProvider } from '../../design/ThemeProvider.jsx'
@@ -68,7 +68,7 @@ describe('JournalChantier (PACT65)', () => {
   it('affiche les entrées existantes', async () => {
     withProviders(<JournalChantier />)
     await waitFor(() => expect(screen.getAllByText('Coulage dalle').length).toBeGreaterThan(0))
-    expect(screen.getByText('macon (4)')).toBeInTheDocument()
+    expect(screen.getAllByText('macon (4)').length).toBeGreaterThan(0)
   })
 
   it('enregistre une entrée avec effectif et un visiteur', async () => {
@@ -76,8 +76,8 @@ describe('JournalChantier (PACT65)', () => {
     withProviders(<JournalChantier />)
     await waitFor(() => expect(screen.getAllByText('Coulage dalle').length).toBeGreaterThan(0))
 
-    const chantierOption = await screen.findByRole('option', { name: /Villa Zenith/ })
-    await user.selectOptions(screen.getByLabelText("Chantier de l'entrée"), chantierOption)
+    const sel_chantierOption = screen.getByLabelText("Chantier de l'entrée")
+    await user.selectOptions(sel_chantierOption, within(sel_chantierOption).getByRole('option', { name: /Villa Zenith/ }))
     fireEvent.change(screen.getByLabelText("Date de l'entrée"), { target: { value: '2026-02-01' } })
     await user.selectOptions(screen.getByLabelText('Météo'), 'nuageux')
 
@@ -85,14 +85,14 @@ describe('JournalChantier (PACT65)', () => {
     await user.clear(screen.getByLabelText('Nombre (Effectif interne)'))
     await user.type(screen.getByLabelText('Nombre (Effectif interne)'), '2')
     await user.click(screen.getAllByRole('button', { name: 'Ajouter' })[0])
-    expect(screen.getByText('électricien : 2')).toBeInTheDocument()
+    expect(screen.getAllByText('électricien : 2').length).toBeGreaterThan(0)
 
     await user.type(screen.getByLabelText('Nom du visiteur'), 'Contrôleur ONEE')
     const boutonsAjouter = screen.getAllByRole('button', { name: 'Ajouter' })
     await user.click(boutonsAjouter[boutonsAjouter.length - 1])
-    expect(screen.getByText(/Contrôleur ONEE/)).toBeInTheDocument()
+    expect(screen.getAllByText(/Contrôleur ONEE/).length).toBeGreaterThan(0)
 
-    await user.click(screen.getByRole('button', { name: "Enregistrer l'entrée" }))
+    await user.click(screen.getAllByRole('button', { name: "Enregistrer l'entrée" })[0])
 
     await waitFor(() => expect(journalCreate).toHaveBeenCalledWith(expect.objectContaining({
       chantier: '5',
@@ -114,9 +114,9 @@ describe('JournalChantier (PACT65)', () => {
     withProviders(<JournalChantier />)
     await waitFor(() => expect(screen.getAllByText('Coulage dalle').length).toBeGreaterThan(0))
 
-    const chantierOption = await screen.findByRole('option', { name: /Villa Zenith/ })
-    await user.selectOptions(screen.getByLabelText('Filtrer par chantier'), chantierOption)
-    await user.click(screen.getByRole('button', { name: /Exporter PDF/ }))
+    const sel_chantierOption = screen.getByLabelText('Filtrer par chantier')
+    await user.selectOptions(sel_chantierOption, within(sel_chantierOption).getByRole('option', { name: /Villa Zenith/ }))
+    await user.click(screen.getAllByRole('button', { name: /Exporter PDF/ })[0])
 
     await waitFor(() => expect(journalExportPdf).toHaveBeenCalledWith(
       expect.objectContaining({ chantier: '5' }),

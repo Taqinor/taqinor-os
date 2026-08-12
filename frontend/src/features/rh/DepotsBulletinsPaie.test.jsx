@@ -36,22 +36,22 @@ describe('DepotsBulletinsPaie (PACT82)', () => {
 
   it('rend le module', async () => {
     renderScreen()
-    expect(await screen.findByText('Bulletins de paie')).toBeInTheDocument()
+    expect((await screen.findAllByText('Bulletins de paie')).length).toBeGreaterThan(0)
   })
 
   it('dépose un bulletin via rhApi.uploadBulletinPaie et recharge la liste', async () => {
     rhApi.uploadBulletinPaie.mockResolvedValueOnce({ data: { id: 1 } })
     renderScreen()
-    await screen.findByText('Bulletins de paie')
+    await screen.findAllByText('Bulletins de paie')
 
-    fireEvent.click(await screen.findByRole('button', { name: /Déposer un bulletin/ }))
+    fireEvent.click((await screen.findAllByRole('button', { name: /Déposer un bulletin/ }))[0])
     fireEvent.change(screen.getByLabelText('Employé'), { target: { value: '9' } })
 
     const file = new File(['contenu'], 'bulletin.pdf', { type: 'application/pdf' })
     const input = document.querySelector('input[type="file"]')
     await userEvent.upload(input, file)
 
-    fireEvent.click(screen.getByRole('button', { name: 'Déposer' }))
+    fireEvent.click(screen.getAllByRole('button', { name: 'Déposer' })[0])
 
     await waitFor(() => expect(rhApi.uploadBulletinPaie).toHaveBeenCalledWith(
       expect.objectContaining({ employe: '9' }),

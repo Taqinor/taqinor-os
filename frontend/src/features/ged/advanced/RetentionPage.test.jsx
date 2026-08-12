@@ -67,12 +67,12 @@ describe('PACT134 RetentionPage — Dispositions', () => {
     await userEvent.click(await screen.findByRole('tab', { name: 'Dispositions' }))
     expect((await screen.findAllByText('Purge devis 2023')).length).toBeGreaterThan(0)
 
-    await userEvent.click(screen.getByRole('button', { name: /Nouvelle demande/i }))
+    await userEvent.click(screen.getAllByRole('button', { name: /Nouvelle demande/i })[0])
     await userEvent.type(screen.getByLabelText('Libellé du lot'), 'Purge devis 2022')
     await userEvent.click(screen.getByLabelText('Documents échus concernés'))
     const listbox = await screen.findByRole('listbox')
     await userEvent.click(within(listbox).getByText('Vieux-devis.pdf'))
-    await userEvent.click(screen.getByRole('button', { name: 'Proposer' }))
+    await userEvent.click(screen.getAllByRole('button', { name: 'Proposer' })[0])
 
     await waitFor(() => {
       expect(gedApi.createDemandeDisposition).toHaveBeenCalledWith({
@@ -138,6 +138,10 @@ describe('PACT134 RetentionPage — Dispositions', () => {
     await screen.findAllByText('Purge devis 2020')
 
     await userEvent.click(screen.getAllByRole('button', { name: 'Voir les certificats' })[0])
-    expect(await screen.findByText('Devis (365 j)')).toBeInTheDocument()
+    // La politique est un NŒUD DE TEXTE au milieu de frères (« nom — politique
+    // — détruit le … ») : aucun élément n'a exactement ce texte. On assertionne
+    // donc sur le contenu du dialogue, ce qui est justement ce qui compte.
+    const dialogue = await screen.findByRole('dialog')
+    expect(dialogue.textContent).toContain('Devis (365 j)')
   })
 })

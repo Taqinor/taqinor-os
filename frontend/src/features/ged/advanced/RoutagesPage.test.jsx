@@ -60,12 +60,17 @@ describe('PACT136 RoutagesPage', () => {
     renderPage()
     await screen.findAllByText('paie_bulletin')
 
-    await userEvent.click(screen.getByRole('button', { name: /Nouveau routage/i }))
+    await userEvent.click(screen.getAllByRole('button', { name: /Nouveau routage/i })[0])
     const dialog = await screen.findByRole('dialog')
     await userEvent.type(within(dialog).getByLabelText('Source'), 'rh_document')
     await userEvent.click(within(dialog).getByRole('combobox', { name: 'Choisir un cabinet cible' }))
     await userEvent.click(within(await screen.findByRole('listbox')).getByText('Paie'))
-    await userEvent.type(within(dialog).getByLabelText('Dossier cible'), 'RH/{{ annee }}')
+    // `userEvent.type` traite `{{` comme l'ÉCHAPPEMENT d'une accolade
+    // littérale : taper 'RH/{{ annee }}' produit 'RH/{ annee }}'. Le jeton
+    // de gabarit se saisit donc au presse-papier, jamais frappe à frappe.
+    const champDossier = within(dialog).getByLabelText('Dossier cible')
+    await userEvent.click(champDossier)
+    await userEvent.paste('RH/{{ annee }}')
     await userEvent.click(within(dialog).getByRole('button', { name: 'Créer' }))
 
     await waitFor(() => {

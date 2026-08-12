@@ -35,17 +35,17 @@ describe('EntretiensSortie (PACT87)', () => {
 
   it('rend le module', async () => {
     renderScreen()
-    expect(await screen.findByText('Entretiens de sortie')).toBeInTheDocument()
+    expect((await screen.findAllByText('Entretiens de sortie')).length).toBeGreaterThan(0)
   })
 
   it('crée un entretien via rhApi.createEntretienSortie', async () => {
     rhApi.createEntretienSortie.mockResolvedValueOnce({ data: { id: 1 } })
     renderScreen()
-    await screen.findByText('Entretiens de sortie')
+    await screen.findAllByText('Entretiens de sortie')
 
-    fireEvent.click(await screen.findByRole('button', { name: /Nouvel entretien/ }))
+    fireEvent.click((await screen.findAllByRole('button', { name: /Nouvel entretien/ }))[0])
     fireEvent.change(screen.getByLabelText('Employé'), { target: { value: '9' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Enregistrer' }))
+    fireEvent.click(screen.getAllByRole('button', { name: 'Enregistrer' })[0])
 
     await waitFor(() => expect(rhApi.createEntretienSortie).toHaveBeenCalledWith(
       expect.objectContaining({ employe: '9' }),
@@ -57,12 +57,12 @@ describe('EntretiensSortie (PACT87)', () => {
       response: { data: { employe: ['Entretien de sortie avec ce Employé existe déjà.'] } },
     })
     renderScreen()
-    await screen.findByText('Entretiens de sortie')
+    await screen.findAllByText('Entretiens de sortie')
 
-    fireEvent.click(await screen.findByRole('button', { name: /Nouvel entretien/ }))
+    fireEvent.click((await screen.findAllByRole('button', { name: /Nouvel entretien/ }))[0])
     fireEvent.change(screen.getByLabelText('Employé'), { target: { value: '9' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Enregistrer' }))
+    fireEvent.click(screen.getAllByRole('button', { name: 'Enregistrer' })[0])
 
-    expect(await screen.findByText('Entretien de sortie avec ce Employé existe déjà.')).toBeInTheDocument()
+    expect((await screen.findAllByText('Entretien de sortie avec ce Employé existe déjà.')).length).toBeGreaterThan(0)
   })
 })

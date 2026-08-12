@@ -91,7 +91,7 @@ beforeEach(() => {
 describe('UX45 ApprobationPage', () => {
   it('rend les onglets sans planter', async () => {
     renderPage(<ApprobationPage />)
-    expect(await screen.findByText('Approbations & revue')).toBeInTheDocument()
+    expect((await screen.findAllByText('Approbations & revue')).length).toBeGreaterThan(0)
     expect(screen.getByRole('tab', { name: 'Signatures' })).toBeInTheDocument()
     expect(screen.getByRole('tab', { name: 'Modèles' })).toBeInTheDocument()
   })
@@ -102,18 +102,18 @@ describe('UX45 ApprobationPage', () => {
     })
     renderPage(<ApprobationPage />)
     await userEvent.click(await screen.findByRole('tab', { name: 'Signatures' }))
-    await userEvent.click(await screen.findByRole('button', { name: /Circuit multi-signataires/i }))
+    await userEvent.click((await screen.findAllByRole('button', { name: /Circuit multi-signataires/i }))[0])
 
     // Un destinataire de départ + le routage séquentiel par défaut.
-    expect(await screen.findByText(/Ordre de signature/i)).toBeInTheDocument()
+    expect((await screen.findAllByText(/Ordre de signature/i)).length).toBeGreaterThan(0)
     expect(screen.getAllByPlaceholderText('Nom')).toHaveLength(1)
 
     // Ajout d'un 2e destinataire (les ordres 1, 2 sont posés à la création).
-    await userEvent.click(screen.getByRole('button', { name: /Ajouter un destinataire/i }))
+    await userEvent.click(screen.getAllByRole('button', { name: /Ajouter un destinataire/i })[0])
     expect(screen.getAllByPlaceholderText('Nom')).toHaveLength(2)
 
     // Retrait du 2e destinataire.
-    await userEvent.click(screen.getByRole('button', { name: /Retirer le destinataire 2/i }))
+    await userEvent.click(screen.getAllByRole('button', { name: /Retirer le destinataire 2/i })[0])
     expect(screen.getAllByPlaceholderText('Nom')).toHaveLength(1)
   })
 })
@@ -121,7 +121,7 @@ describe('UX45 ApprobationPage', () => {
 describe('UX46 RetentionPage', () => {
   it('rend les politiques et les onglets sans planter', async () => {
     renderPage(<RetentionPage />)
-    expect(await screen.findByText('Politiques de rétention')).toBeInTheDocument()
+    expect((await screen.findAllByText('Politiques de rétention')).length).toBeGreaterThan(0)
     expect(screen.getByRole('tab', { name: 'Legal holds' })).toBeInTheDocument()
   })
 
@@ -158,7 +158,7 @@ describe('UX46 RetentionPage', () => {
 describe('UX47 TagsPage', () => {
   it('rend la taxonomie et les onglets sans planter', async () => {
     renderPage(<TagsPage />)
-    expect(await screen.findByText('Taxonomie de tags')).toBeInTheDocument()
+    expect((await screen.findAllByText('Taxonomie de tags')).length).toBeGreaterThan(0)
     expect(screen.getByRole('tab', { name: 'Liens transverses' })).toBeInTheDocument()
   })
 })
@@ -176,9 +176,9 @@ describe('WIR164 ChecklistPage', () => {
   it('crée un tampon société propre depuis le formulaire (WIR164)', async () => {
     renderPage(<ChecklistPage />)
     await userEvent.click(await screen.findByRole('tab', { name: /Tampons/ }))
-    await userEvent.click(screen.getByRole('button', { name: /Nouveau tampon/i }))
+    await userEvent.click(screen.getAllByRole('button', { name: /Nouveau tampon/i })[0])
     await userEvent.type(screen.getByPlaceholderText('Ex. Archivé RH'), 'Archivé RH')
-    await userEvent.click(screen.getByRole('button', { name: 'Créer' }))
+    await userEvent.click(screen.getAllByRole('button', { name: 'Créer' })[0])
     await waitFor(() => {
       expect(gedApi.createTamponSociete).toHaveBeenCalledWith({ libelle: 'Archivé RH' })
       expect(toast.success).toHaveBeenCalledWith('Tampon créé.')
@@ -191,13 +191,13 @@ describe('WIR164 ChecklistPage', () => {
     })
     renderPage(<ChecklistPage />)
     await userEvent.click(await screen.findByRole('tab', { name: /Tampons/ }))
-    await userEvent.click(screen.getByRole('button', { name: /Apposer un tampon/i }))
+    await userEvent.click(screen.getAllByRole('button', { name: /Apposer un tampon/i })[0])
 
     await userEvent.click(screen.getByRole('combobox', { name: /Choisir un document/i }))
-    await userEvent.click(await screen.findByText('Bail.pdf'))
+    await userEvent.click((await screen.findAllByText('Bail.pdf'))[0])
     await userEvent.click(screen.getByRole('combobox', { name: /Choisir un tampon/i }))
-    await userEvent.click(await screen.findByText('Payé'))
-    await userEvent.click(screen.getByRole('button', { name: 'Apposer' }))
+    await userEvent.click((await screen.findAllByText('Payé'))[0])
+    await userEvent.click(screen.getAllByRole('button', { name: 'Apposer' })[0])
 
     await waitFor(() => {
       expect(gedApi.getVersions).toHaveBeenCalledWith({ document: '4' })

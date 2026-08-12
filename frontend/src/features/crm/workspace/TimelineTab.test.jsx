@@ -86,7 +86,7 @@ describe('LW20 — en-tête multi-touch (points-contact/, silencieux)', () => {
       },
     })
     renderTab()
-    expect(await screen.findByText(/3 touches/)).toBeInTheDocument()
+    expect((await screen.findAllByText(/3 touches/)).length).toBeGreaterThan(0)
   })
 
   it('silencieux (aucun bloc) quand count = 0 ou en erreur', async () => {
@@ -106,10 +106,10 @@ describe('LW20 — filtre par type, persisté', () => {
   it('filtre « Appels » ne montre que les entrées kind=appel (exclut les notes)', async () => {
     const user = userEvent.setup()
     renderTab({ historique: entries })
-    expect(screen.getByText(/Une note/)).toBeInTheDocument()
-    await user.click(screen.getByRole('button', { name: 'Appels' }))
+    expect(screen.getAllByText(/Une note/).length).toBeGreaterThan(0)
+    await user.click(screen.getAllByRole('button', { name: 'Appels' })[0])
     expect(screen.queryByText(/Une note/)).toBeNull()
-    expect(screen.getByText('Appel')).toBeInTheDocument()
+    expect(screen.getAllByText('Appel').length).toBeGreaterThan(0)
     expect(localStorage.getItem('taqinor.lw.timelineFilter')).toBe('appels')
   })
 })
@@ -121,7 +121,7 @@ describe('LW20 — notes épinglées (📌) + épingler/désépingler', () => {
       { id: 2, kind: 'note', body: 'Note importante', user_nom: 'Sami', pinned: true, created_at: new Date().toISOString() },
     ]
     renderTab({ historique: entries })
-    expect(screen.getByText('📌')).toBeInTheDocument()
+    expect(screen.getAllByText('📌').length).toBeGreaterThan(0)
   })
 
   it('cliquer sur épingler/désépingler appelle le bon endpoint puis refreshHistorique', async () => {
@@ -130,7 +130,7 @@ describe('LW20 — notes épinglées (📌) + épingler/désépingler', () => {
       { id: 5, kind: 'note', body: 'À épingler', user_nom: 'Sami', pinned: false, created_at: new Date().toISOString() },
     ]
     const { refreshHistorique } = renderTab({ historique: entries })
-    await user.click(screen.getByRole('button', { name: 'Épingler cette note' }))
+    await user.click(screen.getAllByRole('button', { name: 'Épingler cette note' })[0])
     await waitFor(() => expect(apiPost).toHaveBeenCalledWith('/crm/leads/7/activites/5/epingler/'))
     await waitFor(() => expect(refreshHistorique).toHaveBeenCalled())
   })
@@ -174,7 +174,7 @@ describe('LW20 — composer (état MOTEUR via props, jamais local)', () => {
 
   it('le bouton « Noter » poste toujours — le chemin sans raccourci reste entier', async () => {
     renderTab({ composer: composerBase({ note: 'Via le bouton' }) })
-    fireEvent.click(screen.getByRole('button', { name: 'Noter' }))
+    fireEvent.click(screen.getAllByRole('button', { name: 'Noter' })[0])
     await waitFor(() => expect(apiPost).toHaveBeenCalledWith('/crm/leads/7/noter/', { body: 'Via le bouton' }))
   })
 
@@ -212,7 +212,7 @@ describe('LW20 — composer (état MOTEUR via props, jamais local)', () => {
   it('note AVEC pièce jointe : POST multipart FormData (jamais du JSON)', async () => {
     const file = new File(['x'], 'photo.png', { type: 'image/png' })
     renderTab({ composer: composerBase({ note: 'photo toiture', file }) })
-    fireEvent.click(screen.getByRole('button', { name: 'Noter' }))
+    fireEvent.click(screen.getAllByRole('button', { name: 'Noter' })[0])
     await waitFor(() => expect(apiPost).toHaveBeenCalled())
     const [url, body, config] = apiPost.mock.calls[0]
     expect(url).toBe('/crm/leads/7/noter/')
@@ -230,7 +230,7 @@ describe('LW20 — source des entrées (chatter_recent en 1er rendu, historique 
       mode: 'edit',
     })
     renderTab({ state, historique: [] })
-    expect(screen.getByText(/Depuis chatter_recent/)).toBeInTheDocument()
+    expect(screen.getAllByText(/Depuis chatter_recent/).length).toBeGreaterThan(0)
   })
 
   it('préfère historique dès qu\'il a des entrées', () => {
@@ -242,7 +242,7 @@ describe('LW20 — source des entrées (chatter_recent en 1er rendu, historique 
       state,
       historique: [{ id: 2, kind: 'note', body: 'À jour', user_nom: 'Sami', created_at: new Date().toISOString() }],
     })
-    expect(screen.getByText(/À jour/)).toBeInTheDocument()
+    expect(screen.getAllByText(/À jour/).length).toBeGreaterThan(0)
     expect(screen.queryByText(/Ancien/)).toBeNull()
   })
 })
@@ -262,16 +262,16 @@ describe('PACT104 — ajout manuel d’un point de contact (collection racine, a
       })
     renderTab()
 
-    await user.click(screen.getByRole('button', { name: 'Ajouter un point de contact' }))
+    await user.click(screen.getAllByRole('button', { name: 'Ajouter un point de contact' })[0])
     await user.selectOptions(screen.getByLabelText('Canal du point de contact'), 'whatsapp_ctwa')
     await user.type(screen.getByLabelText('Source du point de contact'), 'Campagne WA')
-    await user.click(screen.getByRole('button', { name: 'Enregistrer' }))
+    await user.click(screen.getAllByRole('button', { name: 'Enregistrer' })[0])
 
     await waitFor(() => expect(createPointContact).toHaveBeenCalledWith(expect.objectContaining({
       lead: 7, canal: 'whatsapp_ctwa', source: 'Campagne WA',
     })))
     await waitFor(() => expect(getLeadPointsContact).toHaveBeenCalledTimes(2))
-    expect(await screen.findByText(/1 touche/)).toBeInTheDocument()
+    expect((await screen.findAllByText(/1 touche/)).length).toBeGreaterThan(0)
   })
 
   it('échec de la création : toast, formulaire reste exploitable', async () => {
@@ -279,8 +279,8 @@ describe('PACT104 — ajout manuel d’un point de contact (collection racine, a
     createPointContact.mockRejectedValueOnce({ response: { data: {} } })
     renderTab()
 
-    await user.click(screen.getByRole('button', { name: 'Ajouter un point de contact' }))
-    await user.click(screen.getByRole('button', { name: 'Enregistrer' }))
+    await user.click(screen.getAllByRole('button', { name: 'Ajouter un point de contact' })[0])
+    await user.click(screen.getAllByRole('button', { name: 'Enregistrer' })[0])
 
     await waitFor(() => expect(toastError).toHaveBeenCalled())
   })

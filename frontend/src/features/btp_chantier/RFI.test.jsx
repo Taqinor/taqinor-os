@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, beforeAll } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import { ThemeProvider } from '../../design/ThemeProvider.jsx'
@@ -77,8 +77,8 @@ describe('RFI (PACT63)', () => {
   it('affiche la liste des RFI avec l’alerte de retard', async () => {
     withProviders(<RFI />)
     await waitFor(() => expect(screen.getAllByText('Quelle section de câble ?').length).toBeGreaterThan(0))
-    expect(screen.getByText('En retard')).toBeInTheDocument()
-    expect(screen.getByText('Confirmer la teinte de peinture')).toBeInTheDocument()
+    expect(screen.getAllByText('En retard').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('Confirmer la teinte de peinture').length).toBeGreaterThan(0)
   })
 
   it('affiche le fil de réponses d’un RFI déjà répondu', async () => {
@@ -87,7 +87,7 @@ describe('RFI (PACT63)', () => {
     await waitFor(() => expect(screen.getAllByText('Confirmer la teinte de peinture').length).toBeGreaterThan(0))
 
     await user.click(screen.getAllByRole('button', { name: 'Détails' })[1])
-    expect(await screen.findByText('RAL 9010')).toBeInTheDocument()
+    expect((await screen.findAllByText('RAL 9010')).length).toBeGreaterThan(0)
   })
 
   it('pose une nouvelle question avec un délai en jours ouvrés', async () => {
@@ -95,12 +95,12 @@ describe('RFI (PACT63)', () => {
     withProviders(<RFI />)
     await waitFor(() => expect(screen.getAllByText('Quelle section de câble ?').length).toBeGreaterThan(0))
 
-    const chantierOption = await screen.findByRole('option', { name: /Villa Zenith/ })
-    await user.selectOptions(screen.getByLabelText('Chantier de la demande'), chantierOption)
+    const sel_chantierOption = screen.getByLabelText('Chantier de la demande')
+    await user.selectOptions(sel_chantierOption, within(sel_chantierOption).getByRole('option', { name: /Villa Zenith/ }))
     await user.type(screen.getByLabelText('Question'), 'Type de fixation toiture ?')
     await user.clear(screen.getByLabelText('Délai en jours ouvrés'))
     await user.type(screen.getByLabelText('Délai en jours ouvrés'), '3')
-    await user.click(screen.getByRole('button', { name: 'Poser la question' }))
+    await user.click(screen.getAllByRole('button', { name: 'Poser la question' })[0])
 
     await waitFor(() => expect(rfiCreate).toHaveBeenCalledWith(expect.objectContaining({
       chantier: '5', question: 'Type de fixation toiture ?', delai_jours: 3,
@@ -114,10 +114,10 @@ describe('RFI (PACT63)', () => {
 
     await user.click(screen.getAllByRole('button', { name: 'Détails' })[0])
     await user.type(screen.getByLabelText('Texte de la réponse'), 'Section 2.5 mm²')
-    await user.click(screen.getByRole('button', { name: 'Répondre' }))
+    await user.click(screen.getAllByRole('button', { name: 'Répondre' })[0])
     await waitFor(() => expect(rfiRepondre).toHaveBeenCalledWith(1, 'Section 2.5 mm²'))
 
-    await user.click(screen.getByRole('button', { name: 'Clore' }))
+    await user.click(screen.getAllByRole('button', { name: 'Clore' })[0])
     await waitFor(() => expect(rfiClore).toHaveBeenCalledWith(1))
   })
 })

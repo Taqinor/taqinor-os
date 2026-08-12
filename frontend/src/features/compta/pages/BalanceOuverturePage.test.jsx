@@ -62,7 +62,7 @@ describe('BalanceOuverturePage — import idempotent (PACT35)', () => {
     const input = screen.getByLabelText(/Fichier CSV/i)
     const fichier = new File(['numero,libelle,debit,credit\n1111,Caisse,100,0'], 'balance.csv', { type: 'text/csv' })
     fireEvent.change(input, { target: { files: [fichier] } })
-    fireEvent.click(screen.getByRole('button', { name: /^Importer$/i }))
+    fireEvent.click(screen.getAllByRole('button', { name: /^Importer$/i })[0])
 
     await waitFor(() => expect(mocks.importer).toHaveBeenCalledWith(fichier, 1))
     expect(await screen.findByText(
@@ -82,8 +82,8 @@ describe('BalanceOuverturePage — import idempotent (PACT35)', () => {
     const input = screen.getByLabelText(/Fichier CSV/i)
     const fichier = new File(['x'], 'balance.csv', { type: 'text/csv' })
     fireEvent.change(input, { target: { files: [fichier] } })
-    fireEvent.click(screen.getByRole('button', { name: /^Importer$/i }))
+    fireEvent.click(screen.getAllByRole('button', { name: /^Importer$/i })[0])
 
-    expect(await screen.findByText('compte inconnu')).toBeInTheDocument()
+    expect((await screen.findAllByText('compte inconnu')).length).toBeGreaterThan(0)
   })
 })

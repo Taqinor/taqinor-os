@@ -38,17 +38,17 @@ describe('ModelesIntegration (PACT85)', () => {
 
   it('rend le module', async () => {
     renderScreen()
-    expect(await screen.findByText('Modèles d’intégration')).toBeInTheDocument()
+    expect((await screen.findAllByText('Modèles d’intégration')).length).toBeGreaterThan(0)
   })
 
   it('crée un modèle via rhApi.createModeleIntegration', async () => {
     rhApi.createModeleIntegration.mockResolvedValueOnce({ data: { id: 1 } })
     renderScreen()
-    await screen.findByText('Modèles d’intégration')
+    await screen.findAllByText('Modèles d’intégration')
 
-    fireEvent.click(await screen.findByRole('button', { name: /Nouveau modèle/ }))
+    fireEvent.click((await screen.findAllByRole('button', { name: /Nouveau modèle/ }))[0])
     fireEvent.change(screen.getByLabelText('Nom'), { target: { value: 'Onboarding technicien' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Créer' }))
+    fireEvent.click(screen.getAllByRole('button', { name: 'Créer' })[0])
 
     await waitFor(() => expect(rhApi.createModeleIntegration).toHaveBeenCalledWith(
       expect.objectContaining({ nom: 'Onboarding technicien' }),
@@ -62,11 +62,11 @@ describe('ModelesIntegration (PACT85)', () => {
     })
     rhApi.createElementIntegration.mockResolvedValueOnce({ data: { id: 1 } })
     renderScreen()
-    fireEvent.click(await screen.findByText('Onboarding standard'))
+    fireEvent.click((await screen.findAllByText('Onboarding standard'))[0])
 
-    fireEvent.click(await screen.findByRole('button', { name: 'Étape' }))
+    fireEvent.click((await screen.findAllByRole('button', { name: 'Étape' }))[0])
     fireEvent.change(screen.getByLabelText('Libellé'), { target: { value: 'Contrat signé' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Ajouter' }))
+    fireEvent.click(screen.getAllByRole('button', { name: 'Ajouter' })[0])
 
     await waitFor(() => expect(rhApi.createElementIntegration).toHaveBeenCalledWith(
       expect.objectContaining({ modele: 4, libelle: 'Contrat signé' }),

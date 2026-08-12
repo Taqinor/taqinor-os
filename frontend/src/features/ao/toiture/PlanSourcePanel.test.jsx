@@ -50,19 +50,19 @@ describe('PlanSourcePanel (PACT76)', () => {
   it('la toiture affiche la liste RÉELLE de ses plans sources, avec leur état', async () => {
     renderPanel()
     await waitFor(() => expect(mocks.list).toHaveBeenCalledWith({ toiture: 9 }))
-    expect(await screen.findByText('Brut (non calibré)')).toBeInTheDocument()
-    expect(screen.getByText('Calibré')).toBeInTheDocument()
+    expect((await screen.findAllByText('Brut (non calibré)')).length).toBeGreaterThan(0)
+    expect(screen.getAllByText('Calibré').length).toBeGreaterThan(0)
   })
 
   it('un plan calibré affiche l’échelle CALCULÉE PAR LE SERVEUR (jamais recalculée ici)', async () => {
     renderPanel()
-    expect(await screen.findByText('échelle : 0.020000 m/px')).toBeInTheDocument()
+    expect((await screen.findAllByText('échelle : 0.020000 m/px')).length).toBeGreaterThan(0)
   })
 
   it('créer un plan sans fichier n’appelle aucun upload', async () => {
     renderPanel()
-    await screen.findByText('Brut (non calibré)')
-    await userEvent.click(screen.getByRole('button', { name: 'Enregistrer le plan' }))
+    await screen.findAllByText('Brut (non calibré)')
+    await userEvent.click(screen.getAllByRole('button', { name: 'Enregistrer le plan' })[0])
     await waitFor(() => expect(mocks.create).toHaveBeenCalledWith(
       expect.objectContaining({ toiture: 9, origine: 'plan_fourni', type_fichier: 'aucun' }),
     ))
@@ -71,7 +71,7 @@ describe('PlanSourcePanel (PACT76)', () => {
 
   it('calibrer un plan appelle un PATCH réel avec les deux points et la distance, puis recharge la liste', async () => {
     renderPanel()
-    const badgeBrut = await screen.findByText('Brut (non calibré)')
+    const [badgeBrut] = await screen.findAllByText('Brut (non calibré)')
     // Deux plans, DEUX formulaires de calibration avec les MÊMES libellés :
     // on scope la saisie à la ligne du plan BRUT (id 1), jamais à « un »
     // formulaire pris au hasard parmi les deux.
@@ -92,7 +92,7 @@ describe('PlanSourcePanel (PACT76)', () => {
 
   it('aucune toiture choisie : état vide honnête, sans appel réseau', () => {
     renderPanel({ toitureId: undefined })
-    expect(screen.getByText('Plans sources indisponibles')).toBeInTheDocument()
+    expect(screen.getAllByText('Plans sources indisponibles').length).toBeGreaterThan(0)
     expect(mocks.list).not.toHaveBeenCalled()
   })
 })

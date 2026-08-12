@@ -62,8 +62,8 @@ describe('ReferentielsAnalytiquePage — référentiels (PACT31)', () => {
         devise_fonctionnelle: 'MAD', actif: true, est_principal: false }],
     })
     mount()
-    expect(await screen.findByText('Livre IFRS')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /Amorcer le CGNC/i })).toBeInTheDocument()
+    expect((await screen.findAllByText('Livre IFRS')).length).toBeGreaterThan(0)
+    expect(screen.getAllByRole('button', { name: /Amorcer le CGNC/i })[0]).toBeInTheDocument()
   })
 })
 
@@ -76,13 +76,13 @@ describe('ReferentielsAnalytiquePage — ajustements GAAP (PACT31)', () => {
     mocks.poster.mockResolvedValueOnce({ data: { id: 5, referentiel: 1 } })
     mount(['/?onglet=ajustements'])
 
-    fireEvent.click(await screen.findByRole('button', { name: /Poster un ajustement/i }))
+    fireEvent.click((await screen.findAllByRole('button', { name: /Poster un ajustement/i }))[0])
     // Combobox = un bouton `role="combobox"` qui ouvre une liste d'options
     // (jamais un <select> natif) — cf. frontend/src/ui/Combobox.jsx.
     fireEvent.click(await screen.findByRole('combobox'))
     fireEvent.click(await screen.findByRole('option', { name: /IFRS — Livre IFRS/i }))
-    fireEvent.change(screen.getByLabelText(/^Motif$/i), { target: { value: 'Retraitement leasing' } })
-    fireEvent.click(screen.getByRole('button', { name: /^Poster$/i }))
+    fireEvent.change(screen.getByLabelText(/^Motif\s*\*?$/i), { target: { value: 'Retraitement leasing' } })
+    fireEvent.click(screen.getAllByRole('button', { name: /^Poster$/i })[0])
 
     await waitFor(() => expect(mocks.poster).toHaveBeenCalled())
     expect(mocks.poster.mock.calls[0][0].referentiel).toBe(1)

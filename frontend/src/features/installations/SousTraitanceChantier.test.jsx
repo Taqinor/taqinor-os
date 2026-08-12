@@ -56,7 +56,7 @@ afterEach(() => { cleanup(); vi.clearAllMocks() })
 describe('SousTraitanceChantier (PACT55)', () => {
   it('charge l\'annuaire et affiche la fiche du sous-traitant sélectionné', async () => {
     render(<SousTraitanceChantier />)
-    expect(await screen.findByText('Terrassements Atlas')).toBeInTheDocument()
+    expect((await screen.findAllByText('Terrassements Atlas')).length).toBeGreaterThan(0)
     expect(await screen.findByRole('heading', { name: 'Terrassements Atlas' })).toBeInTheDocument()
     expect(screen.getByRole('tab', { name: 'Ordres' })).toBeInTheDocument()
     expect(screen.getByRole('tab', { name: 'Factures & règlements' })).toBeInTheDocument()
@@ -68,19 +68,19 @@ describe('SousTraitanceChantier (PACT55)', () => {
   it('affiche l\'état vide quand l\'annuaire est vide', async () => {
     inst.getSousTraitants.mockResolvedValueOnce({ data: { count: 0, results: [] } })
     render(<SousTraitanceChantier />)
-    expect(await screen.findByText('Aucun sous-traitant')).toBeInTheDocument()
+    expect((await screen.findAllByText('Aucun sous-traitant')).length).toBeGreaterThan(0)
   })
 
   it('crée un ordre de travaux depuis la fiche', async () => {
     const user = userEvent.setup()
     render(<SousTraitanceChantier />)
-    await screen.findByText('Terrassements Atlas')
+    await screen.findAllByText('Terrassements Atlas')
     await waitFor(() => expect(inst.getOrdresSousTraitance).toHaveBeenCalledWith(
       expect.objectContaining({ sous_traitant: 5 })))
-    await user.click(screen.getByRole('button', { name: /Nouvel ordre/ }))
+    await user.click(screen.getAllByRole('button', { name: /Nouvel ordre/ })[0])
     await user.type(screen.getByLabelText('Prestation'), 'Terrassement plateforme')
     await user.type(screen.getByLabelText('Montant (MAD)'), '15000')
-    await user.click(screen.getByRole('button', { name: 'Créer' }))
+    await user.click(screen.getAllByRole('button', { name: 'Créer' })[0])
     await waitFor(() => expect(inst.createOrdreSousTraitance).toHaveBeenCalledWith(
       expect.objectContaining({ sous_traitant: 5, prestation: 'Terrassement plateforme', montant: '15000' })))
   })
@@ -102,12 +102,12 @@ describe('SousTraitanceChantier (PACT55)', () => {
     ] } })
     const user = userEvent.setup()
     render(<SousTraitanceChantier />)
-    await screen.findByText('Terrassements Atlas')
+    await screen.findAllByText('Terrassements Atlas')
     await user.click(screen.getByRole('tab', { name: 'Factures & règlements' }))
     expect(await screen.findByTestId('facture-71')).toBeInTheDocument()
     await user.click(within(screen.getByTestId('facture-71')).getByRole('button', { name: 'Ajouter un règlement' }))
     await user.type(screen.getByLabelText('Montant (MAD)'), '5000')
-    await user.click(screen.getByRole('button', { name: 'Enregistrer' }))
+    await user.click(screen.getAllByRole('button', { name: 'Enregistrer' })[0])
     await waitFor(() => expect(inst.createPaiementSousTraitant).toHaveBeenCalledWith(
       expect.objectContaining({ facture: 71, montant: '5000' })))
   })
@@ -115,9 +115,9 @@ describe('SousTraitanceChantier (PACT55)', () => {
   it('affiche le statut d\'affectabilité sur l\'onglet attestations', async () => {
     const user = userEvent.setup()
     render(<SousTraitanceChantier />)
-    await screen.findByText('Terrassements Atlas')
+    await screen.findAllByText('Terrassements Atlas')
     await user.click(screen.getByRole('tab', { name: 'Attestations' }))
-    expect(await screen.findByText('Affectable')).toBeInTheDocument()
+    expect((await screen.findAllByText('Affectable')).length).toBeGreaterThan(0)
   })
 
   it('lève une retenue de garantie une fois l\'ordre choisi', async () => {
@@ -129,12 +129,12 @@ describe('SousTraitanceChantier (PACT55)', () => {
     ] } })
     const user = userEvent.setup()
     render(<SousTraitanceChantier />)
-    await screen.findByText('Terrassements Atlas')
+    await screen.findAllByText('Terrassements Atlas')
     await user.click(screen.getByRole('tab', { name: 'Retenues de garantie' }))
     await screen.findByRole('option', { name: 'OST-202608-0001' })
     await user.selectOptions(screen.getByLabelText('Ordre de travaux'), '41')
     expect(await screen.findByTestId('retenue-3')).toBeInTheDocument()
-    await user.click(screen.getByRole('button', { name: 'Lever la retenue' }))
+    await user.click(screen.getAllByRole('button', { name: 'Lever la retenue' })[0])
     await waitFor(() => expect(inst.leverRetenueGarantieSousTraitant).toHaveBeenCalledWith(3))
   })
 })

@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeAll } from 'vitest'
 import { render, screen, waitFor, fireEvent } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { Provider } from 'react-redux'
+import { toast } from '../../../ui'
 import { configureStore } from '@reduxjs/toolkit'
 import { ThemeProvider } from '../../../design/ThemeProvider.jsx'
 
@@ -66,15 +67,20 @@ describe('ConsolidationGroupePage — cycle verrouillé (PACT33)', () => {
     mocks.collecter.mockRejectedValueOnce({
       response: { data: { detail: 'Cycle verrouillé : la collecte est refusée.' } },
     })
+    const erreur = vi.spyOn(toast, 'error')
     mount()
 
-    expect(await screen.findByText('Consolidation 2026')).toBeInTheDocument()
-    const bouton = screen.getByRole('button', { name: /Collecter les liasses/i })
+    expect((await screen.findAllByText('Consolidation 2026')).length).toBeGreaterThan(0)
+    const bouton = screen.getAllByRole('button', { name: /Collecter les liasses/i })[0]
     fireEvent.click(bouton)
 
     await waitFor(() => expect(mocks.collecter).toHaveBeenCalledWith(4, {}))
-    expect(await screen.findByText('Cycle verrouillé : la collecte est refusée.')).toBeInTheDocument()
+    // Le refus serveur part au TOAST (aucun `Toaster` monté dans ce rendu) :
+    // on espionne l'appel, ce qui prouve exactement ce qui compte — le
+    // message du serveur est relayé TEL QUEL, jamais remplacé par un texte
+    // générique.
+    expect(erreur).toHaveBeenCalledWith('Cycle verrouillé : la collecte est refusée.')
     // Un cycle verrouillé propose « Ouvrir » (rouvrir), jamais « Verrouiller ».
-    expect(screen.getByRole('button', { name: /Ouvrir \(déverrouiller\)/i })).toBeInTheDocument()
+    expect(screen.getAllByRole('button', { name: /Ouvrir \(déverrouiller\)/i })[0]).toBeInTheDocument()
   })
 })

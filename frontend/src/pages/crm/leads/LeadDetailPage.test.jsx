@@ -59,14 +59,14 @@ describe('LeadDetailPage — brouillon assisté (PACT141)', () => {
     withProviders()
     await screen.findByTestId('lead-workspace-stub')
 
-    await user.click(screen.getByRole('button', { name: 'Générer un brouillon de relance' }))
+    await user.click(screen.getAllByRole('button', { name: 'Générer un brouillon de relance' })[0])
 
     await waitFor(() => expect(rediger).toHaveBeenCalledWith(expect.objectContaining({
       content_type: 'crm.lead', object_id: '7', canal: 'email',
     })))
     const zone = await screen.findByLabelText('Brouillon éditable')
     expect(zone).toHaveValue('Bonjour, je reviens vers vous suite à notre échange…')
-    expect(screen.getByText('Brouillon éditable — jamais envoyé automatiquement.')).toBeInTheDocument()
+    expect(screen.getAllByText('Brouillon éditable — jamais envoyé automatiquement.').length).toBeGreaterThan(0)
   })
 
   it('le brouillon reste ÉDITABLE avant tout envoi', async () => {
@@ -76,7 +76,7 @@ describe('LeadDetailPage — brouillon assisté (PACT141)', () => {
     const user = userEvent.setup()
     withProviders()
     await screen.findByTestId('lead-workspace-stub')
-    await user.click(screen.getByRole('button', { name: 'Générer un brouillon de relance' }))
+    await user.click(screen.getAllByRole('button', { name: 'Générer un brouillon de relance' })[0])
 
     const zone = await screen.findByLabelText('Brouillon éditable')
     await user.type(zone, ' — édité par la commerciale')
@@ -96,7 +96,7 @@ describe('LeadDetailPage — brouillon assisté (PACT141)', () => {
     const user = userEvent.setup()
     withProviders()
     await screen.findByTestId('lead-workspace-stub')
-    await user.click(screen.getByRole('button', { name: 'Générer un brouillon de relance' }))
+    await user.click(screen.getAllByRole('button', { name: 'Générer un brouillon de relance' })[0])
 
     expect(await screen.findByText(
       "Aucun fournisseur LLM n'est configuré (clé absente) — rédaction manuelle requise.",

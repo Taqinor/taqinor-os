@@ -39,15 +39,15 @@ describe('PrimesIndemnites (PACT93)', () => {
   it('pré-remplit le montant depuis le type choisi, mais le laisse modifiable', async () => {
     rhApi.createPrimeAttribuee.mockResolvedValueOnce({ data: { id: 1 } })
     renderScreen()
-    await screen.findByText('Primes & indemnités')
+    await screen.findAllByText('Primes & indemnités')
 
-    fireEvent.click(await screen.findByRole('button', { name: /Nouvelle attribution/ }))
+    fireEvent.click((await screen.findAllByRole('button', { name: /Nouvelle attribution/ }))[0])
     fireEvent.change(screen.getByLabelText('Employé'), { target: { value: '9' } })
     fireEvent.change(screen.getByLabelText('Type de prime'), { target: { value: '5' } })
     expect(screen.getByLabelText('Montant (MAD)')).toHaveValue(30)
 
     fireEvent.change(screen.getByLabelText('Montant (MAD)'), { target: { value: '45' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Attribuer' }))
+    fireEvent.click(screen.getAllByRole('button', { name: 'Attribuer' })[0])
 
     await waitFor(() => expect(rhApi.createPrimeAttribuee).toHaveBeenCalledWith(
       expect.objectContaining({ employe: '9', type_prime: '5', montant: '45' }),
@@ -57,13 +57,13 @@ describe('PrimesIndemnites (PACT93)', () => {
   it('crée un type de prime via rhApi.createTypePrime (onglet catalogue)', async () => {
     rhApi.createTypePrime.mockResolvedValueOnce({ data: { id: 6 } })
     renderScreen()
-    await screen.findByText('Primes & indemnités')
+    await screen.findAllByText('Primes & indemnités')
 
     fireEvent.click(screen.getByRole('radio', { name: 'Catalogue de types' }))
-    fireEvent.click(await screen.findByRole('button', { name: /Nouveau type/ }))
+    fireEvent.click((await screen.findAllByRole('button', { name: /Nouveau type/ }))[0])
     fireEvent.change(screen.getByLabelText('Code'), { target: { value: 'TRANSPORT' } })
     fireEvent.change(screen.getByLabelText('Libellé'), { target: { value: 'Indemnité transport' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Créer' }))
+    fireEvent.click(screen.getAllByRole('button', { name: 'Créer' })[0])
 
     await waitFor(() => expect(rhApi.createTypePrime).toHaveBeenCalledWith(
       expect.objectContaining({ code: 'TRANSPORT', libelle: 'Indemnité transport' }),

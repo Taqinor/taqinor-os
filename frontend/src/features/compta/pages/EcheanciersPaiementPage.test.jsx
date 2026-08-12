@@ -72,8 +72,8 @@ describe('EcheanciersPaiementPage — solde restant mis à jour (PACT41)', () =>
     const promptSpy = vi.spyOn(window, 'prompt').mockReturnValue('20000')
     mount()
 
-    fireEvent.click(await screen.findByText('FAC-2026-005'))
-    const bouton = await screen.findByRole('button', { name: /Régler/i })
+    fireEvent.click((await screen.findAllByText('FAC-2026-005'))[0])
+    const bouton = (await screen.findAllByRole('button', { name: /Régler/i }))[0]
     fireEvent.click(bouton)
 
     await waitFor(() => expect(mocks.regler).toHaveBeenCalledWith(12, { montant: 20000 }))

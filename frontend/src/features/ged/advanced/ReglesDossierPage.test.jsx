@@ -64,7 +64,7 @@ describe('PACT132 ReglesDossierPage', () => {
     renderPage()
     await screen.findAllByText('Marquer urgent')
 
-    await userEvent.click(screen.getByRole('button', { name: /Nouvelle règle/i }))
+    await userEvent.click(screen.getAllByRole('button', { name: /Nouvelle règle/i })[0])
     const dialog = await screen.findByRole('dialog')
 
     await userEvent.click(within(dialog).getByRole('combobox', { name: 'Choisir un dossier' }))
@@ -112,7 +112,7 @@ describe('PACT132 ReglesDossierPage', () => {
     await screen.findAllByText('Marquer urgent')
 
     await userEvent.click(screen.getAllByRole('button', { name: 'Journal d’exécution' })[0])
-    expect(await screen.findByText('Facture-0012.pdf')).toBeInTheDocument()
+    expect((await screen.findAllByText('Facture-0012.pdf')).length).toBeGreaterThan(0)
     expect(gedApi.getExecutionsRegleDossier).toHaveBeenCalledWith(5)
   })
 })

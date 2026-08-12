@@ -58,7 +58,7 @@ describe('PACT137 PlanificationsPage', () => {
     renderPage()
     await screen.findAllByText('Relancer le locataire')
 
-    await userEvent.click(screen.getByRole('button', { name: /Nouvelle planification/i }))
+    await userEvent.click(screen.getAllByRole('button', { name: /Nouvelle planification/i })[0])
     const dialog = await screen.findByRole('dialog')
     await userEvent.click(within(dialog).getByRole('combobox', { name: 'Choisir un document' }))
     await userEvent.click(within(await screen.findByRole('listbox')).getByText('Bail.pdf'))

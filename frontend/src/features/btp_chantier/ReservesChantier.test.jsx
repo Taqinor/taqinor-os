@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, beforeAll } from 'vitest'
-import { render, screen, waitFor, fireEvent } from '@testing-library/react'
+import { render, screen, waitFor, fireEvent, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import { ThemeProvider } from '../../design/ThemeProvider.jsx'
@@ -93,9 +93,9 @@ describe('ReservesChantier (PACT62)', () => {
     await waitFor(() => expect(screen.getAllByText('Prise manquante').length).toBeGreaterThan(0))
 
     await user.type(screen.getByLabelText('ID du document GED (plan)'), '42')
-    await user.click(screen.getByRole('button', { name: 'Charger le plan' }))
+    await user.click(screen.getAllByRole('button', { name: 'Charger le plan' })[0])
 
-    const pin = await screen.findByRole('button', { name: /Réserve #1 — Majeure/ })
+    const pin = (await screen.findAllByRole('button', { name: /Réserve #1 — Majeure/ }))[0]
     expect(pin.style.left).toBe('25%')
     expect(pin.style.top).toBe('60%')
 
@@ -110,7 +110,7 @@ describe('ReservesChantier (PACT62)', () => {
 
     await user.click(screen.getAllByRole('button', { name: 'Détails' })[0])
     await user.type(screen.getByLabelText('Nom du signataire (levée)'), 'Karim B.')
-    await user.click(screen.getByRole('button', { name: 'Lever' }))
+    await user.click(screen.getAllByRole('button', { name: 'Lever' })[0])
 
     await waitFor(() => expect(reservesLever).toHaveBeenCalledWith(1, 'Karim B.'))
   })
@@ -120,14 +120,14 @@ describe('ReservesChantier (PACT62)', () => {
     withProviders(<ReservesChantier />)
     await waitFor(() => expect(screen.getAllByText('Prise manquante').length).toBeGreaterThan(0))
 
-    const chantierOption = await screen.findByRole('option', { name: /Villa Zenith/ })
-    await user.selectOptions(screen.getByLabelText('Chantier'), chantierOption)
+    const sel_chantierOption = screen.getByLabelText('Chantier')
+    await user.selectOptions(sel_chantierOption, within(sel_chantierOption).getByRole('option', { name: /Villa Zenith/ }))
 
     await user.type(screen.getByLabelText('ID du document GED (plan)'), '42')
-    await user.click(screen.getByRole('button', { name: 'Charger le plan' }))
-    await screen.findByRole('button', { name: /Réserve #1 — Majeure/ })
+    await user.click(screen.getAllByRole('button', { name: 'Charger le plan' })[0])
+    await screen.findAllByRole('button', { name: /Réserve #1 — Majeure/ })
 
-    await user.click(screen.getByRole('button', { name: 'Ajouter une réserve' }))
+    await user.click(screen.getAllByRole('button', { name: 'Ajouter une réserve' })[0])
 
     const plan = screen.getByTestId('plan-chantier')
     plan.getBoundingClientRect = () => ({
@@ -136,7 +136,7 @@ describe('ReservesChantier (PACT62)', () => {
     fireEvent.click(plan, { clientX: 100, clientY: 50 })
 
     await user.type(screen.getByLabelText('Description de la réserve'), 'Câble apparent')
-    await user.click(screen.getByRole('button', { name: 'Poser la réserve' }))
+    await user.click(screen.getAllByRole('button', { name: 'Poser la réserve' })[0])
 
     await waitFor(() => expect(reservesCreate).toHaveBeenCalledWith(expect.objectContaining({
       chantier: '5',

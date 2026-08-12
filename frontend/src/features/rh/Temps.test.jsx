@@ -42,15 +42,15 @@ describe('Temps — kiosque & import (XRH10/13)', () => {
 
   it('charge les devices kiosque et propose l’onglet Kiosque', async () => {
     renderTemps()
-    expect(await screen.findByText('Temps & présence')).toBeInTheDocument()
+    expect((await screen.findAllByText('Temps & présence')).length).toBeGreaterThan(0)
     expect(rhApi.getDevicesKiosque).toHaveBeenCalled()
     expect(screen.getByRole('radio', { name: 'Kiosque' })).toBeInTheDocument()
   })
 
   it('affiche le bouton d’import CSV sur les pointages', async () => {
     renderTemps()
-    await screen.findByText('Temps & présence')
-    expect(screen.getByRole('button', { name: /Importer CSV/ })).toBeInTheDocument()
+    await screen.findAllByText('Temps & présence')
+    expect(screen.getAllByRole('button', { name: /Importer CSV/ })[0]).toBeInTheDocument()
   })
 })
 
@@ -59,21 +59,21 @@ describe('Temps — PACT19 : « Export paie » appelle la route qui existe vraim
 
   it('le bouton vit sur « Heures supp. », pas sur « Pointages »', async () => {
     renderTemps()
-    await screen.findByText('Temps & présence')
+    await screen.findAllByText('Temps & présence')
     // Vue « Pointages » (défaut) : plus d'export paie ici — il exportait des
     // heures supplémentaires depuis l'écran des pointages, via une route
     // (`/rh/pointages/export-paie/`) qui n'a jamais existé.
     expect(screen.queryByRole('button', { name: /Export paie/ })).toBeNull()
 
     fireEvent.click(screen.getByRole('radio', { name: 'Heures supp.' }))
-    expect(await screen.findByRole('button', { name: /Export paie/ })).toBeInTheDocument()
+    expect((await screen.findAllByRole('button', { name: /Export paie/ }))[0]).toBeInTheDocument()
   })
 
   it('appelle exportPaieHeuresSupp (/rh/heures-supp/export-paie/) au clic', async () => {
     renderTemps()
-    await screen.findByText('Temps & présence')
+    await screen.findAllByText('Temps & présence')
     fireEvent.click(screen.getByRole('radio', { name: 'Heures supp.' }))
-    fireEvent.click(await screen.findByRole('button', { name: /Export paie/ }))
+    fireEvent.click((await screen.findAllByRole('button', { name: /Export paie/ }))[0])
     await waitFor(() => expect(rhApi.exportPaieHeuresSupp).toHaveBeenCalled())
   })
 })

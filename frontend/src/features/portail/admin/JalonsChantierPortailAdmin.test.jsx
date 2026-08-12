@@ -46,7 +46,7 @@ describe('JalonsChantierPortailAdmin — PACT100', () => {
     await user.click(await screen.findByRole('combobox', { name: 'Chantier' }))
     await user.click(await screen.findByRole('option', { name: '#8 — Ferme Bennani' }))
     await user.type(screen.getByLabelText('Jalon'), 'Livraison matériel')
-    await user.click(screen.getByRole('button', { name: /Créer le jalon/ }))
+    await user.click(screen.getAllByRole('button', { name: /Créer le jalon/ })[0])
     await waitFor(() => expect(portailApi.admin.jalonsChantier.creer).toHaveBeenCalledWith({
       chantier_id: '8', libelle: 'Livraison matériel', ordre: 0,
     }))

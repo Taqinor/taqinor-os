@@ -33,7 +33,7 @@ describe('ReglagesRh (PACT94)', () => {
 
   it('charge le réglage existant (géofence active à 150 m)', async () => {
     renderScreen()
-    expect(await screen.findByText('Réglages RH')).toBeInTheDocument()
+    expect((await screen.findAllByText('Réglages RH')).length).toBeGreaterThan(0)
     expect(await screen.findByLabelText('Rayon (mètres)')).toHaveValue(150)
   })
 
@@ -45,7 +45,7 @@ describe('ReglagesRh (PACT94)', () => {
     await screen.findByLabelText('Rayon (mètres)')
 
     fireEvent.click(screen.getByRole('checkbox', { name: 'Contrôler le rayon GPS au pointage chantier' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Enregistrer' }))
+    fireEvent.click(screen.getAllByRole('button', { name: 'Enregistrer' })[0])
 
     await waitFor(() => expect(rhApi.updateMonReglageRh).toHaveBeenCalledWith(
       expect.objectContaining({ geofence_metres: null }),

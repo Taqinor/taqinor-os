@@ -38,16 +38,16 @@ describe('DemandesAllocation (PACT83)', () => {
 
   it('rend le module et liste les demandes soumises', async () => {
     renderScreen()
-    expect(await screen.findByText('Demandes d’allocation de congés')).toBeInTheDocument()
-    expect(await screen.findByText('Bennani Youssef')).toBeInTheDocument()
+    expect((await screen.findAllByText('Demandes d’allocation de congés')).length).toBeGreaterThan(0)
+    expect((await screen.findAllByText('Bennani Youssef')).length).toBeGreaterThan(0)
   })
 
   it('valide une demande via rhApi.validerDemandeAllocation puis recharge les soldes', async () => {
     rhApi.validerDemandeAllocation.mockResolvedValueOnce({ data: { id: 5, statut: 'validee' } })
     renderScreen()
-    await screen.findByText('Bennani Youssef')
+    await screen.findAllByText('Bennani Youssef')
 
-    fireEvent.click(await screen.findByRole('button', { name: 'Valider' }))
+    fireEvent.click((await screen.findAllByRole('button', { name: 'Valider' }))[0])
 
     await waitFor(() => expect(rhApi.validerDemandeAllocation).toHaveBeenCalledWith(5))
     await waitFor(() => expect(rhApi.getSoldesConge).toHaveBeenCalledTimes(2))

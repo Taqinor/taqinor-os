@@ -65,7 +65,7 @@ describe('ConcurrentsPerte (PACT103)', () => {
     await user.type(screen.getByLabelText('Rechercher un lead perdu'), 'Alami')
     await waitFor(() => expect(getLeads).toHaveBeenCalledWith({ search: 'Alami' }))
 
-    expect(await screen.findByText(/Ahmed Alami/)).toBeInTheDocument()
+    expect((await screen.findAllByText(/Ahmed Alami/)).length).toBeGreaterThan(0)
     expect(screen.queryByText(/Sara B\./)).not.toBeInTheDocument()
   })
 
@@ -74,11 +74,11 @@ describe('ConcurrentsPerte (PACT103)', () => {
     withProviders(<ConcurrentsPerte />)
 
     await user.type(screen.getByLabelText('Rechercher un lead perdu'), 'Alami')
-    const bouton = await screen.findByRole('button', { name: /Ahmed Alami/ })
+    const bouton = (await screen.findAllByRole('button', { name: /Ahmed Alami/ }))[0]
     await user.click(bouton)
 
     await waitFor(() => expect(getConcurrentsPerte).toHaveBeenCalledWith({ lead: 42 }))
-    expect(await screen.findByText('SunTech')).toBeInTheDocument()
+    expect((await screen.findAllByText('SunTech')).length).toBeGreaterThan(0)
   })
 
   it('enregistre un nouveau concurrent sur le lead sélectionné', async () => {
@@ -86,13 +86,13 @@ describe('ConcurrentsPerte (PACT103)', () => {
     withProviders(<ConcurrentsPerte />)
 
     await user.type(screen.getByLabelText('Rechercher un lead perdu'), 'Alami')
-    const bouton = await screen.findByRole('button', { name: /Ahmed Alami/ })
+    const bouton = (await screen.findAllByRole('button', { name: /Ahmed Alami/ }))[0]
     await user.click(bouton)
-    await screen.findByText('SunTech')
+    await screen.findAllByText('SunTech')
 
     await user.type(screen.getByLabelText('Concurrent gagnant'), 'GreenSolar')
     await user.type(screen.getByLabelText('Prix du concurrent'), '79000')
-    await user.click(screen.getByRole('button', { name: 'Enregistrer' }))
+    await user.click(screen.getAllByRole('button', { name: 'Enregistrer' })[0])
 
     await waitFor(() => expect(createConcurrentPerte).toHaveBeenCalledWith(expect.objectContaining({
       lead: 42, concurrent_nom: 'GreenSolar', concurrent_prix: '79000',

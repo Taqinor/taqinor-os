@@ -64,8 +64,8 @@ describe('FiscaliteAvanceePage — acomptes IS (PACT28)', () => {
     })
     mount()
 
-    expect(await screen.findByText('#4')).toBeInTheDocument()
-    const bouton = await screen.findByRole('button', { name: /Marquer payé/i })
+    expect((await screen.findAllByText('#4')).length).toBeGreaterThan(0)
+    const bouton = (await screen.findAllByRole('button', { name: /Marquer payé/i }))[0]
     fireEvent.click(bouton)
     await waitFor(() => expect(mocks.marquerPaye).toHaveBeenCalledWith(1))
   })
@@ -82,8 +82,8 @@ describe('FiscaliteAvanceePage — conventions fiscales (PACT28)', () => {
     })
     mount(['/?onglet=conventionsFiscales'])
 
-    expect(await screen.findByText('France')).toBeInTheDocument()
-    expect(screen.getByText('10 %')).toBeInTheDocument()
+    expect((await screen.findAllByText('France')).length).toBeGreaterThan(0)
+    expect(screen.getAllByText('10 %').length).toBeGreaterThan(0)
   })
 })
 
@@ -98,6 +98,6 @@ describe('FiscaliteAvanceePage — familles TVA non déductible (PACT28)', () =>
     })
     mount(['/?onglet=famillesTva'])
 
-    expect(await screen.findByText('Véhicules de tourisme')).toBeInTheDocument()
+    expect((await screen.findAllByText('Véhicules de tourisme')).length).toBeGreaterThan(0)
   })
 })

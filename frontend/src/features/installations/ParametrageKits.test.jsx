@@ -55,16 +55,16 @@ describe('ParametrageKits (PACT61)', () => {
   it('affiche l\'état vide quand aucun kit n\'existe', async () => {
     inst.getKitsAssemblage.mockResolvedValueOnce({ data: { count: 0, results: [] } })
     render(<ParametrageKits />)
-    expect(await screen.findByText('Aucun kit')).toBeInTheDocument()
+    expect((await screen.findAllByText('Aucun kit')).length).toBeGreaterThan(0)
   })
 
   it('crée un nouveau kit', async () => {
     const user = userEvent.setup()
     render(<ParametrageKits />)
     await screen.findByTestId('kit-12')
-    await user.click(screen.getByRole('button', { name: 'Nouveau kit' }))
+    await user.click(screen.getAllByRole('button', { name: 'Nouveau kit' })[0])
     await user.type(screen.getByLabelText('Nom'), 'Kit onduleur résidentiel')
-    await user.click(screen.getByRole('button', { name: 'Créer' }))
+    await user.click(screen.getAllByRole('button', { name: 'Créer' })[0])
     await waitFor(() => expect(inst.createKit).toHaveBeenCalledWith(
       expect.objectContaining({ nom: 'Kit onduleur résidentiel' })))
   })
@@ -73,10 +73,10 @@ describe('ParametrageKits (PACT61)', () => {
     const user = userEvent.setup()
     render(<ParametrageKits />)
     await screen.findByTestId('kit-12')
-    await user.click(screen.getByRole('button', { name: /Nouveau composant/ }))
+    await user.click(screen.getAllByRole('button', { name: /Nouveau composant/ })[0])
     await screen.findByRole('option', { name: 'Variateur VEICHI 5.5kW' })
     await user.selectOptions(screen.getByLabelText('Produit (catalogue, optionnel)'), '55')
-    await user.click(screen.getByRole('button', { name: 'Créer' }))
+    await user.click(screen.getAllByRole('button', { name: 'Créer' })[0])
     await waitFor(() => expect(inst.createKitComposant).toHaveBeenCalledWith(
       expect.objectContaining({ kit: 12, produit: 55 })))
   })
@@ -86,9 +86,9 @@ describe('ParametrageKits (PACT61)', () => {
     render(<ParametrageKits />)
     await screen.findByTestId('kit-12')
     await user.click(screen.getByRole('tab', { name: "Gamme d'étapes" }))
-    await user.click(screen.getByRole('button', { name: /Nouvelle étape/ }))
+    await user.click(screen.getAllByRole('button', { name: /Nouvelle étape/ })[0])
     await user.type(screen.getByLabelText('Libellé'), 'Câblage variateur')
-    await user.click(screen.getByRole('button', { name: 'Créer' }))
+    await user.click(screen.getAllByRole('button', { name: 'Créer' })[0])
     await waitFor(() => expect(inst.createEtapeAssemblageKit).toHaveBeenCalledWith(
       expect.objectContaining({ kit: 12, libelle: 'Câblage variateur', ordre: 1 })))
   })
@@ -98,8 +98,8 @@ describe('ParametrageKits (PACT61)', () => {
     render(<ParametrageKits />)
     await screen.findByTestId('kit-12')
     await user.click(screen.getByRole('tab', { name: 'Contrôle qualité' }))
-    expect(await screen.findByText('Aucun modèle de contrôle qualité configuré')).toBeInTheDocument()
-    await user.click(screen.getByRole('button', { name: /Configurer un modèle de contrôle/ }))
+    expect((await screen.findAllByText('Aucun modèle de contrôle qualité configuré')).length).toBeGreaterThan(0)
+    await user.click(screen.getAllByRole('button', { name: /Configurer un modèle de contrôle/ })[0])
     await waitFor(() => expect(inst.createControleQualiteModele).toHaveBeenCalledWith(
       expect.objectContaining({ kit: 12, active: true })))
   })

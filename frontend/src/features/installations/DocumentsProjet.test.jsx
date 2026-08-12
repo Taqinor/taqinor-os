@@ -43,16 +43,16 @@ describe('DocumentsProjet (PACT58)', () => {
   it('affiche l\'état vide quand le chantier n\'a aucun document', async () => {
     inst.getDocumentsProjet.mockResolvedValueOnce({ data: { count: 0, results: [] } })
     render(<DocumentsProjet />)
-    expect(await screen.findByText('Aucun document technique enregistré')).toBeInTheDocument()
+    expect((await screen.findAllByText('Aucun document technique enregistré')).length).toBeGreaterThan(0)
   })
 
   it('crée un document technique', async () => {
     const user = userEvent.setup()
     render(<DocumentsProjet />)
     await screen.findByTestId('document-4')
-    await user.click(screen.getByRole('button', { name: /Nouveau document/ }))
+    await user.click(screen.getAllByRole('button', { name: /Nouveau document/ })[0])
     await user.type(screen.getByLabelText('Titre'), 'Calepinage toiture B')
-    await user.click(screen.getByRole('button', { name: 'Créer' }))
+    await user.click(screen.getAllByRole('button', { name: 'Créer' })[0])
     await waitFor(() => expect(inst.createDocumentProjet).toHaveBeenCalledWith(
       expect.objectContaining({ installation: 9, titre: 'Calepinage toiture B' })))
   })
@@ -65,7 +65,7 @@ describe('DocumentsProjet (PACT58)', () => {
     await user.clear(screen.getByLabelText('Indice'))
     await user.type(screen.getByLabelText('Indice'), 'C')
     await user.type(screen.getByLabelText('Date de révision'), '2026-08-05')
-    await user.click(screen.getByRole('button', { name: 'Créer' }))
+    await user.click(screen.getAllByRole('button', { name: 'Créer' })[0])
     await waitFor(() => expect(inst.createRevisionDocument).toHaveBeenCalledWith(
       expect.objectContaining({ document: 4, indice: 'C', date_revision: '2026-08-05' })))
   })

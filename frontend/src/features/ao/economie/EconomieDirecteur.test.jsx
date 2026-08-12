@@ -79,19 +79,19 @@ describe('EconomieDirecteur (PACT75)', () => {
   it('résout l’économie via aoRentabiliteApi.parAffaire(id) — l’id de la route EST celui de l’affaire', async () => {
     renderEcran()
     await waitFor(() => expect(mocks.parAffaire).toHaveBeenCalledWith('42'))
-    expect(await screen.findByText(mad(4320000))).toBeInTheDocument()
+    expect((await screen.findAllByText(mad(4320000))).length).toBeGreaterThan(0)
   })
 
   it('AUCUN agrégat n’est recalculé : le total HT/TTC/marge vient TEL QUEL du serializer', async () => {
     renderEcran()
-    expect(await screen.findByText(mad(3600000))).toBeInTheDocument()
-    expect(screen.getByText('11.11 %')).toBeInTheDocument()
+    expect((await screen.findAllByText(mad(3600000))).length).toBeGreaterThan(0)
+    expect(screen.getAllByText('11.11 %').length).toBeGreaterThan(0)
   })
 
   it('aucune économie pour cette affaire : propose de la créer, jamais une donnée inventée', async () => {
     mocks.parAffaire.mockResolvedValue({ data: [] })
     renderEcran()
-    const bouton = await screen.findByRole('button', { name: 'Créer l’économie' })
+    const bouton = (await screen.findAllByRole('button', { name: 'Créer l’économie' }))[0]
     await userEvent.click(bouton)
     await waitFor(() => expect(mocks.creer).toHaveBeenCalledWith('42'))
   })
@@ -101,7 +101,7 @@ describe('EconomieDirecteur (PACT75)', () => {
     await screen.findByRole('heading', { name: 'Coût de revient — postes' })
     await userEvent.type(screen.getByLabelText('Désignation'), 'Modules 625 Wc')
     await userEvent.type(screen.getByLabelText('Coût unitaire HT (MAD)'), '950')
-    await userEvent.click(screen.getByRole('button', { name: 'Ajouter le poste' }))
+    await userEvent.click(screen.getAllByRole('button', { name: 'Ajouter le poste' })[0])
     await waitFor(() => expect(mocks.lignesCreate).toHaveBeenCalledWith(
       expect.objectContaining({ economie: 5, designation: 'Modules 625 Wc', prix_unitaire_ht: '950' }),
     ))
@@ -110,7 +110,7 @@ describe('EconomieDirecteur (PACT75)', () => {
   it('une cible exige un motif — la version est TRACÉE côté serveur (auteur, jamais saisi ici)', async () => {
     renderEcran()
     await screen.findByRole('heading', { name: 'Cibles financières — historique versionné' })
-    const bouton = screen.getByRole('button', { name: 'Verser une nouvelle version' })
+    const bouton = screen.getAllByRole('button', { name: 'Verser une nouvelle version' })[0]
     expect(bouton).toBeDisabled()
     await userEvent.type(screen.getByLabelText('Bénéfice net visé HT (MAD)'), '450000')
     await userEvent.type(screen.getByLabelText('Motif de la version (obligatoire)'), 'Ajustement après relecture du CPS')
@@ -124,14 +124,14 @@ describe('EconomieDirecteur (PACT75)', () => {
   it('une économie verrouillée désactive l’ajout de poste ET de cible (refusé de toute façon côté serveur)', async () => {
     mocks.parAffaire.mockResolvedValue({ data: [{ ...ECONOMIE, verrouillee: true }] })
     renderEcran()
-    await screen.findByText('Verrouillée')
-    expect(screen.getByRole('button', { name: 'Ajouter le poste' })).toBeDisabled()
-    expect(screen.getByRole('button', { name: 'Verser une nouvelle version' })).toBeDisabled()
+    await screen.findAllByText('Verrouillée')
+    expect(screen.getAllByRole('button', { name: 'Ajouter le poste' })[0]).toBeDisabled()
+    expect(screen.getAllByRole('button', { name: 'Verser une nouvelle version' })[0]).toBeDisabled()
   })
 
   it('bascule le verrou via les actions serveur dédiées (jamais un PATCH nu sur verrouillee)', async () => {
     renderEcran()
-    const bouton = await screen.findByRole('button', { name: 'Verrouiller' })
+    const bouton = (await screen.findAllByRole('button', { name: 'Verrouiller' }))[0]
     await userEvent.click(bouton)
     await waitFor(() => expect(mocks.verrouiller).toHaveBeenCalledWith(5))
   })

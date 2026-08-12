@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, beforeAll } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import { ThemeProvider } from '../../design/ThemeProvider.jsx'
@@ -91,11 +91,11 @@ describe('DecompteGeneral (PACT67)', () => {
     withProviders(<DecompteGeneral />)
     await waitFor(() => expect(screen.getAllByText('DGD-2026-0001').length).toBeGreaterThan(0))
 
-    const chantierOption = await screen.findByRole('option', { name: /Villa Zenith/ })
-    await user.selectOptions(screen.getByLabelText('Filtrer par chantier'), chantierOption)
+    const sel_chantierOption = screen.getByLabelText('Filtrer par chantier')
+    await user.selectOptions(sel_chantierOption, within(sel_chantierOption).getByRole('option', { name: /Villa Zenith/ }))
 
     await waitFor(() => expect(debourseVsFacture).toHaveBeenCalledWith('5'))
-    expect(await screen.findByText('3500.00')).toBeInTheDocument()
+    expect((await screen.findAllByText('3500.00')).length).toBeGreaterThan(0)
   })
 
   it('crée un DGD', async () => {
@@ -103,10 +103,10 @@ describe('DecompteGeneral (PACT67)', () => {
     withProviders(<DecompteGeneral />)
     await waitFor(() => expect(screen.getAllByText('DGD-2026-0001').length).toBeGreaterThan(0))
 
-    const chantierOption = await screen.findByRole('option', { name: /Villa Zenith/ })
-    await user.selectOptions(screen.getByLabelText('Chantier du DGD'), chantierOption)
+    const sel_chantierOption = screen.getByLabelText('Chantier du DGD')
+    await user.selectOptions(sel_chantierOption, within(sel_chantierOption).getByRole('option', { name: /Villa Zenith/ }))
     await user.type(screen.getByLabelText('Montant marché initial HT'), '120000')
-    await user.click(screen.getByRole('button', { name: 'Créer le DGD' }))
+    await user.click(screen.getAllByRole('button', { name: 'Créer le DGD' })[0])
 
     await waitFor(() => expect(decomptesCreate).toHaveBeenCalledWith(expect.objectContaining({
       chantier: '5', montant_marche_initial_ht: '120000',
@@ -118,11 +118,11 @@ describe('DecompteGeneral (PACT67)', () => {
     withProviders(<DecompteGeneral />)
     await waitFor(() => expect(screen.getAllByText('DGD-2026-0001').length).toBeGreaterThan(0))
 
-    await user.click(screen.getByRole('button', { name: 'Détails' }))
-    await user.click(screen.getByRole('button', { name: 'Notifier' }))
+    await user.click(screen.getAllByRole('button', { name: 'Détails' })[0])
+    await user.click(screen.getAllByRole('button', { name: 'Notifier' })[0])
     await waitFor(() => expect(decomptesNotifier).toHaveBeenCalledWith(1))
 
-    await user.click(screen.getByRole('button', { name: 'Finaliser (verrouiller)' }))
+    await user.click(screen.getAllByRole('button', { name: 'Finaliser (verrouiller)' })[0])
     await waitFor(() => expect(decomptesFinaliser).toHaveBeenCalledWith(1))
   })
 })

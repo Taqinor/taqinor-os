@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, beforeAll } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import { ThemeProvider } from '../../design/ThemeProvider.jsx'
@@ -74,7 +74,7 @@ describe('AvenantsChantier (PACT66)', () => {
   it('affiche les avenants existants', async () => {
     withProviders(<AvenantsChantier />)
     await waitFor(() => expect(screen.getAllByText('AVC-2026-0001').length).toBeGreaterThan(0))
-    expect(screen.getByText('Renfort charpente')).toBeInTheDocument()
+    expect(screen.getAllByText('Renfort charpente').length).toBeGreaterThan(0)
   })
 
   it('crée un avenant chiffré', async () => {
@@ -82,11 +82,11 @@ describe('AvenantsChantier (PACT66)', () => {
     withProviders(<AvenantsChantier />)
     await waitFor(() => expect(screen.getAllByText('AVC-2026-0001').length).toBeGreaterThan(0))
 
-    const chantierOption = await screen.findByRole('option', { name: /Villa Zenith/ })
-    await user.selectOptions(screen.getByLabelText("Chantier de l'avenant"), chantierOption)
+    const sel_chantierOption = screen.getByLabelText("Chantier de l'avenant")
+    await user.selectOptions(sel_chantierOption, within(sel_chantierOption).getByRole('option', { name: /Villa Zenith/ }))
     await user.type(screen.getByLabelText("Description de l'avenant"), 'Terrassement supplémentaire')
     await user.type(screen.getByLabelText('Montant HT'), '8500')
-    await user.click(screen.getByRole('button', { name: "Créer l'avenant" }))
+    await user.click(screen.getAllByRole('button', { name: "Créer l'avenant" })[0])
 
     await waitFor(() => expect(avenantsCreate).toHaveBeenCalledWith(expect.objectContaining({
       chantier: '5', description: 'Terrassement supplémentaire', montant_ht: '8500',
@@ -99,11 +99,11 @@ describe('AvenantsChantier (PACT66)', () => {
     withProviders(<AvenantsChantier />)
     await waitFor(() => expect(screen.getAllByText('AVC-2026-0001').length).toBeGreaterThan(0))
 
-    await user.click(screen.getByRole('button', { name: 'Détails' }))
-    await user.click(screen.getByRole('button', { name: 'Envoyer au client' }))
+    await user.click(screen.getAllByRole('button', { name: 'Détails' })[0])
+    await user.click(screen.getAllByRole('button', { name: 'Envoyer au client' })[0])
 
     await waitFor(() => expect(avenantsFaireApprouver).toHaveBeenCalledWith(1))
-    expect(await screen.findByText('/btp/avenants/public/abc123/')).toBeInTheDocument()
+    expect((await screen.findAllByText('/btp/avenants/public/abc123/')).length).toBeGreaterThan(0)
   })
 
   it('approuve un avenant en interne sans passer par le lien public', async () => {
@@ -111,8 +111,8 @@ describe('AvenantsChantier (PACT66)', () => {
     withProviders(<AvenantsChantier />)
     await waitFor(() => expect(screen.getAllByText('AVC-2026-0001').length).toBeGreaterThan(0))
 
-    await user.click(screen.getByRole('button', { name: 'Détails' }))
-    await user.click(screen.getByRole('button', { name: 'Approuver en interne' }))
+    await user.click(screen.getAllByRole('button', { name: 'Détails' })[0])
+    await user.click(screen.getAllByRole('button', { name: 'Approuver en interne' })[0])
 
     await waitFor(() => expect(avenantsApprouver).toHaveBeenCalledWith(1))
   })

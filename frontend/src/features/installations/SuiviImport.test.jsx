@@ -40,7 +40,7 @@ afterEach(() => { cleanup(); vi.clearAllMocks() })
 describe('SuiviImport (PACT56)', () => {
   it('charge les dossiers et affiche la fiche sélectionnée', async () => {
     render(<SuiviImport />)
-    expect(await screen.findByText('Conteneur panneaux Q3')).toBeInTheDocument()
+    expect((await screen.findAllByText('Conteneur panneaux Q3')).length).toBeGreaterThan(0)
     expect(await screen.findByRole('heading', { name: 'Conteneur panneaux Q3' })).toBeInTheDocument()
     expect(screen.getByRole('tab', { name: 'Frais' })).toBeInTheDocument()
     expect(screen.getByRole('tab', { name: 'Coût débarqué' })).toBeInTheDocument()
@@ -49,16 +49,16 @@ describe('SuiviImport (PACT56)', () => {
   it('affiche l\'état vide quand aucun dossier n\'existe', async () => {
     inst.getDossiersImport.mockResolvedValueOnce({ data: { count: 0, results: [] } })
     render(<SuiviImport />)
-    expect(await screen.findByText("Aucun dossier d'import")).toBeInTheDocument()
+    expect((await screen.findAllByText("Aucun dossier d'import")).length).toBeGreaterThan(0)
   })
 
   it('crée un dossier d\'import', async () => {
     const user = userEvent.setup()
     render(<SuiviImport />)
-    await screen.findByText('Conteneur panneaux Q3')
-    await user.click(screen.getByRole('button', { name: /Nouveau dossier/ }))
+    await screen.findAllByText('Conteneur panneaux Q3')
+    await user.click(screen.getAllByRole('button', { name: /Nouveau dossier/ })[0])
     await user.type(screen.getByLabelText('Désignation'), 'Conteneur onduleurs')
-    await user.click(screen.getByRole('button', { name: 'Créer' }))
+    await user.click(screen.getAllByRole('button', { name: 'Créer' })[0])
     await waitFor(() => expect(inst.createDossierImport).toHaveBeenCalledWith(
       expect.objectContaining({ designation: 'Conteneur onduleurs' })))
   })
@@ -66,18 +66,18 @@ describe('SuiviImport (PACT56)', () => {
   it('fait avancer le statut douanier', async () => {
     const user = userEvent.setup()
     render(<SuiviImport />)
-    await screen.findByText('Conteneur panneaux Q3')
-    await user.click(screen.getByRole('button', { name: 'Faire avancer' }))
+    await screen.findAllByText('Conteneur panneaux Q3')
+    await user.click(screen.getAllByRole('button', { name: 'Faire avancer' })[0])
     await waitFor(() => expect(inst.avancerDossierImport).toHaveBeenCalledWith(12))
   })
 
   it('saisit un frais depuis l\'onglet Frais', async () => {
     const user = userEvent.setup()
     render(<SuiviImport />)
-    await screen.findByText('Conteneur panneaux Q3')
-    await user.click(screen.getByRole('button', { name: /Nouveau frais/ }))
+    await screen.findAllByText('Conteneur panneaux Q3')
+    await user.click(screen.getAllByRole('button', { name: /Nouveau frais/ })[0])
     await user.type(screen.getByLabelText('Montant (MAD)'), '8000')
-    await user.click(screen.getByRole('button', { name: 'Créer' }))
+    await user.click(screen.getAllByRole('button', { name: 'Créer' })[0])
     await waitFor(() => expect(inst.createFraisImport).toHaveBeenCalledWith(
       expect.objectContaining({ dossier: 12, montant: '8000' })))
   })
@@ -88,10 +88,10 @@ describe('SuiviImport (PACT56)', () => {
     ] } })
     const user = userEvent.setup()
     render(<SuiviImport />)
-    await screen.findByText('Conteneur panneaux Q3')
+    await screen.findAllByText('Conteneur panneaux Q3')
     await user.click(screen.getByRole('tab', { name: 'Coût débarqué' }))
     expect(await screen.findByTestId('landed-ligne-55')).toBeInTheDocument()
-    await user.click(screen.getByRole('button', { name: 'Calculer le coût débarqué' }))
+    await user.click(screen.getAllByRole('button', { name: 'Calculer le coût débarqué' })[0])
     await waitFor(() => expect(inst.getLandedCostDossier).toHaveBeenCalledWith(12))
     expect(await screen.findByTestId('landed-totaux')).toHaveTextContent('108')
     expect(within(screen.getByTestId('landed-ligne-55')).getByText(/Débarqué/)).toBeInTheDocument()

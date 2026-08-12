@@ -62,10 +62,10 @@ describe('SuiviAdministratifAO (PACT70)', () => {
 
   it('enregistrer une caution appelle un POST réel sur cautions-soumission', async () => {
     renderEcran()
-    await screen.findByText('Aucune caution enregistrée pour cette affaire.')
+    await screen.findAllByText('Aucune caution enregistrée pour cette affaire.')
     await userEvent.type(screen.getByLabelText('Montant (MAD)'), '25000')
     await userEvent.type(screen.getByLabelText('Banque'), 'Attijariwafa')
-    await userEvent.click(screen.getByRole('button', { name: 'Enregistrer la caution' }))
+    await userEvent.click(screen.getAllByRole('button', { name: 'Enregistrer la caution' })[0])
     await waitFor(() => expect(mocks.cautionsCreate).toHaveBeenCalledWith(
       expect.objectContaining({ appel_offre: 1, type_caution: 'provisoire', montant: '25000', banque: 'Attijariwafa' }),
     ))
@@ -73,18 +73,20 @@ describe('SuiviAdministratifAO (PACT70)', () => {
 
   it('dériver la caution définitive appelle l’action serveur dédiée', async () => {
     renderEcran()
-    await screen.findByText('Aucune caution enregistrée pour cette affaire.')
-    await userEvent.click(screen.getByRole('button', { name: 'Dériver la caution définitive (taux CPS)' }))
+    await screen.findAllByText('Aucune caution enregistrée pour cette affaire.')
+    await userEvent.click(screen.getAllByRole('button', { name: 'Dériver la caution définitive (taux CPS)' })[0])
     await waitFor(() => expect(mocks.deriverDefinitive).toHaveBeenCalledWith({ appel_offre: 1 }))
   })
 
   it('enregistrer une échéance exige une date et appelle un POST réel sur echeances-ao', async () => {
     renderEcran()
-    await screen.findByText('Aucune échéance enregistrée pour cette affaire.')
-    expect(screen.getByRole('button', { name: "Enregistrer l'échéance" })).toBeDisabled()
+    await screen.findAllByText('Aucune échéance enregistrée pour cette affaire.')
+    expect(screen.getAllByRole('button', { name: "Enregistrer l'échéance" })[0]).toBeDisabled()
     await userEvent.type(screen.getByLabelText("Libellé"), 'Remise des plis')
-    await userEvent.type(screen.getByLabelText("Date d'échéance"), '2026-09-15')
-    await userEvent.click(screen.getByRole('button', { name: "Enregistrer l'échéance" }))
+    // « Date d'échéance » existe DEUX fois sur l'écran (caution ET échéance) :
+    // on vise le champ de la section Échéances par son id réel.
+    await userEvent.type(document.getElementById('ao-echeance-date'), '2026-09-15')
+    await userEvent.click(screen.getAllByRole('button', { name: "Enregistrer l'échéance" })[0])
     await waitFor(() => expect(mocks.echeancesCreate).toHaveBeenCalledWith(
       expect.objectContaining({ appel_offre: 1, libelle: 'Remise des plis', date_echeance: '2026-09-15' }),
     ))
@@ -107,7 +109,7 @@ describe('SuiviAdministratifAO (PACT70)', () => {
     renderEcran()
     await screen.findByRole('heading', { name: 'Résultat (ouverture des plis)' })
     await userEvent.type(screen.getByLabelText('Attributaire'), 'Société Y')
-    await userEvent.click(screen.getByRole('button', { name: 'Enregistrer le résultat' }))
+    await userEvent.click(screen.getAllByRole('button', { name: 'Enregistrer le résultat' })[0])
     await waitFor(() => expect(mocks.resultatsEnregistrer).toHaveBeenCalledWith(
       expect.objectContaining({ appel_offre: 1, issue: 'perdu', attributaire: 'Société Y' }),
     ))
@@ -121,8 +123,8 @@ describe('SuiviAdministratifAO (PACT70)', () => {
       }],
     })
     renderEcran()
-    expect(await screen.findByText('Perdu')).toBeInTheDocument()
-    expect(screen.getByText('Attributaire : Concurrent Z')).toBeInTheDocument()
-    expect(screen.getByText('Écart vs gagnant : 4.76 %')).toBeInTheDocument()
+    expect((await screen.findAllByText('Perdu')).length).toBeGreaterThan(0)
+    expect(screen.getAllByText('Attributaire : Concurrent Z').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('Écart vs gagnant : 4.76 %').length).toBeGreaterThan(0)
   })
 })

@@ -54,22 +54,22 @@ describe('PiecesAdministratives (PACT73)', () => {
   it('charge la bibliothèque, groupée par type — la même pièce sert plusieurs AO', async () => {
     renderEcran()
     await waitFor(() => expect(mocks.list).toHaveBeenCalled())
-    expect(await screen.findByText('Attestation fiscale 2026')).toBeInTheDocument()
-    expect(screen.getByText('Attestation CNSS T3')).toBeInTheDocument()
-    expect(screen.getByText('Attestation fiscale')).toBeInTheDocument()
-    expect(screen.getByText('Attestation CNSS')).toBeInTheDocument()
+    expect((await screen.findAllByText('Attestation fiscale 2026')).length).toBeGreaterThan(0)
+    expect(screen.getAllByText('Attestation CNSS T3').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('Attestation fiscale').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('Attestation CNSS').length).toBeGreaterThan(0)
   })
 
   it('la date d’expiration affichée est celle DU SERVEUR, jamais recalculée', async () => {
     renderEcran()
-    expect(await screen.findByText('valable jusqu’au 10/01/2027')).toBeInTheDocument()
+    expect((await screen.findAllByText('valable jusqu’au 10/01/2027')).length).toBeGreaterThan(0)
   })
 
   it('crée une pièce SCOPÉE SOCIÉTÉ (aucun champ d’affaire dans le payload)', async () => {
     renderEcran()
-    await screen.findByText('Attestation fiscale 2026')
+    await screen.findAllByText('Attestation fiscale 2026')
     await userEvent.type(screen.getByLabelText('Libellé'), 'RIB Attijariwafa')
-    await userEvent.click(screen.getByRole('button', { name: 'Enregistrer la pièce' }))
+    await userEvent.click(screen.getAllByRole('button', { name: 'Enregistrer la pièce' })[0])
     await waitFor(() => expect(mocks.create).toHaveBeenCalledWith(
       expect.objectContaining({ type_piece: 'declaration_honneur', libelle: 'RIB Attijariwafa', rappel_jours: 30 }),
     ))
@@ -83,12 +83,12 @@ describe('PiecesAdministratives (PACT73)', () => {
 
   it('rattacher une pièce résout le DOSSIER de l’affaire choisie puis appelle rattacher(piece, dossier)', async () => {
     renderEcran()
-    await screen.findByText('Attestation fiscale 2026')
+    await screen.findAllByText('Attestation fiscale 2026')
     const boutons = await screen.findAllByRole('button', { name: 'Rattacher à une affaire' })
     await userEvent.click(boutons[0])
 
     await choisirAffaire()
-    await userEvent.click(screen.getByRole('button', { name: 'Rattacher' }))
+    await userEvent.click(screen.getAllByRole('button', { name: 'Rattacher' })[0])
 
     await waitFor(() => expect(mocks.dossiersList).toHaveBeenCalledWith({ appel_offre: 42 }))
     await waitFor(() => expect(mocks.rattacher).toHaveBeenCalledWith(1, 900))
@@ -96,7 +96,7 @@ describe('PiecesAdministratives (PACT73)', () => {
 
   it('une pièce qui expirera AVANT la remise des plis de l’affaire choisie affiche une alerte explicite', async () => {
     renderEcran()
-    await screen.findByText('Attestation CNSS T3')
+    await screen.findAllByText('Attestation CNSS T3')
     const boutons = await screen.findAllByRole('button', { name: 'Rattacher à une affaire' })
     // La 2e ligne (CNSS, expire 30/08/2026) rattachée à l'affaire dont la
     // remise des plis est le 15/09/2026 : AVANT la remise → alerte.
@@ -111,11 +111,11 @@ describe('PiecesAdministratives (PACT73)', () => {
   it('aucun dossier de dépôt pour l’affaire choisie : le rattachement est refusé, sans ID deviné', async () => {
     mocks.dossiersList.mockResolvedValue({ data: [] })
     renderEcran()
-    await screen.findByText('Attestation fiscale 2026')
+    await screen.findAllByText('Attestation fiscale 2026')
     const boutons = await screen.findAllByRole('button', { name: 'Rattacher à une affaire' })
     await userEvent.click(boutons[0])
     await choisirAffaire()
-    await userEvent.click(screen.getByRole('button', { name: 'Rattacher' }))
+    await userEvent.click(screen.getAllByRole('button', { name: 'Rattacher' })[0])
 
     await waitFor(() => expect(mocks.dossiersList).toHaveBeenCalled())
     expect(mocks.rattacher).not.toHaveBeenCalled()

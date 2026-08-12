@@ -59,8 +59,12 @@ describe('RFQ (PACT60)', () => {
   })
 
   it('affiche l\'état vide quand aucune RFQ n\'existe', async () => {
+    // Le test POSE son propre état : sans `beforeEach` de remise à zéro, le
+    // `mockResolvedValue` d'un test précédent fuit et la liste n'est plus
+    // vide — l'assertion dépendait alors de l'ORDRE d'exécution.
+    inst.getRFQs.mockResolvedValue({ data: { count: 0, results: [] } })
     render(<RFQ />)
-    expect(await screen.findByText('Aucune RFQ')).toBeInTheDocument()
+    expect((await screen.findAllByText('Aucune RFQ')).length).toBeGreaterThan(0)
   })
 
   it('crée une RFQ', async () => {
@@ -68,9 +72,9 @@ describe('RFQ (PACT60)', () => {
     const user = userEvent.setup()
     render(<RFQ />)
     await screen.findByTestId('rfq-6')
-    await user.click(screen.getByRole('button', { name: 'Nouvelle RFQ' }))
+    await user.click(screen.getAllByRole('button', { name: 'Nouvelle RFQ' })[0])
     await user.type(screen.getByLabelText('Objet'), 'Onduleurs lot 4')
-    await user.click(screen.getByRole('button', { name: 'Créer' }))
+    await user.click(screen.getAllByRole('button', { name: 'Créer' })[0])
     await waitFor(() => expect(inst.createRFQ).toHaveBeenCalledWith(
       expect.objectContaining({ objet: 'Onduleurs lot 4' })))
   })
@@ -80,12 +84,12 @@ describe('RFQ (PACT60)', () => {
     const user = userEvent.setup()
     render(<RFQ />)
     await screen.findByTestId('rfq-6')
-    await user.click(screen.getByRole('button', { name: /Consulter/ }))
+    await user.click(screen.getAllByRole('button', { name: /Consulter/ })[0])
     await screen.findByRole('option', { name: 'Solar Import SARL' })
     await user.selectOptions(screen.getByLabelText('Fournisseur'), '8')
-    await user.click(screen.getByRole('button', { name: 'Ajouter' }))
+    await user.click(screen.getAllByRole('button', { name: 'Ajouter' })[0])
     await waitFor(() => expect(inst.consulterFournisseurRFQ).toHaveBeenCalledWith(6, 8))
-    await user.click(screen.getByRole('button', { name: 'Envoyer aux fournisseurs' }))
+    await user.click(screen.getAllByRole('button', { name: 'Envoyer aux fournisseurs' })[0])
     await waitFor(() => expect(inst.envoyerConsultationsRFQ).toHaveBeenCalledWith(6))
   })
 
@@ -94,10 +98,10 @@ describe('RFQ (PACT60)', () => {
     const user = userEvent.setup()
     render(<RFQ />)
     await screen.findByTestId('rfq-6')
-    await user.click(screen.getByRole('button', { name: /Nouvelle offre/ }))
+    await user.click(screen.getAllByRole('button', { name: /Nouvelle offre/ })[0])
     await user.type(screen.getByLabelText('Ou nom libre (si hors annuaire)'), 'Fournisseur C')
     await user.type(screen.getByLabelText('Montant HT (MAD)'), '90000')
-    await user.click(screen.getByRole('button', { name: 'Créer' }))
+    await user.click(screen.getAllByRole('button', { name: 'Créer' })[0])
     await waitFor(() => expect(inst.createRFQOffre).toHaveBeenCalledWith(
       expect.objectContaining({ rfq: 6, montant_ht: '90000' })))
 

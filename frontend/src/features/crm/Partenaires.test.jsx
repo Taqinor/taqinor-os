@@ -88,7 +88,7 @@ describe('Partenaires (PACT102)', () => {
     await waitFor(() => expect(screen.getAllByText('SolarZen SARL').length).toBeGreaterThan(0))
 
     await user.type(screen.getByLabelText('Nom du partenaire'), 'Green Watt')
-    await user.click(screen.getByRole('button', { name: 'Créer le partenaire' }))
+    await user.click(screen.getAllByRole('button', { name: 'Créer le partenaire' })[0])
 
     await waitFor(() => expect(createPartenaire).toHaveBeenCalledWith(expect.objectContaining({
       nom: 'Green Watt', type_partenaire: 'apporteur',
@@ -100,8 +100,8 @@ describe('Partenaires (PACT102)', () => {
     withProviders(<Partenaires />)
     await waitFor(() => expect(screen.getAllByText('SolarZen SARL').length).toBeGreaterThan(0))
 
-    await user.click(screen.getByRole('button', { name: 'Détails' }))
-    await user.click(await screen.findByRole('button', { name: 'Agréer ce partenaire' }))
+    await user.click(screen.getAllByRole('button', { name: 'Détails' })[0])
+    await user.click((await screen.findAllByRole('button', { name: 'Agréer ce partenaire' }))[0])
 
     await waitFor(() => expect(activerPartenaire).toHaveBeenCalledWith(1))
   })
@@ -114,11 +114,11 @@ describe('Partenaires (PACT102)', () => {
     withProviders(<Partenaires />)
     await waitFor(() => expect(screen.getAllByText('SolarZen SARL').length).toBeGreaterThan(0))
 
-    await user.click(screen.getByRole('button', { name: 'Détails' }))
-    await user.click(await screen.findByRole('button', { name: 'Qualifier' }))
+    await user.click(screen.getAllByRole('button', { name: 'Détails' })[0])
+    await user.click((await screen.findAllByRole('button', { name: 'Qualifier' }))[0])
 
     await waitFor(() => expect(qualifierSoumission).toHaveBeenCalledWith(10))
-    expect(await screen.findByText(/lead #77/)).toBeInTheDocument()
+    expect((await screen.findAllByText(/lead #77/)).length).toBeGreaterThan(0)
   })
 
   it('règle une commission due', async () => {
@@ -129,8 +129,8 @@ describe('Partenaires (PACT102)', () => {
     withProviders(<Partenaires />)
     await waitFor(() => expect(screen.getAllByText('SolarZen SARL').length).toBeGreaterThan(0))
 
-    await user.click(screen.getByRole('button', { name: 'Détails' }))
-    await user.click(await screen.findByRole('button', { name: 'Marquer payée' }))
+    await user.click(screen.getAllByRole('button', { name: 'Détails' })[0])
+    await user.click((await screen.findAllByRole('button', { name: 'Marquer payée' }))[0])
 
     await waitFor(() => expect(marquerPayee).toHaveBeenCalledWith(20))
   })

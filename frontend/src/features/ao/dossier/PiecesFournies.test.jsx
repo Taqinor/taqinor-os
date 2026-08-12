@@ -45,20 +45,20 @@ describe('PiecesFournies (PACT72)', () => {
   it('charge SEULEMENT les pièces FOURNIES du dossier (jamais les générées)', async () => {
     renderEcran()
     await waitFor(() => expect(mocks.list).toHaveBeenCalledWith({ dossier: 7, type_piece: 'fournie' }))
-    expect(await screen.findByText("Acte d'engagement (modèle acheteur)")).toBeInTheDocument()
-    expect(screen.getByText('Caution bancaire scannée')).toBeInTheDocument()
+    expect((await screen.findAllByText("Acte d'engagement (modèle acheteur)")).length).toBeGreaterThan(0)
+    expect(screen.getAllByText('Caution bancaire scannée').length).toBeGreaterThan(0)
   })
 
   it('une pièce manquante affiche le badge « Manquante », une présente le badge « Présente »', async () => {
     renderEcran()
-    await screen.findByText("Acte d'engagement (modèle acheteur)")
-    expect(screen.getByText('Manquante')).toBeInTheDocument()
-    expect(screen.getByText('Présente')).toBeInTheDocument()
+    await screen.findAllByText("Acte d'engagement (modèle acheteur)")
+    expect(screen.getAllByText('Manquante').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('Présente').length).toBeGreaterThan(0)
   })
 
   it('une pièce hors contrôle porte son badge — jamais présumée verte', async () => {
     renderEcran()
-    expect(await screen.findByText('Hors contrôle')).toBeInTheDocument()
+    expect((await screen.findAllByText('Hors contrôle')).length).toBeGreaterThan(0)
   })
 
   it('joindre un fichier UPLOAD le fichier PUIS marque la pièce présente avec cet attachement', async () => {

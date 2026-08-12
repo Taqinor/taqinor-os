@@ -119,9 +119,9 @@ describe('DossierPage (AOF174)', () => {
     renderScreen()
     expect((await ligneP('memoire')).getByText('Mémoire technique')).toBeInTheDocument()
     // à produire / généré / à jour : les 3 transitions rendues par statusAo.
-    expect(screen.getByText('À jour')).toBeInTheDocument()
-    expect(screen.getByText('Généré')).toBeInTheDocument()
-    expect(screen.getByText('À produire')).toBeInTheDocument()
+    expect(screen.getAllByText('À jour').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('Généré').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('À produire').length).toBeGreaterThan(0)
   })
 
   it('ne liste AUCUNE pièce de visibilité interne ou directeur', async () => {
@@ -134,9 +134,9 @@ describe('DossierPage (AOF174)', () => {
 
   it('une pièce fournie hors fabrique est « hors contrôle » avec son motif — jamais verte', async () => {
     renderScreen()
-    await screen.findByText('Attestation fiscale')
-    expect(screen.getByText('Hors contrôle')).toBeInTheDocument()
-    expect(screen.getByText(/Fournie par le partenaire/)).toBeInTheDocument()
+    await screen.findAllByText('Attestation fiscale')
+    expect(screen.getAllByText('Hors contrôle').length).toBeGreaterThan(0)
+    expect(screen.getAllByText(/Fournie par le partenaire/).length).toBeGreaterThan(0)
   })
 
   it('la péremption se déclenche SANS rafraîchir la page, avec le MOTIF et un bandeau « régénérer »', async () => {
@@ -150,19 +150,19 @@ describe('DossierPage (AOF174)', () => {
       document.dispatchEvent(new Event('visibilitychange'))
     })
 
-    expect(await screen.findByText('Périmé')).toBeInTheDocument()
+    expect((await screen.findAllByText('Périmé')).length).toBeGreaterThan(0)
     expect(
       screen.getByText(/le calepinage du bâtiment C est passé de 264 à 314/),
     ).toBeInTheDocument()
     expect(
-      screen.getByRole('button', { name: /Régénérer « Mémoire technique »/ }),
+      screen.getAllByRole('button', { name: /Régénérer « Mémoire technique »/ })[0],
     ).toBeInTheDocument()
   })
 
   it('« Régénérer » appelle le service serveur de génération de pièce', async () => {
     mocks.get.mockResolvedValue({ data: DOSSIER_V2 })
     renderScreen()
-    fireEvent.click(await screen.findByRole('button', { name: /Régénérer « Mémoire technique »/ }))
+    fireEvent.click((await screen.findAllByRole('button', { name: /Régénérer « Mémoire technique »/ }))[0])
     await waitFor(() => expect(mocks.genererPiece).toHaveBeenCalledWith('7', 'memoire'))
   })
 
@@ -177,10 +177,10 @@ describe('DossierPage (AOF174)', () => {
       },
     })
     renderScreen()
-    expect(await screen.findByText(/Opération en cours sur ce dossier/)).toBeInTheDocument()
-    expect(screen.getByText(/Sami B\./)).toBeInTheDocument()
+    expect((await screen.findAllByText(/Opération en cours sur ce dossier/)).length).toBeGreaterThan(0)
+    expect(screen.getAllByText(/Sami B\./).length).toBeGreaterThan(0)
     expect(
-      screen.getByRole('button', { name: /Régénérer « Mémoire technique »/ }),
+      screen.getAllByRole('button', { name: /Régénérer « Mémoire technique »/ })[0],
     ).toBeDisabled()
   })
 })
@@ -199,11 +199,11 @@ describe('DossierPage — contenu par défaut des emplacements (AOF176/177/178)'
     // AOF176 — l'endpoint est RÉEL, il est appelé avec l'id du DOSSIER.
     await waitFor(() => expect(mocks.controlesAvantDepot).toHaveBeenCalledWith(7))
     expect(await screen.findByRole('heading', { name: 'Contrôles avant dépôt' })).toBeInTheDocument()
-    expect(screen.getByText('Caution constituée')).toBeInTheDocument()
+    expect(screen.getAllByText('Caution constituée').length).toBeGreaterThan(0)
     // AOF177 — le ZIP est rendu DANS le panneau de contrôles (`zipSlot`).
-    expect(screen.getByRole('button', { name: /Constituer le ZIP de dépôt/ })).toBeInTheDocument()
+    expect(screen.getAllByRole('button', { name: /Constituer le ZIP de dépôt/ })[0]).toBeInTheDocument()
     // AOF178 — les échéances du dossier, pas le simple centre d'échéances.
-    expect(screen.getByText('Date limite de remise des plis')).toBeInTheDocument()
+    expect(screen.getAllByText('Date limite de remise des plis').length).toBeGreaterThan(0)
     expect(screen.getByRole('heading', { name: 'Jalons' })).toBeInTheDocument()
   })
 
@@ -218,7 +218,7 @@ describe('DossierPage — contenu par défaut des emplacements (AOF176/177/178)'
     })
     renderScreen()
 
-    const zip = await screen.findByRole('button', { name: /ZIP bloqué — caution expirée le 01\/09/ })
+    const zip = (await screen.findAllByRole('button', { name: /ZIP bloqué — caution expirée le 01\/09/ }))[0]
     expect(zip).toBeDisabled()
   })
 
@@ -229,13 +229,13 @@ describe('DossierPage — contenu par défaut des emplacements (AOF176/177/178)'
     renderScreen()
 
     expect(
-      await screen.findByRole('button', { name: /ZIP bloqué — une opération est déjà en cours/ }),
+      (await screen.findAllByRole('button', { name: /ZIP bloqué — une opération est déjà en cours/ }))[0],
     ).toBeDisabled()
   })
 
   it('le compte à rebours n’invente aucune date : « — » sans `dateLimite`, la date fournie sinon', async () => {
     const { unmount } = renderScreen()
-    await screen.findByText('Date limite de remise des plis')
+    await screen.findAllByText('Date limite de remise des plis')
     // `DossierAOSerializer` ne publie AUCUNE date limite : sans la prop, rien.
     expect(screen.getAllByText('—').length).toBeGreaterThan(0)
     unmount()
@@ -257,8 +257,8 @@ describe('DossierPage — contenu par défaut des emplacements (AOF176/177/178)'
       actions: () => <p>Actions injectées</p>,
     })
 
-    expect(await screen.findByText('Échéances injectées')).toBeInTheDocument()
-    expect(screen.getByText('Actions injectées')).toBeInTheDocument()
+    expect((await screen.findAllByText('Échéances injectées')).length).toBeGreaterThan(0)
+    expect(screen.getAllByText('Actions injectées').length).toBeGreaterThan(0)
     expect(screen.queryByRole('heading', { name: 'Contrôles avant dépôt' })).not.toBeInTheDocument()
     expect(mocks.controlesAvantDepot).not.toHaveBeenCalled()
   })

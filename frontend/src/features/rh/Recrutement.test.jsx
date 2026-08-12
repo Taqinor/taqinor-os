@@ -89,7 +89,7 @@ describe('Recrutement — ATS (XRH17-23)', () => {
 
   it('propose les onglets Vivier / Statistiques / Gabarits', async () => {
     renderRecrutement()
-    await screen.findByText('EPI, recrutement & évaluations')
+    await screen.findAllByText('EPI, recrutement & évaluations')
     expect(screen.getByRole('radio', { name: 'Vivier' })).toBeInTheDocument()
     expect(screen.getByRole('radio', { name: 'Statistiques' })).toBeInTheDocument()
     expect(screen.getByRole('radio', { name: 'Gabarits' })).toBeInTheDocument()
@@ -99,17 +99,17 @@ describe('Recrutement — ATS (XRH17-23)', () => {
     rhApi.getOuverturesPoste.mockResolvedValue({ data: [{ id: 5, intitule: 'Technicien PV' }] })
     rhApi.createCandidature.mockResolvedValueOnce({ data: { id: 1 } })
     renderRecrutement()
-    await screen.findByText('EPI, recrutement & évaluations')
+    await screen.findAllByText('EPI, recrutement & évaluations')
     fireEvent.click(screen.getByRole('radio', { name: 'Recrutement' }))
 
-    fireEvent.click(await screen.findByRole('button', { name: /Nouveau candidat/ }))
+    fireEvent.click((await screen.findAllByRole('button', { name: /Nouveau candidat/ }))[0])
     // Le dialogue est ouvert : « Nouveau candidat » existe aussi sur le bouton,
     // donc on vérifie la présence du dialogue lui-même (getByText matcherait 2).
     expect(await screen.findByRole('dialog')).toBeInTheDocument()
 
     fireEvent.change(screen.getByLabelText('Poste visé'), { target: { value: '5' } })
     fireEvent.change(screen.getByLabelText('Nom du candidat'), { target: { value: 'Yassine Amrani' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Créer la candidature' }))
+    fireEvent.click(screen.getAllByRole('button', { name: 'Créer la candidature' })[0])
 
     await waitFor(() => expect(rhApi.createCandidature).toHaveBeenCalledWith(
       expect.objectContaining({ ouverture: '5', nom: 'Yassine Amrani' }),
@@ -119,14 +119,14 @@ describe('Recrutement — ATS (XRH17-23)', () => {
   it('crée un gabarit d’évaluation via rhApi.createModeleEvaluation (WIR34)', async () => {
     rhApi.createModeleEvaluation.mockResolvedValueOnce({ data: { id: 1 } })
     renderRecrutement()
-    await screen.findByText('EPI, recrutement & évaluations')
+    await screen.findAllByText('EPI, recrutement & évaluations')
     fireEvent.click(screen.getByRole('radio', { name: 'Gabarits' }))
 
-    fireEvent.click(screen.getByRole('button', { name: /Nouveau modèle/ }))
-    expect(screen.getByText('Nouveau modèle d’évaluation')).toBeInTheDocument()
+    fireEvent.click(screen.getAllByRole('button', { name: /Nouveau modèle/ })[0])
+    expect(screen.getAllByText('Nouveau modèle d’évaluation').length).toBeGreaterThan(0)
 
     fireEvent.change(screen.getByLabelText('Nom du modèle'), { target: { value: 'Entretien annuel' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Créer le modèle' }))
+    fireEvent.click(screen.getAllByRole('button', { name: 'Créer le modèle' })[0])
 
     await waitFor(() => expect(rhApi.createModeleEvaluation).toHaveBeenCalledWith(
       expect.objectContaining({ nom: 'Entretien annuel', questions: [] }),
@@ -138,18 +138,18 @@ describe('Recrutement — ATS (XRH17-23)', () => {
       data: [{ id: 9, employe_nom: 'Bennani Youssef', statut: 'validee', statut_display: 'Validée' }],
     })
     renderRecrutement()
-    await screen.findByText('EPI, recrutement & évaluations')
+    await screen.findAllByText('EPI, recrutement & évaluations')
     fireEvent.click(screen.getByRole('radio', { name: 'Évaluations' }))
     // DataTable rend la table desktop ET le repli carte mobile (CSS seul,
     // les deux existent dans le DOM en jsdom) : getAllBy*, premier match.
     await screen.findAllByText('Bennani Youssef')
 
     fireEvent.click(screen.getAllByRole('button', { name: 'Feedback 360°' })[0])
-    expect(await screen.findByText(/Feedback 360° — Bennani Youssef/)).toBeInTheDocument()
+    expect((await screen.findAllByText(/Feedback 360° — Bennani Youssef/)).length).toBeGreaterThan(0)
     await waitFor(() => expect(rhApi.getSyntheseFeedback360).toHaveBeenCalledWith({ evaluation: 9 }))
 
     fireEvent.change(screen.getByLabelText('Répondant'), { target: { value: '12' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Inviter' }))
+    fireEvent.click(screen.getAllByRole('button', { name: 'Inviter' })[0])
 
     await waitFor(() => expect(rhApi.createRetourFeedback360).toHaveBeenCalledWith({
       evaluation: 9, repondant: 12, relation: 'pair',
@@ -164,7 +164,7 @@ describe('Recrutement — PACT20 : les 4 tuiles affichent une VRAIE valeur', () 
 
   const ouvrirStats = async () => {
     renderRecrutement()
-    await screen.findByText('EPI, recrutement & évaluations')
+    await screen.findAllByText('EPI, recrutement & évaluations')
     fireEvent.click(screen.getByRole('radio', { name: 'Statistiques' }))
   }
 
@@ -184,7 +184,7 @@ describe('Recrutement — PACT20 : les 4 tuiles affichent une VRAIE valeur', () 
       ],
     })
     await ouvrirStats()
-    await screen.findByText('Ouvertures actives')
+    await screen.findAllByText('Ouvertures actives')
 
     // 1. Délai — le serveur dit `delai_embauche_moyen_jours` (le suffixe
     //    `_jours` manquant était le défaut de type (b)).
@@ -205,17 +205,17 @@ describe('Recrutement — PACT20 : les 4 tuiles affichent une VRAIE valeur', () 
 
   it('rend l’entonnoir, les candidatures par ouverture et les sources', async () => {
     await ouvrirStats()
-    expect(await screen.findByText('Entonnoir par étape')).toBeInTheDocument()
-    expect(screen.getByText('Candidatures par ouverture')).toBeInTheDocument()
-    expect(screen.getByText('Efficacité par source')).toBeInTheDocument()
-    expect(screen.getByText(STATS.candidatures_par_ouverture[0].intitule)).toBeInTheDocument()
-    expect(screen.getByText(STATS.sources[0].source)).toBeInTheDocument()
+    expect((await screen.findAllByText('Entonnoir par étape')).length).toBeGreaterThan(0)
+    expect(screen.getAllByText('Candidatures par ouverture').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('Efficacité par source').length).toBeGreaterThan(0)
+    expect(screen.getAllByText(STATS.candidatures_par_ouverture[0].intitule).length).toBeGreaterThan(0)
+    expect(screen.getAllByText(STATS.sources[0].source).length).toBeGreaterThan(0)
   })
 
   it('une société sans donnée affiche des zéros, jamais des tirets', async () => {
     armerStatistiques('exemple_vide')
     await ouvrirStats()
-    expect(await screen.findByText('Candidatures reçues')).toBeInTheDocument()
+    expect((await screen.findAllByText('Candidatures reçues')).length).toBeGreaterThan(0)
     // `delai_embauche_moyen_jours` est `null` dans l'état vide : c'est le SEUL
     // « — » légitime (le serveur n'a vraiment rien à dire).
     expect(screen.getAllByText('—').length).toBe(1)

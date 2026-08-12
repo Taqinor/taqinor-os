@@ -73,7 +73,7 @@ describe('PACT135 ApprobationPage — Envoi en masse', () => {
     await userEvent.click(await screen.findByRole('tab', { name: 'Envoi en masse' }))
     await screen.findAllByText('Renouvellement 2025')
 
-    await userEvent.click(screen.getByRole('button', { name: /Nouvel envoi/i }))
+    await userEvent.click(screen.getAllByRole('button', { name: /Nouvel envoi/i })[0])
     const dialog = await screen.findByRole('dialog')
     await userEvent.click(within(dialog).getByRole('combobox', { name: 'Choisir un modèle' }))
     await userEvent.click(within(await screen.findByRole('listbox')).getByText('Attestation maintenance'))
@@ -100,7 +100,7 @@ describe('PACT135 ApprobationPage — Envoi en masse', () => {
     await userEvent.click(await screen.findByRole('tab', { name: 'Envoi en masse' }))
     await screen.findAllByText('Renouvellement 2025')
 
-    await userEvent.click(screen.getByRole('button', { name: /Nouvel envoi/i }))
+    await userEvent.click(screen.getAllByRole('button', { name: /Nouvel envoi/i })[0])
     const dialog = await screen.findByRole('dialog')
     await userEvent.click(within(dialog).getByRole('combobox', { name: 'Choisir un modèle' }))
     await userEvent.click(within(await screen.findByRole('listbox')).getByText('Attestation maintenance'))

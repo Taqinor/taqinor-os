@@ -63,8 +63,8 @@ describe('ApprobationsConfigPage — motif conservé après refus (PACT42)', () 
     const promptSpy = vi.spyOn(window, 'prompt').mockReturnValue('Refusé : hors gamme catalogue')
     mount()
 
-    expect(await screen.findByText('Onduleur incohérent avec le champ PV')).toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: /^Refuser$/i }))
+    expect((await screen.findAllByText('Onduleur incohérent avec le champ PV')).length).toBeGreaterThan(0)
+    fireEvent.click(screen.getAllByRole('button', { name: /^Refuser$/i })[0])
 
     await waitFor(() => expect(mocks.refuser).toHaveBeenCalledWith(
       3, { commentaire: 'Refusé : hors gamme catalogue' }))

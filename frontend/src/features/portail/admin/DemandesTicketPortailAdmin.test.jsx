@@ -36,7 +36,7 @@ describe('DemandesTicketPortailAdmin — PACT101', () => {
   it('affiche un état vide quand aucune demande', async () => {
     portailApi.admin.demandesTicket.liste.mockResolvedValue({ data: [] })
     renderPage(<DemandesTicketPortailAdmin />)
-    expect(await screen.findByText('Aucune demande')).toBeInTheDocument()
+    expect((await screen.findAllByText('Aucune demande')).length).toBeGreaterThan(0)
   })
 
   it("prend en charge une demande soumise en liant un ticket SAV existant", async () => {

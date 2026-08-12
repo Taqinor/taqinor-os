@@ -53,8 +53,8 @@ describe('ECataloguePage — lien public TTC uniquement (PACT39)', () => {
     })
     mount()
 
-    expect(await screen.findByText('Catalogue solaire')).toBeInTheDocument()
-    fireEvent.click(await screen.findByRole('button', { name: /Copier le lien public/i }))
+    expect((await screen.findAllByText('Catalogue solaire')).length).toBeGreaterThan(0)
+    fireEvent.click((await screen.findAllByRole('button', { name: /Copier le lien public/i }))[0])
 
     await waitFor(() => expect(clipboardSpy).toHaveBeenCalled())
     expect(clipboardSpy.mock.calls[0][0]).toContain('/api/django/public/ecatalogue/abc123xyz/')

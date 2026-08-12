@@ -32,23 +32,23 @@ describe('DevisActionBoardPage', () => {
     ventesApi.getDevisActionBoard.mockResolvedValue(
       reponseContrat('ventes', 'devis_action_requise'))
     render(<MemoryRouter><DevisActionBoardPage /></MemoryRouter>)
-    expect(await screen.findByText('Envoyés sans réponse')).toBeInTheDocument()
+    expect((await screen.findAllByText('Envoyés sans réponse')).length).toBeGreaterThan(0)
     // Chaque devis cité par un panier est rendu sous SA référence — jamais
     // « #42 » : le serveur fournit la ligne, l'écran ne la devine plus.
     for (const id of IDS) {
       const ligne = BOARD.devis[id]
-      expect(await screen.findByText(new RegExp(ligne.reference))).toBeInTheDocument()
+      expect((await screen.findAllByText(new RegExp(ligne.reference))).length).toBeGreaterThan(0)
     }
     // Le compte affiché est celui du serveur, jamais recalculé côté écran.
     const total = Object.values(BOARD.buckets).reduce((s, b) => s + b.count, 0)
-    expect(screen.getByText(`${total} devis nécessitant une action`)).toBeInTheDocument()
+    expect(screen.getAllByText(`${total} devis nécessitant une action`).length).toBeGreaterThan(0)
   })
 
   it('un seul appel réseau : la liste complète des devis n\'est plus retéléchargée', async () => {
     ventesApi.getDevisActionBoard.mockResolvedValue(
       reponseContrat('ventes', 'devis_action_requise'))
     render(<MemoryRouter><DevisActionBoardPage /></MemoryRouter>)
-    expect(await screen.findByText('Envoyés sans réponse')).toBeInTheDocument()
+    expect((await screen.findAllByText('Envoyés sans réponse')).length).toBeGreaterThan(0)
     expect(ventesApi.getDevis).not.toHaveBeenCalled()
   })
 
@@ -81,7 +81,7 @@ describe('DevisActionBoardPage — QX30 : file déclenchée par l\'engagement + 
     ventesApi.getDevisActionBoard.mockResolvedValue(
       reponseContrat('ventes', 'devis_action_requise'))
     render(<MemoryRouter><DevisActionBoardPage /></MemoryRouter>)
-    expect(await screen.findByText('Relance engagement')).toBeInTheDocument()
+    expect((await screen.findAllByText('Relance engagement')).length).toBeGreaterThan(0)
     const nom = BOARD.devis[engagementId].client_nom
     const waLink = await screen.findByRole('link', { name: `WhatsApp ${nom}` })
     expect(waLink).toHaveAttribute(

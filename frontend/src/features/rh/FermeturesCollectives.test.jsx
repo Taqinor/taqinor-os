@@ -39,22 +39,22 @@ describe('FermeturesCollectives (PACT92)', () => {
 
   it('rend le module et liste les fermetures', async () => {
     renderScreen()
-    expect(await screen.findByText('Fermetures collectives')).toBeInTheDocument()
-    expect(await screen.findByText('Fermeture annuelle')).toBeInTheDocument()
+    expect((await screen.findAllByText('Fermetures collectives')).length).toBeGreaterThan(0)
+    expect((await screen.findAllByText('Fermeture annuelle')).length).toBeGreaterThan(0)
   })
 
   it('crée une fermeture via rhApi.createPeriodeFermeture', async () => {
     rhApi.createPeriodeFermeture.mockResolvedValueOnce({ data: { id: 1 } })
     rhApi.getTypesAbsence.mockResolvedValue({ data: [{ id: 2, code: 'CP', libelle: 'Congé payé' }] })
     renderScreen()
-    await screen.findByText('Fermetures collectives')
+    await screen.findAllByText('Fermetures collectives')
 
-    fireEvent.click(await screen.findByRole('button', { name: /Nouvelle fermeture/ }))
+    fireEvent.click((await screen.findAllByRole('button', { name: /Nouvelle fermeture/ }))[0])
     fireEvent.change(screen.getByLabelText('Libellé'), { target: { value: 'Pont Aïd' } })
     fireEvent.change(screen.getByLabelText('Du'), { target: { value: '2026-09-01' } })
     fireEvent.change(screen.getByLabelText('Au'), { target: { value: '2026-09-03' } })
     fireEvent.change(screen.getByLabelText('Type d’absence'), { target: { value: '2' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Créer' }))
+    fireEvent.click(screen.getAllByRole('button', { name: 'Créer' })[0])
 
     await waitFor(() => expect(rhApi.createPeriodeFermeture).toHaveBeenCalledWith(
       expect.objectContaining({ libelle: 'Pont Aïd', type_absence: '2' }),

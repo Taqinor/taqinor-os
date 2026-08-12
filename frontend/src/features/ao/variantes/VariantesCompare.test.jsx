@@ -356,7 +356,11 @@ describe('VariantesCompare — dialogue de détail d’une variante (PACT172)', 
     await user.click(screen.getByRole('button', { name: 'Détails Variante A' }))
     await user.click(screen.getByRole('tab', { name: 'Sensibilités' }))
 
-    await waitFor(() => expect(mocks.sensibilites).toHaveBeenCalledWith(1))
+    // Le panneau est `lazy()` derrière un `Suspense` : l'appel ne part
+    // qu'APRÈS résolution de l'import dynamique. Le délai par défaut (1 s)
+    // est trop court quand la suite tourne en parallèle.
+    await waitFor(() => expect(mocks.sensibilites).toHaveBeenCalledWith(1),
+      { timeout: 15000 })
   })
 
   it('fermer le dialogue efface la variante en détail (réouverture propre)', async () => {

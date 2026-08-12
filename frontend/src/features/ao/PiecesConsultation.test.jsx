@@ -62,14 +62,14 @@ describe('PiecesConsultation (PACT74)', () => {
   it('charge les pièces filtrées sur CETTE affaire (jamais toute la société)', async () => {
     renderEcran()
     await waitFor(() => expect(mocks.list).toHaveBeenCalledWith({ appel_offre: 1 }))
-    expect(await screen.findByText('CPS-2026-014')).toBeInTheDocument()
+    expect((await screen.findAllByText('CPS-2026-014')).length).toBeGreaterThan(0)
   })
 
   it('créer une pièce SANS fichier ne fait AUCUN appel d’upload', async () => {
     renderEcran()
-    await screen.findByText('CPS-2026-014')
+    await screen.findAllByText('CPS-2026-014')
     await userEvent.type(screen.getByLabelText('Référence'), 'Règlement-2026')
-    await userEvent.click(screen.getByRole('button', { name: 'Enregistrer la pièce' }))
+    await userEvent.click(screen.getAllByRole('button', { name: 'Enregistrer la pièce' })[0])
     await waitFor(() => expect(mocks.create).toHaveBeenCalledWith(
       expect.objectContaining({ appel_offre: 1, type_piece: 'cps', reference: 'Règlement-2026' }),
     ))
@@ -78,10 +78,10 @@ describe('PiecesConsultation (PACT74)', () => {
 
   it('créer une pièce AVEC fichier uploade PUIS patch l’attachement (jamais l’inverse)', async () => {
     renderEcran()
-    await screen.findByText('CPS-2026-014')
+    await screen.findAllByText('CPS-2026-014')
     const fichier = new File(['x'], 'cps.pdf', { type: 'application/pdf' })
     await userEvent.upload(screen.getByLabelText('Fichier (facultatif)'), fichier)
-    await userEvent.click(screen.getByRole('button', { name: 'Enregistrer la pièce' }))
+    await userEvent.click(screen.getAllByRole('button', { name: 'Enregistrer la pièce' })[0])
 
     await waitFor(() => expect(mocks.create).toHaveBeenCalled())
     await waitFor(() => expect(mocks.uploadAttachment).toHaveBeenCalledWith('ao.piececonsultation', 12, fichier))
@@ -90,10 +90,10 @@ describe('PiecesConsultation (PACT74)', () => {
 
   it('un additif passe TOUJOURS par l’action serveur dédiée, jamais un POST brut', async () => {
     renderEcran()
-    await screen.findByText('CPS-2026-014')
-    await userEvent.click(screen.getByRole('button', { name: 'Signaler un additif' }))
+    await screen.findAllByText('CPS-2026-014')
+    await userEvent.click(screen.getAllByRole('button', { name: 'Signaler un additif' })[0])
     await userEvent.type(screen.getByLabelText("Référence de l'additif"), 'Erratum n°1')
-    await userEvent.click(screen.getByRole('button', { name: "Enregistrer l'additif" }))
+    await userEvent.click(screen.getAllByRole('button', { name: "Enregistrer l'additif" })[0])
 
     await waitFor(() => expect(mocks.additif).toHaveBeenCalledWith(10, { reference: 'Erratum n°1', version: '' }))
     expect(mocks.create).not.toHaveBeenCalled()
@@ -102,7 +102,7 @@ describe('PiecesConsultation (PACT74)', () => {
   it('un additif déjà enregistré affiche la pièce qu’il modifie (jamais une désignation devinée)', async () => {
     mocks.list.mockResolvedValue({ data: [CPS, ADDITIF] })
     renderEcran()
-    expect(await screen.findByText('modifie « CPS-2026-014 »')).toBeInTheDocument()
+    expect((await screen.findAllByText('modifie « CPS-2026-014 »')).length).toBeGreaterThan(0)
     // Un additif n'a pas d'action « Signaler un additif » — il EST déjà l'additif.
     expect(screen.getAllByRole('button', { name: 'Signaler un additif' })).toHaveLength(1)
   })

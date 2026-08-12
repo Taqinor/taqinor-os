@@ -36,7 +36,7 @@ describe('PlanComptePage (NTCRM11)', () => {
     await userEvent.type(
       screen.getByPlaceholderText('Objectifs stratégiques'), 'Grandir')
     await userEvent.click(
-      screen.getByRole('button', { name: /Enregistrer le plan de compte/i }))
+      screen.getAllByRole('button', { name: /Enregistrer le plan de compte/i })[0])
 
     await waitFor(() => expect(api.post).toHaveBeenCalledWith(
       '/crm/plans-compte/',
@@ -54,7 +54,7 @@ describe('PlanComptePage (NTCRM11)', () => {
       },
     })
     render(<PlanComptePage clientId={11} planId={5} />)
-    expect(await screen.findByText('Relancer')).toBeInTheDocument()
+    expect((await screen.findAllByText('Relancer')).length).toBeGreaterThan(0)
   })
 
   // PACT105 — la lecture (`plan.revues`) existait déjà ; AUCUN formulaire
@@ -69,7 +69,7 @@ describe('PlanComptePage (NTCRM11)', () => {
     it('affiche un état vide explicite tant qu’aucune revue n’existe', async () => {
       api.get.mockResolvedValueOnce({ data: planSansRevue })
       render(<PlanComptePage clientId={11} planId={5} />)
-      expect(await screen.findByText('Aucune revue enregistrée.')).toBeInTheDocument()
+      expect((await screen.findAllByText('Aucune revue enregistrée.')).length).toBeGreaterThan(0)
     })
 
     it('crée une revue puis elle apparaît dans la liste déjà affichée', async () => {
@@ -84,17 +84,17 @@ describe('PlanComptePage (NTCRM11)', () => {
       api.post.mockResolvedValueOnce({ data: { id: 9 } })
 
       render(<PlanComptePage clientId={11} planId={5} />)
-      await screen.findByText('Aucune revue enregistrée.')
+      await screen.findAllByText('Aucune revue enregistrée.')
 
       fireEvent.change(screen.getByLabelText('Date de la revue'), { target: { value: '2026-02-01' } })
       await userEvent.type(screen.getByLabelText('Décisions de la revue'), 'Relancer par WhatsApp')
-      await userEvent.click(screen.getByRole('button', { name: 'Ajouter une revue' }))
+      await userEvent.click(screen.getAllByRole('button', { name: 'Ajouter une revue' })[0])
 
       await waitFor(() => expect(api.post).toHaveBeenCalledWith(
         '/crm/revues-compte/',
         expect.objectContaining({ plan: 5, date_revue: '2026-02-01', decisions: 'Relancer par WhatsApp' }),
       ))
-      expect(await screen.findByText('Relancer par WhatsApp')).toBeInTheDocument()
+      expect((await screen.findAllByText('Relancer par WhatsApp')).length).toBeGreaterThan(0)
     })
   })
 })

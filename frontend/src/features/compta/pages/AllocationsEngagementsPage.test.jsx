@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeAll } from 'vitest'
 import { render, screen, waitFor, fireEvent } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { Provider } from 'react-redux'
+import { toast } from '../../../ui'
 import { configureStore } from '@reduxjs/toolkit'
 import { ThemeProvider } from '../../../design/ThemeProvider.jsx'
 
@@ -70,15 +71,16 @@ describe('AllocationsEngagementsPage — clés de répartition (PACT32)', () => 
     mocks.valider.mockRejectedValueOnce({
       response: { data: { detail: 'Les coefficients de la clé FG totalisent 80 %, pas 100 %.' } },
     })
+    const erreur = vi.spyOn(toast, 'error')
     mount()
 
-    const bouton = await screen.findByRole('button', { name: /Valider \(Σ = 100 %\)/i })
+    const bouton = (await screen.findAllByRole('button', { name: /Valider \(Σ = 100 %\)/i }))[0]
     fireEvent.click(bouton)
 
     await waitFor(() => expect(mocks.valider).toHaveBeenCalledWith(1))
-    expect(await screen.findByText(
-      'Les coefficients de la clé FG totalisent 80 %, pas 100 %.',
-    )).toBeInTheDocument()
+    // Même raison qu'ailleurs : le refus serveur passe par le toast. On
+    // vérifie qu'il est relayé mot pour mot.
+    expect(erreur).toHaveBeenCalledWith('Les coefficients de la clé FG totalisent 80 %, pas 100 %.')
   })
 })
 
@@ -94,7 +96,7 @@ describe('AllocationsEngagementsPage — engagements comptables (PACT32)', () =>
     const promptSpy = vi.spyOn(window, 'prompt').mockReturnValue('2000')
     mount(['/?onglet=engagements'])
 
-    const bouton = await screen.findByRole('button', { name: /Liquider/i })
+    const bouton = (await screen.findAllByRole('button', { name: /Liquider/i }))[0]
     fireEvent.click(bouton)
 
     await waitFor(() => expect(mocks.liquider).toHaveBeenCalledWith(9, { montant: 2000 }))

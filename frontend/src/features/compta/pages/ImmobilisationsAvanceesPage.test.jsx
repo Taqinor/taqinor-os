@@ -63,7 +63,7 @@ describe('ImmobilisationsAvanceesPage — composants (PACT29)', () => {
         duree_amortissement: 5, methode: 'lineaire', dotation_annuelle: '2000.00' }],
     })
     mount()
-    expect(await screen.findByText('Onduleur')).toBeInTheDocument()
+    expect((await screen.findAllByText('Onduleur')).length).toBeGreaterThan(0)
   })
 })
 
@@ -78,7 +78,7 @@ describe('ImmobilisationsAvanceesPage — dépréciations (PACT29)', () => {
     mocks.poster.mockResolvedValueOnce({ data: {} })
     mount(['/?onglet=depreciations'])
 
-    const bouton = await screen.findByRole('button', { name: /Poster/i })
+    const bouton = (await screen.findAllByRole('button', { name: /Poster/i }))[0]
     fireEvent.click(bouton)
     await waitFor(() => expect(mocks.poster).toHaveBeenCalledWith(5))
   })
@@ -94,7 +94,7 @@ describe('ImmobilisationsAvanceesPage — encours CIP (PACT29)', () => {
     })
     mount(['/?onglet=encours'])
 
-    expect(await screen.findByText('Extension atelier')).toBeInTheDocument()
+    expect((await screen.findAllByText('Extension atelier')).length).toBeGreaterThan(0)
     expect(screen.getAllByRole('button', { name: /Mettre en service/i }).length).toBeGreaterThan(0)
   })
 })

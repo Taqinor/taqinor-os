@@ -41,18 +41,21 @@ beforeEach(() => {
 describe('ClientPrixContractuelsTab (PACT129)', () => {
   it('ne montre que les prix négociés du client courant', async () => {
     render(<ClientPrixContractuelsTab clientId={11} />)
-    expect(await screen.findByText('Panneau 550W')).toBeInTheDocument()
-    expect(screen.queryByText('Onduleur 5kW')).not.toBeInTheDocument()
+    expect((await screen.findAllByText('Panneau 550W')).length).toBeGreaterThan(0)
+    // « Onduleur 5kW » EXISTE dans le sélecteur de produit (le catalogue est
+    // commun à tous les clients) — ce n'est pas une fuite. Ce qu'on interdit,
+    // c'est qu'il apparaisse comme LIGNE de prix négocié de CE client.
+    expect(screen.queryByRole('cell', { name: 'Onduleur 5kW' })).not.toBeInTheDocument()
   })
 
   it('crée un prix négocié pour le client courant', async () => {
     const user = userEvent.setup()
     render(<ClientPrixContractuelsTab clientId={11} />)
-    await screen.findByText('Panneau 550W')
+    await screen.findAllByText('Panneau 550W')
 
     await user.selectOptions(screen.getByLabelText('Produit'), '22')
     await user.type(screen.getByLabelText('Prix HT négocié'), '8500')
-    await user.click(screen.getByRole('button', { name: 'Créer le prix négocié' }))
+    await user.click(screen.getAllByRole('button', { name: 'Créer le prix négocié' })[0])
 
     await waitFor(() => expect(createPrixContractuel).toHaveBeenCalledWith(expect.objectContaining({
       client: 11, produit: '22', prix_ht: '8500',
@@ -64,6 +67,6 @@ describe('ClientPrixContractuelsTab (PACT129)', () => {
       response: { data: { detail: "Vous n'avez pas la permission d'effectuer cette action." } },
     })
     render(<ClientPrixContractuelsTab clientId={11} />)
-    expect(await screen.findByText("Vous n'avez pas la permission d'effectuer cette action.")).toBeInTheDocument()
+    expect((await screen.findAllByText("Vous n'avez pas la permission d'effectuer cette action.")).length).toBeGreaterThan(0)
   })
 })

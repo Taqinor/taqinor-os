@@ -63,7 +63,7 @@
 
 /* ── Couche sémantique : variables runtime (clair = défaut) ──────────────── */
 :root {
-  --background: #f6f8fc;
+  --background: oklch(96.6% 0.011 85); /* PROTO — canevas ivoire chaud : la Lumière du brass, séparée des cartes blanches */
   --foreground: #0c1335;
 
   --surface: #ffffff;          /* alias historique de --card */
@@ -86,9 +86,9 @@
 
   --secondary: #eef2fb;
   --secondary-foreground: #0f1c54;
-  --muted: #eef1f8;
+  --muted: oklch(94.8% 0.014 85); /* PROTO */
   --muted-foreground: #5a6488;
-  --accent: #eef2fb;
+  --accent: oklch(94% 0.03 85); /* PROTO — lavage brass pour hover/sélection */
   --accent-foreground: #0f1c54;
 
   --destructive: #b3402a;

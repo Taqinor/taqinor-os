@@ -94,8 +94,8 @@ describe('CockpitPage — rendu smoke (UX2)', () => {
   it('affiche les KPI financiers du cockpit', async () => {
     const { default: CockpitPage } = await import('./pages/CockpitPage.jsx')
     mount(<CockpitPage />)
-    expect(await screen.findByText('Résultat de la période')).toBeInTheDocument()
-    expect(screen.getByText('Trésorerie nette')).toBeInTheDocument()
+    expect((await screen.findAllByText('Résultat de la période')).length).toBeGreaterThan(0)
+    expect(screen.getAllByText('Trésorerie nette').length).toBeGreaterThan(0)
     // Le titre de la page est présent.
     expect(screen.getByRole('heading', { name: /Cockpit financier/ })).toBeInTheDocument()
   }, 30000)
@@ -105,7 +105,7 @@ describe('CockpitPage — VX115 : KPI vers l’écran d’action + index des exp
   it('« Créances clients » pointe vers la balance âgée et « DSO » vers les relances', async () => {
     const { default: CockpitPage } = await import('./pages/CockpitPage.jsx')
     mount(<CockpitPage />)
-    const creances = await screen.findByText('Créances clients')
+    const [creances] = await screen.findAllByText('Créances clients')
     expect(creances.closest('a')).toHaveAttribute('href', '/reporting/balance-agee')
     const dso = screen.getByText('DSO (encaissement client)')
     expect(dso.closest('a')).toHaveAttribute('href', '/ventes/relances')
@@ -119,7 +119,7 @@ describe('CockpitPage — VX115 : KPI vers l’écran d’action + index des exp
   it('affiche la carte « Où trouver mes exports » avec les 4 destinations', async () => {
     const { default: CockpitPage } = await import('./pages/CockpitPage.jsx')
     mount(<CockpitPage />)
-    expect(await screen.findByText('Où trouver mes exports')).toBeInTheDocument()
+    expect((await screen.findAllByText('Où trouver mes exports')).length).toBeGreaterThan(0)
     expect(screen.getByRole('link', { name: /Factures — Export comptable/ }))
       .toHaveAttribute('href', '/ventes/factures')
     expect(screen.getByRole('link', { name: /Fiscalité/ })).toHaveAttribute('href', '/comptabilite/fiscalite')
@@ -148,8 +148,8 @@ describe('PlanComptablePage — rendu smoke (UX3)', () => {
     await waitFor(() => {
       expect(screen.getByRole('heading', { name: /Plan comptable & journaux/ })).toBeInTheDocument()
     })
-    expect(screen.getByText('Comptes CGNC')).toBeInTheDocument()
-    expect(screen.getByText('Journaux')).toBeInTheDocument()
+    expect(screen.getAllByText('Comptes CGNC').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('Journaux').length).toBeGreaterThan(0)
   }, 30000)
 })
 

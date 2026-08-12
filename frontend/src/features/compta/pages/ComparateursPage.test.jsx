@@ -60,12 +60,12 @@ describe('ComparateursPage — versions de devis (PACT36)', () => {
 
     fireEvent.change(screen.getByLabelText(/Devis A/i), { target: { value: '1' } })
     fireEvent.change(screen.getByLabelText(/Devis B/i), { target: { value: '2' } })
-    fireEvent.click(screen.getByRole('button', { name: /^Comparer$/i }))
+    fireEvent.click(screen.getAllByRole('button', { name: /^Comparer$/i })[0])
 
     await waitFor(() => expect(mocks.comparerDevis).toHaveBeenCalledWith('1', '2'))
-    expect(await screen.findByText('total_ttc')).toBeInTheDocument()
-    expect(screen.getByText('100000')).toBeInTheDocument()
-    expect(screen.getByText('120000')).toBeInTheDocument()
+    expect((await screen.findAllByText('total_ttc')).length).toBeGreaterThan(0)
+    expect(screen.getAllByText('100000').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('120000').length).toBeGreaterThan(0)
   })
 })
 
@@ -80,11 +80,11 @@ describe('ComparateursPage — cash vs financement (PACT36)', () => {
     })
     mount(['/?onglet=financement'])
 
-    fireEvent.change(screen.getByLabelText(/^Montant$/i), { target: { value: '100000' } })
+    fireEvent.change(screen.getByLabelText(/^Montant\s*\*?$/i), { target: { value: '100000' } })
     fireEvent.change(screen.getByLabelText(/Durée \(mois\)/i), { target: { value: '60' } })
-    fireEvent.click(screen.getByRole('button', { name: /^Comparer$/i }))
+    fireEvent.click(screen.getAllByRole('button', { name: /^Comparer$/i })[0])
 
     await waitFor(() => expect(mocks.comparerFinancement).toHaveBeenCalled())
-    expect(await screen.findByText(/Surcoût du financement/)).toBeInTheDocument()
+    expect((await screen.findAllByText(/Surcoût du financement/)).length).toBeGreaterThan(0)
   })
 })

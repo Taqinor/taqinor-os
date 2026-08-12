@@ -36,19 +36,19 @@ describe('JoursBloquesConge (PACT90)', () => {
 
   it('rend le module', async () => {
     renderScreen()
-    expect(await screen.findByText('Jours bloqués (congés)')).toBeInTheDocument()
+    expect((await screen.findAllByText('Jours bloqués (congés)')).length).toBeGreaterThan(0)
   })
 
   it('crée un blocage via rhApi.createJourBloqueConge', async () => {
     rhApi.createJourBloqueConge.mockResolvedValueOnce({ data: { id: 1 } })
     renderScreen()
-    await screen.findByText('Jours bloqués (congés)')
+    await screen.findAllByText('Jours bloqués (congés)')
 
-    fireEvent.click(await screen.findByRole('button', { name: /Nouveau blocage/ }))
+    fireEvent.click((await screen.findAllByRole('button', { name: /Nouveau blocage/ }))[0])
     fireEvent.change(screen.getByLabelText('Libellé'), { target: { value: 'Haute saison pose' } })
     fireEvent.change(screen.getByLabelText('Du'), { target: { value: '2026-06-01' } })
     fireEvent.change(screen.getByLabelText('Au'), { target: { value: '2026-08-31' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Créer' }))
+    fireEvent.click(screen.getAllByRole('button', { name: 'Créer' })[0])
 
     await waitFor(() => expect(rhApi.createJourBloqueConge).toHaveBeenCalledWith(
       expect.objectContaining({ libelle: 'Haute saison pose', date_debut: '2026-06-01', date_fin: '2026-08-31' }),

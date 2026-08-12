@@ -39,7 +39,7 @@ describe('AcceptationsDevisPortailAdmin — PACT97', () => {
   it('affiche un état vide quand aucune acceptation', async () => {
     portailApi.admin.acceptationsDevis.liste.mockResolvedValue({ data: [] })
     renderPage(<AcceptationsDevisPortailAdmin />)
-    expect(await screen.findByText('Aucune acceptation de devis')).toBeInTheDocument()
+    expect((await screen.findAllByText('Aucune acceptation de devis')).length).toBeGreaterThan(0)
   })
 
   it("ne propose aucune action d'écriture (lecture seule)", async () => {

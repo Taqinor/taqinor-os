@@ -37,7 +37,7 @@ describe('ParcoursEmploye (PACT91)', () => {
 
   it('rend le module', async () => {
     renderScreen()
-    expect(await screen.findByText('Parcours des employés')).toBeInTheDocument()
+    expect((await screen.findAllByText('Parcours des employés')).length).toBeGreaterThan(0)
   })
 
   it('crée un type puis une ligne de parcours le référençant, sans redéploiement', async () => {
@@ -46,21 +46,24 @@ describe('ParcoursEmploye (PACT91)', () => {
       .mockResolvedValueOnce({ data: [] })
       .mockResolvedValueOnce({ data: [{ id: 1, libelle: 'Expérience', ordre: 0 }] })
     renderScreen()
-    await screen.findByText('Parcours des employés')
+    await screen.findAllByText('Parcours des employés')
 
-    fireEvent.click(await screen.findByRole('button', { name: /Nouveau type/ }))
+    // « Nouveau type » vit sur la vue « Catalogue de types » : l'écran ouvre
+    // par défaut sur « Lignes de parcours ». On bascule d'abord.
+    fireEvent.click(screen.getAllByText('Catalogue de types')[0])
+    fireEvent.click((await screen.findAllByRole('button', { name: /Nouveau type/ }))[0])
     fireEvent.change(screen.getByLabelText('Libellé'), { target: { value: 'Expérience' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Créer' }))
+    fireEvent.click(screen.getAllByRole('button', { name: 'Créer' })[0])
     await waitFor(() => expect(rhApi.createTypeLigneParcours).toHaveBeenCalledWith(
       expect.objectContaining({ libelle: 'Expérience' }),
     ))
 
     fireEvent.click(screen.getByRole('radio', { name: 'Lignes de parcours' }))
-    fireEvent.click(await screen.findByRole('button', { name: /Nouvelle ligne/ }))
+    fireEvent.click((await screen.findAllByRole('button', { name: /Nouvelle ligne/ }))[0])
     fireEvent.change(screen.getByLabelText('Employé'), { target: { value: '9' } })
     fireEvent.change(screen.getByLabelText('Type'), { target: { value: '1' } })
     fireEvent.change(screen.getByLabelText('Intitulé'), { target: { value: 'Technicien solaire' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Créer' }))
+    fireEvent.click(screen.getAllByRole('button', { name: 'Créer' })[0])
 
     await waitFor(() => expect(rhApi.createLigneParcours).toHaveBeenCalledWith(
       expect.objectContaining({ employe: '9', type: '1', intitule: 'Technicien solaire' }),

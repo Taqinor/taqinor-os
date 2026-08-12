@@ -49,7 +49,7 @@ describe('DocumentsPropositionPage — bibliothèque (PACT40)', () => {
     })
     mount()
 
-    expect(await screen.findByText('Garanties matériel')).toBeInTheDocument()
-    expect(screen.getByText('Garanties')).toBeInTheDocument()
+    expect((await screen.findAllByText('Garanties matériel')).length).toBeGreaterThan(0)
+    expect(screen.getAllByText('Garanties').length).toBeGreaterThan(0)
   })
 })

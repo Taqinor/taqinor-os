@@ -1,7 +1,9 @@
 import { describe, it, expect, vi, beforeAll } from 'vitest'
-import { render, screen, waitFor, fireEvent } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
+import userEvent from '@testing-library/user-event'
 import { Provider } from 'react-redux'
+import { toast } from '../../../ui'
 import { configureStore } from '@reduxjs/toolkit'
 import { ThemeProvider } from '../../../design/ThemeProvider.jsx'
 
@@ -62,14 +64,20 @@ describe('RapprochementsComptePage — séparation des tâches (PACT30)', () => 
     mocks.valider.mockRejectedValueOnce({
       response: { status: 403, data: { detail: 'Séparation des tâches : le réviseur ne peut pas être le préparateur.' } },
     })
+    const erreur = vi.spyOn(toast, 'error')
     mount()
 
-    const bouton = await screen.findByRole('button', { name: /^Valider$/i })
-    fireEvent.click(bouton)
+    // `DataTable` ne révèle que les 2 PREMIÈRES actions de ligne ; « Valider »
+    // est la 3ᵉ, donc dans le menu de débordement (patron déjà en usage dans
+    // `features/paie/PaieParametres.test.jsx`).
+    const ligne = (await screen.findAllByText('4411'))
+      .map((el) => el.closest('tr')).find(Boolean)
+    await userEvent.click(within(ligne).getByLabelText("Plus d'actions sur la ligne"))
+    await userEvent.click(await screen.findByText('Valider'))
 
     await waitFor(() => expect(mocks.valider).toHaveBeenCalledWith(8))
-    expect(await screen.findByText(
-      'Séparation des tâches : le réviseur ne peut pas être le préparateur.',
-    )).toBeInTheDocument()
+    // Le 403 serveur part au toast : on prouve qu'il est relayé mot pour mot.
+    expect(erreur).toHaveBeenCalledWith(
+      'Séparation des tâches : le réviseur ne peut pas être le préparateur.')
   })
 })

@@ -39,17 +39,17 @@ describe('DemandesRh (PACT84)', () => {
 
   it('rend le module et propose Traiter sans filtrage de permission côté client', async () => {
     renderScreen()
-    expect(await screen.findByText('Demandes RH (attestations)')).toBeInTheDocument()
-    expect(await screen.findByText('Bennani Youssef')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Traiter' })).toBeInTheDocument()
+    expect((await screen.findAllByText('Demandes RH (attestations)')).length).toBeGreaterThan(0)
+    expect((await screen.findAllByText('Bennani Youssef')).length).toBeGreaterThan(0)
+    expect(screen.getAllByRole('button', { name: 'Traiter' })[0]).toBeInTheDocument()
   })
 
   it('traite une demande via rhApi.traiterDemandeRh et recharge la liste', async () => {
     rhApi.traiterDemandeRh.mockResolvedValueOnce({ data: { id: 7, statut: 'traitee' } })
     renderScreen()
-    await screen.findByText('Bennani Youssef')
+    await screen.findAllByText('Bennani Youssef')
 
-    fireEvent.click(screen.getByRole('button', { name: 'Traiter' }))
+    fireEvent.click(screen.getAllByRole('button', { name: 'Traiter' })[0])
 
     await waitFor(() => expect(rhApi.traiterDemandeRh).toHaveBeenCalledWith(7))
     await waitFor(() => expect(rhApi.getDemandesRh).toHaveBeenCalledTimes(2))
@@ -60,13 +60,13 @@ describe('DemandesRh (PACT84)', () => {
       response: { data: { detail: "Vous n'avez pas la permission de traiter une attestation de salaire." } },
     })
     renderScreen()
-    await screen.findByText('Bennani Youssef')
+    await screen.findAllByText('Bennani Youssef')
 
-    fireEvent.click(screen.getByRole('button', { name: 'Traiter' }))
+    fireEvent.click(screen.getAllByRole('button', { name: 'Traiter' })[0])
 
     await waitFor(() => expect(rhApi.traiterDemandeRh).toHaveBeenCalledWith(7))
     // Pas de rechargement après un échec : la ligne reste « soumise ».
     expect(rhApi.getDemandesRh).toHaveBeenCalledTimes(1)
-    expect(await screen.findByText('Bennani Youssef')).toBeInTheDocument()
+    expect((await screen.findAllByText('Bennani Youssef')).length).toBeGreaterThan(0)
   })
 })

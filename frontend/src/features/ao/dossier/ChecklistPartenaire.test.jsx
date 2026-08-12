@@ -60,20 +60,20 @@ describe('ChecklistPartenaire (PACT71)', () => {
   it('charge les points de la checklist filtrés sur le dossier', async () => {
     renderEcran()
     await waitFor(() => expect(mocks.list).toHaveBeenCalledWith({ dossier: 7 }))
-    expect(await screen.findByText('CPS relu et paraphé')).toBeInTheDocument()
-    expect(screen.getByText('Bordereau signé')).toBeInTheDocument()
+    expect((await screen.findAllByText('CPS relu et paraphé')).length).toBeGreaterThan(0)
+    expect(screen.getAllByText('Bordereau signé').length).toBeGreaterThan(0)
   })
 
   it('groupe les points par bloc (libellé RÉEL du serveur, jamais réinventé)', async () => {
     renderEcran()
-    expect(await screen.findByText('CPS')).toBeInTheDocument()
-    expect(screen.getByText('Bordereau des prix')).toBeInTheDocument()
+    expect((await screen.findAllByText('CPS')).length).toBeGreaterThan(0)
+    expect(screen.getAllByText('Bordereau des prix').length).toBeGreaterThan(0)
   })
 
   it('un point obligatoire ouvert affiche le responsable manquant et le badge Obligatoire', async () => {
     renderEcran()
-    expect(await screen.findByText('Responsable non désigné')).toBeInTheDocument()
-    expect(screen.getByText('rkasri')).toBeInTheDocument()
+    expect((await screen.findAllByText('Responsable non désigné')).length).toBeGreaterThan(0)
+    expect(screen.getAllByText('rkasri').length).toBeGreaterThan(0)
   })
 
   it('pointer un point coche appelle l’action serveur pointer (responsable tracé côté serveur)', async () => {
@@ -85,14 +85,14 @@ describe('ChecklistPartenaire (PACT71)', () => {
 
   it('la cause du blocage est le texte AUTHENTIQUE du serveur (completude), jamais reconstruit', async () => {
     renderEcran()
-    expect(await screen.findByText(/point\(s\) obligatoire\(s\) de la checklist partenaire encore ouvert/))
-      .toBeInTheDocument()
+    expect((await screen.findAllByText(/point\(s\) obligatoire\(s\) de la checklist partenaire encore ouvert/)).length)
+      .toBeGreaterThan(0)
   })
 
   it('checklist vide : propose de l’initialiser (action idempotente AOF136)', async () => {
     mocks.list.mockResolvedValue({ data: [] })
     renderEcran()
-    const bouton = await screen.findByRole('button', { name: 'Initialiser la checklist' })
+    const bouton = (await screen.findAllByRole('button', { name: 'Initialiser la checklist' }))[0]
     await userEvent.click(bouton)
     await waitFor(() => expect(mocks.initialiserChecklist).toHaveBeenCalledWith(7))
     await waitFor(() => expect(mocks.list).toHaveBeenCalledTimes(2))

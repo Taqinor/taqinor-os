@@ -49,7 +49,7 @@ describe('CodesPromotionPage — code expiré resté visible (PACT37)', () => {
     })
     mount()
 
-    expect(await screen.findByText('PROMO2024')).toBeInTheDocument()
-    expect(await screen.findByText('Expiré')).toBeInTheDocument()
+    expect((await screen.findAllByText('PROMO2024')).length).toBeGreaterThan(0)
+    expect((await screen.findAllByText('Expiré')).length).toBeGreaterThan(0)
   })
 })

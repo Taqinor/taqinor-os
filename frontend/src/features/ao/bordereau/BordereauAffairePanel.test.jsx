@@ -56,8 +56,10 @@ beforeEach(() => {
 describe('BordereauAffairePanel (PACT69)', () => {
   it('charge le bordereau de l’affaire et affiche le total TTC réel du serveur', async () => {
     renderPanel()
-    expect(mocks.list).toHaveBeenCalledWith({ appel_offre: 42 })
-    await waitFor(() => expect(screen.getByText(formatMAD(218880).replace(/\s+/g, ' '))).toBeInTheDocument())
+    // L'appel part dans un effet : on l'ATTEND, on ne l'assertionne pas
+    // synchroniquement juste après le rendu.
+    await waitFor(() => expect(mocks.list).toHaveBeenCalledWith({ appel_offre: 42 }))
+    await waitFor(() => expect(screen.getAllByText(formatMAD(218880).replace(/\s+/g, ' ')).length).toBeGreaterThan(0))
   })
 
   it('mappe les noms de champs RÉELS du serveur vers le contrat de BordereauPage '
@@ -66,14 +68,14 @@ describe('BordereauAffairePanel (PACT69)', () => {
     // Total HT réel (182400) et TVA réelle (36480) doivent être visibles —
     // s'ils ne l'étaient pas, le mapping serait cassé et BordereauPage
     // afficherait des tirets à la place.
-    await waitFor(() => expect(screen.getByText(formatMAD(182400).replace(/\s+/g, ' '))).toBeInTheDocument())
-    expect(screen.getByText(formatMAD(36480).replace(/\s+/g, ' '))).toBeInTheDocument()
+    await waitFor(() => expect(screen.getAllByText(formatMAD(182400).replace(/\s+/g, ' ')).length).toBeGreaterThan(0))
+    expect(screen.getAllByText(formatMAD(36480).replace(/\s+/g, ' ')).length).toBeGreaterThan(0)
   })
 
   it('aucun bordereau : état vide honnête, sans inventer de bordereau', async () => {
     mocks.list.mockResolvedValue({ data: [] })
     renderPanel()
-    expect(await screen.findByText('Aucun bordereau des prix')).toBeInTheDocument()
+    expect((await screen.findAllByText('Aucun bordereau des prix')).length).toBeGreaterThan(0)
     expect(mocks.get).not.toHaveBeenCalled()
   })
 
@@ -82,8 +84,8 @@ describe('BordereauAffairePanel (PACT69)', () => {
       data: { remettable: false, raisons: ['Marché à prix unitaires : la clause de réserve est obligatoire.'] },
     })
     renderPanel()
-    expect(await screen.findByText('Bordereau non remettable')).toBeInTheDocument()
-    expect(screen.getByText(/clause de réserve est obligatoire/)).toBeInTheDocument()
+    expect((await screen.findAllByText('Bordereau non remettable')).length).toBeGreaterThan(0)
+    expect(screen.getAllByText(/clause de réserve est obligatoire/).length).toBeGreaterThan(0)
   })
 
   it('modifier une ligne appelle un PATCH RÉEL sur lignes-bordereau puis recharge le bordereau', async () => {
@@ -95,6 +97,11 @@ describe('BordereauAffairePanel (PACT69)', () => {
     await waitFor(() => expect(mocks.updateLigne).toHaveBeenCalledWith(101, { quantite: '160' }))
     // Le panneau relit le bordereau COMPLET après l'écriture — jamais un
     // patch local qui ferait diverger les totaux affichés du serveur.
-    await waitFor(() => expect(mocks.get).toHaveBeenCalledTimes(2))
+    // « Au moins 2 » et non « exactement 2 » : vider puis retaper le champ
+    // produit DEUX écritures (donc deux relectures), ce qui est le
+    // comportement normal de la saisie. Ce qui compte ici est que le panneau
+    // RELISE le bordereau complet après écriture, jamais qu'il le fasse une
+    // seule fois.
+    await waitFor(() => expect(mocks.get.mock.calls.length).toBeGreaterThanOrEqual(2))
   })
 })

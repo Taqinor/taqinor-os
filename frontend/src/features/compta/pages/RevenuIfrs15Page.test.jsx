@@ -75,12 +75,12 @@ describe('RevenuIfrs15Page — allocation du prix de transaction (PACT34)', () =
     mocks.allouer.mockResolvedValueOnce({ data: {} })
     mount()
 
-    fireEvent.click(await screen.findByText('CR-001'))
-    const bouton = await screen.findByRole('button', { name: /Allouer le prix/i })
+    fireEvent.click((await screen.findAllByText('CR-001'))[0])
+    const bouton = (await screen.findAllByRole('button', { name: /Allouer le prix/i }))[0]
     fireEvent.click(bouton)
 
     await waitFor(() => expect(mocks.allouer).toHaveBeenCalledWith(1))
     await waitFor(() => expect(mocks.get).toHaveBeenCalledWith(1))
-    expect(await screen.findByText('(équilibré)')).toBeInTheDocument()
+    expect((await screen.findAllByText('(équilibré)')).length).toBeGreaterThan(0)
   })
 })

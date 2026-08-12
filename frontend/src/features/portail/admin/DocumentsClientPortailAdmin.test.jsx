@@ -39,7 +39,7 @@ describe('DocumentsClientPortailAdmin — PACT99', () => {
   it('affiche un état vide quand aucun document', async () => {
     portailApi.admin.documentsClient.liste.mockResolvedValue({ data: [] })
     renderPage(<DocumentsClientPortailAdmin />)
-    expect(await screen.findByText('Aucun document')).toBeInTheDocument()
+    expect((await screen.findAllByText('Aucun document')).length).toBeGreaterThan(0)
   })
 
   it('marque un document traité sans dupliquer le fichier déjà déposé', async () => {

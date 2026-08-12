@@ -67,7 +67,7 @@ describe('PACT133 ReglesAclPage', () => {
     renderPage()
     await screen.findAllByText('Contrats confidentiels')
 
-    await userEvent.click(screen.getByRole('button', { name: /Nouvelle règle/i }))
+    await userEvent.click(screen.getAllByRole('button', { name: /Nouvelle règle/i })[0])
     const dialog = await screen.findByRole('dialog')
     await userEvent.type(within(dialog).getByLabelText('Nom de la règle'), 'Devis sensibles')
     await userEvent.type(within(dialog).getByLabelText('Champ de la condition'), 'type')

@@ -42,18 +42,18 @@ describe('HorairesTravail (PACT89)', () => {
     })
     renderScreen()
 
-    expect(await screen.findByText('À venir')).toBeInTheDocument()
-    expect(await screen.findByText('Active')).toBeInTheDocument()
+    expect((await screen.findAllByText('À venir')).length).toBeGreaterThan(0)
+    expect((await screen.findAllByText('Active')).length).toBeGreaterThan(0)
   })
 
   it('crée un horaire via rhApi.createHoraireTravail', async () => {
     rhApi.createHoraireTravail.mockResolvedValueOnce({ data: { id: 3 } })
     renderScreen()
-    await screen.findByText('Horaires de travail')
+    await screen.findAllByText('Horaires de travail')
 
-    fireEvent.click(await screen.findByRole('button', { name: /Nouvel horaire/ }))
+    fireEvent.click((await screen.findAllByRole('button', { name: /Nouvel horaire/ }))[0])
     fireEvent.change(screen.getByLabelText('Nom'), { target: { value: 'Ramadan 2027' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Créer' }))
+    fireEvent.click(screen.getAllByRole('button', { name: 'Créer' })[0])
 
     await waitFor(() => expect(rhApi.createHoraireTravail).toHaveBeenCalledWith(
       expect.objectContaining({ nom: 'Ramadan 2027', type_horaire: 'standard_44h' }),

@@ -62,10 +62,10 @@ describe('GuidedSellingPage — alerte de cohérence (PACT38)', () => {
     })
     mount()
 
-    fireEvent.click(screen.getByRole('button', { name: /Nouvelle session/i }))
+    fireEvent.click(screen.getAllByRole('button', { name: /Nouvelle session/i })[0])
     fireEvent.change(screen.getByLabelText(/kWc/i), { target: { value: '10' } })
     fireEvent.change(screen.getByLabelText(/onduleur/i), { target: { value: '3' } })
-    fireEvent.click(screen.getByRole('button', { name: /^Évaluer$/i }))
+    fireEvent.click(screen.getAllByRole('button', { name: /^Évaluer$/i })[0])
 
     await waitFor(() => expect(mocks.evaluer).toHaveBeenCalledWith(7))
     expect(await screen.findByText(

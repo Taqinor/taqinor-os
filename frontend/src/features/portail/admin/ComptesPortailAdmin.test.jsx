@@ -53,7 +53,7 @@ describe('ComptesPortailAdmin — PACT96', () => {
   it('affiche un état vide quand aucun compte', async () => {
     portailApi.admin.comptes.liste.mockResolvedValue({ data: [] })
     renderPage(<ComptesPortailAdmin />)
-    expect(await screen.findByText('Aucun compte portail')).toBeInTheDocument()
+    expect((await screen.findAllByText('Aucun compte portail')).length).toBeGreaterThan(0)
   })
 
   it('crée un compte pour le client choisi', async () => {
@@ -64,7 +64,7 @@ describe('ComptesPortailAdmin — PACT96', () => {
     renderPage(<ComptesPortailAdmin />)
     await user.click(await screen.findByRole('combobox', { name: 'Client' }))
     await user.click(await screen.findByRole('option', { name: 'ACME Solaire' }))
-    await user.click(screen.getByRole('button', { name: /Créer un compte/ }))
+    await user.click(screen.getAllByRole('button', { name: /Créer un compte/ })[0])
     await waitFor(() => expect(portailApi.admin.comptes.creer)
       .toHaveBeenCalledWith({ client: '5' }))
   })

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, beforeAll } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import { ThemeProvider } from '../../design/ThemeProvider.jsx'
@@ -76,7 +76,7 @@ describe('VisasDocuments (PACT64)', () => {
   it('affiche la liste des visas avec leur statut', async () => {
     withProviders(<VisasDocuments />)
     await waitFor(() => expect(screen.getAllByText('VIS-2026-0001').length).toBeGreaterThan(0))
-    expect(screen.getByText('VIS-2026-0002')).toBeInTheDocument()
+    expect(screen.getAllByText('VIS-2026-0002').length).toBeGreaterThan(0)
   })
 
   it('soumet un nouveau visa', async () => {
@@ -84,10 +84,10 @@ describe('VisasDocuments (PACT64)', () => {
     withProviders(<VisasDocuments />)
     await waitFor(() => expect(screen.getAllByText('VIS-2026-0001').length).toBeGreaterThan(0))
 
-    const chantierOption = await screen.findByRole('option', { name: /Villa Zenith/ })
-    await user.selectOptions(screen.getByLabelText('Chantier du visa'), chantierOption)
+    const sel_chantierOption = screen.getByLabelText('Chantier du visa')
+    await user.selectOptions(sel_chantierOption, within(sel_chantierOption).getByRole('option', { name: /Villa Zenith/ }))
     await user.type(screen.getByLabelText('ID du document GED'), '77')
-    await user.click(screen.getByRole('button', { name: 'Soumettre le visa' }))
+    await user.click(screen.getAllByRole('button', { name: 'Soumettre le visa' })[0])
 
     await waitFor(() => expect(visasCreate).toHaveBeenCalledWith(expect.objectContaining({
       chantier: '5', document_ged_id: 77, type_visa: 'autre',
@@ -102,7 +102,7 @@ describe('VisasDocuments (PACT64)', () => {
     await user.click(screen.getAllByRole('button', { name: 'Détails' })[0])
     await user.type(screen.getByLabelText('Observations de revue'), 'À corriger légèrement')
     await user.click(screen.getByRole('checkbox', { name: 'Approuver avec observations' }))
-    await user.click(screen.getByRole('button', { name: 'Approuver' }))
+    await user.click(screen.getAllByRole('button', { name: 'Approuver' })[0])
 
     await waitFor(() => expect(visasApprouver).toHaveBeenCalledWith(1, {
       avecObservations: true, observations: 'À corriger légèrement',
@@ -115,7 +115,7 @@ describe('VisasDocuments (PACT64)', () => {
     await waitFor(() => expect(screen.getAllByText('VIS-2026-0002').length).toBeGreaterThan(0))
 
     await user.click(screen.getAllByRole('button', { name: 'Détails' })[1])
-    expect(await screen.findByText('Visa déjà décidé.')).toBeInTheDocument()
+    expect((await screen.findAllByText('Visa déjà décidé.')).length).toBeGreaterThan(0)
     expect(screen.queryByRole('button', { name: 'Approuver' })).not.toBeInTheDocument()
   })
 })

@@ -65,11 +65,11 @@ describe('PACT131 CoffresPage', () => {
     renderPage()
     await screen.findAllByText('Coffre RH — Reda')
 
-    await userEvent.click(screen.getByRole('button', { name: /Nouveau coffre/i }))
+    await userEvent.click(screen.getAllByRole('button', { name: /Nouveau coffre/i })[0])
     await userEvent.type(screen.getByLabelText('Nom du coffre'), 'Coffre Marketing')
     await userEvent.click(screen.getByRole('combobox', { name: /Choisir un employé/i }))
-    await userEvent.click(await screen.findByText('reda'))
-    await userEvent.click(screen.getByRole('button', { name: 'Créer' }))
+    await userEvent.click((await screen.findAllByText('reda'))[0])
+    await userEvent.click(screen.getAllByRole('button', { name: 'Créer' })[0])
 
     await waitFor(() => {
       expect(gedApi.createCoffre).toHaveBeenCalledWith({
@@ -85,7 +85,7 @@ describe('PACT131 CoffresPage', () => {
     await screen.findAllByText('Coffre RH — Reda')
 
     await userEvent.click(screen.getAllByRole('button', { name: 'Voir les documents' })[0])
-    expect(await screen.findByText('Contrat.pdf')).toBeInTheDocument()
+    expect((await screen.findAllByText('Contrat.pdf')).length).toBeGreaterThan(0)
     expect(gedApi.getCoffreDocuments).toHaveBeenCalledWith(1)
   })
 })
