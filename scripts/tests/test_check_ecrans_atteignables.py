@@ -707,7 +707,9 @@ class DepotReelTests(unittest.TestCase):
         """Si une config devient illisible, la garde s'aveugle en silence."""
         _, stats = analyse_reelle()
         self.assertEqual(stats["opaques"], 0)
-        self.assertEqual(stats["configs"], 45)
+        # 45 -> 47 : le lot §E donne son PREMIER module.config.jsx a deux
+        # apps qui n en avaient aucun (btp_chantier, portail cote ERP).
+        self.assertEqual(stats["configs"], 47)
 
     def test_parametres_achats_est_desormais_navigable(self):
         """PACT150 : cas vivant du 07/08/2026 — `AchatsParametresPage` (182
