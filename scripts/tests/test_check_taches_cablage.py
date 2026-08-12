@@ -456,8 +456,15 @@ class DepotReelTests(unittest.TestCase):
         """Si l'extraction casse, la garde devient muette EN SILENCE."""
         _, stats = analyse_reelle()
         self.assertGreater(stats["taches"], 1500)
-        self.assertGreater(stats["f1_candidates"], 250)
-        self.assertGreater(stats["f1_conformes"], 80)
+        # 250 -> 150 : le lot §E du 08/08/2026 a COCHÉ 76 tâches, donc le
+        # corpus de candidates rétrécit légitimement (191 aujourd'hui).
+        # Le plancher garde son rôle — une extraction cassée rendrait ~0 —
+        # sans punir le fait d'avoir livré.
+        self.assertGreater(stats["f1_candidates"], 150)
+        # Idem : 80 -> 25. Ce plancher suit le meme corpus que ci-dessus
+        # (35 aujourd'hui) ; livrer des tâches le fait mécaniquement
+        # baisser, casser l'extraction le mettrait à 0.
+        self.assertGreater(stats["f1_conformes"], 25)
 
     def test_les_taches_conformes_du_depot_ne_rougissent_pas(self):
         """~120 taches de docs/PLAN.md portent deja la clause canonique et
