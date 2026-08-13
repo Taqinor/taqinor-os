@@ -3,7 +3,7 @@
    de composants : le fast-refresh ne s'y applique pas (même contrat que
    `router/moduleRoutes.jsx`). */
 import { lazy } from 'react'
-import { Wallet, ShieldAlert, CreditCard } from 'lucide-react'
+import { Wallet, ShieldAlert, CreditCard, Upload } from 'lucide-react'
 import { appGlyph } from '../../lib/apps/appGlyph'
 
 /* ============================================================================
@@ -29,9 +29,11 @@ const ExpositionCreditPage = lazy(() => import('./ExpositionCreditPage'))
 const DerogationsPage = lazy(() => import('./DerogationsPage'))
 const FicheCreditClientPage = lazy(() => import('./FicheCreditClientPage'))
 const ConditionsSegmentScreen = lazy(() => import('./ConditionsSegmentScreen'))
+const ImportLimitesCreditPage = lazy(() => import('./ImportLimitesCreditPage'))
 
 const IconWallet = <Wallet size={17} strokeWidth={1.75} aria-hidden="true" />
 const IconDerog = <ShieldAlert size={17} strokeWidth={1.75} aria-hidden="true" />
+const IconImport = <Upload size={17} strokeWidth={1.75} aria-hidden="true" />
 
 export default {
   key: 'credit',
@@ -47,10 +49,12 @@ export default {
     items: [
       { to: '/credit/exposition', label: 'Exposition', icon: IconWallet, roles: ROLES },
       { to: '/credit/derogations', label: 'Dérogations', icon: IconDerog, roles: ROLES },
+      { to: '/credit/import-limites', label: 'Import des limites', icon: IconImport, roles: ROLES },
     ],
   },
   // routes.meta : du plus spécifique au plus général.
   titles: [
+    ['/credit/import-limites', 'Import des limites de crédit'],
     ['/credit/exposition', 'Exposition crédit'],
     ['/credit/derogations', 'Dérogations crédit'],
     ['/credit/conditions', 'Conditions de paiement par segment'],
@@ -61,6 +65,7 @@ export default {
     { path: '/credit/exposition', component: ExpositionCreditPage, roles: ROLES },
     { path: '/credit/derogations', component: DerogationsPage, roles: ROLES },
     { path: '/credit/conditions', component: ConditionsSegmentScreen, roles: ROLES },
+    { path: '/credit/import-limites', component: ImportLimitesCreditPage, roles: ROLES },
     // Fiche crédit d'un client atteinte depuis l'exposition (sans URL tapée).
     { path: '/credit/clients/:id', component: FicheCreditClientPage, roles: ROLES },
   ],

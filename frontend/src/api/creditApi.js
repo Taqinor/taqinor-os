@@ -49,6 +49,18 @@ const creditApi = {
   deleteConditionSegment: (id) =>
     api.delete(`/credit/conditions-segment/${id}/`),
 
+  // PACT47/NTCRD39 — import en masse des limites (multipart). `apercu` ne fait
+  // RIEN écrire côté serveur ; `ecraser` est l'opt-in explicite (défaut sûr =
+  // remplissage seul). Les deux drapeaux partent en texte : le serveur ne
+  // retient qu'un true/1/oui explicite (`_bool_strict`).
+  importerLimites: (fichier, { apercu = false, ecraser = false } = {}) => {
+    const corps = new FormData()
+    corps.append('fichier', fichier)
+    corps.append('apercu', apercu ? 'true' : 'false')
+    corps.append('ecraser', ecraser ? 'true' : 'false')
+    return api.post('/credit/import-limites/', corps)
+  },
+
   // NTCRD9 — dérogations : demande + décision (approuver/rejeter).
   getDerogations: (params) => api.get('/credit/derogations/', { params }),
   createDerogation: (data) => api.post('/credit/derogations/', data),
