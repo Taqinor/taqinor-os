@@ -14,7 +14,7 @@ const listQueries = vi.fn()
 const createQuery = vi.fn()
 const removeQuery = vi.fn()
 const runAdhoc = vi.fn()
-const run = vi.fn()
+const executerSauvegardee = vi.fn()
 
 vi.mock('../../api/coreApi', () => ({
   default: {
@@ -24,7 +24,7 @@ vi.mock('../../api/coreApi', () => ({
       create: (...a) => createQuery(...a),
       remove: (...a) => removeQuery(...a),
       runAdhoc: (...a) => runAdhoc(...a),
-      run: (...a) => run(...a),
+      executerSauvegardee: (...a) => executerSauvegardee(...a),
     },
   },
 }))
@@ -52,7 +52,7 @@ beforeEach(() => {
   runAdhoc.mockResolvedValue({
     data: { rows: [{ statut: 'ouvert', count: 3 }, { statut: 'clos', count: 5 }] },
   })
-  run.mockResolvedValue({ data: { rows: [{ statut: 'ouvert', count: 3 }] } })
+  executerSauvegardee.mockResolvedValue({ data: { rows: [{ statut: 'ouvert', count: 3 }] } })
 })
 
 describe('ExplorateurDonneesPage (PACT122)', () => {
@@ -143,7 +143,7 @@ describe('ExplorateurDonneesPage (PACT122)', () => {
     monter()
     await screen.findByTestId('expl-sauvegardees')
     await user.click(screen.getByTestId('expl-run-12'))
-    await waitFor(() => expect(run).toHaveBeenCalledWith(12))
+    await waitFor(() => expect(executerSauvegardee).toHaveBeenCalledWith(12))
     expect(await screen.findByTestId('expl-resultat')).toBeTruthy()
   })
 

@@ -40,6 +40,20 @@ const fpaApi = {
   rejeterBudget: (params, motif) =>
     api.post(`${P}/lignes-budget-departement/rejeter/`, { motif }, { params }),
 
+  // ── Soumissions budgétaires par département (NTFPA5) ──
+  // PACT53 — le workflow de validation d'un budget de département (en saisie →
+  // soumis → validé/rejeté) et son fil de discussion existaient sans écran :
+  // aucune des 5 pages FP&A ne mentionnait « soumission ». Lecture seule côté
+  // ViewSet (les transitions passent par les actions `lignes-budget-
+  // departement/{soumettre,valider,rejeter}` ci-dessus) + chatter.
+  getSoumissions: (params) => api.get(`${P}/soumissions-budget/`, { params }),
+  getSoumissionHistorique: (id) =>
+    api.get(`${P}/soumissions-budget/${id}/historique/`),
+  // L'auteur et la société sont TOUJOURS posés côté serveur : le corps ne
+  // porte que le texte de la note.
+  noterSoumission: (id, body) =>
+    api.post(`${P}/soumissions-budget/${id}/noter/`, { body }),
+
   // ── Prévisions glissantes (NTFPA8/13) ──
   getPrevisions: (params) => api.get(`${P}/previsions-glissantes/`, { params }),
   getPrevision: (id) => api.get(`${P}/previsions-glissantes/${id}/`),

@@ -98,7 +98,11 @@ const coreApi = {
     // Exécution d'une spec NON sauvegardée (aperçu avant enregistrement).
     runAdhoc: (dataset, spec) =>
       api.post('/core/saved-queries/run/', { dataset, spec }),
-    run: (id) => api.post(`/core/saved-queries/${id}/run/`),
+    // `executerSauvegardee` et non `run` : `jobs.run` porte déjà ce nom dans
+    // ce client, et le contrat d'API versionné (`check_api_shapes.py`) indexe
+    // par NOM de fonction — deux `run` rendraient les deux entrées ambiguës et
+    // feraient DISPARAITRE le contrat de `jobs.run`.
+    executerSauvegardee: (id) => api.post(`/core/saved-queries/${id}/run/`),
   },
 
   // PACT118 — FG389 édition en masse GÉNÉRIQUE. Le moteur du socle

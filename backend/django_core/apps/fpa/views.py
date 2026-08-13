@@ -245,23 +245,23 @@ class SoumissionBudgetDepartementViewSet(TenantMixin, viewsets.ReadOnlyModelView
 
     @action(detail=True, methods=['get'], url_path='historique')
     def historique(self, request, pk=None):
-        from apps.records.serializers import ActivitySerializer
+        # PACT53 — ChatterActivitySerializer (ARC8/9) : ActivitySerializer n'expose NI `body` NI l'auteur (note vide/anonyme).
+        from apps.records.serializers import ChatterActivitySerializer
         from apps.records.services import chatter_qs
-
         soumission = self.get_object()
         qs = chatter_qs(soumission, company=request.user.company)
-        return Response(ActivitySerializer(qs, many=True).data)
+        return Response(ChatterActivitySerializer(qs, many=True).data)
 
     @action(detail=True, methods=['post'], url_path='noter')
     def noter(self, request, pk=None):
+        from apps.records.serializers import ChatterActivitySerializer
         from apps.records.services import log_note
 
         soumission = self.get_object()
         body = request.data.get('body', '')
         activite = log_note(
             soumission, request.user, body, company=request.user.company)
-        from apps.records.serializers import ActivitySerializer
-        return Response(ActivitySerializer(activite).data)
+        return Response(ChatterActivitySerializer(activite).data)
 
 
 class PrevisionGlissanteViewSet(CompanyScopedModelViewSet):

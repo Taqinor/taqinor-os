@@ -12,18 +12,18 @@ import { ThemeProvider } from '../../design/ThemeProvider.jsx'
 const getOffres = vi.fn()
 const createOffre = vi.fn()
 const deleteOffre = vi.fn()
-const appliquer = vi.fn()
+const appliquerOffreGroupee = vi.fn()
 const getProduits = vi.fn()
 const getDevis = vi.fn()
 const bulkTargets = vi.fn()
-const bulkAppliquer = vi.fn()
+const appliquer = vi.fn()
 
 vi.mock('../../api/cpqApi', () => ({
   default: {
     getOffresGroupees: (...a) => getOffres(...a),
     createOffreGroupee: (...a) => createOffre(...a),
     deleteOffreGroupee: (...a) => deleteOffre(...a),
-    appliquerOffreGroupee: (...a) => appliquer(...a),
+    appliquerOffreGroupee: (...a) => appliquerOffreGroupee(...a),
   },
 }))
 
@@ -41,7 +41,7 @@ vi.mock('../../api/coreApi', () => ({
   default: {
     bulkEdit: {
       targets: (...a) => bulkTargets(...a),
-      appliquer: (...a) => bulkAppliquer(...a),
+      appliquer: (...a) => appliquer(...a),
     },
   },
 }))
@@ -78,7 +78,7 @@ beforeEach(() => {
   getOffres.mockResolvedValue({ data: { results: OFFRES } })
   createOffre.mockResolvedValue({ data: { id: 5 } })
   deleteOffre.mockResolvedValue({ data: {} })
-  appliquer.mockResolvedValue({
+  appliquerOffreGroupee.mockResolvedValue({
     data: {
       detail: 'Offre « Pack 6 kWc » appliquée.',
       lignes_creees: [101, 102],
@@ -92,7 +92,7 @@ beforeEach(() => {
       { name: 'cpq.offre-groupee', label: 'Offres groupées', fields: ['actif'] },
     ],
   })
-  bulkAppliquer.mockResolvedValue({ data: { modifies: 1 } })
+  appliquer.mockResolvedValue({ data: { modifies: 1 } })
 })
 
 describe('OffresGroupeesPage (PACT127)', () => {
@@ -157,7 +157,7 @@ describe('OffresGroupeesPage (PACT127)', () => {
     await user.click(await screen.findByRole('option', { name: 'DEV-202608-0003' }))
     await user.click(screen.getByTestId('cpq-offre-appliquer-4'))
 
-    await waitFor(() => expect(appliquer).toHaveBeenCalledWith(4, '77'))
+    await waitFor(() => expect(appliquerOffreGroupee).toHaveBeenCalledWith(4, '77'))
   })
 
   it('affiche « Modifier en masse » et applique via le registre du socle (Done PACT118)', async () => {
@@ -172,7 +172,7 @@ describe('OffresGroupeesPage (PACT127)', () => {
     await user.click(screen.getByLabelText('Sélectionner Pack 6 kWc'))
     await user.click(screen.getByTestId('cpq-offre-masse-desactiver'))
 
-    await waitFor(() => expect(bulkAppliquer).toHaveBeenCalledWith(
+    await waitFor(() => expect(appliquer).toHaveBeenCalledWith(
       'cpq.offre-groupee', [4], { actif: false },
     ))
   })

@@ -194,7 +194,7 @@ export default function ExplorateurDonneesPage() {
     if (occupe) return
     setOccupe(true)
     try {
-      const res = await coreApi.savedQueries.run(requete.id)
+      const res = await coreApi.savedQueries.executerSauvegardee(requete.id)
       setLignes(Array.isArray(res?.data?.rows) ? res.data.rows : [])
     } catch (err) {
       toast.error(messageErreur(err, 'Exécution impossible.'))
