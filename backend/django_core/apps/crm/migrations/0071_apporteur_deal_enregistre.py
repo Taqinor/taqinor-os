@@ -18,8 +18,8 @@ class Migration(migrations.Migration):
         migrations.CreateModel(
             name='Apporteur',
             fields=[
-                ('id', models.AutoField(auto_created=True, primary_key=True,
-                                        serialize=False, verbose_name='ID')),
+                ('id', models.BigAutoField(auto_created=True, primary_key=True,
+                                           serialize=False, verbose_name='ID')),
                 ('nom', models.CharField(max_length=200, verbose_name='Nom')),
                 ('type_apporteur', models.CharField(choices=[
                     ('partenaire_installateur', 'Partenaire installateur'),
@@ -47,8 +47,8 @@ class Migration(migrations.Migration):
         migrations.CreateModel(
             name='DealEnregistre',
             fields=[
-                ('id', models.AutoField(auto_created=True, primary_key=True,
-                                        serialize=False, verbose_name='ID')),
+                ('id', models.BigAutoField(auto_created=True, primary_key=True,
+                                           serialize=False, verbose_name='ID')),
                 ('date_enregistrement', models.DateTimeField(auto_now_add=True)),
                 ('statut', models.CharField(choices=[
                     ('en_attente', 'En attente'), ('approuve', 'Approuvé'),
