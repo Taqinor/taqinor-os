@@ -2468,6 +2468,18 @@ class VuePersonnalisee(TenantModel):
         'Équipe', max_length=64, blank=True, default='',
         help_text="Identifiant d'équipe opaque — requis pour un partage "
                   "« equipe », ignoré sinon.")
+    # NTEXT17 — vue par DÉFAUT d'une liste. La portée du défaut se lit sur la
+    # ligne : ``owner`` seul = défaut PERSONNEL, ``role_tier`` renseigné =
+    # défaut du RÔLE, ni l'un ni l'autre = défaut SOCIÉTÉ. La résolution
+    # (perso > rôle > société) vit dans ``core.vues.resoudre_vue_defaut``.
+    est_defaut = models.BooleanField(
+        'Vue par défaut', default=False,
+        help_text='Vue chargée automatiquement à l\'ouverture de la liste, '
+                  'pour la portée de cette ligne.')
+    role_tier = models.CharField(
+        'Palier de rôle', max_length=40, blank=True, default='',
+        help_text="Palier de rôle visé par le défaut (« normal », "
+                  "« responsable », « admin »). Vide = défaut société.")
 
     class Meta:
         verbose_name = 'Vue personnalisée'
@@ -2476,6 +2488,8 @@ class VuePersonnalisee(TenantModel):
         indexes = [
             models.Index(fields=['company', 'cible', 'partage'],
                          name='core_vueperso_idx'),
+            models.Index(fields=['company', 'cible', 'est_defaut'],
+                         name='core_vueperso_defaut_idx'),
         ]
 
     def __str__(self):
