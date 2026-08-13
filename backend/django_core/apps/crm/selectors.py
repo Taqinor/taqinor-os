@@ -2391,3 +2391,80 @@ def pipeline_pondere_par_entite(company, entite_ids):
         entry['pipeline'] += _lead_forecast_value(lead) * _lead_win_weight(lead)
         entry['nb_leads'] += 1
     return out
+
+
+def _as_date(value):
+    """Normalise un DateField/DateTimeField en `date` pour comparaison sûre."""
+    if value is None:
+        return None
+    return value.date() if hasattr(value, 'date') else value
+
+
+def comptes_dormants(company, seuil_jours=90, now=None):
+    """NTCRM14 — Clients avec au moins un devis/facture passé mais AUCUNE
+    activité (dernier devis créé, dernière facture émise, dernier
+    `LeadActivity`, dernier `PointContact` sur un lead lié) depuis plus de
+    `seuil_jours`.
+
+    Réutilise `apps.ventes.selectors` via import function-local (frontière
+    cross-app respectée — jamais `apps.ventes.models`). Un client sans AUCUN
+    devis/facture n'est jamais considéré dormant (rien à réactiver). Renvoie
+    une liste de dicts `{'client', 'derniere_activite', 'jours_inactivite'}`
+    triée par inactivité décroissante. Lecture seule."""
+    from django.utils import timezone
+
+    from apps.ventes.selectors import (
+        devis_du_client_portail, factures_du_client_portail,
+    )
+
+    from .models import Client, Lead, LeadActivity, PointContact
+
+    if company is None:
+        return []
+    now = now or timezone.now()
+    today = now.date() if hasattr(now, 'date') else now
+
+    out = []
+    for client in Client.objects.filter(company=company):
+        devis_list = devis_du_client_portail(company, client.id, limit=1)
+        factures_list = factures_du_client_portail(company, client.id, limit=1)
+        if not devis_list and not factures_list:
+            continue  # jamais de devis/facture : hors périmètre de la dormance
+
+        dates = []
+        if devis_list:
+            dates.append(_as_date(devis_list[0]['date_creation']))
+        if factures_list:
+            dates.append(_as_date(factures_list[0]['date_emission']))
+
+        lead_ids = list(Lead.objects.filter(
+            company=company, client=client).values_list('id', flat=True))
+        if lead_ids:
+            last_activity = (
+                LeadActivity.objects
+                .filter(lead_id__in=lead_ids)
+                .order_by('-created_at')
+                .values_list('created_at', flat=True).first())
+            dates.append(_as_date(last_activity))
+            last_contact = (
+                PointContact.objects
+                .filter(lead_id__in=lead_ids)
+                .order_by('-date_contact')
+                .values_list('date_contact', flat=True).first())
+            dates.append(_as_date(last_contact))
+
+        dates = [d for d in dates if d is not None]
+        derniere = max(dates) if dates else None
+        jours = (today - derniere).days if derniere is not None else None
+        dormant = derniere is None or jours >= seuil_jours
+        if dormant:
+            out.append({
+                'client': client,
+                'derniere_activite': derniere,
+                'jours_inactivite': jours,
+            })
+
+    out.sort(
+        key=lambda r: (r['jours_inactivite'] is None, r['jours_inactivite'] or 0),
+        reverse=True)
+    return out

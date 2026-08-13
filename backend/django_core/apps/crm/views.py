@@ -450,6 +450,32 @@ class ClientViewSet(CompanyScopedModelViewSet):
 
         return Response({'segment': segment, 'count': len(result), 'results': result})
 
+    @action(detail=False, methods=['get'], url_path='dormants',
+            permission_classes=[IsAnyRole])
+    def dormants(self, request):
+        """NTCRM14 — Comptes dormants : au moins un devis/facture passé mais
+        aucune activité (devis/facture/LeadActivity/PointContact) depuis
+        `?seuil=` jours (défaut 90). Distinct de `segments?segment=dormants`
+        (seuil fixe 18 mois, sans LeadActivity/PointContact) — celui-ci
+        alimente aussi la commande de notification `detecter_comptes_dormants`.
+        """
+        from .selectors import comptes_dormants
+        try:
+            seuil = int(request.query_params.get('seuil', 90))
+        except (TypeError, ValueError):
+            seuil = 90
+        company = request.user.company if request.user.company_id else None
+        entries = comptes_dormants(company, seuil_jours=seuil)
+        results = [{
+            'id': e['client'].id,
+            'nom': str(e['client']),
+            'derniere_activite': (
+                e['derniere_activite'].isoformat()
+                if e['derniere_activite'] else None),
+            'jours_inactivite': e['jours_inactivite'],
+        } for e in entries]
+        return Response({'seuil': seuil, 'count': len(results), 'results': results})
+
 
 class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
     """Leads + historique « chatter » (journal automatique + notes manuelles).

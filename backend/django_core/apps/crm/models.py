@@ -189,6 +189,16 @@ class Client(models.Model):
         help_text="Si activé, empêche l'acceptation/facturation sans override "
                   "responsable/admin.")
 
+    # NTCRM14 — anti-spam : horodatage de la dernière notification "compte
+    # dormant" envoyée au commercial propriétaire pour ce client. NULL = pas
+    # encore alerté. Posé par la commande `detecter_comptes_dormants` (une
+    # seule alerte par franchissement de seuil, jamais répétée en boucle).
+    derniere_alerte_dormance = models.DateTimeField(
+        null=True, blank=True,
+        verbose_name='Dernière alerte de dormance',
+        help_text="Date de la dernière notification 'compte dormant' envoyée "
+                  "pour ce client. Vide = jamais alerté.")
+
     class Meta:
         verbose_name = "Client"
         verbose_name_plural = "Clients"
