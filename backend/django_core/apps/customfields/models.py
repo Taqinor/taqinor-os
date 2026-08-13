@@ -78,6 +78,12 @@ class CustomFieldDef(models.Model):
     # `_FORBIDDEN_PROMPT_PLACEHOLDERS` dans services.py). Ignoré pour tout
     # autre type.
     ia_prompt = models.TextField(blank=True, default='')
+    # NTEXT38 — VERROU anti-casse : un champ posé par une install de package
+    # (ou marqué par l'admin) ne peut être ni supprimé ni renommé par l'API
+    # tant qu'il n'a pas été explicitement déverrouillé (action admin dédiée,
+    # auditée). Le verrou ne bloque QUE la structure : la saisie de valeurs
+    # dans `custom_data` reste totalement libre.
+    verrouille = models.BooleanField('Verrouillé', default=False)
 
     class Meta:
         ordering = ['module', 'ordre', 'libelle']
@@ -107,6 +113,10 @@ class CustomObjectDef(models.Model):
     libelle = models.CharField(max_length=120)
     icone = models.CharField(max_length=8, blank=True, default='')
     actif = models.BooleanField(default=True)
+    # NTEXT38 — VERROU anti-casse (cf. ``CustomFieldDef.verrouille``) : un objet
+    # verrouillé ne peut être ni supprimé ni renommé tant qu'il n'est pas
+    # déverrouillé. Les ENREGISTREMENTS de l'objet restent librement éditables.
+    verrouille = models.BooleanField('Verrouillé', default=False)
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
         null=True, blank=True, related_name='custom_objects_crees')
