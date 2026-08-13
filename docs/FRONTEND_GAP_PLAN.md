@@ -219,12 +219,12 @@ a focused test, calling the EXISTING backend endpoint.
 - [x] (déjà présent) FE-ZSAL1/XSAL17 — suggested follow-up activity prompt in `MesActivitesPage.jsx` + `{lien_rdv}` placeholder in template editor. (@lane: frontend/crm)
 
 ## Lane `frontend/reporting` (systemic offender — many [x] reports backend-only)
-- [ ] FE-XPLT6 — "Alertes KPI" CRUD under parametres (`reporting/kpi-alertes/`). (@lane: frontend/reporting)
-- [ ] FE-XPLT10 — dashboard share/revoke UI + `/dashboards-tv` public kiosk route (`core/dashboards-partages`). (@lane: frontend/reporting)
-- [ ] FE-XPLT22 — `ClasseurPage.jsx` (live-data spreadsheet) + `reportingApi.js` client. (@lane: frontend/reporting)
-- [ ] FE-XPLT9 — mount the already-built-but-unused `DashboardFilterBar.jsx` in `DashboardConfigPage.jsx`. (@lane: frontend/reporting)
+- [x] (déjà présent) FE-XPLT6 — "Alertes KPI" CRUD under parametres (`reporting/kpi-alertes/`). (@lane: frontend/reporting)
+- [x] (déjà présent) FE-XPLT10 — dashboard share/revoke UI + `/dashboards-tv` public kiosk route (`core/dashboards-partages`). (@lane: frontend/reporting)
+- [x] (déjà présent) FE-XPLT22 — `ClasseurPage.jsx` (live-data spreadsheet) + `reportingApi.js` client. (@lane: frontend/reporting)
+- [x] (déjà présent) FE-XPLT9 — mount the already-built-but-unused `DashboardFilterBar.jsx` in `DashboardConfigPage.jsx`. (@lane: frontend/reporting)
 - [ ] FE-XPLT11 — **BLOCKED: needs pivot/BI-explorer screen (FG382, itself unbuilt frontend)** then expose the formula measure. (@lane: frontend/reporting)
-- [ ] FE-XSAV8/XFSM16-17 — SAV SLA report + field-service analytics + technician scorecard pages under `pages/reporting/`. (@lane: frontend/reporting)
+- [x] (déjà présent) FE-XSAV8/XFSM16-17 — SAV SLA report + field-service analytics + technician scorecard pages under `pages/reporting/`. (@lane: frontend/reporting)
 
 ## Lane `frontend/platform` (agent / dataimport / audit / privacy)
 - [ ] FE-XPLT18 — propose→confirm "Générer une règle" UI in `AutomatisationsSection.jsx` (`agent/actions/automation-draft`). (@lane: frontend/platform)
@@ -250,6 +250,7 @@ a focused test, calling the EXISTING backend endpoint.
   `{lien_rdv}` documenté dans `MessageTemplatesCrmSection.jsx` et résolu côté serveur via
   `PublicBookingPage.jsx`). Aucun code écrit, pas de commit de fonctionnalité (seule mise à jour de
   ce fichier).
+- 2026-08-13 (lane frontend/reporting) — les 5 tâches actionnables taguées `@lane: frontend/reporting` étaient DÉJÀ construites et câblées bout-en-bout (endpoint backend + client `reportingApi.js`/`coreApi.js` + page + route `module.config.jsx` + entrée de nav) : FE-XPLT6 (`KpiAlertesPage.jsx` sous `/parametres/alertes-kpi`), FE-XPLT10 (`DashboardSharePage.jsx` + `DashboardsTvPage.jsx` sous `/dashboards-tv`), FE-XPLT22 (`ClasseursListPage.jsx`/`ClasseurPage.jsx` sous `/reporting/classeurs`), FE-XPLT9 (`DashboardFilterBar` déjà montée dans `DashboardConfigPage.jsx`), FE-XSAV8/XFSM16-17 (`SavSlaPage.jsx`/`FieldServiceReportPage.jsx`/`TechnicienScorecardPage.jsx`). Aucun code écrit, seule mise à jour de ce fichier. FE-XPLT11 reste `[BLOCKED]` (dépendance FG382 non construite), inchangé.
 - 2026-08-13 — lane `frontend/contrats` drained: FE-CONTRAT16-17/13-14/12/23-25/7/15/33, FE-XCTR7-8-11, FE-XCTR5, FE-XCTR14, FE-CONTRAT-config already fully built (ContratDetail.jsx tabs+actions, ModelesPage.jsx instancier, DashboardPage.jsx, PortailContratsPage.jsx, ConfigLocationPage.jsx) — ticked `(déjà présent)`, no code change. FE-XCTR2-3: added "Équipements couverts" + "X/Y visites" columns to `ContratsMaintenance.jsx` (data was already serialized server-side, just unrendered). FE-XCTR17-21: `LocationPage.jsx` had caution/inspection/bons PDF already; added the missing disponibilité (reservation-window) warning in the create dialog and an admin-only "Utilisation & ROI" card, both using contratsApi calls that existed but were never invoked from the UI.
 - 2026-08-13 (lane frontend/sav) — les 12 tâches taguées `@lane: frontend/sav` étaient DÉJÀ construites et câblées (savApi.js + pages/sav/*.jsx + router public /e/:token /suivi/:token) : FE-XSAV19/XSAV10, FE-XSAV3/XFSM1/XCTR4, FE-SAV-warranty, FE-XSAV15-17/XSAV9, FE-XSAV8, FE-XSAV12/27/ZSAV8-9, FE-ZSAV2-3-6, FE-SAV-kb/macros, FE-SAV-alarmes, FE-XSAV14/ZMFG6/11, FE-XSAV5/21/28, FE-ZMFG1-2/4/5-12. Aucun code écrit, pas de commit de fonctionnalité (seule mise à jour de ce fichier).
 - 2026-08-13 — Lane `frontend/compta` drainée (agent-acf554ffb8d774ac6). Vérifiées déjà construites
