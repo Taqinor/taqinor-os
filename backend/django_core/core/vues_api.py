@@ -9,10 +9,22 @@ vues d'équipe des équipes dont l'utilisateur est membre.
 métier : ``cible`` reste une chaîne.
 """
 from rest_framework import serializers
+from rest_framework.response import Response
+
+from authentication.role_tiers import (
+    ROLE_ADMIN, ROLE_NORMAL, ROLE_RESPONSABLE,
+)
 
 from .models import VuePersonnalisee
 from .viewsets import CompanyScopedModelViewSet
-from .vues import filtre_visibilite
+from .vues import (
+    demarquer_defauts_concurrents, filtre_visibilite, resoudre_vue_defaut,
+)
+
+
+#: NTEXT17 — paliers de rôle acceptés pour un défaut de rôle. Source unique de
+#: vérité : ``authentication.role_tiers`` (module PUR, aucun modèle importé).
+TIERS_VALIDES = frozenset({ROLE_ADMIN, ROLE_NORMAL, ROLE_RESPONSABLE})
 
 
 class VuePersonnaliseeSerializer(serializers.ModelSerializer):
@@ -25,7 +37,8 @@ class VuePersonnaliseeSerializer(serializers.ModelSerializer):
         model = VuePersonnalisee
         # company + owner sont posés CÔTÉ SERVEUR — jamais lus du corps.
         fields = ['id', 'cible', 'nom', 'config', 'partage', 'partage_label',
-                  'equipe', 'owner_username', 'created_at', 'updated_at']
+                  'equipe', 'est_defaut', 'role_tier', 'owner_username',
+                  'created_at', 'updated_at']
         read_only_fields = ['id', 'partage_label', 'owner_username',
                             'created_at', 'updated_at']
 
@@ -39,6 +52,13 @@ class VuePersonnaliseeSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 {'equipe': "Une vue partagée à l'équipe doit désigner une "
                            "équipe."})
+        # NTEXT17 — un défaut de RÔLE doit désigner un palier connu.
+        role_tier = (attrs.get(
+            'role_tier', getattr(instance, 'role_tier', '')) or '').strip()
+        if role_tier and role_tier not in TIERS_VALIDES:
+            raise serializers.ValidationError(
+                {'role_tier': 'Palier de rôle inconnu : '
+                              f'{", ".join(sorted(TIERS_VALIDES))}.'})
         return attrs
 
 
@@ -55,7 +75,39 @@ class VuePersonnaliseeViewSet(CompanyScopedModelViewSet):
             qs = qs.filter(cible=cible)
         return qs
 
+    def list(self, request, *args, **kwargs):
+        """NTEXT17 — ``?cible=<x>&defaut=1`` résout LA vue par défaut.
+
+        Réponse littérale ``{'vue': <objet ou null>}`` (jamais une liste) : la
+        liste appelante n'a qu'UNE vue à charger à l'ouverture. Sans ``defaut``,
+        le comportement de liste historique est strictement inchangé.
+        """
+        if not _vrai(request.query_params.get('defaut')):
+            return super().list(request, *args, **kwargs)
+        cible = (request.query_params.get('cible') or '').strip()
+        if not cible:
+            return Response(
+                {'detail': 'Le paramètre « cible » est requis pour résoudre '
+                           'la vue par défaut.'},
+                status=400)
+        # get_queryset applique déjà société + visibilité + filtre cible.
+        vue = resoudre_vue_defaut(self.get_queryset(), request.user, cible)
+        return Response({
+            'vue': self.get_serializer(vue).data if vue is not None else None,
+        })
+
     def perform_create(self, serializer):
         # company forcée côté serveur (socle) ; owner = utilisateur courant.
-        serializer.save(company=self.request.user.company,
-                        owner=self.request.user)
+        vue = serializer.save(company=self.request.user.company,
+                              owner=self.request.user)
+        demarquer_defauts_concurrents(vue)
+
+    def perform_update(self, serializer):
+        vue = serializer.save()
+        demarquer_defauts_concurrents(vue)
+
+
+def _vrai(valeur):
+    """Le paramètre de requête vaut-il « vrai » ? (1/true/oui/on)"""
+    return str(valeur or '').strip().lower() in ('1', 'true', 'vrai', 'oui',
+                                                 'on')
