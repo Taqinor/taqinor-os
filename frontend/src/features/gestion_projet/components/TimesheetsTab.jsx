@@ -20,7 +20,7 @@ function todayISO(offset = 0) {
   return d.toISOString().slice(0, 10)
 }
 
-export default function TimesheetsTab({ timesheets, onChanged }) {
+export default function TimesheetsTab({ timesheets, onChanged, ressources = [] }) {
   const [busyId, setBusyId] = useState(null)
   const [debut, setDebut] = useState(todayISO(-30))
   const [fin, setFin] = useState(todayISO())
@@ -29,6 +29,12 @@ export default function TimesheetsTab({ timesheets, onChanged }) {
   const [rapprochement, setRapprochement] = useState(null)
   const [rapport, setRapport] = useState(null)
   const [loadingRapports, setLoadingRapports] = useState(false)
+  // XPRJ7-8/ZPRJ5-6 — Écart heures attendues vs saisies, PAR ressource (choisie
+  // dans le sélecteur ci-dessous ; distinct de « Manquants » qui agrège toute
+  // l'équipe et ne regarde que les jours SANS AUCUNE saisie).
+  const [ressourceSel, setRessourceSel] = useState('')
+  const [heuresAttendues, setHeuresAttendues] = useState(null)
+  const [loadingHeuresAttendues, setLoadingHeuresAttendues] = useState(false)
 
   const soumettre = async (t) => {
     setBusyId(t.id)
@@ -95,6 +101,26 @@ export default function TimesheetsTab({ timesheets, onChanged }) {
     return () => { alive = false }
   }, [loadRapports])
 
+  const loadHeuresAttendues = useCallback(async () => {
+    if (!ressourceSel || !debut || !fin) { setHeuresAttendues(null); return }
+    setLoadingHeuresAttendues(true)
+    try {
+      const res = await gestionProjetApi.getHeuresAttendues({ ressource: ressourceSel, debut, fin })
+      setHeuresAttendues(res.data)
+    } catch (err) {
+      setHeuresAttendues(null)
+      toast.error(errMessage(err, "Le calcul de l'écart heures attendues est impossible."))
+    } finally {
+      setLoadingHeuresAttendues(false)
+    }
+  }, [ressourceSel, debut, fin])
+
+  useEffect(() => {
+    let alive = true
+    ;(async () => { if (alive) await loadHeuresAttendues() })()
+    return () => { alive = false }
+  }, [loadHeuresAttendues])
+
   const classementLignes = useMemo(
     () => classement?.lignes ?? classement?.classement ?? [],
     [classement],
@@ -146,6 +172,7 @@ export default function TimesheetsTab({ timesheets, onChanged }) {
           <Tabs defaultValue="manquants">
             <TabsList className="flex-wrap">
               <TabsTrigger value="manquants">Manquants</TabsTrigger>
+              <TabsTrigger value="heures-attendues">Heures attendues</TabsTrigger>
               <TabsTrigger value="classement">Classement</TabsTrigger>
               <TabsTrigger value="rapprochement">Rapprochement RH</TabsTrigger>
               <TabsTrigger value="rapport">Rapport</TabsTrigger>
@@ -166,6 +193,54 @@ export default function TimesheetsTab({ timesheets, onChanged }) {
                   emptyTitle="Aucune donnée"
                 />
               ) : <EmptyState title="Aucune donnée" description="Aucune donnée de temps manquant sur cette période." />}
+            </TabsContent>
+
+            <TabsContent value="heures-attendues">
+              <div className="mb-3 flex flex-wrap items-end gap-3">
+                <div className="flex flex-col gap-1">
+                  <Label htmlFor="ts-heures-attendues-ressource">Ressource</Label>
+                  <select
+                    id="ts-heures-attendues-ressource"
+                    className="h-9 rounded-md border border-input bg-background px-3 text-sm shadow-sm"
+                    value={ressourceSel}
+                    onChange={(e) => setRessourceSel(e.target.value)}
+                    aria-label="Choisir une ressource"
+                  >
+                    <option value="">Choisir une ressource…</option>
+                    {ressources.map((r) => <option key={r.id} value={r.id}>{r.nom}</option>)}
+                  </select>
+                </div>
+              </div>
+              {!ressourceSel ? (
+                <EmptyState title="Aucune ressource choisie" description="Choisissez une ressource pour voir son écart heures attendues / saisies." />
+              ) : loadingHeuresAttendues ? (
+                <div className="flex justify-center p-6"><Spinner /></div>
+              ) : heuresAttendues && (heuresAttendues.par_jour ?? []).length ? (
+                <>
+                  <div className="mb-3 flex flex-wrap gap-4 text-sm">
+                    <span>Jours attendus : <strong>{heuresAttendues.jours_attendus}</strong></span>
+                    <span>Total attendu : <strong>{formatNumber(heuresAttendues.total_attendu)} h</strong></span>
+                    <span>Total saisi : <strong>{formatNumber(heuresAttendues.total_saisi)} h</strong></span>
+                    <span>Écart cumulé :
+                      <Badge className="ml-1" tone={heuresAttendues.ecart_cumule < 0 ? 'warning' : 'success'}>
+                        {formatNumber(heuresAttendues.ecart_cumule)} h
+                      </Badge>
+                    </span>
+                  </div>
+                  <DataTable
+                    data={heuresAttendues.par_jour}
+                    getRowId={(l) => l.date}
+                    searchable={false}
+                    columns={[
+                      { id: 'date', header: 'Date', accessor: (l) => l.date, cell: (v) => formatDate(v) },
+                      { id: 'attendu', header: 'Attendu', align: 'right', numeric: true, accessor: (l) => Number(l.attendu ?? 0), cell: (v) => formatNumber(v) },
+                      { id: 'saisi', header: 'Saisi', align: 'right', numeric: true, accessor: (l) => Number(l.saisi ?? 0), cell: (v) => formatNumber(v) },
+                      { id: 'ecart', header: 'Écart', align: 'right', numeric: true, accessor: (l) => Number(l.ecart ?? 0), cell: (v) => <Badge tone={v < 0 ? 'warning' : 'success'}>{formatNumber(v)}</Badge> },
+                    ]}
+                    emptyTitle="Aucune donnée"
+                  />
+                </>
+              ) : <EmptyState title="Aucune donnée" description="Aucun jour ouvré attendu sur cette période pour cette ressource." />}
             </TabsContent>
 
             <TabsContent value="classement">

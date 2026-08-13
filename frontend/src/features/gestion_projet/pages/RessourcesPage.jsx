@@ -339,7 +339,7 @@ export default function RessourcesPage() {
         </TabsContent>
 
         <TabsContent value="timesheets">
-          <TimesheetsTab timesheets={timesheets} onChanged={load} />
+          <TimesheetsTab timesheets={timesheets} onChanged={load} ressources={ressources} />
         </TabsContent>
       </Tabs>
 

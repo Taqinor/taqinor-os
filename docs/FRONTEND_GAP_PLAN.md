@@ -105,15 +105,15 @@ a focused test, calling the EXISTING backend endpoint.
 - [x] FE-CONTRAT-config — PlanRecurrent / MotifResiliation / ParametresLocation CRUD screens. (@lane: frontend/contrats) (déjà présent)
 
 ## Lane `frontend/gestion_projet` (XPRJ/ZPRJ round-2 backend-only)
-- [ ] FE-XPRJ4 — "Situations" tab (BTP progress billing) in `ProjetDetailPage.jsx`; add `situations`/`lignes-situation`. (@lane: frontend/gestion_projet)
-- [ ] FE-XPRJ5 — task chrono start/stop buttons + active indicator (`demarrer-chrono`/`arreter-chrono`). (@lane: frontend/gestion_projet)
-- [ ] FE-XPRJ7-8/ZPRJ5-6 — timesheet approval workflow + manquants/heures-attendues/classement/rapprochement/rapport in `RessourcesPage.jsx`. (@lane: frontend/gestion_projet)
-- [ ] FE-XPRJ10-12 — Tâches CRUD screen (filters assigné/priorité/statut) + kanban + "Mes tâches" page/route. (@lane: frontend/gestion_projet)
-- [ ] FE-PROJ11 — drag-to-reschedule in `GanttChart.jsx` (`reprogrammer`). (@lane: frontend/gestion_projet)
-- [ ] FE-XPRJ14-17 — checklist toggle, RAG/point-avancement, ETC/EAC in `BudgetPage.jsx`, burndown chart. (@lane: frontend/gestion_projet)
-- [ ] FE-ZPRJ1-4 — réglages temps + publier/copier-semaine/auto-affecter buttons in `PlanningPage.jsx`. (@lane: frontend/gestion_projet)
-- [ ] FE-ZPRJ7-9/ZPRJ8 — CSAT evaluation link, status-report PDF button, risk heatmap in `RisquesPage.jsx`. (@lane: frontend/gestion_projet)
-- [ ] FE-XPRJ21/29/27 — "Créer projet depuis devis" button on devis list, AI plan propose→confirm, marché-public fields + pénalités. (@lane: frontend/gestion_projet)
+- [x] FE-XPRJ4 — "Situations" tab (BTP progress billing) in `ProjetDetailPage.jsx`; add `situations`/`lignes-situation`. (@lane: frontend/gestion_projet) (déjà présent)
+- [x] FE-XPRJ5 — task chrono start/stop buttons + active indicator (`demarrer-chrono`/`arreter-chrono`). (@lane: frontend/gestion_projet) (déjà présent)
+- [x] FE-XPRJ7-8/ZPRJ5-6 — timesheet approval workflow + manquants/heures-attendues/classement/rapprochement/rapport in `RessourcesPage.jsx`. (@lane: frontend/gestion_projet)
+- [x] FE-XPRJ10-12 — Tâches CRUD screen (filters assigné/priorité/statut) + kanban + "Mes tâches" page/route. (@lane: frontend/gestion_projet) (déjà présent)
+- [x] FE-PROJ11 — drag-to-reschedule in `GanttChart.jsx` (`reprogrammer`). (@lane: frontend/gestion_projet) (déjà présent)
+- [x] FE-XPRJ14-17 — checklist toggle, RAG/point-avancement, ETC/EAC in `BudgetPage.jsx`, burndown chart. (@lane: frontend/gestion_projet) (déjà présent)
+- [x] FE-ZPRJ1-4 — réglages temps + publier/copier-semaine/auto-affecter buttons in `PlanningPage.jsx`. (@lane: frontend/gestion_projet) (déjà présent, écran = `RessourcesPage.jsx`)
+- [x] FE-ZPRJ7-9/ZPRJ8 — CSAT evaluation link, status-report PDF button, risk heatmap in `RisquesPage.jsx`. (@lane: frontend/gestion_projet) (déjà présent)
+- [x] FE-XPRJ21/29/27 — "Créer projet depuis devis" button on devis list, AI plan propose→confirm, marché-public fields + pénalités. (@lane: frontend/gestion_projet) (déjà présent)
 
 ## Lane `frontend/paie` (XPAI/ZPAI/YHIRE round-2 backend-only)
 - [x] FE-XPAI1-2 — **CRITICAL** Solde de tout compte (STC) action/screen from the sortie flow; add `stc`/`stcPdf`. (@lane: frontend/paie) (déjà présent)
@@ -275,3 +275,15 @@ a focused test, calling the EXISTING backend endpoint.
   `[x] (déjà présent)`, aucun changement de code.
 - 2026-08-13 — lane frontend/stock: audit du code, aucun écart trouvé — les 7 tâches (FE-XPUR25, FE-ZPUR1/4/6/11, FE-ZPUR3/8, FE-ZPUR10/ZSTK3, FE-ZSTK7, FE-ZSTK6/12, FE-ZPUR9) étaient déjà entièrement câblées (stockApi.js + composants stock/paramètres) ; marquées `[x] (déjà présent)`, aucun fichier de code touché.
 - 2026-08-13 — lane `frontend/ged` drained (12 tasks). Already fully wired on audit (no change needed): FE-XGED1 (public /ged/signature/:token + /ged/signataire/:token routes), FE-XGED7 (public /ged/depot/:token page), FE-XGED2-3 (multi-signataires + champs de signature in ApprobationPage.jsx), FE-GED26 (CorbeillePage.jsx), FE-GED16 (check-out/check-in in GedNavigator.jsx), FE-XGED14 (bulk toolbar/operations-lot), FE-XGED19-23 (ReglesDossierPage/ReglesAclPage/effective-access panel/RetentionPage Dispositions tab). Built: FE-GED14/XGED16/XGED24 (bouton "Caviarder…" + zones de rédaction dans la modale d'aperçu GED14), FE-XGED15 (onglet "Notes" chatter générique/@mentions dans GedDocumentInsights.jsx, timeline déjà présente), FE-XGED8/10/13/17 (scinder/fusionner/comparer les versions — checklist+OCR déjà couverts par ChecklistPage.jsx), FE-XGED26-27/ZGED3 (onglets "Tableau de bord" kanban + "Analytique" dans ApprobationPage.jsx — envoi en masse déjà présent), FE-ZGED7-13 (favoris/récents + vues enregistrées dans GedSearch.jsx). eslint + vitest + vite build verts sur tous les fichiers touchés.
+- 2026-08-13 — Lane `frontend/gestion_projet` drainée : FE-XPRJ4, FE-XPRJ5, FE-XPRJ10-12,
+  FE-PROJ11, FE-XPRJ14-17, FE-ZPRJ1-4, FE-ZPRJ7-9/ZPRJ8, FE-XPRJ21/29/27 étaient déjà entièrement
+  câblés (Situations tab, ChronoWidget, TachesPage/kanban/Mes tâches, drag-to-reschedule Gantt,
+  checklist/RAG/ETC-EAC/burndown, réglages-temps+publier/copier-semaine/auto-affecter — construits
+  dans `RessourcesPage.jsx` plutôt que `PlanningPage.jsx` comme le nommait la tâche, fonctionnellement
+  correct puisque les affectations vivent avec les ressources —, CSAT/PDF/heatmap risques, création
+  projet depuis devis + plan IA + champs marché public/pénalités) : `[x] (déjà présent)`.
+  FE-XPRJ7-8/ZPRJ5-6 avait un écart réel : `gestionProjetApi.getHeuresAttendues` (ZPRJ5, écart
+  heures attendues vs saisies PAR ressource) n'était appelé par aucun composant — ajouté un onglet
+  « Heures attendues » (sélecteur de ressource) dans `TimesheetsTab.jsx`, `ressources` transmis
+  depuis `RessourcesPage.jsx`, test vitest ajouté. Gates : eslint / vitest (45 tests) / vite build
+  verts.
