@@ -93,6 +93,7 @@ import re
 from pathlib import Path
 
 import check_api_contract as contract
+import check_choices_declares as declares
 from check_api_contract import (HOLE, ROOT, FRONT_SRC, RouteTrie, scan_js,
                                 resolve_template, normalise_call)
 
@@ -1113,13 +1114,217 @@ def mocks_litteraux_sous_contrat(shapes, racine: Path = None):
 
 
 # ===========================================================================
+# 3 quinquies. PACT177 — LES RESSOURCES SERVIES PAR UN SERIALISEUR
+# ===========================================================================
+#
+# LE CONSTAT CHIFFRE. `check_api_contract.py --stats` resout ~3 300 appels vers
+# ~2 200 endpoints distincts ; le contrat de forme ci-dessus n'en fige que ceux
+# qui renvoient un DICTIONNAIRE LITTERAL. Toute ressource servie par un
+# serialiseur DRF (`EngineAction`, `DemandeRH`, `QhseChatterEntry`,
+# `AssumptionNode` — les 9 defauts de cette mesure) en etait absente, alors que
+# sa forme est parfaitement connaissable statiquement : `serializer_class` ->
+# `Meta.fields` -> modele.
+#
+# C'EST LA QUE VIT LE VOCABULAIRE. Un champ a `choices` (`kind`, `status`) est
+# exactement ce qu'un ecran invente le plus facilement : `type` au lieu de
+# `kind`, `statut` au lieu de `status`. Le contrat versionne porte donc, pour
+# chaque champ a choix, SES VALEURS — un changement de vocabulaire serveur
+# apparait dans le diff de la PR.
+#
+# ANTI-FAUX-POSITIF, INCHANGE. Une vue dont le serialiseur n'est pas resoluble
+# STATIQUEMENT reste absente du contrat : `get_serializer_class` dynamique,
+# `fields = '__all__'`, `exclude = …`, serialiseur introuvable. Et le controle
+# de mocks ignore les enveloppes de PAGINATION (`{count, next, previous,
+# results}`) : mocker la liste paginee n'est pas inventer un champ.
+
+# Enveloppe de pagination DRF : un mock qui la porte ne decrit pas la ressource.
+ENVELOPPE_PAGINATION = frozenset({"count", "next", "previous", "results"})
+
+# UN NOM DE VERBE CRUD NE DESIGNE PAS UNE RESSOURCE — mesure de PACT177.
+# Le lien mock -> contrat passe par le NOM de la fonction mockee
+# (`X.get.mockResolvedValue(…)` donne `get`). Sur les agregats ce nom est
+# distinctif (`tableauMarches`, `getRecrutementStatistiques`) ; sur les 984
+# ressources CRUD il ne l'est plus du tout : `aoApi` expose un `get:` par
+# ressource, et le premier mesure a produit 40 constats dont la TOTALITE
+# venait d'un `get` apparie a la mauvaise ressource — exactement
+# l'appariement par NOM que l'en-tete de ce fichier proscrit (moins de 10 % de
+# precision). Ces noms sont donc exclus : sous-detecter est le comportement
+# voulu.
+NOMS_TROP_GENERIQUES = frozenset({
+    "get", "list", "all", "one", "detail", "read", "show", "load", "fetch",
+    "create", "add", "new", "update", "patch", "edit", "save", "put", "post",
+    "remove", "delete", "destroy", "del", "search", "query", "count",
+})
+
+
+class SerializerReader:
+    """`route -> (serialiseur, [champs exposes], {champ: {valeurs de choix}})`."""
+
+    def __init__(self, backend: contract.BackendRoutes):
+        self.backend = backend
+        self._cache: dict[tuple, tuple | None] = {}
+
+    def _attribut_de_classe(self, module: str, classe: str, nom: str, profondeur=0):
+        """Valeur AST de `classe.nom`, en remontant les bases. None si absent."""
+        if profondeur > MAX_DEPTH:
+            return None
+        resolu = self.backend._resolve_class(classe, module)
+        if resolu is None:
+            return None
+        proprietaire, noeud = resolu
+        for item in noeud.body:
+            if isinstance(item, ast.Assign) and len(item.targets) == 1 \
+                    and isinstance(item.targets[0], ast.Name) \
+                    and item.targets[0].id == nom:
+                return (proprietaire, item.value)
+        for base in noeud.bases:
+            if isinstance(base, ast.Name):
+                trouve = self._attribut_de_classe(proprietaire, base.id, nom,
+                                                  profondeur + 1)
+                if trouve is not None:
+                    return trouve
+        return None
+
+    def _declare_une_methode(self, module: str, classe: str, methode: str,
+                             profondeur=0) -> bool:
+        if profondeur > MAX_DEPTH:
+            return False
+        resolu = self.backend._resolve_class(classe, module)
+        if resolu is None:
+            return False
+        proprietaire, noeud = resolu
+        for item in noeud.body:
+            if isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef)) \
+                    and item.name == methode:
+                return True
+        return any(
+            isinstance(base, ast.Name)
+            and self._declare_une_methode(proprietaire, base.id, methode,
+                                          profondeur + 1)
+            for base in noeud.bases)
+
+    def contrat_de_route(self, route: tuple):
+        """(serialiseur, champs, choix) ou None si la forme n'est pas certaine."""
+        if route in self._cache:
+            return self._cache[route]
+        self._cache[route] = None
+        vue = self.backend.views.get(route)
+        if not vue:
+            return None
+        module, reference = vue
+        if not reference or reference[0] != "viewset":
+            return None
+        viewset = reference[1]
+        if self._declare_une_methode(module, viewset, "get_serializer_class"):
+            return None            # source dynamique : jamais dans le contrat
+        # Un ViewSet qui ECRIT `list()`/`retrieve()` renvoie ce qu'il veut : sa
+        # forme est l'affaire du lecteur de dictionnaires (PACT175), pas d'un
+        # serialiseur.
+        if self._declare_une_methode(module, viewset, "list") \
+                or self._declare_une_methode(module, viewset, "retrieve"):
+            return None
+        attribut = self._attribut_de_classe(module, viewset, "serializer_class")
+        if attribut is None or not isinstance(attribut[1], ast.Name):
+            return None
+        proprietaire, noeud_serialiseur = attribut[0], attribut[1]
+        resultat = self._contrat_de_serialiseur(proprietaire, noeud_serialiseur.id)
+        self._cache[route] = resultat
+        return resultat
+
+    def _contrat_de_serialiseur(self, module: str, nom: str):
+        resolu = self.backend._resolve_class(nom, module)
+        if resolu is None:
+            return None
+        proprietaire, noeud = resolu
+        meta = next((item for item in noeud.body
+                     if isinstance(item, ast.ClassDef) and item.name == "Meta"), None)
+        if meta is None:
+            return None
+        champs, modele = None, None
+        for item in meta.body:
+            if not isinstance(item, ast.Assign) or len(item.targets) != 1 \
+                    or not isinstance(item.targets[0], ast.Name):
+                continue
+            cible = item.targets[0].id
+            if cible == "fields":
+                if isinstance(item.value, (ast.List, ast.Tuple)):
+                    champs = [contract._const_str(e) for e in item.value.elts]
+                else:
+                    return None    # `'__all__'` ou expression : incertain
+            elif cible == "exclude":
+                return None        # liste NEGATIVE : incertain par construction
+            elif cible == "model" and isinstance(item.value, ast.Name):
+                modele = item.value.id
+        if champs is None or any(c is None for c in champs) or not champs:
+            return None
+        choix = self._choix_du_modele(proprietaire, modele, champs) if modele else {}
+        return (nom, sorted(champs), choix)
+
+    def _choix_du_modele(self, module: str, modele: str, champs) -> dict:
+        """{champ: {valeurs}} pour chaque champ du modele declarant `choices`."""
+        resolu = self.backend._resolve_class(modele, module)
+        if resolu is None:
+            return {}
+        proprietaire, noeud = resolu
+        arbre = self.backend._module(proprietaire)[1]
+        if arbre is None:
+            return {}
+        constantes = declares._constantes_de_module(arbre)
+        out = {}
+        attendus = set(champs)
+        for item in noeud.body:
+            if not isinstance(item, ast.Assign) or len(item.targets) != 1 \
+                    or not isinstance(item.targets[0], ast.Name):
+                continue
+            nom = item.targets[0].id
+            if nom not in attendus or not isinstance(item.value, ast.Call):
+                continue
+            for kw in item.value.keywords:
+                if kw.arg != "choices":
+                    continue
+                valeurs = declares._resoudre_reference(kw.value, noeud, arbre,
+                                                       constantes)
+                if valeurs:
+                    out[nom] = sorted(valeurs)
+        return out
+
+
+def mocks_contre_serialiseur(serialiseurs, fichiers=None):
+    """[(fichier, ligne, fonction, chemin, champ, motif)] — mocks inventes."""
+    constats = []
+    for path in (test_files() if fichiers is None else fichiers):
+        relative = (path.relative_to(ROOT).as_posix()
+                    if path.is_relative_to(ROOT) else path.as_posix())
+        for line, modules, name, mock in mocked_payloads(path):
+            if name in NOMS_TROP_GENERIQUES:
+                continue        # le nom ne designe pas la ressource
+            candidats = [serialiseurs[(module, name)] for module in modules
+                         if (module, name) in serialiseurs]
+            if len(candidats) != 1:
+                continue
+            route, serialiseur, champs, _ = candidats[0]
+            if set(mock) & ENVELOPPE_PAGINATION:
+                continue        # enveloppe de pagination : pas la ressource
+            connus = set(champs)
+            for champ in sorted(set(mock) - connus):
+                constats.append((
+                    relative, line, name, route, champ,
+                    f"le serialiseur {serialiseur} n'expose AUCUN champ "
+                    f"'{champ}' pour {route} (il expose : "
+                    f"{', '.join(sorted(connus))})"))
+    return constats
+
+
+# ===========================================================================
 # 4. Rapprochement + contrat versionne
 # ===========================================================================
 
-def build_contract():
+def build_contract_complet():
+    """(shapes agregees, contrats de serialiseur) — un SEUL balayage du backend."""
     backend = contract.BackendRoutes()
     backend.build()
     reader = ShapeReader(backend)
+    serialiseurs_reader = SerializerReader(backend)
 
     api = ApiFunctions(contract.frontend_files())
     api.collect()
@@ -1129,6 +1334,8 @@ def build_contract():
         known.add(route)
 
     shapes = {}          # (module frontend, fonction) -> (chemin, {cle: nature})
+    # (module frontend, fonction) -> (chemin, serialiseur, [champs], {champ: [valeurs]})
+    serialiseurs = {}
     for (module, name), calls in sorted(api.functions.items(), key=lambda item: str(item[0])):
         if len(calls) != 1:
             continue                       # plusieurs appels : on ne devine pas
@@ -1136,14 +1343,26 @@ def build_contract():
         if not known.matches(route):
             continue                       # rupture : c'est l'affaire de la garde 1
         shape = reader.shape_of_route(route, verb)
-        if not shape:
+        if shape:
+            shapes[(module, name)] = ("/" + "/".join(route), shape)
             continue
-        shapes[(module, name)] = ("/" + "/".join(route), shape)
-    return shapes
+        # PACT177 — la ressource n'est pas un dictionnaire litteral : peut-elle
+        # etre lue par son serialiseur ?
+        contrat = serialiseurs_reader.contrat_de_route(route)
+        if contrat is not None:
+            serialiseurs[(module, name)] = ("/" + "/".join(route),) + contrat
+    return shapes, serialiseurs
+
+
+def build_contract():
+    return build_contract_complet()[0]
 
 
 def analyse(shapes=None):
-    shapes = build_contract() if shapes is None else shapes
+    if shapes is None:
+        shapes, serialiseurs = build_contract_complet()
+    else:
+        serialiseurs = {}
     findings = []
     for path in test_files():
         relative = path.relative_to(ROOT).as_posix()
@@ -1172,7 +1391,10 @@ def analyse(shapes=None):
     # PACT13 — un mock ecrit a la main est une DEUXIEME source de verite : des
     # que l'endpoint porte un exemple committe, le test l'importe.
     findings.extend(mocks_litteraux_sous_contrat(shapes))
-    return findings, shapes
+    # PACT177 — la ou vit le VOCABULAIRE : une ressource servie par un
+    # serialiseur DRF expose des noms de champs connaissables statiquement.
+    findings.extend(mocks_contre_serialiseur(serialiseurs))
+    return findings, shapes, serialiseurs
 
 
 CONTRACT_HEADER = """\
@@ -1193,7 +1415,26 @@ CONTRACT_HEADER = """\
 """
 
 
-def render_contract(shapes) -> str:
+SERIALISEUR_HEADER = """\
+
+# ===========================================================================
+# RESSOURCES SERVIES PAR UN SERIALISEUR DRF (PACT177)
+# ===========================================================================
+#
+# Le bloc ci-dessus fige les AGREGATS (un dictionnaire litteral lu dans le
+# code). Celui-ci fige les RESSOURCES : `serializer_class` -> `Meta.fields` ->
+# modele. On y trouve les NOMS de champs exposes et, pour chaque champ a
+# `choices`, SES VALEURS — c'est la que vit le vocabulaire qu'un ecran invente
+# (`type` pour `kind`, `statut` pour `status`).
+#
+# Une vue dont le serialiseur n'est pas resoluble statiquement
+# (`get_serializer_class` dynamique, `fields = '__all__'`, `exclude = …`, ou
+# une `list()`/`retrieve()` ecrite a la main) est ABSENTE d'ici : un doute ne
+# rougit jamais.
+"""
+
+
+def render_contract(shapes, serialiseurs=None) -> str:
     lines = [CONTRACT_HEADER, ""]
     rows = []
     for (module, name), (route, shape) in shapes.items():
@@ -1202,6 +1443,20 @@ def render_contract(shapes) -> str:
     for source, name, route, champs in sorted(rows):
         lines.append(f"- {source} :: {name} -> {route}")
         lines.append(f"    {champs}")
+
+    lignes_serialiseur = []
+    for (module, name), entree in (serialiseurs or {}).items():
+        route, serialiseur, champs, choix = entree
+        lignes_serialiseur.append(
+            (Path(module).relative_to(ROOT).as_posix(), name, route,
+             serialiseur, champs, choix))
+    if lignes_serialiseur:
+        lines.append(SERIALISEUR_HEADER)
+        for source, name, route, serialiseur, champs, choix in sorted(lignes_serialiseur):
+            lines.append(f"- {source} :: {name} -> {route}  [{serialiseur}]")
+            lines.append(f"    champs: {', '.join(champs)}")
+            for champ, valeurs in sorted(choix.items()):
+                lines.append(f"    {champ} ∈ {{{', '.join(valeurs)}}}")
     return "\n".join(lines) + "\n"
 
 
@@ -1235,18 +1490,20 @@ def main(argv=None) -> int:
     parser.add_argument("--stats", action="store_true")
     args = parser.parse_args(argv)
 
-    findings, shapes = analyse()
-    rendered = render_contract(shapes)
+    findings, shapes, serialiseurs = analyse()
+    rendered = render_contract(shapes, serialiseurs)
 
     if args.write:
         CONTRACT_PATH.parent.mkdir(parents=True, exist_ok=True)
         CONTRACT_PATH.write_text(rendered, encoding="utf-8", newline="\n")
         print(f"Contrat ecrit : {CONTRACT_PATH.relative_to(ROOT)} "
-              f"({len(shapes)} endpoint(s) agrege(s)).")
+              f"({len(shapes)} endpoint(s) agrege(s), "
+              f"{len(serialiseurs)} ressource(s) a serialiseur).")
         return 0
 
     if args.stats:
         print(f"Endpoints dont la forme est certaine statiquement : {len(shapes)}.")
+        print(f"Ressources sous contrat de serialiseur (PACT177) : {len(serialiseurs)}.")
         print(f"Mocks de test contredisant le serveur : {len(findings)}.")
 
     baseline = load_baseline()
@@ -1290,8 +1547,9 @@ def main(argv=None) -> int:
               "python scripts/check_api_shapes.py --write")
         return 1
 
-    print(f"OK : {len(shapes)} endpoint(s) agrege(s) sous contrat, aucun mock de "
-          f"test ne contredit le serveur ({len(baseline)} dette(s) historique(s)).")
+    print(f"OK : {len(shapes)} endpoint(s) agrege(s) + {len(serialiseurs)} "
+          f"ressource(s) a serialiseur sous contrat, aucun mock de test ne "
+          f"contredit le serveur ({len(baseline)} dette(s) historique(s)).")
     return 0
 
 

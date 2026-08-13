@@ -918,3 +918,2731 @@
     disponible:booleen, effectif_note:texte, entites:inconnu, total:objet
 - frontend/src/features/entites/entitesApi.js :: noter -> /api/django/entites/entites/<>/noter
     ok:booleen
+
+# ===========================================================================
+# RESSOURCES SERVIES PAR UN SERIALISEUR DRF (PACT177)
+# ===========================================================================
+#
+# Le bloc ci-dessus fige les AGREGATS (un dictionnaire litteral lu dans le
+# code). Celui-ci fige les RESSOURCES : `serializer_class` -> `Meta.fields` ->
+# modele. On y trouve les NOMS de champs exposes et, pour chaque champ a
+# `choices`, SES VALEURS — c'est la que vit le vocabulaire qu'un ecran invente
+# (`type` pour `kind`, `statut` pour `status`).
+#
+# Une vue dont le serialiseur n'est pas resoluble statiquement
+# (`get_serializer_class` dynamique, `fields = '__all__'`, `exclude = …`, ou
+# une `list()`/`retrieve()` ecrite a la main) est ABSENTE d'ici : un doute ne
+# rougit jamais.
+
+- frontend/src/api/accessReviewApi.js :: get -> /api/django/accessreview/campaigns/<>  [AccessReviewCampaignSerializer]
+    champs: created_at, date_debut, date_fin, id, items, nom, perimetre, perimetre_ref, statut, updated_at
+    perimetre ∈ {all, module, role}
+    statut ∈ {close, ouverte}
+- frontend/src/api/aoApi.js :: creer -> /api/django/ao/economie  [EconomieAOSerializer]
+    champs: appel_offre, appel_offre_reference, benefice_net_cible_ht, cibles, controle_tresorerie, cout_regime_reduit_ht, cout_regime_standard_ht, cout_revient_ht, created_at, ecart_tresorerie, id, lignes, marge_pct, note_comptable, sous_seuil_psychologique, taux_tva_achat_reduit, taux_tva_achat_standard, taux_tva_vente, total_ht, total_ttc, tva_collectee, tva_deductible, tva_nette_a_reverser, updated_at, verrouillee
+- frontend/src/api/aoApi.js :: get -> /api/django/ao/economie/<>  [EconomieAOSerializer]
+    champs: appel_offre, appel_offre_reference, benefice_net_cible_ht, cibles, controle_tresorerie, cout_regime_reduit_ht, cout_regime_standard_ht, cout_revient_ht, created_at, ecart_tresorerie, id, lignes, marge_pct, note_comptable, sous_seuil_psychologique, taux_tva_achat_reduit, taux_tva_achat_standard, taux_tva_vente, total_ht, total_ttc, tva_collectee, tva_deductible, tva_nette_a_reverser, updated_at, verrouillee
+- frontend/src/api/aoApi.js :: parAffaire -> /api/django/ao/economie  [EconomieAOSerializer]
+    champs: appel_offre, appel_offre_reference, benefice_net_cible_ht, cibles, controle_tresorerie, cout_regime_reduit_ht, cout_regime_standard_ht, cout_revient_ht, created_at, ecart_tresorerie, id, lignes, marge_pct, note_comptable, sous_seuil_psychologique, taux_tva_achat_reduit, taux_tva_achat_standard, taux_tva_vente, total_ht, total_ttc, tva_collectee, tva_deductible, tva_nette_a_reverser, updated_at, verrouillee
+- frontend/src/api/aoApi.js :: update -> /api/django/ao/economie/<>  [EconomieAOSerializer]
+    champs: appel_offre, appel_offre_reference, benefice_net_cible_ht, cibles, controle_tresorerie, cout_regime_reduit_ht, cout_regime_standard_ht, cout_revient_ht, created_at, ecart_tresorerie, id, lignes, marge_pct, note_comptable, sous_seuil_psychologique, taux_tva_achat_reduit, taux_tva_achat_standard, taux_tva_vente, total_ht, total_ttc, tva_collectee, tva_deductible, tva_nette_a_reverser, updated_at, verrouillee
+- frontend/src/api/auditApi.js :: getEntries -> /api/django/audit/entries  [AuditLogSerializer]
+    champs: action, action_label, actor_username, detail, id, model, module, object_id, object_repr, timestamp, timestamp_local, utilisateur
+    action ∈ {accept, create, delete, email, export, login, login_failed, logout, notify, pdf, refuse, security_alert, status, switch_company, update, whatsapp}
+- frontend/src/api/automationApi.js :: createApprovalRequest -> /api/django/automation/approval-requests  [ApprovalRequestSerializer]
+    champs: approvals_count, date_creation, decided_at, decided_by, decided_by_nom, decided_on_behalf_of, decided_on_behalf_of_nom, decision_note, demandeur, demandeur_nom, id, min_approbations, payload, request_type, request_type_nom, status, status_display
+    status ∈ {approved, info_requested, pending, rejected}
+- frontend/src/api/automationApi.js :: createDelegation -> /api/django/automation/approval-delegations  [ApprovalDelegationSerializer]
+    champs: date_creation, date_debut, date_fin, delegant, delegant_nom, id, suppleant, suppleant_nom
+- frontend/src/api/automationApi.js :: createWebhook -> /api/django/automation/incoming-webhooks  [IncomingWebhookTriggerSerializer]
+    champs: date_creation, date_modification, enabled, hmac_secret, id, rule, rule_nom, token, url_path
+- frontend/src/api/automationApi.js :: deleteApprovalRequestType -> /api/django/automation/approval-request-types/<>  [ApprovalRequestTypeSerializer]
+    champs: champs_config, champs_optionnels, champs_requis, date_creation, date_modification, description, enabled, id, min_approbations, nom, palier_approbateur, piece_jointe_obligatoire, sequence_approbateurs
+    palier_approbateur ∈ {admin, responsable}
+    sequence_approbateurs ∈ {parallele, sequentiel}
+- frontend/src/api/automationApi.js :: deleteDelegation -> /api/django/automation/approval-delegations/<>  [ApprovalDelegationSerializer]
+    champs: date_creation, date_debut, date_fin, delegant, delegant_nom, id, suppleant, suppleant_nom
+- frontend/src/api/automationApi.js :: deleteRule -> /api/django/automation/rules/<>  [AutomationRuleSerializer]
+    champs: action_config, action_type, action_type_display, approval_threshold, date_creation, date_modification, enabled, id, nom, ordre, requires_approval, trigger_config, trigger_type, trigger_type_display
+    action_type ∈ {assign_record, create_activity, create_custom_record, create_sav_ticket, send_email, send_sms, send_whatsapp, set_field}
+    trigger_type ∈ {chantier_status, date_echeance_champ, devis_accepted, facture_overdue, lead_stage_change, maintenance_due, projet_phase_change, projet_status_change, record_state_change, stock_below_threshold, warranty_expiring, webhook_inbound}
+- frontend/src/api/automationApi.js :: deleteWebhook -> /api/django/automation/incoming-webhooks/<>  [IncomingWebhookTriggerSerializer]
+    champs: date_creation, date_modification, enabled, hmac_secret, id, rule, rule_nom, token, url_path
+- frontend/src/api/automationApi.js :: getApprovalRequestTypes -> /api/django/automation/approval-request-types  [ApprovalRequestTypeSerializer]
+    champs: champs_config, champs_optionnels, champs_requis, date_creation, date_modification, description, enabled, id, min_approbations, nom, palier_approbateur, piece_jointe_obligatoire, sequence_approbateurs
+    palier_approbateur ∈ {admin, responsable}
+    sequence_approbateurs ∈ {parallele, sequentiel}
+- frontend/src/api/automationApi.js :: getApprovalRequests -> /api/django/automation/approval-requests  [ApprovalRequestSerializer]
+    champs: approvals_count, date_creation, decided_at, decided_by, decided_by_nom, decided_on_behalf_of, decided_on_behalf_of_nom, decision_note, demandeur, demandeur_nom, id, min_approbations, payload, request_type, request_type_nom, status, status_display
+    status ∈ {approved, info_requested, pending, rejected}
+- frontend/src/api/automationApi.js :: getApprovals -> /api/django/automation/approvals  [AutomationApprovalSerializer]
+    champs: context, date_creation, decided_at, decided_by, decided_by_nom, description, id, requested_by, requested_by_nom, rule, rule_nom, status, status_display, target_id, target_model
+    status ∈ {approved, pending, rejected}
+- frontend/src/api/automationApi.js :: getDelegations -> /api/django/automation/approval-delegations  [ApprovalDelegationSerializer]
+    champs: date_creation, date_debut, date_fin, delegant, delegant_nom, id, suppleant, suppleant_nom
+- frontend/src/api/automationApi.js :: getRules -> /api/django/automation/rules  [AutomationRuleSerializer]
+    champs: action_config, action_type, action_type_display, approval_threshold, date_creation, date_modification, enabled, id, nom, ordre, requires_approval, trigger_config, trigger_type, trigger_type_display
+    action_type ∈ {assign_record, create_activity, create_custom_record, create_sav_ticket, send_email, send_sms, send_whatsapp, set_field}
+    trigger_type ∈ {chantier_status, date_echeance_champ, devis_accepted, facture_overdue, lead_stage_change, maintenance_due, projet_phase_change, projet_status_change, record_state_change, stock_below_threshold, warranty_expiring, webhook_inbound}
+- frontend/src/api/automationApi.js :: getRuns -> /api/django/automation/runs  [AutomationRunSerializer]
+    champs: id, message, rule, rule_nom, status, status_display, target_id, target_model, timestamp
+    status ∈ {failed, noop, pending_approval, skipped, success}
+- frontend/src/api/automationApi.js :: getWebhooks -> /api/django/automation/incoming-webhooks  [IncomingWebhookTriggerSerializer]
+    champs: date_creation, date_modification, enabled, hmac_secret, id, rule, rule_nom, token, url_path
+- frontend/src/api/automationApi.js :: updateWebhook -> /api/django/automation/incoming-webhooks/<>  [IncomingWebhookTriggerSerializer]
+    champs: date_creation, date_modification, enabled, hmac_secret, id, rule, rule_nom, token, url_path
+- frontend/src/api/btpChantierApi.js :: get -> /api/django/btp-chantier/reserves-chantier/<>  [ReserveChantierSerializer]
+    champs: chantier, created_at, created_by, date_levee, date_limite, description, gravite, historique, id, leve_par, localisation_plan, lot, motif_contestation, responsable_leve, statut, updated_at
+    gravite ∈ {bloquante, majeure, mineure}
+    statut ∈ {contestee, en_cours, levee, ouverte}
+- frontend/src/api/comptaApi.js :: list -> /api/django/compta/pistes-audit  [PisteAuditComptableSerializer]
+    champs: date_creation, ecriture, ecriture_reference, empreinte_contenu, hash, hash_precedent, id, sequence
+- frontend/src/api/contratsApi.js :: createAlerte -> /api/django/contrats/alertes  [AlerteContratSerializer]
+    champs: contrat, cree_par, date_creation, date_declenchement, date_envoi, id, message, statut, statut_display, type_alerte, type_alerte_display
+    statut ∈ {annulee, envoyee, planifiee}
+    type_alerte ∈ {echeance, personnalise, preavis}
+- frontend/src/api/contratsApi.js :: createCaution -> /api/django/contrats/cautions  [CautionSerializer]
+    champs: contrat, date_creation, date_emission, date_expiration, devise, garant, id, montant, note, reference, statut, statut_display, type_caution, type_caution_display
+    statut ∈ {active, annulee, appelee, expiree, mainlevee}
+    type_caution ∈ {autre, bonne_execution, restitution_acompte, retenue_garantie, societe_mere, soumission}
+- frontend/src/api/contratsApi.js :: createClause -> /api/django/contrats/clauses  [ClauseSerializer]
+    champs: actif, categorie, corps, corps_localise, date_creation, id, ordre, titre, titre_localise, type_clause, type_clause_display
+    type_clause ∈ {autre, confidentialite, financiere, garantie, generale, juridique, resiliation, technique}
+- frontend/src/api/contratsApi.js :: createClauseContrat -> /api/django/contrats/clauses-contrat  [ClauseContratSerializer]
+    champs: clause, clause_titre, contrat, corps, date_creation, id, ordre, surchargee, titre
+- frontend/src/api/contratsApi.js :: createContrat -> /api/django/contrats/contrats  [ContratSerializer]
+    champs: client_id, client_nom, confidentialite, confidentialite_display, created_by, custom_data, date_creation, date_debut, date_dernier_renouvellement, date_fin, devise, duree_reconduction_mois, echeance_preavis, id, jours_avant_echeance, jours_avant_preavis, modele, montant, nb_renouvellements, objet, plan_abonnement, plan_recurrent, preavis_jours, preavis_traite, reference, responsable, responsable_nom, sav_contrat_maintenance_id, sequence_dunning, statut, statut_display, tacite_reconduction, type_contrat, type_contrat_display
+    confidentialite ∈ {confidentiel, interne, public}
+    statut ∈ {actif, brouillon, en_approbation, expire, resilie, signe, suspendu}
+    type_contrat ∈ {autre, emploi, fournisseur, garantie, location, maintenance, monitoring, nda, om, ppa, sous_traitance, vente}
+- frontend/src/api/contratsApi.js :: createContratLien -> /api/django/contrats/contrat-liens  [ContratLienSerializer]
+    champs: cible_id, contrat, date_creation, id, libelle, type_cible, type_cible_display
+    type_cible ∈ {devis, installation, lead, maintenance}
+- frontend/src/api/contratsApi.js :: createEcheancier -> /api/django/contrats/echeanciers  [EcheancierContratSerializer]
+    champs: contrat, date_creation, devise, facturation_active, id, libelle, lignes, montant_total, periodicite, periodicite_display, statut, statut_display
+    periodicite ∈ {annuelle, mensuelle, personnalisee, semestrielle, trimestrielle, unique}
+    statut ∈ {actif, annule, brouillon, solde}
+- frontend/src/api/contratsApi.js :: createIndexation -> /api/django/contrats/indexations  [IndexationPrixSerializer]
+    champs: actif, contrat, date_creation, date_derniere_revision, id, indice, libelle, part_fixe, periodicite, periodicite_display, valeur_base
+    periodicite ∈ {a_la_demande, annuelle, semestrielle, trimestrielle}
+- frontend/src/api/contratsApi.js :: createJalon -> /api/django/contrats/jalons  [JalonContratSerializer]
+    champs: contrat, date_atteinte, date_cible, date_creation, description, id, intitule, numero, statut, statut_display
+    statut ∈ {a_venir, annule, atteint, en_cours, en_retard}
+- frontend/src/api/contratsApi.js :: createModele -> /api/django/contrats/modeles  [ModeleContratSerializer]
+    champs: actif, categorie, clauses, confidentialite_defaut, confidentialite_defaut_display, corps, date_creation, devise_defaut, id, nom, ordre, type_contrat_defaut, type_contrat_defaut_display
+    confidentialite_defaut ∈ {confidentiel, interne, public}
+    type_contrat_defaut ∈ {autre, emploi, fournisseur, garantie, location, maintenance, monitoring, nda, om, ppa, sous_traitance, vente}
+- frontend/src/api/contratsApi.js :: createModeleClause -> /api/django/contrats/modele-clauses  [ModeleContratClauseSerializer]
+    champs: clause, id, modele, ordre
+- frontend/src/api/contratsApi.js :: createMotifResiliation -> /api/django/contrats/motifs-resiliation  [MotifResiliationSerializer]
+    champs: actif, categorie, categorie_display, code, date_creation, id, libelle, ordre
+    categorie ∈ {autre, concurrent, fin_projet, insatisfaction, prix}
+- frontend/src/api/contratsApi.js :: createObligation -> /api/django/contrats/obligations  [ObligationSerializer]
+    champs: contrat, date_creation, date_echeance, date_realisation, description, id, intitule, jalon, ordre, redevable, redevable_display, statut, statut_display
+    redevable ∈ {autre, client, prestataire}
+    statut ∈ {a_faire, annulee, en_cours, en_retard, faite}
+- frontend/src/api/contratsApi.js :: createOrdreLocation -> /api/django/contrats/ordres-location  [OrdreLocationSerializer]
+    champs: caution_montant, caution_motif_retenue, caution_retenue, caution_statut, caution_statut_display, client_id, date_creation, date_enlevement_prevue, date_enlevement_reelle, date_reservation, date_retour_prevue, date_retour_reelle, derniere_facturation, devis_id, devis_ligne_id, facturation_moment, facturation_periodicite, facturation_recurrente_active, frais_retard_facture_id, frais_retard_jour, frais_retard_montant, id, inspection_checklist, inspection_date, inspection_dommages_montant, inspection_facture_id, inspection_releve_compteur, inspection_ticket_sav_id, montant_estime, note, numero_serie, produit, produit_nom, statut, statut_display, tarif_jour
+    caution_statut ∈ {aucune, encaissee, restituee, retenue_partielle}
+    facturation_moment ∈ {avance, echu}
+    facturation_periodicite ∈ {mensuelle}
+    statut ∈ {annulee, cloturee, enlevee, reservee, retournee}
+- frontend/src/api/contratsApi.js :: createPartie -> /api/django/contrats/parties  [PartieContratSerializer]
+    champs: contact, contact_nom, contrat, email, fonction, id, nom, ordre, telephone, type_partie, type_partie_display
+    type_partie ∈ {autre, client, garant, prestataire, temoin}
+- frontend/src/api/contratsApi.js :: createPieceConformite -> /api/django/contrats/pieces-conformite  [PieceConformiteSerializer]
+    champs: contrat, date_creation, date_expiration, date_fourniture, ged_document_id, id, libelle, note, obligatoire, statut, statut_display, type_piece, type_piece_display
+    statut ∈ {expiree, fournie, manquante, refusee, validee}
+    type_piece ∈ {assurance, autre, certificat, fiscale, kyc, pv_reception, rib}
+- frontend/src/api/contratsApi.js :: createPlanRecurrent -> /api/django/contrats/plans-recurrents  [PlanRecurrentSerializer]
+    champs: actif, aligner_debut_periode, date_creation, delai_cloture_auto_jours, id, intervalle, nom, unite, unite_display
+    unite ∈ {annuel, mensuel, semestriel, trimestriel}
+- frontend/src/api/contratsApi.js :: createRegleApprobation -> /api/django/contrats/regles-approbation  [RegleApprobationSerializer]
+    champs: actif, date_creation, id, libelle, montant_max, montant_min, niveau_approbation, niveau_approbation_display, nombre_approbateurs, priorite, type_contrat, type_contrat_display
+    niveau_approbation ∈ {administrateur, direction, responsable}
+    type_contrat ∈ {autre, emploi, fournisseur, garantie, location, maintenance, monitoring, nda, om, ppa, sous_traitance, vente}
+- frontend/src/api/contratsApi.js :: createRetenue -> /api/django/contrats/retenues-garantie  [RetenueGarantieSerializer]
+    champs: contrat, date_creation, date_liberation_effective, date_liberation_prevue, date_retenue, id, montant_base, montant_retenu, note, statut, statut_display, taux
+    statut ∈ {annulee, liberee, retenue}
+- frontend/src/api/contratsApi.js :: createSla -> /api/django/contrats/sla  [EngagementSLASerializer]
+    champs: actif, contrat, date_creation, id, libelle, mode_penalite, mode_penalite_display, penalite_max, taux_cible, unite, valeur_penalite
+    mode_penalite ∈ {fixe, pourcentage}
+- frontend/src/api/contratsApi.js :: deleteAlerte -> /api/django/contrats/alertes/<>  [AlerteContratSerializer]
+    champs: contrat, cree_par, date_creation, date_declenchement, date_envoi, id, message, statut, statut_display, type_alerte, type_alerte_display
+    statut ∈ {annulee, envoyee, planifiee}
+    type_alerte ∈ {echeance, personnalise, preavis}
+- frontend/src/api/contratsApi.js :: deleteCaution -> /api/django/contrats/cautions/<>  [CautionSerializer]
+    champs: contrat, date_creation, date_emission, date_expiration, devise, garant, id, montant, note, reference, statut, statut_display, type_caution, type_caution_display
+    statut ∈ {active, annulee, appelee, expiree, mainlevee}
+    type_caution ∈ {autre, bonne_execution, restitution_acompte, retenue_garantie, societe_mere, soumission}
+- frontend/src/api/contratsApi.js :: deleteClause -> /api/django/contrats/clauses/<>  [ClauseSerializer]
+    champs: actif, categorie, corps, corps_localise, date_creation, id, ordre, titre, titre_localise, type_clause, type_clause_display
+    type_clause ∈ {autre, confidentialite, financiere, garantie, generale, juridique, resiliation, technique}
+- frontend/src/api/contratsApi.js :: deleteClauseContrat -> /api/django/contrats/clauses-contrat/<>  [ClauseContratSerializer]
+    champs: clause, clause_titre, contrat, corps, date_creation, id, ordre, surchargee, titre
+- frontend/src/api/contratsApi.js :: deleteContrat -> /api/django/contrats/contrats/<>  [ContratSerializer]
+    champs: client_id, client_nom, confidentialite, confidentialite_display, created_by, custom_data, date_creation, date_debut, date_dernier_renouvellement, date_fin, devise, duree_reconduction_mois, echeance_preavis, id, jours_avant_echeance, jours_avant_preavis, modele, montant, nb_renouvellements, objet, plan_abonnement, plan_recurrent, preavis_jours, preavis_traite, reference, responsable, responsable_nom, sav_contrat_maintenance_id, sequence_dunning, statut, statut_display, tacite_reconduction, type_contrat, type_contrat_display
+    confidentialite ∈ {confidentiel, interne, public}
+    statut ∈ {actif, brouillon, en_approbation, expire, resilie, signe, suspendu}
+    type_contrat ∈ {autre, emploi, fournisseur, garantie, location, maintenance, monitoring, nda, om, ppa, sous_traitance, vente}
+- frontend/src/api/contratsApi.js :: deleteContratLien -> /api/django/contrats/contrat-liens/<>  [ContratLienSerializer]
+    champs: cible_id, contrat, date_creation, id, libelle, type_cible, type_cible_display
+    type_cible ∈ {devis, installation, lead, maintenance}
+- frontend/src/api/contratsApi.js :: deleteEcheancier -> /api/django/contrats/echeanciers/<>  [EcheancierContratSerializer]
+    champs: contrat, date_creation, devise, facturation_active, id, libelle, lignes, montant_total, periodicite, periodicite_display, statut, statut_display
+    periodicite ∈ {annuelle, mensuelle, personnalisee, semestrielle, trimestrielle, unique}
+    statut ∈ {actif, annule, brouillon, solde}
+- frontend/src/api/contratsApi.js :: deleteIndexation -> /api/django/contrats/indexations/<>  [IndexationPrixSerializer]
+    champs: actif, contrat, date_creation, date_derniere_revision, id, indice, libelle, part_fixe, periodicite, periodicite_display, valeur_base
+    periodicite ∈ {a_la_demande, annuelle, semestrielle, trimestrielle}
+- frontend/src/api/contratsApi.js :: deleteJalon -> /api/django/contrats/jalons/<>  [JalonContratSerializer]
+    champs: contrat, date_atteinte, date_cible, date_creation, description, id, intitule, numero, statut, statut_display
+    statut ∈ {a_venir, annule, atteint, en_cours, en_retard}
+- frontend/src/api/contratsApi.js :: deleteModele -> /api/django/contrats/modeles/<>  [ModeleContratSerializer]
+    champs: actif, categorie, clauses, confidentialite_defaut, confidentialite_defaut_display, corps, date_creation, devise_defaut, id, nom, ordre, type_contrat_defaut, type_contrat_defaut_display
+    confidentialite_defaut ∈ {confidentiel, interne, public}
+    type_contrat_defaut ∈ {autre, emploi, fournisseur, garantie, location, maintenance, monitoring, nda, om, ppa, sous_traitance, vente}
+- frontend/src/api/contratsApi.js :: deleteModeleClause -> /api/django/contrats/modele-clauses/<>  [ModeleContratClauseSerializer]
+    champs: clause, id, modele, ordre
+- frontend/src/api/contratsApi.js :: deleteMotifResiliation -> /api/django/contrats/motifs-resiliation/<>  [MotifResiliationSerializer]
+    champs: actif, categorie, categorie_display, code, date_creation, id, libelle, ordre
+    categorie ∈ {autre, concurrent, fin_projet, insatisfaction, prix}
+- frontend/src/api/contratsApi.js :: deleteObligation -> /api/django/contrats/obligations/<>  [ObligationSerializer]
+    champs: contrat, date_creation, date_echeance, date_realisation, description, id, intitule, jalon, ordre, redevable, redevable_display, statut, statut_display
+    redevable ∈ {autre, client, prestataire}
+    statut ∈ {a_faire, annulee, en_cours, en_retard, faite}
+- frontend/src/api/contratsApi.js :: deleteOrdreLocation -> /api/django/contrats/ordres-location/<>  [OrdreLocationSerializer]
+    champs: caution_montant, caution_motif_retenue, caution_retenue, caution_statut, caution_statut_display, client_id, date_creation, date_enlevement_prevue, date_enlevement_reelle, date_reservation, date_retour_prevue, date_retour_reelle, derniere_facturation, devis_id, devis_ligne_id, facturation_moment, facturation_periodicite, facturation_recurrente_active, frais_retard_facture_id, frais_retard_jour, frais_retard_montant, id, inspection_checklist, inspection_date, inspection_dommages_montant, inspection_facture_id, inspection_releve_compteur, inspection_ticket_sav_id, montant_estime, note, numero_serie, produit, produit_nom, statut, statut_display, tarif_jour
+    caution_statut ∈ {aucune, encaissee, restituee, retenue_partielle}
+    facturation_moment ∈ {avance, echu}
+    facturation_periodicite ∈ {mensuelle}
+    statut ∈ {annulee, cloturee, enlevee, reservee, retournee}
+- frontend/src/api/contratsApi.js :: deletePartie -> /api/django/contrats/parties/<>  [PartieContratSerializer]
+    champs: contact, contact_nom, contrat, email, fonction, id, nom, ordre, telephone, type_partie, type_partie_display
+    type_partie ∈ {autre, client, garant, prestataire, temoin}
+- frontend/src/api/contratsApi.js :: deletePieceConformite -> /api/django/contrats/pieces-conformite/<>  [PieceConformiteSerializer]
+    champs: contrat, date_creation, date_expiration, date_fourniture, ged_document_id, id, libelle, note, obligatoire, statut, statut_display, type_piece, type_piece_display
+    statut ∈ {expiree, fournie, manquante, refusee, validee}
+    type_piece ∈ {assurance, autre, certificat, fiscale, kyc, pv_reception, rib}
+- frontend/src/api/contratsApi.js :: deletePlanRecurrent -> /api/django/contrats/plans-recurrents/<>  [PlanRecurrentSerializer]
+    champs: actif, aligner_debut_periode, date_creation, delai_cloture_auto_jours, id, intervalle, nom, unite, unite_display
+    unite ∈ {annuel, mensuel, semestriel, trimestriel}
+- frontend/src/api/contratsApi.js :: deleteRegleApprobation -> /api/django/contrats/regles-approbation/<>  [RegleApprobationSerializer]
+    champs: actif, date_creation, id, libelle, montant_max, montant_min, niveau_approbation, niveau_approbation_display, nombre_approbateurs, priorite, type_contrat, type_contrat_display
+    niveau_approbation ∈ {administrateur, direction, responsable}
+    type_contrat ∈ {autre, emploi, fournisseur, garantie, location, maintenance, monitoring, nda, om, ppa, sous_traitance, vente}
+- frontend/src/api/contratsApi.js :: deleteRetenue -> /api/django/contrats/retenues-garantie/<>  [RetenueGarantieSerializer]
+    champs: contrat, date_creation, date_liberation_effective, date_liberation_prevue, date_retenue, id, montant_base, montant_retenu, note, statut, statut_display, taux
+    statut ∈ {annulee, liberee, retenue}
+- frontend/src/api/contratsApi.js :: deleteSla -> /api/django/contrats/sla/<>  [EngagementSLASerializer]
+    champs: actif, contrat, date_creation, id, libelle, mode_penalite, mode_penalite_display, penalite_max, taux_cible, unite, valeur_penalite
+    mode_penalite ∈ {fixe, pourcentage}
+- frontend/src/api/contratsApi.js :: getAlertes -> /api/django/contrats/alertes  [AlerteContratSerializer]
+    champs: contrat, cree_par, date_creation, date_declenchement, date_envoi, id, message, statut, statut_display, type_alerte, type_alerte_display
+    statut ∈ {annulee, envoyee, planifiee}
+    type_alerte ∈ {echeance, personnalise, preavis}
+- frontend/src/api/contratsApi.js :: getAvenants -> /api/django/contrats/avenants  [AvenantSerializer]
+    champs: contrat, cree_par, cree_par_username, date_creation, date_effet, description, id, montant_delta, numero, objet, version_creee
+- frontend/src/api/contratsApi.js :: getCautions -> /api/django/contrats/cautions  [CautionSerializer]
+    champs: contrat, date_creation, date_emission, date_expiration, devise, garant, id, montant, note, reference, statut, statut_display, type_caution, type_caution_display
+    statut ∈ {active, annulee, appelee, expiree, mainlevee}
+    type_caution ∈ {autre, bonne_execution, restitution_acompte, retenue_garantie, societe_mere, soumission}
+- frontend/src/api/contratsApi.js :: getClause -> /api/django/contrats/clauses/<>  [ClauseSerializer]
+    champs: actif, categorie, corps, corps_localise, date_creation, id, ordre, titre, titre_localise, type_clause, type_clause_display
+    type_clause ∈ {autre, confidentialite, financiere, garantie, generale, juridique, resiliation, technique}
+- frontend/src/api/contratsApi.js :: getClauses -> /api/django/contrats/clauses  [ClauseSerializer]
+    champs: actif, categorie, corps, corps_localise, date_creation, id, ordre, titre, titre_localise, type_clause, type_clause_display
+    type_clause ∈ {autre, confidentialite, financiere, garantie, generale, juridique, resiliation, technique}
+- frontend/src/api/contratsApi.js :: getClausesContrat -> /api/django/contrats/clauses-contrat  [ClauseContratSerializer]
+    champs: clause, clause_titre, contrat, corps, date_creation, id, ordre, surchargee, titre
+- frontend/src/api/contratsApi.js :: getContrat -> /api/django/contrats/contrats/<>  [ContratSerializer]
+    champs: client_id, client_nom, confidentialite, confidentialite_display, created_by, custom_data, date_creation, date_debut, date_dernier_renouvellement, date_fin, devise, duree_reconduction_mois, echeance_preavis, id, jours_avant_echeance, jours_avant_preavis, modele, montant, nb_renouvellements, objet, plan_abonnement, plan_recurrent, preavis_jours, preavis_traite, reference, responsable, responsable_nom, sav_contrat_maintenance_id, sequence_dunning, statut, statut_display, tacite_reconduction, type_contrat, type_contrat_display
+    confidentialite ∈ {confidentiel, interne, public}
+    statut ∈ {actif, brouillon, en_approbation, expire, resilie, signe, suspendu}
+    type_contrat ∈ {autre, emploi, fournisseur, garantie, location, maintenance, monitoring, nda, om, ppa, sous_traitance, vente}
+- frontend/src/api/contratsApi.js :: getContratLiens -> /api/django/contrats/contrat-liens  [ContratLienSerializer]
+    champs: cible_id, contrat, date_creation, id, libelle, type_cible, type_cible_display
+    type_cible ∈ {devis, installation, lead, maintenance}
+- frontend/src/api/contratsApi.js :: getContrats -> /api/django/contrats/contrats  [ContratSerializer]
+    champs: client_id, client_nom, confidentialite, confidentialite_display, created_by, custom_data, date_creation, date_debut, date_dernier_renouvellement, date_fin, devise, duree_reconduction_mois, echeance_preavis, id, jours_avant_echeance, jours_avant_preavis, modele, montant, nb_renouvellements, objet, plan_abonnement, plan_recurrent, preavis_jours, preavis_traite, reference, responsable, responsable_nom, sav_contrat_maintenance_id, sequence_dunning, statut, statut_display, tacite_reconduction, type_contrat, type_contrat_display
+    confidentialite ∈ {confidentiel, interne, public}
+    statut ∈ {actif, brouillon, en_approbation, expire, resilie, signe, suspendu}
+    type_contrat ∈ {autre, emploi, fournisseur, garantie, location, maintenance, monitoring, nda, om, ppa, sous_traitance, vente}
+- frontend/src/api/contratsApi.js :: getCyclesFacturation -> /api/django/contrats/cycles-facturation  [CycleFacturationLogSerializer]
+    champs: date_creation, facture_id, id, motif, nb_tentatives, periode, source_id, source_type, source_type_display, statut, statut_display
+    source_type ∈ {contrat, ordre_location, sav_maintenance}
+    statut ∈ {echec, genere, saute}
+- frontend/src/api/contratsApi.js :: getEcheancier -> /api/django/contrats/echeanciers/<>  [EcheancierContratSerializer]
+    champs: contrat, date_creation, devise, facturation_active, id, libelle, lignes, montant_total, periodicite, periodicite_display, statut, statut_display
+    periodicite ∈ {annuelle, mensuelle, personnalisee, semestrielle, trimestrielle, unique}
+    statut ∈ {actif, annule, brouillon, solde}
+- frontend/src/api/contratsApi.js :: getEcheanciers -> /api/django/contrats/echeanciers  [EcheancierContratSerializer]
+    champs: contrat, date_creation, devise, facturation_active, id, libelle, lignes, montant_total, periodicite, periodicite_display, statut, statut_display
+    periodicite ∈ {annuelle, mensuelle, personnalisee, semestrielle, trimestrielle, unique}
+    statut ∈ {actif, annule, brouillon, solde}
+- frontend/src/api/contratsApi.js :: getIndexations -> /api/django/contrats/indexations  [IndexationPrixSerializer]
+    champs: actif, contrat, date_creation, date_derniere_revision, id, indice, libelle, part_fixe, periodicite, periodicite_display, valeur_base
+    periodicite ∈ {a_la_demande, annuelle, semestrielle, trimestrielle}
+- frontend/src/api/contratsApi.js :: getJalons -> /api/django/contrats/jalons  [JalonContratSerializer]
+    champs: contrat, date_atteinte, date_cible, date_creation, description, id, intitule, numero, statut, statut_display
+    statut ∈ {a_venir, annule, atteint, en_cours, en_retard}
+- frontend/src/api/contratsApi.js :: getLignesEcheance -> /api/django/contrats/lignes-echeance  [LigneEcheanceSerializer]
+    champs: date_creation, date_echeance, date_paiement, echeancier, facture_id, id, libelle, montant, numero, statut, statut_display
+    statut ∈ {a_venir, annulee, en_retard, payee}
+- frontend/src/api/contratsApi.js :: getModele -> /api/django/contrats/modeles/<>  [ModeleContratSerializer]
+    champs: actif, categorie, clauses, confidentialite_defaut, confidentialite_defaut_display, corps, date_creation, devise_defaut, id, nom, ordre, type_contrat_defaut, type_contrat_defaut_display
+    confidentialite_defaut ∈ {confidentiel, interne, public}
+    type_contrat_defaut ∈ {autre, emploi, fournisseur, garantie, location, maintenance, monitoring, nda, om, ppa, sous_traitance, vente}
+- frontend/src/api/contratsApi.js :: getModeleClauses -> /api/django/contrats/modele-clauses  [ModeleContratClauseSerializer]
+    champs: clause, id, modele, ordre
+- frontend/src/api/contratsApi.js :: getModeles -> /api/django/contrats/modeles  [ModeleContratSerializer]
+    champs: actif, categorie, clauses, confidentialite_defaut, confidentialite_defaut_display, corps, date_creation, devise_defaut, id, nom, ordre, type_contrat_defaut, type_contrat_defaut_display
+    confidentialite_defaut ∈ {confidentiel, interne, public}
+    type_contrat_defaut ∈ {autre, emploi, fournisseur, garantie, location, maintenance, monitoring, nda, om, ppa, sous_traitance, vente}
+- frontend/src/api/contratsApi.js :: getMotifsResiliation -> /api/django/contrats/motifs-resiliation  [MotifResiliationSerializer]
+    champs: actif, categorie, categorie_display, code, date_creation, id, libelle, ordre
+    categorie ∈ {autre, concurrent, fin_projet, insatisfaction, prix}
+- frontend/src/api/contratsApi.js :: getObligations -> /api/django/contrats/obligations  [ObligationSerializer]
+    champs: contrat, date_creation, date_echeance, date_realisation, description, id, intitule, jalon, ordre, redevable, redevable_display, statut, statut_display
+    redevable ∈ {autre, client, prestataire}
+    statut ∈ {a_faire, annulee, en_cours, en_retard, faite}
+- frontend/src/api/contratsApi.js :: getOrdreLocation -> /api/django/contrats/ordres-location/<>  [OrdreLocationSerializer]
+    champs: caution_montant, caution_motif_retenue, caution_retenue, caution_statut, caution_statut_display, client_id, date_creation, date_enlevement_prevue, date_enlevement_reelle, date_reservation, date_retour_prevue, date_retour_reelle, derniere_facturation, devis_id, devis_ligne_id, facturation_moment, facturation_periodicite, facturation_recurrente_active, frais_retard_facture_id, frais_retard_jour, frais_retard_montant, id, inspection_checklist, inspection_date, inspection_dommages_montant, inspection_facture_id, inspection_releve_compteur, inspection_ticket_sav_id, montant_estime, note, numero_serie, produit, produit_nom, statut, statut_display, tarif_jour
+    caution_statut ∈ {aucune, encaissee, restituee, retenue_partielle}
+    facturation_moment ∈ {avance, echu}
+    facturation_periodicite ∈ {mensuelle}
+    statut ∈ {annulee, cloturee, enlevee, reservee, retournee}
+- frontend/src/api/contratsApi.js :: getOrdresLocation -> /api/django/contrats/ordres-location  [OrdreLocationSerializer]
+    champs: caution_montant, caution_motif_retenue, caution_retenue, caution_statut, caution_statut_display, client_id, date_creation, date_enlevement_prevue, date_enlevement_reelle, date_reservation, date_retour_prevue, date_retour_reelle, derniere_facturation, devis_id, devis_ligne_id, facturation_moment, facturation_periodicite, facturation_recurrente_active, frais_retard_facture_id, frais_retard_jour, frais_retard_montant, id, inspection_checklist, inspection_date, inspection_dommages_montant, inspection_facture_id, inspection_releve_compteur, inspection_ticket_sav_id, montant_estime, note, numero_serie, produit, produit_nom, statut, statut_display, tarif_jour
+    caution_statut ∈ {aucune, encaissee, restituee, retenue_partielle}
+    facturation_moment ∈ {avance, echu}
+    facturation_periodicite ∈ {mensuelle}
+    statut ∈ {annulee, cloturee, enlevee, reservee, retournee}
+- frontend/src/api/contratsApi.js :: getParties -> /api/django/contrats/parties  [PartieContratSerializer]
+    champs: contact, contact_nom, contrat, email, fonction, id, nom, ordre, telephone, type_partie, type_partie_display
+    type_partie ∈ {autre, client, garant, prestataire, temoin}
+- frontend/src/api/contratsApi.js :: getPiecesConformite -> /api/django/contrats/pieces-conformite  [PieceConformiteSerializer]
+    champs: contrat, date_creation, date_expiration, date_fourniture, ged_document_id, id, libelle, note, obligatoire, statut, statut_display, type_piece, type_piece_display
+    statut ∈ {expiree, fournie, manquante, refusee, validee}
+    type_piece ∈ {assurance, autre, certificat, fiscale, kyc, pv_reception, rib}
+- frontend/src/api/contratsApi.js :: getPlansRecurrents -> /api/django/contrats/plans-recurrents  [PlanRecurrentSerializer]
+    champs: actif, aligner_debut_periode, date_creation, delai_cloture_auto_jours, id, intervalle, nom, unite, unite_display
+    unite ∈ {annuel, mensuel, semestriel, trimestriel}
+- frontend/src/api/contratsApi.js :: getReglesApprobation -> /api/django/contrats/regles-approbation  [RegleApprobationSerializer]
+    champs: actif, date_creation, id, libelle, montant_max, montant_min, niveau_approbation, niveau_approbation_display, nombre_approbateurs, priorite, type_contrat, type_contrat_display
+    niveau_approbation ∈ {administrateur, direction, responsable}
+    type_contrat ∈ {autre, emploi, fournisseur, garantie, location, maintenance, monitoring, nda, om, ppa, sous_traitance, vente}
+- frontend/src/api/contratsApi.js :: getResiliations -> /api/django/contrats/resiliations  [ResiliationSerializer]
+    champs: contrat, cree_par, cree_par_username, date_creation, date_demande, date_effet, id, motif, motif_ref, motif_ref_libelle, preavis_jours, solde, statut, statut_display, version_creee
+    statut ∈ {annulee, demande, effective}
+- frontend/src/api/contratsApi.js :: getRetenues -> /api/django/contrats/retenues-garantie  [RetenueGarantieSerializer]
+    champs: contrat, date_creation, date_liberation_effective, date_liberation_prevue, date_retenue, id, montant_base, montant_retenu, note, statut, statut_display, taux
+    statut ∈ {annulee, liberee, retenue}
+- frontend/src/api/contratsApi.js :: getSla -> /api/django/contrats/sla  [EngagementSLASerializer]
+    champs: actif, contrat, date_creation, id, libelle, mode_penalite, mode_penalite_display, penalite_max, taux_cible, unite, valeur_penalite
+    mode_penalite ∈ {fixe, pourcentage}
+- frontend/src/api/contratsApi.js :: getVersions -> /api/django/contrats/versions  [VersionContratSerializer]
+    champs: contenu, contrat, cree_le, cree_par, cree_par_username, fichier_key, id, motif, version
+- frontend/src/api/contratsApi.js :: updateAlerte -> /api/django/contrats/alertes/<>  [AlerteContratSerializer]
+    champs: contrat, cree_par, date_creation, date_declenchement, date_envoi, id, message, statut, statut_display, type_alerte, type_alerte_display
+    statut ∈ {annulee, envoyee, planifiee}
+    type_alerte ∈ {echeance, personnalise, preavis}
+- frontend/src/api/contratsApi.js :: updateCaution -> /api/django/contrats/cautions/<>  [CautionSerializer]
+    champs: contrat, date_creation, date_emission, date_expiration, devise, garant, id, montant, note, reference, statut, statut_display, type_caution, type_caution_display
+    statut ∈ {active, annulee, appelee, expiree, mainlevee}
+    type_caution ∈ {autre, bonne_execution, restitution_acompte, retenue_garantie, societe_mere, soumission}
+- frontend/src/api/contratsApi.js :: updateClause -> /api/django/contrats/clauses/<>  [ClauseSerializer]
+    champs: actif, categorie, corps, corps_localise, date_creation, id, ordre, titre, titre_localise, type_clause, type_clause_display
+    type_clause ∈ {autre, confidentialite, financiere, garantie, generale, juridique, resiliation, technique}
+- frontend/src/api/contratsApi.js :: updateClauseContrat -> /api/django/contrats/clauses-contrat/<>  [ClauseContratSerializer]
+    champs: clause, clause_titre, contrat, corps, date_creation, id, ordre, surchargee, titre
+- frontend/src/api/contratsApi.js :: updateContrat -> /api/django/contrats/contrats/<>  [ContratSerializer]
+    champs: client_id, client_nom, confidentialite, confidentialite_display, created_by, custom_data, date_creation, date_debut, date_dernier_renouvellement, date_fin, devise, duree_reconduction_mois, echeance_preavis, id, jours_avant_echeance, jours_avant_preavis, modele, montant, nb_renouvellements, objet, plan_abonnement, plan_recurrent, preavis_jours, preavis_traite, reference, responsable, responsable_nom, sav_contrat_maintenance_id, sequence_dunning, statut, statut_display, tacite_reconduction, type_contrat, type_contrat_display
+    confidentialite ∈ {confidentiel, interne, public}
+    statut ∈ {actif, brouillon, en_approbation, expire, resilie, signe, suspendu}
+    type_contrat ∈ {autre, emploi, fournisseur, garantie, location, maintenance, monitoring, nda, om, ppa, sous_traitance, vente}
+- frontend/src/api/contratsApi.js :: updateEcheancier -> /api/django/contrats/echeanciers/<>  [EcheancierContratSerializer]
+    champs: contrat, date_creation, devise, facturation_active, id, libelle, lignes, montant_total, periodicite, periodicite_display, statut, statut_display
+    periodicite ∈ {annuelle, mensuelle, personnalisee, semestrielle, trimestrielle, unique}
+    statut ∈ {actif, annule, brouillon, solde}
+- frontend/src/api/contratsApi.js :: updateIndexation -> /api/django/contrats/indexations/<>  [IndexationPrixSerializer]
+    champs: actif, contrat, date_creation, date_derniere_revision, id, indice, libelle, part_fixe, periodicite, periodicite_display, valeur_base
+    periodicite ∈ {a_la_demande, annuelle, semestrielle, trimestrielle}
+- frontend/src/api/contratsApi.js :: updateJalon -> /api/django/contrats/jalons/<>  [JalonContratSerializer]
+    champs: contrat, date_atteinte, date_cible, date_creation, description, id, intitule, numero, statut, statut_display
+    statut ∈ {a_venir, annule, atteint, en_cours, en_retard}
+- frontend/src/api/contratsApi.js :: updateModele -> /api/django/contrats/modeles/<>  [ModeleContratSerializer]
+    champs: actif, categorie, clauses, confidentialite_defaut, confidentialite_defaut_display, corps, date_creation, devise_defaut, id, nom, ordre, type_contrat_defaut, type_contrat_defaut_display
+    confidentialite_defaut ∈ {confidentiel, interne, public}
+    type_contrat_defaut ∈ {autre, emploi, fournisseur, garantie, location, maintenance, monitoring, nda, om, ppa, sous_traitance, vente}
+- frontend/src/api/contratsApi.js :: updateMotifResiliation -> /api/django/contrats/motifs-resiliation/<>  [MotifResiliationSerializer]
+    champs: actif, categorie, categorie_display, code, date_creation, id, libelle, ordre
+    categorie ∈ {autre, concurrent, fin_projet, insatisfaction, prix}
+- frontend/src/api/contratsApi.js :: updateObligation -> /api/django/contrats/obligations/<>  [ObligationSerializer]
+    champs: contrat, date_creation, date_echeance, date_realisation, description, id, intitule, jalon, ordre, redevable, redevable_display, statut, statut_display
+    redevable ∈ {autre, client, prestataire}
+    statut ∈ {a_faire, annulee, en_cours, en_retard, faite}
+- frontend/src/api/contratsApi.js :: updateOrdreLocation -> /api/django/contrats/ordres-location/<>  [OrdreLocationSerializer]
+    champs: caution_montant, caution_motif_retenue, caution_retenue, caution_statut, caution_statut_display, client_id, date_creation, date_enlevement_prevue, date_enlevement_reelle, date_reservation, date_retour_prevue, date_retour_reelle, derniere_facturation, devis_id, devis_ligne_id, facturation_moment, facturation_periodicite, facturation_recurrente_active, frais_retard_facture_id, frais_retard_jour, frais_retard_montant, id, inspection_checklist, inspection_date, inspection_dommages_montant, inspection_facture_id, inspection_releve_compteur, inspection_ticket_sav_id, montant_estime, note, numero_serie, produit, produit_nom, statut, statut_display, tarif_jour
+    caution_statut ∈ {aucune, encaissee, restituee, retenue_partielle}
+    facturation_moment ∈ {avance, echu}
+    facturation_periodicite ∈ {mensuelle}
+    statut ∈ {annulee, cloturee, enlevee, reservee, retournee}
+- frontend/src/api/contratsApi.js :: updatePartie -> /api/django/contrats/parties/<>  [PartieContratSerializer]
+    champs: contact, contact_nom, contrat, email, fonction, id, nom, ordre, telephone, type_partie, type_partie_display
+    type_partie ∈ {autre, client, garant, prestataire, temoin}
+- frontend/src/api/contratsApi.js :: updatePieceConformite -> /api/django/contrats/pieces-conformite/<>  [PieceConformiteSerializer]
+    champs: contrat, date_creation, date_expiration, date_fourniture, ged_document_id, id, libelle, note, obligatoire, statut, statut_display, type_piece, type_piece_display
+    statut ∈ {expiree, fournie, manquante, refusee, validee}
+    type_piece ∈ {assurance, autre, certificat, fiscale, kyc, pv_reception, rib}
+- frontend/src/api/contratsApi.js :: updatePlanRecurrent -> /api/django/contrats/plans-recurrents/<>  [PlanRecurrentSerializer]
+    champs: actif, aligner_debut_periode, date_creation, delai_cloture_auto_jours, id, intervalle, nom, unite, unite_display
+    unite ∈ {annuel, mensuel, semestriel, trimestriel}
+- frontend/src/api/contratsApi.js :: updateRegleApprobation -> /api/django/contrats/regles-approbation/<>  [RegleApprobationSerializer]
+    champs: actif, date_creation, id, libelle, montant_max, montant_min, niveau_approbation, niveau_approbation_display, nombre_approbateurs, priorite, type_contrat, type_contrat_display
+    niveau_approbation ∈ {administrateur, direction, responsable}
+    type_contrat ∈ {autre, emploi, fournisseur, garantie, location, maintenance, monitoring, nda, om, ppa, sous_traitance, vente}
+- frontend/src/api/contratsApi.js :: updateRetenue -> /api/django/contrats/retenues-garantie/<>  [RetenueGarantieSerializer]
+    champs: contrat, date_creation, date_liberation_effective, date_liberation_prevue, date_retenue, id, montant_base, montant_retenu, note, statut, statut_display, taux
+    statut ∈ {annulee, liberee, retenue}
+- frontend/src/api/contratsApi.js :: updateSla -> /api/django/contrats/sla/<>  [EngagementSLASerializer]
+    champs: actif, contrat, date_creation, id, libelle, mode_penalite, mode_penalite_display, penalite_max, taux_cible, unite, valeur_penalite
+    mode_penalite ∈ {fixe, pourcentage}
+- frontend/src/api/coreApi.js :: get -> /api/django/core/dashboards/<>  [DashboardSerializer]
+    champs: created_at, description, id, layout, owner, partage, titre, updated_at
+- frontend/src/api/coreApi.js :: revoke -> /api/django/core/dashboards-partages/<>  [PartageDashboardSerializer]
+    champs: actif, created_at, dashboard, expires_at, id, token, updated_at
+- frontend/src/api/coreApi.js :: updateLayout -> /api/django/core/dashboards/<>  [DashboardSerializer]
+    champs: created_at, description, id, layout, owner, partage, titre, updated_at
+- frontend/src/api/cpqApi.js :: createPrixContractuel -> /api/django/cpq/prix-contractuels  [PrixContractuelSerializer]
+    champs: client, created_by, date_creation, date_debut, date_fin, est_actif, id, motif, prix_ht, produit
+- frontend/src/api/cpqApi.js :: deletePrixContractuel -> /api/django/cpq/prix-contractuels/<>  [PrixContractuelSerializer]
+    champs: client, created_by, date_creation, date_debut, date_fin, est_actif, id, motif, prix_ht, produit
+- frontend/src/api/cpqApi.js :: getPrixContractuels -> /api/django/cpq/prix-contractuels  [PrixContractuelSerializer]
+    champs: client, created_by, date_creation, date_debut, date_fin, est_actif, id, motif, prix_ht, produit
+- frontend/src/api/cpqApi.js :: updatePrixContractuel -> /api/django/cpq/prix-contractuels/<>  [PrixContractuelSerializer]
+    champs: client, created_by, date_creation, date_debut, date_fin, est_actif, id, motif, prix_ht, produit
+- frontend/src/api/creditApi.js :: createConditionSegment -> /api/django/credit/conditions-segment  [ConditionPaiementSegmentSerializer]
+    champs: date_creation, date_modification, delai_paiement_jours, id, mode_hold_override, pct_acompte_defaut, segment
+    mode_hold_override ∈ {aucun, avertissement, blocage}
+- frontend/src/api/creditApi.js :: createDerogation -> /api/django/credit/derogations  [DerogationCreditSerializer]
+    champs: approuvee_par, client, date_creation, date_decision, demandeur, devis, est_valide, id, montant_demande, motif, statut, valide_jusqu_au
+    statut ∈ {approuvee, en_attente, expiree, rejetee}
+- frontend/src/api/creditApi.js :: createLimite -> /api/django/credit/limites  [LimiteCreditSerializer]
+    champs: actif, client, cree_par, date_creation, date_modification, devise, id, mode_hold, montant_limite, motif_null
+    mode_hold ∈ {aucun, avertissement, blocage}
+- frontend/src/api/creditApi.js :: deleteConditionSegment -> /api/django/credit/conditions-segment/<>  [ConditionPaiementSegmentSerializer]
+    champs: date_creation, date_modification, delai_paiement_jours, id, mode_hold_override, pct_acompte_defaut, segment
+    mode_hold_override ∈ {aucun, avertissement, blocage}
+- frontend/src/api/creditApi.js :: getConditionsSegment -> /api/django/credit/conditions-segment  [ConditionPaiementSegmentSerializer]
+    champs: date_creation, date_modification, delai_paiement_jours, id, mode_hold_override, pct_acompte_defaut, segment
+    mode_hold_override ∈ {aucun, avertissement, blocage}
+- frontend/src/api/creditApi.js :: getDerogations -> /api/django/credit/derogations  [DerogationCreditSerializer]
+    champs: approuvee_par, client, date_creation, date_decision, demandeur, devis, est_valide, id, montant_demande, motif, statut, valide_jusqu_au
+    statut ∈ {approuvee, en_attente, expiree, rejetee}
+- frontend/src/api/creditApi.js :: getLimites -> /api/django/credit/limites  [LimiteCreditSerializer]
+    champs: actif, client, cree_par, date_creation, date_modification, devise, id, mode_hold, montant_limite, motif_null
+    mode_hold ∈ {aucun, avertissement, blocage}
+- frontend/src/api/creditApi.js :: updateConditionSegment -> /api/django/credit/conditions-segment/<>  [ConditionPaiementSegmentSerializer]
+    champs: date_creation, date_modification, delai_paiement_jours, id, mode_hold_override, pct_acompte_defaut, segment
+    mode_hold_override ∈ {aucun, avertissement, blocage}
+- frontend/src/api/creditApi.js :: updateLimite -> /api/django/credit/limites/<>  [LimiteCreditSerializer]
+    champs: actif, client, cree_par, date_creation, date_modification, devise, id, mode_hold, montant_limite, motif_null
+    mode_hold ∈ {aucun, avertissement, blocage}
+- frontend/src/api/crmApi.js :: createAppointment -> /api/django/crm/appointments  [AppointmentSerializer]
+    champs: company, created_by, date_creation, date_modification, id, lead, lead_nom, notes, reminder_sent, scheduled_at, statut, statut_display
+    statut ∈ {annule, confirme, effectue, no_show, planifie}
+- frontend/src/api/crmApi.js :: createCommissionPartenaire -> /api/django/crm/commissions-partenaire  [CommissionPartenaireSerializer]
+    champs: base_ht, date_creation, devis_id, id, lead_id, montant, partenaire, paye_le, statut, taux
+    statut ∈ {annulee, due, payee}
+- frontend/src/api/crmApi.js :: createConcurrentPerte -> /api/django/crm/concurrents-perte  [ConcurrentPerteSerializer]
+    champs: company, concurrent_nom, concurrent_prix, date_modification, devise, id, lead, lead_nom, motif, notes, saisi_le, saisi_par, saisi_par_nom
+- frontend/src/api/crmApi.js :: createPartenaire -> /api/django/crm/partenaires  [PartenaireSerializer]
+    champs: actif, date_activation, date_creation, email, id, nom, numero_agrement, statut_onboarding, taux_commission, telephone, token_acces, type_partenaire, zone
+    statut_onboarding ∈ {agree, en_cours, prospect, suspendu}
+    type_partenaire ∈ {apporteur, installateur, sous_revendeur}
+- frontend/src/api/crmApi.js :: createPointContact -> /api/django/crm/points-contact  [PointContactSerializer]
+    champs: canal, canal_libelle, company, cout, date_contact, date_modification, detail, id, lead, lead_nom, ordre, saisi_le, saisi_par, saisi_par_nom, source
+    canal ∈ {autre, meta_ads, reference, site_web, telephone, walk_in, whatsapp_ctwa}
+- frontend/src/api/crmApi.js :: createSavedView -> /api/django/crm/vues-enregistrees  [SavedViewSerializer]
+    champs: created_at, id, name, page, payload, rank, user
+- frontend/src/api/crmApi.js :: createSiteProfile -> /api/django/crm/site-profiles  [SiteProfileSerializer]
+    champs: client, company, conso_mensuelle_kwh, date_creation, date_modification, ete_differente, facture_ete, facture_hiver, gps_lat, gps_lng, id, inclinaison_deg, ombrage, ombrage_notes, orientation, pompe_cv, pompe_debit_m3h, pompe_hmt_m, raccordement, regularisation_8221, surface_toiture_m2, tranche_onee, type_installation, type_toiture
+    ombrage ∈ {aucun, important, partiel}
+    orientation ∈ {autre, est, ouest, sud, sud_est, sud_ouest}
+    raccordement ∈ {inconnu, monophase, triphase}
+    type_installation ∈ {agricole, commercial, industriel, residentiel}
+    type_toiture ∈ {autre, bac_acier, fibrociment, terrasse_beton, tole_metal, tuiles}
+- frontend/src/api/crmApi.js :: deleteAppointment -> /api/django/crm/appointments/<>  [AppointmentSerializer]
+    champs: company, created_by, date_creation, date_modification, id, lead, lead_nom, notes, reminder_sent, scheduled_at, statut, statut_display
+    statut ∈ {annule, confirme, effectue, no_show, planifie}
+- frontend/src/api/crmApi.js :: deleteEquipe -> /api/django/crm/equipes/<>  [EquipeCommercialeSerializer]
+    champs: actif, company, date_creation, id, membres, nb_membres, nom, responsable, responsable_nom
+- frontend/src/api/crmApi.js :: deleteMessageTemplate -> /api/django/crm/message-templates/<>  [MessageTemplateSerializer]
+    champs: archived, corps, date_creation, date_modification, id, langue, langue_display, nom
+    langue ∈ {darija, fr}
+- frontend/src/api/crmApi.js :: deleteParrainage -> /api/django/crm/parrainages/<>  [ParrainageSerializer]
+    champs: company, date_creation, filleul_client, filleul_display_nom, filleul_lead, filleul_nom, id, notes, parrain, parrain_nom, recompense, statut, statut_display
+    statut ∈ {converti, en_attente, recompense_versee}
+- frontend/src/api/crmApi.js :: deleteSavedView -> /api/django/crm/vues-enregistrees/<>  [SavedViewSerializer]
+    champs: created_at, id, name, page, payload, rank, user
+- frontend/src/api/crmApi.js :: deleteTag -> /api/django/crm/tags/<>  [LeadTagSerializer]
+    champs: archived, couleur, en_usage, id, nom
+- frontend/src/api/crmApi.js :: getAppointments -> /api/django/crm/appointments  [AppointmentSerializer]
+    champs: company, created_by, date_creation, date_modification, id, lead, lead_nom, notes, reminder_sent, scheduled_at, statut, statut_display
+    statut ∈ {annule, confirme, effectue, no_show, planifie}
+- frontend/src/api/crmApi.js :: getCommissionsPartenaire -> /api/django/crm/commissions-partenaire  [CommissionPartenaireSerializer]
+    champs: base_ht, date_creation, devis_id, id, lead_id, montant, partenaire, paye_le, statut, taux
+    statut ∈ {annulee, due, payee}
+- frontend/src/api/crmApi.js :: getConcurrentsPerte -> /api/django/crm/concurrents-perte  [ConcurrentPerteSerializer]
+    champs: company, concurrent_nom, concurrent_prix, date_modification, devise, id, lead, lead_nom, motif, notes, saisi_le, saisi_par, saisi_par_nom
+- frontend/src/api/crmApi.js :: getEquipes -> /api/django/crm/equipes  [EquipeCommercialeSerializer]
+    champs: actif, company, date_creation, id, membres, nb_membres, nom, responsable, responsable_nom
+- frontend/src/api/crmApi.js :: getMessageTemplate -> /api/django/crm/message-templates/<>  [MessageTemplateSerializer]
+    champs: archived, corps, date_creation, date_modification, id, langue, langue_display, nom
+    langue ∈ {darija, fr}
+- frontend/src/api/crmApi.js :: getMessageTemplates -> /api/django/crm/message-templates  [MessageTemplateSerializer]
+    champs: archived, corps, date_creation, date_modification, id, langue, langue_display, nom
+    langue ∈ {darija, fr}
+- frontend/src/api/crmApi.js :: getParrainages -> /api/django/crm/parrainages  [ParrainageSerializer]
+    champs: company, date_creation, filleul_client, filleul_display_nom, filleul_lead, filleul_nom, id, notes, parrain, parrain_nom, recompense, statut, statut_display
+    statut ∈ {converti, en_attente, recompense_versee}
+- frontend/src/api/crmApi.js :: getPartenaires -> /api/django/crm/partenaires  [PartenaireSerializer]
+    champs: actif, date_activation, date_creation, email, id, nom, numero_agrement, statut_onboarding, taux_commission, telephone, token_acces, type_partenaire, zone
+    statut_onboarding ∈ {agree, en_cours, prospect, suspendu}
+    type_partenaire ∈ {apporteur, installateur, sous_revendeur}
+- frontend/src/api/crmApi.js :: getPlansActivite -> /api/django/crm/plans-activite  [PlanActiviteSerializer]
+    champs: actif, company, date_creation, etapes, id, nom
+- frontend/src/api/crmApi.js :: getSiteProfiles -> /api/django/crm/site-profiles  [SiteProfileSerializer]
+    champs: client, company, conso_mensuelle_kwh, date_creation, date_modification, ete_differente, facture_ete, facture_hiver, gps_lat, gps_lng, id, inclinaison_deg, ombrage, ombrage_notes, orientation, pompe_cv, pompe_debit_m3h, pompe_hmt_m, raccordement, regularisation_8221, surface_toiture_m2, tranche_onee, type_installation, type_toiture
+    ombrage ∈ {aucun, important, partiel}
+    orientation ∈ {autre, est, ouest, sud, sud_est, sud_ouest}
+    raccordement ∈ {inconnu, monophase, triphase}
+    type_installation ∈ {agricole, commercial, industriel, residentiel}
+    type_toiture ∈ {autre, bac_acier, fibrociment, terrasse_beton, tole_metal, tuiles}
+- frontend/src/api/crmApi.js :: getSoumissionsLeadPartenaire -> /api/django/crm/soumissions-lead-partenaire  [SoumissionLeadPartenaireSerializer]
+    champs: date_soumission, email_prospect, id, lead_id, nom_prospect, note, partenaire, statut, telephone_prospect, ville
+    statut ∈ {converti, qualifie, rejete, soumis}
+- frontend/src/api/crmApi.js :: getTags -> /api/django/crm/tags  [LeadTagSerializer]
+    champs: archived, couleur, en_usage, id, nom
+- frontend/src/api/crmApi.js :: getWebsiteLeadPayloads -> /api/django/crm/website-lead-payloads  [WebsiteLeadPayloadSerializer]
+    champs: company, error, id, lead, lead_nom, payload, processed, received_at, remote_addr
+- frontend/src/api/crmApi.js :: listSavedViews -> /api/django/crm/vues-enregistrees  [SavedViewSerializer]
+    champs: created_at, id, name, page, payload, rank, user
+- frontend/src/api/crmApi.js :: updateAppointment -> /api/django/crm/appointments/<>  [AppointmentSerializer]
+    champs: company, created_by, date_creation, date_modification, id, lead, lead_nom, notes, reminder_sent, scheduled_at, statut, statut_display
+    statut ∈ {annule, confirme, effectue, no_show, planifie}
+- frontend/src/api/crmApi.js :: updateSiteProfile -> /api/django/crm/site-profiles/<>  [SiteProfileSerializer]
+    champs: client, company, conso_mensuelle_kwh, date_creation, date_modification, ete_differente, facture_ete, facture_hiver, gps_lat, gps_lng, id, inclinaison_deg, ombrage, ombrage_notes, orientation, pompe_cv, pompe_debit_m3h, pompe_hmt_m, raccordement, regularisation_8221, surface_toiture_m2, tranche_onee, type_installation, type_toiture
+    ombrage ∈ {aucun, important, partiel}
+    orientation ∈ {autre, est, ouest, sud, sud_est, sud_ouest}
+    raccordement ∈ {inconnu, monophase, triphase}
+    type_installation ∈ {agricole, commercial, industriel, residentiel}
+    type_toiture ∈ {autre, bac_acier, fibrociment, terrasse_beton, tole_metal, tuiles}
+- frontend/src/api/customFieldsApi.js :: deleteDef -> /api/django/custom-fields/definitions/<>  [CustomFieldDefSerializer]
+    champs: actif, code, conditions, ia_prompt, id, libelle, module, obligatoire, options, ordre, relation_module, type, visible_liste
+    module ∈ {client, devis, document, employe, fournisseur, installation, lead, produit, ticket}
+    relation_module ∈ {client, devis, document, employe, fournisseur, installation, lead, produit, ticket}
+    type ∈ {boolean, choice, date, fichier, ia, number, relation, text}
+- frontend/src/api/customFieldsApi.js :: getDefs -> /api/django/custom-fields/definitions  [CustomFieldDefSerializer]
+    champs: actif, code, conditions, ia_prompt, id, libelle, module, obligatoire, options, ordre, relation_module, type, visible_liste
+    module ∈ {client, devis, document, employe, fournisseur, installation, lead, produit, ticket}
+    relation_module ∈ {client, devis, document, employe, fournisseur, installation, lead, produit, ticket}
+    type ∈ {boolean, choice, date, fichier, ia, number, relation, text}
+- frontend/src/api/demoApi.js :: setPresentationMode -> /api/django/companies/<>  [CompanySerializer]
+    champs: actif, benchmarking_opt_in, date_creation, est_demo, id, mode_presentation_actif, nom, slug
+- frontend/src/api/educationApi.js :: remove -> /api/django/education/emploi-du-temps/<>  [CreneauEmploiDuTempsSerializer]
+    champs: actif, classe, heure_debut, heure_fin, id, jour_semaine, matiere_classe, salle
+- frontend/src/api/einvoiceApi.js :: list -> /api/django/einvoice/factures-electroniques  [FactureElectroniqueSerializer]
+    champs: certificat_ref, date_creation, facture_id, facture_ref, format, genere_le, hash_contenu, id, mode, signature_xml, signe_le, statut, version, xml_key
+    format ∈ {cii, ubl}
+    mode ∈ {dry_run, reel}
+    statut ∈ {brouillon, genere, rejete, signe, transmis}
+- frontend/src/api/fiscalApi.js :: echeances -> /api/django/fiscal/echeances  [EcheanceFiscaleSerializer]
+    champs: date_creation, date_limite, declaration_id, declaration_type, id, obligation, periode_debut, periode_fin, rappel_envoye_le, statut
+    statut ∈ {a_preparer, deposee, payee}
+- frontend/src/api/fiscalApi.js :: veille -> /api/django/fiscal/veille  [VeilleReglementaireSerializer]
+    champs: date_creation, date_effet, domaine, id, impact_traite, parametre_cible, resume, source_url, statut, titre
+    domaine ∈ {cnss, einvoicing, environnement, ir, is, marches, tva}
+    statut ∈ {lu, nouveau, traite}
+- frontend/src/api/fpaApi.js :: createCommentaireVariance -> /api/django/fpa/commentaires-variance  [CommentaireVarianceSerializer]
+    champs: auteur, auteur_nom, categorie, company, cree_le, cycle, departement, id, mois, texte
+    categorie ∈ {autre, frais_generaux, investissement, it, marketing, masse_salariale}
+- frontend/src/api/fpaApi.js :: createCycle -> /api/django/fpa/cycles-budgetaires  [CycleBudgetaireSerializer]
+    champs: company, date_creation, date_debut, date_fin, exercice_comptable_id, exercice_label, id, nom, statut, type_cycle
+    statut ∈ {brouillon, clos, en_validation, ouvert_saisie}
+    type_cycle ∈ {annuel, trimestriel}
+- frontend/src/api/fpaApi.js :: createHypothese -> /api/django/fpa/hypotheses-recrutement  [HypotheseRecrutementSerializer]
+    champs: company, date_creation, date_effet, departement, est_engage, id, poste, prevision_glissante, salaire_brut_estime, statut, type_mouvement
+    statut ∈ {confirme, hypothese}
+    type_mouvement ∈ {depart, embauche}
+- frontend/src/api/fpaApi.js :: createLigneBudget -> /api/django/fpa/lignes-budget-departement  [LigneBudgetDepartementSerializer]
+    champs: categorie, commentaire, company, cycle, date_modification, departement, id, mois, montant_prevu
+    categorie ∈ {autre, frais_generaux, investissement, it, marketing, masse_salariale}
+- frontend/src/api/fpaApi.js :: createLigneScenario -> /api/django/fpa/lignes-scenario  [LigneScenarioSerializer]
+    champs: categorie, company, delta_montant, delta_pct, id, ligne_budget, raison, scenario
+    categorie ∈ {autre, frais_generaux, investissement, it, marketing, masse_salariale}
+- frontend/src/api/fpaApi.js :: createMapping -> /api/django/fpa/mapping-categories  [MappingCategorieCompteSerializer]
+    champs: categorie, company, compte_cgnc_libelle, compte_cgnc_prefixe, id
+    categorie ∈ {autre, frais_generaux, investissement, it, marketing, masse_salariale}
+- frontend/src/api/fpaApi.js :: createScenario -> /api/django/fpa/scenarios  [ScenarioBudgetaireSerializer]
+    champs: company, cycle, date_creation, description, est_scenario_base, id, lignes, nom, statut
+    statut ∈ {actif, archive, brouillon}
+- frontend/src/api/fpaApi.js :: getCommentairesVariance -> /api/django/fpa/commentaires-variance  [CommentaireVarianceSerializer]
+    champs: auteur, auteur_nom, categorie, company, cree_le, cycle, departement, id, mois, texte
+    categorie ∈ {autre, frais_generaux, investissement, it, marketing, masse_salariale}
+- frontend/src/api/fpaApi.js :: getCycle -> /api/django/fpa/cycles-budgetaires/<>  [CycleBudgetaireSerializer]
+    champs: company, date_creation, date_debut, date_fin, exercice_comptable_id, exercice_label, id, nom, statut, type_cycle
+    statut ∈ {brouillon, clos, en_validation, ouvert_saisie}
+    type_cycle ∈ {annuel, trimestriel}
+- frontend/src/api/fpaApi.js :: getCycles -> /api/django/fpa/cycles-budgetaires  [CycleBudgetaireSerializer]
+    champs: company, date_creation, date_debut, date_fin, exercice_comptable_id, exercice_label, id, nom, statut, type_cycle
+    statut ∈ {brouillon, clos, en_validation, ouvert_saisie}
+    type_cycle ∈ {annuel, trimestriel}
+- frontend/src/api/fpaApi.js :: getHypotheses -> /api/django/fpa/hypotheses-recrutement  [HypotheseRecrutementSerializer]
+    champs: company, date_creation, date_effet, departement, est_engage, id, poste, prevision_glissante, salaire_brut_estime, statut, type_mouvement
+    statut ∈ {confirme, hypothese}
+    type_mouvement ∈ {depart, embauche}
+- frontend/src/api/fpaApi.js :: getLignesBudget -> /api/django/fpa/lignes-budget-departement  [LigneBudgetDepartementSerializer]
+    champs: categorie, commentaire, company, cycle, date_modification, departement, id, mois, montant_prevu
+    categorie ∈ {autre, frais_generaux, investissement, it, marketing, masse_salariale}
+- frontend/src/api/fpaApi.js :: getLignesScenario -> /api/django/fpa/lignes-scenario  [LigneScenarioSerializer]
+    champs: categorie, company, delta_montant, delta_pct, id, ligne_budget, raison, scenario
+    categorie ∈ {autre, frais_generaux, investissement, it, marketing, masse_salariale}
+- frontend/src/api/fpaApi.js :: getMappings -> /api/django/fpa/mapping-categories  [MappingCategorieCompteSerializer]
+    champs: categorie, company, compte_cgnc_libelle, compte_cgnc_prefixe, id
+    categorie ∈ {autre, frais_generaux, investissement, it, marketing, masse_salariale}
+- frontend/src/api/fpaApi.js :: getPrevision -> /api/django/fpa/previsions-glissantes/<>  [PrevisionGlissanteSerializer]
+    champs: company, date_creation, date_modification, date_reference, departement, horizon_mois, id, lignes
+- frontend/src/api/fpaApi.js :: getPrevisions -> /api/django/fpa/previsions-glissantes  [PrevisionGlissanteSerializer]
+    champs: company, date_creation, date_modification, date_reference, departement, horizon_mois, id, lignes
+- frontend/src/api/fpaApi.js :: getScenarios -> /api/django/fpa/scenarios  [ScenarioBudgetaireSerializer]
+    champs: company, cycle, date_creation, description, est_scenario_base, id, lignes, nom, statut
+    statut ∈ {actif, archive, brouillon}
+- frontend/src/api/fpaApi.js :: updateHypothese -> /api/django/fpa/hypotheses-recrutement/<>  [HypotheseRecrutementSerializer]
+    champs: company, date_creation, date_effet, departement, est_engage, id, poste, prevision_glissante, salaire_brut_estime, statut, type_mouvement
+    statut ∈ {confirme, hypothese}
+    type_mouvement ∈ {depart, embauche}
+- frontend/src/api/fpaApi.js :: updateLigneBudget -> /api/django/fpa/lignes-budget-departement/<>  [LigneBudgetDepartementSerializer]
+    champs: categorie, commentaire, company, cycle, date_modification, departement, id, mois, montant_prevu
+    categorie ∈ {autre, frais_generaux, investissement, it, marketing, masse_salariale}
+- frontend/src/api/fpaApi.js :: updateLignePrevision -> /api/django/fpa/lignes-prevision-glissante/<>  [LignePrevisionGlissanteSerializer]
+    champs: categorie, company, id, mois_relatif, montant_prevu, prevision, source
+    categorie ∈ {autre, frais_generaux, investissement, it, marketing, masse_salariale}
+    source ∈ {driver, manuel, statistique}
+- frontend/src/api/fpaApi.js :: updateMapping -> /api/django/fpa/mapping-categories/<>  [MappingCategorieCompteSerializer]
+    champs: categorie, company, compte_cgnc_libelle, compte_cgnc_prefixe, id
+    categorie ∈ {autre, frais_generaux, investissement, it, marketing, masse_salariale}
+- frontend/src/api/gedApi.js :: createAcl -> /api/django/ged/acls  [AclGedSerializer]
+    champs: created_at, created_by, document, document_nom, folder, folder_nom, herite, id, niveau, role, role_nom, updated_at, utilisateur, utilisateur_nom
+- frontend/src/api/gedApi.js :: createAnnotation -> /api/django/ged/annotations  [AnnotationDocumentSerializer]
+    champs: auteur, auteur_nom, contenu, created_at, id, page, type_annotation, version, x, y
+- frontend/src/api/gedApi.js :: createArchivageLegal -> /api/django/ged/archivages-legaux  [ArchivageLegalSerializer]
+    champs: archive_le, archive_par, archive_par_nom, document, document_nom, hash_integrite, id, motif, object_lock_applique, object_lock_retain_until, version, version_numero
+- frontend/src/api/gedApi.js :: createCabinet -> /api/django/ged/cabinets  [CabinetSerializer]
+    champs: created_at, description, id, nom, updated_at
+- frontend/src/api/gedApi.js :: createChampSignature -> /api/django/ged/champs-signature  [ChampSignatureSerializer]
+    champs: created_at, demande, hauteur, id, largeur, modele, page, requis, role, type_champ, type_champ_ref, type_champ_ref_detail, updated_at, valeur, x, y
+- frontend/src/api/gedApi.js :: createCoffre -> /api/django/ged/coffres  [CoffreSerializer]
+    champs: client, created_at, created_by, description, document_count, id, nom, proprietaire, proprietaire_nom, updated_at
+- frontend/src/api/gedApi.js :: createDemandeDisposition -> /api/django/ged/demandes-disposition  [DemandeDispositionSerializer]
+    champs: action, approbateur, approbateur_nom, certificats, commentaire, created_at, decision_le, demandeur, demandeur_nom, documents, executee_le, id, libelle, statut, updated_at
+- frontend/src/api/gedApi.js :: createDemandeDocument -> /api/django/ged/demandes-document  [DemandeDocumentSerializer]
+    champs: created_at, created_by, derniere_relance_le, destinataire_email, destinataire_nom, document, echeance, exigence, folder, folder_nom, id, libelle, nombre_relances, statut, updated_at, utilisateur, utilisateur_nom
+- frontend/src/api/gedApi.js :: createDemandeSignature -> /api/django/ged/demandes-signature  [DemandeSignatureDocumentSerializer]
+    champs: adresse_ip, annule_le, annule_par, consentement_explicite, created_at, created_by, created_by_nom, date_demande, date_signature, document, document_nom, emetteur_notifie_expiration_le, expires_at, hash_contenu, id, motif_refus, provider, provider_ref, refuse_le, relance_cadence_jours, routage, signataire_email, signataire_nom, signataires, signature_texte, signature_tracee, statut, token, updated_at, user_agent
+- frontend/src/api/gedApi.js :: createDepotPublic -> /api/django/ged/depots-publics  [DepotPublicSerializer]
+    champs: actif, created_at, created_by, created_by_nom, depots_effectues, expires_at, folder, folder_nom, id, is_accessible, is_expired, message, octets_deposes, quota_fichiers, quota_octets, token, updated_at
+- frontend/src/api/gedApi.js :: createDossier -> /api/django/ged/dossiers  [FolderSerializer]
+    champs: cabinet, cabinet_nom, created_at, id, nom, parent, parent_nom, path, updated_at
+- frontend/src/api/gedApi.js :: createExigence -> /api/django/ged/exigences-dossier  [ExigenceDossierSerializer]
+    champs: cabinet, created_at, created_by, description, folder, id, libelle, obligatoire, updated_at
+- frontend/src/api/gedApi.js :: createLegalHold -> /api/django/ged/legal-holds  [LegalHoldSerializer]
+    champs: actif, date_levee, date_pose, document, document_nom, id, leve_par, leve_par_nom, motif, place_par, place_par_nom
+- frontend/src/api/gedApi.js :: createLien -> /api/django/ged/liens  [DocumentLienSerializer]
+    champs: created_at, created_by, created_by_nom, document, document_nom, id, target_id, target_label, target_model
+- frontend/src/api/gedApi.js :: createModeleDocument -> /api/django/ged/modeles-document  [ModeleDocumentSerializer]
+    champs: actif, cabinet_cible, categorie, corps_html, created_at, created_by, created_by_nom, description, dossier_cible, id, nom, updated_at
+- frontend/src/api/gedApi.js :: createPartage -> /api/django/ged/partages  [PartageGedSerializer]
+    champs: actif, created_at, created_by, created_by_nom, document, document_nom, expires_at, has_password, id, is_accessible, is_expired, password, public_url, quota_exhausted, quota_max, telechargements, token, updated_at, watermark
+- frontend/src/api/gedApi.js :: createPlanificationDocument -> /api/django/ged/planifications  [PlanificationDocumentSerializer]
+    champs: assigne_a, assigne_a_nom, created_at, created_by, document, document_nom, echeance, faite, id, libelle, notifiee
+- frontend/src/api/gedApi.js :: createPolitiqueRetention -> /api/django/ged/politiques-retention  [PolitiqueRetentionSerializer]
+    champs: actif, action_echeance, cabinet, cabinet_nom, created_at, created_by, created_by_nom, description, duree_conservation_jours, folder, folder_nom, id, is_destructive, nom, scope, type_document, updated_at
+- frontend/src/api/gedApi.js :: createRegleAclMetadonnee -> /api/django/ged/regles-acl-metadonnee  [RegleAclMetadonneeSerializer]
+    champs: actif, condition_group, created_at, created_by, id, niveau, nom, priorite, role, role_nom, updated_at
+- frontend/src/api/gedApi.js :: createRegleDossier -> /api/django/ged/regles-dossier  [RegleDossierSerializer]
+    champs: actif, actions, condition_group, created_at, created_by, folder, folder_nom, id, nom, ordre, updated_at
+- frontend/src/api/gedApi.js :: createRoutageDocumentaire -> /api/django/ged/routages-documentaires  [RoutageDocumentaireSerializer]
+    champs: actif, cabinet_cible, cabinet_cible_nom, created_at, created_by, dossier_cible, id, source, tags_defaut, updated_at
+- frontend/src/api/gedApi.js :: createTag -> /api/django/ged/tags  [DocumentTagSerializer]
+    champs: chemin, couleur, created_at, description, document_count, id, nom, parent, parent_nom, slug, updated_at
+- frontend/src/api/gedApi.js :: createTagAssignment -> /api/django/ged/tag-assignments  [DocumentTagAssignmentSerializer]
+    champs: created_at, created_by, document, document_nom, id, tag, tag_nom
+- frontend/src/api/gedApi.js :: createTamponSociete -> /api/django/ged/tampons-societe  [TamponSocieteSerializer]
+    champs: created_at, id, libelle
+- frontend/src/api/gedApi.js :: deleteAcl -> /api/django/ged/acls/<>  [AclGedSerializer]
+    champs: created_at, created_by, document, document_nom, folder, folder_nom, herite, id, niveau, role, role_nom, updated_at, utilisateur, utilisateur_nom
+- frontend/src/api/gedApi.js :: deleteChampSignature -> /api/django/ged/champs-signature/<>  [ChampSignatureSerializer]
+    champs: created_at, demande, hauteur, id, largeur, modele, page, requis, role, type_champ, type_champ_ref, type_champ_ref_detail, updated_at, valeur, x, y
+- frontend/src/api/gedApi.js :: deleteCoffre -> /api/django/ged/coffres/<>  [CoffreSerializer]
+    champs: client, created_at, created_by, description, document_count, id, nom, proprietaire, proprietaire_nom, updated_at
+- frontend/src/api/gedApi.js :: deleteExigence -> /api/django/ged/exigences-dossier/<>  [ExigenceDossierSerializer]
+    champs: cabinet, created_at, created_by, description, folder, id, libelle, obligatoire, updated_at
+- frontend/src/api/gedApi.js :: deleteLien -> /api/django/ged/liens/<>  [DocumentLienSerializer]
+    champs: created_at, created_by, created_by_nom, document, document_nom, id, target_id, target_label, target_model
+- frontend/src/api/gedApi.js :: deletePlanificationDocument -> /api/django/ged/planifications/<>  [PlanificationDocumentSerializer]
+    champs: assigne_a, assigne_a_nom, created_at, created_by, document, document_nom, echeance, faite, id, libelle, notifiee
+- frontend/src/api/gedApi.js :: deletePolitiqueRetention -> /api/django/ged/politiques-retention/<>  [PolitiqueRetentionSerializer]
+    champs: actif, action_echeance, cabinet, cabinet_nom, created_at, created_by, created_by_nom, description, duree_conservation_jours, folder, folder_nom, id, is_destructive, nom, scope, type_document, updated_at
+- frontend/src/api/gedApi.js :: deleteRegleAclMetadonnee -> /api/django/ged/regles-acl-metadonnee/<>  [RegleAclMetadonneeSerializer]
+    champs: actif, condition_group, created_at, created_by, id, niveau, nom, priorite, role, role_nom, updated_at
+- frontend/src/api/gedApi.js :: deleteRegleDossier -> /api/django/ged/regles-dossier/<>  [RegleDossierSerializer]
+    champs: actif, actions, condition_group, created_at, created_by, folder, folder_nom, id, nom, ordre, updated_at
+- frontend/src/api/gedApi.js :: deleteRoutageDocumentaire -> /api/django/ged/routages-documentaires/<>  [RoutageDocumentaireSerializer]
+    champs: actif, cabinet_cible, cabinet_cible_nom, created_at, created_by, dossier_cible, id, source, tags_defaut, updated_at
+- frontend/src/api/gedApi.js :: deleteTag -> /api/django/ged/tags/<>  [DocumentTagSerializer]
+    champs: chemin, couleur, created_at, description, document_count, id, nom, parent, parent_nom, slug, updated_at
+- frontend/src/api/gedApi.js :: deleteTagAssignment -> /api/django/ged/tag-assignments/<>  [DocumentTagAssignmentSerializer]
+    champs: created_at, created_by, document, document_nom, id, tag, tag_nom
+- frontend/src/api/gedApi.js :: deleteTamponSociete -> /api/django/ged/tampons-societe/<>  [TamponSocieteSerializer]
+    champs: created_at, id, libelle
+- frontend/src/api/gedApi.js :: getAcls -> /api/django/ged/acls  [AclGedSerializer]
+    champs: created_at, created_by, document, document_nom, folder, folder_nom, herite, id, niveau, role, role_nom, updated_at, utilisateur, utilisateur_nom
+- frontend/src/api/gedApi.js :: getArchivagesLegaux -> /api/django/ged/archivages-legaux  [ArchivageLegalSerializer]
+    champs: archive_le, archive_par, archive_par_nom, document, document_nom, hash_integrite, id, motif, object_lock_applique, object_lock_retain_until, version, version_numero
+- frontend/src/api/gedApi.js :: getCabinets -> /api/django/ged/cabinets  [CabinetSerializer]
+    champs: created_at, description, id, nom, updated_at
+- frontend/src/api/gedApi.js :: getChampsSignature -> /api/django/ged/champs-signature  [ChampSignatureSerializer]
+    champs: created_at, demande, hauteur, id, largeur, modele, page, requis, role, type_champ, type_champ_ref, type_champ_ref_detail, updated_at, valeur, x, y
+- frontend/src/api/gedApi.js :: getCoffres -> /api/django/ged/coffres  [CoffreSerializer]
+    champs: client, created_at, created_by, description, document_count, id, nom, proprietaire, proprietaire_nom, updated_at
+- frontend/src/api/gedApi.js :: getDemandesApprobation -> /api/django/ged/demandes-approbation  [DemandeApprobationSerializer]
+    champs: approbateur, approbateur_nom, commentaire, created_at, decision_le, demandeur, demandeur_nom, document, document_nom, document_statut, id, is_pending, statut, statut_display, updated_at
+- frontend/src/api/gedApi.js :: getDemandesDisposition -> /api/django/ged/demandes-disposition  [DemandeDispositionSerializer]
+    champs: action, approbateur, approbateur_nom, certificats, commentaire, created_at, decision_le, demandeur, demandeur_nom, documents, executee_le, id, libelle, statut, updated_at
+- frontend/src/api/gedApi.js :: getDemandesDocument -> /api/django/ged/demandes-document  [DemandeDocumentSerializer]
+    champs: created_at, created_by, derniere_relance_le, destinataire_email, destinataire_nom, document, echeance, exigence, folder, folder_nom, id, libelle, nombre_relances, statut, updated_at, utilisateur, utilisateur_nom
+- frontend/src/api/gedApi.js :: getDemandesSignature -> /api/django/ged/demandes-signature  [DemandeSignatureDocumentSerializer]
+    champs: adresse_ip, annule_le, annule_par, consentement_explicite, created_at, created_by, created_by_nom, date_demande, date_signature, document, document_nom, emetteur_notifie_expiration_le, expires_at, hash_contenu, id, motif_refus, provider, provider_ref, refuse_le, relance_cadence_jours, routage, signataire_email, signataire_nom, signataires, signature_texte, signature_tracee, statut, token, updated_at, user_agent
+- frontend/src/api/gedApi.js :: getDepotsPublics -> /api/django/ged/depots-publics  [DepotPublicSerializer]
+    champs: actif, created_at, created_by, created_by_nom, depots_effectues, expires_at, folder, folder_nom, id, is_accessible, is_expired, message, octets_deposes, quota_fichiers, quota_octets, token, updated_at
+- frontend/src/api/gedApi.js :: getDocuments -> /api/django/ged/documents  [DocumentSerializer]
+    champs: coffre, contact_id, contact_label, created_at, created_by, created_by_nom, custom_data, derniere_version, description, est_dans_corbeille, est_document_lien, est_verrouille_avertissement, folder, folder_nom, id, is_locked, locked_at, locked_by, locked_by_nom, nom, proprietaire, proprietaire_nom, reference, statut, statut_display, supprime_le, supprime_par, supprime_par_nom, tags, transitions_autorisees, updated_at, url_externe, verrou_avertissement_le, verrou_avertissement_motif, verrou_avertissement_par, verrou_avertissement_par_nom, version_count, watermark_diffusion
+- frontend/src/api/gedApi.js :: getDocumentsList -> /api/django/ged/documents  [DocumentSerializer]
+    champs: coffre, contact_id, contact_label, created_at, created_by, created_by_nom, custom_data, derniere_version, description, est_dans_corbeille, est_document_lien, est_verrouille_avertissement, folder, folder_nom, id, is_locked, locked_at, locked_by, locked_by_nom, nom, proprietaire, proprietaire_nom, reference, statut, statut_display, supprime_le, supprime_par, supprime_par_nom, tags, transitions_autorisees, updated_at, url_externe, verrou_avertissement_le, verrou_avertissement_motif, verrou_avertissement_par, verrou_avertissement_par_nom, version_count, watermark_diffusion
+- frontend/src/api/gedApi.js :: getDossiers -> /api/django/ged/dossiers  [FolderSerializer]
+    champs: cabinet, cabinet_nom, created_at, id, nom, parent, parent_nom, path, updated_at
+- frontend/src/api/gedApi.js :: getExigences -> /api/django/ged/exigences-dossier  [ExigenceDossierSerializer]
+    champs: cabinet, created_at, created_by, description, folder, id, libelle, obligatoire, updated_at
+- frontend/src/api/gedApi.js :: getJournalAcces -> /api/django/ged/journal-acces  [JournalAccesSerializer]
+    champs: adresse_ip, created_at, document, document_nom, id, type_acces, utilisateur, utilisateur_nom
+- frontend/src/api/gedApi.js :: getLegalHolds -> /api/django/ged/legal-holds  [LegalHoldSerializer]
+    champs: actif, date_levee, date_pose, document, document_nom, id, leve_par, leve_par_nom, motif, place_par, place_par_nom
+- frontend/src/api/gedApi.js :: getLiens -> /api/django/ged/liens  [DocumentLienSerializer]
+    champs: created_at, created_by, created_by_nom, document, document_nom, id, target_id, target_label, target_model
+- frontend/src/api/gedApi.js :: getLotsEnvoi -> /api/django/ged/lots-envoi  [LotEnvoiSerializer]
+    champs: created_at, created_by, id, libelle, modele, modele_nom, nb_envoyes, nb_erreurs, nb_refuses, nb_signes, nb_vus, resultats, total, updated_at
+- frontend/src/api/gedApi.js :: getModelesDocument -> /api/django/ged/modeles-document  [ModeleDocumentSerializer]
+    champs: actif, cabinet_cible, categorie, corps_html, created_at, created_by, created_by_nom, description, dossier_cible, id, nom, updated_at
+- frontend/src/api/gedApi.js :: getPartages -> /api/django/ged/partages  [PartageGedSerializer]
+    champs: actif, created_at, created_by, created_by_nom, document, document_nom, expires_at, has_password, id, is_accessible, is_expired, password, public_url, quota_exhausted, quota_max, telechargements, token, updated_at, watermark
+- frontend/src/api/gedApi.js :: getPlanificationsDocument -> /api/django/ged/planifications  [PlanificationDocumentSerializer]
+    champs: assigne_a, assigne_a_nom, created_at, created_by, document, document_nom, echeance, faite, id, libelle, notifiee
+- frontend/src/api/gedApi.js :: getPolitiquesRetention -> /api/django/ged/politiques-retention  [PolitiqueRetentionSerializer]
+    champs: actif, action_echeance, cabinet, cabinet_nom, created_at, created_by, created_by_nom, description, duree_conservation_jours, folder, folder_nom, id, is_destructive, nom, scope, type_document, updated_at
+- frontend/src/api/gedApi.js :: getQuotaStockage -> /api/django/ged/quotas-stockage  [QuotaStockageSerializer]
+    champs: created_at, depasse, id, quota_octets, updated_at, utilise_octets
+- frontend/src/api/gedApi.js :: getReglesAclMetadonnee -> /api/django/ged/regles-acl-metadonnee  [RegleAclMetadonneeSerializer]
+    champs: actif, condition_group, created_at, created_by, id, niveau, nom, priorite, role, role_nom, updated_at
+- frontend/src/api/gedApi.js :: getReglesDossier -> /api/django/ged/regles-dossier  [RegleDossierSerializer]
+    champs: actif, actions, condition_group, created_at, created_by, folder, folder_nom, id, nom, ordre, updated_at
+- frontend/src/api/gedApi.js :: getRolesSignataire -> /api/django/ged/roles-signataire  [RoleSignataireSerializer]
+    champs: auth_extra, couleur, created_at, created_by, id, nom, peut_changer_signataire, updated_at
+- frontend/src/api/gedApi.js :: getRoutagesDocumentaires -> /api/django/ged/routages-documentaires  [RoutageDocumentaireSerializer]
+    champs: actif, cabinet_cible, cabinet_cible_nom, created_at, created_by, dossier_cible, id, source, tags_defaut, updated_at
+- frontend/src/api/gedApi.js :: getSignatairesDemande -> /api/django/ged/signataires-demande  [SignataireDemandeSerializer]
+    champs: created_at, date_action, demande, derniere_relance_le, email, id, motif_refus, nb_relances, nom, notifie_le, ordre, role, role_auth_extra, role_couleur, role_signataire, role_signataire_nom, statut, telephone, updated_at
+- frontend/src/api/gedApi.js :: getTagAssignments -> /api/django/ged/tag-assignments  [DocumentTagAssignmentSerializer]
+    champs: created_at, created_by, document, document_nom, id, tag, tag_nom
+- frontend/src/api/gedApi.js :: getTags -> /api/django/ged/tags  [DocumentTagSerializer]
+    champs: chemin, couleur, created_at, description, document_count, id, nom, parent, parent_nom, slug, updated_at
+- frontend/src/api/gedApi.js :: getTamponsSociete -> /api/django/ged/tampons-societe  [TamponSocieteSerializer]
+    champs: created_at, id, libelle
+- frontend/src/api/gedApi.js :: getTypesChampSignature -> /api/django/ged/types-champ-signature  [TypeChampSignatureSerializer]
+    champs: actif, astuce, auto_remplir, code, created_at, created_by, hauteur_defaut, id, largeur_defaut, lecture_seule, libelle, mode_saisie, options, placeholder, updated_at
+- frontend/src/api/gedApi.js :: getUsers -> /api/django/users  [UserSerializer]
+    champs: active_company_id, avatar_key, avatar_url, company_est_demo, company_id, company_mode_presentation_actif, company_nom, date_joined, email, first_name, id, is_active, is_protected, is_superuser, last_login, last_name, menu_tier, mobile_home_route, modules_desactives, must_change_password, password, password_changed_at, permissions, portail_client_id, portail_fournisseur_id, portail_partenaire_id, portee, poste, poste_ref, poste_ref_intitule, role, role_legacy, role_nom, societes_operables, supervisor, supervisor_nom, username
+- frontend/src/api/gedApi.js :: getValidationsOcr -> /api/django/ged/validations-ocr  [ValidationOcrDocumentSerializer]
+    champs: champs_extraits, created_at, document, document_nom, id, score_confiance, updated_at, valide, valide_le, valide_par, valide_par_nom
+- frontend/src/api/gedApi.js :: getVersions -> /api/django/ged/versions  [DocumentVersionSerializer]
+    champs: checksum, created_at, document, file_key, filename, id, mime, restored_from, restored_from_version, size, uploaded_by, uploaded_by_nom, version
+- frontend/src/api/gedApi.js :: getVues -> /api/django/ged/vues  [VueGedEnregistreeSerializer]
+    champs: created_at, criteres, est_a_moi, id, nom, partagee, updated_at, utilisateur, utilisateur_nom
+- frontend/src/api/gedApi.js :: renameDossier -> /api/django/ged/dossiers/<>  [FolderSerializer]
+    champs: cabinet, cabinet_nom, created_at, id, nom, parent, parent_nom, path, updated_at
+- frontend/src/api/gedApi.js :: setQuotaStockage -> /api/django/ged/quotas-stockage  [QuotaStockageSerializer]
+    champs: created_at, depasse, id, quota_octets, updated_at, utilise_octets
+- frontend/src/api/gedApi.js :: updateAcl -> /api/django/ged/acls/<>  [AclGedSerializer]
+    champs: created_at, created_by, document, document_nom, folder, folder_nom, herite, id, niveau, role, role_nom, updated_at, utilisateur, utilisateur_nom
+- frontend/src/api/gedApi.js :: updatePlanificationDocument -> /api/django/ged/planifications/<>  [PlanificationDocumentSerializer]
+    champs: assigne_a, assigne_a_nom, created_at, created_by, document, document_nom, echeance, faite, id, libelle, notifiee
+- frontend/src/api/gedApi.js :: updatePolitiqueRetention -> /api/django/ged/politiques-retention/<>  [PolitiqueRetentionSerializer]
+    champs: actif, action_echeance, cabinet, cabinet_nom, created_at, created_by, created_by_nom, description, duree_conservation_jours, folder, folder_nom, id, is_destructive, nom, scope, type_document, updated_at
+- frontend/src/api/gedApi.js :: updateRegleAclMetadonnee -> /api/django/ged/regles-acl-metadonnee/<>  [RegleAclMetadonneeSerializer]
+    champs: actif, condition_group, created_at, created_by, id, niveau, nom, priorite, role, role_nom, updated_at
+- frontend/src/api/gedApi.js :: updateRegleDossier -> /api/django/ged/regles-dossier/<>  [RegleDossierSerializer]
+    champs: actif, actions, condition_group, created_at, created_by, folder, folder_nom, id, nom, ordre, updated_at
+- frontend/src/api/gedApi.js :: updateRoutageDocumentaire -> /api/django/ged/routages-documentaires/<>  [RoutageDocumentaireSerializer]
+    champs: actif, cabinet_cible, cabinet_cible_nom, created_at, created_by, dossier_cible, id, source, tags_defaut, updated_at
+- frontend/src/api/gedApi.js :: updateTag -> /api/django/ged/tags/<>  [DocumentTagSerializer]
+    champs: chemin, couleur, created_at, description, document_count, id, nom, parent, parent_nom, slug, updated_at
+- frontend/src/api/gestionProjetApi.js :: createAction -> /api/django/gestion-projet/actions  [ActionProjetSerializer]
+    champs: date_cloture, date_creation, description, echeance, id, libelle, priorite, priorite_display, projet, projet_code, responsable, risque, statut, statut_display
+    priorite ∈ {basse, haute, moyenne}
+    statut ∈ {a_faire, annule, en_cours, fait}
+- frontend/src/api/gestionProjetApi.js :: createAffectation -> /api/django/gestion-projet/affectations  [AffectationRessourceSerializer]
+    champs: actif_id, actif_type, charge_jours, date_creation, date_debut, date_fin, equipe, equipe_nom, id, note, publie_le, publie_par, quantite, ressource, ressource_nom, statut_publication, statut_publication_display, tache, tache_libelle
+    actif_type ∈ {actif_flotte}
+    statut_publication ∈ {brouillon, publie}
+- frontend/src/api/gestionProjetApi.js :: createBudget -> /api/django/gestion-projet/budgets  [BudgetProjetSerializer]
+    champs: date_creation, devise, id, libelle, projet, projet_code, statut, statut_display, total, version
+    statut ∈ {archive, brouillon, valide}
+- frontend/src/api/gestionProjetApi.js :: createCalendrier -> /api/django/gestion-projet/calendriers  [CalendrierProjetSerializer]
+    champs: date_creation, dimanche, id, jeudi, jours_feries, lundi, mardi, mercredi, projet, projet_code, samedi, vendredi
+- frontend/src/api/gestionProjetApi.js :: createChantier -> /api/django/gestion-projet/projet-chantiers  [ProjetChantierSerializer]
+    champs: chantier_id, date_creation, id, libelle, projet, projet_code
+- frontend/src/api/gestionProjetApi.js :: createCommentaire -> /api/django/gestion-projet/commentaires  [CommentaireProjetSerializer]
+    champs: auteur, auteur_nom, cible_id, cible_type, cible_type_display, date_creation, id, mentions, projet, projet_code, texte
+    cible_type ∈ {action, document, jalon, projet, risque, tache}
+- frontend/src/api/gestionProjetApi.js :: createCompteRendu -> /api/django/gestion-projet/comptes-rendus  [CompteRenduReunionSerializer]
+    champs: chantier_id, date_creation, date_prochaine_reunion, date_reunion, decisions, id, lieu, ordre_du_jour, participants, points_bloquants, projet, projet_code, redacteur, redacteur_nom, titre
+- frontend/src/api/gestionProjetApi.js :: createDependance -> /api/django/gestion-projet/dependances  [DependanceTacheSerializer]
+    champs: date_creation, id, lag, predecesseur, projet, successeur, type_dependance, type_dependance_display
+    type_dependance ∈ {ff, fs, sf, ss}
+- frontend/src/api/gestionProjetApi.js :: createDocument -> /api/django/gestion-projet/documents  [DocumentProjetSerializer]
+    champs: date_creation, derniere_version, description, id, nom, projet, projet_code, type_doc, type_doc_display, versions
+    type_doc ∈ {autre, contrat, note, photo, plan, pv}
+- frontend/src/api/gestionProjetApi.js :: createEquipe -> /api/django/gestion-projet/equipes  [EquipeSerializer]
+    champs: date_creation, description, id, membres, membres_detail, nom
+- frontend/src/api/gestionProjetApi.js :: createIndisponibilite -> /api/django/gestion-projet/indisponibilites  [IndisponibiliteSerializer]
+    champs: date_creation, date_debut, date_fin, id, motif, ressource, ressource_nom, type_indispo
+    type_indispo ∈ {arret, conge, formation}
+- frontend/src/api/gestionProjetApi.js :: createItemChecklist -> /api/django/gestion-projet/items-checklist  [ItemChecklistTacheSerializer]
+    champs: date_creation, fait, fait_le, fait_par, fait_par_nom, id, libelle, ordre, tache
+- frontend/src/api/gestionProjetApi.js :: createJalon -> /api/django/gestion-projet/jalons  [JalonSerializer]
+    champs: date_creation, date_prevue, date_reelle, description, facturation_pct, id, libelle, phase, projet, projet_code, statut, statut_display, tache
+    statut ∈ {a_venir, atteint, manque}
+- frontend/src/api/gestionProjetApi.js :: createJourFerie -> /api/django/gestion-projet/jours-feries  [JourFerieSerializer]
+    champs: calendrier, date, date_creation, id, libelle
+- frontend/src/api/gestionProjetApi.js :: createLien -> /api/django/gestion-projet/projet-liens  [ProjetLienSerializer]
+    champs: cible_id, date_creation, id, libelle, projet, projet_code, type_cible, type_cible_display
+    type_cible ∈ {achat, devis, facture, ticket}
+- frontend/src/api/gestionProjetApi.js :: createLigneBudget -> /api/django/gestion-projet/lignes-budget  [LigneBudgetProjetSerializer]
+    champs: budget, categorie, categorie_display, date_creation, id, libelle, montant_prevu, pu, quantite
+    categorie ∈ {divers, main_oeuvre, materiel, sous_traitance}
+- frontend/src/api/gestionProjetApi.js :: createLotSousTraitance -> /api/django/gestion-projet/lots-sous-traitance  [LotSousTraitanceSerializer]
+    champs: date_creation, date_debut, date_fin, description, id, libelle, montant, projet, projet_code, sous_traitant, sous_traitant_nom, statut, statut_display
+    statut ∈ {annule, en_cours, prevu, receptionne}
+- frontend/src/api/gestionProjetApi.js :: createModele -> /api/django/gestion-projet/modeles  [ModeleProjetSerializer]
+    champs: actif, date_creation, description, id, nb_taches, nom, taches, type_installation, type_installation_display
+    type_installation ∈ {agricole, autre, industriel, residentiel}
+- frontend/src/api/gestionProjetApi.js :: createModeleTache -> /api/django/gestion-projet/modele-taches  [ModeleTacheSerializer]
+    champs: charge_estimee, code_wbs, date_creation, id, libelle, modele, ordre, type_phase, type_phase_display
+    type_phase ∈ {appro, etude, mes, pose, reception}
+- frontend/src/api/gestionProjetApi.js :: createPhase -> /api/django/gestion-projet/phases  [PhaseProjetSerializer]
+    champs: avancement_pct, date_creation, date_debut_prevue, date_debut_reelle, date_fin_prevue, date_fin_reelle, id, libelle, ordre, projet, projet_code, statut, statut_display, type_phase, type_phase_display
+    statut ∈ {a_venir, en_cours, terminee}
+    type_phase ∈ {appro, etude, mes, pose, reception}
+- frontend/src/api/gestionProjetApi.js :: createPointAvancement -> /api/django/gestion-projet/points-avancement  [PointAvancementSerializer]
+    champs: auteur, auteur_nom, avancement_pct, date_creation, date_point, id, prochaines_etapes, projet, projet_code, realisations, risques, sante, sante_display
+    sante ∈ {orange, rouge, vert}
+- frontend/src/api/gestionProjetApi.js :: createProjet -> /api/django/gestion-projet/projets  [ProjetSerializer]
+    champs: alias_email, budget_total, client_id, code, contrat_id, date_creation, date_debut, date_fin_prevue, delai_execution_jours, description, id, maitre_ouvrage, montant_marche, nom, numero_marche, plafond_penalite_pct, politique_facturation, politique_facturation_display, responsable, statut, statut_display, taux_penalite_retard
+    politique_facturation ∈ {forfait, jalons, regie, situations}
+    statut ∈ {annule, brouillon, en_cours, en_pause, planifie, termine}
+- frontend/src/api/gestionProjetApi.js :: createRessource -> /api/django/gestion-projet/ressources  [RessourceProfilSerializer]
+    champs: actif, competences, cout_horaire, date_creation, id, nom, role, user
+- frontend/src/api/gestionProjetApi.js :: createRisque -> /api/django/gestion-projet/risques  [RisqueSerializer]
+    champs: categorie, categorie_display, criticite, date_creation, description, id, impact, libelle, mitigation, probabilite, projet, projet_code, proprietaire, statut, statut_display
+    categorie ∈ {autre, cout, delai, fournisseur, reglementaire, securite, technique}
+    statut ∈ {clos, maitrise, ouvert, surveille}
+- frontend/src/api/gestionProjetApi.js :: createSituation -> /api/django/gestion-projet/situations  [SituationTravauxSerializer]
+    champs: contrat_id, date_creation, date_validation, facture_id, id, montant_periode_total, numero, periode, projet, projet_code, retenue_garantie_pct, statut, statut_display
+    statut ∈ {brouillon, facturee, validee}
+- frontend/src/api/gestionProjetApi.js :: createSousTraitant -> /api/django/gestion-projet/sous-traitants  [SousTraitantSerializer]
+    champs: actif, contact, date_creation, email, id, nom, specialite, telephone
+- frontend/src/api/gestionProjetApi.js :: createTache -> /api/django/gestion-projet/taches  [TacheSerializer]
+    champs: assigne, assigne_nom, avancement_pct, charge_estimee, code_wbs, date_creation, date_debut_prevue, date_fin_prevue, date_fin_reelle, description, etiquettes, id, libelle, nb_sous_taches, ordre, parent, pct_checklist_fait, phase, priorite, priorite_display, projet, projet_code, statut, statut_display, ticket_sav_id
+    priorite ∈ {basse, haute, normale, urgente}
+    statut ∈ {a_faire, bloque, en_cours, termine}
+- frontend/src/api/gestionProjetApi.js :: createTimesheet -> /api/django/gestion-projet/timesheets  [TimesheetSerializer]
+    champs: approuve_par, approuve_par_nom, commentaire, cout, date, date_approbation, date_creation, facturable, heures, id, motif_rejet, phase, projet, projet_code, ressource, ressource_nom, saisi_par, saisi_par_nom, statut, statut_display, tache, taux_facturation, type_activite, type_activite_display
+    statut ∈ {approuvee, brouillon, rejetee, soumise}
+    type_activite ∈ {admin, deplacement, etude, mes, pose, raccordement, sav}
+- frontend/src/api/gestionProjetApi.js :: deleteAction -> /api/django/gestion-projet/actions/<>  [ActionProjetSerializer]
+    champs: date_cloture, date_creation, description, echeance, id, libelle, priorite, priorite_display, projet, projet_code, responsable, risque, statut, statut_display
+    priorite ∈ {basse, haute, moyenne}
+    statut ∈ {a_faire, annule, en_cours, fait}
+- frontend/src/api/gestionProjetApi.js :: deleteAffectation -> /api/django/gestion-projet/affectations/<>  [AffectationRessourceSerializer]
+    champs: actif_id, actif_type, charge_jours, date_creation, date_debut, date_fin, equipe, equipe_nom, id, note, publie_le, publie_par, quantite, ressource, ressource_nom, statut_publication, statut_publication_display, tache, tache_libelle
+    actif_type ∈ {actif_flotte}
+    statut_publication ∈ {brouillon, publie}
+- frontend/src/api/gestionProjetApi.js :: deleteBudget -> /api/django/gestion-projet/budgets/<>  [BudgetProjetSerializer]
+    champs: date_creation, devise, id, libelle, projet, projet_code, statut, statut_display, total, version
+    statut ∈ {archive, brouillon, valide}
+- frontend/src/api/gestionProjetApi.js :: deleteChantier -> /api/django/gestion-projet/projet-chantiers/<>  [ProjetChantierSerializer]
+    champs: chantier_id, date_creation, id, libelle, projet, projet_code
+- frontend/src/api/gestionProjetApi.js :: deleteCommentaire -> /api/django/gestion-projet/commentaires/<>  [CommentaireProjetSerializer]
+    champs: auteur, auteur_nom, cible_id, cible_type, cible_type_display, date_creation, id, mentions, projet, projet_code, texte
+    cible_type ∈ {action, document, jalon, projet, risque, tache}
+- frontend/src/api/gestionProjetApi.js :: deleteCompteRendu -> /api/django/gestion-projet/comptes-rendus/<>  [CompteRenduReunionSerializer]
+    champs: chantier_id, date_creation, date_prochaine_reunion, date_reunion, decisions, id, lieu, ordre_du_jour, participants, points_bloquants, projet, projet_code, redacteur, redacteur_nom, titre
+- frontend/src/api/gestionProjetApi.js :: deleteDependance -> /api/django/gestion-projet/dependances/<>  [DependanceTacheSerializer]
+    champs: date_creation, id, lag, predecesseur, projet, successeur, type_dependance, type_dependance_display
+    type_dependance ∈ {ff, fs, sf, ss}
+- frontend/src/api/gestionProjetApi.js :: deleteDocument -> /api/django/gestion-projet/documents/<>  [DocumentProjetSerializer]
+    champs: date_creation, derniere_version, description, id, nom, projet, projet_code, type_doc, type_doc_display, versions
+    type_doc ∈ {autre, contrat, note, photo, plan, pv}
+- frontend/src/api/gestionProjetApi.js :: deleteEquipe -> /api/django/gestion-projet/equipes/<>  [EquipeSerializer]
+    champs: date_creation, description, id, membres, membres_detail, nom
+- frontend/src/api/gestionProjetApi.js :: deleteIndisponibilite -> /api/django/gestion-projet/indisponibilites/<>  [IndisponibiliteSerializer]
+    champs: date_creation, date_debut, date_fin, id, motif, ressource, ressource_nom, type_indispo
+    type_indispo ∈ {arret, conge, formation}
+- frontend/src/api/gestionProjetApi.js :: deleteItemChecklist -> /api/django/gestion-projet/items-checklist/<>  [ItemChecklistTacheSerializer]
+    champs: date_creation, fait, fait_le, fait_par, fait_par_nom, id, libelle, ordre, tache
+- frontend/src/api/gestionProjetApi.js :: deleteJalon -> /api/django/gestion-projet/jalons/<>  [JalonSerializer]
+    champs: date_creation, date_prevue, date_reelle, description, facturation_pct, id, libelle, phase, projet, projet_code, statut, statut_display, tache
+    statut ∈ {a_venir, atteint, manque}
+- frontend/src/api/gestionProjetApi.js :: deleteJourFerie -> /api/django/gestion-projet/jours-feries/<>  [JourFerieSerializer]
+    champs: calendrier, date, date_creation, id, libelle
+- frontend/src/api/gestionProjetApi.js :: deleteLien -> /api/django/gestion-projet/projet-liens/<>  [ProjetLienSerializer]
+    champs: cible_id, date_creation, id, libelle, projet, projet_code, type_cible, type_cible_display
+    type_cible ∈ {achat, devis, facture, ticket}
+- frontend/src/api/gestionProjetApi.js :: deleteLigneBudget -> /api/django/gestion-projet/lignes-budget/<>  [LigneBudgetProjetSerializer]
+    champs: budget, categorie, categorie_display, date_creation, id, libelle, montant_prevu, pu, quantite
+    categorie ∈ {divers, main_oeuvre, materiel, sous_traitance}
+- frontend/src/api/gestionProjetApi.js :: deleteLotSousTraitance -> /api/django/gestion-projet/lots-sous-traitance/<>  [LotSousTraitanceSerializer]
+    champs: date_creation, date_debut, date_fin, description, id, libelle, montant, projet, projet_code, sous_traitant, sous_traitant_nom, statut, statut_display
+    statut ∈ {annule, en_cours, prevu, receptionne}
+- frontend/src/api/gestionProjetApi.js :: deleteModele -> /api/django/gestion-projet/modeles/<>  [ModeleProjetSerializer]
+    champs: actif, date_creation, description, id, nb_taches, nom, taches, type_installation, type_installation_display
+    type_installation ∈ {agricole, autre, industriel, residentiel}
+- frontend/src/api/gestionProjetApi.js :: deleteModeleTache -> /api/django/gestion-projet/modele-taches/<>  [ModeleTacheSerializer]
+    champs: charge_estimee, code_wbs, date_creation, id, libelle, modele, ordre, type_phase, type_phase_display
+    type_phase ∈ {appro, etude, mes, pose, reception}
+- frontend/src/api/gestionProjetApi.js :: deletePhase -> /api/django/gestion-projet/phases/<>  [PhaseProjetSerializer]
+    champs: avancement_pct, date_creation, date_debut_prevue, date_debut_reelle, date_fin_prevue, date_fin_reelle, id, libelle, ordre, projet, projet_code, statut, statut_display, type_phase, type_phase_display
+    statut ∈ {a_venir, en_cours, terminee}
+    type_phase ∈ {appro, etude, mes, pose, reception}
+- frontend/src/api/gestionProjetApi.js :: deleteProjet -> /api/django/gestion-projet/projets/<>  [ProjetSerializer]
+    champs: alias_email, budget_total, client_id, code, contrat_id, date_creation, date_debut, date_fin_prevue, delai_execution_jours, description, id, maitre_ouvrage, montant_marche, nom, numero_marche, plafond_penalite_pct, politique_facturation, politique_facturation_display, responsable, statut, statut_display, taux_penalite_retard
+    politique_facturation ∈ {forfait, jalons, regie, situations}
+    statut ∈ {annule, brouillon, en_cours, en_pause, planifie, termine}
+- frontend/src/api/gestionProjetApi.js :: deleteRessource -> /api/django/gestion-projet/ressources/<>  [RessourceProfilSerializer]
+    champs: actif, competences, cout_horaire, date_creation, id, nom, role, user
+- frontend/src/api/gestionProjetApi.js :: deleteRisque -> /api/django/gestion-projet/risques/<>  [RisqueSerializer]
+    champs: categorie, categorie_display, criticite, date_creation, description, id, impact, libelle, mitigation, probabilite, projet, projet_code, proprietaire, statut, statut_display
+    categorie ∈ {autre, cout, delai, fournisseur, reglementaire, securite, technique}
+    statut ∈ {clos, maitrise, ouvert, surveille}
+- frontend/src/api/gestionProjetApi.js :: deleteSousTraitant -> /api/django/gestion-projet/sous-traitants/<>  [SousTraitantSerializer]
+    champs: actif, contact, date_creation, email, id, nom, specialite, telephone
+- frontend/src/api/gestionProjetApi.js :: deleteTache -> /api/django/gestion-projet/taches/<>  [TacheSerializer]
+    champs: assigne, assigne_nom, avancement_pct, charge_estimee, code_wbs, date_creation, date_debut_prevue, date_fin_prevue, date_fin_reelle, description, etiquettes, id, libelle, nb_sous_taches, ordre, parent, pct_checklist_fait, phase, priorite, priorite_display, projet, projet_code, statut, statut_display, ticket_sav_id
+    priorite ∈ {basse, haute, normale, urgente}
+    statut ∈ {a_faire, bloque, en_cours, termine}
+- frontend/src/api/gestionProjetApi.js :: deleteTimesheet -> /api/django/gestion-projet/timesheets/<>  [TimesheetSerializer]
+    champs: approuve_par, approuve_par_nom, commentaire, cout, date, date_approbation, date_creation, facturable, heures, id, motif_rejet, phase, projet, projet_code, ressource, ressource_nom, saisi_par, saisi_par_nom, statut, statut_display, tache, taux_facturation, type_activite, type_activite_display
+    statut ∈ {approuvee, brouillon, rejetee, soumise}
+    type_activite ∈ {admin, deplacement, etude, mes, pose, raccordement, sav}
+- frontend/src/api/gestionProjetApi.js :: getActions -> /api/django/gestion-projet/actions  [ActionProjetSerializer]
+    champs: date_cloture, date_creation, description, echeance, id, libelle, priorite, priorite_display, projet, projet_code, responsable, risque, statut, statut_display
+    priorite ∈ {basse, haute, moyenne}
+    statut ∈ {a_faire, annule, en_cours, fait}
+- frontend/src/api/gestionProjetApi.js :: getAffectations -> /api/django/gestion-projet/affectations  [AffectationRessourceSerializer]
+    champs: actif_id, actif_type, charge_jours, date_creation, date_debut, date_fin, equipe, equipe_nom, id, note, publie_le, publie_par, quantite, ressource, ressource_nom, statut_publication, statut_publication_display, tache, tache_libelle
+    actif_type ∈ {actif_flotte}
+    statut_publication ∈ {brouillon, publie}
+- frontend/src/api/gestionProjetApi.js :: getBaselines -> /api/django/gestion-projet/baselines  [BaselinePlanningSerializer]
+    champs: auteur, auteur_nom, date_creation, id, libelle, nb_lignes, projet, projet_code
+- frontend/src/api/gestionProjetApi.js :: getBudgets -> /api/django/gestion-projet/budgets  [BudgetProjetSerializer]
+    champs: date_creation, devise, id, libelle, projet, projet_code, statut, statut_display, total, version
+    statut ∈ {archive, brouillon, valide}
+- frontend/src/api/gestionProjetApi.js :: getCalendriers -> /api/django/gestion-projet/calendriers  [CalendrierProjetSerializer]
+    champs: date_creation, dimanche, id, jeudi, jours_feries, lundi, mardi, mercredi, projet, projet_code, samedi, vendredi
+- frontend/src/api/gestionProjetApi.js :: getChantiers -> /api/django/gestion-projet/projet-chantiers  [ProjetChantierSerializer]
+    champs: chantier_id, date_creation, id, libelle, projet, projet_code
+- frontend/src/api/gestionProjetApi.js :: getClotures -> /api/django/gestion-projet/clotures  [ClotureProjetSerializer]
+    champs: cloture_par, cloture_par_nom, date_cloture, date_creation, date_reception, id, points_amelioration, points_positifs, projet, projet_code, recommandations
+- frontend/src/api/gestionProjetApi.js :: getCommentaires -> /api/django/gestion-projet/commentaires  [CommentaireProjetSerializer]
+    champs: auteur, auteur_nom, cible_id, cible_type, cible_type_display, date_creation, id, mentions, projet, projet_code, texte
+    cible_type ∈ {action, document, jalon, projet, risque, tache}
+- frontend/src/api/gestionProjetApi.js :: getComptesRendus -> /api/django/gestion-projet/comptes-rendus  [CompteRenduReunionSerializer]
+    champs: chantier_id, date_creation, date_prochaine_reunion, date_reunion, decisions, id, lieu, ordre_du_jour, participants, points_bloquants, projet, projet_code, redacteur, redacteur_nom, titre
+- frontend/src/api/gestionProjetApi.js :: getDependances -> /api/django/gestion-projet/dependances  [DependanceTacheSerializer]
+    champs: date_creation, id, lag, predecesseur, projet, successeur, type_dependance, type_dependance_display
+    type_dependance ∈ {ff, fs, sf, ss}
+- frontend/src/api/gestionProjetApi.js :: getDocuments -> /api/django/gestion-projet/documents  [DocumentProjetSerializer]
+    champs: date_creation, derniere_version, description, id, nom, projet, projet_code, type_doc, type_doc_display, versions
+    type_doc ∈ {autre, contrat, note, photo, plan, pv}
+- frontend/src/api/gestionProjetApi.js :: getEquipes -> /api/django/gestion-projet/equipes  [EquipeSerializer]
+    champs: date_creation, description, id, membres, membres_detail, nom
+- frontend/src/api/gestionProjetApi.js :: getIndisponibilites -> /api/django/gestion-projet/indisponibilites  [IndisponibiliteSerializer]
+    champs: date_creation, date_debut, date_fin, id, motif, ressource, ressource_nom, type_indispo
+    type_indispo ∈ {arret, conge, formation}
+- frontend/src/api/gestionProjetApi.js :: getItemsChecklist -> /api/django/gestion-projet/items-checklist  [ItemChecklistTacheSerializer]
+    champs: date_creation, fait, fait_le, fait_par, fait_par_nom, id, libelle, ordre, tache
+- frontend/src/api/gestionProjetApi.js :: getJalons -> /api/django/gestion-projet/jalons  [JalonSerializer]
+    champs: date_creation, date_prevue, date_reelle, description, facturation_pct, id, libelle, phase, projet, projet_code, statut, statut_display, tache
+    statut ∈ {a_venir, atteint, manque}
+- frontend/src/api/gestionProjetApi.js :: getJoursFeries -> /api/django/gestion-projet/jours-feries  [JourFerieSerializer]
+    champs: calendrier, date, date_creation, id, libelle
+- frontend/src/api/gestionProjetApi.js :: getLiens -> /api/django/gestion-projet/projet-liens  [ProjetLienSerializer]
+    champs: cible_id, date_creation, id, libelle, projet, projet_code, type_cible, type_cible_display
+    type_cible ∈ {achat, devis, facture, ticket}
+- frontend/src/api/gestionProjetApi.js :: getLignesBudget -> /api/django/gestion-projet/lignes-budget  [LigneBudgetProjetSerializer]
+    champs: budget, categorie, categorie_display, date_creation, id, libelle, montant_prevu, pu, quantite
+    categorie ∈ {divers, main_oeuvre, materiel, sous_traitance}
+- frontend/src/api/gestionProjetApi.js :: getLignesSituation -> /api/django/gestion-projet/lignes-situation  [LigneSituationSerializer]
+    champs: avancement_cumule_pct, date_creation, id, libelle, montant_cumule, montant_cumule_anterieur, montant_marche_ht, montant_periode, situation
+- frontend/src/api/gestionProjetApi.js :: getLotsSousTraitance -> /api/django/gestion-projet/lots-sous-traitance  [LotSousTraitanceSerializer]
+    champs: date_creation, date_debut, date_fin, description, id, libelle, montant, projet, projet_code, sous_traitant, sous_traitant_nom, statut, statut_display
+    statut ∈ {annule, en_cours, prevu, receptionne}
+- frontend/src/api/gestionProjetApi.js :: getModeleTaches -> /api/django/gestion-projet/modele-taches  [ModeleTacheSerializer]
+    champs: charge_estimee, code_wbs, date_creation, id, libelle, modele, ordre, type_phase, type_phase_display
+    type_phase ∈ {appro, etude, mes, pose, reception}
+- frontend/src/api/gestionProjetApi.js :: getModeles -> /api/django/gestion-projet/modeles  [ModeleProjetSerializer]
+    champs: actif, date_creation, description, id, nb_taches, nom, taches, type_installation, type_installation_display
+    type_installation ∈ {agricole, autre, industriel, residentiel}
+- frontend/src/api/gestionProjetApi.js :: getPhases -> /api/django/gestion-projet/phases  [PhaseProjetSerializer]
+    champs: avancement_pct, date_creation, date_debut_prevue, date_debut_reelle, date_fin_prevue, date_fin_reelle, id, libelle, ordre, projet, projet_code, statut, statut_display, type_phase, type_phase_display
+    statut ∈ {a_venir, en_cours, terminee}
+    type_phase ∈ {appro, etude, mes, pose, reception}
+- frontend/src/api/gestionProjetApi.js :: getPointsAvancement -> /api/django/gestion-projet/points-avancement  [PointAvancementSerializer]
+    champs: auteur, auteur_nom, avancement_pct, date_creation, date_point, id, prochaines_etapes, projet, projet_code, realisations, risques, sante, sante_display
+    sante ∈ {orange, rouge, vert}
+- frontend/src/api/gestionProjetApi.js :: getProjet -> /api/django/gestion-projet/projets/<>  [ProjetSerializer]
+    champs: alias_email, budget_total, client_id, code, contrat_id, date_creation, date_debut, date_fin_prevue, delai_execution_jours, description, id, maitre_ouvrage, montant_marche, nom, numero_marche, plafond_penalite_pct, politique_facturation, politique_facturation_display, responsable, statut, statut_display, taux_penalite_retard
+    politique_facturation ∈ {forfait, jalons, regie, situations}
+    statut ∈ {annule, brouillon, en_cours, en_pause, planifie, termine}
+- frontend/src/api/gestionProjetApi.js :: getProjets -> /api/django/gestion-projet/projets  [ProjetSerializer]
+    champs: alias_email, budget_total, client_id, code, contrat_id, date_creation, date_debut, date_fin_prevue, delai_execution_jours, description, id, maitre_ouvrage, montant_marche, nom, numero_marche, plafond_penalite_pct, politique_facturation, politique_facturation_display, responsable, statut, statut_display, taux_penalite_retard
+    politique_facturation ∈ {forfait, jalons, regie, situations}
+    statut ∈ {annule, brouillon, en_cours, en_pause, planifie, termine}
+- frontend/src/api/gestionProjetApi.js :: getRessources -> /api/django/gestion-projet/ressources  [RessourceProfilSerializer]
+    champs: actif, competences, cout_horaire, date_creation, id, nom, role, user
+- frontend/src/api/gestionProjetApi.js :: getRisques -> /api/django/gestion-projet/risques  [RisqueSerializer]
+    champs: categorie, categorie_display, criticite, date_creation, description, id, impact, libelle, mitigation, probabilite, projet, projet_code, proprietaire, statut, statut_display
+    categorie ∈ {autre, cout, delai, fournisseur, reglementaire, securite, technique}
+    statut ∈ {clos, maitrise, ouvert, surveille}
+- frontend/src/api/gestionProjetApi.js :: getSituations -> /api/django/gestion-projet/situations  [SituationTravauxSerializer]
+    champs: contrat_id, date_creation, date_validation, facture_id, id, montant_periode_total, numero, periode, projet, projet_code, retenue_garantie_pct, statut, statut_display
+    statut ∈ {brouillon, facturee, validee}
+- frontend/src/api/gestionProjetApi.js :: getSousTraitants -> /api/django/gestion-projet/sous-traitants  [SousTraitantSerializer]
+    champs: actif, contact, date_creation, email, id, nom, specialite, telephone
+- frontend/src/api/gestionProjetApi.js :: getTaches -> /api/django/gestion-projet/taches  [TacheSerializer]
+    champs: assigne, assigne_nom, avancement_pct, charge_estimee, code_wbs, date_creation, date_debut_prevue, date_fin_prevue, date_fin_reelle, description, etiquettes, id, libelle, nb_sous_taches, ordre, parent, pct_checklist_fait, phase, priorite, priorite_display, projet, projet_code, statut, statut_display, ticket_sav_id
+    priorite ∈ {basse, haute, normale, urgente}
+    statut ∈ {a_faire, bloque, en_cours, termine}
+- frontend/src/api/gestionProjetApi.js :: getTimesheets -> /api/django/gestion-projet/timesheets  [TimesheetSerializer]
+    champs: approuve_par, approuve_par_nom, commentaire, cout, date, date_approbation, date_creation, facturable, heures, id, motif_rejet, phase, projet, projet_code, ressource, ressource_nom, saisi_par, saisi_par_nom, statut, statut_display, tache, taux_facturation, type_activite, type_activite_display
+    statut ∈ {approuvee, brouillon, rejetee, soumise}
+    type_activite ∈ {admin, deplacement, etude, mes, pose, raccordement, sav}
+- frontend/src/api/gestionProjetApi.js :: updateAction -> /api/django/gestion-projet/actions/<>  [ActionProjetSerializer]
+    champs: date_cloture, date_creation, description, echeance, id, libelle, priorite, priorite_display, projet, projet_code, responsable, risque, statut, statut_display
+    priorite ∈ {basse, haute, moyenne}
+    statut ∈ {a_faire, annule, en_cours, fait}
+- frontend/src/api/gestionProjetApi.js :: updateAffectation -> /api/django/gestion-projet/affectations/<>  [AffectationRessourceSerializer]
+    champs: actif_id, actif_type, charge_jours, date_creation, date_debut, date_fin, equipe, equipe_nom, id, note, publie_le, publie_par, quantite, ressource, ressource_nom, statut_publication, statut_publication_display, tache, tache_libelle
+    actif_type ∈ {actif_flotte}
+    statut_publication ∈ {brouillon, publie}
+- frontend/src/api/gestionProjetApi.js :: updateBudget -> /api/django/gestion-projet/budgets/<>  [BudgetProjetSerializer]
+    champs: date_creation, devise, id, libelle, projet, projet_code, statut, statut_display, total, version
+    statut ∈ {archive, brouillon, valide}
+- frontend/src/api/gestionProjetApi.js :: updateCalendrier -> /api/django/gestion-projet/calendriers/<>  [CalendrierProjetSerializer]
+    champs: date_creation, dimanche, id, jeudi, jours_feries, lundi, mardi, mercredi, projet, projet_code, samedi, vendredi
+- frontend/src/api/gestionProjetApi.js :: updateChantier -> /api/django/gestion-projet/projet-chantiers/<>  [ProjetChantierSerializer]
+    champs: chantier_id, date_creation, id, libelle, projet, projet_code
+- frontend/src/api/gestionProjetApi.js :: updateCloture -> /api/django/gestion-projet/clotures/<>  [ClotureProjetSerializer]
+    champs: cloture_par, cloture_par_nom, date_cloture, date_creation, date_reception, id, points_amelioration, points_positifs, projet, projet_code, recommandations
+- frontend/src/api/gestionProjetApi.js :: updateCompteRendu -> /api/django/gestion-projet/comptes-rendus/<>  [CompteRenduReunionSerializer]
+    champs: chantier_id, date_creation, date_prochaine_reunion, date_reunion, decisions, id, lieu, ordre_du_jour, participants, points_bloquants, projet, projet_code, redacteur, redacteur_nom, titre
+- frontend/src/api/gestionProjetApi.js :: updateEquipe -> /api/django/gestion-projet/equipes/<>  [EquipeSerializer]
+    champs: date_creation, description, id, membres, membres_detail, nom
+- frontend/src/api/gestionProjetApi.js :: updateJalon -> /api/django/gestion-projet/jalons/<>  [JalonSerializer]
+    champs: date_creation, date_prevue, date_reelle, description, facturation_pct, id, libelle, phase, projet, projet_code, statut, statut_display, tache
+    statut ∈ {a_venir, atteint, manque}
+- frontend/src/api/gestionProjetApi.js :: updateLien -> /api/django/gestion-projet/projet-liens/<>  [ProjetLienSerializer]
+    champs: cible_id, date_creation, id, libelle, projet, projet_code, type_cible, type_cible_display
+    type_cible ∈ {achat, devis, facture, ticket}
+- frontend/src/api/gestionProjetApi.js :: updateLigneBudget -> /api/django/gestion-projet/lignes-budget/<>  [LigneBudgetProjetSerializer]
+    champs: budget, categorie, categorie_display, date_creation, id, libelle, montant_prevu, pu, quantite
+    categorie ∈ {divers, main_oeuvre, materiel, sous_traitance}
+- frontend/src/api/gestionProjetApi.js :: updateLotSousTraitance -> /api/django/gestion-projet/lots-sous-traitance/<>  [LotSousTraitanceSerializer]
+    champs: date_creation, date_debut, date_fin, description, id, libelle, montant, projet, projet_code, sous_traitant, sous_traitant_nom, statut, statut_display
+    statut ∈ {annule, en_cours, prevu, receptionne}
+- frontend/src/api/gestionProjetApi.js :: updateModele -> /api/django/gestion-projet/modeles/<>  [ModeleProjetSerializer]
+    champs: actif, date_creation, description, id, nb_taches, nom, taches, type_installation, type_installation_display
+    type_installation ∈ {agricole, autre, industriel, residentiel}
+- frontend/src/api/gestionProjetApi.js :: updatePhase -> /api/django/gestion-projet/phases/<>  [PhaseProjetSerializer]
+    champs: avancement_pct, date_creation, date_debut_prevue, date_debut_reelle, date_fin_prevue, date_fin_reelle, id, libelle, ordre, projet, projet_code, statut, statut_display, type_phase, type_phase_display
+    statut ∈ {a_venir, en_cours, terminee}
+    type_phase ∈ {appro, etude, mes, pose, reception}
+- frontend/src/api/gestionProjetApi.js :: updateProjet -> /api/django/gestion-projet/projets/<>  [ProjetSerializer]
+    champs: alias_email, budget_total, client_id, code, contrat_id, date_creation, date_debut, date_fin_prevue, delai_execution_jours, description, id, maitre_ouvrage, montant_marche, nom, numero_marche, plafond_penalite_pct, politique_facturation, politique_facturation_display, responsable, statut, statut_display, taux_penalite_retard
+    politique_facturation ∈ {forfait, jalons, regie, situations}
+    statut ∈ {annule, brouillon, en_cours, en_pause, planifie, termine}
+- frontend/src/api/gestionProjetApi.js :: updateRessource -> /api/django/gestion-projet/ressources/<>  [RessourceProfilSerializer]
+    champs: actif, competences, cout_horaire, date_creation, id, nom, role, user
+- frontend/src/api/gestionProjetApi.js :: updateRisque -> /api/django/gestion-projet/risques/<>  [RisqueSerializer]
+    champs: categorie, categorie_display, criticite, date_creation, description, id, impact, libelle, mitigation, probabilite, projet, projet_code, proprietaire, statut, statut_display
+    categorie ∈ {autre, cout, delai, fournisseur, reglementaire, securite, technique}
+    statut ∈ {clos, maitrise, ouvert, surveille}
+- frontend/src/api/gestionProjetApi.js :: updateSousTraitant -> /api/django/gestion-projet/sous-traitants/<>  [SousTraitantSerializer]
+    champs: actif, contact, date_creation, email, id, nom, specialite, telephone
+- frontend/src/api/gestionProjetApi.js :: updateTache -> /api/django/gestion-projet/taches/<>  [TacheSerializer]
+    champs: assigne, assigne_nom, avancement_pct, charge_estimee, code_wbs, date_creation, date_debut_prevue, date_fin_prevue, date_fin_reelle, description, etiquettes, id, libelle, nb_sous_taches, ordre, parent, pct_checklist_fait, phase, priorite, priorite_display, projet, projet_code, statut, statut_display, ticket_sav_id
+    priorite ∈ {basse, haute, normale, urgente}
+    statut ∈ {a_faire, bloque, en_cours, termine}
+- frontend/src/api/gestionProjetApi.js :: updateTimesheet -> /api/django/gestion-projet/timesheets/<>  [TimesheetSerializer]
+    champs: approuve_par, approuve_par_nom, commentaire, cout, date, date_approbation, date_creation, facturable, heures, id, motif_rejet, phase, projet, projet_code, ressource, ressource_nom, saisi_par, saisi_par_nom, statut, statut_display, tache, taux_facturation, type_activite, type_activite_display
+    statut ∈ {approuvee, brouillon, rejetee, soumise}
+    type_activite ∈ {admin, deplacement, etude, mes, pose, raccordement, sav}
+- frontend/src/api/hospitalityApi.js :: createChambre -> /api/django/hospitality/chambres  [ChambreSerializer]
+    champs: etage, id, nom, numero, statut, statut_display, type_chambre, type_chambre_libelle, vue
+    statut ∈ {en_nettoyage, hors_service, libre, occupee, sale}
+- frontend/src/api/hospitalityApi.js :: createEvenementBanquet -> /api/django/hospitality/evenements  [EvenementBanquetSerializer]
+    champs: client, client_id, date_creation, date_debut, date_evenement, date_fin, devis_ventes_id, id, lead, lead_id, menu_recettes, nb_convives, nom_evenement, salle, salle_nom, statut, statut_display
+    statut ∈ {annule, brouillon, confirme, termine}
+- frontend/src/api/hospitalityApi.js :: createMainCourante -> /api/django/hospitality/main-courante  [MainCouranteSerializer]
+    champs: auteur, auteur_nom, categorie, categorie_display, cible_id, cible_type, date_note, id, texte
+    categorie ∈ {autre, consigne, finance, incident, reservation}
+- frontend/src/api/hospitalityApi.js :: createPlanTarifaire -> /api/django/hospitality/plans-tarifaires  [PlanTarifaireSerializer]
+    champs: canal, canal_display, date_debut, date_fin, id, min_nuits, prix_nuit_ht, type_chambre
+    canal ∈ {corporate, ota, rack}
+- frontend/src/api/hospitalityApi.js :: createRecette -> /api/django/hospitality/recettes  [RecetteSerializer]
+    champs: allergenes, categorie_menu, categorie_menu_display, description, id, ingredients, nom_plat, prix_vente_ht
+    categorie_menu ∈ {boisson, dessert, entree, plat}
+- frontend/src/api/hospitalityApi.js :: createReservation -> /api/django/hospitality/reservations  [ReservationSerializer]
+    champs: chambre, client, client_id, client_nom, client_telephone, date_arrivee, date_creation, date_depart, id, nb_adultes, nb_enfants, origine, origine_display, prix_nuit_snapshot, statut, statut_display, type_chambre
+    origine ∈ {email, ota_gated, telephone, walk_in}
+    statut ∈ {annulee, confirmee, en_attente, en_cours, no_show, terminee}
+- frontend/src/api/hospitalityApi.js :: createSalleEvenement -> /api/django/hospitality/salles-evenement  [SalleEvenementSerializer]
+    champs: capacite_max, description, id, nom, tarif_location_ht, types_amenagement_disponibles
+- frontend/src/api/hospitalityApi.js :: createTypeChambre -> /api/django/hospitality/types-chambre  [TypeChambreSerializer]
+    champs: capacite_max, description, id, libelle
+- frontend/src/api/hospitalityApi.js :: getChambre -> /api/django/hospitality/chambres/<>  [ChambreSerializer]
+    champs: etage, id, nom, numero, statut, statut_display, type_chambre, type_chambre_libelle, vue
+    statut ∈ {en_nettoyage, hors_service, libre, occupee, sale}
+- frontend/src/api/hospitalityApi.js :: getFolio -> /api/django/hospitality/folios/<>  [FolioSerializer]
+    champs: date_cloture, date_creation, facture_id, id, lignes, reservation, statut, statut_display, total_ht
+    statut ∈ {ouvert, solde}
+- frontend/src/api/hospitalityApi.js :: getReservation -> /api/django/hospitality/reservations/<>  [ReservationSerializer]
+    champs: chambre, client, client_id, client_nom, client_telephone, date_arrivee, date_creation, date_depart, id, nb_adultes, nb_enfants, origine, origine_display, prix_nuit_snapshot, statut, statut_display, type_chambre
+    origine ∈ {email, ota_gated, telephone, walk_in}
+    statut ∈ {annulee, confirmee, en_attente, en_cours, no_show, terminee}
+- frontend/src/api/hospitalityApi.js :: listChambres -> /api/django/hospitality/chambres  [ChambreSerializer]
+    champs: etage, id, nom, numero, statut, statut_display, type_chambre, type_chambre_libelle, vue
+    statut ∈ {en_nettoyage, hors_service, libre, occupee, sale}
+- frontend/src/api/hospitalityApi.js :: listEvenementsBanquet -> /api/django/hospitality/evenements  [EvenementBanquetSerializer]
+    champs: client, client_id, date_creation, date_debut, date_evenement, date_fin, devis_ventes_id, id, lead, lead_id, menu_recettes, nb_convives, nom_evenement, salle, salle_nom, statut, statut_display
+    statut ∈ {annule, brouillon, confirme, termine}
+- frontend/src/api/hospitalityApi.js :: listMainCourante -> /api/django/hospitality/main-courante  [MainCouranteSerializer]
+    champs: auteur, auteur_nom, categorie, categorie_display, cible_id, cible_type, date_note, id, texte
+    categorie ∈ {autre, consigne, finance, incident, reservation}
+- frontend/src/api/hospitalityApi.js :: listPlansTarifaires -> /api/django/hospitality/plans-tarifaires  [PlanTarifaireSerializer]
+    champs: canal, canal_display, date_debut, date_fin, id, min_nuits, prix_nuit_ht, type_chambre
+    canal ∈ {corporate, ota, rack}
+- frontend/src/api/hospitalityApi.js :: listRecettes -> /api/django/hospitality/recettes  [RecetteSerializer]
+    champs: allergenes, categorie_menu, categorie_menu_display, description, id, ingredients, nom_plat, prix_vente_ht
+    categorie_menu ∈ {boisson, dessert, entree, plat}
+- frontend/src/api/hospitalityApi.js :: listReservations -> /api/django/hospitality/reservations  [ReservationSerializer]
+    champs: chambre, client, client_id, client_nom, client_telephone, date_arrivee, date_creation, date_depart, id, nb_adultes, nb_enfants, origine, origine_display, prix_nuit_snapshot, statut, statut_display, type_chambre
+    origine ∈ {email, ota_gated, telephone, walk_in}
+    statut ∈ {annulee, confirmee, en_attente, en_cours, no_show, terminee}
+- frontend/src/api/hospitalityApi.js :: listSallesEvenement -> /api/django/hospitality/salles-evenement  [SalleEvenementSerializer]
+    champs: capacite_max, description, id, nom, tarif_location_ht, types_amenagement_disponibles
+- frontend/src/api/hospitalityApi.js :: listTachesMenage -> /api/django/hospitality/taches-menage  [TacheMenageSerializer]
+    champs: assignee, chambre, chambre_numero, date_completion, date_creation, id, statut, statut_display, type_tache, type_tache_display
+    statut ∈ {a_faire, en_cours, terminee}
+    type_tache ∈ {depart, nettoyage_complet, recouche}
+- frontend/src/api/hospitalityApi.js :: listTypesChambre -> /api/django/hospitality/types-chambre  [TypeChambreSerializer]
+    champs: capacite_max, description, id, libelle
+- frontend/src/api/hospitalityApi.js :: updateChambre -> /api/django/hospitality/chambres/<>  [ChambreSerializer]
+    champs: etage, id, nom, numero, statut, statut_display, type_chambre, type_chambre_libelle, vue
+    statut ∈ {en_nettoyage, hors_service, libre, occupee, sale}
+- frontend/src/api/hospitalityApi.js :: updateEvenementBanquet -> /api/django/hospitality/evenements/<>  [EvenementBanquetSerializer]
+    champs: client, client_id, date_creation, date_debut, date_evenement, date_fin, devis_ventes_id, id, lead, lead_id, menu_recettes, nb_convives, nom_evenement, salle, salle_nom, statut, statut_display
+    statut ∈ {annule, brouillon, confirme, termine}
+- frontend/src/api/hospitalityApi.js :: updateRecette -> /api/django/hospitality/recettes/<>  [RecetteSerializer]
+    champs: allergenes, categorie_menu, categorie_menu_display, description, id, ingredients, nom_plat, prix_vente_ht
+    categorie_menu ∈ {boisson, dessert, entree, plat}
+- frontend/src/api/identityApi.js :: forget -> /api/django/identity/trusted-devices/<>  [TrustedDeviceSerializer]
+    champs: approuve_le, expire_le, id, is_active, label, revoque_le
+- frontend/src/api/innovationApi.js :: retirerVote -> /api/django/innovation/votes/<>  [VoteIdeeSerializer]
+    champs: date, id, idee, votant, votant_nom
+- frontend/src/api/innovationApi.js :: vote -> /api/django/innovation/votes  [VoteIdeeSerializer]
+    champs: date, id, idee, votant, votant_nom
+- frontend/src/api/installationsApi.js :: createAstreinte -> /api/django/installations/astreintes  [AstreinteSerializer]
+    champs: created_by, date_creation, date_debut, date_fin, id, technicien, technicien_nom, telephone_astreinte
+- frontend/src/api/installationsApi.js :: createAttestationSousTraitant -> /api/django/installations/attestations-sous-traitant  [AttestationSousTraitantSerializer]
+    champs: created_by, date_creation, date_emission, date_expiration, date_modification, est_valide, id, note, obligatoire, organisme, reference, sous_traitant, sous_traitant_nom, type_piece, type_piece_display
+    type_piece ∈ {agrement, autre, cnss, fiscale, rc_decennale, rc_travaux}
+- frontend/src/api/installationsApi.js :: createBinAffectation -> /api/django/installations/bin-affectations  [BinAffectationSerializer]
+    champs: bin, date_creation, date_modification, id, produit, produit_nom, quantite
+- frontend/src/api/installationsApi.js :: createBinLocation -> /api/django/installations/bin-locations  [BinLocationSerializer]
+    champs: affectations, allee, archived, casier, categorie, categorie_nom, code, created_by, date_creation, date_modification, emplacement, emplacement_nom, id, note, ordre, zone
+- frontend/src/api/installationsApi.js :: createColis -> /api/django/installations/colis  [ColisSerializer]
+    champs: controle_par, created_by, date_controle, date_creation, date_modification, id, installation, lignes, note, poids_kg, reference, statut, statut_display
+    statut ∈ {controle, expedie, preparation}
+- frontend/src/api/installationsApi.js :: createColisLigne -> /api/django/installations/colis-lignes  [ColisLigneSerializer]
+    champs: colis, controle_ok, designation, id, produit, produit_nom, quantite
+- frontend/src/api/installationsApi.js :: createCommandeCadre -> /api/django/installations/commandes-cadre  [CommandeCadreSerializer]
+    champs: created_by, date_creation, date_debut, date_fin, date_modification, fournisseur, fournisseur_nom, id, intitule, lignes, note, reference, statut, statut_display
+    statut ∈ {actif, brouillon, clos}
+- frontend/src/api/installationsApi.js :: createCommandeCadreLigne -> /api/django/installations/commandes-cadre-lignes  [CommandeCadreLigneSerializer]
+    champs: commande_cadre, designation, id, prix_negocie, produit, produit_nom, volume_consomme, volume_engage, volume_restant
+- frontend/src/api/installationsApi.js :: createContratPrixFournisseur -> /api/django/installations/contrats-prix-fournisseur  [ContratPrixFournisseurSerializer]
+    champs: created_by, date_creation, date_debut, date_fin, date_modification, fournisseur, fournisseur_nom, id, intitule, lignes, note, reference, statut, statut_display, version
+    statut ∈ {actif, brouillon, expire}
+- frontend/src/api/installationsApi.js :: createContratPrixLigne -> /api/django/installations/contrats-prix-lignes  [ContratPrixLigneSerializer]
+    champs: contrat, designation, id, prix_convenu, produit, produit_nom, remise_pct
+- frontend/src/api/installationsApi.js :: createControleQualiteModele -> /api/django/installations/controle-qualite-modeles  [ControleQualiteModeleSerializer]
+    champs: active, date_creation, date_modification, id, items, kit
+- frontend/src/api/installationsApi.js :: createDemandeAchat -> /api/django/installations/demandes-achat  [DemandeAchatSerializer]
+    champs: approuvee_par, bon_commande, chantier, created_by, date_besoin, date_creation, date_decision, date_modification, fournisseur_suggere, id, lignes, montant_estime, motif_refus, note, objet, priorite, priorite_display, programme, reference, statut, statut_display
+    priorite ∈ {basse, haute, normale, urgente}
+- frontend/src/api/installationsApi.js :: createDemandeAchatLigne -> /api/django/installations/demandes-achat-lignes  [DemandeAchatLigneSerializer]
+    champs: demande, designation, id, prix_estime, produit, produit_nom, quantite, total_estime
+- frontend/src/api/installationsApi.js :: createDemandeTransfert -> /api/django/installations/demandes-transfert  [DemandeTransfertSerializer]
+    champs: approuve_par, created_by, date_approbation, date_creation, date_execution, date_modification, destination, destination_nom, id, motif, motif_refus, produit, produit_nom, quantite, reference, source, source_nom, statut, statut_display
+    statut ∈ {approuve, demande, execute, refuse}
+- frontend/src/api/installationsApi.js :: createDossierImport -> /api/django/installations/dossiers-import  [DossierImportSerializer]
+    champs: bon_commande, created_by, date_arrivee_port, date_creation, date_dedouanement, date_depart, date_modification, designation, fournisseur, fournisseur_nom, id, incoterm, incoterm_display, note, numero_bl, numero_conteneur, port_arrivee, reference, statut_douane, statut_douane_display
+    incoterm ∈ {cfr, cif, dap, ddp, exw, fob}
+    statut_douane ∈ {arrive_port, commande, dedouane, en_douane, expedie, livre}
+- frontend/src/api/installationsApi.js :: createEtapeAssemblageKit -> /api/django/installations/etapes-assemblage  [EtapeAssemblageSerializer]
+    champs: duree_attendue_min, id, instructions, kit, libelle, ordre, piece_jointe
+- frontend/src/api/installationsApi.js :: createEvaluationSousTraitant -> /api/django/installations/evaluations-sous-traitant  [EvaluationSousTraitantSerializer]
+    champs: chantier, commentaire, date_creation, date_evaluation, date_modification, evalue_par, id, note_delai, note_globale, note_qualite, note_securite, ordre, sous_traitant, sous_traitant_nom
+- frontend/src/api/installationsApi.js :: createFraisImport -> /api/django/installations/frais-import  [FraisImportSerializer]
+    champs: categorie, categorie_display, created_by, date_creation, date_frais, dossier, id, libelle, montant
+    categorie ∈ {assurance, autre, douane, fret, manutention, transit, tva_import}
+- frontend/src/api/installationsApi.js :: createGpsConsentement -> /api/django/installations/gps-consentements  [GpsConsentRecordSerializer]
+    champs: consent_recorded_at, consent_ref, id, is_active, recorded_by, revoked_at, revoked_reason, technicien, technicien_nom
+- frontend/src/api/installationsApi.js :: createIndisponibilite -> /api/django/installations/indisponibilites-ressource  [IndisponibiliteRessourceSerializer]
+    champs: camionnette, camionnette_nom, created_by, date_creation, date_debut, date_fin, date_modification, id, motif, technicien, technicien_nom, type_indispo, type_indispo_display
+    type_indispo ∈ {arret, autre, conge, formation}
+- frontend/src/api/installationsApi.js :: createJalonProjet -> /api/django/installations/jalons-projet  [JalonProjetSerializer]
+    champs: atteint, date_cible, date_creation, date_modification, date_reelle, id, installation, libelle, notes, ordre, phase, phase_display, rappel_facturation_envoye, tranche_echeancier
+    phase ∈ {appro, etude, mes, pose, reception}
+- frontend/src/api/installationsApi.js :: createKit -> /api/django/installations/kits  [KitSerializer]
+    champs: active, composants, created_by, date_creation, date_modification, id, nom, note, produit_compose, produit_compose_nom, reference_interne
+- frontend/src/api/installationsApi.js :: createKitComposant -> /api/django/installations/kit-composants  [KitComposantSerializer]
+    champs: designation, id, kit, produit, produit_nom, quantite, taux_perte_pct
+- frontend/src/api/installationsApi.js :: createLandedCostLigne -> /api/django/installations/landed-cost-lignes  [LandedCostLigneSerializer]
+    champs: cout_fob_unitaire, date_creation, designation, dossier, id, produit, produit_nom, quantite, valeur_fob
+- frontend/src/api/installationsApi.js :: createLigneAssemblage -> /api/django/installations/ordre-assemblage-lignes  [OrdreAssemblageLigneSerializer]
+    champs: designation, id, ordre, origine, produit, produit_nom, quantite
+    origine ∈ {ajout, kit}
+- frontend/src/api/installationsApi.js :: createLivraison -> /api/django/installations/livraisons  [LivraisonSerializer]
+    champs: adresse_site, cout_transport, created_by, date_creation, date_modification, date_prevue, depot, depot_nom, id, installation, installation_reference, lignes, mode_acheminement, mode_acheminement_display, note, numero_suivi, reference, statut, statut_display, stock_mouvemente, transporteur, transporteur_nom, transporteur_obj_nom
+    mode_acheminement ∈ {depot, direct_site}
+    statut ∈ {annulee, en_transit, livree, planifiee}
+- frontend/src/api/installationsApi.js :: createLivraisonLigne -> /api/django/installations/livraison-lignes  [LivraisonLigneSerializer]
+    champs: designation, id, livraison, produit, produit_nom, quantite
+- frontend/src/api/installationsApi.js :: createOrdreAssemblage -> /api/django/installations/ordres-assemblage  [OrdreAssemblageSerializer]
+    champs: chantier, cout_prevu, created_by, date_creation, date_modification, date_prevue, date_terminaison, devis, emplacement_destination, emplacement_source, id, kit, kit_nom, lignes, motif_annulation, note, ordre_sous_traitance, quantite, quantite_produite, reference, responsable, responsable_nom, revision_kit_numero, sous_traitant, statut, statut_display, stock_mouvemente, temps_prevu_min, temps_reel_min
+    statut ∈ {annule, en_cours, planifie, termine}
+- frontend/src/api/installationsApi.js :: createOrdreDemontage -> /api/django/installations/ordres-demontage  [OrdreDemontageSerializer]
+    champs: created_by, date_creation, date_modification, date_terminaison, emplacement_destination, emplacement_source, id, kit, kit_nom, lignes, note, quantite, reference, statut, statut_display, stock_mouvemente
+    statut ∈ {planifie, termine}
+- frontend/src/api/installationsApi.js :: createOrdreSousTraitance -> /api/django/installations/ordres-sous-traitance  [OrdreSousTraitanceSerializer]
+    champs: chantier, created_by, date_creation, date_echeance, date_emission, date_modification, id, montant, montant_realise, note, prestation, reference, sous_traitant, sous_traitant_nom, statut, statut_display
+- frontend/src/api/installationsApi.js :: createPickList -> /api/django/installations/pick-lists  [PickListSerializer]
+    champs: created_by, date_creation, date_modification, id, installation, lignes, note, reference, statut, statut_display
+    statut ∈ {emis, en_cours, termine}
+- frontend/src/api/installationsApi.js :: createPreuveLivraison -> /api/django/installations/preuves-livraison  [PreuveLivraisonSerializer]
+    champs: created_by, date_creation, date_modification, gps_lat, gps_lng, horodatage, id, livraison, note, photo, signataire_nom, signature_data
+- frontend/src/api/installationsApi.js :: createPutAway -> /api/django/installations/putaways  [PutAwaySerializer]
+    champs: bin_effectif, bin_effectif_code, bin_suggere, bin_suggere_code, created_by, date_creation, date_modification, date_rangement, emplacement, id, note, produit, produit_nom, quantite, range_par, reference_reception, statut, statut_display
+    statut ∈ {a_ranger, range}
+- frontend/src/api/installationsApi.js :: createRFQ -> /api/django/installations/rfq  [RFQSerializer]
+    champs: bon_commande, comparatif, consultations, created_by, date_creation, date_limite_reponse, date_modification, demande, id, note, objet, offres, reference, statut, statut_display
+    statut ∈ {brouillon, cloturee, envoyee}
+- frontend/src/api/installationsApi.js :: createRFQOffre -> /api/django/installations/rfq-offres  [RFQOffreSerializer]
+    champs: date_creation, date_modification, delai_jours, fournisseur, fournisseur_nom, fournisseur_nom_libre, id, montant_ht, note, retenue, rfq, validite_jours
+- frontend/src/api/installationsApi.js :: createRecurrenceIntervention -> /api/django/installations/recurrences-intervention  [RecurrenceInterventionSerializer]
+    champs: actif, date_creation, date_fin, id, installation, installation_reference, intervalle, nb_generees, nb_occurrences, prochaine_echeance, regle, regle_display, technicien_defaut, technicien_defaut_nom, type_intervention
+    regle ∈ {annuelle, mensuelle, semestrielle, trimestrielle}
+- frontend/src/api/installationsApi.js :: createRetenueGarantieSousTraitant -> /api/django/installations/retenues-garantie-sous-traitant  [RetenueGarantieSousTraitantSerializer]
+    champs: created_by, date_constitution, date_creation, date_levee, date_modification, id, levee, montant_a_liberer, montant_base, montant_retenu, note, ordre, ordre_reference, pourcentage
+- frontend/src/api/installationsApi.js :: createReunionChantier -> /api/django/installations/reunions-chantier  [ReunionChantierSerializer]
+    champs: actions, date_creation, date_modification, date_reunion, decisions, id, installation, ordre_du_jour, presents, redige_par, redige_par_nom, titre
+- frontend/src/api/installationsApi.js :: createRevisionDocument -> /api/django/installations/revisions-document  [RevisionDocumentSerializer]
+    champs: auteur, auteur_nom, date_creation, date_revision, document, fichier, fichier_url, id, indice, notes
+- frontend/src/api/installationsApi.js :: createSessionComptage -> /api/django/installations/sessions-comptage  [SessionComptageSerializer]
+    champs: classe_abc, classe_abc_display, created_by, date_creation, date_modification, date_planifiee, emplacement, id, intitule, lignes, note, reference, statut, statut_display
+    classe_abc ∈ {A, B, C, toutes}
+    statut ∈ {en_cours, planifie, termine}
+- frontend/src/api/installationsApi.js :: createTransporteur -> /api/django/installations/transporteurs  [TransporteurSerializer]
+    champs: active, contact, created_by, date_creation, date_modification, id, nom, note, tarif_base, telephone, type_transporteur, type_transporteur_display
+    type_transporteur ∈ {interne, tiers}
+- frontend/src/api/installationsApi.js :: deleteAstreinte -> /api/django/installations/astreintes/<>  [AstreinteSerializer]
+    champs: created_by, date_creation, date_debut, date_fin, id, technicien, technicien_nom, telephone_astreinte
+- frontend/src/api/installationsApi.js :: deleteBinAffectation -> /api/django/installations/bin-affectations/<>  [BinAffectationSerializer]
+    champs: bin, date_creation, date_modification, id, produit, produit_nom, quantite
+- frontend/src/api/installationsApi.js :: deleteBinLocation -> /api/django/installations/bin-locations/<>  [BinLocationSerializer]
+    champs: affectations, allee, archived, casier, categorie, categorie_nom, code, created_by, date_creation, date_modification, emplacement, emplacement_nom, id, note, ordre, zone
+- frontend/src/api/installationsApi.js :: deleteColisLigne -> /api/django/installations/colis-lignes/<>  [ColisLigneSerializer]
+    champs: colis, controle_ok, designation, id, produit, produit_nom, quantite
+- frontend/src/api/installationsApi.js :: deleteCommandeCadreLigne -> /api/django/installations/commandes-cadre-lignes/<>  [CommandeCadreLigneSerializer]
+    champs: commande_cadre, designation, id, prix_negocie, produit, produit_nom, volume_consomme, volume_engage, volume_restant
+- frontend/src/api/installationsApi.js :: deleteContratPrixLigne -> /api/django/installations/contrats-prix-lignes/<>  [ContratPrixLigneSerializer]
+    champs: contrat, designation, id, prix_convenu, produit, produit_nom, remise_pct
+- frontend/src/api/installationsApi.js :: deleteDemandeAchat -> /api/django/installations/demandes-achat/<>  [DemandeAchatSerializer]
+    champs: approuvee_par, bon_commande, chantier, created_by, date_besoin, date_creation, date_decision, date_modification, fournisseur_suggere, id, lignes, montant_estime, motif_refus, note, objet, priorite, priorite_display, programme, reference, statut, statut_display
+    priorite ∈ {basse, haute, normale, urgente}
+- frontend/src/api/installationsApi.js :: deleteDemandeAchatLigne -> /api/django/installations/demandes-achat-lignes/<>  [DemandeAchatLigneSerializer]
+    champs: demande, designation, id, prix_estime, produit, produit_nom, quantite, total_estime
+- frontend/src/api/installationsApi.js :: deleteEtapeAssemblageKit -> /api/django/installations/etapes-assemblage/<>  [EtapeAssemblageSerializer]
+    champs: duree_attendue_min, id, instructions, kit, libelle, ordre, piece_jointe
+- frontend/src/api/installationsApi.js :: deleteFicheChamp -> /api/django/installations/fiche-intervention-champs/<>  [FicheInterventionChampSerializer]
+    champs: cle, id, libelle, obligatoire, ordre, template, type_champ, unite
+    type_champ ∈ {case, mesure, nombre, texte}
+- frontend/src/api/installationsApi.js :: deleteFicheTemplate -> /api/django/installations/fiche-intervention-templates/<>  [FicheInterventionTemplateSerializer]
+    champs: actif, champs, id, nom, protege, type_intervention
+- frontend/src/api/installationsApi.js :: deleteFraisImport -> /api/django/installations/frais-import/<>  [FraisImportSerializer]
+    champs: categorie, categorie_display, created_by, date_creation, date_frais, dossier, id, libelle, montant
+    categorie ∈ {assurance, autre, douane, fret, manutention, transit, tva_import}
+- frontend/src/api/installationsApi.js :: deleteIndisponibilite -> /api/django/installations/indisponibilites-ressource/<>  [IndisponibiliteRessourceSerializer]
+    champs: camionnette, camionnette_nom, created_by, date_creation, date_debut, date_fin, date_modification, id, motif, technicien, technicien_nom, type_indispo, type_indispo_display
+    type_indispo ∈ {arret, autre, conge, formation}
+- frontend/src/api/installationsApi.js :: deleteJalonProjet -> /api/django/installations/jalons-projet/<>  [JalonProjetSerializer]
+    champs: atteint, date_cible, date_creation, date_modification, date_reelle, id, installation, libelle, notes, ordre, phase, phase_display, rappel_facturation_envoye, tranche_echeancier
+    phase ∈ {appro, etude, mes, pose, reception}
+- frontend/src/api/installationsApi.js :: deleteKitComposant -> /api/django/installations/kit-composants/<>  [KitComposantSerializer]
+    champs: designation, id, kit, produit, produit_nom, quantite, taux_perte_pct
+- frontend/src/api/installationsApi.js :: deleteLandedCostLigne -> /api/django/installations/landed-cost-lignes/<>  [LandedCostLigneSerializer]
+    champs: cout_fob_unitaire, date_creation, designation, dossier, id, produit, produit_nom, quantite, valeur_fob
+- frontend/src/api/installationsApi.js :: deleteLigneAssemblage -> /api/django/installations/ordre-assemblage-lignes/<>  [OrdreAssemblageLigneSerializer]
+    champs: designation, id, ordre, origine, produit, produit_nom, quantite
+    origine ∈ {ajout, kit}
+- frontend/src/api/installationsApi.js :: deleteLivraison -> /api/django/installations/livraisons/<>  [LivraisonSerializer]
+    champs: adresse_site, cout_transport, created_by, date_creation, date_modification, date_prevue, depot, depot_nom, id, installation, installation_reference, lignes, mode_acheminement, mode_acheminement_display, note, numero_suivi, reference, statut, statut_display, stock_mouvemente, transporteur, transporteur_nom, transporteur_obj_nom
+    mode_acheminement ∈ {depot, direct_site}
+    statut ∈ {annulee, en_transit, livree, planifiee}
+- frontend/src/api/installationsApi.js :: deleteLivraisonLigne -> /api/django/installations/livraison-lignes/<>  [LivraisonLigneSerializer]
+    champs: designation, id, livraison, produit, produit_nom, quantite
+- frontend/src/api/installationsApi.js :: deleteOrdreAssemblage -> /api/django/installations/ordres-assemblage/<>  [OrdreAssemblageSerializer]
+    champs: chantier, cout_prevu, created_by, date_creation, date_modification, date_prevue, date_terminaison, devis, emplacement_destination, emplacement_source, id, kit, kit_nom, lignes, motif_annulation, note, ordre_sous_traitance, quantite, quantite_produite, reference, responsable, responsable_nom, revision_kit_numero, sous_traitant, statut, statut_display, stock_mouvemente, temps_prevu_min, temps_reel_min
+    statut ∈ {annule, en_cours, planifie, termine}
+- frontend/src/api/installationsApi.js :: deleteOrdreDemontage -> /api/django/installations/ordres-demontage/<>  [OrdreDemontageSerializer]
+    champs: created_by, date_creation, date_modification, date_terminaison, emplacement_destination, emplacement_source, id, kit, kit_nom, lignes, note, quantite, reference, statut, statut_display, stock_mouvemente
+    statut ∈ {planifie, termine}
+- frontend/src/api/installationsApi.js :: deleteRecurrenceIntervention -> /api/django/installations/recurrences-intervention/<>  [RecurrenceInterventionSerializer]
+    champs: actif, date_creation, date_fin, id, installation, installation_reference, intervalle, nb_generees, nb_occurrences, prochaine_echeance, regle, regle_display, technicien_defaut, technicien_defaut_nom, type_intervention
+    regle ∈ {annuelle, mensuelle, semestrielle, trimestrielle}
+- frontend/src/api/installationsApi.js :: deleteTransporteur -> /api/django/installations/transporteurs/<>  [TransporteurSerializer]
+    champs: active, contact, created_by, date_creation, date_modification, id, nom, note, tarif_base, telephone, type_transporteur, type_transporteur_display
+    type_transporteur ∈ {interne, tiers}
+- frontend/src/api/installationsApi.js :: getAppelsCommande -> /api/django/installations/appels-commande  [AppelCommandeSerializer]
+    champs: chantier, created_by, date_appel, date_creation, id, ligne, montant, note, quantite
+- frontend/src/api/installationsApi.js :: getApprobationsBcf -> /api/django/installations/approbations-bcf  [ApprobationBCFSerializer]
+    champs: approuve_par, bcf, date_approbation, id, montant_approuve, note, palier, palier_display
+- frontend/src/api/installationsApi.js :: getAstreintes -> /api/django/installations/astreintes  [AstreinteSerializer]
+    champs: created_by, date_creation, date_debut, date_fin, id, technicien, technicien_nom, telephone_astreinte
+- frontend/src/api/installationsApi.js :: getAttestationsSousTraitant -> /api/django/installations/attestations-sous-traitant  [AttestationSousTraitantSerializer]
+    champs: created_by, date_creation, date_emission, date_expiration, date_modification, est_valide, id, note, obligatoire, organisme, reference, sous_traitant, sous_traitant_nom, type_piece, type_piece_display
+    type_piece ∈ {agrement, autre, cnss, fiscale, rc_decennale, rc_travaux}
+- frontend/src/api/installationsApi.js :: getBinAffectations -> /api/django/installations/bin-affectations  [BinAffectationSerializer]
+    champs: bin, date_creation, date_modification, id, produit, produit_nom, quantite
+- frontend/src/api/installationsApi.js :: getBinLocation -> /api/django/installations/bin-locations/<>  [BinLocationSerializer]
+    champs: affectations, allee, archived, casier, categorie, categorie_nom, code, created_by, date_creation, date_modification, emplacement, emplacement_nom, id, note, ordre, zone
+- frontend/src/api/installationsApi.js :: getBinLocations -> /api/django/installations/bin-locations  [BinLocationSerializer]
+    champs: affectations, allee, archived, casier, categorie, categorie_nom, code, created_by, date_creation, date_modification, emplacement, emplacement_nom, id, note, ordre, zone
+- frontend/src/api/installationsApi.js :: getColis -> /api/django/installations/colis/<>  [ColisSerializer]
+    champs: controle_par, created_by, date_controle, date_creation, date_modification, id, installation, lignes, note, poids_kg, reference, statut, statut_display
+    statut ∈ {controle, expedie, preparation}
+- frontend/src/api/installationsApi.js :: getColisLignes -> /api/django/installations/colis-lignes  [ColisLigneSerializer]
+    champs: colis, controle_ok, designation, id, produit, produit_nom, quantite
+- frontend/src/api/installationsApi.js :: getColisList -> /api/django/installations/colis  [ColisSerializer]
+    champs: controle_par, created_by, date_controle, date_creation, date_modification, id, installation, lignes, note, poids_kg, reference, statut, statut_display
+    statut ∈ {controle, expedie, preparation}
+- frontend/src/api/installationsApi.js :: getCommandeCadreLignes -> /api/django/installations/commandes-cadre-lignes  [CommandeCadreLigneSerializer]
+    champs: commande_cadre, designation, id, prix_negocie, produit, produit_nom, volume_consomme, volume_engage, volume_restant
+- frontend/src/api/installationsApi.js :: getCommandesCadre -> /api/django/installations/commandes-cadre  [CommandeCadreSerializer]
+    champs: created_by, date_creation, date_debut, date_fin, date_modification, fournisseur, fournisseur_nom, id, intitule, lignes, note, reference, statut, statut_display
+    statut ∈ {actif, brouillon, clos}
+- frontend/src/api/installationsApi.js :: getComptageLignes -> /api/django/installations/comptage-lignes  [ComptageLigneSerializer]
+    champs: compte, designation, ecart, id, produit, produit_nom, quantite_comptee, quantite_theorique, session
+- frontend/src/api/installationsApi.js :: getContratPrixLignes -> /api/django/installations/contrats-prix-lignes  [ContratPrixLigneSerializer]
+    champs: contrat, designation, id, prix_convenu, produit, produit_nom, remise_pct
+- frontend/src/api/installationsApi.js :: getContratsPrixFournisseur -> /api/django/installations/contrats-prix-fournisseur  [ContratPrixFournisseurSerializer]
+    champs: created_by, date_creation, date_debut, date_fin, date_modification, fournisseur, fournisseur_nom, id, intitule, lignes, note, reference, statut, statut_display, version
+    statut ∈ {actif, brouillon, expire}
+- frontend/src/api/installationsApi.js :: getControleQualiteModeles -> /api/django/installations/controle-qualite-modeles  [ControleQualiteModeleSerializer]
+    champs: active, date_creation, date_modification, id, items, kit
+- frontend/src/api/installationsApi.js :: getDemandeAchat -> /api/django/installations/demandes-achat/<>  [DemandeAchatSerializer]
+    champs: approuvee_par, bon_commande, chantier, created_by, date_besoin, date_creation, date_decision, date_modification, fournisseur_suggere, id, lignes, montant_estime, motif_refus, note, objet, priorite, priorite_display, programme, reference, statut, statut_display
+    priorite ∈ {basse, haute, normale, urgente}
+- frontend/src/api/installationsApi.js :: getDemandeTransfert -> /api/django/installations/demandes-transfert/<>  [DemandeTransfertSerializer]
+    champs: approuve_par, created_by, date_approbation, date_creation, date_execution, date_modification, destination, destination_nom, id, motif, motif_refus, produit, produit_nom, quantite, reference, source, source_nom, statut, statut_display
+    statut ∈ {approuve, demande, execute, refuse}
+- frontend/src/api/installationsApi.js :: getDemandesAchat -> /api/django/installations/demandes-achat  [DemandeAchatSerializer]
+    champs: approuvee_par, bon_commande, chantier, created_by, date_besoin, date_creation, date_decision, date_modification, fournisseur_suggere, id, lignes, montant_estime, motif_refus, note, objet, priorite, priorite_display, programme, reference, statut, statut_display
+    priorite ∈ {basse, haute, normale, urgente}
+- frontend/src/api/installationsApi.js :: getDemandesTransfert -> /api/django/installations/demandes-transfert  [DemandeTransfertSerializer]
+    champs: approuve_par, created_by, date_approbation, date_creation, date_execution, date_modification, destination, destination_nom, id, motif, motif_refus, produit, produit_nom, quantite, reference, source, source_nom, statut, statut_display
+    statut ∈ {approuve, demande, execute, refuse}
+- frontend/src/api/installationsApi.js :: getDossierImport -> /api/django/installations/dossiers-import/<>  [DossierImportSerializer]
+    champs: bon_commande, created_by, date_arrivee_port, date_creation, date_dedouanement, date_depart, date_modification, designation, fournisseur, fournisseur_nom, id, incoterm, incoterm_display, note, numero_bl, numero_conteneur, port_arrivee, reference, statut_douane, statut_douane_display
+    incoterm ∈ {cfr, cif, dap, ddp, exw, fob}
+    statut_douane ∈ {arrive_port, commande, dedouane, en_douane, expedie, livre}
+- frontend/src/api/installationsApi.js :: getDossiersImport -> /api/django/installations/dossiers-import  [DossierImportSerializer]
+    champs: bon_commande, created_by, date_arrivee_port, date_creation, date_dedouanement, date_depart, date_modification, designation, fournisseur, fournisseur_nom, id, incoterm, incoterm_display, note, numero_bl, numero_conteneur, port_arrivee, reference, statut_douane, statut_douane_display
+    incoterm ∈ {cfr, cif, dap, ddp, exw, fob}
+    statut_douane ∈ {arrive_port, commande, dedouane, en_douane, expedie, livre}
+- frontend/src/api/installationsApi.js :: getEtapesAssemblageKit -> /api/django/installations/etapes-assemblage  [EtapeAssemblageSerializer]
+    champs: duree_attendue_min, id, instructions, kit, libelle, ordre, piece_jointe
+- frontend/src/api/installationsApi.js :: getEvaluationsSousTraitant -> /api/django/installations/evaluations-sous-traitant  [EvaluationSousTraitantSerializer]
+    champs: chantier, commentaire, date_creation, date_evaluation, date_modification, evalue_par, id, note_delai, note_globale, note_qualite, note_securite, ordre, sous_traitant, sous_traitant_nom
+- frontend/src/api/installationsApi.js :: getFicheTemplates -> /api/django/installations/fiche-intervention-templates  [FicheInterventionTemplateSerializer]
+    champs: actif, champs, id, nom, protege, type_intervention
+- frontend/src/api/installationsApi.js :: getFraisImport -> /api/django/installations/frais-import  [FraisImportSerializer]
+    champs: categorie, categorie_display, created_by, date_creation, date_frais, dossier, id, libelle, montant
+    categorie ∈ {assurance, autre, douane, fret, manutention, transit, tva_import}
+- frontend/src/api/installationsApi.js :: getGeofenceAlertes -> /api/django/installations/geofence-alertes  [GeofenceAlertSerializer]
+    champs: acquittee, acquittee_le, acquittee_par, created_at, distance_site_km, id, intervention, position, rayon_attendu_km, technicien, technicien_nom
+- frontend/src/api/installationsApi.js :: getGpsConsentements -> /api/django/installations/gps-consentements  [GpsConsentRecordSerializer]
+    champs: consent_recorded_at, consent_ref, id, is_active, recorded_by, revoked_at, revoked_reason, technicien, technicien_nom
+- frontend/src/api/installationsApi.js :: getIndisponibilites -> /api/django/installations/indisponibilites-ressource  [IndisponibiliteRessourceSerializer]
+    champs: camionnette, camionnette_nom, created_by, date_creation, date_debut, date_fin, date_modification, id, motif, technicien, technicien_nom, type_indispo, type_indispo_display
+    type_indispo ∈ {arret, autre, conge, formation}
+- frontend/src/api/installationsApi.js :: getJalonsProjet -> /api/django/installations/jalons-projet  [JalonProjetSerializer]
+    champs: atteint, date_cible, date_creation, date_modification, date_reelle, id, installation, libelle, notes, ordre, phase, phase_display, rappel_facturation_envoye, tranche_echeancier
+    phase ∈ {appro, etude, mes, pose, reception}
+- frontend/src/api/installationsApi.js :: getKitComposants -> /api/django/installations/kit-composants  [KitComposantSerializer]
+    champs: designation, id, kit, produit, produit_nom, quantite, taux_perte_pct
+- frontend/src/api/installationsApi.js :: getKitsAssemblage -> /api/django/installations/kits  [KitSerializer]
+    champs: active, composants, created_by, date_creation, date_modification, id, nom, note, produit_compose, produit_compose_nom, reference_interne
+- frontend/src/api/installationsApi.js :: getLandedCostLignes -> /api/django/installations/landed-cost-lignes  [LandedCostLigneSerializer]
+    champs: cout_fob_unitaire, date_creation, designation, dossier, id, produit, produit_nom, quantite, valeur_fob
+- frontend/src/api/installationsApi.js :: getLignesAssemblage -> /api/django/installations/ordre-assemblage-lignes  [OrdreAssemblageLigneSerializer]
+    champs: designation, id, ordre, origine, produit, produit_nom, quantite
+    origine ∈ {ajout, kit}
+- frontend/src/api/installationsApi.js :: getLivraison -> /api/django/installations/livraisons/<>  [LivraisonSerializer]
+    champs: adresse_site, cout_transport, created_by, date_creation, date_modification, date_prevue, depot, depot_nom, id, installation, installation_reference, lignes, mode_acheminement, mode_acheminement_display, note, numero_suivi, reference, statut, statut_display, stock_mouvemente, transporteur, transporteur_nom, transporteur_obj_nom
+    mode_acheminement ∈ {depot, direct_site}
+    statut ∈ {annulee, en_transit, livree, planifiee}
+- frontend/src/api/installationsApi.js :: getLivraisonLignes -> /api/django/installations/livraison-lignes  [LivraisonLigneSerializer]
+    champs: designation, id, livraison, produit, produit_nom, quantite
+- frontend/src/api/installationsApi.js :: getLivraisons -> /api/django/installations/livraisons  [LivraisonSerializer]
+    champs: adresse_site, cout_transport, created_by, date_creation, date_modification, date_prevue, depot, depot_nom, id, installation, installation_reference, lignes, mode_acheminement, mode_acheminement_display, note, numero_suivi, reference, statut, statut_display, stock_mouvemente, transporteur, transporteur_nom, transporteur_obj_nom
+    mode_acheminement ∈ {depot, direct_site}
+    statut ∈ {annulee, en_transit, livree, planifiee}
+- frontend/src/api/installationsApi.js :: getOrdreAssemblage -> /api/django/installations/ordres-assemblage/<>  [OrdreAssemblageSerializer]
+    champs: chantier, cout_prevu, created_by, date_creation, date_modification, date_prevue, date_terminaison, devis, emplacement_destination, emplacement_source, id, kit, kit_nom, lignes, motif_annulation, note, ordre_sous_traitance, quantite, quantite_produite, reference, responsable, responsable_nom, revision_kit_numero, sous_traitant, statut, statut_display, stock_mouvemente, temps_prevu_min, temps_reel_min
+    statut ∈ {annule, en_cours, planifie, termine}
+- frontend/src/api/installationsApi.js :: getOrdreDemontage -> /api/django/installations/ordres-demontage/<>  [OrdreDemontageSerializer]
+    champs: created_by, date_creation, date_modification, date_terminaison, emplacement_destination, emplacement_source, id, kit, kit_nom, lignes, note, quantite, reference, statut, statut_display, stock_mouvemente
+    statut ∈ {planifie, termine}
+- frontend/src/api/installationsApi.js :: getOrdresAssemblage -> /api/django/installations/ordres-assemblage  [OrdreAssemblageSerializer]
+    champs: chantier, cout_prevu, created_by, date_creation, date_modification, date_prevue, date_terminaison, devis, emplacement_destination, emplacement_source, id, kit, kit_nom, lignes, motif_annulation, note, ordre_sous_traitance, quantite, quantite_produite, reference, responsable, responsable_nom, revision_kit_numero, sous_traitant, statut, statut_display, stock_mouvemente, temps_prevu_min, temps_reel_min
+    statut ∈ {annule, en_cours, planifie, termine}
+- frontend/src/api/installationsApi.js :: getOrdresDemontage -> /api/django/installations/ordres-demontage  [OrdreDemontageSerializer]
+    champs: created_by, date_creation, date_modification, date_terminaison, emplacement_destination, emplacement_source, id, kit, kit_nom, lignes, note, quantite, reference, statut, statut_display, stock_mouvemente
+    statut ∈ {planifie, termine}
+- frontend/src/api/installationsApi.js :: getOrdresSousTraitance -> /api/django/installations/ordres-sous-traitance  [OrdreSousTraitanceSerializer]
+    champs: chantier, created_by, date_creation, date_echeance, date_emission, date_modification, id, montant, montant_realise, note, prestation, reference, sous_traitant, sous_traitant_nom, statut, statut_display
+- frontend/src/api/installationsApi.js :: getPickList -> /api/django/installations/pick-lists/<>  [PickListSerializer]
+    champs: created_by, date_creation, date_modification, id, installation, lignes, note, reference, statut, statut_display
+    statut ∈ {emis, en_cours, termine}
+- frontend/src/api/installationsApi.js :: getPickListLignes -> /api/django/installations/pick-list-lignes  [PickListLigneSerializer]
+    champs: bin, bin_code, designation, id, ordre, pick_list, preleve, produit, produit_nom, quantite_demandee, quantite_prelevee
+- frontend/src/api/installationsApi.js :: getPickLists -> /api/django/installations/pick-lists  [PickListSerializer]
+    champs: created_by, date_creation, date_modification, id, installation, lignes, note, reference, statut, statut_display
+    statut ∈ {emis, en_cours, termine}
+- frontend/src/api/installationsApi.js :: getPositionsTechniciens -> /api/django/installations/positions-techniciens  [PositionTechnicienSerializer]
+    champs: accuracy_m, captured_at, distance_site_km, hors_perimetre, id, intervention, lat, lng, technicien, technicien_nom
+- frontend/src/api/installationsApi.js :: getPreuveLivraison -> /api/django/installations/preuves-livraison/<>  [PreuveLivraisonSerializer]
+    champs: created_by, date_creation, date_modification, gps_lat, gps_lng, horodatage, id, livraison, note, photo, signataire_nom, signature_data
+- frontend/src/api/installationsApi.js :: getPreuvesLivraison -> /api/django/installations/preuves-livraison  [PreuveLivraisonSerializer]
+    champs: created_by, date_creation, date_modification, gps_lat, gps_lng, horodatage, id, livraison, note, photo, signataire_nom, signature_data
+- frontend/src/api/installationsApi.js :: getPutAway -> /api/django/installations/putaways/<>  [PutAwaySerializer]
+    champs: bin_effectif, bin_effectif_code, bin_suggere, bin_suggere_code, created_by, date_creation, date_modification, date_rangement, emplacement, id, note, produit, produit_nom, quantite, range_par, reference_reception, statut, statut_display
+    statut ∈ {a_ranger, range}
+- frontend/src/api/installationsApi.js :: getPutAways -> /api/django/installations/putaways  [PutAwaySerializer]
+    champs: bin_effectif, bin_effectif_code, bin_suggere, bin_suggere_code, created_by, date_creation, date_modification, date_rangement, emplacement, id, note, produit, produit_nom, quantite, range_par, reference_reception, statut, statut_display
+    statut ∈ {a_ranger, range}
+- frontend/src/api/installationsApi.js :: getRFQ -> /api/django/installations/rfq/<>  [RFQSerializer]
+    champs: bon_commande, comparatif, consultations, created_by, date_creation, date_limite_reponse, date_modification, demande, id, note, objet, offres, reference, statut, statut_display
+    statut ∈ {brouillon, cloturee, envoyee}
+- frontend/src/api/installationsApi.js :: getRFQConsultations -> /api/django/installations/rfq-consultations  [RFQConsultationSerializer]
+    champs: a_repondu, date_creation, date_modification, derniere_relance_le, email_envoye_le, fournisseur, fournisseur_email, fournisseur_nom, fournisseur_telephone, id, nb_relances, offre, rfq, whatsapp_envoye_le
+- frontend/src/api/installationsApi.js :: getRFQs -> /api/django/installations/rfq  [RFQSerializer]
+    champs: bon_commande, comparatif, consultations, created_by, date_creation, date_limite_reponse, date_modification, demande, id, note, objet, offres, reference, statut, statut_display
+    statut ∈ {brouillon, cloturee, envoyee}
+- frontend/src/api/installationsApi.js :: getReceptionsNonFacturees -> /api/django/installations/receptions-non-facturees  [ReceptionNonFactureeSerializer]
+    champs: bon_commande, created_by, date_creation, date_lettrage, date_modification, date_reception, facture, id, lettre, libelle, montant_a_provisionner, montant_provision, note, reception
+- frontend/src/api/installationsApi.js :: getRecurrencesIntervention -> /api/django/installations/recurrences-intervention  [RecurrenceInterventionSerializer]
+    champs: actif, date_creation, date_fin, id, installation, installation_reference, intervalle, nb_generees, nb_occurrences, prochaine_echeance, regle, regle_display, technicien_defaut, technicien_defaut_nom, type_intervention
+    regle ∈ {annuelle, mensuelle, semestrielle, trimestrielle}
+- frontend/src/api/installationsApi.js :: getRetenuesGarantieSousTraitant -> /api/django/installations/retenues-garantie-sous-traitant  [RetenueGarantieSousTraitantSerializer]
+    champs: created_by, date_constitution, date_creation, date_levee, date_modification, id, levee, montant_a_liberer, montant_base, montant_retenu, note, ordre, ordre_reference, pourcentage
+- frontend/src/api/installationsApi.js :: getReunionsChantier -> /api/django/installations/reunions-chantier  [ReunionChantierSerializer]
+    champs: actions, date_creation, date_modification, date_reunion, decisions, id, installation, ordre_du_jour, presents, redige_par, redige_par_nom, titre
+- frontend/src/api/installationsApi.js :: getRevisionsDocument -> /api/django/installations/revisions-document  [RevisionDocumentSerializer]
+    champs: auteur, auteur_nom, date_creation, date_revision, document, fichier, fichier_url, id, indice, notes
+- frontend/src/api/installationsApi.js :: getSessionComptage -> /api/django/installations/sessions-comptage/<>  [SessionComptageSerializer]
+    champs: classe_abc, classe_abc_display, created_by, date_creation, date_modification, date_planifiee, emplacement, id, intitule, lignes, note, reference, statut, statut_display
+    classe_abc ∈ {A, B, C, toutes}
+    statut ∈ {en_cours, planifie, termine}
+- frontend/src/api/installationsApi.js :: getSessionsComptage -> /api/django/installations/sessions-comptage  [SessionComptageSerializer]
+    champs: classe_abc, classe_abc_display, created_by, date_creation, date_modification, date_planifiee, emplacement, id, intitule, lignes, note, reference, statut, statut_display
+    classe_abc ∈ {A, B, C, toutes}
+    statut ∈ {en_cours, planifie, termine}
+- frontend/src/api/installationsApi.js :: getSeuilsApprobationBcf -> /api/django/installations/seuils-approbation-bcf  [SeuilApprobationBCFSerializer]
+    champs: actif, date_creation, date_modification, id, seuil_responsable
+- frontend/src/api/installationsApi.js :: getTransporteurs -> /api/django/installations/transporteurs  [TransporteurSerializer]
+    champs: active, contact, created_by, date_creation, date_modification, id, nom, note, tarif_base, telephone, type_transporteur, type_transporteur_display
+    type_transporteur ∈ {interne, tiers}
+- frontend/src/api/installationsApi.js :: updateBinAffectation -> /api/django/installations/bin-affectations/<>  [BinAffectationSerializer]
+    champs: bin, date_creation, date_modification, id, produit, produit_nom, quantite
+- frontend/src/api/installationsApi.js :: updateBinLocation -> /api/django/installations/bin-locations/<>  [BinLocationSerializer]
+    champs: affectations, allee, archived, casier, categorie, categorie_nom, code, created_by, date_creation, date_modification, emplacement, emplacement_nom, id, note, ordre, zone
+- frontend/src/api/installationsApi.js :: updateColis -> /api/django/installations/colis/<>  [ColisSerializer]
+    champs: controle_par, created_by, date_controle, date_creation, date_modification, id, installation, lignes, note, poids_kg, reference, statut, statut_display
+    statut ∈ {controle, expedie, preparation}
+- frontend/src/api/installationsApi.js :: updateColisLigne -> /api/django/installations/colis-lignes/<>  [ColisLigneSerializer]
+    champs: colis, controle_ok, designation, id, produit, produit_nom, quantite
+- frontend/src/api/installationsApi.js :: updateCommandeCadre -> /api/django/installations/commandes-cadre/<>  [CommandeCadreSerializer]
+    champs: created_by, date_creation, date_debut, date_fin, date_modification, fournisseur, fournisseur_nom, id, intitule, lignes, note, reference, statut, statut_display
+    statut ∈ {actif, brouillon, clos}
+- frontend/src/api/installationsApi.js :: updateCommandeCadreLigne -> /api/django/installations/commandes-cadre-lignes/<>  [CommandeCadreLigneSerializer]
+    champs: commande_cadre, designation, id, prix_negocie, produit, produit_nom, volume_consomme, volume_engage, volume_restant
+- frontend/src/api/installationsApi.js :: updateComptageLigne -> /api/django/installations/comptage-lignes/<>  [ComptageLigneSerializer]
+    champs: compte, designation, ecart, id, produit, produit_nom, quantite_comptee, quantite_theorique, session
+- frontend/src/api/installationsApi.js :: updateContratPrixFournisseur -> /api/django/installations/contrats-prix-fournisseur/<>  [ContratPrixFournisseurSerializer]
+    champs: created_by, date_creation, date_debut, date_fin, date_modification, fournisseur, fournisseur_nom, id, intitule, lignes, note, reference, statut, statut_display, version
+    statut ∈ {actif, brouillon, expire}
+- frontend/src/api/installationsApi.js :: updateContratPrixLigne -> /api/django/installations/contrats-prix-lignes/<>  [ContratPrixLigneSerializer]
+    champs: contrat, designation, id, prix_convenu, produit, produit_nom, remise_pct
+- frontend/src/api/installationsApi.js :: updateControleQualiteModele -> /api/django/installations/controle-qualite-modeles/<>  [ControleQualiteModeleSerializer]
+    champs: active, date_creation, date_modification, id, items, kit
+- frontend/src/api/installationsApi.js :: updateDemandeAchat -> /api/django/installations/demandes-achat/<>  [DemandeAchatSerializer]
+    champs: approuvee_par, bon_commande, chantier, created_by, date_besoin, date_creation, date_decision, date_modification, fournisseur_suggere, id, lignes, montant_estime, motif_refus, note, objet, priorite, priorite_display, programme, reference, statut, statut_display
+    priorite ∈ {basse, haute, normale, urgente}
+- frontend/src/api/installationsApi.js :: updateDemandeTransfert -> /api/django/installations/demandes-transfert/<>  [DemandeTransfertSerializer]
+    champs: approuve_par, created_by, date_approbation, date_creation, date_execution, date_modification, destination, destination_nom, id, motif, motif_refus, produit, produit_nom, quantite, reference, source, source_nom, statut, statut_display
+    statut ∈ {approuve, demande, execute, refuse}
+- frontend/src/api/installationsApi.js :: updateDossierImport -> /api/django/installations/dossiers-import/<>  [DossierImportSerializer]
+    champs: bon_commande, created_by, date_arrivee_port, date_creation, date_dedouanement, date_depart, date_modification, designation, fournisseur, fournisseur_nom, id, incoterm, incoterm_display, note, numero_bl, numero_conteneur, port_arrivee, reference, statut_douane, statut_douane_display
+    incoterm ∈ {cfr, cif, dap, ddp, exw, fob}
+    statut_douane ∈ {arrive_port, commande, dedouane, en_douane, expedie, livre}
+- frontend/src/api/installationsApi.js :: updateEtapeAssemblageKit -> /api/django/installations/etapes-assemblage/<>  [EtapeAssemblageSerializer]
+    champs: duree_attendue_min, id, instructions, kit, libelle, ordre, piece_jointe
+- frontend/src/api/installationsApi.js :: updateJalonProjet -> /api/django/installations/jalons-projet/<>  [JalonProjetSerializer]
+    champs: atteint, date_cible, date_creation, date_modification, date_reelle, id, installation, libelle, notes, ordre, phase, phase_display, rappel_facturation_envoye, tranche_echeancier
+    phase ∈ {appro, etude, mes, pose, reception}
+- frontend/src/api/installationsApi.js :: updateKit -> /api/django/installations/kits/<>  [KitSerializer]
+    champs: active, composants, created_by, date_creation, date_modification, id, nom, note, produit_compose, produit_compose_nom, reference_interne
+- frontend/src/api/installationsApi.js :: updateKitComposant -> /api/django/installations/kit-composants/<>  [KitComposantSerializer]
+    champs: designation, id, kit, produit, produit_nom, quantite, taux_perte_pct
+- frontend/src/api/installationsApi.js :: updateLigneAssemblage -> /api/django/installations/ordre-assemblage-lignes/<>  [OrdreAssemblageLigneSerializer]
+    champs: designation, id, ordre, origine, produit, produit_nom, quantite
+    origine ∈ {ajout, kit}
+- frontend/src/api/installationsApi.js :: updateLigneDemontage -> /api/django/installations/ordre-demontage-lignes/<>  [OrdreDemontageLigneSerializer]
+    champs: designation, id, ordre, produit, produit_nom, quantite_attendue, quantite_recuperee
+- frontend/src/api/installationsApi.js :: updateLivraison -> /api/django/installations/livraisons/<>  [LivraisonSerializer]
+    champs: adresse_site, cout_transport, created_by, date_creation, date_modification, date_prevue, depot, depot_nom, id, installation, installation_reference, lignes, mode_acheminement, mode_acheminement_display, note, numero_suivi, reference, statut, statut_display, stock_mouvemente, transporteur, transporteur_nom, transporteur_obj_nom
+    mode_acheminement ∈ {depot, direct_site}
+    statut ∈ {annulee, en_transit, livree, planifiee}
+- frontend/src/api/installationsApi.js :: updateLivraisonLigne -> /api/django/installations/livraison-lignes/<>  [LivraisonLigneSerializer]
+    champs: designation, id, livraison, produit, produit_nom, quantite
+- frontend/src/api/installationsApi.js :: updateOrdreAssemblage -> /api/django/installations/ordres-assemblage/<>  [OrdreAssemblageSerializer]
+    champs: chantier, cout_prevu, created_by, date_creation, date_modification, date_prevue, date_terminaison, devis, emplacement_destination, emplacement_source, id, kit, kit_nom, lignes, motif_annulation, note, ordre_sous_traitance, quantite, quantite_produite, reference, responsable, responsable_nom, revision_kit_numero, sous_traitant, statut, statut_display, stock_mouvemente, temps_prevu_min, temps_reel_min
+    statut ∈ {annule, en_cours, planifie, termine}
+- frontend/src/api/installationsApi.js :: updateOrdreDemontage -> /api/django/installations/ordres-demontage/<>  [OrdreDemontageSerializer]
+    champs: created_by, date_creation, date_modification, date_terminaison, emplacement_destination, emplacement_source, id, kit, kit_nom, lignes, note, quantite, reference, statut, statut_display, stock_mouvemente
+    statut ∈ {planifie, termine}
+- frontend/src/api/installationsApi.js :: updatePickListLigne -> /api/django/installations/pick-list-lignes/<>  [PickListLigneSerializer]
+    champs: bin, bin_code, designation, id, ordre, pick_list, preleve, produit, produit_nom, quantite_demandee, quantite_prelevee
+- frontend/src/api/installationsApi.js :: updatePreuveLivraison -> /api/django/installations/preuves-livraison/<>  [PreuveLivraisonSerializer]
+    champs: created_by, date_creation, date_modification, gps_lat, gps_lng, horodatage, id, livraison, note, photo, signataire_nom, signature_data
+- frontend/src/api/installationsApi.js :: updateSessionComptage -> /api/django/installations/sessions-comptage/<>  [SessionComptageSerializer]
+    champs: classe_abc, classe_abc_display, created_by, date_creation, date_modification, date_planifiee, emplacement, id, intitule, lignes, note, reference, statut, statut_display
+    classe_abc ∈ {A, B, C, toutes}
+    statut ∈ {en_cours, planifie, termine}
+- frontend/src/api/installationsApi.js :: updateTransporteur -> /api/django/installations/transporteurs/<>  [TransporteurSerializer]
+    champs: active, contact, created_by, date_creation, date_modification, id, nom, note, tarif_base, telephone, type_transporteur, type_transporteur_display
+    type_transporteur ∈ {interne, tiers}
+- frontend/src/api/kbApi.js :: createAcl -> /api/django/kb/article-acls  [KbArticleAclSerializer]
+    champs: article, date_creation, id, niveau, niveau_display, role, role_display, utilisateur, utilisateur_nom
+    niveau ∈ {edition, lecture}
+- frontend/src/api/kbApi.js :: createAssignation -> /api/django/kb/parcours-assignations  [KbParcoursAssignationSerializer]
+    champs: date_creation, id, parcours, parcours_nom, utilisateur, utilisateur_nom
+- frontend/src/api/kbApi.js :: createBloc -> /api/django/kb/blocs  [BlocReutilisableSerializer]
+    champs: corps, created_by, created_by_nom, date_creation, date_modification, id, nom, portee, portee_display
+    portee ∈ {personnel, societe}
+- frontend/src/api/kbApi.js :: createLectureObligatoire -> /api/django/kb/lectures-obligatoires  [KbLectureObligatoireSerializer]
+    champs: article, date_creation, echeance, id, role_cible, utilisateur, utilisateur_nom
+- frontend/src/api/kbApi.js :: createLien -> /api/django/kb/article-liens  [KbArticleLienSerializer]
+    champs: article, cible_id, date_creation, id, libelle, type_cible, type_cible_display
+    type_cible ∈ {article, equipement, produit, type_intervention}
+- frontend/src/api/kbApi.js :: createParcours -> /api/django/kb/parcours  [KbParcoursSerializer]
+    champs: actif, created_by, date_creation, description, id, metier, nom, role_cible, role_cible_display
+- frontend/src/api/kbApi.js :: createParcoursArticle -> /api/django/kb/parcours-articles  [KbParcoursArticleSerializer]
+    champs: article, article_titre, id, ordre, parcours
+- frontend/src/api/kbApi.js :: createPartage -> /api/django/kb/partages  [PartageArticleKbSerializer]
+    champs: actif, article, article_titre, consultations, created_by, date_creation, expires_at, id, is_expired, token
+- frontend/src/api/kbApi.js :: listAcls -> /api/django/kb/article-acls  [KbArticleAclSerializer]
+    champs: article, date_creation, id, niveau, niveau_display, role, role_display, utilisateur, utilisateur_nom
+    niveau ∈ {edition, lecture}
+- frontend/src/api/kbApi.js :: listAssignations -> /api/django/kb/parcours-assignations  [KbParcoursAssignationSerializer]
+    champs: date_creation, id, parcours, parcours_nom, utilisateur, utilisateur_nom
+- frontend/src/api/kbApi.js :: listBlocs -> /api/django/kb/blocs  [BlocReutilisableSerializer]
+    champs: corps, created_by, created_by_nom, date_creation, date_modification, id, nom, portee, portee_display
+    portee ∈ {personnel, societe}
+- frontend/src/api/kbApi.js :: listFavoris -> /api/django/kb/favoris  [KbFavoriSerializer]
+    champs: article, article_titre, date_creation, id, utilisateur
+- frontend/src/api/kbApi.js :: listLecturesObligatoires -> /api/django/kb/lectures-obligatoires  [KbLectureObligatoireSerializer]
+    champs: article, date_creation, echeance, id, role_cible, utilisateur, utilisateur_nom
+- frontend/src/api/kbApi.js :: listLiens -> /api/django/kb/article-liens  [KbArticleLienSerializer]
+    champs: article, cible_id, date_creation, id, libelle, type_cible, type_cible_display
+    type_cible ∈ {article, equipement, produit, type_intervention}
+- frontend/src/api/kbApi.js :: listParcours -> /api/django/kb/parcours  [KbParcoursSerializer]
+    champs: actif, created_by, date_creation, description, id, metier, nom, role_cible, role_cible_display
+- frontend/src/api/kbApi.js :: listParcoursArticles -> /api/django/kb/parcours-articles  [KbParcoursArticleSerializer]
+    champs: article, article_titre, id, ordre, parcours
+- frontend/src/api/kbApi.js :: listPartages -> /api/django/kb/partages  [PartageArticleKbSerializer]
+    champs: actif, article, article_titre, consultations, created_by, date_creation, expires_at, id, is_expired, token
+- frontend/src/api/kbApi.js :: listVersions -> /api/django/kb/versions  [KbArticleVersionSerializer]
+    champs: article, auteur, auteur_nom, contenu, date_creation, id, titre, version
+- frontend/src/api/kbApi.js :: removeAcl -> /api/django/kb/article-acls/<>  [KbArticleAclSerializer]
+    champs: article, date_creation, id, niveau, niveau_display, role, role_display, utilisateur, utilisateur_nom
+    niveau ∈ {edition, lecture}
+- frontend/src/api/kbApi.js :: removeBloc -> /api/django/kb/blocs/<>  [BlocReutilisableSerializer]
+    champs: corps, created_by, created_by_nom, date_creation, date_modification, id, nom, portee, portee_display
+    portee ∈ {personnel, societe}
+- frontend/src/api/kbApi.js :: removeLectureObligatoire -> /api/django/kb/lectures-obligatoires/<>  [KbLectureObligatoireSerializer]
+    champs: article, date_creation, echeance, id, role_cible, utilisateur, utilisateur_nom
+- frontend/src/api/kbApi.js :: removeLien -> /api/django/kb/article-liens/<>  [KbArticleLienSerializer]
+    champs: article, cible_id, date_creation, id, libelle, type_cible, type_cible_display
+    type_cible ∈ {article, equipement, produit, type_intervention}
+- frontend/src/api/kbApi.js :: removeParcoursArticle -> /api/django/kb/parcours-articles/<>  [KbParcoursArticleSerializer]
+    champs: article, article_titre, id, ordre, parcours
+- frontend/src/api/litigesApi.js :: create -> /api/django/litiges/reclamations  [ReclamationSerializer]
+    champs: audit, audit_id, bloque_relances, concurrent_devise, concurrent_nom, concurrent_prix, created_by, date_creation, description, gravite, gravite_display, id, montant_conteste, motif_perte, ncr, ncr_id, objet, reference, source_id, source_type, statut, statut_display, type_reclamation, type_reclamation_display
+    gravite ∈ {elevee, faible, moyenne}
+    statut ∈ {en_traitement, ouverte, rejetee, resolue}
+    type_reclamation ∈ {autre, commercial, delai, financier, qualite, recouvrement}
+- frontend/src/api/litigesApi.js :: get -> /api/django/litiges/reclamations/<>  [ReclamationSerializer]
+    champs: audit, audit_id, bloque_relances, concurrent_devise, concurrent_nom, concurrent_prix, created_by, date_creation, description, gravite, gravite_display, id, montant_conteste, motif_perte, ncr, ncr_id, objet, reference, source_id, source_type, statut, statut_display, type_reclamation, type_reclamation_display
+    gravite ∈ {elevee, faible, moyenne}
+    statut ∈ {en_traitement, ouverte, rejetee, resolue}
+    type_reclamation ∈ {autre, commercial, delai, financier, qualite, recouvrement}
+- frontend/src/api/litigesApi.js :: list -> /api/django/litiges/reclamations  [ReclamationSerializer]
+    champs: audit, audit_id, bloque_relances, concurrent_devise, concurrent_nom, concurrent_prix, created_by, date_creation, description, gravite, gravite_display, id, montant_conteste, motif_perte, ncr, ncr_id, objet, reference, source_id, source_type, statut, statut_display, type_reclamation, type_reclamation_display
+    gravite ∈ {elevee, faible, moyenne}
+    statut ∈ {en_traitement, ouverte, rejetee, resolue}
+    type_reclamation ∈ {autre, commercial, delai, financier, qualite, recouvrement}
+- frontend/src/api/litigesApi.js :: remove -> /api/django/litiges/reclamations/<>  [ReclamationSerializer]
+    champs: audit, audit_id, bloque_relances, concurrent_devise, concurrent_nom, concurrent_prix, created_by, date_creation, description, gravite, gravite_display, id, montant_conteste, motif_perte, ncr, ncr_id, objet, reference, source_id, source_type, statut, statut_display, type_reclamation, type_reclamation_display
+    gravite ∈ {elevee, faible, moyenne}
+    statut ∈ {en_traitement, ouverte, rejetee, resolue}
+    type_reclamation ∈ {autre, commercial, delai, financier, qualite, recouvrement}
+- frontend/src/api/litigesApi.js :: update -> /api/django/litiges/reclamations/<>  [ReclamationSerializer]
+    champs: audit, audit_id, bloque_relances, concurrent_devise, concurrent_nom, concurrent_prix, created_by, date_creation, description, gravite, gravite_display, id, montant_conteste, motif_perte, ncr, ncr_id, objet, reference, source_id, source_type, statut, statut_display, type_reclamation, type_reclamation_display
+    gravite ∈ {elevee, faible, moyenne}
+    statut ∈ {en_traitement, ouverte, rejetee, resolue}
+    type_reclamation ∈ {autre, commercial, delai, financier, qualite, recouvrement}
+- frontend/src/api/messagesApi.js :: cancel -> /api/django/chat/scheduled-messages/<>  [ScheduledMessageSerializer]
+    champs: body, conversation, created_at, id, scheduled_at, sender, sent_message, status
+    status ∈ {cancelled, failed, pending, sent}
+- frontend/src/api/messagesApi.js :: createConversation -> /api/django/chat/conversations  [ConversationSerializer]
+    champs: alias_email, created_at, created_by, id, is_archived, kind, last_message, member_ids, members, name, unread_count, updated_at
+    kind ∈ {channel, dm}
+- frontend/src/api/messagesApi.js :: editMessage -> /api/django/chat/messages/<>  [MessageSerializer]
+    champs: attachments, body, conversation, created_at, deleted_at, edited_at, id, is_pinned, kind, pinned_at, pinned_by, reactions, reply_count, reply_to, sender, sender_detail, shared_label, shared_object_id, shared_url
+    kind ∈ {poll, record, system, text, voice}
+- frontend/src/api/messagesApi.js :: getConversation -> /api/django/chat/conversations/<>  [ConversationSerializer]
+    champs: alias_email, created_at, created_by, id, is_archived, kind, last_message, member_ids, members, name, unread_count, updated_at
+    kind ∈ {channel, dm}
+- frontend/src/api/messagesApi.js :: listCompanyMembers -> /api/django/users  [UserSerializer]
+    champs: active_company_id, avatar_key, avatar_url, company_est_demo, company_id, company_mode_presentation_actif, company_nom, date_joined, email, first_name, id, is_active, is_protected, is_superuser, last_login, last_name, menu_tier, mobile_home_route, modules_desactives, must_change_password, password, password_changed_at, permissions, portail_client_id, portail_fournisseur_id, portail_partenaire_id, portee, poste, poste_ref, poste_ref_intitule, role, role_legacy, role_nom, societes_operables, supervisor, supervisor_nom, username
+- frontend/src/api/messagesApi.js :: listConversations -> /api/django/chat/conversations  [ConversationSerializer]
+    champs: alias_email, created_at, created_by, id, is_archived, kind, last_message, member_ids, members, name, unread_count, updated_at
+    kind ∈ {channel, dm}
+- frontend/src/api/messagesApi.js :: listMessages -> /api/django/chat/messages  [MessageSerializer]
+    champs: attachments, body, conversation, created_at, deleted_at, edited_at, id, is_pinned, kind, pinned_at, pinned_by, reactions, reply_count, reply_to, sender, sender_detail, shared_label, shared_object_id, shared_url
+    kind ∈ {poll, record, system, text, voice}
+- frontend/src/api/messagesApi.js :: listPinned -> /api/django/chat/messages  [MessageSerializer]
+    champs: attachments, body, conversation, created_at, deleted_at, edited_at, id, is_pinned, kind, pinned_at, pinned_by, reactions, reply_count, reply_to, sender, sender_detail, shared_label, shared_object_id, shared_url
+    kind ∈ {poll, record, system, text, voice}
+- frontend/src/api/messagesApi.js :: sendMessage -> /api/django/chat/messages  [MessageSerializer]
+    champs: attachments, body, conversation, created_at, deleted_at, edited_at, id, is_pinned, kind, pinned_at, pinned_by, reactions, reply_count, reply_to, sender, sender_detail, shared_label, shared_object_id, shared_url
+    kind ∈ {poll, record, system, text, voice}
+- frontend/src/api/messagesApi.js :: shareRecord -> /api/django/chat/messages  [MessageSerializer]
+    champs: attachments, body, conversation, created_at, deleted_at, edited_at, id, is_pinned, kind, pinned_at, pinned_by, reactions, reply_count, reply_to, sender, sender_detail, shared_label, shared_object_id, shared_url
+    kind ∈ {poll, record, system, text, voice}
+- frontend/src/api/messagesApi.js :: update -> /api/django/chat/retention-policies/<>  [RetentionPolicySerializer]
+    champs: conversation_kind, id, retention_months, updated_at, updated_by
+    conversation_kind ∈ {channel, dm}
+- frontend/src/api/messagesApi.js :: updateConversation -> /api/django/chat/conversations/<>  [ConversationSerializer]
+    champs: alias_email, created_at, created_by, id, is_archived, kind, last_message, member_ids, members, name, unread_count, updated_at
+    kind ∈ {channel, dm}
+- frontend/src/api/migrationApi.js :: createLot -> /api/django/migration/lots-migration  [LotMigrationSerializer]
+    champs: created_at, crees, dernier_rapport, derogation_at, derogation_motif, derogation_par_nom, derogation_reconcile, entite, erreurs, id, import_job, maj, ordre, projet, source_lignes, source_montant, statut, updated_at
+    statut ∈ {analyse, charge, echoue, en_attente, reconcilie}
+- frontend/src/api/migrationApi.js :: createProjet -> /api/django/migration/projets-migration  [ProjetMigrationSerializer]
+    champs: created_at, cree_par, date_debut, date_fin, id, lots_reconcilies, lots_total, nom, notes, source, statut, updated_at
+    source ∈ {csv_generique, excel, odoo, sage}
+    statut ∈ {analyse, brouillon, chargement, echoue, reconciliation, termine}
+- frontend/src/api/migrationApi.js :: deleteLot -> /api/django/migration/lots-migration/<>  [LotMigrationSerializer]
+    champs: created_at, crees, dernier_rapport, derogation_at, derogation_motif, derogation_par_nom, derogation_reconcile, entite, erreurs, id, import_job, maj, ordre, projet, source_lignes, source_montant, statut, updated_at
+    statut ∈ {analyse, charge, echoue, en_attente, reconcilie}
+- frontend/src/api/migrationApi.js :: deleteProjet -> /api/django/migration/projets-migration/<>  [ProjetMigrationSerializer]
+    champs: created_at, cree_par, date_debut, date_fin, id, lots_reconcilies, lots_total, nom, notes, source, statut, updated_at
+    source ∈ {csv_generique, excel, odoo, sage}
+    statut ∈ {analyse, brouillon, chargement, echoue, reconciliation, termine}
+- frontend/src/api/migrationApi.js :: getProjet -> /api/django/migration/projets-migration/<>  [ProjetMigrationSerializer]
+    champs: created_at, cree_par, date_debut, date_fin, id, lots_reconcilies, lots_total, nom, notes, source, statut, updated_at
+    source ∈ {csv_generique, excel, odoo, sage}
+    statut ∈ {analyse, brouillon, chargement, echoue, reconciliation, termine}
+- frontend/src/api/migrationApi.js :: listLots -> /api/django/migration/lots-migration  [LotMigrationSerializer]
+    champs: created_at, crees, dernier_rapport, derogation_at, derogation_motif, derogation_par_nom, derogation_reconcile, entite, erreurs, id, import_job, maj, ordre, projet, source_lignes, source_montant, statut, updated_at
+    statut ∈ {analyse, charge, echoue, en_attente, reconcilie}
+- frontend/src/api/migrationApi.js :: listProjets -> /api/django/migration/projets-migration  [ProjetMigrationSerializer]
+    champs: created_at, cree_par, date_debut, date_fin, id, lots_reconcilies, lots_total, nom, notes, source, statut, updated_at
+    source ∈ {csv_generique, excel, odoo, sage}
+    statut ∈ {analyse, brouillon, chargement, echoue, reconciliation, termine}
+- frontend/src/api/migrationApi.js :: updateProjet -> /api/django/migration/projets-migration/<>  [ProjetMigrationSerializer]
+    champs: created_at, cree_par, date_debut, date_fin, id, lots_reconcilies, lots_total, nom, notes, source, statut, updated_at
+    source ∈ {csv_generique, excel, odoo, sage}
+    statut ∈ {analyse, brouillon, chargement, echoue, reconciliation, termine}
+- frontend/src/api/monitoringApi.js :: addCleaning -> /api/django/monitoring/cleanings  [CleaningEventSerializer]
+    champs: date, date_creation, id, installation, note
+- frontend/src/api/monitoringApi.js :: addReading -> /api/django/monitoring/readings  [ProductionReadingSerializer]
+    champs: date, date_creation, energy_kwh, external_id, id, installation, note, period_days, source, source_display
+    source ∈ {auto, manual}
+- frontend/src/api/monitoringApi.js :: createAbonnement -> /api/django/monitoring/abonnements-monitoring  [AbonnementMonitoringSerializer]
+    champs: client_id, date_creation, date_debut, derniere_facturation, id, installation_id, montant, motif_resiliation, periodicite, prochaine_echeance, statut
+    periodicite ∈ {annuel, mensuel}
+    statut ∈ {actif, resilie, suspendu}
+- frontend/src/api/monitoringApi.js :: deleteCleaning -> /api/django/monitoring/cleanings/<>  [CleaningEventSerializer]
+    champs: date, date_creation, id, installation, note
+- frontend/src/api/monitoringApi.js :: deleteReading -> /api/django/monitoring/readings/<>  [ProductionReadingSerializer]
+    champs: date, date_creation, energy_kwh, external_id, id, installation, note, period_days, source, source_display
+    source ∈ {auto, manual}
+- frontend/src/api/monitoringApi.js :: deleteWarranty -> /api/django/monitoring/warranties/<>  [ProductionWarrantySerializer]
+    champs: compensation_mad_per_kwh, date_creation, date_modification, degradation_pct_per_year, guaranteed_year1_kwh, id, installation, note, start_year, tolerance_pct
+- frontend/src/api/monitoringApi.js :: getAbonnements -> /api/django/monitoring/abonnements-monitoring  [AbonnementMonitoringSerializer]
+    champs: client_id, date_creation, date_debut, derniere_facturation, id, installation_id, montant, motif_resiliation, periodicite, prochaine_echeance, statut
+    periodicite ∈ {annuel, mensuel}
+    statut ∈ {actif, resilie, suspendu}
+- frontend/src/api/monitoringApi.js :: getCleanings -> /api/django/monitoring/cleanings  [CleaningEventSerializer]
+    champs: date, date_creation, id, installation, note
+- frontend/src/api/monitoringApi.js :: getConfigForInstallation -> /api/django/monitoring/configs  [MonitoringConfigSerializer]
+    champs: credentials, date_modification, enabled, expected_annual_kwh, has_credentials, id, installation, is_auto, last_sync, provider, provider_label
+- frontend/src/api/monitoringApi.js :: getConfigs -> /api/django/monitoring/configs  [MonitoringConfigSerializer]
+    champs: credentials, date_modification, enabled, expected_annual_kwh, has_credentials, id, installation, is_auto, last_sync, provider, provider_label
+- frontend/src/api/monitoringApi.js :: getReadings -> /api/django/monitoring/readings  [ProductionReadingSerializer]
+    champs: date, date_creation, energy_kwh, external_id, id, installation, note, period_days, source, source_display
+    source ∈ {auto, manual}
+- frontend/src/api/monitoringApi.js :: getWarranties -> /api/django/monitoring/warranties  [ProductionWarrantySerializer]
+    champs: compensation_mad_per_kwh, date_creation, date_modification, degradation_pct_per_year, guaranteed_year1_kwh, id, installation, note, start_year, tolerance_pct
+- frontend/src/api/notificationsApi.js :: createAnnonce -> /api/django/notifications/annonces  [AnnonceSerializer]
+    champs: auteur, auteur_username, cible_departement_nom, cible_role, cible_type, cible_type_label, corps, created_at, date_expiration, date_publication, date_publication_effective, epinglee, id, is_expiree, lecture_obligatoire, lus_count, publiee, titre, updated_at
+    cible_type ∈ {departement, role, tous}
+- frontend/src/api/notificationsApi.js :: createHoliday -> /api/django/notifications/holidays  [HolidaySerializer]
+    champs: created_at, date, id, nom, recurrent_annuel
+- frontend/src/api/notificationsApi.js :: createWhatsAppTemplate -> /api/django/notifications/whatsapp-templates  [WhatsAppTemplateSerializer]
+    champs: active, body_fr, categorie, categorie_label, created_at, groupe, id, language, motif_rejet, name, statut_approbation, statut_approbation_label, updated_at
+    categorie ∈ {marketing, utility}
+    statut_approbation ∈ {approuve, brouillon, rejete, soumis}
+- frontend/src/api/notificationsApi.js :: deleteAnnonce -> /api/django/notifications/annonces/<>  [AnnonceSerializer]
+    champs: auteur, auteur_username, cible_departement_nom, cible_role, cible_type, cible_type_label, corps, created_at, date_expiration, date_publication, date_publication_effective, epinglee, id, is_expiree, lecture_obligatoire, lus_count, publiee, titre, updated_at
+    cible_type ∈ {departement, role, tous}
+- frontend/src/api/notificationsApi.js :: deleteHoliday -> /api/django/notifications/holidays/<>  [HolidaySerializer]
+    champs: created_at, date, id, nom, recurrent_annuel
+- frontend/src/api/notificationsApi.js :: deleteRoutingRule -> /api/django/notifications/routing-rules/<>  [NotificationRoutingRuleSerializer]
+    champs: created_at, enabled, event_label, event_type, id, target_role, target_role_label, target_user
+    event_type ∈ {annonce_published, annonce_read_reminder, approval_decided, approval_escalated, approval_reminder, approval_requested, bcf_cancelled, bcf_late, bcf_relance_proposee, bon_commande_cree, chantier_assigne, chantier_due, chat_mention, chat_message, client_contact_request, contrat_signe, da_decidee, da_soumise_stale, devis_accepted, devis_expired, devis_nudge_due, devis_opened, devis_reply, devis_superior_contact_requested, digest, education_reinscription_relance, facture_overdue, facture_payee, feedback_digest, feedback_starred, flotte_budget_depassement, flotte_dtc_critique, flotte_zone_alerte, ged_signature_expiration_proche, hot_lead_unread, idea_realisee, idea_received, idea_retenue, idea_vote, impersonation_requested, incident_critical, innovation_campagne, lead_assigned, lead_callback_requested, lead_callback_sla_breach, lead_new, maintenance_due, monitoring_rapport, nps_promoteur, paie_rib_divergence, paie_run_pret, post_social_rappel, product_announcement, projet_retard, projet_statut_change, sav_activite_due, sav_equipement_remplace, sav_ticket_breaching, sav_ticket_followed_update, sav_ticket_opened, sav_ticket_resolu, sav_visites_auto_generees, security_alert, security_change, snooze_reveil, stock_expiration_soon, stock_low, supplier_doc_expiring, veille_ao_alarme_silence, veille_ao_nouveaux_avis, warranty_expiring}
+- frontend/src/api/notificationsApi.js :: deleteWhatsAppTemplate -> /api/django/notifications/whatsapp-templates/<>  [WhatsAppTemplateSerializer]
+    champs: active, body_fr, categorie, categorie_label, created_at, groupe, id, language, motif_rejet, name, statut_approbation, statut_approbation_label, updated_at
+    categorie ∈ {marketing, utility}
+    statut_approbation ∈ {approuve, brouillon, rejete, soumis}
+- frontend/src/api/notificationsApi.js :: getAnnonces -> /api/django/notifications/annonces  [AnnonceSerializer]
+    champs: auteur, auteur_username, cible_departement_nom, cible_role, cible_type, cible_type_label, corps, created_at, date_expiration, date_publication, date_publication_effective, epinglee, id, is_expiree, lecture_obligatoire, lus_count, publiee, titre, updated_at
+    cible_type ∈ {departement, role, tous}
+- frontend/src/api/notificationsApi.js :: getHolidays -> /api/django/notifications/holidays  [HolidaySerializer]
+    champs: created_at, date, id, nom, recurrent_annuel
+- frontend/src/api/notificationsApi.js :: getRoutingRules -> /api/django/notifications/routing-rules  [NotificationRoutingRuleSerializer]
+    champs: created_at, enabled, event_label, event_type, id, target_role, target_role_label, target_user
+    event_type ∈ {annonce_published, annonce_read_reminder, approval_decided, approval_escalated, approval_reminder, approval_requested, bcf_cancelled, bcf_late, bcf_relance_proposee, bon_commande_cree, chantier_assigne, chantier_due, chat_mention, chat_message, client_contact_request, contrat_signe, da_decidee, da_soumise_stale, devis_accepted, devis_expired, devis_nudge_due, devis_opened, devis_reply, devis_superior_contact_requested, digest, education_reinscription_relance, facture_overdue, facture_payee, feedback_digest, feedback_starred, flotte_budget_depassement, flotte_dtc_critique, flotte_zone_alerte, ged_signature_expiration_proche, hot_lead_unread, idea_realisee, idea_received, idea_retenue, idea_vote, impersonation_requested, incident_critical, innovation_campagne, lead_assigned, lead_callback_requested, lead_callback_sla_breach, lead_new, maintenance_due, monitoring_rapport, nps_promoteur, paie_rib_divergence, paie_run_pret, post_social_rappel, product_announcement, projet_retard, projet_statut_change, sav_activite_due, sav_equipement_remplace, sav_ticket_breaching, sav_ticket_followed_update, sav_ticket_opened, sav_ticket_resolu, sav_visites_auto_generees, security_alert, security_change, snooze_reveil, stock_expiration_soon, stock_low, supplier_doc_expiring, veille_ao_alarme_silence, veille_ao_nouveaux_avis, warranty_expiring}
+- frontend/src/api/notificationsApi.js :: getWhatsAppTemplates -> /api/django/notifications/whatsapp-templates  [WhatsAppTemplateSerializer]
+    champs: active, body_fr, categorie, categorie_label, created_at, groupe, id, language, motif_rejet, name, statut_approbation, statut_approbation_label, updated_at
+    categorie ∈ {marketing, utility}
+    statut_approbation ∈ {approuve, brouillon, rejete, soumis}
+- frontend/src/api/notificationsApi.js :: list -> /api/django/notifications/notifications  [NotificationSerializer]
+    champs: body, category, created_at, event_label, event_type, id, is_action, link, read, read_at, reason, reason_label, severity, title
+    event_type ∈ {annonce_published, annonce_read_reminder, approval_decided, approval_escalated, approval_reminder, approval_requested, bcf_cancelled, bcf_late, bcf_relance_proposee, bon_commande_cree, chantier_assigne, chantier_due, chat_mention, chat_message, client_contact_request, contrat_signe, da_decidee, da_soumise_stale, devis_accepted, devis_expired, devis_nudge_due, devis_opened, devis_reply, devis_superior_contact_requested, digest, education_reinscription_relance, facture_overdue, facture_payee, feedback_digest, feedback_starred, flotte_budget_depassement, flotte_dtc_critique, flotte_zone_alerte, ged_signature_expiration_proche, hot_lead_unread, idea_realisee, idea_received, idea_retenue, idea_vote, impersonation_requested, incident_critical, innovation_campagne, lead_assigned, lead_callback_requested, lead_callback_sla_breach, lead_new, maintenance_due, monitoring_rapport, nps_promoteur, paie_rib_divergence, paie_run_pret, post_social_rappel, product_announcement, projet_retard, projet_statut_change, sav_activite_due, sav_equipement_remplace, sav_ticket_breaching, sav_ticket_followed_update, sav_ticket_opened, sav_ticket_resolu, sav_visites_auto_generees, security_alert, security_change, snooze_reveil, stock_expiration_soon, stock_low, supplier_doc_expiring, veille_ao_alarme_silence, veille_ao_nouveaux_avis, warranty_expiring}
+    reason ∈ {assigne_a_vous, manager, regle_de_routage, vous_suivez}
+- frontend/src/api/outillageApi.js :: createOutil -> /api/django/outillage/outils  [OutillageSerializer]
+    champs: a_calibrer, asset_tag, categorie, date_achat, date_creation, date_derniere_calibration, date_modification, date_prochaine_calibration, emplacement, emplacement_nom, id, intervalle_calibration_mois, nom, note, numero_serie, statut, statut_display
+    statut ∈ {disponible, en_intervention, en_reparation, perdu}
+- frontend/src/api/outillageApi.js :: deleteKitItem -> /api/django/outillage/kit-items/<>  [KitOutillageItemSerializer]
+    champs: id, kit, ordre, outil, outil_nom
+- frontend/src/api/outillageApi.js :: deleteOutil -> /api/django/outillage/outils/<>  [OutillageSerializer]
+    champs: a_calibrer, asset_tag, categorie, date_achat, date_creation, date_derniere_calibration, date_modification, date_prochaine_calibration, emplacement, emplacement_nom, id, intervalle_calibration_mois, nom, note, numero_serie, statut, statut_display
+    statut ∈ {disponible, en_intervention, en_reparation, perdu}
+- frontend/src/api/outillageApi.js :: getOutil -> /api/django/outillage/outils/<>  [OutillageSerializer]
+    champs: a_calibrer, asset_tag, categorie, date_achat, date_creation, date_derniere_calibration, date_modification, date_prochaine_calibration, emplacement, emplacement_nom, id, intervalle_calibration_mois, nom, note, numero_serie, statut, statut_display
+    statut ∈ {disponible, en_intervention, en_reparation, perdu}
+- frontend/src/api/outillageApi.js :: getOutils -> /api/django/outillage/outils  [OutillageSerializer]
+    champs: a_calibrer, asset_tag, categorie, date_achat, date_creation, date_derniere_calibration, date_modification, date_prochaine_calibration, emplacement, emplacement_nom, id, intervalle_calibration_mois, nom, note, numero_serie, statut, statut_display
+    statut ∈ {disponible, en_intervention, en_reparation, perdu}
+- frontend/src/api/outillageApi.js :: updateOutil -> /api/django/outillage/outils/<>  [OutillageSerializer]
+    champs: a_calibrer, asset_tag, categorie, date_achat, date_creation, date_derniere_calibration, date_modification, date_prochaine_calibration, emplacement, emplacement_nom, id, intervalle_calibration_mois, nom, note, numero_serie, statut, statut_display
+    statut ∈ {disponible, en_intervention, en_reparation, perdu}
+- frontend/src/api/paieApi.js :: createPeriode -> /api/django/paie/periodes  [PeriodePaieSerializer]
+    champs: annee, date_cloture, date_creation, date_paiement, id, libelle, mois, statut, type_run
+- frontend/src/api/paieApi.js :: deleteAdhesionMutuelle -> /api/django/paie/adhesions-mutuelle/<>  [AdhesionMutuelleSerializer]
+    champs: actif, date_creation, date_debut, id, profil, regime, regime_libelle
+- frontend/src/api/paieApi.js :: deleteAvance -> /api/django/paie/avances/<>  [AvanceSalarieSerializer]
+    champs: actif, date_creation, date_debut, id, libelle, montant_echeance, montant_rembourse, montant_total, nombre_echeances, profil, solde_restant, soldee, type
+- frontend/src/api/paieApi.js :: deleteBareme -> /api/django/paie/baremes/<>  [BaremeIRSerializer]
+    champs: actif, date_creation, date_effet, id, libelle, tranches, valide_par_fondateur
+- frontend/src/api/paieApi.js :: deleteElementVariable -> /api/django/paie/elements-variables/<>  [ElementVariableSerializer]
+    champs: categorie_absence, categorie_hs, date_creation, deduit_solde, id, libelle, montant, periode, profil, quantite, reconduire, reconduit_depuis, remunere, rubrique, source, type, type_entree
+- frontend/src/api/paieApi.js :: deleteParametre -> /api/django/paie/parametres/<>  [ParametrePaieSerializer]
+    champs: actif, date_creation, date_effet, deduction_par_personne_a_charge, id, plafond_cnss, plafond_frais_pro_bas, plafond_frais_pro_haut, plafond_personnes_a_charge, seuil_frais_pro, smag, smig, taux_allocations_familiales, taux_amo_patronal, taux_amo_salarial, taux_cnss_patronal, taux_cnss_salarial, taux_formation_pro, taux_frais_pro_bas, taux_frais_pro_haut, taux_hs_ferie, taux_hs_jour, taux_hs_nuit, valide_par_fondateur
+- frontend/src/api/paieApi.js :: deletePeriode -> /api/django/paie/periodes/<>  [PeriodePaieSerializer]
+    champs: annee, date_cloture, date_creation, date_paiement, id, libelle, mois, statut, type_run
+- frontend/src/api/paieApi.js :: deleteProfil -> /api/django/paie/profils/<>  [ProfilPaieSerializer]
+    champs: actif, affilie_amo, affilie_cimr, affilie_cnss, banque, date_creation, employe, employe_nom, heures_travail_mensuel, id, jours_travail_mensuel, mode_paiement, numero_amo, numero_cimr, numero_cnss, regime_date_debut, regime_date_fin, regime_exoneration, regime_plafond_mensuel, rib, salaire_base, structure, taux_cimr_salarial, type_remuneration
+- frontend/src/api/paieApi.js :: deleteRegimeMutuelle -> /api/django/paie/regimes-mutuelle/<>  [RegimeMutuelleSerializer]
+    champs: actif, date_creation, deductible_net_imposable, id, libelle, mode, palier, part_patronale, part_salariale
+- frontend/src/api/paieApi.js :: deleteRubrique -> /api/django/paie/rubriques/<>  [RubriqueSerializer]
+    champs: actif, arrondi, avantage_nature, base, code, compte, date_creation, id, imposable, libelle, montant_fixe, ordre, plafond_exoneration, sens_arrondi, soumis_amo, soumis_cimr, soumis_cnss, taux, type
+- frontend/src/api/paieApi.js :: deleteRubriqueEmploye -> /api/django/paie/rubriques-employe/<>  [RubriqueEmployeSerializer]
+    champs: actif, date_creation, date_debut, date_fin, id, montant, profil, rubrique, rubrique_code, taux
+- frontend/src/api/paieApi.js :: deleteSaisie -> /api/django/paie/saisies/<>  [SaisieArretSerializer]
+    champs: actif, creancier, date_annulation, date_creation, date_debut, id, montant_echeance, montant_retenu, montant_total, motif_annulation, prioritaire, profil, reference, solde_restant, soldee, statut, type
+- frontend/src/api/paieApi.js :: deleteStructure -> /api/django/paie/structures/<>  [StructurePaieSerializer]
+    champs: actif, code, date_creation, description, id, libelle, rubriques_defaut
+- frontend/src/api/paieApi.js :: getAdhesionsMutuelle -> /api/django/paie/adhesions-mutuelle  [AdhesionMutuelleSerializer]
+    champs: actif, date_creation, date_debut, id, profil, regime, regime_libelle
+- frontend/src/api/paieApi.js :: getAvances -> /api/django/paie/avances  [AvanceSalarieSerializer]
+    champs: actif, date_creation, date_debut, id, libelle, montant_echeance, montant_rembourse, montant_total, nombre_echeances, profil, solde_restant, soldee, type
+- frontend/src/api/paieApi.js :: getBaremes -> /api/django/paie/baremes  [BaremeIRSerializer]
+    champs: actif, date_creation, date_effet, id, libelle, tranches, valide_par_fondateur
+- frontend/src/api/paieApi.js :: getBulletin -> /api/django/paie/bulletins/<>  [BulletinPaieSerializer]
+    champs: allocations_familiales, amo_patronale, amo_salariale, brut, brut_imposable, charges_patronales, cimr_salariale, cnss_patronale, cnss_salariale, date_creation, date_paiement, date_validation, formation_professionnelle, frais_professionnels, id, ir, lignes, lu_le, montant_exonere_regime, motif, net_a_payer, net_imposable, paye, periode, personnes_a_charge, prime_anciennete, profil, provision_conges, provision_conges, rectifie, retenues, statut, type_bulletin
+- frontend/src/api/paieApi.js :: getBulletins -> /api/django/paie/bulletins  [BulletinPaieSerializer]
+    champs: allocations_familiales, amo_patronale, amo_salariale, brut, brut_imposable, charges_patronales, cimr_salariale, cnss_patronale, cnss_salariale, date_creation, date_paiement, date_validation, formation_professionnelle, frais_professionnels, id, ir, lignes, lu_le, montant_exonere_regime, motif, net_a_payer, net_imposable, paye, periode, personnes_a_charge, prime_anciennete, profil, provision_conges, provision_conges, rectifie, retenues, statut, type_bulletin
+- frontend/src/api/paieApi.js :: getCumulsAnnuels -> /api/django/paie/cumuls-annuels  [CumulAnnuelSerializer]
+    champs: amo_salariale, annee, brut, brut_imposable, charges_patronales, cimr_salariale, cnss_salariale, conges_acquis, conges_pris, date_calcul, date_creation, frais_professionnels, id, ir, net_a_payer, net_imposable, nombre_bulletins, profil, provision_conges
+- frontend/src/api/paieApi.js :: getEcheancesDeclaratives -> /api/django/paie/echeances-declaratives  [EcheanceDeclarativeSerializer]
+    champs: date_creation, date_limite, date_notification, en_retard, id, periode, statut, type_echeance
+- frontend/src/api/paieApi.js :: getElementsVariables -> /api/django/paie/elements-variables  [ElementVariableSerializer]
+    champs: categorie_absence, categorie_hs, date_creation, deduit_solde, id, libelle, montant, periode, profil, quantite, reconduire, reconduit_depuis, remunere, rubrique, source, type, type_entree
+- frontend/src/api/paieApi.js :: getLignesVirement -> /api/django/paie/lignes-virement  [LigneVirementSerializer]
+    champs: beneficiaire, bulletin, date_rejet, id, ligne_correction, montant, motif_rejet, reference, rejetee, rib
+- frontend/src/api/paieApi.js :: getOrdreVirement -> /api/django/paie/ordres-virement/<>  [OrdreVirementSerializer]
+    champs: compte_emetteur, compte_emetteur_banque, compte_emetteur_libelle, date_creation, date_emission, date_execution, devise, id, libelle, lignes, nombre_lignes, periode, reference, rib_emetteur, statut, total
+- frontend/src/api/paieApi.js :: getOrdresVirement -> /api/django/paie/ordres-virement  [OrdreVirementSerializer]
+    champs: compte_emetteur, compte_emetteur_banque, compte_emetteur_libelle, date_creation, date_emission, date_execution, devise, id, libelle, lignes, nombre_lignes, periode, reference, rib_emetteur, statut, total
+- frontend/src/api/paieApi.js :: getParametres -> /api/django/paie/parametres  [ParametrePaieSerializer]
+    champs: actif, date_creation, date_effet, deduction_par_personne_a_charge, id, plafond_cnss, plafond_frais_pro_bas, plafond_frais_pro_haut, plafond_personnes_a_charge, seuil_frais_pro, smag, smig, taux_allocations_familiales, taux_amo_patronal, taux_amo_salarial, taux_cnss_patronal, taux_cnss_salarial, taux_formation_pro, taux_frais_pro_bas, taux_frais_pro_haut, taux_hs_ferie, taux_hs_jour, taux_hs_nuit, valide_par_fondateur
+- frontend/src/api/paieApi.js :: getPeriode -> /api/django/paie/periodes/<>  [PeriodePaieSerializer]
+    champs: annee, date_cloture, date_creation, date_paiement, id, libelle, mois, statut, type_run
+- frontend/src/api/paieApi.js :: getPeriodes -> /api/django/paie/periodes  [PeriodePaieSerializer]
+    champs: annee, date_cloture, date_creation, date_paiement, id, libelle, mois, statut, type_run
+- frontend/src/api/paieApi.js :: getProfil -> /api/django/paie/profils/<>  [ProfilPaieSerializer]
+    champs: actif, affilie_amo, affilie_cimr, affilie_cnss, banque, date_creation, employe, employe_nom, heures_travail_mensuel, id, jours_travail_mensuel, mode_paiement, numero_amo, numero_cimr, numero_cnss, regime_date_debut, regime_date_fin, regime_exoneration, regime_plafond_mensuel, rib, salaire_base, structure, taux_cimr_salarial, type_remuneration
+- frontend/src/api/paieApi.js :: getProfils -> /api/django/paie/profils  [ProfilPaieSerializer]
+    champs: actif, affilie_amo, affilie_cimr, affilie_cnss, banque, date_creation, employe, employe_nom, heures_travail_mensuel, id, jours_travail_mensuel, mode_paiement, numero_amo, numero_cimr, numero_cnss, regime_date_debut, regime_date_fin, regime_exoneration, regime_plafond_mensuel, rib, salaire_base, structure, taux_cimr_salarial, type_remuneration
+- frontend/src/api/paieApi.js :: getRegimesMutuelle -> /api/django/paie/regimes-mutuelle  [RegimeMutuelleSerializer]
+    champs: actif, date_creation, deductible_net_imposable, id, libelle, mode, palier, part_patronale, part_salariale
+- frontend/src/api/paieApi.js :: getRubriques -> /api/django/paie/rubriques  [RubriqueSerializer]
+    champs: actif, arrondi, avantage_nature, base, code, compte, date_creation, id, imposable, libelle, montant_fixe, ordre, plafond_exoneration, sens_arrondi, soumis_amo, soumis_cimr, soumis_cnss, taux, type
+- frontend/src/api/paieApi.js :: getRubriquesEmploye -> /api/django/paie/rubriques-employe  [RubriqueEmployeSerializer]
+    champs: actif, date_creation, date_debut, date_fin, id, montant, profil, rubrique, rubrique_code, taux
+- frontend/src/api/paieApi.js :: getSaisies -> /api/django/paie/saisies  [SaisieArretSerializer]
+    champs: actif, creancier, date_annulation, date_creation, date_debut, id, montant_echeance, montant_retenu, montant_total, motif_annulation, prioritaire, profil, reference, solde_restant, soldee, statut, type
+- frontend/src/api/paieApi.js :: getStructures -> /api/django/paie/structures  [StructurePaieSerializer]
+    champs: actif, code, date_creation, description, id, libelle, rubriques_defaut
+- frontend/src/api/paieApi.js :: updateEcheanceDeclarative -> /api/django/paie/echeances-declaratives/<>  [EcheanceDeclarativeSerializer]
+    champs: date_creation, date_limite, date_notification, en_retard, id, periode, statut, type_echeance
+- frontend/src/api/paieApi.js :: updatePeriode -> /api/django/paie/periodes/<>  [PeriodePaieSerializer]
+    champs: annee, date_cloture, date_creation, date_paiement, id, libelle, mois, statut, type_run
+- frontend/src/api/parametresApi.js :: createConditionPaiement -> /api/django/parametres/conditions-paiement  [ConditionPaiementSerializer]
+    champs: actif, delai_jours, escompte_pct, fin_de_mois, id, libelle
+- frontend/src/api/parametresApi.js :: createTauxTva -> /api/django/parametres/taux-tva  [TauxTVASerializer]
+    champs: actif, code, defaut, id, libelle, taux
+- frontend/src/api/parametresApi.js :: createUniteMesure -> /api/django/parametres/unites-mesure  [UniteMesureSerializer]
+    champs: actif, code, id, libelle
+- frontend/src/api/parametresApi.js :: deleteConditionPaiement -> /api/django/parametres/conditions-paiement/<>  [ConditionPaiementSerializer]
+    champs: actif, delai_jours, escompte_pct, fin_de_mois, id, libelle
+- frontend/src/api/parametresApi.js :: deleteTauxTva -> /api/django/parametres/taux-tva/<>  [TauxTVASerializer]
+    champs: actif, code, defaut, id, libelle, taux
+- frontend/src/api/parametresApi.js :: deleteUniteMesure -> /api/django/parametres/unites-mesure/<>  [UniteMesureSerializer]
+    champs: actif, code, id, libelle
+- frontend/src/api/parametresApi.js :: getConditionsPaiement -> /api/django/parametres/conditions-paiement  [ConditionPaiementSerializer]
+    champs: actif, delai_jours, escompte_pct, fin_de_mois, id, libelle
+- frontend/src/api/parametresApi.js :: getTauxTva -> /api/django/parametres/taux-tva  [TauxTVASerializer]
+    champs: actif, code, defaut, id, libelle, taux
+- frontend/src/api/parametresApi.js :: getUnitesMesure -> /api/django/parametres/unites-mesure  [UniteMesureSerializer]
+    champs: actif, code, id, libelle
+- frontend/src/api/parametresApi.js :: updateConditionPaiement -> /api/django/parametres/conditions-paiement/<>  [ConditionPaiementSerializer]
+    champs: actif, delai_jours, escompte_pct, fin_de_mois, id, libelle
+- frontend/src/api/parametresApi.js :: updateTauxTva -> /api/django/parametres/taux-tva/<>  [TauxTVASerializer]
+    champs: actif, code, defaut, id, libelle, taux
+- frontend/src/api/parametresApi.js :: updateUniteMesure -> /api/django/parametres/unites-mesure/<>  [UniteMesureSerializer]
+    champs: actif, code, id, libelle
+- frontend/src/api/posApi.js :: createConfigMateriel -> /api/django/pos/config-materiel  [ConfigMaterielPOSSerializer]
+    champs: id, imprimante_active, imprimante_ip, imprimante_port
+- frontend/src/api/posApi.js :: createRetrait -> /api/django/pos/retraits  [CommandeRetraitSerializer]
+    champs: client, client_nom, code_retrait, created_by, date_creation, date_pret, date_retrait, devis, id, lignes, reference, statut, vente_comptoir
+    statut ∈ {a_preparer, annule, pret, retire}
+- frontend/src/api/posApi.js :: createVente -> /api/django/pos/ventes  [VenteComptoirSerializer]
+    champs: caissier, client, client_nom, created_by, date_creation, date_validation, facture, id, lignes, note, reference, session_caisse, statut, taux_tva, total_ht, total_ttc
+    statut ∈ {annulee, brouillon, validee}
+- frontend/src/api/posApi.js :: getConfigMateriel -> /api/django/pos/config-materiel  [ConfigMaterielPOSSerializer]
+    champs: id, imprimante_active, imprimante_ip, imprimante_port
+- frontend/src/api/posApi.js :: getProduits -> /api/django/stock/produits  [ProduitSerializer]
+    champs: avertissement_bloquant, avertissement_vente, bcf_sources_en_commande, categorie, categorie_id, categorie_type, categorie_type_display, code_barres, code_sh, company, courbe_pompe, custom_data, date_creation, date_mise_a_jour, debit_m3j, derniere_date_mouvement, description, description_localise, entite, fournisseur, fournisseur_id, garantie, garantie_mois, garantie_production_mois, hmt_m, id, image_url, is_archived, is_low_stock, is_low_stock_disponible, marge_pct, marque, nb_mouvements, nom, nom_localise, pays_origine, politique_facturation_achat, pompe_cv, pompe_kw, premiere_date_mouvement, prix_achat, prix_vente, quantite_disponible, quantite_en_commande, quantite_reservee, quantite_stock, seuil_alerte, sku, stock_par_emplacement, suivi_serie, tension_v, tva, unite, unite_stock, unite_stock_display
+    politique_facturation_achat ∈ {sur_commande, sur_reception}
+- frontend/src/api/posApi.js :: getRetraits -> /api/django/pos/retraits  [CommandeRetraitSerializer]
+    champs: client, client_nom, code_retrait, created_by, date_creation, date_pret, date_retrait, devis, id, lignes, reference, statut, vente_comptoir
+    statut ∈ {a_preparer, annule, pret, retire}
+- frontend/src/api/posApi.js :: getSessions -> /api/django/pos/sessions  [SessionCaisseSerializer]
+    champs: caisse_comptable, caissier, cloture_caisse_comptable, commentaire, date_cloture, date_ouverture, ecart_tpe, fond_ouverture, id, montant_compte_cloture, montant_tpe_compte, statut
+    statut ∈ {cloturee, ouverte}
+- frontend/src/api/posApi.js :: getVente -> /api/django/pos/ventes/<>  [VenteComptoirSerializer]
+    champs: caissier, client, client_nom, created_by, date_creation, date_validation, facture, id, lignes, note, reference, session_caisse, statut, taux_tva, total_ht, total_ttc
+    statut ∈ {annulee, brouillon, validee}
+- frontend/src/api/posApi.js :: ouvrirSession -> /api/django/pos/sessions  [SessionCaisseSerializer]
+    champs: caisse_comptable, caissier, cloture_caisse_comptable, commentaire, date_cloture, date_ouverture, ecart_tpe, fond_ouverture, id, montant_compte_cloture, montant_tpe_compte, statut
+    statut ∈ {cloturee, ouverte}
+- frontend/src/api/posApi.js :: updateConfigMateriel -> /api/django/pos/config-materiel/<>  [ConfigMaterielPOSSerializer]
+    champs: id, imprimante_active, imprimante_ip, imprimante_port
+- frontend/src/api/publicapiApi.js :: createKey -> /api/django/publicapi/keys  [ApiKeySerializer]
+    champs: api_version, created_at, created_by, created_by_nom, enabled, environnement, expire_le, id, label, last_used_at, prefix, scopes
+- frontend/src/api/publicapiApi.js :: createWebhook -> /api/django/publicapi/webhooks  [WebhookSerializer]
+    champs: created_at, enabled, events, id, label, target_url
+- frontend/src/api/publicapiApi.js :: deleteKey -> /api/django/publicapi/keys/<>  [ApiKeySerializer]
+    champs: api_version, created_at, created_by, created_by_nom, enabled, environnement, expire_le, id, label, last_used_at, prefix, scopes
+- frontend/src/api/publicapiApi.js :: deleteWebhook -> /api/django/publicapi/webhooks/<>  [WebhookSerializer]
+    champs: created_at, enabled, events, id, label, target_url
+- frontend/src/api/publicapiApi.js :: getKeys -> /api/django/publicapi/keys  [ApiKeySerializer]
+    champs: api_version, created_at, created_by, created_by_nom, enabled, environnement, expire_le, id, label, last_used_at, prefix, scopes
+- frontend/src/api/publicapiApi.js :: getWebhooks -> /api/django/publicapi/webhooks  [WebhookSerializer]
+    champs: created_at, enabled, events, id, label, target_url
+- frontend/src/api/publicapiApi.js :: updateWebhook -> /api/django/publicapi/webhooks/<>  [WebhookSerializer]
+    champs: created_at, enabled, events, id, label, target_url
+- frontend/src/api/recordsApi.js :: addTag -> /api/django/records/tagged-items  [TaggedItemSerializer]
+    champs: created_at, id, object_id, tag, tag_couleur, tag_nom
+- frontend/src/api/recordsApi.js :: createActivity -> /api/django/records/activities  [ActivitySerializer]
+    champs: activity_type, activity_type_icone, activity_type_nom, assigned_to, assigned_to_nom, auto_relance, created_at, done, done_at, done_by, due_date, id, note, object_id, personnelle, state, summary, target_label, target_model, target_phone
+- frontend/src/api/recordsApi.js :: createComment -> /api/django/records/comments  [CommentSerializer]
+    champs: author, author_display, author_username, body, created_at, id, object_id, resolved, target_model, updated_at
+- frontend/src/api/recordsApi.js :: createTag -> /api/django/records/tags  [TagSerializer]
+    champs: couleur, created_at, id, nom
+- frontend/src/api/recordsApi.js :: deleteActivity -> /api/django/records/activities/<>  [ActivitySerializer]
+    champs: activity_type, activity_type_icone, activity_type_nom, assigned_to, assigned_to_nom, auto_relance, created_at, done, done_at, done_by, due_date, id, note, object_id, personnelle, state, summary, target_label, target_model, target_phone
+- frontend/src/api/recordsApi.js :: deleteAttachment -> /api/django/records/attachments/<>  [AttachmentSerializer]
+    champs: created_at, filename, id, mime, phase, size, uploaded_by, uploaded_by_nom, url
+- frontend/src/api/recordsApi.js :: deleteComment -> /api/django/records/comments/<>  [CommentSerializer]
+    champs: author, author_display, author_username, body, created_at, id, object_id, resolved, target_model, updated_at
+- frontend/src/api/recordsApi.js :: deleteTag -> /api/django/records/tags/<>  [TagSerializer]
+    champs: couleur, created_at, id, nom
+- frontend/src/api/recordsApi.js :: follow -> /api/django/records/followers  [FollowerSerializer]
+    champs: created_at, id, object_id, sous_type, target_model, user, user_username
+- frontend/src/api/recordsApi.js :: getActivities -> /api/django/records/activities  [ActivitySerializer]
+    champs: activity_type, activity_type_icone, activity_type_nom, assigned_to, assigned_to_nom, auto_relance, created_at, done, done_at, done_by, due_date, id, note, object_id, personnelle, state, summary, target_label, target_model, target_phone
+- frontend/src/api/recordsApi.js :: getActivityTypes -> /api/django/records/activity-types  [ActivityTypeSerializer]
+    champs: delai_defaut_jours, delai_jours, est_systeme, icone, id, mode_enchainement, nom, ordre, type_suivant
+    mode_enchainement ∈ {aucun, declencher, suggerer}
+- frontend/src/api/recordsApi.js :: getAttachments -> /api/django/records/attachments  [AttachmentSerializer]
+    champs: created_at, filename, id, mime, phase, size, uploaded_by, uploaded_by_nom, url
+- frontend/src/api/recordsApi.js :: getComments -> /api/django/records/comments  [CommentSerializer]
+    champs: author, author_display, author_username, body, created_at, id, object_id, resolved, target_model, updated_at
+- frontend/src/api/recordsApi.js :: getMyFollow -> /api/django/records/followers  [FollowerSerializer]
+    champs: created_at, id, object_id, sous_type, target_model, user, user_username
+- frontend/src/api/recordsApi.js :: getTaggedItems -> /api/django/records/tagged-items  [TaggedItemSerializer]
+    champs: created_at, id, object_id, tag, tag_couleur, tag_nom
+- frontend/src/api/recordsApi.js :: getTags -> /api/django/records/tags  [TagSerializer]
+    champs: couleur, created_at, id, nom
+- frontend/src/api/recordsApi.js :: removeTag -> /api/django/records/tagged-items/<>  [TaggedItemSerializer]
+    champs: created_at, id, object_id, tag, tag_couleur, tag_nom
+- frontend/src/api/recordsApi.js :: updateActivity -> /api/django/records/activities/<>  [ActivitySerializer]
+    champs: activity_type, activity_type_icone, activity_type_nom, assigned_to, assigned_to_nom, auto_relance, created_at, done, done_at, done_by, due_date, id, note, object_id, personnelle, state, summary, target_label, target_model, target_phone
+- frontend/src/api/recordsApi.js :: updateComment -> /api/django/records/comments/<>  [CommentSerializer]
+    champs: author, author_display, author_username, body, created_at, id, object_id, resolved, target_model, updated_at
+- frontend/src/api/recordsApi.js :: uploadAttachment -> /api/django/records/attachments  [AttachmentSerializer]
+    champs: created_at, filename, id, mime, phase, size, uploaded_by, uploaded_by_nom, url
+- frontend/src/api/reportingApi.js :: createClasseur -> /api/django/reporting/classeurs  [ClasseurSerializer]
+    champs: cellules, created_at, id, liens, partage, titre, updated_at
+- frontend/src/api/reportingApi.js :: createKpiAlerte -> /api/django/reporting/kpi-alertes  [KpiAlerteSerializer]
+    champs: actif, created_at, deja_notifie, derniere_evaluation_le, derniere_valeur, destinataire_role, destinataires_utilisateurs, id, kpi, kpi_label, nom, operateur, operateur_label, seuil, updated_at
+    kpi ∈ {dso, encours_echu_total, valeur_stock_totale}
+    operateur ∈ {inf, inf_egal, sup, sup_egal}
+- frontend/src/api/reportingApi.js :: createSavedReport -> /api/django/reporting/saved-reports  [SavedReportSerializer]
+    champs: created_at, definition, id, last_sent_at, name, pinned, recipients, schedule, schedule_label, target_kind, target_kind_label, updated_at
+    schedule ∈ {daily, none, weekly}
+    target_kind ∈ {sales, service, stock}
+- frontend/src/api/reportingApi.js :: deleteClasseur -> /api/django/reporting/classeurs/<>  [ClasseurSerializer]
+    champs: cellules, created_at, id, liens, partage, titre, updated_at
+- frontend/src/api/reportingApi.js :: deleteDashboardConfig -> /api/django/reporting/dashboard-config/<>  [DashboardConfigSerializer]
+    champs: cards, created_at, id, menu_tier, updated_at, user
+- frontend/src/api/reportingApi.js :: deleteKpiAlerte -> /api/django/reporting/kpi-alertes/<>  [KpiAlerteSerializer]
+    champs: actif, created_at, deja_notifie, derniere_evaluation_le, derniere_valeur, destinataire_role, destinataires_utilisateurs, id, kpi, kpi_label, nom, operateur, operateur_label, seuil, updated_at
+    kpi ∈ {dso, encours_echu_total, valeur_stock_totale}
+    operateur ∈ {inf, inf_egal, sup, sup_egal}
+- frontend/src/api/reportingApi.js :: deleteSavedReport -> /api/django/reporting/saved-reports/<>  [SavedReportSerializer]
+    champs: created_at, definition, id, last_sent_at, name, pinned, recipients, schedule, schedule_label, target_kind, target_kind_label, updated_at
+    schedule ∈ {daily, none, weekly}
+    target_kind ∈ {sales, service, stock}
+- frontend/src/api/reportingApi.js :: getClasseur -> /api/django/reporting/classeurs/<>  [ClasseurSerializer]
+    champs: cellules, created_at, id, liens, partage, titre, updated_at
+- frontend/src/api/reportingApi.js :: listClasseurs -> /api/django/reporting/classeurs  [ClasseurSerializer]
+    champs: cellules, created_at, id, liens, partage, titre, updated_at
+- frontend/src/api/reportingApi.js :: listDashboardConfigs -> /api/django/reporting/dashboard-config  [DashboardConfigSerializer]
+    champs: cards, created_at, id, menu_tier, updated_at, user
+- frontend/src/api/reportingApi.js :: listKpiAlertes -> /api/django/reporting/kpi-alertes  [KpiAlerteSerializer]
+    champs: actif, created_at, deja_notifie, derniere_evaluation_le, derniere_valeur, destinataire_role, destinataires_utilisateurs, id, kpi, kpi_label, nom, operateur, operateur_label, seuil, updated_at
+    kpi ∈ {dso, encours_echu_total, valeur_stock_totale}
+    operateur ∈ {inf, inf_egal, sup, sup_egal}
+- frontend/src/api/reportingApi.js :: listSavedReports -> /api/django/reporting/saved-reports  [SavedReportSerializer]
+    champs: created_at, definition, id, last_sent_at, name, pinned, recipients, schedule, schedule_label, target_kind, target_kind_label, updated_at
+    schedule ∈ {daily, none, weekly}
+    target_kind ∈ {sales, service, stock}
+- frontend/src/api/reportingApi.js :: updateClasseur -> /api/django/reporting/classeurs/<>  [ClasseurSerializer]
+    champs: cellules, created_at, id, liens, partage, titre, updated_at
+- frontend/src/api/reportingApi.js :: updateKpiAlerte -> /api/django/reporting/kpi-alertes/<>  [KpiAlerteSerializer]
+    champs: actif, created_at, deja_notifie, derniere_evaluation_le, derniere_valeur, destinataire_role, destinataires_utilisateurs, id, kpi, kpi_label, nom, operateur, operateur_label, seuil, updated_at
+    kpi ∈ {dso, encours_echu_total, valeur_stock_totale}
+    operateur ∈ {inf, inf_egal, sup, sup_egal}
+- frontend/src/api/reportingApi.js :: updateSavedReport -> /api/django/reporting/saved-reports/<>  [SavedReportSerializer]
+    champs: created_at, definition, id, last_sent_at, name, pinned, recipients, schedule, schedule_label, target_kind, target_kind_label, updated_at
+    schedule ∈ {daily, none, weekly}
+    target_kind ∈ {sales, service, stock}
+- frontend/src/api/rhApi.js :: attribuerBadge -> /api/django/rh/attributions-badge  [AttributionBadgeSerializer]
+    champs: attribue_par, attribue_par_nom, badge, badge_icone, badge_nom, beneficiaire, beneficiaire_nom, date_creation, id, message
+- frontend/src/api/rhApi.js :: createAffectationVehicule -> /api/django/rh/affectations-vehicule  [AffectationVehiculeSerializer]
+    champs: date_creation, date_debut, date_fin, date_modification, employe, employe_nom, id, note, permis_verifie, statut, statut_display, vehicule_id
+    statut ∈ {active, terminee}
+- frontend/src/api/rhApi.js :: createCandidature -> /api/django/rh/candidatures  [CandidatureSerializer]
+    champs: cv_fichier, date_candidature, date_creation, date_modification, email, emails_auto, employe_cree, employe_cree_nom, etape, etape_display, id, nom, note, ouverture, ouverture_intitule, source, tags_vivier, telephone, vivier, vivier_origine
+    etape ∈ {embauche, entretien, offre, preselection, recu, rejete}
+- frontend/src/api/rhApi.js :: createCauserieSecurite -> /api/django/rh/causeries-securite  [CauserieSecuriteSerializer]
+    champs: animateur, animateur_nom, chantier_id, date_causerie, date_creation, date_modification, id, lieu, notes, participants, theme
+- frontend/src/api/rhApi.js :: createCertification -> /api/django/rh/certifications  [CertificationSerializer]
+    champs: actif, date_creation, date_modification, date_obtention, date_validite, employe, employe_nom, id, note, organisme, type_certification, type_certification_display, valide
+    type_certification ∈ {autre, caces_nacelle, conduite, harnais, secourisme_sst, travail_hauteur}
+- frontend/src/api/rhApi.js :: createCompetence -> /api/django/rh/competences  [CompetenceSerializer]
+    champs: actif, code, date_creation, date_modification, description, domaine, domaine_display, id, libelle
+    domaine ∈ {autre, mes_onduleur, pompage, pose_structure, raccordement_ac, raccordement_dc, soudure}
+- frontend/src/api/rhApi.js :: createCompetenceEmploye -> /api/django/rh/competences-employe  [CompetenceEmployeSerializer]
+    champs: competence, competence_code, competence_libelle, date_creation, date_modification, employe, employe_nom, evalue_le, evalue_par, id, niveau, niveau_display, note
+- frontend/src/api/rhApi.js :: createDemandeConge -> /api/django/rh/demandes-conge  [DemandeCongeSerializer]
+    champs: date_creation, date_debut, date_decision, date_fin, decide_par, demi_journee_debut, demi_journee_fin, employe, id, jours, justificatif, motif, motif_refus, statut, statut_display, type_absence, type_absence_code
+    statut ∈ {annulee, refusee, soumise, validee}
+- frontend/src/api/rhApi.js :: createDeviceEmployeMap -> /api/django/rh/devices-employe-map  [EmployeDeviceMapSerializer]
+    champs: date_creation, device_user_id, employe, employe_nom, id
+- frontend/src/api/rhApi.js :: createElementIntegration -> /api/django/rh/elements-integration  [ElementIntegrationSerializer]
+    champs: date_creation, id, libelle, modele, ordre
+- frontend/src/api/rhApi.js :: createElementVariablePaie -> /api/django/rh/elements-variables-paie  [ElementsVariablesPaieSerializer]
+    champs: annee, commentaire, date_creation, date_export, date_modification, employe, employe_matricule, employe_nom, heures_normales, heures_supp, id, jours_absence, jours_conges, mois, primes, retenues, statut, statut_display
+    statut ∈ {brouillon, exporte, valide}
+- frontend/src/api/rhApi.js :: createEntretienRecrutement -> /api/django/rh/entretiens-recrutement  [EntretienRecrutementSerializer]
+    champs: candidature, date_creation, date_heure, evaluateurs, id, notes, statut, statut_display, type, type_display
+    statut ∈ {annule, planifie, realise}
+    type ∈ {final, rh, technique, telephonique}
+- frontend/src/api/rhApi.js :: createEntretienSortie -> /api/django/rh/entretiens-sortie  [EntretienSortieSerializer]
+    champs: commentaire, date, date_creation, date_modification, employe, employe_nom, id, motif_principal, motif_principal_display, questionnaire, recommanderait
+    motif_principal ∈ {autre, conditions, distance, management, opportunite, salaire, sante}
+- frontend/src/api/rhApi.js :: createGabaritEmailRecrutement -> /api/django/rh/gabarits-email-recrutement  [GabaritEmailRecrutementSerializer]
+    champs: actif, corps, date_creation, etape, etape_display, id, objet
+    etape ∈ {embauche, entretien, offre, preselection, recu, rejete}
+- frontend/src/api/rhApi.js :: createGrilleSalariale -> /api/django/rh/grilles-salariales  [GrilleSalarialeSerializer]
+    champs: date_creation, date_effet, echelon, id, poste, poste_intitule, salaire_max, salaire_min
+- frontend/src/api/rhApi.js :: createHabilitation -> /api/django/rh/habilitations  [HabilitationSerializer]
+    champs: actif, date_creation, date_modification, date_obtention, date_validite, employe, employe_nom, id, note, organisme, type_habilitation, type_habilitation_display, valide
+    type_habilitation ∈ {autre, b0, b1, b1v, b2, b2v, bc, be, bp, br, h0, h0v, h1, h1v, h2, h2v, hc}
+- frontend/src/api/rhApi.js :: createHoraireTravail -> /api/django/rh/horaires-travail  [HoraireTravailSerializer]
+    champs: actif, date_creation, date_debut, date_fin, heures_jour_defaut, heures_semaine, id, nom, type_horaire, type_horaire_display
+    type_horaire ∈ {ramadan, saisonnier, standard_44h, temps_partiel}
+- frontend/src/api/rhApi.js :: createJourBloqueConge -> /api/django/rh/jours-bloques-conge  [JourBloqueCongeSerializer]
+    champs: date_creation, date_debut, date_fin, date_modification, departements, id, libelle, motif
+- frontend/src/api/rhApi.js :: createLigneParcours -> /api/django/rh/lignes-parcours  [LigneParcoursSerializer]
+    champs: date_creation, date_debut, date_fin, description, employe, id, intitule, organisme, type, type_libelle
+- frontend/src/api/rhApi.js :: createModeleEvaluation -> /api/django/rh/modeles-evaluation  [ModeleEvaluationSerializer]
+    champs: actif, date_creation, date_modification, departement, id, nom, poste_ref, questions
+- frontend/src/api/rhApi.js :: createModeleIntegration -> /api/django/rh/modeles-integration  [ModeleIntegrationSerializer]
+    champs: actif, date_creation, departement, elements, id, nom, poste_ref
+- frontend/src/api/rhApi.js :: createOuverturePoste -> /api/django/rh/ouvertures-poste  [OuverturePosteSerializer]
+    champs: approbateur, candidatures, date_cible, date_creation, date_decision, date_modification, date_ouverture, date_soumission, demandeur, departement, departement_nom, description, id, intitule, motif_refus, nombre_postes, poste_ref, poste_ref_intitule, publiee, statut, statut_display, ville
+    statut ∈ {annule, brouillon, clos, en_approbation, ouvert, pourvu}
+- frontend/src/api/rhApi.js :: createPeriodeFermeture -> /api/django/rh/periodes-fermeture  [PeriodeFermetureSerializer]
+    champs: appliquee, appliquee_le, date_creation, date_debut, date_fin, departements, id, libelle, type_absence, type_absence_code
+- frontend/src/api/rhApi.js :: createPermisConduire -> /api/django/rh/permis-conduire  [PermisConduireSerializer]
+    champs: categorie, categorie_display, date_creation, date_delivrance, date_expiration, date_modification, employe, employe_nom, habilitation_conduite, id, note, numero, valide
+    categorie ∈ {A, B, C, D, EB, EC}
+- frontend/src/api/rhApi.js :: createPointage -> /api/django/rh/pointages  [PointageSerializer]
+    champs: arrivee_gps_lat, arrivee_gps_lng, date_creation, date_modification, depart_gps_lat, depart_gps_lng, duree_minutes, employe, employe_nom, heure_arrivee, heure_depart, id, note, type_pointage, type_pointage_display
+    type_pointage ∈ {arrivee, complet, depart}
+- frontend/src/api/rhApi.js :: createPresquAccident -> /api/django/rh/presqu-accidents  [PresquAccidentSerializer]
+    champs: chantier_id, date_constat, date_creation, date_modification, declare_par, declare_par_nom, description, gravite_potentielle, gravite_potentielle_display, id, lieu, mesure_corrective, photo_key, reference, statut, statut_display
+    gravite_potentielle ∈ {elevee, faible, moyenne}
+    statut ∈ {ouvert, traite}
+- frontend/src/api/rhApi.js :: createPrimeAttribuee -> /api/django/rh/primes-attribuees  [PrimeAttribueeSerializer]
+    champs: annee, date_creation, date_modification, employe, employe_nom, id, mois, montant, motif, statut, statut_display, type_prime, type_prime_libelle
+    statut ∈ {payee, proposee, validee}
+- frontend/src/api/rhApi.js :: createPromesseEmbauche -> /api/django/rh/promesses-embauche  [PromesseEmbaucheSerializer]
+    champs: candidature, candidature_nom, date_creation, date_debut_proposee, date_signature, expires_at, id, poste_propose, salaire_propose, signataire_nom, statut, statut_display, token, type_contrat
+    statut ∈ {envoyee, expiree, signee}
+    type_contrat ∈ {anapec, cdd, cdi, interim, stage}
+- frontend/src/api/rhApi.js :: createRemuneration -> /api/django/rh/remunerations  [RemunerationSerializer]
+    champs: date_creation, date_effet, devise, employe, id, montant, motif, periodicite, periodicite_display
+    periodicite ∈ {annuel, horaire, journalier, mensuel}
+- frontend/src/api/rhApi.js :: createRetourFeedback360 -> /api/django/rh/retours-feedback360  [RetourFeedback360Serializer]
+    champs: commentaire, date_invitation, date_soumission, evaluation, id, relation, repondant, repondant_nom, reponses, soumis
+    relation ∈ {manager_transversal, pair, subordonne}
+- frontend/src/api/rhApi.js :: createTypeLigneParcours -> /api/django/rh/types-ligne-parcours  [TypeLigneParcoursSerializer]
+    champs: id, libelle, ordre
+- frontend/src/api/rhApi.js :: createTypePrime -> /api/django/rh/types-prime  [TypePrimeSerializer]
+    champs: actif, code, date_creation, id, imposable, libelle, montant_defaut, nature, nature_display
+    nature ∈ {indemnite, prime}
+- frontend/src/api/rhApi.js :: createVisiteMedicale -> /api/django/rh/visites-medicales  [VisiteMedicaleSerializer]
+    champs: a_jour, actif, aptitude, aptitude_display, date_creation, date_modification, date_visite, employe, employe_nom, id, medecin, note, organisme, prochaine_visite, restrictions
+    aptitude ∈ {apte, apte_avec_restrictions, inapte}
+- frontend/src/api/rhApi.js :: deleteDocument -> /api/django/rh/documents/<>  [DocumentEmployeSerializer]
+    champs: date_creation, date_expiration, employe, filename, id, mime, note, size, type_document, type_document_display, url
+    type_document ∈ {autre, cin, contrat, diplome, rib}
+- frontend/src/api/rhApi.js :: deleteElementIntegration -> /api/django/rh/elements-integration/<>  [ElementIntegrationSerializer]
+    champs: date_creation, id, libelle, modele, ordre
+- frontend/src/api/rhApi.js :: deleteGabaritEmailRecrutement -> /api/django/rh/gabarits-email-recrutement/<>  [GabaritEmailRecrutementSerializer]
+    champs: actif, corps, date_creation, etape, etape_display, id, objet
+    etape ∈ {embauche, entretien, offre, preselection, recu, rejete}
+- frontend/src/api/rhApi.js :: deleteGrilleSalariale -> /api/django/rh/grilles-salariales/<>  [GrilleSalarialeSerializer]
+    champs: date_creation, date_effet, echelon, id, poste, poste_intitule, salaire_max, salaire_min
+- frontend/src/api/rhApi.js :: deleteJourBloqueConge -> /api/django/rh/jours-bloques-conge/<>  [JourBloqueCongeSerializer]
+    champs: date_creation, date_debut, date_fin, date_modification, departements, id, libelle, motif
+- frontend/src/api/rhApi.js :: deleteModeleEvaluation -> /api/django/rh/modeles-evaluation/<>  [ModeleEvaluationSerializer]
+    champs: actif, date_creation, date_modification, departement, id, nom, poste_ref, questions
+- frontend/src/api/rhApi.js :: getAffectationsVehicule -> /api/django/rh/affectations-vehicule  [AffectationVehiculeSerializer]
+    champs: date_creation, date_debut, date_fin, date_modification, employe, employe_nom, id, note, permis_verifie, statut, statut_display, vehicule_id
+    statut ∈ {active, terminee}
+- frontend/src/api/rhApi.js :: getAnalysesRisques -> /api/django/rh/analyses-risques-chantier  [AnalyseRisquesChantierSerializer]
+    champs: chantier_id, date_analyse, date_creation, date_modification, id, lieu, notes, redacteur, redacteur_nom, risques, statut, statut_display
+    statut ∈ {brouillon, valide}
+- frontend/src/api/rhApi.js :: getAttributionsBadge -> /api/django/rh/attributions-badge  [AttributionBadgeSerializer]
+    champs: attribue_par, attribue_par_nom, badge, badge_icone, badge_nom, beneficiaire, beneficiaire_nom, date_creation, id, message
+- frontend/src/api/rhApi.js :: getAvancesSalaire -> /api/django/rh/avances-salaire  [AvanceSalaireSerializer]
+    champs: annee_deduction, date_creation, date_demande, date_modification, employe, employe_nom, id, mois_deduction, montant, motif, paie_avance_id, solde_restant, statut, statut_display, valideur
+    statut ∈ {approuvee, deduite, demandee, refusee}
+- frontend/src/api/rhApi.js :: getAvantagesSociaux -> /api/django/rh/avantages-sociaux  [AvantageSocialSerializer]
+    champs: date_adhesion, date_creation, date_fin, date_modification, employe, id, organisme, type, type_display
+    type ∈ {assurance_groupe, autre, cimr, mutuelle}
+- frontend/src/api/rhApi.js :: getAyantsDroit -> /api/django/rh/ayants-droit  [AyantDroitSerializer]
+    champs: couvert_amo, couvert_mutuelle, date_creation, date_modification, date_naissance, employe, id, lien, lien_display, nom
+    lien ∈ {autre, conjoint, enfant}
+- frontend/src/api/rhApi.js :: getBadgesReconnaissance -> /api/django/rh/badges-reconnaissance  [BadgeReconnaissanceSerializer]
+    champs: actif, date_creation, description, icone, id, nom, nombre_attributions
+- frontend/src/api/rhApi.js :: getBesoinsFormation -> /api/django/rh/besoins-formation  [BesoinFormationSerializer]
+    champs: date_creation, date_modification, echeance, employe, employe_nom, id, notes, obligation_reglementaire, priorite, priorite_display, session_liee, session_liee_intitule, statut, statut_display, theme, type_obligation, type_obligation_display
+    priorite ∈ {basse, haute, moyenne}
+    statut ∈ {identifie, planifie, satisfait}
+    type_obligation ∈ {autre, csf, ofppt}
+- frontend/src/api/rhApi.js :: getBulletinsPaie -> /api/django/rh/bulletins-paie  [BulletinPaieSerializer]
+    champs: annee, date_creation, employe, employe_nom, filename, id, mime, mois, note, size, url
+- frontend/src/api/rhApi.js :: getCampagnesEvaluation -> /api/django/rh/campagnes-evaluation  [CampagneEvaluationSerializer]
+    champs: annee, date_creation, date_debut, date_fin, date_modification, description, evaluations, id, intitule, modele, periode, statut, statut_display
+    statut ∈ {cloturee, ouverte}
+- frontend/src/api/rhApi.js :: getCampagnesPulse -> /api/django/rh/campagnes-pulse  [CampagnePulseSerializer]
+    champs: date_creation, date_debut, date_fin, id, question_enps, question_libre
+- frontend/src/api/rhApi.js :: getCandidatures -> /api/django/rh/candidatures  [CandidatureSerializer]
+    champs: cv_fichier, date_candidature, date_creation, date_modification, email, emails_auto, employe_cree, employe_cree_nom, etape, etape_display, id, nom, note, ouverture, ouverture_intitule, source, tags_vivier, telephone, vivier, vivier_origine
+    etape ∈ {embauche, entretien, offre, preselection, recu, rejete}
+- frontend/src/api/rhApi.js :: getCauseriesSecurite -> /api/django/rh/causeries-securite  [CauserieSecuriteSerializer]
+    champs: animateur, animateur_nom, chantier_id, date_causerie, date_creation, date_modification, id, lieu, notes, participants, theme
+- frontend/src/api/rhApi.js :: getCertifications -> /api/django/rh/certifications  [CertificationSerializer]
+    champs: actif, date_creation, date_modification, date_obtention, date_validite, employe, employe_nom, id, note, organisme, type_certification, type_certification_display, valide
+    type_certification ∈ {autre, caces_nacelle, conduite, harnais, secourisme_sst, travail_hauteur}
+- frontend/src/api/rhApi.js :: getCompetences -> /api/django/rh/competences  [CompetenceSerializer]
+    champs: actif, code, date_creation, date_modification, description, domaine, domaine_display, id, libelle
+    domaine ∈ {autre, mes_onduleur, pompage, pose_structure, raccordement_ac, raccordement_dc, soudure}
+- frontend/src/api/rhApi.js :: getCompetencesEmploye -> /api/django/rh/competences-employe  [CompetenceEmployeSerializer]
+    champs: competence, competence_code, competence_libelle, date_creation, date_modification, employe, employe_nom, evalue_le, evalue_par, id, niveau, niveau_display, note
+- frontend/src/api/rhApi.js :: getCompetencesRequises -> /api/django/rh/competences-requises  [CompetenceRequiseSerializer]
+    champs: competence, competence_libelle, date_creation, id, niveau_requis, niveau_requis_display, poste
+- frontend/src/api/rhApi.js :: getDemandesAllocation -> /api/django/rh/demandes-allocation  [DemandeAllocationSerializer]
+    champs: date_creation, date_decision, decide_par, employe, employe_nom, id, jours, motif, statut, statut_display, type_absence, type_absence_code
+    statut ∈ {refusee, soumise, validee}
+- frontend/src/api/rhApi.js :: getDemandesConge -> /api/django/rh/demandes-conge  [DemandeCongeSerializer]
+    champs: date_creation, date_debut, date_decision, date_fin, decide_par, demi_journee_debut, demi_journee_fin, employe, id, jours, justificatif, motif, motif_refus, statut, statut_display, type_absence, type_absence_code
+    statut ∈ {annulee, refusee, soumise, validee}
+- frontend/src/api/rhApi.js :: getDemandesRh -> /api/django/rh/demandes-rh  [DemandeRHSerializer]
+    champs: attachment_id, date_creation, date_modification, employe, employe_nom, id, message, motif_refus, statut, statut_display, traite_le, traite_par, type, type_display
+    statut ∈ {refusee, soumise, traitee}
+    type ∈ {attestation_domiciliation, attestation_salaire, attestation_travail, autre}
+- frontend/src/api/rhApi.js :: getDepartements -> /api/django/rh/departements  [DepartementSerializer]
+    champs: actif, code, date_creation, id, nom, parent
+- frontend/src/api/rhApi.js :: getDevicesEmployeMap -> /api/django/rh/devices-employe-map  [EmployeDeviceMapSerializer]
+    champs: date_creation, device_user_id, employe, employe_nom, id
+- frontend/src/api/rhApi.js :: getDevicesKiosque -> /api/django/rh/devices-kiosque  [DeviceKiosqueSerializer]
+    champs: actif, date_creation, derniere_utilisation, id, label
+- frontend/src/api/rhApi.js :: getDocuments -> /api/django/rh/documents  [DocumentEmployeSerializer]
+    champs: date_creation, date_expiration, employe, filename, id, mime, note, size, type_document, type_document_display, url
+    type_document ∈ {autre, cin, contrat, diplome, rib}
+- frontend/src/api/rhApi.js :: getDotationsEpi -> /api/django/rh/dotations-epi  [DotationEpiSerializer]
+    champs: a_controler, accuse_remise, date_accuse, date_creation, date_dotation, date_modification, date_peremption, date_prochain_controle, date_renouvellement, date_restitution, employe, employe_nom, epi, epi_designation, id, note, perime, quantite, restituee, taille, type_epi, type_epi_display
+- frontend/src/api/rhApi.js :: getElementsIntegration -> /api/django/rh/elements-integration  [ElementIntegrationSerializer]
+    champs: date_creation, id, libelle, modele, ordre
+- frontend/src/api/rhApi.js :: getElementsSortie -> /api/django/rh/elements-sortie  [ElementSortieSerializer]
+    champs: date_creation, date_recuperation, employe, id, libelle, note, recupere, type_element, type_element_display
+    type_element ∈ {acces_si, autre, badge, cles, epi, ordinateur, outil, telephone, vehicule}
+- frontend/src/api/rhApi.js :: getElementsVariablesPaie -> /api/django/rh/elements-variables-paie  [ElementsVariablesPaieSerializer]
+    champs: annee, commentaire, date_creation, date_export, date_modification, employe, employe_matricule, employe_nom, heures_normales, heures_supp, id, jours_absence, jours_conges, mois, primes, retenues, statut, statut_display
+    statut ∈ {brouillon, exporte, valide}
+- frontend/src/api/rhApi.js :: getEntretiensRecrutement -> /api/django/rh/entretiens-recrutement  [EntretienRecrutementSerializer]
+    champs: candidature, date_creation, date_heure, evaluateurs, id, notes, statut, statut_display, type, type_display
+    statut ∈ {annule, planifie, realise}
+    type ∈ {final, rh, technique, telephonique}
+- frontend/src/api/rhApi.js :: getEntretiensSortie -> /api/django/rh/entretiens-sortie  [EntretienSortieSerializer]
+    champs: commentaire, date, date_creation, date_modification, employe, employe_nom, id, motif_principal, motif_principal_display, questionnaire, recommanderait
+    motif_principal ∈ {autre, conditions, distance, management, opportunite, salaire, sante}
+- frontend/src/api/rhApi.js :: getEpiCatalogue -> /api/django/rh/epi-catalogue  [EpiCatalogueSerializer]
+    champs: actif, date_creation, date_modification, designation, duree_vie_mois, id, intervalle_controle_mois, produit_id, type_epi, type_epi_display
+    type_epi ∈ {autre, casque, chaussures, gants_isolants, harnais, lunettes}
+- frontend/src/api/rhApi.js :: getEvaluationsEmploye -> /api/django/rh/evaluations-employe  [EvaluationEmployeSerializer]
+    champs: auto_evaluation, campagne, date_creation, date_entretien, date_modification, employe, employe_nom, evaluateur, evaluateur_nom, id, issue, issue_details, note_auto, note_globale, objectifs, reponses, statut, statut_display, synthese
+    issue ∈ {aucune, augmentation_proposee, formation, pip, promotion}
+    statut ∈ {planifie, realise, valide}
+- frontend/src/api/rhApi.js :: getFeuillesTemps -> /api/django/rh/feuilles-temps  [FeuilleTempsSerializer]
+    champs: cout_calcule, date, date_creation, date_modification, description, employe, employe_nom, heures, id, installation_id, intervention_id, taux_horaire
+- frontend/src/api/rhApi.js :: getGabaritsEmailRecrutement -> /api/django/rh/gabarits-email-recrutement  [GabaritEmailRecrutementSerializer]
+    champs: actif, corps, date_creation, etape, etape_display, id, objet
+    etape ∈ {embauche, entretien, offre, preselection, recu, rejete}
+- frontend/src/api/rhApi.js :: getGrillesSalariales -> /api/django/rh/grilles-salariales  [GrilleSalarialeSerializer]
+    champs: date_creation, date_effet, echelon, id, poste, poste_intitule, salaire_max, salaire_min
+- frontend/src/api/rhApi.js :: getHabilitations -> /api/django/rh/habilitations  [HabilitationSerializer]
+    champs: actif, date_creation, date_modification, date_obtention, date_validite, employe, employe_nom, id, note, organisme, type_habilitation, type_habilitation_display, valide
+    type_habilitation ∈ {autre, b0, b1, b1v, b2, b2v, bc, be, bp, br, h0, h0v, h1, h1v, h2, h2v, hc}
+- frontend/src/api/rhApi.js :: getHeuresSupp -> /api/django/rh/heures-supp  [HeuresSuppSerializer]
+    champs: date, date_creation, date_modification, employe, employe_nom, heures_normales, heures_nuit, heures_travaillees, hs_100, hs_25, hs_50, id, jour_repos_ferie, montant_majore, note, seuil_journalier, taux_horaire, total_hs
+- frontend/src/api/rhApi.js :: getHorairesTravail -> /api/django/rh/horaires-travail  [HoraireTravailSerializer]
+    champs: actif, date_creation, date_debut, date_fin, heures_jour_defaut, heures_semaine, id, nom, type_horaire, type_horaire_display
+    type_horaire ∈ {ramadan, saisonnier, standard_44h, temps_partiel}
+- frontend/src/api/rhApi.js :: getIncidentsPresence -> /api/django/rh/incidents-presence  [IncidentPresenceSerializer]
+    champs: date, date_creation, date_modification, employe, employe_nom, id, justifie, justifie_le, justifie_par, minutes_retard, motif, note, type_incident, type_incident_display
+    type_incident ∈ {absence_injustifiee, depart_anticipe, retard}
+- frontend/src/api/rhApi.js :: getJoursBloquesConge -> /api/django/rh/jours-bloques-conge  [JourBloqueCongeSerializer]
+    champs: date_creation, date_debut, date_fin, date_modification, departements, id, libelle, motif
+- frontend/src/api/rhApi.js :: getLignesParcours -> /api/django/rh/lignes-parcours  [LigneParcoursSerializer]
+    champs: date_creation, date_debut, date_fin, description, employe, id, intitule, organisme, type, type_libelle
+- frontend/src/api/rhApi.js :: getModelesEvaluation -> /api/django/rh/modeles-evaluation  [ModeleEvaluationSerializer]
+    champs: actif, date_creation, date_modification, departement, id, nom, poste_ref, questions
+- frontend/src/api/rhApi.js :: getModelesIntegration -> /api/django/rh/modeles-integration  [ModeleIntegrationSerializer]
+    champs: actif, date_creation, departement, elements, id, nom, poste_ref
+- frontend/src/api/rhApi.js :: getNotesFrais -> /api/django/rh/notes-frais  [NoteDeFraisSerializer]
+    champs: categorie, categorie_display, date_creation, date_frais, date_modification, employe, employe_nom, id, libelle, montant, statut, statut_display
+    categorie ∈ {autre, fournitures, hebergement, repas, transport}
+    statut ∈ {approuvee, refusee, remboursee, soumise}
+- frontend/src/api/rhApi.js :: getOrdresMission -> /api/django/rh/ordres-mission  [OrdreMissionSerializer]
+    champs: date_creation, date_depart, date_modification, date_retour, destination, employe, employe_nom, id, motif, moyen_transport, per_diem, reference, statut, statut_display, vehicule_id
+    statut ∈ {brouillon, cloture, emis}
+- frontend/src/api/rhApi.js :: getOuverturesPoste -> /api/django/rh/ouvertures-poste  [OuverturePosteSerializer]
+    champs: approbateur, candidatures, date_cible, date_creation, date_decision, date_modification, date_ouverture, date_soumission, demandeur, departement, departement_nom, description, id, intitule, motif_refus, nombre_postes, poste_ref, poste_ref_intitule, publiee, statut, statut_display, ville
+    statut ∈ {annule, brouillon, clos, en_approbation, ouvert, pourvu}
+- frontend/src/api/rhApi.js :: getPeriodesFermeture -> /api/django/rh/periodes-fermeture  [PeriodeFermetureSerializer]
+    champs: appliquee, appliquee_le, date_creation, date_debut, date_fin, departements, id, libelle, type_absence, type_absence_code
+- frontend/src/api/rhApi.js :: getPermisConduire -> /api/django/rh/permis-conduire  [PermisConduireSerializer]
+    champs: categorie, categorie_display, date_creation, date_delivrance, date_expiration, date_modification, employe, employe_nom, habilitation_conduite, id, note, numero, valide
+    categorie ∈ {A, B, C, D, EB, EC}
+- frontend/src/api/rhApi.js :: getPointages -> /api/django/rh/pointages  [PointageSerializer]
+    champs: arrivee_gps_lat, arrivee_gps_lng, date_creation, date_modification, depart_gps_lat, depart_gps_lng, duree_minutes, employe, employe_nom, heure_arrivee, heure_depart, id, note, type_pointage, type_pointage_display
+    type_pointage ∈ {arrivee, complet, depart}
+- frontend/src/api/rhApi.js :: getPostes -> /api/django/rh/postes  [PosteSerializer]
+    champs: actif, code, date_creation, departement, departement_nom, id, intitule
+- frontend/src/api/rhApi.js :: getPresencesChantier -> /api/django/rh/presences-chantier  [PresenceChantierSerializer]
+    champs: date, date_creation, date_modification, emarge, emarge_le, emarge_par, employe, employe_nom, gps_lat, gps_lng, heure_arrivee, heure_depart, hors_zone, id, installation_id, note, statut, statut_display
+    statut ∈ {absent, parti_tot, present, retard}
+- frontend/src/api/rhApi.js :: getPresquAccidents -> /api/django/rh/presqu-accidents  [PresquAccidentSerializer]
+    champs: chantier_id, date_constat, date_creation, date_modification, declare_par, declare_par_nom, description, gravite_potentielle, gravite_potentielle_display, id, lieu, mesure_corrective, photo_key, reference, statut, statut_display
+    gravite_potentielle ∈ {elevee, faible, moyenne}
+    statut ∈ {ouvert, traite}
+- frontend/src/api/rhApi.js :: getPrimesAttribuees -> /api/django/rh/primes-attribuees  [PrimeAttribueeSerializer]
+    champs: annee, date_creation, date_modification, employe, employe_nom, id, mois, montant, motif, statut, statut_display, type_prime, type_prime_libelle
+    statut ∈ {payee, proposee, validee}
+- frontend/src/api/rhApi.js :: getPromessesEmbauche -> /api/django/rh/promesses-embauche  [PromesseEmbaucheSerializer]
+    champs: candidature, candidature_nom, date_creation, date_debut_proposee, date_signature, expires_at, id, poste_propose, salaire_propose, signataire_nom, statut, statut_display, token, type_contrat
+    statut ∈ {envoyee, expiree, signee}
+    type_contrat ∈ {anapec, cdd, cdi, interim, stage}
+- frontend/src/api/rhApi.js :: getRemunerations -> /api/django/rh/remunerations  [RemunerationSerializer]
+    champs: date_creation, date_effet, devise, employe, id, montant, motif, periodicite, periodicite_display
+    periodicite ∈ {annuel, horaire, journalier, mensuel}
+- frontend/src/api/rhApi.js :: getRetoursFeedback360 -> /api/django/rh/retours-feedback360  [RetourFeedback360Serializer]
+    champs: commentaire, date_invitation, date_soumission, evaluation, id, relation, repondant, repondant_nom, reponses, soumis
+    relation ∈ {manager_transversal, pair, subordonne}
+- frontend/src/api/rhApi.js :: getRoster -> /api/django/rh/roster  [AffectationRosterSerializer]
+    champs: conflit_conge, creneau, creneau_display, date, date_creation, date_modification, employe, employe_nom, equipe, id, note, semaine_du, vehicule_id
+    creneau ∈ {apres_midi, journee, matin}
+- frontend/src/api/rhApi.js :: getSanctions -> /api/django/rh/sanctions  [SanctionSerializer]
+    champs: auteur, date_creation, date_faits, date_modification, date_notification, duree_jours, employe, employe_nom, id, motif, statut, statut_display, type_sanction, type_sanction_display
+    statut ∈ {annulee, contestee, notifiee}
+    type_sanction ∈ {avertissement, blame, licenciement, mise_a_pied, mutation, observation, retrogradation}
+- frontend/src/api/rhApi.js :: getSessionsFormation -> /api/django/rh/sessions-formation  [SessionFormationSerializer]
+    champs: competence_visee, competence_visee_libelle, cout, date_creation, date_debut, date_fin, date_modification, id, inscriptions, intitule, lieu, notes, organisme, statut, statut_display, type, type_display
+    statut ∈ {annulee, planifiee, realisee}
+    type ∈ {externe, interne}
+- frontend/src/api/rhApi.js :: getSoldesConge -> /api/django/rh/soldes-conge  [SoldeCongeSerializer]
+    champs: acquis, annee, date_creation, date_modification, disponible, employe, id, pris, report
+- frontend/src/api/rhApi.js :: getTentativesQuiz -> /api/django/rh/tentatives-quiz  [TentativeQuizSerializer]
+    champs: date_creation, employe, employe_nom, id, quiz, quiz_intitule, reussi, score, session
+- frontend/src/api/rhApi.js :: getTypesAbsence -> /api/django/rh/types-absence  [TypeAbsenceSerializer]
+    champs: actif, code, date_creation, decompte_jours_ouvres, deduit_solde, id, jours_legaux, jours_max_sans_justificatif, libelle, remunere
+- frontend/src/api/rhApi.js :: getTypesLigneParcours -> /api/django/rh/types-ligne-parcours  [TypeLigneParcoursSerializer]
+    champs: id, libelle, ordre
+- frontend/src/api/rhApi.js :: getTypesPrime -> /api/django/rh/types-prime  [TypePrimeSerializer]
+    champs: actif, code, date_creation, id, imposable, libelle, montant_defaut, nature, nature_display
+    nature ∈ {indemnite, prime}
+- frontend/src/api/rhApi.js :: getVisitesMedicales -> /api/django/rh/visites-medicales  [VisiteMedicaleSerializer]
+    champs: a_jour, actif, aptitude, aptitude_display, date_creation, date_modification, date_visite, employe, employe_nom, id, medecin, note, organisme, prochaine_visite, restrictions
+    aptitude ∈ {apte, apte_avec_restrictions, inapte}
+- frontend/src/api/rhApi.js :: updateCandidature -> /api/django/rh/candidatures/<>  [CandidatureSerializer]
+    champs: cv_fichier, date_candidature, date_creation, date_modification, email, emails_auto, employe_cree, employe_cree_nom, etape, etape_display, id, nom, note, ouverture, ouverture_intitule, source, tags_vivier, telephone, vivier, vivier_origine
+    etape ∈ {embauche, entretien, offre, preselection, recu, rejete}
+- frontend/src/api/rhApi.js :: updateElementIntegration -> /api/django/rh/elements-integration/<>  [ElementIntegrationSerializer]
+    champs: date_creation, id, libelle, modele, ordre
+- frontend/src/api/rhApi.js :: updateElementIntegrationEmploye -> /api/django/rh/elements-integration-employe/<>  [ElementIntegrationEmployeSerializer]
+    champs: date, date_creation, employe, fait, fait_par, id, libelle, ordre
+- frontend/src/api/rhApi.js :: updateElementSortie -> /api/django/rh/elements-sortie/<>  [ElementSortieSerializer]
+    champs: date_creation, date_recuperation, employe, id, libelle, note, recupere, type_element, type_element_display
+    type_element ∈ {acces_si, autre, badge, cles, epi, ordinateur, outil, telephone, vehicule}
+- frontend/src/api/rhApi.js :: updateElementVariablePaie -> /api/django/rh/elements-variables-paie/<>  [ElementsVariablesPaieSerializer]
+    champs: annee, commentaire, date_creation, date_export, date_modification, employe, employe_matricule, employe_nom, heures_normales, heures_supp, id, jours_absence, jours_conges, mois, primes, retenues, statut, statut_display
+    statut ∈ {brouillon, exporte, valide}
+- frontend/src/api/rhApi.js :: updateGabaritEmailRecrutement -> /api/django/rh/gabarits-email-recrutement/<>  [GabaritEmailRecrutementSerializer]
+    champs: actif, corps, date_creation, etape, etape_display, id, objet
+    etape ∈ {embauche, entretien, offre, preselection, recu, rejete}
+- frontend/src/api/rhApi.js :: updateGrilleSalariale -> /api/django/rh/grilles-salariales/<>  [GrilleSalarialeSerializer]
+    champs: date_creation, date_effet, echelon, id, poste, poste_intitule, salaire_max, salaire_min
+- frontend/src/api/rhApi.js :: updateHoraireTravail -> /api/django/rh/horaires-travail/<>  [HoraireTravailSerializer]
+    champs: actif, date_creation, date_debut, date_fin, heures_jour_defaut, heures_semaine, id, nom, type_horaire, type_horaire_display
+    type_horaire ∈ {ramadan, saisonnier, standard_44h, temps_partiel}
+- frontend/src/api/rhApi.js :: updateModeleEvaluation -> /api/django/rh/modeles-evaluation/<>  [ModeleEvaluationSerializer]
+    champs: actif, date_creation, date_modification, departement, id, nom, poste_ref, questions
+- frontend/src/api/rhApi.js :: updateModeleIntegration -> /api/django/rh/modeles-integration/<>  [ModeleIntegrationSerializer]
+    champs: actif, date_creation, departement, elements, id, nom, poste_ref
+- frontend/src/api/rhApi.js :: updatePointage -> /api/django/rh/pointages/<>  [PointageSerializer]
+    champs: arrivee_gps_lat, arrivee_gps_lng, date_creation, date_modification, depart_gps_lat, depart_gps_lng, duree_minutes, employe, employe_nom, heure_arrivee, heure_depart, id, note, type_pointage, type_pointage_display
+    type_pointage ∈ {arrivee, complet, depart}
+- frontend/src/api/rhApi.js :: updatePrimeAttribuee -> /api/django/rh/primes-attribuees/<>  [PrimeAttribueeSerializer]
+    champs: annee, date_creation, date_modification, employe, employe_nom, id, mois, montant, motif, statut, statut_display, type_prime, type_prime_libelle
+    statut ∈ {payee, proposee, validee}
+- frontend/src/api/rhApi.js :: updateTypePrime -> /api/django/rh/types-prime/<>  [TypePrimeSerializer]
+    champs: actif, code, date_creation, id, imposable, libelle, montant_defaut, nature, nature_display
+    nature ∈ {indemnite, prime}
+- frontend/src/api/rolesApi.js :: createRole -> /api/django/roles  [RoleSerializer]
+    champs: entites_visibles, est_systeme, id, nom, perimetre, permissions, users, users_count
+- frontend/src/api/rolesApi.js :: deleteRole -> /api/django/roles/<>  [RoleSerializer]
+    champs: entites_visibles, est_systeme, id, nom, perimetre, permissions, users, users_count
+- frontend/src/api/rolesApi.js :: getRole -> /api/django/roles/<>  [RoleSerializer]
+    champs: entites_visibles, est_systeme, id, nom, perimetre, permissions, users, users_count
+- frontend/src/api/rolesApi.js :: getRoles -> /api/django/roles  [RoleSerializer]
+    champs: entites_visibles, est_systeme, id, nom, perimetre, permissions, users, users_count
+- frontend/src/api/rolesApi.js :: patchRole -> /api/django/roles/<>  [RoleSerializer]
+    champs: entites_visibles, est_systeme, id, nom, perimetre, permissions, users, users_count
+- frontend/src/api/rolesApi.js :: updateRole -> /api/django/roles/<>  [RoleSerializer]
+    champs: entites_visibles, est_systeme, id, nom, perimetre, permissions, users, users_count
+- frontend/src/api/santeApi.js :: checkin -> /api/django/sante/rendezvous/<>  [RendezVousSerializer]
+    champs: annule_par, annule_par_display, cree_par, date_annulation, date_heure_debut, delai_annulation_h, duree_min, id, motif_court, patient, patient_nom, praticien, praticien_nom, salle, statut, statut_display, type_acte
+    annule_par ∈ {clinique, patient}
+    statut ∈ {absent, annule, arrive, confirme, en_cours, planifie, termine}
+- frontend/src/api/santeApi.js :: remove -> /api/django/sante/rendezvous/<>  [RendezVousSerializer]
+    champs: annule_par, annule_par_display, cree_par, date_annulation, date_heure_debut, delai_annulation_h, duree_min, id, motif_court, patient, patient_nom, praticien, praticien_nom, salle, statut, statut_display, type_acte
+    annule_par ∈ {clinique, patient}
+    statut ∈ {absent, annule, arrive, confirme, en_cours, planifie, termine}
+- frontend/src/api/savApi.js :: deleteCategorieEquipement -> /api/django/sav/categories-equipement/<>  [CategorieEquipementSerializer]
+    champs: alias_email, commentaire, equipe_responsable, equipe_responsable_nom, id, nb_equipements, nom, responsable, responsable_nom
+- frontend/src/api/savApi.js :: deleteCategorieTicket -> /api/django/sav/categories-ticket/<>  [CategorieTicketSerializer]
+    champs: actif, id, libelle, ordre
+- frontend/src/api/savApi.js :: deleteCauseDefaillance -> /api/django/sav/causes-defaillance/<>  [CauseDefaillanceSerializer]
+    champs: archived, id, nom, ordre
+- frontend/src/api/savApi.js :: deleteCompatibilitePiece -> /api/django/sav/compatibilites-piece/<>  [CompatibilitePieceSerializer]
+    champs: date_creation, id, note, piece, piece_nom, produit_equipement, produit_equipement_nom, remplace_par, remplace_par_nom
+- frontend/src/api/savApi.js :: deleteContrat -> /api/django/sav/contrats-maintenance/<>  [ContratMaintenanceSerializer]
+    champs: actif, client, client_nom, date_creation, date_debut, date_renouvellement, deplacements_inclus_an, derniere_facturation, derniere_visite, droits_restants, due, duree_mois, equipements, equipements_detail, facturation_active, facturation_due, id, installation, notes, periodicite, pieces_couvertes_pct, prix, prochaine_facturation, prochaine_visite, renouvellement_du, sla_resolution_days, sla_response_days, visites_incluses_an
+    periodicite ∈ {annuel, mensuel, semestriel, trimestriel}
+- frontend/src/api/savApi.js :: deleteEquipeMaintenance -> /api/django/sav/equipes-maintenance/<>  [EquipeMaintenanceSerializer]
+    champs: actif, date_creation, id, membres, membres_count, nom, responsable, responsable_nom
+- frontend/src/api/savApi.js :: deleteRemedeDefaillance -> /api/django/sav/remedes-defaillance/<>  [RemedeDefaillanceSerializer]
+    champs: archived, id, nom, ordre
+- frontend/src/api/savApi.js :: deleteReponseType -> /api/django/sav/reponses-type/<>  [ReponseTypeSerializer]
+    champs: archived, corps, date_creation, id, nouveau_statut, titre
+- frontend/src/api/savApi.js :: deleteWorksheetModele -> /api/django/sav/worksheet-modeles/<>  [WorksheetMaintenanceModeleSerializer]
+    champs: actif, champs, date_creation, id, nom, type_ticket_applicable
+    type_ticket_applicable ∈ {correctif, preventif, tous}
+- frontend/src/api/savApi.js :: getCategoriesEquipement -> /api/django/sav/categories-equipement  [CategorieEquipementSerializer]
+    champs: alias_email, commentaire, equipe_responsable, equipe_responsable_nom, id, nb_equipements, nom, responsable, responsable_nom
+- frontend/src/api/savApi.js :: getCategoriesTicket -> /api/django/sav/categories-ticket  [CategorieTicketSerializer]
+    champs: actif, id, libelle, ordre
+- frontend/src/api/savApi.js :: getCausesDefaillance -> /api/django/sav/causes-defaillance  [CauseDefaillanceSerializer]
+    champs: archived, id, nom, ordre
+- frontend/src/api/savApi.js :: getChecklistTemplates -> /api/django/sav/checklist-templates  [MaintenanceChecklistTemplateSerializer]
+    champs: actif, id, items, nom, protege
+- frontend/src/api/savApi.js :: getCompatibilitesPiece -> /api/django/sav/compatibilites-piece  [CompatibilitePieceSerializer]
+    champs: date_creation, id, note, piece, piece_nom, produit_equipement, produit_equipement_nom, remplace_par, remplace_par_nom
+- frontend/src/api/savApi.js :: getContrats -> /api/django/sav/contrats-maintenance  [ContratMaintenanceSerializer]
+    champs: actif, client, client_nom, date_creation, date_debut, date_renouvellement, deplacements_inclus_an, derniere_facturation, derniere_visite, droits_restants, due, duree_mois, equipements, equipements_detail, facturation_active, facturation_due, id, installation, notes, periodicite, pieces_couvertes_pct, prix, prochaine_facturation, prochaine_visite, renouvellement_du, sla_resolution_days, sla_response_days, visites_incluses_an
+    periodicite ∈ {annuel, mensuel, semestriel, trimestriel}
+- frontend/src/api/savApi.js :: getEquipesMaintenance -> /api/django/sav/equipes-maintenance  [EquipeMaintenanceSerializer]
+    champs: actif, date_creation, id, membres, membres_count, nom, responsable, responsable_nom
+- frontend/src/api/savApi.js :: getRemedesDefaillance -> /api/django/sav/remedes-defaillance  [RemedeDefaillanceSerializer]
+    champs: archived, id, nom, ordre
+- frontend/src/api/savApi.js :: getReponsesType -> /api/django/sav/reponses-type  [ReponseTypeSerializer]
+    champs: archived, corps, date_creation, id, nouveau_statut, titre
+- frontend/src/api/savApi.js :: getWorksheetModeles -> /api/django/sav/worksheet-modeles  [WorksheetMaintenanceModeleSerializer]
+    champs: actif, champs, date_creation, id, nom, type_ticket_applicable
+    type_ticket_applicable ∈ {correctif, preventif, tous}
+- frontend/src/api/stockApi.js :: createAcompteFournisseur -> /api/django/stock/acomptes-fournisseur  [AcompteFournisseurSerializer]
+    champs: bon_commande, bon_commande_reference, created_by, date_creation, date_versement, facture_imputee, id, mode, mode_display, montant, montant_consomme, montant_non_consomme, note
+    mode ∈ {autre, carte, cheque, effet, especes, virement}
+- frontend/src/api/stockApi.js :: createAvoirFournisseur -> /api/django/stock/avoirs-fournisseur  [AvoirFournisseurSerializer]
+    champs: created_by, date_creation, date_mise_a_jour, facture_origine, fournisseur, fournisseur_nom, id, imputations, montant_disponible, montant_ht, montant_impute, montant_ttc, montant_tva, note, reference, retour, retour_reference, statut, statut_display
+    statut ∈ {brouillon, impute, valide}
+- frontend/src/api/stockApi.js :: createBonCommandeFournisseur -> /api/django/stock/bons-commande-fournisseur  [BonCommandeFournisseurSerializer]
+    champs: acheteur, acomptes, chantier_livraison, conditions_paiement, created_by, created_by_username, date_commande, date_confirmee_fournisseur, date_creation, date_livraison_prevue, date_mise_a_jour, devise, emplacement_destination, est_entierement_recu, fournisseur, fournisseur_nom, id, incoterm, lignes, motif_annulation, nb_relances, note, note_bas_page, numero_confirmation_fournisseur, ref_fournisseur, reference, revision, statut, statut_display, taux_change, total_achat
+    devise ∈ {CNY, EUR, MAD, USD}
+    statut ∈ {annule, brouillon, envoye, recu}
+- frontend/src/api/stockApi.js :: createCategorieFournisseur -> /api/django/stock/categories-fournisseur  [CategorieFournisseurSerializer]
+    champs: archived, id, nom
+- frontend/src/api/stockApi.js :: createConditionnementProduit -> /api/django/stock/conditionnements  [ConditionnementProduitSerializer]
+    champs: code_barres, date_creation, facteur, id, nom, produit, produit_nom, unite_stock
+- frontend/src/api/stockApi.js :: createContactFournisseur -> /api/django/stock/contacts-fournisseur  [ContactFournisseurSerializer]
+    champs: email, fonction, fournisseur, id, nom, telephone
+- frontend/src/api/stockApi.js :: createFactureFournisseur -> /api/django/stock/factures-fournisseur  [FactureFournisseurSerializer]
+    champs: bon_commande, bon_commande_reference, created_by, created_by_username, date_creation, date_echeance, date_facture, date_mise_a_jour, devise, echeances, fournisseur, fournisseur_nom, id, lignes, montant_ht, montant_ttc, montant_ttc_devise, montant_tva, motif_ecart, note, numero_clearance_dgi, paiements, ref_fournisseur, reference, resolu_le, resolu_par, resolu_par_username, solde_du, sous_totaux_par_taux, statut, statut_conformite_dgi, statut_conformite_dgi_display, statut_controle, statut_controle_display, statut_display, taux_change, total_acomptes_imputes, total_avoirs_imputes, total_paye, type_achat
+    devise ∈ {CNY, EUR, MAD, USD}
+    statut ∈ {a_payer, partiellement_payee, payee}
+    statut_conformite_dgi ∈ {cleared, non_applicable, non_cleared}
+    statut_controle ∈ {exception, normale, resolue}
+    type_achat ∈ {biens, services}
+- frontend/src/api/stockApi.js :: createFicheTechnique -> /api/django/stock/fiches-techniques  [FicheTechniqueSerializer]
+    champs: date_creation, date_mise_a_jour, id, imp_a, isc_a, pdf, pmax_wc, produit, produit_garantie, produit_marque, produit_nom, rendement_pct, vmp_v, voc_v
+- frontend/src/api/stockApi.js :: createInventaireSession -> /api/django/stock/inventaire-sessions  [InventaireSessionSerializer]
+    champs: created_by, created_by_username, date_creation, date_mise_a_jour, id, lignes, motif, reference, statut, statut_display
+    statut ∈ {annule, brouillon, valide}
+- frontend/src/api/stockApi.js :: createModeleBcf -> /api/django/stock/modeles-bcf  [ModeleBonCommandeFournisseurSerializer]
+    champs: date_creation, date_mise_a_jour, fournisseur, fournisseur_nom, id, lignes, nom, note
+- frontend/src/api/stockApi.js :: createNomenclatureCodeBarres -> /api/django/stock/nomenclatures-code-barres  [NomenclatureCodeBarresSerializer]
+    champs: actif, date_creation, date_mise_a_jour, id, nom, regles, type_nomenclature
+    type_nomenclature ∈ {default, gs1}
+- frontend/src/api/stockApi.js :: createPrixFournisseur -> /api/django/stock/prix-fournisseurs  [PrixFournisseurSerializer]
+    champs: date_debut, date_dernier_achat, date_fin, delai_livraison_jours, fournisseur, fournisseur_nom, id, paliers, prix_achat, produit, produit_nom, ref_produit_fournisseur
+- frontend/src/api/stockApi.js :: createProduit -> /api/django/stock/produits  [ProduitSerializer]
+    champs: avertissement_bloquant, avertissement_vente, bcf_sources_en_commande, categorie, categorie_id, categorie_type, categorie_type_display, code_barres, code_sh, company, courbe_pompe, custom_data, date_creation, date_mise_a_jour, debit_m3j, derniere_date_mouvement, description, description_localise, entite, fournisseur, fournisseur_id, garantie, garantie_mois, garantie_production_mois, hmt_m, id, image_url, is_archived, is_low_stock, is_low_stock_disponible, marge_pct, marque, nb_mouvements, nom, nom_localise, pays_origine, politique_facturation_achat, pompe_cv, pompe_kw, premiere_date_mouvement, prix_achat, prix_vente, quantite_disponible, quantite_en_commande, quantite_reservee, quantite_stock, seuil_alerte, sku, stock_par_emplacement, suivi_serie, tension_v, tva, unite, unite_stock, unite_stock_display
+    politique_facturation_achat ∈ {sur_commande, sur_reception}
+- frontend/src/api/stockApi.js :: createReceptionFournisseur -> /api/django/stock/receptions-fournisseur  [ReceptionFournisseurSerializer]
+    champs: bon_commande, bon_commande_reference, controle_qhse_ouvert, created_by, created_by_username, date_creation, date_reception, fournisseur_nom, id, lignes, note, recu_par, recu_par_username, reference, statut, statut_display, total_recu
+    statut ∈ {annule, brouillon, confirme}
+- frontend/src/api/stockApi.js :: createRegleCodeBarres -> /api/django/stock/regles-code-barres  [RegleCodeBarresSerializer]
+    champs: encode, est_regex, id, motif, nomenclature, priorite
+    encode ∈ {emplacement, lot, produit, quantite, serie}
+- frontend/src/api/stockApi.js :: createRetourFournisseur -> /api/django/stock/retours-fournisseur  [RetourFournisseurSerializer]
+    champs: bon_commande, bon_commande_reference, created_by, created_by_username, date_creation, fournisseur, fournisseur_nom, id, lignes, motif, reference, statut, statut_display
+    statut ∈ {annule, brouillon, valide}
+- frontend/src/api/stockApi.js :: createRevalorisationStock -> /api/django/stock/revalorisations-stock  [RevalorisationStockSerializer]
+    champs: ancien_cout, auteur, date_creation, date_validation, delta_valeur, id, motif, nouveau_cout, produit, produit_nom, quantite_snapshot, statut
+    statut ∈ {brouillon, validee}
+- frontend/src/api/stockApi.js :: createTransfert -> /api/django/stock/transferts  [TransfertStockSerializer]
+    champs: created_by_username, date, destination, destination_nom, id, note, produit, produit_nom, quantite, source, source_nom
+- frontend/src/api/stockApi.js :: deleteAcompteFournisseur -> /api/django/stock/acomptes-fournisseur/<>  [AcompteFournisseurSerializer]
+    champs: bon_commande, bon_commande_reference, created_by, date_creation, date_versement, facture_imputee, id, mode, mode_display, montant, montant_consomme, montant_non_consomme, note
+    mode ∈ {autre, carte, cheque, effet, especes, virement}
+- frontend/src/api/stockApi.js :: deleteBonCommandeFournisseur -> /api/django/stock/bons-commande-fournisseur/<>  [BonCommandeFournisseurSerializer]
+    champs: acheteur, acomptes, chantier_livraison, conditions_paiement, created_by, created_by_username, date_commande, date_confirmee_fournisseur, date_creation, date_livraison_prevue, date_mise_a_jour, devise, emplacement_destination, est_entierement_recu, fournisseur, fournisseur_nom, id, incoterm, lignes, motif_annulation, nb_relances, note, note_bas_page, numero_confirmation_fournisseur, ref_fournisseur, reference, revision, statut, statut_display, taux_change, total_achat
+    devise ∈ {CNY, EUR, MAD, USD}
+    statut ∈ {annule, brouillon, envoye, recu}
+- frontend/src/api/stockApi.js :: deleteCategorieFournisseur -> /api/django/stock/categories-fournisseur/<>  [CategorieFournisseurSerializer]
+    champs: archived, id, nom
+- frontend/src/api/stockApi.js :: deleteConditionnementProduit -> /api/django/stock/conditionnements/<>  [ConditionnementProduitSerializer]
+    champs: code_barres, date_creation, facteur, id, nom, produit, produit_nom, unite_stock
+- frontend/src/api/stockApi.js :: deleteContactFournisseur -> /api/django/stock/contacts-fournisseur/<>  [ContactFournisseurSerializer]
+    champs: email, fonction, fournisseur, id, nom, telephone
+- frontend/src/api/stockApi.js :: deleteFactureFournisseur -> /api/django/stock/factures-fournisseur/<>  [FactureFournisseurSerializer]
+    champs: bon_commande, bon_commande_reference, created_by, created_by_username, date_creation, date_echeance, date_facture, date_mise_a_jour, devise, echeances, fournisseur, fournisseur_nom, id, lignes, montant_ht, montant_ttc, montant_ttc_devise, montant_tva, motif_ecart, note, numero_clearance_dgi, paiements, ref_fournisseur, reference, resolu_le, resolu_par, resolu_par_username, solde_du, sous_totaux_par_taux, statut, statut_conformite_dgi, statut_conformite_dgi_display, statut_controle, statut_controle_display, statut_display, taux_change, total_acomptes_imputes, total_avoirs_imputes, total_paye, type_achat
+    devise ∈ {CNY, EUR, MAD, USD}
+    statut ∈ {a_payer, partiellement_payee, payee}
+    statut_conformite_dgi ∈ {cleared, non_applicable, non_cleared}
+    statut_controle ∈ {exception, normale, resolue}
+    type_achat ∈ {biens, services}
+- frontend/src/api/stockApi.js :: deleteFicheTechnique -> /api/django/stock/fiches-techniques/<>  [FicheTechniqueSerializer]
+    champs: date_creation, date_mise_a_jour, id, imp_a, isc_a, pdf, pmax_wc, produit, produit_garantie, produit_marque, produit_nom, rendement_pct, vmp_v, voc_v
+- frontend/src/api/stockApi.js :: deleteModeleBcf -> /api/django/stock/modeles-bcf/<>  [ModeleBonCommandeFournisseurSerializer]
+    champs: date_creation, date_mise_a_jour, fournisseur, fournisseur_nom, id, lignes, nom, note
+- frontend/src/api/stockApi.js :: deleteNomenclatureCodeBarres -> /api/django/stock/nomenclatures-code-barres/<>  [NomenclatureCodeBarresSerializer]
+    champs: actif, date_creation, date_mise_a_jour, id, nom, regles, type_nomenclature
+    type_nomenclature ∈ {default, gs1}
+- frontend/src/api/stockApi.js :: deletePrixFournisseur -> /api/django/stock/prix-fournisseurs/<>  [PrixFournisseurSerializer]
+    champs: date_debut, date_dernier_achat, date_fin, delai_livraison_jours, fournisseur, fournisseur_nom, id, paliers, prix_achat, produit, produit_nom, ref_produit_fournisseur
+- frontend/src/api/stockApi.js :: deleteProduit -> /api/django/stock/produits/<>  [ProduitSerializer]
+    champs: avertissement_bloquant, avertissement_vente, bcf_sources_en_commande, categorie, categorie_id, categorie_type, categorie_type_display, code_barres, code_sh, company, courbe_pompe, custom_data, date_creation, date_mise_a_jour, debit_m3j, derniere_date_mouvement, description, description_localise, entite, fournisseur, fournisseur_id, garantie, garantie_mois, garantie_production_mois, hmt_m, id, image_url, is_archived, is_low_stock, is_low_stock_disponible, marge_pct, marque, nb_mouvements, nom, nom_localise, pays_origine, politique_facturation_achat, pompe_cv, pompe_kw, premiere_date_mouvement, prix_achat, prix_vente, quantite_disponible, quantite_en_commande, quantite_reservee, quantite_stock, seuil_alerte, sku, stock_par_emplacement, suivi_serie, tension_v, tva, unite, unite_stock, unite_stock_display
+    politique_facturation_achat ∈ {sur_commande, sur_reception}
+- frontend/src/api/stockApi.js :: deleteRegleCodeBarres -> /api/django/stock/regles-code-barres/<>  [RegleCodeBarresSerializer]
+    champs: encode, est_regex, id, motif, nomenclature, priorite
+    encode ∈ {emplacement, lot, produit, quantite, serie}
+- frontend/src/api/stockApi.js :: deleteRevalorisationStock -> /api/django/stock/revalorisations-stock/<>  [RevalorisationStockSerializer]
+    champs: ancien_cout, auteur, date_creation, date_validation, delta_valeur, id, motif, nouveau_cout, produit, produit_nom, quantite_snapshot, statut
+    statut ∈ {brouillon, validee}
+- frontend/src/api/stockApi.js :: getAcomptesFournisseur -> /api/django/stock/acomptes-fournisseur  [AcompteFournisseurSerializer]
+    champs: bon_commande, bon_commande_reference, created_by, date_creation, date_versement, facture_imputee, id, mode, mode_display, montant, montant_consomme, montant_non_consomme, note
+    mode ∈ {autre, carte, cheque, effet, especes, virement}
+- frontend/src/api/stockApi.js :: getAvoirsFournisseurDe -> /api/django/stock/avoirs-fournisseur  [AvoirFournisseurSerializer]
+    champs: created_by, date_creation, date_mise_a_jour, facture_origine, fournisseur, fournisseur_nom, id, imputations, montant_disponible, montant_ht, montant_impute, montant_ttc, montant_tva, note, reference, retour, retour_reference, statut, statut_display
+    statut ∈ {brouillon, impute, valide}
+- frontend/src/api/stockApi.js :: getBonCommandeFournisseur -> /api/django/stock/bons-commande-fournisseur/<>  [BonCommandeFournisseurSerializer]
+    champs: acheteur, acomptes, chantier_livraison, conditions_paiement, created_by, created_by_username, date_commande, date_confirmee_fournisseur, date_creation, date_livraison_prevue, date_mise_a_jour, devise, emplacement_destination, est_entierement_recu, fournisseur, fournisseur_nom, id, incoterm, lignes, motif_annulation, nb_relances, note, note_bas_page, numero_confirmation_fournisseur, ref_fournisseur, reference, revision, statut, statut_display, taux_change, total_achat
+    devise ∈ {CNY, EUR, MAD, USD}
+    statut ∈ {annule, brouillon, envoye, recu}
+- frontend/src/api/stockApi.js :: getBonsCommandeFournisseur -> /api/django/stock/bons-commande-fournisseur  [BonCommandeFournisseurSerializer]
+    champs: acheteur, acomptes, chantier_livraison, conditions_paiement, created_by, created_by_username, date_commande, date_confirmee_fournisseur, date_creation, date_livraison_prevue, date_mise_a_jour, devise, emplacement_destination, est_entierement_recu, fournisseur, fournisseur_nom, id, incoterm, lignes, motif_annulation, nb_relances, note, note_bas_page, numero_confirmation_fournisseur, ref_fournisseur, reference, revision, statut, statut_display, taux_change, total_achat
+    devise ∈ {CNY, EUR, MAD, USD}
+    statut ∈ {annule, brouillon, envoye, recu}
+- frontend/src/api/stockApi.js :: getBonsCommandeFournisseurDe -> /api/django/stock/bons-commande-fournisseur  [BonCommandeFournisseurSerializer]
+    champs: acheteur, acomptes, chantier_livraison, conditions_paiement, created_by, created_by_username, date_commande, date_confirmee_fournisseur, date_creation, date_livraison_prevue, date_mise_a_jour, devise, emplacement_destination, est_entierement_recu, fournisseur, fournisseur_nom, id, incoterm, lignes, motif_annulation, nb_relances, note, note_bas_page, numero_confirmation_fournisseur, ref_fournisseur, reference, revision, statut, statut_display, taux_change, total_achat
+    devise ∈ {CNY, EUR, MAD, USD}
+    statut ∈ {annule, brouillon, envoye, recu}
+- frontend/src/api/stockApi.js :: getCategoriesFournisseur -> /api/django/stock/categories-fournisseur  [CategorieFournisseurSerializer]
+    champs: archived, id, nom
+- frontend/src/api/stockApi.js :: getConditionnementsProduit -> /api/django/stock/conditionnements  [ConditionnementProduitSerializer]
+    champs: code_barres, date_creation, facteur, id, nom, produit, produit_nom, unite_stock
+- frontend/src/api/stockApi.js :: getContactsFournisseurDe -> /api/django/stock/contacts-fournisseur  [ContactFournisseurSerializer]
+    champs: email, fonction, fournisseur, id, nom, telephone
+- frontend/src/api/stockApi.js :: getDocumentsConformiteFournisseur -> /api/django/stock/documents-conformite-fournisseur  [DocumentConformiteFournisseurSerializer]
+    champs: date_creation, date_emission, date_expiration, date_modification, est_valide, fournisseur, fournisseur_nom, id, note, obligatoire, reference, type_document, type_document_display
+    type_document ∈ {arf, assurance, autre, cnss, rc}
+- frontend/src/api/stockApi.js :: getFactureFournisseur -> /api/django/stock/factures-fournisseur/<>  [FactureFournisseurSerializer]
+    champs: bon_commande, bon_commande_reference, created_by, created_by_username, date_creation, date_echeance, date_facture, date_mise_a_jour, devise, echeances, fournisseur, fournisseur_nom, id, lignes, montant_ht, montant_ttc, montant_ttc_devise, montant_tva, motif_ecart, note, numero_clearance_dgi, paiements, ref_fournisseur, reference, resolu_le, resolu_par, resolu_par_username, solde_du, sous_totaux_par_taux, statut, statut_conformite_dgi, statut_conformite_dgi_display, statut_controle, statut_controle_display, statut_display, taux_change, total_acomptes_imputes, total_avoirs_imputes, total_paye, type_achat
+    devise ∈ {CNY, EUR, MAD, USD}
+    statut ∈ {a_payer, partiellement_payee, payee}
+    statut_conformite_dgi ∈ {cleared, non_applicable, non_cleared}
+    statut_controle ∈ {exception, normale, resolue}
+    type_achat ∈ {biens, services}
+- frontend/src/api/stockApi.js :: getFacturesFournisseur -> /api/django/stock/factures-fournisseur  [FactureFournisseurSerializer]
+    champs: bon_commande, bon_commande_reference, created_by, created_by_username, date_creation, date_echeance, date_facture, date_mise_a_jour, devise, echeances, fournisseur, fournisseur_nom, id, lignes, montant_ht, montant_ttc, montant_ttc_devise, montant_tva, motif_ecart, note, numero_clearance_dgi, paiements, ref_fournisseur, reference, resolu_le, resolu_par, resolu_par_username, solde_du, sous_totaux_par_taux, statut, statut_conformite_dgi, statut_conformite_dgi_display, statut_controle, statut_controle_display, statut_display, taux_change, total_acomptes_imputes, total_avoirs_imputes, total_paye, type_achat
+    devise ∈ {CNY, EUR, MAD, USD}
+    statut ∈ {a_payer, partiellement_payee, payee}
+    statut_conformite_dgi ∈ {cleared, non_applicable, non_cleared}
+    statut_controle ∈ {exception, normale, resolue}
+    type_achat ∈ {biens, services}
+- frontend/src/api/stockApi.js :: getFacturesFournisseurDe -> /api/django/stock/factures-fournisseur  [FactureFournisseurSerializer]
+    champs: bon_commande, bon_commande_reference, created_by, created_by_username, date_creation, date_echeance, date_facture, date_mise_a_jour, devise, echeances, fournisseur, fournisseur_nom, id, lignes, montant_ht, montant_ttc, montant_ttc_devise, montant_tva, motif_ecart, note, numero_clearance_dgi, paiements, ref_fournisseur, reference, resolu_le, resolu_par, resolu_par_username, solde_du, sous_totaux_par_taux, statut, statut_conformite_dgi, statut_conformite_dgi_display, statut_controle, statut_controle_display, statut_display, taux_change, total_acomptes_imputes, total_avoirs_imputes, total_paye, type_achat
+    devise ∈ {CNY, EUR, MAD, USD}
+    statut ∈ {a_payer, partiellement_payee, payee}
+    statut_conformite_dgi ∈ {cleared, non_applicable, non_cleared}
+    statut_controle ∈ {exception, normale, resolue}
+    type_achat ∈ {biens, services}
+- frontend/src/api/stockApi.js :: getFichesTechniques -> /api/django/stock/fiches-techniques  [FicheTechniqueSerializer]
+    champs: date_creation, date_mise_a_jour, id, imp_a, isc_a, pdf, pmax_wc, produit, produit_garantie, produit_marque, produit_nom, rendement_pct, vmp_v, voc_v
+- frontend/src/api/stockApi.js :: getInventaireSession -> /api/django/stock/inventaire-sessions/<>  [InventaireSessionSerializer]
+    champs: created_by, created_by_username, date_creation, date_mise_a_jour, id, lignes, motif, reference, statut, statut_display
+    statut ∈ {annule, brouillon, valide}
+- frontend/src/api/stockApi.js :: getInventaireSessions -> /api/django/stock/inventaire-sessions  [InventaireSessionSerializer]
+    champs: created_by, created_by_username, date_creation, date_mise_a_jour, id, lignes, motif, reference, statut, statut_display
+    statut ∈ {annule, brouillon, valide}
+- frontend/src/api/stockApi.js :: getInventairesAnnuels -> /api/django/stock/inventaires-annuels  [InventaireAnnuelSerializer]
+    champs: date_creation, date_reference, donnees, exercice, id, nb_lignes, total_valeur
+- frontend/src/api/stockApi.js :: getKits -> /api/django/stock/kits  [KitProduitSerializer]
+    champs: composants, date_creation, date_mise_a_jour, description, disponibilite_potentielle, id, is_archived, nb_composants, nom, sku
+- frontend/src/api/stockApi.js :: getLotsEntrepot -> /api/django/stock/lots-entrepot  [LotEntrepotSerializer]
+    champs: date_creation, date_modification, date_peremption, emplacement, emplacement_nom, est_perime, id, numero_lot, produit, produit_nom, quantite_recue, quantite_restante, reference_reception
+- frontend/src/api/stockApi.js :: getModeleBcf -> /api/django/stock/modeles-bcf/<>  [ModeleBonCommandeFournisseurSerializer]
+    champs: date_creation, date_mise_a_jour, fournisseur, fournisseur_nom, id, lignes, nom, note
+- frontend/src/api/stockApi.js :: getModelesBcf -> /api/django/stock/modeles-bcf  [ModeleBonCommandeFournisseurSerializer]
+    champs: date_creation, date_mise_a_jour, fournisseur, fournisseur_nom, id, lignes, nom, note
+- frontend/src/api/stockApi.js :: getNomenclaturesCodeBarres -> /api/django/stock/nomenclatures-code-barres  [NomenclatureCodeBarresSerializer]
+    champs: actif, date_creation, date_mise_a_jour, id, nom, regles, type_nomenclature
+    type_nomenclature ∈ {default, gs1}
+- frontend/src/api/stockApi.js :: getProduit -> /api/django/stock/produits/<>  [ProduitSerializer]
+    champs: avertissement_bloquant, avertissement_vente, bcf_sources_en_commande, categorie, categorie_id, categorie_type, categorie_type_display, code_barres, code_sh, company, courbe_pompe, custom_data, date_creation, date_mise_a_jour, debit_m3j, derniere_date_mouvement, description, description_localise, entite, fournisseur, fournisseur_id, garantie, garantie_mois, garantie_production_mois, hmt_m, id, image_url, is_archived, is_low_stock, is_low_stock_disponible, marge_pct, marque, nb_mouvements, nom, nom_localise, pays_origine, politique_facturation_achat, pompe_cv, pompe_kw, premiere_date_mouvement, prix_achat, prix_vente, quantite_disponible, quantite_en_commande, quantite_reservee, quantite_stock, seuil_alerte, sku, stock_par_emplacement, suivi_serie, tension_v, tva, unite, unite_stock, unite_stock_display
+    politique_facturation_achat ∈ {sur_commande, sur_reception}
+- frontend/src/api/stockApi.js :: getProduits -> /api/django/stock/produits  [ProduitSerializer]
+    champs: avertissement_bloquant, avertissement_vente, bcf_sources_en_commande, categorie, categorie_id, categorie_type, categorie_type_display, code_barres, code_sh, company, courbe_pompe, custom_data, date_creation, date_mise_a_jour, debit_m3j, derniere_date_mouvement, description, description_localise, entite, fournisseur, fournisseur_id, garantie, garantie_mois, garantie_production_mois, hmt_m, id, image_url, is_archived, is_low_stock, is_low_stock_disponible, marge_pct, marque, nb_mouvements, nom, nom_localise, pays_origine, politique_facturation_achat, pompe_cv, pompe_kw, premiere_date_mouvement, prix_achat, prix_vente, quantite_disponible, quantite_en_commande, quantite_reservee, quantite_stock, seuil_alerte, sku, stock_par_emplacement, suivi_serie, tension_v, tva, unite, unite_stock, unite_stock_display
+    politique_facturation_achat ∈ {sur_commande, sur_reception}
+- frontend/src/api/stockApi.js :: getProduitsArchived -> /api/django/stock/produits  [ProduitSerializer]
+    champs: avertissement_bloquant, avertissement_vente, bcf_sources_en_commande, categorie, categorie_id, categorie_type, categorie_type_display, code_barres, code_sh, company, courbe_pompe, custom_data, date_creation, date_mise_a_jour, debit_m3j, derniere_date_mouvement, description, description_localise, entite, fournisseur, fournisseur_id, garantie, garantie_mois, garantie_production_mois, hmt_m, id, image_url, is_archived, is_low_stock, is_low_stock_disponible, marge_pct, marque, nb_mouvements, nom, nom_localise, pays_origine, politique_facturation_achat, pompe_cv, pompe_kw, premiere_date_mouvement, prix_achat, prix_vente, quantite_disponible, quantite_en_commande, quantite_reservee, quantite_stock, seuil_alerte, sku, stock_par_emplacement, suivi_serie, tension_v, tva, unite, unite_stock, unite_stock_display
+    politique_facturation_achat ∈ {sur_commande, sur_reception}
+- frontend/src/api/stockApi.js :: getReceptionFournisseur -> /api/django/stock/receptions-fournisseur/<>  [ReceptionFournisseurSerializer]
+    champs: bon_commande, bon_commande_reference, controle_qhse_ouvert, created_by, created_by_username, date_creation, date_reception, fournisseur_nom, id, lignes, note, recu_par, recu_par_username, reference, statut, statut_display, total_recu
+    statut ∈ {annule, brouillon, confirme}
+- frontend/src/api/stockApi.js :: getReceptionsFournisseur -> /api/django/stock/receptions-fournisseur  [ReceptionFournisseurSerializer]
+    champs: bon_commande, bon_commande_reference, controle_qhse_ouvert, created_by, created_by_username, date_creation, date_reception, fournisseur_nom, id, lignes, note, recu_par, recu_par_username, reference, statut, statut_display, total_recu
+    statut ∈ {annule, brouillon, confirme}
+- frontend/src/api/stockApi.js :: getRetourFournisseur -> /api/django/stock/retours-fournisseur/<>  [RetourFournisseurSerializer]
+    champs: bon_commande, bon_commande_reference, created_by, created_by_username, date_creation, fournisseur, fournisseur_nom, id, lignes, motif, reference, statut, statut_display
+    statut ∈ {annule, brouillon, valide}
+- frontend/src/api/stockApi.js :: getRetoursFournisseur -> /api/django/stock/retours-fournisseur  [RetourFournisseurSerializer]
+    champs: bon_commande, bon_commande_reference, created_by, created_by_username, date_creation, fournisseur, fournisseur_nom, id, lignes, motif, reference, statut, statut_display
+    statut ∈ {annule, brouillon, valide}
+- frontend/src/api/stockApi.js :: getRetoursFournisseurDe -> /api/django/stock/retours-fournisseur  [RetourFournisseurSerializer]
+    champs: bon_commande, bon_commande_reference, created_by, created_by_username, date_creation, fournisseur, fournisseur_nom, id, lignes, motif, reference, statut, statut_display
+    statut ∈ {annule, brouillon, valide}
+- frontend/src/api/stockApi.js :: getRevalorisationsStock -> /api/django/stock/revalorisations-stock  [RevalorisationStockSerializer]
+    champs: ancien_cout, auteur, date_creation, date_validation, delta_valeur, id, motif, nouveau_cout, produit, produit_nom, quantite_snapshot, statut
+    statut ∈ {brouillon, validee}
+- frontend/src/api/stockApi.js :: getTransferts -> /api/django/stock/transferts  [TransfertStockSerializer]
+    champs: created_by_username, date, destination, destination_nom, id, note, produit, produit_nom, quantite, source, source_nom
+- frontend/src/api/stockApi.js :: patchProduit -> /api/django/stock/produits/<>  [ProduitSerializer]
+    champs: avertissement_bloquant, avertissement_vente, bcf_sources_en_commande, categorie, categorie_id, categorie_type, categorie_type_display, code_barres, code_sh, company, courbe_pompe, custom_data, date_creation, date_mise_a_jour, debit_m3j, derniere_date_mouvement, description, description_localise, entite, fournisseur, fournisseur_id, garantie, garantie_mois, garantie_production_mois, hmt_m, id, image_url, is_archived, is_low_stock, is_low_stock_disponible, marge_pct, marque, nb_mouvements, nom, nom_localise, pays_origine, politique_facturation_achat, pompe_cv, pompe_kw, premiere_date_mouvement, prix_achat, prix_vente, quantite_disponible, quantite_en_commande, quantite_reservee, quantite_stock, seuil_alerte, sku, stock_par_emplacement, suivi_serie, tension_v, tva, unite, unite_stock, unite_stock_display
+    politique_facturation_achat ∈ {sur_commande, sur_reception}
+- frontend/src/api/stockApi.js :: updateAcompteFournisseur -> /api/django/stock/acomptes-fournisseur/<>  [AcompteFournisseurSerializer]
+    champs: bon_commande, bon_commande_reference, created_by, date_creation, date_versement, facture_imputee, id, mode, mode_display, montant, montant_consomme, montant_non_consomme, note
+    mode ∈ {autre, carte, cheque, effet, especes, virement}
+- frontend/src/api/stockApi.js :: updateBonCommandeFournisseur -> /api/django/stock/bons-commande-fournisseur/<>  [BonCommandeFournisseurSerializer]
+    champs: acheteur, acomptes, chantier_livraison, conditions_paiement, created_by, created_by_username, date_commande, date_confirmee_fournisseur, date_creation, date_livraison_prevue, date_mise_a_jour, devise, emplacement_destination, est_entierement_recu, fournisseur, fournisseur_nom, id, incoterm, lignes, motif_annulation, nb_relances, note, note_bas_page, numero_confirmation_fournisseur, ref_fournisseur, reference, revision, statut, statut_display, taux_change, total_achat
+    devise ∈ {CNY, EUR, MAD, USD}
+    statut ∈ {annule, brouillon, envoye, recu}
+- frontend/src/api/stockApi.js :: updateCategorieFournisseur -> /api/django/stock/categories-fournisseur/<>  [CategorieFournisseurSerializer]
+    champs: archived, id, nom
+- frontend/src/api/stockApi.js :: updateConditionnementProduit -> /api/django/stock/conditionnements/<>  [ConditionnementProduitSerializer]
+    champs: code_barres, date_creation, facteur, id, nom, produit, produit_nom, unite_stock
+- frontend/src/api/stockApi.js :: updateContactFournisseur -> /api/django/stock/contacts-fournisseur/<>  [ContactFournisseurSerializer]
+    champs: email, fonction, fournisseur, id, nom, telephone
+- frontend/src/api/stockApi.js :: updateFactureFournisseur -> /api/django/stock/factures-fournisseur/<>  [FactureFournisseurSerializer]
+    champs: bon_commande, bon_commande_reference, created_by, created_by_username, date_creation, date_echeance, date_facture, date_mise_a_jour, devise, echeances, fournisseur, fournisseur_nom, id, lignes, montant_ht, montant_ttc, montant_ttc_devise, montant_tva, motif_ecart, note, numero_clearance_dgi, paiements, ref_fournisseur, reference, resolu_le, resolu_par, resolu_par_username, solde_du, sous_totaux_par_taux, statut, statut_conformite_dgi, statut_conformite_dgi_display, statut_controle, statut_controle_display, statut_display, taux_change, total_acomptes_imputes, total_avoirs_imputes, total_paye, type_achat
+    devise ∈ {CNY, EUR, MAD, USD}
+    statut ∈ {a_payer, partiellement_payee, payee}
+    statut_conformite_dgi ∈ {cleared, non_applicable, non_cleared}
+    statut_controle ∈ {exception, normale, resolue}
+    type_achat ∈ {biens, services}
+- frontend/src/api/stockApi.js :: updateFicheTechnique -> /api/django/stock/fiches-techniques/<>  [FicheTechniqueSerializer]
+    champs: date_creation, date_mise_a_jour, id, imp_a, isc_a, pdf, pmax_wc, produit, produit_garantie, produit_marque, produit_nom, rendement_pct, vmp_v, voc_v
+- frontend/src/api/stockApi.js :: updateModeleBcf -> /api/django/stock/modeles-bcf/<>  [ModeleBonCommandeFournisseurSerializer]
+    champs: date_creation, date_mise_a_jour, fournisseur, fournisseur_nom, id, lignes, nom, note
+- frontend/src/api/stockApi.js :: updateNomenclatureCodeBarres -> /api/django/stock/nomenclatures-code-barres/<>  [NomenclatureCodeBarresSerializer]
+    champs: actif, date_creation, date_mise_a_jour, id, nom, regles, type_nomenclature
+    type_nomenclature ∈ {default, gs1}
+- frontend/src/api/stockApi.js :: updatePrixFournisseur -> /api/django/stock/prix-fournisseurs/<>  [PrixFournisseurSerializer]
+    champs: date_debut, date_dernier_achat, date_fin, delai_livraison_jours, fournisseur, fournisseur_nom, id, paliers, prix_achat, produit, produit_nom, ref_produit_fournisseur
+- frontend/src/api/stockApi.js :: updateProduit -> /api/django/stock/produits/<>  [ProduitSerializer]
+    champs: avertissement_bloquant, avertissement_vente, bcf_sources_en_commande, categorie, categorie_id, categorie_type, categorie_type_display, code_barres, code_sh, company, courbe_pompe, custom_data, date_creation, date_mise_a_jour, debit_m3j, derniere_date_mouvement, description, description_localise, entite, fournisseur, fournisseur_id, garantie, garantie_mois, garantie_production_mois, hmt_m, id, image_url, is_archived, is_low_stock, is_low_stock_disponible, marge_pct, marque, nb_mouvements, nom, nom_localise, pays_origine, politique_facturation_achat, pompe_cv, pompe_kw, premiere_date_mouvement, prix_achat, prix_vente, quantite_disponible, quantite_en_commande, quantite_reservee, quantite_stock, seuil_alerte, sku, stock_par_emplacement, suivi_serie, tension_v, tva, unite, unite_stock, unite_stock_display
+    politique_facturation_achat ∈ {sur_commande, sur_reception}
+- frontend/src/api/stockApi.js :: updateRegleCodeBarres -> /api/django/stock/regles-code-barres/<>  [RegleCodeBarresSerializer]
+    champs: encode, est_regex, id, motif, nomenclature, priorite
+    encode ∈ {emplacement, lot, produit, quantite, serie}
+- frontend/src/api/uxviewsApi.js :: createSavedView -> /api/django/uxviews/saved-views  [SavedViewSerializer]
+    champs: configuration, created_at, ecran, est_defaut_role, id, nom, owner, owner_nom, role, role_nom, updated_at, visibilite
+    visibilite ∈ {EQUIPE, PERSONNELLE}
+- frontend/src/api/uxviewsApi.js :: deleteSavedView -> /api/django/uxviews/saved-views/<>  [SavedViewSerializer]
+    champs: configuration, created_at, ecran, est_defaut_role, id, nom, owner, owner_nom, role, role_nom, updated_at, visibilite
+    visibilite ∈ {EQUIPE, PERSONNELLE}
+- frontend/src/api/uxviewsApi.js :: listSavedViews -> /api/django/uxviews/saved-views  [SavedViewSerializer]
+    champs: configuration, created_at, ecran, est_defaut_role, id, nom, owner, owner_nom, role, role_nom, updated_at, visibilite
+    visibilite ∈ {EQUIPE, PERSONNELLE}
+- frontend/src/api/uxviewsApi.js :: updateSavedView -> /api/django/uxviews/saved-views/<>  [SavedViewSerializer]
+    champs: configuration, created_at, ecran, est_defaut_role, id, nom, owner, owner_nom, role, role_nom, updated_at, visibilite
+    visibilite ∈ {EQUIPE, PERSONNELLE}
+- frontend/src/api/ventesApi.js :: createListePrix -> /api/django/ventes/listes-prix  [ListePrixSerializer]
+    champs: archived, company, created_at, date_debut, date_fin, devise, est_active, id, lignes, nom, regles
+- frontend/src/api/ventesApi.js :: deleteListePrix -> /api/django/ventes/listes-prix/<>  [ListePrixSerializer]
+    champs: archived, company, created_at, date_debut, date_fin, devise, est_active, id, lignes, nom, regles
+- frontend/src/api/ventesApi.js :: deleteNiveauRelance -> /api/django/ventes/niveaux-relance/<>  [FollowupLevelSerializer]
+    champs: canal, delai_jours, frais_fixes, id, message, nom, ordre, taux_interet_annuel
+    canal ∈ {appel, courrier, email, whatsapp}
+- frontend/src/api/ventesApi.js :: getListePrix -> /api/django/ventes/listes-prix/<>  [ListePrixSerializer]
+    champs: archived, company, created_at, date_debut, date_fin, devise, est_active, id, lignes, nom, regles
+- frontend/src/api/ventesApi.js :: getListesPrix -> /api/django/ventes/listes-prix  [ListePrixSerializer]
+    champs: archived, company, created_at, date_debut, date_fin, devise, est_active, id, lignes, nom, regles
+- frontend/src/api/ventesApi.js :: getNiveauxRelance -> /api/django/ventes/niveaux-relance  [FollowupLevelSerializer]
+    champs: canal, delai_jours, frais_fixes, id, message, nom, ordre, taux_interet_annuel
+    canal ∈ {appel, courrier, email, whatsapp}
+- frontend/src/api/ventesApi.js :: patchListePrix -> /api/django/ventes/listes-prix/<>  [ListePrixSerializer]
+    champs: archived, company, created_at, date_debut, date_fin, devise, est_active, id, lignes, nom, regles
+- frontend/src/api/ventesApi.js :: updateListePrix -> /api/django/ventes/listes-prix/<>  [ListePrixSerializer]
+    champs: archived, company, created_at, date_debut, date_fin, devise, est_active, id, lignes, nom, regles
+- frontend/src/api/voipApi.js :: getAppels -> /api/django/voip/appels  [AppelSerializer]
+    champs: cible, direction, duree_secondes, ended_at, external_call_id, fournisseur, id, issue, numero, numero_normalise, started_at, statut, utilisateur
+    direction ∈ {entrant, sortant}
+    statut ∈ {en_cours, initie, manque, sonnant, termine}
+- frontend/src/features/adminops/adminopsApi.js :: listPackages -> /api/django/adminops/config-packages  [ConfigPackageSerializer]
+    champs: contenu, contenu_purge, cree_par, date_creation, id, nom, version
+- frontend/src/features/adminops/adminopsApi.js :: listSandbox -> /api/django/adminops/sandbox  [SandboxEnvironmentSerializer]
+    champs: cree_par, date_creation, date_expiration, erreur, id, prolongations_count, sandbox_company, statut
+    statut ∈ {echec, en_creation, expire, pret}
+- frontend/src/features/adsengine/adsengineApi.js :: create -> /api/django/adsengine/regles  [RulePolicySerializer]
+    champs: cadence_hours, conditions, cooldown_hours, created_at, dry_run, enabled, id, last_evaluated_at, last_result, mode, params, template_key, updated_at
+    mode ∈ {auto, propose}
+- frontend/src/features/adsengine/adsengineApi.js :: log -> /api/django/adsengine/actions  [EngineActionSerializer]
+    champs: applied_at, approved_by, auto, created_at, error, id, kind, payload, proposed_by, reason_fr, result, status, updated_at
+    kind ∈ {create_ad, create_adset, create_campaign, edit_copy, pause, rebalance_budget, rename, rotate_creative, set_spend_cap}
+    status ∈ {appliquee, approuvee, echouee, proposee, rejetee}
+- frontend/src/features/adsengine/adsengineApi.js :: nodes -> /api/django/adsengine/noeuds-hypothese  [AssumptionNodeSerializer]
+    champs: alpha, alpha0, beta, beta0, classe, created_at, dead_branch, demi_vie_semaines, enjeux_s, enonce_fr, id, invalidation_links, last_tested_at, parent, pertinence_r, statut, tags_saison, updated_at
+    classe ∈ {angle, audience_structure, creatif}
+    statut ∈ {assumed, retired, stale, testing, validated}
+- frontend/src/features/adsengine/adsengineApi.js :: pending -> /api/django/adsengine/actions  [EngineActionSerializer]
+    champs: applied_at, approved_by, auto, created_at, error, id, kind, payload, proposed_by, reason_fr, result, status, updated_at
+    kind ∈ {create_ad, create_adset, create_campaign, edit_copy, pause, rebalance_budget, rename, rotate_creative, set_spend_cap}
+    status ∈ {appliquee, approuvee, echouee, proposee, rejetee}
+- frontend/src/features/assurances/assurancesApi.js :: createActifCouvert -> /api/django/assurances/actifs-couverts  [ActifCouvertSerializer]
+    champs: actif_libelle, actif_ref, company, date_ajout, id, police, type_actif
+    type_actif ∈ {autre, equipement, site, vehicule}
+- frontend/src/features/assurances/assurancesApi.js :: createAssureur -> /api/django/assurances/assureurs  [AssureurSerializer]
+    champs: actif, adresse, company, email, ice, id, raison_sociale, telephone
+- frontend/src/features/assurances/assurancesApi.js :: createAttestation -> /api/django/assurances/attestations  [AttestationAssuranceSerializer]
+    champs: company, created_at, date_emission, date_validite, emise_pour, id, police, statut
+    statut ∈ {expiree, valide}
+- frontend/src/features/assurances/assurancesApi.js :: createCourtier -> /api/django/assurances/courtiers  [CourtierSerializer]
+    champs: actif, company, email, id, numero_agrement, raison_sociale, telephone
+- frontend/src/features/assurances/assurancesApi.js :: createExigenceMarche -> /api/django/assurances/exigences-assurance-marche  [ExigenceAssuranceMarcheSerializer]
+    champs: company, created_at, id, marche_ref, montant_couverture_minimum, statut_verification, type_police_requis, type_police_requis_display
+    statut_verification ∈ {a_verifier, conforme, non_conforme}
+    type_police_requis ∈ {autre, bris_machine, cyber, decennale, homme_cle, multirisque, perte_exploitation, rc_pro, transport_marchandises}
+- frontend/src/features/assurances/assurancesApi.js :: createGarantie -> /api/django/assurances/garanties-police  [GarantiePoliceSerializer]
+    champs: company, franchise_montant, franchise_pourcentage, id, libelle_garantie, notes, plafond_indemnisation, police
+- frontend/src/features/assurances/assurancesApi.js :: createSinistre -> /api/django/assurances/declarations-sinistre  [DeclarationSinistreSerializer]
+    champs: company, conteste, created_at, date_declaration, date_survenance, description, dossier_contentieux_ref, flotte_sinistre_id, id, montant_estime_degats, nature_sinistre, numero_dossier, police, risque_libelle, risque_ref, statut, type_sinistre, type_sinistre_display
+    statut ∈ {clos, declare, en_expertise, indemnise, refuse}
+    type_sinistre ∈ {autre, cyber, decennale, dommage_materiel, incendie, responsabilite_civile, vol}
+- frontend/src/features/assurances/assurancesApi.js :: deleteExigenceMarche -> /api/django/assurances/exigences-assurance-marche/<>  [ExigenceAssuranceMarcheSerializer]
+    champs: company, created_at, id, marche_ref, montant_couverture_minimum, statut_verification, type_police_requis, type_police_requis_display
+    statut_verification ∈ {a_verifier, conforme, non_conforme}
+    type_police_requis ∈ {autre, bris_machine, cyber, decennale, homme_cle, multirisque, perte_exploitation, rc_pro, transport_marchandises}
+- frontend/src/features/assurances/assurancesApi.js :: getActifsCouverts -> /api/django/assurances/actifs-couverts  [ActifCouvertSerializer]
+    champs: actif_libelle, actif_ref, company, date_ajout, id, police, type_actif
+    type_actif ∈ {autre, equipement, site, vehicule}
+- frontend/src/features/assurances/assurancesApi.js :: getAssureurs -> /api/django/assurances/assureurs  [AssureurSerializer]
+    champs: actif, adresse, company, email, ice, id, raison_sociale, telephone
+- frontend/src/features/assurances/assurancesApi.js :: getAttestations -> /api/django/assurances/attestations  [AttestationAssuranceSerializer]
+    champs: company, created_at, date_emission, date_validite, emise_pour, id, police, statut
+    statut ∈ {expiree, valide}
+- frontend/src/features/assurances/assurancesApi.js :: getCourtiers -> /api/django/assurances/courtiers  [CourtierSerializer]
+    champs: actif, company, email, id, numero_agrement, raison_sociale, telephone
+- frontend/src/features/assurances/assurancesApi.js :: getEcheancesPrime -> /api/django/assurances/echeances-prime  [EcheancePrimeSerializer]
+    champs: company, date_echeance_paiement, ecriture_ref, id, montant, periodicite, police, statut
+    periodicite ∈ {annuelle, mensuelle, semestrielle, trimestrielle}
+    statut ∈ {a_payer, en_retard, payee, proposee_compta}
+- frontend/src/features/assurances/assurancesApi.js :: getExigencesMarche -> /api/django/assurances/exigences-assurance-marche  [ExigenceAssuranceMarcheSerializer]
+    champs: company, created_at, id, marche_ref, montant_couverture_minimum, statut_verification, type_police_requis, type_police_requis_display
+    statut_verification ∈ {a_verifier, conforme, non_conforme}
+    type_police_requis ∈ {autre, bris_machine, cyber, decennale, homme_cle, multirisque, perte_exploitation, rc_pro, transport_marchandises}
+- frontend/src/features/assurances/assurancesApi.js :: getGaranties -> /api/django/assurances/garanties-police  [GarantiePoliceSerializer]
+    champs: company, franchise_montant, franchise_pourcentage, id, libelle_garantie, notes, plafond_indemnisation, police
+- frontend/src/features/assurances/assurancesApi.js :: getSinistre -> /api/django/assurances/declarations-sinistre/<>  [DeclarationSinistreSerializer]
+    champs: company, conteste, created_at, date_declaration, date_survenance, description, dossier_contentieux_ref, flotte_sinistre_id, id, montant_estime_degats, nature_sinistre, numero_dossier, police, risque_libelle, risque_ref, statut, type_sinistre, type_sinistre_display
+    statut ∈ {clos, declare, en_expertise, indemnise, refuse}
+    type_sinistre ∈ {autre, cyber, decennale, dommage_materiel, incendie, responsabilite_civile, vol}
+- frontend/src/features/assurances/assurancesApi.js :: getSinistres -> /api/django/assurances/declarations-sinistre  [DeclarationSinistreSerializer]
+    champs: company, conteste, created_at, date_declaration, date_survenance, description, dossier_contentieux_ref, flotte_sinistre_id, id, montant_estime_degats, nature_sinistre, numero_dossier, police, risque_libelle, risque_ref, statut, type_sinistre, type_sinistre_display
+    statut ∈ {clos, declare, en_expertise, indemnise, refuse}
+    type_sinistre ∈ {autre, cyber, decennale, dommage_materiel, incendie, responsabilite_civile, vol}
+- frontend/src/features/assurances/assurancesApi.js :: updateSinistre -> /api/django/assurances/declarations-sinistre/<>  [DeclarationSinistreSerializer]
+    champs: company, conteste, created_at, date_declaration, date_survenance, description, dossier_contentieux_ref, flotte_sinistre_id, id, montant_estime_degats, nature_sinistre, numero_dossier, police, risque_libelle, risque_ref, statut, type_sinistre, type_sinistre_display
+    statut ∈ {clos, declare, en_expertise, indemnise, refuse}
+    type_sinistre ∈ {autre, cyber, decennale, dommage_materiel, incendie, responsabilite_civile, vol}
