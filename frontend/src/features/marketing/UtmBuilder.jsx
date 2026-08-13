@@ -15,7 +15,7 @@ import { useState } from 'react'
 export const CHAMPS_UTM = [
   { cle: 'utm_source', label: 'Source (utm_source)', exemple: 'linkedin' },
   { cle: 'utm_medium', label: 'Support (utm_medium)', exemple: 'organique' },
-  { cle: 'utm_campaign', label: 'Campagne (utm_campaign)', exemple: 'pompage-2026' },
+  { cle: 'utm_campaign', label: 'Campagne (utm_campaign)', exemple: 'campagne-2026' },
   { cle: 'utm_content', label: 'Contenu (utm_content)', exemple: 'post-carrousel' },
   { cle: 'utm_term', label: 'Mot-clé (utm_term)', exemple: 'pompe solaire' },
 ]
@@ -76,7 +76,7 @@ export default function UtmBuilder() {
       <label>
         URL de destination
         <input className="form-input" data-testid="utm-url-base"
-          placeholder="https://taqinor.ma/pompage"
+          placeholder="https://exemple.ma/offre"
           value={urlBase} onChange={e => { setCopie(false); setUrlBase(e.target.value) }} />
       </label>
 

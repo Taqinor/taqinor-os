@@ -18,6 +18,11 @@ from decimal import Decimal
 from django.conf import settings
 from django.db import models
 
+# SCA4 — socle multi-société partagé (FK company + horodatage) : les modèles
+# AJOUTÉS depuis en héritent au lieu de re-déclarer la paire à la main.
+# ``core`` est une app de FONDATION (import exempt de la frontière M3).
+from core.models import TenantModel
+
 
 # ── FG201 — Campagnes d'envoi groupé email / SMS ───────────────────────────
 
@@ -1779,6 +1784,8 @@ class InscriptionEvenement(models.Model):
     )
     evenement = models.ForeignKey(
         EvenementMarketing,
+        # on_delete: une inscription n'existe que par son événement — sans lui
+        # c'est une ligne orpheline sans aucun sens métier.
         on_delete=models.CASCADE,
         related_name='inscriptions',
         verbose_name='Événement',
@@ -1835,6 +1842,8 @@ class SupportOffline(models.Model):
     """
     company = models.ForeignKey(
         'authentication.Company',
+        # on_delete: donnée strictement multi-société — la suppression d'une
+        # société emporte ses supports (aucune valeur hors de son tenant).
         on_delete=models.CASCADE,
         related_name='supports_offline',
         verbose_name='Société',
@@ -1874,6 +1883,8 @@ class DomaineEnvoi(models.Model):
     """
     company = models.ForeignKey(
         'authentication.Company',
+        # on_delete: donnée strictement multi-société (domaine d'envoi propre
+        # au tenant) — supprimée avec sa société.
         on_delete=models.CASCADE,
         related_name='domaines_envoi',
         verbose_name='Société',
@@ -1931,6 +1942,8 @@ class PostSocial(models.Model):
 
     company = models.ForeignKey(
         'authentication.Company',
+        # on_delete: donnée strictement multi-société — les posts d'une société
+        # disparaissent avec elle.
         on_delete=models.CASCADE,
         related_name='posts_sociaux',
         verbose_name='Société',
@@ -1986,13 +1999,16 @@ class PostSocial(models.Model):
 # ne font qu'AJOUTER un mode de routage multi-embranchements par-dessus le même
 # moteur d'exécution et les mêmes traces (``ExecutionEtapeSequence``).
 
-class NoeudJourney(models.Model):
+class NoeudJourney(TenantModel):
     """Un nœud du graphe d'une séquence de relance (NTMKT12).
 
     Le graphe appartient à une ``SequenceRelance`` EXISTANTE (jamais un second
     moteur) : quand une séquence porte au moins un nœud, le tick parcourt le
     graphe ; sinon il déroule la liste linéaire d'``EtapeSequence`` comme
     avant.
+
+    SCA4 — socle multi-société hérité de ``core.models.TenantModel`` (FK
+    ``company`` + horodatage), jamais re-déclaré à la main.
     """
     class Type(models.TextChoices):
         DECLENCHEUR = 'declencheur', 'Déclencheur'
@@ -2003,14 +2019,10 @@ class NoeudJourney(models.Model):
         BRANCHE = 'branche', 'Branche'
         SORTIE = 'sortie', 'Sortie'
 
-    company = models.ForeignKey(
-        'authentication.Company',
-        on_delete=models.CASCADE,
-        related_name='noeuds_journey',
-        verbose_name='Société',
-    )
     sequence = models.ForeignKey(
         SequenceRelance,
+        # on_delete: un nœud n'existe que dans le graphe de SA séquence —
+        # supprimer la séquence supprime son graphe.
         on_delete=models.CASCADE,
         related_name='noeuds',
         verbose_name='Séquence',
@@ -2043,7 +2055,7 @@ class NoeudJourney(models.Model):
         return f'{self.sequence_id} · {self.type_noeud} ({self.libelle})'
 
 
-class ArcJourney(models.Model):
+class ArcJourney(TenantModel):
     """Une arête orientée entre deux nœuds d'un journey (NTMKT12).
 
     Surclasse le champ ``condition`` UNIQUE d'``EtapeSequence`` (XMKT18) : un
@@ -2057,20 +2069,16 @@ class ArcJourney(models.Model):
         SCORE_SEUIL = 'score_seuil', 'Score >= seuil'
         TAG_PRESENT = 'tag_present', 'Tag présent'
 
-    company = models.ForeignKey(
-        'authentication.Company',
-        on_delete=models.CASCADE,
-        related_name='arcs_journey',
-        verbose_name='Société',
-    )
     source = models.ForeignKey(
         NoeudJourney,
+        # on_delete: une arête sans son nœud source n'a aucun sens (arc mort).
         on_delete=models.CASCADE,
         related_name='arcs_sortants',
         verbose_name='Nœud source',
     )
     cible = models.ForeignKey(
         NoeudJourney,
+        # on_delete: idem — une arête sans nœud cible ne mène nulle part.
         on_delete=models.CASCADE,
         related_name='arcs_entrants',
         verbose_name='Nœud cible',
@@ -2099,19 +2107,13 @@ class ArcJourney(models.Model):
 
 # ── NTMKT15 — Bibliothèque de modèles de journeys ──────────────────────────
 
-class ModeleJourney(models.Model):
+class ModeleJourney(TenantModel):
     """Gabarit de journey prêt à instancier (NTMKT15).
 
     Complète les 5 recettes LINÉAIRES seedées par XMKT20 (qui restent
     intactes) : un modèle porte ici un GRAPHE pré-construit (nœuds + arcs
     NTMKT12) qu'on instancie dans une nouvelle ``SequenceRelance`` éditable.
     """
-    company = models.ForeignKey(
-        'authentication.Company',
-        on_delete=models.CASCADE,
-        related_name='modeles_journey',
-        verbose_name='Société',
-    )
     nom = models.CharField(max_length=200, verbose_name='Nom du modèle')
     categorie = models.CharField(
         max_length=80, blank=True, default='', verbose_name='Catégorie')
@@ -2143,7 +2145,7 @@ class ModeleJourney(models.Model):
 
 # ── NTMKT16 — Landing pages versionnées et publiées ────────────────────────
 
-class VersionFormulaireIntake(models.Model):
+class VersionFormulaireIntake(TenantModel):
     """Une version éditoriale d'une landing page ``FormulaireIntake``
     (NTMKT16).
 
@@ -2153,14 +2155,9 @@ class VersionFormulaireIntake(models.Model):
     dernière version ``publie=True`` (aucune si le formulaire n'a jamais été
     publié — la landing garde alors son rendu historique, sans contenu).
     """
-    company = models.ForeignKey(
-        'authentication.Company',
-        on_delete=models.CASCADE,
-        related_name='versions_formulaire_intake',
-        verbose_name='Société',
-    )
     formulaire = models.ForeignKey(
         FormulaireIntake,
+        # on_delete: une version de page n'existe que par son formulaire.
         on_delete=models.CASCADE,
         related_name='versions',
         verbose_name='Formulaire',
@@ -2199,7 +2196,7 @@ class VersionFormulaireIntake(models.Model):
 
 # ── NTMKT23 — Blocs de contenu réutilisables ───────────────────────────────
 
-class BlocContenu(models.Model):
+class BlocContenu(TenantModel):
     """Fragment de contenu réutilisable dans l'éditeur de campagne (NTMKT23).
 
     L'insertion COPIE le fragment dans le corps de la campagne (snapshot au
@@ -2211,12 +2208,6 @@ class BlocContenu(models.Model):
         IMAGE = 'image', 'Image'
         CTA = 'cta', 'Bouton (CTA)'
 
-    company = models.ForeignKey(
-        'authentication.Company',
-        on_delete=models.CASCADE,
-        related_name='blocs_contenu',
-        verbose_name='Société',
-    )
     nom = models.CharField(max_length=200, verbose_name='Nom du bloc')
     type_bloc = models.CharField(
         max_length=10, choices=Type.choices, default=Type.TEXTE,

@@ -199,6 +199,7 @@ Généré par `python scripts/check_get_or_create.py`. Chaque appel liste ses cl
 | `backend/django_core/apps/installations/views/type_intervention.py:102` | get_or_create | TypeIntervention.objects | cle, company |
 | `backend/django_core/apps/kb/management/commands/seed_kb_templates.py:295` | get_or_create | KbArticle.objects | company, titre |
 | `backend/django_core/apps/kb/services.py:37` | get_or_create | KbLecture.objects | article, utilisateur |
+| `backend/django_core/apps/marketing/services.py:191` | update_or_create | AbonnementListe.objects | destinataire, liste |
 | `backend/django_core/apps/monitoring/models.py:197` | get_or_create | cls.objects | company |
 | `backend/django_core/apps/monitoring/services.py:35` | get_or_create | MonitoringConfig.objects | installation |
 | `backend/django_core/apps/monitoring/services.py:182` | get_or_create | UnderperformanceFlag.objects | installation, is_open |
