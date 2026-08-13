@@ -151,6 +151,26 @@ const educationApi = {
     cloturer: (id) => api.post(`/education/incidents/${id}/cloturer/`),
   },
 
+  // ── Transport scolaire (circuits / arrêts / affectations) — NTEDU23 ──
+  // PACT80 — le backend existait, aucun écran ne le touchait. `circuits.vehicule`
+  // est une FK RÉELLE vers `flotte.Vehicule` (référence par chaîne côté serveur,
+  // disponibilité lue par `flotte/selectors.py`) ; la création/mise à jour d'une
+  // affectation renvoie un champ `avertissement` — un SOFT WARNING qui ne
+  // bloque JAMAIS l'enregistrement.
+  circuitsTransport: {
+    list: (params) => api.get('/education/transport/circuits/', { params }),
+    create: (data) => api.post('/education/transport/circuits/', data),
+    update: (id, data) => api.patch(`/education/transport/circuits/${id}/`, data),
+  },
+  arretsTransport: {
+    list: (params) => api.get('/education/transport/arrets/', { params }),
+    create: (data) => api.post('/education/transport/arrets/', data),
+  },
+  affectationsTransport: {
+    list: (params) => api.get('/education/transport/affectations/', { params }),
+    create: (data) => api.post('/education/transport/affectations/', data),
+  },
+
   // ── Paramètres établissement (singleton par société) — NTEDU19 ──
   parametres: {
     get: () => api.get('/education/parametres/'),

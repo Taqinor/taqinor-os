@@ -35,6 +35,7 @@ urlpatterns = [
     path('push/unsubscribe/', push_unsubscribe, name='push-unsubscribe'),
     # QJ23 — WhatsApp BSP webhook (Meta verify handshake + statut callbacks).
     # Public (pas de JWT) ; securise par verify_token (GET) et signature HMAC (POST).
+    # headless: rappel entrant du BSP WhatsApp, appele par leur serveur
     path(
         'whatsapp/webhook/',
         WhatsAppBspWebhookView.as_view(),

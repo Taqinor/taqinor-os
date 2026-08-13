@@ -135,31 +135,40 @@ urlpatterns = [
     # Q6/Q7 — Proposition web tokenisée (données JSON + e-signature). Jeton
     # ShareLink (long, imprévisible, expirant) ; pas de login. Placé AVANT le
     # routeur pour ne pas être avalé par la route /devis/.
+    # headless: page de proposition publique (apps/web), aucun ecran ERP en face
     path('proposal/<str:token>/', proposal_data, name='proposal-data'),
+    # headless: e-signature depuis la page de proposition publique (apps/web)
     path('proposal/<str:token>/accept/', proposal_accept,
          name='proposal-accept'),
     # Flux PDF CLIENT du devis derrière le même jeton de proposition (W116) —
     # affichage inline. Placé AVANT le routeur (comme les autres routes
     # proposal/) pour ne pas être avalé par la route /devis/.
+    # headless: PDF ouvert par le client dans son navigateur, jamais par axios
     path('proposal/<str:token>/pdf/', proposal_pdf, name='proposal-pdf'),
     # QW5 — le site poste sur CE mount (ventes/), pas sur public/ où ces vues
     # QJ27 vivent déjà (apps/ventes/public_urls.py) — sans cet alias, 404.
     # Même vue, jamais de logique dupliquée.
+    # headless: demande de rappel postee par la page de proposition (apps/web)
     path('proposal/<str:token>/contact/', proposal_contact_request,
          name='proposal-contact-ventes'),
+    # headless: code a usage unique demande par la page publique (apps/web)
     path('proposal/<str:token>/otp/', proposal_request_otp,
          name='proposal-otp-ventes'),
     # XSAL16 — beacon d'engagement par section (backend only ; l'émission
     # côté page proposition part dans docs/WEB_PLAN.md).
+    # headless: beacon d'engagement emis par la page publique (apps/web)
     path('proposal/<str:token>/engagement/', proposal_engagement,
          name='proposal-engagement'),
     # QX33be — déclaration de virement d'acompte (client).
+    # headless: declaration de virement postee par le client (apps/web)
     path('proposal/<str:token>/virement/', proposal_virement_declare,
          name='proposal-virement-ventes'),
     # XSAL5 — activation self-service d'une ligne optionnelle (avant signature).
+    # headless: activation d'option self-service depuis la page publique
     path('proposal/<str:token>/activer-option/', proposal_activate_option,
          name='proposal-activate-option-ventes'),
     # QX34 — suivi post-signature public en lecture seule (timeline jalons).
+    # headless: suivi post-signature public, ouvert par lien tokenise
     path('suivi/<str:token>/', suivi_public, name='suivi-public'),
     # Export comptable : journal des ventes + résumé TVA (.xlsx).
     path('journal-ventes/', journal_ventes, name='journal-ventes'),

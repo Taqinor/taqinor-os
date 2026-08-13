@@ -59,6 +59,7 @@ urlpatterns = [
          name='reporting-calendar-reschedule'),
     # FG6 — flux ICS/iCal par utilisateur (abonnement Google/Outlook). Le flux
     # est authentifié par jeton signé (?token=) — pas de session.
+    # headless: flux .ics colle dans Google/Outlook, telecharge par eux
     path('calendar.ics', calendar_ics, name='reporting-calendar-ics'),
     path('calendar/subscription/', calendar_ics_subscription,
          name='reporting-calendar-ics-subscription'),

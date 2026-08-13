@@ -221,7 +221,10 @@ class AffaireViewSet(viewsets.ModelViewSet):
     def test_liste_et_detail(self):
         routes = self._routes().routes
         self.assertIn(("api", "django", "ao", "appels-offres"), routes)
-        self.assertIn(("api", "django", "ao", "appels-offres", cac.ANY), routes)
+        # PACT151 — la route de detail est marquee `<pk>`, pas `<>` : elle est
+        # ajoutee inconditionnellement par le routeur, donc elle ne peut pas
+        # etre un joker symetrique.
+        self.assertIn(("api", "django", "ao", "appels-offres", cac.PK), routes)
 
     def test_router_urls_dans_urlpatterns(self):
         # `urlpatterns = router.urls + [...]` : sans ce cas, TOUTES les
@@ -243,6 +246,137 @@ class AffaireViewSet(viewsets.ModelViewSet):
         write(self.base / "apps" / "ao" / "views.py", "")
         backend = self._routes()
         self.assertIn(("api", "django", "ao", "appels-offres"), backend.opaque)
+
+
+class JokerPkTests(unittest.TestCase):
+    """PACT151 — le `<pk>` d'un routeur n'avale plus un nom d'action manque.
+
+    LES QUATRE CAS HISTORIQUES, MESURES. `_expand_router` ajoute
+    `base + (<pk>,)` pour CHAQUE `router.register`, meme quand le ViewSet n'a
+    ni `retrieve` ni `list` ; `compatible()` traitait ce joker symetriquement,
+    donc un dernier segment litteral en kebab-case y matchait TOUJOURS. Quatre
+    appels reels du depot etaient ainsi avales — la garde restait VERTE sur
+    quatre 404 :
+
+        /ventes/devis/action-requise/   (PACT17)
+        /compta/ecritures/grand-livre/  (PACT18)
+        /rh/heures-supp/export-paie/    (PACT19)
+        /rh/demandes-conge/calendrier-equipe/ (PACT19)
+
+    Chacun est reproduit ci-dessous SANS son correctif (l'@action n'existe pas)
+    : le test est rouge avant PACT151 (la garde matchait), vert apres.
+    """
+
+    CAS = (
+        (("api", "django", "ventes", "devis"), "action-requise"),
+        (("api", "django", "compta", "ecritures"), "grand-livre"),
+        (("api", "django", "rh", "heures-supp"), "export-paie"),
+        (("api", "django", "rh", "demandes-conge"), "calendrier-equipe"),
+    )
+
+    def _trie(self, base, action=None):
+        """Inventaire REEL d'un `router.register` nu, par le vrai resolveur.
+
+        On passe deliberement par `BackendRoutes` et non par un `trie.add`
+        ecrit a la main : c'est `_expand_router` qui ajoute inconditionnellement
+        la route de detail, et c'est donc lui que ce test doit exercer. Un test
+        qui poserait `<pk>` lui-meme serait vert AVANT le correctif.
+        """
+        app, prefixe = base[2], base[3]
+        extra = ""
+        if action:
+            extra = ("\n    @action(detail=False, url_path=%r)\n"
+                     "    def sous_route(self, request):\n        pass\n" % action)
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        racine = Path(tmp.name)
+        write(racine / "erp_agentique" / "urls.py",
+              "from django.urls import include, path\n"
+              "urlpatterns = [path('api/django/', include([\n"
+              "    path('%s/', include('apps.%s.urls')),\n"
+              "]))]\n" % (app, app))
+        write(racine / "apps" / app / "urls.py",
+              "from django.urls import include, path\n"
+              "from rest_framework.routers import DefaultRouter\n"
+              "from .views import CibleViewSet\n"
+              "router = DefaultRouter()\n"
+              "router.register(r'%s', CibleViewSet, basename='cible')\n"
+              "urlpatterns = [path('', include(router.urls))]\n" % prefixe)
+        write(racine / "apps" / app / "views.py",
+              "from rest_framework import viewsets\n"
+              "from rest_framework.decorators import action\n\n"
+              "class CibleViewSet(viewsets.ModelViewSet):\n"
+              "    pass\n" + extra)
+        backend = cac.BackendRoutes(racine)
+        backend.build()
+        trie = cac.RouteTrie()
+        for route in backend.routes:
+            trie.add(route)
+        return trie
+
+    def test_les_quatre_404_historiques_ne_sont_plus_avales(self):
+        for base, action in self.CAS:
+            with self.subTest(action=action):
+                self.assertFalse(
+                    self._trie(base).matches(base + (action,)),
+                    f"/{'/'.join(base)}/{action}/ doit etre un 404 visible")
+
+    def test_l_action_reellement_enregistree_matche(self):
+        # Le correctif backend (l'@action existe) doit rendre la garde verte :
+        # sans cela, PACT151 casserait les appels CORRECTS.
+        for base, action in self.CAS:
+            with self.subTest(action=action):
+                self.assertTrue(self._trie(base, action=action).matches(base + (action,)))
+
+    def test_une_vraie_cle_primaire_matche_toujours(self):
+        base = ("api", "django", "ventes", "devis")
+        trie = self._trie(base)
+        for cle in ("7", "42", "a3f1b2c4-1111-2222-3333-444455556666", "AB12"):
+            with self.subTest(cle=cle):
+                self.assertTrue(trie.matches(base + (cle,)))
+
+    def test_un_segment_dynamique_du_frontend_matche_toujours(self):
+        # Principe anti-faux-positif : `${id}` cote client est un joker.
+        base = ("api", "django", "ventes", "devis")
+        self.assertTrue(self._trie(base).matches(base + (cac.ANY,)))
+
+    def test_un_parametre_d_url_declare_reste_un_joker(self):
+        # `path('<str:token>/')` produit un `ANY`, pas un `<pk>` de routeur :
+        # un jeton en kebab-case doit continuer d'y matcher.
+        trie = cac.RouteTrie()
+        trie.add(("api", "django", "ged", "public", cac.ANY))
+        self.assertTrue(trie.matches(("api", "django", "ged", "public", "mon-jeton")))
+
+    def test_seul_le_DERNIER_segment_est_concerne(self):
+        # `/devis/<pk>/lignes/` : le segment kebab-case n'est pas terminal, la
+        # route de detail est reellement traversee.
+        base = ("api", "django", "ventes", "devis")
+        trie = cac.RouteTrie()
+        trie.add(base + (cac.ANY, "lignes"))
+        self.assertTrue(trie.matches(base + ("mon-devis", "lignes")))
+
+    def test_est_nom_d_action(self):
+        for segment in ("action-requise", "grand-livre", "export-paie",
+                        "calendrier-equipe"):
+            self.assertTrue(cac.est_nom_d_action(segment), segment)
+        for segment in ("7", "42", "abc", "Grand-Livre", "a3f1-b2c4", "x_y"):
+            self.assertFalse(cac.est_nom_d_action(segment), segment)
+
+    def test_compatible_est_symetrique_avec_le_trie(self):
+        base = ("api", "django", "ventes", "devis")
+        self.assertFalse(cac.compatible(base + ("action-requise",), base + (cac.PK,)))
+        self.assertTrue(cac.compatible(base + ("7",), base + (cac.PK,)))
+        self.assertTrue(cac.compatible(base + (cac.ANY,), base + (cac.PK,)))
+
+    def test_la_route_de_detail_reste_bien_declaree(self):
+        # Garde-fou : le correctif ne doit pas SUPPRIMER la route de detail
+        # (ce serait une avalanche de faux positifs sur tous les `/x/${id}/`).
+        base = ("api", "django", "ventes", "devis")
+        backend_routes = self._trie(base).root
+        noeud = backend_routes
+        for segment in base:
+            noeud = noeud[segment]
+        self.assertIn(cac.PK, noeud)
 
 
 class BaselineTests(unittest.TestCase):

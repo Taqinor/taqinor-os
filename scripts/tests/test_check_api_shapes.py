@@ -29,16 +29,20 @@ def write(path: Path, text: str):
 _CONTRAT_REEL = None
 
 
-def contrat_reel():
-    """Le contrat derive du VRAI depot, construit UNE SEULE FOIS.
+def contrat_complet_reel():
+    """(shapes, serialiseurs) derives du VRAI depot, construits UNE SEULE FOIS.
 
-    `build_contract()` relit tout le backend (~40 s) : le rappeler dans chaque
-    test qui en a besoin triplait la duree du fichier.
+    `build_contract_complet()` relit tout le backend (~40 s) : le rappeler dans
+    chaque test qui en a besoin triplait la duree du fichier.
     """
     global _CONTRAT_REEL
     if _CONTRAT_REEL is None:
-        _CONTRAT_REEL = shapes.build_contract()
+        _CONTRAT_REEL = shapes.build_contract_complet()
     return _CONTRAT_REEL
+
+
+def contrat_reel():
+    return contrat_complet_reel()[0]
 
 
 class ShapeReaderTests(unittest.TestCase):
@@ -512,7 +516,404 @@ tableauMarches.mockResolvedValue({ data: PAYLOAD })
         self.assertNotIn("const PAYLOAD = {", source)
 
 
+class LecteurEtenduTests(unittest.TestCase):
+    """PACT175 — les 3 classes d'endpoints agreges qui echappaient au lecteur.
+
+    Chaque extension est verifiee DANS LES DEUX SENS : la forme est desormais
+    lue (contrôle positif) ET une forme reellement incertaine reste HORS
+    contrat (contrôle negatif) — un lecteur trop bavard produirait des rouges
+    sur du code correct, ce qui tuerait la garde.
+    """
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.base = Path(self.tmp.name)
+        write(self.base / "erp_agentique" / "urls.py", """
+from django.urls import include, path
+urlpatterns = [path('api/django/', include([path('rh/', include('apps.rh.urls'))]))]
+""")
+
+    def _lecteur(self):
+        backend = contract.BackendRoutes(self.base)
+        backend.build()
+        return shapes.ShapeReader(backend)
+
+    # -- (a) route de liste / de detail d'un routeur DRF -------------------
+    def _viewset(self, corps: str):
+        write(self.base / "apps" / "rh" / "urls.py", """
+from django.urls import include, path
+from rest_framework.routers import DefaultRouter
+from .views import RecrutementStatistiquesViewSet
+router = DefaultRouter()
+router.register(r'recrutement/statistiques', RecrutementStatistiquesViewSet,
+                basename='rh-recrutement-statistiques')
+urlpatterns = [path('', include(router.urls))]
+""")
+        write(self.base / "apps" / "rh" / "views.py",
+              "from rest_framework import viewsets\n"
+              "from rest_framework.response import Response\n"
+              "from . import selectors\n\n"
+              "class RecrutementStatistiquesViewSet(viewsets.ViewSet):\n" + corps)
+        write(self.base / "apps" / "rh" / "selectors.py", """
+def stats_recrutement(company, debut=None, fin=None):
+    return {
+        'delai_embauche_moyen_jours': 0,
+        'entonnoir': [],
+        'candidatures_par_ouverture': [],
+        'sources': [],
+    }
+""")
+        return self._lecteur()
+
+    def test_a_viewset_d_agregation_servant_depuis_list(self):
+        # L'endpoint du defaut FONDATEUR : `_expand_router` ne remplissait
+        # `views` que pour les `@action`, donc AUCUNE vue n'etait associee a la
+        # route de liste d'un `viewsets.ViewSet` d'agregation.
+        lecteur = self._viewset(
+            "    def list(self, request):\n"
+            "        data = selectors.stats_recrutement(request.user.company)\n"
+            "        return Response(data)\n")
+        forme = lecteur.shape_of_route(
+            ("api", "django", "rh", "recrutement", "statistiques"), "get")
+        self.assertEqual(sorted(forme), [
+            "candidatures_par_ouverture", "delai_embauche_moyen_jours",
+            "entonnoir", "sources"])
+
+    def test_a_le_verbe_http_choisit_la_methode_drf(self):
+        lecteur = self._viewset(
+            "    def list(self, request):\n"
+            "        return Response({'liste': []})\n\n"
+            "    def create(self, request):\n"
+            "        return Response({'cree': 1})\n")
+        base = ("api", "django", "rh", "recrutement", "statistiques")
+        self.assertEqual(lecteur.shape_of_route(base, "get"), {"liste": shapes.LISTE})
+        self.assertEqual(lecteur.shape_of_route(base, "post"), {"cree": shapes.NOMBRE})
+
+    def test_a_la_route_de_detail_lit_retrieve(self):
+        lecteur = self._viewset(
+            "    def retrieve(self, request, pk=None):\n"
+            "        return Response({'detail_kpi': 1})\n")
+        base = ("api", "django", "rh", "recrutement", "statistiques")
+        self.assertEqual(lecteur.shape_of_route(base + (contract.ANY,), "get"),
+                         {"detail_kpi": shapes.NOMBRE})
+
+    def test_a_negatif_un_modelviewset_ordinaire_reste_hors_contrat(self):
+        # Un ViewSet qui n'ECRIT pas `list()` sert un serializer : sa forme
+        # n'est pas un dictionnaire litteral, elle reste incertaine ici.
+        lecteur = self._viewset("    pass\n")
+        self.assertIsNone(lecteur.shape_of_route(
+            ("api", "django", "rh", "recrutement", "statistiques"), "get"))
+
+    # -- (b) `data = selectors.foo(...)` puis `return Response(data)` ------
+    def _vue_fonction(self, corps: str, selecteurs: str = None):
+        write(self.base / "apps" / "rh" / "urls.py", """
+from django.urls import path
+from .views import bilan
+urlpatterns = [path('bilan/', bilan)]
+""")
+        write(self.base / "apps" / "rh" / "views.py",
+              "from rest_framework.response import Response\n"
+              "from . import selectors\n\n"
+              "def bilan(request):\n" + corps)
+        write(self.base / "apps" / "rh" / "selectors.py", selecteurs or """
+def calculer(company):
+    return {'effectif': 0, 'masse_salariale': 0}
+""")
+        return self._lecteur()
+
+    def test_b_alias_de_module_et_affectation_intermediaire(self):
+        lecteur = self._vue_fonction(
+            "    data = selectors.calculer(request.user.company)\n"
+            "    return Response(data)\n")
+        self.assertEqual(
+            sorted(lecteur.shape_of_route(("api", "django", "rh", "bilan"), "get")),
+            ["effectif", "masse_salariale"])
+
+    def test_b_negatif_une_variable_reaffectee_reste_incertaine(self):
+        lecteur = self._vue_fonction(
+            "    data = selectors.calculer(request.user.company)\n"
+            "    data = enrichir(data)\n"
+            "    return Response(data)\n")
+        self.assertIsNone(lecteur.shape_of_route(("api", "django", "rh", "bilan"), "get"))
+
+    def test_b_negatif_alias_inconnu(self):
+        # `autre` n'est importe nulle part : on ne devine pas le module.
+        lecteur = self._vue_fonction(
+            "    data = autre.calculer(request.user.company)\n"
+            "    return Response(data)\n")
+        self.assertIsNone(lecteur.shape_of_route(("api", "django", "rh", "bilan"), "get"))
+
+    def test_b_negatif_selecteur_dont_la_forme_n_est_pas_litterale(self):
+        lecteur = self._vue_fonction(
+            "    data = selectors.calculer(request.user.company)\n"
+            "    return Response(data)\n",
+            selecteurs="def calculer(company):\n    return construire(company)\n")
+        self.assertIsNone(lecteur.shape_of_route(("api", "django", "rh", "bilan"), "get"))
+
+    # -- (c) dictionnaire mute apres construction -------------------------
+    def test_c_cles_de_subscript_litterales_absorbees(self):
+        # La forme exacte d'apps/publicapi/views.py : `payload = {…}` puis
+        # `payload['devis_reference'] = …` sous condition.
+        lecteur = self._vue_fonction(
+            "    payload = {'mode': 'lead', 'lead_id': 1}\n"
+            "    if True:\n"
+            "        payload['devis_id'] = 2\n"
+            "        payload['devis_reference'] = 'DV-1'\n"
+            "    return Response(payload)\n")
+        forme = lecteur.shape_of_route(("api", "django", "rh", "bilan"), "get")
+        self.assertEqual(sorted(forme),
+                         ["devis_id", "devis_reference", "lead_id", "mode"])
+        self.assertEqual(forme["devis_reference"], shapes.TEXTE)
+
+    def test_c_negatif_cle_dynamique_rend_la_forme_incertaine(self):
+        # `out[cle] = …` dans une boucle : la forme n'est PAS connaissable, et
+        # la publier partiellement accuserait un ecran correct.
+        lecteur = self._vue_fonction(
+            "    out = {'detail': 'ok'}\n"
+            "    for cle in ('devis', 'facture'):\n"
+            "        out[cle] = 1\n"
+            "    return Response(out)\n")
+        self.assertIsNone(lecteur.shape_of_route(("api", "django", "rh", "bilan"), "get"))
+
+    def test_c_negatif_update_rend_la_forme_incertaine(self):
+        lecteur = self._vue_fonction(
+            "    payload = {'mode': 'lead'}\n"
+            "    payload.update(extra)\n"
+            "    return Response(payload)\n")
+        self.assertIsNone(lecteur.shape_of_route(("api", "django", "rh", "bilan"), "get"))
+
+
+class SerialiseurTests(unittest.TestCase):
+    """PACT177 — les ressources servies par un serialiseur DRF.
+
+    Le contrat de forme ne couvrait que les vues renvoyant un dictionnaire
+    LITTERAL : les ressources (`EngineAction`, `AssumptionNode`, …) en etaient
+    absentes, alors que c'est LA que vit le vocabulaire qu'un ecran invente.
+    """
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.base = Path(self.tmp.name)
+        write(self.base / "erp_agentique" / "urls.py", """
+from django.urls import include, path
+urlpatterns = [path('api/django/', include([
+    path('adsengine/', include('apps.adsengine.urls')),
+]))]
+""")
+        write(self.base / "apps" / "adsengine" / "urls.py", """
+from django.urls import include, path
+from rest_framework.routers import DefaultRouter
+from .views import EngineActionViewSet
+router = DefaultRouter()
+router.register(r'actions', EngineActionViewSet, basename='engine-action')
+urlpatterns = [path('', include(router.urls))]
+""")
+        write(self.base / "apps" / "adsengine" / "models.py", """
+from django.db import models
+
+
+class EngineAction(models.Model):
+    class Statut(models.TextChoices):
+        PROPOSEE = 'proposee', 'Proposee'
+        APPLIQUEE = 'appliquee', 'Appliquee'
+
+    class Kind(models.TextChoices):
+        PAUSE = 'pause', 'Pause'
+        RENAME = 'rename', 'Renommer'
+
+    kind = models.CharField(max_length=32, choices=Kind.choices)
+    status = models.CharField(max_length=12, choices=Statut.choices)
+    reason_fr = models.TextField()
+""")
+        write(self.base / "apps" / "adsengine" / "serializers.py", """
+from rest_framework import serializers
+from .models import EngineAction
+
+
+class EngineActionSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = EngineAction
+        fields = ['id', 'kind', 'status', 'reason_fr']
+""")
+
+    def _vues(self, corps: str):
+        write(self.base / "apps" / "adsengine" / "views.py",
+              "from rest_framework import viewsets\n"
+              "from .models import EngineAction\n"
+              "from .serializers import EngineActionSerializer\n\n"
+              "class EngineActionViewSet(viewsets.ModelViewSet):\n" + corps)
+        backend = contract.BackendRoutes(self.base)
+        backend.build()
+        return shapes.SerializerReader(backend)
+
+    ROUTE = ("api", "django", "adsengine", "actions")
+
+    def test_champs_exposes_et_valeurs_des_choix(self):
+        lecteur = self._vues(
+            "    queryset = EngineAction.objects.all()\n"
+            "    serializer_class = EngineActionSerializer\n")
+        contrat = lecteur.contrat_de_route(self.ROUTE)
+        self.assertIsNotNone(contrat)
+        serialiseur, champs, choix = contrat
+        self.assertEqual(serialiseur, "EngineActionSerializer")
+        self.assertEqual(champs, ["id", "kind", "reason_fr", "status"])
+        self.assertEqual(choix["kind"], ["pause", "rename"])
+        self.assertEqual(choix["status"], ["appliquee", "proposee"])
+
+    def test_la_route_de_detail_porte_le_meme_contrat(self):
+        lecteur = self._vues(
+            "    queryset = EngineAction.objects.all()\n"
+            "    serializer_class = EngineActionSerializer\n")
+        self.assertEqual(lecteur.contrat_de_route(self.ROUTE + (contract.ANY,)),
+                         lecteur.contrat_de_route(self.ROUTE))
+
+    def test_negatif_get_serializer_class_dynamique(self):
+        # Anti-faux-positif : une source non figee reste HORS contrat.
+        lecteur = self._vues(
+            "    queryset = EngineAction.objects.all()\n"
+            "    serializer_class = EngineActionSerializer\n\n"
+            "    def get_serializer_class(self):\n"
+            "        return EngineActionSerializer\n")
+        self.assertIsNone(lecteur.contrat_de_route(self.ROUTE))
+
+    def test_negatif_fields_all(self):
+        write(self.base / "apps" / "adsengine" / "serializers.py", """
+from rest_framework import serializers
+from .models import EngineAction
+
+
+class EngineActionSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = EngineAction
+        fields = '__all__'
+""")
+        lecteur = self._vues(
+            "    queryset = EngineAction.objects.all()\n"
+            "    serializer_class = EngineActionSerializer\n")
+        self.assertIsNone(lecteur.contrat_de_route(self.ROUTE))
+
+    def test_negatif_exclude(self):
+        write(self.base / "apps" / "adsengine" / "serializers.py", """
+from rest_framework import serializers
+from .models import EngineAction
+
+
+class EngineActionSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = EngineAction
+        exclude = ['reason_fr']
+""")
+        lecteur = self._vues(
+            "    queryset = EngineAction.objects.all()\n"
+            "    serializer_class = EngineActionSerializer\n")
+        self.assertIsNone(lecteur.contrat_de_route(self.ROUTE))
+
+    def test_negatif_list_ecrite_a_la_main_reste_au_lecteur_de_dictionnaires(self):
+        lecteur = self._vues(
+            "    queryset = EngineAction.objects.all()\n"
+            "    serializer_class = EngineActionSerializer\n\n"
+            "    def list(self, request):\n"
+            "        return Response({'total': 1})\n")
+        self.assertIsNone(lecteur.contrat_de_route(self.ROUTE))
+
+    def test_negatif_create_ecrite_a_la_main_peut_enrichir_la_reponse(self):
+        # Cas REEL : `education.AffectationTransportViewSet.create()` ajoute un
+        # champ `avertissement` (soft warning « vehicule indisponible ») a la
+        # reponse du serialiseur. Sans cette exclusion, la garde accusait un
+        # mock CORRECT d'inventer ce champ.
+        lecteur = self._vues(
+            "    queryset = EngineAction.objects.all()\n"
+            "    serializer_class = EngineActionSerializer\n\n"
+            "    def create(self, request, *args, **kwargs):\n"
+            "        reponse = super().create(request, *args, **kwargs)\n"
+            "        reponse.data['avertissement'] = None\n"
+            "        return reponse\n")
+        self.assertIsNone(lecteur.contrat_de_route(self.ROUTE))
+
+    def test_negatif_serializer_class_introuvable(self):
+        lecteur = self._vues(
+            "    queryset = EngineAction.objects.all()\n"
+            "    serializer_class = SerialiseurFantome\n")
+        self.assertIsNone(lecteur.contrat_de_route(self.ROUTE))
+
+
+class MockContreSerialiseurTests(unittest.TestCase):
+    """PACT177 — le contrôle exigé : `type`/`statut` au lieu de `kind`/`status`."""
+
+    ROUTE = "/api/django/adsengine/actions"
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.base = Path(self.tmp.name)
+        write(self.base / "api" / "adsengineApi.js", "export default {}\n")
+        self.serialiseurs = {
+            (self.base / "api" / "adsengineApi.js", "pending"): (
+                self.ROUTE, "EngineActionSerializer",
+                ["id", "kind", "payload", "reason_fr", "status"],
+                {"kind": ["pause", "rename"],
+                 "status": ["appliquee", "proposee"]}),
+        }
+
+    def _constats(self, corps: str):
+        fichier = write(self.base / "pages" / "Journal.test.jsx", corps)
+        return shapes.mocks_contre_serialiseur(self.serialiseurs, [fichier])
+
+    def test_le_mock_qui_invente_type_et_statut_echoue(self):
+        constats = self._constats("""
+vi.mock('../api/adsengineApi', () => ({ default: { pending } }))
+pending.mockResolvedValue({ data: { id: 1, type: 'pause', statut: 'proposee' } })
+""")
+        champs = sorted(c[4] for c in constats)
+        self.assertEqual(champs, ["statut", "type"])
+        self.assertIn("EngineActionSerializer", constats[0][5])
+        self.assertIn(self.ROUTE, constats[0][5])
+
+    def test_le_mock_aligne_est_vert(self):
+        self.assertEqual(self._constats("""
+vi.mock('../api/adsengineApi', () => ({ default: { pending } }))
+pending.mockResolvedValue({ data: { id: 1, kind: 'pause', status: 'proposee' } })
+"""), [])
+
+    def test_l_enveloppe_de_pagination_n_est_pas_la_ressource(self):
+        # Anti-faux-positif : mocker `{count, results}` n'invente aucun champ.
+        self.assertEqual(self._constats("""
+vi.mock('../api/adsengineApi', () => ({ default: { pending } }))
+pending.mockResolvedValue({ data: { count: 1, results: [] } })
+"""), [])
+
+    def test_un_nom_de_verbe_crud_n_apparie_rien(self):
+        # LA mesure de PACT177 : 40 faux constats venaient tous d'un `get`
+        # apparie a la mauvaise ressource. Un nom generique est exclu.
+        serialiseurs = {
+            (self.base / "api" / "adsengineApi.js", "get"): self.serialiseurs[
+                (self.base / "api" / "adsengineApi.js", "pending")],
+        }
+        fichier = write(self.base / "pages" / "Autre.test.jsx", """
+vi.mock('../api/adsengineApi', () => ({ default: { get } }))
+get.mockResolvedValue({ data: { id: 1, objet: 'x', reference: 'R' } })
+""")
+        self.assertEqual(shapes.mocks_contre_serialiseur(serialiseurs, [fichier]), [])
+
+
 class DepotReelTests(unittest.TestCase):
+    def test_le_contrat_porte_les_ressources_a_serialiseur(self):
+        # PACT177, sur le VRAI depot : l'entree citee par la tache doit exister
+        # avec ses 9 `kind` et ses 5 `status`.
+        contenu = shapes.CONTRACT_PATH.read_text(encoding="utf-8")
+        self.assertIn("/api/django/adsengine/actions  [EngineActionSerializer]",
+                      contenu)
+        bloc = contenu.split(
+            "/api/django/adsengine/actions  [EngineActionSerializer]")[1]
+        kinds = bloc.split("kind ∈ {")[1].split("}")[0].split(", ")
+        statuts = bloc.split("status ∈ {")[1].split("}")[0].split(", ")
+        self.assertEqual(len(kinds), 9, kinds)
+        self.assertEqual(len(statuts), 5, statuts)
+        self.assertIn("pause", kinds)
+        self.assertIn("proposee", statuts)
+
     def test_contrat_versionne_present(self):
         contenu = shapes.CONTRACT_PATH.read_text(encoding="utf-8")
         self.assertIn("GENERE", contenu)
