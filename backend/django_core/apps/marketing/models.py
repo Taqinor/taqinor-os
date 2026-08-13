@@ -871,6 +871,11 @@ class ApprobationEnvoiCampagne(models.Model):
         auto_now_add=True, verbose_name='Créée le')
     date_decision = models.DateTimeField(
         null=True, blank=True, verbose_name='Décidée le')
+    # NTMKT35 — anti-doublon du rappel « approbation en attente depuis +24h » :
+    # NULL = jamais rappelé (comportement actuel). Posé au premier rappel émis,
+    # jamais effacé (une seule relance par demande, pas de rappel répété).
+    rappel_envoye_le = models.DateTimeField(
+        null=True, blank=True, verbose_name='Rappel de relance envoyé le')
 
     class Meta:
         db_table = 'compta_approbationenvoicampagne'
@@ -2231,3 +2236,55 @@ class BlocContenu(TenantModel):
 
     def __str__(self):
         return f'{self.nom} ({self.type_bloc})'
+
+
+# ── NTMKT31 — Réglages tenant « Marketing » (Paramètres) ───────────────────
+
+class ParametresMarketing(TenantModel):
+    """Réglages société du module Marketing (NTMKT31), singleton par
+    ``company`` — un seul enregistrement par société (voir
+    ``services.parametres_marketing_pour``, qui crée l'enregistrement par
+    défaut au premier accès plutôt que de laisser un écran gérer le get-or-
+    create).
+
+    Tous les champs sont ADDITIFS : une société sans ligne ``ParametresMarketing``
+    garde le comportement actuel (plafond désactivé = pas de blocage,
+    fenêtre silencieuse déjà gérée par ``notifications.WorkingHoursConfig``).
+    """
+    expediteur_nom = models.CharField(
+        max_length=120, blank=True, default='',
+        verbose_name="Nom de l'expéditeur par défaut")
+    expediteur_email = models.EmailField(
+        blank=True, default='', verbose_name="Email de l'expéditeur par défaut")
+    expediteur_domaine = models.CharField(
+        max_length=120, blank=True, default='',
+        verbose_name="Domaine d'envoi par défaut (XMKT33)")
+    # ── Fenêtre silencieuse additive : NULL/NULL = pas de fenêtre propre au
+    # module marketing (comportement actuel — seul le calendrier ouvré
+    # ``notifications.WorkingHoursConfig``, consulté via son selector, reste
+    # en vigueur). Renseigner les deux heures ajoute une contrainte marketing
+    # SUPPLÉMENTAIRE (aucun envoi avant/après ces heures).
+    silence_heure_debut = models.PositiveSmallIntegerField(
+        null=True, blank=True,
+        verbose_name='Aucun envoi avant (heure locale)')
+    silence_heure_fin = models.PositiveSmallIntegerField(
+        null=True, blank=True,
+        verbose_name='Aucun envoi après (heure locale)')
+    # 0/NULL = plafond désactivé (comportement actuel).
+    plafond_envois_jour = models.PositiveIntegerField(
+        null=True, blank=True,
+        verbose_name="Plafond d'envois par jour (anti-spam)")
+    langue_defaut_templates = models.CharField(
+        max_length=10, blank=True, default='fr',
+        verbose_name='Langue par défaut des templates (XMKT11)')
+
+    class Meta:
+        verbose_name = 'Paramètres marketing'
+        verbose_name_plural = 'Paramètres marketing'
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company'], name='uniq_parametres_marketing_par_societe'),
+        ]
+
+    def __str__(self):
+        return f'Paramètres marketing — {self.company_id}'

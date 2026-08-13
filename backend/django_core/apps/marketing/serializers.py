@@ -41,7 +41,7 @@ from apps.compta.serializers import (  # noqa: F401
 from rest_framework import serializers
 
 from .models import (
-    ArcJourney, BlocContenu, ModeleJourney, NoeudJourney,
+    ArcJourney, BlocContenu, ModeleJourney, NoeudJourney, ParametresMarketing,
     VersionFormulaireIntake,
 )
 
@@ -123,3 +123,14 @@ class VersionFormulaireIntakeSerializer(_CompanyScopedSerializer):
                   'image_key', 'publie', 'date_publication', 'date_creation']
         read_only_fields = ['version', 'publie', 'date_publication',
                             'date_creation']
+
+
+class ParametresMarketingSerializer(serializers.ModelSerializer):
+    """NTMKT31 — réglages tenant du module Marketing (singleton société)."""
+
+    class Meta:
+        model = ParametresMarketing
+        fields = ['id', 'expediteur_nom', 'expediteur_email',
+                  'expediteur_domaine', 'silence_heure_debut',
+                  'silence_heure_fin', 'plafond_envois_jour',
+                  'langue_defaut_templates']

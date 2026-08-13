@@ -55,6 +55,7 @@ from .views import (
     SupportOfflineViewSet,
     TypeEvenementViewSet,
     VersionFormulaireIntakeViewSet,
+    campagne_rapport_pdf_view,
     desinscription_publique,
     double_optin_confirmer,
     enquete_certificat_pdf,
@@ -62,7 +63,10 @@ from .views import (
     enquete_soumettre,
     evenement_inscription_publique,
     heatmap_engagement_view,
+    importer_couts_publicitaires_view,
+    parametres_marketing_view,
     redirection_lien_tracke,
+    registre_consentement_export_pdf_view,
     webhook_brevo_campagne,
     webhook_sms_stop,
 )
@@ -146,6 +150,19 @@ urlpatterns = [
     # NTMKT24 — heatmap d'engagement jour x heure (lecture seule, informative)
     path('heatmap-engagement/', heatmap_engagement_view,
          name='mkt-heatmap-engagement'),
+    # NTMKT26 — import CSV de coûts publicitaires externes (Meta/Google Ads)
+    path('campagnes/importer-couts/', importer_couts_publicitaires_view,
+         name='mkt-campagnes-importer-couts'),
+    # NTMKT27 — bilan de campagne PDF (usage interne)
+    path('campagnes/<int:pk>/rapport-pdf/', campagne_rapport_pdf_view,
+         name='mkt-campagne-rapport-pdf'),
+    # NTMKT28 — export PDF du registre de consentement (CNDP)
+    path('registre-consentement/export-pdf/',
+         registre_consentement_export_pdf_view,
+         name='mkt-registre-consentement-export-pdf'),
+    # NTMKT31 — réglages tenant du module Marketing
+    path('parametres/', parametres_marketing_view,
+         name='mkt-parametres-marketing'),
     # Vues publiques (token, sans login) — préfixées de noms `mkt-…` pour ne
     # pas entrer en collision avec les mêmes vues servies sous /compta/….
     # headless: rappel d'etat entrant de Brevo, appele par leur serveur

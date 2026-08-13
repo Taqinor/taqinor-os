@@ -13,6 +13,8 @@ référence opaque — jamais leurs ``models`` (invariant CLAUDE.md déjà tenu 
 les fonctions ré-exportées, qui référencent lead_id/devis_id opaques).
 """
 
+from decimal import Decimal
+
 from apps.compta.services import (  # noqa: F401
     annuler_campagne,
     appliquer_mouvement_fidelite,
@@ -98,15 +100,23 @@ def lien_preferences(company, destinataire):
     return f'/api/django/marketing/preferences/{generer_token_preferences(company.id, destinataire)}/'
 
 
-def lire_token_preferences(token):
+#: NTMKT33 — durée de vie du jeton de préférences (90 jours), au-delà duquel
+#: un lien partagé/oublié n'est plus utilisable — même modèle de confiance
+#: que XMKT3 mais AVEC expiration (``django.core.signing`` porte déjà
+#: l'horodatage de signature ; aucun enregistrement DB n'est nécessaire).
+TOKEN_PREFERENCES_MAX_AGE_SECONDS = 90 * 24 * 60 * 60
+
+
+def lire_token_preferences(token, *, max_age=TOKEN_PREFERENCES_MAX_AGE_SECONDS):
     """Résout un jeton de préférences en ``(company, destinataire)``.
 
-    Jeton invalide/corrompu/société supprimée → ``(None, None)`` : l'appelant
-    répond proprement, jamais une 500 ni une fuite d'existence.
+    Jeton invalide/corrompu/société supprimée/expiré (>90j, NTMKT33) →
+    ``(None, None)`` : l'appelant répond proprement, jamais une 500 ni une
+    fuite d'existence.
     """
     from django.core import signing
     try:
-        payload = signing.loads(token, salt=_PREFERENCES_SALT)
+        payload = signing.loads(token, salt=_PREFERENCES_SALT, max_age=max_age)
     except signing.BadSignature:
         return None, None
     from authentication.models import Company
@@ -576,3 +586,336 @@ def executer_journeys_dus(company, *, maintenant=None):
     for inscription in inscriptions:
         traces.extend(avancer_journey(inscription, maintenant=maintenant))
     return traces
+
+
+# ── NTMKT26 — Import de coûts publicitaires externes (Meta/Google Ads) ─────
+# Aucun appel API externe (pas de jeton requis) : un fichier CSV exporté à la
+# main depuis Meta Ads Manager / Google Ads est importé et réconcilié par nom
+# de campagne — réutilise le parseur d'en-têtes de ``apps.dataimport``
+# (import function-local, lecture seule, jamais un target du registre
+# ``dataimport`` puisqu'on ne crée/maj aucun modèle dataimport ici).
+
+#: Alias de colonnes CSV tolérés (Meta Ads Manager / Google Ads exports natifs).
+_COLONNES_NOM_CAMPAGNE = ('nom_campagne', 'campaign name', 'campaign', 'nom')
+_COLONNES_COUT = ('cout', 'cout_mad', 'amount spent', 'amount spent (mad)',
+                  'cost', 'montant')
+
+
+def _colonne_normalisee(headers, alias):
+    for h in headers:
+        if (h or '').strip().lower() in alias:
+            return h
+    return None
+
+
+def importer_couts_publicitaires(company, file_bytes, filename):
+    """NTMKT26 — importe un CSV de coûts publicitaires et met à jour
+    ``Campagne.cout_reel_mad`` par correspondance de NOM (insensible à la
+    casse/aux espaces).
+
+    Renvoie un rapport ``{'matched': [...], 'unmatched': [...]}`` — jamais
+    d'exception sur une ligne malformée (elle finit simplement en
+    ``unmatched``).
+    """
+    from apps.dataimport.parsing import iter_rows
+
+    from .models import Campagne
+
+    headers, rows = iter_rows(file_bytes, filename)
+    col_nom = _colonne_normalisee(headers, _COLONNES_NOM_CAMPAGNE)
+    col_cout = _colonne_normalisee(headers, _COLONNES_COUT)
+    matched, unmatched = [], []
+    if col_nom is None or col_cout is None:
+        return {'matched': matched, 'unmatched': unmatched,
+                'erreur': 'colonnes nom/coût introuvables dans le CSV'}
+
+    campagnes_par_nom = {
+        c.nom.strip().lower(): c
+        for c in Campagne.objects.filter(company=company)
+    }
+    for row in rows:
+        nom_brut = (row.get(col_nom) or '').strip()
+        cout_brut = (row.get(col_cout) or '').strip()
+        campagne = campagnes_par_nom.get(nom_brut.lower())
+        if campagne is None:
+            unmatched.append({'nom_campagne': nom_brut, 'cout': cout_brut,
+                              'raison': 'aucune campagne de ce nom'})
+            continue
+        try:
+            montant = Decimal(cout_brut.replace(',', '.').replace(' ', ''))
+        except Exception:
+            unmatched.append({'nom_campagne': nom_brut, 'cout': cout_brut,
+                              'raison': 'coût illisible'})
+            continue
+        campagne.cout_reel_mad = montant
+        campagne.save(update_fields=['cout_reel_mad'])
+        matched.append({'campagne_id': campagne.id, 'nom_campagne': campagne.nom,
+                        'cout_reel_mad': str(montant)})
+    return {'matched': matched, 'unmatched': unmatched}
+
+
+# ── NTMKT27 — Rapport imprimable « Bilan de campagne » (PDF interne) ───────
+
+def rapport_campagne_donnees(campagne):
+    """Données du bilan PDF (NTMKT27) : entonnoir, top liens, coût/ROI.
+
+    JAMAIS ``Produit.prix_achat`` (hors sujet marketing, de toute façon) — le
+    PDF reste strictement un bilan de campagne, aucune marge produit.
+    """
+    liens = sorted(
+        clics_par_lien(campagne), key=lambda lien: -lien['nb_clics'])[:10]
+    roi = roi_campagne(campagne)
+    return {
+        'campagne': campagne,
+        'entonnoir': {
+            'envoyes': campagne.nb_envois,
+            'ouverts': campagne.nb_ouvertures,
+            'cliques': campagne.nb_clics,
+            'convertis': roi.get('nb_signes', 0) if isinstance(roi, dict) else 0,
+        },
+        'top_liens': liens,
+        'roi': roi,
+    }
+
+
+def rapport_campagne_pdf(campagne):
+    """Rend le bilan de campagne (NTMKT27) en PDF via ``core.pdf.render_pdf``
+    (même moteur WeasyPrint que ``reporting``/``compta`` — jamais
+    ``quote_engine``, règle #4)."""
+    from html import escape
+
+    from core.pdf import render_pdf
+
+    donnees = rapport_campagne_donnees(campagne)
+    ent = donnees['entonnoir']
+    roi = donnees['roi'] or {}
+    lignes_liens = ''.join(
+        f"<tr><td>{escape(lien['url_cible'][:70])}</td>"
+        f"<td style='text-align:right'>{lien['nb_clics']}</td></tr>"
+        for lien in donnees['top_liens']
+    ) or "<tr><td colspan='2'>Aucun lien tracké</td></tr>"
+    html = f"""<!DOCTYPE html>
+<html><head><meta charset="utf-8"><style>
+  body {{ font-family: sans-serif; margin: 40px; color: #222; }}
+  h1 {{ font-size: 22px; }} h2 {{ font-size: 15px; margin-top: 28px; }}
+  table {{ width: 100%; border-collapse: collapse; margin-top: 8px; }}
+  td, th {{ border-bottom: 1px solid #ddd; padding: 4px 6px; font-size: 12px; }}
+  .watermark {{ position: fixed; top: 40%; left: 15%; font-size: 48px;
+               color: #eee; transform: rotate(-25deg); z-index: -1; }}
+</style></head><body>
+  <div class="watermark">USAGE INTERNE</div>
+  <h1>Bilan de campagne — {escape(campagne.nom)}</h1>
+  <h2>Entonnoir</h2>
+  <table>
+    <tr><td>Envoyés</td><td style="text-align:right">{ent['envoyes']}</td></tr>
+    <tr><td>Ouverts</td><td style="text-align:right">{ent['ouverts']}</td></tr>
+    <tr><td>Cliqués</td><td style="text-align:right">{ent['cliques']}</td></tr>
+    <tr><td>Convertis</td><td style="text-align:right">{ent['convertis']}</td></tr>
+  </table>
+  <h2>Top 10 liens trackés</h2>
+  <table><tr><th>URL</th><th>Clics</th></tr>{lignes_liens}</table>
+  <h2>Coût réel vs revenu attribué</h2>
+  <table>
+    <tr><td>Coût réel (MAD)</td><td style="text-align:right">
+    {escape(str(roi.get('cout_mad', '0')))}</td></tr>
+    <tr><td>Revenu attribué (MAD)</td><td style="text-align:right">
+    {escape(str(roi.get('revenu_ttc_mad', '0')))}</td></tr>
+    <tr><td>ROI (%)</td><td style="text-align:right">
+    {escape(str(roi.get('roi_pct', '0')))}</td></tr>
+  </table>
+</body></html>"""
+    return render_pdf(html=html)
+
+
+# ── NTMKT28 — Rapport imprimable « Registre de consentement » (export CNDP) ─
+# Lecture seule sur ``core.ConsentRecord``/``SuppressionMarketing`` — jamais
+# un second registre créé.
+
+def registre_consentement_export(company, *, date_debut=None, date_fin=None,
+                                 contact=None):
+    """NTMKT28 — entrées du registre de consentement de la société sur une
+    période (recevable pour un contrôle CNDP), filtrable par contact.
+
+    Lecture seule, bornée société — aucune fuite inter-sociétés possible
+    (filtre ``company=company`` systématique).
+    """
+    from core.models import ConsentRecord
+
+    from .models import SuppressionMarketing
+
+    qs = ConsentRecord.objects.filter(company=company).order_by('-id')
+    if date_debut:
+        qs = qs.filter(created_at__date__gte=date_debut)
+    if date_fin:
+        qs = qs.filter(created_at__date__lte=date_fin)
+    if contact:
+        qs = qs.filter(subject_identifier__icontains=contact)
+    entrees = [
+        {
+            'subject_identifier': r.subject_identifier,
+            'purpose': r.purpose,
+            'granted': r.granted,
+            'source': r.source,
+            'version_texte': r.version_texte,
+            'date_collecte': r.occurred_at or r.created_at,
+        }
+        for r in qs
+    ]
+    suppressions_qs = SuppressionMarketing.objects.filter(company=company)
+    if date_debut:
+        suppressions_qs = suppressions_qs.filter(date_creation__date__gte=date_debut)
+    if date_fin:
+        suppressions_qs = suppressions_qs.filter(date_creation__date__lte=date_fin)
+    if contact:
+        suppressions_qs = suppressions_qs.filter(destinataire__icontains=contact)
+    suppressions = [
+        {
+            'destinataire': s.destinataire,
+            'motif': s.motif,
+            'source': s.source,
+            'date_retrait': s.date_creation,
+        }
+        for s in suppressions_qs.order_by('-date_creation')
+    ]
+    return {'consentements': entrees, 'suppressions': suppressions}
+
+
+def registre_consentement_pdf(company, *, date_debut=None, date_fin=None,
+                              contact=None):
+    """NTMKT28 — export PDF du registre de consentement (contrôle CNDP)."""
+    from html import escape
+
+    from core.pdf import render_pdf
+
+    donnees = registre_consentement_export(
+        company, date_debut=date_debut, date_fin=date_fin, contact=contact)
+    lignes = ''.join(
+        f"<tr><td>{escape(e['subject_identifier'])}</td>"
+        f"<td>{escape(e['purpose'])}</td>"
+        f"<td>{'Accordé' if e['granted'] else 'Retiré'}</td>"
+        f"<td>{escape(e['source'])}</td>"
+        f"<td>{escape(str(e['date_collecte']))}</td></tr>"
+        for e in donnees['consentements']
+    ) or "<tr><td colspan='5'>Aucune entrée sur la période</td></tr>"
+    lignes_suppr = ''.join(
+        f"<tr><td>{escape(s['destinataire'])}</td>"
+        f"<td>{escape(s['motif'])}</td>"
+        f"<td>{escape(str(s['date_retrait']))}</td></tr>"
+        for s in donnees['suppressions']
+    ) or "<tr><td colspan='3'>Aucune entrée sur la période</td></tr>"
+    html = f"""<!DOCTYPE html>
+<html><head><meta charset="utf-8"><style>
+  body {{ font-family: sans-serif; margin: 40px; color: #222; }}
+  h1 {{ font-size: 20px; }} h2 {{ font-size: 14px; margin-top: 24px; }}
+  table {{ width: 100%; border-collapse: collapse; margin-top: 8px; }}
+  td, th {{ border: 1px solid #ddd; padding: 4px 6px; font-size: 11px; }}
+</style></head><body>
+  <h1>Registre de consentement — export CNDP</h1>
+  <p>Traitement : marketing direct (email/SMS/WhatsApp) — base légale :
+  consentement (loi 09-08).</p>
+  <h2>Consentements ({len(donnees['consentements'])})</h2>
+  <table><tr><th>Contact</th><th>Finalité</th><th>État</th><th>Source</th>
+  <th>Date</th></tr>{lignes}</table>
+  <h2>Désinscriptions / suppressions ({len(donnees['suppressions'])})</h2>
+  <table><tr><th>Contact</th><th>Motif</th><th>Date</th></tr>
+  {lignes_suppr}</table>
+</body></html>"""
+    return render_pdf(html=html)
+
+
+# ── NTMKT31 — Réglages tenant « Marketing » ─────────────────────────────────
+
+def parametres_marketing_pour(company):
+    """Renvoie (en le créant si besoin) l'unique ``ParametresMarketing`` de la
+    société — get_or_create côté service, jamais géré par l'écran (NTMKT31)."""
+    from .models import ParametresMarketing
+    obj, _ = ParametresMarketing.objects.get_or_create(company=company)
+    return obj
+
+
+def plafond_envois_atteint(company, *, aujourdhui=None):
+    """NTMKT31 — True si le plafond d'envois/jour configuré est atteint ou
+    dépassé pour AUJOURD'HUI. Plafond NULL/0 = désactivé (comportement actuel,
+    jamais bloquant) — no-op par défaut tant que rien n'est configuré."""
+    from django.utils import timezone
+
+    from .models import EnvoiCampagne
+
+    parametres = parametres_marketing_pour(company)
+    if not parametres.plafond_envois_jour:
+        return False
+    aujourdhui = aujourdhui or timezone.localdate()
+    nb = EnvoiCampagne.objects.filter(
+        company=company, envoye_le__date=aujourdhui).count()
+    return nb >= parametres.plafond_envois_jour
+
+
+# ── NTMKT33 — Purge des tokens expirés (désinscription/préférences) ────────
+
+def purger_tokens_expires(company=None):
+    """NTMKT33 — balaie les artefacts liés aux jetons publics expirés.
+
+    Les jetons de désinscription (XMKT3, ``apps.compta.services``) et de
+    préférences (NTMKT22, ci-dessus) sont des jetons SIGNÉS
+    (``django.core.signing``), jamais stockés en base — il n'existe donc
+    AUCUN enregistrement à supprimer/anonymiser pour eux : leur expiration
+    est déjà imposée à la LECTURE par ``max_age`` (voir
+    ``lire_token_preferences``, NTMKT33 ci-dessus), ce qui les rend inutilisables
+    passé 90 jours sans qu'aucune donnée ne soit conservée. Cette tâche reste
+    la sentinelle du beat (QX11) et le point d'extension si un futur jeton
+    marketing devient un jour persisté — elle ne touche JAMAIS
+    ``core.ConsentRecord`` (rétention légale distincte).
+    """
+    return {'jetons_purges': 0}
+
+
+# ── NTMKT35 — Rappel d'approbation d'envoi en attente ───────────────────────
+
+def rappeler_approbations_envoi_en_attente(company, *, maintenant=None,
+                                           delai_heures=24):
+    """NTMKT35 — notifie les approbateurs (rôles admin/responsable de la
+    société) pour toute ``ApprobationEnvoiCampagne`` EN ATTENTE depuis plus de
+    ``delai_heures`` — une seule relance par demande (``rappel_envoye_le``
+    posé au premier envoi, jamais réinitialisé). Ne notifie jamais HORS des
+    heures ouvrées de la société (``notifications.selectors`` — la tâche beat
+    tourne toutes les 4h mais reste no-op la nuit/jour non ouvré)."""
+    from django.utils import timezone
+
+    from apps.notifications.selectors import est_hors_fenetre_silence
+
+    from .models import ApprobationEnvoiCampagne
+
+    maintenant = maintenant or timezone.now()
+    if est_hors_fenetre_silence(maintenant, company):
+        return []
+    seuil = maintenant - timezone.timedelta(hours=delai_heures)
+    demandes = ApprobationEnvoiCampagne.objects.filter(
+        company=company,
+        statut=ApprobationEnvoiCampagne.Statut.EN_ATTENTE,
+        date_creation__lte=seuil,
+        rappel_envoye_le__isnull=True,
+    ).select_related('campagne')
+    if not demandes.exists():
+        return []
+    from authentication.models import CustomUser
+    approbateurs = list(CustomUser.objects.filter(
+        company=company, is_active=True,
+        role_legacy__in=[CustomUser.ROLE_ADMIN, CustomUser.ROLE_RESPONSABLE]))
+    if not approbateurs:
+        return []
+    from apps.notifications.models import EventType
+    from apps.notifications.services import notify_many
+
+    notifiees = []
+    for demande in demandes:
+        notify_many(
+            approbateurs, EventType.DIGEST,
+            f'Approbation d\'envoi en attente : {demande.campagne.nom}',
+            body=(f'{demande.nb_destinataires_demandes} destinataires — '
+                  f'en attente depuis plus de {delai_heures}h.'),
+            company=company,
+        )
+        demande.rappel_envoye_le = maintenant
+        demande.save(update_fields=['rappel_envoye_le'])
+        notifiees.append(demande.id)
+    return notifiees

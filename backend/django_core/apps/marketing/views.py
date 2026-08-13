@@ -55,6 +55,8 @@ from apps.compta.views import (  # noqa: F401
 )
 from apps.compta.views import _ComptaBaseViewSet
 
+from django.http import HttpResponse
+from django.shortcuts import get_object_or_404
 from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
@@ -64,12 +66,13 @@ from authentication.permissions import IsResponsableOrAdmin
 from . import selectors as marketing_selectors
 from . import services as marketing_services
 from .models import (
-    ArcJourney, BlocContenu, ModeleJourney, NoeudJourney,
+    ArcJourney, BlocContenu, Campagne, ModeleJourney, NoeudJourney,
     VersionFormulaireIntake,
 )
 from .serializers import (
     ArcJourneySerializer, BlocContenuSerializer, ModeleJourneySerializer,
-    NoeudJourneySerializer, VersionFormulaireIntakeSerializer,
+    NoeudJourneySerializer, ParametresMarketingSerializer,
+    VersionFormulaireIntakeSerializer,
 )
 
 
@@ -187,3 +190,72 @@ class VersionFormulaireIntakeViewSet(_ComptaBaseViewSet):
         version = self.get_object()
         marketing_services.publier_version_formulaire(version)
         return Response(self.get_serializer(version).data)
+
+
+# ── NTMKT26 — Import de coûts publicitaires externes (CSV) ─────────────────
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated, IsResponsableOrAdmin])
+def importer_couts_publicitaires_view(request):
+    """Importe un CSV (export Meta Ads Manager/Google Ads) et réconcilie
+    ``Campagne.cout_reel_mad`` par nom (NTMKT26). Aucun appel externe."""
+    fichier = request.FILES.get('fichier')
+    if fichier is None:
+        return Response({'detail': 'fichier requis'}, status=400)
+    rapport = marketing_services.importer_couts_publicitaires(
+        request.user.company, fichier.read(), fichier.name)
+    return Response(rapport)
+
+
+# ── NTMKT27 — Bilan de campagne (PDF interne) ───────────────────────────────
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def campagne_rapport_pdf_view(request, pk=None):
+    """Génère le bilan PDF interne d'une campagne (NTMKT27) — jamais
+    ``Produit.prix_achat``, jamais le moteur ``quote_engine`` (règle #4)."""
+    campagne = get_object_or_404(
+        Campagne, pk=pk, company=request.user.company)
+    pdf_bytes = marketing_services.rapport_campagne_pdf(campagne)
+    resp = HttpResponse(pdf_bytes, content_type='application/pdf')
+    resp['Content-Disposition'] = (
+        f'attachment; filename="bilan_campagne_{campagne.id}.pdf"')
+    return resp
+
+
+# ── NTMKT28 — Registre de consentement (export CNDP, PDF) ──────────────────
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated, IsResponsableOrAdmin])
+def registre_consentement_export_pdf_view(request):
+    """Export PDF du registre de consentement de la société (NTMKT28),
+    filtrable par période/contact — lecture seule, jamais un second
+    registre."""
+    pdf_bytes = marketing_services.registre_consentement_pdf(
+        request.user.company,
+        date_debut=request.query_params.get('date_debut') or None,
+        date_fin=request.query_params.get('date_fin') or None,
+        contact=request.query_params.get('contact') or None,
+    )
+    resp = HttpResponse(pdf_bytes, content_type='application/pdf')
+    resp['Content-Disposition'] = (
+        'attachment; filename="registre_consentement.pdf"')
+    return resp
+
+
+# ── NTMKT31 — Réglages tenant « Marketing » ─────────────────────────────────
+
+@api_view(['GET', 'PUT', 'PATCH'])
+@permission_classes([IsAuthenticated, IsResponsableOrAdmin])
+def parametres_marketing_view(request):
+    """Réglages société du module Marketing (NTMKT31) — singleton
+    get_or_create, jamais un id passé par le client."""
+    parametres = marketing_services.parametres_marketing_pour(
+        request.user.company)
+    if request.method == 'GET':
+        return Response(ParametresMarketingSerializer(parametres).data)
+    serializer = ParametresMarketingSerializer(
+        parametres, data=request.data, partial=(request.method == 'PATCH'))
+    serializer.is_valid(raise_exception=True)
+    serializer.save()
+    return Response(serializer.data)
