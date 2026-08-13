@@ -198,6 +198,8 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
             'avenants',
             # NTCPQ18 — lots multi-sites (lecture + création).
             'lots',
+            # NTCPQ20 — historique fin de configuration (lecture seule).
+            'historique_configuration',
         ]:
             return [IsResponsableOrAdmin()]
         elif self.action == 'destroy':
@@ -1121,6 +1123,41 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
         return Response(
             DevisSerializer(nd, context={'request': request}).data,
             status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['get'],
+            url_path='historique-configuration',
+            permission_classes=[IsResponsableOrAdmin])
+    def historique_configuration(self, request, pk=None):
+        """NTCPQ20 — Historique FIN des configurations d'un devis brouillon.
+
+        GET : la liste des instantanés (id, horodatage, auteur, nombre de
+        lignes, contenu). ``?a=<id>&b=<id>`` renvoie EN PLUS le diff des lignes
+        entre deux instantanés (ajoutées / retirées / modifiées). Lecture
+        seule : ne crée ni ne modifie aucun instantané."""
+        from ..services import diff_configurations_devis
+        devis = self.get_object()
+        snapshots = list(devis.config_snapshots.select_related('auteur').all())
+        payload = {
+            'snapshots': [{
+                'id': s.id,
+                'date': s.date_creation.isoformat(),
+                'auteur': (getattr(s.auteur, 'username', None)
+                           if s.auteur_id else None),
+                'nb_lignes': len((s.contenu or {}).get('lignes') or []),
+                'contenu': s.contenu,
+            } for s in snapshots],
+        }
+        a_id = request.query_params.get('a')
+        b_id = request.query_params.get('b')
+        if a_id and b_id:
+            index = {str(s.id): s for s in snapshots}
+            a = index.get(str(a_id))
+            b = index.get(str(b_id))
+            if a is None or b is None:
+                return Response({'detail': 'Instantané introuvable.'},
+                                status=status.HTTP_404_NOT_FOUND)
+            payload['diff'] = diff_configurations_devis(a, b)
+        return Response(payload)
 
     @action(detail=True, methods=['get', 'post'], url_path='lots',
             permission_classes=[IsResponsableOrAdmin])

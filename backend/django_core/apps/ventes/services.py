@@ -1984,6 +1984,82 @@ def figer_clauses_devis(devis):
     return clauses
 
 
+def configuration_devis_contenu(devis):
+    """NTCPQ20 — Représentation JSON-safe de la configuration d'un devis.
+
+    Uniquement des données de configuration (ligne, désignation, quantité,
+    P.U., remise) — JAMAIS de prix d'achat ni de marge."""
+    return {
+        'lignes': [{
+            'ligne_id': li.id,
+            'produit_id': li.produit_id,
+            'designation': li.designation,
+            'quantite': str(li.quantite) if li.quantite is not None else None,
+            'prix_unitaire': (str(li.prix_unitaire)
+                              if li.prix_unitaire is not None else None),
+            'remise': str(li.remise) if li.remise is not None else None,
+        } for li in devis.lignes.all().order_by('ordre', 'id')],
+    }
+
+
+def capturer_configuration_devis(devis, *, user=None):
+    """NTCPQ20 — Enregistre un instantané de configuration si le devis est
+    BROUILLON et que la configuration a RÉELLEMENT changé.
+
+    No-op (renvoie ``None``) hors brouillon ou quand le contenu est identique
+    au dernier instantané — un simple re-save ne pollue pas l'historique.
+    Ne lève jamais : l'historique ne doit jamais bloquer une écriture."""
+    from apps.ventes.models import ConfigurationDevisSnapshot, Devis
+
+    if devis is None or devis.pk is None:
+        return None
+    if devis.statut != Devis.Statut.BROUILLON:
+        return None
+    try:
+        contenu = configuration_devis_contenu(devis)
+        dernier = ConfigurationDevisSnapshot.objects.filter(
+            devis_id=devis.pk).order_by('-date_creation', '-id').first()
+        if dernier is not None and dernier.contenu == contenu:
+            return None
+        return ConfigurationDevisSnapshot.objects.create(
+            company=devis.company, devis=devis, contenu=contenu, auteur=user)
+    except Exception:  # noqa: BLE001 — l'historique n'est jamais bloquant
+        logger.exception(
+            'NTCPQ20 : instantané de configuration ignoré (devis %s)',
+            devis.pk)
+        return None
+
+
+def diff_configurations_devis(snapshot_a, snapshot_b):
+    """NTCPQ20 — Diff des LIGNES entre deux instantanés de configuration.
+
+    Renvoie ``{ajoutees, retirees, modifiees}`` : ``modifiees`` porte, pour
+    chaque ligne présente des deux côtés, les champs qui ont changé
+    (``{champ: [avant, apres]}``)."""
+    def _index(snap):
+        contenu = (snap or {}).get('lignes') or []
+        return {li.get('ligne_id'): li for li in contenu}
+
+    avant = _index(getattr(snapshot_a, 'contenu', snapshot_a))
+    apres = _index(getattr(snapshot_b, 'contenu', snapshot_b))
+    modifiees = []
+    for ligne_id, ligne in apres.items():
+        precedente = avant.get(ligne_id)
+        if precedente is None:
+            continue
+        champs = {
+            champ: [precedente.get(champ), ligne.get(champ)]
+            for champ in ('designation', 'quantite', 'prix_unitaire', 'remise')
+            if precedente.get(champ) != ligne.get(champ)}
+        if champs:
+            modifiees.append({'ligne_id': ligne_id, 'champs': champs})
+    return {
+        'ajoutees': [li for lid, li in apres.items() if lid not in avant],
+        'retirees': [li for lid, li in avant.items() if lid not in apres],
+        'modifiees': modifiees,
+    }
+
+
 def renouveler_devis(devis, *, user=None):
     """NTCPQ13 — Renouvelle un devis déjà ACCEPTÉ (ou expiré/clos).
 

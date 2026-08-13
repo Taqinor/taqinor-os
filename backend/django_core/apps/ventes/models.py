@@ -524,6 +524,40 @@ class LigneDevis(models.Model):
         return self.taux_tva if self.taux_tva is not None else self.devis.taux_tva
 
 
+class ConfigurationDevisSnapshot(models.Model):
+    """NTCPQ20 — Instantané FIN de la configuration d'un devis BROUILLON.
+
+    Pris automatiquement à chaque modification significative des lignes
+    (ajout / retrait / quantité / prix) tant que le devis est en brouillon.
+    DISTINCT de la révision de version (T10, qui numérote une nouvelle version
+    d'un devis déjà envoyé) : c'est un historique fin PRÉ-envoi, jamais une
+    version. ``contenu`` ne porte que des données de configuration
+    (désignation, quantité, P.U., remise) — jamais de prix d'achat / marge."""
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: purge tenant
+        null=True, blank=True, related_name='devis_config_snapshots')
+    devis = models.ForeignKey(
+        Devis, on_delete=models.CASCADE,  # on_delete: historique sans objet si devis supprimé
+        related_name='config_snapshots')
+    contenu = models.JSONField(default=dict, blank=True)
+    auteur = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='devis_config_snapshots')
+    date_creation = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'Instantané de configuration de devis'
+        verbose_name_plural = 'Instantanés de configuration de devis'
+        ordering = ['date_creation', 'id']
+        indexes = [
+            models.Index(fields=['devis', 'date_creation'],
+                         name='ventes_cfgsnap_dv_date'),
+        ]
+
+    def __str__(self):
+        return f'Config devis {self.devis_id} @ {self.date_creation}'
+
+
 class LotDevis(models.Model):
     """NTCPQ18 — Lot (site / bâtiment) d'un devis multi-sites.
 
