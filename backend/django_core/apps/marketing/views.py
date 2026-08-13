@@ -55,11 +55,13 @@ from apps.compta.views import (  # noqa: F401
 )
 from apps.compta.views import _ComptaBaseViewSet
 
-from rest_framework.decorators import action
+from rest_framework.decorators import action, api_view, permission_classes
+from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
 from authentication.permissions import IsResponsableOrAdmin
 
+from . import selectors as marketing_selectors
 from . import services as marketing_services
 from .models import (
     ArcJourney, BlocContenu, ModeleJourney, NoeudJourney,
@@ -129,6 +131,22 @@ class ModeleJourneyViewSet(_ComptaBaseViewSet):
         )
         return Response(
             {'sequence_id': sequence.id, 'nom': sequence.nom}, status=201)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated, IsResponsableOrAdmin])
+def heatmap_engagement_view(request):
+    """NTMKT24 — heatmap jour × heure des taux d'ouverture de la société.
+
+    LECTURE SEULE et purement informative (suggestion de moment d'envoi) : la
+    société vient TOUJOURS de ``request.user``, jamais d'un paramètre.
+    """
+    try:
+        jours = int(request.query_params.get('jours') or 180)
+    except (TypeError, ValueError):
+        jours = 180
+    return Response(marketing_selectors.heatmap_engagement(
+        request.user.company, jours=jours))
 
 
 class BlocContenuViewSet(_ComptaBaseViewSet):

@@ -89,6 +89,10 @@ const marketingApi = {
   noeudsJourney: resource('noeuds-journey'),
   arcsJourney: resource('arcs-journey'),
 
+  // ── NTMKT24 — Heatmap d'engagement jour x heure (lecture seule) ──
+  heatmapEngagement: (params) =>
+    api.get('/marketing/heatmap-engagement/', { params }),
+
   // ── NTMKT23 — Blocs de contenu réutilisables (insérés par COPIE) ──
   blocsContenu: resource('blocs-contenu'),
 

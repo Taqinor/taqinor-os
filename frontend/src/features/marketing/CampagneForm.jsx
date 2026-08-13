@@ -1,6 +1,7 @@
 /* eslint-disable react-refresh/only-export-components */
 import { useEffect, useState } from 'react'
 import marketingApi from '../../api/marketingApi'
+import HeatmapEnvoi from './HeatmapEnvoi'
 
 /* ============================================================================
    NTMKT2/NTMKT3 — Formulaire de création/édition d'une campagne.
@@ -175,6 +176,8 @@ export default function CampagneForm({ initial, onSave, onCancel, editing }) {
           data-testid="campagne-planifiee-le" value={form.planifiee_le}
           onChange={setField('planifiee_le')} style={{ flex: '1 1 200px' }} />
       </div>
+      {/* NTMKT24 — suggestion informative de moment d'envoi (ne bloque rien) */}
+      <HeatmapEnvoi />
       <input className="form-input" data-testid="campagne-objet"
         placeholder="Objet (email)" value={form.objet}
         onChange={setField('objet')} />

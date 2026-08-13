@@ -7,6 +7,8 @@ const mocks = vi.hoisted(() => ({
   apercuFusion: vi.fn(),
   // NTMKT23 — bibliothèque de blocs de contenu réutilisables.
   blocsList: vi.fn(),
+  // NTMKT24 — heatmap d'engagement (suggestion informative).
+  heatmap: vi.fn(),
 }))
 
 vi.mock('../../api/marketingApi', () => ({
@@ -18,6 +20,7 @@ vi.mock('../../api/marketingApi', () => ({
     listes: { list: mocks.listesList },
     campagnes: { apercuFusion: mocks.apercuFusion },
     blocsContenu: { list: mocks.blocsList },
+    heatmapEngagement: mocks.heatmap,
   },
 }))
 
@@ -27,6 +30,7 @@ beforeEach(() => {
   vi.clearAllMocks()
   mocks.listesList.mockResolvedValue({ data: [{ id: 1, nom: 'Liste A' }] })
   mocks.blocsList.mockResolvedValue({ data: [] })
+  mocks.heatmap.mockResolvedValue({ data: { cellules: [], meilleur: null, total_envois: 0 } })
 })
 
 describe('emptyForm / formFromCampagne', () => {

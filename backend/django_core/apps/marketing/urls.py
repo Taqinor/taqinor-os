@@ -61,6 +61,7 @@ from .views import (
     enquete_publique,
     enquete_soumettre,
     evenement_inscription_publique,
+    heatmap_engagement_view,
     redirection_lien_tracke,
     webhook_brevo_campagne,
     webhook_sms_stop,
@@ -142,6 +143,9 @@ router.register(r'domaines-envoi', DomaineEnvoiViewSet,
                 basename='mkt-domaine-envoi')
 
 urlpatterns = [
+    # NTMKT24 — heatmap d'engagement jour x heure (lecture seule, informative)
+    path('heatmap-engagement/', heatmap_engagement_view,
+         name='mkt-heatmap-engagement'),
     # Vues publiques (token, sans login) — préfixées de noms `mkt-…` pour ne
     # pas entrer en collision avec les mêmes vues servies sous /compta/….
     # headless: rappel d'etat entrant de Brevo, appele par leur serveur
