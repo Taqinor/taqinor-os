@@ -49,6 +49,10 @@ import { ConfirmDialog } from '../../ui/ConfirmDialog'
 import PaiementDialog from './PaiementDialog'
 // WIR103/ZFAC4 — modale « Note de débit » (création + téléchargement PDF).
 import NoteDebitDialog from './NoteDebitDialog'
+// PACT121 — modale « Payer en ligne » (core.PaymentTransaction, CMI/Payzone).
+// À DISTINGUER de « Encaisser » (règlement déjà reçu) ET du lien FG53
+// ci-dessus : ici on demande un paiement carte à un prestataire.
+import PaiementEnLigneDialog from '../../features/ventes/PaiementEnLigneDialog'
 import { errorMessageFrom } from '../../lib/toast'
 import { useServerSavedViews } from '../../features/uxviews/useServerSavedViews'
 import ViewsManagerPopover from '../../features/uxviews/ViewsManagerPopover'
@@ -203,6 +207,8 @@ function FactureRow({ f, ctx }) {
     openAvoirModal, handleWhatsApp, handleUbl, handleDgiExport, handleDgiConformite,
     histoOpenId, toggleHistorique, histoCache, histoLoadingId,
     openNoteDebit,
+    // PACT121 - ouvre la demande de paiement carte (prestataire).
+    openPaiementEnLigne,
     // APX14 - ouvre l'apercu PDF inline de cette facture.
     openPreview,
     // EZ13 - marquage sec, relegue au menu et explique.
@@ -520,6 +526,14 @@ function FactureRow({ f, ctx }) {
                     <ReceiptText /> Note de débit
                   </DropdownMenuItem>
                 )}
+                {/* PACT121 — demande de paiement carte au client (CMI/Payzone).
+                    Libellé distinct du bouton « Payer en ligne » (lien FG53)
+                    pour qu'aucune action n'ait deux fois le même nom. */}
+                {parseFloat(f.montant_du ?? 0) > 0 && f.statut !== 'annulee' && (
+                  <DropdownMenuItem onSelect={(e) => { e.preventDefault(); openPaiementEnLigne(f) }}>
+                    <CreditCard /> Demander un paiement carte
+                  </DropdownMenuItem>
+                )}
                 {/* N105/WR2b — export DGI : masqué tant que l'interrupteur société est OFF. */}
                 {dgiActif && ['emise', 'payee', 'en_retard'].includes(f.statut) && (
                   <DropdownMenuItem
@@ -607,6 +621,12 @@ export default function FactureList() {
   // n'avait aucun écran ; c'est ici qu'il en gagne un.
   const [noteDebitTarget, setNoteDebitTarget] = useState(null)
   const openNoteDebit = (f) => setNoteDebitTarget(f)
+
+  // ── PACT121 — Demande de paiement carte au client (core.PaymentTransaction).
+  // Sans compte marchand configuré, la création reste propre et sans effet :
+  // la modale affiche « prestataire non configuré », jamais une erreur brute.
+  const [paiementEnLigneTarget, setPaiementEnLigneTarget] = useState(null)
+  const openPaiementEnLigne = (f) => setPaiementEnLigneTarget(f)
 
   // ── Avoir (note de crédit) : modale total OU partiel ──
   const [avoirTarget, setAvoirTarget] = useState(null) // facture ciblée
@@ -1251,6 +1271,8 @@ export default function FactureList() {
     openAvoirModal, handleWhatsApp, handleUbl, handleDgiExport, handleDgiConformite,
     histoOpenId, toggleHistorique, histoCache, histoLoadingId,
     openNoteDebit,
+    // PACT121 - ouvre la demande de paiement carte (prestataire).
+    openPaiementEnLigne,
     // APX14 - ouvre l'apercu PDF inline de cette facture.
     openPreview,
     // EZ13 - marquage sec, relegue au menu et explique.
@@ -1553,6 +1575,13 @@ export default function FactureList() {
         facture={noteDebitTarget}
         open={!!noteDebitTarget}
         onOpenChange={(o) => { if (!o) setNoteDebitTarget(null) }}
+      />
+
+      {/* ── PACT121 — Modale « Payer en ligne » (core.PaymentTransaction) ── */}
+      <PaiementEnLigneDialog
+        facture={paiementEnLigneTarget}
+        open={!!paiementEnLigneTarget}
+        onOpenChange={(o) => { if (!o) setPaiementEnLigneTarget(null) }}
       />
 
       {/* ── Modale d'avoir (total ou partiel par ligne) ── */}

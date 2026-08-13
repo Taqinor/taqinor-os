@@ -2,7 +2,7 @@
    Fichier de configuration de module (données + composants lazy), collecté par
    `router/moduleRoutes.jsx` via glob — pas un module de composants. */
 import { lazy } from 'react'
-import { ShieldCheck, Scale } from 'lucide-react'
+import { ShieldCheck, Scale, Send, Users } from 'lucide-react'
 import { appGlyph } from '../../lib/apps/appGlyph'
 
 /* ============================================================================
@@ -13,6 +13,12 @@ import { appGlyph } from '../../lib/apps/appGlyph'
    ========================================================================== */
 
 const ConformiteFiscale = lazy(() => import('../../pages/fiscal/ConformiteFiscale'))
+// PACT54 — historique de la file de transmission DGI (NTMAR7), jusqu'ici
+// complète côté serveur et totalement invisible.
+const TransmissionsDGIPage = lazy(() => import('../../pages/fiscal/TransmissionsDGIPage'))
+// PACT52 — registre légal des bénéficiaires effectifs (UBO, NTMAR30/31) :
+// obligation de conformité, alerte de complétude + export OMPIC.
+const BeneficiairesEffectifsPage = lazy(() => import('../../pages/fiscal/BeneficiairesEffectifsPage'))
 
 const ROLES = ['responsable', 'admin']
 
@@ -29,14 +35,24 @@ const config = {
     accent: 'warning',
     items: [
       { to: '/fiscal/conformite', label: 'Conformité fiscale', icon: <ShieldCheck size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
+      // PACT54 — historique des transmissions DGI (lecture seule).
+      { to: '/fiscal/transmissions-dgi', label: 'Transmissions DGI', icon: <Send size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
+      // PACT52 — registre des bénéficiaires effectifs (UBO).
+      { to: '/fiscal/beneficiaires-effectifs', label: 'Bénéficiaires effectifs', icon: <Users size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
     ],
   },
   titles: [
     ['/fiscal/conformite', 'Conformité fiscale'],
+    ['/fiscal/transmissions-dgi', 'Transmissions DGI'],
+    ['/fiscal/beneficiaires-effectifs', 'Bénéficiaires effectifs'],
   ],
   sectionLabels: { fiscal: 'Conformité fiscale' },
   routes: [
     { path: '/fiscal/conformite', component: ConformiteFiscale, roles: ROLES },
+    // PACT54 — file d'attente de transmission DGI (historique).
+    { path: '/fiscal/transmissions-dgi', component: TransmissionsDGIPage, roles: ROLES },
+    // PACT52 — registre UBO (lecture + déclaration + export OMPIC).
+    { path: '/fiscal/beneficiaires-effectifs', component: BeneficiairesEffectifsPage, roles: ROLES },
   ],
 }
 
