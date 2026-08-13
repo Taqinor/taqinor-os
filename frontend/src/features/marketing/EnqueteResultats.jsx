@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import marketingApi from '../../api/marketingApi'
+import { formatDateTime } from '../../lib/format'
 import { lienPublic } from './EnqueteBuilder'
 
 /* ============================================================================
@@ -196,7 +197,7 @@ export default function EnqueteResultats() {
                             </span>
                           )}
                       </td>
-                      <td>{p.date_creation ? new Date(p.date_creation).toLocaleString('fr-FR') : '—'}</td>
+                      <td>{formatDateTime(p.date_creation)}</td>
                       <td>
                         {certificatDisponible && (
                           <a href={marketingApi.reponsesEnquete.certificatUrl(p.id)}

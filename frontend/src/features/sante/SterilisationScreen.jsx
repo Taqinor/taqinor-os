@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { ShieldAlert, Plus, Users } from 'lucide-react'
 import { Badge, Button, toast } from '../../ui'
 import api from '../../api/axios'
+import { formatDateTime } from '../../lib/format'
 
 /* ============================================================================
    PACT114 — Stérilisation des instruments : cycles et traçabilité sanitaire.
@@ -160,7 +161,7 @@ export default function SterilisationScreen() {
             {cycles.map((c) => (
               <tr key={c.id} data-testid={`cycle-${c.id}`}>
                 <td>{c.numero_cycle}</td>
-                <td>{c.date_cycle ? new Date(c.date_cycle).toLocaleString('fr-FR') : '—'}</td>
+                <td>{formatDateTime(c.date_cycle)}</td>
                 <td>{c.autoclave_ref || '—'}</td>
                 <td>
                   <Badge tone={c.statut === 'non_conforme' ? 'danger' : 'success'}>

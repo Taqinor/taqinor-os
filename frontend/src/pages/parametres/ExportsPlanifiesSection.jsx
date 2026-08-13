@@ -28,6 +28,7 @@ import {
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
 } from '../../ui'
 import { SectionTitle } from './peComponents'
+import { formatDateTime } from '../../lib/format'
 
 // Miroir de ScheduledExport.FORMAT_CHOICES / DEST_CHOICES.
 const FORMATS = [['csv', 'CSV'], ['parquet', 'Parquet']]
@@ -44,13 +45,6 @@ const STATUT_TONES = { ok: 'success', non_configure: 'warning', erreur: 'danger'
 
 const VIDE = {
   titre: '', dataset: '', format: 'csv', destination: 'sftp', cron: '',
-}
-
-// Date lisible sans dépendance : renvoie '' si absente/invalide.
-function dateLisible(iso) {
-  if (!iso) return ''
-  const d = new Date(iso)
-  return Number.isNaN(d.getTime()) ? '' : d.toLocaleString('fr-FR')
 }
 
 export default function ExportsPlanifiesSection() {
@@ -224,7 +218,7 @@ export default function ExportsPlanifiesSection() {
                     </Badge>
                     {row.derniere_execution_le && (
                       <span className="text-xs text-muted-foreground">
-                        Dernière exécution : {dateLisible(row.derniere_execution_le)}
+                        Dernière exécution : {formatDateTime(row.derniere_execution_le)}
                       </span>
                     )}
                     {row.cron && (

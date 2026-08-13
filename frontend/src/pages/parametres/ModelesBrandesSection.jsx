@@ -46,7 +46,7 @@ const KIND_LABELS = Object.fromEntries(KINDS.map(([k, label]) => [k, label]))
 const CONTEXTE_EXEMPLE = {
   client: { nom: 'SARL Exemple' },
   devis: { numero: 'DEV-2026-0042', total_ttc: '48 500,00' },
-  societe: { nom: 'TAQINOR' },
+  societe: { nom: 'Société Exemple' },
 }
 
 const VIDE = { kind: 'email', code: '', nom: '', sujet: '', corps: '' }

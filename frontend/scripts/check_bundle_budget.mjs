@@ -107,7 +107,24 @@ const PER_CHUNK_BUDGET_KB = 350
 // AUCUN impact sur le chargement initial. Réel ~3093 Ko. Croissance RÉPARTIE :
 // PER_CHUNK_BUDGET_KB (350) passe sans marge consommée par le code applicatif.
 // AUCUNE nouvelle dépendance npm.
-const TOTAL_BUDGET_KB = 3120
+// 2026-08-13 : 3120 -> 3250. Lot PACT (59 tâches) : ~40 ÉCRANS neufs branchés
+// sur du backend déjà livré — CPQ (4 : configurateur, compatibilité, offres
+// groupées, paramètres), crédit (3), marketing (avis clients, enquêtes NPS,
+// messages WhatsApp), contrats (abonnements, dunning), reporting (2), fiscal
+// (2), objets personnalisés (2), paramètres (4 sections : modèles brandés,
+// exports planifiés, assistant, politiques d'approbation), ventes (mandats de
+// paiement, remises d'encaissement, paiement en ligne), stock (2), plus
+// agriculture / éducation / immobilier / santé / paie / FP&A / projet et
+// l'inscription publique d'une société (/register). Réel 3187.6 Ko. Croissance
+// RÉPARTIE : chaque écran est en `lazy()` et pèse 0.9–4.0 Ko gzip dans son
+// propre chunk (aucun n'approche PER_CHUNK_BUDGET_KB = 350, qui passe sans
+// marge consommée par le code applicatif) ; les 4 plus gros chunks restent des
+// vendors PRÉEXISTANTS (roof-tool 455.8, pdf.worker 347.7, ao-studio 167.4,
+// pdf 121.2) sur leur budget dédié. AUCUNE nouvelle dépendance npm (diff
+// package.json/package-lock.json vide), aucun import de bibliothèque en entier,
+// aucun `import * as`. Palier généreux habituel (~130 Ko, ~62 Ko de marge
+// au-dessus du réel) pour ne pas re-bumper à chaque vague.
+const TOTAL_BUDGET_KB = 3250
 const VENDOR_CHUNK_BUDGETS_KB = {
   recharts: 450,
   'pdfjs-dist': 450,
@@ -187,7 +204,13 @@ const MODULEPRELOAD_ALLOWLIST = new Set([
 // ATTEIGNABLE (76 écrans) — réel ~670. Croissance une-route-un-chunk, pas une
 // prolifération de structure ; le budget gzip (3120) + PER_CHUNK_BUDGET_KB
 // (350) restent les vrais garde-fous de poids.
-export const MAX_CHUNK_COUNT = 700
+// 2026-08-13 : 700 -> 730. Lot PACT : un chunk par écran lazy nouvellement
+// ATTEIGNABLE (~40 écrans, dont ~31 portent leur propre chunk ; les 4 sections
+// de la page Paramètres suivent la convention STATIQUE pré-existante de
+// `ParametresEntreprise.jsx` et n'en créent aucun) — réel 703. Croissance
+// une-route-un-chunk, pas une prolifération de structure ; le budget gzip
+// (3250) + PER_CHUNK_BUDGET_KB (350) restent les vrais garde-fous de poids.
+export const MAX_CHUNK_COUNT = 730
 
 // Extrait les `<link rel="modulepreload" href="...">` de `dist/index.html` et
 // signale tout vendor lourd nommé qui s'y trouve (hors allowlist). Silencieux

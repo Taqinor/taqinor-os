@@ -35,6 +35,8 @@ import {
   Button, Input, Badge, Spinner, EmptyState, Card, CardContent,
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
 } from '../../ui'
+import { PageHeader } from '../../ui/PageHeader'
+import { INVENTAIRE_ACCENT } from '../../features/stock/inventaireAccent'
 
 // Miroir de PaiementFournisseur.Mode (backend).
 const MODES = [
@@ -170,16 +172,13 @@ export default function PaiementsFournisseurLedgerPage() {
 
   return (
     <div className="mx-auto flex max-w-[1100px] flex-col gap-4 p-6">
-      <div>
-        <h2 className="font-display text-xl font-bold tracking-tight text-foreground">
-          Paiements fournisseur — registre consolidé
-        </h2>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Tous les règlements, tous fournisseurs confondus, avec la retenue à la
-          source sur la TVA (LF 2024) et le net réellement décaissé. Le relevé
-          exporté sert de base à la télédéclaration Simpl-TVA.
-        </p>
-      </div>
+      <PageHeader
+        style={{ '--module-accent': INVENTAIRE_ACCENT }}
+        className="app-accent-rail mb-0"
+        icon={Banknote}
+        title="Paiements fournisseur — registre consolidé"
+        subtitle="Tous les règlements, tous fournisseurs confondus, avec la retenue à la source sur la TVA (LF 2024) et le net réellement décaissé. Le relevé exporté sert de base à la télédéclaration Simpl-TVA."
+      />
 
       {/* ── Période + export RAS-TVA ────────────────────────────────────── */}
       <Card>

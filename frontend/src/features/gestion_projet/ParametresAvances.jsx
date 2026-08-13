@@ -40,8 +40,12 @@ function listeDe(reponse) {
   return []
 }
 
+// SCA29 (marque blanche) : aucun domaine de marque en dur. Le site public du
+// tenant se configure par `VITE_PUBLIC_SITE_URL` ; à défaut on retombe sur
+// l'origine courante — le précédent du dépôt pour un lien public tokenisé
+// (ECataloguePage, GedNavigator, EnqueteBuilder, DashboardSharePage…).
 function lienPortail(token) {
-  const base = (import.meta.env.VITE_PUBLIC_SITE_URL || 'https://taqinor.ma')
+  const base = (import.meta.env.VITE_PUBLIC_SITE_URL || window.location.origin)
     .replace(/\/+$/, '')
   return `${base}/gestion-projet/portail/${token}/`
 }

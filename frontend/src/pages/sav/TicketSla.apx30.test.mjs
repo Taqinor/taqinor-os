@@ -124,7 +124,37 @@ test('APX30 : ZERO backend — tous les champs lus existent deja au serializer',
     assert.match(SERIALIZER, new RegExp(`\\b${champ}\\b`), `${champ} absent du serializer SAV`)
   }
   // Aucun nouvel appel reseau introduit par cette tache.
-  const bloc = SRC.slice(SRC.indexOf('APX30 — SLA PAR TICKET'), SRC.indexOf('export function TicketDetail'))
+  // L'extraction s'arrete a la FIN de la DERNIERE declaration APX30, jamais sur
+  // un repere voisin : ce test bornait autrefois le bloc par « export function
+  // TicketDetail », qui n'appartient PAS a APX30 et ne le suivait que par
+  // hasard. Des qu'une tache voisine (PACT142, memo vocal) s'est intercalee, la
+  // garde avalait son appel reseau parfaitement legitime. Bornes recalculees
+  // depuis les declarations APX30 elles-memes : tout ce que APX30 possede reste
+  // couvert, y compris un helper ajoute au milieu du bloc.
+  const DECLARATIONS_APX30 = [
+    'function ymdLocal(d) {',
+    'export function ticketSlaEcheance(ticket, now = new Date()) {',
+    'export function ticketSlaTri(ticket, now = new Date()) {',
+    'export function TicketSlaEcheanceChip({ ticket }) {',
+    'export function TicketPremiereReponseChip({ ticket }) {',
+  ]
+  const finDeclaration = (entete) => {
+    const i = SRC.indexOf(entete)
+    assert.notEqual(i, -1, `declaration APX30 absente de la source : ${entete}`)
+    // Les declarations sont au premier niveau du module : leur accolade
+    // fermante est seule en colonne 0.
+    const fin = SRC.indexOf('\n}\n', i)
+    assert.notEqual(fin, -1, `fin de declaration APX30 introuvable : ${entete}`)
+    return fin + 2
+  }
+  const debut = SRC.indexOf('APX30 — SLA PAR TICKET')
+  assert.notEqual(debut, -1, 'la banniere APX30 a disparu de la source')
+  const bloc = SRC.slice(debut, Math.max(...DECLARATIONS_APX30.map(finDeclaration)))
+  // Un bloc tronque (ou vide) ferait passer la garde en silence : on exige que
+  // CHAQUE declaration APX30 soit reellement dans l'extrait analyse.
+  for (const entete of DECLARATIONS_APX30) {
+    assert.ok(bloc.includes(entete), `le bloc APX30 extrait ne couvre plus : ${entete}`)
+  }
   assert.doesNotMatch(bloc, /api\.|savApi|fetch\(|useEffect/)
 })
 
