@@ -22,6 +22,18 @@ from .serializers import (
     RapportReconciliationSerializer)
 
 
+def _drapeau(valeur):
+    """Booléen tolérant au multipart (où tout arrive en chaîne de caractères).
+
+    Sans cette conversion, la chaîne ``'false'`` d'un formulaire serait
+    « vraie » en Python et ferait écarter des lignes que l'utilisateur voulait
+    charger.
+    """
+    if isinstance(valeur, str):
+        return valeur.strip().lower() in ('1', 'true', 'vrai', 'oui', 'on')
+    return bool(valeur)
+
+
 def _fichier_de(request):
     """Récupère le fichier téléversé (multipart) → (octets, nom)."""
     fichier = request.FILES.get('fichier') or request.FILES.get('file')
@@ -173,6 +185,26 @@ class LotMigrationViewSet(CompanyScopedModelViewSet):
             raise ValidationError({'detail': str(exc)})
         return Response(apercu)
 
+    @action(detail=True, methods=['post'], url_path='valider-source', permission_classes=[IsDirecteurOuAdmin])
+    def valider_source(self, request, pk=None):
+        """NTMIG32 — qualité de la SOURCE avant chargement.
+
+        Renvoie le nombre de lignes valides/invalides, les motifs, et les
+        NUMÉROS des lignes fautives : l'écran peut alors proposer de charger
+        sans elles (``ignorer_lignes_invalides`` sur ``charger``). N'écrit
+        rien — ni en base cible, ni sur le lot.
+        """
+        lot = self.get_object()
+        file_bytes, filename = _fichier_de(request)
+        try:
+            rapport = services.valider_source(
+                lot, file_bytes, filename,
+                kit_cle=request.data.get('kit') or None,
+                mapping_name=request.data.get('mapping_name') or None)
+        except ValueError as exc:
+            raise ValidationError({'detail': str(exc)})
+        return Response(rapport)
+
     @action(detail=True, methods=['post'], url_path='charger', permission_classes=[IsDirecteurOuAdmin])
     def charger(self, request, pk=None):
         """NTMIG15 — chargement délégué à ``dataimport``.
@@ -183,7 +215,22 @@ class LotMigrationViewSet(CompanyScopedModelViewSet):
         """
         lot = self.get_object()
         file_bytes, filename = _fichier_de(request)
+        exclues = []
         try:
+            if _drapeau(request.data.get('ignorer_lignes_invalides')):
+                # NTMIG32 — on RE-valide côté serveur au lieu de croire une
+                # liste de numéros envoyée par le client : le fichier chargé
+                # peut ne pas être celui qui a été validé, et écarter des
+                # lignes sur parole ferait disparaître des données sans motif
+                # traçable.
+                rapport = services.valider_source(
+                    lot, file_bytes, filename,
+                    kit_cle=request.data.get('kit') or None,
+                    mapping_name=request.data.get('mapping_name') or None)
+                exclues = rapport['lignes_invalides_numeros']
+                if exclues:
+                    file_bytes, filename = services.fichier_sans_lignes(
+                        file_bytes, filename, exclues)
             result = services.charger_lot(
                 lot, file_bytes, filename,
                 # Le mode demandé est FILTRÉ par le service : « creer » ne
@@ -195,7 +242,10 @@ class LotMigrationViewSet(CompanyScopedModelViewSet):
         except ValueError as exc:
             raise ValidationError({'detail': str(exc)})
         return Response({
-            'lot': LotMigrationSerializer(lot).data, 'resultat': result})
+            'lot': LotMigrationSerializer(lot).data, 'resultat': result,
+            # Les lignes écartées sont NOMMÉES dans la réponse : une ligne
+            # laissée de côté ne disparaît jamais en silence.
+            'lignes_ignorees': exclues})
 
     @action(detail=True, methods=['post'], url_path='charger-odoo', permission_classes=[IsDirecteurOuAdmin])
     def charger_odoo(self, request, pk=None):

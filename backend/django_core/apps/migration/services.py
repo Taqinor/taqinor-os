@@ -120,6 +120,84 @@ def analyser_lot(lot, file_bytes, filename, *, mapping_name=None):
     return apercu
 
 
+# ─────────────────────────────────────────────────────────────────────────
+# NTMIG32 — qualité de la SOURCE avant chargement
+# ─────────────────────────────────────────────────────────────────────────
+def _reconstruire_csv(headers, rows, filename):
+    """Réécrit des lignes déjà parsées en CSV utf-8 (mêmes en-têtes, même ordre).
+
+    Sert à REJOUER un SOUS-ENSEMBLE du fichier source dans le moteur d'import
+    sans lui ajouter d'API : le moteur relit un fichier, on lui en donne un.
+    Le CSV est le format pivot (un XLSX d'origine ressort en CSV) — le mapping
+    par en-tête est identique, seules les lignes changent.
+    """
+    import csv
+    import io
+    import os
+
+    tampon = io.StringIO()
+    writer = csv.DictWriter(tampon, fieldnames=list(headers),
+                            extrasaction='ignore')
+    writer.writeheader()
+    for row in rows:
+        writer.writerow({h: ('' if row.get(h) is None else row.get(h))
+                         for h in headers})
+    base = os.path.splitext(os.path.basename(filename or 'source'))[0]
+    return tampon.getvalue().encode('utf-8'), f'{base}.csv'
+
+
+def fichier_sans_lignes(file_bytes, filename, lignes_exclues):
+    """Fichier source PRIVÉ des lignes citées (numéros 1-based, en-tête exclu).
+
+    C'est le « continuer sans les lignes invalides » proposé par
+    :func:`valider_source` : rien n'est corrigé automatiquement, les lignes
+    fautives sont simplement laissées de côté — et l'appelant sait lesquelles.
+    """
+    from apps.dataimport import services as dataimport_services
+
+    exclues = set(lignes_exclues or ())
+    headers, rows = dataimport_services.parse_rows(file_bytes, filename)
+    gardees = [row for numero, row in enumerate(rows, 1)
+               if numero not in exclues]
+    return _reconstruire_csv(headers, gardees, filename)
+
+
+def valider_source(lot, file_bytes, filename, *, kit_cle=None,
+                   mapping_name=None):
+    """NTMIG32 — rapport de qualité de la SOURCE, AVANT tout chargement.
+
+    Applique les règles de format (ICE/e-mail/téléphone/montant) issues du kit
+    quand il existe, sinon de ``dataquality`` (NTDATA14) s'il est présent,
+    sinon des règles locales minimales — voir :mod:`apps.migration.validation`.
+    Aucune écriture : ni en base cible, ni sur le lot (un contrôle de qualité
+    ne doit pas déplacer le lot dans le flux ; seul l'analyse dry-run le fait).
+
+    Le rapport porte les numéros des lignes invalides pour que l'écran puisse
+    proposer de continuer SANS elles (:func:`fichier_sans_lignes`) plutôt que
+    d'imposer un choix binaire « tout ou rien ».
+    """
+    from apps.dataimport import services as dataimport_services
+
+    from . import validation
+
+    # La société est passée pour que le mapping SAUVEGARDÉ (XPLT2) s'applique
+    # comme il s'appliquera au chargement : valider un fichier avec un mapping
+    # différent de celui qui sera utilisé donnerait un rapport hors sujet.
+    apercu = dataimport_services.dry_run(
+        file_bytes, filename, lot.entite, company=lot.company,
+        mapping_name=mapping_name,
+        external_system=external_system_pour(lot.projet))
+    mapped = apercu.get('mapping') or {}
+    _, rows = dataimport_services.parse_rows(file_bytes, filename)
+    regles = validation.regles_effectives(
+        mapped, kit_cle=kit_cle, company=lot.company, entite=lot.entite)
+    rapport = validation.valider_lignes(rows, mapped, regles)
+    rapport['entite'] = lot.entite
+    rapport['kit'] = kit_cle or ''
+    rapport['colonnes_non_mappees'] = apercu.get('non_mappees') or []
+    return rapport
+
+
 def charger_lot(lot, file_bytes, filename, *, mode=None,
                 mapping_name=None, user=None):
     """Charge un lot via le moteur ``dataimport`` — jamais un 2ᵉ importateur.
