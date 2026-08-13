@@ -143,6 +143,13 @@ const coreApi = {
   utilisateurs: {
     list: () => api.get('/users/'),
   },
+  // PACT146 — catalogue des datasets interrogeables (`core.data_explorer`),
+  // servi par le ViewSet des requêtes sauvegardées. Chaque entrée porte son
+  // nom, son libellé et sa LISTE BLANCHE de champs — la seule source des
+  // champs proposés par le générateur de rapports croisés.
+  datasetsExplorateur: {
+    list: () => api.get('/core/saved-queries/datasets/'),
+  },
   // XPLT23 — onglet « Confidentialité » (loi 09-08 / CNDP), réservé
   // admin/responsable (le backend re-vérifie : IsAdminOrResponsableTier).
   // `company` n'est jamais envoyée : toujours imposée côté serveur.

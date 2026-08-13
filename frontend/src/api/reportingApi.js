@@ -152,6 +152,20 @@ const reportingApi = {
   // XFSM17 — scorecard coaching par technicien vs moyenne équipe.
   technicienScorecard: (params) =>
     api.get('/reporting/insights/technicien-scorecard/', { params }),
+  // PACT146/NTEXT10 — définitions de rapport CROISÉ sauvegardées (report
+  // builder) : CRUD + rejeu. `executer` renvoie `{rows}` — et `{rows, pivot}`
+  // quand la définition porte un `pivot_spec` (croisement fait par le serveur,
+  // `core.pivot.build_pivot`, jamais recalculé à l'écran).
+  listRapportDefinitions: () => api.get('/reporting/rapport-definitions/'),
+  createRapportDefinition: (data) =>
+    api.post('/reporting/rapport-definitions/', data),
+  updateRapportDefinition: (id, data) =>
+    api.patch(`/reporting/rapport-definitions/${id}/`, data),
+  deleteRapportDefinition: (id) =>
+    api.delete(`/reporting/rapport-definitions/${id}/`),
+  executerRapportDefinition: (id) =>
+    api.post(`/reporting/rapport-definitions/${id}/executer/`),
+
   // WIR22 — contrôle d'intégrité inter-documents (YSERV13) : anomalies
   // détectées AUJOURD'HUI, sans attendre la notification Beat hebdomadaire
   // ni lire les logs serveur. Réservé responsable/admin (backend).

@@ -55,6 +55,8 @@ const DashboardSharePage = lazy(() => import('../../pages/reporting/DashboardSha
 // PACT144 — rapport d'activité périodique (métriques serveur + narratif
 // éditable ; un narratif citant un chiffre absent est refusé côté serveur).
 const RapportPeriodePage = lazy(() => import('./RapportPeriodePage'))
+// PACT146 — générateur de rapports croisés (définitions NTEXT10 rejouables).
+const RapportBuilderPage = lazy(() => import('./RapportBuilderPage'))
 const ArchiveClientPage = lazy(() => import('../../pages/reporting/ArchiveClientPage'))
 const ArchiveChantierPage = lazy(() => import('../../pages/reporting/ArchiveChantierPage'))
 // XKB1/ZCTR7-9 — boîte d'approbations centralisée cross-app (5 sources).
@@ -113,6 +115,8 @@ const config = {
       { to: '/reporting/dashboards/partage', label: 'Partage de dashboards', k: 'nav.dashboards_partage', icon: navIcon(BarChart3), roles: ['responsable','admin'] },
       // PACT144 — rapport d'activité périodique (chiffres serveur + narratif).
       { to: '/reporting/rapport-periode', label: 'Rapport de période', k: 'nav.rapport_periode', icon: navIcon(ScrollText), roles: ['responsable','admin'] },
+      // PACT146 — générateur de rapports croisés (définitions rejouables).
+      { to: '/reporting/rapport-builder', label: 'Rapports croisés', k: 'nav.rapport_builder', icon: navIcon(BarChart3), roles: ['responsable','admin'] },
       // ODY23 — Journal d'activité rejoint l'app Rapports (route inchangée,
       // déclarée dans features/parametres/module.config.jsx). Gating IDENTIQUE
       // au littéral ADMINISTRATION historique de Sidebar.jsx : ouvert à tout
@@ -124,6 +128,7 @@ const config = {
   // restent déclarés dans `components/layout/routes.meta.js`, non dupliqués).
   titles: [
     ['/reporting/rapport-periode', 'Rapport d’activité périodique'],
+    ['/reporting/rapport-builder', 'Générateur de rapports croisés'],
   ],
   routes: [
     { path: '/reporting', component: Reporting, roles: RESPONSABLE_ADMIN },
@@ -135,6 +140,7 @@ const config = {
     { path: '/reporting/dashboards', component: DashboardConfigPage, roles: RESPONSABLE_ADMIN },
     { path: '/reporting/dashboards/partage', component: DashboardSharePage, roles: RESPONSABLE_ADMIN },
     { path: '/reporting/rapport-periode', component: RapportPeriodePage, roles: RESPONSABLE_ADMIN },
+    { path: '/reporting/rapport-builder', component: RapportBuilderPage, roles: RESPONSABLE_ADMIN },
     { path: '/reporting/archive/client/:id', component: ArchiveClientPage },
     { path: '/reporting/archive/chantier/:id', component: ArchiveChantierPage },
     { path: '/approbations', component: ApprobationsPage },
