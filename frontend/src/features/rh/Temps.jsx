@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { LogOut, Upload, Download, Pencil, MonitorSmartphone, Ban } from 'lucide-react'
+import {
+  LogOut, Upload, Download, Pencil, MonitorSmartphone, Ban, History,
+} from 'lucide-react'
 import { ListShell } from '../../ui/module'
 import {
   Segmented, Button, Badge, toast,
@@ -26,6 +28,9 @@ const VUES = [
   { value: 'presences', label: 'Présences chantier' },
   { value: 'heures_supp', label: 'Heures supp.' },
   { value: 'devices', label: 'Kiosque' },
+  // ZRH6 — absents non justifiés du jour ; ZRH18 — rapport de présence.
+  { value: 'absents', label: 'Absents du jour' },
+  { value: 'rapport', label: 'Rapport de présence' },
 ]
 
 /* PACT19 — colonnes du CSV « Export paie ». La forme vient du serveur
@@ -40,6 +45,15 @@ const COLONNES_EXPORT_PAIE = [
   { id: 'montant_majore', header: 'Montant majoré' },
 ]
 
+/* ZRH18 — période par défaut du rapport de présence : du 1er du mois à
+   aujourd'hui (bornes YYYY-MM-DD attendues par le serveur). */
+function aujourdHui() {
+  return new Date().toISOString().slice(0, 10)
+}
+function debutMois() {
+  return `${aujourdHui().slice(0, 7)}-01`
+}
+
 export default function Temps() {
   const { confirmDelete } = useConfirmDialog()
   const [vue, setVue] = useState('pointages')
@@ -51,6 +65,11 @@ export default function Temps() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [correctionFor, setCorrectionFor] = useState(null)
+  // XRH11 — historique immuable des corrections du pointage consulté.
+  const [historiqueFor, setHistoriqueFor] = useState(null)
+  // ZRH6 — absents non justifiés du jour ; ZRH18 — rapport de présence.
+  const [absents, setAbsents] = useState([])
+  const [rapport, setRapport] = useState(null)
   const [nouveauToken, setNouveauToken] = useState(null)
   const fileRef = useRef(null)
 
@@ -64,14 +83,18 @@ export default function Temps() {
       rhApi.getPresencesChantier(),
       rhApi.getHeuresSupp(),
       rhApi.getDevicesKiosque(),
+      rhApi.getAbsentsNonJustifies(),
+      rhApi.getRapportPresence({ debut: debutMois(), fin: aujourdHui() }),
     ])
-      .then(([pRes, rRes, prRes, hRes, dRes]) => {
+      .then(([pRes, rRes, prRes, hRes, dRes, aRes, rapRes]) => {
         if (!vivant) return
         setPointages(unwrap(pRes.data))
         setRoster(unwrap(rRes.data))
         setPresences(unwrap(prRes.data))
         setHeuresSupp(unwrap(hRes.data))
         setDevices(unwrap(dRes.data))
+        setAbsents(unwrap(aRes.data))
+        setRapport(rapRes.data)
       })
       .catch(() => {
         if (!vivant) return
@@ -217,6 +240,8 @@ export default function Temps() {
     }
     // XRH11 — corriger un pointage (motif obligatoire, audit immuable serveur).
     actions.push({ id: 'corriger', label: 'Corriger', icon: Pencil, onClick: () => setCorrectionFor(p) })
+    // XRH11 — consulter l'audit immuable des corrections (lecture seule).
+    actions.push({ id: 'historique', label: 'Historique des corrections', icon: History, onClick: () => setHistoriqueFor(p) })
     return actions
   }
 
@@ -224,6 +249,36 @@ export default function Temps() {
     { id: 'label', header: 'Device', width: 220, accessor: (d) => d.label || '', cell: (v) => <span className="font-medium">{v || '—'}</span> },
     { id: 'cree', header: 'Créé le', width: 140, searchable: false, accessor: (d) => d.date_creation || '', cell: (v) => (v ? formatDate(v) : '—') },
     { id: 'actif', header: 'Actif', width: 100, accessor: (d) => (d.actif ? 'oui' : 'non'), cell: (_v, d) => <Badge tone={d.actif ? 'success' : 'neutral'}>{d.actif ? 'Actif' : 'Révoqué'}</Badge> },
+  ], [])
+
+  // ZRH6 — un absent non justifié devient un incident de présence en un clic.
+  const genererIncident = async (a) => {
+    try {
+      await rhApi.genererIncidentAbsence({ employe: a.employe_id })
+      toast.success('Incident d’absence créé.')
+      recharger()
+    } catch (err) {
+      toast.error(err?.response?.data?.detail ?? 'Création impossible.')
+    }
+  }
+
+  const absentColumns = useMemo(() => [
+    { id: 'nom', header: 'Employé', width: 220, accessor: (a) => a.nom || '', cell: (v) => <span className="font-medium">{v || '—'}</span> },
+    { id: 'matricule', header: 'Matricule', width: 140, accessor: (a) => a.matricule || '', cell: (v) => v || '—' },
+  ], [])
+
+  const absentActions = (a) => [
+    { id: 'incident', label: 'Créer un incident d’absence', icon: Ban, onClick: () => genererIncident(a) },
+  ]
+
+  // ZRH18 — colonnes du rapport de présence (clés du sélecteur serveur).
+  const rapportColumns = useMemo(() => [
+    { id: 'nom', header: 'Employé', width: 200, accessor: (r) => r.nom || '', cell: (v) => <span className="font-medium">{v || '—'}</span> },
+    { id: 'jours', header: 'Jours pointés', width: 130, align: 'right', numeric: true, searchable: false, accessor: (r) => Number(r.jours_pointes ?? 0), cell: (v) => v },
+    { id: 'heures', header: 'Heures', width: 110, align: 'right', numeric: true, searchable: false, accessor: (r) => Number(r.heures_totales ?? 0), cell: (v) => `${formatNumber(v, { decimals: 1 })} h` },
+    { id: 'hs', header: 'Heures supp.', width: 130, align: 'right', numeric: true, searchable: false, accessor: (r) => Number(r.heures_supp ?? 0), cell: (v) => formatNumber(v, { decimals: 1 }) },
+    { id: 'absences', header: 'Absences', width: 110, align: 'right', numeric: true, searchable: false, accessor: (r) => Number(r.jours_absence ?? 0), cell: (v) => v },
+    { id: 'taux', header: 'Taux de présence', width: 150, align: 'right', numeric: true, searchable: false, accessor: (r) => Number(r.taux_presence_pct ?? 0), cell: (v) => `${formatNumber(v, { decimals: 1 })} %` },
   ], [])
 
   const deviceActions = (d) => (d.actif
@@ -242,6 +297,20 @@ export default function Temps() {
     { id: 'chantier', header: 'Chantier', width: 140, accessor: (p) => String(p.installation_id ?? ''), cell: (v) => v || '—' },
     { id: 'date', header: 'Date', width: 120, searchable: false, accessor: (p) => p.date || '', cell: (v) => formatDate(v) },
     { id: 'statut', header: 'Statut', width: 130, accessor: (p) => p.statut_display || p.statut || '', cell: (v) => v || '—' },
+    // XRH12 — drapeau géofence posé côté serveur à l'émargement (jamais
+    // bloquant : le GPS terrain est imprécis, c'est un signal à vérifier).
+    {
+      id: 'geofence',
+      header: 'Géofence',
+      width: 130,
+      accessor: (p) => (p.hors_zone ? 'hors zone' : (p.emarge ? 'dans la zone' : '')),
+      cell: (_v, p) => {
+        if (!p.emarge) return '—'
+        return p.hors_zone
+          ? <Badge tone="warning">Hors zone</Badge>
+          : <Badge tone="success">Dans la zone</Badge>
+      },
+    },
   ], [])
 
   const heuresColumns = useMemo(() => [
@@ -279,6 +348,10 @@ export default function Temps() {
       actions: heuresSuppActions },
     devices: { title: 'Devices kiosque', columns: deviceColumns, rows: devices, rowActions: deviceActions, exportName: 'devices-kiosque',
       actions: <Button variant="outline" onClick={emettreDevice}><MonitorSmartphone size={15} strokeWidth={1.75} aria-hidden="true" />Émettre un device</Button> },
+    // ZRH6 — absents non justifiés du jour (aucun pointage NI congé validé).
+    absents: { title: 'Absents non justifiés (aujourd’hui)', columns: absentColumns, rows: absents, rowActions: absentActions, exportName: 'absents-non-justifies' },
+    // ZRH18 — rapport de présence & heures supp. du mois en cours.
+    rapport: { title: 'Rapport de présence (mois en cours)', columns: rapportColumns, rows: rapport?.par_employe ?? [], exportName: 'rapport-presence' },
   }[vue]
 
   return (
@@ -310,10 +383,71 @@ export default function Temps() {
           onSaved={() => { setCorrectionFor(null); recharger() }}
         />
       )}
+      {historiqueFor && (
+        <HistoriqueCorrectionsDialog
+          pointage={historiqueFor}
+          onClose={() => setHistoriqueFor(null)}
+        />
+      )}
       {nouveauToken && (
         <TokenDialog data={nouveauToken} onClose={() => setNouveauToken(null)} />
       )}
     </div>
+  )
+}
+
+/* ── XRH11 — Historique IMMUABLE des corrections d'un pointage (lecture) ── */
+function HistoriqueCorrectionsDialog({ pointage, onClose }) {
+  const [lignes, setLignes] = useState([])
+  const [chargement, setChargement] = useState(true)
+  const [erreur, setErreur] = useState(null)
+
+  useEffect(() => {
+    let vivant = true
+    rhApi.getCorrectionsPointage(pointage.id)
+      .then((res) => {
+        if (!vivant) return
+        const d = res.data
+        setLignes(Array.isArray(d) ? d : (d?.results ?? []))
+      })
+      .catch(() => { if (vivant) setErreur('Historique indisponible.') })
+      .finally(() => { if (vivant) setChargement(false) })
+    return () => { vivant = false }
+  }, [pointage.id])
+
+  return (
+    <Dialog open onOpenChange={(o) => { if (!o) onClose() }}>
+      <DialogContent className="max-w-2xl">
+        <DialogHeader>
+          <DialogTitle>Historique des corrections</DialogTitle>
+        </DialogHeader>
+        {chargement && <p className="text-sm text-muted-foreground">Chargement…</p>}
+        {erreur && <p className="text-sm text-danger">{erreur}</p>}
+        {!chargement && !erreur && lignes.length === 0 && (
+          <p className="text-sm text-muted-foreground">Aucune correction sur ce pointage.</p>
+        )}
+        {lignes.length > 0 && (
+          <ul className="flex flex-col gap-3">
+            {lignes.map((c) => (
+              <li key={c.id} className="rounded-md border border-border p-3 text-sm">
+                <div className="font-medium">{c.champ}</div>
+                <div className="text-muted-foreground">
+                  {(c.ancienne_valeur || '—')} → {(c.nouvelle_valeur || '—')}
+                </div>
+                <div className="text-xs text-muted-foreground">
+                  Motif : {c.motif || '—'}
+                  {c.auteur_nom ? ` · ${c.auteur_nom}` : ''}
+                  {c.date_creation ? ` · ${formatDateTime(c.date_creation)}` : ''}
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>Fermer</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   )
 }
 

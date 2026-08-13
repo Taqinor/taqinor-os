@@ -128,18 +128,18 @@ a focused test, calling the EXISTING backend endpoint.
 - [x] FE-ZPAI4-7 — cancel bulletin, batch-print bulletins, saisie-arret annuler/creer-lot. (@lane: frontend/paie) (déjà présent)
 
 ## Lane `frontend/rh` (XRH/ZRH round-2 backend-only — 33 orphaned viewsets)
-- [ ] FE-XRH17-23/ZRH7-9 — **CRITICAL** full ATS in `Recrutement.jsx`: interviews (`entretiens-recrutement`), email templates, offer letters (`promesses-embauche`), talent pool (`vivier`), analytics, CV parsing (`parser-cv`), evaluation templates + 360 feedback. (@lane: frontend/rh) (opus)
-- [ ] FE-YHIRE2/ZRH12 — **CRITICAL** offboarding: `sortir` action button/modal + `comptes-actifs-sortis` security report + `certificat-travail` PDF in `EmployeDetail.jsx`. (@lane: frontend/rh)
-- [ ] FE-XRH1/4-6 — onboarding checklist + essai/CNSS-entry widgets + chatter timeline tab in `EmployeDetail.jsx`. (@lane: frontend/rh)
-- [ ] FE-XRH9/28/ZRH13 — self-service portal: "Mes demandes"/attestation, directory (`annuaire`), allocations in `Portail.jsx`. (@lane: frontend/rh)
-- [ ] FE-XRH28b — wire the already-written dead `getMesEpi`/`getMesHabilitations` into "Mes EPI"/"Mes habilitations" Portail tabs. (@lane: frontend/rh)
-- [ ] FE-XRH34/XRH26/XRH32 — quiz-taking flow + auto-évaluation + eNPS pulse in `Portail.jsx`; quiz builder in `Competences.jsx`. (@lane: frontend/rh)
-- [ ] FE-XRH10/13 — kiosk fullscreen page (device-token) + device-token admin + CSV pointeuse import in `Temps.jsx`. (@lane: frontend/rh)
-- [ ] FE-XRH11-12 — pointage correction history + geofence flag in `Temps.jsx`. (@lane: frontend/rh)
-- [ ] FE-XRH15-16/ZRH10 — competence gap-analysis/evolution + salary-band compa-ratio (gated) + internal candidates. (@lane: frontend/rh)
-- [ ] FE-XRH29/27/31 — dependents/benefits tab, org-tree, attrition-risk widget. (@lane: frontend/rh)
-- [ ] FE-ZRH3-6/11/18 — congé/absence/turnover/présence reports in `Conges.jsx`/`RhCockpit.jsx`/`Temps.jsx`; jours-bloqués mgmt. (@lane: frontend/rh)
-- [ ] FE-ZRH14-17 — reconnaissance badges, career timeline, weekly location, skills search on `EmployeDetail.jsx`. (@lane: frontend/rh)
+- [x] (déjà présent) FE-XRH17-23/ZRH7-9 — **CRITICAL** full ATS in `Recrutement.jsx`: interviews (`entretiens-recrutement`), email templates, offer letters (`promesses-embauche`), talent pool (`vivier`), analytics, CV parsing (`parser-cv`), evaluation templates + 360 feedback. (@lane: frontend/rh) (opus)
+- [x] (déjà présent) FE-YHIRE2/ZRH12 — **CRITICAL** offboarding: `sortir` action button/modal + `comptes-actifs-sortis` security report + `certificat-travail` PDF in `EmployeDetail.jsx`. (@lane: frontend/rh)
+- [x] (déjà présent) FE-XRH1/4-6 — onboarding checklist + essai/CNSS-entry widgets + chatter timeline tab in `EmployeDetail.jsx`. (@lane: frontend/rh)
+- [x] FE-XRH9/28/ZRH13 — self-service portal: "Mes demandes"/attestation, directory (`annuaire`), allocations in `Portail.jsx`. (@lane: frontend/rh)
+- [x] (déjà présent) FE-XRH28b — wire the already-written dead `getMesEpi`/`getMesHabilitations` into "Mes EPI"/"Mes habilitations" Portail tabs. (@lane: frontend/rh)
+- [x] (déjà présent) FE-XRH34/XRH26/XRH32 — quiz-taking flow + auto-évaluation + eNPS pulse in `Portail.jsx`; quiz builder in `Competences.jsx`. (@lane: frontend/rh)
+- [x] (déjà présent) FE-XRH10/13 — kiosk fullscreen page (device-token) + device-token admin + CSV pointeuse import in `Temps.jsx`. (@lane: frontend/rh)
+- [x] FE-XRH11-12 — pointage correction history + geofence flag in `Temps.jsx`. (@lane: frontend/rh)
+- [x] FE-XRH15-16/ZRH10 — competence gap-analysis/evolution + salary-band compa-ratio (gated) + internal candidates. (@lane: frontend/rh)
+- [x] FE-XRH29/27/31 — dependents/benefits tab, org-tree, attrition-risk widget. (@lane: frontend/rh)
+- [x] FE-ZRH3-6/11/18 — congé/absence/turnover/présence reports in `Conges.jsx`/`RhCockpit.jsx`/`Temps.jsx`; jours-bloqués mgmt. (@lane: frontend/rh)
+- [x] FE-ZRH14-17 — reconnaissance badges, career timeline, weekly location, skills search on `EmployeDetail.jsx`. (@lane: frontend/rh)
 
 ## Lane `frontend/sav` (XSAV/XCTR/ZSAV/ZMFG round-2 backend-only)
 - [x] (déjà présent) FE-XSAV19/XSAV10 — **CRITICAL** public pages: QR problem-report `/e/:token` + ticket-tracking + CSAT `/suivi/:token` (both are JSON dead-ends today). (@lane: frontend/sav) (opus)
@@ -287,3 +287,16 @@ a focused test, calling the EXISTING backend endpoint.
   « Heures attendues » (sélecteur de ressource) dans `TimesheetsTab.jsx`, `ressources` transmis
   depuis `RessourcesPage.jsx`, test vitest ajouté. Gates : eslint / vitest (45 tests) / vite build
   verts.
+- 2026-08-13 - FE-ZRH14-17 : onglet Parcours & localisation dans EmployeDetail.jsx (timeline ZRH15 + carte hebdomadaire ZRH16), encart Ou travaille l'equipe aujourd'hui dans RhCockpit.jsx (ZRH16) et recherche par competence dans Competences.jsx (ZRH17, wrapper getEmployesParCompetence) ; les badges de reconnaissance (ZRH14) etaient deja presents.
+- 2026-08-13 — FE-ZRH3-6/11/18 : vue « Rapport » congés (ZRH3) dans `Conges.jsx`, onglets « Absents du jour » (ZRH6, avec création d'incident) et « Rapport de présence » (ZRH18) dans `Temps.jsx`, encart « Rétention & turnover » annuel (ZRH11) dans `RhCockpit.jsx` ; wrappers `getRapportConges`/`getAbsentsNonJustifies`/`genererIncidentAbsence`/`getRapportPresence` ajoutés à `rhApi.js` ; la gestion des jours bloqués existait déjà (`JoursBloquesConge.jsx`).
+- 2026-08-13 — FE-XRH29/27/31 : onglet « Ayants droit & avantages » (XRH29) dans `EmployeDetail.jsx` et widget « Risque d'attrition — top 5 » (XRH31) dans `RhCockpit.jsx` (+ `RhCockpit.test.jsx`) ; l'organigramme (XRH27) était déjà présent dans `Competences.jsx`.
+- 2026-08-13 — FE-XRH15-16/ZRH10 : panneau « Écarts de compétences » + création de besoin de formation en un clic dans `EmployeDetail.jsx`, vue « Évolution » (ZRH10) dans `Competences.jsx`, dialogue « Candidats internes » sur les ouvertures dans `Recrutement.jsx` ; le compa-ratio (XRH16) lisait des clés inexistantes (`compa_ratio`/`salaire`/`mediane`) — recâblé sur les vraies (`compa_ratio_pct`/`salaire_actuel`/`salaire_min`/`salaire_max`/`statut`).
+- 2026-08-13 — FE-XRH11-12 : action « Historique des corrections » (audit immuable `getCorrectionsPointage`) sur les pointages et colonne géofence « Hors zone » sur les présences chantier, dans `Temps.jsx`.
+- 2026-08-13 — FE-XRH17-23/ZRH7-9 (déjà présent) : l'ATS complet est câblé dans `Recrutement.jsx` (entretiens, gabarits d'email, promesses d'embauche + PDF, vivier, statistiques, `parserCv`, modèles d'évaluation, feedback 360°).
+- 2026-08-13 — FE-YHIRE2/ZRH12 (déjà présent) : `sortirEmploye` + certificat de travail dans `EmployeDetail.jsx` et rapport `comptes-actifs-sortis` dans `EmployeList.jsx`.
+- 2026-08-13 — FE-XRH1/4-6 (déjà présent) : checklist d'intégration, encarts période d'essai + déclaration CNSS/AMO et onglet chatter dans `EmployeDetail.jsx`.
+- 2026-08-13 — FE-XRH9/28/ZRH13 : onglet « Annuaire » (XRH28, `getAnnuaire` + filtre client) et liste de mes demandes d'allocation (ZRH13, `getMesAllocations`) ajoutés à `Portail.jsx` ; « Mes demandes »/attestation étaient déjà en place.
+- 2026-08-13 — FE-XRH28b (déjà présent) : onglets « Mes EPI » et « Mes habilitations » du portail consomment `getMesEpi`/`getMesHabilitations`.
+- 2026-08-13 — FE-XRH34/XRH26/XRH32 (déjà présent) : passage de quiz, auto-évaluation et baromètre eNPS dans `Portail.jsx` ; constructeur de quiz dans `Competences.jsx`.
+- 2026-08-13 — FE-XRH10/13 (déjà présent) : page kiosque plein écran `/kiosque`, administration des devices kiosque et import CSV pointeuse dans `Temps.jsx`.
+

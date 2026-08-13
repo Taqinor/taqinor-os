@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import {
   CalendarDays, Receipt, FileText, Plane, HardHat, ShieldCheck,
-  GraduationCap, Smile,
+  GraduationCap, Smile, Users, CalendarPlus,
 } from 'lucide-react'
 import {
   Card, Stat, Segmented, Badge, EmptyState, Skeleton, toast,
@@ -33,6 +33,9 @@ const VUES = [
   { value: 'habilitations', label: 'Mes habilitations' },
   { value: 'quiz', label: 'Mes quiz' },
   { value: 'evaluations', label: 'Mes évaluations' },
+  // XRH28 — annuaire interne (champs NON sensibles uniquement, cf.
+  // AnnuaireEmployeSerializer : ni salaire, ni CIN, ni adresse perso).
+  { value: 'annuaire', label: 'Annuaire' },
 ]
 
 export default function Portail() {
@@ -51,6 +54,10 @@ export default function Portail() {
   const [evaluations, setEvaluations] = useState([])
   const [pulse, setPulse] = useState([])
   const [typesAbsence, setTypesAbsence] = useState([])
+  // ZRH13 — mes demandes d'allocation ; XRH28 — annuaire interne.
+  const [allocations, setAllocations] = useState([])
+  const [annuaire, setAnnuaire] = useState([])
+  const [annuaireQ, setAnnuaireQ] = useState('')
   const [loading, setLoading] = useState(true)
   const [sansDossier, setSansDossier] = useState(false)
   const [reloadTick, setReloadTick] = useState(0)
@@ -94,9 +101,13 @@ export default function Portail() {
       rhApi.getMesEvaluations(),
       rhApi.getCampagnesPulse(),
       rhApi.getTypesAbsence(),
+      rhApi.getMesAllocations(),
+      rhApi.getAnnuaire(),
     ]).then((r) => {
       if (!vivant) return
-      const [s, c, f, m, b, dm, ep, ha, qz, tt, ev, pl, ta] = r
+      const [s, c, f, m, b, dm, ep, ha, qz, tt, ev, pl, ta, al, an] = r
+      if (al.status === 'fulfilled') setAllocations(unwrap(al.value.data))
+      if (an.status === 'fulfilled') setAnnuaire(unwrap(an.value.data))
       if (s.status === 'fulfilled') setSoldes(unwrap(s.value.data))
       if (c.status === 'fulfilled') setConges(unwrap(c.value.data))
       if (f.status === 'fulfilled') setFrais(unwrap(f.value.data))
@@ -180,6 +191,21 @@ export default function Portail() {
               />
             )}
           />
+          {/* ZRH13 — mes demandes d'allocation exceptionnelle (self-service). */}
+          {allocations.length > 0 && (
+            <PortailListe
+              rows={allocations}
+              empty="Aucune demande d’allocation."
+              renderRow={(a) => (
+                <RowLine
+                  title={`Allocation · ${a.type_absence_code || a.type_absence_nom || ''}`}
+                  meta={`${formatNumber(a.jours ?? 0, { decimals: 1 })} j${a.motif ? ` · ${a.motif}` : ''}`}
+                  icon={CalendarPlus}
+                  right={<Badge tone={a.statut === 'validee' ? 'success' : 'info'}>{a.statut_display || a.statut || 'En cours'}</Badge>}
+                />
+              )}
+            />
+          )}
         </div>
       )}
       {/* WIR35 — soumission self-service d'une note de frais. */}
@@ -333,6 +359,41 @@ export default function Portail() {
             />
           )}
         />
+      )}
+
+      {/* XRH28 — annuaire interne : recherche nom/poste/département. */}
+      {vue === 'annuaire' && (
+        <div className="flex flex-col gap-3">
+          <div className="max-w-sm">
+            <Label htmlFor="an-q">Rechercher</Label>
+            <Input
+              id="an-q"
+              value={annuaireQ}
+              onChange={(e) => setAnnuaireQ(e.target.value)}
+              placeholder="Nom, poste, département…"
+            />
+          </div>
+          <PortailListe
+            rows={annuaire.filter((a) => {
+              const q = annuaireQ.trim().toLowerCase()
+              if (!q) return true
+              return [a.nom, a.prenom, a.poste_nom, a.poste, a.departement_nom]
+                .filter(Boolean)
+                .some((v) => String(v).toLowerCase().includes(q))
+            })}
+            empty="Aucun collaborateur."
+            renderRow={(a) => (
+              <RowLine
+                title={`${a.nom || ''} ${a.prenom || ''}`.trim()}
+                meta={`${a.poste_nom || a.poste || '—'}${a.departement_nom ? ` · ${a.departement_nom}` : ''}${a.telephone ? ` · ${a.telephone}` : ''}`}
+                icon={Users}
+                right={a.email
+                  ? <span className="text-xs text-muted-foreground">{a.email}</span>
+                  : null}
+              />
+            )}
+          />
+        </div>
       )}
 
       {attestationOpen && (
