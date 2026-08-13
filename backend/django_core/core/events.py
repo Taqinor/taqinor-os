@@ -898,8 +898,10 @@ def emit_reliable(event, *, sender=None, company=None, emitted_by=None,
 #     (JAMAIS un changement de stage automatique). Émis par
 #     ``apps.crm.services.detecter_signal_interet_salle_vente`` (appelé en
 #     best-effort depuis ``apps.crm.public_views.public_salle_vente`` à chaque
-#     nouvelle vue). Abonné dans ce repo : ``crm`` lui-même (chatter
-#     ``LeadActivity``) — signal exposé sur le bus pour toute app future qui
+#     nouvelle vue). AUCUN abonné dans ce repo : la note de chatter
+#     (``LeadActivity``) est écrite EN LIGNE par ce même service, pas par un
+#     récepteur — le signal est exposé sur le bus pour toute app future qui
 #     voudrait réagir (ex. notification commerciale) sans coupler
-#     ``apps.crm`` à elle. Arguments : ``lead``, ``salle``, ``company``.
+#     ``apps.crm`` à elle (réservé dans ``core.event_coverage``).
+#     Arguments : ``lead``, ``salle``, ``company``.
 salle_vente_signal_interet = django.dispatch.Signal()
