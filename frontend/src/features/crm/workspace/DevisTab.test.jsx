@@ -19,7 +19,14 @@ const { genererFacture, createFromDevis, whatsappDevis } = vi.hoisted(() => ({
 }))
 vi.mock('../../../api/ventesApi', () => ({ default: { genererFacture } }))
 vi.mock('../../../api/installationsApi', () => ({ default: { createFromDevis } }))
-vi.mock('../../../api/crmApi', () => ({ default: { whatsappDevis } }))
+// NTCRM19 — badge de consultation salle de vente : résolu en no-op (aucune
+// salle) pour ne pas polluer ces tests, déjà couverts par son propre test.
+vi.mock('../../../api/crmApi', () => ({
+  default: {
+    whatsappDevis,
+    getLeadSalleVenteAnalytics: () => Promise.resolve({ data: null }),
+  },
+}))
 
 beforeAll(() => {
   if (!window.HTMLElement.prototype.scrollIntoView) window.HTMLElement.prototype.scrollIntoView = () => {}

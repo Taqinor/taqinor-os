@@ -224,6 +224,11 @@ const crmApi = {
   getConcurrentsPerte: (params) => api.get('/crm/concurrents-perte/', { params }),
   createConcurrentPerte: (data) => api.post('/crm/concurrents-perte/', data),
 
+  // NTCRM19 — résumé de consultation salle de vente pour la fiche lead
+  // (« le client a consulté N fois, dernière fois <date> »).
+  getLeadSalleVenteAnalytics: (leadId) =>
+    api.get(`/crm/leads/${leadId}/salle-vente-analytics/`),
+
   // PACT104 — Points de contact (FG204) : la lecture agrégée (`getLead
   // PointsContact`, ci-dessus) est déjà câblée ; la collection racine
   // (créer manuellement un point de contact) n'avait aucun appelant.

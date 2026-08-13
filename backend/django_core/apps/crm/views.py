@@ -1158,6 +1158,17 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
                 summary['timeline'], many=True).data,
         })
 
+    @action(detail=True, methods=['get'], url_path='salle-vente-analytics',
+            permission_classes=[IsAnyRole])
+    def salle_vente_analytics_view(self, request, pk=None):
+        """NTCRM19 — résumé de consultation de la salle de vente la plus
+        récente de ce lead, pour le widget « le client a consulté N fois,
+        dernière fois <date> » de la fiche lead. `null` si aucune salle."""
+        from .selectors import salle_vente_summary_for_lead
+        lead = self.get_object()
+        summary = salle_vente_summary_for_lead(request.user.company, lead.pk)
+        return Response(summary)
+
     @action(detail=True, methods=['post'], url_path='devis-auto',
             permission_classes=[IsResponsableOrAdmin])
     def devis_auto(self, request, pk=None):
@@ -2580,3 +2591,15 @@ class SalleVenteViewSet(CompanyScopedModelViewSet):
         if not deleted:
             return Response(status=status.HTTP_404_NOT_FOUND)
         return Response(status=status.HTTP_204_NO_CONTENT)
+
+    @action(detail=True, methods=['get'], url_path='analytics',
+            permission_classes=[IsAnyRole])
+    def analytics(self, request, pk=None):
+        """NTCRM19 — nombre de vues, dernière vue, délai création→première
+        vue (signal d'intérêt). Le suivi PAR ITEM n'est pas câblé
+        (`SalleVenteVue` journalise la salle entière, pas item par item) —
+        seul l'agrégat salle est exposé, conformément à la tâche NTCRM19
+        (« si consultation par item trackée » — non le cas ici)."""
+        from .selectors import salle_vente_analytics
+        salle = self.get_object()
+        return Response(salle_vente_analytics(salle))

@@ -2468,3 +2468,40 @@ def comptes_dormants(company, seuil_jours=90, now=None):
         key=lambda r: (r['jours_inactivite'] is None, r['jours_inactivite'] or 0),
         reverse=True)
     return out
+
+
+def salle_vente_analytics(salle):
+    """NTCRM19 — analytics d'une salle de vente : nombre de vues, dernière
+    vue, délai création → première vue (signal d'intérêt : plus court =
+    prospect plus chaud). Lecture seule."""
+    vues_qs = salle.vues.order_by('created_at')
+    count = vues_qs.count()
+    premiere = vues_qs.first()
+    derniere = salle.vues.order_by('-created_at').first()
+    delai_premiere_vue_heures = None
+    if premiere is not None:
+        delta = premiere.created_at - salle.created_at
+        delai_premiere_vue_heures = round(delta.total_seconds() / 3600, 1)
+    return {
+        'salle_id': salle.id,
+        'nb_vues': count,
+        'derniere_vue': derniere.created_at if derniere else None,
+        'premiere_vue': premiere.created_at if premiere else None,
+        'delai_premiere_vue_heures': delai_premiere_vue_heures,
+    }
+
+
+def salle_vente_summary_for_lead(company, lead_id):
+    """NTCRM19 — résumé consommé par la fiche lead : « le client a consulté
+    N fois, dernière fois <date> » sur la salle de vente la plus récente du
+    lead. `None` si le lead n'a aucune salle de vente."""
+    from .models import SalleVente
+
+    salle = (SalleVente.objects
+             .filter(company=company, lead_id=lead_id)
+             .order_by('-created_at').first())
+    if salle is None:
+        return None
+    analytics = salle_vente_analytics(salle)
+    analytics['salle_titre'] = salle.titre
+    return analytics
