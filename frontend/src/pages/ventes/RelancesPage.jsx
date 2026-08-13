@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import {
   PartyPopper, FileText, MessageCircle, Mail, History, ReceiptText, MoreHorizontal,
-  CalendarClock, Download, UserCog,
+  CalendarClock, Download, UserCog, HandCoins,
 } from 'lucide-react'
 // APX11 — en-tête unique VX28 + accent de module (identité Ventes).
 import { PageHeader } from '../../ui/PageHeader'
@@ -139,6 +139,51 @@ export default function RelancesPage() {
         setUsers(Array.isArray(res.data) ? res.data : (res.data?.results || []))
       } catch { /* sans liste, le mode reste réglable (responsable inchangé) */ }
     }
+  }
+
+  // ── PACT45 — Promesses de paiement (XFAC5) ──
+  // « Le client s'engage à payer le … » : le serveur pose
+  // `facture.exclu_relances_jusquau` et le cron `relance_reminders` SAUTE la
+  // facture jusqu'à cette date (ou jusqu'à la rupture de la promesse). La
+  // donnée arrivait déjà par facture (`promesse`) sans jamais être rendue.
+  const [promesseTarget, setPromesseTarget] = useState(null)
+  const [promesseMontant, setPromesseMontant] = useState('')
+  const [promesseDate, setPromesseDate] = useState('')
+  const [promesseNote, setPromesseNote] = useState('')
+  const [promesseBusy, setPromesseBusy] = useState(false)
+
+  // Promesse encore TENUE (en cours et non échue) — c'est elle qui suspend la
+  // relance automatique, exactement comme la règle serveur.
+  const promesseActive = (r) => {
+    const p = r.promesse
+    if (!p || p.statut !== 'en_cours') return null
+    return p.date_promise >= new Date().toISOString().slice(0, 10) ? p : null
+  }
+
+  const openPromesse = (r) => {
+    setPromesseTarget(r)
+    setPromesseMontant(String(toNumber(r.montant_du) || ''))
+    setPromesseDate(todayPlus(7))
+    setPromesseNote('')
+  }
+
+  const enregistrerPromesse = async () => {
+    if (!promesseTarget) return
+    setPromesseBusy(true)
+    try {
+      // `company`, `created_by` et `statut` sont imposés par le serveur.
+      await api.post('/ventes/promesses-paiement/', {
+        facture: promesseTarget.id,
+        montant_promis: promesseMontant,
+        date_promise: promesseDate,
+        note: promesseNote,
+      })
+      toast.success(`Promesse enregistrée — relances suspendues jusqu'au ${promesseDate}.`)
+      setPromesseTarget(null)
+      load()
+    } catch {
+      toast.error('Enregistrement de la promesse impossible.')
+    } finally { setPromesseBusy(false) }
   }
 
   const enregistrerParametrage = async () => {
@@ -370,8 +415,15 @@ export default function RelancesPage() {
     // recalculé LOCALEMENT (même règle que `modeDe`) pour que ce memo ne
     // dépende que de `rows`/`parametrages`, jamais d'une fonction recréée.
     const mode = (r) => parametrages[r.client_id]?.mode || r.relance_mode || 'auto'
-    if (fileFilter === 'auto') list = list.filter(r => mode(r) === 'auto')
-    else if (fileFilter === 'manuel') list = list.filter(r => mode(r) === 'manuel')
+    // PACT45 — une promesse EN COURS et non échue suspend la relance
+    // automatique : la facture quitte la file automatique, exactement comme
+    // `relance_reminders` l'écarte côté serveur (exclu_relances_jusquau).
+    const aujourdhui = new Date().toISOString().slice(0, 10)
+    const suspendue = (r) => !!r.promesse && r.promesse.statut === 'en_cours'
+      && r.promesse.date_promise >= aujourdhui
+    if (fileFilter === 'auto') {
+      list = list.filter(r => mode(r) === 'auto' && !suspendue(r))
+    } else if (fileFilter === 'manuel') list = list.filter(r => mode(r) === 'manuel')
     if (sortByDu) {
       list = [...list].sort(
         (a, b) => (toNumber(b.montant_du) || 0) - (toNumber(a.montant_du) || 0))
@@ -490,6 +542,33 @@ export default function RelancesPage() {
       cell: (r) => r.nb_relances,
     },
     {
+      // PACT45 — promesse de paiement : le serveur la renvoyait par facture
+      // sans que rien ne la montre. Une promesse tenue suspend visiblement la
+      // relance ; une promesse rompue est signalée en rouge.
+      key: 'promesse',
+      header: 'Promesse',
+      cell: (r) => {
+        const p = r.promesse
+        if (!p) return <span className="text-muted-foreground">—</span>
+        if (p.statut === 'rompue') {
+          return <Badge tone="danger">Promesse rompue</Badge>
+        }
+        const active = promesseActive(r)
+        return (
+          <div className="flex flex-col items-start gap-0.5">
+            <Badge tone={active ? 'success' : 'neutral'}>
+              {formatMAD(p.montant_promis)} le {p.date_promise}
+            </Badge>
+            {active && (
+              <span className="text-xs text-muted-foreground">
+                Relance suspendue
+              </span>
+            )}
+          </div>
+        )
+      },
+    },
+    {
       // PACT44 — mode de relance du client + responsable assigné : la donnée
       // arrivait déjà du serveur et n'était affichée nulle part.
       key: 'mode_relance',
@@ -553,6 +632,12 @@ export default function RelancesPage() {
               <DropdownMenuItem onSelect={() => releve(r)}>
                 <ReceiptText className="size-3.5" aria-hidden="true" />
                 Relevé de compte client (PDF)
+              </DropdownMenuItem>
+              {/* PACT45 — engagement de paiement du client : suspend la
+                  relance automatique jusqu'à la date promise. */}
+              <DropdownMenuItem onSelect={() => openPromesse(r)}>
+                <HandCoins className="size-3.5" aria-hidden="true" />
+                Promesse de paiement
               </DropdownMenuItem>
               {/* PACT44 — règle le mode (auto/manuel) et le responsable de
                   relance DU CLIENT, pas de la facture. */}
@@ -803,6 +888,56 @@ export default function RelancesPage() {
           <DialogFooter>
             <Button variant="ghost" onClick={() => setTarget(null)}>Annuler</Button>
             <Button loading={busy} onClick={relancer}>Consigner</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── PACT45 — Promesse de paiement (XFAC5) ──
+          « Le client s'engage à payer le … » : le serveur pose l'exclusion
+          EXPIRANTE de relance jusqu'à cette date. Aucun statut de facture
+          n'est touché — seule la relance est suspendue. */}
+      <Dialog open={!!promesseTarget} onOpenChange={(o) => { if (!o) setPromesseTarget(null) }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              Promesse de paiement — {promesseTarget?.reference}
+            </DialogTitle>
+            <DialogDescription>
+              La relance automatique de cette facture est suspendue jusqu&apos;à la
+              date promise. Passée cette date sans encaissement, la promesse est
+              marquée « rompue » et la relance reprend.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-3">
+            <div className="grid gap-1.5">
+              <Label htmlFor="promesse-montant">Montant promis (MAD)</Label>
+              <Input id="promesse-montant" type="number" step="any"
+                     value={promesseMontant}
+                     onChange={e => setPromesseMontant(e.target.value)} />
+              {promesseTarget && (
+                <p className="text-xs text-muted-foreground">
+                  Reste dû : {formatMAD(promesseTarget.montant_du)}
+                </p>
+              )}
+            </div>
+            <div className="grid gap-1.5">
+              <Label htmlFor="promesse-date">Date promise</Label>
+              <Input id="promesse-date" type="date" value={promesseDate}
+                     onChange={e => setPromesseDate(e.target.value)} />
+            </div>
+            <div className="grid gap-1.5">
+              <Label htmlFor="promesse-note">Note (contexte de l&apos;engagement)</Label>
+              <Textarea id="promesse-note" rows={2} value={promesseNote}
+                        onChange={e => setPromesseNote(e.target.value)} />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setPromesseTarget(null)}>Annuler</Button>
+            <Button loading={promesseBusy}
+                    disabled={!promesseDate || !promesseMontant}
+                    onClick={enregistrerPromesse}>
+              Enregistrer la promesse
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

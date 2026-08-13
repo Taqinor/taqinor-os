@@ -39,6 +39,7 @@ vi.mock('../../ui/confirm', () => ({
 }))
 
 import api from '../../api/axios'
+import ventesApi from '../../api/ventesApi'
 import RelancesPage from './RelancesPage'
 
 // Réponses par défaut : aucun paramétrage, aucune promesse.
@@ -50,7 +51,10 @@ const defaultGet = (url) => {
   return Promise.resolve({ data: [] })
 }
 
-beforeEach(() => { api.get.mockImplementation(defaultGet) })
+beforeEach(() => {
+  api.get.mockImplementation(defaultGet)
+  ventesApi.getRelances.mockResolvedValue({ data: ROWS })
+})
 afterEach(() => { cleanup(); vi.clearAllMocks() })
 
 const renderPage = (entry = '/ventes/relances') => render(
@@ -132,5 +136,64 @@ describe('RelancesPage (PACT44 — paramétrage des relances par client)', () =>
       expect.objectContaining({ client: 42, mode: 'manuel' })))
     // `company` n'est JAMAIS envoyée depuis le client (imposée serveur).
     expect(api.post.mock.calls[0][1]).not.toHaveProperty('company')
+  })
+})
+
+/* PACT45 — promesse de paiement : le serveur renvoyait déjà `promesse` par
+   facture, l'écran ne l'affichait pas et n'en créait aucune. Une promesse
+   tenue suspend la relance automatique (miroir exact de la règle serveur
+   `exclu_relances_jusquau`). */
+describe('RelancesPage (PACT45 — promesses de paiement)', () => {
+  const dansUnMois = () => {
+    const d = new Date()
+    d.setDate(d.getDate() + 30)
+    return d.toISOString().slice(0, 10)
+  }
+
+  const avecPromesse = () => ([
+    {
+      ...ROWS[0],
+      promesse: {
+        id: 4, statut: 'en_cours', montant_promis: '1000',
+        date_promise: dansUnMois(),
+      },
+    },
+    ROWS[1],
+  ])
+
+  it('affiche la promesse en cours et la suspension de relance', async () => {
+    ventesApi.getRelances.mockResolvedValue({ data: avecPromesse() })
+    renderPage()
+    await screen.findByText('ACME SARL')
+    expect(await screen.findByText('Relance suspendue')).toBeInTheDocument()
+  })
+
+  it('retire la facture promise de la file automatique', async () => {
+    const user = userEvent.setup()
+    ventesApi.getRelances.mockResolvedValue({ data: avecPromesse() })
+    renderPage()
+    await screen.findByText('ACME SARL')
+
+    await user.click(screen.getByRole('combobox', { name: 'Filtrer la file de relance' }))
+    await user.click(await screen.findByRole('option', { name: 'File automatique' }))
+
+    await waitFor(() => expect(screen.queryByText('ACME SARL')).not.toBeInTheDocument())
+    // L'autre facture, sans promesse, reste dans la file automatique.
+    expect(screen.getByText('Globex')).toBeInTheDocument()
+  })
+
+  it('enregistre une promesse de paiement sur une facture', async () => {
+    const user = userEvent.setup()
+    api.post.mockResolvedValue({ data: { id: 4 } })
+    renderPage()
+    await screen.findByText('ACME SARL')
+
+    await user.click(screen.getByRole('button', { name: /Plus d'actions — FAC-001/ }))
+    await user.click(await screen.findByRole('menuitem', { name: /Promesse de paiement/ }))
+    await user.click(screen.getByRole('button', { name: 'Enregistrer la promesse' }))
+
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith(
+      '/ventes/promesses-paiement/',
+      expect.objectContaining({ facture: 1, montant_promis: '1000' })))
   })
 })
