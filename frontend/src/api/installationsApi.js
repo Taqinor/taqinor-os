@@ -256,6 +256,12 @@ const installationsApi = {
 
   // ── FG73 — « Ma tournée » : interventions du jour du technicien, ordonnées
   // géographiquement (plus proche voisin) avec lien Itinéraire Google Maps. ──
+  // NTMOB21 — météo terrain du jour au point GPS (cache serveur 1 h).
+  // Erreur silencieuse : le widget est informatif, jamais bloquant.
+  getMeteoTerrain: (lat, lon) =>
+    api.get('/installations/meteo/', {
+      params: { lat, lon }, suppressErrorToast: true,
+    }),
   getMaTournee: (date, config) =>
     api.get('/installations/interventions/ma-tournee/',
       { params: date ? { date } : undefined, ...config }),

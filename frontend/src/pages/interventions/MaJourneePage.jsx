@@ -43,6 +43,7 @@ import { SignatureClientPanel } from '../../features/installations/SignatureClie
 // APX29 — carte des arrêts, partagée avec l'onglet « Ma tournée » (planification).
 import TourneeStops from '../../features/installations/TourneeStops'
 import AFaireAujourdhui from '../../features/offlinesync/mobile/AFaireAujourdhui'
+import MeteoTerrainCard from '../../features/installations/MeteoTerrainCard'
 import {
   interventionStatusLabel, INTERVENTION_TYPES,
   INTERVENTION_STATUSES, INTERVENTION_STATUS_LABELS,
@@ -333,6 +334,10 @@ export default function MaJourneePage() {
           <RefreshCw className={`size-4${manualRefreshing ? ' animate-spin' : ''}`} aria-hidden="true" />
         </Button>
       </header>
+
+      {/* NTMOB21 — alerte météo du jour au point du premier chantier
+          (Open-Meteo, informatif : ne bloque et ne masque jamais rien). */}
+      <MeteoTerrainCard stops={rows} />
 
       {/* NTMOB19 — widget unifié « À faire aujourd'hui » (tous modules) :
           même composant que les accueils mobiles par rôle, pour que le
