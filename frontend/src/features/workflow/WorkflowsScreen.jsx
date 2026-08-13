@@ -1,6 +1,6 @@
 import { useCallback, useMemo, useState } from 'react'
 import {
-  ArrowDown, ArrowUp, Check, Plus, Trash2, X,
+  ArrowDown, ArrowUp, Check, Pencil, Plus, Trash2, X,
 } from 'lucide-react'
 import {
   Button, IconButton, Input, Textarea, Badge, Card, toast,
@@ -47,6 +47,44 @@ function nouvelleDefinition() {
   return { nom: '', description: '', steps: [] }
 }
 
+/* PACT124 — signature d'une liste d'etapes : sert a savoir si les etapes ont
+   REELLEMENT change pendant l'edition. Si seul le nom/la description bougent,
+   on enregistre SANS `steps` : le serializer ne remplace alors pas les lignes
+   (`steps_data is None`), ce qui evite une suppression/recreation inutile —
+   `WorkflowStepInstance.step_def` est en PROTECT, une etape deja utilisee par
+   une instance en cours ne peut pas etre supprimee. */
+function signatureEtapes(steps) {
+  return JSON.stringify(
+    (Array.isArray(steps) ? steps : []).map((s) => [
+      String(s?.nom ?? ''),
+      String(s?.type_approbation ?? ''),
+      String(s?.sla_heures ?? ''),
+      String(s?.role_requis ?? ''),
+      String(s?.escalade_vers ?? ''),
+    ]),
+  )
+}
+
+/* Convertit une definition SERVEUR en brouillon editable local (les champs
+   absents deviennent des chaines vides : les `<Input>` restent controles). */
+function definitionEnBrouillon(d) {
+  return {
+    nom: d?.nom || '',
+    description: d?.description || '',
+    steps: (Array.isArray(d?.steps) ? d.steps : [])
+      .slice()
+      .sort((a, b) => (a?.ordre ?? 0) - (b?.ordre ?? 0))
+      .map((s, i) => ({
+        ordre: i + 1,
+        nom: s?.nom || '',
+        type_approbation: s?.type_approbation || 'manuelle',
+        sla_heures: s?.sla_heures ?? '',
+        role_requis: s?.role_requis || '',
+        escalade_vers: s?.escalade_vers || '',
+      })),
+  }
+}
+
 function DefinitionsTab() {
   // WIR51 — les definitions sont desormais PERSISTEES cote serveur
   // (`core/workflow-definitions/`, company forcee cote serveur). On charge les
@@ -57,6 +95,11 @@ function DefinitionsTab() {
   } = useWorkflowResource(() => coreApi.workflowDefinitions.list())
   const [def, setDef] = useState(nouvelleDefinition)
   const [saving, setSaving] = useState(false)
+  // PACT124 — id de la definition en cours d'EDITION (null = creation). Avant
+  // cette tache l'ecran ne savait QUE creer puis reinitialiser son formulaire :
+  // aucun chemin ne permettait de rouvrir une definition deja creee.
+  const [editionId, setEditionId] = useState(null)
+  const [signatureInitiale, setSignatureInitiale] = useState('')
 
   function majChamp(champ, valeur) {
     setDef((d) => ({ ...d, [champ]: valeur }))
@@ -85,6 +128,35 @@ function DefinitionsTab() {
     setDef((d) => ({ ...d, steps: deplacerEtape(d.steps, index, 1) }))
   }
 
+  /* PACT124 — ouvre une definition EXISTANTE dans l'editeur (ses etapes
+     deviennent modifiables : ajout, retrait, reordonnancement). */
+  function editer(d) {
+    const brouillon = definitionEnBrouillon(d)
+    setDef(brouillon)
+    setEditionId(d?.id ?? null)
+    setSignatureInitiale(signatureEtapes(brouillon.steps))
+  }
+
+  function annulerEdition() {
+    setDef(nouvelleDefinition())
+    setEditionId(null)
+    setSignatureInitiale('')
+  }
+
+  function etapesPayload(steps) {
+    return steps.map((s, i) => ({
+      ordre: i + 1,
+      nom: s.nom,
+      type_approbation: s.type_approbation || 'manuelle',
+      sla_heures:
+        s.sla_heures === '' || s.sla_heures == null
+          ? null
+          : Number(s.sla_heures),
+      role_requis: s.role_requis || '',
+      escalade_vers: s.escalade_vers || '',
+    }))
+  }
+
   async function creer() {
     const erreurs = validerDefinition(def)
     if (erreurs.length > 0) {
@@ -94,20 +166,30 @@ function DefinitionsTab() {
     if (saving) return
     setSaving(true)
     try {
+      const nom = String(def.nom || '').trim()
       const payload = {
-        nom: String(def.nom || '').trim(),
+        nom,
         description: def.description || '',
-        steps: def.steps.map((s, i) => ({
-          ordre: i + 1,
-          nom: s.nom,
-          type_approbation: s.type_approbation || 'manuelle',
-          sla_heures:
-            s.sla_heures === '' || s.sla_heures == null
-              ? null
-              : Number(s.sla_heures),
-          role_requis: s.role_requis || '',
-          escalade_vers: s.escalade_vers || '',
-        })),
+        steps: etapesPayload(def.steps),
+      }
+      if (editionId != null) {
+        // Edition : le serializer REMPLACE les etapes seulement si `steps` est
+        // fourni (renumerotees 1..n cote serveur — le reordonnancement passe
+        // donc en UNE requete atomique, sans conflit d'unicite). Si les etapes
+        // n'ont pas bouge, on ne les envoie PAS : renommer une definition ne
+        // doit jamais supprimer des etapes referencees par une instance en
+        // cours (`step_def` est en PROTECT).
+        if (signatureEtapes(def.steps) === signatureInitiale) {
+          delete payload.steps
+        }
+        const res = await coreApi.workflowDefinitions.update(editionId, payload)
+        const maj = res?.data
+        setData((list) => (Array.isArray(list) ? list : []).map(
+          (d) => (d.id === editionId ? (maj && maj.id != null ? maj : { ...d, ...payload }) : d),
+        ))
+        toast.success(`Definition "${nom}" mise a jour (${def.steps.length} etapes).`)
+        annulerEdition()
+        return
       }
       const res = await coreApi.workflowDefinitions.create(payload)
       const created = res?.data
@@ -210,8 +292,23 @@ function DefinitionsTab() {
               <Plus /> Ajouter une etape
             </Button>
             <Button onClick={creer} disabled={saving} data-testid="wf-def-create">
-              <Check /> {saving ? 'Enregistrement...' : 'Creer la definition'}
+              <Check />{' '}
+              {saving
+                ? 'Enregistrement...'
+                : (editionId != null
+                  ? 'Enregistrer les modifications'
+                  : 'Creer la definition')}
             </Button>
+            {editionId != null && (
+              <Button
+                variant="ghost"
+                onClick={annulerEdition}
+                disabled={saving}
+                data-testid="wf-def-cancel-edit"
+              >
+                <X /> Annuler l&apos;edition
+              </Button>
+            )}
           </div>
         </div>
       </Card>
@@ -230,12 +327,29 @@ function DefinitionsTab() {
           <ul className="flex flex-col gap-2" data-testid="wf-def-created-list">
             {crees.map((d) => (
               <li key={d.id} className="rounded-md border border-border p-3">
-                <div className="flex items-center justify-between">
+                <div className="flex flex-wrap items-center justify-between gap-2">
                   <span className="font-medium">{d.nom}</span>
-                  <Badge tone="neutral">{(d.steps || []).length} etapes</Badge>
+                  <div className="flex items-center gap-2">
+                    <Badge tone="neutral">{(d.steps || []).length} etapes</Badge>
+                    {/* PACT124 — LE chemin qui manquait : rouvrir une
+                        definition existante dans l'editeur d'etapes. */}
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      onClick={() => editer(d)}
+                      data-testid={`wf-def-edit-${d.id}`}
+                    >
+                      <Pencil /> Modifier
+                    </Button>
+                  </div>
                 </div>
                 {d.description && (
                   <p className="mt-1 text-sm text-muted-foreground">{d.description}</p>
+                )}
+                {editionId === d.id && (
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    En cours d&apos;edition ci-dessus.
+                  </p>
                 )}
               </li>
             ))}
