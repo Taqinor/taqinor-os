@@ -55,6 +55,25 @@ const cpqApi = {
   validerCompatibilite: (produitIds) =>
     api.post(`${P}/valider-compatibilite/`, { produit_ids: produitIds }),
 
+  // ── Paramètres CPQ (WIR105) : seuils de marge par famille (NTCPQ6) et
+  // paliers d'approbation par profondeur de remise (NTCPQ7/8). Les deux
+  // ViewSets existent précisément pour retirer la dépendance au Django admin.
+  // `marge_min_pct` est une donnée INTERNE : elle ne sort jamais vers un PDF
+  // ou un écran client — ce paramétrage est réservé au palier responsable.
+  getSeuilsMarge: (params) => api.get(`${P}/seuils-marge/`, { params }),
+  createSeuilMarge: (data) => api.post(`${P}/seuils-marge/`, data),
+  updateSeuilMarge: (id, data) => api.patch(`${P}/seuils-marge/${id}/`, data),
+  deleteSeuilMarge: (id) => api.delete(`${P}/seuils-marge/${id}/`),
+
+  getReglesApprobationRemise: (params) =>
+    api.get(`${P}/regles-approbation-remise/`, { params }),
+  createRegleApprobationRemise: (data) =>
+    api.post(`${P}/regles-approbation-remise/`, data),
+  updateRegleApprobationRemise: (id, data) =>
+    api.patch(`${P}/regles-approbation-remise/${id}/`, data),
+  deleteRegleApprobationRemise: (id) =>
+    api.delete(`${P}/regles-approbation-remise/${id}/`),
+
   // ── Offres groupées / bundles (NTCPQ3). `lignes` est IMBRIQUÉE dans le
   // corps (le sérialiseur crée/remplace les lignes) ; `prix_total` optionnel
   // est réparti au prorata quand les lignes sont en mode FIXE.
