@@ -562,6 +562,72 @@ class UxParametresApiTests(TestCase):
         self.assertEqual(resp.status_code, 200, resp.data)
 
 
+class NTUX28LimitesAntiAbusTests(TestCase):
+    """NTUX28 — limites configurables sur le nombre de vues/favoris par
+    utilisateur, appliquées côté serveur (400 explicite, jamais de suppression
+    automatique silencieuse)."""
+
+    VUES = '/api/django/uxviews/saved-views/'
+    FAVORIS = '/api/django/uxviews/favoris/'
+
+    def setUp(self):
+        self.co = make_company('uxlim-a', 'Lim A')
+        self.user = make_user(self.co, 'uxlim-user')
+
+    def test_defauts_de_la_limite(self):
+        parametres = UxParametres.get_or_default(self.co)
+        self.assertEqual(parametres.max_vues_par_utilisateur, 50)
+        self.assertEqual(parametres.max_favoris_par_utilisateur, 30)
+
+    def test_51e_vue_personnelle_est_refusee(self):
+        parametres = UxParametres.get_or_default(self.co)
+        parametres.max_vues_par_utilisateur = 2
+        parametres.save(update_fields=['max_vues_par_utilisateur'])
+        api = auth(self.user)
+        for i in range(2):
+            resp = api.post(self.VUES, {
+                'ecran': 'crm.leads', 'nom': f'Vue {i}', 'configuration': {},
+            }, format='json')
+            self.assertEqual(resp.status_code, 201, resp.data)
+        resp = api.post(self.VUES, {
+            'ecran': 'crm.leads', 'nom': 'Vue de trop', 'configuration': {},
+        }, format='json')
+        self.assertEqual(resp.status_code, 400, resp.data)
+        self.assertIn('detail', resp.data)
+        self.assertEqual(SavedView.objects.filter(owner=self.user).count(), 2)
+
+    def test_favori_de_trop_est_refuse(self):
+        parametres = UxParametres.get_or_default(self.co)
+        parametres.max_favoris_par_utilisateur = 1
+        parametres.save(update_fields=['max_favoris_par_utilisateur'])
+        cible1 = SavedView.objects.create(
+            company=self.co, owner=self.user, ecran='crm.leads', nom='Cible 1')
+        cible2 = SavedView.objects.create(
+            company=self.co, owner=self.user, ecran='crm.leads', nom='Cible 2')
+        api = auth(self.user)
+        resp1 = api.post(self.FAVORIS, {
+            'modele': 'uxviews.savedview', 'object_id': cible1.pk}, format='json')
+        self.assertEqual(resp1.status_code, 201, resp1.data)
+        resp2 = api.post(self.FAVORIS, {
+            'modele': 'uxviews.savedview', 'object_id': cible2.pk}, format='json')
+        self.assertEqual(resp2.status_code, 400, resp2.data)
+        self.assertEqual(FavoriUtilisateur.objects.filter(owner=self.user).count(), 1)
+
+    def test_repingler_la_meme_cible_nest_jamais_bloque_par_la_limite(self):
+        parametres = UxParametres.get_or_default(self.co)
+        parametres.max_favoris_par_utilisateur = 1
+        parametres.save(update_fields=['max_favoris_par_utilisateur'])
+        cible = SavedView.objects.create(
+            company=self.co, owner=self.user, ecran='crm.leads', nom='Cible')
+        api = auth(self.user)
+        payload = {'modele': 'uxviews.savedview', 'object_id': cible.pk}
+        self.assertEqual(api.post(self.FAVORIS, payload, format='json').status_code, 201)
+        # Deuxième épinglage de la MÊME cible : no-op, jamais un 400 de limite.
+        resp = api.post(self.FAVORIS, payload, format='json')
+        self.assertEqual(resp.status_code, 201, resp.data)
+        self.assertEqual(FavoriUtilisateur.objects.filter(owner=self.user).count(), 1)
+
+
 class NTUX30DigestFavorisObsoletesTests(TestCase):
     """NTUX30 — digest hebdomadaire des favoris pointant vers une cible
     supprimée : jamais de suppression automatique, une notification par

@@ -152,6 +152,14 @@ class UxParametres(TenantModel):
         'roles.Role', blank=True, related_name='ux_parametres_defaut',
         verbose_name='Rôles autorisés à définir une vue par défaut',
     )
+    # NTUX28 — limites anti-abus, APPLIQUÉES côté serveur dans
+    # `SavedViewViewSet.perform_create`/`FavoriUtilisateurViewSet.perform_create`
+    # (jamais une suppression automatique silencieuse : au-delà de la limite,
+    # la création est refusée avec un message clair).
+    max_vues_par_utilisateur = models.PositiveIntegerField(
+        'Nombre maximum de vues personnelles par utilisateur', default=50)
+    max_favoris_par_utilisateur = models.PositiveIntegerField(
+        'Nombre maximum de favoris par utilisateur', default=30)
 
     class Meta:
         verbose_name = 'Réglages UX'
