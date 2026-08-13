@@ -375,6 +375,9 @@ def charger_lot(lot, file_bytes, filename, *, mode=None,
         verrou.derogation_motif = ''
         verrou.derogation_par = None
         verrou.derogation_at = None
+        # NTMIG38 — un chargement COMPLET repart de la ligne 1 : le décalage
+        # de reprise éventuel d'un chargement précédent ne vaut plus.
+        verrou.fichier_offset_lignes = 0
         # NTMIG35 — fichier réellement chargé, gardé temporairement (reprise
         # NTMIG38 / migration à blanc NTMIG33), purgé après clôture.
         memoriser_fichier_source(verrou, file_bytes, filename)
@@ -382,10 +385,138 @@ def charger_lot(lot, file_bytes, filename, *, mode=None,
             'source_lignes', 'crees', 'maj', 'erreurs', 'import_job',
             'statut', 'derogation_reconcile', 'derogation_motif',
             'derogation_par', 'derogation_at', 'fichier_source',
-            'fichier_source_nom', 'updated_at'])
+            'fichier_source_nom', 'fichier_offset_lignes', 'updated_at'])
 
     lot.refresh_from_db()
     return result
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# NTMIG38 — reprise sur incident (idempotence d'un lot partiellement chargé)
+# ─────────────────────────────────────────────────────────────────────────
+class RepriseImpossible(ValueError):
+    """Rien à reprendre — ou pas de quoi reprendre sans risque de doublon."""
+
+
+def derniere_ligne_commitee(lot):
+    """Numéro, DANS LE FICHIER D'ORIGINE, de la dernière ligne commitée.
+
+    ``0`` s'il n'y a jamais eu de chargement : la « reprise » est alors un
+    chargement complet. Le décalage ``fichier_offset_lignes`` traduit les
+    numéros du dernier journal (qui portent sur le RESTE du fichier après une
+    reprise précédente) en numéros de la source d'origine.
+    """
+    from django.db.models import Max
+
+    job = lot.import_job
+    if job is None:
+        return 0
+    statut_ok = job.rows.model.Statut.OK
+    dernier = job.rows.filter(statut=statut_ok).aggregate(
+        m=Max('ligne'))['m'] or 0
+    return lot.fichier_offset_lignes + dernier
+
+
+def reprendre_lot(lot, file_bytes=None, filename=None, *, user=None,
+                  mapping_name=None):
+    """NTMIG38 — reprend un lot interrompu APRÈS sa dernière ligne commitée.
+
+    Un chargement de 1 000 lignes coupé à la 600ᵉ reprend à la 601ᵉ : les 600
+    premières ne sont ni rejouées ni dupliquées, parce qu'elles ne sont même
+    pas envoyées au moteur — le fichier est REJOUÉ TRONQUÉ (les lignes déjà
+    commitées sont retirées) plutôt que re-soumis en entier en espérant que le
+    rapprochement les reconnaisse. C'est la seule façon d'être idempotent y
+    compris sur les cibles qui ne savent pas encore faire d'``upsert``
+    (produits, fournisseurs…) : sur celles-là, un simple ré-envoi
+    RE-CRÉERAIT les 600 premières.
+
+    Ceinture ET bretelles : le mode ``upsert`` est en plus demandé quand la
+    cible le supporte, de sorte qu'une ligne à cheval (commitée mais non
+    journalisée à cause de l'incident) soit rapprochée par ``ExternalRef``
+    au lieu d'être dupliquée.
+
+    Sans fichier fourni, on reprend celui MÉMORISÉ au chargement (NTMIG35) :
+    quelques semaines après, plus personne ne retrouve le fichier d'origine —
+    et reprendre avec un AUTRE fichier décalerait toute la numérotation.
+
+    Les compteurs du lot restent CUMULÉS (source = fichier d'origine entier,
+    créés/màj = toutes passes confondues) : la réconciliation NTMIG4/5 compare
+    bien la source complète à ce qui a réellement été chargé, sinon un lot
+    repris paraîtrait « conforme » sur les seules 400 dernières lignes.
+    """
+    from apps.dataimport import services as dataimport_services
+
+    _refuser_si_fige(lot)
+
+    if file_bytes is None:
+        memorise = fichier_source_de(lot)
+        if memorise is None:
+            raise RepriseImpossible(
+                'Aucun fichier source mémorisé pour ce lot (purgé ou jamais '
+                'chargé) : re-téléversez le fichier d\'origine pour reprendre.')
+        file_bytes, filename = memorise
+    filename = filename or lot.fichier_source_nom or 'source.csv'
+
+    coupe = derniere_ligne_commitee(lot)
+    headers, rows = dataimport_services.parse_rows(file_bytes, filename)
+    total_source = len(rows)
+    restantes = rows[coupe:]
+    prior_crees, prior_maj = lot.crees, lot.maj
+    prior_erreurs = _erreurs_avant_coupe(lot)
+
+    if not restantes:
+        raise RepriseImpossible(
+            f'Rien à reprendre : les {total_source} ligne(s) du fichier ont '
+            'déjà été traitées.')
+
+    octets, nom = _reconstruire_csv(headers, restantes, filename)
+    resultat = charger_lot(
+        lot, octets, nom, mode='upsert', mapping_name=mapping_name, user=user)
+
+    lot.refresh_from_db()
+    lot.source_lignes = total_source
+    lot.crees = prior_crees + resultat.get('created', 0)
+    lot.maj = prior_maj + resultat.get('updated', 0)
+    lot.erreurs = prior_erreurs + len(resultat.get('skipped', []))
+    lot.fichier_offset_lignes = coupe
+    # Le fichier mémorisé par ``charger_lot`` est le TRONÇON rejoué : on
+    # remet l'ORIGINAL, faute de quoi une seconde reprise repartirait d'un
+    # fichier amputé de ses 600 premières lignes.
+    memoriser_fichier_source(lot, file_bytes, filename)
+    lot.save(update_fields=[
+        'source_lignes', 'crees', 'maj', 'erreurs', 'fichier_offset_lignes',
+        'fichier_source', 'fichier_source_nom', 'updated_at'])
+
+    return {
+        'reprise_depuis_ligne': coupe + 1,
+        'lignes_deja_commitees': coupe,
+        'lignes_rejouees': len(restantes),
+        'total_source': total_source,
+        'resultat': resultat,
+    }
+
+
+def _erreurs_avant_coupe(lot):
+    """Erreurs cumulées à CONSERVER, hors lignes sur le point d'être rejouées.
+
+    Une ligne refusée AVANT le point de coupe ne redevient pas valide parce
+    qu'on reprend : elle reste un écart à traiter (fichier corrigé ou
+    dérogation motivée), et l'oublier ferait passer le lot « conforme » alors
+    que des lignes source n'ont jamais été importées. En revanche, les lignes
+    en erreur SITUÉES APRÈS la coupe repartent dans la passe de reprise : les
+    compter deux fois gonflerait artificiellement les écarts.
+    """
+    from django.db.models import Max
+
+    job = lot.import_job
+    if job is None:
+        return lot.erreurs
+    statuts = job.rows.model.Statut
+    dernier_ok = job.rows.filter(statut=statuts.OK).aggregate(
+        m=Max('ligne'))['m'] or 0
+    rejouees = job.rows.filter(
+        statut=statuts.ERREUR, ligne__gt=dernier_ok).count()
+    return max(lot.erreurs - rejouees, 0)
 
 
 # ─────────────────────────────────────────────────────────────────────────

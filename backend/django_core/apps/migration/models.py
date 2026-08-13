@@ -124,6 +124,14 @@ class LotMigration(TenantModel):
     fichier_source_nom = models.CharField(
         max_length=255, blank=True, default='',
         verbose_name="Nom du fichier source d'origine")
+    #: NTMIG38 — nombre de lignes du fichier D'ORIGINE déjà commitées lors des
+    #: passes précédentes. Le dernier ``import_job`` numérote ses lignes à
+    #: partir du fichier qu'on lui a donné (le RESTE du fichier lors d'une
+    #: reprise) : sans cet décalage, « ligne 12 » du journal serait prise pour
+    #: la ligne 12 de la source alors qu'elle en est la 612ᵉ, et la reprise
+    #: suivante rechargerait 600 lignes déjà passées.
+    fichier_offset_lignes = models.PositiveIntegerField(
+        default=0, verbose_name="Lignes source déjà chargées (reprise)")
 
     # NTMIG5 — dérogation explicite « pas de succès sans reconcile ».
     derogation_reconcile = models.BooleanField(default=False)

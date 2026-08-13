@@ -257,6 +257,31 @@ class LotMigrationViewSet(CompanyScopedModelViewSet):
             # laissée de côté ne disparaît jamais en silence.
             'lignes_ignorees': exclues})
 
+    @action(detail=True, methods=['post'], url_path='reprendre', permission_classes=[IsDirecteurOuAdmin])
+    def reprendre(self, request, pk=None):
+        """NTMIG38 — reprise d'un lot interrompu, sans doublon.
+
+        Sans fichier joint, reprend le fichier MÉMORISÉ au dernier chargement
+        (NTMIG35) ; 400 explicite s'il a été purgé ou s'il n'y a rien à
+        reprendre.
+        """
+        lot = self.get_object()
+        file_bytes, filename = None, None
+        if request.FILES.get('fichier') or request.FILES.get('file'):
+            file_bytes, filename = _fichier_de(request)
+        try:
+            rapport = services.reprendre_lot(
+                lot, file_bytes, filename,
+                mapping_name=request.data.get('mapping_name') or None,
+                user=request.user)
+        except services.RepriseImpossible as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        except ValueError as exc:
+            raise ValidationError({'detail': str(exc)})
+        return Response({
+            'lot': LotMigrationSerializer(lot).data, 'reprise': rapport})
+
     @action(detail=True, methods=['post'], url_path='charger-odoo', permission_classes=[IsDirecteurOuAdmin])
     def charger_odoo(self, request, pk=None):
         """NTMIG9 — chargement via le connecteur Odoo JSON-2 (gated).
