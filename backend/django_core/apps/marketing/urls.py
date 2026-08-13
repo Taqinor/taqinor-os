@@ -23,6 +23,7 @@ from .public_views import (
 from .views import (
     AbonnementListeViewSet,
     AppelTelephoniqueViewSet,
+    ArcJourneyViewSet,
     ApprobationEnvoiCampagneViewSet,
     AvisClientViewSet,
     BilletEvenementViewSet,
@@ -41,6 +42,7 @@ from .views import (
     ListeDiffusionViewSet,
     MessageWhatsAppEntrantViewSet,
     MouvementFideliteViewSet,
+    NoeudJourneyViewSet,
     OuverturePartageViewSet,
     QuestionEvenementViewSet,
     RegleUpsellViewSet,
@@ -80,6 +82,11 @@ router.register(r'etapes-sequence', EtapeSequenceViewSet,
                 basename='mkt-etape-sequence')
 router.register(r'inscriptions-sequence', InscriptionSequenceViewSet,
                 basename='mkt-inscription-sequence')
+# ── Journey en graphe (NTMKT12) ─────────────────────────────────────────────
+router.register(r'noeuds-journey', NoeudJourneyViewSet,
+                basename='mkt-noeud-journey')
+router.register(r'arcs-journey', ArcJourneyViewSet,
+                basename='mkt-arc-journey')
 # ── Récupération devis / ouvertures / formulaires / capture (FG203–208) ─────
 router.register(r'relances-devis-abandonnes', RelanceDevisAbandonneViewSet,
                 basename='mkt-relance-devis-abandonne')

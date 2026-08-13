@@ -581,6 +581,19 @@ class InscriptionSequence(models.Model):
         related_name='inscriptions_en_cours',
         verbose_name='Étape courante',
     )
+    # ── NTMKT12 — position dans le GRAPHE (journey) quand la séquence en a un.
+    # Reste NULL pour toute séquence linéaire : le moteur XMKT1 existant est
+    # strictement inchangé pour ces inscriptions.
+    noeud_courant = models.ForeignKey(
+        'marketing.NoeudJourney',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='inscriptions_en_cours',
+        verbose_name='Nœud courant (journey)',
+    )
+    noeud_depuis = models.DateTimeField(
+        null=True, blank=True,
+        verbose_name='Entrée sur le nœud courant')
     statut = models.CharField(
         max_length=10, choices=Statut.choices, default=Statut.ACTIF,
         verbose_name='Statut')
@@ -630,8 +643,19 @@ class ExecutionEtapeSequence(models.Model):
     etape = models.ForeignKey(
         EtapeSequence,
         on_delete=models.CASCADE,
+        null=True, blank=True,
         related_name='executions',
         verbose_name='Étape',
+    )
+    # ── NTMKT12 — trace d'un nœud de journey (au lieu d'une étape linéaire).
+    # Exactement une des deux références est renseignée : ``etape`` pour le
+    # moteur linéaire XMKT1 (inchangé), ``noeud`` pour le parcours en graphe.
+    noeud = models.ForeignKey(
+        'marketing.NoeudJourney',
+        on_delete=models.CASCADE,
+        null=True, blank=True,
+        related_name='executions',
+        verbose_name='Nœud (journey)',
     )
     execute_le = models.DateTimeField(
         auto_now_add=True, verbose_name='Exécutée le')
@@ -1953,3 +1977,121 @@ class PostSocial(models.Model):
 
     def __str__(self):
         return f'{self.get_reseau_display()} — {self.texte[:40]} ({self.statut})'
+
+
+# ── NTMKT12 — Journey en graphe (nœuds + arêtes), extension ADDITIVE ───────
+# Le moteur linéaire XMKT1 (``EtapeSequence`` + ``InscriptionSequence``) reste
+# intact : une ``SequenceRelance`` SANS nœud graphe s'exécute exactement comme
+# aujourd'hui (fallback linéaire préservé à l'octet). Les nœuds/arcs ci-dessous
+# ne font qu'AJOUTER un mode de routage multi-embranchements par-dessus le même
+# moteur d'exécution et les mêmes traces (``ExecutionEtapeSequence``).
+
+class NoeudJourney(models.Model):
+    """Un nœud du graphe d'une séquence de relance (NTMKT12).
+
+    Le graphe appartient à une ``SequenceRelance`` EXISTANTE (jamais un second
+    moteur) : quand une séquence porte au moins un nœud, le tick parcourt le
+    graphe ; sinon il déroule la liste linéaire d'``EtapeSequence`` comme
+    avant.
+    """
+    class Type(models.TextChoices):
+        DECLENCHEUR = 'declencheur', 'Déclencheur'
+        ATTENTE = 'attente', 'Attente (J+n)'
+        # NTMKT14 — attente jusqu'à une date / un créneau ouvré.
+        ATTENTE_JUSQU_A = 'attente_jusqu_a', "Attente jusqu'à"
+        ACTION = 'action', 'Action (message / CRM)'
+        BRANCHE = 'branche', 'Branche'
+        SORTIE = 'sortie', 'Sortie'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='noeuds_journey',
+        verbose_name='Société',
+    )
+    sequence = models.ForeignKey(
+        SequenceRelance,
+        on_delete=models.CASCADE,
+        related_name='noeuds',
+        verbose_name='Séquence',
+    )
+    type_noeud = models.CharField(
+        max_length=20, choices=Type.choices, default=Type.ACTION,
+        verbose_name='Type de nœud')
+    libelle = models.CharField(
+        max_length=200, blank=True, default='', verbose_name='Libellé')
+    position_x = models.IntegerField(default=0, verbose_name='Position X')
+    position_y = models.IntegerField(default=0, verbose_name='Position Y')
+    # Config libre selon le type :
+    #  attente          -> {"delai_jours": 3}
+    #  attente_jusqu_a  -> {"mode": "date"|"jour_ouvre", "date": "...",
+    #                       "heure": 9, "jour_semaine": 0}
+    #  action           -> {"canal": "email"|"whatsapp"|"appel",
+    #                       "modele_message": "..."}
+    config = models.JSONField(default=dict, blank=True, verbose_name='Config')
+
+    class Meta:
+        verbose_name = 'Nœud de journey'
+        verbose_name_plural = 'Nœuds de journey'
+        ordering = ['sequence', 'id']
+        indexes = [
+            models.Index(fields=['company', 'sequence'],
+                         name='mkt_noeudjrn_co_seq_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.sequence_id} · {self.type_noeud} ({self.libelle})'
+
+
+class ArcJourney(models.Model):
+    """Une arête orientée entre deux nœuds d'un journey (NTMKT12).
+
+    Surclasse le champ ``condition`` UNIQUE d'``EtapeSequence`` (XMKT18) : un
+    nœud peut porter N arcs sortants, chacun avec sa propre condition ; le
+    premier arc (par ``ordre``) dont la condition est vraie est emprunté.
+    """
+    class Condition(models.TextChoices):
+        TOUJOURS = 'toujours', 'Toujours'
+        A_OUVERT = 'a_ouvert', 'A ouvert'
+        A_CLIQUE = 'a_clique', 'A cliqué'
+        SCORE_SEUIL = 'score_seuil', 'Score >= seuil'
+        TAG_PRESENT = 'tag_present', 'Tag présent'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='arcs_journey',
+        verbose_name='Société',
+    )
+    source = models.ForeignKey(
+        NoeudJourney,
+        on_delete=models.CASCADE,
+        related_name='arcs_sortants',
+        verbose_name='Nœud source',
+    )
+    cible = models.ForeignKey(
+        NoeudJourney,
+        on_delete=models.CASCADE,
+        related_name='arcs_entrants',
+        verbose_name='Nœud cible',
+    )
+    condition = models.CharField(
+        max_length=20, choices=Condition.choices, default=Condition.TOUJOURS,
+        verbose_name='Condition')
+    # Valeur associée à la condition : seuil de score, nom du tag…
+    valeur = models.CharField(
+        max_length=200, blank=True, default='', verbose_name='Valeur')
+    ordre = models.PositiveIntegerField(
+        default=1, verbose_name="Ordre d'évaluation")
+
+    class Meta:
+        verbose_name = 'Arc de journey'
+        verbose_name_plural = 'Arcs de journey'
+        ordering = ['source', 'ordre', 'id']
+        indexes = [
+            models.Index(fields=['company', 'source'],
+                         name='mkt_arcjrn_co_src_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.source_id} → {self.cible_id} ({self.condition})'

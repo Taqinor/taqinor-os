@@ -99,3 +99,206 @@ def creer_lead_depuis_intake(formulaire, data):
     if formulaire.tag_prefill:
         poser_tag_lead(lead, None, formulaire.tag_prefill)
     return lead
+
+
+# ── NTMKT12 — Parcours en GRAPHE d'une séquence de relance ──────────────────
+# Extension strictement ADDITIVE du moteur XMKT1 : une séquence SANS nœud n'est
+# jamais vue par ce code (``sequence_a_graphe`` faux) et continue d'être
+# déroulée à l'octet par ``compta.services.executer_etapes_dues``. Une séquence
+# AVEC nœuds n'a pas d'``EtapeSequence`` : ses inscriptions portent
+# ``etape_courante=None`` et sont donc naturellement ignorées par le moteur
+# linéaire (qui filtre sur ``etape_courante__isnull=False``) — aucune double
+# exécution possible.
+
+# Garde-fou anti-boucle : un cycle dans le graphe ne doit jamais faire tourner
+# le tick indéfiniment.
+MAX_NOEUDS_PAR_TICK = 50
+
+
+def sequence_a_graphe(sequence):
+    """La séquence porte-t-elle un graphe de journey (NTMKT12) ?"""
+    from .models import NoeudJourney
+    return NoeudJourney.objects.filter(sequence=sequence).exists()
+
+
+def noeud_initial(sequence):
+    """Nœud d'entrée du graphe : le premier ``declencheur``, à défaut le nœud
+    de plus petit id. ``None`` si la séquence n'a pas de graphe."""
+    from .models import NoeudJourney
+    noeuds = NoeudJourney.objects.filter(sequence=sequence).order_by('id')
+    return (noeuds.filter(type_noeud=NoeudJourney.Type.DECLENCHEUR).first()
+            or noeuds.first())
+
+
+def _lead_du_parcours(inscription):
+    """Lead de l'inscription, lu via le selector crm (jamais ses models)."""
+    from apps.crm.selectors import get_company_lead
+    try:
+        return get_company_lead(inscription.company, inscription.lead_id)
+    except Exception:
+        return None
+
+
+def _condition_arc_vraie(inscription, arc):
+    """NTMKT12 — évalue la condition d'un arc sur les traces EXISTANTES
+    (``EnvoiCampagne`` XMKT2 pour l'ouverture/le clic) et sur le lead lu via
+    ``crm.selectors`` (score/tag). Toute condition inconnue est fausse."""
+    from .models import ArcJourney, EnvoiCampagne
+    condition = arc.condition or ArcJourney.Condition.TOUJOURS
+    if condition == ArcJourney.Condition.TOUJOURS:
+        return True
+    if condition in (ArcJourney.Condition.A_OUVERT,
+                     ArcJourney.Condition.A_CLIQUE):
+        champ = ('ouvert_le' if condition == ArcJourney.Condition.A_OUVERT
+                 else 'clique_le')
+        filtre = {
+            f'{champ}__isnull': False,
+            f'{champ}__gte': inscription.declenchee_le,
+        }
+        return EnvoiCampagne.objects.filter(
+            company=inscription.company,
+            contact_ref=f'lead:{inscription.lead_id}',
+            **filtre).exists()
+    lead = _lead_du_parcours(inscription)
+    if lead is None:
+        return False
+    if condition == ArcJourney.Condition.SCORE_SEUIL:
+        try:
+            seuil = float(arc.valeur)
+        except (TypeError, ValueError):
+            return False
+        return float(getattr(lead, 'score', 0) or 0) >= seuil
+    if condition == ArcJourney.Condition.TAG_PRESENT:
+        tag = (arc.valeur or '').strip().lower()
+        if not tag:
+            return False
+        tags = (getattr(lead, 'tags', '') or '').lower()
+        return tag in [t.strip() for t in tags.split(',') if t.strip()]
+    return False
+
+
+def arc_suivant(inscription, noeud):
+    """Premier arc sortant (par ``ordre``) dont la condition est vraie."""
+    for arc in noeud.arcs_sortants.all().order_by('ordre', 'id'):
+        if _condition_arc_vraie(inscription, arc):
+            return arc
+    return None
+
+
+def echeance_noeud(inscription, noeud):
+    """Instant à partir duquel le nœud d'attente est franchissable.
+
+    ``attente`` = J+``config.delai_jours`` depuis l'entrée sur le nœud. Tout
+    autre type est franchissable immédiatement.
+    """
+    from django.utils import timezone
+    from .models import NoeudJourney
+    depuis = inscription.noeud_depuis or inscription.declenchee_le
+    if noeud.type_noeud == NoeudJourney.Type.ATTENTE:
+        try:
+            jours = int((noeud.config or {}).get('delai_jours') or 0)
+        except (TypeError, ValueError):
+            jours = 0
+        return depuis + timezone.timedelta(days=max(jours, 0))
+    return depuis
+
+
+def _tracer_noeud(inscription, noeud, *, resultat='planifie', canal='',
+                  erreur=''):
+    """Trace l'exécution d'un nœud dans le journal EXISTANT
+    (``ExecutionEtapeSequence``) — jamais un second registre de traces."""
+    from .models import ExecutionEtapeSequence
+    return ExecutionEtapeSequence.objects.create(
+        company=inscription.company,
+        inscription=inscription,
+        etape=None,
+        noeud=noeud,
+        canal=canal or '',
+        resultat=resultat,
+        erreur=erreur or '',
+    )
+
+
+def _positionner(inscription, noeud, *, maintenant):
+    """Place l'inscription sur ``noeud`` (ou la termine si ``None``)."""
+    from .models import InscriptionSequence
+    if noeud is None:
+        inscription.noeud_courant = None
+        inscription.noeud_depuis = None
+        inscription.statut = InscriptionSequence.Statut.TERMINE
+        inscription.save(update_fields=[
+            'noeud_courant', 'noeud_depuis', 'statut'])
+        return
+    inscription.noeud_courant = noeud
+    inscription.noeud_depuis = maintenant
+    inscription.save(update_fields=['noeud_courant', 'noeud_depuis'])
+
+
+def avancer_journey(inscription, *, maintenant=None):
+    """Fait avancer UNE inscription dans le graphe de sa séquence (NTMKT12).
+
+    Renvoie la liste des traces créées. S'arrête sur un nœud d'attente non
+    échu, sur un nœud de sortie, ou quand aucun arc sortant n'est empruntable
+    (fin de parcours → inscription terminée).
+    """
+    from django.utils import timezone
+    from .models import InscriptionSequence, NoeudJourney
+    maintenant = maintenant or timezone.now()
+    traces = []
+    if inscription.statut != InscriptionSequence.Statut.ACTIF:
+        return traces
+    if inscription.noeud_courant is None:
+        depart = noeud_initial(inscription.sequence)
+        if depart is None:
+            return traces
+        _positionner(inscription, depart, maintenant=maintenant)
+    for _ in range(MAX_NOEUDS_PAR_TICK):
+        noeud = inscription.noeud_courant
+        if noeud is None:
+            break
+        if noeud.type_noeud == NoeudJourney.Type.SORTIE:
+            inscription.noeud_courant = None
+            inscription.noeud_depuis = None
+            inscription.statut = InscriptionSequence.Statut.TERMINE
+            inscription.save(update_fields=[
+                'noeud_courant', 'noeud_depuis', 'statut'])
+            break
+        if noeud.type_noeud in (NoeudJourney.Type.ATTENTE,
+                                NoeudJourney.Type.ATTENTE_JUSQU_A):
+            if maintenant < echeance_noeud(inscription, noeud):
+                break
+        elif noeud.type_noeud == NoeudJourney.Type.ACTION:
+            config = noeud.config or {}
+            traces.append(_tracer_noeud(
+                inscription, noeud, canal=str(config.get('canal') or '')))
+        arc = arc_suivant(inscription, noeud)
+        _positionner(inscription, arc.cible if arc else None,
+                     maintenant=maintenant)
+        if arc is None:
+            break
+    return traces
+
+
+def executer_journeys_dus(company, *, maintenant=None):
+    """Tick des séquences EN GRAPHE d'une société (NTMKT12).
+
+    Pendant graphe de ``compta.services.executer_etapes_dues`` (linéaire), qui
+    reste la seule voie pour les séquences sans nœud.
+    """
+    from django.utils import timezone
+    from .models import InscriptionSequence, NoeudJourney
+    maintenant = maintenant or timezone.now()
+    sequences_graphe = set(
+        NoeudJourney.objects.filter(company=company)
+        .values_list('sequence_id', flat=True))
+    if not sequences_graphe:
+        return []
+    traces = []
+    inscriptions = InscriptionSequence.objects.filter(
+        company=company,
+        statut=InscriptionSequence.Statut.ACTIF,
+        sequence_id__in=sequences_graphe,
+    ).select_related('sequence', 'noeud_courant')
+    for inscription in inscriptions:
+        traces.extend(avancer_journey(inscription, maintenant=maintenant))
+    return traces

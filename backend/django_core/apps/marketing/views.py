@@ -53,3 +53,43 @@ from apps.compta.views import (  # noqa: F401
     webhook_brevo_campagne,
     webhook_sms_stop,
 )
+from apps.compta.views import _ComptaBaseViewSet
+
+from .models import ArcJourney, NoeudJourney
+from .serializers import ArcJourneySerializer, NoeudJourneySerializer
+
+
+# ── NTMKT12 — Journey en graphe (nœuds + arcs) ──────────────────────────────
+# Scoping société hérité de ``_ComptaBaseViewSet`` (= ``TenantMixin``) :
+# queryset filtré sur ``request.user.company`` + ``company`` forcée en
+# ``perform_create`` (jamais lue du corps).
+
+class NoeudJourneyViewSet(_ComptaBaseViewSet):
+    """Nœuds du graphe d'une séquence de relance (NTMKT12)."""
+    queryset = NoeudJourney.objects.all()
+    serializer_class = NoeudJourneySerializer
+    # YAPIC2 — whitelist de tri explicite (jamais '__all__').
+    ordering_fields = ['id', 'sequence', 'type_noeud']
+    search_fields = ['libelle']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        sequence = self.request.query_params.get('sequence')
+        if sequence:
+            qs = qs.filter(sequence_id=sequence)
+        return qs
+
+
+class ArcJourneyViewSet(_ComptaBaseViewSet):
+    """Arcs (arêtes conditionnelles) du graphe d'un journey (NTMKT12)."""
+    queryset = ArcJourney.objects.all()
+    serializer_class = ArcJourneySerializer
+    ordering_fields = ['id', 'source', 'ordre']
+    search_fields = ['valeur']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        sequence = self.request.query_params.get('sequence')
+        if sequence:
+            qs = qs.filter(source__sequence_id=sequence)
+        return qs
