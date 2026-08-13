@@ -11,8 +11,10 @@ PDF d'un objet réel :
   3. le corps est substitué par ``core.templating`` (littéral, valeurs
      échappées) puis rendu par le moteur PDF mutualisé du noyau.
 
-Un placeholder inconnu du contexte reste LITTÉRAL (``core.templating`` en mode
-non strict) : un gabarit mal orthographié n'a jamais fait planter un rendu.
+Pour un gabarit « objet personnalisé » (champs dynamiques), un placeholder
+inconnu du contexte reste LITTÉRAL (``apps.parametres.gabarits`` en choisit le
+mode strict par défaut pour cette cible) : un gabarit mal orthographié n'a
+jamais fait planter un rendu, il reste visible pour être corrigé.
 
 ⚠ RÈGLE #4 — la cible « devis » est refusée par le modèle lui-même : aucun
 devis client ne sort d'ici, il passe uniquement par ``/proposal``.
