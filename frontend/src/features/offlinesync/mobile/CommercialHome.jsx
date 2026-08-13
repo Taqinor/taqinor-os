@@ -20,6 +20,8 @@ import {
 } from '../../../ui'
 import { useIsMobile } from '../../../ui/ResponsiveDialog'
 import { formatDate } from '../../../lib/format'
+import AFaireAujourdhui from './AFaireAujourdhui'
+import OnboardingTerrain from '../OnboardingTerrain'
 
 // Priorité haute → normale → basse (Lead.Priorite, crm/models.py).
 const PRIORITY_ORDER = { haute: 0, normale: 1, basse: 2 }
@@ -75,6 +77,12 @@ export default function CommercialHome() {
           <FileText className="size-4" aria-hidden="true" /> Créer devis
         </Button>
       </div>
+
+      {/* NTMOB33 — aide contextuelle premiere utilisation terrain. */}
+      <OnboardingTerrain userId={userId} />
+
+      {/* NTMOB19 — widget unifié cross-rôle, au-dessus des cartes du rôle. */}
+      <AFaireAujourdhui />
 
       <Card>
         <CardHeader>

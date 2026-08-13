@@ -1898,6 +1898,12 @@ class InterventionViewSet(CompanyScopedModelViewSet):
                 **InterventionSerializer(
                     iv, context={'request': request}).data,
                 'itineraire_url': maps_link,
+                # NTMOB21 — coordonnées du site exposées telles quelles (elles
+                # étaient déjà encodées dans `itineraire_url`) : l'écran
+                # « Ma journée » y lit le point où demander la météo du jour
+                # plutôt que de disséquer une URL Google Maps.
+                'site_lat': float(lat) if lat else None,
+                'site_lng': float(lng) if lng else None,
             })
         return Response({'date': jour, 'stops': stops})
 

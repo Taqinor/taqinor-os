@@ -11,6 +11,11 @@ import {
 // garde). Ce fichier ne garde que ce qui lui est propre : la RÉSOLUTION des
 // trois sondages (Redux) + le suivi d'échecs PAR source.
 import useVisibilityAwarePolling from '../../hooks/useVisibilityAwarePolling'
+// NTMOB17 — en mode « Économie de données » les trois cadences sont divisées
+// (×4 sur l'intervalle) : le chat reste fonctionnel mais cesse de consommer du
+// forfait mobile en arrière-plan pendant une tournée.
+import useDataSaver from '../../hooks/useDataSaver'
+import { dataSaverInterval } from '../../pages/preferences/prefs'
 
 // VX204 — rien ne détectait une SÉRIE d'échecs de sondage (silence total :
 // aucun `.catch`). Chaque source (liste / non-lus / messages actifs) a son
@@ -36,6 +41,7 @@ export default function useChatPolling(
   options = {},
 ) {
   const dispatch = useDispatch()
+  const dataSaver = useDataSaver()
   const {
     activeMs = ACTIVE_POLL_MS,
     listMs = LIST_POLL_MS,
@@ -81,9 +87,9 @@ export default function useChatPolling(
   // partagé ; ce hook ne fournit que les TROIS tâches + leur cadence.
   const { resume } = useVisibilityAwarePolling(
     [
-      { fn: pollActive, intervalMs: activeMs },
-      { fn: pollList, intervalMs: listMs },
-      { fn: pollUnread, intervalMs: unreadMs },
+      { fn: pollActive, intervalMs: dataSaverInterval(activeMs, dataSaver) },
+      { fn: pollList, intervalMs: dataSaverInterval(listMs, dataSaver) },
+      { fn: pollUnread, intervalMs: dataSaverInterval(unreadMs, dataSaver) },
     ],
     { enabled },
   )

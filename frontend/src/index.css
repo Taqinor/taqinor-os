@@ -10708,3 +10708,28 @@ textarea.form-control {
   line-height: 1.25;
   color: var(--color-lune);
 }
+
+/* ── NTMOB22 — Mode « une main » (terrain) ────────────────────────────────
+   Sur un grand téléphone, la barre d'onglets du panneau d'intervention (choix
+   de l'étape : photos, série, conso, signature…) vit tout en HAUT de la
+   feuille — hors de portée du pouce quand on tient le téléphone d'une main,
+   l'autre étant occupée par un outil. Activé (attribut `data-one-hand` posé
+   sur <html> par la préférence d'affichage), ce bloc DÉPLACE cette barre dans
+   le tiers bas de l'écran et l'y colle. Purement CSS/layout : aucune donnée,
+   aucun changement de comportement, désactivé par défaut. */
+[data-one-hand='true'] .oh-tabs {
+  display: flex;
+  flex-direction: column;
+}
+
+[data-one-hand='true'] .oh-tabs > [data-testid='mj-tab-rail'] {
+  order: 99;                 /* après le contenu de l'onglet actif */
+  position: sticky;
+  bottom: 0;
+  z-index: 5;
+  margin-top: 0.5rem;
+  padding-top: 0.35rem;
+  padding-bottom: max(0.35rem, env(safe-area-inset-bottom));
+  background: var(--card);
+  border-top: 1px solid var(--border);
+}

@@ -174,7 +174,12 @@ router.register(r'positions-techniciens', PositionTechnicienViewSet,
 router.register(r'geofence-alertes', GeofenceAlertViewSet,
                 basename='geofencealert')
 
+from .views_meteo import meteo_terrain  # noqa: E402  (NTMOB21)
+
 urlpatterns = [
+    # NTMOB21 — météo terrain du jour (Open-Meteo, cache serveur 1 h),
+    # purement informative pour « Ma journée ».
+    path('meteo/', meteo_terrain, name='installations-meteo-terrain'),
     # N91/F21 — synchro idempotente de la capture terrain hors-ligne.
     path('sync/', FieldSyncView.as_view(), name='installations-field-sync'),
     # FG313 — contrôle budgétaire consultatif avant commande.

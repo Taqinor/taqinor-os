@@ -22,6 +22,7 @@ import EquipementFiabilitePanel from './EquipementFiabilitePanel'
 // NTMOB15 — scan QR/code-barres natif : ouvre directement la fiche
 // équipement au lieu d'une recherche manuelle par n° de série.
 import BarcodeScanner from '../../features/pwa/BarcodeScanner'
+import PartageQrDialog from '../../features/sav/PartageQrDialog'
 import {
   EMPTY_EQUIP_FILTERS,
   EQUIP_STATUTS,
@@ -478,6 +479,8 @@ export default function EquipementsPage() {
   // FG85/NTMOB15 — étiquettes QR INTERNES (EQUIP:<id>, scan staff), distinctes
   // du lien public XSAV19 ci-dessus.
   const [internalLabelsBusy, setInternalLabelsBusy] = useState(false)
+  // NTMOB23 — id de l'équipement dont on affiche le QR de partage (null = fermé).
+  const [partageQrId, setPartageQrId] = useState(null)
   // NTMOB15 — scanner QR/code-barres natif (même hook useBarcodeScanner que
   // le reste du parc PWA) : ouvre directement la fiche au lieu d'une
   // recherche manuelle par n° de série.
@@ -606,6 +609,23 @@ export default function EquipementsPage() {
         </button>
       ),
       exportValue: (row) => garantieLabel(row),
+    },
+    {
+      // NTMOB23 — partage rapide de la fiche par QR (lien tokenisé /e/<token>
+      // DÉJÀ existant, celui des étiquettes imprimées — aucun nouveau canal).
+      id: 'partage_qr',
+      header: 'Partager',
+      width: 90,
+      searchable: false,
+      exportValue: () => '',
+      cell: (_v, row) => (
+        <button type="button" title="Partager cette fiche par QR"
+                aria-label={`Partager par QR l'équipement ${row.numero_serie || row.id}`}
+                onClick={(e) => { e.stopPropagation(); setPartageQrId(row.id) }}
+                className="rounded p-1 text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+          <QrCode className="size-4" aria-hidden="true" />
+        </button>
+      ),
     },
   ], [filters.garantie]) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -798,6 +818,14 @@ export default function EquipementsPage() {
         {showRegistre && (
           <RegistreGarantiesDialog onClose={() => setShowRegistre(false)} />
         )}
+
+        {/* NTMOB23 — QR du lien de partage tokenisé de la fiche. */}
+        <PartageQrDialog
+          key={partageQrId ?? 'ferme'}
+          equipementId={partageQrId}
+          open={partageQrId != null}
+          onOpenChange={(o) => { if (!o) setPartageQrId(null) }}
+        />
       </div>
     </TooltipProvider>
   )
