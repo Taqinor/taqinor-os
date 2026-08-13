@@ -8,6 +8,7 @@ from rest_framework.test import APIClient
 
 from authentication.models import Company
 from apps.crm.models import Apporteur, DealEnregistre, Lead
+from apps.crm.services import resolve_client_for_lead
 from apps.roles.models import Role
 from apps.ventes.models import Devis, LigneDevis
 from core.events import devis_accepted
@@ -26,9 +27,10 @@ class CommissionDealTests(TestCase):
         self.deal = DealEnregistre.objects.create(
             company=self.company, apporteur=self.apporteur, lead=self.lead,
             statut=DealEnregistre.Statut.APPROUVE)
+        self.client_obj = resolve_client_for_lead(self.lead)
         self.devis = Devis.objects.create(
-            company=self.company, lead=self.lead, reference='DVC1',
-            statut=Devis.Statut.ACCEPTE)
+            company=self.company, client=self.client_obj, lead=self.lead,
+            reference='DVC1', statut=Devis.Statut.ACCEPTE)
         LigneDevis.objects.create(
             devis=self.devis, designation='Panneau', quantite=1,
             prix_unitaire=Decimal('10000.00'))

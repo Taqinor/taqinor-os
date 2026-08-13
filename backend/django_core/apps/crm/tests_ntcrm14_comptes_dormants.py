@@ -19,8 +19,12 @@ User = get_user_model()
 
 
 def _make_devis(company, client, days_ago):
+    # NTCRM14 — la dormance se lit via `devis_du_client_portail` (frontière
+    # cross-app ventes) qui EXCLUT les BROUILLONS (jamais montrés au client) :
+    # un devis de fixture doit donc être ENVOYE pour compter comme activité.
     devis = Devis.objects.create(
-        company=company, client=client, reference=f'DV-{client.pk}')
+        company=company, client=client, reference=f'DV-{client.pk}',
+        statut=Devis.Statut.ENVOYE)
     Devis.objects.filter(pk=devis.pk).update(
         date_creation=timezone.now() - datetime.timedelta(days=days_ago))
     return devis

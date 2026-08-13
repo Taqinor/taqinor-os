@@ -153,8 +153,17 @@ class ClientViewSet(CompanyScopedModelViewSet):
     def get_permissions(self):
         # QC1 — `search` est une LECTURE scopée société (autocomplete des
         # données propres) : ouverte à tout rôle authentifié, comme `list`.
-        # Ce get_permissions prime sur le permission_classes de l'action.
-        if self.action in READ_ACTIONS + ['export_xlsx', 'documents', 'search']:
+        # Ce get_permissions prime sur le permission_classes de l'action —
+        # NTCRM14/15/16/29 : `dormants`/`relancer_dormance`/`engagement`/
+        # `engagement_bulk`/`mon_portefeuille` sont des LECTURES (ou une
+        # relance légère) déjà ouvertes via `permission_classes=[IsAnyRole]`
+        # sur leur @action, mais get_permissions() PRIME dessus — sans les
+        # lister ICI elles retombaient sur le défaut `IsAdminRole` (403 pour
+        # tout rôle Commercial/Responsable non-admin).
+        if self.action in READ_ACTIONS + [
+            'export_xlsx', 'documents', 'search', 'dormants', 'engagement',
+            'engagement_bulk', 'mon_portefeuille', 'relancer_dormance',
+        ]:
             return [IsAnyRole()]
         elif self.action in WRITE_ACTIONS + ['dupliquer']:
             return [IsResponsableOrAdmin()]
@@ -731,7 +740,8 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
                                           'export_xlsx', 'relances',
                                           'roi_sources', 'sla_breach',
                                           'client_match', 'points_contact',
-                                          'scan_carte']:
+                                          'scan_carte',
+                                          'salle_vente_analytics_view']:
             return [IsAnyRole()]
         elif self.action in (
                 'merge', 'convertir_client', 'epingler', 'desepingler'):
@@ -2406,7 +2416,18 @@ class RevueCompteViewSet(CompanyScopedModelViewSet):
         return [IsResponsableOrAdmin()]
 
     def get_queryset(self):
-        return super().get_queryset().filter(plan__company=self.request.user.company)
+        # RevueCompte n'a PAS de champ `company` propre (scopée via son plan
+        # de compte parent) : `TenantMixin.get_queryset()` (appelé par
+        # `super()`) filtre sur `company=user.company`, ce qui lève un
+        # FieldError (500) sur ce modèle — on construit donc le queryset
+        # directement, jamais via `super().get_queryset()`.
+        qs = RevueCompte.objects.select_related('plan')
+        user = self.request.user
+        if user.company_id:
+            return qs.filter(plan__company=user.company)
+        if user.is_superuser:
+            return qs
+        return qs.none()
 
     def perform_create(self, serializer):
         serializer.save(created_by=self.request.user)
@@ -2591,7 +2612,14 @@ class SalleVenteViewSet(CompanyScopedModelViewSet):
             permission_classes=[IsResponsableOrAdmin])
     def ajouter_item(self, request, pk=None):
         salle = self.get_object()
-        serializer = SalleVenteItemSerializer(data={**request.data, 'salle': salle.pk})
+        # `{**request.data, ...}` transforme chaque valeur d'un QueryDict
+        # (multipart/urlencoded) en liste à un élément (`'devis'` devient
+        # `['devis']`), ce qui casse la validation du ChoiceField `type` —
+        # `.copy()` + affectation préserve les valeurs scalaires quel que
+        # soit le type de `request.data` (QueryDict ou dict JSON).
+        data = request.data.copy()
+        data['salle'] = salle.pk
+        serializer = SalleVenteItemSerializer(data=data)
         serializer.is_valid(raise_exception=True)
         serializer.save(salle=salle)
         return Response(serializer.data, status=status.HTTP_201_CREATED)
