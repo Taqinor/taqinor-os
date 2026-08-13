@@ -30,7 +30,6 @@ from django.core.management import call_command
 from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
 from django.utils import timezone
-from faker import Faker
 
 DEMO_PASSWORD = 'DemoFull@2026!'
 # Seed fixe → un reset (NTDMO6) reproduit le même nombre d'enregistrements.
@@ -183,6 +182,18 @@ class Command(BaseCommand):
         # NTDMO17 — instance Faker dédiée, seedée pour être 100% reproductible
         # d'une exécution à l'autre (même graine que `rng`) : deux appels de
         # `reset_demo_company` produisent des noms/raisons sociales identiques.
+        # Import FONCTION-LOCAL volontaire : `Faker` vit dans
+        # requirements-dev.txt, pas dans l'image de production. Un import de
+        # module ferait planter le simple chargement de cette commande en prod
+        # (découverte `manage.py`), alors que seul le seeding de démo — un
+        # outil de dev — a réellement besoin de la dépendance.
+        try:
+            from faker import Faker
+        except ImportError as exc:  # pragma: no cover - dépend de l'environnement
+            raise CommandError(
+                'seed_demo_company nécessite Faker (requirements-dev.txt) : '
+                'pip install -r backend/django_core/requirements-dev.txt'
+            ) from exc
         Faker.seed(RNG_SEED)
         fake = Faker('fr_FR')
         ctx = {'company': company, 'admin': admin, 'resp': resp, 'rng': rng,
