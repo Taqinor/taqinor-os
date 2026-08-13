@@ -130,6 +130,10 @@ const ventesApi = {
   // Export comptable : journal des ventes + résumé TVA (.xlsx) sur une période.
   journalVentes: (params) =>
     api.get('/ventes/journal-ventes/', { params, responseType: 'blob' }),
+  // FE-SCA41 — statut d'un export xlsx volumineux parti en tâche de fond
+  // (réponse 202 initiale de journalVentes / export-comptable) : poller
+  // jusqu'à {status:'ready', download_url, filename} ou {status:'error'}.
+  exportStatus: (jobId) => api.get(`/ventes/export/status/${jobId}/`),
   // Échéancier devis → factures : génère la prochaine tranche (acompte → solde).
   genererFacture: (id) => api.post(`/ventes/devis/${id}/generer-facture/`),
   // QX29 — « Relances du jour » : devis nécessitant une action (envoyés sans

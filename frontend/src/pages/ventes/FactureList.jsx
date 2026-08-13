@@ -603,6 +603,51 @@ function FactureRow({ f, ctx }) {
   )
 }
 
+// FE-SCA41 — au-delà du seuil (2 000 lignes par défaut, `VENTES_EXPORT_
+// ASYNC_ROW_THRESHOLD` côté serveur), journal-ventes / export-comptable
+// répondent 202 (job Celery accepté) au lieu du .xlsx synchrone habituel.
+// `asyncExportPayload` détecte ce cas — le JSON du 202 arrive encapsulé dans
+// un Blob puisque les deux appels utilisent `responseType: 'blob'` pour le
+// chemin synchrone — et `pollExportJobAndDownload` interroge le statut
+// jusqu'à `ready` (déclenche alors le téléchargement via l'URL MinIO
+// pré-signée renvoyée) ou `error`. Sous le seuil, `res.status` reste 200 et
+// `asyncExportPayload` renvoie `null` : rien ne change pour l'appelant.
+const EXPORT_POLL_INTERVAL_MS = 2000
+const EXPORT_POLL_TIMEOUT_MS = 5 * 60 * 1000
+
+async function asyncExportPayload(res) {
+  if (res.status !== 202) return null
+  try {
+    return JSON.parse(await res.data.text())
+  } catch {
+    return null
+  }
+}
+
+async function pollExportJobAndDownload(jobId, fallbackFilename) {
+  const started = Date.now()
+  for (;;) {
+    if (Date.now() - started > EXPORT_POLL_TIMEOUT_MS) {
+      throw new Error('export-timeout')
+    }
+    await new Promise(resolve => setTimeout(resolve, EXPORT_POLL_INTERVAL_MS))
+    const { data } = await ventesApi.exportStatus(jobId)
+    if (data.status === 'ready') {
+      const a = document.createElement('a')
+      a.href = data.download_url
+      a.download = data.filename || fallbackFilename
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      return
+    }
+    if (data.status === 'error') {
+      throw new Error('export-failed')
+    }
+    // 'pending' → on continue de sonder.
+  }
+}
+
 export default function FactureList() {
   // VX82 — titre d'onglet dédié (chrome navigateur vivant).
   useDocumentTitle('Factures')
@@ -938,7 +983,16 @@ export default function FactureList() {
       const res = await api.get('/ventes/export-comptable/', {
         params: { start, end, fmt }, responseType: 'blob',
       })
-      openPdfBlob(res.data, `export-comptable-${start}_${end}.${ext}`)
+      const filename = `export-comptable-${start}_${end}.${ext}`
+      // FE-SCA41 — export volumineux : le xlsx part en tâche de fond (202) ;
+      // le CSV reste toujours synchrone (aucun 202 possible pour lui).
+      const job = await asyncExportPayload(res)
+      if (job) {
+        toast.info('Export volumineux — génération en arrière-plan.')
+        await pollExportJobAndDownload(job.job_id, filename)
+        return
+      }
+      openPdfBlob(res.data, filename)
     }
     try {
       await dl('xlsx', 'xlsx')
@@ -962,7 +1016,16 @@ export default function FactureList() {
     setJournalBusy(true)
     try {
       const r = await ventesApi.journalVentes(params)
-      downloadXlsx(r.data, `journal-ventes-${v}.xlsx`)
+      const filename = `journal-ventes-${v}.xlsx`
+      // FE-SCA41 — journal volumineux : bascule 202 → sonde le statut puis
+      // télécharge via l'URL pré-signée dès que prêt.
+      const job = await asyncExportPayload(r)
+      if (job) {
+        toast.info('Export volumineux — génération en arrière-plan.')
+        await pollExportJobAndDownload(job.job_id, filename)
+      } else {
+        downloadXlsx(r.data, filename)
+      }
       setJournalOpen(false)
     } catch {
       toast.error('Journal comptable indisponible.')
