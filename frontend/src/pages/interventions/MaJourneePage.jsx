@@ -42,6 +42,7 @@ import {
 import { SignatureClientPanel } from '../../features/installations/SignatureClientPanel'
 // APX29 — carte des arrêts, partagée avec l'onglet « Ma tournée » (planification).
 import TourneeStops from '../../features/installations/TourneeStops'
+import AFaireAujourdhui from '../../features/offlinesync/mobile/AFaireAujourdhui'
 import {
   interventionStatusLabel, INTERVENTION_TYPES,
   INTERVENTION_STATUSES, INTERVENTION_STATUS_LABELS,
@@ -332,6 +333,13 @@ export default function MaJourneePage() {
           <RefreshCw className={`size-4${manualRefreshing ? ' animate-spin' : ''}`} aria-hidden="true" />
         </Button>
       </header>
+
+      {/* NTMOB19 — widget unifié « À faire aujourd'hui » (tous modules) :
+          même composant que les accueils mobiles par rôle, pour que le
+          technicien voie aussi ce qui l'attend hors interventions. Les
+          interventions sont EXCLUES ici : cet écran en est déjà la vue
+          complète (pas de doublon, ni de second appel à `ma-tournee`). */}
+      <AFaireAujourdhui exclure={['intervention']} />
 
       {loading ? (
         showSpinner && (

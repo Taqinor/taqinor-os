@@ -256,9 +256,9 @@ const installationsApi = {
 
   // ── FG73 — « Ma tournée » : interventions du jour du technicien, ordonnées
   // géographiquement (plus proche voisin) avec lien Itinéraire Google Maps. ──
-  getMaTournee: (date) =>
+  getMaTournee: (date, config) =>
     api.get('/installations/interventions/ma-tournee/',
-      { params: date ? { date } : undefined }),
+      { params: date ? { date } : undefined, ...config }),
 
   // ── FG299 — Plan de charge des équipes (capacité vs affecté) ──
   getPlanDeCharge: (params) =>
