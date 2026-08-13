@@ -33,9 +33,13 @@ class TestFeuilleConfiguration(TestCase):
             company=self.company, nom='Onduleur X',
             prix_achat=Decimal('600.00'), prix_vente=Decimal('1000.00'))
         self.devis = DevisFactory(company=self.company)
+        # Désignation « Onduleur réseau » : requise par le builder du moteur
+        # de devis (quote_engine/builder.py) pour rendre le PDF client à
+        # options — sans rapport avec la feuille de configuration interne.
         LigneDevis.objects.create(
             devis=self.devis, produit=self.produit,
-            designation=self.produit.nom, quantite=Decimal('2'),
+            designation=f'Onduleur réseau {self.produit.nom}',
+            quantite=Decimal('2'),
             prix_unitaire=Decimal('1000.00'))
 
     def test_donnees_portent_la_marge_par_ligne(self):

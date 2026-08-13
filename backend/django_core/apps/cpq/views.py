@@ -5,6 +5,7 @@ queryset est scopé société et ``perform_create`` force ``company`` côté
 serveur. La liste des produits n'est jamais lue du corps pour le scope."""
 from rest_framework import status
 from rest_framework.decorators import action
+from rest_framework.renderers import BrowsableAPIRenderer, JSONRenderer
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework.permissions import IsAuthenticated
@@ -267,6 +268,20 @@ class DevisVariantesView(APIView):
                         status=status.HTTP_201_CREATED)
 
 
+class _CsvOrJSONRenderer(JSONRenderer):
+    """NTCPQ24 — même correctif que XGED22 (``apps/ged/views.py``) : DRF
+    négocie le contenu sur ``?format=`` AVANT l'exécution de la vue
+    (``DefaultContentNegotiation``, indépendant des ``format_suffix_patterns``)
+    — sans renderer déclaré pour ``csv``, l'appel ``?format=csv`` échoue en
+    amont avec un 404 (jamais notre ``HttpResponse`` renvoyée). On déclare
+    donc explicitement ce format pour que la négociation aboutisse ; la vue
+    renvoie ensuite un ``HttpResponse`` CSV manuel (jamais sérialisé par ce
+    renderer — le JSON reste le comportement par défaut sans ``?format=csv``).
+    """
+    format = 'csv'
+    media_type = 'text/csv'
+
+
 class RapportConformiteView(APIView):
     """NTCPQ24 — GET ``cpq/rapports/conformite/?date_debut=&date_fin=
     &commercial_id=``.
@@ -277,6 +292,7 @@ class RapportConformiteView(APIView):
     / direction commerciale, jamais un document client (aucun PDF, aucune
     donnée de marge)."""
     permission_classes = [IsResponsableOrAdmin]
+    renderer_classes = [JSONRenderer, BrowsableAPIRenderer, _CsvOrJSONRenderer]
 
     COLONNES = ['reference', 'date_envoi', 'commercial', 'conforme',
                 'bloquant', 'nb_violations']

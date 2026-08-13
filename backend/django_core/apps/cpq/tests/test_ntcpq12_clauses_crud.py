@@ -127,7 +127,11 @@ class TestClausesCGVCrud(TestCase):
         ClauseCGV.objects.create(company=CompanyFactory(), nom='Ailleurs')
         resp = auth(self.normal).get(CLAUSES)
         self.assertEqual(resp.status_code, 200, resp.data)
-        noms = [c['nom'] for c in (resp.data.get('results') or resp.data)]
+        # Réponse paginée (core.pagination.StandardPagination, toujours
+        # active) : {'results': [...]} — même quand vide, un `or resp.data`
+        # basculerait à tort sur le dict entier (dont les clés sont des str).
+        body = resp.data['results'] if isinstance(resp.data, dict) else resp.data
+        noms = [c['nom'] for c in body]
         self.assertNotIn('Ailleurs', noms)
 
     def test_ecriture_refusee_a_un_role_normal(self):
