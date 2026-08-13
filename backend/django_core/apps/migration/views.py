@@ -16,10 +16,10 @@ from authentication.models import CustomUser
 from core.viewsets import CompanyScopedModelViewSet
 
 from . import services
-from .models import LotMigration, ProjetMigration
+from .models import LotMigration, PlaybookInstance, ProjetMigration
 from .serializers import (
-    LotMigrationSerializer, ProjetMigrationSerializer,
-    RapportReconciliationSerializer)
+    LotMigrationSerializer, PlaybookInstanceSerializer,
+    ProjetMigrationSerializer, RapportReconciliationSerializer)
 
 
 def _fichier_de(request):
@@ -246,3 +246,106 @@ class LotMigrationViewSet(CompanyScopedModelViewSet):
                 {'detail': str(exc), 'ecarts': exc.ecarts},
                 status=status.HTTP_400_BAD_REQUEST)
         return Response(LotMigrationSerializer(lot).data)
+
+
+class PlaybookInstanceViewSet(CompanyScopedModelViewSet):
+    """NTMIG22 — checklist de déploiement instanciée depuis un playbook kb.
+
+    La création passe par l'action ``instancier`` (elle a besoin du playbook
+    source pour figer l'instantané d'étapes) ; un POST direct sur la liste est
+    refusé plutôt que de créer une checklist vide qu'aucune étape ne
+    remplirait jamais.
+    """
+
+    queryset = PlaybookInstance.objects.select_related(
+        'projet_migration', 'responsable').all()
+    serializer_class = PlaybookInstanceSerializer
+    permission_classes = [IsDirecteurOuAdmin]
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        projet = self.request.query_params.get('projet')
+        if projet:
+            qs = qs.filter(projet_migration_id=projet)
+        article = self.request.query_params.get('playbook')
+        if article:
+            qs = qs.filter(playbook_article_id=article)
+        return qs
+
+    def create(self, request, *args, **kwargs):
+        raise ValidationError({'detail': (
+            'Utilisez POST playbook-instances/instancier/ avec le playbook '
+            'à instancier : une instance sans étapes ne serait pas cochable.')})
+
+    @action(detail=False, methods=['post'], url_path='instancier', permission_classes=[IsDirecteurOuAdmin])
+    def instancier(self, request):
+        """Instancie un playbook kb pour un déploiement.
+
+        Le playbook est résolu par ``kb.selectors`` (scopé société + type
+        ``playbook``) : un article d'une autre société, ou un article
+        ordinaire, est introuvable — jamais instanciable.
+        """
+        from apps.kb import selectors as kb_selectors
+
+        article = kb_selectors.playbook_par_id(
+            request.data.get('playbook_article'), request.user.company)
+        if article is None:
+            raise ValidationError({'playbook_article': (
+                'Playbook introuvable pour cette société.')})
+
+        projet = None
+        projet_id = request.data.get('projet_migration')
+        if projet_id:
+            projet = ProjetMigration.objects.filter(
+                pk=projet_id, company=request.user.company).first()
+            if projet is None:
+                raise ValidationError(
+                    {'projet_migration': 'Projet introuvable.'})
+
+        responsable = None
+        responsable_id = request.data.get('responsable')
+        if responsable_id:
+            responsable = CustomUser.objects.filter(
+                pk=responsable_id, company=request.user.company).first()
+            if responsable is None:
+                raise ValidationError(
+                    {'responsable': 'Responsable introuvable.'})
+
+        try:
+            instance = services.instancier_playbook(
+                article,
+                company=request.user.company,
+                projet_migration=projet,
+                responsable=responsable,
+                client_final=request.data.get('client_final') or '')
+        except ValueError as exc:
+            raise ValidationError({'detail': str(exc)})
+        return Response(
+            PlaybookInstanceSerializer(instance).data,
+            status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['post'], url_path='cocher', permission_classes=[IsDirecteurOuAdmin])
+    def cocher(self, request, pk=None):
+        """Coche (``fait`` absent ou vrai) ou décoche une étape."""
+        instance = self.get_object()
+        fait = request.data.get('fait', True)
+        if isinstance(fait, str):
+            fait = fait.lower() not in ('false', '0', 'non', '')
+        try:
+            services.cocher_etape(
+                instance, request.data.get('cle'), fait=bool(fait))
+        except services.EtapeInconnue as exc:
+            raise ValidationError({'cle': str(exc)})
+        return Response(PlaybookInstanceSerializer(instance).data)
+
+    @action(detail=True, methods=['post'], url_path='terminer', permission_classes=[IsDirecteurOuAdmin])
+    def terminer(self, request, pk=None):
+        """Clôture l'instance — 400 + étapes restantes si incomplète."""
+        instance = self.get_object()
+        try:
+            services.terminer_playbook(instance)
+        except services.ReconcileBloque as exc:
+            return Response(
+                {'detail': str(exc), 'etapes_restantes': exc.ecarts},
+                status=status.HTTP_400_BAD_REQUEST)
+        return Response(PlaybookInstanceSerializer(instance).data)

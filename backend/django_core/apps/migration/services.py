@@ -413,3 +413,111 @@ def terminer_projet(projet, user=None):
         projet.date_fin = timezone.now()
         projet.save(update_fields=['statut', 'date_fin', 'updated_at'])
     return projet
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# NTMIG22 — checklist de déploiement : instancier un playbook kb et cocher
+# ses étapes. La lecture du playbook passe par ``kb.selectors`` (frontière
+# cross-app) ; ``apps.kb.models`` n'est JAMAIS importé ici.
+# ─────────────────────────────────────────────────────────────────────────
+
+
+class EtapeInconnue(ValueError):
+    """La clé d'étape cochée n'appartient pas à cette instance.
+
+    Accepter une clé inconnue ferait grossir ``avancement`` de cases
+    fantômes que rien n'afficherait jamais — et un jour, si le playbook
+    modèle réintroduisait cette clé, elle réapparaîtrait cochée sans que
+    personne ne l'ait fait.
+    """
+
+
+def _etapes_instantanees(article):
+    """Aplatit les phases d'un playbook kb en étapes plates instantanées."""
+    from apps.kb import selectors as kb_selectors
+
+    etapes, vues = [], set()
+    for phase in kb_selectors.phases_playbook(article):
+        for etape in phase['etapes']:
+            if etape['cle'] in vues:
+                continue
+            vues.add(etape['cle'])
+            etapes.append({
+                'cle': etape['cle'],
+                'libelle': etape['libelle'],
+                'phase': phase['cle'],
+                'phase_titre': phase['titre'],
+            })
+    return etapes
+
+
+def instancier_playbook(article, *, company, projet_migration=None,
+                        responsable=None, client_final=''):
+    """Crée l'instance d'un playbook kb pour un déploiement donné.
+
+    ``article`` est un playbook DÉJÀ résolu scopé société par l'appelant
+    (``kb.selectors.playbook_par_id``). Les étapes sont figées ici : voir la
+    docstring du modèle pour la raison (une checklist en cours ne se réécrit
+    pas sous les pieds de l'intégrateur).
+    """
+    from .models import PlaybookInstance
+
+    if projet_migration is not None \
+            and projet_migration.company_id != company.pk:
+        raise ValueError('Projet de migration introuvable.')
+    etapes = _etapes_instantanees(article)
+    if not etapes:
+        raise ValueError(
+            "Ce playbook n'a aucune étape : rien à cocher. Complétez sa "
+            'structure (phases → étapes) avant de l\'instancier.')
+    return PlaybookInstance.objects.create(
+        company=company,
+        playbook_article=article,
+        playbook_titre=article.titre,
+        projet_migration=projet_migration,
+        client_final=client_final or '',
+        responsable=responsable,
+        etapes=etapes,
+        avancement={},
+    )
+
+
+def cocher_etape(instance, cle, fait=True):
+    """Coche (ou décoche) UNE étape d'une instance de playbook.
+
+    Écrit uniquement ``avancement`` : le statut reste une décision explicite
+    (``terminer_playbook``), jamais un effet de bord d'une case cochée.
+    """
+    cle = str(cle or '')
+    if cle not in instance.cles_etapes:
+        raise EtapeInconnue(
+            f'Étape « {cle} » inconnue de ce playbook.')
+    avancement = dict(instance.avancement or {})
+    if fait:
+        avancement[cle] = True
+    else:
+        avancement.pop(cle, None)
+    instance.avancement = avancement
+    instance.save(update_fields=['avancement', 'updated_at'])
+    return instance
+
+
+def terminer_playbook(instance):
+    """Passe l'instance en ``termine`` — refuse tant qu'il reste des étapes.
+
+    Même esprit que NTMIG5 : pas de « déploiement terminé » déclaré au-dessus
+    d'une checklist incomplète. L'erreur porte les étapes restantes.
+    """
+    restantes = [
+        etape for etape in (instance.etapes or [])
+        if isinstance(etape, dict)
+        and not (instance.avancement or {}).get(str(etape.get('cle') or ''))
+    ]
+    if restantes:
+        raise ReconcileBloque(
+            'Des étapes du playbook ne sont pas faites : clôture refusée.',
+            ecarts=[{'cle': e.get('cle'), 'libelle': e.get('libelle')}
+                    for e in restantes])
+    instance.statut = instance.Statut.TERMINE
+    instance.save(update_fields=['statut', 'updated_at'])
+    return instance

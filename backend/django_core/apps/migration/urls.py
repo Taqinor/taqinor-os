@@ -2,7 +2,8 @@
 from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 
-from .views import LotMigrationViewSet, ProjetMigrationViewSet
+from .views import (
+    LotMigrationViewSet, PlaybookInstanceViewSet, ProjetMigrationViewSet)
 
 router = DefaultRouter()
 router.register(
@@ -10,6 +11,9 @@ router.register(
     basename='migration-projet')
 router.register(
     r'lots-migration', LotMigrationViewSet, basename='migration-lot')
+router.register(
+    r'playbook-instances', PlaybookInstanceViewSet,
+    basename='migration-playbook-instance')
 
 urlpatterns = [
     path('', include(router.urls)),

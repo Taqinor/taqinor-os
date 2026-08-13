@@ -11,6 +11,9 @@ Trois modèles :
 * :class:`RapportReconciliation` — LE différenciateur : comptages et totaux
   financiers source vs cible ; un lot ne passe jamais « réconcilié » sans un
   rapport ``conforme=True`` ou une dérogation motivée (NTMIG5).
+* :class:`PlaybookInstance` (NTMIG22) — l'instanciation d'un playbook kb
+  (NTMIG21) pour UN déploiement client : l'intégrateur coche les étapes,
+  la progression persiste.
 
 Multi-société : tout hérite de ``core.models.TenantModel`` (FK ``company`` +
 horodatage). Les FK vers d'autres apps sont des références par CHAÎNE
@@ -186,3 +189,125 @@ class RapportReconciliation(TenantModel):
     def __str__(self):
         etat = 'conforme' if self.conforme else 'écarts'
         return f'Reconcile lot {self.lot_id} ({etat})'
+
+
+class PlaybookInstance(TenantModel):
+    """NTMIG22 — un playbook kb (NTMIG21) instancié pour UN déploiement.
+
+    Le playbook (``kb.KbArticle`` de type ``playbook``) est le MODÈLE, versionné
+    par kb ; cette instance en est l'exécution chez un client donné : elle porte
+    l'état COCHÉ de chaque étape et sa progression.
+
+    ``etapes`` est un INSTANTANÉ des étapes prises au moment de l'instanciation
+    (via ``kb.selectors.phases_playbook`` — jamais un import de ``kb.models``).
+    C'est délibéré : une checklist de déploiement en cours ne doit pas se
+    réécrire sous les pieds de l'intégrateur parce que quelqu'un a édité le
+    playbook modèle — sans instantané, ajouter une 9ᵉ étape au modèle ferait
+    silencieusement CHUTER la progression d'un chantier déjà à 100 %. C'est
+    aussi ce qui rend l'instance lisible si l'article modèle disparaît.
+    """
+
+    class Statut(models.TextChoices):
+        EN_COURS = 'en_cours', 'En cours'
+        TERMINE = 'termine', 'Terminé'
+
+    # FK-CHAÎNE vers kb (jamais un import de ``apps.kb.models``). SET_NULL :
+    # l'instance et sa progression SURVIVENT à la suppression du playbook
+    # modèle — les étapes cochées sont la trace du déploiement, pas une copie
+    # jetable de l'article.
+    playbook_article = models.ForeignKey(
+        'kb.KbArticle', on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='instances_playbook',
+        verbose_name='Playbook (article kb)')
+    playbook_titre = models.CharField(
+        max_length=255, blank=True, default='',
+        verbose_name='Titre du playbook',
+        help_text="Titre figé à l'instanciation (reste lisible si l'article "
+                  "modèle est supprimé ou renommé).")
+    projet_migration = models.ForeignKey(
+        ProjetMigration, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='playbooks',
+        verbose_name='Projet de migration')
+    client_final = models.CharField(
+        max_length=200, blank=True, default='',
+        verbose_name='Client final',
+        help_text='Nom libre du client déployé (jamais un FK cross-app dur).')
+    # Instantané des étapes : [{'cle', 'libelle', 'phase', 'phase_titre'}, …]
+    etapes = models.JSONField(default=list, blank=True,
+                              verbose_name='Étapes (instantané)')
+    # État coché par étape : {'<cle étape>': True/False}. Les clés inconnues
+    # sont IGNORÉES au calcul (une étape retirée du modèle ne peut pas faire
+    # dépasser la progression au-dessus de 100 %).
+    avancement = models.JSONField(default=dict, blank=True,
+                                  verbose_name='Avancement')
+    statut = models.CharField(
+        max_length=10, choices=Statut.choices, default=Statut.EN_COURS,
+        verbose_name='Statut')
+    # PROTECT (jamais SET_NULL) : ``responsable`` est un champ d'identité —
+    # le vider en silence à la suppression d'un compte ferait perdre QUI
+    # pilotait le déploiement (garde YDATA3).
+    responsable = models.ForeignKey(
+        'authentication.CustomUser', on_delete=models.PROTECT,
+        null=True, blank=True, related_name='playbooks_migration',
+        verbose_name='Responsable')
+
+    class Meta:
+        ordering = ['-created_at']
+        # Noms EXPLICITES (≤30 car.) : un nom haché écrit à la main dans la
+        # migration diverge du nom recalculé par Django et fait échouer le
+        # contrôle de dérive modèle↔migration.
+        indexes = [
+            models.Index(fields=['company', 'statut'],
+                         name='mig_playbook_soc_statut_idx'),
+            models.Index(fields=['company', 'projet_migration'],
+                         name='mig_playbook_soc_projet_idx'),
+        ]
+        verbose_name = 'Instance de playbook'
+        verbose_name_plural = 'Instances de playbook'
+
+    # ── Progression ────────────────────────────────────────────────────────
+
+    @property
+    def cles_etapes(self):
+        """Clés des étapes de l'instantané, dans l'ordre, DÉDOUBLONNÉES."""
+        vues, cles = set(), []
+        for etape in self.etapes or []:
+            if not isinstance(etape, dict):
+                continue
+            cle = str(etape.get('cle') or '')
+            if not cle or cle in vues:
+                continue
+            vues.add(cle)
+            cles.append(cle)
+        return cles
+
+    @property
+    def nb_etapes(self):
+        return len(self.cles_etapes)
+
+    @property
+    def nb_faites(self):
+        """Étapes cochées — comptées SUR L'INSTANTANÉ uniquement.
+
+        Une clé d'``avancement`` qui ne correspond à aucune étape connue est
+        ignorée : sans ce filtrage, une clé résiduelle ferait afficher une
+        progression supérieure à 100 %.
+        """
+        avancement = self.avancement if isinstance(self.avancement, dict) else {}
+        return sum(1 for cle in self.cles_etapes if bool(avancement.get(cle)))
+
+    @property
+    def progression(self):
+        """Pourcentage entier d'avancement (0 si le playbook n'a aucune étape).
+
+        Tronqué, jamais arrondi au supérieur : 5 étapes sur 8 = 62 %, et une
+        checklist incomplète ne peut jamais afficher 100 %.
+        """
+        total = self.nb_etapes
+        if not total:
+            return 0
+        return int(self.nb_faites * 100 // total)
+
+    def __str__(self):
+        titre = self.playbook_titre or f'playbook {self.playbook_article_id}'
+        return f'{titre} — {self.progression} %'

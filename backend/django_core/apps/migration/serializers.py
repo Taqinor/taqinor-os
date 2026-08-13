@@ -15,7 +15,8 @@ champs en lecture seule dès que l'instance existe.
 from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
-from .models import LotMigration, ProjetMigration, RapportReconciliation
+from .models import (
+    LotMigration, PlaybookInstance, ProjetMigration, RapportReconciliation)
 
 
 class _CreationSeulementMixin:
@@ -126,3 +127,68 @@ class ProjetMigrationSerializer(_CreationSeulementMixin,
         return obj.lots.filter(
             company_id=obj.company_id,
             statut=LotMigration.Statut.RECONCILIE).count()
+
+
+class PlaybookInstanceSerializer(serializers.ModelSerializer):
+    """NTMIG22 — instance d'un playbook kb pour un déploiement.
+
+    ``etapes`` est un INSTANTANÉ posé côté serveur à l'instanciation : le
+    laisser modifiable permettrait de réécrire le dénominateur de la
+    progression après coup (ajouter/retirer des cases pour « atteindre »
+    100 %). ``avancement`` ne se pose que par l'action ``cocher`` (clé
+    validée), jamais par un PATCH libre qui accepterait des cases fantômes.
+    """
+
+    progression = serializers.SerializerMethodField()
+    nb_etapes = serializers.SerializerMethodField()
+    nb_faites = serializers.SerializerMethodField()
+    # NTMIG22 — le playbook modèle est CHOISI à la création (via l'action
+    # ``instancier``) ; le rattacher après coup à un autre article laisserait
+    # un instantané d'étapes qui ne correspond plus au playbook cité.
+    playbook_article = serializers.PrimaryKeyRelatedField(read_only=True)
+
+    class Meta:
+        model = PlaybookInstance
+        fields = [
+            'id', 'playbook_article', 'playbook_titre', 'projet_migration',
+            'client_final', 'etapes', 'avancement', 'statut', 'responsable',
+            'progression', 'nb_etapes', 'nb_faites',
+            'created_at', 'updated_at',
+        ]
+        read_only_fields = [
+            'id', 'playbook_article', 'playbook_titre', 'etapes',
+            'avancement', 'statut', 'progression', 'nb_etapes', 'nb_faites',
+            'created_at', 'updated_at',
+        ]
+
+    @extend_schema_field(serializers.IntegerField())
+    def get_progression(self, obj):
+        return obj.progression
+
+    @extend_schema_field(serializers.IntegerField())
+    def get_nb_etapes(self, obj):
+        return obj.nb_etapes
+
+    @extend_schema_field(serializers.IntegerField())
+    def get_nb_faites(self, obj):
+        return obj.nb_faites
+
+    def validate_projet_migration(self, value):
+        """Le projet cité doit appartenir à la société de l'appelant.
+
+        Le queryset scopé ne protège que la LECTURE : sans ce contrôle, une
+        instance pourrait se greffer sur le projet d'une autre société.
+        """
+        request = self.context.get('request')
+        if value is not None and request is not None \
+                and value.company_id != request.user.company_id:
+            raise serializers.ValidationError('Projet introuvable.')
+        return value
+
+    def validate_responsable(self, value):
+        request = self.context.get('request')
+        if value is not None and request is not None \
+                and getattr(value, 'company_id', None) \
+                != request.user.company_id:
+            raise serializers.ValidationError('Responsable introuvable.')
+        return value
