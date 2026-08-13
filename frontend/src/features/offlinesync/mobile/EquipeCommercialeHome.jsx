@@ -15,6 +15,7 @@ import {
   Badge, Spinner, EmptyState, Segmented,
 } from '../../../ui'
 import { useIsMobile } from '../../../ui/ResponsiveDialog'
+import OnboardingTerrain from '../OnboardingTerrain'
 import CommercialHome from './CommercialHome'
 import { classementParCommercial } from './equipeCommerciale'
 
@@ -44,6 +45,9 @@ export default function EquipeCommercialeHome() {
 
   return (
     <div className="flex flex-col gap-3 p-3 pb-24">
+      {/* NTMOB33 — aide contextuelle premiere utilisation terrain. */}
+      <OnboardingTerrain />
+
       <Segmented value={onglet} onChange={setOnglet} options={ONGLETS} />
 
       {onglet === 'moi' ? (

@@ -20,6 +20,7 @@ import {
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
 } from '../../../ui'
 import { useIsMobile } from '../../../ui/ResponsiveDialog'
+import OnboardingTerrain from '../OnboardingTerrain'
 
 function todayIso() {
   return new Date().toISOString().slice(0, 10)
@@ -76,6 +77,9 @@ export default function EquipeTerrainHome() {
 
   return (
     <div className="flex flex-col gap-3 p-3 pb-24">
+      {/* NTMOB33 — aide contextuelle premiere utilisation terrain. */}
+      <OnboardingTerrain userId={moi} />
+
       {conflits.length > 0 && (
         <Card>
           <CardHeader>

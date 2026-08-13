@@ -46,6 +46,7 @@ import AFaireAujourdhui from '../../features/offlinesync/mobile/AFaireAujourdhui
 import MeteoTerrainCard from '../../features/installations/MeteoTerrainCard'
 import { readCache } from '../../features/offlinesync/readCache'
 import DonneesHorsLigneBanner from '../../features/offlinesync/DonneesHorsLigneBanner'
+import OnboardingTerrain from '../../features/offlinesync/OnboardingTerrain'
 import {
   interventionStatusLabel, INTERVENTION_TYPES,
   INTERVENTION_STATUSES, INTERVENTION_STATUS_LABELS,
@@ -356,6 +357,9 @@ export default function MaJourneePage() {
           <RefreshCw className={`size-4${manualRefreshing ? ' animate-spin' : ''}`} aria-hidden="true" />
         </Button>
       </header>
+
+      {/* NTMOB33 — aide contextuelle premiere utilisation terrain. */}
+      <OnboardingTerrain />
 
       {/* NTMOB27 — la tournée affichée vient du cache hors-ligne : on datte
           la donnée plutôt que de la faire passer pour fraîche. */}
