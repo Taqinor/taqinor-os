@@ -55,7 +55,9 @@ export default function EtatsLieux() {
   }
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- reset de la sélection au changement de bail
     setSelectedId(null)
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- reset du détail au changement de bail
     setDetail(null)
     chargerListe(bailId)
     // eslint-disable-next-line react-hooks/exhaustive-deps
