@@ -185,21 +185,71 @@ def arc_suivant(inscription, noeud):
     return None
 
 
+def prochaine_echeance_ouvree(depuis, company, *, heure=9, jour_semaine=None,
+                              max_jours=60):
+    """NTMKT14 — prochain créneau OUVRÉ à ``heure`` strictement après
+    ``depuis``.
+
+    Les jours fériés / non ouvrés et la nuit viennent de
+    ``apps.notifications.selectors.est_hors_fenetre_silence`` (jamais un
+    import des modèles ``notifications``). ``jour_semaine`` (0 = lundi) permet
+    « le prochain lundi 9h » ; sans lui, c'est le prochain jour ouvré.
+    """
+    from django.utils import timezone
+    from apps.notifications.selectors import est_hors_fenetre_silence
+    heure = max(0, min(23, int(heure or 0)))
+    candidat = timezone.localtime(depuis).replace(
+        hour=heure, minute=0, second=0, microsecond=0)
+    if candidat <= timezone.localtime(depuis):
+        candidat += timezone.timedelta(days=1)
+    for _ in range(max_jours):
+        jour_ok = (jour_semaine is None
+                   or candidat.weekday() == int(jour_semaine))
+        if jour_ok and not est_hors_fenetre_silence(candidat, company):
+            return candidat
+        candidat += timezone.timedelta(days=1)
+    return candidat
+
+
 def echeance_noeud(inscription, noeud):
     """Instant à partir duquel le nœud d'attente est franchissable.
 
-    ``attente`` = J+``config.delai_jours`` depuis l'entrée sur le nœud. Tout
-    autre type est franchissable immédiatement.
+    ``attente``         = J+``config.delai_jours`` depuis l'entrée sur le nœud.
+    ``attente_jusqu_a`` = NTMKT14, selon ``config.mode`` :
+        * ``date``      -> date/heure absolue (``config.date``, ISO) ;
+        * sinon         -> prochain créneau ouvré (``config.heure``, défaut 9h,
+                           et ``config.jour_semaine`` optionnel, 0 = lundi).
+    Tout autre type est franchissable immédiatement.
     """
     from django.utils import timezone
+    from django.utils.dateparse import parse_datetime
     from .models import NoeudJourney
     depuis = inscription.noeud_depuis or inscription.declenchee_le
+    config = noeud.config or {}
     if noeud.type_noeud == NoeudJourney.Type.ATTENTE:
         try:
-            jours = int((noeud.config or {}).get('delai_jours') or 0)
+            jours = int(config.get('delai_jours') or 0)
         except (TypeError, ValueError):
             jours = 0
         return depuis + timezone.timedelta(days=max(jours, 0))
+    if noeud.type_noeud == NoeudJourney.Type.ATTENTE_JUSQU_A:
+        if (config.get('mode') or '') == 'date':
+            brut = parse_datetime(str(config.get('date') or '')) or None
+            if brut is None:
+                return depuis
+            if timezone.is_naive(brut):
+                brut = timezone.make_aware(
+                    brut, timezone.get_current_timezone())
+            return brut
+        jour_semaine = config.get('jour_semaine')
+        try:
+            jour_semaine = (None if jour_semaine in (None, '')
+                            else int(jour_semaine))
+        except (TypeError, ValueError):
+            jour_semaine = None
+        return prochaine_echeance_ouvree(
+            depuis, inscription.company,
+            heure=config.get('heure', 9), jour_semaine=jour_semaine)
     return depuis
 
 
