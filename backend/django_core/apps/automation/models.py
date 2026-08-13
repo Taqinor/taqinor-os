@@ -126,6 +126,9 @@ class ActionType(models.TextChoices):
     # résolue depuis un registre de sources WHITELISTÉES
     # (``automation.list_sources``) — jamais un accès modèle arbitraire.
     FOR_EACH = 'for_each', 'Pour chaque élément d\'une liste'
+    # NTEXT7 — suspend la séquence et la reprend plus tard (voir
+    # ``AutomationScheduledStep`` + la tâche beat de reprise).
+    WAIT = 'wait', 'Attendre (délai avant la suite)'
 
 
 class CanalMessage(models.TextChoices):
@@ -299,6 +302,62 @@ class AutomationStep(models.Model):
 
     def __str__(self):
         return f'{self.rule_id}#{self.ordre}:{self.action_type}'
+
+
+class AutomationScheduledStep(models.Model):
+    """NTEXT7 — reprise DIFFÉRÉE d'une séquence après une étape ``WAIT``.
+
+    Une étape ``WAIT`` (``action_config={'delai_minutes': N}``) ne bloque
+    évidemment aucun thread : elle SUSPEND la séquence en écrivant cette
+    échéance (contexte GELÉ en JSON, cible mémorisée par label+id comme
+    ``AutomationRun``/``AutomationApproval``), puis rend la main. La tâche beat
+    ``process_due_automation_steps`` reprend, à date, les échéances ``en
+    attente`` — et sans Celery beat déployé, il ne se passe simplement RIEN
+    (dégradation propre : la séquence reste suspendue, aucune erreur).
+
+    ``next_step_index`` est le RANG (0-based) dans la séquence ordonnée
+    (``ordre`` puis ``id``) de l'étape par laquelle reprendre — un rang, pas la
+    valeur ``ordre``, qui peut être partagée par plusieurs étapes.
+    """
+
+    class Statut(models.TextChoices):
+        EN_ATTENTE = 'en_attente', 'En attente'
+        REPRISE = 'reprise', 'Reprise'
+        ANNULEE = 'annulee', 'Annulée'
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='automation_scheduled_steps')
+    rule = models.ForeignKey(
+        AutomationRule,
+        on_delete=models.CASCADE,  # on_delete: une échéance n'existe QUE pour sa règle (composition, même patron qu'AutomationStep)
+        related_name='scheduled_steps', verbose_name='Règle')
+    target_model = models.CharField(max_length=120, blank=True, default='')
+    target_id = models.PositiveIntegerField(null=True, blank=True)
+    next_step_index = models.PositiveIntegerField(
+        default=0,
+        help_text='Rang (0-based) de l\'étape par laquelle reprendre.')
+    run_at = models.DateTimeField(
+        help_text='Date/heure à partir de laquelle la séquence reprend.')
+    context = models.JSONField(default=dict, blank=True)
+    statut = models.CharField(
+        max_length=20, choices=Statut.choices, default=Statut.EN_ATTENTE)
+    date_creation = models.DateTimeField(auto_now_add=True)
+    date_reprise = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        verbose_name = "Reprise d'automatisation planifiée"
+        verbose_name_plural = "Reprises d'automatisation planifiées"
+        ordering = ['run_at', 'id']
+        indexes = [
+            models.Index(fields=['statut', 'run_at'],
+                         name='automation_sched_due_idx'),
+            models.Index(fields=['company', 'statut'],
+                         name='automation_sched_co_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.rule_id}@{self.run_at:%Y-%m-%d %H:%M}:{self.statut}'
 
 
 class AutomationRun(models.Model):

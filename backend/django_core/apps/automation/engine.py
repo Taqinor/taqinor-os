@@ -340,8 +340,22 @@ def run_action(rule, instance, company, *, context=None, user=None):
     if not steps:
         return _execute(rule, rule, instance, company, context, user)
 
+    return _run_steps(rule, steps, 0, instance, company, context, user)
+
+
+def _run_steps(rule, steps, start_index, instance, company, context, user):
+    """Exécute la séquence ``steps`` à partir du rang ``start_index``.
+
+    NTEXT7 — une étape ``WAIT`` SUSPEND la séquence : l'échéance de reprise est
+    écrite (``AutomationScheduledStep``) et la boucle s'arrête là ; le reste de
+    la séquence repartira depuis le rang suivant.
+    """
     result = (AutomationRun.Status.NOOP, '')
-    for step in steps:
+    for index in range(start_index, len(steps)):
+        step = steps[index]
+        if step.action_type == ActionType.WAIT:
+            return _schedule_resume(
+                rule, step, index + 1, instance, company, context)
         view = _StepView(rule, step)
         step_disabled = _rule_disabled_module(view, instance, company)
         if step_disabled:
@@ -363,31 +377,121 @@ def run_action(rule, instance, company, *, context=None, user=None):
     return result
 
 
+def _resolve_target(target_model, target_id, company):
+    """Résout ``label.model`` + id en instance, SCOPÉE société. None sinon.
+
+    Le filtre société empêche de résoudre (et donc d'écrire dans) la cible d'un
+    autre tenant si un couple label/id venait à croiser. Ne lève jamais.
+    """
+    if not target_model or not target_id:
+        return None
+    from django.apps import apps as django_apps
+    try:
+        app_label, model_name = target_model.split('.', 1)
+        model = django_apps.get_model(app_label, model_name)
+        lookup = {'pk': target_id}
+        if company is not None and _has_company_fk(model):
+            lookup['company'] = company
+        return model.objects.filter(**lookup).first()
+    except Exception:  # pragma: no cover - défensif
+        return None
+
+
+def _json_safe(value):
+    """Contexte GELÉ en base : rend une valeur sérialisable JSON (best-effort)."""
+    if isinstance(value, dict):
+        return {str(k): _json_safe(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_json_safe(v) for v in value]
+    if isinstance(value, (str, int, float, bool)) or value is None:
+        return value
+    return str(value)
+
+
+def _schedule_resume(rule, step, next_index, instance, company, context):
+    """NTEXT7 — écrit l'échéance de reprise d'une séquence après un ``WAIT``."""
+    from datetime import timedelta
+
+    from django.utils import timezone
+
+    from .models import AutomationScheduledStep
+
+    cfg = step.action_config or {}
+    try:
+        delai = int(cfg.get('delai_minutes') or 0)
+    except (TypeError, ValueError):
+        delai = 0
+    delai = max(0, delai)
+    run_at = timezone.now() + timedelta(minutes=delai)
+    try:
+        AutomationScheduledStep.objects.create(
+            company=company, rule=rule,
+            target_model=_model_label(instance),
+            target_id=getattr(instance, 'pk', None),
+            next_step_index=next_index,
+            run_at=run_at,
+            context=_json_safe(context or {}),
+        )
+    except Exception as exc:  # pragma: no cover - défensif
+        logger.exception('automation: échéance de reprise non créée')
+        message = f'Attente non planifiée : {exc}'
+        _log_run(rule, company, instance,
+                 AutomationRun.Status.FAILED, message)
+        return AutomationRun.Status.FAILED, message
+    message = (f'Séquence suspendue {delai} minute(s) : reprise prévue le '
+               f'{run_at:%Y-%m-%d %H:%M}.')
+    _log_run(rule, company, instance, AutomationRun.Status.NOOP, message)
+    return AutomationRun.Status.NOOP, message
+
+
+def resume_scheduled_step(scheduled, *, user=None):
+    """NTEXT7 — reprend UNE séquence suspendue (échéance ``run_at`` atteinte).
+
+    Best-effort et IDEMPOTENT : l'échéance passe à ``reprise`` quoi qu'il
+    arrive, une échéance déjà traitée est ignorée. Sans Celery beat déployé,
+    rien n'appelle cette fonction : la séquence reste simplement suspendue
+    (dégradation propre, aucune erreur).
+    """
+    from django.utils import timezone
+
+    from .models import AutomationScheduledStep
+
+    if scheduled.statut != AutomationScheduledStep.Statut.EN_ATTENTE:
+        return AutomationRun.Status.SKIPPED, 'Échéance déjà traitée.'
+    rule = scheduled.rule
+    company = scheduled.company
+    instance = _resolve_target(
+        scheduled.target_model, scheduled.target_id, company)
+    scheduled.statut = AutomationScheduledStep.Statut.REPRISE
+    scheduled.date_reprise = timezone.now()
+    scheduled.save(update_fields=['statut', 'date_reprise'])
+    if rule is None or not rule.enabled:
+        message = 'Règle supprimée ou désactivée : reprise ignorée.'
+        _log_run(rule, company, instance,
+                 AutomationRun.Status.SKIPPED, message)
+        return AutomationRun.Status.SKIPPED, message
+    steps = _rule_steps(rule)
+    if scheduled.next_step_index >= len(steps):
+        message = 'Séquence terminée : plus aucune étape à reprendre.'
+        _log_run(rule, company, instance, AutomationRun.Status.NOOP, message)
+        return AutomationRun.Status.NOOP, message
+    return _run_steps(rule, steps, scheduled.next_step_index,
+                      instance, company, scheduled.context or {}, user)
+
+
 def run_approved(approval, *, user=None):
     """Relance l'action différée d'une approbation approuvée (N73).
 
     Résout l'objet cible à partir de ``target_model``/``target_id`` puis exécute
     l'action. Best-effort, journalisé.
     """
-    from django.apps import apps as django_apps
     rule = approval.rule
     if rule is None:
         _log_run(None, approval.company, None, AutomationRun.Status.SKIPPED,
                  'Règle supprimée : action ignorée.')
         return
-    instance = None
-    if approval.target_model and approval.target_id:
-        try:
-            app_label, model_name = approval.target_model.split('.', 1)
-            model = django_apps.get_model(app_label, model_name)
-            # Filtre société : empêche de résoudre (et donc d'écrire) une cible
-            # d'un autre tenant si target_model/target_id venaient à croiser.
-            lookup = {'pk': approval.target_id}
-            if approval.company_id and _has_company_fk(model):
-                lookup['company'] = approval.company
-            instance = model.objects.filter(**lookup).first()
-        except Exception:  # pragma: no cover
-            instance = None
+    instance = _resolve_target(
+        approval.target_model, approval.target_id, approval.company)
     run_action(rule, instance, approval.company,
                context=approval.context, user=user)
 
@@ -459,5 +563,6 @@ def _audit_sod_override(user, company, label):
 
 # Réexport pratique.
 __all__ = [
-    'evaluate', 'run_action', 'run_approved', 'ActionType', 'TriggerType',
+    'evaluate', 'run_action', 'run_approved', 'resume_scheduled_step',
+    'ActionType', 'TriggerType',
 ]

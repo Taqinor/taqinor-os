@@ -303,6 +303,18 @@ def _create_custom_record(rule, instance, company, context, user):
         return Status.FAILED, f'Enregistrement non créé : {exc}'
 
 
+def _wait(rule, instance, company, context, user):
+    """NTEXT7 — ``WAIT`` hors séquence : rien à suspendre.
+
+    Dans une SÉQUENCE, une étape ``WAIT`` est interceptée par le moteur
+    (``engine._run_steps``), qui écrit l'échéance de reprise et ne passe jamais
+    par ce handler. Une règle dont l'action UNIQUE est ``WAIT`` n'a en revanche
+    aucune suite à reprendre : no-op explicite plutôt qu'« action inconnue ».
+    """
+    return Status.NOOP, ("Attente sans suite : une étape « Attendre » n'a "
+                         "d'effet que dans une séquence.")
+
+
 class _SubActionView:
     """NTEXT6 — vue « règle » d'UNE sous-action de boucle.
 
@@ -427,4 +439,5 @@ _HANDLERS = {
     ActionType.CREATE_SAV_TICKET: _create_sav_ticket,
     ActionType.CREATE_CUSTOM_RECORD: _create_custom_record,
     ActionType.FOR_EACH: _for_each,
+    ActionType.WAIT: _wait,
 }
