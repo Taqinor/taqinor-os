@@ -196,6 +196,8 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
             'renouveler',
             # NTCPQ14 — avenants d'un devis accepté (lecture + application).
             'avenants',
+            # NTCPQ18 — lots multi-sites (lecture + création).
+            'lots',
         ]:
             return [IsResponsableOrAdmin()]
         elif self.action == 'destroy':
@@ -1119,6 +1121,45 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
         return Response(
             DevisSerializer(nd, context={'request': request}).data,
             status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['get', 'post'], url_path='lots',
+            permission_classes=[IsResponsableOrAdmin])
+    def lots(self, request, pk=None):
+        """NTCPQ18 — Lots (sites/bâtiments) d'un devis multi-sites.
+
+        GET : sous-total HT par lot + total consolidé (chaîne canonique, donc
+        cohérent au centime avec le total du devis). Devis sans lot →
+        ``{'lots': [], 'total_consolide': None}`` (comportement mono-site
+        inchangé).
+        POST : crée un lot — corps ``{nom_lot, adresse_site?, ordre?,
+        lignes?: [ligne_id, ...]}`` ; les lignes citées lui sont rattachées."""
+        from rest_framework.exceptions import ValidationError
+        from ..models import LotDevis
+        from ..selectors import lots_totaux
+        devis = self.get_object()
+        if request.method == 'POST':
+            nom = (request.data.get('nom_lot') or '').strip()
+            if not nom:
+                raise ValidationError({'nom_lot': 'Nom de lot requis.'})
+            if devis.lots.filter(nom_lot=nom).exists():
+                raise ValidationError(
+                    {'nom_lot': 'Ce lot existe déjà sur ce devis.'})
+            lot = LotDevis.objects.create(
+                company=devis.company, devis=devis, nom_lot=nom,
+                adresse_site=(request.data.get('adresse_site') or '').strip(),
+                ordre=int(request.data.get('ordre') or 0))
+            ids = request.data.get('lignes') or []
+            if ids:
+                # Jamais une ligne d'un autre devis (donc d'une autre société).
+                devis.lignes.filter(id__in=ids).update(lot=lot)
+        resultat = lots_totaux(devis)
+        if resultat is None:
+            resultat = {'lots': [], 'hors_lot': None,
+                        'total_consolide': None}
+        return Response(
+            resultat,
+            status=(status.HTTP_201_CREATED if request.method == 'POST'
+                    else status.HTTP_200_OK))
 
     @action(detail=True, methods=['get', 'post'], url_path='avenants',
             permission_classes=[IsResponsableOrAdmin])

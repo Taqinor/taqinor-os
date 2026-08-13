@@ -1844,6 +1844,56 @@ def _brouillon_relance_engagement(devis, declencheurs):
     return f'{salutation}, {corps}'
 
 
+def lots_totaux(devis):
+    """NTCPQ18 — Sous-total PAR LOT + total consolidé d'un devis multi-sites.
+
+    Renvoie ``None`` quand le devis ne porte AUCUN lot (chemin mono-site
+    strictement inchangé). Sinon ::
+
+        {
+          'lots': [{'id', 'nom_lot', 'adresse_site', 'totaux': {...}}, ...],
+          'hors_lot': {...} | None,      # lignes non rattachées à un lot
+          'total_consolide': {...},      # TOUTES les lignes du devis
+        }
+
+    Chaque bloc de totaux passe par la MÊME chaîne canonique
+    (``_canonical_totaux`` : HT brut → remise → TVA par taux → TTC) que les
+    totaux du devis, donc la somme des lots + hors-lot recolle au total
+    consolidé au centime. Company scoping : seules les lignes du devis fourni
+    (déjà borné à sa société par l'appelant) sont lues."""
+    lots = list(devis.lots.all())
+    if not lots:
+        return None
+
+    lignes = list(devis.lignes.all())
+    fallback = devis.taux_tva
+    remise = devis.remise_globale
+    par_lot = {}
+    for ligne in lignes:
+        par_lot.setdefault(ligne.lot_id, []).append(ligne)
+
+    blocs = [{
+        'id': lot.id,
+        'nom_lot': lot.nom_lot,
+        'adresse_site': lot.adresse_site,
+        'totaux': _canonical_totaux(
+            par_lot.get(lot.id, []), remise_globale_pct=remise,
+            fallback_taux=fallback),
+    } for lot in lots]
+
+    orphelines = par_lot.get(None, [])
+    hors_lot = _canonical_totaux(
+        orphelines, remise_globale_pct=remise,
+        fallback_taux=fallback) if orphelines else None
+
+    return {
+        'lots': blocs,
+        'hors_lot': hors_lot,
+        'total_consolide': _canonical_totaux(
+            lignes, remise_globale_pct=remise, fallback_taux=fallback),
+    }
+
+
 # ── NTCPQ17 — Remises automatiques par palier de VOLUME, en cascade ──────────
 
 def _paliers_volume_actifs(company):

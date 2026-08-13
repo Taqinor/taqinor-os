@@ -470,6 +470,19 @@ class LigneDevis(models.Model):
         help_text='Ligne optionnelle (add-on) : proposée au client hors total '
                   "tant qu'elle n'est pas activée. Défaut False = ligne normale.")
 
+    # ── NTCPQ18 — Rattachement à un LOT (site/bâtiment) — additif, optionnel ──
+    # NULL = ligne « hors lot » (comportement historique strictement inchangé :
+    # un devis sans lot ne connaît aucun sous-total de lot).
+    lot = models.ForeignKey(
+        'LotDevis',
+        # on_delete: supprimer un lot ne supprime JAMAIS ses lignes (elles
+        # redeviennent « hors lot ») — aucune perte de montant.
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='lignes',
+        verbose_name='Lot (site/bâtiment)',
+    )
+
     class Meta:
         verbose_name = 'Ligne de Devis'
         verbose_name_plural = 'Lignes de Devis'
@@ -509,6 +522,41 @@ class LigneDevis(models.Model):
     def taux_tva_effectif(self):
         """Taux réellement appliqué : celui de la ligne, sinon celui du devis."""
         return self.taux_tva if self.taux_tva is not None else self.devis.taux_tva
+
+
+class LotDevis(models.Model):
+    """NTCPQ18 — Lot (site / bâtiment) d'un devis multi-sites.
+
+    Un devis unique peut couvrir plusieurs sites : chaque ``LotDevis`` regroupe
+    des ``LigneDevis`` (``LigneDevis.lot``) et reçoit son PROPRE sous-total,
+    le devis affichant en plus un total consolidé au centime.
+
+    Intersection assumée avec le multi-villa QJ29 (``LigneDevis.groupe_index``,
+    qui reste le mécanisme d'AFFICHAGE côté proposition résidentielle) : ce
+    ticket ne traite QUE le calcul de prix consolidé multi-lot, jamais l'UX
+    site — les deux cohabitent sans se remplacer."""
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: purge tenant
+        null=True, blank=True, related_name='devis_lots')
+    devis = models.ForeignKey(
+        Devis, on_delete=models.CASCADE,  # on_delete: lot sans objet si devis supprimé
+        related_name='lots')
+    nom_lot = models.CharField(max_length=150)
+    adresse_site = models.CharField(max_length=255, blank=True, default='')
+    ordre = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        verbose_name = 'Lot de devis'
+        verbose_name_plural = 'Lots de devis'
+        ordering = ['ordre', 'id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['devis', 'nom_lot'],
+                name='ventes_lotdevis_unique_devis_nom'),
+        ]
+
+    def __str__(self):
+        return f'{self.nom_lot} (devis {self.devis_id})'
 
 
 class AvenantDevis(models.Model):
