@@ -1,6 +1,16 @@
-import { describe, it, expect, vi } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { useState } from 'react'
+
+// PACT142 — le panneau « mémo vocal » appelle `POST /ai/cr-intervention/` via
+// l'instance axios partagée : elle est mockée pour tout ce fichier (les autres
+// suites ne rendent que des briques de présentation, sans réseau).
+vi.mock('../../api/axios', () => ({
+  default: { get: vi.fn(), post: vi.fn(), patch: vi.fn(), delete: vi.fn() },
+}))
+
+import api from '../../api/axios'
 import {
   StatutPill,
   PrioriteBadge,
@@ -8,6 +18,8 @@ import {
   TicketSlaEcheanceChip,
   TicketPremiereReponseChip,
   KanbanColumn,
+  CrVocalMemo,
+  crEnTexte,
 } from './TicketsPage.jsx'
 import {
   TICKET_STATUSES,
@@ -222,5 +234,188 @@ describe('KanbanColumn (J144 — vue Kanban par statut)', () => {
     render(<KanbanColumn statut="nouveau" tickets={tickets} onSelect={onSelect} />)
     await userEvent.click(screen.getByText('SAV-001'))
     expect(onSelect).toHaveBeenCalledWith(tickets[0])
+  })
+})
+
+/* ===========================================================================
+   PACT142 — Compte rendu d'intervention depuis un MÉMO VOCAL (NTAI12)
+   ===========================================================================
+   Ce que la tâche exige et que ces tests verrouillent :
+     • un mémo vocal PRÉ-REMPLIT le formulaire de rapport, ÉDITABLE avant
+       sauvegarde ;
+     • le statut du ticket n'est JAMAIS changé et l'audio n'est JAMAIS conservé
+       (aucune écriture n'est émise depuis ce panneau : un seul POST, vers
+       l'endpoint de génération) ;
+     • sans clé de transcription, un message EXPLICITE remplace le sélecteur de
+       fichier — jamais un téléversement qui échoue en silence, et jamais une
+       erreur brute pour les autres échecs. */
+
+// Un vrai conteneur OGG en tête (le serveur reconnaît le format aux octets
+// magiques, jamais au Content-Type déclaré) : le fichier de test lui ressemble.
+const memoOgg = () => new File(
+  [new Uint8Array([0x4f, 0x67, 0x67, 0x53])], 'memo.ogg', { type: 'audio/ogg' })
+
+const REPONSE_CR = {
+  ticket_id: 42,
+  transcript: "Onduleur en défaut 14, j'ai repris les connecteurs.",
+  cr: {
+    diagnostic: 'Défaut 14 — isolement DC faible côté string 2.',
+    travaux: 'Connecteurs MC4 refaits, bornier resserré.',
+    pieces: '2 connecteurs MC4.',
+    recommandations: 'Recontrôler l’isolement sous 3 mois.',
+  },
+  structure: true,
+  applique: false,
+  source: 'zhipu',
+}
+
+/* Le formulaire d'intervention réduit à son câblage RÉEL (une seule ligne dans
+   TicketDetail) : le panneau pré-remplit « Compte rendu », qui reste éditable
+   tant que « Ajouter une intervention » n'a pas été cliqué. */
+function FormulaireCr({ ticketId = 42 }) {
+  const [compteRendu, setCompteRendu] = useState('')
+  return (
+    <div>
+      <CrVocalMemo ticketId={ticketId} onPrefill={(texte) => setCompteRendu(texte)} />
+      <label>
+        Compte rendu
+        <textarea value={compteRendu} onChange={(e) => setCompteRendu(e.target.value)} />
+      </label>
+    </div>
+  )
+}
+
+describe('crEnTexte (PACT142 — aplatissement du CR structuré)', () => {
+  it('respecte l’ordre des sections du serveur et omet les sections vides', () => {
+    expect(crEnTexte({
+      diagnostic: 'A', travaux: '', pieces: 'C', recommandations: 'D',
+    })).toBe('Diagnostic : A\nPièces : C\nRecommandations : D')
+  })
+
+  it('rend une chaîne vide quand le serveur n’a rien structuré', () => {
+    expect(crEnTexte({})).toBe('')
+    expect(crEnTexte(null)).toBe('')
+  })
+})
+
+describe('CrVocalMemo (PACT142 — mémo vocal → rapport pré-rempli)', () => {
+  beforeEach(() => {
+    api.post.mockReset()
+    api.patch.mockReset()
+  })
+
+  it('pré-remplit le compte rendu avec les 4 sections, sans toucher au ticket', async () => {
+    api.post.mockResolvedValue({ data: REPONSE_CR })
+    render(<FormulaireCr />)
+
+    await userEvent.upload(
+      screen.getByLabelText("Mémo vocal de l'intervention"), memoOgg())
+
+    await waitFor(() => expect(api.post).toHaveBeenCalledTimes(1))
+    const [url, corps] = api.post.mock.calls[0]
+    expect(url).toBe('/ai/cr-intervention/')
+    expect(corps).toBeInstanceOf(FormData)
+    expect(corps.get('file').name).toBe('memo.ogg')
+    expect(corps.get('ticket_id')).toBe('42')
+
+    // Le rapport est pré-rempli, sections dans l'ordre du serveur.
+    await waitFor(() => expect(screen.getByLabelText('Compte rendu')).toHaveValue(
+      'Diagnostic : Défaut 14 — isolement DC faible côté string 2.\n'
+      + 'Travaux : Connecteurs MC4 refaits, bornier resserré.\n'
+      + 'Pièces : 2 connecteurs MC4.\n'
+      + 'Recommandations : Recontrôler l’isolement sous 3 mois.'))
+
+    // Aucune écriture sur le ticket : le seul appel est la génération.
+    expect(api.patch).not.toHaveBeenCalled()
+    expect(api.post).toHaveBeenCalledTimes(1)
+
+    // Le contrat (audio non conservé, statut inchangé) est DIT à l'écran.
+    expect(screen.getByText(/l’audio n’est pas conservé/i)).toBeInTheDocument()
+    expect(screen.getByText(/statut du ticket n’est jamais modifié/i)).toBeInTheDocument()
+  })
+
+  it('le compte rendu reste ÉDITABLE avant enregistrement', async () => {
+    api.post.mockResolvedValue({
+      data: {
+        ...REPONSE_CR,
+        cr: { diagnostic: 'Défaut 14.', travaux: '', pieces: '', recommandations: '' },
+      },
+    })
+    render(<FormulaireCr />)
+    await userEvent.upload(
+      screen.getByLabelText("Mémo vocal de l'intervention"), memoOgg())
+
+    const zone = screen.getByLabelText('Compte rendu')
+    await waitFor(() => expect(zone).toHaveValue('Diagnostic : Défaut 14.'))
+    await userEvent.type(zone, ' Repris par le technicien.')
+    expect(zone).toHaveValue('Diagnostic : Défaut 14. Repris par le technicien.')
+  })
+
+  it('sans clé de transcription (503), le message serveur REMPLACE le sélecteur', async () => {
+    api.post.mockRejectedValue({
+      response: {
+        status: 503,
+        data: {
+          detail: "Aucun fournisseur de transcription n'est configuré (clé "
+            + 'absente) — saisie manuelle requise.',
+        },
+      },
+    })
+    render(<FormulaireCr />)
+    await userEvent.upload(
+      screen.getByLabelText("Mémo vocal de l'intervention"), memoOgg())
+
+    expect(await screen.findByText(
+      "Aucun fournisseur de transcription n'est configuré (clé absente) — "
+      + 'saisie manuelle requise.',
+    )).toBeInTheDocument()
+    expect(screen.queryByLabelText("Mémo vocal de l'intervention")).toBeNull()
+  })
+
+  it('tout autre échec est AFFICHÉ en clair, le sélecteur reste disponible', async () => {
+    api.post.mockRejectedValue({
+      response: {
+        status: 400,
+        data: { detail: 'Format audio non reconnu (OGG, WAV, MP3, M4A, FLAC ou WebM).' },
+      },
+    })
+    render(<FormulaireCr />)
+    await userEvent.upload(
+      screen.getByLabelText("Mémo vocal de l'intervention"), memoOgg())
+
+    const alerte = await screen.findByRole('alert')
+    expect(alerte).toHaveTextContent(
+      'Format audio non reconnu (OGG, WAV, MP3, M4A, FLAC ou WebM).')
+    // Un échec récupérable ne condamne pas le panneau (≠ clé absente).
+    expect(screen.getByLabelText("Mémo vocal de l'intervention")).toBeInTheDocument()
+    expect(screen.getByLabelText('Compte rendu')).toHaveValue('')
+  })
+
+  it('sans structuration, la dictée transcrite est proposée telle quelle et DITE comme telle', async () => {
+    api.post.mockResolvedValue({
+      data: {
+        ticket_id: 42,
+        transcript: 'Onduleur redémarré, tout est rentré dans l’ordre.',
+        cr: { diagnostic: '', travaux: '', pieces: '', recommandations: '' },
+        structure: false, applique: false, source: 'zhipu',
+      },
+    })
+    render(<FormulaireCr />)
+    await userEvent.upload(
+      screen.getByLabelText("Mémo vocal de l'intervention"), memoOgg())
+
+    await waitFor(() => expect(screen.getByLabelText('Compte rendu')).toHaveValue(
+      'Onduleur redémarré, tout est rentré dans l’ordre.'))
+    expect(screen.getByText(/non structuré/i)).toBeInTheDocument()
+  })
+
+  it('sans ticket lié, aucun ticket_id n’est envoyé', async () => {
+    api.post.mockResolvedValue({ data: REPONSE_CR })
+    render(<FormulaireCr ticketId={null} />)
+    await userEvent.upload(
+      screen.getByLabelText("Mémo vocal de l'intervention"), memoOgg())
+
+    await waitFor(() => expect(api.post).toHaveBeenCalledTimes(1))
+    expect(api.post.mock.calls[0][1].get('ticket_id')).toBeNull()
   })
 })
