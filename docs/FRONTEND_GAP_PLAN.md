@@ -62,18 +62,18 @@ a focused test, calling the EXISTING backend endpoint.
 - [ ] FE-XFLT26 — verify ICE/IF fields render in the garage form (`EntretienScreen.jsx`). (@lane: frontend/flotte)
 
 ## Lane `frontend/qhse` (XQHS — all backend-only; verify XQHS5/6/7/9/10/12 aren't ORPHAN backends first)
-- [ ] FE-XQHS16 — public QR signalement: "Générer QR" action + `signalementsPublics`/`liensSignalement` in `qhseApi.js`. (@lane: frontend/qhse)
-- [ ] FE-XQHS17 — mobile quick-capture observation form; add `observationsSecurite`. (@lane: frontend/qhse)
-- [ ] FE-XQHS2 — dérogations + NCR disposition fields in `NonConformites.jsx`; add `derogations`. (@lane: frontend/qhse)
-- [ ] FE-XQHS3 — "Contrôle réception" screen/tab; add `plansControleReception`/`controlesReception`/`pointsControleReception`. (@lane: frontend/qhse)
-- [ ] FE-XQHS4 — Pareto défauts chart on `QhseCockpit.jsx`; add `codesDefaut`/`paretoDefauts`. (@lane: frontend/qhse)
-- [ ] FE-XQHS1 — CNSS declaration legal-step checklist; add `etapesDeclarationAt`. (@lane: frontend/qhse)
-- [ ] FE-XQHS5-13 — recalls/SCAR/5-why-8D/certifications/audit-program/revues/objectifs UIs; add the matching `qhseApi` resources (VERIFY each viewset exists — some may be ORPHAN → `[BLOCKED: needs backend]`). (@lane: frontend/qhse)
-- [ ] FE-XQHS14 — enterprise risk/opportunity + stakeholder register in `Risques.jsx`; add `risquesOpportunites`/`partiesInteressees`/`contexteOrganisation`. (@lane: frontend/qhse)
-- [ ] FE-XQHS15/18/19 — procedure diffusion + acknowledgment, drill log, environmental-incident fields; add `diffusionsProcedure`/`accusesLecture`/`exercicesUrgence`. (@lane: frontend/qhse)
-- [ ] FE-XQHS20-21 — environmental aspects register + monthly consumption entry → bilan carbone; add `aspectsEnvironnementaux`/`relevesConsommation`. (@lane: frontend/qhse)
-- [ ] FE-XQHS22 — coût de non-qualité rollup (gated) in cockpit + NCR/CAPA/Incident cost fields; add `coutNonQualite`. (@lane: frontend/qhse)
-- [ ] FE-XQHS23-27 — NCR-from-SAV action, MOC screen, IA-assist buttons, veille réglementaire list, bilingual causerie PDF button; add matching `qhseApi` entries. (@lane: frontend/qhse)
+- [x] (déjà présent) FE-XQHS16 — public QR signalement: "Générer QR" action + `signalementsPublics`/`liensSignalement` in `qhseApi.js`. (@lane: frontend/qhse)
+- [x] FE-XQHS17 — mobile quick-capture observation form; add `observationsSecurite`. (@lane: frontend/qhse)
+- [x] (déjà présent) FE-XQHS2 — dérogations + NCR disposition fields in `NonConformites.jsx`; add `derogations`. (@lane: frontend/qhse)
+- [x] (déjà présent) FE-XQHS3 — "Contrôle réception" screen/tab; add `plansControleReception`/`controlesReception`/`pointsControleReception`. (@lane: frontend/qhse)
+- [x] (déjà présent) FE-XQHS4 — Pareto défauts chart on `QhseCockpit.jsx`; add `codesDefaut`/`paretoDefauts`. (@lane: frontend/qhse)
+- [x] (déjà présent) FE-XQHS1 — CNSS declaration legal-step checklist; add `etapesDeclarationAt`. (@lane: frontend/qhse)
+- [BLOCKED: needs backend] FE-XQHS5-13 — recalls/SCAR/5-why-8D/certifications/audit-program/revues/objectifs UIs; add the matching `qhseApi` resources (VERIFY each viewset exists — some may be ORPHAN → `[BLOCKED: needs backend]`). (@lane: frontend/qhse) — SCAR (`demandes-action-fournisseur`) déjà câblé dans `CheckinsSecurite.jsx` et XQHS7 (analyse 5-Pourquoi/8D) livré le 2026-08-13 ; le RESTE est ORPHELIN côté backend (aucun viewset ni URL pour `CampagneRappel`/`ElementRappel`, `Certification`/`AuditCertification`, `ProgrammeAudit`/`AuditPlanifie`, `ReunionQhse`/`DecisionReunion`, `ObjectifQhse`/`RevueObjectif`, ni pour `rendre_analyse_ncr_pdf`) → va dans `docs/PLAN.md`.
+- [x] FE-XQHS14 — enterprise risk/opportunity + stakeholder register in `Risques.jsx`; add `risquesOpportunites`/`partiesInteressees`/`contexteOrganisation`. (@lane: frontend/qhse) — registre risques/opportunités SMQ livré ; `PartieInteressee`/`ContexteOrganisation` restent ORPHELINS (modèles sans viewset) → `docs/PLAN.md`.
+- [x] FE-XQHS15/18/19 — procedure diffusion + acknowledgment, drill log, environmental-incident fields; add `diffusionsProcedure`/`accusesLecture`/`exercicesUrgence`. (@lane: frontend/qhse) — journal d'exercices déjà présent ; « Mes lectures en attente » + champs incident environnemental livrés ; la CRÉATION d'une diffusion reste ORPHELINE (`DiffusionProcedure` sans viewset) → `docs/PLAN.md`.
+- [x] (déjà présent) FE-XQHS20-21 — environmental aspects register + monthly consumption entry → bilan carbone; add `aspectsEnvironnementaux`/`relevesConsommation`. (@lane: frontend/qhse)
+- [x] (déjà présent) FE-XQHS22 — coût de non-qualité rollup (gated) in cockpit + NCR/CAPA/Incident cost fields; add `coutNonQualite`. (@lane: frontend/qhse)
+- [x] FE-XQHS23-27 — NCR-from-SAV action, MOC screen, IA-assist buttons, veille réglementaire list, bilingual causerie PDF button; add matching `qhseApi` entries. (@lane: frontend/qhse) — MOC/IA/veille/causerie PDF déjà présents ; le pont ticket SAV → NCR livré le 2026-08-13.
 
 ## Lane `frontend/ged` (XGED/ZGED — incl. the flagship e-sign ceremony)
 - [ ] FE-XGED1 — **CRITICAL** public signing ceremony pages: React routes `/ged/signature/:token` + `/ged/signataire/:token` (no-auth) consuming the existing public endpoints. (@lane: frontend/ged) (opus)
@@ -240,3 +240,10 @@ a focused test, calling the EXISTING backend endpoint.
 
 ## DONE LOG
 <!-- one dated line per shipped task -->
+- 2026-08-13 — FE-XQHS17 : formulaire de capture rapide d'observation BBS (dialogue mobile-friendly, date du jour par défaut) sur l'onglet « Observations BBS » de `Risques.jsx` ; le registre était en lecture + conversion seulement.
+- 2026-08-13 — FE-XQHS14 : registre « Risques & opportunités (SMQ) » (ISO 6.1) — nouvel onglet de `Risques.jsx`, bascule « Revues dues », création sans jamais poster de criticité (calcul serveur) ; `risquesOpportunites` ajouté à `qhseApi.js`.
+- 2026-08-13 — FE-XQHS15/18/19 : panneau « Mes lectures en attente » (accusés de lecture des procédures) dans `Inspections.jsx` ; champs environnement (substance/quantité/unité/milieu/notification) sur la déclaration d'incident, colonne « Notification » (retard calculé serveur), action « Clôturer » gatée et relance des notifications dans `Risques.jsx`.
+- 2026-08-13 — FE-XQHS7 (part de FE-XQHS5-13) : onglet « Analyse 5-Pourquoi / 8D » sur le détail NCR — l'action `analyse/`, seule surface d'`AnalyseNcr`, n'avait aucun appelant.
+- 2026-08-13 — FE-XQHS23 : pont ticket SAV → NCR (`depuis-ticket-sav/`, idempotent) exposé depuis le registre NCR ; seul des deux ponts encore sans appelant.
+- 2026-08-13 — FE-XQHS1/2/3/4/16/20/21/22 vérifiés déjà construits (dérogations + disposition, contrôle réception, Pareto défauts, checklist CNSS, signalement QR, aspects environnementaux, relevés de consommation, coût de non-qualité gaté) ; cochés « déjà présent » sans nouveau code.
+
