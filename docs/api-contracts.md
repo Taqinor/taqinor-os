@@ -290,6 +290,8 @@
     cycle_id:inconnu, depenses_par_categorie:inconnu, detail:texte, marge_brute_previsionnelle:texte, revenu_carnet:texte, revenu_pipeline:texte, revenu_previsionnel:texte, total_depenses:texte
 - frontend/src/api/fpaApi.js :: sensibilite -> /api/django/fpa/scenarios/sensibilite
     detail:texte, points:inconnu, variable:inconnu
+- frontend/src/api/gedApi.js :: comparerVersions -> /api/django/ged/documents/<>/comparer
+    detail:texte, diff_texte:inconnu, message:texte, metadonnees:inconnu, texte_disponible:booleen
 - frontend/src/api/gedApi.js :: genererModele -> /api/django/ged/modeles-document/<>/generer
     created:inconnu, detail:texte, document:inconnu, document_nom:inconnu
 - frontend/src/api/gedApi.js :: getAnalytique -> /api/django/ged/analytique
@@ -1634,6 +1636,8 @@
     champs: created_at, created_by, document, document_nom, id, tag, tag_nom
 - frontend/src/api/gedApi.js :: createTamponSociete -> /api/django/ged/tampons-societe  [TamponSocieteSerializer]
     champs: created_at, id, libelle
+- frontend/src/api/gedApi.js :: createVue -> /api/django/ged/vues  [VueGedEnregistreeSerializer]
+    champs: created_at, criteres, est_a_moi, id, nom, partagee, updated_at, utilisateur, utilisateur_nom
 - frontend/src/api/gedApi.js :: deleteAcl -> /api/django/ged/acls/<>  [AclGedSerializer]
     champs: created_at, created_by, document, document_nom, folder, folder_nom, herite, id, niveau, role, role_nom, updated_at, utilisateur, utilisateur_nom
 - frontend/src/api/gedApi.js :: deleteChampSignature -> /api/django/ged/champs-signature/<>  [ChampSignatureSerializer]
@@ -1658,6 +1662,8 @@
     champs: created_at, created_by, document, document_nom, id, tag, tag_nom
 - frontend/src/api/gedApi.js :: deleteTamponSociete -> /api/django/ged/tampons-societe/<>  [TamponSocieteSerializer]
     champs: created_at, id, libelle
+- frontend/src/api/gedApi.js :: deleteVue -> /api/django/ged/vues/<>  [VueGedEnregistreeSerializer]
+    champs: created_at, criteres, est_a_moi, id, nom, partagee, updated_at, utilisateur, utilisateur_nom
 - frontend/src/api/gedApi.js :: getAcls -> /api/django/ged/acls  [AclGedSerializer]
     champs: created_at, created_by, document, document_nom, folder, folder_nom, herite, id, niveau, role, role_nom, updated_at, utilisateur, utilisateur_nom
 - frontend/src/api/gedApi.js :: getCabinets -> /api/django/ged/cabinets  [CabinetSerializer]
