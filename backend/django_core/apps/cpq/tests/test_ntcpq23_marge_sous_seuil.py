@@ -6,7 +6,7 @@ from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import AccessToken
 
 from apps.cpq.models import SeuilMargeFamille
-from apps.cpq.selectors import devis_sous_seuil_marge
+from apps.cpq.reports import devis_sous_seuil_marge
 from apps.stock.models import Categorie
 from apps.ventes.models import Devis, LigneDevis
 from authentication.models import CustomUser

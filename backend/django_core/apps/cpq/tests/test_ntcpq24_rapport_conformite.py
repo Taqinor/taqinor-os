@@ -8,7 +8,7 @@ from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import AccessToken
 
 from apps.cpq.models import ContrainteCompatibilite
-from apps.cpq.selectors import rapport_conformite_configurations
+from apps.cpq.reports import rapport_conformite_configurations
 from apps.ventes.models import Devis, LigneDevis
 from authentication.models import CustomUser
 from testkit.factories import (

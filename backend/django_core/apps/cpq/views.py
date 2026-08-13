@@ -25,7 +25,7 @@ from .serializers import (
     SeuilMargeFamilleSerializer, RegleApprobationRemiseSerializer,
     ClauseCGVSerializer, ProduitEquivalentSerializer,
 )
-from . import selectors, services
+from . import reports, selectors, services
 
 
 class OptionProduitViewSet(CompanyScopedModelViewSet):
@@ -282,7 +282,7 @@ class RapportConformiteView(APIView):
                 'bloquant', 'nb_violations']
 
     def get(self, request):
-        rapport = selectors.rapport_conformite_configurations(
+        rapport = reports.rapport_conformite_configurations(
             request.user.company,
             date_debut=request.query_params.get('date_debut') or None,
             date_fin=request.query_params.get('date_fin') or None,
@@ -314,7 +314,7 @@ class MargeSousSeuilView(APIView):
     permission_classes = [IsResponsableOrAdmin]
 
     def get(self, request):
-        return Response({'devis': selectors.devis_sous_seuil_marge(
+        return Response({'devis': reports.devis_sous_seuil_marge(
             request.user.company,
             commercial_id=request.query_params.get('commercial'),
             famille=request.query_params.get('famille'))})
@@ -365,7 +365,7 @@ class SuggestionsProduitView(APIView):
         if not produit_id:
             return Response({'detail': 'produit_id requis.'},
                             status=status.HTTP_400_BAD_REQUEST)
-        return Response({'suggestions': selectors.suggestions_produit(
+        return Response({'suggestions': reports.suggestions_produit(
             company=request.user.company, produit_id=produit_id)})
 
 

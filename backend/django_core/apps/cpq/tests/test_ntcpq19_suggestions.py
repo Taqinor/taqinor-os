@@ -6,7 +6,7 @@ from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import AccessToken
 
 from apps.cpq.models import ContrainteCompatibilite
-from apps.cpq.selectors import suggestions_produit
+from apps.cpq.reports import suggestions_produit
 from apps.ventes.models import Devis, LigneDevis
 from testkit.factories import (
     CompanyFactory, DevisFactory, ProduitFactory, UserFactory,
