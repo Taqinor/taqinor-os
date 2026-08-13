@@ -87,6 +87,22 @@ plans existants (PLAN/PLAN2/FRONTEND_GAP/DONE : 1 982 tâches déjà connues —
 
 ## DONE LOG (les runs de build ajoutent une ligne datée par tâche terminée)
 
+- 2026-08-13 — **NTIDE52** (déjà présent, lane `apps/innovation`) : gabarits e-mail personnalisables (idée reçue/retenue/réalisée) sur InnovationSettings, repli sur EMAIL_IDEE_DEFAULTS.
+- 2026-08-13 — **NTIDE53** (déjà présent, lane `apps/innovation`) : selector timeline_idee + endpoint idees/<id>/timeline/ et minigraph sur le détail d'idée.
+- 2026-08-13 — **NTIDE54** (déjà présent, lane `apps/innovation`) : autocomplétion auteur (selector auteurs_autocomplete + endpoint idees/auteurs/, palier admin).
+- 2026-08-13 — **NTIDE55** (déjà présent, lane `apps/innovation`) : géolocalisation des idées liées à un chantier (endpoint admin + écran carte).
+- 2026-08-13 — **NTIDE56** (livrée, lane `apps/innovation`) : module de tests CRUD consolidé de la boîte à idées (11 tests : company serveur, liste scopée, détail, vote unique, compteur, brouillon, masquage, paliers).
+- 2026-08-13 — **NTIDE57** (livrée, lane `apps/innovation`) : module de tests campagnes/segment (11 tests : création, segment JSON, users_for_campaign, multi-segment NTIDE35, transitions, notification de lancement, tag auto).
+- 2026-08-13 — **NTIDE58** (complétée, lane `apps/innovation`) : les 3 sous-items restants du feedback produit (sentiment, contexte opaque, masquage de modération), débloqués par NTIDE42/43/47.
+- 2026-08-13 — **NTIDE59** (déjà présent, lane `apps/innovation`) : e2e Playwright « proposer une idée » (redirection détail + apparition dans Mes idées).
+- 2026-08-13 — **NTIDE60** (déjà présent, lane `apps/innovation`) : e2e Playwright « voter » (compteur en direct, second vote du même votant refusé).
+- 2026-08-13 — **NTIDE61** (déjà présent, lane `apps/innovation`) : e2e Playwright « examiner → retenir » (chatter loggé, notification du proposant).
+- 2026-08-13 — **NTIDE62** (livrée, lane `apps/innovation`) : e2e création + lancement de campagne (notification du segment, bandeau d'incitation) ; l'action « Lancer » (brouillon→active) manquait à l'écran campagnes, ajoutée.
+- 2026-08-13 — **NTIDE63** (livrée, lane `apps/innovation`) : e2e feedback produit — modale du menu profil, envoi, réception sur le tableau de bord admin.
+- 2026-08-13 — **NTIDE64** (livrée, lane `apps/innovation`) : docs/innovation.md — modèles, permissions, routes, exemples curl, écrans et guide utilisateur.
+- 2026-08-13 — **NTIDE65** (livrée, lane `apps/innovation`) : docs/innovation-annonceproduit.md — lier un retour à une annonce (JSON) + bascule prévue vers NTADM18.
+- 2026-08-13 — **NTIDE66** (livrée, lane `apps/innovation`) : commande seed_innovation_demo (5 idées, 2 campagnes, 10 retours), idempotente, refusée hors DEBUG, + 6 tests.
+- 2026-08-13 — **NTIDE67** (livrée, lane `apps/innovation`) : docs/innovation-deploiement.md — checklist prod (env, notify/beat, gabarits, rôles, toggles, sondes d'endpoints).
 - 2026-08-13 — **NTIDE42** (déjà présent, lane `ao-innovation` antérieure) : sentiment optionnel « +1/Neutre/-1 » dénormalisé sur FeedbackProduit, agrégé par thème.
 - 2026-08-13 — **NTIDE43** (déjà présent, lane `ao-innovation` antérieure) : contexte opaque du feedback (context_type/context_id devis/ticket/chantier).
 - 2026-08-13 — **NTIDE44** (déjà présent, lane `ao-innovation` antérieure) : provenance du feedback (source_page client + user_agent capturé serveur, un-PII).
@@ -1136,39 +1152,39 @@ Frontières nettes :
 
 - [x] (déjà présent) **NTIDE51** — **Webhook idée-création (gated)** : quand une idée nouvelle est créée, POST webhook si `INNOVATION_WEBHOOK_URL` set (gated, optionnel). Payload: titre/description/auteur/context + timestamp. NO-OP si URL vide. (@lane: apps/innovation) (INTEGRATION) «model: sonnet»
 
-- [ ] **NTIDE52** — **Email templates pour innovation** : EmailTemplate pour « Bienvenue idée reçue », « Idée retenue », « Idée réalisée ». Personnalisables via Paramètres. (@lane: apps/innovation) (INTEGRATION) «model: haiku»
+- [x] (déjà présent) **NTIDE52** — **Email templates pour innovation** : EmailTemplate pour « Bienvenue idée reçue », « Idée retenue », « Idée réalisée ». Personnalisables via Paramètres. (@lane: apps/innovation) (INTEGRATION) «model: haiku»
 
-- [ ] **NTIDE53** — **Historique statuts idée** : timeline (ex. créée→examinée J+2→retenue J+5→réalisée J+60), visualisé en minigraph sur détail idée. Selector `timeline_idee`. (@lane: apps/innovation) (ENDPOINT) «model: haiku»
+- [x] (déjà présent) **NTIDE53** — **Historique statuts idée** : timeline (ex. créée→examinée J+2→retenue J+5→réalisée J+60), visualisé en minigraph sur détail idée. Selector `timeline_idee`. (@lane: apps/innovation) (ENDPOINT) «model: haiku»
 
-- [ ] **NTIDE54** — **Autocomplete auteur** : sur formulaires admin créer idée (bulk), autocomplet users par company. (@lane: apps/innovation) (UX) «model: haiku»
+- [x] (déjà présent) **NTIDE54** — **Autocomplete auteur** : sur formulaires admin créer idée (bulk), autocomplet users par company. (@lane: apps/innovation) (UX) «model: haiku»
 
-- [ ] **NTIDE55** — **Géolocalisation idées** (optionnel) : si lead/chantier est lié (NTIDE14), récupère GPS et peut afficher sur carte WHERE les idées sont issues. Carte click drill-down. Affichage admin seul. (@lane: apps/innovation) (UX) «model: sonnet»
+- [x] (déjà présent) **NTIDE55** — **Géolocalisation idées** (optionnel) : si lead/chantier est lié (NTIDE14), récupère GPS et peut afficher sur carte WHERE les idées sont issues. Carte click drill-down. Affichage admin seul. (@lane: apps/innovation) (UX) «model: sonnet»
 
 #### NTIDE — P3 : Tests + prise en charge
 
-- [ ] **NTIDE56** — **Tests Idee CRUD** : 8+ tests : create (server-set company), list (filtered company), detail, vote (unique), vote count update, draft flag, modération masquage, permissions lecturer vs Directeur. (@lane: apps/innovation) (TEST) «model: haiku»
+- [x] **NTIDE56** — **Tests Idee CRUD** : 8+ tests : create (server-set company), list (filtered company), detail, vote (unique), vote count update, draft flag, modération masquage, permissions lecturer vs Directeur. (@lane: apps/innovation) (TEST) «model: haiku»
 
-- [ ] **NTIDE57** — **Tests CampagneInnovation segment** : 6+ tests : create, segment JSON vs rôles, target users selector, bulk creation, statut transitions, tag auto-apply. (@lane: apps/innovation) (TEST) «model: haiku»
+- [x] **NTIDE57** — **Tests CampagneInnovation segment** : 6+ tests : create, segment JSON vs rôles, target users selector, bulk creation, statut transitions, tag auto-apply. (@lane: apps/innovation) (TEST) «model: haiku»
 
-- [ ] **NTIDE58** — **Tests FeedbackProduit** : 6+ tests : create (unauth + auth), list (admin only), theme aggregation, sentiment flag, context link, modération masquage. (@lane: apps/innovation) (TEST) «model: haiku»
+- [x] **NTIDE58** — **Tests FeedbackProduit** : 6+ tests : create (unauth + auth), list (admin only), theme aggregation, sentiment flag, context link, modération masquage. (@lane: apps/innovation) (TEST) «model: haiku»
 
-- [ ] **NTIDE59** — **E2E propose idée** : Playwright « débarquer sur /innovation/proposer, remplir form, submit, redirection détail, affiche dans ma liste mes-idees ». (@lane: apps/innovation) (E2E) «model: sonnet»
+- [x] (déjà présent) **NTIDE59** — **E2E propose idée** : Playwright « débarquer sur /innovation/proposer, remplir form, submit, redirection détail, affiche dans ma liste mes-idees ». (@lane: apps/innovation) (E2E) «model: sonnet»
 
-- [ ] **NTIDE60** — **E2E vote idée** : Playwright « votes count incrément en temps réel, devient différent affichage pour votant (buton devient check) ». (@lane: apps/innovation) (E2E) «model: sonnet»
+- [x] (déjà présent) **NTIDE60** — **E2E vote idée** : Playwright « votes count incrément en temps réel, devient différent affichage pour votant (buton devient check) ». (@lane: apps/innovation) (E2E) «model: sonnet»
 
-- [ ] **NTIDE61** — **E2E admin examiner→retenir** : Playwright admin détail idée « cliquer examiner, transition validée, chatter log visible, cliquer retenir, notification du proposant ». (@lane: apps/innovation) (E2E) «model: sonnet»
+- [x] (déjà présent) **NTIDE61** — **E2E admin examiner→retenir** : Playwright admin détail idée « cliquer examiner, transition validée, chatter log visible, cliquer retenir, notification du proposant ». (@lane: apps/innovation) (E2E) «model: sonnet»
 
-- [ ] **NTIDE62** — **E2E campagne lancer** : Playwright admin créer campagne (nom/segment/incitation), lancer (brouillon→active), utilisateurs du segment reçoivent notif, form proposer affiche incitation. (@lane: apps/innovation) (E2E) «model: sonnet»
+- [x] **NTIDE62** — **E2E campagne lancer** : Playwright admin créer campagne (nom/segment/incitation), lancer (brouillon→active), utilisateurs du segment reçoivent notif, form proposer affiche incitation. (@lane: apps/innovation) (E2E) «model: sonnet»
 
-- [ ] **NTIDE63** — **E2E feedback produit** : Playwright user + modale feedback bas de page, titre/desc/sentiment, submit, feedback reçu dashboard admin, audit log. (@lane: apps/innovation) (E2E) «model: sonnet»
+- [x] **NTIDE63** — **E2E feedback produit** : Playwright user + modale feedback bas de page, titre/desc/sentiment, submit, feedback reçu dashboard admin, audit log. (@lane: apps/innovation) (E2E) «model: sonnet»
 
-- [ ] **NTIDE64** — **Docs innovation.md** : README des routes, modèles, permissions, exemples API curl, guide utilisateur (proposer/voter/campagnes). (@lane: apps/innovation) (DOCS) «model: haiku»
+- [x] **NTIDE64** — **Docs innovation.md** : README des routes, modèles, permissions, exemples API curl, guide utilisateur (proposer/voter/campagnes). (@lane: apps/innovation) (DOCS) «model: haiku»
 
-- [ ] **NTIDE65** — **Guide intégration AnnonceProduit** : doc brève comment lier feedback/idée realisee à AnnonceProduit (NTADM18) quand bâti. Exemple JSON. (@lane: apps/innovation) (DOCS) «model: haiku»
+- [x] **NTIDE65** — **Guide intégration AnnonceProduit** : doc brève comment lier feedback/idée realisee à AnnonceProduit (NTADM18) quand bâti. Exemple JSON. (@lane: apps/innovation) (DOCS) «model: haiku»
 
-- [ ] **NTIDE66** — **Seed données demo** : manage.py seed_innovation_demo —company slug : crée 5 idées, 2 campagnes, 10 feedbacks d'exemple (for local demo). (@lane: apps/innovation) (SCRIPT) «model: haiku»
+- [x] **NTIDE66** — **Seed données demo** : manage.py seed_innovation_demo —company slug : crée 5 idées, 2 campagnes, 10 feedbacks d'exemple (for local demo). (@lane: apps/innovation) (SCRIPT) «model: haiku»
 
-- [ ] **NTIDE67** — **Checklist déploiement** : doc « Avant de déployer innovation en prod », lister les settings (INNOVATION_WEBHOOK_URL optionnel, notify() config, email templates), permissions seeded, test endpoints. (@lane: apps/innovation) (DOCS) «model: haiku»
+- [x] **NTIDE67** — **Checklist déploiement** : doc « Avant de déployer innovation en prod », lister les settings (INNOVATION_WEBHOOK_URL optionnel, notify() config, email templates), permissions seeded, test endpoints. (@lane: apps/innovation) (DOCS) «model: haiku»
 
 ---
 
