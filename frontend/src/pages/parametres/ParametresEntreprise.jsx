@@ -58,6 +58,7 @@ import MarketplaceSection from './MarketplaceSection'
 import ReferentielsSection from './ReferentielsSection'
 import ChatRetentionSection from './ChatRetentionSection'
 import ModelesBrandesSection from './ModelesBrandesSection'
+import ExportsPlanifiesSection from './ExportsPlanifiesSection'
 // EZ16 — message d'erreur FRANÇAIS, jamais du JSON brut.
 import { frenchError } from '../../lib/frenchError'
 
@@ -88,6 +89,9 @@ const CHAT_RETENTION_TAB = { key: 'chat_retention', label: 'Rétention (Discuter
 // PDF/email/WhatsApp + aperçu serveur). Ajouté localement, même logique que
 // N96/N94/XPLT23/ODX5/WIR159/WIR66.
 const MODELES_BRANDES_TAB = { key: 'modeles_brandes', label: 'Modèles brandés', group: 'ventes' }
+// PACT123 — onglet « Exports planifiés » (core.ScheduledExport FG383 : livraison
+// récurrente SFTP/S3, distincte de l'export manuel de l'onglet « Données »).
+const EXPORTS_PLANIFIES_TAB = { key: 'exports_planifies', label: 'Exports planifiés', group: 'avance' }
 
 // ── Conteneur de la page Paramètres (D1) ───────────────────────────────────────
 // Toute la logique (état du formulaire, chargements, handlers) vit ici, dans un
@@ -112,7 +116,7 @@ export default function ParametresEntreprise() {
   const searchResults = searchSettings(search)
   // Liste d'onglets affichée = onglets partagés + N96 (2FA) + N94 (traductions)
   // + XPLT23 (confidentialité) + ODX5 (applications).
-  const allTabs = [...TABS, SECURITE_COMPTE_TAB, TRADUCTIONS_TAB, CONFIDENTIALITE_TAB, APPLICATIONS_TAB, MARKETPLACE_TAB, REFERENTIELS_TAB, CHAT_RETENTION_TAB, MODELES_BRANDES_TAB]
+  const allTabs = [...TABS, SECURITE_COMPTE_TAB, TRADUCTIONS_TAB, CONFIDENTIALITE_TAB, APPLICATIONS_TAB, MARKETPLACE_TAB, REFERENTIELS_TAB, CHAT_RETENTION_TAB, MODELES_BRANDES_TAB, EXPORTS_PLANIFIES_TAB]
   // VX35 — onglets rangés en familles pour la sidebar verticale (ordre =
   // SETTINGS_GROUPS). groupTabs garantit qu'aucun onglet ne disparaît.
   const tabGroups = groupTabs(allTabs)
@@ -956,6 +960,8 @@ export default function ParametresEntreprise() {
           {tab === 'chat_retention' && <ChatRetentionSection />}
           {/* PACT117 — modèles brandés PDF/email/WhatsApp + aperçu serveur. */}
           {tab === 'modeles_brandes' && <ModelesBrandesSection />}
+          {/* PACT123 — exports planifiés vers SFTP/S3 (statut explicite). */}
+          {tab === 'exports_planifies' && <ExportsPlanifiesSection />}
 
           {/* Bouton d'enregistrement du profil (onglets porteurs de champs) */}
           {showSave && saveButton}
