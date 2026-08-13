@@ -1238,9 +1238,9 @@ class ApporteurSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'company', 'nom', 'type_apporteur', 'contact_email',
             'contact_telephone', 'taux_commission_pct', 'actif', 'rib',
-            'created_at',
+            'created_at', 'token_acces',
         ]
-        read_only_fields = ['created_at']
+        read_only_fields = ['created_at', 'token_acces']
 
 
 class DealEnregistreSerializer(serializers.ModelSerializer):

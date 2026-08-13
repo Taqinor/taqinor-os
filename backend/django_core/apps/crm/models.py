@@ -2648,6 +2648,14 @@ class Apporteur(models.Model):
     # carte/compte tiers, seulement l'identifiant bancaire du versement.
     rib = models.CharField(max_length=34, blank=True, default='', verbose_name='RIB')
     created_at = models.DateTimeField(auto_now_add=True)
+    # NTCRM21 — token d'accès dédié au portail apporteur (lecture seule),
+    # DISTINCT des comptes CustomUser — jamais de mot de passe/session, même
+    # modèle de confiance que `ShareLink`/`PartageGed.token_acces`
+    # (`Partenaire.token_acces`, FG234) : un jeton long/imprévisible = SEUL
+    # secret d'accès à `GET /apporteur-portail/<token>/mes-deals/`.
+    token_acces = models.CharField(
+        max_length=64, unique=True, null=True, blank=True, editable=False,
+        verbose_name="Token d'accès portail")
 
     class Meta:
         verbose_name = "Apporteur d'affaires"
@@ -2656,6 +2664,12 @@ class Apporteur(models.Model):
 
     def __str__(self):
         return self.nom
+
+    def save(self, *args, **kwargs):
+        if not self.token_acces:
+            import secrets
+            self.token_acces = secrets.token_urlsafe(32)
+        super().save(*args, **kwargs)
 
 
 DEAL_REGISTRATION_PROTECTION_JOURS = 90

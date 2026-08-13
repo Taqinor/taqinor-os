@@ -102,3 +102,62 @@ def public_salle_vente(request, token):
         'expires_at': salle.expires_at.isoformat() if salle.expires_at else None,
         'items': [_item_payload(i) for i in items],
     })
+
+
+# ── NTCRM21 — Portail apporteur en lecture seule (tokenisé) ────────────────
+# Même modèle de confiance que ci-dessus : le token `Apporteur.token_acces`
+# est le SEUL secret — jamais un id d'URL devinable, jamais une session
+# CustomUser. Ne montre QUE les deals de CET apporteur (jamais ceux d'un
+# autre) et n'expose du client que nom/ville (jamais téléphone/email/adresse
+# complète — cf. `AUTH`).
+
+class PublicApporteurRateThrottle(SimpleRateThrottle):
+    scope = 'public_apporteur_portail'
+    rate = '30/minute'
+
+    def get_rate(self):
+        return self.rate
+
+    def get_cache_key(self, request, view):
+        token = (view.kwargs or {}).get('token', '') if view else ''
+        ident = self.get_ident(request)
+        return self.cache_format % {
+            'scope': self.scope,
+            'ident': f'{ident}:{token}',
+        }
+
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+@throttle_classes([PublicApporteurRateThrottle])
+def public_apporteur_mes_deals(request, token):
+    """NTCRM21 — Deals + commissions estimées de CET apporteur uniquement.
+
+    404 générique pour un jeton inconnu ou un apporteur inactif (jamais de
+    fuite « ce token existe mais est désactivé »)."""
+    from .models import Apporteur
+
+    apporteur = Apporteur.objects.filter(
+        token_acces=token, actif=True).first()
+    if apporteur is None:
+        return Response(status=status.HTTP_404_NOT_FOUND)
+
+    deals = (apporteur.deals
+             .select_related('lead')
+             .order_by('-date_enregistrement'))
+    return Response({
+        'apporteur': apporteur.nom,
+        'deals': [{
+            'id': d.id,
+            'client_nom': d.lead.nom if d.lead_id else None,
+            'client_ville': d.lead.ville if d.lead_id else None,
+            'statut': d.statut,
+            'date_enregistrement': d.date_enregistrement.isoformat(),
+            'montant_commission_estime': (
+                str(d.montant_commission_estime)
+                if d.montant_commission_estime is not None else None),
+            'montant_commission_du': (
+                str(d.montant_commission_du)
+                if d.montant_commission_du is not None else None),
+        } for d in deals],
+    })

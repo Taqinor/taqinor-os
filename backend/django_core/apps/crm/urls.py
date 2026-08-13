@@ -14,7 +14,7 @@ from .public_chat_views import (
     open_chat_session, post_chat_message, get_chat_session,
 )
 from .public_booking_views import public_booking_status, public_booking_reserve
-from .public_views import public_salle_vente
+from .public_views import public_salle_vente, public_apporteur_mes_deals
 # ODX13 — mêmes ViewSets que ``apps.compta.urls`` (basenames explicitement
 # préfixés ``crm-…`` pour NE PAS entrer en collision avec les noms d'URL du
 # routeur compta, qui reverse ``partenaire-list`` etc.).
@@ -114,6 +114,10 @@ urlpatterns = [
     # public_views.py). Singulier, distinct de ``salles-vente/`` (CRUD interne).
     path('salle-vente/<str:token>/', public_salle_vente,
          name='public-salle-vente'),
+    # NTCRM21 — portail apporteur en lecture seule, tokenisé (jamais un id
+    # d'URL devinable, jamais une session CustomUser).
+    path('apporteur-portail/<str:token>/mes-deals/', public_apporteur_mes_deals,
+         name='public-apporteur-mes-deals'),
     # NTCRM5 — Roll-up hiérarchique du forecast. Doit précéder le routeur :
     # sinon 'forecast-entries/<pk>/' du routeur intercepterait 'rollup'.
     path('forecast/rollup/', forecast_rollup_view, name='forecast-rollup'),
