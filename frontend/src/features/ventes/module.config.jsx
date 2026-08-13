@@ -6,7 +6,7 @@ import {
   FileText, ShoppingCart, Receipt, FileMinus, Wallet, CalendarClock, AlertTriangle, Tags,
   LayoutDashboard,
   HandCoins,
-  CreditCard,
+  CreditCard, Banknote,
 } from 'lucide-react'
 import { appGlyph } from '../../lib/apps/appGlyph'
 
@@ -67,6 +67,9 @@ const DossiersReglementairesPage = lazy(() => import('../../pages/ventes/Dossier
 // PACT43 — vue INTERNE des mandats de paiement récurrents (cartes tokenisées) :
 // lister par statut + révoquer. Aucune donnée de carte n'entre dans l'ERP.
 const MandatsPaiementPage = lazy(() => import('../../pages/ventes/MandatsPaiementPage'))
+// PACT46 — remises d'encaissement terrain (espèces/chèques) : déclaration
+// technicien, clôture responsable, écart JAMAIS masqué + bordereau PDF.
+const RemisesEncaissementPage = lazy(() => import('../../pages/ventes/RemisesEncaissementPage'))
 
 const config = {
   key: 'ventes',
@@ -106,6 +109,10 @@ const config = {
       // PACT43 — mandats de paiement récurrents (cartes tokenisées) : réservé
       // responsable/admin, comme le viewset serveur (IsResponsableOrAdmin).
       { to: '/ventes/mandats-paiement', label: 'Mandats de paiement', k: 'nav.mandats_paiement', icon: navIcon(CreditCard), roles: ['responsable','admin'], navGroup: 'facturation' },
+      // PACT46 — remises d'encaissement terrain : la déclaration est ouverte à
+      // tout rôle (le technicien déclare SA collecte), la clôture reste gardée
+      // serveur (IsResponsableOrAdmin).
+      { to: '/ventes/remises-encaissement', label: 'Remises d\'encaissement', k: 'nav.remises_encaissement', icon: navIcon(Banknote), roles: ['normal','responsable','admin'], navGroup: 'facturation' },
     ],
   },
   // ODY16 — `/ventes/cockpit` n'a pas de générique `/ventes` dans
@@ -132,6 +139,8 @@ const config = {
     { path: '/ventes/dossiers-reglementaires', component: DossiersReglementairesPage },
     // PACT43 — mandats de paiement récurrents (tokenisation carte).
     { path: '/ventes/mandats-paiement', component: MandatsPaiementPage },
+    // PACT46 — remises d'encaissement terrain (écart + bordereau PDF).
+    { path: '/ventes/remises-encaissement', component: RemisesEncaissementPage },
   ],
 }
 
