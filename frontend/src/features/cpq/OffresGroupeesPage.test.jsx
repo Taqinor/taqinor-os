@@ -15,6 +15,8 @@ const deleteOffre = vi.fn()
 const appliquer = vi.fn()
 const getProduits = vi.fn()
 const getDevis = vi.fn()
+const bulkTargets = vi.fn()
+const bulkAppliquer = vi.fn()
 
 vi.mock('../../api/cpqApi', () => ({
   default: {
@@ -31,6 +33,17 @@ vi.mock('../../api/stockApi', () => ({
 
 vi.mock('../../api/ventesApi', () => ({
   default: { getDevis: (...a) => getDevis(...a) },
+}))
+
+/* PACT118 — cette liste n'a pas d'endpoint de masse propre : elle passe par le
+   registre générique du socle. */
+vi.mock('../../api/coreApi', () => ({
+  default: {
+    bulkEdit: {
+      targets: (...a) => bulkTargets(...a),
+      appliquer: (...a) => bulkAppliquer(...a),
+    },
+  },
 }))
 
 import OffresGroupeesPage from './OffresGroupeesPage'
@@ -74,6 +87,12 @@ beforeEach(() => {
   })
   getProduits.mockResolvedValue({ data: { results: PRODUITS } })
   getDevis.mockResolvedValue({ data: { results: [{ id: 77, reference: 'DEV-202608-0003' }] } })
+  bulkTargets.mockResolvedValue({
+    data: [
+      { name: 'cpq.offre-groupee', label: 'Offres groupées', fields: ['actif'] },
+    ],
+  })
+  bulkAppliquer.mockResolvedValue({ data: { modifies: 1 } })
 })
 
 describe('OffresGroupeesPage (PACT127)', () => {
@@ -139,6 +158,31 @@ describe('OffresGroupeesPage (PACT127)', () => {
     await user.click(screen.getByTestId('cpq-offre-appliquer-4'))
 
     await waitFor(() => expect(appliquer).toHaveBeenCalledWith(4, '77'))
+  })
+
+  it('affiche « Modifier en masse » et applique via le registre du socle (Done PACT118)', async () => {
+    const user = userEvent.setup()
+    monter()
+    await screen.findByTestId('cpq-offre-liste')
+    // La barre n'apparaît que si la cible est RÉELLEMENT enregistrée côté socle.
+    const barre = await screen.findByTestId('cpq-offre-masse')
+    expect(within(barre).getByText('Modifier en masse')).toBeTruthy()
+    await waitFor(() => expect(bulkTargets).toHaveBeenCalled())
+
+    await user.click(screen.getByLabelText('Sélectionner Pack 6 kWc'))
+    await user.click(screen.getByTestId('cpq-offre-masse-desactiver'))
+
+    await waitFor(() => expect(bulkAppliquer).toHaveBeenCalledWith(
+      'cpq.offre-groupee', [4], { actif: false },
+    ))
+  })
+
+  it("n'affiche aucune action de masse si la cible n'est pas enregistrée", async () => {
+    bulkTargets.mockResolvedValue({ data: [] })
+    monter()
+    await screen.findByTestId('cpq-offre-liste')
+    await waitFor(() => expect(bulkTargets).toHaveBeenCalled())
+    expect(screen.queryByTestId('cpq-offre-masse')).toBeNull()
   })
 
   it('dégrade proprement quand la liste des offres est indisponible', async () => {

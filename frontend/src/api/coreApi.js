@@ -81,6 +81,22 @@ const coreApi = {
     remove: (id) => api.delete(`/core/workflow-definitions/${id}/`),
   },
 
+  // PACT118 — FG389 édition en masse GÉNÉRIQUE. Le moteur du socle
+  // (`core.bulk_edit`) existait et était testé, mais aucune app n'avait
+  // enregistré de cible : le catalogue était vide en production et aucun
+  // écran ne pouvait s'en servir. Les cibles réelles sont désormais déclarées
+  // par les apps (`apps/cpq/bulk_targets.py`) ; une liste qui n'a PAS son
+  // propre endpoint de masse consomme ces deux routes via
+  // `features/core/useBulkEditCible`. Les quatre écrans qui possèdent déjà
+  // leur endpoint dédié ne sont PAS retouchés.
+  bulkEdit: {
+    targets: () => api.get('/core/bulk-edit/targets/'),
+    // `changes` est restreint côté serveur à la liste blanche de la cible ;
+    // l'écriture est bornée au queryset scopé société du fournisseur.
+    appliquer: (target, ids, changes) =>
+      api.post('/core/bulk-edit/appliquer/', { target, ids, changes }),
+  },
+
   // XKB1 — boîte d'approbations centralisée (reporting), filtrée côté client
   // sur `source: 'workflow'` pour n'afficher que les instances BPM (FG366).
   workflowInstances: {

@@ -1,13 +1,14 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Package, Plus, Trash2 } from 'lucide-react'
 import {
-  Badge, Button, Card, EmptyState, Input, toast,
+  Badge, Button, Card, Checkbox, EmptyState, Input, toast,
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
 } from '../../ui'
 import PageHeader from '../../components/layout/PageHeader'
 import cpqApi from '../../api/cpqApi'
 import stockApi from '../../api/stockApi'
 import ventesApi from '../../api/ventesApi'
+import useBulkEditCible from '../core/useBulkEditCible'
 
 /* ============================================================================
    PACT127 — écran « Offres groupées » (`/cpq/offres-groupees`).
@@ -83,6 +84,12 @@ export default function OffresGroupeesPage() {
   const [lignes, setLignes] = useState([ligneVide()])
   const [devisCible, setDevisCible] = useState({})
   const [occupe, setOccupe] = useState(false)
+  // PACT118 — cette liste n'a PAS d'endpoint de mise à jour en masse propre :
+  // elle consomme le registre GÉNÉRIQUE du socle (`core.bulk_edit`), dont les
+  // cibles sont déclarées par `apps/cpq/bulk_targets.py`. Si la cible n'est
+  // pas enregistrée, `disponible` est faux et aucune action n'est affichée.
+  const masse = useBulkEditCible('cpq.offre-groupee')
+  const [selectionMasse, setSelectionMasse] = useState([])
 
   const charger = useCallback(async () => {
     setChargement(true)
@@ -163,6 +170,24 @@ export default function OffresGroupeesPage() {
       toast.error(messageErreur(err, "Application au devis impossible."))
     } finally {
       setOccupe(false)
+    }
+  }
+
+  function basculerMasse(id) {
+    setSelectionMasse((s) => (
+      s.includes(id) ? s.filter((x) => x !== id) : [...s, id]
+    ))
+  }
+
+  async function appliquerMasse(actif) {
+    if (selectionMasse.length === 0) return
+    try {
+      const n = await masse.appliquer(selectionMasse, { actif })
+      toast.success(`${n} offre(s) modifiée(s).`)
+      setSelectionMasse([])
+      charger()
+    } catch (err) {
+      toast.error(messageErreur(err, 'Modification en masse impossible.'))
     }
   }
 
@@ -288,12 +313,53 @@ export default function OffresGroupeesPage() {
         />
       )}
 
+      {!chargement && !erreur && offres.length > 0 && masse.disponible && (
+        <Card
+          className="flex flex-wrap items-center gap-3 p-4 sm:p-5"
+          data-testid="cpq-offre-masse"
+        >
+          <span className="text-sm font-medium text-foreground">Modifier en masse</span>
+          <span className="text-sm text-muted-foreground">
+            {selectionMasse.length} offre(s) sélectionnée(s)
+          </span>
+          {masse.champs.includes('actif') && (
+            <div className="flex items-center gap-2">
+              <Button
+                variant="secondary"
+                size="sm"
+                disabled={masse.enCours || selectionMasse.length === 0}
+                onClick={() => appliquerMasse(true)}
+                data-testid="cpq-offre-masse-activer"
+              >
+                Activer
+              </Button>
+              <Button
+                variant="secondary"
+                size="sm"
+                disabled={masse.enCours || selectionMasse.length === 0}
+                onClick={() => appliquerMasse(false)}
+                data-testid="cpq-offre-masse-desactiver"
+              >
+                Désactiver
+              </Button>
+            </div>
+          )}
+        </Card>
+      )}
+
       {!chargement && !erreur && offres.length > 0 && (
         <ul className="flex flex-col gap-3" data-testid="cpq-offre-liste">
           {offres.map((o) => (
             <li key={o.id}>
               <Card className="flex flex-col gap-3 p-4 sm:p-5">
                 <div className="flex flex-wrap items-center gap-2">
+                  {masse.disponible && (
+                    <Checkbox
+                      aria-label={`Sélectionner ${o.nom}`}
+                      checked={selectionMasse.includes(o.id)}
+                      onCheckedChange={() => basculerMasse(o.id)}
+                    />
+                  )}
                   <span className="font-medium">{o.nom}</span>
                   <Badge tone="neutral">{(o.lignes || []).length} ligne(s)</Badge>
                   {o.prix_total != null && o.prix_total !== '' && (
