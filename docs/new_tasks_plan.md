@@ -1083,27 +1083,27 @@ Frontières nettes :
 
 #### NTIDE — P3 : Canal feedback produit in-app (parler au founder)
 
-- [ ] **NTIDE42** — **Sentiment flag (optionnel)** : form feedback peut avoir « +1 / Neutre / -1 » ou « je l'adore / c'est ok / ça m'énerve ». Dénormalisé sur FeedbackProduit. Agrégé dans NTIDE38 (resumé par sentiment). (@lane: apps/innovation) (UX) «model: haiku»
+- [x] (deja present sur main) **NTIDE42** — **Sentiment flag (optionnel)** : form feedback peut avoir « +1 / Neutre / -1 » ou « je l'adore / c'est ok / ça m'énerve ». Dénormalisé sur FeedbackProduit. Agrégé dans NTIDE38 (resumé par sentiment). (@lane: apps/innovation) (UX) «model: haiku»
 
-- [ ] **NTIDE43** — **Feedback associé au contexte** : si on ouvre le feedback depuis une page détail (devis/chantier/ticket), pré-fill « context » (ex. « Feedback: Devis #123 »). Stocké comme champ context_type + context_id opaque. (@lane: apps/innovation) (UX) «model: sonnet»
+- [x] (deja present sur main) **NTIDE43** — **Feedback associé au contexte** : si on ouvre le feedback depuis une page détail (devis/chantier/ticket), pré-fill « context » (ex. « Feedback: Devis #123 »). Stocké comme champ context_type + context_id opaque. (@lane: apps/innovation) (UX) «model: sonnet»
 
-- [ ] **NTIDE44** — **Source du feedback** : log source_page (ex. « /chantiers/détail ») + user_agent. Un-PII. Permet le founder à voir d'où les demandes viennent. (@lane: apps/innovation) (RULE) «model: haiku»
+- [x] (deja present sur main) **NTIDE44** — **Source du feedback** : log source_page (ex. « /chantiers/détail ») + user_agent. Un-PII. Permet le founder à voir d'où les demandes viennent. (@lane: apps/innovation) (RULE) «model: haiku»
 
-- [ ] **NTIDE45** — **Notification feedback important** : flag manuel « étoilé » sur feedback, envoie notif in-app au founder (si déployé) quand marqué ainsi. (@lane: apps/innovation) (UX) «model: haiku»
+- [x] (deja present sur main) **NTIDE45** — **Notification feedback important** : flag manuel « étoilé » sur feedback, envoie notif in-app au founder (si déployé) quand marqué ainsi. (@lane: apps/innovation) (UX) «model: haiku»
 
-- [ ] **NTIDE46** — **Hotspot feedback** : sur une page populaire (chantiers détail, devis list), logger les pages ayant 10+ feedbacks/semaine. Simple dashboard « Pages les plus commentées ». (@lane: apps/innovation) (ANALYTICS) «model: sonnet»
+- [x] (deja present sur main) **NTIDE46** — **Hotspot feedback** : sur une page populaire (chantiers détail, devis list), logger les pages ayant 10+ feedbacks/semaine. Simple dashboard « Pages les plus commentées ». (@lane: apps/innovation) (ANALYTICS) «model: sonnet»
 
-- [ ] **NTIDE47** — **Modération feedback** : Directeur seul peut « masquer » feedback inapproprié (flag, pas hard delete). Journal audit. (@lane: apps/innovation) (RULE) «model: haiku»
+- [x] (deja present sur main) **NTIDE47** — **Modération feedback** : Directeur seul peut « masquer » feedback inapproprié (flag, pas hard delete). Journal audit. (@lane: apps/innovation) (RULE) «model: haiku»
 
 #### NTIDE — P3 : Intégrations légères + admin
 
-- [ ] **NTIDE48** — **Configuration « boîte à idées public »** : toggle Paramètres innovation « Permettre aux clients d'envoyer des idées » (bool, par défaut OFF). Si ON, idées clients stockées dans même table, champ client_id (nullable), scopées company mais masqués des équipes sauf admin. (@lane: apps/innovation) (RULE) «model: haiku»
+- [x] (deja present sur main) **NTIDE48** — **Configuration « boîte à idées public »** : toggle Paramètres innovation « Permettre aux clients d'envoyer des idées » (bool, par défaut OFF). Si ON, idées clients stockées dans même table, champ client_id (nullable), scopées company mais masqués des équipes sauf admin. (@lane: apps/innovation) (RULE) «model: haiku»
 
-- [ ] **NTIDE49** — **Permissions utilisateur read-only** : rôle Viewer (lecture seule sur idées/campagnes/feedback par agrégé, jamais le détail). Pas de vote, pas de proposition. (@lane: apps/innovation) (AUTH) «model: haiku»
+- [x] (deja present sur main) **NTIDE49** — **Permissions utilisateur read-only** : rôle Viewer (lecture seule sur idées/campagnes/feedback par agrégé, jamais le détail). Pas de vote, pas de proposition. (@lane: apps/innovation) (AUTH) «model: haiku»
 
-- [ ] **NTIDE50** — **Widget tableaux de bord** : Reporting dashboard peut avoir une card « Idées cette semaine » (count + top 1 par votes). Drill-down /innovation/idees. (@lane: apps/innovation) (ENDPOINT) «model: haiku»
+- [x] (deja present sur main) **NTIDE50** — **Widget tableaux de bord** : Reporting dashboard peut avoir une card « Idées cette semaine » (count + top 1 par votes). Drill-down /innovation/idees. (@lane: apps/innovation) (ENDPOINT) «model: haiku»
 
-- [ ] **NTIDE51** — **Webhook idée-création (gated)** : quand une idée nouvelle est créée, POST webhook si `INNOVATION_WEBHOOK_URL` set (gated, optionnel). Payload: titre/description/auteur/context + timestamp. NO-OP si URL vide. (@lane: apps/innovation) (INTEGRATION) «model: sonnet»
+- [x] (deja present sur main) **NTIDE51** — **Webhook idée-création (gated)** : quand une idée nouvelle est créée, POST webhook si `INNOVATION_WEBHOOK_URL` set (gated, optionnel). Payload: titre/description/auteur/context + timestamp. NO-OP si URL vide. (@lane: apps/innovation) (INTEGRATION) «model: sonnet»
 
 - [ ] **NTIDE52** — **Email templates pour innovation** : EmailTemplate pour « Bienvenue idée reçue », « Idée retenue », « Idée réalisée ». Personnalisables via Paramètres. (@lane: apps/innovation) (INTEGRATION) «model: haiku»
 
