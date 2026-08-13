@@ -72,6 +72,22 @@ class RapportDefinitionViewSet(CompanyScopedModelViewSet):
         serializer.save(company=self.request.user.company,
                         owner=self.request.user)
 
+    def perform_content_negotiation(self, request, force=False):
+        # NTEXT11 — ``export()`` réutilise ``?format=csv|xlsx`` pour choisir
+        # le format du FICHIER exporté, mais DRF réserve CE MÊME nom de
+        # paramètre pour choisir le RENDERER de la réponse
+        # (``URL_FORMAT_OVERRIDE``). Sans court-circuit, la négociation de
+        # contenu — qui tourne dans ``APIView.initial()``, AVANT d'atteindre
+        # ``export()`` — échoue en ``Http404`` dès qu'aucun renderer « csv »/
+        # « xlsx » n'est enregistré (seuls JSON/Browsable le sont ici).
+        # ``export()`` répond TOUJOURS par un ``HttpResponse`` brut (jamais
+        # un ``Response`` DRF) : le renderer négocié n'est donc jamais
+        # utilisé pour cette action, on peut la court-circuiter sans risque.
+        if self.action == 'export':
+            from rest_framework.renderers import JSONRenderer
+            return (JSONRenderer(), 'application/json')
+        return super().perform_content_negotiation(request, force=force)
+
     @action(detail=True, methods=['post'], url_path='executer')
     def executer(self, request, pk=None):
         """Rejoue la définition et renvoie ``{rows}`` (+ ``pivot`` si demandé)."""
