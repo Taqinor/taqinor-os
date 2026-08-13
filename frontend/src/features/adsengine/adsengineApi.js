@@ -122,6 +122,12 @@ const adsengineApi = {
     generateVariants: (id) => api.post(`/adsengine/creatifs/${id}/variantes/`),
   },
 
+  // ── ENG16/PACT112 — Policy créative RÉELLE (CreativePolicy, une par société) ──
+  // Routeur backend FR : « policy-creative » — jamais appelé avant PACT112.
+  creativePolicy: {
+    ...resource('policy-creative'),
+  },
+
   // ── ENG12/ENG39 — Expérimentations (bandit) : phases, bras, DecisionLog ──
   // Routeur backend FR : « experiences » (ADSENGINT1).
   experiments: {

@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from 'react'
-import { ShieldCheck, PlugZap, ExternalLink, CircleHelp, RefreshCw } from 'lucide-react'
+import { ShieldCheck, ShieldAlert, PlugZap, ExternalLink, CircleHelp, RefreshCw } from 'lucide-react'
 import adsengineApi from './adsengineApi'
 import { normalizeWiringStatuses, formatMAD } from './adsengine'
 import { WIZARD_STEPS, HEALTH_REMEDIATIONS, stepStatus } from './connectionWizard'
@@ -33,9 +33,32 @@ import { WIZARD_STEPS, HEALTH_REMEDIATIONS, stepStatus } from './connectionWizar
       n'enregistre jamais rien serait trompeur). Aide FR par champ ; aucune
       bascule d'ACTIVATION de campagne n'existe ici (interdite en dur côté
       service, pas un réglage).
+   4. PACT112 — Policy créative RÉELLE (`CreativePolicy`, une par société,
+      `policy-creative/`). Personne ne l'appelait : la checklist de
+      confirmation d'asset (`CreativeLibraryScreen`/`assetPolicyRules`) lit un
+      champ `asset.policy_rules` qu'aucun sérialiseur ne renvoie et retombe
+      TOUJOURS sur `DEFAULT_POLICY_RULES`, une constante codée en dur côté
+      frontend (`adsengine.js`) — écran hors du périmètre `Files:` de cette
+      tâche, laissé tel quel. Ce qui EST dans ce périmètre : donner au
+      fondateur un moyen RÉEL de définir ses propres règles interdites/permises
+      (`forbidden_rules`/`allowed_rules`, `{key,label}`) — celles que
+      `policy.py` lit effectivement côté serveur pour la génération suivante,
+      pas une valeur par défaut figée. Ajout/retrait local, un seul
+      enregistrement (POST si aucune policy n'existe encore, sinon PATCH).
    PAR DESIGN, AUCUN toggle d'activation n'existe à l'écran : le client Meta naît
    PAUSED (règle CLAUDE.md #3) et ne s'active jamais depuis l'ERP.
    ========================================================================== */
+
+// PACT112 — Dérive une clé stable ({key,label}, forme réelle de
+// CreativePolicy.forbidden_rules/allowed_rules) depuis le libellé saisi par
+// le fondateur — une transformation déterministe de SA propre saisie, jamais
+// une donnée inventée.
+function slugifyRuleKey(label) {
+  const base = String(label || '').trim().toLowerCase()
+    .normalize('NFD').replace(/\p{Diacritic}/gu, '')
+    .replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '')
+  return base || `regle_${Date.now()}`
+}
 
 // Champs d'identifiants (write-only). `secret: true` → saisie masquée.
 const CRED_FIELDS = [
@@ -112,6 +135,11 @@ const GUARD_FIELD_GROUPS = [
 ]
 const GUARD_FIELDS = GUARD_FIELD_GROUPS.flatMap(g => g.fields)
 
+// PACT112 — état vide de la policy créative (aucune ligne DB pour la société
+// encore) : listes vides, JAMAIS DEFAULT_POLICY_RULES — une policy affichée
+// doit être la VRAIE policy, pas un repli fabriqué côté écran.
+const EMPTY_POLICY = { id: null, forbidden_rules: [], allowed_rules: [] }
+
 export default function ConnectionScreen() {
   const [status, setStatus] = useState(null) // statut de connexion (sans secret)
   const [health, setHealth] = useState([])
@@ -119,6 +147,15 @@ export default function ConnectionScreen() {
   const [guard, setGuard] = useState({})
   const [msg, setMsg] = useState('')
   const [err, setErr] = useState('')
+
+  // PACT112 — Policy créative RÉELLE (CreativePolicy, policy-creative/).
+  const [policy, setPolicy] = useState(EMPTY_POLICY)
+  const [policyLoading, setPolicyLoading] = useState(true)
+  const [policySaving, setPolicySaving] = useState(false)
+  const [policyMsg, setPolicyMsg] = useState('')
+  const [policyErr, setPolicyErr] = useState('')
+  const [newForbidden, setNewForbidden] = useState('')
+  const [newAllowed, setNewAllowed] = useState('')
 
   const load = useCallback(() => {
     // Statut de connexion : jamais de secret relu — seulement l'état affichable.
@@ -133,11 +170,63 @@ export default function ConnectionScreen() {
       .catch(() => setGuard({}))
   }, [])
 
+  // PACT112 — Charge la VRAIE policy de la société (au plus une ligne, le
+  // modèle est OneToOne société↔policy). Repli sur des listes VIDES (pas
+  // DEFAULT_POLICY_RULES) si aucune ligne n'existe encore.
+  const loadPolicy = useCallback(() => {
+    setPolicyLoading(true)
+    adsengineApi.creativePolicy.list()
+      .then(r => {
+        const rows = Array.isArray(r.data) ? r.data : (r.data?.results || [])
+        const p = rows[0]
+        setPolicy(p ? {
+          id: p.id,
+          forbidden_rules: Array.isArray(p.forbidden_rules) ? p.forbidden_rules : [],
+          allowed_rules: Array.isArray(p.allowed_rules) ? p.allowed_rules : [],
+        } : EMPTY_POLICY)
+      })
+      .catch(() => setPolicy(EMPTY_POLICY))
+      .finally(() => setPolicyLoading(false))
+  }, [])
+
   useEffect(() => { load() }, [load])
+  useEffect(() => { loadPolicy() }, [loadPolicy])
 
   const setCred = (k) => (e) => setCreds(c => ({ ...c, [k]: e.target.value }))
   const setGuardField = (k) => (e) => setGuard(g => ({ ...g, [k]: e.target.value }))
   const setGuardBool = (k) => (e) => setGuard(g => ({ ...g, [k]: e.target.checked }))
+
+  // PACT112 — ajoute/retire une règle LOCALEMENT (pas encore enregistrée —
+  // « Enregistrer la policy créative » envoie l'état complet au serveur).
+  const addRule = (field, label, resetInput) => {
+    const trimmed = label.trim()
+    if (!trimmed) return
+    setPolicy(p => ({ ...p, [field]: [...p[field], { key: slugifyRuleKey(trimmed), label: trimmed }] }))
+    resetInput('')
+  }
+  const removeRule = (field, key) => {
+    setPolicy(p => ({ ...p, [field]: p[field].filter(r => r.key !== key) }))
+  }
+
+  // PACT112 — POST si aucune policy n'existe encore pour la société, sinon
+  // PATCH sur la ligne existante (company forcée côté serveur dans les deux cas).
+  const savePolicy = async () => {
+    setPolicySaving(true); setPolicyMsg(''); setPolicyErr('')
+    const payload = { forbidden_rules: policy.forbidden_rules, allowed_rules: policy.allowed_rules }
+    try {
+      if (policy.id != null) {
+        await adsengineApi.creativePolicy.update(policy.id, payload)
+      } else {
+        const r = await adsengineApi.creativePolicy.create(payload)
+        setPolicy(p => ({ ...p, id: r.data?.id ?? null }))
+      }
+      setPolicyMsg('Policy créative enregistrée.')
+    } catch {
+      setPolicyErr('Enregistrement de la policy créative impossible.')
+    } finally {
+      setPolicySaving(false)
+    }
+  }
 
   const saveCreds = async (e) => {
     e.preventDefault()
@@ -333,6 +422,88 @@ export default function ConnectionScreen() {
                 )
               })}
             </ul>
+          )}
+      </section>
+
+      {/* PACT112 — Policy créative RÉELLE (CreativePolicy, une par société) :
+          les règles ci-dessous sont CELLES appliquées à la génération
+          suivante (policy.py les lit côté serveur) — jamais une valeur par
+          défaut figée côté écran. */}
+      <section className="card" data-testid="ae-conn-policy" style={{ padding: '1rem', marginBottom: '1rem', maxWidth: 640 }}>
+        <h3 style={{ margin: '0 0 0.5rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+          <ShieldAlert size={18} aria-hidden="true" /> Policy créative
+        </h3>
+        <p style={{ margin: '0 0 0.75rem', color: '#64748b', fontSize: '0.85rem' }}>
+          Vos propres règles interdites et permises — appliquées telles quelles
+          à la prochaine génération de créatifs, pas une valeur par défaut.
+        </p>
+        {policyLoading
+          ? <p style={{ color: '#64748b', margin: 0 }}>Chargement…</p>
+          : (
+            <div style={{ display: 'grid', gap: '1rem' }}>
+              <div>
+                <h4 style={{ margin: '0 0 0.4rem', fontSize: '0.9rem' }}>Règles interdites</h4>
+                <ul data-testid="ae-conn-policy-forbidden-list"
+                  style={{ listStyle: 'none', margin: 0, padding: 0, display: 'grid', gap: '0.3rem' }}>
+                  {policy.forbidden_rules.length === 0
+                    ? <li style={{ color: '#94a3b8', fontSize: '0.85rem' }}>Aucune règle interdite.</li>
+                    : policy.forbidden_rules.map(r => (
+                      <li key={r.key} data-testid={`ae-conn-policy-forbidden-${r.key}`}
+                        style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                        <span className="badge" style={{ background: '#fee2e2', color: '#991b1b' }}>{r.label}</span>
+                        <button type="button" className="btn btn-light"
+                          data-testid={`ae-conn-policy-forbidden-remove-${r.key}`}
+                          onClick={() => removeRule('forbidden_rules', r.key)}>Retirer</button>
+                      </li>
+                    ))}
+                </ul>
+                <div style={{ display: 'flex', gap: '0.4rem', marginTop: '0.5rem' }}>
+                  <input className="form-input" data-testid="ae-conn-policy-forbidden-new"
+                    placeholder="Nouvelle règle interdite" value={newForbidden}
+                    onChange={e => setNewForbidden(e.target.value)} />
+                  <button type="button" className="btn btn-light" data-testid="ae-conn-policy-forbidden-add"
+                    onClick={() => addRule('forbidden_rules', newForbidden, setNewForbidden)}>
+                    Ajouter
+                  </button>
+                </div>
+              </div>
+
+              <div>
+                <h4 style={{ margin: '0 0 0.4rem', fontSize: '0.9rem' }}>Règles permises</h4>
+                <ul data-testid="ae-conn-policy-allowed-list"
+                  style={{ listStyle: 'none', margin: 0, padding: 0, display: 'grid', gap: '0.3rem' }}>
+                  {policy.allowed_rules.length === 0
+                    ? <li style={{ color: '#94a3b8', fontSize: '0.85rem' }}>Aucune règle permise.</li>
+                    : policy.allowed_rules.map(r => (
+                      <li key={r.key} data-testid={`ae-conn-policy-allowed-${r.key}`}
+                        style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                        <span className="badge" style={{ background: '#dcfce7', color: '#166534' }}>{r.label}</span>
+                        <button type="button" className="btn btn-light"
+                          data-testid={`ae-conn-policy-allowed-remove-${r.key}`}
+                          onClick={() => removeRule('allowed_rules', r.key)}>Retirer</button>
+                      </li>
+                    ))}
+                </ul>
+                <div style={{ display: 'flex', gap: '0.4rem', marginTop: '0.5rem' }}>
+                  <input className="form-input" data-testid="ae-conn-policy-allowed-new"
+                    placeholder="Nouvelle règle permise" value={newAllowed}
+                    onChange={e => setNewAllowed(e.target.value)} />
+                  <button type="button" className="btn btn-light" data-testid="ae-conn-policy-allowed-add"
+                    onClick={() => addRule('allowed_rules', newAllowed, setNewAllowed)}>
+                    Ajouter
+                  </button>
+                </div>
+              </div>
+
+              {policyMsg && <p data-testid="ae-conn-policy-msg" style={{ color: '#16a34a', margin: 0 }}>{policyMsg}</p>}
+              {policyErr && <p data-testid="ae-conn-policy-err" style={{ color: '#dc2626', margin: 0 }}>{policyErr}</p>}
+              <div>
+                <button type="button" className="btn btn-primary" data-testid="ae-conn-policy-save"
+                  disabled={policySaving} onClick={savePolicy}>
+                  Enregistrer la policy créative
+                </button>
+              </div>
+            </div>
           )}
       </section>
 

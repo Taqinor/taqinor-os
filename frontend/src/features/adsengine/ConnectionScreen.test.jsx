@@ -12,12 +12,16 @@ const mocks = vi.hoisted(() => ({
   health: vi.fn(),
   guardGet: vi.fn(),
   guardUpdate: vi.fn(),
+  policyList: vi.fn(),
+  policyCreate: vi.fn(),
+  policyUpdate: vi.fn(),
 }))
 
 vi.mock('./adsengineApi', () => ({
   default: {
     connection: { get: mocks.get, save: mocks.save, health: mocks.health },
     guardrail: { get: mocks.guardGet, update: mocks.guardUpdate },
+    creativePolicy: { list: mocks.policyList, create: mocks.policyCreate, update: mocks.policyUpdate },
   },
 }))
 
@@ -54,6 +58,11 @@ beforeEach(() => {
   } })
   mocks.save.mockResolvedValue({ data: {} })
   mocks.guardUpdate.mockResolvedValue({ data: {} })
+  // PACT112 — par défaut, aucune ligne CreativePolicy pour la société encore
+  // (forme RÉELLE : ``policy-creative/`` renvoie une liste, DRF standard).
+  mocks.policyList.mockResolvedValue({ data: [] })
+  mocks.policyCreate.mockResolvedValue({ data: { id: 77, forbidden_rules: [], allowed_rules: [] } })
+  mocks.policyUpdate.mockResolvedValue({ data: {} })
 })
 
 describe('ConnectionScreen (ENG22)', () => {
@@ -201,6 +210,80 @@ describe('ConnectionScreen (ENG22)', () => {
       renderScreen()
       await waitFor(() => expect(mocks.health).toHaveBeenCalled())
       expect(screen.queryByTestId('ae-conn-remediation-token')).toBeNull()
+    })
+  })
+
+  // ── PACT112 — Policy créative RÉELLE (CreativePolicy, jamais appelée avant) ──
+  describe('PACT112 — policy créative', () => {
+    it('aucune policy en base : listes vides (JAMAIS DEFAULT_POLICY_RULES fabriqué)', async () => {
+      renderScreen()
+      await waitFor(() => expect(mocks.policyList).toHaveBeenCalled())
+      expect(await screen.findByTestId('ae-conn-policy-forbidden-list'))
+        .toHaveTextContent('Aucune règle interdite.')
+      expect(screen.getByTestId('ae-conn-policy-allowed-list'))
+        .toHaveTextContent('Aucune règle permise.')
+    })
+
+    it('affiche la VRAIE policy existante (forbidden_rules/allowed_rules réels)', async () => {
+      mocks.policyList.mockResolvedValue({ data: [
+        { id: 12, forbidden_rules: [{ key: 'no_fake_sites', label: 'Aucun faux chantier' }],
+          allowed_rules: [{ key: 'product_renders', label: 'Rendus produit (3D / studio)' }],
+          created_at: '', updated_at: '' },
+      ] })
+      renderScreen()
+      expect(await screen.findByTestId('ae-conn-policy-forbidden-no_fake_sites'))
+        .toHaveTextContent('Aucun faux chantier')
+      expect(screen.getByTestId('ae-conn-policy-allowed-product_renders'))
+        .toHaveTextContent('Rendus produit (3D / studio)')
+    })
+
+    it('ajoute une règle interdite puis l\'enregistre : PATCH sur la policy existante', async () => {
+      mocks.policyList.mockResolvedValue({ data: [
+        { id: 12, forbidden_rules: [], allowed_rules: [], created_at: '', updated_at: '' },
+      ] })
+      renderScreen()
+      await waitFor(() => expect(mocks.policyList).toHaveBeenCalled())
+      fireEvent.change(screen.getByTestId('ae-conn-policy-forbidden-new'),
+        { target: { value: 'Aucun prix sans TVA' } })
+      fireEvent.click(screen.getByTestId('ae-conn-policy-forbidden-add'))
+      // La règle apparaît immédiatement (état local), avant tout enregistrement.
+      expect(await screen.findByText('Aucun prix sans TVA')).toBeInTheDocument()
+      fireEvent.click(screen.getByTestId('ae-conn-policy-save'))
+      await waitFor(() => expect(mocks.policyUpdate).toHaveBeenCalledWith(12, {
+        forbidden_rules: [{ key: 'aucun_prix_sans_tva', label: 'Aucun prix sans TVA' }],
+        allowed_rules: [],
+      }))
+      expect(await screen.findByTestId('ae-conn-policy-msg')).toBeInTheDocument()
+    })
+
+    it('retire une règle permise localement, puis enregistre la liste sans elle', async () => {
+      mocks.policyList.mockResolvedValue({ data: [
+        { id: 12, forbidden_rules: [],
+          allowed_rules: [{ key: 'abstract_broll', label: 'B-roll abstrait' }],
+          created_at: '', updated_at: '' },
+      ] })
+      renderScreen()
+      await screen.findByTestId('ae-conn-policy-allowed-abstract_broll')
+      fireEvent.click(screen.getByTestId('ae-conn-policy-allowed-remove-abstract_broll'))
+      expect(screen.queryByTestId('ae-conn-policy-allowed-abstract_broll')).toBeNull()
+      fireEvent.click(screen.getByTestId('ae-conn-policy-save'))
+      await waitFor(() => expect(mocks.policyUpdate).toHaveBeenCalledWith(12, {
+        forbidden_rules: [], allowed_rules: [],
+      }))
+    })
+
+    it('première policy de la société : POST (jamais de PATCH sans id existant)', async () => {
+      renderScreen()
+      await waitFor(() => expect(mocks.policyList).toHaveBeenCalled())
+      fireEvent.change(screen.getByTestId('ae-conn-policy-allowed-new'),
+        { target: { value: 'Explainers animés' } })
+      fireEvent.click(screen.getByTestId('ae-conn-policy-allowed-add'))
+      fireEvent.click(screen.getByTestId('ae-conn-policy-save'))
+      await waitFor(() => expect(mocks.policyCreate).toHaveBeenCalledWith({
+        forbidden_rules: [],
+        allowed_rules: [{ key: 'explainers_animes', label: 'Explainers animés' }],
+      }))
+      expect(mocks.policyUpdate).not.toHaveBeenCalled()
     })
   })
 })
