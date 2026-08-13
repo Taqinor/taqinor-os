@@ -225,17 +225,12 @@ client.</p>
 def generer_feuille_configuration_pdf(devis):
     """NTCPQ22 — Rend la feuille de configuration technique en PDF (INTERNE).
 
-    Import WeasyPrint PARESSEUX (jamais au niveau module). N'écrit rien, ne
-    persiste aucun fichier : le PDF est renvoyé en flux à un utilisateur staff.
-    """
-    from io import BytesIO
-    import weasyprint
-
-    buf = BytesIO()
-    weasyprint.HTML(
-        string=rendre_feuille_configuration_html(devis)).write_pdf(buf)
-    buf.seek(0)
-    return buf.read()
+    Passe par ``core.pdf.render_pdf`` (ARC11 — le seul point d'entrée PDF, qui
+    encapsule l'import paresseux de WeasyPrint), JAMAIS par ``quote_engine``
+    (réservé au PDF client, règle #4). N'écrit rien, ne persiste aucun
+    fichier : le PDF est renvoyé en flux à un utilisateur staff."""
+    from core.pdf import render_pdf
+    return render_pdf(html=rendre_feuille_configuration_html(devis))
 
 
 def generer_variantes_devis(devis, *, user=None, tiers=None):

@@ -1,6 +1,8 @@
 from django.db import models
 from django.conf import settings
 
+from core.models import TenantModel
+
 # M1 — cross-app FKs use Django's lazy "app.Model" string form so this module
 # imports no sibling app's models at load time (breaks the crm⇄ventes /
 # stock⇄ventes import cycles without any schema change).
@@ -524,7 +526,7 @@ class LigneDevis(models.Model):
         return self.taux_tva if self.taux_tva is not None else self.devis.taux_tva
 
 
-class ConfigurationDevisSnapshot(models.Model):
+class ConfigurationDevisSnapshot(TenantModel):
     """NTCPQ20 — Instantané FIN de la configuration d'un devis BROUILLON.
 
     Pris automatiquement à chaque modification significative des lignes
@@ -532,7 +534,11 @@ class ConfigurationDevisSnapshot(models.Model):
     DISTINCT de la révision de version (T10, qui numérote une nouvelle version
     d'un devis déjà envoyé) : c'est un historique fin PRÉ-envoi, jamais une
     version. ``contenu`` ne porte que des données de configuration
-    (désignation, quantité, P.U., remise) — jamais de prix d'achat / marge."""
+    (désignation, quantité, P.U., remise) — jamais de prix d'achat / marge.
+
+    ARC1 — hérite de ``core.models.TenantModel`` (FK ``company`` + timestamps) ;
+    ``company`` est redéclarée à l'identique pour garder l'accesseur inverse
+    explicite et rester optionnelle comme les autres satellites du devis."""
     company = models.ForeignKey(
         'authentication.Company', on_delete=models.CASCADE,  # on_delete: purge tenant
         null=True, blank=True, related_name='devis_config_snapshots')
@@ -558,7 +564,7 @@ class ConfigurationDevisSnapshot(models.Model):
         return f'Config devis {self.devis_id} @ {self.date_creation}'
 
 
-class LotDevis(models.Model):
+class LotDevis(TenantModel):
     """NTCPQ18 — Lot (site / bâtiment) d'un devis multi-sites.
 
     Un devis unique peut couvrir plusieurs sites : chaque ``LotDevis`` regroupe
@@ -568,7 +574,10 @@ class LotDevis(models.Model):
     Intersection assumée avec le multi-villa QJ29 (``LigneDevis.groupe_index``,
     qui reste le mécanisme d'AFFICHAGE côté proposition résidentielle) : ce
     ticket ne traite QUE le calcul de prix consolidé multi-lot, jamais l'UX
-    site — les deux cohabitent sans se remplacer."""
+    site — les deux cohabitent sans se remplacer.
+
+    ARC1 — hérite de ``core.models.TenantModel``; ``company`` redéclarée à
+    l'identique (accesseur inverse explicite, optionnelle)."""
     company = models.ForeignKey(
         'authentication.Company', on_delete=models.CASCADE,  # on_delete: purge tenant
         null=True, blank=True, related_name='devis_lots')
@@ -593,7 +602,7 @@ class LotDevis(models.Model):
         return f'{self.nom_lot} (devis {self.devis_id})'
 
 
-class AvenantDevis(models.Model):
+class AvenantDevis(TenantModel):
     """NTCPQ14 — Avenant (amendment) d'un devis déjà accepté.
 
     Trace le DIFF appliqué au devis : ``lignes_ajoutees`` et
@@ -603,7 +612,10 @@ class AvenantDevis(models.Model):
     la révision (T10) et du renouvellement (NTCPQ13).
 
     ``approbation_requise`` mémorise si l'avenant a redéclenché la matrice
-    d'approbation NTCPQ7 (nouveau taux de remise global au-dessus du seuil)."""
+    d'approbation NTCPQ7 (nouveau taux de remise global au-dessus du seuil).
+
+    ARC1 — hérite de ``core.models.TenantModel``; ``company`` redéclarée à
+    l'identique (accesseur inverse explicite, optionnelle)."""
     company = models.ForeignKey(
         'authentication.Company', on_delete=models.CASCADE,  # on_delete: purge tenant
         null=True, blank=True, related_name='devis_avenants')
@@ -2360,7 +2372,7 @@ class RegleListePrix(models.Model):
         return True
 
 
-class PalierRemiseVolume(models.Model):
+class PalierRemiseVolume(TenantModel):
     """NTCPQ17 — Palier de remise automatique par VOLUME, avec cascade.
 
     Étend les paliers de quantité XSAL2 (``RegleListePrix``, qui restent
@@ -2374,7 +2386,10 @@ class PalierRemiseVolume(models.Model):
 
     ``categorie_nom`` est une string-ref vers ``stock.Categorie.nom`` (même
     convention que ``RegleListePrix`` — jamais d'import de ``stock.models``) ;
-    vide = tout le catalogue. Ne touche JAMAIS ``prix_achat``."""
+    vide = tout le catalogue. Ne touche JAMAIS ``prix_achat``.
+
+    ARC1 — hérite de ``core.models.TenantModel``; ``company`` redéclarée à
+    l'identique (accesseur inverse historique explicite)."""
     company = models.ForeignKey(
         'authentication.Company', on_delete=models.CASCADE,  # on_delete: purge tenant
         related_name='paliers_remise_volume')

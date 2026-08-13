@@ -2055,7 +2055,9 @@ backend/django_core/apps/ventes/models.py:1471
 backend/django_core/apps/ventes/models.py:1473
 backend/django_core/apps/ventes/models.py:1477
 backend/django_core/apps/ventes/models.py:1479
-backend/django_core/apps/ventes/models.py:1495
+# NTCPQ11-24 — mêmes FK relues, décalées par les nouveaux modèles/champs CPQ
+# ajoutés dans ventes/models.py (DevisNudgeLog.company 1495 -> 1687).
+backend/django_core/apps/ventes/models.py:1687
 backend/django_core/apps/ventes/models.py:1498
 backend/django_core/apps/ventes/models.py:1500
 backend/django_core/apps/ventes/models.py:1528
@@ -2067,7 +2069,8 @@ backend/django_core/apps/ventes/models.py:1605
 backend/django_core/apps/ventes/models.py:1654
 backend/django_core/apps/ventes/models.py:1677
 backend/django_core/apps/ventes/models.py:1684
-backend/django_core/apps/ventes/models.py:17
+# NTCPQ11-24 — Devis.company relue, décalée par l'import core.models (17 -> 19).
+backend/django_core/apps/ventes/models.py:19
 backend/django_core/apps/ventes/models.py:1719
 backend/django_core/apps/ventes/models.py:1742
 backend/django_core/apps/ventes/models.py:1746
@@ -2235,7 +2238,8 @@ backend/django_core/apps/ventes/models.py:905
 backend/django_core/apps/ventes/models.py:906
 backend/django_core/apps/ventes/models.py:909
 backend/django_core/apps/ventes/models.py:914
-backend/django_core/apps/ventes/models.py:923
+# NTCPQ11-24 — PromessePaiement.company relue, décalée (923 -> 1115).
+backend/django_core/apps/ventes/models.py:1115
 backend/django_core/apps/ventes/models.py:926
 backend/django_core/apps/ventes/models.py:929
 backend/django_core/apps/ventes/models.py:938
@@ -2244,7 +2248,8 @@ backend/django_core/apps/ventes/models.py:942
 backend/django_core/apps/ventes/models.py:944
 backend/django_core/apps/ventes/models.py:945
 backend/django_core/apps/ventes/models.py:948
-backend/django_core/apps/ventes/models.py:966
+# NTCPQ11-24 — ParametrageRelanceClient.responsable relue, décalée (966 -> 1158).
+backend/django_core/apps/ventes/models.py:1158
 backend/django_core/apps/ventes/models.py:979
 backend/django_core/apps/ventes/models.py:981
 backend/django_core/apps/ventes/models.py:983
