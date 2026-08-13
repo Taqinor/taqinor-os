@@ -212,10 +212,14 @@
     corbeille_id:inconnu, detail:texte, id:inconnu
 - frontend/src/api/crmApi.js :: getClientConsolidation -> /api/django/crm/clients/<>/consolidation
     ca_devis_total:texte, ca_factures_total:texte, filiales:liste, nb_devis_total:inconnu, nb_factures_total:inconnu
+- frontend/src/api/crmApi.js :: getComptesDormants -> /api/django/crm/clients/dormants
+    count:nombre, results:inconnu, seuil:inconnu
 - frontend/src/api/crmApi.js :: getEquipesStatistiques -> /api/django/crm/equipes/statistiques
     equipes:inconnu
 - frontend/src/api/crmApi.js :: getLeadPointsContact -> /api/django/crm/leads/<>/points-contact
     count:inconnu, cout_total:inconnu, first_touch:inconnu, last_touch:inconnu, lead_id:inconnu, timeline:inconnu
+- frontend/src/api/crmApi.js :: getMonPortefeuille -> /api/django/crm/clients/mon-portefeuille
+    count:nombre, results:inconnu
 - frontend/src/api/crmApi.js :: getRelances -> /api/django/crm/leads/relances
     count:nombre, results:inconnu
 - frontend/src/api/crmApi.js :: getSlaBreach -> /api/django/crm/leads/sla-breach
@@ -1410,6 +1414,9 @@
     statut ∈ {annulee, due, payee}
 - frontend/src/api/crmApi.js :: createConcurrentPerte -> /api/django/crm/concurrents-perte  [ConcurrentPerteSerializer]
     champs: company, concurrent_nom, concurrent_prix, date_modification, devise, id, lead, lead_nom, motif, notes, saisi_le, saisi_par, saisi_par_nom
+- frontend/src/api/crmApi.js :: createDefi -> /api/django/crm/defis  [DefiSerializer]
+    champs: actif, cible_equipe, company, created_at, id, metrique, metrique_display, nom, periode_debut, periode_fin, recompense
+    metrique ∈ {ca_signe, nb_contacts, nb_devis, nb_leads, nb_rdv}
 - frontend/src/api/crmApi.js :: createPartenaire -> /api/django/crm/partenaires  [PartenaireSerializer]
     champs: actif, date_activation, date_creation, email, id, nom, numero_agrement, statut_onboarding, taux_commission, telephone, token_acces, type_partenaire, zone
     statut_onboarding ∈ {agree, en_cours, prospect, suspendu}
@@ -1449,6 +1456,9 @@
     statut ∈ {annulee, due, payee}
 - frontend/src/api/crmApi.js :: getConcurrentsPerte -> /api/django/crm/concurrents-perte  [ConcurrentPerteSerializer]
     champs: company, concurrent_nom, concurrent_prix, date_modification, devise, id, lead, lead_nom, motif, notes, saisi_le, saisi_par, saisi_par_nom
+- frontend/src/api/crmApi.js :: getDefis -> /api/django/crm/defis  [DefiSerializer]
+    champs: actif, cible_equipe, company, created_at, id, metrique, metrique_display, nom, periode_debut, periode_fin, recompense
+    metrique ∈ {ca_signe, nb_contacts, nb_devis, nb_leads, nb_rdv}
 - frontend/src/api/crmApi.js :: getEquipes -> /api/django/crm/equipes  [EquipeCommercialeSerializer]
     champs: actif, company, date_creation, id, membres, nb_membres, nom, responsable, responsable_nom
 - frontend/src/api/crmApi.js :: getMessageTemplate -> /api/django/crm/message-templates/<>  [MessageTemplateSerializer]
