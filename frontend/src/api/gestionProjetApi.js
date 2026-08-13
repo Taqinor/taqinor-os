@@ -245,6 +245,30 @@ const gestionProjetApi = {
   getPointsAvancement: (params) =>
     api.get(`${P}/points-avancement/`, { params }),
   createPointAvancement: (data) => api.post(`${P}/points-avancement/`, data),
+
+  // ── PACT78 — Paramètres avancés (3 ressources sans écran jusqu'ici) ────────
+  // XPRJ1 — verrous de période (mois) sur les feuilles de temps. `mois` = 1er
+  // jour du mois ; `verrouille_par` est posé côté serveur.
+  getPeriodesVerrouillees: (params) =>
+    api.get(`${P}/periodes-verrouillees-temps/`, { params }),
+  createPeriodeVerrouillee: (data) =>
+    api.post(`${P}/periodes-verrouillees-temps/`, data),
+  deletePeriodeVerrouillee: (id) =>
+    api.delete(`${P}/periodes-verrouillees-temps/${id}/`),
+  // PROJ37 — jeton du portail d'avancement client : le portail PUBLIC existe
+  // déjà (`/gestion-projet/portail/<token>/`), c'est son PILOTAGE qui manquait.
+  // Le `token` est généré côté serveur ; révoquer = `actif: false`.
+  getPortailTokens: (params) => api.get(`${P}/portail-tokens/`, { params }),
+  createPortailToken: (data) => api.post(`${P}/portail-tokens/`, data),
+  updatePortailToken: (id, data) =>
+    api.patch(`${P}/portail-tokens/${id}/`, data),
+  // XPRJ13 — gabarits de tâches récurrentes. La GÉNÉRATION reste une commande
+  // serveur (`manage.py generer_taches_recurrentes`) : cet écran définit le
+  // gabarit, il ne génère aucune tâche.
+  getRecurrencesTache: (params) =>
+    api.get(`${P}/recurrences-tache/`, { params }),
+  createRecurrenceTache: (data) => api.post(`${P}/recurrences-tache/`, data),
+  deleteRecurrenceTache: (id) => api.delete(`${P}/recurrences-tache/${id}/`),
 }
 
 export default gestionProjetApi
