@@ -40,6 +40,23 @@ const PlanificationPage = lazy(() => import('../../pages/installations/Planifica
 const MaJourneePage = lazy(() => import('../../pages/interventions/MaJourneePage'))
 const ParcInstallePage = lazy(() => import('../../pages/installations/ParcInstallePage'))
 const AteliersPage = lazy(() => import('../../pages/installations/AteliersPage'))
+// PACT55 — sous-traitance chantier : ordres, factures, attestations,
+// évaluations, retenues de garantie (FG304-309), aucun appelant jusqu'ici.
+const SousTraitanceChantier = lazy(() => import('./SousTraitanceChantier'))
+// PACT56 — import et douane : dossiers, frais, coût débarqué (FG315-316).
+const SuiviImport = lazy(() => import('./SuiviImport'))
+// PACT57 — prix négociés fournisseurs : écriture commandes-cadres/contrats
+// de prix (FG314/FG318), lecture seule existante avant cette tâche.
+const PrixNegocies = lazy(() => import('./PrixNegocies'))
+// PACT58 — contrôle documentaire de projet : registre + révisions (FG297).
+const DocumentsProjet = lazy(() => import('./DocumentsProjet'))
+// PACT59 — suivi projet du chantier : jalons, modèles, réunions (FG293/296/298).
+const SuiviProjetChantier = lazy(() => import('./SuiviProjetChantier'))
+// PACT60 — consultation fournisseurs (RFQ) et comparatif d'offres (FG311).
+const RFQ = lazy(() => import('./RFQ'))
+// PACT61 — paramétrage des kits d'assemblage : le kit, sa nomenclature, sa
+// gamme d'étapes et son modèle de contrôle qualité (FG328, XMFG13/14).
+const ParametrageKits = lazy(() => import('./ParametrageKits'))
 const ProductionPage = lazy(() => import('../../pages/monitoring/ProductionPage'))
 const FleetPage = lazy(() => import('../../pages/monitoring/FleetPage'))
 const OmAnalyticsPage = lazy(() => import('../../pages/monitoring/OmAnalyticsPage'))
@@ -89,12 +106,19 @@ const config = {
       { to: '/chantiers',            label: 'Chantiers',        k: 'nav.chantiers',  icon: navIcon(HardHat),    roles: ['normal','responsable','admin'] },
       { to: '/chantiers/demandes-achat', label: "Demandes d'achat", k: 'nav.demandes_achat', icon: navIcon(ClipboardList), roles: ['normal','responsable','admin'] },
       { to: '/chantiers/approvisionnement', label: 'Approvisionnement', icon: navIcon(ClipboardList), roles: ['responsable','admin'] },
+      { to: '/chantiers/sous-traitance', label: 'Sous-traitance', icon: navIcon(HardHat), roles: ['responsable','admin'] },
+      { to: '/chantiers/import', label: 'Import & douane', icon: navIcon(Boxes), roles: ['responsable','admin'] },
+      { to: '/chantiers/prix-negocies', label: 'Prix négociés', icon: navIcon(ClipboardList), roles: ['responsable','admin'] },
+      { to: '/chantiers/documents-projet', label: 'Documents projet', icon: navIcon(ClipboardList), roles: ['responsable','admin'] },
+      { to: '/chantiers/suivi-projet', label: 'Suivi projet', icon: navIcon(CalendarClock), roles: ['responsable','admin'] },
+      { to: '/chantiers/consultations', label: 'Consultations fournisseurs', icon: navIcon(ClipboardList), roles: ['responsable','admin'] },
       { to: '/interventions',        label: 'Interventions',    k: 'nav.interventions', icon: navIcon(Wrench), roles: ['normal','responsable','admin'] },
       { to: '/planification',        label: 'Planification',    k: 'nav.planification', icon: navIcon(CalendarClock),    roles: ['normal','responsable','admin'] },
       { to: '/planification/astreintes', label: 'Astreintes',   icon: navIcon(CalendarClock), roles: ['responsable','admin'] },
       { to: '/planification/suivi-gps', label: 'Suivi GPS',     icon: navIcon(MapPin), roles: ['responsable','admin'] },
       { to: '/parc',                 label: 'Parc installé',    k: 'nav.parc',       icon: navIcon(Boxes),  roles: ['normal','responsable','admin'] },
       { to: '/atelier',              label: 'Atelier',          k: 'nav.atelier',    icon: navIcon(Wrench),    roles: ['normal','responsable','admin'] },
+      { to: '/atelier/kits',         label: 'Paramétrage des kits', icon: navIcon(Wrench), roles: ['responsable','admin'] },
       { to: '/production',           label: 'Production',       k: 'nav.production', icon: navIcon(BarChart3),   roles: ['normal','responsable','admin'] },
       { to: '/production/abonnements', label: 'Abonnements',    icon: navIcon(BarChart3), roles: ['responsable','admin'] },
       { to: '/outillage',            label: 'Outillage',        k: 'nav.outillage',  icon: navIcon(Wrench),  roles: ['normal','responsable','admin'] },
@@ -104,6 +128,12 @@ const config = {
     { path: '/chantiers', component: InstallationsPage },
     { path: '/chantiers/demandes-achat', component: DemandesAchatList },
     { path: '/chantiers/approvisionnement', component: ApprovisionnementPage, roles: ['responsable', 'admin'] },
+    { path: '/chantiers/sous-traitance', component: SousTraitanceChantier, roles: ['responsable', 'admin'] },
+    { path: '/chantiers/import', component: SuiviImport, roles: ['responsable', 'admin'] },
+    { path: '/chantiers/prix-negocies', component: PrixNegocies, roles: ['responsable', 'admin'] },
+    { path: '/chantiers/documents-projet', component: DocumentsProjet, roles: ['responsable', 'admin'] },
+    { path: '/chantiers/suivi-projet', component: SuiviProjetChantier, roles: ['responsable', 'admin'] },
+    { path: '/chantiers/consultations', component: RFQ, roles: ['responsable', 'admin'] },
     { path: '/interventions', component: InterventionsPage },
     { path: '/planification', component: PlanificationPage },
     { path: '/planification/astreintes', component: AstreintesPage, roles: ['responsable', 'admin'] },
@@ -111,6 +141,7 @@ const config = {
     { path: '/ma-journee', component: MaJourneePage },
     { path: '/parc', component: ParcInstallePage },
     { path: '/atelier', component: AteliersPage },
+    { path: '/atelier/kits', component: ParametrageKits, roles: ['responsable', 'admin'] },
     { path: '/production', component: ProductionPage },
     { path: '/production/parc', component: FleetPage },
     { path: '/production/analytique', component: OmAnalyticsPage },

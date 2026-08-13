@@ -345,6 +345,113 @@ const gedApi = {
   // Lien de dépôt public tokenisé (la page publique PublicDepotPage fonctionne).
   getDepotsPublics: (params) => api.get('/ged/depots-publics/', { params }),
   createDepotPublic: (data) => api.post('/ged/depots-publics/', data),
+
+  // ══════════════════════════════════════════════════════════════════════
+  // PACT131 — Coffres-forts documentaires (GED8, employé OU client).
+  // ══════════════════════════════════════════════════════════════════════
+  // `params` : pas de filtre serveur particulier — la liste est déjà bornée
+  // par ACL (`selectors.coffres_for_user`, employé = ses coffres, admin = tous).
+  getCoffres: (params) => api.get('/ged/coffres/', { params }),
+  // Crée un coffre. `data` : { nom, description?, proprietaire? , client? }
+  // (exactement l'un des deux, jamais les deux — revalidé côté serveur).
+  createCoffre: (data) => api.post('/ged/coffres/', data),
+  deleteCoffre: (id) => api.delete(`/ged/coffres/${id}/`),
+  // Documents classés dans ce coffre (ACL déjà appliquée par `get_queryset`).
+  getCoffreDocuments: (id) => api.get(`/ged/coffres/${id}/documents/`),
+
+  // ══════════════════════════════════════════════════════════════════════
+  // PACT132 — Règles de dossier : action automatique au dépôt (XGED19).
+  // ══════════════════════════════════════════════════════════════════════
+  // `params` : { folder }.
+  getReglesDossier: (params) => api.get('/ged/regles-dossier/', { params }),
+  // `data` : { folder, nom, condition_group, actions, actif?, ordre? } —
+  // `condition_group` validé côté serveur (`core.rules`), `actions` = liste
+  // ordonnée `[{type, params}]` exécutée en séquence.
+  createRegleDossier: (data) => api.post('/ged/regles-dossier/', data),
+  updateRegleDossier: (id, data) => api.patch(`/ged/regles-dossier/${id}/`, data),
+  deleteRegleDossier: (id) => api.delete(`/ged/regles-dossier/${id}/`),
+  // Journal des 20 dernières exécutions de cette règle (le plus récent d'abord).
+  getExecutionsRegleDossier: (id) => api.get(`/ged/regles-dossier/${id}/executions/`),
+
+  // ══════════════════════════════════════════════════════════════════════
+  // PACT133 — Règles ACL par métadonnée (XGED21, couche dynamique).
+  // ══════════════════════════════════════════════════════════════════════
+  getReglesAclMetadonnee: (params) =>
+    api.get('/ged/regles-acl-metadonnee/', { params }),
+  // `data` : { nom, condition_group, role, niveau, priorite?, actif? }.
+  createRegleAclMetadonnee: (data) =>
+    api.post('/ged/regles-acl-metadonnee/', data),
+  updateRegleAclMetadonnee: (id, data) =>
+    api.patch(`/ged/regles-acl-metadonnee/${id}/`, data),
+  deleteRegleAclMetadonnee: (id) =>
+    api.delete(`/ged/regles-acl-metadonnee/${id}/`),
+
+  // ══════════════════════════════════════════════════════════════════════
+  // PACT134 — Demandes de disposition en fin de rétention (XGED23).
+  // ══════════════════════════════════════════════════════════════════════
+  // `params` : { statut }.
+  getDemandesDisposition: (params) =>
+    api.get('/ged/demandes-disposition/', { params }),
+  // Propose un lot. `data` : { libelle, action:'detruire'|'archiver', documents:[<id>,...] }.
+  createDemandeDisposition: (data) =>
+    api.post('/ged/demandes-disposition/', data),
+  approuverDisposition: (id, data) =>
+    api.post(`/ged/demandes-disposition/${id}/approuver/`, data ?? {}),
+  rejeterDisposition: (id, data) =>
+    api.post(`/ged/demandes-disposition/${id}/rejeter/`, data ?? {}),
+  // Exécute une demande APPROUVÉE : détruit/archive le lot, émet un
+  // certificat immuable par document réellement détruit.
+  executerDisposition: (id) =>
+    api.post(`/ged/demandes-disposition/${id}/executer/`),
+
+  // ══════════════════════════════════════════════════════════════════════
+  // PACT135 — Envoi en masse de demandes de signature (XGED27).
+  // ══════════════════════════════════════════════════════════════════════
+  getLotsEnvoi: (params) => api.get('/ged/lots-envoi/', { params }),
+  // Un modèle + N destinataires (CSV `nom,email,…` OU une sélection de
+  // clients CRM) → un document + une demande de signature PAR destinataire,
+  // suivis sous CE lot (compteurs envoyé/vu/signé/refusé).
+  envoyerLotSignature: ({ modele, libelle, csvFile, clientIds }) => {
+    if (csvFile) {
+      const fd = new FormData()
+      fd.append('modele', modele)
+      if (libelle) fd.append('libelle', libelle)
+      fd.append('csv', csvFile)
+      return api.post('/ged/lots-envoi/envoi-masse/', fd, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      })
+    }
+    return api.post('/ged/lots-envoi/envoi-masse/', {
+      modele, libelle, clients: clientIds ?? [],
+    })
+  },
+
+  // ══════════════════════════════════════════════════════════════════════
+  // PACT136 — Routage documentaire automatique (ZGED6).
+  // ══════════════════════════════════════════════════════════════════════
+  getRoutagesDocumentaires: (params) =>
+    api.get('/ged/routages-documentaires/', { params }),
+  // `data` : { source, cabinet_cible, dossier_cible, tags_defaut?, actif? }.
+  createRoutageDocumentaire: (data) =>
+    api.post('/ged/routages-documentaires/', data),
+  updateRoutageDocumentaire: (id, data) =>
+    api.patch(`/ged/routages-documentaires/${id}/`, data),
+  deleteRoutageDocumentaire: (id) =>
+    api.delete(`/ged/routages-documentaires/${id}/`),
+
+  // ══════════════════════════════════════════════════════════════════════
+  // PACT137 — Planifications de document (XGED15, notification J-échéance).
+  // ══════════════════════════════════════════════════════════════════════
+  // `params` : { document }.
+  getPlanificationsDocument: (params) =>
+    api.get('/ged/planifications/', { params }),
+  // `data` : { document, libelle, echeance, assigne_a? }.
+  createPlanificationDocument: (data) =>
+    api.post('/ged/planifications/', data),
+  updatePlanificationDocument: (id, data) =>
+    api.patch(`/ged/planifications/${id}/`, data),
+  deletePlanificationDocument: (id) =>
+    api.delete(`/ged/planifications/${id}/`),
 }
 
 export default gedApi

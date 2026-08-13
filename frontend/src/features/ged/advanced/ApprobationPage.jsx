@@ -1,26 +1,32 @@
 import { useEffect, useMemo, useState } from 'react'
 import {
   CheckCircle2, XCircle, FileSignature, FilePlus2, Send, ClipboardCheck,
-  Users, Plus, Trash2, XSquare,
+  Users, Plus, Trash2, XSquare, Mail,
 } from 'lucide-react'
 import { ListShell } from '../../../ui/module'
 import {
   Button, Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
   Label, Input, Textarea, Select, SelectTrigger, SelectValue, SelectContent,
-  SelectItem, Tabs, TabsList, TabsTrigger, TabsContent, StatusPill, toast,
+  SelectItem, Tabs, TabsList, TabsTrigger, TabsContent, StatusPill, MultiSelect,
+  toast,
 } from '../../../ui'
 import { formatDateTime } from '../../../lib/format'
 import gedApi from '../../../api/gedApi'
+import crmApi from '../../../api/crmApi'
 import { StatutApprobation, StatutSignature, errMessage } from './shared.js'
 
 /* ============================================================================
    UX45 — Approbation & signature électronique.
    ----------------------------------------------------------------------------
-   Trois onglets : Approbations (workflow revue/décision GED18), Signatures
-   (demandes e-sign GED30, stub no-op sans provider), et Modèles (fusion→PDF,
-   dépôt en GED, GED27/28). Un document circule approbation→signature depuis
-   l'UI : la carte d'un document approuvé propose « Demander la signature ».
-   Toutes les données via gedApi (useState/useEffect, pas de react-query).
+   Quatre onglets : Approbations (workflow revue/décision GED18), Signatures
+   (demandes e-sign GED30, stub no-op sans provider), Envoi en masse (PACT135
+   — un modèle fusionné avec N destinataires, CSV OU sélection de clients CRM,
+   produit UN document + UNE demande de signature PAR destinataire, suivis
+   sous un lot XGED27 — un mode SUPPLÉMENTAIRE du même écran d'approbation,
+   pas un écran séparé), et Modèles (fusion→PDF, dépôt en GED, GED27/28). Un
+   document circule approbation→signature depuis l'UI : la carte d'un document
+   approuvé propose « Demander la signature ». Toutes les données via gedApi
+   (useState/useEffect, pas de react-query).
    ========================================================================== */
 
 export default function ApprobationPage() {
@@ -28,6 +34,7 @@ export default function ApprobationPage() {
   const [signatures, setSignatures] = useState([])
   const [modeles, setModeles] = useState([])
   const [documents, setDocuments] = useState([])
+  const [lots, setLots] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
 
@@ -38,24 +45,27 @@ export default function ApprobationPage() {
   const [genModele, setGenModele] = useState(null)   // générer depuis un modèle
   const [multiFor, setMultiFor] = useState(null)     // XGED2 — circuit multi-signataires
   const [roles, setRoles] = useState([])             // ZGED1 — rôles réutilisables
+  const [showEnvoiMasse, setShowEnvoiMasse] = useState(false) // PACT135
 
   const load = async () => {
     setLoading(true)
     setError(null)
     try {
-      const [d, s, m, docs, r] = await Promise.all([
+      const [d, s, m, docs, r, l] = await Promise.all([
         gedApi.getDemandesApprobation(),
         gedApi.getDemandesSignature(),
         gedApi.getModelesDocument({ actif: 1 }),
         gedApi.getDocumentsList(),
         // ZGED1 — rôles réutilisables (dégrade en liste vide si indisponible).
         gedApi.getRolesSignataire().catch(() => ({ data: [] })),
+        gedApi.getLotsEnvoi(),
       ])
       setDemandes(unpage(d.data))
       setSignatures(unpage(s.data))
       setModeles(unpage(m.data))
       setDocuments(unpage(docs.data))
       setRoles(unpage(r.data))
+      setLots(unpage(l.data))
     } catch (err) {
       setError(errMessage(err, 'Impossible de charger les approbations.'))
     } finally {
@@ -111,6 +121,24 @@ export default function ApprobationPage() {
     },
   ], [])
 
+  // PACT135 — lots d'envoi en masse (XGED27) : compteurs envoyé/vu/signé/
+  // refusé/erreur, tels que renvoyés par `LotEnvoiSerializer` (jamais un total
+  // recalculé côté client).
+  const lotColumns = useMemo(() => [
+    { id: 'libelle', header: 'Lot', accessor: (r) => r.libelle || `Lot #${r.id}` },
+    { id: 'modele', header: 'Modèle', accessor: (r) => r.modele_nom || '—', width: 160 },
+    { id: 'total', header: 'Total', width: 80, align: 'right', accessor: (r) => r.total },
+    { id: 'envoyes', header: 'Envoyés', width: 90, align: 'right', accessor: (r) => r.nb_envoyes },
+    { id: 'vus', header: 'Vus', width: 80, align: 'right', accessor: (r) => r.nb_vus },
+    { id: 'signes', header: 'Signés', width: 90, align: 'right', accessor: (r) => r.nb_signes },
+    { id: 'refuses', header: 'Refusés', width: 90, align: 'right', accessor: (r) => r.nb_refuses },
+    { id: 'erreurs', header: 'Erreurs', width: 90, align: 'right', accessor: (r) => r.nb_erreurs },
+    {
+      id: 'created_at', header: 'Créé le', width: 150, align: 'right',
+      accessor: (r) => r.created_at, cell: (v) => formatDateTime(v),
+    },
+  ], [])
+
   // ── Actions de ligne ──────────────────────────────────────────────────
   const demandeActions = (r) => (r.statut === 'en_attente' ? [
     { id: 'approuver', label: 'Approuver', icon: CheckCircle2, onClick: () => setDecision({ demande: r, type: 'approuver' }) },
@@ -155,6 +183,7 @@ export default function ApprobationPage() {
         <TabsList className="flex-wrap">
           <TabsTrigger value="approbations">Approbations</TabsTrigger>
           <TabsTrigger value="signatures">Signatures</TabsTrigger>
+          <TabsTrigger value="envoi-masse">Envoi en masse</TabsTrigger>
           <TabsTrigger value="modeles">Modèles</TabsTrigger>
         </TabsList>
 
@@ -196,6 +225,22 @@ export default function ApprobationPage() {
             exportName="demandes-signature"
             emptyTitle="Aucune demande de signature"
             emptyDescription="Créez une demande de signature sur un document."
+          />
+        </TabsContent>
+
+        <TabsContent value="envoi-masse">
+          <ListShell
+            title="Envoi en masse"
+            subtitle="Un modèle fusionné avec N destinataires (CSV ou clients CRM) → un document + une demande de signature par destinataire."
+            actions={<Button onClick={() => setShowEnvoiMasse(true)}><Mail /> Nouvel envoi</Button>}
+            columns={lotColumns}
+            rows={lots}
+            loading={loading}
+            error={error}
+            searchable
+            exportName="lots-envoi"
+            emptyTitle="Aucun envoi en masse"
+            emptyDescription="Lancez un envoi en masse depuis un modèle de document."
           />
         </TabsContent>
 
@@ -251,6 +296,13 @@ export default function ApprobationPage() {
           roles={roles}
           onClose={() => setMultiFor(null)}
           onDone={() => { setMultiFor(null); load() }}
+        />
+      )}
+      {showEnvoiMasse && (
+        <EnvoiMasseDialog
+          modeles={modeles}
+          onClose={() => setShowEnvoiMasse(false)}
+          onDone={() => { setShowEnvoiMasse(false); load() }}
         />
       )}
     </>
@@ -673,5 +725,107 @@ function ChampsSignatureEditor({ demande }) {
         </ul>
       )}
     </div>
+  )
+}
+
+// ── PACT135 — Envoi en masse de demandes de signature (XGED27) ─────────────
+// Deux sources de destinataires, mutuellement exclusives : un CSV (nom/email/
+// champs de fusion libres) OU une sélection de clients CRM (résolus en
+// lecture seule côté serveur, jamais un import de `crm.models`).
+function EnvoiMasseDialog({ modeles, onClose, onDone }) {
+  const [modeleId, setModeleId] = useState('')
+  const [libelle, setLibelle] = useState('')
+  const [source, setSource] = useState('csv')
+  const [csvFile, setCsvFile] = useState(null)
+  const [clients, setClients] = useState([])
+  const [clientIds, setClientIds] = useState([])
+  const [saving, setSaving] = useState(false)
+
+  useEffect(() => {
+    if (source !== 'clients' || clients.length > 0) return
+    crmApi.getClients().then((res) => {
+      const data = res.data
+      setClients(Array.isArray(data) ? data : (data?.results ?? []))
+    }).catch(() => setClients([]))
+  }, [source, clients.length])
+
+  const clientOptions = useMemo(
+    () => clients.map((c) => ({ value: String(c.id), label: c.nom })),
+    [clients],
+  )
+
+  const submit = async () => {
+    if (!modeleId) { toast.error('Sélectionnez un modèle.'); return }
+    if (source === 'csv' && !csvFile) { toast.error('Choisissez un fichier CSV.'); return }
+    if (source === 'clients' && clientIds.length === 0) { toast.error('Sélectionnez au moins un client.'); return }
+    setSaving(true)
+    try {
+      const res = await gedApi.envoyerLotSignature({
+        modele: modeleId, libelle: libelle.trim(),
+        csvFile: source === 'csv' ? csvFile : undefined,
+        clientIds: source === 'clients' ? clientIds : undefined,
+      })
+      const lot = res.data
+      toast.success(
+        `Lot créé : ${lot?.nb_envoyes ?? 0}/${lot?.total ?? 0} demande(s) envoyée(s).`)
+      onDone()
+    } catch (err) { toast.error(errMessage(err)) } finally { setSaving(false) }
+  }
+
+  return (
+    <Dialog open onOpenChange={(o) => !o && onClose()}>
+      <DialogContent>
+        <DialogHeader><DialogTitle>Nouvel envoi en masse</DialogTitle></DialogHeader>
+        <div className="flex flex-col gap-3">
+          <div>
+            <Label>Modèle</Label>
+            <Select value={modeleId} onValueChange={setModeleId}>
+              <SelectTrigger aria-label="Choisir un modèle"><SelectValue placeholder="Choisir un modèle…" /></SelectTrigger>
+              <SelectContent>
+                {modeles.map((m) => <SelectItem key={m.id} value={String(m.id)}>{m.nom}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
+          <div>
+            <Label>Libellé du lot (optionnel)</Label>
+            <Input aria-label="Libellé du lot" value={libelle} onChange={(e) => setLibelle(e.target.value)} />
+          </div>
+          <div>
+            <Label>Destinataires</Label>
+            <Select value={source} onValueChange={setSource}>
+              <SelectTrigger aria-label="Choisir la source des destinataires"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="csv">Fichier CSV (nom, email, …)</SelectItem>
+                <SelectItem value="clients">Sélection de clients CRM</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          {source === 'csv' ? (
+            <div>
+              <Label htmlFor="envoi-masse-csv">Fichier CSV</Label>
+              <Input
+                id="envoi-masse-csv" type="file" accept=".csv"
+                onChange={(e) => setCsvFile(e.target.files?.[0] || null)}
+              />
+            </div>
+          ) : (
+            <div>
+              <Label htmlFor="envoi-masse-clients">Clients</Label>
+              <MultiSelect
+                id="envoi-masse-clients"
+                options={clientOptions}
+                value={clientIds}
+                onChange={setClientIds}
+                placeholder="Choisir des clients…"
+              />
+            </div>
+          )}
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>Annuler</Button>
+          <Button onClick={submit} disabled={saving}>{saving ? 'Envoi…' : 'Lancer l’envoi'}</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   )
 }

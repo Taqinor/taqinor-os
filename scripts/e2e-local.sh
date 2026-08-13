@@ -48,6 +48,10 @@ up() {
   export DJANGO_SETTINGS_MODULE=erp_agentique.settings.dev
   export DJANGO_SECRET_KEY="${DJANGO_SECRET_KEY:-dev-only-secret}"
   export DJANGO_DEBUG=True
+  # NTPLT42/PACT8 — même règle que le job `e2e` de ci.yml : ce runserver n'est
+  # pas sous TESTING, donc sans ça le throttle tenant (1200/min) rend 429 sur
+  # /auth/me/ pendant la fumée PACT8 → faux « page blanche ».
+  export TENANT_RATE_LIMIT=0
 
   echo "→ Attente de Postgres…"
   for i in $(seq 1 30); do

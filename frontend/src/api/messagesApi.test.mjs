@@ -13,7 +13,7 @@ import assert from 'node:assert/strict'
 // Stub qui enregistre la dernière requête (method, url, params, data).
 function makeStub() {
   const calls = []
-  const rec = (method) => (url, a, b) => {
+  const rec = (method) => (url, a) => {
     // axios: get(url, {params}) ; post(url, data, {config}) ; delete(url)
     const entry = { method, url }
     if (method === 'get') entry.params = a?.params

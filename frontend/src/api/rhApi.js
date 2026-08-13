@@ -135,10 +135,21 @@ const rhApi = {
   pointagerArrivee: (data) => api.post('/rh/pointages/pointager-arrivee/', data ?? {}),
   pointagerDepart: (id, data) =>
     api.post(`/rh/pointages/${id}/pointager-depart/`, data ?? {}),
-  getCalendrierPointages: (params) =>
-    api.get('/rh/pointages/calendrier-equipe/', { params }),
-  exportPaiePointages: (params) =>
-    api.get('/rh/pointages/export-paie/', { params }),
+  // PACT19 — DEUX 404 statués, tous deux de type (b) « désaccord de nom » :
+  // les actions EXISTENT, mais sur un AUTRE ViewSet que `pointages`.
+  //   * `calendrier-equipe` vit sur `DemandeCongeViewSet`
+  //     (apps/rh/views.py:1160) → `/rh/demandes-conge/calendrier-equipe/`,
+  //     déjà appelé correctement par `getCalendrierConges` ci-dessus.
+  //     L'ancien `getCalendrierPointages` pointait sur `/rh/pointages/…`,
+  //     n'avait AUCUN appelant, et doublait `getCalendrierConges` : retiré
+  //     plutôt que redirigé — deux noms pour une seule route, c'est le
+  //     prochain défaut.
+  //   * `export-paie` vit sur `HeuresSuppViewSet` (apps/rh/views.py:1437,
+  //     `selectors.heures_supp_pour_paie`) → `/rh/heures-supp/export-paie/`.
+  //     C'est bien un export de PAIE d'heures supplémentaires, pas de
+  //     pointages : le nom de la fonction le dit désormais.
+  exportPaieHeuresSupp: (params) =>
+    api.get('/rh/heures-supp/export-paie/', { params }),
   getFeuillesTemps: (params) => api.get('/rh/feuilles-temps/', { params }),
   getHeuresSupp: (params) => api.get('/rh/heures-supp/', { params }),
   getRoster: (params) => api.get('/rh/roster/', { params }),
@@ -203,6 +214,9 @@ const rhApi = {
   // ── XRH27 — Organigramme (arbre des départements) ──
   getArbreDepartements: () => api.get('/rh/departements/arbre/'),
   getDepartements: (params) => api.get('/rh/departements/', { params }),
+  // FG160 — référentiel des postes (utilisé par les gabarits d'intégration
+  // et les grilles salariales, PACT85/PACT88).
+  getPostes: (params) => api.get('/rh/postes/', { params }),
   // ── XRH15 — Analyse d'écarts / évolution de compétences ──
   getCompetencesRequises: (params) =>
     api.get('/rh/competences-requises/', { params }),
@@ -350,6 +364,131 @@ const rhApi = {
   getOrdresMission: (params) => api.get('/rh/ordres-mission/', { params }),
   getNotesFrais: (params) => api.get('/rh/notes-frais/', { params }),
   getAvancesSalaire: (params) => api.get('/rh/avances-salaire/', { params }),
+
+  // ── PACT81 — Permis de conduire (FG197) & affectations véhicule (FG198) ──
+  getPermisConduire: (params) => api.get('/rh/permis-conduire/', { params }),
+  createPermisConduire: (data) => api.post('/rh/permis-conduire/', data),
+  getAffectationsVehicule: (params) =>
+    api.get('/rh/affectations-vehicule/', { params }),
+  createAffectationVehicule: (data) =>
+    api.post('/rh/affectations-vehicule/', data),
+  terminerAffectationVehicule: (id) =>
+    api.post(`/rh/affectations-vehicule/${id}/terminer/`, {}),
+
+  // ── PACT82 — Dépôt des bulletins de paie (FG196) ──
+  getBulletinsPaie: (params) => api.get('/rh/bulletins-paie/', { params }),
+  uploadBulletinPaie: ({ employe, file, annee, mois, note }) => {
+    const fd = new FormData()
+    fd.append('employe', employe)
+    fd.append('file', file)
+    fd.append('annee', annee)
+    fd.append('mois', mois)
+    if (note) fd.append('note', note)
+    return api.post('/rh/bulletins-paie/', fd, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    })
+  },
+
+  // ── PACT83 — Guichet des demandes d'allocation (ZRH13, côté traitant) ──
+  getDemandesAllocation: (params) =>
+    api.get('/rh/demandes-allocation/', { params }),
+  validerDemandeAllocation: (id) =>
+    api.post(`/rh/demandes-allocation/${id}/valider/`, {}),
+  refuserDemandeAllocation: (id) =>
+    api.post(`/rh/demandes-allocation/${id}/refuser/`, {}),
+
+  // ── PACT84 — Guichet des demandes RH / attestations (XRH9, côté traitant) ──
+  getDemandesRh: (params) => api.get('/rh/demandes-rh/', { params }),
+  traiterDemandeRh: (id) => api.post(`/rh/demandes-rh/${id}/traiter/`, {}),
+  refuserDemandeRh: (id, data) =>
+    api.post(`/rh/demandes-rh/${id}/refuser/`, data ?? {}),
+
+  // ── PACT85 — Modèles d'intégration / onboarding (XRH4, gabarits) ──
+  getModelesIntegration: (params) =>
+    api.get('/rh/modeles-integration/', { params }),
+  createModeleIntegration: (data) =>
+    api.post('/rh/modeles-integration/', data),
+  updateModeleIntegration: (id, data) =>
+    api.patch(`/rh/modeles-integration/${id}/`, data),
+  getElementsIntegration: (params) =>
+    api.get('/rh/elements-integration/', { params }),
+  createElementIntegration: (data) =>
+    api.post('/rh/elements-integration/', data),
+  updateElementIntegration: (id, data) =>
+    api.patch(`/rh/elements-integration/${id}/`, data),
+  deleteElementIntegration: (id) =>
+    api.delete(`/rh/elements-integration/${id}/`),
+
+  // ── PACT86 — Éléments variables de paie (FG192, bordereau externe) ──
+  getElementsVariablesPaie: (params) =>
+    api.get('/rh/elements-variables-paie/', { params }),
+  createElementVariablePaie: (data) =>
+    api.post('/rh/elements-variables-paie/', data),
+  updateElementVariablePaie: (id, data) =>
+    api.patch(`/rh/elements-variables-paie/${id}/`, data),
+  marquerExporteElementVariablePaie: (id) =>
+    api.post(`/rh/elements-variables-paie/${id}/marquer-exporte/`, {}),
+
+  // ── PACT87 — Entretiens de sortie (XRH25) ──
+  getEntretiensSortie: (params) =>
+    api.get('/rh/entretiens-sortie/', { params }),
+  createEntretienSortie: (data) => api.post('/rh/entretiens-sortie/', data),
+
+  // ── PACT88 — Grilles salariales (XRH16, SENSIBLE — salaires_voir) ──
+  getGrillesSalariales: (params) =>
+    api.get('/rh/grilles-salariales/', { params }),
+  createGrilleSalariale: (data) => api.post('/rh/grilles-salariales/', data),
+  updateGrilleSalariale: (id, data) =>
+    api.patch(`/rh/grilles-salariales/${id}/`, data),
+  deleteGrilleSalariale: (id) =>
+    api.delete(`/rh/grilles-salariales/${id}/`),
+
+  // ── PACT89 — Horaires de travail (XRH8) ──
+  getHorairesTravail: (params) => api.get('/rh/horaires-travail/', { params }),
+  createHoraireTravail: (data) => api.post('/rh/horaires-travail/', data),
+  updateHoraireTravail: (id, data) =>
+    api.patch(`/rh/horaires-travail/${id}/`, data),
+
+  // ── PACT90 — Jours bloqués (congés) (ZRH4) ──
+  getJoursBloquesConge: (params) =>
+    api.get('/rh/jours-bloques-conge/', { params }),
+  createJourBloqueConge: (data) =>
+    api.post('/rh/jours-bloques-conge/', data),
+  deleteJourBloqueConge: (id) =>
+    api.delete(`/rh/jours-bloques-conge/${id}/`),
+
+  // ── PACT91 — Parcours (timeline) des employés (ZRH15) ──
+  getTypesLigneParcours: (params) =>
+    api.get('/rh/types-ligne-parcours/', { params }),
+  createTypeLigneParcours: (data) =>
+    api.post('/rh/types-ligne-parcours/', data),
+  getLignesParcours: (params) => api.get('/rh/lignes-parcours/', { params }),
+  createLigneParcours: (data) => api.post('/rh/lignes-parcours/', data),
+
+  // ── PACT92 — Fermetures collectives (XRH14) ──
+  getPeriodesFermeture: (params) =>
+    api.get('/rh/periodes-fermeture/', { params }),
+  createPeriodeFermeture: (data) =>
+    api.post('/rh/periodes-fermeture/', data),
+  appliquerPeriodeFermeture: (id) =>
+    api.post(`/rh/periodes-fermeture/${id}/appliquer/`, {}),
+
+  // ── PACT93 — Primes & indemnités (FG193) ──
+  getTypesPrime: (params) => api.get('/rh/types-prime/', { params }),
+  createTypePrime: (data) => api.post('/rh/types-prime/', data),
+  updateTypePrime: (id, data) => api.patch(`/rh/types-prime/${id}/`, data),
+  getPrimesAttribuees: (params) =>
+    api.get('/rh/primes-attribuees/', { params }),
+  createPrimeAttribuee: (data) => api.post('/rh/primes-attribuees/', data),
+  updatePrimeAttribuee: (id, data) =>
+    api.patch(`/rh/primes-attribuees/${id}/`, data),
+  validerPrimeAttribuee: (id) =>
+    api.post(`/rh/primes-attribuees/${id}/valider/`, {}),
+
+  // ── PACT94 — Réglages RH (XRH12/XRH24, singleton société) ──
+  getMonReglageRh: () => api.get('/rh/reglages/mon-reglage/'),
+  updateMonReglageRh: (data) =>
+    api.patch('/rh/reglages/mon-reglage/', data),
 }
 
 export default rhApi

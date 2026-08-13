@@ -43,7 +43,15 @@ const comptaApi = {
 
   // ── UX5 — États comptables CGNC (blob quand export fichier) ──
   etats: {
-    grandLivre: (params) => api.get('/compta/etats/grand-livre/', { params }),
+    // PACT18 — SOULIGNÉ, pas tiret : `def grand_livre` (apps/compta/views.py)
+    // est la SEULE @action de ce ViewSet sans `url_path=` explicite, et le
+    // `url_path` par défaut d'une @action DRF est le NOM DE LA MÉTHODE, tel
+    // quel, souligné compris (rest_framework/decorators.py : `func.url_path =
+    // url_path if url_path else func.__name__`). Un tiret ici a rendu l'onglet
+    // « Comptabilité → États → Grand-livre » muet, sans le moindre message.
+    // Ne pas « harmoniser » avec ses voisines tant que le serveur ne déclare
+    // pas `url_path='grand-livre'` : ce serait rouvrir le trou.
+    grandLivre: (params) => api.get('/compta/etats/grand_livre/', { params }),
     balance: (params) => api.get('/compta/etats/balance/', { params }),
     cpc: (params) => api.get('/compta/etats/cpc/', { params }),
     bilan: (params) => api.get('/compta/etats/bilan/', { params }),
@@ -147,6 +155,15 @@ const comptaApi = {
     rappels: () => api.post('/compta/obligations-fiscales/rappels/'),
   },
 
+  // ── PACT28 / NTMAR12/18 / XACC11 — Fiscalité avancée (acomptes IS,
+  // conventions fiscales, familles TVA non déductible) ──
+  acomptesIS: {
+    ...resource('acomptes-is'),
+    marquerPaye: (id) => api.post(`/compta/acomptes-is/${id}/marquer-paye/`),
+  },
+  conventionsFiscales: resource('conventions-fiscales'),
+  famillesTvaNonDeductibles: resource('familles-tva-non-deductibles'),
+
   // ── UX8 — Immobilisations ──
   immobilisations: {
     ...resource('immobilisations'),
@@ -175,6 +192,23 @@ const comptaApi = {
     ...resource('charges-avance'),
   },
 
+  // ── PACT29 / NTFIN40-43 — Immobilisations avancées (composants,
+  // dépréciation, mutations, encours) ──
+  composantsImmobilisation: resource('composants-immobilisation'),
+  depreciationsImmobilisation: {
+    ...resource('depreciations-immobilisation'),
+    poster: (id) => api.post(`/compta/depreciations-immobilisation/${id}/poster/`),
+    reprendre: (id, data) =>
+      api.post(`/compta/depreciations-immobilisation/${id}/reprendre/`, data),
+  },
+  mutationsImmobilisation: resource('mutations-immobilisation'),
+  immobilisationsEnCours: {
+    ...resource('immobilisations-en-cours'),
+    mettreEnService: (id, data) =>
+      api.post(`/compta/immobilisations-en-cours/${id}/mettre-en-service/`, data || {}),
+  },
+  lignesImmobilisationEnCours: resource('lignes-immobilisation-en-cours'),
+
   // ── UX9 — Rapprochements, budgets & clôtures ──
   rapprochements: {
     ...resource('rapprochements'),
@@ -200,6 +234,17 @@ const comptaApi = {
     valider: (id, data) =>
       api.post(`/compta/rapprochements-3voies/${id}/valider/`, data),
   },
+  // ── PACT30 / NTFIN35-37 — Rapprochements de comptes de bilan (4 yeux) ──
+  rapprochementsCompte: {
+    ...resource('rapprochements-compte'),
+    ouvrir: (data) => api.post('/compta/rapprochements-compte/ouvrir/', data),
+    recalculer: (id) => api.post(`/compta/rapprochements-compte/${id}/recalculer/`),
+    soumettre: (id) => api.post(`/compta/rapprochements-compte/${id}/soumettre/`),
+    valider: (id) => api.post(`/compta/rapprochements-compte/${id}/valider/`),
+    rejeter: (id, data) =>
+      api.post(`/compta/rapprochements-compte/${id}/rejeter/`, data),
+  },
+  lignesJustificationCompte: resource('lignes-justification-compte'),
   budgets: {
     ...resource('budgets'),
     // PACT163 / XACC22 — génère une ligne par courbe de répartition (au lieu
@@ -216,6 +261,17 @@ const comptaApi = {
     ...resource('exercices'),
     cloturer: (id) => api.post(`/compta/exercices/${id}/cloturer/`),
     rouvrir: (id) => api.post(`/compta/exercices/${id}/rouvrir/`),
+  },
+  // ── PACT35 / COMPTA3 — Import guidé de la balance d'ouverture ──
+  balanceOuverture: {
+    gabarit: () =>
+      api.get('/compta/balance-ouverture/gabarit/', { responseType: 'blob' }),
+    importer: (file, exerciceId) => {
+      const fd = new FormData()
+      fd.append('file', file)
+      fd.append('exercice', exerciceId)
+      return api.post('/compta/balance-ouverture/importer/', fd)
+    },
   },
   periodes: {
     ...resource('periodes'),
@@ -483,6 +539,16 @@ const comptaApi = {
     reverser: (id) => api.post(`/compta/allocations/${id}/reverser/`),
   },
   allocationsRecurrentes: resource('allocations-recurrentes'),
+  // PACT32 — engagements comptables (encumbrance, NTFIN23-24) : « engagements »
+  // sert DÉJÀ un ancien homonyme français côté écran (retenues de garantie…,
+  // cf. EngagementsPage.jsx) — cette clé porte le VRAI backend
+  // /compta/engagements/ (EngagementComptableViewSet), jusqu'ici sans wrapper.
+  engagementsComptables: {
+    ...resource('engagements'),
+    liquider: (id, data) => api.post(`/compta/engagements/${id}/liquider/`, data),
+    verifierDisponible: (data) =>
+      api.post('/compta/engagements/verifier-disponible/', data),
+  },
 
   // ── NTFIN47-48 — Reconnaissance du revenu IFRS 15 (API-only) ──
   contratsRevenu: {
@@ -497,6 +563,47 @@ const comptaApi = {
   echeancesReconnaissance: {
     ...resource('echeances-reconnaissance'),
     reconnaitre: (id) => api.post(`/compta/echeances-reconnaissance/${id}/reconnaitre/`),
+  },
+
+  // ── PACT36 / FG212 / FG221 — Comparateurs commerciaux (calcul pur, aucun
+  // stockage) ──
+  comparateurDevis: {
+    comparer: (a, b) => api.get('/compta/comparateur-devis/comparer/', { params: { a, b } }),
+  },
+  comparateurFinancement: {
+    comparer: (params) => api.get('/compta/comparateur-financement/comparer/', { params }),
+  },
+
+  // ── PACT37 / FG209 — Codes promotionnels datés sur devis ──
+  codesPromotion: resource('codes-promotion'),
+
+  // ── PACT38 / FG211 — Assistant de vente guidée (configurateur pas-à-pas) ──
+  sessionsGuidedSelling: {
+    ...resource('guided-selling'),
+    evaluer: (id) => api.post(`/compta/guided-selling/${id}/evaluer/`),
+  },
+
+  // ── PACT39 / FG214 / XPOS14 — Catalogue public à jeton ──
+  // Rendu public réel (JSON, prix TTC seulement — jamais prix_achat) servi par
+  // apps.ventes.public_views.ecatalogue_public, monté hors /compta/ à
+  // /api/django/public/ecatalogue/<token>/ (voir erp_agentique/urls.py).
+  ecatalogues: resource('ecatalogues'),
+
+  // ── PACT40 / FG215 — Bibliothèque d'annexes de proposition ──
+  documentsProposition: resource('documents-proposition'),
+
+  // ── PACT41 / FG220 — Échéanciers de paiement en tranches ──
+  echeanciersPaiement: resource('echeanciers-paiement'),
+  tranchesPaiement: {
+    ...resource('tranches-paiement'),
+    regler: (id, data) => api.post(`/compta/tranches-paiement/${id}/regler/`, data || {}),
+  },
+
+  // ── PACT42 / FG213 — Approbation des configurations non standard ──
+  approbationsConfig: {
+    ...resource('approbations-config'),
+    approuver: (id, data) => api.post(`/compta/approbations-config/${id}/approuver/`, data || {}),
+    refuser: (id, data) => api.post(`/compta/approbations-config/${id}/refuser/`, data || {}),
   },
 }
 

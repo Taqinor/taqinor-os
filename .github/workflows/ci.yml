@@ -638,6 +638,16 @@ jobs:
       MINIO_ROOT_PASSWORD: erp_minio_password
       MINIO_BUCKET_PDF: erp-pdf
       MINIO_BUCKET_UPLOADS: erp-uploads
+      # NTPLT42/PACT8 — throttle par tenant DÉSACTIVÉ ici, comme sous le test
+      # runner Django (base.py : « une suite qui boucle des centaines de
+      # requêtes pour la même société ne doit jamais échouer sur un 429
+      # parasite »). Ce gunicorn n'est PAS sous TESTING, donc sans cette env le
+      # budget 1200/min s'applique : la fumée PACT8 (~300 boots × ~15 appels
+      # API, une seule société démo) le dépasse, `/auth/me/` répond 429, le
+      # routeur croit la session expirée → /login → « page blanche » (mesuré le
+      # 2026-08-12 : compta/budgets, flotte/conformite, production/abonnements).
+      # Le throttle garde son test dédié : core/tests/test_tenant_throttle.py.
+      TENANT_RATE_LIMIT: '0'
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5

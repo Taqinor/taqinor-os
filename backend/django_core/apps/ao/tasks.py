@@ -150,9 +150,14 @@ def produire_pack_task(job_id=None, company_id=None, dossier_id=None,
 
     Volontairement FINE — elle ne fabrique rien, elle branche l'orchestrateur
     ci-dessus sur le job de suivi. Le montage des producteurs appartient au
-    service de dossier (il connaît les gabarits et les modèles) ; tant que ce
-    monteur n'existe pas, la tâche se termine PROPREMENT en le signalant
-    plutôt qu'en cassant sur un ImportError dans un worker.
+    service de dossier (il connaît les gabarits et les modèles) :
+    ``services.producteurs_de_pack``, écrit par PACT25.
+
+    PACT25 — ZÉRO PIÈCE EST UN ÉCHEC, PAS UNE RÉUSSITE. Cette enveloppe
+    marquait le job TERMINÉ quand le monteur manquait : l'écran affichait
+    alors « pack prêt » sur une archive VIDE. Un faux succès est pire qu'un
+    404 parce qu'il se dépose. Le job part désormais en ÉCHEC dès que le
+    monteur est introuvable OU que le dossier n'a produit aucune pièce.
     """
     from core.models import BackgroundJob
 
@@ -164,13 +169,21 @@ def produire_pack_task(job_id=None, company_id=None, dossier_id=None,
     if producteurs_de_pack is None:
         message = ('ao.produire_pack : aucun monteur de producteurs '
                    '(services.producteurs_de_pack) — rien à produire.')
-        logger.info(message)
+        logger.error(message)
         if job is not None:
-            job.marquer_termine()
+            job.marquer_echec(message)
         return {'total': 0, 'produites': 0, 'reprises': 0, 'echecs': [],
                 'complet': False, 'motif': message}
 
     pieces, empreinte, deja = producteurs_de_pack(dossier_id)
+    if not pieces:
+        message = ('ao.produire_pack : le dossier ne déclare AUCUNE pièce à '
+                   'générer — un pack vide ne peut pas se terminer vert.')
+        logger.error(message)
+        if job is not None:
+            job.marquer_echec(message)
+        return {'total': 0, 'produites': 0, 'reprises': 0, 'echecs': [],
+                'complet': False, 'motif': message}
 
     def _progression(faites, total, code):
         if job is not None and total:

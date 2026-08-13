@@ -55,6 +55,18 @@ export function matchesTimelineFilter(kind, filterKey) {
 
 const NOTE_ACCEPT = 'application/pdf,image/png,image/jpeg,image/webp'
 
+// PACT104 — vocabulaire STRICTEMENT réutilisé de `Lead.Canal` (aucun nouveau
+// jeu de valeurs inventé — même contrat que le serveur, `models.py:282`).
+const CANAL_OPTIONS = [
+  ['meta_ads', 'Publicité Meta'],
+  ['whatsapp_ctwa', 'WhatsApp/CTWA'],
+  ['site_web', 'Site web'],
+  ['reference', 'Référence'],
+  ['telephone', 'Téléphone'],
+  ['walk_in', 'Visite/Walk-in'],
+  ['autre', 'Autre'],
+]
+
 export default function TimelineTab({
   state, historique, refreshHistorique, composer, setComposer, resetComposer,
 }) {
@@ -94,6 +106,33 @@ export default function TimelineTab({
       .catch(() => {})
     return () => { cancelled = true }
   }, [leadId])
+
+  // PACT104 — la collection racine `/crm/points-contact/` (créer un point de
+  // contact) n'avait aucun appelant : la lecture agrégée ci-dessus était
+  // câblée, l'écriture manquait. Un point ajouté ici recharge IMMÉDIATEMENT
+  // le résumé multi-touch déjà affiché ci-dessus — jamais un second calcul
+  // d'attribution côté client.
+  const [pcOpen, setPcOpen] = useState(false)
+  const [pcForm, setPcForm] = useState({ canal: 'site_web', source: '', detail: '' })
+  const [pcSaving, setPcSaving] = useState(false)
+
+  const ajouterPointContact = useCallback((event) => {
+    event.preventDefault()
+    if (!leadId) return
+    setPcSaving(true)
+    crmApi.createPointContact({
+      lead: leadId, canal: pcForm.canal, source: pcForm.source, detail: pcForm.detail,
+    })
+      .then(() => crmApi.getLeadPointsContact(leadId))
+      .then((r) => {
+        setTouch(r.data)
+        setPcForm({ canal: 'site_web', source: '', detail: '' })
+        setPcOpen(false)
+      })
+      .catch((err) => toastError(errorMessageFrom(
+        err, "Le point de contact n'a pas pu être enregistré — réessayez.")))
+      .finally(() => setPcSaving(false))
+  }, [leadId, pcForm])
 
   // NTMKT11 — lien cliquable vers la campagne/séquence source d'une touche
   // marketing reconnue dans une note (voir `ChatterTimeline.parseMarketingTouch`).
@@ -197,6 +236,38 @@ export default function TimelineTab({
           <span>{touch.count} touche{touch.count > 1 ? 's' : ''}</span>
         </div>
       )}
+
+      <div className="lw-context-touch-add">
+        <Button type="button" variant="ghost" size="sm" onClick={() => setPcOpen((o) => !o)}>
+          {pcOpen ? 'Annuler' : 'Ajouter un point de contact'}
+        </Button>
+        {pcOpen && (
+          <form onSubmit={ajouterPointContact} className="lw-context-touch-form">
+            <select
+              value={pcForm.canal}
+              onChange={(e) => setPcForm({ ...pcForm, canal: e.target.value })}
+              aria-label="Canal du point de contact"
+            >
+              {CANAL_OPTIONS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+            </select>
+            <input
+              placeholder="Source (ex. campagne Meta)"
+              value={pcForm.source}
+              onChange={(e) => setPcForm({ ...pcForm, source: e.target.value })}
+              aria-label="Source du point de contact"
+            />
+            <input
+              placeholder="Détail"
+              value={pcForm.detail}
+              onChange={(e) => setPcForm({ ...pcForm, detail: e.target.value })}
+              aria-label="Détail du point de contact"
+            />
+            <Button type="submit" disabled={pcSaving}>
+              {pcSaving ? 'Enregistrement…' : 'Enregistrer'}
+            </Button>
+          </form>
+        )}
+      </div>
 
       <div className="lw-context-filter" role="group" aria-label="Filtrer l'historique">
         {TIMELINE_FILTERS.map((f) => (

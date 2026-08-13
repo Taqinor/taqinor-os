@@ -5,6 +5,7 @@ from .models import (
     ChampSignature, Coffre, DemandeApprobation, DemandeDisposition,
     DemandeDocument, DemandeSignatureDocument, DepotPublic,
     Document, DocumentLien, DocumentTag, DocumentTagAssignment, DocumentVersion,
+    ExecutionRegleDossier,
     ExigenceDossier, FavoriGed, Folder, JournalAcces, LegalHold, LotEnvoi,
     ModeleDocument,
     PartageGed, PlanificationDocument, PolitiqueRetention,
@@ -1062,6 +1063,24 @@ class RegleDossierSerializer(serializers.ModelSerializer):
             'actif', 'ordre', 'created_by', 'created_at', 'updated_at',
         ]
         read_only_fields = ['created_by', 'created_at', 'updated_at']
+
+
+class ExecutionRegleDossierSerializer(serializers.ModelSerializer):
+    """PACT132 — Journal d'exécution d'une `RegleDossier` (lecture seule).
+
+    Exposé par l'action `RegleDossierViewSet.executions` — jamais de CRUD
+    direct (les lignes sont posées côté serveur par
+    `services.appliquer_regles_dossier`)."""
+    document_nom = serializers.CharField(
+        source='document.nom', read_only=True, default=None)
+
+    class Meta:
+        model = ExecutionRegleDossier
+        fields = [
+            'id', 'regle', 'document', 'document_nom', 'declenchee',
+            'resultats', 'created_at',
+        ]
+        read_only_fields = fields
 
 
 class RegleApprobationGedSerializer(serializers.ModelSerializer):

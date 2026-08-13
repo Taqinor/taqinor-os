@@ -181,6 +181,48 @@ const crmApi = {
   createSiteProfile: (data) => api.post('/crm/site-profiles/', data),
   updateSiteProfile: (id, data) =>
     api.patch(`/crm/site-profiles/${id}/`, data),
+
+  // PACT102 — Partenaires (FG234/237) : le portail externe montre déjà un
+  // résumé en LECTURE au partenaire ; l'équipe interne n'avait aucun écran
+  // pour agréer un partenaire, qualifier ses soumissions ou régler ses
+  // commissions. `token_acces` posé côté serveur.
+  getPartenaires: (params) => api.get('/crm/partenaires/', { params }),
+  createPartenaire: (data) => api.post('/crm/partenaires/', data),
+  activerPartenaire: (id) => api.post(`/crm/partenaires/${id}/activer/`),
+
+  getSoumissionsLeadPartenaire: (params) =>
+    api.get('/crm/soumissions-lead-partenaire/', { params }),
+  // `leadId` optionnel : le serveur ne fait avancer soumis → qualifié que si
+  // la soumission est encore à l'état `soumis` (idempotent côté serveur).
+  qualifierSoumissionLeadPartenaire: (id, leadId) =>
+    api.post(`/crm/soumissions-lead-partenaire/${id}/qualifier/`,
+      leadId ? { lead_id: leadId } : {}),
+
+  getCommissionsPartenaire: (params) =>
+    api.get('/crm/commissions-partenaire/', { params }),
+  createCommissionPartenaire: (data) =>
+    api.post('/crm/commissions-partenaire/', data),
+  // Pas de `url_path` déclaré côté serveur sur cette `@action` : le chemin
+  // reprend le nom de la méthode Python TEL QUEL (souligné, jamais un tiret
+  // — cf. le piège du « Grand-livre » comptable, PACT18).
+  marquerPayeeCommissionPartenaire: (id) =>
+    api.post(`/crm/commissions-partenaire/${id}/marquer_payee/`),
+  getReleveCommissionsPartenaire: () =>
+    api.get('/crm/commissions-partenaire/releve/'),
+
+  // PACT103 — Concurrents sur affaires perdues (FG242) : `?lead=<id>` filtre.
+  // Lecture tout rôle, écriture responsable/admin (serveur) ; `company` et
+  // `saisi_par` posés côté serveur.
+  getConcurrentsPerte: (params) => api.get('/crm/concurrents-perte/', { params }),
+  createConcurrentPerte: (data) => api.post('/crm/concurrents-perte/', data),
+
+  // PACT104 — Points de contact (FG204) : la lecture agrégée (`getLead
+  // PointsContact`, ci-dessus) est déjà câblée ; la collection racine
+  // (créer manuellement un point de contact) n'avait aucun appelant.
+  // `data` : { lead, canal, source?, date_contact?, detail?, cout? } —
+  // `ordre` auto-incrémenté et `date_contact` par défaut (maintenant) posés
+  // côté serveur si absents.
+  createPointContact: (data) => api.post('/crm/points-contact/', data),
 }
 
 export default crmApi

@@ -4,7 +4,10 @@
    fast-refresh ne s'y applique pas (même dérogation que `moduleRoutes.jsx`). */
 import { lazy } from 'react'
 import { Link } from 'react-router-dom'
-import { Trophy, LayoutDashboard, Briefcase, Building2, LayoutGrid, FolderKanban, BookOpen, Wallet, Gavel } from 'lucide-react'
+import {
+  Trophy, LayoutDashboard, Briefcase, Building2, LayoutGrid, FolderKanban, BookOpen, Wallet,
+  FileCheck2,
+} from 'lucide-react'
 import { appGlyph } from '../../lib/apps/appGlyph'
 import { Button, EmptyState } from '../../ui'
 
@@ -35,8 +38,9 @@ import { Button, EmptyState } from '../../ui'
      * écran réel CONTEXTUEL, atteint depuis une affaire — la destination de
        premier niveau (Calepinages, Dossiers) explique le chemin et y renvoie
        (`RouteViaAffaire`) plutôt que de charger un objet sans identifiant ;
-     * écran INEXISTANT — Rentabilité (vérifié : aucun fichier), qui garde un
-       squelette disant honnêtement qu'il n'est pas encore construit.
+     * écran INEXISTANT à l'époque — Rentabilité, qui gardait un squelette
+       disant honnêtement qu'il n'était pas encore construit. PACT75
+       (2026-08-07) l'a remplacé par `EconomieDirecteur`, réel.
    Ce fichier a UN SEUL propriétaire dans tout le Groupe AOF (AOF7), donc c'est
    ICI que les destinations de nav sont fixées une fois pour toutes.
 
@@ -64,23 +68,20 @@ const DossierPage = lazy(() => import('./dossier/DossierPage'))
 // écran rend la lecture réelle des toitures et, sous 768 px, le mode MOBILE
 // (refus explicites AVEC leur raison + capture photo → repère conservée).
 const ToituresPage = lazy(() => import('./toiture/ToituresPage'))
+// PACT73 — bibliothèque des pièces administratives (AOF137), scopée société :
+// une pièce (attestation fiscale, CNSS, RC…) s'enregistre une fois et se
+// rattache à plusieurs affaires. Écran de premier niveau, comme Bibliothèque.
+const PiecesAdministratives = lazy(() => import('./PiecesAdministratives'))
+// PACT75 — économie DIRECTEUR (coût de revient, cibles de marge). Remplace le
+// squelette honnête « pas encore construit » des DEUX routes de rentabilité :
+// `aoRentabiliteApi` (export SÉPARÉ) était câblé au bon endpoint sans écran.
+const EconomieDirecteur = lazy(() => import('./economie/EconomieDirecteur'))
 
-// Squelette pour une destination dont l'écran n'existe PAS ENCORE sur le
-// disque. Il dit la vérité à l'utilisateur — « pas encore construit », et non
-// un message qui laisserait croire à une panne — sans vocabulaire interne
-// (« lane », « Groupe AOF ») qui ne veut rien dire pour qui utilise le
-// produit. Zéro logique, zéro appel réseau. `lazy(() => Promise.resolve(...))`
-// évite tout import vers un fichier qui n'existe pas.
-function RouteSquelette({ titre }) {
-  return (
-    <EmptyState
-      icon={Gavel}
-      title={titre}
-      description="Cet écran n’est pas encore construit — rien n’est en panne. Il apparaîtra ici dès sa mise en service ; les données existantes ne sont pas affectées."
-    />
-  )
-}
-const squelette = (titre) => lazy(() => Promise.resolve({ default: () => <RouteSquelette titre={titre} /> }))
+// PACT75 — `RouteSquelette`/`squelette()` ont PERDU leur dernier appelant
+// (Rentabilité montait le squelette honnête « pas encore construit » sur ses
+// deux routes ; les deux montent désormais `EconomieDirecteur`). Retirés —
+// pas de fonction morte qui se croit vivante (même principe que la garde
+// `check_ecrans_atteignables.py`).
 
 /* Destination dont l'écran EXISTE, mais qui est CONTEXTUELLE : elle a besoin
    de l'identifiant d'un objet (un dossier, un calepinage) et n'a donc de sens
@@ -127,6 +128,12 @@ const config = {
       { to: '/ao/calepinages', label: 'Calepinages', icon: <LayoutGrid size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
       { to: '/ao/dossiers', label: 'Dossiers', icon: <FolderKanban size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
       { to: '/ao/bibliotheque', label: 'Bibliothèque', icon: <BookOpen size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
+      {
+        to: '/ao/pieces-administratives',
+        label: 'Pièces administratives',
+        icon: <FileCheck2 size={17} strokeWidth={1.75} aria-hidden="true" />,
+        roles: ROLES,
+      },
       // L'ÉCONOMIE EST RÉSERVÉE AU DIRECTEUR (en-tête du Groupe AOF) — absente
       // de la nav pour quiconque n'a pas `ao_rentabilite_voir` (jamais un rôle
       // Responsable/Commercial/Technicien).
@@ -146,6 +153,7 @@ const config = {
     ['/ao/dossiers/', "Appels d'offres — Dossier de soumission"],
     ['/ao/dossiers', "Appels d'offres — Dossiers"],
     ['/ao/bibliotheque', "Appels d'offres — Bibliothèque"],
+    ['/ao/pieces-administratives', "Appels d'offres — Pièces administratives"],
     ['/ao/rentabilite', "Appels d'offres — Rentabilité"],
     ['/ao', "Appels d'offres — Tableau de bord"],
   ],
@@ -191,17 +199,17 @@ const config = {
     // Écran réel, deep-link (il lit `:id` via `useParams`).
     { path: '/ao/dossiers/:id', component: DossierPage, roles: ROLES },
     { path: '/ao/bibliotheque', component: BibliothequePage, roles: ROLES },
-    // RENTABILITÉ — VÉRIFIÉ 2026-08-03 : AUCUN écran de rentabilité n'existe
-    // sur le disque (`rentabilite/RentabiliteRoute.jsx` et tout équivalent sont
-    // absents ; seul `aoRentabiliteApi` est prêt côté client). Le squelette est
-    // donc ICI la réponse HONNÊTE et il RESTE — son texte dit « pas encore
-    // construit » au lieu de laisser croire à une panne.
-    { path: '/ao/rentabilite', component: squelette('Rentabilité'), roles: ROLES_RENTABILITE, perm: PERM_RENTABILITE },
+    { path: '/ao/pieces-administratives', component: PiecesAdministratives, roles: ROLES },
+    // RENTABILITÉ — PACT75 : `EconomieDirecteur` remplace le squelette. Le
+    // client `aoRentabiliteApi` était câblé au bon endpoint (AOF161) sans
+    // écran ; les DEUX routes gardent EXACTEMENT le même rôle/permission
+    // élevés qu'avant — c'est la garde qui protège la marge, jamais retouchée
+    // ici.
+    { path: '/ao/rentabilite', component: EconomieDirecteur, roles: ROLES_RENTABILITE, perm: PERM_RENTABILITE },
     // AOF161 — fiche rentabilité PAR AFFAIRE, deep-link (jamais d'item de nav :
-    // contextuel à une affaire). Même constat, même squelette honnête. La
-    // permission élevée `ao_rentabilite_voir` + le seul rôle admin restent
-    // portés par les DEUX routes, y compris pendant qu'elles sont vides.
-    { path: '/ao/:id/rentabilite', component: squelette('Rentabilité'), roles: ROLES_RENTABILITE, perm: PERM_RENTABILITE },
+    // contextuel à une affaire, l'id de l'URL est celui de L'AFFAIRE — voir
+    // `EconomieDirecteur`, qui résout l'économie via `aoRentabiliteApi.parAffaire`).
+    { path: '/ao/:id/rentabilite', component: EconomieDirecteur, roles: ROLES_RENTABILITE, perm: PERM_RENTABILITE },
   ],
 }
 

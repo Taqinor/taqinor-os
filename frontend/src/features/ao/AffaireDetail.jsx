@@ -61,7 +61,11 @@ import { StatutAffaire } from './statusAo'
    d'appoint du même fichier. */
 const ToituresPage = lazy(() => import('./toiture/ToituresPage'))
 const CalepinageStudio = lazy(() => import('./calepinage/CalepinageStudio'))
-const BordereauPage = lazy(() => import('./bordereau/BordereauPage'))
+// PACT69 — `BordereauAffairePanel` remplace le montage direct de
+// `BordereauPage` : c'est lui qui appelle désormais `aoApi.bordereaux`
+// (publié par cette même tâche) et mappe le contrat réel du serveur vers les
+// props que `BordereauPage` attend. `BordereauPage.jsx` reste inchangé.
+const BordereauAffairePanel = lazy(() => import('./bordereau/BordereauAffairePanel'))
 const DossierPage = lazy(() => import('./dossier/DossierPage'))
 const SeriesPage = lazy(() => import('./questions/SeriesPage')
   .then((m) => ({ default: m.SeriesPage })))
@@ -93,22 +97,25 @@ const ExigencesPage = lazy(() => import('./cps/ExigencesPage'))
    contrat que `VariantesCompare` déclare lui-même, jamais une image cassée. */
 const VariantesCompare = lazy(() => import('./variantes/VariantesCompare'))
 
+/* ── QUATRIÈME VAGUE — l'onglet « Suivi administratif » (12ᵉ), PACT70 ──────
+   `SuiviAdministratifAO` (racine `features/ao/`, pas `administratif/` : le
+   dossier existant est un panneau de LECTURE sur des champs embarqués de
+   l'affaire, jamais retouché ici) est le premier écran qui ÉCRIT sur les
+   ressources `cautions-soumission`/`echeances-ao`/`resultats-ao` — celles-là
+   mêmes que le tableau de bord agrège sans qu'aucun écran ne permette d'en
+   créer une seule. */
+const SuiviAdministratifAO = lazy(() => import('./SuiviAdministratifAO'))
+
+/* ── CINQUIÈME VAGUE — l'onglet « Pièces du DCE » (13ᵉ), PACT74 ────────────
+   `PiecesConsultation` : le DCE (CPS, règlement, plans reçus de l'acheteur)
+   n'était stocké nulle part, si bien qu'un additif reçu après téléchargement
+   ne marquait rien « à revérifier » et que l'écran « CPS & exigences »
+   référence une pièce (« la page du CPS ») qui n'existait jamais. */
+const PiecesConsultation = lazy(() => import('./PiecesConsultation'))
+
 const errMsg = (e, fallback) => e?.response?.data?.detail || fallback
 
 const VERDICT_TONE = { confirme: 'success', tendu: 'warning' }
-
-/* Le bordereau des prix EXISTE côté serveur (`bordereaux-prix`, AOF120), mais
-   `api/aoApi.js` ne publie AUCUNE ressource bordereau — et ce client a un seul
-   propriétaire (lane `frontend/ao-socle`), retouché nulle part ailleurs. On
-   monte donc le VRAI `BordereauPage` avec son motif d'indisponibilité plutôt
-   que d'inventer ici un chemin réseau : un `axios` direct dans `features/ao/`
-   est interdit (ARC44), et une URL devinée produirait le 404 anonyme que
-   `endpointNonConstruit` a précisément été écrit pour supprimer. Le jour où
-   `aoApi.bordereaux` existe, ce panneau se branche en trois lignes. */
-const MOTIF_BORDEREAU = "Le client API du module (api/aoApi.js) ne publie pas encore de "
-  + "ressource bordereau : la route serveur « bordereaux-prix » existe, mais aucun appel "
-  + "n'est déclaré côté front. Rien n'est deviné ici — le panneau reste vide tant que la "
-  + 'ressource n’est pas publiée.'
 
 function VerdictBandeau({ affaire }) {
   const verdictTone = VERDICT_TONE[affaire.verdict_global] ?? 'neutral'
@@ -452,7 +459,7 @@ export default function AffaireDetail() {
           label: 'Bordereau',
           content: (
             <PanneauDiffere>
-              <BordereauPage bordereau={null} error={MOTIF_BORDEREAU} />
+              <BordereauAffairePanel affaireId={id} />
             </PanneauDiffere>
           ),
         },
@@ -531,6 +538,26 @@ export default function AffaireDetail() {
           content: (
             <PanneauDiffere>
               <VariantesCompare affaireId={id} />
+            </PanneauDiffere>
+          ),
+        },
+        /* ── 12ᵉ onglet, APRÈS les 11 ci-dessus (PACT70) ─────────────────── */
+        {
+          value: 'suivi_administratif',
+          label: 'Suivi administratif',
+          content: (
+            <PanneauDiffere>
+              <SuiviAdministratifAO affaireId={id} />
+            </PanneauDiffere>
+          ),
+        },
+        /* ── 13ᵉ onglet, APRÈS les 12 ci-dessus (PACT74) ─────────────────── */
+        {
+          value: 'pieces_consultation',
+          label: 'Pièces du DCE',
+          content: (
+            <PanneauDiffere>
+              <PiecesConsultation affaireId={id} />
             </PanneauDiffere>
           ),
         },

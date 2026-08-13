@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 8494, operations: 15469, components: 4389}
+counts: {paths: 8504, operations: 15479, components: 4393}
 securitySchemes:
 - cookieJWT
 - publicApiKey
@@ -576,7 +576,10 @@ operations:
 - get /api/django/ao/dossiers-ao/{id}/controle-administratif/ -> django_ao_dossiers_ao_controle_administratif_retrieve
 - post /api/django/ao/dossiers-ao/{id}/controler/ -> django_ao_dossiers_ao_controler_create
 - get /api/django/ao/dossiers-ao/{id}/controles-avant-depot/ -> django_ao_dossiers_ao_controles_avant_depot_retrieve
+- post /api/django/ao/dossiers-ao/{id}/generer-piece/ -> django_ao_dossiers_ao_generer_piece_create
 - post /api/django/ao/dossiers-ao/{id}/initialiser-checklist/ -> django_ao_dossiers_ao_initialiser_checklist_create
+- get /api/django/ao/dossiers-ao/{id}/statut-de-job/ -> django_ao_dossiers_ao_statut_de_job_retrieve
+- get /api/django/ao/dossiers-ao/{id}/zip/ -> django_ao_dossiers_ao_zip_retrieve
 - get /api/django/ao/dossiers-soumission/ -> django_ao_dossiers_soumission_list
 - post /api/django/ao/dossiers-soumission/ -> django_ao_dossiers_soumission_create
 - delete /api/django/ao/dossiers-soumission/{id}/ -> django_ao_dossiers_soumission_destroy
@@ -3592,6 +3595,7 @@ operations:
 - get /api/django/ged/regles-dossier/{id}/ -> django_ged_regles_dossier_retrieve
 - patch /api/django/ged/regles-dossier/{id}/ -> django_ged_regles_dossier_partial_update
 - put /api/django/ged/regles-dossier/{id}/ -> django_ged_regles_dossier_update
+- get /api/django/ged/regles-dossier/{id}/executions/ -> django_ged_regles_dossier_executions_retrieve
 - get /api/django/ged/roles-signataire/ -> django_ged_roles_signataire_list
 - post /api/django/ged/roles-signataire/ -> django_ged_roles_signataire_create
 - delete /api/django/ged/roles-signataire/{id}/ -> django_ged_roles_signataire_destroy
@@ -7533,6 +7537,7 @@ operations:
 - put /api/django/ventes/devis-lignes/{id}/ -> django_ventes_devis_lignes_update
 - get /api/django/ventes/devis/ -> django_ventes_devis_list
 - post /api/django/ventes/devis/ -> django_ventes_devis_create
+- get /api/django/ventes/devis/action-requise/ -> django_ventes_devis_action_requise_retrieve
 - post /api/django/ventes/devis/atomic/ -> django_ventes_devis_atomic_create
 - post /api/django/ventes/devis/auto/ -> django_ventes_devis_auto_create
 - post /api/django/ventes/devis/from-layout/ -> django_ventes_devis_from_layout_create
@@ -8342,7 +8347,10 @@ operations:
 - get /api/v1/ao/dossiers-ao/{id}/controle-administratif/ -> v1_ao_dossiers_ao_controle_administratif_retrieve
 - post /api/v1/ao/dossiers-ao/{id}/controler/ -> v1_ao_dossiers_ao_controler_create
 - get /api/v1/ao/dossiers-ao/{id}/controles-avant-depot/ -> v1_ao_dossiers_ao_controles_avant_depot_retrieve
+- post /api/v1/ao/dossiers-ao/{id}/generer-piece/ -> v1_ao_dossiers_ao_generer_piece_create
 - post /api/v1/ao/dossiers-ao/{id}/initialiser-checklist/ -> v1_ao_dossiers_ao_initialiser_checklist_create
+- get /api/v1/ao/dossiers-ao/{id}/statut-de-job/ -> v1_ao_dossiers_ao_statut_de_job_retrieve
+- get /api/v1/ao/dossiers-ao/{id}/zip/ -> v1_ao_dossiers_ao_zip_retrieve
 - get /api/v1/ao/dossiers-soumission/ -> v1_ao_dossiers_soumission_list
 - post /api/v1/ao/dossiers-soumission/ -> v1_ao_dossiers_soumission_create
 - delete /api/v1/ao/dossiers-soumission/{id}/ -> v1_ao_dossiers_soumission_destroy
@@ -11358,6 +11366,7 @@ operations:
 - get /api/v1/ged/regles-dossier/{id}/ -> v1_ged_regles_dossier_retrieve
 - patch /api/v1/ged/regles-dossier/{id}/ -> v1_ged_regles_dossier_partial_update
 - put /api/v1/ged/regles-dossier/{id}/ -> v1_ged_regles_dossier_update
+- get /api/v1/ged/regles-dossier/{id}/executions/ -> v1_ged_regles_dossier_executions_retrieve
 - get /api/v1/ged/roles-signataire/ -> v1_ged_roles_signataire_list
 - post /api/v1/ged/roles-signataire/ -> v1_ged_roles_signataire_create
 - delete /api/v1/ged/roles-signataire/{id}/ -> v1_ged_roles_signataire_destroy
@@ -15259,6 +15268,7 @@ operations:
 - put /api/v1/ventes/devis-lignes/{id}/ -> v1_ventes_devis_lignes_update
 - get /api/v1/ventes/devis/ -> v1_ventes_devis_list
 - post /api/v1/ventes/devis/ -> v1_ventes_devis_create
+- get /api/v1/ventes/devis/action-requise/ -> v1_ventes_devis_action_requise_retrieve
 - post /api/v1/ventes/devis/atomic/ -> v1_ventes_devis_atomic_create
 - post /api/v1/ventes/devis/auto/ -> v1_ventes_devis_auto_create
 - post /api/v1/ventes/devis/from-layout/ -> v1_ventes_devis_from_layout_create
@@ -16257,6 +16267,10 @@ components:
 - DeviceKiosque
 - DeviceKiosqueRequest
 - Devis
+- DevisActionBuckets
+- DevisActionLigne
+- DevisActionPanier
+- DevisActionRequise
 - DevisPreset
 - DevisRequest
 - DevisWrite
