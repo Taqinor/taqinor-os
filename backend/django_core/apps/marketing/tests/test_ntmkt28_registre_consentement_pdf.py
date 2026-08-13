@@ -9,6 +9,7 @@ from unittest.mock import patch
 from django.test import TestCase, tag
 from django.contrib.auth import get_user_model
 from django.utils import timezone
+from rest_framework_simplejwt.tokens import AccessToken
 
 from authentication.models import Company
 
@@ -77,10 +78,13 @@ class RegistreConsentementPdfEndpointTests(TestCase):
         self.assertIn(res.status_code, (401, 403))
 
     def test_endpoint_renvoie_un_pdf(self):
-        self.client.force_login(self.user)
+        # JWT (cookie ou Bearer, CookieJWTAuthentication) — pas de session
+        # Django, donc ``force_login`` n'authentifie pas ces endpoints DRF.
+        auth = {'HTTP_AUTHORIZATION': f'Bearer {AccessToken.for_user(self.user)}'}
         with patch('apps.marketing.services.registre_consentement_pdf',
                    return_value=b'%PDF-1.4 stub'):
             res = self.client.get(
-                '/api/django/marketing/registre-consentement/export-pdf/')
+                '/api/django/marketing/registre-consentement/export-pdf/',
+                **auth)
         self.assertEqual(res.status_code, 200)
         self.assertEqual(res['Content-Type'], 'application/pdf')

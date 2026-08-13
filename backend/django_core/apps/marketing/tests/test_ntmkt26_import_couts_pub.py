@@ -4,6 +4,8 @@ Aucun appel API externe : un CSV exporté à la main est réconcilié par nom de
 campagne avec ``Campagne.cout_reel_mad``. Un rapport matché/non-matché est
 toujours renvoyé, jamais une exception sur une ligne malformée.
 """
+from decimal import Decimal
+
 from django.test import TestCase
 
 from authentication.models import Company
@@ -30,8 +32,12 @@ class ImporterCoutsPublicitairesTests(TestCase):
         self.assertEqual(len(rapport['unmatched']), 0)
         self.c1.refresh_from_db()
         self.c2.refresh_from_db()
-        self.assertEqual(str(self.c1.cout_reel_mad), '1500.50')
-        self.assertEqual(str(self.c2.cout_reel_mad), '320')
+        # ``cout_reel_mad`` est un DecimalField(decimal_places=2) : la valeur
+        # persistée est TOUJOURS quantifiée à 2 décimales (ex. '320.00' en
+        # base) — on compare donc en Decimal (égalité numérique), jamais en
+        # str, qui dépendrait de cet artefact de stockage.
+        self.assertEqual(self.c1.cout_reel_mad, Decimal('1500.50'))
+        self.assertEqual(self.c2.cout_reel_mad, Decimal('320'))
 
     def test_campagne_inconnue_est_rapportee_non_matchee(self):
         csv = self._csv(['Campagne Fantome,100'])

@@ -1005,6 +1005,11 @@ class FormulaireIntake(models.Model):
     actif = models.BooleanField(default=True, verbose_name='Actif')
     date_creation = models.DateTimeField(
         auto_now_add=True, verbose_name='Créé le')
+    # NTMKT16 — compteur PERSISTANT du plus haut numéro de version ATTRIBUÉ
+    # (jamais un count()/Max() sur les versions restantes : celui-ci
+    # régresserait après la suppression de la version la plus récente).
+    dernier_numero_version = models.PositiveIntegerField(
+        default=0, verbose_name='Dernier numéro de version attribué')
 
     class Meta:
         db_table = 'compta_formulaireintake'

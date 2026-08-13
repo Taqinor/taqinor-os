@@ -219,23 +219,44 @@ def derniere_version_publiee(formulaire):
 def creer_version_formulaire(formulaire, data=None):
     """NTMKT16 — crée une nouvelle version BROUILLON du contenu de page.
 
-    Le numéro de version est calculé côté serveur (plus haut utilisé + 1 —
-    jamais un count(), qui régresse à la suppression) et n'est jamais accepté
-    du corps de la requête ; la société vient du formulaire.
+    Le numéro de version vient d'un compteur PERSISTANT côté serveur
+    (``FormulaireIntake.dernier_numero_version`` — plus haut numéro
+    ATTRIBUÉ + 1, jamais un count()/Max() sur les versions restantes, qui
+    régresserait après la suppression de la version la plus récente) et
+    n'est jamais accepté du corps de la requête ; la société vient du
+    formulaire.
     """
+    from django.db import transaction
     from django.db.models import Max
-    from .models import VersionFormulaireIntake
+
+    from .models import FormulaireIntake, VersionFormulaireIntake
     data = data or {}
-    plus_haute = (formulaire.versions.aggregate(m=Max('version'))['m'] or 0)
-    return VersionFormulaireIntake.objects.create(
-        company=formulaire.company,
-        formulaire=formulaire,
-        version=plus_haute + 1,
-        titre=data.get('titre') or '',
-        pitch=data.get('pitch') or '',
-        image_key=data.get('image_key') or '',
-        publie=False,
-    )
+    with transaction.atomic():
+        # select_for_update : deux créations concurrentes sur le même
+        # formulaire ne doivent jamais recevoir le même numéro.
+        verrouille = (FormulaireIntake.objects
+                      .select_for_update()
+                      .get(pk=formulaire.pk))
+        # Backfill défensif : une ligne créée avant NTMKT16 (ou dont le
+        # compteur n'a jamais rattrapé des versions déjà existantes) part du
+        # plus haut numéro déjà présent, jamais en dessous.
+        plus_haute_existante = (
+            verrouille.versions.aggregate(m=Max('version'))['m'] or 0)
+        depart = max(verrouille.dernier_numero_version, plus_haute_existante)
+        nouveau_numero = depart + 1
+        FormulaireIntake.objects.filter(pk=formulaire.pk).update(
+            dernier_numero_version=nouveau_numero)
+        formulaire.dernier_numero_version = nouveau_numero
+        version = VersionFormulaireIntake.objects.create(
+            company=formulaire.company,
+            formulaire=formulaire,
+            version=nouveau_numero,
+            titre=data.get('titre') or '',
+            pitch=data.get('pitch') or '',
+            image_key=data.get('image_key') or '',
+            publie=False,
+        )
+    return version
 
 
 def publier_version_formulaire(version):

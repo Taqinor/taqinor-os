@@ -6,6 +6,7 @@ garde le comportement actuel (plafond désactivé = jamais bloquant).
 from django.test import TestCase
 from django.contrib.auth import get_user_model
 from django.utils import timezone
+from rest_framework_simplejwt.tokens import AccessToken
 
 from authentication.models import Company
 
@@ -65,12 +66,14 @@ class ParametresMarketingEndpointTests(TestCase):
         self.assertIn(res.status_code, (401, 403))
 
     def test_get_puis_maj(self):
-        self.client.force_login(self.user)
-        res = self.client.get('/api/django/marketing/parametres/')
+        # JWT (cookie ou Bearer, CookieJWTAuthentication) — pas de session
+        # Django, donc ``force_login`` n'authentifie pas ces endpoints DRF.
+        auth = {'HTTP_AUTHORIZATION': f'Bearer {AccessToken.for_user(self.user)}'}
+        res = self.client.get('/api/django/marketing/parametres/', **auth)
         self.assertEqual(res.status_code, 200)
         res = self.client.patch(
             '/api/django/marketing/parametres/',
             data={'plafond_envois_jour': 100},
-            content_type='application/json')
+            content_type='application/json', **auth)
         self.assertEqual(res.status_code, 200)
         self.assertEqual(res.json()['plafond_envois_jour'], 100)

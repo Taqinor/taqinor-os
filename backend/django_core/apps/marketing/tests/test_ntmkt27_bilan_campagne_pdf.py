@@ -8,6 +8,7 @@ from unittest.mock import patch
 
 from django.test import TestCase, tag
 from django.contrib.auth import get_user_model
+from rest_framework_simplejwt.tokens import AccessToken
 
 from authentication.models import Company
 
@@ -54,26 +55,30 @@ class RapportCampagnePdfEndpointTests(TestCase):
             company=self.co)
         self.campagne = Campagne.objects.create(company=self.co, nom='C')
 
+    def _auth(self):
+        # Les endpoints DRF s'authentifient par JWT (cookie ou Bearer,
+        # CookieJWTAuthentication) — jamais par session Django, donc
+        # ``force_login`` ne suffit pas ici (cf. testkit.base.TenantAPITestCase).
+        return {'HTTP_AUTHORIZATION': f'Bearer {AccessToken.for_user(self.user)}'}
+
     def test_endpoint_exige_une_authentification(self):
         res = self.client.get(
             f'/api/django/marketing/campagnes/{self.campagne.id}/rapport-pdf/')
         self.assertIn(res.status_code, (401, 403))
 
     def test_endpoint_renvoie_un_pdf(self):
-        self.client.force_login(self.user)
         with patch('apps.marketing.services.rapport_campagne_pdf',
                    return_value=b'%PDF-1.4 stub'):
             res = self.client.get(
                 f'/api/django/marketing/campagnes/{self.campagne.id}'
-                '/rapport-pdf/')
+                '/rapport-pdf/', **self._auth())
         self.assertEqual(res.status_code, 200)
         self.assertEqual(res['Content-Type'], 'application/pdf')
 
     def test_scoping_societe_404_sur_campagne_etrangere(self):
         autre = Company.objects.create(slug='ntmkt27c', nom='Autre')
         campagne_autre = Campagne.objects.create(company=autre, nom='C2')
-        self.client.force_login(self.user)
         res = self.client.get(
             f'/api/django/marketing/campagnes/{campagne_autre.id}'
-            '/rapport-pdf/')
+            '/rapport-pdf/', **self._auth())
         self.assertEqual(res.status_code, 404)
