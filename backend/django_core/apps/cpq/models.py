@@ -509,6 +509,54 @@ class ReponseConfigurateur(models.Model):
         return f'{self.session_id}/{self.question_id}={self.valeur}'
 
 
+class ProduitEquivalent(TenantModel):
+    """NTCPQ16 — Règle de substitution produit par tier (moteur de variantes).
+
+    ``produit_source`` peut être remplacé par ``produit_substitut`` dans la
+    variante du tier donné (économique / standard / premium). Générique
+    multi-métiers — distinct du couple solaire Sans-batterie/Avec-batterie déjà
+    en production, qui reste un cas spécifique.
+
+    ARC1 — hérite de ``core.models.TenantModel``; ``company`` redéclaré à
+    l'identique (related_name explicite)."""
+    class Tier(models.TextChoices):
+        ECONOMIQUE = 'economique', 'Économique'
+        STANDARD = 'standard', 'Standard'
+        PREMIUM = 'premium', 'Premium'
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: purge tenant
+        related_name='cpq_produits_equivalents')
+    produit_source = models.ForeignKey(
+        'stock.Produit', on_delete=models.CASCADE,  # on_delete: règle sans objet si produit supprimé
+        related_name='cpq_equivalents_source')
+    produit_substitut = models.ForeignKey(
+        'stock.Produit', on_delete=models.CASCADE,  # on_delete: règle sans objet si substitut supprimé
+        related_name='cpq_equivalents_substitut')
+    tier = models.CharField(
+        max_length=20, choices=Tier.choices, default=Tier.STANDARD)
+    actif = models.BooleanField(default=True)
+
+    class Meta:
+        verbose_name = 'Produit équivalent'
+        verbose_name_plural = 'Produits équivalents'
+        ordering = ['produit_source_id', 'tier', 'id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'produit_source', 'produit_substitut',
+                        'tier'],
+                name='cpq_equiv_unique_co_src_sub_tier'),
+        ]
+        indexes = [
+            models.Index(fields=['company', 'produit_source', 'tier'],
+                         name='cpq_equiv_co_src_tier'),
+        ]
+
+    def __str__(self):
+        return (f'{self.produit_source_id} → {self.produit_substitut_id} '
+                f'({self.tier})')
+
+
 class ClauseCGV(TenantModel):
     """NTCPQ11 — Clause / CGV dynamique appliquée selon le type de deal.
 

@@ -8,7 +8,7 @@ from .views import (
     ConfigurateurRepondreView, ConfigurateurResultatView,
     ConfigurateurGenererDevisView, ValiderCompatibiliteView,
     SeuilMargeFamilleViewSet, RegleApprobationRemiseViewSet,
-    ClauseCGVViewSet,
+    ClauseCGVViewSet, ProduitEquivalentViewSet, DevisVariantesView,
 )
 
 router = DefaultRouter()
@@ -23,10 +23,15 @@ router.register(r'seuils-marge', SeuilMargeFamilleViewSet)
 router.register(r'regles-approbation-remise', RegleApprobationRemiseViewSet)
 # NTCPQ12 — bibliothèque de clauses/CGV (écran Paramètres).
 router.register(r'clauses-cgv', ClauseCGVViewSet)
+# NTCPQ16 — règles de substitution produit (moteur de variantes).
+router.register(r'produits-equivalents', ProduitEquivalentViewSet)
 
 urlpatterns = [
     path('valider-compatibilite/', ValiderCompatibiliteView.as_view(),
          name='cpq-valider-compatibilite'),
+    # NTCPQ16 — moteur de génération des variantes d'un devis.
+    path('devis/<int:pk>/variantes/', DevisVariantesView.as_view(),
+         name='cpq-devis-variantes'),
     path('configurateur/demarrer/', ConfigurateurDemarrerView.as_view(),
          name='cpq-configurateur-demarrer'),
     path('configurateur/<uuid:token>/repondre/',

@@ -102,6 +102,101 @@ def _profondeur_remise(devis):
     return Decimal(str(getattr(devis, 'remise_globale', 0) or 0))
 
 
+def generer_variantes_devis(devis, *, user=None, tiers=None):
+    """NTCPQ16 — Génère les variantes d'un devis par SUBSTITUTION de produits.
+
+    Pour chaque tier (``économique`` / ``standard`` / ``premium`` par défaut),
+    crée un devis BROUILLON complet lié par ``variante_de`` : chaque ligne
+    produit est remplacée par le ``ProduitEquivalent`` configuré pour ce tier
+    (au prix courant résolu par ``ventes.services.prix_applicable``), les
+    autres lignes étant reprises à l'identique. Un tier sans substitution
+    reproduit la configuration de base — jamais d'erreur.
+
+    Idempotent : les variantes BROUILLON précédemment générées pour ce devis
+    sont remplacées (jamais un empilement de doublons). Ne change AUCUN statut
+    et ne génère aucun PDF (règle #4). Renvoie la liste des devis créés."""
+    from rest_framework.exceptions import ValidationError
+    from apps.ventes.models import Devis, LigneDevis
+    from apps.ventes.services import prix_applicable
+    from apps.ventes.utils.company_settings import create_numbered
+    from .models import ProduitEquivalent
+
+    if devis.variante_de_id is not None:
+        raise ValidationError({'detail': (
+            "Ce devis est déjà une variante — générez les variantes depuis le "
+            "devis de base.")})
+
+    tiers = list(tiers or [t.value for t in ProduitEquivalent.Tier])
+    inconnus = [t for t in tiers if t not in ProduitEquivalent.Tier.values]
+    if inconnus:
+        raise ValidationError({'tiers': f'Tier inconnu : {inconnus[0]}.'})
+
+    company = devis.company
+    # Remplace les variantes brouillon existantes (jamais de doublon empilé).
+    Devis.objects.filter(
+        company=company, variante_de=devis,
+        statut=Devis.Statut.BROUILLON).delete()
+
+    substitutions = {}
+    for eq in ProduitEquivalent.objects.filter(
+            company=company, actif=True).select_related('produit_substitut'):
+        substitutions.setdefault(eq.tier, {}).setdefault(
+            eq.produit_source_id, eq.produit_substitut)
+
+    lignes_source = list(devis.lignes.all().select_related('produit'))
+    crees = []
+    for tier in tiers:
+        par_produit = substitutions.get(tier, {})
+        cree = {}
+
+        def _save(ref, _tier=tier):
+            cree['obj'] = Devis.objects.create(
+                company=company, reference=ref, client=devis.client,
+                lead=devis.lead, statut=Devis.Statut.BROUILLON,
+                taux_tva=devis.taux_tva, remise_globale=devis.remise_globale,
+                note=devis.note, mode_installation=devis.mode_installation,
+                etude_params=devis.etude_params,
+                prix_cible_kwc=devis.prix_cible_kwc, devise=devis.devise,
+                taux_change=devis.taux_change, entite=devis.entite,
+                created_by=user, variante_de=devis, variante_tier=_tier)
+            return cree['obj']
+
+        create_numbered(Devis, company, 'devis', _save)
+        variante = cree['obj']
+        for ligne in lignes_source:
+            produit = ligne.produit
+            designation = ligne.designation
+            prix = ligne.prix_unitaire
+            substitut = par_produit.get(ligne.produit_id)
+            if substitut is not None:
+                produit = substitut
+                designation = substitut.nom
+                try:
+                    prix = prix_applicable(
+                        produit=substitut, client=devis.client,
+                        quantite=ligne.quantite)['prix']
+                except Exception:  # noqa: BLE001 — repli prix catalogue
+                    prix = substitut.prix_vente
+            LigneDevis.objects.create(
+                devis=variante, produit=produit, designation=designation,
+                quantite=ligne.quantite, prix_unitaire=prix,
+                remise=ligne.remise, taux_tva=ligne.taux_tva,
+                type_ligne=ligne.type_ligne, ordre=ligne.ordre,
+                groupe_index=ligne.groupe_index,
+                groupe_label=ligne.groupe_label,
+                optionnelle=ligne.optionnelle)
+        crees.append(variante)
+
+    if crees:
+        from apps.ventes import activity
+        activity.log_devis_note(
+            devis, user,
+            'Variantes générées : '
+            + ', '.join(f'{v.variante_tier} ({v.reference})' for v in crees)
+            + '.')
+    return crees
+
+
 def taux_remise_global(devis):
     """NTCPQ14 — Taux de remise GLOBAL réel du devis (%).
 

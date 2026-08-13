@@ -11,7 +11,7 @@ from .models import (
     OptionProduit, ContrainteCompatibilite, RegleProduitCPQ,
     OffreGroupee, LigneOffreGroupee, PrixContractuel,
     QuestionConfigurateur, SeuilMargeFamille, RegleApprobationRemise,
-    ClauseCGV,
+    ClauseCGV, ProduitEquivalent,
 )
 
 
@@ -155,6 +155,35 @@ class RegleApprobationRemiseSerializer(serializers.ModelSerializer):
                 'remise_max_pct':
                     'La borne max doit être ≥ la borne min.'})
         return attrs
+
+
+class ProduitEquivalentSerializer(serializers.ModelSerializer):
+    """NTCPQ16 — Règle de substitution produit par tier. ``company`` posée côté
+    serveur ; les deux produits sont validés même-société."""
+    produit_source_nom = serializers.CharField(
+        source='produit_source.nom', read_only=True, default=None)
+    produit_substitut_nom = serializers.CharField(
+        source='produit_substitut.nom', read_only=True, default=None)
+
+    class Meta:
+        model = ProduitEquivalent
+        fields = ['id', 'produit_source', 'produit_source_nom',
+                  'produit_substitut', 'produit_substitut_nom', 'tier',
+                  'actif']
+
+    def _meme_societe(self, produit):
+        request = self.context.get('request')
+        if request is not None and produit is not None \
+                and produit.company_id != request.user.company_id:
+            raise serializers.ValidationError(
+                "Ce produit n'appartient pas à votre société.")
+        return produit
+
+    def validate_produit_source(self, produit):
+        return self._meme_societe(produit)
+
+    def validate_produit_substitut(self, produit):
+        return self._meme_societe(produit)
 
 
 class ClauseCGVSerializer(serializers.ModelSerializer):

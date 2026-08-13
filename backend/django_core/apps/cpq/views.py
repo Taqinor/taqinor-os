@@ -16,14 +16,14 @@ from .models import (
     OptionProduit, ContrainteCompatibilite, RegleProduitCPQ, OffreGroupee,
     PrixContractuel, QuestionConfigurateur, SessionConfigurateur,
     ReponseConfigurateur, SeuilMargeFamille, RegleApprobationRemise,
-    ClauseCGV,
+    ClauseCGV, ProduitEquivalent,
 )
 from .serializers import (
     OptionProduitSerializer, ContrainteCompatibiliteSerializer,
     RegleProduitCPQSerializer, OffreGroupeeSerializer,
     PrixContractuelSerializer, QuestionConfigurateurSerializer,
     SeuilMargeFamilleSerializer, RegleApprobationRemiseSerializer,
-    ClauseCGVSerializer,
+    ClauseCGVSerializer, ProduitEquivalentSerializer,
 )
 from . import selectors, services
 
@@ -204,6 +204,67 @@ class ClauseCGVViewSet(CompanyScopedModelViewSet):
             'condition_lisible':
                 ClauseCGVSerializer(clause).data['condition_lisible'],
         })
+
+
+class ProduitEquivalentViewSet(CompanyScopedModelViewSet):
+    """NTCPQ16 — Règles de substitution produit par tier (moteur de variantes).
+    Lecture tout rôle, écriture réservée Directeur / Commercial responsable."""
+    queryset = ProduitEquivalent.objects.select_related(
+        'produit_source', 'produit_substitut').all()
+    serializer_class = ProduitEquivalentSerializer
+
+    def get_permissions(self):
+        if self.action in ('list', 'retrieve'):
+            return [IsAnyRole()]
+        return [IsResponsableOrAdmin()]
+
+
+class DevisVariantesView(APIView):
+    """NTCPQ16 — ``cpq/devis/{id}/variantes/``.
+
+    GET : liste les variantes déjà générées (tier + totaux HT).
+    POST : (re)génère les variantes du devis par substitution de produits
+    (corps optionnel ``{tiers: [...]}``). Moteur SEUL — la comparaison
+    côte-à-côte est l'affaire de l'UI (FG212). Aucun PDF, aucun changement de
+    statut."""
+
+    def get_permissions(self):
+        if self.request.method in ('GET', 'HEAD', 'OPTIONS'):
+            return [IsAnyRole()]
+        return [IsResponsableOrAdmin()]
+
+    def _devis(self, request, pk):
+        from apps.ventes.models import Devis
+        return Devis.objects.filter(
+            pk=pk, company=request.user.company).first()
+
+    @staticmethod
+    def _payload(variantes):
+        return [{
+            'devis_id': v.id,
+            'reference': v.reference,
+            'tier': v.variante_tier,
+            'statut': v.statut,
+            'total_ht': str(v.total_ht),
+        } for v in variantes]
+
+    def get(self, request, pk):
+        devis = self._devis(request, pk)
+        if devis is None:
+            return Response({'detail': 'Devis introuvable.'},
+                            status=status.HTTP_404_NOT_FOUND)
+        return Response(self._payload(
+            devis.variantes_cpq.all().order_by('variante_tier', 'id')))
+
+    def post(self, request, pk):
+        devis = self._devis(request, pk)
+        if devis is None:
+            return Response({'detail': 'Devis introuvable.'},
+                            status=status.HTTP_404_NOT_FOUND)
+        variantes = services.generer_variantes_devis(
+            devis, user=request.user, tiers=request.data.get('tiers'))
+        return Response(self._payload(variantes),
+                        status=status.HTTP_201_CREATED)
 
 
 class ConfigurateurDemarrerView(APIView):

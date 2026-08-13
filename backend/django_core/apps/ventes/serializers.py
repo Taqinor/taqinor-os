@@ -465,6 +465,8 @@ class DevisSerializer(serializers.ModelSerializer):
                             # (services), jamais acceptés du corps.
                             'clauses_appliquees', 'devis_origine',
                             'numero_renouvellement',
+                            # NTCPQ16 — lien de variante posé par le moteur.
+                            'variante_de', 'variante_tier',
                             'updated_at', 'updated_by']  # VX98 — server-side only
 
 
@@ -501,7 +503,8 @@ class DevisWriteSerializer(serializers.ModelSerializer):
                             'prix_par_kwc',
                             # NTCPQ11/13 — posés côté serveur uniquement.
                             'clauses_appliquees', 'devis_origine',
-                            'numero_renouvellement']
+                            'numero_renouvellement',
+                            'variante_de', 'variante_tier']
         extra_kwargs = {'client': {'required': False}}
 
 

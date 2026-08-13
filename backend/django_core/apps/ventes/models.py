@@ -229,6 +229,27 @@ class Devis(models.Model):
         related_name='devis_modifies',
     )
 
+    # ── NTCPQ16 — Variante générée par substitution de produits ──
+    # Une variante « économique / standard / premium » est un devis BROUILLON
+    # complet lié à son devis de base par ``variante_de`` (le tier est mémorisé
+    # dans ``variante_tier``). DISTINCT des variantes de TAILLE (QJ15, qui
+    # utilise ``version_parent``) et du couple solaire Sans-batterie/Avec-
+    # batterie. NULL = devis normal (comportement historique inchangé).
+    variante_de = models.ForeignKey(
+        'self',
+        # on_delete: supprimer le devis de base ne détruit pas les variantes
+        # déjà présentées ; elles redeviennent autonomes.
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='variantes_cpq',
+        verbose_name='Variante de (devis de base)',
+    )
+    variante_tier = models.CharField(
+        max_length=20, blank=True, default='',
+        verbose_name='Tier de la variante',
+        help_text='economique / standard / premium. Vide = devis normal.',
+    )
+
     # ── NTCPQ13 — Renouvellement d'un devis déjà accepté/clos ──
     # DISTINCT de la révision (T10 : ``version``/``version_parent``, qui corrige
     # un devis NON encore accepté). ``devis_origine`` pointe vers la RACINE de
