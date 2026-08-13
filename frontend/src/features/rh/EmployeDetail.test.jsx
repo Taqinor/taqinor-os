@@ -34,6 +34,14 @@ vi.mock('../../api/rhApi', () => {
       getHistoriqueEmploye: vi.fn(empty),
       getRemunerations: vi.fn(empty),
       getCompaRatio: vi.fn(() => Promise.resolve({ data: null })),
+      // XRH15 — écarts de compétences (analyse d'écart requis-vs-actuel).
+      getEcartCompetences: vi.fn(empty),
+      creerBesoinDepuisEcart: vi.fn(() => Promise.resolve({ data: {} })),
+      // XRH29 — ayants droit & avantages sociaux.
+      getAyantsDroit: vi.fn(empty),
+      getAvantagesSociaux: vi.fn(empty),
+      // ZRH15 — timeline de parcours du dossier.
+      getLignesParcours: vi.fn(empty),
       getDepartements: vi.fn(empty),
       sortirEmploye: vi.fn(() => Promise.resolve({ data: {} })),
       updateEmploye: vi.fn(),
@@ -157,5 +165,71 @@ describe('EmployeDetail — offboarding (YHIRE2/ZRH12)', () => {
     await waitFor(() => expect(rhApi.sortirEmploye).toHaveBeenCalledWith(
       7, expect.objectContaining({ motif: 'rupture_essai' }),
     ))
+  })
+  it('liste les écarts de compétences et crée le besoin de formation (XRH15)', async () => {
+    rhApi.getEmploye.mockResolvedValueOnce({
+      data: { id: 7, nom: 'Bennani', prenom: 'Youssef', matricule: 'M007', statut: 'actif' },
+    })
+    rhApi.getEcartCompetences.mockResolvedValueOnce({
+      data: [{
+        competence_id: 4, competence_libelle: 'Installation PV',
+        niveau_requis: 3, niveau_actuel: 1, ecart: 2,
+      }],
+    })
+    const { default: userEvent } = await import('@testing-library/user-event')
+    renderDetail()
+    await screen.findByRole('heading', { name: 'Bennani Youssef' })
+
+    await userEvent.click(screen.getByRole('tab', { name: /Formations/ }))
+    expect(await screen.findByText('Installation PV')).toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Créer un besoin de formation' }))
+    await waitFor(() => expect(rhApi.creerBesoinDepuisEcart).toHaveBeenCalledWith(
+      '7', { competence: 4 },
+    ))
+  })
+  it('affiche les ayants droit et les avantages sociaux (XRH29)', async () => {
+    const { default: userEvent } = await import('@testing-library/user-event')
+    rhApi.getEmploye.mockResolvedValueOnce({
+      data: { id: 7, nom: 'Bennani', prenom: 'Youssef', matricule: 'M007', statut: 'actif' },
+    })
+    rhApi.getAyantsDroit.mockResolvedValueOnce({
+      data: [{ id: 1, nom: 'Bennani Salma', lien: 'conjoint', lien_display: 'Conjoint(e)', couvert_amo: true }],
+    })
+    rhApi.getAvantagesSociaux.mockResolvedValueOnce({
+      data: [{ id: 2, type: 'mutuelle', type_display: 'Mutuelle', organisme: 'CNIA', date_adhesion: '2025-01-01' }],
+    })
+    renderDetail()
+    await screen.findByRole('heading', { name: 'Bennani Youssef' })
+
+    await waitFor(() => expect(rhApi.getAyantsDroit).toHaveBeenCalledWith({ employe: '7' }))
+    await userEvent.click(screen.getByRole('tab', { name: /Ayants droit & avantages/ }))
+    expect(await screen.findByText('Bennani Salma')).toBeInTheDocument()
+    expect(screen.getByText('Mutuelle')).toBeInTheDocument()
+  })
+
+  it('affiche le parcours et la localisation hebdomadaire (ZRH15/ZRH16)', async () => {
+    const { default: userEvent } = await import('@testing-library/user-event')
+    rhApi.getEmploye.mockResolvedValueOnce({
+      data: {
+        id: 7, nom: 'Bennani', prenom: 'Youssef', matricule: 'M007', statut: 'actif',
+        localisation_hebdo: { lundi: 'domicile', mardi: 'terrain' },
+      },
+    })
+    rhApi.getLignesParcours.mockResolvedValueOnce({
+      data: [{
+        id: 4, employe: 7, type: 2, type_libelle: 'Expérience',
+        intitule: 'Chef de chantier', organisme: 'SunRak', date_debut: '2023-01-01',
+      }],
+    })
+    renderDetail()
+    await screen.findByRole('heading', { name: 'Bennani Youssef' })
+
+    await userEvent.click(screen.getByRole('tab', { name: /Parcours & localisation/ }))
+    expect(await screen.findByText('Chef de chantier')).toBeInTheDocument()
+    // Jours sans clé => défaut serveur « bureau ».
+    expect(screen.getByText('Domicile')).toBeInTheDocument()
+    expect(screen.getByText('Terrain')).toBeInTheDocument()
+    expect(screen.getAllByText('Bureau').length).toBe(5)
   })
 })

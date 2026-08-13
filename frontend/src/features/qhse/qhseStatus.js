@@ -75,10 +75,15 @@ export const INCIDENT_STATUTS = {
   clos: { label: 'Clos', tone: 'success' },
 }
 
+// source-choix: qhse.Incident.type_incident
 export const INCIDENT_TYPES = {
   accident: { label: 'Accident', tone: 'danger' },
   presqu_accident: { label: 'Presqu’accident', tone: 'warning' },
   incident: { label: 'Incident', tone: 'info' },
+  // XQHS19 — le type existait côté modèle depuis la livraison des champs
+  // environnement, mais pas dans cette liste : les champs substance/quantité/
+  // milieu étaient donc INATTEIGNABLES depuis l'écran.
+  environnement: { label: 'Environnement', tone: 'info' },
 }
 
 // Gravité partagée (NCR + incidents).

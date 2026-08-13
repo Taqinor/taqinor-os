@@ -287,6 +287,7 @@ export const REGIME_8221_LABELS = {
 
 // Statut du dossier réglementaire loi 82-21 (miroir de
 // Installation.DossierStatut côté backend) — sert au filtre Parc N41.
+// source-choix: installations.Installation.dossier_statut
 export const DOSSIER_STATUT_LABELS = {
   non_concerne: 'Non concerné',
   a_deposer: 'À déposer',

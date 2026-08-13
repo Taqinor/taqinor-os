@@ -6,6 +6,7 @@ from .views_statuses import StatutConfigViewSet
 from .views_email import EmailTemplateViewSet
 from .views_approvals import ApprovalPolicyViewSet
 from .views_translations import TranslationOverrideViewSet
+from .views_gabarits import GabaritDocumentCustomViewSet
 from .views_referentiels import (
     ConditionPaiementViewSet,
     TauxTVAViewSet,
@@ -44,6 +45,11 @@ referentiels_router.register(r'conditions-paiement', ConditionPaiementViewSet,
 referentiels_router.register(r'unites-mesure', UniteMesureViewSet,
                              basename='unite-mesure')
 
+# NTEXT19 — gabarits de document custom : lecture + rendu PDF. Routeur isolé.
+gabarits_router = DefaultRouter()
+gabarits_router.register(r'gabarits-document', GabaritDocumentCustomViewSet,
+                         basename='gabarit-document')
+
 urlpatterns = [
     path('', views.get_profile),
     path('update/', views.update_profile),
@@ -81,4 +87,6 @@ urlpatterns = [
     # WIR66 — référentiels société : taux de TVA, conditions de paiement,
     # unités de mesure (lecture tout rôle, écriture admin/responsable).
     path('', include(referentiels_router.urls)),
+    # NTEXT19 — gabarits de document custom (lecture + rendu PDF par cible).
+    path('', include(gabarits_router.urls)),
 ]

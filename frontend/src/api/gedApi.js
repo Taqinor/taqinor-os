@@ -284,6 +284,35 @@ const gedApi = {
   // Versions d'un document (pour choisir la version à prévisualiser).
   getVersions: (params) => api.get('/ged/versions/', { params }),
 
+  // XGED24 — Caviardage (rédaction) définitif de zones d'un PDF, sur une
+  // COPIE publiée (l'original n'est JAMAIS modifié). `zones` : liste de
+  // { page (0-based), x0, y0, x1, y1 } en POURCENTAGE (0-100) de la page —
+  // même convention que les annotations (XGED16). Renvoie le nouveau
+  // document créé (`custom_data.caviarde_depuis` trace l'original).
+  caviarderDocument: (documentId, { zones, version } = {}) =>
+    api.post(`/ged/documents/${documentId}/caviarder/`, {
+      zones: zones ?? [], ...(version ? { version } : {}),
+    }),
+
+  // XGED10 — Scission : `pointsDeCoupe` = numéros de PAGE 1-based où
+  // commence chaque nouveau segment (ex. [1,3] sur 6 pages → [1-2],[3-6]).
+  // Renvoie la liste des documents créés (l'original n'est jamais modifié).
+  scinderDocument: (documentId, { pointsDeCoupe, version } = {}) =>
+    api.post(`/ged/documents/${documentId}/scinder/`, {
+      points_de_coupe: pointsDeCoupe ?? [], ...(version ? { version } : {}),
+    }),
+  // XGED10 — Fusion de plusieurs PDF (ordonnés). Sans `cible` : nouveau
+  // document dans le dossier du 1er source. Avec `cible` : nouvelle version
+  // du document existant.
+  fusionnerDocuments: ({ documents, cible, nom } = {}) =>
+    api.post('/ged/documents/fusionner/', {
+      documents: documents ?? [], ...(cible ? { cible } : {}), ...(nom ? { nom } : {}),
+    }),
+  // XGED17 — Diff de métadonnées (+ texte si OCR/plein-texte dispo) entre
+  // deux versions d'un même document.
+  comparerVersions: (documentId, v1, v2) =>
+    api.get(`/ged/documents/${documentId}/comparer/`, { params: { v1, v2 } }),
+
   // ══════════════════════════════════════════════════════════════════════
   // GED26 — Corbeille (soft-delete réversible + purge définitive).
   // ══════════════════════════════════════════════════════════════════════
@@ -340,8 +369,12 @@ const gedApi = {
   // même patron que `messagesApi.listCompanyMembers` — pour peupler le
   // sélecteur « utilisateur » du formulaire d'octroi ACL.
   getUsers: () => api.get('/users/'),
-  // Vues enregistrées (filtres sauvegardés) partagées de la société.
+  // ZGED8 — Vues enregistrées (recherches/filtres sauvegardés, partageables).
+  // Lecture : ses vues privées + les vues partagées de la société.
   getVues: (params) => api.get('/ged/vues/', { params }),
+  // `data` : { nom, criteres:{query?,tagId?,semantic?}, partagee? }.
+  createVue: (data) => api.post('/ged/vues/', data),
+  deleteVue: (id) => api.delete(`/ged/vues/${id}/`),
   // Lien de dépôt public tokenisé (la page publique PublicDepotPage fonctionne).
   getDepotsPublics: (params) => api.get('/ged/depots-publics/', { params }),
   createDepotPublic: (data) => api.post('/ged/depots-publics/', data),

@@ -1842,3 +1842,34 @@ def _brouillon_relance_engagement(devis, declencheurs):
         corps = (f'votre proposition{suffixe} vous attend toujours — '
                  'souhaitez-vous que je vous la présente ?')
     return f'{salutation}, {corps}'
+
+
+# ── NTEXT6 — source de liste whitelistée pour les boucles d'automatisation ──
+
+def lignes_devis_pour_automatisation(devis_id, company, *, limite=200):
+    """Lignes d'un devis, en LECTURE SEULE, pour une boucle d'automatisation.
+
+    Thin selector cross-app (``apps.automation`` n'importe JAMAIS
+    ``ventes.models``) : renvoie une liste de dicts bornée à ``limite``, scopée
+    société, n'exposant AUCUN prix d'achat ni marge — uniquement ce qu'une
+    sous-action a besoin de connaître d'une ligne. Les décimales sont rendues
+    en CHAÎNES : le contexte d'une boucle peut être gelé en JSON (NTEXT7).
+    Liste vide si le devis n'existe pas ou appartient à une autre société.
+    """
+    from .models import Devis
+
+    devis = (Devis.objects.filter(pk=devis_id, company=company)
+             .prefetch_related('lignes').first())
+    if devis is None:
+        return []
+    lignes = []
+    for ligne in list(devis.lignes.all())[:max(0, int(limite))]:
+        lignes.append({
+            'id': ligne.pk,
+            'designation': ligne.designation,
+            'quantite': ('' if ligne.quantite is None
+                         else str(ligne.quantite)),
+            'produit_id': ligne.produit_id,
+            'total_ht': str(ligne.total_ht),
+        })
+    return lignes

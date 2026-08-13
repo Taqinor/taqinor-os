@@ -22,6 +22,7 @@ import { SectionTitle } from './peComponents'
 
 // Types d'installation qui peuvent auto-sélectionner un modèle (miroir des
 // choix serveur Installation.TypeInstallation). « __none__ » = repli « Défaut ».
+// source-choix: installations.Installation.type_installation +__none__
 const TYPE_CHOICES = [
   ['__none__', 'Aucun (modèle « Défaut »)'],
   ['residentiel', 'Résidentiel'],

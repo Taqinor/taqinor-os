@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useTabParam } from '../components/useTabParam'
-import { Plus, Pencil, RefreshCw, BookOpen, Send } from 'lucide-react'
+import { Plus, Pencil, RefreshCw, BookOpen, Send, Landmark } from 'lucide-react'
 import { ListShell } from '../../../ui/module'
 import {
   Button, Segmented, Card, EmptyState, toast,
@@ -331,12 +331,29 @@ export default function TresoreriePage() {
   const list = useComptaList(
     isPosition ? comptaApi.exercices.list : RESOURCE[tab].list, undefined)
 
+  // FG125 — poste l'écriture équilibrée du virement interne au grand livre.
+  const posterVirement = async (row) => {
+    try {
+      await comptaApi.virements.poster(row.id)
+      toast.success('Virement posté.')
+      list.reload()
+    } catch (err) {
+      const d = err?.response?.data
+      toast.error(typeof d === 'string' ? d : (d?.detail || 'Postage impossible.'))
+    }
+  }
+
   const rowActions = (row) => {
     const acts = [{ id: 'edit', label: 'Éditer', icon: Pencil, onClick: () => setDialog({ row }) }]
     if (tab === 'caisses') {
       acts.unshift({
         id: 'journal', label: 'Journal & clôture', icon: BookOpen,
         onClick: () => setCaisseJournal(row),
+      })
+    }
+    if (tab === 'virements' && !row.posted) {
+      acts.unshift({
+        id: 'poster', label: 'Poster', icon: Landmark, onClick: () => posterVirement(row),
       })
     }
     return acts

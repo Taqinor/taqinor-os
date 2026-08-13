@@ -223,6 +223,7 @@ function buildRelanceWaUrl(waData, reference) {
 
 // XSAL16 — libellés FR des sections suivies sur la proposition web (miroir de
 // `_ENGAGEMENT_SECTIONS` côté serveur, apps/ventes/public_views.py).
+// source-choix: ventes.public_views._ENGAGEMENT_SECTIONS
 const ENGAGEMENT_LABELS = {
   hero: 'accueil', prix: 'prix', etude: 'étude', garanties: 'garanties', signature: 'signature',
 }

@@ -4,11 +4,13 @@
 // taxonomie (GED9). La logique pure (params, normalisation, filtrage client)
 // vit dans `search.js` (testée). Affiche les résultats dans une table FR.
 import { useEffect, useMemo, useState } from 'react'
-import { Search, FileText, Tag as TagIcon, Loader2, Inbox, X } from 'lucide-react'
+import {
+  Search, FileText, Tag as TagIcon, Loader2, Inbox, X, Star, Clock, BookmarkPlus, Trash2,
+} from 'lucide-react'
 import gedApi from '../../api/gedApi'
 import { formatDate } from '../../lib/format'
 import {
-  Card, CardContent, Button, EmptyState, Badge, Input,
+  Card, CardContent, Button, EmptyState, Badge, Input, Checkbox, toast,
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
 } from '../../ui'
 import { DataTable } from '../../ui/datatable'
@@ -53,7 +55,7 @@ const GED_SEARCH_COLUMNS = [
   },
 ]
 
-export default function GedSearch() {
+export default function GedSearch({ onOpenDocument } = {}) {
   const [query, setQuery] = useState('')
   const [semantic, setSemantic] = useState(false)
   const [tagId, setTagId] = useState('')
@@ -64,12 +66,33 @@ export default function GedSearch() {
   const [error, setError] = useState(null)
   const [searched, setSearched] = useState(false)
 
-  // Charge la taxonomie de tags (filtre par tag).
+  // ZGED7/13 — favoris & récents PERSONNELS (jamais ceux d'un collègue).
+  const [favoris, setFavoris] = useState(null)
+  const [recents, setRecents] = useState(null)
+  // ZGED8 — vues enregistrées (recherches/filtres sauvegardés, partageables).
+  const [vues, setVues] = useState([])
+  const [saveVueOpen, setSaveVueOpen] = useState(false)
+  const [vueNom, setVueNom] = useState('')
+  const [vuePartagee, setVuePartagee] = useState(false)
+  const [savingVue, setSavingVue] = useState(false)
+
+  const loadVues = () => {
+    gedApi.getVues().then((r) => setVues(rows(r))).catch(() => setVues([]))
+  }
+
+  // Charge la taxonomie de tags (filtre par tag) + favoris/récents/vues.
   useEffect(() => {
     let alive = true
     gedApi.getTags()
       .then((r) => { if (alive) setTags(rows(r)) })
       .catch(() => { if (alive) setTags([]) })
+    gedApi.getMesFavoris()
+      .then((r) => { if (alive) setFavoris(r.data) })
+      .catch(() => { if (alive) setFavoris({ dossiers: [], documents: [] }) })
+    gedApi.getMesRecents({ limit: 5 })
+      .then((r) => { if (alive) setRecents(r.data) })
+      .catch(() => { if (alive) setRecents({ consultes: [], deposes: [] }) })
+    if (alive) loadVues()
     return () => { alive = false }
   }, [])
 
@@ -107,6 +130,49 @@ export default function GedSearch() {
   const reset = () => {
     setQuery(''); setTagId(''); setSemantic(false)
     setResults([]); setSearched(false); setMode(null); setError(null)
+  }
+
+  // ZGED8 — applique les critères d'une vue enregistrée puis relance la recherche.
+  const applyVue = (vue) => {
+    const c = vue.criteres || {}
+    setQuery(c.query || '')
+    setTagId(c.tagId || '')
+    setSemantic(!!c.semantic)
+    // Laisse React commiter l'état avant de relancer (runSearch lit les
+    // valeurs courantes des états, pas celles en cours de mise à jour).
+    setTimeout(() => runSearch(), 0)
+  }
+
+  const saveVue = async (e) => {
+    e.preventDefault()
+    if (!vueNom.trim() || savingVue) return
+    setSavingVue(true)
+    try {
+      await gedApi.createVue({
+        nom: vueNom.trim(),
+        criteres: { query, tagId: tagId || null, semantic },
+        partagee: vuePartagee,
+      })
+      toast.success('Vue enregistrée.')
+      setSaveVueOpen(false)
+      setVueNom('')
+      setVuePartagee(false)
+      loadVues()
+    } catch {
+      toast.error('Enregistrement impossible.')
+    } finally {
+      setSavingVue(false)
+    }
+  }
+
+  const removeVue = async (id) => {
+    try {
+      await gedApi.deleteVue(id)
+      toast.success('Vue supprimée.')
+      loadVues()
+    } catch {
+      toast.error('Suppression impossible (vue d’un autre utilisateur ?).')
+    }
   }
 
   return (
@@ -151,12 +217,100 @@ export default function GedSearch() {
           <Button type="submit" disabled={!active || loading}>
             <Search className="size-4" aria-hidden="true" /> Rechercher
           </Button>
+          {/* ZGED8 — enregistre la recherche/le filtre courant en vue réutilisable. */}
+          {active && (
+            <Button type="button" variant="outline" onClick={() => setSaveVueOpen((v) => !v)}>
+              <BookmarkPlus className="size-4" aria-hidden="true" /> Enregistrer
+            </Button>
+          )}
           {searched && (
             <Button type="button" variant="ghost" onClick={reset}>
               <X className="size-4" aria-hidden="true" /> Effacer
             </Button>
           )}
         </form>
+
+        {saveVueOpen && (
+          <form onSubmit={saveVue} className="mt-2 flex flex-wrap items-end gap-2 rounded-md border border-border p-2">
+            <div className="min-w-[180px] flex-1">
+              <label className="mb-1 block text-xs text-muted-foreground" htmlFor="ged-vue-nom">
+                Nom de la vue
+              </label>
+              <Input id="ged-vue-nom" value={vueNom} onChange={(e) => setVueNom(e.target.value)}
+                placeholder="Ex. Factures impayées" autoFocus />
+            </div>
+            <label className="flex items-center gap-1.5 pb-2 text-sm">
+              <Checkbox checked={vuePartagee} onCheckedChange={setVuePartagee} />
+              Partagée (toute la société)
+            </label>
+            <Button type="submit" disabled={!vueNom.trim() || savingVue}>
+              {savingVue && <Loader2 className="size-4 animate-spin" aria-hidden="true" />} Enregistrer
+            </Button>
+            <Button type="button" variant="ghost" onClick={() => setSaveVueOpen(false)}>Annuler</Button>
+          </form>
+        )}
+
+        {/* ZGED7/8/13 — favoris, récents et vues enregistrées (personnels/partagés). */}
+        {(favoris?.documents?.length > 0 || recents?.consultes?.length > 0 || vues.length > 0) && (
+          <div className="mt-3 grid gap-3 sm:grid-cols-3" data-testid="ged-favoris-recents-vues">
+            {favoris?.documents?.length > 0 && (
+              <div>
+                <p className="mb-1 flex items-center gap-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                  <Star className="size-3.5" aria-hidden="true" /> Favoris
+                </p>
+                <ul className="flex flex-col gap-1">
+                  {favoris.documents.map((d) => (
+                    <li key={d.id}>
+                      <button type="button" className="text-left text-sm hover:underline"
+                        onClick={() => onOpenDocument?.(d)}>
+                        {d.nom}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            {recents?.consultes?.length > 0 && (
+              <div>
+                <p className="mb-1 flex items-center gap-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                  <Clock className="size-3.5" aria-hidden="true" /> Récemment consultés
+                </p>
+                <ul className="flex flex-col gap-1">
+                  {recents.consultes.map((d) => (
+                    <li key={d.id}>
+                      <button type="button" className="text-left text-sm hover:underline"
+                        onClick={() => onOpenDocument?.(d)}>
+                        {d.nom}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            {vues.length > 0 && (
+              <div>
+                <p className="mb-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                  Vues enregistrées
+                </p>
+                <ul className="flex flex-col gap-1">
+                  {vues.map((v) => (
+                    <li key={v.id} className="flex items-center gap-1.5">
+                      <button type="button" className="text-left text-sm hover:underline"
+                        onClick={() => applyVue(v)}>
+                        {v.nom}
+                      </button>
+                      {v.partagee && <Badge tone="info">partagée</Badge>}
+                      <Button size="sm" variant="ghost" aria-label={`Supprimer la vue ${v.nom}`}
+                        onClick={() => removeVue(v.id)}>
+                        <Trash2 className="size-3.5" aria-hidden="true" />
+                      </Button>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </div>
+        )}
 
         {error ? (
           <p className="mt-3 text-sm text-destructive">{error}</p>

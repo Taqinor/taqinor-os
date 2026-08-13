@@ -116,6 +116,39 @@ class AutomationRuleViewSet(TenantMixin, viewsets.ModelViewSet):
             new='activée' if rule.enabled else 'désactivée')
         return Response(self.get_serializer(rule).data)
 
+    @action(detail=True, methods=['post'], permission_classes=[IsAdminRole])
+    def simuler(self, request, pk=None):
+        """NTEXT31 — dry-run : ce que la règle FERAIT, sans aucun effet.
+
+        Corps : ``{'target_model': 'crm.lead', 'target_id': 12}`` (+
+        ``context`` optionnel). Rien n'est écrit ni envoyé : chaque action (ou
+        étape) renvoie l'effet qu'elle produirait. Seule trace : une ligne
+        ``AutomationRun`` de statut ``simulation``.
+        """
+        from .engine import _resolve_target
+        from .simulation import simuler_regle
+
+        rule = self.get_object()
+        company = request.user.company
+        target_model = (request.data.get('target_model') or '').strip()
+        target_id = request.data.get('target_id')
+        if not target_model or not target_id:
+            return Response(
+                {'detail': '« target_model » et « target_id » sont requis.'},
+                status=400)
+        instance = _resolve_target(target_model, target_id, company)
+        if instance is None:
+            return Response(
+                {'detail': f'Aucun enregistrement « {target_model} » '
+                           f'd\'identifiant {target_id} dans cette société.'},
+                status=404)
+        contexte = request.data.get('context')
+        effets = simuler_regle(
+            rule, instance, company,
+            context=contexte if isinstance(contexte, dict) else None,
+            user=request.user)
+        return Response({'effets': effets, 'simulation': True})
+
 
 class AutomationRunViewSet(TenantMixin, viewsets.ReadOnlyModelViewSet):
     """Journal des exécutions (N72). Lecture seule, tout rôle, scopé société."""

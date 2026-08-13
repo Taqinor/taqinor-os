@@ -102,6 +102,9 @@ vi.mock('../../api/contratsApi', () => {
       inspecterOrdreLocation: () => Promise.resolve({ data: {} }),
       getBonEnlevement: () => Promise.resolve({ data: new Blob() }),
       getBonRestitution: () => Promise.resolve({ data: new Blob() }),
+      // FE-XCTR17/21 — disponibilité (calendrier de réservation) + utilisation/ROI (admin).
+      disponibiliteLocation: () => Promise.resolve({ data: { produit_id: 1, occupations: [] } }),
+      utilisationLocation: empty,
     },
     contratsPortailApi: {
       mesContrats: empty,
