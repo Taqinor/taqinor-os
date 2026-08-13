@@ -1844,6 +1844,28 @@ def _brouillon_relance_engagement(devis, declencheurs):
     return f'{salutation}, {corps}'
 
 
+def devis_envoyes_periode(company, *, date_debut=None, date_fin=None,
+                          commercial_id=None):
+    """NTCPQ24 — Devis ENVOYÉS (ou au-delà) d'une société sur une période.
+
+    Point d'entrée cross-app en LECTURE (``apps.cpq`` bâtit son rapport de
+    conformité dessus sans importer ``apps.ventes.models``). La période porte
+    sur ``date_envoi`` ; bornes optionnelles (ouvertes si absentes). Précharge
+    les lignes/produits (le calcul de conformité les parcourt)."""
+    from .models import Devis
+    qs = Devis.objects.filter(
+        company=company, date_envoi__isnull=False,
+    ).select_related('client', 'created_by').prefetch_related(
+        'lignes__produit__categorie')
+    if date_debut:
+        qs = qs.filter(date_envoi__date__gte=date_debut)
+    if date_fin:
+        qs = qs.filter(date_envoi__date__lte=date_fin)
+    if commercial_id:
+        qs = qs.filter(created_by_id=commercial_id)
+    return qs.order_by('date_envoi', 'id')
+
+
 def devis_en_cours(company):
     """NTCPQ23 — Devis NON encore acceptés d'une société (brouillon/envoyé).
 

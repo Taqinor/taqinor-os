@@ -267,6 +267,42 @@ class DevisVariantesView(APIView):
                         status=status.HTTP_201_CREATED)
 
 
+class RapportConformiteView(APIView):
+    """NTCPQ24 — GET ``cpq/rapports/conformite/?date_debut=&date_fin=
+    &commercial_id=``.
+
+    Rapport INTERNE (staff) du taux de conformité des configurations des devis
+    envoyés sur la période. ``?format=csv`` renvoie une ligne par devis envoyé
+    (référence, date, commercial, conformité) — export interne bureau d'études
+    / direction commerciale, jamais un document client (aucun PDF, aucune
+    donnée de marge)."""
+    permission_classes = [IsResponsableOrAdmin]
+
+    COLONNES = ['reference', 'date_envoi', 'commercial', 'conforme',
+                'bloquant', 'nb_violations']
+
+    def get(self, request):
+        rapport = selectors.rapport_conformite_configurations(
+            request.user.company,
+            date_debut=request.query_params.get('date_debut') or None,
+            date_fin=request.query_params.get('date_fin') or None,
+            commercial_id=request.query_params.get('commercial_id') or None)
+        if request.query_params.get('format') != 'csv':
+            return Response(rapport)
+
+        import csv
+        from django.http import HttpResponse
+        reponse = HttpResponse(content_type='text/csv; charset=utf-8')
+        reponse['Content-Disposition'] = (
+            'attachment; filename="conformite-configurations.csv"')
+        writer = csv.DictWriter(
+            reponse, fieldnames=self.COLONNES, extrasaction='ignore')
+        writer.writeheader()
+        for ligne in rapport['lignes']:
+            writer.writerow({c: ligne.get(c) for c in self.COLONNES})
+        return reponse
+
+
 class MargeSousSeuilView(APIView):
     """NTCPQ23 — GET ``cpq/marge-sous-seuil/``.
 

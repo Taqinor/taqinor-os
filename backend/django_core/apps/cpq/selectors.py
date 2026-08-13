@@ -229,6 +229,54 @@ def devis_marge_sous_seuil(devis):
     return False
 
 
+def rapport_conformite_configurations(company, *, date_debut=None,
+                                      date_fin=None, commercial_id=None):
+    """NTCPQ24 — Taux de CONFORMITÉ des configurations sur une période.
+
+    Pour chaque devis ENVOYÉ de la période : la configuration est-elle exempte
+    de violation (NTCPQ1 compatibilité + NTCPQ2 règles, cf. NTCPQ21) ? Renvoie
+    ::
+
+        {'total', 'conformes', 'non_conformes', 'taux_conformite_pct',
+         'lignes': [{devis_id, reference, date_envoi, commercial, conforme,
+                     bloquant, nb_violations}, ...]}
+
+    Usage INTERNE (bureau d'études / direction commerciale) — jamais un
+    document client. NB : l'état est évalué sur la configuration COURANTE du
+    devis (le badge n'est pas historisé), ce que le rapport assume."""
+    from apps.ventes.selectors import devis_envoyes_periode
+
+    lignes = []
+    conformes = 0
+    for devis in devis_envoyes_periode(
+            company, date_debut=date_debut, date_fin=date_fin,
+            commercial_id=commercial_id):
+        etat = etat_configuration_devis(devis)
+        if etat['configuration_valide']:
+            conformes += 1
+        lignes.append({
+            'devis_id': devis.id,
+            'reference': devis.reference,
+            'date_envoi': (devis.date_envoi.date().isoformat()
+                           if devis.date_envoi else None),
+            'commercial': (getattr(devis.created_by, 'username', None)
+                           if devis.created_by_id else None),
+            'conforme': etat['configuration_valide'],
+            'bloquant': etat['bloquant'],
+            'nb_violations': len(etat['violations']),
+        })
+
+    total = len(lignes)
+    return {
+        'total': total,
+        'conformes': conformes,
+        'non_conformes': total - conformes,
+        'taux_conformite_pct': (
+            round(conformes * 100.0 / total, 2) if total else 0.0),
+        'lignes': lignes,
+    }
+
+
 def devis_sous_seuil_marge(company, *, commercial_id=None, famille=None):
     """NTCPQ23 — Devis EN COURS dont au moins une ligne est sous son seuil de
     marge (NTCPQ6). Usage INTERNE staff strict — ne quitte jamais l'ERP.
