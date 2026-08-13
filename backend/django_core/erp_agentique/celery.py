@@ -778,6 +778,14 @@ app.conf.beat_schedule = {
         'task': 'ai_governance.surveiller_drift_mensuel',
         'schedule': crontab(hour=4, minute=25, day_of_month=1),
     },
+    # NTUX29 — purge quotidienne de rétention de la corbeille transverse (30 j,
+    # NTUX7) : la commande `purger_corbeille_transverse` était bâtie mais
+    # jamais planifiée (bug dominant du repo : une tâche testée mais absente
+    # du beat ne tourne jamais). Heure creuse.
+    'trash-purger-corbeille-transverse': {
+        'task': 'trash.purger_corbeille_transverse',
+        'schedule': crontab(hour=3, minute=0),
+    },
 }
 
 # YHARD6 — compteurs Celery succès/échec (process-local, best-effort) pour
