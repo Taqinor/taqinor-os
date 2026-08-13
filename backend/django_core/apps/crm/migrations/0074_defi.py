@@ -32,6 +32,7 @@ class Migration(migrations.Migration):
                     blank=True, default='', max_length=300, verbose_name='Récompense')),
                 ('actif', models.BooleanField(default=True)),
                 ('created_at', models.DateTimeField(auto_now_add=True)),
+                ('updated_at', models.DateTimeField(auto_now=True)),
                 ('company', models.ForeignKey(
                     blank=True, null=True, on_delete=django.db.models.deletion.CASCADE,
                     related_name='defis', to='authentication.company')),
