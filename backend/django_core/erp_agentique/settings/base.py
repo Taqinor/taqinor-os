@@ -864,6 +864,8 @@ CELERY_TASK_ROUTES = {
     'notifications.reveiller_snoozes': {'queue': 'scheduled'},
     'notifications.purge_notifications_anciennes': {'queue': 'scheduled'},
     'automation.time_triggers_daily': {'queue': 'scheduled'},
+    # NTEXT7 — reprise des séquences d'automatisation suspendues (beat */5min).
+    'automation.process_due_automation_steps': {'queue': 'scheduled'},
     'reporting.email_saved_reports': {'queue': 'scheduled'},
     'reporting.evaluate_kpi_alertes': {'queue': 'scheduled'},
     'reporting.controle_integrite': {'queue': 'scheduled'},
