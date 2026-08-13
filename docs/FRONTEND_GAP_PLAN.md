@@ -227,10 +227,10 @@ a focused test, calling the EXISTING backend endpoint.
 - [ ] FE-XSAV8/XFSM16-17 — SAV SLA report + field-service analytics + technician scorecard pages under `pages/reporting/`. (@lane: frontend/reporting)
 
 ## Lane `frontend/platform` (agent / dataimport / audit / privacy)
-- [ ] FE-XPLT18 — propose→confirm "Générer une règle" UI in `AutomatisationsSection.jsx` (`agent/actions/automation-draft`). (@lane: frontend/platform)
-- [ ] FE-XPLT1-2 — import upsert mode + saved-mapping picker + error-CSV link in `ExcelImport.jsx` (`importApi.js` mode/external_id/saveMapping/jobErreursCsv). (@lane: frontend/platform)
-- [ ] FE-XPLT23 — "Confidentialité" tab under parametres: CNDP `registre-traitements` CRUD + `dsr-requests` (DSR) submission/tracking. (@lane: frontend/platform)
-- [ ] FE-YHARD3 — "Historique à cette date" (as-of) view on record detail / `Journal.jsx` (admin/Directeur). (@lane: frontend/platform)
+- [x] FE-XPLT18 — propose→confirm "Générer une règle" UI in `AutomatisationsSection.jsx` (`agent/actions/automation-draft`). (@lane: frontend/platform) (déjà présent)
+- [x] FE-XPLT1-2 — import upsert mode + saved-mapping picker + error-CSV link in `ExcelImport.jsx` (`importApi.js` mode/external_id/saveMapping/jobErreursCsv). (@lane: frontend/platform) (déjà présent)
+- [x] FE-XPLT23 — "Confidentialité" tab under parametres: CNDP `registre-traitements` CRUD + `dsr-requests` (DSR) submission/tracking. (@lane: frontend/platform) (déjà présent)
+- [x] FE-YHARD3 — "Historique à cette date" (as-of) view on record detail / `Journal.jsx` (admin/Directeur). (@lane: frontend/platform) (déjà présent)
 - [ ] FE-SCA41 — Exports ventes : gérer la réponse 202 des exports xlsx volumineux (journal-ventes / export-comptable) : afficher « génération en arrière-plan », poller GET /api/django/ventes/export/status/<job_id>/ (payload {status, download_url, filename}) puis déclencher le téléchargement via download_url (URL pré-signée 1 h). Sous le seuil (2 000 lignes, env), rien ne change.
 
 ## AUDIT COMPLETE (2026-07-06)
@@ -240,6 +240,17 @@ a focused test, calling the EXISTING backend endpoint.
 
 ## DONE LOG
 <!-- one dated line per shipped task -->
+- 2026-08-13 — Lane `frontend/platform` drainée (aucun code écrit, seule mise à jour de ce
+  fichier). Les 4 tâches taguées `@lane: frontend/platform` étaient DÉJÀ construites et câblées :
+  FE-XPLT18 (propose→confirm "Générer une règle (IA)" dans `AutomatisationsSection.jsx`, appelle
+  `automationApi.proposeDraft` → `agent/actions/automation-draft/`, règle toujours créée désactivée) ;
+  FE-XPLT1-2 (mode d'import creer/maj/upsert + sélecteur de mapping sauvegardé + téléchargement du
+  CSV des lignes en échec dans `ExcelImport.jsx`/`importApi.js`) ; FE-XPLT23 (onglet Confidentialité
+  `ConfidentialiteSection.jsx` : registre CNDP CRUD+export CSV, demandes DSR soumission/traitement,
+  plus registre de consentement et benchmarking déjà présents en bonus) ; FE-YHARD3 (dialog
+  "Historique à cette date" dans `Journal.jsx`, `auditApi.getObjectAsOf` reconstruit champ par
+  champ). Gates vérifiés : eslint propre sur les 5 fichiers, `vitest run` 4/4 fichiers de test
+  (15 tests) verts, `vite build` vert.
 - 2026-08-13 — lane `frontend/contrats` drained: FE-CONTRAT16-17/13-14/12/23-25/7/15/33, FE-XCTR7-8-11, FE-XCTR5, FE-XCTR14, FE-CONTRAT-config already fully built (ContratDetail.jsx tabs+actions, ModelesPage.jsx instancier, DashboardPage.jsx, PortailContratsPage.jsx, ConfigLocationPage.jsx) — ticked `(déjà présent)`, no code change. FE-XCTR2-3: added "Équipements couverts" + "X/Y visites" columns to `ContratsMaintenance.jsx` (data was already serialized server-side, just unrendered). FE-XCTR17-21: `LocationPage.jsx` had caution/inspection/bons PDF already; added the missing disponibilité (reservation-window) warning in the create dialog and an admin-only "Utilisation & ROI" card, both using contratsApi calls that existed but were never invoked from the UI.
 - 2026-08-13 (lane frontend/sav) — les 12 tâches taguées `@lane: frontend/sav` étaient DÉJÀ construites et câblées (savApi.js + pages/sav/*.jsx + router public /e/:token /suivi/:token) : FE-XSAV19/XSAV10, FE-XSAV3/XFSM1/XCTR4, FE-SAV-warranty, FE-XSAV15-17/XSAV9, FE-XSAV8, FE-XSAV12/27/ZSAV8-9, FE-ZSAV2-3-6, FE-SAV-kb/macros, FE-SAV-alarmes, FE-XSAV14/ZMFG6/11, FE-XSAV5/21/28, FE-ZMFG1-2/4/5-12. Aucun code écrit, pas de commit de fonctionnalité (seule mise à jour de ce fichier).
 - 2026-08-13 — Lane `frontend/compta` drainée (agent-acf554ffb8d774ac6). Vérifiées déjà construites
