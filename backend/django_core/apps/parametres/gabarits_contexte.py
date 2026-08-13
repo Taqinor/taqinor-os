@@ -19,7 +19,8 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-__all__ = ['CLES_INTERDITES', 'construire_contexte', 'cibles_supportees']
+__all__ = ['CLES_INTERDITES', 'construire_contexte', 'cibles_supportees',
+           'contexte_demonstration', 'EXEMPLES']
 
 #: Fragments de nom qu'un placeholder ne portera JAMAIS (donnée interne).
 CLES_INTERDITES = ('prix_achat', 'marge', 'cout_achat')
@@ -111,6 +112,69 @@ def _contexte_objet_custom(company, cible_id):
     for cle, valeur in donnees.items():
         contexte[str(cle)] = _texte(valeur)
     return contexte
+
+
+# ---------------------------------------------------------------------------
+# NTEXT39 — contexte de DÉMONSTRATION (aperçu de mise en page).
+#
+# Aucune requête base, aucune donnée réelle : des valeurs d'exemple, par cible,
+# pour vérifier la mise en page d'un gabarit AVANT de l'utiliser. Un
+# placeholder inconnu du jeu d'exemples reçoit une valeur générique dérivée de
+# son nom — l'aperçu montre donc TOUS les emplacements remplis, jamais un
+# gabarit à moitié vide.
+# ---------------------------------------------------------------------------
+
+#: Valeurs d'exemple par cible (mêmes clés que les résolveurs réels ci-dessus).
+EXEMPLES = {
+    'chantier': {
+        'reference': 'CH-2026-0042',
+        'statut': 'En cours',
+        'date_debut': '01/03/2026',
+        'date_fin': '15/03/2026',
+        'site_ville': 'Casablanca',
+        'site_adresse': '12, rue de l’Exemple',
+        'client_nom': 'Société Exemple SARL',
+        'puissance_kwc': '12,5',
+    },
+    'client': {
+        'nom': 'Exemple',
+        'prenom': 'Amina',
+        'email': 'contact@exemple.ma',
+        'telephone': '+212 6 00 00 00 00',
+        'ville': 'Rabat',
+        'adresse': '5, avenue de la Démonstration',
+        'ice': '000000000000000',
+    },
+    'ticket': {
+        'reference': 'SAV-2026-0007',
+        'statut': 'Ouvert',
+        'priorite': 'Haute',
+        'type': 'Panne onduleur',
+        'description': "Exemple de description d'intervention.",
+        'client_nom': 'Société Exemple SARL',
+    },
+    'objet_custom': {
+        'id': '1',
+        'objet_code': 'exemple',
+        'objet_libelle': 'Objet de démonstration',
+    },
+}
+
+
+def contexte_demonstration(cible, variables=None):
+    """Jeu de valeurs de DÉMONSTRATION pour ``cible`` (jamais une vraie fiche).
+
+    ``variables`` = placeholders réellement présents dans le gabarit : chacun
+    reçoit une valeur, prise dans :data:`EXEMPLES` quand elle existe, sinon
+    générée depuis le nom du placeholder. La garde ``_propre`` s'applique comme
+    au rendu réel (aucune clé de prix d'achat / marge, même en exemple).
+    """
+    base = dict(EXEMPLES.get((cible or '').strip().lower(), {}))
+    for nom in variables or []:
+        racine = str(nom).split('.')[0]
+        if racine not in base:
+            base[racine] = f'Exemple {racine.replace("_", " ")}'
+    return _propre(base)
 
 
 #: Registre FERMÉ cible → constructeur de contexte.
