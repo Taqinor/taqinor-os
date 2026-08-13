@@ -39,6 +39,9 @@ import {
 // ── Pages lazy ────────────────────────────────────────────────────────────────
 const Landing = lazy(() => import('../pages/Landing'))
 const Login = lazy(() => import('../pages/Login'))
+// PACT116 — inscription d'une nouvelle societe (onboarding SaaS). Le backend
+// `POST /auth/register-company/` existait deja ; il n'avait AUCUNE porte.
+const RegisterCompany = lazy(() => import('../pages/RegisterCompany'))
 const Dashboard = lazy(() => import('../pages/Dashboard').then(m => ({ default: m.Component })))
 // ODY2 — Menu d'accueil plein écran (`/apps`) : la porte d'entrée du paradigme
 // « j'ouvre → MES apps ». Grille des apps installées ∩ autorisées (ODY1).
@@ -326,6 +329,8 @@ const router = createBrowserRouter([
   { path: '/',      loader: rootLoader, element: <RouteErrorBoundary><Suspense fallback={<Fallback />}><Login /></Suspense></RouteErrorBoundary> },
   { path: '/landing', element: <RouteErrorBoundary><Suspense fallback={<Fallback />}><Landing /></Suspense></RouteErrorBoundary> },
   { path: '/login',  element: <RouteErrorBoundary><Suspense fallback={<Fallback />}><Login /></Suspense></RouteErrorBoundary> },
+  // PACT116 — inscription publique d'une societe (sans login, sans layout ERP).
+  { path: '/register', element: <RouteErrorBoundary><Suspense fallback={<Fallback />}><RegisterCompany /></Suspense></RouteErrorBoundary> },
   // Référence interne du design system (sans auth ni layout : page autonome).
   { path: '/ui', element: <RouteErrorBoundary><Suspense fallback={<Fallback />}><UIShowcase /></Suspense></RouteErrorBoundary> },
   // XSAL17 — réservation de visite publique (sans login, sans layout ERP).

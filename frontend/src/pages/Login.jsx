@@ -426,8 +426,18 @@ export default function Login() {
           </button>
         </form>
 
+        {/* PACT116 — porte d'entrée de l'inscription : `POST
+            /auth/register-company/` existait depuis toujours, sans aucun lien
+            pour l'atteindre. */}
+        <p style={{ textAlign: 'center', marginTop: 22, fontSize: 13, color: '#6b7280' }}>
+          Pas encore de société ?{' '}
+          <Link to="/register" style={{ color: 'var(--login-azur)', textDecoration: 'none', fontWeight: 600 }}>
+            Créer votre société
+          </Link>
+        </p>
+
         {/* Retour accueil */}
-        <p style={{ textAlign: 'center', marginTop: 26, fontSize: 13, color: '#9ca3af' }}>
+        <p style={{ textAlign: 'center', marginTop: 10, fontSize: 13, color: '#9ca3af' }}>
           <Link to="/landing" style={{ color: 'var(--login-azur)', textDecoration: 'none', fontWeight: 500 }}>
             ← Retour à l'accueil
           </Link>
