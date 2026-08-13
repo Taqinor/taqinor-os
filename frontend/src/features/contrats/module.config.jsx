@@ -36,6 +36,9 @@ const ConfigLocationPage = lazy(() => import('./ConfigLocationPage'))
 // PACT138 — catalogue « revenus récurrents » (NTSUB1-4) : plans, options,
 // paliers d'usage, compteurs — jusque-là sans aucun écran.
 const AbonnementsPage = lazy(() => import('./AbonnementsPage'))
+// PACT139 — séquences/étapes de relance d'impayé (NTSUB8) — jusque-là sans
+// aucun écran.
+const DunningPage = lazy(() => import('./DunningPage'))
 
 const FS = <FileSignature size={17} strokeWidth={1.75} aria-hidden="true" />
 const LB = <LibraryBig size={17} strokeWidth={1.75} aria-hidden="true" />
@@ -64,6 +67,7 @@ export default {
       { to: '/contrats/echeances', label: 'Échéances & alertes', icon: BR, roles: ROLES },
       { to: '/contrats/finances', label: 'Finances', icon: WL, roles: ROLES },
       { to: '/contrats/abonnements', label: 'Abonnements', icon: CC, roles: ROLES },
+      { to: '/contrats/relances-impayes', label: 'Relances impayés', icon: BR, roles: ROLES },
       { to: '/contrats/config-location', label: 'Réglages location', icon: PO, roles: ROLES },
     ],
   },
@@ -76,6 +80,7 @@ export default {
     ['/contrats/echeances', 'Échéances & alertes'],
     ['/contrats/finances', 'Finances de contrat'],
     ['/contrats/abonnements', 'Abonnements'],
+    ['/contrats/relances-impayes', 'Relances impayés'],
     ['/contrats', 'Contrats'],
   ],
   sectionLabels: { contrats: 'Contrats' },
@@ -88,6 +93,7 @@ export default {
     { path: '/contrats/echeances', component: EcheancesPage, roles: ROLES },
     { path: '/contrats/finances', component: FinancesPage, roles: ROLES },
     { path: '/contrats/abonnements', component: AbonnementsPage, roles: ROLES },
+    { path: '/contrats/relances-impayes', component: DunningPage, roles: ROLES },
     { path: '/contrats/:id', component: ContratDetail, roles: ROLES },
   ],
 }
