@@ -51,6 +51,16 @@ class DemoWizardEndpointTest(TestCase):
             password='x')
         self.client = APIClient()
         self.client.force_authenticate(self.superuser)
+        # Le broker Redis existe en CI mais aucun worker ne tourne : sans
+        # exécution EN LIGNE (eager), `.delay()` se contente d'empiler la
+        # tâche sans jamais la faire tourner — le wizard reste bloqué en
+        # 'en_cours' (même patron que apps/publicapi/tests_yapic8_delivery.py).
+        from erp_agentique.celery import app as celery_app
+        prev = celery_app.conf.task_always_eager
+        celery_app.conf.task_always_eager = True
+        celery_app.conf.task_eager_propagates = False
+        self.addCleanup(
+            lambda: setattr(celery_app.conf, 'task_always_eager', prev))
 
     def test_non_superuser_forbidden(self):
         normal = CustomUser.objects.create(
