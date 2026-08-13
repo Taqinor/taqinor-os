@@ -23,6 +23,15 @@ import { ECHEANCE_TYPE_LABELS, TYPE_CONTRAT_LABELS } from './constants.jsx'
 const BAND_LABELS = { faible: 'Faible', moyen: 'Moyen', 'élevé': 'Élevé' }
 const BAND_TONES = { faible: 'success', moyen: 'warning', 'élevé': 'danger' }
 
+/* ZRH16 — lieux RÉELS de `localisation_hebdo` (défaut serveur : bureau). */
+const LOCALISATION_LABELS = {
+  bureau: 'Bureau',
+  domicile: 'Domicile',
+  terrain: 'Terrain',
+  autre: 'Autre',
+  absent: 'Absent',
+}
+
 export default function RhCockpit() {
   const [cockpit, setCockpit] = useState(null)
   const [echeances, setEcheances] = useState([])
@@ -31,6 +40,8 @@ export default function RhCockpit() {
   const [risques, setRisques] = useState([])
   // ZRH11 — rapport de rétention/turnover ANNUEL (distinct du 12 mois glissants).
   const [turnoverAnnuel, setTurnoverAnnuel] = useState(null)
+  // ZRH16 — localisation de travail attendue de l'équipe aujourd'hui.
+  const [localisations, setLocalisations] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
 
@@ -68,6 +79,13 @@ export default function RhCockpit() {
     // ZRH11 — rapport de rétention annuel, non bloquant lui aussi.
     rhApi.getRapportTurnover()
       .then((res) => { if (vivant) setTurnoverAnnuel(res.data) })
+      .catch(() => { /* widget masqué */ })
+    // ZRH16 — où travaille l'équipe aujourd'hui (informatif, non bloquant).
+    rhApi.getLocalisationDuJour()
+      .then((res) => {
+        if (!vivant) return
+        setLocalisations(Array.isArray(res.data) ? res.data : (res.data?.results ?? []))
+      })
       .catch(() => { /* widget masqué */ })
     return () => { vivant = false }
   }, [])
@@ -187,6 +205,27 @@ export default function RhCockpit() {
           <div className="flex flex-col gap-6">
             {hseStats.length > 0 && (
               <ModuleDashboard stats={hseStats} />
+            )}
+            {/* ZRH16 — répartition des lieux de travail attendus aujourd'hui. */}
+            {localisations.length > 0 && (
+              <section className="rounded-lg border border-border bg-card p-4">
+                <h3 className="mb-3 text-sm font-medium">Où travaille l’équipe aujourd’hui</h3>
+                <ul className="flex flex-wrap gap-2">
+                  {Object.entries(
+                    localisations.reduce((acc, l) => {
+                      const cle = l.localisation || 'bureau'
+                      acc[cle] = (acc[cle] ?? 0) + 1
+                      return acc
+                    }, {}),
+                  ).map(([lieu, n]) => (
+                    <li key={lieu}>
+                      <Badge tone={lieu === 'absent' ? 'warning' : 'info'}>
+                        {LOCALISATION_LABELS[lieu] ?? lieu} · {n}
+                      </Badge>
+                    </li>
+                  ))}
+                </ul>
+              </section>
             )}
             {/* ZRH11 — rétention & turnover de l'année civile. */}
             {turnoverAnnuel && (

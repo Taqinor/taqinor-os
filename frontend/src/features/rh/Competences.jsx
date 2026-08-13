@@ -94,6 +94,10 @@ export default function Competences() {
   const [arbre, setArbre] = useState([])
   // ZRH10 — historique des changements de niveau de compétence.
   const [evolution, setEvolution] = useState([])
+  // ZRH17 — recherche « qui maîtrise X au niveau >= N ? ».
+  const [rechCompetence, setRechCompetence] = useState('')
+  const [rechNiveauMin, setRechNiveauMin] = useState('1')
+  const [rechResultats, setRechResultats] = useState(null)
   const [employes, setEmployes] = useState([])
   const [catalogue, setCatalogue] = useState([])
   const [loading, setLoading] = useState(true)
@@ -246,6 +250,18 @@ export default function Competences() {
     { id: 'date', header: 'Date', width: 120, searchable: false, accessor: (e) => e.date || '', cell: (v) => (v ? formatDate(v) : '—') },
   ], [])
 
+  // ZRH17 — lance la recherche transverse par compétence (staffing terrain).
+  const chercherParCompetence = async () => {
+    if (!rechCompetence) return
+    try {
+      const res = await rhApi.getEmployesParCompetence(
+        rechCompetence, { niveau_min: rechNiveauMin || 0 })
+      setRechResultats(unwrap(res.data))
+    } catch (err) {
+      toast.error(err?.response?.data?.detail ?? 'Recherche impossible.')
+    }
+  }
+
   const quizActions = (q) => [
     { id: 'toggle', label: q.actif ? 'Désactiver' : 'Activer', icon: Power, onClick: () => basculerQuiz(q) },
     { id: 'suppr', label: 'Supprimer', icon: Trash2, destructive: true, onClick: () => supprimerQuiz(q) },
@@ -261,6 +277,46 @@ export default function Competences() {
         <div className="flex flex-col gap-4">
           <Segmented options={VUES} value={vue} onChange={setVue} aria-label="Vue compétences" />
 
+          {/* ZRH17 — « Skills search » : trouver qui maîtrise une compétence. */}
+          {vue === 'matrice' && (
+            <div className="flex flex-wrap items-end gap-3 rounded-lg border border-border bg-card p-3">
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="rech-competence">Compétence recherchée</Label>
+                <select
+                  id="rech-competence"
+                  value={rechCompetence}
+                  onChange={(e) => setRechCompetence(e.target.value)}
+                  className="h-9 rounded-md border border-border bg-card px-3 text-sm"
+                >
+                  <option value="">— Choisir —</option>
+                  {catalogue.map((c) => (
+                    <option key={c.id} value={c.id}>{c.libelle}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="rech-niveau">Niveau minimum</Label>
+                <Input
+                  id="rech-niveau"
+                  type="number"
+                  step="any"
+                  value={rechNiveauMin}
+                  onChange={(e) => setRechNiveauMin(e.target.value)}
+                  className="w-28"
+                />
+              </div>
+              <Button variant="outline" disabled={!rechCompetence} onClick={chercherParCompetence}>
+                Rechercher
+              </Button>
+              {rechResultats && (
+                <p className="w-full text-sm text-muted-foreground">
+                  {rechResultats.length === 0
+                    ? 'Aucun employé ne satisfait ce niveau.'
+                    : rechResultats.map((e) => `${e.nom} ${e.prenom}`).join(' · ')}
+                </p>
+              )}
+            </div>
+          )}
           {vue === 'matrice' && (
             <ListShell title="Matrice des compétences" columns={matriceColumns} rows={competencesEmp}
               loading={loading} error={error} searchable exportName="matrice-competences"

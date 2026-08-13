@@ -231,6 +231,9 @@ const rhApi = {
     api.get('/rh/competences-requises/', { params }),
   getEvolutionCompetences: (params) =>
     api.get('/rh/competences/evolution/', { params }),
+  // ── ZRH17 — recherche « qui maîtrise X au niveau >= N ? » ──
+  getEmployesParCompetence: (id, params) =>
+    api.get(`/rh/competences/${id}/employes/`, { params }),
   // ── XRH29 — Ayants droit & avantages sociaux ──
   getAyantsDroit: (params) => api.get('/rh/ayants-droit/', { params }),
   getAvantagesSociaux: (params) =>

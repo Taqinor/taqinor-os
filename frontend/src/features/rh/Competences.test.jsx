@@ -24,6 +24,8 @@ vi.mock('../../api/rhApi', () => {
       getArbreDepartements: vi.fn(empty),
       // ZRH10 — rapport d'évolution des compétences.
       getEvolutionCompetences: vi.fn(empty),
+      // ZRH17 — recherche « qui maîtrise X au niveau >= N ? ».
+      getEmployesParCompetence: vi.fn(empty),
       getEmployes: vi.fn(() => Promise.resolve({ data: [{ id: 9, nom: 'Bennani', prenom: 'Youssef' }] })),
       getCompetences: vi.fn(() => Promise.resolve({ data: [{ id: 4, code: 'PV1', libelle: 'Installation PV' }] })),
       createCompetenceEmploye: vi.fn(),
@@ -130,5 +132,22 @@ describe('Competences — saisie manuelle (WIR36)', () => {
 
     expect((await screen.findAllByText('Installation PV')).length).toBeGreaterThan(0)
     expect(screen.getAllByText('Progression').length).toBeGreaterThan(0)
+  })
+
+  it('cherche les employés qualifiés sur une compétence (ZRH17)', async () => {
+    rhApi.getEmployesParCompetence.mockResolvedValueOnce({
+      data: [{ id: 9, nom: 'Bennani', prenom: 'Youssef' }],
+    })
+    renderCompetences()
+    await screen.findByText('Compétences & habilitations')
+
+    fireEvent.change(await screen.findByLabelText('Compétence recherchée'), { target: { value: '4' } })
+    fireEvent.change(screen.getByLabelText('Niveau minimum'), { target: { value: '2' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Rechercher' }))
+
+    await waitFor(() => expect(rhApi.getEmployesParCompetence).toHaveBeenCalledWith(
+      '4', { niveau_min: '2' },
+    ))
+    expect(await screen.findByText(/Bennani Youssef/)).toBeInTheDocument()
   })
 })

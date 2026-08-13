@@ -17,6 +17,8 @@ vi.mock('../../api/rhApi', () => ({
     getTopRisqueAttrition: vi.fn(() => Promise.resolve({ data: [] })),
     // ZRH11 — rapport de rétention/turnover annuel.
     getRapportTurnover: vi.fn(() => Promise.resolve({ data: null })),
+    // ZRH16 — localisation de travail attendue du jour.
+    getLocalisationDuJour: vi.fn(() => Promise.resolve({ data: [] })),
   },
 }))
 
@@ -76,5 +78,24 @@ describe('RhCockpit — rétention & turnover annuel (ZRH11)', () => {
     expect(await screen.findByText('Rétention & turnover 2026')).toBeInTheDocument()
     expect(screen.getByText('18,2 %')).toBeInTheDocument()
     expect(screen.getByText('4 / 2')).toBeInTheDocument()
+  })
+})
+
+describe('RhCockpit — localisation du jour (ZRH16)', () => {
+  beforeEach(() => vi.clearAllMocks())
+
+  it('agrège les lieux de travail attendus aujourd’hui', async () => {
+    rhApi.getLocalisationDuJour.mockResolvedValueOnce({
+      data: [
+        { employe_id: 1, nom: 'A B', jour: 'lundi', localisation: 'bureau' },
+        { employe_id: 2, nom: 'C D', jour: 'lundi', localisation: 'bureau' },
+        { employe_id: 3, nom: 'E F', jour: 'lundi', localisation: 'absent' },
+      ],
+    })
+    renderCockpit()
+
+    expect(await screen.findByText('Où travaille l’équipe aujourd’hui')).toBeInTheDocument()
+    expect(screen.getByText('Bureau · 2')).toBeInTheDocument()
+    expect(screen.getByText('Absent · 1')).toBeInTheDocument()
   })
 })

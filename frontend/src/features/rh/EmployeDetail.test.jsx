@@ -40,6 +40,8 @@ vi.mock('../../api/rhApi', () => {
       // XRH29 — ayants droit & avantages sociaux.
       getAyantsDroit: vi.fn(empty),
       getAvantagesSociaux: vi.fn(empty),
+      // ZRH15 — timeline de parcours du dossier.
+      getLignesParcours: vi.fn(empty),
       getDepartements: vi.fn(empty),
       sortirEmploye: vi.fn(() => Promise.resolve({ data: {} })),
       updateEmploye: vi.fn(),
@@ -204,5 +206,30 @@ describe('EmployeDetail — offboarding (YHIRE2/ZRH12)', () => {
     await userEvent.click(screen.getByRole('tab', { name: /Ayants droit & avantages/ }))
     expect(await screen.findByText('Bennani Salma')).toBeInTheDocument()
     expect(screen.getByText('Mutuelle')).toBeInTheDocument()
+  })
+
+  it('affiche le parcours et la localisation hebdomadaire (ZRH15/ZRH16)', async () => {
+    const { default: userEvent } = await import('@testing-library/user-event')
+    rhApi.getEmploye.mockResolvedValueOnce({
+      data: {
+        id: 7, nom: 'Bennani', prenom: 'Youssef', matricule: 'M007', statut: 'actif',
+        localisation_hebdo: { lundi: 'domicile', mardi: 'terrain' },
+      },
+    })
+    rhApi.getLignesParcours.mockResolvedValueOnce({
+      data: [{
+        id: 4, employe: 7, type: 2, type_libelle: 'Expérience',
+        intitule: 'Chef de chantier', organisme: 'SunRak', date_debut: '2023-01-01',
+      }],
+    })
+    renderDetail()
+    await screen.findByRole('heading', { name: 'Bennani Youssef' })
+
+    await userEvent.click(screen.getByRole('tab', { name: /Parcours & localisation/ }))
+    expect(await screen.findByText('Chef de chantier')).toBeInTheDocument()
+    // Jours sans clé => défaut serveur « bureau ».
+    expect(screen.getByText('Domicile')).toBeInTheDocument()
+    expect(screen.getByText('Terrain')).toBeInTheDocument()
+    expect(screen.getAllByText('Bureau').length).toBe(5)
   })
 })

@@ -34,6 +34,20 @@ import { StatutEmploye, TYPE_CONTRAT_LABELS } from './constants.jsx'
    (`?beneficiaire=<id>`).
    ========================================================================== */
 
+/* ZRH16 — clés RÉELLES de `localisation_hebdo` (apps/rh/selectors.py
+   `_JOURS_SEMAINE`, défaut `bureau`). */
+const JOURS_SEMAINE = [
+  'lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi', 'dimanche',
+]
+const LOCALISATION_DEFAUT = 'bureau'
+const LOCALISATION_LABELS = {
+  bureau: 'Bureau',
+  domicile: 'Domicile',
+  terrain: 'Terrain',
+  autre: 'Autre',
+  absent: 'Absent',
+}
+
 /* XRH16 — libellés du `statut` renvoyé par `selectors.compa_ratio`. */
 const STATUT_BANDE = {
   sous_bande: 'Sous la bande',
@@ -79,6 +93,8 @@ export default function EmployeDetail() {
   // XRH29 — ayants droit (personnes à charge) + avantages sociaux.
   const [ayantsDroit, setAyantsDroit] = useState([])
   const [avantages, setAvantages] = useState([])
+  // ZRH15 — timeline de parcours (expériences, diplômes, mobilités).
+  const [parcours, setParcours] = useState([])
   const [habilitations, setHabilitations] = useState([])
   const [formation, setFormation] = useState(null)
   const [integration, setIntegration] = useState(null)
@@ -128,6 +144,8 @@ export default function EmployeDetail() {
       // XRH29 — ayants droit + avantages sociaux du dossier.
       rhApi.getAyantsDroit({ employe: id }),
       rhApi.getAvantagesSociaux({ employe: id }),
+      // ZRH15 — lignes de parcours du dossier.
+      rhApi.getLignesParcours({ employe: id }),
     ]
     if (canSalaires) {
       calls.push(rhApi.getRemunerations({ employe: id }))
@@ -137,11 +155,12 @@ export default function EmployeDetail() {
       if (!vivant) return
       const [
         docRes, habRes, formRes, intRes, chatRes, badgeRes, ecartRes,
-        ayantsRes, avantagesRes, remRes, compaRes,
+        ayantsRes, avantagesRes, parcoursRes, remRes, compaRes,
       ] = results
       if (ecartRes.status === 'fulfilled') setEcarts(unwrap(ecartRes.value.data))
       if (ayantsRes.status === 'fulfilled') setAyantsDroit(unwrap(ayantsRes.value.data))
       if (avantagesRes.status === 'fulfilled') setAvantages(unwrap(avantagesRes.value.data))
+      if (parcoursRes.status === 'fulfilled') setParcours(unwrap(parcoursRes.value.data))
       if (docRes.status === 'fulfilled') setDocuments(unwrap(docRes.value.data))
       if (habRes.status === 'fulfilled') setHabilitations(unwrap(habRes.value.data))
       if (formRes.status === 'fulfilled') setFormation(formRes.value.data)
@@ -478,6 +497,49 @@ export default function EmployeDetail() {
     </div>
   )
 
+  // ZRH15 — timeline de carrière + ZRH16 — localisation hebdomadaire.
+  const parcoursTab = (
+    <div className="flex flex-col gap-4">
+      <div className="flex flex-col gap-2">
+        <p className="text-sm font-medium">Localisation hebdomadaire</p>
+        <p className="text-xs text-muted-foreground">
+          Informatif — aucun impact paie ni pointage.
+        </p>
+        <dl className="grid grid-cols-2 gap-2 sm:grid-cols-4 text-sm">
+          {JOURS_SEMAINE.map((jour) => (
+            <div key={jour} className="rounded-lg border border-border bg-card px-3 py-2">
+              <dt className="text-xs capitalize text-muted-foreground">{jour}</dt>
+              <dd className="font-medium">
+                {LOCALISATION_LABELS[(emp.localisation_hebdo || {})[jour] || LOCALISATION_DEFAUT]}
+              </dd>
+            </div>
+          ))}
+        </dl>
+      </div>
+      <div className="flex flex-col gap-2">
+        <p className="text-sm font-medium">Parcours</p>
+        <Liste
+          rows={parcours}
+          loading={subLoading}
+          empty="Aucune ligne de parcours."
+          renderRow={(l) => (
+            <div className="flex items-center justify-between gap-3">
+              <div className="min-w-0">
+                <p className="font-medium">{l.intitule || l.type_libelle || '—'}</p>
+                <p className="truncate text-xs text-muted-foreground">
+                  {l.type_libelle || '—'}
+                  {l.organisme ? ` · ${l.organisme}` : ''}
+                  {l.date_debut ? ` · ${formatDate(l.date_debut)}` : ''}
+                  {l.date_fin ? ` → ${formatDate(l.date_fin)}` : ''}
+                </p>
+              </div>
+            </div>
+          )}
+        />
+      </div>
+    </div>
+  )
+
   // XRH29 — ayants droit (personnes à charge) + couverture sociale.
   const socialTab = (
     <div className="flex flex-col gap-4">
@@ -584,6 +646,8 @@ export default function EmployeDetail() {
     { value: 'habilitations', label: 'Habilitations', content: habilitationsTab, count: habilitations.length },
     { value: 'formations', label: 'Formations', content: formationsTab, count: formationsRows.length },
     { value: 'integration', label: 'Intégration', content: integrationTab, count: integrationLignes.length },
+    // ZRH15/ZRH16 — parcours de carrière + localisation hebdomadaire.
+    { value: 'parcours', label: 'Parcours & localisation', content: parcoursTab, count: parcours.length },
     // XRH29 — ayants droit & couverture sociale (non sensible paie).
     { value: 'social', label: 'Ayants droit & avantages', content: socialTab, count: ayantsDroit.length + avantages.length },
     { value: 'badges', label: 'Badges', content: badgesTab, count: badgesRecus.length },
