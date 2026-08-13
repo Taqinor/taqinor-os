@@ -86,6 +86,7 @@ const config = {
     // NTADM22 — consentement du tenant (le serveur exige l'Administrateur).
     { path: '/admin/impersonation', component: ImpersonationConsentement, roles: ['admin'] },
     // NTDMO25 — wizard démo (le serveur exige superuser, comme /admin/tenants).
+    // contextuelle: écran superadmin fondateur, volontairement hors menu (accès direct par URL, comme /admin/tenants)
     { path: '/admin/demo/nouveau', component: DemoWizard, roles: ['admin'] },
   ],
 }
