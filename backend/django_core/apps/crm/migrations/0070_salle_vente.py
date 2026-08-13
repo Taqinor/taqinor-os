@@ -20,8 +20,8 @@ class Migration(migrations.Migration):
         migrations.CreateModel(
             name='SalleVente',
             fields=[
-                ('id', models.AutoField(auto_created=True, primary_key=True,
-                                        serialize=False, verbose_name='ID')),
+                ('id', models.BigAutoField(auto_created=True, primary_key=True,
+                                           serialize=False, verbose_name='ID')),
                 ('titre', models.CharField(max_length=200, verbose_name='Titre')),
                 ('token', models.CharField(
                     default=apps.crm.models._default_salle_vente_token,
@@ -62,8 +62,8 @@ class Migration(migrations.Migration):
         migrations.CreateModel(
             name='SalleVenteItem',
             fields=[
-                ('id', models.AutoField(auto_created=True, primary_key=True,
-                                        serialize=False, verbose_name='ID')),
+                ('id', models.BigAutoField(auto_created=True, primary_key=True,
+                                           serialize=False, verbose_name='ID')),
                 ('type', models.CharField(choices=[
                     ('devis', 'Devis'), ('document', 'Document'),
                     ('video_lien', 'Lien vidéo'), ('note', 'Note')], max_length=12)),
@@ -87,8 +87,8 @@ class Migration(migrations.Migration):
         migrations.CreateModel(
             name='SalleVenteVue',
             fields=[
-                ('id', models.AutoField(auto_created=True, primary_key=True,
-                                        serialize=False, verbose_name='ID')),
+                ('id', models.BigAutoField(auto_created=True, primary_key=True,
+                                           serialize=False, verbose_name='ID')),
                 ('ip_hash', models.CharField(blank=True, default='', max_length=64)),
                 ('created_at', models.DateTimeField(auto_now_add=True)),
                 ('salle', models.ForeignKey(

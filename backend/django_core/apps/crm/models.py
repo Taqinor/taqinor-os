@@ -2485,20 +2485,23 @@ def _default_salle_vente_expiry():
     return _timezone.now() + timedelta(days=SALLE_VENTE_TTL_DAYS)
 
 
-class SalleVente(models.Model):
+class SalleVente(TenantModel):
     """NTCRM17 — Salle de vente : page publique regroupant plusieurs
     devis/documents/liens pour UN lead OU UN client (jamais les deux, jamais
     ni l'un ni l'autre — voir `clean()`). Sécurité calquée sur
     `ged.PartageGed` : `token` imprévisible = unique clé d'accès public,
     `expires_at` par défaut 30 j, `password_hash` optionnel (jamais en
-    clair), `actif` = kill-switch de révocation immédiate."""
-    company = models.ForeignKey(
+    clair), `actif` = kill-switch de révocation immédiate.
+
+    ARC1 — hérite de ``core.models.TenantModel`` ; ``company`` redéclaré à
+    l'identique (related_name + nullabilité historiques)."""
+    company = models.ForeignKey(  # on_delete: salle de vente 100 % fille du tenant — la purge d'une société doit emporter ses salles (et leurs jetons d'accès publics).
         'authentication.Company', on_delete=models.CASCADE,
         null=True, blank=True, related_name='salles_vente')
-    lead = models.ForeignKey(
+    lead = models.ForeignKey(  # on_delete: la salle n'existe que pour présenter CE lead ; sans lui elle n'a plus d'objet.
         'crm.Lead', on_delete=models.CASCADE,
         null=True, blank=True, related_name='salles_vente')
-    client = models.ForeignKey(
+    client = models.ForeignKey(  # on_delete: idem lead — espace de vente rattaché à ce client, sans existence propre.
         'crm.Client', on_delete=models.CASCADE,
         null=True, blank=True, related_name='salles_vente')
     titre = models.CharField(max_length=200, verbose_name='Titre')
@@ -2578,7 +2581,7 @@ class SalleVenteItem(models.Model):
         VIDEO_LIEN = 'video_lien', 'Lien vidéo'
         NOTE = 'note', 'Note'
 
-    salle = models.ForeignKey(
+    salle = models.ForeignKey(  # on_delete: ligne fille d'une salle de vente, aucune existence hors de sa salle.
         SalleVente, on_delete=models.CASCADE, related_name='items')
     type = models.CharField(max_length=12, choices=TypeItem.choices)
     reference = models.CharField(
@@ -2603,7 +2606,7 @@ class SalleVenteVue(models.Model):
 
     Une entrée par visite (timestamp + IP HACHÉE — jamais l'IP en clair,
     aucune autre PII). Alimente le compteur/dernière-vue de NTCRM19."""
-    salle = models.ForeignKey(
+    salle = models.ForeignKey(  # on_delete: trace de visite d'une salle ; la salle supprimée, la trace n'est plus rattachable (et ne doit pas survivre).
         SalleVente, on_delete=models.CASCADE, related_name='vues')
     ip_hash = models.CharField(max_length=64, blank=True, default='')
     created_at = models.DateTimeField(auto_now_add=True)
@@ -2632,17 +2635,20 @@ class SalleVenteVue(models.Model):
 # nulle part dans FG234/235 et que les étendre exigerait d'écrire dans
 # `apps.compta` (interdit à cette lane) — un futur run compta/crm conjoint
 # pourra fusionner les deux registres.
-class Apporteur(models.Model):
+class Apporteur(TenantModel):
     """NTCRM20 — Apporteur d'affaires B2B (partenaire/courtier/installateur
     indépendant) qui enregistre des deals plutôt que de soumettre des leads
-    (contrairement à `Partenaire`/FG234, orienté soumission de prospects)."""
+    (contrairement à `Partenaire`/FG234, orienté soumission de prospects).
+
+    ARC1 — hérite de ``core.models.TenantModel`` ; ``company`` redéclaré à
+    l'identique (related_name + nullabilité historiques)."""
     class Type(models.TextChoices):
         PARTENAIRE_INSTALLATEUR = 'partenaire_installateur', 'Partenaire installateur'
         COURTIER = 'courtier', 'Courtier'
         APPORTEUR_INDEPENDANT = 'apporteur_independant', "Apporteur indépendant"
         AUTRE = 'autre', 'Autre'
 
-    company = models.ForeignKey(
+    company = models.ForeignKey(  # on_delete: référentiel d'apporteurs propre au tenant — purgé avec sa société.
         'authentication.Company', on_delete=models.CASCADE,
         null=True, blank=True, related_name='apporteurs')
     nom = models.CharField(max_length=200, verbose_name='Nom')
@@ -2707,12 +2713,16 @@ def _lead_identity_keys(lead):
     return keys
 
 
-class DealEnregistre(models.Model):
+class DealEnregistre(TenantModel):
     """NTCRM20 — Enregistrement d'un deal par un `Apporteur` sur UN lead.
 
     Protège l'apporteur contre une réassignation du MÊME prospect par un
     autre apporteur pendant `expire_le` (`clean()`). `montant_commission_
-    estime` est calculé à l'acceptation du devis lié (NTCRM22)."""
+    estime` est calculé à l'acceptation du devis lié (NTCRM22).
+
+    ARC1 — hérite de ``core.models.TenantModel`` ; ``company`` redéclaré à
+    l'identique. ``date_enregistrement`` (métier) reste distinct des
+    ``created_at``/``updated_at`` hérités."""
     class Statut(models.TextChoices):
         EN_ATTENTE = 'en_attente', 'En attente'
         APPROUVE = 'approuve', 'Approuvé'
@@ -2722,12 +2732,12 @@ class DealEnregistre(models.Model):
         # devis lié, en attente de règlement comptable.
         A_PAYER = 'a_payer', 'À payer'
 
-    company = models.ForeignKey(
+    company = models.ForeignKey(  # on_delete: enregistrement de deal 100 % fille du tenant — purgé avec sa société.
         'authentication.Company', on_delete=models.CASCADE,
         null=True, blank=True, related_name='deals_enregistres')
-    apporteur = models.ForeignKey(
+    apporteur = models.ForeignKey(  # on_delete: l'enregistrement matérialise l'antériorité DE CET apporteur ; sans lui il n'a plus de titulaire.
         Apporteur, on_delete=models.CASCADE, related_name='deals')
-    lead = models.OneToOneField(
+    lead = models.OneToOneField(  # on_delete: 1-1 avec le lead enregistré ; le lead disparu, la réservation d'antériorité n'a plus d'objet.
         'crm.Lead', on_delete=models.CASCADE, related_name='deal_enregistre')
     date_enregistrement = models.DateTimeField(auto_now_add=True)
     statut = models.CharField(
@@ -2778,14 +2788,17 @@ class DealEnregistre(models.Model):
                     f'{autre.expire_le:%d/%m/%Y} — enregistrement refusé.')
 
 
-class Defi(models.Model):
+class Defi(TenantModel):
     """NTCRM23 — Défi d'équipe temporaire (gamification), distinct de
     `ObjectifCommercial` (FG39, cible individuelle PERMANENTE privée) : un
     défi est PUBLIC (visible de toute l'équipe, cf. NTCRM24), sur une fenêtre
     de dates explicite (pas un système année/mois/trimestre), avec un
     classement plutôt qu'un simple taux d'atteinte. Réutilise STRICTEMENT
-    `ObjectifCommercial.Metric` (jamais une seconde taxonomie de métriques)."""
-    company = models.ForeignKey(
+    `ObjectifCommercial.Metric` (jamais une seconde taxonomie de métriques).
+
+    ARC1 — hérite de ``core.models.TenantModel`` ; ``company`` redéclaré à
+    l'identique (related_name + nullabilité historiques)."""
+    company = models.ForeignKey(  # on_delete: défi commercial interne au tenant — purgé avec sa société.
         'authentication.Company', on_delete=models.CASCADE,
         null=True, blank=True, related_name='defis')
     nom = models.CharField(max_length=200, verbose_name='Nom du défi')
