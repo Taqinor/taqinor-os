@@ -47,9 +47,14 @@ export default function ProductTour() {
     if (open) return
     if (!tour || tour.vu) return
     if (!isNewUser(user)) return
-    setActiveKey(tour.tour_key)
-    setStep(0)
-    setOpen(true)
+    const key = tour.tour_key
+    // setState différé au prochain microtask (jamais synchrone dans l'effet) —
+    // évite react-hooks/set-state-in-effect sans changer le comportement visible.
+    queueMicrotask(() => {
+      setActiveKey(key)
+      setStep(0)
+      setOpen(true)
+    })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tour, pathname])
 

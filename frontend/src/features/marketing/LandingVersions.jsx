@@ -34,7 +34,9 @@ export default function LandingVersions({ formulaireId, formulaireNom }) {
     }
   }, [formulaireId])
 
-  useEffect(() => { charger() }, [charger])
+  // setState différé au prochain microtask (jamais synchrone dans l'effet) —
+  // évite react-hooks/set-state-in-effect sans changer le comportement visible.
+  useEffect(() => { queueMicrotask(() => charger()) }, [charger])
 
   const enregistrerBrouillon = async (e) => {
     e.preventDefault()

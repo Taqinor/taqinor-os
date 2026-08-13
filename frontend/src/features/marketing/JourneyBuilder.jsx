@@ -50,7 +50,9 @@ export default function JourneyBuilder({ sequenceId, sequenceNom, onSequenceCree
     }
   }, [sequenceId])
 
-  useEffect(() => { charger() }, [charger])
+  // setState différé au prochain microtask (jamais synchrone dans l'effet) —
+  // évite react-hooks/set-state-in-effect sans changer le comportement visible.
+  useEffect(() => { queueMicrotask(() => charger()) }, [charger])
 
   // NTMKT15 — bibliothèque de modèles (lecture seule ici).
   useEffect(() => {

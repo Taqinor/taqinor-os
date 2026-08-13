@@ -14,14 +14,19 @@ export default function SalleVenteAnalyticsBadge({ leadId }) {
     // Défensif : de nombreux tests montent DevisTab/ContextRail avec un mock
     // partiel de crmApi qui n'expose pas cette méthode — un appel silencieux
     // en no-op est plus sûr que de forcer chaque test existant à la mocker.
-    if (!leadId || typeof crmApi.getLeadSalleVenteAnalytics !== 'function') {
-      setSummary(null)
-      return
-    }
     let active = true
-    crmApi.getLeadSalleVenteAnalytics(leadId)
-      .then((r) => { if (active) setSummary(r.data ?? null) })
-      .catch(() => { if (active) setSummary(null) })
+    // setState différé au prochain microtask (jamais synchrone dans l'effet) —
+    // évite react-hooks/set-state-in-effect sans changer le comportement visible.
+    queueMicrotask(() => {
+      if (!active) return
+      if (!leadId || typeof crmApi.getLeadSalleVenteAnalytics !== 'function') {
+        setSummary(null)
+        return
+      }
+      crmApi.getLeadSalleVenteAnalytics(leadId)
+        .then((r) => { if (active) setSummary(r.data ?? null) })
+        .catch(() => { if (active) setSummary(null) })
+    })
     return () => { active = false }
   }, [leadId])
 

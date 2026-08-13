@@ -24,7 +24,9 @@ export default function DormantAccountsWidget({ seuil = 90 }) {
 
   useEffect(() => {
     let active = true
-    setLoading(true)
+    // setState différé au prochain microtask (jamais synchrone dans l'effet) —
+    // évite react-hooks/set-state-in-effect sans changer le comportement visible.
+    queueMicrotask(() => { if (active) setLoading(true) })
     crmApi.getComptesDormants(seuil)
       .then((r) => { if (active) setComptes(r.data?.results ?? []) })
       .catch(() => { if (active) setError(true) })

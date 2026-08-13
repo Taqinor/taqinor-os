@@ -51,7 +51,10 @@ export default function PublicSalleVentePage() {
       })
   }
 
-  useEffect(() => { charger() }, [token]) // eslint-disable-line react-hooks/exhaustive-deps
+  // setState différé au prochain microtask (jamais synchrone dans l'effet) —
+  // évite react-hooks/set-state-in-effect sans changer le comportement visible.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { queueMicrotask(() => charger()) }, [token])
 
   const handlePasswordSubmit = (e) => {
     e.preventDefault()

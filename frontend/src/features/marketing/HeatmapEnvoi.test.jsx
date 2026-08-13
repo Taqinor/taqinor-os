@@ -7,7 +7,8 @@ vi.mock('../../api/marketingApi', () => ({
   default: { heatmapEngagement: mocks.heatmap },
 }))
 
-import HeatmapEnvoi, { intensite, libelleMeilleurCreneau } from './HeatmapEnvoi'
+import HeatmapEnvoi from './HeatmapEnvoi'
+import { intensite, libelleMeilleurCreneau } from './heatmapEnvoiLogic'
 
 describe('libelleMeilleurCreneau / intensite (logique pure)', () => {
   it('formule la suggestion en français', () => {

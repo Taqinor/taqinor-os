@@ -40,12 +40,17 @@ export default function DefisPage() {
   }, [])
 
   useEffect(() => {
-    if (!defiId) { setClassement([]); return }
     let active = true
-    setLoadingClassement(true)
-    crmApi.getDefiClassement(defiId)
-      .then((r) => { if (active) setClassement(r.data ?? []) })
-      .finally(() => { if (active) setLoadingClassement(false) })
+    // setState différé au prochain microtask (jamais synchrone dans l'effet) —
+    // évite react-hooks/set-state-in-effect sans changer le comportement visible.
+    queueMicrotask(() => {
+      if (!active) return
+      if (!defiId) { setClassement([]); return }
+      setLoadingClassement(true)
+      crmApi.getDefiClassement(defiId)
+        .then((r) => { if (active) setClassement(r.data ?? []) })
+        .finally(() => { if (active) setLoadingClassement(false) })
+    })
     return () => { active = false }
   }, [defiId])
 

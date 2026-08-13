@@ -21,8 +21,10 @@ export default function PortfolioWidget() {
   const [comptes, setComptes] = useState([])
 
   useEffect(() => {
+    // setState n'arrive que dans les callbacks asynchrones (jamais synchrone
+    // dans l'effet) : l'état initial loading=true couvre le seul chargement
+    // (deps=[] — pas de refetch à re-signaler).
     let active = true
-    setLoading(true)
     crmApi.getMonPortefeuille()
       .then((r) => { if (active) setComptes(r.data?.results ?? []) })
       .catch(() => { if (active) setError(true) })

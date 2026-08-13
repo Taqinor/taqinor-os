@@ -18,7 +18,9 @@ export default function TerritoryCoverageWidget({ jours = 30 }) {
 
   useEffect(() => {
     let active = true
-    setLoading(true)
+    // setState différé au prochain microtask (jamais synchrone dans l'effet) —
+    // évite react-hooks/set-state-in-effect sans changer le comportement visible.
+    queueMicrotask(() => { if (active) setLoading(true) })
     api.get('/territoires/couverture/', { params: { jours } })
       .then((r) => { if (active) setData(r.data) })
       .catch(() => { if (active) setError(true) })

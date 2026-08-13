@@ -92,6 +92,12 @@ export default function ClientList() {
     return () => thunk?.abort?.()
   }, [dispatch])
 
+  // NTCRM15 — filtre dédié « Comptes dormants » (NTCRM14) : chargé
+  // paresseusement au premier clic, mis en cache tant que l'écran reste
+  // monté (aucun impact sur `visibleClients` tant que le toggle est off).
+  const [dormantsOnly, setDormantsOnly] = useState(false)
+  const [dormantIds, setDormantIds] = useState(null)
+
   // Filtre segmenté par type (Particulier / Entreprise), appliqué avant le
   // DataTable (qui garde sa propre recherche/tri/export sur le sous-ensemble).
   const visibleClients = useMemo(() => {
@@ -102,11 +108,6 @@ export default function ClientList() {
     return out
   }, [clients, typeFilter, dormantsOnly, dormantIds])
 
-  // NTCRM15 — filtre dédié « Comptes dormants » (NTCRM14) : chargé
-  // paresseusement au premier clic, mis en cache tant que l'écran reste
-  // monté (aucun impact sur `visibleClients` tant que le toggle est off).
-  const [dormantsOnly, setDormantsOnly] = useState(false)
-  const [dormantIds, setDormantIds] = useState(null)
   const toggleDormants = () => {
     const next = !dormantsOnly
     setDormantsOnly(next)
