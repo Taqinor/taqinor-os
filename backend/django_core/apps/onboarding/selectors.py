@@ -94,6 +94,22 @@ def tours_pour_utilisateur(company, user):
     return resolved
 
 
+# ── NTDMO22/23 — catalogue des tours (sans progression) pour le kit démo ───
+def catalogue_ecrans_money_path():
+    """Retourne les 6 tours (catalogue NTDMO14), un dict par tour_key :
+    {tour_key, ecran_cible, titre} (titre = 1re étape). Utilisé par le kit de
+    démonstration (NTDMO22/23) — jamais de progression utilisateur ici."""
+    from .models import ProductTourStep
+    steps = ProductTourStep.objects.all().order_by('tour_key', 'ordre')
+    by_tour = {}
+    for s in steps:
+        by_tour.setdefault(s.tour_key, {
+            'tour_key': s.tour_key, 'ecran_cible': s.ecran_cible,
+            'titre': s.titre,
+        })
+    return list(by_tour.values())
+
+
 def resume_pour_utilisateur(company, user):
     """Résumé pour le widget « Premiers pas » : {items, faits, total, pourcentage,
     termine}. ``termine`` = plus aucun item à faire (100 % ou tout ignoré)."""
