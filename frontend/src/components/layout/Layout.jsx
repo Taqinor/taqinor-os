@@ -11,6 +11,7 @@ import UsageTracker from './UsageTracker'
 import OnboardingCoachmarks from '../../features/onboarding/OnboardingCoachmarks'
 import { OfflineBanner } from '../../ui/OfflineState'
 import AppLockGate from '../../features/pwa/AppLockGate'
+import PrechargementTournee from '../../features/offlinesync/PrechargementTournee'
 import PresentationModeBanner from './PresentationModeBanner'
 import ImpersonationBanner from './ImpersonationBanner'
 import coreApi from '../../api/coreApi'
@@ -122,6 +123,9 @@ export default function Layout({ children }) {
       {/* NTMOB18 — verrou d'écran local (biométrie appareil). Rend null tant
           que l'utilisateur ne l'a pas activé sur CET appareil. */}
       <AppLockGate />
+      {/* NTMOB28 — pré-chargement matinal SILENCIEUX de la tournée du jour
+          dans le cache de lecture (NTMOB27). Rend null, no-op hors créneau. */}
+      <PrechargementTournee />
       <Sidebar collapsed={collapsed} onToggle={toggleCollapsed}
                onNavigate={() => setDrawerOpen(false)} />
       {drawerOpen && (
