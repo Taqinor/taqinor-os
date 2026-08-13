@@ -40,7 +40,9 @@ from apps.compta.serializers import (  # noqa: F401
 )
 from rest_framework import serializers
 
-from .models import ArcJourney, ModeleJourney, NoeudJourney
+from .models import (
+    ArcJourney, ModeleJourney, NoeudJourney, VersionFormulaireIntake,
+)
 
 
 # ── NTMKT12 — Journey en graphe ─────────────────────────────────────────────
@@ -94,3 +96,19 @@ class ModeleJourneySerializer(serializers.ModelSerializer):
         fields = ['id', 'nom', 'categorie', 'description', 'graphe',
                   'date_creation']
         read_only_fields = ['date_creation']
+
+
+class VersionFormulaireIntakeSerializer(_CompanyScopedSerializer):
+    """NTMKT16 — version éditoriale d'une landing page.
+
+    ``version``/``publie``/``date_publication`` sont posés CÔTÉ SERVEUR : une
+    version se publie via l'action dédiée, jamais par un PATCH du corps.
+    """
+    champs_scopes = ('formulaire',)
+
+    class Meta:
+        model = VersionFormulaireIntake
+        fields = ['id', 'formulaire', 'version', 'titre', 'pitch',
+                  'image_key', 'publie', 'date_publication', 'date_creation']
+        read_only_fields = ['version', 'publie', 'date_publication',
+                            'date_creation']

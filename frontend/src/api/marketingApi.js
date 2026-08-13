@@ -89,6 +89,14 @@ const marketingApi = {
   noeudsJourney: resource('noeuds-journey'),
   arcsJourney: resource('arcs-journey'),
 
+  // ── NTMKT16 — Versions éditoriales d'une landing page d'intake ──
+  versionsFormulaireIntake: {
+    ...resource('versions-formulaire-intake'),
+    // « Publier cette version » : la page publique bascule dessus.
+    publier: (id) =>
+      api.post(`/marketing/versions-formulaire-intake/${id}/publier/`),
+  },
+
   // ── NTMKT15 — Bibliothèque de modèles de journeys (graphes pré-construits)
   modelesJourney: {
     ...resource('modeles-journey'),

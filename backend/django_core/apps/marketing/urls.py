@@ -52,6 +52,7 @@ from .views import (
     SequenceRelanceViewSet,
     SupportOfflineViewSet,
     TypeEvenementViewSet,
+    VersionFormulaireIntakeViewSet,
     desinscription_publique,
     double_optin_confirmer,
     enquete_certificat_pdf,
@@ -98,6 +99,9 @@ router.register(r'ouvertures-partage', OuverturePartageViewSet,
                 basename='mkt-ouverture-partage')
 router.register(r'formulaires-intake', FormulaireIntakeViewSet,
                 basename='mkt-formulaire-intake')
+# ── Landing pages versionnées (NTMKT16) ─────────────────────────────────────
+router.register(r'versions-formulaire-intake', VersionFormulaireIntakeViewSet,
+                basename='mkt-version-formulaire-intake')
 router.register(r'messages-whatsapp', MessageWhatsAppEntrantViewSet,
                 basename='mkt-message-whatsapp')
 router.register(r'appels', AppelTelephoniqueViewSet, basename='mkt-appel')

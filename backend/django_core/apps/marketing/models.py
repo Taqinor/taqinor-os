@@ -2139,3 +2139,59 @@ class ModeleJourney(models.Model):
 
     def __str__(self):
         return f'{self.nom} ({self.categorie})'
+
+
+# ── NTMKT16 — Landing pages versionnées et publiées ────────────────────────
+
+class VersionFormulaireIntake(models.Model):
+    """Une version éditoriale d'une landing page ``FormulaireIntake``
+    (NTMKT16).
+
+    ``FormulaireIntake.champs`` décrit les CHAMPS du formulaire ; cette
+    version porte le CONTENU de la page (titre, pitch, image). Chaque édition
+    crée une nouvelle version en brouillon ; la page publique rend TOUJOURS la
+    dernière version ``publie=True`` (aucune si le formulaire n'a jamais été
+    publié — la landing garde alors son rendu historique, sans contenu).
+    """
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='versions_formulaire_intake',
+        verbose_name='Société',
+    )
+    formulaire = models.ForeignKey(
+        FormulaireIntake,
+        on_delete=models.CASCADE,
+        related_name='versions',
+        verbose_name='Formulaire',
+    )
+    # Incrémentée CÔTÉ SERVEUR (jamais acceptée du corps de requête).
+    version = models.PositiveIntegerField(default=1, verbose_name='Version')
+    titre = models.CharField(
+        max_length=200, blank=True, default='', verbose_name='Titre de la page')
+    pitch = models.TextField(
+        blank=True, default='', verbose_name='Pitch / corps de page')
+    # Clé d'objet MinIO de l'image d'en-tête — opaque, optionnelle.
+    image_key = models.CharField(
+        max_length=512, blank=True, default='',
+        verbose_name="Image d'en-tête (clé MinIO)")
+    publie = models.BooleanField(default=False, verbose_name='Publiée')
+    date_publication = models.DateTimeField(
+        null=True, blank=True, verbose_name='Publiée le')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créée le')
+
+    class Meta:
+        verbose_name = "Version de landing page"
+        verbose_name_plural = "Versions de landing page"
+        ordering = ['-version', '-id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['formulaire', 'version'],
+                name='uniq_version_formulaire_intake',
+            ),
+        ]
+
+    def __str__(self):
+        etat = 'publiée' if self.publie else 'brouillon'
+        return f'{self.formulaire_id} v{self.version} ({etat})'

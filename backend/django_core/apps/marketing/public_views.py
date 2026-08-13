@@ -38,11 +38,23 @@ class _IntakePublicThrottle(SimpleRateThrottle):
 
 def _serialiser_formulaire(formulaire):
     """Représentation PUBLIQUE d'un formulaire (aucune donnée sensible : ni
-    société, ni compteurs, ni prix — juste de quoi rendre la landing)."""
+    société, ni compteurs, ni prix — juste de quoi rendre la landing).
+
+    NTMKT16 — ``page`` porte le contenu éditorial de la DERNIÈRE version
+    PUBLIÉE (jamais un brouillon) ; ``None`` tant qu'aucune version n'est
+    publiée, ce qui laisse le rendu historique inchangé.
+    """
+    version = services.derniere_version_publiee(formulaire)
     return {
         'slug': formulaire.slug,
         'nom': formulaire.nom,
         'champs': formulaire.champs or [],
+        'page': None if version is None else {
+            'version': version.version,
+            'titre': version.titre,
+            'pitch': version.pitch,
+            'image_key': version.image_key,
+        },
     }
 
 

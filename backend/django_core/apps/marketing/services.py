@@ -65,6 +65,53 @@ from apps.compta.services import (  # noqa: F401
 # import des modèles crm — invariant CLAUDE.md/M3). La société vient TOUJOURS
 # du formulaire résolu côté serveur, jamais du corps de la requête publique.
 
+def derniere_version_publiee(formulaire):
+    """NTMKT16 — dernière version PUBLIÉE d'une landing page, ou ``None``.
+
+    La page publique n'affiche jamais un brouillon : tant qu'aucune version
+    n'est publiée, le rendu reste EXACTEMENT celui d'avant NTMKT16.
+    """
+    return (formulaire.versions.filter(publie=True)
+            .order_by('-version', '-id')
+            .first())
+
+
+def creer_version_formulaire(formulaire, data=None):
+    """NTMKT16 — crée une nouvelle version BROUILLON du contenu de page.
+
+    Le numéro de version est calculé côté serveur (plus haut utilisé + 1 —
+    jamais un count(), qui régresse à la suppression) et n'est jamais accepté
+    du corps de la requête ; la société vient du formulaire.
+    """
+    from django.db.models import Max
+    from .models import VersionFormulaireIntake
+    data = data or {}
+    plus_haute = (formulaire.versions.aggregate(m=Max('version'))['m'] or 0)
+    return VersionFormulaireIntake.objects.create(
+        company=formulaire.company,
+        formulaire=formulaire,
+        version=plus_haute + 1,
+        titre=data.get('titre') or '',
+        pitch=data.get('pitch') or '',
+        image_key=data.get('image_key') or '',
+        publie=False,
+    )
+
+
+def publier_version_formulaire(version):
+    """NTMKT16 — publie une version : la page publique bascule dessus.
+
+    Les versions antérieures restent consultables (historique complet) ;
+    seule la PLUS RÉCENTE publiée est rendue.
+    """
+    from django.utils import timezone
+    if not version.publie:
+        version.publie = True
+        version.date_publication = timezone.now()
+        version.save(update_fields=['publie', 'date_publication'])
+    return version
+
+
 def formulaire_intake_actif_par_slug(slug):
     """WIR64 — résout un FormulaireIntake ACTIF par son slug public (lookup
     par slug, cf. NTMKT16). Renvoie le formulaire ou ``None``. La société est

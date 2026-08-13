@@ -61,9 +61,12 @@ from rest_framework.response import Response
 from authentication.permissions import IsResponsableOrAdmin
 
 from . import services as marketing_services
-from .models import ArcJourney, ModeleJourney, NoeudJourney
+from .models import (
+    ArcJourney, ModeleJourney, NoeudJourney, VersionFormulaireIntake,
+)
 from .serializers import (
     ArcJourneySerializer, ModeleJourneySerializer, NoeudJourneySerializer,
+    VersionFormulaireIntakeSerializer,
 )
 
 
@@ -125,3 +128,35 @@ class ModeleJourneyViewSet(_ComptaBaseViewSet):
         )
         return Response(
             {'sequence_id': sequence.id, 'nom': sequence.nom}, status=201)
+
+
+class VersionFormulaireIntakeViewSet(_ComptaBaseViewSet):
+    """NTMKT16 — versions éditoriales d'une landing page + publication."""
+    queryset = VersionFormulaireIntake.objects.all()
+    serializer_class = VersionFormulaireIntakeSerializer
+    ordering_fields = ['id', 'version', 'date_creation']
+    search_fields = ['titre']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        formulaire = self.request.query_params.get('formulaire')
+        if formulaire:
+            qs = qs.filter(formulaire_id=formulaire)
+        return qs
+
+    def perform_create(self, serializer):
+        """Chaque édition crée une NOUVELLE version : le numéro est calculé
+        côté serveur (jamais lu du corps), la société vient du formulaire."""
+        formulaire = serializer.validated_data['formulaire']
+        version = marketing_services.creer_version_formulaire(
+            formulaire, serializer.validated_data)
+        serializer.instance = version
+
+    # YRBAC4 — garde explicite sur l'action custom.
+    @action(detail=True, methods=['post'], url_path='publier',
+            permission_classes=[IsResponsableOrAdmin])
+    def publier(self, request, pk=None):
+        """« Publier cette version » : la page publique bascule dessus."""
+        version = self.get_object()
+        marketing_services.publier_version_formulaire(version)
+        return Response(self.get_serializer(version).data)
