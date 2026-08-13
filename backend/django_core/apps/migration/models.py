@@ -111,14 +111,16 @@ class LotMigration(TenantModel):
     source_montant = models.DecimalField(
         max_digits=16, decimal_places=2, null=True, blank=True)
 
-    # NTMIG35 — fichier source TEMPORAIRE (stockage objet MinIO/S3 via le
-    # stockage Django par défaut ; jamais dans le dépôt). Il contient des
-    # données personnelles (clients, leads) : il n'est gardé que le temps de
-    # rejouer/reprendre un chargement (NTMIG38) et purgé automatiquement
-    # `RETENTION_FICHIERS_JOURS` après la clôture du projet.
-    fichier_source = models.FileField(
-        upload_to='migration/sources/', null=True, blank=True,
-        verbose_name='Fichier source (temporaire)')
+    # NTMIG35 — fichier source TEMPORAIRE. On stocke sa CLÉ D'OBJET MinIO
+    # (bucket `erp-uploads`), jamais un `FileField` : ARC26 interdit toute
+    # nouvelle pièce jointe hors stockage objet, et le fichier ne doit vivre ni
+    # dans le dépôt ni sur le disque d'un conteneur. Il contient des données
+    # personnelles (clients, leads) : gardé le temps de rejouer/reprendre un
+    # chargement (NTMIG38) ou de tester à blanc (NTMIG33), puis purgé
+    # automatiquement `RETENTION_FICHIERS_JOURS` jours après la clôture.
+    fichier_source_cle = models.CharField(
+        max_length=500, blank=True, default='',
+        verbose_name="Clé de stockage du fichier source")
     #: Nom d'origine du fichier — le nom stocké est suffixé par le stockage,
     #: et l'EXTENSION d'origine décide du parseur (CSV vs XLSX) à la reprise.
     fichier_source_nom = models.CharField(

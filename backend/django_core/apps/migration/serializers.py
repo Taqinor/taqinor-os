@@ -52,10 +52,6 @@ class LotMigrationSerializer(_CreationSeulementMixin,
 
     dernier_rapport = serializers.SerializerMethodField()
     derogation_par_nom = serializers.SerializerMethodField()
-    # NTMIG35 — on expose la PRÉSENCE du fichier source, jamais son URL : le
-    # fichier contient des données personnelles brutes et n'a aucune raison
-    # d'être re-téléchargeable depuis la fiche du lot.
-    fichier_source_present = serializers.SerializerMethodField()
 
     class Meta:
         model = LotMigration
@@ -63,20 +59,14 @@ class LotMigrationSerializer(_CreationSeulementMixin,
             'id', 'projet', 'entite', 'ordre', 'statut', 'import_job',
             'source_lignes', 'crees', 'maj', 'erreurs', 'source_montant',
             'derogation_reconcile', 'derogation_motif', 'derogation_par_nom',
-            'derogation_at', 'dernier_rapport', 'fichier_source_present',
-            'fichier_source_nom', 'created_at', 'updated_at',
+            'derogation_at', 'dernier_rapport', 'created_at', 'updated_at',
         ]
         read_only_fields = [
             'id', 'statut', 'import_job', 'source_lignes', 'crees', 'maj',
             'erreurs', 'source_montant', 'derogation_reconcile',
             'derogation_motif', 'derogation_par_nom', 'derogation_at',
-            'dernier_rapport', 'fichier_source_present', 'fichier_source_nom',
-            'created_at', 'updated_at',
+            'dernier_rapport', 'created_at', 'updated_at',
         ]
-
-    @extend_schema_field(serializers.BooleanField())
-    def get_fichier_source_present(self, obj):
-        return bool(obj.fichier_source)
 
     def validate_entite(self, value):
         """L'entité doit être une cible d'import RÉELLE.
@@ -120,11 +110,11 @@ class ProjetMigrationSerializer(_CreationSeulementMixin,
         fields = [
             'id', 'nom', 'source', 'statut', 'cree_par', 'date_debut',
             'date_fin', 'notes', 'lots_total', 'lots_reconcilies',
-            'fichiers_purges', 'created_at', 'updated_at',
+            'created_at', 'updated_at',
         ]
         read_only_fields = [
             'id', 'statut', 'cree_par', 'date_fin', 'lots_total',
-            'lots_reconcilies', 'fichiers_purges', 'created_at', 'updated_at',
+            'lots_reconcilies', 'created_at', 'updated_at',
         ]
 
     @extend_schema_field(serializers.IntegerField())

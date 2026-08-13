@@ -1,7 +1,5 @@
 """NTMIG33 — migration à blanc sur le tenant sandbox (jamais la production)."""
-import tempfile
-
-from django.test import TestCase, override_settings
+from django.test import TestCase
 from django.utils import timezone
 
 from apps.adminops.models import SandboxEnvironment
@@ -10,6 +8,7 @@ from apps.migration import services
 from apps.migration.models import LotMigration, ProjetMigration
 
 from ._base import auth, make_admin, make_company
+from ._stockage_factice import patcher_stockage
 
 CSV = (
     'Nom,Email\n'
@@ -17,13 +16,11 @@ CSV = (
     'Client B,b@exemple.ma\n'
 ).encode('utf-8')
 
-_MEDIA = tempfile.mkdtemp(prefix='ntmig33-')
 
-
-@override_settings(MEDIA_ROOT=_MEDIA)
 class MigrationABlancTests(TestCase):
 
     def setUp(self):
+        self.stockage = patcher_stockage(self)
         self.company = make_company('ntmig33', 'NTMIG33')
         self.admin = make_admin(self.company, 'ntmig33-admin')
         self.projet = ProjetMigration.objects.create(
@@ -32,7 +29,7 @@ class MigrationABlancTests(TestCase):
             company=self.company, projet=self.projet, entite='clients')
         services.memoriser_fichier_source(self.lot, CSV, 'clients.csv')
         self.lot.save(update_fields=[
-            'fichier_source', 'fichier_source_nom', 'updated_at'])
+            'fichier_source_cle', 'fichier_source_nom', 'updated_at'])
 
     def _provisionner_sandbox(self):
         self.sandbox_company = make_company(

@@ -5,6 +5,8 @@ les deux rôles système y sont mappés, le superuser aussi). ``company`` est
 TOUJOURS forcée côté serveur (``CompanyScopedModelViewSet``) ; ``cree_par``
 est posé côté serveur en création, jamais lu du corps de requête.
 """
+import logging
+
 from rest_framework import status
 from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
@@ -20,6 +22,8 @@ from .models import LotMigration, ProjetMigration
 from .serializers import (
     LotMigrationSerializer, ProjetMigrationSerializer,
     RapportReconciliationSerializer)
+
+logger = logging.getLogger(__name__)
 
 
 def _drapeau(valeur):
@@ -267,11 +271,16 @@ class LotMigrationViewSet(CompanyScopedModelViewSet):
                 user=request.user)
         except ValueError as exc:
             raise ValidationError({'detail': str(exc)})
+        if exclues:
+            # Les lignes écartées ne disparaissent pas en silence : elles sont
+            # journalisées et restent listées (numéro + motif) par
+            # `valider-source`, dont la réponse est le contrat de référence —
+            # la forme de CETTE réponse-ci ne bouge pas (contrat d'API).
+            logger.info(
+                'NTMIG32 — lot %s : %s ligne(s) source écartée(s) avant '
+                'chargement (%s).', lot.pk, len(exclues), exclues[:20])
         return Response({
-            'lot': LotMigrationSerializer(lot).data, 'resultat': result,
-            # Les lignes écartées sont NOMMÉES dans la réponse : une ligne
-            # laissée de côté ne disparaît jamais en silence.
-            'lignes_ignorees': exclues})
+            'lot': LotMigrationSerializer(lot).data, 'resultat': result})
 
     @action(detail=True, methods=['post'], url_path='reprendre', permission_classes=[IsDirecteurOuAdmin])
     def reprendre(self, request, pk=None):

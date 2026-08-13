@@ -1,7 +1,5 @@
 """NTMIG35 — purge sécurisée des fichiers source après migration."""
-import tempfile
-
-from django.test import TestCase, override_settings
+from django.test import TestCase
 from django.utils import timezone
 
 from apps.migration import services
@@ -9,16 +7,15 @@ from apps.migration.models import (
     LotMigration, ProjetMigration, RapportReconciliation)
 
 from ._base import make_company
+from ._stockage_factice import patcher_stockage
 
 CSV = b'Nom,Email\nClient A,a@exemple.ma\n'
 
-_MEDIA = tempfile.mkdtemp(prefix='ntmig35-')
 
-
-@override_settings(MEDIA_ROOT=_MEDIA)
 class PurgeFichiersSourceTests(TestCase):
 
     def setUp(self):
+        self.stockage = patcher_stockage(self)
         self.company = make_company('ntmig35', 'NTMIG35')
         self.projet = ProjetMigration.objects.create(
             company=self.company, nom='Bascule', source='excel')
@@ -28,7 +25,7 @@ class PurgeFichiersSourceTests(TestCase):
     def _memoriser(self):
         services.memoriser_fichier_source(self.lot, CSV, 'clients.csv')
         self.lot.save(update_fields=[
-            'fichier_source', 'fichier_source_nom', 'updated_at'])
+            'fichier_source_cle', 'fichier_source_nom', 'updated_at'])
 
     def test_fichier_memorise_puis_relu(self):
         self._memoriser()
@@ -52,7 +49,7 @@ class PurgeFichiersSourceTests(TestCase):
         self.assertEqual(resultat['fichiers'], 1)
         self.lot.refresh_from_db()
         self.projet.refresh_from_db()
-        self.assertFalse(bool(self.lot.fichier_source))
+        self.assertFalse(bool(self.lot.fichier_source_cle))
         self.assertTrue(self.projet.fichiers_purges)
         self.assertIsNone(services.fichier_source_de(self.lot))
         # Les rapports (agrégats non-PII) sont CONSERVÉS.
@@ -68,7 +65,7 @@ class PurgeFichiersSourceTests(TestCase):
         services.purger_fichiers_expires()
 
         self.lot.refresh_from_db()
-        self.assertTrue(bool(self.lot.fichier_source))
+        self.assertTrue(bool(self.lot.fichier_source_cle))
 
     def test_projet_en_cours_n_est_jamais_purge(self):
         self._memoriser()
@@ -78,7 +75,7 @@ class PurgeFichiersSourceTests(TestCase):
         services.purger_fichiers_expires()
 
         self.lot.refresh_from_db()
-        self.assertTrue(bool(self.lot.fichier_source))
+        self.assertTrue(bool(self.lot.fichier_source_cle))
         self.projet.refresh_from_db()
         self.assertFalse(self.projet.fichiers_purges)
 
@@ -102,11 +99,11 @@ class PurgeFichiersSourceTests(TestCase):
     def test_memorisation_remplace_le_fichier_precedent(self):
         """Une nouvelle analyse ne laisse pas traîner l'ancien fichier PII."""
         self._memoriser()
-        ancien = self.lot.fichier_source.name
+        ancien = self.lot.fichier_source_cle
         services.memoriser_fichier_source(
             self.lot, b'Nom,Email\nClient B,b@exemple.ma\n', 'clients2.csv')
         self.lot.save(update_fields=[
-            'fichier_source', 'fichier_source_nom', 'updated_at'])
-        from django.core.files.storage import default_storage
-        self.assertFalse(default_storage.exists(ancien))
+            'fichier_source_cle', 'fichier_source_nom', 'updated_at'])
+        self.assertNotIn(ancien, self.stockage.objets)
+        self.assertIn(self.lot.fichier_source_cle, self.stockage.objets)
         self.assertEqual(self.lot.fichier_source_nom, 'clients2.csv')

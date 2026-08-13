@@ -111,40 +111,30 @@ def memoriser_fichier_source(lot, file_bytes, filename):
     intermédiaires multiplierait les copies de données personnelles sans que
     personne ne les demande.
     """
-    from django.core.files.base import ContentFile
+    from . import stockage
 
-    ancien = lot.fichier_source
-    if ancien:
-        ancien.delete(save=False)
-    lot.fichier_source.save(
-        _nom_stockage(lot, filename), ContentFile(file_bytes), save=False)
+    ancien = lot.fichier_source_cle
+    lot.fichier_source_cle = stockage.enregistrer(
+        lot.company_id, lot.pk, file_bytes, filename)
     lot.fichier_source_nom = filename or ''
-
-
-def _nom_stockage(lot, filename):
-    import os
-
-    base, ext = os.path.splitext(os.path.basename(filename or 'source.csv'))
-    return f'lot-{lot.pk}-{base[:60]}{ext or ".csv"}'
+    if ancien and ancien != lot.fichier_source_cle:
+        stockage.supprimer(ancien)
 
 
 def fichier_source_de(lot):
     """(octets, nom d'origine) du fichier source mémorisé — ``None`` si purgé.
 
     ``None`` n'est pas une anomalie : c'est l'état NORMAL d'un projet clôturé
-    depuis plus de :data:`RETENTION_FICHIERS_JOURS` jours.
+    depuis plus de :data:`RETENTION_FICHIERS_JOURS` jours (ou d'un stockage
+    objet momentanément indisponible — l'appelant propose alors de
+    re-téléverser le fichier plutôt que de travailler sur du vide).
     """
-    import os
+    from . import stockage
 
-    if not lot.fichier_source:
+    contenu = stockage.lire(lot.fichier_source_cle)
+    if contenu is None:
         return None
-    lot.fichier_source.open('rb')
-    try:
-        contenu = lot.fichier_source.read()
-    finally:
-        lot.fichier_source.close()
-    return contenu, (lot.fichier_source_nom
-                     or os.path.basename(lot.fichier_source.name))
+    return contenu, (lot.fichier_source_nom or 'source.csv')
 
 
 def purger_fichiers_source(projet):
@@ -154,15 +144,17 @@ def purger_fichiers_source(projet):
     conservés intacts : après la purge, le PV de migration reste produisible —
     seules les données personnelles brutes disparaissent.
     """
+    from . import stockage
+
     purges = 0
     for lot in lots_du_projet(projet):
-        if not lot.fichier_source:
+        if not lot.fichier_source_cle:
             continue
-        lot.fichier_source.delete(save=False)
-        lot.fichier_source = None
+        stockage.supprimer(lot.fichier_source_cle)
+        lot.fichier_source_cle = ''
         lot.fichier_source_nom = ''
         lot.save(update_fields=[
-            'fichier_source', 'fichier_source_nom', 'updated_at'])
+            'fichier_source_cle', 'fichier_source_nom', 'updated_at'])
         purges += 1
     if not projet.fichiers_purges:
         projet.fichiers_purges = True
@@ -239,7 +231,7 @@ def analyser_lot(lot, file_bytes, filename, *, mapping_name=None):
     memoriser_fichier_source(lot, file_bytes, filename)
     lot.save(update_fields=[
         'source_lignes', 'crees', 'maj', 'erreurs', 'import_job', 'statut',
-        'fichier_source', 'fichier_source_nom', 'updated_at'])
+        'fichier_source_cle', 'fichier_source_nom', 'updated_at'])
     return apercu
 
 
@@ -384,7 +376,7 @@ def charger_lot(lot, file_bytes, filename, *, mode=None,
         verrou.save(update_fields=[
             'source_lignes', 'crees', 'maj', 'erreurs', 'import_job',
             'statut', 'derogation_reconcile', 'derogation_motif',
-            'derogation_par', 'derogation_at', 'fichier_source',
+            'derogation_par', 'derogation_at', 'fichier_source_cle',
             'fichier_source_nom', 'fichier_offset_lignes', 'updated_at'])
 
     lot.refresh_from_db()
@@ -485,7 +477,7 @@ def reprendre_lot(lot, file_bytes=None, filename=None, *, user=None,
     memoriser_fichier_source(lot, file_bytes, filename)
     lot.save(update_fields=[
         'source_lignes', 'crees', 'maj', 'erreurs', 'fichier_offset_lignes',
-        'fichier_source', 'fichier_source_nom', 'updated_at'])
+        'fichier_source_cle', 'fichier_source_nom', 'updated_at'])
 
     return {
         'reprise_depuis_ligne': coupe + 1,

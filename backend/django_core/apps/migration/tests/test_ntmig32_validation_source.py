@@ -72,10 +72,10 @@ class ValidationSourceTests(TestCase):
             {'fichier': _fichier(), 'ignorer_lignes_invalides': 'true'},
             format='multipart')
         self.assertEqual(resp.status_code, 200, resp.content)
-        corps = resp.json()
-        self.assertEqual(corps['lignes_ignorees'], [2, 3, 4, 5, 6])
-        # Seule la ligne saine est passée au moteur d'import.
-        self.assertEqual(corps['resultat']['total'], 1)
+        # Seule la ligne saine est passée au moteur d'import (les 5 lignes
+        # invalides sont écartées avant le commit ; elles restent listées par
+        # `valider-source`, dont c'est le rôle).
+        self.assertEqual(resp.json()['resultat']['total'], 1)
 
     def test_champ_vide_n_est_pas_une_erreur_de_format(self):
         self.assertIsNone(validation.valider_ice(''))

@@ -1,8 +1,6 @@
 """NTMIG38 — reprise sur incident : un lot partiellement chargé repart après
 sa dernière ligne commitée, sans dupliquer ce qui est déjà passé."""
-import tempfile
-
-from django.test import TestCase, override_settings
+from django.test import TestCase
 
 from apps.crm.models import Client
 from apps.dataimport.models import ImportJob, ImportJobRow
@@ -10,8 +8,7 @@ from apps.migration import services
 from apps.migration.models import LotMigration, ProjetMigration
 
 from ._base import auth, make_admin, make_company
-
-_MEDIA = tempfile.mkdtemp(prefix='ntmig38-')
+from ._stockage_factice import patcher_stockage
 
 
 def _csv(debut, fin):
@@ -21,10 +18,10 @@ def _csv(debut, fin):
     return ('\n'.join(lignes) + '\n').encode('utf-8')
 
 
-@override_settings(MEDIA_ROOT=_MEDIA)
 class RepriseLotTests(TestCase):
 
     def setUp(self):
+        self.stockage = patcher_stockage(self)
         self.company = make_company('ntmig38', 'NTMIG38')
         self.admin = make_admin(self.company, 'ntmig38-admin')
         self.projet = ProjetMigration.objects.create(
@@ -42,7 +39,7 @@ class RepriseLotTests(TestCase):
         services.memoriser_fichier_source(
             self.lot, _csv(1, total), 'clients.csv')
         self.lot.save(update_fields=[
-            'fichier_source', 'fichier_source_nom', 'updated_at'])
+            'fichier_source_cle', 'fichier_source_nom', 'updated_at'])
 
     def test_reprise_apres_la_derniere_ligne_commitee(self):
         self._simuler_chargement_interrompu(jusqu_a=60, total=100)
