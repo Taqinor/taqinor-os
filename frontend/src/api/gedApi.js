@@ -369,8 +369,12 @@ const gedApi = {
   // même patron que `messagesApi.listCompanyMembers` — pour peupler le
   // sélecteur « utilisateur » du formulaire d'octroi ACL.
   getUsers: () => api.get('/users/'),
-  // Vues enregistrées (filtres sauvegardés) partagées de la société.
+  // ZGED8 — Vues enregistrées (recherches/filtres sauvegardés, partageables).
+  // Lecture : ses vues privées + les vues partagées de la société.
   getVues: (params) => api.get('/ged/vues/', { params }),
+  // `data` : { nom, criteres:{query?,tagId?,semantic?}, partagee? }.
+  createVue: (data) => api.post('/ged/vues/', data),
+  deleteVue: (id) => api.delete(`/ged/vues/${id}/`),
   // Lien de dépôt public tokenisé (la page publique PublicDepotPage fonctionne).
   getDepotsPublics: (params) => api.get('/ged/depots-publics/', { params }),
   createDepotPublic: (data) => api.post('/ged/depots-publics/', data),

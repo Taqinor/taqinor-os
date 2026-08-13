@@ -19,6 +19,12 @@ vi.mock('../../api/gedApi', () => ({
     getTags: vi.fn(() => Promise.resolve({ data: [] })),
     searchDocuments: vi.fn(() => Promise.resolve({ data: [] })),
     semanticSearch: vi.fn(() => Promise.resolve({ data: [] })),
+    // ZGED7/8/13 — favoris/récents/vues (rendus par GedSearch, monté ici).
+    getMesFavoris: vi.fn(() => Promise.resolve({ data: { dossiers: [], documents: [] } })),
+    getMesRecents: vi.fn(() => Promise.resolve({ data: { consultes: [], deposes: [] } })),
+    getVues: vi.fn(() => Promise.resolve({ data: [] })),
+    createVue: vi.fn(() => Promise.resolve({ data: { id: 1 } })),
+    deleteVue: vi.fn(() => Promise.resolve({ data: {} })),
     // GED14 — aperçu inline.
     getVersions: vi.fn(() => Promise.resolve({ data: [] })),
     apercuVersionUrl: (id) => `/api/django/ged/versions/${id}/apercu/`,

@@ -294,9 +294,10 @@ export default function GedNavigator() {
         )}
       />
 
-      {/* GED13 — Filtres & recherche avancée (plein-texte/sémantique + tags). */}
+      {/* GED13 — Filtres & recherche avancée (plein-texte/sémantique + tags).
+          ZGED7/13 — favoris/récents ouvrent l'aperçu inline GED14. */}
       <div className="mb-4">
-        <GedSearch />
+        <GedSearch onOpenDocument={setPreviewDoc} />
       </div>
 
       {error ? (
