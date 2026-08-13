@@ -18,6 +18,8 @@ le ré-export bit-identique — format ``DA-YYYYMM-NNNN`` inchangé). Les action
 d'approbation et leurs gardes restent STRICTEMENT inchangées (moteur propre,
 chemin ARC10 nommé) ; aucun PDF (document d'approbation interne).
 """
+from decimal import Decimal, InvalidOperation
+
 from django.utils import timezone
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
@@ -241,6 +243,104 @@ class DemandeAchatViewSet(ChatterViewSetMixin, CompanyScopedModelViewSet):
         da.statut = DemandeAchat.Statut.COMMANDEE
         da.save(update_fields=['bon_commande', 'statut', 'date_modification'])
         return Response(self.get_serializer(da).data)
+
+    @action(detail=True, methods=['post'], url_path='importer-lignes-csv')
+    def importer_lignes_csv(self, request, pk=None):
+        """NTP2P40 — Import CSV en masse de ``DemandeAchatLigne``.
+
+        Corps multipart : fichier ``fichier`` (ou ``csv``). Colonnes
+        attendues (en-tête, ordre libre) : ``designation``, ``sku``
+        (optionnel — résout un produit catalogue de la société),
+        ``quantite``, ``prix_estime``. Chaque ligne est validée
+        INDÉPENDAMMENT — une ligne invalide est reportée dans ``erreurs``
+        SANS bloquer les autres (rapport ligne par ligne, jamais tout ou
+        rien). Seule une DA BROUILLON/SOUMISE accepte un import (une DA déjà
+        décidée reste figée)."""
+        import csv
+        import io
+
+        da = self.get_object()
+        if da.statut not in (DemandeAchat.Statut.BROUILLON,
+                             DemandeAchat.Statut.SOUMISE):
+            return Response(
+                {'detail': 'Seule une demande brouillon ou soumise accepte '
+                           'un import de lignes.'},
+                status=status.HTTP_400_BAD_REQUEST)
+
+        fichier = request.FILES.get('fichier') or request.FILES.get('csv')
+        if fichier is None:
+            return Response(
+                {'fichier': "Le fichier 'fichier' est obligatoire."},
+                status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            texte = fichier.read().decode('utf-8-sig')
+        except UnicodeDecodeError:
+            return Response(
+                {'fichier': 'Encodage invalide (UTF-8 attendu).'},
+                status=status.HTTP_400_BAD_REQUEST)
+
+        reader = csv.DictReader(io.StringIO(texte))
+        if reader.fieldnames is None:
+            return Response(
+                {'fichier': 'Fichier CSV vide ou sans en-tête.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        entetes = {(h or '').strip().lower(): h for h in reader.fieldnames}
+
+        from django.apps import apps as django_apps
+        produit_model = django_apps.get_model('stock', 'Produit')
+        company = request.user.company
+
+        creees = []
+        erreurs = []
+        for numero, row in enumerate(reader, start=2):  # 1 = en-tête
+            def _val(cle):
+                col = entetes.get(cle)
+                return (row.get(col) or '').strip() if col else ''
+
+            designation = _val('designation')
+            sku = _val('sku')
+            quantite_brute = _val('quantite')
+            prix_brut = _val('prix_estime')
+
+            produit = None
+            if sku:
+                produit = produit_model.objects.filter(
+                    company=company, sku=sku).first()
+                if produit is None:
+                    erreurs.append(
+                        {'ligne': numero,
+                         'erreur': f"SKU inconnu pour cette société : {sku}"})
+                    continue
+            if not designation and produit is None:
+                erreurs.append(
+                    {'ligne': numero,
+                     'erreur': 'Ni désignation ni SKU renseigné.'})
+                continue
+            try:
+                quantite = Decimal(quantite_brute or '0')
+                prix_estime = Decimal(prix_brut or '0')
+            except InvalidOperation:
+                erreurs.append(
+                    {'ligne': numero,
+                     'erreur': 'Quantité ou prix estimé invalide.'})
+                continue
+            if quantite <= 0:
+                erreurs.append(
+                    {'ligne': numero, 'erreur': 'Quantité doit être > 0.'})
+                continue
+
+            ligne = DemandeAchatLigne.objects.create(
+                demande=da, produit=produit,
+                designation=designation or None,
+                quantite=quantite, prix_estime=prix_estime)
+            creees.append(ligne.id)
+
+        return Response({
+            'importees': len(creees),
+            'lignes_creees': creees,
+            'erreurs': erreurs,
+        }, status=status.HTTP_201_CREATED if creees else status.HTTP_200_OK)
 
 
 class DemandeAchatLigneViewSet(viewsets.ModelViewSet):
