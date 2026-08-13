@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, useCallback } from 'react'
+import { useEffect, useMemo, useRef, useState, useCallback } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import {
   Download, Ticket as TicketIcon, AlertTriangle, RotateCcw, Save, FileText,
@@ -324,6 +324,119 @@ export function TicketPremiereReponseChip({ ticket }) {
     <Badge tone="warning" title="Aucune première réponse n’a encore été enregistrée pour ce ticket">
       1ʳᵉ réponse à faire
     </Badge>
+  )
+}
+
+/* ── PACT142 — Compte rendu d'intervention depuis un MÉMO VOCAL (NTAI12) ──
+   ----------------------------------------------------------------------------
+   `POST /api/django/ai/cr-intervention/` (multipart) transcrit le mémo puis le
+   structure en {diagnostic, travaux, pieces, recommandations}. Le résultat
+   PRÉ-REMPLIT le champ « Compte rendu » du formulaire d'intervention : il reste
+   ÉDITABLE et n'est enregistré que par « Ajouter une intervention ».
+
+   CONTRAT REPRIS TEL QUEL DU SERVEUR, et redit à l'écran plutôt que supposé :
+     • le statut du ticket n'est JAMAIS changé (`applique: false`) ;
+     • l'audio n'est JAMAIS conservé (il est lu en mémoire puis jeté) ;
+     • sans clé de transcription, le serveur répond 503 avec un message FR
+       explicite : ce message REMPLACE le sélecteur de fichier (même règle que
+       PACT141 sur la fiche lead) — jamais un bouton mort, et jamais un
+       téléversement qui échoue en silence : tout autre échec est affiché en
+       clair dans un `role="alert"`. */
+
+/** Sections du CR, dans l'ORDRE du serveur (`services.CR_SECTIONS`). */
+export const CR_SECTIONS_FR = [
+  ['diagnostic', 'Diagnostic'],
+  ['travaux', 'Travaux'],
+  ['pieces', 'Pièces'],
+  ['recommandations', 'Recommandations'],
+]
+
+/** Aplatit le CR structuré en un texte FR éditable (sections vides omises). */
+export function crEnTexte(cr) {
+  return CR_SECTIONS_FR
+    .map(([cle, libelle]) => [libelle, String(cr?.[cle] ?? '').trim()])
+    .filter(([, valeur]) => valeur !== '')
+    .map(([libelle, valeur]) => `${libelle} : ${valeur}`)
+    .join('\n')
+}
+
+export function CrVocalMemo({ ticketId, onPrefill }) {
+  const [busy, setBusy] = useState(false)
+  const [indisponible, setIndisponible] = useState('')
+  const [erreur, setErreur] = useState(null)
+  const [resultat, setResultat] = useState(null)
+  const inputRef = useRef(null)
+
+  const envoyer = async (fichier) => {
+    if (!fichier) return
+    setBusy(true)
+    setErreur(null)
+    try {
+      const form = new FormData()
+      form.append('file', fichier)
+      if (ticketId !== undefined && ticketId !== null && ticketId !== '') {
+        form.append('ticket_id', String(ticketId))
+      }
+      const r = await api.post('/ai/cr-intervention/', form)
+      const data = r?.data ?? {}
+      const texte = crEnTexte(data.cr) || String(data.transcript ?? '').trim()
+      setResultat(data)
+      onPrefill?.(texte, data)
+    } catch (err) {
+      if (err?.response?.status === 503) {
+        setIndisponible(err.response.data?.detail
+          || "Aucun fournisseur de transcription n'est configuré (clé absente) "
+             + '— saisie manuelle requise.')
+      } else {
+        setErreur(frError(err, "Le mémo vocal n'a pas pu être transcrit."))
+      }
+    } finally {
+      setBusy(false)
+      // Remise à zéro du sélecteur : sans elle, redéposer le MÊME fichier
+      // n'émettrait aucun `change` et la 2ᵉ tentative serait muette.
+      if (inputRef.current) inputRef.current.value = ''
+    }
+  }
+
+  return (
+    <div className="flex flex-col gap-2">
+      {indisponible ? (
+        <p className="text-sm text-muted-foreground">{indisponible}</p>
+      ) : (
+        <label className="flex flex-wrap items-center gap-2 text-sm">
+          <span className="font-medium">Mémo vocal (pré-remplit le compte rendu)</span>
+          <input
+            ref={inputRef}
+            type="file"
+            accept="audio/*"
+            disabled={busy}
+            aria-label="Mémo vocal de l'intervention"
+            onChange={(e) => envoyer(e.target.files?.[0])}
+          />
+          {busy && <Spinner />}
+        </label>
+      )}
+      {!indisponible && (
+        <p className="text-xs text-muted-foreground">
+          L’audio n’est pas conservé et le statut du ticket n’est jamais modifié :
+          le compte rendu proposé reste éditable avant enregistrement.
+        </p>
+      )}
+      {erreur && (
+        <div role="alert" className="flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/10 p-2 text-xs text-destructive">
+          <AlertTriangle className="size-4 shrink-0" aria-hidden="true" />
+          <span>{erreur}</span>
+        </div>
+      )}
+      {resultat && (
+        <p className="text-xs text-muted-foreground">
+          {resultat.structure === false
+            ? 'Mémo transcrit mais NON structuré (aucun moteur de structuration '
+              + 'configuré) — à répartir manuellement dans le compte rendu.'
+            : 'Compte rendu pré-rempli depuis le mémo vocal — à relire et corriger.'}
+        </p>
+      )}
+    </div>
   )
 }
 
@@ -1112,9 +1225,18 @@ export function TicketDetail({ ticket, onClose, onSaved }) {
                      onChange={(e) => setInterv((s) => ({ ...s, date_prevue: e.target.value }))} />
             </FormField>
             <FormField label="Compte rendu" fullWidth>
-              <Input value={interv.compte_rendu}
-                     onChange={(e) => setInterv((s) => ({ ...s, compte_rendu: e.target.value }))} />
+              <Textarea rows={4} value={interv.compte_rendu}
+                        onChange={(e) => setInterv((s) => ({ ...s, compte_rendu: e.target.value }))} />
             </FormField>
+            {/* PACT142 — le mémo vocal PRÉ-REMPLIT le champ ci-dessus ; rien
+                n'est enregistré tant que « Ajouter une intervention » n'est
+                pas cliqué, et le statut du ticket reste intact. */}
+            <div className="sm:col-span-2">
+              <CrVocalMemo
+                ticketId={id}
+                onPrefill={(texte) => setInterv((s) => ({ ...s, compte_rendu: texte }))}
+              />
+            </div>
           </div>
           <div>
             <Button type="button" variant="outline" size="sm"
