@@ -2,12 +2,16 @@ import { useEffect, useMemo, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import {
   PartyPopper, FileText, MessageCircle, Mail, History, ReceiptText, MoreHorizontal,
-  CalendarClock, Download,
+  CalendarClock, Download, UserCog,
 } from 'lucide-react'
 // APX11 — en-tête unique VX28 + accent de module (identité Ventes).
 import { PageHeader } from '../../ui/PageHeader'
 import { VENTES_ACCENT_STYLE } from '../../features/ventes/accent'
 import ventesApi from '../../api/ventesApi'
+// PACT44 — le paramétrage de relance par client (ZFAC8) n'a pas de wrapper
+// dédié : il est lu/écrit directement sur son endpoint REST company-scopé
+// (`company` est TOUJOURS imposée par le serveur, jamais envoyée d'ici).
+import api from '../../api/axios'
 import PaiementDialog from './PaiementDialog'
 import { openPdfBlob } from '../../utils/pdfBlob'
 import {
@@ -71,13 +75,100 @@ export default function RelancesPage() {
   const [waBusy, setWaBusy] = useState({})
   const [waPreview, setWaPreview] = useState(null) // { reference, message, url, wa_url }
 
-  const load = () => {
+  // ── PACT44 — Paramétrage des relances PAR CLIENT (ZFAC8) ──
+  // Le serveur renvoyait déjà `relance_mode`/`relance_responsable_id` dans
+  // chaque ligne, mais rien ne les montrait ni ne les réglait : tout client
+  // était SILENCIEUSEMENT en mode automatique sans responsable. On lit ici le
+  // paramétrage complet (pour le nom du responsable) et on l'édite.
+  const [parametrages, setParametrages] = useState({})  // { client_id: param }
+  const [users, setUsers] = useState([])
+  // Filtre de FILE : toutes / automatique / manuelle / « mes relances »
+  // (ce dernier délègue au serveur via ?mes_relances=1 — l'identité du
+  // responsable est résolue côté serveur, jamais devinée ici).
+  const [fileFilter, setFileFilter] = useState('toutes')
+  const [paramTarget, setParamTarget] = useState(null)
+  const [paramMode, setParamMode] = useState('auto')
+  const [paramResponsable, setParamResponsable] = useState('none')
+  const [paramProchaine, setParamProchaine] = useState('')
+  const [paramBusy, setParamBusy] = useState(false)
+
+  const load = (mode = fileFilter) => {
     setLoading(true)
-    ventesApi.getRelances()
-      .then(r => setRows(r.data)).catch(() => {}).finally(() => setLoading(false))
+    const requete = mode === 'mes'
+      ? api.get('/ventes/relances/', { params: { mes_relances: 1 } })
+      : ventesApi.getRelances()
+    requete
+      .then(r => setRows(Array.isArray(r.data) ? r.data : []))
+      .catch(() => {}).finally(() => setLoading(false))
   }
+
+  const loadParametrages = () => api.get('/ventes/parametrages-relance-client/')
+    .then(r => {
+      const data = Array.isArray(r.data) ? r.data : (r.data?.results || [])
+      const map = {}
+      data.forEach(p => { map[p.client] = p })
+      setParametrages(map)
+    })
+    .catch(() => { /* file lisible même sans paramétrage */ })
+
   // eslint-disable-next-line react-hooks/set-state-in-effect
-  useEffect(() => { load() }, [])
+  useEffect(() => { load(); loadParametrages() }, [])
+
+  const changerFile = (v) => { setFileFilter(v); load(v) }
+
+  // Mode effectif d'une ligne : le paramétrage rechargé prime sur l'instantané
+  // renvoyé avec la facture (il vient d'être modifié à l'écran).
+  const modeDe = (r) => parametrages[r.client_id]?.mode || r.relance_mode || 'auto'
+  const responsableDe = (r) => {
+    const p = parametrages[r.client_id]
+    if (p?.responsable_username) return p.responsable_username
+    if (p?.responsable || r.relance_responsable_id) return 'Responsable assigné'
+    return null
+  }
+
+  const openParametrage = async (r) => {
+    const p = parametrages[r.client_id]
+    setParamTarget(r)
+    setParamMode(p?.mode || r.relance_mode || 'auto')
+    const resp = p?.responsable ?? r.relance_responsable_id
+    setParamResponsable(resp ? String(resp) : 'none')
+    setParamProchaine(p?.prochaine_relance_manuelle || '')
+    if (users.length === 0) {
+      try {
+        const res = await api.get('/users/')
+        setUsers(Array.isArray(res.data) ? res.data : (res.data?.results || []))
+      } catch { /* sans liste, le mode reste réglable (responsable inchangé) */ }
+    }
+  }
+
+  const enregistrerParametrage = async () => {
+    if (!paramTarget) return
+    const existant = parametrages[paramTarget.client_id]
+    // `company` n'est JAMAIS envoyée : le serveur l'impose (perform_create).
+    const payload = {
+      mode: paramMode,
+      responsable: paramResponsable === 'none' ? null : Number(paramResponsable),
+      prochaine_relance_manuelle: paramProchaine || null,
+    }
+    setParamBusy(true)
+    try {
+      if (existant) {
+        await api.patch(
+          `/ventes/parametrages-relance-client/${existant.id}/`, payload)
+      } else {
+        await api.post('/ventes/parametrages-relance-client/',
+          { client: paramTarget.client_id, ...payload })
+      }
+      toast.success(paramMode === 'manuel'
+        ? 'Client en relance manuelle — retiré de la file automatique.'
+        : 'Client remis en relance automatique.')
+      setParamTarget(null)
+      await loadParametrages()
+      load()
+    } catch {
+      toast.error('Enregistrement du paramétrage impossible.')
+    } finally { setParamBusy(false) }
+  }
 
   // Ouvre la modale de relance en pré-remplissant le niveau courant, la note
   // depuis le message configuré du niveau et la date de prochaine relance
@@ -274,12 +365,19 @@ export default function RelancesPage() {
     else if (niveauFilter !== '') {
       list = list.filter(r => r.niveau && String(r.niveau.ordre) === niveauFilter)
     }
+    // PACT44 — file automatique vs relance manuelle assignée. « mes » est déjà
+    // filtré par le serveur (?mes_relances=1), rien à refaire ici. Le mode est
+    // recalculé LOCALEMENT (même règle que `modeDe`) pour que ce memo ne
+    // dépende que de `rows`/`parametrages`, jamais d'une fonction recréée.
+    const mode = (r) => parametrages[r.client_id]?.mode || r.relance_mode || 'auto'
+    if (fileFilter === 'auto') list = list.filter(r => mode(r) === 'auto')
+    else if (fileFilter === 'manuel') list = list.filter(r => mode(r) === 'manuel')
     if (sortByDu) {
       list = [...list].sort(
         (a, b) => (toNumber(b.montant_du) || 0) - (toNumber(a.montant_du) || 0))
     }
     return list
-  }, [rows, clientFilter, niveauFilter, sortByDu])
+  }, [rows, clientFilter, niveauFilter, sortByDu, fileFilter, parametrages])
 
   // Encours total à recouvrer (somme des montants dus affichés).
   const totalDu = useMemo(
@@ -392,6 +490,24 @@ export default function RelancesPage() {
       cell: (r) => r.nb_relances,
     },
     {
+      // PACT44 — mode de relance du client + responsable assigné : la donnée
+      // arrivait déjà du serveur et n'était affichée nulle part.
+      key: 'mode_relance',
+      header: 'Mode',
+      cellClassName: 'm-hide',
+      headerClassName: 'm-hide',
+      cell: (r) => (
+        <div className="flex flex-col items-start gap-0.5">
+          <Badge tone={modeDe(r) === 'manuel' ? 'info' : 'neutral'}>
+            {modeDe(r) === 'manuel' ? 'Manuelle' : 'Automatique'}
+          </Badge>
+          <span className="text-xs text-muted-foreground">
+            {responsableDe(r) || 'Sans responsable'}
+          </span>
+        </div>
+      ),
+    },
+    {
       key: 'actions',
       header: '',
       align: 'right',
@@ -438,6 +554,12 @@ export default function RelancesPage() {
                 <ReceiptText className="size-3.5" aria-hidden="true" />
                 Relevé de compte client (PDF)
               </DropdownMenuItem>
+              {/* PACT44 — règle le mode (auto/manuel) et le responsable de
+                  relance DU CLIENT, pas de la facture. */}
+              <DropdownMenuItem onSelect={() => openParametrage(r)}>
+                <UserCog className="size-3.5" aria-hidden="true" />
+                Paramétrer les relances du client
+              </DropdownMenuItem>
               <DropdownMenuLabel>Relance premium</DropdownMenuLabel>
               <DropdownMenuItem onSelect={() => lettrePremium(r, 1)}>
                 <Mail className="size-3.5" aria-hidden="true" />
@@ -477,6 +599,25 @@ export default function RelancesPage() {
           </>
         )}
         subtitle="Vue de recouvrement — consigner et imprimer uniquement. Aucun envoi automatique (email/SMS) n'est effectué."
+        filters={(
+          /* PACT44 — la file se lit selon le paramétrage CLIENT : automatique,
+             manuelle assignée, ou « mes relances » (filtré par le serveur).
+             Toujours visible, y compris quand la file filtrée est vide. */
+          <label className="flex items-center gap-1.5 text-sm">
+            File&nbsp;:
+            <Select value={fileFilter} onValueChange={changerFile}>
+              <SelectTrigger className="w-48" aria-label="Filtrer la file de relance">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="toutes">Toutes les factures</SelectItem>
+                <SelectItem value="auto">File automatique</SelectItem>
+                <SelectItem value="manuel">Relance manuelle</SelectItem>
+                <SelectItem value="mes">Mes relances</SelectItem>
+              </SelectContent>
+            </Select>
+          </label>
+        )}
       />
 
       {clientFilter && (
@@ -565,8 +706,12 @@ export default function RelancesPage() {
       ) : rows.length === 0 ? (
         <EmptyState
           icon={PartyPopper}
-          title="Aucune facture impayée"
-          description="Toutes les factures sont à jour — rien à relancer."
+          title={fileFilter === 'mes'
+            ? 'Aucune relance qui vous soit assignée'
+            : 'Aucune facture impayée'}
+          description={fileFilter === 'mes'
+            ? "Aucun client en relance manuelle ne vous a pour responsable."
+            : 'Toutes les factures sont à jour — rien à relancer.'}
           className="mt-1"
         />
       ) : (
@@ -658,6 +803,65 @@ export default function RelancesPage() {
           <DialogFooter>
             <Button variant="ghost" onClick={() => setTarget(null)}>Annuler</Button>
             <Button loading={busy} onClick={relancer}>Consigner</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── PACT44 — Paramétrage des relances DU CLIENT (ZFAC8) ──
+          Mode automatique (cron) ou manuel assigné à un responsable. En mode
+          manuel, le client quitte la file automatique et n'apparaît plus que
+          dans « Mes relances » de son responsable. */}
+      <Dialog open={!!paramTarget} onOpenChange={(o) => { if (!o) setParamTarget(null) }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              Paramétrer les relances — {paramTarget?.client_nom}
+            </DialogTitle>
+            <DialogDescription>
+              En mode manuel, aucune relance automatique n&apos;est envoyée à ce
+              client : il apparaît dans « Mes relances » de son responsable.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-3">
+            <div className="grid gap-1.5">
+              <Label htmlFor="param-mode">Mode de relance</Label>
+              <Select value={paramMode} onValueChange={setParamMode}>
+                <SelectTrigger id="param-mode" aria-label="Mode de relance">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="auto">Automatique</SelectItem>
+                  <SelectItem value="manuel">Manuel (assigné)</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="grid gap-1.5">
+              <Label htmlFor="param-responsable">Responsable</Label>
+              <Select value={paramResponsable} onValueChange={setParamResponsable}>
+                <SelectTrigger id="param-responsable" aria-label="Responsable de relance">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Aucun</SelectItem>
+                  {users.map(u => (
+                    <SelectItem key={u.id} value={String(u.id)}>
+                      {u.username}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="grid gap-1.5">
+              <Label htmlFor="param-prochaine">Prochaine relance manuelle</Label>
+              <Input id="param-prochaine" type="date" value={paramProchaine}
+                     onChange={e => setParamProchaine(e.target.value)} />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setParamTarget(null)}>Annuler</Button>
+            <Button loading={paramBusy} onClick={enregistrerParametrage}>
+              Enregistrer
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
