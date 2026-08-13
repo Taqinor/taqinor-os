@@ -631,9 +631,64 @@ function NcrDetail({ ncr, onBack, onChanged }) {
   )
 }
 
+/* XQHS23 — pont ticket SAV → NCR. Le pont inverse (NCR → intervention SAV)
+   est déjà sur le détail NCR ; `depuis-ticket-sav/` (idempotent : une seule
+   NCR par ticket) n'avait aucun appelant. Le ticket est désigné par son id
+   — aucune lecture cross-app depuis cet écran. */
+function NcrDepuisTicketDialog({ onClose, onCreated }) {
+  const [ticket, setTicket] = useState('')
+  const [gravite, setGravite] = useState('mineure')
+  const [saving, setSaving] = useState(false)
+
+  async function save() {
+    if (!ticket.trim()) { toast.error('L’identifiant du ticket est requis.'); return }
+    setSaving(true)
+    try {
+      const r = await qhseApi.nonConformites.depuisTicketSav({
+        ticket: Number(ticket), gravite,
+      })
+      toast.success(`NCR ${r.data?.reference ?? ''} rattachée au ticket.`)
+      onCreated()
+      onClose()
+    } catch (err) {
+      toast.error(err?.response?.data?.detail ?? 'Ticket introuvable.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <Dialog open onOpenChange={(o) => { if (!o) onClose() }}>
+      <DialogContent>
+        <DialogTitle>Créer une NCR depuis un ticket SAV</DialogTitle>
+        <div className="flex flex-col gap-3">
+          <div>
+            <Label>Ticket SAV (id)</Label>
+            <Input
+              aria-label="Ticket SAV (id)" inputMode="numeric" value={ticket}
+              onChange={(e) => setTicket(e.target.value)}
+            />
+          </div>
+          <FieldSelect
+            label="Gravité" value={gravite} onChange={setGravite}
+            options={GRAVITE_OPTS}
+          />
+          <div className="flex justify-end gap-2 pt-1">
+            <Button variant="outline" onClick={onClose}>Annuler</Button>
+            <Button onClick={save} disabled={saving}>
+              {saving ? 'Création…' : 'Créer la NCR'}
+            </Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
 function NcrRegister() {
   const [selected, setSelected] = useState(null)
   const [creating, setCreating] = useState(false)
+  const [depuisTicket, setDepuisTicket] = useState(false)
   const { rows, loading, error, reload } = useQhseList(
     () => qhseApi.nonConformites.list(),
   )
@@ -683,17 +738,28 @@ function NcrRegister() {
         rowActions={(r) => [
           { id: 'view', label: 'Ouvrir', icon: Eye, onClick: () => setSelected(r) },
         ]}
-        actions={
-          <Button onClick={() => setCreating(true)}>
-            <Plus size={16} /> Nouvelle NCR
-          </Button>
-        }
+        actions={(
+          <>
+            <Button variant="outline" onClick={() => setDepuisTicket(true)}>
+              <Wrench size={16} /> Depuis un ticket SAV
+            </Button>
+            <Button onClick={() => setCreating(true)}>
+              <Plus size={16} /> Nouvelle NCR
+            </Button>
+          </>
+        )}
         emptyTitle="Aucune non-conformité"
         emptyDescription="Aucune NCR ne correspond à ces filtres."
         emptyAction={<Button size="sm" onClick={() => setCreating(true)}><Plus size={16} /> Nouvelle NCR</Button>}
       />
       {creating && (
         <NcrCreateDialog onClose={() => setCreating(false)} onCreated={reload} />
+      )}
+      {depuisTicket && (
+        <NcrDepuisTicketDialog
+          onClose={() => setDepuisTicket(false)}
+          onCreated={reload}
+        />
       )}
     </>
   )

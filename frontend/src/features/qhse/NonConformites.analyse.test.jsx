@@ -34,8 +34,11 @@ const NCR_ROW = {
   date_creation: '2026-07-01', disposition: null,
 }
 
-const { empty, analyse } = vi.hoisted(() => ({
+const { empty, analyse, depuisTicketSav } = vi.hoisted(() => ({
   empty: () => Promise.resolve({ data: [] }),
+  depuisTicketSav: vi.fn(() => Promise.resolve({
+    data: { id: 9, reference: 'NCR-0009' },
+  })),
   analyse: vi.fn(() => Promise.resolve({
     data: {
       cinq_pourquoi: [{ pourquoi: 'Pourquoi la casse ?', reponse: 'Manutention' }],
@@ -50,6 +53,7 @@ vi.mock('../../api/qhseApi', () => ({
       list: () => Promise.resolve({ data: [NCR_ROW] }),
       historique: empty,
       analyse: (...a) => analyse(...a),
+      depuisTicketSav: (...a) => depuisTicketSav(...a),
     },
     capa: { list: empty, enRetard: empty },
     derogations: { list: empty },
@@ -119,5 +123,22 @@ describe('NcrDetail — analyse 5-Pourquoi / 8D (FE-XQHS7)', () => {
         { pourquoi: 'Pourquoi la manutention ?', reponse: '' },
       ],
     })))
+  })
+})
+
+/* FE-XQHS23 — le pont ticket SAV → NCR (`depuis-ticket-sav/`, idempotent)
+   était le seul des deux ponts sans aucun appelant côté écran. */
+describe('NcrRegister — NCR depuis un ticket SAV (FE-XQHS23)', () => {
+  it('crée la NCR à partir de l’identifiant du ticket', async () => {
+    const user = userEvent.setup()
+    withProviders(<NonConformites />)
+
+    await user.click(await screen.findByRole('button', { name: /Depuis un ticket SAV/ }))
+    await user.type(await screen.findByLabelText('Ticket SAV (id)'), '31')
+    await user.click(screen.getByRole('button', { name: 'Créer la NCR' }))
+
+    await waitFor(() => expect(depuisTicketSav).toHaveBeenCalledWith(
+      { ticket: 31, gravite: 'mineure' },
+    ))
   })
 })
