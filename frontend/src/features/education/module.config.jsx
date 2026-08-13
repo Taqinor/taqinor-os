@@ -4,7 +4,7 @@
    `features/agriculture/module.config.jsx` / `features/sante/module.config.jsx`. */
 import { lazy } from 'react'
 import {
-  CalendarCheck, CalendarDays, ClipboardCheck, GraduationCap, School,
+  Bus, CalendarCheck, CalendarDays, ClipboardCheck, GraduationCap, School,
   ShieldAlert, Upload, Users, Utensils, Wallet,
 } from 'lucide-react'
 import { appGlyph } from '../../lib/apps/appGlyph'
@@ -33,6 +33,9 @@ const EmploiDuTempsPage = lazy(() => import('../../pages/education/EmploiDuTemps
 const CantinePage = lazy(() => import('../../pages/education/CantinePage'))
 const DisciplinePage = lazy(() => import('../../pages/education/DisciplinePage'))
 const ImportPage = lazy(() => import('../../pages/education/ImportPage'))
+// PACT80 — transport scolaire (NTEDU23) : le backend existait en entier,
+// le client education n'avait AUCUNE entree pour ce sujet.
+const TransportScolaire = lazy(() => import('./TransportScolaire'))
 
 const ROLES = ['normal', 'responsable', 'admin']
 
@@ -57,6 +60,7 @@ const config = {
       { to: '/education/emploi-du-temps', label: 'Emploi du temps', icon: <CalendarDays size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
       { to: '/education/cantine', label: 'Cantine', icon: <Utensils size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
       { to: '/education/discipline', label: 'Discipline', icon: <ShieldAlert size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
+      { to: '/education/transport', label: 'Transport scolaire', icon: <Bus size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
       { to: '/education/import', label: 'Import CSV élèves', icon: <Upload size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ['responsable', 'admin'] },
     ],
   },
@@ -70,6 +74,7 @@ const config = {
     ['/education/emploi-du-temps', 'Emploi du temps'],
     ['/education/cantine', 'Cantine'],
     ['/education/discipline', 'Discipline'],
+    ['/education/transport', 'Transport scolaire'],
     ['/education/import', 'Import CSV élèves'],
   ],
   sectionLabels: { education: 'Éducation' },
@@ -83,6 +88,7 @@ const config = {
     { path: '/education/emploi-du-temps', component: EmploiDuTempsPage, roles: ROLES },
     { path: '/education/cantine', component: CantinePage, roles: ROLES },
     { path: '/education/discipline', component: DisciplinePage, roles: ROLES },
+    { path: '/education/transport', component: TransportScolaire, roles: ROLES },
     { path: '/education/import', component: ImportPage, roles: ['responsable', 'admin'] },
   ],
 }
