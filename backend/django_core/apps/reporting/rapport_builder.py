@@ -111,3 +111,105 @@ class RapportDefinitionViewSet(CompanyScopedModelViewSet):
             return Response({'detail': str(exc)},
                             status=status.HTTP_400_BAD_REQUEST)
         return Response({'rows': rows, 'pivot': pivot})
+
+    @action(detail=True, methods=['get'], url_path='export')
+    def export(self, request, pk=None):
+        """NTEXT11 — export ``?format=csv|xlsx`` de la définition rejouée.
+
+        RÉUTILISE l'infra d'export déjà en place pour les abonnements
+        (``rapport_abonnements`` : mêmes aplatissements plat/croisé, même
+        constructeur xlsx partagé ``apps.records.xlsx``) — aucun second moteur
+        de rendu. Un rapport croisé sort avec ses totaux de ligne et de
+        colonne ; un rapport plat avec ses en-têtes de champ.
+
+        GARDE PRIX D'ACHAT : toute colonne dont le nom trahit un prix d'achat
+        ou une marge est RETIRÉE du fichier (jamais d'export client-facing
+        d'une donnée de marge, règle du repo), quelle que soit la définition.
+        """
+        import csv
+        import io
+
+        from django.http import HttpResponse
+
+        from core import data_explorer
+        from core.formula import FormulaError
+
+        from .rapport_abonnements import (
+            _lignes_pivot, _lignes_plates, executer_definition,
+        )
+
+        obj = self.get_object()
+        fmt = (request.query_params.get('format') or 'csv').strip().lower()
+        if fmt not in ('csv', 'xlsx'):
+            return Response(
+                {'detail': "Format non supporté : utilisez « csv » ou "
+                           "« xlsx »."},
+                status=status.HTTP_400_BAD_REQUEST)
+        try:
+            rows, pivot = executer_definition(obj)
+        except data_explorer.DatasetInconnu as exc:
+            return Response({'detail': str(exc)},
+                            status=status.HTTP_404_NOT_FOUND)
+        except (data_explorer.ChampNonAutorise, FormulaError,
+                TypeError, ValueError) as exc:
+            return Response({'detail': str(exc)},
+                            status=status.HTTP_400_BAD_REQUEST)
+
+        entetes, lignes = (_lignes_pivot(pivot) if pivot
+                           else _lignes_plates(rows))
+        entetes, lignes = _sans_colonnes_interdites(entetes, lignes)
+
+        base = obj.titre or obj.dataset or 'rapport'
+        nom = ''.join(
+            c for c in base if c.isalnum() or c in ('-', '_')) or 'rapport'
+
+        if fmt == 'xlsx':
+            try:
+                from apps.records.xlsx import workbook_bytes
+                contenu = workbook_bytes(
+                    entetes, lignes, sheet_title=base[:31])
+            except Exception:  # pragma: no cover - dépend d'openpyxl
+                return Response(
+                    {'detail': "Export xlsx indisponible sur ce serveur : "
+                               "réessayez au format csv."},
+                    status=status.HTTP_503_SERVICE_UNAVAILABLE)
+            reponse = HttpResponse(
+                contenu,
+                content_type='application/vnd.openxmlformats-officedocument'
+                             '.spreadsheetml.sheet')
+            reponse['Content-Disposition'] = (
+                f'attachment; filename="{nom}.xlsx"')
+            return reponse
+
+        tampon = io.StringIO()
+        writer = csv.writer(tampon)
+        if entetes:
+            writer.writerow(entetes)
+        writer.writerows(lignes)
+        reponse = HttpResponse(
+            tampon.getvalue().encode('utf-8-sig'),
+            content_type='text/csv; charset=utf-8')
+        reponse['Content-Disposition'] = f'attachment; filename="{nom}.csv"'
+        return reponse
+
+
+#: NTEXT11 — fragments de nom de colonne qui ne sortent JAMAIS dans un export
+#: (prix d'achat / marge : donnée interne, jamais client-facing).
+COLONNES_INTERDITES = ('prix_achat', 'prixachat', 'marge', 'cout_achat')
+
+
+def _sans_colonnes_interdites(entetes, lignes):
+    """Retire des en-têtes ET des lignes toute colonne de prix d'achat/marge."""
+    if not entetes:
+        return entetes, lignes
+    gardes = [
+        i for i, entete in enumerate(entetes)
+        if not any(mot in str(entete).lower().replace(' ', '_')
+                   for mot in COLONNES_INTERDITES)
+    ]
+    if len(gardes) == len(entetes):
+        return entetes, lignes
+    return (
+        [entetes[i] for i in gardes],
+        [[ligne[i] for i in gardes if i < len(ligne)] for ligne in lignes],
+    )
