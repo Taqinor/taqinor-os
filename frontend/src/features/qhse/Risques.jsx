@@ -263,6 +263,115 @@ function CreerIncidentDialog({ onClose, onCreated }) {
   )
 }
 
+// XQHS17 — miroir de `ObservationSecurite.Categorie` / `.TypeObservation`
+// (backend, apps/qhse/models.py). Saisie TERRAIN volontairement minimale.
+const OBSERVATION_CATEGORIES = [
+  { value: 'epi', label: 'EPI' },
+  { value: 'hauteur', label: 'Travail en hauteur' },
+  { value: 'electrique', label: 'Électrique' },
+  { value: 'manutention', label: 'Manutention' },
+  { value: 'environnement', label: 'Environnement' },
+  { value: 'autre', label: 'Autre' },
+]
+const OBSERVATION_TYPES = [
+  { value: 'sur', label: 'Sûr' },
+  { value: 'a_risque', label: 'À risque' },
+]
+
+// XQHS17 — capture rapide d'une observation BBS depuis le terrain. Le
+// formulaire tient sur un écran mobile (champs empilés, une seule colonne),
+// n'exige qu'une description et pose la date du jour par défaut. `company` et
+// `observateur` sont posés côté serveur — jamais envoyés d'ici.
+function CaptureObservationDialog({ onClose, onCreated }) {
+  const [typeObservation, setTypeObservation] = useState('a_risque')
+  const [categorie, setCategorie] = useState('autre')
+  const [description, setDescription] = useState('')
+  const [chantierId, setChantierId] = useState('')
+  const [feedbackDonne, setFeedbackDonne] = useState(false)
+  const [saving, setSaving] = useState(false)
+
+  async function save() {
+    if (!description.trim()) { toast.error('La description est requise.'); return }
+    setSaving(true)
+    try {
+      await qhseApi.observationsSecurite.create({
+        type_observation: typeObservation,
+        categorie,
+        description: description.trim(),
+        chantier_id: chantierId ? Number(chantierId) : null,
+        feedback_donne: feedbackDonne,
+        date_observation: new Date().toISOString().slice(0, 10),
+      })
+      toast.success('Observation enregistrée.')
+      onCreated()
+      onClose()
+    } catch (err) {
+      toast.error(err?.response?.data?.detail ?? 'Enregistrement impossible.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <Dialog open onOpenChange={(o) => { if (!o) onClose() }}>
+      <DialogContent>
+        <DialogTitle>Observation sécurité (capture rapide)</DialogTitle>
+        <div className="flex flex-col gap-3">
+          <div>
+            <Label>Type d’observation</Label>
+            <Select value={typeObservation} onValueChange={setTypeObservation}>
+              <SelectTrigger aria-label="Type d’observation"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {OBSERVATION_TYPES.map((o) => (
+                  <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div>
+            <Label>Catégorie</Label>
+            <Select value={categorie} onValueChange={setCategorie}>
+              <SelectTrigger aria-label="Catégorie"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {OBSERVATION_CATEGORIES.map((o) => (
+                  <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div>
+            <Label>Ce que j’ai vu</Label>
+            <Textarea
+              aria-label="Ce que j’ai vu" rows={3} value={description}
+              onChange={(e) => setDescription(e.target.value)}
+            />
+          </div>
+          <div>
+            <Label>Chantier (id, optionnel)</Label>
+            <Input
+              aria-label="Chantier (id, optionnel)" inputMode="numeric"
+              value={chantierId} onChange={(e) => setChantierId(e.target.value)}
+            />
+          </div>
+          <label className="flex items-center gap-2 text-sm">
+            <input
+              type="checkbox" checked={feedbackDonne}
+              onChange={(e) => setFeedbackDonne(e.target.checked)}
+            />
+            Feedback donné sur place
+          </label>
+          <div className="flex justify-end gap-2 pt-1">
+            <Button variant="outline" onClick={onClose}>Annuler</Button>
+            <Button onClick={save} disabled={saving}>
+              {saving ? 'Enregistrement…' : 'Enregistrer'}
+            </Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
 // XQHS16 — création d'un lien de signalement QR public par chantier.
 function CreerLienSignalementDialog({ onClose, onCreated }) {
   const [libelle, setLibelle] = useState('')
@@ -408,6 +517,11 @@ export default function Risques() {
   const [lotoReload, setLotoReload] = useState(0)
   const [creatingIncident, setCreatingIncident] = useState(false)
   const [incidentsReload, setIncidentsReload] = useState(0)
+
+  // XQHS17 — capture rapide d'une observation BBS (le registre n'était
+  // jusqu'ici qu'en lecture + conversion).
+  const [creatingObservation, setCreatingObservation] = useState(false)
+  const [observationsReload, setObservationsReload] = useState(0)
 
   async function ouvrirCreationLoto() {
     try {
@@ -778,6 +892,12 @@ export default function Risques() {
             fetcher={() => qhseApi.observationsSecurite.list()}
             columns={observationsCols}
             exportName="qhse-observations-securite"
+            deps={[observationsReload]}
+            actions={
+              <Button onClick={() => setCreatingObservation(true)}>
+                <Plus size={16} /> Nouvelle observation
+              </Button>
+            }
             rowActions={(r) => [
               {
                 id: 'capa', label: 'Convertir en CAPA', icon: Wrench,
@@ -865,6 +985,13 @@ export default function Risques() {
         <CreerIncidentDialog
           onClose={() => setCreatingIncident(false)}
           onCreated={() => setIncidentsReload((n) => n + 1)}
+        />
+      )}
+
+      {creatingObservation && (
+        <CaptureObservationDialog
+          onClose={() => setCreatingObservation(false)}
+          onCreated={() => setObservationsReload((n) => n + 1)}
         />
       )}
     </div>
