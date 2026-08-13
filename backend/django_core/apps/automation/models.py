@@ -122,6 +122,10 @@ class ActionType(models.TextChoices):
     # (``customfields.serializers.validate_custom_data``).
     CREATE_CUSTOM_RECORD = (
         'create_custom_record', 'Créer un enregistrement personnalisé')
+    # NTEXT6 — boucle : répète des SOUS-ACTIONS sur chaque élément d'une liste
+    # résolue depuis un registre de sources WHITELISTÉES
+    # (``automation.list_sources``) — jamais un accès modèle arbitraire.
+    FOR_EACH = 'for_each', 'Pour chaque élément d\'une liste'
 
 
 class CanalMessage(models.TextChoices):
