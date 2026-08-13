@@ -59,7 +59,7 @@ export default function AppLockGate() {
       aria-modal="true"
       aria-label="Application verrouillée"
       data-app-lock="1"
-      className="fixed inset-0 z-[100] flex flex-col items-center justify-center gap-4 bg-background p-6 text-center"
+      className="fixed inset-0 z-[var(--z-modal)] flex flex-col items-center justify-center gap-4 bg-background p-6 text-center"
     >
       <Lock className="size-10 text-muted-foreground" aria-hidden="true" />
       <h2 className="text-lg font-semibold text-foreground">Application verrouillée</h2>
