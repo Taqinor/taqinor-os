@@ -2492,13 +2492,13 @@ class SalleVente(models.Model):
     `ged.PartageGed` : `token` imprévisible = unique clé d'accès public,
     `expires_at` par défaut 30 j, `password_hash` optionnel (jamais en
     clair), `actif` = kill-switch de révocation immédiate."""
-    company = models.ForeignKey(
+    company = models.ForeignKey(  # on_delete: salle de vente 100 % fille du tenant — la purge d'une société doit emporter ses salles (et leurs jetons d'accès publics).
         'authentication.Company', on_delete=models.CASCADE,
         null=True, blank=True, related_name='salles_vente')
-    lead = models.ForeignKey(
+    lead = models.ForeignKey(  # on_delete: la salle n'existe que pour présenter CE lead ; sans lui elle n'a plus d'objet.
         'crm.Lead', on_delete=models.CASCADE,
         null=True, blank=True, related_name='salles_vente')
-    client = models.ForeignKey(
+    client = models.ForeignKey(  # on_delete: idem lead — espace de vente rattaché à ce client, sans existence propre.
         'crm.Client', on_delete=models.CASCADE,
         null=True, blank=True, related_name='salles_vente')
     titre = models.CharField(max_length=200, verbose_name='Titre')
@@ -2578,7 +2578,7 @@ class SalleVenteItem(models.Model):
         VIDEO_LIEN = 'video_lien', 'Lien vidéo'
         NOTE = 'note', 'Note'
 
-    salle = models.ForeignKey(
+    salle = models.ForeignKey(  # on_delete: ligne fille d'une salle de vente, aucune existence hors de sa salle.
         SalleVente, on_delete=models.CASCADE, related_name='items')
     type = models.CharField(max_length=12, choices=TypeItem.choices)
     reference = models.CharField(
@@ -2603,7 +2603,7 @@ class SalleVenteVue(models.Model):
 
     Une entrée par visite (timestamp + IP HACHÉE — jamais l'IP en clair,
     aucune autre PII). Alimente le compteur/dernière-vue de NTCRM19."""
-    salle = models.ForeignKey(
+    salle = models.ForeignKey(  # on_delete: trace de visite d'une salle ; la salle supprimée, la trace n'est plus rattachable (et ne doit pas survivre).
         SalleVente, on_delete=models.CASCADE, related_name='vues')
     ip_hash = models.CharField(max_length=64, blank=True, default='')
     created_at = models.DateTimeField(auto_now_add=True)
@@ -2642,7 +2642,7 @@ class Apporteur(models.Model):
         APPORTEUR_INDEPENDANT = 'apporteur_independant', "Apporteur indépendant"
         AUTRE = 'autre', 'Autre'
 
-    company = models.ForeignKey(
+    company = models.ForeignKey(  # on_delete: référentiel d'apporteurs propre au tenant — purgé avec sa société.
         'authentication.Company', on_delete=models.CASCADE,
         null=True, blank=True, related_name='apporteurs')
     nom = models.CharField(max_length=200, verbose_name='Nom')
@@ -2722,12 +2722,12 @@ class DealEnregistre(models.Model):
         # devis lié, en attente de règlement comptable.
         A_PAYER = 'a_payer', 'À payer'
 
-    company = models.ForeignKey(
+    company = models.ForeignKey(  # on_delete: enregistrement de deal 100 % fille du tenant — purgé avec sa société.
         'authentication.Company', on_delete=models.CASCADE,
         null=True, blank=True, related_name='deals_enregistres')
-    apporteur = models.ForeignKey(
+    apporteur = models.ForeignKey(  # on_delete: l'enregistrement matérialise l'antériorité DE CET apporteur ; sans lui il n'a plus de titulaire.
         Apporteur, on_delete=models.CASCADE, related_name='deals')
-    lead = models.OneToOneField(
+    lead = models.OneToOneField(  # on_delete: 1-1 avec le lead enregistré ; le lead disparu, la réservation d'antériorité n'a plus d'objet.
         'crm.Lead', on_delete=models.CASCADE, related_name='deal_enregistre')
     date_enregistrement = models.DateTimeField(auto_now_add=True)
     statut = models.CharField(
@@ -2785,7 +2785,7 @@ class Defi(models.Model):
     de dates explicite (pas un système année/mois/trimestre), avec un
     classement plutôt qu'un simple taux d'atteinte. Réutilise STRICTEMENT
     `ObjectifCommercial.Metric` (jamais une seconde taxonomie de métriques)."""
-    company = models.ForeignKey(
+    company = models.ForeignKey(  # on_delete: défi commercial interne au tenant — purgé avec sa société.
         'authentication.Company', on_delete=models.CASCADE,
         null=True, blank=True, related_name='defis')
     nom = models.CharField(max_length=200, verbose_name='Nom du défi')
