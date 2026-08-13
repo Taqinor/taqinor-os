@@ -81,6 +81,26 @@ const coreApi = {
     remove: (id) => api.delete(`/core/workflow-definitions/${id}/`),
   },
 
+  // PACT122 — FG382 explorateur de données : catalogue de datasets enregistrés
+  // par les apps métier, exécution d'une spec ad-hoc, et requêtes SAUVEGARDÉES
+  // (personnelles ou de société via `partage`). `company`/`owner` ne sont
+  // JAMAIS envoyés : imposés côté serveur.
+  //
+  // FAIT À AFFICHER HONNÊTEMENT : un seul dataset est enregistré en production
+  // aujourd'hui (`sav_tickets`, cf. `apps/sav/bi_datasets.py`). Le moteur
+  // fonctionne de bout en bout, mais le catalogue est court — l'écran montre
+  // la liste réelle, jamais un catalogue gonflé.
+  savedQueries: {
+    datasets: () => api.get('/core/saved-queries/datasets/'),
+    list: () => api.get('/core/saved-queries/'),
+    create: (payload) => api.post('/core/saved-queries/', payload),
+    remove: (id) => api.delete(`/core/saved-queries/${id}/`),
+    // Exécution d'une spec NON sauvegardée (aperçu avant enregistrement).
+    runAdhoc: (dataset, spec) =>
+      api.post('/core/saved-queries/run/', { dataset, spec }),
+    run: (id) => api.post(`/core/saved-queries/${id}/run/`),
+  },
+
   // PACT118 — FG389 édition en masse GÉNÉRIQUE. Le moteur du socle
   // (`core.bulk_edit`) existait et était testé, mais aucune app n'avait
   // enregistré de cible : le catalogue était vide en production et aucun
