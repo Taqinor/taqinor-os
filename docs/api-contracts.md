@@ -760,6 +760,10 @@
     alertes:inconnu, effectif_total:inconnu, masse_salariale_mensuelle:inconnu, par_contrat:inconnu, par_departement:inconnu, par_statut:inconnu, pyramide_anciennete:inconnu, turnover:objet
 - frontend/src/api/rhApi.js :: getIntegration -> /api/django/rh/employes/<>/integration
     faits:inconnu, lignes:inconnu, progression_pct:inconnu, total:inconnu
+- frontend/src/api/rhApi.js :: getRapportConges -> /api/django/rh/demandes-conge/rapport
+    par_employe:inconnu, par_type:inconnu
+- frontend/src/api/rhApi.js :: getRapportPresence -> /api/django/rh/pointages/rapport
+    detail:texte, par_employe:inconnu, totaux_departement:inconnu
 - frontend/src/api/rhApi.js :: getRecrutementStatistiques -> /api/django/rh/recrutement/statistiques
     candidatures_par_ouverture:inconnu, delai_embauche_moyen_jours:inconnu, entonnoir:inconnu, sources:inconnu
 - frontend/src/api/rhApi.js :: getRegistreFormation -> /api/django/rh/employes/<>/registre-formation
