@@ -57,6 +57,7 @@ import { toastWithUndo } from '../../lib/toast'
 import { formatDate } from '../../lib/format'
 // VX132 — anti-scintillement propagé (voir InstallationsPage.jsx).
 import { useDelayedLoading } from '../../hooks/useDelayedLoading'
+import useWakeLock from '../../hooks/useWakeLock'
 
 // VX105 — clés de persistance de session (survit à un backgrounding suivi d'un
 // rechargement — appel entrant en chantier) : fiche ouverte + onglet visité.
@@ -170,6 +171,9 @@ export default function MaJourneePage() {
   // VX132 — rien tant que l'attente reste imperceptible (< 300 ms).
   const { showSpinner } = useDelayedLoading(loading)
   const [active, setActive] = useState(null)
+  // NTMOB29 — une fiche d'intervention ouverte EST une session de capture
+  // (checklist, photos, séries) : l'écran reste allumé tant qu'elle l'est.
+  useWakeLock(active != null)
   // VX42 — le FAB « Photo rapide » ouvre la fiche directement sur l'onglet
   // Photos ; sinon la fiche s'ouvre normalement sur la préparation.
   const [initialTab, setInitialTab] = useState('prep')
