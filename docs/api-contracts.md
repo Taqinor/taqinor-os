@@ -524,6 +524,8 @@
     status:inconnu
 - frontend/src/api/messagesApi.js :: toggleReaction -> /api/django/chat/messages/<>/react
     detail:texte, message:inconnu, status:inconnu
+- frontend/src/api/messagesApi.js :: transcrire -> /api/django/chat/transcrire
+    detail:texte, enabled:booleen, langue:texte, texte:inconnu
 - frontend/src/api/messagesApi.js :: unfollow -> /api/django/chat/messages/<>/thread-unfollow
     status:texte
 - frontend/src/api/messagesApi.js :: unreadCount -> /api/django/chat/conversations/unread
@@ -800,6 +802,8 @@
     detail:texte, facture_id:inconnu, facture_reference:inconnu, sous_garantie:inconnu
 - frontend/src/api/savApi.js :: genererVisitesDues -> /api/django/sav/contrats-maintenance/generer-dus
     ok:booleen, tickets_generes:inconnu
+- frontend/src/api/savApi.js :: getEquipementPartageQr -> /api/django/sav/equipements/<>/partage-qr
+    qr:inconnu, url:inconnu
 - frontend/src/api/savApi.js :: getInstructionsSuggestions -> /api/django/sav/tickets/<>/instructions-suggestions
     results:inconnu
 - frontend/src/api/savApi.js :: getPiecesCompatibles -> /api/django/sav/tickets/<>/pieces-compatibles

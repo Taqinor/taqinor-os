@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 8552, operations: 15527, components: 4400}
+counts: {paths: 8558, operations: 15533, components: 4400}
 securitySchemes:
 - cookieJWT
 - publicApiKey
@@ -1059,6 +1059,7 @@ operations:
 - get /api/django/chat/status/me/ -> django_chat_status_me_retrieve
 - post /api/django/chat/status/me/ -> django_chat_status_me_create
 - post /api/django/chat/status/seen/ -> django_chat_status_seen_create
+- post /api/django/chat/transcrire/ -> django_chat_transcrire_create
 - get /api/django/companies/ -> django_companies_list
 - post /api/django/companies/ -> django_companies_create
 - delete /api/django/companies/{id}/ -> django_companies_destroy
@@ -4602,6 +4603,7 @@ operations:
 - patch /api/django/installations/materiels-consignes/{id}/ -> django_installations_materiels_consignes_partial_update
 - put /api/django/installations/materiels-consignes/{id}/ -> django_installations_materiels_consignes_update
 - post /api/django/installations/materiels-consignes/{id}/retourner/ -> django_installations_materiels_consignes_retourner_create
+- get /api/django/installations/meteo/ -> django_installations_meteo_retrieve
 - get /api/django/installations/modeles-projet/ -> django_installations_modeles_projet_list
 - post /api/django/installations/modeles-projet/ -> django_installations_modeles_projet_create
 - delete /api/django/installations/modeles-projet/{id}/ -> django_installations_modeles_projet_destroy
@@ -7047,6 +7049,7 @@ operations:
 - get /api/django/sav/equipements/{id}/estimations-maintenance/ -> django_sav_equipements_estimations_maintenance_retrieve
 - get /api/django/sav/equipements/{id}/fiabilite/ -> django_sav_equipements_fiabilite_retrieve
 - post /api/django/sav/equipements/{id}/mettre-au-rebut/ -> django_sav_equipements_mettre_au_rebut_create
+- get /api/django/sav/equipements/{id}/partage-qr/ -> django_sav_equipements_partage_qr_retrieve
 - post /api/django/sav/equipements/{id}/reactiver-rebut/ -> django_sav_equipements_reactiver_rebut_create
 - get /api/django/sav/equipements/{id}/releves-compteur/ -> django_sav_equipements_releves_compteur_retrieve
 - post /api/django/sav/equipements/{id}/releves-compteur/ -> django_sav_equipements_releves_compteur_create
@@ -8854,6 +8857,7 @@ operations:
 - get /api/v1/chat/status/me/ -> v1_chat_status_me_retrieve
 - post /api/v1/chat/status/me/ -> v1_chat_status_me_create
 - post /api/v1/chat/status/seen/ -> v1_chat_status_seen_create
+- post /api/v1/chat/transcrire/ -> v1_chat_transcrire_create
 - get /api/v1/companies/ -> v1_companies_list
 - post /api/v1/companies/ -> v1_companies_create
 - delete /api/v1/companies/{id}/ -> v1_companies_destroy
@@ -12397,6 +12401,7 @@ operations:
 - patch /api/v1/installations/materiels-consignes/{id}/ -> v1_installations_materiels_consignes_partial_update
 - put /api/v1/installations/materiels-consignes/{id}/ -> v1_installations_materiels_consignes_update
 - post /api/v1/installations/materiels-consignes/{id}/retourner/ -> v1_installations_materiels_consignes_retourner_create
+- get /api/v1/installations/meteo/ -> v1_installations_meteo_retrieve
 - get /api/v1/installations/modeles-projet/ -> v1_installations_modeles_projet_list
 - post /api/v1/installations/modeles-projet/ -> v1_installations_modeles_projet_create
 - delete /api/v1/installations/modeles-projet/{id}/ -> v1_installations_modeles_projet_destroy
@@ -14805,6 +14810,7 @@ operations:
 - get /api/v1/sav/equipements/{id}/estimations-maintenance/ -> v1_sav_equipements_estimations_maintenance_retrieve
 - get /api/v1/sav/equipements/{id}/fiabilite/ -> v1_sav_equipements_fiabilite_retrieve
 - post /api/v1/sav/equipements/{id}/mettre-au-rebut/ -> v1_sav_equipements_mettre_au_rebut_create
+- get /api/v1/sav/equipements/{id}/partage-qr/ -> v1_sav_equipements_partage_qr_retrieve
 - post /api/v1/sav/equipements/{id}/reactiver-rebut/ -> v1_sav_equipements_reactiver_rebut_create
 - get /api/v1/sav/equipements/{id}/releves-compteur/ -> v1_sav_equipements_releves_compteur_retrieve
 - post /api/v1/sav/equipements/{id}/releves-compteur/ -> v1_sav_equipements_releves_compteur_create
