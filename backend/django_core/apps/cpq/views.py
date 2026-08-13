@@ -267,6 +267,24 @@ class DevisVariantesView(APIView):
                         status=status.HTTP_201_CREATED)
 
 
+class SuggestionsProduitView(APIView):
+    """NTCPQ19 — GET ``cpq/suggestions/?produit_id=``.
+
+    Jusqu'à 3 produits associés : d'abord les ``RECOMMANDE`` déclarés (NTCPQ1),
+    puis les produits les plus fréquemment co-achetés dans les devis ACCEPTÉS
+    de la société. Purement suggestif — aucune action automatique, aucun prix
+    d'achat exposé."""
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        produit_id = request.query_params.get('produit_id')
+        if not produit_id:
+            return Response({'detail': 'produit_id requis.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        return Response({'suggestions': selectors.suggestions_produit(
+            company=request.user.company, produit_id=produit_id)})
+
+
 class ConfigurateurDemarrerView(APIView):
     """NTCPQ9 — POST cpq/configurateur/demarrer/. Crée une session et renvoie
     le token + les questions actives de la société."""

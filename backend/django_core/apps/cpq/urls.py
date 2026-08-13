@@ -9,6 +9,7 @@ from .views import (
     ConfigurateurGenererDevisView, ValiderCompatibiliteView,
     SeuilMargeFamilleViewSet, RegleApprobationRemiseViewSet,
     ClauseCGVViewSet, ProduitEquivalentViewSet, DevisVariantesView,
+    SuggestionsProduitView,
 )
 
 router = DefaultRouter()
@@ -29,6 +30,9 @@ router.register(r'produits-equivalents', ProduitEquivalentViewSet)
 urlpatterns = [
     path('valider-compatibilite/', ValiderCompatibiliteView.as_view(),
          name='cpq-valider-compatibilite'),
+    # NTCPQ19 — suggestions de vente croisée / montée en gamme.
+    path('suggestions/', SuggestionsProduitView.as_view(),
+         name='cpq-suggestions'),
     # NTCPQ16 — moteur de génération des variantes d'un devis.
     path('devis/<int:pk>/variantes/', DevisVariantesView.as_view(),
          name='cpq-devis-variantes'),

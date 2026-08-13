@@ -1844,6 +1844,37 @@ def _brouillon_relance_engagement(devis, declencheurs):
     return f'{salutation}, {corps}'
 
 
+def frequence_co_achat(company, produit_id, *, limite=10):
+    """NTCPQ19 — Fréquence de CO-ACHAT d'un produit dans les devis ACCEPTÉS.
+
+    Point d'entrée cross-app en LECTURE (``apps.cpq`` l'appelle sans importer
+    ``apps.ventes.models``) : renvoie ``[(produit_id, nb_devis), ...]`` trié par
+    fréquence décroissante — les produits apparaissant dans les mêmes devis
+    acceptés de la SOCIÉTÉ que ``produit_id``, hors lui-même. Lecture pure,
+    jamais de prix d'achat ni de marge."""
+    from collections import Counter
+    from .models import Devis, LigneDevis
+
+    devis_ids = LigneDevis.objects.filter(
+        devis__company=company, devis__statut=Devis.Statut.ACCEPTE,
+        produit_id=produit_id).values_list('devis_id', flat=True)
+    devis_ids = set(devis_ids)
+    if not devis_ids:
+        return []
+    paires = list(LigneDevis.objects.filter(
+        devis_id__in=devis_ids).exclude(
+            produit_id=produit_id).exclude(
+                produit_id=None).values_list('devis_id', 'produit_id'))
+    compteur = Counter({pid: 0 for _, pid in paires})
+    vus = set()
+    for devis_id, pid in paires:
+        if (devis_id, pid) in vus:
+            continue  # une même paire ne compte qu'une fois par devis
+        vus.add((devis_id, pid))
+        compteur[pid] += 1
+    return compteur.most_common(limite)
+
+
 def lots_totaux(devis):
     """NTCPQ18 — Sous-total PAR LOT + total consolidé d'un devis multi-sites.
 

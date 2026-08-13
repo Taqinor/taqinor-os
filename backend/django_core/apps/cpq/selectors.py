@@ -171,6 +171,61 @@ def clause_sapplique(clause, context):
     return evaluate_condition_group(arbre, context)
 
 
+def suggestions_produit(*, company, produit_id, limite=3):
+    """NTCPQ19 — Suggestions de vente croisée / montée en gamme (max 3).
+
+    Deux sources, dans cet ordre :
+
+      1. les contraintes ``RECOMMANDE`` (NTCPQ1) déclarées pour ce produit —
+         volonté explicite du bureau d'études ;
+      2. la FRÉQUENCE DE CO-ACHAT calculée en lecture seule sur l'historique des
+         devis ACCEPTÉS de la société (via ``ventes.selectors.frequence_co_achat``
+         — jamais un import de ``ventes.models``).
+
+    Purement SUGGESTIF : aucune ligne n'est ajoutée, aucun prix n'est modifié.
+    Renvoie ``[{produit_id, nom, source, occurrences}, ...]``."""
+    from apps.ventes.selectors import frequence_co_achat
+    from apps.stock.models import Produit
+
+    try:
+        produit_id = int(produit_id)
+    except (TypeError, ValueError):
+        return []
+
+    ordonnes = []
+    vus = set()
+    recommandes = ContrainteCompatibilite.objects.filter(
+        company=company, produit_a_id=produit_id,
+        type=ContrainteCompatibilite.TypeContrainte.RECOMMANDE
+    ).order_by('id').values_list('produit_b_id', flat=True)
+    for pid in recommandes:
+        if pid in vus or pid == produit_id:
+            continue
+        vus.add(pid)
+        ordonnes.append((pid, 'recommande', 0))
+
+    if len(ordonnes) < limite:
+        for pid, occurrences in frequence_co_achat(
+                company, produit_id, limite=limite * 5):
+            if pid in vus or pid == produit_id:
+                continue
+            vus.add(pid)
+            ordonnes.append((pid, 'co_achat', occurrences))
+            if len(ordonnes) >= limite:
+                break
+
+    ordonnes = ordonnes[:limite]
+    noms = dict(Produit.objects.filter(
+        company=company, id__in=[p for p, _, _ in ordonnes]
+    ).values_list('id', 'nom'))
+    return [{
+        'produit_id': pid,
+        'nom': noms.get(pid, ''),
+        'source': source,
+        'occurrences': occurrences,
+    } for pid, source, occurrences in ordonnes if pid in noms]
+
+
 _OPERATEURS_LISIBLES = {
     'eq': '=', 'ne': '≠', 'gt': '>', 'gte': '≥', 'lt': '<', 'lte': '≤',
     'in': 'parmi', 'not_in': 'hors de', 'contains': 'contient',
