@@ -147,6 +147,11 @@ jobs:
       MINIO_ROOT_PASSWORD: erp_minio_password
       MINIO_BUCKET_PDF: erp-pdf
       MINIO_BUCKET_UPLOADS: erp-uploads
+      # NTPLT42/PACT8 — même règle que le job `e2e` de ci.yml : throttle par
+      # tenant OFF pour la matrice complète (encore plus de requêtes pour la
+      # même société démo que la fumée par-merge). Sans cette env, `/auth/me/`
+      # finit en 429 → redirection /login → faux « page blanche ».
+      TENANT_RATE_LIMIT: '0'
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
