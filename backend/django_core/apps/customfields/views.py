@@ -6,6 +6,7 @@ from rest_framework.response import Response
 from authentication.mixins import TenantMixin
 from authentication.permissions import IsAnyRole, IsAdminRole
 from apps.parametres.models import SettingsAuditLog
+from .audit_plateforme import AuditPlateformeMixin
 from .models import CustomFieldDef, CustomObjectDef, CustomRecord
 from .serializers import (
     CustomFieldDefSerializer, CustomObjectDefSerializer, CustomRecordSerializer,
@@ -184,12 +185,18 @@ def _object_permission_code(object_code, action_kind):
     return f'custom_object.{object_code}.{action_kind}'
 
 
-class CustomObjectDefViewSet(TenantMixin, viewsets.ModelViewSet):
+class CustomObjectDefViewSet(AuditPlateformeMixin, TenantMixin,
+                             viewsets.ModelViewSet):
     """Objets personnalisés no-code (Paramètres). Lecture tout rôle, écriture
     admin — comme les définitions de champs dont ils réutilisent le
-    mécanisme."""
+    mécanisme.
+
+    NTEXT36 — toute création/modification/suppression laisse une ligne dans le
+    Journal d'audit des paramètres (section='plateforme')."""
     queryset = CustomObjectDef.objects.all()
     serializer_class = CustomObjectDefSerializer
+    audit_plateforme_cible = 'objet'
+    audit_plateforme_nom = 'Objet personnalisé'
 
     def get_permissions(self):
         if self.action in ('list', 'retrieve', 'objets_catalogue'):
