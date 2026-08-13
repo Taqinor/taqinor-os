@@ -276,3 +276,44 @@ def time_triggers_daily():
                            getattr(company, 'pk', None), exc_info=True)
     logger.info('time_triggers_daily: %s évaluation(s) déclenchée(s)', total)
     return total
+
+
+# ── NTEXT7 — reprise des séquences suspendues par une étape « Attendre » ─────
+
+#: Borne par passage : une reprise ne doit jamais monopoliser le worker.
+MAX_REPRISES_PAR_PASSAGE = 200
+
+
+@shared_task(name='automation.process_due_automation_steps')
+def process_due_automation_steps():
+    """Reprend les séquences d'automatisation dont l'échéance est atteinte.
+
+    Sans Celery beat déployé, cette tâche n'est simplement jamais appelée : les
+    échéances restent ``en attente`` et rien ne casse (dégradation propre).
+    Best-effort par échéance, idempotent (une échéance déjà reprise est
+    ignorée), borné à :data:`MAX_REPRISES_PAR_PASSAGE` par passage.
+    """
+    try:
+        from django.utils import timezone
+
+        from apps.automation.engine import resume_scheduled_step
+        from apps.automation.models import AutomationScheduledStep
+    except Exception:  # pragma: no cover - défensif
+        logger.warning('automation.beat: reprise indisponible', exc_info=True)
+        return 0
+
+    dues = list(AutomationScheduledStep.objects.filter(
+        statut=AutomationScheduledStep.Statut.EN_ATTENTE,
+        run_at__lte=timezone.now(),
+    ).order_by('run_at', 'id')[:MAX_REPRISES_PAR_PASSAGE])
+    total = 0
+    for echeance in dues:
+        try:
+            resume_scheduled_step(echeance)
+            total += 1
+        except Exception:  # pragma: no cover - best-effort par échéance
+            logger.warning('automation.beat: reprise %s échouée',
+                           echeance.pk, exc_info=True)
+    if total:
+        logger.info('process_due_automation_steps: %s reprise(s)', total)
+    return total

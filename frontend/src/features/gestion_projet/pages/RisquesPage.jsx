@@ -21,6 +21,7 @@ import RiskHeatmap from '../components/RiskHeatmap'
 // DC34 (`installations/sous-traitants/` = stock.Fournisseur type=service +
 // SousTraitantProfile), jamais `gestion_projet.SousTraitant` (régression DC34
 // constatée par ARC22). Miroir de `stock.SousTraitantProfile.Metier`.
+// source-choix: stock.SousTraitantProfile.metier
 const METIERS_SOUS_TRAITANT = [
   { value: 'terrassement', label: 'Terrassement' },
   { value: 'genie_civil', label: 'Génie civil' },

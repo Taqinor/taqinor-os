@@ -20,7 +20,16 @@ records_detail = CustomRecordViewSet.as_view(
 records_vue_liste = CustomRecordViewSet.as_view({'get': 'vue_liste'})
 records_vue_formulaire = CustomRecordViewSet.as_view({'get': 'vue_formulaire'})
 
+# NTEXT34 — catalogue de MODÈLES d'objets prêts à l'emploi (lecture tout rôle)
+# + installation pour la société (admin), idempotente.
+objets_catalogue = CustomObjectDefViewSet.as_view({'get': 'objets_catalogue'})
+objets_catalogue_installer = CustomObjectDefViewSet.as_view(
+    {'post': 'installer_modele_catalogue'})
+
 urlpatterns = [
+    path('objets-catalogue/', objets_catalogue, name='objets-catalogue'),
+    path('objets-catalogue/installer/<slug:code>/',
+         objets_catalogue_installer, name='objets-catalogue-installer'),
     path('custom-objects/<slug:object_code>/records/',
          records_list, name='customrecord-list'),
     path('custom-objects/<slug:object_code>/records/<int:pk>/',

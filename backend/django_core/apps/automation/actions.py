@@ -303,6 +303,104 @@ def _create_custom_record(rule, instance, company, context, user):
         return Status.FAILED, f'Enregistrement non créé : {exc}'
 
 
+def _wait(rule, instance, company, context, user):
+    """NTEXT7 — ``WAIT`` hors séquence : rien à suspendre.
+
+    Dans une SÉQUENCE, une étape ``WAIT`` est interceptée par le moteur
+    (``engine._run_steps``), qui écrit l'échéance de reprise et ne passe jamais
+    par ce handler. Une règle dont l'action UNIQUE est ``WAIT`` n'a en revanche
+    aucune suite à reprendre : no-op explicite plutôt qu'« action inconnue ».
+    """
+    return Status.NOOP, ("Attente sans suite : une étape « Attendre » n'a "
+                         "d'effet que dans une séquence.")
+
+
+class _SubActionView:
+    """NTEXT6 — vue « règle » d'UNE sous-action de boucle.
+
+    Même patron que ``engine._StepView`` : substitue le couple
+    ``action_type``/``action_config`` et délègue TOUT le reste (société, nom…)
+    à la règle porteuse. Jamais persistée.
+    """
+
+    __slots__ = ('_rule', 'action_type', 'action_config')
+
+    def __init__(self, rule, action_type, action_config):
+        self._rule = rule
+        self.action_type = action_type
+        self.action_config = action_config
+
+    def __getattr__(self, name):
+        return getattr(self._rule, name)
+
+
+def _for_each(rule, instance, company, context, user):
+    """NTEXT6 — répète des SOUS-ACTIONS sur chaque élément d'une liste.
+
+    ``action_config = {'source': '<clé whitelistée>', 'sous_actions': [
+    {'action_type': 'create_custom_record', 'action_config': {...}}, ...]}``.
+
+    La liste vient EXCLUSIVEMENT du registre fermé
+    ``automation.list_sources`` (jamais un accès modèle arbitraire), et l'on
+    n'itère JAMAIS plus de ``MAX_ITERATIONS`` éléments : une source plus longue
+    est tronquée et la troncature est dite dans le message du run (anti-DoS).
+
+    Chaque élément est fusionné dans le contexte des sous-actions (ses clés
+    alimentent la substitution ``{var}``), avec ``element_index`` (1-based).
+    Une sous-action en échec n'interrompt pas la boucle ; une sous-action
+    ``FOR_EACH`` imbriquée est refusée (pas de boucle de boucles).
+    """
+    from .list_sources import MAX_ITERATIONS, resolve_list
+
+    cfg = rule.action_config or {}
+    sous_actions = cfg.get('sous_actions') or []
+    if not isinstance(sous_actions, list) or not sous_actions:
+        return Status.NOOP, 'Aucune sous-action configurée : boucle ignorée.'
+
+    elements, tronquee, erreur = resolve_list(
+        cfg.get('source'), instance, company, context)
+    if erreur:
+        return Status.SKIPPED, erreur
+    if not elements:
+        return Status.NOOP, 'Liste vide : aucune itération.'
+
+    faits = 0
+    echecs = 0
+    for index, element in enumerate(elements, start=1):
+        sous_contexte = dict(context or {})
+        if isinstance(element, dict):
+            sous_contexte.update(element)
+        else:  # pragma: no cover - les sources normalisent déjà en dicts
+            sous_contexte['valeur'] = element
+        sous_contexte['element_index'] = index
+        for spec in sous_actions:
+            if not isinstance(spec, dict):
+                continue
+            action_type = (spec.get('action_type') or '').strip()
+            if not action_type:
+                continue
+            if action_type == ActionType.FOR_EACH:
+                echecs += 1
+                continue  # pas de boucle imbriquée (garde anti-DoS)
+            vue = _SubActionView(
+                rule, action_type, spec.get('action_config') or {})
+            statut, _message = run(vue, instance, company, sous_contexte, user)
+            if statut == Status.FAILED:
+                echecs += 1
+            else:
+                faits += 1
+
+    message = (f'Boucle : {len(elements)} élément(s) × '
+               f'{len(sous_actions)} sous-action(s) — {faits} exécutée(s)')
+    if echecs:
+        message += f', {echecs} en échec'
+    if tronquee:
+        message += (f' (liste tronquée à la borne de {MAX_ITERATIONS} '
+                    f'itérations)')
+    message += '.'
+    return (Status.FAILED if faits == 0 and echecs else Status.SUCCESS), message
+
+
 # ── Helpers ───────────────────────────────────────────────────────────────
 
 def _model_name(instance):
@@ -340,4 +438,6 @@ _HANDLERS = {
     ActionType.SET_FIELD: _set_field,
     ActionType.CREATE_SAV_TICKET: _create_sav_ticket,
     ActionType.CREATE_CUSTOM_RECORD: _create_custom_record,
+    ActionType.FOR_EACH: _for_each,
+    ActionType.WAIT: _wait,
 }

@@ -21,6 +21,8 @@ import { INVENTAIRE_ACCENT } from '../../features/stock/inventaireAccent'
 // plutôt » au lieu d'une erreur brute.
 
 // Types d'équipement — alignés sur stock.Categorie.TypeEquipement (backend).
+// `__none` = sentinelle d'ecran (« Non typee »), jamais envoyee telle quelle.
+// source-choix: stock.Categorie.type_equipement +__none
 const TYPES_EQUIPEMENT = [
   { value: '__none', label: '— Non typée —' },
   { value: 'panneau', label: 'Panneau' },

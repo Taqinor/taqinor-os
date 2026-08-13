@@ -20,6 +20,7 @@ import {
 import { INCIDENT_TYPES, GRAVITE } from './qhseStatus'
 
 // WIR126 — miroir de `PermisTravail.TypePermis` (backend, apps/qhse/models.py).
+// source-choix: qhse.PermisTravail.type_permis
 const TYPE_PERMIS_OPTIONS = [
   { value: 'hauteur', label: 'Travail en hauteur' },
   { value: 'consignation_elec', label: 'Consignation électrique' },
@@ -187,7 +188,15 @@ function CreerIncidentDialog({ onClose, onCreated }) {
   const [gravite, setGravite] = useState('mineure')
   const [dateIncident, setDateIncident] = useState('')
   const [description, setDescription] = useState('')
+  // XQHS19 — champs environnement (déversement/rejet), affichés seulement
+  // quand l'événement est de type « Environnement ». Tous optionnels.
+  const [substance, setSubstance] = useState('')
+  const [quantite, setQuantite] = useState('')
+  const [unite, setUnite] = useState('')
+  const [milieu, setMilieu] = useState('')
+  const [notificationRequise, setNotificationRequise] = useState(false)
   const [saving, setSaving] = useState(false)
+  const estEnvironnemental = typeIncident === 'environnement'
 
   async function save() {
     if (!titre.trim()) { toast.error('Le titre est requis.'); return }
@@ -199,6 +208,13 @@ function CreerIncidentDialog({ onClose, onCreated }) {
         gravite,
         date_incident: dateIncident || null,
         description: description.trim(),
+        ...(estEnvironnemental ? {
+          substance: substance.trim(),
+          quantite_estimee: quantite === '' ? null : Number(quantite),
+          quantite_unite: unite.trim(),
+          milieu_touche: milieu,
+          notification_requise: notificationRequise,
+        } : {}),
       })
       toast.success('Incident déclaré.')
       onCreated()
@@ -251,10 +267,288 @@ function CreerIncidentDialog({ onClose, onCreated }) {
             <Label>Description</Label>
             <Textarea aria-label="Description" value={description} onChange={(e) => setDescription(e.target.value)} rows={3} />
           </div>
+          {estEnvironnemental && (
+            <div className="flex flex-col gap-3 rounded-md border border-border p-3">
+              <p className="text-sm text-muted-foreground">
+                Déversement / rejet — renseigner ce qui a été relâché et où.
+              </p>
+              <div>
+                <Label>Substance</Label>
+                <Input
+                  aria-label="Substance" value={substance}
+                  onChange={(e) => setSubstance(e.target.value)}
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <Label>Quantité estimée</Label>
+                  <Input
+                    aria-label="Quantité estimée" inputMode="decimal" step="any"
+                    value={quantite} onChange={(e) => setQuantite(e.target.value)}
+                  />
+                </div>
+                <div>
+                  <Label>Unité</Label>
+                  <Input
+                    aria-label="Unité" value={unite}
+                    onChange={(e) => setUnite(e.target.value)}
+                  />
+                </div>
+              </div>
+              <div>
+                <Label>Milieu touché</Label>
+                <Select value={milieu} onValueChange={setMilieu}>
+                  <SelectTrigger aria-label="Milieu touché"><SelectValue placeholder="—" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="sol">Sol</SelectItem>
+                    <SelectItem value="eau">Eau</SelectItem>
+                    <SelectItem value="air">Air</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <label className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox" checked={notificationRequise}
+                  onChange={(e) => setNotificationRequise(e.target.checked)}
+                />
+                Notification à l’autorité requise
+              </label>
+            </div>
+          )}
           <div className="flex justify-end gap-2 pt-1">
             <Button variant="outline" onClick={onClose}>Annuler</Button>
             <Button onClick={save} disabled={saving}>
               {saving ? 'Déclaration…' : 'Déclarer'}
+            </Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+// XQHS14 — échelle 1–5 partagée avec le document unique (`RisqueOpportunite`,
+// backend). Les criticités sont calculées côté serveur — jamais postées d'ici.
+const ECHELLE_1_5 = [1, 2, 3, 4, 5]
+
+// XQHS14 — création d'un risque/opportunité niveau SMQ (ISO 6.1), distinct du
+// document unique opérationnel chantier.
+function CreerRisqueOpportuniteDialog({ onClose, onCreated }) {
+  const [typeRo, setTypeRo] = useState('risque')
+  const [processus, setProcessus] = useState('')
+  const [description, setDescription] = useState('')
+  const [probabilite, setProbabilite] = useState('1')
+  const [gravite, setGravite] = useState('1')
+  const [actions, setActions] = useState('')
+  const [dateRevue, setDateRevue] = useState('')
+  const [saving, setSaving] = useState(false)
+
+  async function save() {
+    if (!description.trim()) { toast.error('La description est requise.'); return }
+    setSaving(true)
+    try {
+      await qhseApi.risquesOpportunites.create({
+        type_ro: typeRo,
+        processus: processus.trim(),
+        description: description.trim(),
+        probabilite_inherente: Number(probabilite),
+        gravite_inherente: Number(gravite),
+        actions_traitement: actions.trim(),
+        date_revue: dateRevue || null,
+      })
+      toast.success('Risque / opportunité enregistré.')
+      onCreated()
+      onClose()
+    } catch (err) {
+      toast.error(err?.response?.data?.detail ?? 'Création impossible.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <Dialog open onOpenChange={(o) => { if (!o) onClose() }}>
+      <DialogContent>
+        <DialogTitle>Nouveau risque / opportunité (SMQ)</DialogTitle>
+        <div className="flex flex-col gap-3">
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <Label>Type</Label>
+              <Select value={typeRo} onValueChange={setTypeRo}>
+                <SelectTrigger aria-label="Type"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="risque">Risque</SelectItem>
+                  <SelectItem value="opportunite">Opportunité</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label>Processus concerné</Label>
+              <Input
+                aria-label="Processus concerné" value={processus}
+                onChange={(e) => setProcessus(e.target.value)}
+              />
+            </div>
+          </div>
+          <div>
+            <Label>Description</Label>
+            <Textarea
+              aria-label="Description" rows={3} value={description}
+              onChange={(e) => setDescription(e.target.value)}
+            />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <Label>Probabilité inhérente (1–5)</Label>
+              <Select value={probabilite} onValueChange={setProbabilite}>
+                <SelectTrigger aria-label="Probabilité inhérente (1–5)"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {ECHELLE_1_5.map((n) => (
+                    <SelectItem key={n} value={String(n)}>{n}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label>Gravité inhérente (1–5)</Label>
+              <Select value={gravite} onValueChange={setGravite}>
+                <SelectTrigger aria-label="Gravité inhérente (1–5)"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {ECHELLE_1_5.map((n) => (
+                    <SelectItem key={n} value={String(n)}>{n}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <div>
+            <Label>Actions de traitement</Label>
+            <Textarea
+              aria-label="Actions de traitement" rows={2} value={actions}
+              onChange={(e) => setActions(e.target.value)}
+            />
+          </div>
+          <div>
+            <Label>Date de revue</Label>
+            <Input
+              aria-label="Date de revue" type="date" value={dateRevue}
+              onChange={(e) => setDateRevue(e.target.value)}
+            />
+          </div>
+          <div className="flex justify-end gap-2 pt-1">
+            <Button variant="outline" onClick={onClose}>Annuler</Button>
+            <Button onClick={save} disabled={saving}>
+              {saving ? 'Création…' : 'Créer'}
+            </Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+// XQHS17 — saisie TERRAIN volontairement minimale.
+// source-choix: qhse.ObservationSecurite.categorie
+const OBSERVATION_CATEGORIES = [
+  { value: 'epi', label: 'EPI' },
+  { value: 'hauteur', label: 'Travail en hauteur' },
+  { value: 'electrique', label: 'Électrique' },
+  { value: 'manutention', label: 'Manutention' },
+  { value: 'environnement', label: 'Environnement' },
+  { value: 'autre', label: 'Autre' },
+]
+// source-choix: qhse.ObservationSecurite.type_observation
+const OBSERVATION_TYPES = [
+  { value: 'sur', label: 'Sûr' },
+  { value: 'a_risque', label: 'À risque' },
+]
+
+// XQHS17 — capture rapide d'une observation BBS depuis le terrain. Le
+// formulaire tient sur un écran mobile (champs empilés, une seule colonne),
+// n'exige qu'une description et pose la date du jour par défaut. `company` et
+// `observateur` sont posés côté serveur — jamais envoyés d'ici.
+function CaptureObservationDialog({ onClose, onCreated }) {
+  const [typeObservation, setTypeObservation] = useState('a_risque')
+  const [categorie, setCategorie] = useState('autre')
+  const [description, setDescription] = useState('')
+  const [chantierId, setChantierId] = useState('')
+  const [feedbackDonne, setFeedbackDonne] = useState(false)
+  const [saving, setSaving] = useState(false)
+
+  async function save() {
+    if (!description.trim()) { toast.error('La description est requise.'); return }
+    setSaving(true)
+    try {
+      await qhseApi.observationsSecurite.create({
+        type_observation: typeObservation,
+        categorie,
+        description: description.trim(),
+        chantier_id: chantierId ? Number(chantierId) : null,
+        feedback_donne: feedbackDonne,
+        date_observation: new Date().toISOString().slice(0, 10),
+      })
+      toast.success('Observation enregistrée.')
+      onCreated()
+      onClose()
+    } catch (err) {
+      toast.error(err?.response?.data?.detail ?? 'Enregistrement impossible.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <Dialog open onOpenChange={(o) => { if (!o) onClose() }}>
+      <DialogContent>
+        <DialogTitle>Observation sécurité (capture rapide)</DialogTitle>
+        <div className="flex flex-col gap-3">
+          <div>
+            <Label>Type d’observation</Label>
+            <Select value={typeObservation} onValueChange={setTypeObservation}>
+              <SelectTrigger aria-label="Type d’observation"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {OBSERVATION_TYPES.map((o) => (
+                  <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div>
+            <Label>Catégorie</Label>
+            <Select value={categorie} onValueChange={setCategorie}>
+              <SelectTrigger aria-label="Catégorie"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {OBSERVATION_CATEGORIES.map((o) => (
+                  <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div>
+            <Label>Ce que j’ai vu</Label>
+            <Textarea
+              aria-label="Ce que j’ai vu" rows={3} value={description}
+              onChange={(e) => setDescription(e.target.value)}
+            />
+          </div>
+          <div>
+            <Label>Chantier (id, optionnel)</Label>
+            <Input
+              aria-label="Chantier (id, optionnel)" inputMode="numeric"
+              value={chantierId} onChange={(e) => setChantierId(e.target.value)}
+            />
+          </div>
+          <label className="flex items-center gap-2 text-sm">
+            <input
+              type="checkbox" checked={feedbackDonne}
+              onChange={(e) => setFeedbackDonne(e.target.checked)}
+            />
+            Feedback donné sur place
+          </label>
+          <div className="flex justify-end gap-2 pt-1">
+            <Button variant="outline" onClick={onClose}>Annuler</Button>
+            <Button onClick={save} disabled={saving}>
+              {saving ? 'Enregistrement…' : 'Enregistrer'}
             </Button>
           </div>
         </div>
@@ -409,6 +703,44 @@ export default function Risques() {
   const [creatingIncident, setCreatingIncident] = useState(false)
   const [incidentsReload, setIncidentsReload] = useState(0)
 
+  // XQHS17 — capture rapide d'une observation BBS (le registre n'était
+  // jusqu'ici qu'en lecture + conversion).
+  const [creatingObservation, setCreatingObservation] = useState(false)
+  const [observationsReload, setObservationsReload] = useState(0)
+
+  // XQHS19 — incidents environnementaux : filtre « notifications en retard »,
+  // relance en masse et clôture gatée (le serveur refuse si la notification
+  // requise n'est pas faite).
+  const [incidentsRetardOnly, setIncidentsRetardOnly] = useState(false)
+
+  // XQHS14 — registre risques & opportunités niveau SMQ (ISO 6.1).
+  const [creatingRo, setCreatingRo] = useState(false)
+  const [roReload, setRoReload] = useState(0)
+  const [roRevuesDues, setRoRevuesDues] = useState(false)
+
+  // XQHS19 — la clôture est GATÉE côté serveur (400 si une notification
+  // requise n'a pas été faite) : on remonte tel quel le motif du refus.
+  async function cloturerIncident(incident) {
+    try {
+      await qhseApi.incidents.cloturer(incident.id)
+      toast.success('Incident clôturé.')
+      setIncidentsReload((n) => n + 1)
+    } catch (err) {
+      toast.error(err?.response?.data?.detail ?? 'Clôture impossible.')
+    }
+  }
+
+  async function relancerNotifications() {
+    try {
+      const res = await qhseApi.incidents.relancerNotifications()
+      const nb = res?.data?.relances ?? 0
+      toast.success(`${nb} relance(s) de notification envoyée(s).`)
+      setIncidentsReload((n) => n + 1)
+    } catch (err) {
+      toast.error(err?.response?.data?.detail ?? 'Relance impossible.')
+    }
+  }
+
   async function ouvrirCreationLoto() {
     try {
       const res = await qhseApi.permisTravail.list()
@@ -462,6 +794,28 @@ export default function Risques() {
     {
       id: 'statut', header: 'Statut', width: 130,
       accessor: (r) => r.statut, cell: (v) => <EvalRisqueStatutPill status={v} />,
+    },
+  ], [])
+
+  // XQHS14 — registre SMQ : criticité INHÉRENTE (avant traitement) et
+  // RÉSIDUELLE (après), toutes deux calculées côté serveur.
+  const roCols = useMemo(() => [
+    { id: 'type', header: 'Type', width: 120, accessor: (r) => r.type_ro_display || r.type_ro },
+    { id: 'processus', header: 'Processus', width: 170, accessor: (r) => r.processus || '—' },
+    { id: 'description', header: 'Description', accessor: (r) => r.description },
+    {
+      id: 'criticite_inherente', header: 'Criticité inhérente', width: 160, align: 'center',
+      accessor: (r) => r.criticite_inherente ?? 0,
+      cell: (v) => <Badge tone={critTone(v)}>{v}</Badge>,
+    },
+    {
+      id: 'criticite_residuelle', header: 'Criticité résiduelle', width: 160, align: 'center',
+      accessor: (r) => r.criticite_residuelle,
+      cell: (v) => (v == null ? '—' : <Badge tone={critTone(v)}>{v}</Badge>),
+    },
+    {
+      id: 'date_revue', header: 'Revue', width: 120, align: 'right',
+      accessor: (r) => r.date_revue, cell: (v) => formatDate(v),
     },
   ], [])
 
@@ -538,6 +892,20 @@ export default function Risques() {
     {
       id: 'date_incident', header: 'Date', width: 120, align: 'right',
       accessor: (r) => r.date_incident, cell: (v) => formatDate(v),
+    },
+    // XQHS19 — `notification_en_retard` est calculé côté serveur : une
+    // notification requise et non faite dans le délai légal bloque la clôture.
+    {
+      id: 'notification', header: 'Notification', width: 150, align: 'center',
+      accessor: (r) => (r.notification_requise
+        ? (r.notification_en_retard ? 'retard' : 'ok')
+        : ''),
+      cell: (v) => {
+        if (!v) return '—'
+        return v === 'retard'
+          ? <Badge tone="danger">En retard</Badge>
+          : <Badge tone="success">À jour</Badge>
+      },
     },
   ], [])
 
@@ -635,6 +1003,7 @@ export default function Risques() {
       <Tabs value={tab} onValueChange={setTab}>
         <TabsList className="flex-wrap">
           <TabsTrigger value="document-unique">Document unique</TabsTrigger>
+          <TabsTrigger value="risques-opportunites">Risques & opportunités</TabsTrigger>
           <TabsTrigger value="permis">Permis & LOTO</TabsTrigger>
           <TabsTrigger value="preparation">Préparation site</TabsTrigger>
           <TabsTrigger value="incidents">Incidents</TabsTrigger>
@@ -649,6 +1018,32 @@ export default function Risques() {
             fetcher={() => qhseApi.evaluationsRisque.list()}
             columns={evalCols}
             exportName="qhse-evaluations-risque"
+          />
+        </TabsContent>
+
+        <TabsContent value="risques-opportunites" className="mt-4">
+          <QhseResourceList
+            title="Risques & opportunités (SMQ)"
+            subtitle="Niveau entreprise/processus (ISO 6.1) — distinct du document unique chantier"
+            fetcher={() => (roRevuesDues
+              ? qhseApi.risquesOpportunites.revuesDues()
+              : qhseApi.risquesOpportunites.list())}
+            columns={roCols}
+            exportName="qhse-risques-opportunites"
+            deps={[roReload, roRevuesDues]}
+            actions={(
+              <>
+                <Button
+                  variant={roRevuesDues ? 'default' : 'outline'}
+                  onClick={() => setRoRevuesDues((v) => !v)}
+                >
+                  <ListChecks size={16} /> Revues dues
+                </Button>
+                <Button onClick={() => setCreatingRo(true)}>
+                  <Plus size={16} /> Nouveau risque / opportunité
+                </Button>
+              </>
+            )}
           />
         </TabsContent>
 
@@ -726,15 +1121,36 @@ export default function Risques() {
           <QhseResourceList
             title="Registre des incidents HSE"
             subtitle="Accidents, presqu’accidents, incidents"
-            fetcher={() => qhseApi.incidents.list()}
+            fetcher={() => (incidentsRetardOnly
+              ? qhseApi.incidents.notificationsEnRetard()
+              : qhseApi.incidents.list())}
             columns={incidentsCols}
             exportName="qhse-incidents"
-            deps={[incidentsReload]}
-            actions={
-              <Button onClick={() => setCreatingIncident(true)}>
-                <Plus size={16} /> Déclarer un incident
-              </Button>
-            }
+            deps={[incidentsReload, incidentsRetardOnly]}
+            actions={(
+              <>
+                <Button
+                  variant={incidentsRetardOnly ? 'default' : 'outline'}
+                  onClick={() => setIncidentsRetardOnly((v) => !v)}
+                >
+                  <AlertOctagon size={16} /> Notifications en retard
+                </Button>
+                <Button variant="outline" onClick={relancerNotifications}>
+                  <ListChecks size={16} /> Relancer
+                </Button>
+                <Button onClick={() => setCreatingIncident(true)}>
+                  <Plus size={16} /> Déclarer un incident
+                </Button>
+              </>
+            )}
+            rowActions={(r) => (
+              r.statut === 'clos'
+                ? []
+                : [{
+                  id: 'cloturer', label: 'Clôturer', icon: XCircle,
+                  onClick: () => cloturerIncident(r),
+                }]
+            )}
           />
           <QhseResourceList
             title="Déclarations CNSS"
@@ -778,6 +1194,12 @@ export default function Risques() {
             fetcher={() => qhseApi.observationsSecurite.list()}
             columns={observationsCols}
             exportName="qhse-observations-securite"
+            deps={[observationsReload]}
+            actions={
+              <Button onClick={() => setCreatingObservation(true)}>
+                <Plus size={16} /> Nouvelle observation
+              </Button>
+            }
             rowActions={(r) => [
               {
                 id: 'capa', label: 'Convertir en CAPA', icon: Wrench,
@@ -865,6 +1287,20 @@ export default function Risques() {
         <CreerIncidentDialog
           onClose={() => setCreatingIncident(false)}
           onCreated={() => setIncidentsReload((n) => n + 1)}
+        />
+      )}
+
+      {creatingRo && (
+        <CreerRisqueOpportuniteDialog
+          onClose={() => setCreatingRo(false)}
+          onCreated={() => setRoReload((n) => n + 1)}
+        />
+      )}
+
+      {creatingObservation && (
+        <CaptureObservationDialog
+          onClose={() => setCreatingObservation(false)}
+          onCreated={() => setObservationsReload((n) => n + 1)}
         />
       )}
     </div>

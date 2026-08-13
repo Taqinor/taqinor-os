@@ -27,6 +27,7 @@ import EntiteSwitcher from '../../features/entites/EntiteSwitcher'
 import NotificationBell from './NotificationBell'
 import ChatBell from './ChatBell'
 import BackgroundJobsBell from './BackgroundJobsBell'
+import SyncStatusBadge from './SyncStatusBadge'
 import Breadcrumbs from './Breadcrumbs'
 import LanguageSwitcher from './LanguageSwitcher'
 // VX9 — Lanceur d'applications (overlay grille). ODY5 — il n'est PLUS branché
@@ -213,6 +214,9 @@ export default function Header({ onMenu }) {
           >
             <Bot size={19} aria-hidden="true" />
           </button>
+          {/* NTMOB3 — statut de synchro de l'outbox terrain, visible partout
+              (masqué quand tout est synchronisé et le réseau présent). */}
+          <SyncStatusBadge />
           {/* WIR137 — progression des jobs de fond (exports lourds/imports). */}
           <BackgroundJobsBell />
           <ChatBell />

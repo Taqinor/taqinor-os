@@ -1,12 +1,19 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { Download, RefreshCw, FileText, GitCompare, ArrowUp, ArrowDown, ChevronsUpDown } from 'lucide-react'
-import { Button, Segmented, Input, Label, Card, EmptyState, toast } from '../../../ui'
+import {
+  Download, RefreshCw, FileText, GitCompare, ArrowUp, ArrowDown, ChevronsUpDown,
+  Receipt,
+} from 'lucide-react'
+import {
+  Button, Segmented, Input, Label, Card, EmptyState, toast,
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
+} from '../../../ui'
 import { Table as SharedTable } from '../../../pages/reporting/Table'
-import { formatMAD } from '../../../lib/format'
+import { formatMAD, formatDate } from '../../../lib/format'
 import { stampedFilename } from '../../../utils/downloadBlob'
 import { store } from '../../../store'
 import comptaApi from '../../../api/comptaApi'
+import ComptaTable from '../ComptaTable'
 import { unwrap } from '../components/useComptaList.js'
 import useTabParam from '../components/useTabParam'
 
@@ -59,7 +66,7 @@ function cellValue(key, val) {
 // VX232(b) — tableau générique migré vers le primitif partagé `Table` (fin du
 // <table> HTML nu) ; en prime, un clic sur un en-tête trie la colonne (les
 // états CGNC — balance en tête — se contentaient d'un ordre serveur figé).
-function GenericTable({ lignes }) {
+function GenericTable({ lignes, extraColumn }) {
   const [sort, setSort] = useState({ key: null, dir: 'asc' })
 
   const cols = lignes.length
@@ -109,6 +116,10 @@ function GenericTable({ lignes }) {
     cell: (row) => cellValue(c, row[c]),
   }))
 
+  // COMPTA21 — colonne d'action optionnelle (ex. drill-down « Relevé »),
+  // ajoutée SANS toucher à la détection automatique des colonnes.
+  if (extraColumn) columns.push(extraColumn)
+
   return <SharedTable columns={columns} rows={sorted} aria-label="État comptable" />
 }
 
@@ -126,7 +137,7 @@ function KeyValue({ obj }) {
   )
 }
 
-function EtatRender({ data }) {
+function EtatRender({ data, extraColumn }) {
   if (data == null) return null
   // Grand-livre : tableau de groupes { numero, intitule, lignes[] }.
   if (Array.isArray(data)) {
@@ -148,7 +159,7 @@ function EtatRender({ data }) {
         </div>
       )
     }
-    return <GenericTable lignes={data} />
+    return <GenericTable lignes={data} extraColumn={extraColumn} />
   }
   // Objet avec { lignes:[…] } → tableau + éventuels totaux en clé/valeur.
   if (Array.isArray(data.lignes)) {
@@ -156,13 +167,79 @@ function EtatRender({ data }) {
       Object.entries(data).filter(([k]) => k !== 'lignes'))
     return (
       <div className="flex flex-col gap-4">
-        <GenericTable lignes={data.lignes} />
+        <GenericTable lignes={data.lignes} extraColumn={extraColumn} />
         {Object.keys(totaux).length > 0 && <KeyValue obj={totaux} />}
       </div>
     )
   }
   // Sinon : agrégats clé/valeur.
   return <KeyValue obj={data} />
+}
+
+// COMPTA21 — drill-down du relevé d'un fournisseur depuis la balance âgée
+// fournisseurs (FG132) : mouvements chronologiques du compte 4411 + solde dû.
+function ReleveFournisseurDialog({ tiersId, nom, params, onClose }) {
+  const [releve, setReleve] = useState(null)
+  const [loading, setLoading] = useState(true)
+
+  const load = useCallback(() => {
+    let active = true
+    setLoading(true)
+    comptaApi.etats.releveFournisseur(tiersId, params)
+      .then((res) => { if (active) setReleve(res.data) })
+      .catch(() => { if (active) toast.error('Relevé fournisseur indisponible.') })
+      .finally(() => { if (active) setLoading(false) })
+    return () => { active = false }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- params est un objet mémoïsé côté appelant
+  }, [tiersId])
+
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement au montage
+  useEffect(() => load(), [load])
+
+  const lignes = releve?.lignes || []
+  const totaux = releve?.totaux || {}
+
+  return (
+    <Dialog open onOpenChange={(o) => { if (!o) onClose() }}>
+      <DialogContent className="max-w-2xl">
+        <DialogHeader>
+          <DialogTitle>Relevé fournisseur — {releve?.fournisseur?.nom || nom || `#${tiersId}`}</DialogTitle>
+        </DialogHeader>
+        {loading ? (
+          <p className="py-6 text-center text-sm text-muted-foreground">Chargement…</p>
+        ) : !lignes.length ? (
+          <EmptyState title="Aucun mouvement" description="Aucune ligne sur la période sélectionnée." />
+        ) : (
+          <div className="max-h-96 overflow-y-auto">
+            <ComptaTable
+              aria-label="Relevé fournisseur"
+              exportName="releve-fournisseur"
+              rows={lignes}
+              getRowKey={(l, i) => i}
+              columns={[
+                { key: 'date', label: 'Date', sortValue: (l) => l.date || '', cell: (l) => formatDate(l.date) },
+                { key: 'reference', label: 'Référence', cell: (l) => l.reference || '—' },
+                { key: 'libelle', label: 'Libellé', cell: (l) => l.libelle || '—' },
+                { key: 'credit', label: 'Crédit (facture)', align: 'right', numeric: true,
+                  sortValue: (l) => Number(l.credit) || 0, cell: (l) => formatMAD(l.credit) },
+                { key: 'debit', label: 'Débit (règlement)', align: 'right', numeric: true,
+                  sortValue: (l) => Number(l.debit) || 0, cell: (l) => formatMAD(l.debit) },
+                { key: 'solde_courant', label: 'Solde courant', align: 'right', numeric: true,
+                  sortValue: (l) => Number(l.solde_courant) || 0, cell: (l) => formatMAD(l.solde_courant) },
+              ]}
+            />
+          </div>
+        )}
+        <div className="flex items-center justify-between rounded-lg border px-3 py-2 text-sm">
+          <span className="text-muted-foreground">Solde dû</span>
+          <strong className="tabular-nums">{formatMAD(totaux.solde_du)}</strong>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>Fermer</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
 }
 
 export default function EtatsPage() {
@@ -180,6 +257,8 @@ export default function EtatsPage() {
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
+  // COMPTA21 — drill-down « Relevé » depuis la balance âgée fournisseurs.
+  const [releveFor, setReleveFor] = useState(null)
 
   useEffect(() => {
     comptaApi.exercices.list()
@@ -318,9 +397,29 @@ export default function EtatsPage() {
         ) : error ? (
           <EmptyState title="Impossible de charger l'état" description="Vérifiez la période puis réessayez." />
         ) : (
-          <EtatRender data={data} />
+          <EtatRender
+            data={data}
+            extraColumn={etat === 'balance-agee-fournisseurs' ? {
+              key: '_releve',
+              header: '',
+              cell: (row) => (
+                <Button variant="ghost" size="sm" onClick={() => setReleveFor(row)}>
+                  <Receipt className="size-4" /> Relevé
+                </Button>
+              ),
+            } : undefined}
+          />
         )}
       </Card>
+
+      {releveFor && (
+        <ReleveFournisseurDialog
+          tiersId={releveFor.tiers_id}
+          nom={releveFor.fournisseur_nom}
+          params={params}
+          onClose={() => setReleveFor(null)}
+        />
+      )}
     </div>
   )
 }

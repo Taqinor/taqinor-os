@@ -44,6 +44,9 @@ class DossierEmploye(models.Model):
         LICENCIEMENT = 'licenciement', 'Licenciement'
         AUTRE = 'autre', 'Autre'
 
+    # Vocabulaire porte par un ATTRIBUT DE CLASSE, pas par un champ.
+    CHECKLIST = ('badge', 'contrat')
+
     statut = models.CharField(max_length=10, choices=Statut.choices)
     motif_sortie = models.CharField(
         max_length=20, choices=MotifSortie.choices, blank=True, default='')
@@ -225,15 +228,96 @@ class MarqueurFautifTests(Base):
                             "const X = [{ value: 'a' }]\n")
         self.assertIn("resolubles", motif)
 
-    def test_marqueur_sans_liste(self):
+    def test_marqueur_devant_un_scalaire(self):
         motif = self._motif("// source-choix: rh.DossierEmploye.statut\n"
-                            "const X = { actif: 1 }\n")
-        self.assertIn("aucune liste", motif)
+                            "const X = 'actif'\n")
+        self.assertIn("ne precede aucune liste", motif)
 
-    def test_liste_d_objets_sans_cle_value(self):
+    def test_liste_d_objets_sans_cle_value_ni_key(self):
         motif = self._motif("// source-choix: rh.DossierEmploye.statut\n"
-                            "const X = [{ cle: 'actif', libelle: 'Actif' }]\n")
+                            "const X = [{ nom: 'actif', libelle: 'Actif' }]\n")
         self.assertIn("value:", motif)
+
+
+class SecondeFormeDuDepotTests(Base):
+    """PACT159 (2e passe) : le depot ecrit son vocabulaire sous 3 formes.
+
+    Mesure sur les 68 promesses en prose du depot : la moitie des refus
+    n'etait PAS un probleme de source (le miroir serveur existait, exact),
+    mais de FORME — un objet `{cle: libelle}` ou un tableau `{key: …}`.
+    """
+
+    def test_objet_cle_libelle(self):
+        self.ecrire("""
+// source-choix: rh.DossierEmploye.statut
+const LABELS = { embauche: 'Embauche', actif: 'Actif', sorti: 'Sorti' }
+""")
+        constats, verifiees = self.analyser()
+        self.assertEqual(constats, [])
+        self.assertEqual(verifiees, 1)
+
+    def test_objet_avec_une_cle_inventee(self):
+        self.ecrire("""
+// source-choix: rh.DossierEmploye.statut
+const LABELS = { actif: 'Actif', 'zombie': 'Zombie' }
+""")
+        constats, _ = self.analyser()
+        self.assertEqual(len(constats), 1)
+        self.assertIn("'zombie'", constats[0][3])
+
+    def test_cles_imbriquees_ignorees(self):
+        # `couleur` est une cle de SECOND niveau : ce n'est pas du vocabulaire.
+        self.ecrire("""
+// source-choix: rh.DossierEmploye.statut
+const LABELS = { actif: { couleur: 'vert', libelle: 'Actif' } }
+""")
+        self.assertEqual(self.analyser()[0], [])
+
+    def test_tableau_a_cle_key(self):
+        self.ecrire("""
+// source-choix: rh.DossierEmploye.statut
+const T = [{ key: 'actif', label: 'Actif' }, { key: 'sorti', label: 'S' }]
+""")
+        constats, verifiees = self.analyser()
+        self.assertEqual(constats, [])
+        self.assertEqual(verifiees, 1)
+
+    def test_attribut_de_classe_du_modele(self):
+        self.ecrire("""
+// source-choix: rh.DossierEmploye.CHECKLIST
+const T = ['badge', 'contrat']
+""")
+        self.assertEqual(self.analyser()[0], [])
+
+
+class SentinelleDeclareeTests(Base):
+    """`+__none__` : une sentinelle d'INTERFACE, declaree donc relisible."""
+
+    def test_sentinelle_declaree_acceptee(self):
+        self.ecrire("""
+// source-choix: rh.DossierEmploye.statut +__none__
+const T = [{ value: '__none__' }, { value: 'actif' }]
+""")
+        constats, verifiees = self.analyser()
+        self.assertEqual(constats, [])
+        self.assertEqual(verifiees, 1)
+
+    def test_sentinelle_non_declaree_rougit_toujours(self):
+        self.ecrire("""
+// source-choix: rh.DossierEmploye.statut
+const T = [{ value: '__none__' }, { value: 'actif' }]
+""")
+        self.assertEqual(len(self.analyser()[0]), 1)
+
+    def test_une_sentinelle_ne_couvre_pas_une_vraie_invention(self):
+        self.ecrire("""
+// source-choix: rh.DossierEmploye.statut +__none__
+const T = [{ value: '__none__' }, { value: 'zombie' }]
+""")
+        constats, _ = self.analyser()
+        self.assertEqual(len(constats), 1)
+        self.assertIn("'zombie'", constats[0][3])
+        self.assertNotIn("__none__", constats[0][3])
 
 
 class LectureDuSourceTests(Base):
@@ -250,8 +334,48 @@ const MOTIFS = [
         self.assertEqual(self.analyser()[0], [])
 
 
+class PromessesEnProseTests(Base):
+    """PACT159 : chaque promesse en prose est convertie OU refusee, jamais
+    laissee en suspens."""
+
+    def test_promesse_avec_marqueur_est_convertie(self):
+        self.ecrire("""
+// Statuts (miroir de DossierEmploye.Statut).
+// source-choix: rh.DossierEmploye.statut
+const T = [{ value: 'actif' }]
+""")
+        converties, refusees, nouvelles = ccd.promesses(self.front)
+        self.assertEqual(len(converties), 1)
+        self.assertEqual((refusees, nouvelles), ([], []))
+
+    def test_promesse_sans_marqueur_ni_motif_est_a_trancher(self):
+        self.ecrire("// Statuts (miroir de DossierEmploye.Statut).\n"
+                    "const T = [{ value: 'actif' }]\n")
+        _, _, nouvelles = ccd.promesses(self.front)
+        self.assertEqual(len(nouvelles), 1)
+
+
 class DepotReelTests(unittest.TestCase):
     """Le vrai depot : la garde est VERTE et n'est pas vide de sens."""
+
+    def test_aucune_promesse_en_prose_en_suspens(self):
+        converties, refusees, nouvelles = ccd.promesses()
+        self.assertEqual(
+            nouvelles, [],
+            "promesse en prose ni convertie ni refusee : la trancher")
+        self.assertGreaterEqual(len(converties) + len(refusees), 60)
+
+    def test_attribut_de_classe_reel(self):
+        valeurs, _ = ccd.valeurs_serveur(
+            "flotte.Vehicule.CHECKLIST_MISE_EN_SERVICE")
+        self.assertIn("immatriculation_faite", valeurs or set())
+
+    def test_constante_de_module_par_noms(self):
+        # `GRAVITES = (INFO, AVERTISSEMENT, BLOCAGE)` : des NOMS, pas des
+        # litteraux — l'exemple meme cite par la docstring de la garde.
+        valeurs, _ = ccd.valeurs_serveur(
+            "ao.fabrique.approvisionnement.GRAVITES")
+        self.assertEqual(valeurs, {"info", "avertissement", "blocage"})
 
     def test_le_depot_est_vert_et_porte_au_moins_un_marqueur(self):
         constats, verifiees = ccd.analyser()

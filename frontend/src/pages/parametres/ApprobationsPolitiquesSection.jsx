@@ -33,6 +33,7 @@ import SettingsAuditFeed from './SettingsAuditFeed'
 // Miroir de ApprovalPolicy.ActionType / ApproverTier (backend). Le serveur
 // renvoie aussi les libellés (`action_type_label`) : on ne les invente pas,
 // cette table sert au FORMULAIRE de création (avant tout aller-retour).
+// source-choix: parametres.ApprovalPolicy.action_type
 const ACTION_TYPES = [
   ['discount', 'Remise sur devis'],
   ['quote_amount', 'Montant de devis'],
@@ -41,6 +42,7 @@ const ACTION_TYPES = [
   ['contract', 'Contrat'],
   ['refund', 'Avoir / remboursement'],
 ]
+// source-choix: parametres.ApprovalPolicy.approver_tier
 const APPROVER_TIERS = [
   ['responsable', 'Responsable (ou plus)'],
   ['admin', 'Administrateur uniquement'],

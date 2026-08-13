@@ -38,7 +38,9 @@ import {
 import { PageHeader } from '../../ui/PageHeader'
 import { INVENTAIRE_ACCENT } from '../../features/stock/inventaireAccent'
 
-// Miroir de PaiementFournisseur.Mode (backend).
+// Le modele a migre vers `achats` (ODX19) : `stock/models.py` n'en garde
+// qu'un re-export.
+// source-choix: achats.PaiementFournisseur.mode
 const MODES = [
   ['virement', 'Virement'],
   ['cheque', 'Chèque'],

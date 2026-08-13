@@ -34,6 +34,27 @@ import { StatutEmploye, TYPE_CONTRAT_LABELS } from './constants.jsx'
    (`?beneficiaire=<id>`).
    ========================================================================== */
 
+/* ZRH16 — clés RÉELLES de `localisation_hebdo` (apps/rh/selectors.py
+   `_JOURS_SEMAINE`, défaut `bureau`). */
+const JOURS_SEMAINE = [
+  'lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi', 'dimanche',
+]
+const LOCALISATION_DEFAUT = 'bureau'
+const LOCALISATION_LABELS = {
+  bureau: 'Bureau',
+  domicile: 'Domicile',
+  terrain: 'Terrain',
+  autre: 'Autre',
+  absent: 'Absent',
+}
+
+/* XRH16 — libellés du `statut` renvoyé par `selectors.compa_ratio`. */
+const STATUT_BANDE = {
+  sous_bande: 'Sous la bande',
+  dans_bande: 'Dans la bande',
+  sur_bande: 'Au-dessus de la bande',
+}
+
 function Liste({ rows, loading, empty, renderRow }) {
   if (loading) {
     return (
@@ -67,6 +88,13 @@ export default function EmployeDetail() {
   const [documents, setDocuments] = useState([])
   const [remunerations, setRemunerations] = useState([])
   const [compaRatio, setCompaRatio] = useState(null)
+  // XRH15 — écarts de compétences requis-vs-actuel du poste de référence.
+  const [ecarts, setEcarts] = useState([])
+  // XRH29 — ayants droit (personnes à charge) + avantages sociaux.
+  const [ayantsDroit, setAyantsDroit] = useState([])
+  const [avantages, setAvantages] = useState([])
+  // ZRH15 — timeline de parcours (expériences, diplômes, mobilités).
+  const [parcours, setParcours] = useState([])
   const [habilitations, setHabilitations] = useState([])
   const [formation, setFormation] = useState(null)
   const [integration, setIntegration] = useState(null)
@@ -111,6 +139,13 @@ export default function EmployeDetail() {
       rhApi.getHistoriqueEmploye(id),
       // WIR131 — badges reçus par ce dossier.
       rhApi.getAttributionsBadge({ beneficiaire: id }),
+      // XRH15 — écarts de compétences (liste vide sans poste de référence).
+      rhApi.getEcartCompetences(id),
+      // XRH29 — ayants droit + avantages sociaux du dossier.
+      rhApi.getAyantsDroit({ employe: id }),
+      rhApi.getAvantagesSociaux({ employe: id }),
+      // ZRH15 — lignes de parcours du dossier.
+      rhApi.getLignesParcours({ employe: id }),
     ]
     if (canSalaires) {
       calls.push(rhApi.getRemunerations({ employe: id }))
@@ -118,7 +153,14 @@ export default function EmployeDetail() {
     }
     Promise.allSettled(calls).then((results) => {
       if (!vivant) return
-      const [docRes, habRes, formRes, intRes, chatRes, badgeRes, remRes, compaRes] = results
+      const [
+        docRes, habRes, formRes, intRes, chatRes, badgeRes, ecartRes,
+        ayantsRes, avantagesRes, parcoursRes, remRes, compaRes,
+      ] = results
+      if (ecartRes.status === 'fulfilled') setEcarts(unwrap(ecartRes.value.data))
+      if (ayantsRes.status === 'fulfilled') setAyantsDroit(unwrap(ayantsRes.value.data))
+      if (avantagesRes.status === 'fulfilled') setAvantages(unwrap(avantagesRes.value.data))
+      if (parcoursRes.status === 'fulfilled') setParcours(unwrap(parcoursRes.value.data))
       if (docRes.status === 'fulfilled') setDocuments(unwrap(docRes.value.data))
       if (habRes.status === 'fulfilled') setHabilitations(unwrap(habRes.value.data))
       if (formRes.status === 'fulfilled') setFormation(formRes.value.data)
@@ -185,6 +227,17 @@ export default function EmployeDetail() {
       recharger()
     } catch (err) {
       toast.error(err?.response?.data?.detail ?? 'Confirmation impossible.')
+    }
+  }
+
+  // XRH15 — un clic depuis un écart crée le besoin de formation associé.
+  const creerBesoinFormation = async (ecart) => {
+    try {
+      await rhApi.creerBesoinDepuisEcart(id, { competence: ecart.competence_id })
+      toast.success('Besoin de formation créé.')
+      recharger()
+    } catch (err) {
+      toast.error(err?.response?.data?.detail ?? 'Création impossible.')
     }
   }
 
@@ -317,23 +370,57 @@ export default function EmployeDetail() {
 
   const formationsRows = formation?.lignes ?? []
   const formationsTab = (
-    <Liste
-      rows={formationsRows}
-      loading={subLoading}
-      empty="Aucune formation au registre."
-      renderRow={(f) => (
-        <div className="flex items-center justify-between gap-3">
-          <div className="min-w-0">
-            <p className="font-medium">{f.intitule || f.session_intitule || '—'}</p>
-            <p className="truncate text-xs text-muted-foreground">
-              {f.organisme || '—'}
-              {f.date_debut ? ` · ${formatDate(f.date_debut)}` : ''}
+    <div className="flex flex-col gap-4">
+      {/* XRH15 — analyse d'écart requis-vs-actuel au poste de référence, avec
+          création en un clic d'un besoin de formation sur la compétence. */}
+      <div className="flex flex-col gap-2">
+        <p className="text-sm font-medium">Écarts de compétences</p>
+        {ecarts.length === 0
+          ? (
+            <p className="text-xs text-muted-foreground">
+              Aucun écart détecté (ou aucun poste de référence sur ce dossier).
             </p>
+          )
+          : (
+            <ul className="flex flex-col gap-2">
+              {ecarts.map((e) => (
+                <li key={e.competence_id} className="flex items-center justify-between gap-3 rounded-lg border border-border bg-card px-3 py-2 text-sm">
+                  <div className="min-w-0">
+                    <p className="font-medium">{e.competence_libelle}</p>
+                    <p className="truncate text-xs text-muted-foreground">
+                      Niveau requis {e.niveau_requis} · actuel {e.niveau_actuel} · écart {e.ecart}
+                    </p>
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => creerBesoinFormation(e)}
+                  >
+                    Créer un besoin de formation
+                  </Button>
+                </li>
+              ))}
+            </ul>
+          )}
+      </div>
+      <Liste
+        rows={formationsRows}
+        loading={subLoading}
+        empty="Aucune formation au registre."
+        renderRow={(f) => (
+          <div className="flex items-center justify-between gap-3">
+            <div className="min-w-0">
+              <p className="font-medium">{f.intitule || f.session_intitule || '—'}</p>
+              <p className="truncate text-xs text-muted-foreground">
+                {f.organisme || '—'}
+                {f.date_debut ? ` · ${formatDate(f.date_debut)}` : ''}
+              </p>
+            </div>
+            {f.statut_display && <Badge tone="neutral">{f.statut_display}</Badge>}
           </div>
-          {f.statut_display && <Badge tone="neutral">{f.statut_display}</Badge>}
-        </div>
-      )}
-    />
+        )}
+      />
+    </div>
   )
 
   // XRH4 — checklist d'intégration (onboarding) + progression.
@@ -410,15 +497,121 @@ export default function EmployeDetail() {
     </div>
   )
 
+  // ZRH15 — timeline de carrière + ZRH16 — localisation hebdomadaire.
+  const parcoursTab = (
+    <div className="flex flex-col gap-4">
+      <div className="flex flex-col gap-2">
+        <p className="text-sm font-medium">Localisation hebdomadaire</p>
+        <p className="text-xs text-muted-foreground">
+          Informatif — aucun impact paie ni pointage.
+        </p>
+        <dl className="grid grid-cols-2 gap-2 sm:grid-cols-4 text-sm">
+          {JOURS_SEMAINE.map((jour) => (
+            <div key={jour} className="rounded-lg border border-border bg-card px-3 py-2">
+              <dt className="text-xs capitalize text-muted-foreground">{jour}</dt>
+              <dd className="font-medium">
+                {LOCALISATION_LABELS[(emp.localisation_hebdo || {})[jour] || LOCALISATION_DEFAUT]}
+              </dd>
+            </div>
+          ))}
+        </dl>
+      </div>
+      <div className="flex flex-col gap-2">
+        <p className="text-sm font-medium">Parcours</p>
+        <Liste
+          rows={parcours}
+          loading={subLoading}
+          empty="Aucune ligne de parcours."
+          renderRow={(l) => (
+            <div className="flex items-center justify-between gap-3">
+              <div className="min-w-0">
+                <p className="font-medium">{l.intitule || l.type_libelle || '—'}</p>
+                <p className="truncate text-xs text-muted-foreground">
+                  {l.type_libelle || '—'}
+                  {l.organisme ? ` · ${l.organisme}` : ''}
+                  {l.date_debut ? ` · ${formatDate(l.date_debut)}` : ''}
+                  {l.date_fin ? ` → ${formatDate(l.date_fin)}` : ''}
+                </p>
+              </div>
+            </div>
+          )}
+        />
+      </div>
+    </div>
+  )
+
+  // XRH29 — ayants droit (personnes à charge) + couverture sociale.
+  const socialTab = (
+    <div className="flex flex-col gap-4">
+      <div className="flex flex-col gap-2">
+        <p className="text-sm font-medium">Ayants droit</p>
+        <Liste
+          rows={ayantsDroit}
+          loading={subLoading}
+          empty="Aucun ayant droit déclaré."
+          renderRow={(a) => (
+            <div className="flex items-center justify-between gap-3">
+              <div className="min-w-0">
+                <p className="font-medium">{a.nom}</p>
+                <p className="truncate text-xs text-muted-foreground">
+                  {a.lien_display || a.lien || '—'}
+                  {a.date_naissance ? ` · né(e) le ${formatDate(a.date_naissance)}` : ''}
+                </p>
+              </div>
+              <div className="flex shrink-0 gap-1">
+                {a.couvert_amo && <Badge tone="success">AMO</Badge>}
+                {a.couvert_mutuelle && <Badge tone="info">Mutuelle</Badge>}
+              </div>
+            </div>
+          )}
+        />
+      </div>
+      <div className="flex flex-col gap-2">
+        <p className="text-sm font-medium">Avantages sociaux</p>
+        <Liste
+          rows={avantages}
+          loading={subLoading}
+          empty="Aucun avantage social enregistré."
+          renderRow={(av) => (
+            <div className="flex items-center justify-between gap-3">
+              <div className="min-w-0">
+                <p className="font-medium">{av.type_display || av.type || '—'}</p>
+                <p className="truncate text-xs text-muted-foreground">
+                  {av.organisme || '—'}
+                  {av.date_adhesion ? ` · depuis le ${formatDate(av.date_adhesion)}` : ''}
+                  {av.date_fin ? ` · fin le ${formatDate(av.date_fin)}` : ''}
+                </p>
+              </div>
+            </div>
+          )}
+        />
+      </div>
+    </div>
+  )
+
   const remunerationTab = (
     <div className="flex flex-col gap-4">
       {/* XRH16 — compa-ratio (salaire vs bande du poste), donnée paie gatée. */}
+      {/* Clés RÉELLES du serveur (selectors.compa_ratio) : compa_ratio_pct /
+          salaire_actuel / salaire_min / salaire_max / milieu_bande / statut. */}
       {compaRatio && (
         <div className="rounded-lg border border-border bg-card px-3 py-2 text-sm">
-          <p className="font-medium">Compa-ratio : {compaRatio.compa_ratio != null ? formatPercent(compaRatio.compa_ratio * 100, { decimals: 0 }) : '—'}</p>
+          <p className="font-medium">
+            Compa-ratio : {compaRatio.compa_ratio_pct != null ? formatPercent(compaRatio.compa_ratio_pct, { decimals: 0 }) : '—'}
+            {compaRatio.statut && (
+              <Badge
+                className="ml-2"
+                tone={compaRatio.statut === 'dans_bande' ? 'success' : 'warning'}
+              >
+                {STATUT_BANDE[compaRatio.statut] || compaRatio.statut}
+              </Badge>
+            )}
+          </p>
           <p className="text-xs text-muted-foreground">
-            Salaire {compaRatio.salaire != null ? formatMAD(compaRatio.salaire) : '—'}
-            {' · '}bande {compaRatio.mediane != null ? formatMAD(compaRatio.mediane) : '—'} (médiane)
+            Salaire {compaRatio.salaire_actuel != null ? formatMAD(compaRatio.salaire_actuel) : '—'}
+            {' · '}bande {compaRatio.salaire_min != null ? formatMAD(compaRatio.salaire_min) : '—'}
+            {' – '}{compaRatio.salaire_max != null ? formatMAD(compaRatio.salaire_max) : '—'}
+            {compaRatio.milieu_bande != null ? ` · milieu ${formatMAD(compaRatio.milieu_bande)}` : ''}
           </p>
         </div>
       )}
@@ -453,6 +646,10 @@ export default function EmployeDetail() {
     { value: 'habilitations', label: 'Habilitations', content: habilitationsTab, count: habilitations.length },
     { value: 'formations', label: 'Formations', content: formationsTab, count: formationsRows.length },
     { value: 'integration', label: 'Intégration', content: integrationTab, count: integrationLignes.length },
+    // ZRH15/ZRH16 — parcours de carrière + localisation hebdomadaire.
+    { value: 'parcours', label: 'Parcours & localisation', content: parcoursTab, count: parcours.length },
+    // XRH29 — ayants droit & couverture sociale (non sensible paie).
+    { value: 'social', label: 'Ayants droit & avantages', content: socialTab, count: ayantsDroit.length + avantages.length },
     { value: 'badges', label: 'Badges', content: badgesTab, count: badgesRecus.length },
     { value: 'chatter', label: 'Activité', content: chatterTab, count: chatter.length },
   ]

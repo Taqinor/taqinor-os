@@ -180,6 +180,7 @@ function ChantierAlerts({ alerts, onClearError }) {
 const ALL_NONE = '__none__'
 
 // N5 — statuts d'un équipement du parc (miroir de sav.Equipement.Statut).
+// source-choix: sav.Equipement.statut
 const EQUIP_STATUTS = [
   { value: 'en_service', label: 'En service' },
   { value: 'remplace', label: 'Remplacé' },

@@ -108,6 +108,8 @@
     detail:inconnu, encours:inconnu, immobilisation_id:inconnu
 - frontend/src/api/comptaApi.js :: ocr -> /api/django/compta/notes-frais/ocr
     champs:objet, detail:texte, justificatif:texte
+- frontend/src/api/comptaApi.js :: ocrImport -> /api/django/compta/rapprochements/<>/ocr-import
+    concordant:booleen, detail:inconnu, ecart:inconnu, lignes:inconnu, lignes_creees:inconnu, releve:texte, solde_calcule:inconnu, solde_final_declare:inconnu, solde_initial:inconnu
 - frontend/src/api/comptaApi.js :: positionTresorerie -> /api/django/compta/etats/position-tresorerie
     comptes:inconnu, projection:inconnu, total:inconnu
 - frontend/src/api/comptaApi.js :: posterMouvement -> /api/django/compta/caisses/<>/poster-mouvement
@@ -292,6 +294,8 @@
     cycle_id:inconnu, depenses_par_categorie:inconnu, detail:texte, marge_brute_previsionnelle:texte, revenu_carnet:texte, revenu_pipeline:texte, revenu_previsionnel:texte, total_depenses:texte
 - frontend/src/api/fpaApi.js :: sensibilite -> /api/django/fpa/scenarios/sensibilite
     detail:texte, points:inconnu, variable:inconnu
+- frontend/src/api/gedApi.js :: comparerVersions -> /api/django/ged/documents/<>/comparer
+    detail:texte, diff_texte:inconnu, message:texte, metadonnees:inconnu, texte_disponible:booleen
 - frontend/src/api/gedApi.js :: genererModele -> /api/django/ged/modeles-document/<>/generer
     created:inconnu, detail:texte, document:inconnu, document_nom:inconnu
 - frontend/src/api/gedApi.js :: getAnalytique -> /api/django/ged/analytique
@@ -694,6 +698,8 @@
     chantier_id:inconnu, detail:texte, peut_cloturer:inconnu
 - frontend/src/api/qhseApi.js :: relancer -> /api/django/qhse/demandes-changement/relancer
     relances:nombre
+- frontend/src/api/qhseApi.js :: relancerNotifications -> /api/django/qhse/incidents/relancer-notifications
+    relances:nombre
 - frontend/src/api/qhseApi.js :: relancerRetards -> /api/django/qhse/capa/relancer-retards
     items:inconnu, notifiees:inconnu, sans_responsable:inconnu, total:nombre
 - frontend/src/api/qhseApi.js :: statistiquesTfTg -> /api/django/qhse/incidents/statistiques-tf-tg
@@ -760,6 +766,10 @@
     alertes:inconnu, effectif_total:inconnu, masse_salariale_mensuelle:inconnu, par_contrat:inconnu, par_departement:inconnu, par_statut:inconnu, pyramide_anciennete:inconnu, turnover:objet
 - frontend/src/api/rhApi.js :: getIntegration -> /api/django/rh/employes/<>/integration
     faits:inconnu, lignes:inconnu, progression_pct:inconnu, total:inconnu
+- frontend/src/api/rhApi.js :: getRapportConges -> /api/django/rh/demandes-conge/rapport
+    par_employe:inconnu, par_type:inconnu
+- frontend/src/api/rhApi.js :: getRapportPresence -> /api/django/rh/pointages/rapport
+    detail:texte, par_employe:inconnu, totaux_departement:inconnu
 - frontend/src/api/rhApi.js :: getRecrutementStatistiques -> /api/django/rh/recrutement/statistiques
     candidatures_par_ouverture:inconnu, delai_embauche_moyen_jours:inconnu, entonnoir:inconnu, sources:inconnu
 - frontend/src/api/rhApi.js :: getRegistreFormation -> /api/django/rh/employes/<>/registre-formation
@@ -987,7 +997,7 @@
     champs: date_creation, date_debut, date_fin, delegant, delegant_nom, id, suppleant, suppleant_nom
 - frontend/src/api/automationApi.js :: deleteRule -> /api/django/automation/rules/<>  [AutomationRuleSerializer]
     champs: action_config, action_type, action_type_display, approval_threshold, date_creation, date_modification, enabled, id, nom, ordre, requires_approval, trigger_config, trigger_type, trigger_type_display
-    action_type ∈ {assign_record, create_activity, create_custom_record, create_sav_ticket, send_email, send_sms, send_whatsapp, set_field}
+    action_type ∈ {assign_record, create_activity, create_custom_record, create_sav_ticket, for_each, send_email, send_sms, send_whatsapp, set_field, wait}
     trigger_type ∈ {chantier_status, date_echeance_champ, devis_accepted, facture_overdue, lead_stage_change, maintenance_due, projet_phase_change, projet_status_change, record_state_change, stock_below_threshold, warranty_expiring, webhook_inbound}
 - frontend/src/api/automationApi.js :: getApprovalRequestTypes -> /api/django/automation/approval-request-types  [ApprovalRequestTypeSerializer]
     champs: champs_config, champs_optionnels, champs_requis, date_creation, date_modification, description, enabled, id, min_approbations, nom, palier_approbateur, piece_jointe_obligatoire, sequence_approbateurs
@@ -1000,11 +1010,11 @@
     champs: date_creation, date_debut, date_fin, delegant, delegant_nom, id, suppleant, suppleant_nom
 - frontend/src/api/automationApi.js :: getRules -> /api/django/automation/rules  [AutomationRuleSerializer]
     champs: action_config, action_type, action_type_display, approval_threshold, date_creation, date_modification, enabled, id, nom, ordre, requires_approval, trigger_config, trigger_type, trigger_type_display
-    action_type ∈ {assign_record, create_activity, create_custom_record, create_sav_ticket, send_email, send_sms, send_whatsapp, set_field}
+    action_type ∈ {assign_record, create_activity, create_custom_record, create_sav_ticket, for_each, send_email, send_sms, send_whatsapp, set_field, wait}
     trigger_type ∈ {chantier_status, date_echeance_champ, devis_accepted, facture_overdue, lead_stage_change, maintenance_due, projet_phase_change, projet_status_change, record_state_change, stock_below_threshold, warranty_expiring, webhook_inbound}
 - frontend/src/api/automationApi.js :: getRuns -> /api/django/automation/runs  [AutomationRunSerializer]
     champs: id, message, rule, rule_nom, status, status_display, target_id, target_model, timestamp
-    status ∈ {failed, noop, pending_approval, skipped, success}
+    status ∈ {failed, noop, pending_approval, simulation, skipped, success}
 - frontend/src/api/btpChantierApi.js :: get -> /api/django/btp-chantier/reserves-chantier/<>  [ReserveChantierSerializer]
     champs: chantier, created_at, created_by, date_levee, date_limite, description, gravite, historique, id, leve_par, localisation_plan, lot, motif_contestation, responsable_leve, statut, updated_at
     gravite ∈ {bloquante, majeure, mineure}
@@ -1642,6 +1652,8 @@
     champs: created_at, created_by, document, document_nom, id, tag, tag_nom
 - frontend/src/api/gedApi.js :: createTamponSociete -> /api/django/ged/tampons-societe  [TamponSocieteSerializer]
     champs: created_at, id, libelle
+- frontend/src/api/gedApi.js :: createVue -> /api/django/ged/vues  [VueGedEnregistreeSerializer]
+    champs: created_at, criteres, est_a_moi, id, nom, partagee, updated_at, utilisateur, utilisateur_nom
 - frontend/src/api/gedApi.js :: deleteAcl -> /api/django/ged/acls/<>  [AclGedSerializer]
     champs: created_at, created_by, document, document_nom, folder, folder_nom, herite, id, niveau, role, role_nom, updated_at, utilisateur, utilisateur_nom
 - frontend/src/api/gedApi.js :: deleteChampSignature -> /api/django/ged/champs-signature/<>  [ChampSignatureSerializer]
@@ -1666,6 +1678,8 @@
     champs: created_at, created_by, document, document_nom, id, tag, tag_nom
 - frontend/src/api/gedApi.js :: deleteTamponSociete -> /api/django/ged/tampons-societe/<>  [TamponSocieteSerializer]
     champs: created_at, id, libelle
+- frontend/src/api/gedApi.js :: deleteVue -> /api/django/ged/vues/<>  [VueGedEnregistreeSerializer]
+    champs: created_at, criteres, est_a_moi, id, nom, partagee, updated_at, utilisateur, utilisateur_nom
 - frontend/src/api/gedApi.js :: getAcls -> /api/django/ged/acls  [AclGedSerializer]
     champs: created_at, created_by, document, document_nom, folder, folder_nom, herite, id, niveau, role, role_nom, updated_at, utilisateur, utilisateur_nom
 - frontend/src/api/gedApi.js :: getCabinets -> /api/django/ged/cabinets  [CabinetSerializer]

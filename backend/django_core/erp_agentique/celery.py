@@ -171,6 +171,12 @@ app.conf.beat_schedule = {
         'task': 'automation.time_triggers_daily',
         'schedule': crontab(hour=8, minute=5),
     },
+    # NTEXT7 — reprise des séquences d'automatisation suspendues par une étape
+    # « Attendre » (toutes les 5 min ; sans échéance due, no-op total).
+    'automation-process-due-steps': {
+        'task': 'automation.process_due_automation_steps',
+        'schedule': crontab(minute='*/5'),
+    },
     'reporting-email-saved-reports-daily': {
         'task': 'reporting.email_saved_reports',
         'schedule': crontab(hour=6, minute=0),

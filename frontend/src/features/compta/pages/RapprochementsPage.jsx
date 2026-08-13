@@ -1,7 +1,7 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTabParam } from '../components/useTabParam'
 import {
-  Plus, Pencil, Lock, Unlock, CheckCircle2, Calculator, Wand2, Link2,
+  Plus, Pencil, Lock, Unlock, CheckCircle2, Calculator, Wand2, Link2, ScanLine,
 } from 'lucide-react'
 import { ListShell, statusPill } from '../../../ui/module'
 import {
@@ -115,6 +115,104 @@ function SuggestionsDialog({ rapprochement, onClose }) {
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  )
+}
+
+// XACC30 — Import OCR d'un relevé (PDF/scan, gated) : extraction → contrôle
+// de solde → acceptation EXPLICITE des lignes proposées (jamais silencieux).
+// Sans clé OCR configurée, le backend répond 503 — dégradation propre.
+function OcrImportPanel({ rapprochement, onImported }) {
+  const fileRef = useRef(null)
+  const [extraction, setExtraction] = useState(null)
+  const [busy, setBusy] = useState(false)
+
+  const choisirFichier = () => fileRef.current?.click()
+
+  const extraire = async (e) => {
+    const fichier = e.target.files?.[0]
+    e.target.value = ''
+    if (!fichier) return
+    setBusy(true)
+    try {
+      const fd = new FormData()
+      fd.append('releve', fichier)
+      const res = await comptaApi.rapprochements.ocrImport(rapprochement.id, fd)
+      setExtraction(res.data)
+      const n = (res.data?.lignes || []).length
+      if (!n) toast.error('Aucune ligne extraite du relevé.')
+    } catch (err) {
+      if (err?.response?.status === 503) {
+        toast.error('OCR indisponible (clé non configurée).')
+      } else {
+        const d = err?.response?.data
+        toast.error(typeof d === 'string' ? d : (d?.detail || 'Extraction impossible.'))
+      }
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const accepter = async () => {
+    if (!extraction?.lignes?.length) return
+    setBusy(true)
+    try {
+      const fd = new FormData()
+      fd.append('accepter', '1')
+      fd.append('lignes', JSON.stringify(extraction.lignes))
+      const res = await comptaApi.rapprochements.ocrImport(rapprochement.id, fd)
+      const n = (res.data?.lignes_creees || []).length
+      toast.success(`${n} ligne(s) de relevé créée(s).`)
+      setExtraction(null)
+      onImported?.()
+    } catch (err) {
+      const d = err?.response?.data
+      toast.error(typeof d === 'string' ? d : (d?.detail || 'Acceptation impossible.'))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div className="flex flex-col gap-2 rounded-lg border p-3">
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-sm font-semibold">Import OCR du relevé (PDF/scan)</span>
+        <Button variant="outline" size="sm" onClick={choisirFichier} disabled={busy}>
+          <ScanLine className="size-4" /> Choisir un fichier
+        </Button>
+        <input
+          ref={fileRef} type="file" accept="application/pdf,image/*"
+          className="hidden" onChange={extraire}
+        />
+      </div>
+      {extraction && (
+        <div className="flex flex-col gap-2">
+          <p className={`text-xs ${extraction.concordant ? 'text-success' : 'text-destructive'}`}>
+            Solde calculé : {formatMAD(extraction.solde_calcule)} — Solde déclaré :{' '}
+            {formatMAD(extraction.solde_final_declare)} — Écart : {formatMAD(extraction.ecart)}
+          </p>
+          {!extraction.lignes?.length ? (
+            <EmptyState title="Aucune ligne" description="Rien à importer depuis ce fichier." />
+          ) : (
+            <>
+              <ComptaTable
+                aria-label="Lignes extraites (OCR)"
+                rows={extraction.lignes}
+                getRowKey={(l, i) => i}
+                columns={[
+                  { key: 'date', label: 'Date', cell: (l) => formatDate(l.date || l.date_operation) },
+                  { key: 'libelle', label: 'Libellé', cell: (l) => l.libelle || '—' },
+                  { key: 'montant', label: 'Montant', align: 'right', numeric: true,
+                    sortValue: (l) => Number(l.montant) || 0, cell: (l) => formatMAD(l.montant) },
+                ]}
+              />
+              <Button size="sm" className="w-fit" onClick={accepter} disabled={busy}>
+                <CheckCircle2 className="size-4" /> Accepter ces lignes
+              </Button>
+            </>
+          )}
+        </div>
+      )}
+    </div>
   )
 }
 
@@ -308,6 +406,8 @@ function RapprochementDetailDialog({ rapprochement, onClose, onSaved }) {
               </div>
             </div>
           )}
+
+          <OcrImportPanel rapprochement={rapprochement} onImported={load} />
 
           <DialogFooter className="flex-wrap gap-2">
             <Button variant="outline" onClick={() => setSuggestionsOpen(true)}>

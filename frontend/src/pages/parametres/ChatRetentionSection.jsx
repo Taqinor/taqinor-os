@@ -15,6 +15,7 @@ import { formatDateTime } from '../../lib/format'
 import messagesApi from '../../api/messagesApi'
 import { toastError, toastSuccess } from '../../lib/toast'
 
+// source-choix: chat.RetentionPolicy.conversation_kind
 const KINDS = [
   { value: 'dm', label: 'Messages directs (DM)' },
   { value: 'channel', label: 'Canaux' },

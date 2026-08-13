@@ -23,6 +23,9 @@ vi.mock('../../../api/gedApi', () => ({
     getDocumentsList: vi.fn(() => Promise.resolve({ data: [] })),
     // PACT135 — onglet Envoi en masse (les cas complets vivent dans ApprobationPage.test.jsx).
     getLotsEnvoi: vi.fn(() => Promise.resolve({ data: [] })),
+    // XGED26/ZGED3 — analytique + tableau de bord (dégradent en `null`).
+    getAnalytique: vi.fn(() => Promise.resolve({ data: null })),
+    getTableauBordSignatures: vi.fn(() => Promise.resolve({ data: null })),
     getPolitiquesRetention: vi.fn(() => Promise.resolve({ data: [] })),
     getDocumentsEchus: vi.fn(() => Promise.resolve({ data: [] })),
     getArchivagesLegaux: vi.fn(() => Promise.resolve({ data: [] })),

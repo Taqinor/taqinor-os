@@ -87,6 +87,10 @@ const qhseApi = {
     courante: (params) =>
       api.get('/qhse/procedures-qualite/courante/', { params }),
     versions: (id) => api.get(`/qhse/procedures-qualite/${id}/versions/`),
+    // XQHS15 — diffusions de procédure non encore lues par l'utilisateur
+    // courant (accusés de lecture en attente), scopées société.
+    mesLecturesEnAttente: () =>
+      api.get('/qhse/procedures-qualite/mes-lectures-en-attente/'),
   },
   retoursClient: {
     ...crud('retours-client'),
@@ -101,6 +105,18 @@ const qhseApi = {
       api.get('/qhse/evaluations-risque/document-unique-statut/', { params }),
   },
   lignesEvaluationRisque: crud('lignes-evaluation-risque'),
+
+  // ── XQHS14 — Registre des risques & opportunités niveau SMQ (ISO 6.1) ────
+  // Distinct du document unique opérationnel (`evaluationsRisque`). Les
+  // criticités inhérente/résiduelle sont calculées côté serveur.
+  risquesOpportunites: {
+    ...crud('risques-opportunites'),
+    // Risques/opportunités dont la revue périodique est due.
+    revuesDues: () => api.get('/qhse/risques-opportunites/revues-dues/'),
+    // Lie une CAPA existante (idempotent côté serveur).
+    lierCapa: (id, data) =>
+      api.post(`/qhse/risques-opportunites/${id}/lier-capa/`, data),
+  },
   permisTravail: {
     ...crud('permis-travail'),
     valider: (id) => api.post(`/qhse/permis-travail/${id}/valider/`),
@@ -125,6 +141,13 @@ const qhseApi = {
     // Statistiques TF / TG des accidents du travail (QHSE34).
     statistiquesTfTg: (params) =>
       api.get('/qhse/incidents/statistiques-tf-tg/', { params }),
+    // XQHS19 — incidents environnementaux : clôture gatée par la
+    // notification à l'autorité quand elle est requise, + suivi des retards.
+    cloturer: (id) => api.post(`/qhse/incidents/${id}/cloturer/`),
+    notificationsEnRetard: () =>
+      api.get('/qhse/incidents/notifications-en-retard/'),
+    relancerNotifications: () =>
+      api.post('/qhse/incidents/relancer-notifications/'),
   },
   declarationsCnss: {
     ...crud('declarations-cnss'),
@@ -262,6 +285,14 @@ qhseApi.nonConformites.creerIntervention = (id, data) =>
   api.post(`/qhse/non-conformites/${id}/creer-intervention/`, data)
 qhseApi.nonConformites.tauxDefaillanceProduit = () =>
   api.get('/qhse/non-conformites/taux-defaillance-produit/')
+
+// ── XQHS7 — Analyse 5-Pourquoi / 8D d'une NCR ────────────────────────────────
+// L'action `analyse/` est la SEULE surface du modèle `AnalyseNcr` (aucun CRUD
+// direct) : un POST sans corps lit l'analyse existante (get_or_create côté
+// service, aucun champ écrasé), un POST avec `cinq_pourquoi`/`huit_d` la
+// complète (merge sur les disciplines fournies).
+qhseApi.nonConformites.analyse = (id, data) =>
+  api.post(`/qhse/non-conformites/${id}/analyse/`, data ?? {})
 
 // ── WIR115 — Check-in sécurité (technicien seul sur site) ────────────────────
 qhseApi.checkinsSecurite = {

@@ -92,6 +92,15 @@ const rhApi = {
     api.get('/rh/employes/localisation-du-jour/', { params }),
   getRapportTurnover: (params) =>
     api.get('/rh/employes/rapport-turnover/', { params }),
+  // ── ZRH3/6/18 — rapports congés, absences non justifiées et présence ──
+  getRapportConges: (params) =>
+    api.get('/rh/demandes-conge/rapport/', { params }),
+  getAbsentsNonJustifies: (params) =>
+    api.get('/rh/pointages/absents-non-justifies/', { params }),
+  genererIncidentAbsence: (data) =>
+    api.post('/rh/pointages/generer-incident-absence/', data ?? {}),
+  getRapportPresence: (params) =>
+    api.get('/rh/pointages/rapport/', { params }),
 
   // Rémunérations (SENSIBLE — permission salaires_voir requise côté serveur).
   getRemunerations: (params) => api.get('/rh/remunerations/', { params }),
@@ -222,6 +231,9 @@ const rhApi = {
     api.get('/rh/competences-requises/', { params }),
   getEvolutionCompetences: (params) =>
     api.get('/rh/competences/evolution/', { params }),
+  // ── ZRH17 — recherche « qui maîtrise X au niveau >= N ? » ──
+  getEmployesParCompetence: (id, params) =>
+    api.get(`/rh/competences/${id}/employes/`, { params }),
   // ── XRH29 — Ayants droit & avantages sociaux ──
   getAyantsDroit: (params) => api.get('/rh/ayants-droit/', { params }),
   getAvantagesSociaux: (params) =>

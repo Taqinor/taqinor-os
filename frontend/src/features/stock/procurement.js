@@ -1,7 +1,9 @@
 // Helpers purs (sans réseau) pour l'approvisionnement fournisseur (N11-N13).
 // Le prix d'ACHAT est INTERNE : il ne doit jamais alimenter un document client.
 
-// Statuts du bon de commande fournisseur (alignés sur le backend stock).
+// Statuts du bon de commande fournisseur. Le modèle a migré vers `achats`
+// (ODX19) : `stock/models.py` n'en garde qu'un ré-export.
+// source-choix: achats.BonCommandeFournisseur.statut
 export const BCF_STATUTS = {
   brouillon: 'Brouillon',
   envoye: 'Envoyé',

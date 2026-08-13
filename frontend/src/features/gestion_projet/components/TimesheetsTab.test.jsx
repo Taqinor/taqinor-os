@@ -19,6 +19,16 @@ vi.mock('../../../api/gestionProjetApi', () => ({
     getClassementTemps: vi.fn(() => Promise.resolve({ data: { lignes: [] } })),
     getRapprochementTemps: vi.fn(() => Promise.resolve({ data: { ecarts: [] } })),
     getRapportTemps: vi.fn(() => Promise.resolve({ data: { lignes: [], total_heures: '0', total_heures_facturables: '0' } })),
+    getHeuresAttendues: vi.fn(() => Promise.resolve({
+      data: {
+        debut: '2026-07-01', fin: '2026-07-03', heures_attendues_jour: 8,
+        jours_attendus: 2, total_attendu: 16, total_saisi: 12, ecart_cumule: -4,
+        par_jour: [
+          { date: '2026-07-01', attendu: 8, saisi: 4, ecart: -4 },
+          { date: '2026-07-02', attendu: 8, saisi: 8, ecart: 0 },
+        ],
+      },
+    })),
   },
 }))
 
@@ -33,6 +43,8 @@ const timesheets = [
   { id: 1, date: '2026-07-01', projet_code: 'P-1', ressource_nom: 'Amine', heures: '4', cout: '400', statut: 'brouillon' },
   { id: 2, date: '2026-07-02', projet_code: 'P-1', ressource_nom: 'Amine', heures: '3', cout: '300', statut: 'soumise' },
 ]
+
+const ressources = [{ id: 7, nom: 'Amine' }]
 
 function withProviders(ui) {
   return render(<MemoryRouter><ThemeProvider>{ui}</ThemeProvider></MemoryRouter>)
@@ -69,5 +81,18 @@ describe('TimesheetsTab', () => {
     await user.click(await screen.findByText('Approuver'))
     await waitFor(() => expect(gestionProjetApi.approuverTimesheet).toHaveBeenCalledWith(2))
     await waitFor(() => expect(onChanged).toHaveBeenCalled())
+  })
+
+  it('« Heures attendues » charge l\'écart pour la ressource choisie', async () => {
+    const user = userEvent.setup()
+    withProviders(<TimesheetsTab timesheets={timesheets} onChanged={vi.fn()} ressources={ressources} />)
+    await user.click(await screen.findByRole('tab', { name: 'Heures attendues' }))
+    expect(gestionProjetApi.getHeuresAttendues).not.toHaveBeenCalled()
+    await user.selectOptions(await screen.findByLabelText('Choisir une ressource'), '7')
+    await waitFor(() => expect(gestionProjetApi.getHeuresAttendues).toHaveBeenCalledWith(
+      expect.objectContaining({ ressource: '7' }),
+    ))
+    expect(await screen.findByText(/Total saisi/)).toBeTruthy()
+    expect(screen.getAllByText(/12 h/).length).toBeGreaterThan(0)
   })
 })

@@ -20,6 +20,7 @@ import { Pencil, Paperclip, Megaphone, Pin, PinOff } from 'lucide-react'
 // LeadActivity.OUTCOMES côté serveur, apps/crm/models.py). Rapatrié ici
 // (déplacé hors de LeadForm.jsx) : ChatterTimeline est désormais la seule
 // source de rendu du chatter.
+// source-choix: crm.LeadActivity.outcome
 // eslint-disable-next-line react-refresh/only-export-components -- helper co-localisé (dev HMR only)
 export const OUTCOME_LABELS = {
   '': null, joint: 'Joint', non_joint: 'Non joint', rappel: 'À rappeler',
