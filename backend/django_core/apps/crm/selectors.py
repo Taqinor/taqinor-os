@@ -2009,6 +2009,31 @@ def lead_criteria_for_territoire(company, lead_id):
     }
 
 
+def leads_recents_pour_couverture(company, jours=30):
+    """NTCRM25 — Leads récents (``jours`` derniers jours) de ``company``, avec
+    leur contexte plat de matching territoire (même forme que
+    ``lead_criteria_for_territoire``), exposés à ``apps.territoires`` pour le
+    rapport de couverture — jamais un import direct de ``apps.crm.models``
+    depuis l'appelant."""
+    from django.utils import timezone
+
+    from .models import Lead
+
+    depuis = timezone.now() - timezone.timedelta(days=jours)
+    leads = Lead.objects.filter(company=company, date_creation__gte=depuis)
+    return [
+        {
+            'id': lead.id,
+            'nom': getattr(lead, 'nom', '') or getattr(lead, 'prenom', '') or f'Lead #{lead.id}',
+            'ville': lead.ville,
+            'type_installation': lead.type_installation,
+            'montant_estime': lead.montant_estime,
+            'canal': lead.canal,
+        }
+        for lead in leads
+    ]
+
+
 def forecast_rollup(company, periode=None, manager=None):
     """NTCRM5 — Roll-up hiérarchique du forecast : par commercial → par
     équipe (``EquipeCommerciale`` existant, FG39 voisin) → total société.

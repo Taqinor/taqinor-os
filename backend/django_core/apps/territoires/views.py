@@ -3,12 +3,13 @@ même RBAC simple que le reste du CRM (``authentication.permissions``), pas de
 nouveau code de permission fine (pas de rôle 'territoire_*' à enregistrer)."""
 from rest_framework.decorators import action
 from rest_framework.response import Response
+from rest_framework.views import APIView
 
 from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
 from core.viewsets import CompanyScopedModelViewSet
 
 from .models import Territoire, TerritoireMembre, TerritoireRegle
-from .selectors import previsualiser_territoire
+from .selectors import previsualiser_territoire, rapport_couverture
 from .serializers import (
     TerritoireMembreSerializer, TerritoireRegleSerializer, TerritoireSerializer,
 )
@@ -91,3 +92,19 @@ class TerritoireMembreViewSet(CompanyScopedModelViewSet):
 
     def perform_create(self, serializer):
         serializer.save()
+
+
+class CouvertureView(APIView):
+    """NTCRM25 — Rapport de couverture : leads récents (30 j par défaut) qui
+    n'ont matché AUCUN territoire actif. Réservé Responsable/Admin (donnée de
+    pilotage direction), jamais cross-tenant (scope via ``request.user.
+    company``, jamais depuis la query string)."""
+    permission_classes = [IsResponsableOrAdmin]
+
+    def get(self, request):
+        try:
+            jours = int(request.query_params.get('jours', 30))
+        except (TypeError, ValueError):
+            jours = 30
+        data = rapport_couverture(request.user.company, jours=jours)
+        return Response(data)
