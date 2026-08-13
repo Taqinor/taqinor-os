@@ -25,6 +25,7 @@ import { Switch } from '../../ui/Switch'
 import { ThemeToggle } from '../../design/ThemeToggle'
 import { useDensity } from '../../design/theme-context'
 import { moduleConfigs } from '../../router/moduleRoutes'
+import AppLockSetting from '../../features/pwa/AppLockSetting'
 import api from '../../api/axios'
 import { fetchMe } from '../../features/auth/store/authSlice'
 import {
@@ -295,6 +296,9 @@ export default function PreferencesPanel({ open, onOpenChange }) {
               Mode économie de données actif
             </div>
           )}
+
+          {/* NTMOB18 — verrou d'écran local (biométrie de l'appareil). */}
+          <AppLockSetting />
 
           <MobileHomeToggle />
         </div>
