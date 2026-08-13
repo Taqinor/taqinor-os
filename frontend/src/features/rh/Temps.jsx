@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { LogOut, Upload, Download, Pencil, MonitorSmartphone, Ban } from 'lucide-react'
+import {
+  LogOut, Upload, Download, Pencil, MonitorSmartphone, Ban, History,
+} from 'lucide-react'
 import { ListShell } from '../../ui/module'
 import {
   Segmented, Button, Badge, toast,
@@ -51,6 +53,8 @@ export default function Temps() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [correctionFor, setCorrectionFor] = useState(null)
+  // XRH11 — historique immuable des corrections du pointage consulté.
+  const [historiqueFor, setHistoriqueFor] = useState(null)
   const [nouveauToken, setNouveauToken] = useState(null)
   const fileRef = useRef(null)
 
@@ -217,6 +221,8 @@ export default function Temps() {
     }
     // XRH11 — corriger un pointage (motif obligatoire, audit immuable serveur).
     actions.push({ id: 'corriger', label: 'Corriger', icon: Pencil, onClick: () => setCorrectionFor(p) })
+    // XRH11 — consulter l'audit immuable des corrections (lecture seule).
+    actions.push({ id: 'historique', label: 'Historique des corrections', icon: History, onClick: () => setHistoriqueFor(p) })
     return actions
   }
 
@@ -242,6 +248,20 @@ export default function Temps() {
     { id: 'chantier', header: 'Chantier', width: 140, accessor: (p) => String(p.installation_id ?? ''), cell: (v) => v || '—' },
     { id: 'date', header: 'Date', width: 120, searchable: false, accessor: (p) => p.date || '', cell: (v) => formatDate(v) },
     { id: 'statut', header: 'Statut', width: 130, accessor: (p) => p.statut_display || p.statut || '', cell: (v) => v || '—' },
+    // XRH12 — drapeau géofence posé côté serveur à l'émargement (jamais
+    // bloquant : le GPS terrain est imprécis, c'est un signal à vérifier).
+    {
+      id: 'geofence',
+      header: 'Géofence',
+      width: 130,
+      accessor: (p) => (p.hors_zone ? 'hors zone' : (p.emarge ? 'dans la zone' : '')),
+      cell: (_v, p) => {
+        if (!p.emarge) return '—'
+        return p.hors_zone
+          ? <Badge tone="warning">Hors zone</Badge>
+          : <Badge tone="success">Dans la zone</Badge>
+      },
+    },
   ], [])
 
   const heuresColumns = useMemo(() => [
@@ -310,10 +330,71 @@ export default function Temps() {
           onSaved={() => { setCorrectionFor(null); recharger() }}
         />
       )}
+      {historiqueFor && (
+        <HistoriqueCorrectionsDialog
+          pointage={historiqueFor}
+          onClose={() => setHistoriqueFor(null)}
+        />
+      )}
       {nouveauToken && (
         <TokenDialog data={nouveauToken} onClose={() => setNouveauToken(null)} />
       )}
     </div>
+  )
+}
+
+/* ── XRH11 — Historique IMMUABLE des corrections d'un pointage (lecture) ── */
+function HistoriqueCorrectionsDialog({ pointage, onClose }) {
+  const [lignes, setLignes] = useState([])
+  const [chargement, setChargement] = useState(true)
+  const [erreur, setErreur] = useState(null)
+
+  useEffect(() => {
+    let vivant = true
+    rhApi.getCorrectionsPointage(pointage.id)
+      .then((res) => {
+        if (!vivant) return
+        const d = res.data
+        setLignes(Array.isArray(d) ? d : (d?.results ?? []))
+      })
+      .catch(() => { if (vivant) setErreur('Historique indisponible.') })
+      .finally(() => { if (vivant) setChargement(false) })
+    return () => { vivant = false }
+  }, [pointage.id])
+
+  return (
+    <Dialog open onOpenChange={(o) => { if (!o) onClose() }}>
+      <DialogContent className="max-w-2xl">
+        <DialogHeader>
+          <DialogTitle>Historique des corrections</DialogTitle>
+        </DialogHeader>
+        {chargement && <p className="text-sm text-muted-foreground">Chargement…</p>}
+        {erreur && <p className="text-sm text-danger">{erreur}</p>}
+        {!chargement && !erreur && lignes.length === 0 && (
+          <p className="text-sm text-muted-foreground">Aucune correction sur ce pointage.</p>
+        )}
+        {lignes.length > 0 && (
+          <ul className="flex flex-col gap-3">
+            {lignes.map((c) => (
+              <li key={c.id} className="rounded-md border border-border p-3 text-sm">
+                <div className="font-medium">{c.champ}</div>
+                <div className="text-muted-foreground">
+                  {(c.ancienne_valeur || '—')} → {(c.nouvelle_valeur || '—')}
+                </div>
+                <div className="text-xs text-muted-foreground">
+                  Motif : {c.motif || '—'}
+                  {c.auteur_nom ? ` · ${c.auteur_nom}` : ''}
+                  {c.date_creation ? ` · ${formatDateTime(c.date_creation)}` : ''}
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>Fermer</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   )
 }
 
