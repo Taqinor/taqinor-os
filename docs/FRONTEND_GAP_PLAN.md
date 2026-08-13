@@ -90,19 +90,19 @@ a focused test, calling the EXISTING backend endpoint.
 - [ ] FE-ZGED7-13 — favorites/recents sidebar + saved searches; add `mes-favoris`/`mes-recents`/`vues`. (@lane: frontend/ged)
 
 ## Lane `frontend/contrats` (CLM lifecycle actions all unwired)
-- [ ] FE-CONTRAT16-17 — **CRITICAL** "Signatures" tab + Signer button in `ContratDetail.jsx` (`getSignatures`/`signer` already in `contratsApi.js`). (@lane: frontend/contrats)
-- [ ] FE-CONTRAT13-14 — "Approbation" tab: `lancerApprobation`/`approuverEtape`/`rejeterEtape` + étapes list. (@lane: frontend/contrats)
-- [ ] FE-CONTRAT12 — wire `StateMachine.jsx`/actions bar to `getStatutsSuivants`+`changerStatut` (contract can't leave brouillon today). (@lane: frontend/contrats)
-- [ ] FE-CONTRAT23-25 — Renouveler / Créer avenant / Résilier buttons in `ContratDetail.jsx`. (@lane: frontend/contrats)
-- [ ] FE-CONTRAT7 — create-contract flow: wire `ModelesPage.jsx` row → `instancierModele` (no create path exists today). (@lane: frontend/contrats)
-- [ ] FE-CONTRAT15 — note composer (`noter`) in the activity panel. (@lane: frontend/contrats)
-- [ ] FE-CONTRAT33 — contracts dashboard (`getTableauBord`/`getReporting`, already in api client, uncalled). (@lane: frontend/contrats)
-- [ ] FE-XCTR7-8-11 — MRR waterfall + retention cohorts heatmap + price-revision campaign screen; add `mrr-mouvements`/`cohortes-retention`/`campagne-revision`. (@lane: frontend/contrats)
-- [ ] FE-XCTR5 — billing-exceptions card (`cycles-facturation`/`rejouer`). (@lane: frontend/contrats)
-- [ ] FE-XCTR17-21 — **CRITICAL** outbound equipment-**rental** module: new `/contrats/location` page wired to `OrdreLocationViewSet` (reservation calendar, caution encaisser/restituer/retenir, inspection, ROI, bons PDF). (@lane: frontend/contrats) (opus)
-- [ ] FE-XCTR14 — client portal "Mes contrats" + renew/terminate request buttons (`portail/<token>/` in `ClientPortalPage.jsx`). (@lane: frontend/contrats)
-- [ ] FE-XCTR2-3 — "Équipements couverts" panel + "X/Y visites consommées" on `ContratsMaintenance.jsx`. (@lane: frontend/contrats)
-- [ ] FE-CONTRAT-config — PlanRecurrent / MotifResiliation / ParametresLocation CRUD screens. (@lane: frontend/contrats)
+- [x] FE-CONTRAT16-17 — **CRITICAL** "Signatures" tab + Signer button in `ContratDetail.jsx` (`getSignatures`/`signer` already in `contratsApi.js`). (@lane: frontend/contrats) (déjà présent)
+- [x] FE-CONTRAT13-14 — "Approbation" tab: `lancerApprobation`/`approuverEtape`/`rejeterEtape` + étapes list. (@lane: frontend/contrats) (déjà présent)
+- [x] FE-CONTRAT12 — wire `StateMachine.jsx`/actions bar to `getStatutsSuivants`+`changerStatut` (contract can't leave brouillon today). (@lane: frontend/contrats) (déjà présent)
+- [x] FE-CONTRAT23-25 — Renouveler / Créer avenant / Résilier buttons in `ContratDetail.jsx`. (@lane: frontend/contrats) (déjà présent)
+- [x] FE-CONTRAT7 — create-contract flow: wire `ModelesPage.jsx` row → `instancierModele` (no create path exists today). (@lane: frontend/contrats) (déjà présent)
+- [x] FE-CONTRAT15 — note composer (`noter`) in the activity panel. (@lane: frontend/contrats) (déjà présent)
+- [x] FE-CONTRAT33 — contracts dashboard (`getTableauBord`/`getReporting`, already in api client, uncalled). (@lane: frontend/contrats) (déjà présent)
+- [x] FE-XCTR7-8-11 — MRR waterfall + retention cohorts heatmap + price-revision campaign screen; add `mrr-mouvements`/`cohortes-retention`/`campagne-revision`. (@lane: frontend/contrats) (déjà présent)
+- [x] FE-XCTR5 — billing-exceptions card (`cycles-facturation`/`rejouer`). (@lane: frontend/contrats) (déjà présent)
+- [x] FE-XCTR17-21 — **CRITICAL** outbound equipment-**rental** module: new `/contrats/location` page wired to `OrdreLocationViewSet` (reservation calendar, caution encaisser/restituer/retenir, inspection, ROI, bons PDF). (@lane: frontend/contrats) (opus)
+- [x] FE-XCTR14 — client portal "Mes contrats" + renew/terminate request buttons (`portail/<token>/` in `ClientPortalPage.jsx`). (@lane: frontend/contrats) (déjà présent)
+- [x] FE-XCTR2-3 — "Équipements couverts" panel + "X/Y visites consommées" on `ContratsMaintenance.jsx`. (@lane: frontend/contrats)
+- [x] FE-CONTRAT-config — PlanRecurrent / MotifResiliation / ParametresLocation CRUD screens. (@lane: frontend/contrats) (déjà présent)
 
 ## Lane `frontend/gestion_projet` (XPRJ/ZPRJ round-2 backend-only)
 - [ ] FE-XPRJ4 — "Situations" tab (BTP progress billing) in `ProjetDetailPage.jsx`; add `situations`/`lignes-situation`. (@lane: frontend/gestion_projet)
@@ -240,3 +240,4 @@ a focused test, calling the EXISTING backend endpoint.
 
 ## DONE LOG
 <!-- one dated line per shipped task -->
+- 2026-08-13 — lane `frontend/contrats` drained: FE-CONTRAT16-17/13-14/12/23-25/7/15/33, FE-XCTR7-8-11, FE-XCTR5, FE-XCTR14, FE-CONTRAT-config already fully built (ContratDetail.jsx tabs+actions, ModelesPage.jsx instancier, DashboardPage.jsx, PortailContratsPage.jsx, ConfigLocationPage.jsx) — ticked `(déjà présent)`, no code change. FE-XCTR2-3: added "Équipements couverts" + "X/Y visites" columns to `ContratsMaintenance.jsx` (data was already serialized server-side, just unrendered). FE-XCTR17-21: `LocationPage.jsx` had caution/inspection/bons PDF already; added the missing disponibilité (reservation-window) warning in the create dialog and an admin-only "Utilisation & ROI" card, both using contratsApi calls that existed but were never invoked from the UI.
