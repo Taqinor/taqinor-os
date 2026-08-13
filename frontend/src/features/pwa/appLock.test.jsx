@@ -37,7 +37,7 @@ describe('NTMOB18 — logique du verrou', () => {
   it('stocke le code de secours haché, jamais en clair', async () => {
     await setPin('1234')
     expect(hasPin()).toBe(true)
-    expect(localStorage.getItem('taqinor.appLock.pin')).not.toContain('1234')
+    expect(localStorage.getItem('app.lock.pin')).not.toContain('1234')
     expect(await verifyPin('1234')).toBe(true)
     expect(await verifyPin('9999')).toBe(false)
   })

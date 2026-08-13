@@ -14,11 +14,11 @@
 // authentification, c'est un déverrouillage d'écran) ; le repli code PIN est
 // stocké HACHÉ (SHA-256, `crypto.subtle`), jamais en clair.
 
-export const LOCK_ENABLED_KEY = 'taqinor.appLock.enabled'
-export const LOCK_CRED_KEY = 'taqinor.appLock.credId'
-export const LOCK_PIN_KEY = 'taqinor.appLock.pin'
-export const LOCK_DELAY_KEY = 'taqinor.appLock.delayMin'
-export const LOCK_HIDDEN_AT_KEY = 'taqinor.appLock.hiddenAt'
+export const LOCK_ENABLED_KEY = 'app.lock.enabled'
+export const LOCK_CRED_KEY = 'app.lock.credId'
+export const LOCK_PIN_KEY = 'app.lock.pin'
+export const LOCK_DELAY_KEY = 'app.lock.delayMin'
+export const LOCK_HIDDEN_AT_KEY = 'app.lock.hiddenAt'
 /** Délai d'inactivité par défaut avant re-verrouillage (minutes). */
 export const DEFAULT_LOCK_DELAY_MIN = 5
 
@@ -96,7 +96,7 @@ export function shouldLock(now = Date.now()) {
 // ── Repli code PIN (haché) ─────────────────────────────────────────────────
 
 export async function hashPin(pin) {
-  const data = new TextEncoder().encode(`taqinor-app-lock:${pin}`)
+  const data = new TextEncoder().encode(`app-lock:${pin}`)
   const digest = await crypto.subtle.digest('SHA-256', data)
   return Array.from(new Uint8Array(digest))
     .map((b) => b.toString(16).padStart(2, '0'))
@@ -140,14 +140,16 @@ export function isBiometricApiAvailable() {
 }
 
 /** Enrôle la biométrie de CET appareil. Retourne true si le credential est posé. */
-export async function enrollBiometric(label = 'Verrouillage TAQINOR') {
+export async function enrollBiometric(label = 'Verrouillage de l’application') {
   if (!isBiometricApiAvailable()) return false
   const userId = randomChallenge()
   try {
     const credential = await navigator.credentials.create({
       publicKey: {
         challenge: randomChallenge(),
-        rp: { name: 'TAQINOR OS' },
+        // Nom montre par l'invite biometrique du systeme : il vient du
+        // domaine servi (white-label), jamais d'une marque en dur.
+        rp: { name: window.location.hostname },
         user: { id: userId, name: label, displayName: label },
         pubKeyCredParams: [{ type: 'public-key', alg: -7 }, { type: 'public-key', alg: -257 }],
         authenticatorSelection: {
