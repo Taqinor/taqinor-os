@@ -115,7 +115,11 @@ const comptaApi = {
     clotureList: (id) => api.get(`/compta/caisses/${id}/cloturer/`),
     cloturer: (id, data) => api.post(`/compta/caisses/${id}/cloturer/`, data),
   },
-  virements: resource('virements'),
+  // FG125 — virements internes : `poster` passe l'écriture équilibrée au GL.
+  virements: {
+    ...resource('virements'),
+    poster: (id) => api.post(`/compta/virements/${id}/poster/`),
+  },
   previsionnel: resource('previsionnel'),
 
   // ── UX7 — Fiscalité & déclarations ──
