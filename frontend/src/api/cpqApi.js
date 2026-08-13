@@ -55,6 +55,18 @@ const cpqApi = {
   validerCompatibilite: (produitIds) =>
     api.post(`${P}/valider-compatibilite/`, { produit_ids: produitIds }),
 
+  // ── Offres groupées / bundles (NTCPQ3). `lignes` est IMBRIQUÉE dans le
+  // corps (le sérialiseur crée/remplace les lignes) ; `prix_total` optionnel
+  // est réparti au prorata quand les lignes sont en mode FIXE.
+  getOffresGroupees: (params) => api.get(`${P}/offres-groupees/`, { params }),
+  createOffreGroupee: (data) => api.post(`${P}/offres-groupees/`, data),
+  updateOffreGroupee: (id, data) => api.put(`${P}/offres-groupees/${id}/`, data),
+  deleteOffreGroupee: (id) => api.delete(`${P}/offres-groupees/${id}/`),
+  // `devis_id` dans le CORPS : la vue lit `query_params` OU `data` — le corps
+  // évite de faire transiter un identifiant en query string.
+  appliquerOffreGroupee: (id, devisId) =>
+    api.post(`${P}/offres-groupees/${id}/appliquer/`, { devis_id: devisId }),
+
   // ── Session du configurateur guidé (NTCPQ9/10). `demarrer` renvoie
   // { session (token), questions[] } ; les trois suivantes sont indexées par
   // ce token, jamais par un id de session.

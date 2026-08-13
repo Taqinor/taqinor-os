@@ -3,7 +3,7 @@
    `router/moduleRoutes.jsx` via glob : ce n'est pas un module de composants, le
    fast-refresh ne s'y applique pas (même dérogation que `moduleRoutes.jsx`). */
 import { lazy } from 'react'
-import { Blocks, ShieldAlert, Wand2 } from 'lucide-react'
+import { Blocks, Package, ShieldAlert, Wand2 } from 'lucide-react'
 import { appGlyph } from '../../lib/apps/appGlyph'
 
 /* ============================================================================
@@ -32,6 +32,7 @@ const ROLES = ['responsable', 'admin']
 
 const ConfigurateurPage = lazy(() => import('./ConfigurateurPage'))
 const CompatibilitePage = lazy(() => import('./CompatibilitePage'))
+const OffresGroupeesPage = lazy(() => import('./OffresGroupeesPage'))
 
 const config = {
   key: 'cpq',
@@ -55,16 +56,24 @@ const config = {
         icon: <ShieldAlert size={17} strokeWidth={1.75} aria-hidden="true" />,
         roles: ROLES,
       },
+      {
+        to: '/cpq/offres-groupees',
+        label: 'Offres groupées',
+        icon: <Package size={17} strokeWidth={1.75} aria-hidden="true" />,
+        roles: ROLES,
+      },
     ],
   },
   titles: [
     ['/cpq/configurateur', 'Configurateur guidé'],
     ['/cpq/compatibilite', 'Compatibilité produits'],
+    ['/cpq/offres-groupees', 'Offres groupées'],
   ],
   sectionLabels: { cpq: 'CPQ' },
   routes: [
     { path: '/cpq/configurateur', component: ConfigurateurPage, roles: ROLES },
     { path: '/cpq/compatibilite', component: CompatibilitePage, roles: ROLES },
+    { path: '/cpq/offres-groupees', component: OffresGroupeesPage, roles: ROLES },
   ],
 }
 
