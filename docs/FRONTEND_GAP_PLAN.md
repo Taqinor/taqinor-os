@@ -105,15 +105,15 @@ a focused test, calling the EXISTING backend endpoint.
 - [ ] FE-CONTRAT-config — PlanRecurrent / MotifResiliation / ParametresLocation CRUD screens. (@lane: frontend/contrats)
 
 ## Lane `frontend/gestion_projet` (XPRJ/ZPRJ round-2 backend-only)
-- [ ] FE-XPRJ4 — "Situations" tab (BTP progress billing) in `ProjetDetailPage.jsx`; add `situations`/`lignes-situation`. (@lane: frontend/gestion_projet)
-- [ ] FE-XPRJ5 — task chrono start/stop buttons + active indicator (`demarrer-chrono`/`arreter-chrono`). (@lane: frontend/gestion_projet)
-- [ ] FE-XPRJ7-8/ZPRJ5-6 — timesheet approval workflow + manquants/heures-attendues/classement/rapprochement/rapport in `RessourcesPage.jsx`. (@lane: frontend/gestion_projet)
-- [ ] FE-XPRJ10-12 — Tâches CRUD screen (filters assigné/priorité/statut) + kanban + "Mes tâches" page/route. (@lane: frontend/gestion_projet)
-- [ ] FE-PROJ11 — drag-to-reschedule in `GanttChart.jsx` (`reprogrammer`). (@lane: frontend/gestion_projet)
-- [ ] FE-XPRJ14-17 — checklist toggle, RAG/point-avancement, ETC/EAC in `BudgetPage.jsx`, burndown chart. (@lane: frontend/gestion_projet)
-- [ ] FE-ZPRJ1-4 — réglages temps + publier/copier-semaine/auto-affecter buttons in `PlanningPage.jsx`. (@lane: frontend/gestion_projet)
-- [ ] FE-ZPRJ7-9/ZPRJ8 — CSAT evaluation link, status-report PDF button, risk heatmap in `RisquesPage.jsx`. (@lane: frontend/gestion_projet)
-- [ ] FE-XPRJ21/29/27 — "Créer projet depuis devis" button on devis list, AI plan propose→confirm, marché-public fields + pénalités. (@lane: frontend/gestion_projet)
+- [x] FE-XPRJ4 — "Situations" tab (BTP progress billing) in `ProjetDetailPage.jsx`; add `situations`/`lignes-situation`. (@lane: frontend/gestion_projet) (déjà présent)
+- [x] FE-XPRJ5 — task chrono start/stop buttons + active indicator (`demarrer-chrono`/`arreter-chrono`). (@lane: frontend/gestion_projet) (déjà présent)
+- [x] FE-XPRJ7-8/ZPRJ5-6 — timesheet approval workflow + manquants/heures-attendues/classement/rapprochement/rapport in `RessourcesPage.jsx`. (@lane: frontend/gestion_projet)
+- [x] FE-XPRJ10-12 — Tâches CRUD screen (filters assigné/priorité/statut) + kanban + "Mes tâches" page/route. (@lane: frontend/gestion_projet) (déjà présent)
+- [x] FE-PROJ11 — drag-to-reschedule in `GanttChart.jsx` (`reprogrammer`). (@lane: frontend/gestion_projet) (déjà présent)
+- [x] FE-XPRJ14-17 — checklist toggle, RAG/point-avancement, ETC/EAC in `BudgetPage.jsx`, burndown chart. (@lane: frontend/gestion_projet) (déjà présent)
+- [x] FE-ZPRJ1-4 — réglages temps + publier/copier-semaine/auto-affecter buttons in `PlanningPage.jsx`. (@lane: frontend/gestion_projet) (déjà présent, écran = `RessourcesPage.jsx`)
+- [x] FE-ZPRJ7-9/ZPRJ8 — CSAT evaluation link, status-report PDF button, risk heatmap in `RisquesPage.jsx`. (@lane: frontend/gestion_projet) (déjà présent)
+- [x] FE-XPRJ21/29/27 — "Créer projet depuis devis" button on devis list, AI plan propose→confirm, marché-public fields + pénalités. (@lane: frontend/gestion_projet) (déjà présent)
 
 ## Lane `frontend/paie` (XPAI/ZPAI/YHIRE round-2 backend-only)
 - [ ] FE-XPAI1-2 — **CRITICAL** Solde de tout compte (STC) action/screen from the sortie flow; add `stc`/`stcPdf`. (@lane: frontend/paie)
@@ -240,3 +240,15 @@ a focused test, calling the EXISTING backend endpoint.
 
 ## DONE LOG
 <!-- one dated line per shipped task -->
+- 2026-08-13 — Lane `frontend/gestion_projet` drainée : FE-XPRJ4, FE-XPRJ5, FE-XPRJ10-12,
+  FE-PROJ11, FE-XPRJ14-17, FE-ZPRJ1-4, FE-ZPRJ7-9/ZPRJ8, FE-XPRJ21/29/27 étaient déjà entièrement
+  câblés (Situations tab, ChronoWidget, TachesPage/kanban/Mes tâches, drag-to-reschedule Gantt,
+  checklist/RAG/ETC-EAC/burndown, réglages-temps+publier/copier-semaine/auto-affecter — construits
+  dans `RessourcesPage.jsx` plutôt que `PlanningPage.jsx` comme le nommait la tâche, fonctionnellement
+  correct puisque les affectations vivent avec les ressources —, CSAT/PDF/heatmap risques, création
+  projet depuis devis + plan IA + champs marché public/pénalités) : `[x] (déjà présent)`.
+  FE-XPRJ7-8/ZPRJ5-6 avait un écart réel : `gestionProjetApi.getHeuresAttendues` (ZPRJ5, écart
+  heures attendues vs saisies PAR ressource) n'était appelé par aucun composant — ajouté un onglet
+  « Heures attendues » (sélecteur de ressource) dans `TimesheetsTab.jsx`, `ressources` transmis
+  depuis `RessourcesPage.jsx`, test vitest ajouté. Gates : eslint / vitest (45 tests) / vite build
+  verts.
