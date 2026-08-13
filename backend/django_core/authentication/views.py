@@ -4,6 +4,9 @@ from django.utils.text import slugify
 from rest_framework import generics, permissions, viewsets, status
 from rest_framework.decorators import action
 from rest_framework.parsers import MultiPartParser
+from rest_framework.renderers import (
+    BrowsableAPIRenderer, JSONRenderer, StaticHTMLRenderer,
+)
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework_simplejwt.views import TokenObtainPairView
@@ -1035,14 +1038,24 @@ class CompanyViewSet(viewsets.ModelViewSet):
             '</body></html>'
         ).format(nom=escape(company.nom), rows=rows)
 
-    @action(detail=True, methods=['get'], url_path='demo-kit')
+    @action(detail=True, methods=['get'], url_path='demo-kit',
+            renderer_classes=[JSONRenderer, BrowsableAPIRenderer,
+                               StaticHTMLRenderer])
     def demo_kit(self, request, pk=None):
         """NTDMO22/23 — guide du scénario de démo pour préparer une démo
         prospect sans improviser. ``?format=html`` (NTDMO23) rend une page
         HTML imprimable (moteur de templates interne — jamais WeasyPrint,
         jamais `/proposal`, rule #4) ; par défaut un PDF léger (NTDMO22, via
         le service PDF interne PARTAGÉ ``core.pdf`` — jamais le moteur
-        premium de devis). Réservé aux sociétés de démonstration."""
+        premium de devis). Réservé aux sociétés de démonstration.
+
+        ``renderer_classes`` déclare explicitement ``StaticHTMLRenderer``
+        (format ``html``) : sans lui, la négociation de contenu DRF lève un
+        Http404 dès que ``?format=html`` est présent (aucun renderer par
+        défaut n'a ce format), AVANT même que ce corps de vue ne s'exécute.
+        La vue continue de construire sa réponse elle-même via
+        ``HttpResponse`` — ce renderer ne fait que satisfaire la
+        négociation, il ne rend rien."""
         company = self.get_object()
         if not company.est_demo:
             return Response(
@@ -1060,11 +1073,17 @@ class CompanyViewSet(viewsets.ModelViewSet):
             'inline; filename="kit-demo.pdf"')
         return response
 
-    @action(detail=True, methods=['get'], url_path='demo-kit/export.xlsx')
     def demo_kit_export_xlsx(self, request, pk=None):
         """NTDMO24 — journal des 12 mois de démo en 4 onglets (Leads, Devis,
         Chantiers, Factures), pour vérification hors-ligne avant un
-        rendez-vous. Réservé aux sociétés de démonstration."""
+        rendez-vous. Réservé aux sociétés de démonstration.
+
+        PAS de ``@action`` : le routeur DRF ajoute TOUJOURS un slash final
+        après ``url_path`` (même un ``url_path`` contenant lui-même un
+        ``/``), donc ``.../export.xlsx`` (sans slash, l'URL attendue côté
+        client) aurait toujours répondu 301 (APPEND_SLASH) vers
+        ``.../export.xlsx/``. Montée en ``path()`` explicite dans
+        ``urls.py`` à la place, avec la barre oblique EXACTE attendue."""
         from openpyxl import Workbook
         from openpyxl.styles import Font
         from apps.records.xlsx import XLSX_CONTENT_TYPE, coerce_cell
