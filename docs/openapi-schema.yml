@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 8504, operations: 15479, components: 4393}
+counts: {paths: 8520, operations: 15495, components: 4393}
 securitySchemes:
 - cookieJWT
 - publicApiKey
@@ -925,6 +925,7 @@ operations:
 - get /api/django/automation/rules/{id}/ -> django_automation_rules_retrieve
 - patch /api/django/automation/rules/{id}/ -> django_automation_rules_partial_update
 - put /api/django/automation/rules/{id}/ -> django_automation_rules_update
+- post /api/django/automation/rules/{id}/simuler/ -> django_automation_rules_simuler_create
 - post /api/django/automation/rules/{id}/toggle/ -> django_automation_rules_toggle_create
 - get /api/django/automation/runs/ -> django_automation_runs_list
 - get /api/django/automation/runs/{id}/ -> django_automation_runs_retrieve
@@ -2626,6 +2627,8 @@ operations:
 - get /api/django/custom-fields/objects/{id}/ -> django_custom_fields_objects_retrieve
 - patch /api/django/custom-fields/objects/{id}/ -> django_custom_fields_objects_partial_update
 - put /api/django/custom-fields/objects/{id}/ -> django_custom_fields_objects_update
+- get /api/django/custom-fields/objets-catalogue/ -> django_custom_fields_objets_catalogue_retrieve
+- post /api/django/custom-fields/objets-catalogue/installer/{code}/ -> django_custom_fields_objets_catalogue_installer_create
 - get /api/django/documents/chantiers/{id}/attestation/ -> django_documents_chantiers_attestation_retrieve
 - get /api/django/documents/chantiers/{id}/bon-livraison/ -> django_documents_chantiers_bon_livraison_retrieve
 - get /api/django/documents/chantiers/{id}/dossier-remise/ -> django_documents_chantiers_dossier_remise_retrieve
@@ -2863,6 +2866,7 @@ operations:
 - get /api/django/esg/periodes-esg/{id}/indicateurs/ -> django_esg_periodes_esg_indicateurs_retrieve
 - get /api/django/esg/periodes-esg/{id}/rapport-pdf/ -> django_esg_periodes_esg_rapport_pdf_retrieve
 - get /api/django/extensions/catalogue/ -> django_extensions_catalogue_list
+- get /api/django/extensions/journal/ -> django_extensions_journal_retrieve
 - get /api/django/facturation/avoirs/ -> django_facturation_avoirs_list
 - get /api/django/facturation/avoirs/{id}/ -> django_facturation_avoirs_retrieve
 - post /api/django/facturation/avoirs/{id}/annuler/ -> django_facturation_avoirs_annuler_create
@@ -5561,6 +5565,9 @@ operations:
 - get /api/django/parametres/email-templates/{id}/ -> django_parametres_email_templates_retrieve
 - patch /api/django/parametres/email-templates/{id}/ -> django_parametres_email_templates_partial_update
 - put /api/django/parametres/email-templates/{id}/ -> django_parametres_email_templates_update
+- get /api/django/parametres/gabarits-document/ -> django_parametres_gabarits_document_list
+- get /api/django/parametres/gabarits-document/{code}/ -> django_parametres_gabarits_document_retrieve
+- get /api/django/parametres/gabarits-document/{code}/rendre/ -> django_parametres_gabarits_document_rendre_retrieve
 - get /api/django/parametres/messages/ -> django_parametres_messages_retrieve
 - patch /api/django/parametres/messages/ -> django_parametres_messages_partial_update
 - put /api/django/parametres/messages/ -> django_parametres_messages_update
@@ -6265,6 +6272,7 @@ operations:
 - patch /api/django/reporting/rapport-definitions/{id}/ -> django_reporting_rapport_definitions_partial_update
 - put /api/django/reporting/rapport-definitions/{id}/ -> django_reporting_rapport_definitions_update
 - post /api/django/reporting/rapport-definitions/{id}/executer/ -> django_reporting_rapport_definitions_executer_create
+- get /api/django/reporting/rapport-definitions/{id}/export/ -> django_reporting_rapport_definitions_export_retrieve
 - get /api/django/reporting/reports/field/ -> django_reporting_reports_field_retrieve
 - get /api/django/reporting/reports/kpi-federes/ -> django_reporting_reports_kpi_federes_retrieve
 - get /api/django/reporting/reports/sales/ -> django_reporting_reports_sales_retrieve
@@ -8696,6 +8704,7 @@ operations:
 - get /api/v1/automation/rules/{id}/ -> v1_automation_rules_retrieve
 - patch /api/v1/automation/rules/{id}/ -> v1_automation_rules_partial_update
 - put /api/v1/automation/rules/{id}/ -> v1_automation_rules_update
+- post /api/v1/automation/rules/{id}/simuler/ -> v1_automation_rules_simuler_create
 - post /api/v1/automation/rules/{id}/toggle/ -> v1_automation_rules_toggle_create
 - get /api/v1/automation/runs/ -> v1_automation_runs_list
 - get /api/v1/automation/runs/{id}/ -> v1_automation_runs_retrieve
@@ -10397,6 +10406,8 @@ operations:
 - get /api/v1/custom-fields/objects/{id}/ -> v1_custom_fields_objects_retrieve
 - patch /api/v1/custom-fields/objects/{id}/ -> v1_custom_fields_objects_partial_update
 - put /api/v1/custom-fields/objects/{id}/ -> v1_custom_fields_objects_update
+- get /api/v1/custom-fields/objets-catalogue/ -> v1_custom_fields_objets_catalogue_retrieve
+- post /api/v1/custom-fields/objets-catalogue/installer/{code}/ -> v1_custom_fields_objets_catalogue_installer_create
 - get /api/v1/documents/chantiers/{id}/attestation/ -> v1_documents_chantiers_attestation_retrieve
 - get /api/v1/documents/chantiers/{id}/bon-livraison/ -> v1_documents_chantiers_bon_livraison_retrieve
 - get /api/v1/documents/chantiers/{id}/dossier-remise/ -> v1_documents_chantiers_dossier_remise_retrieve
@@ -10634,6 +10645,7 @@ operations:
 - get /api/v1/esg/periodes-esg/{id}/indicateurs/ -> v1_esg_periodes_esg_indicateurs_retrieve
 - get /api/v1/esg/periodes-esg/{id}/rapport-pdf/ -> v1_esg_periodes_esg_rapport_pdf_retrieve
 - get /api/v1/extensions/catalogue/ -> v1_extensions_catalogue_list
+- get /api/v1/extensions/journal/ -> v1_extensions_journal_retrieve
 - get /api/v1/facturation/avoirs/ -> v1_facturation_avoirs_list
 - get /api/v1/facturation/avoirs/{id}/ -> v1_facturation_avoirs_retrieve
 - post /api/v1/facturation/avoirs/{id}/annuler/ -> v1_facturation_avoirs_annuler_create
@@ -13332,6 +13344,9 @@ operations:
 - get /api/v1/parametres/email-templates/{id}/ -> v1_parametres_email_templates_retrieve
 - patch /api/v1/parametres/email-templates/{id}/ -> v1_parametres_email_templates_partial_update
 - put /api/v1/parametres/email-templates/{id}/ -> v1_parametres_email_templates_update
+- get /api/v1/parametres/gabarits-document/ -> v1_parametres_gabarits_document_list
+- get /api/v1/parametres/gabarits-document/{code}/ -> v1_parametres_gabarits_document_retrieve
+- get /api/v1/parametres/gabarits-document/{code}/rendre/ -> v1_parametres_gabarits_document_rendre_retrieve
 - get /api/v1/parametres/messages/ -> v1_parametres_messages_retrieve
 - patch /api/v1/parametres/messages/ -> v1_parametres_messages_partial_update
 - put /api/v1/parametres/messages/ -> v1_parametres_messages_update
@@ -13999,6 +14014,7 @@ operations:
 - patch /api/v1/reporting/rapport-definitions/{id}/ -> v1_reporting_rapport_definitions_partial_update
 - put /api/v1/reporting/rapport-definitions/{id}/ -> v1_reporting_rapport_definitions_update
 - post /api/v1/reporting/rapport-definitions/{id}/executer/ -> v1_reporting_rapport_definitions_executer_create
+- get /api/v1/reporting/rapport-definitions/{id}/export/ -> v1_reporting_rapport_definitions_export_retrieve
 - get /api/v1/reporting/reports/field/ -> v1_reporting_reports_field_retrieve
 - get /api/v1/reporting/reports/kpi-federes/ -> v1_reporting_reports_kpi_federes_retrieve
 - get /api/v1/reporting/reports/sales/ -> v1_reporting_reports_sales_retrieve
@@ -15850,7 +15866,7 @@ components:
 - CampagneStatutEnum
 - Canal
 - Canal26dEnum
-- CanalC7fEnum
+- Canal641Enum
 - CanalRequest
 - CanalResolutionEnum
 - Candidature
@@ -15864,13 +15880,13 @@ components:
 - CarteGriseVehiculeRequest
 - CatalogueIndicateurESG
 - Categorie
-- Categorie706Enum
-- Categorie95dEnum
+- Categorie6f3Enum
 - CategorieAbsenceEnum
-- CategorieD89Enum
+- CategorieAf5Enum
+- CategorieC58Enum
 - CategorieEquipement
 - CategorieEquipementRequest
-- CategorieFaeEnum
+- CategorieF9dEnum
 - CategorieFournisseur
 - CategorieFournisseurRequest
 - CategorieHsEnum
@@ -15929,7 +15945,6 @@ components:
 - ChecklistEtapeModeleRequest
 - ChecklistTemplate
 - ChecklistTemplateRequest
-- CibleEnum
 - CibleFinanciere
 - CibleFinanciereRequest
 - CircuitTransport
@@ -15996,7 +16011,6 @@ components:
 - CommissioningRecordRequest
 - CommissioningTest
 - CommissioningTestRequest
-- CommissioningTestResultatEnum
 - CommunicationEvenement
 - CommunicationEvenementRequest
 - Company
@@ -16353,7 +16367,6 @@ components:
 - EcheanceLoyerRequest
 - EcheanceLoyerStatutEnum
 - EcheancePrime
-- EcheancePrimePeriodiciteEnum
 - EcheancePrimeRequest
 - EcheancePrimeStatutEnum
 - EcheanceReglementaire
@@ -16458,7 +16471,7 @@ components:
 - EquipementAORoleEnum
 - EquipementRequest
 - EquipementStatutEnum
-- Etape67dEnum
+- Etape6e8Enum
 - EtapeAssemblage
 - EtapeAssemblageRequest
 - EtapeCampagne
@@ -16611,6 +16624,8 @@ components:
 - FraisImport
 - FraisImportCategorieEnum
 - FraisImportRequest
+- GabaritDocumentCustom
+- GabaritDocumentCustomCibleEnum
 - GabaritEmailRecrutement
 - GabaritEmailRecrutementRequest
 - Garage
@@ -16623,8 +16638,8 @@ components:
 - GeofenceAlertRequest
 - GpsConsentRecord
 - GpsConsentRecordRequest
-- Gravite25bEnum
-- GraviteDe9Enum
+- Gravite47eEnum
+- Gravite90cEnum
 - GravitePotentielleEnum
 - GrilleAudit
 - GrilleAuditRequest
@@ -16770,6 +16785,7 @@ components:
 - JournalAcces
 - JournalChantier
 - JournalChantierRequest
+- JournalPlateforme
 - JournalRequest
 - JustificationVariation
 - JustificationVariationRequest
@@ -16777,7 +16793,6 @@ components:
 - KbArticle
 - KbArticleAcl
 - KbArticleAclRequest
-- KbArticleLangueEnum
 - KbArticleLien
 - KbArticleLienRequest
 - KbArticleLienTypeCibleEnum
@@ -16795,8 +16810,8 @@ components:
 - KbParcoursAssignation
 - KbParcoursAssignationRequest
 - KbParcoursRequest
-- Kind833Enum
 - KindC26Enum
+- KindD6fEnum
 - Kit
 - KitCalepinage
 - KitCalepinageModeEnum
@@ -16817,7 +16832,7 @@ components:
 - LandedCostLigne
 - LandedCostLigneRequest
 - LanguageEnum
-- LangueB0bEnum
+- Langue03cEnum
 - LangueDocumentEnum
 - LanguePrefereeEnum
 - Lead
@@ -17000,10 +17015,10 @@ components:
 - MethodeReconnaissanceEnum
 - MetricEnum
 - MilieuToucheEnum
+- Mode34cEnum
 - ModeAccesEnum
 - ModeAcheminementEnum
 - ModeAcquittementEnum
-- ModeB24Enum
 - ModeEnchainementEnum
 - ModeHoldEnum
 - ModeHoldOverrideEnum
@@ -17013,7 +17028,6 @@ components:
 - ModePassationEnum
 - ModePenaliteEnum
 - ModePrixEnum
-- ModeRemboursementEnum
 - ModeRepartitionEnum
 - ModeSaisieEnum
 - ModeScoringEnum
@@ -17085,10 +17099,10 @@ components:
 - NetworkPolicyModeEnum
 - NetworkPolicyRequest
 - Niveau
+- Niveau093Enum
 - Niveau505Enum
+- Niveau5f7Enum
 - NiveauApprobationEnum
-- NiveauB3eEnum
-- NiveauD1fEnum
 - NiveauRequest
 - NiveauRequisEnum
 - NomenclatureCodeBarres
@@ -17176,7 +17190,7 @@ components:
 - OrdreSousTraitanceStatutEnum
 - OrdreVirement
 - OrdreVirementStatutEnum
-- Orientation4c8Enum
+- OrientationF17Enum
 - OrientationPanneauEnum
 - OutboxEvent
 - OutboxEventStatutEnum
@@ -17184,6 +17198,7 @@ components:
 - OutillageRequest
 - OutillageStatutEnum
 - OuverturePartage
+- OuverturePartageCibleEnum
 - OuverturePartageRequest
 - OuverturePoste
 - OuverturePosteRequest
@@ -17580,6 +17595,7 @@ components:
 - PaginatedFormulaireIntakeList
 - PaginatedFournisseurList
 - PaginatedFraisImportList
+- PaginatedGabaritDocumentCustomList
 - PaginatedGabaritEmailRecrutementList
 - PaginatedGarageList
 - PaginatedGarantieFlotteList
@@ -18974,7 +18990,7 @@ components:
 - PermisTravail
 - PermisTravailRequest
 - PermisTravailStatutEnum
-- Phase828Enum
+- Phase0c3Enum
 - PhaseProjet
 - PhaseProjetRequest
 - PhaseProjetStatutEnum
@@ -19115,9 +19131,9 @@ components:
 - PrimeAttribuee
 - PrimeAttribueeRequest
 - PrimeAttribueeStatutEnum
-- Priorite568Enum
-- Priorite945Enum
-- PrioriteD52Enum
+- Priorite1b2Enum
+- Priorite6abEnum
+- Priorite8d2Enum
 - PriseEnCharge
 - PriseEnChargeRequest
 - PriseEnChargeStatutEnum
@@ -19213,7 +19229,7 @@ components:
 - RFQOffreRequest
 - RFQRequest
 - RFQStatutEnum
-- RaccordementE26Enum
+- Raccordement060Enum
 - RaccordementE97Enum
 - RappelConstructeur
 - RappelConstructeurRequest
@@ -19263,7 +19279,7 @@ components:
 - ReferentielFlotte
 - ReferentielFlotteDomaineEnum
 - ReferentielFlotteRequest
-- Regime8221E51Enum
+- Regime8221EaeEnum
 - RegimeEnum
 - RegimeExonerationEnum
 - RegimeMutuelle
@@ -19423,9 +19439,9 @@ components:
 - RisqueRequest
 - RisqueStatutEnum
 - Role
-- Role65aEnum
 - RoleAchatEnum
 - RoleCibleEnum
+- RoleE35Enum
 - RoleLegacyEnum
 - RolePerimetreEnum
 - RoleRequest
@@ -19567,7 +19583,7 @@ components:
 - SoumissionLeadPartenaire
 - SoumissionLeadPartenaireRequest
 - SoumissionLeadPartenaireStatutEnum
-- Source1ddEnum
+- Source0d6Enum
 - SourceTypeEnum
 - SourceVeille
 - SourceVeilleRequest
@@ -19578,35 +19594,35 @@ components:
 - StageEnum
 - StageModele
 - StageModeleRequest
-- Statut006Enum
+- Statut005Enum
+- Statut012Enum
 - Statut095Enum
-- Statut192Enum
-- Statut25fEnum
-- Statut3f8Enum
-- Statut4b1Enum
-- Statut582Enum
+- Statut19cEnum
+- Statut2ccEnum
+- Statut369Enum
+- Statut484Enum
+- Statut562Enum
 - Statut589Enum
-- Statut6d5Enum
-- Statut6e3Enum
-- Statut835Enum
-- Statut8e3Enum
+- Statut6e6Enum
+- Statut95fEnum
+- Statut9f8Enum
 - StatutAffectationEnum
 - StatutAgrementEnum
 - StatutApprobationEnum
+- StatutB0aEnum
 - StatutB33Enum
-- StatutB3cEnum
-- StatutC42Enum
-- StatutC74Enum
-- StatutC8cEnum
-- StatutCf6Enum
+- StatutC5aEnum
+- StatutCf5Enum
 - StatutConfig
 - StatutConfigDomaineEnum
 - StatutConfigRequest
 - StatutConformiteDgiEnum
 - StatutControleEnum
-- StatutDe9Enum
+- StatutD6aEnum
 - StatutDouaneEnum
+- StatutE18Enum
 - StatutE26Enum
+- StatutE29Enum
 - StatutLegacyEnum
 - StatutOnboardingEnum
 - StatutPublicationEnum
@@ -19711,7 +19727,6 @@ components:
 - TravauxEnCoursStatutEnum
 - TriggerTypeEnum
 - TrustedDevice
-- Type079Enum
 - TypeAbsence
 - TypeAbsenceRequest
 - TypeAccesEnum
@@ -19729,6 +19744,7 @@ components:
 - TypeAuditEnum
 - TypeBailEnum
 - TypeBulletinEnum
+- TypeC96Enum
 - TypeCauseEnum
 - TypeCertificationEnum
 - TypeCessionEnum
@@ -19744,9 +19760,9 @@ components:
 - TypeCompteEnum
 - TypeConformiteEnum
 - TypeContactEnum
-- TypeContrat358Enum
-- TypeContratBb8Enum
+- TypeContrat03eEnum
 - TypeContratDefautEnum
+- TypeContratDf9Enum
 - TypeControleEnum
 - TypeCouvertureEnum
 - TypeCycleEnum
@@ -19767,15 +19783,15 @@ components:
 - TypeEvenementRequest
 - TypeExerciceEnum
 - TypeExigenceEnum
-- TypeFacture2a7Enum
+- TypeFactureAf3Enum
 - TypeFichierEnum
 - TypeFinancementEnum
 - TypeFiscalEnum
 - TypeHabilitationEnum
 - TypeHoraireEnum
 - TypeInfractionEnum
-- TypeInstallation170Enum
-- TypeInstallation347Enum
+- TypeInstallation5e8Enum
+- TypeInstallationBd2Enum
 - TypeIntervention
 - TypeInterventionEnum
 - TypeInterventionRequest

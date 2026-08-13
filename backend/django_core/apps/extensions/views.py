@@ -1,4 +1,6 @@
+from drf_spectacular.utils import extend_schema, inline_serializer
 from rest_framework import generics
+from rest_framework import serializers as drf_serializers
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -30,6 +32,10 @@ class JournalPlateformeView(APIView):
 
     permission_classes = [IsAdminOrResponsableTier]
 
+    @extend_schema(responses=inline_serializer('JournalPlateforme', {
+        'entrees': drf_serializers.JSONField(),
+        'types': drf_serializers.JSONField(),
+    }))
     def get(self, request):
         types = [t for t in request.query_params.getlist('type') if t]
         brut_succes = request.query_params.get('succes')
