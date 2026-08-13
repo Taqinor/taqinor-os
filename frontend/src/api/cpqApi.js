@@ -38,6 +38,23 @@ const cpqApi = {
   deleteQuestionConfigurateur: (id) =>
     api.delete(`${P}/configurateur-questions/${id}/`),
 
+  // ── Contraintes de compatibilité entre deux produits (NTCPQ1).
+  // `type` ∈ INCOMPATIBLE | REQUIERT | RECOMMANDE ; `bloquante` est calculée
+  // côté serveur (lecture seule) — jamais envoyée.
+  getContraintesCompatibilite: (params) =>
+    api.get(`${P}/contraintes-compatibilite/`, { params }),
+  createContrainteCompatibilite: (data) =>
+    api.post(`${P}/contraintes-compatibilite/`, data),
+  updateContrainteCompatibilite: (id, data) =>
+    api.patch(`${P}/contraintes-compatibilite/${id}/`, data),
+  deleteContrainteCompatibilite: (id) =>
+    api.delete(`${P}/contraintes-compatibilite/${id}/`),
+  // Corps : { produit_ids: [...] } → { valide, violations, bloquantes,
+  // avertissements } — la séparation bloquantes/avertissements vient du
+  // SERVEUR, jamais recalculée côté écran.
+  validerCompatibilite: (produitIds) =>
+    api.post(`${P}/valider-compatibilite/`, { produit_ids: produitIds }),
+
   // ── Session du configurateur guidé (NTCPQ9/10). `demarrer` renvoie
   // { session (token), questions[] } ; les trois suivantes sont indexées par
   // ce token, jamais par un id de session.
