@@ -263,6 +263,126 @@ function CreerIncidentDialog({ onClose, onCreated }) {
   )
 }
 
+// XQHS14 — échelle 1–5 partagée avec le document unique (`RisqueOpportunite`,
+// backend). Les criticités sont calculées côté serveur — jamais postées d'ici.
+const ECHELLE_1_5 = [1, 2, 3, 4, 5]
+
+// XQHS14 — création d'un risque/opportunité niveau SMQ (ISO 6.1), distinct du
+// document unique opérationnel chantier.
+function CreerRisqueOpportuniteDialog({ onClose, onCreated }) {
+  const [typeRo, setTypeRo] = useState('risque')
+  const [processus, setProcessus] = useState('')
+  const [description, setDescription] = useState('')
+  const [probabilite, setProbabilite] = useState('1')
+  const [gravite, setGravite] = useState('1')
+  const [actions, setActions] = useState('')
+  const [dateRevue, setDateRevue] = useState('')
+  const [saving, setSaving] = useState(false)
+
+  async function save() {
+    if (!description.trim()) { toast.error('La description est requise.'); return }
+    setSaving(true)
+    try {
+      await qhseApi.risquesOpportunites.create({
+        type_ro: typeRo,
+        processus: processus.trim(),
+        description: description.trim(),
+        probabilite_inherente: Number(probabilite),
+        gravite_inherente: Number(gravite),
+        actions_traitement: actions.trim(),
+        date_revue: dateRevue || null,
+      })
+      toast.success('Risque / opportunité enregistré.')
+      onCreated()
+      onClose()
+    } catch (err) {
+      toast.error(err?.response?.data?.detail ?? 'Création impossible.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <Dialog open onOpenChange={(o) => { if (!o) onClose() }}>
+      <DialogContent>
+        <DialogTitle>Nouveau risque / opportunité (SMQ)</DialogTitle>
+        <div className="flex flex-col gap-3">
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <Label>Type</Label>
+              <Select value={typeRo} onValueChange={setTypeRo}>
+                <SelectTrigger aria-label="Type"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="risque">Risque</SelectItem>
+                  <SelectItem value="opportunite">Opportunité</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label>Processus concerné</Label>
+              <Input
+                aria-label="Processus concerné" value={processus}
+                onChange={(e) => setProcessus(e.target.value)}
+              />
+            </div>
+          </div>
+          <div>
+            <Label>Description</Label>
+            <Textarea
+              aria-label="Description" rows={3} value={description}
+              onChange={(e) => setDescription(e.target.value)}
+            />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <Label>Probabilité inhérente (1–5)</Label>
+              <Select value={probabilite} onValueChange={setProbabilite}>
+                <SelectTrigger aria-label="Probabilité inhérente (1–5)"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {ECHELLE_1_5.map((n) => (
+                    <SelectItem key={n} value={String(n)}>{n}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label>Gravité inhérente (1–5)</Label>
+              <Select value={gravite} onValueChange={setGravite}>
+                <SelectTrigger aria-label="Gravité inhérente (1–5)"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {ECHELLE_1_5.map((n) => (
+                    <SelectItem key={n} value={String(n)}>{n}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <div>
+            <Label>Actions de traitement</Label>
+            <Textarea
+              aria-label="Actions de traitement" rows={2} value={actions}
+              onChange={(e) => setActions(e.target.value)}
+            />
+          </div>
+          <div>
+            <Label>Date de revue</Label>
+            <Input
+              aria-label="Date de revue" type="date" value={dateRevue}
+              onChange={(e) => setDateRevue(e.target.value)}
+            />
+          </div>
+          <div className="flex justify-end gap-2 pt-1">
+            <Button variant="outline" onClick={onClose}>Annuler</Button>
+            <Button onClick={save} disabled={saving}>
+              {saving ? 'Création…' : 'Créer'}
+            </Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
 // XQHS17 — miroir de `ObservationSecurite.Categorie` / `.TypeObservation`
 // (backend, apps/qhse/models.py). Saisie TERRAIN volontairement minimale.
 const OBSERVATION_CATEGORIES = [
@@ -523,6 +643,11 @@ export default function Risques() {
   const [creatingObservation, setCreatingObservation] = useState(false)
   const [observationsReload, setObservationsReload] = useState(0)
 
+  // XQHS14 — registre risques & opportunités niveau SMQ (ISO 6.1).
+  const [creatingRo, setCreatingRo] = useState(false)
+  const [roReload, setRoReload] = useState(0)
+  const [roRevuesDues, setRoRevuesDues] = useState(false)
+
   async function ouvrirCreationLoto() {
     try {
       const res = await qhseApi.permisTravail.list()
@@ -576,6 +701,28 @@ export default function Risques() {
     {
       id: 'statut', header: 'Statut', width: 130,
       accessor: (r) => r.statut, cell: (v) => <EvalRisqueStatutPill status={v} />,
+    },
+  ], [])
+
+  // XQHS14 — registre SMQ : criticité INHÉRENTE (avant traitement) et
+  // RÉSIDUELLE (après), toutes deux calculées côté serveur.
+  const roCols = useMemo(() => [
+    { id: 'type', header: 'Type', width: 120, accessor: (r) => r.type_ro_display || r.type_ro },
+    { id: 'processus', header: 'Processus', width: 170, accessor: (r) => r.processus || '—' },
+    { id: 'description', header: 'Description', accessor: (r) => r.description },
+    {
+      id: 'criticite_inherente', header: 'Criticité inhérente', width: 160, align: 'center',
+      accessor: (r) => r.criticite_inherente ?? 0,
+      cell: (v) => <Badge tone={critTone(v)}>{v}</Badge>,
+    },
+    {
+      id: 'criticite_residuelle', header: 'Criticité résiduelle', width: 160, align: 'center',
+      accessor: (r) => r.criticite_residuelle,
+      cell: (v) => (v == null ? '—' : <Badge tone={critTone(v)}>{v}</Badge>),
+    },
+    {
+      id: 'date_revue', header: 'Revue', width: 120, align: 'right',
+      accessor: (r) => r.date_revue, cell: (v) => formatDate(v),
     },
   ], [])
 
@@ -749,6 +896,7 @@ export default function Risques() {
       <Tabs value={tab} onValueChange={setTab}>
         <TabsList className="flex-wrap">
           <TabsTrigger value="document-unique">Document unique</TabsTrigger>
+          <TabsTrigger value="risques-opportunites">Risques & opportunités</TabsTrigger>
           <TabsTrigger value="permis">Permis & LOTO</TabsTrigger>
           <TabsTrigger value="preparation">Préparation site</TabsTrigger>
           <TabsTrigger value="incidents">Incidents</TabsTrigger>
@@ -763,6 +911,32 @@ export default function Risques() {
             fetcher={() => qhseApi.evaluationsRisque.list()}
             columns={evalCols}
             exportName="qhse-evaluations-risque"
+          />
+        </TabsContent>
+
+        <TabsContent value="risques-opportunites" className="mt-4">
+          <QhseResourceList
+            title="Risques & opportunités (SMQ)"
+            subtitle="Niveau entreprise/processus (ISO 6.1) — distinct du document unique chantier"
+            fetcher={() => (roRevuesDues
+              ? qhseApi.risquesOpportunites.revuesDues()
+              : qhseApi.risquesOpportunites.list())}
+            columns={roCols}
+            exportName="qhse-risques-opportunites"
+            deps={[roReload, roRevuesDues]}
+            actions={(
+              <>
+                <Button
+                  variant={roRevuesDues ? 'default' : 'outline'}
+                  onClick={() => setRoRevuesDues((v) => !v)}
+                >
+                  <ListChecks size={16} /> Revues dues
+                </Button>
+                <Button onClick={() => setCreatingRo(true)}>
+                  <Plus size={16} /> Nouveau risque / opportunité
+                </Button>
+              </>
+            )}
           />
         </TabsContent>
 
@@ -985,6 +1159,13 @@ export default function Risques() {
         <CreerIncidentDialog
           onClose={() => setCreatingIncident(false)}
           onCreated={() => setIncidentsReload((n) => n + 1)}
+        />
+      )}
+
+      {creatingRo && (
+        <CreerRisqueOpportuniteDialog
+          onClose={() => setCreatingRo(false)}
+          onCreated={() => setRoReload((n) => n + 1)}
         />
       )}
 

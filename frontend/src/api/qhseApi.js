@@ -101,6 +101,18 @@ const qhseApi = {
       api.get('/qhse/evaluations-risque/document-unique-statut/', { params }),
   },
   lignesEvaluationRisque: crud('lignes-evaluation-risque'),
+
+  // ── XQHS14 — Registre des risques & opportunités niveau SMQ (ISO 6.1) ────
+  // Distinct du document unique opérationnel (`evaluationsRisque`). Les
+  // criticités inhérente/résiduelle sont calculées côté serveur.
+  risquesOpportunites: {
+    ...crud('risques-opportunites'),
+    // Risques/opportunités dont la revue périodique est due.
+    revuesDues: () => api.get('/qhse/risques-opportunites/revues-dues/'),
+    // Lie une CAPA existante (idempotent côté serveur).
+    lierCapa: (id, data) =>
+      api.post(`/qhse/risques-opportunites/${id}/lier-capa/`, data),
+  },
   permisTravail: {
     ...crud('permis-travail'),
     valider: (id) => api.post(`/qhse/permis-travail/${id}/valider/`),

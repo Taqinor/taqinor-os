@@ -26,14 +26,28 @@ beforeAll(() => {
   }
 })
 
-const { empty, observationCreate } = vi.hoisted(() => ({
+const { empty, observationCreate, roList, roRevuesDues, roCreate } = vi.hoisted(() => ({
   empty: () => Promise.resolve({ data: [] }),
   observationCreate: vi.fn(() => Promise.resolve({ data: { id: 1 } })),
+  roList: vi.fn(() => Promise.resolve({
+    data: [{
+      id: 5, type_ro: 'risque', type_ro_display: 'Risque',
+      processus: 'Achats', description: 'Rupture fournisseur onduleurs',
+      criticite_inherente: 16, criticite_residuelle: 6, date_revue: '2026-09-01',
+    }],
+  })),
+  roRevuesDues: vi.fn(() => Promise.resolve({ data: [] })),
+  roCreate: vi.fn(() => Promise.resolve({ data: { id: 6 } })),
 }))
 
 vi.mock('../../api/qhseApi', () => ({
   default: {
     evaluationsRisque: { list: empty },
+    risquesOpportunites: {
+      list: (...a) => roList(...a),
+      revuesDues: (...a) => roRevuesDues(...a),
+      create: (...a) => roCreate(...a),
+    },
     permisTravail: { list: empty },
     consignationsLoto: { list: empty },
     inductionsSecurite: { list: empty },
@@ -100,5 +114,56 @@ describe('Risques — Observations BBS (FE-XQHS17)', () => {
     const dialog = await screen.findByRole('dialog')
     await user.click(within(dialog).getByRole('button', { name: 'Enregistrer' }))
     expect(observationCreate).not.toHaveBeenCalled()
+  })
+})
+
+/* FE-XQHS14 — `RisqueOpportunite` (registre SMQ, ISO 6.1) avait son viewset,
+   ses criticités serveur et son action `revues-dues/`, mais AUCUN écran : le
+   client API ne le nommait même pas. */
+describe('Risques — Risques & opportunités SMQ (FE-XQHS14)', () => {
+  it('liste le registre SMQ avec ses criticités inhérente et résiduelle', async () => {
+    const user = userEvent.setup()
+    withProviders(<Risques />)
+    await user.click(screen.getByRole('tab', { name: 'Risques & opportunités' }))
+
+    // DataTable rend table desktop + repli carte mobile : getAllByText.
+    await waitFor(() => expect(
+      screen.getAllByText('Rupture fournisseur onduleurs').length,
+    ).toBeGreaterThan(0))
+    expect(screen.getAllByText('16').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('6').length).toBeGreaterThan(0)
+  })
+
+  it('bascule sur les revues dues (action `revues-dues/`, jusqu’ici sans appelant)', async () => {
+    const user = userEvent.setup()
+    withProviders(<Risques />)
+    await user.click(screen.getByRole('tab', { name: 'Risques & opportunités' }))
+    await waitFor(() => expect(roList).toHaveBeenCalled())
+
+    await user.click(screen.getByRole('button', { name: /Revues dues/ }))
+    await waitFor(() => expect(roRevuesDues).toHaveBeenCalled())
+  })
+
+  it('crée un risque SMQ sans jamais poster de criticité (calcul serveur)', async () => {
+    const user = userEvent.setup()
+    withProviders(<Risques />)
+    await user.click(screen.getByRole('tab', { name: 'Risques & opportunités' }))
+
+    await user.click(await screen.findByRole('button', { name: /Nouveau risque \/ opportunité/ }))
+    const dialog = await screen.findByRole('dialog')
+    await user.type(
+      within(dialog).getByLabelText('Description'), 'Dépendance mono-fournisseur',
+    )
+    await user.click(within(dialog).getByRole('button', { name: 'Créer' }))
+
+    await waitFor(() => expect(roCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type_ro: 'risque', description: 'Dépendance mono-fournisseur',
+        probabilite_inherente: 1, gravite_inherente: 1,
+      }),
+    ))
+    const posted = roCreate.mock.calls[0][0]
+    expect(posted).not.toHaveProperty('criticite_inherente')
+    expect(posted).not.toHaveProperty('criticite_residuelle')
   })
 })

@@ -54,6 +54,7 @@ const LOTO_ROW = {
 vi.mock('../../api/qhseApi', () => ({
   default: {
     evaluationsRisque: { list: empty },
+    risquesOpportunites: { list: empty, revuesDues: empty },
     permisTravail: {
       list: vi.fn(() => Promise.resolve({ data: [PERMIS_ROW] })),
       create: (...a) => permisCreate(...a),

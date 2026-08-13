@@ -67,6 +67,10 @@ vi.mock('../../api/qhseApi', () => {
       grillesAudit: crud(), audits: crud(), notationsFinChantier: crud(),
       proceduresQualite: crud(), retoursClient: crud(),
       evaluationsRisque: crud(), permisTravail: crud(), consignationsLoto: crud(),
+      // XQHS14 — registre risques/opportunités SMQ (onglet dédié de Risques).
+      risquesOpportunites: {
+        ...crud(), revuesDues: emptyList, lierCapa: emptyList,
+      },
       inductionsSecurite: crud(), plansUrgence: crud(), secouristes: crud(),
       declarationsCnss: crud(), analysesIncident: crud(),
       dechets: crud(), bordereauxDechets: crud(), recyclageModules: crud(),
