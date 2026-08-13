@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
-import { render, screen, cleanup, within } from '@testing-library/react'
+import { render, screen, cleanup, within, fireEvent, waitFor } from '@testing-library/react'
 import { Provider } from 'react-redux'
 import { MemoryRouter } from 'react-router-dom'
 import { configureStore } from '@reduxjs/toolkit'
@@ -21,7 +21,14 @@ vi.mock('../../features/crm/store/crmSlice', async (importOriginal) => {
   }
 })
 
-vi.mock('../../api/crmApi', () => ({ default: {} }))
+vi.mock('../../api/crmApi', () => ({
+  default: {
+    // NTCRM15 — filtre dédié comptes dormants (appel paresseux, jamais au montage).
+    getComptesDormants: vi.fn(() => Promise.resolve({
+      data: { seuil: 90, count: 1, results: [{ id: 1 }] },
+    })),
+  },
+}))
 vi.mock('../../api/ventesApi', () => ({ default: {} }))
 vi.mock('../../ui/confirm', () => ({
   toast: { success: vi.fn(), error: vi.fn() },
@@ -74,5 +81,19 @@ describe('ClientList — VX144(c) empilement 2 lignes déterministe (cellule Cli
   it('n\'affiche aucun badge ICE quand le client entreprise a un ICE renseigné', () => {
     renderList({ clients: [{ ...entrepriseSansIce, id: 2, ice: '000123456000045' }] })
     expect(screen.queryByText('ICE manquant')).toBeNull()
+  })
+})
+
+describe('ClientList — NTCRM15 filtre comptes dormants', () => {
+  it('ne filtre que les clients renvoyés par /clients/dormants/ après activation', async () => {
+    const clients = [
+      { id: 1, nom: 'Dormant', prenom: '', type_client: 'particulier' },
+      { id: 2, nom: 'Actif', prenom: '', type_client: 'particulier' },
+    ]
+    renderList({ clients })
+    expect(screen.getByText('Actif')).toBeInTheDocument()
+    fireEvent.click(screen.getByText('Comptes dormants'))
+    await waitFor(() => expect(screen.queryByText('Actif')).toBeNull())
+    expect(screen.getByText('Dormant')).toBeInTheDocument()
   })
 })

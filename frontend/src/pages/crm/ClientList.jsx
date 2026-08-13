@@ -95,10 +95,27 @@ export default function ClientList() {
   // Filtre segmenté par type (Particulier / Entreprise), appliqué avant le
   // DataTable (qui garde sa propre recherche/tri/export sur le sous-ensemble).
   const visibleClients = useMemo(() => {
-    if (typeFilter === 'tous') return clients
-    if (typeFilter === 'entreprise') return clients.filter(isEntreprise)
-    return clients.filter(c => !isEntreprise(c))
-  }, [clients, typeFilter])
+    let out = clients
+    if (typeFilter === 'entreprise') out = out.filter(isEntreprise)
+    else if (typeFilter === 'particulier') out = out.filter(c => !isEntreprise(c))
+    if (dormantsOnly && dormantIds) out = out.filter(c => dormantIds.has(c.id))
+    return out
+  }, [clients, typeFilter, dormantsOnly, dormantIds])
+
+  // NTCRM15 — filtre dédié « Comptes dormants » (NTCRM14) : chargé
+  // paresseusement au premier clic, mis en cache tant que l'écran reste
+  // monté (aucun impact sur `visibleClients` tant que le toggle est off).
+  const [dormantsOnly, setDormantsOnly] = useState(false)
+  const [dormantIds, setDormantIds] = useState(null)
+  const toggleDormants = () => {
+    const next = !dormantsOnly
+    setDormantsOnly(next)
+    if (next && dormantIds === null) {
+      crmApi.getComptesDormants()
+        .then((r) => setDormantIds(new Set((r.data?.results ?? []).map(c => c.id))))
+        .catch(() => setDormantIds(new Set()))
+    }
+  }
 
   const openNew   = () => { setEditClient(null); setShowForm(true) }
   const openEdit  = c  => { setEditClient(c);    setShowForm(true) }
@@ -421,6 +438,15 @@ export default function ClientList() {
               onChange={setTypeFilter}
               aria-label="Filtrer par type de client"
             />
+            {/* NTCRM15 — filtre dédié comptes dormants (NTCRM14). */}
+            <Button
+              size="sm"
+              variant={dormantsOnly ? 'default' : 'outline'}
+              onClick={toggleDormants}
+              aria-pressed={dormantsOnly}
+            >
+              Comptes dormants
+            </Button>
             <SaveViewButton onSave={saveCurrentView} />
             <SavedViewsBar
               savedViews={savedViews}

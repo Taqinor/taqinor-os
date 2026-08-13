@@ -20,6 +20,14 @@ const crmApi = {
   anonymizeClient: (id) => api.post(`/crm/clients/${id}/anonymize/`),
   // XSAL9 — rollup CA groupe (société mère + filiales, récursif).
   getClientConsolidation: (id) => api.get(`/crm/clients/${id}/consolidation/`),
+  // NTCRM14/15 — comptes dormants : au moins un devis/facture passé, aucune
+  // activité (devis/facture/LeadActivity/PointContact) depuis `seuil` jours.
+  getComptesDormants: (seuil) =>
+    api.get('/crm/clients/dormants/', { params: seuil ? { seuil } : {} }),
+  // NTCRM15 — bouton one-click « créer une activité de relance » du widget
+  // comptes dormants (journalise une note sur le lead le plus récent lié).
+  relancerDormance: (clientId) =>
+    api.post(`/crm/clients/${clientId}/relancer-dormance/`),
 
   // Leads / opportunities
   // VX55 — même `config` optionnel (signal d'annulation) que getClients.

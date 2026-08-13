@@ -476,6 +476,29 @@ class ClientViewSet(CompanyScopedModelViewSet):
         } for e in entries]
         return Response({'seuil': seuil, 'count': len(results), 'results': results})
 
+    @action(detail=True, methods=['post'], url_path='relancer-dormance',
+            permission_classes=[IsAnyRole])
+    def relancer_dormance(self, request, pk=None):
+        """NTCRM15 — Bouton one-click « créer une activité de relance » du
+        widget Comptes dormants : journalise une note sur le lead le plus
+        récent lié à ce client. 404 si le client n'a aucun lead (rien à
+        relancer via le chatter — cas rare, clients importés sans lead)."""
+        from . import activity
+        from .models import Lead
+        client = self.get_object()
+        lead = (Lead.objects
+                .filter(company=client.company, client=client)
+                .order_by('-date_creation').first())
+        if lead is None:
+            return Response(
+                {'detail': "Aucun lead lié à ce client — relance impossible."},
+                status=status.HTTP_404_NOT_FOUND)
+        act = activity.log_note(
+            lead, request.user,
+            f'Relance dormance — compte {client} réactivé manuellement.')
+        return Response(LeadActivitySerializer(act).data,
+                        status=status.HTTP_201_CREATED)
+
 
 class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
     """Leads + historique « chatter » (journal automatique + notes manuelles).
