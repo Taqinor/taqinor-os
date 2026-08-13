@@ -2625,16 +2625,15 @@ class SalleVenteVue(models.Model):
 
 
 # ── NTCRM20 — Registre des apporteurs d'affaires (Deal Registration) ───────
-# NOTE DE COUVERTURE (pour l'orchestrateur) : `Partenaire`/
-# `SoumissionLeadPartenaire`/`CommissionPartenaire` (FG234/235, vivant sur
-# `apps.compta.views`/`apps.compta.serializers` — HORS périmètre de cette
-# lane crm-only, jamais touchés ici) couvrent déjà un portail
-# partenaire→lead→commission proche. `Apporteur`/`DealEnregistre` restent
-# des modèles SÉPARÉS (comme demandé explicitement par NTCRM20) parce que la
-# fenêtre de PROTECTION (refus d'un second enregistrement concurrent) n'existe
-# nulle part dans FG234/235 et que les étendre exigerait d'écrire dans
-# `apps.compta` (interdit à cette lane) — un futur run compta/crm conjoint
-# pourra fusionner les deux registres.
+# NOTE DE COUVERTURE : `Partenaire`/`SoumissionLeadPartenaire`/
+# `CommissionPartenaire` (FG234/235 — modèles relocalisés ici par ODX13, mais
+# dont les ViewSets/serializers vivent encore sous `apps/compta/`) couvrent
+# déjà un portail partenaire→lead→commission proche. `Apporteur`/
+# `DealEnregistre` restent des modèles SÉPARÉS (comme demandé explicitement
+# par NTCRM20) : la fenêtre de PROTECTION (refus d'un second enregistrement
+# concurrent) n'existe nulle part dans FG234/235, et les étendre exigerait
+# d'écrire dans l'app comptable — un futur run compta/crm conjoint pourra
+# fusionner les deux registres.
 class Apporteur(TenantModel):
     """NTCRM20 — Apporteur d'affaires B2B (partenaire/courtier/installateur
     indépendant) qui enregistre des deals plutôt que de soumettre des leads
