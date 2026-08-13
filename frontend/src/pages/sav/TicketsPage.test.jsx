@@ -19,8 +19,8 @@ import {
   TicketPremiereReponseChip,
   KanbanColumn,
   CrVocalMemo,
-  crEnTexte,
 } from './TicketsPage.jsx'
+import { crEnTexte } from './crInterventionUtils'
 import {
   TICKET_STATUSES,
   TICKET_STATUS_LABELS,

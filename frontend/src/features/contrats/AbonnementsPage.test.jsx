@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, beforeAll } from 'vitest'
-import { render, screen, waitFor, fireEvent } from '@testing-library/react'
+import { render, screen, waitFor, fireEvent, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import { ThemeProvider } from '../../design/ThemeProvider.jsx'
@@ -88,7 +88,12 @@ describe('AbonnementsPage (PACT138)', () => {
     await waitFor(() => expect(screen.getByText('Maintenance standard')).toBeInTheDocument())
 
     await userEvent.click(screen.getByRole('tab', { name: /Options/ }))
-    expect(await screen.findByText('Supervision avancée')).toBeInTheDocument()
+    // « Supervision avancée » apparaît à la fois dans le tableau des add-ons
+    // (colonne Nom) et dans celui des rattachements (colonne Add-on, qui
+    // résout le libellé du même add-on) — deux affichages légitimes, donc on
+    // cible précisément le tableau des add-ons du catalogue (le premier).
+    const addonsTable = (await screen.findAllByRole('table'))[0]
+    expect(within(addonsTable).getByText('Supervision avancée')).toBeInTheDocument()
     expect(screen.getByText(/Contrat #7/)).toBeInTheDocument()
 
     await userEvent.click(screen.getByRole('tab', { name: /Paliers/ }))

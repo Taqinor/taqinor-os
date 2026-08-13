@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, cleanup, waitFor } from '@testing-library/react'
+import { render, screen, cleanup, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 
 /* PACT54 — l'historique de la file de transmission DGI (NTMAR7) était complet
@@ -35,9 +35,13 @@ describe('TransmissionsDGIPage (PACT54)', () => {
   it('liste les transmissions avec leur statut', async () => {
     render(<TransmissionsDGIPage />)
     await waitFor(() => expect(einvoiceApi.transmissions).toHaveBeenCalled())
-    expect(await screen.findByText('#12')).toBeInTheDocument()
-    expect(screen.getByText('En attente')).toBeInTheDocument()
-    expect(screen.getByText('Rejeté')).toBeInTheDocument()
+    // « En attente » est aussi le libellé du filtre Segmented au-dessus du
+    // tableau : on scope l'assertion de statut à la ligne concernée (repérée
+    // par son numéro d'e-facture, unique) plutôt que sur le texte brut.
+    const ligne12 = (await screen.findByText('#12')).closest('tr')
+    const ligne13 = screen.getByText('#13').closest('tr')
+    expect(within(ligne12).getByText('En attente')).toBeInTheDocument()
+    expect(within(ligne13).getByText('Rejeté')).toBeInTheDocument()
   })
 
   it('rend la réponse DGI en texte lisible, jamais un objet brut', async () => {

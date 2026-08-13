@@ -69,7 +69,13 @@ export const AE_HOOKS = {
     bandPrefix: 'ae-exp-band-', // + id de bras — bande de crédibilité
     decisions: 'ae-exp-decisions',
     decision: 'ae-exp-decision',
-    decisionFilter: 'ae-exp-decision-filter', // filtre par phase
+    // RETIRÉ par PACT110 (13/08/2026) : `ae-exp-decision-filter` était un filtre
+    // « par phase » du journal des décisions — or `DecisionLogSerializer`
+    // n'expose AUCUN champ `phase` (id, experiment, inputs, posteriors,
+    // allocations, summary_fr, action, created_at, updated_at). Le contrôle ne
+    // pouvait donc rien filtrer : c'est exactement la classe de défaut que
+    // PACT110 corrige. Ne pas le réintroduire sans que le serveur renvoie
+    // d'abord la phase de chaque décision.
   },
 
   // Plan de vol (ENG40) — écran-amiral : compose + préflight ADSENG38.

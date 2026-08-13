@@ -12,11 +12,18 @@ import { AE_HOOKS } from './hooks'
 expect.extend(axeMatchers)
 
 const mocks = vi.hoisted(() => ({
-  // Experiments (ENG12).
+  // Experiments (ENG12/PACT110 — bras RÉELS + DecisionLog réel, séparés de
+  // GET experiences/<id>/ depuis le recâblage : `arms` et `allDecisions` sont
+  // de NOUVEAUX appels que ExperimentsScreen ne faisait pas avant PACT110).
   expList: vi.fn(),
   expGet: vi.fn(),
-  expDecisions: vi.fn(),
-  // FlightPlan (ENG28/38).
+  expDecisionLog: vi.fn(),
+  expArms: vi.fn(),
+  expAllDecisions: vi.fn(),
+  // FlightPlan (ENG28/38, PACT113 — `list` charge le plan persistant le plus
+  // récent au montage, un appel que FlightPlanScreen ne faisait pas avant
+  // PACT113).
+  fpList: vi.fn(),
   templates: vi.fn(),
   backlogArms: vi.fn(),
   preflight: vi.fn(),
@@ -26,8 +33,12 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock('./adsengineApi', () => ({
   default: {
-    experiments: { list: mocks.expList, get: mocks.expGet, decisionLog: mocks.expDecisions },
+    experiments: {
+      list: mocks.expList, get: mocks.expGet, decisionLog: mocks.expDecisionLog,
+      arms: mocks.expArms, allDecisions: mocks.expAllDecisions,
+    },
     flightplan: {
+      list: mocks.fpList,
       templates: mocks.templates, backlogArms: mocks.backlogArms, preflight: mocks.preflight,
     },
     audiences: { engagementPresets: mocks.engagementPresets },
@@ -52,13 +63,26 @@ beforeEach(() => {
   mocks.expGet.mockResolvedValue({ data: {
     id: 3, nom: 'Test créatif', metrique_label: 'Coût par lead', metrique_fmt: 'mad',
     phases: [{ key: 'exploration', label: 'Exploration', statut: 'en_cours', statut_display: 'En cours' }],
-    bras: [
-      { id: 1, nom: 'Bras A', p_best: 0.7, mean: 88, ci_low: 80, ci_high: 96, allocation: 0.6 },
-      { id: 2, nom: 'Bras B', p_best: 0.3, mean: 104, ci_low: 92, ci_high: 120, allocation: 0.4 },
-    ] } })
-  mocks.expDecisions.mockResolvedValue({ data: [
-    { id: 1, phase: 'exploration', decision_fr: 'Exploration à parts égales.', chiffres: { impressions: 4200 } },
+  } })
+  // PACT110 — bras RÉELS (``ExperimentArm``, endpoint ``bras/``) : le posterior
+  // (p_best/budget_mad) n'est plus stocké sur le bras, il est dérivé du
+  // DecisionLog le plus récent ci-dessous (mêmes ``label`` que les allocations).
+  mocks.expArms.mockResolvedValue({ data: [
+    { id: 1, label: 'bras_a', ad_id: 'AD1', is_active: true, experiment: 3 },
+    { id: 2, label: 'bras_b', ad_id: 'AD2', is_active: true, experiment: 3 },
   ] })
+  // PACT110 — DecisionLog RÉEL (``DecisionLogSerializer``) : ``summary_fr`` (pas
+  // ``decision_fr``) + ``allocations.prob_best``/``budget_mad`` indexées par
+  // ``label`` de bras (pas un champ ``chiffres`` synthétique).
+  mocks.expDecisionLog.mockResolvedValue({ data: [
+    { id: 1, experiment: 3, summary_fr: 'Exploration à parts égales.', created_at: '2026-08-01T10:00:00Z',
+      allocations: { budget_mad: { bras_a: 120, bras_b: 80 }, prob_best: { bras_a: 0.7, bras_b: 0.3 } } },
+  ] })
+  // PACT110 — journal des décisions toutes expériences confondues : aucune
+  // décision inter-expériences dans ce fixture (vue jamais construite avant).
+  mocks.expAllDecisions.mockResolvedValue({ data: [] })
+  // PACT113 — aucun plan de vol déjà enregistré pour cette société.
+  mocks.fpList.mockResolvedValue({ data: [] })
   mocks.templates.mockResolvedValue({ data: [
     { key: 'lancement', nom: 'Lancement 6 mois', phases: [
       { key: 'amorce', label: 'Amorçage', duree_mois: 1 } ] },
@@ -96,7 +120,9 @@ describe('ENG46 — contrat de hooks ae-* des écrans P7', () => {
     expect(screen.getByTestId(AE_HOOKS.experiments.root)).toBeInTheDocument()
     expect(screen.getByTestId(AE_HOOKS.experiments.phases)).toBeInTheDocument()
     expect(screen.getByTestId(AE_HOOKS.experiments.decisions)).toBeInTheDocument()
-    expect(screen.getByTestId(AE_HOOKS.experiments.decisionFilter)).toBeInTheDocument()
+    // `decisionFilter` retiré par PACT110 : il filtrait sur une phase que
+    // `DecisionLogSerializer` ne renvoie pas (cf. commentaire dans hooks.js).
+    expect(screen.queryByTestId('ae-exp-decision-filter')).toBeNull()
     expect(screen.getByTestId(`${AE_HOOKS.experiments.pbestPrefix}1`)).toBeInTheDocument()
   })
 

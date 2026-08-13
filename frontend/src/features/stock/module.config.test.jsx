@@ -34,10 +34,14 @@ describe('stock — module.config (ODY17)', () => {
     const { default: config } = await import('./module.config.jsx')
     const navAchats = config.nav.items.filter((i) => i.group === 'achats').map((i) => i.to).sort()
     const routesAchats = config.routes.filter((r) => r.group === 'achats').map((r) => r.path).sort()
+    // PACT51 a ajouté le registre consolidé des paiements fournisseur au
+    // sous-groupe ACHATS (nav ET routes, même tag `group: 'achats'`) —
+    // liste élargie de 5 à 6 écrans en conséquence.
     const attendu = [
       '/stock/bons-commande-fournisseur',
       '/stock/factures-fournisseur',
       '/stock/modeles-bcf',
+      '/stock/paiements-fournisseur',
       '/stock/receptions-fournisseur',
       '/stock/retours-fournisseur',
     ].sort()

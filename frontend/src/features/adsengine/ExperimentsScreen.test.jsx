@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, waitFor, fireEvent } from '@testing-library/react'
+import { render, screen, waitFor, fireEvent, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 
 /* ENG39/PACT110 — Écran Expérimentations : timeline de phases, bras RÉELS
@@ -162,11 +162,22 @@ describe('ExperimentsScreen (ENG39/PACT110)', () => {
 
   it('rend le DecisionLog avec la phrase FR réelle (summary_fr) et les chiffres réels (allocations)', async () => {
     renderScreen()
-    expect(await screen.findByText(/Bras le plus probable « Créatif A — toiture »/)).toBeInTheDocument()
-    expect(screen.getByText(/Données insuffisantes/)).toBeInTheDocument()
-    expect(screen.getAllByTestId('ae-exp-decision').length).toBe(2)
-    // Les chiffres affichés sont les VRAIS montants/probas de `allocations`.
-    expect(screen.getByText(/Créatif A — toiture — budget MAD\/j/)).toBeInTheDocument()
+    // La décision id=2 (la plus récente de l'expérience 3) apparaît
+    // légitimement DEUX fois à l'écran : dans le journal de l'expérience
+    // sélectionnée (``ae-exp-decisions``) ET dans le journal global toutes
+    // expérimentations (``ae-exp-decisions-all``, ENG39/PACT110). On scope
+    // donc sur le journal de l'expérience sélectionnée, celui que ce test vise.
+    const decisionsSection = await screen.findByTestId('ae-exp-decisions')
+    expect(within(decisionsSection)
+      .getByText(/Bras le plus probable « Créatif A — toiture »/)).toBeInTheDocument()
+    expect(within(decisionsSection).getByText(/Données insuffisantes/)).toBeInTheDocument()
+    expect(within(decisionsSection).getAllByTestId('ae-exp-decision').length).toBe(2)
+    // Les chiffres affichés sont les VRAIS montants/probas de `allocations` —
+    // les DEUX décisions portent un chiffre pour « Créatif A — toiture », donc
+    // on vérifie le montant RÉEL (600) de la décision la plus récente (id=2),
+    // pas seulement la présence du libellé.
+    expect(within(decisionsSection)
+      .getByText(/Créatif A — toiture — budget MAD\/j : 600/)).toBeInTheDocument()
   })
 
   it('affiche le journal des décisions toutes expérimentations (vue jamais construite)', async () => {

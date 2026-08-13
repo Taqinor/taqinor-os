@@ -68,7 +68,9 @@ vi.mock('../../api/marketingApi', () => ({
   },
 }))
 
-import CampagneDetail from './CampagneDetail'
+// Extension `.jsx` obligatoire : `campagneDetail.js` (logique pure, importé plus
+// haut) porte le même nom à la casse près et Vite tente `.js` avant `.jsx`.
+import CampagneDetail from './CampagneDetail.jsx'
 
 const renderScreen = () => render(
   <MemoryRouter initialEntries={['/marketing/campagnes/7']}>

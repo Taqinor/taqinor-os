@@ -93,7 +93,11 @@ describe('TransportScolaire (PACT80)', () => {
   it('affiche les arrêts DANS L’ORDRE du parcours, pas dans celui du serveur',
     async () => {
       afficher()
-      const premier = await screen.findByText('Place Al Massira')
+      // Le nom de l'arrêt et l'heure de passage sont deux nœuds de texte
+      // frères dans le <li> (rendus par deux expressions JSX distinctes) :
+      // on cible celui qui COMMENCE par le nom de l'arrêt, sans exiger un
+      // texte exact qui inclurait l'heure.
+      const premier = await screen.findByText(/^Place Al Massira/)
       const liste = premier.closest('ol')
       const noms = Array.from(liste.querySelectorAll('li')).map((li) => li.textContent)
       expect(noms[0]).toContain('Place Al Massira')
@@ -103,7 +107,11 @@ describe('TransportScolaire (PACT80)', () => {
 
   it('crée un arrêt avec son ordre sur le circuit', async () => {
     afficher()
-    await screen.findByText('Circuit Nord')
+    // « Circuit Nord » apparaît aussi comme <option> dans les deux <select>
+    // de circuit (arrêt et affectation) : on cible explicitement l'élément
+    // de la liste des circuits rendus, seul indicateur fiable que le
+    // chargement initial est terminé.
+    await screen.findByText('Circuit Nord', { selector: 'strong' })
 
     fireEvent.change(screen.getByLabelText(/Circuit de l’arrêt/i),
                      { target: { value: '7' } })
@@ -123,7 +131,9 @@ describe('TransportScolaire (PACT80)', () => {
       data: { id: 5, avertissement: 'Le véhicule du circuit n’est pas opérationnel.' },
     })
     afficher()
-    await screen.findByText('Circuit Nord')
+    // Voir la note plus haut : on vise l'élément de la liste des circuits,
+    // pas l'une des <option> homonymes.
+    await screen.findByText('Circuit Nord', { selector: 'strong' })
 
     fireEvent.change(screen.getByLabelText(/^Élève$/i), { target: { value: '11' } })
     fireEvent.change(screen.getByLabelText(/Circuit de l’élève/i),
@@ -143,7 +153,9 @@ describe('TransportScolaire (PACT80)', () => {
 
   it('n’affiche aucun avertissement quand le véhicule est disponible', async () => {
     afficher()
-    await screen.findByText('Circuit Nord')
+    // Voir la note plus haut : on vise l'élément de la liste des circuits,
+    // pas l'une des <option> homonymes.
+    await screen.findByText('Circuit Nord', { selector: 'strong' })
 
     fireEvent.change(screen.getByLabelText(/^Élève$/i), { target: { value: '11' } })
     fireEvent.change(screen.getByLabelText(/Circuit de l’élève/i),

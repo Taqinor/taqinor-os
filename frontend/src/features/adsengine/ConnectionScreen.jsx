@@ -190,6 +190,7 @@ export default function ConnectionScreen() {
   }, [])
 
   useEffect(() => { load() }, [load])
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement au montage
   useEffect(() => { loadPolicy() }, [loadPolicy])
 
   const setCred = (k) => (e) => setCreds(c => ({ ...c, [k]: e.target.value }))

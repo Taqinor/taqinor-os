@@ -98,6 +98,14 @@ export default function AbonnementsPage() {
         </div>
       </div>
 
+      {/* L'echec de chargement etait CAPTURE mais jamais rendu : le catalogue
+          restait vide sans un mot. Il se dit maintenant a l'ecran. */}
+      {error && (
+        <div role="alert" className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
+          {error}
+        </div>
+      )}
+
       <Tabs defaultValue="plans">
         <TabsList className="flex-wrap">
           <TabsTrigger value="plans">Plans ({plans.length})</TabsTrigger>

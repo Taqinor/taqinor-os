@@ -48,18 +48,24 @@ describe('TypesEntreePonctuelle (PACT95)', () => {
   it('liste les types déjà en base', async () => {
     wrap(<TypesEntreePonctuelle />)
     await waitFor(() => expect(apiGet).toHaveBeenCalledWith('/paie/types-entree-ponctuelle/'))
-    expect(await screen.findByText('POURBOIRE')).toBeInTheDocument()
-    expect(screen.getByText('Pourboire')).toBeInTheDocument()
+    // DataTable rend une vue bureau ET une vue carte mobile (chaque valeur
+    // apparaît donc deux fois dans le DOM) : on scope sur la grille bureau.
+    const grid = await screen.findByRole('grid')
+    expect(within(grid).getByText('POURBOIRE')).toBeInTheDocument()
+    expect(within(grid).getByText('Pourboire')).toBeInTheDocument()
   })
 
   it('crée un nouveau type d’entrée ponctuelle', async () => {
     wrap(<TypesEntreePonctuelle />)
-    await screen.findByText('POURBOIRE')
+    await screen.findByRole('grid')
 
     await userEvent.click(screen.getByRole('button', { name: /Nouveau type/ }))
     const dialog = await screen.findByRole('dialog')
-    await userEvent.type(within(dialog).getByLabelText('Code'), 'REMB-NI')
-    await userEvent.type(within(dialog).getByLabelText('Libellé'), 'Remboursement non imposable')
+    // Le Label `required` ajoute un « * » collé au texte (sans espace) :
+    // même convention regex que le reste du dépôt (cf. RevalorisationsStock,
+    // ConditionnementsProduit…) plutôt qu'un match exact sur « Code ».
+    await userEvent.type(within(dialog).getByLabelText(/^Code/), 'REMB-NI')
+    await userEvent.type(within(dialog).getByLabelText(/^Libellé/), 'Remboursement non imposable')
     await userEvent.click(within(dialog).getByRole('button', { name: 'Créer le type' }))
 
     await waitFor(() => expect(apiPost).toHaveBeenCalledWith('/paie/types-entree-ponctuelle/', {
@@ -77,7 +83,9 @@ describe('TypesEntreePonctuelle (PACT95)', () => {
     await userEvent.click(await screen.findByText('Éditer le type'))
 
     const dialog = await screen.findByRole('dialog')
-    const libelleInput = within(dialog).getByLabelText('Libellé')
+    // Idem : le libellé « Libellé* » (astérisque requis, sans espace) ne
+    // matche pas un texte exact.
+    const libelleInput = within(dialog).getByLabelText(/^Libellé/)
     await userEvent.clear(libelleInput)
     await userEvent.type(libelleInput, 'Pourboire client')
     await userEvent.click(within(dialog).getByRole('button', { name: 'Mettre à jour' }))
@@ -92,7 +100,7 @@ describe('TypesEntreePonctuelle (PACT95)', () => {
 
   it('provisionne le catalogue standard (idempotent, additif)', async () => {
     wrap(<TypesEntreePonctuelle />)
-    await screen.findByText('POURBOIRE')
+    await screen.findByRole('grid')
 
     await userEvent.click(screen.getByRole('button', { name: /Catalogue standard/ }))
 

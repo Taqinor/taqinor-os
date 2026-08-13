@@ -922,7 +922,7 @@ export default function ProduitForm({ produit = null, onClose, onSaved }) {
             fusionnée à la description longue. */}
         {iaDialogOpen && (
           <Dialog open onOpenChange={(o) => { if (!o) setIaDialogOpen(false) }}>
-            <DialogContent className="max-w-lg">
+            <DialogContent className="max-w-lg" showClose={false}>
               <DialogHeader>
                 <DialogTitle>Brouillon de description commerciale</DialogTitle>
                 <DialogDescription>

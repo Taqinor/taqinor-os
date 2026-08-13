@@ -116,6 +116,7 @@ describe('EtatsLieux (PACT77)', () => {
 
   it('édite l’état d’un élément par PATCH — jamais une création directe', async () => {
     renderPage()
+    await waitFor(() => expect(screen.getByText(/LOC-A101/)).toBeInTheDocument())
     fireEvent.change(screen.getByLabelText('Bail'), { target: { value: '3' } })
     fireEvent.click(await screen.findByText(/Entrée — 2026-08-01/))
     await screen.findByText('Salon')
@@ -130,6 +131,7 @@ describe('EtatsLieux (PACT77)', () => {
 
   it('ajoute une photo à un élément (multipart)', async () => {
     renderPage()
+    await waitFor(() => expect(screen.getByText(/LOC-A101/)).toBeInTheDocument())
     fireEvent.change(screen.getByLabelText('Bail'), { target: { value: '3' } })
     fireEvent.click(await screen.findByText(/Entrée — 2026-08-01/))
     await screen.findByText('Salon')
@@ -151,6 +153,7 @@ describe('EtatsLieux (PACT77)', () => {
       return Promise.resolve({ data: [] })
     })
     renderPage()
+    await waitFor(() => expect(screen.getByText(/LOC-A101/)).toBeInTheDocument())
     fireEvent.change(screen.getByLabelText('Bail'), { target: { value: '3' } })
     fireEvent.click(await screen.findByText(/Sortie — 2026-09-01/))
     await screen.findByText('Salon')

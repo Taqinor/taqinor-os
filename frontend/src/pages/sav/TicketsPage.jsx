@@ -44,6 +44,7 @@ import TicketChecklistPanel from './TicketChecklistPanel'
 import TicketAdvancedPanel from './TicketAdvancedPanel'
 import TicketWorksheetPanel from './TicketWorksheetPanel'
 import { groupTicketsByDate } from './ticketCalendarUtils'
+import { crEnTexte } from './crInterventionUtils'
 import { buildCopyTSVAction } from '../../ui/datatable/BulkActionBar'
 import { telHref } from '../../lib/contactLinks'
 import { useIsMobile } from '../../ui/ResponsiveDialog'
@@ -342,23 +343,6 @@ export function TicketPremiereReponseChip({ ticket }) {
        PACT141 sur la fiche lead) — jamais un bouton mort, et jamais un
        téléversement qui échoue en silence : tout autre échec est affiché en
        clair dans un `role="alert"`. */
-
-/** Sections du CR, dans l'ORDRE du serveur (`services.CR_SECTIONS`). */
-export const CR_SECTIONS_FR = [
-  ['diagnostic', 'Diagnostic'],
-  ['travaux', 'Travaux'],
-  ['pieces', 'Pièces'],
-  ['recommandations', 'Recommandations'],
-]
-
-/** Aplatit le CR structuré en un texte FR éditable (sections vides omises). */
-export function crEnTexte(cr) {
-  return CR_SECTIONS_FR
-    .map(([cle, libelle]) => [libelle, String(cr?.[cle] ?? '').trim()])
-    .filter(([, valeur]) => valeur !== '')
-    .map(([libelle, valeur]) => `${libelle} : ${valeur}`)
-    .join('\n')
-}
 
 export function CrVocalMemo({ ticketId, onPrefill }) {
   const [busy, setBusy] = useState(false)

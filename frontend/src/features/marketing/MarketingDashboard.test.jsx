@@ -86,7 +86,9 @@ vi.mock('../../api/marketingApi', () => ({
 }))
 
 import marketingApi from '../../api/marketingApi'
-import MarketingDashboard from './MarketingDashboard'
+// Extension `.jsx` obligatoire : `marketingDashboard.js` (logique pure, importé
+// plus haut) porte le même nom à la casse près et Vite tente `.js` avant `.jsx`.
+import MarketingDashboard from './MarketingDashboard.jsx'
 
 function renderScreen() {
   return render(

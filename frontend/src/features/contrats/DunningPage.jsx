@@ -151,6 +151,7 @@ function JournalContratTab({ contrats }) {
   const [error, setError] = useState(null)
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- vide la liste quand aucun contrat n'est choisi
     if (!contratId) { setEntries([]); return }
     setLoading(true)
     setError(null)

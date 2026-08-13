@@ -38,7 +38,13 @@ const config = {
     // ODY34 — glyphe d'APP unique sur tout le portail (garanti par
     // `lib/apps/appGlyph.test.jsx`) : `Compass` = explorer ses données.
     icon: appGlyph(Compass),
-    accent: 'info',
+    // PACT122 fix — `info` n'est pas une voie `--app-tile-*` déclarée dans
+    // design/tokens.css (voir la liste : brass/warning/destructive/success/
+    // azur/lune/nuit/primary). `accent: 'info'` rendait une tuile SANS fond
+    // (var() invalide) — exactement le piège que `AppIcon.voisinage.test.jsx`
+    // existe pour détecter. `azur` est la voie la plus proche du sens
+    // recherché (explorateur de données = information).
+    accent: 'azur',
     items: [
       {
         to: '/donnees/explorateur',

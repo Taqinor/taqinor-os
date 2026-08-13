@@ -108,6 +108,7 @@ function ArmDailySeries({ armId }) {
 
   useEffect(() => {
     let cancelled = false
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- indicateur de chargement au montage
     setLoading(true)
     adsengineApi.experiments.armStats()
       .then(r => {
@@ -204,8 +205,8 @@ export default function ExperimentsScreen() {
   // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement au montage
   useEffect(() => { load() }, [load])
 
-  // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement au montage
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement au montage
     setAllDecisionsLoading(true)
     adsengineApi.experiments.allDecisions()
       .then(r => setAllDecisions(normalizeDecisionLog(r.data)))

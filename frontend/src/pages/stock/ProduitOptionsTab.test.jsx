@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, waitFor, fireEvent } from '@testing-library/react'
+import { render, screen, waitFor, fireEvent, within } from '@testing-library/react'
 import ProduitOptionsTab from './ProduitOptionsTab.jsx'
 
 /* PACT128 — Options de configuration d'un produit. NTCPQ1 (`apps/cpq`)
@@ -45,8 +45,12 @@ describe('ProduitOptionsTab (PACT128)', () => {
     render(<ProduitOptionsTab produitId={7} />)
 
     await waitFor(() => expect(screen.getByText('Onduleur')).toBeInTheDocument())
-    expect(screen.getByText('Obligatoire')).toBeInTheDocument()
-    expect(screen.getByText('Optionnel')).toBeInTheDocument()
+    // « Obligatoire » est aussi le libellé de la case à cocher du formulaire
+    // d'ajout : on cible le tableau des groupes existants, seul endroit où
+    // le caractère obligatoire/optionnel de CHAQUE groupe est affiché.
+    const tableau = screen.getByRole('table')
+    expect(within(tableau).getByText('Obligatoire')).toBeInTheDocument()
+    expect(within(tableau).getByText('Optionnel')).toBeInTheDocument()
   })
 
   it('ajoute un nouveau groupe d’options pour ce produit', async () => {

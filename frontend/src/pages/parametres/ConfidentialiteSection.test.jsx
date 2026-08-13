@@ -89,10 +89,13 @@ describe('ConfidentialiteSection (XPLT23)', () => {
     renderWithRole('responsable')
     await screen.findByText('client@x.ma')
 
-    await user.type(
-      screen.getByPlaceholderText('Email ou téléphone de la personne concernée'),
-      'nouveau@x.ma',
-    )
+    // Le placeholder « personne concernée » existe aussi dans le bloc
+    // Registre de consentement (PACT119, plus bas dans l'écran) : on prend
+    // celui du bloc DSR, rendu en premier (même convention que le test
+    // « ajoute un consentement… » plus bas, qui prend le dernier des deux).
+    const champsSujet = screen.getAllByPlaceholderText(
+      'Email ou téléphone de la personne concernée')
+    await user.type(champsSujet[0], 'nouveau@x.ma')
     await user.click(screen.getByRole('button', { name: 'Soumettre' }))
 
     await waitFor(() => expect(createDsr).toHaveBeenCalledWith({

@@ -33,11 +33,18 @@ import { appGlyph } from '../../lib/apps/appGlyph'
    pas des entrées de sous-menu — ouverts par clic depuis leur liste.
    ========================================================================== */
 
-const MarketingDashboard = lazy(() => import('./MarketingDashboard'))
+/* EXTENSION `.jsx` OBLIGATOIRE sur `MarketingDashboard`/`CampagneDetail` : le
+   dossier contient AUSSI les modules de logique pure `marketingDashboard.js` et
+   `campagneDetail.js`. Sans extension, Vite essaie `.js` AVANT `.jsx`, et sur un
+   système de fichiers insensible à la casse (Windows, macOS par défaut)
+   `./MarketingDashboard` résout vers `marketingDashboard.js` — un module sans
+   export `default` : l'écran se monte alors avec un composant `undefined` et la
+   route plante (« Element type is invalid »). Ne jamais retirer l'extension. */
+const MarketingDashboard = lazy(() => import('./MarketingDashboard.jsx'))
 const MarketingCalendarScreen = lazy(() => import('./MarketingCalendarScreen'))
 // NTMKT2/3 — liste + détail campagnes (drill-down envois, test A/B XMKT14).
 const CampagnesList = lazy(() => import('./CampagnesList'))
-const CampagneDetail = lazy(() => import('./CampagneDetail'))
+const CampagneDetail = lazy(() => import('./CampagneDetail.jsx'))
 // NTMKT4 — segments dynamiques (XMKT6) avec prévisualisation live.
 const SegmentsList = lazy(() => import('./SegmentsList'))
 // NTMKT5 — listes de diffusion + import CSV/XLSX (XMKT5).

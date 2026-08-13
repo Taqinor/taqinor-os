@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeAll, beforeEach } from 'vitest'
-import { render, screen, waitFor, fireEvent } from '@testing-library/react'
+import { render, screen, waitFor, fireEvent, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { ThemeProvider } from '../../design/ThemeProvider.jsx'
 import SterilisationScreen from './SterilisationScreen'
@@ -66,14 +66,18 @@ function renderScreen() {
 describe('SterilisationScreen (PACT114)', () => {
   it('affiche les cycles et leurs instruments', async () => {
     renderScreen()
-    await waitFor(() => expect(screen.getByText('CYC-001')).toBeInTheDocument())
-    expect(screen.getByText('CYC-002')).toBeInTheDocument()
+    // CYC-001 apparaît aussi comme <option> dans le sélecteur de cycle du
+    // formulaire « instruments » : on cible la ligne du tableau des cycles,
+    // désambiguïsée par son data-testid, pas le texte brut.
+    await waitFor(() => expect(screen.getByTestId('cycle-1')).toBeInTheDocument())
+    expect(within(screen.getByTestId('cycle-1')).getByText('CYC-001')).toBeInTheDocument()
+    expect(within(screen.getByTestId('cycle-2')).getByText('CYC-002')).toBeInTheDocument()
     expect(screen.getByText('PINCE-01')).toBeInTheDocument()
   })
 
   it('crée un nouveau cycle de stérilisation', async () => {
     renderScreen()
-    await waitFor(() => expect(screen.getByText('CYC-001')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByTestId('cycle-1')).toBeInTheDocument())
 
     fireEvent.change(screen.getByLabelText('Numéro de cycle'), { target: { value: 'CYC-003' } })
     fireEvent.change(screen.getByLabelText('Date du cycle'), { target: { value: '2026-08-10T10:00' } })
@@ -86,7 +90,7 @@ describe('SterilisationScreen (PACT114)', () => {
 
   it('un cycle non conforme affiche EXACTEMENT les patients renvoyés par le serveur (aucun recalcul client)', async () => {
     renderScreen()
-    await waitFor(() => expect(screen.getByText('CYC-002')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByTestId('cycle-2')).toBeInTheDocument())
 
     const ligneNonConforme = screen.getByTestId('cycle-2')
     fireEvent.click(
