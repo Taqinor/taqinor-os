@@ -137,7 +137,7 @@ a focused test, calling the EXISTING backend endpoint.
 - [x] (déjà présent) FE-XRH10/13 — kiosk fullscreen page (device-token) + device-token admin + CSV pointeuse import in `Temps.jsx`. (@lane: frontend/rh)
 - [x] FE-XRH11-12 — pointage correction history + geofence flag in `Temps.jsx`. (@lane: frontend/rh)
 - [x] FE-XRH15-16/ZRH10 — competence gap-analysis/evolution + salary-band compa-ratio (gated) + internal candidates. (@lane: frontend/rh)
-- [ ] FE-XRH29/27/31 — dependents/benefits tab, org-tree, attrition-risk widget. (@lane: frontend/rh)
+- [x] FE-XRH29/27/31 — dependents/benefits tab, org-tree, attrition-risk widget. (@lane: frontend/rh)
 - [ ] FE-ZRH3-6/11/18 — congé/absence/turnover/présence reports in `Conges.jsx`/`RhCockpit.jsx`/`Temps.jsx`; jours-bloqués mgmt. (@lane: frontend/rh)
 - [ ] FE-ZRH14-17 — reconnaissance badges, career timeline, weekly location, skills search on `EmployeDetail.jsx`. (@lane: frontend/rh)
 
@@ -240,6 +240,7 @@ a focused test, calling the EXISTING backend endpoint.
 
 ## DONE LOG
 <!-- one dated line per shipped task -->
+- 2026-08-13 — FE-XRH29/27/31 : onglet « Ayants droit & avantages » (XRH29) dans `EmployeDetail.jsx` et widget « Risque d'attrition — top 5 » (XRH31) dans `RhCockpit.jsx` (+ `RhCockpit.test.jsx`) ; l'organigramme (XRH27) était déjà présent dans `Competences.jsx`.
 - 2026-08-13 — FE-XRH15-16/ZRH10 : panneau « Écarts de compétences » + création de besoin de formation en un clic dans `EmployeDetail.jsx`, vue « Évolution » (ZRH10) dans `Competences.jsx`, dialogue « Candidats internes » sur les ouvertures dans `Recrutement.jsx` ; le compa-ratio (XRH16) lisait des clés inexistantes (`compa_ratio`/`salaire`/`mediane`) — recâblé sur les vraies (`compa_ratio_pct`/`salaire_actuel`/`salaire_min`/`salaire_max`/`statut`).
 - 2026-08-13 — FE-XRH11-12 : action « Historique des corrections » (audit immuable `getCorrectionsPointage`) sur les pointages et colonne géofence « Hors zone » sur les présences chantier, dans `Temps.jsx`.
 - 2026-08-13 — FE-XRH17-23/ZRH7-9 (déjà présent) : l'ATS complet est câblé dans `Recrutement.jsx` (entretiens, gabarits d'email, promesses d'embauche + PDF, vivier, statistiques, `parserCv`, modèles d'évaluation, feedback 360°).

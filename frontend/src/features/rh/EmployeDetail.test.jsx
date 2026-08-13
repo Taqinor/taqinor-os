@@ -37,6 +37,9 @@ vi.mock('../../api/rhApi', () => {
       // XRH15 — écarts de compétences (analyse d'écart requis-vs-actuel).
       getEcartCompetences: vi.fn(empty),
       creerBesoinDepuisEcart: vi.fn(() => Promise.resolve({ data: {} })),
+      // XRH29 — ayants droit & avantages sociaux.
+      getAyantsDroit: vi.fn(empty),
+      getAvantagesSociaux: vi.fn(empty),
       getDepartements: vi.fn(empty),
       sortirEmploye: vi.fn(() => Promise.resolve({ data: {} })),
       updateEmploye: vi.fn(),
@@ -182,5 +185,24 @@ describe('EmployeDetail — offboarding (YHIRE2/ZRH12)', () => {
     await waitFor(() => expect(rhApi.creerBesoinDepuisEcart).toHaveBeenCalledWith(
       '7', { competence: 4 },
     ))
+  })
+  it('affiche les ayants droit et les avantages sociaux (XRH29)', async () => {
+    const { default: userEvent } = await import('@testing-library/user-event')
+    rhApi.getEmploye.mockResolvedValueOnce({
+      data: { id: 7, nom: 'Bennani', prenom: 'Youssef', matricule: 'M007', statut: 'actif' },
+    })
+    rhApi.getAyantsDroit.mockResolvedValueOnce({
+      data: [{ id: 1, nom: 'Bennani Salma', lien: 'conjoint', lien_display: 'Conjoint(e)', couvert_amo: true }],
+    })
+    rhApi.getAvantagesSociaux.mockResolvedValueOnce({
+      data: [{ id: 2, type: 'mutuelle', type_display: 'Mutuelle', organisme: 'CNIA', date_adhesion: '2025-01-01' }],
+    })
+    renderDetail()
+    await screen.findByRole('heading', { name: 'Bennani Youssef' })
+
+    await waitFor(() => expect(rhApi.getAyantsDroit).toHaveBeenCalledWith({ employe: '7' }))
+    await userEvent.click(screen.getByRole('tab', { name: /Ayants droit & avantages/ }))
+    expect(await screen.findByText('Bennani Salma')).toBeInTheDocument()
+    expect(screen.getByText('Mutuelle')).toBeInTheDocument()
   })
 })

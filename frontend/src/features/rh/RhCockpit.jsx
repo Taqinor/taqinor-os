@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react'
 import { Users, UserCheck, CalendarClock, ShieldAlert, TrendingUp, FileWarning } from 'lucide-react'
 import { ModuleDashboard, EcheanceCenter } from '../../ui/module'
 import { BarArrondie } from '../../ui/charts'
-import { toast } from '../../ui'
+import { Link } from 'react-router-dom'
+import { Badge, toast } from '../../ui'
 import { formatNumber, formatDate } from '../../lib/format'
 import rhApi from '../../api/rhApi'
 import { ECHEANCE_TYPE_LABELS, TYPE_CONTRAT_LABELS } from './constants.jsx'
@@ -17,10 +18,17 @@ import { ECHEANCE_TYPE_LABELS, TYPE_CONTRAT_LABELS } from './constants.jsx'
    Responsable/Administrateur (gaté par la route).
    ========================================================================== */
 
+/* XRH31 — bandes RÉELLES de `core/attrition_risk.py` : faible / moyen / élevé
+   (accentué côté serveur — ne jamais réécrire ces clés). */
+const BAND_LABELS = { faible: 'Faible', moyen: 'Moyen', 'élevé': 'Élevé' }
+const BAND_TONES = { faible: 'success', moyen: 'warning', 'élevé': 'danger' }
+
 export default function RhCockpit() {
   const [cockpit, setCockpit] = useState(null)
   const [echeances, setEcheances] = useState([])
   const [hse, setHse] = useState(null)
+  // XRH31 — top employés par risque d'attrition (lecture seule, gaté RH).
+  const [risques, setRisques] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
 
@@ -48,6 +56,13 @@ export default function RhCockpit() {
         .finally(() => { if (vivant) setLoading(false) })
     }
     charger()
+    // XRH31 — non bloquant : le cockpit reste utilisable si le score échoue.
+    rhApi.getTopRisqueAttrition({ limite: 5 })
+      .then((res) => {
+        if (!vivant) return
+        setRisques(Array.isArray(res.data) ? res.data : (res.data?.results ?? []))
+      })
+      .catch(() => { /* widget masqué */ })
     return () => { vivant = false }
   }, [])
 
@@ -166,6 +181,29 @@ export default function RhCockpit() {
           <div className="flex flex-col gap-6">
             {hseStats.length > 0 && (
               <ModuleDashboard stats={hseStats} />
+            )}
+            {/* XRH31 — top des employés par risque d'attrition (scorer serveur). */}
+            {risques.length > 0 && (
+              <section className="rounded-lg border border-border bg-card p-4">
+                <h3 className="mb-3 text-sm font-medium">Risque d’attrition — top 5</h3>
+                <ul className="flex flex-col gap-2">
+                  {risques.map((r) => (
+                    <li key={r.employe_id} className="flex items-center justify-between gap-3 text-sm">
+                      <Link className="link-blue truncate" to={`/rh/employes/${r.employe_id}`}>
+                        {r.employe_nom}
+                      </Link>
+                      <span className="flex shrink-0 items-center gap-2">
+                        <span className="text-muted-foreground">
+                          {formatNumber(r.score ?? 0, { decimals: 0 })}/100
+                        </span>
+                        <Badge tone={BAND_TONES[r.band] ?? 'neutral'}>
+                          {BAND_LABELS[r.band] ?? r.band}
+                        </Badge>
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </section>
             )}
           </div>
           <EcheanceCenter

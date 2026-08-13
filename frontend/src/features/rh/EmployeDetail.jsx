@@ -76,6 +76,9 @@ export default function EmployeDetail() {
   const [compaRatio, setCompaRatio] = useState(null)
   // XRH15 — écarts de compétences requis-vs-actuel du poste de référence.
   const [ecarts, setEcarts] = useState([])
+  // XRH29 — ayants droit (personnes à charge) + avantages sociaux.
+  const [ayantsDroit, setAyantsDroit] = useState([])
+  const [avantages, setAvantages] = useState([])
   const [habilitations, setHabilitations] = useState([])
   const [formation, setFormation] = useState(null)
   const [integration, setIntegration] = useState(null)
@@ -122,6 +125,9 @@ export default function EmployeDetail() {
       rhApi.getAttributionsBadge({ beneficiaire: id }),
       // XRH15 — écarts de compétences (liste vide sans poste de référence).
       rhApi.getEcartCompetences(id),
+      // XRH29 — ayants droit + avantages sociaux du dossier.
+      rhApi.getAyantsDroit({ employe: id }),
+      rhApi.getAvantagesSociaux({ employe: id }),
     ]
     if (canSalaires) {
       calls.push(rhApi.getRemunerations({ employe: id }))
@@ -131,9 +137,11 @@ export default function EmployeDetail() {
       if (!vivant) return
       const [
         docRes, habRes, formRes, intRes, chatRes, badgeRes, ecartRes,
-        remRes, compaRes,
+        ayantsRes, avantagesRes, remRes, compaRes,
       ] = results
       if (ecartRes.status === 'fulfilled') setEcarts(unwrap(ecartRes.value.data))
+      if (ayantsRes.status === 'fulfilled') setAyantsDroit(unwrap(ayantsRes.value.data))
+      if (avantagesRes.status === 'fulfilled') setAvantages(unwrap(avantagesRes.value.data))
       if (docRes.status === 'fulfilled') setDocuments(unwrap(docRes.value.data))
       if (habRes.status === 'fulfilled') setHabilitations(unwrap(habRes.value.data))
       if (formRes.status === 'fulfilled') setFormation(formRes.value.data)
@@ -470,6 +478,55 @@ export default function EmployeDetail() {
     </div>
   )
 
+  // XRH29 — ayants droit (personnes à charge) + couverture sociale.
+  const socialTab = (
+    <div className="flex flex-col gap-4">
+      <div className="flex flex-col gap-2">
+        <p className="text-sm font-medium">Ayants droit</p>
+        <Liste
+          rows={ayantsDroit}
+          loading={subLoading}
+          empty="Aucun ayant droit déclaré."
+          renderRow={(a) => (
+            <div className="flex items-center justify-between gap-3">
+              <div className="min-w-0">
+                <p className="font-medium">{a.nom}</p>
+                <p className="truncate text-xs text-muted-foreground">
+                  {a.lien_display || a.lien || '—'}
+                  {a.date_naissance ? ` · né(e) le ${formatDate(a.date_naissance)}` : ''}
+                </p>
+              </div>
+              <div className="flex shrink-0 gap-1">
+                {a.couvert_amo && <Badge tone="success">AMO</Badge>}
+                {a.couvert_mutuelle && <Badge tone="info">Mutuelle</Badge>}
+              </div>
+            </div>
+          )}
+        />
+      </div>
+      <div className="flex flex-col gap-2">
+        <p className="text-sm font-medium">Avantages sociaux</p>
+        <Liste
+          rows={avantages}
+          loading={subLoading}
+          empty="Aucun avantage social enregistré."
+          renderRow={(av) => (
+            <div className="flex items-center justify-between gap-3">
+              <div className="min-w-0">
+                <p className="font-medium">{av.type_display || av.type || '—'}</p>
+                <p className="truncate text-xs text-muted-foreground">
+                  {av.organisme || '—'}
+                  {av.date_adhesion ? ` · depuis le ${formatDate(av.date_adhesion)}` : ''}
+                  {av.date_fin ? ` · fin le ${formatDate(av.date_fin)}` : ''}
+                </p>
+              </div>
+            </div>
+          )}
+        />
+      </div>
+    </div>
+  )
+
   const remunerationTab = (
     <div className="flex flex-col gap-4">
       {/* XRH16 — compa-ratio (salaire vs bande du poste), donnée paie gatée. */}
@@ -527,6 +584,8 @@ export default function EmployeDetail() {
     { value: 'habilitations', label: 'Habilitations', content: habilitationsTab, count: habilitations.length },
     { value: 'formations', label: 'Formations', content: formationsTab, count: formationsRows.length },
     { value: 'integration', label: 'Intégration', content: integrationTab, count: integrationLignes.length },
+    // XRH29 — ayants droit & couverture sociale (non sensible paie).
+    { value: 'social', label: 'Ayants droit & avantages', content: socialTab, count: ayantsDroit.length + avantages.length },
     { value: 'badges', label: 'Badges', content: badgesTab, count: badgesRecus.length },
     { value: 'chatter', label: 'Activité', content: chatterTab, count: chatter.length },
   ]
