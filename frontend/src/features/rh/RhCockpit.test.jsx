@@ -15,6 +15,8 @@ vi.mock('../../api/rhApi', () => ({
     getEcheances: vi.fn(() => Promise.resolve({ data: [] })),
     getTableauBordHse: vi.fn(() => Promise.resolve({ data: {} })),
     getTopRisqueAttrition: vi.fn(() => Promise.resolve({ data: [] })),
+    // ZRH11 — rapport de rétention/turnover annuel.
+    getRapportTurnover: vi.fn(() => Promise.resolve({ data: null })),
   },
 }))
 
@@ -54,5 +56,25 @@ describe('RhCockpit — risque d’attrition (XRH31)', () => {
 
     expect((await screen.findAllByText('Cockpit RH')).length).toBeGreaterThan(0)
     expect(screen.queryByText('Risque d’attrition — top 5')).toBeNull()
+  })
+})
+
+describe('RhCockpit — rétention & turnover annuel (ZRH11)', () => {
+  beforeEach(() => vi.clearAllMocks())
+
+  it('affiche le rapport annuel avec les clés du sélecteur serveur', async () => {
+    rhApi.getRapportTurnover.mockResolvedValueOnce({
+      data: {
+        annee: 2026, effectif_debut: 10, effectif_fin: 12,
+        par_mois: [], entrees_total: 4, sorties_total: 2,
+        taux_turnover_pct: 18.2, anciennete_moyenne_ans: 3.4,
+        retention_12m_pct: 75.0,
+      },
+    })
+    renderCockpit()
+
+    expect(await screen.findByText('Rétention & turnover 2026')).toBeInTheDocument()
+    expect(screen.getByText('18,2 %')).toBeInTheDocument()
+    expect(screen.getByText('4 / 2')).toBeInTheDocument()
   })
 })

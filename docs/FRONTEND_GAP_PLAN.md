@@ -138,7 +138,7 @@ a focused test, calling the EXISTING backend endpoint.
 - [x] FE-XRH11-12 — pointage correction history + geofence flag in `Temps.jsx`. (@lane: frontend/rh)
 - [x] FE-XRH15-16/ZRH10 — competence gap-analysis/evolution + salary-band compa-ratio (gated) + internal candidates. (@lane: frontend/rh)
 - [x] FE-XRH29/27/31 — dependents/benefits tab, org-tree, attrition-risk widget. (@lane: frontend/rh)
-- [ ] FE-ZRH3-6/11/18 — congé/absence/turnover/présence reports in `Conges.jsx`/`RhCockpit.jsx`/`Temps.jsx`; jours-bloqués mgmt. (@lane: frontend/rh)
+- [x] FE-ZRH3-6/11/18 — congé/absence/turnover/présence reports in `Conges.jsx`/`RhCockpit.jsx`/`Temps.jsx`; jours-bloqués mgmt. (@lane: frontend/rh)
 - [ ] FE-ZRH14-17 — reconnaissance badges, career timeline, weekly location, skills search on `EmployeDetail.jsx`. (@lane: frontend/rh)
 
 ## Lane `frontend/sav` (XSAV/XCTR/ZSAV/ZMFG round-2 backend-only)
@@ -240,6 +240,7 @@ a focused test, calling the EXISTING backend endpoint.
 
 ## DONE LOG
 <!-- one dated line per shipped task -->
+- 2026-08-13 — FE-ZRH3-6/11/18 : vue « Rapport » congés (ZRH3) dans `Conges.jsx`, onglets « Absents du jour » (ZRH6, avec création d'incident) et « Rapport de présence » (ZRH18) dans `Temps.jsx`, encart « Rétention & turnover » annuel (ZRH11) dans `RhCockpit.jsx` ; wrappers `getRapportConges`/`getAbsentsNonJustifies`/`genererIncidentAbsence`/`getRapportPresence` ajoutés à `rhApi.js` ; la gestion des jours bloqués existait déjà (`JoursBloquesConge.jsx`).
 - 2026-08-13 — FE-XRH29/27/31 : onglet « Ayants droit & avantages » (XRH29) dans `EmployeDetail.jsx` et widget « Risque d'attrition — top 5 » (XRH31) dans `RhCockpit.jsx` (+ `RhCockpit.test.jsx`) ; l'organigramme (XRH27) était déjà présent dans `Competences.jsx`.
 - 2026-08-13 — FE-XRH15-16/ZRH10 : panneau « Écarts de compétences » + création de besoin de formation en un clic dans `EmployeDetail.jsx`, vue « Évolution » (ZRH10) dans `Competences.jsx`, dialogue « Candidats internes » sur les ouvertures dans `Recrutement.jsx` ; le compa-ratio (XRH16) lisait des clés inexistantes (`compa_ratio`/`salaire`/`mediane`) — recâblé sur les vraies (`compa_ratio_pct`/`salaire_actuel`/`salaire_min`/`salaire_max`/`statut`).
 - 2026-08-13 — FE-XRH11-12 : action « Historique des corrections » (audit immuable `getCorrectionsPointage`) sur les pointages et colonne géofence « Hors zone » sur les présences chantier, dans `Temps.jsx`.

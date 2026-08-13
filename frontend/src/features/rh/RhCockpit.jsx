@@ -29,6 +29,8 @@ export default function RhCockpit() {
   const [hse, setHse] = useState(null)
   // XRH31 — top employés par risque d'attrition (lecture seule, gaté RH).
   const [risques, setRisques] = useState([])
+  // ZRH11 — rapport de rétention/turnover ANNUEL (distinct du 12 mois glissants).
+  const [turnoverAnnuel, setTurnoverAnnuel] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
 
@@ -62,6 +64,10 @@ export default function RhCockpit() {
         if (!vivant) return
         setRisques(Array.isArray(res.data) ? res.data : (res.data?.results ?? []))
       })
+      .catch(() => { /* widget masqué */ })
+    // ZRH11 — rapport de rétention annuel, non bloquant lui aussi.
+    rhApi.getRapportTurnover()
+      .then((res) => { if (vivant) setTurnoverAnnuel(res.data) })
       .catch(() => { /* widget masqué */ })
     return () => { vivant = false }
   }, [])
@@ -181,6 +187,36 @@ export default function RhCockpit() {
           <div className="flex flex-col gap-6">
             {hseStats.length > 0 && (
               <ModuleDashboard stats={hseStats} />
+            )}
+            {/* ZRH11 — rétention & turnover de l'année civile. */}
+            {turnoverAnnuel && (
+              <section className="rounded-lg border border-border bg-card p-4">
+                <h3 className="mb-3 text-sm font-medium">
+                  Rétention & turnover {turnoverAnnuel.annee}
+                </h3>
+                <dl className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 text-sm">
+                  <div>
+                    <dt className="text-muted-foreground">Taux de turnover</dt>
+                    <dd className="font-medium">{formatNumber(turnoverAnnuel.taux_turnover_pct ?? 0, { decimals: 1 })} %</dd>
+                  </div>
+                  <div>
+                    <dt className="text-muted-foreground">Entrées / sorties</dt>
+                    <dd className="font-medium">{turnoverAnnuel.entrees_total ?? 0} / {turnoverAnnuel.sorties_total ?? 0}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-muted-foreground">Ancienneté moyenne</dt>
+                    <dd className="font-medium">{formatNumber(turnoverAnnuel.anciennete_moyenne_ans ?? 0, { decimals: 1 })} ans</dd>
+                  </div>
+                  <div>
+                    <dt className="text-muted-foreground">Rétention 12 mois</dt>
+                    <dd className="font-medium">
+                      {turnoverAnnuel.retention_12m_pct != null
+                        ? `${formatNumber(turnoverAnnuel.retention_12m_pct, { decimals: 1 })} %`
+                        : '—'}
+                    </dd>
+                  </div>
+                </dl>
+              </section>
             )}
             {/* XRH31 — top des employés par risque d'attrition (scorer serveur). */}
             {risques.length > 0 && (

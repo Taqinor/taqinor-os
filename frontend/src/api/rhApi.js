@@ -92,6 +92,15 @@ const rhApi = {
     api.get('/rh/employes/localisation-du-jour/', { params }),
   getRapportTurnover: (params) =>
     api.get('/rh/employes/rapport-turnover/', { params }),
+  // ── ZRH3/6/18 — rapports congés, absences non justifiées et présence ──
+  getRapportConges: (params) =>
+    api.get('/rh/demandes-conge/rapport/', { params }),
+  getAbsentsNonJustifies: (params) =>
+    api.get('/rh/pointages/absents-non-justifies/', { params }),
+  genererIncidentAbsence: (data) =>
+    api.post('/rh/pointages/generer-incident-absence/', data ?? {}),
+  getRapportPresence: (params) =>
+    api.get('/rh/pointages/rapport/', { params }),
 
   // Rémunérations (SENSIBLE — permission salaires_voir requise côté serveur).
   getRemunerations: (params) => api.get('/rh/remunerations/', { params }),

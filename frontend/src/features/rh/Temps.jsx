@@ -28,6 +28,9 @@ const VUES = [
   { value: 'presences', label: 'Présences chantier' },
   { value: 'heures_supp', label: 'Heures supp.' },
   { value: 'devices', label: 'Kiosque' },
+  // ZRH6 — absents non justifiés du jour ; ZRH18 — rapport de présence.
+  { value: 'absents', label: 'Absents du jour' },
+  { value: 'rapport', label: 'Rapport de présence' },
 ]
 
 /* PACT19 — colonnes du CSV « Export paie ». La forme vient du serveur
@@ -42,6 +45,15 @@ const COLONNES_EXPORT_PAIE = [
   { id: 'montant_majore', header: 'Montant majoré' },
 ]
 
+/* ZRH18 — période par défaut du rapport de présence : du 1er du mois à
+   aujourd'hui (bornes YYYY-MM-DD attendues par le serveur). */
+function aujourdHui() {
+  return new Date().toISOString().slice(0, 10)
+}
+function debutMois() {
+  return `${aujourdHui().slice(0, 7)}-01`
+}
+
 export default function Temps() {
   const { confirmDelete } = useConfirmDialog()
   const [vue, setVue] = useState('pointages')
@@ -55,6 +67,9 @@ export default function Temps() {
   const [correctionFor, setCorrectionFor] = useState(null)
   // XRH11 — historique immuable des corrections du pointage consulté.
   const [historiqueFor, setHistoriqueFor] = useState(null)
+  // ZRH6 — absents non justifiés du jour ; ZRH18 — rapport de présence.
+  const [absents, setAbsents] = useState([])
+  const [rapport, setRapport] = useState(null)
   const [nouveauToken, setNouveauToken] = useState(null)
   const fileRef = useRef(null)
 
@@ -68,14 +83,18 @@ export default function Temps() {
       rhApi.getPresencesChantier(),
       rhApi.getHeuresSupp(),
       rhApi.getDevicesKiosque(),
+      rhApi.getAbsentsNonJustifies(),
+      rhApi.getRapportPresence({ debut: debutMois(), fin: aujourdHui() }),
     ])
-      .then(([pRes, rRes, prRes, hRes, dRes]) => {
+      .then(([pRes, rRes, prRes, hRes, dRes, aRes, rapRes]) => {
         if (!vivant) return
         setPointages(unwrap(pRes.data))
         setRoster(unwrap(rRes.data))
         setPresences(unwrap(prRes.data))
         setHeuresSupp(unwrap(hRes.data))
         setDevices(unwrap(dRes.data))
+        setAbsents(unwrap(aRes.data))
+        setRapport(rapRes.data)
       })
       .catch(() => {
         if (!vivant) return
@@ -232,6 +251,36 @@ export default function Temps() {
     { id: 'actif', header: 'Actif', width: 100, accessor: (d) => (d.actif ? 'oui' : 'non'), cell: (_v, d) => <Badge tone={d.actif ? 'success' : 'neutral'}>{d.actif ? 'Actif' : 'Révoqué'}</Badge> },
   ], [])
 
+  // ZRH6 — un absent non justifié devient un incident de présence en un clic.
+  const genererIncident = async (a) => {
+    try {
+      await rhApi.genererIncidentAbsence({ employe: a.employe_id })
+      toast.success('Incident d’absence créé.')
+      recharger()
+    } catch (err) {
+      toast.error(err?.response?.data?.detail ?? 'Création impossible.')
+    }
+  }
+
+  const absentColumns = useMemo(() => [
+    { id: 'nom', header: 'Employé', width: 220, accessor: (a) => a.nom || '', cell: (v) => <span className="font-medium">{v || '—'}</span> },
+    { id: 'matricule', header: 'Matricule', width: 140, accessor: (a) => a.matricule || '', cell: (v) => v || '—' },
+  ], [])
+
+  const absentActions = (a) => [
+    { id: 'incident', label: 'Créer un incident d’absence', icon: Ban, onClick: () => genererIncident(a) },
+  ]
+
+  // ZRH18 — colonnes du rapport de présence (clés du sélecteur serveur).
+  const rapportColumns = useMemo(() => [
+    { id: 'nom', header: 'Employé', width: 200, accessor: (r) => r.nom || '', cell: (v) => <span className="font-medium">{v || '—'}</span> },
+    { id: 'jours', header: 'Jours pointés', width: 130, align: 'right', numeric: true, searchable: false, accessor: (r) => Number(r.jours_pointes ?? 0), cell: (v) => v },
+    { id: 'heures', header: 'Heures', width: 110, align: 'right', numeric: true, searchable: false, accessor: (r) => Number(r.heures_totales ?? 0), cell: (v) => `${formatNumber(v, { decimals: 1 })} h` },
+    { id: 'hs', header: 'Heures supp.', width: 130, align: 'right', numeric: true, searchable: false, accessor: (r) => Number(r.heures_supp ?? 0), cell: (v) => formatNumber(v, { decimals: 1 }) },
+    { id: 'absences', header: 'Absences', width: 110, align: 'right', numeric: true, searchable: false, accessor: (r) => Number(r.jours_absence ?? 0), cell: (v) => v },
+    { id: 'taux', header: 'Taux de présence', width: 150, align: 'right', numeric: true, searchable: false, accessor: (r) => Number(r.taux_presence_pct ?? 0), cell: (v) => `${formatNumber(v, { decimals: 1 })} %` },
+  ], [])
+
   const deviceActions = (d) => (d.actif
     ? [{ id: 'revoquer', label: 'Révoquer', icon: Ban, destructive: true, onClick: () => revoquerDevice(d) }]
     : [])
@@ -299,6 +348,10 @@ export default function Temps() {
       actions: heuresSuppActions },
     devices: { title: 'Devices kiosque', columns: deviceColumns, rows: devices, rowActions: deviceActions, exportName: 'devices-kiosque',
       actions: <Button variant="outline" onClick={emettreDevice}><MonitorSmartphone size={15} strokeWidth={1.75} aria-hidden="true" />Émettre un device</Button> },
+    // ZRH6 — absents non justifiés du jour (aucun pointage NI congé validé).
+    absents: { title: 'Absents non justifiés (aujourd’hui)', columns: absentColumns, rows: absents, rowActions: absentActions, exportName: 'absents-non-justifies' },
+    // ZRH18 — rapport de présence & heures supp. du mois en cours.
+    rapport: { title: 'Rapport de présence (mois en cours)', columns: rapportColumns, rows: rapport?.par_employe ?? [], exportName: 'rapport-presence' },
   }[vue]
 
   return (

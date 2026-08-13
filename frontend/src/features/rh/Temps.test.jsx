@@ -24,6 +24,10 @@ vi.mock('../../api/rhApi', () => {
       revoquerDeviceKiosque: vi.fn(),
       updatePointage: vi.fn(),
       getCorrectionsPointage: vi.fn(empty),
+      // ZRH6/ZRH18 — absents non justifiés + rapport de présence.
+      getAbsentsNonJustifies: vi.fn(empty),
+      genererIncidentAbsence: vi.fn(() => Promise.resolve({ data: {} })),
+      getRapportPresence: vi.fn(() => Promise.resolve({ data: { par_employe: [], totaux_departement: [] } })),
     },
   }
 })
@@ -121,5 +125,42 @@ describe('Temps — PACT19 : « Export paie » appelle la route qui existe vraim
     fireEvent.click(screen.getByRole('radio', { name: 'Heures supp.' }))
     fireEvent.click((await screen.findAllByRole('button', { name: /Export paie/ }))[0])
     await waitFor(() => expect(rhApi.exportPaieHeuresSupp).toHaveBeenCalled())
+  })
+})
+
+describe('Temps — ZRH6/ZRH18 : absents non justifiés & rapport de présence', () => {
+  beforeEach(() => vi.clearAllMocks())
+
+  it('liste les absents du jour et crée un incident (ZRH6)', async () => {
+    rhApi.getAbsentsNonJustifies.mockResolvedValueOnce({
+      data: [{ employe_id: 9, matricule: 'M009', nom: 'Bennani Youssef' }],
+    })
+    renderTemps()
+    await screen.findAllByText('Temps & présence')
+
+    fireEvent.click(screen.getByRole('radio', { name: 'Absents du jour' }))
+    expect((await screen.findAllByText('Bennani Youssef'))[0]).toBeInTheDocument()
+
+    fireEvent.click((await screen.findAllByRole('button', { name: 'Créer un incident d’absence' }))[0])
+    await waitFor(() => expect(rhApi.genererIncidentAbsence).toHaveBeenCalledWith({ employe: 9 }))
+  })
+
+  it('affiche le rapport de présence du mois (ZRH18)', async () => {
+    rhApi.getRapportPresence.mockResolvedValueOnce({
+      data: {
+        par_employe: [{
+          employe_id: 9, nom: 'Bennani Youssef', jours_pointes: 18,
+          heures_totales: 144.0, heures_supp: 6, jours_absence: 1,
+          taux_presence_pct: 90.0,
+        }],
+        totaux_departement: [],
+      },
+    })
+    renderTemps()
+    await screen.findAllByText('Temps & présence')
+
+    fireEvent.click(screen.getByRole('radio', { name: 'Rapport de présence' }))
+    expect((await screen.findAllByText('Bennani Youssef'))[0]).toBeInTheDocument()
+    expect(screen.getAllByText('90,0 %').length).toBeGreaterThan(0)
   })
 })
