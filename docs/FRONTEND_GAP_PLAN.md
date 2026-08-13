@@ -76,18 +76,18 @@ a focused test, calling the EXISTING backend endpoint.
 - [x] FE-XQHS23-27 — NCR-from-SAV action, MOC screen, IA-assist buttons, veille réglementaire list, bilingual causerie PDF button; add matching `qhseApi` entries. (@lane: frontend/qhse) — MOC/IA/veille/causerie PDF déjà présents ; le pont ticket SAV → NCR livré le 2026-08-13.
 
 ## Lane `frontend/ged` (XGED/ZGED — incl. the flagship e-sign ceremony)
-- [ ] FE-XGED1 — **CRITICAL** public signing ceremony pages: React routes `/ged/signature/:token` + `/ged/signataire/:token` (no-auth) consuming the existing public endpoints. (@lane: frontend/ged) (opus)
-- [ ] FE-XGED7 — public deposit page for `depot/<token>/`. (@lane: frontend/ged)
-- [ ] FE-XGED2-3 — multi-signer sequencing + positioned signature fields in the "Nouvelle demande" dialog (`ApprobationPage.jsx`); add `signataires-demande`/`champs-signature`. (@lane: frontend/ged) (opus)
-- [ ] FE-GED14/XGED16/XGED24 — document preview modal (click a row) + overlay annotations + redaction zones; add `apercu`/`annotations`/`caviarder`. (@lane: frontend/ged)
-- [ ] FE-GED26 — "Corbeille" screen (list/restore/purge); add `corbeille`/`mettre-en-corbeille`/`restaurer-corbeille`/`purger`. (@lane: frontend/ged)
-- [ ] FE-GED16 — check-out/check-in lock buttons on document detail. (@lane: frontend/ged)
-- [ ] FE-XGED14 — row checkboxes + bulk action toolbar in `GedNavigator.jsx` → `operations-lot`. (@lane: frontend/ged)
-- [ ] FE-XGED15 — document detail drawer with timeline/chatter/@mentions; add `planifier`/`timeline`. (@lane: frontend/ged)
-- [ ] FE-XGED8/10/13/17 — folder checklist, split/merge UI, OCR validation queue, version-compare screen. (@lane: frontend/ged)
-- [ ] FE-XGED19-23 — rule-builder screens (folder auto-actions, approval routing, metadata ACL), effective-access panel, disposition-review gate. (@lane: frontend/ged)
-- [ ] FE-XGED26-27/ZGED3 — analytics dashboard cards, bulk signature-request CSV upload, signature kanban. (@lane: frontend/ged)
-- [ ] FE-ZGED7-13 — favorites/recents sidebar + saved searches; add `mes-favoris`/`mes-recents`/`vues`. (@lane: frontend/ged)
+- [x] FE-XGED1 — **CRITICAL** public signing ceremony pages: React routes `/ged/signature/:token` + `/ged/signataire/:token` (no-auth) consuming the existing public endpoints. (@lane: frontend/ged) (opus) (déjà présent)
+- [x] FE-XGED7 — public deposit page for `depot/<token>/`. (@lane: frontend/ged) (déjà présent)
+- [x] FE-XGED2-3 — multi-signer sequencing + positioned signature fields in the "Nouvelle demande" dialog (`ApprobationPage.jsx`); add `signataires-demande`/`champs-signature`. (@lane: frontend/ged) (opus) (déjà présent)
+- [x] FE-GED14/XGED16/XGED24 — document preview modal (click a row) + overlay annotations + redaction zones; add `apercu`/`annotations`/`caviarder`. (@lane: frontend/ged)
+- [x] FE-GED26 — "Corbeille" screen (list/restore/purge); add `corbeille`/`mettre-en-corbeille`/`restaurer-corbeille`/`purger`. (@lane: frontend/ged) (déjà présent)
+- [x] FE-GED16 — check-out/check-in lock buttons on document detail. (@lane: frontend/ged) (déjà présent)
+- [x] FE-XGED14 — row checkboxes + bulk action toolbar in `GedNavigator.jsx` → `operations-lot`. (@lane: frontend/ged) (déjà présent)
+- [x] FE-XGED15 — document detail drawer with timeline/chatter/@mentions; add `planifier`/`timeline`. (@lane: frontend/ged)
+- [x] FE-XGED8/10/13/17 — folder checklist, split/merge UI, OCR validation queue, version-compare screen. (@lane: frontend/ged)
+- [x] FE-XGED19-23 — rule-builder screens (folder auto-actions, approval routing, metadata ACL), effective-access panel, disposition-review gate. (@lane: frontend/ged) (déjà présent)
+- [x] FE-XGED26-27/ZGED3 — analytics dashboard cards, bulk signature-request CSV upload, signature kanban. (@lane: frontend/ged)
+- [x] FE-ZGED7-13 — favorites/recents sidebar + saved searches; add `mes-favoris`/`mes-recents`/`vues`. (@lane: frontend/ged)
 
 ## Lane `frontend/contrats` (CLM lifecycle actions all unwired)
 - [x] FE-CONTRAT16-17 — **CRITICAL** "Signatures" tab + Signer button in `ContratDetail.jsx` (`getSignatures`/`signer` already in `contratsApi.js`). (@lane: frontend/contrats) (déjà présent)
@@ -274,3 +274,4 @@ a focused test, calling the EXISTING backend endpoint.
   BlocInsertPicker/PublicArticlePage, kbApi.js complet), vérifiées sur le vrai code, marquées
   `[x] (déjà présent)`, aucun changement de code.
 - 2026-08-13 — lane frontend/stock: audit du code, aucun écart trouvé — les 7 tâches (FE-XPUR25, FE-ZPUR1/4/6/11, FE-ZPUR3/8, FE-ZPUR10/ZSTK3, FE-ZSTK7, FE-ZSTK6/12, FE-ZPUR9) étaient déjà entièrement câblées (stockApi.js + composants stock/paramètres) ; marquées `[x] (déjà présent)`, aucun fichier de code touché.
+- 2026-08-13 — lane `frontend/ged` drained (12 tasks). Already fully wired on audit (no change needed): FE-XGED1 (public /ged/signature/:token + /ged/signataire/:token routes), FE-XGED7 (public /ged/depot/:token page), FE-XGED2-3 (multi-signataires + champs de signature in ApprobationPage.jsx), FE-GED26 (CorbeillePage.jsx), FE-GED16 (check-out/check-in in GedNavigator.jsx), FE-XGED14 (bulk toolbar/operations-lot), FE-XGED19-23 (ReglesDossierPage/ReglesAclPage/effective-access panel/RetentionPage Dispositions tab). Built: FE-GED14/XGED16/XGED24 (bouton "Caviarder…" + zones de rédaction dans la modale d'aperçu GED14), FE-XGED15 (onglet "Notes" chatter générique/@mentions dans GedDocumentInsights.jsx, timeline déjà présente), FE-XGED8/10/13/17 (scinder/fusionner/comparer les versions — checklist+OCR déjà couverts par ChecklistPage.jsx), FE-XGED26-27/ZGED3 (onglets "Tableau de bord" kanban + "Analytique" dans ApprobationPage.jsx — envoi en masse déjà présent), FE-ZGED7-13 (favoris/récents + vues enregistrées dans GedSearch.jsx). eslint + vitest + vite build verts sur tous les fichiers touchés.
