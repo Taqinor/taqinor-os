@@ -3,6 +3,8 @@
 Pure stdlib (unittest), no Django/DB needed. Run with:
     python -m unittest scripts.tests.test_plan_lanes -v
 """
+import contextlib
+import io
 import sys
 import tempfile
 import unittest
@@ -605,6 +607,185 @@ class ContractPairingGateTests(unittest.TestCase):
         t = self._tasks(tache)[0]
         self.assertNotIn("frontend/src/index.css", t["files"])
         self.assertIn("frontend/src/index.css", t["files_bruts"])
+
+
+class TaskLineGrammarTests(unittest.TestCase):
+    """Les 4 formes de ligne que `_TASK_LIST_RE` rejetait — cas RÉELS du dépôt.
+
+    Une ligne rejetée n'est pas seulement « mal formée » : elle est INVISIBLE
+    au planificateur, donc sa tâche ne peut jamais être construite. Les quatre
+    causes, telles que mesurées :
+
+    (A) identifiant à tiret   — `FE-XFLT4` (docs/FRONTEND_GAP_PLAN.md, 145 tâches) ;
+    (B) lettres/chiffres      — `NTP2P27`, `NTI18N53` (docs/new_tasks_plan.md) ;
+        entrelacés
+    (C) `[BLOCKED: …]` posé   — `NTPLT11` (docs/new_tasks_plan.md:571) ;
+        entre l'id et le tiret
+    (D) crochet imbriqué dans — `VX198` (docs/PLAN2.md:502) ; et une parenthèse
+        le statut                d'annotation entre `]` et l'id (`PACT148`, `EZ17`).
+    """
+
+    # (A) — verbatim de docs/FRONTEND_GAP_PLAN.md (labels raccourcis).
+    A_SIMPLE = ("- [ ] FE-XFLT4 — onglet « Cycle de vie » dans "
+                "`VehiculeDetail.jsx`. (@lane: frontend/flotte)")
+    A_PLAGE = ("- [ ] FE-XFLT1-3 — onglets « Contrats » + « Grand livre ». "
+               "(@lane: frontend/flotte)")
+    A_SLASH = ("- [ ] FE-XFLT7/15/18 — onglet « Analyse des coûts » + tuiles. "
+               "(@lane: frontend/flotte)")
+    A_SANS_CHIFFRE = ("- [ ] FE-notes-frais — écran des notes de frais. "
+                      "(@lane: frontend/compta)")
+    # (B) — verbatim de docs/new_tasks_plan.md.
+    B_NTP2P = ("- [ ] NTP2P27 — **Réception partielle sur commande d'achat** : "
+               "nouveau modèle `stock.ReceptionLigne`. (SCHEMA)")
+    B_NTI18N = ("- [ ] NTI18N53 — **Pluralisation ICU côté écran**. (ROUTINE)")
+    # (C) — docs/new_tasks_plan.md:571, l'annotation posée APRÈS l'identifiant.
+    C_BLOQUEE = ("- [ ] NTPLT11 [BLOCKED: hors périmètre core-lane — migre des "
+                 "abonnés de apps/crm+notifications+publicapi vers "
+                 "subscribe_durable; à faire par les lanes domaine] — "
+                 "**Basculer les effets non-critiques sur l'outbox**. (ARCH)")
+    # Le TÉMOIN de (C) : la même tâche SANS l'annotation doit, elle, passer.
+    C_TEMOIN = ("- [ ] NTPLT11 — **Basculer les effets non-critiques sur "
+                "l'outbox**. (ARCH)")
+    # (D) — docs/PLAN2.md:502 : le statut cite un AUTRE marqueur entre crochets.
+    D_IMBRIQUE = ("- [BLOCKED: dev-dep manquante — `eslint-plugin-jsx-a11y` "
+                  "absent ; la tâche elle-même se marque [GATED si dev-dep à "
+                  "ajouter]] VX198 — **Garde statique jsx-a11y ciblée**.")
+    # (D bis) — docs/PLAN.md:579 / docs/PLAN2.md:890 : parenthèse d'annotation
+    # glissée entre la case et l'identifiant.
+    D_PARENTHESE = ("- [x] (déjà présent — 120/120 vérifiées) PACT148 — "
+                    "**Atteignabilité exigée sur les 120 tâches §E.**")
+    D_PARENTHESE_2 = ("- [x] (déjà présent — origin/main@6773842e) EZ17 — "
+                      "**La gate des trajets.**")
+    # Contrôle NÉGATIF : un mot de prose nu n'est PAS un identifiant. Sans
+    # chiffre ni séparateur, la ligne doit rester rejetée — un faux positif
+    # dans le planificateur est plus grave qu'une tâche en attente.
+    NEGATIF = "- [ ] TODO — revoir cette section avant la prochaine vague."
+
+    def _plan(self, *lignes) -> Path:
+        chemin = Path(tempfile.mkdtemp()) / "PLAN.md"
+        chemin.write_text("## BUILD QUEUE\n\n" + "\n".join(lignes) + "\n",
+                          encoding="utf-8")
+        self.addCleanup(lambda: chemin.unlink(missing_ok=True))
+        return chemin
+
+    def _ids(self, *lignes) -> list[str]:
+        return [t["id"] for t in pl.parse_tasks(self._plan(*lignes))]
+
+    # --- (A) identifiants à tiret ------------------------------------------
+    def test_A_identifiant_a_tiret_est_ordonnancable(self):
+        self.assertEqual(
+            self._ids(self.A_SIMPLE, self.A_PLAGE, self.A_SLASH,
+                      self.A_SANS_CHIFFRE),
+            ["FE-XFLT4", "FE-XFLT1-3", "FE-XFLT7/15/18", "FE-notes-frais"],
+        )
+
+    def test_A_le_prefixe_compose_reste_lisible_par_le_gating(self):
+        # `_TASK_ID_PREFIX_RE` attendait DÉJÀ la forme composée : l'id parsé
+        # doit donc retomber sur la même clé que scripts/plan_progress.py.
+        self.assertEqual(pl._task_prefix(self._ids(self.A_SIMPLE)[0]),
+                         "FE-XFLT")
+
+    def test_A_aucune_ligne_mal_formee(self):
+        self.assertEqual(
+            pl.count_malformed(self._plan(self.A_SIMPLE, self.A_PLAGE,
+                                          self.A_SLASH, self.A_SANS_CHIFFRE)),
+            0,
+        )
+
+    # --- (B) lettres et chiffres entrelacés --------------------------------
+    def test_B_identifiant_alphanumerique_entrelace(self):
+        self.assertEqual(self._ids(self.B_NTP2P, self.B_NTI18N),
+                         ["NTP2P27", "NTI18N53"])
+
+    def test_B_aucune_ligne_mal_formee(self):
+        self.assertEqual(
+            pl.count_malformed(self._plan(self.B_NTP2P, self.B_NTI18N)), 0)
+
+    # --- (C) `[BLOCKED: …]` en ligne ---------------------------------------
+    def test_C_la_ligne_est_lue_et_non_plus_signalee_mal_formee(self):
+        self.assertEqual(pl.count_malformed(self._plan(self.C_BLOQUEE)), 0)
+        m = pl._TASK_LIST_RE.match(self.C_BLOQUEE)
+        self.assertIsNotNone(m)
+        self.assertEqual(m.group("id"), "NTPLT11")
+        self.assertTrue(m.group("inline_status").startswith("BLOCKED:"))
+
+    def test_C_le_BLOCKED_en_ligne_rend_la_tache_BLOQUEE(self):
+        # Le point qui compte : élargir la regex ne doit SURTOUT PAS rendre
+        # ordonnançable une tâche marquée « hors périmètre ». L'annotation
+        # passe par le même chemin que le statut de la case.
+        self.assertEqual(self._ids(self.C_BLOQUEE), [])
+
+    def test_C_sans_l_annotation_la_meme_tache_passe(self):
+        # Le témoin : c'est bien l'annotation qui bloque, pas l'élargissement.
+        self.assertEqual(self._ids(self.C_TEMOIN), ["NTPLT11"])
+
+    def test_C_la_case_BLOCKED_et_l_annotation_en_ligne_sont_equivalentes(self):
+        en_case = "- [BLOCKED: hors périmètre] NTPLT11 — **Outbox**. (ARCH)"
+        self.assertEqual(self._ids(en_case), self._ids(self.C_BLOQUEE))
+
+    def test_C_une_tache_bloquee_ne_masque_pas_ses_voisines(self):
+        self.assertEqual(self._ids(self.B_NTP2P, self.C_BLOQUEE,
+                                   self.B_NTI18N),
+                         ["NTP2P27", "NTI18N53"])
+
+    # --- (D) crochet imbriqué / parenthèse d'annotation ---------------------
+    def test_D_statut_a_crochet_imbrique_est_lu_en_entier(self):
+        m = pl._TASK_LIST_RE.match(self.D_IMBRIQUE)
+        self.assertIsNotNone(m)
+        self.assertEqual(m.group("id"), "VX198")
+        # Le statut doit contenir le marqueur imbriqué EN ENTIER, sinon il est
+        # tronqué au premier `]` et la ligne redevient illisible.
+        self.assertIn("[GATED si dev-dep à ajouter]", m.group("status"))
+
+    def test_D_la_tache_au_statut_BLOCKED_reste_hors_du_planning(self):
+        self.assertEqual(self._ids(self.D_IMBRIQUE), [])
+
+    def test_D_parenthese_d_annotation_entre_la_case_et_l_identifiant(self):
+        for ligne, task_id in ((self.D_PARENTHESE, "PACT148"),
+                               (self.D_PARENTHESE_2, "EZ17")):
+            with self.subTest(ligne=task_id):
+                m = pl._TASK_LIST_RE.match(ligne)
+                self.assertIsNotNone(m)
+                self.assertEqual(m.group("id"), task_id)
+                self.assertEqual(m.group("status"), "x")
+                self.assertIn("déjà présent", m.group("note"))
+
+    def test_D_aucune_ligne_mal_formee(self):
+        self.assertEqual(
+            pl.count_malformed(self._plan(self.D_IMBRIQUE, self.D_PARENTHESE,
+                                          self.D_PARENTHESE_2)),
+            0,
+        )
+
+    # --- contrôle négatif ---------------------------------------------------
+    def test_NEGATIF_un_mot_de_prose_n_est_pas_un_identifiant(self):
+        self.assertIsNone(pl._TASK_LIST_RE.match(self.NEGATIF))
+        journal = io.StringIO()
+        with contextlib.redirect_stderr(journal):
+            ids = self._ids(self.NEGATIF)
+        self.assertEqual(ids, [])
+        # …et elle reste SIGNALÉE, pas avalée en silence.
+        self.assertIn("malformed task line", journal.getvalue())
+        self.assertEqual(pl.count_malformed(self._plan(self.NEGATIF)), 1)
+
+    def test_NEGATIF_autres_formes_de_prose_restent_rejetees(self):
+        for ligne in (
+            "- [ ] Revoir la section — puis relancer la vague.",
+            "- [ ] Multi tenant — vérifier le scope company.",
+            "- [Meta Advertising Standards](https://x.example) — consulté.",
+        ):
+            with self.subTest(ligne=ligne):
+                self.assertIsNone(pl._TASK_LIST_RE.match(ligne))
+
+    # --- non-régression -----------------------------------------------------
+    def test_les_formes_historiques_parsent_toujours(self):
+        self.assertEqual(
+            self._ids("- [ ] N14 — une tâche simple. (ROUTINE)",
+                      "- [ ] **A1** — une tâche en gras. (ROUTINE)",
+                      "- [x] Z9 — une tâche cochée. (ROUTINE)",
+                      "- [BLOCKED: raison] N26 — une tâche bloquée. (ROUTINE)"),
+            ["N14", "A1"],
+        )
 
 
 if __name__ == "__main__":

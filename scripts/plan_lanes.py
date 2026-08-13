@@ -101,13 +101,48 @@ ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_PLAN = ROOT / "docs" / "PLAN.md"
 DEFAULT_BUILD_ORDER = ROOT / "docs" / "BUILD_ORDER.yml"
 
+# --- Task-line grammar ------------------------------------------------------
+# The id shape accepted by BOTH task regexes below. A plan id is a chain of
+# segments joined by ``-``/``/``, the FIRST of which is upper-case:
+#
+#   * ``N14`` / ``PACT148``          -- plain letters-then-digits;
+#   * ``NTP2P27`` / ``NTI18N53``     -- letters and digits interleaved;
+#   * ``FE-XFLT4`` / ``FE-XRH28b``   -- dash-compound (``_TASK_ID_PREFIX_RE``
+#                                       below already expects this shape);
+#   * ``FE-XFLT7/15/18``             -- slash-joined id groups;
+#   * ``FE-notes-frais``             -- dash-compound with no digit at all.
+#
+# The leading look-ahead requires at least ONE digit or ONE ``-``/``/``
+# separator, which is what keeps a bare prose word out: ``- [ ] TODO — …``
+# still fails both regexes and is still reported as a malformed line.
+_TASK_ID_PAT = (
+    r"(?=[A-Z][A-Za-z0-9/-]*(?:\d|[-/]))"
+    r"[A-Z][A-Z0-9]*(?:[-/][A-Za-z0-9]+)*"
+)
+# A checkbox body, tolerating ONE level of nested brackets so a status that
+# quotes another marker parses whole (``[BLOCKED: … la tâche elle-même se
+# marque [GATED si dev-dep à ajouter]]`` — docs/PLAN2.md VX198). A plain
+# ``[^\]]*`` stops at the inner ``]`` and drops the task.
+_STATUS_PAT = r"(?:[^\[\]]|\[[^\[\]]*\])*"
+
 # ``- [ ] N14 — …`` / ``- [x] **A1 — …`` / ``- [BLOCKED: …] N26 — …``
+# Also accepted: a parenthesised note between the box and the id
+# (``- [x] (déjà présent — origin/main@6773842e) EZ17 — …``) and an inline
+# bracketed annotation between the id and the em dash
+# (``- [ ] NTPLT11 [BLOCKED: hors périmètre core-lane …] — …``). The inline
+# annotation is NOT decoration: ``parse_tasks`` feeds it through the very same
+# gate as the checkbox status, so such a task stays out of the schedule.
 _TASK_LIST_RE = re.compile(
-    r"^\s*- \[(?P<status>[^\]]*)\]\s+\*{0,2}(?P<id>[A-Z]+\d+)\b\*{0,2}\s+—\s+(?P<label>.*)$"
+    r"^\s*- \[(?P<status>" + _STATUS_PAT + r")\]"
+    r"(?:\s*\((?P<note>[^()]*)\))?"
+    r"\s+\*{0,2}(?P<id>" + _TASK_ID_PAT + r")\*{0,2}"
+    r"(?:\s+\[(?P<inline_status>[^\[\]]*)\])?"
+    r"\s+—\s+(?P<label>.*)$"
 )
 # ``### T3 — Bulk actions on leads — [x]`` (header task with a trailing box)
 _TASK_HEADER_RE = re.compile(
-    r"^#{2,4}\s+(?P<id>[A-Z]+\d+)\s+—\s+(?P<label>.*?)\s+—\s+\[(?P<status>[^\]]*)\]"
+    r"^#{2,4}\s+(?P<id>" + _TASK_ID_PAT + r")\s+—\s+(?P<label>.*?)\s+—\s+"
+    r"\[(?P<status>" + _STATUS_PAT + r")\]"
 )
 # Any raw checklist-style line, used only to detect lines that LOOK like a
 # task marker but fail to match either regex above (malformed task) so
@@ -876,6 +911,15 @@ def parse_tasks(path: Path) -> list[dict]:
                 )
             continue
         status = m.group("status").strip()
+        # An inline ``[BLOCKED: …]`` annotation sitting between the id and the
+        # em dash (``- [ ] NTPLT11 [BLOCKED: hors périmètre core-lane …] — …``)
+        # IS the task's status — the author just wrote it after the id instead
+        # of inside the box. Fold it into ``status`` so it flows through the
+        # exact same gate below: ``- [ ] X [BLOCKED: …]`` and ``- [BLOCKED: …] X``
+        # are the same task state and neither is ever handed to a build agent.
+        inline_status = (m.groupdict().get("inline_status") or "").strip()
+        if inline_status:
+            status = inline_status
         if status.lower() != "":  # only the truly-open "[ ]" tasks
             continue
         label = m.group("label")
