@@ -27,6 +27,10 @@ import EntiteSwitcher from '../../features/entites/EntiteSwitcher'
 import NotificationBell from './NotificationBell'
 import ChatBell from './ChatBell'
 import BackgroundJobsBell from './BackgroundJobsBell'
+// NTMOB3 — état GLOBAL de la synchro hors-ligne (file d'actions terrain).
+// Rend `null` en ligne avec une file vide : aucune cible permanente de plus
+// dans `.header-right` (VX181), le badge n'apparaît qu'en mode avion / erreur.
+import SyncStatusBadge from '../../features/offlinesync/SyncStatusBadge'
 import Breadcrumbs from './Breadcrumbs'
 import LanguageSwitcher from './LanguageSwitcher'
 // VX9 — Lanceur d'applications (overlay grille). ODY5 — il n'est PLUS branché
@@ -213,6 +217,10 @@ export default function Header({ onMenu }) {
           >
             <Bot size={19} aria-hidden="true" />
           </button>
+          {/* NTMOB3 — « {n} opérations en attente » / « Erreur de synchro » /
+              « Synchronisé » : silencieux tant qu'on est en ligne et la file
+              vide. */}
+          <SyncStatusBadge />
           {/* WIR137 — progression des jobs de fond (exports lourds/imports). */}
           <BackgroundJobsBell />
           <ChatBell />
