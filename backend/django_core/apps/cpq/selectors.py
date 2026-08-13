@@ -7,7 +7,7 @@ from decimal import Decimal
 from core.rules import evaluate_condition_group
 from .models import (
     ContrainteCompatibilite, RegleProduitCPQ, SeuilMargeFamille,
-    EtapeApprobationDevis,
+    EtapeApprobationDevis, ClauseCGV,
 )
 
 
@@ -150,3 +150,39 @@ def devis_marge_sous_seuil(devis):
         if marge_pct < Decimal(str(seuil)):
             return True
     return False
+
+
+def clause_sapplique(clause, context):
+    """NTCPQ11 — Une clause s'applique-t-elle à ce contexte de devis ?
+
+    Deux filtres cumulés : ``type_deal`` (référentiel libre, vide = tous types,
+    comparaison insensible à la casse/aux espaces) puis ``applicable_si``
+    (arbre ET/OU/NON évalué par ``core.rules`` ; vide = toujours vrai)."""
+    if not isinstance(context, dict):
+        context = {}
+    attendu = (clause.type_deal or '').strip().lower()
+    if attendu:
+        recu = str(context.get('type_deal') or '').strip().lower()
+        if recu != attendu:
+            return False
+    arbre = clause.applicable_si
+    if not arbre:
+        return True
+    return evaluate_condition_group(arbre, context)
+
+
+def clauses_applicables(*, company, context):
+    """NTCPQ11 — Clauses/CGV actives de la société qui s'appliquent au contexte.
+
+    Renvoie une liste JSON-safe (ordonnée par ``ordre`` puis ``id``) :
+    ``[{clause_id, nom, corps_texte, type_deal, ordre}, ...]``. C'est cette
+    liste qui est FIGÉE sur ``Devis.clauses_appliquees`` à l'envoi."""
+    clauses = ClauseCGV.objects.filter(
+        company=company, actif=True).order_by('ordre', 'id')
+    return [{
+        'clause_id': c.id,
+        'nom': c.nom,
+        'corps_texte': c.corps_texte,
+        'type_deal': c.type_deal,
+        'ordre': c.ordre,
+    } for c in clauses if clause_sapplique(c, context)]

@@ -229,6 +229,19 @@ class Devis(models.Model):
         related_name='devis_modifies',
     )
 
+    # ── NTCPQ11 — Clauses/CGV dynamiques FIGÉES à l'envoi ──
+    # Snapshot JSON de la liste des clauses (``apps.cpq.ClauseCGV``) applicables
+    # au devis, calculé UNE SEULE FOIS au passage brouillon → envoyé et JAMAIS
+    # recalculé ensuite (éditer une clause n'altère pas un devis déjà envoyé).
+    # NULL / [] = comportement historique strictement inchangé. Lu en LECTURE
+    # SEULE par le quote_engine (aucun nouveau renderer — règle #4).
+    clauses_appliquees = models.JSONField(
+        null=True, blank=True,
+        verbose_name='Clauses/CGV appliquées (figées à l\'envoi)',
+        help_text='Snapshot [{clause_id, nom, corps_texte, type_deal, ordre}] '
+                  'figé au moment de l\'envoi. Jamais recalculé ensuite.',
+    )
+
     # NTADM2 — rattachement OPTIONNEL à une entité intra-tenant (holding /
     # filiale / agence, cf. apps.entites). NULL = « non affecté » : aucun
     # backfill, aucune liste filtrée d'office — le comportement reste

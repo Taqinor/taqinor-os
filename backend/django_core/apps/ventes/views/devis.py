@@ -1612,6 +1612,10 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
         from ..services import verifier_devis_envoyable
         lancer_approbation_devis(devis)
         verifier_devis_envoyable(devis)
+        # NTCPQ11 — l'envoi est autorisé : fige les clauses/CGV dynamiques
+        # (write-once, jamais recalculé après envoi).
+        from ..services import figer_clauses_devis
+        figer_clauses_devis(devis)
 
     def perform_update(self, serializer):
         from rest_framework.exceptions import ValidationError

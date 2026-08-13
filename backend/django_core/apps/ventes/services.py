@@ -1929,6 +1929,61 @@ def verifier_devis_envoyable(devis):
             "l'envoi est bloqué tant qu'elle n'est pas approuvée.")})
 
 
+def contexte_clauses_devis(devis):
+    """NTCPQ11 — Contexte plat servant à évaluer les clauses/CGV dynamiques.
+
+    Clés exposées : ``type_deal`` (= ``mode_installation``), ``montant``
+    (= total TTC), ``total_ht``, ``total_ttc``, ``remise_globale``,
+    ``puissance_kwc``, ``devise``. Aucun prix d'achat / aucune marge (donnée
+    interne — jamais dans un texte destiné au client)."""
+    from decimal import Decimal, InvalidOperation
+
+    etude = devis.etude_params if isinstance(devis.etude_params, dict) else {}
+    try:
+        kwc = float(etude.get('puissance_kwc') or 0)
+    except (TypeError, ValueError):
+        kwc = 0.0
+    try:
+        total_ht = float(devis.total_ht or 0)
+        total_ttc = float(devis.total_ttc or 0)
+    except (TypeError, ValueError, InvalidOperation):
+        total_ht = total_ttc = 0.0
+    return {
+        'type_deal': devis.mode_installation or '',
+        'mode_installation': devis.mode_installation or '',
+        'montant': total_ttc,
+        'total_ht': total_ht,
+        'total_ttc': total_ttc,
+        'remise_globale': float(devis.remise_globale or Decimal('0')),
+        'puissance_kwc': kwc,
+        'devise': devis.devise or 'MAD',
+    }
+
+
+def figer_clauses_devis(devis):
+    """NTCPQ11 — FIGE les clauses/CGV applicables sur le devis (snapshot).
+
+    Appelé au passage brouillon → envoyé. Idempotent et WRITE-ONCE : si
+    ``clauses_appliquees`` porte déjà une valeur (même une liste vide figée),
+    rien n'est recalculé — modifier une clause plus tard n'altère jamais un
+    devis déjà envoyé. Lecture cross-app cpq via import LOCAL (selectors).
+    Ne lève jamais : un incident de configuration ne doit pas bloquer un envoi.
+    Renvoie la liste figée."""
+    if devis.clauses_appliquees is not None:
+        return devis.clauses_appliquees
+    try:
+        from apps.cpq.selectors import clauses_applicables
+        clauses = clauses_applicables(
+            company=devis.company, context=contexte_clauses_devis(devis))
+    except Exception:  # noqa: BLE001 — un envoi ne casse jamais sur les CGV
+        logger.exception(
+            'NTCPQ11 : figeage des clauses ignoré (devis %s)', devis.pk)
+        return None
+    devis.clauses_appliquees = clauses
+    devis.save(update_fields=['clauses_appliquees'])
+    return clauses
+
+
 def mark_devis_sent(*, devis, user=None):
     """U4 — flip a Devis to « envoyé » through the ONE status-change path.
 
@@ -1966,6 +2021,10 @@ def mark_devis_sent(*, devis, user=None):
     # NTCPQ7 — bloque l'envoi tant qu'une étape d'approbation de remise reste
     # en attente (matrice à paliers, remplace/étend le seuil unique T17).
     verifier_devis_envoyable(devis)
+
+    # NTCPQ11 — fige les clauses/CGV dynamiques AVANT le basculement (snapshot
+    # write-once ; jamais recalculé après envoi).
+    figer_clauses_devis(devis)
 
     ancien = devis.statut
     devis.statut = Devis.Statut.ENVOYE

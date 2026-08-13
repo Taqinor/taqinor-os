@@ -507,3 +507,48 @@ class ReponseConfigurateur(models.Model):
 
     def __str__(self):
         return f'{self.session_id}/{self.question_id}={self.valeur}'
+
+
+class ClauseCGV(TenantModel):
+    """NTCPQ11 — Clause / CGV dynamique appliquée selon le type de deal.
+
+    ``applicable_si`` est un arbre de conditions ET/OU/NON évalué par
+    ``core.rules.evaluate_condition_group`` contre le contexte du devis
+    (``type_deal``, ``montant``, ``total_ht``, ``remise_globale``…). Vide =
+    toujours applicable (seul ``type_deal`` filtre alors).
+
+    ``type_deal`` est un référentiel LIBRE (texte) : vide = tous les types.
+    Le snapshot des clauses retenues est figé sur
+    ``ventes.Devis.clauses_appliquees`` au moment de l'envoi, jamais recalculé
+    ensuite.
+
+    ARC1 — hérite de ``core.models.TenantModel``; ``company`` redéclaré à
+    l'identique (related_name explicite)."""
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: purge tenant
+        related_name='cpq_clauses_cgv')
+    nom = models.CharField(max_length=150)
+    corps_texte = models.TextField(
+        blank=True, default='',
+        help_text="Texte de la clause tel qu'il apparaîtra sur le document.")
+    type_deal = models.CharField(
+        max_length=100, blank=True, default='',
+        help_text='Référentiel libre (ex. « industriel »). Vide = tous types.')
+    applicable_si = models.JSONField(
+        default=dict, blank=True,
+        help_text='Arbre de conditions ET/OU/NON (core.rules). Vide = toujours.')
+    ordre = models.PositiveIntegerField(default=0)
+    actif = models.BooleanField(default=True)
+    date_creation = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'Clause / CGV'
+        verbose_name_plural = 'Clauses / CGV'
+        ordering = ['ordre', 'id']
+        indexes = [
+            models.Index(fields=['company', 'actif'],
+                         name='cpq_clause_co_actif'),
+        ]
+
+    def __str__(self):
+        return self.nom
