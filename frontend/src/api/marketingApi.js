@@ -182,6 +182,19 @@ const marketingApi = {
     list: (params) =>
       api.get('/marketing/relances-devis-abandonnes/', { params }),
   },
+
+  // ── PACT106 — Avis clients + routage Google Reviews (FG239) ──
+  avisClients: {
+    ...resource('avis-clients'),
+    // Enregistre note/témoignage reçus (statut sollicité -> reçu).
+    recevoir: (id, data) =>
+      api.post(`/marketing/avis-clients/${id}/recevoir/`, data),
+    // Route vers Google Reviews si GOOGLE_REVIEW_URL est configuré côté
+    // serveur — NO-OP propre sinon (avis renvoyé inchangé, jamais une erreur).
+    pousserGoogle: (id) =>
+      api.post(`/marketing/avis-clients/${id}/pousser_google/`),
+  },
+
 }
 
 export default marketingApi
