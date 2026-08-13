@@ -267,6 +267,37 @@ class DevisVariantesView(APIView):
                         status=status.HTTP_201_CREATED)
 
 
+class FeuilleConfigurationView(APIView):
+    """NTCPQ22 — GET ``cpq/devis/{id}/feuille-configuration/``.
+
+    Export PDF INTERNE (bureau d'études) : configuration technique complète
+    avec prix d'achat et marge par ligne. Réservé aux rôles staff
+    (Directeur / Commercial responsable) et STRICTEMENT distinct du PDF client
+    ``/proposal`` (règle #4) — jamais rendu par ``quote_engine``, jamais nommé
+    « devis » ni « proposition ».
+
+    ``?format=json`` renvoie les mêmes données sans rendre le PDF (usage écran
+    interne / test)."""
+    permission_classes = [IsResponsableOrAdmin]
+
+    def get(self, request, pk):
+        from django.http import HttpResponse
+        from apps.ventes.models import Devis
+        devis = Devis.objects.filter(
+            pk=pk, company=request.user.company).first()
+        if devis is None:
+            return Response({'detail': 'Devis introuvable.'},
+                            status=status.HTTP_404_NOT_FOUND)
+        if request.query_params.get('format') == 'json':
+            return Response(services.donnees_feuille_configuration(devis))
+        pdf = services.generer_feuille_configuration_pdf(devis)
+        reponse = HttpResponse(pdf, content_type='application/pdf')
+        reponse['Content-Disposition'] = (
+            'inline; filename="feuille-configuration-'
+            f'{devis.reference}.pdf"')
+        return reponse
+
+
 class SuggestionsProduitView(APIView):
     """NTCPQ19 — GET ``cpq/suggestions/?produit_id=``.
 

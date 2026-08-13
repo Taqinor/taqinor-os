@@ -102,6 +102,142 @@ def _profondeur_remise(devis):
     return Decimal(str(getattr(devis, 'remise_globale', 0) or 0))
 
 
+def _echapper(texte):
+    """Échappement HTML minimal (la feuille technique est un document INTERNE
+    généré hors gabarit Django)."""
+    from html import escape
+    return escape(str(texte if texte is not None else ''))
+
+
+def donnees_feuille_configuration(devis):
+    """NTCPQ22 — Données de la FEUILLE DE CONFIGURATION technique (INTERNE).
+
+    Document de bureau d'études : il porte volontairement le prix d'achat et la
+    marge par ligne — données INTERNES qui ne doivent JAMAIS apparaître dans un
+    document client. Il est donc généré exclusivement ici (``apps.cpq``), jamais
+    par ``quote_engine`` (réservé au PDF client via ``/proposal`` — règle #4),
+    et n'est jamais nommé « devis » ni « proposition ».
+
+    Renvoie ``{reference, date, mode_installation, lignes, totaux,
+    regles_declenchees, violations}``."""
+    from django.utils import timezone
+    from .selectors import etat_configuration_devis
+
+    lignes = []
+    total_ht = Decimal('0')
+    total_achat = Decimal('0')
+    for ligne in devis.lignes.all().select_related('produit'):
+        if not ligne.compte_dans_totaux:
+            continue
+        qte = Decimal(str(ligne.quantite or 0))
+        pu = Decimal(str(ligne.prix_unitaire or 0))
+        ht = Decimal(str(ligne.total_ht or 0))
+        achat_unitaire = Decimal(
+            str(getattr(ligne.produit, 'prix_achat', None) or 0))
+        achat = achat_unitaire * qte
+        marge = ht - achat
+        marge_pct = ((marge / ht * Decimal('100')).quantize(_CENT, ROUND_HALF_UP)
+                     if ht > 0 else Decimal('0'))
+        total_ht += ht
+        total_achat += achat
+        lignes.append({
+            'designation': ligne.designation,
+            'quantite': qte,
+            'prix_unitaire': pu,
+            'total_ht': ht.quantize(_CENT, ROUND_HALF_UP),
+            'prix_achat': achat_unitaire,
+            'cout_total': achat.quantize(_CENT, ROUND_HALF_UP),
+            'marge': marge.quantize(_CENT, ROUND_HALF_UP),
+            'marge_pct': marge_pct,
+        })
+
+    marge_totale = total_ht - total_achat
+    etat = etat_configuration_devis(devis)
+    return {
+        'reference': devis.reference,
+        'date': timezone.now().date().isoformat(),
+        'mode_installation': devis.mode_installation or '',
+        'lignes': lignes,
+        'totaux': {
+            'total_ht': total_ht.quantize(_CENT, ROUND_HALF_UP),
+            'cout_total': total_achat.quantize(_CENT, ROUND_HALF_UP),
+            'marge': marge_totale.quantize(_CENT, ROUND_HALF_UP),
+            'marge_pct': ((marge_totale / total_ht * Decimal('100')).quantize(
+                _CENT, ROUND_HALF_UP) if total_ht > 0 else Decimal('0')),
+        },
+        'configuration_valide': etat['configuration_valide'],
+        'violations': etat['violations'],
+    }
+
+
+def rendre_feuille_configuration_html(devis):
+    """NTCPQ22 — HTML de la feuille de configuration technique (INTERNE).
+
+    Gabarit dédié à ``apps.cpq`` : aucun appel à ``quote_engine`` (règle #4)."""
+    data = donnees_feuille_configuration(devis)
+    lignes = ''.join(
+        '<tr>'
+        f'<td>{_echapper(li["designation"])}</td>'
+        f'<td class="n">{li["quantite"]}</td>'
+        f'<td class="n">{li["prix_unitaire"]}</td>'
+        f'<td class="n">{li["total_ht"]}</td>'
+        f'<td class="n">{li["prix_achat"]}</td>'
+        f'<td class="n">{li["cout_total"]}</td>'
+        f'<td class="n">{li["marge"]}</td>'
+        f'<td class="n">{li["marge_pct"]} %</td>'
+        '</tr>'
+        for li in data['lignes'])
+    violations = ''.join(
+        f'<li>{_echapper(v["message"])}</li>' for v in data['violations'])
+    bloc_violations = (
+        f'<h2>Points à vérifier</h2><ul>{violations}</ul>' if violations
+        else '<p>Configuration conforme aux règles en vigueur.</p>')
+    t = data['totaux']
+    return f"""<!DOCTYPE html><html lang="fr"><head><meta charset="utf-8">
+<title>Feuille de configuration technique {_echapper(data['reference'])}</title>
+<style>
+ body {{ font-family: Helvetica, Arial, sans-serif; font-size: 10pt; }}
+ h1 {{ font-size: 14pt; margin-bottom: 2mm; }}
+ .interne {{ color: #b00; font-weight: bold; }}
+ table {{ width: 100%; border-collapse: collapse; margin-top: 4mm; }}
+ th, td {{ border: 1px solid #999; padding: 1.5mm; text-align: left; }}
+ td.n, th.n {{ text-align: right; }}
+</style></head><body>
+<h1>Feuille de configuration technique — {_echapper(data['reference'])}</h1>
+<p class="interne">DOCUMENT INTERNE — bureau d'études. Ne pas transmettre au
+client.</p>
+<p>Date : {_echapper(data['date'])} · Marché :
+{_echapper(data['mode_installation'] or 'non précisé')}</p>
+<table>
+<thead><tr><th>Désignation</th><th class="n">Qté</th><th class="n">P.U. HT</th>
+<th class="n">Total HT</th><th class="n">Prix d'achat</th>
+<th class="n">Coût total</th><th class="n">Marge</th>
+<th class="n">Marge %</th></tr></thead>
+<tbody>{lignes}</tbody>
+<tfoot><tr><th colspan="3">Totaux</th><th class="n">{t['total_ht']}</th>
+<th class="n"></th><th class="n">{t['cout_total']}</th>
+<th class="n">{t['marge']}</th><th class="n">{t['marge_pct']} %</th></tr></tfoot>
+</table>
+{bloc_violations}
+</body></html>"""
+
+
+def generer_feuille_configuration_pdf(devis):
+    """NTCPQ22 — Rend la feuille de configuration technique en PDF (INTERNE).
+
+    Import WeasyPrint PARESSEUX (jamais au niveau module). N'écrit rien, ne
+    persiste aucun fichier : le PDF est renvoyé en flux à un utilisateur staff.
+    """
+    from io import BytesIO
+    import weasyprint
+
+    buf = BytesIO()
+    weasyprint.HTML(
+        string=rendre_feuille_configuration_html(devis)).write_pdf(buf)
+    buf.seek(0)
+    return buf.read()
+
+
 def generer_variantes_devis(devis, *, user=None, tiers=None):
     """NTCPQ16 — Génère les variantes d'un devis par SUBSTITUTION de produits.
 

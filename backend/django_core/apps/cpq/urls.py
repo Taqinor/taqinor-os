@@ -9,7 +9,7 @@ from .views import (
     ConfigurateurGenererDevisView, ValiderCompatibiliteView,
     SeuilMargeFamilleViewSet, RegleApprobationRemiseViewSet,
     ClauseCGVViewSet, ProduitEquivalentViewSet, DevisVariantesView,
-    SuggestionsProduitView,
+    SuggestionsProduitView, FeuilleConfigurationView,
 )
 
 router = DefaultRouter()
@@ -36,6 +36,10 @@ urlpatterns = [
     # NTCPQ16 — moteur de génération des variantes d'un devis.
     path('devis/<int:pk>/variantes/', DevisVariantesView.as_view(),
          name='cpq-devis-variantes'),
+    # NTCPQ22 — feuille de configuration technique INTERNE (jamais client).
+    path('devis/<int:pk>/feuille-configuration/',
+         FeuilleConfigurationView.as_view(),
+         name='cpq-feuille-configuration'),
     path('configurateur/demarrer/', ConfigurateurDemarrerView.as_view(),
          name='cpq-configurateur-demarrer'),
     path('configurateur/<uuid:token>/repondre/',
