@@ -71,6 +71,16 @@ const creditApi = {
   createEncoursGaranti: (data) => api.post('/credit/encours-garantis/', data),
   deleteEncoursGaranti: (id) => api.delete(`/credit/encours-garantis/${id}/`),
 
+  // PACT49/NTCRD26 — rapport agrégé des dérogations sur période (délai de
+  // traitement en heures) + export XLSX/CSV aux colonnes STABLES du serveur.
+  getRapportDerogations: (params) =>
+    api.get('/credit/rapport-derogations/', { params }),
+  exportRapportDerogations: (params, format = 'xlsx') =>
+    api.get('/credit/rapport-derogations/', {
+      params: { ...params, export: format },
+      responseType: 'blob',
+    }),
+
   // NTCRD9 — dérogations : demande + décision (approuver/rejeter).
   getDerogations: (params) => api.get('/credit/derogations/', { params }),
   createDerogation: (data) => api.post('/credit/derogations/', data),
