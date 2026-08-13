@@ -72,7 +72,46 @@ def dashboard_public(request, token):
     })
 
 
-class PartageDashboardSerializer(serializers.ModelSerializer):
+class DashboardScopeMixin:
+    """Validation MULTI-TENANT des cibles d'un partage de dashboard.
+
+    ``ModelSerializer`` génère pour ``dashboard`` (et ``utilisateur``) un
+    ``PrimaryKeyRelatedField`` dont le queryset est ``.objects.all()`` — TOUTES
+    sociétés confondues. Forcer ``company`` côté vue (``TenantMixin``) ne
+    protège donc RIEN : la ligne créée porte la société de l'auteur mais peut
+    pointer vers l'objet d'une autre société.
+
+    La validation est posée ICI (serializer) et non dans ``perform_create``
+    parce que : (1) elle couvre aussi la MISE À JOUR (un PATCH peut repointer
+    un lien public existant vers le dashboard d'un autre tenant, chemin qu'un
+    ``perform_create`` laisse ouvert) ; (2) elle produit une erreur de
+    validation DRF standard → **400 explicite par champ**, jamais un 500 ni un
+    échec silencieux ; (3) c'est le motif déjà en place dans `core`
+    (``WorkflowStepDefinitionSerializer.validate_definition``) ; (4) elle est
+    partagée telle quelle par les deux serializers. Tout reste interne à
+    `core` (aucun import d'app métier — contrat import-linter).
+
+    Un superuser PLATEFORME (sans société) n'est pas contraint, exactement
+    comme ``TenantMixin.get_queryset`` le laisse tout voir.
+    """
+
+    def _request_company_id(self):
+        request = self.context.get('request')
+        if request is None:
+            return None
+        return getattr(request.user, 'company_id', None)
+
+    def validate_dashboard(self, value):
+        company_id = self._request_company_id()
+        if (value is not None and company_id
+                and value.company_id != company_id):
+            raise serializers.ValidationError(
+                'Dashboard hors de votre société.')
+        return value
+
+
+class PartageDashboardSerializer(DashboardScopeMixin,
+                                 serializers.ModelSerializer):
     class Meta:
         model = PartageDashboard
         fields = [
@@ -88,8 +127,12 @@ class PartageDashboardViewSet(TenantMixin, viewsets.ModelViewSet):
     Créer génère un jeton (côté modèle) ; révoquer = mettre ``actif=False``
     (kill-switch, jamais de suppression physique tant que non explicitement
     demandée — la ligne DELETE reste disponible via le ModelViewSet standard).
-    Bornée à la société ET au dashboard de la même société (le serializer ne
-    valide pas cross-tenant, on le garde en `perform_create`)."""
+    Bornée à la société : ``company``/``created_by`` sont imposés côté serveur
+    dans ``perform_create`` (jamais lus du corps) ET le ``dashboard`` visé est
+    validé company-scope par le serializer (``DashboardScopeMixin`` → 400) —
+    sans ce second contrôle, un lien PUBLIC créé sous la société A pouvait
+    pointer vers un dashboard de la société B et le servir au monde entier
+    (``dashboard_public`` résout par le SEUL jeton)."""
     serializer_class = PartageDashboardSerializer
     permission_classes = [IsAuthenticated]
     queryset = PartageDashboard.objects.all()
@@ -99,7 +142,8 @@ class PartageDashboardViewSet(TenantMixin, viewsets.ModelViewSet):
             company=self.request.user.company, created_by=self.request.user)
 
 
-class DashboardPartageInterneSerializer(serializers.ModelSerializer):
+class DashboardPartageInterneSerializer(DashboardScopeMixin,
+                                        serializers.ModelSerializer):
     class Meta:
         model = DashboardPartageInterne
         fields = [
@@ -108,10 +152,29 @@ class DashboardPartageInterneSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ['id', 'created_at', 'updated_at']
 
+    def validate_utilisateur(self, value):
+        """Le bénéficiaire doit appartenir à la société de l'auteur.
+
+        Sans ce contrôle une ligne ``company=A`` pouvait donner à un
+        utilisateur de la société B une prise sur un dashboard de A :
+        ``user_can_view_dashboard`` interroge cette table par
+        ``dashboard``/``utilisateur``/``role`` SANS filtre de société."""
+        company_id = self._request_company_id()
+        if (value is not None and company_id
+                and value.company_id != company_id):
+            raise serializers.ValidationError(
+                'Utilisateur hors de votre société.')
+        return value
+
 
 class DashboardPartageInterneViewSet(TenantMixin, viewsets.ModelViewSet):
     """XPLT10 — partage interne fin d'un dashboard (utilisateur/rôle →
-    lecture/édition), bornée à la société."""
+    lecture/édition), bornée à la société.
+
+    ``company`` est imposée côté serveur par ``TenantMixin.perform_create``
+    (ce viewset n'a pas de ``perform_create`` propre) ; le ``dashboard`` visé
+    et l'``utilisateur`` bénéficiaire sont validés company-scope par le
+    serializer (``DashboardScopeMixin`` → 400)."""
     serializer_class = DashboardPartageInterneSerializer
     permission_classes = [IsAuthenticated]
     queryset = DashboardPartageInterne.objects.all()

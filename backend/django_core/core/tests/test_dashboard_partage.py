@@ -9,7 +9,10 @@ Couvre :
   * un utilisateur non-partagé ne voit pas le dashboard interne d'autrui ;
   * un utilisateur partagé (direct ou par rôle) le voit ;
   * mode TV liste société-partagée + partages internes ;
-  * isolation multi-tenant (aucune fuite cross-société).
+  * isolation multi-tenant (aucune fuite cross-société) ;
+  * VIA L'API : un dashboard (ou un utilisateur bénéficiaire) d'une AUTRE
+    société est REFUSÉ par un 400 de validation, à la création comme à la mise
+    à jour, sur les DEUX viewsets (lien public tokenisé + partage interne).
 """
 import datetime
 
@@ -197,3 +200,90 @@ class TestTenantIsolation(DashboardPartageBase):
         self.assertEqual(resp2.status_code, 200)
         ids = [p['id'] for p in resp2.data.get('results', resp2.data)]
         self.assertNotIn(partage.id, ids)
+
+
+class TestCrossTenantCreationRefused(DashboardPartageBase):
+    """Non-régression de la faille inter-sociétés : les cibles d'un partage
+    (``dashboard``, ``utilisateur``) étaient des ``PrimaryKeyRelatedField``
+    validés contre ``.objects.all()`` — toutes sociétés confondues. Forcer
+    ``company`` côté vue ne suffisait pas : la ligne portait la société de
+    l'auteur tout en pointant ailleurs. Tout passe ICI par l'API (jamais par
+    une insertion directe en base) : c'est le chemin exploitable."""
+
+    def _other_company_dashboard(self):
+        return Dashboard.objects.create(
+            company=self.other_company, titre='Confidentiel autre société',
+            layout={'widgets': [{'type': 'kpi', 'valeur': 999}]})
+
+    def test_public_partage_create_rejects_other_company_dashboard(self):
+        """L'exploit : poster l'id d'un dashboard de la société B depuis un
+        compte de la société A créait un lien PUBLIC (résolu par le seul
+        jeton, sans login) servant titre/description/layout de B au monde
+        entier. Doit être un 400 de validation explicite, pas un 500."""
+        other_dash = self._other_company_dashboard()
+        resp = self.api.post('/api/django/core/dashboards-partages/', {
+            'dashboard': other_dash.id,
+        }, format='json')
+        self.assertEqual(resp.status_code, 400, resp.data)
+        self.assertIn('dashboard', resp.data)
+        self.assertFalse(
+            PartageDashboard.objects.filter(dashboard=other_dash).exists())
+
+    def test_public_partage_update_cannot_repoint_to_other_company(self):
+        """Même faille par la porte de derrière : repointer un lien public
+        LÉGITIME existant vers le dashboard d'une autre société."""
+        other_dash = self._other_company_dashboard()
+        partage = PartageDashboard.objects.create(
+            company=self.company, dashboard=self.dashboard,
+            created_by=self.owner)
+        resp = self.api.patch(
+            f'/api/django/core/dashboards-partages/{partage.id}/',
+            {'dashboard': other_dash.id}, format='json')
+        self.assertEqual(resp.status_code, 400, resp.data)
+        self.assertIn('dashboard', resp.data)
+        partage.refresh_from_db()
+        self.assertEqual(partage.dashboard_id, self.dashboard.id)
+
+    def test_partage_interne_create_rejects_other_company_dashboard(self):
+        other_dash = self._other_company_dashboard()
+        resp = self.api.post(
+            '/api/django/core/dashboards-partages-internes/', {
+                'dashboard': other_dash.id,
+                'utilisateur': self.viewer.id,
+            }, format='json')
+        self.assertEqual(resp.status_code, 400, resp.data)
+        self.assertIn('dashboard', resp.data)
+        self.assertFalse(DashboardPartageInterne.objects.filter(
+            dashboard=other_dash).exists())
+
+    def test_partage_interne_create_rejects_other_company_user(self):
+        """Le bénéficiaire aussi : une ligne ``company=A`` donnant à un
+        utilisateur de B une prise sur un dashboard de A (la table est
+        interrogée sans filtre de société par
+        ``user_can_view_dashboard``)."""
+        other_user = User.objects.create_user(
+            username='xplt10_other_user', password='x',
+            company=self.other_company)
+        resp = self.api.post(
+            '/api/django/core/dashboards-partages-internes/', {
+                'dashboard': self.dashboard.id,
+                'utilisateur': other_user.id,
+            }, format='json')
+        self.assertEqual(resp.status_code, 400, resp.data)
+        self.assertIn('utilisateur', resp.data)
+        self.assertFalse(DashboardPartageInterne.objects.filter(
+            utilisateur=other_user).exists())
+
+    def test_partage_interne_same_company_still_created(self):
+        """Contrôle positif : le cas légitime (tout dans la même société)
+        reste un 201, société imposée côté serveur."""
+        resp = self.api.post(
+            '/api/django/core/dashboards-partages-internes/', {
+                'dashboard': self.dashboard.id,
+                'utilisateur': self.viewer.id,
+            }, format='json')
+        self.assertEqual(resp.status_code, 201, resp.data)
+        partage = DashboardPartageInterne.objects.get(id=resp.data['id'])
+        self.assertEqual(partage.company_id, self.company.id)
+        self.assertEqual(partage.dashboard_id, self.dashboard.id)
+        self.assertEqual(partage.utilisateur_id, self.viewer.id)
