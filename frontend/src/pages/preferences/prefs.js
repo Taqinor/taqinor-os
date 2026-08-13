@@ -45,6 +45,11 @@ export const SUNLIGHT_KEY = 'taqinor.sunlight'
 // lisent cette préférence : vignettes photo chargées au tap (`DataSaverThumb`),
 // sondage du chat ralenti (`useChatPolling` × `DATA_SAVER_POLL_FACTOR`) et
 // compression photo maximale forcée (`compressPhotoForUpload` ci-dessous).
+// NTMOB22 — mode « une main » (terrain) : repositionne les actions
+// principales du panneau chantier dans la zone du pouce. Purement CSS
+// (attribut `data-one-hand` sur <html> + bloc dans index.css), propre à cet
+// appareil comme les autres réglages d'affichage.
+export const ONE_HAND_KEY = 'taqinor.oneHand'
 export const DATA_SAVER_KEY = 'taqinor.dataSaver'
 /** Événement émis à chaque bascule : permet aux écrans montés de réagir sans
  *  remontage (localStorage seul n'émet `storage` que pour les AUTRES onglets). */
@@ -314,9 +319,40 @@ export function setSunlightPref(enabled) {
  * `design/theme.js` (`initTheme()`, appelé par `<ThemeProvider>`) — non
  * dupliqué ici.
  */
+// ── NTMOB22 — Mode « une main » ────────────────────────────────────────────
+
+export function getOneHandPref() {
+  const s = storage()
+  if (!s) return false
+  try {
+    return s.getItem(ONE_HAND_KEY) === '1'
+  } catch {
+    return false
+  }
+}
+
+/** Pose (ou retire) l'attribut qui active le bloc CSS « une main ». */
+export function applyOneHand(enabled) {
+  if (typeof document === 'undefined') return
+  const root = document.documentElement
+  if (enabled) root.setAttribute('data-one-hand', 'true')
+  else root.removeAttribute('data-one-hand')
+}
+
+export function setOneHandPref(enabled) {
+  const s = storage()
+  try {
+    s?.setItem(ONE_HAND_KEY, enabled ? '1' : '0')
+  } catch { /* stockage indisponible : appliqué quand même pour la session */ }
+  applyOneHand(enabled)
+  return !!enabled
+}
+
 export function initPreferences() {
   applyReducedMotion(getReducedMotionPref())
   // EZ9 — le mode terrain survit au rechargement (un technicien qui rouvre
   // l'app au soleil ne doit pas le ré-activer à chaque fois).
   applySunlight(getSunlightPref())
+  // NTMOB22 — le mode « une main » survit au rechargement.
+  applyOneHand(getOneHandPref())
 }

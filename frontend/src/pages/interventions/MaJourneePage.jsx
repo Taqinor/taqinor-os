@@ -633,7 +633,9 @@ function InterventionFlowSheet({
             monté (masqué quand inactif par Radix), au lieu de se
             remonter-refetcher à chaque re-visite d'onglet — une app
             backgroundée (appel entrant) ne perd plus la saisie en cours. */}
-        <Tabs value={tab} onValueChange={changeTab} className="p-3">
+        {/* NTMOB22 — `oh-tabs` : en mode « une main », la barre d'onglets
+            passe dans le tiers bas (zone du pouce). Purement CSS. */}
+        <Tabs value={tab} onValueChange={changeTab} className="oh-tabs p-3">
           <TabsList className="flex w-full gap-1 overflow-x-auto" data-testid="mj-tab-rail">
             {FLOW_TABS.map((t) => (
               <TabsTrigger key={t.value} value={t.value} className="shrink-0 flex-col gap-0.5 px-2.5 py-1.5 text-[11px] leading-tight">

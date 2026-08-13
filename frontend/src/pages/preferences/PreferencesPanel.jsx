@@ -37,6 +37,8 @@ import {
   getSunlightPref, setSunlightPref,
   // NTMOB17 — mode « Économie de données » (forfait mobile en tournée).
   getDataSaverPref, setDataSaverPref,
+  // NTMOB22 — mode « une main » (terrain).
+  getOneHandPref, setOneHandPref,
 } from './prefs'
 
 // NTMOB6 — sélecteur de démarrage par rôle : « revenir au dashboard classique
@@ -131,6 +133,12 @@ export default function PreferencesPanel({ open, onOpenChange }) {
   }
 
   const [dataSaver, setDataSaver] = useState(getDataSaverPref)
+  const [oneHand, setOneHand] = useState(getOneHandPref)
+
+  const handleOneHandChange = (checked) => {
+    setOneHand(checked)
+    setOneHandPref(checked)
+  }
 
   const handleDataSaverChange = (checked) => {
     setDataSaver(checked)
@@ -296,6 +304,24 @@ export default function PreferencesPanel({ open, onOpenChange }) {
               Mode économie de données actif
             </div>
           )}
+
+          {/* NTMOB22 — mode « une main » (grand téléphone, terrain). */}
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <label htmlFor="pref-one-hand" className="text-sm font-semibold text-foreground">
+                Mode « une main »
+              </label>
+              <p className="text-xs text-muted-foreground">
+                Sur la checklist chantier, ramène le choix d'étape dans le tiers
+                bas de l'écran, à portée du pouce quand l'autre main est prise.
+              </p>
+            </div>
+            <Switch
+              id="pref-one-hand"
+              checked={oneHand}
+              onCheckedChange={handleOneHandChange}
+            />
+          </div>
 
           {/* NTMOB18 — verrou d'écran local (biométrie de l'appareil). */}
           <AppLockSetting />
