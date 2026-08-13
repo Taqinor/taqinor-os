@@ -700,6 +700,14 @@ document_statut_change = django.dispatch.Signal()
 # Arguments : company, cycle_id, totaux (dict, ex. {'total_depenses': ...}).
 budget_cycle_clos = django.dispatch.Signal()
 
+# NTCRM22 — Émis quand ``crm`` calcule automatiquement la commission due d'un
+# ``DealEnregistre`` APPROUVE, à l'acceptation du devis lié (le récepteur vit
+# dans ``apps.crm.receivers``). Pose le crochet pour qu'un futur module
+# compta/paie crée une facture fournisseur/note de frais SANS que crm importe
+# ce module — aucun abonné requis dans ce lot. Arguments : company, deal_id,
+# apporteur_id, montant (Decimal).
+deal_commission_due = django.dispatch.Signal()
+
 
 # NTADM40 — ``apps.entites`` émet ces 2 événements à la création/désactivation
 # d'une ``Entite`` (jamais de suppression dure). Permet à d'autres apps de

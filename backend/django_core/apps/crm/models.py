@@ -2708,6 +2708,9 @@ class DealEnregistre(models.Model):
         APPROUVE = 'approuve', 'Approuvé'
         REJETE = 'rejete', 'Rejeté'
         EXPIRE = 'expire', 'Expiré'
+        # NTCRM22 — commission calculée automatiquement à l'acceptation du
+        # devis lié, en attente de règlement comptable.
+        A_PAYER = 'a_payer', 'À payer'
 
     company = models.ForeignKey(
         'authentication.Company', on_delete=models.CASCADE,

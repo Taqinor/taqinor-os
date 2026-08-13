@@ -2629,7 +2629,7 @@ class DealEnregistreViewSet(CompanyScopedModelViewSet):
         'company', 'apporteur', 'lead').all()
 
     def get_permissions(self):
-        if self.action in READ_ACTIONS:
+        if self.action in READ_ACTIONS or self.action == 'a_payer':
             return [IsAnyRole()]
         return [IsResponsableOrAdmin()]
 
@@ -2648,3 +2648,9 @@ class DealEnregistreViewSet(CompanyScopedModelViewSet):
         deal.statut = DealEnregistre.Statut.REJETE
         deal.save(update_fields=['statut'])
         return Response(DealEnregistreSerializer(deal).data)
+
+    @action(detail=False, methods=['get'], url_path='a-payer')
+    def a_payer(self, request):
+        """NTCRM22 — liste des commissions À_PAYER, pour le comptable."""
+        qs = self.get_queryset().filter(statut=DealEnregistre.Statut.A_PAYER)
+        return Response(DealEnregistreSerializer(qs, many=True).data)
