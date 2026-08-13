@@ -27,7 +27,7 @@ from .views import (
     ForecastEntryViewSet, PlanCompteViewSet, PlaybookEtapeViewSet,
     PlaybookTacheViewSet, PlaybookViewSet, RevueCompteViewSet,
     forecast_historique_view, forecast_rollup_view, lead_playbook_view,
-    SalleVenteViewSet,
+    SalleVenteViewSet, ApporteurViewSet, DealEnregistreViewSet,
 )
 
 router = DefaultRouter()
@@ -75,6 +75,9 @@ router.register(r'playbook-taches', PlaybookTacheViewSet)
 # ``salles-vente/`` (interne, authentifié) est distinct de la route publique
 # ``salle-vente/<token>/`` déclarée ci-dessous (singulier, tokenisée).
 router.register(r'salles-vente', SalleVenteViewSet, basename='salle-vente')
+# NTCRM20 — Registre des apporteurs d'affaires (Deal Registration).
+router.register(r'apporteurs', ApporteurViewSet, basename='crm-apporteur')
+router.register(r'deals-enregistres', DealEnregistreViewSet, basename='deal-enregistre')
 
 urlpatterns = [
     # Récepteur des leads du site public (secret statique, voir webhooks.py)

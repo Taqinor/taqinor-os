@@ -1,6 +1,8 @@
+from django.core.exceptions import ValidationError as DjangoValidationError
 from rest_framework import serializers
 from .models import (
-    Appointment, Client, ConcurrentPerte, EquipeCommerciale,
+    Apporteur, Appointment, Client, ConcurrentPerte, DealEnregistre,
+    EquipeCommerciale,
     EtapePlanActivite, ForecastEntry, ForecastSnapshot, Lead, LeadActivity,
     LeadPlaybookProgress, MessageTemplate, ObjectifCommercial, Parrainage,
     PlanActivite, PlanCompte, Playbook, PlaybookEtape,
@@ -1225,3 +1227,46 @@ class SalleVenteSerializer(serializers.ModelSerializer):
         if 'mot_de_passe' in validated_data:
             instance.set_password(validated_data.pop('mot_de_passe'))
         return super().update(instance, validated_data)
+
+
+class ApporteurSerializer(serializers.ModelSerializer):
+    """NTCRM20 — apporteur d'affaires. ``company`` posé côté serveur."""
+    company = serializers.HiddenField(default=_CurrentCompanyDefault())
+
+    class Meta:
+        model = Apporteur
+        fields = [
+            'id', 'company', 'nom', 'type_apporteur', 'contact_email',
+            'contact_telephone', 'taux_commission_pct', 'actif', 'rib',
+            'created_at',
+        ]
+        read_only_fields = ['created_at']
+
+
+class DealEnregistreSerializer(serializers.ModelSerializer):
+    """NTCRM20 — deal enregistré par un apporteur. La fenêtre de protection
+    (``clean()`` du modèle) est appliquée via ``full_clean()`` explicite
+    (DRF n'invoque jamais la validation modèle automatiquement)."""
+    company = serializers.HiddenField(default=_CurrentCompanyDefault())
+    apporteur_nom = serializers.CharField(source='apporteur.nom', read_only=True)
+    lead_nom = serializers.CharField(source='lead.nom', read_only=True)
+
+    class Meta:
+        model = DealEnregistre
+        fields = [
+            'id', 'company', 'apporteur', 'apporteur_nom', 'lead', 'lead_nom',
+            'date_enregistrement', 'statut', 'expire_le',
+            'montant_commission_estime', 'montant_commission_du',
+        ]
+        read_only_fields = [
+            'date_enregistrement', 'statut', 'expire_le',
+            'montant_commission_estime', 'montant_commission_du',
+        ]
+
+    def validate(self, attrs):
+        instance = DealEnregistre(**{**attrs, 'pk': getattr(self.instance, 'pk', None)})
+        try:
+            instance.clean()
+        except DjangoValidationError as exc:
+            raise serializers.ValidationError(exc.message_dict if hasattr(exc, 'message_dict') else str(exc))
+        return attrs

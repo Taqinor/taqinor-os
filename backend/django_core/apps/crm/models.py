@@ -2609,3 +2609,143 @@ class SalleVenteVue(models.Model):
 
     def __str__(self):
         return f'Vue salle {self.salle_id} @ {self.created_at:%Y-%m-%d %H:%M}'
+
+
+# ── NTCRM20 — Registre des apporteurs d'affaires (Deal Registration) ───────
+# NOTE DE COUVERTURE (pour l'orchestrateur) : `Partenaire`/
+# `SoumissionLeadPartenaire`/`CommissionPartenaire` (FG234/235, vivant sur
+# `apps.compta.views`/`apps.compta.serializers` — HORS périmètre de cette
+# lane crm-only, jamais touchés ici) couvrent déjà un portail
+# partenaire→lead→commission proche. `Apporteur`/`DealEnregistre` restent
+# des modèles SÉPARÉS (comme demandé explicitement par NTCRM20) parce que la
+# fenêtre de PROTECTION (refus d'un second enregistrement concurrent) n'existe
+# nulle part dans FG234/235 et que les étendre exigerait d'écrire dans
+# `apps.compta` (interdit à cette lane) — un futur run compta/crm conjoint
+# pourra fusionner les deux registres.
+class Apporteur(models.Model):
+    """NTCRM20 — Apporteur d'affaires B2B (partenaire/courtier/installateur
+    indépendant) qui enregistre des deals plutôt que de soumettre des leads
+    (contrairement à `Partenaire`/FG234, orienté soumission de prospects)."""
+    class Type(models.TextChoices):
+        PARTENAIRE_INSTALLATEUR = 'partenaire_installateur', 'Partenaire installateur'
+        COURTIER = 'courtier', 'Courtier'
+        APPORTEUR_INDEPENDANT = 'apporteur_independant', "Apporteur indépendant"
+        AUTRE = 'autre', 'Autre'
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='apporteurs')
+    nom = models.CharField(max_length=200, verbose_name='Nom')
+    type_apporteur = models.CharField(
+        max_length=24, choices=Type.choices, default=Type.AUTRE)
+    contact_email = models.EmailField(blank=True, default='')
+    contact_telephone = models.CharField(max_length=30, blank=True, default='')
+    taux_commission_pct = models.DecimalField(
+        max_digits=5, decimal_places=2, null=True, blank=True,
+        verbose_name='Taux de commission (%)')
+    actif = models.BooleanField(default=True)
+    # RIB optionnel pour versement de la commission — jamais un numéro de
+    # carte/compte tiers, seulement l'identifiant bancaire du versement.
+    rib = models.CharField(max_length=34, blank=True, default='', verbose_name='RIB')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Apporteur d'affaires"
+        verbose_name_plural = "Apporteurs d'affaires"
+        ordering = ['nom']
+
+    def __str__(self):
+        return self.nom
+
+
+DEAL_REGISTRATION_PROTECTION_JOURS = 90
+
+
+def _default_deal_expiry():
+    from datetime import timedelta
+
+    from django.utils import timezone as _timezone
+    return _timezone.now() + timedelta(days=DEAL_REGISTRATION_PROTECTION_JOURS)
+
+
+def _lead_identity_keys(lead):
+    """Clés d'identité d'un lead (email/téléphone normalisés) pour détecter
+    le MÊME prospect enregistré par deux apporteurs différents."""
+    keys = set()
+    if lead.email:
+        keys.add(('email', lead.email.strip().lower()))
+    if lead.telephone:
+        digits = ''.join(ch for ch in lead.telephone if ch.isdigit())
+        if digits:
+            keys.add(('tel', digits[-9:]))
+    if lead.client_id:
+        keys.add(('client', lead.client_id))
+    return keys
+
+
+class DealEnregistre(models.Model):
+    """NTCRM20 — Enregistrement d'un deal par un `Apporteur` sur UN lead.
+
+    Protège l'apporteur contre une réassignation du MÊME prospect par un
+    autre apporteur pendant `expire_le` (`clean()`). `montant_commission_
+    estime` est calculé à l'acceptation du devis lié (NTCRM22)."""
+    class Statut(models.TextChoices):
+        EN_ATTENTE = 'en_attente', 'En attente'
+        APPROUVE = 'approuve', 'Approuvé'
+        REJETE = 'rejete', 'Rejeté'
+        EXPIRE = 'expire', 'Expiré'
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='deals_enregistres')
+    apporteur = models.ForeignKey(
+        Apporteur, on_delete=models.CASCADE, related_name='deals')
+    lead = models.OneToOneField(
+        'crm.Lead', on_delete=models.CASCADE, related_name='deal_enregistre')
+    date_enregistrement = models.DateTimeField(auto_now_add=True)
+    statut = models.CharField(
+        max_length=10, choices=Statut.choices, default=Statut.EN_ATTENTE)
+    expire_le = models.DateTimeField(default=_default_deal_expiry)
+    montant_commission_estime = models.DecimalField(
+        max_digits=14, decimal_places=2, null=True, blank=True)
+    montant_commission_du = models.DecimalField(
+        max_digits=14, decimal_places=2, null=True, blank=True,
+        verbose_name='Commission due (MAD)',
+        help_text='Posé à `À_PAYER` par NTCRM22 (acceptation du devis lié).')
+
+    class Meta:
+        verbose_name = 'Deal enregistré'
+        verbose_name_plural = 'Deals enregistrés'
+        ordering = ['-date_enregistrement']
+
+    def __str__(self):
+        return f'Deal {self.apporteur.nom} — lead {self.lead_id}'
+
+    @property
+    def protection_active(self):
+        from django.utils import timezone as _timezone
+        if self.statut in (self.Statut.REJETE, self.Statut.EXPIRE):
+            return False
+        return self.expire_le is None or self.expire_le > _timezone.now()
+
+    def clean(self):
+        super().clean()
+        from django.core.exceptions import ValidationError
+        if self.lead_id is None or self.company_id is None:
+            return
+        mes_cles = _lead_identity_keys(self.lead)
+        if not mes_cles:
+            return
+        concurrents = (DealEnregistre.objects
+                       .filter(company_id=self.company_id)
+                       .exclude(pk=self.pk)
+                       .exclude(apporteur_id=self.apporteur_id)
+                       .select_related('lead'))
+        for autre in concurrents:
+            if not autre.protection_active:
+                continue
+            if _lead_identity_keys(autre.lead) & mes_cles:
+                raise ValidationError(
+                    'Ce client est déjà enregistré par un autre apporteur '
+                    f'({autre.apporteur.nom}), protégé jusqu\'au '
+                    f'{autre.expire_le:%d/%m/%Y} — enregistrement refusé.')

@@ -10,7 +10,8 @@ from core.viewsets import CompanyScopedModelViewSet
 from apps.core.destroy_mixins import UsageGuardedDestroyMixin
 from authentication.scoping import scope_queryset, scope_client_queryset
 from .models import (
-    Appointment, Client, ConcurrentPerte, EquipeCommerciale,
+    Apporteur, Appointment, Client, ConcurrentPerte, DealEnregistre,
+    EquipeCommerciale,
     ForecastEntry, ForecastSnapshot, Lead, LeadPlaybookProgress, LeadTag,
     MotifPerte, Canal, Parrainage, MessageTemplate, ObjectifCommercial,
     PlanActivite, PlanCompte, Playbook, PlaybookEtape,
@@ -30,6 +31,7 @@ from .serializers import (
     PlaybookSerializer, PlaybookEtapeSerializer, PlaybookTacheSerializer,
     LeadPlaybookProgressSerializer, SavedViewSerializer,
     SalleVenteSerializer, SalleVenteItemSerializer,
+    ApporteurSerializer, DealEnregistreSerializer,
 )
 from apps.records.views import ChatterViewSetMixin
 from . import activity
@@ -2603,3 +2605,46 @@ class SalleVenteViewSet(CompanyScopedModelViewSet):
         from .selectors import salle_vente_analytics
         salle = self.get_object()
         return Response(salle_vente_analytics(salle))
+
+
+class ApporteurViewSet(CompanyScopedModelViewSet):
+    """NTCRM20 — Apporteurs d'affaires (registre B2B, CRUD interne)."""
+    serializer_class = ApporteurSerializer
+    queryset = Apporteur.objects.select_related('company').all()
+
+    def get_permissions(self):
+        if self.action in READ_ACTIONS:
+            return [IsAnyRole()]
+        return [IsResponsableOrAdmin()]
+
+
+class DealEnregistreViewSet(CompanyScopedModelViewSet):
+    """NTCRM20 — Deals enregistrés par un apporteur (protection anti-poaching).
+
+    ``approuver``/``rejeter`` : actions dédiées plutôt qu'un PATCH direct du
+    statut — un rejet/expiration lève la protection immédiatement pour un
+    futur enregistrement concurrent (`clean()` du modèle)."""
+    serializer_class = DealEnregistreSerializer
+    queryset = DealEnregistre.objects.select_related(
+        'company', 'apporteur', 'lead').all()
+
+    def get_permissions(self):
+        if self.action in READ_ACTIONS:
+            return [IsAnyRole()]
+        return [IsResponsableOrAdmin()]
+
+    @action(detail=True, methods=['post'], url_path='approuver',
+            permission_classes=[IsResponsableOrAdmin])
+    def approuver(self, request, pk=None):
+        deal = self.get_object()
+        deal.statut = DealEnregistre.Statut.APPROUVE
+        deal.save(update_fields=['statut'])
+        return Response(DealEnregistreSerializer(deal).data)
+
+    @action(detail=True, methods=['post'], url_path='rejeter',
+            permission_classes=[IsResponsableOrAdmin])
+    def rejeter(self, request, pk=None):
+        deal = self.get_object()
+        deal.statut = DealEnregistre.Statut.REJETE
+        deal.save(update_fields=['statut'])
+        return Response(DealEnregistreSerializer(deal).data)
