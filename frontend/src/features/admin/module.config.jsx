@@ -51,6 +51,9 @@ const GouvernanceAccesPage = lazy(() => import('../../pages/admin/GouvernanceAcc
 const ImpersonationWizard = lazy(() => import('../../pages/admin/ImpersonationWizard'))
 // NTADM22 — consentement du tenant : autoriser / refuser une session support.
 const ImpersonationConsentement = lazy(() => import('../../pages/admin/ImpersonationConsentement'))
+// NTDMO25 — wizard « Créer ma société de démonstration » (le serveur exige
+// superuser : 403 sinon, même garde que /admin/tenants).
+const DemoWizard = lazy(() => import('./DemoWizard'))
 
 const config = {
   key: 'admin',
@@ -82,6 +85,8 @@ const config = {
     { path: '/admin/impersonation/demander', component: ImpersonationWizard, roles: ['admin'] },
     // NTADM22 — consentement du tenant (le serveur exige l'Administrateur).
     { path: '/admin/impersonation', component: ImpersonationConsentement, roles: ['admin'] },
+    // NTDMO25 — wizard démo (le serveur exige superuser, comme /admin/tenants).
+    { path: '/admin/demo/nouveau', component: DemoWizard, roles: ['admin'] },
   ],
 }
 

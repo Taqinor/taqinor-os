@@ -30,6 +30,7 @@ from django.core.management import call_command
 from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
 from django.utils import timezone
+from faker import Faker
 
 DEMO_PASSWORD = 'DemoFull@2026!'
 # Seed fixe → un reset (NTDMO6) reproduit le même nombre d'enregistrements.
@@ -50,6 +51,19 @@ class Command(BaseCommand):
             '--force', action='store_true',
             help='Autorise le seed hors DEBUG (crée des comptes à mot de passe '
                  'connu — à utiliser en connaissance de cause).')
+        # NTDMO25 — paramètres additifs consommés par le wizard « Créer ma
+        # société de démonstration ». Défauts = comportement HISTORIQUE
+        # byte-identique (mixte/complet) : un appel sans ces options se
+        # comporte exactement comme avant.
+        parser.add_argument(
+            '--profil', choices=['residentiel', 'industriel', 'mixte'],
+            default='mixte',
+            help="Secteur/scénario des devis générés (NTDMO25). 'mixte' "
+                 '(défaut) = comportement historique (3 modes marché).')
+        parser.add_argument(
+            '--densite', choices=['leger', 'complet'], default='complet',
+            help="Densité de l'historique (NTDMO25). 'complet' (défaut) = "
+                 "comportement historique (~40 leads). 'leger' ~15 leads.")
 
     @transaction.atomic
     def handle(self, *args, **options):
@@ -74,7 +88,10 @@ class Command(BaseCommand):
                 f'Demo company "{slug}" already populated — nothing to do.'))
             return
 
-        self._generate_history(company, admin, resp, rng)
+        self._generate_history(
+            company, admin, resp, rng,
+            profil=options.get('profil', 'mixte'),
+            densite=options.get('densite', 'complet'))
 
         self.stdout.write(self.style.SUCCESS(
             f'\nRich demo data seeded for "{company.nom}" (slug={slug}).\n'
@@ -157,24 +174,33 @@ class Command(BaseCommand):
                 defaults={'nom': nom, 'delai_jours': delai})
 
     # ── 12-month history (extended by NTDMO2-5) ────────────────────────────
-    def _generate_history(self, company, admin, resp, rng):
+    def _generate_history(self, company, admin, resp, rng,
+                          profil='mixte', densite='complet'):
         """Génère l'historique vivant. Étendu par NTDMO2 (leads), NTDMO3
-        (devis), NTDMO4 (chantiers/factures), NTDMO5 (SAV/stock)."""
-        ctx = {'company': company, 'admin': admin, 'resp': resp, 'rng': rng}
+        (devis), NTDMO4 (chantiers/factures), NTDMO5 (SAV/stock). `profil`/
+        `densite` (NTDMO25) restent ADDITIFS : leurs défauts ('mixte'/
+        'complet') reproduisent le comportement historique."""
+        # NTDMO17 — instance Faker dédiée, seedée pour être 100% reproductible
+        # d'une exécution à l'autre (même graine que `rng`) : deux appels de
+        # `reset_demo_company` produisent des noms/raisons sociales identiques.
+        Faker.seed(RNG_SEED)
+        fake = Faker('fr_FR')
+        ctx = {'company': company, 'admin': admin, 'resp': resp, 'rng': rng,
+               'fake': fake, 'profil': profil, 'densite': densite}
         self._seed_leads(ctx)
         self._seed_devis(ctx)
         self._seed_chantiers_factures(ctx)
         self._seed_sav_stock(ctx)
+        # NTDMO18/19 — cloche de notifications non vide + champs personnalisés
+        # d'exemple pré-configurés (jamais sur une société non-démo).
+        self._seed_notifications(ctx)
+        self._seed_custom_fields(ctx)
 
     # ── NTDMO2 — leads répartis sur les 6 stages STAGES.py ─────────────────
-    # Prénoms/noms/villes marocaines (Faker arrive en NTDMO17, hors de ce lot).
-    _NOMS = ['Alaoui', 'Bennani', 'Tazi', 'Chraibi', 'Berrada', 'Idrissi',
-             'El Amrani', 'Bouazza', 'Sekkat', 'Benjelloun', 'Fassi', 'Ouazzani',
-             'Cherkaoui', 'Lahlou', 'Kettani', 'Bennis', 'Sqalli', 'Alami',
-             'Mernissi', 'Belghiti', 'Tahiri', 'Naciri', 'Guerraoui', 'Filali']
-    _PRENOMS = ['Karim', 'Salma', 'Omar', 'Fatima-Zahra', 'Youssef', 'Mehdi',
-                'Sara', 'Hamid', 'Nadia', 'Rachid', 'Meryem', 'Anas', 'Imane',
-                'Hicham', 'Loubna', 'Adil', 'Khadija', 'Yassine']
+    # NTDMO17 — villes marocaines : Faker n'a pas de locale `fr_MA`, la liste
+    # curatée reste la source la plus réaliste (tirée déterministement via
+    # `rng`, déjà fixé). Noms/prénoms/raisons sociales viennent de Faker
+    # `fr_FR` (seedée) au lieu des listes en dur d'origine.
     _VILLES = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Fès', 'Agadir',
                'Meknès', 'Oujda', 'Kénitra', 'Béni Mellal', 'Safi', 'El Jadida']
     _MOTIFS_PERTE = ['Prix trop élevé', 'Projet reporté', 'Concurrent choisi',
@@ -186,7 +212,7 @@ class Command(BaseCommand):
         from apps.crm.stages import (
             COLD, CONTACTED, FOLLOW_UP, NEW, QUOTE_SENT, SIGNED,
         )
-        company, rng = ctx['company'], ctx['rng']
+        company, rng, fake = ctx['company'], ctx['rng'], ctx['fake']
         now = timezone.now()
 
         motifs = [
@@ -203,18 +229,27 @@ class Command(BaseCommand):
             (NEW, 12, 45), (CONTACTED, 10, 90), (QUOTE_SENT, 7, 150),
             (FOLLOW_UP, 5, 120), (SIGNED, 4, 300), (COLD, 4, 330),
         ]
+        # NTDMO25 — densité 'leger' : ~15 leads (au lieu de ~40), même
+        # entonnoir (proportions conservées), pour un wizard rapide.
+        if ctx.get('densite') == 'leger':
+            plan = [(stage, max(1, round(count * 0.4)), age_max)
+                    for stage, count, age_max in plan]
         leads = []
         i = 0
         for stage, count, age_max in plan:
             for _ in range(count):
-                nom = self._NOMS[i % len(self._NOMS)]
-                prenom = self._PRENOMS[i % len(self._PRENOMS)]
+                # NTDMO17 — identités via Faker fr_FR (seedée), plus de listes
+                # en dur cyclées par modulo.
+                nom = fake.last_name()
+                prenom = fake.first_name()
                 ville = rng.choice(self._VILLES)
                 age = rng.randint(0, age_max)
                 perdu = stage == COLD
+                # NTDMO17 — raison sociale via Faker (au lieu de f'{nom} Énergie').
+                societe_nom = fake.company() if i % 3 == 0 else None
                 lead = Lead.objects.create(
                     company=company, nom=nom, prenom=prenom,
-                    societe=(f'{nom} Énergie' if i % 3 == 0 else None),
+                    societe=societe_nom,
                     telephone=f'+212 6 {rng.randint(10, 99)} '
                               f'{rng.randint(10, 99)} '
                               f'{rng.randint(10, 99)} {rng.randint(10, 99)}',
@@ -281,13 +316,21 @@ class Command(BaseCommand):
         statuts = (
             [S.ACCEPTE] * 10 + [S.ENVOYE] * 5 + [S.BROUILLON] * 4
             + [S.REFUSE] * 3 + [S.EXPIRE] * 3)
-        modes = ['residentiel', 'industriel', 'agricole']
+        # NTDMO25 — profil 'residentiel'/'industriel' n'affiche QU'un mode ;
+        # 'mixte' (défaut) reste le comportement historique (3 modes).
+        profil = ctx.get('profil', 'mixte')
+        if profil == 'residentiel':
+            modes = ['residentiel']
+        elif profil == 'industriel':
+            modes = ['industriel']
+        else:
+            modes = ['residentiel', 'industriel', 'agricole']
         signed_resid_batt = 0
         devis_list = []
         for i, statut in enumerate(statuts):
             client = clients[i % len(clients)]
             lead = leads[i % len(leads)] if leads else None
-            mode = modes[i % 3]
+            mode = modes[i % len(modes)]
             avec_batterie = False
             etude = None
             if mode == 'residentiel':
@@ -548,3 +591,105 @@ class Command(BaseCommand):
                 # Étale sur 12 mois : un mois différent par pas de ~20 jours.
                 MouvementStock.objects.filter(pk=mvt.pk).update(
                     date=now - timedelta(days=20 * m))
+
+    # ── NTDMO18 — notifications de démonstration pré-peuplées ──────────────
+    def _seed_notifications(self, ctx):
+        """La cloche de `demo_admin_full` n'est jamais vide au premier login :
+        5-8 notifications réalistes via le service `notify()` existant
+        (jamais un INSERT direct sur `Notification` — mêmes canaux/règles que
+        toute notification réelle). `skip_email` évite tout envoi réel en
+        environnement de démo ; `respect_quiet_hours=False` garantit que le
+        seed n'est jamais avalé silencieusement par une fenêtre de silence."""
+        from apps.notifications.models import EventType
+        from apps.notifications.services import notify
+        company, admin = ctx['company'], ctx['admin']
+        factures = ctx.get('factures') or []
+        devis_list = ctx.get('devis') or []
+        leads = ctx.get('leads') or []
+
+        items = []
+        # Retard(s) facture — factures EMISE en retard générées par NTDMO4.
+        for facture in factures[:2]:
+            if getattr(facture, 'statut', None) == 'emise':
+                items.append((
+                    EventType.FACTURE_OVERDUE, 'Facture en retard',
+                    f'La facture {facture.reference} est en retard de '
+                    'paiement.'))
+        # Devis expiré(s) à relancer.
+        for devis in devis_list:
+            if getattr(devis, 'statut', None) == 'expire':
+                items.append((
+                    EventType.DEVIS_EXPIRED, 'Devis expiré',
+                    f'Le devis {devis.reference} a expiré — à relancer '
+                    'ou refaire.'))
+                break
+        # Relance de lead due (relance_date déjà peuplée par NTDMO2).
+        for lead in leads:
+            if getattr(lead, 'relance_date', None):
+                items.append((
+                    EventType.DEVIS_NUDGE_DUE, 'Relance à faire',
+                    f'Relance à faire pour {lead.prenom} {lead.nom} '
+                    f'({lead.ville}).'))
+                break
+        # Garantie proche échéance.
+        items.append((
+            EventType.WARRANTY_EXPIRING, 'Garantie bientôt expirée',
+            "Une garantie installation approche de son échéance — vérifiez "
+            "le contrat de maintenance associé."))
+        # Chantier à installer + maintenance due (complètent la variété).
+        items.append((
+            EventType.CHANTIER_DUE, 'Chantier à installer',
+            'Un chantier accepté attend sa planification de pose.'))
+        items.append((
+            EventType.MAINTENANCE_DUE, 'Visite de maintenance due',
+            'Une visite de maintenance périodique est due ce mois-ci.'))
+
+        for event_type, title, body in items[:8]:
+            notify(admin, event_type, title, body=body, company=company,
+                   skip_email=True, respect_quiet_hours=False)
+
+    # ── NTDMO19 — champs personnalisés d'exemple pré-configurés ────────────
+    def _seed_custom_fields(self, ctx):
+        """2-3 `CustomFieldDef` d'exemple (Paramètres → Avancé → Champs
+        personnalisés n'est jamais un écran vide en démo) + utilisation sur
+        au moins un enregistrement réel via `custom_data`."""
+        from apps.customfields.models import CustomFieldDef
+        company = ctx['company']
+        leads = ctx.get('leads') or []
+        clients = ctx.get('clients') or []
+
+        toiture, _ = CustomFieldDef.objects.get_or_create(
+            company=company, module=CustomFieldDef.Module.LEAD,
+            code='type_toiture',
+            defaults={
+                'libelle': 'Type de toiture', 'type': CustomFieldDef.FieldType.CHOICE,
+                'options': ['Tuiles', 'Tôle', 'Terrasse plate', 'Bac acier'],
+                'visible_liste': True, 'ordre': 10,
+            })
+        serie, _ = CustomFieldDef.objects.get_or_create(
+            company=company, module=CustomFieldDef.Module.CLIENT,
+            code='numero_serie_chantier',
+            defaults={
+                'libelle': 'N° de série chantier',
+                'type': CustomFieldDef.FieldType.TEXT,
+                'ordre': 10,
+            })
+        CustomFieldDef.objects.get_or_create(
+            company=company, module=CustomFieldDef.Module.LEAD,
+            code='acces_toiture_facile',
+            defaults={
+                'libelle': 'Accès toiture facile',
+                'type': CustomFieldDef.FieldType.BOOLEAN, 'ordre': 20,
+            })
+
+        # Utilisation réelle sur au moins un enregistrement de chaque module.
+        if leads:
+            lead = leads[0]
+            lead.custom_data = dict(lead.custom_data or {})
+            lead.custom_data[toiture.code] = 'Tuiles'
+            lead.save(update_fields=['custom_data'])
+        if clients:
+            client = clients[0]
+            client.custom_data = dict(client.custom_data or {})
+            client.custom_data[serie.code] = 'CH-2026-DEMO-001'
+            client.save(update_fields=['custom_data'])
