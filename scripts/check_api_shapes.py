@@ -105,6 +105,20 @@ OBJET, LISTE, NOMBRE, TEXTE, BOOLEEN, INCONNU = (
 
 MAX_DEPTH = 4
 
+# PACT175 (a) — verbe HTTP -> methode DRF servie par un ViewSet de routeur.
+# `get` depend de la route : `list` sur la liste, `retrieve` sur le detail —
+# c'est le troisieme element de la reference posee par `_expand_router`.
+VERBE_VERS_METHODE = {
+    "post": "create",
+    "put": "update",
+    "patch": "partial_update",
+    "delete": "destroy",
+}
+
+# PACT175 (c) — un dictionnaire mute par ces methodes n'est plus lisible
+# statiquement : la forme devient INCERTAINE et l'endpoint sort du contrat.
+MUTATIONS_OPAQUES = ("update", "pop", "popitem", "clear", "setdefault")
+
 
 # ===========================================================================
 # 1. Forme renvoyee par une vue (lecture du code serveur)
@@ -245,6 +259,11 @@ class ShapeReader:
                 elif target == "action":
                     found = self._find_method(module, reference[1], reference[2])
                     result = self._shape_of_node(found, 0) if found else None
+                elif target == "viewset":
+                    # PACT175 (a) — route de liste / de detail d'un routeur DRF.
+                    methode = VERBE_VERS_METHODE.get(verb, reference[2])
+                    found = self._find_method(module, reference[1], methode)
+                    result = self._shape_of_node(found, 0) if found else None
         self._cache[key] = result
         return result
 
@@ -257,7 +276,7 @@ class ShapeReader:
         incertaine et l'endpoint sort du contrat.
         """
         module, node = found
-        assignments = _local_dicts(node)
+        assignments = _local_assignments(node)
         merged: dict[str, str] = {}
         seen = False
         for statement in ast.walk(node):
@@ -268,7 +287,8 @@ class ShapeReader:
                 if not expression.args:
                     continue                       # Response(status=204)
                 expression = expression.args[0]
-            shape = self._shape_of_expression(expression, module, assignments, depth)
+            shape = self._shape_of_expression(expression, module, assignments,
+                                              depth, node)
             if shape is None:
                 return None
             seen = True
@@ -279,19 +299,102 @@ class ShapeReader:
                     merged.setdefault(field, kind)
         return merged if seen and merged else None
 
-    def _shape_of_expression(self, expression, module, assignments, depth):
+    def _shape_of_expression(self, expression, module, assignments, depth,
+                             fonction=None):
         if isinstance(expression, ast.Dict):
             return self.dict_shape(expression, module, depth)
         if isinstance(expression, ast.Name) and expression.id in assignments:
-            return self.dict_shape(assignments[expression.id], module, depth)
-        if isinstance(expression, ast.Call) and isinstance(expression.func, ast.Name) \
-                and depth < MAX_DEPTH:
-            return self.shape_of_function(module, expression.func.id, depth + 1)
+            # PACT175 (b) — `data = selectors.foo(…)` puis `return
+            # Response(data)` est la convention de TOUT le depot ; seul
+            # `return foo(…)` etait lu jusqu'ici. On suit l'affectation.
+            if depth >= MAX_DEPTH:
+                return None
+            reste = {k: v for k, v in assignments.items() if k != expression.id}
+            shape = self._shape_of_expression(
+                assignments[expression.id], module, reste, depth + 1)
+            if shape is None:
+                return None
+            if fonction is None:
+                return shape
+            # PACT175 (c) — le dictionnaire peut avoir ete MUTE apres sa
+            # construction (`payload['devis_reference'] = …`).
+            return self._appliquer_mutations(fonction, expression.id, shape,
+                                             module, depth)
+        if isinstance(expression, ast.Call) and depth < MAX_DEPTH:
+            cible = self._fonction_appelee(expression, module)
+            if cible is not None:
+                return self.shape_of_function(cible[0], cible[1], depth + 1)
         return None
 
+    def _fonction_appelee(self, appel: ast.Call, module: str):
+        """(module, nom) de la fonction appelee, ou None si non resoluble.
 
-def _local_dicts(node):
-    """nom -> Dict litteral, pour `resultat = {...}` puis `return resultat`."""
+        PACT175 (b) — un appel NU (`foo(…)`) etait seul reconnu. La forme reelle
+        du depot est QUALIFIEE : `selectors.foo(…)` / `services.foo(…)`, dont le
+        prefixe est un MODULE importe (`from . import selectors`). On resout
+        l'alias par la table d'imports plutot que de deviner.
+        """
+        if isinstance(appel.func, ast.Name):
+            return (module, appel.func.id)
+        if not isinstance(appel.func, ast.Attribute) \
+                or not isinstance(appel.func.value, ast.Name):
+            return None
+        alias = appel.func.value.id
+        source = self.backend._imports_of(module).get(alias)
+        if not source or source.startswith(contract.FRAMEWORK_ROOTS):
+            return None
+        # `from . import selectors` donne le PAQUET (`apps.rh`) : le module
+        # reel est `apps.rh.selectors`. `import apps.rh.selectors as sel` donne
+        # deja le module complet.
+        for candidat in (f"{source}.{alias}", source):
+            if self.backend._module(candidat)[1] is not None:
+                return (candidat, appel.func.attr)
+        return None
+
+    def _appliquer_mutations(self, fonction, nom, shape, module, depth):
+        """PACT175 (c) — absorbe `d['cle'] = …` ; INCERTAIN sur le reste.
+
+        Mesure : `apps/publicapi/views.py` construit `payload = {'mode': …,
+        'lead_id': …}` puis lui ajoute `devis_id` et `devis_reference` sous
+        condition. La forme lue etait donc INCOMPLETE — et une forme incomplete
+        accuse un ecran CORRECT de lire un champ fantome. Une mutation dont la
+        cle n'est pas litterale, ou un `.update(…)`, rend la forme incertaine :
+        l'endpoint sort du contrat (un doute ne rougit jamais).
+        """
+        enrichie = dict(shape)
+        for statement in ast.walk(fonction):
+            if isinstance(statement, (ast.Assign, ast.AugAssign)):
+                cibles = (statement.targets if isinstance(statement, ast.Assign)
+                          else [statement.target])
+                for cible in cibles:
+                    if not isinstance(cible, ast.Subscript) \
+                            or not isinstance(cible.value, ast.Name) \
+                            or cible.value.id != nom:
+                        continue
+                    cle = contract._const_str(cible.slice)
+                    if cle is None:
+                        return None            # cle dynamique : forme incertaine
+                    if isinstance(statement, ast.AugAssign):
+                        enrichie.setdefault(cle, INCONNU)
+                    else:
+                        enrichie[cle] = self.kind_of(statement.value, module, depth)
+            elif isinstance(statement, ast.Call) \
+                    and isinstance(statement.func, ast.Attribute) \
+                    and isinstance(statement.func.value, ast.Name) \
+                    and statement.func.value.id == nom \
+                    and statement.func.attr in MUTATIONS_OPAQUES:
+                return None
+        return enrichie
+
+
+def _local_assignments(node):
+    """nom -> expression affectee UNE SEULE fois (`resultat = {...}`, `d = f()`).
+
+    PACT175 (b) — la version d'origine ne retenait que les Dict litteraux et
+    BANNISSAIT tout le reste : `data = selectors.stats(…)` puis
+    `return Response(data)` — la convention de TOUT le depot — etait illisible.
+    Un nom reaffecte reste banni : sa forme finale n'est pas certaine.
+    """
     out, banned = {}, set()
     for statement in ast.walk(node):
         if isinstance(statement, ast.Assign) and len(statement.targets) == 1 \
@@ -299,10 +402,7 @@ def _local_dicts(node):
             name = statement.targets[0].id
             if name in out:
                 banned.add(name)               # reaffecte : trop incertain
-            if isinstance(statement.value, ast.Dict):
-                out[name] = statement.value
-            else:
-                banned.add(name)
+            out[name] = statement.value
     return {k: v for k, v in out.items() if k not in banned}
 
 

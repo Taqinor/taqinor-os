@@ -512,6 +512,174 @@ tableauMarches.mockResolvedValue({ data: PAYLOAD })
         self.assertNotIn("const PAYLOAD = {", source)
 
 
+class LecteurEtenduTests(unittest.TestCase):
+    """PACT175 — les 3 classes d'endpoints agreges qui echappaient au lecteur.
+
+    Chaque extension est verifiee DANS LES DEUX SENS : la forme est desormais
+    lue (contrôle positif) ET une forme reellement incertaine reste HORS
+    contrat (contrôle negatif) — un lecteur trop bavard produirait des rouges
+    sur du code correct, ce qui tuerait la garde.
+    """
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.base = Path(self.tmp.name)
+        write(self.base / "erp_agentique" / "urls.py", """
+from django.urls import include, path
+urlpatterns = [path('api/django/', include([path('rh/', include('apps.rh.urls'))]))]
+""")
+
+    def _lecteur(self):
+        backend = contract.BackendRoutes(self.base)
+        backend.build()
+        return shapes.ShapeReader(backend)
+
+    # -- (a) route de liste / de detail d'un routeur DRF -------------------
+    def _viewset(self, corps: str):
+        write(self.base / "apps" / "rh" / "urls.py", """
+from django.urls import include, path
+from rest_framework.routers import DefaultRouter
+from .views import RecrutementStatistiquesViewSet
+router = DefaultRouter()
+router.register(r'recrutement/statistiques', RecrutementStatistiquesViewSet,
+                basename='rh-recrutement-statistiques')
+urlpatterns = [path('', include(router.urls))]
+""")
+        write(self.base / "apps" / "rh" / "views.py",
+              "from rest_framework import viewsets\n"
+              "from rest_framework.response import Response\n"
+              "from . import selectors\n\n"
+              "class RecrutementStatistiquesViewSet(viewsets.ViewSet):\n" + corps)
+        write(self.base / "apps" / "rh" / "selectors.py", """
+def stats_recrutement(company, debut=None, fin=None):
+    return {
+        'delai_embauche_moyen_jours': 0,
+        'entonnoir': [],
+        'candidatures_par_ouverture': [],
+        'sources': [],
+    }
+""")
+        return self._lecteur()
+
+    def test_a_viewset_d_agregation_servant_depuis_list(self):
+        # L'endpoint du defaut FONDATEUR : `_expand_router` ne remplissait
+        # `views` que pour les `@action`, donc AUCUNE vue n'etait associee a la
+        # route de liste d'un `viewsets.ViewSet` d'agregation.
+        lecteur = self._viewset(
+            "    def list(self, request):\n"
+            "        data = selectors.stats_recrutement(request.user.company)\n"
+            "        return Response(data)\n")
+        forme = lecteur.shape_of_route(
+            ("api", "django", "rh", "recrutement", "statistiques"), "get")
+        self.assertEqual(sorted(forme), [
+            "candidatures_par_ouverture", "delai_embauche_moyen_jours",
+            "entonnoir", "sources"])
+
+    def test_a_le_verbe_http_choisit_la_methode_drf(self):
+        lecteur = self._viewset(
+            "    def list(self, request):\n"
+            "        return Response({'liste': []})\n\n"
+            "    def create(self, request):\n"
+            "        return Response({'cree': 1})\n")
+        base = ("api", "django", "rh", "recrutement", "statistiques")
+        self.assertEqual(lecteur.shape_of_route(base, "get"), {"liste": shapes.LISTE})
+        self.assertEqual(lecteur.shape_of_route(base, "post"), {"cree": shapes.NOMBRE})
+
+    def test_a_la_route_de_detail_lit_retrieve(self):
+        lecteur = self._viewset(
+            "    def retrieve(self, request, pk=None):\n"
+            "        return Response({'detail_kpi': 1})\n")
+        base = ("api", "django", "rh", "recrutement", "statistiques")
+        self.assertEqual(lecteur.shape_of_route(base + (contract.ANY,), "get"),
+                         {"detail_kpi": shapes.NOMBRE})
+
+    def test_a_negatif_un_modelviewset_ordinaire_reste_hors_contrat(self):
+        # Un ViewSet qui n'ECRIT pas `list()` sert un serializer : sa forme
+        # n'est pas un dictionnaire litteral, elle reste incertaine ici.
+        lecteur = self._viewset("    pass\n")
+        self.assertIsNone(lecteur.shape_of_route(
+            ("api", "django", "rh", "recrutement", "statistiques"), "get"))
+
+    # -- (b) `data = selectors.foo(...)` puis `return Response(data)` ------
+    def _vue_fonction(self, corps: str, selecteurs: str = None):
+        write(self.base / "apps" / "rh" / "urls.py", """
+from django.urls import path
+from .views import bilan
+urlpatterns = [path('bilan/', bilan)]
+""")
+        write(self.base / "apps" / "rh" / "views.py",
+              "from rest_framework.response import Response\n"
+              "from . import selectors\n\n"
+              "def bilan(request):\n" + corps)
+        write(self.base / "apps" / "rh" / "selectors.py", selecteurs or """
+def calculer(company):
+    return {'effectif': 0, 'masse_salariale': 0}
+""")
+        return self._lecteur()
+
+    def test_b_alias_de_module_et_affectation_intermediaire(self):
+        lecteur = self._vue_fonction(
+            "    data = selectors.calculer(request.user.company)\n"
+            "    return Response(data)\n")
+        self.assertEqual(
+            sorted(lecteur.shape_of_route(("api", "django", "rh", "bilan"), "get")),
+            ["effectif", "masse_salariale"])
+
+    def test_b_negatif_une_variable_reaffectee_reste_incertaine(self):
+        lecteur = self._vue_fonction(
+            "    data = selectors.calculer(request.user.company)\n"
+            "    data = enrichir(data)\n"
+            "    return Response(data)\n")
+        self.assertIsNone(lecteur.shape_of_route(("api", "django", "rh", "bilan"), "get"))
+
+    def test_b_negatif_alias_inconnu(self):
+        # `autre` n'est importe nulle part : on ne devine pas le module.
+        lecteur = self._vue_fonction(
+            "    data = autre.calculer(request.user.company)\n"
+            "    return Response(data)\n")
+        self.assertIsNone(lecteur.shape_of_route(("api", "django", "rh", "bilan"), "get"))
+
+    def test_b_negatif_selecteur_dont_la_forme_n_est_pas_litterale(self):
+        lecteur = self._vue_fonction(
+            "    data = selectors.calculer(request.user.company)\n"
+            "    return Response(data)\n",
+            selecteurs="def calculer(company):\n    return construire(company)\n")
+        self.assertIsNone(lecteur.shape_of_route(("api", "django", "rh", "bilan"), "get"))
+
+    # -- (c) dictionnaire mute apres construction -------------------------
+    def test_c_cles_de_subscript_litterales_absorbees(self):
+        # La forme exacte d'apps/publicapi/views.py : `payload = {…}` puis
+        # `payload['devis_reference'] = …` sous condition.
+        lecteur = self._vue_fonction(
+            "    payload = {'mode': 'lead', 'lead_id': 1}\n"
+            "    if True:\n"
+            "        payload['devis_id'] = 2\n"
+            "        payload['devis_reference'] = 'DV-1'\n"
+            "    return Response(payload)\n")
+        forme = lecteur.shape_of_route(("api", "django", "rh", "bilan"), "get")
+        self.assertEqual(sorted(forme),
+                         ["devis_id", "devis_reference", "lead_id", "mode"])
+        self.assertEqual(forme["devis_reference"], shapes.TEXTE)
+
+    def test_c_negatif_cle_dynamique_rend_la_forme_incertaine(self):
+        # `out[cle] = …` dans une boucle : la forme n'est PAS connaissable, et
+        # la publier partiellement accuserait un ecran correct.
+        lecteur = self._vue_fonction(
+            "    out = {'detail': 'ok'}\n"
+            "    for cle in ('devis', 'facture'):\n"
+            "        out[cle] = 1\n"
+            "    return Response(out)\n")
+        self.assertIsNone(lecteur.shape_of_route(("api", "django", "rh", "bilan"), "get"))
+
+    def test_c_negatif_update_rend_la_forme_incertaine(self):
+        lecteur = self._vue_fonction(
+            "    payload = {'mode': 'lead'}\n"
+            "    payload.update(extra)\n"
+            "    return Response(payload)\n")
+        self.assertIsNone(lecteur.shape_of_route(("api", "django", "rh", "bilan"), "get"))
+
+
 class DepotReelTests(unittest.TestCase):
     def test_contrat_versionne_present(self):
         contenu = shapes.CONTRACT_PATH.read_text(encoding="utf-8")

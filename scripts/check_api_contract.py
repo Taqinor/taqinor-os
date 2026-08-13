@@ -501,6 +501,16 @@ class BackendRoutes:
             if viewset is None:
                 self._mark_opaque(base)
                 continue
+            # PACT175 (a) — jusqu'ici `views` n'etait rempli que pour les
+            # `@action` : un `viewsets.ViewSet` d'AGREGATION qui sert depuis
+            # `list()`/`retrieve()` n'avait AUCUNE vue associee, donc sa forme
+            # etait invisible a check_api_shapes.py. C'est le cas de
+            # `RecrutementStatistiquesViewSet` — l'endpoint du defaut fondateur.
+            # `setdefault` : une `path()` explicite declaree sur le meme chemin
+            # reste prioritaire (elle est plus precise que le routeur).
+            self.views.setdefault(base, (module, ("viewset", viewset, "list")))
+            self.views.setdefault(base + (ANY,),
+                                  (module, ("viewset", viewset, "retrieve")))
             actions, complete = self.actions_of(viewset, module)
             for detail, url_path, owner, method in actions:
                 sub, sub_opaque = normalise_route(url_path)
