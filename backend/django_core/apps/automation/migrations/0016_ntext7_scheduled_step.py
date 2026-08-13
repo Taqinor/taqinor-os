@@ -61,13 +61,13 @@ class Migration(migrations.Migration):
                              ('reprise', 'Reprise'),
                              ('annulee', 'Annulée')],
                     default='en_attente', max_length=20)),
-                ('date_creation', models.DateTimeField(auto_now_add=True)),
+                ('created_at', models.DateTimeField(auto_now_add=True)),
+                ('updated_at', models.DateTimeField(auto_now=True)),
                 ('date_reprise', models.DateTimeField(blank=True, null=True)),
                 ('company', models.ForeignKey(
-                    blank=True, null=True,
                     on_delete=django.db.models.deletion.CASCADE,
-                    related_name='automation_scheduled_steps',
-                    to='authentication.company')),
+                    related_name='%(app_label)s_%(class)s_set',
+                    to='authentication.company', verbose_name='Société')),
                 ('rule', models.ForeignKey(
                     on_delete=django.db.models.deletion.CASCADE,
                     related_name='scheduled_steps',

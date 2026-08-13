@@ -31,9 +31,6 @@ class Migration(migrations.Migration):
                           'société.',
                 max_length=40, verbose_name='Palier de rôle'),
         ),
-        migrations.AddIndex(
-            model_name='vuepersonnalisee',
-            index=models.Index(fields=['company', 'cible', 'est_defaut'],
-                               name='core_vueperso_defaut_idx'),
-        ),
     ]
+    # L'INDEX de résolution est posé à part, en CONCURRENT (0043) : YOPSB6
+    # interdit un AddIndex bloquant sur une table déjà en service.

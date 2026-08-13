@@ -20,6 +20,8 @@ d'achat ni de marge exposés.
 from django.conf import settings
 from django.db import models
 
+from core.models import TenantModel
+
 
 class TriggerType(models.TextChoices):
     """Événements internes de l'application qu'une règle peut écouter."""
@@ -304,7 +306,7 @@ class AutomationStep(models.Model):
         return f'{self.rule_id}#{self.ordre}:{self.action_type}'
 
 
-class AutomationScheduledStep(models.Model):
+class AutomationScheduledStep(TenantModel):
     """NTEXT7 — reprise DIFFÉRÉE d'une séquence après une étape ``WAIT``.
 
     Une étape ``WAIT`` (``action_config={'delai_minutes': N}``) ne bloque
@@ -325,9 +327,8 @@ class AutomationScheduledStep(models.Model):
         REPRISE = 'reprise', 'Reprise'
         ANNULEE = 'annulee', 'Annulée'
 
-    company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
-        null=True, blank=True, related_name='automation_scheduled_steps')
+    # ``company`` + ``created_at``/``updated_at`` viennent du socle
+    # ``core.models.TenantModel`` (SCA4) — jamais re-hand-rollés ici.
     rule = models.ForeignKey(
         AutomationRule,
         on_delete=models.CASCADE,  # on_delete: une échéance n'existe QUE pour sa règle (composition, même patron qu'AutomationStep)
@@ -342,7 +343,6 @@ class AutomationScheduledStep(models.Model):
     context = models.JSONField(default=dict, blank=True)
     statut = models.CharField(
         max_length=20, choices=Statut.choices, default=Statut.EN_ATTENTE)
-    date_creation = models.DateTimeField(auto_now_add=True)
     date_reprise = models.DateTimeField(null=True, blank=True)
 
     class Meta:
