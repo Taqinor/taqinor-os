@@ -210,7 +210,7 @@ a focused test, calling the EXISTING backend endpoint.
 - [x] (déjà présent) FE-XSAL1-3 — price-list admin CRUD (`ListesPrixPage.jsx`, routed) + `liste_prix` field on `ClientForm.jsx` + `getPrixApplicable` called from `DevisGenerator.jsx` (XSAL3 "Tarif" badge already wired). (@lane: frontend/ventes)
 - [x] (déjà présent) FE-XSAL12 — partial-delivery dialog + reliquat column already in `BonCommandeList.jsx` (`LivraisonPartielleDialog`, `livrer-partiel`); no `VentesKanban.jsx` exists, this is the real implementation location. (@lane: frontend/ventes)
 - [x] FE-ZSAL8/XSAL16 — engagement summary already present (`engagementSummary()` in `DevisList.jsx`); added the missing BC PDF menu item (`handleBonCommandePdf` wired to the orphaned `ventesApi.getBonCommandePdf`) shown when `d.bon_commande_etat.exists`. (@lane: frontend/ventes)
-- [ ] FE-ZSAL5 — keyed email-template editor (`envoi_devis`) in `EmailSection.jsx`. (@lane: frontend/ventes)
+- [x] (déjà présent) FE-ZSAL5 — keyed email-template editor (`envoi_devis`) already in `EmailSection.jsx` (ZSAL5 tag), backend model/migration + `envoi_devis` key confirmed. (@lane: frontend/ventes)
 
 ## Lane `frontend/crm` (ZSAL round-2 — api client stubs defined, never called)
 - [ ] FE-ZSAL2 — "Appliquer un plan" button + plan picker on lead detail + PlanActivite CRUD (`getPlansActivite`/`appliquerPlanActivite` already in `crmApi.js`). (@lane: frontend/crm)
@@ -250,6 +250,10 @@ a focused test, calling the EXISTING backend endpoint.
   était un export API orphelin (endpoint backend `GET .../bons-commande/<id>/pdf/` complet, jamais
   appelé côté client) — ajouté un item de menu « Bon de commande (PDF) » sur `DevisList.jsx` (visible
   quand `bon_commande_etat.exists`) qui l'appelle, avec test source `DevisListBcPdf.test.mjs`.
+- 2026-08-13 (lane frontend/ventes) — FE-ZSAL5 vérifiée déjà entièrement construite (éditeur de
+  modèles d'e-mail par clé dans `EmailSection.jsx`, clé `envoi_devis` confirmée côté backend
+  modèle+migration). Aucun code écrit. Lane `frontend/ventes` drainée entièrement (5 tâches : 3
+  déjà présentes, 1 bloquée backend, 1 écart réel corrigé).
 - 2026-08-13 — lane `frontend/contrats` drained: FE-CONTRAT16-17/13-14/12/23-25/7/15/33, FE-XCTR7-8-11, FE-XCTR5, FE-XCTR14, FE-CONTRAT-config already fully built (ContratDetail.jsx tabs+actions, ModelesPage.jsx instancier, DashboardPage.jsx, PortailContratsPage.jsx, ConfigLocationPage.jsx) — ticked `(déjà présent)`, no code change. FE-XCTR2-3: added "Équipements couverts" + "X/Y visites" columns to `ContratsMaintenance.jsx` (data was already serialized server-side, just unrendered). FE-XCTR17-21: `LocationPage.jsx` had caution/inspection/bons PDF already; added the missing disponibilité (reservation-window) warning in the create dialog and an admin-only "Utilisation & ROI" card, both using contratsApi calls that existed but were never invoked from the UI.
 - 2026-08-13 (lane frontend/sav) — les 12 tâches taguées `@lane: frontend/sav` étaient DÉJÀ construites et câblées (savApi.js + pages/sav/*.jsx + router public /e/:token /suivi/:token) : FE-XSAV19/XSAV10, FE-XSAV3/XFSM1/XCTR4, FE-SAV-warranty, FE-XSAV15-17/XSAV9, FE-XSAV8, FE-XSAV12/27/ZSAV8-9, FE-ZSAV2-3-6, FE-SAV-kb/macros, FE-SAV-alarmes, FE-XSAV14/ZMFG6/11, FE-XSAV5/21/28, FE-ZMFG1-2/4/5-12. Aucun code écrit, pas de commit de fonctionnalité (seule mise à jour de ce fichier).
 - 2026-08-13 — Lane `frontend/compta` drainée (agent-acf554ffb8d774ac6). Vérifiées déjà construites
