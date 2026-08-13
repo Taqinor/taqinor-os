@@ -194,13 +194,13 @@ a focused test, calling the EXISTING backend endpoint.
 - [ ] FE-ZMFG1-2/4/5-12 — SAV teams + equipment categories (Paramètres + ticket/equipment filters), instructions tab, worksheet form, unified pièces, scrap action, estimations, bon-pdf. (@lane: frontend/sav)
 
 ## Lane `frontend/kb` (XKB8-22 + ZGED10-12 backend-only; XKB23 already wired)
-- [ ] FE-XKB19 — **CRITICAL** public unauthenticated article route `/kb/public/:token` + `PublicArticlePage.jsx` + "Share on web" action (`partages`/`depublier`). (@lane: frontend/kb) (opus)
-- [ ] FE-XKB8/21 — article tree sidebar (`arbre`, drag-reorder parent/ordre) + move/duplicate row actions. (@lane: frontend/kb)
-- [ ] FE-XKB9/13/14 — visibility+ACL selector, `<ChatterWidget model="kb.kbarticle">` comments, verified badge + lock (`verifier`/`verrouiller`), stale-content report. (@lane: frontend/kb)
-- [ ] FE-XKB10/18 — markdown render + attachments + `sommaire` TOC; language switcher + RTL + `traduire`. (@lane: frontend/kb)
-- [ ] FE-XKB11/12/17 — backlinks panel, templates gallery (`gabarits`/`depuis-gabarit`), export PDF/MD + import MD + ZIP. (@lane: frontend/kb)
-- [ ] FE-XKB15/16/22 — favorites/recents, KB stats reports, onboarding "Parcours" screen (`KbParcours` assign+progression). (@lane: frontend/kb)
-- [ ] FE-ZGED10-12 — emoji + cover image, custom properties + kanban/cards/list/calendar item views, reusable-block insert picker. (@lane: frontend/kb)
+- [x] (déjà présent) FE-XKB19 — **CRITICAL** public unauthenticated article route `/kb/public/:token` + `PublicArticlePage.jsx` + "Share on web" action (`partages`/`depublier`). (@lane: frontend/kb) (opus)
+- [x] (déjà présent) FE-XKB8/21 — article tree sidebar (`arbre`, drag-reorder parent/ordre) + move/duplicate row actions. (@lane: frontend/kb)
+- [x] (déjà présent) FE-XKB9/13/14 — visibility+ACL selector, `<ChatterWidget model="kb.kbarticle">` comments, verified badge + lock (`verifier`/`verrouiller`), stale-content report. (@lane: frontend/kb)
+- [x] (déjà présent) FE-XKB10/18 — markdown render + attachments + `sommaire` TOC; language switcher + RTL + `traduire`. (@lane: frontend/kb)
+- [x] (déjà présent) FE-XKB11/12/17 — backlinks panel, templates gallery (`gabarits`/`depuis-gabarit`), export PDF/MD + import MD + ZIP. (@lane: frontend/kb)
+- [x] (déjà présent) FE-XKB15/16/22 — favorites/recents, KB stats reports, onboarding "Parcours" screen (`KbParcours` assign+progression). (@lane: frontend/kb)
+- [x] (déjà présent) FE-ZGED10-12 — emoji + cover image, custom properties + kanban/cards/list/calendar item views, reusable-block insert picker. (@lane: frontend/kb)
 
 ## Lane `frontend/pos` (entire apps/pos backend orphaned — FE built against ventes.Facture)
 - [ ] FE-XPOS1-18 — **CRITICAL** rewrite `posApi.js` to call `/pos/ventes|sessions|retraits|config-materiel/`; add routes `/pos/session` (ouverture/clôture + rapport-z, XPOS4), `/pos/dashboard` (XPOS11), `/pos/retraits` (click-and-collect, XPOS15); wire ticket-escpos/share-link + serial capture (XPOS9) into `CaisseScreen.jsx`. (@lane: frontend/pos) (opus)
@@ -240,3 +240,8 @@ a focused test, calling the EXISTING backend endpoint.
 
 ## DONE LOG
 <!-- one dated line per shipped task -->
+- 2026-08-13 — Lane `frontend/kb` : FE-XKB19, FE-XKB8/21, FE-XKB9/13/14, FE-XKB10/18, FE-XKB11/12/17,
+  FE-XKB15/16/22, FE-ZGED10-12 — toutes déjà présentes (KbPage/ArticleDetail/ArticleTree/
+  TemplatesGallery/KbStatsPanel/FavorisRecentsPanel/KbParcoursPage/ItemsCollectionView/
+  BlocInsertPicker/PublicArticlePage, kbApi.js complet), vérifiées sur le vrai code, marquées
+  `[x] (déjà présent)`, aucun changement de code.
