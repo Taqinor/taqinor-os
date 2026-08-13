@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from 'react'
-import { Layers, Check, Upload } from 'lucide-react'
+import { Layers, Check, X, Upload, Sparkles } from 'lucide-react'
 import adsengineApi from './adsengineApi'
 import {
   normalizeBacklog, runwayTone, clampRatio, formatPercent, formatNumber,
@@ -15,6 +15,22 @@ import {
      LOT (jamais pièce par pièce) — l'humain garde la main sur ce qui part ;
    - dépôt d'assets bruts dans le backlog d'une campagne.
    Tous les nombres viennent de l'API ENG27 (mockée en test).
+
+   PACT111 — trois trous de câblage réparés :
+   1. « Générer des variantes » (CreativeLibraryScreen) appelle en réalité
+      ``creatifs/<id>/variantes/`` — un endpoint simple SANS ancrage aux
+      faits. Le VRAI pipeline (``generation/variantes-ancrees/``, PUB16)
+      n'était appelé nulle part, alors que son propre commentaire backend le
+      documente comme « câblé depuis BacklogScreen / CreativeLibrary ». Ce
+      fichier lui ajoute son déclencheur réel (le lot produit apparaît
+      ensuite ci-dessous, une fois la tâche async terminée).
+   2. L'écran n'avait aucun bouton pour REJETER un lot (seule l'approbation
+      existait) — ajouté, même effet que ``recombine.reject_lot`` (le lot
+      passe REJETEE, ses membres restent PENDING, jamais dans le backlog).
+   3. Un item déposé SANS lot (``batch`` nul) est silencieusement ignoré par
+      la vue groupée (``BacklogListView`` saute les items ``batch is None``).
+      Une section séparée interroge la collection BRUTE (``backlog-creatif/``)
+      pour les montrer — SANS toucher la vue groupée existante.
    ========================================================================== */
 
 export default function BacklogScreen() {
@@ -22,6 +38,16 @@ export default function BacklogScreen() {
   const [loading, setLoading] = useState(true)
   const [busyLot, setBusyLot] = useState(null)
   const [msg, setMsg] = useState('')
+
+  // PACT111 — génération ancrée aux faits (le pipeline RÉEL, PUB16).
+  const [seedBrief, setSeedBrief] = useState('')
+  const [genBusy, setGenBusy] = useState(false)
+  const [genMsg, setGenMsg] = useState('')
+
+  // PACT111 — items de backlog SANS lot (collection brute, jamais la vue
+  // groupée qui les ignore).
+  const [itemsSansLot, setItemsSansLot] = useState([])
+  const [itemsSansLotLoading, setItemsSansLotLoading] = useState(true)
 
   const load = useCallback(() => {
     setLoading(true)
@@ -31,8 +57,21 @@ export default function BacklogScreen() {
       .finally(() => setLoading(false))
   }, [])
 
+  const loadItemsSansLot = useCallback(() => {
+    setItemsSansLotLoading(true)
+    adsengineApi.backlog.rawItems()
+      .then(r => {
+        const rows = Array.isArray(r.data) ? r.data : (r.data?.results || [])
+        setItemsSansLot(rows.filter(it => it && (it.batch === null || it.batch === undefined)))
+      })
+      .catch(() => setItemsSansLot([]))
+      .finally(() => setItemsSansLotLoading(false))
+  }, [])
+
   // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement au montage
   useEffect(() => { load() }, [load])
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement au montage
+  useEffect(() => { loadItemsSansLot() }, [loadItemsSansLot])
 
   // Approbation par LOT (bout-en-bout) : le lot passe « approuvé » et quitte la
   // file d'attente (optimiste — l'API confirme).
@@ -50,6 +89,45 @@ export default function BacklogScreen() {
       setMsg("Approbation du lot impossible.")
     } finally {
       setBusyLot(null)
+    }
+  }
+
+  // PACT111 — rejet par LOT : le lot passe « rejeté », ses membres restent
+  // PENDING et n'entrent jamais au backlog (même effet que l'approbation,
+  // en miroir — optimiste, l'API confirme).
+  const rejectLot = async (campId, lotId) => {
+    setBusyLot(lotId); setMsg('')
+    try {
+      await adsengineApi.backlog.rejectLot(lotId)
+      setCampagnes(list => list.map(c => c.id !== campId ? c : {
+        ...c,
+        lots: c.lots.map(l => l.id === lotId
+          ? { ...l, statut: 'rejetee', statut_display: 'Rejeté' } : l),
+      }))
+      setMsg('Lot rejeté.')
+    } catch {
+      setMsg('Rejet du lot impossible.')
+    } finally {
+      setBusyLot(null)
+    }
+  }
+
+  // PACT111 — déclenche le pipeline RÉEL de génération ancrée aux faits.
+  // Key-gated côté serveur : ``enabled:false`` reste un message clair, jamais
+  // une erreur brute ni un crash.
+  const generateGrounded = async (e) => {
+    e.preventDefault()
+    if (!seedBrief.trim()) return
+    setGenBusy(true); setGenMsg('')
+    try {
+      const r = await adsengineApi.backlog.generateGroundedVariants({ seed_brief: seedBrief })
+      setGenMsg(r.data?.detail || (r.data?.enabled === false
+        ? 'Génération désactivée.' : 'Génération lancée.'))
+      if (r.data?.enabled !== false) setSeedBrief('')
+    } catch {
+      setGenMsg('Génération impossible.')
+    } finally {
+      setGenBusy(false)
     }
   }
 
@@ -76,6 +154,29 @@ export default function BacklogScreen() {
       </div>
 
       {msg && <p data-testid="ae-backlog-msg" style={{ color: '#475569' }}>{msg}</p>}
+
+      {/* PACT111 — déclencheur du VRAI pipeline de génération ancrée aux faits
+          (generation/variantes-ancrees/, PUB16) — jamais l'endpoint simple
+          sans ancrage. Le lot produit apparaîtra ci-dessous une fois prêt. */}
+      <section className="card ae-backlog-generate" data-testid="ae-backlog-generate"
+        style={{ padding: '1rem', marginBottom: '1.25rem' }}>
+        <h3 style={{ margin: '0 0 0.5rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+          <Sparkles size={17} aria-hidden="true" /> Générer des variantes ancrées aux faits
+        </h3>
+        <form onSubmit={generateGrounded} style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+          <textarea className="form-input ae-backlog-seed-brief" data-testid="ae-backlog-seed-brief"
+            placeholder="Brief de génération (chaque chiffre produit citera une donnée publiée)"
+            value={seedBrief} onChange={e => setSeedBrief(e.target.value)}
+            style={{ flex: '1 1 320px', minHeight: 60 }} />
+          <button type="submit" className="btn btn-primary" data-testid="ae-backlog-generate-submit"
+            disabled={genBusy || !seedBrief.trim()}
+            style={{ alignSelf: 'flex-start', display: 'inline-flex', alignItems: 'center', gap: '0.3rem' }}>
+            <Sparkles size={14} aria-hidden="true" /> Générer
+          </button>
+        </form>
+        {genMsg && <p data-testid="ae-backlog-generate-msg" style={{ color: '#475569', margin: '0.5rem 0 0' }}>
+          {genMsg}</p>}
+      </section>
 
       {loading
         ? <p className="page-loading">Chargement…</p>
@@ -130,6 +231,8 @@ export default function BacklogScreen() {
                         <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'grid', gap: '0.5rem' }}>
                           {c.lots.map(l => {
                             const approved = String(l.statut).startsWith('approuv')
+                            const rejected = String(l.statut).startsWith('rejet')
+                            const decided = approved || rejected
                             return (
                               <li key={l.id} className="ae-backlog-lot" data-testid="ae-backlog-lot"
                                 style={{ display: 'flex', alignItems: 'center', gap: '0.6rem',
@@ -142,18 +245,28 @@ export default function BacklogScreen() {
                                   </div>
                                 </div>
                                 <span className="badge" data-testid={`ae-backlog-lot-status-${l.id}`}
-                                  style={{ background: approved ? '#dcfce7' : '#fef9c3',
-                                    color: approved ? '#166534' : '#854d0e' }}>
+                                  style={{ background: approved ? '#dcfce7' : rejected ? '#fee2e2' : '#fef9c3',
+                                    color: approved ? '#166534' : rejected ? '#991b1b' : '#854d0e' }}>
                                   {l.statut_display}
                                 </span>
-                                {!approved && (
-                                  <button type="button" className="btn btn-success"
-                                    data-testid={`ae-backlog-approve-lot-${l.id}`}
-                                    disabled={busyLot === l.id}
-                                    onClick={() => approveLot(c.id, l.id)}
-                                    style={{ display: 'inline-flex', alignItems: 'center', gap: '0.3rem' }}>
-                                    <Check size={14} aria-hidden="true" /> Approuver le lot
-                                  </button>
+                                {!decided && (
+                                  <>
+                                    <button type="button" className="btn btn-success"
+                                      data-testid={`ae-backlog-approve-lot-${l.id}`}
+                                      disabled={busyLot === l.id}
+                                      onClick={() => approveLot(c.id, l.id)}
+                                      style={{ display: 'inline-flex', alignItems: 'center', gap: '0.3rem' }}>
+                                      <Check size={14} aria-hidden="true" /> Approuver le lot
+                                    </button>
+                                    {/* PACT111 — bouton rejet manquant (seule l'approbation existait). */}
+                                    <button type="button" className="btn btn-danger-outline"
+                                      data-testid={`ae-backlog-reject-lot-${l.id}`}
+                                      disabled={busyLot === l.id}
+                                      onClick={() => rejectLot(c.id, l.id)}
+                                      style={{ display: 'inline-flex', alignItems: 'center', gap: '0.3rem' }}>
+                                      <X size={14} aria-hidden="true" /> Rejeter le lot
+                                    </button>
+                                  </>
                                 )}
                               </li>
                             )
@@ -176,6 +289,38 @@ export default function BacklogScreen() {
               })}
             </div>
           )}
+
+      {/* PACT111 — items SANS lot : la vue groupée ci-dessus les ignore
+          silencieusement (BacklogListView saute tout item dont batch est nul).
+          Section séparée, collection brute — la vue groupée n'est PAS touchée. */}
+      <section className="card ae-backlog-sans-lot" data-testid="ae-backlog-sans-lot"
+        style={{ padding: '1rem', marginTop: '1.25rem' }}>
+        <h3 style={{ margin: '0 0 0.6rem' }}>Items sans lot</h3>
+        {itemsSansLotLoading
+          ? <p className="page-loading">Chargement…</p>
+          : itemsSansLot.length === 0
+            ? <p data-testid="ae-backlog-sans-lot-empty" style={{ color: '#64748b', margin: 0 }}>
+                Aucun item sans lot.</p>
+            : (
+              <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'grid', gap: '0.4rem' }}>
+                {itemsSansLot.map(it => (
+                  <li key={it.id} data-testid="ae-backlog-sans-lot-item"
+                    style={{ display: 'flex', gap: '0.6rem', flexWrap: 'wrap', alignItems: 'center',
+                      border: '1px solid #e2e8f0', borderRadius: 6, padding: '0.5rem 0.75rem',
+                      fontSize: '0.85rem', color: '#334155' }}>
+                    <strong>Asset #{it.asset}</strong>
+                    <span className="badge" style={{ background: '#f1f5f9', color: '#475569' }}>
+                      {it.status}
+                    </span>
+                    <span style={{ color: '#64748b' }}>{it.source}</span>
+                    {it.target_campaign != null && (
+                      <span style={{ color: '#64748b' }}>Campagne #{it.target_campaign}</span>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            )}
+      </section>
     </div>
   )
 }
