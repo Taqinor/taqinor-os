@@ -254,6 +254,11 @@ class EventType(models.TextChoices):
     # croit couvert pendant des semaines.
     VEILLE_AO_ALARME_SILENCE = (
         'veille_ao_alarme_silence', "Veille appels d'offres muette")
+    # NTUX30 — digest hebdomadaire : des favoris épinglés (`uxviews.FavoriUtilisateur`)
+    # pointent vers un enregistrement définitivement supprimé (ex. purgé de la
+    # corbeille transverse, NTUX29). Jamais de suppression automatique du favori.
+    UXVIEWS_FAVORIS_OBSOLETES = (
+        'uxviews_favoris_obsoletes', 'Favoris pointant vers des éléments supprimés')
 
 
 class Channel(models.TextChoices):
