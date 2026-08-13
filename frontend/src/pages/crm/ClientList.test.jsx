@@ -91,9 +91,11 @@ describe('ClientList — NTCRM15 filtre comptes dormants', () => {
       { id: 2, nom: 'Actif', prenom: '', type_client: 'particulier' },
     ]
     renderList({ clients })
-    expect(screen.getByText('Actif')).toBeInTheDocument()
+    // Desktop table uniquement (le repli carte mobile duplique le même texte).
+    const table = document.querySelector('[data-dt-table]')
+    expect(within(table).getByText('Actif')).toBeInTheDocument()
     fireEvent.click(screen.getByText('Comptes dormants'))
-    await waitFor(() => expect(screen.queryByText('Actif')).toBeNull())
-    expect(screen.getByText('Dormant')).toBeInTheDocument()
+    await waitFor(() => expect(within(table).queryByText('Actif')).toBeNull())
+    expect(within(table).getByText('Dormant')).toBeInTheDocument()
   })
 })

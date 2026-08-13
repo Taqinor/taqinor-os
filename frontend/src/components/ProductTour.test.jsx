@@ -10,6 +10,7 @@ import { configureStore } from '@reduxjs/toolkit'
 vi.mock('../api/axios', () => ({ default: { get: vi.fn(), post: vi.fn() } }))
 
 import api from '../api/axios'
+import { invalidateToursCache } from '../features/onboarding/productTours'
 import ProductTour from './ProductTour'
 
 const RECENT_USER = { id: 1, date_joined: new Date().toISOString() }
@@ -36,7 +37,11 @@ function renderTour(user, path = '/ventes/devis/nouveau') {
   )
 }
 
-beforeEach(() => { vi.clearAllMocks() })
+// productTours.js met en cache la promesse `/onboarding/tours/` au niveau du
+// module (un seul appel réseau par session, NTDMO14) — voulu en production,
+// mais ce cache doit être invalidé entre chaque test sinon les tests suivants
+// réutilisent silencieusement la réponse mockée du premier test.
+beforeEach(() => { vi.clearAllMocks(); invalidateToursCache() })
 afterEach(() => cleanup())
 
 describe('ProductTour (NTDMO15)', () => {
