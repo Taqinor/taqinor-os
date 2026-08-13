@@ -11,7 +11,8 @@ vi.mock('../../features/installations/offline/useFieldOutbox', () => ({
   useFieldOutbox,
 }))
 
-import SyncStatusBadge, { syncState } from './SyncStatusBadge'
+import SyncStatusBadge from './SyncStatusBadge'
+import { syncState } from './syncState'
 
 function etatOutbox(over = {}) {
   return {

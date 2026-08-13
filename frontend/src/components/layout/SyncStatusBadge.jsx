@@ -21,39 +21,9 @@
 // événements `online`/`offline` du navigateur et après chaque flush (le hook
 // partagé s'en charge).
 import { useState } from 'react'
-import { CloudOff, RefreshCw, CheckCircle2, AlertTriangle } from 'lucide-react'
 import { useFieldOutbox } from '../../features/installations/offline/useFieldOutbox'
 import { Popover, PopoverTrigger, PopoverContent } from '../../ui/Popover'
-
-/** État affiché, dérivé PUREMENT des compteurs (testable sans React). */
-export function syncState({ online, pending, pendingPhotos, failedCount }) {
-  const enAttente = (pending || 0) + (pendingPhotos || 0)
-  if (failedCount > 0) {
-    return {
-      key: 'erreur',
-      label: 'Erreur de synchro',
-      icon: AlertTriangle,
-      tone: 'text-destructive',
-      count: failedCount,
-    }
-  }
-  if (enAttente > 0) {
-    return {
-      key: 'attente',
-      label: `${enAttente} opération${enAttente > 1 ? 's' : ''} en attente`,
-      icon: online ? RefreshCw : CloudOff,
-      tone: 'text-warning',
-      count: enAttente,
-    }
-  }
-  return {
-    key: 'ok',
-    label: 'Synchronisé',
-    icon: CheckCircle2,
-    tone: 'text-success',
-    count: 0,
-  }
-}
+import { syncState } from './syncState'
 
 export default function SyncStatusBadge() {
   const [open, setOpen] = useState(false)
