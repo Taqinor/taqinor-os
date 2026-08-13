@@ -9,6 +9,7 @@ import BottomTabBar from './BottomTabBar'
 import RouteFocus from './RouteFocus'
 import UsageTracker from './UsageTracker'
 import OnboardingCoachmarks from '../../features/onboarding/OnboardingCoachmarks'
+import ProductTour from '../ProductTour'
 import { OfflineBanner } from '../../ui/OfflineState'
 import PresentationModeBanner from './PresentationModeBanner'
 import ImpersonationBanner from './ImpersonationBanner'
@@ -171,6 +172,11 @@ export default function Layout({ children }) {
           qu'à la première visite (drapeau localStorage) et rejouable depuis
           les Paramètres. Rend null le reste du temps. */}
       <OnboardingCoachmarks />
+      {/* NTDMO14/15 — visites guidées PAR ÉCRAN (money-path : devis, leads,
+          factures, chantiers, stock, dashboard), suivies côté serveur —
+          distinct du guide global ci-dessus. Rend null hors des écrans
+          ciblés / une fois vu. */}
+      <ProductTour />
       {/* NTIDE9/NTIDE37 — ORDRE FONDATEUR 2026-08-04 : les deux boutons
           flottants (« Suggérer une amélioration », « Envoyer un retour »)
           quittent l'écran — leurs modales vivent désormais dans le menu
