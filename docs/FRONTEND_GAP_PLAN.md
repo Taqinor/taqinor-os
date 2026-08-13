@@ -206,10 +206,10 @@ a focused test, calling the EXISTING backend endpoint.
 - [ ] FE-XPOS1-18 — **CRITICAL** rewrite `posApi.js` to call `/pos/ventes|sessions|retraits|config-materiel/`; add routes `/pos/session` (ouverture/clôture + rapport-z, XPOS4), `/pos/dashboard` (XPOS11), `/pos/retraits` (click-and-collect, XPOS15); wire ticket-escpos/share-link + serial capture (XPOS9) into `CaisseScreen.jsx`. (@lane: frontend/pos) (opus)
 
 ## Lane `frontend/ventes` (XSAL/ZSAL round-2 — mostly cheap NOT_WIRED stubs)
-- [ ] FE-XSAL6 — **BLOCKED: needs backend** (`PlanCommission` has no viewset/URL + not consumed by reporting/insights.py) then a "Plans de commission" screen under parametres. (@lane: frontend/ventes)
-- [ ] FE-XSAL1-3 — price-list admin CRUD + `liste_prix` field on `ClientForm.jsx` + call `getPrixApplicable` (remove the stale "ne pas appeler" comment) in `DevisGenerator.jsx`/`ProduitPicker.jsx` with a "Tarif" badge. (@lane: frontend/ventes)
-- [ ] FE-XSAL12 — partial-delivery dialog + reliquat column in `VentesKanban.jsx` (`livrer-partiel`). (@lane: frontend/ventes)
-- [ ] FE-ZSAL8/XSAL16 — BC PDF button + proposal `engagement` summary on `DevisList.jsx` (already serialized). (@lane: frontend/ventes)
+- [BLOCKED: needs backend] FE-XSAL6 — `PlanCommission` has no viewset/URL + not consumed by reporting/insights.py; a "Plans de commission" screen under parametres cannot be wired until the backend exposes it. (@lane: frontend/ventes)
+- [x] (déjà présent) FE-XSAL1-3 — price-list admin CRUD (`ListesPrixPage.jsx`, routed) + `liste_prix` field on `ClientForm.jsx` + `getPrixApplicable` called from `DevisGenerator.jsx` (XSAL3 "Tarif" badge already wired). (@lane: frontend/ventes)
+- [x] (déjà présent) FE-XSAL12 — partial-delivery dialog + reliquat column already in `BonCommandeList.jsx` (`LivraisonPartielleDialog`, `livrer-partiel`); no `VentesKanban.jsx` exists, this is the real implementation location. (@lane: frontend/ventes)
+- [x] FE-ZSAL8/XSAL16 — engagement summary already present (`engagementSummary()` in `DevisList.jsx`); added the missing BC PDF menu item (`handleBonCommandePdf` wired to the orphaned `ventesApi.getBonCommandePdf`) shown when `d.bon_commande_etat.exists`. (@lane: frontend/ventes)
 - [ ] FE-ZSAL5 — keyed email-template editor (`envoi_devis`) in `EmailSection.jsx`. (@lane: frontend/ventes)
 
 ## Lane `frontend/crm` (ZSAL round-2 — api client stubs defined, never called)
@@ -240,6 +240,16 @@ a focused test, calling the EXISTING backend endpoint.
 
 ## DONE LOG
 <!-- one dated line per shipped task -->
+- 2026-08-13 (lane frontend/ventes) — FE-XSAL1-3 et FE-XSAL12 vérifiées déjà entièrement construites
+  (`ListesPrixPage.jsx` routé + badge « Tarif » dans `DevisGenerator.jsx` ; dialogue
+  `LivraisonPartielleDialog` + colonne Reliquat déjà dans `BonCommandeList.jsx` — `VentesKanban.jsx`
+  n'existe pas, c'est le vrai emplacement de la fonctionnalité). Aucun code écrit. FE-XSAL6 confirmée
+  bloquée (`PlanCommission` sans viewset/URL côté backend) — marquée `[BLOCKED: needs backend]`.
+- 2026-08-13 (lane frontend/ventes) — FE-ZSAL8/XSAL16 : le résumé d'engagement (`engagementSummary()`)
+  était déjà présent dans `DevisList.jsx`. Écart réel trouvé et corrigé : `ventesApi.getBonCommandePdf`
+  était un export API orphelin (endpoint backend `GET .../bons-commande/<id>/pdf/` complet, jamais
+  appelé côté client) — ajouté un item de menu « Bon de commande (PDF) » sur `DevisList.jsx` (visible
+  quand `bon_commande_etat.exists`) qui l'appelle, avec test source `DevisListBcPdf.test.mjs`.
 - 2026-08-13 — lane `frontend/contrats` drained: FE-CONTRAT16-17/13-14/12/23-25/7/15/33, FE-XCTR7-8-11, FE-XCTR5, FE-XCTR14, FE-CONTRAT-config already fully built (ContratDetail.jsx tabs+actions, ModelesPage.jsx instancier, DashboardPage.jsx, PortailContratsPage.jsx, ConfigLocationPage.jsx) — ticked `(déjà présent)`, no code change. FE-XCTR2-3: added "Équipements couverts" + "X/Y visites" columns to `ContratsMaintenance.jsx` (data was already serialized server-side, just unrendered). FE-XCTR17-21: `LocationPage.jsx` had caution/inspection/bons PDF already; added the missing disponibilité (reservation-window) warning in the create dialog and an admin-only "Utilisation & ROI" card, both using contratsApi calls that existed but were never invoked from the UI.
 - 2026-08-13 (lane frontend/sav) — les 12 tâches taguées `@lane: frontend/sav` étaient DÉJÀ construites et câblées (savApi.js + pages/sav/*.jsx + router public /e/:token /suivi/:token) : FE-XSAV19/XSAV10, FE-XSAV3/XFSM1/XCTR4, FE-SAV-warranty, FE-XSAV15-17/XSAV9, FE-XSAV8, FE-XSAV12/27/ZSAV8-9, FE-ZSAV2-3-6, FE-SAV-kb/macros, FE-SAV-alarmes, FE-XSAV14/ZMFG6/11, FE-XSAV5/21/28, FE-ZMFG1-2/4/5-12. Aucun code écrit, pas de commit de fonctionnalité (seule mise à jour de ce fichier).
 - 2026-08-13 — Lane `frontend/compta` drainée (agent-acf554ffb8d774ac6). Vérifiées déjà construites
