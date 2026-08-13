@@ -1929,6 +1929,213 @@ def verifier_devis_envoyable(devis):
             "l'envoi est bloqué tant qu'elle n'est pas approuvée.")})
 
 
+def contexte_clauses_devis(devis):
+    """NTCPQ11 — Contexte plat servant à évaluer les clauses/CGV dynamiques.
+
+    Clés exposées : ``type_deal`` (= ``mode_installation``), ``montant``
+    (= total TTC), ``total_ht``, ``total_ttc``, ``remise_globale``,
+    ``puissance_kwc``, ``devise``. Aucun prix d'achat / aucune marge (donnée
+    interne — jamais dans un texte destiné au client)."""
+    from decimal import Decimal, InvalidOperation
+
+    etude = devis.etude_params if isinstance(devis.etude_params, dict) else {}
+    try:
+        kwc = float(etude.get('puissance_kwc') or 0)
+    except (TypeError, ValueError):
+        kwc = 0.0
+    try:
+        total_ht = float(devis.total_ht or 0)
+        total_ttc = float(devis.total_ttc or 0)
+    except (TypeError, ValueError, InvalidOperation):
+        total_ht = total_ttc = 0.0
+    return {
+        'type_deal': devis.mode_installation or '',
+        'mode_installation': devis.mode_installation or '',
+        'montant': total_ttc,
+        'total_ht': total_ht,
+        'total_ttc': total_ttc,
+        'remise_globale': float(devis.remise_globale or Decimal('0')),
+        'puissance_kwc': kwc,
+        'devise': devis.devise or 'MAD',
+    }
+
+
+def figer_clauses_devis(devis):
+    """NTCPQ11 — FIGE les clauses/CGV applicables sur le devis (snapshot).
+
+    Appelé au passage brouillon → envoyé. Idempotent et WRITE-ONCE : si
+    ``clauses_appliquees`` porte déjà une valeur (même une liste vide figée),
+    rien n'est recalculé — modifier une clause plus tard n'altère jamais un
+    devis déjà envoyé. Lecture cross-app cpq via import LOCAL (selectors).
+    Ne lève jamais : un incident de configuration ne doit pas bloquer un envoi.
+    Renvoie la liste figée."""
+    if devis.clauses_appliquees is not None:
+        return devis.clauses_appliquees
+    try:
+        from apps.cpq.selectors import clauses_applicables
+        clauses = clauses_applicables(
+            company=devis.company, context=contexte_clauses_devis(devis))
+    except Exception:  # noqa: BLE001 — un envoi ne casse jamais sur les CGV
+        logger.exception(
+            'NTCPQ11 : figeage des clauses ignoré (devis %s)', devis.pk)
+        return None
+    devis.clauses_appliquees = clauses
+    devis.save(update_fields=['clauses_appliquees'])
+    return clauses
+
+
+def configuration_devis_contenu(devis):
+    """NTCPQ20 — Représentation JSON-safe de la configuration d'un devis.
+
+    Uniquement des données de configuration (ligne, désignation, quantité,
+    P.U., remise) — JAMAIS de prix d'achat ni de marge."""
+    return {
+        'lignes': [{
+            'ligne_id': li.id,
+            'produit_id': li.produit_id,
+            'designation': li.designation,
+            'quantite': str(li.quantite) if li.quantite is not None else None,
+            'prix_unitaire': (str(li.prix_unitaire)
+                              if li.prix_unitaire is not None else None),
+            'remise': str(li.remise) if li.remise is not None else None,
+        } for li in devis.lignes.all().order_by('ordre', 'id')],
+    }
+
+
+def capturer_configuration_devis(devis, *, user=None):
+    """NTCPQ20 — Enregistre un instantané de configuration si le devis est
+    BROUILLON et que la configuration a RÉELLEMENT changé.
+
+    No-op (renvoie ``None``) hors brouillon ou quand le contenu est identique
+    au dernier instantané — un simple re-save ne pollue pas l'historique.
+    Ne lève jamais : l'historique ne doit jamais bloquer une écriture."""
+    from apps.ventes.models import ConfigurationDevisSnapshot, Devis
+
+    if devis is None or devis.pk is None:
+        return None
+    if devis.statut != Devis.Statut.BROUILLON:
+        return None
+    try:
+        contenu = configuration_devis_contenu(devis)
+        dernier = ConfigurationDevisSnapshot.objects.filter(
+            devis_id=devis.pk).order_by('-date_creation', '-id').first()
+        if dernier is not None and dernier.contenu == contenu:
+            return None
+        return ConfigurationDevisSnapshot.objects.create(
+            company=devis.company, devis=devis, contenu=contenu, auteur=user)
+    except Exception:  # noqa: BLE001 — l'historique n'est jamais bloquant
+        logger.exception(
+            'NTCPQ20 : instantané de configuration ignoré (devis %s)',
+            devis.pk)
+        return None
+
+
+def diff_configurations_devis(snapshot_a, snapshot_b):
+    """NTCPQ20 — Diff des LIGNES entre deux instantanés de configuration.
+
+    Renvoie ``{ajoutees, retirees, modifiees}`` : ``modifiees`` porte, pour
+    chaque ligne présente des deux côtés, les champs qui ont changé
+    (``{champ: [avant, apres]}``)."""
+    def _index(snap):
+        contenu = (snap or {}).get('lignes') or []
+        return {li.get('ligne_id'): li for li in contenu}
+
+    avant = _index(getattr(snapshot_a, 'contenu', snapshot_a))
+    apres = _index(getattr(snapshot_b, 'contenu', snapshot_b))
+    modifiees = []
+    for ligne_id, ligne in apres.items():
+        precedente = avant.get(ligne_id)
+        if precedente is None:
+            continue
+        champs = {
+            champ: [precedente.get(champ), ligne.get(champ)]
+            for champ in ('designation', 'quantite', 'prix_unitaire', 'remise')
+            if precedente.get(champ) != ligne.get(champ)}
+        if champs:
+            modifiees.append({'ligne_id': ligne_id, 'champs': champs})
+    return {
+        'ajoutees': [li for lid, li in apres.items() if lid not in avant],
+        'retirees': [li for lid, li in avant.items() if lid not in apres],
+        'modifiees': modifiees,
+    }
+
+
+def renouveler_devis(devis, *, user=None):
+    """NTCPQ13 — Renouvelle un devis déjà ACCEPTÉ (ou expiré/clos).
+
+    Crée un NOUVEAU ``Devis`` en ``brouillon`` reprenant les lignes actuelles
+    avec les prix COURANTS recalculés (``prix_applicable`` — jamais une simple
+    copie figée), lié au devis source par ``devis_origine`` (racine de chaîne)
+    et portant ``numero_renouvellement`` = source + 1.
+
+    DISTINCT de ``reviser`` (T10) : celui-ci corrige un devis non encore
+    accepté et supersède l'original ; ``renouveler`` laisse le devis source
+    strictement intact (statut, chaîne BC/Facture, historique).
+
+    Lève ``ValidationError`` si le devis n'est pas dans un état renouvelable.
+    Renvoie le nouveau devis."""
+    from rest_framework.exceptions import ValidationError
+    from apps.ventes.models import Devis, LigneDevis
+    from apps.ventes import activity
+    from apps.ventes.utils.company_settings import create_numbered
+
+    RENOUVELABLES = (Devis.Statut.ACCEPTE, Devis.Statut.EXPIRE)
+    if devis.statut not in RENOUVELABLES:
+        raise ValidationError({'statut': (
+            'Seul un devis accepté ou expiré peut être renouvelé '
+            '(un devis en cours se corrige avec « réviser »).')})
+
+    company = devis.company
+    racine = devis.devis_origine or devis
+    cree = {}
+
+    def _save(ref):
+        cree['obj'] = Devis.objects.create(
+            company=company, reference=ref, client=devis.client,
+            lead=devis.lead, statut=Devis.Statut.BROUILLON,
+            taux_tva=devis.taux_tva, remise_globale=devis.remise_globale,
+            note=devis.note, mode_installation=devis.mode_installation,
+            etude_params=devis.etude_params,
+            prix_cible_kwc=devis.prix_cible_kwc,
+            echeancier=devis.echeancier, devise=devis.devise,
+            taux_change=devis.taux_change, entite=devis.entite,
+            created_by=user, devis_origine=racine,
+            numero_renouvellement=(devis.numero_renouvellement or 0) + 1)
+        return cree['obj']
+
+    create_numbered(Devis, company, 'devis', _save)
+    nouveau = cree['obj']
+
+    for ligne in devis.lignes.all().select_related('produit'):
+        prix = ligne.prix_unitaire
+        if ligne.produit_id is not None:
+            try:
+                prix = prix_applicable(
+                    produit=ligne.produit, client=devis.client,
+                    quantite=ligne.quantite)['prix']
+            except Exception:  # noqa: BLE001 — repli sur le prix historique
+                logger.exception(
+                    'NTCPQ13 : prix courant indisponible (ligne %s)', ligne.pk)
+                prix = ligne.prix_unitaire
+        LigneDevis.objects.create(
+            devis=nouveau, produit=ligne.produit,
+            designation=ligne.designation, quantite=ligne.quantite,
+            prix_unitaire=prix, remise=ligne.remise,
+            taux_tva=ligne.taux_tva, type_ligne=ligne.type_ligne,
+            ordre=ligne.ordre, groupe_index=ligne.groupe_index,
+            groupe_label=ligne.groupe_label, optionnelle=ligne.optionnelle)
+
+    activity.log_devis_note(
+        nouveau, user,
+        f'Renouvellement n° {nouveau.numero_renouvellement} du devis '
+        f'{devis.reference} — prix catalogue actuels appliqués.')
+    activity.log_devis_note(
+        devis, user,
+        f'Renouvelé par le devis {nouveau.reference} '
+        f'(renouvellement n° {nouveau.numero_renouvellement}).')
+    return nouveau
+
+
 def mark_devis_sent(*, devis, user=None):
     """U4 — flip a Devis to « envoyé » through the ONE status-change path.
 
@@ -1966,6 +2173,10 @@ def mark_devis_sent(*, devis, user=None):
     # NTCPQ7 — bloque l'envoi tant qu'une étape d'approbation de remise reste
     # en attente (matrice à paliers, remplace/étend le seuil unique T17).
     verifier_devis_envoyable(devis)
+
+    # NTCPQ11 — fige les clauses/CGV dynamiques AVANT le basculement (snapshot
+    # write-once ; jamais recalculé après envoi).
+    figer_clauses_devis(devis)
 
     ancien = devis.statut
     devis.statut = Devis.Statut.ENVOYE

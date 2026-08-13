@@ -1842,3 +1842,235 @@ def _brouillon_relance_engagement(devis, declencheurs):
         corps = (f'votre proposition{suffixe} vous attend toujours — '
                  'souhaitez-vous que je vous la présente ?')
     return f'{salutation}, {corps}'
+
+
+def devis_envoyes_periode(company, *, date_debut=None, date_fin=None,
+                          commercial_id=None):
+    """NTCPQ24 — Devis ENVOYÉS (ou au-delà) d'une société sur une période.
+
+    Point d'entrée cross-app en LECTURE (``apps.cpq`` bâtit son rapport de
+    conformité dessus sans importer ``apps.ventes.models``). La période porte
+    sur ``date_envoi`` ; bornes optionnelles (ouvertes si absentes). Précharge
+    les lignes/produits (le calcul de conformité les parcourt)."""
+    from .models import Devis
+    qs = Devis.objects.filter(
+        company=company, date_envoi__isnull=False,
+    ).select_related('client', 'created_by').prefetch_related(
+        'lignes__produit__categorie')
+    if date_debut:
+        qs = qs.filter(date_envoi__date__gte=date_debut)
+    if date_fin:
+        qs = qs.filter(date_envoi__date__lte=date_fin)
+    if commercial_id:
+        qs = qs.filter(created_by_id=commercial_id)
+    return qs.order_by('date_envoi', 'id')
+
+
+def devis_en_cours(company):
+    """NTCPQ23 — Devis NON encore acceptés d'une société (brouillon/envoyé).
+
+    Point d'entrée cross-app en LECTURE (``apps.cpq`` s'en sert pour son
+    tableau de bord de marge interne, sans importer ``apps.ventes.models``).
+    Précharge les lignes et leurs produits (le calcul de marge les parcourt)."""
+    from .models import Devis
+    return Devis.objects.filter(
+        company=company,
+        statut__in=(Devis.Statut.BROUILLON, Devis.Statut.ENVOYE),
+    ).select_related('client', 'created_by').prefetch_related(
+        'lignes__produit__categorie').order_by('-date_creation')
+
+
+def frequence_co_achat(company, produit_id, *, limite=10):
+    """NTCPQ19 — Fréquence de CO-ACHAT d'un produit dans les devis ACCEPTÉS.
+
+    Point d'entrée cross-app en LECTURE (``apps.cpq`` l'appelle sans importer
+    ``apps.ventes.models``) : renvoie ``[(produit_id, nb_devis), ...]`` trié par
+    fréquence décroissante — les produits apparaissant dans les mêmes devis
+    acceptés de la SOCIÉTÉ que ``produit_id``, hors lui-même. Lecture pure,
+    jamais de prix d'achat ni de marge."""
+    from collections import Counter
+    from .models import Devis, LigneDevis
+
+    devis_ids = LigneDevis.objects.filter(
+        devis__company=company, devis__statut=Devis.Statut.ACCEPTE,
+        produit_id=produit_id).values_list('devis_id', flat=True)
+    devis_ids = set(devis_ids)
+    if not devis_ids:
+        return []
+    paires = list(LigneDevis.objects.filter(
+        devis_id__in=devis_ids).exclude(
+            produit_id=produit_id).exclude(
+                produit_id=None).values_list('devis_id', 'produit_id'))
+    compteur = Counter({pid: 0 for _, pid in paires})
+    vus = set()
+    for devis_id, pid in paires:
+        if (devis_id, pid) in vus:
+            continue  # une même paire ne compte qu'une fois par devis
+        vus.add((devis_id, pid))
+        compteur[pid] += 1
+    return compteur.most_common(limite)
+
+
+def lots_totaux(devis):
+    """NTCPQ18 — Sous-total PAR LOT + total consolidé d'un devis multi-sites.
+
+    Renvoie ``None`` quand le devis ne porte AUCUN lot (chemin mono-site
+    strictement inchangé). Sinon ::
+
+        {
+          'lots': [{'id', 'nom_lot', 'adresse_site', 'totaux': {...}}, ...],
+          'hors_lot': {...} | None,      # lignes non rattachées à un lot
+          'total_consolide': {...},      # TOUTES les lignes du devis
+        }
+
+    Chaque bloc de totaux passe par la MÊME chaîne canonique
+    (``_canonical_totaux`` : HT brut → remise → TVA par taux → TTC) que les
+    totaux du devis, donc la somme des lots + hors-lot recolle au total
+    consolidé au centime. Company scoping : seules les lignes du devis fourni
+    (déjà borné à sa société par l'appelant) sont lues."""
+    lots = list(devis.lots.all())
+    if not lots:
+        return None
+
+    lignes = list(devis.lignes.all())
+    fallback = devis.taux_tva
+    remise = devis.remise_globale
+    par_lot = {}
+    for ligne in lignes:
+        par_lot.setdefault(ligne.lot_id, []).append(ligne)
+
+    blocs = [{
+        'id': lot.id,
+        'nom_lot': lot.nom_lot,
+        'adresse_site': lot.adresse_site,
+        'totaux': _canonical_totaux(
+            par_lot.get(lot.id, []), remise_globale_pct=remise,
+            fallback_taux=fallback),
+    } for lot in lots]
+
+    orphelines = par_lot.get(None, [])
+    hors_lot = _canonical_totaux(
+        orphelines, remise_globale_pct=remise,
+        fallback_taux=fallback) if orphelines else None
+
+    return {
+        'lots': blocs,
+        'hors_lot': hors_lot,
+        'total_consolide': _canonical_totaux(
+            lignes, remise_globale_pct=remise, fallback_taux=fallback),
+    }
+
+
+# ── NTCPQ17 — Remises automatiques par palier de VOLUME, en cascade ──────────
+
+def _paliers_volume_actifs(company):
+    from .models import PalierRemiseVolume
+    return list(PalierRemiseVolume.objects.filter(
+        company=company, actif=True))
+
+
+def _meilleur_palier(paliers, produit, quantite):
+    """Palier le plus fort satisfait par ``quantite`` pour ce produit.
+
+    Ordre de préférence : ``priorite`` décroissante, puis ``quantite_min``
+    la plus élevée atteinte, puis la remise la plus forte."""
+    from decimal import Decimal
+    quantite = Decimal(str(quantite or 0))
+    candidats = [
+        p for p in paliers
+        if p.matches_produit(produit) and quantite >= p.quantite_min]
+    if not candidats:
+        return None
+    candidats.sort(
+        key=lambda p: (p.priorite, p.quantite_min, p.remise_pct),
+        reverse=True)
+    return candidats[0]
+
+
+def _categories_ayant_atteint_leur_seuil(paliers, lignes):
+    """Noms de catégories dont le VOLUME cumulé atteint un palier dédié.
+
+    ``lignes`` : itérable de ``{produit, quantite}``. Seuls les paliers portant
+    une catégorie comptent ici (un palier « tout le catalogue » n'identifie
+    aucune catégorie)."""
+    from collections import defaultdict
+    from decimal import Decimal
+    volumes = defaultdict(Decimal)
+    for ligne in lignes:
+        produit = ligne.get('produit')
+        cat = getattr(getattr(produit, 'categorie', None), 'nom', None)
+        if cat:
+            volumes[cat] += Decimal(str(ligne.get('quantite') or 0))
+    atteintes = set()
+    for palier in paliers:
+        nom = palier.categorie_nom
+        if not nom:
+            continue
+        if volumes.get(nom, Decimal('0')) >= palier.quantite_min:
+            atteintes.add(nom)
+    return atteintes
+
+
+def decomposition_remise_volume(*, company, produit, quantite, lignes=None):
+    """NTCPQ17 — DÉCOMPOSITION de la remise volume (remise ligne + cascade).
+
+    * **Remise de ligne** : le meilleur palier satisfait par la quantité de
+      CETTE ligne (comportement palier simple, comme XSAL2).
+    * **Cascade globale** : quand au moins DEUX catégories du panier atteignent
+      chacune leur seuil, les paliers marqués ``cumulable`` dont la
+      ``quantite_min`` est couverte par le volume TOTAL du panier s'ajoutent,
+      dans l'ordre de ``priorite`` décroissante.
+
+    ``lignes`` : le panier complet (``[{produit, quantite}, ...]``) ; absent, la
+    cascade ne se déclenche pas (une seule ligne ne peut pas couvrir deux
+    catégories). Renvoie ``{remise_ligne_pct, cascade, remise_totale_pct}`` —
+    les remises se COMPOSENT (jamais une addition naïve qui dépasserait 100 %).
+    Aucune donnée de marge / ``prix_achat`` n'entre dans ce calcul."""
+    from decimal import Decimal, ROUND_HALF_UP
+
+    cent = Decimal('0.01')
+    paliers = _paliers_volume_actifs(company)
+    vide = {'remise_ligne_pct': '0.00', 'cascade': [],
+            'remise_totale_pct': '0.00'}
+    if not paliers:
+        return vide
+
+    ligne_palier = _meilleur_palier(paliers, produit, quantite)
+    remise_ligne = (
+        Decimal(str(ligne_palier.remise_pct)) if ligne_palier
+        else Decimal('0'))
+
+    cascade = []
+    lignes = list(lignes or [])
+    if len(lignes) > 1:
+        atteintes = _categories_ayant_atteint_leur_seuil(paliers, lignes)
+        if len(atteintes) >= 2:
+            volume_total = sum(
+                (Decimal(str(li.get('quantite') or 0)) for li in lignes),
+                Decimal('0'))
+            cumulables = [
+                p for p in paliers
+                if p.cumulable and volume_total >= p.quantite_min
+                and (ligne_palier is None or p.id != ligne_palier.id)]
+            cumulables.sort(
+                key=lambda p: (p.priorite, p.quantite_min), reverse=True)
+            cascade = [{
+                'palier_id': p.id,
+                'categorie_nom': p.categorie_nom,
+                'quantite_min': str(p.quantite_min),
+                'remise_pct': str(p.remise_pct),
+                'portee': 'global',
+            } for p in cumulables]
+
+    reste = Decimal('1') - remise_ligne / Decimal('100')
+    for entree in cascade:
+        reste *= Decimal('1') - Decimal(entree['remise_pct']) / Decimal('100')
+    totale = ((Decimal('1') - reste) * Decimal('100')).quantize(
+        cent, ROUND_HALF_UP)
+
+    return {
+        'remise_ligne_pct': str(remise_ligne.quantize(cent, ROUND_HALF_UP)),
+        'remise_ligne_palier_id': ligne_palier.id if ligne_palier else None,
+        'cascade': cascade,
+        'remise_totale_pct': str(totale),
+    }

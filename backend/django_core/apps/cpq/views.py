@@ -16,14 +16,16 @@ from .models import (
     OptionProduit, ContrainteCompatibilite, RegleProduitCPQ, OffreGroupee,
     PrixContractuel, QuestionConfigurateur, SessionConfigurateur,
     ReponseConfigurateur, SeuilMargeFamille, RegleApprobationRemise,
+    ClauseCGV, ProduitEquivalent,
 )
 from .serializers import (
     OptionProduitSerializer, ContrainteCompatibiliteSerializer,
     RegleProduitCPQSerializer, OffreGroupeeSerializer,
     PrixContractuelSerializer, QuestionConfigurateurSerializer,
     SeuilMargeFamilleSerializer, RegleApprobationRemiseSerializer,
+    ClauseCGVSerializer, ProduitEquivalentSerializer,
 )
-from . import selectors, services
+from . import reports, selectors, services
 
 
 class OptionProduitViewSet(CompanyScopedModelViewSet):
@@ -159,6 +161,212 @@ class RegleApprobationRemiseViewSet(CompanyScopedModelViewSet):
         if self.action in ('list', 'retrieve'):
             return [IsAnyRole()]
         return [IsResponsableOrAdmin()]
+
+
+class ClauseCGVViewSet(CompanyScopedModelViewSet):
+    """NTCPQ11/12 — Bibliothèque de clauses/CGV réutilisables.
+
+    Lecture tout rôle, écriture réservée Directeur / Commercial responsable :
+    un admin crée/désactive une clause sans toucher au code. L'action
+    ``tester`` évalue À BLANC la clause contre un devis existant — purement
+    consultative, elle n'écrit RIEN (le snapshot ne se fige qu'à l'envoi)."""
+    queryset = ClauseCGV.objects.all()
+    serializer_class = ClauseCGVSerializer
+
+    def get_permissions(self):
+        if self.action in ('list', 'retrieve', 'tester'):
+            return [IsAnyRole()]
+        return [IsResponsableOrAdmin()]
+
+    @action(detail=True, methods=['get', 'post'], url_path='tester')
+    def tester(self, request, pk=None):
+        """Test à blanc contre un devis existant de la société.
+
+        ``?devis_id=`` (ou corps ``devis_id``). Renvoie
+        ``{applicable, contexte, condition_lisible}`` sans rien persister."""
+        clause = self.get_object()
+        devis_id = (request.query_params.get('devis_id')
+                    or request.data.get('devis_id'))
+        if not devis_id:
+            return Response({'detail': 'devis_id requis.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        from apps.ventes.models import Devis
+        devis = Devis.objects.filter(
+            pk=devis_id, company=request.user.company).first()
+        if devis is None:
+            return Response({'detail': 'Devis introuvable.'},
+                            status=status.HTTP_404_NOT_FOUND)
+        from apps.ventes.services import contexte_clauses_devis
+        contexte = contexte_clauses_devis(devis)
+        return Response({
+            'applicable': selectors.clause_sapplique(clause, contexte),
+            'contexte': contexte,
+            'condition_lisible':
+                ClauseCGVSerializer(clause).data['condition_lisible'],
+        })
+
+
+class ProduitEquivalentViewSet(CompanyScopedModelViewSet):
+    """NTCPQ16 — Règles de substitution produit par tier (moteur de variantes).
+    Lecture tout rôle, écriture réservée Directeur / Commercial responsable."""
+    queryset = ProduitEquivalent.objects.select_related(
+        'produit_source', 'produit_substitut').all()
+    serializer_class = ProduitEquivalentSerializer
+
+    def get_permissions(self):
+        if self.action in ('list', 'retrieve'):
+            return [IsAnyRole()]
+        return [IsResponsableOrAdmin()]
+
+
+class DevisVariantesView(APIView):
+    """NTCPQ16 — ``cpq/devis/{id}/variantes/``.
+
+    GET : liste les variantes déjà générées (tier + totaux HT).
+    POST : (re)génère les variantes du devis par substitution de produits
+    (corps optionnel ``{tiers: [...]}``). Moteur SEUL — la comparaison
+    côte-à-côte est l'affaire de l'UI (FG212). Aucun PDF, aucun changement de
+    statut."""
+
+    def get_permissions(self):
+        if self.request.method in ('GET', 'HEAD', 'OPTIONS'):
+            return [IsAnyRole()]
+        return [IsResponsableOrAdmin()]
+
+    def _devis(self, request, pk):
+        from apps.ventes.models import Devis
+        return Devis.objects.filter(
+            pk=pk, company=request.user.company).first()
+
+    @staticmethod
+    def _payload(variantes):
+        return [{
+            'devis_id': v.id,
+            'reference': v.reference,
+            'tier': v.variante_tier,
+            'statut': v.statut,
+            'total_ht': str(v.total_ht),
+        } for v in variantes]
+
+    def get(self, request, pk):
+        devis = self._devis(request, pk)
+        if devis is None:
+            return Response({'detail': 'Devis introuvable.'},
+                            status=status.HTTP_404_NOT_FOUND)
+        return Response(self._payload(
+            devis.variantes_cpq.all().order_by('variante_tier', 'id')))
+
+    def post(self, request, pk):
+        devis = self._devis(request, pk)
+        if devis is None:
+            return Response({'detail': 'Devis introuvable.'},
+                            status=status.HTTP_404_NOT_FOUND)
+        variantes = services.generer_variantes_devis(
+            devis, user=request.user, tiers=request.data.get('tiers'))
+        return Response(self._payload(variantes),
+                        status=status.HTTP_201_CREATED)
+
+
+class RapportConformiteView(APIView):
+    """NTCPQ24 — GET ``cpq/rapports/conformite/?date_debut=&date_fin=
+    &commercial_id=``.
+
+    Rapport INTERNE (staff) du taux de conformité des configurations des devis
+    envoyés sur la période. ``?format=csv`` renvoie une ligne par devis envoyé
+    (référence, date, commercial, conformité) — export interne bureau d'études
+    / direction commerciale, jamais un document client (aucun PDF, aucune
+    donnée de marge)."""
+    permission_classes = [IsResponsableOrAdmin]
+
+    COLONNES = ['reference', 'date_envoi', 'commercial', 'conforme',
+                'bloquant', 'nb_violations']
+
+    def get(self, request):
+        rapport = reports.rapport_conformite_configurations(
+            request.user.company,
+            date_debut=request.query_params.get('date_debut') or None,
+            date_fin=request.query_params.get('date_fin') or None,
+            commercial_id=request.query_params.get('commercial_id') or None)
+        if request.query_params.get('format') != 'csv':
+            return Response(rapport)
+
+        import csv
+        from django.http import HttpResponse
+        reponse = HttpResponse(content_type='text/csv; charset=utf-8')
+        reponse['Content-Disposition'] = (
+            'attachment; filename="conformite-configurations.csv"')
+        writer = csv.DictWriter(
+            reponse, fieldnames=self.COLONNES, extrasaction='ignore')
+        writer.writeheader()
+        for ligne in rapport['lignes']:
+            writer.writerow({c: ligne.get(c) for c in self.COLONNES})
+        return reponse
+
+
+class MargeSousSeuilView(APIView):
+    """NTCPQ23 — GET ``cpq/marge-sous-seuil/``.
+
+    Tableau de bord CPQ INTERNE : devis en cours (non encore acceptés) dont au
+    moins une ligne passe sous le seuil de marge de sa famille (NTCPQ6).
+    Réservé aux rôles staff — ces données de marge ne quittent JAMAIS l'ERP
+    (aucune sortie client, règle #4). Filtres : ``?commercial=`` et
+    ``?famille=``."""
+    permission_classes = [IsResponsableOrAdmin]
+
+    def get(self, request):
+        return Response({'devis': reports.devis_sous_seuil_marge(
+            request.user.company,
+            commercial_id=request.query_params.get('commercial'),
+            famille=request.query_params.get('famille'))})
+
+
+class FeuilleConfigurationView(APIView):
+    """NTCPQ22 — GET ``cpq/devis/{id}/feuille-configuration/``.
+
+    Export PDF INTERNE (bureau d'études) : configuration technique complète
+    avec prix d'achat et marge par ligne. Réservé aux rôles staff
+    (Directeur / Commercial responsable) et STRICTEMENT distinct du PDF client
+    ``/proposal`` (règle #4) — jamais rendu par ``quote_engine``, jamais nommé
+    « devis » ni « proposition ».
+
+    ``?format=json`` renvoie les mêmes données sans rendre le PDF (usage écran
+    interne / test)."""
+    permission_classes = [IsResponsableOrAdmin]
+
+    def get(self, request, pk):
+        from django.http import HttpResponse
+        from apps.ventes.models import Devis
+        devis = Devis.objects.filter(
+            pk=pk, company=request.user.company).first()
+        if devis is None:
+            return Response({'detail': 'Devis introuvable.'},
+                            status=status.HTTP_404_NOT_FOUND)
+        if request.query_params.get('format') == 'json':
+            return Response(services.donnees_feuille_configuration(devis))
+        pdf = services.generer_feuille_configuration_pdf(devis)
+        reponse = HttpResponse(pdf, content_type='application/pdf')
+        reponse['Content-Disposition'] = (
+            'inline; filename="feuille-configuration-'
+            f'{devis.reference}.pdf"')
+        return reponse
+
+
+class SuggestionsProduitView(APIView):
+    """NTCPQ19 — GET ``cpq/suggestions/?produit_id=``.
+
+    Jusqu'à 3 produits associés : d'abord les ``RECOMMANDE`` déclarés (NTCPQ1),
+    puis les produits les plus fréquemment co-achetés dans les devis ACCEPTÉS
+    de la société. Purement suggestif — aucune action automatique, aucun prix
+    d'achat exposé."""
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        produit_id = request.query_params.get('produit_id')
+        if not produit_id:
+            return Response({'detail': 'produit_id requis.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        return Response({'suggestions': reports.suggestions_produit(
+            company=request.user.company, produit_id=produit_id)})
 
 
 class ConfigurateurDemarrerView(APIView):
