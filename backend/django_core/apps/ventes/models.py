@@ -229,6 +229,28 @@ class Devis(models.Model):
         related_name='devis_modifies',
     )
 
+    # ── NTCPQ13 — Renouvellement d'un devis déjà accepté/clos ──
+    # DISTINCT de la révision (T10 : ``version``/``version_parent``, qui corrige
+    # un devis NON encore accepté). ``devis_origine`` pointe vers la RACINE de
+    # la chaîne de renouvellement (le tout premier devis), ``numero_renouvellement``
+    # compte les renouvellements successifs (0 = devis d'origine). Le devis
+    # source n'est JAMAIS modifié : il reste accepté, figé, avec sa chaîne
+    # BC/Facture intacte.
+    devis_origine = models.ForeignKey(
+        'self',
+        # on_delete: un renouvellement survit à la disparition de son origine —
+        # il redevient simplement autonome (jamais de cascade sur du CA).
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='renouvellements',
+        verbose_name="Devis d'origine (renouvellement)",
+    )
+    numero_renouvellement = models.PositiveIntegerField(
+        default=0,
+        verbose_name='N° de renouvellement',
+        help_text='0 = devis d\'origine ; 1, 2… = renouvellements successifs.',
+    )
+
     # ── NTCPQ11 — Clauses/CGV dynamiques FIGÉES à l'envoi ──
     # Snapshot JSON de la liste des clauses (``apps.cpq.ClauseCGV``) applicables
     # au devis, calculé UNE SEULE FOIS au passage brouillon → envoyé et JAMAIS

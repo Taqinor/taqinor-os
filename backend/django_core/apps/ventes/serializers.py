@@ -459,6 +459,11 @@ class DevisSerializer(serializers.ModelSerializer):
         # jamais exposé côté client/PDF).
         read_only_fields = ['reference', 'created_by', 'fichier_pdf',
                             'date_creation', 'prix_par_kwc',
+                            # NTCPQ11/13 — snapshot de clauses figé à l'envoi
+                            # et chaîne de renouvellement : posés côté serveur
+                            # (services), jamais acceptés du corps.
+                            'clauses_appliquees', 'devis_origine',
+                            'numero_renouvellement',
                             'updated_at', 'updated_by']  # VX98 — server-side only
 
 
@@ -477,7 +482,10 @@ class DevisWriteSerializer(serializers.ModelSerializer):
         # SCA47 — prix_par_kwc est dérivé/gelé côté serveur (write-once), jamais
         # accepté du corps de requête.
         read_only_fields = ['created_by', 'date_creation', 'company',
-                            'prix_par_kwc']
+                            'prix_par_kwc',
+                            # NTCPQ11/13 — posés côté serveur uniquement.
+                            'clauses_appliquees', 'devis_origine',
+                            'numero_renouvellement']
         extra_kwargs = {'client': {'required': False}}
 
 

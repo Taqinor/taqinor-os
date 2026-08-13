@@ -1984,6 +1984,82 @@ def figer_clauses_devis(devis):
     return clauses
 
 
+def renouveler_devis(devis, *, user=None):
+    """NTCPQ13 — Renouvelle un devis déjà ACCEPTÉ (ou expiré/clos).
+
+    Crée un NOUVEAU ``Devis`` en ``brouillon`` reprenant les lignes actuelles
+    avec les prix COURANTS recalculés (``prix_applicable`` — jamais une simple
+    copie figée), lié au devis source par ``devis_origine`` (racine de chaîne)
+    et portant ``numero_renouvellement`` = source + 1.
+
+    DISTINCT de ``reviser`` (T10) : celui-ci corrige un devis non encore
+    accepté et supersède l'original ; ``renouveler`` laisse le devis source
+    strictement intact (statut, chaîne BC/Facture, historique).
+
+    Lève ``ValidationError`` si le devis n'est pas dans un état renouvelable.
+    Renvoie le nouveau devis."""
+    from rest_framework.exceptions import ValidationError
+    from apps.ventes.models import Devis, LigneDevis
+    from apps.ventes import activity
+    from apps.ventes.utils.company_settings import create_numbered
+
+    RENOUVELABLES = (Devis.Statut.ACCEPTE, Devis.Statut.EXPIRE)
+    if devis.statut not in RENOUVELABLES:
+        raise ValidationError({'statut': (
+            'Seul un devis accepté ou expiré peut être renouvelé '
+            '(un devis en cours se corrige avec « réviser »).')})
+
+    company = devis.company
+    racine = devis.devis_origine or devis
+    cree = {}
+
+    def _save(ref):
+        cree['obj'] = Devis.objects.create(
+            company=company, reference=ref, client=devis.client,
+            lead=devis.lead, statut=Devis.Statut.BROUILLON,
+            taux_tva=devis.taux_tva, remise_globale=devis.remise_globale,
+            note=devis.note, mode_installation=devis.mode_installation,
+            etude_params=devis.etude_params,
+            prix_cible_kwc=devis.prix_cible_kwc,
+            echeancier=devis.echeancier, devise=devis.devise,
+            taux_change=devis.taux_change, entite=devis.entite,
+            created_by=user, devis_origine=racine,
+            numero_renouvellement=(devis.numero_renouvellement or 0) + 1)
+        return cree['obj']
+
+    create_numbered(Devis, company, 'devis', _save)
+    nouveau = cree['obj']
+
+    for ligne in devis.lignes.all().select_related('produit'):
+        prix = ligne.prix_unitaire
+        if ligne.produit_id is not None:
+            try:
+                prix = prix_applicable(
+                    produit=ligne.produit, client=devis.client,
+                    quantite=ligne.quantite)['prix']
+            except Exception:  # noqa: BLE001 — repli sur le prix historique
+                logger.exception(
+                    'NTCPQ13 : prix courant indisponible (ligne %s)', ligne.pk)
+                prix = ligne.prix_unitaire
+        LigneDevis.objects.create(
+            devis=nouveau, produit=ligne.produit,
+            designation=ligne.designation, quantite=ligne.quantite,
+            prix_unitaire=prix, remise=ligne.remise,
+            taux_tva=ligne.taux_tva, type_ligne=ligne.type_ligne,
+            ordre=ligne.ordre, groupe_index=ligne.groupe_index,
+            groupe_label=ligne.groupe_label, optionnelle=ligne.optionnelle)
+
+    activity.log_devis_note(
+        nouveau, user,
+        f'Renouvellement n° {nouveau.numero_renouvellement} du devis '
+        f'{devis.reference} — prix catalogue actuels appliqués.')
+    activity.log_devis_note(
+        devis, user,
+        f'Renouvelé par le devis {nouveau.reference} '
+        f'(renouvellement n° {nouveau.numero_renouvellement}).')
+    return nouveau
+
+
 def mark_devis_sent(*, devis, user=None):
     """U4 — flip a Devis to « envoyé » through the ONE status-change path.
 

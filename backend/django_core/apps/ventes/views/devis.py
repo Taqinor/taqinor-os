@@ -190,6 +190,10 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
             'whatsapp_preview',
             # NTCPQ8 — approbation de remise (lecture + décisions).
             'approbation', 'approuver_etape', 'rejeter_etape',
+            # NTCPQ13 — renouvellement d'un devis accepté/expiré. Déclare la
+            # MÊME classe que le permission_classes de l'@action (cette
+            # surcharge PRIME sur lui — cf. le commentaire VX199 ci-dessus).
+            'renouveler',
         ]:
             return [IsResponsableOrAdmin()]
         elif self.action == 'destroy':
@@ -1112,6 +1116,20 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
         old.save(update_fields=['is_active', 'superseded_by'])
         return Response(
             DevisSerializer(nd, context={'request': request}).data,
+            status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['post'], url_path='renouveler',
+            permission_classes=[IsResponsableOrAdmin])
+    def renouveler(self, request, pk=None):
+        """NTCPQ13 — Renouvelle un devis ACCEPTÉ (ou expiré) : nouveau brouillon
+        reprenant les lignes actuelles aux PRIX CATALOGUE COURANTS, lié à son
+        devis d'origine (``devis_origine``) et numéroté
+        (``numero_renouvellement``). Le devis source reste intact — distinct de
+        ``reviser`` (qui corrige un devis non encore accepté)."""
+        from ..services import renouveler_devis
+        nouveau = renouveler_devis(self.get_object(), user=request.user)
+        return Response(
+            DevisSerializer(nouveau, context={'request': request}).data,
             status=status.HTTP_201_CREATED)
 
     @action(detail=True, methods=['post'], url_path='accepter',
