@@ -34,6 +34,13 @@ import { StatutEmploye, TYPE_CONTRAT_LABELS } from './constants.jsx'
    (`?beneficiaire=<id>`).
    ========================================================================== */
 
+/* XRH16 — libellés du `statut` renvoyé par `selectors.compa_ratio`. */
+const STATUT_BANDE = {
+  sous_bande: 'Sous la bande',
+  dans_bande: 'Dans la bande',
+  sur_bande: 'Au-dessus de la bande',
+}
+
 function Liste({ rows, loading, empty, renderRow }) {
   if (loading) {
     return (
@@ -67,6 +74,8 @@ export default function EmployeDetail() {
   const [documents, setDocuments] = useState([])
   const [remunerations, setRemunerations] = useState([])
   const [compaRatio, setCompaRatio] = useState(null)
+  // XRH15 — écarts de compétences requis-vs-actuel du poste de référence.
+  const [ecarts, setEcarts] = useState([])
   const [habilitations, setHabilitations] = useState([])
   const [formation, setFormation] = useState(null)
   const [integration, setIntegration] = useState(null)
@@ -111,6 +120,8 @@ export default function EmployeDetail() {
       rhApi.getHistoriqueEmploye(id),
       // WIR131 — badges reçus par ce dossier.
       rhApi.getAttributionsBadge({ beneficiaire: id }),
+      // XRH15 — écarts de compétences (liste vide sans poste de référence).
+      rhApi.getEcartCompetences(id),
     ]
     if (canSalaires) {
       calls.push(rhApi.getRemunerations({ employe: id }))
@@ -118,7 +129,11 @@ export default function EmployeDetail() {
     }
     Promise.allSettled(calls).then((results) => {
       if (!vivant) return
-      const [docRes, habRes, formRes, intRes, chatRes, badgeRes, remRes, compaRes] = results
+      const [
+        docRes, habRes, formRes, intRes, chatRes, badgeRes, ecartRes,
+        remRes, compaRes,
+      ] = results
+      if (ecartRes.status === 'fulfilled') setEcarts(unwrap(ecartRes.value.data))
       if (docRes.status === 'fulfilled') setDocuments(unwrap(docRes.value.data))
       if (habRes.status === 'fulfilled') setHabilitations(unwrap(habRes.value.data))
       if (formRes.status === 'fulfilled') setFormation(formRes.value.data)
@@ -185,6 +200,17 @@ export default function EmployeDetail() {
       recharger()
     } catch (err) {
       toast.error(err?.response?.data?.detail ?? 'Confirmation impossible.')
+    }
+  }
+
+  // XRH15 — un clic depuis un écart crée le besoin de formation associé.
+  const creerBesoinFormation = async (ecart) => {
+    try {
+      await rhApi.creerBesoinDepuisEcart(id, { competence: ecart.competence_id })
+      toast.success('Besoin de formation créé.')
+      recharger()
+    } catch (err) {
+      toast.error(err?.response?.data?.detail ?? 'Création impossible.')
     }
   }
 
@@ -317,23 +343,57 @@ export default function EmployeDetail() {
 
   const formationsRows = formation?.lignes ?? []
   const formationsTab = (
-    <Liste
-      rows={formationsRows}
-      loading={subLoading}
-      empty="Aucune formation au registre."
-      renderRow={(f) => (
-        <div className="flex items-center justify-between gap-3">
-          <div className="min-w-0">
-            <p className="font-medium">{f.intitule || f.session_intitule || '—'}</p>
-            <p className="truncate text-xs text-muted-foreground">
-              {f.organisme || '—'}
-              {f.date_debut ? ` · ${formatDate(f.date_debut)}` : ''}
+    <div className="flex flex-col gap-4">
+      {/* XRH15 — analyse d'écart requis-vs-actuel au poste de référence, avec
+          création en un clic d'un besoin de formation sur la compétence. */}
+      <div className="flex flex-col gap-2">
+        <p className="text-sm font-medium">Écarts de compétences</p>
+        {ecarts.length === 0
+          ? (
+            <p className="text-xs text-muted-foreground">
+              Aucun écart détecté (ou aucun poste de référence sur ce dossier).
             </p>
+          )
+          : (
+            <ul className="flex flex-col gap-2">
+              {ecarts.map((e) => (
+                <li key={e.competence_id} className="flex items-center justify-between gap-3 rounded-lg border border-border bg-card px-3 py-2 text-sm">
+                  <div className="min-w-0">
+                    <p className="font-medium">{e.competence_libelle}</p>
+                    <p className="truncate text-xs text-muted-foreground">
+                      Niveau requis {e.niveau_requis} · actuel {e.niveau_actuel} · écart {e.ecart}
+                    </p>
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => creerBesoinFormation(e)}
+                  >
+                    Créer un besoin de formation
+                  </Button>
+                </li>
+              ))}
+            </ul>
+          )}
+      </div>
+      <Liste
+        rows={formationsRows}
+        loading={subLoading}
+        empty="Aucune formation au registre."
+        renderRow={(f) => (
+          <div className="flex items-center justify-between gap-3">
+            <div className="min-w-0">
+              <p className="font-medium">{f.intitule || f.session_intitule || '—'}</p>
+              <p className="truncate text-xs text-muted-foreground">
+                {f.organisme || '—'}
+                {f.date_debut ? ` · ${formatDate(f.date_debut)}` : ''}
+              </p>
+            </div>
+            {f.statut_display && <Badge tone="neutral">{f.statut_display}</Badge>}
           </div>
-          {f.statut_display && <Badge tone="neutral">{f.statut_display}</Badge>}
-        </div>
-      )}
-    />
+        )}
+      />
+    </div>
   )
 
   // XRH4 — checklist d'intégration (onboarding) + progression.
@@ -413,12 +473,26 @@ export default function EmployeDetail() {
   const remunerationTab = (
     <div className="flex flex-col gap-4">
       {/* XRH16 — compa-ratio (salaire vs bande du poste), donnée paie gatée. */}
+      {/* Clés RÉELLES du serveur (selectors.compa_ratio) : compa_ratio_pct /
+          salaire_actuel / salaire_min / salaire_max / milieu_bande / statut. */}
       {compaRatio && (
         <div className="rounded-lg border border-border bg-card px-3 py-2 text-sm">
-          <p className="font-medium">Compa-ratio : {compaRatio.compa_ratio != null ? formatPercent(compaRatio.compa_ratio * 100, { decimals: 0 }) : '—'}</p>
+          <p className="font-medium">
+            Compa-ratio : {compaRatio.compa_ratio_pct != null ? formatPercent(compaRatio.compa_ratio_pct, { decimals: 0 }) : '—'}
+            {compaRatio.statut && (
+              <Badge
+                className="ml-2"
+                tone={compaRatio.statut === 'dans_bande' ? 'success' : 'warning'}
+              >
+                {STATUT_BANDE[compaRatio.statut] || compaRatio.statut}
+              </Badge>
+            )}
+          </p>
           <p className="text-xs text-muted-foreground">
-            Salaire {compaRatio.salaire != null ? formatMAD(compaRatio.salaire) : '—'}
-            {' · '}bande {compaRatio.mediane != null ? formatMAD(compaRatio.mediane) : '—'} (médiane)
+            Salaire {compaRatio.salaire_actuel != null ? formatMAD(compaRatio.salaire_actuel) : '—'}
+            {' · '}bande {compaRatio.salaire_min != null ? formatMAD(compaRatio.salaire_min) : '—'}
+            {' – '}{compaRatio.salaire_max != null ? formatMAD(compaRatio.salaire_max) : '—'}
+            {compaRatio.milieu_bande != null ? ` · milieu ${formatMAD(compaRatio.milieu_bande)}` : ''}
           </p>
         </div>
       )}

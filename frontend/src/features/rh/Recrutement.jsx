@@ -64,6 +64,8 @@ export default function Recrutement() {
   const [promesseFor, setPromesseFor] = useState(null)
   const [entretienFor, setEntretienFor] = useState(null)
   const [comparatifFor, setComparatifFor] = useState(null)
+  // XRH15 — ouverture dont on consulte les candidats internes.
+  const [internesFor, setInternesFor] = useState(null)
   // WIR34 — nouveau candidat + nouveau modèle d'évaluation (ZRH7).
   const [candidatOpen, setCandidatOpen] = useState(false)
   const [modeleOpen, setModeleOpen] = useState(false)
@@ -285,6 +287,17 @@ export default function Recrutement() {
     }
     return actions
   }
+  // XRH15 — candidats INTERNES d'une ouverture : classement des employés par
+  // couverture du profil requis du `poste_ref` (mobilité interne avant
+  // sourcing externe). Sans `poste_ref`, l'action n'a pas de cible.
+  const ouvertureActions = (o) => (o.poste_ref
+    ? [{
+      id: 'candidats-internes',
+      label: 'Candidats internes',
+      icon: Users,
+      onClick: () => setInternesFor(o),
+    }]
+    : [])
   const evalActions = (e) => [
     ...(e.statut === 'brouillon'
       ? [{ id: 'valider', label: 'Valider', icon: UserPlus, onClick: () => validerEval(e) }]
@@ -318,7 +331,8 @@ export default function Recrutement() {
       {vue === 'recrutement' && (
         <div className="flex flex-col gap-4">
           <ListShell title="Ouvertures de poste" columns={posteColumns} rows={postes} loading={loading} error={error}
-            searchable exportName="ouvertures-poste" emptyTitle="Aucune ouverture" emptyDescription="Aucun poste ouvert." />
+            searchable rowActions={ouvertureActions} exportName="ouvertures-poste"
+            emptyTitle="Aucune ouverture" emptyDescription="Aucun poste ouvert." />
           <ListShell title="Candidatures" columns={candidatureColumns} rows={candidatures} loading={loading} error={error}
             searchable rowActions={candidatureActions} exportName="candidatures"
             actions={<Button onClick={() => setCandidatOpen(true)}><UserPlus size={15} strokeWidth={1.75} aria-hidden="true" />Nouveau candidat</Button>}
@@ -383,6 +397,12 @@ export default function Recrutement() {
         <ComparatifDialog
           candidature={comparatifFor}
           onClose={() => setComparatifFor(null)}
+        />
+      )}
+      {internesFor && (
+        <CandidatsInternesDialog
+          ouverture={internesFor}
+          onClose={() => setInternesFor(null)}
         />
       )}
       {candidatOpen && (
@@ -656,6 +676,53 @@ function EntretienDialog({ candidature, onClose, onSaved }) {
             <Button type="submit" disabled={!dateHeure || saving}>{saving ? 'Planification…' : 'Planifier'}</Button>
           </DialogFooter>
         </form>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+/* ── XRH15 — Candidats INTERNES d'une ouverture (mobilité interne) ── */
+function CandidatsInternesDialog({ ouverture, onClose }) {
+  const [rows, setRows] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(null)
+
+  useEffect(() => {
+    let vivant = true
+    rhApi.getCandidatsInternes(ouverture.poste_ref)
+      .then((res) => { if (vivant) setRows(unwrap(res.data)) })
+      .catch(() => { if (vivant) setError('Classement indisponible.') })
+      .finally(() => { if (vivant) setLoading(false) })
+    return () => { vivant = false }
+  }, [ouverture.poste_ref])
+
+  return (
+    <Dialog open onOpenChange={(o) => { if (!o) onClose?.() }}>
+      <DialogContent className="max-w-lg">
+        <DialogHeader>
+          <DialogTitle>Candidats internes — {ouverture.intitule}</DialogTitle>
+        </DialogHeader>
+        {loading && <p className="text-sm text-muted-foreground">Chargement…</p>}
+        {error && <p className="text-sm text-destructive">{error}</p>}
+        {!loading && !error && (
+          rows.length === 0
+            ? <p className="text-sm text-muted-foreground">Aucun profil requis défini sur ce poste.</p>
+            : (
+              <ul className="flex flex-col gap-2">
+                {rows.map((r) => (
+                  <li key={r.employe_id} className="flex items-center justify-between rounded-lg border border-border bg-card px-3 py-2 text-sm">
+                    <span className="font-medium">{r.employe_nom}</span>
+                    <Badge tone={r.couverture_pct >= 100 ? 'success' : 'info'}>
+                      {formatNumber(r.couverture_pct ?? 0, { decimals: 1 })} %
+                    </Badge>
+                  </li>
+                ))}
+              </ul>
+            )
+        )}
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>Fermer</Button>
+        </DialogFooter>
       </DialogContent>
     </Dialog>
   )
