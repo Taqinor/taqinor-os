@@ -391,6 +391,124 @@ def reconcilier_lot(lot, *, total_financier_cible=None):
         ecarts=ecarts, conforme=not ecarts)
 
 
+# ─────────────────────────────────────────────────────────────────────────
+# NTMIG34 — estimation d'effort (indicative, jamais bloquante)
+# ─────────────────────────────────────────────────────────────────────────
+#: Jours-homme fixes d'un projet (cadrage, réglages, recette finale).
+EFFORT_SOCLE_JOURS = Decimal('1.0')
+#: Jours-homme fixes par lot (préparation de l'export, contrôle, reconcile).
+EFFORT_PAR_LOT_JOURS = Decimal('0.5')
+#: Jours-homme par tranche de 1 000 lignes (nettoyage + contrôles).
+EFFORT_PAR_MILLE_LIGNES = Decimal('0.1')
+#: Surcoût d'une entité MAÎTRE-DÉTAIL (en-têtes + lignes à rattacher).
+EFFORT_MAITRE_DETAIL_JOURS = Decimal('1.0')
+#: Surcoût quand aucun kit ne couvre (source, entité) : mapping à la main.
+EFFORT_SANS_KIT_JOURS = Decimal('0.5')
+#: Entités à documents maître-détail (NTMIG10/11).
+ENTITES_MAITRE_DETAIL = ('devis', 'factures', 'commandes', 'avoirs')
+
+
+def _kit_disponible(source, entite):
+    """Un kit couvre-t-il ce couple ? ``False`` tant que les kits n'existent
+    pas (import paresseux — aucun registre de substitution n'est fabriqué)."""
+    import importlib
+
+    from .validation import KITS_MODULE
+
+    try:
+        module = importlib.import_module(KITS_MODULE)
+    except ImportError:
+        return False
+    registre = getattr(module, 'KIT_REGISTRY', None)
+    if not registre:
+        return False
+    return (source, entite) in registre
+
+
+def estimer_effort(projet):
+    """NTMIG34 — estimation en jours-homme + points d'attention.
+
+    PUREMENT INDICATIF : cette fonction ne bloque rien, ne change aucun statut
+    et n'écrit rien. Elle sert à répondre « combien de temps ? » avant de
+    s'engager, à partir de ce qui est déjà mesuré : les comptages source posés
+    par l'analyse (NTMIG7) et la complexité du couple (source, entité).
+
+    Déterministe par construction (que des comptages et des constantes, aucun
+    hasard ni horodatage) : deux appels sur un projet inchangé renvoient le
+    même chiffre — une estimation qui bouge toute seule ne serait pas
+    opposable au client.
+    """
+    lots = list(lots_du_projet(projet))
+    total = EFFORT_SOCLE_JOURS
+    detail = []
+    sans_kit = []
+    non_analyses = []
+    volumineux = []
+    maitre_detail = []
+    for lot in lots:
+        effort = EFFORT_PAR_LOT_JOURS
+        effort += (Decimal(lot.source_lignes) / Decimal(1000)
+                   * EFFORT_PAR_MILLE_LIGNES)
+        if lot.entite in ENTITES_MAITRE_DETAIL:
+            effort += EFFORT_MAITRE_DETAIL_JOURS
+            maitre_detail.append(lot.entite)
+        if not _kit_disponible(projet.source, lot.entite):
+            effort += EFFORT_SANS_KIT_JOURS
+            sans_kit.append(lot.entite)
+        if not lot.source_lignes:
+            non_analyses.append(lot.entite)
+        if lot.source_lignes >= 10000:
+            volumineux.append(lot.entite)
+        effort = _arrondi_demi_journee(effort)
+        detail.append({
+            'lot': lot.pk, 'entite': lot.entite,
+            'lignes_source': lot.source_lignes,
+            'jours_homme': str(effort)})
+        total += effort
+
+    points = []
+    if non_analyses:
+        points.append(
+            'Lots pas encore analysés (estimation au socle, sans volume) : '
+            + ', '.join(non_analyses))
+    if sans_kit:
+        points.append(
+            'Aucun kit de mapping pour ces entités : mapping manuel à prévoir '
+            '— ' + ', '.join(sans_kit))
+    if maitre_detail:
+        points.append(
+            'Documents maître-détail (en-têtes + lignes à rattacher) : '
+            + ', '.join(maitre_detail))
+    if volumineux:
+        points.append(
+            'Volumes supérieurs à 10 000 lignes (prévoir un chargement par '
+            'lots et une fenêtre dédiée) : ' + ', '.join(volumineux))
+    if not lots:
+        points.append('Aucun lot déclaré : estimation limitée au socle projet.')
+    points.append(
+        'Estimation INDICATIVE : elle ne conditionne aucun chargement ni '
+        'aucune clôture.')
+
+    return {
+        'projet': projet.pk,
+        'source': projet.source,
+        'nb_lots': len(lots),
+        'lignes_source_total': sum(lot.source_lignes for lot in lots),
+        'jours_homme': str(_arrondi_demi_journee(total)),
+        'detail_par_lot': detail,
+        'points_attention': points,
+    }
+
+
+def _arrondi_demi_journee(valeur):
+    """Arrondit au demi-jour SUPÉRIEUR — une estimation de migration
+    s'annonce en demi-journées, jamais en centièmes de jour."""
+    from decimal import ROUND_CEILING
+
+    return (Decimal(valeur) * 2).quantize(
+        Decimal('1'), rounding=ROUND_CEILING) / 2
+
+
 def deroger_reconcile(lot, motif, user):
     """Enregistre une dérogation explicite — bool + motif + qui + quand.
 

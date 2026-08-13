@@ -93,6 +93,16 @@ class ProjetMigrationViewSet(CompanyScopedModelViewSet):
             f'inline; filename="pv-migration-{projet.pk}.pdf"')
         return resp
 
+    @action(detail=True, methods=['get'], url_path='estimation', permission_classes=[IsDirecteurOuAdmin])
+    def estimation(self, request, pk=None):
+        """NTMIG34 — estimation d'effort + checklist des points d'attention.
+
+        Lecture seule et purement indicative : elle ne conditionne ni un
+        chargement ni une clôture.
+        """
+        projet = self.get_object()
+        return Response(services.estimer_effort(projet))
+
     def perform_create(self, serializer):
         serializer.save(
             company=self.request.user.company,
