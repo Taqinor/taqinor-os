@@ -83,6 +83,12 @@ const marketingApi = {
       api.get(`/marketing/sequences-relance/${id}/participants/`, { params }),
   },
   etapesSequence: resource('etapes-sequence'),
+
+  // ── NTMKT12/13 — Journey en graphe (nœuds + arcs) d'une séquence ──
+  // Extension ADDITIVE : une séquence sans nœud reste linéaire côté serveur.
+  noeudsJourney: resource('noeuds-journey'),
+  arcsJourney: resource('arcs-journey'),
+
   inscriptionsSequence: {
     ...resource('inscriptions-sequence'),
     inscrire: (data) =>
