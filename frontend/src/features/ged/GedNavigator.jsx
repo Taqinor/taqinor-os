@@ -103,6 +103,8 @@ export default function GedNavigator() {
   // XGED14 — multi-sélection de documents pour les opérations en lot.
   const [selectedIds, setSelectedIds] = useState(() => new Set())
   const [bulkBusy, setBulkBusy] = useState(false)
+  // XGED10 — fusion de plusieurs PDF sélectionnés (dialogue de confirmation).
+  const [mergeDlg, setMergeDlg] = useState(false)
 
   // ── Chargement des cabinets (armoires racines) ──
   const loadCabinets = (preferId) => {
@@ -413,6 +415,12 @@ export default function GedNavigator() {
                         <Button size="sm" variant="ghost" onClick={() => setSelectedIds(new Set())}>
                           Désélectionner
                         </Button>
+                        {/* XGED10 — fusionne les PDF sélectionnés (≥2) en un seul document. */}
+                        {selectedIds.size >= 2 && (
+                          <Button size="sm" variant="outline" onClick={() => setMergeDlg(true)}>
+                            <FileText className="size-4" aria-hidden="true" /> Fusionner
+                          </Button>
+                        )}
                         <Button size="sm" variant="destructive"
                           onClick={bulkCorbeille} disabled={bulkBusy}>
                           {bulkBusy ? <Loader2 className="size-4 animate-spin" aria-hidden="true" /> : <Trash2 className="size-4" aria-hidden="true" />}
@@ -549,6 +557,14 @@ export default function GedNavigator() {
         folder={selected} onUploaded={onDocumentUploaded} />
       <DocumentPreviewDialog document={previewDoc} onClose={() => setPreviewDoc(null)}
         onCaviarde={reloadDocuments} />
+      {/* XGED10 — fusion des documents sélectionnés (bordure de la barre en lot). */}
+      {mergeDlg && (
+        <MergeDocumentsDialog
+          documents={documents.filter((d) => selectedIds.has(d.id))}
+          onClose={() => setMergeDlg(false)}
+          onDone={() => { setMergeDlg(false); setSelectedIds(new Set()); reloadDocuments() }}
+        />
+      )}
       {/* WIR70 — panneau Détails (timeline + rapport ACL + favori). */}
       {insightsDoc && (
         <GedDocumentInsights document={insightsDoc} onClose={() => setInsightsDoc(null)} />
@@ -563,10 +579,17 @@ export default function GedNavigator() {
 // téléchargement si l'aperçu n'est pas disponible.
 function DocumentPreviewDialog({ document: doc, onClose, onCaviarde }) {
   const [version, setVersion] = useState(null)
+  // XGED17 — toutes les versions (pour le comparateur), pas seulement la
+  // plus récente affichée dans l'aperçu.
+  const [allVersions, setAllVersions] = useState([])
   const [loading, setLoading] = useState(false)
   const [failed, setFailed] = useState(false)
   // XGED24 — caviardage (rédaction) de zones, PDF uniquement.
   const [redactOpen, setRedactOpen] = useState(false)
+  // XGED10 — scission en segments, PDF uniquement.
+  const [splitOpen, setSplitOpen] = useState(false)
+  // XGED17 — comparateur de versions.
+  const [compareOpen, setCompareOpen] = useState(false)
 
   useEffect(() => {
     if (!doc?.id) return
@@ -574,11 +597,13 @@ function DocumentPreviewDialog({ document: doc, onClose, onCaviarde }) {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement à l'ouverture
     setLoading(true)
     setVersion(null)
+    setAllVersions([])
     setFailed(false)
     gedApi.getVersions({ document: doc.id })
       .then((r) => {
         if (!alive) return
         const list = rows(r)
+        setAllVersions(list)
         const courante = [...list].sort((a, b) => (b.numero || 0) - (a.numero || 0))[0]
         if (courante) setVersion(courante)
         else setFailed(true)
@@ -614,6 +639,18 @@ function DocumentPreviewDialog({ document: doc, onClose, onCaviarde }) {
             className="h-[70vh] w-full rounded border border-border" />
         )}
         <DialogFooter>
+          {/* XGED10 — scinder ce PDF en segments (nouveaux documents). */}
+          {isPdf && (
+            <Button variant="outline" onClick={() => setSplitOpen(true)}>
+              Scinder…
+            </Button>
+          )}
+          {/* XGED17 — comparer deux versions de ce document. */}
+          {allVersions.length > 1 && (
+            <Button variant="outline" onClick={() => setCompareOpen(true)}>
+              Comparer versions…
+            </Button>
+          )}
           {/* XGED24 — caviarder une COPIE (PDF uniquement, l'original n'est
               jamais modifié). */}
           {isPdf && (
@@ -637,6 +674,21 @@ function DocumentPreviewDialog({ document: doc, onClose, onCaviarde }) {
           versionId={version?.id}
           onClose={() => setRedactOpen(false)}
           onDone={() => { setRedactOpen(false); onClose(); onCaviarde?.() }}
+        />
+      )}
+      {splitOpen && (
+        <SplitDocumentDialog
+          documentId={doc.id}
+          versionId={version?.id}
+          onClose={() => setSplitOpen(false)}
+          onDone={() => { setSplitOpen(false); onClose(); onCaviarde?.() }}
+        />
+      )}
+      {compareOpen && (
+        <CompareVersionsDialog
+          documentId={doc.id}
+          versions={allVersions}
+          onClose={() => setCompareOpen(false)}
         />
       )}
     </Dialog>
@@ -731,6 +783,215 @@ function RedactZonesDialog({ documentId, versionId, onClose, onDone }) {
             <Button type="button" variant="ghost" onClick={onClose}>Annuler</Button>
             <Button type="submit" disabled={busy}>
               {busy ? <Loader2 className="size-4 animate-spin" aria-hidden="true" /> : <EyeOff />} Caviarder
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+// ── XGED10 — Dialogue : scinder un PDF en segments ──────────────────────────
+// `pointsDeCoupe` : numéros de page 1-based où commence chaque nouveau
+// segment (ex. "1,3" sur un PDF de 6 pages → [1-2] puis [3-6]).
+function SplitDocumentDialog({ documentId, versionId, onClose, onDone }) {
+  const [points, setPoints] = useState('')
+  const [busy, setBusy] = useState(false)
+
+  const submit = async (e) => {
+    e.preventDefault()
+    if (busy) return
+    const pointsDeCoupe = points.split(',').map((p) => p.trim()).filter(Boolean).map(Number)
+    if (pointsDeCoupe.length === 0 || pointsDeCoupe.some((p) => !Number.isInteger(p) || p < 1)) {
+      toast.error('Indiquez au moins un numéro de page (entiers ≥ 1) séparés par des virgules.')
+      return
+    }
+    setBusy(true)
+    try {
+      await gedApi.scinderDocument(documentId, { pointsDeCoupe, version: versionId })
+      toast.success('Document scindé en segments.')
+      onDone()
+    } catch (err) {
+      toast.error(errText(err, 'Scission impossible.'))
+    } finally { setBusy(false) }
+  }
+
+  return (
+    <Dialog open onOpenChange={(v) => { if (!v) onClose() }}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Scinder ce document</DialogTitle>
+          <DialogDescription>
+            Chaque segment devient un nouveau document ; l&apos;original reste
+            intact. Indiquez les numéros de PAGE (1 = première page) où
+            commence chaque nouveau segment, séparés par des virgules
+            (ex. « 1, 3 » sur un PDF de 6 pages donne [1-2] et [3-6]).
+          </DialogDescription>
+        </DialogHeader>
+        <form onSubmit={submit} className="flex flex-col gap-3">
+          <div className="flex flex-col gap-1">
+            <label className="text-sm text-muted-foreground" htmlFor="split-points">
+              Points de coupe
+            </label>
+            <Input id="split-points" placeholder="1, 3"
+              value={points} onChange={(e) => setPoints(e.target.value)} />
+          </div>
+          <DialogFooter>
+            <Button type="button" variant="ghost" onClick={onClose}>Annuler</Button>
+            <Button type="submit" disabled={busy}>
+              {busy && <Loader2 className="size-4 animate-spin" aria-hidden="true" />} Scinder
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+// ── XGED17 — Dialogue : comparer deux versions d'un document ───────────────
+function CompareVersionsDialog({ documentId, versions, onClose }) {
+  const sorted = [...versions].sort((a, b) => (b.numero || 0) - (a.numero || 0))
+  const [v1, setV1] = useState(String(sorted[1]?.id ?? sorted[0]?.id ?? ''))
+  const [v2, setV2] = useState(String(sorted[0]?.id ?? ''))
+  const [diff, setDiff] = useState(null)
+  const [busy, setBusy] = useState(false)
+
+  const compare = async () => {
+    if (!v1 || !v2) return
+    setBusy(true)
+    try {
+      const r = await gedApi.comparerVersions(documentId, v1, v2)
+      setDiff(r.data)
+    } catch (err) {
+      toast.error(errText(err, 'Comparaison impossible.'))
+    } finally { setBusy(false) }
+  }
+
+  const metaEntries = diff?.metadonnees ? Object.entries(diff.metadonnees) : []
+
+  return (
+    <Dialog open onOpenChange={(v) => { if (!v) onClose() }}>
+      <DialogContent className="max-w-2xl">
+        <DialogHeader>
+          <DialogTitle>Comparer deux versions</DialogTitle>
+        </DialogHeader>
+        <div className="flex items-end gap-2">
+          <div className="flex flex-col gap-1">
+            <label className="text-xs text-muted-foreground" htmlFor="cmp-v1">Version A</label>
+            <Select value={v1} onValueChange={setV1}>
+              <SelectTrigger id="cmp-v1" aria-label="Version A" className="w-32"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {sorted.map((v) => (
+                  <SelectItem key={v.id} value={String(v.id)}>v{v.numero}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-xs text-muted-foreground" htmlFor="cmp-v2">Version B</label>
+            <Select value={v2} onValueChange={setV2}>
+              <SelectTrigger id="cmp-v2" aria-label="Version B" className="w-32"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {sorted.map((v) => (
+                  <SelectItem key={v.id} value={String(v.id)}>v{v.numero}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <Button type="button" onClick={compare} disabled={busy || v1 === v2}>
+            {busy && <Loader2 className="size-4 animate-spin" aria-hidden="true" />} Comparer
+          </Button>
+        </div>
+        {diff && (
+          <div className="mt-3 flex flex-col gap-3">
+            {metaEntries.length === 0 ? (
+              <p className="text-sm text-muted-foreground">Aucune différence de métadonnées.</p>
+            ) : (
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-left text-muted-foreground">
+                    <th>Champ</th><th>Version A</th><th>Version B</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {metaEntries.map(([champ, { v1: a, v2: b }]) => (
+                    <tr key={champ} className="border-t border-border">
+                      <td className="py-1 font-medium">{champ}</td>
+                      <td className="py-1">{String(a ?? '—')}</td>
+                      <td className="py-1">{String(b ?? '—')}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+            {diff.texte_disponible ? (
+              <pre className="max-h-64 overflow-auto rounded-md border border-border bg-muted/40 p-2 text-xs">
+                {(diff.diff_texte || []).join('\n')}
+              </pre>
+            ) : (
+              <p className="text-xs text-muted-foreground">{diff.message}</p>
+            )}
+          </div>
+        )}
+        <DialogFooter>
+          <Button variant="ghost" onClick={onClose}>Fermer</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+// ── XGED10 — Dialogue : fusionner les documents sélectionnés en un seul PDF ─
+// L'ordre de fusion suit l'ordre de sélection (Set → insertion order). Un
+// nouveau document est créé dans le dossier du 1er document source ; les
+// sources ne sont jamais modifiées.
+function MergeDocumentsDialog({ documents, onClose, onDone }) {
+  const [nom, setNom] = useState('')
+  const [busy, setBusy] = useState(false)
+
+  const submit = async (e) => {
+    e.preventDefault()
+    if (busy) return
+    setBusy(true)
+    try {
+      await gedApi.fusionnerDocuments({
+        documents: documents.map((d) => d.id), nom: nom.trim() || undefined,
+      })
+      toast.success('Documents fusionnés.')
+      onDone()
+    } catch (err) {
+      toast.error(errText(err, 'Fusion impossible.'))
+    } finally { setBusy(false) }
+  }
+
+  return (
+    <Dialog open onOpenChange={(v) => { if (!v) onClose() }}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Fusionner {documents.length} documents</DialogTitle>
+          <DialogDescription>
+            Un nouveau document PDF est créé, dans l&apos;ordre ci-dessous. Les
+            documents sources restent intacts.
+          </DialogDescription>
+        </DialogHeader>
+        <ol className="flex flex-col gap-1 text-sm">
+          {documents.map((d, i) => (
+            <li key={d.id} className="rounded-md border px-2 py-1">
+              {i + 1}. {d.nom}
+            </li>
+          ))}
+        </ol>
+        <form onSubmit={submit} className="flex flex-col gap-3">
+          <div className="flex flex-col gap-1">
+            <label className="text-sm text-muted-foreground" htmlFor="merge-nom">
+              Nom du document fusionné (optionnel)
+            </label>
+            <Input id="merge-nom" value={nom} onChange={(e) => setNom(e.target.value)} />
+          </div>
+          <DialogFooter>
+            <Button type="button" variant="ghost" onClick={onClose}>Annuler</Button>
+            <Button type="submit" disabled={busy}>
+              {busy && <Loader2 className="size-4 animate-spin" aria-hidden="true" />} Fusionner
             </Button>
           </DialogFooter>
         </form>

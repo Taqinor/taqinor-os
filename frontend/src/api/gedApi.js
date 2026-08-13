@@ -294,6 +294,25 @@ const gedApi = {
       zones: zones ?? [], ...(version ? { version } : {}),
     }),
 
+  // XGED10 — Scission : `pointsDeCoupe` = numéros de PAGE 1-based où
+  // commence chaque nouveau segment (ex. [1,3] sur 6 pages → [1-2],[3-6]).
+  // Renvoie la liste des documents créés (l'original n'est jamais modifié).
+  scinderDocument: (documentId, { pointsDeCoupe, version } = {}) =>
+    api.post(`/ged/documents/${documentId}/scinder/`, {
+      points_de_coupe: pointsDeCoupe ?? [], ...(version ? { version } : {}),
+    }),
+  // XGED10 — Fusion de plusieurs PDF (ordonnés). Sans `cible` : nouveau
+  // document dans le dossier du 1er source. Avec `cible` : nouvelle version
+  // du document existant.
+  fusionnerDocuments: ({ documents, cible, nom } = {}) =>
+    api.post('/ged/documents/fusionner/', {
+      documents: documents ?? [], ...(cible ? { cible } : {}), ...(nom ? { nom } : {}),
+    }),
+  // XGED17 — Diff de métadonnées (+ texte si OCR/plein-texte dispo) entre
+  // deux versions d'un même document.
+  comparerVersions: (documentId, v1, v2) =>
+    api.get(`/ged/documents/${documentId}/comparer/`, { params: { v1, v2 } }),
+
   // ══════════════════════════════════════════════════════════════════════
   // GED26 — Corbeille (soft-delete réversible + purge définitive).
   // ══════════════════════════════════════════════════════════════════════
