@@ -1842,3 +1842,118 @@ def _brouillon_relance_engagement(devis, declencheurs):
         corps = (f'votre proposition{suffixe} vous attend toujours — '
                  'souhaitez-vous que je vous la présente ?')
     return f'{salutation}, {corps}'
+
+
+# ── NTCPQ17 — Remises automatiques par palier de VOLUME, en cascade ──────────
+
+def _paliers_volume_actifs(company):
+    from .models import PalierRemiseVolume
+    return list(PalierRemiseVolume.objects.filter(
+        company=company, actif=True))
+
+
+def _meilleur_palier(paliers, produit, quantite):
+    """Palier le plus fort satisfait par ``quantite`` pour ce produit.
+
+    Ordre de préférence : ``priorite`` décroissante, puis ``quantite_min``
+    la plus élevée atteinte, puis la remise la plus forte."""
+    from decimal import Decimal
+    quantite = Decimal(str(quantite or 0))
+    candidats = [
+        p for p in paliers
+        if p.matches_produit(produit) and quantite >= p.quantite_min]
+    if not candidats:
+        return None
+    candidats.sort(
+        key=lambda p: (p.priorite, p.quantite_min, p.remise_pct),
+        reverse=True)
+    return candidats[0]
+
+
+def _categories_ayant_atteint_leur_seuil(paliers, lignes):
+    """Noms de catégories dont le VOLUME cumulé atteint un palier dédié.
+
+    ``lignes`` : itérable de ``{produit, quantite}``. Seuls les paliers portant
+    une catégorie comptent ici (un palier « tout le catalogue » n'identifie
+    aucune catégorie)."""
+    from collections import defaultdict
+    from decimal import Decimal
+    volumes = defaultdict(Decimal)
+    for ligne in lignes:
+        produit = ligne.get('produit')
+        cat = getattr(getattr(produit, 'categorie', None), 'nom', None)
+        if cat:
+            volumes[cat] += Decimal(str(ligne.get('quantite') or 0))
+    atteintes = set()
+    for palier in paliers:
+        nom = palier.categorie_nom
+        if not nom:
+            continue
+        if volumes.get(nom, Decimal('0')) >= palier.quantite_min:
+            atteintes.add(nom)
+    return atteintes
+
+
+def decomposition_remise_volume(*, company, produit, quantite, lignes=None):
+    """NTCPQ17 — DÉCOMPOSITION de la remise volume (remise ligne + cascade).
+
+    * **Remise de ligne** : le meilleur palier satisfait par la quantité de
+      CETTE ligne (comportement palier simple, comme XSAL2).
+    * **Cascade globale** : quand au moins DEUX catégories du panier atteignent
+      chacune leur seuil, les paliers marqués ``cumulable`` dont la
+      ``quantite_min`` est couverte par le volume TOTAL du panier s'ajoutent,
+      dans l'ordre de ``priorite`` décroissante.
+
+    ``lignes`` : le panier complet (``[{produit, quantite}, ...]``) ; absent, la
+    cascade ne se déclenche pas (une seule ligne ne peut pas couvrir deux
+    catégories). Renvoie ``{remise_ligne_pct, cascade, remise_totale_pct}`` —
+    les remises se COMPOSENT (jamais une addition naïve qui dépasserait 100 %).
+    Aucune donnée de marge / ``prix_achat`` n'entre dans ce calcul."""
+    from decimal import Decimal, ROUND_HALF_UP
+
+    cent = Decimal('0.01')
+    paliers = _paliers_volume_actifs(company)
+    vide = {'remise_ligne_pct': '0.00', 'cascade': [],
+            'remise_totale_pct': '0.00'}
+    if not paliers:
+        return vide
+
+    ligne_palier = _meilleur_palier(paliers, produit, quantite)
+    remise_ligne = (
+        Decimal(str(ligne_palier.remise_pct)) if ligne_palier
+        else Decimal('0'))
+
+    cascade = []
+    lignes = list(lignes or [])
+    if len(lignes) > 1:
+        atteintes = _categories_ayant_atteint_leur_seuil(paliers, lignes)
+        if len(atteintes) >= 2:
+            volume_total = sum(
+                (Decimal(str(li.get('quantite') or 0)) for li in lignes),
+                Decimal('0'))
+            cumulables = [
+                p for p in paliers
+                if p.cumulable and volume_total >= p.quantite_min
+                and (ligne_palier is None or p.id != ligne_palier.id)]
+            cumulables.sort(
+                key=lambda p: (p.priorite, p.quantite_min), reverse=True)
+            cascade = [{
+                'palier_id': p.id,
+                'categorie_nom': p.categorie_nom,
+                'quantite_min': str(p.quantite_min),
+                'remise_pct': str(p.remise_pct),
+                'portee': 'global',
+            } for p in cumulables]
+
+    reste = Decimal('1') - remise_ligne / Decimal('100')
+    for entree in cascade:
+        reste *= Decimal('1') - Decimal(entree['remise_pct']) / Decimal('100')
+    totale = ((Decimal('1') - reste) * Decimal('100')).quantize(
+        cent, ROUND_HALF_UP)
+
+    return {
+        'remise_ligne_pct': str(remise_ligne.quantize(cent, ROUND_HALF_UP)),
+        'remise_ligne_palier_id': ligne_palier.id if ligne_palier else None,
+        'cascade': cascade,
+        'remise_totale_pct': str(totale),
+    }

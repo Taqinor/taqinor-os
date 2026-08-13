@@ -2278,6 +2278,63 @@ class RegleListePrix(models.Model):
         return True
 
 
+class PalierRemiseVolume(models.Model):
+    """NTCPQ17 — Palier de remise automatique par VOLUME, avec cascade.
+
+    Étend les paliers de quantité XSAL2 (``RegleListePrix``, qui restent
+    attachés à une liste de prix) d'une remise volume transverse à la société,
+    et surtout d'une CASCADE multi-paliers :
+
+      * ``priorite`` (décroissante) fixe l'ordre d'application ;
+      * ``cumulable`` autorise le palier à s'ajouter à la remise de LIGNE, sur
+        le sous-total global, quand plusieurs catégories atteignent chacune
+        leur seuil (sinon il reste exclusif à sa ligne).
+
+    ``categorie_nom`` est une string-ref vers ``stock.Categorie.nom`` (même
+    convention que ``RegleListePrix`` — jamais d'import de ``stock.models``) ;
+    vide = tout le catalogue. Ne touche JAMAIS ``prix_achat``."""
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: purge tenant
+        related_name='paliers_remise_volume')
+    categorie_nom = models.CharField(
+        max_length=150, blank=True, default='',
+        help_text='Catégorie visée (nom). Vide = tout le catalogue.')
+    quantite_min = models.DecimalField(
+        max_digits=10, decimal_places=2, default=1,
+        help_text='Quantité minimale pour que le palier se déclenche.')
+    remise_pct = models.DecimalField(
+        max_digits=5, decimal_places=2, default=0,
+        help_text='Remise accordée par ce palier (%).')
+    priorite = models.PositiveIntegerField(
+        default=0,
+        help_text='Ordre de la cascade (plus haut = appliqué en premier).')
+    cumulable = models.BooleanField(
+        default=False,
+        help_text='Le palier s\'ajoute à la remise de ligne (cascade globale) '
+                  'quand plusieurs catégories atteignent leur seuil.')
+    actif = models.BooleanField(default=True)
+
+    class Meta:
+        verbose_name = 'Palier de remise volume'
+        verbose_name_plural = 'Paliers de remise volume'
+        ordering = ['-priorite', '-quantite_min', 'id']
+        indexes = [
+            models.Index(fields=['company', 'actif'],
+                         name='ventes_palvol_co_actif'),
+        ]
+
+    def __str__(self):
+        cat = self.categorie_nom or 'tout le catalogue'
+        return f'{cat} ≥ {self.quantite_min} → {self.remise_pct} %'
+
+    def matches_produit(self, produit):
+        """Le palier vise-t-il ce produit ? (catégorie vide = tout)."""
+        if not self.categorie_nom:
+            return True
+        cat = getattr(produit, 'categorie', None)
+        return bool(cat) and cat.nom == self.categorie_nom
+
+
 class PlanCommission(models.Model):
     """XSAL6 — Plan de commission par commercial (au-delà du mode société
     unique `CompanyProfile.commission_mode`).
