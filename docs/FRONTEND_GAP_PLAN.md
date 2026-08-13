@@ -213,10 +213,10 @@ a focused test, calling the EXISTING backend endpoint.
 - [ ] FE-ZSAL5 — keyed email-template editor (`envoi_devis`) in `EmailSection.jsx`. (@lane: frontend/ventes)
 
 ## Lane `frontend/crm` (ZSAL round-2 — api client stubs defined, never called)
-- [ ] FE-ZSAL2 — "Appliquer un plan" button + plan picker on lead detail + PlanActivite CRUD (`getPlansActivite`/`appliquerPlanActivite` already in `crmApi.js`). (@lane: frontend/crm)
-- [ ] FE-ZSAL4 — "Convertir en client" button + modal on lead detail (`convertirClient`). (@lane: frontend/crm)
-- [ ] FE-ZSAL3/ZSAL6 — "Mes équipes" dashboard cards + EquipeCommerciale CRUD + "Attribution des leads" section in `Rapports.jsx`. (@lane: frontend/crm)
-- [ ] FE-ZSAL1/XSAL17 — suggested follow-up activity prompt in `MesActivitesPage.jsx` + `{lien_rdv}` placeholder in template editor. (@lane: frontend/crm)
+- [x] (déjà présent) FE-ZSAL2 — "Appliquer un plan" button + plan picker on lead detail + PlanActivite CRUD (`getPlansActivite`/`appliquerPlanActivite` already in `crmApi.js`). (@lane: frontend/crm)
+- [x] (déjà présent) FE-ZSAL4 — "Convertir en client" button + modal on lead detail (`convertirClient`). (@lane: frontend/crm)
+- [x] (déjà présent) FE-ZSAL3/ZSAL6 — "Mes équipes" dashboard cards + EquipeCommerciale CRUD + "Attribution des leads" section in `Rapports.jsx`. (@lane: frontend/crm)
+- [x] (déjà présent) FE-ZSAL1/XSAL17 — suggested follow-up activity prompt in `MesActivitesPage.jsx` + `{lien_rdv}` placeholder in template editor. (@lane: frontend/crm)
 
 ## Lane `frontend/reporting` (systemic offender — many [x] reports backend-only)
 - [ ] FE-XPLT6 — "Alertes KPI" CRUD under parametres (`reporting/kpi-alertes/`). (@lane: frontend/reporting)
@@ -240,6 +240,16 @@ a focused test, calling the EXISTING backend endpoint.
 
 ## DONE LOG
 <!-- one dated line per shipped task -->
+- 2026-08-13 (lane frontend/crm) — les 4 tâches taguées `@lane: frontend/crm` étaient DÉJÀ construites
+  et câblées : FE-ZSAL2 (`PlanActiviteDialog.jsx` ouvert depuis `LeadWorkspace.jsx`, appelle
+  `crmApi.getPlansActivite`/`appliquerPlanActivite`), FE-ZSAL4 (`ConvertirClientDialog.jsx` +
+  bouton « Convertir en client » dans `IdentityRail.jsx`, appelle `crmApi.convertirClient`),
+  FE-ZSAL3/ZSAL6 (`MesEquipesCard.jsx` sur `Dashboard.jsx` + CRUD `EquipesCommercialesSection.jsx`
+  sous Paramètres + section « Attribution des leads » dans `Rapports.jsx`, lignes ~700-710),
+  FE-ZSAL1/XSAL17 (prompt de suivi suggéré dans `MesActivitesPage.jsx` lignes 155-385 + placeholder
+  `{lien_rdv}` documenté dans `MessageTemplatesCrmSection.jsx` et résolu côté serveur via
+  `PublicBookingPage.jsx`). Aucun code écrit, pas de commit de fonctionnalité (seule mise à jour de
+  ce fichier).
 - 2026-08-13 — lane `frontend/contrats` drained: FE-CONTRAT16-17/13-14/12/23-25/7/15/33, FE-XCTR7-8-11, FE-XCTR5, FE-XCTR14, FE-CONTRAT-config already fully built (ContratDetail.jsx tabs+actions, ModelesPage.jsx instancier, DashboardPage.jsx, PortailContratsPage.jsx, ConfigLocationPage.jsx) — ticked `(déjà présent)`, no code change. FE-XCTR2-3: added "Équipements couverts" + "X/Y visites" columns to `ContratsMaintenance.jsx` (data was already serialized server-side, just unrendered). FE-XCTR17-21: `LocationPage.jsx` had caution/inspection/bons PDF already; added the missing disponibilité (reservation-window) warning in the create dialog and an admin-only "Utilisation & ROI" card, both using contratsApi calls that existed but were never invoked from the UI.
 - 2026-08-13 (lane frontend/sav) — les 12 tâches taguées `@lane: frontend/sav` étaient DÉJÀ construites et câblées (savApi.js + pages/sav/*.jsx + router public /e/:token /suivi/:token) : FE-XSAV19/XSAV10, FE-XSAV3/XFSM1/XCTR4, FE-SAV-warranty, FE-XSAV15-17/XSAV9, FE-XSAV8, FE-XSAV12/27/ZSAV8-9, FE-ZSAV2-3-6, FE-SAV-kb/macros, FE-SAV-alarmes, FE-XSAV14/ZMFG6/11, FE-XSAV5/21/28, FE-ZMFG1-2/4/5-12. Aucun code écrit, pas de commit de fonctionnalité (seule mise à jour de ce fichier).
 - 2026-08-13 — Lane `frontend/compta` drainée (agent-acf554ffb8d774ac6). Vérifiées déjà construites
