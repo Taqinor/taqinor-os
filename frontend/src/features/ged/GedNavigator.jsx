@@ -14,7 +14,7 @@ import { useEffect, useMemo, useState } from 'react'
 import {
   Folder, FolderOpen, ChevronRight, ChevronDown, FileText, Loader2, Inbox,
   RefreshCw, Plus, FolderPlus, Pencil, Upload, MoveRight, Eye, Lock, LockOpen,
-  Trash2, Info, Link2,
+  Trash2, Info, Link2, EyeOff, X,
 } from 'lucide-react'
 import gedApi from '../../api/gedApi'
 // APX32 (e) — en-tête UNIQUE de l'app (VX28), fin du 4ᵉ idiome.
@@ -547,7 +547,8 @@ export default function GedNavigator() {
         cabinetId={cabinetId} folders={folders} onChanged={onFolderChanged} />
       <UploadDialog open={uploadDlg} onOpenChange={setUploadDlg}
         folder={selected} onUploaded={onDocumentUploaded} />
-      <DocumentPreviewDialog document={previewDoc} onClose={() => setPreviewDoc(null)} />
+      <DocumentPreviewDialog document={previewDoc} onClose={() => setPreviewDoc(null)}
+        onCaviarde={reloadDocuments} />
       {/* WIR70 — panneau Détails (timeline + rapport ACL + favori). */}
       {insightsDoc && (
         <GedDocumentInsights document={insightsDoc} onClose={() => setInsightsDoc(null)} />
@@ -560,10 +561,12 @@ export default function GedNavigator() {
 // Récupère les versions du document, prend la plus récente et l'affiche via le
 // proxy même-origine (versions/<id>/apercu/). Dégrade proprement en lien de
 // téléchargement si l'aperçu n'est pas disponible.
-function DocumentPreviewDialog({ document: doc, onClose }) {
+function DocumentPreviewDialog({ document: doc, onClose, onCaviarde }) {
   const [version, setVersion] = useState(null)
   const [loading, setLoading] = useState(false)
   const [failed, setFailed] = useState(false)
+  // XGED24 — caviardage (rédaction) de zones, PDF uniquement.
+  const [redactOpen, setRedactOpen] = useState(false)
 
   useEffect(() => {
     if (!doc?.id) return
@@ -587,6 +590,7 @@ function DocumentPreviewDialog({ document: doc, onClose }) {
 
   const src = version ? gedApi.apercuVersionUrl(version.id) : null
   const isImage = String(version?.mime || '').startsWith('image/')
+  const isPdf = String(version?.mime || '') === 'application/pdf'
 
   return (
     <Dialog open={!!doc} onOpenChange={(v) => { if (!v) onClose() }}>
@@ -610,6 +614,13 @@ function DocumentPreviewDialog({ document: doc, onClose }) {
             className="h-[70vh] w-full rounded border border-border" />
         )}
         <DialogFooter>
+          {/* XGED24 — caviarder une COPIE (PDF uniquement, l'original n'est
+              jamais modifié). */}
+          {isPdf && (
+            <Button variant="outline" onClick={() => setRedactOpen(true)}>
+              <EyeOff /> Caviarder…
+            </Button>
+          )}
           {src && (
             <ExternalLink href={src}>
               <Button variant="outline">Ouvrir dans un onglet</Button>
@@ -619,6 +630,110 @@ function DocumentPreviewDialog({ document: doc, onClose }) {
             <Button variant="ghost">Fermer</Button>
           </DialogClose>
         </DialogFooter>
+      </DialogContent>
+      {redactOpen && (
+        <RedactZonesDialog
+          documentId={doc.id}
+          versionId={version?.id}
+          onClose={() => setRedactOpen(false)}
+          onDone={() => { setRedactOpen(false); onClose(); onCaviarde?.() }}
+        />
+      )}
+    </Dialog>
+  )
+}
+
+// ── XGED24 — Dialogue : zones à caviarder (rédaction PDF, copie publiée) ───
+// Chaque zone : { page (0-based), x0, y0, x1, y1 } en POURCENTAGE (0-100) de
+// la page (même convention que les annotations XGED16). Le texte sous la
+// zone est SUPPRIMÉ côté serveur (PyMuPDF) — jamais un simple rectangle
+// visuel — sur une COPIE ; l'original n'est jamais modifié.
+const EMPTY_ZONE = { page: '0', x0: '0', y0: '0', x1: '20', y1: '10' }
+
+function RedactZonesDialog({ documentId, versionId, onClose, onDone }) {
+  const [zones, setZones] = useState([{ ...EMPTY_ZONE }])
+  const [busy, setBusy] = useState(false)
+
+  const updateZone = (i, field, value) =>
+    setZones((prev) => prev.map((z, idx) => (idx === i ? { ...z, [field]: value } : z)))
+  const addZone = () => setZones((prev) => [...prev, { ...EMPTY_ZONE }])
+  const removeZone = (i) => setZones((prev) => prev.filter((_, idx) => idx !== i))
+
+  const submit = async (e) => {
+    e.preventDefault()
+    if (busy) return
+    setBusy(true)
+    try {
+      const payload = zones.map((z) => ({
+        page: Number(z.page) || 0,
+        x0: Number(z.x0) || 0, y0: Number(z.y0) || 0,
+        x1: Number(z.x1) || 0, y1: Number(z.y1) || 0,
+      }))
+      await gedApi.caviarderDocument(documentId, { zones: payload, version: versionId })
+      toast.success('Copie caviardée créée dans le dossier.')
+      onDone()
+    } catch (err) {
+      toast.error(errText(err, 'Caviardage impossible.'))
+    } finally { setBusy(false) }
+  }
+
+  return (
+    <Dialog open onOpenChange={(v) => { if (!v) onClose() }}>
+      <DialogContent className="max-w-lg">
+        <DialogHeader>
+          <DialogTitle>Caviarder ce document</DialogTitle>
+          <DialogDescription>
+            Une COPIE est créée avec les zones ci-dessous définitivement noircies
+            (texte supprimé) ; l&apos;original reste intact. Coordonnées en % de
+            la page (page 0 = première page).
+          </DialogDescription>
+        </DialogHeader>
+        <form onSubmit={submit} className="flex flex-col gap-3">
+          {zones.map((z, i) => (
+            <div key={i} className="flex items-end gap-1.5">
+              <div className="flex flex-col gap-0.5">
+                <label className="text-xs text-muted-foreground" htmlFor={`z-page-${i}`}>Page</label>
+                <Input id={`z-page-${i}`} type="number" min={0} className="w-16"
+                  value={z.page} onChange={(e) => updateZone(i, 'page', e.target.value)} />
+              </div>
+              <div className="flex flex-col gap-0.5">
+                <label className="text-xs text-muted-foreground" htmlFor={`z-x0-${i}`}>X0 %</label>
+                <Input id={`z-x0-${i}`} type="number" min={0} max={100} className="w-16"
+                  value={z.x0} onChange={(e) => updateZone(i, 'x0', e.target.value)} />
+              </div>
+              <div className="flex flex-col gap-0.5">
+                <label className="text-xs text-muted-foreground" htmlFor={`z-y0-${i}`}>Y0 %</label>
+                <Input id={`z-y0-${i}`} type="number" min={0} max={100} className="w-16"
+                  value={z.y0} onChange={(e) => updateZone(i, 'y0', e.target.value)} />
+              </div>
+              <div className="flex flex-col gap-0.5">
+                <label className="text-xs text-muted-foreground" htmlFor={`z-x1-${i}`}>X1 %</label>
+                <Input id={`z-x1-${i}`} type="number" min={0} max={100} className="w-16"
+                  value={z.x1} onChange={(e) => updateZone(i, 'x1', e.target.value)} />
+              </div>
+              <div className="flex flex-col gap-0.5">
+                <label className="text-xs text-muted-foreground" htmlFor={`z-y1-${i}`}>Y1 %</label>
+                <Input id={`z-y1-${i}`} type="number" min={0} max={100} className="w-16"
+                  value={z.y1} onChange={(e) => updateZone(i, 'y1', e.target.value)} />
+              </div>
+              {zones.length > 1 && (
+                <Button type="button" variant="ghost" size="sm"
+                  aria-label="Retirer cette zone" onClick={() => removeZone(i)}>
+                  <X size={14} />
+                </Button>
+              )}
+            </div>
+          ))}
+          <Button type="button" variant="outline" size="sm" className="self-start" onClick={addZone}>
+            <Plus /> Ajouter une zone
+          </Button>
+          <DialogFooter>
+            <Button type="button" variant="ghost" onClick={onClose}>Annuler</Button>
+            <Button type="submit" disabled={busy}>
+              {busy ? <Loader2 className="size-4 animate-spin" aria-hidden="true" /> : <EyeOff />} Caviarder
+            </Button>
+          </DialogFooter>
+        </form>
       </DialogContent>
     </Dialog>
   )

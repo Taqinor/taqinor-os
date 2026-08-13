@@ -284,6 +284,16 @@ const gedApi = {
   // Versions d'un document (pour choisir la version à prévisualiser).
   getVersions: (params) => api.get('/ged/versions/', { params }),
 
+  // XGED24 — Caviardage (rédaction) définitif de zones d'un PDF, sur une
+  // COPIE publiée (l'original n'est JAMAIS modifié). `zones` : liste de
+  // { page (0-based), x0, y0, x1, y1 } en POURCENTAGE (0-100) de la page —
+  // même convention que les annotations (XGED16). Renvoie le nouveau
+  // document créé (`custom_data.caviarde_depuis` trace l'original).
+  caviarderDocument: (documentId, { zones, version } = {}) =>
+    api.post(`/ged/documents/${documentId}/caviarder/`, {
+      zones: zones ?? [], ...(version ? { version } : {}),
+    }),
+
   // ══════════════════════════════════════════════════════════════════════
   // GED26 — Corbeille (soft-delete réversible + purge définitive).
   // ══════════════════════════════════════════════════════════════════════

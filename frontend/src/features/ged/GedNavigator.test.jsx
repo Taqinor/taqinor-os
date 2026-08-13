@@ -28,6 +28,8 @@ vi.mock('../../api/gedApi', () => ({
     mettreEnCorbeille: vi.fn(() => Promise.resolve({ data: {} })),
     // XGED14 — opérations en lot.
     operationsLot: vi.fn(() => Promise.resolve({ data: { resultats: [], erreurs: [] } })),
+    // XGED24 — caviardage.
+    caviarderDocument: vi.fn(() => Promise.resolve({ data: { id: 99 } })),
   },
 }))
 
@@ -167,6 +169,31 @@ describe('GedNavigator — écriture (U14)', () => {
       expect(iframe).toBeTruthy()
       expect(iframe.getAttribute('src')).toContain('/ged/versions/22/apercu/')
     })
+  })
+
+  it('XGED24 — caviarde une zone du PDF depuis l’aperçu (copie, original intact)', async () => {
+    gedApi.getCabinets.mockResolvedValue(ok([{ id: 1, nom: 'Cab' }]))
+    gedApi.getDossiers.mockResolvedValue(ok([
+      { id: 5, nom: 'Docs', cabinet: 1, parent: null, path: '/5/' },
+    ]))
+    gedApi.getDocuments.mockResolvedValue(ok([
+      { id: 8, nom: 'facture.pdf', version_count: 1, updated_at: '2026-06-01T10:00:00Z' },
+    ]))
+    gedApi.getVersions.mockResolvedValue(ok([
+      { id: 22, numero: 1, mime: 'application/pdf', filename: 'facture.pdf' },
+    ]))
+
+    renderGed()
+    await userEvent.click(await screen.findByText('Docs'))
+    await userEvent.click(await screen.findByRole('button', { name: /Aperçu de facture\.pdf/i }))
+    await waitFor(() => expect(gedApi.getVersions).toHaveBeenCalledWith({ document: 8 }))
+
+    await userEvent.click(await screen.findByRole('button', { name: /Caviarder…/i }))
+    await userEvent.click(await screen.findByRole('button', { name: /^Caviarder$/i }))
+
+    await waitFor(() => expect(gedApi.caviarderDocument).toHaveBeenCalledWith(8, {
+      zones: [{ page: 0, x0: 0, y0: 0, x1: 20, y1: 10 }], version: 22,
+    }))
   })
 
   it('GED16 — extrait un document (check-out)', async () => {
