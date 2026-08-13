@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import { useTabParam } from '../components/useTabParam'
 import {
   Plus, CheckCircle2, XCircle, Send, TrendingDown, Landmark, Download,
+  ArrowRightLeft, Unlock,
 } from 'lucide-react'
 import { ListShell, statusPill } from '../../../ui/module'
 import { Button, Segmented, toast } from '../../../ui'
@@ -74,6 +75,21 @@ export default function EffetsPage() {
     }
   }
 
+  // XACC34 — remise à l'escompte : mobilisation via un compte de trésorerie.
+  const escompterPrompt = (row) => {
+    const compte = window.prompt('ID du compte de trésorerie de mobilisation :')
+    if (!compte) return
+    act(() => comptaApi.effets.escompter(row.id, { compte_tresorerie: compte }),
+      'Effet remis à l’escompte.')
+  }
+
+  // XACC34 — endossement à un tiers bénéficiaire.
+  const endosserPrompt = (row) => {
+    const beneficiaire = window.prompt('Bénéficiaire de l’endossement :')
+    if (!beneficiaire) return
+    act(() => comptaApi.effets.endosser(row.id, { beneficiaire }), 'Effet endossé.')
+  }
+
   const columns = useMemo(() => {
     switch (tab) {
       case 'effets':
@@ -124,11 +140,17 @@ export default function EffetsPage() {
         acts.push({ id: 'encaisser', label: 'Encaisser', icon: CheckCircle2,
           onClick: () => act(() => comptaApi.effets.encaisser(row.id, {}), 'Effet encaissé.') })
         acts.push({ id: 'escompter', label: 'Escompter', icon: TrendingDown,
-          onClick: () => toast.error('Escompte : choisissez le compte de trésorerie depuis le détail.') })
+          onClick: () => escompterPrompt(row) })
+        acts.push({ id: 'endosser', label: 'Endosser', icon: ArrowRightLeft,
+          onClick: () => endosserPrompt(row) })
       }
       if (row.statut === 'portefeuille' && row.sens === 'payer') {
         acts.push({ id: 'payer', label: 'Payer', icon: Send,
           onClick: () => act(() => comptaApi.effets.payer(row.id, {}), 'Effet payé.') })
+      }
+      if (row.statut === 'escompte') {
+        acts.push({ id: 'apurer-escompte', label: 'Apurer l’escompte', icon: Unlock,
+          onClick: () => act(() => comptaApi.effets.apurerEscompte(row.id, {}), 'Escompte apuré.') })
       }
       if (['remis', 'portefeuille'].includes(row.statut)) {
         acts.push({ id: 'rejeter', label: 'Rejeter (impayé)', icon: XCircle,
