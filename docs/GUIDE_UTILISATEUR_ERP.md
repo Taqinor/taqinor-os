@@ -373,6 +373,201 @@ statistiques.
 
 ---
 
+## Veille appels d'offres
+
+La **Veille AO** est le *sas* où atterrissent tous les appels d'offres qui vous
+concernent — ceux que le système va chercher tout seul sur le portail public
+comme ceux qu'un partenaire vous envoie par WhatsApp. Rien n'y engage à quoi que
+ce soit : un avis reste une simple fiche à trier tant que vous n'avez pas décidé
+d'y répondre.
+
+Trois écrans, dans le menu **VEILLE AO** : **Avis**, **Acheteurs cibles** et
+**Paramètres de veille** (ce dernier réservé au directeur / responsable).
+
+### Où regarder le matin
+
+**Ce que ça fait.** Rassemble sur une seule page les avis à trier, l'état de
+santé de la collecte et le rappel de ce qu'elle ne couvre pas.
+
+**Où la trouver.** Menu **Veille AO → Avis** (`/veille-ao/avis`).
+
+**Comment l'utiliser.**
+1. Ouvrez la page. Tout en haut, le **bandeau de santé** indique la
+   **dernière collecte réussie** et son âge (« il y a 5 h »), ainsi que le
+   nombre d'**avis examinés hier**. Si tout va bien, une pastille affiche
+   « Collecte silencieuse : aucune alarme ».
+2. À droite du titre, une pastille compte les **nouveaux depuis hier**.
+   Si elle n'apparaît pas, c'est qu'il n'y a rien de neuf — et c'est une
+   information, pas une panne.
+3. Utilisez les vues **Toutes · Nouveaux · Retenus · Ignorés** pour n'afficher
+   que ce qui vous intéresse. Vos filtres et votre tri restent dans l'adresse de
+   la page : vous pouvez la mettre en favori ou l'envoyer à un collègue.
+4. Chaque ligne montre l'objet, l'acheteur, la source, le lieu, la **date
+   limite** avec son étiquette d'urgence, le montant estimé, le score et les
+   **mots déclencheurs** qui ont fait remonter l'avis. Cliquez sur une ligne
+   pour ouvrir la fiche complète.
+5. Les jours où la collecte ramène du nouveau, vous recevez aussi une
+   notification du type « Veille appels d'offres : 3 nouveaux avis — dont 1 à
+   échéance J-12 ». Les jours sans nouveauté, **rien n'est envoyé** : une
+   notification vide tous les matins finit par ne plus être lue.
+
+**Bon à savoir.** Sur la fiche d'un avis venu du portail, le bouton **Voir
+l'avis d'origine** ouvre la page publique dans un nouvel onglet — c'est là que
+se trouve le dossier de consultation.
+
+### Ce que veulent dire Nouveau, Retenu, Ignoré et Converti
+
+**Ce que ça fait.** Le statut dit où en est votre décision sur cet avis. Il n'y
+en a que cinq, et ils se lisent dans cet ordre.
+
+- **Nouveau** — l'avis vient d'arriver, personne ne l'a encore regardé. C'est la
+  pile à trier.
+- **Retenu** — vous avez décidé d'y répondre. En pratique vous ne verrez ce
+  statut que dans l'historique : le bouton **Retenir** enchaîne aussitôt sur la
+  création de l'affaire (voir « Converti » ci-dessous).
+- **Ignoré** — vous avez décidé de ne pas y répondre. L'avis n'est pas supprimé :
+  il reste consultable, avec son motif, et vous pouvez **le retenir plus tard**
+  si vous changez d'avis.
+- **Converti** — l'avis est devenu une **affaire** dans le module Appels
+  d'offres, avec sa propre référence. C'est le statut normal d'un avis sur
+  lequel vous travaillez ; la vue « Retenus » affiche les *Retenus* et les
+  *Convertis* ensemble.
+- **Expiré** — la date limite est passée sans décision. Un avis expiré ne se
+  retient plus.
+
+**Comment l'utiliser.**
+1. Ouvrez la fiche d'un avis (clic sur une ligne de la liste).
+2. **Retenir** crée l'affaire correspondante dans le module Appels d'offres et
+   vous emmène directement sur sa fiche. Recliquer ne crée jamais de doublon :
+   le lien existant est réutilisé.
+3. **Ignorer** ouvre une petite fenêtre où vous pouvez écrire un motif
+   (facultatif) et cocher, si vous le souhaitez, **« Créer aussi une règle
+   d'exclusion »** pour que les prochains avis du même genre soient écartés
+   automatiquement. Sans cette case, rien n'est appris : le système ne crée
+   jamais de règle dans votre dos.
+4. Un avis écarté automatiquement affiche toujours **la règle qui l'a filtré**,
+   dans la liste comme sur sa fiche. Vous savez donc toujours pourquoi il est là.
+
+### Ajouter un avis reçu par WhatsApp, SMS ou appel
+
+**Ce que ça fait.** Enregistre en trente secondes un appel d'offres qui n'est
+passé par aucun portail — celui qu'un partenaire, un client ou un employé vous
+signale de vive voix. C'est le geste le plus important de tout le module : ces
+avis-là sont ceux que la collecte automatique ne verra jamais.
+
+**Où la trouver.** Menu **Veille AO → Avis**, encadré « Ce que la veille
+automatique ne voit pas », bouton **Ajouter un avis**.
+
+**Comment l'utiliser.**
+1. Cliquez sur **Ajouter un avis**.
+2. Renseignez ce que vous savez : **Objet**, **Acheteur**, **Date limite**.
+   Tous ces champs sont facultatifs — vous pouvez saisir depuis un chantier avec
+   trois informations et compléter plus tard.
+3. Un seul champ est **obligatoire** : **« Qui vous l'a signalé ? »**
+   (Partenaire, Client, Employé, Presse, Autre). Il sert à mesurer, sur la
+   durée, quel canal rapporte réellement des affaires — c'est pour cela qu'on
+   ne peut pas le sauter.
+4. Cliquez sur **Ajouter**. L'avis rejoint le même sas que les avis collectés et
+   suit exactement le même cycle : vous pouvez le retenir, l'ignorer, le
+   convertir en affaire.
+
+### Régler vos mots-clés
+
+*Réservé au directeur / responsable.*
+
+**Ce que ça fait.** Décide de ce que la collecte va chercher, d'où elle le
+cherche, et ce qu'elle écarte d'office.
+
+**Où la trouver.** Menu **Veille AO → Paramètres de veille**
+(`/veille-ao/parametres`).
+
+**Comment l'utiliser.**
+1. Section **Mots-clés** : saisissez un **Libellé** (le mot ou l'expression à
+   chercher), choisissez un **Niveau** et un **Poids**, puis ajoutez-le.
+   - **Noyau (précision haute)** — les mots qui ne trompent jamais, par exemple
+     « photovoltaïque » ou « centrale solaire ». Peu de bruit.
+   - **Large (bruit accepté)** — les mots qui ramènent plus large, quitte à
+     faire remonter des avis hors sujet que vous écarterez à la main.
+   - Le **poids** pèse dans le score affiché sur chaque avis : plus il est
+     élevé, plus un avis contenant ce mot remonte comme prometteur.
+2. L'interrupteur en bout de ligne **active ou désactive** un mot-clé sans le
+   supprimer. Un mot désactivé n'est plus interrogé à la collecte suivante.
+3. Section **Sources** : même principe, un interrupteur par source.
+4. Section **Règles d'exclusion** : la liste de ce que vous avez appris à
+   écarter (par acheteur, par mot du libellé, par catégorie ou par région),
+   avec le nombre de fois où chaque règle a servi. Une règle qui écarte trop
+   se désactive du même interrupteur.
+5. Le bouton **Rafraîchir maintenant**, en haut de l'écran, lance une collecte
+   immédiate — exactement la même que celle de 06h00, avec sa barre de
+   progression. Un double clic ne lance pas deux collectes.
+
+**Important.** Cet écran affiche en clair l'état d'armement :
+**« Collecte automatique : ARMÉE »** ou **« DÉSARMÉE — accord fondateur
+requis »**. Tant qu'elle est désarmée, la tâche planifiée de 06h00 ne va rien
+chercher du tout : seuls les avis saisis à la main alimentent le sas. Personne
+ne doit pouvoir croire que la veille tourne alors qu'elle est à l'arrêt.
+
+### Ce que la veille ne voit pas — et pourquoi
+
+**Ce que ça fait.** Un encadré permanent, sur la page Avis, qui rappelle les
+limites du dispositif. Il ne disparaît jamais, volontairement.
+
+**Ce qu'il dit.** La collecte automatique couvre le portail public
+marchespublics.gov.ma, soit **environ 65 à 75 %** des opportunités adressables.
+Elle ne voit **pas** :
+
+- les **consultations privées et restreintes** — une fondation, une université
+  privée, une clinique qui invite directement quelques entreprises. Cela
+  représente environ **15 à 25 % du flux réel, dont 0 % est détectable
+  automatiquement** : aucun logiciel ne peut lire une invitation qui ne passe
+  par aucun portail ;
+- les **portails sectoriels** ONEE-Électricité, MASEN, OCP — environ **10 % du
+  nombre d'avis, mais la majorité de la valeur**.
+
+**Ce qu'il faut en faire.** Ce qui manque là ne se surveille pas, cela se
+**démarche**. Deux réflexes :
+
+1. Un AO vous arrive par WhatsApp, SMS ou téléphone ? **Ajoutez-le à la main**
+   (voir plus haut). C'est le seul moyen pour qu'il entre dans l'ERP.
+2. Tenez à jour le carnet **Veille AO → Acheteurs cibles** : les organismes que
+   vous voulez démarcher pour figurer sur leur liste d'invitation, avec le
+   dernier contact et la prochaine relance. Un encadré **Relances dues**,
+   au-dessus de la liste, vous montre celles du jour sans que vous ayez à les
+   chercher.
+
+### Quand l'alarme de silence sonne
+
+**Ce que ça fait.** Vous prévient que la veille ne ramène plus rien — la panne
+la plus dangereuse, parce qu'un écran vide ressemble exactement à un marché
+calme.
+
+**Où la trouver.** Bandeau de santé en haut de **Veille AO → Avis** : la carte
+passe en alerte et affiche le message. Les personnes qui ont accès à la veille
+reçoivent en plus une notification, envoyée **une seule fois** par épisode — une
+alarme qui crie tous les matins est une alarme qu'on apprend à ignorer.
+
+**Ce que dit l'alarme.** Deux situations, deux messages :
+
+- **« La collecte a échoué 2 fois de suite »** — la source ne répond plus ou a
+  changé de structure.
+- **« Aucun avis remonté depuis 2 jours, sur tous les mots-clés »** — la
+  collecte marche, mais elle ne trouve plus rien.
+
+**Comment l'utiliser.**
+1. Ouvrez **Veille AO → Paramètres de veille** et vérifiez d'abord l'état
+   d'armement : une collecte **désarmée** explique à elle seule un silence
+   complet.
+2. Vérifiez que vos **sources** sont actives et que vos **mots-clés** n'ont pas
+   tous été désactivés — un mot-clé de trop désactivé suffit à faire taire la
+   veille.
+3. Cliquez sur **Rafraîchir maintenant** et regardez le résultat : s'il échoue,
+   c'est la source ; s'il réussit avec zéro avis, c'est le réglage.
+4. Si le doute persiste, prévenez votre administrateur avec la date de la
+   dernière collecte réussie affichée sur le bandeau, et **ne considérez pas la
+   période comme couverte** : reprenez la main sur le portail public en attendant.
+
+---
+
 ## Devis & Ventes
 
 Tout ce qui concerne la préparation et l'envoi des devis solaires se trouve dans
