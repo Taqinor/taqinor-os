@@ -447,8 +447,8 @@ function CreerRisqueOpportuniteDialog({ onClose, onCreated }) {
   )
 }
 
-// XQHS17 — miroir de `ObservationSecurite.Categorie` / `.TypeObservation`
-// (backend, apps/qhse/models.py). Saisie TERRAIN volontairement minimale.
+// XQHS17 — saisie TERRAIN volontairement minimale.
+// source-choix: qhse.ObservationSecurite.categorie
 const OBSERVATION_CATEGORIES = [
   { value: 'epi', label: 'EPI' },
   { value: 'hauteur', label: 'Travail en hauteur' },
@@ -457,6 +457,7 @@ const OBSERVATION_CATEGORIES = [
   { value: 'environnement', label: 'Environnement' },
   { value: 'autre', label: 'Autre' },
 ]
+// source-choix: qhse.ObservationSecurite.type_observation
 const OBSERVATION_TYPES = [
   { value: 'sur', label: 'Sûr' },
   { value: 'a_risque', label: 'À risque' },
