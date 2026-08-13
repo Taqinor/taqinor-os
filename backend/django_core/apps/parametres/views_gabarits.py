@@ -18,6 +18,7 @@ non strict) : un gabarit mal orthographié n'a jamais fait planter un rendu.
 devis client ne sort d'ici, il passe uniquement par ``/proposal``.
 """
 from django.http import HttpResponse
+from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -41,6 +42,7 @@ class GabaritDocumentCustomSerializer(serializers.ModelSerializer):
                   'actif', 'variables']
         read_only_fields = ['id', 'cible_label', 'variables']
 
+    @extend_schema_field(serializers.ListField(child=serializers.CharField()))
     def get_variables(self, obj):
         return variables_du_gabarit(obj)
 
