@@ -142,16 +142,16 @@ a focused test, calling the EXISTING backend endpoint.
 - [ ] FE-ZRH14-17 — reconnaissance badges, career timeline, weekly location, skills search on `EmployeDetail.jsx`. (@lane: frontend/rh)
 
 ## Lane `frontend/sav` (XSAV/XCTR/ZSAV/ZMFG round-2 backend-only)
-- [ ] FE-XSAV19/XSAV10 — **CRITICAL** public pages: QR problem-report `/e/:token` + ticket-tracking + CSAT `/suivi/:token` (both are JSON dead-ends today). (@lane: frontend/sav) (opus)
-- [ ] FE-XSAV3/XFSM1/XCTR4 — "Créer un devis"/"Générer facture"/"Facturer" buttons on ticket detail (`creer-devis`/`generer-facture`/`facturer` + `couverture`). (@lane: frontend/sav)
-- [ ] FE-SAV-warranty — supplier-RMA screen (`warranty-claims`, FG83). (@lane: frontend/sav)
-- [ ] FE-XSAV15-17/XSAV9 — MTBF/MTTR/downtime/disponibilité/meter-readings + write-off buttons on `EquipementDetail`. (@lane: frontend/sav)
-- [ ] FE-XSAV8 — SLA compliance report screen (`insights/sav-sla/`). (@lane: frontend/sav)
-- [ ] FE-XSAV12/27/ZSAV8-9 — merge duplicate ticket, loaner tracking, ticket→lead, follow/unfollow. (@lane: frontend/sav)
-- [ ] FE-ZSAV2-3-6 — ticket categories filter + Paramètres CRUD, scheduled activities panel, "Action requise" board. (@lane: frontend/sav)
-- [ ] FE-SAV-kb/macros — KB article screen + "Résolutions similaires"/macro-picker on ticket (`kb-articles`/`reponses-type`/`pieces-compatibles`). (@lane: frontend/sav)
-- [ ] FE-SAV-alarmes — inverter-alarms panel (list/acquitter/escalader, FG280). (@lane: frontend/sav)
-- [ ] FE-XSAV14/ZMFG6/11 — cause/remède + Pareto pannes, worksheet UI, predicted-failure estimations. (@lane: frontend/sav)
+- [x] (déjà présent) FE-XSAV19/XSAV10 — **CRITICAL** public pages: QR problem-report `/e/:token` + ticket-tracking + CSAT `/suivi/:token` (both are JSON dead-ends today). (@lane: frontend/sav) (opus)
+- [x] (déjà présent) FE-XSAV3/XFSM1/XCTR4 — "Créer un devis"/"Générer facture"/"Facturer" buttons on ticket detail (`creer-devis`/`generer-facture`/`facturer` + `couverture`). (@lane: frontend/sav)
+- [x] (déjà présent) FE-SAV-warranty — supplier-RMA screen (`warranty-claims`, FG83). (@lane: frontend/sav)
+- [x] (déjà présent) FE-XSAV15-17/XSAV9 — MTBF/MTTR/downtime/disponibilité/meter-readings + write-off buttons on `EquipementDetail`. (@lane: frontend/sav)
+- [x] (déjà présent) FE-XSAV8 — SLA compliance report screen (`insights/sav-sla/`). (@lane: frontend/sav)
+- [x] (déjà présent) FE-XSAV12/27/ZSAV8-9 — merge duplicate ticket, loaner tracking, ticket→lead, follow/unfollow. (@lane: frontend/sav)
+- [x] (déjà présent) FE-ZSAV2-3-6 — ticket categories filter + Paramètres CRUD, scheduled activities panel, "Action requise" board. (@lane: frontend/sav)
+- [x] (déjà présent) FE-SAV-kb/macros — KB article screen + "Résolutions similaires"/macro-picker on ticket (`kb-articles`/`reponses-type`/`pieces-compatibles`). (@lane: frontend/sav)
+- [x] (déjà présent) FE-SAV-alarmes — inverter-alarms panel (list/acquitter/escalader, FG280). (@lane: frontend/sav)
+- [x] (déjà présent) FE-XSAV14/ZMFG6/11 — cause/remède + Pareto pannes, worksheet UI, predicted-failure estimations. (@lane: frontend/sav)
 
 ## Lane `frontend/litiges`
 - [ ] FE-LITIGE4 — render `rec.ncr`/`rec.audit` (NCR/Audit linked) in `ReclamationDetail.jsx` + linking control in `ReclamationEditor.jsx` (data already fetched). (@lane: frontend/litiges)
@@ -190,8 +190,8 @@ a focused test, calling the EXISTING backend endpoint.
 - [ ] FE-COMPTA21 — consume the uncalled `balanceAgeeFournisseurs` + add `releveFournisseur` drill-down. (@lane: frontend/compta)
 
 ## SAV lane additions (fold into `frontend/sav`)
-- [ ] FE-XSAV5/21/28 — attente-client SLA pause/resume, similar-ticket panel, AI triage banner on `TicketsPage.jsx`. (@lane: frontend/sav)
-- [ ] FE-ZMFG1-2/4/5-12 — SAV teams + equipment categories (Paramètres + ticket/equipment filters), instructions tab, worksheet form, unified pièces, scrap action, estimations, bon-pdf. (@lane: frontend/sav)
+- [x] (déjà présent) FE-XSAV5/21/28 — attente-client SLA pause/resume, similar-ticket panel, AI triage banner on `TicketsPage.jsx`. (@lane: frontend/sav)
+- [x] (déjà présent) FE-ZMFG1-2/4/5-12 — SAV teams + equipment categories (Paramètres + ticket/equipment filters), instructions tab, worksheet form, unified pièces, scrap action, estimations, bon-pdf. (@lane: frontend/sav)
 
 ## Lane `frontend/kb` (XKB8-22 + ZGED10-12 backend-only; XKB23 already wired)
 - [ ] FE-XKB19 — **CRITICAL** public unauthenticated article route `/kb/public/:token` + `PublicArticlePage.jsx` + "Share on web" action (`partages`/`depublier`). (@lane: frontend/kb) (opus)
@@ -240,3 +240,4 @@ a focused test, calling the EXISTING backend endpoint.
 
 ## DONE LOG
 <!-- one dated line per shipped task -->
+- 2026-08-13 (lane frontend/sav) — les 12 tâches taguées `@lane: frontend/sav` étaient DÉJÀ construites et câblées (savApi.js + pages/sav/*.jsx + router public /e/:token /suivi/:token) : FE-XSAV19/XSAV10, FE-XSAV3/XFSM1/XCTR4, FE-SAV-warranty, FE-XSAV15-17/XSAV9, FE-XSAV8, FE-XSAV12/27/ZSAV8-9, FE-ZSAV2-3-6, FE-SAV-kb/macros, FE-SAV-alarmes, FE-XSAV14/ZMFG6/11, FE-XSAV5/21/28, FE-ZMFG1-2/4/5-12. Aucun code écrit, pas de commit de fonctionnalité (seule mise à jour de ce fichier).
