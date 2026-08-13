@@ -1125,7 +1125,7 @@ class PlaybookSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Playbook
-        fields = ['id', 'nom', 'actif', 'bloquant', 'etapes', 'date_creation']
+        fields = ['id', 'nom', 'actif', 'bloquant', 'condition', 'etapes', 'date_creation']
         read_only_fields = ['date_creation']
 
 

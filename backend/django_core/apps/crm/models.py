@@ -2336,6 +2336,16 @@ class Playbook(TenantModel):
     # seulement) SAUF si ce playbook est marqué bloquant=True — cohérent avec
     # « never auto-move »/jamais un blocage dur par défaut.
     bloquant = models.BooleanField(default=False)
+    # NTCRM26 — critère de sélection optionnel (arbre core.rules FG367, évalué
+    # contre {type_installation, canal} du lead). ``None`` = playbook
+    # universel (comportement historique, s'applique à tout lead) ; renseigné
+    # = ce playbook n'entre en jeu QUE pour les leads qui matchent, permettant
+    # plusieurs playbooks actifs sur le même stage (un par profil de lead)
+    # sans dupliquer les tâches sur un profil non concerné.
+    condition = models.JSONField(
+        null=True, blank=True, verbose_name='Critère de sélection',
+        help_text="Arbre de conditions (core.rules) évalué contre "
+                  "{type_installation, canal} du lead. Vide = s'applique à tout lead.")
     date_creation = models.DateTimeField(auto_now_add=True)
 
     class Meta:

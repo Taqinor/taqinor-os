@@ -85,19 +85,53 @@ def _emit_stage_changed(lead, old_stage, new_stage, user=None):
             getattr(lead, 'pk', '?'), exc_info=True)
 
 
+def _playbook_correspond_au_lead(playbook, lead):
+    """NTCRM26 — ``playbook.condition`` matche-t-il ce lead ? ``None``/vide =
+    playbook universel (comportement historique) — toujours ``True``.
+    Réutilise ``core.rules.evaluate_condition_group`` (FG367), jamais un
+    nouveau moteur. Tolérant : jamais d'exception, ``False`` en cas de doute."""
+    if not playbook.condition:
+        return True
+    from core.rules import evaluate_condition_group
+    criteres = {
+        'type_installation': getattr(lead, 'type_installation', None),
+        'canal': getattr(lead, 'canal', None),
+    }
+    try:
+        return evaluate_condition_group(playbook.condition, criteres)
+    except Exception:  # noqa: BLE001 — tolérant, jamais bloquant
+        return False
+
+
+def playbooks_recommandes(lead, stage):
+    """NTCRM26 — Playbooks ACTIFS de la société de ``lead`` portant une étape
+    sur ``stage`` dont ``condition`` matche le profil du lead (universels
+    inclus). Lecture pure, sert à l'aperçu et à ``generer_playbook_progress``."""
+    from .models import Playbook
+
+    playbooks = Playbook.objects.filter(
+        company=lead.company, actif=True, etapes__stage=stage,
+    ).distinct()
+    return [p for p in playbooks if _playbook_correspond_au_lead(p, lead)]
+
+
 def generer_playbook_progress(lead, new_stage):
-    """NTCRM12 — Quand ``lead`` entre dans ``new_stage``, crée la progression
-    (``LeadPlaybookProgress``, une par tâche) pour CHAQUE playbook ACTIF de la
-    société portant une étape sur ``new_stage``. Idempotent (``unique_together
-    (lead, tache)``, ``get_or_create``) : rejouer l'événement (ex. réactivation
-    YLEAD11 qui repasse par la même étape) ne duplique jamais les tâches.
-    Ne bloque JAMAIS le changement d'étape (avertissement seulement — cohérent
-    avec « never auto-move ») : appelé en best-effort par le récepteur."""
+    """NTCRM12/NTCRM26 — Quand ``lead`` entre dans ``new_stage``, crée la
+    progression (``LeadPlaybookProgress``, une par tâche) pour chaque playbook
+    ACTIF de la société portant une étape sur ``new_stage`` ET dont
+    ``condition`` matche le profil du lead (auto-sélection par similarité —
+    un playbook sans condition reste universel, comportement historique
+    inchangé). Idempotent (``unique_together(lead, tache)``, ``get_or_create``)
+    : rejouer l'événement (ex. réactivation YLEAD11 qui repasse par la même
+    étape) ne duplique jamais les tâches. Ne bloque JAMAIS le changement
+    d'étape (avertissement seulement — cohérent avec « never auto-move ») :
+    appelé en best-effort par le récepteur."""
     from .models import LeadPlaybookProgress, PlaybookEtape
 
+    playbooks_ok = {p.pk for p in playbooks_recommandes(lead, new_stage)}
     etapes = PlaybookEtape.objects.filter(
         playbook__company=lead.company, playbook__actif=True,
-        stage=new_stage,
+        stage=new_stage, playbook_id__in=playbooks_ok,
     ).prefetch_related('taches')
     created = []
     for etape in etapes:
