@@ -24,6 +24,13 @@ const einvoiceApi = {
     api.get(`/einvoice/factures-electroniques/${id}/telecharger/`, {
       responseType: 'blob',
     }),
+  // PACT54/NTMAR7 — enregistre l'INTENTION de transmission (file d'attente).
+  // Aucune requête réseau sortante tant que le flag + l'URL DGI ne sont pas
+  // configurés : la transmission reste « en attente », jamais une erreur.
+  transmettre: (id) =>
+    api.post(`/einvoice/factures-electroniques/${id}/transmettre/`),
+  // PACT54/NTMAR7 — historique des transmissions (lecture seule côté serveur).
+  transmissions: (params) => api.get('/einvoice/transmissions/', { params }),
 }
 
 export default einvoiceApi
