@@ -226,6 +226,10 @@ const comptaApi = {
     accepterSuggestions: (id) =>
       api.post(`/compta/rapprochements/${id}/accepter-suggestions/`),
     cloturer: (id) => api.post(`/compta/rapprochements/${id}/cloturer/`),
+    // XACC30 — OCR d'un relevé (PDF/scan, gated) : extraction (multipart
+    // { releve }) puis acceptation explicite ({ accepter: '1', lignes }).
+    ocrImport: (id, formData) =>
+      api.post(`/compta/rapprochements/${id}/ocr-import/`, formData),
   },
   modelesRapprochement: {
     ...resource('modeles-rapprochement'),
