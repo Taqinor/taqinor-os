@@ -224,6 +224,11 @@ const crmApi = {
   getConcurrentsPerte: (params) => api.get('/crm/concurrents-perte/', { params }),
   createConcurrentPerte: (data) => api.post('/crm/concurrents-perte/', data),
 
+  // NTCRM23/24 — défis d'équipe (gamification) : CRUD + classement.
+  getDefis: (params) => api.get('/crm/defis/', { params }),
+  createDefi: (data) => api.post('/crm/defis/', data),
+  getDefiClassement: (id) => api.get(`/crm/defis/${id}/classement/`),
+
   // NTCRM19 — résumé de consultation salle de vente pour la fiche lead
   // (« le client a consulté N fois, dernière fois <date> »).
   getLeadSalleVenteAnalytics: (leadId) =>
