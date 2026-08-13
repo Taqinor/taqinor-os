@@ -115,8 +115,85 @@ def evaluer_regles_produit(*, company, context):
                 'regle_id': regle.id,
                 'nom': regle.nom,
                 'actions': regle.actions,
+                # NTCPQ21 — avertissement (défaut) vs règle bloquante.
+                'bloquante': regle.bloquante,
             })
     return declenchees
+
+
+def contexte_regles_devis(devis):
+    """NTCPQ21 — Contexte plat d'un devis pour l'évaluation des règles NTCPQ2.
+
+    Expose ``produit_ids`` (liste — utilisable avec l'opérateur ``contains``),
+    ``designations``, ``mode_installation``, ``total_ht``, ``nb_lignes`` et
+    ``puissance_kwc``. Aucune donnée de marge / ``prix_achat``."""
+    lignes = list(devis.lignes.all())
+    etude = devis.etude_params if isinstance(devis.etude_params, dict) else {}
+    try:
+        kwc = float(etude.get('puissance_kwc') or 0)
+    except (TypeError, ValueError):
+        kwc = 0.0
+    try:
+        total_ht = float(devis.total_ht or 0)
+    except (TypeError, ValueError):
+        total_ht = 0.0
+    return {
+        'produit_ids': [li.produit_id for li in lignes if li.produit_id],
+        'designations': [li.designation for li in lignes],
+        'mode_installation': devis.mode_installation or '',
+        'type_deal': devis.mode_installation or '',
+        'total_ht': total_ht,
+        'nb_lignes': len(lignes),
+        'puissance_kwc': kwc,
+    }
+
+
+def etat_configuration_devis(devis):
+    """NTCPQ21 — État de conformité de la configuration d'un devis.
+
+    Exécute les règles produit (NTCPQ2) ET les contraintes de compatibilité
+    (NTCPQ1) et renvoie ::
+
+        {'configuration_valide': bool, 'bloquant': bool, 'violations': [...]}
+
+    ``configuration_valide`` est faux dès qu'une violation existe (badge
+    rouge) ; ``bloquant`` n'est vrai que pour une contrainte bloquante
+    (INCOMPATIBLE/REQUIERT) ou une règle explicitement ``bloquante`` — un
+    simple avertissement n'empêche JAMAIS l'enregistrement en brouillon.
+    Calculé à la volée, jamais stocké."""
+    company = getattr(devis, 'company', None)
+    if company is None:
+        return {'configuration_valide': True, 'bloquant': False,
+                'violations': []}
+
+    violations = []
+    produit_ids = [li.produit_id for li in devis.lignes.all() if li.produit_id]
+    for v in violations_compatibilite(company=company,
+                                      produit_ids=produit_ids):
+        violations.append({
+            'source': 'compatibilite',
+            'type': v['type'],
+            'message': v['message'] or (
+                f"Produits {v['produit_a']} / {v['produit_b']} : "
+                f"{v['type'].lower()}"),
+            'bloquante': v['bloquante'],
+        })
+
+    for regle in evaluer_regles_produit(
+            company=company, context=contexte_regles_devis(devis)):
+        violations.append({
+            'source': 'regle',
+            'type': 'REGLE',
+            'regle_id': regle['regle_id'],
+            'message': regle['nom'],
+            'bloquante': bool(regle.get('bloquante')),
+        })
+
+    return {
+        'configuration_valide': not violations,
+        'bloquant': any(v['bloquante'] for v in violations),
+        'violations': violations,
+    }
 
 
 def devis_marge_sous_seuil(devis):

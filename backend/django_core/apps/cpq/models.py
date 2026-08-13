@@ -122,6 +122,13 @@ class RegleProduitCPQ(TenantModel):
     actions = models.JSONField(
         default=list, blank=True,
         help_text='Liste d\'actions déclenchées quand la règle est vraie.')
+    # NTCPQ21 — une règle déclenchée est par défaut un AVERTISSEMENT (badge
+    # rouge, jamais un blocage). Marquée bloquante, elle rend la configuration
+    # invalide de façon bloquante. Défaut False ⇒ comportement inchangé.
+    bloquante = models.BooleanField(
+        default=False,
+        help_text='Règle bloquante (et non simple avertissement) quand elle '
+                  'se déclenche.')
     actif = models.BooleanField(default=True)
     date_creation = models.DateTimeField(auto_now_add=True)
 

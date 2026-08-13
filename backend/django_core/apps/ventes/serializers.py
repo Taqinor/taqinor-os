@@ -433,6 +433,16 @@ class DevisSerializer(serializers.ModelSerializer):
             return str(val) if val is not None else None
         return None
 
+    # NTCPQ21 — badge « configuration validée » : champ CALCULÉ (jamais
+    # stocké) exécutant les règles produit (NTCPQ2) + les contraintes de
+    # compatibilité (NTCPQ1). Rendu uniquement sur le DÉTAIL d'un devis (la
+    # clé est retirée en mode liste pour ne pas payer N évaluations).
+    configuration = serializers.SerializerMethodField()
+
+    def get_configuration(self, obj):
+        from apps.cpq.selectors import etat_configuration_devis
+        return etat_configuration_devis(obj)
+
     def to_representation(self, instance):
         """QX23be / RULE #4 — the ``marge_snapshot`` KEY itself must never reach
         a client-facing / context-less path (a structural prix_achat/marge
@@ -449,6 +459,10 @@ class DevisSerializer(serializers.ModelSerializer):
             # NTCPQ6 — la clé marge_sous_seuil (dérivée de prix_achat) ne doit
             # jamais fuiter hors d'un rendu interne authentifié (règle #4).
             data.pop('marge_sous_seuil', None)
+        # NTCPQ21 — l'état de configuration coûte deux évaluations par devis :
+        # on ne le rend QUE sur un détail (hors liste) et pour un rendu interne.
+        if self.parent is not None or not is_auth:
+            data.pop('configuration', None)
         return data
 
     class Meta:

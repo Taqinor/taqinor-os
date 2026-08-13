@@ -33,8 +33,8 @@ class ContrainteCompatibiliteSerializer(serializers.ModelSerializer):
 class RegleProduitCPQSerializer(serializers.ModelSerializer):
     class Meta:
         model = RegleProduitCPQ
-        fields = ['id', 'nom', 'condition_group', 'actions', 'actif',
-                  'date_creation']
+        fields = ['id', 'nom', 'condition_group', 'actions', 'bloquante',
+                  'actif', 'date_creation']
         read_only_fields = ['date_creation']
 
     def validate_condition_group(self, value):
