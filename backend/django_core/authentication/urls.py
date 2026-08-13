@@ -24,6 +24,7 @@ from .views_console import (
     TenantConsoleStatutView,
     TenantConsoleNoteView,
 )
+from .views_demo_wizard import DemoWizardCreateView, DemoWizardStatusView
 
 router = DefaultRouter()
 router.register(r'users', UserViewSet, basename='users')
@@ -67,6 +68,11 @@ urlpatterns = [
     # N100(b) — création administrée d'un tenant depuis la console fondateur.
     path('auth/console/tenants/creer/', TenantConsoleCreateView.as_view(),
          name='auth_console_tenant_creer'),
+    # NTDMO25 — wizard « Créer ma société de démonstration » (3 étapes).
+    path('auth/demo-wizard/', DemoWizardCreateView.as_view(),
+         name='auth_demo_wizard'),
+    path('auth/demo-wizard/statut/', DemoWizardStatusView.as_view(),
+         name='auth_demo_wizard_statut'),
     # N101(b) — le dépôt PUBLIC d'une demande d'inscription
     # (`auth/signup-demande/`) est monté dans l'urlconf RACINE : sa vue vit
     # dans `apps.adminops` (une demande n'est pas un compte — la surface

@@ -51,6 +51,19 @@ class Command(BaseCommand):
             '--force', action='store_true',
             help='Autorise le seed hors DEBUG (crée des comptes à mot de passe '
                  'connu — à utiliser en connaissance de cause).')
+        # NTDMO25 — paramètres additifs consommés par le wizard « Créer ma
+        # société de démonstration ». Défauts = comportement HISTORIQUE
+        # byte-identique (mixte/complet) : un appel sans ces options se
+        # comporte exactement comme avant.
+        parser.add_argument(
+            '--profil', choices=['residentiel', 'industriel', 'mixte'],
+            default='mixte',
+            help="Secteur/scénario des devis générés (NTDMO25). 'mixte' "
+                 '(défaut) = comportement historique (3 modes marché).')
+        parser.add_argument(
+            '--densite', choices=['leger', 'complet'], default='complet',
+            help="Densité de l'historique (NTDMO25). 'complet' (défaut) = "
+                 "comportement historique (~40 leads). 'leger' ~15 leads.")
 
     @transaction.atomic
     def handle(self, *args, **options):
@@ -75,7 +88,10 @@ class Command(BaseCommand):
                 f'Demo company "{slug}" already populated — nothing to do.'))
             return
 
-        self._generate_history(company, admin, resp, rng)
+        self._generate_history(
+            company, admin, resp, rng,
+            profil=options.get('profil', 'mixte'),
+            densite=options.get('densite', 'complet'))
 
         self.stdout.write(self.style.SUCCESS(
             f'\nRich demo data seeded for "{company.nom}" (slug={slug}).\n'
@@ -158,16 +174,19 @@ class Command(BaseCommand):
                 defaults={'nom': nom, 'delai_jours': delai})
 
     # ── 12-month history (extended by NTDMO2-5) ────────────────────────────
-    def _generate_history(self, company, admin, resp, rng):
+    def _generate_history(self, company, admin, resp, rng,
+                          profil='mixte', densite='complet'):
         """Génère l'historique vivant. Étendu par NTDMO2 (leads), NTDMO3
-        (devis), NTDMO4 (chantiers/factures), NTDMO5 (SAV/stock)."""
+        (devis), NTDMO4 (chantiers/factures), NTDMO5 (SAV/stock). `profil`/
+        `densite` (NTDMO25) restent ADDITIFS : leurs défauts ('mixte'/
+        'complet') reproduisent le comportement historique."""
         # NTDMO17 — instance Faker dédiée, seedée pour être 100% reproductible
         # d'une exécution à l'autre (même graine que `rng`) : deux appels de
         # `reset_demo_company` produisent des noms/raisons sociales identiques.
         Faker.seed(RNG_SEED)
         fake = Faker('fr_FR')
         ctx = {'company': company, 'admin': admin, 'resp': resp, 'rng': rng,
-               'fake': fake}
+               'fake': fake, 'profil': profil, 'densite': densite}
         self._seed_leads(ctx)
         self._seed_devis(ctx)
         self._seed_chantiers_factures(ctx)
@@ -210,6 +229,11 @@ class Command(BaseCommand):
             (NEW, 12, 45), (CONTACTED, 10, 90), (QUOTE_SENT, 7, 150),
             (FOLLOW_UP, 5, 120), (SIGNED, 4, 300), (COLD, 4, 330),
         ]
+        # NTDMO25 — densité 'leger' : ~15 leads (au lieu de ~40), même
+        # entonnoir (proportions conservées), pour un wizard rapide.
+        if ctx.get('densite') == 'leger':
+            plan = [(stage, max(1, round(count * 0.4)), age_max)
+                    for stage, count, age_max in plan]
         leads = []
         i = 0
         for stage, count, age_max in plan:
@@ -292,13 +316,21 @@ class Command(BaseCommand):
         statuts = (
             [S.ACCEPTE] * 10 + [S.ENVOYE] * 5 + [S.BROUILLON] * 4
             + [S.REFUSE] * 3 + [S.EXPIRE] * 3)
-        modes = ['residentiel', 'industriel', 'agricole']
+        # NTDMO25 — profil 'residentiel'/'industriel' n'affiche QU'un mode ;
+        # 'mixte' (défaut) reste le comportement historique (3 modes).
+        profil = ctx.get('profil', 'mixte')
+        if profil == 'residentiel':
+            modes = ['residentiel']
+        elif profil == 'industriel':
+            modes = ['industriel']
+        else:
+            modes = ['residentiel', 'industriel', 'agricole']
         signed_resid_batt = 0
         devis_list = []
         for i, statut in enumerate(statuts):
             client = clients[i % len(clients)]
             lead = leads[i % len(leads)] if leads else None
-            mode = modes[i % 3]
+            mode = modes[i % len(modes)]
             avec_batterie = False
             etude = None
             if mode == 'residentiel':
