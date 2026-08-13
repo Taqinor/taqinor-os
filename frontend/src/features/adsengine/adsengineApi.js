@@ -132,6 +132,15 @@ const adsengineApi = {
     // PUB87 — calculateur MDE/puissance (vue mince sur mde.py) : « avec votre
     // volume, ~X jours pour détecter +20 % » avant lancement.
     mde: (params) => api.get('/adsengine/experiences/mde/', { params }),
+    // PACT110 — bras RÉELS (``ExperimentArm``, routeur ``bras/``). Ce ViewSet
+    // est company-scopé mais ne filtre PAS par expérience côté serveur —
+    // l'appelant filtre par ``experiment`` côté client sur la liste renvoyée.
+    arms: (params) => api.get('/adsengine/bras/', { params }),
+    // Série quotidienne d'un bras (``ArmDailyStat``, routeur ``stats-bras/``).
+    armStats: (params) => api.get('/adsengine/stats-bras/', { params }),
+    // Journal des décisions TOUTES expériences confondues (``DecisionLog``,
+    // routeur ``decisions/`` — lecture seule, écrit uniquement par la science).
+    allDecisions: (params) => api.get('/adsengine/decisions/', { params }),
   },
 
   // ── ENG28/ENG38/ENG40 — Plan de vol (compose 6 mois) + préflight autonomie ──

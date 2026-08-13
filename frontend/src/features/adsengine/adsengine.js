@@ -400,16 +400,6 @@ export function normalizeExperiment(raw) {
     statut: p.statut || '',
     statut_display: p.statut_display || p.statut || '',
   }))
-  const bras = (Array.isArray(e.bras) ? e.bras : (Array.isArray(e.arms) ? e.arms : []))
-    .filter(Boolean).map((b, i) => ({
-      id: b.id ?? i,
-      nom: b.nom || b.name || `Bras ${i + 1}`,
-      p_best: numOrNull(b.p_best ?? b.prob_best),
-      mean: numOrNull(b.mean ?? b.moyenne),
-      ci_low: numOrNull(b.ci_low ?? b.ic_bas),
-      ci_high: numOrNull(b.ci_high ?? b.ic_haut),
-      allocation: numOrNull(b.allocation ?? b.part),
-    }))
   return {
     id: e.id,
     nom: e.nom || e.name || '',
@@ -417,8 +407,32 @@ export function normalizeExperiment(raw) {
     metrique_label: e.metrique_label || e.metrique || 'Métrique',
     metrique_fmt: e.metrique_fmt || 'mad', // 'mad' | 'ratio' | 'percent'
     phases,
-    bras,
   }
+}
+
+// PACT110 — Normalise les bras RÉELS d'une expérience (``ExperimentArm``,
+// endpoint ``bras/``). Ce ViewSet ne filtre PAS par expérience côté serveur
+// (company-scopé seulement) : le filtre par ``experimentId`` se fait donc ici,
+// côté client, sur une liste déjà bornée société — pas une donnée non scopée.
+// Enrichi des SEULES valeurs que le ``DecisionLog`` le plus récent renvoie
+// réellement (``allocations.prob_best``/``allocations.budget_mad``, indexées
+// par ``label``) — jamais une moyenne/bande de crédibilité inventée : ces
+// champs n'existent nulle part côté API.
+export function normalizeArms(rawArms, experimentId, latestDecision) {
+  const list = Array.isArray(rawArms) ? rawArms : (rawArms?.results || [])
+  const alloc = (latestDecision && latestDecision.allocations) || {}
+  const probMap = (alloc.prob_best && typeof alloc.prob_best === 'object') ? alloc.prob_best : {}
+  const budgetMap = (alloc.budget_mad && typeof alloc.budget_mad === 'object') ? alloc.budget_mad : {}
+  return list
+    .filter(a => a && (experimentId == null || a.experiment === experimentId))
+    .map((a, i) => ({
+      id: a.id ?? i,
+      label: a.label || '',
+      nom: a.label || a.ad_id || `Bras ${i + 1}`,
+      actif: !!a.is_active,
+      p_best: numOrNull(probMap[a.label]),
+      budget_mad: numOrNull(budgetMap[a.label]),
+    }))
 }
 
 // Le bras avec la plus forte probabilité d'être le meilleur (ou null).
@@ -428,23 +442,31 @@ export function bestArm(bras) {
   return list.reduce((best, b) => (b.p_best > best.p_best ? b : best))
 }
 
-// Normalise le DecisionLog ENG12 (« pourquoi le moteur a fait X », FR + chiffres).
+// PACT110 — Normalise le DecisionLog RÉEL (``DecisionLogSerializer`` :
+// id/experiment/inputs/posteriors/allocations/summary_fr/action/created_at/
+// updated_at — AUCUN champ ``decision_fr``/``chiffres``/``phase`` côté API).
+// ``decision_fr`` = la phrase FR déterministe déjà écrite par le moteur
+// (``summary_fr``) ; ``chiffres`` = les MÊMES montants/probabilités réels que
+// la section Bras (``allocations.budget_mad``/``allocations.prob_best``),
+// jamais une valeur recalculée ou fabriquée ici.
 export function normalizeDecisionLog(raw) {
   if (!raw) return []
-  const list = Array.isArray(raw) ? raw : (raw.results || raw.log || raw.decisions || [])
-  return (list || []).filter(Boolean).map((d, i) => ({
-    id: d.id ?? i,
-    phase: d.phase || '',
-    phase_label: d.phase_label || d.phase || '',
-    quand: d.quand || d.date || d.created_at || '',
-    decision_fr: d.decision_fr || d.raison_fr || d.message || '',
-    chiffres: (d.chiffres && typeof d.chiffres === 'object') ? d.chiffres : {},
-  }))
-}
-
-// Filtre pur du DecisionLog par phase — testable isolément.
-export function filterDecisionLog(log, { phase } = {}) {
-  return (log || []).filter(d => !phase || d.phase === phase)
+  const list = Array.isArray(raw) ? raw : (raw.results || [])
+  return (list || []).filter(Boolean).map((d, i) => {
+    const alloc = (d.allocations && typeof d.allocations === 'object') ? d.allocations : {}
+    const budgetMap = (alloc.budget_mad && typeof alloc.budget_mad === 'object') ? alloc.budget_mad : {}
+    const probMap = (alloc.prob_best && typeof alloc.prob_best === 'object') ? alloc.prob_best : {}
+    const chiffres = {}
+    Object.keys(budgetMap).forEach((label) => { chiffres[`${label} — budget MAD/j`] = budgetMap[label] })
+    Object.keys(probMap).forEach((label) => { chiffres[`${label} — P(meilleur)`] = probMap[label] })
+    return {
+      id: d.id ?? i,
+      experiment: d.experiment,
+      decision_fr: d.summary_fr || '',
+      quand: d.created_at || '',
+      chiffres,
+    }
+  })
 }
 
 // ── ENG40 — Plan de vol + préflight ADSENG38 ──

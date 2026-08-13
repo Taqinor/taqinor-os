@@ -2,23 +2,30 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor, fireEvent } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 
-/* ENG39 — Écran Expérimentations : timeline de phases, bras avec posteriors
-   (P(meilleur), estimation + bande de crédibilité), DecisionLog filtrable rendu
-   « pourquoi le moteur a fait X » en FR + chiffres. Tous les nombres = ceux de
-   l'API ENG12 mockée. */
+/* ENG39/PACT110 — Écran Expérimentations : timeline de phases, bras RÉELS
+   (ExperimentArm, enrichis des seules stats que le DecisionLog le plus récent
+   renvoie), DecisionLog rendu « pourquoi le moteur a fait X » en FR (summary_fr
+   réel) + chiffres réels (allocations). Toutes les formes mockées ici
+   reproduisent EXACTEMENT les sérialiseurs réels (ExperimentSerializer,
+   ExperimentArmSerializer, DecisionLogSerializer, ArmDailyStatSerializer) —
+   aucun champ inventé (PACT13). */
 
 const mocks = vi.hoisted(() => ({
   list: vi.fn(),
   get: vi.fn(),
   decisionLog: vi.fn(),
   mde: vi.fn(),
+  arms: vi.fn(),
+  armStats: vi.fn(),
+  allDecisions: vi.fn(),
 }))
 
 vi.mock('./adsengineApi', () => ({
   default: {
     experiments: {
       list: mocks.list, get: mocks.get, decisionLog: mocks.decisionLog,
-      mde: mocks.mde,
+      mde: mocks.mde, arms: mocks.arms, armStats: mocks.armStats,
+      allDecisions: mocks.allDecisions,
     },
   },
 }))
@@ -27,30 +34,84 @@ import ExperimentsScreen from './ExperimentsScreen'
 
 const renderScreen = () => render(<MemoryRouter><ExperimentsScreen /></MemoryRouter>)
 
+// Forme RÉELLE d'ExperimentSerializer (id/name/tested_variable/status/...).
 const EXP = {
-  id: 3, nom: 'Test créatif toiture', metrique_label: 'Coût par lead', metrique_fmt: 'mad',
-  phases: [
-    { key: 'exploration', label: 'Exploration', statut: 'terminee', statut_display: 'Terminée' },
-    { key: 'exploitation', label: 'Exploitation', statut: 'en_cours', statut_display: 'En cours' },
-  ],
-  bras: [
-    { id: 1, nom: 'Créatif A — toiture', p_best: 0.72, mean: 88, ci_low: 80, ci_high: 96, allocation: 0.6 },
-    { id: 2, nom: 'Créatif B — pompe', p_best: 0.28, mean: 104, ci_low: 92, ci_high: 120, allocation: 0.4 },
-  ],
+  id: 3, name: 'Test créatif toiture', tested_variable: 'cout_par_lead',
+  status: 'in_progress', campaign: 1, adset: 2, start_date: '2026-07-01',
+  end_date: null, notes: '', meta_study_id: null,
+  created_at: '2026-07-01T00:00:00Z', updated_at: '2026-07-01T00:00:00Z',
 }
+
+// Forme RÉELLE de DecisionLogSerializer, ordre serveur (-created_at, -id).
+const DECISIONS = [
+  {
+    id: 2, experiment: 3,
+    inputs: { arms: [], daily_budget_mad: 1000, seed: 7 },
+    posteriors: { alpha_beta: [[9, 4], [4, 9]], labels: ['Créatif A — toiture', 'Créatif B — pompe'] },
+    allocations: {
+      budget_mad: { 'Créatif A — toiture': 600, 'Créatif B — pompe': 400 },
+      prob_best: { 'Créatif A — toiture': 0.72, 'Créatif B — pompe': 0.28 },
+      reweighted: true,
+    },
+    summary_fr: 'Bras le plus probable « Créatif A — toiture » (P=72%), budget 600 MAD/jour.',
+    action: null, created_at: '2026-07-14T00:00:00Z', updated_at: '2026-07-14T00:00:00Z',
+  },
+  {
+    id: 1, experiment: 3,
+    inputs: { arms: [], daily_budget_mad: 1000, seed: 7 },
+    posteriors: { alpha_beta: [[1, 1], [1, 1]], labels: ['Créatif A — toiture', 'Créatif B — pompe'] },
+    allocations: {
+      budget_mad: { 'Créatif A — toiture': 500, 'Créatif B — pompe': 500 },
+      prob_best: { 'Créatif A — toiture': 0.5, 'Créatif B — pompe': 0.5 },
+      reweighted: false,
+    },
+    summary_fr: 'Données insuffisantes (< 100 impressions/bras) : partage égal maintenu, poids du bandit non appliqués.',
+    action: null, created_at: '2026-07-10T00:00:00Z', updated_at: '2026-07-10T00:00:00Z',
+  },
+]
+
+// Forme RÉELLE d'ExperimentArmSerializer — un troisième bras appartient à une
+// AUTRE expérience et doit être filtré côté client (le ViewSet ne filtre pas
+// par expérience côté serveur, il est company-scopé seulement).
+const ARMS = [
+  { id: 1, experiment: 3, creative_asset: null, label: 'Créatif A — toiture', ad_id: '123',
+    hook_id: 'h1', visual_id: 'v1', is_active: true, created_at: '', updated_at: '' },
+  { id: 2, experiment: 3, creative_asset: null, label: 'Créatif B — pompe', ad_id: '124',
+    hook_id: 'h2', visual_id: 'v2', is_active: true, created_at: '', updated_at: '' },
+  { id: 9, experiment: 99, creative_asset: null, label: 'Bras d\'une autre expérience', ad_id: '900',
+    hook_id: '', visual_id: '', is_active: true, created_at: '', updated_at: '' },
+]
+
+// Forme RÉELLE d'ArmDailyStatSerializer.
+const ARM_STATS = [
+  { id: 11, arm: 1, date: '2026-07-11', impressions: 3900, clicks: 77, conversations: 10, spend: 300,
+    created_at: '', updated_at: '' },
+  { id: 10, arm: 1, date: '2026-07-10', impressions: 4200, clicks: 84, conversations: 12, spend: 320,
+    created_at: '', updated_at: '' },
+  { id: 20, arm: 2, date: '2026-07-10', impressions: 1000, clicks: 20, conversations: 3, spend: 150,
+    created_at: '', updated_at: '' },
+]
+
+// Journal global (toutes expériences) — une décision d'une expérience absente
+// de `list()` doit retomber sur le libellé générique « Expérimentation N ».
+const ALL_DECISIONS = [
+  DECISIONS[0],
+  {
+    id: 4, experiment: 7,
+    inputs: {}, posteriors: {}, allocations: {},
+    summary_fr: 'Décision sur une autre expérimentation.',
+    action: null, created_at: '2026-07-09T00:00:00Z', updated_at: '2026-07-09T00:00:00Z',
+  },
+]
 
 beforeEach(() => {
   vi.clearAllMocks()
-  mocks.list.mockResolvedValue({ data: [{ id: 3, nom: 'Test créatif toiture' }] })
+  mocks.list.mockResolvedValue({ data: [{ id: 3, name: 'Test créatif toiture' }] })
   mocks.get.mockResolvedValue({ data: EXP })
-  mocks.decisionLog.mockResolvedValue({ data: [
-    { id: 1, phase: 'exploration', quand: '2026-07-10', phase_label: 'Exploration',
-      decision_fr: 'Le moteur a exploré les deux créatifs à parts égales pour récolter des preuves.',
-      chiffres: { impressions: 4200 } },
-    { id: 2, phase: 'exploitation', quand: '2026-07-14', phase_label: 'Exploitation',
-      decision_fr: 'Le moteur a donné plus de budget au Créatif A car il a 72 % de chances d\'être le meilleur.',
-      chiffres: { p_best: 0.72 } },
-  ] })
+  mocks.decisionLog.mockResolvedValue({ data: DECISIONS })
+  mocks.arms.mockResolvedValue({ data: ARMS })
+  mocks.armStats.mockResolvedValue({ data: ARM_STATS })
+  mocks.allDecisions.mockResolvedValue({ data: ALL_DECISIONS })
   mocks.mde.mockResolvedValue({ data: {
     p: 0.02, volume: 300, cible_relative: 0.20, jours_pour_cible: 14,
     phrase_fr: 'Avec votre volume (~300 essais/bras/jour), il faut ~14 jour(s) pour détecter un effet de +20 % de façon fiable.',
@@ -62,47 +123,61 @@ beforeEach(() => {
   } })
 })
 
-describe('ExperimentsScreen (ENG39)', () => {
-  it('affiche la timeline des phases avec leurs statuts', async () => {
+describe('ExperimentsScreen (ENG39/PACT110)', () => {
+  it('affiche un état vide de phases (le backend ne renvoie aucune phase par expérience)', async () => {
     renderScreen()
     await waitFor(() => expect(mocks.get).toHaveBeenCalledWith(3))
     const phases = await screen.findByTestId('ae-exp-phases')
-    expect(phases).toHaveTextContent('Exploration')
-    expect(phases).toHaveTextContent('Terminée')
-    expect(phases).toHaveTextContent('Exploitation')
-    expect(phases).toHaveTextContent('En cours')
+    expect(phases).toHaveTextContent('Aucune phase définie.')
   })
 
-  it('affiche P(meilleur) et la bande de crédibilité de chaque bras avec les chiffres de l\'API', async () => {
+  it('affiche les bras RÉELS (ExperimentArm) filtrés par expérience, avec les stats du dernier DecisionLog', async () => {
     renderScreen()
-    await waitFor(() => expect(mocks.get).toHaveBeenCalled())
-    // P(meilleur) formaté depuis la fraction API (0.72 → 72 %).
-    expect(await screen.findByTestId('ae-exp-pbest-1')).toHaveTextContent('72 %')
+    await waitFor(() => expect(mocks.arms).toHaveBeenCalled())
+    const armCards = await screen.findAllByTestId('ae-exp-arm')
+    // Seuls les 2 bras de l'expérience 3 apparaissent — pas le bras de l'expérience 99.
+    expect(armCards.length).toBe(2)
+    expect(screen.queryByText(/Bras d'une autre expérience/)).not.toBeInTheDocument()
+    // P(meilleur) vient de allocations.prob_best du DecisionLog le plus RÉCENT (id 2).
+    expect(screen.getByTestId('ae-exp-pbest-1')).toHaveTextContent('72 %')
     expect(screen.getByTestId('ae-exp-pbest-2')).toHaveTextContent('28 %')
-    // Estimation ponctuelle en MAD.
-    expect(screen.getByTestId('ae-exp-mean-1')).toHaveTextContent('88 MAD')
-    // Bande de crédibilité [bas ; haut].
-    expect(screen.getByTestId('ae-exp-band-1')).toHaveTextContent('80 MAD – 96 MAD')
+    // Budget alloué vient de allocations.budget_mad du même DecisionLog.
+    expect(screen.getByTestId('ae-exp-budget-1')).toHaveTextContent('600 MAD')
     // Le bras le plus probable est marqué favori.
     expect(screen.getByTestId('ae-exp-arm-best')).toHaveTextContent('Favori du moteur')
   })
 
-  it('rend le DecisionLog en phrases FR lisibles + chiffres', async () => {
+  it('charge et affiche la série quotidienne d\'un bras au clic (vue jamais construite)', async () => {
     renderScreen()
-    expect(await screen.findByText(/plus de budget au Créatif A/)).toBeInTheDocument()
-    // Chiffres exacts en chip.
-    expect(screen.getByText('Le moteur a exploré les deux créatifs à parts égales pour récolter des preuves.'))
-      .toBeInTheDocument()
-    expect(screen.getAllByTestId('ae-exp-decision').length).toBe(2)
+    await screen.findAllByTestId('ae-exp-arm')
+    expect(mocks.armStats).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByTestId('ae-exp-arm-series-toggle-1'))
+    await waitFor(() => expect(mocks.armStats).toHaveBeenCalled())
+    const rows = await screen.findAllByTestId('ae-exp-arm-series-row')
+    // Seules les 2 lignes du bras 1 (pas celle du bras 2), triées par date croissante.
+    expect(rows.length).toBe(2)
+    expect(rows[0]).toHaveTextContent('2026-07-10')
+    expect(rows[1]).toHaveTextContent('2026-07-11')
   })
 
-  it('filtre le DecisionLog par phase', async () => {
+  it('rend le DecisionLog avec la phrase FR réelle (summary_fr) et les chiffres réels (allocations)', async () => {
     renderScreen()
-    await screen.findByTestId('ae-exp-decision-filter')
+    expect(await screen.findByText(/Bras le plus probable « Créatif A — toiture »/)).toBeInTheDocument()
+    expect(screen.getByText(/Données insuffisantes/)).toBeInTheDocument()
     expect(screen.getAllByTestId('ae-exp-decision').length).toBe(2)
-    fireEvent.change(screen.getByTestId('ae-exp-decision-filter'), { target: { value: 'exploitation' } })
-    await waitFor(() => expect(screen.getAllByTestId('ae-exp-decision').length).toBe(1))
-    expect(screen.getByText(/plus de budget au Créatif A/)).toBeInTheDocument()
+    // Les chiffres affichés sont les VRAIS montants/probas de `allocations`.
+    expect(screen.getByText(/Créatif A — toiture — budget MAD\/j/)).toBeInTheDocument()
+  })
+
+  it('affiche le journal des décisions toutes expérimentations (vue jamais construite)', async () => {
+    renderScreen()
+    await waitFor(() => expect(mocks.allDecisions).toHaveBeenCalled())
+    const allRows = await screen.findAllByTestId('ae-exp-decision-all')
+    expect(allRows.length).toBe(2)
+    expect(allRows[0]).toHaveTextContent('Test créatif toiture')
+    // Expérience 7 absente de `list()` → repli sur le libellé générique.
+    expect(allRows[1]).toHaveTextContent('Expérimentation 7')
+    expect(allRows[1]).toHaveTextContent('Décision sur une autre expérimentation.')
   })
 
   it('affiche un état vide quand aucune expérimentation', async () => {
