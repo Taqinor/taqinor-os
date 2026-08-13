@@ -81,6 +81,46 @@ const coreApi = {
     remove: (id) => api.delete(`/core/workflow-definitions/${id}/`),
   },
 
+  // PACT122 — FG382 explorateur de données : catalogue de datasets enregistrés
+  // par les apps métier, exécution d'une spec ad-hoc, et requêtes SAUVEGARDÉES
+  // (personnelles ou de société via `partage`). `company`/`owner` ne sont
+  // JAMAIS envoyés : imposés côté serveur.
+  //
+  // FAIT À AFFICHER HONNÊTEMENT : un seul dataset est enregistré en production
+  // aujourd'hui (`sav_tickets`, cf. `apps/sav/bi_datasets.py`). Le moteur
+  // fonctionne de bout en bout, mais le catalogue est court — l'écran montre
+  // la liste réelle, jamais un catalogue gonflé.
+  savedQueries: {
+    datasets: () => api.get('/core/saved-queries/datasets/'),
+    list: () => api.get('/core/saved-queries/'),
+    create: (payload) => api.post('/core/saved-queries/', payload),
+    remove: (id) => api.delete(`/core/saved-queries/${id}/`),
+    // Exécution d'une spec NON sauvegardée (aperçu avant enregistrement).
+    runAdhoc: (dataset, spec) =>
+      api.post('/core/saved-queries/run/', { dataset, spec }),
+    // `executerSauvegardee` et non `run` : `jobs.run` porte déjà ce nom dans
+    // ce client, et le contrat d'API versionné (`check_api_shapes.py`) indexe
+    // par NOM de fonction — deux `run` rendraient les deux entrées ambiguës et
+    // feraient DISPARAITRE le contrat de `jobs.run`.
+    executerSauvegardee: (id) => api.post(`/core/saved-queries/${id}/run/`),
+  },
+
+  // PACT118 — FG389 édition en masse GÉNÉRIQUE. Le moteur du socle
+  // (`core.bulk_edit`) existait et était testé, mais aucune app n'avait
+  // enregistré de cible : le catalogue était vide en production et aucun
+  // écran ne pouvait s'en servir. Les cibles réelles sont désormais déclarées
+  // par les apps (`apps/cpq/bulk_targets.py`) ; une liste qui n'a PAS son
+  // propre endpoint de masse consomme ces deux routes via
+  // `features/core/useBulkEditCible`. Les quatre écrans qui possèdent déjà
+  // leur endpoint dédié ne sont PAS retouchés.
+  bulkEdit: {
+    targets: () => api.get('/core/bulk-edit/targets/'),
+    // `changes` est restreint côté serveur à la liste blanche de la cible ;
+    // l'écriture est bornée au queryset scopé société du fournisseur.
+    appliquer: (target, ids, changes) =>
+      api.post('/core/bulk-edit/appliquer/', { target, ids, changes }),
+  },
+
   // XKB1 — boîte d'approbations centralisée (reporting), filtrée côté client
   // sur `source: 'workflow'` pour n'afficher que les instances BPM (FG366).
   workflowInstances: {

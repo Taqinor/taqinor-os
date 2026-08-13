@@ -4,7 +4,7 @@
    `router/moduleRoutes.jsx`). */
 import { lazy } from 'react'
 import {
-  Table2, TrendingUp, GitCompareArrows, Scale, LayoutDashboard,
+  Table2, TrendingUp, GitCompareArrows, Scale, LayoutDashboard, CheckCircle2,
 } from 'lucide-react'
 import { appGlyph } from '../../lib/apps/appGlyph'
 
@@ -28,12 +28,17 @@ const SaisiePage = lazy(() => import('../../pages/fpa/SaisiePage'))
 const PrevisionsPage = lazy(() => import('../../pages/fpa/PrevisionsPage'))
 const ScenariosPage = lazy(() => import('../../pages/fpa/ScenariosPage'))
 const VariancePage = lazy(() => import('../../pages/fpa/VariancePage'))
+// PACT53 — le workflow de validation d'un budget de département (NTFPA5)
+// n'avait aucun écran : la saisie fonctionnait, son statut de validation
+// formel restait invisible.
+const SoumissionsBudgetPage = lazy(() => import('../../pages/fpa/SoumissionsBudgetPage'))
 
 const LD = <LayoutDashboard size={17} strokeWidth={1.75} aria-hidden="true" />
 const TB = <Table2 size={17} strokeWidth={1.75} aria-hidden="true" />
 const TU = <TrendingUp size={17} strokeWidth={1.75} aria-hidden="true" />
 const GC = <GitCompareArrows size={17} strokeWidth={1.75} aria-hidden="true" />
 const SC = <Scale size={17} strokeWidth={1.75} aria-hidden="true" />
+const CC = <CheckCircle2 size={17} strokeWidth={1.75} aria-hidden="true" />
 
 export default {
   key: 'fpa',
@@ -49,6 +54,7 @@ export default {
     items: [
       { to: '/fpa/dashboard', label: 'Tableau de bord', icon: LD, roles: ROLES },
       { to: '/fpa/saisie', label: 'Saisie budgétaire', icon: TB, roles: ROLES },
+      { to: '/fpa/soumissions', label: 'Soumissions', icon: CC, roles: ROLES },
       { to: '/fpa/previsions', label: 'Prévisions glissantes', icon: TU, roles: ROLES },
       { to: '/fpa/scenarios', label: 'Scénarios', icon: GC, roles: ROLES },
       { to: '/fpa/variance', label: 'Analyse des écarts', icon: SC, roles: ROLES },
@@ -57,6 +63,7 @@ export default {
   titles: [
     ['/fpa/dashboard', 'Tableau de bord FP&A'],
     ['/fpa/saisie', 'Saisie budgétaire'],
+    ['/fpa/soumissions', 'Soumissions budgétaires'],
     ['/fpa/previsions', 'Prévisions glissantes'],
     ['/fpa/scenarios', 'Scénarios what-if'],
     ['/fpa/variance', 'Analyse des écarts'],
@@ -65,6 +72,7 @@ export default {
   routes: [
     { path: '/fpa/dashboard', component: DashboardPage, roles: ROLES },
     { path: '/fpa/saisie', component: SaisiePage, roles: ROLES },
+    { path: '/fpa/soumissions', component: SoumissionsBudgetPage, roles: ROLES },
     { path: '/fpa/previsions', component: PrevisionsPage, roles: ROLES },
     { path: '/fpa/scenarios', component: ScenariosPage, roles: ROLES },
     { path: '/fpa/variance', component: VariancePage, roles: ROLES },

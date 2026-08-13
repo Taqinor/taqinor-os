@@ -19,3 +19,7 @@ class CpqConfig(AppConfig):
         # devis (événement métier découplé core.events.devis_sent). cpq
         # s'abonne ici sans coupler ventes à cpq (miroir du récepteur CRM).
         from . import receivers  # noqa: F401
+        # PACT118 — déclare les cibles RÉELLES d'édition en masse dans le
+        # registre du socle (`core.bulk_edit`), jusqu'ici vide en production.
+        from . import bulk_targets
+        bulk_targets.register_bulk_targets()

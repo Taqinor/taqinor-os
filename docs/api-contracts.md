@@ -134,6 +134,8 @@
     contrats:inconnu, nb_renouvellements:inconnu, nb_traites:inconnu
 - frontend/src/api/coreApi.js :: activer -> /api/django/core/modules/<>/activer
     actives:inconnu, detail:texte
+- frontend/src/api/coreApi.js :: appliquer -> /api/django/core/bulk-edit/appliquer
+    detail:texte, modifies:inconnu
 - frontend/src/api/coreApi.js :: desactiver -> /api/django/core/modules/<>/desactiver
     dependants:inconnu, desactives:inconnu, detail:texte
 - frontend/src/api/coreApi.js :: getPublic -> /api/django/core/dashboards-partages/public/<>
@@ -144,6 +146,16 @@
     items:inconnu, total:nombre
 - frontend/src/api/coreApi.js :: run -> /api/django/core/jobs/run
     detail:texte, status:texte, task:inconnu, task_id:inconnu
+- frontend/src/api/cpqApi.js :: appliquerOffreGroupee -> /api/django/cpq/offres-groupees/<>/appliquer
+    detail:texte, lignes_creees:liste, sous_total_ht:texte
+- frontend/src/api/cpqApi.js :: demarrerConfigurateur -> /api/django/cpq/configurateur/demarrer
+    questions:inconnu, session:texte
+- frontend/src/api/cpqApi.js :: genererDevisConfigurateur -> /api/django/cpq/configurateur/<>/generer-devis
+    detail:texte, devis_id:inconnu, reference:inconnu
+- frontend/src/api/cpqApi.js :: repondreConfigurateur -> /api/django/cpq/configurateur/<>/repondre
+    detail:texte
+- frontend/src/api/cpqApi.js :: validerCompatibilite -> /api/django/cpq/valider-compatibilite
+    avertissements:inconnu, bloquantes:inconnu, detail:texte, valide:booleen, violations:inconnu
 - frontend/src/api/crmApi.js :: checkDevisAuto -> /api/django/crm/leads/<>/devis-auto
     detail:inconnu, ok:booleen
 - frontend/src/api/crmApi.js :: clientDataExport -> /api/django/crm/clients/<>/data-export
