@@ -4,7 +4,7 @@
 import { lazy } from 'react'
 import {
   Package, Boxes, Truck, ArrowLeftRight, ClipboardList, PackageCheck, Receipt,
-  Undo2, ScanLine, Layers, Lock, TrendingUp, PackagePlus,
+  Undo2, ScanLine, Layers, Lock, TrendingUp, PackagePlus, Banknote,
 } from 'lucide-react'
 import { appGlyph } from '../../lib/apps/appGlyph'
 // APX22 - accent unique de la famille inventaire (Stock/Magasin/Logistique).
@@ -49,6 +49,11 @@ const ModelesBcf = lazy(() => import('../../pages/stock/ModelesBcf'))
 const ReceptionsFournisseur = lazy(() => import('../../pages/stock/ReceptionsFournisseur'))
 const FacturesFournisseur = lazy(() => import('../../pages/stock/FacturesFournisseur'))
 const RetoursFournisseur = lazy(() => import('../../pages/stock/RetoursFournisseur'))
+// PACT51 — registre consolidé des paiements fournisseur + relevé RAS-TVA
+// (XPUR2/XPUR6). La ressource autonome `/stock/paiements-fournisseur/` existait
+// sans aucun appelant : l'export Simpl-TVA, la vue trésorerie tous fournisseurs
+// confondus et le flag d'escompte n'étaient atteignables nulle part.
+const PaiementsFournisseurLedgerPage = lazy(() => import('../../pages/stock/PaiementsFournisseurLedgerPage'))
 const OcrStockImport = lazy(() => import('../../pages/stock/OcrStockImport'))
 // WIR109 — inventaire/stock avancé (XSTK6/13/14/15), jusqu'ici backend-only.
 const LotsEntrepot = lazy(() => import('../../pages/stock/LotsEntrepot'))
@@ -95,6 +100,10 @@ const config = {
       { to: '/stock/receptions-fournisseur', label: 'Réceptions fournisseur', k: 'nav.receptions_fournisseur', icon: navIcon(PackageCheck), roles: ['responsable','admin'], group: 'achats' },
       { to: '/stock/factures-fournisseur', label: 'Factures fournisseur', k: 'nav.factures_fournisseur', icon: navIcon(Receipt), roles: ['responsable','admin'], group: 'achats' },
       { to: '/stock/retours-fournisseur', label: 'Retours fournisseur', k: 'nav.retours_fournisseur', icon: navIcon(Undo2), roles: ['responsable','admin'], group: 'achats' },
+      // PACT51 — registre consolidé des paiements + relevé RAS-TVA (Simpl-TVA).
+      // Pas de clé `k` : le catalogue i18n du chrome est un ensemble fermé
+      // (fr/en/ar strictement identiques) — `tr()` retombe sur le libellé FR.
+      { to: '/stock/paiements-fournisseur', label: 'Paiements fournisseur', icon: navIcon(Banknote), roles: ['responsable','admin'], group: 'achats' },
       // ── fin du sous-groupe ACHATS ──
       { to: '/stock/ocr-import',     label: 'Import OCR',       k: 'nav.import_ocr', icon: navIcon(ScanLine),   roles: ['responsable','admin'] },
       // WIR109 — lots FEFO, inventaire annuel, revalorisations, conditionnements.
@@ -116,6 +125,7 @@ const config = {
     { path: '/stock/receptions-fournisseur', component: ReceptionsFournisseur, group: 'achats' },
     { path: '/stock/factures-fournisseur', component: FacturesFournisseur, group: 'achats' },
     { path: '/stock/retours-fournisseur', component: RetoursFournisseur, group: 'achats' },
+    { path: '/stock/paiements-fournisseur', component: PaiementsFournisseurLedgerPage, group: 'achats' },
     // ── fin du sous-groupe ACHATS ──
     { path: '/stock/ocr-import', component: OcrStockImport },
     // WIR109 — lots FEFO, inventaire annuel, revalorisations, conditionnements.
