@@ -440,6 +440,12 @@ app.conf.beat_schedule = {
         'task': 'compta.decider_gagnants_ab',
         'schedule': crontab(hour=8, minute=25),
     },
+    # NTMKT12 — tick des séquences EN GRAPHE (journeys) : complément strict du
+    # tick linéaire XMKT1 ci-dessus, décalé de 5 min pour ne pas les superposer.
+    'marketing-executer-journeys': {
+        'task': 'marketing.executer_journeys',
+        'schedule': crontab(hour=8, minute=15),
+    },
     # NTMKT33 — purge quotidienne des jetons publics marketing expirés (+90j).
     'marketing-purger-tokens-expires': {
         'task': 'marketing.purger_tokens_expires',

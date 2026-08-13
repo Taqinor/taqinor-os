@@ -933,6 +933,11 @@ CELERY_TASK_ROUTES = {
     'compta.recalculer_dormants_marketing': {'queue': 'scheduled'},
     'compta.traiter_posts_sociaux': {'queue': 'scheduled'},
     'compta.decider_gagnants_ab': {'queue': 'scheduled'},
+    # NTMKT12/33/35 — app marketing : tick des journeys en graphe, purge des
+    # jetons publics expirés, rappel d'approbation d'envoi. Trois jobs beat.
+    'marketing.executer_journeys': {'queue': 'scheduled'},
+    'marketing.purger_tokens_expires': {'queue': 'scheduled'},
+    'marketing.rappeler_approbations_envoi': {'queue': 'scheduled'},
     # KB — balayages lectures obligatoires / articles périmés.
     'kb.sweep_lectures_obligatoires': {'queue': 'scheduled'},
     'kb.sweep_articles_perimes': {'queue': 'scheduled'},
