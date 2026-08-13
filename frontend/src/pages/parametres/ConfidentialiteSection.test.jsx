@@ -43,6 +43,22 @@ vi.mock('../../api/importApi', () => ({
   filenameFromResponse: vi.fn(() => 'registre-traitements-cndp.csv'),
 }))
 
+/* PACT119 — le bloc « Registre de consentement » consomme
+   `/core/consent-records/` directement via l'instance axios. */
+const { axiosGet, axiosPost, axiosPatch } = vi.hoisted(() => ({
+  axiosGet: vi.fn(() => Promise.resolve({
+    data: [{
+      id: 3, subject_identifier: 'prospect@x.ma', purpose: 'marketing',
+      granted: true, version_texte: 'v1-2026-07', ip_confirmation: '41.10.0.1',
+    }],
+  })),
+  axiosPost: vi.fn(() => Promise.resolve({ data: {} })),
+  axiosPatch: vi.fn(() => Promise.resolve({ data: {} })),
+}))
+vi.mock('../../api/axios', () => ({
+  default: { get: axiosGet, post: axiosPost, patch: axiosPatch },
+}))
+
 import ConfidentialiteSection from './ConfidentialiteSection'
 
 afterEach(() => { cleanup(); vi.clearAllMocks() })
@@ -92,6 +108,49 @@ describe('ConfidentialiteSection (XPLT23)', () => {
     await user.click(screen.getByRole('button', { name: /Traiter/ }))
 
     await waitFor(() => expect(traiterDsr).toHaveBeenCalledWith(5))
+  })
+
+  it('liste les consentements par sujet et finalité avec leur statut (PACT119)', async () => {
+    renderWithRole('admin')
+
+    expect(await screen.findByText('prospect@x.ma')).toBeInTheDocument()
+    expect(axiosGet).toHaveBeenCalledWith('/core/consent-records/')
+    const ligne = screen.getByTestId('consent-row')
+    expect(ligne).toHaveTextContent('marketing')
+    expect(ligne).toHaveTextContent('Donné')
+    expect(ligne).toHaveTextContent('v1-2026-07')
+  })
+
+  it('ajoute un consentement sans jamais envoyer company (PACT119)', async () => {
+    const user = userEvent.setup()
+    renderWithRole('admin')
+    await screen.findByText('prospect@x.ma')
+
+    await user.type(
+      screen.getByPlaceholderText('Finalité (ex. marketing)'), 'whatsapp')
+    // Le champ « personne concernée » existe aussi dans le bloc DSR : on prend
+    // celui du formulaire de consentement (le second rendu).
+    const champsSujet = screen.getAllByPlaceholderText(
+      'Email ou téléphone de la personne concernée')
+    await user.type(champsSujet[champsSujet.length - 1], 'nouveau@x.ma')
+    await user.click(screen.getByRole('button', { name: /Enregistrer le consentement/ }))
+
+    await waitFor(() => expect(axiosPost).toHaveBeenCalledWith(
+      '/core/consent-records/',
+      { subject_identifier: 'nouveau@x.ma', purpose: 'whatsapp', granted: true, version_texte: '' },
+    ))
+    expect(Object.keys(axiosPost.mock.calls[0][1])).not.toContain('company')
+  })
+
+  it('révoque un consentement au lieu de le supprimer (PACT119)', async () => {
+    const user = userEvent.setup()
+    renderWithRole('admin')
+    await screen.findByText('prospect@x.ma')
+
+    await user.click(screen.getByRole('button', { name: 'Révoquer' }))
+
+    await waitFor(() => expect(axiosPatch).toHaveBeenCalledWith(
+      '/core/consent-records/3/', { granted: false }))
   })
 
   it('exporte le registre en CSV', async () => {
