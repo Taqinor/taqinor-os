@@ -847,6 +847,10 @@ CELERY_TASK_ROUTES = {
     'ventes.build_async_export': {'queue': 'interactive'},
     'chat.transcribe_voice_attachment': {'queue': 'interactive'},
     # Toutes les tâches planifiées (beat_schedule) → `scheduled`.
+    # NTUX29/NTUX30 — purge de corbeille (03h00) et digest des favoris
+    # obsolètes (lundi 07h00), tous deux enregistrés au beat.
+    'trash.purger_corbeille_transverse': {'queue': 'scheduled'},
+    'uxviews.digest_favoris_obsoletes_hebdo': {'queue': 'scheduled'},
     'ventes.check_overdue_factures': {'queue': 'scheduled'},
     'compta.recalculer_alerte_rupture': {'queue': 'scheduled'},
     'compta.relances_tresorerie_du_jour': {'queue': 'scheduled'},
