@@ -369,6 +369,9 @@ class AutomationRun(models.Model):
         FAILED = 'failed', 'Échec'
         PENDING_APPROVAL = 'pending_approval', "En attente d'approbation"
         NOOP = 'noop', 'Sans effet'
+        # NTEXT31 — trace d'un dry-run : la règle a été DÉCRITE, jamais
+        # exécutée (aucune écriture métier, aucun envoi).
+        SIMULATION = 'simulation', 'Simulation (sans effet)'
 
     company = models.ForeignKey(
         'authentication.Company', on_delete=models.CASCADE,
