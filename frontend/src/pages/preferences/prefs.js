@@ -37,6 +37,20 @@ export const APP_RESUME_NEVER = 'cockpit'
 // EZ9 — mode « Plein soleil » (terrain). Même patron de persistance que les
 // autres préférences : propre à CET appareil (le téléphone du technicien).
 export const SUNLIGHT_KEY = 'taqinor.sunlight'
+// NTMOB17 — mode « Économie de données ». Délibérément propre à CET APPAREIL
+// (comme tous les réglages de ce fichier) et NON reflété sur le compte serveur :
+// c'est une caractéristique du LIEN RÉSEAU du téléphone (forfait data en
+// tournée), pas du compte — le même utilisateur sur son poste au bureau ne veut
+// pas hériter du mode. Trois effets, tous portés par des consommateurs qui
+// lisent cette préférence : vignettes photo chargées au tap (`DataSaverThumb`),
+// sondage du chat ralenti (`useChatPolling` × `DATA_SAVER_POLL_FACTOR`) et
+// compression photo maximale forcée (`compressPhotoForUpload` ci-dessous).
+export const DATA_SAVER_KEY = 'taqinor.dataSaver'
+/** Événement émis à chaque bascule : permet aux écrans montés de réagir sans
+ *  remontage (localStorage seul n'émet `storage` que pour les AUTRES onglets). */
+export const DATA_SAVER_EVENT = 'taqinor:data-saver'
+/** Facteur de ralentissement des sondages réseau quand le mode est actif. */
+export const DATA_SAVER_POLL_FACTOR = 4
 
 function storage() {
   try {
@@ -173,8 +187,40 @@ export function setPhotoQualityPref(value) {
  * directement, pour que le réglage utilisateur s'applique uniformément.
  */
 export async function compressPhotoForUpload(file) {
+  // NTMOB17 — le mode économie de données PRIME sur « Original » : sur un
+  // forfait mobile, envoyer une photo de 8 Mo n'est jamais le bon choix.
+  if (getDataSaverPref()) return compressImage(file)
   if (getPhotoQualityPref() === 'original') return file
   return compressImage(file)
+}
+
+// ── NTMOB17 — Mode économie de données ─────────────────────────────────────
+
+export function getDataSaverPref() {
+  const s = storage()
+  if (!s) return false
+  try {
+    return s.getItem(DATA_SAVER_KEY) === '1'
+  } catch {
+    return false
+  }
+}
+
+export function setDataSaverPref(enabled) {
+  const s = storage()
+  try {
+    if (enabled) s?.setItem(DATA_SAVER_KEY, '1')
+    else s?.removeItem(DATA_SAVER_KEY)
+  } catch { /* stockage indisponible : appliqué quand même pour la session */ }
+  try {
+    window.dispatchEvent(new CustomEvent(DATA_SAVER_EVENT, { detail: !!enabled }))
+  } catch { /* pas de window (SSR/test node pur) : rien à notifier */ }
+  return !!enabled
+}
+
+/** Applique le facteur d'économie à une cadence de sondage (ms). */
+export function dataSaverInterval(ms, enabled = getDataSaverPref()) {
+  return enabled ? ms * DATA_SAVER_POLL_FACTOR : ms
 }
 
 // ── Réduction de mouvement (override app) ───────────────────────────────────
