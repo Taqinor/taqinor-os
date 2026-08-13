@@ -818,6 +818,20 @@ class EngineActionSerializer(serializers.ModelSerializer):
             "        return Response({'total': 1})\n")
         self.assertIsNone(lecteur.contrat_de_route(self.ROUTE))
 
+    def test_negatif_create_ecrite_a_la_main_peut_enrichir_la_reponse(self):
+        # Cas REEL : `education.AffectationTransportViewSet.create()` ajoute un
+        # champ `avertissement` (soft warning « vehicule indisponible ») a la
+        # reponse du serialiseur. Sans cette exclusion, la garde accusait un
+        # mock CORRECT d'inventer ce champ.
+        lecteur = self._vues(
+            "    queryset = EngineAction.objects.all()\n"
+            "    serializer_class = EngineActionSerializer\n\n"
+            "    def create(self, request, *args, **kwargs):\n"
+            "        reponse = super().create(request, *args, **kwargs)\n"
+            "        reponse.data['avertissement'] = None\n"
+            "        return reponse\n")
+        self.assertIsNone(lecteur.contrat_de_route(self.ROUTE))
+
     def test_negatif_serializer_class_introuvable(self):
         lecteur = self._vues(
             "    queryset = EngineAction.objects.all()\n"

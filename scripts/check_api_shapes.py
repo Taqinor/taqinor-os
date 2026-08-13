@@ -1217,11 +1217,16 @@ class SerializerReader:
         viewset = reference[1]
         if self._declare_une_methode(module, viewset, "get_serializer_class"):
             return None            # source dynamique : jamais dans le contrat
-        # Un ViewSet qui ECRIT `list()`/`retrieve()` renvoie ce qu'il veut : sa
-        # forme est l'affaire du lecteur de dictionnaires (PACT175), pas d'un
-        # serialiseur.
-        if self._declare_une_methode(module, viewset, "list") \
-                or self._declare_une_methode(module, viewset, "retrieve"):
+        # Un ViewSet qui ECRIT une de ses methodes DRF renvoie ce qu'il veut :
+        # sa forme n'est plus celle du serialiseur. Cas reel mesure —
+        # `education.AffectationTransportViewSet.create()` ajoute un champ
+        # `avertissement` (le soft warning « vehicule indisponible ») a la
+        # reponse du serialiseur ; sans cette exclusion, la garde accusait un
+        # mock CORRECT d'inventer ce champ. La regle vaut pour toutes les
+        # methodes : le doute ne rougit jamais.
+        if any(self._declare_une_methode(module, viewset, methode)
+               for methode in ("list", "retrieve", "create", "update",
+                               "partial_update")):
             return None
         attribut = self._attribut_de_classe(module, viewset, "serializer_class")
         if attribut is None or not isinstance(attribut[1], ast.Name):
