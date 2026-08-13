@@ -1203,7 +1203,7 @@ class SalleVenteSerializer(serializers.ModelSerializer):
         read_only_fields = ['token', 'created_by', 'created_at', 'updated_at']
 
     def get_lien_public(self, obj):
-        return f'/crm/salle-vente/{obj.token}'
+        return f'/salle-vente/{obj.token}'
 
     def validate(self, attrs):
         lead = attrs.get('lead', getattr(self.instance, 'lead', None))
