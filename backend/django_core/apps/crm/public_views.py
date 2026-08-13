@@ -10,13 +10,41 @@ directement), et le total exposé est TOUJOURS le TTC client existant.
 """
 import hashlib
 
-from rest_framework import status
+from drf_spectacular.utils import extend_schema, inline_serializer
+from rest_framework import serializers as drf_serializers, status
 from rest_framework.decorators import api_view, permission_classes, throttle_classes
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.throttling import SimpleRateThrottle
 
 from .models import SalleVente, SalleVenteItem, SalleVenteVue
+
+_SALLE_VENTE_RESPONSE = inline_serializer('PublicSalleVente', {
+    'titre': drf_serializers.CharField(),
+    'expires_at': drf_serializers.DateTimeField(allow_null=True),
+    'items': drf_serializers.ListField(child=inline_serializer(
+        'PublicSalleVenteItem', {
+            'id': drf_serializers.IntegerField(),
+            'type': drf_serializers.CharField(),
+            'titre': drf_serializers.CharField(),
+            'ordre': drf_serializers.IntegerField(),
+            'reference': drf_serializers.CharField(allow_null=True),
+        })),
+})
+
+_APPORTEUR_DEALS_RESPONSE = inline_serializer('PublicApporteurMesDeals', {
+    'apporteur': drf_serializers.CharField(),
+    'deals': drf_serializers.ListField(child=inline_serializer(
+        'PublicApporteurDeal', {
+            'id': drf_serializers.IntegerField(),
+            'client_nom': drf_serializers.CharField(allow_null=True),
+            'client_ville': drf_serializers.CharField(allow_null=True),
+            'statut': drf_serializers.CharField(),
+            'date_enregistrement': drf_serializers.DateTimeField(),
+            'montant_commission_estime': drf_serializers.CharField(allow_null=True),
+            'montant_commission_du': drf_serializers.CharField(allow_null=True),
+        })),
+})
 
 
 class PublicSalleVenteRateThrottle(SimpleRateThrottle):
@@ -73,6 +101,7 @@ def _item_payload(item):
     return payload
 
 
+@extend_schema(responses={200: _SALLE_VENTE_RESPONSE})
 @api_view(['GET'])
 @permission_classes([AllowAny])
 @throttle_classes([PublicSalleVenteRateThrottle])
@@ -133,6 +162,7 @@ class PublicApporteurRateThrottle(SimpleRateThrottle):
         }
 
 
+@extend_schema(responses={200: _APPORTEUR_DEALS_RESPONSE})
 @api_view(['GET'])
 @permission_classes([AllowAny])
 @throttle_classes([PublicApporteurRateThrottle])

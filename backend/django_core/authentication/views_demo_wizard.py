@@ -10,11 +10,34 @@ progression est suivie via un compteur cache léger (clé
 indicateur transitoire et best-effort.
 """
 from django.core.cache import cache
-from rest_framework import status
+from drf_spectacular.utils import extend_schema, inline_serializer
+from rest_framework import serializers as drf_serializers, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from .views_console import IsSuperuserConsole
+
+
+_WIZARD_CREATE_REQUEST = inline_serializer('DemoWizardCreateRequest', {
+    'slug': drf_serializers.CharField(required=False),
+    'profil': drf_serializers.ChoiceField(
+        choices=['residentiel', 'industriel', 'mixte'], required=False),
+    'densite': drf_serializers.ChoiceField(
+        choices=['leger', 'complet'], required=False),
+})
+# Instance PARTAGEE (jamais re-fabriquee) : chaque appel a inline_serializer()
+# cree une NOUVELLE classe Python de meme nom -> drf-spectacular la voit
+# comme un composant en collision (« identical names, different identities »)
+# des qu'on la reference plus d'une fois. Reutiliser LA MEME instance sur les
+# 3 reponses (200/202 de POST, 200 de GET) evite ca ; DRF copie ses champs par
+# instance a la resolution (`Serializer.get_fields()`), donc aucun partage
+# d'etat mutable entre les schemas qui la citent.
+_WIZARD_STATUT_RESPONSE = inline_serializer('DemoWizardStatut', {
+    'slug': drf_serializers.CharField(),
+    'statut': drf_serializers.CharField(),
+    'pourcentage': drf_serializers.IntegerField(required=False),
+})
+
 
 _CACHE_PREFIX = 'demo_wizard_progress:'
 _CACHE_TTL = 3600
@@ -42,6 +65,9 @@ class DemoWizardCreateView(APIView):
     """POST — étape 3 (récapitulatif + « Générer ») du wizard NTDMO25."""
     permission_classes = [IsSuperuserConsole]
 
+    @extend_schema(request=_WIZARD_CREATE_REQUEST,
+                   responses={200: _WIZARD_STATUT_RESPONSE,
+                              202: _WIZARD_STATUT_RESPONSE})
     def post(self, request):
         slug = (request.data.get('slug') or '').strip() or 'taqinor-demo-full'
         profil = request.data.get('profil', 'mixte')
@@ -74,6 +100,7 @@ class DemoWizardStatusView(APIView):
     """GET ?slug=... — barre de progression pollée par le frontend."""
     permission_classes = [IsSuperuserConsole]
 
+    @extend_schema(responses={200: _WIZARD_STATUT_RESPONSE})
     def get(self, request):
         slug = request.query_params.get('slug')
         if not slug:

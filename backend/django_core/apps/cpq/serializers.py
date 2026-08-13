@@ -2,6 +2,7 @@
 
 ``company`` n'est jamais exposée en écriture : posée côté serveur par le
 ``TenantMixin`` (``perform_create``)."""
+from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
 from django.db import transaction
@@ -200,6 +201,7 @@ class ClauseCGVSerializer(serializers.ModelSerializer):
                   'condition_lisible', 'ordre', 'actif', 'date_creation']
         read_only_fields = ['date_creation']
 
+    @extend_schema_field(serializers.CharField())
     def get_condition_lisible(self, obj):
         from .selectors import condition_en_clair
         base = condition_en_clair(obj.applicable_si)

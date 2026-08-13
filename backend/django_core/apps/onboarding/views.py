@@ -9,13 +9,34 @@ Endpoints (company + user scopés côté serveur, jamais lus du corps) :
   coche manuellement un item SANS ``event_key`` (aucun déclencheur
   automatique adapté sans importer une app métier — alternative explicite).
 """
-from rest_framework import status, viewsets
+from drf_spectacular.utils import extend_schema, inline_serializer
+from rest_framework import serializers as drf_serializers, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
 from . import services
 from .selectors import resume_pour_utilisateur, tours_pour_utilisateur
+
+
+# Classe PARTAGEE (fabriquee UNE SEULE fois) : appeler inline_serializer() a
+# nouveau creerait une deuxieme classe Python de meme nom, vue par
+# drf-spectacular comme un composant en collision (« identical names,
+# different identities »). Les 3 endpoints (list/vu/revoir) renvoient tous
+# une liste (many=True) de la MEME classe.
+_ProductTourSerializer = inline_serializer('ProductTour', {
+    'tour_key': drf_serializers.CharField(),
+    'ecran_cible': drf_serializers.CharField(),
+    'vu': drf_serializers.BooleanField(),
+    'vu_le': drf_serializers.DateTimeField(allow_null=True),
+    'etapes': drf_serializers.ListField(child=inline_serializer(
+        'ProductTourEtape', {
+            'ordre': drf_serializers.IntegerField(),
+            'selecteur': drf_serializers.CharField(),
+            'titre': drf_serializers.CharField(),
+            'texte': drf_serializers.CharField(),
+        })),
+}).__class__
 
 
 class OnboardingProgressViewSet(viewsets.ViewSet):
@@ -73,9 +94,11 @@ class ProductTourViewSet(viewsets.ViewSet):
     def _company(self, request):
         return getattr(request.user, 'company', None)
 
+    @extend_schema(responses=_ProductTourSerializer(many=True))
     def list(self, request):
         return Response(tours_pour_utilisateur(self._company(request), request.user))
 
+    @extend_schema(request=None, responses=_ProductTourSerializer(many=True))
     @action(detail=True, methods=['post'], url_path='vu',
             permission_classes=[IsAuthenticated])
     def vu(self, request, pk=None):
@@ -84,6 +107,7 @@ class ProductTourViewSet(viewsets.ViewSet):
             tours_pour_utilisateur(self._company(request), request.user),
             status=status.HTTP_200_OK)
 
+    @extend_schema(request=None, responses=_ProductTourSerializer(many=True))
     @action(detail=True, methods=['post'], url_path='revoir',
             permission_classes=[IsAuthenticated])
     def revoir(self, request, pk=None):

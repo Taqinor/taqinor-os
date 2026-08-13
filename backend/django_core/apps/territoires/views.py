@@ -1,6 +1,8 @@
 """Vues du moteur de territoires (NTCRM1). Réservé Administrateur/Directeur —
 même RBAC simple que le reste du CRM (``authentication.permissions``), pas de
 nouveau code de permission fine (pas de rôle 'territoire_*' à enregistrer)."""
+from drf_spectacular.utils import extend_schema, inline_serializer
+from rest_framework import serializers as drf_serializers
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -101,6 +103,18 @@ class CouvertureView(APIView):
     company``, jamais depuis la query string)."""
     permission_classes = [IsResponsableOrAdmin]
 
+    @extend_schema(responses={200: inline_serializer('CouvertureRapport', {
+        'total_non_couverts': drf_serializers.IntegerField(),
+        'leads': drf_serializers.ListField(child=inline_serializer(
+            'CouvertureLead', {
+                'lead_id': drf_serializers.IntegerField(),
+                'nom': drf_serializers.CharField(),
+                'ville': drf_serializers.CharField(allow_null=True),
+                'type_installation': drf_serializers.CharField(allow_null=True),
+            })),
+        'par_region': drf_serializers.DictField(child=drf_serializers.IntegerField()),
+        'par_segment': drf_serializers.DictField(child=drf_serializers.IntegerField()),
+    })})
     def get(self, request):
         try:
             jours = int(request.query_params.get('jours', 30))
