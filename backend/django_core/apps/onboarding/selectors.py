@@ -56,6 +56,44 @@ def checklist_pour_utilisateur(company, user):
     return resolved
 
 
+# ── NTDMO14/16 — catalogue des visites guidées (product tours) ─────────────
+def tours_pour_utilisateur(company, user):
+    """Retourne les 6 tours (catalogue NTDMO14) résolus pour ``user`` :
+    liste de dicts {tour_key, ecran_cible, vu (bool), vu_le, etapes:
+    [{ordre, selecteur, titre, texte}, ...]}, chargeable en UN seul appel
+    réseau (NTDMO14 — pas de requête bloquante par tour)."""
+    from .models import ProductTourStep, TourProgress
+    steps = ProductTourStep.objects.all().order_by('tour_key', 'ordre')
+    by_tour = {}
+    for s in steps:
+        by_tour.setdefault(s.tour_key, {
+            'tour_key': s.tour_key,
+            'ecran_cible': s.ecran_cible,
+            'etapes': [],
+        })
+        by_tour[s.tour_key]['etapes'].append({
+            'ordre': s.ordre,
+            'selecteur': s.selecteur,
+            'titre': s.titre,
+            'texte': s.texte,
+        })
+    progress = {}
+    if company is not None and user is not None and getattr(user, 'pk', None):
+        progress = {
+            p.tour_key: p for p in TourProgress.objects.filter(
+                company=company, user=user, tour_key__in=list(by_tour))
+        }
+    resolved = []
+    for tour_key, tour in by_tour.items():
+        p = progress.get(tour_key)
+        resolved.append({
+            **tour,
+            'vu': bool(p and p.vu_le is not None),
+            'vu_le': p.vu_le if p else None,
+        })
+    return resolved
+
+
 def resume_pour_utilisateur(company, user):
     """Résumé pour le widget « Premiers pas » : {items, faits, total, pourcentage,
     termine}. ``termine`` = plus aucun item à faire (100 % ou tout ignoré)."""
