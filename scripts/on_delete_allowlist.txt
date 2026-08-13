@@ -488,9 +488,9 @@ backend/django_core/apps/crm/models.py:963
 backend/django_core/apps/crm/models.py:986
 backend/django_core/apps/crm/models.py:1008
 backend/django_core/apps/crm/models.py:1014
-backend/django_core/apps/customfields/models.py:103
-backend/django_core/apps/customfields/models.py:142
-backend/django_core/apps/customfields/models.py:145
+backend/django_core/apps/customfields/models.py:109
+backend/django_core/apps/customfields/models.py:152
+backend/django_core/apps/customfields/models.py:155
 backend/django_core/apps/customfields/models.py:43
 backend/django_core/apps/dataimport/models.py:120
 backend/django_core/apps/dataimport/models.py:19
