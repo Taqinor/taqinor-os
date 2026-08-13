@@ -889,3 +889,17 @@ def emit_reliable(event, *, sender=None, company=None, emitted_by=None,
 
     transaction.on_commit(_send_sync)
     return row
+
+
+# ``salle_vente_signal_interet``
+#     Une salle de vente (``crm.SalleVente``) a reçu ≥3 consultations
+#     (``crm.SalleVenteVue``) en moins de 48h alors que le lead lié est en
+#     stage QUOTE_SENT — signal d'intérêt fort, purement informationnel
+#     (JAMAIS un changement de stage automatique). Émis par
+#     ``apps.crm.services.detecter_signal_interet_salle_vente`` (appelé en
+#     best-effort depuis ``apps.crm.public_views.public_salle_vente`` à chaque
+#     nouvelle vue). Abonné dans ce repo : ``crm`` lui-même (chatter
+#     ``LeadActivity``) — signal exposé sur le bus pour toute app future qui
+#     voudrait réagir (ex. notification commerciale) sans coupler
+#     ``apps.crm`` à elle. Arguments : ``lead``, ``salle``, ``company``.
+salle_vente_signal_interet = django.dispatch.Signal()

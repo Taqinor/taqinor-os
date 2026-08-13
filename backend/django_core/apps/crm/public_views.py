@@ -95,6 +95,12 @@ def public_salle_vente(request, token):
                 status=status.HTTP_403_FORBIDDEN)
 
     SalleVenteVue.objects.create(salle=salle, ip_hash=_hash_ip(request))
+    try:
+        # NTCRM27 — best-effort : ne doit jamais faire échouer la vue publique.
+        from .services import detecter_signal_interet_salle_vente
+        detecter_signal_interet_salle_vente(salle)
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+        pass
 
     items = salle.items.all().order_by('ordre', 'id')
     return Response({

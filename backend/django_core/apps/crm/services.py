@@ -143,6 +143,59 @@ def generer_playbook_progress(lead, new_stage):
     return created
 
 
+SEUIL_VUES_SIGNAL_INTERET = 3
+FENETRE_SIGNAL_INTERET_HEURES = 48
+
+
+def detecter_signal_interet_salle_vente(salle):
+    """NTCRM27 — Si ``salle`` (une ``crm.SalleVente``) est liée à un lead en
+    stage QUOTE_SENT et a reçu ``SEUIL_VUES_SIGNAL_INTERET`` vues ou plus en
+    moins de ``FENETRE_SIGNAL_INTERET_HEURES``, journalise une note NOTE
+    informationnelle « signal d'intérêt fort » sur le chatter du lead
+    (JAMAIS un changement de stage automatique) et émet
+    ``core.events.salle_vente_signal_interet``. Idempotent PAR JOUR : une
+    nouvelle vue au-delà du seuil le même jour ne duplique pas la note.
+    Best-effort — appelé depuis la vue publique, ne doit jamais lever."""
+    try:
+        lead = getattr(salle, 'lead', None)
+        if lead is None or lead.stage != stages.QUOTE_SENT:
+            return None
+        depuis = timezone.now() - timezone.timedelta(hours=FENETRE_SIGNAL_INTERET_HEURES)
+        nb_vues = salle.vues.filter(created_at__gte=depuis).count()
+        if nb_vues < SEUIL_VUES_SIGNAL_INTERET:
+            return None
+        aujourd_hui = timezone.now().date()
+        deja_note = LeadActivity.objects.filter(
+            lead=lead, kind=LeadActivity.Kind.NOTE,
+            body__startswith='signal d\'intérêt fort',
+            created_at__date=aujourd_hui,
+        ).exists()
+        if deja_note:
+            return None
+        note = LeadActivity.objects.create(
+            company=lead.company, lead=lead, user=None,
+            kind=LeadActivity.Kind.NOTE,
+            body=(
+                f"signal d'intérêt fort — {nb_vues} consultations en "
+                f"{FENETRE_SIGNAL_INTERET_HEURES}h (salle de vente « {salle.titre} »)"
+            ),
+        )
+        try:
+            from core.events import salle_vente_signal_interet
+            salle_vente_signal_interet.send(
+                sender=type(salle), lead=lead, salle=salle, company=lead.company)
+        except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+            logger.warning(
+                'NTCRM27: émission salle_vente_signal_interet échouée pour le lead #%s',
+                lead.pk, exc_info=True)
+        return note
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+        logger.warning(
+            'NTCRM27: détection signal intérêt échouée pour la salle #%s',
+            getattr(salle, 'pk', '?'), exc_info=True)
+        return None
+
+
 def avancer_stage_new_vers_contacted(lead, user) -> bool:
     """Avance le stage du lead NEW → CONTACTED lors du premier contact.
 
