@@ -54,6 +54,9 @@ export function formFromCampagne(c) {
 export default function CampagneForm({ initial, onSave, onCancel, editing }) {
   const [form, setForm] = useState(initial || emptyForm())
   const [listesDispo, setListesDispo] = useState([])
+  // NTMKT23 — blocs de contenu réutilisables + bloc sélectionné.
+  const [blocs, setBlocs] = useState([])
+  const [blocChoisi, setBlocChoisi] = useState('')
   const [err, setErr] = useState('')
   const [saving, setSaving] = useState(false)
   // XMKT8 — aperçu de fusion (jamais sauvegardé, lecture seule).
@@ -70,6 +73,23 @@ export default function CampagneForm({ initial, onSave, onCancel, editing }) {
       .then(r => setListesDispo(marketingApi.unwrapList(r)))
       .catch(() => setListesDispo([]))
   }, [])
+
+  // NTMKT23 — bibliothèque de blocs de contenu réutilisables.
+  useEffect(() => {
+    marketingApi.blocsContenu.list({ actif: true })
+      .then(r => setBlocs(marketingApi.unwrapList(r)))
+      .catch(() => setBlocs([]))
+  }, [])
+
+  const insererBloc = () => {
+    const bloc = blocs.find(b => String(b.id) === String(blocChoisi))
+    if (!bloc) return
+    // COPIE du fragment (snapshot) : aucune référence vivante au bloc source.
+    setForm(f => ({
+      ...f,
+      corps: f.corps ? `${f.corps}\n${bloc.contenu || ''}` : (bloc.contenu || ''),
+    }))
+  }
 
   const setField = (k) => (e) => setForm(f => ({ ...f, [k]: e.target.value }))
 
@@ -161,6 +181,28 @@ export default function CampagneForm({ initial, onSave, onCancel, editing }) {
       <textarea className="form-input" data-testid="campagne-corps"
         placeholder="Corps du message ({{prenom}}, {{ville}}…)" rows={5}
         value={form.corps} onChange={setField('corps')} />
+
+      {/* NTMKT23 — insertion d'un bloc réutilisable : COPIE du fragment dans
+          le corps (snapshot) — modifier le bloc source ne rétro-modifie
+          jamais une campagne déjà écrite/envoyée. */}
+      {blocs.length > 0 && (
+        <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+          <label style={{ fontSize: '0.8rem', color: '#475569' }}>
+            Bloc réutilisable
+            <select className="form-input" data-testid="campagne-bloc-select"
+              value={blocChoisi} onChange={e => setBlocChoisi(e.target.value)}>
+              <option value="">—</option>
+              {blocs.map(b => (
+                <option key={b.id} value={b.id}>{b.nom}</option>
+              ))}
+            </select>
+          </label>
+          <button type="button" className="btn btn-light"
+            data-testid="campagne-bloc-inserer" onClick={insererBloc}>
+            Insérer le bloc
+          </button>
+        </div>
+      )}
 
       {listesDispo.length > 0 && (
         <fieldset style={{ border: '1px solid #e2e8f0', borderRadius: 8,

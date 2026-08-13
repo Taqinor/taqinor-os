@@ -28,6 +28,7 @@ from .views import (
     ApprobationEnvoiCampagneViewSet,
     AvisClientViewSet,
     BilletEvenementViewSet,
+    BlocContenuViewSet,
     CampagneViewSet,
     CommunicationEvenementViewSet,
     CompteFideliteViewSet,
@@ -78,6 +79,9 @@ router.register(r'abonnements-liste', AbonnementListeViewSet,
                 basename='mkt-abonnement-liste')
 router.register(r'segments-marketing', SegmentMarketingViewSet,
                 basename='mkt-segment-marketing')
+# ── Blocs de contenu réutilisables (NTMKT23) ────────────────────────────────
+router.register(r'blocs-contenu', BlocContenuViewSet,
+                basename='mkt-bloc-contenu')
 # ── Séquences de relance (FG202, XMKT1) ─────────────────────────────────────
 router.register(r'sequences-relance', SequenceRelanceViewSet,
                 basename='mkt-sequence-relance')

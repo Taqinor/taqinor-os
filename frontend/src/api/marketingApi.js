@@ -89,6 +89,9 @@ const marketingApi = {
   noeudsJourney: resource('noeuds-journey'),
   arcsJourney: resource('arcs-journey'),
 
+  // ── NTMKT23 — Blocs de contenu réutilisables (insérés par COPIE) ──
+  blocsContenu: resource('blocs-contenu'),
+
   // ── NTMKT16 — Versions éditoriales d'une landing page d'intake ──
   versionsFormulaireIntake: {
     ...resource('versions-formulaire-intake'),

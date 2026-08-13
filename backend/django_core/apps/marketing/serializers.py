@@ -41,7 +41,8 @@ from apps.compta.serializers import (  # noqa: F401
 from rest_framework import serializers
 
 from .models import (
-    ArcJourney, ModeleJourney, NoeudJourney, VersionFormulaireIntake,
+    ArcJourney, BlocContenu, ModeleJourney, NoeudJourney,
+    VersionFormulaireIntake,
 )
 
 
@@ -94,6 +95,16 @@ class ModeleJourneySerializer(serializers.ModelSerializer):
     class Meta:
         model = ModeleJourney
         fields = ['id', 'nom', 'categorie', 'description', 'graphe',
+                  'date_creation']
+        read_only_fields = ['date_creation']
+
+
+class BlocContenuSerializer(serializers.ModelSerializer):
+    """NTMKT23 — bloc de contenu réutilisable (inséré par COPIE côté écran)."""
+
+    class Meta:
+        model = BlocContenu
+        fields = ['id', 'nom', 'type_bloc', 'contenu', 'actif',
                   'date_creation']
         read_only_fields = ['date_creation']
 

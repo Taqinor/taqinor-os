@@ -2195,3 +2195,48 @@ class VersionFormulaireIntake(models.Model):
     def __str__(self):
         etat = 'publiée' if self.publie else 'brouillon'
         return f'{self.formulaire_id} v{self.version} ({etat})'
+
+
+# ── NTMKT23 — Blocs de contenu réutilisables ───────────────────────────────
+
+class BlocContenu(models.Model):
+    """Fragment de contenu réutilisable dans l'éditeur de campagne (NTMKT23).
+
+    L'insertion COPIE le fragment dans le corps de la campagne (snapshot au
+    moment de l'insertion) : modifier le bloc source ne rétro-modifie JAMAIS
+    une campagne déjà écrite ou envoyée.
+    """
+    class Type(models.TextChoices):
+        TEXTE = 'texte', 'Texte'
+        IMAGE = 'image', 'Image'
+        CTA = 'cta', 'Bouton (CTA)'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='blocs_contenu',
+        verbose_name='Société',
+    )
+    nom = models.CharField(max_length=200, verbose_name='Nom du bloc')
+    type_bloc = models.CharField(
+        max_length=10, choices=Type.choices, default=Type.TEXTE,
+        verbose_name='Type de bloc')
+    contenu = models.TextField(
+        blank=True, default='', verbose_name='Fragment HTML')
+    actif = models.BooleanField(default=True, verbose_name='Actif')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Bloc de contenu'
+        verbose_name_plural = 'Blocs de contenu'
+        ordering = ['nom']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'nom'],
+                name='uniq_bloc_contenu_nom_par_societe',
+            ),
+        ]
+
+    def __str__(self):
+        return f'{self.nom} ({self.type_bloc})'

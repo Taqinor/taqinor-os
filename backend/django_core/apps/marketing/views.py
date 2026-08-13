@@ -62,11 +62,12 @@ from authentication.permissions import IsResponsableOrAdmin
 
 from . import services as marketing_services
 from .models import (
-    ArcJourney, ModeleJourney, NoeudJourney, VersionFormulaireIntake,
+    ArcJourney, BlocContenu, ModeleJourney, NoeudJourney,
+    VersionFormulaireIntake,
 )
 from .serializers import (
-    ArcJourneySerializer, ModeleJourneySerializer, NoeudJourneySerializer,
-    VersionFormulaireIntakeSerializer,
+    ArcJourneySerializer, BlocContenuSerializer, ModeleJourneySerializer,
+    NoeudJourneySerializer, VersionFormulaireIntakeSerializer,
 )
 
 
@@ -128,6 +129,14 @@ class ModeleJourneyViewSet(_ComptaBaseViewSet):
         )
         return Response(
             {'sequence_id': sequence.id, 'nom': sequence.nom}, status=201)
+
+
+class BlocContenuViewSet(_ComptaBaseViewSet):
+    """NTMKT23 — bibliothèque de blocs de contenu réutilisables."""
+    queryset = BlocContenu.objects.all()
+    serializer_class = BlocContenuSerializer
+    ordering_fields = ['id', 'nom', 'type_bloc', 'date_creation']
+    search_fields = ['nom', 'contenu']
 
 
 class VersionFormulaireIntakeViewSet(_ComptaBaseViewSet):

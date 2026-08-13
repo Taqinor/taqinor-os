@@ -5,6 +5,8 @@ import { emptyForm, formFromCampagne } from './CampagneForm'
 const mocks = vi.hoisted(() => ({
   listesList: vi.fn(),
   apercuFusion: vi.fn(),
+  // NTMKT23 — bibliothèque de blocs de contenu réutilisables.
+  blocsList: vi.fn(),
 }))
 
 vi.mock('../../api/marketingApi', () => ({
@@ -15,6 +17,7 @@ vi.mock('../../api/marketingApi', () => ({
     },
     listes: { list: mocks.listesList },
     campagnes: { apercuFusion: mocks.apercuFusion },
+    blocsContenu: { list: mocks.blocsList },
   },
 }))
 
@@ -23,6 +26,7 @@ import CampagneForm from './CampagneForm'
 beforeEach(() => {
   vi.clearAllMocks()
   mocks.listesList.mockResolvedValue({ data: [{ id: 1, nom: 'Liste A' }] })
+  mocks.blocsList.mockResolvedValue({ data: [] })
 })
 
 describe('emptyForm / formFromCampagne', () => {
@@ -123,5 +127,34 @@ describe('CampagneForm — test A/B (NTMKT3)', () => {
     fireEvent.click(screen.getByTestId('campagne-save'))
     await waitFor(() => expect(onSave).toHaveBeenCalled())
     expect(onSave.mock.calls[0][0].ab_test).toEqual({})
+  })
+})
+
+// ── NTMKT23 — insertion d'un bloc de contenu réutilisable (par COPIE) ──────
+
+describe('CampagneForm — blocs de contenu réutilisables (NTMKT23)', () => {
+  it("n'affiche pas le sélecteur quand la bibliothèque est vide", async () => {
+    render(<CampagneForm initial={emptyForm()} onSave={vi.fn()} editing={false} />)
+    await waitFor(() => expect(mocks.blocsList).toHaveBeenCalled())
+    expect(screen.queryByTestId('campagne-bloc-select')).toBeNull()
+  })
+
+  it('insère le fragment du bloc dans le corps (snapshot, pas une référence)', async () => {
+    mocks.blocsList.mockResolvedValue({
+      data: [{ id: 5, nom: 'CTA prendre RDV', type_bloc: 'cta', contenu: '<a>RDV</a>' }],
+    })
+    const onSave = vi.fn().mockResolvedValue()
+    render(<CampagneForm initial={emptyForm()} onSave={onSave} editing={false} />)
+    const select = await screen.findByTestId('campagne-bloc-select')
+    fireEvent.change(screen.getByTestId('campagne-nom'), { target: { value: 'Promo' } })
+    fireEvent.change(screen.getByTestId('campagne-corps'), { target: { value: 'Bonjour' } })
+    fireEvent.change(select, { target: { value: '5' } })
+    fireEvent.click(screen.getByTestId('campagne-bloc-inserer'))
+    expect(screen.getByTestId('campagne-corps').value).toBe('Bonjour\n<a>RDV</a>')
+    fireEvent.click(screen.getByTestId('campagne-save'))
+    await waitFor(() => expect(onSave).toHaveBeenCalled())
+    // Le corps envoyé porte la COPIE du fragment, jamais un id de bloc.
+    expect(onSave.mock.calls[0][0].corps).toContain('<a>RDV</a>')
+    expect(JSON.stringify(onSave.mock.calls[0][0])).not.toContain('bloc')
   })
 })
