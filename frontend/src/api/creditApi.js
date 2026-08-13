@@ -61,6 +61,16 @@ const creditApi = {
     return api.post('/credit/import-limites/', corps)
   },
 
+  // PACT48/NTCRD16-17 — assurance-crédit : registre DÉCLARATIF des polices et
+  // des encours garantis par client (aucun appel assureur).
+  getPolicesAssurance: (params) => api.get('/credit/polices-assurance/', { params }),
+  createPoliceAssurance: (data) => api.post('/credit/polices-assurance/', data),
+  updatePoliceAssurance: (id, data) =>
+    api.patch(`/credit/polices-assurance/${id}/`, data),
+  getEncoursGarantis: (params) => api.get('/credit/encours-garantis/', { params }),
+  createEncoursGaranti: (data) => api.post('/credit/encours-garantis/', data),
+  deleteEncoursGaranti: (id) => api.delete(`/credit/encours-garantis/${id}/`),
+
   // NTCRD9 — dérogations : demande + décision (approuver/rejeter).
   getDerogations: (params) => api.get('/credit/derogations/', { params }),
   createDerogation: (data) => api.post('/credit/derogations/', data),
