@@ -19,7 +19,7 @@ from apps.customfields.models import (
 
 User = get_user_model()
 
-URL = '/api/django/customfields/objets-catalogue/'
+URL = '/api/django/custom-fields/objets-catalogue/'
 
 
 def _auth(user):
