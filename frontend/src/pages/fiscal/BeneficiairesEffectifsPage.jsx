@@ -57,7 +57,8 @@ export default function BeneficiairesEffectifsPage() {
     .catch(() => { setRegistre(null); setErreur(true) })
     .finally(() => setLoading(false))
 
-  // eslint-disable-next-line react-hooks/set-state-in-effect
+  // `loading`/`erreur` démarrent déjà à leurs valeurs de chargement : aucun
+  // reset synchrone dans l'effet (react-hooks/set-state-in-effect).
   useEffect(() => { charger() }, [])
 
   const ouvrir = () => {
