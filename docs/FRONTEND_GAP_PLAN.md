@@ -49,17 +49,17 @@ a focused test, calling the EXISTING backend endpoint.
 # BUILD QUEUE
 
 ## Lane `frontend/flotte` (XFLT — all backend-only)
-- [ ] FE-XFLT4 — "Cycle de vie" tab in `VehiculeDetail.jsx` (statut transitions + checklist gate); add `changerStatut`/`ceder` to `flotteApi.js`. (@lane: frontend/flotte)
-- [ ] FE-XFLT1-3 — "Contrats" + "Grand livre des coûts" tabs in `VehiculeDetail.jsx`; add `contratsVehicule`/`couts`/`vehiculeLedger` to `flotteApi.js`. (@lane: frontend/flotte)
-- [ ] FE-XFLT5 — "Signaler un problème" button + open-signalements list on cockpit/detail; add `signalements`(+`convertir_en_or`) to `flotteApi.js`. (@lane: frontend/flotte)
-- [ ] FE-XFLT7/15/18 — "Analyse des coûts" tab + cockpit tiles; add `rapportCouts`/`rapportRemplacement`/`rapportBudget`/`budgets` to `flotteApi.js`. (@lane: frontend/flotte)
-- [ ] FE-XFLT12/13 — model-select pre-fill on vehicle create + inspection checklist screen; add `modelesVehicule`/`modelesInspection`/`inspections` to `flotteApi.js`. (@lane: frontend/flotte)
-- [ ] FE-XFLT14/19 — repair-order approval + `sous_garantie` warning in `EntretienScreen.jsx`; add `garanties`/`ordresReparation.approuver`. (@lane: frontend/flotte)
-- [ ] FE-XFLT17 — état-des-lieux e-signature + charte acknowledgment; add `etatsDesLieux.signer`/`chartesVehicule`/`accusesCharte`. (@lane: frontend/flotte)
-- [ ] FE-XFLT20 — accessory holders on `VehiculeDetail.jsx`; add `remisesAccessoire`/`detenteurs_courants`. (@lane: frontend/flotte)
-- [ ] FE-XFLT22-23 — vehicle CSV import entry + fuel-receipt OCR pre-fill + bulk affectation/plan-entretien rollout; add `pleins.ocr`/`affectations.masse`/`plansEntretien.rollout`. (@lane: frontend/flotte)
-- [ ] FE-XFLT24-25/28 — telematics zones/DTC (gated) + constructor recalls; add `zonesGeographiques`/`rappelsConstructeur`. (@lane: frontend/flotte)
-- [ ] FE-XFLT26 — verify ICE/IF fields render in the garage form (`EntretienScreen.jsx`). (@lane: frontend/flotte)
+- [x] (déjà présent) FE-XFLT4 — "Cycle de vie" tab in `VehiculeDetail.jsx` (statut transitions + checklist gate); add `changerStatut`/`ceder` to `flotteApi.js`. (@lane: frontend/flotte)
+- [x] (déjà présent) FE-XFLT1-3 — "Contrats" + "Grand livre des coûts" tabs in `VehiculeDetail.jsx`; add `contratsVehicule`/`couts`/`vehiculeLedger` to `flotteApi.js`. (@lane: frontend/flotte)
+- [x] (déjà présent) FE-XFLT5 — "Signaler un problème" button + open-signalements list on cockpit/detail; add `signalements`(+`convertir_en_or`) to `flotteApi.js`. (@lane: frontend/flotte)
+- [x] (déjà présent) FE-XFLT7/15/18 — "Analyse des coûts" tab + cockpit tiles; add `rapportCouts`/`rapportRemplacement`/`rapportBudget`/`budgets` to `flotteApi.js`. (@lane: frontend/flotte)
+- [x] (déjà présent) FE-XFLT12/13 — model-select pre-fill on vehicle create + inspection checklist screen; add `modelesVehicule`/`modelesInspection`/`inspections` to `flotteApi.js`. (@lane: frontend/flotte)
+- [x] (déjà présent) FE-XFLT14/19 — repair-order approval + `sous_garantie` warning in `EntretienScreen.jsx`; add `garanties`/`ordresReparation.approuver`. (@lane: frontend/flotte)
+- [x] (déjà présent) FE-XFLT17 — état-des-lieux e-signature + charte acknowledgment; add `etatsDesLieux.signer`/`chartesVehicule`/`accusesCharte`. (@lane: frontend/flotte)
+- [x] (déjà présent) FE-XFLT20 — accessory holders on `VehiculeDetail.jsx`; add `remisesAccessoire`/`detenteurs_courants`. (@lane: frontend/flotte)
+- [x] (déjà présent) FE-XFLT22-23 — vehicle CSV import entry + fuel-receipt OCR pre-fill + bulk affectation/plan-entretien rollout; add `pleins.ocr`/`affectations.masse`/`plansEntretien.rollout`. (@lane: frontend/flotte)
+- [x] (déjà présent) FE-XFLT24-25/28 — telematics zones/DTC (gated) + constructor recalls; add `zonesGeographiques`/`rappelsConstructeur`. (@lane: frontend/flotte)
+- [x] (déjà présent) FE-XFLT26 — verify ICE/IF fields render in the garage form (`EntretienScreen.jsx`). (@lane: frontend/flotte)
 
 ## Lane `frontend/qhse` (XQHS — all backend-only; verify XQHS5/6/7/9/10/12 aren't ORPHAN backends first)
 - [ ] FE-XQHS16 — public QR signalement: "Générer QR" action + `signalementsPublics`/`liensSignalement` in `qhseApi.js`. (@lane: frontend/qhse)
@@ -255,3 +255,4 @@ a focused test, calling the EXISTING backend endpoint.
   jamais appelé — drill-down « Relevé » ajouté sur l'état balance âgée fournisseurs d'EtatsPage).
   eslint + `npx vite build` verts sur tous les fichiers touchés ; suites vitest compta existantes
   toutes vertes (aucune régression).
+- 2026-08-13 — Lane `frontend/flotte` (FE-XFLT4, FE-XFLT1-3, FE-XFLT5, FE-XFLT7/15/18, FE-XFLT12/13, FE-XFLT14/19, FE-XFLT17, FE-XFLT20, FE-XFLT22-23, FE-XFLT24-25/28, FE-XFLT26): verified all 11 tasks already wired end-to-end (flotteApi.js entries, VehiculeDetail.jsx tabs, EntretienScreen.jsx/AnalyseCoutsScreen.jsx/InspectionsScreen.jsx/ZonesRappelsScreen.jsx screens all registered in module.config.jsx) — no code changes needed; 14/14 vitest files (56 tests) pass.
