@@ -17,7 +17,9 @@ function q(id, type, libelle, extra = {}) {
 
 const QUESTIONS_PAR_TYPE = {
   nps: [
-    q('q1', 'nps', 'Sur une échelle de 0 à 10, recommanderiez-vous TAQINOR ?'),
+    // White-label (SCA29) : jamais de marque en dur — libellé générique, éditable
+    // avant publication (voir le commentaire d'en-tête du fichier).
+    q('q1', 'nps', 'Sur une échelle de 0 à 10, recommanderiez-vous notre entreprise ?'),
   ],
   satisfaction_installation: [
     q('q1', 'nps', "Recommanderiez-vous notre équipe d'installation ?"),
