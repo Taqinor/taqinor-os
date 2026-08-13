@@ -14,6 +14,7 @@ from .public_chat_views import (
     open_chat_session, post_chat_message, get_chat_session,
 )
 from .public_booking_views import public_booking_status, public_booking_reserve
+from .public_views import public_salle_vente
 # ODX13 — mêmes ViewSets que ``apps.compta.urls`` (basenames explicitement
 # préfixés ``crm-…`` pour NE PAS entrer en collision avec les noms d'URL du
 # routeur compta, qui reverse ``partenaire-list`` etc.).
@@ -26,6 +27,7 @@ from .views import (
     ForecastEntryViewSet, PlanCompteViewSet, PlaybookEtapeViewSet,
     PlaybookTacheViewSet, PlaybookViewSet, RevueCompteViewSet,
     forecast_historique_view, forecast_rollup_view, lead_playbook_view,
+    SalleVenteViewSet,
 )
 
 router = DefaultRouter()
@@ -69,6 +71,10 @@ router.register(r'revues-compte', RevueCompteViewSet)
 router.register(r'playbooks', PlaybookViewSet)
 router.register(r'playbook-etapes', PlaybookEtapeViewSet)
 router.register(r'playbook-taches', PlaybookTacheViewSet)
+# NTCRM17 — Salle de vente digitale (CRUD interne). Le préfixe
+# ``salles-vente/`` (interne, authentifié) est distinct de la route publique
+# ``salle-vente/<token>/`` déclarée ci-dessous (singulier, tokenisée).
+router.register(r'salles-vente', SalleVenteViewSet, basename='salle-vente')
 
 urlpatterns = [
     # Récepteur des leads du site public (secret statique, voir webhooks.py)
@@ -101,6 +107,10 @@ urlpatterns = [
          name='public-booking-status'),
     path('public/booking/<str:token>/reserve/', public_booking_reserve,
          name='public-booking-reserve'),
+    # NTCRM17/18 — Salle de vente digitale publique tokenisée (voir
+    # public_views.py). Singulier, distinct de ``salles-vente/`` (CRUD interne).
+    path('salle-vente/<str:token>/', public_salle_vente,
+         name='public-salle-vente'),
     # NTCRM5 — Roll-up hiérarchique du forecast. Doit précéder le routeur :
     # sinon 'forecast-entries/<pk>/' du routeur intercepterait 'rollup'.
     path('forecast/rollup/', forecast_rollup_view, name='forecast-rollup'),

@@ -2453,3 +2453,159 @@ class SavedView(TenantModel):
 
     def __str__(self):
         return f'{self.page} — {self.name} ({self.user_id})'
+
+
+# ── NTCRM17 — Salle de vente digitale (Digital Sales Room) ─────────────────
+# Même modèle de confiance que ``ventes.ShareLink`` + ``ged.PartageGed`` :
+# jeton long/imprévisible = SEUL secret d'accès, expiration + mot de passe
+# optionnel (haché, jamais en clair). Regroupe plusieurs devis/documents sur
+# UNE page consultable sans compte par le client, au lieu de liens dispersés.
+SALLE_VENTE_TTL_DAYS = 30
+
+
+def _default_salle_vente_token():
+    import secrets
+    return secrets.token_urlsafe(32)
+
+
+def _default_salle_vente_expiry():
+    from datetime import timedelta
+
+    from django.utils import timezone as _timezone
+    return _timezone.now() + timedelta(days=SALLE_VENTE_TTL_DAYS)
+
+
+class SalleVente(models.Model):
+    """NTCRM17 — Salle de vente : page publique regroupant plusieurs
+    devis/documents/liens pour UN lead OU UN client (jamais les deux, jamais
+    ni l'un ni l'autre — voir `clean()`). Sécurité calquée sur
+    `ged.PartageGed` : `token` imprévisible = unique clé d'accès public,
+    `expires_at` par défaut 30 j, `password_hash` optionnel (jamais en
+    clair), `actif` = kill-switch de révocation immédiate."""
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='salles_vente')
+    lead = models.ForeignKey(
+        'crm.Lead', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='salles_vente')
+    client = models.ForeignKey(
+        'crm.Client', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='salles_vente')
+    titre = models.CharField(max_length=200, verbose_name='Titre')
+    token = models.CharField(
+        max_length=64, unique=True, default=_default_salle_vente_token,
+        editable=False)
+    expires_at = models.DateTimeField(
+        default=_default_salle_vente_expiry, verbose_name='Expire le')
+    # Hash du mot de passe optionnel (make_password). Vide = pas de mot de
+    # passe. JAMAIS stocké en clair — voir set_password()/check_password().
+    password_hash = models.TextField(blank=True, default='')
+    actif = models.BooleanField(
+        default=True, verbose_name='Actif',
+        help_text='Décoché = révocation immédiate du lien public.')
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='salles_vente_creees')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = 'Salle de vente'
+        verbose_name_plural = 'Salles de vente'
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['token'], name='crm_salle_vente_token_idx'),
+        ]
+
+    def __str__(self):
+        return f'Salle de vente « {self.titre} » ({self.token[:8]}…)'
+
+    def clean(self):
+        super().clean()
+        from django.core.exceptions import ValidationError
+        if bool(self.lead_id) == bool(self.client_id):
+            raise ValidationError(
+                'Une salle de vente doit référencer EXACTEMENT un lead OU '
+                'un client (jamais les deux, jamais ni l\'un ni l\'autre).')
+
+    @property
+    def has_password(self):
+        return bool(self.password_hash)
+
+    @property
+    def is_expired(self):
+        from django.utils import timezone as _timezone
+        return self.expires_at is not None and self.expires_at <= _timezone.now()
+
+    @property
+    def is_accessible(self):
+        """Servable publiquement : actif ET non expiré (mot de passe validé
+        séparément par l'endpoint — 403 distinct de 404/410)."""
+        return self.actif and not self.is_expired
+
+    def set_password(self, raw_password):
+        from django.contrib.auth.hashers import make_password
+        self.password_hash = make_password(raw_password) if raw_password else ''
+
+    def check_password(self, raw_password):
+        from django.contrib.auth.hashers import check_password
+        if not self.password_hash:
+            return True
+        if not raw_password:
+            return False
+        return check_password(raw_password, self.password_hash)
+
+
+class SalleVenteItem(models.Model):
+    """NTCRM17 — UN élément affiché dans une salle de vente : un devis
+    (rendu via le canal `/proposal` existant, JAMAIS un nouveau renderer —
+    règle #4), un document GED (string-FK — jamais `ged.models`), un lien
+    vidéo libre, ou une note libre. `reference` porte l'id cible (devis/GED)
+    ou l'URL/texte selon `type`."""
+    class TypeItem(models.TextChoices):
+        DEVIS = 'devis', 'Devis'
+        DOCUMENT = 'document', 'Document'
+        VIDEO_LIEN = 'video_lien', 'Lien vidéo'
+        NOTE = 'note', 'Note'
+
+    salle = models.ForeignKey(
+        SalleVente, on_delete=models.CASCADE, related_name='items')
+    type = models.CharField(max_length=12, choices=TypeItem.choices)
+    reference = models.CharField(
+        max_length=500, blank=True, default='',
+        help_text="Id du devis/document GED cible, ou URL/texte libre "
+                  "(video_lien/note).")
+    titre = models.CharField(max_length=200, blank=True, default='')
+    ordre = models.PositiveIntegerField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'Élément de salle de vente'
+        verbose_name_plural = 'Éléments de salle de vente'
+        ordering = ['ordre', 'id']
+
+    def __str__(self):
+        return f'{self.get_type_display()} #{self.pk} (salle {self.salle_id})'
+
+
+class SalleVenteVue(models.Model):
+    """NTCRM18 — Journal de consultation d'une salle de vente publique.
+
+    Une entrée par visite (timestamp + IP HACHÉE — jamais l'IP en clair,
+    aucune autre PII). Alimente le compteur/dernière-vue de NTCRM19."""
+    salle = models.ForeignKey(
+        SalleVente, on_delete=models.CASCADE, related_name='vues')
+    ip_hash = models.CharField(max_length=64, blank=True, default='')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'Vue de salle de vente'
+        verbose_name_plural = 'Vues de salle de vente'
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['salle', '-created_at'],
+                         name='crm_salle_vue_salle_idx'),
+        ]
+
+    def __str__(self):
+        return f'Vue salle {self.salle_id} @ {self.created_at:%Y-%m-%d %H:%M}'

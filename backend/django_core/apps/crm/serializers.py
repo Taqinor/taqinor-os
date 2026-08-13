@@ -4,8 +4,8 @@ from .models import (
     EtapePlanActivite, ForecastEntry, ForecastSnapshot, Lead, LeadActivity,
     LeadPlaybookProgress, MessageTemplate, ObjectifCommercial, Parrainage,
     PlanActivite, PlanCompte, Playbook, PlaybookEtape,
-    PlaybookTache, PointContact, RevueCompte, SavedView, SiteProfile,
-    WebsiteLeadPayload,
+    PlaybookTache, PointContact, RevueCompte, SalleVente, SalleVenteItem,
+    SavedView, SiteProfile, WebsiteLeadPayload,
 )
 from .devis_auto import champs_manquants, message_manquants
 from .scoring import compute_score, score_label, score_reasons
@@ -1167,3 +1167,61 @@ class SavedViewSerializer(serializers.ModelSerializer):
         model = SavedView
         fields = ['id', 'page', 'name', 'rank', 'payload', 'created_at', 'user']
         read_only_fields = ['created_at']
+
+
+class SalleVenteItemSerializer(serializers.ModelSerializer):
+    """NTCRM17 — un élément (devis/document/lien vidéo/note) d'une salle de vente."""
+
+    class Meta:
+        model = SalleVenteItem
+        fields = ['id', 'salle', 'type', 'reference', 'titre', 'ordre', 'created_at']
+        read_only_fields = ['created_at']
+
+
+class SalleVenteSerializer(serializers.ModelSerializer):
+    """NTCRM17 — salle de vente digitale (écran interne, authentifié).
+
+    ``company`` est TOUJOURS posé côté serveur (jamais lu du corps).
+    ``token``/``password_hash`` ne sont jamais exposés en écriture ; un mot
+    de passe est posé via le champ ``write_only`` ``mot_de_passe`` (haché
+    côté serveur, jamais stocké en clair). ``has_password`` expose
+    seulement un booléen — jamais le hash."""
+    company = serializers.HiddenField(default=_CurrentCompanyDefault())
+    items = SalleVenteItemSerializer(many=True, read_only=True)
+    has_password = serializers.BooleanField(read_only=True)
+    lien_public = serializers.SerializerMethodField()
+    mot_de_passe = serializers.CharField(
+        write_only=True, required=False, allow_blank=True)
+
+    class Meta:
+        model = SalleVente
+        fields = [
+            'id', 'company', 'lead', 'client', 'titre', 'token', 'expires_at',
+            'actif', 'has_password', 'mot_de_passe', 'lien_public', 'items',
+            'created_by', 'created_at', 'updated_at',
+        ]
+        read_only_fields = ['token', 'created_by', 'created_at', 'updated_at']
+
+    def get_lien_public(self, obj):
+        return f'/crm/salle-vente/{obj.token}'
+
+    def validate(self, attrs):
+        lead = attrs.get('lead', getattr(self.instance, 'lead', None))
+        client = attrs.get('client', getattr(self.instance, 'client', None))
+        if bool(lead) == bool(client):
+            raise serializers.ValidationError(
+                'Une salle de vente doit référencer exactement un lead OU un '
+                'client (jamais les deux, jamais ni l\'un ni l\'autre).')
+        return attrs
+
+    def create(self, validated_data):
+        mot_de_passe = validated_data.pop('mot_de_passe', '')
+        instance = SalleVente(**validated_data)
+        instance.set_password(mot_de_passe)
+        instance.save()
+        return instance
+
+    def update(self, instance, validated_data):
+        if 'mot_de_passe' in validated_data:
+            instance.set_password(validated_data.pop('mot_de_passe'))
+        return super().update(instance, validated_data)

@@ -14,8 +14,8 @@ from .models import (
     ForecastEntry, ForecastSnapshot, Lead, LeadPlaybookProgress, LeadTag,
     MotifPerte, Canal, Parrainage, MessageTemplate, ObjectifCommercial,
     PlanActivite, PlanCompte, Playbook, PlaybookEtape,
-    PlaybookTache, PointContact, RevueCompte, SavedView, SiteProfile,
-    WebsiteLeadPayload,
+    PlaybookTache, PointContact, RevueCompte, SalleVente, SalleVenteItem,
+    SavedView, SiteProfile, WebsiteLeadPayload,
 )
 from .serializers import (
     AppointmentSerializer, ClientSerializer, ConcurrentPerteSerializer,
@@ -29,6 +29,7 @@ from .serializers import (
     PlanCompteSerializer, RevueCompteSerializer,
     PlaybookSerializer, PlaybookEtapeSerializer, PlaybookTacheSerializer,
     LeadPlaybookProgressSerializer, SavedViewSerializer,
+    SalleVenteSerializer, SalleVenteItemSerializer,
 )
 from apps.records.views import ChatterViewSetMixin
 from . import activity
@@ -2539,3 +2540,43 @@ class SavedViewViewSet(CompanyScopedModelViewSet):
             company=request.user.company, user=request.user, page=page,
         ).order_by('rank', 'id')
         return Response(SavedViewSerializer(result, many=True).data)
+
+
+class SalleVenteViewSet(CompanyScopedModelViewSet):
+    """NTCRM17 — Salle de vente digitale (CRUD interne, authentifié).
+
+    ``company`` posé côté serveur (TenantMixin). ``created_by`` forcé à la
+    création. Lecture tout rôle, écriture responsable/admin (mêmes gardes
+    que ``PointContactViewSet``). Ajout/retrait d'items via des actions
+    dédiées (jamais un PATCH imbriqué non trivial du serializer nested)."""
+    serializer_class = SalleVenteSerializer
+    queryset = SalleVente.objects.select_related(
+        'company', 'lead', 'client', 'created_by').prefetch_related('items').all()
+
+    def get_permissions(self):
+        if self.action in READ_ACTIONS:
+            return [IsAnyRole()]
+        return [IsResponsableOrAdmin()]
+
+    def perform_create(self, serializer):
+        serializer.save(company=self.request.user.company,
+                        created_by=self.request.user)
+
+    @action(detail=True, methods=['post'], url_path='items',
+            permission_classes=[IsResponsableOrAdmin])
+    def ajouter_item(self, request, pk=None):
+        salle = self.get_object()
+        serializer = SalleVenteItemSerializer(data={**request.data, 'salle': salle.pk})
+        serializer.is_valid(raise_exception=True)
+        serializer.save(salle=salle)
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['delete'], url_path=r'items/(?P<item_id>\d+)',
+            permission_classes=[IsResponsableOrAdmin])
+    def retirer_item(self, request, pk=None, item_id=None):
+        salle = self.get_object()
+        deleted, _ = SalleVenteItem.objects.filter(
+            salle=salle, pk=item_id).delete()
+        if not deleted:
+            return Response(status=status.HTTP_404_NOT_FOUND)
+        return Response(status=status.HTTP_204_NO_CONTENT)
