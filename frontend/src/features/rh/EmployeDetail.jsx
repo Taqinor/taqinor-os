@@ -648,10 +648,13 @@ function SortieDialog({ employe, onClose, onSaved }) {
   const [saving, setSaving] = useState(false)
   const [serverError, setServerError] = useState(null)
 
-  // Motifs alignés sur DossierEmploye.MotifSortie (côté serveur) — PACT156 :
-  // toute valeur hors de ces 6 clés est refusée en 400 par rh/views.py:518.
-  // 'Décès' n'existe pas dans le TextChoices serveur ; l'option est retirée
-  // plutôt qu'ajoutée côté modèle (hors périmètre de ce correctif frontend).
+  // PACT159 — la promesse « alignés sur DossierEmploye.MotifSortie » était en
+  // PROSE : rien ne la vérifiait. Le marqueur ci-dessous est lu par
+  // scripts/check_choices_declares.py, qui échoue si une valeur d'ici n'existe
+  // pas dans le TextChoices serveur (PACT156 : toute valeur hors de ces 6 clés
+  // est refusée en 400 par rh/views.py). 'Décès' n'y existe pas : l'option
+  // reste retirée plutôt qu'ajoutée côté modèle.
+  // source-choix: rh.DossierEmploye.motif_sortie
   const MOTIFS = [
     { value: 'demission', label: 'Démission' },
     { value: 'licenciement', label: 'Licenciement' },

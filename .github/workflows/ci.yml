@@ -485,6 +485,17 @@ jobs:
         run: python scripts/check_openapi_shapes.py
       - name: Test the OpenAPI-shapes checker itself (PACT7)
         run: python -m unittest scripts.tests.test_check_openapi_shapes -v
+      # VOCABULAIRE À SOURCE DÉCLARÉE (PACT159). Une liste de choix frontend
+      # qui porte `// source-choix: app.Modele.champ` PROMET que son
+      # vocabulaire vient du serveur ; la garde échoue si elle invente une
+      # valeur. Volontairement OPT-IN : la détection par ressemblance a été
+      # MESURÉE à 72 % de faux positifs (13 sur 18) et ratait le cas fondateur
+      # (ExigencesPage ne partageait AUCUNE valeur avec son champ). Une liste
+      # sans marqueur n'est jamais un rouge. Stdlib pure, ~5 s.
+      - name: Check listes de choix à source déclarée (PACT159)
+        run: python scripts/check_choices_declares.py
+      - name: Test the declared-choices checker itself (PACT159)
+        run: python -m unittest scripts.tests.test_check_choices_declares -v
       # ÉCRANS ATTEIGNABLES (incident du 03/08/2026, troisième défaut du même
       # jour) : le module « Appels d'offres » a été livré et déclaré TERMINÉ —
       # 194 tâches cochées, CI verte, déployé — alors que 68 écrans existaient
