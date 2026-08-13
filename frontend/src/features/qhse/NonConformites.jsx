@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import {
   Plus, Eye, CheckCircle2, RefreshCw, ClipboardCheck, Gavel, Sparkles,
   Wrench, ShieldAlert,
@@ -367,6 +367,127 @@ function DerogationCreateDialog({ ncr, onClose, onDone }) {
   )
 }
 
+/* XQHS7 — analyse structurée d'une NCR : chaîne 5-Pourquoi (≤5 entrées, borne
+   serveur) et rapport 8D (D1-D8). `AnalyseNcr` n'a AUCUN CRUD : l'action
+   `analyse/` est sa seule surface — un POST vide lit l'analyse existante, un
+   POST avec données la complète (merge côté serveur sur les clés fournies). */
+const DISCIPLINES_8D = [
+  { code: 'D1', label: 'D1 — Équipe' },
+  { code: 'D2', label: 'D2 — Description du problème' },
+  { code: 'D3', label: 'D3 — Actions immédiates' },
+  { code: 'D4', label: 'D4 — Cause racine' },
+  { code: 'D5', label: 'D5 — Actions correctives choisies' },
+  { code: 'D6', label: 'D6 — Mise en œuvre & vérification' },
+  { code: 'D7', label: 'D7 — Prévention de la récurrence' },
+  { code: 'D8', label: 'D8 — Clôture & reconnaissance' },
+]
+const POURQUOI_VIDES = Array.from({ length: 5 }, () => ({ pourquoi: '', reponse: '' }))
+
+function AnalyseNcrPanel({ ncrId }) {
+  const [pourquoi, setPourquoi] = useState(POURQUOI_VIDES)
+  const [huitD, setHuitD] = useState({})
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+
+  useEffect(() => {
+    let vivant = true
+    // POST sans corps = lecture (aucun champ écrasé côté service).
+    qhseApi.nonConformites.analyse(ncrId)
+      .then((r) => {
+        if (!vivant) return
+        const lus = Array.isArray(r.data?.cinq_pourquoi) ? r.data.cinq_pourquoi : []
+        setPourquoi(POURQUOI_VIDES.map((vide, i) => ({
+          pourquoi: lus[i]?.pourquoi ?? vide.pourquoi,
+          reponse: lus[i]?.reponse ?? vide.reponse,
+        })))
+        setHuitD(r.data?.huit_d && typeof r.data.huit_d === 'object' ? r.data.huit_d : {})
+      })
+      .catch(() => { if (vivant) toast.error('Analyse illisible.') })
+      .finally(() => { if (vivant) setLoading(false) })
+    return () => { vivant = false }
+  }, [ncrId])
+
+  function majPourquoi(index, champ, valeur) {
+    setPourquoi((prev) => prev.map(
+      (p, i) => (i === index ? { ...p, [champ]: valeur } : p)))
+  }
+
+  async function enregistrer() {
+    setSaving(true)
+    try {
+      // On n'envoie que les « pourquoi » réellement remplis : la borne
+      // serveur est à 5 entrées, les lignes vides ne sont pas une analyse.
+      const remplis = pourquoi.filter(
+        (p) => p.pourquoi.trim() || p.reponse.trim())
+      const r = await qhseApi.nonConformites.analyse(ncrId, {
+        cinq_pourquoi: remplis.map((p) => ({
+          pourquoi: p.pourquoi.trim(), reponse: p.reponse.trim(),
+        })),
+        huit_d: huitD,
+      })
+      setHuitD(r.data?.huit_d ?? huitD)
+      toast.success('Analyse enregistrée.')
+    } catch (err) {
+      const detail = err?.response?.data?.detail
+      toast.error(Array.isArray(detail) ? detail.join(' ')
+        : detail ?? 'Enregistrement impossible.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  if (loading) return <p className="text-sm text-muted-foreground">Chargement…</p>
+
+  return (
+    <div className="flex flex-col gap-5">
+      <section className="flex flex-col gap-3">
+        <h4 className="text-sm font-semibold">5-Pourquoi</h4>
+        {pourquoi.map((p, i) => (
+          <div key={`pourquoi-${i}`} className="grid grid-cols-2 gap-3">
+            <div>
+              <Label>{`Pourquoi ${i + 1}`}</Label>
+              <Input
+                aria-label={`Pourquoi ${i + 1}`} value={p.pourquoi}
+                onChange={(e) => majPourquoi(i, 'pourquoi', e.target.value)}
+              />
+            </div>
+            <div>
+              <Label>{`Réponse ${i + 1}`}</Label>
+              <Input
+                aria-label={`Réponse ${i + 1}`} value={p.reponse}
+                onChange={(e) => majPourquoi(i, 'reponse', e.target.value)}
+              />
+            </div>
+          </div>
+        ))}
+      </section>
+
+      <section className="flex flex-col gap-3">
+        <h4 className="text-sm font-semibold">Rapport 8D</h4>
+        {DISCIPLINES_8D.map(({ code, label }) => (
+          <div key={code}>
+            <Label>{label}</Label>
+            <Textarea
+              aria-label={label} rows={2}
+              value={huitD?.[code]?.texte ?? ''}
+              onChange={(e) => setHuitD((prev) => ({
+                ...prev,
+                [code]: { ...(prev?.[code] ?? {}), texte: e.target.value },
+              }))}
+            />
+          </div>
+        ))}
+      </section>
+
+      <div className="flex justify-end">
+        <Button onClick={enregistrer} disabled={saving}>
+          {saving ? 'Enregistrement…' : 'Enregistrer l’analyse'}
+        </Button>
+      </div>
+    </div>
+  )
+}
+
 function NcrDetail({ ncr, onBack, onChanged }) {
   const [busy, setBusy] = useState(false)
   const [posingDisposition, setPosingDisposition] = useState(false)
@@ -482,6 +603,13 @@ function NcrDetail({ ncr, onBack, onChanged }) {
             value: 'taux-defaillance',
             label: 'Taux de défaillance produit',
             content: <TauxDefaillancePanel />,
+          },
+          {
+            // XQHS7 — analyse 5-Pourquoi / 8D : l'action `analyse/` n'avait
+            // aucun appelant côté écran.
+            value: 'analyse',
+            label: 'Analyse 5-Pourquoi / 8D',
+            content: <AnalyseNcrPanel ncrId={ncr.id} />,
           },
         ]}
       />

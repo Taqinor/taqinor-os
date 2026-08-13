@@ -286,6 +286,14 @@ qhseApi.nonConformites.creerIntervention = (id, data) =>
 qhseApi.nonConformites.tauxDefaillanceProduit = () =>
   api.get('/qhse/non-conformites/taux-defaillance-produit/')
 
+// ── XQHS7 — Analyse 5-Pourquoi / 8D d'une NCR ────────────────────────────────
+// L'action `analyse/` est la SEULE surface du modèle `AnalyseNcr` (aucun CRUD
+// direct) : un POST sans corps lit l'analyse existante (get_or_create côté
+// service, aucun champ écrasé), un POST avec `cinq_pourquoi`/`huit_d` la
+// complète (merge sur les disciplines fournies).
+qhseApi.nonConformites.analyse = (id, data) =>
+  api.post(`/qhse/non-conformites/${id}/analyse/`, data ?? {})
+
 // ── WIR115 — Check-in sécurité (technicien seul sur site) ────────────────────
 qhseApi.checkinsSecurite = {
   ...crud('checkins-securite'),

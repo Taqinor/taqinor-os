@@ -64,6 +64,10 @@ vi.mock('../../api/qhseApi', () => {
         poserDisposition: emptyList, depuisTicketSav: emptyList,
         creerIntervention: vi.fn(() => Promise.resolve({ data: {} })),
         tauxDefaillanceProduit: vi.fn(emptyList),
+        // XQHS7 — analyse 5-Pourquoi / 8D (seule surface d'`AnalyseNcr`).
+        analyse: vi.fn(() => Promise.resolve({
+          data: { cinq_pourquoi: [], huit_d: {} },
+        })),
       },
       capa: { list: emptyList, enRetard: emptyList },
       plansInspection: crud(), plansChantier: crud(), releves: crud(),
