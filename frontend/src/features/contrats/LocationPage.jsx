@@ -43,6 +43,14 @@ export default function LocationPage() {
   const [filter, setFilter] = useState('tous')
   const [creating, setCreating] = useState(false)
   const [busyId, setBusyId] = useState(null)
+  // XCTR21 — utilisation/ROI du parc (mois courant). Endpoint ADMIN-ONLY côté
+  // serveur (IsAdminRole) : un rôle non-admin reçoit 403 et la carte reste
+  // masquée — jamais d'appel de rôle dupliqué côté front.
+  const [utilisation, setUtilisation] = useState(null)
+
+  useEffect(() => {
+    contratsApi.utilisationLocation().then((r) => setUtilisation(r.data)).catch(() => setUtilisation(null))
+  }, [])
 
   const load = () => {
     setLoading(true)
@@ -131,6 +139,26 @@ export default function LocationPage() {
           rows={rows}
           columns={columns}
         />
+      )}
+
+      {/* XCTR21 — utilisation/ROI (admin uniquement, jamais exportée/imprimée). */}
+      {utilisation?.results?.length > 0 && (
+        <Card className="p-4 sm:p-5">
+          <h3 className="mb-3 font-display text-base font-semibold">
+            Utilisation &amp; ROI du parc — {utilisation.periode_debut} → {utilisation.periode_fin}
+          </h3>
+          <SimpleTable
+            emptyText="Aucune donnée d’utilisation."
+            rows={utilisation.results}
+            columns={[
+              { header: 'Produit', cell: (r) => <span className="font-medium">{r.produit_nom || `#${r.produit_id}`}</span> },
+              { header: 'Taux d’utilisation', cell: (r) => `${Math.round((r.taux_utilisation ?? 0) * 100)} %`, align: 'right' },
+              { header: 'Revenu locatif', cell: (r) => formatMAD(r.revenu_locatif), align: 'right' },
+              { header: 'Payback (période)', cell: (r) => (r.payback != null ? `${(r.payback * 100).toFixed(1)} %` : '—'), align: 'right' },
+              { header: '', cell: (r) => (r.dormant ? <Badge tone="warning">Dormant</Badge> : null), align: 'right' },
+            ]}
+          />
+        </Card>
       )}
 
       {creating && (
@@ -330,6 +358,11 @@ function CreateOrdreDialog({ onClose, onDone }) {
   const [note, setNote] = useState('')
   const [saving, setSaving] = useState(false)
   const [err, setErr] = useState(null)
+  // XCTR17 — vérification de disponibilité (calendrier de réservation) : sur
+  // la fenêtre produit/dates saisie, avertit AVANT soumission d'un chevauchement
+  // avec un ordre actif (réservée/enlevée). Purement informatif — le backend
+  // reste la source de vérité (400 si conflit réel).
+  const [dispo, setDispo] = useState(null)
 
   useEffect(() => {
     stockApi.getProduits()
@@ -341,6 +374,22 @@ function CreateOrdreDialog({ onClose, onDone }) {
       .then((r) => setClients(listData(r)))
       .catch(() => setClients([]))
   }, [])
+
+  useEffect(() => {
+    if (!produitId || !dateEnlevement || !dateRetour) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- reset dispo quand la fenêtre devient incomplète
+      setDispo(null)
+      return
+    }
+    let cancelled = false
+    contratsApi.disponibiliteLocation({
+      produit: produitId,
+      numero_serie: numeroSerie || undefined,
+      date_debut: dateEnlevement,
+      date_fin: dateRetour,
+    }).then((r) => { if (!cancelled) setDispo(r.data) }).catch(() => { if (!cancelled) setDispo(null) })
+    return () => { cancelled = true }
+  }, [produitId, numeroSerie, dateEnlevement, dateRetour])
 
   const submit = async (e) => {
     e.preventDefault()
@@ -421,6 +470,14 @@ function CreateOrdreDialog({ onClose, onDone }) {
               <Input id="loc-ret" type="date" value={dateRetour} onChange={(e) => setDateRetour(e.target.value)} />
             </div>
           </div>
+          {/* XCTR17 — avertissement de disponibilité (calendrier de réservation),
+              purement informatif ; le backend reste la source de vérité. */}
+          {dispo && dispo.disponible === false && (
+            <p className="rounded-md border border-warning/30 bg-warning/10 p-2 text-xs text-foreground" role="alert">
+              Ce produit est déjà réservé sur une partie de cette fenêtre
+              ({dispo.occupations.length} occupation{dispo.occupations.length > 1 ? 's' : ''}).
+            </p>
+          )}
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="loc-tarif">Tarif / jour (MAD)</Label>
             <Input id="loc-tarif" type="number" step="any" value={tarifJour} onChange={(e) => setTarifJour(e.target.value)} placeholder="Optionnel — défaut du produit" />
