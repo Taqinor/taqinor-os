@@ -82,6 +82,11 @@ class MigrationABlancTests(TestCase):
         self.assertEqual(lot_blanc.company, self.sandbox_company)
         self.assertEqual(lot_blanc.rapports.count(), 1)
         self.assertTrue(lot_blanc.rapports.first().conforme)
+        # La copie du fichier source (PII) ne reste pas dans le sandbox.
+        self.assertEqual(lot_blanc.fichier_source_cle, '')
+        # Le fichier du projet D'ORIGINE, lui, est intact.
+        self.lot.refresh_from_db()
+        self.assertTrue(bool(self.lot.fichier_source_cle))
 
     def test_lot_sans_fichier_est_saute_avec_motif(self):
         self._provisionner_sandbox()

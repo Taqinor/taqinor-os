@@ -928,6 +928,12 @@ def migrer_a_blanc(projet, user=None):
             'nb_source': rapport.nb_source,
             'nb_cible': rapport.nb_cible_crees + rapport.nb_cible_existants})
 
+    # Les copies de fichiers source posées dans le sandbox sont supprimées TOUT
+    # DE SUITE : un essai à blanc n'a aucune raison de laisser une seconde
+    # copie de données personnelles derrière lui, et le projet miroir n'étant
+    # jamais clôturé, la purge planifiée (NTMIG35) ne le ramasserait jamais.
+    purger_fichiers_source(projet_blanc)
+
     return {
         'projet_blanc': projet_blanc.pk,
         'societe_sandbox': societe_sandbox.pk,
