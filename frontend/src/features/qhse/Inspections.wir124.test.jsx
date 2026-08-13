@@ -38,7 +38,10 @@ vi.mock('../../api/qhseApi', () => ({
     grillesAudit: { list: empty, create: vi.fn() },
     audits: { list: empty, create: vi.fn(), calculerScore: vi.fn(), leverNcr: vi.fn() },
     notationsFinChantier: { list: empty },
-    proceduresQualite: { list: empty, create: (...a) => procedureCreate(...a), activer: vi.fn() },
+    proceduresQualite: {
+      list: empty, create: (...a) => procedureCreate(...a), activer: vi.fn(),
+      mesLecturesEnAttente: empty,
+    },
     retoursClient: {
       list: empty,
       create: vi.fn(),

@@ -87,6 +87,10 @@ const qhseApi = {
     courante: (params) =>
       api.get('/qhse/procedures-qualite/courante/', { params }),
     versions: (id) => api.get(`/qhse/procedures-qualite/${id}/versions/`),
+    // XQHS15 — diffusions de procédure non encore lues par l'utilisateur
+    // courant (accusés de lecture en attente), scopées société.
+    mesLecturesEnAttente: () =>
+      api.get('/qhse/procedures-qualite/mes-lectures-en-attente/'),
   },
   retoursClient: {
     ...crud('retours-client'),
@@ -137,6 +141,13 @@ const qhseApi = {
     // Statistiques TF / TG des accidents du travail (QHSE34).
     statistiquesTfTg: (params) =>
       api.get('/qhse/incidents/statistiques-tf-tg/', { params }),
+    // XQHS19 — incidents environnementaux : clôture gatée par la
+    // notification à l'autorité quand elle est requise, + suivi des retards.
+    cloturer: (id) => api.post(`/qhse/incidents/${id}/cloturer/`),
+    notificationsEnRetard: () =>
+      api.get('/qhse/incidents/notifications-en-retard/'),
+    relancerNotifications: () =>
+      api.post('/qhse/incidents/relancer-notifications/'),
   },
   declarationsCnss: {
     ...crud('declarations-cnss'),

@@ -73,6 +73,9 @@ vi.mock('../../api/qhseApi', () => ({
     incidents: {
       list: empty,
       create: (...a) => incidentCreate(...a),
+      cloturer: vi.fn(() => Promise.resolve({ data: {} })),
+      notificationsEnRetard: empty,
+      relancerNotifications: vi.fn(() => Promise.resolve({ data: { relances: 0 } })),
     },
     declarationsCnss: { list: empty },
     analysesIncident: {

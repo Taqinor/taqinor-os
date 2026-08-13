@@ -187,7 +187,15 @@ function CreerIncidentDialog({ onClose, onCreated }) {
   const [gravite, setGravite] = useState('mineure')
   const [dateIncident, setDateIncident] = useState('')
   const [description, setDescription] = useState('')
+  // XQHS19 — champs environnement (déversement/rejet), affichés seulement
+  // quand l'événement est de type « Environnement ». Tous optionnels.
+  const [substance, setSubstance] = useState('')
+  const [quantite, setQuantite] = useState('')
+  const [unite, setUnite] = useState('')
+  const [milieu, setMilieu] = useState('')
+  const [notificationRequise, setNotificationRequise] = useState(false)
   const [saving, setSaving] = useState(false)
+  const estEnvironnemental = typeIncident === 'environnement'
 
   async function save() {
     if (!titre.trim()) { toast.error('Le titre est requis.'); return }
@@ -199,6 +207,13 @@ function CreerIncidentDialog({ onClose, onCreated }) {
         gravite,
         date_incident: dateIncident || null,
         description: description.trim(),
+        ...(estEnvironnemental ? {
+          substance: substance.trim(),
+          quantite_estimee: quantite === '' ? null : Number(quantite),
+          quantite_unite: unite.trim(),
+          milieu_touche: milieu,
+          notification_requise: notificationRequise,
+        } : {}),
       })
       toast.success('Incident déclaré.')
       onCreated()
@@ -251,6 +266,54 @@ function CreerIncidentDialog({ onClose, onCreated }) {
             <Label>Description</Label>
             <Textarea aria-label="Description" value={description} onChange={(e) => setDescription(e.target.value)} rows={3} />
           </div>
+          {estEnvironnemental && (
+            <div className="flex flex-col gap-3 rounded-md border border-border p-3">
+              <p className="text-sm text-muted-foreground">
+                Déversement / rejet — renseigner ce qui a été relâché et où.
+              </p>
+              <div>
+                <Label>Substance</Label>
+                <Input
+                  aria-label="Substance" value={substance}
+                  onChange={(e) => setSubstance(e.target.value)}
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <Label>Quantité estimée</Label>
+                  <Input
+                    aria-label="Quantité estimée" inputMode="decimal" step="any"
+                    value={quantite} onChange={(e) => setQuantite(e.target.value)}
+                  />
+                </div>
+                <div>
+                  <Label>Unité</Label>
+                  <Input
+                    aria-label="Unité" value={unite}
+                    onChange={(e) => setUnite(e.target.value)}
+                  />
+                </div>
+              </div>
+              <div>
+                <Label>Milieu touché</Label>
+                <Select value={milieu} onValueChange={setMilieu}>
+                  <SelectTrigger aria-label="Milieu touché"><SelectValue placeholder="—" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="sol">Sol</SelectItem>
+                    <SelectItem value="eau">Eau</SelectItem>
+                    <SelectItem value="air">Air</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <label className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox" checked={notificationRequise}
+                  onChange={(e) => setNotificationRequise(e.target.checked)}
+                />
+                Notification à l’autorité requise
+              </label>
+            </div>
+          )}
           <div className="flex justify-end gap-2 pt-1">
             <Button variant="outline" onClick={onClose}>Annuler</Button>
             <Button onClick={save} disabled={saving}>
@@ -643,10 +706,38 @@ export default function Risques() {
   const [creatingObservation, setCreatingObservation] = useState(false)
   const [observationsReload, setObservationsReload] = useState(0)
 
+  // XQHS19 — incidents environnementaux : filtre « notifications en retard »,
+  // relance en masse et clôture gatée (le serveur refuse si la notification
+  // requise n'est pas faite).
+  const [incidentsRetardOnly, setIncidentsRetardOnly] = useState(false)
+
   // XQHS14 — registre risques & opportunités niveau SMQ (ISO 6.1).
   const [creatingRo, setCreatingRo] = useState(false)
   const [roReload, setRoReload] = useState(0)
   const [roRevuesDues, setRoRevuesDues] = useState(false)
+
+  // XQHS19 — la clôture est GATÉE côté serveur (400 si une notification
+  // requise n'a pas été faite) : on remonte tel quel le motif du refus.
+  async function cloturerIncident(incident) {
+    try {
+      await qhseApi.incidents.cloturer(incident.id)
+      toast.success('Incident clôturé.')
+      setIncidentsReload((n) => n + 1)
+    } catch (err) {
+      toast.error(err?.response?.data?.detail ?? 'Clôture impossible.')
+    }
+  }
+
+  async function relancerNotifications() {
+    try {
+      const res = await qhseApi.incidents.relancerNotifications()
+      const nb = res?.data?.relances ?? 0
+      toast.success(`${nb} relance(s) de notification envoyée(s).`)
+      setIncidentsReload((n) => n + 1)
+    } catch (err) {
+      toast.error(err?.response?.data?.detail ?? 'Relance impossible.')
+    }
+  }
 
   async function ouvrirCreationLoto() {
     try {
@@ -799,6 +890,20 @@ export default function Risques() {
     {
       id: 'date_incident', header: 'Date', width: 120, align: 'right',
       accessor: (r) => r.date_incident, cell: (v) => formatDate(v),
+    },
+    // XQHS19 — `notification_en_retard` est calculé côté serveur : une
+    // notification requise et non faite dans le délai légal bloque la clôture.
+    {
+      id: 'notification', header: 'Notification', width: 150, align: 'center',
+      accessor: (r) => (r.notification_requise
+        ? (r.notification_en_retard ? 'retard' : 'ok')
+        : ''),
+      cell: (v) => {
+        if (!v) return '—'
+        return v === 'retard'
+          ? <Badge tone="danger">En retard</Badge>
+          : <Badge tone="success">À jour</Badge>
+      },
     },
   ], [])
 
@@ -1014,15 +1119,36 @@ export default function Risques() {
           <QhseResourceList
             title="Registre des incidents HSE"
             subtitle="Accidents, presqu’accidents, incidents"
-            fetcher={() => qhseApi.incidents.list()}
+            fetcher={() => (incidentsRetardOnly
+              ? qhseApi.incidents.notificationsEnRetard()
+              : qhseApi.incidents.list())}
             columns={incidentsCols}
             exportName="qhse-incidents"
-            deps={[incidentsReload]}
-            actions={
-              <Button onClick={() => setCreatingIncident(true)}>
-                <Plus size={16} /> Déclarer un incident
-              </Button>
-            }
+            deps={[incidentsReload, incidentsRetardOnly]}
+            actions={(
+              <>
+                <Button
+                  variant={incidentsRetardOnly ? 'default' : 'outline'}
+                  onClick={() => setIncidentsRetardOnly((v) => !v)}
+                >
+                  <AlertOctagon size={16} /> Notifications en retard
+                </Button>
+                <Button variant="outline" onClick={relancerNotifications}>
+                  <ListChecks size={16} /> Relancer
+                </Button>
+                <Button onClick={() => setCreatingIncident(true)}>
+                  <Plus size={16} /> Déclarer un incident
+                </Button>
+              </>
+            )}
+            rowActions={(r) => (
+              r.statut === 'clos'
+                ? []
+                : [{
+                  id: 'cloturer', label: 'Clôturer', icon: XCircle,
+                  onClick: () => cloturerIncident(r),
+                }]
+            )}
           />
           <QhseResourceList
             title="Déclarations CNSS"

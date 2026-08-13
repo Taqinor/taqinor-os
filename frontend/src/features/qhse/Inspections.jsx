@@ -578,6 +578,19 @@ export default function Inspections() {
     },
   ], [])
 
+  // XQHS15 — diffusion des procédures : accusés de lecture EN ATTENTE de
+  // l'utilisateur courant (lecture seule — la confirmation de lecture est une
+  // signature serveur, jamais un PATCH depuis l'écran).
+  const lecturesCols = useMemo(() => [
+    { id: 'reference', header: 'Réf.', width: 130, accessor: (r) => r.procedure_reference || '—' },
+    { id: 'titre', header: 'Procédure', accessor: (r) => r.procedure_titre || '—' },
+    { id: 'version', header: 'V.', width: 70, align: 'right', accessor: (r) => r.procedure_version ?? '—' },
+    {
+      id: 'date_diffusion', header: 'Diffusée le', width: 140, align: 'right',
+      accessor: (r) => r.date_diffusion, cell: (v) => formatDate(v),
+    },
+  ], [])
+
   const retoursCols = useMemo(() => [
     { id: 'chantier_id', header: 'Chantier', width: 120, accessor: (r) => r.chantier_id ?? '—' },
     { id: 'note', header: 'Note /5', width: 100, align: 'right', accessor: (r) => r.note_satisfaction ?? '—' },
@@ -702,6 +715,14 @@ export default function Inspections() {
                   disabled: busyProc === r.id, onClick: () => activerProcedure(r),
                 }]
               : [])}
+          />
+          <QhseResourceList
+            title="Mes lectures en attente"
+            subtitle="Procédures diffusées que je n’ai pas encore accusées en lecture (XQHS15)"
+            fetcher={() => qhseApi.proceduresQualite.mesLecturesEnAttente()}
+            columns={lecturesCols}
+            exportName="qhse-lectures-en-attente"
+            deps={[reloadProc]}
           />
           <MoyenneRetoursWidget deps={[reloadRetours]} />
           <QhseResourceList

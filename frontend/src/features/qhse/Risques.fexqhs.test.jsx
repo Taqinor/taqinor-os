@@ -26,7 +26,11 @@ beforeAll(() => {
   }
 })
 
-const { empty, observationCreate, roList, roRevuesDues, roCreate } = vi.hoisted(() => ({
+const {
+  empty, observationCreate, roList, roRevuesDues, roCreate,
+  incidentCreate, incidentList, incidentCloturer, incidentRetards,
+  incidentRelancer,
+} = vi.hoisted(() => ({
   empty: () => Promise.resolve({ data: [] }),
   observationCreate: vi.fn(() => Promise.resolve({ data: { id: 1 } })),
   roList: vi.fn(() => Promise.resolve({
@@ -38,6 +42,18 @@ const { empty, observationCreate, roList, roRevuesDues, roCreate } = vi.hoisted(
   })),
   roRevuesDues: vi.fn(() => Promise.resolve({ data: [] })),
   roCreate: vi.fn(() => Promise.resolve({ data: { id: 6 } })),
+  incidentCreate: vi.fn(() => Promise.resolve({ data: { id: 7 } })),
+  incidentList: vi.fn(() => Promise.resolve({
+    data: [{
+      id: 8, reference: 'INC-000008', titre: 'Déversement huile',
+      type_incident: 'environnement', gravite: 'majeure', statut: 'ouvert',
+      date_incident: '2026-08-01', notification_requise: true,
+      notification_en_retard: true,
+    }],
+  })),
+  incidentCloturer: vi.fn(() => Promise.resolve({ data: {} })),
+  incidentRetards: vi.fn(() => Promise.resolve({ data: [] })),
+  incidentRelancer: vi.fn(() => Promise.resolve({ data: { relances: 2 } })),
 }))
 
 vi.mock('../../api/qhseApi', () => ({
@@ -54,7 +70,13 @@ vi.mock('../../api/qhseApi', () => ({
     plansUrgence: { list: empty },
     secouristes: { list: empty },
     exercicesUrgence: { list: empty },
-    incidents: { list: empty },
+    incidents: {
+      list: (...a) => incidentList(...a),
+      create: (...a) => incidentCreate(...a),
+      cloturer: (...a) => incidentCloturer(...a),
+      notificationsEnRetard: (...a) => incidentRetards(...a),
+      relancerNotifications: (...a) => incidentRelancer(...a),
+    },
     declarationsCnss: { list: empty },
     analysesIncident: { list: empty },
     observationsSecurite: {
@@ -165,5 +187,62 @@ describe('Risques — Risques & opportunités SMQ (FE-XQHS14)', () => {
     const posted = roCreate.mock.calls[0][0]
     expect(posted).not.toHaveProperty('criticite_inherente')
     expect(posted).not.toHaveProperty('criticite_residuelle')
+  })
+})
+
+/* FE-XQHS19 — les champs environnement de `Incident` (substance/quantité/
+   milieu/notification), la clôture gatée et le suivi des notifications en
+   retard existaient côté serveur sans aucune surface d'écran. */
+describe('Risques — Incidents environnementaux (FE-XQHS19)', () => {
+  it('n’expose les champs environnement que pour un événement de type Environnement', async () => {
+    const user = userEvent.setup()
+    withProviders(<Risques />)
+    await user.click(screen.getByRole('tab', { name: 'Incidents' }))
+    await user.click(await screen.findByRole('button', { name: /Déclarer un incident/ }))
+
+    const dialog = await screen.findByRole('dialog')
+    expect(within(dialog).queryByLabelText('Substance')).toBeNull()
+
+    await user.click(within(dialog).getByLabelText('Type d’événement'))
+    await user.click(await screen.findByRole('option', { name: 'Environnement' }))
+    expect(await within(dialog).findByLabelText('Substance')).toBeInTheDocument()
+
+    await user.type(within(dialog).getByLabelText('Titre'), 'Déversement gasoil')
+    await user.type(within(dialog).getByLabelText('Substance'), 'Gasoil')
+    await user.type(within(dialog).getByLabelText('Quantité estimée'), '12.5')
+    await user.click(within(dialog).getByRole('button', { name: 'Déclarer' }))
+
+    await waitFor(() => expect(incidentCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        titre: 'Déversement gasoil', type_incident: 'environnement',
+        substance: 'Gasoil', quantite_estimee: 12.5,
+      }),
+    ))
+  })
+
+  it('clôture un incident ouvert (gate serveur) et relance les notifications', async () => {
+    const user = userEvent.setup()
+    withProviders(<Risques />)
+    await user.click(screen.getByRole('tab', { name: 'Incidents' }))
+    await waitFor(() => expect(
+      screen.getAllByText('Déversement huile').length).toBeGreaterThan(0))
+    // La notification requise et non faite est signalée en retard.
+    expect(screen.getAllByText('En retard').length).toBeGreaterThan(0)
+
+    await user.click(screen.getAllByRole('button', { name: 'Clôturer' })[0])
+    await waitFor(() => expect(incidentCloturer).toHaveBeenCalledWith(8))
+
+    await user.click(screen.getByRole('button', { name: /Relancer/ }))
+    await waitFor(() => expect(incidentRelancer).toHaveBeenCalled())
+  })
+
+  it('bascule sur les notifications en retard (endpoint dédié)', async () => {
+    const user = userEvent.setup()
+    withProviders(<Risques />)
+    await user.click(screen.getByRole('tab', { name: 'Incidents' }))
+    await waitFor(() => expect(incidentList).toHaveBeenCalled())
+
+    await user.click(screen.getByRole('button', { name: /Notifications en retard/ }))
+    await waitFor(() => expect(incidentRetards).toHaveBeenCalled())
   })
 })

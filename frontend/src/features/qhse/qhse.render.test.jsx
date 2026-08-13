@@ -35,6 +35,9 @@ vi.mock('../../api/qhseApi', () => {
         list: emptyList,
         statistiquesTfTg: () =>
           res({ tf: '6.00', tg: '0.02', accidents_avec_arret: 3 }),
+        // XQHS19 — clôture gatée + suivi des notifications environnementales.
+        cloturer: emptyList, notificationsEnRetard: emptyList,
+        relancerNotifications: emptyList,
       },
       iso9001Readiness: () =>
         res({
@@ -65,7 +68,9 @@ vi.mock('../../api/qhseApi', () => {
       capa: { list: emptyList, enRetard: emptyList },
       plansInspection: crud(), plansChantier: crud(), releves: crud(),
       grillesAudit: crud(), audits: crud(), notationsFinChantier: crud(),
-      proceduresQualite: crud(), retoursClient: crud(),
+      // XQHS15 — « mes lectures en attente » (accusés de lecture procédures).
+      proceduresQualite: { ...crud(), mesLecturesEnAttente: emptyList },
+      retoursClient: crud(),
       evaluationsRisque: crud(), permisTravail: crud(), consignationsLoto: crud(),
       // XQHS14 — registre risques/opportunités SMQ (onglet dédié de Risques).
       risquesOpportunites: {
