@@ -1844,6 +1844,20 @@ def _brouillon_relance_engagement(devis, declencheurs):
     return f'{salutation}, {corps}'
 
 
+def devis_en_cours(company):
+    """NTCPQ23 — Devis NON encore acceptés d'une société (brouillon/envoyé).
+
+    Point d'entrée cross-app en LECTURE (``apps.cpq`` s'en sert pour son
+    tableau de bord de marge interne, sans importer ``apps.ventes.models``).
+    Précharge les lignes et leurs produits (le calcul de marge les parcourt)."""
+    from .models import Devis
+    return Devis.objects.filter(
+        company=company,
+        statut__in=(Devis.Statut.BROUILLON, Devis.Statut.ENVOYE),
+    ).select_related('client', 'created_by').prefetch_related(
+        'lignes__produit__categorie').order_by('-date_creation')
+
+
 def frequence_co_achat(company, produit_id, *, limite=10):
     """NTCPQ19 — Fréquence de CO-ACHAT d'un produit dans les devis ACCEPTÉS.
 

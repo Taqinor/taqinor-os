@@ -229,6 +229,43 @@ def devis_marge_sous_seuil(devis):
     return False
 
 
+def devis_sous_seuil_marge(company, *, commercial_id=None, famille=None):
+    """NTCPQ23 — Devis EN COURS dont au moins une ligne est sous son seuil de
+    marge (NTCPQ6). Usage INTERNE staff strict — ne quitte jamais l'ERP.
+
+    Seuls les devis non encore acceptés sont listés : dès qu'une ligne repasse
+    au-dessus du seuil (ou que le devis est accepté), il disparaît de la liste.
+    Filtres optionnels : ``commercial_id`` (créateur du devis) et ``famille``
+    (nom de catégorie concernée). Lecture cross-app ventes via son
+    ``selectors`` (jamais un import de ses modèles)."""
+    from apps.ventes.selectors import devis_en_cours
+
+    resultats = []
+    for devis in devis_en_cours(company):
+        if commercial_id and str(devis.created_by_id or '') != str(commercial_id):
+            continue
+        if not devis_marge_sous_seuil(devis):
+            continue
+        familles = sorted({
+            ligne.produit.categorie.nom
+            for ligne in devis.lignes.all()
+            if ligne.produit_id and ligne.produit.categorie_id})
+        if famille and famille not in familles:
+            continue
+        resultats.append({
+            'devis_id': devis.id,
+            'reference': devis.reference,
+            'statut': devis.statut,
+            'client_nom': getattr(devis.client, 'nom', None),
+            'commercial_id': devis.created_by_id,
+            'commercial': (getattr(devis.created_by, 'username', None)
+                           if devis.created_by_id else None),
+            'familles': familles,
+            'total_ht': str(devis.total_ht),
+        })
+    return resultats
+
+
 def clause_sapplique(clause, context):
     """NTCPQ11 — Une clause s'applique-t-elle à ce contexte de devis ?
 

@@ -267,6 +267,23 @@ class DevisVariantesView(APIView):
                         status=status.HTTP_201_CREATED)
 
 
+class MargeSousSeuilView(APIView):
+    """NTCPQ23 — GET ``cpq/marge-sous-seuil/``.
+
+    Tableau de bord CPQ INTERNE : devis en cours (non encore acceptés) dont au
+    moins une ligne passe sous le seuil de marge de sa famille (NTCPQ6).
+    Réservé aux rôles staff — ces données de marge ne quittent JAMAIS l'ERP
+    (aucune sortie client, règle #4). Filtres : ``?commercial=`` et
+    ``?famille=``."""
+    permission_classes = [IsResponsableOrAdmin]
+
+    def get(self, request):
+        return Response({'devis': selectors.devis_sous_seuil_marge(
+            request.user.company,
+            commercial_id=request.query_params.get('commercial'),
+            famille=request.query_params.get('famille'))})
+
+
 class FeuilleConfigurationView(APIView):
     """NTCPQ22 — GET ``cpq/devis/{id}/feuille-configuration/``.
 
