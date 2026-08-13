@@ -25,6 +25,7 @@ import { INVENTAIRE_ACCENT } from '../../features/stock/inventaireAccent'
 // apps/stock/services.py:check_fournisseur_statut_commande/paiement). Ce
 // module n'ajoute qu'un sélecteur + motif : jamais de logique de blocage
 // dupliquée côté client.
+// source-choix: stock.Fournisseur.statut
 const STATUT_OPTIONS = [
   { value: 'actif', label: 'Actif' },
   { value: 'bloque_commandes', label: 'Bloqué (commandes)' },

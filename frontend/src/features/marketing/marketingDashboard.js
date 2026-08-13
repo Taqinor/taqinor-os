@@ -10,6 +10,7 @@
 
 // Statuts « actifs » d'une campagne (en file d'attente ou en cours d'envoi —
 // ni brouillon, ni terminée/annulée). Miroir de `Campagne.Statut` (backend).
+// source-choix: marketing.Campagne.statut
 const STATUTS_ACTIFS = ['en_file', 'envoi_en_cours']
 
 export function campagnesActives(campagnes) {

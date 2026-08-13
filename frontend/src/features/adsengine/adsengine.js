@@ -369,7 +369,9 @@ export function filterActionLog(actions, { statut, mode } = {}) {
 // Représentation PARTAGÉE avec le backend : 7 jours (lundi→dimanche) × 24
 // heures, 1 = diffusion autorisée. Une case PAR HEURE ⇒ toute borne est, par
 // construction, toujours à l'heure pleine (jamais de saisie de minutes).
+// source-choix: adsengine.dayparting.DAYS
 export const DP_DAYS = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun']
+// source-choix: adsengine.dayparting.DAYS
 export const DP_DAY_LABELS = {
   mon: 'Lun', tue: 'Mar', wed: 'Mer', thu: 'Jeu', fri: 'Ven', sat: 'Sam', sun: 'Dim',
 }

@@ -36,6 +36,7 @@ const GRAVITE_OPTS = Object.entries(GRAVITE).map(([value, v]) => ({
 }))
 
 // XQHS2 — dispositions possibles (miroir de `NonConformite.Disposition`).
+// source-choix: qhse.NonConformite.disposition
 const DISPOSITION_OPTS = [
   { value: 'rebut', label: 'Rebut' },
   { value: 'retouche', label: 'Retouche' },

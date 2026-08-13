@@ -14,7 +14,9 @@ import { VENTES_ACCENT_STYLE } from '../../features/ventes/accent'
 
 const dh = (v) => formatMAD(v, { decimals: 2 })
 
-// Modes de paiement (miroir de Paiement.Mode côté backend).
+// Modes de paiement. Le modele vit dans `facturation` (pas `ventes`) ;
+// `all` est la sentinelle du FILTRE, jamais un mode enregistre.
+// source-choix: facturation.Paiement.mode +all
 const MODES = [
   { value: 'all', label: 'Tous les modes' },
   { value: 'especes', label: 'Espèces' },
