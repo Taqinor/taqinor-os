@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from 'react'
-import { Route, Check, X, Plus, Trash2, PlayCircle } from 'lucide-react'
+import { Route, Check, X, Plus, Trash2, PlayCircle, Save } from 'lucide-react'
 import adsengineApi from './adsengineApi'
 import {
   normalizePreflight, normalizeValidation, normalizeFlightTemplate,
@@ -27,6 +27,19 @@ import { useAdsPermissions } from './useAdsPermissions'
    s'activer (structurel) — la liste de ce qui manque est explicite.
    « Valider le plan » renvoie soit un feu vert, soit un REFUS avec ses raisons FR
    (jamais fabriquées : elles viennent de l'API). La simulation se lance d'ici.
+
+   PACT113 — le plan composé était 100 % ÉPHÉMÈRE : ``plans-vol/``
+   (``FlightPlan``) et ``phases-vol/`` (``FlightPhase``) sont déjà des
+   ViewSets CRUD complets, mais rien ici ne les appelait jamais — fermer
+   l'onglet perdait tout le plan. Au montage, l'écran charge maintenant le
+   plan le plus RÉCENT de la société (``plans-vol/`` trié `-created_at`) et
+   ses phases RÉELLES (``phases-vol/``, filtré côté client par ``plan`` — ce
+   ViewSet ne filtre pas côté serveur) pour pré-remplir nom + phases.
+   « Enregistrer le plan » crée le ``FlightPlan`` (POST) au premier
+   enregistrement puis ses ``FlightPhase`` (une par phase composée,
+   ``num_arms``/``week_span`` dérivés du gabarit) ; les enregistrements
+   suivants renomment le plan (PATCH) et REMPLACENT ses phases par la
+   composition courante (le gabarit a pu changer entre deux enregistrements).
    ========================================================================== */
 
 const EMPTY_VAR = { cle: '', valeur: '' }
@@ -52,9 +65,46 @@ export default function FlightPlanScreen() {
   const [variables, setVariables] = useState([{ ...EMPTY_VAR }])
   const [selectedArms, setSelectedArms] = useState(() => new Set())
 
+  // PACT113 — persistance RÉELLE (FlightPlan/FlightPhase). `planId` null =
+  // rien n'est encore enregistré ; `persistedPhaseIds` = les phases-vol/
+  // actuellement en base pour CE plan (remplacées au prochain enregistrement).
+  const [planId, setPlanId] = useState(null)
+  const [persistedPhaseIds, setPersistedPhaseIds] = useState([])
+  const [saving, setSaving] = useState(false)
+  const [saveMsg, setSaveMsg] = useState('')
+  const [saveErr, setSaveErr] = useState('')
+
   const [validation, setValidation] = useState(null) // { ok, raisons }
   const [simMsg, setSimMsg] = useState('')
   const [busy, setBusy] = useState(false)
+
+  // PACT113 — charge le plan le plus RÉCENT de la société (s'il en existe
+  // un — `plans-vol/` est trié `-created_at` côté serveur) et ses phases
+  // réelles, pour que « fermer l'onglet » ne perde plus rien.
+  const loadSavedPlan = useCallback(() => {
+    adsengineApi.flightplan.list()
+      .then(r => {
+        const rows = Array.isArray(r.data) ? r.data : (r.data?.results || [])
+        const p = rows[0]
+        if (!p) return
+        setPlanId(p.id)
+        setNom(p.name || '')
+        return adsengineApi.flightplan.phases.list()
+          .then(pr => {
+            const allPhases = Array.isArray(pr.data) ? pr.data : (pr.data?.results || [])
+            const mine = allPhases
+              .filter(ph => ph && ph.plan === p.id)
+              .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
+            setPersistedPhaseIds(mine.map(ph => ph.id))
+            setPhases(mine.map((ph, i) => ({
+              key: ph.tested_variable || String(ph.id),
+              label: ph.name || ph.tested_variable || `Phase ${i + 1}`,
+              duree_mois: Number.isFinite(ph.week_span) ? ph.week_span / 4 : null,
+            })))
+          })
+      })
+      .catch(() => {})
+  }, [])
 
   const load = useCallback(() => {
     setLoading(true)
@@ -69,7 +119,8 @@ export default function FlightPlanScreen() {
       .then(r => setPreflight(normalizePreflight(r.data)))
       .catch(() => setPreflight({ pret: false, portes: [], manquantes: [] }))
       .finally(() => setLoading(false))
-  }, [])
+    loadSavedPlan()
+  }, [loadSavedPlan])
 
   // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement au montage
   useEffect(() => { load() }, [load])
@@ -107,6 +158,48 @@ export default function FlightPlanScreen() {
     variables: variables.filter(v => v.cle),
     bras: [...selectedArms],
   })
+
+  // PACT113 — persiste le plan composé (FlightPlan + FlightPhase, jamais
+  // seulement le payload validate/simulate). Premier enregistrement = POST du
+  // plan puis de chaque phase (num_arms au plancher backend, week_span
+  // dérivé de la durée en mois choisie par le gabarit) ; les suivants
+  // renomment le plan et REMPLACENT ses phases par la composition courante.
+  const savePlan = async () => {
+    setSaving(true); setSaveMsg(''); setSaveErr('')
+    try {
+      let idToUse = planId
+      const wasNew = idToUse == null
+      if (wasNew) {
+        const r = await adsengineApi.flightplan.create({ name: nom })
+        idToUse = r.data?.id
+        setPlanId(idToUse)
+      } else {
+        await adsengineApi.flightplan.update(idToUse, { name: nom })
+        for (const oldId of persistedPhaseIds) {
+          await adsengineApi.flightplan.phases.remove(oldId).catch(() => {})
+        }
+      }
+      const createdIds = []
+      for (let i = 0; i < phases.length; i++) {
+        const p = phases[i]
+        const r = await adsengineApi.flightplan.phases.create({
+          plan: idToUse, order: i, name: p.label || p.key || `Phase ${i + 1}`,
+          tested_variable: p.key || '',
+          num_arms: 2,
+          week_span: Math.max(1, Math.round((p.duree_mois || 0) * 4)),
+          launch_template: templateKey || '',
+          budget_mad: 0,
+        })
+        if (r.data?.id != null) createdIds.push(r.data.id)
+      }
+      setPersistedPhaseIds(createdIds)
+      setSaveMsg(wasNew ? 'Plan enregistré.' : 'Plan mis à jour.')
+    } catch {
+      setSaveErr('Enregistrement du plan impossible.')
+    } finally {
+      setSaving(false)
+    }
+  }
 
   const validate = async () => {
     setBusy(true); setValidation(null); setSimMsg('')
@@ -183,6 +276,26 @@ export default function FlightPlanScreen() {
                   ))}
                 </ol>
               )}
+
+              {/* PACT113 — persiste le plan (FlightPlan + FlightPhase) : sans
+                  ce bouton, fermer l'onglet perdait tout le plan composé. */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', marginTop: '0.75rem' }}>
+                <button type="button" className="btn btn-primary" data-testid="ae-fp-save"
+                  disabled={saving || !nom.trim() || !composed || !canManage}
+                  title={!canManage ? "Nécessite la permission de gestion (adsengine_manage)." : undefined}
+                  onClick={savePlan}
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}>
+                  <Save size={14} aria-hidden="true" /> Enregistrer le plan
+                </button>
+                {planId != null && (
+                  <span className="badge" data-testid="ae-fp-saved-badge"
+                    style={{ background: '#dcfce7', color: '#166534' }}>
+                    Enregistré
+                  </span>
+                )}
+              </div>
+              {saveMsg && <p data-testid="ae-fp-save-msg" style={{ color: '#16a34a', margin: '0.4rem 0 0' }}>{saveMsg}</p>}
+              {saveErr && <p data-testid="ae-fp-save-err" style={{ color: '#dc2626', margin: '0.4rem 0 0' }}>{saveErr}</p>}
             </section>
 
             {/* Variables */}

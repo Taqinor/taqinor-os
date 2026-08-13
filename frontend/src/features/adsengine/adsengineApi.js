@@ -163,6 +163,14 @@ const adsengineApi = {
     validate: (payload) => api.post('/adsengine/plans-vol/validate/', payload),
     // Lance une simulation depuis le plan composé.
     simulate: (payload) => api.post('/adsengine/plans-vol/simulate/', payload),
+    // PACT113 — phases RÉELLES (``FlightPhase``, routeur ``phases-vol/``) : le
+    // plan composé était 100 % éphémère (jamais envoyé à ``plans-vol/``/
+    // ``phases-vol/``, pourtant déjà des ViewSets CRUD complets) — fermer
+    // l'onglet perdait tout. Ce ViewSet ne filtre pas par plan côté serveur ;
+    // l'appelant filtre par ``plan`` côté client sur la liste renvoyée.
+    phases: {
+      ...resource('phases-vol'),
+    },
   },
 
   // ── ENG14/ENG43 — Règles (gabarits) + dry-run ──
