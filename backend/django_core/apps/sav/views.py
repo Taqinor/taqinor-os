@@ -51,6 +51,35 @@ from .serializers import (
     WorksheetMaintenanceModeleSerializer, TicketWorksheetSerializer,
 )
 
+
+def _qr_data_uri(target):
+    """NTMOB23 — encode ``target`` en QR PNG (data-URI), ou ``None``.
+
+    Même patron que le QR de signalement QHSE (``apps.qhse.services``) : la lib
+    ``qrcode`` est DÉJÀ épinglée pour la cérémonie de signature devis — aucune
+    nouvelle dépendance. Absente ou en échec → ``None``, jamais une exception :
+    le partage dégrade sur le lien en clair."""
+    try:
+        import base64
+        import io as _io
+
+        import qrcode
+    except ImportError:  # pragma: no cover - défensif
+        return None
+    try:
+        qr = qrcode.QRCode(
+            error_correction=qrcode.constants.ERROR_CORRECT_M,
+            box_size=8, border=2)
+        qr.add_data(target)
+        qr.make(fit=True)
+        buf = _io.BytesIO()
+        qr.make_image().save(buf, 'PNG')
+        return 'data:image/png;base64,' + base64.b64encode(
+            buf.getvalue()).decode()
+    except Exception:  # pragma: no cover - défensif
+        return None
+
+
 READ_ACTIONS = ['list', 'retrieve']
 WRITE_ACTIONS = ['create', 'update', 'partial_update']
 
@@ -139,6 +168,9 @@ class EquipementViewSet(CompanyScopedModelViewSet):
             # `prix_achat_voir` (voir plus bas), jamais au niveau de l'action.
             return [IsAnyRole()]
         if self.action in READ_ACTIONS + [
+                # NTMOB23 — QR de partage : une LECTURE (le jeton public
+                # existait déjà pour les étiquettes imprimées).
+                'partage_qr',
                 'etiquettes', 'registre_garanties',
                 'estimations_maintenance', 'disponibilite']:
             return [HasPermissionOrLegacy('equipement_voir')()]
@@ -245,6 +277,25 @@ class EquipementViewSet(CompanyScopedModelViewSet):
         return Response(
             EquipementSerializer(
                 equipement, context={'request': request}).data)
+
+    @action(detail=True, methods=['get'], url_path='partage-qr',
+            permission_classes=[HasPermissionOrLegacy('equipement_voir')])
+    def partage_qr(self, request, pk=None):
+        """NTMOB23 — QR de partage rapide d'une fiche équipement.
+
+        Renvoie le lien de partage TOKENISÉ DÉJÀ EXISTANT (``/e/<public_token>``,
+        XSAV19 — le même que les étiquettes imprimées, jamais un second canal)
+        plus son encodage QR en data-URI PNG, pour qu'un technicien puisse le
+        faire scanner à un collègue sur site sans taper d'URL. Aucune nouvelle
+        infrastructure de partage : ni modèle, ni jeton, ni route publique.
+
+        La lib ``qrcode`` est déjà épinglée (cérémonie de signature devis,
+        QR QHSE) ; absente, on dégrade proprement en renvoyant ``qr`` à
+        ``null`` — le lien reste affichable et copiable."""
+        equipement = self.get_object()
+        url = request.build_absolute_uri(
+            f'/e/{equipement.ensure_public_token()}')
+        return Response({'url': url, 'qr': _qr_data_uri(url)})
 
     @action(detail=False, methods=['get'], url_path='etiquettes',
             permission_classes=[HasPermissionOrLegacy('equipement_voir')])
