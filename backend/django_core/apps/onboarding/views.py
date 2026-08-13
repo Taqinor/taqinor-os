@@ -15,7 +15,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
 from . import services
-from .selectors import resume_pour_utilisateur
+from .selectors import resume_pour_utilisateur, tours_pour_utilisateur
 
 
 class OnboardingProgressViewSet(viewsets.ViewSet):
@@ -54,4 +54,40 @@ class OnboardingProgressViewSet(viewsets.ViewSet):
         services.marquer_fait_manuel(self._company(request), request.user, pk)
         return Response(
             resume_pour_utilisateur(self._company(request), request.user),
+            status=status.HTTP_200_OK)
+
+
+class ProductTourViewSet(viewsets.ViewSet):
+    """NTDMO14/15/16 — catalogue des visites guidées (« product tours »),
+    company + user scopés côté serveur (jamais lus du corps).
+
+    * ``GET  /api/django/onboarding/tours/`` — catalogue des 6 tours + statut
+      vu/non-vu pour l'utilisateur courant (un seul appel réseau) ;
+    * ``POST /api/django/onboarding/tours/{key}/vu/`` — marque un tour
+      vu/fermé (idempotent) ;
+    * ``POST /api/django/onboarding/tours/{key}/revoir/`` — NTDMO16, remet le
+      tour à zéro pour l'utilisateur courant SEULEMENT (bouton « Revoir » des
+      Paramètres)."""
+    permission_classes = [IsAuthenticated]
+
+    def _company(self, request):
+        return getattr(request.user, 'company', None)
+
+    def list(self, request):
+        return Response(tours_pour_utilisateur(self._company(request), request.user))
+
+    @action(detail=True, methods=['post'], url_path='vu',
+            permission_classes=[IsAuthenticated])
+    def vu(self, request, pk=None):
+        services.marquer_tour_vu(self._company(request), request.user, pk)
+        return Response(
+            tours_pour_utilisateur(self._company(request), request.user),
+            status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['post'], url_path='revoir',
+            permission_classes=[IsAuthenticated])
+    def revoir(self, request, pk=None):
+        services.reinitialiser_tour(self._company(request), request.user, pk)
+        return Response(
+            tours_pour_utilisateur(self._company(request), request.user),
             status=status.HTTP_200_OK)

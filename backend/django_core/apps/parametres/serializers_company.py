@@ -42,6 +42,9 @@ class CompanyProfileSerializer(serializers.ModelSerializer):
         # tenant via ce PATCH générique.
         read_only_fields = [
             'logo_key', 'signature_key', 'company', 'plan', 'nb_sieges_max',
+            # NTDMO20 — assignation réservée au founder (admin Django /
+            # gestion technique) : jamais éditable par le tenant via ce PATCH.
+            'essai_expire_le',
         ]
 
     def validate_responsable_defaut_leads(self, value):

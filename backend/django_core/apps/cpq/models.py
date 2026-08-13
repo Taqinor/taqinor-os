@@ -122,6 +122,13 @@ class RegleProduitCPQ(TenantModel):
     actions = models.JSONField(
         default=list, blank=True,
         help_text='Liste d\'actions déclenchées quand la règle est vraie.')
+    # NTCPQ21 — une règle déclenchée est par défaut un AVERTISSEMENT (badge
+    # rouge, jamais un blocage). Marquée bloquante, elle rend la configuration
+    # invalide de façon bloquante. Défaut False ⇒ comportement inchangé.
+    bloquante = models.BooleanField(
+        default=False,
+        help_text='Règle bloquante (et non simple avertissement) quand elle '
+                  'se déclenche.')
     actif = models.BooleanField(default=True)
     date_creation = models.DateTimeField(auto_now_add=True)
 
@@ -507,3 +514,96 @@ class ReponseConfigurateur(models.Model):
 
     def __str__(self):
         return f'{self.session_id}/{self.question_id}={self.valeur}'
+
+
+class ProduitEquivalent(TenantModel):
+    """NTCPQ16 — Règle de substitution produit par tier (moteur de variantes).
+
+    ``produit_source`` peut être remplacé par ``produit_substitut`` dans la
+    variante du tier donné (économique / standard / premium). Générique
+    multi-métiers — distinct du couple solaire Sans-batterie/Avec-batterie déjà
+    en production, qui reste un cas spécifique.
+
+    ARC1 — hérite de ``core.models.TenantModel``; ``company`` redéclaré à
+    l'identique (related_name explicite)."""
+    class Tier(models.TextChoices):
+        ECONOMIQUE = 'economique', 'Économique'
+        STANDARD = 'standard', 'Standard'
+        PREMIUM = 'premium', 'Premium'
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: purge tenant
+        related_name='cpq_produits_equivalents')
+    produit_source = models.ForeignKey(
+        'stock.Produit', on_delete=models.CASCADE,  # on_delete: règle sans objet si produit supprimé
+        related_name='cpq_equivalents_source')
+    produit_substitut = models.ForeignKey(
+        'stock.Produit', on_delete=models.CASCADE,  # on_delete: règle sans objet si substitut supprimé
+        related_name='cpq_equivalents_substitut')
+    tier = models.CharField(
+        max_length=20, choices=Tier.choices, default=Tier.STANDARD)
+    actif = models.BooleanField(default=True)
+
+    class Meta:
+        verbose_name = 'Produit équivalent'
+        verbose_name_plural = 'Produits équivalents'
+        ordering = ['produit_source_id', 'tier', 'id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'produit_source', 'produit_substitut',
+                        'tier'],
+                name='cpq_equiv_unique_co_src_sub_tier'),
+        ]
+        indexes = [
+            models.Index(fields=['company', 'produit_source', 'tier'],
+                         name='cpq_equiv_co_src_tier'),
+        ]
+
+    def __str__(self):
+        return (f'{self.produit_source_id} → {self.produit_substitut_id} '
+                f'({self.tier})')
+
+
+class ClauseCGV(TenantModel):
+    """NTCPQ11 — Clause / CGV dynamique appliquée selon le type de deal.
+
+    ``applicable_si`` est un arbre de conditions ET/OU/NON évalué par
+    ``core.rules.evaluate_condition_group`` contre le contexte du devis
+    (``type_deal``, ``montant``, ``total_ht``, ``remise_globale``…). Vide =
+    toujours applicable (seul ``type_deal`` filtre alors).
+
+    ``type_deal`` est un référentiel LIBRE (texte) : vide = tous les types.
+    Le snapshot des clauses retenues est figé sur
+    ``ventes.Devis.clauses_appliquees`` au moment de l'envoi, jamais recalculé
+    ensuite.
+
+    ARC1 — hérite de ``core.models.TenantModel``; ``company`` redéclaré à
+    l'identique (related_name explicite)."""
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: purge tenant
+        related_name='cpq_clauses_cgv')
+    nom = models.CharField(max_length=150)
+    corps_texte = models.TextField(
+        blank=True, default='',
+        help_text="Texte de la clause tel qu'il apparaîtra sur le document.")
+    type_deal = models.CharField(
+        max_length=100, blank=True, default='',
+        help_text='Référentiel libre (ex. « industriel »). Vide = tous types.')
+    applicable_si = models.JSONField(
+        default=dict, blank=True,
+        help_text='Arbre de conditions ET/OU/NON (core.rules). Vide = toujours.')
+    ordre = models.PositiveIntegerField(default=0)
+    actif = models.BooleanField(default=True)
+    date_creation = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'Clause / CGV'
+        verbose_name_plural = 'Clauses / CGV'
+        ordering = ['ordre', 'id']
+        indexes = [
+            models.Index(fields=['company', 'actif'],
+                         name='cpq_clause_co_actif'),
+        ]
+
+    def __str__(self):
+        return self.nom

@@ -8,6 +8,9 @@ from .views import (
     ConfigurateurRepondreView, ConfigurateurResultatView,
     ConfigurateurGenererDevisView, ValiderCompatibiliteView,
     SeuilMargeFamilleViewSet, RegleApprobationRemiseViewSet,
+    ClauseCGVViewSet, ProduitEquivalentViewSet, DevisVariantesView,
+    SuggestionsProduitView, FeuilleConfigurationView, MargeSousSeuilView,
+    RapportConformiteView,
 )
 
 router = DefaultRouter()
@@ -20,10 +23,30 @@ router.register(r'configurateur-questions', QuestionConfigurateurViewSet)
 # WIR105 — CRUD Paramètres CPQ (plus de dépendance au Django admin).
 router.register(r'seuils-marge', SeuilMargeFamilleViewSet)
 router.register(r'regles-approbation-remise', RegleApprobationRemiseViewSet)
+# NTCPQ12 — bibliothèque de clauses/CGV (écran Paramètres).
+router.register(r'clauses-cgv', ClauseCGVViewSet)
+# NTCPQ16 — règles de substitution produit (moteur de variantes).
+router.register(r'produits-equivalents', ProduitEquivalentViewSet)
 
 urlpatterns = [
     path('valider-compatibilite/', ValiderCompatibiliteView.as_view(),
          name='cpq-valider-compatibilite'),
+    # NTCPQ24 — rapport interne « taux de conformité des configurations ».
+    path('rapports/conformite/', RapportConformiteView.as_view(),
+         name='cpq-rapport-conformite'),
+    # NTCPQ23 — tableau de bord interne « marge sous seuil » (staff).
+    path('marge-sous-seuil/', MargeSousSeuilView.as_view(),
+         name='cpq-marge-sous-seuil'),
+    # NTCPQ19 — suggestions de vente croisée / montée en gamme.
+    path('suggestions/', SuggestionsProduitView.as_view(),
+         name='cpq-suggestions'),
+    # NTCPQ16 — moteur de génération des variantes d'un devis.
+    path('devis/<int:pk>/variantes/', DevisVariantesView.as_view(),
+         name='cpq-devis-variantes'),
+    # NTCPQ22 — feuille de configuration technique INTERNE (jamais client).
+    path('devis/<int:pk>/feuille-configuration/',
+         FeuilleConfigurationView.as_view(),
+         name='cpq-feuille-configuration'),
     path('configurateur/demarrer/', ConfigurateurDemarrerView.as_view(),
          name='cpq-configurateur-demarrer'),
     path('configurateur/<uuid:token>/repondre/',

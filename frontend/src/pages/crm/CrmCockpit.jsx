@@ -7,6 +7,9 @@ import { Button } from '../../ui'
 import { fetchClients, fetchLeads } from '../../features/crm/store/crmSlice'
 import { formatNumber } from '../../lib/format'
 import CrmInsightsPanel from './leads/CrmInsightsPanel'
+import DormantAccountsWidget from './DormantAccountsWidget'
+import PortfolioWidget from './dashboard/PortfolioWidget'
+import TerritoryCoverageWidget from './TerritoryCoverageWidget'
 
 /* ============================================================================
    ODY15 — Cockpit CRM : porte d'entrée de l'app (ModuleHero VX15 + actions
@@ -87,6 +90,12 @@ export default function CrmCockpit() {
 
       <div className="mt-2">
         <CrmInsightsPanel />
+      </div>
+
+      <div className="mt-4 grid gap-4 md:grid-cols-2">
+        <DormantAccountsWidget />
+        <PortfolioWidget />
+        <TerritoryCoverageWidget />
       </div>
     </div>
   )
