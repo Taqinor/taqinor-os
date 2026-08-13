@@ -121,6 +121,22 @@ class ProjetMigrationViewSet(CompanyScopedModelViewSet):
                 'réconciliation qui en sont la preuve. Non supprimable.')})
         super().perform_destroy(instance)
 
+    @action(detail=True, methods=['post'], url_path='migrer-a-blanc', permission_classes=[IsDirecteurOuAdmin])
+    def migrer_a_blanc(self, request, pk=None):
+        """NTMIG33 — rejoue le projet sur le tenant SANDBOX (NTADM10).
+
+        Sans sandbox provisionné : 400 explicite, rien n'est créé. La
+        production n'est jamais touchée — le service refuse d'écrire si la
+        société sandbox se confond avec celle du projet.
+        """
+        projet = self.get_object()
+        try:
+            rapport = services.migrer_a_blanc(projet, user=request.user)
+        except services.SandboxIndisponible as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(rapport)
+
     @action(detail=True, methods=['post'], url_path='terminer', permission_classes=[IsDirecteurOuAdmin])
     def terminer(self, request, pk=None):
         """NTMIG5 — clôture gardée.

@@ -825,6 +825,126 @@ def marquer_lot_termine(lot, user=None):
     return lot
 
 
+# ─────────────────────────────────────────────────────────────────────────
+# NTMIG33 — migration à blanc sur le sandbox (NTADM10) — jamais la production
+# ─────────────────────────────────────────────────────────────────────────
+#: Selectors de l'app sandbox (NTADM10) — SEUL point de couplage (lecture).
+ADMINOPS_SELECTORS_MODULE = 'apps.adminops.selectors'
+
+
+class SandboxIndisponible(ValueError):
+    """Aucun environnement sandbox prêt — no-op propre (NTMIG33).
+
+    Ce n'est pas une panne : un tenant qui n'a jamais provisionné de sandbox
+    est le cas nominal. L'endpoint le dit et propose de le créer.
+    """
+
+
+def _societe_sandbox(company):
+    """Société SANDBOX d'un tenant via les selectors d'``adminops``.
+
+    Import PARESSEUX + lecture par selector : jamais un import des modèles
+    d'``adminops``, jamais une redéfinition locale de « sandbox utilisable ».
+    """
+    import importlib
+
+    try:
+        module = importlib.import_module(ADMINOPS_SELECTORS_MODULE)
+    except ImportError:
+        return None
+    lecteur = getattr(module, 'sandbox_pret', None)
+    if lecteur is None:
+        return None
+    try:
+        env = lecteur(company)
+    except Exception:
+        return None
+    return getattr(env, 'sandbox_company', None) if env is not None else None
+
+
+def migrer_a_blanc(projet, user=None):
+    """NTMIG33 — rejoue TOUT le projet sur le tenant sandbox, jamais en prod.
+
+    Objectif : valider mappings + réconciliation sur des données réelles sans
+    risque. Le projet d'origine n'est pas touché du tout (ni statut, ni
+    compteurs, ni fichiers) : un PROJET MIROIR est créé dans la société
+    sandbox, ses lots y sont chargés depuis les fichiers mémorisés (NTMIG35),
+    et chacun produit son rapport de réconciliation.
+
+    GARDE-FOU CENTRAL — la société cible est vérifiée DIFFÉRENTE de celle du
+    projet avant la moindre écriture. Un sandbox mal provisionné qui pointerait
+    sur le tenant de production ferait de cette fonction un import réel non
+    demandé : on refuse plutôt que d'écrire.
+
+    Sans sandbox prêt : :class:`SandboxIndisponible` (no-op propre, rien créé).
+    Un lot dont le fichier source a été purgé (NTMIG35) est SAUTÉ avec son
+    motif — jamais rejoué « à vide », ce qui produirait un rapport de
+    réconciliation trompeur.
+    """
+    from django.db import transaction
+
+    societe_sandbox = _societe_sandbox(projet.company)
+    if societe_sandbox is None:
+        raise SandboxIndisponible(
+            'Aucun environnement sandbox prêt pour cette société : créez-en '
+            'un (Administration → Sandbox) avant de tester une migration à '
+            'blanc.')
+    if societe_sandbox.pk == projet.company_id:
+        raise SandboxIndisponible(
+            'Le sandbox déclaré désigne la société de production : migration '
+            'à blanc refusée.')
+
+    with transaction.atomic():
+        projet_blanc = ProjetMigration.objects.create(
+            company=societe_sandbox,
+            nom=f'[À blanc] {projet.nom}'[:200],
+            source=projet.source,
+            statut=ProjetMigration.Statut.CHARGEMENT,
+            cree_par=user if getattr(user, 'pk', None) else None,
+            date_debut=timezone.now(),
+            notes=(f'Migration à blanc du projet {projet.pk} '
+                   f'({projet.company_id}) — données de test uniquement.'))
+        lots_blancs = []
+        for lot in lots_du_projet(projet).order_by('ordre', 'pk'):
+            lots_blancs.append((lot, LotMigration.objects.create(
+                company=societe_sandbox, projet=projet_blanc,
+                entite=lot.entite, ordre=lot.ordre)))
+
+    resultats = []
+    for lot, lot_blanc in lots_blancs:
+        memorise = fichier_source_de(lot)
+        if memorise is None:
+            resultats.append({
+                'entite': lot.entite, 'lot_blanc': lot_blanc.pk,
+                'saute': True,
+                'motif': ('Fichier source indisponible (purgé ou jamais '
+                          'chargé) : lot non rejoué.')})
+            continue
+        file_bytes, filename = memorise
+        try:
+            charger_lot(lot_blanc, file_bytes, filename, user=user)
+        except Exception as exc:  # un lot en échec n'arrête pas l'essai
+            resultats.append({
+                'entite': lot.entite, 'lot_blanc': lot_blanc.pk,
+                'saute': True, 'motif': f'Chargement à blanc échoué : {exc}'})
+            continue
+        lot_blanc.refresh_from_db()
+        rapport = reconcilier_lot(lot_blanc)
+        resultats.append({
+            'entite': lot.entite, 'lot_blanc': lot_blanc.pk, 'saute': False,
+            'conforme': rapport.conforme, 'ecarts': rapport.ecarts,
+            'nb_source': rapport.nb_source,
+            'nb_cible': rapport.nb_cible_crees + rapport.nb_cible_existants})
+
+    return {
+        'projet_blanc': projet_blanc.pk,
+        'societe_sandbox': societe_sandbox.pk,
+        'lots': resultats,
+        'conforme': all(r.get('conforme') for r in resultats
+                        if not r.get('saute')) and bool(resultats),
+    }
+
+
 def lots_du_projet(projet):
     """Lots d'un projet, RE-FILTRÉS sur la société du projet.
 
