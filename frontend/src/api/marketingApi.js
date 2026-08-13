@@ -129,6 +129,17 @@ const marketingApi = {
     resultatsExport: (id) =>
       api.get(`/marketing/enquetes/${id}/resultats/export/`,
         { responseType: 'blob' }),
+    // PACT109 — ZMKT13 : liste des soumissions individuelles (filtrable
+    // réussi/échoué) — l'écran de résultats n'affichait que l'agrégat.
+    participations: (id, params) =>
+      api.get(`/marketing/enquetes/${id}/participations/`, { params }),
+  },
+  // PACT109 — ZMKT10 : certificat PDF d'UNE soumission (route isolée,
+  // publique/AllowAny côté serveur — 404 si non certifiée/échouée, aucune
+  // fuite d'existence). Téléchargé tel quel, jamais généré côté client.
+  reponsesEnquete: {
+    certificatUrl: (reponseId) =>
+      `/api/django/marketing/reponses-enquete/${reponseId}/certificat/`,
   },
 
   // ── NTMKT9 — Fidélité (points/mouvements) + règles d'upsell (FG240/241) ──
