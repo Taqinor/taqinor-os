@@ -499,6 +499,22 @@ class ClientViewSet(CompanyScopedModelViewSet):
         return Response(LeadActivitySerializer(act).data,
                         status=status.HTTP_201_CREATED)
 
+    @action(detail=True, methods=['get'], url_path='engagement',
+            permission_classes=[IsAnyRole])
+    def engagement(self, request, pk=None):
+        """NTCRM16 — Score d'engagement multi-signaux (0-100) de CE client."""
+        from .engagement import engagement_for_client
+        client = self.get_object()
+        return Response(engagement_for_client(client))
+
+    @action(detail=False, methods=['get'], url_path='engagement-bulk',
+            permission_classes=[IsAnyRole])
+    def engagement_bulk(self, request):
+        """NTCRM16 — Score d'engagement multi-signaux pour la liste (bulk)."""
+        from .engagement import engagement_bulk as _engagement_bulk
+        qs = self.get_queryset()
+        return Response(_engagement_bulk(list(qs)))
+
 
 class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
     """Leads + historique « chatter » (journal automatique + notes manuelles).
