@@ -33,6 +33,12 @@ vi.mock('./DormantAccountsWidget', () => ({
   default: () => <div data-testid="dormant-accounts-stub" />,
 }))
 
+// NTCRM29 — même patron : le widget portefeuille a son propre appel réseau
+// (couvert par son propre test), stubé ici pour ce smoke test d'assemblage.
+vi.mock('./dashboard/PortfolioWidget', () => ({
+  default: () => <div data-testid="portfolio-widget-stub" />,
+}))
+
 afterEach(() => { cleanup(); vi.clearAllMocks() })
 
 function makeStore({ clients = [], leads = [] } = {}) {

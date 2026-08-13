@@ -518,6 +518,18 @@ class ClientViewSet(CompanyScopedModelViewSet):
         qs = self.get_queryset()
         return Response(_engagement_bulk(list(qs)))
 
+    @action(detail=False, methods=['get'], url_path='mon-portefeuille',
+            permission_classes=[IsAnyRole])
+    def mon_portefeuille(self, request):
+        """NTCRM29 — Widget « portefeuille de comptes » : les comptes du
+        commercial CONNECTÉ (owner via leads liés), triés par score
+        d'engagement croissant (les plus froids en premier). Jamais scopé
+        depuis la query string — toujours ``request.user``/``request.user.
+        company``."""
+        from .selectors import portefeuille_commercial
+        results = portefeuille_commercial(request.user.company, request.user)
+        return Response({'count': len(results), 'results': results})
+
 
 class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
     """Leads + historique « chatter » (journal automatique + notes manuelles).

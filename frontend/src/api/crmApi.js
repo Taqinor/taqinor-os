@@ -28,6 +28,9 @@ const crmApi = {
   // comptes dormants (journalise une note sur le lead le plus récent lié).
   relancerDormance: (clientId) =>
     api.post(`/crm/clients/${clientId}/relancer-dormance/`),
+  // NTCRM29 — widget « portefeuille de comptes » : comptes du commercial
+  // connecté (owner via leads liés), triés par score d'engagement croissant.
+  getMonPortefeuille: () => api.get('/crm/clients/mon-portefeuille/'),
 
   // Leads / opportunities
   // VX55 — même `config` optionnel (signal d'annulation) que getClients.

@@ -2425,6 +2425,39 @@ def _as_date(value):
     return value.date() if hasattr(value, 'date') else value
 
 
+def portefeuille_commercial(company, user, now=None):
+    """NTCRM29 — Comptes (``Client``) dont ``user`` est owner via AU MOINS un
+    lead lié, triés par score d'engagement (NTCRM16) CROISSANT (les plus
+    froids en premier — priorisation d'action). Chaque entrée porte
+    ``plan_compte_id`` (``NTCRM10``, ``None`` si aucun plan de compte formel).
+    Toujours scopé société + owner — jamais de fuite cross-tenant ni
+    cross-commercial (aucun paramètre société/utilisateur accepté depuis la
+    requête, seulement ``request.user``)."""
+    from .engagement import compute_engagement_score, engagement_label
+    from .models import Client, Lead
+
+    if company is None or user is None:
+        return []
+    client_ids = (
+        Lead.objects.filter(company=company, owner=user, client__isnull=False)
+        .values_list('client_id', flat=True).distinct()
+    )
+    clients = Client.objects.filter(company=company, id__in=client_ids)
+    out = []
+    for client in clients:
+        score = compute_engagement_score(client, now=now)
+        plan_compte_id = client.plan_compte.id if hasattr(client, 'plan_compte') else None
+        out.append({
+            'client_id': client.id,
+            'nom': str(client),
+            'score': score,
+            'label': engagement_label(score),
+            'plan_compte_id': plan_compte_id,
+        })
+    out.sort(key=lambda r: r['score'])
+    return out
+
+
 def comptes_dormants(company, seuil_jours=90, now=None):
     """NTCRM14 — Clients avec au moins un devis/facture passé mais AUCUNE
     activité (dernier devis créé, dernière facture émise, dernier
