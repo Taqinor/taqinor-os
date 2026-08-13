@@ -10,7 +10,7 @@ from core.viewsets import CompanyScopedModelViewSet
 from apps.core.destroy_mixins import UsageGuardedDestroyMixin
 from authentication.scoping import scope_queryset, scope_client_queryset
 from .models import (
-    Apporteur, Appointment, Client, ConcurrentPerte, DealEnregistre,
+    Apporteur, Appointment, Client, ConcurrentPerte, DealEnregistre, Defi,
     EquipeCommerciale,
     ForecastEntry, ForecastSnapshot, Lead, LeadPlaybookProgress, LeadTag,
     MotifPerte, Canal, Parrainage, MessageTemplate, ObjectifCommercial,
@@ -31,7 +31,7 @@ from .serializers import (
     PlaybookSerializer, PlaybookEtapeSerializer, PlaybookTacheSerializer,
     LeadPlaybookProgressSerializer, SavedViewSerializer,
     SalleVenteSerializer, SalleVenteItemSerializer,
-    ApporteurSerializer, DealEnregistreSerializer,
+    ApporteurSerializer, DealEnregistreSerializer, DefiSerializer,
 )
 from apps.records.views import ChatterViewSetMixin
 from . import activity
@@ -2654,3 +2654,21 @@ class DealEnregistreViewSet(CompanyScopedModelViewSet):
         """NTCRM22 — liste des commissions À_PAYER, pour le comptable."""
         qs = self.get_queryset().filter(statut=DealEnregistre.Statut.A_PAYER)
         return Response(DealEnregistreSerializer(qs, many=True).data)
+
+
+class DefiViewSet(CompanyScopedModelViewSet):
+    """NTCRM23 — Défis d'équipe (gamification) : CRUD + classement."""
+    serializer_class = DefiSerializer
+    queryset = Defi.objects.select_related('company').all()
+
+    def get_permissions(self):
+        if self.action in READ_ACTIONS or self.action == 'classement':
+            return [IsAnyRole()]
+        return [IsResponsableOrAdmin()]
+
+    @action(detail=True, methods=['get'], url_path='classement',
+            permission_classes=[IsAnyRole])
+    def classement(self, request, pk=None):
+        from .selectors import classement_defi
+        defi = self.get_object()
+        return Response(classement_defi(defi))

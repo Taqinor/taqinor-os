@@ -2766,3 +2766,36 @@ class DealEnregistre(models.Model):
                     'Ce client est déjà enregistré par un autre apporteur '
                     f'({autre.apporteur.nom}), protégé jusqu\'au '
                     f'{autre.expire_le:%d/%m/%Y} — enregistrement refusé.')
+
+
+class Defi(models.Model):
+    """NTCRM23 — Défi d'équipe temporaire (gamification), distinct de
+    `ObjectifCommercial` (FG39, cible individuelle PERMANENTE privée) : un
+    défi est PUBLIC (visible de toute l'équipe, cf. NTCRM24), sur une fenêtre
+    de dates explicite (pas un système année/mois/trimestre), avec un
+    classement plutôt qu'un simple taux d'atteinte. Réutilise STRICTEMENT
+    `ObjectifCommercial.Metric` (jamais une seconde taxonomie de métriques)."""
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='defis')
+    nom = models.CharField(max_length=200, verbose_name='Nom du défi')
+    periode_debut = models.DateField(verbose_name='Début')
+    periode_fin = models.DateField(verbose_name='Fin')
+    metrique = models.CharField(
+        max_length=12, choices=ObjectifCommercial.Metric.choices,
+        verbose_name='Métrique')
+    cible_equipe = models.DecimalField(
+        max_digits=14, decimal_places=2, null=True, blank=True,
+        verbose_name="Cible d'équipe (optionnelle)")
+    recompense = models.CharField(
+        max_length=300, blank=True, default='', verbose_name='Récompense')
+    actif = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Défi d'équipe"
+        verbose_name_plural = "Défis d'équipe"
+        ordering = ['-periode_debut', '-id']
+
+    def __str__(self):
+        return self.nom

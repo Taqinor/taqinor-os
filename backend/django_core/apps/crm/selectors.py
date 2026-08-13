@@ -2505,3 +2505,64 @@ def salle_vente_summary_for_lead(company, lead_id):
     analytics = salle_vente_analytics(salle)
     analytics['salle_titre'] = salle.titre
     return analytics
+
+
+def _metric_count_for_owner(company, metric, owner, start_dt, end_dt):
+    """NTCRM23 — même 3 métriques CRM-only que `compute_attainment` (FG39),
+    mais paramétrées par une fenêtre de dates explicite (jamais le système
+    année/mois/trimestre d'`ObjectifCommercial`) et TOUJOURS par commercial
+    (jamais l'équipe entière — un classement compare des individus)."""
+    from decimal import Decimal
+
+    from .models import Appointment, Lead
+
+    if metric == 'nb_leads':
+        return Decimal(Lead.objects.filter(
+            company=company, owner=owner,
+            date_creation__gte=start_dt, date_creation__lt=end_dt).count())
+    if metric == 'nb_contacts':
+        return Decimal(Lead.objects.filter(
+            company=company, owner=owner, first_contacted_at__isnull=False,
+            first_contacted_at__gte=start_dt,
+            first_contacted_at__lt=end_dt).count())
+    if metric == 'nb_rdv':
+        return Decimal(Appointment.objects.filter(
+            company=company, created_by=owner,
+            statut=Appointment.Statut.EFFECTUE,
+            scheduled_at__gte=start_dt, scheduled_at__lt=end_dt).count())
+    # nb_devis / ca_signe — hors périmètre crm-only (comme compute_attainment).
+    return Decimal('0')
+
+
+def classement_defi(defi):
+    """NTCRM23 — Classement PAR COMMERCIAL sur la métrique/fenêtre du défi,
+    trié décroissant. Ne considère que les commerciaux ayant AU MOINS une
+    activité mesurée (jamais un classement pollué de zéros pour toute la
+    société) — cohérent avec « le plus de RDV ce mois »."""
+    import datetime as _dt
+
+    from django.utils import timezone as _tz
+
+    from authentication.models import CustomUser
+
+    start_dt = _tz.make_aware(
+        _dt.datetime.combine(defi.periode_debut, _dt.time.min),
+        _tz.get_current_timezone())
+    end_dt = _tz.make_aware(
+        _dt.datetime.combine(defi.periode_fin, _dt.time.min),
+        _tz.get_current_timezone()) + _dt.timedelta(days=1)
+
+    classement = []
+    for user in CustomUser.objects.filter(company=defi.company):
+        realise = _metric_count_for_owner(
+            defi.company, defi.metrique, user, start_dt, end_dt)
+        if realise > 0:
+            classement.append({
+                'owner_id': user.id,
+                'owner_nom': str(user),
+                'realise': realise,
+            })
+    classement.sort(key=lambda r: r['realise'], reverse=True)
+    for rang, entry in enumerate(classement, start=1):
+        entry['rang'] = rang
+    return classement

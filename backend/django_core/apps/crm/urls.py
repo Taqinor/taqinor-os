@@ -27,7 +27,7 @@ from .views import (
     ForecastEntryViewSet, PlanCompteViewSet, PlaybookEtapeViewSet,
     PlaybookTacheViewSet, PlaybookViewSet, RevueCompteViewSet,
     forecast_historique_view, forecast_rollup_view, lead_playbook_view,
-    SalleVenteViewSet, ApporteurViewSet, DealEnregistreViewSet,
+    SalleVenteViewSet, ApporteurViewSet, DealEnregistreViewSet, DefiViewSet,
 )
 
 router = DefaultRouter()
@@ -78,6 +78,8 @@ router.register(r'salles-vente', SalleVenteViewSet, basename='salle-vente')
 # NTCRM20 — Registre des apporteurs d'affaires (Deal Registration).
 router.register(r'apporteurs', ApporteurViewSet, basename='crm-apporteur')
 router.register(r'deals-enregistres', DealEnregistreViewSet, basename='deal-enregistre')
+# NTCRM23 — Défis et leaderboards d'équipe.
+router.register(r'defis', DefiViewSet, basename='crm-defi')
 
 urlpatterns = [
     # Récepteur des leads du site public (secret statique, voir webhooks.py)
