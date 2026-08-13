@@ -57,6 +57,7 @@ import ApplicationsSection from './ApplicationsSection'
 import MarketplaceSection from './MarketplaceSection'
 import ReferentielsSection from './ReferentielsSection'
 import ChatRetentionSection from './ChatRetentionSection'
+import ModelesBrandesSection from './ModelesBrandesSection'
 // EZ16 — message d'erreur FRANÇAIS, jamais du JSON brut.
 import { frenchError } from '../../lib/frenchError'
 
@@ -83,6 +84,10 @@ const REFERENTIELS_TAB = { key: 'referentiels', label: 'Référentiels', group: 
 // historique des purges, loi 09-08/CNDP). Ajouté localement, même logique
 // que N96/N94/XPLT23/ODX5/WIR159/WIR66.
 const CHAT_RETENTION_TAB = { key: 'chat_retention', label: 'Rétention (Discuter)', group: 'equipe' }
+// PACT117 — onglet « Modèles brandés » (core.BrandedTemplate FG393 : modèles
+// PDF/email/WhatsApp + aperçu serveur). Ajouté localement, même logique que
+// N96/N94/XPLT23/ODX5/WIR159/WIR66.
+const MODELES_BRANDES_TAB = { key: 'modeles_brandes', label: 'Modèles brandés', group: 'ventes' }
 
 // ── Conteneur de la page Paramètres (D1) ───────────────────────────────────────
 // Toute la logique (état du formulaire, chargements, handlers) vit ici, dans un
@@ -107,7 +112,7 @@ export default function ParametresEntreprise() {
   const searchResults = searchSettings(search)
   // Liste d'onglets affichée = onglets partagés + N96 (2FA) + N94 (traductions)
   // + XPLT23 (confidentialité) + ODX5 (applications).
-  const allTabs = [...TABS, SECURITE_COMPTE_TAB, TRADUCTIONS_TAB, CONFIDENTIALITE_TAB, APPLICATIONS_TAB, MARKETPLACE_TAB, REFERENTIELS_TAB, CHAT_RETENTION_TAB]
+  const allTabs = [...TABS, SECURITE_COMPTE_TAB, TRADUCTIONS_TAB, CONFIDENTIALITE_TAB, APPLICATIONS_TAB, MARKETPLACE_TAB, REFERENTIELS_TAB, CHAT_RETENTION_TAB, MODELES_BRANDES_TAB]
   // VX35 — onglets rangés en familles pour la sidebar verticale (ordre =
   // SETTINGS_GROUPS). groupTabs garantit qu'aucun onglet ne disparaît.
   const tabGroups = groupTabs(allTabs)
@@ -949,6 +954,8 @@ export default function ParametresEntreprise() {
           {tab === 'referentiels' && <ReferentielsSection />}
           {/* WIR157 — rétention chat (Discuter) + historique des purges (autonome). */}
           {tab === 'chat_retention' && <ChatRetentionSection />}
+          {/* PACT117 — modèles brandés PDF/email/WhatsApp + aperçu serveur. */}
+          {tab === 'modeles_brandes' && <ModelesBrandesSection />}
 
           {/* Bouton d'enregistrement du profil (onglets porteurs de champs) */}
           {showSave && saveButton}
