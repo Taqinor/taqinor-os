@@ -5,6 +5,7 @@
 import { lazy } from 'react'
 import {
   FileSignature, LibraryBig, BellRing, Wallet, PackageOpen, LayoutDashboard,
+  CreditCard,
 } from 'lucide-react'
 import { appGlyph } from '../../lib/apps/appGlyph'
 
@@ -32,6 +33,12 @@ const FinancesPage = lazy(() => import('./FinancesPage'))
 const LocationPage = lazy(() => import('./LocationPage'))
 const DashboardPage = lazy(() => import('./DashboardPage'))
 const ConfigLocationPage = lazy(() => import('./ConfigLocationPage'))
+// PACT138 — catalogue « revenus récurrents » (NTSUB1-4) : plans, options,
+// paliers d'usage, compteurs — jusque-là sans aucun écran.
+const AbonnementsPage = lazy(() => import('./AbonnementsPage'))
+// PACT139 — séquences/étapes de relance d'impayé (NTSUB8) — jusque-là sans
+// aucun écran.
+const DunningPage = lazy(() => import('./DunningPage'))
 
 const FS = <FileSignature size={17} strokeWidth={1.75} aria-hidden="true" />
 const LB = <LibraryBig size={17} strokeWidth={1.75} aria-hidden="true" />
@@ -39,6 +46,7 @@ const BR = <BellRing size={17} strokeWidth={1.75} aria-hidden="true" />
 const WL = <Wallet size={17} strokeWidth={1.75} aria-hidden="true" />
 const PO = <PackageOpen size={17} strokeWidth={1.75} aria-hidden="true" />
 const LD = <LayoutDashboard size={17} strokeWidth={1.75} aria-hidden="true" />
+const CC = <CreditCard size={17} strokeWidth={1.75} aria-hidden="true" />
 
 export default {
   key: 'contrats',
@@ -58,6 +66,8 @@ export default {
       { to: '/contrats/modeles', label: 'Modèles & clauses', icon: LB, roles: ROLES },
       { to: '/contrats/echeances', label: 'Échéances & alertes', icon: BR, roles: ROLES },
       { to: '/contrats/finances', label: 'Finances', icon: WL, roles: ROLES },
+      { to: '/contrats/abonnements', label: 'Abonnements', icon: CC, roles: ROLES },
+      { to: '/contrats/relances-impayes', label: 'Relances impayés', icon: BR, roles: ROLES },
       { to: '/contrats/config-location', label: 'Réglages location', icon: PO, roles: ROLES },
     ],
   },
@@ -69,6 +79,8 @@ export default {
     ['/contrats/modeles', 'Modèles & clauses'],
     ['/contrats/echeances', 'Échéances & alertes'],
     ['/contrats/finances', 'Finances de contrat'],
+    ['/contrats/abonnements', 'Abonnements'],
+    ['/contrats/relances-impayes', 'Relances impayés'],
     ['/contrats', 'Contrats'],
   ],
   sectionLabels: { contrats: 'Contrats' },
@@ -80,6 +92,8 @@ export default {
     { path: '/contrats/modeles', component: ModelesPage, roles: ROLES },
     { path: '/contrats/echeances', component: EcheancesPage, roles: ROLES },
     { path: '/contrats/finances', component: FinancesPage, roles: ROLES },
+    { path: '/contrats/abonnements', component: AbonnementsPage, roles: ROLES },
+    { path: '/contrats/relances-impayes', component: DunningPage, roles: ROLES },
     { path: '/contrats/:id', component: ContratDetail, roles: ROLES },
   ],
 }

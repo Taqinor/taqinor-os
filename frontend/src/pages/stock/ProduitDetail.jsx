@@ -18,6 +18,9 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
   Button, Tabs, TabsList, TabsTrigger, TabsContent,
 } from '../../ui'
+// PACT128 — onglet « Options » (groupes d'options NTCPQ1) sur la fiche
+// produit, en AJOUT au système d'onglets existant.
+import ProduitOptionsTab from './ProduitOptionsTab.jsx'
 
 // ZPUR10 / ZSTK3 — Fiche produit (au-delà du catalogue) : quantité « en
 // commande » (BCF brouillon/envoyé, jamais annulé/reçu) + rapport
@@ -362,6 +365,8 @@ export function ProduitDetail({ produit, onClose }) {
             <TabsTrigger value="previsionnel">Prévisionnel</TabsTrigger>
             {/* APX20 — 3ᵉ onglet, à côté des deux onglets achats. */}
             <TabsTrigger value="fiche">Fiche technique</TabsTrigger>
+            {/* PACT128 — 4ᵉ onglet : groupes d'options de configuration. */}
+            <TabsTrigger value="options">Options</TabsTrigger>
           </TabsList>
           <TabsContent value="en-commande">
             <OngletEnCommande produit={produit} />
@@ -371,6 +376,9 @@ export function ProduitDetail({ produit, onClose }) {
           </TabsContent>
           <TabsContent value="fiche">
             <OngletFicheTechnique produit={produit} />
+          </TabsContent>
+          <TabsContent value="options">
+            <ProduitOptionsTab produitId={produit.id} />
           </TabsContent>
         </Tabs>
 

@@ -18,6 +18,10 @@ beforeAll(() => {
 })
 
 const annuler = vi.fn(() => Promise.resolve({ data: { penalite_applicable: false } }))
+const { creerRdv, apiGet } = vi.hoisted(() => ({
+  creerRdv: vi.fn(() => Promise.resolve({ data: { id: 20 } })),
+  apiGet: vi.fn(() => Promise.resolve({ data: { creneaux: [] } })),
+}))
 
 vi.mock('../../api/santeApi', () => ({
   default: {
@@ -36,8 +40,15 @@ vi.mock('../../api/santeApi', () => ({
       }),
       update: () => Promise.resolve({ data: {} }),
       annuler: (...args) => annuler(...args),
+      create: (...args) => creerRdv(...args),
     },
   },
+}))
+
+// PACT115 — `disponibilites/?praticien=&date=` : mocké directement (l'agenda
+// l'appelle via `../../api/axios`, pas via `santeApi`).
+vi.mock('../../api/axios', () => ({
+  default: { get: (...args) => apiGet(...args) },
 }))
 
 function renderAgenda() {
@@ -53,13 +64,17 @@ function renderAgenda() {
 describe('SanteAgenda', () => {
   beforeEach(() => {
     window.confirm = vi.fn(() => true)
+    apiGet.mockClear()
+    apiGet.mockResolvedValue({ data: { creneaux: [] } })
+    creerRdv.mockClear()
+    creerRdv.mockResolvedValue({ data: { id: 20 } })
   })
 
   it('affiche une colonne par praticien avec ses rendez-vous', async () => {
     renderAgenda()
 
     await waitFor(() => {
-      expect(screen.getByText('Dr. Alami')).toBeInTheDocument()
+      expect(screen.getAllByText('Dr. Alami')[0]).toBeInTheDocument()
     })
     expect(screen.getByText('Jean Dupont')).toBeInTheDocument()
     expect(screen.getByTestId('agenda-colonne-1')).toBeInTheDocument()
@@ -78,5 +93,52 @@ describe('SanteAgenda', () => {
     await waitFor(() => {
       expect(annuler).toHaveBeenCalledWith(10, 'clinique')
     })
+  })
+
+  it('PACT115 — choisir un praticien recharge les créneaux DEPUIS LE SERVEUR', async () => {
+    apiGet.mockResolvedValue({ data: { creneaux: ['2026-08-03T09:00:00Z', '2026-08-03T09:30:00Z'] } })
+    renderAgenda()
+    await waitFor(() => expect(screen.getAllByText('Dr. Alami')[0]).toBeInTheDocument())
+
+    fireEvent.change(screen.getByLabelText('Praticien du nouveau rendez-vous'), { target: { value: '1' } })
+
+    await waitFor(() => expect(apiGet).toHaveBeenCalledWith(
+      '/sante/disponibilites/',
+      { params: { praticien: '1', date: expect.any(String) } },
+    ))
+    const select = screen.getByLabelText('Créneau disponible')
+    await waitFor(() => expect(select).not.toBeDisabled())
+    expect(select.querySelectorAll('option').length).toBe(3) // placeholder + 2 créneaux
+  })
+
+  it('PACT115 — planifie un rendez-vous sur un créneau serveur (jamais une heure saisie à l’aveugle)', async () => {
+    apiGet.mockResolvedValue({ data: { creneaux: ['2026-08-03T10:00:00Z'] } })
+    renderAgenda()
+    await waitFor(() => expect(screen.getAllByText('Dr. Alami')[0]).toBeInTheDocument())
+
+    fireEvent.change(screen.getByLabelText('Patient (ID)'), { target: { value: '5' } })
+    fireEvent.change(screen.getByLabelText('Praticien du nouveau rendez-vous'), { target: { value: '1' } })
+    const select = await screen.findByLabelText('Créneau disponible')
+    await waitFor(() => expect(select).not.toBeDisabled())
+    fireEvent.change(select, { target: { value: '2026-08-03T10:00:00Z' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Planifier' }))
+
+    await waitFor(() => expect(creerRdv).toHaveBeenCalledWith({
+      patient: 5, praticien: 1, date_heure_debut: '2026-08-03T10:00:00Z',
+    }))
+  })
+
+  it('PACT115 — changer la date recharge aussi les créneaux', async () => {
+    apiGet.mockResolvedValue({ data: { creneaux: [] } })
+    renderAgenda()
+    await waitFor(() => expect(screen.getAllByText('Dr. Alami')[0]).toBeInTheDocument())
+
+    fireEvent.change(screen.getByLabelText('Praticien du nouveau rendez-vous'), { target: { value: '1' } })
+    await waitFor(() => expect(apiGet).toHaveBeenCalledTimes(1))
+
+    fireEvent.change(screen.getByLabelText("Date de l'agenda"), { target: { value: '2026-08-04' } })
+    await waitFor(() => expect(apiGet).toHaveBeenCalledWith(
+      '/sante/disponibilites/', { params: { praticien: '1', date: '2026-08-04' } },
+    ))
   })
 })

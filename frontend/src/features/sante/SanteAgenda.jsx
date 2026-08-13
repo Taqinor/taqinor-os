@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { CalendarDays, GripVertical } from 'lucide-react'
 import { Button, toast } from '../../ui'
 import santeApi from '../../api/santeApi'
+import api from '../../api/axios'
 
 /* ============================================================================
    NTSAN4 — Agenda multi-praticiens (type Doctolib) : vue jour, colonnes =
@@ -9,6 +10,14 @@ import santeApi from '../../api/santeApi'
    d'un autre praticien pour le replanifier. Le serveur reste la seule source
    de vérité de la non-double-réservation (NTSAN2/NTSAN4) : un dépôt refusé
    (409/400) restaure l'affichage et montre le message serveur.
+
+   PACT115 — la vue `disponibilites` (NTSAN29, `GET /sante/disponibilites/
+   ?praticien=&date=`) calculait déjà les créneaux libres d'UN praticien pour
+   UN jour, mais aucun écran ne l'appelait : la création d'un rendez-vous se
+   faisait à l'aveugle (heure saisie à la main, cf. `ReceptionScreen.jsx`).
+   Le panneau « Nouveau rendez-vous » ci-dessous recharge les créneaux DEPUIS
+   LE SERVEUR à chaque changement de praticien OU de date — jamais un calcul
+   de disponibilité côté client.
    ========================================================================== */
 
 function toDateInputValue(date) {
@@ -27,6 +36,15 @@ export default function SanteAgenda() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [dragId, setDragId] = useState(null)
+
+  // PACT115 — panneau de création : praticien + date recharge les créneaux
+  // depuis le serveur (jamais un calcul local).
+  const [nouveauPraticien, setNouveauPraticien] = useState('')
+  const [nouveauPatient, setNouveauPatient] = useState('')
+  const [creneaux, setCreneaux] = useState([])
+  const [creneauChoisi, setCreneauChoisi] = useState('')
+  const [chargementCreneaux, setChargementCreneaux] = useState(false)
+  const [creationEnCours, setCreationEnCours] = useState(false)
 
   const load = () => {
     setLoading(true)
@@ -50,6 +68,45 @@ export default function SanteAgenda() {
     load()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [date])
+
+  // PACT115 — changer le praticien OU la date recharge les créneaux DEPUIS
+  // LE SERVEUR (`disponibilites/?praticien=&date=`), jamais un calcul local.
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- reset du créneau choisi au changement de praticien/date
+    setCreneauChoisi('')
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- pas de praticien choisi = pas de créneaux
+    if (!nouveauPraticien) { setCreneaux([]); return }
+    let active = true
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- indicateur de chargement des créneaux
+    setChargementCreneaux(true)
+    api.get('/sante/disponibilites/', { params: { praticien: nouveauPraticien, date } })
+      .then((res) => { if (active) setCreneaux(res.data?.creneaux ?? []) })
+      .catch(() => { if (active) { setCreneaux([]); toast.error('Impossible de charger les créneaux disponibles.') } })
+      .finally(() => { if (active) setChargementCreneaux(false) })
+    return () => { active = false }
+  }, [nouveauPraticien, date])
+
+  const creerRendezVous = async (e) => {
+    e.preventDefault()
+    if (!nouveauPatient || !nouveauPraticien || !creneauChoisi) return
+    setCreationEnCours(true)
+    try {
+      await santeApi.rendezvous.create({
+        patient: Number(nouveauPatient),
+        praticien: Number(nouveauPraticien),
+        date_heure_debut: creneauChoisi,
+      })
+      toast.success('Rendez-vous planifié.')
+      setNouveauPatient('')
+      setCreneauChoisi('')
+      load()
+    } catch (err) {
+      const detail = err?.response?.data?.detail
+      toast.error(detail || 'Créneau indisponible.')
+    } finally {
+      setCreationEnCours(false)
+    }
+  }
 
   const parCol = useMemo(() => {
     const map = new Map()
@@ -106,6 +163,45 @@ export default function SanteAgenda() {
         />
         <Button onClick={load}>Actualiser</Button>
       </div>
+
+      <form
+        onSubmit={creerRendezVous}
+        style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16, flexWrap: 'wrap' }}
+      >
+        <span style={{ fontSize: 13, fontWeight: 600 }}>Nouveau rendez-vous</span>
+        <input
+          placeholder="ID patient"
+          value={nouveauPatient}
+          onChange={(e) => setNouveauPatient(e.target.value)}
+          aria-label="Patient (ID)"
+        />
+        <select
+          value={nouveauPraticien}
+          onChange={(e) => setNouveauPraticien(e.target.value)}
+          aria-label="Praticien du nouveau rendez-vous"
+        >
+          <option value="">Praticien…</option>
+          {praticiens.map((p) => (
+            <option key={p.id} value={p.id}>{p.nom}</option>
+          ))}
+        </select>
+        <select
+          value={creneauChoisi}
+          onChange={(e) => setCreneauChoisi(e.target.value)}
+          aria-label="Créneau disponible"
+          disabled={!nouveauPraticien || chargementCreneaux}
+        >
+          <option value="">
+            {chargementCreneaux ? 'Chargement des créneaux…' : (creneaux.length === 0 ? 'Aucun créneau' : 'Créneau…')}
+          </option>
+          {creneaux.map((c) => (
+            <option key={c} value={c}>{formatHeure(c)}</option>
+          ))}
+        </select>
+        <Button type="submit" disabled={creationEnCours || !creneauChoisi}>
+          Planifier
+        </Button>
+      </form>
 
       {loading && <p>Chargement…</p>}
       {error && <p role="alert">{error}</p>}

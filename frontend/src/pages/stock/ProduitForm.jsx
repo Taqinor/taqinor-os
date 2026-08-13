@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
-import { Plus, X, Star, Trash2, Pencil, ImagePlus } from 'lucide-react'
+import { Plus, X, Star, Trash2, Pencil, ImagePlus, Sparkles } from 'lucide-react'
 import {
   createProduit,
   updateProduit,
@@ -11,12 +11,15 @@ import {
 } from '../../features/stock/store/stockSlice'
 import { useIsAdmin } from '../../hooks/useHasPermission'
 import stockApi from '../../api/stockApi'
+// PACT143 — brouillon de description commerciale (`/ai/description-produit/`,
+// NTAI13) : endpoint hors `stockApi`, appelé directement.
+import api from '../../api/axios'
 import { formatMAD, formatPercent } from '../../lib/format'
 import {
   Button, Badge, Switch,
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
   Form, FormSection, FormField, useDirtyGuard, confirmLeaveIfDirty,
-  Input, Textarea,
+  Input, Textarea, Label,
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
   toast,
 } from '../../ui'
@@ -448,6 +451,38 @@ export default function ProduitForm({ produit = null, onClose, onSaved }) {
   // VX171 — le rouge ne doit jamais mentir pendant que l'utilisateur corrige.
   const setField = (k, v) => { clearField(k); setFields(f => ({ ...f, [k]: v })) }
 
+  // PACT143 — brouillon de description commerciale (NTAI13,
+  // `POST /ai/description-produit/`). L'endpoint ne fait QUE proposer : rien
+  // n'est jamais écrit tant que l'utilisateur n'a pas validé — la validation
+  // ici ne fait que remplir `fields.description`, la sauvegarde réelle reste
+  // le bouton « Enregistrer » existant du formulaire. Réservé à l'édition
+  // (un produit pas encore créé n'a pas de `produit_id`).
+  const [iaDialogOpen, setIaDialogOpen] = useState(false)
+  const [iaLoading, setIaLoading] = useState(false)
+  const [iaDraft, setIaDraft] = useState({ description: '', description_courte: '' })
+
+  const genererDescriptionIA = async () => {
+    if (!produit?.id) return
+    setIaLoading(true)
+    try {
+      const res = await api.post('/ai/description-produit/', { produit_id: produit.id })
+      setIaDraft({
+        description: res.data?.description || '',
+        description_courte: res.data?.description_courte || '',
+      })
+      setIaDialogOpen(true)
+    } catch (err) {
+      toast.error(err?.response?.data?.detail || 'Génération impossible.')
+    } finally {
+      setIaLoading(false)
+    }
+  }
+
+  const appliquerDescriptionIA = () => {
+    setField('description', iaDraft.description)
+    setIaDialogOpen(false)
+  }
+
   // Doublon de SKU détecté localement (unicité ('company','sku') côté serveur).
   // Le serveur reste l'autorité ; ceci évite un aller-retour pour un cas courant.
   const skuTrimmed = fields.sku.trim().toLowerCase()
@@ -672,6 +707,20 @@ export default function ProduitForm({ produit = null, onClose, onSaved }) {
               <Textarea id="pf-desc" rows={2} value={fields.description}
                         onChange={e => setField('description', e.target.value)}
                         placeholder="Description optionnelle…" />
+              {/* PACT143 — brouillon IA (NTAI13), réservé à l'édition : un
+                  produit pas encore créé n'a pas de `produit_id` à transmettre.
+                  Propose un brouillon + sa variante courte À VALIDER — rien
+                  n'est jamais écrit tant que « Utiliser cette description »
+                  n'a pas été cliqué. */}
+              {isEdit && (
+                <Button type="button" variant="outline" size="sm"
+                        className="mt-1.5 self-start"
+                        disabled={iaLoading}
+                        onClick={genererDescriptionIA}>
+                  <Sparkles className="size-4" aria-hidden="true" />
+                  {iaLoading ? 'Génération…' : 'Générer avec l’IA'}
+                </Button>
+              )}
             </FormField>
 
             {/* APX18 — Photo produit. INTERNE : elle sert la vignette du
@@ -864,6 +913,43 @@ export default function ProduitForm({ produit = null, onClose, onSaved }) {
             </Button>
           </DialogFooter>
         </Form>
+
+        {/* PACT143 — validation du brouillon IA avant toute sauvegarde :
+            « Utiliser cette description » ne fait que remplir le champ
+            `description` du formulaire (le bouton « Enregistrer » ci-dessus
+            reste le seul chemin d'écriture). La variante courte est
+            affichée pour référence mais n'a pas de champ dédié — jamais
+            fusionnée à la description longue. */}
+        {iaDialogOpen && (
+          <Dialog open onOpenChange={(o) => { if (!o) setIaDialogOpen(false) }}>
+            <DialogContent className="max-w-lg">
+              <DialogHeader>
+                <DialogTitle>Brouillon de description commerciale</DialogTitle>
+                <DialogDescription>
+                  Généré par l’IA à partir des informations produit — à valider avant sauvegarde.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="flex flex-col gap-4">
+                <div className="flex flex-col gap-1.5">
+                  <Label htmlFor="pf-ia-desc">Description proposée</Label>
+                  <Textarea
+                    id="pf-ia-desc" rows={4}
+                    value={iaDraft.description}
+                    onChange={(e) => setIaDraft((d) => ({ ...d, description: e.target.value }))}
+                  />
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <Label htmlFor="pf-ia-courte">Variante courte</Label>
+                  <Textarea id="pf-ia-courte" rows={2} value={iaDraft.description_courte} readOnly />
+                </div>
+              </div>
+              <DialogFooter>
+                <Button type="button" variant="outline" onClick={() => setIaDialogOpen(false)}>Fermer</Button>
+                <Button type="button" onClick={appliquerDescriptionIA}>Utiliser cette description</Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+        )}
       </DialogContent>
     </Dialog>
   )

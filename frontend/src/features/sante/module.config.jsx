@@ -4,7 +4,7 @@
 import { lazy } from 'react'
 import {
   BedDouble, CalendarCog, ClipboardList, Handshake, Receipt, ShieldCheck,
-  Stethoscope, UserPlus,
+  Stethoscope, UserPlus, ShieldAlert,
 } from 'lucide-react'
 import { appGlyph } from '../../lib/apps/appGlyph'
 
@@ -32,6 +32,9 @@ const ConventionsScreen = lazy(() => import('./ConventionsScreen'))
 const ActesRealisesScreen = lazy(() => import('./ActesRealisesScreen'))
 const FacturationScreen = lazy(() => import('./FacturationScreen'))
 const AgendaConfigScreen = lazy(() => import('./AgendaConfigScreen'))
+// PACT114 — traçabilité sanitaire des cycles de stérilisation (NTSAN23/24) —
+// jusque-là sans client API santé ni écran.
+const SterilisationScreen = lazy(() => import('./SterilisationScreen'))
 
 const config = {
   key: 'sante',
@@ -99,6 +102,12 @@ const config = {
         icon: <CalendarCog size={17} strokeWidth={1.75} aria-hidden="true" />,
         roles: ['responsable', 'admin'],
       },
+      {
+        to: '/sante/sterilisation',
+        label: 'Stérilisation',
+        icon: <ShieldAlert size={17} strokeWidth={1.75} aria-hidden="true" />,
+        roles: ['normal', 'responsable', 'admin'],
+      },
     ],
   },
   titles: [
@@ -111,6 +120,7 @@ const config = {
     ['/sante/actes-realises', 'Actes réalisés'],
     ['/sante/facturation', 'Facturation santé'],
     ['/sante/config-agenda', 'Configuration agenda'],
+    ['/sante/sterilisation', 'Stérilisation des instruments'],
   ],
   sectionLabels: { sante: 'Santé' },
   routes: [
@@ -149,6 +159,10 @@ const config = {
     {
       path: '/sante/config-agenda', component: AgendaConfigScreen,
       roles: ['responsable', 'admin'],
+    },
+    {
+      path: '/sante/sterilisation', component: SterilisationScreen,
+      roles: ['normal', 'responsable', 'admin'],
     },
   ],
 }

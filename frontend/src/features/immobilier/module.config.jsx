@@ -3,7 +3,7 @@
    `router/moduleRoutes.jsx` via glob : ce n'est pas un module de composants, le
    fast-refresh ne s'y applique pas (même dérogation que `moduleRoutes.jsx`). */
 import { lazy } from 'react'
-import { Building2, Users } from 'lucide-react'
+import { Building2, Users, ClipboardCheck } from 'lucide-react'
 import { appGlyph } from '../../lib/apps/appGlyph'
 
 /* ============================================================================
@@ -25,6 +25,10 @@ const BauxPage = lazy(() => import('../../pages/immobilier/BauxPage'))
 // WIR147 — écran Locataires (CRUD + résolution client ventes), jusqu'ici sans
 // route alors que `LocataireViewSet` existe côté backend.
 const LocatairesPage = lazy(() => import('../../pages/immobilier/LocatairesPage'))
+// PACT77 — états des lieux d'entrée/sortie (NTPRO15/16), jusque-là sans
+// aucun écran. Déposé dans `features/immobilier/` (à côté de ce fichier),
+// contrairement aux autres écrans du module (`pages/immobilier/`).
+const EtatsLieux = lazy(() => import('./EtatsLieux'))
 
 const ROLES = ['responsable', 'admin']
 
@@ -69,6 +73,12 @@ const config = {
         icon: <Users size={17} strokeWidth={1.75} aria-hidden="true" />,
         roles: ROLES,
       },
+      {
+        to: '/immobilier/etats-lieux',
+        label: 'États des lieux',
+        icon: <ClipboardCheck size={17} strokeWidth={1.75} aria-hidden="true" />,
+        roles: ROLES,
+      },
     ],
   },
   titles: [
@@ -76,6 +86,7 @@ const config = {
     ['/immobilier/charges', 'Charges'],
     ['/immobilier/baux', 'Baux'],
     ['/immobilier/locataires', 'Locataires'],
+    ['/immobilier/etats-lieux', 'États des lieux'],
     ['/immobilier', 'Immobilier'],
   ],
   sectionLabels: { immobilier: 'Immobilier' },
@@ -85,6 +96,7 @@ const config = {
     { path: '/immobilier/charges', component: ChargesPage, roles: ROLES },
     { path: '/immobilier/baux', component: BauxPage, roles: ROLES },
     { path: '/immobilier/locataires', component: LocatairesPage, roles: ROLES },
+    { path: '/immobilier/etats-lieux', component: EtatsLieux, roles: ROLES },
   ],
 }
 
