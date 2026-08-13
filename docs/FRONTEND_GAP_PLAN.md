@@ -116,16 +116,16 @@ a focused test, calling the EXISTING backend endpoint.
 - [ ] FE-XPRJ21/29/27 — "Créer projet depuis devis" button on devis list, AI plan propose→confirm, marché-public fields + pénalités. (@lane: frontend/gestion_projet)
 
 ## Lane `frontend/paie` (XPAI/ZPAI/YHIRE round-2 backend-only)
-- [ ] FE-XPAI1-2 — **CRITICAL** Solde de tout compte (STC) action/screen from the sortie flow; add `stc`/`stcPdf`. (@lane: frontend/paie)
-- [ ] FE-YHIRE3/XPAI15/ZPAI2 — **CRITICAL** pre-run warnings panel (`controle-completude`/`controle-ecarts`/`avertissements`) at top of `PaieRunWizard.jsx` (safety gate silently skipped today). (@lane: frontend/paie)
-- [ ] FE-XPAI3 — "Mutuelle" tab in `PaieParametres.jsx`; add `regimes-mutuelle`/`adhesions-mutuelle`. (@lane: frontend/paie)
-- [ ] FE-XPAI4 — "Run hors-cycle / 13e mois" button (`run-gratification`). (@lane: frontend/paie)
-- [ ] FE-XPAI5/11-13/26 — new PaieDeclarations tabs: état des charges, rapprochement GL/AFFEBDS, BDS complémentaire, XML SIMPL-IR, registre congés, historique carrière. (@lane: frontend/paie)
-- [ ] FE-XPAI8-9 — virement format selector (CSV/SIMT) + ligne-virement reject/reissue. (@lane: frontend/paie)
-- [ ] FE-XPAI16/18 — net↔brut simulator tab + exemption-regime fields on profile form. (@lane: frontend/paie)
-- [ ] FE-XPAI22 — cumuls go-live import wizard (`reprise-dry-run`/`reprise-commit`). (@lane: frontend/paie)
-- [ ] FE-ZPAI1/3 — paie analyse pivot (rubrique×mois×dept) + coût employeur report. (@lane: frontend/paie)
-- [ ] FE-ZPAI4-7 — cancel bulletin, batch-print bulletins, saisie-arret annuler/creer-lot. (@lane: frontend/paie)
+- [x] FE-XPAI1-2 — **CRITICAL** Solde de tout compte (STC) action/screen from the sortie flow; add `stc`/`stcPdf`. (@lane: frontend/paie) (déjà présent)
+- [x] FE-YHIRE3/XPAI15/ZPAI2 — **CRITICAL** pre-run warnings panel (`controle-completude`/`controle-ecarts`/`avertissements`) at top of `PaieRunWizard.jsx` (safety gate silently skipped today). (@lane: frontend/paie) (déjà présent)
+- [x] FE-XPAI3 — "Mutuelle" tab in `PaieParametres.jsx`; add `regimes-mutuelle`/`adhesions-mutuelle`. (@lane: frontend/paie) (déjà présent)
+- [x] FE-XPAI4 — "Run hors-cycle / 13e mois" button (`run-gratification`). (@lane: frontend/paie) (déjà présent)
+- [x] FE-XPAI5/11-13/26 — new PaieDeclarations tabs: état des charges, rapprochement GL/AFFEBDS, BDS complémentaire, XML SIMPL-IR, registre congés, historique carrière. (@lane: frontend/paie) (déjà présent)
+- [x] FE-XPAI8-9 — virement format selector (CSV/SIMT) + ligne-virement reject/reissue. (@lane: frontend/paie) (déjà présent)
+- [x] FE-XPAI16/18 — net↔brut simulator tab + exemption-regime fields on profile form. (@lane: frontend/paie) (déjà présent)
+- [x] FE-XPAI22 — cumuls go-live import wizard (`reprise-dry-run`/`reprise-commit`). (@lane: frontend/paie) (déjà présent)
+- [x] FE-ZPAI1/3 — paie analyse pivot (rubrique×mois×dept) + coût employeur report. (@lane: frontend/paie) (déjà présent)
+- [x] FE-ZPAI4-7 — cancel bulletin, batch-print bulletins, saisie-arret annuler/creer-lot. (@lane: frontend/paie) (déjà présent)
 
 ## Lane `frontend/rh` (XRH/ZRH round-2 backend-only — 33 orphaned viewsets)
 - [ ] FE-XRH17-23/ZRH7-9 — **CRITICAL** full ATS in `Recrutement.jsx`: interviews (`entretiens-recrutement`), email templates, offer letters (`promesses-embauche`), talent pool (`vivier`), analytics, CV parsing (`parser-cv`), evaluation templates + 360 feedback. (@lane: frontend/rh) (opus)
@@ -240,3 +240,8 @@ a focused test, calling the EXISTING backend endpoint.
 
 ## DONE LOG
 <!-- one dated line per shipped task -->
+- 2026-08-13 — lane `frontend/paie` : les 10 tâches (FE-XPAI1-2, FE-YHIRE3/XPAI15/ZPAI2, FE-XPAI3,
+  FE-XPAI4, FE-XPAI5/11-13/26, FE-XPAI8-9, FE-XPAI16/18, FE-XPAI22, FE-ZPAI1/3, FE-ZPAI4-7) étaient
+  déjà entièrement câblées (écrans/onglets/boutons + appels `paieApi.js` réels, commentaires
+  d'annotation par ID de tâche déjà présents dans le code : XPAI1/XPAI3/XPAI4/ZPAI4/ZPAI5/ZPAI6,
+  YHIRE3/XPAI15/ZPAI2, WIR38/WIR39) — cochées `[x] (déjà présent)`, aucune modification de code.
