@@ -6,7 +6,7 @@ import { lazy } from 'react'
 import {
   LayoutDashboard, CalendarDays, Megaphone, Workflow, Users2, ListChecks,
   CalendarClock, ClipboardList, Gift, FormInput, PhoneCall,
-  Send, Star, Gauge,
+  Send, Star, Gauge, MessageCircle,
 } from 'lucide-react'
 import { appGlyph } from '../../lib/apps/appGlyph'
 
@@ -64,6 +64,8 @@ const JournalAppelsScreen = lazy(() => import('./JournalAppelsScreen'))
 const AvisClients = lazy(() => import('./AvisClients'))
 // PACT107 — enquêtes NPS post-installation (FG238), distinctes du Pulse eNPS.
 const EnquetesNps = lazy(() => import('./EnquetesNps'))
+// PACT108 — journal des messages WhatsApp entrants (FG207), lecture seule.
+const MessagesWhatsapp = lazy(() => import('./MessagesWhatsapp'))
 
 const ROLES = ['responsable', 'admin']
 
@@ -90,6 +92,7 @@ const config = {
       { to: '/marketing/appels', label: "Journal d'appels", icon: <PhoneCall size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
       { to: '/marketing/avis-clients', label: 'Avis clients', icon: <Star size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
       { to: '/marketing/enquetes-nps', label: 'Enquêtes NPS', icon: <Gauge size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
+      { to: '/marketing/messages-whatsapp', label: 'Messages WhatsApp', icon: <MessageCircle size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
       { to: '/parametres/marketing', label: "Domaine d'envoi", icon: <LayoutDashboard size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
       { to: '/marketing/calendrier', label: 'Calendrier marketing', icon: <CalendarDays size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
     ],
@@ -108,6 +111,7 @@ const config = {
     ['/marketing/appels', "Journal d'appels"],
     ['/marketing/avis-clients', 'Avis clients'],
     ['/marketing/enquetes-nps', 'Enquêtes NPS'],
+    ['/marketing/messages-whatsapp', 'Messages WhatsApp entrants'],
     ['/marketing/supports-offline', 'Supports offline (QR)'],
     ['/marketing', 'Tableau de bord marketing'],
   ],
@@ -130,6 +134,7 @@ const config = {
     { path: '/marketing/appels', component: JournalAppelsScreen, roles: ROLES },
     { path: '/marketing/avis-clients', component: AvisClients, roles: ROLES },
     { path: '/marketing/enquetes-nps', component: EnquetesNps, roles: ROLES },
+    { path: '/marketing/messages-whatsapp', component: MessagesWhatsapp, roles: ROLES },
     { path: '/marketing/supports-offline', component: SupportsOffline, roles: ROLES },
   ],
 }

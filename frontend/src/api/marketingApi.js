@@ -206,6 +206,11 @@ const marketingApi = {
     // côté serveur, jamais recalculé ici.
     score: () => api.get('/marketing/enquetes-nps/score/'),
   },
+
+  // ── PACT108 — Journal des messages WhatsApp entrants (FG207), LECTURE SEULE ──
+  messagesWhatsapp: {
+    list: (params) => api.get('/marketing/messages-whatsapp/', { params }),
+  },
 }
 
 export default marketingApi
