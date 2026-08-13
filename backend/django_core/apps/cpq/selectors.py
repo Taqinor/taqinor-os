@@ -171,6 +171,51 @@ def clause_sapplique(clause, context):
     return evaluate_condition_group(arbre, context)
 
 
+_OPERATEURS_LISIBLES = {
+    'eq': '=', 'ne': '≠', 'gt': '>', 'gte': '≥', 'lt': '<', 'lte': '≤',
+    'in': 'parmi', 'not_in': 'hors de', 'contains': 'contient',
+    'startswith': 'commence par', 'exists': 'est renseigné',
+}
+_GROUPES_LISIBLES = {'and': ' ET ', 'or': ' OU '}
+
+
+def condition_en_clair(noeud):
+    """NTCPQ12 — Traduit un arbre ``core.rules`` en français lisible.
+
+    Ex. ``{'op': 'and', 'conditions': [{'field': 'type_deal', ...}, ...]}``
+    → ``"type_deal=Industriel ET montant>500000"``. Arbre vide → « toujours »
+    (une clause sans condition s'applique systématiquement). Purement
+    descriptif : n'évalue rien, ne lève jamais."""
+    if not noeud:
+        return 'toujours'
+    if not isinstance(noeud, dict):
+        return str(noeud)
+    op = noeud.get('op')
+    if 'conditions' in noeud or op in ('and', 'or', 'not'):
+        enfants = noeud.get('conditions') or []
+        rendus = [condition_en_clair(e) for e in enfants if e]
+        if not rendus:
+            return 'toujours'
+        if op == 'not':
+            return f'NON ({rendus[0]})'
+        joint = _GROUPES_LISIBLES.get(op or 'and', ' ET ')
+        if len(rendus) == 1:
+            return rendus[0]
+        return joint.join(f'({r})' if ' ET ' in r or ' OU ' in r else r
+                          for r in rendus)
+    champ = noeud.get('field', '?')
+    operateur = noeud.get('operator', 'eq')
+    valeur = noeud.get('value')
+    lisible = _OPERATEURS_LISIBLES.get(operateur, operateur)
+    if operateur == 'exists':
+        return f'{champ} {lisible}'
+    if isinstance(valeur, (list, tuple)):
+        valeur = ', '.join(str(v) for v in valeur)
+    if lisible in ('=', '≠', '>', '≥', '<', '≤'):
+        return f'{champ}{lisible}{valeur}'
+    return f'{champ} {lisible} {valeur}'
+
+
 def clauses_applicables(*, company, context):
     """NTCPQ11 — Clauses/CGV actives de la société qui s'appliquent au contexte.
 

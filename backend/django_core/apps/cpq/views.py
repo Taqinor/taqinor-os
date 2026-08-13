@@ -16,12 +16,14 @@ from .models import (
     OptionProduit, ContrainteCompatibilite, RegleProduitCPQ, OffreGroupee,
     PrixContractuel, QuestionConfigurateur, SessionConfigurateur,
     ReponseConfigurateur, SeuilMargeFamille, RegleApprobationRemise,
+    ClauseCGV,
 )
 from .serializers import (
     OptionProduitSerializer, ContrainteCompatibiliteSerializer,
     RegleProduitCPQSerializer, OffreGroupeeSerializer,
     PrixContractuelSerializer, QuestionConfigurateurSerializer,
     SeuilMargeFamilleSerializer, RegleApprobationRemiseSerializer,
+    ClauseCGVSerializer,
 )
 from . import selectors, services
 
@@ -159,6 +161,49 @@ class RegleApprobationRemiseViewSet(CompanyScopedModelViewSet):
         if self.action in ('list', 'retrieve'):
             return [IsAnyRole()]
         return [IsResponsableOrAdmin()]
+
+
+class ClauseCGVViewSet(CompanyScopedModelViewSet):
+    """NTCPQ11/12 — Bibliothèque de clauses/CGV réutilisables.
+
+    Lecture tout rôle, écriture réservée Directeur / Commercial responsable :
+    un admin crée/désactive une clause sans toucher au code. L'action
+    ``tester`` évalue À BLANC la clause contre un devis existant — purement
+    consultative, elle n'écrit RIEN (le snapshot ne se fige qu'à l'envoi)."""
+    queryset = ClauseCGV.objects.all()
+    serializer_class = ClauseCGVSerializer
+
+    def get_permissions(self):
+        if self.action in ('list', 'retrieve', 'tester'):
+            return [IsAnyRole()]
+        return [IsResponsableOrAdmin()]
+
+    @action(detail=True, methods=['get', 'post'], url_path='tester')
+    def tester(self, request, pk=None):
+        """Test à blanc contre un devis existant de la société.
+
+        ``?devis_id=`` (ou corps ``devis_id``). Renvoie
+        ``{applicable, contexte, condition_lisible}`` sans rien persister."""
+        clause = self.get_object()
+        devis_id = (request.query_params.get('devis_id')
+                    or request.data.get('devis_id'))
+        if not devis_id:
+            return Response({'detail': 'devis_id requis.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        from apps.ventes.models import Devis
+        devis = Devis.objects.filter(
+            pk=devis_id, company=request.user.company).first()
+        if devis is None:
+            return Response({'detail': 'Devis introuvable.'},
+                            status=status.HTTP_404_NOT_FOUND)
+        from apps.ventes.services import contexte_clauses_devis
+        contexte = contexte_clauses_devis(devis)
+        return Response({
+            'applicable': selectors.clause_sapplique(clause, contexte),
+            'contexte': contexte,
+            'condition_lisible':
+                ClauseCGVSerializer(clause).data['condition_lisible'],
+        })
 
 
 class ConfigurateurDemarrerView(APIView):

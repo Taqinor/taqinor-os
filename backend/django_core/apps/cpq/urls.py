@@ -8,6 +8,7 @@ from .views import (
     ConfigurateurRepondreView, ConfigurateurResultatView,
     ConfigurateurGenererDevisView, ValiderCompatibiliteView,
     SeuilMargeFamilleViewSet, RegleApprobationRemiseViewSet,
+    ClauseCGVViewSet,
 )
 
 router = DefaultRouter()
@@ -20,6 +21,8 @@ router.register(r'configurateur-questions', QuestionConfigurateurViewSet)
 # WIR105 — CRUD Paramètres CPQ (plus de dépendance au Django admin).
 router.register(r'seuils-marge', SeuilMargeFamilleViewSet)
 router.register(r'regles-approbation-remise', RegleApprobationRemiseViewSet)
+# NTCPQ12 — bibliothèque de clauses/CGV (écran Paramètres).
+router.register(r'clauses-cgv', ClauseCGVViewSet)
 
 urlpatterns = [
     path('valider-compatibilite/', ValiderCompatibiliteView.as_view(),

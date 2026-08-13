@@ -11,6 +11,7 @@ from .models import (
     OptionProduit, ContrainteCompatibilite, RegleProduitCPQ,
     OffreGroupee, LigneOffreGroupee, PrixContractuel,
     QuestionConfigurateur, SeuilMargeFamille, RegleApprobationRemise,
+    ClauseCGV,
 )
 
 
@@ -154,3 +155,36 @@ class RegleApprobationRemiseSerializer(serializers.ModelSerializer):
                 'remise_max_pct':
                     'La borne max doit être ≥ la borne min.'})
         return attrs
+
+
+class ClauseCGVSerializer(serializers.ModelSerializer):
+    """NTCPQ11/12 — Bibliothèque de clauses réutilisables.
+
+    ``condition_lisible`` rend la condition en langage clair (ex.
+    « type_deal=industriel ET montant>500000 ») pour l'écran Paramètres.
+    ``company`` est posée côté serveur (jamais lue du corps)."""
+    condition_lisible = serializers.SerializerMethodField()
+
+    class Meta:
+        model = ClauseCGV
+        fields = ['id', 'nom', 'corps_texte', 'type_deal', 'applicable_si',
+                  'condition_lisible', 'ordre', 'actif', 'date_creation']
+        read_only_fields = ['date_creation']
+
+    def get_condition_lisible(self, obj):
+        from .selectors import condition_en_clair
+        base = condition_en_clair(obj.applicable_si)
+        if obj.type_deal:
+            prefixe = f'type_deal={obj.type_deal}'
+            return prefixe if base == 'toujours' else f'{prefixe} ET {base}'
+        return base
+
+    def validate_applicable_si(self, value):
+        """Valide la STRUCTURE de l'arbre via le moteur générique
+        (``core.rules``) — jamais un nouveau moteur. Vide = toujours vrai."""
+        if not value:
+            return value or {}
+        errors = validate_condition_group(value)
+        if errors:
+            raise serializers.ValidationError(errors)
+        return value
