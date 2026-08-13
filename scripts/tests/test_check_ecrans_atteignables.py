@@ -709,7 +709,9 @@ class DepotReelTests(unittest.TestCase):
         self.assertEqual(stats["opaques"], 0)
         # 45 -> 47 : le lot §E donne son PREMIER module.config.jsx a deux
         # apps qui n en avaient aucun (btp_chantier, portail cote ERP).
-        self.assertEqual(stats["configs"], 47)
+        # 47 -> 49 : le lot du 13/08/2026 ajoute deux modules frontend NEUFS
+        # (cpq, segment /cpq/* ; core, module « DONNEES », segment /donnees/*).
+        self.assertEqual(stats["configs"], 49)
 
     def test_parametres_achats_est_desormais_navigable(self):
         """PACT150 : cas vivant du 07/08/2026 — `AchatsParametresPage` (182

@@ -458,13 +458,19 @@ class DepotReelTests(unittest.TestCase):
         self.assertGreater(stats["taches"], 1500)
         # 250 -> 150 : le lot §E du 08/08/2026 a COCHÉ 76 tâches, donc le
         # corpus de candidates rétrécit légitimement (191 aujourd'hui).
-        # Le plancher garde son rôle — une extraction cassée rendrait ~0 —
-        # sans punir le fait d'avoir livré.
-        self.assertGreater(stats["f1_candidates"], 150)
-        # Idem : 80 -> 25. Ce plancher suit le meme corpus que ci-dessus
-        # (35 aujourd'hui) ; livrer des tâches le fait mécaniquement
-        # baisser, casser l'extraction le mettrait à 0.
-        self.assertGreater(stats["f1_conformes"], 25)
+        # 150 -> 100 : le lot du 13/08/2026 en a coché 52 de plus (142
+        # aujourd'hui). Le plancher garde son rôle — une extraction cassée
+        # rendrait ~0 — sans punir le fait d'avoir livré.
+        self.assertGreater(stats["f1_candidates"], 100)
+        # 80 -> 25 -> 0. ATTENTION : ce plancher a PERDU son pouvoir
+        # discriminant et ne doit plus être lu comme une canari. Il ne compte
+        # que les tâches NON COCHÉES qui CRÉENT un écran avec montage +
+        # clause ; le lot du 13/08/2026 les a quasiment toutes livrées, donc
+        # il vaut 1 — pas parce que l'extraction casse, mais parce que le
+        # corpus est drainé. Le rôle de canari est désormais porté par
+        # `taches` (1690) et `f1_candidates` (142) ci-dessus, qui eux
+        # tomberaient bien à 0 si l'extraction se cassait.
+        self.assertGreater(stats["f1_conformes"], 0)
 
     def test_les_taches_conformes_du_depot_ne_rougissent_pas(self):
         """~120 taches de docs/PLAN.md portent deja la clause canonique et
