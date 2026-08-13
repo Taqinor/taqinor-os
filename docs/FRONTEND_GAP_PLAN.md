@@ -157,20 +157,20 @@ a focused test, calling the EXISTING backend endpoint.
 - [ ] FE-LITIGE4 — render `rec.ncr`/`rec.audit` (NCR/Audit linked) in `ReclamationDetail.jsx` + linking control in `ReclamationEditor.jsx` (data already fetched). (@lane: frontend/litiges)
 
 ## Lane `frontend/compta` (XACC/ZACC round-2 — <half of accounting reachable)
-- [ ] FE-FG122/126/132 — wire the already-written uncalled `positionTresorerie`/`previsionnelTresorerie`/`balanceAgeeFournisseurs` (cheapest wins) into `TresoreriePage.jsx`/`EtatsPage.jsx`. (@lane: frontend/compta)
-- [ ] FE-ZACC1-2 — "Export PDF" + "Comparer N-1" controls on `EtatsPage.jsx` (backend accepts `?export=pdf`/`?comparer=1`). (@lane: frontend/compta)
-- [ ] FE-ZACC3-4/12/16 — add tableau-flux, journal-items, tableau-immobilisations, dossier-de-clôture to the `ETATS` array + buttons. (@lane: frontend/compta)
-- [ ] FE-XACC9 — "Échéances fiscales" tab in `FiscalitePage.jsx` (`obligations-fiscales`). (@lane: frontend/compta)
-- [ ] FE-notes-frais — compta.NoteFrais validation/comptable screen (distinct from RH self-service): `notes-frais`/`rapports`/`plafonds`/`baremes-indemnite`/`indemnites-chantier` + soumettre/valider/rejeter/rembourser/recu-pdf. (@lane: frontend/compta)
-- [ ] FE-effets — "Effets à recevoir/payer" page + bordereaux + escompte/endossement actions. (@lane: frontend/compta)
-- [ ] FE-payment-runs — PaymentRun screen + `fichier-virement` bank export (FG133-134). (@lane: frontend/compta)
-- [ ] FE-FG145 — RetenueGarantie + CautionBancaire tabs (+ attestation-annuelle). (@lane: frontend/compta)
-- [ ] FE-FG146-148 — revenue-recognition/WIP (ContratAvancement/TravauxEnCours) + CommissionPayoutRun screens. (@lane: frontend/compta)
-- [ ] FE-XFAC14/XACC26 — AR/AP netting (compensations) + Provision/ModeleRapprochement/BalanceOuverture read+action screens. (@lane: frontend/compta)
-- [ ] FE-COMPTA39 — read-only audit-trail viewer (`pistes-audit`, admin-only). (@lane: frontend/compta)
-- [ ] FE-rapprochement-detail — bank-reconciliation drill-down dialog (`lignes-gl`/`pointer`/`suggestions`/`ocr-import`) in `RapprochementsPage.jsx`. (@lane: frontend/compta)
-- [ ] FE-immo-caisse-actions — Immobilisations `ceder`/`poster` row actions + Caisse mouvement/clôture drawer + Virement `poster`. (@lane: frontend/compta)
-- [ ] FE-ZACC14/XACC29 — contrôle ICE/IF + continuité des séquences as `ETATS` entries. (@lane: frontend/compta)
+- [x] FE-FG122/126/132 — wire the already-written uncalled `positionTresorerie`/`previsionnelTresorerie`/`balanceAgeeFournisseurs` (cheapest wins) into `TresoreriePage.jsx`/`EtatsPage.jsx`. (déjà présent) (@lane: frontend/compta)
+- [x] FE-ZACC1-2 — "Export PDF" + "Comparer N-1" controls on `EtatsPage.jsx` (backend accepts `?export=pdf`/`?comparer=1`). (déjà présent) (@lane: frontend/compta)
+- [x] FE-ZACC3-4/12/16 — add tableau-flux, journal-items, tableau-immobilisations, dossier-de-clôture to the `ETATS` array + buttons. (déjà présent) (@lane: frontend/compta)
+- [x] FE-XACC9 — "Échéances fiscales" tab in `FiscalitePage.jsx` (`obligations-fiscales`). (déjà présent) (@lane: frontend/compta)
+- [x] FE-notes-frais — compta.NoteFrais validation/comptable screen (distinct from RH self-service): `notes-frais`/`rapports`/`plafonds`/`baremes-indemnite`/`indemnites-chantier` + soumettre/valider/rejeter/rembourser/recu-pdf. (déjà présent) (@lane: frontend/compta)
+- [x] FE-effets — "Effets à recevoir/payer" page + bordereaux + escompte/endossement actions. (@lane: frontend/compta)
+- [x] FE-payment-runs — PaymentRun screen + `fichier-virement` bank export (FG133-134). (déjà présent) (@lane: frontend/compta)
+- [x] FE-FG145 — RetenueGarantie + CautionBancaire tabs (+ attestation-annuelle). (déjà présent) (@lane: frontend/compta)
+- [x] FE-FG146-148 — revenue-recognition/WIP (ContratAvancement/TravauxEnCours) + CommissionPayoutRun screens. (déjà présent) (@lane: frontend/compta)
+- [x] FE-XFAC14/XACC26 — AR/AP netting (compensations) + Provision/ModeleRapprochement/BalanceOuverture read+action screens. (déjà présent) (@lane: frontend/compta)
+- [x] FE-COMPTA39 — read-only audit-trail viewer (`pistes-audit`, admin-only). (déjà présent) (@lane: frontend/compta)
+- [x] FE-rapprochement-detail — bank-reconciliation drill-down dialog (`lignes-gl`/`pointer`/`suggestions`/`ocr-import`) in `RapprochementsPage.jsx`. (@lane: frontend/compta)
+- [x] FE-immo-caisse-actions — Immobilisations `ceder`/`poster` row actions + Caisse mouvement/clôture drawer + Virement `poster`. (@lane: frontend/compta)
+- [x] FE-ZACC14/XACC29 — contrôle ICE/IF + continuité des séquences as `ETATS` entries. (déjà présent) (@lane: frontend/compta)
 
 ## Lane `frontend/stock` (ZPUR/ZSTK round-2 backend-only)
 - [ ] FE-XPUR25 — **BLOCKED: needs backend** (`fournisseurs/{id}/vue-360/` action never built) then route the orphan `pages/stock/FournisseurFiche360.jsx` (add lazy route + nav + row link). (@lane: frontend/stock) — **repris par WIR27** (`docs/PLAN.md`, `[x]` livré : `vue-360` action + route/nav construits — WIR79 vérifié 2026-07-18, ne pas rebuilder ici).
@@ -185,9 +185,9 @@ a focused test, calling the EXISTING backend endpoint.
 - [ ] FE-XMFG1-16 — **atelier/kitting UI**: new `pages/installations/AteliersPage.jsx` (OrdreAssemblage/OrdreDemontage list/detail/close, backflush, reservations, QC gate, bon-pdf) + route/nav; add `ordres-assemblage`/`kits-produit/{id}/structure`/`ordres-demontage` to `installationsApi.js`. (@lane: frontend/installations) (opus)
 
 ## Lane `frontend/compta` (additional round-2 orphans — fold into the compta lane above)
-- [ ] FE-XACC33 — "Immobiliser" button on `pages/stock/FacturesFournisseur.jsx` (`immobilisations/depuis-facture-fournisseur`). (@lane: frontend/compta)
-- [ ] FE-XACC3-4 — bank-recon "Suggestions" panel + "Modèles rapprochement" CRUD in `RapprochementsPage.jsx`. (@lane: frontend/compta)
-- [ ] FE-COMPTA21 — consume the uncalled `balanceAgeeFournisseurs` + add `releveFournisseur` drill-down. (@lane: frontend/compta)
+- [x] FE-XACC33 — "Immobiliser" button on `pages/stock/FacturesFournisseur.jsx` (`immobilisations/depuis-facture-fournisseur`). (déjà présent) (@lane: frontend/compta)
+- [x] FE-XACC3-4 — bank-recon "Suggestions" panel + "Modèles rapprochement" CRUD in `RapprochementsPage.jsx`. (déjà présent) (@lane: frontend/compta)
+- [x] FE-COMPTA21 — consume the uncalled `balanceAgeeFournisseurs` + add `releveFournisseur` drill-down. (@lane: frontend/compta)
 
 ## SAV lane additions (fold into `frontend/sav`)
 - [x] (déjà présent) FE-XSAV5/21/28 — attente-client SLA pause/resume, similar-ticket panel, AI triage banner on `TicketsPage.jsx`. (@lane: frontend/sav)
@@ -242,3 +242,16 @@ a focused test, calling the EXISTING backend endpoint.
 <!-- one dated line per shipped task -->
 - 2026-08-13 — lane `frontend/contrats` drained: FE-CONTRAT16-17/13-14/12/23-25/7/15/33, FE-XCTR7-8-11, FE-XCTR5, FE-XCTR14, FE-CONTRAT-config already fully built (ContratDetail.jsx tabs+actions, ModelesPage.jsx instancier, DashboardPage.jsx, PortailContratsPage.jsx, ConfigLocationPage.jsx) — ticked `(déjà présent)`, no code change. FE-XCTR2-3: added "Équipements couverts" + "X/Y visites" columns to `ContratsMaintenance.jsx` (data was already serialized server-side, just unrendered). FE-XCTR17-21: `LocationPage.jsx` had caution/inspection/bons PDF already; added the missing disponibilité (reservation-window) warning in the create dialog and an admin-only "Utilisation & ROI" card, both using contratsApi calls that existed but were never invoked from the UI.
 - 2026-08-13 (lane frontend/sav) — les 12 tâches taguées `@lane: frontend/sav` étaient DÉJÀ construites et câblées (savApi.js + pages/sav/*.jsx + router public /e/:token /suivi/:token) : FE-XSAV19/XSAV10, FE-XSAV3/XFSM1/XCTR4, FE-SAV-warranty, FE-XSAV15-17/XSAV9, FE-XSAV8, FE-XSAV12/27/ZSAV8-9, FE-ZSAV2-3-6, FE-SAV-kb/macros, FE-SAV-alarmes, FE-XSAV14/ZMFG6/11, FE-XSAV5/21/28, FE-ZMFG1-2/4/5-12. Aucun code écrit, pas de commit de fonctionnalité (seule mise à jour de ce fichier).
+- 2026-08-13 — Lane `frontend/compta` drainée (agent-acf554ffb8d774ac6). Vérifiées déjà construites
+  (aucun code requis) : FE-FG122/126/132, FE-ZACC1-2, FE-ZACC3-4/12/16, FE-XACC9, FE-notes-frais,
+  FE-payment-runs, FE-FG145, FE-FG146-148, FE-XFAC14/XACC26, FE-COMPTA39, FE-ZACC14/XACC29,
+  FE-XACC33, FE-XACC3-4 — toutes déjà entièrement câblées (TresoreriePage/EtatsPage/FiscalitePage/
+  NotesDeFraisPage/EffetsPage/EngagementsPage/RapprochementsPage/FacturesFournisseur.jsx). Réels
+  écarts trouvés et construits : FE-effets (escompte/endossement affichaient un message au lieu
+  d'appeler le backend — actions réelles ajoutées + « Apurer l'escompte »), FE-immo-caisse-actions
+  (action « Poster » manquante sur les virements internes — `comptaApi.virements.poster` +
+  TresoreriePage), FE-rapprochement-detail (action `ocr-import` du backend jamais exposée —
+  panneau d'import OCR ajouté à RapprochementDetailDialog), FE-COMPTA21 (`releveFournisseur`
+  jamais appelé — drill-down « Relevé » ajouté sur l'état balance âgée fournisseurs d'EtatsPage).
+  eslint + `npx vite build` verts sur tous les fichiers touchés ; suites vitest compta existantes
+  toutes vertes (aucune régression).
