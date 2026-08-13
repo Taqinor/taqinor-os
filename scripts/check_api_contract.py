@@ -104,6 +104,26 @@ FASTAPI_MOUNT = "api/fastapi"
 HOLE = "\x00"
 # Segment normalise « n'importe quoi » (parametre d'URL des deux cotes).
 ANY = "<>"
+# PACT151 — le joker de DETAIL d'un routeur DRF (`/ressource/<pk>/`), distingue
+# du joker generique `ANY`. Un routeur enregistre TOUJOURS sa route de detail,
+# meme quand le ViewSet n'a ni `retrieve` ni `list` ; traite comme un joker
+# symetrique, ce `<pk>` avalait tout nom d'action manque ecrit en kebab-case
+# (mesure : `action-requise`, `grand-livre`, `export-paie`,
+# `calendrier-equipe` — quatre 404 reels sur lesquels la garde restait VERTE).
+PK = "<pk>"
+
+# Un dernier segment LITTERAL en kebab-case est un NOM D'ACTION, jamais une clé
+# primaire : `grand-livre` ne peut pas etre l'identifiant d'une ligne. Il ne
+# doit donc plus matcher la route generique `<pk>` (il continue de matcher un
+# `ANY` venu d'un vrai parametre d'URL declare `path('<str:token>/')`, et un
+# segment dynamique cote frontend continue de tout matcher).
+_NOM_D_ACTION = re.compile(r"^[a-z]+(-[a-z]+)+$")
+
+
+def est_nom_d_action(segment: str) -> bool:
+    """Vrai si ce segment litteral est un nom d'action, pas une clé primaire."""
+    return bool(_NOM_D_ACTION.match(segment))
+
 
 # Bases de classes qui ne peuvent apporter aucune @action : celles du
 # framework. Une base venue d'ailleurs et non resolue rend le ViewSet OPAQUE.
@@ -473,7 +493,11 @@ class BackendRoutes:
                 continue
             self.stats["registres"] += 1
             self.routes.add(base)
-            self.routes.add(base + (ANY,))
+            # PACT151 — route de DETAIL, marquee `<pk>` et non `ANY` : elle est
+            # ajoutee inconditionnellement (le routeur la declare meme sans
+            # `retrieve`), donc en faire un joker symetrique revenait a rendre
+            # la garde muette sur tout nom d'action manque.
+            self.routes.add(base + (PK,))
             if viewset is None:
                 self._mark_opaque(base)
                 continue
@@ -987,11 +1011,28 @@ def normalise_call(raw: str, default_mount: str):
 def compatible(call: tuple, route: tuple) -> bool:
     if len(call) != len(route):
         return False
-    return all(a == b or a == ANY or b == ANY for a, b in zip(call, route))
+    dernier = len(call) - 1
+    for index, (a, b) in enumerate(zip(call, route)):
+        if b == PK:
+            # PACT151 — le `<pk>` d'un routeur n'avale plus un nom d'action
+            # manque en DERNIER segment (`/devis/action-requise/`).
+            if index == dernier and a != ANY and est_nom_d_action(a):
+                return False
+            continue
+        if a == b or a == ANY or b == ANY:
+            continue
+        return False
+    return True
 
 
 class RouteTrie:
-    """Arbre de segments. `<>` est un JOKER des DEUX cotes (cf. en-tete)."""
+    """Arbre de segments. `<>` est un JOKER des DEUX cotes (cf. en-tete).
+
+    `<pk>` (PACT151) est le joker de DETAIL d'un routeur DRF. Il matche comme
+    `<>` SAUF sur un dernier segment litteral en kebab-case : la, c'est un nom
+    d'action manque, pas une clé primaire, et l'avaler rendait la garde muette
+    sur quatre 404 reels mesures.
+    """
 
     TERMINAL = "\x01"
 
@@ -1010,7 +1051,12 @@ class RouteTrie:
         if not segments:
             return bool(node.get(self.TERMINAL)) and not stop_on_terminal
         head, rest = segments[0], segments[1:]
-        children = node.keys() if head == ANY else (head, ANY)
+        if head == ANY:
+            children = list(node.keys())
+        else:
+            children = [head, ANY, PK]
+            if not rest and est_nom_d_action(head):
+                children.remove(PK)
         for key in children:
             child = node.get(key)
             if key == self.TERMINAL or child is None:
@@ -1183,6 +1229,10 @@ def main(argv=None) -> int:
               "d'une @action etant le NOM DE LA METHODE, souligne compris) ;")
         print("  2. la route cote backend, si la fonctionnalite doit exister ;")
         print("  3. la suppression de l'appel, s'il est mort.")
+        print("PACT151 — un dernier segment en kebab-case (`action-requise`, "
+              "`grand-livre`) n'est plus avale par la route de detail "
+              "`/ressource/<pk>/` d'un routeur : ce n'est pas une cle "
+              "primaire, c'est un nom d'@action qui n'existe pas.")
         print("Cette garde existe a cause de l'incident du 03/08/2026 "
               "(ecran AO Bibliotheque en 404 en production) : voir l'en-tete "
               "de scripts/check_api_contract.py. Ne la desactivez pas.")
