@@ -25,6 +25,7 @@ from .dashboard_partage import (
     dashboard_public,
     dashboard_tv,
 )
+from .formule_api import FormuleTestView
 from .vues_api import VuePersonnaliseeViewSet
 from .views import (
     ApiUsagePlanViewSet,
@@ -144,4 +145,7 @@ urlpatterns = router.urls + [
     path('maintenance/', maintenance_toggle, name='maintenance-toggle'),
     # NTPLT19 — statistiques DB d'exploitation (SUPERUSER only, lecture seule).
     path('db-stats/', db_stats_view, name='db-stats'),
+    # NTEXT37 — banc d'essai d'une expression sur des données réelles
+    # (lecture seule, borné, scopé société).
+    path('formule/tester/', FormuleTestView.as_view(), name='formule-tester'),
 ]
