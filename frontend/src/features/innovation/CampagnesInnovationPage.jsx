@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Megaphone, Plus, Copy, LineChart } from 'lucide-react'
+import { Megaphone, Plus, Copy, LineChart, Rocket } from 'lucide-react'
 import innovationApi from '../../api/innovationApi'
 import {
   Badge, Button, Card, DataTable, EmptyState, IconButton,
@@ -104,6 +104,19 @@ export default function CampagnesInnovationPage() {
       .finally(() => setLoadingRapport(false))
   }
 
+  // NTIDE62 — lancement : brouillon → active. C'est CETTE transition (et elle
+  // seule) qui notifie le segment ciblé côté serveur (NTIDE31,
+  // `CampagneInnovationViewSet.perform_update`) et qui fait apparaître le
+  // bandeau d'incitation sur « Proposer une idée » (NTIDE27) : le PATCH direct
+  // du statut est donc l'unique geste nécessaire, aucune route dédiée.
+  const lancer = (campagne) => {
+    setBusyId(campagne.id)
+    innovationApi.campagnes.update(campagne.id, { statut: 'active' })
+      .then(() => { toast.success('Campagne lancée.'); reload() })
+      .catch(() => toast.error('Lancement impossible.'))
+      .finally(() => setBusyId(null))
+  }
+
   const cloner = (campagne) => {
     setBusyId(campagne.id)
     innovationApi.campagnes.cloner(campagne.id)
@@ -131,10 +144,15 @@ export default function CampagnesInnovationPage() {
         : '—'),
     },
     {
-      id: 'actions', header: '', width: 120, align: 'right',
+      id: 'actions', header: '', width: 160, align: 'right',
       accessor: () => '',
       cell: (v, r) => (
         <span className="flex items-center justify-end gap-1">
+          {r.statut === 'brouillon' && (
+            <IconButton variant="ghost" label="Lancer" disabled={busyId === r.id} onClick={() => lancer(r)}>
+              <Rocket />
+            </IconButton>
+          )}
           <IconButton variant="ghost" label="Rapport" onClick={() => voirRapport(r)}>
             <LineChart />
           </IconButton>
@@ -144,7 +162,7 @@ export default function CampagnesInnovationPage() {
         </span>
       ),
     },
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- voirRapport/cloner recréés à chaque rendu
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- lancer/voirRapport/cloner recréés à chaque rendu
   ], [busyId])
 
   return (
