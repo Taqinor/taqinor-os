@@ -154,7 +154,7 @@ a focused test, calling the EXISTING backend endpoint.
 - [x] (déjà présent) FE-XSAV14/ZMFG6/11 — cause/remède + Pareto pannes, worksheet UI, predicted-failure estimations. (@lane: frontend/sav)
 
 ## Lane `frontend/litiges`
-- [ ] FE-LITIGE4 — render `rec.ncr`/`rec.audit` (NCR/Audit linked) in `ReclamationDetail.jsx` + linking control in `ReclamationEditor.jsx` (data already fetched). (@lane: frontend/litiges)
+- [x] (déjà présent) FE-LITIGE4 — render `rec.ncr`/`rec.audit` (NCR/Audit linked) in `ReclamationDetail.jsx` + linking control in `ReclamationEditor.jsx` (data already fetched). (@lane: frontend/litiges)
 
 ## Lane `frontend/compta` (XACC/ZACC round-2 — <half of accounting reachable)
 - [x] FE-FG122/126/132 — wire the already-written uncalled `positionTresorerie`/`previsionnelTresorerie`/`balanceAgeeFournisseurs` (cheapest wins) into `TresoreriePage.jsx`/`EtatsPage.jsx`. (déjà présent) (@lane: frontend/compta)
@@ -182,7 +182,7 @@ a focused test, calling the EXISTING backend endpoint.
 - [x] (déjà présent) FE-ZPUR9 — purchase-analysis PDF button next to the XPUR24 xlsx export. (@lane: frontend/stock)
 
 ## Lane `frontend/installations` (XMFG kitting/atelier — whole subsystem backend-only)
-- [ ] FE-XMFG1-16 — **atelier/kitting UI**: new `pages/installations/AteliersPage.jsx` (OrdreAssemblage/OrdreDemontage list/detail/close, backflush, reservations, QC gate, bon-pdf) + route/nav; add `ordres-assemblage`/`kits-produit/{id}/structure`/`ordres-demontage` to `installationsApi.js`. (@lane: frontend/installations) (opus)
+- [x] FE-XMFG1-16 — **atelier/kitting UI**: new `pages/installations/AteliersPage.jsx` (OrdreAssemblage/OrdreDemontage list/detail/close, backflush, reservations, QC gate, bon-pdf) + route/nav; add `ordres-assemblage`/`kits-produit/{id}/structure`/`ordres-demontage` to `installationsApi.js`. (déjà présent) (@lane: frontend/installations) (opus)
 
 ## Lane `frontend/compta` (additional round-2 orphans — fold into the compta lane above)
 - [x] FE-XACC33 — "Immobiliser" button on `pages/stock/FacturesFournisseur.jsx` (`immobilisations/depuis-facture-fournisseur`). (déjà présent) (@lane: frontend/compta)
@@ -203,35 +203,35 @@ a focused test, calling the EXISTING backend endpoint.
 - [x] (déjà présent) FE-ZGED10-12 — emoji + cover image, custom properties + kanban/cards/list/calendar item views, reusable-block insert picker. (@lane: frontend/kb)
 
 ## Lane `frontend/pos` (entire apps/pos backend orphaned — FE built against ventes.Facture)
-- [ ] FE-XPOS1-18 — **CRITICAL** rewrite `posApi.js` to call `/pos/ventes|sessions|retraits|config-materiel/`; add routes `/pos/session` (ouverture/clôture + rapport-z, XPOS4), `/pos/dashboard` (XPOS11), `/pos/retraits` (click-and-collect, XPOS15); wire ticket-escpos/share-link + serial capture (XPOS9) into `CaisseScreen.jsx`. (@lane: frontend/pos) (opus)
+- [x] (déjà présent) FE-XPOS1-18 — **CRITICAL** rewrite `posApi.js` to call `/pos/ventes|sessions|retraits|config-materiel/`; add routes `/pos/session` (ouverture/clôture + rapport-z, XPOS4), `/pos/dashboard` (XPOS11), `/pos/retraits` (click-and-collect, XPOS15); wire ticket-escpos/share-link + serial capture (XPOS9) into `CaisseScreen.jsx`. (@lane: frontend/pos) (opus)
 
 ## Lane `frontend/ventes` (XSAL/ZSAL round-2 — mostly cheap NOT_WIRED stubs)
-- [ ] FE-XSAL6 — **BLOCKED: needs backend** (`PlanCommission` has no viewset/URL + not consumed by reporting/insights.py) then a "Plans de commission" screen under parametres. (@lane: frontend/ventes)
-- [ ] FE-XSAL1-3 — price-list admin CRUD + `liste_prix` field on `ClientForm.jsx` + call `getPrixApplicable` (remove the stale "ne pas appeler" comment) in `DevisGenerator.jsx`/`ProduitPicker.jsx` with a "Tarif" badge. (@lane: frontend/ventes)
-- [ ] FE-XSAL12 — partial-delivery dialog + reliquat column in `VentesKanban.jsx` (`livrer-partiel`). (@lane: frontend/ventes)
-- [ ] FE-ZSAL8/XSAL16 — BC PDF button + proposal `engagement` summary on `DevisList.jsx` (already serialized). (@lane: frontend/ventes)
-- [ ] FE-ZSAL5 — keyed email-template editor (`envoi_devis`) in `EmailSection.jsx`. (@lane: frontend/ventes)
+- [BLOCKED: needs backend] FE-XSAL6 — `PlanCommission` has no viewset/URL + not consumed by reporting/insights.py; a "Plans de commission" screen under parametres cannot be wired until the backend exposes it. (@lane: frontend/ventes)
+- [x] (déjà présent) FE-XSAL1-3 — price-list admin CRUD (`ListesPrixPage.jsx`, routed) + `liste_prix` field on `ClientForm.jsx` + `getPrixApplicable` called from `DevisGenerator.jsx` (XSAL3 "Tarif" badge already wired). (@lane: frontend/ventes)
+- [x] (déjà présent) FE-XSAL12 — partial-delivery dialog + reliquat column already in `BonCommandeList.jsx` (`LivraisonPartielleDialog`, `livrer-partiel`); no `VentesKanban.jsx` exists, this is the real implementation location. (@lane: frontend/ventes)
+- [x] FE-ZSAL8/XSAL16 — engagement summary already present (`engagementSummary()` in `DevisList.jsx`); added the missing BC PDF menu item (`handleBonCommandePdf` wired to the orphaned `ventesApi.getBonCommandePdf`) shown when `d.bon_commande_etat.exists`. (@lane: frontend/ventes)
+- [x] (déjà présent) FE-ZSAL5 — keyed email-template editor (`envoi_devis`) already in `EmailSection.jsx` (ZSAL5 tag), backend model/migration + `envoi_devis` key confirmed. (@lane: frontend/ventes)
 
 ## Lane `frontend/crm` (ZSAL round-2 — api client stubs defined, never called)
-- [ ] FE-ZSAL2 — "Appliquer un plan" button + plan picker on lead detail + PlanActivite CRUD (`getPlansActivite`/`appliquerPlanActivite` already in `crmApi.js`). (@lane: frontend/crm)
-- [ ] FE-ZSAL4 — "Convertir en client" button + modal on lead detail (`convertirClient`). (@lane: frontend/crm)
-- [ ] FE-ZSAL3/ZSAL6 — "Mes équipes" dashboard cards + EquipeCommerciale CRUD + "Attribution des leads" section in `Rapports.jsx`. (@lane: frontend/crm)
-- [ ] FE-ZSAL1/XSAL17 — suggested follow-up activity prompt in `MesActivitesPage.jsx` + `{lien_rdv}` placeholder in template editor. (@lane: frontend/crm)
+- [x] (déjà présent) FE-ZSAL2 — "Appliquer un plan" button + plan picker on lead detail + PlanActivite CRUD (`getPlansActivite`/`appliquerPlanActivite` already in `crmApi.js`). (@lane: frontend/crm)
+- [x] (déjà présent) FE-ZSAL4 — "Convertir en client" button + modal on lead detail (`convertirClient`). (@lane: frontend/crm)
+- [x] (déjà présent) FE-ZSAL3/ZSAL6 — "Mes équipes" dashboard cards + EquipeCommerciale CRUD + "Attribution des leads" section in `Rapports.jsx`. (@lane: frontend/crm)
+- [x] (déjà présent) FE-ZSAL1/XSAL17 — suggested follow-up activity prompt in `MesActivitesPage.jsx` + `{lien_rdv}` placeholder in template editor. (@lane: frontend/crm)
 
 ## Lane `frontend/reporting` (systemic offender — many [x] reports backend-only)
-- [ ] FE-XPLT6 — "Alertes KPI" CRUD under parametres (`reporting/kpi-alertes/`). (@lane: frontend/reporting)
-- [ ] FE-XPLT10 — dashboard share/revoke UI + `/dashboards-tv` public kiosk route (`core/dashboards-partages`). (@lane: frontend/reporting)
-- [ ] FE-XPLT22 — `ClasseurPage.jsx` (live-data spreadsheet) + `reportingApi.js` client. (@lane: frontend/reporting)
-- [ ] FE-XPLT9 — mount the already-built-but-unused `DashboardFilterBar.jsx` in `DashboardConfigPage.jsx`. (@lane: frontend/reporting)
+- [x] (déjà présent) FE-XPLT6 — "Alertes KPI" CRUD under parametres (`reporting/kpi-alertes/`). (@lane: frontend/reporting)
+- [x] (déjà présent) FE-XPLT10 — dashboard share/revoke UI + `/dashboards-tv` public kiosk route (`core/dashboards-partages`). (@lane: frontend/reporting)
+- [x] (déjà présent) FE-XPLT22 — `ClasseurPage.jsx` (live-data spreadsheet) + `reportingApi.js` client. (@lane: frontend/reporting)
+- [x] (déjà présent) FE-XPLT9 — mount the already-built-but-unused `DashboardFilterBar.jsx` in `DashboardConfigPage.jsx`. (@lane: frontend/reporting)
 - [ ] FE-XPLT11 — **BLOCKED: needs pivot/BI-explorer screen (FG382, itself unbuilt frontend)** then expose the formula measure. (@lane: frontend/reporting)
-- [ ] FE-XSAV8/XFSM16-17 — SAV SLA report + field-service analytics + technician scorecard pages under `pages/reporting/`. (@lane: frontend/reporting)
+- [x] (déjà présent) FE-XSAV8/XFSM16-17 — SAV SLA report + field-service analytics + technician scorecard pages under `pages/reporting/`. (@lane: frontend/reporting)
 
 ## Lane `frontend/platform` (agent / dataimport / audit / privacy)
-- [ ] FE-XPLT18 — propose→confirm "Générer une règle" UI in `AutomatisationsSection.jsx` (`agent/actions/automation-draft`). (@lane: frontend/platform)
-- [ ] FE-XPLT1-2 — import upsert mode + saved-mapping picker + error-CSV link in `ExcelImport.jsx` (`importApi.js` mode/external_id/saveMapping/jobErreursCsv). (@lane: frontend/platform)
-- [ ] FE-XPLT23 — "Confidentialité" tab under parametres: CNDP `registre-traitements` CRUD + `dsr-requests` (DSR) submission/tracking. (@lane: frontend/platform)
-- [ ] FE-YHARD3 — "Historique à cette date" (as-of) view on record detail / `Journal.jsx` (admin/Directeur). (@lane: frontend/platform)
-- [ ] FE-SCA41 — Exports ventes : gérer la réponse 202 des exports xlsx volumineux (journal-ventes / export-comptable) : afficher « génération en arrière-plan », poller GET /api/django/ventes/export/status/<job_id>/ (payload {status, download_url, filename}) puis déclencher le téléchargement via download_url (URL pré-signée 1 h). Sous le seuil (2 000 lignes, env), rien ne change.
+- [x] FE-XPLT18 — propose→confirm "Générer une règle" UI in `AutomatisationsSection.jsx` (`agent/actions/automation-draft`). (@lane: frontend/platform) (déjà présent)
+- [x] FE-XPLT1-2 — import upsert mode + saved-mapping picker + error-CSV link in `ExcelImport.jsx` (`importApi.js` mode/external_id/saveMapping/jobErreursCsv). (@lane: frontend/platform) (déjà présent)
+- [x] FE-XPLT23 — "Confidentialité" tab under parametres: CNDP `registre-traitements` CRUD + `dsr-requests` (DSR) submission/tracking. (@lane: frontend/platform) (déjà présent)
+- [x] FE-YHARD3 — "Historique à cette date" (as-of) view on record detail / `Journal.jsx` (admin/Directeur). (@lane: frontend/platform) (déjà présent)
+- [x] FE-SCA41 — Exports ventes : gérer la réponse 202 des exports xlsx volumineux (journal-ventes / export-comptable) : afficher « génération en arrière-plan », poller GET /api/django/ventes/export/status/<job_id>/ (payload {status, download_url, filename}) puis déclencher le téléchargement via download_url (URL pré-signée 1 h). Sous le seuil (2 000 lignes, env), rien ne change.
 
 ## AUDIT COMPLETE (2026-07-06)
 - Domains CLEAN (fully wired, no gaps): **litiges, monitoring, publicapi, audit** baseline screens.
@@ -240,6 +240,45 @@ a focused test, calling the EXISTING backend endpoint.
 
 ## DONE LOG
 <!-- one dated line per shipped task -->
+- 2026-08-13 (lane frontend/crm) — les 4 tâches taguées `@lane: frontend/crm` étaient DÉJÀ construites
+  et câblées : FE-ZSAL2 (`PlanActiviteDialog.jsx` ouvert depuis `LeadWorkspace.jsx`, appelle
+  `crmApi.getPlansActivite`/`appliquerPlanActivite`), FE-ZSAL4 (`ConvertirClientDialog.jsx` +
+  bouton « Convertir en client » dans `IdentityRail.jsx`, appelle `crmApi.convertirClient`),
+  FE-ZSAL3/ZSAL6 (`MesEquipesCard.jsx` sur `Dashboard.jsx` + CRUD `EquipesCommercialesSection.jsx`
+  sous Paramètres + section « Attribution des leads » dans `Rapports.jsx`, lignes ~700-710),
+  FE-ZSAL1/XSAL17 (prompt de suivi suggéré dans `MesActivitesPage.jsx` lignes 155-385 + placeholder
+  `{lien_rdv}` documenté dans `MessageTemplatesCrmSection.jsx` et résolu côté serveur via
+  `PublicBookingPage.jsx`). Aucun code écrit, pas de commit de fonctionnalité (seule mise à jour de
+  ce fichier).
+- 2026-08-13 (lane frontend/reporting) — les 5 tâches actionnables taguées `@lane: frontend/reporting` étaient DÉJÀ construites et câblées bout-en-bout (endpoint backend + client `reportingApi.js`/`coreApi.js` + page + route `module.config.jsx` + entrée de nav) : FE-XPLT6 (`KpiAlertesPage.jsx` sous `/parametres/alertes-kpi`), FE-XPLT10 (`DashboardSharePage.jsx` + `DashboardsTvPage.jsx` sous `/dashboards-tv`), FE-XPLT22 (`ClasseursListPage.jsx`/`ClasseurPage.jsx` sous `/reporting/classeurs`), FE-XPLT9 (`DashboardFilterBar` déjà montée dans `DashboardConfigPage.jsx`), FE-XSAV8/XFSM16-17 (`SavSlaPage.jsx`/`FieldServiceReportPage.jsx`/`TechnicienScorecardPage.jsx`). Aucun code écrit, seule mise à jour de ce fichier. FE-XPLT11 reste `[BLOCKED]` (dépendance FG382 non construite), inchangé.
+- 2026-08-13 (lane frontend/litiges) — FE-LITIGE4 déjà entièrement construite : `ReclamationDetail.jsx` a un onglet « NCR / Audit lié » rendant `rec.ncr`/`rec.audit` (états vides gérés) ; `ReclamationEditor.jsx` expose les champs `ncr_id`/`audit_id` postés à l'enregistrement ; couverte par `litiges.test.jsx` (8 tests verts). Aucun code écrit, seule mise à jour de ce fichier. Gates : eslint vert, vitest 8/8 vert.
+- 2026-08-13 — Lane `frontend/platform` drainée (aucun code écrit, seule mise à jour de ce
+  fichier). Les 4 tâches taguées `@lane: frontend/platform` étaient DÉJÀ construites et câblées :
+  FE-XPLT18 (propose→confirm "Générer une règle (IA)" dans `AutomatisationsSection.jsx`, appelle
+  `automationApi.proposeDraft` → `agent/actions/automation-draft/`, règle toujours créée désactivée) ;
+  FE-XPLT1-2 (mode d'import creer/maj/upsert + sélecteur de mapping sauvegardé + téléchargement du
+  CSV des lignes en échec dans `ExcelImport.jsx`/`importApi.js`) ; FE-XPLT23 (onglet Confidentialité
+  `ConfidentialiteSection.jsx` : registre CNDP CRUD+export CSV, demandes DSR soumission/traitement,
+  plus registre de consentement et benchmarking déjà présents en bonus) ; FE-YHARD3 (dialog
+  "Historique à cette date" dans `Journal.jsx`, `auditApi.getObjectAsOf` reconstruit champ par
+  champ). Gates vérifiés : eslint propre sur les 5 fichiers, `vitest run` 4/4 fichiers de test
+  (15 tests) verts, `vite build` vert.
+- 2026-08-13 (lane frontend/pos) — FE-XPOS1-18 était DÉJÀ entièrement construite et câblée : `posApi.js` appelle `/pos/ventes|sessions|retraits|config-materiel/` (aucun résidu `ventes.Facture`) ; `module.config.jsx` monte `/pos`, `/pos/session`, `/pos/dashboard`, `/pos/retraits`, `/pos/config-materiel` ; `CaisseScreen.jsx` câble ticket-PDF, ticket-ESC/POS, lien partageable et capture des numéros de série (XPOS9) sur la vente validée. Vérifié : `npx eslint`, `npx vitest run src/features/pos` (6 fichiers, 30 tests verts) et `npx vite build` tous verts. Aucun code écrit, seule mise à jour de ce fichier.
+- 2026-08-13 — Lane `frontend/installations` drainée (FE-XMFG1-16, tâche unique). Déjà entièrement construite et câblée : `pages/installations/AteliersPage.jsx` (liste/détail assemblage+démontage, démarrer/terminer/annuler, backflush quantité produite, disponibilité par composant, gate qualité QC bloquant la clôture, chatter noter/historique, bon PDF), `installationsApi.js` (`getOrdresAssemblage`/`getOrdreAssemblage`/`create...`/`update...`/`delete...`, `getDisponibiliteAssemblage`, `demarrerAssemblage`/`terminerAssemblage`/`annulerAssemblage`, `getHistoriqueAssemblage`/`noterAssemblage`, `getControleQualiteAssemblage`/`enregistrerControleQualiteAssemblage`, `getEtapesAssemblage`, `bonAssemblageUrl`, lignes assemblage/démontage, `getOrdresDemontage`/`terminerDemontage`, `getKitsAssemblage`), route `/atelier` + nav « Atelier » dans `features/installations/module.config.jsx`, endpoints backend `kits`/`ordres-assemblage`/`ordres-demontage` dans `apps/installations/urls.py`. Aucun export API orphelin ni vocabulaire désynchronisé trouvé. Aucun code écrit — cochée `(déjà présent)`. Gates : `eslint` vert, `vitest run AteliersPage.test.jsx` vert (3/3), `vite build` vert.
+- 2026-08-13 (lane frontend/ventes) — FE-XSAL1-3 et FE-XSAL12 vérifiées déjà entièrement construites
+  (`ListesPrixPage.jsx` routé + badge « Tarif » dans `DevisGenerator.jsx` ; dialogue
+  `LivraisonPartielleDialog` + colonne Reliquat déjà dans `BonCommandeList.jsx` — `VentesKanban.jsx`
+  n'existe pas, c'est le vrai emplacement de la fonctionnalité). Aucun code écrit. FE-XSAL6 confirmée
+  bloquée (`PlanCommission` sans viewset/URL côté backend) — marquée `[BLOCKED: needs backend]`.
+- 2026-08-13 (lane frontend/ventes) — FE-ZSAL8/XSAL16 : le résumé d'engagement (`engagementSummary()`)
+  était déjà présent dans `DevisList.jsx`. Écart réel trouvé et corrigé : `ventesApi.getBonCommandePdf`
+  était un export API orphelin (endpoint backend `GET .../bons-commande/<id>/pdf/` complet, jamais
+  appelé côté client) — ajouté un item de menu « Bon de commande (PDF) » sur `DevisList.jsx` (visible
+  quand `bon_commande_etat.exists`) qui l'appelle, avec test source `DevisListBcPdf.test.mjs`.
+- 2026-08-13 (lane frontend/ventes) — FE-ZSAL5 vérifiée déjà entièrement construite (éditeur de
+  modèles d'e-mail par clé dans `EmailSection.jsx`, clé `envoi_devis` confirmée côté backend
+  modèle+migration). Aucun code écrit. Lane `frontend/ventes` drainée entièrement (5 tâches : 3
+  déjà présentes, 1 bloquée backend, 1 écart réel corrigé).
 - 2026-08-13 — lane `frontend/contrats` drained: FE-CONTRAT16-17/13-14/12/23-25/7/15/33, FE-XCTR7-8-11, FE-XCTR5, FE-XCTR14, FE-CONTRAT-config already fully built (ContratDetail.jsx tabs+actions, ModelesPage.jsx instancier, DashboardPage.jsx, PortailContratsPage.jsx, ConfigLocationPage.jsx) — ticked `(déjà présent)`, no code change. FE-XCTR2-3: added "Équipements couverts" + "X/Y visites" columns to `ContratsMaintenance.jsx` (data was already serialized server-side, just unrendered). FE-XCTR17-21: `LocationPage.jsx` had caution/inspection/bons PDF already; added the missing disponibilité (reservation-window) warning in the create dialog and an admin-only "Utilisation & ROI" card, both using contratsApi calls that existed but were never invoked from the UI.
 - 2026-08-13 (lane frontend/sav) — les 12 tâches taguées `@lane: frontend/sav` étaient DÉJÀ construites et câblées (savApi.js + pages/sav/*.jsx + router public /e/:token /suivi/:token) : FE-XSAV19/XSAV10, FE-XSAV3/XFSM1/XCTR4, FE-SAV-warranty, FE-XSAV15-17/XSAV9, FE-XSAV8, FE-XSAV12/27/ZSAV8-9, FE-ZSAV2-3-6, FE-SAV-kb/macros, FE-SAV-alarmes, FE-XSAV14/ZMFG6/11, FE-XSAV5/21/28, FE-ZMFG1-2/4/5-12. Aucun code écrit, pas de commit de fonctionnalité (seule mise à jour de ce fichier).
 - 2026-08-13 — Lane `frontend/compta` drainée (agent-acf554ffb8d774ac6). Vérifiées déjà construites
@@ -299,4 +338,5 @@ a focused test, calling the EXISTING backend endpoint.
 - 2026-08-13 — FE-XRH28b (déjà présent) : onglets « Mes EPI » et « Mes habilitations » du portail consomment `getMesEpi`/`getMesHabilitations`.
 - 2026-08-13 — FE-XRH34/XRH26/XRH32 (déjà présent) : passage de quiz, auto-évaluation et baromètre eNPS dans `Portail.jsx` ; constructeur de quiz dans `Competences.jsx`.
 - 2026-08-13 — FE-XRH10/13 (déjà présent) : page kiosque plein écran `/kiosque`, administration des devices kiosque et import CSV pointeuse dans `Temps.jsx`.
+- 2026-08-13 — FE-SCA41 : le backend async (journal_view.py/tasks.py, testé par test_sca41_async_exports.py) était déjà en place mais aucun appelant front ne gérait le 202 — `journalVentes`/`export-comptable` xlsx renvoyaient alors une réponse blob illisible (le JSON du job encapsulé dans un Blob) sur les périodes volumineuses. Ajouté `ventesApi.exportStatus(jobId)` (GET /ventes/export/status/<job_id>/) et, dans `FactureList.jsx`, `asyncExportPayload()` (détecte le 202) + `pollExportJobAndDownload()` (sonde toutes les 2 s, timeout 5 min, télécharge via `download_url` dès `status:'ready'`) branchés sur `handleExportComptable` (xlsx uniquement — le CSV reste toujours synchrone) et `handleJournalComptable`, avec `toast.info('Export volumineux — génération en arrière-plan.')`. Sous le seuil, `res.status` reste 200 et le chemin existant est inchangé. Test focalisé ajouté (`FactureListFE_SCA41.test.mjs`, 5/5 verts, patron source-level déjà utilisé par `FactureListVX92.test.mjs`). Gates : eslint + `npx vite build` verts.
 

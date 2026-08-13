@@ -371,7 +371,7 @@ function DevisRow({ d, ctx }) {
     openEdit, openVarianteModal, handleDelete, handleEnvoyer, handleRelancer, handleContacterSuperieur,
     openEmailModal, handleCopierLienProposition, copierLienInterne, handlePreview, openPdfModal,
     handleTelechargerPdf, handlePartagerPdf, openAcceptModal, openRefusModal, handleConvertBC,
-    handleProformaPdf,
+    handleProformaPdf, handleBonCommandePdf,
     handleChantier, handleCreerProjet, handleGenererFacture,
   } = ctx
   // Expiration calculée à la volée (T7) : un devis en attente dont la
@@ -922,6 +922,14 @@ function DevisRow({ d, ctx }) {
               <DropdownMenuItem onSelect={() => handleProformaPdf(d)}>
                 Proforma (PDF)
               </DropdownMenuItem>
+              {/* ZSAL8 — PDF du bon de commande lié (client `getBonCommandePdf`
+                  déjà présent dans ventesApi.js, jamais appelé). Endpoint BC
+                  distinct, ne touche pas au rendu /proposal du devis (règle #4). */}
+              {d.bon_commande_etat?.exists && (
+                <DropdownMenuItem onSelect={() => handleBonCommandePdf(d)}>
+                  Bon de commande (PDF)
+                </DropdownMenuItem>
+              )}
               {/* WIR96 — suivi du partage : « vu le … » (OuverturePartage)
                   + relances consignées (RelanceDevisAbandonne). */}
               <DropdownMenuItem onSelect={() => toggleSuiviPartage(d.id)}>
@@ -1940,6 +1948,19 @@ export default function DevisList() {
     }
   }
 
+  // ZSAL8 — PDF du bon de commande lié (endpoint GET .../pdf/ backend
+  // complet, jamais appelé côté client).
+  const handleBonCommandePdf = async (d) => {
+    const bcId = d.bon_commande_etat?.id
+    if (!bcId) return
+    try {
+      const res = await ventesApi.getBonCommandePdf(bcId)
+      openPdfBlob(res.data, filenameFromResponse(res, `${d.bon_commande_etat.reference}.pdf`))
+    } catch {
+      toast.error('PDF du bon de commande indisponible.')
+    }
+  }
+
   const handleTelechargerPdf = async (d) => {
     setPdfDownloading(prev => ({ ...prev, [d.id]: true }))
     try {
@@ -2109,7 +2130,7 @@ export default function DevisList() {
     openEdit, openVarianteModal, handleDelete, handleEnvoyer, handleRelancer, handleContacterSuperieur,
     openEmailModal, handleCopierLienProposition, copierLienInterne, handlePreview, openPdfModal,
     handleTelechargerPdf, handlePartagerPdf, openAcceptModal, openRefusModal, handleConvertBC,
-    handleProformaPdf,
+    handleProformaPdf, handleBonCommandePdf,
     handleChantier, handleCreerProjet, handleGenererFacture,
   }
 
