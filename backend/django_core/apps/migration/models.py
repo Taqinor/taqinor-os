@@ -52,6 +52,11 @@ class ProjetMigration(TenantModel):
     date_debut = models.DateTimeField(null=True, blank=True)
     date_fin = models.DateTimeField(null=True, blank=True)
     notes = models.TextField(blank=True, default='')
+    # NTMIG35 — trace de la purge des fichiers source (PII) du projet. Les
+    # rapports de réconciliation, eux, sont des AGRÉGATS non-PII : ils sont
+    # conservés (ce sont les pièces justificatives remises au client migré).
+    fichiers_purges = models.BooleanField(
+        default=False, verbose_name='Fichiers source purgés')
 
     class Meta:
         ordering = ['-created_at']
@@ -105,6 +110,30 @@ class LotMigration(TenantModel):
     # Somme des colonnes montant déclarées par le kit (reconcile financier).
     source_montant = models.DecimalField(
         max_digits=16, decimal_places=2, null=True, blank=True)
+
+    # NTMIG35 — fichier source TEMPORAIRE. On stocke sa CLÉ D'OBJET MinIO
+    # (bucket `erp-uploads`), jamais un `FileField` : ARC26 interdit toute
+    # nouvelle pièce jointe hors stockage objet, et le fichier ne doit vivre ni
+    # dans le dépôt ni sur le disque d'un conteneur. Il contient des données
+    # personnelles (clients, leads) : gardé le temps de rejouer/reprendre un
+    # chargement (NTMIG38) ou de tester à blanc (NTMIG33), puis purgé
+    # automatiquement `RETENTION_FICHIERS_JOURS` jours après la clôture.
+    fichier_source_cle = models.CharField(
+        max_length=500, blank=True, default='',
+        verbose_name="Clé de stockage du fichier source")
+    #: Nom d'origine du fichier — le nom stocké est suffixé par le stockage,
+    #: et l'EXTENSION d'origine décide du parseur (CSV vs XLSX) à la reprise.
+    fichier_source_nom = models.CharField(
+        max_length=255, blank=True, default='',
+        verbose_name="Nom du fichier source d'origine")
+    #: NTMIG38 — nombre de lignes du fichier D'ORIGINE déjà commitées lors des
+    #: passes précédentes. Le dernier ``import_job`` numérote ses lignes à
+    #: partir du fichier qu'on lui a donné (le RESTE du fichier lors d'une
+    #: reprise) : sans cet décalage, « ligne 12 » du journal serait prise pour
+    #: la ligne 12 de la source alors qu'elle en est la 612ᵉ, et la reprise
+    #: suivante rechargerait 600 lignes déjà passées.
+    fichier_offset_lignes = models.PositiveIntegerField(
+        default=0, verbose_name="Lignes source déjà chargées (reprise)")
 
     # NTMIG5 — dérogation explicite « pas de succès sans reconcile ».
     derogation_reconcile = models.BooleanField(default=False)

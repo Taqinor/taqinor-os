@@ -5,6 +5,8 @@ les deux rôles système y sont mappés, le superuser aussi). ``company`` est
 TOUJOURS forcée côté serveur (``CompanyScopedModelViewSet``) ; ``cree_par``
 est posé côté serveur en création, jamais lu du corps de requête.
 """
+import logging
+
 from rest_framework import status
 from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
@@ -20,6 +22,20 @@ from .models import LotMigration, ProjetMigration
 from .serializers import (
     LotMigrationSerializer, ProjetMigrationSerializer,
     RapportReconciliationSerializer)
+
+logger = logging.getLogger(__name__)
+
+
+def _drapeau(valeur):
+    """Booléen tolérant au multipart (où tout arrive en chaîne de caractères).
+
+    Sans cette conversion, la chaîne ``'false'`` d'un formulaire serait
+    « vraie » en Python et ferait écarter des lignes que l'utilisateur voulait
+    charger.
+    """
+    if isinstance(valeur, str):
+        return valeur.strip().lower() in ('1', 'true', 'vrai', 'oui', 'on')
+    return bool(valeur)
 
 
 def _fichier_de(request):
@@ -81,6 +97,16 @@ class ProjetMigrationViewSet(CompanyScopedModelViewSet):
             f'inline; filename="pv-migration-{projet.pk}.pdf"')
         return resp
 
+    @action(detail=True, methods=['get'], url_path='estimation', permission_classes=[IsDirecteurOuAdmin])
+    def estimation(self, request, pk=None):
+        """NTMIG34 — estimation d'effort + checklist des points d'attention.
+
+        Lecture seule et purement indicative : elle ne conditionne ni un
+        chargement ni une clôture.
+        """
+        projet = self.get_object()
+        return Response(services.estimer_effort(projet))
+
     def perform_create(self, serializer):
         serializer.save(
             company=self.request.user.company,
@@ -98,6 +124,22 @@ class ProjetMigrationViewSet(CompanyScopedModelViewSet):
                 'Projet clôturé : sa suppression effacerait les rapports de '
                 'réconciliation qui en sont la preuve. Non supprimable.')})
         super().perform_destroy(instance)
+
+    @action(detail=True, methods=['post'], url_path='migrer-a-blanc', permission_classes=[IsDirecteurOuAdmin])
+    def migrer_a_blanc(self, request, pk=None):
+        """NTMIG33 — rejoue le projet sur le tenant SANDBOX (NTADM10).
+
+        Sans sandbox provisionné : 400 explicite, rien n'est créé. La
+        production n'est jamais touchée — le service refuse d'écrire si la
+        société sandbox se confond avec celle du projet.
+        """
+        projet = self.get_object()
+        try:
+            rapport = services.migrer_a_blanc(projet, user=request.user)
+        except services.SandboxIndisponible as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(rapport)
 
     @action(detail=True, methods=['post'], url_path='terminer', permission_classes=[IsDirecteurOuAdmin])
     def terminer(self, request, pk=None):
@@ -173,6 +215,26 @@ class LotMigrationViewSet(CompanyScopedModelViewSet):
             raise ValidationError({'detail': str(exc)})
         return Response(apercu)
 
+    @action(detail=True, methods=['post'], url_path='valider-source', permission_classes=[IsDirecteurOuAdmin])
+    def valider_source(self, request, pk=None):
+        """NTMIG32 — qualité de la SOURCE avant chargement.
+
+        Renvoie le nombre de lignes valides/invalides, les motifs, et les
+        NUMÉROS des lignes fautives : l'écran peut alors proposer de charger
+        sans elles (``ignorer_lignes_invalides`` sur ``charger``). N'écrit
+        rien — ni en base cible, ni sur le lot.
+        """
+        lot = self.get_object()
+        file_bytes, filename = _fichier_de(request)
+        try:
+            rapport = services.valider_source(
+                lot, file_bytes, filename,
+                kit_cle=request.data.get('kit') or None,
+                mapping_name=request.data.get('mapping_name') or None)
+        except ValueError as exc:
+            raise ValidationError({'detail': str(exc)})
+        return Response(rapport)
+
     @action(detail=True, methods=['post'], url_path='charger', permission_classes=[IsDirecteurOuAdmin])
     def charger(self, request, pk=None):
         """NTMIG15 — chargement délégué à ``dataimport``.
@@ -183,7 +245,22 @@ class LotMigrationViewSet(CompanyScopedModelViewSet):
         """
         lot = self.get_object()
         file_bytes, filename = _fichier_de(request)
+        exclues = []
         try:
+            if _drapeau(request.data.get('ignorer_lignes_invalides')):
+                # NTMIG32 — on RE-valide côté serveur au lieu de croire une
+                # liste de numéros envoyée par le client : le fichier chargé
+                # peut ne pas être celui qui a été validé, et écarter des
+                # lignes sur parole ferait disparaître des données sans motif
+                # traçable.
+                rapport = services.valider_source(
+                    lot, file_bytes, filename,
+                    kit_cle=request.data.get('kit') or None,
+                    mapping_name=request.data.get('mapping_name') or None)
+                exclues = rapport['lignes_invalides_numeros']
+                if exclues:
+                    file_bytes, filename = services.fichier_sans_lignes(
+                        file_bytes, filename, exclues)
             result = services.charger_lot(
                 lot, file_bytes, filename,
                 # Le mode demandé est FILTRÉ par le service : « creer » ne
@@ -194,8 +271,41 @@ class LotMigrationViewSet(CompanyScopedModelViewSet):
                 user=request.user)
         except ValueError as exc:
             raise ValidationError({'detail': str(exc)})
+        if exclues:
+            # Les lignes écartées ne disparaissent pas en silence : elles sont
+            # journalisées et restent listées (numéro + motif) par
+            # `valider-source`, dont la réponse est le contrat de référence —
+            # la forme de CETTE réponse-ci ne bouge pas (contrat d'API).
+            logger.info(
+                'NTMIG32 — lot %s : %s ligne(s) source écartée(s) avant '
+                'chargement (%s).', lot.pk, len(exclues), exclues[:20])
         return Response({
             'lot': LotMigrationSerializer(lot).data, 'resultat': result})
+
+    @action(detail=True, methods=['post'], url_path='reprendre', permission_classes=[IsDirecteurOuAdmin])
+    def reprendre(self, request, pk=None):
+        """NTMIG38 — reprise d'un lot interrompu, sans doublon.
+
+        Sans fichier joint, reprend le fichier MÉMORISÉ au dernier chargement
+        (NTMIG35) ; 400 explicite s'il a été purgé ou s'il n'y a rien à
+        reprendre.
+        """
+        lot = self.get_object()
+        file_bytes, filename = None, None
+        if request.FILES.get('fichier') or request.FILES.get('file'):
+            file_bytes, filename = _fichier_de(request)
+        try:
+            rapport = services.reprendre_lot(
+                lot, file_bytes, filename,
+                mapping_name=request.data.get('mapping_name') or None,
+                user=request.user)
+        except services.RepriseImpossible as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        except ValueError as exc:
+            raise ValidationError({'detail': str(exc)})
+        return Response({
+            'lot': LotMigrationSerializer(lot).data, 'reprise': rapport})
 
     @action(detail=True, methods=['post'], url_path='charger-odoo', permission_classes=[IsDirecteurOuAdmin])
     def charger_odoo(self, request, pk=None):

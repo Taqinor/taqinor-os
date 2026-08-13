@@ -654,6 +654,12 @@ app.conf.beat_schedule = {
         'task': 'sante.alertes_prise_en_charge_expirant',
         'schedule': crontab(hour=7, minute=40),
     },
+    # NTMIG35 — purge quotidienne des fichiers source de migration (PII)
+    # des projets clôturés depuis plus de 30 jours, 02:50.
+    'migration-purger-fichiers': {
+        'task': 'migration.purger_fichiers_migration',
+        'schedule': crontab(hour=2, minute=50),
+    },
     # NTADM11 — purge quotidienne des sandbox expirés (soft puis hard après
     # délai de grâce), 03:05.
     'adminops-purger-sandbox-expires': {
