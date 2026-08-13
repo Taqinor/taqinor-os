@@ -2,7 +2,9 @@
    Fichier de configuration de module (données + composants lazy), pas un module
    de composants : le fast-refresh ne s'y applique pas — comme moduleRoutes.jsx. */
 import { lazy } from 'react'
-import { Wallet, FileText, SlidersHorizontal, Banknote, ReceiptText } from 'lucide-react'
+import {
+  Wallet, FileText, SlidersHorizontal, Banknote, ReceiptText, ListPlus,
+} from 'lucide-react'
 import { appGlyph } from '../../lib/apps/appGlyph'
 
 /* ============================================================================
@@ -20,6 +22,9 @@ const BulletinDetail = lazy(() => import('./BulletinDetail.jsx'))
 const PaieParametres = lazy(() => import('./PaieParametres.jsx'))
 const PaieDeclarations = lazy(() => import('./PaieDeclarations.jsx'))
 const MesBulletins = lazy(() => import('./MesBulletins.jsx'))
+// PACT95 — catalogue des types d'entrées ponctuelles (ZPAI9,
+// `TypeEntreePonctuelle`), jusque-là sans aucun écran.
+const TypesEntreePonctuelle = lazy(() => import('./TypesEntreePonctuelle.jsx'))
 
 const ICON = { size: 17, strokeWidth: 1.75, 'aria-hidden': 'true' }
 const PALIER = ['responsable', 'admin']
@@ -45,6 +50,8 @@ export default {
         icon: <SlidersHorizontal {...ICON} />, roles: PALIER },
       { to: '/paie/declarations', label: 'Déclarations',
         icon: <Banknote {...ICON} />, roles: PALIER },
+      { to: '/paie/types-entree-ponctuelle', label: 'Types d’entrées ponctuelles',
+        icon: <ListPlus {...ICON} />, roles: PALIER },
       // UX14 — self-service : visible pour TOUS les rôles.
       { to: '/paie/mes-bulletins', label: 'Mes bulletins',
         icon: <ReceiptText {...ICON} />, roles: TOUS },
@@ -54,6 +61,7 @@ export default {
   titles: [
     ['/paie/mes-bulletins', 'Mes bulletins'],
     ['/paie/declarations', 'Déclarations & virements'],
+    ['/paie/types-entree-ponctuelle', 'Types d’entrées ponctuelles'],
     ['/paie/parametres', 'Paramètres de paie'],
     ['/paie/bulletins', 'Bulletins de paie'],
     ['/paie', 'Run de paie'],
@@ -65,6 +73,7 @@ export default {
     { path: '/paie/bulletins/:id', component: BulletinDetail, roles: PALIER },
     { path: '/paie/parametres', component: PaieParametres, roles: PALIER },
     { path: '/paie/declarations', component: PaieDeclarations, roles: PALIER },
+    { path: '/paie/types-entree-ponctuelle', component: TypesEntreePonctuelle, roles: PALIER },
     // Route self-service : pas de `roles` → authLoader (tout utilisateur connecté).
     { path: '/paie/mes-bulletins', component: MesBulletins },
   ],
