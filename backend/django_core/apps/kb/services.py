@@ -67,6 +67,10 @@ def snapshot_article(article, *, auteur=None):
             version=next_version,
             titre=article.titre,
             contenu=article.corps,
+            # NTMIG21 — la structure d'un playbook fait partie de son contenu :
+            # elle est figée par le MÊME instantané (liste vide pour un article
+            # ordinaire, donc aucun changement de comportement).
+            contenu_structure=article.contenu_structure or [],
             auteur=auteur,
         )
 
