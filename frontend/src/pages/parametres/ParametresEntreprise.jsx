@@ -59,6 +59,7 @@ import ReferentielsSection from './ReferentielsSection'
 import ChatRetentionSection from './ChatRetentionSection'
 import ModelesBrandesSection from './ModelesBrandesSection'
 import ExportsPlanifiesSection from './ExportsPlanifiesSection'
+import AssistantConfigWidget from './AssistantConfigWidget'
 // EZ16 — message d'erreur FRANÇAIS, jamais du JSON brut.
 import { frenchError } from '../../lib/frenchError'
 
@@ -860,6 +861,13 @@ export default function ParametresEntreprise() {
             Ces informations apparaissent dans l'en-tête de vos devis et factures PDF.
           </p>
         </div>
+
+        {/* ── PACT145 — assistant de paramétrage « Où régler… ? » : répond en
+              français et donne le lien direct vers le bon écran. GUIDAGE SEUL,
+              il ne modifie jamais un réglage ; sans clé LLM il dégrade sur une
+              FAQ statique et renvoie quand même le lien. Hors du <form> de la
+              page : aucune interaction avec l'enregistrement du profil. ── */}
+        <AssistantConfigWidget />
 
         {/* ── VX35 — sidebar verticale groupée + colonne de contenu ── */}
         <div className="flex flex-col gap-6 md:flex-row md:items-start">
