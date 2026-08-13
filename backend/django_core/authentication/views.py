@@ -1040,7 +1040,7 @@ class CompanyViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=['get'], url_path='demo-kit',
             renderer_classes=[JSONRenderer, BrowsableAPIRenderer,
-                               StaticHTMLRenderer])
+                              StaticHTMLRenderer])
     def demo_kit(self, request, pk=None):
         """NTDMO22/23 — guide du scénario de démo pour préparer une démo
         prospect sans improviser. ``?format=html`` (NTDMO23) rend une page
