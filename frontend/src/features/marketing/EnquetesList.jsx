@@ -34,8 +34,15 @@ export default function EnquetesList() {
       <div className="page-header">
         <h2>Enquêtes</h2>
         {!showBuilder && (
-          <button className="btn btn-primary" data-testid="enquetes-nouvelle"
-            onClick={startCreate}>Nouvelle enquête</button>
+          <>
+            <button className="btn btn-primary" data-testid="enquetes-nouvelle"
+              onClick={startCreate}>Nouvelle enquête</button>
+            {/* NTMKT32 — wizard guidé (types prédéfinis, cible d'envoi) */}
+            <button className="btn btn-light" data-testid="enquetes-nouvelle-guidee"
+              onClick={() => navigate('/marketing/enquetes/nouveau')}>
+              Créer (guidé)
+            </button>
+          </>
         )}
       </div>
 

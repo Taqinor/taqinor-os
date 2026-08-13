@@ -43,6 +43,44 @@ def match_territoire(company, criteres):
     return None, None
 
 
+def rapport_couverture(company, jours=30):
+    """NTCRM25 — Leads récents de ``company`` qui n'ont matché AUCUNE règle de
+    territoire ACTIVE (trou de couverture géo/segment), avec un compteur par
+    région (``ville``) et par segment (``type_installation``). Lecture pure,
+    aucune mutation (jamais de rotation déclenchée par un rapport)."""
+    from apps.crm.selectors import leads_recents_pour_couverture
+
+    non_couverts = []
+    par_region = {}
+    par_segment = {}
+    for lead in leads_recents_pour_couverture(company, jours=jours):
+        criteres = {
+            'ville': lead['ville'],
+            'type_installation': lead['type_installation'],
+            'montant_estime': lead['montant_estime'],
+            'canal': lead['canal'],
+        }
+        territoire, _regle = match_territoire(company, criteres)
+        if territoire is not None:
+            continue
+        non_couverts.append({
+            'lead_id': lead['id'],
+            'nom': lead['nom'],
+            'ville': lead['ville'],
+            'type_installation': lead['type_installation'],
+        })
+        region_key = lead['ville'] or 'Ville inconnue'
+        par_region[region_key] = par_region.get(region_key, 0) + 1
+        segment_key = lead['type_installation'] or 'Segment inconnu'
+        par_segment[segment_key] = par_segment.get(segment_key, 0) + 1
+    return {
+        'total_non_couverts': len(non_couverts),
+        'leads': non_couverts,
+        'par_region': par_region,
+        'par_segment': par_segment,
+    }
+
+
 def previsualiser_territoire(territoire, criteres):
     """Aperçu SANS MUTATION : ``territoire`` matche-t-il ``criteres`` (une de
     ses règles actives) et, si oui, quel membre SERAIT choisi au prochain tour

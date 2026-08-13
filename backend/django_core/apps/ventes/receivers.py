@@ -57,11 +57,40 @@ def _qx24_refresh_etude_on_devis_change(sender, instance, created, update_fields
         pass
 
 
+def _ntcpq20_snapshot_configuration(sender, instance, **kwargs):
+    """NTCPQ20 — instantané de configuration à chaque ajout/retrait/changement
+    de ligne, tant que le devis est BROUILLON.
+
+    Best-effort et dédupliqué (un contenu identique au dernier instantané n'en
+    crée pas un nouveau) ; ne bloque jamais l'écriture de la ligne. L'auteur
+    n'est pas connu dans un signal : il reste NULL (instantané système), la
+    capture explicite depuis une vue peut le renseigner."""
+    from django.core.exceptions import ObjectDoesNotExist
+    try:
+        devis = instance.devis
+    except ObjectDoesNotExist:
+        return  # devis déjà supprimé (cascade) — rien à historiser
+    if devis is None:
+        return
+    try:
+        from . import services as ventes_services
+        ventes_services.capturer_configuration_devis(devis)
+    except Exception:  # noqa: BLE001 — jamais bloquant
+        pass
+
+
 def _register_qx24_signals():
     from .models import Devis, LigneDevis
     post_save.connect(
         _qx24_refresh_etude_on_ligne_change, sender=LigneDevis,
         dispatch_uid='ventes_qx24_ligne_saved')
+    # NTCPQ20 — historique fin de configuration (devis brouillon seulement).
+    post_save.connect(
+        _ntcpq20_snapshot_configuration, sender=LigneDevis,
+        dispatch_uid='ventes_ntcpq20_ligne_saved')
+    post_delete.connect(
+        _ntcpq20_snapshot_configuration, sender=LigneDevis,
+        dispatch_uid='ventes_ntcpq20_ligne_deleted')
     post_delete.connect(
         _qx24_refresh_etude_on_ligne_change, sender=LigneDevis,
         dispatch_uid='ventes_qx24_ligne_deleted')

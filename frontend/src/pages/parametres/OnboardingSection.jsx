@@ -17,6 +17,76 @@ import { SectionTitle } from './peComponents'
 import {
   isCompanyProfileComplete, countFromListResponse, replayCoachmarks,
 } from '../../features/onboarding/onboardingHelpers'
+import { fetchTours, reviewTour } from '../../features/onboarding/productTours'
+
+// NTDMO16 — libellés FR des 6 tours (mêmes clés que le catalogue serveur
+// NTDMO14, `apps/onboarding/services.py::DEFAULT_TOUR_STEPS`).
+const TOUR_LABELS = {
+  devis: 'Créer un devis',
+  leads: 'Suivre vos prospects',
+  factures: 'Facturer un client',
+  chantiers: 'Suivre un chantier',
+  stock: 'Gérer votre catalogue',
+  dashboard: 'Votre tableau de bord',
+}
+
+// NTDMO16 — bloc « Visites guidées » : statut vu/non-vu des 6 tours par écran
+// + bouton « Revoir » par tour (reset MANUEL, pour cet utilisateur seulement).
+export function VisitesGuideesBlock() {
+  const [tours, setTours] = useState(null)
+  const [busyKey, setBusyKey] = useState(null)
+
+  const load = () => { fetchTours({ force: true }).then(setTours) }
+  useEffect(() => { load() }, [])
+
+  const onRevoir = async (tourKey) => {
+    setBusyKey(tourKey)
+    try {
+      await reviewTour(tourKey)
+      load()
+    } finally {
+      setBusyKey(null)
+    }
+  }
+
+  if (!tours) {
+    return (
+      <p className="flex items-center gap-2 text-sm text-muted-foreground">
+        <Spinner className="size-4 text-primary" /> Chargement des visites guidées…
+      </p>
+    )
+  }
+
+  return (
+    <ul className="flex flex-col gap-2">
+      {tours.map((t) => (
+        <li key={t.tour_key}
+            className="flex items-center justify-between gap-3 rounded-lg border border-border p-2.5">
+          <div className="flex min-w-0 items-center gap-2.5">
+            {t.vu ? (
+              <CheckCircle2 className="size-4 shrink-0 text-success" aria-hidden="true" />
+            ) : (
+              <Circle className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+            )}
+            <div className="min-w-0">
+              <p className="text-sm font-medium text-foreground">
+                {TOUR_LABELS[t.tour_key] ?? t.tour_key}
+              </p>
+              <p className="text-[11px] text-muted-foreground">
+                {t.vu ? 'Déjà vue' : 'Pas encore vue'}
+              </p>
+            </div>
+          </div>
+          <Button type="button" size="sm" variant="outline"
+                  disabled={busyKey === t.tour_key}
+                  onClick={() => onRevoir(t.tour_key)}>
+            <RotateCcw className="size-3.5" aria-hidden="true" /> Revoir
+          </Button>
+        </li>
+      ))}
+    </ul>
+  )
+}
 
 export default function OnboardingSection() {
   // Le profil entreprise est déjà chargé dans le store par la page Paramètres.
@@ -130,6 +200,13 @@ export default function OnboardingSection() {
             <RotateCcw className="size-3.5" aria-hidden="true" />
             Relance la visite guidée des principales étapes.
           </span>
+        </div>
+
+        {/* NTDMO16 — visites guidées PAR ÉCRAN (money-path), statut vu/non-vu
+            + « Revoir » par tour (reset pour cet utilisateur seulement). */}
+        <div className="mt-4 border-t border-border pt-4">
+          <p className="mb-2 text-sm font-medium text-foreground">Visites guidées</p>
+          <VisitesGuideesBlock />
         </div>
       </CardContent>
     </Card>

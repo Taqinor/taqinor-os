@@ -4,7 +4,7 @@
 import { lazy } from 'react'
 import {
   CalendarDays, Users, Target, Map, UserPlus, TrendingUp, LayoutDashboard, Globe,
-  Handshake, Swords,
+  Handshake, Swords, Trophy,
 } from 'lucide-react'
 
 /* ============================================================================
@@ -55,6 +55,8 @@ const PartenairesPage = lazy(() => import('./Partenaires'))
 // PACT103 — Concurrents sur affaires perdues (FG242) : aucun écran, y
 // compris le popover « perdu » existant, ne l'appelait avant ce lot.
 const ConcurrentsPertePage = lazy(() => import('./ConcurrentsPerte'))
+// NTCRM24 — leaderboard des défis d'équipe (NTCRM23), visible de toute l'équipe.
+const DefisPage = lazy(() => import('../../pages/crm/defis/DefisPage'))
 
 const config = {
   key: 'crm',
@@ -93,6 +95,9 @@ const config = {
       { to: '/crm/partenaires',      label: 'Partenaires',      k: 'nav.partenaires', icon: navIcon(Handshake), roles: ['responsable','admin'] },
       // PACT103 — intelligence concurrentielle par lead perdu.
       { to: '/crm/concurrents-perte', label: 'Concurrents (perdus)', k: 'nav.concurrents_perte', icon: navIcon(Swords), roles: ['normal','responsable','admin'] },
+      // NTCRM24 — classement des défis d'équipe : visible de toute l'équipe
+      // (gamification), pas juste le manager.
+      { to: '/crm/defis',            label: 'Défis',            k: 'nav.defis',      icon: navIcon(Trophy),     roles: ['normal','responsable','admin'] },
     ],
   },
   routes: [
@@ -116,6 +121,8 @@ const config = {
     { path: '/crm/partenaires', component: PartenairesPage, roles: ['responsable', 'admin'] },
     // PACT103 — Concurrents sur affaires perdues.
     { path: '/crm/concurrents-perte', component: ConcurrentsPertePage },
+    // NTCRM24 — leaderboard des défis d'équipe.
+    { path: '/crm/defis', component: DefisPage },
   ],
 }
 

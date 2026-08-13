@@ -38,11 +38,23 @@ class _IntakePublicThrottle(SimpleRateThrottle):
 
 def _serialiser_formulaire(formulaire):
     """Représentation PUBLIQUE d'un formulaire (aucune donnée sensible : ni
-    société, ni compteurs, ni prix — juste de quoi rendre la landing)."""
+    société, ni compteurs, ni prix — juste de quoi rendre la landing).
+
+    NTMKT16 — ``page`` porte le contenu éditorial de la DERNIÈRE version
+    PUBLIÉE (jamais un brouillon) ; ``None`` tant qu'aucune version n'est
+    publiée, ce qui laisse le rendu historique inchangé.
+    """
+    version = services.derniere_version_publiee(formulaire)
     return {
         'slug': formulaire.slug,
         'nom': formulaire.nom,
         'champs': formulaire.champs or [],
+        'page': None if version is None else {
+            'version': version.version,
+            'titre': version.titre,
+            'pitch': version.pitch,
+            'image_key': version.image_key,
+        },
     }
 
 
@@ -73,3 +85,24 @@ def formulaire_intake_soumettre(request, slug):
     except ValueError as exc:
         return Response({'detail': str(exc)}, status=400)
     return Response({'id': lead.id, 'cree': True}, status=201)
+
+
+# ── NTMKT22 — Centre de préférences self-service (public, tokenisé) ─────────
+# Même modèle de confiance que ``desinscription/<token>`` (XMKT3) : le jeton
+# signé porte la société ET le destinataire ; aucune donnée n'est lue de
+# l'URL en clair, aucun autre contact n'est adressable avec un jeton donné.
+
+@api_view(['GET', 'POST'])
+@permission_classes([AllowAny])
+@throttle_classes([_IntakePublicThrottle])
+def preferences_publiques(request, token):
+    """NTMKT22 — GET : préférences actuelles du contact ; POST : les
+    enregistre (par canal / par liste). Jeton invalide ou expiré → 400 propre,
+    jamais une 500 ni une fuite d'existence."""
+    company, destinataire = services.lire_token_preferences(token)
+    if company is None:
+        return Response({'detail': 'Lien invalide.'}, status=400)
+    if request.method == 'GET':
+        return Response(services.preferences_actuelles(company, destinataire))
+    return Response(services.enregistrer_preferences(
+        company, destinataire, request.data))

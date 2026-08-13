@@ -18,6 +18,59 @@ fonctions ci-dessous sont ce point d'entrée ; ``ventes`` n'importe JAMAIS
 """
 
 
+def heatmap_engagement(company, *, jours=180, maintenant=None):
+    """NTMKT24 — taux d'ouverture historique par JOUR DE SEMAINE × HEURE
+    D'ENVOI, pour suggérer le meilleur moment d'envoi.
+
+    LECTURE SEULE, purement informative : elle ne bloque jamais un envoi
+    planifié. Source = ``EnvoiCampagne`` (XMKT2) réellement envoyés sur la
+    fenêtre (``envoye_le`` non nul), heure LOCALE. Une société sans historique
+    renvoie une grille vide et ``meilleur=None`` (état vide propre côté écran).
+    """
+    from django.utils import timezone
+    from .models import EnvoiCampagne
+
+    if not company:
+        return {'cellules': [], 'meilleur': None, 'total_envois': 0}
+    maintenant = maintenant or timezone.now()
+    depuis = maintenant - timezone.timedelta(days=max(int(jours or 0), 1))
+    lignes = (EnvoiCampagne.objects
+              .filter(company=company, envoye_le__isnull=False,
+                      envoye_le__gte=depuis)
+              .values_list('envoye_le', 'ouvert_le'))
+
+    grille = {}
+    total = 0
+    for envoye_le, ouvert_le in lignes:
+        local = timezone.localtime(envoye_le)
+        cle = (local.weekday(), local.hour)
+        case = grille.setdefault(cle, {'envois': 0, 'ouvertures': 0})
+        case['envois'] += 1
+        total += 1
+        if ouvert_le is not None:
+            case['ouvertures'] += 1
+
+    cellules = []
+    for (jour, heure), case in sorted(grille.items()):
+        taux = (case['ouvertures'] / case['envois']) if case['envois'] else 0.0
+        cellules.append({
+            'jour': jour,
+            'heure': heure,
+            'envois': case['envois'],
+            'ouvertures': case['ouvertures'],
+            'taux_ouverture': round(taux, 4),
+        })
+    # « Meilleur créneau » : jamais un créneau à 1 envoi (bruit) tant qu'une
+    # case plus fournie existe — on trie par taux puis par volume.
+    meilleur = None
+    if cellules:
+        meilleur = sorted(
+            cellules,
+            key=lambda c: (c['taux_ouverture'], c['envois']),
+            reverse=True)[0]
+    return {'cellules': cellules, 'meilleur': meilleur, 'total_envois': total}
+
+
 def ouverture_partage_pour_token(company, token):
     """WIR96 — suivi d'ouverture d'un lien de partage, borné société.
 
