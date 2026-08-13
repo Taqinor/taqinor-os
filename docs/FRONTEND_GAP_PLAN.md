@@ -173,13 +173,13 @@ a focused test, calling the EXISTING backend endpoint.
 - [ ] FE-ZACC14/XACC29 — contrôle ICE/IF + continuité des séquences as `ETATS` entries. (@lane: frontend/compta)
 
 ## Lane `frontend/stock` (ZPUR/ZSTK round-2 backend-only)
-- [ ] FE-XPUR25 — **BLOCKED: needs backend** (`fournisseurs/{id}/vue-360/` action never built) then route the orphan `pages/stock/FournisseurFiche360.jsx` (add lazy route + nav + row link). (@lane: frontend/stock) — **repris par WIR27** (`docs/PLAN.md`, `[x]` livré : `vue-360` action + route/nav construits — WIR79 vérifié 2026-07-18, ne pas rebuilder ici).
-- [ ] FE-ZPUR1/4/6/11 — BCF actions: `facturer`, `dupliquer`, `fusionner` (multi-select), `rouvrir` + motif-required `annuler` on `BonsCommandeFournisseur.jsx`; add to `stockApi.js`. (@lane: frontend/stock)
-- [ ] FE-ZPUR3/8 — Modèles BCF screen (`modeles-bcf`/`generer`) + BCF header fields (acheteur/ref_fournisseur/note_bas_page/incoterm). (@lane: frontend/stock)
-- [ ] FE-ZPUR10/ZSTK3 — product-detail screen with "en commande" qty + `previsionnel` forecast tab. (@lane: frontend/stock)
-- [ ] FE-ZSTK7 — "Vue groupée / pivot" toggle on `MouvementsPage.jsx` (`mouvements/agregation`). (@lane: frontend/stock)
-- [ ] FE-ZSTK6/12 — lot/série label printing on reception + barcode-nomenclature CRUD (Paramètres). (@lane: frontend/stock)
-- [ ] FE-ZPUR9 — purchase-analysis PDF button next to the XPUR24 xlsx export. (@lane: frontend/stock)
+- [x] (déjà présent) FE-XPUR25 — **BLOCKED: needs backend** (`fournisseurs/{id}/vue-360/` action never built) then route the orphan `pages/stock/FournisseurFiche360.jsx` (add lazy route + nav + row link). (@lane: frontend/stock) — **repris par WIR27** (`docs/PLAN.md`, `[x]` livré : `vue-360` action + route/nav construits — WIR79 vérifié 2026-07-18, ne pas rebuilder ici).
+- [x] (déjà présent) FE-ZPUR1/4/6/11 — BCF actions: `facturer`, `dupliquer`, `fusionner` (multi-select), `rouvrir` + motif-required `annuler` on `BonsCommandeFournisseur.jsx`; add to `stockApi.js`. (@lane: frontend/stock)
+- [x] (déjà présent) FE-ZPUR3/8 — Modèles BCF screen (`modeles-bcf`/`generer`) + BCF header fields (acheteur/ref_fournisseur/note_bas_page/incoterm). (@lane: frontend/stock)
+- [x] (déjà présent) FE-ZPUR10/ZSTK3 — product-detail screen with "en commande" qty + `previsionnel` forecast tab. (@lane: frontend/stock)
+- [x] (déjà présent) FE-ZSTK7 — "Vue groupée / pivot" toggle on `MouvementsPage.jsx` (`mouvements/agregation`). (@lane: frontend/stock)
+- [x] (déjà présent) FE-ZSTK6/12 — lot/série label printing on reception + barcode-nomenclature CRUD (Paramètres). (@lane: frontend/stock)
+- [x] (déjà présent) FE-ZPUR9 — purchase-analysis PDF button next to the XPUR24 xlsx export. (@lane: frontend/stock)
 
 ## Lane `frontend/installations` (XMFG kitting/atelier — whole subsystem backend-only)
 - [ ] FE-XMFG1-16 — **atelier/kitting UI**: new `pages/installations/AteliersPage.jsx` (OrdreAssemblage/OrdreDemontage list/detail/close, backflush, reservations, QC gate, bon-pdf) + route/nav; add `ordres-assemblage`/`kits-produit/{id}/structure`/`ordres-demontage` to `installationsApi.js`. (@lane: frontend/installations) (opus)
@@ -240,3 +240,4 @@ a focused test, calling the EXISTING backend endpoint.
 
 ## DONE LOG
 <!-- one dated line per shipped task -->
+- 2026-08-13 — lane frontend/stock: audit du code, aucun écart trouvé — les 7 tâches (FE-XPUR25, FE-ZPUR1/4/6/11, FE-ZPUR3/8, FE-ZPUR10/ZSTK3, FE-ZSTK7, FE-ZSTK6/12, FE-ZPUR9) étaient déjà entièrement câblées (stockApi.js + composants stock/paramètres) ; marquées `[x] (déjà présent)`, aucun fichier de code touché.
