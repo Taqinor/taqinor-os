@@ -786,6 +786,13 @@ app.conf.beat_schedule = {
         'task': 'trash.purger_corbeille_transverse',
         'schedule': crontab(hour=3, minute=0),
     },
+    # NTUX30 — digest HEBDOMADAIRE (lundi 07h00) des favoris/vues pointant vers
+    # une cible définitivement supprimée (ex. purgée de la corbeille ci-dessus).
+    # Notifie le propriétaire, ne supprime jamais rien automatiquement.
+    'uxviews-digest-favoris-obsoletes-hebdo': {
+        'task': 'uxviews.digest_favoris_obsoletes_hebdo',
+        'schedule': crontab(hour=7, minute=0, day_of_week=1),
+    },
 }
 
 # YHARD6 — compteurs Celery succès/échec (process-local, best-effort) pour

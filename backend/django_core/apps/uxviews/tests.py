@@ -8,6 +8,7 @@ seul défaut actif par rôle+écran), garde-fous de suppression.
 import json
 
 from django.contrib.auth import get_user_model
+from django.contrib.contenttypes.models import ContentType
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase
 from rest_framework.test import APIClient
@@ -559,3 +560,61 @@ class UxParametresApiTests(TestCase):
             f'{self.VUES}{vue.pk}/definir-par-defaut-role/',
             {'role': role.pk}, format='json')
         self.assertEqual(resp.status_code, 200, resp.data)
+
+
+class NTUX30DigestFavorisObsoletesTests(TestCase):
+    """NTUX30 — digest hebdomadaire des favoris pointant vers une cible
+    supprimée : jamais de suppression automatique, une notification par
+    propriétaire (jamais une par favori)."""
+
+    def setUp(self):
+        self.co = make_company('uxdig-a', 'Dig A')
+        self.user = make_user(self.co, 'uxdig-user')
+        self.cible_vivante = SavedView.objects.create(
+            company=self.co, owner=self.user, ecran='crm.leads', nom='Vivante')
+        self.cible_a_supprimer = SavedView.objects.create(
+            company=self.co, owner=self.user, ecran='crm.leads', nom='À supprimer')
+
+    def _epingler(self, cible):
+        return FavoriUtilisateur.objects.create(
+            company=self.co, owner=self.user,
+            content_type=ContentType.objects.get_for_model(SavedView),
+            object_id=cible.pk,
+        )
+
+    def test_favori_vivant_ne_declenche_rien(self):
+        from .tasks import digest_favoris_obsoletes_hebdo
+
+        self._epingler(self.cible_vivante)
+        resultat = digest_favoris_obsoletes_hebdo()
+        self.assertEqual(resultat['proprietaires_notifies'], 0)
+
+    def test_favori_mort_notifie_le_proprietaire_une_seule_fois(self):
+        from apps.notifications.models import Notification
+
+        from .tasks import digest_favoris_obsoletes_hebdo
+
+        self._epingler(self.cible_vivante)
+        favori_mort_1 = self._epingler(self.cible_a_supprimer)
+        cible2 = SavedView.objects.create(
+            company=self.co, owner=self.user, ecran='ventes.devis', nom='À supprimer aussi')
+        favori_mort_2 = self._epingler(cible2)
+        self.cible_a_supprimer.delete()
+        cible2.delete()
+
+        resultat = digest_favoris_obsoletes_hebdo()
+        self.assertEqual(resultat['proprietaires_notifies'], 1)
+        # Deux favoris morts, UNE seule notification (pas de spam par favori).
+        notifs = Notification.objects.filter(
+            recipient=self.user, event_type='uxviews_favoris_obsoletes')
+        self.assertEqual(notifs.count(), 1)
+        self.assertIn('2', notifs.first().body)
+        # Aucune suppression automatique des favoris morts.
+        self.assertTrue(FavoriUtilisateur.objects.filter(pk=favori_mort_1.pk).exists())
+        self.assertTrue(FavoriUtilisateur.objects.filter(pk=favori_mort_2.pk).exists())
+
+    def test_tache_beat_est_planifiee(self):
+        from erp_agentique.celery import app as celery_app
+
+        taches = {v['task'] for v in celery_app.conf.beat_schedule.values()}
+        self.assertIn('uxviews.digest_favoris_obsoletes_hebdo', taches)
