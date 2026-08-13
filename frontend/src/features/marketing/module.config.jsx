@@ -6,7 +6,7 @@ import { lazy } from 'react'
 import {
   LayoutDashboard, CalendarDays, Megaphone, Workflow, Users2, ListChecks,
   CalendarClock, ClipboardList, Gift, FormInput, PhoneCall,
-  Send, Star, Gauge, MessageCircle,
+  Send, Star, Gauge, MessageCircle, Link2,
 } from 'lucide-react'
 import { appGlyph } from '../../lib/apps/appGlyph'
 
@@ -73,6 +73,8 @@ const AvisClients = lazy(() => import('./AvisClients'))
 const EnquetesNps = lazy(() => import('./EnquetesNps'))
 // PACT108 — journal des messages WhatsApp entrants (FG207), lecture seule.
 const MessagesWhatsapp = lazy(() => import('./MessagesWhatsapp'))
+// NTMKT25 — générateur d'URL de campagne (tags UTM, hors campagne ERP).
+const UtmBuilder = lazy(() => import('./UtmBuilder'))
 
 const ROLES = ['responsable', 'admin']
 
@@ -100,6 +102,7 @@ const config = {
       { to: '/marketing/avis-clients', label: 'Avis clients', icon: <Star size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
       { to: '/marketing/enquetes-nps', label: 'Enquêtes NPS', icon: <Gauge size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
       { to: '/marketing/messages-whatsapp', label: 'Messages WhatsApp', icon: <MessageCircle size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
+      { to: '/marketing/generateur-url', label: "Générateur d'URL", icon: <Link2 size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
       { to: '/parametres/marketing', label: "Domaine d'envoi", icon: <LayoutDashboard size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
       { to: '/marketing/calendrier', label: 'Calendrier marketing', icon: <CalendarDays size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
     ],
@@ -120,6 +123,7 @@ const config = {
     ['/marketing/enquetes-nps', 'Enquêtes NPS'],
     ['/marketing/messages-whatsapp', 'Messages WhatsApp entrants'],
     ['/marketing/supports-offline', 'Supports offline (QR)'],
+    ['/marketing/generateur-url', "Générateur d'URL de campagne"],
     ['/marketing', 'Tableau de bord marketing'],
   ],
   sectionLabels: { marketing: 'Marketing' },
@@ -143,6 +147,7 @@ const config = {
     { path: '/marketing/enquetes-nps', component: EnquetesNps, roles: ROLES },
     { path: '/marketing/messages-whatsapp', component: MessagesWhatsapp, roles: ROLES },
     { path: '/marketing/supports-offline', component: SupportsOffline, roles: ROLES },
+    { path: '/marketing/generateur-url', component: UtmBuilder, roles: ROLES },
   ],
 }
 
