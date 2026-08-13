@@ -528,6 +528,8 @@
     cards:inconnu, config_id:inconnu, menu_tier:inconnu, source:texte
 - frontend/src/api/reportingApi.js :: evaluerFormuleClasseur -> /api/django/reporting/classeurs/<>/evaluer
     detail:texte, valeur:inconnu
+- frontend/src/api/reportingApi.js :: executerRapportDefinition -> /api/django/reporting/rapport-definitions/<>/executer
+    detail:texte, pivot:inconnu, rows:inconnu
 - frontend/src/api/reportingApi.js :: funnelVelocity -> /api/django/reporting/pipeline/velocity
     detail:texte, velocity:inconnu
 - frontend/src/api/reportingApi.js :: getCalendarSubscription -> /api/django/reporting/calendar/subscription

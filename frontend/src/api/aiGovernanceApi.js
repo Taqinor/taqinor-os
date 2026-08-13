@@ -16,6 +16,12 @@ const aiGovernanceApi = {
   // `data` : { content_type: 'crm.lead', object_id, canal: 'email'|'whatsapp'|'sms',
   // intention? }. Réponse : { brouillon, entrees_fil, envoye:false, source, ... }.
   rediger: (data) => api.post('/ai/rediger/', data),
+
+  // PACT144 — `data` : { module: 'commercial'|'facturation', periode: 'AAAA-MM' }.
+  // Réponse : { module, periode, metriques:[{cle,label,valeur,unite}], narratif,
+  // envoye:false, source }. 400 si le narratif cite un chiffre absent des
+  // métriques (refus serveur, jamais rendu) ; 503 sans clé LLM.
+  rapportPeriode: (data) => api.post('/ai/rapport-periode/', data),
 }
 
 export default aiGovernanceApi

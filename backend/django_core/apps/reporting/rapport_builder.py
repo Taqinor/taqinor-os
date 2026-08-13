@@ -91,17 +91,23 @@ class RapportDefinitionViewSet(CompanyScopedModelViewSet):
             return Response({'detail': str(exc)},
                             status=status.HTTP_400_BAD_REQUEST)
 
-        payload = {'rows': rows}
         pivot_spec = obj.pivot_spec or {}
-        if pivot_spec:
-            try:
-                spec = PivotSpec(**pivot_spec)
-            except (TypeError, ValueError) as exc:
-                return Response({'detail': str(exc)},
-                                status=status.HTTP_400_BAD_REQUEST)
-            try:
-                payload['pivot'] = build_pivot(rows, spec)
-            except FormulaError as exc:
-                return Response({'detail': str(exc)},
-                                status=status.HTTP_400_BAD_REQUEST)
-        return Response(payload)
+        # Sans ``pivot_spec`` : résultat PLAT, la clé ``pivot`` reste ABSENTE
+        # (comportement inchangé, affirmé par le test backend). Les deux formes
+        # sont écrites en LITTÉRAL — une clé posée dynamiquement est invisible
+        # à `scripts/check_api_shapes.py`, qui déclarait alors « le serveur ne
+        # renvoie aucun champ pivot » à l'écran qui l'affiche pourtant.
+        if not pivot_spec:
+            return Response({'rows': rows})
+
+        try:
+            spec = PivotSpec(**pivot_spec)
+        except (TypeError, ValueError) as exc:
+            return Response({'detail': str(exc)},
+                            status=status.HTTP_400_BAD_REQUEST)
+        try:
+            pivot = build_pivot(rows, spec)
+        except FormulaError as exc:
+            return Response({'detail': str(exc)},
+                            status=status.HTTP_400_BAD_REQUEST)
+        return Response({'rows': rows, 'pivot': pivot})

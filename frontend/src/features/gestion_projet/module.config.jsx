@@ -4,6 +4,7 @@
 import { lazy } from 'react'
 import {
   FolderKanban, CalendarRange, Users, Wallet, ShieldAlert, Clock3, ListChecks,
+  Settings2,
 } from 'lucide-react'
 import { appGlyph } from '../../lib/apps/appGlyph'
 
@@ -26,6 +27,9 @@ const BudgetPage = lazy(() => import('./pages/BudgetPage'))
 const RisquesPage = lazy(() => import('./pages/RisquesPage'))
 const TempsPage = lazy(() => import('./pages/TempsPage'))
 const TachesPage = lazy(() => import('./pages/TachesPage'))
+// PACT78 — paramètres avancés : verrous de mois (temps), lien de portail
+// projet, gabarits de tâches récurrentes.
+const ParametresAvances = lazy(() => import('./ParametresAvances'))
 const MesTachesPage = lazy(() => import('./pages/TachesPage').then((mod) => {
   const TachesPageComponent = mod.default
   return { default: () => <TachesPageComponent mesTaches /> }
@@ -51,6 +55,7 @@ export default {
       { to: '/projets/ressources', label: 'Ressources', icon: <Users size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
       { to: '/projets/budget', label: 'Budget & P&L', icon: <Wallet size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
       { to: '/projets/risques', label: 'Risques & CR', icon: <ShieldAlert size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
+      { to: '/projets/parametres', label: 'Paramètres avancés', icon: <Settings2 size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
     ],
   },
   // routes.meta : du plus SPÉCIFIQUE au plus général.
@@ -62,6 +67,7 @@ export default {
     ['/projets/ressources', 'Ressources & capacité'],
     ['/projets/budget', 'Budget & P&L'],
     ['/projets/risques', 'Risques, actions & CR'],
+    ['/projets/parametres', 'Paramètres avancés du module Projet'],
     ['/projets', 'Projets'],
   ],
   sectionLabels: { projets: 'Projets' },
@@ -74,6 +80,7 @@ export default {
     { path: '/projets/ressources', component: RessourcesPage, roles: ROLES },
     { path: '/projets/budget', component: BudgetPage, roles: ROLES },
     { path: '/projets/risques', component: RisquesPage, roles: ROLES },
+    { path: '/projets/parametres', component: ParametresAvances, roles: ROLES },
     { path: '/projets/:id', component: ProjetDetailPage, roles: ROLES },
     { path: '/projets', component: ProjetsPage, roles: ROLES },
   ],
