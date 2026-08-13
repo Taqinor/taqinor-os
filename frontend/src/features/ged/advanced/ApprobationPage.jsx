@@ -1,13 +1,14 @@
 import { useEffect, useMemo, useState } from 'react'
 import {
   CheckCircle2, XCircle, FileSignature, FilePlus2, Send, ClipboardCheck,
-  Users, Plus, Trash2, XSquare, Mail,
+  Users, Plus, Trash2, XSquare, Mail, BarChart3, Kanban as KanbanIcon,
 } from 'lucide-react'
 import { ListShell } from '../../../ui/module'
 import {
   Button, Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
   Label, Input, Textarea, Select, SelectTrigger, SelectValue, SelectContent,
   SelectItem, Tabs, TabsList, TabsTrigger, TabsContent, StatusPill, MultiSelect,
+  Card, CardContent, Badge, EmptyState,
   toast,
 } from '../../../ui'
 import { formatDateTime } from '../../../lib/format'
@@ -46,12 +47,14 @@ export default function ApprobationPage() {
   const [multiFor, setMultiFor] = useState(null)     // XGED2 — circuit multi-signataires
   const [roles, setRoles] = useState([])             // ZGED1 — rôles réutilisables
   const [showEnvoiMasse, setShowEnvoiMasse] = useState(false) // PACT135
+  const [analytique, setAnalytique] = useState(null) // XGED26 — KPIs approbation/signature
+  const [kanban, setKanban] = useState(null)         // ZGED3 — tableau de bord par statut
 
   const load = async () => {
     setLoading(true)
     setError(null)
     try {
-      const [d, s, m, docs, r, l] = await Promise.all([
+      const [d, s, m, docs, r, l, a, k] = await Promise.all([
         gedApi.getDemandesApprobation(),
         gedApi.getDemandesSignature(),
         gedApi.getModelesDocument({ actif: 1 }),
@@ -59,6 +62,10 @@ export default function ApprobationPage() {
         // ZGED1 — rôles réutilisables (dégrade en liste vide si indisponible).
         gedApi.getRolesSignataire().catch(() => ({ data: [] })),
         gedApi.getLotsEnvoi(),
+        // XGED26/ZGED3 — réservés responsable/admin : dégradent en `null`
+        // (jamais bloquant) si le rôle courant n'y a pas accès (403).
+        gedApi.getAnalytique().catch(() => ({ data: null })),
+        gedApi.getTableauBordSignatures().catch(() => ({ data: null })),
       ])
       setDemandes(unpage(d.data))
       setSignatures(unpage(s.data))
@@ -66,6 +73,8 @@ export default function ApprobationPage() {
       setDocuments(unpage(docs.data))
       setRoles(unpage(r.data))
       setLots(unpage(l.data))
+      setAnalytique(a.data)
+      setKanban(k.data)
     } catch (err) {
       setError(errMessage(err, 'Impossible de charger les approbations.'))
     } finally {
@@ -185,6 +194,8 @@ export default function ApprobationPage() {
           <TabsTrigger value="signatures">Signatures</TabsTrigger>
           <TabsTrigger value="envoi-masse">Envoi en masse</TabsTrigger>
           <TabsTrigger value="modeles">Modèles</TabsTrigger>
+          <TabsTrigger value="kanban"><KanbanIcon size={14} /> Tableau de bord</TabsTrigger>
+          <TabsTrigger value="analytique"><BarChart3 size={14} /> Analytique</TabsTrigger>
         </TabsList>
 
         <TabsContent value="approbations">
@@ -259,6 +270,87 @@ export default function ApprobationPage() {
             emptyDescription="Créez un modèle de document (fusion → PDF)."
           />
         </TabsContent>
+
+        {/* ZGED3 — tableau de bord des demandes de signature, en colonnes par
+            statut (kanban) avec drill-down = les signataires + % complétion.
+            Réservé responsable/admin côté backend (dégrade en message si non
+            chargé plutôt que de planter). */}
+        <TabsContent value="kanban">
+          {!kanban ? (
+            <EmptyState title="Tableau de bord indisponible"
+              description="Réservé aux rôles responsable/admin." className="py-8" />
+          ) : (
+            <div className="flex gap-3 overflow-x-auto pb-2" data-testid="ged-signatures-kanban">
+              {Object.entries(kanban.colonnes || {}).map(([statut, lignes]) => (
+                <div key={statut} className="min-w-[240px] flex-1">
+                  <div className="mb-2 flex items-center gap-2">
+                    <StatutSignature status={statut} />
+                    <span className="text-xs text-muted-foreground">({lignes.length})</span>
+                  </div>
+                  <div className="flex flex-col gap-2">
+                    {lignes.length === 0 ? (
+                      <p className="text-xs text-muted-foreground">Aucune demande.</p>
+                    ) : lignes.map((l) => (
+                      <Card key={l.id}>
+                        <CardContent className="p-3 text-sm">
+                          <p className="truncate font-medium">{l.document_nom || `#${l.document_id}`}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {l.emetteur || '—'} · {formatDateTime(l.date_demande)}
+                          </p>
+                          <div className="mt-1 flex items-center gap-1.5">
+                            <Badge tone={l.pourcentage_completion >= 100 ? 'success' : 'info'}>
+                              {l.pourcentage_completion ?? 0}%
+                            </Badge>
+                            {l.expires_at && (
+                              <span className="text-xs text-muted-foreground">
+                                échéance {formatDateTime(l.expires_at)}
+                              </span>
+                            )}
+                          </div>
+                        </CardContent>
+                      </Card>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </TabsContent>
+
+        {/* XGED26 — KPIs réels d'approbation + de signature (agrégats, pas de
+            drill-down — voir l'onglet Tableau de bord pour l'opérationnel). */}
+        <TabsContent value="analytique">
+          {!analytique ? (
+            <EmptyState title="Analytique indisponible"
+              description="Réservé aux rôles responsable/admin." className="py-8" />
+          ) : (
+            <div className="flex flex-col gap-4">
+              <div>
+                <h3 className="mb-2 text-sm font-semibold">Approbations</h3>
+                <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                  <AnalytiqueCard label="Temps de cycle moyen"
+                    value={analytique.approbations?.temps_cycle_moyen_jours}
+                    suffix=" j" />
+                  {Object.entries(analytique.approbations?.par_statut || {}).map(([k, v]) => (
+                    <AnalytiqueCard key={k} label={k} value={v} />
+                  ))}
+                </div>
+              </div>
+              <div>
+                <h3 className="mb-2 text-sm font-semibold">Signatures</h3>
+                <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                  <AnalytiqueCard label="Taux de complétion"
+                    value={analytique.signatures?.taux_completion} suffix="%" />
+                  <AnalytiqueCard label="Délai moyen envoi → signature"
+                    value={analytique.signatures?.delai_moyen_envoi_signature_jours} suffix=" j" />
+                  {Object.entries(analytique.signatures?.par_statut || {}).map(([k, v]) => (
+                    <AnalytiqueCard key={k} label={k} value={v} />
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+        </TabsContent>
       </Tabs>
 
       {reviewDoc && (
@@ -313,6 +405,20 @@ export default function ApprobationPage() {
 function unpage(data) {
   if (Array.isArray(data)) return data
   return data?.results ?? []
+}
+
+// XGED26 — petite carte KPI (valeur null/undefined → « — », jamais 0 fautif).
+function AnalytiqueCard({ label, value, suffix = '' }) {
+  return (
+    <Card>
+      <CardContent className="p-3">
+        <p className="text-xs capitalize text-muted-foreground">{label.replace(/_/g, ' ')}</p>
+        <p className="text-lg font-semibold">
+          {value === null || value === undefined ? '—' : `${value}${suffix}`}
+        </p>
+      </CardContent>
+    </Card>
+  )
 }
 
 // ── Dialogues ─────────────────────────────────────────────────────────────
