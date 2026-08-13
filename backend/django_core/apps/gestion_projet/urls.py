@@ -84,8 +84,10 @@ urlpatterns = [
     # Portail PUBLIC (non authentifié) — placé AVANT le routeur pour éviter
     # toute capture par un viewset ; expose uniquement l'avancement non
     # financier d'un projet (PROJ37).
+    # headless: portail client ouvert par lien tokenise, aucun ecran ERP en face
     path('portail/<str:token>/', portail_avancement, name='portail-avancement'),
     # Enquête de satisfaction client (CSAT, ZPRJ7) — public, GET+POST par jeton.
+    # headless: enquete CSAT ouverte par le client depuis un lien tokenise
     path('portail/evaluation/<str:token>/', evaluation_projet,
          name='portail-evaluation'),
     path('', include(router.urls)),

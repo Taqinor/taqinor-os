@@ -64,6 +64,7 @@ urlpatterns = [
     # AUTHENTIFIÉ UNIQUEMENT PAR LE JETON : déclaré AVANT le routeur pour ne
     # jamais être capté par une route authentifiée (le préfixe `public/` est
     # distinct des routes du routeur). AllowAny est posé sur la vue elle-même.
+    # headless: document ouvert par un lien de partage tokenise, hors ERP
     path('public/<str:token>/', public_partage, name='ged-public-partage'),
     # XGED7 — lien public de DÉPÔT (upload-request), symétrique de GED20.
     path('depot/<str:token>/', public_depot, name='ged-public-depot'),

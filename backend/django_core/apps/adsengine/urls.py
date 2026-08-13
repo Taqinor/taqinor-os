@@ -264,6 +264,7 @@ urlpatterns = [
          name='adsengine-ad-full-story'),
     # ADSDEEP24 — récepteur webhook WhatsApp Cloud API (CTWA referral). Public,
     # gated WHATSAPP_CLOUD_VERIFY_TOKEN + WHATSAPP_CLOUD_APP_SECRET (404 sinon).
+    # headless: rappel entrant de WhatsApp Cloud API, appele par leur serveur
     path('whatsapp/webhook/', WhatsAppCloudWebhookView.as_view(),
          name='adsengine-whatsapp-webhook'),
     # ADSDEEP53/54 — boîte de réception des commentaires (posts + dark posts).

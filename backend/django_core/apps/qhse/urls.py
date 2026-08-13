@@ -119,6 +119,7 @@ urlpatterns = [
     # XQHS16 — endpoint PUBLIC tokenisé (sans login), en dehors du router
     # authentifié. Le préfixe `public/` ne doit jamais être capté par une
     # route authentifiée (même motif que ged.urls `public/<token>/`).
+    # headless: signalement public tokenise, aucun ecran ERP en face
     path('public/signalement/<str:token>/', public_signalement,
          name='qhse-public-signalement'),
     # XQHS25 — assistance IA QHSE (key-gated, authentifié — pas public).

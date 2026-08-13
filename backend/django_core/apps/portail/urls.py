@@ -68,6 +68,7 @@ urlpatterns = [
     # NTPRT25 — auto-inscription fournisseur : PUBLIC (AllowAny) et
     # rate-limité. Volontairement déclaré AVANT le routeur pour qu'aucun
     # ViewSet ne puisse l'ombrer.
+    # headless: auto-inscription publique d'un fournisseur, aucun ecran ERP
     path('fournisseurs/candidature/', candidature_fournisseur,
          name='portail-candidature-fournisseur'),
     path('', include(router.urls)),

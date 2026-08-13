@@ -124,13 +124,18 @@ router.register(r'domaines-envoi', DomaineEnvoiViewSet,
 urlpatterns = [
     # Vues publiques (token, sans login) — préfixées de noms `mkt-…` pour ne
     # pas entrer en collision avec les mêmes vues servies sous /compta/….
+    # headless: rappel d'etat entrant de Brevo, appele par leur serveur
     path('webhooks/brevo/', webhook_brevo_campagne,
          name='mkt-webhook-brevo-campagne'),
+    # headless: rappel STOP entrant de l'operateur SMS, aucun ecran en face
     path('webhooks/sms-stop/', webhook_sms_stop, name='mkt-webhook-sms-stop'),
+    # headless: lien de desinscription clique depuis un courriel, hors ERP
     path('desinscription/<str:token>/', desinscription_publique,
          name='mkt-desinscription-publique'),
+    # headless: lien de confirmation double opt-in clique depuis un courriel
     path('double-optin/<str:token>/', double_optin_confirmer,
          name='mkt-double-optin-confirmer'),
+    # headless: redirection de lien tracke — le navigateur suit un 302, pas axios
     path('r/<str:token>/', redirection_lien_tracke,
          name='mkt-redirection-lien-tracke'),
     path('enquetes-publiques/<str:token>/', enquete_publique,

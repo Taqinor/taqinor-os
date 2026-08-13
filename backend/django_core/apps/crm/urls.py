@@ -72,8 +72,10 @@ router.register(r'playbook-taches', PlaybookTacheViewSet)
 
 urlpatterns = [
     # Récepteur des leads du site public (secret statique, voir webhooks.py)
+    # headless: appele par le site public (apps/web), jamais par un ecran ERP
     path('webhooks/website-leads/', website_lead_webhook, name='website-lead-webhook'),
     # XMKT32 — Sync Meta Lead Ads (gated, no-op sans jeton — voir webhooks.py)
+    # headless: rappel entrant de Meta, appele par leur serveur
     path('webhooks/meta-lead-ads/', meta_lead_ads_webhook, name='meta-lead-ads-webhook'),
     # Employés assignables (sélecteur de responsable) — ouvert à la Commerciale.
     path('assignable-users/', assignable_users, name='assignable-users'),
@@ -85,9 +87,12 @@ urlpatterns = [
     # QJ25 — Contour OSM du bâtiment épinglé (free, sans clé API)
     path('leads/<int:lead_id>/roof-footprint/', lead_roof_footprint, name='lead-roof-footprint'),
     # XMKT37 — Livechat public tokenisé (voir public_chat_views.py)
+    # headless: livechat du site public (apps/web), aucun ecran ERP en face
     path('public/chat/sessions/', open_chat_session, name='public-chat-open'),
+    # headless: livechat du site public (apps/web), aucun ecran ERP en face
     path('public/chat/sessions/<str:token>/messages/', post_chat_message,
          name='public-chat-post'),
+    # headless: livechat du site public (apps/web), aucun ecran ERP en face
     path('public/chat/sessions/<str:token>/', get_chat_session,
          name='public-chat-get'),
     # XSAL17 — Réservation de visite publique tokenisée (voir

@@ -239,12 +239,17 @@ urlpatterns = [
     path('calendrier-marketing/reschedule/',
          CalendrierMarketingRescheduleView.as_view(),
          name='calendrier-marketing-reschedule'),
+    # headless: rappel d'etat entrant de Brevo, appele par leur serveur
     path('webhooks/brevo/', webhook_brevo_campagne, name='webhook-brevo-campagne'),
+    # headless: rappel STOP entrant de l'operateur SMS, aucun ecran en face
     path('webhooks/sms-stop/', webhook_sms_stop, name='webhook-sms-stop'),
+    # headless: lien de desinscription clique depuis un courriel, hors ERP
     path('desinscription/<str:token>/', desinscription_publique,
          name='desinscription-publique'),
+    # headless: lien de confirmation double opt-in clique depuis un courriel
     path('double-optin/<str:token>/', double_optin_confirmer,
          name='double-optin-confirmer'),
+    # headless: redirection de lien tracke — le navigateur suit un 302, pas axios
     path('r/<str:token>/', redirection_lien_tracke,
          name='redirection-lien-tracke'),
     path('enquetes-publiques/<str:token>/', enquete_publique,
@@ -256,10 +261,13 @@ urlpatterns = [
     path('evenements-marketing/<int:evenement_id>/inscription-publique/',
          evenement_inscription_publique, name='evenement-inscription-publique'),
     # XFAC26/27 — Portail client self-service (token, sans login).
+    # headless: portail client ouvert par lien tokenise, aucun ecran ERP en face
     path('portail/<str:token>/mon-releve/', portail_mon_releve,
          name='portail-mon-releve'),
+    # headless: PDF du releve ouvert par le client dans son navigateur
     path('portail/<str:token>/mon-releve/pdf/', portail_mon_releve_pdf,
          name='portail-mon-releve-pdf'),
+    # headless: contestation postee depuis le portail client tokenise
     path('portail/<str:token>/factures/<int:facture_id>/contester/',
          portail_contester_facture, name='portail-contester-facture'),
     # NTTRE27 — réglages trésorerie (singleton par société, GET/PATCH).
