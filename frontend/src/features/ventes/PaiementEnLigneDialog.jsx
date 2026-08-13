@@ -20,11 +20,21 @@ import {
    serveur renvoie son motif dans `detail`. L'écran affiche alors « prestataire
    non configuré » — JAMAIS une erreur brute.
 
-   Frontière : le lien générique (content_type/object_id) de la transaction est
-   posé côté SERVEUR (`core.payment.creer_transaction`) ; il n'est pas devinable
-   depuis le navigateur (aucune API n'expose les ContentType) — on ne l'envoie
-   donc PAS plutôt que de l'envoyer à moitié. `company` est toujours imposée par
-   le serveur, jamais lue du corps.
+   LIMITE CONNUE, à lever AVANT d'activer un prestataire (liée à QXG2) — ce
+   commentaire disait l'inverse et c'était FAUX. Le lien générique
+   (content_type/object_id) n'est posé par PERSONNE sur ce chemin : le
+   navigateur ne peut pas le deviner (aucune API n'expose les ContentType), et
+   `PaymentTransactionViewSet.perform_create` (core/views.py) fait
+   `serializer.save(company=...)` sans jamais appeler `core.payment.creer_transaction`,
+   la seule fonction qui pose ce lien. Conséquence : `ventes/receivers.py`
+   `_materialize_paiement_on_payment_captured` teste `isinstance(target, Facture)`
+   et sort toujours — un paiement RÉELLEMENT capturé ne matérialiserait aucun
+   `Paiement` et ne bougerait pas le `montant_du` de la facture. Aujourd'hui sans
+   effet (aucun prestataire configuré, l'écran répond « non configuré »).
+   La corriger demande un ARBITRAGE : `core` est une couche de fondation sous
+   contrat import-linter et ne peut pas résoudre une `Facture` ; il faut soit
+   exposer le ContentType, soit passer par un point d'entrée côté `ventes`.
+   `company` est toujours imposée par le serveur, jamais lue du corps.
 
    Endpoints (core/views.py PaymentTransactionViewSet) :
      POST /core/paiements-en-ligne/                  initie la transaction
