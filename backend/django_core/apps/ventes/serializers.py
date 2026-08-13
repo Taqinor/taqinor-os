@@ -5,6 +5,7 @@ from .models import (
     Avoir, LigneAvoir, DevisActivity, DevisPreset, RoofLayout,
     RemiseEncaissement, LigneRemiseEncaissement,
     MandatPaiement, ListePrix, LignePrixListe, RegleListePrix,
+    AvenantDevis,
 )
 
 
@@ -465,6 +466,21 @@ class DevisSerializer(serializers.ModelSerializer):
                             'clauses_appliquees', 'devis_origine',
                             'numero_renouvellement',
                             'updated_at', 'updated_by']  # VX98 — server-side only
+
+
+class AvenantDevisSerializer(serializers.ModelSerializer):
+    """NTCPQ14 — Avenant d'un devis accepté (lecture seule côté API : la
+    création passe par le service ``cpq.services.appliquer_avenant_devis``,
+    qui applique le diff et arbitre le redéclenchement d'approbation)."""
+    auteur_nom = serializers.CharField(
+        source='auteur.username', read_only=True, default=None)
+
+    class Meta:
+        model = AvenantDevis
+        fields = ['id', 'devis', 'lignes_ajoutees', 'lignes_retirees',
+                  'motif', 'taux_remise_global', 'approbation_requise',
+                  'auteur', 'auteur_nom', 'date_creation']
+        read_only_fields = fields
 
 
 class DevisWriteSerializer(serializers.ModelSerializer):

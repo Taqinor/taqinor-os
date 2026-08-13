@@ -102,7 +102,127 @@ def _profondeur_remise(devis):
     return Decimal(str(getattr(devis, 'remise_globale', 0) or 0))
 
 
-def lancer_approbation_devis(devis, *, user=None):
+def taux_remise_global(devis):
+    """NTCPQ14 — Taux de remise GLOBAL réel du devis (%).
+
+    Combine les remises de LIGNE et la ``remise_globale`` du devis :
+    ``100 × (brut − net) / brut`` où ``brut`` = Σ(quantité × P.U.) des lignes
+    comptées dans les totaux et ``net`` = total HT après remises de ligne puis
+    remise globale. Aucun prix d'achat / aucune marge n'entre dans le calcul.
+    Devis sans ligne valorisée ⇒ 0."""
+    brut = Decimal('0')
+    for ligne in devis.lignes.all():
+        if not ligne.compte_dans_totaux:
+            continue
+        if ligne.quantite is None or ligne.prix_unitaire is None:
+            continue
+        brut += Decimal(str(ligne.quantite)) * Decimal(str(ligne.prix_unitaire))
+    if brut <= 0:
+        return Decimal('0')
+    net = Decimal(str(devis.total_ht or 0))
+    remise_globale = Decimal(str(devis.remise_globale or 0))
+    net = net * (Decimal('1') - remise_globale / Decimal('100'))
+    return ((brut - net) / brut * Decimal('100')).quantize(_CENT, ROUND_HALF_UP)
+
+
+def appliquer_avenant_devis(devis, *, lignes_ajoutees=None,
+                            lignes_retirees=None, motif='', user=None):
+    """NTCPQ14 — Applique un avenant à un devis DÉJÀ ACCEPTÉ.
+
+    ``lignes_ajoutees`` : liste de dicts ``{produit(id)?, designation,
+    quantite, prix_unitaire, remise?, taux_tva?}``. ``lignes_retirees`` : liste
+    d'IDs de ``LigneDevis`` du devis. Les totaux sont recalculés (propriétés) ;
+    l'approbation NTCPQ7 n'est REDÉCLENCHÉE que si le nouveau taux de remise
+    global dépasse le seuil configuré (règle couvrante avec au moins un
+    approbateur) — sinon l'avenant reste libre.
+
+    Renvoie l'``AvenantDevis`` créé. Écritures cross-app ventes par imports
+    LOCAUX (aucun import de ``ventes.models`` au niveau module)."""
+    from rest_framework.exceptions import ValidationError
+    from apps.ventes.models import AvenantDevis, Devis, LigneDevis
+    from apps.ventes import activity
+    from apps.stock.models import Produit
+
+    if devis.statut != Devis.Statut.ACCEPTE:
+        raise ValidationError({'statut': (
+            "Un avenant ne s'applique qu'à un devis accepté "
+            "(un devis en cours se modifie directement).")})
+
+    lignes_ajoutees = lignes_ajoutees or []
+    lignes_retirees = lignes_retirees or []
+    if not lignes_ajoutees and not lignes_retirees:
+        raise ValidationError(
+            {'detail': 'Un avenant doit ajouter ou retirer au moins une ligne.'})
+
+    company = devis.company
+    snap_ajout = []
+    for spec in lignes_ajoutees:
+        if not isinstance(spec, dict):
+            continue
+        produit = None
+        produit_id = spec.get('produit') or spec.get('produit_id')
+        if produit_id:
+            produit = Produit.objects.filter(
+                id=produit_id, company=company).first()
+            if produit is None:
+                raise ValidationError({'produit': 'Produit inconnu.'})
+        designation = (spec.get('designation')
+                       or (produit.nom if produit else '')).strip()
+        if not designation:
+            raise ValidationError({'designation': 'Désignation requise.'})
+        quantite = Decimal(str(spec.get('quantite', 1) or 1))
+        prix = spec.get('prix_unitaire')
+        if prix is None:
+            prix = produit.prix_vente if produit else Decimal('0')
+        prix = Decimal(str(prix or 0))
+        remise = Decimal(str(spec.get('remise', 0) or 0))
+        ligne = LigneDevis.objects.create(
+            devis=devis, produit=produit, designation=designation,
+            quantite=quantite, prix_unitaire=prix, remise=remise,
+            taux_tva=spec.get('taux_tva'))
+        snap_ajout.append({
+            'ligne_id': ligne.id, 'designation': designation,
+            'quantite': str(quantite), 'prix_unitaire': str(prix),
+            'remise': str(remise),
+        })
+
+    snap_retrait = []
+    for ligne_id in lignes_retirees:
+        ligne = LigneDevis.objects.filter(
+            id=ligne_id, devis=devis).first()
+        if ligne is None:
+            raise ValidationError({'lignes_retirees': 'Ligne inconnue.'})
+        snap_retrait.append({
+            'ligne_id': ligne.id, 'designation': ligne.designation,
+            'quantite': str(ligne.quantite),
+            'prix_unitaire': str(ligne.prix_unitaire),
+            'remise': str(ligne.remise),
+        })
+        ligne.delete()
+
+    # Totaux recalculés (propriétés) → nouveau taux de remise global.
+    devis.refresh_from_db()
+    taux = taux_remise_global(devis)
+    regle = resoudre_regle_remise(company=company, remise=taux)
+    approbation = regle is not None and regle.nombre_approbateurs >= 1
+    if approbation:
+        lancer_approbation_devis(devis, user=user, force=True, remise=taux)
+
+    avenant = AvenantDevis.objects.create(
+        company=company, devis=devis, lignes_ajoutees=snap_ajout,
+        lignes_retirees=snap_retrait, motif=motif or '',
+        taux_remise_global=taux, approbation_requise=approbation,
+        auteur=user)
+    activity.log_devis_note(
+        devis, user,
+        f'Avenant #{avenant.id} appliqué ({len(snap_ajout)} ligne(s) ajoutée(s), '
+        f'{len(snap_retrait)} retirée(s)) — remise globale {taux} %'
+        + (' — approbation redéclenchée.' if approbation else '.')
+        + (f' Motif : {motif}' if motif else ''))
+    return avenant
+
+
+def lancer_approbation_devis(devis, *, user=None, force=False, remise=None):
     """NTCPQ7 — Instancie les étapes d'approbation d'un devis selon la
     profondeur de remise réelle.
 
@@ -110,14 +230,25 @@ def lancer_approbation_devis(devis, *, user=None):
     ``nombre_approbateurs`` = 0) ⇒ aucune étape (envoi libre). Sinon crée
     ``nombre_approbateurs`` étapes ``en_attente`` (niveaux 1..N). Idempotent :
     si des étapes non rejetées existent déjà pour ce devis, les renvoie sans en
-    recréer. Renvoie la liste des étapes (existantes ou créées)."""
+    recréer. Renvoie la liste des étapes (existantes ou créées).
+
+    NTCPQ14 — ``force=True`` REDÉCLENCHE un nouveau tour d'approbation même si
+    un tour précédent est déjà approuvé (avenant au-dessus du seuil) ; ``remise``
+    permet d'imposer la profondeur à considérer (taux global recalculé) au lieu
+    de ``remise_globale``."""
     existantes = list(EtapeApprobationDevis.objects.filter(
         devis_id=devis.id).exclude(
             statut=EtapeApprobationDevis.Statut.REJETE))
-    if existantes:
+    if existantes and not force:
         return existantes
+    if force and any(e.statut == EtapeApprobationDevis.Statut.EN_ATTENTE
+                     for e in existantes):
+        # Un tour est déjà en attente : ne pas en empiler un second.
+        return [e for e in existantes
+                if e.statut == EtapeApprobationDevis.Statut.EN_ATTENTE]
 
-    remise = _profondeur_remise(devis)
+    if remise is None:
+        remise = _profondeur_remise(devis)
     regle = resoudre_regle_remise(company=devis.company, remise=remise)
     if regle is None or regle.nombre_approbateurs < 1:
         return []

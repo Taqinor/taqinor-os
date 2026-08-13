@@ -194,6 +194,8 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
             # MÊME classe que le permission_classes de l'@action (cette
             # surcharge PRIME sur lui — cf. le commentaire VX199 ci-dessus).
             'renouveler',
+            # NTCPQ14 — avenants d'un devis accepté (lecture + application).
+            'avenants',
         ]:
             return [IsResponsableOrAdmin()]
         elif self.action == 'destroy':
@@ -1117,6 +1119,31 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
         return Response(
             DevisSerializer(nd, context={'request': request}).data,
             status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['get', 'post'], url_path='avenants',
+            permission_classes=[IsResponsableOrAdmin])
+    def avenants(self, request, pk=None):
+        """NTCPQ14 — Avenants d'un devis ACCEPTÉ.
+
+        GET : liste des avenants (les plus récents d'abord).
+        POST : applique un avenant — corps ``{lignes_ajoutees: [...],
+        lignes_retirees: [id, ...], motif}``. Les totaux sont recalculés et
+        l'approbation NTCPQ7 n'est redéclenchée que si le NOUVEAU taux de
+        remise global dépasse le seuil configuré."""
+        from ..serializers import AvenantDevisSerializer
+        devis = self.get_object()
+        if request.method == 'GET':
+            return Response(AvenantDevisSerializer(
+                devis.avenants.all(), many=True).data)
+        from apps.cpq.services import appliquer_avenant_devis
+        avenant = appliquer_avenant_devis(
+            devis,
+            lignes_ajoutees=request.data.get('lignes_ajoutees') or [],
+            lignes_retirees=request.data.get('lignes_retirees') or [],
+            motif=(request.data.get('motif') or '').strip(),
+            user=request.user)
+        return Response(AvenantDevisSerializer(avenant).data,
+                        status=status.HTTP_201_CREATED)
 
     @action(detail=True, methods=['post'], url_path='renouveler',
             permission_classes=[IsResponsableOrAdmin])

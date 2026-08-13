@@ -490,6 +490,48 @@ class LigneDevis(models.Model):
         return self.taux_tva if self.taux_tva is not None else self.devis.taux_tva
 
 
+class AvenantDevis(models.Model):
+    """NTCPQ14 — Avenant (amendment) d'un devis déjà accepté.
+
+    Trace le DIFF appliqué au devis : ``lignes_ajoutees`` et
+    ``lignes_retirees`` sont des snapshots JSON (designation, quantité, P.U.,
+    remise) — jamais des prix d'achat / marges (donnée interne). Le devis
+    source n'est PAS versionné : l'avenant est un complément tracé, distinct de
+    la révision (T10) et du renouvellement (NTCPQ13).
+
+    ``approbation_requise`` mémorise si l'avenant a redéclenché la matrice
+    d'approbation NTCPQ7 (nouveau taux de remise global au-dessus du seuil)."""
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: purge tenant
+        null=True, blank=True, related_name='devis_avenants')
+    devis = models.ForeignKey(
+        Devis, on_delete=models.CASCADE,  # on_delete: avenant sans objet si devis supprimé
+        related_name='avenants')
+    lignes_ajoutees = models.JSONField(default=list, blank=True)
+    lignes_retirees = models.JSONField(default=list, blank=True)
+    motif = models.TextField(blank=True, default='')
+    taux_remise_global = models.DecimalField(
+        max_digits=6, decimal_places=2, null=True, blank=True,
+        help_text='Taux de remise global du devis APRÈS avenant (%).')
+    approbation_requise = models.BooleanField(default=False)
+    auteur = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='devis_avenants')
+    date_creation = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'Avenant de devis'
+        verbose_name_plural = 'Avenants de devis'
+        ordering = ['-date_creation', '-id']
+        indexes = [
+            models.Index(fields=['company', 'devis'],
+                         name='ventes_avenant_co_dv'),
+        ]
+
+    def __str__(self):
+        return f'Avenant #{self.pk} · devis {self.devis_id}'
+
+
 class DevisActivity(models.Model):
     """Chatter d'un devis (N25) — même patron que InstallationActivity.
 
