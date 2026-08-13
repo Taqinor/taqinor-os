@@ -1,20 +1,27 @@
 // XPLT23 — Onglet « Confidentialité » de la page Paramètres (loi 09-08 / CNDP).
 //
-// Deux blocs autonomes :
+// Blocs autonomes :
 //  1. Registre des traitements CNDP (`core.RegistreTraitement`) — CRUD complet
 //     + export CSV (déclaration à la CNDP).
 //  2. Demandes de personnes concernées (`core.DataSubjectRequest`) — soumission
 //     (accès / effacement / rectification) + suivi + exécution (« traiter »,
 //     déléguée aux fournisseurs DSR enregistrés côté serveur : `core.dsr`).
+//  3. PACT119 — Registre de consentement (`core.ConsentRecord`) : la preuve du
+//     double opt-in, personne par personne et finalité par finalité.
+//  4. Benchmarking anonymisé (booléen d'entreprise, SCA46).
 //
 // Réservé admin/responsable (le backend re-vérifie : IsAdminOrResponsableTier).
 // Section autonome : charge et enregistre ses propres données, sans le bouton
 // « Enregistrer » global. Texte en français ; clés techniques en anglais.
 import { useEffect, useState } from 'react'
 import { useIsAdminOrResponsable } from '../../hooks/useHasPermission'
-import { Plus, Trash2, Download, Lock, FileCheck2 } from 'lucide-react'
+import { Plus, Trash2, Download, Lock, FileCheck2, ShieldCheck } from 'lucide-react'
 import { toast } from '../../ui/confirm'
 import coreApi from '../../api/coreApi'
+// PACT119 — le registre de consentement consomme `/core/consent-records/`
+// directement via l'instance axios (aucun ajout au client partagé coreApi :
+// ce bloc reste entièrement contenu dans son propre écran).
+import api from '../../api/axios'
 import { downloadBlob, filenameFromResponse } from '../../api/importApi'
 import {
   Card, CardContent, Input, Button, IconButton, Badge, Spinner, EmptyState,
@@ -274,6 +281,144 @@ function DsrRequests() {
   )
 }
 
+// ── Bloc 4 : registre de consentement (PACT119, loi 09-08 / CNDP) ────────────
+// `core.ConsentRecord` (FG394/XMKT4) porte la PREUVE du double opt-in : sujet
+// (email/téléphone), finalité, état donné/révoqué, version du texte présenté et
+// IP de confirmation. Le modèle et son ViewSet existaient sans aucun écran.
+//
+// À NE PAS CONFONDRE avec les deux blocs voisins : le registre des TRAITEMENTS
+// déclare les finalités de l'entreprise à la CNDP, les DEMANDES sont les
+// exercices de droits d'une personne ; celui-ci trace, personne par personne,
+// SON consentement. Le bloc « benchmarking » plus bas est un simple booléen
+// d'entreprise — un tout autre mécanisme.
+//
+// `company` n'est jamais envoyée : imposée côté serveur (TenantMixin) ; l'accès
+// est réservé au palier admin/responsable, re-vérifié côté serveur.
+function ConsentRecords() {
+  const [rows, setRows] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState(false)
+  const [draft, setDraft] = useState({ subject_identifier: '', purpose: '', version_texte: '' })
+  const [busy, setBusy] = useState(false)
+
+  const load = () => api.get('/core/consent-records/')
+    .then((r) => { setRows(r.data?.results ?? r.data ?? []); setLoadError(false) })
+    .catch(() => setLoadError(true))
+    .finally(() => setLoading(false))
+
+  useEffect(() => { load() }, [])
+
+  const addRow = async () => {
+    const subject = draft.subject_identifier.trim()
+    const purpose = draft.purpose.trim()
+    if (!subject || !purpose) return
+    setBusy(true)
+    try {
+      await api.post('/core/consent-records/', {
+        subject_identifier: subject,
+        purpose,
+        granted: true,
+        version_texte: draft.version_texte.trim(),
+      })
+      setDraft({ subject_identifier: '', purpose: '', version_texte: '' })
+      load()
+    } catch (e) { toast.error(e?.response?.data?.detail ?? 'Ajout impossible.') }
+    finally { setBusy(false) }
+  }
+
+  // Un consentement ne se supprime pas (c'est une preuve) : il se RÉVOQUE —
+  // et peut être re-accordé si la personne redonne son accord.
+  const basculer = async (row) => {
+    try {
+      await api.patch(`/core/consent-records/${row.id}/`, { granted: !row.granted })
+      load()
+    } catch (e) { toast.error(e?.response?.data?.detail ?? 'Modification impossible.') }
+  }
+
+  if (loading) return (
+    <p className="flex items-center gap-2 text-sm text-muted-foreground">
+      <Spinner className="size-4 text-primary" /> Chargement…
+    </p>
+  )
+  if (loadError) {
+    return (
+      <EmptyState title="Impossible de charger le registre de consentement"
+        description="Une erreur est survenue lors du chargement." className="py-6" />
+    )
+  }
+
+  return (
+    <Card>
+      <CardContent className="pt-4 sm:pt-5">
+        <SectionTitle label="Registre de consentement"
+          icon={<><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></>} />
+        <p className="mb-3.5 text-[11.5px] text-muted-foreground">
+          Preuve du double opt-in (loi 09-08) : pour chaque personne et chaque
+          finalité, l'état du consentement, la version du texte présenté et l'IP
+          de confirmation. Un consentement ne se supprime pas — il se révoque.
+        </p>
+
+        <div className="flex flex-col gap-2">
+          {rows.length === 0 && (
+            <EmptyState icon={ShieldCheck} title="Aucun consentement enregistré"
+              description="Ajoutez le premier consentement ci-dessous." className="py-6" />
+          )}
+          {rows.map((row) => (
+            <div key={row.id} data-testid="consent-row"
+              className="flex flex-wrap items-center gap-1.5 rounded-lg border border-border p-3">
+              <span className="min-w-[140px] flex-[1_1_140px] font-medium text-sm">
+                {row.subject_identifier}
+              </span>
+              <Badge tone="info">{row.purpose}</Badge>
+              <Badge tone={row.granted ? 'success' : 'danger'}>
+                {row.granted ? 'Donné' : 'Révoqué'}
+              </Badge>
+              {row.version_texte && (
+                <span className="text-xs text-muted-foreground">
+                  Texte {row.version_texte}
+                </span>
+              )}
+              {row.ip_confirmation && (
+                <span className="text-xs text-muted-foreground">
+                  IP {row.ip_confirmation}
+                </span>
+              )}
+              <div className="ml-auto flex items-center gap-1">
+                <Button type="button" size="sm" variant="outline"
+                  onClick={() => basculer(row)}>
+                  {row.granted ? 'Révoquer' : 'Rétablir'}
+                </Button>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <div className="mt-3 rounded-lg border border-dashed border-border p-3">
+          <div className="flex flex-wrap gap-1.5">
+            <Input className="min-w-[200px] flex-[2_1_200px]"
+              placeholder="Email ou téléphone de la personne concernée"
+              value={draft.subject_identifier}
+              onChange={(e) => setDraft((d) => ({ ...d, subject_identifier: e.target.value }))} />
+            <Input className="min-w-[140px] flex-[1_1_140px]"
+              placeholder="Finalité (ex. marketing)"
+              value={draft.purpose}
+              onChange={(e) => setDraft((d) => ({ ...d, purpose: e.target.value }))} />
+          </div>
+          <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+            <Input className="min-w-[160px] flex-1"
+              placeholder="Version du texte (ex. v1-2026-07)"
+              value={draft.version_texte}
+              onChange={(e) => setDraft((d) => ({ ...d, version_texte: e.target.value }))} />
+            <Button type="button" onClick={addRow} disabled={busy}>
+              <Plus className="size-4" aria-hidden="true" /> Enregistrer le consentement
+            </Button>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  )
+}
+
 // ── Bloc 3 : consentement au benchmarking anonymisé (SCA46) ──────────────────
 // Le CONSENTEMENT est une donnée (Company.benchmarking_opt_in, défaut False) ;
 // aucune agrégation n'existe encore. Bloc autonome : lit le profil, écrit via
@@ -350,6 +495,8 @@ export default function ConfidentialiteSection() {
     <div className="flex flex-col gap-4">
       <RegistreTraitements />
       <DsrRequests />
+      {/* PACT119 — quatrième bloc : registre de consentement par personne. */}
+      <ConsentRecords />
       <BenchmarkingConsent />
     </div>
   )

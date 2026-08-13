@@ -3,7 +3,7 @@
    `router/moduleRoutes.jsx` via glob — même dérogation que
    `features/flotte/module.config.jsx`. */
 import { lazy } from 'react'
-import { Sprout, Beaker, Wrench } from 'lucide-react'
+import { Sprout, Beaker, Wrench, Wheat } from 'lucide-react'
 import { appGlyph } from '../../lib/apps/appGlyph'
 
 /* ============================================================================
@@ -20,6 +20,10 @@ import { appGlyph } from '../../lib/apps/appGlyph'
 const ParcellesPage = lazy(() => import('../../pages/agriculture/ParcellesPage'))
 const IntrantsPage = lazy(() => import('../../pages/agriculture/IntrantsPage'))
 const RessourcesPage = lazy(() => import('../../pages/agriculture/RessourcesPage'))
+// PACT79 — Lots de récolte (NTAGR15/NTAGR16) : la 12e ressource du client
+// agricole, la seule qui n'avait ni route ni entrée de menu. Composant déposé
+// dans `features/agriculture/` (Files list de la tâche).
+const LotsRecolte = lazy(() => import('./LotsRecolte'))
 
 const ROLES = ['responsable', 'admin', 'normal']
 
@@ -38,18 +42,21 @@ const config = {
       { to: '/agriculture/parcelles', label: 'Parcelles', icon: <Sprout size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
       { to: '/agriculture/intrants', label: 'Intrants', icon: <Beaker size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
       { to: '/agriculture/ressources', label: 'Main d’œuvre & Matériel', icon: <Wrench size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
+      { to: '/agriculture/lots-recolte', label: 'Lots de récolte', icon: <Wheat size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
     ],
   },
   titles: [
     ['/agriculture/parcelles', 'Parcelles'],
     ['/agriculture/intrants', 'Intrants'],
     ['/agriculture/ressources', 'Main d’œuvre & Matériel'],
+    ['/agriculture/lots-recolte', 'Lots de récolte'],
   ],
   sectionLabels: { agriculture: 'Agriculture' },
   routes: [
     { path: '/agriculture/parcelles', component: ParcellesPage, roles: ROLES },
     { path: '/agriculture/intrants', component: IntrantsPage, roles: ROLES },
     { path: '/agriculture/ressources', component: RessourcesPage, roles: ROLES },
+    { path: '/agriculture/lots-recolte', component: LotsRecolte, roles: ROLES },
   ],
 }
 

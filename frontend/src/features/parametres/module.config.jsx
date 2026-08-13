@@ -4,7 +4,7 @@
 import { lazy } from 'react'
 import {
   MapPin, ListChecks, LayoutList, Copy, Sparkles, Settings, UserCog, Shield,
-  Key, ShieldCheck, DownloadCloud, AlertTriangle, Percent, ShoppingCart,
+  Key, ShieldCheck, DownloadCloud, AlertTriangle, Percent, ShoppingCart, Boxes,
 } from 'lucide-react'
 import { appGlyph } from '../../lib/apps/appGlyph'
 
@@ -114,6 +114,13 @@ const TiersDoublonsPage = lazy(() => import('../../pages/parametres/TiersDoublon
 // + tables autorisées de l'agent SQL, GET /sql-agent/schema — jusqu'ici sans
 // appelant côté frontend). Admin-only (écran de configuration sensible).
 const IaDiagnostic = lazy(() => import('./IaDiagnostic'))
+// PACT140 — Objets métier personnalisés (XPLT16) : définition sans code d'un
+// objet + de ses champs (mécanisme CustomFieldDef EXISTANT pointé sur
+// `module: custom:<code>`), puis écran GÉNÉRIQUE de ses enregistrements rendu
+// à partir des schémas auto-générés (NTEXT2 vue-liste / NTEXT3 vue-formulaire).
+// Admin-only côté objets/champs (le backend applique `IsAdminRole`).
+const ObjetsPersonnalisesPage = lazy(() => import('./ObjetsPersonnalisesPage'))
+const CustomObjectRecordsPage = lazy(() => import('../customobjects/CustomObjectRecordsPage'))
 
 const config = {
   key: 'parametres',
@@ -151,6 +158,9 @@ const config = {
       // PACT150 — même défaut que ODY23(c) : route déclarée (WIR26), aucune
       // entrée de menu, écran réel de 182 lignes invisible pour toujours.
       { to: '/parametres/achats', label: 'Achats', icon: <ShoppingCart size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ['responsable', 'admin'] },
+      // PACT140 — Objets métier personnalisés (l'écran des enregistrements
+      // `/objets/:code` s'atteint depuis cette page, un lien par objet).
+      { to: '/parametres/objets-personnalises', label: 'Objets personnalisés', icon: <Boxes size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ['admin'] },
     ],
   },
   routes: [
@@ -166,6 +176,12 @@ const config = {
     { path: '/parametres/achats', component: AchatsParametresPage, roles: ['responsable', 'admin'] },
     { path: '/parametres/tiers-doublons', component: TiersDoublonsPage, roles: ['admin'] },
     { path: '/parametres/ia', component: IaDiagnostic, roles: ['admin'] },
+    { path: '/parametres/objets-personnalises', component: ObjetsPersonnalisesPage, roles: ['admin'] },
+    // Segment dynamique : un SEUL écran générique sert tous les objets. Atteint
+    // depuis /parametres/objets-personnalises (un lien « Enregistrements » par
+    // objet) — la lecture d'un enregistrement reste ouverte aux rôles autorisés
+    // par la permission `custom_object.<code>.voir` côté serveur.
+    { path: '/objets/:code', component: CustomObjectRecordsPage },
     {
       path: '/journal',
       component: Journal,

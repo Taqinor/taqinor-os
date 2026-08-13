@@ -57,6 +57,10 @@ import ApplicationsSection from './ApplicationsSection'
 import MarketplaceSection from './MarketplaceSection'
 import ReferentielsSection from './ReferentielsSection'
 import ChatRetentionSection from './ChatRetentionSection'
+import ModelesBrandesSection from './ModelesBrandesSection'
+import ExportsPlanifiesSection from './ExportsPlanifiesSection'
+import AssistantConfigWidget from './AssistantConfigWidget'
+import ApprobationsPolitiquesSection from './ApprobationsPolitiquesSection'
 // EZ16 — message d'erreur FRANÇAIS, jamais du JSON brut.
 import { frenchError } from '../../lib/frenchError'
 
@@ -83,6 +87,17 @@ const REFERENTIELS_TAB = { key: 'referentiels', label: 'Référentiels', group: 
 // historique des purges, loi 09-08/CNDP). Ajouté localement, même logique
 // que N96/N94/XPLT23/ODX5/WIR159/WIR66.
 const CHAT_RETENTION_TAB = { key: 'chat_retention', label: 'Rétention (Discuter)', group: 'equipe' }
+// PACT117 — onglet « Modèles brandés » (core.BrandedTemplate FG393 : modèles
+// PDF/email/WhatsApp + aperçu serveur). Ajouté localement, même logique que
+// N96/N94/XPLT23/ODX5/WIR159/WIR66.
+const MODELES_BRANDES_TAB = { key: 'modeles_brandes', label: 'Modèles brandés', group: 'ventes' }
+// PACT123 — onglet « Exports planifiés » (core.ScheduledExport FG383 : livraison
+// récurrente SFTP/S3, distincte de l'export manuel de l'onglet « Données »).
+const EXPORTS_PLANIFIES_TAB = { key: 'exports_planifies', label: 'Exports planifiés', group: 'avance' }
+// PACT147 — onglet « Politiques d'approbation » (parametres.ApprovalPolicy FG25 :
+// ce qui DÉCLENCHE une approbation — à ne pas confondre avec la boîte de
+// réception des approbations en attente, qui est un autre écran).
+const APPROBATIONS_POLITIQUES_TAB = { key: 'approbations_politiques', label: "Politiques d'approbation", group: 'automatisation' }
 
 // ── Conteneur de la page Paramètres (D1) ───────────────────────────────────────
 // Toute la logique (état du formulaire, chargements, handlers) vit ici, dans un
@@ -107,7 +122,7 @@ export default function ParametresEntreprise() {
   const searchResults = searchSettings(search)
   // Liste d'onglets affichée = onglets partagés + N96 (2FA) + N94 (traductions)
   // + XPLT23 (confidentialité) + ODX5 (applications).
-  const allTabs = [...TABS, SECURITE_COMPTE_TAB, TRADUCTIONS_TAB, CONFIDENTIALITE_TAB, APPLICATIONS_TAB, MARKETPLACE_TAB, REFERENTIELS_TAB, CHAT_RETENTION_TAB]
+  const allTabs = [...TABS, SECURITE_COMPTE_TAB, TRADUCTIONS_TAB, CONFIDENTIALITE_TAB, APPLICATIONS_TAB, MARKETPLACE_TAB, REFERENTIELS_TAB, CHAT_RETENTION_TAB, MODELES_BRANDES_TAB, EXPORTS_PLANIFIES_TAB, APPROBATIONS_POLITIQUES_TAB]
   // VX35 — onglets rangés en familles pour la sidebar verticale (ordre =
   // SETTINGS_GROUPS). groupTabs garantit qu'aucun onglet ne disparaît.
   const tabGroups = groupTabs(allTabs)
@@ -852,6 +867,13 @@ export default function ParametresEntreprise() {
           </p>
         </div>
 
+        {/* ── PACT145 — assistant de paramétrage « Où régler… ? » : répond en
+              français et donne le lien direct vers le bon écran. GUIDAGE SEUL,
+              il ne modifie jamais un réglage ; sans clé LLM il dégrade sur une
+              FAQ statique et renvoie quand même le lien. Hors du <form> de la
+              page : aucune interaction avec l'enregistrement du profil. ── */}
+        <AssistantConfigWidget />
+
         {/* ── VX35 — sidebar verticale groupée + colonne de contenu ── */}
         <div className="flex flex-col gap-6 md:flex-row md:items-start">
 
@@ -949,6 +971,12 @@ export default function ParametresEntreprise() {
           {tab === 'referentiels' && <ReferentielsSection />}
           {/* WIR157 — rétention chat (Discuter) + historique des purges (autonome). */}
           {tab === 'chat_retention' && <ChatRetentionSection />}
+          {/* PACT117 — modèles brandés PDF/email/WhatsApp + aperçu serveur. */}
+          {tab === 'modeles_brandes' && <ModelesBrandesSection />}
+          {/* PACT123 — exports planifiés vers SFTP/S3 (statut explicite). */}
+          {tab === 'exports_planifies' && <ExportsPlanifiesSection />}
+          {/* PACT147 — configuration de ce qui déclenche une approbation. */}
+          {tab === 'approbations_politiques' && <ApprobationsPolitiquesSection />}
 
           {/* Bouton d'enregistrement du profil (onglets porteurs de champs) */}
           {showSave && saveButton}
