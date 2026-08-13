@@ -30,9 +30,13 @@ class TestClausesCGV(TestCase):
 
     def _devis(self, mode):
         devis = DevisFactory(company=self.company, mode_installation=mode)
+        # Désignation « Onduleur réseau » : le builder du moteur de devis
+        # (quote_engine/builder.py) refuse le rendu à options tant qu'aucune
+        # ligne n'expose un onduleur — sans lien avec la logique des clauses.
         LigneDevis.objects.create(
             devis=devis, produit=self.produit,
-            designation=self.produit.nom, quantite=Decimal('1'),
+            designation=f'Onduleur réseau {self.produit.nom}',
+            quantite=Decimal('1'),
             prix_unitaire=Decimal('600000.00'))
         return devis
 

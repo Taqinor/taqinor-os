@@ -264,9 +264,21 @@ def generer_variantes_devis(devis, *, user=None, tiers=None):
 
     company = devis.company
     # Remplace les variantes brouillon existantes (jamais de doublon empilé).
-    Devis.objects.filter(
+    anciennes_variantes_ids = list(Devis.objects.filter(
         company=company, variante_de=devis,
-        statut=Devis.Statut.BROUILLON).delete()
+        statut=Devis.Statut.BROUILLON).values_list('pk', flat=True))
+    Devis.objects.filter(pk__in=anciennes_variantes_ids).delete()
+    if anciennes_variantes_ids:
+        # NTCPQ20 : le récepteur post_delete de LigneDevis (ventes/receivers.py)
+        # capture un instantané de configuration AVANT que le Devis parent
+        # soit lui-même supprimé (les lignes sont purgées en premier dans
+        # l'ordre de cascade) — un instantané orphelin peut donc être recréé
+        # pour une variante qui vient de disparaître. La contrainte FK
+        # Postgres étant différée, on peut encore purger ces orphelins avant
+        # la vérification de fin de transaction.
+        from apps.ventes.models import ConfigurationDevisSnapshot
+        ConfigurationDevisSnapshot.objects.filter(
+            devis_id__in=anciennes_variantes_ids).delete()
 
     substitutions = {}
     for eq in ProduitEquivalent.objects.filter(
