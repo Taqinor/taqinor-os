@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback } from 'react'
 import marketingApi from '../../api/marketingApi'
+import LandingVersions from './LandingVersions'
 
 /* ============================================================================
    WIR64 / FG206 — Formulaires d'intake (landing publique de capture de lead).
@@ -18,6 +19,8 @@ export default function FormulairesIntakeList() {
   const [tagPrefill, setTagPrefill] = useState('')
   const [typeInstallation, setTypeInstallation] = useState('')
   const [err, setErr] = useState('')
+  // NTMKT16 — formulaire dont on édite les versions de page publique.
+  const [edite, setEdite] = useState(null)
 
   const load = useCallback(() => {
     setLoading(true)
@@ -82,7 +85,7 @@ export default function FormulairesIntakeList() {
         : (
           <table className="data-table" data-testid="intake-table">
             <thead>
-              <tr><th>Nom</th><th>Slug</th><th>Tag</th><th>Type</th><th>Actif</th><th>Lien public</th></tr>
+              <tr><th>Nom</th><th>Slug</th><th>Tag</th><th>Type</th><th>Actif</th><th>Lien public</th><th>Page</th></tr>
             </thead>
             <tbody>
               {formulaires.map((f) => (
@@ -93,16 +96,27 @@ export default function FormulairesIntakeList() {
                   <td>{f.type_installation || '—'}</td>
                   <td>{f.actif ? 'Oui' : 'Non'}</td>
                   <td><code style={{ fontSize: '0.78rem' }}>{marketingApi.formulairesIntake.lienPublic(f.slug)}</code></td>
+                  {/* NTMKT16 — éditeur de versions de la page publique */}
+                  <td>
+                    <button type="button" className="btn btn-light"
+                      data-testid="intake-versions"
+                      onClick={() => setEdite(edite?.id === f.id ? null : f)}>
+                      Versions
+                    </button>
+                  </td>
                 </tr>
               ))}
               {formulaires.length === 0 && (
-                <tr><td colSpan={6} style={{ textAlign: 'center', color: '#64748b' }}>
+                <tr><td colSpan={7} style={{ textAlign: 'center', color: '#64748b' }}>
                   Aucun formulaire d'intake
                 </td></tr>
               )}
             </tbody>
           </table>
         )}
+      {edite && (
+        <LandingVersions formulaireId={edite.id} formulaireNom={edite.nom} />
+      )}
     </div>
   )
 }

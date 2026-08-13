@@ -490,6 +490,8 @@
     configured:inconnu
 - frontend/src/api/marketingApi.js :: importer -> /api/django/marketing/listes-diffusion/<>/importer
     ajoutes:nombre, doublons:nombre, ignores_supprimes:nombre
+- frontend/src/api/marketingApi.js :: instancier -> /api/django/marketing/modeles-journey/<>/instancier
+    nom:inconnu, sequence_id:inconnu
 - frontend/src/api/marketingApi.js :: participants -> /api/django/marketing/sequences-relance/<>/participants
     nb_actifs:inconnu, participants:inconnu
 - frontend/src/api/marketingApi.js :: planifier -> /api/django/marketing/sequences-relance/<>/planifier
