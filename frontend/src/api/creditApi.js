@@ -71,6 +71,14 @@ const creditApi = {
   createEncoursGaranti: (data) => api.post('/credit/encours-garantis/', data),
   deleteEncoursGaranti: (id) => api.delete(`/credit/encours-garantis/${id}/`),
 
+  // PACT50/NTCRD13 — rattachement d'un client à un segment crédit (le maillon
+  // qui rend applicables les conditions de paiement du segment).
+  getSegmentsClient: (params) => api.get('/credit/segments-client/', { params }),
+  createSegmentClient: (data) => api.post('/credit/segments-client/', data),
+  updateSegmentClient: (id, data) =>
+    api.patch(`/credit/segments-client/${id}/`, data),
+  deleteSegmentClient: (id) => api.delete(`/credit/segments-client/${id}/`),
+
   // PACT49/NTCRD26 — rapport agrégé des dérogations sur période (délai de
   // traitement en heures) + export XLSX/CSV aux colonnes STABLES du serveur.
   getRapportDerogations: (params) =>
