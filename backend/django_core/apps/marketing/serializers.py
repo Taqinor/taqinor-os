@@ -40,7 +40,7 @@ from apps.compta.serializers import (  # noqa: F401
 )
 from rest_framework import serializers
 
-from .models import ArcJourney, NoeudJourney
+from .models import ArcJourney, ModeleJourney, NoeudJourney
 
 
 # ── NTMKT12 — Journey en graphe ─────────────────────────────────────────────
@@ -84,3 +84,13 @@ class ArcJourneySerializer(_CompanyScopedSerializer):
     class Meta:
         model = ArcJourney
         fields = ['id', 'source', 'cible', 'condition', 'valeur', 'ordre']
+
+
+class ModeleJourneySerializer(serializers.ModelSerializer):
+    """NTMKT15 — gabarit de journey (graphe pré-construit) prêt à instancier."""
+
+    class Meta:
+        model = ModeleJourney
+        fields = ['id', 'nom', 'categorie', 'description', 'graphe',
+                  'date_creation']
+        read_only_fields = ['date_creation']

@@ -329,6 +329,53 @@ def avancer_journey(inscription, *, maintenant=None):
     return traces
 
 
+def instancier_modele_journey(company, modele, *, nom=None,
+                              stage_declencheur=''):
+    """NTMKT15 — instancie un ``ModeleJourney`` en une NOUVELLE séquence
+    éditable (nœuds + arcs NTMKT12), désactivée par défaut.
+
+    Le graphe du modèle référence ses nœuds par une ``cle`` textuelle ; la
+    correspondance clé → nœud créé est locale à cette instanciation (aucune
+    fuite entre modèles, aucune modification du modèle source).
+    """
+    from .models import ArcJourney, NoeudJourney, SequenceRelance
+    graphe = modele.graphe or {}
+    sequence = SequenceRelance.objects.create(
+        company=company,
+        nom=nom or modele.nom,
+        stage_declencheur=stage_declencheur or '',
+        actif=False,
+    )
+    par_cle = {}
+    for brut in graphe.get('noeuds') or []:
+        noeud = NoeudJourney.objects.create(
+            company=company,
+            sequence=sequence,
+            type_noeud=brut.get('type_noeud') or NoeudJourney.Type.ACTION,
+            libelle=brut.get('libelle') or '',
+            position_x=int(brut.get('position_x') or 0),
+            position_y=int(brut.get('position_y') or 0),
+            config=brut.get('config') or {},
+        )
+        if brut.get('cle'):
+            par_cle[str(brut['cle'])] = noeud
+    for brut in graphe.get('arcs') or []:
+        source = par_cle.get(str(brut.get('source')))
+        cible = par_cle.get(str(brut.get('cible')))
+        if source is None or cible is None:
+            continue
+        ArcJourney.objects.create(
+            company=company,
+            source=source,
+            cible=cible,
+            condition=(brut.get('condition')
+                       or ArcJourney.Condition.TOUJOURS),
+            valeur=brut.get('valeur') or '',
+            ordre=int(brut.get('ordre') or 1),
+        )
+    return sequence
+
+
 def executer_journeys_dus(company, *, maintenant=None):
     """Tick des séquences EN GRAPHE d'une société (NTMKT12).
 

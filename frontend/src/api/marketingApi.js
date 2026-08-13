@@ -89,6 +89,14 @@ const marketingApi = {
   noeudsJourney: resource('noeuds-journey'),
   arcsJourney: resource('arcs-journey'),
 
+  // ── NTMKT15 — Bibliothèque de modèles de journeys (graphes pré-construits)
+  modelesJourney: {
+    ...resource('modeles-journey'),
+    // « Utiliser ce modèle » : crée une séquence ÉDITABLE désactivée.
+    instancier: (id, data) =>
+      api.post(`/marketing/modeles-journey/${id}/instancier/`, data || {}),
+  },
+
   inscriptionsSequence: {
     ...resource('inscriptions-sequence'),
     inscrire: (data) =>

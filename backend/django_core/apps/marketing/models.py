@@ -2095,3 +2095,47 @@ class ArcJourney(models.Model):
 
     def __str__(self):
         return f'{self.source_id} → {self.cible_id} ({self.condition})'
+
+
+# ── NTMKT15 — Bibliothèque de modèles de journeys ──────────────────────────
+
+class ModeleJourney(models.Model):
+    """Gabarit de journey prêt à instancier (NTMKT15).
+
+    Complète les 5 recettes LINÉAIRES seedées par XMKT20 (qui restent
+    intactes) : un modèle porte ici un GRAPHE pré-construit (nœuds + arcs
+    NTMKT12) qu'on instancie dans une nouvelle ``SequenceRelance`` éditable.
+    """
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='modeles_journey',
+        verbose_name='Société',
+    )
+    nom = models.CharField(max_length=200, verbose_name='Nom du modèle')
+    categorie = models.CharField(
+        max_length=80, blank=True, default='', verbose_name='Catégorie')
+    description = models.TextField(
+        blank=True, default='', verbose_name='Description')
+    # Graphe pré-construit :
+    # {"noeuds": [{"cle": "n1", "type_noeud": "...", "libelle": "...",
+    #              "position_x": 0, "position_y": 0, "config": {...}}],
+    #  "arcs":   [{"source": "n1", "cible": "n2", "condition": "...",
+    #              "valeur": "", "ordre": 1}]}
+    graphe = models.JSONField(default=dict, blank=True, verbose_name='Graphe')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Modèle de journey'
+        verbose_name_plural = 'Modèles de journey'
+        ordering = ['categorie', 'nom']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'nom'],
+                name='uniq_modele_journey_nom_par_societe',
+            ),
+        ]
+
+    def __str__(self):
+        return f'{self.nom} ({self.categorie})'

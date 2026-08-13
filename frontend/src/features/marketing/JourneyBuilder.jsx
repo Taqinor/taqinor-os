@@ -17,11 +17,12 @@ import {
    son id serveur ; le déplacement n'enregistre la position qu'au relâchement.
    ========================================================================== */
 
-export default function JourneyBuilder({ sequenceId, sequenceNom }) {
+export default function JourneyBuilder({ sequenceId, sequenceNom, onSequenceCreee }) {
   const [noeuds, setNoeuds] = useState([])
   const [arcs, setArcs] = useState([])
   const [chargement, setChargement] = useState(true)
   const [err, setErr] = useState('')
+  const [modeles, setModeles] = useState([])            // NTMKT15
   const [selection, setSelection] = useState(null)      // nœud sélectionné
   const [origineLien, setOrigineLien] = useState(null)  // départ d'une liaison
   const [condition, setCondition] = useState('toujours')
@@ -50,6 +51,26 @@ export default function JourneyBuilder({ sequenceId, sequenceNom }) {
   }, [sequenceId])
 
   useEffect(() => { charger() }, [charger])
+
+  // NTMKT15 — bibliothèque de modèles (lecture seule ici).
+  useEffect(() => {
+    let vivant = true
+    marketingApi.modelesJourney.list()
+      .then(res => { if (vivant) setModeles(marketingApi.unwrapList(res)) })
+      .catch(() => { if (vivant) setModeles([]) })
+    return () => { vivant = false }
+  }, [])
+
+  const utiliserModele = async (modele) => {
+    try {
+      const res = await marketingApi.modelesJourney.instancier(modele.id)
+      setErr('')
+      if (onSequenceCreee) onSequenceCreee(res?.data)
+      else if (res?.data?.sequence_id === sequenceId) charger()
+    } catch {
+      setErr("Instanciation du modèle impossible.")
+    }
+  }
 
   // ── Palette : ajouter un nœud (persisté immédiatement) ───────────────────
   const ajouterNoeud = async (type) => {
@@ -156,6 +177,22 @@ export default function JourneyBuilder({ sequenceId, sequenceNom }) {
           </button>
         ))}
       </div>
+
+      {modeles.length > 0 && (
+        <div className="journey-modeles">
+          <h4>Modèles de journey</h4>
+          <ul>
+            {modeles.map(m => (
+              <li key={m.id}>
+                <span>{m.nom}</span>{' '}
+                <button type="button" onClick={() => utiliserModele(m)}>
+                  Utiliser ce modèle
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       <div className="journey-liaison">
         <label>

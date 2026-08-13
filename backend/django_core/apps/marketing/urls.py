@@ -41,6 +41,7 @@ from .views import (
     InscriptionSequenceViewSet,
     ListeDiffusionViewSet,
     MessageWhatsAppEntrantViewSet,
+    ModeleJourneyViewSet,
     MouvementFideliteViewSet,
     NoeudJourneyViewSet,
     OuverturePartageViewSet,
@@ -87,6 +88,9 @@ router.register(r'noeuds-journey', NoeudJourneyViewSet,
                 basename='mkt-noeud-journey')
 router.register(r'arcs-journey', ArcJourneyViewSet,
                 basename='mkt-arc-journey')
+# ── Bibliothèque de modèles de journeys (NTMKT15) ───────────────────────────
+router.register(r'modeles-journey', ModeleJourneyViewSet,
+                basename='mkt-modele-journey')
 # ── Récupération devis / ouvertures / formulaires / capture (FG203–208) ─────
 router.register(r'relances-devis-abandonnes', RelanceDevisAbandonneViewSet,
                 basename='mkt-relance-devis-abandonne')

@@ -55,8 +55,16 @@ from apps.compta.views import (  # noqa: F401
 )
 from apps.compta.views import _ComptaBaseViewSet
 
-from .models import ArcJourney, NoeudJourney
-from .serializers import ArcJourneySerializer, NoeudJourneySerializer
+from rest_framework.decorators import action
+from rest_framework.response import Response
+
+from authentication.permissions import IsResponsableOrAdmin
+
+from . import services as marketing_services
+from .models import ArcJourney, ModeleJourney, NoeudJourney
+from .serializers import (
+    ArcJourneySerializer, ModeleJourneySerializer, NoeudJourneySerializer,
+)
 
 
 # ── NTMKT12 — Journey en graphe (nœuds + arcs) ──────────────────────────────
@@ -93,3 +101,27 @@ class ArcJourneyViewSet(_ComptaBaseViewSet):
         if sequence:
             qs = qs.filter(source__sequence_id=sequence)
         return qs
+
+
+class ModeleJourneyViewSet(_ComptaBaseViewSet):
+    """NTMKT15 — bibliothèque de modèles de journeys + instanciation."""
+    queryset = ModeleJourney.objects.all()
+    serializer_class = ModeleJourneySerializer
+    ordering_fields = ['id', 'nom', 'categorie', 'date_creation']
+    search_fields = ['nom', 'categorie']
+
+    # YRBAC4 — garde explicite sur l'action custom (jamais héritée en creux).
+    @action(detail=True, methods=['post'], url_path='instancier',
+            permission_classes=[IsResponsableOrAdmin])
+    def instancier(self, request, pk=None):
+        """« Utiliser ce modèle » : crée une séquence ÉDITABLE (désactivée)
+        portant une copie du graphe. La société vient de l'utilisateur."""
+        modele = self.get_object()
+        sequence = marketing_services.instancier_modele_journey(
+            request.user.company, modele,
+            nom=(request.data or {}).get('nom') or None,
+            stage_declencheur=(request.data or {}).get(
+                'stage_declencheur') or '',
+        )
+        return Response(
+            {'sequence_id': sequence.id, 'nom': sequence.nom}, status=201)

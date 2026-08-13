@@ -20,6 +20,10 @@ vi.mock('../../api/marketingApi', () => ({
       update: vi.fn(() => Promise.resolve({ data: {} })),
       remove: vi.fn(() => Promise.resolve({ data: {} })),
     },
+    modelesJourney: {
+      list: vi.fn(() => Promise.resolve({ data: [] })),
+      instancier: vi.fn(() => Promise.resolve({ data: { sequence_id: 42 } })),
+    },
   },
 }))
 
@@ -128,5 +132,22 @@ describe('JourneyBuilder — rouvrir affiche le même graphe', () => {
     expect(canevas.getByText('Fin')).toBeInTheDocument()
     expect(canevas.getByText('A ouvert')).toBeInTheDocument()
     expect(canevas.getByText('Toujours')).toBeInTheDocument()
+  })
+
+  // NTMKT15 — « Utiliser ce modèle » instancie une séquence éditable.
+  it('propose les modèles de journey et les instancie', async () => {
+    const marketingApi = (await import('../../api/marketingApi')).default
+    marketingApi.modelesJourney.list.mockResolvedValueOnce({
+      data: [{ id: 3, nom: "Cycle appel d'offres", categorie: 'AO' }],
+    })
+    const onSequenceCreee = vi.fn()
+    const { default: JourneyBuilder } = await import('./JourneyBuilder')
+    render(<JourneyBuilder sequenceId={5} onSequenceCreee={onSequenceCreee} />)
+    const bouton = await screen.findByRole('button', { name: 'Utiliser ce modèle' })
+    bouton.click()
+    await waitFor(() =>
+      expect(marketingApi.modelesJourney.instancier).toHaveBeenCalledWith(3))
+    await waitFor(() =>
+      expect(onSequenceCreee).toHaveBeenCalledWith({ sequence_id: 42 }))
   })
 })
