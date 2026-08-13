@@ -10,6 +10,8 @@ from rest_framework.test import APIClient
 
 from authentication.models import Company, CustomUser
 
+from apps.stock.models import Produit
+
 from .models import Equipement
 
 
@@ -22,8 +24,12 @@ class Ntmob23PartageQrTests(TestCase):
         self.user = CustomUser.objects.create_user(
             username='tech-ntmob23', password='x', company=self.company,
             role_legacy=CustomUser.ROLE_ADMIN)
+        # `Equipement.produit` est obligatoire (NOT NULL en base).
+        self.produit = Produit.objects.create(
+            company=self.company, nom='Onduleur NTMOB23')
         self.equipement = Equipement.objects.create(
-            company=self.company, numero_serie='SN-NTMOB23')
+            company=self.company, produit=self.produit,
+            numero_serie='SN-NTMOB23')
         self.api = APIClient()
         self.api.force_authenticate(user=self.user)
 
@@ -43,8 +49,11 @@ class Ntmob23PartageQrTests(TestCase):
         self.assertEqual(premier, second)
 
     def test_equipement_d_une_autre_societe_invisible(self):
+        produit_autre = Produit.objects.create(
+            company=self.autre, nom='Onduleur autre')
         etranger = Equipement.objects.create(
-            company=self.autre, numero_serie='SN-ETRANGER')
+            company=self.autre, produit=produit_autre,
+            numero_serie='SN-ETRANGER')
         self.assertEqual(self.api.get(self._url(etranger)).status_code, 404)
 
     def test_anonyme_refuse(self):
