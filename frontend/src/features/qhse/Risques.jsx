@@ -20,6 +20,7 @@ import {
 import { INCIDENT_TYPES, GRAVITE } from './qhseStatus'
 
 // WIR126 — miroir de `PermisTravail.TypePermis` (backend, apps/qhse/models.py).
+// source-choix: qhse.PermisTravail.type_permis
 const TYPE_PERMIS_OPTIONS = [
   { value: 'hauteur', label: 'Travail en hauteur' },
   { value: 'consignation_elec', label: 'Consignation électrique' },

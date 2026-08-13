@@ -24,6 +24,7 @@ import DashboardFilterBar from '../../features/reporting/DashboardFilterBar'
    canal, catégorie produit), persistés dans `layout.globalFilters`. */
 
 // Libellés FR des clés de cartes (miroir de ALL_DASHBOARD_CARDS côté backend).
+// source-choix: reporting.models.ALL_DASHBOARD_CARDS
 const CARD_LABELS = {
   kpis: 'Indicateurs clés',
   ca_mensuel: 'CA mensuel',
