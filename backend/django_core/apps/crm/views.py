@@ -2672,3 +2672,13 @@ class DefiViewSet(CompanyScopedModelViewSet):
         from .selectors import classement_defi
         defi = self.get_object()
         return Response(classement_defi(defi))
+
+    @action(detail=True, methods=['get'], url_path='export-xlsx',
+            permission_classes=[IsAnyRole])
+    def export_xlsx(self, request, pk=None):
+        """NTCRM28 — Export .xlsx du classement, même contenu que
+        ``classement/`` (rang/nom/score), pour partage en réunion commerciale."""
+        from .exports import export_defi_classement_xlsx
+        from .selectors import classement_defi
+        defi = self.get_object()
+        return export_defi_classement_xlsx(defi, classement_defi(defi))
