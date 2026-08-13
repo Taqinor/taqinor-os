@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import {
   Plus, Eye, CheckCircle2, RefreshCw, ClipboardCheck, Gavel, Sparkles,
   Wrench, ShieldAlert,
@@ -367,6 +367,127 @@ function DerogationCreateDialog({ ncr, onClose, onDone }) {
   )
 }
 
+/* XQHS7 — analyse structurée d'une NCR : chaîne 5-Pourquoi (≤5 entrées, borne
+   serveur) et rapport 8D (D1-D8). `AnalyseNcr` n'a AUCUN CRUD : l'action
+   `analyse/` est sa seule surface — un POST vide lit l'analyse existante, un
+   POST avec données la complète (merge côté serveur sur les clés fournies). */
+const DISCIPLINES_8D = [
+  { code: 'D1', label: 'D1 — Équipe' },
+  { code: 'D2', label: 'D2 — Description du problème' },
+  { code: 'D3', label: 'D3 — Actions immédiates' },
+  { code: 'D4', label: 'D4 — Cause racine' },
+  { code: 'D5', label: 'D5 — Actions correctives choisies' },
+  { code: 'D6', label: 'D6 — Mise en œuvre & vérification' },
+  { code: 'D7', label: 'D7 — Prévention de la récurrence' },
+  { code: 'D8', label: 'D8 — Clôture & reconnaissance' },
+]
+const POURQUOI_VIDES = Array.from({ length: 5 }, () => ({ pourquoi: '', reponse: '' }))
+
+function AnalyseNcrPanel({ ncrId }) {
+  const [pourquoi, setPourquoi] = useState(POURQUOI_VIDES)
+  const [huitD, setHuitD] = useState({})
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+
+  useEffect(() => {
+    let vivant = true
+    // POST sans corps = lecture (aucun champ écrasé côté service).
+    qhseApi.nonConformites.analyse(ncrId)
+      .then((r) => {
+        if (!vivant) return
+        const lus = Array.isArray(r.data?.cinq_pourquoi) ? r.data.cinq_pourquoi : []
+        setPourquoi(POURQUOI_VIDES.map((vide, i) => ({
+          pourquoi: lus[i]?.pourquoi ?? vide.pourquoi,
+          reponse: lus[i]?.reponse ?? vide.reponse,
+        })))
+        setHuitD(r.data?.huit_d && typeof r.data.huit_d === 'object' ? r.data.huit_d : {})
+      })
+      .catch(() => { if (vivant) toast.error('Analyse illisible.') })
+      .finally(() => { if (vivant) setLoading(false) })
+    return () => { vivant = false }
+  }, [ncrId])
+
+  function majPourquoi(index, champ, valeur) {
+    setPourquoi((prev) => prev.map(
+      (p, i) => (i === index ? { ...p, [champ]: valeur } : p)))
+  }
+
+  async function enregistrer() {
+    setSaving(true)
+    try {
+      // On n'envoie que les « pourquoi » réellement remplis : la borne
+      // serveur est à 5 entrées, les lignes vides ne sont pas une analyse.
+      const remplis = pourquoi.filter(
+        (p) => p.pourquoi.trim() || p.reponse.trim())
+      const r = await qhseApi.nonConformites.analyse(ncrId, {
+        cinq_pourquoi: remplis.map((p) => ({
+          pourquoi: p.pourquoi.trim(), reponse: p.reponse.trim(),
+        })),
+        huit_d: huitD,
+      })
+      setHuitD(r.data?.huit_d ?? huitD)
+      toast.success('Analyse enregistrée.')
+    } catch (err) {
+      const detail = err?.response?.data?.detail
+      toast.error(Array.isArray(detail) ? detail.join(' ')
+        : detail ?? 'Enregistrement impossible.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  if (loading) return <p className="text-sm text-muted-foreground">Chargement…</p>
+
+  return (
+    <div className="flex flex-col gap-5">
+      <section className="flex flex-col gap-3">
+        <h4 className="text-sm font-semibold">5-Pourquoi</h4>
+        {pourquoi.map((p, i) => (
+          <div key={`pourquoi-${i}`} className="grid grid-cols-2 gap-3">
+            <div>
+              <Label>{`Pourquoi ${i + 1}`}</Label>
+              <Input
+                aria-label={`Pourquoi ${i + 1}`} value={p.pourquoi}
+                onChange={(e) => majPourquoi(i, 'pourquoi', e.target.value)}
+              />
+            </div>
+            <div>
+              <Label>{`Réponse ${i + 1}`}</Label>
+              <Input
+                aria-label={`Réponse ${i + 1}`} value={p.reponse}
+                onChange={(e) => majPourquoi(i, 'reponse', e.target.value)}
+              />
+            </div>
+          </div>
+        ))}
+      </section>
+
+      <section className="flex flex-col gap-3">
+        <h4 className="text-sm font-semibold">Rapport 8D</h4>
+        {DISCIPLINES_8D.map(({ code, label }) => (
+          <div key={code}>
+            <Label>{label}</Label>
+            <Textarea
+              aria-label={label} rows={2}
+              value={huitD?.[code]?.texte ?? ''}
+              onChange={(e) => setHuitD((prev) => ({
+                ...prev,
+                [code]: { ...(prev?.[code] ?? {}), texte: e.target.value },
+              }))}
+            />
+          </div>
+        ))}
+      </section>
+
+      <div className="flex justify-end">
+        <Button onClick={enregistrer} disabled={saving}>
+          {saving ? 'Enregistrement…' : 'Enregistrer l’analyse'}
+        </Button>
+      </div>
+    </div>
+  )
+}
+
 function NcrDetail({ ncr, onBack, onChanged }) {
   const [busy, setBusy] = useState(false)
   const [posingDisposition, setPosingDisposition] = useState(false)
@@ -483,6 +604,13 @@ function NcrDetail({ ncr, onBack, onChanged }) {
             label: 'Taux de défaillance produit',
             content: <TauxDefaillancePanel />,
           },
+          {
+            // XQHS7 — analyse 5-Pourquoi / 8D : l'action `analyse/` n'avait
+            // aucun appelant côté écran.
+            value: 'analyse',
+            label: 'Analyse 5-Pourquoi / 8D',
+            content: <AnalyseNcrPanel ncrId={ncr.id} />,
+          },
         ]}
       />
       {posingDisposition && (
@@ -503,9 +631,64 @@ function NcrDetail({ ncr, onBack, onChanged }) {
   )
 }
 
+/* XQHS23 — pont ticket SAV → NCR. Le pont inverse (NCR → intervention SAV)
+   est déjà sur le détail NCR ; `depuis-ticket-sav/` (idempotent : une seule
+   NCR par ticket) n'avait aucun appelant. Le ticket est désigné par son id
+   — aucune lecture cross-app depuis cet écran. */
+function NcrDepuisTicketDialog({ onClose, onCreated }) {
+  const [ticket, setTicket] = useState('')
+  const [gravite, setGravite] = useState('mineure')
+  const [saving, setSaving] = useState(false)
+
+  async function save() {
+    if (!ticket.trim()) { toast.error('L’identifiant du ticket est requis.'); return }
+    setSaving(true)
+    try {
+      const r = await qhseApi.nonConformites.depuisTicketSav({
+        ticket: Number(ticket), gravite,
+      })
+      toast.success(`NCR ${r.data?.reference ?? ''} rattachée au ticket.`)
+      onCreated()
+      onClose()
+    } catch (err) {
+      toast.error(err?.response?.data?.detail ?? 'Ticket introuvable.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <Dialog open onOpenChange={(o) => { if (!o) onClose() }}>
+      <DialogContent>
+        <DialogTitle>Créer une NCR depuis un ticket SAV</DialogTitle>
+        <div className="flex flex-col gap-3">
+          <div>
+            <Label>Ticket SAV (id)</Label>
+            <Input
+              aria-label="Ticket SAV (id)" inputMode="numeric" value={ticket}
+              onChange={(e) => setTicket(e.target.value)}
+            />
+          </div>
+          <FieldSelect
+            label="Gravité" value={gravite} onChange={setGravite}
+            options={GRAVITE_OPTS}
+          />
+          <div className="flex justify-end gap-2 pt-1">
+            <Button variant="outline" onClick={onClose}>Annuler</Button>
+            <Button onClick={save} disabled={saving}>
+              {saving ? 'Création…' : 'Créer la NCR'}
+            </Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
 function NcrRegister() {
   const [selected, setSelected] = useState(null)
   const [creating, setCreating] = useState(false)
+  const [depuisTicket, setDepuisTicket] = useState(false)
   const { rows, loading, error, reload } = useQhseList(
     () => qhseApi.nonConformites.list(),
   )
@@ -555,17 +738,28 @@ function NcrRegister() {
         rowActions={(r) => [
           { id: 'view', label: 'Ouvrir', icon: Eye, onClick: () => setSelected(r) },
         ]}
-        actions={
-          <Button onClick={() => setCreating(true)}>
-            <Plus size={16} /> Nouvelle NCR
-          </Button>
-        }
+        actions={(
+          <>
+            <Button variant="outline" onClick={() => setDepuisTicket(true)}>
+              <Wrench size={16} /> Depuis un ticket SAV
+            </Button>
+            <Button onClick={() => setCreating(true)}>
+              <Plus size={16} /> Nouvelle NCR
+            </Button>
+          </>
+        )}
         emptyTitle="Aucune non-conformité"
         emptyDescription="Aucune NCR ne correspond à ces filtres."
         emptyAction={<Button size="sm" onClick={() => setCreating(true)}><Plus size={16} /> Nouvelle NCR</Button>}
       />
       {creating && (
         <NcrCreateDialog onClose={() => setCreating(false)} onCreated={reload} />
+      )}
+      {depuisTicket && (
+        <NcrDepuisTicketDialog
+          onClose={() => setDepuisTicket(false)}
+          onCreated={reload}
+        />
       )}
     </>
   )
