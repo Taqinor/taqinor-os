@@ -69,6 +69,15 @@ export const AE_HOOKS = {
     bandPrefix: 'ae-exp-band-', // + id de bras — bande de crédibilité
     decisions: 'ae-exp-decisions',
     decision: 'ae-exp-decision',
+    // PACT110-FIX — bandeaux « liste tronquée par le serveur ». Les trois
+    // collections `bras/`, `stats-bras/` et `decisions/` n'ont AUCUN filtre
+    // serveur par expérience/bras : le filtre est client, donc au-delà du
+    // plafond de pagination (200, `StandardPagination.max_page_size`) des
+    // lignes manquent. Ces hooks n'apparaissent QUE dans ce cas — leur absence
+    // signifie « le serveur a tout envoyé », jamais « on n'a pas regardé ».
+    armsTruncated: 'ae-exp-arms-truncated',
+    armSeriesTruncated: 'ae-exp-arm-series-truncated',
+    decisionsAllTruncated: 'ae-exp-decisions-all-truncated',
     // RETIRÉ par PACT110 (13/08/2026) : `ae-exp-decision-filter` était un filtre
     // « par phase » du journal des décisions — or `DecisionLogSerializer`
     // n'expose AUCUN champ `phase` (id, experiment, inputs, posteriors,

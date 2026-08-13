@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { formatNumber, formatMAD, formatMoney, formatRatio } from './adsengine'
+import { formatNumber, formatMAD, formatMoney, formatRatio, readPaginated } from './adsengine'
 
 /* ENG21 — le module « Publicité » s'auto-enregistre via son module.config.jsx
    (pattern UX1, collecté par le glob de router/moduleRoutes.jsx) et est gaté
@@ -40,6 +40,39 @@ describe('adsengine — helpers de formatage (montants MAD, jamais de valeur inv
   it('formatRatio rend une décimale par défaut', () => {
     expect(formatRatio(1.83)).toBe('1,8')
     expect(formatRatio(null)).toBe('—')
+  })
+})
+
+/* PACT110-FIX — l'enveloppe de pagination DRF ne doit JAMAIS être avalée : les
+   collections filtrées côté client (bras/, stats-bras/, decisions/) tronquaient
+   en silence au-delà de la page serveur. `readPaginated` est le seul endroit qui
+   décide « le serveur a-t-il tout envoyé ? ». */
+describe('adsengine — readPaginated (troncature serveur jamais silencieuse)', () => {
+  it('liste nue (action serveur non paginée) : complète par construction', () => {
+    expect(readPaginated([{ id: 1 }, { id: 2 }]))
+      .toEqual({ rows: [{ id: 1 }, { id: 2 }], total: 2, truncated: false })
+  })
+
+  it('enveloppe DRF complète : aucune troncature signalée', () => {
+    const data = { count: 2, next: null, previous: null, results: [{ id: 1 }, { id: 2 }] }
+    expect(readPaginated(data)).toEqual({ rows: data.results, total: 2, truncated: false })
+  })
+
+  it('enveloppe DRF avec page suivante : troncature signalée avec le VRAI total', () => {
+    const data = { count: 342, next: 'http://api/adsengine/bras/?page=2', results: [{ id: 1 }] }
+    const page = readPaginated(data)
+    expect(page.truncated).toBe(true)
+    expect(page.total).toBe(342)
+    expect(page.rows).toHaveLength(1)
+  })
+
+  it('`count` supérieur au nombre de lignes suffit (filet si `next` manque)', () => {
+    expect(readPaginated({ count: 80, results: [{ id: 1 }] }).truncated).toBe(true)
+  })
+
+  it('réponse inattendue (null, objet vide) : jamais un crash, jamais un faux total', () => {
+    expect(readPaginated(null)).toEqual({ rows: [], total: 0, truncated: false })
+    expect(readPaginated({})).toEqual({ rows: [], total: 0, truncated: false })
   })
 })
 

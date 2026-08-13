@@ -78,7 +78,10 @@ export default function EnqueteResultats() {
     const params = filtreReussi === '' ? undefined : { reussi: filtreReussi }
     marketingApi.enquetes.participations(id, params)
       .then(r => setParticipations(Array.isArray(r.data) ? r.data : (r.data?.results || [])))
-      .catch(() => setParticipations([]))
+      .catch(() => {
+        setParticipations([])
+        setErr('Chargement des participations impossible.')
+      })
       .finally(() => setParticipationsLoading(false))
   }, [id, filtreReussi])
 

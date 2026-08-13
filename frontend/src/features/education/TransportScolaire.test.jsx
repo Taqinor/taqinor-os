@@ -167,6 +167,22 @@ describe('TransportScolaire (PACT80)', () => {
     expect(screen.queryByRole('status')).toBeNull()
   })
 
+  it('affiche un message visible quand un chargement échoue, jamais un vide silencieux',
+    async () => {
+      // Les 5 ressources sont chargées via useEducationResource, qui expose un
+      // champ `error` — un GET en échec ne doit jamais se travestir en
+      // « Aucun circuit pour l'instant » sans un mot dessus.
+      circuits.list.mockRejectedValue(new Error('boom'))
+      afficher()
+
+      const bandeau = await screen.findByRole('alert')
+      expect(bandeau.textContent).toContain('Chargement impossible.')
+
+      // L'état vide honnête reste affiché en dessous (pas de faux-semblant
+      // « ça marche »), mais l'échec, lui, est maintenant dit.
+      expect(await screen.findByText('Aucun circuit pour l’instant.')).toBeInTheDocument()
+    })
+
   it('est ATTEIGNABLE : la route et l’entrée de nav sont déclarées', () => {
     const route = config.routes.find((r) => r.path === '/education/transport')
     expect(route).toBeTruthy()

@@ -191,6 +191,69 @@ describe('ExperimentsScreen (ENG39/PACT110)', () => {
     expect(allRows[1]).toHaveTextContent('Décision sur une autre expérimentation.')
   })
 
+  /* PACT110-FIX — troncature de pagination RENDUE VISIBLE.
+     `bras/`, `stats-bras/` et `decisions/` sont paginées (StandardPagination :
+     50 par défaut, plafond dur 200) et filtrées CÔTÉ CLIENT faute de filtre
+     serveur par expérience/bras. Au-delà du plafond, les lignes non renvoyées
+     disparaissaient EN SILENCE : l'écran affichait « aucun bras créé » — un
+     vide qui se lit « rien n'a été créé ». Ces trois tests prouvent que
+     l'enveloppe DRF (`count`/`next`) est lue et DITE à l'écran. */
+  it('bras : dit que la liste est tronquée par le serveur au lieu de mentir sur un vide', async () => {
+    // Enveloppe DRF réelle : le serveur annonce 342 bras et n'en renvoie que 2,
+    // AUCUN de l'expérience sélectionnée (ils sont sur les pages suivantes).
+    mocks.arms.mockResolvedValue({ data: {
+      count: 342, next: 'http://api/adsengine/bras/?page=2', previous: null,
+      results: [ARMS[2], { ...ARMS[2], id: 10, experiment: 98 }],
+    } })
+    renderScreen()
+    await waitFor(() => expect(mocks.arms).toHaveBeenCalled())
+    // Le vide est affiché — mais JAMAIS seul : le bandeau dit pourquoi.
+    expect(await screen.findByTestId('ae-exp-arms-empty')).toBeInTheDocument()
+    const notice = await screen.findByTestId('ae-exp-arms-truncated')
+    expect(notice).toHaveTextContent('Liste tronquée par le serveur')
+    expect(notice).toHaveTextContent('2 ligne(s) reçue(s)')
+    expect(notice).toHaveTextContent('342')
+  })
+
+  it('bras : aucun bandeau de troncature quand le serveur a tout envoyé', async () => {
+    // Enveloppe DRF complète (`next` nul, `count` == nombre de résultats).
+    mocks.arms.mockResolvedValue({ data: {
+      count: ARMS.length, next: null, previous: null, results: ARMS,
+    } })
+    renderScreen()
+    const armCards = await screen.findAllByTestId('ae-exp-arm')
+    expect(armCards.length).toBe(2)
+    expect(screen.queryByTestId('ae-exp-arms-truncated')).toBeNull()
+  })
+
+  it('série d\'un bras : signale la troncature (les jours les plus anciens manquent)', async () => {
+    mocks.armStats.mockResolvedValue({ data: {
+      count: 900, next: 'http://api/adsengine/stats-bras/?page=2', previous: null,
+      results: ARM_STATS,
+    } })
+    renderScreen()
+    await screen.findAllByTestId('ae-exp-arm')
+    fireEvent.click(screen.getByTestId('ae-exp-arm-series-toggle-1'))
+    const notice = await screen.findByTestId('ae-exp-arm-series-truncated')
+    expect(notice).toHaveTextContent('Liste tronquée par le serveur')
+    expect(notice).toHaveTextContent('900')
+    // Les lignes reçues du bras 1 restent affichées — on tronque, on ne cache pas.
+    expect(screen.getAllByTestId('ae-exp-arm-series-row').length).toBe(2)
+  })
+
+  it('journal global : signale la troncature du serveur', async () => {
+    mocks.allDecisions.mockResolvedValue({ data: {
+      count: 4210, next: 'http://api/adsengine/decisions/?page=2', previous: null,
+      results: ALL_DECISIONS,
+    } })
+    renderScreen()
+    await waitFor(() => expect(mocks.allDecisions).toHaveBeenCalled())
+    const notice = await screen.findByTestId('ae-exp-decisions-all-truncated')
+    expect(notice).toHaveTextContent('Liste tronquée par le serveur')
+    expect(notice).toHaveTextContent('4 210')
+    expect(screen.getAllByTestId('ae-exp-decision-all').length).toBe(2)
+  })
+
   it('affiche un état vide quand aucune expérimentation', async () => {
     mocks.list.mockResolvedValue({ data: [] })
     renderScreen()

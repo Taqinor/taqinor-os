@@ -231,3 +231,31 @@ test('le garde de contrat couvre un nombre plausible de chemins (extraction non 
     `Seulement ${frontCalls.length} chemin(s) extrait(s) de adsengineApi.js — ` +
     "l'extraction a probablement régressé (vérifier les regex de ce test).")
 })
+
+/* ── PACT110-FIX — une route JOIGNABLE mais TRONQUÉE reste un écran mort ─────
+   Le garde ci-dessus prouve qu'un chemin EXISTE côté backend. Il ne dit rien
+   d'une seconde classe de bug, mesurée sur ce même écran : les collections
+   `bras/`, `stats-bras/` et `decisions/` sont filtrées CÔTÉ CLIENT (aucun
+   `filterset_fields` dans apps/adsengine/views.py, et le projet ne câble que
+   OrderingFilter + SearchFilter — un `?experiment=` serait ignoré en silence),
+   or elles héritent de `StandardPagination` (page_size=50). Sans `page_size`
+   explicite, le filtre client s'appliquait à 50 lignes société : au-delà, les
+   bras/décisions manquants ne produisaient AUCUNE erreur, juste un « aucun bras
+   créé » mensonger. On garde donc les trois appels. */
+for (const [chemin, methode] of [
+  ['/adsengine/bras/', 'experiments.arms'],
+  ['/adsengine/stats-bras/', 'experiments.armStats'],
+  ['/adsengine/decisions/', 'experiments.allDecisions'],
+]) {
+  test(`${methode} demande un page_size explicite (collection filtrée côté client)`, () => {
+    const idx = apiSrc.indexOf(`'${chemin}'`)
+    assert.notEqual(idx, -1, `Appel à ${chemin} introuvable dans adsengineApi.js.`)
+    // Fenêtre = l'appel lui-même + ses arguments (l'appel suivant commence au
+    // prochain `api.` ; on borne large pour tolérer un retour à la ligne).
+    const suite = apiSrc.slice(idx, idx + 220)
+    assert.match(suite, /page_size/,
+      `${methode} appelle ${chemin} sans page_size : le backend pagine à 50 ` +
+      `(core/pagination.py) et cette collection est filtrée CÔTÉ CLIENT — ` +
+      `les lignes au-delà de la page disparaîtraient en silence.`)
+  })
+}

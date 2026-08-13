@@ -2,7 +2,7 @@ import { useEffect, useState, useMemo, useCallback } from 'react'
 import { FlaskConical, Trophy, ChevronDown, ChevronUp } from 'lucide-react'
 import adsengineApi from './adsengineApi'
 import {
-  normalizeExperiment, normalizeArms, normalizeDecisionLog, bestArm,
+  normalizeExperiment, normalizeArms, normalizeDecisionLog, bestArm, readPaginated,
   formatPercent, formatMAD, formatNumber,
 } from './adsengine'
 
@@ -26,6 +26,31 @@ import {
    s'ajoutent : la série quotidienne d'un bras (``stats-bras/``) et le journal
    des décisions toutes expériences confondues (``decisions/``).
    ========================================================================== */
+
+/* PACT110-FIX — Bandeau « liste tronquée par le serveur ».
+
+   Les collections `bras/`, `stats-bras/` et `decisions/` n'acceptent AUCUN
+   filtre serveur par expérience/bras (aucun `filterset_fields` côté
+   `apps/adsengine/views.py`, et le projet ne câble que `OrderingFilter` +
+   `SearchFilter`) : le tri par expérience se fait donc ici, sur les lignes
+   reçues. Le client demande déjà le maximum autorisé (`page_size=200`, plafond
+   dur de `StandardPagination`) — mais au-delà, le serveur coupe. Cette coupe
+   doit se VOIR : sans ce bandeau, l'écran affiche « aucun bras créé pour cette
+   expérimentation », ce qui se lit « rien n'a été créé » alors que la vérité est
+   « le serveur n'a pas envoyé cette ligne ». Aucun chiffre inventé ici : `recues`
+   et `total` viennent de l'enveloppe DRF (`results.length` et `count`). */
+function TruncationNotice({ testId, recues, total, portee }) {
+  return (
+    <p data-testid={testId} role="status" style={{
+      margin: '0 0 0.6rem', padding: '0.5rem 0.7rem', borderRadius: 6,
+      background: '#fef3c7', color: '#92400e', fontSize: '0.85rem' }}>
+      Liste tronquée par le serveur : {formatNumber(recues, 0)} ligne(s) reçue(s)
+      sur {formatNumber(total, 0)} (plafond de pagination). Le tri par {portee} se
+      fait sur ces lignes seulement — des lignes peuvent manquer ci-dessous, y
+      compris toutes celles d&apos;une expérimentation ou d&apos;un bras entier.
+    </p>
+  )
+}
 
 // Tons de statut de phase (déterministes, FR).
 function phaseTone(statut) {
@@ -105,6 +130,10 @@ function MdeCalculator() {
 function ArmDailySeries({ armId }) {
   const [rows, setRows] = useState(null)
   const [loading, setLoading] = useState(true)
+  // PACT110-FIX — `stats-bras/` est paginée et filtrée par bras CÔTÉ CLIENT
+  // (ordre serveur `-date`) : au-delà d'une page, ce sont les jours les plus
+  // ANCIENS de la série qui manquent. On garde le signal du serveur.
+  const [page, setPage] = useState({ truncated: false, total: 0, recues: 0 })
 
   useEffect(() => {
     let cancelled = false
@@ -113,22 +142,39 @@ function ArmDailySeries({ armId }) {
     adsengineApi.experiments.armStats()
       .then(r => {
         if (cancelled) return
-        const all = Array.isArray(r.data) ? r.data : (r.data?.results || [])
+        const { rows: all, total, truncated } = readPaginated(r.data)
+        setPage({ truncated, total, recues: all.length })
         const mine = all.filter(s => s && s.arm === armId)
           .sort((a, b) => String(a.date || '').localeCompare(String(b.date || '')))
         setRows(mine)
       })
-      .catch(() => { if (!cancelled) setRows([]) })
+      .catch(() => {
+        // En erreur on ne sait RIEN de la troncature : ne rien affirmer.
+        if (!cancelled) { setRows([]); setPage({ truncated: false, total: 0, recues: 0 }) }
+      })
       .finally(() => { if (!cancelled) setLoading(false) })
     return () => { cancelled = true }
   }, [armId])
 
   if (loading) return <p style={{ color: '#64748b', margin: '0.5rem 0 0' }}>Chargement…</p>
+  // Le bandeau se montre AUSSI (et surtout) quand la série est vide : « aucune
+  // statistique » n'est vrai que si le serveur a bien tout envoyé.
+  const notice = page.truncated
+    ? <TruncationNotice testId="ae-exp-arm-series-truncated" recues={page.recues}
+        total={page.total} portee="bras" />
+    : null
   if (!rows || rows.length === 0) {
-    return <p data-testid="ae-exp-arm-series-empty" style={{ color: '#64748b', margin: '0.5rem 0 0' }}>
-      Aucune statistique quotidienne pour ce bras.</p>
+    return (
+      <div style={{ marginTop: '0.5rem' }}>
+        {notice}
+        <p data-testid="ae-exp-arm-series-empty" style={{ color: '#64748b', margin: 0 }}>
+          Aucune statistique quotidienne pour ce bras.</p>
+      </div>
+    )
   }
   return (
+    <>
+    {notice}
     <table data-testid="ae-exp-arm-series" style={{ width: '100%', marginTop: '0.5rem', fontSize: '0.85rem',
       borderCollapse: 'collapse' }}>
       <thead>
@@ -152,6 +198,7 @@ function ArmDailySeries({ armId }) {
         ))}
       </tbody>
     </table>
+    </>
   )
 }
 
@@ -163,6 +210,10 @@ export default function ExperimentsScreen() {
   const [log, setLog] = useState([])
   const [selectedId, setSelectedId] = useState(null)
   const [openArmId, setOpenArmId] = useState(null)
+  // PACT110-FIX — troncature serveur des deux collections filtrées côté client.
+  const [armsPage, setArmsPage] = useState({ truncated: false, total: 0, recues: 0 })
+  const [allDecisionsPage, setAllDecisionsPage] =
+    useState({ truncated: false, total: 0, recues: 0 })
 
   // PACT110 — Journal des décisions TOUTES expériences (vue globale, chargée
   // une fois au montage — indépendante de l'expérimentation sélectionnée).
@@ -181,13 +232,26 @@ export default function ExperimentsScreen() {
       adsengineApi.experiments.arms(),
     ])
       .then(([decisionsRes, armsRes]) => {
-        const rawDecisions = Array.isArray(decisionsRes.data)
-          ? decisionsRes.data : (decisionsRes.data?.results || [])
+        // `experiences/<id>/decisions/` est filtrée CÔTÉ SERVEUR et renvoyée
+        // NON paginée (action `ExperimentViewSet.decisions`) : rien à tronquer
+        // ici — c'est la seule des trois vues qui a un vrai filtre serveur.
+        const rawDecisions = readPaginated(decisionsRes.data).rows
         const latestDecision = rawDecisions[0] || null
         setLog(normalizeDecisionLog(rawDecisions))
-        setArms(normalizeArms(armsRes.data, id, latestDecision))
+        // `bras/` est paginée ET filtrée côté client : on garde le signal de
+        // troncature du serveur pour l'afficher au lieu de le taire.
+        const armsPageData = readPaginated(armsRes.data)
+        setArmsPage({
+          truncated: armsPageData.truncated,
+          total: armsPageData.total,
+          recues: armsPageData.rows.length,
+        })
+        setArms(normalizeArms(armsPageData.rows, id, latestDecision))
       })
-      .catch(() => { setLog([]); setArms([]) })
+      .catch(() => {
+        setLog([]); setArms([])
+        setArmsPage({ truncated: false, total: 0, recues: 0 })
+      })
   }, [])
 
   const load = useCallback(() => {
@@ -209,8 +273,17 @@ export default function ExperimentsScreen() {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement au montage
     setAllDecisionsLoading(true)
     adsengineApi.experiments.allDecisions()
-      .then(r => setAllDecisions(normalizeDecisionLog(r.data)))
-      .catch(() => setAllDecisions([]))
+      .then(r => {
+        const page = readPaginated(r.data)
+        setAllDecisionsPage({
+          truncated: page.truncated, total: page.total, recues: page.rows.length,
+        })
+        setAllDecisions(normalizeDecisionLog(page.rows))
+      })
+      .catch(() => {
+        setAllDecisions([])
+        setAllDecisionsPage({ truncated: false, total: 0, recues: 0 })
+      })
       .finally(() => setAllDecisionsLoading(false))
   }, [])
 
@@ -284,6 +357,12 @@ export default function ExperimentsScreen() {
                   <section className="card ae-exp-arms" data-testid="ae-exp-arms"
                     style={{ padding: '1rem', marginBottom: '1rem' }}>
                     <h3 style={{ margin: '0 0 0.75rem' }}>Bras</h3>
+                    {/* PACT110-FIX — la troncature serveur se VOIT, y compris
+                        (surtout) quand la liste filtrée ressort vide. */}
+                    {armsPage.truncated && (
+                      <TruncationNotice testId="ae-exp-arms-truncated" recues={armsPage.recues}
+                        total={armsPage.total} portee="expérimentation" />
+                    )}
                     {arms.length === 0
                       ? <p data-testid="ae-exp-arms-empty" style={{ color: '#64748b' }}>
                           Aucun bras créé pour cette expérimentation.</p>
@@ -386,6 +465,11 @@ export default function ExperimentsScreen() {
               <section className="card ae-exp-decisions-all" data-testid="ae-exp-decisions-all"
                 style={{ padding: '1rem' }}>
                 <h3 style={{ margin: '0 0 0.6rem' }}>Toutes les décisions (toutes expérimentations)</h3>
+                {!allDecisionsLoading && allDecisionsPage.truncated && (
+                  <TruncationNotice testId="ae-exp-decisions-all-truncated"
+                    recues={allDecisionsPage.recues} total={allDecisionsPage.total}
+                    portee="date (les plus récentes en premier)" />
+                )}
                 {allDecisionsLoading
                   ? <p style={{ color: '#64748b' }}>Chargement…</p>
                   : allDecisions.length === 0

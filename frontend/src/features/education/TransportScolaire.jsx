@@ -51,14 +51,14 @@ const ARRET_VIDE = { circuit: '', nom: '', ordre: '1', heure_passage_estimee: ''
 const AFFECTATION_VIDE = { eleve: '', circuit: '', arret: '', date_debut: '', date_fin: '' }
 
 export default function TransportScolaire() {
-  const { data: circuits, loading: chargementCircuits, reload: rechargerCircuits } =
+  const { data: circuits, loading: chargementCircuits, error: erreurCircuits, reload: rechargerCircuits } =
     useEducationResource(educationApi.circuitsTransport.list)
-  const { data: arrets, reload: rechargerArrets } =
+  const { data: arrets, error: erreurArrets, reload: rechargerArrets } =
     useEducationResource(educationApi.arretsTransport.list)
-  const { data: affectations, reload: rechargerAffectations } =
+  const { data: affectations, error: erreurAffectations, reload: rechargerAffectations } =
     useEducationResource(educationApi.affectationsTransport.list)
-  const { data: eleves } = useEducationResource(educationApi.eleves.list)
-  const { data: vehicules } = useEducationResource(flotteApi.vehicules.list)
+  const { data: eleves, error: erreurEleves } = useEducationResource(educationApi.eleves.list)
+  const { data: vehicules, error: erreurVehicules } = useEducationResource(flotteApi.vehicules.list)
 
   const [formCircuit, setFormCircuit] = useState(CIRCUIT_VIDE)
   const [formArret, setFormArret] = useState(ARRET_VIDE)
@@ -164,8 +164,30 @@ export default function TransportScolaire() {
 
   const arretsDuCircuitChoisi = arretsParCircuit.get(Number(formAffectation.circuit)) || []
 
+  // Cinq ressources indépendantes (`useEducationResource`) : un GET en échec
+  // (403/500/réseau) ne doit jamais se déguiser en « aucune donnée » — c'est
+  // exactement le défaut que ce bandeau referme. Un seul message par texte
+  // distinct (les 5 hooks peuvent partager le même message générique).
+  const erreursChargement = [...new Set(
+    [erreurCircuits, erreurArrets, erreurAffectations, erreurEleves, erreurVehicules].filter(Boolean),
+  )]
+
   return (
     <div style={{ padding: '4px 0 32px' }}>
+      {/* ── Échec de chargement : jamais silencieux ── */}
+      {erreursChargement.length > 0 && (
+        <div
+          role="alert"
+          style={{
+            display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 16,
+            padding: '10px 12px', borderRadius: 8, background: '#fef2f2',
+            border: '1px solid #fecaca', color: '#991b1b', fontSize: 13,
+          }}
+        >
+          {erreursChargement.map((message) => <span key={message}>{message}</span>)}
+        </div>
+      )}
+
       {/* ── Avertissement doux, jamais bloquant ── */}
       {avertissement && (
         <div

@@ -390,6 +390,31 @@ export function formatPercent(value, decimals = 0) {
   return `${formatNumber(n * 100, decimals)} %`
 }
 
+/* PACT110-FIX — Lit l'enveloppe de pagination DRF SANS la taire.
+
+   `core.pagination.StandardPagination` (câblée en `DEFAULT_PAGINATION_CLASS`)
+   renvoie `{count, next, previous, results}`. Les collections `bras/`,
+   `stats-bras/` et `decisions/` sont filtrées CÔTÉ CLIENT faute de filtre
+   serveur par expérience/bras : au-delà d'une page, les lignes manquantes
+   disparaissaient EN SILENCE et l'écran affichait « aucun bras créé » — un vide
+   qui ressemble à « rien n'a été créé » alors que le serveur a simplement
+   coupé la liste. On expose donc les trois faits que le serveur donne :
+     * `rows`      — les lignes réellement reçues ;
+     * `total`     — le `count` serveur (toutes pages) ;
+     * `truncated` — le serveur annonce une suite (`next`) ou compte plus de
+                     lignes qu'il n'en a renvoyé.
+   Une liste nue (tableau) — le cas des actions serveur NON paginées comme
+   `experiences/<id>/decisions/` — est complète par construction : `truncated`
+   est alors faux, aucun avertissement n'est affiché à tort. */
+export function readPaginated(data) {
+  if (Array.isArray(data)) {
+    return { rows: data, total: data.length, truncated: false }
+  }
+  const rows = Array.isArray(data?.results) ? data.results : []
+  const total = Number.isFinite(data?.count) ? data.count : rows.length
+  return { rows, total, truncated: !!data?.next || total > rows.length }
+}
+
 // Normalise une expérimentation ENG12 : phases + bras (avec posteriors). Aucun
 // chiffre inventé — on ne fait que défensivement lire ceux de l'API.
 export function normalizeExperiment(raw) {

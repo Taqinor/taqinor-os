@@ -22,6 +22,30 @@ import { makeResourceFactory } from '../../api/resource'
 
 const resource = makeResourceFactory(api, '/adsengine')
 
+/* PACT110-FIX — Plafond de pagination du serveur, VÉRIFIÉ dans le code backend
+   (`backend/django_core/core/pagination.py`) : `StandardPagination` = 50 lignes
+   par défaut, `page_size_query_param = 'page_size'`, `max_page_size = 200`
+   (plafond DUR — `?page_size=5000` renvoie au plus 200). Elle est câblée en
+   `DEFAULT_PAGINATION_CLASS`, donc TOUTE collection du moteur en hérite.
+
+   Pourquoi ce n'est pas un filtre serveur : les trois collections `bras/`,
+   `stats-bras/` et `decisions/` sont filtrées CÔTÉ CLIENT (par expérience /
+   par bras) faute de filtre serveur. Ce n'est pas un choix, c'est ce que le
+   backend accepte réellement : `apps/adsengine/views.py` ne déclare AUCUN
+   `filterset_fields` ni `filter_backends`, et le projet ne câble que
+   `OrderingFilter` + `SearchFilter` en `DEFAULT_FILTER_BACKENDS` (aucun
+   `DjangoFilterBackend`) — un `?experiment=<id>` serait ignoré EN SILENCE,
+   donc on ne l'invente pas. On demande le maximum autorisé par le serveur, et
+   l'écran REND LA TRONCATURE VISIBLE (`readPaginated` dans `adsengine.js` lit
+   `count`/`next` de l'enveloppe DRF) au lieu de la taire : au-delà de ce
+   plafond, un bras absent doit se lire « liste tronquée », jamais « rien créé ».
+
+   Seule exception, et c'est la VRAIE correction là où elle existe : le journal
+   des décisions d'UNE expérience passe par l'action serveur
+   `experiences/<id>/decisions/` (`ExperimentViewSet.decisions`), qui filtre
+   côté serveur ET renvoie une liste NON paginée — aucune troncature possible. */
+const SERVER_MAX_PAGE_SIZE = 200
+
 const adsengineApi = {
   // ── ENG22 — Connexion Meta (identifiants WRITE-ONLY) ──
   connection: {
@@ -141,12 +165,24 @@ const adsengineApi = {
     // PACT110 — bras RÉELS (``ExperimentArm``, routeur ``bras/``). Ce ViewSet
     // est company-scopé mais ne filtre PAS par expérience côté serveur —
     // l'appelant filtre par ``experiment`` côté client sur la liste renvoyée.
-    arms: (params) => api.get('/adsengine/bras/', { params }),
+    // `page_size` au plafond serveur (cf. SERVER_MAX_PAGE_SIZE) : sans lui, le
+    // défaut de 50 coupait la liste AVANT le filtre client (ordre serveur
+    // `['experiment', 'id']` → les expériences aux id les plus hauts sortaient
+    // de la page) et l'écran affichait « aucun bras » — un vide qui ment.
+    arms: (params) => api.get('/adsengine/bras/',
+      { params: { page_size: SERVER_MAX_PAGE_SIZE, ...params } }),
     // Série quotidienne d'un bras (``ArmDailyStat``, routeur ``stats-bras/``).
-    armStats: (params) => api.get('/adsengine/stats-bras/', { params }),
+    // Même filtre client (par bras) et même plafond ; ordre serveur
+    // `['-date', 'arm']` → sans `page_size`, la série d'un bras se limitait aux
+    // 50 lignes les plus récentes TOUTES sociétés-lignes confondues.
+    armStats: (params) => api.get('/adsengine/stats-bras/',
+      { params: { page_size: SERVER_MAX_PAGE_SIZE, ...params } }),
     // Journal des décisions TOUTES expériences confondues (``DecisionLog``,
     // routeur ``decisions/`` — lecture seule, écrit uniquement par la science).
-    allDecisions: (params) => api.get('/adsengine/decisions/', { params }),
+    // Ordre serveur `['-created_at']` : la page rend les plus récentes ; le
+    // reste est signalé à l'écran comme tronqué, jamais escamoté.
+    allDecisions: (params) => api.get('/adsengine/decisions/',
+      { params: { page_size: SERVER_MAX_PAGE_SIZE, ...params } }),
   },
 
   // ── ENG28/ENG38/ENG40 — Plan de vol (compose 6 mois) + préflight autonomie ──
