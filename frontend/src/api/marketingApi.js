@@ -195,6 +195,17 @@ const marketingApi = {
       api.post(`/marketing/avis-clients/${id}/pousser_google/`),
   },
 
+  // ── PACT107 — Enquêtes NPS post-installation (FG238), distinctes du Pulse
+  // eNPS interne employés et du générique `Enquete` ──
+  enquetesNps: {
+    ...resource('enquetes-nps'),
+    // Enregistre la note (0-10) + commentaire d'un client (statut envoyée -> répondue).
+    repondre: (id, data) =>
+      api.post(`/marketing/enquetes-nps/${id}/repondre/`, data),
+    // Score NPS consolidé de la société (%promoteurs - %détracteurs) — calculé
+    // côté serveur, jamais recalculé ici.
+    score: () => api.get('/marketing/enquetes-nps/score/'),
+  },
 }
 
 export default marketingApi
