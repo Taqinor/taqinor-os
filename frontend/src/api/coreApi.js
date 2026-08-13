@@ -128,6 +128,21 @@ const coreApi = {
   dashboardsTv: {
     list: () => api.get('/core/dashboards-tv/'),
   },
+  // PACT120/XPLT10 — partage INTERNE fin d'un dashboard (utilisateur OU rôle →
+  // lecture/édition). Mécanisme DISTINCT du lien public anonyme ci-dessus :
+  // `core.DashboardPartageInterne`, une autre table, d'autres droits. La
+  // société n'est jamais envoyée (TenantMixin la force côté serveur).
+  dashboardsPartagesInternes: {
+    list: (params) => api.get('/core/dashboards-partages-internes/', { params }),
+    create: (data) => api.post('/core/dashboards-partages-internes/', data),
+    update: (id, data) =>
+      api.patch(`/core/dashboards-partages-internes/${id}/`, data),
+    remove: (id) => api.delete(`/core/dashboards-partages-internes/${id}/`),
+  },
+  // PACT120 — annuaire de la société (sélecteur « partager à un utilisateur »).
+  utilisateurs: {
+    list: () => api.get('/users/'),
+  },
   // XPLT23 — onglet « Confidentialité » (loi 09-08 / CNDP), réservé
   // admin/responsable (le backend re-vérifie : IsAdminOrResponsableTier).
   // `company` n'est jamais envoyée : toujours imposée côté serveur.
