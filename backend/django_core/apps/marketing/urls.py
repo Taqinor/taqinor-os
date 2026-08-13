@@ -19,6 +19,7 @@ from rest_framework.routers import DefaultRouter
 from .public_views import (
     formulaire_intake_public,
     formulaire_intake_soumettre,
+    preferences_publiques,
 )
 from .views import (
     AbonnementListeViewSet,
@@ -147,6 +148,10 @@ urlpatterns = [
     # headless: lien de desinscription clique depuis un courriel, hors ERP
     path('desinscription/<str:token>/', desinscription_publique,
          name='mkt-desinscription-publique'),
+    # headless: centre de preferences self-service clique depuis un courriel
+    # (NTMKT22) — par canal / par liste, jamais une desinscription totale
+    path('preferences/<str:token>/', preferences_publiques,
+         name='mkt-preferences-publiques'),
     # headless: lien de confirmation double opt-in clique depuis un courriel
     path('double-optin/<str:token>/', double_optin_confirmer,
          name='mkt-double-optin-confirmer'),

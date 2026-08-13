@@ -85,3 +85,24 @@ def formulaire_intake_soumettre(request, slug):
     except ValueError as exc:
         return Response({'detail': str(exc)}, status=400)
     return Response({'id': lead.id, 'cree': True}, status=201)
+
+
+# ── NTMKT22 — Centre de préférences self-service (public, tokenisé) ─────────
+# Même modèle de confiance que ``desinscription/<token>`` (XMKT3) : le jeton
+# signé porte la société ET le destinataire ; aucune donnée n'est lue de
+# l'URL en clair, aucun autre contact n'est adressable avec un jeton donné.
+
+@api_view(['GET', 'POST'])
+@permission_classes([AllowAny])
+@throttle_classes([_IntakePublicThrottle])
+def preferences_publiques(request, token):
+    """NTMKT22 — GET : préférences actuelles du contact ; POST : les
+    enregistre (par canal / par liste). Jeton invalide ou expiré → 400 propre,
+    jamais une 500 ni une fuite d'existence."""
+    company, destinataire = services.lire_token_preferences(token)
+    if company is None:
+        return Response({'detail': 'Lien invalide.'}, status=400)
+    if request.method == 'GET':
+        return Response(services.preferences_actuelles(company, destinataire))
+    return Response(services.enregistrer_preferences(
+        company, destinataire, request.data))

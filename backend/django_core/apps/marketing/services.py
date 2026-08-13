@@ -65,6 +65,136 @@ from apps.compta.services import (  # noqa: F401
 # import des modèles crm — invariant CLAUDE.md/M3). La société vient TOUJOURS
 # du formulaire résolu côté serveur, jamais du corps de la requête publique.
 
+# ── NTMKT22 — Centre de préférences self-service (public, tokenisé) ────────
+# XMKT3 ne sait que DÉSINSCRIRE totalement. Ici le contact choisit PAR CANAL
+# et PAR LISTE ce qu'il veut recevoir. Le registre de consentement est celui
+# de la plateforme (``core.ConsentRecord``) — jamais un second registre — et
+# les listes sont les ``AbonnementListe`` existantes (XMKT5).
+
+_PREFERENCES_SALT = 'marketing.ntmkt22.preferences'
+
+#: canaux exposés au contact, et leur finalité ``ConsentRecord`` (même
+#: correspondance que XMKT4, pour que le prochain envoi respecte le choix).
+CANAUX_PREFERENCES = (
+    ('email', 'email'),
+    ('sms', 'sms'),
+    ('whatsapp', 'whatsapp'),
+)
+
+
+def generer_token_preferences(company_id, destinataire):
+    """Jeton signé du centre de préférences (NTMKT22) — même modèle de
+    confiance que le lien de désinscription XMKT3 (signature ``SECRET_KEY``,
+    société + destinataire portés par le jeton, jamais par l'URL en clair)."""
+    from django.core import signing
+    return signing.dumps(
+        {'company_id': company_id, 'destinataire': destinataire},
+        salt=_PREFERENCES_SALT)
+
+
+def lien_preferences(company, destinataire):
+    """Chemin public du centre de préférences, à placer à côté du lien de
+    désinscription dans le pied de campagne (``{lien_preferences}``)."""
+    return f'/api/django/marketing/preferences/{generer_token_preferences(company.id, destinataire)}/'
+
+
+def lire_token_preferences(token):
+    """Résout un jeton de préférences en ``(company, destinataire)``.
+
+    Jeton invalide/corrompu/société supprimée → ``(None, None)`` : l'appelant
+    répond proprement, jamais une 500 ni une fuite d'existence.
+    """
+    from django.core import signing
+    try:
+        payload = signing.loads(token, salt=_PREFERENCES_SALT)
+    except signing.BadSignature:
+        return None, None
+    from authentication.models import Company
+    company = Company.objects.filter(id=payload.get('company_id')).first()
+    destinataire = (payload.get('destinataire') or '').strip()
+    if company is None or not destinataire:
+        return None, None
+    return company, destinataire
+
+
+def preferences_actuelles(company, destinataire):
+    """État courant des préférences d'un contact (NTMKT22).
+
+    Un canal sans aucune entrée de consentement est considéré ACCORDÉ —
+    comportement historique XMKT4 strictement préservé.
+    """
+    from core.models import ConsentRecord
+    from .models import AbonnementListe, ListeDiffusion
+    canaux = {}
+    for canal, purpose in CANAUX_PREFERENCES:
+        dernier = (ConsentRecord.objects
+                   .filter(company=company, subject_identifier=destinataire,
+                           purpose=purpose)
+                   .order_by('-id').first())
+        canaux[canal] = True if dernier is None else bool(dernier.granted)
+    abonnements = {
+        a.liste_id: a.statut
+        for a in AbonnementListe.objects.filter(
+            company=company, destinataire=destinataire)
+    }
+    listes = [
+        {
+            'id': liste.id,
+            'nom': liste.nom,
+            'abonne': abonnements.get(liste.id) == AbonnementListe.Statut.INSCRIT,
+        }
+        for liste in ListeDiffusion.objects.filter(company=company)
+    ]
+    return {'destinataire': destinataire, 'canaux': canaux, 'listes': listes}
+
+
+def enregistrer_preferences(company, destinataire, data=None,
+                            *, source='centre_preferences'):
+    """Enregistre les choix du contact (NTMKT22).
+
+    ``data`` = {'canaux': {'email': False, …}, 'listes': {'<id>': True, …}}.
+    Chaque canal cité crée une entrée ``core.ConsentRecord`` (traçabilité
+    loi 09-08 : le registre est un JOURNAL, jamais réécrit sur place) ; chaque
+    liste citée bascule son ``AbonnementListe``. Une clé absente n'est pas
+    touchée — couper l'email ne désinscrit jamais de WhatsApp.
+    """
+    from django.utils import timezone
+    from core.models import ConsentRecord
+    from .models import AbonnementListe, ListeDiffusion
+    data = data or {}
+    purposes = dict(CANAUX_PREFERENCES)
+    choix_canaux = data.get('canaux') or {}
+    for canal, valeur in choix_canaux.items():
+        purpose = purposes.get(str(canal).strip().lower())
+        if purpose is None:
+            continue
+        ConsentRecord.objects.create(
+            company=company,
+            subject_identifier=destinataire,
+            purpose=purpose,
+            granted=bool(valeur),
+            source=source,
+            occurred_at=timezone.now(),
+        )
+    choix_listes = data.get('listes') or {}
+    for liste_id, valeur in choix_listes.items():
+        try:
+            liste_id = int(liste_id)
+        except (TypeError, ValueError):
+            continue
+        liste = ListeDiffusion.objects.filter(
+            company=company, id=liste_id).first()
+        if liste is None:
+            continue
+        statut = (AbonnementListe.Statut.INSCRIT if valeur
+                  else AbonnementListe.Statut.DESINSCRIT)
+        AbonnementListe.objects.update_or_create(
+            liste=liste, destinataire=destinataire,
+            defaults={'company': company, 'statut': statut},
+        )
+    return preferences_actuelles(company, destinataire)
+
+
 def derniere_version_publiee(formulaire):
     """NTMKT16 — dernière version PUBLIÉE d'une landing page, ou ``None``.
 
