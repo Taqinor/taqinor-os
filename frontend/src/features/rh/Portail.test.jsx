@@ -30,6 +30,9 @@ vi.mock('../../api/rhApi', () => {
       getMesEvaluations: vi.fn(emptyList),
       getCampagnesPulse: vi.fn(emptyList),
       getTypesAbsence: vi.fn(emptyList),
+      // ZRH13 / XRH28 — allocations self-service + annuaire interne.
+      getMesAllocations: vi.fn(emptyList),
+      getAnnuaire: vi.fn(emptyList),
       demanderConge: vi.fn(),
       demanderAllocation: vi.fn(),
       declarerFrais: vi.fn(),
@@ -159,5 +162,40 @@ describe('Portail RH (UX28)', () => {
 
     fireEvent.click(screen.getByRole('radio', { name: 'Mes demandes' }))
     expect(await screen.findByText('Attestation de domiciliation')).toBeInTheDocument()
+  })
+
+  it('liste l’annuaire interne et le filtre côté client (XRH28)', async () => {
+    rhApi.getMesInfos.mockResolvedValueOnce({ data: { nom: 'Alaoui', prenom: 'Sara' } })
+    rhApi.getAnnuaire.mockResolvedValueOnce({
+      data: [
+        { id: 1, nom: 'Bennani', prenom: 'Youssef', poste_nom: 'Technicien', departement_nom: 'Chantier' },
+        { id: 2, nom: 'Cherkaoui', prenom: 'Nadia', poste_nom: 'Comptable', departement_nom: 'Finance' },
+      ],
+    })
+    renderPortail()
+    await screen.findByText('Mon portail RH')
+
+    fireEvent.click(screen.getByRole('radio', { name: 'Annuaire' }))
+    expect(await screen.findByText('Bennani Youssef')).toBeInTheDocument()
+    expect(screen.getByText('Cherkaoui Nadia')).toBeInTheDocument()
+
+    fireEvent.change(screen.getByLabelText('Rechercher'), { target: { value: 'comptable' } })
+    await waitFor(() => expect(screen.queryByText('Bennani Youssef')).not.toBeInTheDocument())
+    expect(screen.getByText('Cherkaoui Nadia')).toBeInTheDocument()
+  })
+
+  it('affiche mes demandes d’allocation dans l’onglet congés (ZRH13)', async () => {
+    rhApi.getMesInfos.mockResolvedValueOnce({ data: { nom: 'Alaoui', prenom: 'Sara' } })
+    rhApi.getMesAllocations.mockResolvedValueOnce({
+      data: [{
+        id: 9, type_absence_code: 'CP', jours: '3.0',
+        statut: 'soumise', statut_display: 'Soumise',
+      }],
+    })
+    renderPortail()
+    await screen.findByText('Mon portail RH')
+
+    expect(await screen.findByText('Allocation · CP')).toBeInTheDocument()
+    expect(screen.getByText('Soumise')).toBeInTheDocument()
   })
 })
