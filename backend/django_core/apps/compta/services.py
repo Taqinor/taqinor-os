@@ -4478,38 +4478,124 @@ def ocr_notes_frais_active():
     return bool(getattr(settings, 'COMPTA_OCR_NOTES_FRAIS_ENABLED', False))
 
 
-def extraire_justificatif_note_frais(file_bytes, *, mime=''):
-    """XACC27 — Extrait montant/date/fournisseur d'un justificatif (photo).
+def _fastapi_ocr_url():
+    """NTP2P14 — URL interne de l'OCR FastAPI (même convention que
+    ``apps.crm.intake_photo._fastapi_ocr_url``)."""
+    import os
+    base = (getattr(settings, 'FASTAPI_INTERNAL_URL', '')
+            or os.environ.get('FASTAPI_INTERNAL_URL', '')
+            or 'http://fastapi_ia:8001/api/fastapi')
+    return base.rstrip('/') + '/ocr/process_document'
+
+
+def _service_token_for(user):
+    """NTP2P14 — Jeton JWT court pour relayer l'auth vers FastAPI (même motif
+    que ``apps.crm.intake_photo``). Sans utilisateur exploitable : ''."""
+    if user is None:
+        return ''
+    try:
+        from rest_framework_simplejwt.tokens import AccessToken
+        return str(AccessToken.for_user(user))
+    except Exception:  # pragma: no cover - défensif
+        return ''
+
+
+# NTP2P14 — mots-clés FR (accents neutralisés) déclenchant chaque catégorie
+# de note de frais depuis le texte OCR brut du reçu. Best-effort seulement :
+# une catégorie non détectée retombe sur AUTRE (jamais bloquant).
+_CATEGORIE_MOTS_CLES = (
+    ('repas', ('restaurant', 'cafe', 'brasserie', 'snack', 'traiteur',
+               'menu', 'plat', 'petit dejeuner', 'dejeuner', 'diner')),
+    ('carburant', ('station', 'carburant', 'gasoil', 'gazoil', 'essence',
+                   'diesel', 'afriquia', 'shell', 'total')),
+    ('peage', ('peage', 'autoroute', 'adm', 'parking', 'stationnement')),
+    ('hebergement', ('hotel', 'riad', 'nuitee', 'chambre', 'sejour')),
+    ('deplacement', ('taxi', 'transport', 'billet', 'train', 'onc',
+                     'aeroport', 'location de voiture')),
+    ('fournitures', ('papeterie', 'fourniture', 'quincaillerie')),
+)
+
+
+def _deviner_categorie_note_frais(texte):
+    """NTP2P14 — Devine la catégorie ``NoteFrais.Categorie`` depuis le texte
+    OCR brut (best-effort, jamais bloquant). None si aucun mot-clé ne matche
+    (l'appelant laisse alors la catégorie au choix de l'employé)."""
+    if not texte:
+        return None
+    normalise = texte.lower()
+    for categorie, mots in _CATEGORIE_MOTS_CLES:
+        if any(mot in normalise for mot in mots):
+            return categorie
+    return None
+
+
+def extraire_justificatif_note_frais(file_bytes, *, mime='', user=None):
+    """XACC27/NTP2P14 — Extrait montant/date/catégorie d'un justificatif
+    (photo d'un reçu de dépense) par OCR.
 
     NO-OP tant que ``ocr_notes_frais_active()`` est faux : lève
-    ``RuntimeError`` (la vue traduit en 503, message FR clair). WIR153 —
-    AUCUN module fournisseur n'existe encore dans ce dépôt (contrairement à
-    ce que disait cette docstring auparavant : elle référençait un import
-    mort ``notes_frais_ocr_provider``, jamais câblé, avalé silencieusement
-    par un ``except ImportError``). Le flag activé sans provider réel reste
-    donc un NO-OP DÉTERMINISTE — dict vide, jamais de crash de l'écran de
-    saisie. Une fois un provider branché (appel HTTP vers le service OCR
-    ``backend/fastapi_ia``, même motif que ``apps.crm.intake_photo``), il doit
-    renvoyer les clés ``montant``/``date``/``fournisseur`` attendues par
-    ``mapper_justificatif_vers_note_frais``.
-    """
+    ``RuntimeError`` (la vue traduit en 503, message FR clair). Réutilise le
+    service OCR FastAPI EXISTANT (``/ocr/process_document``, Zhipu AI —
+    JAMAIS un nouvel endpoint dédié), même motif que
+    ``apps.crm.intake_photo._run_capture_ocr`` : appel HTTP relayé par un
+    jeton JWT de service, best-effort (toute panne réseau/format retombe sur
+    un dict vide plutôt que de faire échouer la saisie). Ne crée JAMAIS de
+    note de frais : ne fait QUE lire/renvoyer des champs pour pré-remplir le
+    formulaire — l'utilisateur valide toujours."""
     if not ocr_notes_frais_active():
         raise RuntimeError('OCR indisponible (configuration manquante).')
     if not file_bytes:
         return {}
-    # Aucun provider câblé — dégradation propre (dict vide), jamais un crash.
-    return {}
+    token = _service_token_for(user)
+    if not token:
+        # Pas d'utilisateur exploitable pour le jeton — dégradation propre.
+        return {}
+    try:
+        import requests
+        fichier = ('justificatif.jpg', file_bytes, mime or 'image/jpeg')
+        resp = requests.post(
+            _fastapi_ocr_url(),
+            files={'file': fichier},
+            headers={'Authorization': f'Bearer {token}'},
+            timeout=30,
+        )
+        if resp.status_code != 200:
+            return {}
+        payload = resp.json() or {}
+    except Exception:  # noqa: BLE001 — l'OCR ne casse jamais la saisie
+        return {}
+
+    structurees = payload.get('donnees_structurees') or {}
+    texte = payload.get('texte_brut') or ''
+    champs = {}
+    montant = (structurees.get('montant') or structurees.get('montant_ttc')
+               or structurees.get('total'))
+    if montant is not None:
+        champs['montant'] = montant
+    date = structurees.get('date') or structurees.get('date_facture')
+    if date:
+        champs['date'] = date
+    fournisseur = (structurees.get('fournisseur')
+                   or structurees.get('commercant')
+                   or structurees.get('vendeur'))
+    if fournisseur:
+        champs['fournisseur'] = fournisseur
+    categorie = _deviner_categorie_note_frais(
+        texte + ' ' + ' '.join(str(v) for v in structurees.values()))
+    if categorie:
+        champs['categorie'] = categorie
+    return champs
 
 
 def mapper_justificatif_vers_note_frais(champs_bruts):
-    """XACC27 — Normalise les champs OCR bruts vers les clés du formulaire
-    ``NoteFrais`` (lecture seule, aucun effet de bord).
+    """XACC27/NTP2P14 — Normalise les champs OCR bruts vers les clés du
+    formulaire ``NoteFrais`` (lecture seule, aucun effet de bord).
 
-    Accepte ``montant``/``date``/``fournisseur`` (clés FR du provider) et
-    projette vers ``montant``/``date_frais``/``motif``. Une clé absente est
-    omise (l'utilisateur complète le reste à la main) ; NE remplace JAMAIS une
-    saisie manuelle déjà présente — c'est l'appelant (vue/frontend) qui décide
-    de fusionner sans écraser."""
+    Accepte ``montant``/``date``/``fournisseur``/``categorie`` (clés FR du
+    provider) et projette vers ``montant``/``date_frais``/``motif``/
+    ``categorie``. Une clé absente est omise (l'utilisateur complète le reste
+    à la main) ; NE remplace JAMAIS une saisie manuelle déjà présente — c'est
+    l'appelant (vue/frontend) qui décide de fusionner sans écraser."""
     if not champs_bruts:
         return {}
     resultat = {}
@@ -4519,6 +4605,8 @@ def mapper_justificatif_vers_note_frais(champs_bruts):
         resultat['date_frais'] = champs_bruts['date']
     if champs_bruts.get('fournisseur'):
         resultat['motif'] = champs_bruts['fournisseur']
+    if champs_bruts.get('categorie'):
+        resultat['categorie'] = champs_bruts['categorie']
     return resultat
 
 

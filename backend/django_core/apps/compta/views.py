@@ -3639,7 +3639,8 @@ class NoteFraisViewSet(_ComptaBaseViewSet):
                 status=status.HTTP_400_BAD_REQUEST)
         try:
             champs_bruts = extraire_justificatif_note_frais(
-                photo.read(), mime=getattr(photo, 'content_type', '') or '')
+                photo.read(), mime=getattr(photo, 'content_type', '') or '',
+                user=request.user)
         except RuntimeError as exc:
             return Response(
                 {'detail': str(exc)}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
