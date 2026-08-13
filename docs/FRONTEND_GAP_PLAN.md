@@ -128,13 +128,13 @@ a focused test, calling the EXISTING backend endpoint.
 - [ ] FE-ZPAI4-7 — cancel bulletin, batch-print bulletins, saisie-arret annuler/creer-lot. (@lane: frontend/paie)
 
 ## Lane `frontend/rh` (XRH/ZRH round-2 backend-only — 33 orphaned viewsets)
-- [ ] FE-XRH17-23/ZRH7-9 — **CRITICAL** full ATS in `Recrutement.jsx`: interviews (`entretiens-recrutement`), email templates, offer letters (`promesses-embauche`), talent pool (`vivier`), analytics, CV parsing (`parser-cv`), evaluation templates + 360 feedback. (@lane: frontend/rh) (opus)
-- [ ] FE-YHIRE2/ZRH12 — **CRITICAL** offboarding: `sortir` action button/modal + `comptes-actifs-sortis` security report + `certificat-travail` PDF in `EmployeDetail.jsx`. (@lane: frontend/rh)
-- [ ] FE-XRH1/4-6 — onboarding checklist + essai/CNSS-entry widgets + chatter timeline tab in `EmployeDetail.jsx`. (@lane: frontend/rh)
-- [ ] FE-XRH9/28/ZRH13 — self-service portal: "Mes demandes"/attestation, directory (`annuaire`), allocations in `Portail.jsx`. (@lane: frontend/rh)
-- [ ] FE-XRH28b — wire the already-written dead `getMesEpi`/`getMesHabilitations` into "Mes EPI"/"Mes habilitations" Portail tabs. (@lane: frontend/rh)
-- [ ] FE-XRH34/XRH26/XRH32 — quiz-taking flow + auto-évaluation + eNPS pulse in `Portail.jsx`; quiz builder in `Competences.jsx`. (@lane: frontend/rh)
-- [ ] FE-XRH10/13 — kiosk fullscreen page (device-token) + device-token admin + CSV pointeuse import in `Temps.jsx`. (@lane: frontend/rh)
+- [x] (déjà présent) FE-XRH17-23/ZRH7-9 — **CRITICAL** full ATS in `Recrutement.jsx`: interviews (`entretiens-recrutement`), email templates, offer letters (`promesses-embauche`), talent pool (`vivier`), analytics, CV parsing (`parser-cv`), evaluation templates + 360 feedback. (@lane: frontend/rh) (opus)
+- [x] (déjà présent) FE-YHIRE2/ZRH12 — **CRITICAL** offboarding: `sortir` action button/modal + `comptes-actifs-sortis` security report + `certificat-travail` PDF in `EmployeDetail.jsx`. (@lane: frontend/rh)
+- [x] (déjà présent) FE-XRH1/4-6 — onboarding checklist + essai/CNSS-entry widgets + chatter timeline tab in `EmployeDetail.jsx`. (@lane: frontend/rh)
+- [x] FE-XRH9/28/ZRH13 — self-service portal: "Mes demandes"/attestation, directory (`annuaire`), allocations in `Portail.jsx`. (@lane: frontend/rh)
+- [x] (déjà présent) FE-XRH28b — wire the already-written dead `getMesEpi`/`getMesHabilitations` into "Mes EPI"/"Mes habilitations" Portail tabs. (@lane: frontend/rh)
+- [x] (déjà présent) FE-XRH34/XRH26/XRH32 — quiz-taking flow + auto-évaluation + eNPS pulse in `Portail.jsx`; quiz builder in `Competences.jsx`. (@lane: frontend/rh)
+- [x] (déjà présent) FE-XRH10/13 — kiosk fullscreen page (device-token) + device-token admin + CSV pointeuse import in `Temps.jsx`. (@lane: frontend/rh)
 - [ ] FE-XRH11-12 — pointage correction history + geofence flag in `Temps.jsx`. (@lane: frontend/rh)
 - [ ] FE-XRH15-16/ZRH10 — competence gap-analysis/evolution + salary-band compa-ratio (gated) + internal candidates. (@lane: frontend/rh)
 - [ ] FE-XRH29/27/31 — dependents/benefits tab, org-tree, attrition-risk widget. (@lane: frontend/rh)
@@ -240,3 +240,11 @@ a focused test, calling the EXISTING backend endpoint.
 
 ## DONE LOG
 <!-- one dated line per shipped task -->
+- 2026-08-13 — FE-XRH17-23/ZRH7-9 (déjà présent) : l'ATS complet est câblé dans `Recrutement.jsx` (entretiens, gabarits d'email, promesses d'embauche + PDF, vivier, statistiques, `parserCv`, modèles d'évaluation, feedback 360°).
+- 2026-08-13 — FE-YHIRE2/ZRH12 (déjà présent) : `sortirEmploye` + certificat de travail dans `EmployeDetail.jsx` et rapport `comptes-actifs-sortis` dans `EmployeList.jsx`.
+- 2026-08-13 — FE-XRH1/4-6 (déjà présent) : checklist d'intégration, encarts période d'essai + déclaration CNSS/AMO et onglet chatter dans `EmployeDetail.jsx`.
+- 2026-08-13 — FE-XRH9/28/ZRH13 : onglet « Annuaire » (XRH28, `getAnnuaire` + filtre client) et liste de mes demandes d'allocation (ZRH13, `getMesAllocations`) ajoutés à `Portail.jsx` ; « Mes demandes »/attestation étaient déjà en place.
+- 2026-08-13 — FE-XRH28b (déjà présent) : onglets « Mes EPI » et « Mes habilitations » du portail consomment `getMesEpi`/`getMesHabilitations`.
+- 2026-08-13 — FE-XRH34/XRH26/XRH32 (déjà présent) : passage de quiz, auto-évaluation et baromètre eNPS dans `Portail.jsx` ; constructeur de quiz dans `Competences.jsx`.
+- 2026-08-13 — FE-XRH10/13 (déjà présent) : page kiosque plein écran `/kiosque`, administration des devices kiosque et import CSV pointeuse dans `Temps.jsx`.
+
