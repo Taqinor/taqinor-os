@@ -73,8 +73,11 @@ def detecter_comptes_dormants(seuil_jours=90, now=None, dry_run=False):
 
 
 def _alerter(client, entry, now):
-    from .. import services as crm_services
-    from ..models import Client, Lead
+    # Imports ABSOLUS : ce module vit dans `apps.crm.management.commands`,
+    # donc `..` désigne `apps.crm.management` (qui n'a ni `services` ni
+    # `models`) et non `apps.crm` — d'où l'ImportError historique.
+    from apps.crm import services as crm_services
+    from apps.crm.models import Client, Lead
 
     Client.objects.filter(pk=client.pk).update(
         derniere_alerte_dormance=now)

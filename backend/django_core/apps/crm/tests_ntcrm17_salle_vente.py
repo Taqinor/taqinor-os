@@ -61,6 +61,13 @@ class SalleVenteApiTests(TestCase):
             'client': self.client_obj.pk, 'titre': 'Salle test', **extra,
         })
         self.assertEqual(resp.status_code, 201, resp.data)
+        # Garde de non-régression : une création qui ne parle pas d'`actif`
+        # doit donner une salle SERVABLE (le piège DRF `default_empty_html`
+        # la créait révoquée → lien public en 410). On l'affirme ici, à la
+        # source, pour que la cause soit nommée et non le symptôme.
+        salle = SalleVente.objects.get(pk=resp.data['id'])
+        self.assertTrue(salle.actif, 'salle créée par l\'API mais révoquée')
+        self.assertFalse(salle.is_expired, 'salle créée par l\'API déjà expirée')
         return resp.data
 
     def test_creer_et_ajouter_items(self):

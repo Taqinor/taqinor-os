@@ -1208,6 +1208,15 @@ class SalleVenteSerializer(serializers.ModelSerializer):
         return f'/salle-vente/{obj.token}'
 
     def validate(self, attrs):
+        # NTCRM17 — piège DRF/HTML : `BooleanField.default_empty_html` vaut
+        # False, donc un `actif` ABSENT d'un POST/PUT en form-data (une case
+        # décochée n'est pas envoyée par un navigateur) arrive ici à False et
+        # créait une salle immédiatement RÉVOQUÉE (lien public en 410). Une
+        # requête qui ne parle pas d'`actif` ne doit jamais le modifier : on
+        # retombe sur le défaut du modèle (création) ou sur la valeur en base
+        # (mise à jour). Un `actif: false` EXPLICITE reste évidemment honoré.
+        if 'actif' in attrs and 'actif' not in getattr(self, 'initial_data', {}):
+            attrs.pop('actif')
         lead = attrs.get('lead', getattr(self.instance, 'lead', None))
         client = attrs.get('client', getattr(self.instance, 'client', None))
         if bool(lead) == bool(client):
