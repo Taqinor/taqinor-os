@@ -684,6 +684,8 @@
     detail:texte, presets:inconnu
 - frontend/src/features/adsengine/adsengineApi.js :: fullBackfill -> /api/django/adsengine/campaigns/backfill-complet
     detail:texte, queued:booleen
+- frontend/src/features/adsengine/adsengineApi.js :: generateGroundedVariants -> /api/django/adsengine/generation/variantes-ancrees
+    detail:texte, enabled:booleen
 - frontend/src/features/adsengine/adsengineApi.js :: journal -> /api/django/adsengine/regles/journal
     detail:texte, results:inconnu
 - frontend/src/features/adsengine/adsengineApi.js :: preflight -> /api/django/adsengine/plans-vol/preflight
