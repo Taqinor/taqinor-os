@@ -88,6 +88,125 @@ def _mode_pour(entite, demande=None):
     return 'upsert'
 
 
+# ─────────────────────────────────────────────────────────────────────────
+# NTMIG35 — fichiers source TEMPORAIRES : mémorisation puis purge
+# ─────────────────────────────────────────────────────────────────────────
+#: Délai de conservation des fichiers source après la clôture d'un projet.
+RETENTION_FICHIERS_JOURS = 30
+
+
+def memoriser_fichier_source(lot, file_bytes, filename):
+    """Range le fichier source du lot dans le stockage objet (MinIO/S3).
+
+    Pourquoi le garder : sans lui, une reprise après incident (NTMIG38) ou une
+    migration à blanc (NTMIG33) exigerait de re-téléverser exactement le même
+    fichier — introuvable des semaines plus tard chez un grand compte.
+
+    Pourquoi ne PAS le garder longtemps : il contient des données personnelles
+    (clients, leads). Il est donc TEMPORAIRE par contrat — purgé
+    automatiquement `RETENTION_FICHIERS_JOURS` jours après la clôture
+    (:func:`purger_fichiers_expires`) — et n'est JAMAIS commité au dépôt.
+
+    Le fichier précédent est supprimé du stockage : garder les versions
+    intermédiaires multiplierait les copies de données personnelles sans que
+    personne ne les demande.
+    """
+    from django.core.files.base import ContentFile
+
+    ancien = lot.fichier_source
+    if ancien:
+        ancien.delete(save=False)
+    lot.fichier_source.save(
+        _nom_stockage(lot, filename), ContentFile(file_bytes), save=False)
+    lot.fichier_source_nom = filename or ''
+
+
+def _nom_stockage(lot, filename):
+    import os
+
+    base, ext = os.path.splitext(os.path.basename(filename or 'source.csv'))
+    return f'lot-{lot.pk}-{base[:60]}{ext or ".csv"}'
+
+
+def fichier_source_de(lot):
+    """(octets, nom d'origine) du fichier source mémorisé — ``None`` si purgé.
+
+    ``None`` n'est pas une anomalie : c'est l'état NORMAL d'un projet clôturé
+    depuis plus de :data:`RETENTION_FICHIERS_JOURS` jours.
+    """
+    import os
+
+    if not lot.fichier_source:
+        return None
+    lot.fichier_source.open('rb')
+    try:
+        contenu = lot.fichier_source.read()
+    finally:
+        lot.fichier_source.close()
+    return contenu, (lot.fichier_source_nom
+                     or os.path.basename(lot.fichier_source.name))
+
+
+def purger_fichiers_source(projet):
+    """Supprime du stockage les fichiers source des lots d'un projet.
+
+    Les RAPPORTS de réconciliation (agrégats non-PII) et les compteurs sont
+    conservés intacts : après la purge, le PV de migration reste produisible —
+    seules les données personnelles brutes disparaissent.
+    """
+    purges = 0
+    for lot in lots_du_projet(projet):
+        if not lot.fichier_source:
+            continue
+        lot.fichier_source.delete(save=False)
+        lot.fichier_source = None
+        lot.fichier_source_nom = ''
+        lot.save(update_fields=[
+            'fichier_source', 'fichier_source_nom', 'updated_at'])
+        purges += 1
+    if not projet.fichiers_purges:
+        projet.fichiers_purges = True
+        projet.save(update_fields=['fichiers_purges', 'updated_at'])
+    return purges
+
+
+def projets_a_purger(maintenant=None):
+    """Projets clôturés depuis plus de :data:`RETENTION_FICHIERS_JOURS` jours
+    et pas encore purgés — toutes sociétés confondues (c'est un job de
+    plateforme, la rétention ne dépend pas du tenant)."""
+    maintenant = maintenant or timezone.now()
+    limite = maintenant - timezone.timedelta(days=RETENTION_FICHIERS_JOURS)
+    return ProjetMigration.objects.filter(
+        statut=ProjetMigration.Statut.TERMINE,
+        date_fin__isnull=False, date_fin__lte=limite,
+        fichiers_purges=False)
+
+
+def purger_fichiers_expires(maintenant=None):
+    """NTMIG35 — purge planifiée (job Beat ``migration.purger_fichiers_migration``).
+
+    Best-effort par projet : un stockage indisponible sur UN projet ne doit pas
+    empêcher la purge des autres (une purge de données personnelles qui
+    s'arrête à la première erreur laisserait des fichiers en trop, ce qui est
+    exactement ce que la tâche doit éviter).
+    """
+    import logging
+
+    logger = logging.getLogger(__name__)
+    total_projets = 0
+    total_fichiers = 0
+    for projet in projets_a_purger(maintenant):
+        try:
+            total_fichiers += purger_fichiers_source(projet)
+        except Exception:
+            logger.exception(
+                'Purge des fichiers source impossible pour le projet %s',
+                projet.pk)
+            continue
+        total_projets += 1
+    return {'projets': total_projets, 'fichiers': total_fichiers}
+
+
 def analyser_lot(lot, file_bytes, filename, *, mapping_name=None):
     """Aperçu DRY-RUN STRICT : rien n'est écrit dans les tables cibles.
 
@@ -114,9 +233,13 @@ def analyser_lot(lot, file_bytes, filename, *, mapping_name=None):
     lot.erreurs = 0
     lot.import_job = None
     lot.statut = LotMigration.Statut.ANALYSE
+    # NTMIG35 — le fichier analysé est mémorisé (temporairement) pour que le
+    # chargement, la reprise (NTMIG38) et la migration à blanc (NTMIG33)
+    # rejouent EXACTEMENT le fichier validé, pas un autre.
+    memoriser_fichier_source(lot, file_bytes, filename)
     lot.save(update_fields=[
         'source_lignes', 'crees', 'maj', 'erreurs', 'import_job', 'statut',
-        'updated_at'])
+        'fichier_source', 'fichier_source_nom', 'updated_at'])
     return apercu
 
 
@@ -252,10 +375,14 @@ def charger_lot(lot, file_bytes, filename, *, mode=None,
         verrou.derogation_motif = ''
         verrou.derogation_par = None
         verrou.derogation_at = None
+        # NTMIG35 — fichier réellement chargé, gardé temporairement (reprise
+        # NTMIG38 / migration à blanc NTMIG33), purgé après clôture.
+        memoriser_fichier_source(verrou, file_bytes, filename)
         verrou.save(update_fields=[
             'source_lignes', 'crees', 'maj', 'erreurs', 'import_job',
             'statut', 'derogation_reconcile', 'derogation_motif',
-            'derogation_par', 'derogation_at', 'updated_at'])
+            'derogation_par', 'derogation_at', 'fichier_source',
+            'fichier_source_nom', 'updated_at'])
 
     lot.refresh_from_db()
     return result

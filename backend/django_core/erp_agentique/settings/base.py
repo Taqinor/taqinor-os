@@ -983,6 +983,8 @@ CELERY_TASK_ROUTES = {
     # rappel, health score, purge packages/usage).
     'adminops.cloner_sandbox': {'queue': 'scheduled'},
     'adminops.purger_sandbox_expires': {'queue': 'scheduled'},
+    # NTMIG35 — purge planifiée des fichiers source de migration.
+    'migration.purger_fichiers_migration': {'queue': 'scheduled'},
     'adminops.rappeler_sandbox_a_expirer': {'queue': 'scheduled'},
     'adminops.recalculer_health_score_tenants': {'queue': 'scheduled'},
     'adminops.purger_config_packages_anciens': {'queue': 'scheduled'},

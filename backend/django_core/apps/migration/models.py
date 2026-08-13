@@ -52,6 +52,11 @@ class ProjetMigration(TenantModel):
     date_debut = models.DateTimeField(null=True, blank=True)
     date_fin = models.DateTimeField(null=True, blank=True)
     notes = models.TextField(blank=True, default='')
+    # NTMIG35 — trace de la purge des fichiers source (PII) du projet. Les
+    # rapports de réconciliation, eux, sont des AGRÉGATS non-PII : ils sont
+    # conservés (ce sont les pièces justificatives remises au client migré).
+    fichiers_purges = models.BooleanField(
+        default=False, verbose_name='Fichiers source purgés')
 
     class Meta:
         ordering = ['-created_at']
@@ -105,6 +110,20 @@ class LotMigration(TenantModel):
     # Somme des colonnes montant déclarées par le kit (reconcile financier).
     source_montant = models.DecimalField(
         max_digits=16, decimal_places=2, null=True, blank=True)
+
+    # NTMIG35 — fichier source TEMPORAIRE (stockage objet MinIO/S3 via le
+    # stockage Django par défaut ; jamais dans le dépôt). Il contient des
+    # données personnelles (clients, leads) : il n'est gardé que le temps de
+    # rejouer/reprendre un chargement (NTMIG38) et purgé automatiquement
+    # `RETENTION_FICHIERS_JOURS` après la clôture du projet.
+    fichier_source = models.FileField(
+        upload_to='migration/sources/', null=True, blank=True,
+        verbose_name='Fichier source (temporaire)')
+    #: Nom d'origine du fichier — le nom stocké est suffixé par le stockage,
+    #: et l'EXTENSION d'origine décide du parseur (CSV vs XLSX) à la reprise.
+    fichier_source_nom = models.CharField(
+        max_length=255, blank=True, default='',
+        verbose_name="Nom du fichier source d'origine")
 
     # NTMIG5 — dérogation explicite « pas de succès sans reconcile ».
     derogation_reconcile = models.BooleanField(default=False)
