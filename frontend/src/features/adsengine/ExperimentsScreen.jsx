@@ -1,30 +1,31 @@
 import { useEffect, useState, useMemo, useCallback } from 'react'
-import { FlaskConical, Trophy } from 'lucide-react'
+import { FlaskConical, Trophy, ChevronDown, ChevronUp } from 'lucide-react'
 import adsengineApi from './adsengineApi'
 import {
-  normalizeExperiment, normalizeDecisionLog, filterDecisionLog, bestArm,
-  formatPercent, formatMAD, formatRatio, formatNumber,
+  normalizeExperiment, normalizeArms, normalizeDecisionLog, bestArm,
+  formatPercent, formatMAD, formatNumber,
 } from './adsengine'
 
 /* ============================================================================
    ENG39 — Écran « Expérimentations » (moteur bandit).
    ----------------------------------------------------------------------------
    Doctrine (scope-features.md, domaine 3 — A/B testing traçable) : rendre les
-   POSTERIORS lisibles par un NON-statisticien. Pour chaque bras :
-   - P(meilleur) — la probabilité, en clair, que ce bras soit le gagnant ;
-   - l'estimation (moyenne) + une BANDE DE CRÉDIBILITÉ visualisée [bas ; haut] ;
-   - la part de budget allouée par le moteur.
-   Le DecisionLog est rendu « pourquoi le moteur a fait X » en phrases FR + les
-   chiffres exacts, filtrable par phase. TOUS les nombres viennent de l'API ENG12
-   (mockée en test) — rien n'est calculé ni inventé ici.
-   ========================================================================== */
+   POSTERIORS lisibles par un NON-statisticien. TOUS les nombres viennent de
+   l'API — rien n'est calculé ni inventé ici.
 
-// Formate une valeur métier selon le format de la métrique de l'expérimentation.
-function fmtMetric(fmt, value) {
-  if (fmt === 'ratio') return formatRatio(value)
-  if (fmt === 'percent') return formatPercent(value)
-  return formatMAD(value)
-}
+   PACT110 — câblage réparé : la section « Bras » lisait ``current.bras``
+   depuis la réponse de ``GET /adsengine/experiences/<id>/`` — un champ que
+   ``ExperimentSerializer`` ne renvoie JAMAIS. Les bras RÉELS (``ExperimentArm``)
+   vivent sur leur propre collection ``bras/`` (aucun filtre serveur par
+   expérience) ; leurs seules stats réellement exposées par l'API sont celles
+   du DecisionLog le plus récent (``allocations.prob_best``/``budget_mad``,
+   indexées par ``label``) — jamais une moyenne/bande de crédibilité
+   fabriquée. La section « Journal des décisions » lisait ``decision_fr``/
+   ``chiffres``/``phase`` — trois champs absents de ``DecisionLogSerializer`` ;
+   la phrase FR réelle est ``summary_fr``. Deux vues jamais construites
+   s'ajoutent : la série quotidienne d'un bras (``stats-bras/``) et le journal
+   des décisions toutes expériences confondues (``decisions/``).
+   ========================================================================== */
 
 // Tons de statut de phase (déterministes, FR).
 function phaseTone(statut) {
@@ -99,24 +100,93 @@ function MdeCalculator() {
   )
 }
 
+// PACT110 — Série quotidienne d'un bras (``ArmDailyStat``), chargée à la
+// demande (un panneau par bras, évite N appels au chargement de l'écran).
+function ArmDailySeries({ armId }) {
+  const [rows, setRows] = useState(null)
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    let cancelled = false
+    setLoading(true)
+    adsengineApi.experiments.armStats()
+      .then(r => {
+        if (cancelled) return
+        const all = Array.isArray(r.data) ? r.data : (r.data?.results || [])
+        const mine = all.filter(s => s && s.arm === armId)
+          .sort((a, b) => String(a.date || '').localeCompare(String(b.date || '')))
+        setRows(mine)
+      })
+      .catch(() => { if (!cancelled) setRows([]) })
+      .finally(() => { if (!cancelled) setLoading(false) })
+    return () => { cancelled = true }
+  }, [armId])
+
+  if (loading) return <p style={{ color: '#64748b', margin: '0.5rem 0 0' }}>Chargement…</p>
+  if (!rows || rows.length === 0) {
+    return <p data-testid="ae-exp-arm-series-empty" style={{ color: '#64748b', margin: '0.5rem 0 0' }}>
+      Aucune statistique quotidienne pour ce bras.</p>
+  }
+  return (
+    <table data-testid="ae-exp-arm-series" style={{ width: '100%', marginTop: '0.5rem', fontSize: '0.85rem',
+      borderCollapse: 'collapse' }}>
+      <thead>
+        <tr style={{ textAlign: 'left', color: '#64748b' }}>
+          <th style={{ padding: '0.2rem 0.4rem' }}>Date</th>
+          <th style={{ padding: '0.2rem 0.4rem' }}>Impressions</th>
+          <th style={{ padding: '0.2rem 0.4rem' }}>Clics</th>
+          <th style={{ padding: '0.2rem 0.4rem' }}>Conversations</th>
+          <th style={{ padding: '0.2rem 0.4rem' }}>Dépense</th>
+        </tr>
+      </thead>
+      <tbody>
+        {rows.map(s => (
+          <tr key={s.id} data-testid="ae-exp-arm-series-row" style={{ borderTop: '1px solid #e2e8f0' }}>
+            <td style={{ padding: '0.2rem 0.4rem' }}>{s.date || '—'}</td>
+            <td style={{ padding: '0.2rem 0.4rem' }}>{formatNumber(s.impressions)}</td>
+            <td style={{ padding: '0.2rem 0.4rem' }}>{formatNumber(s.clicks)}</td>
+            <td style={{ padding: '0.2rem 0.4rem' }}>{formatNumber(s.conversations)}</td>
+            <td style={{ padding: '0.2rem 0.4rem' }}>{formatMAD(s.spend)}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  )
+}
+
 export default function ExperimentsScreen() {
   const [list, setList] = useState([])
   const [loading, setLoading] = useState(true)
   const [current, setCurrent] = useState(null) // expérimentation normalisée
+  const [arms, setArms] = useState([])
   const [log, setLog] = useState([])
-  const [phaseFilter, setPhaseFilter] = useState('')
   const [selectedId, setSelectedId] = useState(null)
+  const [openArmId, setOpenArmId] = useState(null)
 
-  // Charge le détail + le DecisionLog d'une expérimentation.
+  // PACT110 — Journal des décisions TOUTES expériences (vue globale, chargée
+  // une fois au montage — indépendante de l'expérimentation sélectionnée).
+  const [allDecisions, setAllDecisions] = useState([])
+  const [allDecisionsLoading, setAllDecisionsLoading] = useState(true)
+
+  // Charge le détail (expérience + ses bras réels + son DecisionLog).
   const loadDetail = useCallback((id) => {
     setSelectedId(id)
-    setPhaseFilter('')
+    setOpenArmId(null)
     adsengineApi.experiments.get(id)
       .then(r => setCurrent(normalizeExperiment(r.data)))
       .catch(() => setCurrent(null))
-    adsengineApi.experiments.decisionLog(id)
-      .then(r => setLog(normalizeDecisionLog(r.data)))
-      .catch(() => setLog([]))
+    Promise.all([
+      adsengineApi.experiments.decisionLog(id),
+      adsengineApi.experiments.arms(),
+    ])
+      .then(([decisionsRes, armsRes]) => {
+        const rawDecisions = Array.isArray(decisionsRes.data)
+          ? decisionsRes.data : (decisionsRes.data?.results || [])
+        const latestDecision = rawDecisions[0] || null
+        setLog(normalizeDecisionLog(rawDecisions))
+        setArms(normalizeArms(armsRes.data, id, latestDecision))
+      })
+      .catch(() => { setLog([]); setArms([]) })
   }, [])
 
   const load = useCallback(() => {
@@ -134,27 +204,22 @@ export default function ExperimentsScreen() {
   // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement au montage
   useEffect(() => { load() }, [load])
 
-  const visibleLog = useMemo(
-    () => filterDecisionLog(log, { phase: phaseFilter }), [log, phaseFilter])
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement au montage
+  useEffect(() => {
+    setAllDecisionsLoading(true)
+    adsengineApi.experiments.allDecisions()
+      .then(r => setAllDecisions(normalizeDecisionLog(r.data)))
+      .catch(() => setAllDecisions([]))
+      .finally(() => setAllDecisionsLoading(false))
+  }, [])
 
-  const best = current ? bestArm(current.bras) : null
+  const expNameById = useMemo(() => {
+    const map = new Map()
+    list.forEach(e => map.set(e.id, e.nom || e.name || `Expérimentation ${e.id}`))
+    return map
+  }, [list])
 
-  // Échelle des bandes de crédibilité (présentation seule, aria-hidden).
-  const bounds = useMemo(() => {
-    const vals = (current?.bras || [])
-      .flatMap(b => [b.ci_low, b.ci_high, b.mean])
-      .filter(v => Number.isFinite(v))
-    if (!vals.length) return null
-    const min = Math.min(...vals); const max = Math.max(...vals)
-    return { min, max, span: max - min || 1 }
-  }, [current])
-
-  const bandStyle = (b) => {
-    if (!bounds || !Number.isFinite(b.ci_low) || !Number.isFinite(b.ci_high)) return null
-    const left = ((b.ci_low - bounds.min) / bounds.span) * 100
-    const width = ((b.ci_high - b.ci_low) / bounds.span) * 100
-    return { left: `${left}%`, width: `${Math.max(width, 2)}%` }
-  }
+  const best = current ? bestArm(arms) : null
 
   return (
     <div className="page ae-experiments" data-testid="ae-experiments">
@@ -213,90 +278,83 @@ export default function ExperimentsScreen() {
                     </ol>
                   </section>
 
-                  {/* Bras avec posteriors visualisés */}
+                  {/* Bras — PACT110 : liste RÉELLE (ExperimentArm), enrichie des
+                      seules stats que le DecisionLog le plus récent renvoie. */}
                   <section className="card ae-exp-arms" data-testid="ae-exp-arms"
                     style={{ padding: '1rem', marginBottom: '1rem' }}>
-                    <h3 style={{ margin: '0 0 0.75rem' }}>
-                      Bras — {current.metrique_label} (P(meilleur) + bande de crédibilité)
-                    </h3>
-                    <div style={{ display: 'grid', gap: '0.9rem' }}>
-                      {current.bras.map(b => {
-                        const isBest = best && b.id === best.id
-                        const bs = bandStyle(b)
-                        return (
-                          <article key={b.id} data-testid="ae-exp-arm"
-                            style={{ border: '1px solid #e2e8f0', borderRadius: 8, padding: '0.75rem',
-                              background: isBest ? '#f0fdf4' : '#fff' }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem',
-                              flexWrap: 'wrap' }}>
-                              <strong>{b.nom}</strong>
-                              {isBest && (
-                                <span className="badge" data-testid="ae-exp-arm-best"
-                                  style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem',
-                                    background: '#dcfce7', color: '#166534' }}>
-                                  <Trophy size={13} aria-hidden="true" /> Favori du moteur
-                                </span>
-                              )}
-                              <span style={{ marginLeft: 'auto', color: '#64748b', fontSize: '0.85rem' }}>
-                                Allocation {formatPercent(b.allocation)}
-                              </span>
-                            </div>
+                    <h3 style={{ margin: '0 0 0.75rem' }}>Bras</h3>
+                    {arms.length === 0
+                      ? <p data-testid="ae-exp-arms-empty" style={{ color: '#64748b' }}>
+                          Aucun bras créé pour cette expérimentation.</p>
+                      : (
+                        <div style={{ display: 'grid', gap: '0.6rem' }}>
+                          {arms.map(b => {
+                            const isBest = best && b.id === best.id
+                            const isOpen = openArmId === b.id
+                            return (
+                              <article key={b.id} data-testid="ae-exp-arm"
+                                style={{ border: '1px solid #e2e8f0', borderRadius: 8, padding: '0.75rem',
+                                  background: isBest ? '#f0fdf4' : '#fff' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem',
+                                  flexWrap: 'wrap' }}>
+                                  <strong data-testid={`ae-exp-arm-nom-${b.id}`}>{b.nom}</strong>
+                                  <span className="badge" style={{
+                                    background: b.actif ? '#dcfce7' : '#f1f5f9',
+                                    color: b.actif ? '#166534' : '#64748b' }}>
+                                    {b.actif ? 'Actif' : 'Inactif'}
+                                  </span>
+                                  {isBest && (
+                                    <span className="badge" data-testid="ae-exp-arm-best"
+                                      style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem',
+                                        background: '#dcfce7', color: '#166534' }}>
+                                      <Trophy size={13} aria-hidden="true" /> Favori du moteur
+                                    </span>
+                                  )}
+                                  <button type="button" className="btn btn-light"
+                                    data-testid={`ae-exp-arm-series-toggle-${b.id}`}
+                                    style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: '0.2rem' }}
+                                    onClick={() => setOpenArmId(isOpen ? null : b.id)}>
+                                    Série quotidienne
+                                    {isOpen ? <ChevronUp size={14} aria-hidden="true" /> : <ChevronDown size={14} aria-hidden="true" />}
+                                  </button>
+                                </div>
 
-                            {/* P(meilleur) — la probabilité, en clair */}
-                            <p style={{ margin: '0.4rem 0 0.2rem' }}>
-                              Probabilité d&apos;être le meilleur :{' '}
-                              <strong data-testid={`ae-exp-pbest-${b.id}`}>{formatPercent(b.p_best)}</strong>
-                            </p>
+                                {(b.p_best != null || b.budget_mad != null) && (
+                                  <p style={{ margin: '0.4rem 0 0', color: '#334155', fontSize: '0.9rem' }}>
+                                    {b.p_best != null && (
+                                      <>Probabilité d&apos;être le meilleur :{' '}
+                                        <strong data-testid={`ae-exp-pbest-${b.id}`}>{formatPercent(b.p_best)}</strong>
+                                      </>
+                                    )}
+                                    {b.p_best != null && b.budget_mad != null && '  ·  '}
+                                    {b.budget_mad != null && (
+                                      <>Budget alloué :{' '}
+                                        <strong data-testid={`ae-exp-budget-${b.id}`}>{formatMAD(b.budget_mad)}/jour</strong>
+                                      </>
+                                    )}
+                                  </p>
+                                )}
 
-                            {/* Estimation + bande de crédibilité (numérique + barre) */}
-                            <p style={{ margin: '0 0 0.4rem', color: '#334155', fontSize: '0.9rem' }}>
-                              Estimation :{' '}
-                              <strong data-testid={`ae-exp-mean-${b.id}`}>
-                                {fmtMetric(current.metrique_fmt, b.mean)}
-                              </strong>
-                              {' '}(intervalle{' '}
-                              <span data-testid={`ae-exp-band-${b.id}`}>
-                                {fmtMetric(current.metrique_fmt, b.ci_low)} – {fmtMetric(current.metrique_fmt, b.ci_high)}
-                              </span>)
-                            </p>
-                            {bs && (
-                              <div aria-hidden="true" style={{ position: 'relative', height: 8,
-                                background: '#f1f5f9', borderRadius: 999 }}>
-                                <div style={{ position: 'absolute', top: 0, bottom: 0, ...bs,
-                                  background: isBest ? '#22c55e' : '#94a3b8', borderRadius: 999 }} />
-                              </div>
-                            )}
-                          </article>
-                        )
-                      })}
-                    </div>
+                                {isOpen && <ArmDailySeries armId={b.id} />}
+                              </article>
+                            )
+                          })}
+                        </div>
+                      )}
                   </section>
 
-                  {/* DecisionLog — « pourquoi le moteur a fait X » (FR + chiffres) */}
+                  {/* DecisionLog de l'expérimentation sélectionnée — PACT110 :
+                      ``decision_fr`` = ``summary_fr`` réel, ``chiffres`` = les
+                      montants/probas RÉELS de ``allocations``. */}
                   <section className="card ae-exp-decisions" data-testid="ae-exp-decisions"
-                    style={{ padding: '1rem' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem',
-                      flexWrap: 'wrap', marginBottom: '0.6rem' }}>
-                      <h3 style={{ margin: 0 }}>Journal des décisions</h3>
-                      <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem',
-                        marginLeft: 'auto' }}>
-                        <span style={{ fontSize: '0.85rem', color: '#475569' }}>Phase</span>
-                        <select className="form-input" data-testid="ae-exp-decision-filter"
-                          value={phaseFilter} onChange={e => setPhaseFilter(e.target.value)}
-                          style={{ flex: '0 1 200px' }}>
-                          <option value="">Toutes les phases</option>
-                          {current.phases.map(p => (
-                            <option key={p.key} value={p.key}>{p.label}</option>
-                          ))}
-                        </select>
-                      </label>
-                    </div>
-                    {visibleLog.length === 0
+                    style={{ padding: '1rem', marginBottom: '1rem' }}>
+                    <h3 style={{ margin: '0 0 0.6rem' }}>Journal des décisions</h3>
+                    {log.length === 0
                       ? <p data-testid="ae-exp-decisions-empty" style={{ color: '#64748b' }}>
-                          Aucune décision pour ce filtre.</p>
+                          Aucune décision pour cette expérimentation.</p>
                       : (
                         <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'grid', gap: '0.6rem' }}>
-                          {visibleLog.map(d => (
+                          {log.map(d => (
                             <li key={d.id} className="ae-exp-decision" data-testid="ae-exp-decision"
                               style={{ borderLeft: '3px solid #cbd5e1', paddingLeft: '0.75rem' }}>
                               <p style={{ margin: 0, color: '#1e293b' }}>{d.decision_fr}</p>
@@ -305,12 +363,12 @@ export default function ExperimentsScreen() {
                                 {Object.entries(d.chiffres).map(([k, v]) => (
                                   <span key={k} className="badge" data-testid="ae-exp-decision-figure"
                                     style={{ background: '#f1f5f9', color: '#475569' }}>
-                                    {k} : {typeof v === 'number' ? formatNumber(v, Number.isInteger(v) ? 0 : 1) : String(v)}
+                                    {k} : {typeof v === 'number' ? formatNumber(v, Number.isInteger(v) ? 0 : 2) : String(v)}
                                   </span>
                                 ))}
-                                {(d.phase_label || d.quand) && (
+                                {d.quand && (
                                   <span style={{ marginLeft: 'auto', color: '#94a3b8', fontSize: '0.8rem' }}>
-                                    {d.phase_label}{d.phase_label && d.quand ? ' · ' : ''}{d.quand}
+                                    {d.quand}
                                   </span>
                                 )}
                               </div>
@@ -321,6 +379,34 @@ export default function ExperimentsScreen() {
                   </section>
                 </>
               )}
+
+              {/* PACT110 — vue jamais construite : le journal des décisions
+                  TOUTES expériences confondues (pas seulement la sélectionnée). */}
+              <section className="card ae-exp-decisions-all" data-testid="ae-exp-decisions-all"
+                style={{ padding: '1rem' }}>
+                <h3 style={{ margin: '0 0 0.6rem' }}>Toutes les décisions (toutes expérimentations)</h3>
+                {allDecisionsLoading
+                  ? <p style={{ color: '#64748b' }}>Chargement…</p>
+                  : allDecisions.length === 0
+                    ? <p data-testid="ae-exp-decisions-all-empty" style={{ color: '#64748b' }}>
+                        Aucune décision enregistrée.</p>
+                    : (
+                      <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'grid', gap: '0.6rem' }}>
+                        {allDecisions.map(d => (
+                          <li key={d.id} data-testid="ae-exp-decision-all"
+                            style={{ borderLeft: '3px solid #cbd5e1', paddingLeft: '0.75rem' }}>
+                            <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'baseline', flexWrap: 'wrap' }}>
+                              <span className="badge" style={{ background: '#f1f5f9', color: '#475569' }}>
+                                {expNameById.get(d.experiment) || `Expérimentation ${d.experiment}`}
+                              </span>
+                              {d.quand && <span style={{ color: '#94a3b8', fontSize: '0.8rem' }}>{d.quand}</span>}
+                            </div>
+                            <p style={{ margin: '0.3rem 0 0', color: '#1e293b' }}>{d.decision_fr}</p>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+              </section>
             </>
           )}
     </div>

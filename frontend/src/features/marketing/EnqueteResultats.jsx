@@ -11,6 +11,17 @@ import { lienPublic } from './EnqueteBuilder'
    analytics_enquete` — répartition des choix, moyenne/NPS des échelles,
    nuage texte, `_completion`), `resultats/export/` (XLSX déjà côté serveur).
    Graphiques en barres HTML pures (pas de nouvelle dépendance de charting).
+
+   PACT109 — cet écran n'affichait que l'AGRÉGAT. Deux ressources déjà
+   exposées par le serveur n'étaient consommées par aucun écran : l'action
+   `participations` (ZMKT13, liste individuelle filtrable réussi/échoué —
+   contact/score_pct/reussi/date_creation) et la route isolée du certificat
+   PDF (ZMKT10, `reponses-enquete/<id>/certificat/`, publique/AllowAny,
+   404 si non certifié — aucune fuite d'existence). Le lien de téléchargement
+   n'est montré QUE quand la RÈGLE RÉELLE le permettrait côté serveur
+   (`enquete.est_certification && participation.reussi`) — jamais un lien
+   mort ; le PDF téléchargé est celui renvoyé tel quel par le serveur, jamais
+   généré côté client.
    ========================================================================== */
 
 function BarreRepartition({ repartition }) {
@@ -32,6 +43,12 @@ function BarreRepartition({ repartition }) {
   )
 }
 
+const REUSSI_FILTERS = [
+  { value: '', label: 'Toutes' },
+  { value: 'true', label: 'Réussies' },
+  { value: 'false', label: 'Échouées' },
+]
+
 export default function EnqueteResultats() {
   const { id } = useParams()
   const navigate = useNavigate()
@@ -39,6 +56,11 @@ export default function EnqueteResultats() {
   const [resultats, setResultats] = useState(null)
   const [loading, setLoading] = useState(true)
   const [err, setErr] = useState('')
+
+  // PACT109 — participations individuelles (ZMKT13), filtrable réussi/échoué.
+  const [participations, setParticipations] = useState([])
+  const [participationsLoading, setParticipationsLoading] = useState(true)
+  const [filtreReussi, setFiltreReussi] = useState('')
 
   const load = useCallback(() => {
     setLoading(true)
@@ -50,6 +72,18 @@ export default function EnqueteResultats() {
 
   // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement au montage
   useEffect(() => { load() }, [load])
+
+  const loadParticipations = useCallback(() => {
+    setParticipationsLoading(true)
+    const params = filtreReussi === '' ? undefined : { reussi: filtreReussi }
+    marketingApi.enquetes.participations(id, params)
+      .then(r => setParticipations(Array.isArray(r.data) ? r.data : (r.data?.results || [])))
+      .catch(() => setParticipations([]))
+      .finally(() => setParticipationsLoading(false))
+  }, [id, filtreReussi])
+
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement au montage/changement de filtre
+  useEffect(() => { loadParticipations() }, [loadParticipations])
 
   const exporter = async () => {
     setErr('')
@@ -114,6 +148,73 @@ export default function EnqueteResultats() {
           </section>
         )
       })}
+
+      {/* PACT109 — participations individuelles (ZMKT13), jusqu'ici jamais
+          affichées (seul l'agrégat par question l'était ci-dessus). */}
+      <section data-testid="enquete-participations" style={{ marginTop: '1.5rem' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', marginBottom: '0.6rem' }}>
+          <h3 style={{ margin: 0 }}>Participations</h3>
+          <div style={{ display: 'flex', gap: '0.4rem', marginLeft: 'auto' }}>
+            {REUSSI_FILTERS.map(f => (
+              <button key={f.value} type="button"
+                className={`btn ${filtreReussi === f.value ? 'btn-primary' : 'btn-light'}`}
+                data-testid={`enquete-participations-filtre-${f.value || 'toutes'}`}
+                onClick={() => setFiltreReussi(f.value)}>
+                {f.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {participationsLoading
+          ? <p className="page-loading">Chargement…</p>
+          : (
+            <table className="data-table" data-testid="enquete-participations-table">
+              <thead>
+                <tr><th>Contact</th><th>Score</th><th>Réussi</th><th>Date</th><th /></tr>
+              </thead>
+              <tbody>
+                {participations.map(p => {
+                  // Reflète EXACTEMENT la règle serveur (services.soumettre_reponse_enquete) :
+                  // certificat_genere = est_certification ET reussi — jamais un lien mort.
+                  const certificatDisponible = !!enquete.est_certification && p.reussi === true
+                  return (
+                    <tr key={p.id} data-testid="enquete-participation-row">
+                      <td>{p.contact || 'Anonyme'}</td>
+                      <td>{p.score_pct != null ? `${p.score_pct}%` : '—'}</td>
+                      <td>
+                        {p.reussi == null
+                          ? '—'
+                          : (
+                            <span className="badge" style={{
+                              background: p.reussi ? '#dcfce7' : '#fee2e2',
+                              color: p.reussi ? '#166534' : '#991b1b' }}>
+                              {p.reussi ? 'Réussi' : 'Échoué'}
+                            </span>
+                          )}
+                      </td>
+                      <td>{p.date_creation ? new Date(p.date_creation).toLocaleString('fr-FR') : '—'}</td>
+                      <td>
+                        {certificatDisponible && (
+                          <a href={marketingApi.reponsesEnquete.certificatUrl(p.id)}
+                            target="_blank" rel="noopener noreferrer"
+                            data-testid={`enquete-participation-certificat-${p.id}`}>
+                            Télécharger le certificat
+                          </a>
+                        )}
+                      </td>
+                    </tr>
+                  )
+                })}
+                {participations.length === 0 && (
+                  <tr><td colSpan={5} style={{ textAlign: 'center', color: '#64748b' }}>
+                    Aucune participation
+                  </td></tr>
+                )}
+              </tbody>
+            </table>
+          )}
+      </section>
     </div>
   )
 }

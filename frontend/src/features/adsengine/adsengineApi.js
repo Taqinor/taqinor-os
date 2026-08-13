@@ -122,6 +122,12 @@ const adsengineApi = {
     generateVariants: (id) => api.post(`/adsengine/creatifs/${id}/variantes/`),
   },
 
+  // ── ENG16/PACT112 — Policy créative RÉELLE (CreativePolicy, une par société) ──
+  // Routeur backend FR : « policy-creative » — jamais appelé avant PACT112.
+  creativePolicy: {
+    ...resource('policy-creative'),
+  },
+
   // ── ENG12/ENG39 — Expérimentations (bandit) : phases, bras, DecisionLog ──
   // Routeur backend FR : « experiences » (ADSENGINT1).
   experiments: {
@@ -132,6 +138,15 @@ const adsengineApi = {
     // PUB87 — calculateur MDE/puissance (vue mince sur mde.py) : « avec votre
     // volume, ~X jours pour détecter +20 % » avant lancement.
     mde: (params) => api.get('/adsengine/experiences/mde/', { params }),
+    // PACT110 — bras RÉELS (``ExperimentArm``, routeur ``bras/``). Ce ViewSet
+    // est company-scopé mais ne filtre PAS par expérience côté serveur —
+    // l'appelant filtre par ``experiment`` côté client sur la liste renvoyée.
+    arms: (params) => api.get('/adsengine/bras/', { params }),
+    // Série quotidienne d'un bras (``ArmDailyStat``, routeur ``stats-bras/``).
+    armStats: (params) => api.get('/adsengine/stats-bras/', { params }),
+    // Journal des décisions TOUTES expériences confondues (``DecisionLog``,
+    // routeur ``decisions/`` — lecture seule, écrit uniquement par la science).
+    allDecisions: (params) => api.get('/adsengine/decisions/', { params }),
   },
 
   // ── ENG28/ENG38/ENG40 — Plan de vol (compose 6 mois) + préflight autonomie ──
@@ -148,6 +163,14 @@ const adsengineApi = {
     validate: (payload) => api.post('/adsengine/plans-vol/validate/', payload),
     // Lance une simulation depuis le plan composé.
     simulate: (payload) => api.post('/adsengine/plans-vol/simulate/', payload),
+    // PACT113 — phases RÉELLES (``FlightPhase``, routeur ``phases-vol/``) : le
+    // plan composé était 100 % éphémère (jamais envoyé à ``plans-vol/``/
+    // ``phases-vol/``, pourtant déjà des ViewSets CRUD complets) — fermer
+    // l'onglet perdait tout. Ce ViewSet ne filtre pas par plan côté serveur ;
+    // l'appelant filtre par ``plan`` côté client sur la liste renvoyée.
+    phases: {
+      ...resource('phases-vol'),
+    },
   },
 
   // ── ENG14/ENG43 — Règles (gabarits) + dry-run ──
@@ -292,9 +315,26 @@ const adsengineApi = {
     list: (params) => api.get('/adsengine/backlog/', { params }),
     // Approbation par LOT d'une recombinaison.
     approveLot: (lotId) => api.post(`/adsengine/backlog/lots/${lotId}/approuver/`),
+    // PACT111 — rejet d'un LOT. L'agrégat ``backlog/`` n'expose qu'``approuver/`` ;
+    // le rejet réutilise l'action ``reject`` du VRAI ViewSet
+    // ``CreativeGenerationBatchViewSet`` (routeur ``lots-creatifs/``) — même
+    // effet que ``recombine.reject_lot`` (le lot passe REJETEE, ses membres
+    // restent PENDING, aucun n'entre jamais au backlog).
+    rejectLot: (lotId) => api.post(`/adsengine/lots-creatifs/${lotId}/reject/`),
     // Dépôt d'un asset dans le backlog d'une campagne.
     dropAsset: (campagneId, formData) =>
       api.post(`/adsengine/backlog/${campagneId}/assets/`, formData),
+    // PACT111 — collection BRUTE des items de backlog (``CreativeBacklogItem``,
+    // routeur ``backlog-creatif/``) : contrairement à l'agrégat ``backlog/``
+    // groupé par lot, celle-ci renvoie AUSSI les items sans lot (``batch``
+    // nul), que la vue groupée ignore silencieusement.
+    rawItems: (params) => api.get('/adsengine/backlog-creatif/', { params }),
+    // PACT111 — pipeline RÉEL de génération ancrée aux faits (PUB16) : le
+    // SEUL qui cite une FactEntry publiée pour chaque chiffre généré. Renvoie
+    // ``{enabled:false, detail}`` sans lot créé si la clé n'est pas
+    // configurée (jamais un crash) — même doctrine que le reste du moteur.
+    generateGroundedVariants: (payload) =>
+      api.post('/adsengine/generation/variantes-ancrees/', payload),
   },
 
   // ── ASG1/ASG3/ASG6 — Assumption Engine : « l'arbre EST l'historique du plan » ──

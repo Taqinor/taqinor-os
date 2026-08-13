@@ -6,7 +6,7 @@ import { lazy } from 'react'
 import {
   LayoutDashboard, CalendarDays, Megaphone, Workflow, Users2, ListChecks,
   CalendarClock, ClipboardList, Gift, FormInput, PhoneCall,
-  Send,
+  Send, Star, Gauge, MessageCircle,
 } from 'lucide-react'
 import { appGlyph } from '../../lib/apps/appGlyph'
 
@@ -60,6 +60,12 @@ const SupportsOffline = lazy(() => import('./SupportsOffline'))
 const FormulairesIntakeList = lazy(() => import('./FormulairesIntakeList'))
 // WIR161 — journal d'appels commercial (click-to-call log, FG208).
 const JournalAppelsScreen = lazy(() => import('./JournalAppelsScreen'))
+// PACT106 — avis clients + routage Google Reviews (FG239).
+const AvisClients = lazy(() => import('./AvisClients'))
+// PACT107 — enquêtes NPS post-installation (FG238), distinctes du Pulse eNPS.
+const EnquetesNps = lazy(() => import('./EnquetesNps'))
+// PACT108 — journal des messages WhatsApp entrants (FG207), lecture seule.
+const MessagesWhatsapp = lazy(() => import('./MessagesWhatsapp'))
 
 const ROLES = ['responsable', 'admin']
 
@@ -84,6 +90,9 @@ const config = {
       { to: '/marketing/fidelite', label: 'Fidélité', icon: <Gift size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
       { to: '/marketing/formulaires-intake', label: "Formulaires d'intake", icon: <FormInput size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
       { to: '/marketing/appels', label: "Journal d'appels", icon: <PhoneCall size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
+      { to: '/marketing/avis-clients', label: 'Avis clients', icon: <Star size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
+      { to: '/marketing/enquetes-nps', label: 'Enquêtes NPS', icon: <Gauge size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
+      { to: '/marketing/messages-whatsapp', label: 'Messages WhatsApp', icon: <MessageCircle size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
       { to: '/parametres/marketing', label: "Domaine d'envoi", icon: <LayoutDashboard size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
       { to: '/marketing/calendrier', label: 'Calendrier marketing', icon: <CalendarDays size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
     ],
@@ -100,6 +109,9 @@ const config = {
     ['/marketing/fidelite', 'Fidélité'],
     ['/marketing/formulaires-intake', "Formulaires d'intake"],
     ['/marketing/appels', "Journal d'appels"],
+    ['/marketing/avis-clients', 'Avis clients'],
+    ['/marketing/enquetes-nps', 'Enquêtes NPS'],
+    ['/marketing/messages-whatsapp', 'Messages WhatsApp entrants'],
     ['/marketing/supports-offline', 'Supports offline (QR)'],
     ['/marketing', 'Tableau de bord marketing'],
   ],
@@ -120,6 +132,9 @@ const config = {
     { path: '/marketing/fidelite', component: FideliteList, roles: ROLES },
     { path: '/marketing/formulaires-intake', component: FormulairesIntakeList, roles: ROLES },
     { path: '/marketing/appels', component: JournalAppelsScreen, roles: ROLES },
+    { path: '/marketing/avis-clients', component: AvisClients, roles: ROLES },
+    { path: '/marketing/enquetes-nps', component: EnquetesNps, roles: ROLES },
+    { path: '/marketing/messages-whatsapp', component: MessagesWhatsapp, roles: ROLES },
     { path: '/marketing/supports-offline', component: SupportsOffline, roles: ROLES },
   ],
 }

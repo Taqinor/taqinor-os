@@ -129,6 +129,17 @@ const marketingApi = {
     resultatsExport: (id) =>
       api.get(`/marketing/enquetes/${id}/resultats/export/`,
         { responseType: 'blob' }),
+    // PACT109 — ZMKT13 : liste des soumissions individuelles (filtrable
+    // réussi/échoué) — l'écran de résultats n'affichait que l'agrégat.
+    participations: (id, params) =>
+      api.get(`/marketing/enquetes/${id}/participations/`, { params }),
+  },
+  // PACT109 — ZMKT10 : certificat PDF d'UNE soumission (route isolée,
+  // publique/AllowAny côté serveur — 404 si non certifiée/échouée, aucune
+  // fuite d'existence). Téléchargé tel quel, jamais généré côté client.
+  reponsesEnquete: {
+    certificatUrl: (reponseId) =>
+      `/api/django/marketing/reponses-enquete/${reponseId}/certificat/`,
   },
 
   // ── NTMKT9 — Fidélité (points/mouvements) + règles d'upsell (FG240/241) ──
@@ -181,6 +192,35 @@ const marketingApi = {
   relancesDevisAbandonnes: {
     list: (params) =>
       api.get('/marketing/relances-devis-abandonnes/', { params }),
+  },
+
+  // ── PACT106 — Avis clients + routage Google Reviews (FG239) ──
+  avisClients: {
+    ...resource('avis-clients'),
+    // Enregistre note/témoignage reçus (statut sollicité -> reçu).
+    recevoir: (id, data) =>
+      api.post(`/marketing/avis-clients/${id}/recevoir/`, data),
+    // Route vers Google Reviews si GOOGLE_REVIEW_URL est configuré côté
+    // serveur — NO-OP propre sinon (avis renvoyé inchangé, jamais une erreur).
+    pousserGoogle: (id) =>
+      api.post(`/marketing/avis-clients/${id}/pousser_google/`),
+  },
+
+  // ── PACT107 — Enquêtes NPS post-installation (FG238), distinctes du Pulse
+  // eNPS interne employés et du générique `Enquete` ──
+  enquetesNps: {
+    ...resource('enquetes-nps'),
+    // Enregistre la note (0-10) + commentaire d'un client (statut envoyée -> répondue).
+    repondre: (id, data) =>
+      api.post(`/marketing/enquetes-nps/${id}/repondre/`, data),
+    // Score NPS consolidé de la société (%promoteurs - %détracteurs) — calculé
+    // côté serveur, jamais recalculé ici.
+    score: () => api.get('/marketing/enquetes-nps/score/'),
+  },
+
+  // ── PACT108 — Journal des messages WhatsApp entrants (FG207), LECTURE SEULE ──
+  messagesWhatsapp: {
+    list: (params) => api.get('/marketing/messages-whatsapp/', { params }),
   },
 }
 

@@ -13,6 +13,12 @@ const mocks = vi.hoisted(() => ({
   preflight: vi.fn(),
   validate: vi.fn(),
   simulate: vi.fn(),
+  planList: vi.fn(),
+  planCreate: vi.fn(),
+  planUpdate: vi.fn(),
+  phaseList: vi.fn(),
+  phaseCreate: vi.fn(),
+  phaseRemove: vi.fn(),
   engagementPresets: vi.fn(),
   createEngagement: vi.fn(),
   deliveryEstimate: vi.fn(),
@@ -28,6 +34,14 @@ vi.mock('./adsengineApi', () => ({
       preflight: mocks.preflight,
       validate: mocks.validate,
       simulate: mocks.simulate,
+      list: mocks.planList,
+      create: mocks.planCreate,
+      update: mocks.planUpdate,
+      phases: {
+        list: mocks.phaseList,
+        create: mocks.phaseCreate,
+        remove: mocks.phaseRemove,
+      },
     },
     // PUB5 — EngagementAudiencePicker mounted in the compose column.
     audiences: {
@@ -72,6 +86,15 @@ beforeEach(() => {
   ] } })
   mocks.createEngagement.mockResolvedValue({ data: { preset: 'lead_submitted', audience_id: '901', retention_days: 90 } })
   mocks.deliveryEstimate.mockResolvedValue({ data: { estimate: { estimate_ready: true, estimate_dau: 8000 } } })
+  // PACT113 — par défaut, aucun plan encore enregistré pour la société
+  // (forme RÉELLE : ``plans-vol/``/``phases-vol/`` renvoient des listes DRF).
+  mocks.planList.mockResolvedValue({ data: [] })
+  mocks.planCreate.mockResolvedValue({ data: { id: 501, name: '', status: 'brouillon' } })
+  mocks.planUpdate.mockResolvedValue({ data: {} })
+  mocks.phaseList.mockResolvedValue({ data: [] })
+  mocks.phaseCreate.mockImplementation((body) =>
+    Promise.resolve({ data: { id: 1000 + (body?.order ?? 0), ...body } }))
+  mocks.phaseRemove.mockResolvedValue({ data: {} })
   mocks.permissions = ['adsengine_manage']
 })
 
@@ -171,6 +194,114 @@ describe('FlightPlanScreen (ENG40)', () => {
       expect(screen.getByTestId('ae-fp-simulate')).toBeDisabled()
       fireEvent.click(screen.getByTestId('ae-fp-validate'))
       expect(mocks.validate).not.toHaveBeenCalled()
+    })
+  })
+
+  // ── PACT113 — persistance RÉELLE (FlightPlan/FlightPhase, jamais appelée avant) ──
+  describe('PACT113 — le plan composé est enregistré, pas éphémère', () => {
+    it('aucun plan en base : le composeur démarre vide, pas de badge « Enregistré »', async () => {
+      renderScreen()
+      await waitFor(() => expect(mocks.planList).toHaveBeenCalled())
+      expect((await screen.findByTestId('ae-fp-nom')).value).toBe('')
+      expect(screen.queryByTestId('ae-fp-saved-badge')).toBeNull()
+    })
+
+    it('charge le plan le plus récent au montage (nom + phases pré-remplis)', async () => {
+      mocks.planList.mockResolvedValue({ data: [
+        { id: 42, name: 'Solaire résidentiel Q3', status: 'brouillon',
+          start_date: null, end_date: null, notes: '', created_at: '', updated_at: '' },
+      ] })
+      mocks.phaseList.mockResolvedValue({ data: [
+        { id: 1, plan: 42, order: 0, name: 'Amorçage', tested_variable: 'hook',
+          launch_template: '', budget_mad: 0, num_arms: 2, week_span: 4,
+          start_date: null, end_date: null, created_at: '', updated_at: '' },
+        { id: 2, plan: 42, order: 1, name: 'Montée en charge', tested_variable: 'format',
+          launch_template: '', budget_mad: 0, num_arms: 2, week_span: 8,
+          start_date: null, end_date: null, created_at: '', updated_at: '' },
+        // Phase d'un AUTRE plan (99) — doit être filtrée côté client.
+        { id: 3, plan: 99, order: 0, name: "N'appartient pas à ce plan",
+          tested_variable: 'angle', launch_template: '', budget_mad: 0,
+          num_arms: 2, week_span: 4, start_date: null, end_date: null,
+          created_at: '', updated_at: '' },
+      ] })
+      renderScreen()
+      await waitFor(() => expect(screen.getByTestId('ae-fp-nom').value).toBe('Solaire résidentiel Q3'))
+      const phases = await screen.findByTestId('ae-fp-phases')
+      expect(phases).toHaveTextContent('Amorçage')
+      expect(phases).toHaveTextContent('Montée en charge')
+      expect(phases).not.toHaveTextContent("N'appartient pas à ce plan")
+      expect(screen.getAllByTestId('ae-fp-phase').length).toBe(2)
+      expect(screen.getByTestId('ae-fp-saved-badge')).toBeInTheDocument()
+    })
+
+    it('enregistre un nouveau plan composé : POST du plan puis de chaque phase', async () => {
+      renderScreen()
+      fireEvent.change(await screen.findByTestId('ae-fp-nom'), { target: { value: 'Pompage agricole H1' } })
+      fireEvent.change(await screen.findByTestId('ae-fp-template'), { target: { value: 'lancement' } })
+      fireEvent.click(screen.getByTestId('ae-fp-save'))
+      await waitFor(() => expect(mocks.planCreate).toHaveBeenCalledWith({ name: 'Pompage agricole H1' }))
+      await waitFor(() => expect(mocks.phaseCreate).toHaveBeenCalledTimes(3))
+      expect(mocks.phaseCreate).toHaveBeenNthCalledWith(1, {
+        plan: 501, order: 0, name: 'Amorçage', tested_variable: 'amorce',
+        num_arms: 2, week_span: 4, launch_template: 'lancement', budget_mad: 0,
+      })
+      expect(mocks.phaseCreate).toHaveBeenNthCalledWith(3, expect.objectContaining({
+        plan: 501, order: 2, tested_variable: 'croisiere', week_span: 12,
+      }))
+      expect(await screen.findByTestId('ae-fp-save-msg')).toHaveTextContent('Plan enregistré.')
+      expect(await screen.findByTestId('ae-fp-saved-badge')).toBeInTheDocument()
+    })
+
+    it('reload après enregistrement : le MÊME plan revient, pas un formulaire vide', async () => {
+      // Simule le reload : la 2e fois, planList/phaseList renvoient ce que le
+      // 1er enregistrement vient de créer.
+      mocks.planList.mockResolvedValue({ data: [
+        { id: 501, name: 'Pompage agricole H1', status: 'brouillon',
+          start_date: null, end_date: null, notes: '', created_at: '', updated_at: '' },
+      ] })
+      mocks.phaseList.mockResolvedValue({ data: [
+        { id: 1000, plan: 501, order: 0, name: 'Amorçage', tested_variable: 'amorce',
+          launch_template: 'lancement', budget_mad: 0, num_arms: 2, week_span: 4,
+          start_date: null, end_date: null, created_at: '', updated_at: '' },
+      ] })
+      renderScreen()
+      await waitFor(() => expect(screen.getByTestId('ae-fp-nom').value).toBe('Pompage agricole H1'))
+      expect(await screen.findByTestId('ae-fp-phases')).toHaveTextContent('Amorçage')
+    })
+
+    it('ré-enregistre un plan existant : PATCH le nom et REMPLACE ses phases', async () => {
+      mocks.planList.mockResolvedValue({ data: [
+        { id: 42, name: 'Solaire résidentiel Q3', status: 'brouillon',
+          start_date: null, end_date: null, notes: '', created_at: '', updated_at: '' },
+      ] })
+      mocks.phaseList.mockResolvedValue({ data: [
+        { id: 7, plan: 42, order: 0, name: 'Amorçage', tested_variable: 'hook',
+          launch_template: '', budget_mad: 0, num_arms: 2, week_span: 4,
+          start_date: null, end_date: null, created_at: '', updated_at: '' },
+      ] })
+      renderScreen()
+      await waitFor(() => expect(screen.getByTestId('ae-fp-nom').value).toBe('Solaire résidentiel Q3'))
+      fireEvent.change(screen.getByTestId('ae-fp-nom'), { target: { value: 'Solaire résidentiel Q3 (révisé)' } })
+      // Choisir un nouveau gabarit remplace la composition locale.
+      fireEvent.change(screen.getByTestId('ae-fp-template'), { target: { value: 'lancement' } })
+      fireEvent.click(screen.getByTestId('ae-fp-save'))
+      await waitFor(() => expect(mocks.planUpdate).toHaveBeenCalledWith(
+        42, { name: 'Solaire résidentiel Q3 (révisé)' }))
+      // L'ancienne phase (7) est retirée avant de recréer la composition actuelle.
+      await waitFor(() => expect(mocks.phaseRemove).toHaveBeenCalledWith(7))
+      await waitFor(() => expect(mocks.phaseCreate).toHaveBeenCalledTimes(3))
+      expect(mocks.planCreate).not.toHaveBeenCalled()
+      expect(await screen.findByTestId('ae-fp-save-msg')).toHaveTextContent('Plan mis à jour.')
+    })
+
+    it('sans adsengine_manage, « Enregistrer le plan » est grisé', async () => {
+      mocks.permissions = []
+      renderScreen()
+      fireEvent.change(await screen.findByTestId('ae-fp-nom'), { target: { value: 'Test' } })
+      fireEvent.change(await screen.findByTestId('ae-fp-template'), { target: { value: 'lancement' } })
+      expect(screen.getByTestId('ae-fp-save')).toBeDisabled()
+      fireEvent.click(screen.getByTestId('ae-fp-save'))
+      expect(mocks.planCreate).not.toHaveBeenCalled()
     })
   })
 })
