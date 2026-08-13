@@ -44,6 +44,8 @@ import { SignatureClientPanel } from '../../features/installations/SignatureClie
 import TourneeStops from '../../features/installations/TourneeStops'
 import AFaireAujourdhui from '../../features/offlinesync/mobile/AFaireAujourdhui'
 import MeteoTerrainCard from '../../features/installations/MeteoTerrainCard'
+import { readCache } from '../../features/offlinesync/readCache'
+import DonneesHorsLigneBanner from '../../features/offlinesync/DonneesHorsLigneBanner'
 import {
   interventionStatusLabel, INTERVENTION_TYPES,
   INTERVENTION_STATUSES, INTERVENTION_STATUS_LABELS,
@@ -197,6 +199,8 @@ export default function MaJourneePage() {
   // VX226(b) — horodatage du dernier fetch (ref, pas de re-rendu) : pilote le
   // throttle du refetch sur `visibilitychange` ci-dessous.
   const lastFetchedAtRef = useRef(0)
+  // NTMOB27 — horodatage de la donnée servie DEPUIS LE CACHE (null = en ligne).
+  const [cachedAt, setCachedAt] = useState(null)
   const load = useCallback(() => installationsApi
     .getMaTournee(today)
     .then((r) => {
@@ -219,11 +223,25 @@ export default function MaJourneePage() {
           }
         } catch { /* stockage indisponible */ }
       }
+      // NTMOB27 — la tournée fraîche alimente le cache de LECTURE hors-ligne
+      // (jamais l'inverse : rien de ce cache ne repart vers le serveur).
+      setCachedAt(null)
+      readCache.put('tournee', today, stops)
       // EZ6 — `load()` rend les arrêts frais : le dérivateur de statut compare
       // l'avant/après sans re-lire un état React pas encore commis.
       return stops
     })
-    .catch(() => { setRows([]); return [] })
+    // NTMOB27 — réseau indisponible : on sert la dernière tournée mise en
+    // cache (LECTURE SEULE) avec son bandeau d'ancienneté, au lieu d'un écran
+    // vide « aucune intervention » qui ferait croire à une journée libre.
+    .catch(() => readCache.get('tournee', today)
+      .then((entree) => {
+        if (!entree) { setRows([]); return [] }
+        setRows(entree.data)
+        setCachedAt(entree.cachedAt)
+        return entree.data
+      })
+      .catch(() => { setRows([]); return [] }))
     .finally(() => setLoading(false)), [today])
   useEffect(() => { load() }, [load])
 
@@ -334,6 +352,10 @@ export default function MaJourneePage() {
           <RefreshCw className={`size-4${manualRefreshing ? ' animate-spin' : ''}`} aria-hidden="true" />
         </Button>
       </header>
+
+      {/* NTMOB27 — la tournée affichée vient du cache hors-ligne : on datte
+          la donnée plutôt que de la faire passer pour fraîche. */}
+      <DonneesHorsLigneBanner cachedAt={cachedAt} />
 
       {/* NTMOB21 — alerte météo du jour au point du premier chantier
           (Open-Meteo, informatif : ne bloque et ne masque jamais rien). */}
