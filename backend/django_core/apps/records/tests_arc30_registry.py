@@ -77,6 +77,14 @@ HISTORICAL_TARGETS = {
     # (qui, quand, pourquoi) via le chatter générique records (ARC8) : jamais
     # une classe ``*Activity`` maison. Ciblé par ``apps/veille_ao/platform.py``.
     ('veille_ao', 'avismarche'),
+    # ARC28 (2026-08-14) — module Transport : chatter générique sur
+    # ``OrdreTransport`` (NTLOG8), photos/signatures de preuve de livraison
+    # sur ``EtapeTransport`` (NTLOG9), photos de réserve sur
+    # ``ReserveReception`` (NTLOG18) — via ``records.Attachment``/
+    # ``records.Activity`` génériques, ciblé par ``apps/transport/platform.py``.
+    ('transport', 'ordretransport'),
+    ('transport', 'etapetransport'),
+    ('transport', 'reservereception'),
 }
 
 
@@ -91,7 +99,7 @@ class TestAllowedTargetsNonRegression(SimpleTestCase):
             f"en trop: {resolved - HISTORICAL_TARGETS}")
 
     def test_len_matches(self):
-        self.assertEqual(len(ALLOWED_TARGETS), 33)
+        self.assertEqual(len(ALLOWED_TARGETS), 36)
 
     def test_contains_works_for_each_historical_pair(self):
         for pair in HISTORICAL_TARGETS:

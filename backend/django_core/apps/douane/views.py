@@ -3,6 +3,7 @@ from django.http import HttpResponse
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import PermissionDenied, ValidationError
+from rest_framework.negotiation import DefaultContentNegotiation
 from rest_framework.response import Response
 
 from core.permissions import ScopedPermission
@@ -14,6 +15,26 @@ from .serializers import (
     DossierExportSerializer, ParametresDouaneSerializer, PieceDossierExportSerializer,
 )
 from .services import attribuer_numero_dossier_export
+
+
+class _ExportFormatContentNegotiation(DefaultContentNegotiation):
+    """NTLOG47 — sur ``export`` le paramètre ``?format=`` désigne le format
+    D'EXPORT (csv/xlsx), PAS le renderer DRF. Sans cette surcharge, DRF
+    traite ``?format=xlsx``/``?format=pdf`` comme un override de renderer
+    (``URL_FORMAT_OVERRIDE``) : aucun renderer enregistré ne porte ces
+    formats, donc ``DefaultContentNegotiation.filter_renderers`` lève un
+    ``Http404`` (« Pas trouvé ») AVANT même d'exécuter la vue — motif
+    ``apps.compta.views._BankFormatContentNegotiation``. On neutralise donc
+    l'override par query param et on négocie toujours sur le renderer JSON
+    (la vue elle-même renvoie une ``HttpResponse``/``build_xlsx_response``
+    manuelle, jamais via ce renderer)."""
+
+    def select_renderer(self, request, renderers, format_suffix=None):
+        for renderer in renderers:
+            if renderer.format == 'json':
+                return renderer, renderer.media_type
+        return renderers[0], renderers[0].media_type
+
 
 # NTLOG47 — export CSV/xlsx dossiers-export pour l'expert-comptable. La
 # colonne « estimation non contractuelle » est le contrat que NTLOG13/21
@@ -91,7 +112,8 @@ class DossierExportViewSet(CompanyScopedModelViewSet):
         self._check_tenant(serializer)
         super().perform_update(serializer)
 
-    @action(detail=False, methods=['get'], url_path='export')
+    @action(detail=False, methods=['get'], url_path='export',
+            content_negotiation_class=_ExportFormatContentNegotiation)
     def export(self, request):
         """NTLOG47 — export ``dossiers-export/export/?periode=YYYY-MM&format=
         csv|xlsx`` pour transmission périodique à l'expert-comptable. Volet

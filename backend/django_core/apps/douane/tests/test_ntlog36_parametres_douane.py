@@ -90,9 +90,14 @@ class TestApiParametresDouane(TestCase):
         self.assertEqual(obj.mention_estimation_droits, 'Estimation maison — vérifier.')
 
     def test_patch_alerte_expiration_jours(self):
+        # format='json' est REQUIS : l'encodage multipart par défaut de
+        # l'APIClient de test aplatit une liste en valeurs répétées de la
+        # même clé, et QueryDict ne retient que la DERNIÈRE (10 au lieu de
+        # [45, 20, 10]) — motif répété dans tout le dépôt pour tout payload
+        # liste/dict (866 usages de ``format='json'`` dans apps/).
         r = self.api.patch(f'{BASE}/parametres-douane/1/', {
             'alerte_expiration_jours': [45, 20, 10],
-        })
+        }, format='json')
         self.assertEqual(r.status_code, status.HTTP_200_OK, r.data)
         obj = ParametresDouane.for_company(self.company)
         self.assertEqual(obj.alerte_expiration_jours, [45, 20, 10])

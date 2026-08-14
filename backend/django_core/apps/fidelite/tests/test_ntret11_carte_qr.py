@@ -10,7 +10,7 @@ from django.test import TestCase
 from rest_framework.test import APIClient
 
 from apps.crm.models import Client
-from apps.fidelite.models import CompteFidelite
+from apps.fidelite.models import CompteFidelite, ProgrammeFidelite
 from apps.fidelite.services import crediter_points_pour_vente
 from authentication.models import Company
 
@@ -23,10 +23,18 @@ def _client(company, nom='Zora', prenom='Client'):
     return Client.objects.create(company=company, nom=nom, prenom=prenom)
 
 
+def _programme_actif(company):
+    # crediter_points_pour_vente est un no-op sans programme ACTIF (NTRET9) —
+    # sans cette fixture, CompteFidelite n'est jamais créé (DoesNotExist).
+    return ProgrammeFidelite.objects.create(
+        company=company, actif=True, points_par_mad=Decimal('1.00'))
+
+
 class CarteQrModelTests(TestCase):
     def test_code_qr_genere_automatiquement_et_non_sequentiel(self):
         company = _company()
         client_crm = _client(company)
+        _programme_actif(company)
         crediter_points_pour_vente(
             company=company, client=client_crm,
             montant_ttc=Decimal('100.00'), source_type='vente_comptoir')
@@ -41,6 +49,7 @@ class CarteQrModelTests(TestCase):
         company = _company()
         c1 = _client(company, nom='Un')
         c2 = _client(company, nom='Deux')
+        _programme_actif(company)
         crediter_points_pour_vente(
             company=company, client=c1, montant_ttc=Decimal('50.00'),
             source_type='facture')
@@ -58,6 +67,7 @@ class CartePubliqueEndpointTests(TestCase):
         self.client_api = APIClient()
         self.company = _company()
         self.client_crm = _client(self.company, nom='Bennani', prenom='Yassine')
+        _programme_actif(self.company)
         crediter_points_pour_vente(
             company=self.company, client=self.client_crm,
             montant_ttc=Decimal('200.00'), source_type='vente_comptoir')
@@ -92,6 +102,7 @@ class CartePubliqueEndpointTests(TestCase):
     def test_jeton_dune_autre_societe_reste_isole(self):
         autre_company = _company('Autre Société QR')
         autre_client = _client(autre_company, nom='Autre')
+        _programme_actif(autre_company)
         crediter_points_pour_vente(
             company=autre_company, client=autre_client,
             montant_ttc=Decimal('300.00'), source_type='facture')
