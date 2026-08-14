@@ -201,6 +201,10 @@ class EntreeElectrique:
     plafond_kwc_par_onduleur: Optional[float] = None
     #: Longueur de chaîne IMPOSÉE — acceptée seulement si la physique l'admet.
     longueur_chaine_forcee: Optional[int] = None
+    #: Site en zone KÉRAUNIQUE (densité de foudroiement élevée) — impose le
+    #: parafoudre quelle que soit la longueur de liaison (UTE C 15-712-1 §7 :
+    #: le critère de longueur critique dépend de la densité d'arcs Ng).
+    zone_keraunique: bool = False
 
     @property
     def nb_modules(self):
