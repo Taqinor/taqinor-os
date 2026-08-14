@@ -98,8 +98,11 @@ class ImporterGammesCsvServiceTests(TestCase):
 
     def test_isolation_tenant_poste_dune_autre_societe_refuse(self):
         autre_company = make_company('mrp-ntmfg35-2', 'MRP NTMFG35 2')
+        # Code DISTINCT de `self.poste` ('P-35') : avec le même code, la
+        # résolution scopée trouverait légitimement le poste LOCAL et la
+        # ligne passerait — le test ne prouverait alors aucune isolation.
         autre_poste = PosteDeCharge.objects.create(
-            company=autre_company, code='P-35', nom='Poste autre société')
+            company=autre_company, code='P-35-AUTRE', nom='Poste autre société')
         resultat = importer_gammes_csv(
             self.company, [ligne(self.produit.id, 1, autre_poste.code)])
         self.assertEqual(resultat['error_count'], 1)

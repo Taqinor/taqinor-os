@@ -75,7 +75,9 @@ def preparer_ligne_retour_scannee(company, code, *, quantite=1):
         raise ValueError('Produit introuvable dans cette société.')
 
     try:
-        quantite = int(quantite or 1)
+        # `quantite or 1` avalerait le 0 (falsy) et le remplacerait par 1 —
+        # un scan à quantité nulle DOIT être refusé, pas corrigé en silence.
+        quantite = int(1 if quantite is None else quantite)
     except (TypeError, ValueError):
         raise ValueError('Quantité invalide.')
     if quantite <= 0:

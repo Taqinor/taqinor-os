@@ -851,12 +851,19 @@ def approuver_eco(eco, user=None):
         from apps.audit import recorder as audit_recorder
         from apps.audit.models import AuditLog
 
+        # La trace porte sur la transition de CETTE action (l'approbation),
+        # PAS sur `eco.statut` relu : quand `date_effectivite` est atteinte,
+        # `appliquer_eco` a déjà poussé le statut à `applique` ci-dessus, et
+        # une entrée « ECO approuvé : brouillon -> applique » se
+        # contredirait elle-même (l'application est sa propre transition).
+        nouveau_statut = OrdreModification.Statut.APPROUVE
         audit_recorder.record(
             AuditLog.Action.STATUS, instance=eco, company=eco.company,
             user=user,
             detail=(f'ECO-{eco.id} approuvé (produit {eco.produit_id}) : '
-                    f'{ancien_statut} -> {eco.statut}.'),
-            changes=[{'field': 'statut', 'old': ancien_statut, 'new': eco.statut}])
+                    f'{ancien_statut} -> {nouveau_statut}.'),
+            changes=[{'field': 'statut', 'old': ancien_statut,
+                      'new': nouveau_statut}])
     except Exception:  # noqa: BLE001 — best-effort, jamais bloquant.
         pass
     return eco

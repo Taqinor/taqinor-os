@@ -122,6 +122,14 @@ ignore_imports =
 # automation→audit.
     apps.automation.engine -> apps.audit.recorder
     apps.automation.engine -> apps.audit.models
+# NTSCM47 — `scm.services` ecrit sa PROPRE trace d'audit (import
+# fonction-local `audit.recorder` sur les transitions sensibles de cycle
+# S&OP). Depuis que NTSCM40 branche l'import generique
+# (`dataimport.services`) sur `scm.services`, le chemin transitif
+# ventes->stock.services->dataimport.services->scm.services->audit
+# apparait. C'est le logging transverse de scm, PAS ventes atteignant
+# audit — meme motif que les exceptions stock/automation ci-dessus.
+    apps.scm.services -> apps.audit.recorder
 # Garde-fou « écrasement » des imports — la plateforme d'import générique
 # (`dataimport.services`) écrit sa PROPRE trace d'audit best-effort dans
 # `_journaliser_maj` (imports fonction-locaux `audit.recorder`/`audit.models`,

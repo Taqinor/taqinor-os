@@ -102,7 +102,9 @@ class Ntdst5CalculTests(Ntdst5Base):
         self._commande(quantite=100, quantite_recue=10)  # 10 000 < 50 000
         calcul = calculer_rfa_fournisseur(self._accord())
         self.assertFalse(calcul['seuil_atteint'])
-        self.assertEqual(calcul['montant_du'], '0')
+        # Montant monétaire : TOUJOURS 2 décimales (cf. '3000.00'/'7500.00'
+        # ci-dessous) — jamais un '0' de scale differente.
+        self.assertEqual(calcul['montant_du'], '0.00')
         self.assertEqual(calcul['progression_pct'], '20.00')
 
     def test_au_dessus_du_seuil_le_taux_sapplique_au_ca(self):
