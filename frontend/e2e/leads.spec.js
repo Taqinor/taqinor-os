@@ -184,3 +184,32 @@ test('LB34: la page leads redessinée (KPI + kanban + barre flottante + menu •
   await expect(page.locator('.lv-wrap')).toBeVisible()
   await assertNoSeriousA11yViolations(page, { include: '.lp-page' })
 })
+
+// LWZ — le menu « ⋯ » du rail identité DANS l'enveloppe Dialog (kanban/liste).
+// Le contenu du menu est portalé en FRÈRE du DialogContent (--z-modal 1300) :
+// à --z-dropdown (1000) il se peignait DERRIÈRE le panneau opaque — menu
+// « ouvert » (aria-expanded) mais invisible, clic muet (bug prod du 14/08).
+// Aucun autre test n'ouvre ce menu-là : LB34 teste le ••• de la PAGE liste
+// (hors dialog), IdentityRail.test.jsx rend le rail sans Dialog en jsdom (aucun
+// empilement calculé). Le clic Playwright sur un item recouvert échoue (contrôle
+// d'actionnabilité « reçoit les événements pointeur ») → ce test verrouille
+// l'ordre de peinture (--z-popover requis sur DropdownMenuContent).
+test('LWZ: le menu ⋯ du rail est visible et cliquable dans le Dialog lead', async ({ page }) => {
+  await gotoLeads(page)
+  const name = await createLead(page, { nom: uniq('MenuRail') })
+  await openLead(page, name)
+
+  await modalXl(page).getByRole('button', { name: "Plus d'actions" }).click()
+  const menu = page.getByRole('menu')
+  await expect(menu).toBeVisible()
+  await expect(menu.getByRole('menuitem', { name: /Concevoir la toiture \(3D\)/ })).toBeVisible()
+
+  // Clic RÉEL sur un item — un item peint sous la modale le ferait échouer.
+  await menu.getByRole('menuitem', { name: 'Convertir en client' }).click()
+  const convert = page.locator('[role="dialog"]')
+    .filter({ has: page.getByRole('heading', { name: 'Convertir en client' }) })
+  await expect(convert).toBeVisible()
+  await convert.locator('.modal-close').click()
+  await expect(convert).toHaveCount(0)
+  await closeLeadModal(page)
+})
