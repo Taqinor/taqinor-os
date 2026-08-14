@@ -2,7 +2,9 @@ from decimal import Decimal
 
 from rest_framework import serializers
 
-from .models import EtapeTransport, LigneOrdreTransport, OrdreTransport
+from .models import (
+    CoutFretReel, EtapeTransport, LigneOrdreTransport, OrdreTransport,
+)
 
 
 class LigneOrdreTransportSerializer(serializers.ModelSerializer):
@@ -32,6 +34,18 @@ class EtapeTransportSerializer(serializers.ModelSerializer):
             'lieu', 'date_prevue', 'date_reelle', 'statut_etape',
             'statut_etape_display',
         ]
+
+
+class CoutFretReelSerializer(serializers.ModelSerializer):
+    """NTLOG16 — coût de fret réel (INTERNE, jamais client-facing)."""
+
+    class Meta:
+        model = CoutFretReel
+        fields = [
+            'id', 'ordre_transport', 'montant_ht', 'devise', 'type_cout',
+            'stock_boncommandefournisseur_id', 'note', 'created_at',
+        ]
+        read_only_fields = ['created_at']
 
 
 class OrdreTransportSerializer(serializers.ModelSerializer):

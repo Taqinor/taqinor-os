@@ -11,6 +11,8 @@ router.register(
     basename='lignes-transport')
 router.register(
     'etapes-transport', views.EtapeTransportViewSet, basename='etapes-transport')
+router.register(
+    'couts-fret', views.CoutFretReelViewSet, basename='couts-fret')
 
 urlpatterns = [
     path('', include(router.urls)),

@@ -8,6 +8,7 @@ d'un modèle d'une autre app (`installations.Transporteur`…) passe par le
 `from apps.X.models import ...` statique) — même patron que FG294
 `installations.selectors.budget_projet_synthese`.
 """
+from decimal import Decimal
 
 
 def _ordre_scoped(ordre_transport_id, company=None):
@@ -57,3 +58,20 @@ def comparer_transporteurs(ordre_transport_id, company=None):
         }
         for t in qs
     ]
+
+
+def frais_transport_pour_landed_cost(company, bon_commande_fournisseur_id):
+    """NTLOG16 — somme des `CoutFretReel.montant_ht` d'un
+    `stock.BonCommandeFournisseur` donné, scopée société (jamais un import
+    de modèle `stock`). Point de lecture UNIQUE que le landed cost
+    FG316/DC38 (`apps.stock.services`) pourra consommer — pas de calcul
+    dupliqué."""
+    from django.db.models import Sum
+
+    from .models import CoutFretReel
+
+    total = CoutFretReel.objects.filter(
+        company=company,
+        stock_boncommandefournisseur_id=bon_commande_fournisseur_id,
+    ).aggregate(total=Sum('montant_ht'))['total']
+    return total or Decimal('0')

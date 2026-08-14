@@ -11,10 +11,12 @@ from core.viewsets import CompanyScopedModelViewSet
 from apps.records.views import ChatterViewSetMixin
 
 from . import services
-from .models import EtapeTransport, LigneOrdreTransport, OrdreTransport
+from .models import (
+    CoutFretReel, EtapeTransport, LigneOrdreTransport, OrdreTransport,
+)
 from .serializers import (
-    EtapeTransportSerializer, LigneOrdreTransportSerializer,
-    OrdreTransportSerializer,
+    CoutFretReelSerializer, EtapeTransportSerializer,
+    LigneOrdreTransportSerializer, OrdreTransportSerializer,
 )
 
 
@@ -167,3 +169,23 @@ class EtapeTransportViewSet(CompanyScopedModelViewSet):
         services.apres_changement_statut_etape(
             etape, ancien_statut, user=request.user)
         return Response(EtapeTransportSerializer(etape).data)
+
+
+class CoutFretReelViewSet(CompanyScopedModelViewSet):
+    """NTLOG16 — coûts de fret réels. Filtrable par `?ordre_transport=`."""
+
+    queryset = CoutFretReel.objects.select_related('ordre_transport').all()
+    serializer_class = CoutFretReelSerializer
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        ordre = self.request.query_params.get('ordre_transport')
+        if ordre:
+            qs = qs.filter(ordre_transport_id=ordre)
+        return qs
+
+    def perform_create(self, serializer):
+        _check_same_company(
+            self.request,
+            ordre_transport=serializer.validated_data.get('ordre_transport'))
+        serializer.save(company=self.request.user.company)

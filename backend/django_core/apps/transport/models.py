@@ -187,3 +187,41 @@ class EtapeTransport(TenantModel):
 
     def __str__(self):
         return f'{self.ordre_id} · étape {self.sequence} ({self.statut_etape})'
+
+
+class CoutFretReel(TenantModel):
+    """NTLOG16 — coût de fret réel ventilé sur un ordre de transport. Étend
+    le landed cost FG316/DC38 (`apps.stock.services`) SANS redéfinir son
+    modèle : `selectors.frais_transport_pour_landed_cost` est le point de
+    lecture unique que FG316 pourra consommer."""
+
+    class TypeCout(models.TextChoices):
+        TRANSPORT = 'transport', 'Transport'
+        ASSURANCE = 'assurance', 'Assurance'
+        MANUTENTION = 'manutention', 'Manutention'
+        DEDOUANEMENT = 'dedouanement', 'Dédouanement'
+
+    ordre_transport = models.ForeignKey(
+        OrdreTransport, on_delete=models.CASCADE, related_name='couts_fret')
+    montant_ht = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('0'))
+    devise = models.CharField(max_length=8, default='MAD')
+    type_cout = models.CharField(
+        max_length=15, choices=TypeCout.choices, default=TypeCout.TRANSPORT)
+    # string-FK optionnelle vers stock.BonCommandeFournisseur.
+    stock_boncommandefournisseur_id = models.PositiveIntegerField(
+        null=True, blank=True,
+        verbose_name='BCF (stock.BonCommandeFournisseur)')
+    note = models.TextField(blank=True, default='')
+
+    class Meta:
+        verbose_name = 'Coût de fret réel'
+        verbose_name_plural = 'Coûts de fret réels'
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['company', 'stock_boncommandefournisseur_id'],
+                         name='idx_cfr_co_bcf'),
+        ]
+
+    def __str__(self):
+        return f'{self.type_cout} {self.montant_ht} {self.devise}'
