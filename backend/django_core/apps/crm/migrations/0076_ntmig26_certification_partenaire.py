@@ -13,7 +13,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('crm', '0068_ntadm2_lead_entite'),
+        ('crm', '0075_playbook_condition'),
     ]
 
     operations = [
