@@ -215,6 +215,20 @@ class OrdreFabricationViewSet(CompanyScopedModelViewSet):
         of = self.get_object()
         return Response(disponibilite_par_ligne_of(of))
 
+    @action(detail=True, methods=['get'], url_path='traveler-pdf',
+            permission_classes=[ScopedPermission])
+    def traveler_pdf(self, request, pk=None):
+        """NTMFG19 — fiche suiveuse d'OF (traveler) imprimable, PDF.
+        STRICTEMENT INTERNE : aucun prix (test de non-régression dédié)."""
+        from django.http import HttpResponse
+
+        from . import pdf as mrp_pdf
+        of = self.get_object()
+        pdf_bytes = mrp_pdf.traveler_pdf(of)
+        resp = HttpResponse(pdf_bytes, content_type='application/pdf')
+        resp['Content-Disposition'] = f'inline; filename="traveler-of-{of.id}.pdf"'
+        return resp
+
 
 class OperationOFViewSet(mixins.RetrieveModelMixin, mixins.ListModelMixin,
                          viewsets.GenericViewSet):

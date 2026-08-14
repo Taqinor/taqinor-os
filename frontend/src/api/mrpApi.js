@@ -58,6 +58,10 @@ const mrpApi = {
 
   // Simulation de charge « et si » (NTMFG18) — aucune écriture.
   simulerCharge: (body) => api.post('/mrp/simuler-charge/', body),
+
+  // Fiche suiveuse / traveler imprimable (NTMFG19) — interne, aucun prix.
+  getTravelerPdf: (ofId) =>
+    api.get(`/mrp/ordres-fabrication/${ofId}/traveler-pdf/`, { responseType: 'blob' }),
 }
 
 export default mrpApi
