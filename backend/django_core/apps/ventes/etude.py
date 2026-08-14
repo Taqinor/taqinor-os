@@ -1,4 +1,4 @@
-"""PV69/70 — étude bancable v1 : `Devis.etude_params['simulation']`.
+"""PV69/70/72 — étude bancable v1 : `Devis.etude_params['simulation']`.
 
 Orchestrateur PUR (aucune écriture DB, aucun changement de statut — règle #4)
 qui agrège, par zone (pan de toiture), le productible PVGIS et une année météo
@@ -16,6 +16,17 @@ la part mensuelle réelle (TMY) × la forme horaire ciel clair
 (:func:`~apps.ventes.solar_design.clearsky_hourly_irradiance`). Sans matrice,
 repli sur :func:`~apps.ventes.solar_design.shading_analysis` (horizon/obstacles
 qualitatifs) puis, à défaut, aucun ombrage.
+
+PV72 ferme la chaîne complète : autoconsommation horaire
+(``hourly_self_consumption`` sur les courbes charge/production 288 points —
+charge fournie ou synthétisée depuis la conso du lead, production issue de
+:func:`production_horaire_zone`), net-metering du surplus
+(``net_metering_savings``, tarifs par tranche toujours ceux DÉFAUT « à
+confirmer » de ``solar_design`` — jamais durcis ici), puissance souscrite
+recommandée (``optimize_subscribed_power``, UNIQUEMENT en industriel/
+commercial — bloc minimal honnête ailleurs), dégradation garantie
+(``module_degradation_curve``) et projection 25 ans VAN/TRI
+(``tariff_escalation_projection``, coût initial = ``Devis.total_ht``).
 
 ADDITIF STRICT (PV69/règle #2) : ce module ne touche JAMAIS les clés
 historiques d'``etude_params`` (``production_annuelle``, ``economies_annuelles``,
@@ -38,7 +49,17 @@ from __future__ import annotations
 
 import datetime as _dt
 
-from apps.ventes.solar_design import DEFAULT_LOSS_FACTORS, simulate_bankable_yield
+from apps.ventes.solar_design import (
+    DEFAULT_LOSS_FACTORS,
+    TYPICAL_LOAD_PROFILE_COMMERCIAL,
+    TYPICAL_LOAD_PROFILE_RESIDENTIAL,
+    hourly_self_consumption,
+    module_degradation_curve,
+    net_metering_savings,
+    optimize_subscribed_power,
+    simulate_bankable_yield,
+    tariff_escalation_projection,
+)
 
 # Version du schéma `etude_params['simulation']` — incrémentée à tout
 # changement de forme (jamais de mutation silencieuse d'un schéma déjà posé).
@@ -340,31 +361,156 @@ def _pr_block(base_production_kwh, kwc_total, loss_factors):
     return pr, sim['warnings']
 
 
+def _load_profile_key(devis):
+    """Profil de charge type à utiliser : commercial (C&I) ou résidentiel."""
+    mode = getattr(devis, 'mode_installation', None)
+    return 'commercial' if mode in ('industriel', 'commercial') else 'residential'
+
+
+def _daily_load_kwh_from_devis(devis):
+    """Charge journalière (kWh/j) dérivée de la conso mensuelle du lead.
+
+    Source UNIQUE : ``Lead.conso_mensuelle_kwh`` (kWh/mois → kWh/j, ×12÷365).
+    Absent (pas de lead, ou lead sans conso saisie) → 0.0 : le bloc
+    ``self_consumption`` reste structurellement complet (jamais d'exception)
+    mais honnêtement à 0 plutôt qu'un chiffre inventé depuis un montant MAD
+    (aucune inversion fiable du barème ONEE progressif/sélectif sans le
+    modèle tarifaire complet — mieux vaut 0 documenté qu'un prix moyen faux).
+    """
+    lead = getattr(devis, 'lead', None)
+    conso = getattr(lead, 'conso_mensuelle_kwh', None) if lead is not None else None
+    if conso is None:
+        return 0.0
+    return _num(conso) * 12.0 / 365.0
+
+
+def _tiled_load_curve(daily_load_kwh, profile_key):
+    """Courbe de charge 288 points (12 mois × jour-type 24 h, même résolution
+    que :func:`production_horaire_zone`) depuis une charge journalière.
+
+    Réutilise les MÊMES profils publics que l'auto-synthèse propre à
+    ``hourly_self_consumption`` (``TYPICAL_LOAD_PROFILE_RESIDENTIAL`` /
+    ``_COMMERCIAL``) — pas une forme inventée — mais les tuile sur 12 mois
+    (répartition mensuelle égale, faute de courbe de charge mensuelle réelle)
+    pour matcher la résolution de la courbe de production agrégée, plutôt que
+    le jour-type unique (24 pts) que produirait l'auto-synthèse interne, ce
+    qui tronquerait la production réelle à un seul jour.
+    """
+    annual = _num(daily_load_kwh, 0.0) * 365.0
+    if annual <= 0:
+        return [0.0] * 288
+    profile = TYPICAL_LOAD_PROFILE_COMMERCIAL if profile_key == 'commercial' \
+        else TYPICAL_LOAD_PROFILE_RESIDENTIAL
+    total_shape = sum(profile) or 1.0
+    monthly = annual / 12.0
+    curve = []
+    for _ in range(12):
+        curve.extend(round(monthly * (p / total_shape), 5) for p in profile)
+    return curve
+
+
+def _hourly_flows(load_curve, production_curve):
+    """Aligne charge/production heure par heure → surplus injecté / import réseau.
+
+    Même règle que ``hourly_self_consumption`` (autoconsommé[h] =
+    min(charge[h], production[h])), mais renvoie les SÉRIES complètes :
+    ``net_metering_savings`` et ``optimize_subscribed_power`` raisonnent heure
+    par heure, pas seulement en agrégat annuel.
+    """
+    load = [max(0.0, _num(v)) for v in (load_curve or [])]
+    prod = [max(0.0, _num(v)) for v in (production_curve or [])]
+    n = min(len(load), len(prod))
+    surplus = []
+    imported = []
+    for i in range(n):
+        sc = load[i] if load[i] < prod[i] else prod[i]
+        surplus.append(prod[i] - sc)
+        imported.append(load[i] - sc)
+    return load[:n], prod[:n], surplus, imported
+
+
+def _subscribed_power_block(devis, load_curve, production_curve):
+    """Bloc ``subscribed_power`` du contrat — UNIQUEMENT calculé en industriel/
+    commercial (règle métier : la notion de puissance souscrite optimisée ne
+    s'applique pas au résidentiel/agricole). La clé du contrat est TOUJOURS
+    émise (conformité au jeu de clés) ; hors C&I, un bloc minimal honnête
+    (valeurs ``None``) plutôt qu'un chiffre hors-sujet.
+    """
+    mode = getattr(devis, 'mode_installation', None)
+    if mode not in ('industriel', 'commercial'):
+        return (
+            {
+                'peak_reduction_pct': None,
+                'recommended_subscribed': None,
+                'annual_saving': None,
+            },
+            [],
+        )
+
+    current_subscribed_kva = None
+    etude = getattr(devis, 'etude_params', None) or {}
+    for key in ('puissance_souscrite_kva', 'puissance_souscrite', 'subscribed_kva'):
+        if etude.get(key) is not None:
+            current_subscribed_kva = etude.get(key)
+            break
+
+    result = optimize_subscribed_power(
+        load_curve=load_curve, production_curve=production_curve,
+        current_subscribed_kva=current_subscribed_kva)
+    block = {
+        'peak_reduction_pct': result['peak_reduction_pct'],
+        'recommended_subscribed': result['recommended_subscribed'],
+        'annual_saving': result['annual_saving'],
+    }
+    return block, result['warnings']
+
+
+def _annual_savings_year1(settings, self_consumed_kwh, classe):
+    """Économie annuelle year-1 de l'énergie AUTOCONSOMMÉE, ancrée sur le prix
+    marginal réellement payé (``apps.parametres.tariff.effective_kwh_price`` —
+    même logique que ``tariff_service.compute_roi``), jamais un tarif moyen
+    inventé. Le surplus compensé est valorisé À PART par
+    ``net_metering_savings`` (additionné par l'appelant) : les deux montants
+    ne se recouvrent jamais (énergie autoconsommée vs énergie injectée).
+    """
+    if self_consumed_kwh <= 0:
+        return 0.0
+    from apps.parametres import tariff as tariff_service
+    conso_mensuelle_repr = self_consumed_kwh / 12.0
+    prix = tariff_service.effective_kwh_price(settings, conso_mensuelle_repr, classe)
+    return float(prix) * self_consumed_kwh
+
+
 def run_bankable_study(devis, *, zones, load_curve=None, force_refresh=False,
                        computed_at=None):
-    """PV69/70 — productible PVGIS multi-zones → ombrage pondéré → PR → P50/P90/P75.
+    """PV69/70/72 — chaîne complète : productible → ombrage → PR → autoconso →
+    net-metering → puissance souscrite → dégradation → projection 25 ans.
 
     Paramètres
     ----------
-    devis : ``Devis`` — résout la société (réglages PVGIS + tarifs) ET sert de
-        source pour la matrice d'ombrage 12×24 (``devis.roof_layout``, PV70,
-        repli tolérant si absente) ; jamais lu/écrit autrement (aucun
+    devis : ``Devis`` — résout la société (réglages PVGIS + tarifs), la
+        matrice d'ombrage 12×24 (``devis.roof_layout``, PV70, repli tolérant),
+        la conso du lead (``devis.lead.conso_mensuelle_kwh``, PV72, repli 0) et
+        le coût initial (``devis.total_ht``, PV72) ; jamais écrit (aucun
         ``devis.save()`` ici).
     zones : liste de ``{label, lat, lon, tilt, azimuth, kwc, shading12x24?,
         horizon_profile?, obstacles?}`` — un pan de toiture par élément. Une
         zone illisible (kWc/coords manquants) ne fait jamais échouer l'étude :
         elle contribue 0 kWh, jamais d'exception.
-    load_curve : réservé à PV72 (autoconsommation) — ignoré en v1/v2.
+    load_curve : courbe de charge horaire explicite (n'importe quelle
+        longueur) ; absente → synthétisée depuis la conso du lead, tuilée sur
+        288 points (12 mois × jour-type) pour matcher la courbe de production
+        agrégée (voir :func:`_tiled_load_curve`).
     force_refresh : réservé à PV73 (cache PVGIS système) — sans effet tant que
         le cache n'est pas branché (comportement inchangé).
     computed_at : ``datetime`` figé pour un rendu déterministe (tests) ;
         défaut = maintenant (``django.utils.timezone.now``, appelé ici pour
         rester du code applicatif, pas le module PUR ``solar_design``).
 
-    Retourne un dict JSON-sérialisable ``{version, computed_at, source, zones,
-    pr, warnings}`` conforme au sous-ensemble ``PV69/70`` du contrat PACT10
-    (les blocs ``self_consumption``/``net_metering``/``subscribed_power``/
-    ``degradation``/``projection_25y`` arrivent en PV72). Ne lève JAMAIS.
+    Retourne un dict JSON-sérialisable conforme au contrat PACT10 COMPLET :
+    ``{version, computed_at, source, zones, pr, self_consumption,
+    net_metering, subscribed_power, degradation, projection_25y, warnings}``.
+    Ne lève JAMAIS.
     """
     if computed_at is None:
         from django.utils import timezone
@@ -374,6 +520,7 @@ def run_bankable_study(devis, *, zones, load_curve=None, force_refresh=False,
     settings = _company_settings(devis)
 
     zones_out = []
+    zone_curves = []
     base_total = 0.0
     kwc_total = 0.0
     sources = set()
@@ -393,6 +540,10 @@ def run_bankable_study(devis, *, zones, load_curve=None, force_refresh=False,
             'base_production_kwh': ctx['base_production_kwh'],
             'shading_annual_loss_pct': ctx['shading_annual_loss_pct'],
         })
+        # PV72 — courbe de production horaire de la zone (dérate matrice déjà
+        # résolue par _zone_base_production), agrégée plus bas.
+        zone_curves.append(
+            production_horaire_zone(zones_out[-1], ctx['shading_matrix']))
         base_total += ctx['base_production_kwh']
         kwc_total += kwc
         sources.add(ctx['source'])
@@ -418,11 +569,94 @@ def run_bankable_study(devis, *, zones, load_curve=None, force_refresh=False,
     pr, sim_warnings = _pr_block(base_total, kwc_total, loss_factors)
     warnings.extend(sim_warnings)
 
+    # PV72 — production agrégée horaire (Σ des courbes de zone, 288 pts).
+    production_curve = (
+        [sum(vals) for vals in zip(*zone_curves)] if zone_curves else [])
+
+    # PV72 — charge horaire : explicite si fournie, sinon synthétisée depuis
+    # la conso du lead (même résolution 288 pts que la production, voir
+    # _tiled_load_curve — jamais l'auto-synthèse 24 pts interne à
+    # hourly_self_consumption, qui tronquerait la production réelle).
+    if load_curve:
+        load_curve_resolved = list(load_curve)
+    else:
+        daily_load = _daily_load_kwh_from_devis(devis)
+        if daily_load <= 0:
+            warnings.append(
+                "consommation du lead non renseignée — autoconsommation non "
+                "estimable (0 par construction, jamais un chiffre inventé)")
+        load_curve_resolved = _tiled_load_curve(
+            daily_load, _load_profile_key(devis))
+
+    sc_result = hourly_self_consumption(
+        load_curve=load_curve_resolved, production_curve=production_curve)
+    self_consumption = {
+        'hours': sc_result['hours'],
+        'self_consumption_rate': sc_result['self_consumption_rate'],
+        'coverage_rate': sc_result['coverage_rate'],
+        'self_consumed_kwh': sc_result['self_consumed_kwh'],
+        'surplus_kwh': sc_result['surplus_kwh'],
+        'grid_import_kwh': sc_result['grid_import_kwh'],
+    }
+    warnings.extend(sc_result['warnings'])
+
+    _, _, surplus_curve, import_curve = _hourly_flows(
+        load_curve_resolved, production_curve)
+
+    mode = getattr(devis, 'mode_installation', None)
+    classe = 'agricole' if mode == 'agricole' else 'residentiel'
+
+    # PV72 — les tarifs par tranche restent les DÉFAUTS « à confirmer » de
+    # solar_design (jamais durcis ici) ; seul le toggle réel de compensation
+    # société est branché (13-09 : OFF par défaut au Maroc).
+    nm_result = net_metering_savings(
+        injected_curve=surplus_curve, import_curve=import_curve,
+        days_per_year=1,
+        surplus_injecte_compense=bool(settings.surplus_injecte_compense))
+    net_metering = {
+        'annual_savings_mad': nm_result['annual_savings_mad'],
+        'annual_compensated_kwh': nm_result['annual_compensated_kwh'],
+        'annual_spill_value_mad': nm_result['annual_spill_value_mad'],
+    }
+    warnings.extend(nm_result['warnings'])
+
+    subscribed_power, sp_warnings = _subscribed_power_block(
+        devis, load_curve_resolved, production_curve)
+    warnings.extend(sp_warnings)
+
+    deg_result = module_degradation_curve(
+        production_year1=base_total if base_total > 0 else None)
+    degradation = {
+        'factor_year1': deg_result['summary']['factor_year1'],
+        'factor_last_year': deg_result['summary']['factor_last_year'],
+        'any_warranty_breach': deg_result['summary']['any_warranty_breach'],
+    }
+    warnings.extend(deg_result['warnings'])
+
+    annual_savings_year1 = (
+        _annual_savings_year1(settings, self_consumption['self_consumed_kwh'], classe)
+        + net_metering['annual_savings_mad'])
+    upfront_cost = _num(getattr(devis, 'total_ht', None), 0.0)
+    proj_result = tariff_escalation_projection(
+        annual_savings_year1=annual_savings_year1, upfront_cost=upfront_cost)
+    projection_25y = {
+        'npv': proj_result['summary']['npv'],
+        'irr': proj_result['summary']['irr'],
+        'payback_year': proj_result['summary']['payback_year'],
+        'discounted_payback_year': proj_result['summary']['discounted_payback_year'],
+    }
+    warnings.extend(proj_result['warnings'])
+
     return {
         'version': SIMULATION_VERSION,
         'computed_at': _iso_z(computed_at),
         'source': source,
         'zones': zones_out,
         'pr': pr,
+        'self_consumption': self_consumption,
+        'net_metering': net_metering,
+        'subscribed_power': subscribed_power,
+        'degradation': degradation,
+        'projection_25y': projection_25y,
         'warnings': warnings,
     }
