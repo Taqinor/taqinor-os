@@ -60,9 +60,12 @@ from django.shortcuts import get_object_or_404
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import extend_schema, inline_serializer
 from rest_framework import serializers as drf_serializers
-from rest_framework.decorators import action, api_view, permission_classes
+from rest_framework.decorators import (
+    action, api_view, permission_classes, throttle_classes,
+)
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
+from rest_framework.throttling import SimpleRateThrottle
 
 from authentication.permissions import IsResponsableOrAdmin
 
@@ -560,6 +563,33 @@ class EnqueteNPSViewSetNotifiant(EnqueteNPSViewSet):
         return response
 
 
+class _EvenementInscriptionPubliqueThrottle(SimpleRateThrottle):
+    """YRBAC9 — débit de l'inscription publique NOTIFIANTE (NTMKT44) par
+    IP + événement ciblé, même patron que ``PublicSalleVenteRateThrottle``
+    (``apps/crm/public_views.py``).
+
+    L'endpoint est ``AllowAny`` et, sans auth, CRÉE une inscription PUIS
+    notifie le commercial du lead résolu : non limité, il ouvre à la fois un
+    déni de service (inscriptions et notifications en masse) et l'énumération
+    des ``evenement_id`` / ``billet_id`` (404 distincts). Scope DÉDIÉ (et non
+    celui de ``_MarketingPublicThrottle``) pour que ce budget ne soit ni
+    épuisé par, ni épuisable au détriment de la vue ``XMKT28`` d'origine.
+    """
+    scope = 'marketing_evenement_inscription_publique'
+    rate = '30/minute'
+
+    def get_rate(self):
+        return self.rate
+
+    def get_cache_key(self, request, view):
+        evenement_id = (view.kwargs or {}).get('evenement_id', '') if view else ''
+        ident = self.get_ident(request)
+        return self.cache_format % {
+            'scope': self.scope,
+            'ident': f'{ident}:{evenement_id}',
+        }
+
+
 @extend_schema(request=inline_serializer(
     'EvenementInscriptionNotifianteRequest', {
         'nom': drf_serializers.CharField(),
@@ -578,6 +608,7 @@ class EnqueteNPSViewSetNotifiant(EnqueteNPSViewSet):
         })})
 @api_view(['POST'])
 @permission_classes([AllowAny])
+@throttle_classes([_EvenementInscriptionPubliqueThrottle])
 def evenement_inscription_publique_notifiante(request, evenement_id):
     """NTMKT44 — même contrat public que ``evenement_inscription_publique``
     (XMKT28, ``apps.compta.views``, jamais modifiée) : inscrit un
