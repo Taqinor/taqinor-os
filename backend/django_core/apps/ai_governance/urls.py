@@ -3,7 +3,8 @@ from django.urls import include, path
 from rest_framework.routers import SimpleRouter
 
 from .views import (AssistantConfigView, CrInterventionView,
-                    DescriptionProduitView, RapportPeriodeView, RedigerView)
+                    DescriptionProduitView, RapportPeriodeView,
+                    RechercheGlobaleView, RedigerView)
 from .viewsets import DocumentAiJobViewSet
 
 # SimpleRouter (et non DefaultRouter) : le préfixe `/api/django/ai/` ne doit
@@ -28,5 +29,8 @@ urlpatterns = [
     # NTAI36 — brouillon de rapport d'activité périodique (chiffres serveur).
     path('rapport-periode/', RapportPeriodeView.as_view(),
          name='ai-rapport-periode'),
+    # NTAI25 — recherche sémantique GLOBALE avec citations (RAG sur les fiches).
+    path('recherche-globale/', RechercheGlobaleView.as_view(),
+         name='ai-recherche-globale'),
     path('', include(router.urls)),
 ]

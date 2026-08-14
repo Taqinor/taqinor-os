@@ -1040,3 +1040,141 @@ def taux_correction_par_schema(company) -> list:
                                 if revus else 0.0),
         })
     return sortie
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# NTAI25 — Recherche sémantique GLOBALE avec citations (« Ask your ERP »)
+# ─────────────────────────────────────────────────────────────────────────────
+#
+# DISTINCT de l'agent NL→SQL existant : celui-là interroge des AGRÉGATS (« combien
+# de devis signés en juin ? »), celui-ci répond sur des FICHES/DOCUMENTS (« quels
+# clients ont un litige ouvert et un contrat qui expire ? ») en CITANT chaque
+# source réelle.
+#
+# GARDE NTAI4 : le LLM ne voit QUE les fiches remontées par l'index (NTAI24,
+# scopé société) et doit citer sous la forme fermée ``[app.model#id]``. Toute
+# citation qui ne figure pas dans ces résultats est RETIRÉE de la réponse et
+# rapportée dans ``citations_ecartees`` — jamais rendue à l'utilisateur, jamais
+# transformée en lien mort.
+
+#: Nombre de fiches injectées dans le contexte : assez pour répondre, assez peu
+#: pour rester lisible et borné en coût.
+RECHERCHE_GLOBALE_LIMITE = 8
+
+#: Forme FERMÉE d'une citation — c'est ce que la garde sait vérifier.
+CITATION_RE = re.compile(r'\[([a-z_]+\.[a-z_]+)#(\d+)\]')
+
+RECHERCHE_GLOBALE_SYSTEM = (
+    "Tu réponds en français à une question sur les données d'une entreprise, "
+    'en te fondant EXCLUSIVEMENT sur les fiches fournies ci-dessous. '
+    'Cite chaque fiche utilisée sous la forme exacte [app.model#id] '
+    "(par exemple [crm.lead#12]), juste après l'information qu'elle appuie. "
+    "N'invente aucune fiche, aucun chiffre et aucune citation : si les fiches "
+    'ne permettent pas de répondre, dis-le simplement.'
+)
+
+
+def _contexte_citations(resultats) -> str:
+    """Contexte injecté au LLM : une ligne par fiche, avec sa citation exacte."""
+    lignes = []
+    for fiche in resultats:
+        reference = f"[{fiche['content_type']}#{fiche['object_id']}]"
+        lignes.append(
+            f"{reference} {fiche['titre']} — {fiche['extrait']}".strip())
+    return '\n'.join(lignes)
+
+
+def filtrer_citations(reponse, resultats):
+    """NTAI4 — Retire de ``reponse`` toute citation absente des ``resultats``.
+
+    Renvoie ``(texte_nettoye, citations_utilisees, citations_ecartees)``. Une
+    citation inventée est SUPPRIMÉE du texte : l'utilisateur ne peut pas cliquer
+    sur une fiche qui n'existe pas.
+    """
+    connues = {
+        f"{f['content_type']}#{f['object_id']}": f for f in resultats
+    }
+    utilisees, ecartees = [], []
+
+    def _remplacer(match):
+        cle = f'{match.group(1)}#{match.group(2)}'
+        fiche = connues.get(cle)
+        if fiche is None:
+            if cle not in ecartees:
+                ecartees.append(cle)
+            return ''
+        if fiche not in utilisees:
+            utilisees.append(fiche)
+        return match.group(0)
+
+    texte = CITATION_RE.sub(_remplacer, str(reponse or ''))
+    # Nettoie les espaces doublés laissés par une citation retirée.
+    texte = re.sub(r'[ \t]{2,}', ' ', texte).strip()
+    return texte, utilisees, ecartees
+
+
+def recherche_globale(*, company, question, limit=RECHERCHE_GLOBALE_LIMITE,
+                      max_tokens=600) -> dict:
+    """NTAI25 — Répond à ``question`` sur les fiches de ``company``, avec sources.
+
+    Renvoie ``{question, reponse, citations, resultats, source,
+    citations_ecartees}`` où ``source`` vaut ``'llm'`` (réponse rédigée) ou
+    ``'recherche'`` (repli : la liste des fiches trouvées, sans rédaction —
+    c'est ce qui se passe sans clé LLM). N'ÉCRIT JAMAIS.
+    """
+    from core.ai.search import rechercher
+
+    question = str(question or '').strip()
+    if not question:
+        raise AiCopiloteUnavailable('Question requise.')
+
+    resultats = rechercher(company, question, limit=limit)
+    if not resultats:
+        return {
+            'question': question,
+            'reponse': ('Aucune fiche ne correspond à cette question dans '
+                        'vos données.'),
+            'citations': [],
+            'resultats': [],
+            'source': 'recherche',
+            'citations_ecartees': [],
+        }
+
+    if not is_capability_configured('llm'):
+        # Repli : la recherche existante rend ses fiches telles quelles.
+        return {
+            'question': question,
+            'reponse': ('Recherche par mots-clés : '
+                        f'{len(resultats)} fiche(s) trouvée(s).'),
+            'citations': resultats,
+            'resultats': resultats,
+            'source': 'recherche',
+            'citations_ecartees': [],
+        }
+
+    res = get_provider('llm').complete(
+        prompt=(f'Question : {question}\n\nFiches disponibles :\n'
+                f'{_contexte_citations(resultats)}'),
+        system=RECHERCHE_GLOBALE_SYSTEM, max_tokens=max_tokens)
+    if not res.ok or not (res.data or {}).get('text'):
+        # Le fournisseur a échoué : on rend les fiches, jamais une erreur.
+        return {
+            'question': question,
+            'reponse': ('Recherche par mots-clés : '
+                        f'{len(resultats)} fiche(s) trouvée(s).'),
+            'citations': resultats,
+            'resultats': resultats,
+            'source': 'recherche',
+            'citations_ecartees': [],
+        }
+
+    texte, utilisees, ecartees = filtrer_citations(
+        res.data['text'], resultats)
+    return {
+        'question': question,
+        'reponse': texte,
+        'citations': utilisees,
+        'resultats': resultats,
+        'source': 'llm',
+        'citations_ecartees': ecartees,
+    }
