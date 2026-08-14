@@ -1,3 +1,4 @@
+from django.db import transaction
 from rest_framework.exceptions import PermissionDenied, ValidationError
 
 from core.viewsets import CompanyScopedModelViewSet
@@ -37,10 +38,15 @@ class DossierExportViewSet(CompanyScopedModelViewSet):
                 raise ValidationError({field: 'Objet inconnu pour cette société.'})
 
     def perform_create(self, serializer):
+        # Création + numérotation dans UNE transaction (revue coordinateur
+        # NTLOG14) : sinon un échec de numérotation laisse une ligne
+        # `numero=''` committée, et `unique_together (company, numero)`
+        # bloque alors toute création suivante pour cette société.
         self._check_tenant(serializer)
-        instance = serializer.save(
-            company=self.request.user.company, created_by=self.request.user)
-        attribuer_numero_dossier_export(instance)
+        with transaction.atomic():
+            instance = serializer.save(
+                company=self.request.user.company, created_by=self.request.user)
+            attribuer_numero_dossier_export(instance)
 
     def perform_update(self, serializer):
         self._check_tenant(serializer)
