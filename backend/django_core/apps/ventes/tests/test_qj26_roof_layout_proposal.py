@@ -104,9 +104,16 @@ def sample_layout_v2():
         'billKwh': 900,
         'activeAreaId': 'z1',
     })
+    # WJ24 — la POSE RÉELLE de la zone : les cellules effectivement occupées
+    # (``prefill.ts``), pas les `count` premières du pavage. C'est ce bloc que
+    # la proposition publique doit republier, sans quoi le client voit un
+    # calepinage recalculé — donc un autre toit que celui qu'on lui a vendu.
     layout['zones'][0]['geometry'] = {
-        'azimuthDeg': 0, 'tiltDeg': 30, 'family': 'portrait', 'flush': True,
-        'kwc': 6.6, 'count': 12, 'origin': [0, 0], 'panels': [],
+        'azimuthDeg': 0, 'tiltDeg': 30, 'family': 'south', 'flush': True,
+        'kwc': 6.6, 'count': 3, 'origin': [-7.58, 33.57],
+        'panels': [{'cx': 0.0, 'cy': 0.0},
+                   {'cx': 1.15, 'cy': 0.0},
+                   {'cx': 2.3, 'cy': 0.0, 'face': 'E'}],
     }
     return layout
 
@@ -146,14 +153,77 @@ class TestSafeRoofLayoutV2Whitelist(TestCase):
         self.assertEqual(set(safe), self.CLES_PUBLIABLES)
         self.assertEqual(set(safe['result']), self.CLES_RESULT_PUBLIABLES)
 
+    #: Les SEULES sous-clés qu'une pose publiée a le droit de porter (WJ24).
+    CLES_GEOMETRY_PUBLIABLES = {'azimuthDeg', 'tiltDeg', 'kwc', 'count',
+                                'family', 'flush', 'origin', 'panels'}
+
     def test_aucun_ajout_v2_ne_traverse_la_whitelist(self):
         safe = self._safe(sample_layout_v2())
         for ajout in ('panelWatt', 'battery', 'source', 'devisId', 'version',
-                      'pin', 'outline', 'billKwh', 'activeAreaId',
-                      'geometry', 'savings'):
+                      'pin', 'outline', 'billKwh', 'activeAreaId', 'savings'):
             self.assertNotIn(ajout, json.dumps(safe),
                              'la clé v2 « %s » fuit dans la proposition '
                              'publique' % ajout)
+        # WJ24 — `geometry` est désormais PUBLIÉE (le client doit voir la pose
+        # réelle), mais toujours par recopie champ par champ : le jeu de
+        # sous-clés est épinglé ici exactement comme le jeu de clés racines.
+        pose = safe['zones'][0]['geometry']
+        self.assertEqual(set(pose), self.CLES_GEOMETRY_PUBLIABLES)
+        for panneau in pose['panels']:
+            self.assertLessEqual(set(panneau), {'cx', 'cy', 'face'})
+
+    def test_une_geometrie_piegee_ne_laisse_rien_passer(self):
+        """La recopie est CHAMP PAR CHAMP, et c'est tout l'enjeu.
+
+        ``roof_layout`` est le blob POST stocké TEL QUEL : republier
+        ``zone.geometry`` en bloc reviendrait à republier ce qu'on y aurait
+        glissé. On y niche donc ici tout ce qui ne doit jamais sortir.
+        """
+        layout = sample_layout_v2()
+        layout['zones'][0]['geometry'].update({
+            'prix_achat': 9999, 'marge': 0.42, 'prix_vente': 1400,
+            'note_interne': 'remise max 12 %', 'cout_pose': 3200,
+        })
+        layout['zones'][0]['geometry']['panels'][0].update({
+            'prix_achat': 777, 'marge': 0.9})
+
+        safe = self._safe(layout)
+        pose = safe['zones'][0]['geometry']
+        self.assertEqual(set(pose), self.CLES_GEOMETRY_PUBLIABLES)
+        self.assertEqual(set(pose['panels'][0]), {'cx', 'cy'})
+        blob = json.dumps(safe)
+        for fuite in ('prix_achat', 'marge', 'prix_vente', 'note_interne',
+                      'cout_pose', '9999', '777', '3200', '0.42'):
+            self.assertNotIn(fuite, blob,
+                             '« %s » fuit par zone.geometry' % fuite)
+
+    def test_les_valeurs_exotiques_sont_jetees(self):
+        """Typage STRICT : une coordonnée n'est jamais une chaîne ni un bool."""
+        layout = sample_layout_v2()
+        layout['zones'][0]['geometry'] = {
+            'azimuthDeg': 'plein sud', 'tiltDeg': None, 'kwc': True,
+            'family': 'portrait', 'flush': 'oui', 'count': 12,
+            'origin': [0, 0, 0],
+            'panels': [{'cx': 1.0, 'cy': 'gauche'}, 'pas un dict',
+                       {'cx': 2.0, 'cy': 3.0, 'face': 'Z'}],
+        }
+        pose = self._safe(layout)['zones'][0]['geometry']
+        self.assertEqual(set(pose), {'count', 'panels'})
+        self.assertEqual(pose['panels'], [{'cx': 2.0, 'cy': 3.0}])
+
+    def test_la_liste_de_panneaux_est_bornee(self):
+        from apps.ventes.public_views import _MAX_PANNEAUX_PUBLIES
+        layout = sample_layout_v2()
+        layout['zones'][0]['geometry']['panels'] = [
+            {'cx': float(i), 'cy': 0.0}
+            for i in range(_MAX_PANNEAUX_PUBLIES + 250)]
+        pose = self._safe(layout)['zones'][0]['geometry']
+        self.assertEqual(len(pose['panels']), _MAX_PANNEAUX_PUBLIES)
+
+    def test_une_geometrie_absente_ne_publie_aucune_cle(self):
+        """Layout v1 (aucune pose) : la clé n'apparaît simplement pas."""
+        safe = self._safe(sample_layout())
+        self.assertNotIn('geometry', safe['zones'][0])
 
     def test_les_economies_restent_hors_de_la_proposition(self):
         """``result.savings`` porte une sémantique de PRIX : jamais publié."""
@@ -163,12 +233,27 @@ class TestSafeRoofLayoutV2Whitelist(TestCase):
         self.assertNotIn('savings', safe['result'])  # …absent à la sortie.
         self.assertNotIn('11000', json.dumps(safe))
 
-    def test_la_v2_publie_la_meme_geometrie_que_la_v1(self):
-        """Le passage v1 → v2 n'AJOUTE rien de publiable : sortie identique."""
-        self.assertEqual(json.dumps(self._safe(sample_layout()),
-                                    sort_keys=True),
-                         json.dumps(self._safe(sample_layout_v2()),
-                                    sort_keys=True))
+    def test_la_v2_n_ajoute_que_la_pose_reelle(self):
+        """WJ24 — le SEUL ajout publiable de la v2 est ``zones[].geometry``.
+
+        (Avant WJ24 les deux sorties étaient identiques, et c'était le bug : la
+        pose réelle restait à quai, donc le lien client re-calculait un
+        calepinage au lieu de montrer celui qui a été vendu.)
+        """
+        v1 = self._safe(sample_layout())
+        v2 = self._safe(sample_layout_v2())
+
+        self.assertEqual(set(v1), set(v2))
+        self.assertEqual(v1['pans'], v2['pans'])
+        self.assertEqual(v1['result'], v2['result'])
+        self.assertEqual(v1['scenario'], v2['scenario'])
+
+        pose = v2['zones'][0].pop('geometry')
+        self.assertEqual(json.dumps(v1['zones'], sort_keys=True),
+                         json.dumps(v2['zones'], sort_keys=True))
+        self.assertEqual(pose['count'], 3)
+        self.assertEqual(len(pose['panels']), 3)
+        self.assertEqual(pose['origin'], [-7.58, 33.57])
 
 
 class TestSafeRoofLayoutSanitizer(TestCase):

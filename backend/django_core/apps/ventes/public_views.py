@@ -430,14 +430,101 @@ def _monthly_consumption(devis) -> list:
     return out
 
 
+#: WJ24 — plafond de panneaux republiés PAR ZONE. Une villa en pose quelques
+#: dizaines ; 600 couvre très largement l'industriel tout en bornant la taille
+#: du payload public (et le coût d'un blob stocké volumineux).
+_MAX_PANNEAUX_PUBLIES = 600
+
+#: Valeurs d'énumération admises — tout le reste est jeté (jamais republié).
+_FAMILLES_CONNUES = ('south', 'eastwest')
+_FACES_CONNUES = ('E', 'W')
+
+
+def _nombre_publiable(valeur):
+    """``float`` fini, ou ``None``.
+
+    Strict par construction : un booléen (``True`` vaut 1 en Python), une
+    chaîne, un ``None`` ou un infini ne deviennent JAMAIS une coordonnée.
+    """
+    if isinstance(valeur, bool) or not isinstance(valeur, (int, float)):
+        return None
+    nombre = float(valeur)
+    if nombre != nombre or nombre in (float('inf'), float('-inf')):
+        return None
+    return nombre
+
+
+def _safe_zone_geometry(brut) -> dict | None:
+    """WJ24 — la POSE RÉELLE d'une zone, recopiée CHAMP PAR CHAMP.
+
+    Sans ce bloc, le lien client montrait un calepinage RECALCULÉ : la moindre
+    édition manuelle (deux panneaux retirés autour d'une cheminée) était perdue,
+    et le client regardait un autre toit que celui qu'on lui a vendu.
+    ``zone.geometry`` (émise par ``prefill.ts``) porte les cellules
+    EFFECTIVEMENT posées — c'est elle qu'il faut republier.
+
+    Mais ``roof_layout`` est le blob POST stocké TEL QUEL : le recopier en bloc
+    reviendrait à republier n'importe quel champ glissé dedans (des échantillons
+    portent des ``prix_achat``/``marge`` nichés). D'où la recopie champ par
+    champ — typage strict, énumérations fermées, liste de panneaux bornée : ce
+    qui n'est pas explicitement nommé ici n'existe pas en sortie.
+
+    Retourne ``None`` quand il ne reste rien d'exploitable.
+    """
+    if not isinstance(brut, dict):
+        return None
+
+    geo = {}
+    for cle in ('azimuthDeg', 'tiltDeg', 'kwc'):
+        valeur = _nombre_publiable(brut.get(cle))
+        if valeur is not None:
+            geo[cle] = valeur
+    compte = _nombre_publiable(brut.get('count'))
+    if compte is not None:
+        geo['count'] = int(compte)
+    if brut.get('family') in _FAMILLES_CONNUES:
+        geo['family'] = brut['family']
+    if isinstance(brut.get('flush'), bool):
+        geo['flush'] = brut['flush']
+
+    # Origine ENU : exactement deux nombres (lng, lat), sinon rien.
+    origine = brut.get('origin')
+    if isinstance(origine, (list, tuple)) and len(origine) == 2:
+        lng = _nombre_publiable(origine[0])
+        lat = _nombre_publiable(origine[1])
+        if lng is not None and lat is not None:
+            geo['origin'] = [lng, lat]
+
+    brutes = brut.get('panels')
+    brutes = brutes[:_MAX_PANNEAUX_PUBLIES] if isinstance(brutes, list) else []
+    panneaux = []
+    for cellule in brutes:
+        if not isinstance(cellule, dict):
+            continue
+        cx = _nombre_publiable(cellule.get('cx'))
+        cy = _nombre_publiable(cellule.get('cy'))
+        if cx is None or cy is None:
+            continue
+        pose = {'cx': cx, 'cy': cy}
+        if cellule.get('face') in _FACES_CONNUES:
+            pose['face'] = cellule['face']
+        panneaux.append(pose)
+    if panneaux:
+        geo['panels'] = panneaux
+
+    return geo or None
+
+
 def _safe_roof_layout(devis) -> dict | None:
     """QJ26 — layout de toiture ASSAINI pour l'exposition publique (client).
 
     Ne renvoie QUE la GÉOMÉTRIE : par pan (nombre de panneaux, orientation,
     azimut, inclinaison, kWc, type de toit) + la géométrie des zones (sommets,
-    obstacles, type, pente, azimut) + les totaux géométriques (kWc, nb panneaux,
-    production annuelle kWh). JAMAIS de prix, prix_achat, marge, économies, ni
-    aucun champ interne (`_pans_geometry` est lue mais recopiée champ par champ).
+    obstacles, type, pente, azimut) + la POSE RÉELLE de chaque zone (WJ24 :
+    ``geometry``, recopiée champ par champ par ``_safe_zone_geometry``) + les
+    totaux géométriques (kWc, nb panneaux, production annuelle kWh). JAMAIS de
+    prix, prix_achat, marge, économies, ni aucun champ interne (`_pans_geometry`
+    est lue mais recopiée champ par champ).
 
     Retourne None quand le devis ne porte pas de layout (le PNG poster reste le
     repli via `roof_image_url`). Company-scoped par construction : on ne lit que
@@ -463,7 +550,13 @@ def _safe_roof_layout(devis) -> dict | None:
     for z in (layout.get("zones") or []):
         if not isinstance(z, dict):
             continue
-        zones.append({k: z.get(k) for k in _ZONE_KEYS if k in z})
+        zone = {k: z.get(k) for k in _ZONE_KEYS if k in z}
+        # WJ24 — la pose RÉELLE, sans quoi le client voit un calepinage
+        # recalculé (donc un autre toit que celui qui lui a été vendu).
+        geometrie = _safe_zone_geometry(z.get("geometry"))
+        if geometrie:
+            zone["geometry"] = geometrie
+        zones.append(zone)
 
     # Totaux GÉOMÉTRIQUES uniquement (kWc, panneaux, production) — pas savings.
     _res = layout.get("result") or {}
