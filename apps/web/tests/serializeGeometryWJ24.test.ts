@@ -108,7 +108,12 @@ describe('WJ24 — serializeLayout élargi (géométrie par pan, additif)', () =
     const layout = serializeLayout(ctx, 8000);
     const flat = JSON.stringify(layout);
     expect(flat).not.toContain('renderPlan');
-    expect(flat).not.toContain('"result"');
+    // PV13 — le `result` racine est un AJOUT v2 voulu ; ce qui ne doit toujours pas
+    // fuiter, c'est le `result` VIVANT d'une zone (objet dérivé, recalculé au boot).
+    for (const z of layout.zones) expect('result' in z).toBe(false);
+    // et il est DÉRIVÉ de la géométrie exportée : mêmes panneaux, même kWc.
+    expect(layout.result.panels).toBe(layout.zones[0].geometry!.count);
+    expect(layout.result.kwc).toBe(layout.zones[0].geometry!.kwc);
     const back = deserializeLayout(layout);
     expect(back.length).toBe(1);
     expect(back[0].vertices).toEqual(ctx.areas[0].vertices);
