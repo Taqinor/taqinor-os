@@ -215,6 +215,10 @@ def creer_vague_depuis_besoins(*, company, user=None, besoins=None,
             id__in=[b.get('produit_id') for b in besoins if b.get('produit_id')])
     }
 
+    # NTWMS31 — la marchandise en quarantaine n'est JAMAIS proposée à une
+    # vague : elle est physiquement là mais qualitativement bloquée.
+    quarantaine = quantite_en_quarantaine(company)
+
     preparees = []
     for besoin in besoins:
         produit = produits.get(besoin.get('produit_id'))
@@ -225,6 +229,11 @@ def creer_vague_depuis_besoins(*, company, user=None, besoins=None,
         except (TypeError, ValueError):
             continue
         if quantite <= 0:
+            continue
+        bloquee = quarantaine.get(produit.id, 0)
+        if bloquee and (produit.quantite_stock or 0) - bloquee <= 0:
+            # Tout le stock de ce produit est sous quarantaine : la ligne
+            # n'est pas servable tant que la levée n'est pas actée.
             continue
         bin_id, lot_id, ordre, zone, allee = _casier_pour_ligne(
             produit, quantite)
@@ -1198,6 +1207,95 @@ def notifier_rappel(alerte, impact=None):
     except Exception as exc:  # pragma: no cover - défensif
         logger.warning('NTWMS17 notification de rappel échouée : %s', exc)
         return []
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# NTWMS31 — Quarantaine qualité : bloquer la disponibilité, pas le stock
+# ═══════════════════════════════════════════════════════════════════════════
+
+def quantite_en_quarantaine(company, produit=None):
+    """Quantité BLOQUÉE en quarantaine (non disponible à la vente/au picking).
+
+    ``produit`` — un produit précis, ou ``None`` pour la carte complète
+    ``{produit_id: quantite}``. 0 partout tant qu'aucun blocage n'existe :
+    comportement historique strictement inchangé.
+    """
+    from .models_wms import BlocageQualite
+
+    qs = BlocageQualite.objects.filter(
+        company=company, statut=BlocageQualite.Statut.EN_QUARANTAINE)
+    if produit is not None:
+        return sum(qs.filter(produit=produit)
+                   .values_list('quantite', flat=True))
+    carte = {}
+    for produit_id, quantite in qs.values_list('produit_id', 'quantite'):
+        carte[produit_id] = carte.get(produit_id, 0) + (quantite or 0)
+    return carte
+
+
+def mettre_en_quarantaine(*, company, produit, quantite, user=None,
+                          bin_quarantaine=None, lot=None, reception=None,
+                          non_conformite=None, motif=''):
+    """Bloque une quantité reçue non conforme dans un casier de quarantaine.
+
+    Aucun mouvement de stock n'est posé : la marchandise EST là, elle n'est
+    simplement plus disponible. C'est la levée (ou un rebut motivé NTWMS24)
+    qui tranche ensuite.
+    """
+    from .models_wms import BlocageQualite
+
+    try:
+        quantite = int(quantite)
+    except (TypeError, ValueError):
+        raise ValueError('Quantité invalide.')
+    if quantite <= 0:
+        raise ValueError('La quantité mise en quarantaine doit être positive.')
+    if produit is None or produit.company_id != getattr(company, 'id', None):
+        raise ValueError('Produit introuvable dans cette société.')
+
+    return BlocageQualite.objects.create(
+        company=company, produit=produit, quantite=quantite,
+        bin=bin_quarantaine, lot=lot, reception=reception,
+        non_conformite=non_conformite, motif=(motif or '').strip(),
+        bloque_par=user)
+
+
+def lever_quarantaine(*, blocage, user=None):
+    """Lève un blocage : la quantité redevient disponible (idempotent)."""
+    from django.utils import timezone
+
+    from .models_wms import BlocageQualite
+
+    if blocage.statut != BlocageQualite.Statut.EN_QUARANTAINE:
+        return blocage
+    blocage.statut = BlocageQualite.Statut.LEVEE
+    blocage.leve_par = user
+    blocage.date_levee = timezone.now()
+    blocage.save(update_fields=['statut', 'leve_par', 'date_levee'])
+    return blocage
+
+
+def lever_quarantaine_bin(*, company, bin_id, user=None):
+    """Lève TOUS les blocages d'un casier de quarantaine (un seul geste au
+    poste qualité). Renvoie le nombre de blocages levés."""
+    from .models_wms import BlocageQualite
+
+    blocages = BlocageQualite.objects.filter(
+        company=company, bin_id=bin_id,
+        statut=BlocageQualite.Statut.EN_QUARANTAINE)
+    leves = 0
+    for blocage in blocages:
+        lever_quarantaine(blocage=blocage, user=user)
+        leves += 1
+    return leves
+
+
+def quantite_disponible_hors_quarantaine(company, produit):
+    """Quantité réellement disponible : stock total − quarantaine."""
+    if produit is None:
+        return 0
+    bloquee = quantite_en_quarantaine(company, produit=produit)
+    return max((produit.quantite_stock or 0) - bloquee, 0)
 
 
 # ═══════════════════════════════════════════════════════════════════════════

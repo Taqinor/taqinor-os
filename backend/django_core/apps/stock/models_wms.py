@@ -832,6 +832,75 @@ class RetourClient(TenantModel):
         return f'{self.reference} ({self.statut})'
 
 
+# ═══════════════════════════════════════════════════════════════════════════
+# NTWMS31 — Quarantaine qualité (blocage de disponibilité, lié au casier)
+# ═══════════════════════════════════════════════════════════════════════════
+
+class BlocageQualite(TenantModel):
+    """NTWMS31 — quantité BLOQUÉE en quarantaine tant que la qualité n'a pas
+    tranché.
+
+    Une ligne reçue signalée non conforme ne doit pas être vendable : elle est
+    routée vers un casier de quarantaine et sa quantité cesse d'être
+    DISPONIBLE (elle reste en stock physique — rien n'est sorti). La levée est
+    un acte tracé, réservé aux responsables.
+
+    Le ``type_bin`` QUARANTAINE annoncé par NTWMS1 n'existe pas :
+    ``installations.BinLocation`` (FG319) ne porte aucun type de casier, et
+    cette app n'écrit jamais dans ``installations``. La quarantaine est donc
+    portée ICI, par un blocage explicite qui référence le casier en string-FK
+    — plus honnête qu'un drapeau déduit d'un nom de casier.
+    """
+
+    class Statut(models.TextChoices):
+        EN_QUARANTAINE = 'en_quarantaine', 'En quarantaine'
+        LEVEE = 'levee', 'Levée'
+        REBUTEE = 'rebutee', 'Rebutée'
+
+    produit = models.ForeignKey(
+        'stock.Produit', on_delete=models.PROTECT,
+        related_name='blocages_qualite')  # on_delete: PROTECT — décision qualité traçable (aligné sur MouvementStock)
+    quantite = models.PositiveIntegerField(default=0)
+    bin = models.ForeignKey(
+        'installations.BinLocation', on_delete=models.SET_NULL, null=True,
+        blank=True, related_name='blocages_qualite',
+        help_text='Casier de quarantaine où la marchandise est isolée.')
+    lot = models.ForeignKey(
+        'stock.LotEntrepot', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='blocages_qualite')
+    reception = models.ForeignKey(
+        'achats.ReceptionFournisseur', on_delete=models.SET_NULL, null=True,
+        blank=True, related_name='blocages_qualite')
+    # Non-conformité QHSE d'origine (string-FK : jamais un import de `qhse`).
+    non_conformite = models.ForeignKey(
+        'qhse.NonConformite', on_delete=models.SET_NULL, null=True,
+        blank=True, related_name='blocages_qualite_stock')
+    statut = models.CharField(
+        max_length=20, choices=Statut.choices, default=Statut.EN_QUARANTAINE)
+    motif = models.TextField(blank=True, default='')
+    bloque_par = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True,
+        blank=True, related_name='blocages_qualite_poses')
+    leve_par = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True,
+        blank=True, related_name='blocages_qualite_leves')
+    date_levee = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        verbose_name = 'Blocage qualité (quarantaine)'
+        verbose_name_plural = 'Blocages qualité (quarantaine)'
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['company', 'statut'],
+                         name='idx_blocqual_co_statut'),
+            models.Index(fields=['company', 'produit'],
+                         name='idx_blocqual_co_produit'),
+        ]
+
+    def __str__(self):
+        return f'Quarantaine {self.produit_id} × {self.quantite}'
+
+
 class LigneRetourClient(TenantModel):
     """Ligne d'un retour client : ce qui revient, dans quel état, et où.
 

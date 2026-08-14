@@ -19,7 +19,7 @@ from .views import (
     RendezVousTransporteurViewSet, ExpeditionTransporteurViewSet,
     PlanComptageTournantViewSet, AlerteRappelViewSet,
     PortailTiersTokenViewSet, DemandeTransfertViewSet, RetourClientViewSet,
-    MouvementRebutViewSet, PlanChargementViewSet,
+    MouvementRebutViewSet, PlanChargementViewSet, BlocageQualiteViewSet,
     entrepot_productivite_view, entrepot_pertes_view,
     reslotting_suggestions_view,
     scanner_resoudre_view, scanner_mouvement_view,
@@ -73,6 +73,7 @@ router.register(r'demandes-transfert', DemandeTransfertViewSet)
 router.register(r'retours-client', RetourClientViewSet)
 router.register(r'mouvements-rebut', MouvementRebutViewSet)
 router.register(r'plans-chargement', PlanChargementViewSet)
+router.register(r'blocages-qualite', BlocageQualiteViewSet)
 
 urlpatterns = [
     # NTWMS8 - kiosque de quai (chemin nomme par la tache : /stock/public/...).

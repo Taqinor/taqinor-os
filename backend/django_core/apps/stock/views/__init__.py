@@ -42,7 +42,7 @@ from .wms import (
     RendezVousTransporteurViewSet, ExpeditionTransporteurViewSet,
     PlanComptageTournantViewSet, AlerteRappelViewSet,
     PortailTiersTokenViewSet, DemandeTransfertViewSet, RetourClientViewSet,
-    MouvementRebutViewSet, PlanChargementViewSet,
+    MouvementRebutViewSet, PlanChargementViewSet, BlocageQualiteViewSet,
     entrepot_productivite_view, entrepot_pertes_view,
     reslotting_suggestions_view,
 )
@@ -91,6 +91,7 @@ __all__ = [
     'RetourClientViewSet',
     'MouvementRebutViewSet',
     'PlanChargementViewSet',
+    'BlocageQualiteViewSet',
     'entrepot_productivite_view',
     'entrepot_pertes_view',
     'reslotting_suggestions_view',

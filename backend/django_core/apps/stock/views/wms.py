@@ -15,12 +15,14 @@ from authentication.permissions import (
 )
 
 from ..models_wms import (
-    AlerteRappel, DemandeTransfert, ExpeditionTransporteur, MouvementRebut,
+    AlerteRappel, BlocageQualite, DemandeTransfert, ExpeditionTransporteur,
+    MouvementRebut,
     PlanChargement, PlanComptageTournant, PortailTiersToken, Quai,
     RendezVousTransporteur, RetourClient, UniteLogistique, VaguePicking,
 )
 from ..serializers_wms import (
-    AlerteRappelSerializer, DemandeTransfertSerializer,
+    AlerteRappelSerializer, BlocageQualiteSerializer,
+    DemandeTransfertSerializer,
     ExpeditionTransporteurSerializer, MouvementRebutSerializer,
     PlanChargementSerializer, PlanComptageTournantSerializer,
     PortailTiersTokenSerializer, QuaiSerializer,
@@ -649,6 +651,107 @@ class PlanComptageTournantViewSet(CompanyScopedModelViewSet):
         from ..services import generer_comptages_tournants
         resultat = generer_comptages_tournants(company=request.user.company)
         return Response(resultat, status=status.HTTP_201_CREATED)
+
+
+class BlocageQualiteViewSet(CompanyScopedModelViewSet):
+    """NTWMS31 — quarantaine qualité : ce qui est physiquement là mais
+    qualitativement bloqué.
+
+    La LEVÉE est réservée aux responsables/admins : c'est elle qui rend la
+    marchandise à nouveau disponible pour une vague de prélèvement.
+    """
+    queryset = BlocageQualite.objects.select_related(
+        'produit', 'bin', 'lot', 'reception', 'bloque_par', 'leve_par').all()
+    serializer_class = BlocageQualiteSerializer
+    ordering = ['-created_at']
+
+    def get_permissions(self):
+        if self.action in READ_ACTIONS:
+            return [IsAnyRole()]
+        if self.action in WRITE_ACTIONS:
+            return [IsResponsableOrAdmin()]
+        if self.action in ['lever', 'lever_quarantaine_bin']:
+            return [IsResponsableOrAdmin()]
+        return [IsAdminRole()]
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        params = self.request.query_params
+        statut = params.get('statut')
+        if statut:
+            qs = qs.filter(statut=statut)
+        produit = params.get('produit')
+        if produit and str(produit).isdigit():
+            qs = qs.filter(produit_id=int(produit))
+        bin_id = params.get('bin')
+        if bin_id and str(bin_id).isdigit():
+            qs = qs.filter(bin_id=int(bin_id))
+        return qs
+
+    def create(self, request, *args, **kwargs):
+        """``{produit, quantite, bin?, lot?, reception?, non_conformite?,
+        motif?}`` — met une quantité en quarantaine (aucun mouvement de stock :
+        la marchandise est là, elle n'est plus disponible)."""
+        from ..models import Produit
+        from ..services import mettre_en_quarantaine
+        company = request.user.company
+        produit = Produit.objects.filter(
+            id=request.data.get('produit'), company=company).first()
+
+        def _lie(nom, valeur):
+            if not valeur:
+                return None
+            modele = BlocageQualite._meta.get_field(nom).related_model
+            return modele.objects.filter(id=valeur, company=company).first()
+
+        try:
+            blocage = mettre_en_quarantaine(
+                company=company, produit=produit,
+                quantite=request.data.get('quantite'), user=request.user,
+                bin_quarantaine=_lie('bin', request.data.get('bin')),
+                lot=_lie('lot', request.data.get('lot')),
+                reception=_lie('reception', request.data.get('reception')),
+                non_conformite=_lie(
+                    'non_conformite', request.data.get('non_conformite')),
+                motif=request.data.get('motif') or '')
+        except ValueError as exc:
+            return Response({'detail': str(exc)},
+                            status=status.HTTP_400_BAD_REQUEST)
+        return Response(self.get_serializer(blocage).data,
+                        status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['post'], url_path='lever')
+    def lever(self, request, pk=None):
+        """Lève la quarantaine (idempotent) : la quantité redevient
+        disponible."""
+        from ..services import lever_quarantaine
+        blocage = self.get_object()
+        lever_quarantaine(blocage=blocage, user=request.user)
+        blocage.refresh_from_db()
+        return Response(self.get_serializer(blocage).data)
+
+    @extend_schema(responses={
+        200: inline_serializer('StockQuarantaineLeveeCasier', {
+            'bin': serializers.IntegerField(),
+            'blocages_leves': serializers.IntegerField(),
+        }),
+        400: inline_serializer('StockQuarantaineLeveeErreur', {
+            'detail': serializers.CharField(),
+        }),
+    })
+    @action(detail=False, methods=['post'], url_path='lever-quarantaine')
+    def lever_quarantaine_bin(self, request):
+        """Lève TOUS les blocages d'un casier de quarantaine
+        (``{bin}``) — le geste du poste qualité, en un seul appel."""
+        from ..services import lever_quarantaine_bin
+        bin_id = request.data.get('bin')
+        if not str(bin_id or '').isdigit():
+            return Response({'detail': 'Casier requis.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        leves = lever_quarantaine_bin(
+            company=request.user.company, bin_id=int(bin_id),
+            user=request.user)
+        return Response({'bin': int(bin_id), 'blocages_leves': leves})
 
 
 class PlanChargementViewSet(CompanyScopedModelViewSet):

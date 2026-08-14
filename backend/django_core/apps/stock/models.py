@@ -1974,6 +1974,7 @@ class RegleCodeBarres(models.Model):
 from .models_wms import (  # noqa: E402,F401
     AffectationCrossDock,
     AlerteRappel,
+    BlocageQualite,
     DemandeTransfert,
     ExpeditionTransporteur,
     LignePicking,

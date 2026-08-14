@@ -6,7 +6,8 @@
 from rest_framework import serializers
 
 from .models_wms import (
-    AlerteRappel, DemandeTransfert, ExpeditionTransporteur, LignePicking,
+    AlerteRappel, BlocageQualite, DemandeTransfert, ExpeditionTransporteur,
+    LignePicking,
     LigneRetourClient, MouvementRebut, PlanChargement, PlanComptageTournant,
     PortailTiersToken, Quai,
     RendezVousTransporteur, RetourClient, UniteLogistique,
@@ -269,6 +270,26 @@ class PortailTiersTokenSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 'Nommez le dépositaire concerné par ce jeton.')
         return value
+
+
+class BlocageQualiteSerializer(serializers.ModelSerializer):
+    """NTWMS31 — blocage qualité (quarantaine). Le statut et l'auteur sont
+    posés côté serveur ; la levée passe par l'action dédiée."""
+
+    produit_nom = serializers.CharField(source='produit.nom', read_only=True)
+    bin_code = serializers.CharField(
+        source='bin.code', read_only=True, default='')
+
+    class Meta:
+        model = BlocageQualite
+        fields = [
+            'id', 'produit', 'produit_nom', 'quantite', 'bin', 'bin_code',
+            'lot', 'reception', 'non_conformite', 'statut', 'motif',
+            'bloque_par', 'leve_par', 'date_levee', 'created_at',
+        ]
+        read_only_fields = [
+            'statut', 'bloque_par', 'leve_par', 'date_levee', 'created_at',
+        ]
 
 
 class PlanChargementSerializer(serializers.ModelSerializer):

@@ -431,8 +431,26 @@ class ProduitSerializer(serializers.ModelSerializer):
     def get_quantite_reservee(self, obj):
         return self._reserved_map().get(obj.id, 0)
 
+    def _quarantaine_map(self):
+        """NTWMS31 — map {produit_id: quantité en quarantaine}, calculée UNE
+        fois par sérialisation (jamais de N+1). Vide tant qu'aucun blocage
+        qualité n'existe : comportement historique inchangé."""
+        cache = getattr(self, '_quarantaine_map_cache', None)
+        if cache is not None:
+            return cache
+        from .services import quantite_en_quarantaine
+        request = self.context.get('request')
+        company = getattr(getattr(request, 'user', None), 'company', None)
+        cache = quantite_en_quarantaine(company) if company is not None else {}
+        self._quarantaine_map_cache = cache
+        return cache
+
     def get_quantite_disponible(self, obj):
-        return obj.quantite_stock - self._reserved_map().get(obj.id, 0)
+        # N14 (réservé) + NTWMS31 (quarantaine qualité) : ni l'un ni l'autre
+        # n'est disponible pour une vague de prélèvement ou une vente.
+        return (obj.quantite_stock
+                - self._reserved_map().get(obj.id, 0)
+                - self._quarantaine_map().get(obj.id, 0))
 
     def get_categorie_type_display(self, obj):
         # Libellé FR du type d'équipement (None si catégorie non typée).
