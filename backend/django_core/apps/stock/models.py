@@ -603,6 +603,24 @@ class Produit(models.Model):
     tva = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
     is_archived = models.BooleanField(default=False)
 
+    # ── NTWMS38 — Marchandises dangereuses / matières sensibles ────────────
+    # Le catalogue solaire contient des BATTERIES LITHIUM : leur stockage et
+    # leur transport sont réglementés (ADR classe 9). AUCUNE = défaut, donc
+    # tous les produits existants restent exactement ce qu'ils étaient et le
+    # rangement guidé (NTWMS2) ne filtre rien tant que rien n'est déclaré.
+    class ClasseDanger(models.TextChoices):
+        AUCUNE = 'AUCUNE', 'Aucune'
+        BATTERIE_LITHIUM = 'BATTERIE_LITHIUM', 'Batterie lithium'
+        INFLAMMABLE = 'INFLAMMABLE', 'Inflammable'
+        CORROSIF = 'CORROSIF', 'Corrosif'
+
+    classe_danger = models.CharField(
+        max_length=20, choices=ClasseDanger.choices,
+        default=ClasseDanger.AUCUNE,
+        verbose_name='Classe de danger',
+        help_text='Matière dangereuse : conditionne les casiers autorisés '
+                  'au rangement (NTWMS38).')
+
     # ── Fiche commerciale (devis PDF riches, 2026-06) — tout optionnel ──
     marque = models.CharField(max_length=100, blank=True, null=True)
     description = models.TextField(
@@ -2090,6 +2108,9 @@ from .models_qualite_reception import (  # noqa: E402,F401
 
 # ── NTWMS37 — réception à quantité/poids VARIABLE (catch-weight). ──────────
 from .models_catch_weight import PeseeLigneReception  # noqa: E402,F401
+
+# ── NTWMS38 — compatibilité casier ↔ classe de danger (hazmat). ────────────
+from .models_hazmat import CompatibiliteHazmatCasier  # noqa: E402,F401
 
 
 # ── ODX19 — MODULE ACHATS (déplacé) ────────────────────────────────────────

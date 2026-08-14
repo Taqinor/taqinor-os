@@ -25,6 +25,7 @@ from .views import (
     scanner_resoudre_view, scanner_mouvement_view,
     entrepot_cockpit_view, simuler_capacite_view, zones_surcapacite_view,
     tache_retour_view, PlanEchantillonnageViewSet,
+    CompatibiliteHazmatCasierViewSet,
 )
 
 router = DefaultRouter()
@@ -77,6 +78,8 @@ router.register(r'plans-chargement', PlanChargementViewSet)
 router.register(r'blocages-qualite', BlocageQualiteViewSet)
 # NTWMS34 - plans d'echantillonnage du controle qualite a reception.
 router.register(r'plans-echantillonnage', PlanEchantillonnageViewSet)
+# NTWMS38 - casiers autorises par classe de danger (batteries lithium...).
+router.register(r'casiers-hazmat', CompatibiliteHazmatCasierViewSet)
 
 urlpatterns = [
     # NTWMS8 - kiosque de quai (chemin nomme par la tache : /stock/public/...).

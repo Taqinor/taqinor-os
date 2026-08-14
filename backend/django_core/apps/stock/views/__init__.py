@@ -54,6 +54,8 @@ from .entrepot import (
 )
 # NTWMS34 - plans d'echantillonnage a reception (controle qualite bloquant).
 from .qualite_reception import PlanEchantillonnageViewSet
+# NTWMS38 - compatibilite casier <-> matiere dangereuse (hazmat).
+from .hazmat import CompatibiliteHazmatCasierViewSet
 
 __all__ = [
     'ProduitViewSet',
@@ -109,4 +111,5 @@ __all__ = [
     'zones_surcapacite_view',
     'tache_retour_view',
     'PlanEchantillonnageViewSet',
+    'CompatibiliteHazmatCasierViewSet',
 ]
