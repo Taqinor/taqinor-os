@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { ShoppingCart, RefreshCw, TrendingUp, AlertTriangle, Download } from 'lucide-react'
 import scmApi from '../../api/scmApi'
 import { formatMAD } from '../../lib/format'
@@ -136,7 +137,16 @@ export default function ReapproPage() {
   }
 
   const columns = useMemo(() => [
-    { id: 'produit_nom', header: 'Produit', accessor: (r) => r.produit_nom },
+    {
+      id: 'produit_nom', header: 'Produit', accessor: (r) => r.produit_nom,
+      // NTSCM44 — lien vers la fiche politique de stock (réglages + fil
+      // d'activité) : écran livré = écran atteignable.
+      cell: (v, r) => (
+        <Link to={`/scm/politiques-stock/${r.politique_id}`} className="font-medium hover:underline">
+          {r.produit_nom}
+        </Link>
+      ),
+    },
     {
       id: 'classe_abc', header: 'Classe', width: 90,
       accessor: (r) => r.classe_abc || '—',

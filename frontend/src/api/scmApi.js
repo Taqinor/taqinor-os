@@ -21,7 +21,11 @@ const scmApi = {
 
   // NTSCM6 — politiques de stock.
   politiquesStock: (params) => api.get('/scm/politiques-stock/', { params }),
+  politiqueStock: (id) => api.get(`/scm/politiques-stock/${id}/`),
+  majPolitiqueStock: (id, body) => api.patch(`/scm/politiques-stock/${id}/`, body),
   recalculerPolitiquesStock: () => api.post('/scm/politiques-stock/recalculer/', {}),
+  // NTSCM44 — fil d'activité (chatter générique) de la politique de stock.
+  historiquePolitiqueStock: (id) => api.get(`/scm/politiques-stock/${id}/historique/`),
 
   // NTSCM7 — tableau de bord réappro consolidé.
   tableauBordReappro: (params) => api.get('/scm/tableau-bord-reappro/', { params }),

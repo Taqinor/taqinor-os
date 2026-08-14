@@ -188,6 +188,10 @@ def tableau_bord_reappro(company, *, statut=None, classe_abc=None, fournisseur_i
         lignes.append({
             'produit_id': produit.id,
             'produit_nom': produit.nom,
+            # NTSCM44 — id de la PolitiqueStock elle-même (distinct de
+            # `produit_id`) : permet au frontend de lier vers la fiche détail
+            # `/scm/politiques-stock/<id>` (réglages + fil d'activité).
+            'politique_id': politique.id,
             'classe_abc': politique.classe_abc,
             'stock_actuel': produit.quantite_stock,
             'point_commande': politique.point_commande,

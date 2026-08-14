@@ -162,13 +162,55 @@ class PolitiqueStockViewSet(CompanyScopedModelViewSet):
     filterset_fields = ['classe_abc']
 
     def get_permissions(self):
-        # NTSCM37 — lecture (liste/détail/fiche PDF) reste au palier
-        # générique historique (aucun code « politiques_stock.voir » au
-        # plan) ; toute écriture (create/update/destroy + recalculer/
+        # NTSCM37 — lecture (liste/détail/fiche PDF/historique NTSCM44) reste
+        # au palier générique historique (aucun code « politiques_stock.voir »
+        # au plan) ; toute écriture (create/update/destroy + recalculer/
         # creer-en-lot) exige `scm_politiques_stock_editer`.
-        if self.action in _ACTIONS_LECTURE or self.action == 'fiche_pdf':
+        if self.action in _ACTIONS_LECTURE or self.action in ('fiche_pdf', 'historique'):
             return [IsResponsableOrAdmin()]
         return [IsScmPolitiquesStockEditer()]
+
+    # NTSCM44 — champs dont chaque révision journalise une entrée de chatter
+    # automatique (ancienne/nouvelle valeur, horodatée + utilisateur).
+    _CHAMPS_JOURNALISES = [
+        ('service_level_pct', 'Niveau de service (%)'),
+        ('stock_securite_manuel', 'Stock de sécurité (override manuel)'),
+        ('stock_min', 'Stock min'),
+        ('stock_max', 'Stock max'),
+    ]
+
+    def perform_update(self, serializer):
+        """NTSCM44 — journalise (``records.Activity`` via ``log_field_change``,
+        même mécanisme générique que ``crm.LeadActivity``) chaque champ
+        RÉELLEMENT modifié par cette écriture — jamais une entrée pour un
+        champ envoyé mais identique à sa valeur actuelle."""
+        from apps.records.services import log_field_change
+
+        instance = serializer.instance
+        avant = {
+            field: getattr(instance, field) for field, _ in self._CHAMPS_JOURNALISES
+        }
+        politique = serializer.save()
+        for field, label in self._CHAMPS_JOURNALISES:
+            ancien = avant[field]
+            nouveau = getattr(politique, field)
+            if ancien != nouveau:
+                log_field_change(
+                    politique, field, ancien, nouveau,
+                    user=self.request.user, field_label=label,
+                    company=politique.company)
+
+    @action(detail=True, methods=['get'], url_path='historique')
+    def historique(self, request, pk=None):
+        """NTSCM44 — fil d'activité de la politique de stock (chatter
+        générique ``records.Activity``, plus récent d'abord) — même patron
+        que ``CyclePlanificationSOPViewSet.historique`` (NTSCM12)."""
+        from apps.records.serializers import ChatterActivitySerializer
+        from apps.records.services import chatter_qs
+
+        politique = self.get_object()
+        entries = chatter_qs(politique, request.user.company)
+        return Response(ChatterActivitySerializer(entries, many=True).data)
 
     @action(detail=False, methods=['post'], url_path='recalculer')
     def recalculer(self, request):
@@ -418,6 +460,7 @@ class CyclePlanificationSOPViewSet(CompanyScopedModelViewSet):
 @extend_schema(responses=inline_serializer('ScmTableauBordReapproLigne', {
     'produit_id': serializers.IntegerField(),
     'produit_nom': serializers.CharField(),
+    'politique_id': serializers.IntegerField(),
     'classe_abc': serializers.CharField(),
     'stock_actuel': serializers.IntegerField(),
     'point_commande': serializers.CharField(),
