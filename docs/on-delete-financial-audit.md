@@ -18,10 +18,10 @@ Généré par `python scripts/check_on_delete.py --financial`. Ce tableau recens
 | `backend/django_core/apps/adminops/models.py:54` | SandboxEnvironment.sandbox_company | authentication.Company | SET_NULL |
 | `backend/django_core/apps/adminops/models.py:274` | DemandeInscription.company_creee | authentication.Company | SET_NULL |
 | `backend/django_core/apps/adminops/models.py:421` | AdminOpsSettings.company | authentication.Company | CASCADE |
-| `backend/django_core/apps/adsengine/models.py:45` | MetaConnection.company | authentication.Company | CASCADE |
-| `backend/django_core/apps/adsengine/models.py:145` | GuardrailConfig.company | authentication.Company | CASCADE |
-| `backend/django_core/apps/adsengine/models.py:1125` | CreativePolicy.company | authentication.Company | CASCADE |
-| `backend/django_core/apps/adsengine/models.py:2724` | BrandKit.company | authentication.Company | CASCADE |
+| `backend/django_core/apps/adsengine/models.py:47` | MetaConnection.company | authentication.Company | CASCADE |
+| `backend/django_core/apps/adsengine/models.py:147` | GuardrailConfig.company | authentication.Company | CASCADE |
+| `backend/django_core/apps/adsengine/models.py:1127` | CreativePolicy.company | authentication.Company | CASCADE |
+| `backend/django_core/apps/adsengine/models.py:2730` | BrandKit.company | authentication.Company | CASCADE |
 | `backend/django_core/apps/agent/models.py:28` | AgentActionLog.company | authentication.Company | CASCADE |
 | `backend/django_core/apps/agriculture/models.py:25` | Exploitation.company | authentication.Company | CASCADE |
 | `backend/django_core/apps/agriculture/models.py:53` | Parcelle.company | authentication.Company | CASCADE |

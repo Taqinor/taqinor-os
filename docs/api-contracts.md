@@ -948,8 +948,6 @@
     detail:texte, job_id:inconnu, status:texte, status_url:inconnu, zones:nombre
 - frontend/src/api/ventesApi.js :: superiorContactStatus -> /api/django/ventes/devis/<>/superior-contact-status
     requested:booleen, requested_at:inconnu, seen:booleen, seen_by:inconnu
-- frontend/src/api/ventesApi.js :: syncDevisLayout -> /api/django/ventes/devis/<>/sync-layout
-    avertissements:inconnu, batterie:inconnu, detail:inconnu, inchange:booleen, kwc:inconnu, lignes_modifiees:inconnu, panneaux:inconnu, revision_possible:inconnu, scenario:texte
 - frontend/src/api/ventesApi.js :: whatsappDevis -> /api/django/ventes/devis/<>/whatsapp
     detail:texte, devis_statut:inconnu, message:inconnu, phone:inconnu, url:inconnu, wa_url:inconnu
 - frontend/src/api/ventesApi.js :: whatsappFacture -> /api/django/ventes/factures/<>/whatsapp

@@ -87,4 +87,19 @@ describe('RoofViewer — rendu', () => {
     expect(img).toBeTruthy()
     expect(img.getAttribute('src')).toBe('blob:mock')
   })
+
+  it('affiche le compte POSÉ (geometry.count) plutôt que la cible neededPanels', () => {
+    // PV27/WJ24 — après édition manuelle, la zone porte geometry.count (posé,
+    // ici 10) qui prime sur neededPanels (cible d'étude, 12) : l'aperçu doit
+    // afficher le même compte que le devis, jamais la cible.
+    const layout = sampleLayout()
+    layout.zones[0].geometry = {
+      azimuthDeg: 180, tiltDeg: 15, family: 'portrait', flush: true,
+      kwc: 5.5, count: 10, origin: [-7.6, 33.5],
+      panels: Array.from({ length: 10 }, (_, i) => ({ cx: i, cy: 0, face: 0 })),
+    }
+    render(<RoofViewer layout={layout} />)
+    expect(screen.getAllByText(/10 panneaux/).length).toBeGreaterThanOrEqual(1)
+    expect(screen.queryByText(/12 panneaux/)).toBeNull()
+  })
 })

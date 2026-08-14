@@ -73,6 +73,14 @@ class TestSyncLayout(TestCase):
             company=self.company, nom='Onduleur réseau Huawei 5kW',
             sku='PV18-ONDR', prix_vente=Decimal('14000'),
             prix_achat=Decimal('9000'), quantite_stock=100)
+        # PVSCE — un onduleur HYBRIDE au catalogue : sans lui, une resynchro
+        # « avec batterie » laisserait un onduleur réseau face à une batterie
+        # (le moteur PDF n'accorde alors que l'option « Sans », qui exclut la
+        # batterie — donc une ligne facturée mais invisible).
+        self.onduleur_hybride = Produit.objects.create(
+            company=self.company, nom='Onduleur hybride Deye 5kW',
+            sku='PV18-ONDH', prix_vente=Decimal('17000'),
+            prix_achat=Decimal('11000'), quantite_stock=100)
         # Batterie GLOBALE (company=None) — le catalogue partagé doit être
         # quotable ici comme dans _pick_product.
         self.batterie = Produit.objects.create(
@@ -170,6 +178,74 @@ class TestSyncLayout(TestCase):
         ligne = devis.lignes.get(designation='Batterie Deyness 5 kWh')
         self.assertEqual(ligne.produit_id, self.batterie.id)
         self.assertEqual(int(ligne.quantite), 1)
+
+        # PVSCE — l'ONDULEUR a suivi : le devis ne garde pas un onduleur réseau
+        # face à une batterie (ce serait la « batterie fantôme » : comptée dans
+        # le total, absente du PDF).
+        self.assertFalse(
+            devis.lignes.filter(designation__icontains='réseau').exists())
+        onduleur = devis.lignes.get(designation='Onduleur hybride Deye 5kW')
+        self.assertEqual(onduleur.produit_id, self.onduleur_hybride.id)
+        self.assertEqual(int(onduleur.quantite), 1)     # quantité INCHANGÉE
+        self.assertEqual(onduleur.prix_unitaire, Decimal('17000.00'))
+        devis.refresh_from_db()
+        self.assertEqual(devis.etude_params['scenario'], 'Avec batterie')
+
+    def test_la_batterie_apparait_dans_les_items_du_moteur(self):
+        """La preuve par le moteur : l'option « Avec » porte la batterie.
+
+        C'est le test qui aurait attrapé la batterie fantôme — le découpage des
+        options est fait par ``build_quote_data`` (``avec_ok = has_hybride and
+        has_batterie``), pas par la resynchro.
+        """
+        from apps.ventes.quote_engine.builder import build_quote_data
+
+        devis = self._devis(panneaux=12)
+        self._post(devis, layout(panels=12, scenario='avec_batterie'))
+        devis.refresh_from_db()
+
+        data = build_quote_data(devis)
+        self.assertEqual(data['scenario'], 'Avec batterie')
+        avec = ' '.join(it['designation'] for it in data['avec_items'])
+        self.assertIn('Batterie', avec)
+        self.assertIn('hybride', avec)
+        # Et le total affiché porte bien la batterie qu'on facture.
+        self.assertGreater(data['total_avec'], 0)
+
+    def test_l_onduleur_redevient_reseau_quand_la_batterie_sort(self):
+        """Sens inverse : un devis hybride sans batterie ne rendrait AUCUNE
+        option (le moteur refuse alors le PDF à options)."""
+        devis = self._devis(panneaux=12)
+        devis.lignes.filter(designation__icontains='réseau').update(
+            produit=self.onduleur_hybride,
+            designation='Onduleur hybride Deye 5kW')
+        devis.lignes.create(
+            produit=self.batterie, designation='Batterie Deyness 5 kWh',
+            quantite=Decimal('1'), prix_unitaire=Decimal('16000'), ordre=3)
+
+        resp = self._post(devis, layout(panels=12, scenario='reseau'))
+        self.assertEqual(resp.status_code, 200)
+        self.assertFalse(resp.data['batterie'])
+        self.assertFalse(
+            devis.lignes.filter(designation__icontains='hybride').exists())
+        onduleur = devis.lignes.get(designation='Onduleur réseau Huawei 5kW')
+        self.assertEqual(onduleur.produit_id, self.onduleur.id)
+        devis.refresh_from_db()
+        self.assertEqual(devis.etude_params['scenario'], 'Sans batterie')
+
+    def test_sans_hybride_au_catalogue_on_previent_au_lieu_de_mentir(self):
+        Produit.objects.filter(pk=self.onduleur_hybride.pk).update(
+            is_archived=True)
+        devis = self._devis(panneaux=12)
+        resp = self._post(devis, layout(panels=12, scenario='avec_batterie'))
+        self.assertEqual(resp.status_code, 200)
+        self.assertTrue(any('hybride' in a for a in resp.data['avertissements']))
+        # L'onduleur réseau reste en place, et le scénario stocké ne promet pas
+        # une option que l'équipement ne peut pas servir.
+        self.assertTrue(
+            devis.lignes.filter(designation__icontains='réseau').exists())
+        devis.refresh_from_db()
+        self.assertEqual(devis.etude_params['scenario'], 'Sans batterie')
 
     def test_batterie_retiree_quand_le_scenario_n_en_veut_plus(self):
         devis = self._devis(panneaux=12)
@@ -279,7 +355,7 @@ class TestSyncLayout(TestCase):
         self.assertTrue(
             devis.lignes.filter(type_ligne='note').exists())
 
-    # ── etude_params : QUATRE clés, pas une de plus ────────────────────────
+    # ── etude_params : les clés du calepinage + le scénario, pas une de plus ─
     def test_etude_params_chirurgical(self):
         devis = self._devis(
             panneaux=12,
@@ -293,6 +369,8 @@ class TestSyncLayout(TestCase):
         self.assertAlmostEqual(float(etude['puissance_kwc']), 8.8, places=3)
         self.assertEqual(etude['production_annuelle'], 14000)
         self.assertEqual(etude['economies_annuelles'], 12000)
+        # PVSCE — plus le scénario, aligné sur l'état RÉEL des lignes.
+        self.assertEqual(etude['scenario'], 'Sans batterie')
         # …et les champs d'étude du générateur sont INTACTS.
         self.assertEqual(etude['taux_autoconsommation'], 72)
         self.assertEqual(etude['payback_annees'], 5.4)
