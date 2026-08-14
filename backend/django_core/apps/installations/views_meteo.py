@@ -14,6 +14,8 @@ serveur d'une heure par (latitude, longitude, jour) demandé par NTMOB21.
 from datetime import date
 
 from django.core.cache import cache
+from drf_spectacular.utils import extend_schema, inline_serializer
+from rest_framework import serializers as drf_serializers
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 
@@ -48,6 +50,13 @@ def _message(forecast):
     return None
 
 
+# Forme DÉCLARÉE (pas devinée) — cf. `check_openapi_schema`.
+@extend_schema(responses=inline_serializer('MeteoTerrainReponse', {
+    'disponible': drf_serializers.BooleanField(),
+    'message': drf_serializers.CharField(required=False),
+    'precipitation_mm': drf_serializers.FloatField(required=False),
+    'windgusts_kmh': drf_serializers.FloatField(required=False),
+}))
 @api_view(['GET'])
 @permission_classes([IsAnyRole])
 def meteo_terrain(request):

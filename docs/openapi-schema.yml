@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 9123, operations: 16504, components: 4775}
+counts: {paths: 9123, operations: 16504, components: 4779}
 securitySchemes:
 - cookieJWT
 - publicApiKey
@@ -16977,6 +16977,8 @@ components:
 - ChargeConstateeAvanceRequest
 - CharteVehicule
 - CharteVehiculeRequest
+- ChatTranscriptionReponse
+- ChatTranscriptionRequeteRequest
 - CheckinSecurite
 - CheckinSecuriteRequest
 - ChecklistEtapeModele
@@ -18140,6 +18142,7 @@ components:
 - MetaConnection
 - MetaConnectionRequest
 - MeteoEnum
+- MeteoTerrainReponse
 - MethodeReconnaissanceEnum
 - MetricEnum
 - MetriqueEnum
@@ -20832,6 +20835,7 @@ components:
 - ScmBrouillonBcfReapproLigne
 - ScmBrouillonsBcfReappro
 - ScmTableauBordReapproLigne
+- ScoreCertification
 - ScoreMaturiteLead
 - Seance
 - SeanceRequest

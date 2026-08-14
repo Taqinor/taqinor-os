@@ -12,6 +12,8 @@ sortie, rien n'est stocké. Transcription désactivée (`CHAT_TRANSCRIPTION_ENAB
 faux ou service muet) → `{'enabled': False}` et le front bascule sur la saisie
 clavier, jamais une erreur.
 """
+from drf_spectacular.utils import extend_schema, inline_serializer
+from rest_framework import serializers as drf_serializers
 from rest_framework.decorators import api_view, parser_classes, permission_classes
 from rest_framework.parsers import MultiPartParser
 from rest_framework.permissions import IsAuthenticated
@@ -23,6 +25,17 @@ from . import tasks
 TAILLE_MAX_OCTETS = 10 * 1024 * 1024
 
 
+# Forme DÉCLARÉE (pas devinée) — cf. `check_openapi_schema`.
+@extend_schema(
+    # Multipart : le CORPS aussi doit être déclaré, sinon le générateur
+    # retombe en « unable to guess serializer » malgré `responses=`.
+    request=inline_serializer('ChatTranscriptionRequete', {
+        'file': drf_serializers.FileField(),
+    }),
+    responses=inline_serializer('ChatTranscriptionReponse', {
+        'enabled': drf_serializers.BooleanField(),
+        'texte': drf_serializers.CharField(allow_blank=True),
+    }))
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 @parser_classes([MultiPartParser])

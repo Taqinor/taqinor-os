@@ -241,3 +241,21 @@ class DeploiementPartenaireSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 'Les modules doivent être une liste.')
         return [str(v) for v in value]
+
+
+class ScoreCertificationSerializer(serializers.Serializer):
+    """NTMIG27 — forme de ``GET migration/certification/<id>/score/``.
+
+    Déclarée pour que la vue publie un schéma RÉEL au lieu de laisser
+    drf-spectacular deviner (« unable to guess serializer »). LECTURE
+    SEULE : ce serialiseur ne valide aucune écriture.
+    """
+
+    partenaire = serializers.IntegerField(read_only=True)
+    partenaire_nom = serializers.CharField(read_only=True)
+    score = serializers.IntegerField(read_only=True)
+    niveau_propose = serializers.CharField(read_only=True)
+    niveau_actuel = serializers.CharField(read_only=True)
+    proposition_differente = serializers.BooleanField(read_only=True)
+    source_satisfaction = serializers.CharField(read_only=True)
+    detail = serializers.JSONField(read_only=True)

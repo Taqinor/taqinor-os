@@ -11,6 +11,7 @@ dossier non VALIDÉ bloque la création d'un bon de commande (garde posée dans
 ``views/bon_commande_fournisseur.py``).
 """
 from django.utils import timezone
+from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers, status
 from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
@@ -40,6 +41,7 @@ class DocumentFournisseurSerializer(serializers.ModelSerializer):
         # serveur, le fichier se récupère par l'action `telecharger`.
         read_only_fields = ['filename', 'mime', 'taille', 'date_creation']
 
+    @extend_schema_field(serializers.BooleanField())
     def get_est_valide(self, obj):
         return obj.est_valide()
 
@@ -65,6 +67,7 @@ class DossierOnboardingFournisseurSerializer(serializers.ModelSerializer):
             'date_creation',
         ]
 
+    @extend_schema_field(serializers.JSONField())
     def get_progression(self, obj):
         return selectors.progression_onboarding(obj)
 

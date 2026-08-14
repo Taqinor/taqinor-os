@@ -11,17 +11,18 @@ un champ « company » envoyé par le navigateur est ignoré.
 """
 from rest_framework import status, viewsets
 from rest_framework.response import Response
-from rest_framework.views import APIView
 
 from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
 from core.mixins import TenantMixin
 
 from . import services
+from rest_framework.generics import GenericAPIView
+
 from .models import OfflineOperation
 from .serializers import OfflineOperationSerializer
 
 
-class OfflineSyncBatchView(APIView):
+class OfflineSyncBatchView(GenericAPIView):
     """Rejeu idempotent d'un lot multi-module.
 
     Corps : ``{"ops": [{client_op_id, op_type, payload, queued_at?}, …]}``.
@@ -30,6 +31,13 @@ class OfflineSyncBatchView(APIView):
     ré-appliquer l'effet."""
 
     permission_classes = [IsResponsableOrAdmin]
+    # Forme DÉCLARÉE (pas devinée) : sans cela drf-spectacular tombe en
+    # « unable to guess serializer » et publie un schéma muet.
+    serializer_class = OfflineOperationSerializer
+
+    def get_queryset(self):
+        return OfflineOperation.objects.filter(
+            company=self.request.user.company)
 
     def post(self, request):
         company = getattr(request.user, 'company', None)

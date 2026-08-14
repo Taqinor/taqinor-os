@@ -13,12 +13,13 @@ from rest_framework.exceptions import ValidationError
 from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.permissions import BasePermission
 from rest_framework.response import Response
-from rest_framework.views import APIView
+from rest_framework.generics import GenericAPIView
 
 from authentication.models import CustomUser
 from core.viewsets import CompanyScopedModelViewSet
 
 from . import services
+from .serializers import ScoreCertificationSerializer
 from .models import (
     DeploiementPartenaire, LotMigration, PlaybookInstance, ProjetMigration)
 from .serializers import (
@@ -515,7 +516,7 @@ class DeploiementPartenaireViewSet(CompanyScopedModelViewSet):
                 services.compter_deploiements_reussis(partenaire_id, company))
 
 
-class ScoreCertificationView(APIView):
+class ScoreCertificationView(GenericAPIView):
     """NTMIG27 — score de certification PROPOSÉ pour un partenaire.
 
     LECTURE SEULE, et volontairement : le niveau reste attribué manuellement
@@ -527,6 +528,21 @@ class ScoreCertificationView(APIView):
     """
 
     permission_classes = [IsDirecteurOuAdmin]
+    # Forme DÉCLARÉE (pas devinée) — cf. `check_openapi_schema`.
+    serializer_class = ScoreCertificationSerializer
+
+    def get_queryset(self):
+        """Partenaires de la SOCIÉTÉ de l'appelant, jamais au-delà.
+
+        Passe par le selector `crm` (lecture seule, scopé société) — jamais
+        un import des modèles d'une autre app métier. Rend le périmètre
+        VÉRIFIABLE par la garde d'isolation (YDATA21) au lieu de le laisser
+        implicite dans le corps de `get`.
+        """
+        from apps.crm import selectors as crm_selectors
+
+        return crm_selectors.partenaires_certifies_qs(
+            self.request.user.company)
 
     def get(self, request, partenaire_id):
         from apps.crm import selectors as crm_selectors

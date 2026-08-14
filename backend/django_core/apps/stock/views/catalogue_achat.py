@@ -18,6 +18,7 @@ prix d'achat, lui, est la donnée utile au demandeur pour estimer sa réquisitio
 (``date_dernier_achat``), avec repli sur ``Produit.prix_achat``.
 """
 from django.db.models import Q
+from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -50,6 +51,7 @@ class CatalogueAchatSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = fields
 
+    @extend_schema_field(serializers.DecimalField(max_digits=12, decimal_places=2))
     def get_prix_achat_dernier(self, obj):
         """Dernier prix d'achat connu : tarif fournisseur le plus récent,
         sinon le prix d'achat catalogue du produit."""
