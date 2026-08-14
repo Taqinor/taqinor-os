@@ -20,6 +20,11 @@ vi.mock('../../api/axios', () => ({
 vi.mock('../../api/ventesApi', () => ({
   default: {
     getDevisDesignContext: vi.fn(),
+    // PV75 — devis complet (etude_params.simulation.pr), lu EN PARALLÈLE du
+    // design-context pour l'étude bancable ; par défaut aucune étude rangée
+    // (payload sans `etude_params`) pour que les tests existants (écrits avant
+    // PV75) restent inchangés.
+    getDevisById: vi.fn(() => Promise.resolve({ data: {} })),
     syncDevisLayout: vi.fn(),
     shareLinkDevis: vi.fn(),
     whatsappPreviewDevis: vi.fn(),
@@ -107,6 +112,9 @@ describe('ToitureDesign — mode devis (PV20)', () => {
       },
       fullName: CTX.devis.client_nom,
     })
+    // PV75 — aucune étude bancable rangée sur le devis (mock par défaut) : la
+    // fenêtre de production ne reçoit rien à afficher en plus.
+    expect(options.bankable).toBeNull()
 
     // L'en-tête porte la référence + le client SERVIS par le contexte.
     expect(await screen.findByRole('heading', { level: 1 }))
@@ -148,6 +156,47 @@ describe('ToitureDesign — mode devis (PV20)', () => {
 
     expect(await screen.findByRole('alert')).toHaveTextContent('Devis introuvable.')
     expect(initRoofToolPro8).not.toHaveBeenCalled()
+  })
+
+  it('PV75 — étude bancable rangée : projette pr → `options.bankable`', async () => {
+    ventesApi.getDevisDesignContext.mockResolvedValue(
+      reponseContrat('ventes', 'devis_design_context'))
+    ventesApi.getDevisById.mockResolvedValueOnce({
+      data: {
+        etude_params: {
+          simulation: {
+            pr: {
+              p50_kwh: 71800, p90_kwh: 58300, performance_ratio: 0.812,
+              loss_breakdown: { temperature: 8.0, soiling: 3.0, shading: 4.2 },
+            },
+          },
+        },
+      },
+    })
+
+    rendreDevis(CTX.devis.id)
+
+    await waitFor(() => expect(initRoofToolPro8).toHaveBeenCalled())
+    expect(ventesApi.getDevisById).toHaveBeenCalledWith(String(CTX.devis.id))
+    const options = initRoofToolPro8.mock.calls[0][0]
+    expect(options.bankable).toEqual({
+      p50_kwh: 71800, p90_kwh: 58300, performance_ratio: 0.812,
+      loss_breakdown: { temperature: 8.0, soiling: 3.0, shading: 4.2 },
+    })
+  })
+
+  it('PV75 — devis complet indisponible (erreur réseau) : boot inchangé, `bankable` null', async () => {
+    ventesApi.getDevisDesignContext.mockResolvedValue(
+      reponseContrat('ventes', 'devis_design_context'))
+    ventesApi.getDevisById.mockRejectedValueOnce(new Error('réseau'))
+
+    rendreDevis(CTX.devis.id)
+
+    await waitFor(() => expect(initRoofToolPro8).toHaveBeenCalled())
+    const options = initRoofToolPro8.mock.calls[0][0]
+    expect(options.bankable).toBeNull()
+    // Le boot n'est jamais bloqué par l'échec de cet appel best-effort.
+    expect(screen.queryByTestId('pv20-lecture-seule')).toBeNull()
   })
 })
 

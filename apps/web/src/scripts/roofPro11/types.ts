@@ -44,6 +44,25 @@ export interface InitOptions {
   // finalisé, capturer le PNG 3D) une fois le boot complet terminé. Invoqué
   // seulement en boot complet (jamais en capture). Absent → comportement inchangé.
   onApiReady?: (api: RoofToolApi) => void;
+  // PV75 — étude BANCABLE (P50/P90 + ratio de performance + cascade des pertes),
+  // injectée par la page HÔTE (ToitureDesign.jsx) une fois lue depuis
+  // `Devis.etude_params.simulation.pr` (contrat `contract_samples/simulation.json`,
+  // moteur PV69/PV74) : l'outil n'appelle JAMAIS Django lui-même — discipline « le
+  // navigateur ne parle qu'à la page hôte, la page hôte parle à l'API ». Absent/null
+  // → fenêtre de production STRICTEMENT INCHANGÉE (comportement historique, golden).
+  bankable?: BankableProduction | null;
+}
+
+/** PV75 — sous-ensemble bancable de `simulation.pr` (P50/P90/PR/cascade des pertes),
+ *  tel que consommé par la fenêtre de production. `loss_breakdown` associe un poste
+ *  de perte (température/salissure/ombrage/câblage/onduleur/dispersion/disponibilité…
+ *  — la liste n'est pas fermée, un poste inconnu est affiché avec son libellé brut)
+ *  à un pourcentage (8.0 = 8 %, pas une fraction). */
+export interface BankableProduction {
+  p50_kwh: number;
+  p90_kwh: number;
+  performance_ratio: number;
+  loss_breakdown: Record<string, number>;
 }
 
 /** W114/W115 — API minimale exposée par l'outil à la page de design. */
