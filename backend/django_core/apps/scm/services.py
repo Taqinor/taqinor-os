@@ -652,6 +652,23 @@ def simuler_rupture(produit, scenario, company, *, today=None):
 # ── NTSCM19 — allocation en pénurie multi-clients (proposition, jamais une
 # réservation automatique) ───────────────────────────────────────────────────
 
+
+def _fmt_dec(value):
+    """Chaine decimale normalisee, sans zeros de fin parasites ('8.00' -> '8',
+    '12.50' -> '12.5'). L'arithmetique Decimal herite de l'echelle de ses
+    operandes : `min(demande, restant)` melange un DecimalField(2) et un
+    entier, donc un `str()` brut rend '8.00' ou '8' selon le chemin de calcul.
+    `format(value, 'f')` evite la notation scientifique que produirait
+    `normalize()` sur un entier rond (Decimal('20') -> 2E+1)."""
+    value = value if isinstance(value, Decimal) else Decimal(str(value))
+    if value == 0:
+        return '0'
+    s = format(value, 'f')
+    if '.' in s:
+        s = s.rstrip('0').rstrip('.')
+    return s or '0'
+
+
 def proposer_allocation_penurie(produit, company, *, mode='fifo'):
     """NTSCM19 — propose une répartition PROPOSÉE (jamais une réservation
     automatique — l'acheteur/commercial confirme manuellement via l'action
@@ -721,14 +738,14 @@ def proposer_allocation_penurie(produit, company, *, mode='fifo'):
             'reference': devis.reference,
             'client_nom': (
                 devis.client.nom if devis.client_id and devis.client else ''),
-            'quantite_demandee': str(demande),
-            'quantite_allouee': str(alloue),
-            'quantite_non_couverte': str(demande - alloue),
+            'quantite_demandee': _fmt_dec(demande),
+            'quantite_allouee': _fmt_dec(alloue),
+            'quantite_non_couverte': _fmt_dec(demande - alloue),
         })
 
     return {
         'produit_id': produit.id,
-        'stock_disponible': str(disponible),
+        'stock_disponible': _fmt_dec(disponible),
         'mode': mode,
         'propositions': propositions,
     }
