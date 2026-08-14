@@ -9,7 +9,6 @@ from rest_framework.exceptions import ValidationError
 from rest_framework.negotiation import DefaultContentNegotiation
 from rest_framework.response import Response
 
-from authentication.permissions import IsResponsableOrAdmin
 from core.permissions import ScopedPermission
 from core.viewsets import CompanyScopedModelViewSet
 
@@ -17,7 +16,9 @@ from .models import (
     CoutStandard, Gamme, OperationGamme, OperationOF, OrdreFabrication,
     OrdreModification, PosteDeCharge, ReglesKanbanProduction,
 )
-from .permissions import EstAdminMRP
+from .permissions import (
+    EstAdminMRP, EstResponsableOuAdminMRP, EstTechnicienResponsableOuAdmin,
+)
 from .serializers import (
     CoutStandardSerializer, GammeSerializer, OperationGammeSerializer,
     OperationOFSerializer, OrdreFabricationSerializer, OrdreModificationSerializer,
@@ -174,7 +175,7 @@ class OrdreFabricationViewSet(CompanyScopedModelViewSet):
     # (``dispo-composants``) reste au tier lecture. Aucun ``get_permissions``
     # sur ce viewset ni ses bases → gardes effectives.
     @action(detail=True, methods=['post'], url_path='confirmer',
-            permission_classes=[IsResponsableOrAdmin])
+            permission_classes=[EstResponsableOuAdminMRP])
     def confirmer(self, request, pk=None):
         """NTMFG3 — instancie les opérations depuis la gamme + planifie les
         dates (capacité poste), passe le statut en `planifie`."""
@@ -185,7 +186,7 @@ class OrdreFabricationViewSet(CompanyScopedModelViewSet):
         return Response(self.get_serializer(of).data)
 
     @action(detail=True, methods=['post'], url_path='cloturer',
-            permission_classes=[IsResponsableOrAdmin])
+            permission_classes=[EstResponsableOuAdminMRP])
     def cloturer(self, request, pk=None):
         """NTMFG4 — clôture l'OF : backflush (consommation composants +
         production composite) exactement une fois, sauf si un
@@ -197,7 +198,7 @@ class OrdreFabricationViewSet(CompanyScopedModelViewSet):
         return Response(self.get_serializer(of).data)
 
     @action(detail=True, methods=['post'], url_path='annuler',
-            permission_classes=[IsResponsableOrAdmin])
+            permission_classes=[EstResponsableOuAdminMRP])
     def annuler(self, request, pk=None):
         """NTMFG6 — annule l'OF : libère ses réservations de composants.
         Refuse (400) si le stock a déjà été mouvementé."""
@@ -220,7 +221,7 @@ class OrdreFabricationViewSet(CompanyScopedModelViewSet):
         return Response(disponibilite_par_ligne_of(of))
 
     @action(detail=True, methods=['post'], url_path='cloture-assistee',
-            permission_classes=[IsResponsableOrAdmin])
+            permission_classes=[EstResponsableOuAdminMRP])
     def cloture_assistee(self, request, pk=None):
         """NTMFG28 — clôture assistée : saisie GROUPÉE quantité bonne/rebut
         (+ motif) par opération encore non terminée, qui appelle EN SÉQUENCE
@@ -334,8 +335,16 @@ class OperationOFViewSet(mixins.RetrieveModelMixin, mixins.ListModelMixin,
     # ``CoutStandardViewSet`` juste en dessous. Ce viewset ne définit PAS de
     # ``get_permissions`` (contrairement à ``CoutStandardViewSet``) : les
     # déclarations ci-dessous sont donc bien celles que DRF applique.
+    #
+    # NTMFG33 — matrice de rôle : `replanifier` (Gantt, NTMFG7) reste
+    # Responsable/Admin (`EstResponsableOuAdminMRP`) ; démarrer/pauser/
+    # reprendre/terminer (terminal atelier MES, NTMFG8) sont RELÂCHÉS au
+    # palier Technicien (`EstTechnicienResponsableOuAdmin`, tier-based sur
+    # `menu_tier` — jamais `IsResponsableOrAdmin`, qui passerait à tort un
+    # Technicien outillé pour le MES) : c'est exactement le poste de travail
+    # d'un Technicien, pas une action Responsable.
     @action(detail=True, methods=['patch'], url_path='replanifier',
-            permission_classes=[IsResponsableOrAdmin])
+            permission_classes=[EstResponsableOuAdminMRP])
     def replanifier(self, request, pk=None):
         """NTMFG7 — déplace cette opération (glisser-déposer Gantt) : nouvelle
         `date_planifiee` et/ou `poste_charge` optionnel, contrôle de capacité
@@ -355,7 +364,7 @@ class OperationOFViewSet(mixins.RetrieveModelMixin, mixins.ListModelMixin,
         return Response(data)
 
     @action(detail=True, methods=['post'], url_path='demarrer',
-            permission_classes=[IsResponsableOrAdmin])
+            permission_classes=[EstTechnicienResponsableOuAdmin])
     def demarrer(self, request, pk=None):
         """NTMFG8 — terminal atelier : démarre l'opération. NTMFG14 —
         `avertissement_maintenance` (non bloquant) signale un poste dont une
@@ -374,21 +383,21 @@ class OperationOFViewSet(mixins.RetrieveModelMixin, mixins.ListModelMixin,
         return Response(data)
 
     @action(detail=True, methods=['post'], url_path='pauser',
-            permission_classes=[IsResponsableOrAdmin])
+            permission_classes=[EstTechnicienResponsableOuAdmin])
     def pauser(self, request, pk=None):
         """NTMFG8 — terminal atelier : met l'opération en pause."""
         from .services import pauser_operation
         return self._mes_action(pauser_operation, request, pk)
 
     @action(detail=True, methods=['post'], url_path='reprendre',
-            permission_classes=[IsResponsableOrAdmin])
+            permission_classes=[EstTechnicienResponsableOuAdmin])
     def reprendre(self, request, pk=None):
         """NTMFG8 — terminal atelier : reprend une opération en pause."""
         from .services import reprendre_operation
         return self._mes_action(reprendre_operation, request, pk)
 
     @action(detail=True, methods=['post'], url_path='terminer',
-            permission_classes=[IsResponsableOrAdmin])
+            permission_classes=[EstTechnicienResponsableOuAdmin])
     def terminer(self, request, pk=None):
         """NTMFG8/10 — terminal atelier : termine l'opération (quantité
         bonne/rebut + motif si rebut, coût façon si sous-traitée), calcule le
@@ -536,7 +545,7 @@ class CoutStandardViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin,
     filterset_fields = ['produit']
 
     def get_permissions(self):
-        return [IsResponsableOrAdmin()]
+        return [EstResponsableOuAdminMRP()]
 
     def get_queryset(self):
         qs = super().get_queryset()
@@ -594,7 +603,7 @@ class OrdreModificationViewSet(CompanyScopedModelViewSet):
         return qs
 
     def get_permissions(self):
-        return [IsResponsableOrAdmin()]
+        return [EstResponsableOuAdminMRP()]
 
     def perform_create(self, serializer):
         company = self.request.user.company
@@ -644,7 +653,7 @@ class ReglesKanbanProductionViewSet(CompanyScopedModelViewSet):
     'statut': serializers.CharField(),
 }, many=True))
 @api_view(['POST'])
-@permission_classes([IsResponsableOrAdmin])
+@permission_classes([EstResponsableOuAdminMRP])
 def kanban_declencher_view(request):
     """NTMFG17 — ``POST /api/django/mrp/kanban/declencher/`` : déclenchement
     MANUEL de toutes les règles kanban actives de la société (dégrade
@@ -679,7 +688,7 @@ def kanban_declencher_view(request):
     'ecart_total': serializers.CharField(),
 }, many=True))
 @api_view(['GET'])
-@permission_classes([IsResponsableOrAdmin])
+@permission_classes([EstResponsableOuAdminMRP])
 def analyse_couts_view(request):
     """NTMFG11 — ``GET /api/django/mrp/analyse-couts/?produit=&date_debut=
     &date_fin=`` : rapport d'écarts matière/main-d'œuvre/rendement vs coût
@@ -719,7 +728,7 @@ class _ExportFormatContentNegotiation(DefaultContentNegotiation):
 # check_openapi_shapes n'accepte QUE la decroissance.
 @extend_schema(responses={200: OpenApiTypes.BINARY})
 @api_view(['GET'])
-@permission_classes([IsResponsableOrAdmin])
+@permission_classes([EstResponsableOuAdminMRP])
 def analyse_couts_export_view(request):
     """NTMFG24 — ``GET /api/django/mrp/analyse-couts/export/?format=pdf|xlsx
     &produit=&date_debut=&date_fin=`` : export téléchargeable du rapport
@@ -813,7 +822,7 @@ def oee_tous_postes_view(request):
     'postes_en_alerte_maintenance': serializers.IntegerField(),
 }))
 @api_view(['GET'])
-@permission_classes([IsResponsableOrAdmin])
+@permission_classes([EstResponsableOuAdminMRP])
 def tableau_bord_production_view(request):
     """NTMFG22 — ``GET /api/django/mrp/tableau-bord/`` : 4 indicateurs
     consolidés de l'atelier (OF en retard, charge moyenne 7j, TRS moyen 7j,
