@@ -23,7 +23,8 @@ _WATT_RE = re.compile(r"(\d{3,4})\s*(?:wc|w)\b", re.IGNORECASE)
 # désignation ni dans le nom du produit lié : on prend le STANDARD du catalogue
 # (710 W — « Panneau Canadien Solar 710W »/« Panneau Jinko 710W », cf.
 # seed_catalogue + generate_devis_premium.watt_par_panneau), JAMAIS l'ancien 450
-# obsolète. Le chemin normal lit la VRAIE puissance via _parse_watt(nom produit).
+# obsolète. Le chemin normal lit la VRAIE puissance sur la fiche technique du
+# produit (PV11, _fiche_watt) puis, à défaut, via _parse_watt(nom produit).
 _DEFAULT_WATT = 710
 
 # ── Conditions de paiement par mode d'installation (SOURCE UNIQUE) ──
@@ -105,6 +106,40 @@ def _parse_watt(*texts) -> int | None:
         if m:
             return int(m.group(1))
     return None
+
+
+# PV11 — types de fiche technique dont le Pmax décrit bien un MODULE : les
+# fiches historiques (antérieures à PV5) ont un ``type_fiche`` vide et portent
+# déjà un ``pmax_wc`` de panneau ; une fiche onduleur/batterie n'en décrit pas un.
+_WATT_FICHE_TYPES = ("", "module")
+
+
+def _fiche_watt(produit) -> int | None:
+    """PV11 — puissance panneau LUE SUR LA FICHE TECHNIQUE (Pmax Wc réel).
+
+    La fiche constructeur (``stock.FicheTechnique``, OneToOne ``fiche_technique``)
+    porte la VRAIE puissance du module ; elle prime donc sur la regex de
+    désignation, qui reste le repli. Accès identique à celui déjà pratiqué ici
+    pour ``marque``/``description``/``garantie`` (attributs du produit lié, via
+    ``getattr`` gardés) — aucun import ni requête supplémentaire.
+
+    Renvoie ``None`` (→ repli regex, comportement inchangé) dès que la valeur
+    n'est pas exploitable : produit absent, pas de fiche, fiche onduleur ou
+    batterie, ``pmax_wc`` nul, négatif ou illisible.
+    """
+    fiche = getattr(produit, "fiche_technique", None)
+    if fiche is None:
+        return None
+    if (getattr(fiche, "type_fiche", "") or "") not in _WATT_FICHE_TYPES:
+        return None
+    pmax = getattr(fiche, "pmax_wc", None)
+    if pmax is None:
+        return None
+    try:
+        watt = int(round(float(pmax)))
+    except (TypeError, ValueError):
+        return None
+    return watt if watt > 0 else None
 
 
 def _normalize_site_host(site: str) -> str:
@@ -446,7 +481,10 @@ def build_quote_data(devis, pdf_options=None) -> dict:
 
     client = devis.client
     taux_tva = devis.taux_tva or Decimal(20)
-    lignes = list(devis.lignes.select_related("produit").all())
+    # PV11 — la fiche technique du produit est jointe ici : la résolution du
+    # wattage panneau la lit sans requête supplémentaire par ligne.
+    lignes = list(
+        devis.lignes.select_related("produit", "produit__fiche_technique").all())
 
     # ── XSAL14 — Lignes de section/note : rendues HORS totaux, à part ─────────
     # Une ligne de section (intertitre) ou de note (texte sans prix) ne porte NI
@@ -474,12 +512,19 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     per_line_tva = any(getattr(li, "taux_tva", None) is not None for li in lignes)
 
     # ── Derive power from the panel line(s) ──────────────────────────────────
+    # PV11 — ORDRE DE RÉSOLUTION de la puissance panneau : fiche technique du
+    # produit (Pmax constructeur) > regex sur désignation/nom > repli catalogue.
+    # Sans fiche exploitable, ``_fiche_watt`` rend None et le chemin regex
+    # historique s'applique à l'identique. La première ligne panneau qui donne
+    # une puissance l'emporte, comme avant.
     nb_panneaux = 0
     watt = None
-    for it in items:
+    for li, it in zip(lignes, items):
         if _is_panel(it["designation"], it.get("_produit_nom", "")):
             nb_panneaux += int(round(it["quantite"]))
-            watt = watt or _parse_watt(it["designation"], it.get("_produit_nom", ""))
+            watt = (watt
+                    or _fiche_watt(getattr(li, "produit", None))
+                    or _parse_watt(it["designation"], it.get("_produit_nom", "")))
     watt = watt or _DEFAULT_WATT
 
     # ── Split into the two options ───────────────────────────────────────────

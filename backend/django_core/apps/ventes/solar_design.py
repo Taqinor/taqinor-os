@@ -117,6 +117,106 @@ def _as_kw(value):
 
 
 # ═════════════════════════════════════════════════════════════════════════════
+# PV10 — Pont UNIQUE catalogue → paramètres de dimensionnement
+# ═════════════════════════════════════════════════════════════════════════════
+# Le catalogue porte désormais une fiche technique normalisée (PV5) lue en
+# cross-app par le SÉLECTEUR ``apps.stock.selectors.specs_for_produit`` (PV6).
+# Les deux fonctions ci-dessous sont le SEUL pont entre ce sélecteur et les
+# clés de ``DEFAULT_MODULE`` / ``DEFAULT_INVERTER_WINDOW`` : tout futur
+# appelant (conception électrique, cible de dimensionnement, pont toiture 3D…)
+# passe par ici plutôt que de re-mapper les champs de fiche à sa façon.
+#
+# GARANTIE : produit sans fiche (ou fiche d'un autre ``type_fiche``) → dict
+# VIDE, donc ``{**DEFAULT_MODULE, **specs_module_pour_produit(p)}`` reste
+# byte-identique à ``DEFAULT_MODULE``. Aucun défaut n'est jamais deviné.
+
+# Clé sélecteur stock (PV6) → clé de ce module, avec son convertisseur. Les
+# valeurs de fiche sont des ``Decimal`` : la conversion en ``float`` est
+# OBLIGATOIRE (les calculs de tension mélangent coefficients et flottants).
+_MODULE_SPEC_MAP = (
+    ('vmp_v', 'vmp', float),
+    ('voc_v', 'voc', float),
+    ('pmax_wc', 'puissance_w', float),
+    ('temp_coeff_voc_pct_c', 'temp_coeff_voc', float),
+)
+# NOTE : ``temp_coeff_pmax_pct_c`` n'est volontairement PAS mappé sur
+# ``temp_coeff_vmp`` — le coefficient de Pmax et celui de Vmp sont deux
+# grandeurs différentes ; à défaut de champ dédié sur la fiche, le défaut
+# conservateur du module reste en place.
+
+_INVERTER_SPEC_MAP = (
+    ('n_mppt', 'n_mppt', int),
+    ('mppt_v_min', 'v_mppt_min', float),
+    ('mppt_v_max', 'v_mppt_max', float),
+    ('v_max_abs', 'v_max', float),
+    ('ac_kw', 'ac_kw', float),
+)
+# NOTE : ``v_min`` (tension de démarrage onduleur) n'existe pas encore sur la
+# fiche → le défaut s'applique. ``i_max_mppt_a`` / ``phases`` ne font pas
+# partie de la fenêtre de tension utilisée par ``string_design`` : ignorés ici.
+
+
+def _specs_produit(produit):
+    """Specs normalisées d'un produit — lecture cross-app PAR LE SÉLECTEUR.
+
+    Import FONCTION-LOCAL de ``apps.stock.selectors`` : la lecture cross-app
+    passe exclusivement par le sélecteur de l'app cible et l'import différé
+    évite tout cycle au chargement des modules.
+    """
+    if produit is None:
+        return {}
+    from apps.stock.selectors import specs_for_produit
+    return specs_for_produit(produit) or {}
+
+
+def _remap(specs, mapping):
+    """Traduit les clés sélecteur en clés de ce module (valeurs converties).
+
+    Une clé absente, nulle ou non convertible est OMISE — jamais rendue à
+    ``None`` : le dict retourné se fusionne sans risque sur un dict de défauts.
+    """
+    out = {}
+    for src, dst, cast in mapping:
+        value = specs.get(src)
+        if value is None:
+            continue
+        try:
+            out[dst] = cast(value)
+        except (TypeError, ValueError):
+            continue
+    return out
+
+
+def specs_module_pour_produit(produit):
+    """PV10 — paramètres électriques MODULE d'un produit, prêts pour ``module=``.
+
+    Traduit la fiche technique ``type_fiche='module'`` (PV5, lue via le
+    sélecteur stock PV6) dans les clés de ``DEFAULT_MODULE`` :
+    ``vmp_v→vmp``, ``voc_v→voc``, ``pmax_wc→puissance_w``,
+    ``temp_coeff_voc_pct_c→temp_coeff_voc`` (le signe de la fiche est repris
+    tel quel : un coefficient de Voc est négatif sur toute fiche constructeur).
+
+    Usage : ``string_design(n, module=specs_module_pour_produit(panneau))``.
+    Produit ``None``, sans fiche, ou fiche d'un autre type → ``{}``.
+    """
+    return _remap(_specs_produit(produit), _MODULE_SPEC_MAP)
+
+
+def fenetre_onduleur_pour_produit(produit):
+    """PV10 — fenêtre de tension ONDULEUR d'un produit, prête pour ``inverter=``.
+
+    Traduit la fiche technique ``type_fiche='onduleur'`` (PV5, lue via le
+    sélecteur stock PV6) dans les clés de ``DEFAULT_INVERTER_WINDOW`` :
+    ``n_mppt→n_mppt``, ``mppt_v_min→v_mppt_min``, ``mppt_v_max→v_mppt_max``,
+    ``v_max_abs→v_max``, ``ac_kw→ac_kw``.
+
+    Usage : ``string_design(n, inverter=fenetre_onduleur_pour_produit(ond))``.
+    Produit ``None``, sans fiche, ou fiche d'un autre type → ``{}``.
+    """
+    return _remap(_specs_produit(produit), _INVERTER_SPEC_MAP)
+
+
+# ═════════════════════════════════════════════════════════════════════════════
 # FG246 — Calcul de chaînes (string design) & vérification du ratio DC/AC
 # ═════════════════════════════════════════════════════════════════════════════
 def _voltage_at_temp(v_stc: float, temp_coeff_pct_per_c: float,
@@ -362,9 +462,14 @@ def match_inverter(produits, *, n_panels, panel_w=None, hybrid=False,
     * la fenêtre de tension accepte au moins une longueur de chaîne valide pour
       le module (réutilise ``string_design`` pour la vérif Vmp/Voc à froid).
 
-    Le nom du produit fournit la puissance kW (``parse_kw``) ; faute de fiche
-    électrique au catalogue, la fenêtre onduleur reste celle par défaut
-    (surchargeable via ``inverter_window``). Aucun prix d'achat n'est lu.
+    Le nom du produit fournit la puissance kW (``parse_kw``). PV10 — la fenêtre
+    de tension de CHAQUE candidat vient d'abord de sa fiche technique
+    (``fenetre_onduleur_pour_produit``, sélecteur stock PV6) ; un candidat sans
+    fiche garde la fenêtre par défaut, à l'identique de l'existant. Ordre de
+    priorité : défauts < fiche du produit < ``inverter_window`` explicite <
+    puissance AC lue au nom (elle reste la référence du ratio DC/AC affiché).
+    Appelant côté base : préférer ``select_related('fiche_technique')`` sur le
+    queryset de produits. Aucun prix d'achat n'est lu.
 
     Retourne un dict ``{inverter, ac_kw, dc_kw, dc_ac_ratio, string_design,
     compatible, candidates_considered, reason}`` ; ``inverter`` est le
@@ -383,6 +488,13 @@ def match_inverter(produits, *, n_panels, panel_w=None, hybrid=False,
         n = 0
 
     dc_kw = round(n * float(mod["puissance_w"]) / 1000.0, 3)
+
+    def _window_for(produit, kw):
+        """Fenêtre de tension du candidat : défauts < fiche < surcharge < kW."""
+        return {**DEFAULT_INVERTER_WINDOW,
+                **fenetre_onduleur_pour_produit(produit),
+                **(inverter_window or {}),
+                "ac_kw": kw}
 
     family_pred = is_hybrid_inverter if hybrid else is_reseau_inverter
     # Candidats : bonne famille, puissance lisible, prix de vente réel (jamais
@@ -419,8 +531,7 @@ def match_inverter(produits, *, n_panels, panel_w=None, hybrid=False,
         # Onduleur trop petit pour le champ (ratio DC/AC excessif) → suivant.
         if ratio is not None and ratio > MAX_DC_AC:
             continue
-        window = {**DEFAULT_INVERTER_WINDOW, **(inverter_window or {}),
-                  "ac_kw": kw}
+        window = _window_for(p, kw)
         design = string_design(
             n, module=mod, inverter=window,
             cold_temp_c=cold_temp_c, hot_temp_c=hot_temp_c)
@@ -435,8 +546,7 @@ def match_inverter(produits, *, n_panels, panel_w=None, hybrid=False,
         # Aucun candidat parfait : on retient le plus gros (meilleur ratio) en
         # le signalant, plutôt que de ne rien proposer.
         p, kw = candidates[-1]
-        window = {**DEFAULT_INVERTER_WINDOW, **(inverter_window or {}),
-                  "ac_kw": kw}
+        window = _window_for(p, kw)
         chosen_design = string_design(
             n, module=mod, inverter=window,
             cold_temp_c=cold_temp_c, hot_temp_c=hot_temp_c)

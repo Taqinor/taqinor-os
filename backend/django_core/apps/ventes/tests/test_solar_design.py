@@ -1980,3 +1980,174 @@ class CompareScenariosTest(SimpleTestCase):
         blob = repr(res)
         for forbidden in ('prix_achat', 'marge', 'margin', 'buy_price'):
             self.assertNotIn(forbidden, blob)
+
+
+# ── PV10 : pont catalogue → paramètres de dimensionnement (FicheTechnique) ────
+class SpecsProduitBridgeTest(TestCase):
+    """PV10 — ``specs_module_pour_produit`` / ``fenetre_onduleur_pour_produit``.
+
+    Deux garanties : (1) SANS fiche, tout reste byte-identique aux défauts ;
+    (2) AVEC fiche, ce sont les vraies valeurs constructeur qui dimensionnent.
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        from authentication.models import Company
+        from apps.stock.models import FicheTechnique, Produit
+        cls.company, _ = Company.objects.get_or_create(
+            slug="pv10-co", defaults={"nom": "PV10 Co"})
+
+        def mk(nom, sku, prix=10000):
+            return Produit.objects.create(
+                company=cls.company, nom=nom, sku=sku,
+                prix_vente=Decimal(str(prix)), quantite_stock=5)
+
+        # Produits SANS fiche (repli défaut).
+        cls.pan_nu = mk("Panneau Jinko 550W", "PV10-PAN-NU", 1100)
+        cls.ond_nu = mk("Onduleur réseau Huawei 12kW Triphasé",
+                        "PV10-OND-NU", 30000)
+
+        # Panneau AVEC fiche module réelle.
+        cls.pan_fiche = mk("Panneau JinkoSolar 710W", "PV10-PAN-F", 1500)
+        FicheTechnique.objects.create(
+            company=cls.company, produit=cls.pan_fiche,
+            type_fiche=FicheTechnique.TypeFiche.MODULE,
+            pmax_wc=Decimal("710.00"), voc_v=Decimal("48.00"),
+            vmp_v=Decimal("40.00"), isc_a=Decimal("18.50"),
+            temp_coeff_voc_pct_c=Decimal("-0.250"),
+            temp_coeff_pmax_pct_c=Decimal("-0.290"),
+            longueur_mm=2384, largeur_mm=1303)
+
+        # Onduleur AVEC fiche onduleur réelle (fenêtre 1100 V, 1 MPPT).
+        cls.ond_fiche = mk("Onduleur réseau Sungrow 12kW Triphasé",
+                           "PV10-OND-F", 30000)
+        FicheTechnique.objects.create(
+            company=cls.company, produit=cls.ond_fiche,
+            type_fiche=FicheTechnique.TypeFiche.ONDULEUR,
+            ond_n_mppt=1, ond_mppt_v_min=Decimal("200.0"),
+            ond_mppt_v_max=Decimal("900.0"),
+            ond_v_max_abs=Decimal("1100.0"),
+            ond_i_max_mppt_a=Decimal("30.0"), ond_ac_kw=Decimal("12.00"),
+            ond_phases=3)
+
+        # Onduleur portant une fiche d'un AUTRE type (batterie) — hors bloc.
+        cls.ond_bat = mk("Onduleur réseau Growatt 12kW Triphasé",
+                         "PV10-OND-B", 30000)
+        FicheTechnique.objects.create(
+            company=cls.company, produit=cls.ond_bat,
+            type_fiche=FicheTechnique.TypeFiche.BATTERIE,
+            bat_kwh_nominal=Decimal("5.00"), bat_v_nominal=Decimal("51.2"))
+
+    # ── (1) Sans fiche : dict VIDE et calcul byte-identique ──
+    def test_no_fiche_returns_empty_dicts(self):
+        self.assertEqual(sd.specs_module_pour_produit(self.pan_nu), {})
+        self.assertEqual(sd.fenetre_onduleur_pour_produit(self.ond_nu), {})
+        # Produit None toléré (jamais d'exception).
+        self.assertEqual(sd.specs_module_pour_produit(None), {})
+        self.assertEqual(sd.fenetre_onduleur_pour_produit(None), {})
+
+    def test_no_fiche_string_design_is_byte_identical_to_golden(self):
+        golden = sd.string_design(17)
+        via_pont = sd.string_design(
+            17,
+            module=sd.specs_module_pour_produit(self.pan_nu),
+            inverter=sd.fenetre_onduleur_pour_produit(self.ond_nu))
+        self.assertEqual(via_pont, golden)
+
+    def test_wrong_type_fiche_is_ignored(self):
+        # Fiche batterie sur un onduleur → aucune clé de fenêtre récupérée.
+        self.assertEqual(sd.fenetre_onduleur_pour_produit(self.ond_bat), {})
+        self.assertEqual(sd.specs_module_pour_produit(self.ond_bat), {})
+        self.assertEqual(
+            sd.string_design(
+                17, inverter=sd.fenetre_onduleur_pour_produit(self.ond_bat)),
+            sd.string_design(17))
+
+    # ── (2) Avec fiche : mapping des clés et vraies valeurs ──
+    def test_module_keys_mapped_to_default_module_names(self):
+        specs = sd.specs_module_pour_produit(self.pan_fiche)
+        self.assertEqual(specs, {"vmp": 40.0, "voc": 48.0,
+                                 "puissance_w": 710.0,
+                                 "temp_coeff_voc": -0.25})
+        # Des flottants, jamais des Decimal (les calculs mélangent les deux).
+        for value in specs.values():
+            self.assertIsInstance(value, float)
+        # Les clés non portées par la fiche gardent le défaut du module.
+        merged = {**sd.DEFAULT_MODULE, **specs}
+        self.assertEqual(merged["temp_coeff_vmp"],
+                         sd.DEFAULT_MODULE["temp_coeff_vmp"])
+
+    def test_inverter_keys_mapped_to_default_window_names(self):
+        window = sd.fenetre_onduleur_pour_produit(self.ond_fiche)
+        self.assertEqual(window, {"n_mppt": 1, "v_mppt_min": 200.0,
+                                  "v_mppt_max": 900.0, "v_max": 1100.0,
+                                  "ac_kw": 12.0})
+        self.assertIsInstance(window["n_mppt"], int)
+        # v_min (démarrage) absent de la fiche → défaut conservé.
+        merged = {**sd.DEFAULT_INVERTER_WINDOW, **window}
+        self.assertEqual(merged["v_min"],
+                         sd.DEFAULT_INVERTER_WINDOW["v_min"])
+
+    def test_real_module_fiche_drives_dc_power(self):
+        res = sd.string_design(
+            10, module=sd.specs_module_pour_produit(self.pan_fiche))
+        # 10 × 710 Wc = 7,1 kWc (et non 10 × 450 Wc du défaut).
+        self.assertAlmostEqual(res["dc_kw"], 7.1, places=3)
+        self.assertNotAlmostEqual(res["dc_kw"],
+                                  sd.string_design(10)["dc_kw"], places=3)
+
+    def test_real_inverter_fiche_flips_cold_voc_outcome(self):
+        # 17 modules : la fenêtre PAR DÉFAUT (V_max 600 V) plafonne la chaîne à
+        # 13 modules → aucune répartition égale → conception refusée.
+        defaut = sd.string_design(17, module={"puissance_w": 550})
+        self.assertFalse(defaut["ok"])
+        self.assertEqual(defaut["panels_per_string"], 13)
+
+        # Avec la VRAIE fenêtre du constructeur (V_max 1100 V, 1 MPPT), la
+        # chaîne de 17 modules passe la vérif Voc à froid et la conception
+        # devient valide.
+        reel = sd.string_design(
+            17, module={"puissance_w": 550},
+            inverter=sd.fenetre_onduleur_pour_produit(self.ond_fiche))
+        self.assertTrue(reel["ok"])
+        self.assertEqual(reel["panels_per_string"], 17)
+        self.assertEqual(reel["n_mppt"], 1)
+        self.assertTrue(reel["checks"]["voc_cold_under_vmax"])
+        # Preuve que c'est bien la borne Voc RÉELLE qui l'autorise : le Voc à
+        # froid de cette chaîne dépasse le V_max par défaut.
+        self.assertGreater(reel["voltages"]["voc_cold"],
+                           sd.DEFAULT_INVERTER_WINDOW["v_max"])
+
+    # ── match_inverter branché sur la fiche de CHAQUE candidat ──
+    def test_match_inverter_uses_candidate_fiche_window(self):
+        # Même onduleur 12 kW, même champ PV : sans fiche la conception est
+        # refusée (fenêtre par défaut), avec la fiche elle est compatible.
+        sans = sd.match_inverter([self.ond_nu], n_panels=17, panel_w=550,
+                                 hybrid=False)
+        self.assertFalse(sans["compatible"])
+        self.assertEqual(sans["string_design"]["panels_per_string"], 13)
+
+        avec = sd.match_inverter([self.ond_fiche], n_panels=17, panel_w=550,
+                                 hybrid=False)
+        self.assertTrue(avec["compatible"])
+        self.assertEqual(avec["string_design"]["panels_per_string"], 17)
+        self.assertEqual(avec["string_design"]["n_mppt"], 1)
+        # La puissance AC affichée reste celle lue au nom (référence du ratio).
+        self.assertEqual(avec["ac_kw"], 12)
+
+    def test_match_inverter_unchanged_when_fiche_is_another_type(self):
+        # Fiche batterie sur l'onduleur → résultat identique au produit nu.
+        nu = sd.match_inverter([self.ond_nu], n_panels=17, panel_w=550,
+                               hybrid=False)
+        bat = sd.match_inverter([self.ond_bat], n_panels=17, panel_w=550,
+                                hybrid=False)
+        self.assertEqual(nu["string_design"], bat["string_design"])
+        self.assertEqual(nu["compatible"], bat["compatible"])
+        self.assertEqual(nu["ac_kw"], bat["ac_kw"])
+
+    def test_explicit_inverter_window_still_wins_over_fiche(self):
+        # Surcharge explicite de l'appelant > fiche produit.
+        res = sd.match_inverter(
+            [self.ond_fiche], n_panels=17, panel_w=550, hybrid=False,
+            inverter_window={"n_mppt": 3})
+        self.assertEqual(res["string_design"]["n_mppt"], 3)

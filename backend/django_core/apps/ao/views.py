@@ -63,6 +63,7 @@ from .models import (
     SerieQuestions,
     ToitureAO,
     VarianteCalepinage,
+    ZoneAO,
 )
 from .serializers import (
     AppelOffreSerializer,
@@ -91,6 +92,7 @@ from .serializers import (
     TeleversementPlanSourceSerializer,
     ToitureAOSerializer,
     VarianteCalepinageSerializer,
+    ZoneAOSerializer,
 )
 from .viewsets import AoBaseViewSet
 
@@ -212,6 +214,19 @@ class AppelOffreViewSet(AoBaseViewSet):
                        'statut']
     #: AOF12 — filtres d'égalité exposés en paramètres de requête.
     FILTRES_EXACTS = ('statut', 'type_marche', 'mode_passation')
+
+    def get_serializer_context(self):
+        """PV68 — la synthèse de calepinage est un bloc de DÉTAIL.
+
+        Elle coûte deux requêtes par affaire : la calculer sur une LISTE ferait
+        cinquante requêtes pour une donnée qu'aucune liste n'affiche. La clé
+        reste publiée dans les deux cas (``null`` en liste) — voir
+        ``AppelOffreSerializer.get_synthese_calepinage``.
+        """
+        contexte = super().get_serializer_context()
+        contexte['synthese_calepinage'] = getattr(self, 'action', '') in (
+            'retrieve', 'update', 'partial_update')
+        return contexte
 
     def get_queryset(self):
         params = self.request.query_params
@@ -648,6 +663,32 @@ class ObstacleAOViewSet(AoBaseViewSet):
             self.get_object(), provenance, user=request.user,
             motif=(request.data.get('motif') or ''))
         return Response(self.get_serializer(obstacle).data)
+
+
+class ZoneAOViewSet(AoBaseViewSet):
+    """Zones de toiture (PV54) — le contour NOMMÉ que le moteur sait déjà lire.
+
+    Même socle que ``ObstacleAOViewSet`` : société scopée et ``company`` posée
+    côté serveur par ``AoBaseViewSet``, lecture gardée par ``ao_voir``,
+    écriture par ``ao_gerer``. Aucune action métier : une zone est une donnée
+    de saisie, pas un document à faire avancer.
+    """
+    queryset = ZoneAO.objects.all()
+    serializer_class = ZoneAOSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['repere']
+    ordering_fields = ['repere', 'nature', 'id']
+
+    def get_queryset(self):
+        qs = _filtres_exacts(
+            super().get_queryset(), self.request.query_params,
+            ('toiture', 'nature'))
+        appel_offre = self.request.query_params.get('appel_offre')
+        if appel_offre not in (None, ''):
+            qs = qs.filter(
+                toiture__batiment__appel_offre_id=appel_offre) \
+                if str(appel_offre).isdigit() else qs.none()
+        return qs
 
 
 class PlanSourceViewSet(AoBaseViewSet):

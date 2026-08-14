@@ -7,11 +7,22 @@ rejouer le calcul à la main pour savoir ce qui cloche, ce qui est exactement
 ce que le dossier FRDISI a coûté en temps.
 """
 
-__all__ = ["ErreurCalepinage", "CalepinageIncoherent"]
+__all__ = ["ErreurCalepinage", "CalepinageIncoherent", "EntreeInvalide"]
 
 
 class ErreurCalepinage(Exception):
     """Base de toutes les erreurs métier du moteur."""
+
+
+class EntreeInvalide(ErreurCalepinage, ValueError):
+    """L'entrée est refusée AVANT tout calcul, avec un motif FRANÇAIS.
+
+    Elle hérite aussi de ``ValueError`` : les appelants historiques (le service
+    ``apps.ao`` rattrape ``ValueError`` pour le retraduire en refus nommé)
+    continuent donc de fonctionner sans connaître cette classe. Le moteur ne
+    se replie JAMAIS en silence sur un calcul par défaut quand l'entrée ne dit
+    pas ce qu'il faut poser — il refuse et nomme ce qui manque.
+    """
 
 
 class CalepinageIncoherent(ErreurCalepinage):

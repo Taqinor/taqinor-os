@@ -47,6 +47,7 @@ from .views import (
     SerieQuestionsViewSet,
     ToitureAOViewSet,
     VarianteCalepinageViewSet,
+    ZoneAOViewSet,
 )
 from .viewsets import (
     DossierAOViewSet, LigneChecklistPartenaireViewSet,
@@ -71,6 +72,8 @@ router.register(r'plans-source', PlanSourceViewSet,
                 basename='ao-plan-source')
 router.register(r'obstacles', ObstacleAOViewSet,
                 basename='ao-obstacle')
+# PV54 — zones de toiture (enveloppe / interdite / réservée / préférée).
+router.register(r'zones', ZoneAOViewSet, basename='ao-zone')
 router.register(r'chaines-cotes', ChaineCotesViewSet,
                 basename='ao-chaine-cotes')
 router.register(r'releves', ReleveAOViewSet, basename='ao-releve')

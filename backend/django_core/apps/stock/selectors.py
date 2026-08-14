@@ -1174,6 +1174,109 @@ def resume_portail_fournisseur(company, fournisseur_id):
     }
 
 
+# ── PV6 — Specs & Kit de calepinage DÉRIVÉS de FicheTechnique (PV5) ─────────
+# Point d'entrée cross-app LECTURE SEULE : le moteur de calepinage
+# (core.calepinage) et les autres apps lisent les caractéristiques d'un
+# produit à travers ces deux fonctions plutôt qu'en touchant
+# `apps.stock.models.FicheTechnique` directement.
+
+def specs_for_produit(produit):
+    """PV6 — sous-ensemble de spécifications électriques/dimensions d'un
+    produit, lues sur sa FicheTechnique (PV5) et scopées par son
+    ``type_fiche`` :
+
+      * ``module`` → ``{vmp_v, voc_v, isc_a, imp_a, pmax_wc,
+        temp_coeff_voc_pct_c, temp_coeff_pmax_pct_c, longueur_mm,
+        largeur_mm}`` ;
+      * ``onduleur`` → ``{n_mppt, mppt_v_min, mppt_v_max, v_max_abs,
+        i_max_mppt_a, ac_kw, phases}`` ;
+      * ``batterie`` → ``{kwh_nominal, kwh_usable, dod_pct, v_nominal,
+        max_charge_kw}``.
+
+    Une clé dont la valeur est NULL sur la fiche est OMISE (jamais rendue à
+    ``None``) : un appelant qui fait ``{**DEFAUT, **specs_for_produit(p)}``
+    obtient un résultat byte-identique à l'absence de fiche pour tout champ
+    non saisi. Produit sans fiche, ou ``type_fiche`` sans bloc connu (vide
+    ou ``autre``) → dict VIDE. Lecture seule."""
+    fiche = getattr(produit, 'fiche_technique', None)
+    if fiche is None:
+        return {}
+
+    def _put(d, key, value):
+        if value is not None:
+            d[key] = value
+
+    out = {}
+    if fiche.type_fiche == 'module':
+        for key, value in (
+            ('vmp_v', fiche.vmp_v), ('voc_v', fiche.voc_v),
+            ('isc_a', fiche.isc_a), ('imp_a', fiche.imp_a),
+            ('pmax_wc', fiche.pmax_wc),
+            ('temp_coeff_voc_pct_c', fiche.temp_coeff_voc_pct_c),
+            ('temp_coeff_pmax_pct_c', fiche.temp_coeff_pmax_pct_c),
+            ('longueur_mm', fiche.longueur_mm),
+            ('largeur_mm', fiche.largeur_mm),
+        ):
+            _put(out, key, value)
+    elif fiche.type_fiche == 'onduleur':
+        for key, value in (
+            ('n_mppt', fiche.ond_n_mppt),
+            ('mppt_v_min', fiche.ond_mppt_v_min),
+            ('mppt_v_max', fiche.ond_mppt_v_max),
+            ('v_max_abs', fiche.ond_v_max_abs),
+            ('i_max_mppt_a', fiche.ond_i_max_mppt_a),
+            ('ac_kw', fiche.ond_ac_kw),
+            ('phases', fiche.ond_phases),
+        ):
+            _put(out, key, value)
+    elif fiche.type_fiche == 'batterie':
+        for key, value in (
+            ('kwh_nominal', fiche.bat_kwh_nominal),
+            ('kwh_usable', fiche.bat_kwh_usable),
+            ('dod_pct', fiche.bat_dod_pct),
+            ('v_nominal', fiche.bat_v_nominal),
+            ('max_charge_kw', fiche.bat_max_charge_kw),
+        ):
+            _put(out, key, value)
+    return out
+
+
+def kit_from_produit(produit):
+    """PV6 — construit un ``core.calepinage.types.Kit`` à partir des
+    dimensions/puissance de la fiche technique MODULE (PV5) d'un produit.
+
+    Mirrors la construction de ``KIT_VILLA_720`` : 1 module par table,
+    orientation PORTRAIT, inclinaison 13°, sans faîtage — les seules valeurs
+    fixes que la fiche technique ne porte pas encore ; seules les dimensions
+    (``longueur_mm``/``largeur_mm``, converties en mètres) et la puissance
+    (``pmax_wc``) viennent du produit. Toute valeur requise absente (produit
+    sans fiche, ou l'un des trois champs non renseigné) → ``None`` : le
+    moteur de calepinage ne devine jamais une géométrie. Lecture seule."""
+    fiche = getattr(produit, 'fiche_technique', None)
+    if fiche is None:
+        return None
+    if (fiche.longueur_mm is None or fiche.largeur_mm is None
+            or fiche.pmax_wc is None):
+        return None
+
+    from core.calepinage.types import Kit, OrientationModule
+    try:
+        return Kit(
+            code=produit.sku or ('PRODUIT_%s' % produit.pk),
+            libelle=produit.nom,
+            module_long_m=float(fiche.longueur_mm) / 1000.0,
+            module_court_m=float(fiche.largeur_mm) / 1000.0,
+            puissance_module_wc=float(fiche.pmax_wc),
+            inclinaison_deg=13.0,
+            orientation=OrientationModule.PORTRAIT,
+            modules_par_table=1,
+            faitage_m=0.0,
+        )
+    except ValueError:
+        # dimensions incohérentes (ex. largeur > longueur) — jamais deviner.
+        return None
+
+
 def nb_produits_par_entite(company, entite_ids):
     """NTADM25 — nombre de produits ACTIFS par entité (NTADM2).
 

@@ -200,6 +200,17 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
             'lots',
             # NTCPQ20 — historique fin de configuration (lecture seule).
             'historique_configuration',
+            # PV17 — contexte de l'écran de conception 3D. LECTURE, mais
+            # réservée au même périmètre que le générateur de devis
+            # (responsable + admin), pas ouverte à tout rôle. La garde doit
+            # être ICI : get_permissions PRIME sur le ``permission_classes``
+            # de l'@action (son repli est IsAdminRole) — l'@action déclare
+            # donc la MÊME classe pour ne jamais mentir sur la garde
+            # effective.
+            'design_context',
+            # PV18 — resynchronisation des lignes sur un nouveau calepinage
+            # (écriture chirurgicale, jamais le statut).
+            'sync_layout',
         ]:
             return [IsResponsableOrAdmin()]
         elif self.action == 'destroy':
@@ -391,6 +402,68 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
             },
             status=status.HTTP_201_CREATED)
 
+    @action(detail=True, methods=['get'], url_path='design-context',
+            permission_classes=[IsResponsableOrAdmin])
+    def design_context(self, request, pk=None):
+        """PV17 — TOUT ce que l'écran de conception 3D doit savoir d'un devis,
+        en UN SEUL appel et sous UNE SEULE forme.
+
+        Renvoie ``{devis, geometrie, cible, carte, modifiable,
+        raison_lecture_seule, avertissements}`` — toutes les clés TOUJOURS
+        présentes (contrat ``contract_samples/devis_design_context.json``) : un
+        panier vide vaut ``[]``, une valeur inconnue ``None``/``''``, jamais
+        une clé absente. L'écran n'a donc rien à deviner et ne peut pas
+        ``.map()`` sur ``undefined``.
+
+        LECTURE PURE, scopée société par ``get_queryset`` (un devis d'une autre
+        société → 404) : aucun statut, aucune ligne, aucun layout n'est écrit
+        (règle #4)."""
+        from ..selectors import contexte_conception_devis
+
+        devis = self.get_object()  # borné société par get_queryset
+        contexte = contexte_conception_devis(devis, request.user.company)
+        if contexte is None:
+            return Response({'detail': 'Devis inconnu.'},
+                            status=status.HTTP_404_NOT_FOUND)
+        return Response(contexte)
+
+    @action(detail=True, methods=['post'], url_path='sync-layout',
+            permission_classes=[IsResponsableOrAdmin])
+    def sync_layout(self, request, pk=None):
+        """PV18 — resynchronise les LIGNES du devis sur un nouveau calepinage.
+
+        Corps : le layout sérialisé (on accepte aussi les enveloppes
+        ``{"layout": …}`` / ``{"roof_layout": …}``, comme l'action ``layout``).
+
+        Mise à jour CHIRURGICALE d'un brouillon : quantités de panneaux et
+        présence de la batterie, rien d'autre — prix négociés, remises,
+        sections, notes, ordre et groupes multi-villa restent intacts. Le
+        STATUT n'est jamais écrit (règle #4) : un devis « envoyé » répond 409
+        avec ``revision_possible: true`` (le bon geste est « Réviser ») ; un
+        devis accepté/refusé/expiré répond 409 avec ``revision_possible:
+        false``. Renvoyer le MÊME layout ne fait aucune écriture
+        (``inchange: true``). Devis d'une autre société → 404 (get_queryset)."""
+        from ..services import sync_devis_from_layout, SyncLayoutError
+
+        devis = self.get_object()  # borné société par get_queryset
+        payload = request.data
+        if isinstance(payload, dict):
+            for enveloppe in ('layout', 'roof_layout'):
+                if set(payload.keys()) == {enveloppe}:
+                    payload = payload[enveloppe]
+                    break
+        if not isinstance(payload, dict) or not payload:
+            return Response({'detail': 'Layout manquant ou invalide.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        try:
+            resultat = sync_devis_from_layout(devis, payload, request.user)
+        except SyncLayoutError as exc:
+            return Response(
+                {'detail': exc.detail,
+                 'revision_possible': exc.revision_possible},
+                status=status.HTTP_409_CONFLICT)
+        return Response(resultat)
+
     @action(detail=False, methods=['post'], url_path='atomic',
             permission_classes=[IsResponsableOrAdmin])
     def atomic(self, request):
@@ -468,9 +541,25 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
         """QX21be — remplace ATOMIQUEMENT toutes les lignes d'un devis en un
         seul commit (édition). Remplace le delete-all-puis-recréer à erreurs
         avalées du générateur, qui pouvait laisser un devis avec moins/aucune
-        ligne. Un échec préserve les lignes d'origine (rollback complet)."""
+        ligne. Un échec préserve les lignes d'origine (rollback complet).
+
+        PV15 — GARDE DE STATUT. Cet endpoint SUPPRIME puis recrée toutes les
+        lignes : sans garde, un appel sur un devis ACCEPTÉ (ou refusé/expiré)
+        effaçait le contenu d'un document déjà engagé, dont la chaîne
+        BonCommande/Facture dépend. Seuls « brouillon » et « envoyé » restent
+        modifiables ; au-delà, 409 avec le statut NOMMÉ (le bon geste est
+        « Réviser », qui crée une nouvelle version). Cette garde ne CHANGE
+        jamais le statut — elle le LIT (règle #4)."""
         from django.db import transaction
         devis = self.get_object()  # borné société par get_queryset
+        _MODIFIABLES = (Devis.Statut.BROUILLON, Devis.Statut.ENVOYE)
+        if devis.statut not in _MODIFIABLES:
+            return Response(
+                {'detail': (
+                    'Devis « %s » : ses lignes ne peuvent plus être '
+                    'remplacées. Utilisez « Réviser » pour en créer une '
+                    'nouvelle version.' % devis.get_statut_display())},
+                status=status.HTTP_409_CONFLICT)
         lignes_in = request.data.get('lignes')
         if not isinstance(lignes_in, list):
             return Response({'detail': 'Champ « lignes » requis (liste).'},
@@ -486,14 +575,16 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
 
     def _replace_lines_atomic(self, devis, lignes_in, company):
         """QX21be — supprime puis recrée les lignes du devis (appelé SOUS une
-        transaction par l'appelant). Produits bornés société ; jamais de
-        ``prix_achat`` accepté du corps.
+        transaction par l'appelant). Produits bornés à la société de
+        l'utilisateur OU au catalogue global (PV15, même portée que
+        ``services._pick_product``) ; jamais de ``prix_achat`` accepté du corps.
 
         XSAL5 — ``optionnelle`` (add-on hors total) est persistée.
         XSAL14 — ``type_ligne`` (produit [défaut] / section / note) + ``ordre`` :
         une ligne section/note ne porte NI produit NI prix (jamais comptée dans
         les totaux). ``ordre`` par défaut = position dans la liste envoyée."""
         from decimal import Decimal, InvalidOperation
+        from django.db.models import Q
         from ..models import LigneDevis
         from apps.stock.models import Produit
         _VALID_TYPES = {c.value for c in LigneDevis.TypeLigne}
@@ -525,8 +616,17 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
                 produit_id = int(li.get('produit'))
             except (TypeError, ValueError):
                 raise ValueError('Ligne sans produit valide.')
+            # PV15 — le catalogue GLOBAL (``company IS NULL``) est quotable :
+            # c'est exactement la portée que ``services._pick_product`` retient
+            # pour composer un devis. Le filtre société-stricte d'origine
+            # REFUSAIT ici des produits que l'auto-composition venait de poser
+            # sur le même devis (« Produit N inconnu » sur un simple
+            # ré-enregistrement). La portée reste bornée : société de
+            # l'utilisateur OU catalogue global — jamais celui d'un autre
+            # tenant.
             produit = Produit.objects.filter(
-                id=produit_id, company=company).first()
+                Q(company=company) | Q(company__isnull=True),
+                id=produit_id).first()
             if produit is None:
                 raise ValueError(f'Produit {produit_id} inconnu.')
             try:
