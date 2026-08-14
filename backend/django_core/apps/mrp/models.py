@@ -218,6 +218,15 @@ class OrdreFabrication(TenantModel):
     # jamais le rejouer sur une clôture répétée.
     stock_mouvemente = models.BooleanField(
         default=False, verbose_name='Stock mouvementé')
+    # NTMFG16 — première pièce bonne (First Article Inspection) : un OF
+    # prototype valide une nouvelle gamme/nomenclature (NTMFG15) AVANT
+    # libération en production normale. EXCLU des calculs AGRÉGÉS de
+    # production normale (MRP net NTMFG5, TRS/OEE NTMFG12, coût standard
+    # NTMFG11) mais reste soumis au même contrôle qualité qu'un OF normal.
+    # Non modifiable après clôture (`OrdreFabricationViewSet.perform_update`)
+    # — créer un nouvel OF plutôt que de « débasculer » un prototype clôturé.
+    est_prototype = models.BooleanField(
+        default=False, verbose_name='Prototype (hors production normale)')
 
     class Meta:
         verbose_name = 'Ordre de fabrication'

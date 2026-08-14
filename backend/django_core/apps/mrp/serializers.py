@@ -84,8 +84,8 @@ class OrdreFabricationSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'produit', 'produit_nom', 'quantite', 'gamme', 'statut',
             'date_debut_planifiee', 'date_fin_planifiee', 'priorite',
-            'kit_ordre_assemblage', 'stock_mouvemente', 'operations',
-            'reservations', 'created_at', 'updated_at',
+            'kit_ordre_assemblage', 'stock_mouvemente', 'est_prototype',
+            'operations', 'reservations', 'created_at', 'updated_at',
         ]
         read_only_fields = [
             'id', 'statut', 'date_debut_planifiee', 'date_fin_planifiee',

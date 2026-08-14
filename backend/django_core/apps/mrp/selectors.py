@@ -101,10 +101,12 @@ def calculer_besoins_nets(company, *, produits=None, demande_independante=None,
         stock_dispo = _dec(available_quantity(produit_obj))
         en_cours_statuts = [
             OrdreFabrication.Statut.PLANIFIE, OrdreFabrication.Statut.LANCE]
+        # NTMFG16 — un OF prototype (première pièce bonne, hors production
+        # normale) n'entre JAMAIS dans le besoin net agrégé.
         en_cours = _dec(
             OrdreFabrication.objects.filter(
                 company=company, produit_id=produit_id,
-                statut__in=en_cours_statuts,
+                statut__in=en_cours_statuts, est_prototype=False,
             ).aggregate(total=Sum('quantite'))['total'] or 0)
         demande = demande_totale.get(produit_id, Decimal('0'))
         securite = (
@@ -316,8 +318,11 @@ def analyse_couts(company, *, produit_id=None, date_debut=None, date_fin=None):
     porte pas de champ `date_terminee` dédié). STRICTEMENT INTERNE."""
     from .models import OrdreFabrication
 
+    # NTMFG16 — un OF prototype (première pièce bonne) n'entre jamais dans
+    # l'analyse d'écarts vs coût standard de production normale.
     qs = (OrdreFabrication.objects
-          .filter(company=company, statut=OrdreFabrication.Statut.TERMINE)
+          .filter(company=company, statut=OrdreFabrication.Statut.TERMINE,
+                  est_prototype=False)
           .select_related('produit', 'gamme'))
     if produit_id:
         qs = qs.filter(produit_id=produit_id)
@@ -387,12 +392,16 @@ def _jours_ouvres_fenetre(debut, fin):
 
 
 def _operations_terminees_poste(poste, debut, fin):
+    """NTMFG16 — un OF prototype (première pièce bonne) est EXCLU du calcul
+    TRS/OEE de production normale (mais reste soumis au même contrôle
+    qualité — NTMFG13 hors périmètre de ce lot)."""
     from .models import OperationOF
 
     return (OperationOF.objects
             .filter(
                 poste_charge=poste, statut='terminee',
-                terminee_le__date__gte=debut, terminee_le__date__lte=fin)
+                terminee_le__date__gte=debut, terminee_le__date__lte=fin,
+                ordre_fabrication__est_prototype=False)
             .select_related('operation_gamme', 'ordre_fabrication'))
 
 

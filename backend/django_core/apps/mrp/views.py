@@ -148,6 +148,15 @@ class OrdreFabricationViewSet(CompanyScopedModelViewSet):
 
     def perform_update(self, serializer):
         self._check_tenant(serializer)
+        # NTMFG16 — un OF déjà CLÔTURÉ (`termine`) ne peut plus basculer
+        # prototype <-> normal : la seule voie est de créer un nouvel OF.
+        instance = serializer.instance
+        if ('est_prototype' in serializer.validated_data
+                and instance.statut == OrdreFabrication.Statut.TERMINE
+                and serializer.validated_data['est_prototype'] != instance.est_prototype):
+            raise ValidationError({
+                'est_prototype': "Impossible de changer le statut prototype d'un "
+                                 'OF déjà clôturé — créez un nouvel OF.'})
         serializer.save(company=self.request.user.company)
 
     # YRBAC4 — gardes DÉCLARÉES, et un vrai RESSERREMENT sur les trois actions
