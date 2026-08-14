@@ -295,6 +295,12 @@ export default function DevisForm({ devis = null, onClose, onSaved }) {
   )
 
   const [removedLineIds, setRemovedLineIds] = useState([])
+  // NTCPQ29 — wizard de résolution de conflit de compatibilité : { key,
+  // violation, alternatives } quand la dernière sélection produit déclenche
+  // une violation BLOQUANTE (NTCPQ1), null sinon. Purement côté écran —
+  // aucune écriture serveur tant que l'utilisateur ne choisit pas une
+  // alternative (ou ferme le modal sans agir).
+  const [conflitCompat, setConflitCompat] = useState(null)
   // VX90 — focus la nouvelle ligne (ProduitPicker) après « Ajouter ligne ».
   const linesTableRef = useRef(null)
   const [pendingFocusKey, setPendingFocusKey] = useState(null)
@@ -357,16 +363,42 @@ export default function DevisForm({ devis = null, onClose, onSaved }) {
     setDirty(true)
     clearField('lines')
     const p = produits.find(p => String(p.id) === String(produitId))
-    setLines(ls => ls.map(l =>
-      l._key === key
-        ? {
-            ...l, produit: produitId, designation: p?.nom ?? '',
-            prix_unitaire: p ? String(p.prix_vente) : '0',
-            // Copie le taux TVA du produit s'il est défini (réforme 10/20 %).
-            taux_tva: p?.tva != null ? String(p.tva) : l.taux_tva,
+    let nextIds = []
+    setLines(ls => {
+      const updated = ls.map(l =>
+        l._key === key
+          ? {
+              ...l, produit: produitId, designation: p?.nom ?? '',
+              prix_unitaire: p ? String(p.prix_vente) : '0',
+              // Copie le taux TVA du produit s'il est défini (réforme 10/20 %).
+              taux_tva: p?.tva != null ? String(p.tva) : l.taux_tva,
+            }
+          : l
+      )
+      nextIds = updated.map(l => l.produit).filter(Boolean)
+      return updated
+    })
+    // NTCPQ29 — vérification LIVE de compatibilité après la sélection :
+    // une violation bloquante ouvre le wizard de résolution au lieu d'un
+    // simple message d'erreur bloquant sans issue. Best-effort, jamais
+    // bloquant pour la saisie (silencieux sur erreur réseau).
+    if (nextIds.length > 1) {
+      cpqApi.validerCompatibilite(nextIds)
+        .then(({ data }) => {
+          const premiere = data?.bloquantes?.[0]
+          if (premiere) {
+            setConflitCompat({ key, violation: premiere })
+          } else {
+            setConflitCompat(c => (c?.key === key ? null : c))
           }
-        : l
-    ))
+        })
+        .catch(() => {})
+    }
+  }
+
+  const resoudreConflitCompat = (produitAlternatifId) => {
+    if (conflitCompat) onProduitChange(conflitCompat.key, produitAlternatifId)
+    setConflitCompat(null)
   }
 
   const addLine = () => {
@@ -817,6 +849,58 @@ export default function DevisForm({ devis = null, onClose, onSaved }) {
             setClientQuickCreateOpen(false)
           }}
         />
+
+        {/* NTCPQ29 — wizard de résolution de conflit de compatibilité :
+            propose des alternatives compatibles en un clic au lieu d'un
+            simple message d'erreur bloquant sans issue, sans quitter
+            l'écran de configuration. */}
+        <Dialog
+          open={!!conflitCompat}
+          onOpenChange={(o) => { if (!o) setConflitCompat(null) }}
+        >
+          <DialogContent data-testid="cpq-conflit-compatibilite">
+            <DialogHeader>
+              <DialogTitle>Configuration incompatible</DialogTitle>
+            </DialogHeader>
+            <p className="mb-3 text-sm text-muted-foreground">
+              {conflitCompat?.violation?.message ||
+                'Ces produits ne sont pas compatibles.'}
+            </p>
+            {conflitCompat?.violation?.alternatives?.length ? (
+              <div className="space-y-2">
+                <p className="text-sm font-medium text-foreground">
+                  Alternatives compatibles :
+                </p>
+                {conflitCompat.violation.alternatives.map((alt) => (
+                  <Button
+                    key={alt.produit_id}
+                    type="button"
+                    variant="ghost"
+                    className="w-full justify-start"
+                    onClick={() => resoudreConflitCompat(alt.produit_id)}
+                  >
+                    {alt.source === 'a_ajouter' ? 'Ajouter : ' : 'Remplacer par : '}
+                    {alt.nom}
+                  </Button>
+                ))}
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground">
+                Aucune alternative connue pour le moment — ajustez la
+                sélection manuellement.
+              </p>
+            )}
+            <FormActions sticky={false}>
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={() => setConflitCompat(null)}
+              >
+                Fermer
+              </Button>
+            </FormActions>
+          </DialogContent>
+        </Dialog>
       </DialogContent>
     </Dialog>
   )

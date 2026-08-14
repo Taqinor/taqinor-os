@@ -765,7 +765,12 @@ class ValiderCompatibiliteView(APIView):
     """NTCPQ1 — POST cpq/valider-compatibilite/.
 
     Corps : ``{"produit_ids": [1, 2, 3]}``. Renvoie les violations, séparées en
-    ``bloquantes`` (INCOMPATIBLE / REQUIERT) et ``avertissements`` (RECOMMANDE)."""
+    ``bloquantes`` (INCOMPATIBLE / REQUIERT) et ``avertissements`` (RECOMMANDE).
+
+    NTCPQ29 — chaque violation BLOQUANTE porte en plus ``alternatives``
+    (jusqu'à 3 produits compatibles, ``[]`` si aucune connue) : le wizard de
+    résolution de conflit propose ces alternatives au lieu d'un simple
+    message d'erreur bloquant sans issue."""
     permission_classes = [IsAuthenticated]
 
     def post(self, request):
@@ -778,6 +783,9 @@ class ValiderCompatibiliteView(APIView):
         violations = selectors.violations_compatibilite(
             company=company, produit_ids=produit_ids)
         bloquantes = [v for v in violations if v['bloquante']]
+        for v in bloquantes:
+            v['alternatives'] = selectors.alternatives_violation(
+                company=company, produit_ids=produit_ids, violation=v)
         avertissements = [v for v in violations if not v['bloquante']]
         return Response({
             'valide': not bloquantes,

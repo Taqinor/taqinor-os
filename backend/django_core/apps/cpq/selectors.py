@@ -99,6 +99,72 @@ def _violation(contrainte):
     }
 
 
+def alternatives_violation(*, company, produit_ids, violation):
+    """NTCPQ29 — Alternatives COMPATIBLES pour résoudre une violation
+    bloquante (issue de ``violations_compatibilite``), au lieu d'un simple
+    message d'erreur sans issue.
+
+      * ``REQUIERT`` (``produit_a`` présent sans ``produit_b``) : la SEULE
+        alternative valable est d'AJOUTER ``produit_b`` (le produit requis
+        lui-même) — ``source: 'a_ajouter'``.
+      * ``INCOMPATIBLE`` : cherche un SUBSTITUT du produit incompatible
+        (``ProduitEquivalent``, NTCPQ16, n'importe quel tier) puis, à
+        défaut, des produits ``RECOMMANDE`` (NTCPQ1) liés à l'AUTRE membre
+        de la violation — jamais un produit déjà dans la sélection.
+
+    Renvoie jusqu'à 3 dicts ``{produit_id, nom, source}``, liste vide si
+    aucune alternative connue (l'appelant retombe alors sur le simple
+    message)."""
+    from apps.stock.models import Produit
+    from .models import ProduitEquivalent
+
+    ids = {int(p) for p in produit_ids if p is not None}
+
+    if violation['type'] != ContrainteCompatibilite.TypeContrainte.INCOMPATIBLE:
+        # REQUIERT : produit_b est le produit MANQUANT — l'ajouter EST la
+        # résolution, pas un substitut.
+        produit = Produit.objects.filter(
+            company=company, id=violation['produit_b']).first()
+        if produit is None:
+            return []
+        return [{'produit_id': produit.id, 'nom': produit.nom,
+                 'source': 'a_ajouter'}]
+
+    cible = violation['produit_b']
+    autre = violation['produit_a']
+    vus = set()
+    candidats = []
+
+    for eq in (ProduitEquivalent.objects
+               .filter(company=company, produit_source_id=cible, actif=True)
+               .select_related('produit_substitut')
+               .order_by('tier', 'id')):
+        if eq.produit_substitut_id in ids or eq.produit_substitut_id in vus:
+            continue
+        vus.add(eq.produit_substitut_id)
+        candidats.append({
+            'produit_id': eq.produit_substitut_id,
+            'nom': eq.produit_substitut.nom, 'source': 'substitut'})
+
+    if len(candidats) < 3:
+        recommande = ContrainteCompatibilite.TypeContrainte.RECOMMANDE
+        qs_reco = (ContrainteCompatibilite.objects
+                   .filter(company=company, produit_a_id=autre,
+                           type=recommande)
+                   .select_related('produit_b').order_by('id'))
+        for c in qs_reco:
+            if c.produit_b_id in ids or c.produit_b_id in vus:
+                continue
+            vus.add(c.produit_b_id)
+            candidats.append({
+                'produit_id': c.produit_b_id, 'nom': c.produit_b.nom,
+                'source': 'recommande'})
+            if len(candidats) >= 3:
+                break
+
+    return candidats[:3]
+
+
 def evaluer_regles_produit(*, company, context):
     """NTCPQ2 — Évalue les règles produit actives de la société contre un
     ``context`` (dict plat construit par l'appelant depuis les lignes/champs du
