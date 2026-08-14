@@ -827,6 +827,16 @@ function AtelierToiture({ toiture, selecteur, onEnregistre }) {
     setOnglet('geometrie')
   }, [toiture?.angle_nord_deg, majPoints, terminer])
 
+  // PVG1 — analyse RÉELLE d'un DXF (l'endpoint existe désormais :
+  // `AnalyserDxfView`, `apps/ao/urls.py`). `ImportDxf` attend une fonction
+  // qui renvoie directement `{calques, unite}` — jamais l'enveloppe axios —,
+  // le déballage vit ICI, à la frontière écran, comme partout ailleurs dans
+  // ce fichier (`unwrapList`).
+  const analyserDxf = useCallback(async (fichier) => {
+    const { data } = await aoApi.toitures.analyserDxf(fichier)
+    return data
+  }, [])
+
   const bbox = useMemo(() => bboxDePoints(points), [points])
 
   // Les cotes de TOUTES les chaînes : c'est sur elles que `deduction.js`
@@ -1096,11 +1106,13 @@ function AtelierToiture({ toiture, selecteur, onEnregistre }) {
 
   const ongletImport = (
     <div className="flex flex-col gap-4">
-      {/* Aucun `analyserDxf` n'est passé : il n'existe AUCUN endpoint serveur
-          d'analyse de plan (vérifié). L'écran rend alors son propre état
-          dégradé, qui NOMME l'empêchement et propose le tracé à la main —
-          c'est exactement ce pour quoi il a été écrit. */}
+      {/* PVG1 — `analyserDxf` appelle désormais le VRAI endpoint
+          (`AnalyserDxfView`) : un fichier sans calque exploitable, un DXF
+          hostile/corrompu ou un serveur en 4xx/5xx retombent tous dans
+          l'état dégradé DÉJÀ écrit par `ImportDxf` (jamais une page blanche),
+          et proposent le tracé à la main. */}
       <ImportDxf
+        analyserDxf={analyserDxf}
         onImporter={({ sommets }) => {
           majPoints(
             (sommets ?? []).map(([x, y]) => ({ x: Number(x), y: Number(y) })),

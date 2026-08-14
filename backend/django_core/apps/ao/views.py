@@ -200,6 +200,54 @@ class ContratApiAO(APIView):
         })
 
 
+class AnalyserDxfView(APIView):
+    """``POST /api/django/ao/toitures/dxf/analyser/`` — PVG1, import DXF réel.
+
+    Complète ``ImportDxf.jsx`` (AOF81) : le fichier MULTIPART est parsé EN
+    MÉMOIRE (``dxf.analyser_dxf``) et RIEN n'est persisté — ni ``PlanSource``,
+    ni ``records.Attachment``. L'atelier ne fait que PROPOSER un mapping de
+    calques ; c'est le choix de l'utilisateur (bouton « Importer ce mapping »)
+    qui produit un contour, écrit ensuite par la voie existante de la toiture.
+
+    Gardée par ``ao_gerer`` (comme les autres écritures du domaine) : bien
+    qu'aucune donnée ne soit écrite, poser un fichier arbitraire à analyser
+    n'est pas un geste de simple lecture.
+
+    Un fichier hostile/corrompu ou trop lourd → 400 MOTIVÉ en français
+    (``dxf.DxfInvalide``, exceptions ``ezdxf`` toutes enveloppées) — jamais un
+    500.
+    """
+    permission_classes = [ScopedPermission]
+    write_permission = AO_GERER
+    parser_classes = [MultiPartParser, FormParser]
+
+    def post(self, request):
+        from . import dxf
+
+        fichier = request.data.get('fichier')
+        if fichier is None:
+            return Response(
+                {'fichier': 'Aucun fichier reçu.'}, status=status.HTTP_400_BAD_REQUEST)
+        taille = getattr(fichier, 'size', None)
+        if taille is not None and taille > dxf.TAILLE_MAX_OCTETS:
+            return Response({'fichier': (
+                'Ce fichier dépasse 5 Mo : simplifiez-le (purge des calques '
+                'inutiles) puis réessayez.'
+            )}, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            contenu = fichier.read()
+        except AttributeError:
+            return Response(
+                {'fichier': "Le fichier reçu n'est pas exploitable."},
+                status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            resultat = dxf.analyser_dxf(contenu)
+        except dxf.DxfInvalide as exc:
+            return Response({'fichier': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(resultat)
+
+
 # ── FG222 — Gestion des appels d'offres ────────────────────────────────────
 
 class AppelOffreViewSet(AoBaseViewSet):

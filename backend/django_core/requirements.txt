@@ -106,6 +106,12 @@ django-prometheus==2.3.1
 # uniquement et n'est pas remplacée.
 drf-spectacular==0.28.0
 
+# PVG1 — import DXF réel du contour de toiture (apps/ao/dxf.py), NOUVELLE
+# DÉPENDANCE approuvée fondateur 2026-08-14. Parse en mémoire (LWPOLYLINE/
+# POLYLINE/LINE groupées par calque) — jamais d'écriture disque, aucun fichier
+# persisté (l'atelier ne fait que PROPOSER un mapping de calques à l'écran).
+ezdxf==1.3.5
+
 # NTPLT46 — Sentry (supervision d'erreurs), dépendance OPTIONNELLE gated-founder.
 # core/monitoring.py importe sentry-sdk PARESSEUSEMENT et UNIQUEMENT si SENTRY_DSN
 # est configuré : sans DSN, ce paquet n'est jamais chargé (aucun coût, aucun appel

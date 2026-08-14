@@ -76,7 +76,19 @@ const aoApi = {
 
   // ── Toiture / relevé (portes 1-2-3 : plan fourni, from-scratch, carte) ──
   batiments: crud('batiments'),
-  toitures: crud('toitures'),
+  toitures: {
+    ...crud('toitures'),
+    // PVG1 — analyse DXF réelle (MULTIPART), route HORS routeur DRF (ce
+    // n'est pas une ressource) : `apps/ao/urls.py`
+    // `path('toitures/dxf/analyser/', AnalyserDxfView.as_view(), …)`. Rien
+    // n'est persisté côté serveur — l'atelier ne fait que PROPOSER un
+    // mapping de calques (`ImportDxf.jsx`).
+    analyserDxf: (fichier) => {
+      const fd = new FormData()
+      fd.append('fichier', fichier)
+      return api.post('/ao/toitures/dxf/analyser/', fd)
+    },
+  },
   // RÉPARATION 03/08/2026 — le routeur enregistre `plans-source` et
   // `chaines-cotes` (AU SINGULIER pour le premier) ; le front appelait
   // `plans-sources` et `chaines`, deux 404 silencieuses.

@@ -40,6 +40,7 @@ const mocks = vi.hoisted(() => ({
   zonesCreate: vi.fn(),
   zonesUpdate: vi.fn(),
   zonesRemove: vi.fn(),
+  toituresAnalyserDxf: vi.fn(),
 }))
 const toastMocks = vi.hoisted(() => ({ success: vi.fn(), error: vi.fn() }))
 
@@ -50,6 +51,8 @@ vi.mock('../../../api/aoApi', () => ({
       list: mocks.toituresList,
       create: mocks.toituresCreate,
       update: mocks.toituresUpdate,
+      // PVG1 — analyse DXF réelle (multipart), route hors routeur DRF.
+      analyserDxf: mocks.toituresAnalyserDxf,
     },
     batiments: { list: mocks.batimentsList },
     // PV53 — obstacles/chaînes de cotes, désormais persistés par l'atelier
@@ -144,6 +147,7 @@ beforeEach(() => {
   mocks.zonesCreate.mockResolvedValue({ data: {} })
   mocks.zonesUpdate.mockResolvedValue({ data: {} })
   mocks.zonesRemove.mockResolvedValue({ data: {} })
+  mocks.toituresAnalyserDxf.mockResolvedValue({ data: { calques: [], unite: 'inconnu' } })
 })
 
 /* Ouvre le wizard, remplit ses deux champs et valide. Le wizard se ferme
@@ -866,5 +870,59 @@ describe('ToituresPage — reprise de carte appliquée au repère (PV58)', () =>
     const corps = mocks.toituresUpdate.mock.calls[0][1]
     expect(corps).not.toHaveProperty('origine_lat')
     expect(corps).not.toHaveProperty('origine_lng')
+  })
+})
+
+/* ============================================================================
+   PVG1 — import DXF RÉEL : `analyserDxf` appelle enfin le vrai endpoint
+   (`AnalyserDxfView`), au lieu de laisser `ImportDxf` en état dégradé
+   permanent (aucune prop `analyserDxf` n'était passée).
+   ========================================================================== */
+
+describe('ToituresPage — analyserDxf appelle le VRAI endpoint DXF (PVG1)', () => {
+  it('un fichier choisi part en MULTIPART vers aoApi.toitures.analyserDxf, et le mapping choisi devient le contour', async () => {
+    mocks.toituresList.mockResolvedValue({ data: [TOITURE_VIERGE] })
+    mocks.toituresAnalyserDxf.mockResolvedValue({
+      data: {
+        calques: [
+          { nom: 'ENVELOPPE', entites: 1, sommets: [[0, 0], [10, 0], [10, 5], [0, 5]] },
+        ],
+        unite: 'm',
+      },
+    })
+    render(<ToituresPage affaireId={7} />)
+    await screen.findByText('Toiture atelier')
+    await userEvent.click(screen.getByRole('tab', { name: 'Import' }))
+
+    const fichier = new File(['contenu'], 'plan.dxf', { type: 'application/dxf' })
+    await userEvent.upload(screen.getByLabelText('Fichier DXF'), fichier)
+
+    // Le fichier CHOISI est celui envoyé — aucune ré-écriture au passage.
+    await waitFor(() => expect(mocks.toituresAnalyserDxf).toHaveBeenCalledWith(fichier))
+    expect(await screen.findByText('Calques du fichier')).toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Importer ce mapping' }))
+
+    // Retombé sur l'onglet Géométrie, contour du calque choisi appliqué.
+    await waitFor(() => expect(
+      document.querySelector('[data-tableau-geometrie]').dataset.tableauGeometrie,
+    ).toBe('4:0'))
+    expect(screen.getByLabelText('x (m) — Sommet B')).toHaveValue('10')
+  })
+
+  it('un DXF refusé par le serveur (400) retombe dans l’état dégradé DÉJÀ écrit — jamais une page blanche', async () => {
+    mocks.toituresList.mockResolvedValue({ data: [TOITURE_VIERGE] })
+    mocks.toituresAnalyserDxf.mockRejectedValue({
+      response: { status: 400, data: { fichier: "Ce fichier n'a pas pu être lu comme un DXF." } },
+    })
+    render(<ToituresPage affaireId={7} />)
+    await screen.findByText('Toiture atelier')
+    await userEvent.click(screen.getByRole('tab', { name: 'Import' }))
+
+    const fichier = new File(['pas un dxf'], 'malveillant.dxf', { type: 'application/dxf' })
+    await userEvent.upload(screen.getByLabelText('Fichier DXF'), fichier)
+
+    expect(await screen.findByText(/n.a pas pu être lu comme un DXF/)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Tracer la toiture à la main' })).toBeInTheDocument()
   })
 })
