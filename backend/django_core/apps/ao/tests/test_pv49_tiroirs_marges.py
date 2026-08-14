@@ -252,7 +252,12 @@ class LeGardeDeCout(BasePv49):
         self.assertEqual(sortie['tiroirs'], calepinage_io.tiroirs_vides())
 
     def test_un_document_multi_surfaces_degrade_les_tiroirs(self):
-        """Le moteur n'a AUCUN tiroir par segment : on n'en invente pas un."""
+        """Le moteur n'a AUCUN tiroir GÉOMÉTRIQUE par segment : on n'en invente pas.
+
+        PV44 : le tiroir ÉLECTRIQUE, lui, est PAR DOCUMENT (une conception pour
+        l'ensemble posé — son coût ne se multiplie pas par surface) : il reste
+        réel en multi-surfaces ; seuls les 4 tiroirs géométriques dégradent.
+        """
         document = self._document()
         premiere = document['surfaces'][0]
         seconde = dict(premiere, repere=premiere['repere'] + '_B')
@@ -261,7 +266,14 @@ class LeGardeDeCout(BasePv49):
                                     seconde['repere']: []}
         sortie = calepinage_service.calepiner(document, company=self.company)
         self.assertEqual(len(sortie['plans']), 2)
-        self.assertEqual(sortie['tiroirs'], calepinage_io.tiroirs_vides())
+        vides = calepinage_io.tiroirs_vides()
+        for cle in ('kits', 'allees', 'rives', 'orientation'):
+            self.assertEqual(sortie['tiroirs'][cle], vides[cle])
+        self.assertEqual(set(sortie['tiroirs']), set(vides))
+        electrique = sortie['tiroirs']['electrique']
+        if electrique is not None:
+            self.assertIn('chaine', electrique)
+            self.assertIn('conformite', electrique)
 
 
 class LesTiroirsNeSontPasPersistes(BasePv49):

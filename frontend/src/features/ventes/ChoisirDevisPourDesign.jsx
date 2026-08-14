@@ -14,7 +14,7 @@
    le shell (LeadWorkspace) possède la décision et la navigation. */
 import { Button } from '../../ui'
 import { ResponsiveDialog } from '../../ui/ResponsiveDialog'
-import { formatDate } from '../../lib/format'
+import { formatDate, formatNumber } from '../../lib/format'
 
 // kWc d'un devis : le serializer expose `etude_params.puissance_kwc` (le même
 // chiffre que le PDF). Jamais recalculé ici — sans valeur, la colonne se tait.
@@ -48,7 +48,7 @@ export default function ChoisirDevisPourDesign({ open, devis, onChoisir, onClose
                 <span className="cdd-ref">{d.reference}</span>
                 {kwc != null && (
                   <span className="cdd-kwc num">
-                    {` · ${kwc.toLocaleString('fr-FR', { maximumFractionDigits: 2 })} kWc`}
+                    {` · ${formatNumber(kwc, { decimals: 2 })} kWc`}
                   </span>
                 )}
                 {d.date_creation && (

@@ -39,6 +39,13 @@ BASELINE_ALLOWLIST = {
     # round() calls from :302/:305 to :359/:362 — same call sites, not new.
     "backend/django_core/apps/ventes/services.py:359",
     "backend/django_core/apps/ventes/services.py:362",
+    # PV14/PV16/PV18 (geometry par pan, cible, sync) — les MEMES arrondis
+    # d'AFFICHAGE (surface m2, kWc — jamais un montant) re-decales, plus le
+    # kWc du chemin sync (duplication assumee du calcul d'affichage).
+    "backend/django_core/apps/ventes/services.py:375",
+    "backend/django_core/apps/ventes/services.py:378",
+    "backend/django_core/apps/ventes/services.py:1289",
+    "backend/django_core/apps/ventes/services.py:1365",
     "backend/django_core/apps/ventes/quote_engine/builder.py:568",
     "backend/django_core/apps/ventes/quote_engine/builder.py:570",
     "backend/django_core/apps/ventes/quote_engine/builder.py:597",
@@ -99,22 +106,24 @@ BASELINE_ALLOWLIST = {
     "backend/django_core/apps/ventes/quote_engine/builder.py:1307",
     "backend/django_core/apps/ventes/quote_engine/builder.py:1360",
     "backend/django_core/apps/ventes/quote_engine/builder.py:1361",
+    # QRES (2026-07-18) puis PV11/PV46/PV77 (fiche wattage, annexe technique,
+    # bloc bankable) — les MÊMES arrondis d'affichage déjà revus, re-décalés.
     # QRES (2026-07-18) — les blocs hypothèses/tarif/photo-toiture ajoutés dans
     # builder.py ont décalé les MÊMES arrondis d'affichage existants (déjà
     # revus : PU/ROI/TVA affichés, jamais un calcul monétaire persisté).
-    "backend/django_core/apps/ventes/quote_engine/builder.py:214",
-    "backend/django_core/apps/ventes/quote_engine/builder.py:215",
-    "backend/django_core/apps/ventes/quote_engine/builder.py:547",
-    "backend/django_core/apps/ventes/quote_engine/builder.py:642",
-    "backend/django_core/apps/ventes/quote_engine/builder.py:644",
-    "backend/django_core/apps/ventes/quote_engine/builder.py:669",
-    "backend/django_core/apps/ventes/quote_engine/builder.py:671",
-    "backend/django_core/apps/ventes/quote_engine/builder.py:815",
-    "backend/django_core/apps/ventes/quote_engine/builder.py:828",
-    "backend/django_core/apps/ventes/quote_engine/builder.py:1385",
-    "backend/django_core/apps/ventes/quote_engine/builder.py:1391",
-    "backend/django_core/apps/ventes/quote_engine/builder.py:1444",
-    "backend/django_core/apps/ventes/quote_engine/builder.py:1445",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:270",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:271",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:621",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:716",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:718",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:743",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:745",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:889",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:902",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:1486",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:1492",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:1545",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:1546",
 }
 
 TARGET_FILES = [

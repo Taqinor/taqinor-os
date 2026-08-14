@@ -2184,9 +2184,12 @@ def page_annexe_technique():
         reperes.append("triphas\u00e9" if int(_phases) == 3 else "monophas\u00e9")
     if parametres.get("regime"):
         reperes.append("r\u00e9gime %s" % _esc(parametres["regime"]))
+    # Python 3.11 (prod/CI) refuse un antislash dans l'EXPRESSION d'une
+    # f-string (3.12+ l'accepte \u2014 vert local trompeur) : s\u00e9parateur hiss\u00e9.
+    sep_reperes = " \u2014 "
     reperes_html = (
         f'<div style="font-size:8pt;color:{CG4};margin-bottom:10px;">'
-        f'{" \u2014 ".join(reperes)}</div>') if reperes else ""
+        f'{sep_reperes.join(reperes)}</div>') if reperes else ""
 
     return f"""
 <div class="page">

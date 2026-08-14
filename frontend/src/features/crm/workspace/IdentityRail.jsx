@@ -8,7 +8,7 @@ import {
   DropdownMenuSeparator,
 } from '../../../ui'
 import { initials } from '../../../ui/Avatar'
-import { normalizeMaPhone, formatDate } from '../../../lib/format'
+import { normalizeMaPhone, formatDate, formatNumber } from '../../../lib/format'
 import { useConfirmDialog, toast } from '../../../ui/confirm'
 import { useDuplicateCheck } from '../../../hooks/useDuplicateCheck'
 import { useIsAdminOrResponsable } from '../../../hooks/useHasPermission'
@@ -426,7 +426,7 @@ export default function IdentityRail({ state, onAction, users = [], archiveBusy 
                 }}
               />
             )}
-            🛰️ {conceptionKwc.toLocaleString('fr-FR', { maximumFractionDigits: 2 })} kWc conçus
+            🛰️ {formatNumber(conceptionKwc, { decimals: 2 })} kWc conçus
           </Badge>
         )}
         {/* PUB53 — traçabilité retour : ce lead vient d'une ad Meta →

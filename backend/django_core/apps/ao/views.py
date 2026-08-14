@@ -221,6 +221,9 @@ class AnalyserDxfView(APIView):
     write_permission = AO_GERER
     parser_classes = [MultiPartParser, FormParser]
 
+    @extend_schema(request=None, responses={200: dict},
+                   description="Analyse un DXF en mémoire (calques/entités/"
+                               "sommets + unité $INSUNITS) — rien n'est persisté.")
     def post(self, request):
         from . import dxf
 
