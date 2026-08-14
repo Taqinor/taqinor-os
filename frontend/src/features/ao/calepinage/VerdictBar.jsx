@@ -1,5 +1,5 @@
-import { BadgeCheck, Loader2, ShieldCheck, TriangleAlert } from 'lucide-react'
-import { Badge } from '../../../ui'
+import { BadgeCheck, Loader2, Save, ShieldCheck, TriangleAlert } from 'lucide-react'
+import { Badge, Button } from '../../../ui'
 import { cn } from '../../../lib/cn'
 
 /* ============================================================================
@@ -49,6 +49,27 @@ import { cn } from '../../../lib/cn'
    `perime` (piloté par `useCalepinage`) estompe TOUTES les grandeurs et
    affiche « recalcul… » : on n'affiche jamais l'ancien chiffre comme s'il
    était courant.
+
+   ── PV32 — état du mode « rangées imposées par l'utilisateur » ────────────
+   `preuve.methode` vaut exactement `impose_utilisateur` (vocabulaire
+   VERROUILLÉ d'AOF44, `core.calepinage.types.MethodePreuve`) quand le plan
+   affiché est celui posé à la main (PV29/PV30) : la barre le dit sans
+   détour (« Plan imposé — non optimal ») pour qu'un plan choisi ne puisse
+   JAMAIS se faire passer pour un optimum prouvé.
+
+   L'ÉCART À L'OPTIMUM affiché (« -N modules vs optimum ») est LU tel quel
+   sur `resultat.plans[0].ecart_a_l_optimum` — un entier que le moteur calcule
+   lui-même (`apps/ao/calepinage_io.plan_vers_json`) — jamais reconstitué par
+   soustraction de `preuve.total_optimal`/`preuve.total_retenu` ici : c'est
+   très exactement le chiffre métier calculé côté client que la garde
+   d'AOF94 interdit (voir le paragraphe sur la MARGE ci-dessus). Toitures à
+   PLUSIEURS pans : seul le premier plan est lu, faute d'agrégation publiée
+   par le serveur — une limite assumée, pas une estimation.
+
+   `onEnregistrerVariante`/`enregistrementEnCours` sont INJECTÉS par
+   `CalepinageStudio` (même patron que `onDefinirRetenue` dans
+   `VariantesCompare.jsx`) : cette barre reste un composant d'AFFICHAGE, elle
+   ne parle jamais au réseau elle-même.
    ========================================================================== */
 
 const estNombre = (valeur) => typeof valeur === 'number' && Number.isFinite(valeur)
@@ -73,8 +94,14 @@ function Grandeur({ libelle, valeur, unite, perime, ...rest }) {
  * @param {object}  resultat  Corps de `/ao/calepinage/calculer/` (contrat ci-dessus).
  * @param {boolean} [perime]  Un calcul est en vol : les grandeurs affichées ne
  *                            sont plus courantes (AOF94).
+ * @param {Function} [onEnregistrerVariante]  PV32 — présent SEULEMENT quand un
+ *   brouillon de rangées imposées est actif ; enregistre le plan affiché comme
+ *   variante ALTERNATIVE (non publiable, sous l'optimum).
+ * @param {boolean} [enregistrementEnCours]  PV32 — désactive le bouton pendant l'appel.
  */
-export default function VerdictBar({ resultat, perime = false }) {
+export default function VerdictBar({
+  resultat, perime = false, onEnregistrerVariante, enregistrementEnCours = false,
+}) {
   if (!resultat || !estNombre(resultat.total_modules)) return null
 
   const preuve = resultat.preuve || null
@@ -87,6 +114,16 @@ export default function VerdictBar({ resultat, perime = false }) {
     ? { tone: 'success', Icone: ShieldCheck, libelle: 'Compte engageable' }
     : { tone: 'warning', Icone: TriangleAlert, libelle: 'Compte non engageable' }
   const { Icone } = style
+
+  // PV32 — vocabulaire VERROUILLÉ d'AOF44 : un plan imposé à la main ne se
+  // présente JAMAIS comme un optimum prouvé.
+  const modeImpose = preuve?.methode === 'impose_utilisateur'
+  // Entier LU tel quel sur le premier plan — aucune soustraction locale
+  // (voir l'en-tête du fichier).
+  const ecartPremierPlan = resultat.plans?.[0]?.ecart_a_l_optimum
+  const ecartTexte = estNombre(ecartPremierPlan)
+    ? `${ecartPremierPlan > 0 ? '-' : ''}${ecartPremierPlan} modules vs optimum`
+    : null
 
   return (
     <div
@@ -126,11 +163,34 @@ export default function VerdictBar({ resultat, perime = false }) {
             {preuve.libelle}
           </Badge>
         )}
+        {/* PV32 — un plan imposé le DIT : jamais un optimum prouvé. */}
+        {modeImpose && (
+          <Badge tone="warning" data-ao-impose-verdict="true">
+            <TriangleAlert className="size-3" aria-hidden="true" />
+            Plan imposé — non optimal
+          </Badge>
+        )}
+        {modeImpose && ecartTexte && (
+          <Badge tone="neutral" data-ao-ecart-optimum="true">{ecartTexte}</Badge>
+        )}
         {engageable !== null && (
           <Badge tone={style.tone} data-verdict={String(engageable)}>
             <Icone className="size-3.5" aria-hidden="true" />
             {style.libelle}
           </Badge>
+        )}
+        {/* PV32 — visible seulement quand `CalepinageStudio` injecte l'action
+            (un brouillon de rangées imposées est actif). */}
+        {onEnregistrerVariante && (
+          <Button
+            size="sm"
+            variant="outline"
+            loading={enregistrementEnCours}
+            onClick={onEnregistrerVariante}
+          >
+            <Save className="size-3.5" aria-hidden="true" />
+            Enregistrer comme variante
+          </Button>
         )}
       </div>
 

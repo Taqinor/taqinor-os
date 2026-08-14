@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, waitFor, fireEvent } from '@testing-library/react'
+import { render, screen, waitFor, fireEvent, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import { readFileSync } from 'node:fs'
@@ -358,6 +358,64 @@ describe('AffaireDetail', () => {
 
       expect((await screen.findAllByText('Aucune toiture à calepiner')).length).toBeGreaterThan(0)
       expect(screen.getAllByText(/se calcule SUR une toiture/).length).toBeGreaterThan(0)
+    })
+
+    // PV59 — la synthèse multi-toitures (PV68 `synthese_calepinage`, dans la
+    // MÊME requête `aoApi.affaires.get(id)` que le reste de la fiche).
+    describe('« Calepinages » — synthèse multi-toitures (PV59/PV68)', () => {
+      const SYNTHESE = {
+        total_modules: 350, total_kwc: 218, toitures_total: 3, toitures_calepinees: 2,
+        toitures: [
+          {
+            toiture: 42, code_document: '05H', designation: '', batiment: 5, batiment_code: 'C',
+            calepinee: true, variante: 100, variante_nom: 'Retenue', statut: 'publiable',
+            modules: 200, kwc: 125, optimal: true, methode: 'dp_exact_1cm',
+          },
+          {
+            toiture: 43, code_document: '06H', designation: '', batiment: 5, batiment_code: 'C',
+            calepinee: true, variante: 101, variante_nom: 'Retenue', statut: 'publiable',
+            modules: 150, kwc: 93, optimal: true, methode: 'dp_exact_1cm',
+          },
+          {
+            toiture: 44, code_document: '07H', designation: '', batiment: 6, batiment_code: 'D',
+            calepinee: false, variante: null, variante_nom: '', statut: '',
+            modules: 0, kwc: 0, optimal: null, methode: '',
+          },
+        ],
+      }
+
+      it('affiche les totaux, le compte de toitures manquantes et une ligne PAR TOITURE (y compris la NON calepinée)', async () => {
+        mocks.get.mockResolvedValue({ data: { ...AFFAIRE, synthese_calepinage: SYNTHESE } })
+        mocks.toituresList.mockResolvedValue({ data: [{ id: 42, nom: 'Toiture 05H' }] })
+        renderScreen()
+        await screen.findAllByText('AO-2026-001')
+        await userEvent.click(onglet('Calepinages'))
+
+        const bloc = await screen.findByLabelText('Toiture').then(
+          () => document.querySelector('[data-ao-synthese-calepinage]'),
+        )
+        expect(bloc, 'bloc de synthèse absent').not.toBeNull()
+        const zone = within(bloc)
+        expect(zone.getByText('350')).toBeInTheDocument() // total_modules
+        expect(zone.getByText('218 kWc')).toBeInTheDocument() // total_kwc
+        expect(zone.getByText('2 / 3')).toBeInTheDocument() // toitures_calepinees / total
+        expect(zone.getByText('C — 05H')).toBeInTheDocument()
+        expect(zone.getByText('C — 06H')).toBeInTheDocument()
+        expect(zone.getByText('D — 07H')).toBeInTheDocument()
+        expect(zone.getByText('200 modules · 125 kWc')).toBeInTheDocument()
+        // La toiture NON calepinée le DIT — jamais une ligne muette.
+        expect(zone.getByText('Pas encore calepinée')).toBeInTheDocument()
+      })
+
+      it('null-safe : sans `synthese_calepinage`, le bloc de synthèse n’apparaît PAS (jamais un bloc à zéros)', async () => {
+        mocks.toituresList.mockResolvedValue({ data: [{ id: 42, nom: 'Toiture 05H' }] })
+        renderScreen()
+        await screen.findAllByText('AO-2026-001')
+        await userEvent.click(onglet('Calepinages'))
+
+        await screen.findByLabelText('Toiture')
+        expect(document.querySelector('[data-ao-synthese-calepinage]')).toBeNull()
+      })
     })
 
     it('« Dossier » monte le VRAI DossierPage avec l’id du DOSSIER, jamais celui de l’affaire (piège useParams)', async () => {

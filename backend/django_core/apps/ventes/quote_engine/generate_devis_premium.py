@@ -320,8 +320,13 @@ CUSTOM_ACOMPTE = None          # user-defined acompte (MAD) for custom mode
 # FG52 — devise portée par le document (ISO 4217, défaut MAD). Lue depuis
 # data["devise"] ; permet l'affichage de la bonne devise sur le PDF.
 DEVISE = "MAD"
-PAGES_TOTAL = 3                # nombre réel de pages (4 avec l'étude)
+PAGES_TOTAL = 3                # nombre réel de pages (+1 étude, +1 annexe PV46)
 PAGE3_NUM = 3                  # numéro de la page de signature
+# PV46 — annexe technique : défauts INERTES (le chemin autonome et tout appel
+# sans les clés du builder rendent exactement le PDF d'aujourd'hui).
+INCLUDE_ANNEXE = False
+ELECTRICAL_DESIGN = {}
+SLD_SVG = ""
 TOTAUX_ALL = None              # totaux canoniques toutes-lignes (one-page)
 # Conditions de paiement par mode — TOUJOURS fournies par le builder ;
 # défaut résidentiel pour le chemin autonome.
@@ -1923,6 +1928,107 @@ def make_chart_etude(prod_m, conso_m):
     return b64(buf)
 
 
+# \u2500\u2500 PV77 \u2014 \u00e9tude bancable (P50/P90 + cascade de pertes) \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+# Libell\u00e9s FR des postes de perte du mod\u00e8le PR (apps.ventes.solar_design). Un
+# poste inconnu garde sa cl\u00e9 (\u00e9chapp\u00e9e) : jamais de libell\u00e9 invent\u00e9.
+_BANKABLE_POSTES_FR = {
+    "temperature": "Temp\u00e9rature",
+    "soiling": "Salissures",
+    "shading": "Ombrage",
+    "wiring": "C\u00e2blage",
+    "inverter": "Onduleur",
+    "mismatch": "Dispersion modules",
+    "availability": "Disponibilit\u00e9",
+    "lid": "LID (1re ann\u00e9e)",
+    "reflection": "R\u00e9flexion (IAM)",
+}
+
+
+def _bankable_pct(valeur):
+    """Pourcentage FR \u00e0 une d\u00e9cimale (\u00ab 8,0 \u00bb) ; illisible/absent \u2192 ''."""
+    try:
+        return f"{float(valeur):.1f}".replace(".", ",")
+    except (TypeError, ValueError):
+        return ""
+
+
+def _bankable_block_html(bank):
+    """PV77 \u2014 bloc ADDITIF de l'\u00e9tude bancable, DANS la page \u00c9tude existante.
+
+    Rend une ligne compacte P50/P90 (+ ratio de performance) et la cascade des
+    pertes du mod\u00e8le PR, en fran\u00e7ais. Le bloc vit \u00e0 l'INT\u00c9RIEUR de la page \u00c9tude
+    (``.page`` est \u00e0 hauteur fixe) : il ne peut donc jamais changer le nombre de
+    pages du document. Aucun montant, aucune VAN/TRI, aucun prix d'achat n'y
+    figure (r\u00e8gle #4) \u2014 uniquement des grandeurs \u00e9nerg\u00e9tiques.
+
+    Absent/illisible \u2192 '' : la page \u00c9tude reste EXACTEMENT celle d'aujourd'hui.
+    """
+    if not isinstance(bank, dict) or not bank:
+        return ""
+    pr = bank.get("pr") if isinstance(bank.get("pr"), dict) else {}
+
+    morceaux = []
+    p50 = pr.get("p50_kwh")
+    if p50 not in (None, ""):
+        morceaux.append(
+            f'Production P50 (m\u00e9diane)\u00a0: <b>{fnum(p50)}\u00a0kWh/an</b>')
+    p90 = pr.get("p90_kwh")
+    if p90 not in (None, ""):
+        morceaux.append(
+            f'P90 (retenue par les banques)\u00a0: <b>{fnum(p90)}\u00a0kWh/an</b>')
+    ratio = pr.get("performance_ratio")
+    try:
+        if ratio not in (None, ""):
+            morceaux.append(
+                'Ratio de performance\u00a0: <b>'
+                + _bankable_pct(float(ratio) * 100.0) + '\u00a0%</b>')
+    except (TypeError, ValueError):
+        pass
+    ligne = " \u00b7 ".join(morceaux)
+
+    pertes = pr.get("loss_breakdown")
+    puces = []
+    if isinstance(pertes, dict):
+        lisibles = []
+        for poste, pct in pertes.items():
+            texte = _bankable_pct(pct)
+            if not texte:
+                continue
+            try:
+                lisibles.append((float(pct), poste, texte))
+            except (TypeError, ValueError):
+                continue
+        for _val, poste, texte in sorted(lisibles, key=lambda x: -x[0]):
+            libelle = _BANKABLE_POSTES_FR.get(str(poste), _esc(poste))
+            puces.append(
+                f'<span style="display:inline-block;background:{CG1};'
+                f'border:1px solid {CG2};border-radius:9px;padding:1px 6px;'
+                f'margin:0 4px 3px 0;">{libelle}\u00a0{texte}\u00a0%</span>')
+    total = _bankable_pct(pr.get("total_loss_pct"))
+    if total:
+        puces.append(
+            f'<span style="display:inline-block;border-radius:9px;'
+            f'padding:1px 6px;margin:0 4px 3px 0;color:{CN};font-weight:700;">'
+            f'Total\u00a0{total}\u00a0%</span>')
+
+    if not ligne and not puces:
+        return ""
+
+    ligne_html = (f'<div style="font-size:8pt;color:{CN};">{ligne}</div>'
+                  if ligne else "")
+    pertes_html = (
+        f'<div style="font-size:6.5pt;color:{CG4};margin-top:5px;">'
+        f'Cascade de pertes\u00a0: {"".join(puces)}</div>') if puces else ""
+    return (
+        f'<div style="background:white;border:1px solid {CG2};'
+        f'border-left:4px solid {CA};border-radius:6px;padding:9px 12px;'
+        f'margin-top:9px;">'
+        f'<div style="font-size:5.5pt;letter-spacing:1.2px;color:{CG4};'
+        f'text-transform:uppercase;margin-bottom:4px;">'
+        f'\u00c9tude bancable \u2014 productible et pertes</div>'
+        f'{ligne_html}{pertes_html}</div>')
+
+
 def page_etude():
     """\u00c9tude d'autoconsommation (industriel) : param\u00e8tres, taux, graphique."""
     e = ETUDE
@@ -1968,6 +2074,9 @@ def page_etude():
         "* Taux d'autoconsommation : part de la production solaire "
         "consommée sur site. Taux de couverture : part de la "
         "consommation totale couverte par le solaire. ") if has_conso else ""
+    # PV77 — bloc bancable ADDITIF : présent uniquement quand le devis porte
+    # une simulation (etude_params['simulation']), sinon '' → page inchangée.
+    bankable_html = _bankable_block_html(e.get("bankable"))
     chart_html = (
         f'<div style="background:{CG1};border-radius:7px;padding:10px 12px;'
         f'border:1px solid {CG2};margin-top:10px;">'
@@ -1996,6 +2105,7 @@ def page_etude():
     </div>
     <div style="display:flex;gap:9px;margin-bottom:9px;">{cards1}</div>
     <div style="display:flex;gap:9px;">{cards2}</div>
+    {bankable_html}
     {chart_html}
     <div style="margin-top:10px;font-size:6.5pt;color:{CG4};font-style:italic;">
       {_rates_note}Estimations non contractuelles.
@@ -2011,11 +2121,114 @@ def page_etude():
 """
 
 
+def page_annexe_technique():
+    """PV46 \u2014 annexe technique : sch\u00e9ma unifilaire + nomenclature \u00e9lectrique.
+
+    Rendue depuis ``devis.electrical_design`` (PV41) et le SVG du sch\u00e9ma, tous
+    deux fournis par le builder. **AUCUN PRIX** n'y figure : le moteur
+    \u00e9lectrique ne manipule que des grandeurs publiques et des quantit\u00e9s, et le
+    bordereau d'annexe est une pi\u00e8ce TECHNIQUE (le chiffrage reste la liste
+    d'\u00e9quipements de la page 2). Une section sans donn\u00e9e est OMISE \u2014 jamais un
+    tableau vide ni un tiret fabriqu\u00e9.
+    """
+    design = ELECTRICAL_DESIGN or {}
+
+    schema_html = (
+        f'<div style="background:white;border:1px solid {CG2};border-radius:7px;'
+        f'padding:8px 10px;margin-bottom:10px;">'
+        f'<div style="font-size:7pt;font-weight:700;color:{CN};'
+        f'text-transform:uppercase;letter-spacing:.5px;margin-bottom:5px;">'
+        f'Sch\u00e9ma unifilaire</div>{SLD_SVG}</div>'
+    ) if SLD_SVG else ""
+
+    def _cell(texte, align="left", bold=False):
+        return (f'<td style="padding:3px 6px;border-bottom:1px solid {CG2};'
+                f'text-align:{align};'
+                f'{"font-weight:700;" if bold else ""}">{texte}</td>')
+
+    lignes = []
+    for item in (design.get("bom") or [])[:22]:
+        if not isinstance(item, dict):
+            continue
+        quantite = item.get("quantite")
+        quantite = "" if quantite in (None, "") else _esc(quantite)
+        lignes.append(
+            "<tr>"
+            + _cell(_esc(item.get("designation") or ""))
+            + _cell(quantite, align="right")
+            + _cell(f'<span style="color:{CG4};">'
+                    f'{_esc(item.get("spec") or "")}</span>')
+            + "</tr>")
+    bom_html = (
+        f'<div style="background:{CG1};border:1px solid {CG2};border-radius:7px;'
+        f'padding:8px 10px;">'
+        f'<div style="font-size:7pt;font-weight:700;color:{CN};'
+        f'text-transform:uppercase;letter-spacing:.5px;margin-bottom:5px;">'
+        f'Nomenclature \u00e9lectrique</div>'
+        f'<table style="width:100%;border-collapse:collapse;font-size:7pt;">'
+        f'<tr><th style="text-align:left;padding:3px 6px;border-bottom:2px solid '
+        f'{CN};">D\u00e9signation</th>'
+        f'<th style="text-align:right;padding:3px 6px;border-bottom:2px solid '
+        f'{CN};">Qt\u00e9</th>'
+        f'<th style="text-align:left;padding:3px 6px;border-bottom:2px solid '
+        f'{CN};">Sp\u00e9cification</th></tr>'
+        + "".join(lignes) + '</table></div>'
+    ) if lignes else ""
+
+    parametres = design.get("parametres") or {}
+    _phases = parametres.get("phases")
+    reperes = []
+    if design.get("chaines"):
+        reperes.append("%d cha\u00eene(s)" % len(design["chaines"]))
+    if _phases:
+        reperes.append("triphas\u00e9" if int(_phases) == 3 else "monophas\u00e9")
+    if parametres.get("regime"):
+        reperes.append("r\u00e9gime %s" % _esc(parametres["regime"]))
+    # Python 3.11 (prod/CI) refuse un antislash dans l'EXPRESSION d'une
+    # f-string (3.12+ l'accepte \u2014 vert local trompeur) : s\u00e9parateur hiss\u00e9.
+    sep_reperes = " \u2014 "
+    reperes_html = (
+        f'<div style="font-size:8pt;color:{CG4};margin-bottom:10px;">'
+        f'{sep_reperes.join(reperes)}</div>') if reperes else ""
+
+    return f"""
+<div class="page">
+  <div style="background:{CN};padding:12px 24px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;">
+    <div>
+      <div style="color:white;font-size:10pt;font-weight:700;">Annexe technique</div>
+      <div style="color:rgba(255,255,255,0.45);font-size:7pt;margin-top:2px;">Devis N\u00b0\u00a0{REF} \u2014 {CLIENT_NAME} \u2014 {DATE_STR}</div>
+    </div>
+    {logo_html("42px")}
+  </div>
+  <div style="height:3px;background:{CA};flex-shrink:0;"></div>
+
+  <div style="padding:14px 24px;flex:1;min-height:0;">
+    {reperes_html}
+    {schema_html}
+    {bom_html}
+    <div style="margin-top:10px;font-size:6.5pt;color:{CG4};font-style:italic;">
+      Pi\u00e8ce technique jointe au dossier de raccordement. Les quantit\u00e9s de
+      l'annexe sont donn\u00e9es \u00e0 titre d'\u00e9tude\u00a0; seule la liste d'\u00e9quipements du
+      devis fait foi commercialement.
+    </div>
+  </div>
+
+  <div style="background:{CN};padding:6px 24px 5px;flex-shrink:0;display:flex;align-items:center;justify-content:space-between;">
+    <div style="font-size:9pt;font-weight:800;color:{CA};letter-spacing:1px;">{ENT_NOM_MARQUE}</div>
+    <div style="font-size:7pt;color:#888;">{ENT_ETUDE_CONTACT}</div>
+    <div style="font-size:7pt;color:#888;">Annexe technique \u2014 R\u00e9f.\u00a0{REF}</div>
+  </div>
+</div>
+"""
+
+
 def build_html():
     print("  Generating charts...")
     img_roi = make_chart_roi()
     img_mon = make_chart_monthly() if SHOW_MONTHLY else ""
     etude_html = page_etude() if (INCLUDE_ETUDE and ETUDE) else ""
+    annexe_html = (page_annexe_technique()
+                   if (INCLUDE_ANNEXE and ELECTRICAL_DESIGN) else "")
     return f"""<!DOCTYPE html>
 <html lang="fr" style="background:#FFFFFF !important;"><head><meta charset="UTF-8">
 <title>Devis TAQINOR N\u00b0 {REF}</title>
@@ -2024,6 +2237,7 @@ def build_html():
 {page1()}
 {page2(SANS_ITEMS, img_roi, img_mon)}
 {etude_html}
+{annexe_html}
 {page3()}
 </body></html>"""
 
@@ -2418,6 +2632,10 @@ def _render_premium_pdf(data: dict, out_path) -> str:
     global SCENARIO, RECOMMENDED, SHOW_MONTHLY
     global DEVIS_FINAL, PAYMENT_MODE, CUSTOM_ACOMPTE
     global TVA_PCT, MODE_INSTALLATION, ETUDE, INCLUDE_ETUDE
+    # PV46 — annexe technique (schéma unifilaire + nomenclature). Même patron
+    # de global que INCLUDE_ETUDE, mêmes défauts inertes : sans les clés du
+    # builder, la page n'existe pas et le PDF est byte-identique.
+    global INCLUDE_ANNEXE, ELECTRICAL_DESIGN, SLD_SVG
     global TVA_NOTE, TOTAUX_SANS, TOTAUX_AVEC, TOTAUX_ALL, SANS_BULLETS, AVEC_BULLETS
     global PAY_A, PAY_M, PAY_S, ONEPAGE_NOTE_BATTERIE
     global DOC_TEXTS, ACCEPTE_PAR_NOM, DATE_ACCEPTATION
@@ -2467,6 +2685,9 @@ def _render_premium_pdf(data: dict, out_path) -> str:
     MODE_INSTALLATION = data.get("mode_installation", "") or ""
     ETUDE          = data.get("etude") or {}
     INCLUDE_ETUDE  = bool(data.get("include_etude", False))
+    INCLUDE_ANNEXE = bool(data.get("include_annexe_technique", False))
+    ELECTRICAL_DESIGN = data.get("electrical_design") or {}
+    SLD_SVG        = data.get("sld_svg") or ""
     _tva_lbl = int(TVA_PCT) if TVA_PCT == int(TVA_PCT) else TVA_PCT
     TVA_NOTE       = data.get("tva_note") or (
         f"TVA {_tva_lbl} % appliquée sur l'ensemble des équipements et travaux.")
@@ -2526,8 +2747,13 @@ def _render_premium_pdf(data: dict, out_path) -> str:
     # Numérotation des pages cohérente avec le nombre RÉEL de pages rendues
     # (l'étude insérée entre les pages 2 et 3 porte le total à 4).
     global PAGES_TOTAL, PAGE3_NUM
-    _with_etude = bool(INCLUDE_ETUDE and ETUDE) and data.get("pdf_mode", "full") == "full"
-    PAGES_TOTAL = 4 if _with_etude else 3
+    _full = data.get("pdf_mode", "full") == "full"
+    _with_etude = bool(INCLUDE_ETUDE and ETUDE) and _full
+    # PV46 — l'annexe technique s'intercale APRÈS l'étude, avant la signature.
+    # Sans conception électrique, elle DISPARAÎT (même dégradation gracieuse
+    # que l'étude : la page n'est ni rendue ni comptée).
+    _with_annexe = bool(INCLUDE_ANNEXE and ELECTRICAL_DESIGN) and _full
+    PAGES_TOTAL = 3 + (1 if _with_etude else 0) + (1 if _with_annexe else 0)
     PAGE3_NUM = PAGES_TOTAL
     # ERR37 — escape user text in line items at the ingestion boundary so every
     # downstream renderer (full + one-page) emits safe HTML.

@@ -27,6 +27,15 @@ export const OBSTACLE_DEFAULT_DIM_M = 2;
 /** Facteur d'agrandissement/réduction uniforme des boutons + / − . */
 export const OBSTACLE_STEP_FACTOR = 1.2;
 
+/**
+ * PV61 — TYPE d'obstacle. Il ne change RIEN à la géométrie du rectangle : il pilote
+ * seulement le DÉGAGEMENT laissé autour (une cheminée demande plus de recul qu'une
+ * antenne). Les libellés FR et le dégagement de chaque type vivent dans
+ * `scripts/roofPro11/types.ts` (OBSTACLE_TYPES / CLEARANCE_BY_TYPE) — ici on ne
+ * déclare que l'union, pour que la lib pure reste sans dépendance vers les scripts.
+ */
+export type ObstacleType = 'cheminee' | 'ventilation' | 'chien_assis' | 'edicule' | 'antenne' | 'autre';
+
 export interface Obstacle {
   id: string;
   centerLng: number;
@@ -35,6 +44,8 @@ export interface Obstacle {
   lengthM: number;
   /** Étendue est-ouest (m). */
   widthM: number;
+  /** PV61 — type d'obstacle (dégagement associé). Absent → dégagement par défaut. */
+  type?: ObstacleType;
 }
 
 /** Borne une dimension dans [MIN, MAX] ; toute valeur non finie → MIN. */

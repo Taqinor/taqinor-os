@@ -83,6 +83,94 @@ def sample_layout():
     }
 
 
+def sample_layout_v2():
+    """PV13 — le layout tel que ``serializeLayout`` l'émet en VERSION 2.
+
+    Tout ce que la v1 portait, PLUS : ``result`` complet (dont ``savings``),
+    ``scenario``, ``panelWatt``, ``battery``, ``source``, ``devisId``, et une
+    ``geometry`` par zone. C'est ce blob-là qui arrive maintenant en production
+    (PV13) — donc c'est sur LUI que la whitelist publique doit être épinglée,
+    pas sur le blob v1 qui ne portait aucun de ces champs.
+    """
+    layout = sample_layout()
+    layout.update({
+        'version': 2,
+        'panelWatt': 550,
+        'battery': {'kwh': 5, 'count': 1, 'model': 'Deye 5 kWh'},
+        'source': 'devis',
+        'devisId': 4242,
+        'pin': {'lat': 33.57, 'lng': -7.58},
+        'outline': [[33.57, -7.58], [33.58, -7.58], [33.58, -7.57]],
+        'billKwh': 900,
+        'activeAreaId': 'z1',
+    })
+    layout['zones'][0]['geometry'] = {
+        'azimuthDeg': 0, 'tiltDeg': 30, 'family': 'portrait', 'flush': True,
+        'kwc': 6.6, 'count': 12, 'origin': [0, 0], 'panels': [],
+    }
+    return layout
+
+
+class TestSafeRoofLayoutV2Whitelist(TestCase):
+    """PV24 — la whitelist publique tient face au layout v2.
+
+    Le sérialiseur v2 (PV13) ajoute une demi-douzaine de clés au blob stocké.
+    ``_safe_roof_layout`` est une whitelist, donc elle DEVRAIT toutes les
+    ignorer — mais « devrait » n'est pas une garantie : ce test épingle
+    l'ENSEMBLE EXACT des clés publiées, de sorte qu'un futur ajout côté outil
+    3D (ou un « on recopie le layout, c'est plus simple ») fasse rougir le
+    gate au lieu de publier en silence un champ à sémantique de prix.
+    """
+
+    #: Les SEULES clés que la proposition publique a le droit de porter.
+    CLES_PUBLIABLES = {'pans', 'zones', 'result', 'scenario'}
+    #: Le résultat public est GÉOMÉTRIQUE : ni économies, ni rien de monétaire.
+    CLES_RESULT_PUBLIABLES = {'panels', 'kwc', 'annualKwh'}
+
+    def setUp(self):
+        self.company = make_company('pv24-pub')
+        self.user = make_user(self.company)
+        self.client_obj = make_client(self.company)
+        self._suite = 0
+
+    def _safe(self, layout):
+        from apps.ventes.public_views import _safe_roof_layout
+        self._suite += 1
+        devis = make_devis(self.company, self.user, self.client_obj,
+                           'DEV-PV24-%03d' % self._suite, roof_layout=layout)
+        return _safe_roof_layout(devis)
+
+    def test_le_jeu_de_cles_publiees_est_exactement_celui_attendu(self):
+        safe = self._safe(sample_layout_v2())
+        self.assertIsNotNone(safe)
+        self.assertEqual(set(safe), self.CLES_PUBLIABLES)
+        self.assertEqual(set(safe['result']), self.CLES_RESULT_PUBLIABLES)
+
+    def test_aucun_ajout_v2_ne_traverse_la_whitelist(self):
+        safe = self._safe(sample_layout_v2())
+        for ajout in ('panelWatt', 'battery', 'source', 'devisId', 'version',
+                      'pin', 'outline', 'billKwh', 'activeAreaId',
+                      'geometry', 'savings'):
+            self.assertNotIn(ajout, json.dumps(safe),
+                             'la clé v2 « %s » fuit dans la proposition '
+                             'publique' % ajout)
+
+    def test_les_economies_restent_hors_de_la_proposition(self):
+        """``result.savings`` porte une sémantique de PRIX : jamais publié."""
+        layout = sample_layout_v2()
+        self.assertIn('savings', layout['result'])   # présent à la source…
+        safe = self._safe(layout)
+        self.assertNotIn('savings', safe['result'])  # …absent à la sortie.
+        self.assertNotIn('11000', json.dumps(safe))
+
+    def test_la_v2_publie_la_meme_geometrie_que_la_v1(self):
+        """Le passage v1 → v2 n'AJOUTE rien de publiable : sortie identique."""
+        self.assertEqual(json.dumps(self._safe(sample_layout()),
+                                    sort_keys=True),
+                         json.dumps(self._safe(sample_layout_v2()),
+                                    sort_keys=True))
+
+
 class TestSafeRoofLayoutSanitizer(TestCase):
     def setUp(self):
         self.company = make_company('qj26-san')

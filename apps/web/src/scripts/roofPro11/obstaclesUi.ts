@@ -20,11 +20,13 @@ import {
   resizedObstacle,
   OBSTACLE_STEP_FACTOR,
   type Obstacle,
+  type ObstacleType,
 } from '../../lib/obstacles';
 import { type LngLat } from '../../lib/roof';
 import { OBSTACLE_TAP_PX, VERTEX_GRAB_PX, DEG2RAD, DEG2M } from './constants';
 import { $ } from './dom';
 import { type Ctx } from './context';
+import { OBSTACLE_TYPES, clearanceForType } from './types';
 
 /** Dépendances injectées (carte + recalcul complet + bandeau de statut). */
 export interface ObstaclesUiDeps {
@@ -85,6 +87,37 @@ export function createObstaclesUi(ctx: Ctx, deps: ObstaclesUiDeps): ObstaclesUi 
   const obsPlusBtn = $<HTMLButtonElement>('rp9-obs-plus');
   const obsMinusBtn = $<HTMLButtonElement>('rp9-obs-minus');
 
+  // PV61 — SÉLECTEUR « type d'obstacle ». Le type ne change pas la géométrie du
+  // rectangle : il fixe le DÉGAGEMENT laissé autour (cheminée 0,50 m ↔ antenne 0,30 m).
+  // Le sélecteur est créé ICI s'il n'existe pas déjà dans la page (le panneau d'édition
+  // d'obstacle est partagé par plusieurs pages) — aucune page n'a à être modifiée, et une
+  // page qui fournit déjà `#rp9-obs-type` garde SON markup.
+  const obsTypeEl = ensureTypePicker();
+  function ensureTypePicker(): HTMLSelectElement | null {
+    const existing = $<HTMLSelectElement>('rp9-obs-type');
+    if (existing) return existing;
+    if (!obsEditPanel || typeof document.createElement !== 'function') return null;
+    const label = document.createElement('label');
+    label.className = 'rp9-obs-type-row';
+    label.setAttribute('for', 'rp9-obs-type');
+    label.textContent = 'Type d’obstacle ';
+    const select = document.createElement('select');
+    select.id = 'rp9-obs-type';
+    select.className = 'rp9-input';
+    for (const t of OBSTACLE_TYPES) {
+      const opt = document.createElement('option');
+      opt.value = t.id;
+      opt.textContent = t.label;
+      select.appendChild(opt);
+    }
+    label.appendChild(select);
+    obsEditPanel.insertBefore(label, obsEditPanel.firstChild);
+    return select;
+  }
+  /** Libellé du dégagement courant (m), affiché sous le sélecteur. */
+  const clearanceLabel = (o: Obstacle): string =>
+    `Dégagement autour : ${fmt1(clearanceForType(o.type))} m`;
+
   function redrawObstacles() {
     srcOf('rp9-obs')?.setData({
       type: 'FeatureCollection',
@@ -114,7 +147,10 @@ export function createObstaclesUi(ctx: Ctx, deps: ObstaclesUiDeps): ObstaclesUi 
     if (!o) return;
     if (obsLengthEl && document.activeElement !== obsLengthEl) obsLengthEl.value = fmt1(o.lengthM);
     if (obsWidthEl && document.activeElement !== obsWidthEl) obsWidthEl.value = fmt1(o.widthM);
-    if (obsDimsEl) obsDimsEl.textContent = dimsLabel(o);
+    // PV61 — le sélecteur reflète le type courant (défaut « autre ») et la ligne de
+    // dimensions annonce le dégagement que ce type impose au calepinage.
+    if (obsTypeEl && document.activeElement !== obsTypeEl) obsTypeEl.value = o.type ?? 'autre';
+    if (obsDimsEl) obsDimsEl.textContent = `${dimsLabel(o)} · ${clearanceLabel(o)}`;
   }
 
   function selectObstacle(id: string | null) {
@@ -352,6 +388,14 @@ export function createObstaclesUi(ctx: Ctx, deps: ObstaclesUiDeps): ObstaclesUi 
     const w = parseNum(obsWidthEl.value);
     if (!Number.isFinite(w)) return;
     updateSelected((o) => resizedObstacle(o, o.lengthM, w));
+  });
+  // PV61 — changer le TYPE ne touche pas la géométrie : il ne change que le dégagement,
+  // donc on re-pave (recalc) pour que le calepinage reflète le nouveau recul.
+  obsTypeEl?.addEventListener('change', () => {
+    if (!ctx.selectedObsId) return;
+    const type = obsTypeEl.value as ObstacleType;
+    if (!OBSTACLE_TYPES.some((t) => t.id === type)) return;
+    updateSelected((o) => ({ ...o, type }));
   });
   obsLengthEl?.addEventListener('blur', syncObsEdit);
   obsWidthEl?.addEventListener('blur', syncObsEdit);

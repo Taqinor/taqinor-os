@@ -174,6 +174,163 @@ def export_job_cache_key(token):
     return f'{EXPORT_JOB_CACHE_PREFIX}{token}'
 
 
+# ── PV74 — étude bankable ASYNCHRONE (simulation d'un devis) ────────────────
+#
+# ``run_bankable_study`` interroge PVGIS (productible + TMY) par pan de toiture :
+# sur un toit à trois pans, c'est trois allers-retours réseau dans la requête du
+# commercial — un slot gunicorn bloqué pendant des secondes, et un timeout au
+# premier hoquet du réseau. La simulation part donc en Celery, EXACTEMENT sur le
+# motif d'export asynchrone déjà en service dans cette app (SCA41,
+# ``journal_view._maybe_async_export``) : un jeton opaque, l'état en cache scopé
+# SOCIÉTÉ, et un endpoint de statut qui vérifie cette société avant de répondre.
+#
+# Ce que la tâche N'ÉCRIT PAS : le statut du devis, ses lignes, ses prix
+# (règle #4). Elle ne pose QUE ``etude_params['simulation']``, chirurgicalement,
+# via ``save(update_fields=['etude_params'])`` — le statut ne peut pas partir de
+# là, même par accident.
+SIMULATION_JOB_CACHE_PREFIX = 'ventes:simulation_job:'
+SIMULATION_JOB_CACHE_TTL = 24 * 3600  # 24 h
+
+
+def simulation_job_cache_key(token):
+    return f'{SIMULATION_JOB_CACHE_PREFIX}{token}'
+
+
+def zones_etude_du_devis(devis):
+    """PV74 — les ZONES d'étude d'un devis : un pan de calepinage = une zone.
+
+    La géométrie vient de ``roof_layout['_pans_geometry']`` (QJ21) — la seule
+    source qui connaisse l'orientation RÉELLE de chaque pan ; le point GPS vient
+    du LEAD (``gps_lat``/``gps_lng``), à défaut du repère posé dans l'outil 3D
+    (``roof_layout['pin']``). L'azimut est déjà dans la convention PVGIS
+    (0 = Sud) des deux côtés : aucune conversion ici, donc aucune occasion de
+    retourner un toit.
+
+    Rend ``[]`` quand le devis n'a aucun pan exploitable — l'appelant refuse
+    alors la simulation plutôt que de lancer une étude vide. Ne lève jamais :
+    un pan illisible est ignoré, pas fatal.
+    """
+    layout = getattr(devis, 'roof_layout', None)
+    if not isinstance(layout, dict):
+        return []
+
+    lat = lon = None
+    lead = getattr(devis, 'lead', None)
+    if lead is not None:
+        lat = getattr(lead, 'gps_lat', None)
+        lon = getattr(lead, 'gps_lng', None)
+    if lat is None or lon is None:
+        pin = layout.get('pin')
+        if isinstance(pin, dict):
+            lat = pin.get('lat') if lat is None else lat
+            lon = pin.get('lng') if lon is None else lon
+
+    def _f(valeur):
+        try:
+            return float(valeur)
+        except (TypeError, ValueError):
+            return None
+
+    zones = []
+    for index, pan in enumerate(layout.get('_pans_geometry') or [], start=1):
+        if not isinstance(pan, dict):
+            continue
+        kwc = _f(pan.get('kwc'))
+        if not kwc:
+            continue
+        zones.append({
+            'label': str(pan.get('label') or 'Pan %d' % index),
+            'lat': _f(lat),
+            'lon': _f(lon),
+            'tilt': _f(pan.get('inclinaison_deg')),
+            'azimuth': _f(pan.get('azimut_deg')),
+            'kwc': kwc,
+        })
+    return zones
+
+
+def ranger_simulation(devis_id, simulation):
+    """PV74 — range la simulation dans ``etude_params['simulation']``, et RIEN
+    d'autre.
+
+    Mise à jour CHIRURGICALE : les autres clés d'étude (autoconsommation,
+    payback, pompe, toiture…) sont relues et réécrites telles quelles, et
+    ``update_fields`` se limite à ``etude_params`` — le STATUT ne peut donc pas
+    bouger depuis ce chemin (règle #4). Rend le devis rafraîchi, ou ``None``
+    s'il a disparu entre-temps.
+    """
+    from .models import Devis
+
+    devis = Devis.objects.filter(pk=devis_id).first()
+    if devis is None:
+        return None
+    etude = dict(devis.etude_params or {})
+    etude['simulation'] = simulation
+    devis.etude_params = etude
+    devis.save(update_fields=['etude_params'])
+    return devis
+
+
+@shared_task(
+    bind=True,
+    name='ventes.simulate_bankable_study',
+    max_retries=3,
+    default_retry_delay=30,
+    acks_late=True,
+)
+def task_simulate_bankable_study(self, devis_id, company_id, token,
+                                 force_refresh=False):
+    """PV74 — exécute l'étude bankable d'un devis HORS requête et la range.
+
+    Met à jour l'état du job en cache (``pending`` → ``ready``/``error``),
+    scopé société comme l'export asynchrone (SCA41). Réutilise
+    ``etude.run_bankable_study`` tel quel : le contenu de l'étude est
+    STRICTEMENT celui du calcul synchrone (aucune seconde source de vérité).
+
+    ``force_refresh`` traverse jusqu'aux fetchers PVGIS (PV73) : sans lui, deux
+    simulations du même toit ne coûtent qu'un seul aller-retour réseau.
+    """
+    from django.core.cache import cache
+
+    from .etude import run_bankable_study
+    from .models import Devis
+
+    ckey = simulation_job_cache_key(token)
+    try:
+        devis = Devis.objects.filter(pk=devis_id,
+                                     company_id=company_id).first()
+        if devis is None:
+            # Devis supprimé (ou d'une autre société) : ÉCHEC net, jamais un
+            # retry — réessayer ne le fera pas réapparaître.
+            cache.set(ckey, {'company_id': company_id, 'devis_id': devis_id,
+                             'status': 'error', 'error': 'Devis introuvable.'},
+                      SIMULATION_JOB_CACHE_TTL)
+            logger.error('task_simulate_bankable_study: devis %s introuvable '
+                         '(société %s)', devis_id, company_id)
+            return None
+
+        simulation = run_bankable_study(
+            devis, zones=zones_etude_du_devis(devis),
+            force_refresh=bool(force_refresh))
+        ranger_simulation(devis.pk, simulation)
+
+        cache.set(ckey, {
+            'company_id': company_id, 'devis_id': devis_id,
+            'status': 'ready', 'version': simulation.get('version'),
+            'computed_at': simulation.get('computed_at'),
+        }, SIMULATION_JOB_CACHE_TTL)
+        logger.info('task_simulate_bankable_study OK: devis %s (%d zone(s))',
+                    devis_id, len(simulation.get('zones') or []))
+        return token
+    except Exception as exc:  # noqa: BLE001
+        cache.set(ckey, {'company_id': company_id, 'devis_id': devis_id,
+                         'status': 'error', 'error': str(exc)},
+                  SIMULATION_JOB_CACHE_TTL)
+        logger.error('task_simulate_bankable_study failed devis=%s: %s',
+                     devis_id, exc)
+        raise self.retry(exc=exc, countdown=2 ** self.request.retries * 30)
+
+
 @shared_task(
     bind=True,
     name='ventes.build_async_export',
