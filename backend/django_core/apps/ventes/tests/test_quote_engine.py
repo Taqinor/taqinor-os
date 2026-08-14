@@ -622,8 +622,14 @@ class TestPdfFormats(TestCase):
         for interdit in ('prix_achat', 'marge', 'Total TTC', 'Sous-total'):
             self.assertNotIn(interdit, annexe)
         lisible = self._sans_donnees_binaires(annexe)
+        # PVSLD — le schéma v2 du moteur est un SVG riche : ses ATTRIBUTS de
+        # coordonnées (x1="67", y="375"…) refont surgir le même faux positif
+        # que le base64 du logo. Le scan des prix de lignes porte donc sur le
+        # TEXTE que le client lit — balises et attributs retirés — tandis que
+        # les gardes sémantiques ci-dessus restent sur le HTML brut entier.
+        texte = re.sub(r'<[^>]+>', ' ', lisible)
         for _designation, _qte, _prix in self.FULL_LINES:
-            self.assertNotIn(_prix, lisible)
+            self.assertNotIn(_prix, texte)
         self.assertIn('Nomenclature électrique', annexe)
         # La page de signature reste la DERNIÈRE page numérotée.
         self.assertEqual(G.PAGE3_NUM, G.PAGES_TOTAL)
