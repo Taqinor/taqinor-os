@@ -381,3 +381,70 @@ class RendezVousTransporteur(TenantModel):
                 'Ce créneau chevauche un rendez-vous déjà planifié sur ce '
                 'quai.')
         return super().save(*args, **kwargs)
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# NTWMS9 — Expédition multi-transporteurs (étiquette réelle, GATED)
+# ═══════════════════════════════════════════════════════════════════════════
+
+class ExpeditionTransporteur(TenantModel):
+    """Expédition d'UNE unité logistique par UN transporteur.
+
+    Le connecteur (``transporteur_provider``) est résolu via
+    ``apps/stock/providers/`` (Strategy pattern posé sur ``core.integrations``).
+    Sans intégration configurée pour la société, le connecteur ``aucun``
+    (NoOp) produit une étiquette interne SANS aucun appel réseau — dégradation
+    gracieuse, jamais un blocage.
+
+    Structure ce que ``installations.Livraison.numero_suivi`` ne fait qu'en
+    texte libre : ici le suivi est un OBJET (coût réel, étiquette PDF stockée,
+    statut) — pour le e-commerce/B2B pur, hors chantier.
+    """
+
+    class Provider(models.TextChoices):
+        AUCUN = 'aucun', 'Aucun (étiquette interne)'
+        AMANA = 'amana', 'Amana'
+        DHL = 'dhl', 'DHL'
+        CHRONOPOST = 'chronopost', 'Chronopost'
+        AUTRE = 'autre', 'Autre'
+
+    class Statut(models.TextChoices):
+        BROUILLON = 'brouillon', 'Brouillon'
+        ETIQUETTE = 'etiquette', 'Étiquette générée'
+        EXPEDIE = 'expedie', 'Expédié'
+        LIVRE = 'livre', 'Livré'
+        ANNULE = 'annule', 'Annulé'
+
+    unite_logistique = models.ForeignKey(
+        UniteLogistique, on_delete=models.CASCADE, related_name='expeditions')
+    transporteur_provider = models.CharField(
+        max_length=20, choices=Provider.choices, default=Provider.AUCUN)
+    # Référentiel transporteur interne (FG324) — string-FK, optionnel.
+    transporteur = models.ForeignKey(
+        'installations.Transporteur', on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='expeditions_stock')
+    numero_suivi = models.CharField(max_length=120, blank=True, default='')
+    cout_reel = models.DecimalField(
+        max_digits=12, decimal_places=2, null=True, blank=True)
+    # Clé objet MinIO (bucket uploads), préfixée par société (SCA42) — jamais
+    # un FileField brut (règle plateforme ARC26).
+    etiquette_pdf_key = models.CharField(
+        max_length=500, blank=True, default='')
+    statut = models.CharField(
+        max_length=20, choices=Statut.choices, default=Statut.BROUILLON)
+    destination = models.CharField(max_length=200, blank=True, default='')
+    date_expedition = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        verbose_name = 'Expédition transporteur'
+        verbose_name_plural = 'Expéditions transporteur'
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['company', 'statut'],
+                         name='idx_expedtr_co_statut'),
+            models.Index(fields=['company', 'numero_suivi'],
+                         name='idx_expedtr_co_suivi'),
+        ]
+
+    def __str__(self):
+        return f'{self.transporteur_provider} {self.numero_suivi}'.strip()

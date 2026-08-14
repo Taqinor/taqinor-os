@@ -39,7 +39,7 @@ from .nomenclature_code_barres import (
 # Groupe NTWMS - couche entrepot (vagues, unites logistiques, quais...).
 from .wms import (
     VaguePickingViewSet, UniteLogistiqueViewSet, QuaiViewSet,
-    RendezVousTransporteurViewSet,
+    RendezVousTransporteurViewSet, ExpeditionTransporteurViewSet,
 )
 from .scanner import scanner_resoudre_view, scanner_mouvement_view
 
@@ -78,6 +78,7 @@ __all__ = [
     'UniteLogistiqueViewSet',
     'QuaiViewSet',
     'RendezVousTransporteurViewSet',
+    'ExpeditionTransporteurViewSet',
     'scanner_resoudre_view',
     'scanner_mouvement_view',
 ]

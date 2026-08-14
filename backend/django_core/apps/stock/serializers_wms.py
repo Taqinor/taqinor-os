@@ -6,8 +6,8 @@
 from rest_framework import serializers
 
 from .models_wms import (
-    LignePicking, Quai, RendezVousTransporteur, UniteLogistique,
-    UniteLogistiqueLigne, VaguePicking,
+    ExpeditionTransporteur, LignePicking, Quai, RendezVousTransporteur,
+    UniteLogistique, UniteLogistiqueLigne, VaguePicking,
 )
 
 
@@ -161,3 +161,34 @@ class RendezVousTransporteurSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 {'date_heure_fin': 'La fin doit être postérieure au début.'})
         return attrs
+
+
+class ExpeditionTransporteurSerializer(serializers.ModelSerializer):
+    """NTWMS9 — expédition d'une unité logistique par un transporteur.
+
+    Le numéro de suivi et la clé d'étiquette sont POSÉS PAR LE SERVEUR (via le
+    connecteur) : jamais acceptés du client."""
+
+    sscc = serializers.CharField(
+        source='unite_logistique.sscc', read_only=True, default='')
+    transporteur_nom = serializers.CharField(
+        source='transporteur.nom', read_only=True, default='')
+    a_une_etiquette = serializers.SerializerMethodField()
+
+    class Meta:
+        model = ExpeditionTransporteur
+        fields = [
+            'id', 'unite_logistique', 'sscc', 'transporteur_provider',
+            'transporteur', 'transporteur_nom', 'numero_suivi', 'cout_reel',
+            'statut', 'destination', 'date_expedition', 'a_une_etiquette',
+            'created_at', 'updated_at',
+        ]
+        read_only_fields = [
+            'numero_suivi', 'statut', 'date_expedition', 'created_at',
+            'updated_at',
+        ]
+
+    def get_a_une_etiquette(self, obj):
+        # La CLÉ MinIO elle-même n'est jamais exposée (chemin de stockage
+        # interne) : le client sait seulement qu'une étiquette existe.
+        return bool(obj.etiquette_pdf_key)

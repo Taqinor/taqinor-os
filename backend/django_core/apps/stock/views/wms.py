@@ -14,11 +14,13 @@ from authentication.permissions import (
 )
 
 from ..models_wms import (
-    Quai, RendezVousTransporteur, UniteLogistique, VaguePicking,
+    ExpeditionTransporteur, Quai, RendezVousTransporteur, UniteLogistique,
+    VaguePicking,
 )
 from ..serializers_wms import (
-    QuaiSerializer, RendezVousTransporteurSerializer,
-    UniteLogistiqueSerializer, VaguePickingSerializer,
+    ExpeditionTransporteurSerializer, QuaiSerializer,
+    RendezVousTransporteurSerializer, UniteLogistiqueSerializer,
+    VaguePickingSerializer,
 )
 
 READ_ACTIONS = ['list', 'retrieve']
@@ -317,3 +319,78 @@ class RendezVousTransporteurViewSet(CompanyScopedModelViewSet):
 
     def perform_update(self, serializer):
         self._sauver(serializer)
+
+
+class ExpeditionTransporteurViewSet(CompanyScopedModelViewSet):
+    """NTWMS9 — expéditions transporteur (étiquette réelle GATED, NoOp sinon).
+
+    ``{id}/generer-etiquette/`` demande au connecteur configuré son numéro de
+    suivi + son étiquette ; sans intégration configurée pour la société, le
+    connecteur NoOp produit une étiquette INTERNE sans aucun appel externe.
+    ``{id}/tracking/`` renvoie l'état de suivi connu.
+    """
+    queryset = ExpeditionTransporteur.objects.select_related(
+        'unite_logistique', 'transporteur').all()
+    serializer_class = ExpeditionTransporteurSerializer
+    ordering = ['-created_at']
+
+    def get_permissions(self):
+        if self.action in READ_ACTIONS + ['tracking', 'tarifs']:
+            return [IsAnyRole()]
+        if self.action in WRITE_ACTIONS + ['generer_etiquette']:
+            return [IsResponsableOrAdmin()]
+        return [IsAdminRole()]
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        statut = self.request.query_params.get('statut')
+        if statut:
+            qs = qs.filter(statut=statut)
+        return qs
+
+    def create(self, request, *args, **kwargs):
+        from ..services import creer_expedition_transporteur
+        company = request.user.company
+        unite = UniteLogistique.objects.filter(
+            id=request.data.get('unite_logistique'), company=company).first()
+        try:
+            expedition = creer_expedition_transporteur(
+                company=company, unite=unite,
+                provider_code=(request.data.get('transporteur_provider')
+                               or 'aucun'),
+                destination=request.data.get('destination') or '',
+                cout_reel=request.data.get('cout_reel') or None)
+        except ValueError as exc:
+            return Response({'detail': str(exc)},
+                            status=status.HTTP_400_BAD_REQUEST)
+        return Response(self.get_serializer(expedition).data,
+                        status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['post'], url_path='generer-etiquette')
+    def generer_etiquette(self, request, pk=None):
+        """Numéro de suivi + étiquette du connecteur (réel si gated, sinon
+        interne). Idempotent."""
+        from ..services import generer_etiquette_expedition
+        expedition = self.get_object()
+        try:
+            generer_etiquette_expedition(
+                expedition=expedition, user=request.user)
+        except ValueError as exc:
+            return Response({'detail': str(exc)},
+                            status=status.HTTP_400_BAD_REQUEST)
+        expedition.refresh_from_db()
+        return Response(self.get_serializer(expedition).data)
+
+    @action(detail=True, methods=['get'], url_path='tracking')
+    def tracking(self, request, pk=None):
+        """État de suivi connu de cette expédition. LECTURE SEULE ; la clé
+        MinIO de l'étiquette n'est JAMAIS exposée."""
+        expedition = self.get_object()
+        return Response({
+            'numero_suivi': expedition.numero_suivi,
+            'transporteur_provider': expedition.transporteur_provider,
+            'statut': expedition.statut,
+            'destination': expedition.destination,
+            'date_expedition': expedition.date_expedition,
+            'a_une_etiquette': bool(expedition.etiquette_pdf_key),
+        })

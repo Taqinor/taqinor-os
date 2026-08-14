@@ -492,3 +492,88 @@ def enregistrer_arrivee_chauffeur(*, societe_slug, code):
         'horodatage_arrivee': rdv.date_arrivee,
         'message': 'Arrivée enregistrée. Présentez-vous au quai indiqué.',
     }
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# NTWMS9 — Expédition transporteur : étiquette réelle (gated) ou interne
+# ═══════════════════════════════════════════════════════════════════════════
+
+def _stocker_etiquette(company, expedition, pdf_bytes):
+    """Dépose l'étiquette dans MinIO et renvoie sa clé.
+
+    Réutilise le client MinIO existant (aucune dépendance nouvelle) et la
+    convention de clé PRÉFIXÉE PAR SOCIÉTÉ (SCA42/ERR75) : jamais une clé
+    « plate », jamais un ``FileField`` brut (ARC26).
+    """
+    import uuid
+
+    from apps.ventes.utils.minio_client import (
+        ensure_uploads_bucket, get_minio_client,
+    )
+    from django.conf import settings as django_settings
+
+    cle = (f'stock/{getattr(company, "id", 0) or 0}/etiquettes/'
+           f'{uuid.uuid4().hex}.pdf')
+    client = get_minio_client()
+    ensure_uploads_bucket()
+    import io
+    client.upload_fileobj(
+        io.BytesIO(pdf_bytes), django_settings.MINIO_BUCKET_UPLOADS, cle,
+        ExtraArgs={'ContentType': 'application/pdf'})
+    return cle
+
+
+def creer_expedition_transporteur(*, company, unite, provider_code='aucun',
+                                  transporteur=None, destination='',
+                                  cout_reel=None):
+    """Crée une expédition BROUILLON pour une unité logistique SCELLÉE.
+
+    Refuse une unité non scellée : on n'expédie jamais un colis dont le contenu
+    peut encore changer.
+    """
+    from .models_wms import ExpeditionTransporteur, UniteLogistique
+
+    if unite is None or unite.company_id != getattr(company, 'id', None):
+        raise ValueError('Unité logistique introuvable dans cette société.')
+    if unite.statut == UniteLogistique.Statut.EN_PREPARATION:
+        raise ValueError(
+            "Scellez l'unité logistique avant de l'expédier.")
+    if provider_code not in dict(ExpeditionTransporteur.Provider.choices):
+        raise ValueError('Transporteur inconnu.')
+    return ExpeditionTransporteur.objects.create(
+        company=company, unite_logistique=unite,
+        transporteur_provider=provider_code, transporteur=transporteur,
+        destination=destination or '', cout_reel=cout_reel)
+
+
+def generer_etiquette_expedition(*, expedition, user=None):
+    """Demande au connecteur son numéro de suivi + son étiquette PDF.
+
+    Le connecteur est résolu par ``providers.provider_pour_societe`` : une
+    intégration réelle si (et seulement si) elle est configurée et gated par
+    une clé pour cette société, SINON le NoOp (étiquette interne, zéro appel
+    réseau). Idempotent : une étiquette déjà générée n'est pas régénérée.
+    """
+    from django.utils import timezone
+
+    from .models_wms import ExpeditionTransporteur
+    from .providers import provider_pour_societe
+
+    if expedition.statut == ExpeditionTransporteur.Statut.ANNULE:
+        raise ValueError('Cette expédition est annulée.')
+    if expedition.etiquette_pdf_key and expedition.numero_suivi:
+        return expedition
+
+    provider = provider_pour_societe(
+        expedition.company, expedition.transporteur_provider)
+    numero_suivi, pdf_bytes = provider.creer_expedition(
+        expedition.unite_logistique)
+    expedition.numero_suivi = numero_suivi or ''
+    if pdf_bytes:
+        expedition.etiquette_pdf_key = _stocker_etiquette(
+            expedition.company, expedition, pdf_bytes)
+    expedition.statut = ExpeditionTransporteur.Statut.ETIQUETTE
+    expedition.date_expedition = timezone.now()
+    expedition.save(update_fields=[
+        'numero_suivi', 'etiquette_pdf_key', 'statut', 'date_expedition'])
+    return expedition
