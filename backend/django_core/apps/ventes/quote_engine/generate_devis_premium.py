@@ -1928,6 +1928,107 @@ def make_chart_etude(prod_m, conso_m):
     return b64(buf)
 
 
+# \u2500\u2500 PV77 \u2014 \u00e9tude bancable (P50/P90 + cascade de pertes) \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+# Libell\u00e9s FR des postes de perte du mod\u00e8le PR (apps.ventes.solar_design). Un
+# poste inconnu garde sa cl\u00e9 (\u00e9chapp\u00e9e) : jamais de libell\u00e9 invent\u00e9.
+_BANKABLE_POSTES_FR = {
+    "temperature": "Temp\u00e9rature",
+    "soiling": "Salissures",
+    "shading": "Ombrage",
+    "wiring": "C\u00e2blage",
+    "inverter": "Onduleur",
+    "mismatch": "Dispersion modules",
+    "availability": "Disponibilit\u00e9",
+    "lid": "LID (1re ann\u00e9e)",
+    "reflection": "R\u00e9flexion (IAM)",
+}
+
+
+def _bankable_pct(valeur):
+    """Pourcentage FR \u00e0 une d\u00e9cimale (\u00ab 8,0 \u00bb) ; illisible/absent \u2192 ''."""
+    try:
+        return f"{float(valeur):.1f}".replace(".", ",")
+    except (TypeError, ValueError):
+        return ""
+
+
+def _bankable_block_html(bank):
+    """PV77 \u2014 bloc ADDITIF de l'\u00e9tude bancable, DANS la page \u00c9tude existante.
+
+    Rend une ligne compacte P50/P90 (+ ratio de performance) et la cascade des
+    pertes du mod\u00e8le PR, en fran\u00e7ais. Le bloc vit \u00e0 l'INT\u00c9RIEUR de la page \u00c9tude
+    (``.page`` est \u00e0 hauteur fixe) : il ne peut donc jamais changer le nombre de
+    pages du document. Aucun montant, aucune VAN/TRI, aucun prix d'achat n'y
+    figure (r\u00e8gle #4) \u2014 uniquement des grandeurs \u00e9nerg\u00e9tiques.
+
+    Absent/illisible \u2192 '' : la page \u00c9tude reste EXACTEMENT celle d'aujourd'hui.
+    """
+    if not isinstance(bank, dict) or not bank:
+        return ""
+    pr = bank.get("pr") if isinstance(bank.get("pr"), dict) else {}
+
+    morceaux = []
+    p50 = pr.get("p50_kwh")
+    if p50 not in (None, ""):
+        morceaux.append(
+            f'Production P50 (m\u00e9diane)\u00a0: <b>{fnum(p50)}\u00a0kWh/an</b>')
+    p90 = pr.get("p90_kwh")
+    if p90 not in (None, ""):
+        morceaux.append(
+            f'P90 (retenue par les banques)\u00a0: <b>{fnum(p90)}\u00a0kWh/an</b>')
+    ratio = pr.get("performance_ratio")
+    try:
+        if ratio not in (None, ""):
+            morceaux.append(
+                'Ratio de performance\u00a0: <b>'
+                + _bankable_pct(float(ratio) * 100.0) + '\u00a0%</b>')
+    except (TypeError, ValueError):
+        pass
+    ligne = " \u00b7 ".join(morceaux)
+
+    pertes = pr.get("loss_breakdown")
+    puces = []
+    if isinstance(pertes, dict):
+        lisibles = []
+        for poste, pct in pertes.items():
+            texte = _bankable_pct(pct)
+            if not texte:
+                continue
+            try:
+                lisibles.append((float(pct), poste, texte))
+            except (TypeError, ValueError):
+                continue
+        for _val, poste, texte in sorted(lisibles, key=lambda x: -x[0]):
+            libelle = _BANKABLE_POSTES_FR.get(str(poste), _esc(poste))
+            puces.append(
+                f'<span style="display:inline-block;background:{CG1};'
+                f'border:1px solid {CG2};border-radius:9px;padding:1px 6px;'
+                f'margin:0 4px 3px 0;">{libelle}\u00a0{texte}\u00a0%</span>')
+    total = _bankable_pct(pr.get("total_loss_pct"))
+    if total:
+        puces.append(
+            f'<span style="display:inline-block;border-radius:9px;'
+            f'padding:1px 6px;margin:0 4px 3px 0;color:{CN};font-weight:700;">'
+            f'Total\u00a0{total}\u00a0%</span>')
+
+    if not ligne and not puces:
+        return ""
+
+    ligne_html = (f'<div style="font-size:8pt;color:{CN};">{ligne}</div>'
+                  if ligne else "")
+    pertes_html = (
+        f'<div style="font-size:6.5pt;color:{CG4};margin-top:5px;">'
+        f'Cascade de pertes\u00a0: {"".join(puces)}</div>') if puces else ""
+    return (
+        f'<div style="background:white;border:1px solid {CG2};'
+        f'border-left:4px solid {CA};border-radius:6px;padding:9px 12px;'
+        f'margin-top:9px;">'
+        f'<div style="font-size:5.5pt;letter-spacing:1.2px;color:{CG4};'
+        f'text-transform:uppercase;margin-bottom:4px;">'
+        f'\u00c9tude bancable \u2014 productible et pertes</div>'
+        f'{ligne_html}{pertes_html}</div>')
+
+
 def page_etude():
     """\u00c9tude d'autoconsommation (industriel) : param\u00e8tres, taux, graphique."""
     e = ETUDE
@@ -1973,6 +2074,9 @@ def page_etude():
         "* Taux d'autoconsommation : part de la production solaire "
         "consommée sur site. Taux de couverture : part de la "
         "consommation totale couverte par le solaire. ") if has_conso else ""
+    # PV77 — bloc bancable ADDITIF : présent uniquement quand le devis porte
+    # une simulation (etude_params['simulation']), sinon '' → page inchangée.
+    bankable_html = _bankable_block_html(e.get("bankable"))
     chart_html = (
         f'<div style="background:{CG1};border-radius:7px;padding:10px 12px;'
         f'border:1px solid {CG2};margin-top:10px;">'
@@ -2001,6 +2105,7 @@ def page_etude():
     </div>
     <div style="display:flex;gap:9px;margin-bottom:9px;">{cards1}</div>
     <div style="display:flex;gap:9px;">{cards2}</div>
+    {bankable_html}
     {chart_html}
     <div style="margin-top:10px;font-size:6.5pt;color:{CG4};font-style:italic;">
       {_rates_note}Estimations non contractuelles.

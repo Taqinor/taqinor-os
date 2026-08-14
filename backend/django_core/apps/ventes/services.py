@@ -683,6 +683,42 @@ def cible_depuis_lignes(devis):
 #: Nom du drapeau — lu par ``getattr`` pour que l'ABSENCE du réglage vaille OFF.
 DRAPEAU_MOTEUR_CALEPINAGE = 'USE_MOTEUR_CALEPINAGE'
 
+# ── PVG2 — garde de TOLÉRANCE sur l'arbitrage A/B (décision fondateur) ───────
+#
+# La bascule AOF164 remplaçait le compte historique par celui du moteur DÈS que
+# le drapeau était levé, quelle que soit l'ampleur de l'écart. Un moteur qui
+# lit mal une géométrie (un pan sans obstacle déclaré, un contour ouvert, une
+# unité inattendue) pouvait donc, silencieusement, faire passer une villa de 12
+# à 40 panneaux — et le devis partait ainsi.
+#
+# Décision du fondateur : SÉCURITÉ PAR DÉFAUT. Un petit écart est une
+# correction (le moteur est plus fin que le cerveau TypeScript, c'est le but de
+# la bascule) ; un GRAND écart est une ANOMALIE, et devant une anomalie on
+# garde le compte historique et on ALERTE — jamais un remplacement silencieux.
+#
+# Deux tolérances, satisfaites en OU (l'une suffit) : un écart de quelques
+# modules est absolu (une villa de 12 panneaux tolère ±2), un écart relatif
+# couvre les grandes toitures (200 modules tolèrent ±5 %, soit ±10).
+#: Écart ABSOLU toléré, en nombre de modules.
+TOLERANCE_ARBITRAGE_MODULES = 2
+#: Écart RELATIF toléré, en % du compte historique.
+TOLERANCE_ARBITRAGE_PCT = 5.0
+
+
+def _ecart_dans_la_tolerance(ancien, ecart):
+    """L'écart moteur↔historique reste-t-il dans la tolérance PVG2 ?
+
+    Vrai dès qu'UNE des deux tolérances est satisfaite (modules OU pourcentage).
+    Un compte historique nul ou négatif n'a pas de pourcentage qui ait un sens :
+    seule la tolérance en modules s'applique alors (jamais une division par 0).
+    """
+    ecart_abs = abs(int(ecart))
+    if ecart_abs <= TOLERANCE_ARBITRAGE_MODULES:
+        return True
+    if ancien > 0:
+        return (ecart_abs * 100.0 / ancien) <= TOLERANCE_ARBITRAGE_PCT
+    return False
+
 
 def moteur_calepinage_actif():
     """Le drapeau de bascule est-il levé ? ABSENT = OFF (jamais l'inverse)."""
@@ -863,8 +899,16 @@ def arbitrer_compte_calepinage(layout, compte_historique, *, company=None,
 
     ``None`` signifie « ne change rien » : drapeau baissé (cas par défaut,
     retour AVANT tout calcul et tout journal) ou moteur sans réponse.
-    Sinon rend ``{'ancien', 'nouveau', 'ecart', 'retenu', 'pans'}`` où
-    ``retenu`` est le compte du MOTEUR — c'est le sens même de la bascule.
+    Sinon rend ``{'ancien', 'nouveau', 'ecart', 'retenu', 'pans',
+    'hors_tolerance', 'motif'}``.
+
+    ``retenu`` est le compte du MOTEUR tant que l'écart reste DANS la tolérance
+    PVG2 (``TOLERANCE_ARBITRAGE_MODULES`` modules OU ``TOLERANCE_ARBITRAGE_PCT``
+    %) — c'est le sens même de la bascule. Au-delà, l'écart n'est plus une
+    correction mais une ANOMALIE : ``retenu`` reste le compte HISTORIQUE,
+    ``hors_tolerance`` vaut ``True``, et l'écart part en ``logger.warning`` avec
+    les DEUX comptes et la référence du devis. Jamais un remplacement
+    silencieux, jamais une exception (décision fondateur : sécurité par défaut).
 
     PV42 — ``company``/``devis`` sont transmis au moteur pour qu'il calepine sur
     le panneau réellement vendu (PV12).
@@ -888,8 +932,24 @@ def arbitrer_compte_calepinage(layout, compte_historique, *, company=None,
         'AOF164: bascule moteur ACTIVE — compte TypeScript %d, compte moteur '
         '%d, écart %+d (%d pan(s) calepiné(s))',
         ancien, nouveau, ecart, len(mesure['pans']))
+
+    # PVG2 — garde de tolérance : au-delà, on GARDE le compte historique et on
+    # alerte (le journal porte les deux comptes + la référence, pour que
+    # l'anomalie soit diagnosticable sans rejouer le calcul).
+    if not _ecart_dans_la_tolerance(ancien, ecart):
+        motif = 'écart au-delà de la tolérance — compte historique conservé'
+        logger.warning(
+            'PVG2: %s (devis %s) : compte TypeScript %d, compte moteur %d, '
+            'écart %+d — tolérance %d module(s) ou %.1f %%',
+            motif, getattr(devis, 'reference', '?') or '?', ancien, nouveau,
+            ecart, TOLERANCE_ARBITRAGE_MODULES, TOLERANCE_ARBITRAGE_PCT)
+        return {'ancien': ancien, 'nouveau': nouveau, 'ecart': ecart,
+                'retenu': ancien, 'pans': mesure['pans'],
+                'hors_tolerance': True, 'motif': motif}
+
     return {'ancien': ancien, 'nouveau': nouveau, 'ecart': ecart,
-            'retenu': nouveau, 'pans': mesure['pans']}
+            'retenu': nouveau, 'pans': mesure['pans'],
+            'hors_tolerance': False, 'motif': ''}
 
 
 def concevoir_electrique_du_devis(devis, *, origine=''):
@@ -973,6 +1033,10 @@ def build_devis_from_layout(*, layout, user, company, lead=None, client=None,
     # rend ``None`` AVANT tout calcul — aucun appel moteur, aucun journal,
     # comportement bit-identique à aujourd'hui. Drapeau ON : le compte vient du
     # moteur et l'écart ancien/nouveau est journalisé pour arbitrage.
+    # PVG2 — au-delà de la tolérance (TOLERANCE_ARBITRAGE_MODULES modules OU
+    # TOLERANCE_ARBITRAGE_PCT %), ``retenu`` REDEVIENT le compte historique :
+    # la condition ci-dessous est alors fausse et le devis garde ses panneaux,
+    # l'anomalie partant en avertissement plutôt qu'en remplacement silencieux.
     arbitrage = arbitrer_compte_calepinage(layout, nb_panneaux,
                                            company=company)
     if arbitrage is not None and arbitrage['retenu'] != nb_panneaux:

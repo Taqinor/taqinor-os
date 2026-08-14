@@ -599,6 +599,173 @@ class TestPdfFormats(TestCase):
         self._render({'include_annexe_technique': True})
         return G.page_annexe_technique()
 
+    # ── PV77 — étude bancable sur la page Étude (additif, sans page en plus) ──
+    _SIMULATION = {
+        'version': 1,
+        'computed_at': '2026-08-14T10:00:00Z',
+        'source': 'pvgis',
+        'zones': [{'label': 'Pan Sud', 'lat': 33.57, 'lon': -7.59,
+                   'tilt': 30, 'azimuth': 0, 'kwc': 42.3,
+                   'base_production_kwh': 71800,
+                   'shading_annual_loss_pct': 4.2}],
+        'pr': {
+            'performance_ratio': 0.812, 'total_loss_pct': 18.8,
+            'loss_breakdown': {'temperature': 8.0, 'soiling': 3.0,
+                               'shading': 4.2, 'wiring': 2.0,
+                               'inverter': 2.5, 'mismatch': 2.0,
+                               'availability': 1.0},
+            'p50_kwh': 71800, 'p90_kwh': 58300, 'p75_kwh': 66400,
+            'annual_variability': 0.06, 'specific_yield_kwh_kwc': 1697,
+        },
+        'self_consumption': {'hours': 8760, 'self_consumption_rate': 0.41,
+                             'coverage_rate': 0.63,
+                             'self_consumed_kwh': 29400,
+                             'surplus_kwh': 42400, 'grid_import_kwh': 17300},
+        'net_metering': {'annual_savings_mad': 33800,
+                         'annual_compensated_kwh': 24100,
+                         'annual_spill_value_mad': 0},
+        'subscribed_power': {'peak_reduction_pct': 22.0,
+                             'recommended_subscribed': 68,
+                             'annual_saving': 5200},
+        'degradation': {'factor_year1': 0.9784, 'factor_last_year': 0.874,
+                        'any_warranty_breach': False},
+        'projection_25y': {'npv': 412300, 'irr': 0.187, 'payback_year': 6,
+                           'discounted_payback_year': 7},
+        'warnings': [],
+    }
+
+    _ETUDE_INDUSTRIELLE = {
+        'kwc': 9.94, 'production_annuelle': 12486, 'conso_annuelle': 120000,
+        'taux_autoconso': 100, 'taux_couverture': 10.4,
+        'economies_annuelles': 21851, 'payback': 3.0, 'prix_kwc': 6543,
+        'prod_mensuelle': [1040] * 12, 'conso_mensuelle': [10000] * 12,
+    }
+
+    def _devis_avec_etude(self, simulation=None):
+        self.devis.mode_installation = 'industriel'
+        etude = dict(self._ETUDE_INDUSTRIELLE)
+        if simulation is not None:
+            etude['simulation'] = simulation
+        self.devis.etude_params = etude
+        self.devis.save()
+        return self.devis
+
+    @staticmethod
+    def _cles_profondes(obj):
+        """Toutes les clés de dict présentes à N'IMPORTE QUELLE profondeur."""
+        vues = set()
+        if isinstance(obj, dict):
+            for clef, valeur in obj.items():
+                vues.add(clef)
+                vues |= TestPdfFormats._cles_profondes(valeur)
+        elif isinstance(obj, (list, tuple)):
+            for valeur in obj:
+                vues |= TestPdfFormats._cles_profondes(valeur)
+        return vues
+
+    def test_pv77_sans_simulation_la_charge_utile_est_byte_identique(self):
+        """Aucune simulation → AUCUNE clé nouvelle, nulle part, jamais."""
+        from apps.ventes.quote_engine.builder import build_quote_data
+
+        self._devis_avec_etude()
+        data = build_quote_data(self.devis, {'include_etude': True})
+        # Deux constructions du même devis rendent le MÊME dict (déterminisme :
+        # sans lui, « byte-identique » ne voudrait rien dire).
+        self.assertEqual(data, build_quote_data(self.devis,
+                                                {'include_etude': True}))
+        self.assertNotIn('bankable', self._cles_profondes(data))
+        self.assertNotIn('simulation', data['etude'])
+
+    def test_pv77_avec_simulation_seule_la_cle_bankable_apparait(self):
+        """Avec simulation → la charge utile ne gagne QUE ``etude.bankable``."""
+        from apps.ventes.quote_engine.builder import build_quote_data
+
+        self._devis_avec_etude()
+        sans = build_quote_data(self.devis, {'include_etude': True})
+        self._devis_avec_etude(self._SIMULATION)
+        avec = build_quote_data(self.devis, {'include_etude': True})
+
+        self.assertEqual(set(avec) - set(sans), set())
+        etude_avec = dict(avec['etude'])
+        self.assertEqual(etude_avec.pop('bankable'), self._SIMULATION)
+        # ``simulation`` est la clé BRUTE déjà portée par etude_params : elle
+        # reste telle quelle, le bloc bancable s'AJOUTE à côté sans la toucher.
+        self.assertEqual(etude_avec.pop('simulation'), self._SIMULATION)
+        self.assertEqual(etude_avec, sans['etude'])
+        # Le reste du dict (totaux, ROI, options…) est identique clé par clé.
+        for clef in set(sans) - {'etude'}:
+            self.assertEqual(sans[clef], avec[clef], clef)
+
+    def test_pv77_le_bloc_bancable_est_une_copie_defensive(self):
+        """Le rendu ne peut jamais muter l'étude STOCKÉE sur le devis."""
+        from apps.ventes.quote_engine.builder import build_quote_data
+
+        self._devis_avec_etude(self._SIMULATION)
+        data = build_quote_data(self.devis, {'include_etude': True})
+        data['etude']['bankable']['pr']['p50_kwh'] = 1
+        # En mémoire (une copie de surface aurait partagé le sous-dict 'pr')…
+        self.assertEqual(
+            self.devis.etude_params['simulation']['pr']['p50_kwh'], 71800)
+        # … et en base.
+        self.devis.refresh_from_db()
+        self.assertEqual(
+            self.devis.etude_params['simulation']['pr']['p50_kwh'], 71800)
+
+    def test_pv77_la_page_etude_montre_p50_p90_et_la_cascade(self):
+        self._devis_avec_etude(self._SIMULATION)
+        html, doc = self._render({'include_etude': True})
+        self.assertEqual(len(doc.pages), 4)
+        self.assertIn('Étude bancable', html)
+        self.assertIn('Production P50', html)
+        self.assertIn('P90', html)
+        self.assertIn('71 800', html)      # P50 formaté à la française
+        self.assertIn('58 300', html)      # P90
+        self.assertIn('Cascade de pertes', html)
+        for libelle in ('Température', 'Salissures', 'Ombrage', 'Câblage',
+                        'Onduleur', 'Disponibilité'):
+            self.assertIn(libelle, html)
+        self.assertIn('Ratio de performance', html)
+
+    def test_pv77_le_nombre_de_pages_ne_bouge_jamais(self):
+        """Le bloc vit DANS la page Étude : 4 pages avec, 4 pages sans."""
+        self._devis_avec_etude()
+        _, sans = self._render({'include_etude': True})
+        self._devis_avec_etude(self._SIMULATION)
+        html, avec = self._render({'include_etude': True})
+        self.assertEqual(len(sans.pages), len(avec.pages))
+        self.assertEqual(len(avec.pages), 4)
+        # Et avec l'annexe technique par-dessus : toujours 5, jamais 6.
+        self.devis.electrical_design = self._ELECTRICAL_DESIGN
+        self.devis.save(update_fields=['electrical_design'])
+        _, cinq = self._render({'include_etude': True,
+                                'include_annexe_technique': True})
+        self.assertEqual(len(cinq.pages), 5)
+        self.assertIn('Étude bancable', html)
+
+    def test_pv77_sans_simulation_la_page_etude_est_celle_d_hier(self):
+        self._devis_avec_etude()
+        html, doc = self._render({'include_etude': True})
+        self.assertEqual(len(doc.pages), 4)
+        self.assertNotIn('Étude bancable', html)
+        self.assertNotIn('Cascade de pertes', html)
+
+    def test_pv77_le_bloc_bancable_ne_porte_aucun_montant(self):
+        """Règle #4 — que des grandeurs énergétiques : ni VAN, ni TRI, ni prix."""
+        from apps.ventes.quote_engine import generate_devis_premium as G
+
+        bloc = G._bankable_block_html(self._SIMULATION)
+        self.assertTrue(bloc)
+        for interdit in ('MAD', 'VAN', 'TRI', 'npv', 'irr', '412', '33 800',
+                         'prix_achat', 'marge'):
+            self.assertNotIn(interdit, bloc)
+
+    def test_pv77_une_simulation_illisible_ne_rend_rien(self):
+        from apps.ventes.quote_engine import generate_devis_premium as G
+
+        for entree in (None, {}, [], 'oui', {'pr': {}},
+                       {'pr': {'loss_breakdown': {}}}):
+            self.assertEqual(G._bankable_block_html(entree), '')
+
     def test_pompage_summary_on_onepage(self):
         """A pompage quote shows pump CV/débit/HMT in the one-page summary."""
         self.devis.mode_installation = 'agricole'
