@@ -60,6 +60,22 @@ ignore_imports =
 # DIRECT `apps.ventes.models -> apps.{stock,crm,sav,installations}.models`
 # import would still be caught.
     apps.ventes.models -> apps.facturation.models
+# NTCPQ25/29/49 — `apps.ventes.models` appelle DÉJÀ (avant ce lot, inchangé)
+# `apps.cpq.selectors.premiere_etape_en_attente` en import fonction-local dans
+# une property (`Devis`, NTCPQ8) : c'est le motif cross-app sanctionné par
+# CLAUDE.md (lire une AUTRE app par son `selectors.py`). Ce lot a ajouté à
+# `cpq.selectors` ses propres lectures cross-app — elles aussi PAR SÉLECTEUR
+# (`stock.selectors.get_produit_scoped` pour les alternatives NTCPQ29,
+# `ventes.selectors.devis_envoyes_periode` pour les KPI NTCPQ49) — ce qui rend
+# les 5 modules de modèles transitivement couplés via cette entrée.
+# On élague les DEUX arêtes de la couche SÉLECTEUR, jamais l'arête d'entrée
+# `ventes.models -> cpq.selectors` : celle-ci reste visible, donc si
+# `cpq.selectors` importait un jour DIRECTEMENT `apps.<domaine>.models`, la
+# violation serait toujours détectée. Même raison d'être que les trois
+# exceptions ci-dessus (« la couche selector/service traverse légitimement les
+# domaines »), appliquée d'une app à l'autre.
+    apps.cpq.selectors -> apps.stock.selectors
+    apps.cpq.selectors -> apps.ventes.selectors
 
 [importlinter:contract:installations-split-models-decoupled]
 name = Split installations model modules never import a sibling domain's models (locks M1 after the M7 split)
@@ -119,6 +135,17 @@ ignore_imports =
 # `apps.ventes.* -> apps.audit.*` resterait détecté.
     apps.dataimport.services -> apps.audit.recorder
     apps.dataimport.services -> apps.audit.models
+# NTMKT45/46 — marketing écrit sa PROPRE trace d'audit (imports fonction-locaux
+# `audit.recorder`/`audit.models` : envoi réel d'une campagne, export RGPD,
+# changement du modèle d'attribution). L'arête ventes→marketing est
+# PRÉ-EXISTANTE (WIR96, `ventes.public_views._enregistrer_ouverture_marketing`
+# lit `apps.marketing.services`, jamais les modèles marketing) ; seule la hop
+# marketing→audit est neuve, et c'est le logging transverse de MARKETING, pas
+# ventes atteignant audit. Motif identique aux exceptions
+# notifications/stock/automation/dataimport ci-dessus : un import DIRECT
+# `apps.ventes.* -> apps.audit.*` reste détecté.
+    apps.marketing.services -> apps.audit.recorder
+    apps.marketing.services -> apps.audit.models
 
 [importlinter:contract:ged-models-decoupled]
 name = GED models never import a business-core domain's models (string FKs only — GED38)
@@ -358,6 +385,20 @@ ignore_imports =
 # that hop — the same pattern as the test-only edges above, but for a lazy
 # production edge instead of a test edge.
     authentication.tasks -> authentication.views_demo_wizard
+# NTDMO30 — MÊME motif, une hop de plus : la purge des sociétés démo expirées
+# (`purger_societes_demo_expirees_task`) écrit son PROPRE AuditLog avant chaque
+# suppression, via un import fonction-local `apps.audit.recorder` — exactement
+# comme `authentication.device`/`password_policy`/`services`/`views`/
+# `views_console` le font depuis longtemps, et comme les exceptions
+# `notifications|stock|automation|dataimport.services -> apps.audit.recorder`
+# plus haut dans ce fichier. grimp voit l'arête statique, donc l'arête
+# fondation LÉGITIME `core.tests.test_wir50_security_beat -> authentication.
+# tasks` (autorisée : `authentication` n'est pas dans forbidden_modules)
+# atteint maintenant apps.ventes/stock/sav de façon TRANSITIVE via
+# audit.recorder -> records.services -> <domaine>.selectors. On élague cette
+# SEULE hop : toute arête DIRECTE `core.* -> apps.*` reste détectée, et aucune
+# autre source ne gagne le moindre droit.
+    authentication.tasks -> apps.audit.recorder
 
 # AOF33 — `core.calepinage` est le MOTEUR de calepinage, partagé par DEUX
 # consommateurs qui ne peuvent pas s'importer l'un l'autre (`apps.ao` pour la

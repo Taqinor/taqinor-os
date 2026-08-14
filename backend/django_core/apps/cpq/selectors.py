@@ -115,7 +115,10 @@ def alternatives_violation(*, company, produit_ids, violation):
     Renvoie jusqu'à 3 dicts ``{produit_id, nom, source}``, liste vide si
     aucune alternative connue (l'appelant retombe alors sur le simple
     message)."""
-    from apps.stock.models import Produit
+    # Lecture cross-app stock via son SÉLECTEUR (règle de modularité
+    # CLAUDE.md : jamais un import de `apps.stock.models` depuis une autre
+    # app). `get_produit_scoped` est exactement le même filtre scopé société.
+    from apps.stock.selectors import get_produit_scoped
     from .models import ProduitEquivalent
 
     ids = {int(p) for p in produit_ids if p is not None}
@@ -123,8 +126,7 @@ def alternatives_violation(*, company, produit_ids, violation):
     if violation['type'] != ContrainteCompatibilite.TypeContrainte.INCOMPATIBLE:
         # REQUIERT : produit_b est le produit MANQUANT — l'ajouter EST la
         # résolution, pas un substitut.
-        produit = Produit.objects.filter(
-            company=company, id=violation['produit_b']).first()
+        produit = get_produit_scoped(company, violation['produit_b'])
         if produit is None:
             return []
         return [{'produit_id': produit.id, 'nom': produit.nom,
