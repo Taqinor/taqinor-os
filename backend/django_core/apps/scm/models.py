@@ -250,3 +250,76 @@ class PolitiqueStock(TenantModel):
 
     def __str__(self):
         return f'{self.produit_id} ROP={self.point_commande}'
+
+
+class CyclePlanificationSOP(TenantModel):
+    """NTSCM12 — cycle de planification S&OP mensuel (demande/offre/finance).
+
+    Machine à états SÉQUENTIELLE : ``services.avancer_statut_cycle`` est
+    l'UNIQUE chemin d'écriture de ``statut`` (jamais un ``PATCH`` direct côté
+    API, voir ``serializers.py``) et refuse toute tentative de sauter une
+    étape. Un retour en arrière n'existe que via ``services.reouvrir_cycle``
+    (réouverture admin EXPLICITE, journalisée). L'historique des transitions
+    est conservé via ``records.services.log_field_change`` — primitive
+    plateforme réutilisée, JAMAIS un nouveau modèle ``*Activity``."""
+
+    class Statut(models.TextChoices):
+        BROUILLON = 'brouillon', 'Brouillon'
+        REVUE_DEMANDE = 'revue_demande', 'Revue de la demande'
+        REVUE_OFFRE = 'revue_offre', "Revue de l'offre"
+        REVUE_FINANCE = 'revue_finance', 'Revue financière'
+        REUNION_RECONCILIATION = 'reunion_reconciliation', 'Réunion de réconciliation'
+        APPROUVE = 'approuve', 'Approuvé'
+        CLOS = 'clos', 'Clos'
+
+    # Ordre séquentiel imposé — ``prochain_statut`` s'appuie UNIQUEMENT sur
+    # cette liste (jamais une comparaison de libellé).
+    STATUT_ORDER = [
+        Statut.BROUILLON, Statut.REVUE_DEMANDE, Statut.REVUE_OFFRE,
+        Statut.REVUE_FINANCE, Statut.REUNION_RECONCILIATION, Statut.APPROUVE,
+        Statut.CLOS,
+    ]
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,  # on_delete: tenant
+        related_name='scm_cycles_sop', verbose_name='Société')
+    periode = models.CharField(max_length=7, verbose_name='Période (YYYY-MM)')
+    statut = models.CharField(
+        max_length=24, choices=Statut.choices, default=Statut.BROUILLON,
+        verbose_name='Statut')
+    date_reunion = models.DateField(
+        null=True, blank=True, verbose_name='Date de la réunion')
+    anime_par = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='scm_cycles_sop_animes', verbose_name='Animé par')
+    notes_reunion = models.TextField(
+        blank=True, default='', verbose_name='Notes de réunion')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Cycle de planification S&OP'
+        verbose_name_plural = 'Cycles de planification S&OP'
+        ordering = ['-periode']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'periode'], name='uniq_scm_cycle_sop_periode'),
+        ]
+
+    def save(self, *args, **kwargs):
+        _valider_periode(self.periode)
+        super().save(*args, **kwargs)
+
+    def prochain_statut(self):
+        """Étape suivante dans :data:`STATUT_ORDER`, ou ``None`` si déjà à
+        l'étape finale (``clos``)."""
+        idx = self.STATUT_ORDER.index(self.statut)
+        if idx + 1 >= len(self.STATUT_ORDER):
+            return None
+        return self.STATUT_ORDER[idx + 1]
+
+    def __str__(self):
+        return f'S&OP {self.periode} ({self.get_statut_display()})'

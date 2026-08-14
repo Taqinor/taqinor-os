@@ -12,11 +12,13 @@ from authentication.permissions import IsResponsableOrAdmin
 from core.viewsets import CompanyScopedModelViewSet
 
 from .models import (
-    ClassificationABC, EvenementDemande, PolitiqueStock, PrevisionDemande,
+    ClassificationABC, CyclePlanificationSOP, EvenementDemande, PolitiqueStock,
+    PrevisionDemande,
 )
 from .serializers import (
-    ClassificationABCSerializer, EvenementDemandeSerializer,
-    PolitiqueStockSerializer, PrevisionDemandeSerializer,
+    ClassificationABCSerializer, CyclePlanificationSOPSerializer,
+    EvenementDemandeSerializer, PolitiqueStockSerializer,
+    PrevisionDemandeSerializer,
 )
 
 
@@ -130,6 +132,62 @@ class PolitiqueStockViewSet(CompanyScopedModelViewSet):
             'nb_politiques': len(politiques),
             'politiques': PolitiqueStockSerializer(politiques, many=True).data,
         })
+
+
+class CyclePlanificationSOPViewSet(CompanyScopedModelViewSet):
+    """NTSCM12 — cycles de planification S&OP mensuels. ``statut`` est en
+    LECTURE SEULE (voir ``serializers.CyclePlanificationSOPSerializer``) : le
+    cycle de vie passe exclusivement par les actions ``avancer-statut`` et
+    ``reouvrir`` (admin), machine à états séquentielle appliquée côté
+    serveur."""
+    queryset = CyclePlanificationSOP.objects.select_related('anime_par').all()
+    serializer_class = CyclePlanificationSOPSerializer
+    filterset_fields = ['statut']
+
+    def get_permissions(self):
+        return [IsResponsableOrAdmin()]
+
+    @action(detail=True, methods=['post'], url_path='avancer-statut')
+    def avancer_statut(self, request, pk=None):
+        """NTSCM12 — avance à l'étape suivante. Corps optionnel :
+        ``{"statut": "revue_demande"}`` — DOIT être exactement l'étape
+        suivante, sinon 400 (refuse tout saut d'étape)."""
+        from . import services
+
+        cycle = self.get_object()
+        try:
+            services.avancer_statut_cycle(
+                cycle, request.user, statut_cible=request.data.get('statut') or None)
+        except ValueError as exc:
+            return Response({'statut': str(exc)}, status=400)
+        return Response(CyclePlanificationSOPSerializer(cycle).data)
+
+    @action(detail=True, methods=['post'], url_path='reouvrir')
+    def reouvrir(self, request, pk=None):
+        """NTSCM12 — réouverture ADMIN EXPLICITE (retour à brouillon),
+        journalisée. Réservé Administrateur (au-delà du palier Responsable du
+        viewset)."""
+        from authentication.permissions import IsAdminRole
+
+        from . import services
+
+        if not IsAdminRole().has_permission(request, self):
+            return Response(
+                {'detail': 'Réservé aux administrateurs.'}, status=403)
+        cycle = self.get_object()
+        services.reouvrir_cycle(cycle, request.user, motif=request.data.get('motif', ''))
+        return Response(CyclePlanificationSOPSerializer(cycle).data)
+
+    @action(detail=True, methods=['get'], url_path='historique')
+    def historique(self, request, pk=None):
+        """NTSCM12 — timeline des transitions (chatter générique
+        ``records.Activity``, plus récent d'abord)."""
+        from apps.records.serializers import ChatterActivitySerializer
+        from apps.records.services import chatter_qs
+
+        cycle = self.get_object()
+        entries = chatter_qs(cycle, request.user.company)
+        return Response(ChatterActivitySerializer(entries, many=True).data)
 
 
 @api_view(['GET'])

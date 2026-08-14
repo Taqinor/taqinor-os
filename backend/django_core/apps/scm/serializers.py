@@ -6,7 +6,8 @@
 from rest_framework import serializers
 
 from .models import (
-    ClassificationABC, EvenementDemande, PolitiqueStock, PrevisionDemande,
+    ClassificationABC, CyclePlanificationSOP, EvenementDemande, PolitiqueStock,
+    PrevisionDemande,
 )
 
 
@@ -87,3 +88,39 @@ class PolitiqueStockSerializer(serializers.ModelSerializer):
             'id', 'classe_abc', 'point_commande', 'stock_securite_calcule',
             'revise_le',
         ]
+
+
+class CyclePlanificationSOPSerializer(serializers.ModelSerializer):
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+    anime_par_nom = serializers.CharField(
+        source='anime_par.username', read_only=True, default=None)
+
+    class Meta:
+        model = CyclePlanificationSOP
+        fields = [
+            'id', 'periode', 'statut', 'statut_display', 'date_reunion',
+            'anime_par', 'anime_par_nom', 'notes_reunion', 'date_creation',
+        ]
+        # ``statut`` ne se modifie JAMAIS par PATCH direct : le cycle de vie
+        # passe exclusivement par l'action ``avancer-statut``
+        # (``services.avancer_statut_cycle``), qui applique la machine à
+        # états et journalise la transition (même patron que
+        # ``ReclamationSerializer``/``apps.litiges``).
+        read_only_fields = ['id', 'statut', 'date_creation']
+
+    def validate_periode(self, value):
+        # ``company`` n'est pas dans ``fields`` (posée côté serveur) : le
+        # validateur ``UniqueConstraint`` auto-généré par DRF ne peut donc pas
+        # couvrir (company, periode) — validation manuelle explicite pour
+        # renvoyer un 400 propre plutôt qu'un ``IntegrityError`` non attrapé.
+        request = self.context.get('request')
+        company = getattr(getattr(request, 'user', None), 'company', None)
+        if company is not None:
+            qs = CyclePlanificationSOP.objects.filter(company=company, periode=value)
+            if self.instance is not None:
+                qs = qs.exclude(pk=self.instance.pk)
+            if qs.exists():
+                raise serializers.ValidationError(
+                    f'Un cycle S&OP existe déjà pour la période {value}.')
+        return value

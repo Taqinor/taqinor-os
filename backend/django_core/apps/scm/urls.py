@@ -4,9 +4,9 @@ from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 
 from .views import (
-    ClassificationABCViewSet, EvenementDemandeViewSet, PolitiqueStockViewSet,
-    PrevisionDemandeViewSet, creer_brouillons_bcf_reappro_view,
-    tableau_bord_reappro_view,
+    ClassificationABCViewSet, CyclePlanificationSOPViewSet, EvenementDemandeViewSet,
+    PolitiqueStockViewSet, PrevisionDemandeViewSet,
+    creer_brouillons_bcf_reappro_view, tableau_bord_reappro_view,
 )
 
 router = DefaultRouter()
@@ -18,6 +18,8 @@ router.register(
     r'classification-abc', ClassificationABCViewSet, basename='scm-classification-abc')
 router.register(
     r'politiques-stock', PolitiqueStockViewSet, basename='scm-politique-stock')
+router.register(
+    r'cycles-sop', CyclePlanificationSOPViewSet, basename='scm-cycle-sop')
 
 urlpatterns = [
     # NTSCM7 — tableau de bord réappro consolidé (vues fonction, pas un
