@@ -668,6 +668,56 @@ def cloturer_echeance_entretien(echeance, *, date_realisee=None, note=''):
     return echeance
 
 
+# ── NTMFG32 — Rappel proactif J-7 d'échéance d'entretien de poste ────────
+
+def echeances_a_relancer_j7(company, today=None):
+    """NTMFG32 — échéances `a_faire` de `company` dont `date_prevue` tombe
+    dans les 7 prochains jours (J-7, INCLUS — comprise entre aujourd'hui et
+    aujourd'hui+7), jamais encore notifiées (`notifie=False`). Ne remonte
+    JAMAIS une échéance déjà en retard (`date_prevue < today`, couverte par
+    l'alerte NON bloquante existante `selectors.postes_en_alerte_maintenance`,
+    pas ce rappel proactif) — lecture seule."""
+    from .models import EcheanceEntretienPoste
+
+    today = today or timezone.localdate()
+    seuil = today + timedelta(days=7)
+    return (EcheanceEntretienPoste.objects
+            .filter(plan__poste_charge__company=company,
+                    statut=EcheanceEntretienPoste.Statut.A_FAIRE,
+                    notifie=False,
+                    date_prevue__gte=today, date_prevue__lte=seuil)
+            .select_related('plan__poste_charge'))
+
+
+def notifier_echeances_j7(company, *, today=None):
+    """NTMFG32 — notifie (best-effort, `notifications.notify_many`, réutilise
+    `EventType.MAINTENANCE_DUE` — même reprise que `apps.qhse.services`)
+    le responsable atelier pour chaque échéance due à J-7
+    (`echeances_a_relancer_j7`), puis pose `notifie=True` pour ne JAMAIS la
+    renotifier. Renvoie la liste des échéances notifiées."""
+    from .models import EcheanceEntretienPoste
+
+    notifiees = []
+    for echeance in echeances_a_relancer_j7(company, today=today):
+        try:
+            from apps.notifications.models import EventType
+            from apps.notifications.services import notify_many, resolve_recipients
+
+            poste = echeance.plan.poste_charge
+            recipients = resolve_recipients(company, EventType.MAINTENANCE_DUE)
+            notify_many(
+                recipients, EventType.MAINTENANCE_DUE,
+                title=f'Entretien à échéance proche — {poste.nom}',
+                body=(f'{echeance.plan.description} : échéance prévue le '
+                      f'{echeance.date_prevue.isoformat()} (J-7).'),
+                link='/mrp/oee', company=company)
+        except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+            continue
+        EcheanceEntretienPoste.objects.filter(pk=echeance.pk).update(notifie=True)
+        notifiees.append(echeance)
+    return notifiees
+
+
 # ── NTMFG15 — PLM léger : Ordres de Modification (ECO) ───────────────────
 
 def appliquer_eco(eco):

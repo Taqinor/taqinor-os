@@ -869,6 +869,12 @@ app.conf.beat_schedule = {
         'task': 'mrp.archiver_of_prototype_anciens',
         'schedule': crontab(hour=2, minute=15),
     },
+    # NTMFG32 — rappel proactif J-7 avant échéance d'entretien de poste
+    # (NTMFG14) — apps/mrp/tasks.py.
+    'mrp-rappeler-entretiens-poste-j7': {
+        'task': 'mrp.rappeler_entretiens_poste_j7',
+        'schedule': crontab(hour=6, minute=45),
+    },
 }
 
 # YHARD6 — compteurs Celery succès/échec (process-local, best-effort) pour

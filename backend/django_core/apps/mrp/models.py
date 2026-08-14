@@ -478,6 +478,11 @@ class EcheanceEntretienPoste(models.Model):
         max_length=10, choices=Statut.choices, default=Statut.A_FAIRE)
     date_realisee = models.DateField(null=True, blank=True)
     note = models.CharField(max_length=300, blank=True, default='')
+    # NTMFG32 — additif : True dès qu'un rappel proactif J-7 a été envoyé
+    # (`tasks.rappeler_entretiens_poste_j7_task`) pour CETTE échéance — jamais
+    # rejoué (une seule notification par échéance, jamais en double).
+    notifie = models.BooleanField(
+        default=False, verbose_name='Rappel J-7 envoyé')
 
     class Meta:
         verbose_name = "Échéance d'entretien de poste"

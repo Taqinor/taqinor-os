@@ -1121,6 +1121,8 @@ CELERY_TASK_ROUTES = {
     'mrp.recalculer_besoins_nocturne': {'queue': 'scheduled'},
     # NTMFG31 — purge/archivage des OF prototype anciens.
     'mrp.archiver_of_prototype_anciens': {'queue': 'scheduled'},
+    # NTMFG32 — rappel d'entretien de poste de charge à échéance proche (J-7).
+    'mrp.rappeler_entretiens_poste_j7': {'queue': 'scheduled'},
     # NTPLT27 — 4e queue `bulk` pour le travail de masse (imports dataimport,
     # exports planifiés volumineux, backfills, seed à l'échelle). Un import de
     # 100 000 lignes ne doit plus retarder un digest planifié ni un rendu PDF

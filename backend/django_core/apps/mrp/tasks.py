@@ -127,3 +127,28 @@ def archiver_of_prototype_anciens_task():
                 'mrp.archiver_of_prototype_anciens: échec société %s',
                 company.pk, exc_info=True)
     return result
+
+
+# ── NTMFG32 — Rappel proactif J-7 d'échéance d'entretien de poste ────────
+
+@shared_task(name='mrp.rappeler_entretiens_poste_j7')
+def rappeler_entretiens_poste_j7_task():
+    """NTMFG32 — pour CHAQUE société active, notifie le responsable atelier
+    J-7 avant `date_prevue` de chaque échéance `a_faire` non encore notifiée
+    (`services.notifier_echeances_j7`), une seule fois par échéance
+    (`EcheanceEntretienPoste.notifie`). Renvoie
+    ``{company_id: nb_echeances_notifiees}``."""
+    from authentication.selectors import active_companies
+
+    from .services import notifier_echeances_j7
+
+    result = {}
+    for company in active_companies():  # SCA19 — exclut les tenants suspendus
+        try:
+            notifiees = notifier_echeances_j7(company)
+            result[company.id] = len(notifiees)
+        except Exception:  # noqa: BLE001 — une société en échec n'arrête pas
+            logger.warning(
+                'mrp.rappeler_entretiens_poste_j7: échec société %s',
+                company.pk, exc_info=True)
+    return result
