@@ -48,7 +48,7 @@ class PrevisionDemande(TenantModel):
         related_name='scm_previsions_demande', verbose_name='Société')
     produit = models.ForeignKey(
         'stock.Produit',
-        on_delete=models.CASCADE,
+        on_delete=models.CASCADE,  # on_delete: composition — une donnee de planification n'a aucun sens sans son produit
         related_name='scm_previsions_demande', verbose_name='Produit')
     segment = models.CharField(
         max_length=100, blank=True, default='', verbose_name='Segment',
@@ -111,13 +111,13 @@ class EvenementDemande(TenantModel):
         related_name='scm_evenements_demande', verbose_name='Société')
     produit = models.ForeignKey(
         'stock.Produit',
-        on_delete=models.CASCADE,
+        on_delete=models.CASCADE,  # on_delete: composition — une donnee de planification n'a aucun sens sans son produit
         null=True, blank=True,
         related_name='scm_evenements_demande', verbose_name='Produit',
         help_text='Vide = tous les produits de la catégorie (ou toute la société si catégorie aussi vide).')
     categorie = models.ForeignKey(
         'stock.Categorie',
-        on_delete=models.CASCADE,
+        on_delete=models.CASCADE,  # on_delete: composition — l'evenement de demande ne vise que cette categorie
         null=True, blank=True,
         related_name='scm_evenements_demande', verbose_name='Catégorie')
     date_debut = models.DateField(verbose_name='Début')
@@ -168,7 +168,7 @@ class ClassificationABC(TenantModel):
         related_name='scm_classifications_abc', verbose_name='Société')
     produit = models.OneToOneField(
         'stock.Produit',
-        on_delete=models.CASCADE,
+        on_delete=models.CASCADE,  # on_delete: composition — une donnee de planification n'a aucun sens sans son produit
         related_name='scm_classification_abc', verbose_name='Produit')
     classe = models.CharField(
         max_length=1, choices=Classe.choices, verbose_name='Classe')
@@ -215,7 +215,7 @@ class PolitiqueStock(TenantModel):
         related_name='scm_politiques_stock', verbose_name='Société')
     produit = models.OneToOneField(
         'stock.Produit',
-        on_delete=models.CASCADE,
+        on_delete=models.CASCADE,  # on_delete: composition — une donnee de planification n'a aucun sens sans son produit
         related_name='scm_politique_stock', verbose_name='Produit')
     classe_abc = models.CharField(
         max_length=1, blank=True, default='',
@@ -344,11 +344,11 @@ class LigneDemandeSOP(TenantModel):
         related_name='scm_lignes_demande_sop', verbose_name='Société')
     cycle = models.ForeignKey(
         CyclePlanificationSOP,
-        on_delete=models.CASCADE,
+        on_delete=models.CASCADE,  # on_delete: composition — une ligne S&OP n'existe que dans son cycle
         related_name='lignes_demande', verbose_name='Cycle S&OP')
     produit = models.ForeignKey(
         'stock.Produit',
-        on_delete=models.CASCADE,
+        on_delete=models.CASCADE,  # on_delete: composition — une donnee de planification n'a aucun sens sans son produit
         related_name='scm_lignes_demande_sop', verbose_name='Produit')
     quantite_prevision_systeme = models.DecimalField(
         max_digits=12, decimal_places=2, default=Decimal('0'),
@@ -402,11 +402,11 @@ class LigneOffreSOP(TenantModel):
         related_name='scm_lignes_offre_sop', verbose_name='Société')
     cycle = models.ForeignKey(
         CyclePlanificationSOP,
-        on_delete=models.CASCADE,
+        on_delete=models.CASCADE,  # on_delete: composition — une ligne S&OP n'existe que dans son cycle
         related_name='lignes_offre', verbose_name='Cycle S&OP')
     produit = models.ForeignKey(
         'stock.Produit',
-        on_delete=models.CASCADE,
+        on_delete=models.CASCADE,  # on_delete: composition — une donnee de planification n'a aucun sens sans son produit
         related_name='scm_lignes_offre_sop', verbose_name='Produit')
     stock_disponible_snapshot = models.DecimalField(
         max_digits=12, decimal_places=2, default=Decimal('0'),

@@ -139,7 +139,7 @@ class LigneOrdreTransport(TenantModel):
     une string-FK optionnelle vers `stock.Produit` (jamais un import)."""
 
     ordre = models.ForeignKey(
-        OrdreTransport, on_delete=models.CASCADE, related_name='lignes')
+        OrdreTransport, on_delete=models.CASCADE, related_name='lignes')  # on_delete: composition — la ligne/etape n'existe que dans son ordre de transport
     stock_produit_id = models.PositiveIntegerField(
         null=True, blank=True, verbose_name='Produit (stock.Produit)')
     designation = models.CharField(max_length=255, blank=True, default='')
@@ -180,7 +180,7 @@ class EtapeTransport(TenantModel):
         INCIDENT = 'incident', 'Incident'
 
     ordre = models.ForeignKey(
-        OrdreTransport, on_delete=models.CASCADE, related_name='etapes')
+        OrdreTransport, on_delete=models.CASCADE, related_name='etapes')  # on_delete: composition — la ligne/etape n'existe que dans son ordre de transport
     sequence = models.PositiveIntegerField(default=1)
     type_etape = models.CharField(
         max_length=12, choices=TypeEtape.choices, default=TypeEtape.TRANSIT)
@@ -216,7 +216,7 @@ class CoutFretReel(TenantModel):
         DEDOUANEMENT = 'dedouanement', 'Dédouanement'
 
     ordre_transport = models.ForeignKey(
-        OrdreTransport, on_delete=models.CASCADE, related_name='couts_fret')
+        OrdreTransport, on_delete=models.CASCADE, related_name='couts_fret')  # on_delete: composition — le cout/litige n'existe que pour son ordre de transport
     montant_ht = models.DecimalField(
         max_digits=14, decimal_places=2, default=Decimal('0'))
     devise = models.CharField(max_length=8, default='MAD')
@@ -262,7 +262,7 @@ class LitigeTransport(TenantModel):
         REJETE = 'rejete', 'Rejeté'
 
     ordre_transport = models.ForeignKey(
-        OrdreTransport, on_delete=models.CASCADE, related_name='litiges')
+        OrdreTransport, on_delete=models.CASCADE, related_name='litiges')  # on_delete: composition — le cout/litige n'existe que pour son ordre de transport
     type_litige = models.CharField(
         max_length=20, choices=TypeLitige.choices, default=TypeLitige.AVARIE)
     statut = models.CharField(
@@ -297,7 +297,7 @@ class ReserveReception(TenantModel):
     `LitigeTransport` « ouvert » (`services.creer_litige_depuis_reserve`)."""
 
     etape = models.ForeignKey(
-        EtapeTransport, on_delete=models.CASCADE, related_name='reserves')
+        EtapeTransport, on_delete=models.CASCADE, related_name='reserves')  # on_delete: composition — la reserve n'existe que pour son etape de transport
     nature_reserve = models.TextField(blank=True, default='')
     montant_estime_dommage = models.DecimalField(
         max_digits=14, decimal_places=2, null=True, blank=True)
