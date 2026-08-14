@@ -18,6 +18,7 @@ from .views import (
     VaguePickingViewSet, UniteLogistiqueViewSet, QuaiViewSet,
     RendezVousTransporteurViewSet, ExpeditionTransporteurViewSet,
     PlanComptageTournantViewSet, AlerteRappelViewSet,
+    entrepot_productivite_view,
     scanner_resoudre_view, scanner_mouvement_view,
 )
 
@@ -69,6 +70,11 @@ urlpatterns = [
     # NTWMS8 - kiosque de quai (chemin nomme par la tache : /stock/public/...).
     path('public/quai-checkin/', quai_checkin_view,
          name='stock-quai-checkin'),
+    # NTWMS18 - productivite entrepot par operateur (responsable/admin).
+    # L'endpoint vit dans `stock` (et non dans `reporting`) : cette lane ne
+    # possede que l'app stock -- la donnee et sa garde restent au meme endroit.
+    path('entrepot/productivite/', entrepot_productivite_view,
+         name='stock-entrepot-productivite'),
     # NTWMS5 - poste scanner mobile (resolution universelle + mouvement scanne).
     path('scanner/resoudre/', scanner_resoudre_view,
          name='stock-scanner-resoudre'),

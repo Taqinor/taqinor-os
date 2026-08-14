@@ -1205,6 +1205,7 @@ from .selectors_wms import (  # noqa: E402,F401
     comparer_tarifs_transporteurs,
     localisation_casiers,
     planning_quais,
+    productivite_operateur,
     resoudre_allocation_picking,
     resoudre_code_scanne,
     strategie_picking_produit,

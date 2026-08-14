@@ -6,7 +6,7 @@ Toutes les vues héritent de ``CompanyScopedModelViewSet`` (scoping société +
 """
 from drf_spectacular.utils import extend_schema, inline_serializer
 from rest_framework import serializers, status
-from rest_framework.decorators import action
+from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.response import Response
 
 from core.viewsets import CompanyScopedModelViewSet
@@ -560,3 +560,44 @@ class PlanComptageTournantViewSet(CompanyScopedModelViewSet):
         from ..services import generer_comptages_tournants
         resultat = generer_comptages_tournants(company=request.user.company)
         return Response(resultat, status=status.HTTP_201_CREATED)
+
+
+def _date_param(valeur):
+    """Convertit ``YYYY-MM-DD`` en date, ou ``None`` (jamais une exception)."""
+    import datetime
+
+    valeur = (valeur or '').strip()
+    if not valeur:
+        return None
+    try:
+        return datetime.date.fromisoformat(valeur)
+    except ValueError:
+        return None
+
+
+@extend_schema(responses={
+    200: inline_serializer('StockEntrepotProductivite', {
+        'debut': serializers.CharField(allow_null=True),
+        'fin': serializers.CharField(allow_null=True),
+        'operateurs': serializers.ListField(child=serializers.DictField()),
+    }),
+})
+@api_view(['GET'])
+@permission_classes([IsResponsableOrAdmin])
+def entrepot_productivite_view(request):
+    """NTWMS18 — classement de productivité entrepôt (``?debut=&fin=``).
+
+    Lignes traitées par opérateur et par type d'opération sur la période.
+    Réservé aux responsables/admins. LECTURE SEULE — c'est un INDICATEUR de
+    charge, jamais un instrument de sanction automatisée.
+    """
+    from ..selectors import productivite_operateur
+
+    debut = _date_param(request.query_params.get('debut'))
+    fin = _date_param(request.query_params.get('fin'))
+    return Response({
+        'debut': debut.isoformat() if debut else None,
+        'fin': fin.isoformat() if fin else None,
+        'operateurs': productivite_operateur(
+            request.user.company, debut=debut, fin=fin),
+    })

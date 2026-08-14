@@ -621,6 +621,90 @@ def tracabilite_produit(company, *, lot=None, serie=None):
     return chaine
 
 
+# NTWMS18 — champ AUTEUR associé à chaque champ de date agrégé par
+# ``productivite_operateur`` (filtre « un seul opérateur »).
+_AUTEURS = {
+    'date': 'created_by',
+    'scanne_le': 'scanne_par',
+    'created_at': 'cree_par',
+}
+
+
+def productivite_operateur(company, *, user=None, debut=None, fin=None):
+    """NTWMS18 — lignes traitées PAR OPÉRATEUR et PAR TYPE d'opération.
+
+    Aucun nouveau modèle : tout est déjà horodaté et signé côté existant —
+    ``MouvementStock.created_by`` (réceptions/rangements/prélèvements/
+    ajustements/rebuts), ``UniteLogistiqueLigne.scanne_par`` (colisage,
+    NTWMS11) et ``VaguePicking.cree_par`` (préparation de tournée). Les
+    ordres d'assemblage d'atelier (``installations``, FG328) ne sont PAS
+    comptés ici : leur exposition par opérateur demanderait un nouveau
+    sélecteur dans ``installations`` — hors périmètre de cette app.
+
+    ``debut``/``fin`` sont des DATES fournies par l'appelant (bornes incluses,
+    jamais l'horloge lue ici). Renvoie
+    ``[{operateur_id, operateur, total, operations: {…}}]`` trié du plus
+    productif au moins productif. LECTURE SEULE — indicateur, JAMAIS un
+    instrument de sanction automatisée.
+    """
+    from django.db.models import Count
+
+    from .models import MouvementStock
+    from .models_wms import UniteLogistiqueLigne, VaguePicking
+
+    def _borner(qs, champ):
+        if debut:
+            qs = qs.filter(**{f'{champ}__date__gte': debut})
+        if fin:
+            qs = qs.filter(**{f'{champ}__date__lte': fin})
+        if user is not None:
+            qs = qs.filter(**{f'{_AUTEURS[champ]}': user})
+        return qs
+
+    agrege = {}
+
+    def _ajouter(auteur_id, auteur_nom, operation, nombre):
+        if not auteur_id:
+            return
+        ligne = agrege.setdefault(auteur_id, {
+            'operateur_id': auteur_id, 'operateur': auteur_nom or '',
+            'total': 0, 'operations': {}})
+        ligne['operations'][operation] = (
+            ligne['operations'].get(operation, 0) + nombre)
+        ligne['total'] += nombre
+
+    mouvements = _borner(
+        MouvementStock.objects.filter(company=company,
+                                      created_by__isnull=False), 'date')
+    for row in (mouvements
+                .values('created_by', 'created_by__username', 'type_mouvement')
+                .annotate(nb=Count('id'))):
+        _ajouter(row['created_by'], row['created_by__username'],
+                 row['type_mouvement'], row['nb'])
+
+    colisages = _borner(
+        UniteLogistiqueLigne.objects.filter(company=company,
+                                            scanne_par__isnull=False),
+        'scanne_le')
+    for row in (colisages
+                .values('scanne_par', 'scanne_par__username')
+                .annotate(nb=Count('id'))):
+        _ajouter(row['scanne_par'], row['scanne_par__username'], 'colisage',
+                 row['nb'])
+
+    vagues = _borner(
+        VaguePicking.objects.filter(company=company,
+                                    cree_par__isnull=False), 'created_at')
+    for row in (vagues
+                .values('cree_par', 'cree_par__username')
+                .annotate(nb=Count('id'))):
+        _ajouter(row['cree_par'], row['cree_par__username'], 'vague',
+                 row['nb'])
+
+    return sorted(agrege.values(), key=lambda ligne: (-ligne['total'],
+                                                      ligne['operateur']))
+
+
 def _produit_du_lot(company, numero_lot):
     """Produit portant ce numéro de lot (ou ``None``)."""
     from .models import LotEntrepot
