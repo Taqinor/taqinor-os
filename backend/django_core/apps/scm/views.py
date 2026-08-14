@@ -180,11 +180,16 @@ class PolitiqueStockViewSet(CompanyScopedModelViewSet):
     ]
 
     def perform_update(self, serializer):
-        """NTSCM44 — journalise (``records.Activity`` via ``log_field_change``,
-        même mécanisme générique que ``crm.LeadActivity``) chaque champ
-        RÉELLEMENT modifié par cette écriture — jamais une entrée pour un
-        champ envoyé mais identique à sa valeur actuelle."""
-        from apps.records.services import log_field_change
+        """NTSCM44/47 — journalise chaque champ RÉELLEMENT modifié par cette
+        écriture (jamais une entrée pour un champ envoyé mais identique à sa
+        valeur actuelle) via ``apps.audit.recorder.record_field_change``
+        (NTSCM47 — entonnoir ARC16 : écrit l'``AuditLog`` — acteur,
+        ancien/nouveau, horodatage, consultable par un Administrateur — ET la
+        ligne de chatter ``records.Activity`` en UN appel, même mécanisme
+        générique que ``crm.LeadActivity``). ``stock_securite_manuel`` est
+        l'action SENSIBLE explicitement visée par NTSCM47 ; les 3 autres
+        champs suivis (NTSCM44) en bénéficient de la même façon."""
+        from apps.audit.recorder import record_field_change
 
         instance = serializer.instance
         avant = {
@@ -195,7 +200,7 @@ class PolitiqueStockViewSet(CompanyScopedModelViewSet):
             ancien = avant[field]
             nouveau = getattr(politique, field)
             if ancien != nouveau:
-                log_field_change(
+                record_field_change(
                     politique, field, ancien, nouveau,
                     user=self.request.user, field_label=label,
                     company=politique.company)

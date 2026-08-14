@@ -290,11 +290,12 @@ def avancer_statut_cycle(cycle, user, *, statut_cible=None):
     suivante (``cycle.prochain_statut()``), sinon ``ValueError`` (mappé 400
     côté vue) — c'est ce qui refuse explicitement un saut d'étape (ex.
     brouillon -> approuve directement). Sans argument, avance simplement à
-    l'étape suivante. Journalise la transition via
-    ``apps.records.services.log_field_change`` (primitive plateforme
-    réutilisée — jamais un nouveau modèle ``*Activity``, foundation app
-    exemptée de la frontière cross-app)."""
-    from apps.records.services import log_field_change
+    l'étape suivante. Journalise la transition via ``apps.audit.recorder.
+    record_field_change`` (NTSCM47 — entonnoir ARC16 : écrit l'``AuditLog``
+    ET la ligne de chatter générique en UN appel, foundation app exemptée de
+    la frontière cross-app — remplace l'appel chatter-seul ``records.
+    services.log_field_change`` d'origine, comportement chatter inchangé)."""
+    from apps.audit.recorder import record_field_change
 
     prochain = cycle.prochain_statut()
     if prochain is None:
@@ -308,7 +309,7 @@ def avancer_statut_cycle(cycle, user, *, statut_cible=None):
     ancien = cycle.statut
     cycle.statut = prochain
     cycle.save(update_fields=['statut'])
-    log_field_change(
+    record_field_change(
         cycle, 'statut', ancien, prochain, user=user,
         field_label='Statut du cycle S&OP', company=cycle.company)
 
@@ -433,13 +434,16 @@ def calculer_offre_cycle(cycle):
 def reouvrir_cycle(cycle, user, *, motif=''):
     """NTSCM12 — réouverture ADMIN EXPLICITE d'un cycle (retour à
     ``brouillon``), journalisée. C'est le SEUL chemin de retour en arrière de
-    la machine à états (jamais via ``avancer_statut_cycle``)."""
-    from apps.records.services import log_field_change
+    la machine à états (jamais via ``avancer_statut_cycle``). NTSCM47 — action
+    SENSIBLE : ``apps.audit.recorder.record_field_change`` écrit à la fois
+    l'``AuditLog`` (acteur, ancien/nouveau statut, horodatage, consultable par
+    un Administrateur) ET la ligne de chatter (comportement inchangé)."""
+    from apps.audit.recorder import record_field_change
 
     ancien = cycle.statut
     cycle.statut = CyclePlanificationSOP.Statut.BROUILLON
     cycle.save(update_fields=['statut'])
-    log_field_change(
+    record_field_change(
         cycle, 'statut', ancien, CyclePlanificationSOP.Statut.BROUILLON,
         user=user, company=cycle.company,
         field_label=f'Réouverture admin ({motif or "sans motif précisé"})')
