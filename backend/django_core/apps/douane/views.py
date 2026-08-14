@@ -4,6 +4,7 @@ from rest_framework.exceptions import PermissionDenied, ValidationError
 from core.viewsets import CompanyScopedModelViewSet
 
 from .models import DossierExport, PieceDossierExport
+from .permissions import DOUANE_RESPONSABLE
 from .serializers import DossierExportSerializer, PieceDossierExportSerializer
 from .services import attribuer_numero_dossier_export
 
@@ -14,9 +15,16 @@ class DossierExportViewSet(CompanyScopedModelViewSet):
     ``core.numbering``, JAMAIS ``count()+1`` (ARC6). Filtre manuel (pas de
     ``DjangoFilterBackend`` dans ce projet — défaut global :
     ``OrderingFilter``/``SearchFilter`` seulement, motif ``ao.
-    PieceConsultationViewSet._filtres_exacts``)."""
+    PieceConsultationViewSet._filtres_exacts``).
+
+    NTLOG43 — écriture réservée à ``douane_responsable`` (repli superuser/
+    palier historique via ``ScopedPermission``, déjà le défaut de
+    ``CompanyScopedModelViewSet`` — voir ``apps/douane/permissions.py``).
+    Lecture ouverte à tout utilisateur authentifié de la société (couvre le
+    rôle lecture-seule ``comptabilite``)."""
     queryset = DossierExport.objects.all()
     serializer_class = DossierExportSerializer
+    write_permission = DOUANE_RESPONSABLE
 
     def get_queryset(self):
         qs = super().get_queryset()
@@ -57,9 +65,13 @@ class PieceDossierExportViewSet(CompanyScopedModelViewSet):
     """NTLOG14 — pièces d'un dossier d'export, filtrables par
     ``?dossier=<id>`` (motif ``pieces-consultation`` de ``apps.ao``). Scopage
     société standard (``CompanyScopedModelViewSet``) via la FK ``company``
-    propre du modèle — voir la docstring de ``PieceDossierExport``."""
+    propre du modèle — voir la docstring de ``PieceDossierExport``.
+
+    NTLOG43 — même garde d'écriture que ``DossierExportViewSet``
+    (``douane_responsable``)."""
     queryset = PieceDossierExport.objects.all()
     serializer_class = PieceDossierExportSerializer
+    write_permission = DOUANE_RESPONSABLE
 
     def get_queryset(self):
         qs = super().get_queryset()
