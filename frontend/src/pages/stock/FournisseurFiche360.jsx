@@ -19,6 +19,7 @@ import {
 } from '../../ui'
 // APX24 — en-tête UNIQUE de l'app (VX28) + accent de la famille inventaire :
 // les 15 écrans Stock parlaient chacun leur propre idiome d'en-tête.
+import OnboardingFournisseurWizard from '../../components/OnboardingFournisseurWizard'
 import ScoreRisqueFournisseurBadge from '../../components/ScoreRisqueFournisseurBadge'
 import { PageHeader } from '../../ui/PageHeader'
 import { INVENTAIRE_ACCENT } from '../../features/stock/inventaireAccent'
@@ -813,6 +814,24 @@ function OngletAccordsPrix({ fournisseurId }) {
   )
 }
 
+/* NTP2P29 — onglet « Onboarding » : wizard guidé sur le dossier d'entrée en
+   relation (NTP2P7). Charge la fiche fournisseur pour l'étape « identité
+   légale » (ICE/IF/RC/RIB, déjà portés par le référentiel). */
+function OngletOnboarding({ fournisseurId }) {
+  const [fournisseur, setFournisseur] = useState(null)
+  useEffect(() => {
+    let active = true
+    stockApi.getFournisseur(fournisseurId)
+      .then((r) => { if (active) setFournisseur(r.data ?? null) })
+      .catch(() => { if (active) setFournisseur({ id: fournisseurId }) })
+    return () => { active = false }
+  }, [fournisseurId])
+  if (!fournisseur) {
+    return <div className="py-4 text-sm text-muted-foreground">Chargement…</div>
+  }
+  return <OnboardingFournisseurWizard fournisseur={fournisseur} />
+}
+
 export default function FournisseurFiche360({
   fournisseurId: fournisseurIdProp, fournisseurNom, fournisseurTelephone,
 } = {}) {
@@ -872,6 +891,9 @@ export default function FournisseurFiche360({
     { value: 'avoirs', label: 'Avoirs', icon: FileMinus2, Comp: OngletAvoirs },
     { value: 'contacts', label: 'Contacts', icon: Users, Comp: OngletContacts },
     { value: 'documents', label: 'Conformité', icon: ShieldCheck, Comp: OngletDocuments },
+    // NTP2P29 — wizard d'onboarding (dossier NTP2P7). Contextuelle : atteinte
+    // par la fiche fournisseur, jamais une route autonome.
+    { value: 'onboarding', label: 'Onboarding', icon: ShieldCheck, Comp: OngletOnboarding },
     { value: 'prix', label: 'Accords de prix', icon: Tags, Comp: OngletAccordsPrix },
   ]), [])
 
