@@ -10,6 +10,10 @@ const stockApi = {
   patchProduit: (id, data) => api.patch(`/stock/produits/${id}/`, data),
   deleteProduit: (id) => api.delete(`/stock/produits/${id}/`),
   getProduitsArchived: () => api.get('/stock/produits/', { params: { show_archived: 'true' } }),
+  // NTP2P3 — catalogue interne d'achat (lecture seule) : n'expose JAMAIS
+  // `prix_vente`, donc aucune marge n'est visible du demandeur.
+  getCatalogueAchat: (params, config) =>
+    api.get('/stock/catalogue-achat/', { params, ...config }),
   unarchiveProduit: (id) => api.patch(`/stock/produits/${id}/unarchive/`),
   forceDeleteProduit: (id) => api.delete(`/stock/produits/${id}/force-delete/`),
   // QP2 — clone serveur (nouveau nom, SKU frais, prix d'achat copié côté

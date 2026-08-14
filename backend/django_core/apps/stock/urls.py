@@ -14,6 +14,7 @@ from .views import (
     LotEntrepotViewSet, InventaireAnnuelViewSet, RevalorisationStockViewSet,
     ConditionnementProduitViewSet, ModeleBonCommandeFournisseurViewSet,
     NomenclatureCodeBarresViewSet, RegleCodeBarresViewSet,
+    CatalogueAchatViewSet,
 )
 
 router = DefaultRouter()
@@ -50,6 +51,9 @@ router.register(r'modeles-bcf', ModeleBonCommandeFournisseurViewSet)
 router.register(
     r'nomenclatures-code-barres', NomenclatureCodeBarresViewSet)
 router.register(r'regles-code-barres', RegleCodeBarresViewSet)
+# NTP2P3 — catalogue interne d'achat (lecture seule, sans prix de vente).
+router.register(
+    r'catalogue-achat', CatalogueAchatViewSet, basename='catalogue-achat')
 
 urlpatterns = [
     path('', include(router.urls)),

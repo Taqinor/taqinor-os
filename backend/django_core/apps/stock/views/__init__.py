@@ -36,6 +36,7 @@ from .modele_bcf import ModeleBonCommandeFournisseurViewSet
 from .nomenclature_code_barres import (
     NomenclatureCodeBarresViewSet, RegleCodeBarresViewSet,
 )
+from .catalogue_achat import CatalogueAchatViewSet
 
 __all__ = [
     'ProduitViewSet',
@@ -66,6 +67,7 @@ __all__ = [
     'RevalorisationStockViewSet',
     'ConditionnementProduitViewSet',
     'ModeleBonCommandeFournisseurViewSet',
+    'CatalogueAchatViewSet',
     'NomenclatureCodeBarresViewSet',
     'RegleCodeBarresViewSet',
 ]

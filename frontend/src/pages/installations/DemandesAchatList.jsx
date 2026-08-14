@@ -1,10 +1,10 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useIsAdminOrResponsable } from '../../hooks/useHasPermission'
 import { Plus, Trash2, Send, Check, X } from 'lucide-react'
 import installationsApi from '../../api/installationsApi'
 import stockApi from '../../api/stockApi'
-import ProduitPicker from '../../components/ProduitPicker'
+import CatalogueAchatPicker from '../../components/CatalogueAchatPicker'
 import { formatMAD, formatDate } from '../../lib/format'
 import { toastSuccess, toastError } from '../../lib/toast'
 import {
@@ -96,7 +96,10 @@ export default function DemandesAchatList() {
       (res) => { if (alive) { setItems(res.data?.results ?? res.data ?? []); setLoading(false) } },
       () => { if (alive) setLoading(false) },
     )
-    stockApi.getProduits().then(
+    // NTP2P3 — le picker de la demande d'achat lit le CATALOGUE D'ACHAT
+    // (jamais `/stock/produits/`) : pas de `prix_vente`, donc pas de marge
+    // visible du demandeur.
+    stockApi.getCatalogueAchat().then(
       (r) => { if (alive) setProduits(r.data?.results ?? r.data ?? []) },
       () => {},
     )
@@ -150,21 +153,35 @@ export default function DemandesAchatList() {
       lignes: f.lignes.length > 1 ? f.lignes.filter((l) => l._key !== key) : f.lignes,
     }))
 
-  // Sélection d'un produit catalogue. La désignation reste libre : on ne la
-  // pré-remplit depuis le catalogue que si l'utilisateur ne l'a pas déjà saisie
-  // (jamais l'écraser).
-  const pickProduit = (key, produitId) => {
-    const p = produits.find((x) => String(x.id) === String(produitId))
+  // Sélection d'un article du catalogue d'achat. La désignation reste libre :
+  // on ne la pré-remplit que si l'utilisateur ne l'a pas déjà saisie (jamais
+  // l'écraser). NTP2P3 — le prix estimé est pré-rempli avec le DERNIER PRIX
+  // D'ACHAT connu (donnée interne), pas avec un prix de vente.
+  const pickProduit = (key, produitId, article) => {
+    const p = article ?? produits.find((x) => String(x.id) === String(produitId))
     setForm((f) => ({
       ...f,
       lignes: f.lignes.map((l) => {
         if (l._key !== key) return l
         const patch = { produit: produitId || null }
         if (p && !(l.designation || '').trim()) patch.designation = p.nom
+        if (p && !String(l.prix_estime || '').trim()
+            && p.prix_achat_dernier != null) {
+          patch.prix_estime = String(p.prix_achat_dernier)
+        }
         return { ...l, ...patch }
       }),
     }))
   }
+
+  // NTP2P3 — recherche SERVEUR du catalogue (nom / SKU / catégorie) : la
+  // liste complète n'est jamais chargée d'un bloc.
+  const chercherCatalogue = useCallback((q) => {
+    stockApi.getCatalogueAchat(q ? { q } : undefined).then(
+      (r) => setProduits(r.data?.results ?? r.data ?? []),
+      () => {},
+    )
+  }, [])
 
   const submitCreate = async (thenSoumettre) => {
     setFormError('')
@@ -359,10 +376,11 @@ export default function DemandesAchatList() {
                 {form.lignes.map((l) => (
                   <div key={l._key} className="grid grid-cols-12 items-start gap-2">
                     <div className="col-span-12 sm:col-span-5">
-                      <ProduitPicker
-                        produits={produits}
+                      <CatalogueAchatPicker
+                        items={produits}
                         value={l.produit}
-                        onChange={(v) => pickProduit(l._key, v)}
+                        onSearch={chercherCatalogue}
+                        onChange={(v, article) => pickProduit(l._key, v, article)}
                       />
                     </div>
                     <div className="col-span-6 sm:col-span-3">
