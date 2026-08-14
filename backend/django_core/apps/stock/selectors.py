@@ -1574,3 +1574,90 @@ def score_risque_fournisseur(company, fournisseur_id):
         'penalite_totale': penalite_totale,
         'facteurs': facteurs,
     }
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# NTP2P19 — Conformité fournisseur exportable (audit achats)
+# ══════════════════════════════════════════════════════════════════════════
+
+def _dernier_retard_otd(company, fournisseur_id, *, debut=None, fin=None):
+    """Dernier retard constaté : ``(date_prevue, jours_de_retard)`` ou None."""
+    from django.db.models import F
+
+    from .models import BonCommandeFournisseur
+
+    qs = BonCommandeFournisseur.objects.filter(
+        company=company, fournisseur_id=fournisseur_id,
+        date_livraison_prevue__isnull=False,
+        date_confirmee_fournisseur__isnull=False,
+        date_confirmee_fournisseur__gt=F('date_livraison_prevue'))
+    if debut:
+        qs = qs.filter(date_livraison_prevue__gte=debut)
+    if fin:
+        qs = qs.filter(date_livraison_prevue__lte=fin)
+    dernier = qs.order_by('-date_livraison_prevue', '-id').first()
+    if dernier is None:
+        return None
+    jours = (dernier.date_confirmee_fournisseur
+             - dernier.date_livraison_prevue).days
+    return dernier.date_livraison_prevue, jours
+
+
+def _montant_achete(company, fournisseur_id, *, debut=None, fin=None):
+    """Σ des lignes de BCF (HT interne) du fournisseur sur la période."""
+    from decimal import Decimal
+    from django.db.models import DecimalField, F, Sum
+    from django.db.models.functions import Coalesce
+
+    from .models import LigneBonCommandeFournisseur
+
+    qs = LigneBonCommandeFournisseur.objects.filter(
+        bon_commande__company=company,
+        bon_commande__fournisseur_id=fournisseur_id)
+    if debut:
+        qs = qs.filter(bon_commande__date_commande__gte=debut)
+    if fin:
+        qs = qs.filter(bon_commande__date_commande__lte=fin)
+    total = qs.aggregate(total=Coalesce(
+        Sum(F('quantite') * F('prix_achat_unitaire'),
+            output_field=DecimalField(max_digits=18, decimal_places=2)),
+        Decimal('0'),
+        output_field=DecimalField(max_digits=18, decimal_places=2)))['total']
+    return total or Decimal('0')
+
+
+def conformite_fournisseurs(company, *, debut=None, fin=None):
+    """NTP2P19 — une ligne d'audit de conformité par fournisseur ACTIF.
+
+    Cinq colonnes de conformité par fournisseur : statut d'onboarding
+    (NTP2P7), score de risque (NTP2P8), documents expirés, dernier retard OTD,
+    et montant total acheté sur la période. Lecture seule ; ``debut``/``fin``
+    (dates) bornent le retard et le montant, jamais le référentiel lui-même.
+    """
+    from .models import Fournisseur
+
+    lignes = []
+    fournisseurs = Fournisseur.objects.filter(
+        company=company, is_archived=False).order_by('nom', 'id')
+    for fournisseur in fournisseurs:
+        dossier = dossier_onboarding_fournisseur(company, fournisseur.pk)
+        progression = progression_onboarding(dossier)
+        score = score_risque_fournisseur(company, fournisseur.pk) or {}
+        retard = _dernier_retard_otd(
+            company, fournisseur.pk, debut=debut, fin=fin)
+        lignes.append({
+            'fournisseur_id': fournisseur.pk,
+            'fournisseur': fournisseur.nom,
+            'statut_onboarding': (
+                dossier.get_statut_display() if dossier is not None
+                else 'Aucun dossier'),
+            'score_risque': score.get('score'),
+            'niveau_risque': score.get('niveau', ''),
+            'documents_expires': ', '.join(progression['expires']),
+            'documents_manquants': ', '.join(progression['manquants']),
+            'dernier_retard_le': retard[0] if retard else None,
+            'dernier_retard_jours': retard[1] if retard else None,
+            'montant_achete': _montant_achete(
+                company, fournisseur.pk, debut=debut, fin=fin),
+        })
+    return lignes

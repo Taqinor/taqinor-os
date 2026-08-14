@@ -66,7 +66,8 @@ class FournisseurViewSet(CompanyScopedModelViewSet):
             # ouverte à tout rôle porteur du droit `stock_modifier` (get_permissions
             # prime sur le permission_classes de l'@action, d'où ce cas explicite).
             return [HasPermissionOrLegacy('stock_modifier')()]
-        elif self.action in ('onboarding', 'score_risque'):
+        elif self.action in ('onboarding', 'score_risque',
+                             'export_conformite'):
             # NTP2P7 — dossier d'entrée en relation : LECTURE (mêmes gardes
             # que `performance`/`vue_360` — get_permissions prime sur le
             # permission_classes de l'@action, d'où ce cas explicite).
@@ -340,6 +341,57 @@ class FournisseurViewSet(CompanyScopedModelViewSet):
                 request.user.company),
             'progression': stock_selectors.progression_onboarding(dossier),
         })
+
+    @action(detail=False, methods=['get'], url_path='export-conformite')
+    def export_conformite(self, request):
+        """NTP2P19 — audit achats : conformité par fournisseur actif.
+
+        Une ligne par fournisseur : statut d'onboarding (NTP2P7), score de
+        risque (NTP2P8), documents expirés, dernier retard OTD, montant
+        acheté sur la période. Filtrable par ``?debut=&fin=`` (dates ISO).
+
+        Le paramètre d'export est ``?export=xlsx`` et NON ``?format=`` :
+        ``format`` est RÉSERVÉ par la négociation de contenu DRF (un suffixe
+        inconnu y répondrait 404). Sans ``export``, la réponse est du JSON.
+        """
+        from apps.records.xlsx import build_xlsx_response
+
+        from .. import selectors as stock_selectors
+
+        def _date(param):
+            valeur = request.query_params.get(param)
+            if not valeur:
+                return None
+            from datetime import date as _d
+            try:
+                return _d.fromisoformat(valeur)
+            except ValueError:
+                return None
+
+        debut, fin = _date('debut'), _date('fin')
+        lignes = stock_selectors.conformite_fournisseurs(
+            request.user.company, debut=debut, fin=fin)
+        if request.query_params.get('export') != 'xlsx':
+            return Response(lignes)
+
+        entetes = [
+            'Fournisseur', 'Statut onboarding', 'Score de risque',
+            'Niveau de risque', 'Documents expirés', 'Documents manquants',
+            'Dernier retard le', 'Retard (jours)', 'Montant acheté (MAD HT)',
+        ]
+        corps = [
+            [
+                ligne['fournisseur'], ligne['statut_onboarding'],
+                ligne['score_risque'], ligne['niveau_risque'],
+                ligne['documents_expires'], ligne['documents_manquants'],
+                ligne['dernier_retard_le'], ligne['dernier_retard_jours'],
+                ligne['montant_achete'],
+            ]
+            for ligne in lignes
+        ]
+        return build_xlsx_response(
+            'conformite-fournisseurs.xlsx', entetes, corps,
+            sheet_title='Conformité fournisseurs')
 
     @action(detail=True, methods=['get'], url_path='score-risque')
     def score_risque(self, request, *args, **kwargs):
