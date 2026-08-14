@@ -1,4 +1,4 @@
-"""PV69/70/72 — étude bancable v1 : `Devis.etude_params['simulation']`.
+"""PV69/70/72/73 — étude bancable v1 : `Devis.etude_params['simulation']`.
 
 Orchestrateur PUR (aucune écriture DB, aucun changement de statut — règle #4)
 qui agrège, par zone (pan de toiture), le productible PVGIS et une année météo
@@ -27,6 +27,11 @@ recommandée (``optimize_subscribed_power``, UNIQUEMENT en industriel/
 commercial — bloc minimal honnête ailleurs), dégradation garantie
 (``module_degradation_curve``) et projection 25 ans VAN/TRI
 (``tariff_escalation_projection``, coût initial = ``Devis.total_ht``).
+
+PV73 met les deux fetchers PVGIS derrière un cache SYSTÈME (``core/cache``,
+``company=None`` — la physique d'un point GPS ne dépend pas du tenant qui
+consulte) : productible 6 h, TMY 7 jours. ``force_refresh`` court-circuite la
+LECTURE mais réécrit toujours l'entrée.
 
 ADDITIF STRICT (PV69/règle #2) : ce module ne touche JAMAIS les clés
 historiques d'``etude_params`` (``production_annuelle``, ``economies_annuelles``,
@@ -102,23 +107,107 @@ def _company_settings(devis):
     return TariffSettings.get(company=getattr(devis, 'company', None))
 
 
+def _resolved_tilt_azimuth(settings, tilt, azimuth):
+    """Résout tilt/azimut EFFECTIFS (défauts société appliqués si absents).
+
+    Nécessaire pour une clé de cache SYSTÈME correcte (PV73) : deux sociétés
+    aux défauts différents qui appellent toutes deux avec ``tilt=None`` ne
+    doivent JAMAIS collisionner sur la même entrée — on résout donc la valeur
+    RÉELLEMENT utilisée avant de bâtir la clé, exactement comme le ferait
+    ``apps.parametres.pvgis.fetch_productible`` en interne.
+    """
+    t = tilt if tilt is not None else getattr(settings, 'inclinaison_defaut_deg', 30)
+    a = azimuth if azimuth is not None else getattr(settings, 'azimut_defaut_deg', 0)
+    try:
+        t = float(t)
+    except (TypeError, ValueError):
+        t = 30.0
+    try:
+        a = float(a)
+    except (TypeError, ValueError):
+        a = 0.0
+    return t, a
+
+
+def _productible_cache_key(lat, lon, tilt, azimuth):
+    """Clé de cache système PV73 — arrondie pour regrouper les points voisins."""
+    return f'pvgis:prod:{lat:.3f}:{lon:.3f}:{tilt:.0f}:{azimuth:.0f}'
+
+
+def _tmy_cache_key(lat, lon):
+    """Clé de cache système PV73 (TMY, pas de tilt/azimut — climat du point)."""
+    return f'pvgis:tmy:{lat:.3f}:{lon:.3f}'
+
+
+# PV73 — TTL du cache PVGIS SYSTÈME (core/cache, company=None — partagé entre
+# TOUTES les sociétés : la physique du point GPS ne dépend pas du tenant).
+# Productible : 6 h (assez court pour absorber une correction PVGIS amont,
+# assez long pour épargner un aller-retour réseau par relance d'étude).
+_PVGIS_PROD_CACHE_TTL_S = 6 * 60 * 60
+# TMY (climatologie) : 7 jours — un profil météo type ne change pas d'un jour
+# à l'autre, contrairement au productible ponctuel.
+_PVGIS_TMY_CACHE_TTL_S = 7 * 24 * 60 * 60
+
+
 def _fetch_productible(settings, lat, lon, *, peakpower_kwc=1.0,
                        tilt=None, azimuth=None, force_refresh=False):
-    """Point de bascule UNIQUE vers PVGIS productible (PV73 y branchera le cache).
+    """Point de bascule UNIQUE vers PVGIS productible — cache SYSTÈME (PV73).
 
-    ``force_refresh`` est accepté dès PV69 pour stabiliser la signature de
-    :func:`run_bankable_study` — sans effet tant que PV73 n'a pas posé le
-    cache (aucun cache = toujours un fetch réel, comportement inchangé).
+    ``force_refresh=True`` court-circuite la LECTURE du cache (on force un
+    fetch réel) mais réécrit tout de même l'entrée ensuite (le prochain appel
+    normal profite du résultat frais). Coordonnées illisibles → aucun cache
+    (le fetcher lui-même retombe sur son repli manuel, jamais d'exception ici).
     """
     from apps.parametres.pvgis import fetch_productible
-    return fetch_productible(settings, lat, lon, peakpower_kwc=peakpower_kwc,
-                             tilt=tilt, azimuth=azimuth)
+    from core import cache as tenant_cache
+
+    try:
+        latf = float(lat)
+        lonf = float(lon)
+    except (TypeError, ValueError):
+        return fetch_productible(settings, lat, lon, peakpower_kwc=peakpower_kwc,
+                                 tilt=tilt, azimuth=azimuth)
+
+    tilt_r, az_r = _resolved_tilt_azimuth(settings, tilt, azimuth)
+    key = _productible_cache_key(latf, lonf, tilt_r, az_r)
+
+    if not force_refresh:
+        cached = tenant_cache.get(None, key)
+        if cached is not None:
+            return cached
+
+    result = fetch_productible(settings, lat, lon, peakpower_kwc=peakpower_kwc,
+                               tilt=tilt, azimuth=azimuth)
+    tenant_cache.set(None, key, result, _PVGIS_PROD_CACHE_TTL_S)
+    return result
 
 
 def _fetch_tmy(lat, lon, *, force_refresh=False):
-    """Point de bascule UNIQUE vers PVGIS TMY (PV73 y branchera le cache)."""
+    """Point de bascule UNIQUE vers PVGIS TMY — cache SYSTÈME (PV73).
+
+    Même politique que :func:`_fetch_productible` (``force_refresh`` bypass la
+    lecture, réécrit toujours) avec une clé plus courte (pas de tilt/azimut —
+    la TMY est une propriété du point GPS, pas de l'orientation des modules).
+    """
     from apps.ventes.weather_feed import fetch_irradiance_tmy
-    return fetch_irradiance_tmy(lat, lon)
+    from core import cache as tenant_cache
+
+    try:
+        latf = float(lat)
+        lonf = float(lon)
+    except (TypeError, ValueError):
+        return fetch_irradiance_tmy(lat, lon)
+
+    key = _tmy_cache_key(latf, lonf)
+
+    if not force_refresh:
+        cached = tenant_cache.get(None, key)
+        if cached is not None:
+            return cached
+
+    result = fetch_irradiance_tmy(lat, lon)
+    tenant_cache.set(None, key, result, _PVGIS_TMY_CACHE_TTL_S)
+    return result
 
 
 def _zone_monthly_share(tmy_result):
