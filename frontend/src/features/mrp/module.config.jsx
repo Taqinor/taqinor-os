@@ -36,7 +36,11 @@ const config = {
   nav: {
     label: 'Atelier MRP',
     icon: appGlyph(Factory),
-    accent: 'info',
+    // VX8 — production/atelier = accent success (dérivé), comme
+    // Installations/BTP chantier/Flotte (terrain/opérations) ; `accent: 'info'`
+    // n'existe pas dans tokens.css (cf. core/module.config.jsx) et rendait
+    // une tuile SANS fond.
+    accent: 'success',
     items: [
       { to: '/mrp/ordres-fabrication', label: 'Ordres de fabrication', icon: <Factory size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
       { to: '/mrp/gantt', label: 'Gantt atelier', icon: <Gauge size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },

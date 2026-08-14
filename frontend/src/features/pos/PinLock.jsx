@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useSelector } from 'react-redux'
 import { Lock } from 'lucide-react'
 import { Button, Input, Label, toast } from '../../ui'
 import { errorMessageFrom } from '../../lib/toast'
@@ -19,13 +20,18 @@ import { verifierPin } from './pinApi'
 // (react-refresh/only-export-components).
 
 /**
- * Écran de verrouillage rapide. `userId` = utilisateur attendu au
- * déverrouillage (le compte JWT courant du poste) ; `onUnlock(user)` est
- * appelé une fois le PIN validé. Le parent (CaisseScreen) affiche ce
- * composant EN OVERLAY par-dessus l'écran caisse existant — le panier reste
- * intact dans l'état du parent pendant tout le verrouillage.
+ * Écran de verrouillage rapide. L'utilisateur attendu au déverrouillage (le
+ * compte JWT courant du poste) est lu ICI via `useSelector` — jamais monté
+ * tant que l'écran n'est pas verrouillé (le parent ne rend ce composant que
+ * `{verrouille && <PinLock … />}`), donc ce hook ne s'évalue jamais dans les
+ * tests qui montent l'écran caisse déverrouillé et n'ont pas besoin d'un
+ * `<Provider>` redux. `onUnlock(user)` est appelé une fois le PIN validé. Le
+ * parent (CaisseScreen) affiche ce composant EN OVERLAY par-dessus l'écran
+ * caisse existant — le panier reste intact dans l'état du parent pendant
+ * tout le verrouillage.
  */
-export default function PinLock({ userId, onUnlock, verrouille = true }) {
+export default function PinLock({ onUnlock, verrouille = true }) {
+  const currentUser = useSelector((s) => s.auth.user)
   const [pin, setPin] = useState('')
   const [busy, setBusy] = useState(false)
 
@@ -36,7 +42,7 @@ export default function PinLock({ userId, onUnlock, verrouille = true }) {
     if (!pin) return
     setBusy(true)
     try {
-      const user = await verifierPin({ userId, pin })
+      const user = await verifierPin({ userId: currentUser?.id, pin })
       setPin('')
       onUnlock?.(user)
     } catch (err) {

@@ -2,7 +2,7 @@
    Fichier de configuration de module (données + composants lazy), collecté par
    `router/moduleRoutes.jsx` via glob — pas un module de composants. */
 import { lazy } from 'react'
-import { TrendingUp, ShoppingCart, CalendarClock } from 'lucide-react'
+import { LineChart, ShoppingCart, CalendarClock } from 'lucide-react'
 import { appGlyph } from '../../lib/apps/appGlyph'
 
 /* ============================================================================
@@ -26,8 +26,11 @@ const config = {
   order: 64,
   nav: {
     label: 'Planification supply',
-    icon: appGlyph(TrendingUp),
-    accent: 'info',
+    icon: appGlyph(LineChart),
+    // VX8 — supply chain/logistique = accent brass (dérivé), comme Transport ;
+    // `accent: 'info'` n'existe pas dans tokens.css (cf. core/module.config.jsx)
+    // et rendait une tuile SANS fond.
+    accent: 'brass',
     items: [
       { to: '/scm/reappro', label: 'Tableau de bord réappro', icon: <ShoppingCart size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
       { to: '/scm/sop', label: 'Cycle S&OP', icon: <CalendarClock size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES_SOP },

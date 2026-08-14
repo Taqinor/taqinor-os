@@ -6,8 +6,11 @@
 // aucune I/O ici, comme pos.js.
 
 // Solde restant à régler avant remise de marchandise — 0 si la vente n'a
-// jamais eu d'arrhes (`montant_arrhes` absent).
+// jamais eu d'arrhes (`montant_arrhes` absent) : ce n'est alors pas une vente
+// suivie par ce mécanisme, donc rien n'est dû AU TITRE DES ARRHES (à
+// distinguer du prix total, non concerné ici).
 export function soldeRestant(vente) {
+  if (vente?.montant_arrhes == null) return 0
   const total = Number(vente?.total_ttc) || 0
   const arrhes = Number(vente?.montant_arrhes) || 0
   return Math.round((total - arrhes) * 100) / 100

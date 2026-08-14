@@ -1,6 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { Provider } from 'react-redux'
+import { configureStore } from '@reduxjs/toolkit'
 
 /* NTRET3 — smoke de PinLock (API mockée, hors réseau) : PIN correct
    déverrouille (onUnlock appelé avec l'utilisateur), PIN erroné affiche une
@@ -12,6 +14,7 @@ vi.mock('../../api/axios', () => ({
 }))
 
 import PinLock from './PinLock'
+import authReducer from '../auth/store/authSlice'
 import { lireCaissierActif, memoriserCaissierActif } from './pinApi'
 
 beforeEach(() => {
@@ -19,12 +22,34 @@ beforeEach(() => {
   window.localStorage.clear()
 })
 
+// PinLock lit l'utilisateur JWT du poste via `useSelector` (Cause A du bug
+// NTRET3/WIR58 : monté sans <Provider> ailleurs, il explose) — un store
+// minimal portant `auth.user` est donc requis ICI, où le composant est monté
+// directement (CaisseScreen, lui, ne le monte que verrouillé — jamais besoin
+// d'un Provider dans ses propres tests).
+function renderPinLock(ui, { userId = null } = {}) {
+  const store = configureStore({
+    reducer: { auth: authReducer },
+    preloadedState: {
+      auth: {
+        user: userId != null ? { id: userId } : null,
+        role: null,
+        role_nom: null,
+        permissions: [],
+        isAuthenticated: !!userId,
+        loading: false,
+      },
+    },
+  })
+  return render(<Provider store={store}>{ui}</Provider>)
+}
+
 describe('PinLock', () => {
   it('PIN correct appelle onUnlock avec l’utilisateur renvoyé par le serveur', async () => {
     postMock.mockResolvedValue({ data: { id: 5, username: 'caissier2' } })
     const onUnlock = vi.fn()
     const user = userEvent.setup()
-    render(<PinLock userId={5} onUnlock={onUnlock} />)
+    renderPinLock(<PinLock onUnlock={onUnlock} />, { userId: 5 })
 
     await user.type(screen.getByLabelText(/PIN/), '1234')
     await user.click(screen.getByRole('button', { name: /Déverrouiller/ }))
@@ -42,7 +67,7 @@ describe('PinLock', () => {
     postMock.mockRejectedValue(err)
     const onUnlock = vi.fn()
     const user = userEvent.setup()
-    render(<PinLock userId={5} onUnlock={onUnlock} />)
+    renderPinLock(<PinLock onUnlock={onUnlock} />, { userId: 5 })
 
     await user.type(screen.getByLabelText(/PIN/), '0000')
     await user.click(screen.getByRole('button', { name: /Déverrouiller/ }))
@@ -56,7 +81,7 @@ describe('PinLock', () => {
     memoriserCaissierActif({ id: 1, username: 'caissier1' })
     postMock.mockResolvedValue({ data: { id: 2, username: 'caissier2' } })
     const user = userEvent.setup()
-    render(<PinLock userId={2} onUnlock={() => {}} />)
+    renderPinLock(<PinLock onUnlock={() => {}} />, { userId: 2 })
 
     await user.type(screen.getByLabelText(/PIN/), '2222')
     await user.click(screen.getByRole('button', { name: /Déverrouiller/ }))
@@ -67,7 +92,7 @@ describe('PinLock', () => {
   })
 
   it('verrouille=false ne rend rien', () => {
-    render(<PinLock userId={1} onUnlock={() => {}} verrouille={false} />)
+    renderPinLock(<PinLock onUnlock={() => {}} verrouille={false} />, { userId: 1 })
     expect(screen.queryByTestId('pin-lock-overlay')).not.toBeInTheDocument()
   })
 })
