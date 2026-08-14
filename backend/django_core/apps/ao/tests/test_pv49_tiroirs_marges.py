@@ -201,10 +201,17 @@ class LeVocabulaireEstTraduit(BasePv49):
         self.assertEqual(donnees['segmentations'], [])
         self.assertEqual(donnees['formes_l'], [])
 
-    def test_le_tiroir_electrique_est_publie_vide(self):
+    def test_le_tiroir_electrique_n_est_plus_vide(self):
+        """PV44 — il sortait ``donnees: null`` faute de moteur électrique.
+
+        ``core.electrique`` existe depuis PV33-39 : le tiroir est ALIMENTÉ.
+        Ce que la publication garantit est verrouillé par
+        ``test_pv44_tiroir_electrique`` ; ici on constate seulement que la
+        forme dégradée n'est plus le comportement normal.
+        """
         electrique = self._calepiner()['tiroirs']['electrique']
-        self.assertIsNone(electrique['donnees'])
-        self.assertEqual(electrique['valeurs'], {})
+        self.assertIsNotNone(electrique['donnees'])
+        self.assertIn('taille_chaine', electrique['valeurs'])
 
 
 class LeGardeDeCout(BasePv49):
@@ -216,12 +223,14 @@ class LeGardeDeCout(BasePv49):
         self.assertEqual(calepinage_service.multiplicateur_tiroirs(4), 6)
 
     def test_le_cout_tout_compris_inclut_les_appels_des_tiroirs(self):
+        """PV44 : le tiroir électrique voyage AVEC les tiroirs, donc il compte."""
         document = self._document()
         seul = calepinage_service.cout_estime(document)
         tout = calepinage_service.cout_estime(document, tiroirs=True)
         self.assertEqual(
             tout.appels,
-            seul.appels * calepinage_service.multiplicateur_tiroirs())
+            seul.appels * (calepinage_service.multiplicateur_tiroirs()
+                           + calepinage_service.multiplicateur_electrique()))
         self.assertGreater(tout.millisecondes, seul.millisecondes)
 
     def test_hors_budget_les_tiroirs_sont_degrades_pas_payes(self):

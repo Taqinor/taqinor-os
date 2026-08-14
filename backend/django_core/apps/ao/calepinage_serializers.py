@@ -199,12 +199,55 @@ class TiroirOrientationSerializer(serializers.Serializer):
     valeurs = serializers.JSONField(read_only=True)
 
 
-class TiroirElectriqueSerializer(serializers.Serializer):
-    """Le moteur n'a AUCUN modèle électrique : ``donnees`` vaut toujours
-    ``null`` aujourd'hui. La clé existe pour que la forme ne varie pas d'un
-    appel à l'autre — pas pour promettre un contenu."""
+class _ChaineElectriqueSerializer(serializers.Serializer):
+    libelle_taille = serializers.CharField(read_only=True, allow_blank=True)
+    reste_texte = serializers.CharField(read_only=True, allow_blank=True)
 
-    donnees = serializers.JSONField(read_only=True, allow_null=True)
+
+class _OnduleursElectriqueSerializer(serializers.Serializer):
+    nombre_texte = serializers.CharField(read_only=True, allow_blank=True)
+    puissance_texte = serializers.CharField(read_only=True, allow_blank=True)
+    plafond_texte = serializers.CharField(read_only=True, allow_blank=True)
+
+
+class _RatioElectriqueSerializer(serializers.Serializer):
+    texte = serializers.CharField(read_only=True, allow_blank=True)
+    fourchette_texte = serializers.CharField(read_only=True, allow_blank=True)
+
+
+class _ConformiteElectriqueSerializer(serializers.Serializer):
+    conforme = serializers.BooleanField(read_only=True)
+    bloquant = serializers.BooleanField(read_only=True)
+    alerte = serializers.CharField(read_only=True, allow_blank=True)
+    #: ``{texte, patch}`` ou ``null`` — le patch est REJOUABLE par
+    #: ``majParametres`` (vocabulaire des paramètres), sinon la proposition est
+    #: nulle : un bouton « appliquer » qui n'applique rien est pire que rien.
+    repartition_proposee = serializers.JSONField(read_only=True,
+                                                 allow_null=True)
+
+
+class _DonneesElectriqueSerializer(serializers.Serializer):
+    """PV44 — miroir EXACT de ``core.electrique.projeter_tiroirs``.
+
+    Les quatre blocs sont ceux que ``TiroirElectrique.jsx`` lit, ni plus ni
+    moins : une clé en trop est du code mort côté écran, une clé en moins est
+    une ligne vide pour toujours.
+    """
+
+    chaine = _ChaineElectriqueSerializer(read_only=True)
+    onduleurs = _OnduleursElectriqueSerializer(read_only=True)
+    ratio_dc_ac = _RatioElectriqueSerializer(read_only=True)
+    conformite = _ConformiteElectriqueSerializer(read_only=True)
+
+
+class TiroirElectriqueSerializer(serializers.Serializer):
+    """PV44 — le tiroir est ALIMENTÉ par ``core.electrique``.
+
+    ``donnees`` reste ``allow_null`` : hors budget synchrone, le tiroir retombe
+    sur sa forme dégradée, exactement comme les quatre autres.
+    """
+
+    donnees = _DonneesElectriqueSerializer(read_only=True, allow_null=True)
     valeurs = serializers.JSONField(read_only=True)
 
 

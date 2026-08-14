@@ -462,6 +462,12 @@ def document_entree(toiture, *, params=None, kits=None):
         'zones': zones_vers_document(toiture),
         'engagements': [],
     }
+    # PV44 — la section ÉLECTRIQUE, OMISE quand rien n'est imposé : le contrat
+    # pur l'ignore (``EntreeCalepinage.depuis_dict`` ne lit que ses clés), et
+    # l'empreinte d'un relevé que personne n'a touché ne bouge pas.
+    electrique = electrique_du_preset(params)
+    if electrique:
+        document['electrique'] = electrique
     engagement = params.get('engagement_modules')
     if engagement:
         document['engagements'] = [[document['repere'], int(engagement)]]
@@ -629,10 +635,10 @@ CHAMPS_RIVES_VERS_CONTRAT = {
     'degagement_nature_inconnue_m': 'degagement_inconnu',
 }
 
-#: Les 5 tiroirs du contrat. ``electrique`` n'est PAS produit par le moteur :
-#: il n'a aucun modèle de chaîne, d'onduleur ni de ratio DC/AC. Il sort donc
-#: ``donnees: null`` — l'écran fait ``if (!donnees) return null`` — plutôt que
-#: meublé de chiffres que rien ne sait honorer.
+#: Les 5 tiroirs du contrat. ``electrique`` est produit depuis PV44 par
+#: ``core.electrique`` (voir plus bas) ; il retombe sur ``donnees: null`` quand
+#: le budget synchrone ne permet pas de le calculer — l'écran fait
+#: ``if (!donnees) return null`` plutôt que d'afficher des chiffres creux.
 TIROIRS = ('kits', 'allees', 'rives', 'orientation', 'electrique')
 
 
@@ -721,6 +727,10 @@ def tiroirs_vers_json(donnees, parametres):
     les ``Parametres`` réellement calculés — jamais recopié depuis la requête :
     un écran préremplirait alors ce que l'utilisateur a demandé plutôt que ce
     que le serveur a retenu.
+
+    Le tiroir ÉLECTRIQUE ne sort PAS d'ici : il ne vient pas du moteur de
+    calepinage mais de ``core.electrique`` (PV44), et l'appelant l'ajoute par
+    ``tiroir_electrique_vers_json``.
     """
     if donnees is None:
         return tiroirs_vides()
@@ -735,6 +745,207 @@ def tiroirs_vers_json(donnees, parametres):
     sortie['orientation'] = {'donnees': brut['orientation'],
                              'valeurs': _valeurs_orientation(parametres)}
     return sortie
+
+
+# ────────────────────────────── PV44 — le tiroir ÉLECTRIQUE, pour de vrai ────
+#
+# Il sortait ``donnees: null`` parce qu'au moment où la lane AO l'a posé, aucun
+# moteur électrique n'existait. ``core.electrique`` existe maintenant (PV33-39)
+# et publie déjà la projection EXACTE que ``TiroirElectrique.jsx`` lit. Il ne
+# reste donc qu'une traduction — et c'est ce module-ci qui traduit.
+#
+# CE QUE LE DOCUMENT AO SAIT, ET CE QU'IL NE SAIT PAS
+# ---------------------------------------------------
+# Un document de calepinage AO décrit une TOITURE et des TABLES : contour,
+# obstacles, kits, puissance unitaire du module. Il ne décrit AUCUN appareil :
+# ni la fiche du module vendu, ni l'onduleur retenu, ni la longueur des
+# liaisons. Le moteur électrique, lui, a besoin des deux.
+#
+# La règle appliquée ici est celle du dépôt : **ce qu'on sait, on le calcule ;
+# ce qu'on ne sait pas, on ne l'invente pas.**
+#
+# * SU : le nombre de modules, la puissance crête, le nombre d'onduleurs imposé
+#   par le plafond de 60 kWc du dossier, la longueur de chaîne de dossier (16),
+#   le reste hors chaîne. Tous CALCULÉS, tous publiés.
+# * PAS SU : la puissance AC de l'onduleur retenu — c'est un fait d'achat, pas
+#   une donnée de toiture. ``ac_kw`` reste donc à ZÉRO, et le moteur publie
+#   lui-même « puissance AC de l'onduleur non renseignée — ratio DC/AC non
+#   calculable, à vérifier avant dépôt du dossier » avec un ratio « — ». Un
+#   ratio calculé sur un onduleur imaginaire serait pire que pas de ratio.
+# * PAS SU NON PLUS : le nombre d'entrées MPPT et leur courant admissible.
+#   ``i_max_mppt_a=0`` désactive la vérification côté moteur (c'est SON échappée
+#   pour « non renseigné ») : sans elle, un « répartir les chaînes sur d'autres
+#   entrées » serait publié à propos d'un onduleur que personne n'a choisi.
+#
+# Ce qui RESTE déclaré est l'ENVELOPPE physique commune à tous les onduleurs de
+# chaîne 1100 V du marché — 1100 V absolus, plage MPPT 200-1000 V. Elle ne sert
+# QU'À une chose : valider ou refuser la longueur de chaîne. C'est la borne dont
+# le dépassement DÉTRUIT du matériel, et la refuser tôt vaut mieux que la
+# découvrir en exécution.
+
+#: Module de RÉFÉRENCE du dossier : les tensions d'un module cristallin
+#: 144 demi-cellules du marché (celles de ``core/tests/test_electrique_golden``).
+#: Elles bougent de quelques volts sur toute la famille 500-700 Wc — c'est la
+#: raison pour laquelle on les tient FIXES et qu'on fait varier les COURANTS.
+MODULE_REFERENCE_VMP_V = 41.5
+MODULE_REFERENCE_VOC_V = 49.5
+#: Rapport Isc/Imp de ce même module de référence (13,9 / 13,26). Il fixe le
+#: courant de court-circuit à partir du courant au point de puissance maximale.
+MODULE_REFERENCE_RAPPORT_ISC_IMP = 13.9 / 13.26
+
+#: Longueurs de liaison RETENUES AU DOSSIER, faute de plan de câblage : 50 m de
+#: DC (champ → local onduleur) et 20 m d'AC (onduleur → TGBT). Elles n'entrent
+#: dans AUCUN chiffre du tiroir (qui ne montre que chaînes, onduleurs, ratio et
+#: conformité) : elles ne servent qu'à ce que les étages câbles/protections du
+#: moteur travaillent sur des longueurs plausibles plutôt que sur zéro.
+LIAISON_DC_DEFAUT_M = 50.0
+LIAISON_AC_DEFAUT_M = 20.0
+
+#: Raccordement TRIPHASÉ par défaut : une centrale AO de plusieurs dizaines de
+#: kWc n'existe pas en monophasé.
+PHASES_DEFAUT = 3
+
+
+def taille_chaine_du_preset(params):
+    """La longueur de chaîne IMPOSÉE par l'utilisateur, ou ``None``.
+
+    ``taille_chaine`` est le nom que porte déjà le champ de saisie de
+    ``TiroirElectrique.jsx`` et le ``patch`` que le moteur électrique propose :
+    le paramètre porte donc le MÊME nom d'un bout à l'autre, faute de quoi le
+    bouton « appliquer la répartition conforme » enverrait une clé que le
+    serveur ignorerait en silence.
+    """
+    brut = (params or {}).get('taille_chaine')
+    if brut in (None, ''):
+        return None
+    try:
+        valeur = int(brut)
+    except (TypeError, ValueError):
+        raise EntreeInvalide(
+            "La longueur de chaîne « %r » n'est pas un nombre de modules."
+            % (brut,)) from None
+    if valeur <= 0:
+        raise EntreeInvalide(
+            'La longueur de chaîne doit être strictement positive '
+            '(%d demandé).' % valeur)
+    return valeur
+
+
+def electrique_du_preset(params):
+    """La section ÉLECTRIQUE du document — ``{}`` quand rien n'est imposé.
+
+    OMISE du document quand elle est vide, exactement comme ``rangees_imposees``
+    et ``phase_forcee_m`` (PV29/PV52) : l'empreinte d'un relevé que personne n'a
+    touché ne doit pas bouger parce qu'une section vide s'est ajoutée.
+    """
+    taille = taille_chaine_du_preset(params)
+    return {} if taille is None else {'taille_chaine': taille}
+
+
+def module_de_reference(puissance_module_wc):
+    """``SpecModule`` d'un module de ``puissance_module_wc`` Wc.
+
+    Les TENSIONS sont celles du module de référence (elles ne bougent
+    pratiquement pas sur la famille) ; les COURANTS sont déduits pour que
+    ``Vmp × Imp`` redonne EXACTEMENT la puissance déclarée par le kit. La fiche
+    ainsi construite est donc cohérente avec elle-même — jamais un assemblage de
+    valeurs prises à trois modules différents.
+    """
+    from core.electrique.types import SpecModule
+
+    pmax = float(puissance_module_wc or 0.0)
+    imp = pmax / MODULE_REFERENCE_VMP_V if pmax > 0 else 0.0
+    return SpecModule(
+        vmp_v=MODULE_REFERENCE_VMP_V, voc_v=MODULE_REFERENCE_VOC_V,
+        isc_a=imp * MODULE_REFERENCE_RAPPORT_ISC_IMP, imp_a=imp, pmax_wc=pmax)
+
+
+def onduleur_de_reference():
+    """L'ENVELOPPE d'un onduleur de chaîne 1100 V — sans son calibre AC.
+
+    ``ac_kw=0`` et ``i_max_mppt_a=0`` ne sont pas des oublis : ce sont les deux
+    valeurs que le moteur interprète comme « non renseigné » et qu'il rapporte
+    lui-même, en français, au lieu de calculer sur une hypothèse.
+    """
+    from core.electrique.types import SpecOnduleur
+
+    return SpecOnduleur(
+        n_mppt=1, mppt_v_min=200.0, mppt_v_max=1000.0, v_max_abs=1100.0,
+        i_max_mppt_a=0.0, ac_kw=0.0, phases=PHASES_DEFAUT)
+
+
+def entree_electrique(pans, puissance_module_wc, taille_chaine=None):
+    """``EntreeElectrique`` d'un calepinage — un GROUPE PAR PAN.
+
+    Un pan par surface, jamais un groupe unique : deux orientations
+    n'atteignent pas leur point de puissance maximale au même instant, et le
+    moteur électrique refuse par principe de les mélanger sur une entrée MPPT.
+    Sur une toiture à une seule surface, cela rend exactement un groupe.
+
+    Le plafond de 60 kWc par onduleur vient de
+    ``core.calepinage.electrique.PLAFOND_DC_PAR_ONDULEUR_KWC`` — la règle du
+    dossier FRDISI, lue à sa source et jamais recopiée.
+    """
+    from core.calepinage.electrique import (
+        MODULES_PAR_CHAINE, PLAFOND_DC_PAR_ONDULEUR_KWC,
+    )
+    from core.electrique.types import EntreeElectrique, GroupePan
+
+    groupes = tuple(
+        GroupePan(label=str(pan.get('label') or 'PAN'),
+                  nb_modules=int(pan.get('nb_modules') or 0),
+                  azimut_deg=float(pan.get('azimut_deg') or 180.0),
+                  inclinaison_deg=float(pan.get('inclinaison_deg') or 0.0))
+        for pan in (pans or ()) if int(pan.get('nb_modules') or 0) > 0)
+    return EntreeElectrique(
+        module=module_de_reference(puissance_module_wc),
+        onduleur=onduleur_de_reference(),
+        groupes=groupes,
+        dc_m=LIAISON_DC_DEFAUT_M, ac_m=LIAISON_AC_DEFAUT_M,
+        phases=PHASES_DEFAUT,
+        plafond_kwc_par_onduleur=PLAFOND_DC_PAR_ONDULEUR_KWC,
+        longueur_chaine_forcee=(MODULES_PAR_CHAINE if taille_chaine is None
+                                else int(taille_chaine)))
+
+
+#: Patch du moteur ÉLECTRIQUE -> clé du dict de PARAMÈTRES de l'API. Même
+#: discipline que ``PATCH_MOTEUR_VERS_PARAMS`` (PV50) : une clé non cartographiée
+#: fait TOMBER la proposition entière plutôt que de publier un bouton
+#: « appliquer » que ``majParametres`` renverrait dans le vide.
+PATCH_ELECTRIQUE_VERS_PARAMS = {
+    'taille_chaine': 'taille_chaine',
+}
+
+
+def patch_electrique_vers_params(patch):
+    """``patch`` du moteur électrique -> patch de PARAMÈTRES, ou ``None``."""
+    if not patch:
+        return None
+    if not set(patch) <= set(PATCH_ELECTRIQUE_VERS_PARAMS):
+        return None
+    return {PATCH_ELECTRIQUE_VERS_PARAMS[cle]: valeur
+            for cle, valeur in patch.items()}
+
+
+def tiroir_electrique_vers_json(projection, taille_chaine):
+    """La projection ``tiroirs['electrique']`` du moteur -> tiroir du contrat.
+
+    La répartition proposée n'est publiée que si son patch est REJOUABLE par
+    ``majParametres`` ; sinon elle est mise à ``null`` — honnêtement, plutôt
+    qu'un bouton qui ne ferait rien.
+    """
+    if not projection:
+        return {'donnees': None, 'valeurs': {}}
+    donnees = {cle: dict(valeur) for cle, valeur in projection.items()}
+    conformite = donnees.get('conformite') or {}
+    proposee = conformite.get('repartition_proposee')
+    if proposee:
+        patch = patch_electrique_vers_params(proposee.get('patch'))
+        conformite['repartition_proposee'] = (
+            None if patch is None
+            else {'texte': proposee.get('texte', ''), 'patch': patch})
+    donnees['conformite'] = conformite
+    return {'donnees': donnees, 'valeurs': {'taille_chaine': taille_chaine}}
 
 
 # ─────────────────────────────────────────────────── suggestions (PV50)

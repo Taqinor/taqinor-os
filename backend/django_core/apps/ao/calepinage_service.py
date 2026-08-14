@@ -35,6 +35,8 @@ Frontières respectées
 """
 from __future__ import annotations
 
+import hashlib
+import json
 import logging
 
 from core.calepinage.exceptions import (
@@ -92,6 +94,22 @@ def multiplicateur_tiroirs(budget_appels=None):
     budget = BUDGET_APPELS_DEFAUT if budget_appels is None else int(
         budget_appels)
     return 1 + max(0, budget) + 1
+
+
+#: PV44 — ce que la conception ÉLECTRIQUE coûte, exprimé en DP ÉQUIVALENTS.
+#:
+#: Elle n'exécute AUCUN DP : ``core.electrique`` ne balaie aucune position, il
+#: enchaîne quelques passes arithmétiques sur la liste des chaînes (plus UNE
+#: contre-épreuve de répartition quand le dossier est bloqué). Son coût réel est
+#: donc très inférieur à un DP de calepinage. On le compte quand même comme UN
+#: DP entier : le budget synchrone est une PROMESSE de temps de réponse, et sur
+#: une promesse on surestime — jamais l'inverse.
+COUT_ELECTRIQUE_EN_DP = 1
+
+
+def multiplicateur_electrique():
+    """Combien de DP équivalents le tiroir électrique ajoute — PV44."""
+    return COUT_ELECTRIQUE_EN_DP
 
 
 def multiplicateur_suggestions(plafond=None):
@@ -195,8 +213,24 @@ def _entree(document):
 
 
 def empreinte_document(document):
-    """Empreinte canonique d'un document d'entrée (AOF57), au millimètre."""
-    return hash_entree(_entree(document))
+    """Empreinte canonique d'un document d'entrée (AOF57), au millimètre.
+
+    **PV44 — la section ÉLECTRIQUE entre dans l'empreinte, mais seulement
+    quand elle existe.** ``hash_entree`` ne hache que le contrat de calepinage
+    (il ne connaît pas ``electrique``) : sans ce repli, changer la longueur de
+    chaîne laisserait l'empreinte identique, le cache de résultat rendrait le
+    tiroir électrique d'AVANT, et l'écran afficherait la répartition qu'on
+    vient justement de corriger. La section absente ne change RIEN : toutes les
+    empreintes déjà publiées restent identiques au bit près.
+    """
+    empreinte = hash_entree(_entree(document))
+    electrique = (document or {}).get('electrique') or {}
+    if not electrique:
+        return empreinte
+    canonique = json.dumps(electrique, sort_keys=True, separators=(',', ':'),
+                           ensure_ascii=True)
+    return hashlib.sha256(
+        ('%s|%s' % (empreinte, canonique)).encode('ascii')).hexdigest()
 
 
 def cout_estime(document, *, budget=None, tiroirs=False, suggestions=False):
@@ -220,7 +254,9 @@ def cout_estime(document, *, budget=None, tiroirs=False, suggestions=False):
     budget = budget or BudgetCalcul()
     supplements = 0
     if tiroirs:
-        supplements += multiplicateur_tiroirs() - 1
+        # PV44 : le tiroir ÉLECTRIQUE voyage avec les tiroirs — il est calculé
+        # sous la même garde, donc il est chiffré sous la même garde.
+        supplements += multiplicateur_tiroirs() - 1 + multiplicateur_electrique()
     if suggestions:
         supplements += multiplicateur_suggestions() - 1
     variantes = 1 + supplements
@@ -301,6 +337,7 @@ def calepiner(document, *, company, user=None, moteur=None, budget=None,
     marges_globales = None
     controles = None
     dernier_resultat = None
+    pans = []
 
     for surface in entree.surfaces:
         lot = par_surface.get(surface.repere, ())
@@ -337,9 +374,19 @@ def calepiner(document, *, company, user=None, moteur=None, budget=None,
             total_kwc += rangee.modules * kit.puissance_module_wc / 1000.0
         preuves.append(resultat.preuve)
         dernier_resultat = resultat
+        # PV44 — un PAN par surface pour le moteur électrique : deux
+        # orientations ne se mélangent jamais sur une entrée MPPT.
+        pans.append({
+            'label': surface.repere,
+            'nb_modules': resultat.plan.modules,
+            'azimut_deg': getattr(surface, 'azimut_deg', 180.0),
+            'inclinaison_deg': max(
+                [entree.parametres.kit(r.kit_code).inclinaison_deg
+                 for r in resultat.plan.rangees] or [0.0]),
+        })
 
     ok_engagement, motifs = engageable(obstacles)
-    empreinte = hash_entree(entree)
+    empreinte = empreinte_document(document)
     sortie = calepinage_io.resultat_vers_json(
         repere=entree.repere, hash_entree=empreinte, modules=total_modules,
         kwc=total_kwc, plans=plans, engageable=ok_engagement,
@@ -359,6 +406,12 @@ def calepiner(document, *, company, user=None, moteur=None, budget=None,
         suggestions=suggestions)
     sortie['tiroirs'] = _tiroirs_publiables(
         entree, par_surface, dernier_resultat,
+        demandes=bool(tiroirs and abordable))
+    # PV44 — le tiroir ÉLECTRIQUE se calcule sur le SITE, pas sur une surface :
+    # il est donc publié même en multi-surfaces (un pan par segment), là où les
+    # quatre autres restent dégradés faute de modèle de tiroir par segment.
+    sortie['tiroirs']['electrique'] = _tiroir_electrique(
+        document, pans, total_modules, total_kwc,
         demandes=bool(tiroirs and abordable))
     # Le contrat de l'endpoint agrégé enveloppe la liste dans
     # ``{"suggestions": […]}`` ; ICI la clé du résultat EST la liste, comme
@@ -390,6 +443,41 @@ def _tiroirs_publiables(entree, par_surface, resultat, *, demandes=True):
                      obstacles=tuple(lot), zones=tuple(entree.zones)),
         resultat, catalogue=entree.kits)
     return calepinage_io.tiroirs_vers_json(donnees, entree.parametres)
+
+
+def _tiroir_electrique(document, pans, total_modules, total_kwc, *,
+                       demandes=True):
+    """PV44 — le tiroir « Contraintes électriques », CALCULÉ par le moteur.
+
+    Il était livré dégradé (``donnees: null``) parce que le calepinage n'a
+    aucun modèle électrique. ``core.electrique`` en a un depuis PV33-39, et il
+    publie déjà la projection exacte que l'écran lit : il ne reste qu'à lui
+    donner l'entrée.
+
+    La puissance unitaire du module est DÉDUITE du plan lui-même
+    (``kWc × 1000 ÷ modules``) et non recopiée d'un kit : sur une toiture qui
+    mélange deux kits de puissances différentes, c'est le seul chiffre qui
+    redonne EXACTEMENT la puissance crête du plan. Sur un kit unique, il vaut
+    sa puissance unitaire au flottant près.
+
+    Le garde de coût est celui des autres tiroirs (pré-vol de ``calepiner``) :
+    hors budget, la forme DÉGRADÉE d'origine est rendue telle quelle.
+    """
+    if not demandes:
+        return calepinage_io.tiroirs_vides()['electrique']
+    electrique = (document or {}).get('electrique') or {}
+    taille = electrique.get('taille_chaine')
+    puissance_module_wc = (total_kwc * 1000.0 / total_modules
+                           if total_modules else 0.0)
+    entree_elec = calepinage_io.entree_electrique(
+        pans, puissance_module_wc, taille_chaine=taille)
+
+    from core.electrique import concevoir
+
+    resultat = concevoir(entree_elec)
+    return calepinage_io.tiroir_electrique_vers_json(
+        (resultat.tiroirs or {}).get('electrique'),
+        entree_elec.longueur_chaine_forcee)
 
 
 def _suggestions_publiables(entree, par_surface, *, demandes=True):
@@ -468,7 +556,9 @@ def _cout_charge_utile(entree, par_surface, *, budget, tiroirs=False,
     """
     supplements = 0
     if tiroirs:
-        supplements += multiplicateur_tiroirs() - 1
+        # PV44 : le tiroir ÉLECTRIQUE voyage avec les tiroirs — il est calculé
+        # sous la même garde, donc il est chiffré sous la même garde.
+        supplements += multiplicateur_tiroirs() - 1 + multiplicateur_electrique()
     if suggestions:
         supplements += multiplicateur_suggestions() - 1
     millisecondes = 0.0
