@@ -1322,10 +1322,10 @@ Things this map could not fully verify from source — do not over-trust:
 - `PV81` — Schéma unifilaire client-safe sur la proposition
 - `PV82` — KPI « conçu vs vendu »
 - `PV83` — Shims de ré-export ventes (précédent ARC6)
-- `PVG1` — [GATED: nouvelle dépendance `ezdxf`] Import DXF réel
-- `PVG2` — [GATED: décision fondateur] Tolérance d'arbitrage A/B calepinage villa
-- `PVG3` — [GATED: décision fondateur] SKUs câbles/protections prix-vides
-- `PVG4` — [GATED: vérifs fondateur] Datasheets onduleurs/batteries exactes
+- `PVG1` — Import DXF réel (dépendance `ezdxf` approuvée fondateur 2026-08-14)
+- `PVG2` — Garde de tolérance sur l'arbitrage A/B calepinage villa (décision rendue : sécurité par…
+- `PVG3` — SKUs câbles/protections prix vides (création approuvée fondateur 2026-08-14)
+- `PVG4` — Datasheets onduleurs/batteries : modèles supposés sourcés (accord fondateur 2026-08-14)
 - `QXG1` — [GATED: founder account]
 - `QXG2` — [GATED: founder account]
 - `QXG3` — [GATED: founder data]
