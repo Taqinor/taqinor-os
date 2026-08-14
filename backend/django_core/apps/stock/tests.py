@@ -124,6 +124,112 @@ class TestSeedCatalogue(TestCase):
         self.assertEqual(manuelle.largeur_mm, 1)
         self.assertIsNone(manuelle.temp_coeff_pmax_pct_c)
 
+    # ── PVG4 — Fiches techniques onduleurs/batteries (modèle supposé) ───────
+    def test_pvg4_onduleur_fiche_sourced_values_only(self):
+        from apps.stock.models import FicheTechnique
+        seed(self.company)
+        p5m = Produit.objects.get(company=self.company, sku='OND-R-HUA-5M')
+        f5m = FicheTechnique.objects.get(produit=p5m)
+        self.assertEqual(f5m.type_fiche, 'onduleur')
+        self.assertEqual(f5m.ond_n_mppt, 2)
+        self.assertEqual(f5m.ond_mppt_v_min, Decimal('90.0'))
+        self.assertEqual(f5m.ond_mppt_v_max, Decimal('560.0'))
+        self.assertEqual(f5m.ond_v_max_abs, Decimal('600.0'))
+        self.assertEqual(f5m.ond_i_max_mppt_a, Decimal('12.5'))
+        self.assertEqual(f5m.ond_ac_kw, Decimal('5'))
+        self.assertEqual(f5m.ond_phases, 1)
+        self.assertEqual(f5m.ond_rendement_euro_pct, Decimal('97.8'))
+        self.assertIn('Modèle supposé : Huawei SUN2000-5KTL-L1', p5m.description)
+        self.assertIn('à confirmer fondateur', p5m.description)
+
+    def test_pvg4_interpolated_and_ambiguous_values_left_null(self):
+        from apps.stock.models import FicheTechnique
+        seed(self.company)
+        p15t = Produit.objects.get(company=self.company, sku='OND-R-HUA-15T')
+        f15t = FicheTechnique.objects.get(produit=p15t)
+        # Rendement ≈98.0 % « interpolé » — jamais saisi.
+        self.assertIsNone(f15t.ond_rendement_euro_pct)
+        # 30A(2 strings)/20A(1) : courant composé, pas une valeur propre.
+        self.assertIsNone(f15t.ond_i_max_mppt_a)
+        # Plage MPPT/Vmax, elles, sont sourcées explicitement.
+        self.assertEqual(f15t.ond_mppt_v_min, Decimal('200.0'))
+        self.assertEqual(f15t.ond_mppt_v_max, Decimal('1000.0'))
+
+        p50t = Produit.objects.get(company=self.company, sku='OND-R-HUA-50T')
+        f50t = FicheTechnique.objects.get(produit=p50t)
+        # Imax « non confirmé précisément » par la source → NULL.
+        self.assertIsNone(f50t.ond_i_max_mppt_a)
+        # ≈98.5 % (approx., pas « euro » explicite) → NULL.
+        self.assertIsNone(f50t.ond_rendement_euro_pct)
+        self.assertEqual(f50t.ond_n_mppt, 6)
+
+    def test_pvg4_deye_10m_divergent_mppt_range_left_null(self):
+        from apps.stock.models import FicheTechnique
+        seed(self.company)
+        p = Produit.objects.get(company=self.company, sku='OND-H-DEY-10M')
+        f = FicheTechnique.objects.get(produit=p)
+        self.assertEqual(f.type_fiche, 'onduleur')
+        # DIVERGENCE selon la source → jamais tranchée par le seeder.
+        self.assertIsNone(f.ond_mppt_v_min)
+        self.assertIsNone(f.ond_mppt_v_max)
+        self.assertIsNone(f.ond_n_mppt)
+        self.assertIn('Modèle supposé : Deye SUN-10K-SG02LP1-EU-AM3', p.description)
+
+    def test_pvg4_huawei_mono_10_12kw_have_no_fiche_technique(self):
+        """OND-R-HUA-10M/12M : artefacts catalogue, aucun modèle Huawei mono
+        réseau réel à ces puissances — donc AUCUNE fiche technique créée."""
+        from apps.stock.models import FicheTechnique
+        seed(self.company)
+        for sku in ('OND-R-HUA-10M', 'OND-R-HUA-12M'):
+            p = Produit.objects.get(company=self.company, sku=sku)
+            self.assertFalse(FicheTechnique.objects.filter(produit=p).exists(), sku)
+            # Pas de mention de modèle supposé non plus (rien à confirmer).
+            self.assertNotIn('Modèle supposé', p.description)
+
+    def test_pvg4_batteries_seeded_with_sourced_values(self):
+        from apps.stock.models import FicheTechnique
+        seed(self.company)
+        b5 = Produit.objects.get(company=self.company, sku='BAT-DEY-5')
+        f5 = FicheTechnique.objects.get(produit=b5)
+        self.assertEqual(f5.type_fiche, 'batterie')
+        self.assertEqual(f5.bat_kwh_nominal, Decimal('5.12'))
+        self.assertEqual(f5.bat_kwh_usable, Decimal('4.60'))
+        self.assertEqual(f5.bat_dod_pct, Decimal('90.0'))
+        self.assertEqual(f5.bat_v_nominal, Decimal('51.2'))
+        self.assertEqual(f5.bat_max_charge_kw, Decimal('3.84'))
+        self.assertIn('Modèle supposé : Dyness DL5.0C', b5.description)
+
+        b10 = Produit.objects.get(company=self.company, sku='BAT-DEY-10')
+        f10 = FicheTechnique.objects.get(produit=b10)
+        self.assertEqual(f10.bat_kwh_nominal, Decimal('10.24'))
+        self.assertEqual(f10.bat_kwh_usable, Decimal('9.22'))
+        self.assertEqual(f10.bat_max_charge_kw, Decimal('5.12'))
+
+    def test_pvg4_idempotent_second_run_never_overwrites(self):
+        from apps.stock.models import FicheTechnique
+        seed(self.company)
+        p = Produit.objects.get(company=self.company, sku='OND-H-DEY-10T')
+        fiche = FicheTechnique.objects.get(produit=p)
+        seed(self.company)
+        self.assertEqual(FicheTechnique.objects.filter(produit=p).count(), 1)
+        fiche.refresh_from_db()
+        self.assertEqual(fiche.ond_ac_kw, Decimal('10'))
+        p.refresh_from_db()
+        self.assertEqual(
+            p.description.count('Modèle supposé'), 1,
+            "la mention ne doit jamais être dupliquée sur un second run")
+
+        # Une fiche onduleur pré-existante (saisie manuellement) n'est
+        # jamais écrasée, comme pour les modules PV9.
+        p20t = Produit.objects.get(company=self.company, sku='OND-H-DEY-20T')
+        FicheTechnique.objects.filter(produit=p20t).delete()
+        manuelle = FicheTechnique.objects.create(
+            company=self.company, produit=p20t, type_fiche='onduleur',
+            ond_ac_kw=Decimal('99'))
+        seed(self.company)
+        manuelle.refresh_from_db()
+        self.assertEqual(manuelle.ond_ac_kw, Decimal('99'))
+
     def test_veichi_seeded_with_real_buy_and_sell_prices(self):
         seed(self.company)
         qs = Produit.objects.filter(company=self.company)

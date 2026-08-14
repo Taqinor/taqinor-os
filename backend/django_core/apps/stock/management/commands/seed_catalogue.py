@@ -470,6 +470,52 @@ FICHES = {
 }
 
 
+# ── PVG4 — Modèle constructeur SUPPOSÉ par palier catalogue (recherche
+# 2026-08-14, sourcée — approuvé fondateur) ─────────────────────────────────
+# Le catalogue ne référence aucun modèle réel : chaque entrée ci-dessous
+# reconstitue le modèle constructeur le PLUS PROBABLE pour ce palier de
+# puissance/gamme. Utilisé UNIQUEMENT pour agrémenter la description
+# commerciale (« Modèle supposé : … — à confirmer fondateur ») — jamais pour
+# fabriquer une caractéristique électrique non sourcée (cf. dictionnaires
+# ONDULEUR_/BATTERIE_FICHES_TECHNIQUES plus bas, où chaque champ porte sa
+# propre source ou reste NULL).
+#
+# ⚠ INCOMPATIBILITÉ MÉTIER remontée au fondateur : les Deye triphasés 15/20
+# kW réels appartiennent à la gamme HAUTE TENSION (batterie HV 160-700 V,
+# SG01HP3) ; la gamme basse tension 51,2 V (SG04LP3, compatible BAT-DEY-5/10)
+# s'arrête à 12 kW — l'appairage catalogue OND-H-DEY-15T/20T + BAT-DEY-5/10
+# est ÉLECTRIQUEMENT IMPOSSIBLE dans la gamme réelle. Les paliers Huawei mono
+# réseau 10/12 kW sont eux des ARTEFACTS catalogue : aucun SUN2000 mono
+# réseau réel ne dépasse 6 kW (au-delà la gamme Huawei mono passe en
+# hybride, autre catégorie) — d'où OND-R-HUA-10M / OND-R-HUA-12M SANS fiche
+# technique (absents des dictionnaires ci-dessous, aucune valeur inventée).
+MODELE_SUPPOSE_PVG4 = {
+    'OND-R-HUA-5M': 'Huawei SUN2000-5KTL-L1',            # solar.huawei.com sun2000-3-4-5-6ktl-l1/specs
+    'OND-R-HUA-10T': 'Huawei SUN2000-10KTL-M1',          # solar.huawei.com m1/specs
+    'OND-R-HUA-15T': 'Huawei SUN2000-15KTL-M5',          # enfsolar 16424 + huawei EDOC1100253093
+    'OND-R-HUA-20T': 'Huawei SUN2000-20KTL-M5',          # globalsunhub
+    'OND-R-HUA-25T': 'Huawei SUN2000-25KTL-M5',          # enfsolar
+    'OND-R-HUA-50T': 'Huawei SUN2000-50KTL-M0',          # huawei EDOC1100016052
+    'OND-R-HUA-100T': 'Huawei SUN2000-100KTL-M2',        # globalsunhub
+    'OND-R-HUA-150T': 'Huawei SUN2000-150K-MG0',         # solar.huawei.com mg0/specs
+    'OND-H-DEY-5M': 'Deye SUN-5K-SG04LP1-EU(-SM2)',      # liriksolar datasheet
+    'OND-H-DEY-10M': 'Deye SUN-10K-SG02LP1-EU-AM3',      # nastechsolar datasheet — divergence plage MPPT
+    'OND-H-DEY-10T': 'Deye SUN-10K-SG04LP3-EU',          # liriksolar datasheet
+    'OND-H-DEY-15T': 'Deye SUN-15K-SG01HP3-EU-AM2',      # deyeinverter datasheet sun-(5-25)k-sg01hp3
+    'OND-H-DEY-20T': 'Deye SUN-20K-SG01HP3-EU-AM2',      # solarhouse.bg + pretapower
+    'BAT-DEY-5': 'Dyness DL5.0C',                        # dyness.com DL5.0C datasheet
+    'BAT-DEY-10': 'Dyness Powerbox Pro/G2 10.24',        # inverter-warehouse.co.za
+}
+# Ajoute la mention du modèle supposé à la description commerciale existante
+# (SKU déjà présent dans FICHES ci-dessus) — additif, déterministe donc
+# idempotent (le même texte complet est reposé à chaque run).
+for _sku_pvg4, _modele_pvg4 in MODELE_SUPPOSE_PVG4.items():
+    if _sku_pvg4 in FICHES and 'description' in FICHES[_sku_pvg4]:
+        _addendum = f'\nModèle supposé : {_modele_pvg4} — à confirmer fondateur'
+        if not FICHES[_sku_pvg4]['description'].endswith(_addendum):
+            FICHES[_sku_pvg4]['description'] += _addendum
+
+
 # ── PV9 — Fiches techniques (FicheTechnique, PV5) : SEULES les valeurs
 # SOURCÉES ci-dessous sont saisies. Aucune fiche EXISTANTE n'est jamais
 # modifiée (skip-if-exists) ; tout le reste NULL sur la fiche créée
@@ -490,6 +536,131 @@ FICHES_TECHNIQUES = {
         # non vérifiées, à confirmer fondateur (PVG4).
         'temp_coeff_pmax_pct_c': Decimal('-0.290'),
         'temp_coeff_voc_pct_c': Decimal('-0.250'),
+    },
+    # ── PVG4 — Onduleurs réseau Huawei (valeurs SOURCÉES uniquement ; tout
+    # champ interpolé/« non confirmé »/divergent selon la source reste NULL
+    # — voir docs/PLAN2.md PVG4 pour le détail par palier). ──
+    'OND-R-HUA-5M': {
+        'type_fiche': 'onduleur', 'ond_n_mppt': 2,
+        'ond_mppt_v_min': Decimal('90.0'), 'ond_mppt_v_max': Decimal('560.0'),
+        'ond_v_max_abs': Decimal('600.0'), 'ond_i_max_mppt_a': Decimal('12.5'),
+        'ond_ac_kw': Decimal('5'), 'ond_phases': 1,
+        'ond_rendement_euro_pct': Decimal('97.8'),
+    },
+    'OND-R-HUA-10T': {
+        'type_fiche': 'onduleur', 'ond_n_mppt': 2,
+        'ond_mppt_v_min': Decimal('140.0'), 'ond_mppt_v_max': Decimal('980.0'),
+        'ond_v_max_abs': Decimal('1100.0'), 'ond_i_max_mppt_a': Decimal('13.5'),
+        'ond_ac_kw': Decimal('10'), 'ond_phases': 3,
+        'ond_rendement_euro_pct': Decimal('98.1'),
+    },
+    'OND-R-HUA-15T': {
+        # 30A(2 strings)/20A(1) : valeur composée (pas un seul courant/MPPT
+        # propre) → ond_i_max_mppt_a NULL. Rendement ≈98.0 % interpolé → NULL.
+        'type_fiche': 'onduleur', 'ond_n_mppt': 2,
+        'ond_mppt_v_min': Decimal('200.0'), 'ond_mppt_v_max': Decimal('1000.0'),
+        'ond_v_max_abs': Decimal('1100.0'),
+        'ond_ac_kw': Decimal('15'), 'ond_phases': 3,
+    },
+    'OND-R-HUA-20T': {
+        # 30A/20A composé → NULL. Nombre de MPPT non donné par la source
+        # pour ce palier précis → NULL (pas d'extrapolation depuis 15T/25T).
+        'type_fiche': 'onduleur',
+        'ond_mppt_v_min': Decimal('200.0'), 'ond_mppt_v_max': Decimal('1000.0'),
+        'ond_v_max_abs': Decimal('1100.0'),
+        'ond_ac_kw': Decimal('20'), 'ond_phases': 3,
+        'ond_rendement_euro_pct': Decimal('98.1'),
+    },
+    'OND-R-HUA-25T': {
+        'type_fiche': 'onduleur',
+        'ond_mppt_v_min': Decimal('200.0'), 'ond_mppt_v_max': Decimal('1000.0'),
+        'ond_v_max_abs': Decimal('1100.0'),
+        'ond_ac_kw': Decimal('25'), 'ond_phases': 3,
+        'ond_rendement_euro_pct': Decimal('98.2'),
+    },
+    'OND-R-HUA-50T': {
+        # Imax « non confirmé précisément » par la source → NULL. Rendement
+        # ≈98.5 % (approx., pas un rendement « euro » explicite) → NULL.
+        'type_fiche': 'onduleur', 'ond_n_mppt': 6,
+        'ond_mppt_v_min': Decimal('200.0'), 'ond_mppt_v_max': Decimal('1000.0'),
+        'ond_v_max_abs': Decimal('1100.0'),
+        'ond_ac_kw': Decimal('50'), 'ond_phases': 3,
+    },
+    'OND-R-HUA-100T': {
+        'type_fiche': 'onduleur', 'ond_n_mppt': 10,
+        'ond_mppt_v_min': Decimal('200.0'), 'ond_mppt_v_max': Decimal('1000.0'),
+        'ond_v_max_abs': Decimal('1100.0'), 'ond_i_max_mppt_a': Decimal('30.0'),
+        'ond_ac_kw': Decimal('100'), 'ond_phases': 3,
+        'ond_rendement_euro_pct': Decimal('98.4'),
+    },
+    'OND-R-HUA-150T': {
+        'type_fiche': 'onduleur', 'ond_n_mppt': 7,
+        'ond_mppt_v_min': Decimal('200.0'), 'ond_mppt_v_max': Decimal('1000.0'),
+        'ond_v_max_abs': Decimal('1100.0'), 'ond_i_max_mppt_a': Decimal('48.0'),
+        'ond_ac_kw': Decimal('150'), 'ond_phases': 3,
+        'ond_rendement_euro_pct': Decimal('98.4'),
+    },
+    # OND-R-HUA-10M / OND-R-HUA-12M : PAS de fiche — aucun Huawei mono
+    # réseau réel à cette puissance (artefact catalogue, cf. commentaire
+    # MODELE_SUPPOSE_PVG4 ci-dessus).
+    # ── PVG4 — Onduleurs hybrides Deye ──
+    'OND-H-DEY-5M': {
+        'type_fiche': 'onduleur', 'ond_n_mppt': 2,
+        'ond_mppt_v_min': Decimal('150.0'), 'ond_mppt_v_max': Decimal('425.0'),
+        'ond_v_max_abs': Decimal('600.0'),
+        'ond_ac_kw': Decimal('5'), 'ond_phases': 1,
+        # 97.6 % max / 96.5 % euro — champ = rendement EURO uniquement.
+        'ond_rendement_euro_pct': Decimal('96.5'),
+    },
+    'OND-H-DEY-10M': {
+        # DIVERGENCE plage MPPT selon la source (125-520 / 150-425 / 125-550
+        # selon nastechsolar vs autres) → ond_mppt_v_min/max NULL (fondateur
+        # à trancher). Nombre de MPPT lui-même divergent (3 vs 2×2) → NULL.
+        'type_fiche': 'onduleur',
+        'ond_ac_kw': Decimal('10'), 'ond_phases': 1,
+    },
+    'OND-H-DEY-10T': {
+        'type_fiche': 'onduleur', 'ond_n_mppt': 2,
+        'ond_mppt_v_min': Decimal('150.0'), 'ond_mppt_v_max': Decimal('550.0'),
+        'ond_v_max_abs': Decimal('600.0'), 'ond_i_max_mppt_a': Decimal('16.0'),
+        'ond_ac_kw': Decimal('10'), 'ond_phases': 3,
+    },
+    'OND-H-DEY-15T': {
+        # Confiance moyenne : plage FAMILLE SG01HP3 (5-25K) documentée, pas
+        # spécifique au 15T — seedée quand même (règle PVG4), l'incertitude
+        # est portée par la mention « modèle supposé » sur la description.
+        'type_fiche': 'onduleur',
+        'ond_mppt_v_min': Decimal('150.0'), 'ond_mppt_v_max': Decimal('850.0'),
+        'ond_v_max_abs': Decimal('1000.0'),
+        'ond_ac_kw': Decimal('15'), 'ond_phases': 3,
+        # 97.6/97.0 — même ordre max/euro que le 5M → euro = 97.0.
+        'ond_rendement_euro_pct': Decimal('97.0'),
+    },
+    'OND-H-DEY-20T': {
+        # La source donne « charge max 50A » : c'est le courant de charge
+        # BATTERIE, pas un courant d'entrée MPPT PV → ond_i_max_mppt_a
+        # reste NULL (mauvais champ sinon).
+        'type_fiche': 'onduleur',
+        'ond_mppt_v_min': Decimal('150.0'), 'ond_mppt_v_max': Decimal('850.0'),
+        'ond_v_max_abs': Decimal('1000.0'),
+        'ond_ac_kw': Decimal('20'), 'ond_phases': 3,
+    },
+    # ── PVG4 — Batteries Dyness ──
+    'BAT-DEY-5': {
+        'type_fiche': 'batterie',
+        'bat_kwh_nominal': Decimal('5.12'), 'bat_kwh_usable': Decimal('4.60'),
+        'bat_dod_pct': Decimal('90.0'), 'bat_v_nominal': Decimal('51.2'),
+        # 75 A continu × 51,2 V ≈ 3,84 kW (valeur constructeur, dyness.com).
+        'bat_max_charge_kw': Decimal('3.84'),
+    },
+    'BAT-DEY-10': {
+        'type_fiche': 'batterie',
+        'bat_kwh_nominal': Decimal('10.24'),
+        # Source : 9.216 kWh usable, arrondi aux 2 décimales du champ.
+        'bat_kwh_usable': Decimal('9.22'),
+        'bat_dod_pct': Decimal('90.0'), 'bat_v_nominal': Decimal('51.2'),
+        # 100 A × 51,2 V = 5,12 kW (valeur constructeur).
+        'bat_max_charge_kw': Decimal('5.12'),
     },
 }
 
