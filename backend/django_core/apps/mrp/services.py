@@ -598,7 +598,11 @@ def figer_cout_standard(company, produit, gamme, *, cout_indirect_pct=0,
                         date_effective=None, user=None):
     """NTMFG11 — calcule et FIGE une nouvelle version de coût standard pour
     `produit` (roll-up nomenclature + gamme). Ne modifie JAMAIS une version
-    existante — la version suivante est `max(version existante) + 1`."""
+    existante — la version suivante est `max(version existante) + 1`.
+
+    NTMFG39 — action SENSIBLE auditée (`apps.audit.recorder`, action
+    fine, jamais un import du modèle `audit`) : figer une nouvelle version
+    remplace de facto le coût standard courant utilisé par NTMFG11/24."""
     from .models import CoutStandard
 
     date_effective = date_effective or timezone.localdate()
@@ -606,12 +610,29 @@ def figer_cout_standard(company, produit, gamme, *, cout_indirect_pct=0,
         CoutStandard.objects.filter(company=company, produit=produit)
         .order_by('-version').first())
     version = (derniere.version + 1) if derniere else 1
-    return CoutStandard.objects.create(
+    nouveau = CoutStandard.objects.create(
         company=company, produit=produit, version=version,
         cout_matiere=calculer_cout_matiere_standard(gamme),
         cout_main_oeuvre=calculer_cout_main_oeuvre_standard(gamme),
         cout_indirect_pct=_dec(cout_indirect_pct),
         date_effective=date_effective)
+
+    try:
+        from apps.audit import recorder as audit_recorder
+        from apps.audit.models import AuditLog
+
+        ancien = (
+            f'v{derniere.version} (matière {derniere.cout_matiere}, '
+            f'MO {derniere.cout_main_oeuvre})') if derniere else 'aucun'
+        audit_recorder.record(
+            AuditLog.Action.CREATE, instance=nouveau, company=company,
+            user=user,
+            detail=(f'Coût standard figé — produit {produit.id} : '
+                    f'{ancien} -> v{nouveau.version} (matière '
+                    f'{nouveau.cout_matiere}, MO {nouveau.cout_main_oeuvre}).'))
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant.
+        pass
+    return nouveau
 
 
 # ── NTMFG14 — Maintenance préventive des postes de charge ────────────────
@@ -807,12 +828,16 @@ def appliquer_eco(eco):
 def approuver_eco(eco, user=None):
     """NTMFG15 — passe l'ECO en `approuve`. Si `date_effectivite` est déjà
     atteinte (ou absente = immédiat), applique aussitôt (`appliquer_eco`) ;
-    sinon reste en attente du sweep périodique (`sweep_ecos_effectivite`)."""
+    sinon reste en attente du sweep périodique (`sweep_ecos_effectivite`).
+
+    NTMFG39 — action SENSIBLE auditée (`apps.audit.recorder`) : un ECO
+    approuvé modifie une gamme/nomenclature ACTIVE (`appliquer_eco`)."""
     from .models import OrdreModification
 
     if eco.statut not in (
             OrdreModification.Statut.BROUILLON, OrdreModification.Statut.EN_REVUE):
         raise ValueError('Seul un ECO brouillon/en revue peut être approuvé.')
+    ancien_statut = eco.statut
     with transaction.atomic():
         eco.statut = OrdreModification.Statut.APPROUVE
         eco.approbateur = user if getattr(user, 'is_authenticated', False) else None
@@ -821,6 +846,19 @@ def approuver_eco(eco, user=None):
         if eco.date_effectivite is None or eco.date_effectivite <= today:
             appliquer_eco(eco)
     eco.refresh_from_db()
+
+    try:
+        from apps.audit import recorder as audit_recorder
+        from apps.audit.models import AuditLog
+
+        audit_recorder.record(
+            AuditLog.Action.STATUS, instance=eco, company=eco.company,
+            user=user,
+            detail=(f'ECO-{eco.id} approuvé (produit {eco.produit_id}) : '
+                    f'{ancien_statut} -> {eco.statut}.'),
+            changes=[{'field': 'statut', 'old': ancien_statut, 'new': eco.statut}])
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant.
+        pass
     return eco
 
 
