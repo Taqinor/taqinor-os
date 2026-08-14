@@ -434,6 +434,132 @@ export function deserializeLayout(json: SerializedLayout): AreaRecord[] {
   }));
 }
 
+// ═══════════ PV19 — HYDRATATION DEPUIS UN DEVIS ═══════════
+// Un devis EXISTANT porte déjà un design (le layout sérialisé) et une CIBLE commerciale
+// (le nombre de panneaux vendus). Repartir de la facture serait un contresens : le devis
+// fait foi. `hydrateFromDevis` est le jumeau PUR de `hydrateFromLead` — aucun effet de
+// bord, aucun fetch — et le boot lead reste INCHANGÉ quand `hydrate.devis` est absent.
+
+/** Payload devis minimal consommé par l'hydratation (tout est optionnel). */
+export interface DevisPayload {
+  id?: string | number | null;
+  /** Géométrie du devis : le layout sérialisé s'il existe, sinon un repère lead-like. */
+  geometrie?: {
+    roof_layout?: SerializedLayout | null;
+    roof_point?: { lat: number; lng: number } | null;
+    roof_outline?: Array<[number, number]> | null;
+  } | null;
+  /** Cible commerciale : ce qui a été VENDU (panneaux, puissance unitaire, scénario). */
+  cible?: {
+    panneaux?: number | null;
+    panel_watt?: number | null;
+    scenario?: LayoutScenario | null;
+  } | null;
+  fullName?: string;
+  phone?: string;
+  city?: string;
+  [k: string]: unknown;
+}
+
+/** Ce que l'hydratation devis rend au boot (rien n'est appliqué ici). */
+export interface DevisHydration {
+  /** Contour lng/lat de la zone ACTIVE (vide si seul un pin est disponible). */
+  vertices: LngLat[];
+  /** Centre de vol lng/lat, ou null. */
+  center: LngLat | null;
+  contact: { name?: string; phone?: string; city?: string };
+  /** Zones reconstruites depuis `roof_layout`, ou null si le devis n'en porte pas. */
+  zones: AreaRecord[] | null;
+  /** Id de zone active du layout, ou null. */
+  activeAreaId: string | null;
+  /** Nombre de panneaux VENDU : impose la cible de l'optimiseur (null si absent). */
+  neededPanels: number | null;
+  /** false dès qu'une cible est imposée : le devis pilote, pas la facture. */
+  neededAuto: boolean;
+  /** Puissance unitaire vendue (W), ou null. */
+  panelWatt: number | null;
+  scenario: LayoutScenario | null;
+  devisId: string | number | null;
+}
+
+/** Entier positif, ou null (une cible de 0/−3/NaN panneaux n'impose rien). */
+function positiveInt(v: unknown): number | null {
+  const n = typeof v === 'number' ? v : Number(v);
+  if (!Number.isFinite(n) || n <= 0) return null;
+  return Math.round(n);
+}
+
+/**
+ * PV19 — Reconstruit l'état de départ du builder à partir d'un DEVIS. Deux chemins :
+ *  1. `geometrie.roof_layout` présent → les zones sont reconstruites par
+ *     `deserializeLayout` (le design du devis, à l'identique) ;
+ *  2. sinon → repli exactement lead-like (pin / contour), pour qu'un devis sans design
+ *     ouvre quand même la bonne toiture.
+ * Dans les DEUX cas, la CIBLE du devis (`cible.panneaux`) devient le besoin IMPOSÉ
+ * (`neededAuto = false`) : c'est le nombre vendu qui pilote l'optimiseur, jamais la
+ * facture. PURE : aucun effet de bord, l'appelant applique le résultat.
+ */
+export function hydrateFromDevis(devis: DevisPayload | null | undefined): DevisHydration {
+  const empty: DevisHydration = {
+    vertices: [],
+    center: null,
+    contact: {},
+    zones: null,
+    activeAreaId: null,
+    neededPanels: null,
+    neededAuto: true,
+    panelWatt: null,
+    scenario: null,
+    devisId: null,
+  };
+  if (!devis) return empty;
+
+  const geo = devis.geometrie ?? null;
+  const layout = geo?.roof_layout ?? null;
+  let zones: AreaRecord[] | null = null;
+  let activeAreaId: string | null = null;
+  let vertices: LngLat[] = [];
+  let center: LngLat | null = null;
+
+  if (layout && Array.isArray(layout.zones) && layout.zones.length) {
+    zones = deserializeLayout(layout);
+    const wanted = typeof layout.activeAreaId === 'string' ? layout.activeAreaId : null;
+    const active = zones.find((z) => z.id === wanted) ?? zones[0];
+    activeAreaId = active?.id ?? null;
+    vertices = active ? active.vertices.map(([lng, lat]) => [lng, lat] as LngLat) : [];
+    const pin = layout.pin;
+    if (pin && Number.isFinite(pin.lat) && Number.isFinite(pin.lng)) center = [pin.lng, pin.lat];
+  }
+  if (!vertices.length || !center) {
+    // Repli lead-like : le devis n'a pas (encore) de design, ou pas de pin.
+    const seed = hydrateFromLead({ roof_point: geo?.roof_point ?? null, roof_outline: geo?.roof_outline ?? null });
+    if (!vertices.length) vertices = seed.vertices;
+    if (!center) center = seed.center ?? (vertices.length ? centroidOf(vertices) && ([centroidOf(vertices)!.lng, centroidOf(vertices)!.lat] as LngLat) : null);
+  }
+
+  const contact: { name?: string; phone?: string; city?: string } = {};
+  if (typeof devis.fullName === 'string' && devis.fullName.trim()) contact.name = devis.fullName.trim();
+  if (typeof devis.phone === 'string' && devis.phone.trim()) contact.phone = devis.phone.trim();
+  if (typeof devis.city === 'string' && devis.city.trim()) contact.city = devis.city.trim();
+
+  const neededPanels = positiveInt(devis.cible?.panneaux);
+  const panelWatt = positiveInt(devis.cible?.panel_watt);
+  const scenario = devis.cible?.scenario ?? null;
+  return {
+    vertices,
+    center,
+    contact,
+    zones,
+    activeAreaId,
+    neededPanels,
+    // Une cible vendue IMPOSE le besoin ; sans cible, on laisse la facture décider.
+    neededAuto: neededPanels == null,
+    panelWatt,
+    scenario,
+    devisId: devis.id ?? null,
+  };
+}
+
 /**
  * W113 — Sème le contour/pin de la zone active depuis un payload lead. Renvoie le
  * contour lng/lat à appliquer (vide si seul un pin est disponible) + le centre de

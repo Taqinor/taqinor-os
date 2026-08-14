@@ -5,7 +5,7 @@
 import { type RoofTypeSelect } from '../../lib/roofTypeSelect';
 import { type PackResult, type PanelGrid, type ConfigFamily, OBSTACLE_CLEARANCE_M } from '../../lib/estimatorBrainV2';
 import { type Obstacle, type ObstacleType } from '../../lib/obstacles';
-import { type SerializeMeta } from './prefill';
+import { type SerializeMeta, type DevisPayload } from './prefill';
 import { type AreaResult } from '../../lib/roofAreas';
 import { type LngLat } from '../../lib/roof';
 import { type ProductionSource, type SpecificDateProfile } from '../../lib/productionEngine';
@@ -36,7 +36,10 @@ export interface InitOptions {
   // W113 — HYDRATATION optionnelle depuis un lead (le fetch est fait par la page,
   // pas par l'outil). Sème le pin/tracé de la carte + les champs contact à partir
   // d'un payload lead. Le boot complet reste inchangé quand `hydrate` est absent.
-  hydrate?: { lead?: LeadPayload };
+  // PV19 — `devis` (optionnel) hydrate depuis un DEVIS existant : son design (layout
+  // sérialisé) et sa CIBLE vendue, qui impose le nombre de panneaux. Le boot lead reste
+  // strictement inchangé quand `devis` est absent.
+  hydrate?: { lead?: LeadPayload; devis?: DevisPayload };
   // W114/W115 — l'outil expose une petite API à la page (sérialiser le layout
   // finalisé, capturer le PNG 3D) une fois le boot complet terminé. Invoqué
   // seulement en boot complet (jamais en capture). Absent → comportement inchangé.

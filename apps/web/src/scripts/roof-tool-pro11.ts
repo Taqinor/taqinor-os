@@ -133,7 +133,7 @@ import { createMapDraw } from './roofPro11/mapDraw';
 import { createScene3d } from './roofPro11/scene3d';
 import { createOptimizer } from './roofPro11/optimizer';
 import { bootCaptureOnly, type CaptureOptions } from './roofPro11/captureBoot';
-import { hydrateFromLead, serializeLayout } from './roofPro11/prefill';
+import { hydrateFromLead, hydrateFromDevis, serializeLayout } from './roofPro11/prefill';
 
 let booted = false;
 
@@ -526,6 +526,9 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
       renderPlan: null,
     };
   };
+  // PV19 — origine DEVIS mémorisée à l'hydratation (jamais devinée) : elle alimente le
+  // meta de sérialisation par défaut. Null tant qu'aucun devis n'a hydraté le builder.
+  let devisOrigin: { devisId: string | number | null; panelWatt: number | null; scenario: import('./roofPro11/prefill').LayoutScenario | null } | null = null;
   const areas: AreaRecord[] = [newAreaRecord()];
   let activeAreaId = areas[0].id;
   const activeArea = (): AreaRecord | undefined => areas.find((a) => a.id === activeAreaId);
@@ -1269,7 +1272,13 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
     // W113 — HYDRATATION depuis un lead (étude Meriem) : sème le contour/pin du client
     // + les champs contact AVANT le géocodage, puis ferme le tracé et lance le calcul.
     // Quand `hydrate` est absent, ce bloc est sauté → boot inchangé.
-    const seeded = opts.hydrate?.lead ? applyHydration(opts.hydrate.lead) : false;
+    // PV19 — un DEVIS l'emporte sur un lead (il porte déjà le design vendu). Sans
+    // `hydrate.devis`, cette ligne est un no-op et le boot lead est inchangé.
+    const seeded = opts.hydrate?.devis
+      ? applyDevisHydration(opts.hydrate.devis)
+      : opts.hydrate?.lead
+        ? applyHydration(opts.hydrate.lead)
+        : false;
     // W93 — `initialQuery` est programmatique : on auto-sélectionne le 1ᵉʳ résultat (vol
     // direct), au lieu d'ouvrir la liste de suggestions. On ne géocode pas si on a déjà
     // hydraté un contour/pin (le vol vers le lead l'emporte).
@@ -1328,6 +1337,86 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
         .setLngLat(h.center)
         .addTo(map);
       setStatus('Repère du client chargé — tracez le contour du toit pour lancer le calcul.');
+      return true;
+    }
+    return false;
+  }
+
+  /**
+   * PV19 — applique l'hydratation d'un DEVIS. Deux chemins, comme la fonction pure :
+   *  1. le devis porte un design (`geometrie.roof_layout`) → on REMPLACE les zones par
+   *     celles du devis et on charge la zone active ;
+   *  2. sinon → repli lead-like (contour, ou pin + marqueur).
+   * Dans les deux cas la CIBLE vendue impose le besoin (`neededAuto = false`) : c'est le
+   * nombre de panneaux du devis qui pilote l'optimiseur, pas la facture. La puissance
+   * unitaire et le scénario vendus sont mémorisés pour l'export (jamais devinés).
+   */
+  function applyDevisHydration(devis: import('./roofPro11/prefill').DevisPayload): boolean {
+    const h = hydrateFromDevis(devis);
+    const setIf = (id: string, v?: string) => {
+      const el = $<HTMLInputElement>(id);
+      if (el && v && !el.value.trim()) el.value = v;
+    };
+    setIf('lf-name', h.contact.name);
+    setIf('lf-phone', h.contact.phone);
+    setIf('lf-city', h.contact.city);
+    // Origine du design : reprise telle quelle dans l'export (meta de sérialisation).
+    devisOrigin = { devisId: h.devisId, panelWatt: h.panelWatt, scenario: h.scenario };
+
+    /** Impose la cible VENDUE sur l'état vivant + la zone active (avant le calcul). */
+    const imposeTarget = () => {
+      if (h.neededPanels == null) return;
+      neededPanels = clampNeeded(h.neededPanels);
+      neededAuto = false;
+      const a = activeArea();
+      if (a) {
+        a.neededPanels = neededPanels;
+        a.neededAuto = false;
+      }
+    };
+
+    if (h.zones && h.zones.length) {
+      // Le devis porte un design : ses zones REMPLACENT les zones par défaut.
+      areas.length = 0;
+      for (const z of h.zones) areas.push(z);
+      activeAreaId = h.activeAreaId ?? areas[0].id;
+      const a = activeArea() ?? areas[0];
+      vertices = [...a.vertices];
+      obstacles = a.obstacles.map((o) => ({ ...o }));
+      roofType = a.roofType;
+      pitchDeg = a.pitchDeg;
+      facingAzimuthDeg = a.facingAzimuthDeg;
+      facingManual = a.facingManual ?? false;
+      neededPanels = a.neededPanels;
+      neededAuto = a.neededAuto;
+      imposeTarget();
+      redrawObstacles();
+      if (vertices.length >= 3) {
+        close(); // referme le tracé du devis → optimiseur + rendu
+        return true;
+      }
+    }
+    if (h.vertices.length >= 3) {
+      vertices = [...h.vertices];
+      const a = activeArea();
+      if (a) a.vertices = [...vertices];
+      imposeTarget();
+      close();
+      return true;
+    }
+    if (h.center) {
+      imposeTarget();
+      const target = { center: h.center, zoom: 19, pitch: 0 } as const;
+      const landOnPin = () => {
+        map.resize();
+        map.jumpTo(target);
+      };
+      landOnPin();
+      if (!opts.reducedMotion) map.easeTo({ ...target, duration: 600, essential: true });
+      map.once('idle', landOnPin);
+      removeClientPinMarker();
+      clientPinMarker = new maplibregl.Marker({ color: '#e8b54a' }).setLngLat(h.center).addTo(map);
+      setStatus('Devis chargé — tracez le contour du toit pour lancer le calcul.');
       return true;
     }
     return false;
@@ -2502,7 +2591,21 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
   // (jamais en capture). Absent → aucun effet.
   opts.onApiReady?.({
     serializeLayout: (billKwh?: number | null, meta?: import('./roofPro11/prefill').SerializeMeta) =>
-      serializeLayout(ctx, billKwh ?? (closed && vertices.length >= 3 ? billToAnnualKwh(monthlyBill()) : null), meta),
+      serializeLayout(
+        ctx,
+        billKwh ?? (closed && vertices.length >= 3 ? billToAnnualKwh(monthlyBill()) : null),
+        // PV19 — l'origine devis (id / puissance panneau / scénario vendus) sert de socle ;
+        // ce que l'appelant fournit explicitement l'emporte toujours.
+        devisOrigin
+          ? {
+              source: 'devis',
+              devisId: devisOrigin.devisId,
+              ...(devisOrigin.panelWatt != null ? { panelWatt: devisOrigin.panelWatt } : {}),
+              ...(devisOrigin.scenario ? { scenario: devisOrigin.scenario } : {}),
+              ...(meta ?? {}),
+            }
+          : meta,
+      ),
     snapshot: () => scene3d.snapshot(),
   });
 }
