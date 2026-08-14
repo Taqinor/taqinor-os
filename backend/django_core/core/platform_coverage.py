@@ -163,6 +163,13 @@ BASELINE_DRIFT: set[tuple[str, str]] = {
     ('transport.ordretransport', 'chatter_sans_recherche'),
     ('transport.etapetransport', 'chatter_sans_recherche'),
     ('transport.reservereception', 'chatter_sans_recherche'),
+    # NTLOG49 (volet douane) — ``DossierExport`` reçoit le chatter générique
+    # (Follower/Comment/Tag/Activity, voir ``apps/douane/platform.py``) mais
+    # n'est pas encore cherchable (``apps/reporting/search.py`` HORS
+    # périmètre de la lane SUPPLY propriétaire de douane) — même dérive
+    # ASSUMÉE que les trois entrées ``transport.*`` ci-dessus, à retirer le
+    # jour où douane entrera dans ``apps/reporting/search.py``.
+    ('douane.dossierexport', 'chatter_sans_recherche'),
 }
 
 
