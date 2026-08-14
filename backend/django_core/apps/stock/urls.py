@@ -14,6 +14,7 @@ from .views import (
     LotEntrepotViewSet, InventaireAnnuelViewSet, RevalorisationStockViewSet,
     ConditionnementProduitViewSet, ModeleBonCommandeFournisseurViewSet,
     NomenclatureCodeBarresViewSet, RegleCodeBarresViewSet,
+    VaguePickingViewSet,
 )
 
 router = DefaultRouter()
@@ -50,6 +51,8 @@ router.register(r'modeles-bcf', ModeleBonCommandeFournisseurViewSet)
 router.register(
     r'nomenclatures-code-barres', NomenclatureCodeBarresViewSet)
 router.register(r'regles-code-barres', RegleCodeBarresViewSet)
+# -- Groupe NTWMS -- couche ENTREPOT --
+router.register(r'vagues-picking', VaguePickingViewSet)
 
 urlpatterns = [
     path('', include(router.urls)),

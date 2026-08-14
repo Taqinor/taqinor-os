@@ -36,6 +36,8 @@ from .modele_bcf import ModeleBonCommandeFournisseurViewSet
 from .nomenclature_code_barres import (
     NomenclatureCodeBarresViewSet, RegleCodeBarresViewSet,
 )
+# Groupe NTWMS - couche entrepot (vagues, unites logistiques, quais...).
+from .wms import VaguePickingViewSet
 
 __all__ = [
     'ProduitViewSet',
@@ -68,4 +70,5 @@ __all__ = [
     'ModeleBonCommandeFournisseurViewSet',
     'NomenclatureCodeBarresViewSet',
     'RegleCodeBarresViewSet',
+    'VaguePickingViewSet',
 ]

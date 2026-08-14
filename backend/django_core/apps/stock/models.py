@@ -1908,6 +1908,16 @@ class RegleCodeBarres(models.Model):
         return code.startswith(self.motif)
 
 
+# ── Groupe NTWMS — couche ENTREPÔT (vagues, unités logistiques, quais…) ────
+# Définis dans `models_wms.py` pour ne pas alourdir ce fichier (même pratique
+# que `installations/models_kitting.py`) ; ré-exportés ici pour que
+# `from apps.stock.models import VaguePicking` fonctionne partout.
+from .models_wms import (  # noqa: E402,F401
+    LignePicking,
+    VaguePicking,
+)
+
+
 # ── ODX19 — MODULE ACHATS (déplacé) ────────────────────────────────────────
 # PrixFournisseur, BonCommandeFournisseur, LigneBonCommandeFournisseur,
 # ReceptionFournisseur, LigneReceptionFournisseur, FactureFournisseur,

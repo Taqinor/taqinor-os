@@ -6359,5 +6359,8 @@ def decider_candidature_fournisseur(fournisseur, *, valider):
 # Definis dans `services_wms.py` ; re-exportes ici pour que les appelants
 # continuent d'ecrire `from apps.stock.services import ...`.
 from .services_wms import (  # noqa: E402,F401
+    creer_vague_depuis_besoins,
+    lancer_vague,
+    prelever_ligne_picking,
     suggestions_rangement_reception,
 )
