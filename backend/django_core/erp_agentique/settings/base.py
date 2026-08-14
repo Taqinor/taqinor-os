@@ -1117,6 +1117,8 @@ CELERY_TASK_ROUTES = {
     'cpq.relancer_approbations_en_attente': {'queue': 'scheduled'},
     # NTCPQ34 — purge des sessions configurateur abandonnées (beat, job planifié).
     'cpq.purger_sessions_configurateur_abandonnees': {'queue': 'scheduled'},
+    # NTMFG30 — recalcul MRP nocturne + notification des ruptures prévisionnelles.
+    'mrp.recalculer_besoins_nocturne': {'queue': 'scheduled'},
     # NTPLT27 — 4e queue `bulk` pour le travail de masse (imports dataimport,
     # exports planifiés volumineux, backfills, seed à l'échelle). Un import de
     # 100 000 lignes ne doit plus retarder un digest planifié ni un rendu PDF

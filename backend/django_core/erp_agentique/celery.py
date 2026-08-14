@@ -856,6 +856,13 @@ app.conf.beat_schedule = {
         'task': 'scm.ouvrir_cycle_sop_mensuel',
         'schedule': crontab(hour=5, minute=30, day_of_month=20),
     },
+    # NTMFG30 — recalcul MRP nocturne (NTMFG5) + notification des ruptures
+    # prévisionnelles sur l'horizon `ParametresMRP.horizon_mrp_jours`
+    # (NTMFG29) — apps/mrp/tasks.py. Best-effort par société.
+    'mrp-recalculer-besoins-nocturne': {
+        'task': 'mrp.recalculer_besoins_nocturne',
+        'schedule': crontab(hour=1, minute=30),
+    },
 }
 
 # YHARD6 — compteurs Celery succès/échec (process-local, best-effort) pour
