@@ -37,7 +37,7 @@ test('les ressources CRUD dont la route SERVEUR existe sont toutes déclarées',
   const body = aoApiBody()
   const resources = [
     'affaires', 'batiments', 'toitures', 'plansSources', 'releves',
-    'obstacles', 'chaines', 'variantes',
+    'obstacles', 'chaines', 'zones', 'variantes',
     'seriesQR', 'exigencesCps', 'dossiers', 'pieces',
     'bibliotheque', 'equipements',
   ]
@@ -74,17 +74,19 @@ test('PACT76 — plansSources.upload publie l’action MULTIPART réelle (PlanSo
   assert.match(body, /api\.post\(`\/ao\/plans-source\/\$\{id\}\/upload\/`,\s*fd\)/)
 })
 
-test('AOF89 — `zones` n’est PAS publiée : aucun modèle ni route ne persiste les zones', () => {
-  // Le moteur reçoit `'zones': []` en dur (`calepinage_io.document_entree`).
-  // Republier `crud('zones')` ferait croire à un stockage inexistant.
-  assert.doesNotMatch(sansCommentaires(src), /\bzones:\s*crud\(/)
-  assert.doesNotMatch(sansCommentaires(src), /'\/ao\/zones\//)
+test('PV54/PV56 — `zones` EST publiée : ZoneAO existe et sa route est `zones`', () => {
+  // Republié depuis que le modèle et la route serveur existent
+  // (`apps/ao/urls.py` : `router.register(r'zones', ZoneAOViewSet, …)`) —
+  // le moteur lit désormais les vraies zones (`calepinage_io.zones_vers_document`,
+  // PV55), plus une liste vide en dur.
+  const body = aoApiBody()
+  assert.match(body, /\bzones:\s*crud\('zones'\)/)
 })
 
 test('les actions non-CRUD nommées par AOF11 sont toutes déclarées', () => {
   const body = aoApiBody()
   const actions = [
-    'calculer:', 'suggestions:', 'sensibilites:', 'decomposition:',
+    'calculer:', 'sensibilites:', 'decomposition:',
     'alleeGratuite:', 'genererPiece:', 'statutJob:', 'zip:',
     'controlesAvantDepot:', 'bascule:',
   ]
@@ -102,6 +104,11 @@ test('AOF61/AOF62 — le calepinage expose les VRAIES routes (calcul SANS ÉTAT,
     assert.ok(body.includes(`/ao/calepinage/variantes/`), 'actions de variante absentes')
     assert.ok(body.includes(`${action}:`), `action de variante manquante : ${action}`)
   }
+})
+
+test('PV67 — genererVariantes() poste sur /ao/calepinage/variantes/<id>/generer-variantes/', () => {
+  const body = aoApiBody()
+  assert.match(body, /genererVariantes:\s*\(id\)\s*=>\s*api\.post\(`\/ao\/calepinage\/variantes\/\$\{id\}\/generer-variantes\/`\)/)
 })
 
 test('un endpoint NON CONSTRUIT échoue avec son MOTIF, sans émettre de requête', async () => {

@@ -3,6 +3,9 @@ import { render, screen, fireEvent, within, act } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { ThemeProvider } from '../../design/ThemeProvider.jsx'
 import { CatalogueTable } from './CatalogueTable.jsx'
+import {
+  completudeFiche, FICHE_ABSENTE, FICHE_PARTIELLE, FICHE_COMPLETE,
+} from './ficheCompletude'
 // APX19 — la sévérité et le barème de jauge vivent avec les règles de
 // catalogue (`features/stock/catalogue.js`), pas dans le composant.
 import { severiteStock, jaugeStock } from '../../features/stock/catalogue'
@@ -284,5 +287,86 @@ describe('APX19 — reassort en <= 2 clics', () => {
       onToggleSelect: null, onReapprovisionner: () => {},
     })
     expect(screen.queryByLabelText(/Réapprovisionner/)).toBeNull()
+  })
+})
+
+/* ============================================================================
+   PV8 — Badge « complétude datasheet » : complet / partiel / absent, calculé
+   depuis la FicheTechnique (PV5) d'un produit et son `type_fiche`. Champs
+   requis alignés sur ce que le dimensionnement consomme réellement.
+   ========================================================================== */
+
+const ficheModuleComplete = {
+  id: 1, produit: 1, type_fiche: 'module',
+  longueur_mm: 2278, largeur_mm: 1134, pmax_wc: '550.00',
+  voc_v: '49.50', vmp_v: '41.50', isc_a: '14.00', imp_a: '13.30',
+  temp_coeff_pmax_pct_c: '-0.300',
+}
+const ficheModulePartielle = {
+  id: 2, produit: 1, type_fiche: 'module',
+  longueur_mm: 2278, largeur_mm: 1134, pmax_wc: '550.00',
+  voc_v: null, vmp_v: '41.50', isc_a: '14.00', imp_a: '13.30',
+  temp_coeff_pmax_pct_c: null,
+}
+
+describe('PV8 — complétude de fiche technique (logique pure)', () => {
+  it('complète : tous les champs requis du type sont renseignés', () => {
+    expect(completudeFiche(ficheModuleComplete).statut).toBe(FICHE_COMPLETE)
+  })
+
+  it('partielle : certains champs requis manquent, et sont listés', () => {
+    const { statut, manquants } = completudeFiche(ficheModulePartielle)
+    expect(statut).toBe(FICHE_PARTIELLE)
+    expect(manquants).toEqual(
+      expect.arrayContaining(['Voc', 'coefficient de température Pmax']),
+    )
+  })
+
+  it('absente : aucune fiche pour le produit', () => {
+    expect(completudeFiche(null).statut).toBe(FICHE_ABSENTE)
+    expect(completudeFiche(undefined).statut).toBe(FICHE_ABSENTE)
+  })
+
+  it('absente : type de fiche non renseigné (fiche historique) — non évaluable', () => {
+    expect(completudeFiche({ type_fiche: '', pmax_wc: '550' }).statut).toBe(FICHE_ABSENTE)
+  })
+
+  it('onduleur : requiert n_mppt + fenêtre MPPT + puissance AC + phases', () => {
+    expect(completudeFiche({
+      type_fiche: 'onduleur', ond_n_mppt: 2, ond_mppt_v_min: '120.0',
+      ond_mppt_v_max: '500.0', ond_ac_kw: '5.00', ond_phases: 1,
+    }).statut).toBe(FICHE_COMPLETE)
+    expect(completudeFiche({ type_fiche: 'onduleur', ond_n_mppt: 2 }).statut)
+      .toBe(FICHE_PARTIELLE)
+  })
+
+  it('batterie : requiert capacité nominale + profondeur de décharge', () => {
+    expect(completudeFiche({
+      type_fiche: 'batterie', bat_kwh_nominal: '5.00', bat_dod_pct: '90.0',
+    }).statut).toBe(FICHE_COMPLETE)
+    expect(completudeFiche({ type_fiche: 'batterie' }).statut).toBe(FICHE_ABSENTE)
+  })
+})
+
+describe('PV8 — badge affiché dans la grille catalogue', () => {
+  it("affiche « Fiche absente » quand le produit n'a pas de fiche", () => {
+    renderTable({ produits: [baseProduit()], fichesParProduit: new Map() })
+    expect(screen.getAllByText('Fiche absente').length).toBeGreaterThan(0)
+  })
+
+  it('affiche « Fiche complète » quand tous les champs requis sont renseignés', () => {
+    renderTable({
+      produits: [baseProduit()],
+      fichesParProduit: new Map([[1, ficheModuleComplete]]),
+    })
+    expect(screen.getAllByText('Fiche complète').length).toBeGreaterThan(0)
+  })
+
+  it('affiche « Fiche partielle » quand des champs requis manquent', () => {
+    renderTable({
+      produits: [baseProduit()],
+      fichesParProduit: new Map([[1, ficheModulePartielle]]),
+    })
+    expect(screen.getAllByText('Fiche partielle').length).toBeGreaterThan(0)
   })
 })

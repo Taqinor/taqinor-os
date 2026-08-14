@@ -269,6 +269,31 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
     return new THREE.Matrix4().compose(new THREE.Vector3(px, py, pz), _q, _scl);
   };
 
+  /**
+   * PV62 — comme `compose`, plus deux réglages LOCAUX (appliqués APRÈS l'orientation du
+   * panneau, donc dans son propre repère) : `spinZ` = rotation autour de sa NORMALE (une
+   * pose tournée de 90° = le même module en paysage au lieu de portrait) et une ÉCHELLE
+   * locale (longueur de rail / de montant adaptée à cette pose). Sans ces réglages
+   * (spinZ = 0, échelles = 1) le résultat est EXACTEMENT `compose` — les pavages
+   * uniformes ne passent d'ailleurs jamais par ici.
+   */
+  const composeLocal = (
+    px: number,
+    py: number,
+    pz: number,
+    rotZ: number,
+    rotX: number,
+    spinZ: number,
+    sx = 1,
+    sy = 1,
+    sz = 1,
+  ): THREE.Matrix4 => {
+    const m = compose(px, py, pz, rotZ, rotX);
+    if (spinZ !== 0) m.multiply(new THREE.Matrix4().makeRotationZ(spinZ));
+    if (sx !== 1 || sy !== 1 || sz !== 1) m.multiply(new THREE.Matrix4().makeScale(sx, sy, sz));
+    return m;
+  };
+
   // W71 — CACHE des matériaux + géométries STATIQUES du système panneau (verre/cadre/
   // dos/boîtier/châssis/lest). Avant le split ils étaient ré-alloués DANS buildZoneMeshes
   // à CHAQUE rendu (glissé du curseur d'inclinaison, déplacement d'obstacle, édition de
@@ -789,10 +814,24 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
     const backGeo = new THREE.BoxGeometry(0.06, 0.06, frontStrut + rise);
     const ballastGeo = ballastGeoOf();
     const ends = [-halfAlong + 0.08, 0, halfAlong - 0.08];
+    // PV62 — pavage MIXTE : un panneau peut porter SA pose (`orient`), différente de la
+    // pose DOMINANTE qui a dimensionné les géométries partagées. C'est le MÊME module,
+    // tourné de 90° dans son plan : on fait tourner son instance autour de sa propre
+    // normale et on adapte par ÉCHELLE la longueur du rail et du montant arrière. Sur un
+    // pavage uniforme (`orient` absent) `swapped` est toujours faux → rendu inchangé.
+    const dominantIsPortrait = slope >= alongRow;
 
     for (const p of panels) {
       const cx = p.cx + offX;
       const cy = p.cy + offY;
+      const swapped = !!p.orient && (p.orient === 'portrait') !== dominantIsPortrait;
+      const slopeP = swapped ? alongRow : slope;
+      const alongRowP = swapped ? slope : alongRow;
+      const riseP = swapped ? slopeP * Math.sin(tilt) : rise;
+      const halfAlongP = swapped ? alongRowP / 2 : halfAlong;
+      const halfDepthP = swapped ? (slopeP * Math.cos(tilt)) / 2 : halfDepth;
+      const endsP = swapped ? [-halfAlongP + 0.08, 0, halfAlongP - 0.08] : ends;
+      const spinZ = swapped ? Math.PI / 2 : 0;
       // Pour l'Est-Ouest : le sens d'inclinaison vient de la FACE du panneau
       // (chevrons dos à dos faces E/O), fournie par le cerveau. Sud : tilt simple.
       const signedTilt = family === 'eastwest' ? (p.face === 'E' ? -tilt : tilt) : tilt;
@@ -805,25 +844,32 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
       if (flush) {
         // W107 — baseZ + ridgeLiftM : les panneaux montent avec le plan vers la faîtière commune.
         const c = flushPanelCenterAt(p.cx, p.cy, pitchEaveCoord, baseZ + ridgeLiftM, tiltDeg, pack.azimuthDeg, PITCHED_FLUSH_STANDOFF_M);
-        panelMatsArr.push(compose(c.x + offX, c.y + offY, c.z, rowAngleRad, signedTilt));
+        panelMatsArr.push(composeLocal(c.x + offX, c.y + offY, c.z, rowAngleRad, signedTilt, spinZ));
       } else {
-        const pZ = baseZ + frontStrut + rise / 2 + 0.07;
-        panelMatsArr.push(compose(cx, cy, pZ, rowAngleRad, signedTilt));
+        const pZ = baseZ + frontStrut + riseP / 2 + 0.07;
+        panelMatsArr.push(composeLocal(cx, cy, pZ, rowAngleRad, signedTilt, spinZ));
       }
-      if (!flush) for (const xe of ends) {
-        const lowDepth = signedTilt >= 0 ? -halfDepth : halfDepth;
+      if (!flush) for (const xe of endsP) {
+        const lowDepth = signedTilt >= 0 ? -halfDepthP : halfDepthP;
         const highDepth = -lowDepth;
         const fpt = rx(xe, lowDepth);
         frontMats.push(compose(cx + fpt[0], cy + fpt[1], baseZ + frontStrut / 2, rowAngleRad, 0));
         const bpt = rx(xe, highDepth);
-        backMats.push(compose(cx + bpt[0], cy + bpt[1], baseZ + (frontStrut + rise) / 2, rowAngleRad, 0));
+        // Montant arrière : sa hauteur suit la MONTÉE du panneau (échelle locale en z si
+        // la pose de ce panneau n'est pas la pose dominante).
+        backMats.push(
+          composeLocal(cx + bpt[0], cy + bpt[1], baseZ + (frontStrut + riseP) / 2, rowAngleRad, 0, 0, 1, 1, (frontStrut + riseP) / (frontStrut + rise)),
+        );
         const cpt = rx(xe, 0);
-        railMats.push(compose(cx + cpt[0], cy + cpt[1], baseZ + frontStrut + rise / 2, rowAngleRad, signedTilt));
+        // Rail : sa longueur suit le côté « pente » du panneau (échelle locale en y).
+        railMats.push(
+          composeLocal(cx + cpt[0], cy + cpt[1], baseZ + frontStrut + riseP / 2, rowAngleRad, signedTilt, 0, 1, slopeP / slope, 1),
+        );
       }
-      if (!flush) for (const xe of [-halfAlong + 0.08, halfAlong - 0.08]) {
-        const bf = rx(xe, -halfDepth - 0.02);
+      if (!flush) for (const xe of [-halfAlongP + 0.08, halfAlongP - 0.08]) {
+        const bf = rx(xe, -halfDepthP - 0.02);
         ballastMats.push(compose(cx + bf[0], cy + bf[1], baseZ + 0.06, rowAngleRad, 0));
-        const bb = rx(xe, halfDepth + 0.02);
+        const bb = rx(xe, halfDepthP + 0.02);
         ballastMats.push(compose(cx + bb[0], cy + bb[1], baseZ + 0.06, rowAngleRad, 0));
       }
     }

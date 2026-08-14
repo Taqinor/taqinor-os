@@ -8,6 +8,8 @@ Protections (L855) : chaque réponse publique porte « X-Robots-Tag: noindex »
 pour rester hors des moteurs de recherche, et l'accès est limité en débit par
 IP + jeton (throttle cache-based, sans dépendance externe ni rendu modifié).
 """
+import logging
+
 from django.db import models
 from django.db.models import F
 from django.http import HttpResponse
@@ -23,6 +25,8 @@ from rest_framework.throttling import SimpleRateThrottle
 from .models import PaymentLink, ShareLink
 from .quote_engine import clean_pdf_options, generate_premium_devis_pdf
 from .utils.pdf import download_pdf, generate_facture_pdf
+
+logger = logging.getLogger(__name__)
 
 
 # ── Profil saisonnier de production solaire au Maroc (T4) ────────────────────
@@ -480,6 +484,52 @@ def _safe_roof_layout(devis) -> dict | None:
     return safe or None
 
 
+def _safe_sld_svg(devis):
+    """PV81 — schéma unifilaire CLIENT-SAFE de la proposition (SVG, ou None).
+
+    Même discipline que ``_safe_roof_layout`` : on ne publie que ce qui est
+    montrable. Ici c'est structurel, pas une whitelist : ``core.electrique``
+    (PV33-39) est un moteur SANS AUCUN PRIX — il ne manipule que des grandeurs
+    électriques publiques, des calibres et des quantités. Le schéma qu'il rend
+    porte les organes, les repères et un cartouche (client, référence,
+    puissance, régime) ; ni montant, ni marge, ni note interne n'y ont accès,
+    et un test l'arme.
+
+    LA CONCEPTION STOCKÉE EST LE PORTAIL : sans ``Devis.electrical_design``
+    (PV41), on retourne ``None`` — le client ne voit un schéma que lorsque
+    l'étude a réellement été faite, jamais une esquisse fabriquée à la volée.
+    Le SVG lui-même est re-RENDU depuis les mêmes entrées (le calcul est pur et
+    idempotent par empreinte, cf. ``electrical_service``), parce que le rendu
+    demande les objets du moteur, que le contrat stocké ne conserve pas.
+
+    Lecture pure : rien n'est écrit (aucun statut, aucune ligne — règle #4).
+    Jamais bloquant : une étude illisible rend ``None``, pas une erreur 500.
+    """
+    design = getattr(devis, "electrical_design", None)
+    if not isinstance(design, dict) or not design:
+        return None
+    try:
+        from core.electrique import concevoir
+        from core.electrique.schema import rendre_schema
+
+        from .electrical_service import construire_entree
+
+        entree = construire_entree(devis)
+        if not entree.groupes:
+            return None
+        cartouche = {
+            "client": getattr(getattr(devis, "client", None), "nom", "") or "",
+            "reference": devis.reference or "",
+            "date": (devis.date_creation.strftime("%d/%m/%Y")
+                     if getattr(devis, "date_creation", None) else ""),
+        }
+        return rendre_schema(entree, concevoir(entree), cartouche=cartouche)
+    except Exception:  # noqa: BLE001 — un schéma absent ne casse pas la page
+        logger.warning("PV81 : schéma unifilaire indisponible pour le devis %s",
+                       getattr(devis, "pk", None))
+        return None
+
+
 def _variant_summaries(devis) -> list:
     """QJ15 — côte-à-côte : résumé minimal de chaque variante du devis.
 
@@ -589,6 +639,66 @@ def _mode_kpis(data):
     return None
 
 
+#: PV77 — clés de l'étude bancable qui ne sortent JAMAIS côté client. Le bloc
+#: brut ``etude_params['simulation']`` (P75/P90, arbre de pertes, VAN/TRI,
+#: puissance souscrite…) est un outil d'INGÉNIERIE : il vit sur le PDF signé par
+#: le vendeur et dans l'écran interne, jamais dans une charge utile publique.
+_BANKABLE_CLES_INTERNES = ('simulation', 'bankable')
+
+
+def _sans_internes_bancables(data):
+    """Retire l'étude bancable BRUTE de la charge utile publique.
+
+    Ne touche RIEN quand le devis n'en porte pas : le dict est renvoyé tel quel
+    (aucune copie, aucune clé ajoutée ou retirée), donc la proposition publique
+    d'un devis sans simulation est byte-identique à celle d'aujourd'hui.
+    """
+    etude = data.get('etude')
+    if not isinstance(etude, dict):
+        return data
+    if not any(cle in etude for cle in _BANKABLE_CLES_INTERNES):
+        return data
+    propre = dict(data)
+    propre['etude'] = {
+        cle: valeur for cle, valeur in etude.items()
+        if cle not in _BANKABLE_CLES_INTERNES
+    }
+    return propre
+
+
+def _bankable_headline(devis, data):
+    """PV77 — les DEUX chiffres client de l'étude bancable, ou ``None``.
+
+    Whitelist STRICTE, dans l'esprit de ``_mode_kpis`` : la production P50
+    (médiane — le chiffre honnête à annoncer) et l'économie cumulée sur 25 ans
+    DÉJÀ affichée par le document (cashflow QX39 du scénario retenu — jamais un
+    second chiffre concurrent). Tout le reste de la simulation reste interne :
+    P90/P75, décomposition des pertes, VAN/TRI, puissance souscrite.
+
+    ``None`` quand le devis ne porte pas de simulation → la clé n'est pas
+    envoyée du tout et la page publique se comporte comme aujourd'hui.
+    """
+    simulation = (getattr(devis, 'etude_params', None) or {}).get('simulation')
+    if not isinstance(simulation, dict) or not simulation:
+        return None
+    pr = simulation.get('pr')
+    p50 = _kpi_num(pr.get('p50_kwh')) if isinstance(pr, dict) else None
+    scenario = data.get('scenario') or ''
+    gain = (data.get('net_gain_avec') if scenario == 'Avec batterie'
+            else data.get('net_gain_sans'))
+    if gain is None:
+        gain = data.get('net_gain_sans')
+        if gain is None:
+            gain = data.get('net_gain_avec')
+    return {
+        'p50_kwh': p50,
+        'economies_25_ans': _kpi_num(gain),
+        # 'pvgis' (données satellitaires) ou 'manual' (repli hors ligne) —
+        # dit au client d'où vient le chiffre, sans rien révéler du modèle.
+        'source': simulation.get('source') or None,
+    }
+
+
 @api_view(['GET'])
 @permission_classes([AllowAny])
 @throttle_classes([PublicLinkRateThrottle])
@@ -619,6 +729,11 @@ def proposal_data(request, token):
         # chaque panneau — un filtre de premier niveau les manquait. On retire
         # donc toute clé confidentielle à N'IMPORTE QUELLE profondeur.
         data = _strip_confidential_deep(data)
+        # PV77 — l'étude bancable BRUTE (P90/P75, arbre de pertes, VAN/TRI) ne
+        # franchit jamais la frontière publique : seul le titre à deux chiffres
+        # ci-dessous en sort. Devis sans simulation → dict inchangé.
+        bankable = _bankable_headline(devis, data)
+        data = _sans_internes_bancables(data)
         roof_url = None
         if data.get('roof_image_key'):
             try:
@@ -643,6 +758,11 @@ def proposal_data(request, token):
             # jamais de prix/marge/champ interne). None quand absent → le PNG
             # poster (roof_image_url) reste le repli.
             'roof_layout': _safe_roof_layout(devis),
+            # PV81 — schéma unifilaire de l'installation (SVG texte), rendu par
+            # le moteur électrique SANS AUCUN PRIX (il n'en connaît aucun).
+            # None tant que la conception électrique (PV41) n'a pas été faite :
+            # le client ne voit un schéma que lorsqu'il en existe un vrai.
+            'sld_svg': _safe_sld_svg(devis),
             'option_totals': {
                 'sans_batterie': data.get('totaux_sans'),
                 'avec_batterie': data.get('totaux_avec'),
@@ -697,6 +817,11 @@ def proposal_data(request, token):
             # comme intertitres/notes. Absent quand le devis n'a aucune section.
             'lignes_structure': data.get('lignes_structure'),
         }
+        # PV77 — titre de l'étude bancable (P50 + économies 25 ans). La clé
+        # n'est AJOUTÉE que lorsque le devis porte une simulation : sans elle,
+        # la charge utile publique est exactement celle d'aujourd'hui.
+        if bankable is not None:
+            payload['bankable'] = bankable
     except Exception:  # noqa: BLE001
         return _noindex(Response(
             {'detail': 'Proposition indisponible pour le moment.'},

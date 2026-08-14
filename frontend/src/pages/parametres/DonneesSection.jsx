@@ -10,13 +10,13 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
-  ClipboardCheck, FileText, Archive, Plus, Trash2, ExternalLink,
+  ClipboardCheck, FileText, Archive, Plus, Trash2, ExternalLink, Pencil, X,
 } from 'lucide-react'
 import stockApi from '../../api/stockApi'
 import { formatMAD } from '../../lib/format'
 import {
   Card, CardContent, Button, IconButton, Badge, Spinner, EmptyState,
-  Input,
+  Input, Label, Checkbox, FileUpload,
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
 } from '../../ui'
 import { SectionTitle } from './peComponents'
@@ -285,19 +285,61 @@ function KitExplosion() {
   )
 }
 
-// ── Fiches techniques (DC35 / FG254) ─────────────────────────────────────────
+// ── Fiches techniques (DC35 / FG254 / PV7) ───────────────────────────────────
+// PV5 (backend) porte 3 blocs de champs supplémentaires selon `type_fiche` —
+// les 6 champs électriques historiques restent le socle « module »/« autre ».
 const CHAMPS_FICHE = [
   ['pmax_wc', 'Pmax (Wc)'], ['voc_v', 'Voc (V)'], ['isc_a', 'Isc (A)'],
   ['vmp_v', 'Vmp (V)'], ['imp_a', 'Imp (A)'], ['rendement_pct', 'Rendement (%)'],
 ]
+const CHAMPS_MODULE_NUM = [
+  ['longueur_mm', 'Longueur (mm)'], ['largeur_mm', 'Largeur (mm)'],
+  ['epaisseur_mm', 'Épaisseur (mm)'], ['poids_kg', 'Poids (kg)'],
+  ['temp_coeff_voc_pct_c', 'Coeff. temp. Voc (%/°C)'],
+  ['temp_coeff_pmax_pct_c', 'Coeff. temp. Pmax (%/°C)'],
+]
+const CHAMPS_ONDULEUR_NUM = [
+  ['ond_n_mppt', 'Nombre de MPPT'],
+  ['ond_mppt_v_min', 'Tension MPPT min (V)'],
+  ['ond_mppt_v_max', 'Tension MPPT max (V)'],
+  ['ond_v_max_abs', 'Tension DC max absolue (V)'],
+  ['ond_i_max_mppt_a', 'Courant max par MPPT (A)'],
+  ['ond_ac_kw', 'Puissance AC nominale (kW)'],
+  ['ond_rendement_euro_pct', 'Rendement européen (%)'],
+]
+const CHAMPS_BATTERIE_NUM = [
+  ['bat_kwh_nominal', 'Capacité nominale (kWh)'],
+  ['bat_kwh_usable', 'Capacité utilisable (kWh)'],
+  ['bat_dod_pct', 'Profondeur de décharge (%)'],
+  ['bat_v_nominal', 'Tension nominale (V)'],
+  ['bat_max_charge_kw', 'Puissance de charge max (kW)'],
+]
+const TYPE_FICHE_OPTIONS = [
+  ['module', 'Module (panneau)'], ['onduleur', 'Onduleur'],
+  ['batterie', 'Batterie'], ['autre', 'Autre'],
+]
+const TYPE_FICHE_LABELS = Object.fromEntries(TYPE_FICHE_OPTIONS)
+
+// Champs numériques actifs pour un type donné (le bloc « module »/« autre »
+// englobe le socle historique — onduleur/batterie sont des blocs dédiés).
+function champsNumeriquesPour(type) {
+  if (type === 'module') return [...CHAMPS_FICHE, ...CHAMPS_MODULE_NUM]
+  if (type === 'onduleur') return CHAMPS_ONDULEUR_NUM
+  if (type === 'batterie') return CHAMPS_BATTERIE_NUM
+  return CHAMPS_FICHE
+}
 
 function FichesTechniques() {
   const [produits, setProduits] = useState([])
   const [fiches, setFiches] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
+  const [editingId, setEditingId] = useState(null)
+  const [pdfActuelUrl, setPdfActuelUrl] = useState(null)
   const [produitId, setProduitId] = useState('')
+  const [typeFiche, setTypeFiche] = useState('')
   const [vals, setVals] = useState({})
+  const [pdfFile, setPdfFile] = useState(null)
   const [busy, setBusy] = useState(false)
 
   const load = () => {
@@ -314,24 +356,69 @@ function FichesTechniques() {
       .then((r) => setProduits(r.data?.results ?? r.data ?? [])).catch(() => {})
   }, [])
 
-  // Produits sans fiche (une fiche par produit, OneToOne).
+  // Produits sans fiche (une fiche par produit, OneToOne) — sauf la fiche en
+  // cours d'édition, dont le produit doit rester sélectionnable.
   const dispo = useMemo(() => {
-    const used = new Set(fiches.map((f) => String(f.produit)))
+    const used = new Set(
+      fiches.filter((f) => f.id !== editingId).map((f) => String(f.produit)),
+    )
     return produits.filter((p) => !used.has(String(p.id)))
-  }, [produits, fiches])
+  }, [produits, fiches, editingId])
 
   const setVal = (k, v) => setVals((s) => ({ ...s, [k]: v }))
 
-  const ajouter = async () => {
+  const resetForm = () => {
+    setEditingId(null); setPdfActuelUrl(null)
+    setProduitId(''); setTypeFiche(''); setVals({}); setPdfFile(null)
+    setError(null)
+  }
+
+  const commencerEdition = (f) => {
+    setEditingId(f.id); setPdfActuelUrl(f.pdf || null)
+    setProduitId(String(f.produit)); setTypeFiche(f.type_fiche || '')
+    const v = {}
+    for (const [k] of [
+      ...CHAMPS_FICHE, ...CHAMPS_MODULE_NUM, ...CHAMPS_ONDULEUR_NUM, ...CHAMPS_BATTERIE_NUM,
+    ]) {
+      if (f[k] != null) v[k] = String(f[k])
+    }
+    v.techno_cellule = f.techno_cellule || ''
+    v.bifacial = Boolean(f.bifacial)
+    if (f.ond_phases != null) v.ond_phases = String(f.ond_phases)
+    setVals(v); setPdfFile(null); setError(null)
+  }
+
+  const buildPayload = () => {
+    const payload = { produit: Number(produitId), type_fiche: typeFiche }
+    for (const [k] of champsNumeriquesPour(typeFiche)) {
+      if (vals[k] !== undefined && vals[k] !== '') payload[k] = vals[k]
+    }
+    if (typeFiche === 'module') {
+      if (vals.techno_cellule) payload.techno_cellule = vals.techno_cellule
+      payload.bifacial = Boolean(vals.bifacial)
+    }
+    if (typeFiche === 'onduleur' && vals.ond_phases !== undefined && vals.ond_phases !== '') {
+      payload.ond_phases = Number(vals.ond_phases)
+    }
+    return payload
+  }
+
+  const enregistrer = async () => {
     if (!produitId) { setError('Choisissez un produit.'); return }
     setBusy(true); setError(null)
     try {
-      const payload = { produit: Number(produitId) }
-      for (const [k] of CHAMPS_FICHE) {
-        if (vals[k] !== undefined && vals[k] !== '') payload[k] = vals[k]
+      const payload = buildPayload()
+      let id = editingId
+      if (editingId) {
+        await stockApi.updateFicheTechnique(editingId, payload)
+      } else {
+        const r = await stockApi.createFicheTechnique(payload)
+        id = r.data?.id
       }
-      await stockApi.createFicheTechnique(payload)
-      setProduitId(''); setVals({})
+      if (pdfFile && id) {
+        await stockApi.uploadFicheTechniquePdf(id, pdfFile)
+      }
+      resetForm()
       load()
     } catch (e) {
       setError(frErr(e, "L'enregistrement de la fiche a échoué."))
@@ -341,9 +428,14 @@ function FichesTechniques() {
   const supprimer = async (f) => {
     if (!window.confirm(`Supprimer la fiche de « ${f.produit_nom} » ?`)) return
     setError(null)
-    try { await stockApi.deleteFicheTechnique(f.id); load() }
-    catch (e) { setError(frErr(e, 'Suppression impossible.')) }
+    try {
+      await stockApi.deleteFicheTechnique(f.id)
+      if (editingId === f.id) resetForm()
+      load()
+    } catch (e) { setError(frErr(e, 'Suppression impossible.')) }
   }
+
+  const champsForm = champsNumeriquesPour(typeFiche)
 
   return (
     <Card>
@@ -351,8 +443,9 @@ function FichesTechniques() {
         <SectionTitle label="Fiches techniques"
           icon={<><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><path d="M14 2v6h6" /></>} />
         <p className="mb-3.5 text-[11.5px] text-muted-foreground">
-          Paramètres électriques normalisés (Pmax / Voc / Isc / Vmp / Imp /
-          rendement) rattachés à un produit. Un produit a au plus une fiche.
+          Paramètres électriques/dimensionnels (module, onduleur ou batterie)
+          et PDF constructeur, rattachés à un produit. Un produit a au plus
+          une fiche.
         </p>
 
         {error && (
@@ -370,27 +463,38 @@ function FichesTechniques() {
               <thead className="bg-muted/60 text-xs uppercase tracking-wide text-muted-foreground">
                 <tr>
                   <th className="px-3 py-2 text-left font-semibold">Produit</th>
-                  {CHAMPS_FICHE.map(([k, label]) => (
-                    <th key={k} className="px-3 py-2 text-right font-semibold">{label}</th>
-                  ))}
-                  <th className="w-10 px-3 py-2" />
+                  <th className="px-3 py-2 text-left font-semibold">Type</th>
+                  <th className="px-3 py-2 text-left font-semibold">PDF</th>
+                  <th className="w-20 px-3 py-2" />
                 </tr>
               </thead>
               <tbody>
                 {fiches.map((f) => (
                   <tr key={f.id} className="border-t border-border">
                     <td className="px-3 py-2">{f.produit_nom}</td>
-                    {CHAMPS_FICHE.map(([k]) => (
-                      <td key={k} className="px-3 py-2 text-right tabular-nums">
-                        {f[k] != null ? Number(f[k]) : '—'}
-                      </td>
-                    ))}
                     <td className="px-3 py-2">
-                      <IconButton size="md" variant="ghost" label="Supprimer la fiche"
-                                  className="text-destructive hover:text-destructive"
-                                  onClick={() => supprimer(f)}>
-                        <Trash2 className="size-4" aria-hidden="true" />
-                      </IconButton>
+                      <Badge tone="outline">{TYPE_FICHE_LABELS[f.type_fiche] || '—'}</Badge>
+                    </td>
+                    <td className="px-3 py-2">
+                      {f.pdf ? (
+                        <a href={f.pdf} target="_blank" rel="noopener noreferrer"
+                           className="inline-flex items-center gap-1 text-primary hover:underline">
+                          Voir <ExternalLink className="size-3.5" aria-hidden="true" />
+                        </a>
+                      ) : '—'}
+                    </td>
+                    <td className="px-3 py-2">
+                      <div className="flex items-center justify-end gap-1">
+                        <IconButton size="md" variant="ghost" label="Modifier la fiche"
+                                    onClick={() => commencerEdition(f)}>
+                          <Pencil className="size-4" aria-hidden="true" />
+                        </IconButton>
+                        <IconButton size="md" variant="ghost" label="Supprimer la fiche"
+                                    className="text-destructive hover:text-destructive"
+                                    onClick={() => supprimer(f)}>
+                          <Trash2 className="size-4" aria-hidden="true" />
+                        </IconButton>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -399,32 +503,97 @@ function FichesTechniques() {
           </div>
         )}
 
-        {/* Ajout d'une fiche */}
+        {/* Ajout / édition d'une fiche */}
         <div className="mt-3 flex flex-col gap-2 rounded-lg border border-border p-3">
-          <span className="text-sm font-semibold">Nouvelle fiche</span>
-          <div className="min-w-48">
-            <Select value={produitId || '__none'} onValueChange={(v) => setProduitId(v === '__none' ? '' : v)}>
-              <SelectTrigger><SelectValue placeholder="— Produit —" /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="__none">— Produit —</SelectItem>
-                {dispo.map((p) => (
-                  <SelectItem key={p.id} value={String(p.id)}>
-                    {p.nom}{p.sku ? ` (${p.sku})` : ''}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+          <div className="flex items-center justify-between">
+            <span className="text-sm font-semibold">
+              {editingId ? 'Modifier la fiche' : 'Nouvelle fiche'}
+            </span>
+            {editingId && (
+              <Button type="button" size="sm" variant="ghost" onClick={resetForm}>
+                <X className="size-4" aria-hidden="true" /> Annuler
+              </Button>
+            )}
           </div>
+          <div className="grid gap-2 sm:grid-cols-2">
+            <div className="min-w-48">
+              <Select value={produitId || '__none'} onValueChange={(v) => setProduitId(v === '__none' ? '' : v)}>
+                <SelectTrigger aria-label="Produit"><SelectValue placeholder="— Produit —" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__none">— Produit —</SelectItem>
+                  {dispo.map((p) => (
+                    <SelectItem key={p.id} value={String(p.id)}>
+                      {p.nom}{p.sku ? ` (${p.sku})` : ''}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="min-w-48">
+              <Select value={typeFiche || '__none'} onValueChange={(v) => setTypeFiche(v === '__none' ? '' : v)}>
+                <SelectTrigger aria-label="Type de fiche"><SelectValue placeholder="— Type de fiche —" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__none">— Type de fiche —</SelectItem>
+                  {TYPE_FICHE_OPTIONS.map(([v, label]) => (
+                    <SelectItem key={v} value={v}>{label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
           <div className="grid gap-2 sm:grid-cols-3">
-            {CHAMPS_FICHE.map(([k, label]) => (
+            {champsForm.map(([k, label]) => (
               <Input key={k} type="number" step="any" inputMode="decimal"
                      placeholder={label} value={vals[k] ?? ''}
                      onChange={(e) => setVal(k, e.target.value)} />
             ))}
           </div>
+
+          {typeFiche === 'module' && (
+            <div className="grid gap-2 sm:grid-cols-3 sm:items-center">
+              <Input placeholder="Technologie de cellule" value={vals.techno_cellule ?? ''}
+                     onChange={(e) => setVal('techno_cellule', e.target.value)} />
+              <div className="flex items-center gap-2">
+                <Checkbox id="fiche-bifacial" checked={Boolean(vals.bifacial)}
+                          onCheckedChange={(v) => setVal('bifacial', Boolean(v))}
+                          aria-label="Bifacial" />
+                <Label htmlFor="fiche-bifacial" className="font-normal">Bifacial</Label>
+              </div>
+            </div>
+          )}
+
+          {typeFiche === 'onduleur' && (
+            <div className="min-w-48">
+              <Select value={vals.ond_phases || '__none'}
+                      onValueChange={(v) => setVal('ond_phases', v === '__none' ? '' : v)}>
+                <SelectTrigger aria-label="Phases"><SelectValue placeholder="— Phases —" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__none">— Phases —</SelectItem>
+                  <SelectItem value="1">Monophasé</SelectItem>
+                  <SelectItem value="3">Triphasé</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+
+          <div className="flex flex-col gap-1.5">
+            <FileUpload accept="application/pdf" onFiles={(files) => setPdfFile(files[0] || null)}
+                        hint="Fiche PDF constructeur (optionnel)" />
+            {pdfFile && (
+              <p className="text-xs text-muted-foreground">Fichier sélectionné : {pdfFile.name}</p>
+            )}
+            {!pdfFile && pdfActuelUrl && (
+              <a href={pdfActuelUrl} target="_blank" rel="noopener noreferrer"
+                 className="inline-flex w-fit items-center gap-1 text-xs text-primary hover:underline">
+                Voir le PDF actuel <ExternalLink className="size-3.5" aria-hidden="true" />
+              </a>
+            )}
+          </div>
+
           <div>
-            <Button type="button" loading={busy} onClick={ajouter}>
-              <Plus /> Ajouter la fiche
+            <Button type="button" loading={busy} onClick={enregistrer}>
+              <Plus /> {editingId ? 'Enregistrer les modifications' : 'Ajouter la fiche'}
             </Button>
           </div>
         </div>

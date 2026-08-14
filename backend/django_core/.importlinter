@@ -433,3 +433,42 @@ forbidden_modules =
     core.middleware
     core.mixins
     authentication
+
+# PV33 — `core.electrique` est le MOTEUR de conception ÉLECTRIQUE PV (chaînes,
+# onduleurs, protections, sections de câble, nomenclature, schéma unifilaire),
+# frère de `core.calepinage` et partagé par les MÊMES deux consommateurs qui ne
+# peuvent pas s'importer l'un l'autre (`apps.ao`, `apps.ventes`). Même
+# arbitrage, donc même contrepartie : il vit en fondation et reste PUR —
+# stdlib SEULEMENT (il n'a même pas l'usage de numpy), aucune dépendance
+# Django, aucune I/O. C'est ce qui le rend testable SANS base de données, donc
+# hors du gate migrations.
+# `core.calepinage` figure dans les modules INTERDITS : les deux noyaux se
+# versionnent séparément et ne doivent pas se tenir par la main (un noyau qui en
+# importe un autre hérite de ses dépendances et de son MAJEUR).
+# Django/DRF/celery ne sont pas des root_packages ici : ils sont couverts par le
+# second verrou `core/tests/test_electrique_purete.py` (analyse AST).
+[importlinter:contract:electrique-est-un-noyau-pur]
+name = Le moteur électrique reste un noyau pur (aucun modèle, vue, tâche ou app)
+type = forbidden
+source_modules =
+    core.electrique
+forbidden_modules =
+    core.calepinage
+    core.models
+    core.views
+    core.vues
+    core.serializers
+    core.viewsets
+    core.services
+    core.selectors
+    core.tasks
+    core.jobs
+    core.numbering
+    core.documents
+    core.pdf
+    core.permissions
+    core.events
+    core.workflow
+    core.middleware
+    core.mixins
+    authentication

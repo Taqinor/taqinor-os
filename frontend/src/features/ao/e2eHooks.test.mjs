@@ -41,6 +41,14 @@ export const ALL_HOOKS = [
   'data-ao-enveloppe-arc-retenue',
   'data-ao-question-proposee',
   'data-ao-atelier-note',
+  // ── Groupe PV — studio (plan imposé), liste des calepinages, synthèse ────
+  'data-ao-impose',
+  'data-ao-impose-verdict',
+  'data-ao-ecart-optimum',
+  'data-ao-variante-retenue',
+  'data-ao-raisons-non-publiabilite',
+  'data-ao-synthese-calepinage',
+  'data-ao-synthese-toitures',
   // ── Socle transverse (AOF8) ──────────────────────────────────────────────
   'data-ao-canvas',
   'data-ao-outil',

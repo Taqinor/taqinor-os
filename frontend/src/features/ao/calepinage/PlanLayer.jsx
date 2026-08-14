@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useCallback, useMemo, useRef } from 'react'
 import { cn } from '../../../lib/cn'
 
 /* ============================================================================
@@ -35,6 +35,16 @@ import { cn } from '../../../lib/cn'
    Toute `cote` est un TEXTE déjà formaté par le serveur (formateur français
    `core.formats_fr`) : le front ne formate, n'arrondit et ne recompose aucun
    nombre.
+
+   ── PV31 — bandes d'accroche du mode « rangées imposées » ─────────────────
+   `rangeesImposees` (optionnel, `[[y0, kit], …]` — fourni par
+   `useCalepinageImpose`) fait apparaître une bande interactive PAR RANGÉE à
+   son ordonnée `y0` RÉELLE. L'épaisseur de la bande (`EPAISSEUR_BANDE_M`) est
+   une géométrie d'INTERACTION, exactement au même titre que le zoom
+   (AOF92) — jamais une cote posée par le moteur, jamais rendue comme une
+   table. `yPropose` (ordonnée en cours de glissé) ne dessine qu'un TRAIT
+   pointillé, jamais un rectangle : une pose qui n'est pas encore confirmée
+   par le serveur ne peut pas se présenter comme une table.
    ========================================================================== */
 
 // Présence d'une couche — question de RENDU (« y a-t-il quelque chose à
@@ -102,6 +112,27 @@ function Rectangles({ items, className, role }) {
   )
 }
 
+// PV31 — épaisseur de la bande d'accroche d'une rangée. Géométrie de VIEWPORT
+// (comme `ZOOM_MIN/ZOOM_MAX` de `CalepinageStudio`), pas une cote posée par
+// le moteur : elle sert uniquement à offrir une cible de pointeur.
+const EPAISSEUR_BANDE_M = 0.30
+
+// Ordonnée SVG (repère du `viewBox`) sous un `clientY` d'évènement pointeur.
+// `getScreenCTM()`/`createSVGPoint()` ne sont pas implémentés par jsdom : on
+// s'appuie sur `getBoundingClientRect()` (implémenté, et trivialement
+// simulable en test), qui suffit puisque le SVG ne subit ni rotation ni
+// inclinaison — seuls un décalage et une mise à l'échelle uniforme le long de
+// l'axe Y séparent le repère écran du `viewBox`.
+function yDepuisClientY(svgEl, viewBox, clientY) {
+  if (!svgEl || typeof svgEl.getBoundingClientRect !== 'function') return null
+  const rect = svgEl.getBoundingClientRect()
+  if (!rect || !rect.height) return null
+  const morceaux = String(viewBox).split(' ').map(Number)
+  const [, vbY, , vbH] = morceaux
+  if (!Number.isFinite(vbY) || !Number.isFinite(vbH)) return null
+  return vbY + ((clientY - rect.top) / rect.height) * vbH
+}
+
 function Cotes({ items }) {
   if (!aDes(items)) return null
   const cotes = items.filter((item) => item.cote?.texte)
@@ -132,22 +163,54 @@ function Cotes({ items }) {
  * @param {number}  [zoom=1]   Facteur de zoom (fenêtre d'affichage seulement).
  * @param {{x:number,y:number}} [centre]  Centre de la fenêtre (m).
  * @param {string}  [titre]    Nom accessible du canvas.
+ * @param {Array}   [rangeesImposees]  PV31 — `[[y0, kit], …]` à éditer ; `null`/absent = pas de bandes.
+ * @param {number|null} [rangeeSelectionnee]  Index sélectionné dans `rangeesImposees`.
+ * @param {number|null} [yPropose]  Ordonnée en cours de glissé (ligne pointillée).
+ * @param {Function} [onRangeePointerDown]  `(index, event) => void` — pointerdown sur une bande.
+ * @param {Function} [onFondPointerDown]    `(y, event) => void` — pointerdown hors bande (ajout).
+ * @param {Function} [onPointerMoveSvg]     `(y, event) => void` — déplacement sur le canvas.
+ * @param {Function} [onPointerUpSvg]       `(event) => void` — relâchement sur le canvas.
  */
-export default function PlanLayer({ plan, zoom = 1, centre = null, titre = 'Plan de calepinage', className }) {
+export default function PlanLayer({
+  plan, zoom = 1, centre = null, titre = 'Plan de calepinage', className,
+  rangeesImposees = null, rangeeSelectionnee = null, yPropose = null,
+  onRangeePointerDown, onFondPointerDown, onPointerMoveSvg, onPointerUpSvg,
+}) {
   const viewBox = useMemo(() => viewBoxDuCadre(plan?.cadre, zoom, centre), [plan?.cadre, zoom, centre])
   const legende = useMemo(() => legendeDuPlan(plan), [plan])
+  const svgRef = useRef(null)
+
+  // PV31 — pointerdown sur le FOND (pas sur une bande, qui appelle
+  // `stopPropagation`) : ajoute une rangée à l'ordonnée cliquée.
+  const gererPointerDownFond = useCallback((event) => {
+    if (!onFondPointerDown) return
+    const y = yDepuisClientY(svgRef.current, viewBox, event.clientY)
+    if (y === null) return
+    onFondPointerDown(y, event)
+  }, [onFondPointerDown, viewBox])
+
+  const gererPointerMove = useCallback((event) => {
+    if (!onPointerMoveSvg) return
+    const y = yDepuisClientY(svgRef.current, viewBox, event.clientY)
+    if (y === null) return
+    onPointerMoveSvg(y, event)
+  }, [onPointerMoveSvg, viewBox])
 
   if (!plan?.cadre) return null
 
   return (
     <div className={cn('flex min-h-0 flex-1 flex-col gap-2', className)}>
       <svg
+        ref={svgRef}
         data-ao-canvas="calepinage"
         role="img"
         aria-label={titre}
         viewBox={viewBox}
         preserveAspectRatio="xMidYMid meet"
         className="min-h-0 w-full flex-1 rounded-md border border-border bg-card"
+        onPointerDown={gererPointerDownFond}
+        onPointerMove={gererPointerMove}
+        onPointerUp={onPointerUpSvg}
       >
         <title>{titre}</title>
 
@@ -228,6 +291,54 @@ export default function PlanLayer({ plan, zoom = 1, centre = null, titre = 'Plan
               </text>
             ))}
           </g>
+        )}
+
+        {/* PV31 — bandes d'accroche des rangées (interaction seule, jamais
+            une table) : couche VOLONTAIREMENT la plus HAUTE, pour capter le
+            pointeur avant tout ce qui est dessous. */}
+        {Array.isArray(rangeesImposees) && (
+          <g data-couche="rangees-imposees">
+            {rangeesImposees.map((ligne, index) => (
+              <rect
+                key={`bande-${index}`}
+                data-item="rangee-bande"
+                data-rangee-index={index}
+                data-rangee-selectionnee={rangeeSelectionnee === index ? 'true' : undefined}
+                aria-label={`Rangée ${index + 1}`}
+                x={plan.cadre.x_min}
+                y={ligne[0]}
+                width={plan.cadre.largeur_m}
+                height={EPAISSEUR_BANDE_M}
+                className={cn(
+                  'cursor-grab fill-transparent stroke-transparent',
+                  '[@media(hover:hover)]:hover:fill-info/10',
+                  rangeeSelectionnee === index && 'fill-info/20 stroke-info [stroke-dasharray:2_2]',
+                )}
+                vectorEffect="non-scaling-stroke"
+                strokeWidth={1}
+                onPointerDown={(event) => {
+                  event.stopPropagation()
+                  onRangeePointerDown?.(index, event)
+                }}
+              />
+            ))}
+          </g>
+        )}
+
+        {/* Ligne PROPOSÉE pendant un glissé — un TRAIT, jamais un rectangle :
+            une pose non confirmée par le serveur ne se présente pas comme une
+            table posée (AOF92/AOF94). */}
+        {Number.isFinite(yPropose) && (
+          <line
+            data-item="rangee-proposee"
+            x1={plan.cadre.x_min}
+            y1={yPropose}
+            x2={plan.cadre.x_min + plan.cadre.largeur_m}
+            y2={yPropose}
+            className="stroke-info [stroke-dasharray:6_3]"
+            vectorEffect="non-scaling-stroke"
+            strokeWidth={2}
+          />
         )}
       </svg>
 

@@ -302,7 +302,8 @@ def extract_roof_config(layout):
 
     Lit les PANS de toiture (``areas``/``zones``/``pans``) — chacun portant
     ``roofType``, ``pitchDeg``/``pitch``, ``facingAzimuthDeg``/``aspect`` et un
-    ``result`` ``{count, kwc, areaM2}`` — et en agrège :
+    ``result`` ``{count, kwc, areaM2}`` (PV14 : à défaut, le bloc ``geometry``
+    par pan de la sérialisation v1) — et en agrège :
 
         {surface_m2, nb_pans, nb_panneaux, kwc, orientation_principale,
          azimut_deg, inclinaison_deg, pans: [{...}]}
@@ -326,9 +327,24 @@ def extract_roof_config(layout):
         if not isinstance(a, dict):
             continue
         res = a.get('result') or {}
-        count = int(res.get('count') or a.get('neededPanels') or 0)
-        kwc = float(res.get('kwc') or 0.0)
-        surface = float(res.get('areaM2') or a.get('areaM2') or 0.0)
+        # PV14 — les layouts DÉJÀ STOCKÉS (sérialisation roofPro11 v1) ne
+        # portent PAS de bloc ``result`` par pan : la puissance et le compte
+        # RÉELS y vivent dans le bloc ``geometry`` de la zone (WJ24 :
+        # {azimuthDeg, tiltDeg, family, flush, kwc, count, origin, panels}).
+        # Sans cette lecture un tel blob remontait 0 kWc — et le devis
+        # reconstruit perdait le wattage panneau (aucun watt déductible, donc
+        # plus de choix de produit à wattage exact). L'ordre est STRICT :
+        # ``result`` d'abord (comportement historique inchangé au bit près),
+        # ``geometry`` ensuite, ``neededPanels`` en tout dernier recours (le
+        # compte SOUHAITÉ, pas le compte POSÉ).
+        geo = a.get('geometry')
+        if not isinstance(geo, dict):
+            geo = {}
+        count = int(res.get('count') or geo.get('count')
+                    or a.get('neededPanels') or 0)
+        kwc = float(res.get('kwc') or geo.get('kwc') or 0.0)
+        surface = float(res.get('areaM2') or geo.get('areaM2')
+                        or a.get('areaM2') or 0.0)
         aspect = a.get('facingAzimuthDeg')
         if aspect is None:
             aspect = a.get('aspect')
@@ -449,6 +465,199 @@ def validate_composition_for_layout(layout, company):
     return errors if errors else None
 
 
+# ── PV16 — la CIBLE de calepinage se lit dans les LIGNES du devis ───────────
+#
+# L'écran de conception 3D doit repartir de ce que le devis DIT AUJOURD'HUI
+# (combien de panneaux, quelle puissance unitaire, quel scénario), pas d'un
+# blob de layout qui peut être absent, périmé ou d'une version antérieure de
+# l'outil. Les lignes du devis, elles, sont la source vivante — c'est ce qui a
+# été chiffré et, pour un devis envoyé, ce que le client a sous les yeux.
+#
+# Fonction PURE de lecture : elle ne touche NI le statut, NI les lignes, NI
+# l'étude. Elle expose ses doutes plutôt que de les cacher — d'où la liste
+# ``avertissements`` en français, affichable telle quelle.
+
+#: Wattage retenu quand plus rien n'est lisible (panneau catalogue courant).
+CIBLE_WATT_DEFAUT = 550
+
+
+def _lignes_produit(devis):
+    """Lignes PRODUIT d'un devis — les sections/notes n'en sont pas.
+
+    Une ligne de SECTION/NOTE (XSAL14) ne porte ni produit, ni prix, ni
+    quantité : elle ne peut donc ni compter dans une cible ni recevoir un
+    écart de calepinage.
+    """
+    if devis is None:
+        return []
+    return [ligne for ligne in devis.lignes.all()
+            if getattr(ligne, 'type_ligne', 'produit') == 'produit']
+
+
+def _classe_ligne(ligne, predicat):
+    """Classe une ligne sur sa DÉSIGNATION, à défaut sur le nom du produit.
+
+    La désignation est ce que lit ``quote_engine/builder.py`` (contrat
+    d'alignement des mots-clés, CLAUDE.md règle #4) ; le nom du produit n'est
+    consulté qu'en second, pour rattraper une désignation réécrite à la main
+    (« Modules PV posés » sur un produit « Panneau Jinko 550W »).
+    """
+    return (predicat(ligne.designation or '')
+            or predicat(getattr(ligne.produit, 'nom', '') or ''))
+
+
+def _pmax_wc_du_produit(produit):
+    """Pmax (Wc) de la fiche technique d'un produit, ou ``None``.
+
+    Passe par ``apps.stock.selectors.specs_for_produit`` — le point d'entrée
+    cross-app SANCTIONNÉ pour lire une ``FicheTechnique`` (jamais un import de
+    ``apps.stock.models`` ici). Ce sélecteur peut ne pas encore exister dans
+    l'arbre : son absence est un NON-ÉVÉNEMENT (on retombe simplement sur la
+    lecture du wattage dans le libellé), jamais une exception.
+    """
+    if produit is None:
+        return None
+    try:
+        from apps.stock import selectors as _stock_selectors
+    except Exception:  # noqa: BLE001 — app absente / import cassé : on ignore
+        return None
+    lire = getattr(_stock_selectors, 'specs_for_produit', None)
+    if lire is None:
+        return None
+    try:
+        specs = lire(produit)
+    except TypeError:
+        # Le sélecteur peut attendre un id plutôt que l'objet.
+        try:
+            specs = lire(getattr(produit, 'id', None))
+        except Exception:  # noqa: BLE001
+            return None
+    except Exception:  # noqa: BLE001
+        return None
+    if specs is None:
+        return None
+    pmax = (specs.get('pmax_wc') if isinstance(specs, dict)
+            else getattr(specs, 'pmax_wc', None))
+    try:
+        pmax = int(round(float(pmax)))
+    except (TypeError, ValueError):
+        return None
+    return pmax if pmax > 0 else None
+
+
+def cible_depuis_lignes(devis):
+    """PV16 — cible de calepinage LUE DANS LES LIGNES du devis.
+
+    Rend toujours le même dict, quelles que soient les données :
+
+        {panneaux, kwc, panel_watt, scenario, batterie, avertissements}
+
+    * ``panneaux`` — somme des quantités des lignes classées « panneau » par le
+      classifieur partagé ``_is_panel`` (aligné sur ``quote_engine/builder.py``).
+      Les lignes de SECTION/NOTE (sans prix ni quantité) sont ignorées.
+    * ``panel_watt`` — wattage unitaire, dans cet ordre : la fiche technique du
+      produit dominant (``pmax_wc``), sinon le wattage lu dans le libellé
+      (désignation puis nom du produit), sinon déduit du kWc de l'étude, sinon
+      ``CIBLE_WATT_DEFAUT`` — et là SEULEMENT un avertissement est levé.
+    * ``kwc`` — puissance recalculée DEPUIS LES LIGNES (``panneaux × watt``),
+      pas recopiée de l'étude : c'est le devis qui fait foi ici, pas un
+      paramètre d'étude qui a pu se désynchroniser.
+    * ``scenario`` — ``avec_batterie`` dès qu'une batterie est présente, sinon
+      ``hybride`` si un onduleur hybride l'est, sinon ``reseau`` (défaut
+      résidentiel, même arbitrage que ``build_devis_from_layout``).
+    * ``avertissements`` — messages FRANÇAIS affichables tels quels.
+
+    LECTURE PURE : aucun statut, aucune ligne, aucune étude n'est écrite.
+    """
+    lignes = _lignes_produit(devis)
+
+    def _nom(ligne):
+        return ligne.designation or getattr(ligne.produit, 'nom', '') or ''
+
+    lignes_panneau = [li for li in lignes if _classe_ligne(li, _is_panel)]
+    panneaux = 0
+    for ligne in lignes_panneau:
+        try:
+            # ArithmeticError couvre decimal.InvalidOperation.
+            panneaux += int(Decimal(str(ligne.quantite or 0)))
+        except (ArithmeticError, TypeError, ValueError):
+            continue
+
+    batterie = any(_classe_ligne(li, _is_battery) for li in lignes)
+    hybride = any(_classe_ligne(li, _is_hybrid_inverter) for li in lignes)
+    if batterie:
+        scenario = 'avec_batterie'
+    elif hybride:
+        scenario = 'hybride'
+    else:
+        scenario = 'reseau'
+
+    avertissements = []
+    if not lignes_panneau:
+        avertissements.append(
+            'Aucune ligne de panneau dans ce devis : la cible de calepinage '
+            'est vide. Ajoutez les panneaux au devis avant de concevoir la '
+            'toiture.')
+
+    # Ligne dominante = la plus GROSSE quantité : c'est elle qui porte le
+    # wattage de référence, et c'est elle que PV18 ajustera en cas d'écart.
+    dominante = None
+    if lignes_panneau:
+        dominante = max(
+            lignes_panneau,
+            key=lambda li: Decimal(str(li.quantite or 0)))
+
+    # Deux modèles de panneau différents dans un même devis : le calepinage ne
+    # sait pas répartir l'écart — on le DIT au lieu de choisir en silence.
+    identites = {
+        (li.produit_id, (li.designation or '').strip().lower())
+        for li in lignes_panneau
+    }
+    if len(identites) > 1:
+        avertissements.append(
+            'Ce devis porte %d modèles de panneau différents : l\'écart de '
+            'calepinage sera appliqué à la ligne la plus grosse (« %s »).'
+            % (len(identites), _nom(dominante)))
+
+    panel_watt = None
+    if dominante is not None:
+        panel_watt = _pmax_wc_du_produit(dominante.produit)
+        if not panel_watt:
+            panel_watt = (_parse_watt(dominante.designation or '')
+                          or _parse_watt(
+                              getattr(dominante.produit, 'nom', '') or ''))
+
+    if not panel_watt and panneaux > 0:
+        # Dernier repli chiffré : la puissance de l'étude, divisée par le
+        # nombre de panneaux réellement en ligne.
+        etude = getattr(devis, 'etude_params', None) or {}
+        try:
+            kwc_etude = float(etude.get('puissance_kwc') or 0)
+        except (TypeError, ValueError):
+            kwc_etude = 0.0
+        if kwc_etude > 0:
+            panel_watt = int(round(kwc_etude * 1000 / panneaux / 10) * 10)
+
+    if not panel_watt:
+        panel_watt = CIBLE_WATT_DEFAUT
+        if lignes_panneau:
+            avertissements.append(
+                'Puissance unitaire du panneau illisible (ni fiche technique '
+                'ni wattage dans le libellé) : %d Wc retenus par défaut.'
+                % CIBLE_WATT_DEFAUT)
+
+    kwc = round(panneaux * panel_watt / 1000.0, 3) if panneaux else 0.0
+
+    return {
+        'panneaux': panneaux,
+        'kwc': kwc,
+        'panel_watt': int(panel_watt),
+        'scenario': scenario,
+        'batterie': bool(batterie),
+        'avertissements': avertissements,
+    }
+
+
 # ── AOF164 — bascule du calcul résidentiel sur le MOTEUR PARTAGÉ ────────────
 #
 # Le compte de panneaux du devis résidentiel vient aujourd'hui du cerveau
@@ -473,6 +682,42 @@ def validate_composition_for_layout(layout, company):
 
 #: Nom du drapeau — lu par ``getattr`` pour que l'ABSENCE du réglage vaille OFF.
 DRAPEAU_MOTEUR_CALEPINAGE = 'USE_MOTEUR_CALEPINAGE'
+
+# ── PVG2 — garde de TOLÉRANCE sur l'arbitrage A/B (décision fondateur) ───────
+#
+# La bascule AOF164 remplaçait le compte historique par celui du moteur DÈS que
+# le drapeau était levé, quelle que soit l'ampleur de l'écart. Un moteur qui
+# lit mal une géométrie (un pan sans obstacle déclaré, un contour ouvert, une
+# unité inattendue) pouvait donc, silencieusement, faire passer une villa de 12
+# à 40 panneaux — et le devis partait ainsi.
+#
+# Décision du fondateur : SÉCURITÉ PAR DÉFAUT. Un petit écart est une
+# correction (le moteur est plus fin que le cerveau TypeScript, c'est le but de
+# la bascule) ; un GRAND écart est une ANOMALIE, et devant une anomalie on
+# garde le compte historique et on ALERTE — jamais un remplacement silencieux.
+#
+# Deux tolérances, satisfaites en OU (l'une suffit) : un écart de quelques
+# modules est absolu (une villa de 12 panneaux tolère ±2), un écart relatif
+# couvre les grandes toitures (200 modules tolèrent ±5 %, soit ±10).
+#: Écart ABSOLU toléré, en nombre de modules.
+TOLERANCE_ARBITRAGE_MODULES = 2
+#: Écart RELATIF toléré, en % du compte historique.
+TOLERANCE_ARBITRAGE_PCT = 5.0
+
+
+def _ecart_dans_la_tolerance(ancien, ecart):
+    """L'écart moteur↔historique reste-t-il dans la tolérance PVG2 ?
+
+    Vrai dès qu'UNE des deux tolérances est satisfaite (modules OU pourcentage).
+    Un compte historique nul ou négatif n'a pas de pourcentage qui ait un sens :
+    seule la tolérance en modules s'applique alors (jamais une division par 0).
+    """
+    ecart_abs = abs(int(ecart))
+    if ecart_abs <= TOLERANCE_ARBITRAGE_MODULES:
+        return True
+    if ancien > 0:
+        return (ecart_abs * 100.0 / ancien) <= TOLERANCE_ARBITRAGE_PCT
+    return False
 
 
 def moteur_calepinage_actif():
@@ -535,12 +780,74 @@ def _zone_villa_depuis_pan(pan):
     }
 
 
-def compte_moteur_du_layout(layout):
+def _produit_panneau_du_devis(devis):
+    """PV42 — le produit PANNEAU d'un devis EXISTANT, ou ``None``.
+
+    Première ligne classée « panneau » qui porte une fiche produit (une ligne
+    libre n'a pas de géométrie à donner au calepinage). Même classification que
+    partout ailleurs — la désignation d'abord, le nom du produit ensuite.
+    """
+    if devis is None:
+        return None
+    for ligne in _lignes_produit(devis):
+        if not _classe_ligne(ligne, _is_panel):
+            continue
+        produit = getattr(ligne, 'produit', None)
+        if produit is not None:
+            return produit
+    return None
+
+
+def _panneau_pour_calepinage(layout, *, company=None, devis=None):
+    """PV42 — le PANNEAU sur lequel calepiner, et la société qui le scope.
+
+    Deux sources, dans cet ordre : la ligne panneau du devis quand il en existe
+    un (le module RÉELLEMENT vendu), sinon le catalogue de la société au
+    wattage annoncé par le layout (``panelWatt``/``watt``, à défaut déduit du
+    kWc) — la même sélection que celle qui composera les lignes du devis.
+
+    Rend ``(produit, company_de_scoping)``. La société n'est rendue QUE si le
+    produit lui appartient vraiment : un produit GLOBAL (``company`` nulle,
+    catalogue partagé) passé avec une société ferait lever le garde-fou de
+    ``kit_panneau_du_produit`` (« appartient à une autre société ») et on
+    perdrait le kit réel pour rien. Aucun produit trouvé → ``(None, None)``,
+    et le moteur retombe sur son kit villa par défaut.
+    """
+    produit = _produit_panneau_du_devis(devis)
+    if produit is None and company is not None:
+        layout = layout or {}
+        watt = layout.get('panelWatt') or layout.get('watt')
+        if not watt:
+            result = dict(layout.get('result') or {})
+            panneaux = int(result.get('panels') or 0)
+            kwc = float(result.get('kwc') or 0.0)
+            if panneaux and kwc:
+                watt = int(round(kwc * 1000 / panneaux / 10) * 10)
+        try:
+            produit = _pick_product(company, _is_panel, watt=watt)
+        except Exception:      # pragma: no cover - catalogue indisponible
+            produit = None
+    if produit is None:
+        return None, None
+    proprietaire = getattr(produit, 'company_id', None)
+    if proprietaire is None:
+        # Produit du catalogue GLOBAL : aucun scoping société à opposer.
+        return produit, None
+    return produit, company
+
+
+def compte_moteur_du_layout(layout, *, company=None, devis=None):
     """Compte de modules rendu par le MOTEUR pour ce layout, ou ``None``.
 
     Somme les pans : chacun passe par ``apps.ao.selectors.calepinage_villa``
     (lecture cross-app sanctionnée — jamais ``apps.ao.models``), qui délègue au
     moteur partagé d'AOF163. Aucune ligne AO n'est créée.
+
+    PV42 — ``company``/``devis`` servent à résoudre le PANNEAU réellement vendu
+    et à le passer en ``produit_panneau`` (PV12) : le calepinage est alors posé
+    sur la géométrie de CE module, plus sur le kit villa générique. Sans
+    panneau résoluble (ni devis, ni société, ni catalogue), l'appel est
+    strictement celui d'hier.
 
     Rend ``None`` (et jamais une exception) dès que la géométrie manque ou que
     le moteur refuse : l'appelant garde alors le compte historique.
@@ -552,6 +859,9 @@ def compte_moteur_du_layout(layout):
 
     from apps.ao.selectors import calepinage_villa
 
+    produit_panneau, societe_panneau = _panneau_pour_calepinage(
+        layout, company=company, devis=devis)
+
     modules = 0
     detail = []
     for pan in pans:
@@ -559,7 +869,9 @@ def compte_moteur_du_layout(layout):
         if zone is None:
             continue
         try:
-            sortie = calepinage_villa(zone, ordre='lnglat')
+            sortie = calepinage_villa(zone, ordre='lnglat',
+                                      produit_panneau=produit_panneau,
+                                      company=societe_panneau)
         except Exception:
             logger.warning(
                 'AOF164: le moteur a refusé le pan %s — compte historique '
@@ -577,21 +889,34 @@ def compte_moteur_du_layout(layout):
         })
     if not detail:
         return None
-    return {'modules': modules, 'pans': tuple(detail)}
+    return {'modules': modules, 'pans': tuple(detail),
+            'produit_panneau': getattr(produit_panneau, 'pk', None)}
 
 
-def arbitrer_compte_calepinage(layout, compte_historique):
+def arbitrer_compte_calepinage(layout, compte_historique, *, company=None,
+                               devis=None):
     """Compare ancien et nouveau compte et JOURNALISE l'écart, ou rend ``None``.
 
     ``None`` signifie « ne change rien » : drapeau baissé (cas par défaut,
     retour AVANT tout calcul et tout journal) ou moteur sans réponse.
-    Sinon rend ``{'ancien', 'nouveau', 'ecart', 'retenu', 'pans'}`` où
-    ``retenu`` est le compte du MOTEUR — c'est le sens même de la bascule.
+    Sinon rend ``{'ancien', 'nouveau', 'ecart', 'retenu', 'pans',
+    'hors_tolerance', 'motif'}``.
+
+    ``retenu`` est le compte du MOTEUR tant que l'écart reste DANS la tolérance
+    PVG2 (``TOLERANCE_ARBITRAGE_MODULES`` modules OU ``TOLERANCE_ARBITRAGE_PCT``
+    %) — c'est le sens même de la bascule. Au-delà, l'écart n'est plus une
+    correction mais une ANOMALIE : ``retenu`` reste le compte HISTORIQUE,
+    ``hors_tolerance`` vaut ``True``, et l'écart part en ``logger.warning`` avec
+    les DEUX comptes et la référence du devis. Jamais un remplacement
+    silencieux, jamais une exception (décision fondateur : sécurité par défaut).
+
+    PV42 — ``company``/``devis`` sont transmis au moteur pour qu'il calepine sur
+    le panneau réellement vendu (PV12).
     """
     if not moteur_calepinage_actif():
         return None
     try:
-        mesure = compte_moteur_du_layout(layout)
+        mesure = compte_moteur_du_layout(layout, company=company, devis=devis)
     except Exception:
         # Une panne du moteur ne fait JAMAIS échouer une création de devis :
         # on journalise et on garde le compte historique.
@@ -607,8 +932,51 @@ def arbitrer_compte_calepinage(layout, compte_historique):
         'AOF164: bascule moteur ACTIVE — compte TypeScript %d, compte moteur '
         '%d, écart %+d (%d pan(s) calepiné(s))',
         ancien, nouveau, ecart, len(mesure['pans']))
+
+    # PVG2 — garde de tolérance : au-delà, on GARDE le compte historique et on
+    # alerte (le journal porte les deux comptes + la référence, pour que
+    # l'anomalie soit diagnosticable sans rejouer le calcul).
+    if not _ecart_dans_la_tolerance(ancien, ecart):
+        motif = 'écart au-delà de la tolérance — compte historique conservé'
+        logger.warning(
+            'PVG2: %s (devis %s) : compte TypeScript %d, compte moteur %d, '
+            'écart %+d — tolérance %d module(s) ou %.1f %%',
+            motif, getattr(devis, 'reference', '?') or '?', ancien, nouveau,
+            ecart, TOLERANCE_ARBITRAGE_MODULES, TOLERANCE_ARBITRAGE_PCT)
+        return {'ancien': ancien, 'nouveau': nouveau, 'ecart': ecart,
+                'retenu': ancien, 'pans': mesure['pans'],
+                'hors_tolerance': True, 'motif': motif}
+
     return {'ancien': ancien, 'nouveau': nouveau, 'ecart': ecart,
-            'retenu': nouveau, 'pans': mesure['pans']}
+            'retenu': nouveau, 'pans': mesure['pans'],
+            'hors_tolerance': False, 'motif': ''}
+
+
+def concevoir_electrique_du_devis(devis, *, origine=''):
+    """PV42 — enchaîne la conception ÉLECTRIQUE derrière le calepinage, SANS
+    jamais pouvoir casser le devis.
+
+    Le calepinage vient d'être rangé dans ``roof_layout`` : ses pans
+    (``_pans_geometry``) sont exactement ce que ``electrical_service`` attend
+    pour composer UN GROUPE DE CHAÎNES PAR PAN — deux orientations ne partagent
+    jamais une entrée MPPT (le moteur PV34 le refuse structurellement).
+
+    **Meilleur effort, et c'est structurel** : une panne d'étude électrique est
+    une pièce technique manquante, jamais une création (ou une resynchro) de
+    devis perdue. Toute exception est journalisée et avalée, et la fonction rend
+    ``None``. Elle n'écrit que ``electrical_design``/``electrical_design_hash``
+    (règle #4 : aucun statut, aucune ligne, aucun prix).
+    """
+    try:
+        from apps.ventes import electrical_service
+        return electrical_service.build_electrical_design(devis)
+    except Exception:
+        logger.warning(
+            'PV42: conception électrique indisponible pour le devis %s (%s) — '
+            'le devis est intact, la pièce technique sera recalculée à la '
+            'demande', getattr(devis, 'reference', '?'), origine or 'layout',
+            exc_info=True)
+        return None
 
 
 def build_devis_from_layout(*, layout, user, company, lead=None, client=None,
@@ -665,7 +1033,12 @@ def build_devis_from_layout(*, layout, user, company, lead=None, client=None,
     # rend ``None`` AVANT tout calcul — aucun appel moteur, aucun journal,
     # comportement bit-identique à aujourd'hui. Drapeau ON : le compte vient du
     # moteur et l'écart ancien/nouveau est journalisé pour arbitrage.
-    arbitrage = arbitrer_compte_calepinage(layout, nb_panneaux)
+    # PVG2 — au-delà de la tolérance (TOLERANCE_ARBITRAGE_MODULES modules OU
+    # TOLERANCE_ARBITRAGE_PCT %), ``retenu`` REDEVIENT le compte historique :
+    # la condition ci-dessous est alors fausse et le devis garde ses panneaux,
+    # l'anomalie partant en avertissement plutôt qu'en remplacement silencieux.
+    arbitrage = arbitrer_compte_calepinage(layout, nb_panneaux,
+                                           company=company)
     if arbitrage is not None and arbitrage['retenu'] != nb_panneaux:
         watt_reference = layout.get('panelWatt') or layout.get('watt')
         if not watt_reference and nb_panneaux and kwc:
@@ -756,12 +1129,290 @@ def build_devis_from_layout(*, layout, user, company, lead=None, client=None,
     devis = create_with_reference(Devis, 'DEV', company, _create)
     # QX23be — fige la marge interne dès la création (manager-only).
     refresh_marge_snapshot(devis)
+    # PV42 — la boucle se ferme ici : calepinage rangé → conception électrique
+    # par pan. Meilleur effort : un échec ne fait JAMAIS perdre le devis.
+    concevoir_electrique_du_devis(devis, origine='création')
     logger.info(
         'Q3/QJ21: devis %s built from layout (%d lignes, %.2f kWc, %d pans, company %s)',
         devis.reference, len(line_specs), kwc,
         len(toiture.get('pans', [])) if toiture else 0,
         getattr(company, 'id', '?'))
     return devis
+
+
+# ── PV18 — RESYNCHRONISER un devis existant sur un nouveau calepinage ───────
+#
+# `build_devis_from_layout` CRÉE un devis. Ici on en MET À JOUR un qui existe
+# déjà, et la différence est tout le sujet : un devis vivant porte des prix
+# négociés, des remises, des sections, des notes, un ordre d'affichage et des
+# groupes multi-villa que personne n'a le droit de perdre parce que la toiture a
+# bougé de deux panneaux. La mise à jour est donc CHIRURGICALE — on touche les
+# quantités de panneaux et la présence de la batterie, RIEN d'autre — et jamais,
+# sous aucune condition, le STATUT (règle #4 : ce chemin LIT les statuts, il ne
+# les écrit pas ; `save(update_fields=...)` ci-dessous le rend structurel).
+
+
+class SyncLayoutError(Exception):
+    """Le devis n'est pas dans un état où son calepinage peut être resynchronisé.
+
+    ``revision_possible`` distingue les deux refus : un devis ENVOYÉ peut être
+    révisé (une nouvelle version repart en brouillon), un devis
+    accepté/refusé/expiré est clos.
+    """
+
+    def __init__(self, detail, *, revision_possible=False):
+        super().__init__(detail)
+        self.detail = detail
+        self.revision_possible = revision_possible
+
+
+def _cible_panneaux_du_layout(layout, toiture):
+    """Nombre de panneaux VOULU par un layout (même lecture que la création)."""
+    result = dict((layout or {}).get('result') or {})
+    cible = int(result.get('panels') or result.get('count') or 0)
+    if cible <= 0 and toiture.get('nb_panneaux'):
+        cible = int(toiture['nb_panneaux'])
+    return cible
+
+
+def _watt_du_layout(layout, toiture, cible_panneaux):
+    """Wattage unitaire annoncé par le layout, ou déduit de son kWc."""
+    watt = (layout or {}).get('panelWatt') or (layout or {}).get('watt')
+    if watt:
+        try:
+            return int(round(float(watt)))
+        except (TypeError, ValueError):
+            pass
+    result = dict((layout or {}).get('result') or {})
+    kwc = float(result.get('kwc') or toiture.get('kwc') or 0.0)
+    if kwc and cible_panneaux:
+        return int(round(kwc * 1000 / cible_panneaux / 10) * 10)
+    return CIBLE_WATT_DEFAUT
+
+
+def sync_devis_from_layout(devis, layout, user=None):
+    """PV18 — aligne les LIGNES d'un devis brouillon sur un nouveau calepinage.
+
+    Sous ``transaction.atomic()`` + ``select_for_update`` sur la ligne du devis
+    (deux commerciaux sur le même devis ne peuvent pas s'écraser l'un l'autre).
+
+    Comportement par statut — le statut est LU, JAMAIS écrit (règle #4) :
+
+    * ``brouillon`` — mise à jour chirurgicale (voir plus bas) ;
+    * ``envoye``    — ``SyncLayoutError(revision_possible=True)`` : le client a
+      déjà cette version sous les yeux, le bon geste est « Réviser » ;
+    * ``accepte`` / ``refuse`` / ``expire`` — ``SyncLayoutError`` : document
+      clos, aucune révision de calepinage possible.
+
+    Mise à jour chirurgicale, sur un brouillon :
+
+    * les lignes PANNEAU sont portées au compte du layout ; quand il y en a
+      plusieurs, l'écart va sur la PLUS GROSSE seule (les autres, souvent une
+      seconde marque ou un second pan négocié, ne bougent pas) ;
+    * aucune ligne panneau et un compte à poser → UNE ligne est créée depuis le
+      catalogue au wattage du layout (``_pick_product``, catalogue société OU
+      global, jamais un produit sans prix) ;
+    * la BATTERIE suit le scénario : ajoutée si le layout en veut une et qu'il
+      n'y en a pas, supprimée s'il n'en veut plus ;
+    * TOUT le reste est intact — prix unitaires, remises, TVA de ligne,
+      sections, notes, ordre d'affichage, groupes multi-villa, et les produits
+      des lignes non touchées ne sont JAMAIS re-choisis ;
+    * ``roof_layout`` / ``layout_hash`` sont re-posés, et ``etude_params`` ne
+      reçoit que ``puissance_kwc`` / ``production_annuelle`` /
+      ``economies_annuelles`` / ``toiture`` — les champs d'étude du générateur
+      (autoconsommation, payback, pompe…) ne sont jamais touchés.
+
+    Re-soumettre le MÊME layout (même empreinte) ne fait AUCUNE écriture et
+    renvoie ``inchange=True``.
+
+    Renvoie toujours le même dict :
+    ``{inchange, panneaux, kwc, scenario, batterie, lignes_modifiees,
+    avertissements}``.
+    """
+    from django.db import transaction
+
+    from apps.ventes.models import Devis, LigneDevis
+
+    layout = layout if isinstance(layout, dict) else {}
+    nouveau_hash = layout_hash(layout)
+    toiture = extract_roof_config(layout)
+    cible_panneaux = _cible_panneaux_du_layout(layout, toiture)
+    watt = _watt_du_layout(layout, toiture, cible_panneaux)
+
+    scenario_brut = (layout.get('scenario') or '').lower()
+    veut_batterie = ('batterie' in scenario_brut or 'hybride' in scenario_brut
+                     or bool(layout.get('battery')))
+
+    with transaction.atomic():
+        verrou = (Devis.objects.select_for_update()
+                  .filter(pk=getattr(devis, 'pk', None)).first())
+        if verrou is None:
+            raise SyncLayoutError('Devis introuvable.')
+
+        # ── Garde de statut : LECTURE du statut, jamais une écriture ──
+        if verrou.statut == Devis.Statut.ENVOYE:
+            raise SyncLayoutError(
+                'Devis « Envoyé » : le client a déjà cette version sous les '
+                'yeux. Créez une révision (« Réviser ») pour en changer le '
+                'calepinage.',
+                revision_possible=True)
+        if verrou.statut != Devis.Statut.BROUILLON:
+            raise SyncLayoutError(
+                'Devis « %s » : son calepinage est figé, ce document est '
+                'clos.' % verrou.get_statut_display(),
+                revision_possible=False)
+
+        lignes = _lignes_produit(verrou)
+        lignes_panneau = [li for li in lignes
+                          if _classe_ligne(li, _is_panel)]
+        lignes_batterie = [li for li in lignes
+                           if _classe_ligne(li, _is_battery)]
+        a_batterie = bool(lignes_batterie)
+        total_panneaux = sum(int(li.quantite or 0) for li in lignes_panneau)
+
+        avertissements = []
+        # Cohérence avec PV17 : ces deux cas y sont déclarés NON modifiables.
+        if verrou.mode_installation == Devis.ModeInstallation.AGRICOLE:
+            avertissements.append(
+                'Devis agricole (pompage) — le calepinage de toiture ne '
+                's\'applique pas.')
+        if verrou.lignes.filter(groupe_index__gte=1).exists():
+            avertissements.append(
+                'Devis multi-villa : l\'écart de calepinage porte sur la ligne '
+                'de panneaux la plus grosse, tous groupes confondus.')
+
+        # ── Court-circuit : même géométrie → ZÉRO écriture ──
+        if nouveau_hash and verrou.layout_hash == nouveau_hash:
+            return {
+                'inchange': True,
+                'panneaux': total_panneaux,
+                'kwc': round(total_panneaux * watt / 1000.0, 3),
+                'scenario': 'avec_batterie' if a_batterie else 'reseau',
+                'batterie': a_batterie,
+                'lignes_modifiees': 0,
+                'avertissements': avertissements,
+            }
+
+        lignes_modifiees = 0
+
+        # ── Panneaux : porter le compte à la cible ──
+        if cible_panneaux > 0 and not lignes_panneau:
+            panneau = _pick_product(verrou.company, _is_panel, watt=watt)
+            if panneau is None:
+                avertissements.append(
+                    'Aucun panneau tarifé au catalogue : la ligne de panneaux '
+                    'n\'a pas pu être créée. Ajoutez un panneau tarifé.')
+            else:
+                LigneDevis.objects.create(
+                    devis=verrou, produit=panneau, designation=panneau.nom,
+                    quantite=Decimal(str(cible_panneaux)),
+                    prix_unitaire=Decimal(panneau.prix_vente),
+                    remise=Decimal('0'))
+                lignes_modifiees += 1
+                total_panneaux = cible_panneaux
+        elif cible_panneaux <= 0:
+            # Un layout sans compte de panneaux ne DÉTRUIT pas les lignes en
+            # place : « 0 » veut dire « inconnu », pas « enlève tout ».
+            avertissements.append(
+                'Ce calepinage ne porte aucun panneau : les lignes de '
+                'panneaux du devis n\'ont pas été modifiées.')
+        elif lignes_panneau and cible_panneaux != total_panneaux:
+            # L'écart va sur la PLUS GROSSE ligne, elle seule : les autres
+            # lignes panneau restent telles que le commercial les a posées.
+            dominante = max(lignes_panneau,
+                            key=lambda li: Decimal(str(li.quantite or 0)))
+            ecart = cible_panneaux - total_panneaux
+            nouvelle = int(dominante.quantite or 0) + ecart
+            if nouvelle < 0:
+                # Un retrait plus grand que la ligne dominante : on ne descend
+                # jamais sous zéro (et le compte final est renvoyé tel quel).
+                nouvelle = 0
+                avertissements.append(
+                    'Le retrait demandé dépasse la plus grosse ligne de '
+                    'panneaux : elle a été ramenée à 0, les autres lignes '
+                    'n\'ont pas été touchées.')
+            dominante.quantite = Decimal(str(nouvelle))
+            dominante.save(update_fields=['quantite'])
+            lignes_modifiees += 1
+            total_panneaux = sum(
+                int(li.quantite or 0) for li in lignes_panneau)
+
+        # ── Batterie : présente si (et seulement si) le layout en veut une ──
+        if veut_batterie and not a_batterie:
+            batterie = _pick_product(verrou.company, _is_battery)
+            if batterie is None:
+                avertissements.append(
+                    'Aucune batterie tarifée au catalogue : la ligne batterie '
+                    'n\'a pas pu être ajoutée. Ajoutez une batterie tarifée.')
+            else:
+                LigneDevis.objects.create(
+                    devis=verrou, produit=batterie, designation=batterie.nom,
+                    quantite=Decimal('1'),
+                    prix_unitaire=Decimal(batterie.prix_vente),
+                    remise=Decimal('0'))
+                lignes_modifiees += 1
+                a_batterie = True
+        elif not veut_batterie and a_batterie:
+            for ligne in lignes_batterie:
+                ligne.delete()
+            lignes_modifiees += len(lignes_batterie)
+            a_batterie = False
+
+        # ── Étude : QUATRE clés, jamais les champs d'étude du générateur ──
+        result = dict(layout.get('result') or {})
+        kwc = float(result.get('kwc') or toiture.get('kwc') or 0.0)
+        if not kwc and total_panneaux:
+            kwc = round(total_panneaux * watt / 1000.0, 3)
+        etude = dict(verrou.etude_params or {})
+        if result.get('annualKwh') is not None:
+            etude['production_annuelle'] = int(result['annualKwh'])
+        if result.get('savings') is not None:
+            etude['economies_annuelles'] = int(result['savings'])
+        if kwc:
+            etude['puissance_kwc'] = kwc
+        if toiture:
+            etude['toiture'] = toiture
+
+        # QJ21 — le layout stocké porte la géométrie par pan DÉJÀ traitée, pour
+        # que ses consommateurs n'aient pas à ré-extraire. Copie, jamais une
+        # mutation du dict de l'appelant. L'empreinte, elle, est calculée sur
+        # le layout D'ORIGINE (clés géométriques seules) : cet enrichissement
+        # ne peut donc pas casser le court-circuit au prochain envoi.
+        layout_stocke = dict(layout)
+        if toiture and toiture.get('pans'):
+            layout_stocke['_pans_geometry'] = toiture['pans']
+
+        verrou.roof_layout = layout_stocke
+        verrou.layout_hash = nouveau_hash or verrou.layout_hash
+        verrou.etude_params = etude
+        # `update_fields` EXCLUT `statut` : le statut ne peut pas partir d'ici,
+        # même par accident (règle #4).
+        verrou.save(update_fields=[
+            'roof_layout', 'layout_hash', 'etude_params'])
+
+        logger.info(
+            'PV18: devis %s resynchronisé sur son calepinage (%d panneaux, '
+            '%.2f kWc, %d ligne(s) touchée(s), société %s, par %s)',
+            verrou.reference, total_panneaux, kwc, lignes_modifiees,
+            getattr(verrou.company, 'id', '?'),
+            getattr(user, 'username', '?'))
+
+        resultat = {
+            'inchange': False,
+            'panneaux': total_panneaux,
+            'kwc': kwc,
+            'scenario': 'avec_batterie' if a_batterie else 'reseau',
+            'batterie': a_batterie,
+            'lignes_modifiees': lignes_modifiees,
+            'avertissements': avertissements,
+        }
+
+    # PV42 — la toiture a bougé : la conception ÉLECTRIQUE la suit, par pan.
+    # HORS de la transaction, et en meilleur effort : une étude électrique en
+    # panne ne doit ni annuler la resynchro déjà validée, ni salir sa
+    # transaction. L'empreinte d'entrée (PV41) évite toute réécriture inutile.
+    concevoir_electrique_du_devis(verrou, origine='resynchronisation')
+    return resultat
 
 
 # ── Copilote — devis AUTOMATIQUE (résidentiel) ───────────────────────────────
@@ -4844,3 +5495,322 @@ def prix_applicable(*, produit, client=None, quantite=1):
         return {'prix': ligne.prix_unitaire, 'source': 'liste', 'liste_nom': liste.nom}
 
     return {'prix': prix_standard, 'source': 'standard', 'liste_nom': None}
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# PV47 — Le BORDEREAU électrique en LIGNES DE DEVIS (opt-in, jamais silencieux)
+# ═════════════════════════════════════════════════════════════════════════════
+# La conception électrique (PV41) produit un bordereau TECHNIQUE : câbles,
+# fusibles, parafoudres, sectionneurs, disjoncteurs, différentiels, coffrets.
+# Le devis, lui, porte des lignes CHIFFRÉES. Le pont entre les deux est
+# DÉLIBÉRÉMENT un geste explicite de l'utilisateur (une action, un clic) et
+# jamais un effet de bord d'un recalcul d'étude : sans cela, chaque
+# re-conception ferait bouger le prix d'un devis sous les yeux du client.
+#
+# Deux issues par ligne de bordereau, aucune troisième :
+#   * un produit du catalogue correspond → ligne PRODUIT à SON prix. Les SKU
+#     PVG3 (câbles/protections) ont un prix VIDE tant que le fondateur ne les a
+#     pas renseignés : la ligne part donc à 0 et son intitulé le DIT
+#     (« — à chiffrer »). On n'invente jamais un prix ;
+#   * aucun produit ne correspond → ligne de NOTE « à chiffrer », sans produit
+#     ni prix, ET la ligne est reportée dans les MANQUES du catalogue (c'est la
+#     donnée qui dit au fondateur ce qu'il lui reste à référencer).
+#
+# Les lignes de bordereau NON électriques (structure : rails, pinces, crochets)
+# sont IGNORÉES : elles relèvent des postes « Structures & fixation » que le
+# devis compose déjà, et les recopier en notes ne ferait que du bruit.
+
+#: Catégories catalogue où l'on cherche une correspondance (taxonomie de
+#: ``stock.seed_catalogue.TAXONOMIE``).
+BOQ_CATEGORIES = ('Câbles', 'Protection & accessoires')
+
+#: Familles d'organes reconnues, du motif le plus SPÉCIFIQUE au plus général —
+#: le PREMIER motif satisfait gagne. L'ordre est porteur de sens :
+#: « porte-fusible » avant « fusible » (sinon tout porte-fusible serait classé
+#: fusible), « sectionneur-fusible » avant « fusible » de même, et les CÂBLES
+#: sont éclatés par usage : un câble solaire DC et un câble AC U-1000 R2V ont
+#: la même section possible mais ne sont PAS interchangeables.
+#: Chaque motif est un tuple de fragments dont TOUS doivent être présents.
+#: Une désignation sans famille connue est ignorée (lignes de structure).
+_BOQ_FAMILLES = (
+    ('porte_fusible', (('porte-fusible',), ('porte fusible',))),
+    ('sectionneur', (('sectionneur',),)),
+    ('fusible', (('fusible',),)),
+    ('cable_solaire', (('cable', 'solaire'), ('cable', 'h1z2z2'))),
+    ('cable_terre', (('cable', 'terre'),)),
+    ('cable_batterie', (('cable', 'batterie'),)),
+    ('cable_ac', (('cable', 'u-1000'), ('cable', 'r2v'))),
+    ('cable', (('cable',),)),
+    ('parafoudre', (('parafoudre',),)),
+    ('differentiel', (('differentiel',), ('ddr',))),
+    ('disjoncteur', (('disjoncteur',),)),
+    ('coffret', (('coffret',),)),
+)
+
+#: Familles pour lesquelles la SECTION (mm²) est la grandeur dimensionnante.
+_BOQ_FAMILLES_CABLE = frozenset({
+    'cable_solaire', 'cable_terre', 'cable_batterie', 'cable_ac', 'cable'})
+
+#: Familles pour lesquelles le CALIBRE (A) est la grandeur dimensionnante — et
+#: donc une CONDITION d'appariement. Un parafoudre ou un coffret, eux, ne se
+#: choisissent pas au calibre : exiger une égalité d'ampères sur eux
+#: fabriquerait de faux manques (le coffret AC porte le calibre du disjoncteur
+#: qu'il abrite, pas le sien).
+_BOQ_FAMILLES_CALIBREES = frozenset({
+    'fusible', 'porte_fusible', 'sectionneur', 'disjoncteur', 'differentiel'})
+
+#: Suffixe apposé à toute ligne que le catalogue ne sait pas encore chiffrer.
+BOQ_SUFFIXE_A_CHIFFRER = ' — à chiffrer'
+
+_BOQ_NOMBRE_RE = re.compile(r'\d+(?:[.,]\d+)?')
+
+
+def _boq_normaliser(texte):
+    """Minuscules sans accents — la comparaison ne dépend pas d'un « é »."""
+    texte = (texte or '').lower()
+    for source, cible in (('é', 'e'), ('è', 'e'), ('ê', 'e'), ('â', 'a'),
+                          ('à', 'a'), ('î', 'i'), ('ï', 'i'), ('ô', 'o'),
+                          ('û', 'u'), ('ù', 'u'), ('ç', 'c'), ('²', '2')):
+        texte = texte.replace(source, cible)
+    return texte
+
+
+def _boq_famille(texte):
+    """Famille d'organe d'une désignation, ou ``None`` si non électrique."""
+    normalise = _boq_normaliser(texte)
+    for famille, motifs in _BOQ_FAMILLES:
+        for motif in motifs:
+            if all(fragment in normalise for fragment in motif):
+                return famille
+    return None
+
+
+def _boq_polarite(texte):
+    """``'mono'`` / ``'tri'`` / ``None`` — nombre de pôles d'un organe AC.
+
+    Le moteur écrit « bipolaire »/« tétrapolaire » (NF C 15-100), le catalogue
+    « monophasé »/« tétrapolaire », et la tension réseau tranche aussi
+    (230 V ↔ 400 V). Poser un tétrapolaire sur du monophasé n'est pas une
+    approximation de prix : c'est un organe qui ne se câble pas.
+    """
+    normalise = _boq_normaliser(texte)
+    if any(motif in normalise for motif in
+           ('triphas', 'tetrapolaire', '400 v', ' 4p')):
+        return 'tri'
+    if any(motif in normalise for motif in
+           ('monophas', 'bipolaire', '230 v', ' 1p')):
+        return 'mono'
+    return None
+
+
+def _boq_nombres(texte):
+    """Les nombres d'un texte, normalisés (« 6,0 mm² » et « 6 mm² » → 6)."""
+    valeurs = set()
+    for brut in _BOQ_NOMBRE_RE.findall(_boq_normaliser(texte)):
+        try:
+            valeurs.add(float(brut.replace(',', '.')))
+        except ValueError:
+            continue
+    return valeurs
+
+
+def _boq_courant(texte):
+    """Le CALIBRE en ampères d'un texte (« 32 A »), ou ``None``."""
+    trouve = re.search(r'(\d+(?:[.,]\d+)?)\s*a\b', _boq_normaliser(texte))
+    if not trouve:
+        return None
+    try:
+        return float(trouve.group(1).replace(',', '.'))
+    except ValueError:
+        return None
+
+
+def _boq_section(texte):
+    """La SECTION en mm² d'un texte (« 6,0 mm² »), ou ``None``."""
+    trouve = re.search(r'(\d+(?:[.,]\d+)?)\s*mm2', _boq_normaliser(texte))
+    if not trouve:
+        return None
+    try:
+        return float(trouve.group(1).replace(',', '.'))
+    except ValueError:
+        return None
+
+
+def _boq_courant_alternatif(texte):
+    """``True`` (AC) / ``False`` (DC) / ``None`` — discriminant d'un organe.
+
+    Un parafoudre DC posé à la place d'un parafoudre AC n'est pas une
+    approximation, c'est une erreur de dossier : le discriminant est donc une
+    CONDITION de correspondance, jamais un simple critère de tri.
+    """
+    normalise = _boq_normaliser(texte)
+    a_dc = bool(re.search(r'\bdc\b|\bvdc\b', normalise))
+    a_ac = bool(re.search(r'\bac\b', normalise))
+    if a_dc and not a_ac:
+        return False
+    if a_ac and not a_dc:
+        return True
+    return None
+
+
+def _boq_candidats(company):
+    """Produits catalogue quotables des catégories du bordereau.
+
+    Portée identique à ``_pick_product`` (PV15) : société de l'utilisateur OU
+    catalogue global — jamais celui d'un autre tenant.
+    """
+    from django.db.models import Q
+    from apps.stock.models import Produit
+
+    filtre = Q(company=company) | Q(company__isnull=True)
+    qs = Produit.objects.filter(
+        filtre, categorie__nom__in=BOQ_CATEGORIES, is_archived=False)
+    return list(qs.select_related('categorie').order_by('nom'))
+
+
+def _boq_apparier(designation, spec, candidats):
+    """Produit catalogue correspondant à une ligne de bordereau, ou ``None``.
+
+    Quatre conditions CUMULATIVES :
+
+    1. même FAMILLE d'organe (câble solaire, câble AC, fusible, parafoudre…) ;
+    2. même nature de courant quand les deux la portent (un parafoudre DC ne
+       remplace pas un parafoudre AC) ;
+    3. même POLARITÉ quand les deux la portent (un tétrapolaire ne se câble
+       pas sur du monophasé) ;
+    4. même grandeur DIMENSIONNANTE quand la ligne en porte une — la section
+       pour un câble, le calibre en ampères pour un organe de coupure. Une
+       ligne calibrée sans calibre correspondant au catalogue N'EST PAS
+       appariée : proposer un 15 A à la place d'un 16 A calculé serait une
+       erreur d'étude déguisée en commodité.
+    """
+    famille = _boq_famille(designation)
+    if famille is None:
+        return None
+    texte = '%s %s' % (designation or '', spec or '')
+    alternatif = _boq_courant_alternatif(texte)
+    polarite = _boq_polarite(texte)
+    section = (_boq_section(designation)
+               if famille in _BOQ_FAMILLES_CABLE else None)
+    calibre = (_boq_courant(spec) or _boq_courant(designation)
+               if famille in _BOQ_FAMILLES_CALIBREES else None)
+
+    meilleur = None
+    meilleur_score = None
+    for produit in candidats:
+        nom = produit.nom or ''
+        if _boq_famille(nom) != famille:
+            continue
+        nature = _boq_courant_alternatif(nom)
+        if alternatif is not None and nature is not None \
+                and nature != alternatif:
+            continue
+        pole = _boq_polarite(nom)
+        if polarite is not None and pole is not None and pole != polarite:
+            continue
+        if section is not None:
+            if _boq_section(nom) != section:
+                continue
+        elif calibre is not None:
+            if _boq_courant(nom) != calibre:
+                continue
+        # À conditions égales, le nom au recouvrement de nombres le plus
+        # large gagne, puis le plus court (le moins spécifié inutilement).
+        score = (len(_boq_nombres(nom) & _boq_nombres(texte)), -len(nom))
+        if meilleur_score is None or score > meilleur_score:
+            meilleur_score = score
+            meilleur = produit
+    return meilleur
+
+
+def _boq_prix(produit):
+    try:
+        return Decimal(str(getattr(produit, 'prix_vente', 0) or 0))
+    except (ArithmeticError, TypeError, ValueError):
+        return Decimal('0')
+
+
+def ajouter_lignes_boq_electrique(devis, user=None):
+    """PV47 — ajoute au devis les lignes issues du bordereau électrique (PV41).
+
+    Rend TOUJOURS le même dict ``{creees, lignes, manques, deja_presentes}`` :
+
+    * ``creees`` — nombre de lignes ajoutées ;
+    * ``lignes`` — une entrée par ligne créée (``designation``, ``produit``,
+      ``quantite``, ``type_ligne``, ``a_chiffrer``) ;
+    * ``manques`` — les lignes de bordereau qu'AUCUN produit du catalogue ne
+      couvre. C'est la liste de courses du référencement, pas une erreur ;
+    * ``deja_presentes`` — lignes ignorées parce que le devis les portait déjà
+      (garde anti-double-clic : ré-appeler l'action ne duplique rien).
+
+    N'écrit QUE des lignes : ni statut, ni prix inventé (règle #4). Un produit
+    sans prix part à 0 avec « à chiffrer » dans son intitulé — visible à
+    l'écran comme sur le PDF.
+    """
+    from django.db import transaction
+    from .models import LigneDevis
+
+    design = getattr(devis, 'electrical_design', None)
+    bom = (design or {}).get('bom') if isinstance(design, dict) else None
+    if not isinstance(bom, list) or not bom:
+        return {'creees': 0, 'lignes': [], 'manques': [], 'deja_presentes': []}
+
+    candidats = _boq_candidats(devis.company)
+    lignes_existantes = list(devis.lignes.all())
+    existantes = {(li.designation or '').strip() for li in lignes_existantes}
+    ordre = max([int(li.ordre or 0) for li in lignes_existantes] or [0]) + 1
+
+    creees = []
+    manques = []
+    deja = []
+    with transaction.atomic():
+        for item in bom:
+            if not isinstance(item, dict):
+                continue
+            designation = (item.get('designation') or '').strip()
+            if not designation or _boq_famille(designation) is None:
+                continue
+            spec = item.get('spec') or ''
+            produit = _boq_apparier(designation, spec, candidats)
+            a_chiffrer = produit is None or _boq_prix(produit) <= 0
+            intitule = (designation + (BOQ_SUFFIXE_A_CHIFFRER
+                                       if a_chiffrer else ''))[:255]
+            if intitule in existantes:
+                deja.append(designation)
+                continue
+            try:
+                quantite = (Decimal(str(item.get('quantite')))
+                            if item.get('quantite') not in (None, '')
+                            else Decimal('1'))
+            except (ArithmeticError, TypeError, ValueError):
+                quantite = Decimal('1')
+
+            if produit is None:
+                manques.append({'designation': designation,
+                                'quantite': float(quantite), 'spec': spec})
+                LigneDevis.objects.create(
+                    devis=devis, produit=None, designation=intitule,
+                    quantite=None, prix_unitaire=None, remise=Decimal('0'),
+                    taux_tva=None, type_ligne=LigneDevis.TypeLigne.NOTE,
+                    ordre=ordre)
+                creees.append({'designation': intitule, 'produit': None,
+                               'quantite': None, 'type_ligne': 'note',
+                               'a_chiffrer': True})
+            else:
+                LigneDevis.objects.create(
+                    devis=devis, produit=produit, designation=intitule,
+                    quantite=quantite, prix_unitaire=_boq_prix(produit),
+                    remise=Decimal('0'), taux_tva=None,
+                    type_ligne=LigneDevis.TypeLigne.PRODUIT, ordre=ordre)
+                creees.append({'designation': intitule, 'produit': produit.pk,
+                               'quantite': float(quantite),
+                               'type_ligne': 'produit',
+                               'a_chiffrer': a_chiffrer})
+            existantes.add(intitule)
+            ordre += 1
+
+    if creees:
+        logger.info('PV47 — %d ligne(s) de bordereau électrique ajoutées au '
+                    'devis %s par %s', len(creees), devis.pk, user)
+    return {'creees': len(creees), 'lignes': creees, 'manques': manques,
+            'deja_presentes': deja}

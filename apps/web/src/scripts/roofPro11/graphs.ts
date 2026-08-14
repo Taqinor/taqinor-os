@@ -21,6 +21,28 @@ export interface Graphs {
   renderYearGraph: (prod: ScaledProduction) => string;
   renderMonthGraph: (prod: ScaledProduction) => string;
   renderDayGraph: (prod: ScaledProduction) => string;
+  /** PV75 — mini cascade des pertes (barres horizontales, libellés FR), à partir du
+   *  `loss_breakdown` bancable {poste: pct} injecté par la page hôte. SVG autonome
+   *  (pas rempli dans le graphe de scope année/mois/jour) ; chaîne vide si aucun poste
+   *  de perte exploitable (tous nuls/absents). */
+  renderLossCascade: (lossBreakdown: Record<string, number>) => string;
+}
+
+// PV75 — libellés FR des postes de perte connus (mêmes postes que
+// `apps/ventes/solar_design.py::DEFAULT_LOSS_FACTORS` côté serveur). Un poste absent
+// de cette table (extensibilité serveur) affiche sa clé brute — jamais une erreur.
+const LOSS_LABELS_FR: Record<string, string> = {
+  temperature: 'Température',
+  soiling: 'Salissure',
+  shading: 'Ombrage',
+  wiring: 'Câblage',
+  inverter: 'Onduleur',
+  mismatch: 'Dispersion',
+  availability: 'Disponibilité',
+};
+
+function lossLabelFr(poste: string): string {
+  return LOSS_LABELS_FR[poste] ?? poste;
 }
 
 export function createGraphs(ctx: Ctx): Graphs {
@@ -95,5 +117,36 @@ export function createGraphs(ctx: Ctx): Graphs {
     return `<line x1="${SVG_BOX.padLeft}" y1="${baseY}" x2="${SVG_BOX.width - SVG_BOX.padRight}" y2="${baseY}" stroke="var(--color-white, #fff)" stroke-opacity="0.12" stroke-width="1"/>${areaEl}${lineEl}${ticks}`;
   }
 
-  return { renderYearGraph, renderMonthGraph, renderDayGraph };
+  /** PV75 — mini cascade des pertes : une barre horizontale par poste, longueur
+   *  proportionnelle au poste le plus lourd, libellé FR à gauche, pourcentage à
+   *  droite. Indépendante de `ctx` (pure fonction du payload bancable de la page hôte). */
+  function renderLossCascade(lossBreakdown: Record<string, number>): string {
+    const entries = Object.entries(lossBreakdown || {}).filter(
+      ([, pct]) => Number.isFinite(pct) && pct > 0,
+    );
+    if (entries.length === 0) return '';
+    const maxPct = Math.max(...entries.map(([, pct]) => pct));
+    const width = 280;
+    const rowH = 16;
+    const labelW = 88;
+    const valueW = 40;
+    const barMaxW = width - labelW - valueW;
+    const height = entries.length * rowH + 4;
+    const rows = entries
+      .map(([poste, pct], i) => {
+        const y = i * rowH + 2;
+        const barW = maxPct > 0 ? Math.max(1, (pct / maxPct) * barMaxW) : 0;
+        const label = esc(lossLabelFr(poste));
+        const pctTxt = `${pct.toFixed(1)} %`;
+        return (
+          `<text x="0" y="${(y + 9).toFixed(1)}" font-size="8" fill="var(--color-lune-soft, #b7bdd1)">${label}</text>` +
+          `<rect x="${labelW}" y="${y.toFixed(1)}" width="${barW.toFixed(2)}" height="10" rx="1" fill="var(--color-brass-400, #e8b54a)"><title>${label} : ${esc(pctTxt)}</title></rect>` +
+          `<text x="${(width - 2).toFixed(1)}" y="${(y + 9).toFixed(1)}" text-anchor="end" font-size="8" fill="var(--color-lune-faint, #6f7791)">${esc(pctTxt)}</text>`
+        );
+      })
+      .join('');
+    return `<svg viewBox="0 0 ${width} ${height}" width="100%" role="img" aria-label="Cascade des pertes de production">${rows}</svg>`;
+  }
+
+  return { renderYearGraph, renderMonthGraph, renderDayGraph, renderLossCascade };
 }

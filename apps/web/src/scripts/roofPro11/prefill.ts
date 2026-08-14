@@ -15,9 +15,10 @@
 import { DEG2RAD, WGS84_RADIUS } from './constants';
 import { $ } from './dom';
 import { type Ctx } from './context';
-import { type AreaRecord, type CardData, type LeadPayload } from './types';
+import { type AreaRecord, type CardData, type LeadPayload, type ObstacleType } from './types';
 import { type LngLat } from '../../lib/roof';
 import { BILL_RANGES } from '../../lib/billRange';
+import { PANEL2_WATT } from '../../lib/estimatorBrainV2';
 import { ROOF_TYPES } from '../../lib/lead';
 
 /** W110 — coordonnées client OPTIONNELLES à reporter dans le diagnostic (handoff, jamais
@@ -200,8 +201,10 @@ export interface SerializedZone {
   label: string;
   /** Contour lng/lat [[lng,lat],…]. */
   vertices: LngLat[];
-  /** Obstacles (zones d'exclusion) — objets plats {id,centerLng,centerLat,lengthM,widthM}. */
-  obstacles: Array<{ id: string; centerLng: number; centerLat: number; lengthM: number; widthM: number }>;
+  /** Obstacles (zones d'exclusion) — objets plats {id,centerLng,centerLat,lengthM,widthM}.
+   *  PV61 — `type` (optionnel) porte le dégagement de l'obstacle ; absent = comportement
+   *  historique (dégagement uniforme). Jamais émis pour un obstacle sans type. */
+  obstacles: Array<{ id: string; centerLng: number; centerLat: number; lengthM: number; widthM: number; type?: ObstacleType }>;
   roofType: 'flat' | 'pitched';
   pitchDeg: number;
   facingAzimuthDeg: number;
@@ -214,9 +217,99 @@ export interface SerializedZone {
   geometry?: SerializedZoneGeometry;
 }
 
+// ═══════════ PV13 — SÉRIALISATION v2 (additive, jamais destructive) ═══════════
+// La v2 AJOUTE au JSON de quoi le lire SANS rejouer l'optimiseur : le résultat global
+// (panneaux/kWc/kWh/économies), le scénario commercial, la puissance panneau, la
+// batterie et l'origine (devis ou lead). TOUS les champs v1 restent présents, au même
+// endroit, avec la même valeur — un lecteur v1 continue de fonctionner tel quel, et
+// `deserializeLayout` IGNORE purement et simplement les ajouts (champs dérivés).
+
+/** Scénario commercial associé au design. */
+export type LayoutScenario = 'reseau' | 'avec_batterie' | 'hybride';
+
+/** Batterie retenue (forme minimale, tout optionnel). `null` = aucune batterie. */
+export interface SerializedBattery {
+  /** Capacité utile (kWh). */
+  kwh?: number;
+  /** Nombre de modules. */
+  count?: number;
+  /** Modèle/référence, tel qu'affiché. */
+  model?: string;
+}
+
+/** Résultat GLOBAL du design, cohérent avec les géométries de zone exportées. */
+export interface SerializedResult {
+  /** Somme des panneaux POSÉS des géométries exportées. */
+  panels: number;
+  /** Somme des kWc des géométries exportées. */
+  kwc: number;
+  /** Production annuelle (kWh) — somme des résultats de zone déjà calculés à l'écran. */
+  annualKwh: number;
+  /** Économies annuelles (MAD) telles qu'AFFICHÉES, ou null si l'appelant ne les fournit pas. */
+  savings: number | null;
+}
+
+/** Métadonnées passées par la page (jamais devinées ici). */
+export interface SerializeMeta {
+  scenario?: LayoutScenario;
+  /** Puissance unitaire du panneau (W). Défaut : le panneau du moteur (720 W). */
+  panelWatt?: number;
+  battery?: SerializedBattery | null;
+  /** D'où vient ce design : un devis existant, ou un lead. */
+  source?: 'devis' | 'lead';
+  devisId?: string | number | null;
+  /** Économies annuelles (MAD) affichées. Ni recalculées ni inventées ici. */
+  savingsMad?: number | null;
+}
+
+// ═══════════ PV71 — MATRICE D'OMBRAGE 12 × 24 (sérialisation) ═══════════
+// `ctx.shadeFactors` est une matrice 12 mois × 24 heures de facteurs de dérate (0–1,
+// 1 = aucun ombrage), calculée par le tracé d'ombres (shadingUi → hourlyShadeFactors).
+// Elle vit sur le ctx GLOBALEMENT (pas par zone) — le layout la porte donc à la RACINE.
+// Sans elle, rouvrir un dossier perdait tout le travail d'ombrage voisin et la production
+// remontait artificiellement.
+
+/** Mois et heures de la matrice — la taille est FIXE, donc la charge utile est bornée. */
+export const SHADING_MONTHS = 12;
+export const SHADING_HOURS = 24;
+/** Décimales conservées par facteur : 3 → ±0,1 % de dérate, ~6 caractères par valeur. */
+const SHADING_DECIMALS = 3;
+
+/**
+ * PV71 — normalise une matrice d'ombrage pour la sérialisation : exactement 12 × 24
+ * facteurs, chacun borné à [0, 1] et arrondi à 3 décimales (taille bornée, ~1,5 ko).
+ * Toute matrice de mauvaise forme (mois manquant, heure en trop, valeur non finie) est
+ * REFUSÉE en bloc → `null` : mieux vaut aucune ombre qu'une matrice à moitié fausse.
+ */
+export function serializeShading(factors: readonly (readonly number[])[] | null | undefined): number[][] | null {
+  if (!Array.isArray(factors) || factors.length !== SHADING_MONTHS) return null;
+  const out: number[][] = [];
+  const round = 10 ** SHADING_DECIMALS;
+  for (const row of factors) {
+    if (!Array.isArray(row) || row.length !== SHADING_HOURS) return null;
+    const clean: number[] = [];
+    for (const v of row) {
+      if (typeof v !== 'number' || !Number.isFinite(v)) return null;
+      clean.push(Math.round(Math.max(0, Math.min(1, v)) * round) / round);
+    }
+    out.push(clean);
+  }
+  return out;
+}
+
+/**
+ * PV71 — relit une matrice d'ombrage sérialisée. Mêmes garde-fous que l'écriture (forme
+ * exacte, valeurs bornées) : un JSON douteux rend `null` et l'outil repart sans ombrage
+ * plutôt qu'avec un dérate inventé. Renvoie une matrice NEUVE (aucun alias sur le JSON).
+ */
+export function deserializeShading(json: unknown): number[][] | null {
+  const raw = (json as { shading12x24?: unknown } | null | undefined)?.shading12x24 ?? json;
+  return serializeShading(raw as readonly (readonly number[])[] | null | undefined);
+}
+
 /** Layout complet sérialisé : version + zones + repère léger (pin/outline). */
 export interface SerializedLayout {
-  version: 1;
+  version: 1 | 2;
   /** Pin {lat,lng} (le centroïde du contour, ou le repère client posé), ou null. */
   pin: { lat: number; lng: number } | null;
   /** Contour de la zone active en [[lat,lng],…] (vide si pas de tracé fermé). */
@@ -226,6 +319,22 @@ export interface SerializedLayout {
   zones: SerializedZone[];
   /** Id de la zone active au moment de la sérialisation. */
   activeAreaId: string;
+  // — PV13, ajouts v2 (tous DÉRIVÉS ou fournis ; `deserializeLayout` les ignore) —
+  /** Résultat global cohérent avec les géométries exportées. */
+  result?: SerializedResult;
+  /** Scénario commercial (défaut `reseau`). */
+  scenario?: LayoutScenario;
+  /** Puissance unitaire du panneau (W). */
+  panelWatt?: number;
+  /** Batterie retenue, ou null. */
+  battery?: SerializedBattery | null;
+  /** Origine du design (défaut `lead`). */
+  source?: 'devis' | 'lead';
+  /** Identifiant du devis d'origine, ou null. */
+  devisId?: string | number | null;
+  /** PV71 — matrice d'ombrage 12 mois × 24 heures (facteurs 0–1), ou null si aucune ombre
+   *  n'a été tracée. Taille FIXE, donc charge utile bornée. */
+  shading12x24?: number[][] | null;
 }
 
 /** Centroïde {lat,lng} d'un contour lng/lat, ou null si < 1 sommet. */
@@ -246,7 +355,7 @@ function centroidOf(vertices: LngLat[]): { lat: number; lng: number } | null {
  * écrire nulle part. `billKwh` est optionnel (passé par l'appelant — l'outil ne
  * connaît pas la conversion facture→kWh ici).
  */
-export function serializeLayout(ctx: Ctx, billKwh: number | null = null): SerializedLayout {
+export function serializeLayout(ctx: Ctx, billKwh: number | null = null, meta?: SerializeMeta): SerializedLayout {
   // On part des zones figées (ctx.areas) et on superpose l'état d'édition VIVANT de
   // la zone active (vertices/obstacles/roofType… vivent sur ctx, pas encore re-figés).
   const zones: SerializedZone[] = ctx.areas.map((a) => {
@@ -263,6 +372,7 @@ export function serializeLayout(ctx: Ctx, billKwh: number | null = null): Serial
         centerLat: o.centerLat,
         lengthM: o.lengthM,
         widthM: o.widthM,
+        ...(o.type ? { type: o.type } : {}), // PV61 — additif, jamais émis si absent
       })),
       roofType: isActive ? ctx.roofType : a.roofType,
       pitchDeg: isActive ? ctx.pitchDeg : a.pitchDeg,
@@ -289,8 +399,24 @@ export function serializeLayout(ctx: Ctx, billKwh: number | null = null): Serial
           }
         : null;
     if (g && g.grid.panels.length) {
-      const posed = Math.max(0, Math.min(g.grid.panels.length, Math.round(g.count)));
-      const panels = g.grid.panels.slice(0, posed).map((p) => ({ cx: p.cx, cy: p.cy, ...(p.face ? { face: p.face } : {}) }));
+      // PV27 — les panneaux exportés sont les cellules RÉELLEMENT OCCUPÉES, pas les
+      // `count` premières du pavage. L'ancien `slice(0, count)` était un mensonge dès que
+      // la disposition avait été éditée à la main : retirer le panneau nº12 et en garder
+      // un nº47 exportait quand même « les 46 premiers », donc l'édition manuelle était
+      // silencieusement effacée à l'export (puis au ré-import). La liste occupée n'existe
+      // que pour la zone ACTIVE (c'est la seule en cours d'édition) ; une zone figée garde
+      // le comportement historique (les `count` premières du pavage).
+      const live =
+        isActive && ctx.layoutState && ctx.layoutState.cells.length === g.grid.panels.length
+          ? [...ctx.layoutState.occupied].filter((i) => i >= 0 && i < g.grid.panels.length).sort((a, b) => a - b)
+          : null;
+      const posedIdx =
+        live ?? Array.from({ length: Math.max(0, Math.min(g.grid.panels.length, Math.round(g.count))) }, (_, i) => i);
+      const panels = posedIdx.map((i) => {
+        const p = g.grid.panels[i];
+        return { cx: p.cx, cy: p.cy, ...(p.face ? { face: p.face } : {}) };
+      });
+      const posed = panels.length;
       zone.geometry = {
         azimuthDeg: g.pack.azimuthDeg,
         tiltDeg: g.tiltDeg,
@@ -307,13 +433,40 @@ export function serializeLayout(ctx: Ctx, billKwh: number | null = null): Serial
   const activeVerts = ctx.vertices.length >= 1 ? ctx.vertices : ctx.areas.find((a) => a.id === ctx.activeAreaId)?.vertices ?? [];
   const outline: Array<[number, number]> =
     activeVerts.length >= 3 ? activeVerts.map(([lng, lat]) => [lat, lng] as [number, number]) : [];
+  // PV13 — RÉSULTAT GLOBAL, cohérent avec ce qui vient d'être exporté : panneaux et kWc
+  // sont la SOMME des `zone.geometry` émises ci-dessus (si le JSON dit 42 panneaux, le
+  // résultat dit 42) ; la production est la somme des résultats de zone DÉJÀ calculés à
+  // l'écran (même source que le total « Plusieurs zones ») ; les économies ne sont JAMAIS
+  // recalculées ni sommées ici (une somme zone à zone sur-compte le plafond facture) :
+  // l'appelant fournit le chiffre affiché, sinon `null`.
+  let panelsTotal = 0;
+  let kwcTotal = 0;
+  for (const z of zones) {
+    if (!z.geometry) continue;
+    panelsTotal += z.geometry.count;
+    kwcTotal += z.geometry.kwc;
+  }
+  let annualKwhTotal = 0;
+  for (const a of ctx.areas) if (a.result) annualKwhTotal += a.result.annualKwh;
+  const savings = typeof meta?.savingsMad === 'number' && Number.isFinite(meta.savingsMad) ? meta.savingsMad : null;
+
   return {
-    version: 1,
+    version: 2,
     pin: centroidOf(activeVerts),
     outline,
     billKwh: Number.isFinite(billKwh as number) ? billKwh : null,
     zones,
     activeAreaId: ctx.activeAreaId,
+    // — ajouts v2 (aucun champ v1 déplacé ni modifié) —
+    result: { panels: panelsTotal, kwc: kwcTotal, annualKwh: annualKwhTotal, savings },
+    scenario: meta?.scenario ?? 'reseau',
+    panelWatt: typeof meta?.panelWatt === 'number' && Number.isFinite(meta.panelWatt) ? meta.panelWatt : PANEL2_WATT,
+    battery: meta?.battery ?? null,
+    source: meta?.source ?? 'lead',
+    devisId: meta?.devisId ?? null,
+    // PV71 — les ombres tracées voyagent avec le design (sinon la production remonte
+    // artificiellement au ré-import).
+    shading12x24: serializeShading(ctx.shadeFactors),
   };
 }
 
@@ -335,6 +488,7 @@ export function deserializeLayout(json: SerializedLayout): AreaRecord[] {
       centerLat: o.centerLat,
       lengthM: o.lengthM,
       widthM: o.widthM,
+      ...(o.type ? { type: o.type } : {}), // PV61 — le type survit au round-trip
     })),
     roofType: z.roofType,
     pitchDeg: z.pitchDeg,
@@ -345,6 +499,132 @@ export function deserializeLayout(json: SerializedLayout): AreaRecord[] {
     result: null,
     renderPlan: null,
   }));
+}
+
+// ═══════════ PV19 — HYDRATATION DEPUIS UN DEVIS ═══════════
+// Un devis EXISTANT porte déjà un design (le layout sérialisé) et une CIBLE commerciale
+// (le nombre de panneaux vendus). Repartir de la facture serait un contresens : le devis
+// fait foi. `hydrateFromDevis` est le jumeau PUR de `hydrateFromLead` — aucun effet de
+// bord, aucun fetch — et le boot lead reste INCHANGÉ quand `hydrate.devis` est absent.
+
+/** Payload devis minimal consommé par l'hydratation (tout est optionnel). */
+export interface DevisPayload {
+  id?: string | number | null;
+  /** Géométrie du devis : le layout sérialisé s'il existe, sinon un repère lead-like. */
+  geometrie?: {
+    roof_layout?: SerializedLayout | null;
+    roof_point?: { lat: number; lng: number } | null;
+    roof_outline?: Array<[number, number]> | null;
+  } | null;
+  /** Cible commerciale : ce qui a été VENDU (panneaux, puissance unitaire, scénario). */
+  cible?: {
+    panneaux?: number | null;
+    panel_watt?: number | null;
+    scenario?: LayoutScenario | null;
+  } | null;
+  fullName?: string;
+  phone?: string;
+  city?: string;
+  [k: string]: unknown;
+}
+
+/** Ce que l'hydratation devis rend au boot (rien n'est appliqué ici). */
+export interface DevisHydration {
+  /** Contour lng/lat de la zone ACTIVE (vide si seul un pin est disponible). */
+  vertices: LngLat[];
+  /** Centre de vol lng/lat, ou null. */
+  center: LngLat | null;
+  contact: { name?: string; phone?: string; city?: string };
+  /** Zones reconstruites depuis `roof_layout`, ou null si le devis n'en porte pas. */
+  zones: AreaRecord[] | null;
+  /** Id de zone active du layout, ou null. */
+  activeAreaId: string | null;
+  /** Nombre de panneaux VENDU : impose la cible de l'optimiseur (null si absent). */
+  neededPanels: number | null;
+  /** false dès qu'une cible est imposée : le devis pilote, pas la facture. */
+  neededAuto: boolean;
+  /** Puissance unitaire vendue (W), ou null. */
+  panelWatt: number | null;
+  scenario: LayoutScenario | null;
+  devisId: string | number | null;
+}
+
+/** Entier positif, ou null (une cible de 0/−3/NaN panneaux n'impose rien). */
+function positiveInt(v: unknown): number | null {
+  const n = typeof v === 'number' ? v : Number(v);
+  if (!Number.isFinite(n) || n <= 0) return null;
+  return Math.round(n);
+}
+
+/**
+ * PV19 — Reconstruit l'état de départ du builder à partir d'un DEVIS. Deux chemins :
+ *  1. `geometrie.roof_layout` présent → les zones sont reconstruites par
+ *     `deserializeLayout` (le design du devis, à l'identique) ;
+ *  2. sinon → repli exactement lead-like (pin / contour), pour qu'un devis sans design
+ *     ouvre quand même la bonne toiture.
+ * Dans les DEUX cas, la CIBLE du devis (`cible.panneaux`) devient le besoin IMPOSÉ
+ * (`neededAuto = false`) : c'est le nombre vendu qui pilote l'optimiseur, jamais la
+ * facture. PURE : aucun effet de bord, l'appelant applique le résultat.
+ */
+export function hydrateFromDevis(devis: DevisPayload | null | undefined): DevisHydration {
+  const empty: DevisHydration = {
+    vertices: [],
+    center: null,
+    contact: {},
+    zones: null,
+    activeAreaId: null,
+    neededPanels: null,
+    neededAuto: true,
+    panelWatt: null,
+    scenario: null,
+    devisId: null,
+  };
+  if (!devis) return empty;
+
+  const geo = devis.geometrie ?? null;
+  const layout = geo?.roof_layout ?? null;
+  let zones: AreaRecord[] | null = null;
+  let activeAreaId: string | null = null;
+  let vertices: LngLat[] = [];
+  let center: LngLat | null = null;
+
+  if (layout && Array.isArray(layout.zones) && layout.zones.length) {
+    zones = deserializeLayout(layout);
+    const wanted = typeof layout.activeAreaId === 'string' ? layout.activeAreaId : null;
+    const active = zones.find((z) => z.id === wanted) ?? zones[0];
+    activeAreaId = active?.id ?? null;
+    vertices = active ? active.vertices.map(([lng, lat]) => [lng, lat] as LngLat) : [];
+    const pin = layout.pin;
+    if (pin && Number.isFinite(pin.lat) && Number.isFinite(pin.lng)) center = [pin.lng, pin.lat];
+  }
+  if (!vertices.length || !center) {
+    // Repli lead-like : le devis n'a pas (encore) de design, ou pas de pin.
+    const seed = hydrateFromLead({ roof_point: geo?.roof_point ?? null, roof_outline: geo?.roof_outline ?? null });
+    if (!vertices.length) vertices = seed.vertices;
+    if (!center) center = seed.center ?? (vertices.length ? centroidOf(vertices) && ([centroidOf(vertices)!.lng, centroidOf(vertices)!.lat] as LngLat) : null);
+  }
+
+  const contact: { name?: string; phone?: string; city?: string } = {};
+  if (typeof devis.fullName === 'string' && devis.fullName.trim()) contact.name = devis.fullName.trim();
+  if (typeof devis.phone === 'string' && devis.phone.trim()) contact.phone = devis.phone.trim();
+  if (typeof devis.city === 'string' && devis.city.trim()) contact.city = devis.city.trim();
+
+  const neededPanels = positiveInt(devis.cible?.panneaux);
+  const panelWatt = positiveInt(devis.cible?.panel_watt);
+  const scenario = devis.cible?.scenario ?? null;
+  return {
+    vertices,
+    center,
+    contact,
+    zones,
+    activeAreaId,
+    neededPanels,
+    // Une cible vendue IMPOSE le besoin ; sans cible, on laisse la facture décider.
+    neededAuto: neededPanels == null,
+    panelWatt,
+    scenario,
+    devisId: devis.id ?? null,
+  };
 }
 
 /**

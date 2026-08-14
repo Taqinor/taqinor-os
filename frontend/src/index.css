@@ -10708,3 +10708,36 @@ textarea.form-control {
   line-height: 1.25;
   color: var(--color-lune);
 }
+
+/* PV22 — dialogue « Quel devis voulez-vous concevoir ? » : une ligne par
+   brouillon (référence · kWc · date), chaque ligne étant un bouton pleine
+   largeur. Aucune couleur ici — les tons viennent du Button outline. */
+.cdd-liste {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.cdd-ligne {
+  width: 100%;
+  justify-content: flex-start;
+  text-align: left;
+}
+
+.cdd-ref {
+  font-weight: 600;
+}
+
+.cdd-kwc,
+.cdd-date {
+  color: var(--color-lune);
+}
+
+.cdd-message {
+  margin: 0;
+  font-size: 0.95rem;
+  line-height: 1.45;
+}

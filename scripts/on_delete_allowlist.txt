@@ -2065,9 +2065,9 @@ backend/django_core/apps/ventes/models.py:1471
 backend/django_core/apps/ventes/models.py:1473
 backend/django_core/apps/ventes/models.py:1477
 backend/django_core/apps/ventes/models.py:1479
-# NTCPQ11-24 — mêmes FK relues, décalées par les nouveaux modèles/champs CPQ
-# ajoutés dans ventes/models.py (DevisNudgeLog.company 1495 -> 1687).
-backend/django_core/apps/ventes/models.py:1687
+# NTCPQ11-24 puis PV41 (electrical_design) — même FK relue, décalée
+# (DevisNudgeLog.company 1495 -> 1687 -> 1702).
+backend/django_core/apps/ventes/models.py:1702
 backend/django_core/apps/ventes/models.py:1498
 backend/django_core/apps/ventes/models.py:1500
 backend/django_core/apps/ventes/models.py:1528
@@ -2258,8 +2258,9 @@ backend/django_core/apps/ventes/models.py:942
 backend/django_core/apps/ventes/models.py:944
 backend/django_core/apps/ventes/models.py:945
 backend/django_core/apps/ventes/models.py:948
-# NTCPQ11-24 — ParametrageRelanceClient.responsable relue, décalée (966 -> 1158).
-backend/django_core/apps/ventes/models.py:1158
+# NTCPQ11-24 puis PV41 — ParametrageRelanceClient.responsable relue, décalée
+# (966 -> 1158 -> 1173).
+backend/django_core/apps/ventes/models.py:1173
 backend/django_core/apps/ventes/models.py:979
 backend/django_core/apps/ventes/models.py:981
 backend/django_core/apps/ventes/models.py:983
@@ -2360,3 +2361,13 @@ backend/django_core/core/models.py:910
 backend/django_core/core/models.py:915
 backend/django_core/core/models.py:981
 backend/django_core/core/models.py:984
+# PV5 (FicheTechnique +22 champs datasheet) — les 4 CASCADE ci-dessous sont les
+# MEMES FK deja revues, re-decalees par l'insertion : company (cascade tenant
+# standard) et le modele de BCF (lignes solidaires de leur modele/produit).
+backend/django_core/apps/stock/models.py:1724
+backend/django_core/apps/stock/models.py:1860
+backend/django_core/apps/stock/models.py:1888
+backend/django_core/apps/stock/models.py:1891
+# PV5 (suite du decalage +22) — codes-barres : memes FK deja revues.
+backend/django_core/apps/stock/models.py:1920
+backend/django_core/apps/stock/models.py:1953
