@@ -399,6 +399,12 @@ class Parametres:
     plafond_kwc: Optional[float] = None
     marge_troncon_min_m: float = 0.02
     marge_bande_min_m: float = 0.04
+    #: Phase FORCÉE du mode uniforme (PV52), en mètres. ``None`` = le balayage
+    #: historique de 0 à ``jeu_maximal``. Renseignée, le moteur n'évalue QUE ce
+    #: décalage : c'est ainsi qu'on republie à l'identique une planche déjà
+    #: posée sur chantier, dont la phase est une donnée du terrain et non un
+    #: paramètre à ré-optimiser.
+    phase_forcee_m: Optional[float] = None
     #: Plan IMPOSÉ (PV29) : ``((y0, code_kit), …)``, lu par le seul mode
     #: ``RANGEES_IMPOSEES_UTILISATEUR``. Le code de kit — et non l'objet ``Kit``
     #: — parce que ce champ traverse le JSON : les kits y sont déjà décrits une

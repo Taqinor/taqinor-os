@@ -56,7 +56,7 @@ _CLES_LONGUEUR = frozenset({
     "epaisseur_m", "hauteur_m", "retrait_m", "degagement_m", "laterale_m",
     "extremite_m", "acrotere_m", "joint_m", "allee_m", "pas_recherche_m",
     "module_long_m", "module_court_m", "faitage_m", "marge_troncon_min_m",
-    "marge_bande_min_m", "rangees_imposees",
+    "marge_bande_min_m", "rangees_imposees", "phase_forcee_m",
 })
 
 
@@ -223,13 +223,16 @@ def _parametres(p):
                 "marge_troncon_min_m": p.marge_troncon_min_m,
                 "marge_bande_min_m": p.marge_bande_min_m,
                 "graine": p.graine}
-    # Champ OMIS quand il ne dit rien (PV29). Le hash d'entrée est figé dans
-    # les golden : écrire ``"rangees_imposees": null`` dans TOUS les documents
-    # ferait bouger l'empreinte de relevés que personne n'a touchés. Absent
-    # signifie « pas de plan imposé », exactement comme ``None``.
+    # Champs OMIS quand ils ne disent rien (PV29, PV52). Le hash d'entrée est
+    # figé dans les golden : écrire ``"rangees_imposees": null`` dans TOUS les
+    # documents ferait bouger l'empreinte de relevés que personne n'a touchés.
+    # Absent signifie « pas de plan imposé / pas de phase forcée », exactement
+    # comme ``None``.
     if p.rangees_imposees:
         document["rangees_imposees"] = [[y0, code]
                                         for y0, code in p.rangees_imposees]
+    if p.phase_forcee_m is not None:
+        document["phase_forcee_m"] = p.phase_forcee_m
     return document
 
 
@@ -251,6 +254,7 @@ def _parametres_depuis(d, kits):
         marge_troncon_min_m=d.get("marge_troncon_min_m", 0.02),
         marge_bande_min_m=d.get("marge_bande_min_m", 0.04),
         rangees_imposees=_rangees_imposees_depuis(d.get("rangees_imposees")),
+        phase_forcee_m=d.get("phase_forcee_m"),
         graine=d.get("graine", 0))
 
 
