@@ -302,3 +302,116 @@ def annuler_of(of, user=None, motif=''):
         locked.statut = OrdreFabrication.Statut.ANNULE
         locked.save(update_fields=['statut'])
     return locked
+
+
+# ── NTMFG8 — Terminal atelier MES : démarrer/pauser/reprendre/terminer ──
+
+def demarrer_operation(operation, user=None):
+    """NTMFG8 — démarre une opération (`a_faire`/`en_pause` -> `en_cours`).
+    Pose `demarree_le` UNE seule fois (idempotent : rappeler sur une
+    opération déjà en cours ne réinitialise pas l'horodatage)."""
+    from .models import OperationOF
+
+    if operation.statut == OperationOF.Statut.TERMINEE:
+        raise ValueError('Cette opération est déjà terminée.')
+    if operation.statut == OperationOF.Statut.EN_COURS:
+        return operation
+    if operation.demarree_le is None:
+        operation.demarree_le = timezone.now()
+    operation.statut = OperationOF.Statut.EN_COURS
+    operation.save(update_fields=['statut', 'demarree_le'])
+    return operation
+
+
+def pauser_operation(operation, user=None):
+    """NTMFG8 — met l'opération en pause (`en_cours` -> `en_pause`), ouvre
+    une `PauseOperationOF` (fin=None). Refuse si l'opération n'est pas en
+    cours (idempotence stricte : jamais deux pauses ouvertes)."""
+    from .models import OperationOF, PauseOperationOF
+
+    if operation.statut != OperationOF.Statut.EN_COURS:
+        raise ValueError('Seule une opération en cours peut être mise en pause.')
+    PauseOperationOF.objects.create(operation=operation, debut=timezone.now())
+    operation.statut = OperationOF.Statut.EN_PAUSE
+    operation.save(update_fields=['statut'])
+    return operation
+
+
+def reprendre_operation(operation, user=None):
+    """NTMFG8 — reprend une opération en pause (`en_pause` -> `en_cours`),
+    ferme la pause ouverte (`fin=now()`)."""
+    from .models import OperationOF
+
+    if operation.statut != OperationOF.Statut.EN_PAUSE:
+        raise ValueError('Cette opération n\'est pas en pause.')
+    pause_ouverte = operation.pauses.filter(fin__isnull=True).order_by('-debut').first()
+    if pause_ouverte is not None:
+        pause_ouverte.fin = timezone.now()
+        pause_ouverte.save(update_fields=['fin'])
+    operation.statut = OperationOF.Statut.EN_COURS
+    operation.save(update_fields=['statut'])
+    return operation
+
+
+def _minutes_pauses(operation):
+    total = Decimal('0')
+    for pause in operation.pauses.all():
+        fin = pause.fin or timezone.now()
+        total += _dec((fin - pause.debut).total_seconds()) / Decimal('60')
+    return total
+
+
+def terminer_operation(operation, *, quantite_bonne=0, quantite_rebut=0,
+                       motif_rebut='', user=None):
+    """NTMFG8 — termine une opération : ferme une pause ouverte s'il y en a
+    une, calcule le temps ACTIF réel (temps écoulé depuis `demarree_le` MOINS
+    les pauses), enregistre quantité bonne/rebut. Un rebut > 0 exige un motif
+    et poste un `MouvementStock` SORTIE typé rebut (XMFG11) sur le produit
+    fabriqué de l'OF — INDÉPENDANT du backflush de clôture (NTMFG4), qui
+    continue à produire `OrdreFabrication.quantite` (simplification
+    documentée : la réconciliation fine quantité-planifiée vs quantité-bonne-
+    réelle reste un TODO explicite, hors du périmètre de ce ticket)."""
+    from types import SimpleNamespace
+
+    from .models import OperationOF
+
+    if operation.statut == OperationOF.Statut.TERMINEE:
+        raise ValueError('Cette opération est déjà terminée.')
+    if quantite_rebut and _dec(quantite_rebut) > 0 and not motif_rebut:
+        raise ValueError('Un motif est requis pour déclarer un rebut.')
+
+    with transaction.atomic():
+        # Ferme une éventuelle pause ouverte (reprise implicite).
+        pause_ouverte = operation.pauses.filter(fin__isnull=True).first()
+        if pause_ouverte is not None:
+            pause_ouverte.fin = timezone.now()
+            pause_ouverte.save(update_fields=['fin'])
+
+        operation.terminee_le = timezone.now()
+        if operation.demarree_le is not None:
+            brut_min = _dec(
+                (operation.terminee_le - operation.demarree_le).total_seconds()
+            ) / Decimal('60')
+            operation.temps_reel_min = max(
+                brut_min - _minutes_pauses(operation), Decimal('0'))
+        operation.quantite_bonne = _dec(quantite_bonne)
+        operation.quantite_rebut = _dec(quantite_rebut)
+        operation.motif_rebut = motif_rebut or ''
+        operation.statut = OperationOF.Statut.TERMINEE
+        operation.save(update_fields=[
+            'terminee_le', 'temps_reel_min', 'quantite_bonne',
+            'quantite_rebut', 'motif_rebut', 'statut'])
+
+        if operation.quantite_rebut > 0:
+            from apps.stock.services import declarer_rebut
+
+            of = operation.ordre_fabrication
+            declarer_rebut(
+                company=of.company,
+                produit=SimpleNamespace(id=of.produit_id),
+                quantite=operation.quantite_rebut,
+                motif=motif_rebut,
+                reference=f'OF-{of.id}-OP-{operation.id}',
+                note=f'Rebut atelier — {operation.libelle}',
+                user=user)
+    return operation

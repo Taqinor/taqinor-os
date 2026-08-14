@@ -181,6 +181,52 @@ class OperationOFViewSet(mixins.RetrieveModelMixin, mixins.ListModelMixin,
         data['avertissement'] = avertissement
         return Response(data)
 
+    @action(detail=True, methods=['post'], url_path='demarrer')
+    def demarrer(self, request, pk=None):
+        """NTMFG8 — terminal atelier : démarre l'opération."""
+        from .services import demarrer_operation
+        return self._mes_action(demarrer_operation, request, pk)
+
+    @action(detail=True, methods=['post'], url_path='pauser')
+    def pauser(self, request, pk=None):
+        """NTMFG8 — terminal atelier : met l'opération en pause."""
+        from .services import pauser_operation
+        return self._mes_action(pauser_operation, request, pk)
+
+    @action(detail=True, methods=['post'], url_path='reprendre')
+    def reprendre(self, request, pk=None):
+        """NTMFG8 — terminal atelier : reprend une opération en pause."""
+        from .services import reprendre_operation
+        return self._mes_action(reprendre_operation, request, pk)
+
+    @action(detail=True, methods=['post'], url_path='terminer')
+    def terminer(self, request, pk=None):
+        """NTMFG8 — terminal atelier : termine l'opération (quantité bonne/
+        rebut + motif si rebut), calcule le temps actif (pauses exclues),
+        rebut > 0 poste un `MouvementStock` (XMFG11)."""
+        from .services import terminer_operation
+        operation = self.get_object()
+        try:
+            terminer_operation(
+                operation,
+                quantite_bonne=request.data.get('quantite_bonne', 0),
+                quantite_rebut=request.data.get('quantite_rebut', 0),
+                motif_rebut=request.data.get('motif_rebut', ''),
+                user=request.user)
+        except ValueError as exc:
+            return Response({'detail': str(exc)}, status=400)
+        operation.refresh_from_db()
+        return Response(self.get_serializer(operation).data)
+
+    def _mes_action(self, fonction, request, pk):
+        operation = self.get_object()
+        try:
+            fonction(operation, user=request.user)
+        except ValueError as exc:
+            return Response({'detail': str(exc)}, status=400)
+        operation.refresh_from_db()
+        return Response(self.get_serializer(operation).data)
+
 
 @api_view(['GET'])
 def charge_postes_view(request):

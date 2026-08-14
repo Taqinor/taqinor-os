@@ -35,6 +35,10 @@ const mrpApi = {
   getOperationsOF: (params) => api.get('/mrp/operations-of/', { params }),
   replanifierOperationOF: (id, data) =>
     api.patch(`/mrp/operations-of/${id}/replanifier/`, data),
+  demarrerOperationOF: (id) => api.post(`/mrp/operations-of/${id}/demarrer/`),
+  pauserOperationOF: (id) => api.post(`/mrp/operations-of/${id}/pauser/`),
+  reprendreOperationOF: (id) => api.post(`/mrp/operations-of/${id}/reprendre/`),
+  terminerOperationOF: (id, data) => api.post(`/mrp/operations-of/${id}/terminer/`, data),
 
   // MRP net (NTMFG5)
   mrpRun: (body) => api.post('/mrp/mrp-run/', body),

@@ -212,7 +212,19 @@ class OperationOF(models.Model):
     class Statut(models.TextChoices):
         A_FAIRE = 'a_faire', 'À faire'
         EN_COURS = 'en_cours', 'En cours'
+        # NTMFG8 — terminal atelier MES : pause explicite, distincte d'un
+        # simple retour à `a_faire`.
+        EN_PAUSE = 'en_pause', 'En pause'
         TERMINEE = 'terminee', 'Terminée'
+
+    class MotifRebut(models.TextChoices):
+        """NTMFG8 — mêmes valeurs que `stock.MouvementStock.MotifRebut`
+        (jamais d'import du modèle stock : ce sont des CHAÎNES littérales
+        partagées par convention, XMFG11)."""
+        CASSE = 'casse', 'Casse'
+        DEFAUT = 'defaut', 'Défaut'
+        ERREUR = 'erreur', 'Erreur'
+        AUTRE = 'autre', 'Autre'
 
     ordre_fabrication = models.ForeignKey(
         OrdreFabrication, on_delete=models.CASCADE, related_name='operations')
@@ -229,6 +241,10 @@ class OperationOF(models.Model):
     # scheduler à capacité finie, `services.planifier_of`).
     date_planifiee = models.DateField(
         null=True, blank=True, verbose_name='Jour planifié')
+    # NTMFG8 — horodatages MES (démarrage/fin) ; le temps actif RÉEL =
+    # (terminee_le - demarree_le) MOINS la somme des pauses (`PauseOperationOF`).
+    demarree_le = models.DateTimeField(null=True, blank=True)
+    terminee_le = models.DateTimeField(null=True, blank=True)
     temps_reel_min = models.DecimalField(
         max_digits=10, decimal_places=2, default=0,
         verbose_name='Temps réel (min)')
@@ -236,6 +252,8 @@ class OperationOF(models.Model):
         max_digits=12, decimal_places=2, default=0, verbose_name='Quantité bonne')
     quantite_rebut = models.DecimalField(
         max_digits=12, decimal_places=2, default=0, verbose_name='Quantité rebut')
+    motif_rebut = models.CharField(
+        max_length=10, choices=MotifRebut.choices, blank=True, default='')
 
     class Meta:
         verbose_name = "Opération d'OF"
@@ -250,6 +268,28 @@ class OperationOF(models.Model):
 
     def __str__(self):
         return f'{self.ordre_fabrication_id} · {self.ordre}. {self.libelle}'
+
+
+class PauseOperationOF(models.Model):
+    """NTMFG8 — intervalle de pause d'une `OperationOF` (terminal MES). Pas
+    de `company` propre — scopée via `operation.ordre_fabrication.company`.
+    `fin=None` = pause en cours."""
+
+    operation = models.ForeignKey(
+        OperationOF, on_delete=models.CASCADE, related_name='pauses')
+    debut = models.DateTimeField()
+    fin = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        verbose_name = "Pause d'opération"
+        verbose_name_plural = "Pauses d'opération"
+        ordering = ['operation_id', 'debut']
+        indexes = [
+            models.Index(fields=['operation'], name='mrp_pauseof_op_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.operation_id} · pause {self.debut}'
 
 
 class ReservationOF(models.Model):

@@ -52,10 +52,14 @@ class OperationOFSerializer(serializers.ModelSerializer):
         model = OperationOF
         fields = [
             'id', 'ordre_fabrication', 'operation_gamme', 'poste_charge',
-            'ordre', 'libelle', 'statut', 'date_planifiee', 'temps_reel_min',
-            'quantite_bonne', 'quantite_rebut',
+            'ordre', 'libelle', 'statut', 'date_planifiee', 'demarree_le',
+            'terminee_le', 'temps_reel_min', 'quantite_bonne',
+            'quantite_rebut', 'motif_rebut',
         ]
-        read_only_fields = ['id']
+        read_only_fields = [
+            'id', 'statut', 'demarree_le', 'terminee_le', 'temps_reel_min',
+            'quantite_bonne', 'quantite_rebut', 'motif_rebut',
+        ]
 
 
 class ReservationOFSerializer(serializers.ModelSerializer):
