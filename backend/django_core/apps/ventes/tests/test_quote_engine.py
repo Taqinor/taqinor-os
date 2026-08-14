@@ -476,6 +476,312 @@ class TestPdfFormats(TestCase):
         _, doc2 = self._render({'include_etude': True})
         self.assertEqual(len(doc2.pages), 3)
 
+    # ── PV46 — page « Annexe technique » (défaut OFF) ────────────────────────
+    _ELECTRICAL_DESIGN = {
+        'chaines': [
+            {'pan': 1, 'mppt': 1, 'nb_modules': 7, 'vmp_froid_v': 268.0,
+             'voc_froid_v': 327.2, 'vmp_chaud_v': 212.8, 'conforme': True},
+            {'pan': 1, 'mppt': 2, 'nb_modules': 7, 'vmp_froid_v': 268.0,
+             'voc_froid_v': 327.2, 'vmp_chaud_v': 212.8, 'conforme': True},
+        ],
+        'conformite': {'conforme': True, 'bloquants': [], 'alertes': []},
+        'ratio_dc_ac': 1.18, 'ratio_ac_dc': 0.847,
+        'protections': [
+            {'repere': 'QAC1', 'designation': 'Disjoncteur AC général',
+             'calibre': '32 A', 'quantite': 1},
+        ],
+        'cables': [
+            {'liaison': 'Liaison DC', 'longueur_m': 40.0,
+             'section_mm2': 6.0, 'chute_pct': 0.62},
+        ],
+        'bom': [
+            {'designation': 'Câble solaire H1Z2Z2-K 6,0 mm²', 'quantite': 80.0,
+             'spec': 'chute de tension 0,62 %'},
+            {'designation': 'QAC1 — Disjoncteur AC général', 'quantite': 1,
+             'spec': '32 A ; NF C 15-100 §433'},
+        ],
+        'note': ["Fenêtre de tension entre -5 °C et 70 °C"],
+        'parametres': {'dc_m': 40.0, 'ac_m': 15.0, 'phases': 3,
+                       'regime': 'TT'},
+    }
+
+    def test_annexe_technique_is_off_by_default(self):
+        """Sans le drapeau, la charge utile et le PDF sont ceux d'aujourd'hui."""
+        from apps.ventes.quote_engine.builder import (
+            DEFAULT_PDF_OPTIONS, build_quote_data, clean_pdf_options)
+
+        self.assertFalse(DEFAULT_PDF_OPTIONS['include_annexe_technique'])
+        self.assertFalse(clean_pdf_options({})['include_annexe_technique'])
+        self.devis.electrical_design = self._ELECTRICAL_DESIGN
+        self.devis.save(update_fields=['electrical_design'])
+        data = build_quote_data(self.devis)
+        for clef in ('include_annexe_technique', 'electrical_design',
+                     'sld_svg'):
+            self.assertNotIn(clef, data)
+        _, doc = self._render()
+        self.assertEqual(len(doc.pages), 3)
+
+    def test_annexe_technique_adds_a_fourth_page(self):
+        self.devis.electrical_design = self._ELECTRICAL_DESIGN
+        self.devis.save(update_fields=['electrical_design'])
+        html, doc = self._render({'include_annexe_technique': True})
+        self.assertEqual(len(doc.pages), 4)
+        self.assertIn('Annexe technique', html)
+        self.assertIn('Nomenclature électrique', html)
+        self.assertIn('Disjoncteur AC général', html)
+        self.assertIn('Schéma unifilaire', html)
+        self.assertIn('<svg', html)
+        self.assertIn('Page 4', html)   # la signature reste la DERNIÈRE page
+
+    def test_annexe_technique_degrades_without_design(self):
+        """Drapeau activé mais aucune conception électrique → 3 pages, sans
+        erreur (même dégradation gracieuse qu'``include_etude``)."""
+        self.devis.electrical_design = None
+        self.devis.save(update_fields=['electrical_design'])
+        html, doc = self._render({'include_annexe_technique': True})
+        self.assertEqual(len(doc.pages), 3)
+        self.assertNotIn('Annexe technique', html)
+
+    def test_annexe_and_etude_together_make_five_pages(self):
+        self.devis.mode_installation = 'industriel'
+        self.devis.etude_params = {
+            'kwc': 9.94, 'production_annuelle': 12486, 'conso_annuelle': 120000,
+            'taux_autoconso': 100, 'taux_couverture': 10.4,
+            'economies_annuelles': 21851, 'payback': 3.0, 'prix_kwc': 6543,
+            'prod_mensuelle': [1040] * 12, 'conso_mensuelle': [10000] * 12,
+        }
+        self.devis.electrical_design = self._ELECTRICAL_DESIGN
+        self.devis.save()
+        _, doc = self._render({'include_etude': True,
+                               'include_annexe_technique': True})
+        self.assertEqual(len(doc.pages), 5)
+
+    def test_annexe_technique_ignored_in_onepage_mode(self):
+        self.devis.electrical_design = self._ELECTRICAL_DESIGN
+        self.devis.save(update_fields=['electrical_design'])
+        html, doc = self._render({'pdf_mode': 'onepage',
+                                  'include_annexe_technique': True})
+        self.assertEqual(len(doc.pages), 1)
+        self.assertNotIn('Nomenclature électrique', html)
+
+    def test_annexe_technique_totals_unchanged(self):
+        """L'annexe n'ajoute AUCUN montant : les totaux du devis sont
+        identiques avec et sans elle."""
+        from apps.ventes.quote_engine.builder import build_quote_data
+
+        self.devis.electrical_design = self._ELECTRICAL_DESIGN
+        self.devis.save(update_fields=['electrical_design'])
+        sans = build_quote_data(self.devis)
+        avec = build_quote_data(self.devis,
+                                {'include_annexe_technique': True})
+        for clef in ('totaux_sans', 'totaux_avec', 'totaux_all',
+                     'display_total', 'total_sans', 'total_avec'):
+            self.assertEqual(sans.get(clef), avec.get(clef), clef)
+
+    def test_annexe_technique_carries_no_price(self):
+        self.devis.electrical_design = self._ELECTRICAL_DESIGN
+        self.devis.save(update_fields=['electrical_design'])
+        from apps.ventes.quote_engine import generate_devis_premium as G
+        annexe = self._annexe_html()
+        # Ni les prix d'achat/marge, ni AUCUN prix de ligne du devis.
+        for interdit in ('prix_achat', 'marge', 'Total TTC', 'Sous-total'):
+            self.assertNotIn(interdit, annexe)
+        lisible = self._sans_donnees_binaires(annexe)
+        for _designation, _qte, _prix in self.FULL_LINES:
+            self.assertNotIn(_prix, lisible)
+        self.assertIn('Nomenclature électrique', annexe)
+        # La page de signature reste la DERNIÈRE page numérotée.
+        self.assertEqual(G.PAGE3_NUM, G.PAGES_TOTAL)
+
+    @staticmethod
+    def _sans_donnees_binaires(html):
+        """Retire les charges utiles ``data:...;base64,...`` du HTML.
+
+        L'en-tête de l'annexe embarque le logo en PNG base64 : ~870 000
+        caractères d'alphabet base64, où PRESQUE TOUTE suite de deux ou trois
+        chiffres finit par apparaître (ici « 67 » et « 375 », deux prix de
+        lignes du montage). Chercher un prix dans ces octets ne dit rien de ce
+        que le client LIT — c'est un faux positif de la garde, pas une fuite.
+        On garde donc la garde entière sur le contenu lisible : un prix
+        RENDU y apparaîtrait toujours, puisqu'il serait du texte.
+        """
+        import re
+        return re.sub(r'data:[^;"\']+;base64,[A-Za-z0-9+/=]+', 'data:…', html)
+
+    def _annexe_html(self):
+        """Rend la SEULE page d'annexe (globals posés par un rendu complet)."""
+        from apps.ventes.quote_engine import generate_devis_premium as G
+
+        self._render({'include_annexe_technique': True})
+        return G.page_annexe_technique()
+
+    # ── PV77 — étude bancable sur la page Étude (additif, sans page en plus) ──
+    _SIMULATION = {
+        'version': 1,
+        'computed_at': '2026-08-14T10:00:00Z',
+        'source': 'pvgis',
+        'zones': [{'label': 'Pan Sud', 'lat': 33.57, 'lon': -7.59,
+                   'tilt': 30, 'azimuth': 0, 'kwc': 42.3,
+                   'base_production_kwh': 71800,
+                   'shading_annual_loss_pct': 4.2}],
+        'pr': {
+            'performance_ratio': 0.812, 'total_loss_pct': 18.8,
+            'loss_breakdown': {'temperature': 8.0, 'soiling': 3.0,
+                               'shading': 4.2, 'wiring': 2.0,
+                               'inverter': 2.5, 'mismatch': 2.0,
+                               'availability': 1.0},
+            'p50_kwh': 71800, 'p90_kwh': 58300, 'p75_kwh': 66400,
+            'annual_variability': 0.06, 'specific_yield_kwh_kwc': 1697,
+        },
+        'self_consumption': {'hours': 8760, 'self_consumption_rate': 0.41,
+                             'coverage_rate': 0.63,
+                             'self_consumed_kwh': 29400,
+                             'surplus_kwh': 42400, 'grid_import_kwh': 17300},
+        'net_metering': {'annual_savings_mad': 33800,
+                         'annual_compensated_kwh': 24100,
+                         'annual_spill_value_mad': 0},
+        'subscribed_power': {'peak_reduction_pct': 22.0,
+                             'recommended_subscribed': 68,
+                             'annual_saving': 5200},
+        'degradation': {'factor_year1': 0.9784, 'factor_last_year': 0.874,
+                        'any_warranty_breach': False},
+        'projection_25y': {'npv': 412300, 'irr': 0.187, 'payback_year': 6,
+                           'discounted_payback_year': 7},
+        'warnings': [],
+    }
+
+    _ETUDE_INDUSTRIELLE = {
+        'kwc': 9.94, 'production_annuelle': 12486, 'conso_annuelle': 120000,
+        'taux_autoconso': 100, 'taux_couverture': 10.4,
+        'economies_annuelles': 21851, 'payback': 3.0, 'prix_kwc': 6543,
+        'prod_mensuelle': [1040] * 12, 'conso_mensuelle': [10000] * 12,
+    }
+
+    def _devis_avec_etude(self, simulation=None):
+        self.devis.mode_installation = 'industriel'
+        etude = dict(self._ETUDE_INDUSTRIELLE)
+        if simulation is not None:
+            etude['simulation'] = simulation
+        self.devis.etude_params = etude
+        self.devis.save()
+        return self.devis
+
+    @staticmethod
+    def _cles_profondes(obj):
+        """Toutes les clés de dict présentes à N'IMPORTE QUELLE profondeur."""
+        vues = set()
+        if isinstance(obj, dict):
+            for clef, valeur in obj.items():
+                vues.add(clef)
+                vues |= TestPdfFormats._cles_profondes(valeur)
+        elif isinstance(obj, (list, tuple)):
+            for valeur in obj:
+                vues |= TestPdfFormats._cles_profondes(valeur)
+        return vues
+
+    def test_pv77_sans_simulation_la_charge_utile_est_byte_identique(self):
+        """Aucune simulation → AUCUNE clé nouvelle, nulle part, jamais."""
+        from apps.ventes.quote_engine.builder import build_quote_data
+
+        self._devis_avec_etude()
+        data = build_quote_data(self.devis, {'include_etude': True})
+        # Deux constructions du même devis rendent le MÊME dict (déterminisme :
+        # sans lui, « byte-identique » ne voudrait rien dire).
+        self.assertEqual(data, build_quote_data(self.devis,
+                                                {'include_etude': True}))
+        self.assertNotIn('bankable', self._cles_profondes(data))
+        self.assertNotIn('simulation', data['etude'])
+
+    def test_pv77_avec_simulation_seule_la_cle_bankable_apparait(self):
+        """Avec simulation → la charge utile ne gagne QUE ``etude.bankable``."""
+        from apps.ventes.quote_engine.builder import build_quote_data
+
+        self._devis_avec_etude()
+        sans = build_quote_data(self.devis, {'include_etude': True})
+        self._devis_avec_etude(self._SIMULATION)
+        avec = build_quote_data(self.devis, {'include_etude': True})
+
+        self.assertEqual(set(avec) - set(sans), set())
+        etude_avec = dict(avec['etude'])
+        self.assertEqual(etude_avec.pop('bankable'), self._SIMULATION)
+        # ``simulation`` est la clé BRUTE déjà portée par etude_params : elle
+        # reste telle quelle, le bloc bancable s'AJOUTE à côté sans la toucher.
+        self.assertEqual(etude_avec.pop('simulation'), self._SIMULATION)
+        self.assertEqual(etude_avec, sans['etude'])
+        # Le reste du dict (totaux, ROI, options…) est identique clé par clé.
+        for clef in set(sans) - {'etude'}:
+            self.assertEqual(sans[clef], avec[clef], clef)
+
+    def test_pv77_le_bloc_bancable_est_une_copie_defensive(self):
+        """Le rendu ne peut jamais muter l'étude STOCKÉE sur le devis."""
+        from apps.ventes.quote_engine.builder import build_quote_data
+
+        self._devis_avec_etude(self._SIMULATION)
+        data = build_quote_data(self.devis, {'include_etude': True})
+        data['etude']['bankable']['pr']['p50_kwh'] = 1
+        # En mémoire (une copie de surface aurait partagé le sous-dict 'pr')…
+        self.assertEqual(
+            self.devis.etude_params['simulation']['pr']['p50_kwh'], 71800)
+        # … et en base.
+        self.devis.refresh_from_db()
+        self.assertEqual(
+            self.devis.etude_params['simulation']['pr']['p50_kwh'], 71800)
+
+    def test_pv77_la_page_etude_montre_p50_p90_et_la_cascade(self):
+        self._devis_avec_etude(self._SIMULATION)
+        html, doc = self._render({'include_etude': True})
+        self.assertEqual(len(doc.pages), 4)
+        self.assertIn('Étude bancable', html)
+        self.assertIn('Production P50', html)
+        self.assertIn('P90', html)
+        self.assertIn('71 800', html)      # P50 formaté à la française
+        self.assertIn('58 300', html)      # P90
+        self.assertIn('Cascade de pertes', html)
+        for libelle in ('Température', 'Salissures', 'Ombrage', 'Câblage',
+                        'Onduleur', 'Disponibilité'):
+            self.assertIn(libelle, html)
+        self.assertIn('Ratio de performance', html)
+
+    def test_pv77_le_nombre_de_pages_ne_bouge_jamais(self):
+        """Le bloc vit DANS la page Étude : 4 pages avec, 4 pages sans."""
+        self._devis_avec_etude()
+        _, sans = self._render({'include_etude': True})
+        self._devis_avec_etude(self._SIMULATION)
+        html, avec = self._render({'include_etude': True})
+        self.assertEqual(len(sans.pages), len(avec.pages))
+        self.assertEqual(len(avec.pages), 4)
+        # Et avec l'annexe technique par-dessus : toujours 5, jamais 6.
+        self.devis.electrical_design = self._ELECTRICAL_DESIGN
+        self.devis.save(update_fields=['electrical_design'])
+        _, cinq = self._render({'include_etude': True,
+                                'include_annexe_technique': True})
+        self.assertEqual(len(cinq.pages), 5)
+        self.assertIn('Étude bancable', html)
+
+    def test_pv77_sans_simulation_la_page_etude_est_celle_d_hier(self):
+        self._devis_avec_etude()
+        html, doc = self._render({'include_etude': True})
+        self.assertEqual(len(doc.pages), 4)
+        self.assertNotIn('Étude bancable', html)
+        self.assertNotIn('Cascade de pertes', html)
+
+    def test_pv77_le_bloc_bancable_ne_porte_aucun_montant(self):
+        """Règle #4 — que des grandeurs énergétiques : ni VAN, ni TRI, ni prix."""
+        from apps.ventes.quote_engine import generate_devis_premium as G
+
+        bloc = G._bankable_block_html(self._SIMULATION)
+        self.assertTrue(bloc)
+        for interdit in ('MAD', 'VAN', 'TRI', 'npv', 'irr', '412', '33 800',
+                         'prix_achat', 'marge'):
+            self.assertNotIn(interdit, bloc)
+
+    def test_pv77_une_simulation_illisible_ne_rend_rien(self):
+        from apps.ventes.quote_engine import generate_devis_premium as G
+
+        for entree in (None, {}, [], 'oui', {'pr': {}},
+                       {'pr': {'loss_breakdown': {}}}):
+            self.assertEqual(G._bankable_block_html(entree), '')
+
     def test_pompage_summary_on_onepage(self):
         """A pompage quote shows pump CV/débit/HMT in the one-page summary."""
         self.devis.mode_installation = 'agricole'
@@ -2589,3 +2895,316 @@ class TestNoInventedNumberGuard(TestCase):
         self.assertLessEqual(roi["eco_a_ann"], max_possible)
         # And they should reflect only the self-consumed share
         self.assertEqual(roi["eco_a_ann"], round(prod * AUTOCONSO_AVEC * 1.75))
+
+
+# ── PV11 : la fiche technique prime sur la regex pour le wattage panneau ──────
+class TestPanelWattFromFicheTechnique(TestCase):
+    """PV11 — ordre de résolution : fiche technique (Pmax réel) > regex
+    désignation/nom > repli catalogue.
+
+    RÈGLE #4 : le moteur ne fait que RENDRE. Les tests ci-dessous vérifient donc
+    aussi que rien d'autre ne bouge — nombre de pages et totaux identiques avec
+    et sans fiche.
+    """
+
+    LINES = [
+        ('Panneau Canadien Solar 710W', '10', '1400'),
+        ('Onduleur réseau 8kW', '1', '14000'),
+    ]
+
+    def setUp(self):
+        self.company = make_company()
+        self.user = make_user(self.company)
+        self.client_obj = make_client(self.company)
+
+    def _devis(self, reference):
+        return make_devis(self.company, self.user, self.client_obj,
+                          self.LINES, reference=reference)
+
+    def _panneau(self, devis):
+        return devis.lignes.get(
+            designation='Panneau Canadien Solar 710W').produit
+
+    def _fiche(self, produit, **kwargs):
+        from apps.stock.models import FicheTechnique
+        return FicheTechnique.objects.create(
+            company=self.company, produit=produit, **kwargs)
+
+    # ── Fiche présente : sa puissance EXACTE est utilisée ──
+    def test_fiche_pmax_wins_over_designation_regex(self):
+        from apps.ventes.quote_engine import build_quote_data
+        from apps.stock.models import FicheTechnique
+        devis = self._devis('DEV-PV11-FICHE')
+        # La désignation dit 710 W, la fiche constructeur dit 705 Wc : c'est la
+        # FICHE qui fait foi.
+        self._fiche(self._panneau(devis),
+                    type_fiche=FicheTechnique.TypeFiche.MODULE,
+                    pmax_wc=Decimal('705.00'))
+        data = build_quote_data(devis)
+        self.assertEqual(data['watt_par_panneau'], 705)
+        self.assertEqual(data['nb_panneaux'], 10)
+        self.assertEqual(data['puissance_kwc'], 7.05)
+
+    def test_fiche_pmax_used_when_designation_has_no_wattage(self):
+        """Désignation illisible + fiche → la vraie puissance, pas le repli."""
+        from apps.ventes.quote_engine import build_quote_data
+        from apps.ventes.quote_engine.builder import _DEFAULT_WATT
+        from apps.stock.models import FicheTechnique
+        devis = make_devis(self.company, self.user, self.client_obj, [
+            ('Panneau photovoltaïque monocristallin', '12', '1400'),
+            ('Onduleur réseau 8kW', '1', '14000'),
+        ], reference='DEV-PV11-NOWATT')
+        produit = devis.lignes.get(
+            designation='Panneau photovoltaïque monocristallin').produit
+        self._fiche(produit, type_fiche=FicheTechnique.TypeFiche.MODULE,
+                    pmax_wc=Decimal('580.00'))
+        data = build_quote_data(devis)
+        self.assertEqual(data['watt_par_panneau'], 580)
+        self.assertNotEqual(data['watt_par_panneau'], _DEFAULT_WATT)
+
+    def test_legacy_fiche_without_type_still_counts(self):
+        """Une fiche ANTÉRIEURE à PV5 (``type_fiche`` vide) porte déjà un Pmax
+        de panneau : elle reste exploitée."""
+        from apps.ventes.quote_engine import build_quote_data
+        devis = self._devis('DEV-PV11-LEGACY')
+        self._fiche(self._panneau(devis), pmax_wc=Decimal('665.00'))
+        data = build_quote_data(devis)
+        self.assertEqual(data['watt_par_panneau'], 665)
+
+    # ── Fiche absente / inexploitable : chemin regex STRICTEMENT inchangé ──
+    def test_without_fiche_regex_path_is_unchanged(self):
+        from apps.ventes.quote_engine import build_quote_data
+        devis = self._devis('DEV-PV11-SANS')
+        data = build_quote_data(devis)
+        self.assertEqual(data['watt_par_panneau'], 710)  # lu dans « 710W »
+        self.assertEqual(data['puissance_kwc'], 7.1)
+
+    def test_fiche_without_pmax_falls_back_to_regex(self):
+        from apps.ventes.quote_engine import build_quote_data
+        from apps.stock.models import FicheTechnique
+        devis = self._devis('DEV-PV11-NOPMAX')
+        self._fiche(self._panneau(devis),
+                    type_fiche=FicheTechnique.TypeFiche.MODULE,
+                    voc_v=Decimal('48.00'))  # aucun pmax_wc
+        data = build_quote_data(devis)
+        self.assertEqual(data['watt_par_panneau'], 710)
+
+    def test_non_module_fiche_is_ignored(self):
+        """Un Pmax saisi par erreur sur une fiche onduleur/batterie ne dicte
+        JAMAIS la puissance d'un panneau."""
+        from apps.ventes.quote_engine import build_quote_data
+        from apps.stock.models import FicheTechnique
+        devis = self._devis('DEV-PV11-ONDFICHE')
+        self._fiche(self._panneau(devis),
+                    type_fiche=FicheTechnique.TypeFiche.ONDULEUR,
+                    pmax_wc=Decimal('12000.00'))
+        data = build_quote_data(devis)
+        self.assertEqual(data['watt_par_panneau'], 710)
+
+    def test_zero_pmax_falls_back_to_regex(self):
+        from apps.ventes.quote_engine import build_quote_data
+        from apps.stock.models import FicheTechnique
+        devis = self._devis('DEV-PV11-ZERO')
+        self._fiche(self._panneau(devis),
+                    type_fiche=FicheTechnique.TypeFiche.MODULE,
+                    pmax_wc=Decimal('0.00'))
+        data = build_quote_data(devis)
+        self.assertEqual(data['watt_par_panneau'], 710)
+
+    # ── RÈGLE #4 : ni les totaux ni le nombre de pages ne bougent ──
+    def test_totals_identical_with_and_without_fiche(self):
+        from apps.ventes.quote_engine import build_quote_data
+        from apps.stock.models import FicheTechnique
+        sans = build_quote_data(self._devis('DEV-PV11-T1'))
+        devis = self._devis('DEV-PV11-T2')
+        self._fiche(self._panneau(devis),
+                    type_fiche=FicheTechnique.TypeFiche.MODULE,
+                    pmax_wc=Decimal('705.00'))
+        avec = build_quote_data(devis)
+        for key in ('totaux_sans', 'totaux_avec', 'totaux_all'):
+            self.assertEqual(avec[key], sans[key], key)
+        # Seule la puissance change — c'est bien le seul effet de PV11.
+        self.assertNotEqual(avec['watt_par_panneau'],
+                            sans['watt_par_panneau'])
+
+    def test_page_counts_unchanged_with_fiche(self):
+        from weasyprint import HTML
+        from apps.stock.models import FicheTechnique
+        from apps.ventes.quote_engine.builder import build_quote_data
+        from apps.ventes.quote_engine import generate_devis_premium as G
+
+        # MÊME fixture golden que les garde-fous de pagination existants.
+        devis = make_devis(self.company, self.user, self.client_obj,
+                           TestPdfFormats.FULL_LINES, reference='DEV-PV11-PDF')
+        produit = devis.lignes.get(designation='Panneau mono 550W').produit
+        FicheTechnique.objects.create(
+            company=self.company, produit=produit,
+            type_fiche=FicheTechnique.TypeFiche.MODULE,
+            pmax_wc=Decimal('545.00'))
+
+        def _render(pdf_options=None):
+            data = build_quote_data(devis, pdf_options)
+            cap = {}
+            orig = G._render_pdf_weasyprint
+            G._render_pdf_weasyprint = lambda html, out: cap.update(html=html)
+            try:
+                G.generate_premium_pdf(data, '/tmp/_pv11_test.pdf')
+            finally:
+                G._render_pdf_weasyprint = orig
+            return data, HTML(string=cap['html']).render()
+
+        data, doc = _render()
+        self.assertEqual(len(doc.pages), 3)
+        self.assertEqual(data['watt_par_panneau'], 545)
+        _, doc_one = _render({'pdf_mode': 'onepage'})
+        self.assertEqual(len(doc_one.pages), 1)
+
+
+class TestLayoutV2NeBougePasLeDocument(TestCase):
+    """PV24 — le layout v2 allume un chemin du builder : on le VERROUILLE.
+
+    ``build_quote_data`` écrase ``puissance_kwc`` avec ``roof_layout['result']
+    ['kwc']`` (builder.py, bloc « Q5 — Toiture 3D »). Ce chemin est resté
+    THÉORIQUE tant que l'outil 3D sérialisait en v1 : le blob v1 ne porte
+    AUCUN bloc ``result``, donc la condition n'était jamais vraie. Depuis PV13
+    la sérialisation est en v2 et le bloc ``result`` est TOUJOURS là — ce
+    chemin s'allume donc en production, sur tous les devis venus de la 3D.
+
+    Règle #4 : la puissance affichée peut suivre le calepinage réel (c'est le
+    but), mais le DOCUMENT lui-même ne bouge pas — mêmes pages, mêmes totaux.
+    Les totaux naissent des LIGNES et d'elles seules ; aucun champ de layout
+    n'a le droit de s'inviter dans la chaîne
+    Sous-total HT → Remise → Total HT → TVA → Total TTC.
+    """
+
+    #: Clés de TOTAUX de ``build_quote_data`` — la chaîne monétaire complète.
+    CLES_TOTAUX = ('total_sans', 'total_avec', 'total_sans_before',
+                   'total_avec_before', 'totaux_sans', 'totaux_avec',
+                   'totaux_all', 'discount_pct', 'per_line_tva')
+
+    @staticmethod
+    def _layout_v1():
+        """Le blob HISTORIQUE : géométrie de zones, AUCUN bloc ``result``."""
+        return {
+            'version': 1,
+            'pin': {'lat': 33.57, 'lng': -7.58},
+            'outline': [[33.57, -7.58], [33.58, -7.58], [33.58, -7.57]],
+            'billKwh': 900,
+            'activeAreaId': 'z1',
+            'zones': [{
+                'id': 'z1', 'label': 'Pan Sud',
+                'vertices': [[0, 0], [10, 0], [10, 6], [0, 6]],
+                'obstacles': [], 'roofType': 'pitched', 'pitchDeg': 30,
+                'facingAzimuthDeg': 0, 'neededPanels': 14,
+            }],
+        }
+
+    @classmethod
+    def _layout_v2(cls):
+        """Le MÊME toit, sérialisé en v2 (PV13) : + result/scenario/panelWatt."""
+        layout = cls._layout_v1()
+        layout.update({
+            'version': 2,
+            'result': {'panels': 14, 'kwc': 8.4, 'annualKwh': 13000,
+                       'savings': 11000},
+            'scenario': 'reseau',
+            'panelWatt': 600,
+            'battery': None,
+            'source': 'devis',
+            'devisId': 4242,
+        })
+        layout['zones'][0]['geometry'] = {
+            'azimuthDeg': 0, 'tiltDeg': 30, 'family': 'portrait',
+            'flush': True, 'kwc': 8.4, 'count': 14, 'origin': [0, 0],
+            'panels': [],
+        }
+        return layout
+
+    def setUp(self):
+        self.company = make_company()
+        self.user = make_user(self.company)
+        self.client_obj = make_client(self.company)
+        # MÊME fixture golden que les garde-fous de pagination existants
+        # (``TestPdfFormats``) : le nombre de pages testé ici est donc bien
+        # celui du document de référence, pas celui d'un devis inventé.
+        self.devis = make_devis(
+            self.company, self.user, self.client_obj,
+            TestPdfFormats.FULL_LINES, reference='DEV-PV24-001')
+
+    def _data(self, layout, pdf_options=None, devis=None):
+        from apps.ventes.quote_engine.builder import build_quote_data
+
+        devis = devis or self.devis
+        Devis.objects.filter(pk=devis.pk).update(roof_layout=layout)
+        devis.refresh_from_db()
+        return build_quote_data(devis, pdf_options)
+
+    def _pages(self, layout, pdf_options=None):
+        from weasyprint import HTML
+        from apps.ventes.quote_engine import generate_devis_premium as G
+
+        data = self._data(layout, pdf_options)
+        cap = {}
+        orig = G._render_pdf_weasyprint
+        G._render_pdf_weasyprint = lambda html, out: cap.update(html=html)
+        try:
+            G.generate_premium_pdf(data, '/tmp/_pv24_test.pdf')
+        finally:
+            G._render_pdf_weasyprint = orig
+        return len(HTML(string=cap['html']).render().pages)
+
+    def test_le_chemin_v2_s_allume_vraiment(self):
+        """Sans cette divergence, tout le reste du module serait vide de sens."""
+        v1 = self._data(self._layout_v1())
+        v2 = self._data(self._layout_v2())
+        self.assertEqual(v2['puissance_kwc'], 8.4)
+        self.assertNotEqual(v1['puissance_kwc'], v2['puissance_kwc'])
+
+    def test_les_totaux_sont_identiques_au_centime(self):
+        v1 = self._data(self._layout_v1())
+        v2 = self._data(self._layout_v2())
+        for cle in self.CLES_TOTAUX:
+            self.assertEqual(v1[cle], v2[cle],
+                             'le layout v2 a bougé le total « %s »' % cle)
+
+    def test_les_totaux_remises_sont_identiques(self):
+        """La remise globale est le maillon fragile de la chaîne : verrouillé.
+
+        Un devis REMISÉ fait vivre les trois maillons intermédiaires
+        (``ht_brut`` → ``remise`` → ``ht_net``) que le devis golden, sans
+        remise, laisse au repos.
+        """
+        remise = make_devis(
+            self.company, self.user, self.client_obj,
+            TestPdfFormats.FULL_LINES, remise_globale='12',
+            reference='DEV-PV24-002')
+        v1 = self._data(self._layout_v1(), devis=remise)
+        v2 = self._data(self._layout_v2(), devis=remise)
+        self.assertGreater(v1['totaux_all']['remise'], 0)
+        for cle in self.CLES_TOTAUX:
+            self.assertEqual(v1[cle], v2[cle],
+                             'le layout v2 a bougé le total « %s »' % cle)
+
+    def test_les_totaux_ignorent_aussi_un_layout_absent(self):
+        """Aucun layout, v1, v2 : la chaîne monétaire est la MÊME partout."""
+        sans = self._data(None)
+        for layout in (self._layout_v1(), self._layout_v2()):
+            avec = self._data(layout)
+            for cle in self.CLES_TOTAUX:
+                self.assertEqual(sans[cle], avec[cle],
+                                 'le layout a bougé le total « %s »' % cle)
+
+    def test_le_premium_reste_a_trois_pages(self):
+        self.assertEqual(self._pages(self._layout_v1()), 3)
+        self.assertEqual(self._pages(self._layout_v2()), 3)
+
+    def test_la_une_page_reste_a_une_page(self):
+        options = {'pdf_mode': 'onepage'}
+        self.assertEqual(self._pages(self._layout_v1(), options), 1)
+        self.assertEqual(self._pages(self._layout_v2(), options), 1)
+
+    def test_le_layout_v2_n_ecrit_aucun_statut(self):
+        """Règle #4 — le builder REND, il ne change jamais un statut."""
+        self._data(self._layout_v2())
+        self.devis.refresh_from_db()
+        self.assertEqual(self.devis.statut, 'brouillon')

@@ -297,7 +297,9 @@ class TestChantierFunnelParcChecklist(TestCase):
         r = self.api.get(
             f'/api/django/installations/chantiers/{self.inst.id}/checklist/')
         self.assertEqual(r.status_code, 200, r.data)
-        self.assertEqual(len(r.data['items']), 7)
+        # PV80 — 8 étapes système : les 7 historiques + « Schéma électrique
+        # validé ».
+        self.assertEqual(len(r.data['items']), 8)
         self.assertEqual(r.data['completion'], 0)
         cle = r.data['items'][0]['cle']
         r2 = self.api.post(
@@ -342,7 +344,8 @@ class TestChantierFunnelParcChecklist(TestCase):
         r = self.api.get('/api/django/installations/checklist-etapes/')
         self.assertEqual(r.status_code, 200)
         rows = r.data['results'] if isinstance(r.data, dict) else r.data
-        self.assertEqual(len(rows), 7)
+        # PV80 — 8 étapes système (cf. test_checklist_seeds_and_tracks_completion).
+        self.assertEqual(len(rows), 8)
 
     def test_parc_garantie_etat_aggregates_worst(self):
         # Parc — l'état de garantie du système est None sans équipement, puis le
@@ -472,7 +475,8 @@ class TestChecklistTemplates(TestCase):
 
     def test_default_template_seeded_with_todays_steps(self):
         # L'amorçage via l'endpoint Paramètres crée le modèle « Défaut » avec
-        # exactement les 7 étapes d'aujourd'hui.
+        # exactement les 8 étapes d'aujourd'hui (PV80 : + « Schéma électrique
+        # validé »).
         r = self.api.get('/api/django/installations/checklist-templates/')
         self.assertEqual(r.status_code, 200, r.data)
         rows = r.data['results'] if isinstance(r.data, dict) else r.data
@@ -480,19 +484,20 @@ class TestChecklistTemplates(TestCase):
         self.assertEqual(len(defaut), 1)
         self.assertEqual(defaut[0]['nom'], 'Défaut')
         self.assertTrue(defaut[0]['protege'])
-        self.assertEqual(len(defaut[0]['etapes']), 7)
+        self.assertEqual(len(defaut[0]['etapes']), 8)
 
     def test_no_matching_type_uses_default_steps(self):
-        # Comportement préservé : sans modèle typé, un chantier reçoit les 7
-        # étapes du modèle « Défaut » (identique à avant N74).
+        # Comportement préservé : sans modèle typé, un chantier reçoit les 8
+        # étapes du modèle « Défaut » (les 7 historiques + PV80).
         inst = self._make_inst('residentiel')
         r = self.api.get(
             f'/api/django/installations/chantiers/{inst.id}/checklist/')
         self.assertEqual(r.status_code, 200, r.data)
-        self.assertEqual(len(r.data['items']), 7)
+        self.assertEqual(len(r.data['items']), 8)
         cles = {it['cle'] for it in r.data['items']}
         self.assertIn('pv_reception_signe', cles)
         self.assertIn('panneaux_poses', cles)
+        self.assertIn('schema_electrique_valide', cles)
 
     def test_template_auto_selected_by_type(self):
         # Un modèle typé « agricole » avec ses propres étapes est
@@ -515,11 +520,12 @@ class TestChecklistTemplates(TestCase):
         self.assertEqual(r.status_code, 200, r.data)
         cles = [it['cle'] for it in r.data['items']]
         self.assertEqual(cles, ['forage_ok', 'pompe_posee', 'debit_mesure'])
-        # Et un chantier résidentiel garde, lui, le modèle « Défaut ».
+        # Et un chantier résidentiel garde, lui, le modèle « Défaut » (8
+        # étapes, PV80).
         inst_res = self._make_inst('residentiel')
         r2 = self.api.get(
             f'/api/django/installations/chantiers/{inst_res.id}/checklist/')
-        self.assertEqual(len(r2.data['items']), 7)
+        self.assertEqual(len(r2.data['items']), 8)
 
     def test_inactive_typed_template_falls_back_to_default(self):
         from apps.installations.services import ensure_default_template
@@ -533,8 +539,8 @@ class TestChecklistTemplates(TestCase):
         inst = self._make_inst('industriel')
         r = self.api.get(
             f'/api/django/installations/chantiers/{inst.id}/checklist/')
-        # Modèle typé inactif → repli sur « Défaut » (7 étapes).
-        self.assertEqual(len(r.data['items']), 7)
+        # Modèle typé inactif → repli sur « Défaut » (8 étapes, PV80).
+        self.assertEqual(len(r.data['items']), 8)
 
     def test_company_force_assigned_not_from_body(self):
         # La société est posée côté serveur, jamais lue du corps.

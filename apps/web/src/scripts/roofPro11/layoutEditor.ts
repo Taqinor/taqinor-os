@@ -21,6 +21,12 @@ import {
   removePanel,
   resetToOptimal,
   fillAll,
+  hasManualEdits as hasManualEditsPure,
+  cellsInRect,
+  moveGroup,
+  rowMembers,
+  moveRowBy,
+  nudgeAzimuthDeg,
 } from '../../lib/layoutVariability';
 import { PANEL2_LONG_M } from '../../lib/roofPro2';
 import { PANEL_KWC } from '../../lib/productionEngine';
@@ -34,6 +40,7 @@ import {
 import { $, fmt } from './dom';
 import { type Ctx } from './context';
 import { type ProdConfig } from './types';
+import { createLayoutHistory } from './layoutHistory';
 
 /** Décimal à 1 chiffre, à la française (identique à l'entrée). */
 const fmt1 = (n: number): string =>
@@ -67,6 +74,13 @@ export interface LayoutEditorDeps {
   isObstacleMode: () => boolean;
   /** W88 — surligne (or) le panneau 3D de la cellule donnée, ou efface tout (null). */
   setPanelHighlight: (cellIndex: number | null) => void;
+  /** PV28 — demande de confirmation (injectable pour les tests). Défaut : `window.confirm`.
+   *  Doit renvoyer true si l'utilisateur accepte de PERDRE sa disposition personnalisée. */
+  confirmDiscard?: (message: string) => boolean;
+  /** PV25 — recalcul COMPLET de la zone active (re-pavage) qui re-entre ensuite la
+   *  disposition personnalisée (capture des centres → re-snap). C'est le `recalc()` de
+   *  l'entrée. Optionnel : absent → le nudge d'azimut retombe sur `renderActive`. */
+  recalcWithReenter?: () => void;
 }
 
 export interface LayoutEditor {
@@ -82,6 +96,23 @@ export interface LayoutEditor {
   /** W79 — après un recalc (nouvelle lattice), re-entre la disposition personnalisée en
    *  re-snappant les centres fournis vers les cellules valides les plus proches. */
   reenterCustomLayout: (prevCenters: { cx: number; cy: number }[]) => void;
+  /** PV25 — indices actuellement SÉLECTIONNÉS (sélection multiple), triés. */
+  selection: () => number[];
+  /** PV25 — remplace la sélection multiple (indices non occupés ignorés). */
+  setSelection: (indices: readonly number[]) => void;
+  /** PV26 — annule / rétablit la dernière action de disposition (true si effectué). */
+  undo: () => boolean;
+  redo: () => boolean;
+  /** PV28 — la disposition courante diverge-t-elle de l'optimum (édition manuelle) ? */
+  hasManualEdits: () => boolean;
+  /** PV28 — à appeler AVANT tout ré-agencement automatique : true = on peut continuer
+   *  (aucune édition manuelle, ou l'utilisateur a accepté de la perdre). */
+  confirmDiscardEdits: () => boolean;
+  /** PV27 — HYDRATE la disposition depuis les centres de panneaux d'un layout exporté
+   *  (leur repère d'origine si différent de celui du pavage courant). Re-snappe chaque
+   *  centre sur la lattice courante et rend la 3D avec CETTE occupation. Renvoie true si
+   *  la disposition a été appliquée. */
+  hydrateLayout: (centers: readonly { cx: number; cy: number }[], origin?: readonly [number, number]) => boolean;
 }
 
 export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEditor {
@@ -112,6 +143,74 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
   const layoutFillEl = $<HTMLButtonElement>('rp9-layout-fill');
   const layoutGridEl = $('rp9-layout-grid');
   const layoutNoteEl = $('rp9-layout-note');
+  // PV25 — sélection multiple / rangée / nudge d'azimut.
+  const layoutSelectBtn = $<HTMLButtonElement>('rp9-layout-select');
+  const layoutRowBtn = $<HTMLButtonElement>('rp9-layout-row');
+  const layoutClearSelBtn = $<HTMLButtonElement>('rp9-layout-clear-sel');
+  const layoutAzWrapEl = $('rp9-layout-azimuth');
+  const layoutAzMinusEl = $<HTMLButtonElement>('rp9-layout-az-minus');
+  const layoutAzPlusEl = $<HTMLButtonElement>('rp9-layout-az-plus');
+  const layoutAzValueEl = $('rp9-layout-az-value');
+  // PV26 — annuler / rétablir.
+  const layoutUndoBtn = $<HTMLButtonElement>('rp9-layout-undo');
+  const layoutRedoBtn = $<HTMLButtonElement>('rp9-layout-redo');
+
+  // PV25 — ÉTAT de la sélection multiple. Il vit dans ce module (rien à ajouter au ctx
+  // partagé) : c'est une intention d'édition, pas un état de design.
+  let selection: number[] = [];
+  /** Mode « sélection » (tactile) : le glissé trace un rectangle au lieu de déplacer. */
+  let selectMode = false;
+  /** Mode « rangée » : le glissé sur un panneau emmène TOUTE sa rangée (axe contraint). */
+  let rowMode = false;
+  /** Marquee en cours (coin de départ en ENU) ou null. */
+  let marquee: { x0: number; y0: number; x1: number; y1: number } | null = null;
+  /** Tolérance de « snap » d'un déplacement de groupe/rangée : chaque membre doit
+   *  atterrir à moins d'un DEMI-panneau de l'endroit visé. Au-delà, le geste sort du toit
+   *  (ou le groupe se replierait n'importe où) → refus, et rien ne bouge. */
+  const GROUP_SNAP_M = PANEL2_LONG_M / 2;
+  /** Pas du nudge d'azimut (°) — jamais un arrondi imposé, juste l'incrément du bouton. */
+  const AZIMUTH_NUDGE_DEG = 1;
+
+  // PV26 — HISTORIQUE par snapshots : toute action qui MUTE l'occupation appelle d'abord
+  // `recordHistory()`. Annuler ré-applique la photo précédente ; une nouvelle action vide
+  // la pile « rétablir ».
+  const history = createLayoutHistory();
+  /** PV27 — une disposition a-t-elle été HYDRATÉE (ou éditée) sur le plan courant ? Si oui,
+   *  entrer en mode « Personnaliser » la PRÉSERVE au lieu de repartir de l'optimum. */
+  let hydrated = false;
+  /** Photographie l'occupation AVANT de la muter (no-op sans état de disposition). */
+  function recordHistory() {
+    if (ctx.layoutState) history.push(ctx.layoutState.occupied);
+  }
+  /** Ré-applique une occupation photographiée + re-rend (3D, chiffres, plan). */
+  function applySnapshot(snapshot: number[]) {
+    const st = ctx.layoutState;
+    if (!st) return;
+    st.occupied.clear();
+    for (const i of snapshot) if (i >= 0 && i < st.cells.length) st.occupied.add(i);
+    ctx.layoutSel = null;
+    pruneSelection();
+    renderCustomLayout();
+    renderLayoutPanel();
+  }
+  function undo(): boolean {
+    const st = ctx.layoutState;
+    if (!st) return false;
+    const prev = history.undo(st.occupied);
+    if (!prev) return false;
+    applySnapshot(prev);
+    if (layoutNoteEl) layoutNoteEl.textContent = `Action annulée — ${fmt(st.occupied.size)} panneaux posés.`;
+    return true;
+  }
+  function redo(): boolean {
+    const st = ctx.layoutState;
+    if (!st) return false;
+    const next = history.redo(st.occupied);
+    if (!next) return false;
+    applySnapshot(next);
+    if (layoutNoteEl) layoutNoteEl.textContent = `Action rétablie — ${fmt(st.occupied.size)} panneaux posés.`;
+    return true;
+  }
 
   function layoutCap(): number {
     const fit = ctx.layoutPlan ? ctx.layoutPlan.grid.panels.length : 0;
@@ -191,14 +290,53 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
       layoutGridEl.innerHTML = layoutState.cells
         .map((c) => {
           const occupied = layoutState.occupied.has(c.index);
-          const selected = ctx.layoutSel === c.index;
+          // PV25 — une cellule est « pressée » si elle est le panneau saisi OU membre de
+          // la sélection multiple (le même signal visuel pour les deux).
+          const selected = ctx.layoutSel === c.index || selection.includes(c.index);
           return `<button type="button" class="rp9-layout-cell" data-cell="${c.index}" data-occupied="${occupied}" aria-pressed="${selected}" aria-label="${occupied ? 'Panneau' : 'Emplacement libre'} ${c.index + 1}"></button>`;
         })
         .join('');
     }
+    pruneSelection();
+    syncSelectionControls();
     if (layoutNoteEl && !layoutNoteEl.textContent) {
       layoutNoteEl.textContent = 'Touchez un panneau (bleu) pour le sélectionner, puis un emplacement libre (vert) pour l’y déplacer. Ou utilisez + / −.';
     }
+  }
+
+  /** PV25 — la sélection ne garde que des cellules RÉELLEMENT occupées (un panneau
+   *  supprimé/déplacé ailleurs ne doit pas rester « sélectionné »). */
+  function pruneSelection() {
+    const st = ctx.layoutState;
+    if (!st) {
+      selection = [];
+      return;
+    }
+    selection = selection.filter((i) => st.occupied.has(i)).sort((a, b) => a - b);
+  }
+  function setSelection(indices: readonly number[]) {
+    selection = [...new Set(indices)];
+    pruneSelection();
+  }
+
+  /** PV25 — reflète l'état des boutons de sélection + le nudge d'azimut. */
+  function syncSelectionControls() {
+    if (layoutSelectBtn) layoutSelectBtn.setAttribute('aria-pressed', String(selectMode));
+    if (layoutRowBtn) layoutRowBtn.setAttribute('aria-pressed', String(rowMode));
+    if (layoutClearSelBtn) layoutClearSelBtn.disabled = selection.length === 0;
+    if (layoutUndoBtn) layoutUndoBtn.disabled = !history.canUndo(); // PV26
+    if (layoutRedoBtn) layoutRedoBtn.disabled = !history.canRedo();
+    // L'azimut n'est nudgeable que sur un toit en PENTE (face imposée par la toiture) ;
+    // sur toit plat, l'azimut est un AXE de l'optimiseur, pas un réglage de disposition.
+    if (layoutAzWrapEl) layoutAzWrapEl.hidden = ctx.roofType !== 'pitched';
+    if (layoutAzValueEl) layoutAzValueEl.textContent = `${Math.round(ctx.facingAzimuthDeg)}°`;
+  }
+
+  /** PV25 — recalcul complet après un changement d'azimut : re-pavage PUIS re-snap de la
+   *  disposition personnalisée (le chemin `recalc()` de l'entrée), sinon repli renderActive. */
+  function recalcAfterAxisChange() {
+    if (deps.recalcWithReenter) deps.recalcWithReenter();
+    else renderActive();
   }
 
   /** W79 — centres ENU des cellules POSÉES de la disposition courante. Capturé AVANT un
@@ -241,6 +379,75 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
     renderLayoutPanel();
   }
 
+  /**
+   * PV27 — HYDRATATION de la disposition depuis un layout exporté. C'était le troisième
+   * chemin par lequel une pose manuelle disparaissait : le JSON portait les panneaux, mais
+   * personne ne les REPOSAIT au boot — l'outil réaffichait l'optimum. On re-snappe ici
+   * chaque centre exporté sur la cellule VALIDE la plus proche (même mécanique que
+   * `reenterCustomLayout` après un recalcul), puis on rend la 3D avec cette occupation.
+   *
+   * `origin` = le repère ENU dans lequel les centres ont été enregistrés. S'il diffère du
+   * repère du pavage courant (centroïde légèrement différent), on translate d'abord — sans
+   * ça, tout le champ serait décalé de quelques mètres.
+   */
+  function hydrateLayout(centers: readonly { cx: number; cy: number }[], origin?: readonly [number, number]): boolean {
+    if (!centers.length || !ctx.layoutPlan) return false;
+    ensureLayoutState();
+    const st = ctx.layoutState;
+    if (!st || !st.cells.length) return false;
+    let dx = 0;
+    let dy = 0;
+    if (origin) {
+      const cur = ctx.layoutPlan.pack.origin;
+      const cosLat = Math.cos(cur[1] * DEG2RAD);
+      dx = (origin[0] - cur[0]) * DEG2M * cosLat;
+      dy = (origin[1] - cur[1]) * DEG2M;
+    }
+    st.occupied.clear();
+    let placed = 0;
+    for (const c of centers) {
+      const idx = nearestEmptyCell(st, c.cx + dx, c.cy + dy);
+      if (idx >= 0) {
+        st.occupied.add(idx);
+        placed++;
+      }
+    }
+    ctx.layoutSel = null;
+    setSelection([]);
+    history.clear(); // une hydratation est un POINT DE DÉPART, pas une action annulable
+    hydrated = true; // PV27 — entrer en mode disposition ne doit plus l'écraser
+    renderCustomLayout();
+    renderLayoutPanel();
+    if (layoutNoteEl && placed) {
+      layoutNoteEl.textContent = `Disposition du dossier rechargée — ${fmt(placed)} panneaux reposés à l'identique.`;
+    }
+    return placed > 0;
+  }
+
+  // ── PV28 — garde-fou « ne perds pas le travail manuel » ─────────────────────
+  /** La disposition posée diverge-t-elle de l'optimum ? (ajout, retrait ou déplacement). */
+  function hasManualEdits(): boolean {
+    return hasManualEditsPure(ctx.layoutState, ctx.layoutOptimalCount);
+  }
+  /**
+   * PV28 — À appeler AVANT un ré-agencement automatique (changement d'axe, optimum,
+   * réinitialisation des verrous…). Sans édition manuelle : rien ne se passe, on continue.
+   * Avec édition manuelle : on DEMANDE, en français, et un refus laisse l'état INTACT
+   * (l'appelant abandonne son action). On ne verrouille aucun panneau : on prévient.
+   */
+  function confirmDiscardEdits(): boolean {
+    if (!hasManualEdits()) return true;
+    const count = ctx.layoutState ? ctx.layoutState.occupied.size : 0;
+    const ask =
+      deps.confirmDiscard ??
+      ((msg: string) => (typeof window !== 'undefined' && typeof window.confirm === 'function' ? window.confirm(msg) : true));
+    const ok = ask(
+      `Vous avez placé ${count} panneaux à la main. Cette action recalcule la disposition et remplacera votre placement. Continuer ?`,
+    );
+    if (!ok && layoutNoteEl) layoutNoteEl.textContent = 'Modification annulée — votre disposition est conservée.';
+    return ok;
+  }
+
   /** Entrée/sortie du mode personnalisation. */
   function setLayoutMode(on: boolean) {
     ctx.layoutMode = on;
@@ -253,8 +460,13 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
     if (opts.reducedMotion) map.jumpTo(view);
     else map.easeTo({ ...view, duration: 500, essential: true });
     if (on) {
-      ctx.layoutState = null; // repart de l'optimum courant
-      ensureLayoutState();
+      // PV27 — on PRÉSERVE une disposition déjà posée (hydratée depuis un dossier, ou
+      // éditée à la main juste avant) : la remettre à l'optimum ici effaçait le travail
+      // manuel dès qu'on rouvrait le panneau. Repartir de l'optimum reste possible — c'est
+      // le bouton « Réinitialiser la disposition optimale », explicite.
+      if (!ctx.layoutState) ensureLayoutState();
+      if (!hydrated) history.clear(); // PV26 — historique propre pour une nouvelle session
+      setSelection([]);
       renderCustomLayout();
     } else {
       // En sortant, on re-rend la disposition de l'optimiseur (recalc rebranche tout).
@@ -271,6 +483,7 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
   // + / − : ajoute/retire un panneau (touch + mouvement réduit, sans glissé fin).
   layoutPlusEl?.addEventListener('click', () => {
     if (!ctx.layoutMode || !ctx.layoutState) return;
+    recordHistory(); // PV26
     const r = addFirstEmpty(ctx.layoutState, layoutCap());
     if (r.ok) {
       if (layoutNoteEl) layoutNoteEl.textContent = `Panneau ajouté — ${r.count} posés.`;
@@ -282,6 +495,7 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
   });
   layoutMinusEl?.addEventListener('click', () => {
     if (!ctx.layoutMode || !ctx.layoutState) return;
+    recordHistory(); // PV26
     const r = removeLast(ctx.layoutState);
     if (r.ok) {
       ctx.layoutSel = null;
@@ -300,6 +514,7 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
   // besoin : la note l'indique honnêtement (surproduction non rémunérée).
   layoutFillEl?.addEventListener('click', () => {
     if (!ctx.layoutMode || !ctx.layoutState) return;
+    recordHistory(); // PV26
     const r = fillAll(ctx.layoutState);
     ctx.layoutSel = null;
     if (layoutNoteEl) {
@@ -314,11 +529,120 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
   // Réinitialiser la disposition optimale.
   layoutResetEl?.addEventListener('click', () => {
     if (!ctx.layoutState) return;
+    recordHistory(); // PV26 — « réinitialiser » s'annule comme n'importe quelle action
+    hydrated = false; // PV27 — retour explicite à l'optimum : plus rien à préserver
     resetToOptimal(ctx.layoutState, ctx.layoutOptimalCount);
     ctx.layoutSel = null;
     if (layoutNoteEl) layoutNoteEl.textContent = `Disposition optimale restaurée — ${occupiedCount(ctx.layoutState)} panneaux.`;
     renderCustomLayout();
     renderLayoutPanel();
+  });
+
+  // PV25 — bascule « sélection multiple » (repli TACTILE du Maj + glissé) : au doigt, le
+  // glissé trace le rectangle de sélection tant que le mode est actif.
+  layoutSelectBtn?.addEventListener('click', () => {
+    selectMode = !selectMode;
+    if (selectMode) rowMode = false; // les deux modes de glissé s'excluent
+    if (layoutNoteEl) {
+      layoutNoteEl.textContent = selectMode
+        ? 'Mode sélection : glissez sur le toit pour encadrer des panneaux.'
+        : 'Mode sélection désactivé.';
+    }
+    renderLayoutPanel();
+  });
+  // PV25 — bascule « déplacer la rangée » : un glissé emmène toute la rangée du panneau
+  // saisi, contrainte à son axe (elle reste une rangée).
+  layoutRowBtn?.addEventListener('click', () => {
+    rowMode = !rowMode;
+    if (rowMode) selectMode = false;
+    if (layoutNoteEl) {
+      layoutNoteEl.textContent = rowMode
+        ? 'Mode rangée : glissez un panneau, toute sa rangée suit (le long de la rangée).'
+        : 'Mode rangée désactivé.';
+    }
+    renderLayoutPanel();
+  });
+  layoutClearSelBtn?.addEventListener('click', () => {
+    setSelection([]);
+    if (layoutNoteEl) layoutNoteEl.textContent = 'Sélection effacée.';
+    renderLayoutPanel();
+  });
+
+  // PV25 — NUDGE d'azimut (toit en pente) : ±1° sur la face du pan, puis RECALCUL complet
+  // (re-pavage) qui re-entre la disposition personnalisée en re-snappant les panneaux
+  // posés — exactement le chemin d'une édition d'obstacle, jamais un effacement.
+  function nudgeAzimuth(deltaDeg: number) {
+    if (ctx.roofType !== 'pitched') return;
+    ctx.facingAzimuthDeg = nudgeAzimuthDeg(ctx.facingAzimuthDeg, deltaDeg);
+    ctx.facingManual = true; // un réglage MANUEL ne doit plus être écrasé par l'auto-inférence
+    if (layoutAzValueEl) layoutAzValueEl.textContent = `${Math.round(ctx.facingAzimuthDeg)}°`;
+    if (layoutNoteEl) layoutNoteEl.textContent = `Azimut du pan : ${Math.round(ctx.facingAzimuthDeg)}°.`;
+    recalcAfterAxisChange();
+    renderLayoutPanel();
+  }
+  layoutAzMinusEl?.addEventListener('click', () => nudgeAzimuth(-AZIMUTH_NUDGE_DEG));
+  layoutAzPlusEl?.addEventListener('click', () => nudgeAzimuth(AZIMUTH_NUDGE_DEG));
+
+  // PV26 — boutons « annuler » / « rétablir ».
+  layoutUndoBtn?.addEventListener('click', () => undo());
+  layoutRedoBtn?.addEventListener('click', () => redo());
+
+  // PV26 — RACCOURCIS clavier, actifs SEULEMENT en mode disposition (sinon on volerait
+  // Ctrl+Z à la page hôte) : Ctrl/⌘+Z annule, Ctrl/⌘+Y (ou Ctrl/⌘+Maj+Z) rétablit. Les
+  // FLÈCHES nudgent le panneau sélectionné — ou tout le groupe — d'un pas de calepinage.
+  function nudgeSelection(dx: number, dy: number): boolean {
+    const st = ctx.layoutState;
+    if (!st) return false;
+    const members = selection.length ? selection : ctx.layoutSel != null ? [ctx.layoutSel] : [];
+    if (!members.length) return false;
+    recordHistory();
+    const res = moveGroup(st, members, dx, dy, { maxSnapM: GROUP_SNAP_M });
+    // Refusé, OU chaque membre est retombé sur sa propre cellule (rien de libre dans cette
+    // direction) : dans les deux cas RIEN n'a bougé — on retire la photo pour ne pas
+    // empiler une « action » vide dans l'historique.
+    const sameAsBefore =
+      res.ok && res.targets.length === members.length && [...res.targets].sort((a, b) => a - b).join() === [...members].sort((a, b) => a - b).join();
+    if (!res.ok || sameAsBefore) {
+      history.undo(st.occupied);
+      if (layoutNoteEl) layoutNoteEl.textContent = 'Pas de place dans cette direction — rien n’a bougé.';
+      renderLayoutPanel();
+      return false;
+    }
+    setSelection(res.targets);
+    if (ctx.layoutSel != null) ctx.layoutSel = res.targets[0] ?? null;
+    if (layoutNoteEl) layoutNoteEl.textContent = `Déplacé — ${fmt(res.targets.length)} panneaux.`;
+    renderCustomLayout();
+    renderLayoutPanel();
+    return true;
+  }
+  document.addEventListener('keydown', (e) => {
+    if (!ctx.layoutMode || !ctx.layoutState) return;
+    const mod = e.ctrlKey || e.metaKey;
+    const key = e.key.toLowerCase();
+    if (mod && key === 'z' && !e.shiftKey) {
+      if (undo()) e.preventDefault();
+      return;
+    }
+    if (mod && (key === 'y' || (key === 'z' && e.shiftKey))) {
+      if (redo()) e.preventDefault();
+      return;
+    }
+    if (mod) return;
+    // Pas de nudge : la largeur de rangée (axe u) et le pas de rangée (axe d'empilement)
+    // du pavage courant — on avance exactement d'un emplacement, jamais d'un pas inventé.
+    const grid = ctx.layoutPlan?.grid;
+    if (!grid) return;
+    const stepU = grid.rowWidthM;
+    const stepV = grid.rowPitchM;
+    const moves: Record<string, [number, number]> = {
+      arrowleft: [-stepU, 0],
+      arrowright: [stepU, 0],
+      arrowup: [0, stepV],
+      arrowdown: [0, -stepV],
+    };
+    const delta = moves[key];
+    if (!delta) return;
+    if (nudgeSelection(delta[0], delta[1])) e.preventDefault();
   });
 
   // Plan tactile : tap-sélection d'un panneau → tap-cible d'un emplacement libre.
@@ -341,6 +665,7 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
       return;
     }
     // 2e tap : déplace vers la cible si elle est VIDE valide ; sinon rejet (rouge).
+    recordHistory(); // PV26
     const res = movePanelToCell(ctx.layoutState, ctx.layoutSel, idx);
     if (res.ok) {
       if (layoutNoteEl) layoutNoteEl.textContent = 'Panneau déplacé.';
@@ -380,8 +705,19 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
   }
   /** Début d'un glissé-déplacer (souris OU doigt) : saisit le panneau sous le point, fige le
    *  pan de la carte. Renvoie true si un panneau a été saisi (le geste devient un glissé). */
-  function beginLayoutDrag(point: maplibregl.Point): boolean {
+  function beginLayoutDrag(point: maplibregl.Point, shiftKey = false): boolean {
     if (!ctx.layoutMode || isObstacleMode() || !ctx.layoutState) return false;
+    // PV25 — MARQUEE : Maj + glissé (souris) ou mode « sélection multiple » (doigt) trace
+    // un rectangle au lieu de déplacer un panneau. Le rectangle est en ENU (mètres), via
+    // la MÊME déprojection écran→toit que le reste de l'éditeur — aucun second système.
+    if (shiftKey || selectMode) {
+      const enu = screenToENU(point);
+      if (!enu) return false;
+      marquee = { x0: enu.x, y0: enu.y, x1: enu.x, y1: enu.y };
+      map.dragPan.disable();
+      map.getCanvas().style.cursor = 'crosshair';
+      return true;
+    }
     const from = layoutPanelAt(point);
     if (from == null) return false;
     layoutDrag = { from, startPoint: point, moved: false };
@@ -395,6 +731,20 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
    *  « relâchez sur un emplacement valide / aucun libre ». Le seuil évite qu'un simple
    *  tap/clic ne fasse sauter le panneau vers la cellule vide la plus proche. */
   function moveLayoutDrag(point: maplibregl.Point) {
+    // PV25 — marquee en cours : on met à jour le coin opposé et on annonce le compte.
+    if (marquee && ctx.layoutState) {
+      const enu = screenToENU(point);
+      if (!enu) return;
+      marquee.x1 = enu.x;
+      marquee.y1 = enu.y;
+      const hits = cellsInRect(ctx.layoutState, marquee);
+      if (layoutNoteEl) {
+        layoutNoteEl.textContent = hits.length
+          ? `${fmt(hits.length)} panneaux dans la sélection — relâchez pour les sélectionner.`
+          : 'Aucun panneau dans le rectangle.';
+      }
+      return;
+    }
     if (!layoutDrag || !ctx.layoutState) return;
     if (!layoutDrag.moved && (Math.abs(point.x - layoutDrag.startPoint.x) >= LAYOUT_GRAB_PX || Math.abs(point.y - layoutDrag.startPoint.y) >= LAYOUT_GRAB_PX)) {
       layoutDrag.moved = true;
@@ -410,6 +760,7 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
    *  tout surlignage. No-op si la cellule n'est pas occupée. */
   function removePanelInScene(cellIndex: number) {
     if (!ctx.layoutState) return;
+    recordHistory(); // PV26
     const r = removePanel(ctx.layoutState, cellIndex);
     if (!r.ok) return;
     ctx.layoutSel = null;
@@ -428,18 +779,67 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
    *  simple CLIC (souris, `removeOnTap`) sans glissé SUPPRIME le panneau saisi ; un tap tactile
    *  bref ne supprime pas (la suppression tactile passe par l'appui long, géré séparément). */
   function endLayoutDrag(point: maplibregl.Point, removeOnTap = false) {
+    // PV25 — fin d'un MARQUEE : la sélection devient les panneaux du rectangle.
+    if (marquee && ctx.layoutState) {
+      const enu = screenToENU(point);
+      if (enu) {
+        marquee.x1 = enu.x;
+        marquee.y1 = enu.y;
+      }
+      setSelection(cellsInRect(ctx.layoutState, marquee));
+      marquee = null;
+      map.dragPan.enable();
+      map.getCanvas().style.cursor = '';
+      if (layoutNoteEl) {
+        layoutNoteEl.textContent = selection.length
+          ? `${fmt(selection.length)} panneaux sélectionnés — glissez-en un pour déplacer tout le groupe.`
+          : 'Sélection vide.';
+      }
+      renderLayoutPanel();
+      return;
+    }
     if (!layoutDrag || !ctx.layoutState) return;
     const from = layoutDrag.from;
     const moved = layoutDrag.moved;
     if (moved) {
       const enu = screenToENU(point);
       if (enu) {
-        const res = movePanelToPoint(ctx.layoutState, from, enu.x, enu.y);
-        if (res.ok && res.toIndex !== from) {
-          if (layoutNoteEl) layoutNoteEl.textContent = 'Panneau déplacé.';
-          renderCustomLayout();
-        } else if (layoutNoteEl) {
-          layoutNoteEl.textContent = 'Aucun emplacement libre à cet endroit — le panneau est resté en place.';
+        const cell = ctx.layoutState.cells[from];
+        const dx = enu.x - cell.cx;
+        const dy = enu.y - cell.cy;
+        recordHistory(); // PV26 — une photo AVANT le geste (simple, groupe ou rangée)
+        // PV25 — trois gestes possibles, du plus large au plus fin :
+        //  1. mode RANGÉE : toute la rangée suit, déplacement contraint à son axe ;
+        //  2. panneau saisi MEMBRE d'une sélection : tout le groupe suit ;
+        //  3. sinon : le panneau seul (comportement historique).
+        // 1 et 2 sont TOUT OU RIEN : un membre sans emplacement valide annule le geste.
+        if (rowMode) {
+          const members = rowMembers(ctx.layoutState, from);
+          const res = moveRowBy(ctx.layoutState, from, dx, { maxSnapM: GROUP_SNAP_M });
+          if (res.ok) {
+            setSelection(res.targets);
+            if (layoutNoteEl) layoutNoteEl.textContent = `Rangée déplacée — ${fmt(members.length)} panneaux.`;
+            renderCustomLayout();
+          } else if (layoutNoteEl) {
+            layoutNoteEl.textContent = 'La rangée ne tient pas à cet endroit — rien n’a bougé.';
+          }
+        } else if (selection.length > 1 && selection.includes(from)) {
+          const res = moveGroup(ctx.layoutState, selection, dx, dy, { maxSnapM: GROUP_SNAP_M });
+          if (res.ok) {
+            setSelection(res.targets);
+            if (layoutNoteEl) layoutNoteEl.textContent = `Groupe déplacé — ${fmt(res.targets.length)} panneaux.`;
+            renderCustomLayout();
+          } else if (layoutNoteEl) {
+            layoutNoteEl.textContent = 'Le groupe entier ne tient pas à cet endroit — rien n’a bougé.';
+          }
+        } else {
+          const res = movePanelToPoint(ctx.layoutState, from, enu.x, enu.y);
+          if (res.ok && res.toIndex !== from) {
+            if (layoutNoteEl) layoutNoteEl.textContent = 'Panneau déplacé.';
+            renderCustomLayout();
+          } else if (layoutNoteEl) {
+            layoutNoteEl.textContent = 'Aucun emplacement libre à cet endroit — le panneau est resté en place.';
+          }
         }
       }
     }
@@ -457,10 +857,12 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
 
   // — Souris —
   map.on('mousedown', (e) => {
-    if (beginLayoutDrag(e.point)) e.preventDefault();
+    // PV25 — Maj + glissé = rectangle de sélection (marquee) au lieu d'un déplacement.
+    const shift = !!(e.originalEvent as MouseEvent | undefined)?.shiftKey;
+    if (beginLayoutDrag(e.point, shift)) e.preventDefault();
   });
   map.on('mousemove', (e) => {
-    if (layoutDrag) {
+    if (layoutDrag || marquee) {
       moveLayoutDrag(e.point);
       return;
     }
@@ -469,6 +871,7 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
     setPanelHighlight(layoutPanelAt(e.point));
   });
   map.on('mouseup', (e) => endLayoutDrag(e.point, true)); // clic sans glissé = supprimer (W88)
+                                                          // PV25 — un marquee en cours est committé par le même chemin.
 
   // W80 — TOUCH : glissé-déplacer au DOIGT, miroir du chemin souris, gardé par layoutMode
   // (via beginLayoutDrag). On ne saisit qu'à UN seul doigt (un pinch/zoom à deux doigts ne
@@ -503,16 +906,32 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
     }
   });
   map.on('touchmove', (e) => {
-    if (!layoutDrag) return;
+    if (!layoutDrag && !marquee) return;
     e.preventDefault();
     moveLayoutDrag(e.point);
-    if (layoutDrag.moved) cancelLongPress(); // un glissé annule l'appui long (c'est un déplacement)
+    if (layoutDrag?.moved) cancelLongPress(); // un glissé annule l'appui long (c'est un déplacement)
   });
   map.on('touchend', (e) => {
     cancelLongPress(); // tap bref / fin de glissé : pas de suppression par appui long
-    if (!layoutDrag) return;
+    if (!layoutDrag && !marquee) return;
     endLayoutDrag(e.point); // tactile : pas de suppression sur tap bref (removeOnTap=false)
   });
 
-  return { layoutCap, ensureLayoutState, renderCustomLayout, screenToENU, renderLayoutPanel, setLayoutMode, occupiedCenters, reenterCustomLayout };
+  return {
+    layoutCap,
+    ensureLayoutState,
+    renderCustomLayout,
+    screenToENU,
+    renderLayoutPanel,
+    setLayoutMode,
+    occupiedCenters,
+    reenterCustomLayout,
+    selection: () => [...selection],
+    setSelection,
+    undo,
+    redo,
+    hydrateLayout,
+    hasManualEdits,
+    confirmDiscardEdits,
+  };
 }

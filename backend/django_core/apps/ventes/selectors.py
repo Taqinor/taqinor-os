@@ -137,6 +137,57 @@ def devis_value_for_lead(lead_id, company):
     return {'value': float(devis.total_ttc), 'currency': devis.devise or 'MAD'}
 
 
+def conception_pour_lead(lead, company):
+    """PV78 — la conception 3D la plus RÉCENTE d'un lead, en lecture seule.
+
+    Rend TOUJOURS le même dict ``{kwc, image_url}`` — jamais une clé absente,
+    jamais un ``None`` global : une fiche lead sans conception affiche deux
+    valeurs vides, elle ne plante pas sur ``undefined``.
+
+    * ``kwc`` — la puissance crête RÉELLEMENT calepinée, lue dans le layout du
+      devis (``roof_layout['result']['kwc']``), à défaut la puissance de
+      l'étude. C'est le chiffre de la TOITURE, pas une cible commerciale ;
+    * ``image_url`` — URL PRÉ-SIGNÉE (lecture seule, expirante) du rendu 3D
+      stocké, via le helper existant ``utils.pdf.roof_image_signed_url``.
+      Jamais une URL de bucket publique.
+
+    Company-scopée : seul un devis de ``company`` est regardé (un lead d'une
+    autre société ne fait rien fuiter). Point d'entrée cross-app pour
+    ``apps.crm`` — jamais un import des modèles ventes de son côté.
+    """
+    vide = {'kwc': None, 'image_url': None}
+    lead_id = getattr(lead, 'pk', None) or getattr(lead, 'id', None)
+    if not lead_id or company is None:
+        return vide
+    from .models import Devis
+    devis = (Devis.objects
+             .filter(lead_id=lead_id, company=company,
+                     roof_layout__isnull=False)
+             .order_by('-date_creation', '-id')
+             .first())
+    if devis is None:
+        return vide
+
+    layout = devis.roof_layout if isinstance(devis.roof_layout, dict) else {}
+    resultat = layout.get('result') if isinstance(layout, dict) else None
+    kwc = (resultat or {}).get('kwc') if isinstance(resultat, dict) else None
+    if kwc in (None, ''):
+        kwc = (devis.etude_params or {}).get('puissance_kwc')
+    try:
+        kwc = float(kwc) if kwc not in (None, '') else None
+    except (TypeError, ValueError):
+        kwc = None
+
+    image_url = None
+    if devis.roof_image:
+        try:
+            from .utils.pdf import roof_image_signed_url
+            image_url = roof_image_signed_url(devis.roof_image)
+        except Exception:  # noqa: BLE001 — un rendu absent ne casse pas la fiche
+            image_url = None
+    return {'kwc': kwc, 'image_url': image_url}
+
+
 def is_devis_accepte(devis):
     """Vrai si le devis est au statut « Accepté » (sans exposer l'enum)."""
     from .models import Devis
@@ -1585,7 +1636,12 @@ def comparaison_calepinage_devis(devis):
             'ecart': None,
         }
 
-    mesure = compte_moteur_du_layout(devis.roof_layout)
+    # PV42 — le moteur calepine sur le PANNEAU du devis (kit-produit, PV12) :
+    # sans lui, cette comparaison opposerait un compte posé sur le module vendu
+    # à un compte posé sur le kit générique — un écart inventé de toutes pièces.
+    mesure = compte_moteur_du_layout(
+        devis.roof_layout, company=getattr(devis, 'company', None),
+        devis=devis)
     if mesure is None:
         return {
             'recalculable': True,
@@ -2105,3 +2161,141 @@ def lignes_devis_pour_automatisation(devis_id, company, *, limite=200):
             'total_ht': str(ligne.total_ht),
         })
     return lignes
+
+
+# ── PV17 — contexte COMPLET de l'écran de conception 3D d'un devis ──────────
+#
+# UN SEUL appel, UN SEUL dict, TOUTES les clés TOUJOURS présentes (contrat
+# ``apps/ventes/contract_samples/devis_design_context.json``). L'écran ne doit
+# jamais avoir à deviner : une clé absente, c'est un ``.map()`` sur
+# ``undefined`` en production — l'incident exact que ``check_api_shapes.py``
+# garde. Un panier vide vaut ``[]``, une valeur inconnue vaut ``None`` ou
+# ``''``, jamais une clé manquante.
+#
+# LECTURE PURE : aucun statut, aucune ligne, aucun layout n'est écrit ici.
+
+
+def _config_carte():
+    """Clés carte du builder 3D — MIROIR de ``views/roof_config.py``.
+
+    Mêmes variables d'environnement (``PUBLIC_MAPTILER_KEY`` /
+    ``PUBLIC_MAPBOX_TOKEN``), même forme ``{available, maptilerKey,
+    mapboxToken}`` : l'écran de conception lit la carte DANS le contexte plutôt
+    que d'enchaîner un second appel. Aucune donnée société, aucune écriture.
+    """
+    import os
+
+    maptiler = os.environ.get('PUBLIC_MAPTILER_KEY', '') or ''
+    mapbox = os.environ.get('PUBLIC_MAPBOX_TOKEN', '') or ''
+    return {
+        'available': bool(maptiler),
+        'maptilerKey': maptiler,
+        'mapboxToken': mapbox or None,
+    }
+
+
+def contexte_conception_devis(devis, company):
+    """PV17 — tout ce que l'écran de conception toiture doit savoir d'un devis.
+
+    Rend ``None`` quand le devis appartient à une AUTRE société (l'appelant
+    répond alors 404 — jamais d'oracle d'existence). Sinon un dict à la forme
+    FIXE :
+
+        {devis: {id, reference, statut, mode_installation, lead, client,
+                 client_nom},
+         geometrie: {source, roof_layout, pin, outline},
+         cible: {panneaux, kwc, panel_watt, scenario, batterie,
+                 avertissements, bill_kwh},
+         carte: {available, maptilerKey, mapboxToken},
+         modifiable, raison_lecture_seule, avertissements}
+
+    ``geometrie.source`` vaut ``'devis'`` (le devis porte déjà un layout 3D),
+    ``'lead'`` (repli sur l'épingle/le contour posés au diagnostic) ou
+    ``'none'``. ``modifiable`` est faux — avec une raison FRANÇAISE dans
+    ``raison_lecture_seule`` — pour un devis sorti du cycle d'édition
+    (accepté/refusé/expiré), un devis agricole (pompage) et un devis
+    multi-villa. ``raison_lecture_seule`` vaut ``''`` quand le devis est
+    modifiable, jamais ``None``.
+    """
+    from .models import Devis
+    from .services import cible_depuis_lignes
+
+    if devis is None:
+        return None
+    # Garde société DÉFENSIVE (le queryset de l'appelant borne déjà) : un
+    # superutilisateur sans société passe outre, comme partout ailleurs.
+    company_id = getattr(company, 'id', None)
+    if company_id is not None and devis.company_id != company_id:
+        return None
+
+    lead = getattr(devis, 'lead', None)
+
+    # ── Cible : ce que le devis DIT aujourd'hui (PV16) + la conso du lead ──
+    cible = cible_depuis_lignes(devis)
+    bill_kwh = getattr(lead, 'bill_kwh', None) if lead is not None else None
+    try:
+        cible['bill_kwh'] = float(bill_kwh) if bill_kwh is not None else None
+    except (TypeError, ValueError):
+        cible['bill_kwh'] = None
+
+    # ── Géométrie : le layout du devis PRIME sur le repère du lead ──
+    layout = devis.roof_layout if isinstance(devis.roof_layout, dict) else None
+    if layout:
+        source = 'devis'
+        roof_layout = layout
+        pin_brut = layout.get('pin')
+        contour = layout.get('outline')
+        pin = pin_brut if isinstance(pin_brut, dict) else None
+        outline = contour if isinstance(contour, list) else []
+    else:
+        roof_layout = None
+        point_lead = getattr(lead, 'roof_point', None) if lead else None
+        contour_lead = getattr(lead, 'roof_outline', None) if lead else None
+        pin = point_lead if isinstance(point_lead, dict) else None
+        outline = contour_lead if isinstance(contour_lead, list) else []
+        source = 'lead' if (pin or outline) else 'none'
+
+    # ── Modifiable ? Trois raisons de LECTURE SEULE, toutes en français ──
+    raison = ''
+    if devis.statut in (Devis.Statut.ACCEPTE, Devis.Statut.REFUSE,
+                        Devis.Statut.EXPIRE):
+        raison = (
+            'Devis « %s » : le calepinage n\'est plus modifiable. Utilisez '
+            '« Réviser » pour en créer une nouvelle version.'
+            % devis.get_statut_display())
+    elif devis.mode_installation == Devis.ModeInstallation.AGRICOLE:
+        raison = ('Devis agricole (pompage) — le calepinage de toiture ne '
+                  's\'applique pas.')
+    elif devis.lignes.filter(groupe_index__gte=1).exists():
+        raison = ('Devis multi-villa : chaque villa porte son propre '
+                  'calepinage — cet écran ne peut pas en modifier une seule.')
+
+    avertissements = list(cible['avertissements'])
+    if source == 'none':
+        avertissements.append(
+            'Aucune géométrie de toiture connue pour ce devis : commencez par '
+            'situer le bâtiment sur la carte.')
+
+    client = getattr(devis, 'client', None)
+    return {
+        'devis': {
+            'id': devis.pk,
+            'reference': devis.reference,
+            'statut': devis.statut,
+            'mode_installation': devis.mode_installation or '',
+            'lead': devis.lead_id,
+            'client': devis.client_id,
+            'client_nom': (getattr(client, 'nom', '') or '') if client else '',
+        },
+        'geometrie': {
+            'source': source,
+            'roof_layout': roof_layout,
+            'pin': pin,
+            'outline': outline,
+        },
+        'cible': cible,
+        'carte': _config_carte(),
+        'modifiable': not raison,
+        'raison_lecture_seule': raison,
+        'avertissements': avertissements,
+    }

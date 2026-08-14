@@ -32,6 +32,7 @@ from core.calepinage.moteur import (
     vider_cache,
 )
 from core.calepinage.optimum import optimiser, positions_grille
+from core.calepinage.politique_pas import politique_par_defaut
 from core.calepinage.units import TOL_LONGUEUR_M
 
 __all__ = [
@@ -83,15 +84,27 @@ class CoutEstime:
     motif: str = ""
 
 
-def positions_utiles(surface, parametres, obstacles=(), zones=()):
+def positions_utiles(surface, parametres, obstacles=(), zones=(),
+                     politique=None):
     """Positions de rangée candidates, ÉQUIVALENTES au balayage au centimètre.
 
     Construction : les points de rupture (où l'ensemble bloquant change), plus
     leur voisinage immédiat au pas de recherche (une classe ouverte à gauche
     n'est atteignable qu'un cran après sa borne), le tout FERMÉ par chaînage
-    « position + emprise + allée » pour toutes les combinaisons de kits — car
-    une rangée optimale est soit calée sur une rupture, soit collée à la
+    « position + emprise + espacement » pour toutes les combinaisons de kits —
+    car une rangée optimale est soit calée sur une rupture, soit collée à la
     précédente. Rend la GRILLE si la fermeture est plus coûteuse qu'elle.
+
+    **``politique`` n'est pas décoratif (corrigé en PV66).** Le chaînage doit
+    utiliser EXACTEMENT l'espacement que le DP utilisera, c'est-à-dire celui de
+    la politique de pas — et non ``parametres.allee_m``. Les deux coïncident
+    sur l'appel d'offres (``AlleeFixe`` est construite sur ``allee_m``), mais
+    pas sur la villa : elle pose ``allee_m = 0`` et confie l'espacement à
+    ``AntiOmbrage``. La fermeture chaînait donc de rangée EN RANGÉE COLLÉE, un
+    enchaînement que le DP n'emprunte jamais, et ratait le plan optimal : sur
+    une toiture plate 14 × 10 en chevron est-ouest, 18 modules publiés contre
+    24 réellement posables. Sans politique, ``politique_par_defaut`` rend
+    l'``AlleeFixe`` de ``allee_m`` : le comportement d'avant, au bit près.
     """
     ymin, ymax = surface.bornes_transversales_utiles()
     grille = positions_grille(ymin, ymax, parametres.pas_recherche_m)
@@ -99,8 +112,7 @@ def positions_utiles(surface, parametres, obstacles=(), zones=()):
     if ruptures is None:
         return grille
     pas = parametres.pas_recherche_m
-    increments = tuple(kit.emprise_transversale_m + parametres.allee_m
-                       for kit in parametres.kits)
+    espacement = politique or politique_par_defaut(parametres)
     base = set()
     for point in ruptures:
         for candidat in (point, point + pas):
@@ -116,8 +128,9 @@ def positions_utiles(surface, parametres, obstacles=(), zones=()):
     while frontiere:
         suivants = set()
         for position in frontiere:
-            for increment in increments:
-                candidat = position + increment
+            for kit in parametres.kits:
+                candidat = (position + kit.emprise_transversale_m
+                            + espacement.pas_apres_rangee(kit, position))
                 if candidat > ymax + TOL_LONGUEUR_M:
                     continue
                 if candidat not in atteints and candidat not in suivants:
@@ -131,10 +144,15 @@ def positions_utiles(surface, parametres, obstacles=(), zones=()):
 
 def optimiser_economique(surface, parametres, obstacles=(), zones=(),
                          politique=None):
-    """``optimiser`` sur le jeu de positions utiles — MÊME résultat, moins cher."""
+    """``optimiser`` sur le jeu de positions utiles — MÊME résultat, moins cher.
+
+    La politique descend AUSSI dans ``positions_utiles`` : le jeu de positions
+    et le DP doivent chaîner avec le même espacement, sinon « même résultat »
+    est un slogan et non un fait (PV66).
+    """
     return optimiser(surface, parametres, obstacles, zones, politique,
                      positions=positions_utiles(surface, parametres, obstacles,
-                                                zones))
+                                                zones, politique))
 
 
 def estimer_cout(surface, parametres, obstacles=(), zones=(), variantes=1,

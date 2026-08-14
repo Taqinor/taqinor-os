@@ -419,6 +419,10 @@ const router = createBrowserRouter([
   // Non-migrables (errorElement dédié, non exprimable par buildModuleRoutes) :
   // QG12 — Design 3D d'un devis en LECTURE SEULE, plein écran, ouvrable dans une fenêtre.
   { path: '/ventes/devis/:id/3d', loader: authLoader, errorElement: <RouteErrorBoundary />, element: <WithLayout><RoofViewerPage /></WithLayout> },
+  // PV20 — Conception 3D SUR un devis existant : même écran, mode « devis »
+  // (boot en UN SEUL appel sur design-context, hydraté par le calepinage et la
+  // cible DÉJÀ vendus). Le mode lead ci-dessous reste strictement inchangé.
+  { path: '/ventes/devis/:id/design', loader: authLoader, errorElement: <RouteErrorBoundary />, element: <WithLayout><ToitureDesign mode="devis" /></WithLayout> },
   // Conception 3D de la toiture (héberge le builder roofPro11 du site, en ERP).
   { path: '/devis-design/:id', loader: authLoader, errorElement: <RouteErrorBoundary />, element: <WithLayout><ToitureDesign /></WithLayout> },
 

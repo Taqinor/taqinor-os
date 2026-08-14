@@ -35,8 +35,8 @@ __all__ = [
     "ModePose", "MethodePreuve", "Confiance", "Kit", "Obstacle", "Zone",
     "Rives", "PolitiquePas", "Parametres", "Rangee", "Table", "Plan",
     "Preuve", "Marges", "Sensibilite", "Marche", "Recommandation", "Resultat",
-    "KIT_AO_PORTRAIT", "KIT_AO_PAYSAGE", "KIT_VILLA_720",
-    "remplacer",
+    "KIT_AO_PORTRAIT", "KIT_AO_PAYSAGE", "KIT_VILLA_720", "KIT_VILLA_EW",
+    "INCLINAISON_CHEVRON_EW_DEG", "remplacer",
 ]
 
 
@@ -110,10 +110,19 @@ class NatureZone(Enum):
 
 
 class ModePose(Enum):
-    """``PosePlan`` du plan de conception — comment les rangées sont posées."""
+    """``PosePlan`` du plan de conception — comment les rangées sont posées.
+
+    ``RANGEES_IMPOSEES_UTILISATEUR`` est le troisième mode (PV29) : le
+    dessinateur FOURNIT ses rangées et le moteur se contente de les COMPTER
+    puis de les situer face à l'optimum. Il ne s'agit pas d'une méthode de
+    recherche de plus : la preuve rendue porte ``IMPOSE_UTILISATEUR``, donc
+    ``optimal`` reste FAUX et l'écart au DP est publié — un plan imposé ne peut
+    structurellement pas se réclamer d'un « optimum prouvé ».
+    """
 
     RANGEES_EXPLICITES_DP = "rangees_explicites_dp"
     RANGEES_UNIFORMES_PHASE = "rangees_uniformes_phase"
+    RANGEES_IMPOSEES_UTILISATEUR = "rangees_imposees_utilisateur"
 
 
 #: Alias historique du plan : la tâche AOF34 nomme cet énuméré ``PosePlan``.
@@ -267,6 +276,53 @@ KIT_VILLA_720 = Kit(
     faitage_m=0.0,
 )
 
+#: PV66 — inclinaison du chevron EST-OUEST. Le cerveau TypeScript du site ne
+#: balaie que 10° et 15° pour cette famille (``EW_SWEEP_TILTS``) : l'est-ouest
+#: joue la DENSITÉ, pas le rendement par panneau, et une inclinaison faible
+#: raccourcit l'ombre de faîte donc resserre les chevrons. On retient la borne
+#: basse — c'est celle qui loge le plus de modules, la raison même d'un E-O.
+INCLINAISON_CHEVRON_EW_DEG = 10.0
+
+#: Kit VILLA EST-OUEST (PV66) — le chevron dos-à-dos du lecteur de cartes
+#: (``estimatorBrainV2.familyEastWest``) exprimé comme un simple ``Kit`` : DEUX
+#: modules 720 Wc du MÊME format que ``KIT_VILLA_720`` (2,384 × 1,303), posés
+#: face à face à 10°, un face EST et l'autre face OUEST.
+#:
+#: Rien de neuf n'est introduit dans le contrat : ``modules_par_table=2`` suffit
+#: à en faire une table dos-à-dos, exactement comme les kits AO. En découlent
+#: automatiquement ``dos_a_dos`` VRAI, ``axe_faitage`` NORD-SUD — donc des
+#: rangées qui courent nord-sud (``orientation.axe_rangee_impose``) et des
+#: chevrons qui s'empilent vers l'est, la géométrie du site au mot près.
+#:
+#: ``faitage_m=0`` est un CHOIX MESURÉ, pas un oubli : le cerveau TypeScript
+#: pose la profondeur d'une cellule E-O à ``2 × empreinte`` exactement, sans
+#: jeu au faîte ; le passage de maintenance vit ENTRE deux chevrons, pas dans
+#: l'un d'eux. Le kit dit donc la même chose que l'écran :
+#: ``emprise_transversale = 2 × 1,303 × cos 10° ≈ 2,566``.
+#:
+#: PAYSAGE — le petit côté monte la pente (1,303) et le grand court le long de
+#: la rangée (2,384), soit ``cellFor(PANEL2_SHORT_M, PANEL2_LONG_M)`` du site :
+#: c'est le chevron le moins profond, donc le plus dense, et la seule raison
+#: commerciale de proposer un est-ouest.
+#:
+#: LIMITE ASSUMÉE : l'espacement entre chevrons reste celui de la politique
+#: villa (``AntiOmbrage``, ombre de faîte pleine), alors que le site retranche
+#: l'empreinte propre du chevron de cette ombre (l'ombre du faîte tombe DANS la
+#: moitié ouest du chevron) et ne garde que le résidu + 20 cm de passage. Le
+#: moteur est donc CONSERVATEUR ici : il peut poser une rangée de moins, jamais
+#: une de trop. Aucune politique n'est inventée pour masquer l'écart.
+KIT_VILLA_EW = Kit(
+    code="VILLA_720_EW",
+    libelle="Chevron dos-à-dos 2 modules 720 Wc — est-ouest (2,384 × 2,57)",
+    module_long_m=2.384,
+    module_court_m=1.303,
+    puissance_module_wc=720.0,
+    inclinaison_deg=INCLINAISON_CHEVRON_EW_DEG,
+    orientation=OrientationModule.PAYSAGE,
+    modules_par_table=2,
+    faitage_m=0.0,
+)
+
 
 # ================================================================== obstacles
 @dataclass(frozen=True)
@@ -390,6 +446,17 @@ class Parametres:
     plafond_kwc: Optional[float] = None
     marge_troncon_min_m: float = 0.02
     marge_bande_min_m: float = 0.04
+    #: Phase FORCÉE du mode uniforme (PV52), en mètres. ``None`` = le balayage
+    #: historique de 0 à ``jeu_maximal``. Renseignée, le moteur n'évalue QUE ce
+    #: décalage : c'est ainsi qu'on republie à l'identique une planche déjà
+    #: posée sur chantier, dont la phase est une donnée du terrain et non un
+    #: paramètre à ré-optimiser.
+    phase_forcee_m: Optional[float] = None
+    #: Plan IMPOSÉ (PV29) : ``((y0, code_kit), …)``, lu par le seul mode
+    #: ``RANGEES_IMPOSEES_UTILISATEUR``. Le code de kit — et non l'objet ``Kit``
+    #: — parce que ce champ traverse le JSON : les kits y sont déjà décrits une
+    #: fois, les redécrire ici ferait deux vérités pour la même table.
+    rangees_imposees: Optional[Tuple[Tuple[float, str], ...]] = None
     #: pour l'aléatoire éventuel (départage) — le moteur reste déterministe.
     graine: int = 0
 

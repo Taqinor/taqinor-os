@@ -529,6 +529,53 @@ const chipClass =
                   </button>
                 </div>
 
+                <!-- PV25 — sélection MULTIPLE (marquee au glissé + Maj, ou mode sélection au
+                     doigt), déplacement du groupe / de la rangée entière, et nudge d'azimut.
+                     Chaque déplacement reste « tout ou rien » : si un seul panneau du groupe
+                     n'a pas d'emplacement valide, rien ne bouge. -->
+                <div class="flex flex-wrap items-center gap-3">
+                  <span class="tech-label text-lune-faint">Sélection &amp; rangée</span>
+                  <button type="button" id="rp9-layout-select" aria-pressed="false"
+                    class="border border-white/25 px-4 py-2.5 text-sm font-bold text-white transition-colors hover:border-brass-400 hover:text-brass-300">
+                    ▭ Sélection multiple
+                  </button>
+                  <button type="button" id="rp9-layout-row" aria-pressed="false"
+                    class="border border-white/25 px-4 py-2.5 text-sm font-bold text-white transition-colors hover:border-brass-400 hover:text-brass-300">
+                    ⇔ Déplacer la rangée
+                  </button>
+                  <button type="button" id="rp9-layout-clear-sel"
+                    class="border border-white/25 px-4 py-2.5 text-sm font-bold text-white transition-colors hover:border-brass-400 hover:text-brass-300 disabled:cursor-not-allowed disabled:opacity-40">
+                    ✕ Effacer la sélection
+                  </button>
+                </div>
+
+                <!-- PV26 — annuler / rétablir (Ctrl+Z / Ctrl+Y, ou ⌘). Les flèches du
+                     clavier déplacent le panneau (ou le groupe) d'un emplacement. -->
+                <div class="flex flex-wrap items-center gap-3">
+                  <span class="tech-label text-lune-faint">Historique</span>
+                  <button type="button" id="rp9-layout-undo" disabled
+                    class="border border-white/25 px-4 py-2.5 text-sm font-bold text-white transition-colors hover:border-brass-400 hover:text-brass-300 disabled:cursor-not-allowed disabled:opacity-40">
+                    ↶ Annuler <span class="text-lune-faint">(Ctrl+Z)</span>
+                  </button>
+                  <button type="button" id="rp9-layout-redo" disabled
+                    class="border border-white/25 px-4 py-2.5 text-sm font-bold text-white transition-colors hover:border-brass-400 hover:text-brass-300 disabled:cursor-not-allowed disabled:opacity-40">
+                    ↷ Rétablir <span class="text-lune-faint">(Ctrl+Y)</span>
+                  </button>
+                  <span class="text-xs text-lune-soft">Flèches ← ↑ ↓ → : déplacer d’un emplacement</span>
+                </div>
+
+                <!-- Nudge d'AZIMUT : n'a de sens que sur un toit en PENTE (la face du pan est
+                     imposée par la toiture ; sur toit plat l'azimut est un axe de l'optimiseur).
+                     Masqué en toit plat. -->
+                <div id="rp9-layout-azimuth" hidden class="flex flex-wrap items-center gap-3">
+                  <span class="tech-label text-lune-faint">Azimut du pan</span>
+                  <button type="button" id="rp9-layout-az-minus" aria-label="Diminuer l’azimut d’un degré"
+                    class="h-11 w-11 border border-white/25 text-2xl font-bold text-white transition-colors hover:border-brass-400 hover:text-brass-300">−</button>
+                  <span id="rp9-layout-az-value" class="fig text-lg text-white">—</span>
+                  <button type="button" id="rp9-layout-az-plus" aria-label="Augmenter l’azimut d’un degré"
+                    class="h-11 w-11 border border-white/25 text-2xl font-bold text-white transition-colors hover:border-brass-400 hover:text-brass-300">+</button>
+                </div>
+
                 <!-- Repli tactile : tap-sélection d'un panneau → tap-cible d'un emplacement vide.
                      Une mini-carte des cellules (occupées / libres) rend l'interaction code-vérifiable
                      et fonctionne sans glissé fin ni mouvement. -->

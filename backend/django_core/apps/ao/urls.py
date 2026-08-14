@@ -21,6 +21,7 @@ from rest_framework.routers import DefaultRouter
 
 from .kpis import tableau_marches_view
 from .views import (
+    AnalyserDxfView,
     AppelOffreViewSet,
     ContratApiAO,
     BatimentAOViewSet,
@@ -47,6 +48,7 @@ from .views import (
     SerieQuestionsViewSet,
     ToitureAOViewSet,
     VarianteCalepinageViewSet,
+    ZoneAOViewSet,
 )
 from .viewsets import (
     DossierAOViewSet, LigneChecklistPartenaireViewSet,
@@ -71,6 +73,8 @@ router.register(r'plans-source', PlanSourceViewSet,
                 basename='ao-plan-source')
 router.register(r'obstacles', ObstacleAOViewSet,
                 basename='ao-obstacle')
+# PV54 — zones de toiture (enveloppe / interdite / réservée / préférée).
+router.register(r'zones', ZoneAOViewSet, basename='ao-zone')
 router.register(r'chaines-cotes', ChaineCotesViewSet,
                 basename='ao-chaine-cotes')
 router.register(r'releves', ReleveAOViewSet, basename='ao-releve')
@@ -137,6 +141,11 @@ urlpatterns = [
     # dessein : sans cette reprise nominative, l'ERP finirait avec deux
     # tableaux de bord d'appels d'offres concurrents.
     path('tableau-marches/', tableau_marches_view, name='ao-tableau-marches'),
+    # PVG1 — import DXF réel : parsing en mémoire, rien n'est persisté
+    # (`apps/ao/dxf.py`). Route hors routeur DRF : ce n'est pas une
+    # ressource, juste une analyse.
+    path('toitures/dxf/analyser/', AnalyserDxfView.as_view(),
+         name='ao-toiture-dxf-analyser'),
     path('', include(router.urls)),
 ]
 

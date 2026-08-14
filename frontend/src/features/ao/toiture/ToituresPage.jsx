@@ -1,4 +1,4 @@
-import { Suspense, lazy, useCallback, useMemo, useRef, useState } from 'react'
+import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Hand, MousePointer2 } from 'lucide-react'
 import aoApi from '../../../api/aoApi'
 import recordsApi from '../../../api/recordsApi'
@@ -45,6 +45,8 @@ import ImportDxf from './ImportDxf'
 import PlanSourcePanel from './PlanSourcePanel'
 import { estCalibree, peutTracer, reechelonner } from './calibration.js'
 import { estPdf } from './rasteriserPdf'
+// PV58 — reprise de carte : conversion lat/lng → mètres locaux (AOF83).
+import { ORDRE_LATLNG, contourVersSommetsM, creerRepere } from './repere'
 
 /* Deux outils sont chargés À LA DEMANDE, et pour une raison PRÉCISE — pas par
    goût du découpage :
@@ -262,17 +264,25 @@ function FicheToitures({ toitures, loading, error }) {
    deux piles séparées produiraient un annuler qui ne défait pas ce que
    l'utilisateur vient de faire.
 
-   PERSISTANCE, et ses LIMITES, dites franchement :
+   PERSISTANCE (PV53/PV56/PV58) :
      · « Enregistrer » écrit `contour_local_m` via `aoApi.toitures.update` —
        le MÊME champ que le wizard de création, une liste de `[x, y]` en
        mètres dans le repère local (`apps/ao/models.py:619`). La surface est
        RECALCULÉE par le serveur à chaque écriture : elle n'est jamais
-       envoyée, jamais devinée ici ;
-     · les OBSTACLES, ZONES et CHAÎNES DE COTES de la boîte à outils (PACT167)
-       restent LOCAUX à l'atelier : aucune des trois n'a de chemin d'écriture
-       ici (les zones n'ont même AUCUN endpoint — `aoApi` le dit noir sur
-       blanc). L'écran l'ANNONCE avant qu'on en saisisse une, plutôt que de
-       les laisser croire enregistrées.
+       envoyée, jamais devinée ici. `origine_lat`/`origine_lng` (PV57/PV58)
+       partent AVEC lui dès qu'une reprise de carte (`RepriseCarte`, AOF82)
+       a posé une ancre géographique — jamais `null` sur une toiture qui n'en
+       a pas encore ;
+     · les OBSTACLES, les CHAÎNES DE COTES et les ZONES de la boîte à outils
+       (PACT167) partent EUX AUSSI, dans la MÊME action « Enregistrer » : diff
+       create/update/delete vs le dernier instantané serveur connu
+       (`synchroniserRessource`). À l'OUVERTURE de l'atelier (ce composant est
+       remonté avec `key={toiture.id}`), les trois listes sont RE-CHARGÉES
+       depuis le serveur — fermer/rouvrir conserve donc tout ;
+     · les ZONES sont LUES par le moteur de calepinage
+       (`calepinage_io.zones_vers_document`, PV55) mais RIEN n'est recalculé
+       ICI : le prochain calcul serveur les applique, jamais un compte
+       d'écran.
    ========================================================================== */
 
 // Le modèle sert le contour en `[x, y]` (mètres, repère local, y↑ nord) ;
@@ -325,6 +335,272 @@ function obstacleDepuisSommets(o) {
 
 const sommetsSvg = (sommets) => (sommets ?? []).map((p) => `${nb(p.x)},${nb(p.y)}`).join(' ')
 
+/* ── PV53 — diff LOCAL vs SERVEUR : create/update/delete en une écriture ────
+   L'atelier ne persistait QUE le contour ; obstacles et chaînes de cotes
+   restaient locaux (l'écran l'annonçait). Les deux voies d'écriture RÉELLES
+   (`apps/ao/serializers.py` `ObstacleAOSerializer`/`ChaineCotesSerializer`)
+   parlent un vocabulaire DIFFÉRENT de celui de l'atelier (nature/provenance
+   en MAJUSCULES côté serveur, minuscules côté outils locaux — deux tableaux
+   qui ne se recouvrent pas terme à terme) : chaque correspondance EXACTE est
+   prise, et ce qui n'a pas d'équivalent retombe sur le DÉFAUT DU MODÈLE
+   lui-même — jamais une valeur inventée pour l'occasion. */
+
+// Vocabulaire LOCAL (`repereLettre.js` NATURES_OBSTACLE) → `ObstacleAO.Nature`.
+const NATURE_OBSTACLE_VERS_SERVEUR = {
+  edicule: 'edicule',
+  cage_escalier: 'cage_escalier',
+  cheminee: 'souche',
+  lanterneau: 'lanterneau',
+  exutoire: 'exutoire_fumee',
+  climatisation: 'groupe_clim',
+  acrotere: 'acrotere',
+  joint_dilatation: 'joint_dilatation',
+  muret: 'muret',
+  // Sans équivalent serveur — repli sur le défaut du modèle (`caisson_technique`).
+  gaine: 'caisson_technique',
+  antenne: 'caisson_technique',
+  trappe: 'caisson_technique',
+  reservation: 'caisson_technique',
+}
+const NATURE_OBSTACLE_DEPUIS_SERVEUR = {
+  edicule: 'edicule',
+  cage_escalier: 'cage_escalier',
+  souche: 'cheminee',
+  lanterneau: 'lanterneau',
+  exutoire_fumee: 'exutoire',
+  groupe_clim: 'climatisation',
+  acrotere: 'acrotere',
+  joint_dilatation: 'joint_dilatation',
+  muret: 'muret',
+  // Natures serveur sans équivalent local (13 clés côté outil, 13 AUTRES
+  // clés côté modèle) — meilleure correspondance visuelle disponible.
+  caisson_technique: 'gaine',
+  decrochement_niveau: 'edicule',
+  pan_coupe: 'edicule',
+  chemin_cables: 'gaine',
+}
+
+// Vocabulaire LOCAL (`ObstacleInspecteur.jsx` PROVENANCES) → `ObstacleAO.Provenance`.
+const PROVENANCE_OBSTACLE_VERS_SERVEUR = {
+  mesure: 'MESURE',
+  confirmer: 'MESURE_DOUTEUX',
+  deduit: 'PLAN',
+  devine: 'DEVINE',
+}
+const PROVENANCE_OBSTACLE_DEPUIS_SERVEUR = {
+  MESURE: 'mesure',
+  MESURE_DOUTEUX: 'confirmer',
+  PLAN: 'deduit',
+  DEVINE: 'devine',
+  // Sans équivalent local — la donnée n'est de toute façon pas MESURÉE.
+  DECLARE_CLIENT: 'deduit',
+  ECARTE: 'deduit',
+}
+
+// Vocabulaire LOCAL (`ChainesCotes.jsx` PROVENANCES des segments) → `StatutCote`.
+const STATUT_COTE_VERS_SERVEUR = {
+  mesure: 'MESURE',
+  confirmer: 'A_CONFIRMER',
+  deduit: 'PLAN_OU_DEDUIT',
+  devine: 'A_CONFIRMER', // deviné = incertain, comme « à confirmer »
+}
+const STATUT_COTE_DEPUIS_SERVEUR = {
+  MESURE: 'mesure',
+  A_CONFIRMER: 'confirmer',
+  PLAN_OU_DEDUIT: 'deduit',
+}
+
+function nombreOuNull(v) {
+  if (v === null || v === undefined || v === '') return null
+  const n = Number(String(v).replace(',', '.'))
+  return Number.isFinite(n) ? n : null
+}
+
+// Un id local NUMÉRIQUE (posé par une hydratation ou un enregistrement
+// précédent) désigne un enregistrement DÉJÀ connu du serveur ; un id
+// non-numérique (`obs-A-169…`, `chaine-3`) vient d'être saisi dans CETTE
+// session et n'existe encore nulle part côté serveur.
+function estIdServeur(id) {
+  return typeof id === 'number' || (typeof id === 'string' && /^\d+$/.test(id))
+}
+
+function sommetsDepuisRectServeur(x0, x1, y0, y1) {
+  if ([x0, x1, y0, y1].some((v) => v === null || v === undefined)) return []
+  return [
+    { x: nb(x0), y: nb(y0) }, { x: nb(x1), y: nb(y0) },
+    { x: nb(x1), y: nb(y1) }, { x: nb(x0), y: nb(y1) },
+  ]
+}
+
+function obstacleDepuisServeur(record) {
+  const sommets = Array.isArray(record.polygone_local_m) && record.polygone_local_m.length >= 3
+    ? record.polygone_local_m.map(([x, y]) => ({ x: nb(x), y: nb(y) }))
+    : sommetsDepuisRectServeur(
+      record.rect_x0_m, record.rect_x1_m, record.rect_y0_m, record.rect_y1_m,
+    )
+  return {
+    id: record.id,
+    repere: record.repere || '',
+    nature: NATURE_OBSTACLE_DEPUIS_SERVEUR[record.nature] ?? 'edicule',
+    provenance: PROVENANCE_OBSTACLE_DEPUIS_SERVEUR[record.provenance] ?? 'mesure',
+    sommets,
+    rectX0M: record.rect_x0_m, rectX1M: record.rect_x1_m,
+    rectY0M: record.rect_y0_m, rectY1M: record.rect_y1_m,
+    epaisseurM: null,
+    verrouille: false,
+    // Champs que l'outil local ne modélise PAS (hauteur, décision, hors-zone
+    // PV…) : gardés tels quels pour être ÉCHOÉS intacts au prochain
+    // enregistrement — jamais silencieusement effacés par cet écran.
+    _serveur: record,
+  }
+}
+
+// DRF ignore silencieusement les clés en lecture seule ou inconnues d'un
+// ModelSerializer (`id`, `*_display`, `engageable`…) : échoer le dernier
+// enregistrement serveur PUIS écraser le sous-ensemble ÉDITABLE localement ne
+// peut donc jamais réécrire un champ que l'atelier ne montre pas.
+function obstacleVersPayload(o, toitureId) {
+  const sommets = o.sommets ?? []
+  const bbox = bboxDePoints(sommets)
+  return {
+    ...(o._serveur ?? {}),
+    toiture: toitureId,
+    repere: o.repere ?? '',
+    nature: NATURE_OBSTACLE_VERS_SERVEUR[o.nature] ?? 'caisson_technique',
+    provenance: PROVENANCE_OBSTACLE_VERS_SERVEUR[o.provenance] ?? 'MESURE',
+    polygone_local_m: sommets.map((s) => [nb(s.x), nb(s.y)]),
+    rect_x0_m: bbox ? bbox.xMin : null,
+    rect_x1_m: bbox ? bbox.xMax : null,
+    rect_y0_m: bbox ? bbox.yMin : null,
+    rect_y1_m: bbox ? bbox.yMax : null,
+  }
+}
+
+function chaineDepuisServeur(record) {
+  return {
+    id: record.id,
+    axe: record.axe ?? 'x',
+    nom: record.libelle || `Chaîne ${record.id}`,
+    origine: { x: 0, y: 0 }, // repère d'affichage LOCAL — pas une donnée serveur
+    tolerance: record.tolerance_m !== null && record.tolerance_m !== undefined
+      ? Number(record.tolerance_m) : 0.05,
+    coteMesuree: record.mesure_globale_m !== null && record.mesure_globale_m !== undefined
+      ? Number(record.mesure_globale_m) : 0,
+    segments: (record.segments ?? []).map((s, i) => ({
+      id: `seg-srv-${record.id}-${i}`,
+      libelle: s.libelle ?? `S${i + 1}`,
+      valeur: Number(s.valeur_m ?? 0),
+      provenance: STATUT_COTE_DEPUIS_SERVEUR[s.statut] ?? 'mesure',
+    })),
+    _serveur: record,
+  }
+}
+
+function chaineVersPayload(c, toitureId) {
+  return {
+    ...(c._serveur ?? {}),
+    toiture: toitureId,
+    libelle: c.nom ?? '',
+    axe: c.axe ?? 'x',
+    mesure_globale_m: nombreOuNull(c.coteMesuree),
+    tolerance_m: nombreOuNull(c.tolerance) ?? 0.05,
+    segments: (c.segments ?? []).map((s) => ({
+      libelle: s.libelle ?? '',
+      valeur_m: nombreOuNull(s.valeur) ?? 0,
+      statut: STATUT_COTE_VERS_SERVEUR[s.provenance] ?? 'MESURE',
+    })),
+  }
+}
+
+// Vocabulaire LOCAL (`OutilsZones.jsx` NATURES_ZONE) → `ZoneAO.Nature` (PV56).
+const NATURE_ZONE_VERS_SERVEUR = {
+  interdite: 'INTERDITE',
+  reservee: 'RESERVEE',
+  preferee: 'PREFEREE',
+}
+const NATURE_ZONE_DEPUIS_SERVEUR = {
+  INTERDITE: 'interdite',
+  RESERVEE: 'reservee',
+  PREFEREE: 'preferee',
+  // `ENVELOPPE` est écrite par l'outil de TRACÉ (le contour de la toiture),
+  // jamais par `OutilsZones` — repli neutre si elle apparaît malgré tout.
+  ENVELOPPE: 'interdite',
+}
+
+function zoneDepuisServeur(record) {
+  const sommets = Array.isArray(record.sommets)
+    ? record.sommets.map(([x, y]) => ({ x: nb(x), y: nb(y) }))
+    : []
+  return {
+    id: record.id,
+    nature: NATURE_ZONE_DEPUIS_SERVEUR[record.nature] ?? 'interdite',
+    nom: record.repere || `Zone ${record.id}`,
+    sommets,
+    aireM2: aire(sommets),
+    _serveur: record,
+  }
+}
+
+function zoneVersPayload(z, toitureId) {
+  return {
+    ...(z._serveur ?? {}),
+    toiture: toitureId,
+    nature: NATURE_ZONE_VERS_SERVEUR[z.nature] ?? 'INTERDITE',
+    sommets: (z.sommets ?? []).map((s) => [nb(s.x), nb(s.y)]),
+  }
+}
+
+function erreurNommee(nom, etiquette, e, verbe) {
+  const err = new Error(
+    `${nom} ${etiquette || ''} non ${verbe} — ${errMsg(e, 'le serveur a refusé l’écriture.')}`
+      .replace(/\s+—/, ' —').trim(),
+  )
+  err.aoMotifPret = true
+  return err
+}
+
+/* Diff 3 voies (create/update/delete) d'UNE ressource fille de la toiture, vs
+   le dernier instantané serveur connu. Un ÉCHEC N'IMPORTE OÙ arrête TOUT (pas
+   de suite silencieuse) : le motif nomme la ressource ET l'élément — un
+   « Enregistrer » qui échoue à moitié doit se VOIR, jamais se deviner. */
+async function synchroniserRessource({ ressource, nomRessource, locaux, distants, versPayload }) {
+  const idsLocaux = new Set(
+    locaux.filter((l) => estIdServeur(l.id)).map((l) => Number(l.id)),
+  )
+  for (const distant of distants) {
+    if (idsLocaux.has(distant.id)) continue
+    try {
+      // eslint-disable-next-line no-await-in-loop
+      await ressource.remove(distant.id)
+    } catch (e) {
+      throw erreurNommee(
+        nomRessource, distant.repere || distant.libelle || distant.id, e, 'supprimé')
+    }
+  }
+  const resultats = []
+  for (const local of locaux) {
+    const payload = versPayload(local)
+    if (estIdServeur(local.id)) {
+      try {
+        // eslint-disable-next-line no-await-in-loop
+        const { data } = await ressource.update(Number(local.id), payload)
+        resultats.push({ ...local, _serveur: data })
+      } catch (e) {
+        throw erreurNommee(nomRessource, local.repere || local.nom || local.id, e, 'enregistré')
+      }
+    } else {
+      try {
+        // eslint-disable-next-line no-await-in-loop
+        const { data } = await ressource.create(payload)
+        resultats.push({ ...local, id: data.id, _serveur: data })
+      } catch (e) {
+        throw erreurNommee(nomRessource, local.repere || local.nom || local.id, e, 'créé')
+      }
+    }
+  }
+  return resultats
+}
+
 /* Export d'un CSV produit par un helper PUR (`exporterPointsALever`) : le
    fichier part du navigateur, aucun aller-retour serveur — donc aucune
    promesse d'enregistrement qui n'aurait pas lieu. */
@@ -361,12 +637,40 @@ function AtelierToiture({ toiture, selecteur, onEnregistre }) {
   const contourServeur = toiture?.contour_local_m
   const contourInitial = useMemo(() => contourVersPoints(contourServeur), [contourServeur])
 
+  // PV58 — l'ancre géographique du repère local (PV57 : `ToitureAO.origine_lat`/
+  // `origine_lng`, tous deux nullables). Hydratée depuis la toiture comme
+  // `contourInitial` ci-dessus ; posée par `RepriseCarte` plus bas, écrite par
+  // « Enregistrer » avec le contour.
+  const origineInitiale = useMemo(() => {
+    const lat = toiture?.origine_lat
+    const lng = toiture?.origine_lng
+    return (lat !== null && lat !== undefined && lng !== null && lng !== undefined)
+      ? { lat: Number(lat), lng: Number(lng) }
+      : { lat: null, lng: null }
+  }, [toiture?.origine_lat, toiture?.origine_lng])
+  const [origineGeo, setOrigineGeo] = useState(origineInitiale)
+
   // Monté avec `key={toiture.id}` : changer de toiture REMONTE l'atelier, donc
-  // remet l'historique à zéro — jamais un `reinitialiser` dans un effet, qui
-  // laisserait un rendu intermédiaire montrer le contour de l'autre toiture.
+  // remet l'historique à zéro — jamais un `reinitialiser` dans un effet QUI
+  // REMPLACE LE CONTOUR, ce qui laisserait un rendu intermédiaire montrer le
+  // contour de l'autre toiture. `reinitialiser` sert seulement plus bas à
+  // (a) hydrater les obstacles depuis le serveur SANS toucher aux points, et
+  // (b) faire des ids locaux les ids serveur après un enregistrement réussi.
   const histoire = useHistoire({ points: contourInitial, obstacles: [] })
-  const { appliquer, terminer, annuler, retablir } = histoire
+  const { appliquer, terminer, annuler, retablir, reinitialiser } = histoire
   const { points, obstacles } = histoire.etat
+
+  // PV53 — dernier instantané SERVEUR connu de chaque ressource fille, pour le
+  // diff create/update/delete de « Enregistrer » (une `useRef` : ces valeurs
+  // ne pilotent aucun rendu, elles ne servent qu'à la PROCHAINE écriture).
+  const distantsObstaclesRef = useRef([])
+  const distantsChainesRef = useRef([])
+  const distantsZonesRef = useRef([])
+  // Un utilisateur qui a DÉJÀ commencé à éditer (points, obstacles, chaînes…)
+  // avant que l'hydratation réseau ne réponde ne doit JAMAIS se faire écraser
+  // par elle : l'hydratation s'efface silencieusement dans ce cas, plutôt que
+  // de faire disparaître ce que l'utilisateur vient de saisir.
+  const interactionRef = useRef(false)
 
   const svgRef = useRef(null)
   const [vue, setVue] = useState(null)
@@ -420,13 +724,59 @@ function AtelierToiture({ toiture, selecteur, onEnregistre }) {
     }
     : null
 
+  // PV53 — hydrate l'atelier depuis le serveur À L'OUVERTURE. L'atelier est
+  // remonté avec `key={toiture.id}` : CE mount EST « ouvrir cette toiture »,
+  // donc changer de toiture ou y revenir relance cette hydratation — c'est ce
+  // qui fait tenir « fermer/rouvrir conserve tout ».
+  useEffect(() => {
+    let annule = false
+    if (!toitureId) return undefined
+    ;(async () => {
+      try {
+        const [obsRes, chaRes, zoRes] = await Promise.all([
+          aoApi.obstacles.list({ toiture: toitureId }),
+          aoApi.chaines.list({ toiture: toitureId }),
+          aoApi.zones.list({ toiture: toitureId }),
+        ])
+        if (annule || interactionRef.current) return
+        const obstaclesDistants = unwrapList(obsRes)
+        const chainesDistantes = unwrapList(chaRes)
+        const zonesDistantes = unwrapList(zoRes)
+        distantsObstaclesRef.current = obstaclesDistants
+        distantsChainesRef.current = chainesDistantes
+        distantsZonesRef.current = zonesDistantes
+        reinitialiser(
+          {
+            points: histoire.etat.points,
+            obstacles: obstaclesDistants.map(obstacleDepuisServeur),
+          },
+          'Chargé depuis le serveur',
+        )
+        setChaines(chainesDistantes.map(chaineDepuisServeur))
+        setZones(zonesDistantes.map(zoneDepuisServeur))
+      } catch (e) {
+        if (annule) return
+        setNote(errMsg(
+          e,
+          'Obstacles, chaînes de cotes et zones non chargés depuis le serveur — '
+          + 'l’atelier reste utilisable, mais « Enregistrer » partirait d’une liste '
+          + 'locale incomplète tant que la page n’est pas rechargée.',
+        ))
+      }
+    })()
+    return () => { annule = true }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- une seule hydratation par mount (= par toiture ouverte)
+  }, [toitureId])
+
   const majPoints = useCallback((suivants, libelle, opts) => {
+    interactionRef.current = true
     setRefus(null)
     appliquer((prec) => ({ ...prec, points: suivants }), libelle, opts)
   }, [appliquer])
 
   // Voie TABLEAU (clavier) : le rectangle vient d'être écrit → il fait foi.
   const majObstacles = useCallback((suivants, libelle, opts) => {
+    interactionRef.current = true
     setRefus(null)
     appliquer(
       (prec) => ({ ...prec, obstacles: suivants.map(obstacleDepuisRect) }), libelle, opts,
@@ -435,12 +785,57 @@ function AtelierToiture({ toiture, selecteur, onEnregistre }) {
 
   // Voie PLANCHE (souris) : les sommets viennent d'être posés → ils font foi.
   const majObstaclesPlanche = useCallback((suivants) => {
+    interactionRef.current = true
     setRefus(null)
     appliquer(
       (prec) => ({ ...prec, obstacles: suivants.map(obstacleDepuisSommets) }),
       'Modifier les obstacles',
     )
   }, [appliquer])
+
+  const majChaines = useCallback((suivantes) => {
+    interactionRef.current = true
+    setChaines(suivantes)
+  }, [])
+
+  const majZones = useCallback((suivantes) => {
+    interactionRef.current = true
+    setZones(suivantes)
+  }, [])
+
+  // PV58 — reprise du contour de la carte (`RepriseCarte`, AOF82) : origine =
+  // le repère posé sur la carte, ou à défaut le PREMIER point du contour (un
+  // contour existe toujours s'il y a un `onContour`, un repère pas toujours).
+  // L'azimut est celui de LA TOITURE (`angle_nord_deg`), jamais deviné ici.
+  const appliquerContourCarte = useCallback(({ contour_latlng: contourLatLng, repere_latlng: repereLatLng }) => {
+    if (!Array.isArray(contourLatLng) || contourLatLng.length < 3) {
+      setNote(
+        'Contour de la carte incomplet (moins de trois points) — rien n’a été appliqué.',
+      )
+      return
+    }
+    const origine = repereLatLng ?? contourLatLng[0]
+    const azimutDeg = Number(toiture?.angle_nord_deg ?? 0) || 0
+    const repereGeo = creerRepere({
+      origine_lnglat: origine, azimut_deg: azimutDeg, ordre: ORDRE_LATLNG,
+    })
+    const sommetsM = contourVersSommetsM(repereGeo, contourLatLng, ORDRE_LATLNG)
+    majPoints(sommetsM, 'Reprendre le contour de la carte')
+    terminer()
+    setOrigineGeo({ lat: Number(origine[0]), lng: Number(origine[1]) })
+    setNote(null)
+    setOnglet('geometrie')
+  }, [toiture?.angle_nord_deg, majPoints, terminer])
+
+  // PVG1 — analyse RÉELLE d'un DXF (l'endpoint existe désormais :
+  // `AnalyserDxfView`, `apps/ao/urls.py`). `ImportDxf` attend une fonction
+  // qui renvoie directement `{calques, unite}` — jamais l'enveloppe axios —,
+  // le déballage vit ICI, à la frontière écran, comme partout ailleurs dans
+  // ce fichier (`unwrapList`).
+  const analyserDxf = useCallback(async (fichier) => {
+    const { data } = await aoApi.toitures.analyserDxf(fichier)
+    return data
+  }, [])
 
   const bbox = useMemo(() => bboxDePoints(points), [points])
 
@@ -462,29 +857,77 @@ function AtelierToiture({ toiture, selecteur, onEnregistre }) {
     setEnregistrement(true)
     try {
       // JAMAIS `surface_m2` (read_only, recalculée par `ToitureAOViewSet`),
-      // jamais `company` (forcée par le serveur) : seul le contour part.
-      await aoApi.toitures.update(toitureId, { contour_local_m: pointsVersContour(points) })
+      // jamais `company` (forcée par le serveur) : le contour part TOUJOURS ;
+      // l'ancre géographique (PV58) part SEULEMENT si elle a une valeur — une
+      // toiture relevée sur plan papier n'en a légitimement aucune, et lui
+      // envoyer `null` écraserait une ancre déjà posée par une autre voie.
+      const payloadToiture = { contour_local_m: pointsVersContour(points) }
+      if (origineGeo.lat !== null && origineGeo.lng !== null) {
+        payloadToiture.origine_lat = origineGeo.lat
+        payloadToiture.origine_lng = origineGeo.lng
+      }
+      await aoApi.toitures.update(toitureId, payloadToiture)
+
+      // PV53 — UNE SEULE écriture cohérente : le contour ET la différence
+      // d'obstacles/chaînes de cotes. Un échec ICI (après un contour déjà
+      // écrit) est nommé PRÉCISÉMENT par `synchroniserRessource` — jamais un
+      // succès affiché alors qu'une partie n'est pas passée.
+      const resultatsObstacles = await synchroniserRessource({
+        ressource: aoApi.obstacles, nomRessource: 'Obstacle',
+        locaux: obstacles, distants: distantsObstaclesRef.current,
+        versPayload: (o) => obstacleVersPayload(o, toitureId),
+      })
+      const resultatsChaines = await synchroniserRessource({
+        ressource: aoApi.chaines, nomRessource: 'Chaîne de cotes',
+        locaux: chaines, distants: distantsChainesRef.current,
+        versPayload: (c) => chaineVersPayload(c, toitureId),
+      })
+      // PV56 — les zones suivent le MÊME diff que les obstacles/chaînes
+      // (PV53). Le moteur de calepinage les LIT déjà (`calepinage_io.
+      // zones_vers_document`, PV55) : rien n'est recalculé ici, le prochain
+      // calcul serveur les applique — c'est dit dans le toast ci-dessous.
+      const resultatsZones = await synchroniserRessource({
+        ressource: aoApi.zones, nomRessource: 'Zone',
+        locaux: zones, distants: distantsZonesRef.current,
+        versPayload: (z) => zoneVersPayload(z, toitureId),
+      })
+
+      // Les ids locaux DEVIENNENT les ids serveur : un second « Enregistrer »
+      // dans la même session diffère juste, il ne recrée rien en double.
+      distantsObstaclesRef.current = resultatsObstacles.map((r) => r._serveur)
+      distantsChainesRef.current = resultatsChaines.map((r) => r._serveur)
+      distantsZonesRef.current = resultatsZones.map((r) => r._serveur)
+      reinitialiser({ points, obstacles: resultatsObstacles }, 'Enregistré')
+      setChaines(resultatsChaines)
+      setZones(resultatsZones)
+
       setRefus(null)
-      toast.success('Contour enregistré — la surface est recalculée par le serveur.')
+      toast.success(
+        'Enregistré — contour, obstacles, chaînes de cotes et zones. Les zones '
+        + 's’appliquent au prochain calcul de calepinage.',
+      )
       onEnregistre?.()
     } catch (e) {
-      const motif = errMsg(e, 'Contour non enregistré — le serveur a refusé l’écriture.')
+      // `synchroniserRessource` fabrique un motif déjà prêt en français
+      // (`aoMotifPret`) ; une réponse axios brute passe par `errMsg` comme
+      // avant, pour le refus du CONTOUR lui-même.
+      const motif = e?.aoMotifPret
+        ? e.message
+        : errMsg(e, 'Contour non enregistré — le serveur a refusé l’écriture.')
       setRefus(motif)
       toast.error(motif)
     } finally {
       setEnregistrement(false)
     }
-  }, [toitureId, points, onEnregistre])
+  }, [toitureId, points, origineGeo, obstacles, chaines, zones, onEnregistre, reinitialiser])
 
   const ongletGeometrie = (
     <div className="flex flex-col gap-3">
       <LegendeProvenance />
       <p className="rounded-md border border-border bg-muted p-2 text-xs text-muted-foreground">
-        « Enregistrer » écrit le CONTOUR de cette toiture, et lui seul. Les
-        obstacles, zones et chaînes de cotes saisis dans la boîte à outils
-        restent LOCAUX à l’atelier : les y raccorder au serveur est une tâche à
-        part. Ils ne sont pas conservés en quittant l’écran — c’est dit ici,
-        avant d’en saisir un.
+        « Enregistrer » écrit le CONTOUR de cette toiture, les obstacles, les
+        chaînes de cotes ET les zones de la boîte à outils, en une seule
+        écriture (PV53/PV56).
       </p>
       <TableauGeometrie
         points={points}
@@ -624,14 +1067,14 @@ function AtelierToiture({ toiture, selecteur, onEnregistre }) {
   const ongletZones = (
     <div className="flex flex-col gap-3">
       <p className="text-xs text-muted-foreground">
-        Zones interdites, réservées ou préférées du relevé. Le serveur ne
-        modélise PAS encore de ressource « zones » (le moteur de calepinage en
-        reçoit une liste vide) : elles restent locales à l’atelier.
+        Zones interdites, réservées ou préférées du relevé. « Enregistrer » les
+        écrit comme les obstacles (PV56) — le prochain calcul de calepinage les
+        applique, jamais un compte recalculé ici.
       </p>
       <OutilsZones
         zonesInitiales={zones}
         metresParPixel={mpp}
-        onChange={setZones}
+        onChange={majZones}
       />
     </div>
   )
@@ -641,11 +1084,11 @@ function AtelierToiture({ toiture, selecteur, onEnregistre }) {
       <ChainesCotes
         chainesInitiales={chaines}
         pixelsParMetre={mpp > 0 ? 1 / mpp : 1}
-        onChange={setChaines}
+        onChange={majChaines}
       />
       <FermeturesPanel
         chaines={chaines}
-        onChaines={setChaines}
+        onChaines={majChaines}
         onCalepiner={() => setNote(
           'Chaînes arbitrées. Le calepinage se lance depuis l’onglet « Calepinages » '
           + 'de la fiche affaire (le calcul est sans état, piloté par la toiture) : '
@@ -663,11 +1106,13 @@ function AtelierToiture({ toiture, selecteur, onEnregistre }) {
 
   const ongletImport = (
     <div className="flex flex-col gap-4">
-      {/* Aucun `analyserDxf` n'est passé : il n'existe AUCUN endpoint serveur
-          d'analyse de plan (vérifié). L'écran rend alors son propre état
-          dégradé, qui NOMME l'empêchement et propose le tracé à la main —
-          c'est exactement ce pour quoi il a été écrit. */}
+      {/* PVG1 — `analyserDxf` appelle désormais le VRAI endpoint
+          (`AnalyserDxfView`) : un fichier sans calque exploitable, un DXF
+          hostile/corrompu ou un serveur en 4xx/5xx retombent tous dans
+          l'état dégradé DÉJÀ écrit par `ImportDxf` (jamais une page blanche),
+          et proposent le tracé à la main. */}
       <ImportDxf
+        analyserDxf={analyserDxf}
         onImporter={({ sommets }) => {
           majPoints(
             (sommets ?? []).map(([x, y]) => ({ x: Number(x), y: Number(y) })),
@@ -679,13 +1124,13 @@ function AtelierToiture({ toiture, selecteur, onEnregistre }) {
         onTracerAlaMain={() => setOnglet('trace')}
       />
       <Suspense fallback={<Skeleton className="h-24 w-full" />}>
+        {/* PV58 — le contour repris (lat/lng) est converti en mètres locaux
+            via `repere.js` (AOF83) : origine = le repère posé sur la carte, à
+            défaut le premier point du contour ; azimut = celui DE LA TOITURE
+            (`angle_nord_deg`), jamais deviné. L'ancre part avec le contour au
+            prochain « Enregistrer ». */}
         <RepriseCarte
-          onContour={() => setNote(
-            'Contour repris de la carte, mais NON appliqué : il est en latitude / '
-            + 'longitude, et le modèle de toiture ne stocke qu’un contour en mètres '
-            + 'dans un repère local, sans point d’origine géographique. Convertir '
-            + 'l’un en l’autre demande ce point d’origine — il n’existe pas encore.',
-          )}
+          onContour={appliquerContourCarte}
           onTracerAlaMain={() => setOnglet('trace')}
         />
       </Suspense>
