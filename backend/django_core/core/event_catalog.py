@@ -232,6 +232,14 @@ CATALOG = {
         "Une salle de vente est consultée de façon répétée (signal d'intérêt "
         "fort sur un lead en devis envoyé).",
         ['lead', 'salle', 'company']),
+    # NTMKT34 — émis par
+    # ``apps/marketing/services.recalculer_scores_maturite_inactivite`` quand
+    # le recalcul quotidien (pénalité d'inactivité 30j) change effectivement
+    # le score de maturité NTMKT18 d'un lead.
+    'lead_maturite_changee': _e(
+        'Le score de maturité marketing (NTMKT18) d\'un lead change lors du '
+        'recalcul quotidien (pénalité d\'inactivité 30j, NTMKT34).',
+        ['lead_id', 'company', 'ancienne_valeur', 'nouvelle_valeur']),
 }
 
 

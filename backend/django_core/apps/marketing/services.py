@@ -309,6 +309,39 @@ def creer_lead_depuis_intake(formulaire, data):
     return lead
 
 
+# ── NTMKT17 — Progressive profiling (champs déjà connus masqués) ───────────
+
+def _champ_code(entree):
+    if isinstance(entree, dict):
+        return entree.get('code') or entree.get('nom')
+    return entree
+
+
+def champs_publics_a_afficher(formulaire, identifiant):
+    """NTMKT17 — filtre ``formulaire.champs`` pour un visiteur RECONNU.
+
+    ``identifiant`` (email OU téléphone) vient du navigateur du visiteur
+    (cookie/stockage déjà géré côté client, aucune nouvelle dépendance
+    backend). Un visiteur INCONNU (``identifiant`` vide, ou aucun lead
+    correspondant — dédup QJ8) voit le formulaire COMPLET, comportement
+    actuel inchangé. Un visiteur RECONNU ne revoit QUE les champs non encore
+    renseignés sur son lead le plus récent — HubSpot-style."""
+    champs = formulaire.champs or []
+    identifiant = (identifiant or '').strip()
+    if not identifiant:
+        return champs
+
+    from apps.crm.selectors import lead_known_field_codes
+
+    if '@' in identifiant:
+        connus = lead_known_field_codes(formulaire.company, email=identifiant)
+    else:
+        connus = lead_known_field_codes(formulaire.company, phone=identifiant)
+    if not connus:
+        return champs
+    return [c for c in champs if _champ_code(c) not in connus]
+
+
 # ── NTMKT12 — Parcours en GRAPHE d'une séquence de relance ──────────────────
 # Extension strictement ADDITIVE du moteur XMKT1 : une séquence SANS nœud n'est
 # jamais vue par ce code (``sequence_a_graphe`` faux) et continue d'être
@@ -869,6 +902,471 @@ def plafond_envois_atteint(company, *, aujourdhui=None):
     nb = EnvoiCampagne.objects.filter(
         company=company, envoye_le__date=aujourdhui).count()
     return nb >= parametres.plafond_envois_jour
+
+
+# ── NTMKT18 — Score de maturité marketing multi-signal (additif à QJ6) ─────
+# ``lead_id`` reste OPAQUE : jamais d'import de ``crm.Lead`` ici. Le lien vers
+# le lead se fait uniquement via la convention ``contact_ref = f'lead:{id}'``
+# déjà utilisée par ``EnvoiCampagne`` (XMKT6/XMKT16) et via
+# ``apps.crm.selectors.lead_devis_ids_by_id`` (lecture cross-app sanctionnée).
+
+def _signaux_maturite(company, lead_id):
+    """Compte les signaux marketing bruts d'un lead (NTMKT18) : ouvertures,
+    clics (sur les envois de campagne le référençant) et visites de sa page
+    proposition (``OuverturePartage`` sur ses devis, via crm.selectors)."""
+    from .models import EnvoiCampagne, OuverturePartage
+
+    contact_ref = f'lead:{lead_id}'
+    envois = EnvoiCampagne.objects.filter(company=company, contact_ref=contact_ref)
+    nb_ouvertures = envois.filter(ouvert_le__isnull=False).count()
+    nb_clics = envois.filter(clique_le__isnull=False).count()
+
+    from apps.crm.selectors import lead_devis_ids_by_id
+    devis_ids = lead_devis_ids_by_id(company, lead_id)
+    nb_visites = 0
+    if devis_ids:
+        nb_visites = OuverturePartage.objects.filter(
+            company=company, cible=OuverturePartage.Cible.DEVIS,
+            cible_reference__in=devis_ids).count()
+    return nb_ouvertures, nb_clics, nb_visites
+
+
+def recalculer_score_maturite(company, lead_id, *, dernier_contact=None,
+                              now=None):
+    """NTMKT18 — recalcule (jamais un delta incrémental non rejouable) le
+    score de maturité (0-100) d'un lead à partir de ses signaux marketing
+    bruts, pondérés par les réglages société (``ParametresMarketing``).
+
+    No-op complet (renvoie ``None``, AUCUNE ligne créée) tant que la société
+    n'a pas activé ``score_maturite_actif`` — comportement actuel inchangé
+    par défaut. Applique la pénalité d'inactivité 30j (NTMKT34) si
+    ``dernier_contact`` est fourni. Journalise une ``VariationScoreMaturite``
+    UNIQUEMENT quand la valeur change effectivement (jamais un historique qui
+    grossit sans raison)."""
+    from django.utils import timezone as _tz
+
+    from .models import ScoreMaturite, VariationScoreMaturite
+
+    parametres = parametres_marketing_pour(company)
+    if not parametres.score_maturite_actif:
+        return None
+
+    now = now or _tz.now()
+    nb_ouvertures, nb_clics, nb_visites = _signaux_maturite(company, lead_id)
+    valeur = (
+        nb_ouvertures * parametres.ponderation_maturite_ouverture
+        + nb_clics * parametres.ponderation_maturite_clic
+        + nb_visites * parametres.ponderation_maturite_visite_proposition
+    )
+    motif_parts = [
+        f'{nb_ouvertures} ouverture(s)', f'{nb_clics} clic(s)',
+        f'{nb_visites} visite(s) proposition',
+    ]
+    if dernier_contact is not None:
+        jours_inactif = (now.date() - dernier_contact.date()).days
+        if jours_inactif >= 30:
+            valeur -= parametres.penalite_maturite_inactivite
+            motif_parts.append(f'inactif {jours_inactif}j')
+    valeur = max(0, min(100, valeur))
+
+    score, cree = ScoreMaturite.objects.get_or_create(
+        company=company, lead_id=lead_id, defaults={'valeur': valeur})
+    if not cree and score.valeur != valeur:
+        delta = valeur - score.valeur
+        score.valeur = valeur
+        score.save(update_fields=['valeur', 'updated_at'])
+        VariationScoreMaturite.objects.create(
+            company=company, lead_id=lead_id, delta=delta,
+            valeur_apres=valeur, motif=', '.join(motif_parts))
+    elif cree and valeur:
+        VariationScoreMaturite.objects.create(
+            company=company, lead_id=lead_id, delta=valeur,
+            valeur_apres=valeur, motif=', '.join(motif_parts))
+    return score
+
+
+def score_maturite_pour(company, lead_id):
+    """NTMKT18 — recalcule puis renvoie le ``ScoreMaturite`` courant d'un
+    lead (jamais une valeur périmée). ``None`` si le module est désactivé
+    pour la société (comportement par défaut)."""
+    return recalculer_score_maturite(company, lead_id)
+
+
+def historique_maturite(company, lead_id, limite=30):
+    """NTMKT18/NTMKT19 — historique horodaté (le plus récent en premier) des
+    variations du score de maturité d'un lead."""
+    from .models import VariationScoreMaturite
+    return list(VariationScoreMaturite.objects.filter(
+        company=company, lead_id=lead_id).order_by('-created_at')[:limite])
+
+
+# ── NTMKT34 — Recalcul quotidien du score de maturité (pénalité inactivité) ─
+# Le calcul ÉVÉNEMENTIEL de NTMKT18 (``recalculer_score_maturite``) ne couvre
+# QUE les événements ENTRANTS (ouverture/clic/visite) : il ne réagit jamais au
+# SILENCE d'un lead. Cette tâche quotidienne applique la pénalité
+# d'inactivité 30j sur les leads qui ont DÉJÀ un ``ScoreMaturite`` (créé par
+# un premier événement NTMKT18) — jamais un balayage de tous les leads de la
+# société (no-op complet si NTMKT18 n'a jamais rien créé, cf.
+# ``score_maturite_actif``).
+
+def recalculer_scores_maturite_inactivite(company, *, now=None):
+    """NTMKT34 — recalcule le score de maturité de chaque lead PORTANT DÉJÀ
+    un ``ScoreMaturite`` pour ``company``, en tenant compte du dernier point
+    de contact (``apps.crm.selectors.dernier_contact_lead``) pour appliquer
+    la pénalité d'inactivité 30j. Émet ``core.events.lead_maturite_changee``
+    pour CHAQUE changement effectif (jamais à un tick no-op). Renvoie la
+    liste des ``lead_id`` dont le score a changé."""
+    from django.utils import timezone as _tz
+
+    from core import events
+
+    from apps.crm.selectors import dernier_contact_lead
+
+    from .models import ScoreMaturite
+
+    now = now or _tz.now()
+    changes = []
+    for score in ScoreMaturite.objects.filter(company=company):
+        avant = score.valeur
+        dernier_contact = dernier_contact_lead(company, score.lead_id)
+        recalcule = recalculer_score_maturite(
+            company, score.lead_id, dernier_contact=dernier_contact, now=now)
+        apres = recalcule.valeur if recalcule is not None else avant
+        if apres != avant:
+            changes.append(score.lead_id)
+            events.lead_maturite_changee.send(
+                sender='marketing.recalculer_scores_maturite_inactivite',
+                lead_id=score.lead_id, company=company,
+                ancienne_valeur=avant, nouvelle_valeur=apres)
+    return changes
+
+
+# ── NTMKT20 — Modèles d'attribution configurables (étend FG204/XMKT17) ─────
+
+def modele_attribution_pour(company):
+    """NTMKT20 — modèle d'attribution configuré pour la société (défaut
+    ``dernier_touche`` = comportement XMKT17 actuel, inchangé)."""
+    return parametres_marketing_pour(company).modele_attribution
+
+
+def _cellule_export(valeur):
+    """NTMKT39/40 — rendu d'une valeur pour une cellule XLSX (même esprit que
+    ``apps.dataimport.exporters._cell``, sans en dépendre — ce module reste
+    autonome)."""
+    import datetime
+    from decimal import Decimal
+
+    if valeur is None:
+        return ''
+    if isinstance(valeur, (datetime.datetime, datetime.date)):
+        return valeur.isoformat()
+    if isinstance(valeur, Decimal):
+        return str(valeur)
+    return valeur
+
+
+# ── NTMKT39 — Export CSV/XLSX des campagnes et de leur trace d'envoi ───────
+
+_EXPORT_CAMPAGNES_COLONNES = [
+    ('nom', 'Nom'), ('canal', 'Canal'), ('statut', 'Statut'),
+    ('nb_destinataires', 'Destinataires'), ('nb_envois', 'Envoyés'),
+    ('nb_ouvertures', 'Ouvertures'), ('nb_clics', 'Clics'),
+    ('cout_reel_mad', 'Coût réel (MAD)'), ('date_creation', 'Créée le'),
+]
+
+
+def export_campagnes_xlsx(company, *, statut=None, canal=None):
+    """NTMKT39 — export XLSX des campagnes de la société, MÊMES colonnes que
+    la liste (``CampagnesList.jsx``), filtrable par statut/canal comme
+    l'écran. ``openpyxl`` est déjà une dépendance du repo (cf.
+    ``apps.dataimport.parsing``) — aucune nouvelle dépendance ajoutée."""
+    import io
+
+    from openpyxl import Workbook
+
+    from .models import Campagne
+
+    qs = Campagne.objects.filter(company=company).order_by('-date_creation')
+    if statut:
+        qs = qs.filter(statut=statut)
+    if canal:
+        qs = qs.filter(canal=canal)
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = 'Campagnes'
+    ws.append([libelle for _, libelle in _EXPORT_CAMPAGNES_COLONNES])
+    for campagne in qs:
+        ws.append([
+            _cellule_export(getattr(campagne, champ))
+            for champ, _ in _EXPORT_CAMPAGNES_COLONNES
+        ])
+    buf = io.BytesIO()
+    wb.save(buf)
+    return buf.getvalue()
+
+
+def export_envois_campagne_csv(campagne):
+    """NTMKT39 — export CSV de la trace ``EnvoiCampagne`` d'UNE campagne
+    (destinataire/statut/date_envoi/date_ouverture), correctement échappé
+    (virgules/accents) via le module ``csv`` standard — jamais une nouvelle
+    lib."""
+    import csv
+    import io
+
+    buf = io.StringIO()
+    writer = csv.writer(buf)
+    writer.writerow(
+        ['Destinataire', 'Statut', 'Envoyé le', 'Ouvert le', 'Cliqué le'])
+    for envoi in campagne.envois.all().order_by('-date_creation'):
+        writer.writerow([
+            envoi.destinataire, envoi.statut,
+            envoi.envoye_le.isoformat() if envoi.envoye_le else '',
+            envoi.ouvert_le.isoformat() if envoi.ouvert_le else '',
+            envoi.clique_le.isoformat() if envoi.clique_le else '',
+        ])
+    # BOM UTF-8 : Excel ouvre alors correctement les accents FR (même
+    # convention que ``apps.dataimport.exporters.export_csv``).
+    return ('﻿' + buf.getvalue()).encode('utf-8')
+
+
+def export_membres_segment_xlsx(segment):
+    """NTMKT40 — export XLSX SNAPSHOT (horodaté) des membres résolus d'un
+    segment marketing AU MOMENT DE L'EXPORT (jamais une vue live) — utile
+    pour justifier une base d'envoi lors d'un contrôle RGPD/CNDP.
+
+    Réutilise ``apps.compta.services.evaluer_segment`` — LA MÊME fonction que
+    ``previsualiser_segment`` (XMKT6) — pour que le nombre de lignes exportées
+    corresponde TOUJOURS exactement au compte affiché à l'écran."""
+    import io
+
+    from django.utils import timezone
+    from openpyxl import Workbook
+
+    from apps.compta.services import evaluer_segment
+    from apps.crm.selectors import leads_export_rows
+
+    lead_ids = evaluer_segment(segment)
+    rows = leads_export_rows(segment.company, lead_ids)
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = 'Membres du segment'
+    ws.append(['Segment', segment.nom])
+    ws.append(['Snapshot le', timezone.now().isoformat()])
+    ws.append([])
+    ws.append(['Nom', 'Prénom', 'Email', 'Téléphone', 'Ville'])
+    for r in rows:
+        ws.append([
+            r['nom'], r['prenom'] or '', r['email'] or '',
+            r['telephone'] or '', r['ville'] or '',
+        ])
+    buf = io.BytesIO()
+    wb.save(buf)
+    return buf.getvalue()
+
+
+def importer_inscriptions_evenement(evenement, file_bytes, filename):
+    """NTMKT41 — crée des ``InscriptionEvenement`` en MASSE depuis un
+    CSV/XLSX (ex. liste de participants d'un salon partenaire), SANS passer
+    par le formulaire public.
+
+    Réutilise le PARSEUR générique partagé
+    ``apps.dataimport.parsing.iter_rows`` (CSV+XLSX, détection encodage/
+    séparateur — conçu explicitement pour tout call-site hors ``dataimport``,
+    voir sa docstring) : lecture seule d'une fonction utilitaire, jamais un
+    import des modèles/services ``dataimport``, jamais une nouvelle lib.
+
+    Colonnes reconnues (insensibles à la casse) : ``nom``, ``email``,
+    ``telephone``/``tel``. ``nom`` obligatoire par ligne (sinon signalée en
+    invalide). Doublon = email DÉJÀ inscrit à CET événement (ignoré avec
+    rapport, jamais silencieux). Renvoie
+    ``{'crees', 'doublons', 'lignes_invalides', 'total'}``."""
+    import uuid
+
+    from apps.dataimport.parsing import iter_rows
+
+    from .models import InscriptionEvenement
+
+    headers, rows = iter_rows(file_bytes, filename)
+    index_by_norm = {(h or '').strip().lower(): h for h in headers}
+
+    def _valeur(row, *alias):
+        for a in alias:
+            cle = index_by_norm.get(a)
+            if cle is not None and row.get(cle):
+                return str(row[cle]).strip()
+        return ''
+
+    emails_existants = {
+        e.lower() for e in InscriptionEvenement.objects.filter(
+            evenement=evenement, email__gt='')
+        .values_list('email', flat=True) if e
+    }
+
+    crees = 0
+    doublons = 0
+    invalides = 0
+    for row in rows:
+        nom = _valeur(row, 'nom', 'name')
+        if not nom:
+            invalides += 1
+            continue
+        email = _valeur(row, 'email', 'e-mail', 'mail')
+        telephone = _valeur(row, 'telephone', 'tel', 'téléphone')
+        if email and email.lower() in emails_existants:
+            doublons += 1
+            continue
+        InscriptionEvenement.objects.create(
+            company=evenement.company, evenement=evenement, nom=nom,
+            email=email, telephone=telephone, qr_token=uuid.uuid4().hex,
+        )
+        if email:
+            emails_existants.add(email.lower())
+        crees += 1
+    return {
+        'crees': crees, 'doublons': doublons, 'lignes_invalides': invalides,
+        'total': len(rows),
+    }
+
+
+def notifier_si_nps_detracteur(enquete):
+    """NTMKT44 — notifie le commercial du lead d'un client DÉTRACTEUR
+    (score <= 6) à une enquête NPS, lien vers la fiche lead.
+
+    Indépendant du suivi YSERV11 (``apps.compta.services._declencher_suivi_nps``
+    — gated ``CompanyProfile.referral_enabled``, une ACTIVITÉ de rappel
+    distincte) : ce chemin passe TOUJOURS par ``notifications.Notification``
+    (jamais un second système de notification). Jamais de doublon :
+    ``repondre_enquete_nps`` ne rejoue jamais une enquête déjà répondue, donc
+    ce déclencheur ne s'exécute qu'une fois par enquête."""
+    if enquete.score is None or enquete.score > 6:
+        return None
+    from apps.crm.selectors import get_latest_lead_for_client
+
+    lead = get_latest_lead_for_client(enquete.company, enquete.client_id)
+    if lead is None or not getattr(lead, 'owner_id', None):
+        return None
+    from apps.notifications.models import EventType
+    from apps.notifications.services import notify
+
+    notify(
+        lead.owner, EventType.DIGEST, f'Détracteur NPS : {lead.nom}',
+        body=(f'Note {enquete.score}/10 — {enquete.commentaire}'
+              if enquete.commentaire else f'Note {enquete.score}/10.'),
+        company=enquete.company, link=f'/crm/leads/{lead.id}',
+    )
+    return lead.owner_id
+
+
+def notifier_inscription_evenement(inscription):
+    """NTMKT44 — notifie le commercial du lead qui vient de s'inscrire à un
+    événement marketing (résolu/dédupliqué par
+    ``apps.compta.services.inscrire_evenement``, XMKT28), lien vers la fiche
+    lead. No-op silencieux si l'inscription n'a résolu aucun lead ou que le
+    lead n'a pas d'owner assigné."""
+    if not inscription.lead_id:
+        return None
+    from apps.crm.selectors import get_company_lead
+
+    lead = get_company_lead(inscription.company, inscription.lead_id)
+    if lead is None or not getattr(lead, 'owner_id', None):
+        return None
+    from apps.notifications.models import EventType
+    from apps.notifications.services import notify
+
+    notify(
+        lead.owner, EventType.DIGEST, f'Inscription événement : {lead.nom}',
+        body=f"{lead.nom} s'est inscrit(e) à « {inscription.evenement.nom} ».",
+        company=inscription.company, link=f'/crm/leads/{lead.id}',
+    )
+    return lead.owner_id
+
+
+def inscrire_evenement_et_notifier(evenement, *, nom, email='', telephone='',
+                                   billet=None, reponses_questions=None):
+    """NTMKT44 — enveloppe ``apps.compta.services.inscrire_evenement``
+    (XMKT28) SANS le modifier : notifie en plus le commercial du lead résolu
+    une fois l'inscription créée. Propage toute ``ValueError`` inchangée
+    (billet hors fenêtre/quota, question obligatoire manquante)."""
+    from apps.compta.services import inscrire_evenement
+
+    inscription = inscrire_evenement(
+        evenement, nom=nom, email=email, telephone=telephone, billet=billet,
+        reponses_questions=reponses_questions)
+    notifier_inscription_evenement(inscription)
+    return inscription
+
+
+def journaliser_action_marketing(action, *, user, company, detail='',
+                                 instance=None):
+    """NTMKT45 — journalise une action marketing SENSIBLE dans
+    ``apps.audit`` (``AuditLog``, réservé au Directeur — jamais un second
+    journal). Best-effort via ``apps.audit.recorder.record`` (n'élève
+    jamais)."""
+    from apps.audit.recorder import record
+
+    record(action, instance=instance, company=company, user=user,
+           detail=detail)
+
+
+def journaliser_envoi_campagne(campagne, user):
+    """NTMKT45 — journalise l'envoi RÉEL d'une campagne (qui/quand/combien
+    de destinataires) dans ``apps.audit``."""
+    from apps.audit.models import AuditLog
+
+    journaliser_action_marketing(
+        AuditLog.Action.EMAIL, user=user, company=campagne.company,
+        instance=campagne,
+        detail=(f'Campagne « {campagne.nom} » envoyée '
+                f'({campagne.nb_destinataires} destinataire(s)).'),
+    )
+
+
+def journaliser_export_marketing(user, company, *, detail, instance=None):
+    """NTMKT45 — journalise un export de segment/campagne (NTMKT39/40) dans
+    ``apps.audit`` — traçabilité RGPD des extractions."""
+    from apps.audit.models import AuditLog
+
+    journaliser_action_marketing(
+        AuditLog.Action.EXPORT, user=user, company=company, detail=detail,
+        instance=instance)
+
+
+def journaliser_modele_attribution(parametres, user, ancien_modele):
+    """NTMKT45 — journalise la modification du modèle d'attribution société
+    (NTMKT20) dans ``apps.audit``. No-op si la valeur n'a pas réellement
+    changé (l'appelant compare avant d'invoquer cette fonction)."""
+    from apps.audit.recorder import record_field_change
+
+    record_field_change(
+        parametres, 'modele_attribution', ancien_modele,
+        parametres.modele_attribution, user=user,
+        field_label="Modèle d'attribution", company=parametres.company,
+        # Réglage technique, pas un événement métier lisible sur une fiche
+        # objet précise — jamais de doublon avec le chatter d'un lead/devis.
+        chatter=False,
+    )
+
+
+def attribution_comparaison(company, devis_id):
+    """NTMKT20 — comparaison des 4 modèles d'attribution pour UN devis signé
+    (aide à la décision, jamais un recalcul persistant). ``None`` si le devis
+    n'existe pas, n'appartient pas à la société ou n'est pas accepté.
+
+    Lit ``ventes`` UNIQUEMENT via son selector ``get_devis_by_pk`` (jamais un
+    import de ``apps.ventes.models``) puis délègue le calcul à
+    ``apps.crm.selectors`` (jamais un import de ``apps.crm.models``)."""
+    from apps.crm.selectors import attribution_comparaison_devis
+    from apps.ventes.selectors import get_devis_by_pk
+
+    devis = get_devis_by_pk(devis_id)
+    if devis is None or devis.company_id != company.id:
+        return None
+    resultat = attribution_comparaison_devis(devis)
+    if resultat is not None:
+        resultat['modele_actuel'] = modele_attribution_pour(company)
+    return resultat
 
 
 # ── NTMKT33 — Purge des tokens expirés (désinscription/préférences) ────────

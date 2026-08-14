@@ -227,6 +227,17 @@ describe('ProductTour (NTDMO15)', () => {
       expect(api.post).toHaveBeenCalledWith('/onboarding/tours/devis/vu/'))
   })
 
+  // NTDMO27 — toggle société « Visites guidées actives » (Paramètres → Démo &
+  // Onboarding). `company_tours_actifs: false` doit empêcher tout tour de
+  // s'ouvrir automatiquement, même pour un utilisateur récent sur un écran
+  // cible jamais vu.
+  it('ne s’affiche jamais si la société a désactivé les visites guidées (tours_actifs=false)', async () => {
+    api.get.mockResolvedValueOnce({ data: TOURS })
+    renderTour({ ...RECENT_USER, company_tours_actifs: false })
+    await waitFor(() => expect(api.get).toHaveBeenCalled())
+    expect(screen.queryByText('Créer un devis')).not.toBeInTheDocument()
+  })
+
   it('« Suivant » avance puis « Terminer » ferme et marque vu', async () => {
     api.get.mockResolvedValueOnce({ data: TOURS })
     api.post.mockResolvedValueOnce({ data: [{ ...TOURS[0], vu: true }] })

@@ -133,4 +133,11 @@ class ParametresMarketingSerializer(serializers.ModelSerializer):
         fields = ['id', 'expediteur_nom', 'expediteur_email',
                   'expediteur_domaine', 'silence_heure_debut',
                   'silence_heure_fin', 'plafond_envois_jour',
-                  'langue_defaut_templates']
+                  'langue_defaut_templates',
+                  # NTMKT18 — score de maturité (pondérations éditables).
+                  'score_maturite_actif', 'ponderation_maturite_ouverture',
+                  'ponderation_maturite_clic',
+                  'ponderation_maturite_visite_proposition',
+                  'penalite_maturite_inactivite', 'mql_sur_score_maturite',
+                  # NTMKT20 — modèle d'attribution multi-touch.
+                  'modele_attribution']

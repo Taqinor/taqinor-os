@@ -543,6 +543,18 @@ Warning|CampagneViewSet > CampagneSerializer|unable to resolve type hint for fun
 Warning|CampagneViewSet > CampagneSerializer|unable to resolve type hint for function "get_taux_delivre_pct". Consider using a type hint or @extend_schema_field. Def
 Warning|CampagneViewSet > CampagneSerializer|unable to resolve type hint for function "get_taux_desinscription_pct". Consider using a type hint or @extend_schema_fie
 Warning|CampagneViewSet > CampagneSerializer|unable to resolve type hint for function "get_taux_ouverture_pct". Consider using a type hint or @extend_schema_field. D
+# NTMKT45 (lot crm_ventes vague 2) — CampagneViewSetAudite (apps/marketing/views.py)
+# etend CampagneViewSet (apps/compta/views.py) SANS toucher a son serializer :
+# les 4 avertissements ci-dessous sont le MEME defaut deja accepte 4 lignes
+# plus haut pour CampagneViewSet > CampagneSerializer (get_taux_*_pct non type),
+# duplique uniquement parce que drf-spectacular signe par nom de classe de vue.
+# Le vrai correctif (typer les SerializerMethodField de CampagneSerializer)
+# vit dans apps/compta, hors perimetre d'ecriture CRM_VENTES (contrat de
+# propriete docs/plans/PLAN_CRM_VENTES.md) : jamais touche par cette vue fine.
+Warning|CampagneViewSetAudite > CampagneSerializer|unable to resolve type hint for function "get_taux_clic_pct". Consider using a type hint or @extend_schema_field. Defaul
+Warning|CampagneViewSetAudite > CampagneSerializer|unable to resolve type hint for function "get_taux_delivre_pct". Consider using a type hint or @extend_schema_field. Def
+Warning|CampagneViewSetAudite > CampagneSerializer|unable to resolve type hint for function "get_taux_desinscription_pct". Consider using a type hint or @extend_schema_fie
+Warning|CampagneViewSetAudite > CampagneSerializer|unable to resolve type hint for function "get_taux_ouverture_pct". Consider using a type hint or @extend_schema_field. D
 Warning|CanalViewSet > CanalSerializer|unable to resolve type hint for function "get_en_usage". Consider using a type hint or @extend_schema_field. Defaulting
 Warning|CandidatureViewSet > CandidatureSerializer|unable to resolve type hint for function "get_employe_cree_nom". Consider using a type hint or @extend_schema_field. Def
 Warning|CandidatureViewSet > CandidatureSerializer|unable to resolve type hint for function "get_ouverture_intitule". Consider using a type hint or @extend_schema_field. D

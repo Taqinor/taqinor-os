@@ -35,6 +35,18 @@ CONTRAT = json.loads(
      / "conception_electrique.json").read_text(encoding="utf-8"))
 CLES_CONTRAT = set(CONTRAT["exemple"])
 
+# Prix SENTINELLES du montage d'endpoint. ``test_aucun_prix_dans_la_reponse``
+# cherche ces nombres TELS QUELS dans la réponse : ils doivent donc être
+# impossibles à confondre avec une grandeur ÉLECTRIQUE. Le montage précédent
+# achetait le panneau 600 MAD — soit exactement la « tension maximale onduleur
+# 600,0 V » que la note de calcul écrit en toutes lettres : la garde se
+# déclenchait sur sa propre physique, jamais sur une fuite de prix. Ces quatre
+# valeurs n'apparaissent dans AUCUNE tension, intensité, section ni longueur.
+PRIX_PANNEAU_VENTE = Decimal("314159")
+PRIX_PANNEAU_ACHAT = Decimal("271828")
+PRIX_ONDULEUR_VENTE = Decimal("161803")
+PRIX_ONDULEUR_ACHAT = Decimal("141421")
+
 
 class _FausseLigne:
     def __init__(self, designation, quantite=1, produit=None):
@@ -211,19 +223,19 @@ class ConceptionElectriqueEndpointTest(TestCase):
             layout_hash="h-%s" % company.id)
         panneau = Produit.objects.create(
             company=company, nom="Panneau PV 550W mono",
-            sku="PV41-PV-%s" % company.id, prix_vente=Decimal("1000"),
-            prix_achat=Decimal("600"), quantite_stock=100)
+            sku="PV41-PV-%s" % company.id, prix_vente=PRIX_PANNEAU_VENTE,
+            prix_achat=PRIX_PANNEAU_ACHAT, quantite_stock=100)
         onduleur = Produit.objects.create(
             company=company, nom="Onduleur réseau 10kW triphasé",
-            sku="PV41-OND-%s" % company.id, prix_vente=Decimal("12000"),
-            prix_achat=Decimal("9000"), quantite_stock=10)
+            sku="PV41-OND-%s" % company.id, prix_vente=PRIX_ONDULEUR_VENTE,
+            prix_achat=PRIX_ONDULEUR_ACHAT, quantite_stock=10)
         LigneDevis.objects.create(
             devis=devis, produit=panneau, designation="Panneau PV 550W mono",
-            quantite=20, prix_unitaire=Decimal("1000"))
+            quantite=20, prix_unitaire=PRIX_PANNEAU_VENTE)
         LigneDevis.objects.create(
             devis=devis, produit=onduleur,
             designation="Onduleur réseau 10kW triphasé",
-            quantite=1, prix_unitaire=Decimal("12000"))
+            quantite=1, prix_unitaire=PRIX_ONDULEUR_VENTE)
         return devis
 
     def _url(self, devis):
@@ -296,5 +308,9 @@ class ConceptionElectriqueEndpointTest(TestCase):
         devis = self._make_devis(self.company)
         resp = self.api.get(self._url(devis))
         blob = json.dumps(resp.data, ensure_ascii=False, default=str).lower()
-        for interdit in ("prix", "marge", "12000", "600"):
+        interdits = ["prix", "marge"] + [
+            str(int(montant)) for montant in (
+                PRIX_PANNEAU_VENTE, PRIX_PANNEAU_ACHAT,
+                PRIX_ONDULEUR_VENTE, PRIX_ONDULEUR_ACHAT)]
+        for interdit in interdits:
             self.assertNotIn(interdit, blob)

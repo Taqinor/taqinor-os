@@ -96,6 +96,11 @@ const cpqApi = {
     api.get(`${P}/configurateur/${token}/resultat/`),
   genererDevisConfigurateur: (token, data) =>
     api.post(`${P}/configurateur/${token}/generer-devis/`, data || {}),
+
+  // NTCPQ28 — relance MANUELLE (côté demandeur) d'une approbation de remise
+  // en attente : notifie l'approbateur assigné, throttlée serveur à 1/24h.
+  relancerApprobation: (devisId) =>
+    api.post(`${P}/devis/${devisId}/relancer-approbation/`),
 }
 
 export default cpqApi

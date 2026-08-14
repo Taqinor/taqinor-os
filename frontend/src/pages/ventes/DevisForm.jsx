@@ -12,6 +12,7 @@ import {
 import crmApi from '../../api/crmApi'
 import stockApi from '../../api/stockApi'
 import ventesApi from '../../api/ventesApi'
+import cpqApi from '../../api/cpqApi'
 import { resilientMutation } from '../../lib/resilientMutation'
 import { useStaleGuard } from '../../hooks/useStaleGuard'
 import {
@@ -115,6 +116,77 @@ function ApprobationPanel({ devisId }) {
           </div>
         </div>
       )}
+    </div>
+  )
+}
+
+// NTCPQ28 — Wizard « Escalade d'approbation » CÔTÉ DEMANDEUR (distinct de
+// ApprobationPanel ci-dessus, qui est l'écran de l'APPROBATEUR). Quand
+// envoyer/generer-pdf est bloqué par une étape NTCPQ7 en attente, ce
+// panneau guide l'auteur du devis : étape en attente, approbateur assigné,
+// bouton « Relancer » (notification, throttlée serveur à 1/24h). Silencieux
+// tant qu'aucune étape n'est en attente.
+function EscaladeApprobationPanel({ devisId }) {
+  const [etapes, setEtapes] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [busy, setBusy] = useState(false)
+  const [dernierResultat, setDernierResultat] = useState(null)
+
+  const reload = useCallback(() => {
+    setLoading(true)
+    ventesApi.approbationDevis(devisId)
+      .then((r) => setEtapes(r.data || []))
+      .catch(() => setEtapes([]))
+      .finally(() => setLoading(false))
+  }, [devisId])
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- rechargement au changement de devis
+  useEffect(() => { reload() }, [reload])
+
+  const enAttente = etapes.find((e) => e.statut === 'en_attente')
+
+  const relancer = async () => {
+    setBusy(true)
+    setDernierResultat(null)
+    try {
+      const { data } = await cpqApi.relancerApprobation(devisId)
+      setDernierResultat(data)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  if (loading || !enAttente) return null
+
+  return (
+    <div
+      className="border-t border-border pt-4"
+      data-testid="cpq-escalade-approbation"
+    >
+      <p className="mb-2 text-sm font-semibold text-foreground">
+        Envoi bloqué — approbation de remise en attente
+      </p>
+      <p className="mb-3 text-sm text-muted-foreground">
+        Étape {enAttente.niveau} · {enAttente.niveau_approbation}
+        {enAttente.approbateur
+          ? ` · assignée à ${enAttente.approbateur}`
+          : ' · aucun approbateur assigné pour le moment'}
+      </p>
+      <div className="flex items-center gap-2">
+        <Button
+          type="button"
+          variant="ghost"
+          onClick={relancer}
+          loading={busy}
+          disabled={!enAttente.approbateur}
+        >
+          Relancer l'approbateur
+        </Button>
+        {dernierResultat && (
+          <span className="text-sm text-muted-foreground">
+            {dernierResultat.detail}
+          </span>
+        )}
+      </div>
     </div>
   )
 }
@@ -223,6 +295,12 @@ export default function DevisForm({ devis = null, onClose, onSaved }) {
   )
 
   const [removedLineIds, setRemovedLineIds] = useState([])
+  // NTCPQ29 — wizard de résolution de conflit de compatibilité : { key,
+  // violation, alternatives } quand la dernière sélection produit déclenche
+  // une violation BLOQUANTE (NTCPQ1), null sinon. Purement côté écran —
+  // aucune écriture serveur tant que l'utilisateur ne choisit pas une
+  // alternative (ou ferme le modal sans agir).
+  const [conflitCompat, setConflitCompat] = useState(null)
   // VX90 — focus la nouvelle ligne (ProduitPicker) après « Ajouter ligne ».
   const linesTableRef = useRef(null)
   const [pendingFocusKey, setPendingFocusKey] = useState(null)
@@ -285,16 +363,42 @@ export default function DevisForm({ devis = null, onClose, onSaved }) {
     setDirty(true)
     clearField('lines')
     const p = produits.find(p => String(p.id) === String(produitId))
-    setLines(ls => ls.map(l =>
-      l._key === key
-        ? {
-            ...l, produit: produitId, designation: p?.nom ?? '',
-            prix_unitaire: p ? String(p.prix_vente) : '0',
-            // Copie le taux TVA du produit s'il est défini (réforme 10/20 %).
-            taux_tva: p?.tva != null ? String(p.tva) : l.taux_tva,
+    let nextIds = []
+    setLines(ls => {
+      const updated = ls.map(l =>
+        l._key === key
+          ? {
+              ...l, produit: produitId, designation: p?.nom ?? '',
+              prix_unitaire: p ? String(p.prix_vente) : '0',
+              // Copie le taux TVA du produit s'il est défini (réforme 10/20 %).
+              taux_tva: p?.tva != null ? String(p.tva) : l.taux_tva,
+            }
+          : l
+      )
+      nextIds = updated.map(l => l.produit).filter(Boolean)
+      return updated
+    })
+    // NTCPQ29 — vérification LIVE de compatibilité après la sélection :
+    // une violation bloquante ouvre le wizard de résolution au lieu d'un
+    // simple message d'erreur bloquant sans issue. Best-effort, jamais
+    // bloquant pour la saisie (silencieux sur erreur réseau).
+    if (nextIds.length > 1) {
+      cpqApi.validerCompatibilite(nextIds)
+        .then(({ data }) => {
+          const premiere = data?.bloquantes?.[0]
+          if (premiere) {
+            setConflitCompat({ key, violation: premiere })
+          } else {
+            setConflitCompat(c => (c?.key === key ? null : c))
           }
-        : l
-    ))
+        })
+        .catch(() => {})
+    }
+  }
+
+  const resoudreConflitCompat = (produitAlternatifId) => {
+    if (conflitCompat) onProduitChange(conflitCompat.key, produitAlternatifId)
+    setConflitCompat(null)
   }
 
   const addLine = () => {
@@ -724,6 +828,7 @@ export default function DevisForm({ devis = null, onClose, onSaved }) {
           )}
 
           {isEdit && devis?.id && <ConfigurationBadge devisId={devis.id} />}
+          {isEdit && devis?.id && <EscaladeApprobationPanel devisId={devis.id} />}
           {isEdit && devis?.id && <ApprobationPanel devisId={devis.id} />}
 
           <FormActions sticky={false}>
@@ -744,6 +849,58 @@ export default function DevisForm({ devis = null, onClose, onSaved }) {
             setClientQuickCreateOpen(false)
           }}
         />
+
+        {/* NTCPQ29 — wizard de résolution de conflit de compatibilité :
+            propose des alternatives compatibles en un clic au lieu d'un
+            simple message d'erreur bloquant sans issue, sans quitter
+            l'écran de configuration. */}
+        <Dialog
+          open={!!conflitCompat}
+          onOpenChange={(o) => { if (!o) setConflitCompat(null) }}
+        >
+          <DialogContent data-testid="cpq-conflit-compatibilite">
+            <DialogHeader>
+              <DialogTitle>Configuration incompatible</DialogTitle>
+            </DialogHeader>
+            <p className="mb-3 text-sm text-muted-foreground">
+              {conflitCompat?.violation?.message ||
+                'Ces produits ne sont pas compatibles.'}
+            </p>
+            {conflitCompat?.violation?.alternatives?.length ? (
+              <div className="space-y-2">
+                <p className="text-sm font-medium text-foreground">
+                  Alternatives compatibles :
+                </p>
+                {conflitCompat.violation.alternatives.map((alt) => (
+                  <Button
+                    key={alt.produit_id}
+                    type="button"
+                    variant="ghost"
+                    className="w-full justify-start"
+                    onClick={() => resoudreConflitCompat(alt.produit_id)}
+                  >
+                    {alt.source === 'a_ajouter' ? 'Ajouter : ' : 'Remplacer par : '}
+                    {alt.nom}
+                  </Button>
+                ))}
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground">
+                Aucune alternative connue pour le moment — ajustez la
+                sélection manuellement.
+              </p>
+            )}
+            <FormActions sticky={false}>
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={() => setConflitCompat(null)}
+              >
+                Fermer
+              </Button>
+            </FormActions>
+          </DialogContent>
+        </Dialog>
       </DialogContent>
     </Dialog>
   )

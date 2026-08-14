@@ -43,6 +43,8 @@ const Login = lazy(() => import('../pages/Login'))
 // `POST /auth/register-company/` existait deja ; il n'avait AUCUNE porte.
 const RegisterCompany = lazy(() => import('../pages/RegisterCompany'))
 const Dashboard = lazy(() => import('../pages/Dashboard').then(m => ({ default: m.Component })))
+// NTDMO26 — assistant first-run « société réelle » (voir la route ci-dessous).
+const DemarrageWizard = lazy(() => import('../pages/onboarding/DemarrageWizard'))
 // ODY2 — Menu d'accueil plein écran (`/apps`) : la porte d'entrée du paradigme
 // « j'ouvre → MES apps ». Grille des apps installées ∩ autorisées (ODY1).
 const HomeMenu = lazy(() => import('../pages/home/HomeMenu'))
@@ -401,6 +403,10 @@ const router = createBrowserRouter([
   // à la place du renvoi silencieux vers /dashboard.
   { path: '/app-non-activee', loader: authLoader, element: <WithLayout><AppNotInstalled /></WithLayout> },
   { path: '/dashboard', loader: authLoader, element: <WithLayout><Dashboard /></WithLayout> },
+  // NTDMO26 — assistant first-run « Configurez votre société en 5 minutes »
+  // (société RÉELLE, jamais démo). Auto-déclenché depuis PremiersPasWidget.jsx
+  // (lien programmatique, jamais un item de menu statique).
+  { path: '/onboarding/demarrage', loader: authLoader, element: <WithLayout><DemarrageWizard /></WithLayout> },
   { path: '/messages', loader: authLoader, element: <WithLayout><ChatPage /></WithLayout> },
   // VX247(d) — glossaire métier (les HelpTip VX47 y pointent au lieu de dupliquer).
   { path: '/aide/lexique', loader: authLoader, element: <WithLayout><LexiquePage /></WithLayout> },

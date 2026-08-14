@@ -175,21 +175,66 @@ def _notify_first_open(link):
     """QJ1 / QJ2 (b) — Sur la première ouverture, logue une note dans le
     chatter du lead lié (QJ1) ET envoie une notification in-app + Web Push
     au responsable du lead avec un lien wa.me « répondre maintenant » (QJ2).
-    Best-effort, silencieux sur erreur."""
+    Best-effort, silencieux sur erreur.
+
+    NTCPQ47 — SÉPARÉMENT, si le devis consulté est une VARIANTE CPQ
+    (NTCPQ16), notifie AUSSI l'auteur du devis de base (préparation portail :
+    savoir quelle variante précise le client regarde) — indépendant de la
+    présence d'un lead."""
     try:
         if not link.devis_id:
             return
         lead = getattr(link.devis, 'lead', None)
-        if lead is None:
-            return
-        devis_ref = link.devis.reference
-        # QJ1 — note chatter (toujours).
-        from apps.crm.services import noter_devis_ouvert, notify_devis_opened
-        noter_devis_ouvert(devis_ref, lead)
-        # QJ2 (b) — notification in-app + Web Push au owner.
-        notify_devis_opened(devis_ref, lead)
+        if lead is not None:
+            devis_ref = link.devis.reference
+            # QJ1 — note chatter (toujours).
+            from apps.crm.services import noter_devis_ouvert, notify_devis_opened
+            noter_devis_ouvert(devis_ref, lead)
+            # QJ2 (b) — notification in-app + Web Push au owner.
+            notify_devis_opened(devis_ref, lead)
     except Exception:  # noqa: BLE001 — best-effort, jamais de fuite
         pass
+    try:
+        _notifier_variante_consultee(link)
+    except Exception:  # noqa: BLE001 — best-effort, jamais de fuite
+        pass
+
+
+def _notifier_variante_consultee(link):
+    """NTCPQ47 — si le devis consulté est une VARIANTE CPQ (NTCPQ16 —
+    ``devis.variante_de_id`` renseigné), notifie l'auteur du devis DE BASE
+    qu'un client a consulté CETTE variante précise (préparation d'un futur
+    comparateur portail — cf. ``apps.portail``, aucune capacité portail
+    nouvelle créée ici : uniquement le côté événement interne, comme prévu
+    par la tâche si le portail ne l'expose pas encore).
+
+    Idempotent PAR LIEN via ``ShareLink.engagement_triggers_fired`` (motif
+    QX30be, réutilisé tel quel) : jamais dupliquée pour le même ShareLink,
+    même sur des vues répétées."""
+    devis = link.devis
+    if devis is None or not devis.variante_de_id:
+        return
+    fired = set(link.engagement_triggers_fired or [])
+    marqueur = 'variante_consultee'
+    if marqueur in fired:
+        return
+    devis_base = devis.variante_de
+    auteur = getattr(devis_base, 'created_by', None)
+    if auteur is None:
+        return
+    from apps.notifications.models import EventType
+    from apps.notifications.services import notify
+    notify(
+        auteur, EventType.DEVIS_OPENED,
+        f'Variante « {devis.variante_tier} » consultée — '
+        f'devis {devis_base.reference}',
+        body=(f'Le client a consulté la variante {devis.variante_tier} '
+              f'({devis.reference}) de la proposition {devis_base.reference}.'),
+        link=f'/ventes/devis?devis={devis_base.id}',
+        company=devis.company)
+    fired.add(marqueur)
+    link.engagement_triggers_fired = sorted(fired)
+    link.save(update_fields=['engagement_triggers_fired'])
 
 
 @api_view(['GET'])

@@ -57,6 +57,14 @@ def _fake_productible_manual(settings, lat, lon, *, peakpower_kwc=1.0, tilt=None
 
 class TestPV69RunBankableStudy(TestCase):
     def setUp(self):
+        # PV73 a mis un cache SYSTÈME devant les deux fetchers : il vit dans le
+        # PROCESSUS, pas dans la transaction de test. Sans ce vidage, le premier
+        # test remplit le cache avec un productible « pvgis » et le suivant —
+        # qui monkeypatche pourtant le fetcher en repli « manual » — reçoit
+        # l'entrée en cache : le mock n'est jamais appelé et le repli n'est
+        # jamais testé. C'est l'isolation du fixture, pas une garde affaiblie.
+        from django.core.cache import cache as django_cache
+        django_cache.clear()
         self.company = make_company()
         self.user = make_user(self.company)
         self.client_obj = make_client(self.company)
@@ -76,9 +84,12 @@ class TestPV69RunBankableStudy(TestCase):
         result = run_bankable_study(self.devis, zones=self._zones())
         contract = _load_contract()
 
-        self.assertEqual(
-            set(result.keys()),
-            {'version', 'computed_at', 'source', 'zones', 'pr', 'warnings'})
+        # PACT10/PACT13 — les clés de premier niveau sont comparées AU FICHIER
+        # de contrat, jamais à une liste retapée : la liste retapée ici tenait
+        # encore la v1 à six clés et ignorait les blocs ajoutés depuis
+        # (autoconsommation, injection, puissance souscrite, dégradation,
+        # projection 25 ans), c'est-à-dire une deuxième source de vérité.
+        self.assertEqual(set(result.keys()), set(contract.keys()))
         self.assertEqual(result['version'], 1)
         self.assertEqual(result['source'], 'pvgis')
         self.assertEqual(set(result['pr'].keys()), set(contract['pr'].keys()))

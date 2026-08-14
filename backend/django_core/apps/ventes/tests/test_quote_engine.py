@@ -586,11 +586,27 @@ class TestPdfFormats(TestCase):
         # Ni les prix d'achat/marge, ni AUCUN prix de ligne du devis.
         for interdit in ('prix_achat', 'marge', 'Total TTC', 'Sous-total'):
             self.assertNotIn(interdit, annexe)
+        lisible = self._sans_donnees_binaires(annexe)
         for _designation, _qte, _prix in self.FULL_LINES:
-            self.assertNotIn(_prix, annexe)
+            self.assertNotIn(_prix, lisible)
         self.assertIn('Nomenclature électrique', annexe)
         # La page de signature reste la DERNIÈRE page numérotée.
         self.assertEqual(G.PAGE3_NUM, G.PAGES_TOTAL)
+
+    @staticmethod
+    def _sans_donnees_binaires(html):
+        """Retire les charges utiles ``data:...;base64,...`` du HTML.
+
+        L'en-tête de l'annexe embarque le logo en PNG base64 : ~870 000
+        caractères d'alphabet base64, où PRESQUE TOUTE suite de deux ou trois
+        chiffres finit par apparaître (ici « 67 » et « 375 », deux prix de
+        lignes du montage). Chercher un prix dans ces octets ne dit rien de ce
+        que le client LIT — c'est un faux positif de la garde, pas une fuite.
+        On garde donc la garde entière sur le contenu lisible : un prix
+        RENDU y apparaîtrait toujours, puisqu'il serait du texte.
+        """
+        import re
+        return re.sub(r'data:[^;"\']+;base64,[A-Za-z0-9+/=]+', 'data:…', html)
 
     def _annexe_html(self):
         """Rend la SEULE page d'annexe (globals posés par un rendu complet)."""

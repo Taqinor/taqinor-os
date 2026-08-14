@@ -914,3 +914,19 @@ def emit_reliable(event, *, sender=None, company=None, emitted_by=None,
 #     ``apps.crm`` à elle (réservé dans ``core.event_coverage``).
 #     Arguments : ``lead``, ``salle``, ``company``.
 salle_vente_signal_interet = django.dispatch.Signal()
+
+
+# ``lead_maturite_changee``
+#     Le score de MATURITÉ marketing (``marketing.ScoreMaturite``, NTMKT18)
+#     d'un lead change lors du recalcul quotidien de la pénalité d'inactivité
+#     30j (NTMKT34, tâche beat ``marketing.recalculer_scores_maturite_inactivite``).
+#     Émis par ``apps.marketing.services.recalculer_scores_maturite_inactivite``
+#     UNIQUEMENT quand la valeur change réellement (jamais à chaque tick
+#     no-op). Distinct du score de QUALITÉ ``crm.Lead.score`` (QJ6, jamais
+#     modifié par ce signal). AUCUN abonné dans ce repo aujourd'hui — seam
+#     posé pour un futur récepteur ``apps.crm.receivers`` (aucun import direct
+#     crm↔marketing, réservé dans ``core.event_coverage``, même patron que
+#     ``deal_commission_due``/``salle_vente_signal_interet`` ci-dessus).
+#     Arguments : ``lead_id`` (opaque), ``company``, ``ancienne_valeur``,
+#     ``nouvelle_valeur``.
+lead_maturite_changee = django.dispatch.Signal()
