@@ -293,6 +293,12 @@ INSTALLED_APPS = [
     # WIR80) reste BLOCKED, en conflit avec installations.DossierImport
     # (FG315, hors perimetre d'ecriture de cette lane).
     'apps.douane',
+    # NTRET18/19 — Connecteurs Shopify/WooCommerce ([GATED: clé API] — no-op
+    # total sans clé en .env). Additive, company-scopée.
+    'apps.ecommerce_connect',
+    # NTRET9 — Programme de fidélité par points (gain automatique à la vente
+    # via core.events, paliers, carte QR). Additive, company-scopée.
+    'apps.fidelite',
 ]
 
 MIDDLEWARE = [

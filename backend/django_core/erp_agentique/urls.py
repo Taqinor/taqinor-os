@@ -167,6 +167,10 @@ _APP_URLS = [
     # Groupe NTLOG - Douane & import/export (NTLOG14 seulement ; NTLOG10
     # BLOCKED, voir apps/douane/apps.py).
     path('douane/', include('apps.douane.urls')),
+    # NTRET18/19 — Connecteurs Shopify/WooCommerce ([GATED: clé API]).
+    path('ecommerce-connect/', include('apps.ecommerce_connect.urls')),
+    # NTRET9 — Programme de fidélité par points (comptes/mouvements/paliers).
+    path('fidelite/', include('apps.fidelite.urls')),
 ]
 
 urlpatterns = [
