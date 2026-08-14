@@ -1319,6 +1319,14 @@ except (ValueError, TypeError):
 AI_DOCUMENT_JOBS_ENABLED = (
     os.environ.get('AI_DOCUMENT_JOBS_ENABLED', '0') == '1')
 
+# NTAI24 — index sémantique cross-module (core.ai.search). ÉTEINT par défaut :
+# sans lui, aucune ligne d'index n'est écrite et chaque écriture métier reste
+# byte-identique. Activé, l'index se remplit au post_save des fiches déclarées
+# indexables ; le VECTEUR reste key-gated à part (sans fournisseur
+# d'embeddings, la recherche retombe sur le plein-texte, sans appel réseau).
+AI_SEMANTIC_INDEX_ENABLED = (
+    os.environ.get('AI_SEMANTIC_INDEX_ENABLED', '0') == '1')
+
 # ─────────────────────────────────────────────────────────────────────────────
 # YHARD6 — endpoint /metrics (Prometheus). JAMAIS public par défaut : la vue
 # (core/views.py::metrics_view) exige soit un utilisateur authentifié admin

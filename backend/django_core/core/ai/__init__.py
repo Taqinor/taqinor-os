@@ -47,6 +47,15 @@ from core.ai.schemas import (
     available_schemas,
     get_schema,
 )
+from core.ai.search import (
+    SPECS_PAR_DEFAUT,
+    desindexer,
+    index_enabled,
+    indexer,
+    rechercher,
+    register_embedding_provider,
+    register_indexable,
+)
 from core.ai.services import (
     CAMPAIGN_PROMPT_FORBIDDEN_TERMS,
     DEFAULT_PHOTO_QA_CHECKLIST,
@@ -123,4 +132,12 @@ __all__ = [
     'CAMPAIGN_PROMPT_FORBIDDEN_TERMS',
     'build_campaign_prompt',
     'draft_campaign_content',
+    # Index sémantique cross-module (NTAI24)
+    'SPECS_PAR_DEFAUT',
+    'index_enabled',
+    'indexer',
+    'desindexer',
+    'rechercher',
+    'register_indexable',
+    'register_embedding_provider',
 ]
