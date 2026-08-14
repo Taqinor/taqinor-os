@@ -4,8 +4,9 @@ from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 
 from .views import (
-    GammeViewSet, OperationGammeViewSet, OperationOFViewSet,
-    OrdreFabricationViewSet, PosteDeChargeViewSet, charge_postes_view, mrp_run_view,
+    CoutStandardViewSet, GammeViewSet, OperationGammeViewSet, OperationOFViewSet,
+    OrdreFabricationViewSet, PosteDeChargeViewSet, analyse_couts_view,
+    charge_postes_view, mrp_run_view,
 )
 
 router = DefaultRouter()
@@ -15,9 +16,11 @@ router.register(r'operations-gamme', OperationGammeViewSet, basename='mrp-operat
 router.register(
     r'ordres-fabrication', OrdreFabricationViewSet, basename='mrp-ordre-fabrication')
 router.register(r'operations-of', OperationOFViewSet, basename='mrp-operation-of')
+router.register(r'couts-standard', CoutStandardViewSet, basename='mrp-cout-standard')
 
 urlpatterns = [
     path('mrp-run/', mrp_run_view, name='mrp-run'),
     path('charge-postes/', charge_postes_view, name='mrp-charge-postes'),
+    path('analyse-couts/', analyse_couts_view, name='mrp-analyse-couts'),
     path('', include(router.urls)),
 ]

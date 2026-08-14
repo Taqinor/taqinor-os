@@ -46,6 +46,11 @@ const mrpApi = {
   // Charge par poste (NTMFG7)
   getChargePostes: (debut, fin) =>
     api.get('/mrp/charge-postes/', { params: { debut, fin } }),
+
+  // Coût standard vs réel (NTMFG11) — interne, admin/responsable.
+  getCoutsStandard: (params) => api.get('/mrp/couts-standard/', { params }),
+  figerCoutStandard: (data) => api.post('/mrp/couts-standard/figer/', data),
+  getAnalyseCouts: (params) => api.get('/mrp/analyse-couts/', { params }),
 }
 
 export default mrpApi

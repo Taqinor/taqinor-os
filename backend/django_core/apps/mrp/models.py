@@ -335,3 +335,51 @@ class ReservationOF(models.Model):
 
     def __str__(self):
         return f'{self.ordre_fabrication_id} · {self.produit_id} × {self.quantite}'
+
+
+class CoutStandard(TenantModel):
+    """NTMFG11 — coût de revient STANDARD versionné (référence figée), au
+    niveau ENTREPRISE — distinct de XMFG15 (écart PRÉVU-vs-RÉEL PAR ORDRE,
+    pas de standard de référence). Une fois créée, une version n'est JAMAIS
+    modifiée (`services.figer_cout_standard` crée toujours une NOUVELLE
+    version) — `cout_standard_courant` lit la plus récente par date
+    d'effectivité. STRICTEMENT INTERNE (jamais `prix_achat`/coût dans un
+    document client, DC28)."""
+
+    produit = models.ForeignKey(
+        'stock.Produit', on_delete=models.PROTECT,
+        related_name='mrp_couts_standard', verbose_name='Produit')
+    version = models.PositiveIntegerField(default=1, verbose_name='Version')
+    cout_matiere = models.DecimalField(
+        max_digits=12, decimal_places=2, default=0,
+        verbose_name='Coût matière standard (1 unité)')
+    cout_main_oeuvre = models.DecimalField(
+        max_digits=12, decimal_places=2, default=0,
+        verbose_name="Coût main-d'œuvre standard (1 unité)")
+    cout_indirect_pct = models.DecimalField(
+        max_digits=5, decimal_places=2, default=0,
+        verbose_name='Coût indirect (%)')
+    date_effective = models.DateField(verbose_name="Date d'effectivité")
+
+    class Meta:
+        verbose_name = 'Coût standard'
+        verbose_name_plural = 'Coûts standard'
+        ordering = ['company_id', 'produit_id', '-version']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'produit', 'version'],
+                name='mrp_coutstd_co_produit_version_uniq'),
+        ]
+        indexes = [
+            models.Index(fields=['company', 'produit'],
+                         name='mrp_coutstd_co_produit_idx'),
+        ]
+
+    @property
+    def cout_unitaire_total(self):
+        base = (self.cout_matiere or 0) + (self.cout_main_oeuvre or 0)
+        indirect = base * (self.cout_indirect_pct or 0) / 100
+        return base + indirect
+
+    def __str__(self):
+        return f'{self.produit_id} · std v{self.version}'

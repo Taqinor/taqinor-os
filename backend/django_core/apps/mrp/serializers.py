@@ -1,8 +1,8 @@
 from rest_framework import serializers
 
 from .models import (
-    Gamme, OperationGamme, OperationOF, OrdreFabrication, PosteDeCharge,
-    ReservationOF,
+    CoutStandard, Gamme, OperationGamme, OperationOF, OrdreFabrication,
+    PosteDeCharge, ReservationOF,
 )
 
 
@@ -90,4 +90,21 @@ class OrdreFabricationSerializer(serializers.ModelSerializer):
         read_only_fields = [
             'id', 'statut', 'date_debut_planifiee', 'date_fin_planifiee',
             'stock_mouvemente', 'created_at', 'updated_at',
+        ]
+
+
+class CoutStandardSerializer(serializers.ModelSerializer):
+    cout_unitaire_total = serializers.DecimalField(
+        max_digits=12, decimal_places=2, read_only=True)
+
+    class Meta:
+        model = CoutStandard
+        fields = [
+            'id', 'produit', 'version', 'cout_matiere', 'cout_main_oeuvre',
+            'cout_indirect_pct', 'date_effective', 'cout_unitaire_total',
+            'created_at',
+        ]
+        read_only_fields = [
+            'id', 'version', 'cout_matiere', 'cout_main_oeuvre',
+            'cout_unitaire_total', 'created_at',
         ]

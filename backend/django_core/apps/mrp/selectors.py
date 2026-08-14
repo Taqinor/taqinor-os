@@ -223,3 +223,110 @@ def charge_postes(company, debut, fin):
         })
     resultats.sort(key=lambda r: (r['poste_nom'].lower(), r['jour']))
     return resultats
+
+
+# ── NTMFG11 — Coût de revient standard vs réel ────────────────────────────
+
+def cout_standard_courant(company, produit_id):
+    """NTMFG11 — dernière version FIGÉE du coût standard d'un produit (la
+    plus récente par version), ou `None`. Lecture seule."""
+    from .models import CoutStandard
+
+    return (CoutStandard.objects
+            .filter(company=company, produit_id=produit_id)
+            .order_by('-version').first())
+
+
+def _cout_reel_of(of):
+    """Coût matière RÉEL de cet OF (basé sur ce qui a réellement été
+    consommé par le backflush NTMFG4 — `of.quantite`, la même base que
+    `services._composants_of`) + coût main-d'œuvre RÉEL (Σ temps réel ×
+    coût horaire poste, opérations terminées)."""
+    from apps.stock.selectors import get_produit_scoped
+    from apps.stock.services import cout_achat_courant, exploser_kit_par_id
+
+    cout_matiere = Decimal('0')
+    if of.gamme_id and of.gamme.kit_source_id:
+        lignes = exploser_kit_par_id(
+            of.company_id, of.gamme.kit_source_id, of.quantite) or []
+        for ligne in lignes:
+            produit = get_produit_scoped(of.company_id, ligne['produit_id'])
+            if produit is None:
+                continue
+            prix = cout_achat_courant(produit) or Decimal('0')
+            cout_matiere += _dec(prix) * _dec(ligne['quantite'])
+
+    cout_mo = Decimal('0')
+    quantite_bonne = Decimal('0')
+    for op in of.operations.filter(statut='terminee').select_related('poste_charge'):
+        cout_mo += (_dec(op.temps_reel_min) / Decimal('60')) * _dec(op.poste_charge.cout_horaire)
+        quantite_bonne += _dec(op.quantite_bonne)
+    if quantite_bonne == 0:
+        quantite_bonne = _dec(of.quantite)
+    return cout_matiere, cout_mo, quantite_bonne
+
+
+def analyse_couts(company, *, produit_id=None, date_debut=None, date_fin=None):
+    """NTMFG11 — rapport d'écarts (Σ des OF TERMINÉS de la période) vs le
+    coût standard COURANT, décomposé matière/main-d'œuvre/rendement, groupé
+    par produit. `updated_at` sert de proxy de date de clôture (l'OF ne
+    porte pas de champ `date_terminee` dédié). STRICTEMENT INTERNE."""
+    from .models import OrdreFabrication
+
+    qs = (OrdreFabrication.objects
+          .filter(company=company, statut=OrdreFabrication.Statut.TERMINE)
+          .select_related('produit', 'gamme'))
+    if produit_id:
+        qs = qs.filter(produit_id=produit_id)
+    if date_debut:
+        qs = qs.filter(updated_at__date__gte=date_debut)
+    if date_fin:
+        qs = qs.filter(updated_at__date__lte=date_fin)
+
+    par_produit = {}
+    for of in qs:
+        standard = cout_standard_courant(company, of.produit_id)
+        if standard is None:
+            continue
+        cout_matiere_reel, cout_mo_reel, quantite_bonne = _cout_reel_of(of)
+        cout_matiere_std = standard.cout_matiere * _dec(of.quantite)
+        cout_mo_std = standard.cout_main_oeuvre * _dec(of.quantite)
+        ecart_rendement = (
+            (quantite_bonne - _dec(of.quantite)) * standard.cout_unitaire_total)
+
+        entry = par_produit.setdefault(of.produit_id, {
+            'produit_id': of.produit_id,
+            'produit_nom': of.produit.nom,
+            'nb_of': 0,
+            'cout_matiere_standard': Decimal('0'),
+            'cout_matiere_reel': Decimal('0'),
+            'cout_main_oeuvre_standard': Decimal('0'),
+            'cout_main_oeuvre_reel': Decimal('0'),
+            'ecart_rendement': Decimal('0'),
+        })
+        entry['nb_of'] += 1
+        entry['cout_matiere_standard'] += cout_matiere_std
+        entry['cout_matiere_reel'] += cout_matiere_reel
+        entry['cout_main_oeuvre_standard'] += cout_mo_std
+        entry['cout_main_oeuvre_reel'] += cout_mo_reel
+        entry['ecart_rendement'] += ecart_rendement
+
+    resultats = []
+    for entry in par_produit.values():
+        ecart_matiere = entry['cout_matiere_reel'] - entry['cout_matiere_standard']
+        ecart_mo = entry['cout_main_oeuvre_reel'] - entry['cout_main_oeuvre_standard']
+        resultats.append({
+            'produit_id': entry['produit_id'],
+            'produit_nom': entry['produit_nom'],
+            'nb_of': entry['nb_of'],
+            'cout_matiere_standard': str(entry['cout_matiere_standard']),
+            'cout_matiere_reel': str(entry['cout_matiere_reel']),
+            'ecart_matiere': str(ecart_matiere),
+            'cout_main_oeuvre_standard': str(entry['cout_main_oeuvre_standard']),
+            'cout_main_oeuvre_reel': str(entry['cout_main_oeuvre_reel']),
+            'ecart_main_oeuvre': str(ecart_mo),
+            'ecart_rendement': str(entry['ecart_rendement']),
+            'ecart_total': str(ecart_matiere + ecart_mo + entry['ecart_rendement']),
+        })
+    resultats.sort(key=lambda r: r['produit_nom'].lower())
+    return resultats

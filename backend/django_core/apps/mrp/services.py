@@ -524,3 +524,55 @@ def cout_operation_sous_traitee(operation):
         prix = cout_achat_courant(reservation.produit) or Decimal('0')
         cout_composants += _dec(prix) * _dec(reservation.quantite)
     return cout_composants + _dec(operation.cout_faconnage)
+
+
+# ── NTMFG11 — Coût de revient standard vs réel (référence entreprise) ────
+
+def calculer_cout_matiere_standard(gamme):
+    """NTMFG11 — coût matière standard POUR 1 UNITÉ : Σ(quantité composant
+    pour 1 unité × `stock.services.cout_achat_courant`). 0 si la gamme n'a
+    pas de `kit_source` (pas de nomenclature connue)."""
+    if not gamme.kit_source_id:
+        return Decimal('0')
+    from apps.stock.selectors import get_produit_scoped
+    from apps.stock.services import cout_achat_courant, exploser_kit_par_id
+
+    lignes = exploser_kit_par_id(gamme.company_id, gamme.kit_source_id, 1) or []
+    total = Decimal('0')
+    for ligne in lignes:
+        produit = get_produit_scoped(gamme.company_id, ligne['produit_id'])
+        if produit is None:
+            continue
+        prix = cout_achat_courant(produit) or Decimal('0')
+        total += _dec(prix) * _dec(ligne['quantite'])
+    return total
+
+
+def calculer_cout_main_oeuvre_standard(gamme):
+    """NTMFG11 — coût main-d'œuvre standard POUR 1 UNITÉ : Σ(temps standard
+    de chaque opération pour 1 unité ÷ 60 × coût horaire de son poste)."""
+    total = Decimal('0')
+    for operation in gamme.operations.select_related('poste_charge').all():
+        temps_h = temps_operation_min(operation, 1) / Decimal('60')
+        total += temps_h * _dec(operation.poste_charge.cout_horaire)
+    return total
+
+
+def figer_cout_standard(company, produit, gamme, *, cout_indirect_pct=0,
+                        date_effective=None, user=None):
+    """NTMFG11 — calcule et FIGE une nouvelle version de coût standard pour
+    `produit` (roll-up nomenclature + gamme). Ne modifie JAMAIS une version
+    existante — la version suivante est `max(version existante) + 1`."""
+    from .models import CoutStandard
+
+    date_effective = date_effective or timezone.localdate()
+    derniere = (
+        CoutStandard.objects.filter(company=company, produit=produit)
+        .order_by('-version').first())
+    version = (derniere.version + 1) if derniere else 1
+    return CoutStandard.objects.create(
+        company=company, produit=produit, version=version,
+        cout_matiere=calculer_cout_matiere_standard(gamme),
+        cout_main_oeuvre=calculer_cout_main_oeuvre_standard(gamme),
+        cout_indirect_pct=_dec(cout_indirect_pct),
+        date_effective=date_effective)

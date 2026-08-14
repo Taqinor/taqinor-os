@@ -2,16 +2,19 @@
 from datetime import datetime, timedelta
 
 from rest_framework import mixins, viewsets
-from rest_framework.decorators import action, api_view
+from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 
+from authentication.permissions import IsResponsableOrAdmin
 from core.viewsets import CompanyScopedModelViewSet
 
-from .models import Gamme, OperationGamme, OperationOF, OrdreFabrication, PosteDeCharge
+from .models import (
+    CoutStandard, Gamme, OperationGamme, OperationOF, OrdreFabrication, PosteDeCharge,
+)
 from .serializers import (
-    GammeSerializer, OperationGammeSerializer, OperationOFSerializer,
-    OrdreFabricationSerializer, PosteDeChargeSerializer,
+    CoutStandardSerializer, GammeSerializer, OperationGammeSerializer,
+    OperationOFSerializer, OrdreFabricationSerializer, PosteDeChargeSerializer,
 )
 
 
@@ -278,4 +281,66 @@ def mrp_run_view(request):
         demande_independante=body.get('demande_independante'),
         stock_securite_pct=body.get('stock_securite_pct') or 0,
         horizon_jours=body.get('horizon_jours'))
+    return Response(resultats)
+
+
+class CoutStandardViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin,
+                          viewsets.GenericViewSet):
+    """NTMFG11 — coûts de revient standard (versionnés, FIGÉS — jamais créés
+    à la main : seule l'action `figer/` calcule et enregistre une nouvelle
+    version, aucun `create`/`update`/`delete` générique). Admin/responsable
+    UNIQUEMENT — jamais `prix_achat`/coût client-facing (DC28)."""
+    queryset = CoutStandard.objects.select_related('produit').all()
+    serializer_class = CoutStandardSerializer
+    filterset_fields = ['produit']
+
+    def get_permissions(self):
+        return [IsResponsableOrAdmin()]
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        user = self.request.user
+        if user.company_id:
+            return qs.filter(company=user.company)
+        return qs.none() if not user.is_superuser else qs
+
+    @action(detail=False, methods=['post'], url_path='figer')
+    def figer(self, request):
+        """NTMFG11 — calcule et fige une nouvelle version de coût standard
+        pour `produit` (roll-up nomenclature + gamme). Corps :
+        ``{"produit": id, "gamme": id, "cout_indirect_pct": "5",
+        "date_effective": "AAAA-MM-JJ"}``."""
+        from .services import figer_cout_standard
+
+        produit_id = request.data.get('produit')
+        gamme_id = request.data.get('gamme')
+        gamme = Gamme.objects.filter(
+            id=gamme_id, company=request.user.company).first()
+        if gamme is None:
+            return Response({'detail': 'Gamme inconnue pour cette société.'}, status=400)
+        if str(gamme.produit_id) != str(produit_id):
+            return Response(
+                {'detail': 'La gamme ne correspond pas au produit.'}, status=400)
+        standard = figer_cout_standard(
+            request.user.company, gamme.produit, gamme,
+            cout_indirect_pct=request.data.get('cout_indirect_pct') or 0,
+            date_effective=request.data.get('date_effective') or None,
+            user=request.user)
+        return Response(
+            self.get_serializer(standard).data, status=201)
+
+
+@api_view(['GET'])
+@permission_classes([IsResponsableOrAdmin])
+def analyse_couts_view(request):
+    """NTMFG11 — ``GET /api/django/mrp/analyse-couts/?produit=&date_debut=
+    &date_fin=`` : rapport d'écarts matière/main-d'œuvre/rendement vs coût
+    standard courant, groupé par produit. Admin/responsable UNIQUEMENT."""
+    from .selectors import analyse_couts
+
+    resultats = analyse_couts(
+        request.user.company,
+        produit_id=request.query_params.get('produit'),
+        date_debut=request.query_params.get('date_debut'),
+        date_fin=request.query_params.get('date_fin'))
     return Response(resultats)

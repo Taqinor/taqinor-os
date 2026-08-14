@@ -2,7 +2,7 @@
    Fichier de configuration de module (données + composants lazy), collecté par
    `router/moduleRoutes.jsx` via glob — pas un module de composants. */
 import { lazy } from 'react'
-import { Factory, Gauge, Wrench } from 'lucide-react'
+import { Calculator, Factory, Gauge, Wrench } from 'lucide-react'
 import { appGlyph } from '../../lib/apps/appGlyph'
 
 /* ============================================================================
@@ -19,11 +19,14 @@ import { appGlyph } from '../../lib/apps/appGlyph'
 const OrdresFabricationPage = lazy(() => import('../../pages/mrp/OrdresFabricationPage'))
 const GanttAtelier = lazy(() => import('../../pages/mrp/GanttAtelier'))
 const TerminalAtelier = lazy(() => import('../../pages/mrp/TerminalAtelier'))
+// NTMFG11 — rapport interne coût standard vs réel (admin/responsable).
+const AnalyseCoutsPage = lazy(() => import('../../pages/mrp/AnalyseCoutsPage'))
 
 // 'normal' couvre le rôle Technicien de base (pas de rôle fin dédié dans le
 // vocabulaire existant, cf. `installations/module.config.jsx`) — le terminal
 // atelier (NTMFG8) doit rester accessible sans palier responsable/admin.
 const ROLES = ['normal', 'responsable', 'admin']
+const ROLES_ADMIN = ['responsable', 'admin']
 
 const config = {
   key: 'mrp',
@@ -36,18 +39,22 @@ const config = {
       { to: '/mrp/ordres-fabrication', label: 'Ordres de fabrication', icon: <Factory size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
       { to: '/mrp/gantt', label: 'Gantt atelier', icon: <Gauge size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
       { to: '/mrp/terminal', label: 'Terminal atelier', icon: <Wrench size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
+      // NTMFG11 — coût interne, jamais visible du rôle limité.
+      { to: '/mrp/analyse-couts', label: 'Analyse des coûts', icon: <Calculator size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES_ADMIN },
     ],
   },
   titles: [
     ['/mrp/ordres-fabrication', 'Ordres de fabrication'],
     ['/mrp/gantt', 'Gantt atelier'],
     ['/mrp/terminal', 'Terminal atelier'],
+    ['/mrp/analyse-couts', 'Analyse des coûts'],
   ],
   sectionLabels: { mrp: 'Atelier MRP' },
   routes: [
     { path: '/mrp/ordres-fabrication', component: OrdresFabricationPage, roles: ROLES },
     { path: '/mrp/gantt', component: GanttAtelier, roles: ROLES },
     { path: '/mrp/terminal', component: TerminalAtelier, roles: ROLES },
+    { path: '/mrp/analyse-couts', component: AnalyseCoutsPage, roles: ROLES_ADMIN },
   ],
 }
 
