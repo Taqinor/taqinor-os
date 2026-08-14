@@ -19,11 +19,13 @@ class AppelCommercialSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'lead', 'client', 'fichier', 'fichier_key', 'mime',
             'duree_s', 'transcript', 'statut', 'message', 'transcrit_le',
+            'analyse_json', 'sentiment', 'analyse_le',
             'created_at', 'updated_at',
         ]
         read_only_fields = [
             'fichier_key', 'mime', 'transcript', 'statut', 'message',
-            'transcrit_le', 'created_at', 'updated_at',
+            'transcrit_le', 'analyse_json', 'sentiment', 'analyse_le',
+            'created_at', 'updated_at',
         ]
 
     def _company(self):

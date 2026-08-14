@@ -64,6 +64,15 @@ class AppelCommercial(TenantModel):
         blank=True, default='',
         help_text="Message d'erreur capturé (statut « erreur »).")
     transcrit_le = models.DateTimeField(null=True, blank=True)
+    # NTAI22 — analyse du transcript : {objections, next_steps, produits,
+    # sentiment}. Vide tant que personne n'a demandé l'analyse ; stockée pour
+    # que l'agrégation de coaching (NTAI23) n'ait jamais à rappeler le LLM.
+    analyse_json = models.JSONField(default=dict, blank=True)
+    sentiment = models.CharField(
+        max_length=10, blank=True, default='',
+        help_text='Sentiment global déduit du transcript (positif/neutre/'
+                  'negatif) — vide tant que l\'appel n\'est pas analysé.')
+    analyse_le = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         verbose_name = 'Appel commercial'
