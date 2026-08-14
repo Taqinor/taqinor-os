@@ -428,6 +428,25 @@ def satisfaction_moyenne(company, chantier_id=None):
     return round(float(moyenne), 2)
 
 
+# NTMIG27 — l'ÉCHELLE des notes qualité, exposée en lecture pour que les
+# consommateurs cross-app normalisent sans importer ``qhse.models`` ni
+# recopier « 5 » en dur (une échelle recopiée finit toujours par diverger).
+NOTE_SATISFACTION_MAX = RetourClientQualite.NOTE_MAX
+
+
+def satisfaction_normalisee(company, chantier_id=None):
+    """Satisfaction moyenne ramenée sur [0, 1], ou ``None`` si aucun retour.
+
+    Point d'entrée cross-app (NTMIG27 : scoring de certification partenaire) :
+    l'appelant obtient une proportion comparable, indépendante de l'échelle
+    interne QHSE.
+    """
+    moyenne = satisfaction_moyenne(company, chantier_id=chantier_id)
+    if moyenne is None or not NOTE_SATISFACTION_MAX:
+        return None
+    return max(0.0, min(1.0, moyenne / float(NOTE_SATISFACTION_MAX)))
+
+
 # ── LITIGE4 — Portail lecture NCR / Audit pour les litiges qualité ──────────
 #
 # Hooks de lecture seule consommés par ``apps.litiges`` (via import local) pour

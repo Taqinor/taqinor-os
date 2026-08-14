@@ -13,14 +13,17 @@ from rest_framework.exceptions import ValidationError
 from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.permissions import BasePermission
 from rest_framework.response import Response
+from rest_framework.views import APIView
 
 from authentication.models import CustomUser
 from core.viewsets import CompanyScopedModelViewSet
 
 from . import services
-from .models import LotMigration, ProjetMigration
+from .models import (
+    DeploiementPartenaire, LotMigration, PlaybookInstance, ProjetMigration)
 from .serializers import (
-    LotMigrationSerializer, ProjetMigrationSerializer,
+    DeploiementPartenaireSerializer, LotMigrationSerializer,
+    PlaybookInstanceSerializer, ProjetMigrationSerializer,
     RapportReconciliationSerializer)
 
 logger = logging.getLogger(__name__)
@@ -356,3 +359,184 @@ class LotMigrationViewSet(CompanyScopedModelViewSet):
                 {'detail': str(exc), 'ecarts': exc.ecarts},
                 status=status.HTTP_400_BAD_REQUEST)
         return Response(LotMigrationSerializer(lot).data)
+
+
+class PlaybookInstanceViewSet(CompanyScopedModelViewSet):
+    """NTMIG22 — checklist de déploiement instanciée depuis un playbook kb.
+
+    La création passe par l'action ``instancier`` (elle a besoin du playbook
+    source pour figer l'instantané d'étapes) ; un POST direct sur la liste est
+    refusé plutôt que de créer une checklist vide qu'aucune étape ne
+    remplirait jamais.
+    """
+
+    queryset = PlaybookInstance.objects.select_related(
+        'projet_migration', 'responsable').all()
+    serializer_class = PlaybookInstanceSerializer
+    permission_classes = [IsDirecteurOuAdmin]
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        projet = self.request.query_params.get('projet')
+        if projet:
+            qs = qs.filter(projet_migration_id=projet)
+        article = self.request.query_params.get('playbook')
+        if article:
+            qs = qs.filter(playbook_article_id=article)
+        return qs
+
+    def create(self, request, *args, **kwargs):
+        raise ValidationError({'detail': (
+            'Utilisez POST playbook-instances/instancier/ avec le playbook '
+            'à instancier : une instance sans étapes ne serait pas cochable.')})
+
+    @action(detail=False, methods=['post'], url_path='instancier', permission_classes=[IsDirecteurOuAdmin])
+    def instancier(self, request):
+        """Instancie un playbook kb pour un déploiement.
+
+        Le playbook est résolu par ``kb.selectors`` (scopé société + type
+        ``playbook``) : un article d'une autre société, ou un article
+        ordinaire, est introuvable — jamais instanciable.
+        """
+        from apps.kb import selectors as kb_selectors
+
+        article = kb_selectors.playbook_par_id(
+            request.data.get('playbook_article'), request.user.company)
+        if article is None:
+            raise ValidationError({'playbook_article': (
+                'Playbook introuvable pour cette société.')})
+
+        projet = None
+        projet_id = request.data.get('projet_migration')
+        if projet_id:
+            projet = ProjetMigration.objects.filter(
+                pk=projet_id, company=request.user.company).first()
+            if projet is None:
+                raise ValidationError(
+                    {'projet_migration': 'Projet introuvable.'})
+
+        responsable = None
+        responsable_id = request.data.get('responsable')
+        if responsable_id:
+            responsable = CustomUser.objects.filter(
+                pk=responsable_id, company=request.user.company).first()
+            if responsable is None:
+                raise ValidationError(
+                    {'responsable': 'Responsable introuvable.'})
+
+        try:
+            instance = services.instancier_playbook(
+                article,
+                company=request.user.company,
+                projet_migration=projet,
+                responsable=responsable,
+                client_final=request.data.get('client_final') or '')
+        except ValueError as exc:
+            raise ValidationError({'detail': str(exc)})
+        return Response(
+            PlaybookInstanceSerializer(instance).data,
+            status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['post'], url_path='cocher', permission_classes=[IsDirecteurOuAdmin])
+    def cocher(self, request, pk=None):
+        """Coche (``fait`` absent ou vrai) ou décoche une étape."""
+        instance = self.get_object()
+        fait = request.data.get('fait', True)
+        if isinstance(fait, str):
+            fait = fait.lower() not in ('false', '0', 'non', '')
+        try:
+            services.cocher_etape(
+                instance, request.data.get('cle'), fait=bool(fait))
+        except services.EtapeInconnue as exc:
+            raise ValidationError({'cle': str(exc)})
+        return Response(PlaybookInstanceSerializer(instance).data)
+
+    @action(detail=True, methods=['post'], url_path='terminer', permission_classes=[IsDirecteurOuAdmin])
+    def terminer(self, request, pk=None):
+        """Clôture l'instance — 400 + étapes restantes si incomplète."""
+        instance = self.get_object()
+        try:
+            services.terminer_playbook(instance)
+        except services.ReconcileBloque as exc:
+            return Response(
+                {'detail': str(exc), 'etapes_restantes': exc.ecarts},
+                status=status.HTTP_400_BAD_REQUEST)
+        return Response(PlaybookInstanceSerializer(instance).data)
+
+
+class DeploiementPartenaireViewSet(CompanyScopedModelViewSet):
+    """NTMIG28 — qui a déployé quoi, chez quel client final.
+
+    Chaque écriture RÉALIGNE le compteur miroir de la fiche partenaire (via
+    ``crm.services``) : le compteur est recompté, jamais incrémenté — un
+    déploiement repassé en ``abandonne`` ou supprimé doit le faire BAISSER.
+    """
+
+    queryset = DeploiementPartenaire.objects.select_related(
+        'partenaire', 'projet_migration').all()
+    serializer_class = DeploiementPartenaireSerializer
+    permission_classes = [IsDirecteurOuAdmin]
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        partenaire = self.request.query_params.get('partenaire')
+        if partenaire:
+            qs = qs.filter(partenaire_id=partenaire)
+        statut = self.request.query_params.get('statut')
+        if statut:
+            qs = qs.filter(statut=statut)
+        return qs
+
+    def perform_create(self, serializer):
+        deploiement = serializer.save(company=self.request.user.company)
+        services.resynchroniser_compteur_partenaire(deploiement)
+
+    def perform_update(self, serializer):
+        avant = serializer.instance.partenaire_id
+        deploiement = serializer.save()
+        services.resynchroniser_compteur_partenaire(deploiement)
+        # Un déploiement RÉATTRIBUÉ doit aussi décompter l'ancien partenaire,
+        # sinon son historique reste crédité d'un déploiement qui ne lui
+        # appartient plus.
+        if avant and avant != deploiement.partenaire_id:
+            from apps.crm import services as crm_services
+            crm_services.poser_compteur_deploiements(
+                avant, deploiement.company,
+                services.compter_deploiements_reussis(
+                    avant, deploiement.company))
+
+    def perform_destroy(self, instance):
+        partenaire_id, company = instance.partenaire_id, instance.company
+        super().perform_destroy(instance)
+        if partenaire_id:
+            from apps.crm import services as crm_services
+            crm_services.poser_compteur_deploiements(
+                partenaire_id, company,
+                services.compter_deploiements_reussis(partenaire_id, company))
+
+
+class ScoreCertificationView(APIView):
+    """NTMIG27 — score de certification PROPOSÉ pour un partenaire.
+
+    LECTURE SEULE, et volontairement : le niveau reste attribué manuellement
+    sur la fiche partenaire (PATCH ``partenaires/<id>/``). Cet endpoint dit ce
+    que le barème suggère, il ne promeut personne.
+
+    Le partenaire est résolu via ``crm.selectors`` (scopé société) : celui
+    d'une autre société est introuvable — 404, jamais son score.
+    """
+
+    permission_classes = [IsDirecteurOuAdmin]
+
+    def get(self, request, partenaire_id):
+        from apps.crm import selectors as crm_selectors
+
+        from .certification import calculer_score_certification
+
+        partenaire = crm_selectors.partenaire_pour_certification(
+            request.user.company, partenaire_id)
+        if partenaire is None:
+            return Response(
+                {'detail': 'Partenaire introuvable.'},
+                status=status.HTTP_404_NOT_FOUND)
+        return Response(calculer_score_certification(partenaire))

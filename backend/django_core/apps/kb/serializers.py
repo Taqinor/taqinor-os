@@ -3,6 +3,7 @@
 ``company`` n'est JAMAIS exposée en écriture : elle est posée côté serveur par
 le ``TenantMixin`` (``perform_create``). ``auteur`` est posé côté serveur.
 """
+from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
 from .models import (
@@ -33,11 +34,16 @@ class KbArticleSerializer(serializers.ModelSerializer):
 
     has_couverture = serializers.SerializerMethodField()
     proprietes_effectives = serializers.SerializerMethodField()
+    # NTMIG21 — structure NORMALISÉE (phases → étapes), lecture seule : les
+    # consommateurs (écran playbook, instances NTMIG22) lisent CE champ, jamais
+    # le JSON brut, pour qu'une structure partielle s'affiche pareil partout.
+    phases = serializers.SerializerMethodField()
 
     class Meta:
         model = KbArticle
         fields = [
             'id', 'titre', 'corps', 'corps_format', 'categorie', 'tags',
+            'type_article', 'contenu_structure', 'phases',
             'statut', 'statut_display', 'auteur', 'auteur_nom', 'parent',
             'ordre', 'visibilite', 'est_gabarit', 'verifie_par',
             'verifie_par_nom', 'verifie_jusqua', 'est_verrouille', 'vues',
@@ -49,7 +55,7 @@ class KbArticleSerializer(serializers.ModelSerializer):
         read_only_fields = [
             'auteur', 'verifie_par', 'verifie_jusqua', 'est_verrouille',
             'vues', 'consultations_portail_ticket', 'traduction_perimee',
-            'has_couverture',
+            'has_couverture', 'phases',
             'proprietes_effectives', 'date_creation', 'date_modification']
 
     def get_has_couverture(self, obj):
@@ -57,6 +63,71 @@ class KbArticleSerializer(serializers.ModelSerializer):
         n'est jamais exposée telle quelle (même motif que ``authentication``
         avatars) ; l'image se récupère via l'action ``couverture``."""
         return bool(obj.couverture_file_key)
+
+    @extend_schema_field(serializers.ListField(child=serializers.DictField()))
+    def get_phases(self, obj):
+        """NTMIG21 — phases/étapes normalisées (vide pour un article normal)."""
+        from . import selectors
+        return selectors.phases_playbook(obj)
+
+    def validate_contenu_structure(self, value):
+        """NTMIG21 — forme canonique d'un playbook.
+
+        Refuse ici ce qui rendrait la progression INCALCULABLE plus tard
+        (NTMIG22) : une structure qui n'est pas une liste de phases, une phase
+        sans étape exploitable, ou DEUX étapes portant la même clé — ce dernier
+        cas ferait compter une seule case pour deux, et 8 étapes affichées n'en
+        vaudraient que 7 au dénominateur.
+        """
+        if value in (None, '', [], {}):
+            return []
+        if not isinstance(value, list):
+            raise serializers.ValidationError(
+                'La structure doit être une liste de phases.')
+        cles = set()
+        for idx, phase in enumerate(value, start=1):
+            if not isinstance(phase, dict):
+                raise serializers.ValidationError(
+                    f'Phase {idx} : chaque phase doit être un objet '
+                    '{titre, etapes}.')
+            etapes = phase.get('etapes')
+            if etapes is not None and not isinstance(etapes, list):
+                raise serializers.ValidationError(
+                    f'Phase {idx} : « etapes » doit être une liste.')
+            for jdx, etape in enumerate(etapes or [], start=1):
+                if not isinstance(etape, (dict, str)):
+                    raise serializers.ValidationError(
+                        f'Phase {idx}, étape {jdx} : objet '
+                        '{cle, libelle} ou texte attendu.')
+                if isinstance(etape, dict) and etape.get('cle'):
+                    cle = str(etape['cle'])
+                    if cle in cles:
+                        raise serializers.ValidationError(
+                            f'Clé d’étape en double : « {cle} ». Chaque étape '
+                            'doit porter une clé unique dans le playbook.')
+                    cles.add(cle)
+        return value
+
+    def validate(self, attrs):
+        """NTMIG21 — une structure de phases n'a de sens que sur un playbook.
+
+        Sans ce garde-fou, une structure posée sur un article ordinaire serait
+        invisible partout (aucun écran ne la lit) et réapparaîtrait le jour où
+        l'article deviendrait un playbook : un contenu fantôme.
+        """
+        attrs = super().validate(attrs)
+        instance = getattr(self, 'instance', None)
+        type_article = attrs.get(
+            'type_article',
+            getattr(instance, 'type_article', KbArticle.TypeArticle.ARTICLE))
+        structure = attrs.get(
+            'contenu_structure',
+            getattr(instance, 'contenu_structure', None))
+        if structure and type_article != KbArticle.TypeArticle.PLAYBOOK:
+            raise serializers.ValidationError({'contenu_structure': (
+                "Une structure de phases n'est acceptée que sur un article de "
+                "type « playbook ».")})
+        return attrs
 
     def get_proprietes_effectives(self, obj):
         """ZGED11 — Propriétés RÉSOLUES (celles de l'article + héritées de
@@ -136,8 +207,8 @@ class KbArticleVersionSerializer(serializers.ModelSerializer):
     class Meta:
         model = KbArticleVersion
         fields = [
-            'id', 'article', 'version', 'titre', 'contenu', 'auteur',
-            'auteur_nom', 'date_creation',
+            'id', 'article', 'version', 'titre', 'contenu',
+            'contenu_structure', 'auteur', 'auteur_nom', 'date_creation',
         ]
         read_only_fields = fields
 

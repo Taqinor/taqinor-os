@@ -2391,3 +2391,57 @@ def pipeline_pondere_par_entite(company, entite_ids):
         entry['pipeline'] += _lead_forecast_value(lead) * _lead_win_weight(lead)
         entry['nb_leads'] += 1
     return out
+
+
+# ── NTMIG26/27 — Fiches partenaires vues par la couche certification ────────
+#
+# Point d'entrée cross-app UNIQUE de ``apps.migration`` (jamais un import de
+# ``apps.crm.models`` depuis migration). LECTURE SEULE : l'écriture de la fiche
+# passe exclusivement par ``crm.services`` (cf. `poser_compteur_deploiements`).
+
+
+def partenaire_pour_certification(company, partenaire_id):
+    """Fiche partenaire d'une société, ou ``None`` — jamais cross-tenant."""
+    if company is None or not partenaire_id:
+        return None
+
+    from .models import Partenaire
+
+    return (Partenaire.objects
+            .filter(company=company, pk=partenaire_id).first())
+
+
+def partenaires_certifies_qs(company, *, niveau_min=None, specialite=None,
+                             zone=None):
+    """Queryset LECTURE SEULE des partenaires filtrés par la couche
+    certification (annuaire interne NTMIG29).
+
+    ``niveau_min`` — comme le tri — est évalué sur le RANG de l'échelle
+    (``Partenaire.NIVEAUX_ORDONNES``), jamais alphabétiquement : en tri de
+    chaînes « or » passerait AVANT « platine » et même avant « certifie ».
+    """
+    from django.db.models import Case, IntegerField, Value, When
+
+    from .models import Partenaire
+
+    if company is None:
+        return Partenaire.objects.none()
+    niveaux = list(Partenaire.NIVEAUX_ORDONNES)
+    qs = Partenaire.objects.filter(company=company).annotate(
+        rang_niveau=Case(
+            *[When(niveau_certification=niveau, then=Value(rang))
+              for rang, niveau in enumerate(niveaux)],
+            default=Value(0), output_field=IntegerField()))
+    if niveau_min:
+        try:
+            rang = niveaux.index(niveau_min)
+        except ValueError:
+            rang = 0
+        qs = qs.filter(niveau_certification__in=niveaux[rang:])
+    if specialite:
+        # ``specialites`` est une liste JSON : le filtre porte sur
+        # l'APPARTENANCE, jamais sur une égalité de chaîne.
+        qs = qs.filter(specialites__contains=[specialite])
+    if zone:
+        qs = qs.filter(zone__iexact=zone)
+    return qs.order_by('-rang_niveau', 'nom')

@@ -42,6 +42,18 @@ class KbArticle(models.Model):
         TEXTE = 'texte', 'Texte brut'
         MARKDOWN = 'markdown', 'Markdown'
 
+    class TypeArticle(models.TextChoices):
+        """NTMIG21 — nature de l'article. RÉTRO-COMPATIBLE : ``article``
+        (défaut) = l'article de connaissance historique, comportement
+        strictement inchangé. ``playbook`` = article d'implémentation dont le
+        contenu est STRUCTURÉ en phases → étapes cochables
+        (``contenu_structure``), consommé par les instances de déploiement
+        (``migration.PlaybookInstance``, NTMIG22). Un playbook reste un
+        article kb ORDINAIRE pour tout le reste : mêmes ACL, même recherche,
+        même moteur de version (``KbArticleVersion``) — jamais un 2ᵉ moteur."""
+        ARTICLE = 'article', 'Article'
+        PLAYBOOK = 'playbook', "Playbook d'implémentation"
+
     company = models.ForeignKey(
         'authentication.Company',
         on_delete=models.CASCADE,
@@ -66,6 +78,20 @@ class KbArticle(models.Model):
     corps_format = models.CharField(
         max_length=10, choices=CorpsFormat.choices,
         default=CorpsFormat.TEXTE, verbose_name='Format du contenu')
+    # NTMIG21 — nature de l'article. Défaut ``article`` = comportement
+    # historique inchangé (aucun article existant n'est affecté).
+    type_article = models.CharField(
+        max_length=10, choices=TypeArticle.choices,
+        default=TypeArticle.ARTICLE, verbose_name="Type d'article")
+    # NTMIG21 — structure d'un playbook : liste de PHASES, chacune portant ses
+    # ÉTAPES cochables. Forme canonique (validée côté serializer, jamais en
+    # base — la base reste un JSON libre pour ne casser aucune ligne existante)
+    #     [{"cle": "prerequis", "titre": "Prérequis",
+    #       "etapes": [{"cle": "acces", "libelle": "Créer les accès"}, …]}, …]
+    # VIDE = article normal : un article ordinaire garde une structure vide et
+    # se comporte exactement comme avant (rétro-compatibilité NTMIG21).
+    contenu_structure = models.JSONField(
+        default=list, blank=True, verbose_name='Structure (phases → étapes)')
     # XKB12 — gabarit réutilisable (« enregistrer comme gabarit ») : apparaît
     # dans la galerie « nouveau depuis gabarit ». Couvre AUSSI les 5 gabarits
     # SOP/ONEE/82-21 seedés (KB5, ``seed_kb_templates`` — additif, aucune
@@ -226,6 +252,12 @@ class KbArticleVersion(models.Model):
         default=1, verbose_name='Numéro de version')
     titre = models.CharField(max_length=255, verbose_name='Titre')
     contenu = models.TextField(blank=True, default='', verbose_name='Contenu')
+    # NTMIG21 — un playbook est versionné par CE MÊME moteur (jamais un 2ᵉ) :
+    # l'instantané fige aussi ses phases/étapes, sinon restaurer une version
+    # d'un playbook rendrait un article sans sa structure. Vide pour tous les
+    # articles ordinaires (et pour toutes les versions déjà enregistrées).
+    contenu_structure = models.JSONField(
+        default=list, blank=True, verbose_name='Structure (phases → étapes)')
     auteur = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,
