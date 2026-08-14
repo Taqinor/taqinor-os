@@ -7,10 +7,10 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  OFFLINE_MODULES, Outbox, discardModuleOp, flushModuleOutboxes,
-  getModuleOutbox, onOfflineOutboxChange, pendingCountByTarget,
-  pendingModuleOps, purgeModuleOutboxes, queueIfOffline, queueOperation,
-  setModuleSender,
+  OFFLINE_MODULES, Outbox, countByPayloadKey, discardModuleOp,
+  flushModuleOutboxes, getModuleOutbox, notifyOfflineOutboxChange,
+  onOfflineOutboxChange, pendingCountByTarget, pendingModuleOps,
+  purgeModuleOutboxes, queueIfOffline, queueOperation, setModuleSender,
 } from './offlineOutbox.js'
 // L'ancien chemin terrain doit rester utilisable — il RÉEXPORTE ce moteur.
 import { Outbox as OutboxTerrain } from '../features/installations/offline/outbox.js'
@@ -166,8 +166,27 @@ test('les abonnés (badge d’en-tête, badges de liste) sont notifiés', async 
   const desabonner = onOfflineOutboxChange(() => { appels += 1 })
   await queueOperation('crm', 'crm.lead.noter', { lead: 7, body: 'x' }, { target: 7 })
   assert.equal(appels, 1)
+  // La file TERRAIN (autre module de code) signale son changement par ce même
+  // canal : un seul badge, une seule notification.
+  notifyOfflineOutboxChange()
+  assert.equal(appels, 2)
   desabonner()
   await queueOperation('crm', 'crm.lead.noter', { lead: 7, body: 'y' }, { target: 7 })
-  assert.equal(appels, 1, 'le désabonnement coupe bien la notification')
+  assert.equal(appels, 2, 'le désabonnement coupe bien la notification')
   await reset()
+})
+
+test('NTMOB24 — comptage par clé de corps (file terrain : payload.chantier)', () => {
+  const compte = countByPayloadKey([
+    { payload: { chantier: 9 } },
+    { payload: { chantier: 9 } },
+    { payload: { chantier: 12 } },
+    { payload: { intervention: 3 } },   // autre clé : ignorée
+    { payload: {} },
+    {},                                  // op sans corps : jamais un plantage
+  ], 'chantier')
+  assert.equal(compte.get('9'), 2)
+  assert.equal(compte.get('12'), 1)
+  assert.equal(compte.size, 2)
+  assert.equal(countByPayloadKey(undefined, 'chantier').size, 0)
 })

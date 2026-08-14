@@ -6,6 +6,7 @@
 
 import installationsApi from '../../../api/installationsApi'
 import { Outbox, BinaryOutbox, OutboxQuotaError } from './outbox'
+import { notifyOfflineOutboxChange, purgeModuleOutboxes } from '../../../lib/offlineOutbox'
 import { createFieldOutboxStore, createBinaryOutboxStore } from './idbStore'
 
 // Types d'opérations — DOIVENT correspondre aux clés de FIELD_OP_HANDLERS du
@@ -83,6 +84,7 @@ export async function queuePhoto(blob, { intervention, slot }) {
     { intervention, slot },
     { bytes, name: blob.name || 'photo.jpg', type: blob.type || 'image/jpeg' },
   )
+  notifyOfflineOutboxChange()
   requestBackgroundSync()
   return id
 }
@@ -97,6 +99,8 @@ export const LOGOUT_EVENT = 'taqinor:auth-logout'
 export function purgeOutboxes() {
   fieldOutbox.clear().catch(() => undefined)
   binaryOutbox.clear().catch(() => undefined)
+  // NTMOB1 — les files des autres modules partent avec (même terminal partagé).
+  purgeModuleOutboxes().catch(() => undefined)
 }
 if (typeof window !== 'undefined') {
   window.addEventListener(LOGOUT_EVENT, purgeOutboxes)
@@ -114,6 +118,9 @@ export async function withOfflineFallback(onlineCall, opType, payload) {
     const isNetwork = !err?.response // axios : pas de réponse = réseau/timeout
     if (!isNetwork) throw err
     const clientOpId = await fieldOutbox.enqueue(opType, payload)
+    // NTMOB24 — le badge d'en-tête ET les badges de liste se rafraîchissent
+    // aussitôt (l'utilisateur voit sa modification « en attente » sur la ligne).
+    notifyOfflineOutboxChange()
     requestBackgroundSync()
     return { queued: true, clientOpId }
   }

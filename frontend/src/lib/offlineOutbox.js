@@ -437,6 +437,15 @@ export function onOfflineOutboxChange(cb) {
 }
 
 /**
+ * Signale un changement de file venu d'AILLEURS que ce module (la file terrain
+ * historique, par exemple) : les badges — celui de l'en-tête comme ceux des
+ * listes — se rafraîchissent alors immédiatement, sans sondage.
+ */
+export function notifyOfflineOutboxChange() {
+  _notifier()
+}
+
+/**
  * Met une opération d'un module en file. `target` (facultatif) est l'id de
  * l'enregistrement visé : c'est lui qui alimente le badge par ligne (NTMOB24).
  */
@@ -532,6 +541,22 @@ export async function pendingCountByTarget(module) {
     if (op.target === undefined || op.target === null) continue
     const cle = String(op.target)
     compte.set(cle, (compte.get(cle) || 0) + 1)
+  }
+  return compte
+}
+
+/**
+ * NTMOB24 — même comptage, mais pour une file dont la cible vit DANS le corps
+ * de l'op (c'est le cas de la file terrain historique : `payload.chantier`,
+ * `payload.intervention`). Fonction PURE : on lui passe les ops déjà chargées.
+ */
+export function countByPayloadKey(ops, cle) {
+  const compte = new Map()
+  for (const op of ops || []) {
+    const valeur = op?.payload?.[cle]
+    if (valeur === undefined || valeur === null || valeur === '') continue
+    const k = String(valeur)
+    compte.set(k, (compte.get(k) || 0) + 1)
   }
   return compte
 }
