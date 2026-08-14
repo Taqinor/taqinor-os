@@ -13,8 +13,13 @@ from authentication.permissions import (
     IsAnyRole, IsAdminRole, IsResponsableOrAdmin,
 )
 
-from ..models_wms import UniteLogistique, VaguePicking
-from ..serializers_wms import UniteLogistiqueSerializer, VaguePickingSerializer
+from ..models_wms import (
+    Quai, RendezVousTransporteur, UniteLogistique, VaguePicking,
+)
+from ..serializers_wms import (
+    QuaiSerializer, RendezVousTransporteurSerializer,
+    UniteLogistiqueSerializer, VaguePickingSerializer,
+)
 
 READ_ACTIONS = ['list', 'retrieve']
 WRITE_ACTIONS = ['create', 'update', 'partial_update']
@@ -223,3 +228,92 @@ class UniteLogistiqueViewSet(CompanyScopedModelViewSet):
         response['Content-Disposition'] = (
             f'inline; filename="sscc-{unite.sscc}.pdf"')
         return response
+
+
+class QuaiViewSet(CompanyScopedModelViewSet):
+    """NTWMS7 — quais de réception/expédition. Lecture tout rôle, écriture
+    admin (c'est un paramétrage d'entrepôt)."""
+    queryset = Quai.objects.select_related('emplacement').all()
+    serializer_class = QuaiSerializer
+    ordering = ['nom']
+
+    def get_permissions(self):
+        if self.action in READ_ACTIONS + ['planning']:
+            return [IsAnyRole()]
+        return [IsAdminRole()]
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        params = self.request.query_params
+        type_quai = params.get('type_quai')
+        if type_quai:
+            qs = qs.filter(type_quai=type_quai)
+        actif = params.get('actif')
+        if actif in ('true', 'false'):
+            qs = qs.filter(actif=(actif == 'true'))
+        return qs
+
+    @action(detail=False, methods=['get'], url_path='planning')
+    def planning(self, request):
+        """Planning JOUR (``?date=YYYY-MM-DD``) ou SEMAINE (``?date=`` +
+        ``?vue=semaine``) de TOUS les quais, ou d'un seul (``?quai=<id>``).
+        LECTURE SEULE."""
+        from ..selectors import planning_quais
+        try:
+            donnees = planning_quais(
+                request.user.company, date_str=request.query_params.get('date'),
+                vue=request.query_params.get('vue') or 'jour',
+                quai_id=request.query_params.get('quai'))
+        except ValueError as exc:
+            return Response({'detail': str(exc)},
+                            status=status.HTTP_400_BAD_REQUEST)
+        return Response(donnees)
+
+
+class RendezVousTransporteurViewSet(CompanyScopedModelViewSet):
+    """NTWMS7 — créneaux transporteur sur un quai.
+
+    Le CHEVAUCHEMENT est refusé côté serveur (garde dans
+    ``RendezVousTransporteur.save()``) : deux rendez-vous ne peuvent jamais
+    occuper le même quai au même moment.
+    """
+    queryset = RendezVousTransporteur.objects.select_related(
+        'quai', 'transporteur').all()
+    serializer_class = RendezVousTransporteurSerializer
+    ordering = ['date_heure_debut', 'id']
+
+    def get_permissions(self):
+        if self.action in READ_ACTIONS:
+            return [IsAnyRole()]
+        if self.action in WRITE_ACTIONS:
+            return [IsResponsableOrAdmin()]
+        return [IsAdminRole()]
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        params = self.request.query_params
+        quai = params.get('quai')
+        if quai and str(quai).isdigit():
+            qs = qs.filter(quai_id=int(quai))
+        date = params.get('date')
+        if date:
+            qs = qs.filter(date_heure_debut__date=date)
+        statut = params.get('statut')
+        if statut:
+            qs = qs.filter(statut=statut)
+        return qs
+
+    def _sauver(self, serializer):
+        """Traduit le refus de chevauchement (ValueError posée dans
+        ``save()``) en 400 lisible plutôt qu'en 500."""
+        try:
+            serializer.save(company=self.request.user.company)
+        except ValueError as exc:
+            from rest_framework.exceptions import ValidationError
+            raise ValidationError({'detail': str(exc)})
+
+    def perform_create(self, serializer):
+        self._sauver(serializer)
+
+    def perform_update(self, serializer):
+        self._sauver(serializer)

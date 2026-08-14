@@ -233,3 +233,72 @@ def resoudre_code_scanne(company, code):
             },
         }
     return None
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# NTWMS7 — Planning des quais (vue jour / semaine)
+# ═══════════════════════════════════════════════════════════════════════════
+
+def planning_quais(company, *, date_str=None, vue='jour', quai_id=None):
+    """Planning des rendez-vous par quai, en vue JOUR ou SEMAINE.
+
+    ``date_str`` (``YYYY-MM-DD``) est la date d'ancrage — OBLIGATOIRE : le
+    serveur ne devine jamais « aujourd'hui » pour un planning (une réponse qui
+    change à minuit rend l'écran et ses tests non déterministes).
+
+    Renvoie ``{date_debut, date_fin, vue, quais: [{quai_id, quai_nom,
+    type_quai, rendez_vous: [...]}]}``. LECTURE SEULE.
+    """
+    import datetime
+
+    from .models_wms import Quai, RendezVousTransporteur
+
+    if vue not in ('jour', 'semaine'):
+        raise ValueError('Vue de planning inconnue (jour ou semaine).')
+    if not date_str:
+        raise ValueError('Paramètre date requis (AAAA-MM-JJ).')
+    try:
+        ancre = datetime.date.fromisoformat(str(date_str))
+    except (TypeError, ValueError):
+        raise ValueError('Date invalide (format attendu AAAA-MM-JJ).')
+
+    if vue == 'semaine':
+        debut = ancre - datetime.timedelta(days=ancre.weekday())
+        fin = debut + datetime.timedelta(days=6)
+    else:
+        debut = fin = ancre
+
+    quais = Quai.objects.filter(company=company, actif=True)
+    if quai_id and str(quai_id).isdigit():
+        quais = quais.filter(id=int(quai_id))
+    quais = list(quais.order_by('nom'))
+
+    rdvs = (RendezVousTransporteur.objects
+            .filter(company=company, quai__in=quais,
+                    date_heure_debut__date__gte=debut,
+                    date_heure_debut__date__lte=fin)
+            .select_related('transporteur')
+            .order_by('date_heure_debut', 'id'))
+    par_quai = {}
+    for rdv in rdvs:
+        par_quai.setdefault(rdv.quai_id, []).append({
+            'id': rdv.id,
+            'debut': rdv.date_heure_debut,
+            'fin': rdv.date_heure_fin,
+            'statut': rdv.statut,
+            'transporteur_id': rdv.transporteur_id,
+            'transporteur_nom': getattr(rdv.transporteur, 'nom', '') or '',
+            'chauffeur_nom': rdv.chauffeur_nom,
+            'immatriculation': rdv.immatriculation,
+        })
+    return {
+        'date_debut': debut,
+        'date_fin': fin,
+        'vue': vue,
+        'quais': [{
+            'quai_id': quai.id,
+            'quai_nom': quai.nom,
+            'type_quai': quai.type_quai,
+            'rendez_vous': par_quai.get(quai.id, []),
+        } for quai in quais],
+    }

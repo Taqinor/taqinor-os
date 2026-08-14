@@ -14,7 +14,8 @@ from .views import (
     LotEntrepotViewSet, InventaireAnnuelViewSet, RevalorisationStockViewSet,
     ConditionnementProduitViewSet, ModeleBonCommandeFournisseurViewSet,
     NomenclatureCodeBarresViewSet, RegleCodeBarresViewSet,
-    VaguePickingViewSet, UniteLogistiqueViewSet,
+    VaguePickingViewSet, UniteLogistiqueViewSet, QuaiViewSet,
+    RendezVousTransporteurViewSet,
     scanner_resoudre_view, scanner_mouvement_view,
 )
 
@@ -55,6 +56,8 @@ router.register(r'regles-code-barres', RegleCodeBarresViewSet)
 # -- Groupe NTWMS -- couche ENTREPOT --
 router.register(r'vagues-picking', VaguePickingViewSet)
 router.register(r'unites-logistiques', UniteLogistiqueViewSet)
+router.register(r'quais', QuaiViewSet)
+router.register(r'rendez-vous-transporteur', RendezVousTransporteurViewSet)
 
 urlpatterns = [
     # NTWMS5 - poste scanner mobile (resolution universelle + mouvement scanne).

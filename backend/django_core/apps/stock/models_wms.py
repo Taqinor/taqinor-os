@@ -235,3 +235,122 @@ class UniteLogistiqueLigne(TenantModel):
 
     def __str__(self):
         return f'{self.produit_id} × {self.quantite}'
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# NTWMS7 — Quais de réception/expédition & créneaux transporteur
+# ═══════════════════════════════════════════════════════════════════════════
+
+class Quai(TenantModel):
+    """Quai physique de réception et/ou d'expédition d'un entrepôt."""
+
+    class TypeQuai(models.TextChoices):
+        RECEPTION = 'reception', 'Réception'
+        EXPEDITION = 'expedition', 'Expédition'
+        MIXTE = 'mixte', 'Mixte'
+
+    nom = models.CharField(max_length=80)
+    type_quai = models.CharField(
+        max_length=20, choices=TypeQuai.choices, default=TypeQuai.MIXTE)
+    emplacement = models.ForeignKey(
+        'stock.EmplacementStock', on_delete=models.CASCADE,
+        related_name='quais')
+    actif = models.BooleanField(default=True)
+
+    class Meta:
+        verbose_name = 'Quai'
+        verbose_name_plural = 'Quais'
+        ordering = ['nom']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'nom'], name='stock_quai_company_nom_uniq'),
+        ]
+
+    def __str__(self):
+        return self.nom
+
+
+class RendezVousTransporteur(TenantModel):
+    """Créneau réservé par un transporteur sur un quai.
+
+    INVARIANT SERVEUR : deux rendez-vous NON annulés ne peuvent pas se
+    chevaucher sur le MÊME quai. La garde vit dans ``save()`` (jamais
+    seulement dans ``clean()`` : un ``objects.create()`` ou un import en masse
+    doit être refusé de la même façon), doublée d'une contrainte de base
+    ``fin > début``.
+    """
+
+    class Statut(models.TextChoices):
+        PLANIFIE = 'planifie', 'Planifié'
+        ARRIVE = 'arrive', 'Arrivé'
+        EN_COURS = 'en_cours', 'En cours'
+        TERMINE = 'termine', 'Terminé'
+        NO_SHOW = 'no_show', 'Non présenté'
+        ANNULE = 'annule', 'Annulé'
+
+    # Un rendez-vous ANNULÉ libère son créneau ; tous les autres l'occupent.
+    STATUTS_OCCUPANTS = (
+        Statut.PLANIFIE, Statut.ARRIVE, Statut.EN_COURS, Statut.TERMINE,
+        Statut.NO_SHOW,
+    )
+
+    quai = models.ForeignKey(
+        Quai, on_delete=models.CASCADE, related_name='rendez_vous')
+    # String-FK cross-app : le référentiel transporteur vit dans installations
+    # (FG324), jamais dupliqué ici.
+    transporteur = models.ForeignKey(
+        'installations.Transporteur', on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='rendez_vous_quai')
+    reference_livraison = models.ForeignKey(
+        'installations.Livraison', on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='rendez_vous_quai')
+    date_heure_debut = models.DateTimeField()
+    date_heure_fin = models.DateTimeField()
+    statut = models.CharField(
+        max_length=20, choices=Statut.choices, default=Statut.PLANIFIE)
+    chauffeur_nom = models.CharField(max_length=120, blank=True, default='')
+    immatriculation = models.CharField(max_length=30, blank=True, default='')
+    note = models.TextField(blank=True, null=True)
+    date_arrivee = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        verbose_name = 'Rendez-vous transporteur'
+        verbose_name_plural = 'Rendez-vous transporteur'
+        ordering = ['date_heure_debut', 'id']
+        constraints = [
+            models.CheckConstraint(
+                check=models.Q(date_heure_fin__gt=models.F('date_heure_debut')),
+                name='stock_rdvtransporteur_fin_apres_debut'),
+        ]
+        indexes = [
+            models.Index(fields=['company', 'quai', 'date_heure_debut'],
+                         name='idx_rdvquai_co_quai_debut'),
+        ]
+
+    def __str__(self):
+        return f'{self.quai_id} — {self.date_heure_debut:%Y-%m-%d %H:%M}'
+
+    def chevauchements(self):
+        """Rendez-vous OCCUPANTS du même quai qui recouvrent ce créneau."""
+        if not (self.date_heure_debut and self.date_heure_fin):
+            return RendezVousTransporteur.objects.none()
+        qs = (RendezVousTransporteur.objects
+              .filter(quai_id=self.quai_id,
+                      statut__in=self.STATUTS_OCCUPANTS,
+                      date_heure_debut__lt=self.date_heure_fin,
+                      date_heure_fin__gt=self.date_heure_debut))
+        if self.pk:
+            qs = qs.exclude(pk=self.pk)
+        return qs
+
+    def save(self, *args, **kwargs):
+        if (self.date_heure_debut and self.date_heure_fin
+                and self.date_heure_fin <= self.date_heure_debut):
+            raise ValueError(
+                'La fin du rendez-vous doit être postérieure à son début.')
+        if (self.statut in self.STATUTS_OCCUPANTS
+                and self.chevauchements().exists()):
+            raise ValueError(
+                'Ce créneau chevauche un rendez-vous déjà planifié sur ce '
+                'quai.')
+        return super().save(*args, **kwargs)

@@ -6,7 +6,8 @@
 from rest_framework import serializers
 
 from .models_wms import (
-    LignePicking, UniteLogistique, UniteLogistiqueLigne, VaguePicking,
+    LignePicking, Quai, RendezVousTransporteur, UniteLogistique,
+    UniteLogistiqueLigne, VaguePicking,
 )
 
 
@@ -97,3 +98,66 @@ class UniteLogistiqueSerializer(serializers.ModelSerializer):
 
     def get_nb_enfants(self, obj):
         return obj.enfants.count()
+
+
+class QuaiSerializer(serializers.ModelSerializer):
+    """NTWMS7 — quai de réception/expédition."""
+
+    emplacement_nom = serializers.CharField(
+        source='emplacement.nom', read_only=True, default='')
+
+    class Meta:
+        model = Quai
+        fields = [
+            'id', 'nom', 'type_quai', 'emplacement', 'emplacement_nom',
+            'actif',
+        ]
+
+    def validate_emplacement(self, value):
+        request = self.context.get('request')
+        company = getattr(getattr(request, 'user', None), 'company', None)
+        if company is not None and value.company_id != company.id:
+            raise serializers.ValidationError(
+                'Emplacement introuvable dans cette société.')
+        return value
+
+
+class RendezVousTransporteurSerializer(serializers.ModelSerializer):
+    """NTWMS7 — créneau transporteur sur un quai.
+
+    Le chevauchement est refusé PAR LE SERVEUR (garde dans
+    ``RendezVousTransporteur.save()``) : ce sérialiseur ne fait que traduire
+    le refus en 400 lisible."""
+
+    quai_nom = serializers.CharField(
+        source='quai.nom', read_only=True, default='')
+    transporteur_nom = serializers.CharField(
+        source='transporteur.nom', read_only=True, default='')
+
+    class Meta:
+        model = RendezVousTransporteur
+        fields = [
+            'id', 'quai', 'quai_nom', 'transporteur', 'transporteur_nom',
+            'reference_livraison', 'date_heure_debut', 'date_heure_fin',
+            'statut', 'chauffeur_nom', 'immatriculation', 'note',
+            'date_arrivee',
+        ]
+        read_only_fields = ['date_arrivee']
+
+    def validate_quai(self, value):
+        request = self.context.get('request')
+        company = getattr(getattr(request, 'user', None), 'company', None)
+        if company is not None and value.company_id != company.id:
+            raise serializers.ValidationError(
+                'Quai introuvable dans cette société.')
+        return value
+
+    def validate(self, attrs):
+        debut = attrs.get(
+            'date_heure_debut', getattr(self.instance, 'date_heure_debut', None))
+        fin = attrs.get(
+            'date_heure_fin', getattr(self.instance, 'date_heure_fin', None))
+        if debut and fin and fin <= debut:
+            raise serializers.ValidationError(
+                {'date_heure_fin': 'La fin doit être postérieure au début.'})
+        return attrs
