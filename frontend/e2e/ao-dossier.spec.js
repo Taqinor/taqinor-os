@@ -9,14 +9,22 @@
 //
 // Stabilité (Done= AOF187) : aucune assertion sur la date du jour, aucun nom
 // accessible dérivé d'une icône — voir le commentaire d'en-tête de helpers.js.
+//
+// ── CORRECTION 14/08/2026 — « Variantes » et « Dossier » sont des ONGLETS ────
+// Ce spec cliquait `getByRole('link', { name: /Variantes|Dossier/ })`. Or la
+// fiche affaire rend ses sections en onglets Radix (`role="tab"`,
+// `AffaireDetail.jsx` → `RecordShell` → `ui/Tabs.jsx`) : « Variantes » ne
+// résolvait rien, et « Dossier » résolvait vers l'entrée de nav GLOBALE
+// « Dossiers » (`/ao/dossiers`), un simple `EmptyState` d'aiguillage — le spec
+// quittait la fiche pour un écran qui ne contient ni pièce ni contrôle.
 import { test, expect } from '@playwright/test'
 import {
-  openAoDemoAffaire, aoVariante, firstAoControleBloquant,
+  openAoDemoAffaire, ouvrirOngletAffaire, aoVariante, firstAoControleBloquant,
 } from './helpers'
 
 test('AOF187 (2/3): comparer deux variantes, en retenir une, constater la péremption des pièces', async ({ page }) => {
   await openAoDemoAffaire(page)
-  await page.getByRole('link', { name: /Variantes/ }).click()
+  await ouvrirOngletAffaire(page, 'Variantes')
 
   const retenue = aoVariante(page, 'retenue')
   const alternative = aoVariante(page, 'alternative')
@@ -26,7 +34,7 @@ test('AOF187 (2/3): comparer deux variantes, en retenir une, constater la pérem
   // Une pièce du pack est publiée (à jour) AVANT de rebasculer la variante
   // retenue — la péremption qu'on va constater plus bas n'a de sens que si la
   // pièce n'était PAS déjà périmée au départ.
-  await page.getByRole('link', { name: /Dossier/ }).click()
+  await ouvrirOngletAffaire(page, 'Dossier')
   const uneQuelconquePiece = page.locator('[data-ao-piece]').first()
   await expect(uneQuelconquePiece).toBeVisible()
   const etatAvant = await uneQuelconquePiece.getAttribute('data-ao-etat')
@@ -34,17 +42,17 @@ test('AOF187 (2/3): comparer deux variantes, en retenir une, constater la pérem
 
   // On retient l'alternative à la place de la variante actuellement retenue —
   // ce changement de paramètres invalide toute pièce déjà générée.
-  await page.getByRole('link', { name: /Variantes/ }).click()
+  await ouvrirOngletAffaire(page, 'Variantes')
   await alternative.getByRole('button', { name: /Retenir cette variante/ }).click()
   await expect(alternative).toHaveAttribute('data-ao-variante', 'retenue')
 
-  await page.getByRole('link', { name: /Dossier/ }).click()
+  await ouvrirOngletAffaire(page, 'Dossier')
   await expect(page.locator('[data-ao-piece][data-ao-etat="perime"]').first()).toBeVisible()
 })
 
 test('AOF187 (3/3): un contrôle rouge bloque le ZIP AVEC son motif, corriger puis générer', async ({ page }) => {
   await openAoDemoAffaire(page)
-  await page.getByRole('link', { name: /Dossier/ }).click()
+  await ouvrirOngletAffaire(page, 'Dossier')
 
   const controle = firstAoControleBloquant(page)
   await expect(controle).toBeVisible()
@@ -65,7 +73,12 @@ test('AOF187 (3/3): un contrôle rouge bloque le ZIP AVEC son motif, corriger pu
     await page.getByRole('button', { name: /Enregistrer/ }).click()
   }
 
-  await page.getByRole('link', { name: /Dossier/ }).click()
+  // Le lien « Corriger » a fait QUITTER la fiche (écran source de la pièce) :
+  // on ne peut donc pas revenir par un onglet — on rouvre l'affaire depuis la
+  // liste, puis son onglet « Dossier ». Retour déterministe, sans pari sur
+  // l'historique de navigation.
+  await openAoDemoAffaire(page)
+  await ouvrirOngletAffaire(page, 'Dossier')
   await expect(page.locator('[data-ao-controle][data-ao-etat="bloquant"]')).toHaveCount(0)
 
   const [download] = await Promise.all([
