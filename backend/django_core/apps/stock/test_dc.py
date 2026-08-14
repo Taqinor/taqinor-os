@@ -291,6 +291,118 @@ class TestPV5FicheTechniqueSpecs(DCBase):
             self.assertIsNone(data[champ])
 
 
+class TestPV6SpecsForProduitSelector(DCBase):
+    """PV6 — `apps.stock.selectors.specs_for_produit` : sous-ensemble de
+    specs dérivé de FicheTechnique, scopé par `type_fiche`, valeurs NULL
+    omises, fallback dict VIDE sans fiche."""
+
+    def _make_fiche(self, produit=None, **kwargs):
+        from apps.stock.models import FicheTechnique
+        return FicheTechnique.objects.create(
+            company=self.company, produit=produit or self.produit, **kwargs)
+
+    def test_no_fiche_returns_empty_dict(self):
+        from apps.stock.selectors import specs_for_produit
+        self.assertEqual(specs_for_produit(self.produit), {})
+
+    def test_unknown_type_fiche_returns_empty_dict(self):
+        from apps.stock.selectors import specs_for_produit
+        self._make_fiche(pmax_wc=Decimal('550'))  # type_fiche='' (défaut)
+        self.assertEqual(specs_for_produit(self.produit), {})
+
+    def test_module_subset_omits_null_fields(self):
+        from apps.stock.models import FicheTechnique
+        from apps.stock.selectors import specs_for_produit
+        self._make_fiche(
+            type_fiche=FicheTechnique.TypeFiche.MODULE,
+            pmax_wc=Decimal('550'), longueur_mm=2384, largeur_mm=1303)
+        # voc_v/isc_a/imp_a/temp_coeff_* non saisis → absents du dict.
+        specs = specs_for_produit(self.produit)
+        self.assertEqual(specs, {
+            'pmax_wc': Decimal('550'), 'longueur_mm': 2384,
+            'largeur_mm': 1303,
+        })
+
+    def test_onduleur_subset(self):
+        from apps.stock.models import FicheTechnique
+        from apps.stock.selectors import specs_for_produit
+        self._make_fiche(
+            type_fiche=FicheTechnique.TypeFiche.ONDULEUR,
+            ond_n_mppt=2, ond_ac_kw=Decimal('5.00'),
+            ond_phases=FicheTechnique.Phases.MONOPHASE)
+        specs = specs_for_produit(self.produit)
+        self.assertEqual(specs, {
+            'n_mppt': 2, 'ac_kw': Decimal('5.00'), 'phases': 1,
+        })
+
+    def test_batterie_subset(self):
+        from apps.stock.models import FicheTechnique
+        from apps.stock.selectors import specs_for_produit
+        self._make_fiche(
+            type_fiche=FicheTechnique.TypeFiche.BATTERIE,
+            bat_kwh_nominal=Decimal('10.00'), bat_dod_pct=Decimal('95.0'))
+        specs = specs_for_produit(self.produit)
+        self.assertEqual(specs, {
+            'kwh_nominal': Decimal('10.00'), 'dod_pct': Decimal('95.0'),
+        })
+
+    def test_merge_over_default_is_byte_identical_when_empty(self):
+        from apps.stock.selectors import specs_for_produit
+        default = {'pmax_wc': None, 'voc_v': None}
+        merged = {**default, **specs_for_produit(self.produit)}
+        self.assertEqual(merged, default)
+
+
+class TestPV6KitFromProduitSelector(DCBase):
+    """PV6 — `apps.stock.selectors.kit_from_produit` : construit un
+    `core.calepinage.types.Kit` depuis la fiche technique MODULE d'un
+    produit, mirroring `KIT_VILLA_720` ; `None` si une valeur requise
+    manque (jamais deviner une géométrie)."""
+
+    def _make_fiche(self, produit=None, **kwargs):
+        from apps.stock.models import FicheTechnique
+        return FicheTechnique.objects.create(
+            company=self.company, produit=produit or self.produit, **kwargs)
+
+    def test_none_without_fiche(self):
+        from apps.stock.selectors import kit_from_produit
+        self.assertIsNone(kit_from_produit(self.produit))
+
+    def test_none_when_dims_missing(self):
+        from apps.stock.models import FicheTechnique
+        from apps.stock.selectors import kit_from_produit
+        self._make_fiche(
+            type_fiche=FicheTechnique.TypeFiche.MODULE,
+            pmax_wc=Decimal('550'))  # longueur_mm/largeur_mm absents
+        self.assertIsNone(kit_from_produit(self.produit))
+
+    def test_none_when_pmax_missing(self):
+        from apps.stock.models import FicheTechnique
+        from apps.stock.selectors import kit_from_produit
+        self._make_fiche(
+            type_fiche=FicheTechnique.TypeFiche.MODULE,
+            longueur_mm=2384, largeur_mm=1303)  # pmax_wc absent
+        self.assertIsNone(kit_from_produit(self.produit))
+
+    def test_builds_kit_mirroring_villa_720(self):
+        from core.calepinage.types import OrientationModule
+        from apps.stock.models import FicheTechnique
+        from apps.stock.selectors import kit_from_produit
+        self._make_fiche(
+            type_fiche=FicheTechnique.TypeFiche.MODULE,
+            pmax_wc=Decimal('720'), longueur_mm=2384, largeur_mm=1303)
+        kit = kit_from_produit(self.produit)
+        self.assertIsNotNone(kit)
+        self.assertEqual(kit.code, self.produit.sku)
+        self.assertAlmostEqual(kit.module_long_m, 2.384)
+        self.assertAlmostEqual(kit.module_court_m, 1.303)
+        self.assertAlmostEqual(kit.puissance_module_wc, 720.0)
+        self.assertEqual(kit.inclinaison_deg, 13.0)
+        self.assertEqual(kit.orientation, OrientationModule.PORTRAIT)
+        self.assertEqual(kit.modules_par_table, 1)
+        self.assertEqual(kit.faitage_m, 0.0)
+
+
 class TestDC35FicheTechniqueAPI(DCBase):
     """DC35 — multi-tenant : `company` forcé serveur, queryset scopé société,
     produit cross-tenant rejeté."""
