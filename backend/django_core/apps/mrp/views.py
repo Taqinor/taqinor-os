@@ -105,6 +105,17 @@ class OrdreFabricationViewSet(CompanyScopedModelViewSet):
         of.refresh_from_db()
         return Response(self.get_serializer(of).data)
 
+    @action(detail=True, methods=['post'], url_path='cloturer')
+    def cloturer(self, request, pk=None):
+        """NTMFG4 — clôture l'OF : backflush (consommation composants +
+        production composite) exactement une fois, sauf si un
+        `kit_ordre_assemblage` porte déjà le mouvement (XMFG1)."""
+        from .services import cloturer_of
+        of = self.get_object()
+        cloturer_of(of, user=request.user)
+        of.refresh_from_db()
+        return Response(self.get_serializer(of).data)
+
 
 class OperationOFViewSet(viewsets.ModelViewSet):
     """NTMFG3 — opérations d'un OF. Pas de `company` propre : scope via l'OF

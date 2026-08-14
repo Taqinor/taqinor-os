@@ -34,8 +34,8 @@ class GammeSerializer(serializers.ModelSerializer):
     class Meta:
         model = Gamme
         fields = [
-            'id', 'nom', 'produit', 'version', 'actif', 'operations',
-            'temps_total_prevu_1_unite', 'created_at', 'updated_at',
+            'id', 'nom', 'produit', 'version', 'actif', 'kit_source',
+            'operations', 'temps_total_prevu_1_unite', 'created_at', 'updated_at',
         ]
         read_only_fields = ['id', 'created_at', 'updated_at']
 
@@ -63,9 +63,10 @@ class OrdreFabricationSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'produit', 'quantite', 'gamme', 'statut',
             'date_debut_planifiee', 'date_fin_planifiee', 'priorite',
-            'kit_ordre_assemblage', 'operations', 'created_at', 'updated_at',
+            'kit_ordre_assemblage', 'stock_mouvemente', 'operations',
+            'created_at', 'updated_at',
         ]
         read_only_fields = [
             'id', 'statut', 'date_debut_planifiee', 'date_fin_planifiee',
-            'created_at', 'updated_at',
+            'stock_mouvemente', 'created_at', 'updated_at',
         ]

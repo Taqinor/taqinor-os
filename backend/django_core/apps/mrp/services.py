@@ -116,6 +116,65 @@ def planifier_of(of, *, date_debut=None):
     return of
 
 
+# ── NTMFG4 — Consommation & production de stock (backflush industriel) ──
+
+def _composants_of(of):
+    """NTMFG4 — nomenclature résolue pour CET OF (produit_id, quantité TOTALE
+    pour `of.quantite` unités), depuis `of.gamme.kit_source` — lecture seule
+    via `stock.services.exploser_kit_par_id` (ID-only, jamais d'import du
+    modèle `stock.KitProduit`). Renvoie `[]` si l'OF n'a pas de gamme ou que
+    sa gamme n'a pas de nomenclature source."""
+    if not of.gamme_id or not of.gamme.kit_source_id:
+        return []
+    from apps.stock.services import exploser_kit_par_id
+
+    lignes = exploser_kit_par_id(of.company_id, of.gamme.kit_source_id, of.quantite) or []
+    return [{'produit_id': ligne['produit_id'], 'quantite': ligne['quantite']}
+            for ligne in lignes]
+
+
+def cloturer_of(of, user=None):
+    """NTMFG4 — clôture un OF : consomme les composants et produit le
+    composite (backflush), EXACTEMENT une fois (idempotence
+    `stock_mouvemente`, même garde que XMFG1). Un OF avec un
+    `kit_ordre_assemblage` lié ne mouvemente RIEN ici — le mouvement reste
+    porté par cet ordre d'assemblage kitting (XMFG1), jamais de double
+    mouvement. Un OF sans nomenclature (pas de gamme, ou gamme sans
+    `kit_source`) ne mouvemente rien non plus (suivi pur, pas de crash)."""
+    from types import SimpleNamespace
+
+    from .models import OrdreFabrication
+
+    with transaction.atomic():
+        # select_for_update — même garde de course que XMFG1 (`OrdreAssemblage`).
+        locked = OrdreFabrication.objects.select_for_update().get(pk=of.pk)
+        if locked.kit_ordre_assemblage_id is None and not locked.stock_mouvemente:
+            composants = _composants_of(locked)
+            if composants:
+                from apps.stock.services import consommer_et_produire_assemblage
+
+                lignes = [
+                    SimpleNamespace(
+                        produit=SimpleNamespace(id=c['produit_id']),
+                        quantite=_dec(c['quantite']))
+                    for c in composants
+                ]
+                consommer_et_produire_assemblage(
+                    company=locked.company,
+                    kit=SimpleNamespace(id=locked.gamme.kit_source_id),
+                    composants=lignes,
+                    produit_compose=SimpleNamespace(id=locked.produit_id),
+                    quantite_produite=locked.quantite,
+                    reference=f'OF-{locked.id}',
+                    user=user,
+                    per_unit=False,
+                )
+            locked.stock_mouvemente = True
+        locked.statut = OrdreFabrication.Statut.TERMINE
+        locked.save(update_fields=['stock_mouvemente', 'statut'])
+    return locked
+
+
 def confirmer_of(of, user=None):
     """NTMFG3 — confirme un OF brouillon : instancie ses opérations depuis la
     gamme, calcule les dates prévues (capacité poste), passe le statut à

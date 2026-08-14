@@ -77,6 +77,16 @@ class Gamme(TenantModel):
         related_name='mrp_gammes', verbose_name='Produit fabriqué')
     version = models.PositiveIntegerField(default=1, verbose_name='Version')
     actif = models.BooleanField(default=True, verbose_name='Actif')
+    # NTMFG4 — nomenclature (BOM) SOURCE de cette gamme, réutilisée en
+    # LECTURE SEULE via `stock.services.exploser_kit_par_id` (jamais d'import
+    # du modèle `stock.KitProduit`) pour le backflush (consommation
+    # composants / production composite) à la clôture d'un OF SANS
+    # `kit_ordre_assemblage` lié. Optionnel : une gamme sans nomenclature ne
+    # mouvemente aucun stock à la clôture (OF de suivi pur).
+    kit_source = models.ForeignKey(
+        'stock.KitProduit', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='mrp_gammes_source',
+        verbose_name='Nomenclature source (kit)')
 
     class Meta:
         verbose_name = 'Gamme opératoire'
@@ -172,6 +182,12 @@ class OrdreFabrication(TenantModel):
         'installations.OrdreAssemblage', on_delete=models.SET_NULL,
         null=True, blank=True, related_name='mrp_ordres_fabrication',
         verbose_name="Ordre d'assemblage kitting lié")
+    # NTMFG4 — idempotence du backflush (même garde que XMFG1
+    # `stock_mouvemente`) : True dès que CET OF a produit son mouvement de
+    # stock (consommation composants + production composite), pour ne
+    # jamais le rejouer sur une clôture répétée.
+    stock_mouvemente = models.BooleanField(
+        default=False, verbose_name='Stock mouvementé')
 
     class Meta:
         verbose_name = 'Ordre de fabrication'
