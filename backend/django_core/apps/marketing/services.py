@@ -1230,6 +1230,74 @@ def importer_inscriptions_evenement(evenement, file_bytes, filename):
     }
 
 
+def notifier_si_nps_detracteur(enquete):
+    """NTMKT44 — notifie le commercial du lead d'un client DÉTRACTEUR
+    (score <= 6) à une enquête NPS, lien vers la fiche lead.
+
+    Indépendant du suivi YSERV11 (``apps.compta.services._declencher_suivi_nps``
+    — gated ``CompanyProfile.referral_enabled``, une ACTIVITÉ de rappel
+    distincte) : ce chemin passe TOUJOURS par ``notifications.Notification``
+    (jamais un second système de notification). Jamais de doublon :
+    ``repondre_enquete_nps`` ne rejoue jamais une enquête déjà répondue, donc
+    ce déclencheur ne s'exécute qu'une fois par enquête."""
+    if enquete.score is None or enquete.score > 6:
+        return None
+    from apps.crm.selectors import get_latest_lead_for_client
+
+    lead = get_latest_lead_for_client(enquete.company, enquete.client_id)
+    if lead is None or not getattr(lead, 'owner_id', None):
+        return None
+    from apps.notifications.models import EventType
+    from apps.notifications.services import notify
+
+    notify(
+        lead.owner, EventType.DIGEST, f'Détracteur NPS : {lead.nom}',
+        body=(f'Note {enquete.score}/10 — {enquete.commentaire}'
+              if enquete.commentaire else f'Note {enquete.score}/10.'),
+        company=enquete.company, link=f'/crm/leads/{lead.id}',
+    )
+    return lead.owner_id
+
+
+def notifier_inscription_evenement(inscription):
+    """NTMKT44 — notifie le commercial du lead qui vient de s'inscrire à un
+    événement marketing (résolu/dédupliqué par
+    ``apps.compta.services.inscrire_evenement``, XMKT28), lien vers la fiche
+    lead. No-op silencieux si l'inscription n'a résolu aucun lead ou que le
+    lead n'a pas d'owner assigné."""
+    if not inscription.lead_id:
+        return None
+    from apps.crm.selectors import get_company_lead
+
+    lead = get_company_lead(inscription.company, inscription.lead_id)
+    if lead is None or not getattr(lead, 'owner_id', None):
+        return None
+    from apps.notifications.models import EventType
+    from apps.notifications.services import notify
+
+    notify(
+        lead.owner, EventType.DIGEST, f'Inscription événement : {lead.nom}',
+        body=f"{lead.nom} s'est inscrit(e) à « {inscription.evenement.nom} ».",
+        company=inscription.company, link=f'/crm/leads/{lead.id}',
+    )
+    return lead.owner_id
+
+
+def inscrire_evenement_et_notifier(evenement, *, nom, email='', telephone='',
+                                   billet=None, reponses_questions=None):
+    """NTMKT44 — enveloppe ``apps.compta.services.inscrire_evenement``
+    (XMKT28) SANS le modifier : notifie en plus le commercial du lead résolu
+    une fois l'inscription créée. Propage toute ``ValueError`` inchangée
+    (billet hors fenêtre/quota, question obligatoire manquante)."""
+    from apps.compta.services import inscrire_evenement
+
+    inscription = inscrire_evenement(
+        evenement, nom=nom, email=email, telephone=telephone, billet=billet,
+        reponses_questions=reponses_questions)
+    notifier_inscription_evenement(inscription)
+    return inscription
+
+
 def attribution_comparaison(company, devis_id):
     """NTMKT20 — comparaison des 4 modèles d'attribution pour UN devis signé
     (aide à la décision, jamais un recalcul persistant). ``None`` si le devis

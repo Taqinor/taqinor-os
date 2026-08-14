@@ -61,7 +61,7 @@ from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import extend_schema, inline_serializer
 from rest_framework import serializers as drf_serializers
 from rest_framework.decorators import action, api_view, permission_classes
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 
 from authentication.permissions import IsResponsableOrAdmin
@@ -455,3 +455,67 @@ def importer_inscriptions_evenement_view(request, pk=None):
     rapport = marketing_services.importer_inscriptions_evenement(
         evenement, fichier.read(), fichier.name)
     return Response(rapport)
+
+
+# ── NTMKT44 — Notifications internes sur événements marketing clés ─────────
+# XMKT21 (seuil MQL) notifie déjà le commercial assigné
+# (``apps.crm.services.maybe_assign_mql``, idempotent via
+# ``Lead.mql_assigned_at``) — non dupliqué ici. Les deux compléments
+# ci-dessous ENVELOPPENT les points d'entrée ``apps.compta`` existants SANS
+# les modifier (jamais un import de leurs modèles, juste leur fonction
+# publique), pour ajouter la notification sans toucher à un fichier hors
+# périmètre CRM_VENTES.
+
+class EnqueteNPSViewSetNotifiant(EnqueteNPSViewSet):
+    """NTMKT44 — étend ``EnqueteNPSViewSet`` (``apps.compta.views``) SANS le
+    modifier : notifie le commercial du lead sur une réponse détractrice.
+    Enregistrée à la place de la classe de base UNIQUEMENT dans le routeur
+    marketing (``apps.marketing.urls``) — la route legacy `/compta/…`
+    continue de servir la classe de base inchangée."""
+
+    def repondre(self, request, pk=None):
+        response = super().repondre(request, pk)
+        if response.status_code == 200:
+            marketing_services.notifier_si_nps_detracteur(self.get_object())
+        return response
+
+
+@extend_schema(responses={201: inline_serializer(
+    'EvenementInscriptionNotifianteResponse', {
+        'id': drf_serializers.IntegerField(),
+        'qr_token': drf_serializers.CharField(),
+    })})
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def evenement_inscription_publique_notifiante(request, evenement_id):
+    """NTMKT44 — même contrat public que ``evenement_inscription_publique``
+    (XMKT28, ``apps.compta.views``, jamais modifiée) : inscrit un
+    participant à un événement SANS authentification, PUIS notifie le
+    commercial du lead résolu. Validations dupliquées ici (nom requis,
+    billet existant) plutôt que d'appeler la vue décorée d'origine (évite un
+    double-dispatch DRF imbriqué sur une ``Request`` déjà convertie)."""
+    from .models import BilletEvenement, EvenementMarketing
+
+    evenement = EvenementMarketing.objects.filter(id=evenement_id).first()
+    if not evenement:
+        return Response({'detail': 'Événement introuvable.'}, status=404)
+    nom = (request.data.get('nom') or '').strip()
+    if not nom:
+        return Response({'detail': 'nom requis.'}, status=400)
+    billet = None
+    billet_id = request.data.get('billet_id')
+    if billet_id:
+        billet = BilletEvenement.objects.filter(
+            id=billet_id, evenement=evenement).first()
+        if not billet:
+            return Response({'detail': 'Billet introuvable.'}, status=404)
+    try:
+        inscription = marketing_services.inscrire_evenement_et_notifier(
+            evenement, nom=nom,
+            email=request.data.get('email', ''),
+            telephone=request.data.get('telephone', ''), billet=billet,
+            reponses_questions=request.data.get('reponses_questions'))
+    except ValueError as exc:
+        return Response({'detail': str(exc)}, status=400)
+    return Response(
+        {'id': inscription.id, 'qr_token': inscription.qr_token}, status=201)

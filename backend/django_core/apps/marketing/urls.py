@@ -33,7 +33,7 @@ from .views import (
     CommunicationEvenementViewSet,
     CompteFideliteViewSet,
     DomaineEnvoiViewSet,
-    EnqueteNPSViewSet,
+    EnqueteNPSViewSetNotifiant,
     EnqueteViewSet,
     EnvoiCampagneViewSet,
     EtapeSequenceViewSet,
@@ -62,7 +62,7 @@ from .views import (
     enquete_certificat_pdf,
     enquete_publique,
     enquete_soumettre,
-    evenement_inscription_publique,
+    evenement_inscription_publique_notifiante,
     export_campagnes_xlsx_view,
     export_envois_campagne_csv_view,
     export_membres_segment_xlsx_view,
@@ -122,7 +122,10 @@ router.register(r'messages-whatsapp', MessageWhatsAppEntrantViewSet,
                 basename='mkt-message-whatsapp')
 router.register(r'appels', AppelTelephoniqueViewSet, basename='mkt-appel')
 # ── Enquêtes / NPS / avis / fidélité / upsell (FG238–241) ───────────────────
-router.register(r'enquetes-nps', EnqueteNPSViewSet, basename='mkt-enquete-nps')
+# NTMKT44 — EnqueteNPSViewSetNotifiant (étend la classe compta SANS la
+# modifier) : notifie le commercial du lead sur une réponse détractrice.
+router.register(r'enquetes-nps', EnqueteNPSViewSetNotifiant,
+                basename='mkt-enquete-nps')
 router.register(r'avis-clients', AvisClientViewSet, basename='mkt-avis-client')
 router.register(r'comptes-fidelite', CompteFideliteViewSet,
                 basename='mkt-compte-fidelite')
@@ -217,8 +220,11 @@ urlpatterns = [
          name='mkt-enquete-soumettre'),
     path('reponses-enquete/<int:reponse_id>/certificat/', enquete_certificat_pdf,
          name='mkt-enquete-certificat-pdf'),
+    # NTMKT44 — enveloppe notifiante (même contrat public, apps.compta.views
+    # reste inchangée ; la route legacy /compta/… continue de servir la
+    # vue d'origine, sans notification).
     path('evenements-marketing/<int:evenement_id>/inscription-publique/',
-         evenement_inscription_publique,
+         evenement_inscription_publique_notifiante,
          name='mkt-evenement-inscription-publique'),
     # WIR64/FG206 — capture de lead publique (landing tokenisée par slug).
     path('intake/<slug:slug>/', formulaire_intake_public,
