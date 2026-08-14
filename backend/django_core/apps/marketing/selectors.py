@@ -117,3 +117,29 @@ def relances_devis_abandonne(company, devis_id):
         }
         for r in qs
     ]
+
+
+# ── NTMKT18 — Score de maturité, lu par ``apps.crm`` (jamais l'inverse) ────
+
+def maturite_active_pour_mql(company):
+    """NTMKT18 — le seuil MQL (XMKT21, ``apps.crm.services.maybe_assign_mql``)
+    doit-il se déclencher AUSSI sur le score de maturité (en plus du score de
+    qualité QJ6, jamais modifié) ? Défaut ``False`` = comportement XMKT21
+    actuel strictement inchangé."""
+    if not company:
+        return False
+    from . import services as marketing_services
+    parametres = marketing_services.parametres_marketing_pour(company)
+    return bool(parametres.mql_sur_score_maturite)
+
+
+def score_maturite_valeur(company, lead_id):
+    """NTMKT18 — valeur courante (0-100) du score de maturité d'un lead pour
+    un appelant cross-app (``crm``), sans exposer le modèle. Recalcule
+    (jamais une valeur périmée) ; ``0`` si le module est désactivé pour la
+    société (comportement par défaut, jamais bloquant)."""
+    if not company or not lead_id:
+        return 0
+    from . import services as marketing_services
+    score = marketing_services.recalculer_score_maturite(company, lead_id)
+    return score.valeur if score is not None else 0

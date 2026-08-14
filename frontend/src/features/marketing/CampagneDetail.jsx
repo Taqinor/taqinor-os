@@ -108,6 +108,21 @@ export default function CampagneDetail() {
     }
   }
 
+  // NTMKT39 — export CSV de la trace d'envoi (destinataire/statut/dates).
+  const [exportTraceEnCours, setExportTraceEnCours] = useState(false)
+  const exporterTraceCsv = async () => {
+    setExportTraceEnCours(true)
+    setErr('')
+    try {
+      const r = await marketingApi.exportEnvoisCampagneCsv(id)
+      marketingApi.downloadBlob(r.data, `envois-campagne-${id}.csv`)
+    } catch {
+      setErr('Export de la trace CSV impossible.')
+    } finally {
+      setExportTraceEnCours(false)
+    }
+  }
+
   const confirmerEnvoi = async () => {
     setErr('')
     try {
@@ -134,6 +149,10 @@ export default function CampagneDetail() {
         <button className="btn btn-light" data-testid="campagne-exporter-bilan-pdf"
           disabled={exportEnCours} onClick={exporterBilanPdf}>
           {exportEnCours ? 'Export…' : 'Exporter le bilan PDF'}
+        </button>
+        <button className="btn btn-light" data-testid="campagne-exporter-trace-csv"
+          disabled={exportTraceEnCours} onClick={exporterTraceCsv}>
+          {exportTraceEnCours ? 'Export…' : 'Exporter la trace CSV'}
         </button>
       </div>
 

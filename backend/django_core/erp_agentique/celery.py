@@ -456,6 +456,12 @@ app.conf.beat_schedule = {
         'task': 'marketing.rappeler_approbations_envoi',
         'schedule': crontab(minute=0, hour='*/4'),
     },
+    # NTMKT34 — recalcul quotidien du score de maturité (pénalité inactivité
+    # 30j) — no-op pour une société qui n'a jamais activé NTMKT18.
+    'marketing-recalculer-scores-maturite-inactivite': {
+        'task': 'marketing.recalculer_scores_maturite_inactivite',
+        'schedule': crontab(hour=4, minute=0),
+    },
     # XKB7 — relance quotidienne des non-lecteurs de lecture obligatoire.
     'kb-sweep-lectures-obligatoires': {
         'task': 'kb.sweep_lectures_obligatoires',
