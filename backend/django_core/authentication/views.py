@@ -939,6 +939,11 @@ class CompanyViewSet(viewsets.ModelViewSet):
                 != ancien_mode_presentation):
             self._log_activity_mode_presentation(
                 serializer.instance, self.request.user)
+            # NTDMO40 — trace aussi dans le journal d'audit plateforme
+            # (``audit.AuditLog``, jamais un nouveau journal), IP/user-agent
+            # déjà capturés par le middleware d'audit en place ailleurs.
+            self._log_audit_mode_presentation(
+                serializer.instance, self.request.user)
 
     def _log_activity_mode_presentation(self, company, user):
         """NTDMO39 — entrée de chatter (``records.Activity``, jamais un
@@ -952,6 +957,21 @@ class CompanyViewSet(viewsets.ModelViewSet):
             log_note(
                 company, user if getattr(user, 'pk', None) else None,
                 f'Mode présentation {etat} par {actor}.')
+        except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+            pass
+
+    def _log_audit_mode_presentation(self, company, user):
+        """NTDMO40 — ``audit.AuditLog`` (journal plateforme), en plus du
+        chatter ci-dessus (deux surfaces distinctes déjà utilisées ailleurs
+        dans l'ERP : le chatter est l'historique métier lisible sur la fiche,
+        l'audit log est le registre de sécurité/conformité)."""
+        try:
+            from apps.audit import recorder
+            etat = 'activé' if company.mode_presentation_actif else 'désactivé'
+            recorder.record(
+                'demo_mode_presentation_toggle', instance=company,
+                company=company, user=user,
+                detail=f'Mode présentation {etat}.')
         except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
             pass
 
@@ -989,6 +1009,17 @@ class CompanyViewSet(viewsets.ModelViewSet):
         # fantôme juste après (voir la note ci-dessus), donc son ``username``
         # ne peut plus être lu une fois le reset lancé.
         actor_username = getattr(request.user, 'username', '') or 'système'
+        # NTDMO40 — journal d'audit plateforme, AVANT la purge (``audit.
+        # AuditLog.company`` est SET_NULL — contrairement au chatter NTDMO39
+        # ci-dessous, cette ligne survit intacte même si `company` disparaît).
+        try:
+            recorder.record(
+                'demo_company_reset', instance=company, company=company,
+                user=request.user,
+                detail=f'Société démo "{slug}" réinitialisée par '
+                       f'{actor_username}.')
+        except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+            pass
         recorder.end_request()
         _run_demo_reset(slug)
         request.user = AnonymousUser()
