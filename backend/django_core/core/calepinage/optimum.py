@@ -28,6 +28,7 @@ from bisect import bisect_left
 from dataclasses import dataclass
 from typing import Tuple
 
+from core.calepinage.exceptions import EntreeInvalide
 from core.calepinage.moteur import compter_plan, compter_rangee
 from core.calepinage.politique_pas import politique_par_defaut
 from core.calepinage.types import MethodePreuve, Plan, Preuve
@@ -185,12 +186,50 @@ def evaluer_plan_impose(surface, parametres, rangees, obstacles=(), zones=(),
         ecart_a_l_optimum=compte_optimal - plan.modules)
 
 
+def _rangees_imposees(parametres):
+    """Traduit ``parametres.rangees_imposees`` en ``((y0, Kit), …)`` — ou REFUSE.
+
+    Le champ voyage en JSON, donc en CODES de kit ; le moteur, lui, ne compte
+    que des ``Kit``. Chaque motif de refus est NOMMÉ en français : un mode
+    « rangées imposées » sans rangées ne doit pas se replier en silence sur le
+    DP, sinon l'utilisateur croirait avoir imposé un plan que personne n'a posé.
+    """
+    imposees = parametres.rangees_imposees
+    if not imposees:
+        raise EntreeInvalide(
+            "Mode « rangées imposées » : aucune rangée n'est fournie "
+            "(paramètre `rangees_imposees` vide). Le moteur ne pose pas un "
+            "plan à la place de l'utilisateur.")
+    retenues = []
+    for rang, entree in enumerate(imposees, start=1):
+        try:
+            y0, code = entree
+        except (TypeError, ValueError):
+            raise EntreeInvalide(
+                "Rangée imposée n°%d : attendu un couple (position, code de "
+                "kit), reçu %r." % (rang, entree)) from None
+        try:
+            kit = parametres.kit(code)
+        except KeyError:
+            raise EntreeInvalide(
+                "Rangée imposée n°%d : le kit %r n'est pas déclaré dans les "
+                "paramètres (kits connus : %s)."
+                % (rang, code, ", ".join(k.code for k in parametres.kits))
+            ) from None
+        retenues.append((float(y0), kit))
+    return tuple(retenues)
+
+
 def calculer(surface, parametres, obstacles=(), zones=(), politique=None):
     """Point d'entrée UNIQUE : le mode de pose des ``Parametres`` décide.
 
     ``RANGEES_EXPLICITES_DP`` -> DP exact ; ``RANGEES_UNIFORMES_PHASE`` ->
-    balayage de phase du moteur v1 (AOF47), borné par le DP. L'import est
-    local : ``pose_uniforme`` dépend de ce module pour ``ResultatOptimum``.
+    balayage de phase du moteur v1 (AOF47), borné par le DP ;
+    ``RANGEES_IMPOSEES_UTILISATEUR`` (PV29) -> aucune recherche : les rangées
+    fournies sont COMPTÉES par ``evaluer_plan_impose``, qui les situe face au
+    DP (preuve ``IMPOSE_UTILISATEUR``, ``optimal`` faux, écart chiffré).
+    L'import est local : ``pose_uniforme`` dépend de ce module pour
+    ``ResultatOptimum``.
     """
     from core.calepinage.types import ModePose
 
@@ -201,6 +240,10 @@ def calculer(surface, parametres, obstacles=(), zones=(), politique=None):
                           politique).preuve.compte_optimal
         return balayer_phase(surface, parametres, obstacles, zones,
                              borne_superieure=borne)
+    if parametres.mode_pose is ModePose.RANGEES_IMPOSEES_UTILISATEUR:
+        return evaluer_plan_impose(surface, parametres,
+                                   _rangees_imposees(parametres),
+                                   obstacles, zones, politique)
     return optimiser(surface, parametres, obstacles, zones, politique)
 
 
