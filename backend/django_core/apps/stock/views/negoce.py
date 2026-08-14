@@ -11,6 +11,8 @@ from rest_framework import serializers, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
+from rest_framework.decorators import api_view, permission_classes
+
 from authentication.permissions import (
     IsAdminRole, IsAnyRole, IsResponsableOrAdmin,
 )
@@ -289,3 +291,78 @@ class AccordRFAFournisseurViewSet(CompanyScopedModelViewSet):
             'avoir_id': avoir.id, 'reference': avoir.reference,
             'montant_ttc': str(avoir.montant_ttc),
         }, status=status.HTTP_201_CREATED)
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# NTDST10 — Disponibilité ATP / NTDST18 — Catalogue B2B temps réel
+# ═══════════════════════════════════════════════════════════════════════════
+
+ATP_SHAPE = {
+    'produit': serializers.IntegerField(),
+    'disponible_maintenant': serializers.IntegerField(),
+    'quantite_reservee': serializers.IntegerField(),
+    'disponible_le': serializers.CharField(allow_null=True),
+    'quantite_a_cette_date': serializers.IntegerField(),
+    'emplacement': serializers.IntegerField(allow_null=True),
+}
+
+
+class AtpProduitMixin:
+    """NTDST10 — ``produits/{id}/atp/`` monté sur le viewset produit."""
+
+    @extend_schema(responses={
+        200: inline_serializer('StockProduitAtp', ATP_SHAPE)})
+    @action(detail=True, methods=['get'], url_path='atp',
+            permission_classes=[IsAnyRole])
+    def atp(self, request, pk=None):
+        """Disponibilité DATÉE : combien MAINTENANT, et à partir de QUAND.
+
+        Un produit en rupture avec une commande fournisseur confirmée dans 5
+        jours renvoie ``disponible_le`` = cette date. Lecture seule, aucun
+        prix, aucun coût.
+        """
+        from ..selectors_negoce import atp_produit
+        return Response(atp_produit(request.user.company, self.get_object()))
+
+
+@extend_schema(responses={
+    200: inline_serializer('StockCatalogueB2b', {
+        'client': serializers.IntegerField(allow_null=True),
+        'total': serializers.IntegerField(),
+        'limite': serializers.IntegerField(),
+        'offset': serializers.IntegerField(),
+        'produits': serializers.ListField(child=serializers.DictField()),
+    }),
+})
+@api_view(['GET'])
+@permission_classes([IsAnyRole])
+def catalogue_b2b_view(request):
+    """NTDST18 — catalogue produit résolu POUR UN CLIENT
+    (``?client=&categorie=&marque=&q=&limite=&offset=``).
+
+    Prix appliqué via les listes de prix du client (XSAL1/XSAL2), ATP
+    (NTDST10), image produit. ``prix_achat`` n'y figure JAMAIS : cette donnée
+    alimente le futur portail client (NTPRT).
+    """
+    # Lecture cross-app par le SELECTOR de `crm` — jamais un import de ses
+    # modèles (frontière inter-apps).
+    from apps.crm.selectors import get_company_client
+
+    from ..selectors_negoce import catalogue_b2b
+
+    company = request.user.company
+    client = None
+    client_id = request.query_params.get('client')
+    if client_id:
+        client = get_company_client(company, client_id)
+        if client is None:
+            return Response({'detail': 'Client introuvable dans cette '
+                                       'société.'},
+                            status=status.HTTP_404_NOT_FOUND)
+    return Response(catalogue_b2b(
+        company, client,
+        categorie=request.query_params.get('categorie'),
+        marque=request.query_params.get('marque'),
+        recherche=request.query_params.get('q') or '',
+        limite=request.query_params.get('limite') or 50,
+        offset=request.query_params.get('offset') or 0))

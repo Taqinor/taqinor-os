@@ -53,9 +53,10 @@ PRODUIT_CREATE_PERMISSION = HasPermissionAndRole(
 
 
 from .fournisseur_scm import ScmProduitTcoMixin  # noqa: E402
+from .negoce import AtpProduitMixin  # noqa: E402
 
 
-class ProduitViewSet(ScmProduitTcoMixin, EntiteScopeMixin,
+class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
                      CompanyScopedModelViewSet):
     # YOPSB13 — le FournisseurSerializer imbriqué (ProduitSerializer.fournisseur)
     # lit contacts.all() + nb_produits/nb_bons_commande (repli .count()) PAR
@@ -86,7 +87,9 @@ class ProduitViewSet(ScmProduitTcoMixin, EntiteScopeMixin,
         if self.action in READ_ACTIONS + [
                 'export_xlsx', 'resolve', 'previsionnel', 'tracer',
                 'etiquettes_showroom', 'casiers', 'plan_picking',
-                'classe_abc', 'tracabilite']:
+                'classe_abc', 'tracabilite',
+                # NTDST10 — `atp` est LECTURE SEULE (aucun prix, aucun coût).
+                'atp']:
             # XSTK3/XSTK4 — `resolve` (scan code-barres/GS1) est LECTURE
             # SEULE, accessible à tout rôle authentifié — même garde que
             # `@action(permission_classes=[IsAnyRole])` sur l'action

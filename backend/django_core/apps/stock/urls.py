@@ -29,7 +29,7 @@ from .views import (
     SeuilReapproCasierViewSet, TacheReapproInterneViewSet,
     casiers_a_reapprovisionner_view, scanner_retour_fournisseur_view,
     IncidentQualiteFournisseurViewSet, DepotConsignationViewSet,
-    AccordRFAFournisseurViewSet,
+    AccordRFAFournisseurViewSet, catalogue_b2b_view,
 )
 
 router = DefaultRouter()
@@ -128,6 +128,9 @@ urlpatterns = [
          name='stock-simuler-capacite'),
     # NTWMS36 - interleaving : tache de prelevement sur le trajet retour.
     path('tache-retour/', tache_retour_view, name='stock-tache-retour'),
+    # NTDST18 - catalogue B2B temps reel resolu pour un client (jamais de
+    # prix d'achat) : donnee du futur portail client, pas d'ecran public ici.
+    path('catalogue-b2b/', catalogue_b2b_view, name='stock-catalogue-b2b'),
     # NTWMS40 - casiers picking sous leur seuil (GET) + generation (POST).
     path('casiers-a-reapprovisionner/', casiers_a_reapprovisionner_view,
          name='stock-casiers-a-reapprovisionner'),
