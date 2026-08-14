@@ -1,4 +1,4 @@
-"""PV69 — étude bancable v1 : `Devis.etude_params['simulation']`.
+"""PV69/70 — étude bancable v1 : `Devis.etude_params['simulation']`.
 
 Orchestrateur PUR (aucune écriture DB, aucun changement de statut — règle #4)
 qui agrège, par zone (pan de toiture), le productible PVGIS et une année météo
@@ -6,6 +6,16 @@ type (TMY) déjà offline-safe (``apps.parametres.pvgis.fetch_productible`` /
 ``apps.ventes.weather_feed.fetch_irradiance_tmy``) puis applique l'arbre de
 pertes (`apps.ventes.solar_design.simulate_bankable_yield`) pour produire un
 ratio de performance (PR) et les scénarios P50/P90/P75.
+
+PV70 ajoute le pont vers la matrice d'ombrage 12×24 de shadingUi.ts
+(``factors[mois][heure] ∈ [0,1]``, 1 = plein soleil — convention WJ19/WJ21) :
+quand une zone en porte une (fournie directement ou lue dans
+``Devis.roof_layout``), la perte annuelle d'ombrage est une moyenne PONDÉRÉE
+PRODUCTION (jamais une moyenne plate) — chaque cellule mois×heure pèse selon
+la part mensuelle réelle (TMY) × la forme horaire ciel clair
+(:func:`~apps.ventes.solar_design.clearsky_hourly_irradiance`). Sans matrice,
+repli sur :func:`~apps.ventes.solar_design.shading_analysis` (horizon/obstacles
+qualitatifs) puis, à défaut, aucun ombrage.
 
 ADDITIF STRICT (PV69/règle #2) : ce module ne touche JAMAIS les clés
 historiques d'``etude_params`` (``production_annuelle``, ``economies_annuelles``,
@@ -106,13 +116,165 @@ def _zone_monthly_share(tmy_result):
     return [max(0.0, _num(v)) / total for v in monthly]
 
 
-def _zone_base_production(settings, zone, *, force_refresh=False):
+def _valid_matrix(value):
+    """Valide une matrice 12×24 (listes de listes) — sinon ``None`` (tolérant).
+
+    Lecture TOLÉRANTE par construction : la matrice PV71 (sérialisation côté
+    web) n'existe pas encore sur tous les devis, et une forme mal formée ne
+    doit jamais faire échouer l'étude, seulement retomber sur le repli
+    ``shading_analysis``/aucun ombrage.
+    """
+    if not isinstance(value, list) or len(value) != 12:
+        return None
+    for row in value:
+        if not isinstance(row, list) or len(row) != 24:
+            return None
+    return value
+
+
+def _zone_shading_matrix(devis, zone, index):
+    """Résout la matrice 12×24 d'une zone : zone fournie → `Devis.roof_layout`
+    (par zone, appariée sur ``label`` puis sur l'index) → repli global du
+    layout → ``None`` (pas de matrice).
+
+    Clé tolérante : accepte ``shading12x24`` au niveau zone ET au niveau
+    global du layout (PV71 choisit encore où la matrice voyage côté web).
+    """
+    matrix = _valid_matrix((zone or {}).get('shading12x24'))
+    if matrix is not None:
+        return matrix
+
+    layout = getattr(devis, 'roof_layout', None) or {}
+    if not isinstance(layout, dict):
+        return None
+
+    layout_zones = layout.get('zones')
+    if isinstance(layout_zones, list):
+        label = (zone or {}).get('label')
+        if label:
+            for lz in layout_zones:
+                if isinstance(lz, dict) and lz.get('label') == label:
+                    matrix = _valid_matrix(lz.get('shading12x24'))
+                    if matrix is not None:
+                        return matrix
+        if 0 <= index < len(layout_zones) and isinstance(layout_zones[index], dict):
+            matrix = _valid_matrix(layout_zones[index].get('shading12x24'))
+            if matrix is not None:
+                return matrix
+
+    return _valid_matrix(layout.get('shading12x24'))
+
+
+def _hour_weight_shape():
+    """Poids horaire (24 valeurs, somme = 1) — forme ciel clair centrée midi.
+
+    Réutilise :func:`~apps.ventes.solar_design.clearsky_hourly_irradiance`
+    (jamais une nouvelle forme inventée) : une heure de production réelle pèse
+    plus qu'une heure d'aube/crépuscule dans la moyenne pondérée de pertes.
+    """
+    from apps.ventes.solar_design import clearsky_hourly_irradiance
+    shape = clearsky_hourly_irradiance(1.0)
+    total = sum(shape) or 1.0
+    return [v / total for v in shape]
+
+
+def _zone_production_weights(monthly_share):
+    """Matrice de poids 12×24 (somme = 1) : part mensuelle réelle (TMY) × forme
+    horaire ciel clair — jamais une moyenne plate mois par mois NI heure par
+    heure."""
+    hour_shape = _hour_weight_shape()
+    return [[m_share * h for h in hour_shape] for m_share in monthly_share]
+
+
+def _weighted_shading_loss_pct(matrix, weights):
+    """Perte d'ombrage annuelle (%) pondérée PRODUCTION depuis une matrice 12×24.
+
+    ``matrix[m][h]`` ∈ [0, 1] = facteur de production retenu à cette cellule
+    (1 = plein soleil, 0 = totalement masqué — convention shadingUi.ts). Chaque
+    cellule pèse selon ``weights`` (part mensuelle réelle × forme horaire ciel
+    clair) : une heure creuse masquée compte donc peu dans la moyenne — JAMAIS
+    une moyenne plate sur les 288 cellules. Valeurs illisibles/hors [0,1] sont
+    bornées, jamais rejetées.
+    """
+    total_w = 0.0
+    total_loss_w = 0.0
+    for m in range(min(12, len(matrix or []))):
+        row = matrix[m] or []
+        wrow = weights[m] if m < len(weights) else [0.0] * 24
+        for h in range(min(24, len(row))):
+            factor = min(1.0, max(0.0, _num(row[h], 1.0)))
+            loss = 1.0 - factor
+            w = wrow[h] if h < len(wrow) else 0.0
+            total_loss_w += loss * w
+            total_w += w
+    if total_w <= 0:
+        return 0.0
+    return round(total_loss_w / total_w * 100.0, 2)
+
+
+def _zone_shading(devis, zone, index, monthly_share):
+    """Perte d'ombrage annuelle (%) d'une zone + matrice résolue (ou ``None``).
+
+    Ordre : matrice 12×24 réelle (moyenne pondérée production) → repli
+    ``shading_analysis`` (horizon/obstacles qualitatifs, zone['horizon_profile']
+    / zone['obstacles']) → aucun ombrage (0 %) si rien n'est fourni. La matrice
+    PVGIS-horizon (« printhorizon ») est EXPLICITEMENT hors v1 (forme non
+    vérifiée par le founder) — jamais appelée ici.
+    """
+    matrix = _zone_shading_matrix(devis, zone, index)
+    if matrix is not None:
+        weights = _zone_production_weights(monthly_share)
+        return _weighted_shading_loss_pct(matrix, weights), matrix
+
+    horizon = (zone or {}).get('horizon_profile')
+    obstacles = (zone or {}).get('obstacles')
+    if horizon or obstacles:
+        from apps.ventes.solar_design import shading_analysis
+        result = shading_analysis(horizon, obstacles)
+        return _num(result.get('annual_loss_pct')), None
+
+    return 0.0, None
+
+
+def production_horaire_zone(zone, matrix=None):
+    """PV70 — courbe de production horaire d'une zone (12 mois × 24 h = 288 pts).
+
+    Tuile un jour-type mensuel (forme ciel clair,
+    :func:`~apps.ventes.solar_design.clearsky_hourly_irradiance`) sur les 12
+    mois — répartition mensuelle ÉGALE (1/12 du total annuel), faute d'un
+    profil mensuel par zone accessible à cet appel isolé — puis dérate chaque
+    cellule par ``matrix`` (12×24, facteurs [0,1], convention shadingUi.ts)
+    quand fournie. ``zone`` est le dict ENRICHI (issu de ``run_bankable_study``,
+    porte ``base_production_kwh``) — sert de courbe de production à
+    :func:`~apps.ventes.solar_design.hourly_self_consumption` (PV72).
+
+    ``base_production_kwh`` absent/≤ 0 → 288 zéros (jamais d'exception).
+    """
+    base = _num((zone or {}).get('base_production_kwh'), 0.0)
+    if base <= 0:
+        return [0.0] * 288
+    monthly_kwh = base / 12.0
+    hour_shape = _hour_weight_shape()
+    curve = []
+    for m in range(12):
+        row = matrix[m] if matrix and m < len(matrix) else None
+        for h in range(24):
+            factor = 1.0
+            if row and h < len(row):
+                factor = min(1.0, max(0.0, _num(row[h], 1.0)))
+            curve.append(round(monthly_kwh * hour_shape[h] * factor, 5))
+    return curve
+
+
+def _zone_base_production(settings, zone, *, devis=None, index=0,
+                          force_refresh=False):
     """Contexte productible d'une zone (pan) : PVGIS + TMY, jamais d'exception.
 
-    Renvoie ``{base_production_kwh, source, monthly_share, warnings}``.
-    ``source`` vaut ``'manual'`` dès qu'AU MOINS un des deux fetchers est
-    retombé en repli hors-ligne (reporting conservateur : ``'pvgis'`` garantit
-    que TOUT le calcul de la zone est ancré sur des données réseau réelles).
+    Renvoie ``{base_production_kwh, source, monthly_share,
+    shading_annual_loss_pct, shading_matrix, warnings}``. ``source`` vaut
+    ``'manual'`` dès qu'AU MOINS un des deux fetchers est retombé en repli
+    hors-ligne (reporting conservateur : ``'pvgis'`` garantit que TOUT le
+    calcul de la zone est ancré sur des données réseau réelles).
     """
     zone = zone or {}
     lat = zone.get('lat')
@@ -139,10 +301,15 @@ def _zone_base_production(settings, zone, *, force_refresh=False):
     else:
         source = 'pvgis'
 
+    monthly_share = _zone_monthly_share(tmy_res)
+    shading_pct, shading_matrix = _zone_shading(devis, zone, index, monthly_share)
+
     return {
         'base_production_kwh': base_kwh,
         'source': source,
-        'monthly_share': _zone_monthly_share(tmy_res),
+        'monthly_share': monthly_share,
+        'shading_annual_loss_pct': shading_pct,
+        'shading_matrix': shading_matrix,
         'warnings': warnings,
     }
 
@@ -175,25 +342,28 @@ def _pr_block(base_production_kwh, kwc_total, loss_factors):
 
 def run_bankable_study(devis, *, zones, load_curve=None, force_refresh=False,
                        computed_at=None):
-    """PV69 — étude bancable v1 : productible PVGIS par zone → PR → P50/P90/P75.
+    """PV69/70 — productible PVGIS multi-zones → ombrage pondéré → PR → P50/P90/P75.
 
     Paramètres
     ----------
-    devis : ``Devis`` — sert UNIQUEMENT à résoudre la société (réglages PVGIS
-        + tarifs) ; jamais lu/écrit autrement (aucun ``devis.save()`` ici).
-    zones : liste de ``{label, lat, lon, tilt, azimuth, kwc}`` — un pan de
-        toiture par élément. Une zone illisible (kWc/coords manquants) ne fait
-        jamais échouer l'étude : elle contribue 0 kWh, jamais d'exception.
-    load_curve : réservé à PV72 (autoconsommation) — ignoré en v1.
+    devis : ``Devis`` — résout la société (réglages PVGIS + tarifs) ET sert de
+        source pour la matrice d'ombrage 12×24 (``devis.roof_layout``, PV70,
+        repli tolérant si absente) ; jamais lu/écrit autrement (aucun
+        ``devis.save()`` ici).
+    zones : liste de ``{label, lat, lon, tilt, azimuth, kwc, shading12x24?,
+        horizon_profile?, obstacles?}`` — un pan de toiture par élément. Une
+        zone illisible (kWc/coords manquants) ne fait jamais échouer l'étude :
+        elle contribue 0 kWh, jamais d'exception.
+    load_curve : réservé à PV72 (autoconsommation) — ignoré en v1/v2.
     force_refresh : réservé à PV73 (cache PVGIS système) — sans effet tant que
-        le cache n'est pas branché (comportement v1 inchangé).
+        le cache n'est pas branché (comportement inchangé).
     computed_at : ``datetime`` figé pour un rendu déterministe (tests) ;
         défaut = maintenant (``django.utils.timezone.now``, appelé ici pour
         rester du code applicatif, pas le module PUR ``solar_design``).
 
     Retourne un dict JSON-sérialisable ``{version, computed_at, source, zones,
-    pr, warnings}`` conforme au sous-ensemble ``PV69`` du contrat PACT10 (les
-    blocs ``self_consumption``/``net_metering``/``subscribed_power``/
+    pr, warnings}`` conforme au sous-ensemble ``PV69/70`` du contrat PACT10
+    (les blocs ``self_consumption``/``net_metering``/``subscribed_power``/
     ``degradation``/``projection_25y`` arrivent en PV72). Ne lève JAMAIS.
     """
     if computed_at is None:
@@ -208,9 +378,10 @@ def run_bankable_study(devis, *, zones, load_curve=None, force_refresh=False,
     kwc_total = 0.0
     sources = set()
 
-    for zone in (zones or []):
+    for index, zone in enumerate(zones or []):
         zone = zone or {}
-        ctx = _zone_base_production(settings, zone, force_refresh=force_refresh)
+        ctx = _zone_base_production(
+            settings, zone, devis=devis, index=index, force_refresh=force_refresh)
         kwc = _num(zone.get('kwc'))
         zones_out.append({
             'label': zone.get('label') or '',
@@ -220,7 +391,7 @@ def run_bankable_study(devis, *, zones, load_curve=None, force_refresh=False,
             'azimuth': _maybe_num(zone.get('azimuth')),
             'kwc': kwc,
             'base_production_kwh': ctx['base_production_kwh'],
-            'shading_annual_loss_pct': 0.0,
+            'shading_annual_loss_pct': ctx['shading_annual_loss_pct'],
         })
         base_total += ctx['base_production_kwh']
         kwc_total += kwc
@@ -232,7 +403,18 @@ def run_bankable_study(devis, *, zones, load_curve=None, force_refresh=False,
 
     source = 'manual' if ('manual' in sources or not sources) else 'pvgis'
 
-    loss_factors = {**DEFAULT_LOSS_FACTORS, 'shading': 0.0}
+    # PV70 — le poste 'shading' agrégé est une moyenne PONDÉRÉE PRODUCTION des
+    # pertes d'ombrage par zone (Σ zone.base_production_kwh × zone.perte),
+    # jamais une moyenne plate entre zones : un pan minoritaire très ombragé ne
+    # doit pas peser autant qu'un grand pan bien exposé.
+    shading_fraction = 0.0
+    if base_total > 0:
+        shading_fraction = sum(
+            (z['base_production_kwh'] / base_total)
+            * (z['shading_annual_loss_pct'] / 100.0)
+            for z in zones_out)
+
+    loss_factors = {**DEFAULT_LOSS_FACTORS, 'shading': shading_fraction}
     pr, sim_warnings = _pr_block(base_total, kwc_total, loss_factors)
     warnings.extend(sim_warnings)
 
