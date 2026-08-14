@@ -240,6 +240,11 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
             # ``permission_classes`` de l'@action — qui déclare donc la MÊME
             # classe pour ne jamais mentir sur la garde effective.
             'conception_electrique',
+            # PV74 — étude bankable asynchrone : lancement (202) et suivi du
+            # job. Même périmètre que le générateur (responsable + admin) ; la
+            # garde vit ICI car get_permissions PRIME sur le
+            # ``permission_classes`` de l'@action, qui déclare la MÊME classe.
+            'simuler', 'simulation_status',
         ]:
             return [IsResponsableOrAdmin()]
         elif self.action == 'destroy':
@@ -537,6 +542,110 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
             return Response(build_electrical_design(devis))
         surcharges = request.data if isinstance(request.data, dict) else {}
         return Response(build_electrical_design(devis, overrides=surcharges))
+
+    @action(detail=True, methods=['post'], url_path='simuler',
+            permission_classes=[IsResponsableOrAdmin])
+    def simuler(self, request, pk=None):
+        """PV74 — lance l'ÉTUDE BANKABLE du devis en tâche de fond → 202.
+
+        L'étude interroge PVGIS par pan de toiture : la faire dans la requête
+        bloquerait un slot serveur pendant des secondes et casserait au premier
+        hoquet réseau. On répond donc immédiatement ``202`` avec un jeton et
+        l'URL à interroger, exactement comme l'export asynchrone de cette app
+        (SCA41) :
+
+            {detail, job_id, status: 'pending', zones, status_url}
+
+        Corps : ``{"force_refresh": true}`` pour ignorer le cache PVGIS (PV73)
+        et refaire les appels réseau ; absent/false → un second calcul du même
+        toit ne recoûte aucun aller-retour.
+
+        Un devis SANS calepinage exploitable répond ``400`` plutôt que de
+        lancer une étude vide. Le STATUT du devis n'est jamais écrit (règle #4 :
+        la tâche ne pose que ``etude_params['simulation']``). Scopé société par
+        ``get_queryset`` : un devis d'une autre société → 404.
+        """
+        import uuid
+
+        from django.core.cache import cache
+
+        from ..tasks import (
+            SIMULATION_JOB_CACHE_TTL, simulation_job_cache_key,
+            task_simulate_bankable_study, zones_etude_du_devis,
+        )
+
+        devis = self.get_object()  # borné société par get_queryset
+        zones = zones_etude_du_devis(devis)
+        if not zones:
+            return Response(
+                {'detail': ('Ce devis ne porte aucun pan de toiture '
+                            'exploitable : dessinez le calepinage 3D avant de '
+                            'lancer la simulation.')},
+                status=status.HTTP_400_BAD_REQUEST)
+
+        corps = request.data if isinstance(request.data, dict) else {}
+        force_refresh = bool(corps.get('force_refresh'))
+
+        token = uuid.uuid4().hex
+        company = request.user.company
+        # État initial en cache AVANT dispatch, scopé société — le endpoint de
+        # statut vérifie cette société avant tout accès (jamais inter-tenant).
+        cache.set(simulation_job_cache_key(token), {
+            'company_id': company.id,
+            'devis_id': devis.pk,
+            'status': 'pending',
+        }, SIMULATION_JOB_CACHE_TTL)
+        task_simulate_bankable_study.apply_async(
+            args=[devis.pk, company.id, token],
+            kwargs={'force_refresh': force_refresh},
+            queue='interactive')
+
+        return Response({
+            'detail': 'Simulation lancée en arrière-plan.',
+            'job_id': token,
+            'status': 'pending',
+            'zones': len(zones),
+            'status_url': ('/api/django/ventes/devis/%s/simulation-status/%s/'
+                           % (devis.pk, token)),
+        }, status=status.HTTP_202_ACCEPTED)
+
+    @action(detail=True, methods=['get'],
+            url_path=r'simulation-status/(?P<token>[0-9a-f]{32})',
+            permission_classes=[IsResponsableOrAdmin])
+    def simulation_status(self, request, pk=None, token=None):
+        """PV74 — état d'une simulation lancée par ``simuler``.
+
+        ``202 {status: 'pending'}`` tant qu'elle tourne, ``200 {status:
+        'ready', simulation: {...}}`` quand elle est rangée, ``500 {status:
+        'error'}`` si le calcul a échoué. Un jeton inconnu — ou appartenant à
+        une AUTRE société — répond ``404`` indistinct : on ne révèle pas
+        l'existence d'un job qui n'est pas le sien (même discipline que
+        ``export_status``, SCA41).
+
+        La charge ``simulation`` est relue sur le DEVIS
+        (``etude_params['simulation']``), jamais recopiée depuis le cache : le
+        document reste l'unique source de vérité. LECTURE PURE."""
+        from django.core.cache import cache
+
+        from ..tasks import simulation_job_cache_key
+
+        devis = self.get_object()  # borné société par get_queryset
+        job = cache.get(simulation_job_cache_key(token))
+        if (not job or job.get('company_id') != request.user.company_id
+                or job.get('devis_id') != devis.pk):
+            return Response({'detail': 'Simulation introuvable.'},
+                            status=status.HTTP_404_NOT_FOUND)
+
+        etat = job.get('status')
+        if etat == 'ready':
+            simulation = (devis.etude_params or {}).get('simulation')
+            return Response({'status': 'ready', 'simulation': simulation})
+        if etat == 'error':
+            return Response(
+                {'status': 'error', 'detail': 'La simulation a échoué.'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        return Response({'status': 'pending'},
+                        status=status.HTTP_202_ACCEPTED)
 
     @action(detail=True, methods=['post'],
             url_path='ajouter-boq-electrique',
