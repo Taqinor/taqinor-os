@@ -39,6 +39,7 @@ import {
 import { $, fmt } from './dom';
 import { type Ctx } from './context';
 import { type ProdConfig } from './types';
+import { createLayoutHistory } from './layoutHistory';
 
 /** Décimal à 1 chiffre, à la française (identique à l'entrée). */
 const fmt1 = (n: number): string =>
@@ -95,6 +96,9 @@ export interface LayoutEditor {
   selection: () => number[];
   /** PV25 — remplace la sélection multiple (indices non occupés ignorés). */
   setSelection: (indices: readonly number[]) => void;
+  /** PV26 — annule / rétablit la dernière action de disposition (true si effectué). */
+  undo: () => boolean;
+  redo: () => boolean;
 }
 
 export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEditor {
@@ -133,6 +137,9 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
   const layoutAzMinusEl = $<HTMLButtonElement>('rp9-layout-az-minus');
   const layoutAzPlusEl = $<HTMLButtonElement>('rp9-layout-az-plus');
   const layoutAzValueEl = $('rp9-layout-az-value');
+  // PV26 — annuler / rétablir.
+  const layoutUndoBtn = $<HTMLButtonElement>('rp9-layout-undo');
+  const layoutRedoBtn = $<HTMLButtonElement>('rp9-layout-redo');
 
   // PV25 — ÉTAT de la sélection multiple. Il vit dans ce module (rien à ajouter au ctx
   // partagé) : c'est une intention d'édition, pas un état de design.
@@ -149,6 +156,44 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
   const GROUP_SNAP_M = PANEL2_LONG_M / 2;
   /** Pas du nudge d'azimut (°) — jamais un arrondi imposé, juste l'incrément du bouton. */
   const AZIMUTH_NUDGE_DEG = 1;
+
+  // PV26 — HISTORIQUE par snapshots : toute action qui MUTE l'occupation appelle d'abord
+  // `recordHistory()`. Annuler ré-applique la photo précédente ; une nouvelle action vide
+  // la pile « rétablir ».
+  const history = createLayoutHistory();
+  /** Photographie l'occupation AVANT de la muter (no-op sans état de disposition). */
+  function recordHistory() {
+    if (ctx.layoutState) history.push(ctx.layoutState.occupied);
+  }
+  /** Ré-applique une occupation photographiée + re-rend (3D, chiffres, plan). */
+  function applySnapshot(snapshot: number[]) {
+    const st = ctx.layoutState;
+    if (!st) return;
+    st.occupied.clear();
+    for (const i of snapshot) if (i >= 0 && i < st.cells.length) st.occupied.add(i);
+    ctx.layoutSel = null;
+    pruneSelection();
+    renderCustomLayout();
+    renderLayoutPanel();
+  }
+  function undo(): boolean {
+    const st = ctx.layoutState;
+    if (!st) return false;
+    const prev = history.undo(st.occupied);
+    if (!prev) return false;
+    applySnapshot(prev);
+    if (layoutNoteEl) layoutNoteEl.textContent = `Action annulée — ${fmt(st.occupied.size)} panneaux posés.`;
+    return true;
+  }
+  function redo(): boolean {
+    const st = ctx.layoutState;
+    if (!st) return false;
+    const next = history.redo(st.occupied);
+    if (!next) return false;
+    applySnapshot(next);
+    if (layoutNoteEl) layoutNoteEl.textContent = `Action rétablie — ${fmt(st.occupied.size)} panneaux posés.`;
+    return true;
+  }
 
   function layoutCap(): number {
     const fit = ctx.layoutPlan ? ctx.layoutPlan.grid.panels.length : 0;
@@ -262,6 +307,8 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
     if (layoutSelectBtn) layoutSelectBtn.setAttribute('aria-pressed', String(selectMode));
     if (layoutRowBtn) layoutRowBtn.setAttribute('aria-pressed', String(rowMode));
     if (layoutClearSelBtn) layoutClearSelBtn.disabled = selection.length === 0;
+    if (layoutUndoBtn) layoutUndoBtn.disabled = !history.canUndo(); // PV26
+    if (layoutRedoBtn) layoutRedoBtn.disabled = !history.canRedo();
     // L'azimut n'est nudgeable que sur un toit en PENTE (face imposée par la toiture) ;
     // sur toit plat, l'azimut est un AXE de l'optimiseur, pas un réglage de disposition.
     if (layoutAzWrapEl) layoutAzWrapEl.hidden = ctx.roofType !== 'pitched';
@@ -329,6 +376,8 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
     if (on) {
       ctx.layoutState = null; // repart de l'optimum courant
       ensureLayoutState();
+      history.clear(); // PV26 — l'historique appartient à UNE session d'édition
+      setSelection([]);
       renderCustomLayout();
     } else {
       // En sortant, on re-rend la disposition de l'optimiseur (recalc rebranche tout).
@@ -345,6 +394,7 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
   // + / − : ajoute/retire un panneau (touch + mouvement réduit, sans glissé fin).
   layoutPlusEl?.addEventListener('click', () => {
     if (!ctx.layoutMode || !ctx.layoutState) return;
+    recordHistory(); // PV26
     const r = addFirstEmpty(ctx.layoutState, layoutCap());
     if (r.ok) {
       if (layoutNoteEl) layoutNoteEl.textContent = `Panneau ajouté — ${r.count} posés.`;
@@ -356,6 +406,7 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
   });
   layoutMinusEl?.addEventListener('click', () => {
     if (!ctx.layoutMode || !ctx.layoutState) return;
+    recordHistory(); // PV26
     const r = removeLast(ctx.layoutState);
     if (r.ok) {
       ctx.layoutSel = null;
@@ -374,6 +425,7 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
   // besoin : la note l'indique honnêtement (surproduction non rémunérée).
   layoutFillEl?.addEventListener('click', () => {
     if (!ctx.layoutMode || !ctx.layoutState) return;
+    recordHistory(); // PV26
     const r = fillAll(ctx.layoutState);
     ctx.layoutSel = null;
     if (layoutNoteEl) {
@@ -388,6 +440,7 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
   // Réinitialiser la disposition optimale.
   layoutResetEl?.addEventListener('click', () => {
     if (!ctx.layoutState) return;
+    recordHistory(); // PV26 — « réinitialiser » s'annule comme n'importe quelle action
     resetToOptimal(ctx.layoutState, ctx.layoutOptimalCount);
     ctx.layoutSel = null;
     if (layoutNoteEl) layoutNoteEl.textContent = `Disposition optimale restaurée — ${occupiedCount(ctx.layoutState)} panneaux.`;
@@ -440,6 +493,68 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
   layoutAzMinusEl?.addEventListener('click', () => nudgeAzimuth(-AZIMUTH_NUDGE_DEG));
   layoutAzPlusEl?.addEventListener('click', () => nudgeAzimuth(AZIMUTH_NUDGE_DEG));
 
+  // PV26 — boutons « annuler » / « rétablir ».
+  layoutUndoBtn?.addEventListener('click', () => undo());
+  layoutRedoBtn?.addEventListener('click', () => redo());
+
+  // PV26 — RACCOURCIS clavier, actifs SEULEMENT en mode disposition (sinon on volerait
+  // Ctrl+Z à la page hôte) : Ctrl/⌘+Z annule, Ctrl/⌘+Y (ou Ctrl/⌘+Maj+Z) rétablit. Les
+  // FLÈCHES nudgent le panneau sélectionné — ou tout le groupe — d'un pas de calepinage.
+  function nudgeSelection(dx: number, dy: number): boolean {
+    const st = ctx.layoutState;
+    if (!st) return false;
+    const members = selection.length ? selection : ctx.layoutSel != null ? [ctx.layoutSel] : [];
+    if (!members.length) return false;
+    recordHistory();
+    const res = moveGroup(st, members, dx, dy, { maxSnapM: GROUP_SNAP_M });
+    // Refusé, OU chaque membre est retombé sur sa propre cellule (rien de libre dans cette
+    // direction) : dans les deux cas RIEN n'a bougé — on retire la photo pour ne pas
+    // empiler une « action » vide dans l'historique.
+    const sameAsBefore =
+      res.ok && res.targets.length === members.length && [...res.targets].sort((a, b) => a - b).join() === [...members].sort((a, b) => a - b).join();
+    if (!res.ok || sameAsBefore) {
+      history.undo(st.occupied);
+      if (layoutNoteEl) layoutNoteEl.textContent = 'Pas de place dans cette direction — rien n’a bougé.';
+      renderLayoutPanel();
+      return false;
+    }
+    setSelection(res.targets);
+    if (ctx.layoutSel != null) ctx.layoutSel = res.targets[0] ?? null;
+    if (layoutNoteEl) layoutNoteEl.textContent = `Déplacé — ${fmt(res.targets.length)} panneaux.`;
+    renderCustomLayout();
+    renderLayoutPanel();
+    return true;
+  }
+  document.addEventListener('keydown', (e) => {
+    if (!ctx.layoutMode || !ctx.layoutState) return;
+    const mod = e.ctrlKey || e.metaKey;
+    const key = e.key.toLowerCase();
+    if (mod && key === 'z' && !e.shiftKey) {
+      if (undo()) e.preventDefault();
+      return;
+    }
+    if (mod && (key === 'y' || (key === 'z' && e.shiftKey))) {
+      if (redo()) e.preventDefault();
+      return;
+    }
+    if (mod) return;
+    // Pas de nudge : la largeur de rangée (axe u) et le pas de rangée (axe d'empilement)
+    // du pavage courant — on avance exactement d'un emplacement, jamais d'un pas inventé.
+    const grid = ctx.layoutPlan?.grid;
+    if (!grid) return;
+    const stepU = grid.rowWidthM;
+    const stepV = grid.rowPitchM;
+    const moves: Record<string, [number, number]> = {
+      arrowleft: [-stepU, 0],
+      arrowright: [stepU, 0],
+      arrowup: [0, stepV],
+      arrowdown: [0, -stepV],
+    };
+    const delta = moves[key];
+    if (!delta) return;
+    if (nudgeSelection(delta[0], delta[1])) e.preventDefault();
+  });
+
   // Plan tactile : tap-sélection d'un panneau → tap-cible d'un emplacement libre.
   layoutGridEl?.addEventListener('click', (e) => {
     if (!ctx.layoutMode || !ctx.layoutState) return;
@@ -460,6 +575,7 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
       return;
     }
     // 2e tap : déplace vers la cible si elle est VIDE valide ; sinon rejet (rouge).
+    recordHistory(); // PV26
     const res = movePanelToCell(ctx.layoutState, ctx.layoutSel, idx);
     if (res.ok) {
       if (layoutNoteEl) layoutNoteEl.textContent = 'Panneau déplacé.';
@@ -554,6 +670,7 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
    *  tout surlignage. No-op si la cellule n'est pas occupée. */
   function removePanelInScene(cellIndex: number) {
     if (!ctx.layoutState) return;
+    recordHistory(); // PV26
     const r = removePanel(ctx.layoutState, cellIndex);
     if (!r.ok) return;
     ctx.layoutSel = null;
@@ -600,6 +717,7 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
         const cell = ctx.layoutState.cells[from];
         const dx = enu.x - cell.cx;
         const dy = enu.y - cell.cy;
+        recordHistory(); // PV26 — une photo AVANT le geste (simple, groupe ou rangée)
         // PV25 — trois gestes possibles, du plus large au plus fin :
         //  1. mode RANGÉE : toute la rangée suit, déplacement contraint à son axe ;
         //  2. panneau saisi MEMBRE d'une sélection : tout le groupe suit ;
@@ -720,5 +838,7 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
     reenterCustomLayout,
     selection: () => [...selection],
     setSelection,
+    undo,
+    redo,
   };
 }

@@ -549,6 +549,21 @@ const chipClass =
                   </button>
                 </div>
 
+                <!-- PV26 — annuler / rétablir (Ctrl+Z / Ctrl+Y, ou ⌘). Les flèches du
+                     clavier déplacent le panneau (ou le groupe) d'un emplacement. -->
+                <div class="flex flex-wrap items-center gap-3">
+                  <span class="tech-label text-lune-faint">Historique</span>
+                  <button type="button" id="rp9-layout-undo" disabled
+                    class="border border-white/25 px-4 py-2.5 text-sm font-bold text-white transition-colors hover:border-brass-400 hover:text-brass-300 disabled:cursor-not-allowed disabled:opacity-40">
+                    ↶ Annuler <span class="text-lune-faint">(Ctrl+Z)</span>
+                  </button>
+                  <button type="button" id="rp9-layout-redo" disabled
+                    class="border border-white/25 px-4 py-2.5 text-sm font-bold text-white transition-colors hover:border-brass-400 hover:text-brass-300 disabled:cursor-not-allowed disabled:opacity-40">
+                    ↷ Rétablir <span class="text-lune-faint">(Ctrl+Y)</span>
+                  </button>
+                  <span class="text-xs text-lune-soft">Flèches ← ↑ ↓ → : déplacer d’un emplacement</span>
+                </div>
+
                 <!-- Nudge d'AZIMUT : n'a de sens que sur un toit en PENTE (la face du pan est
                      imposée par la toiture ; sur toit plat l'azimut est un axe de l'optimiseur).
                      Masqué en toit plat. -->
