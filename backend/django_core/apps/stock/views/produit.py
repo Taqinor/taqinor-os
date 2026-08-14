@@ -89,7 +89,10 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
                 'etiquettes_showroom', 'casiers', 'plan_picking',
                 'classe_abc', 'tracabilite',
                 # NTDST10 — `atp` est LECTURE SEULE (aucun prix, aucun coût).
-                'atp']:
+                'atp',
+                # NTRET17 — étiquette PRIX de rayon : impression, LECTURE
+                # SEULE, jamais de prix d'achat (même garde qu'`etiquettes`).
+                'etiquettes_prix']:
             # XSTK3/XSTK4 — `resolve` (scan code-barres/GS1) est LECTURE
             # SEULE, accessible à tout rôle authentifié — même garde que
             # `@action(permission_classes=[IsAnyRole])` sur l'action
@@ -510,6 +513,81 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
         response = HttpResponse(pdf_bytes, content_type='application/pdf')
         response['Content-Disposition'] = (
             'inline; filename="etiquettes-produits.pdf"')
+        return response
+
+    @extend_schema(responses={(200, 'application/pdf'): bytes})
+    @action(detail=False, methods=['get'], url_path='etiquettes-prix',
+            permission_classes=[IsAnyRole])
+    def etiquettes_prix(self, request):
+        """NTRET17 — Étiquettes PRIX de rayon (EAN-13 + prix TTC en gros).
+
+        Réimpression EN MASSE après un changement de tarif : au lieu d'une
+        liste d'ids, on cible toute une ``?categorie=`` (ou une ``?zone=`` de
+        casiers, NTWMS1/FG319) — un clic réimprime le rayon entier.
+
+        Paramètres : ``ids`` OU ``categorie`` OU ``zone`` ; ``largeur`` (mm,
+        gabarit imprimante) ; ``sortie=html|pdf`` (``format`` est réservé par
+        DRF). JAMAIS de prix d'achat — c'est une étiquette CLIENT.
+        """
+        from apps.ventes.utils.pdf import _html_to_pdf
+
+        from .. import labels
+
+        company = request.user.company
+        produits = Produit.objects.filter(
+            company=company, is_archived=False)
+
+        ids = request.query_params.getlist('ids')
+        if len(ids) == 1 and ',' in ids[0]:
+            ids = ids[0].split(',')
+        ids = [i for i in (str(x).strip() for x in ids) if i.isdigit()]
+        categorie = request.query_params.get('categorie')
+        zone = (request.query_params.get('zone') or '').strip()
+
+        if ids:
+            produits = produits.filter(id__in=ids)
+        elif categorie:
+            produits = produits.filter(categorie_id=categorie)
+        elif zone:
+            # Réimpression par ZONE de casiers : les produits réellement
+            # affectés à un casier de cette zone (FG319, lu par l'accesseur
+            # inverse de la string-FK — jamais un import d'installations).
+            produits = produits.filter(
+                installations_bin_affectations__bin__zone__iexact=zone,
+                installations_bin_affectations__bin__archived=False,
+            ).distinct()
+        else:
+            return Response(
+                {'detail': 'Précisez « ids », « categorie » ou « zone ».'},
+                status=status.HTTP_400_BAD_REQUEST)
+
+        produits = list(produits.order_by('nom', 'id'))
+        if not produits:
+            return Response({'detail': 'Aucun produit correspondant.'},
+                            status=status.HTTP_404_NOT_FOUND)
+
+        try:
+            largeur = int(request.query_params.get('largeur') or 58)
+        except (TypeError, ValueError):
+            largeur = 58
+        largeur = max(30, min(largeur, 105))
+
+        lignes = [{
+            'nom': produit.nom,
+            'marque': produit.marque or '',
+            'sku': produit.sku or '',
+            'code_barres': produit.code_barres or '',
+            'prix_ttc': produit.prix_vente,
+        } for produit in produits]
+
+        html = labels.render_etiquettes_prix_html(
+            lignes, largeur_mm=largeur)
+        if request.query_params.get('sortie') == 'html':
+            return HttpResponse(html, content_type='text/html; charset=utf-8')
+        response = HttpResponse(_html_to_pdf(html),
+                                content_type='application/pdf')
+        response['Content-Disposition'] = (
+            'inline; filename="etiquettes-prix.pdf"')
         return response
 
     @action(detail=False, methods=['get'], url_path='etiquettes-showroom')
