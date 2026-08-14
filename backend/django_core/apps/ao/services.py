@@ -2193,13 +2193,58 @@ def calepiner_surface(*, surface, kits, parametres, obstacles=(), zones=(),
     }
 
 
-def calepiner_villa(area, *, ordre='lnglat', kit=None, retrait_m=None,
-                    pas_recherche_m=0.01):
+def kit_panneau_du_produit(produit_panneau, *, company=None):
+    """PV12 — le ``Kit`` de calepinage d'un PRODUIT panneau du catalogue.
+
+    ``produit_panneau`` est un identifiant OU une instance de ``stock.Produit``.
+    Un identifiant est TOUJOURS résolu DANS la société (``company`` devient
+    alors obligatoire) : sans ce scoping, le panneau d'une autre société
+    entrerait dans un calcul, et une villa se retrouverait chiffrée sur un
+    module qui n'appartient pas à son vendeur.
+
+    La géométrie vient de ``apps.stock.selectors.kit_from_produit`` — jamais
+    d'un import de ``apps.stock.models`` (frontière cross-app du dépôt). Elle
+    rend ``None`` dès qu'une des trois grandeurs requises manque (longueur,
+    largeur, puissance) : l'appelant retombe alors sur son kit par défaut,
+    parce que **le moteur ne devine jamais une géométrie**.
+    """
+    from apps.stock import selectors as stock_selectors
+
+    if produit_panneau is None:
+        return None
+    produit = produit_panneau
+    if isinstance(produit_panneau, (int, str)):
+        if company is None:
+            raise ValueError(
+                'Résoudre un produit panneau par identifiant exige une '
+                "société : sans elle, le panneau d'une autre société "
+                'entrerait dans le calcul.')
+        produit = stock_selectors.get_produit_scoped(company, produit_panneau)
+        if produit is None:
+            raise ValueError(
+                'Produit panneau « %s » introuvable dans cette société.'
+                % (produit_panneau,))
+    elif company is not None:
+        attendue = getattr(company, 'pk', company)
+        if getattr(produit, 'company_id', attendue) != attendue:
+            raise ValueError(
+                'Le produit panneau « %s » appartient à une autre société.'
+                % (getattr(produit, 'nom', produit),))
+    return stock_selectors.kit_from_produit(produit)
+
+
+def calepiner_villa(area, *, ordre='lnglat', kit=None, produit_panneau=None,
+                    company=None, retrait_m=None, pas_recherche_m=0.01):
     """Calepine une toiture VILLA (``AreaRecord`` du lecteur de cartes).
 
     ``ordre`` est EXPLICITE et jamais deviné : le lecteur de cartes sérialise
     en ``[lng, lat]`` (GeoJSON) tandis que le lead CRM stocke ``[lat, lng]`` —
     une confusion produit une toiture retournée, plausible et fausse.
+
+    ``produit_panneau`` (PV12) fait poser le panneau RÉELLEMENT vendu : le kit
+    est dérivé de la fiche technique du produit, dans la société. Il ne prime
+    jamais sur un ``kit`` fourni explicitement (celui-là est déjà un choix), et
+    une fiche incomplète retombe sur ``KIT_VILLA_720`` — inchangé.
 
     Aucune ligne AO n'est créée ni lue : une villa n'a pas de projet AO.
     Rend le même dict que ``calepiner_surface`` + ``projection``,
@@ -2211,7 +2256,9 @@ def calepiner_villa(area, *, ordre='lnglat', kit=None, retrait_m=None,
     )
     from core.calepinage.types import KIT_VILLA_720
 
-    kit = kit or KIT_VILLA_720
+    kit = (kit
+           or kit_panneau_du_produit(produit_panneau, company=company)
+           or KIT_VILLA_720)
     entree, projection, politique = vers_entree(
         area, ordre=ordre, kit=kit,
         retrait_m=RETRAIT_VILLA_M if retrait_m is None else retrait_m,

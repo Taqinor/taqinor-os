@@ -1,0 +1,71 @@
+{
+  "endpoint": "GET /api/django/ventes/devis/<int:pk>/simulation/",
+  "pourquoi": "L'étude bancable v1 (`Devis.etude_params['simulation']`) en UN SEUL appel agrégé : production PVGIS par zone, ratio de performance et sa décomposition de pertes, P50/P75/P90, autoconsommation, net-metering, puissance souscrite recommandée, dégradation garantie et projection financière 25 ans (VAN/TRI/payback). ADDITIF : les clés historiques d'`etude_params` (`production_annuelle`, `economies_annuelles`, `payback`…) restent INCHANGÉES à côté de ce bloc — ce contrat ne documente qu'un AJOUT, jamais un remplacement. PACT10 : ce contrat part SEUL avant les deux lanes front/back. Source de vérité prévue : apps/ventes/selectors.py::devis_simulation (à construire).",
+  "exemple": {
+    "simulation": {
+      "version": 1,
+      "computed_at": "2026-08-14T10:00:00Z",
+      "source": "pvgis",
+      "zones": [
+        {
+          "label": "Pan Sud",
+          "lat": 33.57,
+          "lon": -7.59,
+          "tilt": 30,
+          "azimuth": 0,
+          "kwc": 42.3,
+          "base_production_kwh": 71800,
+          "shading_annual_loss_pct": 4.2
+        }
+      ],
+      "pr": {
+        "performance_ratio": 0.812,
+        "total_loss_pct": 18.8,
+        "loss_breakdown": {
+          "temperature": 8.0,
+          "soiling": 3.0,
+          "shading": 4.2,
+          "wiring": 2.0,
+          "inverter": 2.5,
+          "mismatch": 2.0,
+          "availability": 1.0
+        },
+        "p50_kwh": 71800,
+        "p90_kwh": 58300,
+        "p75_kwh": 66400,
+        "annual_variability": 0.06,
+        "specific_yield_kwh_kwc": 1697
+      },
+      "self_consumption": {
+        "hours": 8760,
+        "self_consumption_rate": 0.41,
+        "coverage_rate": 0.63,
+        "self_consumed_kwh": 29400,
+        "surplus_kwh": 42400,
+        "grid_import_kwh": 17300
+      },
+      "net_metering": {
+        "annual_savings_mad": 33800,
+        "annual_compensated_kwh": 24100,
+        "annual_spill_value_mad": 0
+      },
+      "subscribed_power": {
+        "peak_reduction_pct": 22.0,
+        "recommended_subscribed": 68,
+        "annual_saving": 5200
+      },
+      "degradation": {
+        "factor_year1": 0.9784,
+        "factor_last_year": 0.874,
+        "any_warranty_breach": false
+      },
+      "projection_25y": {
+        "npv": 412300,
+        "irr": 0.187,
+        "payback_year": 6,
+        "discounted_payback_year": 7
+      },
+      "warnings": []
+    }
+  }
+}

@@ -15,6 +15,8 @@ import { ThemeProvider } from '../../design/ThemeProvider.jsx'
 vi.mock('../../api/stockApi', () => ({
   default: {
     produitPrevisionnel: vi.fn(),
+    // PV8 — badge de complétude datasheet (onglet « Fiche technique »).
+    getFichesTechniques: vi.fn(),
   },
 }))
 
@@ -44,6 +46,9 @@ const produit = {
 beforeEach(() => {
   vi.clearAllMocks()
   if (!Element.prototype.scrollIntoView) Element.prototype.scrollIntoView = () => {}
+  // PV8 — par défaut, aucune fiche technique (les tests qui en ont besoin
+  // écrasent ce mock explicitement).
+  stockApi.getFichesTechniques.mockResolvedValue({ data: [] })
 })
 
 describe('ZPUR10 — onglet « En commande »', () => {
@@ -150,6 +155,52 @@ describe('APX20 — onglet « Fiche technique »', () => {
     await userEvent.click(screen.getByRole('tab', { name: 'Fiche technique' }))
     await screen.findByTestId('pdet-fiche-technique')
     expect(container.textContent).not.toMatch(/742[.,]50/)
+  })
+})
+
+/* ============================================================================
+   PV8 — Badge « complétude datasheet » sur l'onglet « Fiche technique » :
+   complet / partiel / absent, calculé depuis la FicheTechnique (PV5) du
+   produit (`stockApi.getFichesTechniques(produitId)`, filtrée serveur).
+   ========================================================================== */
+
+describe('PV8 — badge de complétude datasheet', () => {
+  it("affiche « Fiche absente » quand le produit n'a pas de fiche technique", async () => {
+    stockApi.getFichesTechniques.mockResolvedValue({ data: [] })
+    render(<ProduitDetail produit={produit} onClose={() => {}} />, { wrapper })
+    await userEvent.click(screen.getByRole('tab', { name: 'Fiche technique' }))
+    expect(await screen.findByText('Fiche absente')).toBeInTheDocument()
+    expect(stockApi.getFichesTechniques).toHaveBeenCalledWith(7)
+  })
+
+  it('affiche « Fiche complète » quand tous les champs requis du type sont renseignés', async () => {
+    stockApi.getFichesTechniques.mockResolvedValue({
+      data: [{
+        id: 1, produit: 7, type_fiche: 'module',
+        longueur_mm: 2278, largeur_mm: 1134, pmax_wc: '550.00',
+        voc_v: '49.50', vmp_v: '41.50', isc_a: '14.00', imp_a: '13.30',
+        temp_coeff_pmax_pct_c: '-0.300',
+      }],
+    })
+    render(<ProduitDetail produit={produit} onClose={() => {}} />, { wrapper })
+    await userEvent.click(screen.getByRole('tab', { name: 'Fiche technique' }))
+    expect(await screen.findByText('Fiche complète')).toBeInTheDocument()
+  })
+
+  it('affiche « Fiche partielle » quand des champs requis du type manquent', async () => {
+    stockApi.getFichesTechniques.mockResolvedValue({
+      data: [{
+        id: 1, produit: 7, type_fiche: 'module',
+        longueur_mm: 2278, largeur_mm: 1134, pmax_wc: '550.00',
+        voc_v: null, vmp_v: '41.50', isc_a: '14.00', imp_a: '13.30',
+        temp_coeff_pmax_pct_c: null,
+      }],
+    })
+    render(<ProduitDetail produit={produit} onClose={() => {}} />, { wrapper })
+    await userEvent.click(screen.getByRole('tab', { name: 'Fiche technique' }))
+    const badge = await screen.findByText('Fiche partielle')
+    expect(badge).toBeInTheDocument()
+    expect(badge).toHaveAttribute('title', expect.stringContaining('Voc'))
   })
 })
 

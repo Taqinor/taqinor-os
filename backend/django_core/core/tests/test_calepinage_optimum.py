@@ -10,20 +10,24 @@ que les kits mixtes rapportent.
 
 import unittest
 
+from core.calepinage.exceptions import EntreeInvalide
 from core.calepinage.moteur import compter_plan
 from core.calepinage.obstacles import appliquer_regles
 from core.calepinage.optimum import (
     borne_superieure_kit,
+    calculer,
     evaluer_plan_impose,
     optimiser,
     positions_grille,
 )
+from core.calepinage.serialisation import EntreeCalepinage
 from core.calepinage.surfaces.polygone import SurfacePolygone
 from core.calepinage.surfaces.rectangle import SurfaceRectangle
 from core.calepinage.types import (
     KIT_AO_PAYSAGE,
     KIT_AO_PORTRAIT,
     MethodePreuve,
+    ModePose,
     Obstacle,
     Parametres,
     Preuve,
@@ -224,6 +228,108 @@ class GrilleEtBornes(unittest.TestCase):
         borne = borne_superieure_kit(surface, KIT_AO_PORTRAIT,
                                      pas_recherche=0.05)
         self.assertGreaterEqual(borne, optimiser(surface, parametres).modules)
+
+
+class ModeRangeesImposees(unittest.TestCase):
+    """PV29 — le dessinateur impose ses rangées ; le moteur les COMPTE.
+
+    Le point sensible n'est pas le compte : c'est que ce mode ne puisse
+    JAMAIS produire la phrase « optimum prouvé », même quand le plan imposé
+    égale le DP. La méthode reste ``IMPOSE_UTILISATEUR``, donc non exacte.
+    """
+
+    def setUp(self):
+        self.surface = SurfaceRectangle(repere="R", longueur_m=20.0,
+                                        largeur_m=12.0, rives=RIVES_AO)
+
+    def _parametres(self, rangees_imposees):
+        return Parametres(kits=(KIT_AO_PORTRAIT,), rives=RIVES_AO,
+                          allee_m=0.60, pas_recherche_m=0.01,
+                          mode_pose=ModePose.RANGEES_IMPOSEES_UTILISATEUR,
+                          rangees_imposees=rangees_imposees)
+
+    def test_le_plan_impose_est_compte_et_situe_face_au_dp(self):
+        resultat = calculer(self.surface,
+                            self._parametres(((0.35, "AO_PORTRAIT"),)))
+        self.assertEqual(resultat.modules, 34)
+        self.assertEqual(resultat.rangees, ((0.35, "AO_PORTRAIT"),))
+        self.assertEqual(resultat.ecart_a_l_optimum, 68 - 34)
+        self.assertIs(resultat.preuve.methode,
+                      MethodePreuve.IMPOSE_UTILISATEUR)
+        self.assertEqual(resultat.preuve.compte_optimal, 68)
+
+    def test_meme_egal_a_l_optimum_il_ne_dit_jamais_prouve(self):
+        resultat = calculer(self.surface, self._parametres(
+            ((0.35, "AO_PORTRAIT"), (5.65, "AO_PORTRAIT"))))
+        self.assertEqual(resultat.modules, 68)
+        self.assertEqual(resultat.ecart_a_l_optimum, 0)
+        self.assertFalse(resultat.optimal)
+        self.assertNotIn("prouvé", resultat.preuve.libelle)
+        self.assertIn("meilleur plan trouvé", resultat.preuve.libelle)
+
+    def test_sans_rangees_le_mode_refuse_au_lieu_de_se_replier_sur_le_dp(self):
+        for vide in (None, ()):
+            with self.subTest(vide=vide):
+                with self.assertRaises(EntreeInvalide) as capture:
+                    calculer(self.surface, self._parametres(vide))
+                self.assertIn("rangees_imposees", str(capture.exception))
+
+    def test_un_kit_non_declare_est_refuse_par_son_nom(self):
+        with self.assertRaises(EntreeInvalide) as capture:
+            calculer(self.surface, self._parametres(((0.35, "INCONNU"),)))
+        self.assertIn("INCONNU", str(capture.exception))
+
+    def test_un_couple_malforme_est_refuse_par_son_rang(self):
+        with self.assertRaises(EntreeInvalide) as capture:
+            calculer(self.surface, self._parametres((0.35,)))
+        self.assertIn("n°1", str(capture.exception))
+
+    def test_le_mode_impose_reste_un_value_error_pour_les_appelants(self):
+        """``EntreeInvalide`` hérite de ``ValueError`` : les rattrapages
+        historiques (le service AO) continuent de fonctionner."""
+        with self.assertRaises(ValueError):
+            calculer(self.surface, self._parametres(()))
+
+
+class SerialisationDuPlanImpose(unittest.TestCase):
+    """PV29 — le plan imposé fait l'aller-retour JSON sans rien perdre."""
+
+    def _entree(self, rangees_imposees):
+        surface = SurfaceRectangle(repere="R", longueur_m=20.0,
+                                   largeur_m=12.0, rives=RIVES_AO)
+        parametres = Parametres(
+            kits=(KIT_AO_PORTRAIT,), rives=RIVES_AO, allee_m=0.60,
+            pas_recherche_m=0.01,
+            mode_pose=(ModePose.RANGEES_IMPOSEES_UTILISATEUR
+                       if rangees_imposees
+                       else ModePose.RANGEES_EXPLICITES_DP),
+            rangees_imposees=rangees_imposees)
+        return EntreeCalepinage(repere="PV29", surfaces=(surface,),
+                                kits=(KIT_AO_PORTRAIT,), parametres=parametres)
+
+    def test_l_aller_retour_rend_le_meme_plan_impose(self):
+        entree = self._entree(((0.35, "AO_PORTRAIT"), (5.65, "AO_PORTRAIT")))
+        refaite = EntreeCalepinage.depuis_json(entree.vers_json())
+        self.assertEqual(refaite.parametres.rangees_imposees,
+                         entree.parametres.rangees_imposees)
+        self.assertIs(refaite.parametres.mode_pose,
+                      ModePose.RANGEES_IMPOSEES_UTILISATEUR)
+        self.assertEqual(refaite.hash_entree, entree.hash_entree)
+
+    def test_sans_plan_impose_la_cle_n_apparait_pas_dans_le_document(self):
+        """Sinon l'empreinte FIGÉE des golden bougerait sans qu'aucun relevé
+        n'ait changé : le champ absent vaut ``None``."""
+        entree = self._entree(None)
+        self.assertNotIn("rangees_imposees",
+                         entree.vers_dict()["parametres"])
+        refaite = EntreeCalepinage.depuis_json(entree.vers_json())
+        self.assertIsNone(refaite.parametres.rangees_imposees)
+        self.assertEqual(refaite.hash_entree, entree.hash_entree)
+
+    def test_deux_plans_imposes_differents_ont_deux_empreintes(self):
+        un = self._entree(((0.35, "AO_PORTRAIT"),))
+        autre = self._entree(((0.36, "AO_PORTRAIT"),))
+        self.assertNotEqual(un.hash_entree, autre.hash_entree)
 
 
 if __name__ == "__main__":  # pragma: no cover

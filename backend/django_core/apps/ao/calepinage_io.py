@@ -42,9 +42,15 @@ from core.calepinage.version import SCHEMA_VERSION, VERSION_MOTEUR
 
 __all__ = [
     'EntreeInvalide', 'NATURE_VERS_TYPE_MOTEUR', 'PROVENANCE_VERS_MOTEUR',
-    'document_entree', 'affectations_du_document', 'kits_vers_document',
-    'parametres_vers_document', 'surface_vers_document',
-    'obstacles_vers_document', 'resultat_vers_json', 'preuve_vers_json',
+    'MODE_POSE_IMPOSE', 'TIROIRS', 'CHAMPS_RIVES_VERS_CONTRAT',
+    'document_entree', 'affectations_du_document',
+    'kits_vers_document', 'parametres_vers_document',
+    'rangees_imposees_du_preset', 'surface_vers_document',
+    'obstacles_vers_document', 'zones_vers_document',
+    'resultat_vers_json', 'preuve_vers_json',
+    'marges_vers_json', 'tiroirs_vers_json', 'tiroirs_vides',
+    'PATCH_MOTEUR_VERS_PARAMS', 'PATCH_MOTEUR_VERS_OBSTACLE',
+    'action_de_patch', 'suggestion_vers_json', 'suggestions_vers_json',
 ]
 
 
@@ -205,6 +211,47 @@ def obstacles_vers_document(toiture):
     return sortie
 
 
+# ─────────────────────────────────────────────────────── zones (PV55)
+def zones_vers_document(toiture):
+    """Les ZONES d'une toiture, en forme de contrat (``serialisation._zone``).
+
+    Le document portait ``zones: []`` EN DUR : le moteur sait consommer quatre
+    natures de contour depuis AOF57, et aucune ne lui parvenait jamais. Une
+    servitude ou une bande coupe-feu tracée par le dessinateur ne changeait donc
+    rien au compte publié — silencieusement.
+
+    Trois règles, toutes portées par la donnée :
+
+    * un contour VIDE est ignoré — une zone en cours de saisie ne délimite rien
+      et ne peut donc ni bloquer ni préférer quoi que ce soit ;
+    * un contour de 1 ou 2 sommets est un REFUS NOMMÉ : c'est un tracé à
+      moitié fait, et ``ZoneAO.clean`` le refuse déjà à la saisie. L'ignorer
+      ici laisserait croire qu'une zone interdite bloque, alors qu'elle ne
+      bloquerait rien ;
+    * la ``nature`` passe TELLE QUELLE : ``ZoneAO.Nature`` reprend les valeurs
+      de ``NatureZone`` à la lettre, précisément pour qu'aucune traduction ne
+      s'intercale ici.
+    """
+    sortie = []
+    for zone in toiture.zones.all().order_by('repere', 'id'):
+        sommets = _contour(zone.sommets)
+        if not sommets:
+            continue
+        if len(sommets) < 3:
+            raise EntreeInvalide(
+                "La zone « %s » n'a que %d sommet(s) : un contour de moins de "
+                '3 points ne délimite aucune surface.'
+                % (zone.repere or f'#{zone.pk}', len(sommets)))
+        sortie.append({
+            'repere': zone.repere or f'ZONE{zone.pk}',
+            'nature': zone.nature,
+            'sommets': sommets,
+            'hauteur_m': _f(zone.hauteur_m),
+            'retrait_m': _f(zone.retrait_m, 0.0),
+        })
+    return sortie
+
+
 # ─────────────────────────────────────────────────────── kits
 def kits_vers_document(kits):
     """``KitCalepinage`` -> kits du contrat, géométrie DÉ-DÉRIVÉE.
@@ -260,18 +307,77 @@ def rives_du_preset(params):
     }
 
 
+#: Valeur de ``mode_pose`` qui EXIGE des rangées imposées (PV29).
+MODE_POSE_IMPOSE = 'rangees_imposees_utilisateur'
+
+
+def rangees_imposees_du_preset(brut, codes_kits):
+    """PV30 — ``[[y0, code_kit], …]`` du preset -> forme du contrat, ou REFUS.
+
+    Le champ traverse l'API tel que l'utilisateur l'a saisi : c'est ICI, à la
+    couture, qu'il devient une donnée du contrat ou un refus NOMMÉ en français.
+    Le moteur porte la même garde (``optimum._rangees_imposees``), mais il lève
+    l'exception du NOYAU, que l'API ne sait pas retraduire en 400 : laisser le
+    refus descendre jusque-là transformerait une faute de saisie en erreur 500.
+
+    Absent, vide ou ``None`` -> ``None`` (le paramètre est alors OMIS du
+    document, exactement comme le fait ``serialisation._parametres`` : écrire
+    ``"rangees_imposees": null`` partout ferait bouger l'empreinte de relevés
+    que personne n'a touchés).
+    """
+    if brut in (None, '', (), []):
+        return None
+    if isinstance(brut, dict) or not isinstance(brut, (list, tuple)):
+        raise EntreeInvalide(
+            'Les rangées imposées doivent être une liste de couples '
+            '[position, code de kit] — reçu %s.' % type(brut).__name__)
+    connus = list(codes_kits)
+    rangees = []
+    for rang, entree in enumerate(brut, start=1):
+        if isinstance(entree, (str, bytes, dict)) or \
+                not isinstance(entree, (list, tuple)) or len(entree) != 2:
+            raise EntreeInvalide(
+                "Rangée imposée n°%d : attendu un couple [position, code de "
+                'kit], reçu %r.' % (rang, entree))
+        position, code = entree
+        try:
+            position = float(position)
+        except (TypeError, ValueError):
+            raise EntreeInvalide(
+                "Rangée imposée n°%d : la position « %r » n'est pas un nombre "
+                'de mètres.' % (rang, position)) from None
+        code = str(code)
+        if code not in connus:
+            raise EntreeInvalide(
+                "Rangée imposée n°%d : le kit « %s » n'est pas autorisé sur "
+                'cette toiture (kits déclarés : %s).'
+                % (rang, code, ', '.join(connus) or 'aucun'))
+        rangees.append([position, code])
+    return rangees
+
+
 def parametres_vers_document(params, codes_kits):
     """Paramètres du preset AO (AOF27) -> ``Parametres`` du contrat.
 
     Les dégagements par provenance du preset servent de PLANCHER générique ;
     le dégagement réellement appliqué reste celui de chaque obstacle.
+
+    **PV30 — les deux paramètres de pose du plan passent d'un bout à l'autre.**
+    ``rangees_imposees`` (PV29 : le dessinateur fixe lui-même ses rangées) et
+    ``phase_forcee_m`` (PV52 : republier à l'identique une planche déjà posée
+    sur chantier) voyagent depuis le dict de paramètres de la requête jusqu'au
+    document du contrat, SANS nouvel endpoint : ``calculer`` et ``lancer`` les
+    portent déjà, leur champ ``params`` étant un ``JSONField`` opaque. Ils sont
+    OMIS du document quand ils ne disent rien — l'empreinte d'entrée d'un
+    relevé que personne n'a touché ne doit pas bouger.
     """
     degagements = params.get('degagements_par_provenance_m') or {}
-    return {
+    mode_pose = params.get('mode_pose', 'rangees_explicites_dp')
+    document = {
         'kits': list(codes_kits),
         'rives': rives_du_preset(params),
         'axe_rangee': params.get('axe_rangee', 'NORD_SUD'),
-        'mode_pose': params.get('mode_pose', 'rangees_explicites_dp'),
+        'mode_pose': mode_pose,
         'allee_m': float(params.get('allee_min_m', 0.60)),
         'degagement_defaut_m': float(degagements.get('MESURE', 0.30)),
         'degagement_nature_inconnue_m': float(degagements.get('DEVINE', 0.50)),
@@ -282,6 +388,29 @@ def parametres_vers_document(params, codes_kits):
         'marge_bande_min_m': float(params.get('marge_bande_min_m', 0.04)),
         'graine': int(params.get('graine', 0)),
     }
+
+    rangees = rangees_imposees_du_preset(
+        params.get('rangees_imposees'), codes_kits)
+    if rangees is not None:
+        document['rangees_imposees'] = rangees
+    elif mode_pose == MODE_POSE_IMPOSE:
+        # Se replier en silence sur le DP ferait croire à l'utilisateur qu'il a
+        # imposé un plan que personne n'a posé — et le résultat porterait la
+        # preuve « optimum prouvé » d'un plan qu'il n'a pas choisi.
+        raise EntreeInvalide(
+            'Mode « rangées imposées par l\'utilisateur » : aucune rangée '
+            "n'est fournie (`rangees_imposees`). Le moteur ne pose pas un "
+            "plan à la place de l'utilisateur.")
+
+    phase = params.get('phase_forcee_m')
+    if phase not in (None, ''):
+        try:
+            document['phase_forcee_m'] = float(phase)
+        except (TypeError, ValueError):
+            raise EntreeInvalide(
+                "La phase forcée « %r » n'est pas un nombre de mètres."
+                % (phase,)) from None
+    return document
 
 
 # ─────────────────────────────────────────────────────── document complet
@@ -327,7 +456,10 @@ def document_entree(toiture, *, params=None, kits=None):
         'kits': document_kits,
         'parametres': parametres,
         'obstacles': obstacles,
-        'zones': [],
+        # PV55 — les zones de la toiture, enfin transmises (elles étaient une
+        # liste vide EN DUR : le moteur savait les lire, personne ne les lui
+        # donnait).
+        'zones': zones_vers_document(toiture),
         'engagements': [],
     }
     engagement = params.get('engagement_modules')
@@ -450,6 +582,265 @@ def preuve_vers_json(preuve, marges, *, controles=(), pas_recherche_m=0.01):
         'controles': list(controles),
         'version_moteur': VERSION_MOTEUR,
     }
+
+
+def marges_vers_json(marges):
+    """PV49 — les marges de robustesse PUBLIÉES, en centimètres.
+
+    **Une grandeur NON MESURÉE vaut ``None``, jamais ``0``.** ``Marges`` du
+    moteur rend ``0.0`` aussi bien pour « au ras » que pour « ce plan n'a
+    aucune marge de ce type » (une toiture sans obstacle n'a aucune marge de
+    bande). Publier ce zéro ferait lire « marge nulle » là où rien n'a été
+    mesuré — exactement l'erreur que ``preuve_vers_json`` évite déjà, avec le
+    MÊME critère : le repère fautif. ``marges_du_plan`` ne nomme une rangée ou
+    un obstacle QUE lorsqu'il a réellement mesuré quelque chose.
+    """
+    troncon = bande = None
+    rangee = obstacle = ''
+    if marges is not None:
+        rangee = marges.rangee_critique or ''
+        obstacle = marges.obstacle_critique or ''
+        if rangee:
+            troncon = round(marges.troncon_min_cm, 3)
+        if obstacle:
+            bande = round(marges.bande_min_cm, 3)
+    return {
+        'troncon_min_cm': troncon,
+        'bande_min_cm': bande,
+        'rangee_critique': rangee,
+        'obstacle_critique': obstacle,
+    }
+
+
+# ─────────────────────────────────────────────────────── tiroirs (PV49)
+#
+# Le moteur (``core.calepinage.tiroirs``) CALCULE les charges utiles des
+# tiroirs ; il ne connaît pas le vocabulaire de l'écran. La traduction est ici,
+# et elle suit UNE règle : **on renomme ce qui a un correspondant fidèle, on ne
+# rebaptise JAMAIS une grandeur du nom d'une autre.** Un dégagement ne devient
+# pas une allée parce que le contrat aurait mis une allée à cette place.
+
+#: Vocabulaire du MOTEUR -> vocabulaire du CONTRAT, pour les champs du tiroir
+#: « Rives & dégagements » (les seuls qui divergent).
+CHAMPS_RIVES_VERS_CONTRAT = {
+    'rive_laterale_m': 'rive_laterale',
+    'rive_extremite_m': 'rive_extremite',
+    'degagement_defaut_m': 'degagement_standard',
+    'degagement_nature_inconnue_m': 'degagement_inconnu',
+}
+
+#: Les 5 tiroirs du contrat. ``electrique`` n'est PAS produit par le moteur :
+#: il n'a aucun modèle de chaîne, d'onduleur ni de ratio DC/AC. Il sort donc
+#: ``donnees: null`` — l'écran fait ``if (!donnees) return null`` — plutôt que
+#: meublé de chiffres que rien ne sait honorer.
+TIROIRS = ('kits', 'allees', 'rives', 'orientation', 'electrique')
+
+
+def tiroirs_vides():
+    """Les 5 tiroirs à l'état « rien de calculé » — la forme reste ENTIÈRE.
+
+    Un tiroir dégradé garde sa clé et son couple ``(donnees, valeurs)`` : un
+    écran qui reçoit parfois 4 clés et parfois 5 finit par tester l'absence de
+    clé au lieu de l'absence de données, et c'est là qu'il casse.
+    """
+    return {nom: {'donnees': None, 'valeurs': {}} for nom in TIROIRS}
+
+
+def _champ_rives_vers_contrat(champ):
+    """Un champ du tiroir « Rives » : code traduit, ``impacts`` TOUJOURS là."""
+    sortie = dict(champ)
+    sortie['code'] = CHAMPS_RIVES_VERS_CONTRAT.get(champ.get('code'),
+                                                   champ.get('code'))
+    sortie.setdefault('impacts', [])
+    return sortie
+
+
+def _rives_vers_contrat(donnees):
+    sortie = dict(donnees)
+    sortie['champs'] = [_champ_rives_vers_contrat(c)
+                        for c in donnees.get('champs') or ()]
+    variante = donnees.get('variante_conservatrice')
+    if variante is not None:
+        variante = dict(variante)
+        variante['valeurs'] = {
+            CHAMPS_RIVES_VERS_CONTRAT.get(cle, cle): valeur
+            for cle, valeur in (variante.get('valeurs') or {}).items()}
+        sortie['variante_conservatrice'] = variante
+    return sortie
+
+
+def _kits_vers_contrat(donnees):
+    """``approvisionnement`` porte TOUJOURS ses deux clés.
+
+    Tant qu'aucun contrôle n'a confirmé l'approvisionnement (AOF119), le moteur
+    ne rend que ``confirme: False`` ; l'argument est alors une chaîne VIDE, pas
+    une phrase inventée.
+    """
+    sortie = dict(donnees)
+    appro = dict(donnees.get('approvisionnement') or {})
+    appro.setdefault('confirme', False)
+    appro.setdefault('argument', '')
+    sortie['approvisionnement'] = appro
+    return sortie
+
+
+def _valeurs_kits(parametres):
+    kits = tuple(parametres.kits)
+    return {'kit': kits[0].code if len(kits) == 1 else '',
+            'granularite_kit': 'site'}
+
+
+def _valeurs_rives(parametres):
+    rives = parametres.rives
+    return {
+        'rive_laterale': rives.laterale_m,
+        'rive_extremite': rives.extremite_m,
+        'degagement_standard': parametres.degagement_defaut_m,
+        'degagement_inconnu': parametres.degagement_nature_inconnue_m,
+    }
+
+
+def _valeurs_orientation(parametres):
+    kits = tuple(parametres.kits)
+    return {
+        'sens_rangees': parametres.axe_rangee.value,
+        'orientation_table': (kits[0].orientation.value if len(kits) == 1
+                              else ''),
+        # Le moteur n'a NI modèle de segmentation NI traitement du L : aucune
+        # option n'est proposée, donc aucune n'est sélectionnée.
+        'segmentation': '',
+        'forme_l': '',
+    }
+
+
+def tiroirs_vers_json(donnees, parametres):
+    """``DonneesTiroirs`` du moteur -> les 5 tiroirs du contrat.
+
+    Chaque tiroir porte ``donnees`` (ce que le composant affiche) et
+    ``valeurs`` (la sélection COURANTE à préremplir). ``valeurs`` est lu sur
+    les ``Parametres`` réellement calculés — jamais recopié depuis la requête :
+    un écran préremplirait alors ce que l'utilisateur a demandé plutôt que ce
+    que le serveur a retenu.
+    """
+    if donnees is None:
+        return tiroirs_vides()
+    brut = donnees.vers_dict()
+    sortie = tiroirs_vides()
+    sortie['kits'] = {'donnees': _kits_vers_contrat(brut['kits']),
+                      'valeurs': _valeurs_kits(parametres)}
+    sortie['allees'] = {'donnees': brut['allees'],
+                        'valeurs': {'allee_m': parametres.allee_m}}
+    sortie['rives'] = {'donnees': _rives_vers_contrat(brut['rives']),
+                       'valeurs': _valeurs_rives(parametres)}
+    sortie['orientation'] = {'donnees': brut['orientation'],
+                             'valeurs': _valeurs_orientation(parametres)}
+    return sortie
+
+
+# ─────────────────────────────────────────────────── suggestions (PV50)
+#
+# ``recommandations.proposer`` rend des ``Recommandation`` dont le
+# ``patch_entree`` est écrit dans le vocabulaire du MOTEUR (``allee_m``,
+# ``kits``, ``ecarter``…). L'écran, lui, ne sait appliquer que deux choses :
+# un patch de PARAMÈTRES de calepinage (le dict que ``parametres_vers_document``
+# relit) ou une décision sur un OBSTACLE (le champ ``provenance`` d'un
+# ``ObstacleAO``). La traduction est donc EXPLICITE, clé par clé — et une clé
+# non cartographiée fait TOMBER la suggestion entière plutôt que de publier un
+# bouton « appliquer » qui n'appliquerait rien.
+
+#: Patch MOTEUR -> clé du dict de PARAMÈTRES de l'API (vocabulaire du preset).
+#: Seul ``allee_m`` change de nom : les autres portent déjà le même.
+PATCH_MOTEUR_VERS_PARAMS = {
+    'allee_m': 'allee_min_m',
+    'rive_laterale_m': 'rive_laterale_m',
+    'rive_extremite_m': 'rive_extremite_m',
+    'axe_rangee': 'axe_rangee',
+    'kits': 'kits_autorises',
+}
+
+#: Patch MOTEUR -> provenance AO visée. Le vocabulaire AO est le format
+#: CANONIQUE (cf. ``PROVENANCE_VERS_MOTEUR``) : le moteur nomme ``RELEVE`` ce
+#: que l'AO nomme ``MESURE``, et c'est la valeur AO qui doit voyager, puisque
+#: c'est elle que l'écran écrira sur ``ObstacleAO.provenance``.
+PATCH_MOTEUR_VERS_OBSTACLE = {
+    'ecarter': 'ECARTE',
+    'confirmer': 'MESURE',
+}
+
+
+def _valeur_de_patch(cle, valeur):
+    """Convertit la valeur d'un patch (le moteur les écrit en CHAÎNES)."""
+    if cle in ('allee_m', 'rive_laterale_m', 'rive_extremite_m'):
+        return float(valeur)
+    if cle == 'kits':
+        return [code for code in str(valeur).split('+') if code]
+    return str(valeur)
+
+
+def action_de_patch(patch_entree):
+    """``patch_entree`` du moteur -> ``action`` DISCRIMINÉE, ou ``None``.
+
+    Deux familles, jamais mélangées dans la même action : un patch qui
+    toucherait à la fois un paramètre et un obstacle n'aurait aucun bouton
+    capable de l'appliquer d'un clic. ``None`` = suggestion à JETER.
+    """
+    patch = list(patch_entree or ())
+    if not patch:
+        return None
+    cles = {cle for cle, _valeur in patch}
+    if not cles <= (set(PATCH_MOTEUR_VERS_PARAMS)
+                    | set(PATCH_MOTEUR_VERS_OBSTACLE)):
+        # Clé de patch inconnue de cette table : le moteur a gagné un levier
+        # que l'écran ne sait pas appliquer. On JETTE la suggestion — publier
+        # un bouton qui n'applique rien est pire que ne rien proposer.
+        return None
+    if cles <= set(PATCH_MOTEUR_VERS_OBSTACLE):
+        if len(patch) != 1:
+            return None  # deux décisions d'obstacle = deux suggestions
+        cle, repere = patch[0]
+        return {'type': 'obstacle', 'obstacle': str(repere),
+                'provenance': PATCH_MOTEUR_VERS_OBSTACLE[cle]}
+    if cles <= set(PATCH_MOTEUR_VERS_PARAMS):
+        return {'type': 'parametres',
+                'patch': {PATCH_MOTEUR_VERS_PARAMS[cle]:
+                          _valeur_de_patch(cle, valeur)
+                          for cle, valeur in patch}}
+    return None  # patch MIXTE paramètres + obstacle : inapplicable en un clic
+
+
+def suggestion_vers_json(recommandation):
+    """Une ``Recommandation`` du moteur -> une suggestion du contrat.
+
+    Rend ``None`` quand l'action n'est pas traduisible (cf. ``action_de_patch``).
+
+    ``gain_modules`` est SIGNÉ : un arbitrage d'obstacle peut coûter des
+    modules, et le publier positif ferait passer une perte assumée pour un
+    gain. ``gain_kwc``, ``confiance`` et ``question_a_poser`` sont déclarés
+    FACULTATIFS par le contrat ; le moteur les CALCULE pour toutes ses
+    propositions, alors on ne les jette pas.
+    """
+    action = action_de_patch(recommandation.patch_entree)
+    if action is None:
+        return None
+    return {
+        'code': recommandation.code,
+        'titre': recommandation.titre,
+        'gain_modules': int(recommandation.gain_modules),
+        'gain_kwc': round(float(recommandation.gain_kwc), 3),
+        'confiance': recommandation.confiance.value,
+        'question_a_poser': recommandation.question_a_poser,
+        'action': action,
+    }
+
+
+def suggestions_vers_json(recommandations):
+    """La liste des suggestions traduisibles, dans l'ordre reçu."""
+    sortie = []
+    for recommandation in recommandations or ():
+        suggestion = suggestion_vers_json(recommandation)
+        if suggestion is not None:
+            sortie.append(suggestion)
+    return sortie
 
 
 def resultat_vers_json(*, repere, hash_entree, modules, kwc, plans,

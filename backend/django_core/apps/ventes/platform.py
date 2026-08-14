@@ -11,11 +11,18 @@ Déclare ce que Ventes expose aux surfaces transverses (voir ``core.platform``) 
   historiques (Devis, BonCommande, Facture ; GED6 a ajouté BonCommande pour
   rattacher un document GED à toute la chaîne devis→commande→facture).
 
-Les autres surfaces (customfields, import, agent, automation, KPI) restent
-HORS PÉRIMÈTRE de ce manifeste : les clés customfields natives de Ventes
+Les autres surfaces (customfields, import, agent, automation) restent HORS
+PÉRIMÈTRE de ce manifeste : les clés customfields natives de Ventes
 (``devis``) sont pré-enregistrées par ``customfields.registry`` lui-même et
 ``apps/ventes/agent_actions.py`` s'enregistre depuis ``VentesConfig.ready()``
 — les déclarer ici les dupliquerait sans bénéfice.
+
+* **KPI fédérés (PV82)** — ``kpi_providers`` porte désormais
+  ``apps.ventes.reports.kpi_ventes`` (règle d'honnêteté ARC41 : un dotted
+  déclaré doit être réellement résoluble). Trois tuiles « conçu vs vendu » —
+  kWc conçus, kWc signés, taux de conversion des devis conçus — dérivées du
+  seul ``Devis.roof_layout``/``Devis.etude_params``/``Devis.statut``. Aucun
+  prix, aucune marge, aucun ``prix_achat`` n'y transite.
 """
 from __future__ import annotations
 
@@ -36,5 +43,10 @@ PLATFORM = {
     'import_specs': [],
     'agent_actions_module': '',
     'automation_state_fields': [],
-    'kpi_providers': [],
+    # PV82/ARC40 — provider KPI du domaine Ventes : un CALLABLE dotted résolu
+    # à l'exécution par ``apps/reporting/reports.py::kpi_federes``, appelé
+    # ``provider(company)``. Réellement câblé (règle d'honnêteté ARC41) :
+    # ``apps.ventes.reports.kpi_ventes`` existe et rend des tuiles normalisées
+    # ``{id, label, valeur, unite?}``. Aucun coût, aucune marge n'y transite.
+    'kpi_providers': ['apps.ventes.reports.kpi_ventes'],
 }
