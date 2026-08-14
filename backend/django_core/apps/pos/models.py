@@ -25,6 +25,8 @@ from django.core.exceptions import ValidationError
 from django.db import models
 from django.utils import timezone
 
+from core.models import TenantModel
+
 
 def default_code_retrait():
     import secrets
@@ -45,6 +47,12 @@ class VenteComptoir(models.Model):
         BROUILLON = 'brouillon', 'Brouillon'
         VALIDEE = 'validee', 'Validée'
         ANNULEE = 'annulee', 'Annulée'
+        # NTRET5 — arrhes encaissées, marchandise pas encore remise (article
+        # en rupture/sur-mesure). La facture légale + le paiement partiel
+        # existent déjà (mêmes rails que VALIDEE) ; seule la remise physique
+        # est bloquée tant que le solde n'est pas réglé (sauf override admin
+        # journalisé — cf. ``marchandise_remise``, indépendant du statut).
+        EN_ATTENTE_SOLDE = 'en_attente_solde', 'En attente de solde (arrhes)'
 
     company = models.ForeignKey(
         'authentication.Company',
@@ -63,7 +71,7 @@ class VenteComptoir(models.Model):
         related_name='ventes_comptoir',
     )
     statut = models.CharField(
-        max_length=15, choices=Statut.choices, default=Statut.BROUILLON)
+        max_length=20, choices=Statut.choices, default=Statut.BROUILLON)
     # Session de caisse active au moment de la vente (obligatoire seulement si
     # un règlement espèces est encaissé — cf. services.valider_vente / XPOS4).
     session_caisse = models.ForeignKey(
@@ -101,12 +109,40 @@ class VenteComptoir(models.Model):
     )
     date_creation = models.DateTimeField(auto_now_add=True)
     date_validation = models.DateTimeField(null=True, blank=True)
+    # NTRET1 — mode offline caisse : identifiant généré côté navigateur pour
+    # une vente créée sans réseau, rejouée contre POST .../ventes/ dès la
+    # reconnexion. Dédup serveur (contrainte ci-dessous) : un rejeu en double
+    # (uuid déjà connu pour cette société) ne crée jamais une 2e vente — voir
+    # ``views.VenteComptoirViewSet.perform_create``. NULL = vente créée en
+    # ligne (comportement historique inchangé).
+    uuid_client = models.CharField(
+        max_length=64, null=True, blank=True,
+        help_text='UUID client (mode offline, NTRET1) — dédup serveur au rejeu.')
+    # NTRET5 — arrhes/acompte sur commande comptoir (article en rupture ou
+    # sur-mesure). Additif : NULL/False = comportement historique inchangé
+    # (une vente reste brouillon → validée → annulée, jamais en attente).
+    montant_arrhes = models.DecimalField(
+        max_digits=12, decimal_places=2, null=True, blank=True,
+        help_text="Montant des arrhes encaissé (NTRET5). NULL = pas d'arrhes.")
+    marchandise_remise = models.BooleanField(
+        default=False,
+        help_text='NTRET5 — la marchandise a été remise au client (solde '
+                  'réglé, ou override admin journalisé). Indépendant du '
+                  'statut : un override peut la poser à True alors que le '
+                  'statut reste EN_ATTENTE_SOLDE (solde toujours dû).')
 
     class Meta:
         verbose_name = 'Vente comptoir'
         verbose_name_plural = 'Ventes comptoir'
         ordering = ['-date_creation']
         unique_together = [('company', 'reference')]
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'uuid_client'],
+                condition=models.Q(uuid_client__isnull=False),
+                name='pos_ventecomptoir_unique_uuid_client_per_company',
+            ),
+        ]
 
     def __str__(self):
         return self.reference or f'VenteComptoir #{self.pk}'
@@ -277,11 +313,25 @@ class SessionCaisse(models.Model):
         related_name='sessions_pos',
     )
     commentaire = models.TextField(blank=True, default='')
+    # NTRET2 — Rapport Z officiel : numérotation séquentielle anti-collision
+    # (jamais count()+1 — ``core.numbering.next_reference``), exigée par les
+    # contrôles fiscaux marocains. Posé UNE SEULE FOIS, à la première
+    # génération réussie (``services.generer_rapport_z``) — un 2e appel sur
+    # la même session refuse (409). NULL = Z pas encore généré (comportement
+    # historique inchangé pour toute session déjà close avant NTRET2).
+    numero_rapport_z = models.CharField(max_length=50, null=True, blank=True)
 
     class Meta:
         verbose_name = 'Session de caisse (POS)'
         verbose_name_plural = 'Sessions de caisse (POS)'
         ordering = ['-date_ouverture']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'numero_rapport_z'],
+                condition=models.Q(numero_rapport_z__isnull=False),
+                name='pos_sessioncaisse_unique_numero_rapport_z_per_company',
+            ),
+        ]
 
     def __str__(self):
         return f'Session #{self.pk} ({self.get_statut_display()})'
@@ -401,3 +451,48 @@ class ConfigMaterielPOS(models.Model):
 
     def __str__(self):
         return f'ConfigMaterielPOS ({self.company_id})'
+
+
+# ── NTRET3 — Multi-caissiers avec PIN de session ────────────────────────────
+
+class CodePinCaissier(TenantModel):
+    """PIN de verrouillage rapide (NTRET3) : un utilisateur déjà connecté au
+    poste caisse (JWT valide) peut ouvrir/reverrouiller l'écran caisse SANS
+    re-login complet et SANS perdre le panier en cours — utile pour changer
+    de caissier plusieurs fois par jour sur le même poste partagé. Le PIN est
+    hashé (jamais en clair) via les hashers Django standard, même politique
+    que le mot de passe utilisateur. Un PIN par (company, user).
+
+    Hérite de ``core.models.TenantModel`` (FK ``company`` + ``created_at``/
+    ``updated_at``) — jamais une paire multi-société re-bricolée à la main
+    (garde SCA4). ``company`` est redéclaré ici uniquement pour conserver le
+    ``related_name`` historique ``codes_pin_caissier``."""
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,  # on_delete: composition — un PIN de caisse n'existe que dans sa société
+        related_name='codes_pin_caissier',
+    )
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,  # on_delete: composition — le PIN suit le compte utilisateur qu'il déverrouille
+        related_name='codes_pin_caissier',
+    )
+    pin_hash = models.CharField(max_length=128)
+
+    class Meta:
+        verbose_name = 'Code PIN caissier'
+        verbose_name_plural = 'Codes PIN caissier'
+        unique_together = [('company', 'user')]
+
+    def __str__(self):
+        return f'PIN caissier — {self.user_id}'
+
+    def set_pin(self, raw_pin):
+        from django.contrib.auth.hashers import make_password
+        self.pin_hash = make_password(str(raw_pin))
+
+    def check_pin(self, raw_pin):
+        from django.contrib.auth.hashers import check_password
+        if not self.pin_hash:
+            return False
+        return check_password(str(raw_pin), self.pin_hash)

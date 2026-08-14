@@ -11,6 +11,15 @@ from decimal import Decimal
 from .models import VenteComptoir
 
 
+def vente_par_uuid_client(company, uuid_client):
+    """NTRET1 — vente déjà créée pour cet ``uuid_client`` (mode offline), ou
+    None. Utilisé pour la dédup serveur au rejeu (jamais de doublon)."""
+    if not uuid_client:
+        return None
+    return VenteComptoir.objects.filter(
+        company=company, uuid_client=uuid_client).first()
+
+
 def _date_filtered(qs, date_debut, date_fin):
     if date_debut:
         qs = qs.filter(date_validation__date__gte=date_debut)
@@ -103,6 +112,156 @@ def dashboard_data(*, company, date_debut=None, date_fin=None,
         'par_categorie': {k: str(v) for k, v in par_categorie.items()},
     }
     return result
+
+
+# ── NTRET16 — Tableau de bord retail ────────────────────────────────────────
+
+def _surface_totale_boutiques(company):
+    """Surface totale (m²) des boutiques actives avec surface renseignée
+    (NTRET8 ``parametres.BoutiquePos.surface_m2``). ``parametres`` est une
+    app de FONDATION (exemptée de la règle selectors.py cross-app, CLAUDE.md)
+    — import direct autorisé. Renvoie None si aucune boutique n'a de surface
+    renseignée (le KPI ventes/m² est alors omis, jamais une division par 0)."""
+    from django.db.models import Sum
+
+    from apps.parametres.models import BoutiquePos
+    total = BoutiquePos.objects.filter(
+        company=company, actif=True, surface_m2__isnull=False,
+    ).aggregate(total=Sum('surface_m2'))
+    return total['total']
+
+
+def dashboard_retail(*, company, date_debut=None, date_fin=None, boutique=None,
+                     include_marge=False, top_n=10):
+    """Tableau de bord retail (NTRET16) : panier moyen, taux de
+    transformation, ventes/m², top produits/catégories/vendeurs, comparatif
+    boutique vs boutique (multi-sites).
+
+    ``boutique`` filtre sur le LIBELLÉ de la caisse comptable (XPOS4) — ex.
+    « Caisse showroom Casablanca ». NOTE HONNÊTE (limite de donnée actuelle) :
+    les « paniers parqués » de l'écran caisse (XPOS2, ``pos.js``) sont
+    PUREMENT client-side (localStorage), sans aucune trace serveur — le taux
+    de transformation utilise donc, en lieu et place, les ``VenteComptoir``
+    en statut BROUILLON (créées puis jamais validées) comme meilleur proxy
+    serveur disponible d'un panier non converti. De même, aucun champ ne relie
+    aujourd'hui ``VenteComptoir``/``SessionCaisse`` à une ``BoutiquePos``
+    précise : le comparatif « boutique vs boutique » groupe donc par le
+    LIBELLÉ de la caisse comptable (déjà nommé par site en pratique dans un
+    multi-boutiques), et le KPI ventes/m² divise le CA total de la société
+    par la surface CUMULÉE des boutiques actives (pas encore un vrai
+    ventilé par boutique — la marge (``prix_achat``) reste masquée sans
+    ``prix_achat_voir``, jamais exposée dans l'export xlsx.
+    """
+    ventes_qs = VenteComptoir.objects.filter(
+        company=company, statut=VenteComptoir.Statut.VALIDEE)
+    ventes_qs = _date_filtered(ventes_qs, date_debut, date_fin)
+    ventes_qs = ventes_qs.select_related(
+        'caissier', 'session_caisse__caisse_comptable')
+    if boutique:
+        ventes_qs = ventes_qs.filter(
+            session_caisse__caisse_comptable__libelle=boutique)
+
+    ventes = list(ventes_qs.prefetch_related('lignes__produit__categorie'))
+    nb_ventes = len(ventes)
+    total_ttc = sum((v.total_ttc for v in ventes), Decimal('0'))
+    panier_moyen = (total_ttc / nb_ventes) if nb_ventes else Decimal('0')
+
+    # Taux de transformation — proxy BROUILLON (cf. docstring ci-dessus).
+    brouillons_qs = VenteComptoir.objects.filter(
+        company=company, statut=VenteComptoir.Statut.BROUILLON)
+    if date_debut:
+        brouillons_qs = brouillons_qs.filter(date_creation__date__gte=date_debut)
+    if date_fin:
+        brouillons_qs = brouillons_qs.filter(date_creation__date__lte=date_fin)
+    nb_brouillons = brouillons_qs.count()
+    total_paniers = nb_ventes + nb_brouillons
+    taux_transformation = (
+        Decimal(nb_ventes) / Decimal(total_paniers) * 100
+        if total_paniers else Decimal('0'))
+
+    # Ventes / m² — surface cumulée des boutiques actives (NTRET8).
+    surface_totale = _surface_totale_boutiques(company)
+    ventes_par_m2 = (
+        (total_ttc / surface_totale) if surface_totale else None)
+
+    par_produit = {}
+    par_categorie = {}
+    par_caissier = {}
+    par_boutique = {}
+    for v in ventes:
+        caissier_key = getattr(v.caissier, 'username', '—') if v.caissier_id else '—'
+        par_caissier.setdefault(caissier_key, Decimal('0'))
+        par_caissier[caissier_key] += v.total_ttc
+
+        caisse = getattr(v.session_caisse, 'caisse_comptable', None)
+        boutique_key = getattr(caisse, 'libelle', None) or 'Sans boutique'
+        par_boutique.setdefault(boutique_key, Decimal('0'))
+        par_boutique[boutique_key] += v.total_ttc
+
+        for ligne in v.lignes.all():
+            produit = ligne.produit
+            row = par_produit.setdefault(
+                produit.nom, {'total': Decimal('0'), 'quantite': Decimal('0')})
+            row['total'] += ligne.total_ttc
+            row['quantite'] += ligne.quantite
+            if include_marge:
+                marge_unitaire = (
+                    ligne.prix_unitaire_ttc - (produit.prix_achat or Decimal('0')))
+                row.setdefault('marge', Decimal('0'))
+                row['marge'] += marge_unitaire * ligne.quantite
+
+            cat = getattr(produit.categorie, 'nom', None) or 'Sans catégorie'
+            par_categorie[cat] = par_categorie.get(cat, Decimal('0')) + ligne.total_ttc
+
+    def _top_montants(d, n):
+        """Top ``n`` d'un dict ``{cle: Decimal}`` (caissiers/boutiques)."""
+        return [
+            {'nom': k, 'total': str(v2)}
+            for k, v2 in sorted(d.items(), key=lambda kv: kv[1], reverse=True)[:n]
+        ]
+
+    def _top_lignes(d, n):
+        """Top ``n`` d'un dict ``{cle: {'total': Decimal, ...}}`` (produits)."""
+        return [
+            {'nom': k, 'total': str(row['total'])}
+            for k, row in sorted(
+                d.items(), key=lambda kv: kv[1]['total'], reverse=True)[:n]
+        ]
+
+    return {
+        'nb_ventes': nb_ventes,
+        'total_ttc': str(total_ttc),
+        'panier_moyen': str(panier_moyen),
+        'taux_transformation_pct': str(taux_transformation.quantize(Decimal('0.01'))),
+        'ventes_par_m2': (
+            str(ventes_par_m2.quantize(Decimal('0.01')))
+            if ventes_par_m2 is not None else None),
+        'top_produits': _top_lignes(par_produit, top_n),
+        'top_categories': _top_montants(par_categorie, top_n),
+        'top_vendeurs': _top_montants(par_caissier, top_n),
+        'comparatif_boutiques': {k: str(v) for k, v in par_boutique.items()},
+    }
+
+
+def export_dashboard_retail_xlsx(*, company, date_debut=None, date_fin=None):
+    """Export xlsx du tableau de bord retail (NTRET16) — jamais de
+    prix_achat/marge (export client/interne-safe par construction)."""
+    from apps.records.xlsx import build_xlsx_response
+
+    data = dashboard_retail(
+        company=company, date_debut=date_debut, date_fin=date_fin)
+    headers = ['Indicateur', 'Valeur']
+    rows = [
+        ['Nombre de ventes', data['nb_ventes']],
+        ['Total TTC', data['total_ttc']],
+        ['Panier moyen', data['panier_moyen']],
+        ['Taux de transformation (%)', data['taux_transformation_pct']],
+        ['Ventes / m²', data['ventes_par_m2'] or 'N/A'],
+    ]
+    for boutique, total in data['comparatif_boutiques'].items():
+        rows.append([f'Boutique — {boutique}', total])
+    return build_xlsx_response(
+        'pos-dashboard-retail.xlsx', headers, rows, sheet_title='Tableau de bord retail')
 
 
 def export_dashboard_xlsx(*, company):

@@ -461,7 +461,13 @@ class DepotReelTests(unittest.TestCase):
         # AVANT/APRÈS ce lot : 1522 -> 1465 (delta 57, exactement les tâches
         # cochées). Le plancher garde son rôle de canari (une extraction
         # cassée rendrait ~0) avec une marge de sécurité confortable.
-        self.assertGreater(stats["taches"], 1400)
+        # 1400 -> 1300 : la vague 1 du run SUPPLY (14/08/2026) a COCHÉ 66
+        # tâches et marqué 44 hors périmètre dans docs/plans/PLAN_SUPPLY.md —
+        # 110 tâches quittent donc légitimement le corpus OUVERT (1399
+        # aujourd'hui). Même raisonnement que le palier précédent : le
+        # plancher reste un canari (une extraction cassée rendrait ~0), il ne
+        # doit pas punir le fait d'avoir livré.
+        self.assertGreater(stats["taches"], 1300)
         # 250 -> 150 : le lot §E du 08/08/2026 a COCHÉ 76 tâches, donc le
         # corpus de candidates rétrécit légitimement (191 aujourd'hui).
         # 150 -> 100 : le lot du 13/08/2026 en a coché 52 de plus (142
@@ -476,7 +482,12 @@ class DepotReelTests(unittest.TestCase):
         # corpus est drainé. Le rôle de canari est désormais porté par
         # `taches` (1690) et `f1_candidates` (142) ci-dessus, qui eux
         # tomberaient bien à 0 si l'extraction se cassait.
-        self.assertGreater(stats["f1_conformes"], 0)
+        # 0 atteint le 14/08/2026 (vague 1 du run SUPPLY) : la DERNIÈRE tâche
+        # non cochée qui créait un écran avec montage + clause vient d'être
+        # livrée. Le compteur ne peut donc plus servir de plancher — il est
+        # conservé en OBSERVATION seulement. Les deux canaris réels restent
+        # `taches` et `f1_candidates` juste au-dessus.
+        self.assertGreaterEqual(stats["f1_conformes"], 0)
 
     def test_les_taches_conformes_du_depot_ne_rougissent_pas(self):
         """~120 taches de docs/PLAN.md portent deja la clause canonique et

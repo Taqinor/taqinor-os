@@ -13,7 +13,8 @@ de marge. Le fournisseur peut :
 Protections : X-Robots-Tag noindex sur chaque réponse ; throttle cache-based
 par IP + jeton (sans dépendance externe).
 """
-from rest_framework import status
+from drf_spectacular.utils import extend_schema, inline_serializer
+from rest_framework import serializers, status
 from rest_framework.decorators import (
     api_view, permission_classes, throttle_classes,
 )
@@ -365,3 +366,60 @@ def fiche_produit_etre_rappele_view(request, token, produit_id):
         {'detail': 'Votre demande a bien été transmise. '
                    'Nous vous rappelons très vite.'},
         status=status.HTTP_201_CREATED))
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# NTWMS8 — Kiosque d'enregistrement de quai (check-in chauffeur, SANS compte)
+# ═══════════════════════════════════════════════════════════════════════════
+
+class QuaiCheckinThrottle(SimpleRateThrottle):
+    """Anti-force-brute du code de rendez-vous, par IP (cache-based, sans
+    dépendance externe). Un code fait 8 caractères sur un alphabet de 32 : ce
+    débit rend l'énumération inexploitable."""
+    scope = 'stock_quai_checkin'
+    rate = '10/minute'
+
+    def get_rate(self):
+        return self.rate
+
+    def get_cache_key(self, request, view):
+        return self.cache_format % {
+            'scope': self.scope, 'ident': self.get_ident(request),
+        }
+
+
+@extend_schema(request=None, responses={
+    200: inline_serializer('StockQuaiCheckinResultat', {
+        'quai': serializers.CharField(),
+        'type_quai': serializers.CharField(),
+        'heure_rendez_vous': serializers.DateTimeField(),
+        'horodatage_arrivee': serializers.DateTimeField(),
+        'message': serializers.CharField(),
+    }),
+    404: inline_serializer('StockQuaiCheckinErreur', {
+        'detail': serializers.CharField(),
+    }),
+})
+@api_view(['POST'])
+@permission_classes([AllowAny])
+@throttle_classes([QuaiCheckinThrottle])
+def quai_checkin_view(request):
+    """NTWMS8 — un chauffeur EXTERNE s'enregistre à son arrivée.
+
+    Corps : ``{"societe": "<slug>", "code": "<code de rendez-vous>"}``. Aucune
+    authentification ERP. La réponse ne contient QUE la confirmation et le
+    numéro de quai assigné — jamais le client, le transporteur, le contenu de
+    la livraison ni un identifiant interne exploitable. Un code inconnu renvoie
+    404 sans révéler si c'est la société ou le code qui est faux.
+    """
+    from .services import enregistrer_arrivee_chauffeur
+
+    donnees = request.data if isinstance(request.data, dict) else {}
+    resultat = enregistrer_arrivee_chauffeur(
+        societe_slug=donnees.get('societe'), code=donnees.get('code'))
+    if resultat is None:
+        return _noindex(Response(
+            {'detail': 'Code de rendez-vous inconnu ou expiré.'},
+            status=status.HTTP_404_NOT_FOUND,
+        ))
+    return _noindex(Response(resultat))

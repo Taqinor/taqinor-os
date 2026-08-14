@@ -713,7 +713,10 @@ class DepotReelTests(unittest.TestCase):
         # apps qui n en avaient aucun (btp_chantier, portail cote ERP).
         # 47 -> 49 : le lot du 13/08/2026 ajoute deux modules frontend NEUFS
         # (cpq, segment /cpq/* ; core, module « DONNEES », segment /donnees/*).
-        self.assertEqual(stats["configs"], 49)
+        # 49 -> 52 : la vague 1 du run SUPPLY (14/08/2026) donne son PREMIER
+        # module.config.jsx a trois apps neuves (transport /transport/*,
+        # mrp /mrp/*, scm /scm/*).
+        self.assertEqual(stats["configs"], 52)
 
     def test_parametres_achats_est_desormais_navigable(self):
         """PACT150 : cas vivant du 07/08/2026 — `AchatsParametresPage` (182

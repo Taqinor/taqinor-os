@@ -27,7 +27,7 @@ function arrayBlock(src, name) {
 // supprime aucun onglet.
 const EXPECTED_TAB_KEYS = [
   'onboarding', 'societe', 'leads', 'clients', 'devis', 'documents',
-  'tarification', 'stock', 'donnees', 'statuts', 'monitoring', 'checklists',
+  'tarification', 'stock', 'point_de_vente', 'donnees', 'statuts', 'monitoring', 'checklists',
   'etapes_chantier', 'kits', 'shotlist', 'automatisations', 'notifications', 'securite',
   'equipe', 'messages', 'email', 'api', 'avance',
 ]

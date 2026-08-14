@@ -199,10 +199,13 @@ class ModuleJournalTenantIsolationTests(TestCase):
         self.assertEqual(reponse_a.data[0]['par'], 'ody25_admin_alpha')
 
     def test_deux_societes_journalisent_independamment(self):
+        # `achats` (dépend de `stock`, aucun dépendant) — `pos` a gagné un
+        # dépendant actif (`promotions`, NTRET13) depuis cette lane et ne se
+        # désactive plus seul.
         feature_flags.desactiver_module(
             self.company_a, 'flotte', user=self.admin_a)
         feature_flags.desactiver_module(
-            self.company_b, 'pos', user=self.admin_b)
+            self.company_b, 'achats', user=self.admin_b)
 
         self.assertEqual(
             [r['module'] for r in feature_flags.journal_modules(
@@ -211,4 +214,4 @@ class ModuleJournalTenantIsolationTests(TestCase):
         self.assertEqual(
             [r['module'] for r in feature_flags.journal_modules(
                 self.company_b)],
-            ['pos'])
+            ['achats'])
