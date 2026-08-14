@@ -700,6 +700,14 @@ document_statut_change = django.dispatch.Signal()
 # Arguments : company, cycle_id, totaux (dict, ex. {'total_depenses': ...}).
 budget_cycle_clos = django.dispatch.Signal()
 
+# NTCRM22 — Émis quand ``crm`` calcule automatiquement la commission due d'un
+# ``DealEnregistre`` APPROUVE, à l'acceptation du devis lié (le récepteur vit
+# dans ``apps.crm.receivers``). Pose le crochet pour qu'un futur module
+# compta/paie crée une facture fournisseur/note de frais SANS que crm importe
+# ce module — aucun abonné requis dans ce lot. Arguments : company, deal_id,
+# apporteur_id, montant (Decimal).
+deal_commission_due = django.dispatch.Signal()
+
 
 # NTADM40 — ``apps.entites`` émet ces 2 événements à la création/désactivation
 # d'une ``Entite`` (jamais de suppression dure). Permet à d'autres apps de
@@ -894,3 +902,19 @@ def emit_reliable(event, *, sender=None, company=None, emitted_by=None,
 
     transaction.on_commit(_send_sync)
     return row
+
+
+# ``salle_vente_signal_interet``
+#     Une salle de vente (``crm.SalleVente``) a reçu ≥3 consultations
+#     (``crm.SalleVenteVue``) en moins de 48h alors que le lead lié est en
+#     stage QUOTE_SENT — signal d'intérêt fort, purement informationnel
+#     (JAMAIS un changement de stage automatique). Émis par
+#     ``apps.crm.services.detecter_signal_interet_salle_vente`` (appelé en
+#     best-effort depuis ``apps.crm.public_views.public_salle_vente`` à chaque
+#     nouvelle vue). AUCUN abonné dans ce repo : la note de chatter
+#     (``LeadActivity``) est écrite EN LIGNE par ce même service, pas par un
+#     récepteur — le signal est exposé sur le bus pour toute app future qui
+#     voudrait réagir (ex. notification commerciale) sans coupler
+#     ``apps.crm`` à elle (réservé dans ``core.event_coverage``).
+#     Arguments : ``lead``, ``salle``, ``company``.
+salle_vente_signal_interet = django.dispatch.Signal()

@@ -10,12 +10,13 @@ from core.viewsets import CompanyScopedModelViewSet
 from apps.core.destroy_mixins import UsageGuardedDestroyMixin
 from authentication.scoping import scope_queryset, scope_client_queryset
 from .models import (
-    Appointment, Client, ConcurrentPerte, EquipeCommerciale,
+    Apporteur, Appointment, Client, ConcurrentPerte, DealEnregistre, Defi,
+    EquipeCommerciale,
     ForecastEntry, ForecastSnapshot, Lead, LeadPlaybookProgress, LeadTag,
     MotifPerte, Canal, Parrainage, MessageTemplate, ObjectifCommercial,
     PlanActivite, PlanCompte, Playbook, PlaybookEtape,
-    PlaybookTache, PointContact, RevueCompte, SavedView, SiteProfile,
-    WebsiteLeadPayload,
+    PlaybookTache, PointContact, RevueCompte, SalleVente, SalleVenteItem,
+    SavedView, SiteProfile, WebsiteLeadPayload,
 )
 from .serializers import (
     AppointmentSerializer, ClientSerializer, ConcurrentPerteSerializer,
@@ -29,6 +30,8 @@ from .serializers import (
     PlanCompteSerializer, RevueCompteSerializer,
     PlaybookSerializer, PlaybookEtapeSerializer, PlaybookTacheSerializer,
     LeadPlaybookProgressSerializer, SavedViewSerializer,
+    SalleVenteSerializer, SalleVenteItemSerializer,
+    ApporteurSerializer, DealEnregistreSerializer, DefiSerializer,
 )
 from apps.records.views import ChatterViewSetMixin
 from . import activity
@@ -150,8 +153,17 @@ class ClientViewSet(CompanyScopedModelViewSet):
     def get_permissions(self):
         # QC1 — `search` est une LECTURE scopée société (autocomplete des
         # données propres) : ouverte à tout rôle authentifié, comme `list`.
-        # Ce get_permissions prime sur le permission_classes de l'action.
-        if self.action in READ_ACTIONS + ['export_xlsx', 'documents', 'search']:
+        # Ce get_permissions prime sur le permission_classes de l'action —
+        # NTCRM14/15/16/29 : `dormants`/`relancer_dormance`/`engagement`/
+        # `engagement_bulk`/`mon_portefeuille` sont des LECTURES (ou une
+        # relance légère) déjà ouvertes via `permission_classes=[IsAnyRole]`
+        # sur leur @action, mais get_permissions() PRIME dessus — sans les
+        # lister ICI elles retombaient sur le défaut `IsAdminRole` (403 pour
+        # tout rôle Commercial/Responsable non-admin).
+        if self.action in READ_ACTIONS + [
+            'export_xlsx', 'documents', 'search', 'dormants', 'engagement',
+            'engagement_bulk', 'mon_portefeuille', 'relancer_dormance',
+        ]:
             return [IsAnyRole()]
         elif self.action in WRITE_ACTIONS + ['dupliquer']:
             return [IsResponsableOrAdmin()]
@@ -450,6 +462,83 @@ class ClientViewSet(CompanyScopedModelViewSet):
 
         return Response({'segment': segment, 'count': len(result), 'results': result})
 
+    @action(detail=False, methods=['get'], url_path='dormants',
+            permission_classes=[IsAnyRole])
+    def dormants(self, request):
+        """NTCRM14 — Comptes dormants : au moins un devis/facture passé mais
+        aucune activité (devis/facture/LeadActivity/PointContact) depuis
+        `?seuil=` jours (défaut 90). Distinct de `segments?segment=dormants`
+        (seuil fixe 18 mois, sans LeadActivity/PointContact) — celui-ci
+        alimente aussi la commande de notification `detecter_comptes_dormants`.
+        """
+        from .selectors import comptes_dormants
+        try:
+            seuil = int(request.query_params.get('seuil', 90))
+        except (TypeError, ValueError):
+            seuil = 90
+        company = request.user.company if request.user.company_id else None
+        entries = comptes_dormants(company, seuil_jours=seuil)
+        results = [{
+            'id': e['client'].id,
+            'nom': str(e['client']),
+            'derniere_activite': (
+                e['derniere_activite'].isoformat()
+                if e['derniere_activite'] else None),
+            'jours_inactivite': e['jours_inactivite'],
+        } for e in entries]
+        return Response({'seuil': seuil, 'count': len(results), 'results': results})
+
+    @action(detail=True, methods=['post'], url_path='relancer-dormance',
+            permission_classes=[IsAnyRole])
+    def relancer_dormance(self, request, pk=None):
+        """NTCRM15 — Bouton one-click « créer une activité de relance » du
+        widget Comptes dormants : journalise une note sur le lead le plus
+        récent lié à ce client. 404 si le client n'a aucun lead (rien à
+        relancer via le chatter — cas rare, clients importés sans lead)."""
+        from . import activity
+        from .models import Lead
+        client = self.get_object()
+        lead = (Lead.objects
+                .filter(company=client.company, client=client)
+                .order_by('-date_creation').first())
+        if lead is None:
+            return Response(
+                {'detail': "Aucun lead lié à ce client — relance impossible."},
+                status=status.HTTP_404_NOT_FOUND)
+        act = activity.log_note(
+            lead, request.user,
+            f'Relance dormance — compte {client} réactivé manuellement.')
+        return Response(LeadActivitySerializer(act).data,
+                        status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['get'], url_path='engagement',
+            permission_classes=[IsAnyRole])
+    def engagement(self, request, pk=None):
+        """NTCRM16 — Score d'engagement multi-signaux (0-100) de CE client."""
+        from .engagement import engagement_for_client
+        client = self.get_object()
+        return Response(engagement_for_client(client))
+
+    @action(detail=False, methods=['get'], url_path='engagement-bulk',
+            permission_classes=[IsAnyRole])
+    def engagement_bulk(self, request):
+        """NTCRM16 — Score d'engagement multi-signaux pour la liste (bulk)."""
+        from .engagement import engagement_bulk as _engagement_bulk
+        qs = self.get_queryset()
+        return Response(_engagement_bulk(list(qs)))
+
+    @action(detail=False, methods=['get'], url_path='mon-portefeuille',
+            permission_classes=[IsAnyRole])
+    def mon_portefeuille(self, request):
+        """NTCRM29 — Widget « portefeuille de comptes » : les comptes du
+        commercial CONNECTÉ (owner via leads liés), triés par score
+        d'engagement croissant (les plus froids en premier). Jamais scopé
+        depuis la query string — toujours ``request.user``/``request.user.
+        company``."""
+        from .selectors import portefeuille_commercial
+        results = portefeuille_commercial(request.user.company, request.user)
+        return Response({'count': len(results), 'results': results})
+
 
 class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
     """Leads + historique « chatter » (journal automatique + notes manuelles).
@@ -651,7 +740,8 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
                                           'export_xlsx', 'relances',
                                           'roi_sources', 'sla_breach',
                                           'client_match', 'points_contact',
-                                          'scan_carte']:
+                                          'scan_carte',
+                                          'salle_vente_analytics_view']:
             return [IsAnyRole()]
         elif self.action in (
                 'merge', 'convertir_client', 'epingler', 'desepingler'):
@@ -1091,6 +1181,17 @@ class LeadViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
             'timeline': PointContactSerializer(
                 summary['timeline'], many=True).data,
         })
+
+    @action(detail=True, methods=['get'], url_path='salle-vente-analytics',
+            permission_classes=[IsAnyRole])
+    def salle_vente_analytics_view(self, request, pk=None):
+        """NTCRM19 — résumé de consultation de la salle de vente la plus
+        récente de ce lead, pour le widget « le client a consulté N fois,
+        dernière fois <date> » de la fiche lead. `null` si aucune salle."""
+        from .selectors import salle_vente_summary_for_lead
+        lead = self.get_object()
+        summary = salle_vente_summary_for_lead(request.user.company, lead.pk)
+        return Response(summary)
 
     @action(detail=True, methods=['post'], url_path='devis-auto',
             permission_classes=[IsResponsableOrAdmin])
@@ -2315,7 +2416,18 @@ class RevueCompteViewSet(CompanyScopedModelViewSet):
         return [IsResponsableOrAdmin()]
 
     def get_queryset(self):
-        return super().get_queryset().filter(plan__company=self.request.user.company)
+        # RevueCompte n'a PAS de champ `company` propre (scopée via son plan
+        # de compte parent) : `TenantMixin.get_queryset()` (appelé par
+        # `super()`) filtre sur `company=user.company`, ce qui lève un
+        # FieldError (500) sur ce modèle — on construit donc le queryset
+        # directement, jamais via `super().get_queryset()`.
+        qs = RevueCompte.objects.select_related('plan')
+        user = self.request.user
+        if user.company_id:
+            return qs.filter(plan__company=user.company)
+        if user.is_superuser:
+            return qs
+        return qs.none()
 
     def perform_create(self, serializer):
         serializer.save(created_by=self.request.user)
@@ -2474,3 +2586,139 @@ class SavedViewViewSet(CompanyScopedModelViewSet):
             company=request.user.company, user=request.user, page=page,
         ).order_by('rank', 'id')
         return Response(SavedViewSerializer(result, many=True).data)
+
+
+class SalleVenteViewSet(CompanyScopedModelViewSet):
+    """NTCRM17 — Salle de vente digitale (CRUD interne, authentifié).
+
+    ``company`` posé côté serveur (TenantMixin). ``created_by`` forcé à la
+    création. Lecture tout rôle, écriture responsable/admin (mêmes gardes
+    que ``PointContactViewSet``). Ajout/retrait d'items via des actions
+    dédiées (jamais un PATCH imbriqué non trivial du serializer nested)."""
+    serializer_class = SalleVenteSerializer
+    queryset = SalleVente.objects.select_related(
+        'company', 'lead', 'client', 'created_by').prefetch_related('items').all()
+
+    def get_permissions(self):
+        if self.action in READ_ACTIONS:
+            return [IsAnyRole()]
+        return [IsResponsableOrAdmin()]
+
+    def perform_create(self, serializer):
+        serializer.save(company=self.request.user.company,
+                        created_by=self.request.user)
+
+    @action(detail=True, methods=['post'], url_path='items',
+            permission_classes=[IsResponsableOrAdmin])
+    def ajouter_item(self, request, pk=None):
+        salle = self.get_object()
+        # `{**request.data, ...}` transforme chaque valeur d'un QueryDict
+        # (multipart/urlencoded) en liste à un élément (`'devis'` devient
+        # `['devis']`), ce qui casse la validation du ChoiceField `type` —
+        # `.copy()` + affectation préserve les valeurs scalaires quel que
+        # soit le type de `request.data` (QueryDict ou dict JSON).
+        data = request.data.copy()
+        data['salle'] = salle.pk
+        serializer = SalleVenteItemSerializer(data=data)
+        serializer.is_valid(raise_exception=True)
+        serializer.save(salle=salle)
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['delete'], url_path=r'items/(?P<item_id>\d+)',
+            permission_classes=[IsResponsableOrAdmin])
+    def retirer_item(self, request, pk=None, item_id=None):
+        salle = self.get_object()
+        deleted, _ = SalleVenteItem.objects.filter(
+            salle=salle, pk=item_id).delete()
+        if not deleted:
+            return Response(status=status.HTTP_404_NOT_FOUND)
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+    @action(detail=True, methods=['get'], url_path='analytics',
+            permission_classes=[IsAnyRole])
+    def analytics(self, request, pk=None):
+        """NTCRM19 — nombre de vues, dernière vue, délai création→première
+        vue (signal d'intérêt). Le suivi PAR ITEM n'est pas câblé
+        (`SalleVenteVue` journalise la salle entière, pas item par item) —
+        seul l'agrégat salle est exposé, conformément à la tâche NTCRM19
+        (« si consultation par item trackée » — non le cas ici)."""
+        from .selectors import salle_vente_analytics
+        salle = self.get_object()
+        return Response(salle_vente_analytics(salle))
+
+
+class ApporteurViewSet(CompanyScopedModelViewSet):
+    """NTCRM20 — Apporteurs d'affaires (registre B2B, CRUD interne)."""
+    serializer_class = ApporteurSerializer
+    queryset = Apporteur.objects.select_related('company').all()
+
+    def get_permissions(self):
+        if self.action in READ_ACTIONS:
+            return [IsAnyRole()]
+        return [IsResponsableOrAdmin()]
+
+
+class DealEnregistreViewSet(CompanyScopedModelViewSet):
+    """NTCRM20 — Deals enregistrés par un apporteur (protection anti-poaching).
+
+    ``approuver``/``rejeter`` : actions dédiées plutôt qu'un PATCH direct du
+    statut — un rejet/expiration lève la protection immédiatement pour un
+    futur enregistrement concurrent (`clean()` du modèle)."""
+    serializer_class = DealEnregistreSerializer
+    queryset = DealEnregistre.objects.select_related(
+        'company', 'apporteur', 'lead').all()
+
+    def get_permissions(self):
+        if self.action in READ_ACTIONS or self.action == 'a_payer':
+            return [IsAnyRole()]
+        return [IsResponsableOrAdmin()]
+
+    @action(detail=True, methods=['post'], url_path='approuver',
+            permission_classes=[IsResponsableOrAdmin])
+    def approuver(self, request, pk=None):
+        deal = self.get_object()
+        deal.statut = DealEnregistre.Statut.APPROUVE
+        deal.save(update_fields=['statut'])
+        return Response(DealEnregistreSerializer(deal).data)
+
+    @action(detail=True, methods=['post'], url_path='rejeter',
+            permission_classes=[IsResponsableOrAdmin])
+    def rejeter(self, request, pk=None):
+        deal = self.get_object()
+        deal.statut = DealEnregistre.Statut.REJETE
+        deal.save(update_fields=['statut'])
+        return Response(DealEnregistreSerializer(deal).data)
+
+    @action(detail=False, methods=['get'], url_path='a-payer')
+    def a_payer(self, request):
+        """NTCRM22 — liste des commissions À_PAYER, pour le comptable."""
+        qs = self.get_queryset().filter(statut=DealEnregistre.Statut.A_PAYER)
+        return Response(DealEnregistreSerializer(qs, many=True).data)
+
+
+class DefiViewSet(CompanyScopedModelViewSet):
+    """NTCRM23 — Défis d'équipe (gamification) : CRUD + classement."""
+    serializer_class = DefiSerializer
+    queryset = Defi.objects.select_related('company').all()
+
+    def get_permissions(self):
+        if self.action in READ_ACTIONS or self.action == 'classement':
+            return [IsAnyRole()]
+        return [IsResponsableOrAdmin()]
+
+    @action(detail=True, methods=['get'], url_path='classement',
+            permission_classes=[IsAnyRole])
+    def classement(self, request, pk=None):
+        from .selectors import classement_defi
+        defi = self.get_object()
+        return Response(classement_defi(defi))
+
+    @action(detail=True, methods=['get'], url_path='export-xlsx',
+            permission_classes=[IsAnyRole])
+    def export_xlsx(self, request, pk=None):
+        """NTCRM28 — Export .xlsx du classement, même contenu que
+        ``classement/`` (rang/nom/score), pour partage en réunion commerciale."""
+        from .exports import export_defi_classement_xlsx
+        from .selectors import classement_defi
+        defi = self.get_object()
+        return export_defi_classement_xlsx(defi, classement_defi(defi))

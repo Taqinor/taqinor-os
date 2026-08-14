@@ -83,6 +83,35 @@ const marketingApi = {
       api.get(`/marketing/sequences-relance/${id}/participants/`, { params }),
   },
   etapesSequence: resource('etapes-sequence'),
+
+  // ── NTMKT12/13 — Journey en graphe (nœuds + arcs) d'une séquence ──
+  // Extension ADDITIVE : une séquence sans nœud reste linéaire côté serveur.
+  noeudsJourney: resource('noeuds-journey'),
+  arcsJourney: resource('arcs-journey'),
+
+  // ── NTMKT24 — Heatmap d'engagement jour x heure (lecture seule) ──
+  heatmapEngagement: (params) =>
+    api.get('/marketing/heatmap-engagement/', { params }),
+
+  // ── NTMKT23 — Blocs de contenu réutilisables (insérés par COPIE) ──
+  blocsContenu: resource('blocs-contenu'),
+
+  // ── NTMKT16 — Versions éditoriales d'une landing page d'intake ──
+  versionsFormulaireIntake: {
+    ...resource('versions-formulaire-intake'),
+    // « Publier cette version » : la page publique bascule dessus.
+    publier: (id) =>
+      api.post(`/marketing/versions-formulaire-intake/${id}/publier/`),
+  },
+
+  // ── NTMKT15 — Bibliothèque de modèles de journeys (graphes pré-construits)
+  modelesJourney: {
+    ...resource('modeles-journey'),
+    // « Utiliser ce modèle » : crée une séquence ÉDITABLE désactivée.
+    instancier: (id, data) =>
+      api.post(`/marketing/modeles-journey/${id}/instancier/`, data || {}),
+  },
+
   inscriptionsSequence: {
     ...resource('inscriptions-sequence'),
     inscrire: (data) =>
@@ -221,6 +250,33 @@ const marketingApi = {
   // ── PACT108 — Journal des messages WhatsApp entrants (FG207), LECTURE SEULE ──
   messagesWhatsapp: {
     list: (params) => api.get('/marketing/messages-whatsapp/', { params }),
+  },
+
+  // ── NTMKT26 — Import CSV de coûts publicitaires externes (Meta/Google Ads) ──
+  // Aucun appel API externe : un fichier CSV exporté à la main est réconcilié
+  // par nom de campagne avec `cout_reel_mad` (XMKT17).
+  importerCoutsPublicitaires: (fichier) => {
+    const form = new FormData()
+    form.append('fichier', fichier)
+    return api.post('/marketing/campagnes/importer-couts/', form, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    })
+  },
+
+  // ── NTMKT27 — Bilan de campagne PDF interne (jamais un devis client) ──
+  rapportCampagnePdf: (id) =>
+    api.get(`/marketing/campagnes/${id}/rapport-pdf/`, { responseType: 'blob' }),
+
+  // ── NTMKT28 — Export PDF du registre de consentement (CNDP) ──
+  registreConsentementExportPdf: (params) =>
+    api.get('/marketing/registre-consentement/export-pdf/', {
+      params, responseType: 'blob',
+    }),
+
+  // ── NTMKT31 — Réglages tenant du module Marketing (singleton société) ──
+  parametres: {
+    get: () => api.get('/marketing/parametres/'),
+    maj: (data) => api.patch('/marketing/parametres/', data),
   },
 }
 

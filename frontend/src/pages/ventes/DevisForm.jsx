@@ -119,6 +119,52 @@ function ApprobationPanel({ devisId }) {
   )
 }
 
+// NTCPQ21 — badge « configuration validée » : état CALCULÉ côté serveur
+// (règles produit NTCPQ2 + contraintes de compatibilité NTCPQ1), exposé sur le
+// DÉTAIL du devis (`configuration`). Purement informatif : il n'empêche jamais
+// l'enregistrement en brouillon — seule une violation marquée bloquante est
+// signalée comme telle. Silencieux tant que l'état n'est pas connu.
+function ConfigurationBadge({ devisId }) {
+  const [etat, setEtat] = useState(null)
+
+  useEffect(() => {
+    let vivant = true
+    ventesApi.getDevisById(devisId)
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- lecture serveur au changement de devis
+      .then((r) => { if (vivant) setEtat(r.data?.configuration ?? null) })
+      .catch(() => {})
+    return () => { vivant = false }
+  }, [devisId])
+
+  if (!etat) return null
+  const valide = !!etat.configuration_valide
+  const violations = etat.violations || []
+
+  return (
+    <div className="border-t border-border pt-4" data-testid="cpq-configuration">
+      <p
+        className={`text-sm font-semibold ${
+          valide ? 'text-emerald-600' : 'text-destructive'
+        }`}
+      >
+        {valide
+          ? 'Configuration validée'
+          : `Configuration à vérifier (${violations.length})`}
+      </p>
+      {!valide && (
+        <ul className="mt-2 space-y-1 text-sm text-muted-foreground">
+          {violations.map((v, i) => (
+            <li key={`${v.source}-${v.regle_id ?? i}`}>
+              {v.bloquante ? '⛔ ' : '⚠️ '}
+              {v.message}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  )
+}
+
 export default function DevisForm({ devis = null, onClose, onSaved }) {
   const dispatch = useDispatch()
   const isEdit = !!devis
@@ -677,6 +723,7 @@ export default function DevisForm({ devis = null, onClose, onSaved }) {
             </div>
           )}
 
+          {isEdit && devis?.id && <ConfigurationBadge devisId={devis.id} />}
           {isEdit && devis?.id && <ApprobationPanel devisId={devis.id} />}
 
           <FormActions sticky={false}>
