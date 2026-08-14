@@ -6,6 +6,7 @@ from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 
 from core.viewsets import CompanyScopedModelViewSet
+from apps.records.views import ChatterViewSetMixin
 
 from . import services
 from .models import EtapeTransport, LigneOrdreTransport, OrdreTransport
@@ -26,10 +27,12 @@ def _check_same_company(request, **fields):
             raise ValidationError({name: 'Référence inconnue pour cette société.'})
 
 
-class OrdreTransportViewSet(CompanyScopedModelViewSet):
+class OrdreTransportViewSet(ChatterViewSetMixin, CompanyScopedModelViewSet):
     """NTLOG1 — ordre de transport. Filtrable par `?statut=`. `numero` posé
     côté serveur à la création (`services.attribuer_numero`, anti-collision,
-    ARC6)."""
+    ARC6). Le chatter générique (`chatter/historique`/`chatter/noter`,
+    ``ChatterViewSetMixin``) porte l'historique NTLOG8 (statut de l'ordre ET
+    de ses étapes — voir ``services.log_activite_ordre``)."""
 
     queryset = OrdreTransport.objects.select_related(
         'created_by').prefetch_related('lignes', 'etapes').all()
@@ -137,4 +140,4 @@ class EtapeTransportViewSet(CompanyScopedModelViewSet):
         ancien_statut = serializer.instance.statut_etape
         super().perform_update(serializer)
         services.apres_changement_statut_etape(
-            serializer.instance, ancien_statut)
+            serializer.instance, ancien_statut, user=self.request.user)
