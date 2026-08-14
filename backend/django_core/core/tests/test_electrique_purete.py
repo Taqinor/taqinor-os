@@ -197,10 +197,17 @@ class ConstantesNormativesSourcees(unittest.TestCase):
 
 
 class AucunPrixDansLeNoyau(unittest.TestCase):
-    """Un prix qui entrerait ici ressortirait dans un dossier technique."""
+    """Un prix qui entrerait ici ressortirait dans un dossier technique.
 
-    MOTS_INTERDITS = ("prix_achat", "prix_vente", "marge", "montant_ht",
-                      "montant_ttc")
+    Les mots traqués sont des NOMS DE CHAMP monétaires, pas des mots français :
+    « marge » toute seule désignerait aussi la marge d'une planche (le schéma
+    unifilaire en a), donc seule ``marge_commerciale``/``taux_marge`` compte —
+    un champ de prix, lui, ne s'écrit pas autrement que ``prix_achat`` /
+    ``prix_vente`` / ``montant_*``.
+    """
+
+    MOTS_INTERDITS = ("prix_achat", "prix_vente", "taux_marge",
+                      "marge_commerciale", "montant_ht", "montant_ttc")
 
     def test_aucun_champ_de_prix(self):
         fautifs = []
