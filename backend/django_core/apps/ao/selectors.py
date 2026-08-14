@@ -135,17 +135,104 @@ def calepinage_sans_projet(*, surface, kits, parametres, obstacles=(),
         obstacles=obstacles, zones=zones, politique=politique, repere=repere)
 
 
-def calepinage_villa(area, *, ordre='lnglat', kit=None, retrait_m=None,
-                     pas_recherche_m=0.01):
+def calepinage_villa(area, *, ordre='lnglat', kit=None, produit_panneau=None,
+                     company=None, retrait_m=None, pas_recherche_m=0.01):
     """Calepine une toiture villa (``AreaRecord``) — LECTURE PURE.
 
     ``ordre`` reste un argument EXPLICITE jusqu'ici : aucun appelant ne doit
     pouvoir hériter d'un défaut deviné sur l'ordre lat/lng.
+
+    ``produit_panneau`` (PV12) — identifiant OU instance de ``stock.Produit``,
+    résolu DANS ``company`` : le calepinage est alors posé sur le panneau
+    réellement vendu. Une fiche technique incomplète retombe sur le kit villa
+    par défaut, jamais sur une géométrie devinée.
     """
     from .services import calepiner_villa
 
-    return calepiner_villa(area, ordre=ordre, kit=kit, retrait_m=retrait_m,
+    return calepiner_villa(area, ordre=ordre, kit=kit,
+                           produit_panneau=produit_panneau, company=company,
+                           retrait_m=retrait_m,
                            pas_recherche_m=pas_recherche_m)
+
+
+# ── PV68 — synthèse de calepinage d'une AFFAIRE ────────────────────────────
+#
+# L'écran « Affaire » affichait ses toitures une par une : le total de modules
+# d'un dossier à cinq bâtiments n'existait NULLE PART, et se refaisait à la
+# main — donc faux un jour sur deux. Ce sélecteur le calcule, à partir de la
+# variante RETENUE de chaque toiture et d'elle seule (les alternatives et les
+# sensibilités sont des hypothèses, pas l'offre).
+#
+# AUCUN coût, AUCUNE marge : la synthèse ne publie que de la géométrie et des
+# comptes (règle AOF2 — l'économie vit derrière ``ao_rentabilite_voir``).
+
+def synthese_calepinage_affaire(appel_offre, company=None):
+    """La synthèse de calepinage d'une affaire — UN retour, TOUTES les clés.
+
+    ``appel_offre`` : instance OU identifiant. Avec un identifiant, ``company``
+    devient OBLIGATOIRE — sans elle, la synthèse d'une autre société
+    remonterait, et un total faux est pire qu'un total absent.
+
+    Rend TOUJOURS le même dictionnaire, même sans aucune toiture :
+    ``total_modules``, ``total_kwc``, ``toitures_total``,
+    ``toitures_calepinees`` et une ligne PAR TOITURE. Les toitures NON
+    calepinées y figurent aussi, ``calepinee: False`` — c'est justement le
+    trou qu'un chargé d'affaires doit voir, et le taire ferait passer un
+    dossier incomplet pour un dossier fini.
+    """
+    from .models import ToitureAO, VarianteCalepinage
+
+    if company is None:
+        company = getattr(appel_offre, 'company', None)
+    if company is None:
+        raise ValueError(
+            "La synthèse de calepinage se lit toujours dans une société : "
+            'fournissez `company` avec un identifiant d\'affaire.')
+    appel_offre_id = getattr(appel_offre, 'pk', appel_offre)
+
+    toitures = list(ToitureAO.objects.filter(
+        company=company, batiment__appel_offre_id=appel_offre_id
+    ).select_related('batiment').order_by(
+        'batiment__code', 'code_document', 'id'))
+    retenues = {
+        variante.toiture_id: variante
+        for variante in VarianteCalepinage.objects.filter(
+            company=company, appel_offre_id=appel_offre_id, est_retenue=True)
+    }
+
+    lignes = []
+    total_modules = 0
+    total_kwc = 0.0
+    for toiture in toitures:
+        variante = retenues.get(toiture.pk)
+        modules = int((variante.total_modules or 0) if variante else 0)
+        kwc = float((variante.puissance_kwc or 0) if variante else 0.0)
+        total_modules += modules
+        total_kwc += kwc
+        preuve = (variante.preuve or {}) if variante else {}
+        lignes.append({
+            'toiture': toiture.pk,
+            'code_document': toiture.code_document or '',
+            'designation': toiture.designation or '',
+            'batiment': toiture.batiment_id,
+            'batiment_code': toiture.batiment.code or '',
+            'calepinee': variante is not None,
+            'variante': variante.pk if variante else None,
+            'variante_nom': variante.nom if variante else '',
+            'statut': variante.statut if variante else '',
+            'modules': modules,
+            'kwc': round(kwc, 3),
+            'optimal': preuve.get('optimal'),
+            'methode': preuve.get('methode') or '',
+        })
+
+    return {
+        'total_modules': total_modules,
+        'total_kwc': round(total_kwc, 3),
+        'toitures_total': len(toitures),
+        'toitures_calepinees': sum(1 for ligne in lignes if ligne['calepinee']),
+        'toitures': lignes,
+    }
 
 
 # ── AOF166 — tableau de bord des marchés (supersede NTMAR27) ───────────────
