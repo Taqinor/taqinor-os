@@ -200,6 +200,13 @@ class UserSerializer(serializers.ModelSerializer):
     company_mode_presentation_actif = serializers.BooleanField(
         source='company.mode_presentation_actif', read_only=True, default=False
     )
+    # NTDMO26 — date de création de la société, lecture seule, servie au
+    # bootstrap pour que le frontend sache déclencher (ou pas) l'assistant
+    # first-run « Configurez votre société en 5 minutes » sur une société
+    # RÉELLE fraîchement créée (jamais sur une société ancienne).
+    company_date_creation = serializers.DateTimeField(
+        source='company.date_creation', read_only=True, default=None
+    )
     # NTDMO20 — vrai UNIQUEMENT si `CompanyProfile.essai_expire_le` est
     # renseignée ET dépassée (jamais peuplée automatiquement, founder-only).
     # Une société sans date renseignée (comportement actuel de TOUTE société
@@ -270,7 +277,7 @@ class UserSerializer(serializers.ModelSerializer):
             'password', 'date_joined', 'last_login',
             'company_id', 'company_nom',
             'company_est_demo', 'company_mode_presentation_actif',
-            'company_essai_expire',
+            'company_essai_expire', 'company_date_creation',
             # NTPRT8 — portée du compte (NTPRT1) + id de l'entité portail
             # rattachée. Le shell frontend en a besoin pour router un compte
             # PORTAIL vers `/portail/<scope>` et le tenir hors de l'ERP interne.
@@ -283,7 +290,7 @@ class UserSerializer(serializers.ModelSerializer):
             'id', 'date_joined', 'last_login',
             'company_id', 'company_nom',
             'company_est_demo', 'company_mode_presentation_actif',
-            'company_essai_expire',
+            'company_essai_expire', 'company_date_creation',
             'societes_operables', 'active_company_id',
             'password_changed_at',
             'role_nom', 'role_legacy', 'menu_tier', 'permissions',

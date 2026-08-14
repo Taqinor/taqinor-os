@@ -123,4 +123,27 @@ def resume_pour_utilisateur(company, user):
         'total': total,
         'pourcentage': pourcentage,
         'termine': total == 0 or faits == total,
+        # NTDMO26 — vrai seulement pour une société RÉELLE (jamais démo)
+        # fraîchement créée (< 30 j) dont l'assistant first-run
+        # (/onboarding/demarrage) n'a ni été complété ni passé. Le frontend
+        # (``PremiersPasWidget``) y navigue alors automatiquement, une fois —
+        # même fenêtre de 30 j que les visites guidées (NTDMO15).
+        'assistant_demarrage_auto': _assistant_demarrage_auto(company, items),
     }
+
+
+def _assistant_demarrage_auto(company, items):
+    """NTDMO26 — voir ``resume_pour_utilisateur``. Jamais sur une société
+    de démonstration, jamais si l'item a déjà été fait/ignoré (dans ce cas il
+    n'apparaît plus dans ``items``, cf. ``checklist_pour_utilisateur``)."""
+    if company is None or getattr(company, 'est_demo', False):
+        return False
+    date_creation = getattr(company, 'date_creation', None)
+    if date_creation is None:
+        return False
+    from django.utils import timezone
+    age_jours = (timezone.now() - date_creation).days
+    if age_jours < 0 or age_jours >= 30:
+        return False
+    return any(
+        it['key'] == 'assistant_demarrage' and not it['fait'] for it in items)

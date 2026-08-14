@@ -22,8 +22,20 @@ from django.utils import timezone
 # (marquer_fait_manuel ci-dessous, alternative EXPLICITEMENT prévue par le
 # founder quand aucun jalon de bus n'existe).
 DEFAULT_ITEMS = [
+    # NTDMO26 — item de suivi de l'assistant first-run « Configurez votre
+    # société en 5 minutes » (/onboarding/demarrage, société RÉELLE non-démo
+    # fraîchement créée). `ignore_le` posé = « Passer » a été cliqué : le
+    # wizard ne se redéclenche plus jamais automatiquement pour cet
+    # utilisateur (réutilise `ignorer_item` existant, aucun nouveau modèle).
+    ('assistant_demarrage', 'Assistant de démarrage rapide (5 min)', 5,
+     ['Administrateur', 'Directeur'], '/onboarding/demarrage', ''),
     ('configurer_societe', 'Configurer votre société', 10,
      ['Administrateur', 'Directeur'], '/parametres', ''),
+    # NTDMO26 — sous-étape « premier produit du catalogue » de l'assistant
+    # first-run (aucun event_key adapté sans importer `stock` — complétion
+    # manuelle explicite, même patron que les items sans event_key ci-dessous).
+    ('premier_produit', 'Ajouter votre premier produit', 15,
+     ['Administrateur', 'Directeur'], '/stock', ''),
     ('import_clients', 'Importer vos clients', 20,
      [], '/crm/clients', ''),
     ('premier_devis', 'Créer votre 1er devis', 30,
