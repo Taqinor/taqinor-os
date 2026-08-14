@@ -15,6 +15,22 @@ prix d'achat / marge — uniquement des grandeurs électriques publiques.
 
 Le module est volontairement sans dépendance : le SVG est assemblé à la main
 (pas de lib de dessin) pour rester portable et testable hors-Django.
+
+PV83 (ARC6) — POURQUOI CE MODULE N'EST **PAS** UN SHIM SUR
+``core.electrique.schema``. Le noyau (PV39) rend un schéma unifilaire v2 : la
+chaîne CANONIQUE d'un dossier de raccordement (fusibles gPV, coffret DC,
+parafoudres, sectionneur, amorces MPPT, DDR, compteur de production, TGBT),
+dessinée DEPUIS un ``ResultatElectrique`` — donc uniquement les organes que les
+règles ont retenus, plus un tableau d'équipements. Ce module-ci, lui, dessine
+cinq blocs FIXES (Panneaux → String(s) → Onduleur → Comptage → ONEE) à partir
+d'un simple dict d'ÉTIQUETTES, sans calcul électrique. Les signatures
+(``params`` vs ``(entree, resultat)``), la planche (980 × 260 px vs A4/A3
+paysage) et le contenu diffèrent de bout en bout : brancher l'un sur l'autre
+changerait le rendu des deux endpoints existants, pas leur implémentation. Le
+v1 reste donc ici, INCHANGÉ, comme brouillon d'étiquettes ; le v2 est appelé
+par les consommateurs qui disposent d'une conception électrique complète
+(``Devis.electrical_design``, PV41). Un test épingle les deux
+(``test_pv83_shims_electrique``).
 """
 from __future__ import annotations
 
