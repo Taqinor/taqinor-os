@@ -41,10 +41,25 @@ test('E5: the winter bill on a lead autosaves and reflects', async ({ page }) =>
 
   // Réouverture : la valeur est bien persistée.
   await openLead(page, name)
+  const reouvert = modalXl(page)
+  // ROUND 5 (draftCore.sectionAutoRepliee) — une section dont le CŒUR est
+  // complet se rouvre REPLIÉE, et un corps replié quitte le DOM
+  // (SectionsPane). Le cœur de « Profil énergétique » est justement
+  // `facture_hiver`, qu'on vient de renseigner : le champ n'est donc plus
+  // monté à la réouverture. On déplie la section par son en-tête (son
+  // affordance publique, `aria-expanded`) avant de relire la valeur — la
+  // preuve reste la MÊME : la facture saisie a bien été persistée côté
+  // serveur et se relit telle quelle.
+  const energie = reouvert.locator('.lw-section[data-nav-id="energie"]')
+  const teteEnergie = energie.locator('.lw-section-head')
+  await expect(teteEnergie).toBeVisible() // le centre est monté avant qu'on lise son état
+  if ((await teteEnergie.getAttribute('aria-expanded')) === 'false') {
+    await teteEnergie.click()
+  }
   // À la réouverture le champ lit l'écho serveur (décimal sérialisé en chaîne
   // « 800.00 ») — pendant la frappe, le texte tapé « 800 » ne snappe JAMAIS
   // (draftCore SET_FIELD garde le texte tapé, critique Fable #1).
-  await expect(modalXl(page).locator('#lf-facture-hiver')).toHaveValue(/^800([.,]00)?$/)
+  await expect(energie.locator('#lf-facture-hiver')).toHaveValue(/^800([.,]00)?$/)
   await closeLeadModal(page)
 })
 
@@ -105,7 +120,13 @@ test('E7: move a lead between stages, including into Signé', async ({ page }) =
   await page.locator('select.ie-input').selectOption({ label: 'Signé' })
   await page.keyboard.press('Tab')
 
-  const dialog = page.locator('.modal', { hasText: 'Passer en « Signé »' })
+  // VX182 — SigneDialog est passé à ResponsiveDialog (Radix) : son conteneur
+  // n'a plus la classe `.modal`, mais garde son en-tête `<h3 class="modal-title">`.
+  // On cible donc LE dialogue par son titre — même preuve (la boîte
+  // d'acceptation s'ouvre au lieu d'un passage direct en Signé, puis disparaît
+  // une fois confirmée).
+  const dialog = page.locator('[role="dialog"]')
+    .filter({ has: page.locator('.modal-title', { hasText: 'Passer en « Signé »' }) })
   await expect(dialog).toBeVisible()
   const devisSelect = dialog.locator('#sd-devis')
   const values = await devisSelect
@@ -183,4 +204,33 @@ test('LB34: la page leads redessinée (KPI + kanban + barre flottante + menu •
   await setLeadsView(page, 'liste')
   await expect(page.locator('.lv-wrap')).toBeVisible()
   await assertNoSeriousA11yViolations(page, { include: '.lp-page' })
+})
+
+// LWZ — le menu « ⋯ » du rail identité DANS l'enveloppe Dialog (kanban/liste).
+// Le contenu du menu est portalé en FRÈRE du DialogContent (--z-modal 1300) :
+// à --z-dropdown (1000) il se peignait DERRIÈRE le panneau opaque — menu
+// « ouvert » (aria-expanded) mais invisible, clic muet (bug prod du 14/08).
+// Aucun autre test n'ouvre ce menu-là : LB34 teste le ••• de la PAGE liste
+// (hors dialog), IdentityRail.test.jsx rend le rail sans Dialog en jsdom (aucun
+// empilement calculé). Le clic Playwright sur un item recouvert échoue (contrôle
+// d'actionnabilité « reçoit les événements pointeur ») → ce test verrouille
+// l'ordre de peinture (--z-popover requis sur DropdownMenuContent).
+test('LWZ: le menu ⋯ du rail est visible et cliquable dans le Dialog lead', async ({ page }) => {
+  await gotoLeads(page)
+  const name = await createLead(page, { nom: uniq('MenuRail') })
+  await openLead(page, name)
+
+  await modalXl(page).getByRole('button', { name: "Plus d'actions" }).click()
+  const menu = page.getByRole('menu')
+  await expect(menu).toBeVisible()
+  await expect(menu.getByRole('menuitem', { name: /Concevoir la toiture \(3D\)/ })).toBeVisible()
+
+  // Clic RÉEL sur un item — un item peint sous la modale le ferait échouer.
+  await menu.getByRole('menuitem', { name: 'Convertir en client' }).click()
+  const convert = page.locator('[role="dialog"]')
+    .filter({ has: page.getByRole('heading', { name: 'Convertir en client' }) })
+  await expect(convert).toBeVisible()
+  await convert.locator('.modal-close').click()
+  await expect(convert).toHaveCount(0)
+  await closeLeadModal(page)
 })

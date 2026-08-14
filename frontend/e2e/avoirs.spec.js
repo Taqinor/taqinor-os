@@ -21,6 +21,11 @@ test('E12: create an avoir from a posted invoice', async ({ page }) => {
 
   await page.goto('/ventes/avoirs')
   await expect(page.getByRole('heading', { name: /Avoirs/ })).toBeVisible()
-  await expect(page.locator('table.data-table tbody tr').first()).toBeVisible()
-  await expect(page.locator('table.data-table')).toContainText('FAC-DEMO-0001')
+  // P167 — the page moved to the shared table engine (pages/reporting/Table.jsx):
+  // no more hand-written `table.data-table`, it renders a `table.report-table`
+  // carrying `aria-label="Avoirs"`. Same proof, on the same table: it has at
+  // least one row, and that table references the source invoice.
+  const avoirsTable = page.getByRole('table', { name: 'Avoirs' })
+  await expect(avoirsTable.locator('tbody tr').first()).toBeVisible()
+  await expect(avoirsTable).toContainText('FAC-DEMO-0001')
 })

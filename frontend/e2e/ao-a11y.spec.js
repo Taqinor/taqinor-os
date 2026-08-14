@@ -9,26 +9,40 @@
 // est couvert PAR CONSTRUCTION : axe-core signale toute violation de contraste
 // (`color-contrast`) sur l'un OU l'autre thème, donc les deux passes suffisent
 // à garder AOF9/AOF10 honnêtes sans dupliquer leur propre test de token.
+//
+// ── CORRECTION 14/08/2026 — ces quatre écrans sont des ONGLETS, pas des liens ─
+// Écrit à l'aveugle (cf. NOTES_LANE.md, lane AOF187-192 : « à ajuster si
+// frontend/ao-socle nomme différemment »), ce spec cherchait
+// `getByRole('link', { name: /Toiture|Calepinage|Dossier|Bordereau/ })`. La
+// fiche affaire rend ses sections en onglets Radix (`role="tab"`), donc :
+//   * « Bordereau » ne résolvait rien → rouge honnête ;
+//   * « Toiture », « Calepinage » et « Dossier » résolvaient vers l'entrée de
+//     NAVIGATION GLOBALE du module (`/ao/toitures`, `/ao/calepinages`,
+//     `/ao/dossiers`) → le spec quittait la fiche et balayait un AUTRE écran
+//     en se déclarant vert. Un faux vert affirme une couverture inexistante.
+// La navigation passe désormais par `ouvrirOngletAffaire` (helpers.js), qui
+// clique le `role="tab"` réel ET vérifie qu'on n'a pas quitté la fiche.
 import { test, expect } from '@playwright/test'
 import {
-  openAoDemoAffaire, assertNoSeriousA11yViolations,
+  openAoDemoAffaire, ouvrirOngletAffaire, assertNoSeriousA11yViolations,
 } from './helpers'
 
+// Libellés EXACTS des onglets déclarés par `features/ao/AffaireDetail.jsx`.
 const ATELIERS = [
-  { name: 'atelier-toiture', lien: /Toiture/ },
-  { name: 'atelier-calepinage', lien: /Calepinage/ },
-  { name: 'dossier', lien: /Dossier/ },
-  { name: 'bordereau', lien: /Bordereau/ },
+  { name: 'atelier-toiture', onglet: 'Toitures & relevés' },
+  { name: 'atelier-calepinage', onglet: 'Calepinages' },
+  { name: 'dossier', onglet: 'Dossier' },
+  { name: 'bordereau', onglet: 'Bordereau' },
 ]
 
-async function gotoEcran(page, lien) {
+async function gotoEcran(page, onglet) {
   await openAoDemoAffaire(page)
-  await page.getByRole('link', { name: lien }).click()
+  await ouvrirOngletAffaire(page, onglet)
 }
 
-for (const { name, lien } of ATELIERS) {
+for (const { name, onglet } of ATELIERS) {
   test(`AOF188: ${name} — axe sans violation sérieuse (clair)`, async ({ page }) => {
-    await gotoEcran(page, lien)
+    await gotoEcran(page, onglet)
     await assertNoSeriousA11yViolations(page)
   })
 
@@ -36,13 +50,13 @@ for (const { name, lien } of ATELIERS) {
     await page.addInitScript(() => {
       try { localStorage.setItem('taqinor-theme', 'dark') } catch { /* mode privé */ }
     })
-    await gotoEcran(page, lien)
+    await gotoEcran(page, onglet)
     await assertNoSeriousA11yViolations(page)
   })
 }
 
 test('AOF188: le focus reste visible sur le canvas et ses poignées', async ({ page }) => {
-  await gotoEcran(page, /Toiture/)
+  await gotoEcran(page, 'Toitures & relevés')
   const canvas = page.locator('[data-ao-canvas]')
   await expect(canvas).toBeVisible()
   await canvas.focus()
@@ -68,7 +82,7 @@ test('AOF188: le focus reste visible sur le canvas et ses poignées', async ({ p
 })
 
 test('AOF188: le compte et le verdict sont annoncés via aria-live après recalcul', async ({ page }) => {
-  await gotoEcran(page, /Calepinage/)
+  await gotoEcran(page, 'Calepinages')
   const verdict = page.locator('[data-ao-verdict]')
   const compte = page.locator('[data-ao-compte]')
   await expect(verdict).toBeVisible()
@@ -85,7 +99,7 @@ test('AOF188: le compte et le verdict sont annoncés via aria-live après recalc
 })
 
 test('AOF188: le tableau de géométrie (AOF77) se parcourt intégralement au clavier', async ({ page }) => {
-  await gotoEcran(page, /Toiture/)
+  await gotoEcran(page, 'Toitures & relevés')
   const table = page.getByRole('table')
   await expect(table).toBeVisible()
 
@@ -108,9 +122,11 @@ test('AOF188: aucun window.alert/confirm/prompt natif sur le parcours AO', async
   let dialogVu = null
   page.on('dialog', (dialog) => { dialogVu = dialog.type() })
 
+  // Les quatre panneaux s'ouvrent SUR LA MÊME fiche : on n'y revient pas par la
+  // liste entre deux, c'est bien un changement d'onglet qu'on balaie.
   await openAoDemoAffaire(page)
-  for (const { lien } of ATELIERS) {
-    await page.getByRole('link', { name: lien }).click()
+  for (const { onglet } of ATELIERS) {
+    await ouvrirOngletAffaire(page, onglet)
     await page.waitForLoadState('networkidle').catch(() => {})
   }
 

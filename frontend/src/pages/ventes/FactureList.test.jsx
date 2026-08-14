@@ -311,3 +311,33 @@ describe('FactureList — VX142(b) : nextBestAction en position 1, style distinc
     expect(within(actionsCell).queryByRole('button', { name: /Enregistrer paiement/ })).toBeNull()
   })
 })
+
+/* ============================================================================
+   ARC49-FIX — LA LISTE DES FACTURES SUR TÉLÉPHONE
+   Bug de production : sous 768 px, /ventes/factures n'affichait RIEN. Le moteur
+   `ui/datatable` masque son conteneur `data-dt-table` (`hidden dt-desktop:block`)
+   et ne compensait par le repli en cartes `data-dt-cards` que si l'écran ne
+   passe ni `renderRow`, ni `hideMobileCards`, ni `groupBy` — or FactureList
+   passe `renderRow`. Ni table, ni carte : écran blanc. L'invariant GÉNÉRIQUE est
+   gardé dans src/ui/datatable/DataTable.test.jsx (§ ARC49-FIX) ; ce test-ci le
+   verrouille sur l'ÉCRAN réellement signalé.
+   ========================================================================== */
+describe('FactureList — ARC49-FIX : la liste reste visible sur téléphone (< 768 px)', () => {
+  it('les lignes de factures restent peintes sous 768 px', () => {
+    const { container } = renderList({ factures: [baseFacture] })
+    const conteneurTable = container.querySelector('[data-dt-table]')
+    expect(conteneurTable).toBeTruthy()
+    // FactureList passe `renderRow` : le moteur n'émet AUCUNE carte mobile.
+    expect(container.querySelector('[data-dt-cards]')).toBeNull()
+    // La table est donc le SEUL rendu possible des lignes : son conteneur ne
+    // doit pas porter `hidden` (display:none à TOUTE largeur), sinon l'écran est
+    // littéralement vide sur téléphone.
+    expect(conteneurTable.className.split(/\s+/)).not.toContain('hidden')
+    // …et c'est bien lui qui porte la facture.
+    expect(within(conteneurTable).getByText('FAC-2026-07-0001')).toBeInTheDocument()
+    // Le rendu « cartes » sur téléphone vient de la CSS `.data-table`
+    // (@media max-width:768px, index.css : thead masqué + td::before =
+    // attr(data-label)) — règles inopérantes tant qu'un ANCÊTRE est masqué.
+    expect(conteneurTable.querySelector('table').className).toContain('data-table')
+  })
+})

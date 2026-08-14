@@ -713,3 +713,31 @@ describe('DevisList — PUB53 : lien retour Devis → annonce Meta d\'origine', 
     expect(within(row).getByRole('button', { name: /Karim B\./ })).toBeVisible()
   })
 })
+
+/* ============================================================================
+   ARC49-FIX — LA LISTE DES DEVIS SUR TÉLÉPHONE
+   Même bug que /ventes/factures : DevisList passe `renderRow`, donc le moteur
+   `ui/datatable` n'émettait aucune carte mobile ET masquait sa table sous
+   768 px (`hidden dt-desktop:block` inconditionnel) — écran blanc. L'invariant
+   générique vit dans src/ui/datatable/DataTable.test.jsx (§ ARC49-FIX).
+   ========================================================================== */
+describe('DevisList — ARC49-FIX : la liste reste visible sur téléphone (< 768 px)', () => {
+  it('les lignes de devis restent peintes sous 768 px', () => {
+    const { container } = renderList({
+      loading: false,
+      devis: [{
+        id: 1, reference: 'DEV-2026-07-0001', client_nom: 'ACME', statut: 'envoye',
+        date_creation: '2026-07-01', total_ttc: 12000, nb_options: 1, version: 1,
+      }],
+    })
+    const conteneurTable = container.querySelector('[data-dt-table]')
+    expect(conteneurTable).toBeTruthy()
+    // `renderRow` ⇒ aucune carte mobile émise par le moteur.
+    expect(container.querySelector('[data-dt-cards]')).toBeNull()
+    // La table est donc le SEUL rendu des lignes : elle ne doit pas être masquée
+    // sous 768 px, sinon l'écran est littéralement vide sur téléphone.
+    expect(conteneurTable.className.split(/\s+/)).not.toContain('hidden')
+    expect(within(conteneurTable).getByText('DEV-2026-07-0001')).toBeInTheDocument()
+    expect(conteneurTable.querySelector('table').className).toContain('data-table')
+  })
+})
