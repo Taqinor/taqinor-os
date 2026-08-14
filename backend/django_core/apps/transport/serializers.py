@@ -4,7 +4,7 @@ from rest_framework import serializers
 
 from .models import (
     CoutFretReel, EtapeTransport, FacteurEmissionCO2, LigneOrdreTransport,
-    LitigeTransport, OrdreTransport, ReserveReception,
+    LitigeTransport, OrdreTransport, ParametresTransport, ReserveReception,
 )
 
 
@@ -89,6 +89,18 @@ class FacteurEmissionCO2Serializer(serializers.ModelSerializer):
     class Meta:
         model = FacteurEmissionCO2
         fields = ['id', 'mode', 'facteur_kg_co2_par_tonne_km']
+
+
+class ParametresTransportSerializer(serializers.ModelSerializer):
+    """NTLOG35 — réglages transport, singleton par société."""
+
+    class Meta:
+        model = ParametresTransport
+        fields = [
+            'id', 'delai_alerte_retard_heures', 'pod_obligatoire',
+            'seuil_anomalie_affretement_pct',
+        ]
+        read_only_fields = ['id']
 
 
 class OrdreTransportSerializer(serializers.ModelSerializer):

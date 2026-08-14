@@ -323,6 +323,47 @@ class ReserveReception(TenantModel):
         return f'Réserve · étape {self.etape_id}'
 
 
+class ParametresTransport(TenantModel):
+    """NTLOG35 — réglages du module transport, un par société (motif
+    ``douane.ParametresDouane``/``stock.AchatsParametres`` : singleton
+    accédé via ``for_company``, jamais ``count()+1`` ni un ``get()`` qui
+    plante s'il manque). Hérite de ``TenantModel`` mais REdéclare ``company``
+    en ``OneToOneField`` (motif ARC1/SCA4 documenté sur ``ParametresDouane``
+    — une FK ``company`` hors-socle NON précédée de ``TenantModel`` dans les
+    bases casserait le garde CI ``check_platform.py``).
+
+    Les facteurs d'émission CO2 (route/mer/air) NE SONT PAS redéfinis ici :
+    `FacteurEmissionCO2` (NTLOG20, unique par ``company``+``mode``) reste la
+    source UNIQUE — l'écran Paramètres > Transport les affiche/édite via
+    ``facteurs-emission-co2/`` (existant), sans dupliquer le modèle (même
+    motif que `CoutFretReel`/`frais_transport_pour_landed_cost`, NTLOG16).
+    ``seuil_anomalie_affretement_pct`` alimente NTLOG28/40 (BLOCKED — attend
+    NTLOG6 `GrilleTarifaireTransporteur`) : son contrat est déjà fixé."""
+
+    company = models.OneToOneField(
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: réglages liés au cycle de vie de la société
+        related_name='transport_parametres', verbose_name='Société')
+    delai_alerte_retard_heures = models.PositiveIntegerField(default=24)
+    # NTLOG9 — si `False`, `EtapeTransportViewSet.livrer` n'exige plus de
+    # pièce jointe POD pour CETTE société (défaut `True` : comportement
+    # historique inchangé pour toute société n'ayant jamais touché ce champ).
+    pod_obligatoire = models.BooleanField(default=True)
+    seuil_anomalie_affretement_pct = models.DecimalField(
+        max_digits=5, decimal_places=2, default=Decimal('15.00'))
+
+    class Meta:
+        verbose_name = 'Paramètres transport'
+        verbose_name_plural = 'Paramètres transport'
+
+    def __str__(self):
+        return f'Paramètres transport — {self.company}'
+
+    @classmethod
+    def for_company(cls, company):
+        obj, _ = cls.objects.get_or_create(company=company)
+        return obj
+
+
 class FacteurEmissionCO2(TenantModel):
     """NTLOG20 — facteur d'émission CO2 éditable en Paramètres, par mode
     physique d'acheminement (route/mer/air), en kg CO2 par tonne.km."""

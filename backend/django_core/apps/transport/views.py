@@ -5,9 +5,9 @@ from decimal import Decimal, InvalidOperation
 
 from django.contrib.contenttypes.models import ContentType
 from django.http import HttpResponse
-from drf_spectacular.utils import extend_schema, inline_serializer
+from drf_spectacular.utils import extend_schema, extend_schema_view, inline_serializer
 from rest_framework import serializers as drf_serializers
-from rest_framework import status
+from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
 from rest_framework.negotiation import DefaultContentNegotiation
@@ -21,13 +21,13 @@ from apps.records.views import ChatterViewSetMixin
 from . import services
 from .models import (
     CoutFretReel, EtapeTransport, FacteurEmissionCO2, LigneOrdreTransport,
-    LitigeTransport, OrdreTransport, ReserveReception,
+    LitigeTransport, OrdreTransport, ParametresTransport, ReserveReception,
 )
 from .serializers import (
     CoutFretReelSerializer, EtapeTransportSerializer,
     FacteurEmissionCO2Serializer, LigneOrdreTransportSerializer,
     LitigeTransportSerializer, OrdreTransportSerializer,
-    ReserveReceptionSerializer,
+    ParametresTransportSerializer, ReserveReceptionSerializer,
 )
 
 
@@ -260,18 +260,23 @@ class EtapeTransportViewSet(CompanyScopedModelViewSet):
     def livrer(self, request, pk=None):
         """Exige AU MOINS une pièce jointe (`records.Attachment`, photo ou
         signature) déjà déposée sur cette étape avant de la clôturer
-        « fait » — sinon 400."""
+        « fait » — sinon 400. NTLOG35 : cette contrainte est désactivable
+        PAR SOCIÉTÉ via ``ParametresTransport.pod_obligatoire=False``
+        (défaut ``True`` — comportement historique inchangé)."""
         etape = self.get_object()
-        from apps.records.models import Attachment
-        ct = ContentType.objects.get_for_model(EtapeTransport)
-        a_une_piece = Attachment.objects.filter(
-            content_type=ct, object_id=etape.id).exists()
-        if not a_une_piece:
-            return Response(
-                {'detail': (
-                    'Photo ou signature requise avant de clôturer la '
-                    'livraison.')},
-                status=status.HTTP_400_BAD_REQUEST)
+        pod_obligatoire = ParametresTransport.for_company(
+            request.user.company).pod_obligatoire
+        if pod_obligatoire:
+            from apps.records.models import Attachment
+            ct = ContentType.objects.get_for_model(EtapeTransport)
+            a_une_piece = Attachment.objects.filter(
+                content_type=ct, object_id=etape.id).exists()
+            if not a_une_piece:
+                return Response(
+                    {'detail': (
+                        'Photo ou signature requise avant de clôturer la '
+                        'livraison.')},
+                    status=status.HTTP_400_BAD_REQUEST)
         ancien_statut = etape.statut_etape
         etape.statut_etape = EtapeTransport.StatutEtape.FAIT
         etape.save(update_fields=['statut_etape'])
@@ -542,3 +547,35 @@ class FacteurEmissionCO2ViewSet(CompanyScopedModelViewSet):
 
     queryset = FacteurEmissionCO2.objects.all()
     serializer_class = FacteurEmissionCO2Serializer
+
+
+@extend_schema_view(
+    list=extend_schema(responses=ParametresTransportSerializer),
+    partial_update=extend_schema(
+        request=ParametresTransportSerializer,
+        responses=ParametresTransportSerializer),
+)
+class ParametresTransportViewSet(viewsets.ViewSet):
+    """NTLOG35 — réglages transport, singleton par société (motif
+    ``apps.douane.views.ParametresDouaneViewSet``, NTLOG36). GET (``list``,
+    sur ``parametres-transport/``) renvoie le réglage courant, le créant si
+    besoin ; PATCH (``partial_update``) le met à jour. ``company`` toujours
+    dérivée de l'utilisateur, jamais du corps de requête. Écriture réservée
+    à un porteur de rôle (repli légataire ``is_responsable``, motif
+    ``core.permissions._user_has_or_legacy`` — même mécanisme que
+    ``DOUANE_RESPONSABLE``) — désactiver ``pod_obligatoire`` engage la
+    société (NTLOG9)."""
+    permission_classes = [ScopedPermission]
+    write_permission = 'transport_responsable'
+
+    def list(self, request):
+        obj = ParametresTransport.for_company(request.user.company)
+        return Response(ParametresTransportSerializer(obj).data)
+
+    def partial_update(self, request, pk=None):
+        obj = ParametresTransport.for_company(request.user.company)
+        serializer = ParametresTransportSerializer(
+            obj, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(serializer.data)
