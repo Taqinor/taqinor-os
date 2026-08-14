@@ -13,12 +13,12 @@ from core.viewsets import CompanyScopedModelViewSet
 
 from .models import (
     CoutStandard, Gamme, OperationGamme, OperationOF, OrdreFabrication,
-    OrdreModification, PosteDeCharge,
+    OrdreModification, PosteDeCharge, ReglesKanbanProduction,
 )
 from .serializers import (
     CoutStandardSerializer, GammeSerializer, OperationGammeSerializer,
     OperationOFSerializer, OrdreFabricationSerializer, OrdreModificationSerializer,
-    PosteDeChargeSerializer,
+    PosteDeChargeSerializer, ReglesKanbanProductionSerializer,
 )
 
 
@@ -488,6 +488,37 @@ class OrdreModificationViewSet(CompanyScopedModelViewSet):
             return Response({'detail': str(exc)}, status=400)
         eco.refresh_from_db()
         return Response(self.get_serializer(eco).data)
+
+
+class ReglesKanbanProductionViewSet(CompanyScopedModelViewSet):
+    """NTMFG17 — CRUD des règles kanban de production (company-scopé)."""
+    queryset = ReglesKanbanProduction.objects.select_related(
+        'produit', 'poste_charge_defaut').all()
+    serializer_class = ReglesKanbanProductionSerializer
+    filterset_fields = ['produit', 'actif']
+
+
+@extend_schema(request=None, responses=inline_serializer('MrpKanbanDeclencheOF', {
+    'id': serializers.IntegerField(),
+    'produit': serializers.IntegerField(),
+    'quantite': serializers.CharField(),
+    'statut': serializers.CharField(),
+}, many=True))
+@api_view(['POST'])
+@permission_classes([IsResponsableOrAdmin])
+def kanban_declencher_view(request):
+    """NTMFG17 — ``POST /api/django/mrp/kanban/declencher/`` : déclenchement
+    MANUEL de toutes les règles kanban actives de la société (dégrade
+    proprement sans Celery beat déployé — même effet que la tâche
+    périodique)."""
+    from .services import declencher_kanban_toutes_regles
+
+    crees = declencher_kanban_toutes_regles(request.user.company)
+    return Response([
+        {'id': of.id, 'produit': of.produit_id, 'quantite': str(of.quantite),
+         'statut': of.statut}
+        for of in crees
+    ])
 
 
 # PACT7 — sans cette déclaration, le schéma OpenAPI publiait cet agrégat VIDE

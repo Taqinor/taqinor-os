@@ -542,3 +542,38 @@ class OrdreModification(TenantModel):
 
     def __str__(self):
         return f'ECO-{self.id} · {self.produit_id} ({self.statut})'
+
+
+class ReglesKanbanProduction(TenantModel):
+    """NTMFG17 — carte de réappro atelier (pull flow) : au passage du stock
+    disponible du produit sous `seuil_declenchement`, déclenche un OF
+    BROUILLON de `quantite_lot` unités (`services.declencher_kanban`,
+    tâche périodique ou manuelle `mrp/kanban/declencher/`)."""
+
+    produit = models.ForeignKey(
+        'stock.Produit', on_delete=models.PROTECT,
+        related_name='mrp_regles_kanban', verbose_name='Produit')
+    poste_charge_defaut = models.ForeignKey(
+        PosteDeCharge, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='regles_kanban', verbose_name='Poste de charge par défaut')
+    quantite_lot = models.DecimalField(
+        max_digits=12, decimal_places=2, default=1, verbose_name='Quantité par lot')
+    seuil_declenchement = models.DecimalField(
+        max_digits=12, decimal_places=2, default=0,
+        verbose_name='Seuil de déclenchement')
+    actif = models.BooleanField(default=True, verbose_name='Actif')
+
+    class Meta:
+        verbose_name = 'Règle kanban de production'
+        verbose_name_plural = 'Règles kanban de production'
+        ordering = ['produit_id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'produit'], name='mrp_kanban_co_produit_uniq'),
+        ]
+        indexes = [
+            models.Index(fields=['company', 'actif'], name='mrp_kanban_co_actif_idx'),
+        ]
+
+    def __str__(self):
+        return f'Kanban · {self.produit_id} (seuil {self.seuil_declenchement})'

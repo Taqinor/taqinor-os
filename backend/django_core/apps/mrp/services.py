@@ -768,3 +768,54 @@ def sweep_ecos_effectivite(company, today=None):
         appliquer_eco(eco)
         appliques.append(eco)
     return appliques
+
+
+# ── NTMFG17 — Kanban de production (pull flow) ───────────────────────────
+
+def declencher_kanban(regle):
+    """NTMFG17 — si le stock disponible du produit de `regle` est SOUS le
+    seuil de déclenchement, crée un OF BROUILLON de `quantite_lot` unités
+    (jamais dupliqué : no-op si un OF brouillon/planifié/lancé est DÉJÀ
+    ouvert pour ce produit). Renvoie l'OF créé, ou `None`."""
+    from apps.stock.selectors import get_produit_scoped
+    from apps.stock.services import available_quantity
+
+    from .models import Gamme, OrdreFabrication
+
+    if not regle.actif:
+        return None
+    produit = get_produit_scoped(regle.company_id, regle.produit_id)
+    if produit is None:
+        return None
+    dispo = _dec(available_quantity(produit))
+    if dispo > _dec(regle.seuil_declenchement):
+        return None
+    deja_ouvert = OrdreFabrication.objects.filter(
+        company=regle.company, produit_id=regle.produit_id,
+        statut__in=[
+            OrdreFabrication.Statut.BROUILLON, OrdreFabrication.Statut.PLANIFIE,
+            OrdreFabrication.Statut.LANCE]).exists()
+    if deja_ouvert:
+        return None
+    gamme = (
+        Gamme.objects.filter(
+            company=regle.company, produit_id=regle.produit_id, actif=True)
+        .order_by('-version').first())
+    return OrdreFabrication.objects.create(
+        company=regle.company, produit_id=regle.produit_id,
+        quantite=regle.quantite_lot, gamme=gamme)
+
+
+def declencher_kanban_toutes_regles(company):
+    """NTMFG17 — balaie toutes les règles kanban ACTIVES de `company` (tâche
+    périodique, pattern beat existant — dégrade proprement en déclenchement
+    manuel via `mrp/kanban/declencher/` si Celery beat n'est pas déployé).
+    Renvoie la liste des OF créés."""
+    from .models import ReglesKanbanProduction
+
+    crees = []
+    for regle in ReglesKanbanProduction.objects.filter(company=company, actif=True):
+        of = declencher_kanban(regle)
+        if of is not None:
+            crees.append(of)
+    return crees

@@ -2,7 +2,7 @@ from rest_framework import serializers
 
 from .models import (
     CoutStandard, Gamme, OperationGamme, OperationOF, OrdreFabrication,
-    OrdreModification, PosteDeCharge, ReservationOF,
+    OrdreModification, PosteDeCharge, ReglesKanbanProduction, ReservationOF,
 )
 
 
@@ -122,3 +122,13 @@ class OrdreModificationSerializer(serializers.ModelSerializer):
             'id', 'statut', 'demandeur', 'approbateur', 'applique_le',
             'created_at', 'updated_at',
         ]
+
+
+class ReglesKanbanProductionSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ReglesKanbanProduction
+        fields = [
+            'id', 'produit', 'poste_charge_defaut', 'quantite_lot',
+            'seuil_declenchement', 'actif', 'created_at', 'updated_at',
+        ]
+        read_only_fields = ['id', 'created_at', 'updated_at']
