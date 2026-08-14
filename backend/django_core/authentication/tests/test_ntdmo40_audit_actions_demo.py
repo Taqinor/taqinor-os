@@ -28,13 +28,13 @@ class ModePresentationAuditTest(TestCase):
 
     def test_toggle_writes_one_audit_log_entry(self):
         before = AuditLog.objects.filter(
-            action='demo_mode_presentation_toggle').count()
+            action='demo_mode_toggle').count()
         r = self._client().patch(
             f'/api/django/companies/{self.company.id}/',
             {'mode_presentation_actif': True})
         self.assertEqual(r.status_code, 200)
         entries = AuditLog.objects.filter(
-            action='demo_mode_presentation_toggle')
+            action='demo_mode_toggle')
         self.assertEqual(entries.count(), before + 1)
         entry = entries.latest('id')
         self.assertEqual(entry.company_id, self.company.id)
@@ -43,13 +43,13 @@ class ModePresentationAuditTest(TestCase):
 
     def test_no_real_change_writes_no_entry(self):
         before = AuditLog.objects.filter(
-            action='demo_mode_presentation_toggle').count()
+            action='demo_mode_toggle').count()
         self._client().patch(
             f'/api/django/companies/{self.company.id}/',
             {'mode_presentation_actif': False})
         self.assertEqual(
             AuditLog.objects.filter(
-                action='demo_mode_presentation_toggle').count(),
+                action='demo_mode_toggle').count(),
             before)
 
 

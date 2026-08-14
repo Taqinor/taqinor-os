@@ -46,9 +46,6 @@ class Ntdmo26CatalogueTest(TestCase):
 
 
 class Ntdmo26AutoTriggerTest(TestCase):
-    def setUp(self):
-        self.role_admin = Role.objects.create(nom='Administrateur')
-
     def _admin(self, company):
         role = Role.objects.create(company=company, nom='Administrateur')
         return User.objects.create_user(
