@@ -474,9 +474,14 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
         Corps : le layout sérialisé (on accepte aussi les enveloppes
         ``{"layout": …}`` / ``{"roof_layout": …}``, comme l'action ``layout``).
 
-        Mise à jour CHIRURGICALE d'un brouillon : quantités de panneaux et
-        présence de la batterie, rien d'autre — prix négociés, remises,
-        sections, notes, ordre et groupes multi-villa restent intacts. Le
+        Mise à jour CHIRURGICALE d'un brouillon : quantités de panneaux,
+        présence de la batterie et onduleur accordé au scénario — prix
+        négociés, remises, sections, notes, ordre et groupes multi-villa
+        restent intacts. PVHEAL — le KIT MANQUANT (structures, socles,
+        accessoires, tableau AC/DC, installation, transport…) est en plus
+        AJOUTÉ quand il manque, jamais re-tarifé quand il est là ; un
+        composant introuvable ou non tarifé est sauté et DIT dans
+        ``avertissements``, et ``lignes_ajoutees`` compte les ajouts. Le
         STATUT n'est jamais écrit (règle #4) : un devis « envoyé » répond 409
         avec ``revision_possible: true`` (le bon geste est « Réviser ») ; un
         devis accepté/refusé/expiré répond 409 avec ``revision_possible:
