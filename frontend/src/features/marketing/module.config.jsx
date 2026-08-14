@@ -6,7 +6,7 @@ import { lazy } from 'react'
 import {
   LayoutDashboard, CalendarDays, Megaphone, Workflow, Users2, ListChecks,
   CalendarClock, ClipboardList, Gift, FormInput, PhoneCall,
-  Send, Star, Gauge, MessageCircle,
+  Send, Star, Gauge, MessageCircle, Link2,
 } from 'lucide-react'
 import { appGlyph } from '../../lib/apps/appGlyph'
 
@@ -73,6 +73,17 @@ const AvisClients = lazy(() => import('./AvisClients'))
 const EnquetesNps = lazy(() => import('./EnquetesNps'))
 // PACT108 — journal des messages WhatsApp entrants (FG207), lecture seule.
 const MessagesWhatsapp = lazy(() => import('./MessagesWhatsapp'))
+// NTMKT25 — générateur d'URL de campagne (tags UTM, hors campagne ERP).
+const UtmBuilder = lazy(() => import('./UtmBuilder'))
+// NTMKT29/30/32 — wizards guidés (campagne/séquence/enquête), ouverts par le
+// bouton « (guidé) » de leur liste respective (jamais une entrée de sous-menu
+// séparée — même traitement que les écrans de détail ci-dessus).
+const CampagneWizard = lazy(() => import('./CampagneWizard.jsx'))
+const SequenceWizard = lazy(() => import('./SequenceWizard.jsx'))
+const EnqueteWizard = lazy(() => import('./EnqueteWizard.jsx'))
+// NTMKT31 — réglages tenant du module Marketing (dérogation de périmètre :
+// vit ici plutôt que sous `features/parametres/`, voir le fichier).
+const MarketingParametres = lazy(() => import('./MarketingParametres.jsx'))
 
 const ROLES = ['responsable', 'admin']
 
@@ -100,18 +111,27 @@ const config = {
       { to: '/marketing/avis-clients', label: 'Avis clients', icon: <Star size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
       { to: '/marketing/enquetes-nps', label: 'Enquêtes NPS', icon: <Gauge size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
       { to: '/marketing/messages-whatsapp', label: 'Messages WhatsApp', icon: <MessageCircle size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
+      { to: '/marketing/generateur-url', label: "Générateur d'URL", icon: <Link2 size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
       { to: '/parametres/marketing', label: "Domaine d'envoi", icon: <LayoutDashboard size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
+      // NTMKT31 — réglages tenant (expéditeur/fenêtre silencieuse/plafond/langue).
+      { to: '/marketing/parametres', label: 'Paramètres marketing', icon: <LayoutDashboard size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
       { to: '/marketing/calendrier', label: 'Calendrier marketing', icon: <CalendarDays size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
     ],
   },
   // routes.meta — du plus spécifique au plus général.
   titles: [
     ['/marketing/calendrier', 'Calendrier marketing'],
+    // NTMKT29/30/32 — wizards guidés : plus spécifique que les listes
+    // ci-dessous, donc listés AVANT elles (ordre du plus spécifique au plus
+    // général exigé par routes.meta).
+    ['/marketing/campagnes/nouveau', 'Créer une campagne (guidé)'],
     ['/marketing/campagnes', 'Campagnes marketing'],
+    ['/marketing/sequences/nouveau', 'Configurer une séquence (guidé)'],
     ['/marketing/sequences', 'Séquences de relance'],
     ['/marketing/segments', 'Segments marketing'],
     ['/marketing/listes', 'Listes de diffusion'],
     ['/marketing/evenements', 'Événements marketing'],
+    ['/marketing/enquetes/nouveau', 'Créer une enquête (guidé)'],
     ['/marketing/enquetes', 'Enquêtes'],
     ['/marketing/fidelite', 'Fidélité'],
     ['/marketing/formulaires-intake', "Formulaires d'intake"],
@@ -120,6 +140,9 @@ const config = {
     ['/marketing/enquetes-nps', 'Enquêtes NPS'],
     ['/marketing/messages-whatsapp', 'Messages WhatsApp entrants'],
     ['/marketing/supports-offline', 'Supports offline (QR)'],
+    ['/marketing/generateur-url', "Générateur d'URL de campagne"],
+    // NTMKT31 — réglages tenant.
+    ['/marketing/parametres', 'Paramètres marketing'],
     ['/marketing', 'Tableau de bord marketing'],
   ],
   sectionLabels: { marketing: 'Marketing' },
@@ -127,14 +150,21 @@ const config = {
     { path: '/marketing', component: MarketingDashboard, roles: ROLES },
     { path: '/marketing/calendrier', component: MarketingCalendarScreen, roles: ROLES },
     { path: '/marketing/campagnes', component: CampagnesList, roles: ROLES },
+    // NTMKT29 — segment statique, priorisé automatiquement sur `:id` par le
+    // scoring de react-router (segment statique > dynamique).
+    { path: '/marketing/campagnes/nouveau', component: CampagneWizard, roles: ROLES },
     { path: '/marketing/campagnes/:id', component: CampagneDetail, roles: ROLES },
     { path: '/marketing/segments', component: SegmentsList, roles: ROLES },
     { path: '/marketing/listes', component: ListesDiffusion, roles: ROLES },
     { path: '/marketing/sequences', component: SequencesList, roles: ROLES },
+    // NTMKT30 — idem, statique avant `:id`.
+    { path: '/marketing/sequences/nouveau', component: SequenceWizard, roles: ROLES },
     { path: '/marketing/sequences/:id', component: SequenceDetail, roles: ROLES },
     { path: '/marketing/evenements', component: EvenementsList, roles: ROLES },
     { path: '/marketing/evenements/:id', component: EvenementDetail, roles: ROLES },
     { path: '/marketing/enquetes', component: EnquetesList, roles: ROLES },
+    // NTMKT32 — idem, statique avant `:id`.
+    { path: '/marketing/enquetes/nouveau', component: EnqueteWizard, roles: ROLES },
     { path: '/marketing/enquetes/:id', component: EnqueteResultats, roles: ROLES },
     { path: '/marketing/fidelite', component: FideliteList, roles: ROLES },
     { path: '/marketing/formulaires-intake', component: FormulairesIntakeList, roles: ROLES },
@@ -143,6 +173,9 @@ const config = {
     { path: '/marketing/enquetes-nps', component: EnquetesNps, roles: ROLES },
     { path: '/marketing/messages-whatsapp', component: MessagesWhatsapp, roles: ROLES },
     { path: '/marketing/supports-offline', component: SupportsOffline, roles: ROLES },
+    { path: '/marketing/generateur-url', component: UtmBuilder, roles: ROLES },
+    // NTMKT31 — réglages tenant.
+    { path: '/marketing/parametres', component: MarketingParametres, roles: ROLES },
   ],
 }
 

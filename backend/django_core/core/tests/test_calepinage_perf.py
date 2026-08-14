@@ -176,25 +176,52 @@ class BudgetEtBascule(unittest.TestCase):
             caper((1,), -1)
 
 
+def _minimum_sur_essais_a_froid(fonction, essais=3):
+    """Minimum de N essais À CACHE FROID (convention ``timeit`` : le bruit
+    d'un runner partagé — pause GC, vol de CPU par un shard voisin — ne fait
+    qu'AJOUTER du temps à une mesure, jamais en retirer ; un seul essai peut
+    être heurté, le minimum converge vers le coût réel). Chaque essai reste
+    un calcul complet isolé (cache vidé avant), fidèle à l'usage réel (un
+    calepinage se calcule une fois, pas en boucle chaude)."""
+    meilleure_duree = None
+    dernier_resultat = None
+    for _ in range(essais):
+        vider_cache()
+        debut = time.perf_counter()
+        dernier_resultat = fonction()
+        duree = time.perf_counter() - debut
+        if meilleure_duree is None or duree < meilleure_duree:
+            meilleure_duree = duree
+    return meilleure_duree, dernier_resultat
+
+
 class BenchPlafonne(unittest.TestCase):
-    """ROUGE si l'accélération régresse de plus de 50 % — jamais une horloge."""
+    """ROUGE si l'accélération régresse de plus de 50 % — jamais une horloge.
+
+    2026-08-14 (PR #518, job 94644261026) : un shard CI a mesuré 0.725 s
+    (économique) contre 0.154 s (aveugle) — une inversion, alors qu'aucun
+    fichier de ``core/calepinage`` n'était touché par ce lot (CRM/CPQ/
+    marketing) ni par aucun de ses 4 essais de CI ; le même test est passé
+    sur 3 des 4 exécutions de la même branche, dont une où le shard voisin
+    portait de vraies régressions sans rapport. Conclusion : bruit machine
+    sur un essai unique, pas une régression — cf. le commentaire de classe
+    ci-dessus, qui l'anticipait déjà. Le seuil (50 %) est INCHANGÉ ; seule
+    la mesure est robustifiée par un minimum de 3 essais par chemin.
+    """
 
     def test_le_jeu_utile_est_au_moins_deux_fois_plus_rapide(self):
         surface, obstacles = surface_aile_l(), obstacles_aile_l()
         parametres = _parametres()
-        vider_cache()
-        debut = time.perf_counter()
-        aveugle = optimiser(surface, parametres, obstacles)
-        duree_aveugle = time.perf_counter() - debut
-        vider_cache()
-        debut = time.perf_counter()
-        economique = optimiser_economique(surface, parametres, obstacles)
-        duree_economique = time.perf_counter() - debut
+        duree_aveugle, aveugle = _minimum_sur_essais_a_froid(
+            lambda: optimiser(surface, parametres, obstacles))
+        duree_economique, economique = _minimum_sur_essais_a_froid(
+            lambda: optimiser_economique(surface, parametres, obstacles))
         self.assertEqual(aveugle.modules, economique.modules)
         self.assertLess(duree_economique, duree_aveugle * 0.5,
                         "régression de performance : le balayage sur points de "
                         "rupture doit rester au moins 2× plus rapide que le "
-                        "balayage aveugle (%.3f s contre %.3f s)"
+                        "balayage aveugle, au MEILLEUR de 3 essais chacun "
+                        "(%.3f s contre %.3f s)"
                         % (duree_economique, duree_aveugle))
 
     def test_etude_complete_d_un_batiment_sous_deux_secondes(self):

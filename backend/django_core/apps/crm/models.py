@@ -189,6 +189,16 @@ class Client(models.Model):
         help_text="Si activé, empêche l'acceptation/facturation sans override "
                   "responsable/admin.")
 
+    # NTCRM14 — anti-spam : horodatage de la dernière notification "compte
+    # dormant" envoyée au commercial propriétaire pour ce client. NULL = pas
+    # encore alerté. Posé par la commande `detecter_comptes_dormants` (une
+    # seule alerte par franchissement de seuil, jamais répétée en boucle).
+    derniere_alerte_dormance = models.DateTimeField(
+        null=True, blank=True,
+        verbose_name='Dernière alerte de dormance',
+        help_text="Date de la dernière notification 'compte dormant' envoyée "
+                  "pour ce client. Vide = jamais alerté.")
+
     class Meta:
         verbose_name = "Client"
         verbose_name_plural = "Clients"
@@ -2326,6 +2336,16 @@ class Playbook(TenantModel):
     # seulement) SAUF si ce playbook est marqué bloquant=True — cohérent avec
     # « never auto-move »/jamais un blocage dur par défaut.
     bloquant = models.BooleanField(default=False)
+    # NTCRM26 — critère de sélection optionnel (arbre core.rules FG367, évalué
+    # contre {type_installation, canal} du lead). ``None`` = playbook
+    # universel (comportement historique, s'applique à tout lead) ; renseigné
+    # = ce playbook n'entre en jeu QUE pour les leads qui matchent, permettant
+    # plusieurs playbooks actifs sur le même stage (un par profil de lead)
+    # sans dupliquer les tâches sur un profil non concerné.
+    condition = models.JSONField(
+        null=True, blank=True, verbose_name='Critère de sélection',
+        help_text="Arbre de conditions (core.rules) évalué contre "
+                  "{type_installation, canal} du lead. Vide = s'applique à tout lead.")
     date_creation = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -2443,3 +2463,361 @@ class SavedView(TenantModel):
 
     def __str__(self):
         return f'{self.page} — {self.name} ({self.user_id})'
+
+
+# ── NTCRM17 — Salle de vente digitale (Digital Sales Room) ─────────────────
+# Même modèle de confiance que ``ventes.ShareLink`` + ``ged.PartageGed`` :
+# jeton long/imprévisible = SEUL secret d'accès, expiration + mot de passe
+# optionnel (haché, jamais en clair). Regroupe plusieurs devis/documents sur
+# UNE page consultable sans compte par le client, au lieu de liens dispersés.
+SALLE_VENTE_TTL_DAYS = 30
+
+
+def _default_salle_vente_token():
+    import secrets
+    return secrets.token_urlsafe(32)
+
+
+def _default_salle_vente_expiry():
+    from datetime import timedelta
+
+    from django.utils import timezone as _timezone
+    return _timezone.now() + timedelta(days=SALLE_VENTE_TTL_DAYS)
+
+
+class SalleVente(TenantModel):
+    """NTCRM17 — Salle de vente : page publique regroupant plusieurs
+    devis/documents/liens pour UN lead OU UN client (jamais les deux, jamais
+    ni l'un ni l'autre — voir `clean()`). Sécurité calquée sur
+    `ged.PartageGed` : `token` imprévisible = unique clé d'accès public,
+    `expires_at` par défaut 30 j, `password_hash` optionnel (jamais en
+    clair), `actif` = kill-switch de révocation immédiate.
+
+    ARC1 — hérite de ``core.models.TenantModel`` ; ``company`` redéclaré à
+    l'identique (related_name + nullabilité historiques)."""
+    company = models.ForeignKey(  # on_delete: salle de vente 100 % fille du tenant — la purge d'une société doit emporter ses salles (et leurs jetons d'accès publics).
+        'authentication.Company', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='salles_vente')
+    lead = models.ForeignKey(  # on_delete: la salle n'existe que pour présenter CE lead ; sans lui elle n'a plus d'objet.
+        'crm.Lead', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='salles_vente')
+    client = models.ForeignKey(  # on_delete: idem lead — espace de vente rattaché à ce client, sans existence propre.
+        'crm.Client', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='salles_vente')
+    titre = models.CharField(max_length=200, verbose_name='Titre')
+    token = models.CharField(
+        max_length=64, unique=True, default=_default_salle_vente_token,
+        editable=False)
+    expires_at = models.DateTimeField(
+        default=_default_salle_vente_expiry, verbose_name='Expire le')
+    # Hash du mot de passe optionnel (make_password). Vide = pas de mot de
+    # passe. JAMAIS stocké en clair — voir set_password()/check_password().
+    password_hash = models.TextField(blank=True, default='')
+    actif = models.BooleanField(
+        default=True, verbose_name='Actif',
+        help_text='Décoché = révocation immédiate du lien public.')
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='salles_vente_creees')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = 'Salle de vente'
+        verbose_name_plural = 'Salles de vente'
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['token'], name='crm_salle_vente_token_idx'),
+        ]
+
+    def __str__(self):
+        return f'Salle de vente « {self.titre} » ({self.token[:8]}…)'
+
+    def clean(self):
+        super().clean()
+        from django.core.exceptions import ValidationError
+        if bool(self.lead_id) == bool(self.client_id):
+            raise ValidationError(
+                'Une salle de vente doit référencer EXACTEMENT un lead OU '
+                'un client (jamais les deux, jamais ni l\'un ni l\'autre).')
+
+    @property
+    def has_password(self):
+        return bool(self.password_hash)
+
+    @property
+    def is_expired(self):
+        from django.utils import timezone as _timezone
+        return self.expires_at is not None and self.expires_at <= _timezone.now()
+
+    @property
+    def is_accessible(self):
+        """Servable publiquement : actif ET non expiré (mot de passe validé
+        séparément par l'endpoint — 403 distinct de 404/410)."""
+        return self.actif and not self.is_expired
+
+    def set_password(self, raw_password):
+        from django.contrib.auth.hashers import make_password
+        self.password_hash = make_password(raw_password) if raw_password else ''
+
+    def check_password(self, raw_password):
+        from django.contrib.auth.hashers import check_password
+        if not self.password_hash:
+            return True
+        if not raw_password:
+            return False
+        return check_password(raw_password, self.password_hash)
+
+
+class SalleVenteItem(models.Model):
+    """NTCRM17 — UN élément affiché dans une salle de vente : un devis
+    (rendu via le canal `/proposal` existant, JAMAIS un nouveau renderer —
+    règle #4), un document GED (string-FK — jamais `ged.models`), un lien
+    vidéo libre, ou une note libre. `reference` porte l'id cible (devis/GED)
+    ou l'URL/texte selon `type`."""
+    class TypeItem(models.TextChoices):
+        DEVIS = 'devis', 'Devis'
+        DOCUMENT = 'document', 'Document'
+        VIDEO_LIEN = 'video_lien', 'Lien vidéo'
+        NOTE = 'note', 'Note'
+
+    salle = models.ForeignKey(  # on_delete: ligne fille d'une salle de vente, aucune existence hors de sa salle.
+        SalleVente, on_delete=models.CASCADE, related_name='items')
+    type = models.CharField(max_length=12, choices=TypeItem.choices)
+    reference = models.CharField(
+        max_length=500, blank=True, default='',
+        help_text="Id du devis/document GED cible, ou URL/texte libre "
+                  "(video_lien/note).")
+    titre = models.CharField(max_length=200, blank=True, default='')
+    ordre = models.PositiveIntegerField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'Élément de salle de vente'
+        verbose_name_plural = 'Éléments de salle de vente'
+        ordering = ['ordre', 'id']
+
+    def __str__(self):
+        return f'{self.get_type_display()} #{self.pk} (salle {self.salle_id})'
+
+
+class SalleVenteVue(models.Model):
+    """NTCRM18 — Journal de consultation d'une salle de vente publique.
+
+    Une entrée par visite (timestamp + IP HACHÉE — jamais l'IP en clair,
+    aucune autre PII). Alimente le compteur/dernière-vue de NTCRM19."""
+    salle = models.ForeignKey(  # on_delete: trace de visite d'une salle ; la salle supprimée, la trace n'est plus rattachable (et ne doit pas survivre).
+        SalleVente, on_delete=models.CASCADE, related_name='vues')
+    ip_hash = models.CharField(max_length=64, blank=True, default='')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'Vue de salle de vente'
+        verbose_name_plural = 'Vues de salle de vente'
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['salle', '-created_at'],
+                         name='crm_salle_vue_salle_idx'),
+        ]
+
+    def __str__(self):
+        return f'Vue salle {self.salle_id} @ {self.created_at:%Y-%m-%d %H:%M}'
+
+
+# ── NTCRM20 — Registre des apporteurs d'affaires (Deal Registration) ───────
+# NOTE DE COUVERTURE : `Partenaire`/`SoumissionLeadPartenaire`/
+# `CommissionPartenaire` (FG234/235 — modèles relocalisés ici par ODX13, mais
+# dont les ViewSets/serializers vivent encore sous `apps/compta/`) couvrent
+# déjà un portail partenaire→lead→commission proche. `Apporteur`/
+# `DealEnregistre` restent des modèles SÉPARÉS (comme demandé explicitement
+# par NTCRM20) : la fenêtre de PROTECTION (refus d'un second enregistrement
+# concurrent) n'existe nulle part dans FG234/235, et les étendre exigerait
+# d'écrire dans l'app comptable — un futur run compta/crm conjoint pourra
+# fusionner les deux registres.
+class Apporteur(TenantModel):
+    """NTCRM20 — Apporteur d'affaires B2B (partenaire/courtier/installateur
+    indépendant) qui enregistre des deals plutôt que de soumettre des leads
+    (contrairement à `Partenaire`/FG234, orienté soumission de prospects).
+
+    ARC1 — hérite de ``core.models.TenantModel`` ; ``company`` redéclaré à
+    l'identique (related_name + nullabilité historiques)."""
+    class Type(models.TextChoices):
+        PARTENAIRE_INSTALLATEUR = 'partenaire_installateur', 'Partenaire installateur'
+        COURTIER = 'courtier', 'Courtier'
+        APPORTEUR_INDEPENDANT = 'apporteur_independant', "Apporteur indépendant"
+        AUTRE = 'autre', 'Autre'
+
+    company = models.ForeignKey(  # on_delete: référentiel d'apporteurs propre au tenant — purgé avec sa société.
+        'authentication.Company', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='apporteurs')
+    nom = models.CharField(max_length=200, verbose_name='Nom')
+    type_apporteur = models.CharField(
+        max_length=24, choices=Type.choices, default=Type.AUTRE)
+    contact_email = models.EmailField(blank=True, default='')
+    contact_telephone = models.CharField(max_length=30, blank=True, default='')
+    taux_commission_pct = models.DecimalField(
+        max_digits=5, decimal_places=2, null=True, blank=True,
+        verbose_name='Taux de commission (%)')
+    actif = models.BooleanField(default=True)
+    # RIB optionnel pour versement de la commission — jamais un numéro de
+    # carte/compte tiers, seulement l'identifiant bancaire du versement.
+    rib = models.CharField(max_length=34, blank=True, default='', verbose_name='RIB')
+    created_at = models.DateTimeField(auto_now_add=True)
+    # NTCRM21 — token d'accès dédié au portail apporteur (lecture seule),
+    # DISTINCT des comptes CustomUser — jamais de mot de passe/session, même
+    # modèle de confiance que `ShareLink`/`PartageGed.token_acces`
+    # (`Partenaire.token_acces`, FG234) : un jeton long/imprévisible = SEUL
+    # secret d'accès à `GET /apporteur-portail/<token>/mes-deals/`.
+    token_acces = models.CharField(
+        max_length=64, unique=True, null=True, blank=True, editable=False,
+        verbose_name="Token d'accès portail")
+
+    class Meta:
+        verbose_name = "Apporteur d'affaires"
+        verbose_name_plural = "Apporteurs d'affaires"
+        ordering = ['nom']
+
+    def __str__(self):
+        return self.nom
+
+    def save(self, *args, **kwargs):
+        if not self.token_acces:
+            import secrets
+            self.token_acces = secrets.token_urlsafe(32)
+        super().save(*args, **kwargs)
+
+
+DEAL_REGISTRATION_PROTECTION_JOURS = 90
+
+
+def _default_deal_expiry():
+    from datetime import timedelta
+
+    from django.utils import timezone as _timezone
+    return _timezone.now() + timedelta(days=DEAL_REGISTRATION_PROTECTION_JOURS)
+
+
+def _lead_identity_keys(lead):
+    """Clés d'identité d'un lead (email/téléphone normalisés) pour détecter
+    le MÊME prospect enregistré par deux apporteurs différents."""
+    keys = set()
+    if lead.email:
+        keys.add(('email', lead.email.strip().lower()))
+    if lead.telephone:
+        digits = ''.join(ch for ch in lead.telephone if ch.isdigit())
+        if digits:
+            keys.add(('tel', digits[-9:]))
+    if lead.client_id:
+        keys.add(('client', lead.client_id))
+    return keys
+
+
+class DealEnregistre(TenantModel):
+    """NTCRM20 — Enregistrement d'un deal par un `Apporteur` sur UN lead.
+
+    Protège l'apporteur contre une réassignation du MÊME prospect par un
+    autre apporteur pendant `expire_le` (`clean()`). `montant_commission_
+    estime` est calculé à l'acceptation du devis lié (NTCRM22).
+
+    ARC1 — hérite de ``core.models.TenantModel`` ; ``company`` redéclaré à
+    l'identique. ``date_enregistrement`` (métier) reste distinct des
+    ``created_at``/``updated_at`` hérités."""
+    class Statut(models.TextChoices):
+        EN_ATTENTE = 'en_attente', 'En attente'
+        APPROUVE = 'approuve', 'Approuvé'
+        REJETE = 'rejete', 'Rejeté'
+        EXPIRE = 'expire', 'Expiré'
+        # NTCRM22 — commission calculée automatiquement à l'acceptation du
+        # devis lié, en attente de règlement comptable.
+        A_PAYER = 'a_payer', 'À payer'
+
+    company = models.ForeignKey(  # on_delete: enregistrement de deal 100 % fille du tenant — purgé avec sa société.
+        'authentication.Company', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='deals_enregistres')
+    apporteur = models.ForeignKey(  # on_delete: l'enregistrement matérialise l'antériorité DE CET apporteur ; sans lui il n'a plus de titulaire.
+        Apporteur, on_delete=models.CASCADE, related_name='deals')
+    lead = models.OneToOneField(  # on_delete: 1-1 avec le lead enregistré ; le lead disparu, la réservation d'antériorité n'a plus d'objet.
+        'crm.Lead', on_delete=models.CASCADE, related_name='deal_enregistre')
+    date_enregistrement = models.DateTimeField(auto_now_add=True)
+    statut = models.CharField(
+        max_length=10, choices=Statut.choices, default=Statut.EN_ATTENTE)
+    expire_le = models.DateTimeField(default=_default_deal_expiry)
+    montant_commission_estime = models.DecimalField(
+        max_digits=14, decimal_places=2, null=True, blank=True)
+    montant_commission_du = models.DecimalField(
+        max_digits=14, decimal_places=2, null=True, blank=True,
+        verbose_name='Commission due (MAD)',
+        help_text='Posé à `À_PAYER` par NTCRM22 (acceptation du devis lié).')
+
+    class Meta:
+        verbose_name = 'Deal enregistré'
+        verbose_name_plural = 'Deals enregistrés'
+        ordering = ['-date_enregistrement']
+
+    def __str__(self):
+        return f'Deal {self.apporteur.nom} — lead {self.lead_id}'
+
+    @property
+    def protection_active(self):
+        from django.utils import timezone as _timezone
+        if self.statut in (self.Statut.REJETE, self.Statut.EXPIRE):
+            return False
+        return self.expire_le is None or self.expire_le > _timezone.now()
+
+    def clean(self):
+        super().clean()
+        from django.core.exceptions import ValidationError
+        if self.lead_id is None or self.company_id is None:
+            return
+        mes_cles = _lead_identity_keys(self.lead)
+        if not mes_cles:
+            return
+        concurrents = (DealEnregistre.objects
+                       .filter(company_id=self.company_id)
+                       .exclude(pk=self.pk)
+                       .exclude(apporteur_id=self.apporteur_id)
+                       .select_related('lead'))
+        for autre in concurrents:
+            if not autre.protection_active:
+                continue
+            if _lead_identity_keys(autre.lead) & mes_cles:
+                raise ValidationError(
+                    'Ce client est déjà enregistré par un autre apporteur '
+                    f'({autre.apporteur.nom}), protégé jusqu\'au '
+                    f'{autre.expire_le:%d/%m/%Y} — enregistrement refusé.')
+
+
+class Defi(TenantModel):
+    """NTCRM23 — Défi d'équipe temporaire (gamification), distinct de
+    `ObjectifCommercial` (FG39, cible individuelle PERMANENTE privée) : un
+    défi est PUBLIC (visible de toute l'équipe, cf. NTCRM24), sur une fenêtre
+    de dates explicite (pas un système année/mois/trimestre), avec un
+    classement plutôt qu'un simple taux d'atteinte. Réutilise STRICTEMENT
+    `ObjectifCommercial.Metric` (jamais une seconde taxonomie de métriques).
+
+    ARC1 — hérite de ``core.models.TenantModel`` ; ``company`` redéclaré à
+    l'identique (related_name + nullabilité historiques)."""
+    company = models.ForeignKey(  # on_delete: défi commercial interne au tenant — purgé avec sa société.
+        'authentication.Company', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='defis')
+    nom = models.CharField(max_length=200, verbose_name='Nom du défi')
+    periode_debut = models.DateField(verbose_name='Début')
+    periode_fin = models.DateField(verbose_name='Fin')
+    metrique = models.CharField(
+        max_length=12, choices=ObjectifCommercial.Metric.choices,
+        verbose_name='Métrique')
+    cible_equipe = models.DecimalField(
+        max_digits=14, decimal_places=2, null=True, blank=True,
+        verbose_name="Cible d'équipe (optionnelle)")
+    recompense = models.CharField(
+        max_length=300, blank=True, default='', verbose_name='Récompense')
+    actif = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Défi d'équipe"
+        verbose_name_plural = "Défis d'équipe"
+        ordering = ['-periode_debut', '-id']
+
+    def __str__(self):
+        return self.nom

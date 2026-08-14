@@ -15,6 +15,8 @@ import { toastError, errorMessageFrom } from '../../../lib/toast'
 // le centre : le même clic donne désormais le même résultat des deux côtés.
 import { jumpToField } from './jumpToField'
 import { missingFieldTarget } from './missingFields'
+// NTCRM19 — badge de consultation de la salle de vente digitale (NTCRM17/18).
+import SalleVenteAnalyticsBadge from '../../../pages/crm/leads/SalleVenteAnalyticsBadge'
 
 // LW21/LW22 — Onglet Devis : la chaîne document en cartes (StatusPill statut
 // devis — JAMAIS le funnel lead, règle #2) + le CTA « Devis automatique » qui
@@ -154,6 +156,7 @@ export default function DevisTab({
 
   return (
     <div className="lw-context-devis">
+      <SalleVenteAnalyticsBadge leadId={state.leadId} />
       {devisAuto.pret ? (
         <div className="lw-context-devis-cta">
           <Button

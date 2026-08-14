@@ -14,8 +14,9 @@ from django.db.models.signals import post_save, pre_save
 from django.dispatch import receiver
 
 from core.events import (
-    ao_depose, ao_gagne, appointment_effectue, devis_accepted, devis_refused,
-    devis_sent, lead_stage_changed, ticket_resolu,
+    ao_depose, ao_gagne, appointment_effectue, deal_commission_due,
+    devis_accepted, devis_refused, devis_sent, lead_stage_changed,
+    ticket_resolu,
 )
 
 from . import stages
@@ -42,6 +43,42 @@ def _avancer_stage_on_devis_accepted(sender, devis, user, ancien_statut,
     perdus), désormais déclenchée par l'événement ``devis_accepted``.
     """
     avancer_stage_pour_devis(devis, ancien_statut, devis.statut, user)
+
+
+@receiver(devis_accepted, dispatch_uid="crm_deal_commission_on_devis_accepted")
+def _calculer_commission_deal_on_devis_accepted(sender, devis, user,
+                                                ancien_statut, **kwargs):
+    """NTCRM22 — À l'acceptation d'un devis lié à un ``DealEnregistre``
+    APPROUVE, calcule la commission due (taux × montant HT accepté), la pose
+    sur ``montant_commission_du`` et passe le deal à À_PAYER. Émet
+    ``deal_commission_due`` (core.events) pour un futur consommateur compta —
+    jamais d'écriture comptable automatique ici (frontière compta respectée).
+    """
+    from .models import DealEnregistre
+
+    if devis.lead_id is None:
+        return
+    deal = (DealEnregistre.objects
+            .filter(lead_id=devis.lead_id, statut=DealEnregistre.Statut.APPROUVE)
+            .select_related('apporteur')
+            .first())
+    if deal is None:
+        return
+    taux = deal.apporteur.taux_commission_pct
+    if not taux:
+        return
+    try:
+        montant = (devis.total_ht * taux) / 100
+    except Exception:  # noqa: BLE001 — jamais bloquer l'acceptation du devis
+        logger.exception('NTCRM22 — échec calcul commission deal %s', deal.pk)
+        return
+    deal.montant_commission_du = montant
+    deal.statut = DealEnregistre.Statut.A_PAYER
+    deal.save(update_fields=['montant_commission_du', 'statut'])
+
+    deal_commission_due.send(
+        sender='crm.receivers', company=devis.company, deal_id=deal.pk,
+        apporteur_id=deal.apporteur_id, montant=montant)
 
 
 @receiver(devis_sent, dispatch_uid="crm_advance_stage_on_devis_sent")

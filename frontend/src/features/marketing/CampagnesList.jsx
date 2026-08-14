@@ -84,6 +84,13 @@ export default function CampagnesList() {
             <button className="btn btn-primary" data-testid="campagnes-nouvelle"
               onClick={startCreate}>Nouvelle campagne</button>
           )}
+          {/* NTMKT29 — wizard guidé à 4 étapes, remplace l'entrée directe pour
+             les nouveaux utilisateurs ; le formulaire ci-dessus reste
+             accessible en mode « expert ». */}
+          <button className="btn btn-light" data-testid="campagnes-nouvelle-guidee"
+            onClick={() => navigate('/marketing/campagnes/nouveau')}>
+            Créer (guidé)
+          </button>
         </div>
       </div>
 

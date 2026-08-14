@@ -25,3 +25,17 @@ def desactiver_comptes_dormants_task():
     call_command('desactiver_comptes_dormants')
     logger.info('authentication.desactiver_comptes_dormants: balayage terminé.')
     return {'ok': True}
+
+
+@shared_task(name='authentication.seed_demo_company_wizard')
+def seed_demo_company_task(slug, profil='mixte', densite='complet'):
+    """NTDMO25 — enveloppe Celery du wizard « Créer ma société de
+    démonstration ». Délègue tout à la commande homonyme (mêmes options
+    additives ``--profil``/``--densite``) ; la progression est tracée via le
+    cache (``views_demo_wizard.set_progress``)."""
+    from .views_demo_wizard import _run_wizard
+
+    _run_wizard(slug, profil, densite)
+    logger.info('authentication.seed_demo_company_wizard: %s (%s/%s) prêt.',
+                slug, profil, densite)
+    return {'slug': slug, 'statut': 'termine'}

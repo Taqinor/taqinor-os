@@ -9,8 +9,10 @@ import BottomTabBar from './BottomTabBar'
 import RouteFocus from './RouteFocus'
 import UsageTracker from './UsageTracker'
 import OnboardingCoachmarks from '../../features/onboarding/OnboardingCoachmarks'
+import ProductTour from '../ProductTour'
 import { OfflineBanner } from '../../ui/OfflineState'
 import PresentationModeBanner from './PresentationModeBanner'
+import TrialExpiredBanner from './TrialExpiredBanner'
 import ImpersonationBanner from './ImpersonationBanner'
 import coreApi from '../../api/coreApi'
 import { setTenantTheme, resetTenantTheme } from '../../design/tenantTheme'
@@ -127,6 +129,9 @@ export default function Layout({ children }) {
         <Header onMenu={() => setDrawerOpen(v => !v)} />
         {/* NTDMO10 — bandeau « mode présentation » (rend null hors mode). */}
         <PresentationModeBanner />
+        {/* NTDMO20 — bandeau « essai expiré », non-bloquant (rend null tant
+            que `essai_expire_le` n'est pas renseignée ET dépassée). */}
+        <TrialExpiredBanner />
         {/* NTADM22 — bandeau permanent « session support active » : l'utilisateur
             assisté doit toujours savoir qu'un tiers agit dans son espace
             (rend null hors session d'impersonation). */}
@@ -171,6 +176,11 @@ export default function Layout({ children }) {
           qu'à la première visite (drapeau localStorage) et rejouable depuis
           les Paramètres. Rend null le reste du temps. */}
       <OnboardingCoachmarks />
+      {/* NTDMO14/15 — visites guidées PAR ÉCRAN (money-path : devis, leads,
+          factures, chantiers, stock, dashboard), suivies côté serveur —
+          distinct du guide global ci-dessus. Rend null hors des écrans
+          ciblés / une fois vu. */}
+      <ProductTour />
       {/* NTIDE9/NTIDE37 — ORDRE FONDATEUR 2026-08-04 : les deux boutons
           flottants (« Suggérer une amélioration », « Envoyer un retour »)
           quittent l'écran — leurs modales vivent désormais dans le menu

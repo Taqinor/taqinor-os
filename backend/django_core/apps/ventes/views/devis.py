@@ -190,6 +190,16 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
             'whatsapp_preview',
             # NTCPQ8 — approbation de remise (lecture + décisions).
             'approbation', 'approuver_etape', 'rejeter_etape',
+            # NTCPQ13 — renouvellement d'un devis accepté/expiré. Déclare la
+            # MÊME classe que le permission_classes de l'@action (cette
+            # surcharge PRIME sur lui — cf. le commentaire VX199 ci-dessus).
+            'renouveler',
+            # NTCPQ14 — avenants d'un devis accepté (lecture + application).
+            'avenants',
+            # NTCPQ18 — lots multi-sites (lecture + création).
+            'lots',
+            # NTCPQ20 — historique fin de configuration (lecture seule).
+            'historique_configuration',
         ]:
             return [IsResponsableOrAdmin()]
         elif self.action == 'destroy':
@@ -1114,6 +1124,119 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
             DevisSerializer(nd, context={'request': request}).data,
             status=status.HTTP_201_CREATED)
 
+    @action(detail=True, methods=['get'],
+            url_path='historique-configuration',
+            permission_classes=[IsResponsableOrAdmin])
+    def historique_configuration(self, request, pk=None):
+        """NTCPQ20 — Historique FIN des configurations d'un devis brouillon.
+
+        GET : la liste des instantanés (id, horodatage, auteur, nombre de
+        lignes, contenu). ``?a=<id>&b=<id>`` renvoie EN PLUS le diff des lignes
+        entre deux instantanés (ajoutées / retirées / modifiées). Lecture
+        seule : ne crée ni ne modifie aucun instantané."""
+        from ..services import diff_configurations_devis
+        devis = self.get_object()
+        snapshots = list(devis.config_snapshots.select_related('auteur').all())
+        payload = {
+            'snapshots': [{
+                'id': s.id,
+                'date': s.date_creation.isoformat(),
+                'auteur': (getattr(s.auteur, 'username', None)
+                           if s.auteur_id else None),
+                'nb_lignes': len((s.contenu or {}).get('lignes') or []),
+                'contenu': s.contenu,
+            } for s in snapshots],
+        }
+        a_id = request.query_params.get('a')
+        b_id = request.query_params.get('b')
+        if a_id and b_id:
+            index = {str(s.id): s for s in snapshots}
+            a = index.get(str(a_id))
+            b = index.get(str(b_id))
+            if a is None or b is None:
+                return Response({'detail': 'Instantané introuvable.'},
+                                status=status.HTTP_404_NOT_FOUND)
+            payload['diff'] = diff_configurations_devis(a, b)
+        return Response(payload)
+
+    @action(detail=True, methods=['get', 'post'], url_path='lots',
+            permission_classes=[IsResponsableOrAdmin])
+    def lots(self, request, pk=None):
+        """NTCPQ18 — Lots (sites/bâtiments) d'un devis multi-sites.
+
+        GET : sous-total HT par lot + total consolidé (chaîne canonique, donc
+        cohérent au centime avec le total du devis). Devis sans lot →
+        ``{'lots': [], 'total_consolide': None}`` (comportement mono-site
+        inchangé).
+        POST : crée un lot — corps ``{nom_lot, adresse_site?, ordre?,
+        lignes?: [ligne_id, ...]}`` ; les lignes citées lui sont rattachées."""
+        from rest_framework.exceptions import ValidationError
+        from ..models import LotDevis
+        from ..selectors import lots_totaux
+        devis = self.get_object()
+        if request.method == 'POST':
+            nom = (request.data.get('nom_lot') or '').strip()
+            if not nom:
+                raise ValidationError({'nom_lot': 'Nom de lot requis.'})
+            if devis.lots.filter(nom_lot=nom).exists():
+                raise ValidationError(
+                    {'nom_lot': 'Ce lot existe déjà sur ce devis.'})
+            lot = LotDevis.objects.create(
+                company=devis.company, devis=devis, nom_lot=nom,
+                adresse_site=(request.data.get('adresse_site') or '').strip(),
+                ordre=int(request.data.get('ordre') or 0))
+            ids = request.data.get('lignes') or []
+            if ids:
+                # Jamais une ligne d'un autre devis (donc d'une autre société).
+                devis.lignes.filter(id__in=ids).update(lot=lot)
+        resultat = lots_totaux(devis)
+        if resultat is None:
+            resultat = {'lots': [], 'hors_lot': None,
+                        'total_consolide': None}
+        return Response(
+            resultat,
+            status=(status.HTTP_201_CREATED if request.method == 'POST'
+                    else status.HTTP_200_OK))
+
+    @action(detail=True, methods=['get', 'post'], url_path='avenants',
+            permission_classes=[IsResponsableOrAdmin])
+    def avenants(self, request, pk=None):
+        """NTCPQ14 — Avenants d'un devis ACCEPTÉ.
+
+        GET : liste des avenants (les plus récents d'abord).
+        POST : applique un avenant — corps ``{lignes_ajoutees: [...],
+        lignes_retirees: [id, ...], motif}``. Les totaux sont recalculés et
+        l'approbation NTCPQ7 n'est redéclenchée que si le NOUVEAU taux de
+        remise global dépasse le seuil configuré."""
+        from ..serializers import AvenantDevisSerializer
+        devis = self.get_object()
+        if request.method == 'GET':
+            return Response(AvenantDevisSerializer(
+                devis.avenants.all(), many=True).data)
+        from apps.cpq.services import appliquer_avenant_devis
+        avenant = appliquer_avenant_devis(
+            devis,
+            lignes_ajoutees=request.data.get('lignes_ajoutees') or [],
+            lignes_retirees=request.data.get('lignes_retirees') or [],
+            motif=(request.data.get('motif') or '').strip(),
+            user=request.user)
+        return Response(AvenantDevisSerializer(avenant).data,
+                        status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['post'], url_path='renouveler',
+            permission_classes=[IsResponsableOrAdmin])
+    def renouveler(self, request, pk=None):
+        """NTCPQ13 — Renouvelle un devis ACCEPTÉ (ou expiré) : nouveau brouillon
+        reprenant les lignes actuelles aux PRIX CATALOGUE COURANTS, lié à son
+        devis d'origine (``devis_origine``) et numéroté
+        (``numero_renouvellement``). Le devis source reste intact — distinct de
+        ``reviser`` (qui corrige un devis non encore accepté)."""
+        from ..services import renouveler_devis
+        nouveau = renouveler_devis(self.get_object(), user=request.user)
+        return Response(
+            DevisSerializer(nouveau, context={'request': request}).data,
+            status=status.HTTP_201_CREATED)
+
     @action(detail=True, methods=['post'], url_path='accepter',
             permission_classes=[HasPermissionOrLegacy('ventes_valider')])
     def accepter(self, request, pk=None):
@@ -1612,6 +1735,10 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
         from ..services import verifier_devis_envoyable
         lancer_approbation_devis(devis)
         verifier_devis_envoyable(devis)
+        # NTCPQ11 — l'envoi est autorisé : fige les clauses/CGV dynamiques
+        # (write-once, jamais recalculé après envoi).
+        from ..services import figer_clauses_devis
+        figer_clauses_devis(devis)
 
     def perform_update(self, serializer):
         from rest_framework.exceptions import ValidationError

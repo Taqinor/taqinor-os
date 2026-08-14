@@ -6,6 +6,10 @@ const mocks = vi.hoisted(() => ({
   campagnesList: vi.fn(),
   campagnesCreate: vi.fn(),
   listesList: vi.fn(),
+  // NTMKT23/24 — CampagnesList monte CampagneForm (bouton « Nouvelle
+  // campagne ») qui appelle blocsContenu.list + heatmapEngagement au montage.
+  blocsList: vi.fn(),
+  heatmap: vi.fn(),
   navigate: vi.fn(),
 }))
 
@@ -22,6 +26,8 @@ vi.mock('../../api/marketingApi', () => ({
     },
     campagnes: { list: mocks.campagnesList, create: mocks.campagnesCreate },
     listes: { list: mocks.listesList },
+    blocsContenu: { list: mocks.blocsList },
+    heatmapEngagement: mocks.heatmap,
   },
 }))
 
@@ -33,6 +39,8 @@ const renderScreen = () => render(
 beforeEach(() => {
   vi.clearAllMocks()
   mocks.listesList.mockResolvedValue({ data: [] })
+  mocks.blocsList.mockResolvedValue({ data: [] })
+  mocks.heatmap.mockResolvedValue({ data: { cellules: [], meilleur: null, total_envois: 0 } })
   mocks.campagnesList.mockResolvedValue({
     data: [
       { id: 1, nom: 'Relance été', canal: 'email', canal_display: 'Email',
