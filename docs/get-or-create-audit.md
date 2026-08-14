@@ -294,20 +294,21 @@ Généré par `python scripts/check_get_or_create.py`. Chaque appel liste ses cl
 | `backend/django_core/apps/stock/management/commands/seed_catalogue.py:695` | get_or_create | Categorie.objects | company, nom |
 | `backend/django_core/apps/stock/management/commands/seed_catalogue.py:896` | get_or_create | Categorie.objects | company, nom |
 | `backend/django_core/apps/stock/models.py:460` | get_or_create | cls.objects | company |
+| `backend/django_core/apps/stock/models_negoce_params.py:64` | get_or_create | cls.objects | company |
 | `backend/django_core/apps/stock/services.py:197` | get_or_create | EmplacementStock.objects | company, nom |
 | `backend/django_core/apps/stock/services.py:332` | get_or_create | StockEmplacement.objects.select_for_update() | emplacement, produit |
 | `backend/django_core/apps/stock/services.py:338` | get_or_create | StockEmplacement.objects | emplacement, produit |
 | `backend/django_core/apps/stock/services.py:373` | get_or_create | PrixFournisseur.objects | fournisseur, produit |
 | `backend/django_core/apps/stock/services.py:403` | get_or_create | StockEmplacement.objects | company, emplacement, produit |
-| `backend/django_core/apps/stock/services.py:1240` | get_or_create | LotEntrepot.objects | company, numero_lot, produit |
-| `backend/django_core/apps/stock/services.py:1402` | get_or_create | SousTraitantProfile.objects | fournisseur |
-| `backend/django_core/apps/stock/services.py:1789` | get_or_create | StockEmplacement.objects.select_for_update() | emplacement, produit |
-| `backend/django_core/apps/stock/services.py:1987` | get_or_create | StockEmplacement.objects.select_for_update() | emplacement, produit |
-| `backend/django_core/apps/stock/services.py:3670` | get_or_create | StockEmplacement.objects.select_for_update() | emplacement, produit |
-| `backend/django_core/apps/stock/services.py:3689` | get_or_create | StockEmplacement.objects.select_for_update() | emplacement, produit |
-| `backend/django_core/apps/stock/services.py:3736` | get_or_create | StockEmplacement.objects.select_for_update() | emplacement, produit |
-| `backend/django_core/apps/stock/services.py:3762` | get_or_create | StockEmplacement.objects.select_for_update() | emplacement, produit |
-| `backend/django_core/apps/stock/services_wms.py:851` | get_or_create | PlanComptageTournant.objects | classe_abc, company |
+| `backend/django_core/apps/stock/services.py:1253` | get_or_create | LotEntrepot.objects | company, numero_lot, produit |
+| `backend/django_core/apps/stock/services.py:1415` | get_or_create | SousTraitantProfile.objects | fournisseur |
+| `backend/django_core/apps/stock/services.py:1802` | get_or_create | StockEmplacement.objects.select_for_update() | emplacement, produit |
+| `backend/django_core/apps/stock/services.py:2000` | get_or_create | StockEmplacement.objects.select_for_update() | emplacement, produit |
+| `backend/django_core/apps/stock/services.py:3700` | get_or_create | StockEmplacement.objects.select_for_update() | emplacement, produit |
+| `backend/django_core/apps/stock/services.py:3719` | get_or_create | StockEmplacement.objects.select_for_update() | emplacement, produit |
+| `backend/django_core/apps/stock/services.py:3766` | get_or_create | StockEmplacement.objects.select_for_update() | emplacement, produit |
+| `backend/django_core/apps/stock/services.py:3792` | get_or_create | StockEmplacement.objects.select_for_update() | emplacement, produit |
+| `backend/django_core/apps/stock/services_wms.py:853` | get_or_create | PlanComptageTournant.objects | classe_abc, company |
 | `backend/django_core/apps/stock/views/marque.py:57` | get_or_create | Marque.objects | company, nom |
 | `backend/django_core/apps/transport/models.py:373` | get_or_create | cls.objects | company |
 | `backend/django_core/apps/uxviews/models.py:166` | get_or_create | cls.objects | company |

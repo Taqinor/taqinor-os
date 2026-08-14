@@ -444,6 +444,17 @@ const stockApi = {
     api.patch(`/stock/conditionnements/${id}/`, data),
   deleteConditionnementProduit: (id) =>
     api.delete(`/stock/conditionnements/${id}/`),
+
+  // NTWMS29/33/42 — pilotage d'entrepôt (lecture seule).
+  getEntrepotCockpit: (params) => api.get('/stock/entrepot/cockpit/', { params }),
+  simulerCapacite: (params) => api.get('/stock/simuler-capacite/', { params }),
+  getZonesSurcapacite: (params) =>
+    api.get('/stock/entrepot/alertes-surcapacite/', { params }),
+
+  // NTSCM26 — TCO par fournisseur (prix nu + coût du retard + coût qualité).
+  // INTERNE : réservé responsable/admin, jamais un document client.
+  comparerTcoFournisseurs: (produitId, params) =>
+    api.get(`/stock/produits/${produitId}/comparer-tco/`, { params }),
 }
 
 export default stockApi

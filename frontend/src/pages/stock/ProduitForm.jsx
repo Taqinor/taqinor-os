@@ -98,6 +98,8 @@ function PrixFournisseursSection({ produitId, fournisseurs, isAdmin = false }) {
   // WR4 / FG58 — comparaison des fournisseurs (endpoint dédié, admin).
   const [comparaison, setComparaison] = useState(null)
   const [comparBusy, setComparBusy] = useState(false)
+  // NTSCM26 — coût total d'acquisition par fournisseur (colonne additionnelle).
+  const [tco, setTco] = useState([])
 
   const load = () => stockApi.getProduitPrixFournisseurs(produitId)
     .then((r) => setRows(r.data ?? [])).catch(() => {})
@@ -111,6 +113,13 @@ function PrixFournisseursSection({ produitId, fournisseurs, isAdmin = false }) {
         ? 'Comparaison réservée à l\'administrateur.'
         : 'Comparaison indisponible.'))
       .finally(() => setComparBusy(false))
+    // NTSCM26 — colonne TCO ADDITIONNELLE : le prix nu reste la colonne de
+    // référence, le TCO ajoute le coût du retard mesuré (NTSCM11) et le coût
+    // qualité moyen (NTSCM9). Best-effort : indisponible = colonne « — »,
+    // jamais un échec de la comparaison de prix elle-même.
+    stockApi.comparerTcoFournisseurs(produitId)
+      .then((r) => setTco(r.data?.fournisseurs ?? []))
+      .catch(() => setTco([]))
   }
 
   const sorted = [...rows].sort((a, b) => Number(a.prix_achat) - Number(b.prix_achat))
@@ -258,6 +267,8 @@ function PrixFournisseursSection({ produitId, fournisseurs, isAdmin = false }) {
                   <th className="px-3 py-2 text-left font-semibold">Rang</th>
                   <th className="px-3 py-2 text-left font-semibold">Fournisseur</th>
                   <th className="px-3 py-2 text-left font-semibold">Prix d&apos;achat HT</th>
+                  {/* NTSCM26 — le TCO COMPLÈTE le prix nu, il ne le remplace jamais. */}
+                  <th className="px-3 py-2 text-left font-semibold" title="Prix nu + coût du retard mesuré + coût qualité moyen">TCO (interne)</th>
                   <th className="px-3 py-2 text-left font-semibold">Dernier achat</th>
                 </tr>
               </thead>
@@ -269,6 +280,12 @@ function PrixFournisseursSection({ produitId, fournisseurs, isAdmin = false }) {
                     </td>
                     <td className="px-3 py-2">{c.fournisseur_nom}</td>
                     <td className="px-3 py-2 tabular-nums">{formatMAD(c.prix_achat, { withSymbol: false })} DH</td>
+                    <td className="px-3 py-2 tabular-nums">
+                      {(() => {
+                        const t = tco.find((x) => x.fournisseur_id === c.fournisseur_id)
+                        return t ? `${formatMAD(t.tco, { withSymbol: false })} DH` : '—'
+                      })()}
+                    </td>
                     <td className="px-3 py-2 text-muted-foreground">
                       {c.date_dernier_achat
                         ? new Date(c.date_dernier_achat).toLocaleDateString('fr-FR')

@@ -471,11 +471,36 @@ class ExpeditionTransporteurViewSet(CompanyScopedModelViewSet):
     ordering = ['-created_at']
 
     def get_permissions(self):
-        if self.action in READ_ACTIONS + ['tracking', 'tarifs']:
+        # NTWMS43 — la lettre de voiture est une LECTURE (elle n'écrit rien
+        # et ne stocke pas le PDF).
+        if self.action in READ_ACTIONS + ['tracking', 'tarifs', 'cmr_pdf']:
             return [IsAnyRole()]
         if self.action in WRITE_ACTIONS + ['generer_etiquette']:
             return [IsResponsableOrAdmin()]
         return [IsAdminRole()]
+
+    @extend_schema(responses={(200, 'application/pdf'): bytes})
+    @action(detail=True, methods=['get'], url_path='cmr-pdf',
+            permission_classes=[IsAnyRole])
+    def cmr_pdf(self, request, pk=None):
+        """NTWMS43 — lettre de voiture (CMR simplifiée) de cette expédition.
+
+        Expéditeur (profil de la SOCIÉTÉ — white-label, jamais une marque en
+        dur), destinataire, nature des marchandises, poids total, nombre de
+        colis et références SSCC (NTWMS6). Document INTERNE/transporteur :
+        aucun rapport avec le moteur de devis vendorisé (règle #4).
+        """
+        from django.http import HttpResponse
+
+        from ..utils.pdf_cmr import generate_cmr_pdf
+
+        expedition = self.get_object()
+        pdf = generate_cmr_pdf(expedition)
+        reponse = HttpResponse(pdf, content_type='application/pdf')
+        nom = (expedition.numero_suivi or f'expedition-{expedition.id}')
+        reponse['Content-Disposition'] = (
+            f'inline; filename="lettre-de-voiture-{nom}.pdf"')
+        return reponse
 
     def get_queryset(self):
         qs = super().get_queryset()

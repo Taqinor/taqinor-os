@@ -349,6 +349,13 @@ app.conf.beat_schedule = {
         'task': 'stock.expiration_alerts',
         'schedule': crontab(hour=6, minute=20),
     },
+    # NTWMS42 — alerte PASSIVE de sur-stockage par zone (seuil 95 % par
+    # défaut). Une zone sans capacité déclarée n'est jamais signalée, donc
+    # no-op tant qu'aucune `CategorieStockage` n'est posée sur les casiers.
+    'stock-alerter-surcapacite-zones': {
+        'task': 'stock.alerter_surcapacite_zones',
+        'schedule': crontab(hour=6, minute=25),
+    },
     # YOPSB1 — pg_dump réel quotidien vers MinIO (heure creuse).
     'core-dump-database': {
         'task': 'core.dump_database',

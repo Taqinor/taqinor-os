@@ -999,6 +999,8 @@ CELERY_TASK_ROUTES = {
     'core.purge_idempotency_records': {'queue': 'scheduled'},
     'monitoring.balayage_quotidien': {'queue': 'scheduled'},
     'stock.expiration_alerts': {'queue': 'scheduled'},
+    # NTWMS42 — alerte de sur-stockage par zone (quotidienne, heure creuse).
+    'stock.alerter_surcapacite_zones': {'queue': 'scheduled'},
     'stock.relancer_bcf_en_retard': {'queue': 'scheduled'},
     'crm.escalader_rappels_demandes': {'queue': 'scheduled'},
     # QX11/QX36 — rappels d'échéance + relevés côté ventes.

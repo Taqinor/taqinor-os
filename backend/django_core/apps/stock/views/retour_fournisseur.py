@@ -1,7 +1,8 @@
 from django.db import transaction  # noqa: F401
 from django.db.models import ProtectedError, Count, Min, Max  # noqa: F401
 from django.http import HttpResponse  # noqa: F401
-from rest_framework import viewsets, filters, status  # noqa: F401
+from drf_spectacular.utils import extend_schema, inline_serializer
+from rest_framework import viewsets, filters, serializers, status  # noqa: F401
 from rest_framework.decorators import action  # noqa: F401
 from rest_framework.response import Response  # noqa: F401
 from core.viewsets import CompanyScopedModelViewSet
@@ -61,6 +62,8 @@ class RetourFournisseurViewSet(CompanyScopedModelViewSet):
             return [IsAnyRole()]
         elif self.action in WRITE_ACTIONS + [
             'valider', 'annuler', 'generer_avoir',
+            # NTWMS41 — validation depuis le poste scanner : ÉCRITURE.
+            'valider_scanne',
         ]:
             return [IsResponsableOrAdmin()]
         elif self.action == 'destroy':
@@ -89,6 +92,41 @@ class RetourFournisseurViewSet(CompanyScopedModelViewSet):
             return Response({'detail': str(exc)},
                             status=status.HTTP_400_BAD_REQUEST)
         return Response(self.get_serializer(retour).data)
+
+    @extend_schema(request=None, responses={
+        200: inline_serializer('StockRetourValideScanne', {
+            'id': serializers.IntegerField(),
+            'reference': serializers.CharField(),
+            'statut': serializers.CharField(),
+            'deplacements': serializers.IntegerField(),
+        }),
+    })
+    @action(detail=True, methods=['post'], url_path='valider-scanne')
+    def valider_scanne(self, request, pk=None):
+        """NTWMS41 — valide le retour DEPUIS LE POSTE SCANNER.
+
+        Corps : ``{bins_source: {ligne_id: bin_id}}`` relevé au scan. Chaque
+        ligne est d'abord déplacée vers le casier de départs fournisseur (le
+        mouvement porte enfin son casier source ET sa destination), puis la
+        validation existante (N19/YPROC8) décrémente le stock — jamais un
+        second chemin de sortie.
+        """
+        from ..services_retour_scanne import valider_retour_scanne
+
+        retour = self.get_object()
+        nb_lignes = retour.lignes.count()
+        try:
+            valider_retour_scanne(
+                retour, request.user,
+                bins_source=request.data.get('bins_source') or {})
+        except ValueError as exc:
+            return Response({'detail': str(exc)},
+                            status=status.HTTP_400_BAD_REQUEST)
+        retour.refresh_from_db()
+        return Response({
+            'id': retour.id, 'reference': retour.reference,
+            'statut': retour.statut, 'deplacements': nb_lignes,
+        })
 
     @action(detail=True, methods=['post'], url_path='annuler')
     def annuler(self, request, pk=None):

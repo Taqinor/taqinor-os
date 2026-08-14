@@ -4,7 +4,7 @@
 import { lazy } from 'react'
 import {
   Package, Boxes, Truck, ArrowLeftRight, ClipboardList, PackageCheck, Receipt,
-  Undo2, ScanLine, Layers, Lock, TrendingUp, PackagePlus, Banknote,
+  Undo2, ScanLine, Layers, Lock, TrendingUp, PackagePlus, Banknote, Gauge,
 } from 'lucide-react'
 import { appGlyph } from '../../lib/apps/appGlyph'
 // APX22 - accent unique de la famille inventaire (Stock/Magasin/Logistique).
@@ -60,6 +60,9 @@ const LotsEntrepot = lazy(() => import('../../pages/stock/LotsEntrepot'))
 const InventairesAnnuels = lazy(() => import('../../pages/stock/InventairesAnnuels'))
 const RevalorisationsStock = lazy(() => import('../../pages/stock/RevalorisationsStock'))
 const ConditionnementsProduit = lazy(() => import('../../pages/stock/ConditionnementsProduit'))
+// NTWMS29 — cockpit entrepôt (remplissage par zone, vagues en retard,
+// comptages dus, expéditions du jour, lots proches de péremption).
+const CockpitEntrepot = lazy(() => import('../../pages/stock/CockpitEntrepot'))
 
 const config = {
   key: 'stock',
@@ -111,6 +114,13 @@ const config = {
       { to: '/stock/inventaires-annuels', label: 'Inventaires annuels', k: 'nav.inventaires_annuels', icon: navIcon(Lock), roles: ['admin'] },
       { to: '/stock/revalorisations', label: 'Revalorisations', k: 'nav.revalorisations', icon: navIcon(TrendingUp), roles: ['admin'] },
       { to: '/stock/conditionnements', label: 'Conditionnements', k: 'nav.conditionnements', icon: navIcon(PackagePlus), roles: ['responsable','admin'] },
+      // NTWMS29 — cockpit entrepôt. Pas de clé `k` : le catalogue i18n du
+      // chrome est un ensemble fermé (fr/en/ar identiques) — `tr()` retombe
+      // sur le libellé FR.
+      // `Gauge` (cadran de cockpit) et non `Warehouse` : ce dernier est le
+      // glyphe d'APP du module Magasin — le réutiliser ici brouillerait la
+      // lecture du portail (contrat APX1/ODY34).
+      { to: '/stock/entrepot', label: 'Tableau de bord entrepôt', icon: navIcon(Gauge), roles: ['responsable','admin'] },
     ],
   },
   routes: [
@@ -133,6 +143,9 @@ const config = {
     { path: '/stock/inventaires-annuels', component: InventairesAnnuels },
     { path: '/stock/revalorisations', component: RevalorisationsStock },
     { path: '/stock/conditionnements', component: ConditionnementsProduit },
+    // NTWMS29 — route ET entrée de nav déclarées ENSEMBLE (motif PACT150 :
+    // un écran livré sans l'une des deux est un écran mort).
+    { path: '/stock/entrepot', component: CockpitEntrepot },
   ],
 }
 

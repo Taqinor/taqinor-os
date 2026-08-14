@@ -30,9 +30,11 @@ def suggestions_rangement_reception(reception):
 
     La suggestion réutilise ``installations.selectors.suggerer_bin_putaway``
     (FG320/ZSTK9) : règle active → casier déjà affecté au produit → premier
-    casier libre par ordre de parcours, chacun sous garde de capacité.
+    casier libre par ordre de parcours, chacun sous garde de capacité. NTWMS38
+    ajoute par-dessus la garde HAZMAT : un casier non déclaré compatible n'est
+    jamais suggéré pour un produit à classe de danger.
     """
-    from apps.installations.selectors import suggerer_bin_putaway
+    from .services_hazmat import suggerer_bin_hazmat_safe
 
     if reception is None:
         return []
@@ -60,8 +62,8 @@ def suggestions_rangement_reception(reception):
             'source': 'aucun',
         }
         if ligne.produit_id:
-            bin_loc = suggerer_bin_putaway(
-                company, ligne.produit_id, emplacement_id,
+            bin_loc = suggerer_bin_hazmat_safe(
+                company, produit or ligne.produit_id, emplacement_id,
                 ligne.quantite or 0)
             if bin_loc is not None:
                 entree.update({
