@@ -164,6 +164,9 @@ _APP_URLS = [
     # à dessein : le gatage 404 des modules désactivés dérive du 2ᵉ segment, et
     # un segment en tiret imposerait une entrée `core/permissions.PREFIX_TO_MODULE`.
     path('veille_ao/', include('apps.veille_ao.urls')),
+    # Groupe NTLOG - Douane & import/export (NTLOG14 seulement ; NTLOG10
+    # BLOCKED, voir apps/douane/apps.py).
+    path('douane/', include('apps.douane.urls')),
 ]
 
 urlpatterns = [

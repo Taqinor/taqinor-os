@@ -288,6 +288,11 @@ INSTALLED_APPS = [
     # un sas, et c'est un humain qui tranche. Couplage vers `ao` par entier
     # opaque (`appel_offre_id`), jamais par FK.
     'apps.veille_ao',
+    # Groupe NTLOG — Douane & import/export (docs/plans/PLAN_SUPPLY.md).
+    # NTLOG14 seulement (DossierExport) : le volet import (NTLOG10, GARDE
+    # WIR80) reste BLOCKED, en conflit avec installations.DossierImport
+    # (FG315, hors perimetre d'ecriture de cette lane).
+    'apps.douane',
 ]
 
 MIDDLEWARE = [
