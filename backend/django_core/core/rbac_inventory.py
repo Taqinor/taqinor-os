@@ -138,6 +138,30 @@ PUBLIC_ALLOWLIST_PREFIXES = (
     # lu de l'URL en clair, un jeton ne peut adresser aucun autre contact ;
     # jeton invalide/expiré ⇒ 400 propre sans fuite. Throttlé (intake public).
     "api/django/marketing/preferences/",
+    # NTRET18/19 — webhooks « commande payée » Shopify / WooCommerce. AllowAny
+    # DÉLIBÉRÉ : l'appelant est la PLATEFORME e-commerce, pas un humain — elle
+    # n'a ni session ni JWT ERP. L'authentification réelle est la SIGNATURE
+    # HMAC-SHA256 du corps brut, vérifiée AVANT tout traitement et avant tout
+    # accès base (``shopify.verify_webhook_hmac`` /
+    # ``woocommerce.verify_webhook_signature`` → ``common.verify_hmac_base64``,
+    # comparaison en temps constant via ``hmac.compare_digest``). Secret absent
+    # ou signature fausse ⇒ ``False`` (JAMAIS d'acceptation par défaut) ⇒ 401
+    # sans effet de bord ; connecteur non configuré ⇒ 503 no-op. La société est
+    # résolue depuis le domaine de boutique de l'en-tête plateforme, JAMAIS du
+    # corps, et le traitement est idempotent (clé connexion+external_order_id :
+    # un rejeu at-least-once ne crée pas deux factures). Throttlés 60/min par
+    # IP (``EcommerceWebhookThrottle``).
+    "api/django/ecommerce-connect/shopify/webhook/commande/",
+    "api/django/ecommerce-connect/woocommerce/webhook/commande/",
+    # NTRET11 — carte de fidélité dématérialisée, scannée à la douchette sur
+    # l'écran caisse. GET AllowAny DÉLIBÉRÉ : le porteur de carte n'a pas de
+    # compte ERP. Le ``code_qr`` (jeton opaque non séquentiel, GLOBALEMENT
+    # unique — jamais l'id de ligne) est le SEUL secret et porte à lui seul la
+    # société : un jeton ne peut donc adresser aucun autre tenant. LECTURE
+    # SEULE, réponse volontairement pauvre (nom, solde de points, palier) —
+    # aucun email/téléphone/adresse/CIN ; jeton inconnu ⇒ 404 générique.
+    # Throttlé 30/min par IP (``CartePubliqueThrottle``, anti-énumération).
+    "api/django/fidelite/carte/",
     "api/schema",                             # OpenAPI (si activé plus tard)
     "api/docs",
     "api/redoc",

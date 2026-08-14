@@ -4,6 +4,7 @@ périodique est hors périmètre de cette lane, voir ``shopify.py``)."""
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
+from authentication.permissions import IsResponsableOrAdmin
 from core.viewsets import CompanyScopedModelViewSet
 
 from .models import CommandeSync, ConnexionEcommerce, ProduitSync
@@ -18,7 +19,16 @@ class ConnexionEcommerceViewSet(CompanyScopedModelViewSet):
     queryset = ConnexionEcommerce.objects.all()
     serializer_class = ConnexionEcommerceSerializer
 
-    @action(detail=True, methods=['post'], url_path='sync-catalogue')
+    # YRBAC4 — garde DÉCLARÉE, et ici un vrai RESSERREMENT : ce viewset ne pose
+    # ni ``read_permission`` ni ``write_permission``, donc le défaut
+    # ``ScopedPermission`` se réduisait à « authentifié interne suffit » — un
+    # compte en lecture seule pouvait déclencher une poussée de catalogue vers
+    # la boutique en ligne. Une synchro sortante est une action d'exploitation :
+    # elle exige désormais un porteur de rôle (motif ``pos.CommandeViewSet.
+    # encaisser_facture`` / ``mrp.CoutStandardViewSet``). Aucun
+    # ``get_permissions`` sur ce viewset ni ses bases → garde effective.
+    @action(detail=True, methods=['post'], url_path='sync-catalogue',
+            permission_classes=[IsResponsableOrAdmin])
     def sync_catalogue(self, request, pk=None):
         """Déclenchement MANUEL de la synchro catalogue → plateforme.
 

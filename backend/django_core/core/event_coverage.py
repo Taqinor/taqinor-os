@@ -328,6 +328,17 @@ NO_STATIC_EMITTER = {
     # la même chose.
     "ao_depose",
     "ao_gagne",
+    # ``vente_validee`` (NTRET9) : EXACTEMENT la même forme que ``lead_erased``
+    # et ``record_soft_deleted`` ci-dessus — le seam est posé côté RÉCEPTEUR
+    # seul (``apps/fidelite/receivers.py`` crédite les points, et se teste en
+    # envoyant le signal directement), mais AUCUNE app ne l'émet : l'émission
+    # appartient à ``pos``/``ventes``, que la lane SUPPLY qui a posé ce seam
+    # n'avait pas le droit de modifier. La parité de payload est donc
+    # invérifiable par introspection du source, et l'entrée au catalogue reste
+    # DOCUMENTAIRE (elle fige le contrat que le futur émetteur devra tenir).
+    # À RETIRER d'ici dès le premier ``vente_validee.send(...)`` réel, comme
+    # ``document_produit`` l'a été — le cliquet ne fait que se resserrer.
+    "vente_validee",
 }
 
 

@@ -9,11 +9,46 @@ traitement en clair.
 import json
 
 from rest_framework import status
-from rest_framework.decorators import api_view, permission_classes
+from rest_framework.decorators import (
+    api_view, permission_classes, throttle_classes,
+)
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
+from rest_framework.throttling import SimpleRateThrottle
 
 from . import shopify, woocommerce
+
+
+class EcommerceWebhookThrottle(SimpleRateThrottle):
+    """YRBAC9 — débit des webhooks e-commerce ENTRANTS, par IP.
+
+    Même patron que les autres throttles publics du dépôt
+    (``stock.public_views.QuaiCheckinThrottle``,
+    ``sav.public_views.SavPublicThrottle``,
+    ``compta.views._MarketingPublicThrottle`` qui couvre déjà les webhooks
+    entrants Brevo/SMS) : ``rate`` câblé EN DUR et ``get_rate`` qui le renvoie,
+    donc AUCUNE entrée ``DEFAULT_THROTTLE_RATES`` n'est requise (sinon DRF lève
+    ``ImproperlyConfigured``). Une classe par app car importer le throttle
+    d'une AUTRE app passerait par ses ``views`` — interdit par la frontière
+    inter-apps (CLAUDE.md / import-linter).
+
+    Budget 60/min : c'est celui du seul autre webhook ENTRANT du dépôt
+    (``automation_webhook``). Volontairement plus large que les 30/min des
+    liens tokenisés lus par un humain — une plateforme livre ses commandes en
+    rafale et en at-least-once ; un budget trop serré ferait perdre des
+    commandes PAYÉES. Il reste une borne anti-inondation : la signature HMAC,
+    elle, est l'authentification (cf. docstring du module)."""
+
+    scope = 'ecommerce_webhook'
+    rate = '60/minute'
+
+    def get_rate(self):
+        return self.rate
+
+    def get_cache_key(self, request, view):
+        return self.cache_format % {
+            'scope': self.scope, 'ident': self.get_ident(request),
+        }
 
 
 def _company_from_boutique_url(plateforme, url_fragment):
@@ -31,6 +66,7 @@ def _company_from_boutique_url(plateforme, url_fragment):
 
 @api_view(['POST'])
 @permission_classes([AllowAny])
+@throttle_classes([EcommerceWebhookThrottle])
 def webhook_commande_shopify(request):
     """``POST /api/django/ecommerce-connect/shopify/webhook/commande/``.
 
@@ -91,6 +127,7 @@ def webhook_commande_shopify(request):
 
 @api_view(['POST'])
 @permission_classes([AllowAny])
+@throttle_classes([EcommerceWebhookThrottle])
 def webhook_commande_woocommerce(request):
     """``POST /api/django/ecommerce-connect/woocommerce/webhook/commande/``.
 

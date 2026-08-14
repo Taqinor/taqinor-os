@@ -8,6 +8,8 @@ from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 
+from authentication.permissions import IsResponsableOrAdmin
+from core.permissions import ScopedPermission
 from core.viewsets import CompanyScopedModelViewSet
 from apps.records.views import ChatterViewSetMixin
 
@@ -88,14 +90,24 @@ class OrdreTransportViewSet(ChatterViewSetMixin, CompanyScopedModelViewSet):
         super().perform_update(serializer)
 
     # ── NTLOG3 — lecture imbriquée des étapes ────────────────────────────
-    @action(detail=True, methods=['get'], url_path='etapes')
+    # YRBAC4 — gardes DÉCLARÉES sur les 3 lectures de ce viewset.
+    # ``ScopedPermission`` (GET → ``read_permission``, ici None) exprime le
+    # tier réel « authentifié INTERNE de la société », identique au défaut de
+    # classe : consultation d'étapes, comparatif transporteurs et bilan CO2
+    # sont des lectures d'exploitation ouvertes à tout le personnel interne.
+    # Ni ce viewset ni ses bases (ChatterViewSetMixin /
+    # CompanyScopedModelViewSet / TenantMixin) ne définissent de
+    # ``get_permissions`` — les déclarations ne sont donc pas neutralisées.
+    @action(detail=True, methods=['get'], url_path='etapes',
+            permission_classes=[ScopedPermission])
     def etapes_action(self, request, pk=None):
         ordre = self.get_object()
         return Response(
             EtapeTransportSerializer(ordre.etapes.all(), many=True).data)
 
     # ── NTLOG7 — comparateur de coûts d'affrètement ──────────────────────
-    @action(detail=True, methods=['get'], url_path='comparer-transporteurs')
+    @action(detail=True, methods=['get'], url_path='comparer-transporteurs',
+            permission_classes=[ScopedPermission])
     def comparer_transporteurs(self, request, pk=None):
         ordre = self.get_object()
         from . import selectors
@@ -104,7 +116,8 @@ class OrdreTransportViewSet(ChatterViewSetMixin, CompanyScopedModelViewSet):
                 ordre.id, company=request.user.company))
 
     # ── NTLOG20 — estimation CO2 (affichée sur le détail de l'ordre) ─────
-    @action(detail=True, methods=['get'], url_path='co2')
+    @action(detail=True, methods=['get'], url_path='co2',
+            permission_classes=[ScopedPermission])
     def co2(self, request, pk=None):
         ordre = self.get_object()
         from . import selectors
@@ -160,7 +173,15 @@ class EtapeTransportViewSet(CompanyScopedModelViewSet):
             serializer.instance, ancien_statut, user=self.request.user)
 
     # ── NTLOG9 — preuve de livraison (POD), réutilise records.Attachment ──
-    @action(detail=True, methods=['post'], url_path='livrer')
+    # YRBAC4 — garde DÉCLARÉE, RESSERREMENT réel : ce viewset ne pose ni
+    # ``read_permission`` ni ``write_permission``, donc le défaut
+    # ``ScopedPermission`` se réduisait à « authentifié interne suffit » —
+    # tout compte pouvait acter une livraison, ce qui fait avancer le statut
+    # de l'ordre parent (``services.apres_changement_statut_etape``). Acter
+    # une preuve de livraison exige désormais un porteur de rôle. Aucun
+    # ``get_permissions`` sur ce viewset ni ses bases → garde effective.
+    @action(detail=True, methods=['post'], url_path='livrer',
+            permission_classes=[IsResponsableOrAdmin])
     def livrer(self, request, pk=None):
         """Exige AU MOINS une pièce jointe (`records.Attachment`, photo ou
         signature) déjà déposée sur cette étape avant de la clôturer
@@ -245,19 +266,29 @@ class LitigeTransportViewSet(CompanyScopedModelViewSet):
             old_value=ancien, new_value=target)
         return Response(LitigeTransportSerializer(litige).data)
 
-    @action(detail=True, methods=['post'], url_path='prendre-en-charge')
+    # YRBAC4 — gardes DÉCLARÉES sur les 4 écritures de ce viewset, et
+    # RESSERREMENT réel (même motif que ``EtapeTransportViewSet.livrer``) :
+    # sans ``write_permission``, tout compte authentifié pouvait faire
+    # avancer la machine à états d'un litige (prise en charge, résolution,
+    # REJET) ou émettre une réclamation transporteur. Ces décisions engagent
+    # la société : elles exigent désormais un porteur de rôle. Aucun
+    # ``get_permissions`` sur ce viewset ni ses bases → gardes effectives.
+    @action(detail=True, methods=['post'], url_path='prendre-en-charge',
+            permission_classes=[IsResponsableOrAdmin])
     def prendre_en_charge(self, request, pk=None):
         return self._transition(
             request, allowed_from={LitigeTransport.Statut.OUVERT},
             target=LitigeTransport.Statut.EN_TRAITEMENT)
 
-    @action(detail=True, methods=['post'], url_path='resoudre')
+    @action(detail=True, methods=['post'], url_path='resoudre',
+            permission_classes=[IsResponsableOrAdmin])
     def resoudre(self, request, pk=None):
         return self._transition(
             request, allowed_from={LitigeTransport.Statut.EN_TRAITEMENT},
             target=LitigeTransport.Statut.RESOLU)
 
-    @action(detail=True, methods=['post'], url_path='rejeter')
+    @action(detail=True, methods=['post'], url_path='rejeter',
+            permission_classes=[IsResponsableOrAdmin])
     def rejeter(self, request, pk=None):
         return self._transition(
             request,
@@ -268,7 +299,8 @@ class LitigeTransportViewSet(CompanyScopedModelViewSet):
             target=LitigeTransport.Statut.REJETE)
 
     # ── NTLOG19 — réclamation transporteur chiffrée (PDF) ────────────────
-    @action(detail=True, methods=['post'], url_path='reclamer-transporteur')
+    @action(detail=True, methods=['post'], url_path='reclamer-transporteur',
+            permission_classes=[IsResponsableOrAdmin])
     def reclamer_transporteur(self, request, pk=None):
         litige = self.get_object()
         from . import selectors

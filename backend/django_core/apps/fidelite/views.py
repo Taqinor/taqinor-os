@@ -6,6 +6,7 @@ from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 
+from core.permissions import ScopedPermission
 from core.viewsets import CompanyScopedModelViewSet
 
 from .models import CompteFidelite, PalierFidelite, ProgrammeFidelite
@@ -73,7 +74,16 @@ class CompteFideliteViewSet(CompanyScopedModelViewSet):
             qs = qs.filter(client_id=client_id)
         return qs
 
-    @action(detail=True, methods=['get'], url_path='mouvements')
+    # YRBAC4 — garde DÉCLARÉE par l'action. Lecture d'un historique de points
+    # sur un viewset DÉJÀ lecture seule (``http_method_names`` sans écriture) et
+    # company-scopé : ``ScopedPermission`` (GET → ``read_permission`` None)
+    # exprime le tier réel « authentifié INTERNE de la société », identique au
+    # défaut de classe — explicite et vérifiable, sans changement de
+    # comportement. Le vendeur au comptoir doit pouvoir consulter le solde d'un
+    # client sans être responsable. Aucun ``get_permissions`` ici ni dans les
+    # bases → la déclaration n'est pas neutralisée.
+    @action(detail=True, methods=['get'], url_path='mouvements',
+            permission_classes=[ScopedPermission])
     def mouvements(self, request, pk=None):
         """Historique des mouvements de points du compte (plus récent d'abord)."""
         compte = self.get_object()

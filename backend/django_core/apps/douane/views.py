@@ -112,7 +112,18 @@ class DossierExportViewSet(CompanyScopedModelViewSet):
         self._check_tenant(serializer)
         super().perform_update(serializer)
 
+    # YRBAC4 — garde DÉCLARÉE par l'action. ``ScopedPermission`` route sur la
+    # méthode HTTP : GET (méthode sûre) → ``read_permission``, ici None, donc
+    # « utilisateur authentifié INTERNE de la société suffit ». C'est
+    # exactement le contrat documenté dans ``apps/douane/permissions.py`` (le
+    # rôle lecture-seule ``comptabilite`` doit pouvoir sortir cet export pour
+    # le rapprochement comptable) : la déclarer ici la rend explicite et
+    # vérifiable sans changer le comportement d'un octet. La resserrer sur un
+    # rôle casserait le cas d'usage métier de l'endpoint. Ni ce viewset ni ses
+    # bases (CompanyScopedModelViewSet / TenantMixin) ne définissent de
+    # ``get_permissions`` — la déclaration n'est donc pas neutralisée.
     @action(detail=False, methods=['get'], url_path='export',
+            permission_classes=[ScopedPermission],
             content_negotiation_class=_ExportFormatContentNegotiation)
     def export(self, request):
         """NTLOG47 — export ``dossiers-export/export/?periode=YYYY-MM&format=

@@ -8,6 +8,7 @@ from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 
 from authentication.permissions import IsResponsableOrAdmin
+from core.permissions import ScopedPermission
 from core.viewsets import CompanyScopedModelViewSet
 
 from .models import (
@@ -37,7 +38,14 @@ class PosteDeChargeViewSet(CompanyScopedModelViewSet):
     serializer_class = PosteDeChargeSerializer
     filterset_fields = ['type_poste', 'actif']
 
-    @action(detail=True, methods=['get'], url_path='oee')
+    # YRBAC4 — garde DÉCLARÉE. Consultation d'un indicateur (TRS/OEE) sur un
+    # queryset company-scopé : ``ScopedPermission`` (GET → ``read_permission``
+    # None) exprime le tier réel « authentifié INTERNE de la société », égal au
+    # défaut de classe — un opérateur d'atelier doit voir le TRS de son poste
+    # sans être responsable. Aucun ``get_permissions`` sur ce viewset ni ses
+    # bases → la déclaration n'est pas neutralisée.
+    @action(detail=True, methods=['get'], url_path='oee',
+            permission_classes=[ScopedPermission])
     def oee(self, request, pk=None):
         """NTMFG12 — TRS/OEE du poste sur `?debut=&fin=` (AAAA-MM-JJ, défaut
         les 28 derniers jours) + tendance hebdomadaire."""
@@ -140,7 +148,18 @@ class OrdreFabricationViewSet(CompanyScopedModelViewSet):
         self._check_tenant(serializer)
         serializer.save(company=self.request.user.company)
 
-    @action(detail=True, methods=['post'], url_path='confirmer')
+    # YRBAC4 — gardes DÉCLARÉES, et un vrai RESSERREMENT sur les trois actions
+    # d'écriture ci-dessous : ce viewset ne pose ni ``read_permission`` ni
+    # ``write_permission``, donc le défaut ``ScopedPermission`` se réduisait à
+    # « authentifié interne suffit » — n'importe quel compte, y compris en
+    # lecture seule, pouvait confirmer, clôturer (backflush = mouvements de
+    # stock RÉELS) ou annuler un ordre de fabrication. Ces transitions sont des
+    # actes d'exploitation : elles exigent désormais un porteur de rôle, comme
+    # ``CoutStandardViewSet`` dans ce même module. La lecture
+    # (``dispo-composants``) reste au tier lecture. Aucun ``get_permissions``
+    # sur ce viewset ni ses bases → gardes effectives.
+    @action(detail=True, methods=['post'], url_path='confirmer',
+            permission_classes=[IsResponsableOrAdmin])
     def confirmer(self, request, pk=None):
         """NTMFG3 — instancie les opérations depuis la gamme + planifie les
         dates (capacité poste), passe le statut en `planifie`."""
@@ -150,7 +169,8 @@ class OrdreFabricationViewSet(CompanyScopedModelViewSet):
         of.refresh_from_db()
         return Response(self.get_serializer(of).data)
 
-    @action(detail=True, methods=['post'], url_path='cloturer')
+    @action(detail=True, methods=['post'], url_path='cloturer',
+            permission_classes=[IsResponsableOrAdmin])
     def cloturer(self, request, pk=None):
         """NTMFG4 — clôture l'OF : backflush (consommation composants +
         production composite) exactement une fois, sauf si un
@@ -161,7 +181,8 @@ class OrdreFabricationViewSet(CompanyScopedModelViewSet):
         of.refresh_from_db()
         return Response(self.get_serializer(of).data)
 
-    @action(detail=True, methods=['post'], url_path='annuler')
+    @action(detail=True, methods=['post'], url_path='annuler',
+            permission_classes=[IsResponsableOrAdmin])
     def annuler(self, request, pk=None):
         """NTMFG6 — annule l'OF : libère ses réservations de composants.
         Refuse (400) si le stock a déjà été mouvementé."""
@@ -174,7 +195,8 @@ class OrdreFabricationViewSet(CompanyScopedModelViewSet):
         of.refresh_from_db()
         return Response(self.get_serializer(of).data)
 
-    @action(detail=True, methods=['get'], url_path='dispo-composants')
+    @action(detail=True, methods=['get'], url_path='dispo-composants',
+            permission_classes=[ScopedPermission])
     def dispo_composants(self, request, pk=None):
         """NTMFG6 — disponibilité par ligne réservée (disponible/partiel/
         manquant)."""
@@ -205,7 +227,17 @@ class OperationOFViewSet(mixins.RetrieveModelMixin, mixins.ListModelMixin,
             qs = qs.filter(ordre_fabrication_id=of)
         return qs
 
-    @action(detail=True, methods=['patch'], url_path='replanifier')
+    # YRBAC4 — gardes DÉCLARÉES sur les 5 actions d'écriture de ce viewset.
+    # RESSERREMENT réel : ``OperationOFViewSet`` est un ``GenericViewSet`` nu,
+    # donc son défaut était le ``IsAuthenticated`` projet — tout compte
+    # authentifié pouvait replanifier un Gantt ou pointer démarrage/pause/fin
+    # d'opération (le « terminer » poste même un ``MouvementStock`` sur rebut).
+    # Ces écritures exigent désormais un porteur de rôle, comme
+    # ``CoutStandardViewSet`` juste en dessous. Ce viewset ne définit PAS de
+    # ``get_permissions`` (contrairement à ``CoutStandardViewSet``) : les
+    # déclarations ci-dessous sont donc bien celles que DRF applique.
+    @action(detail=True, methods=['patch'], url_path='replanifier',
+            permission_classes=[IsResponsableOrAdmin])
     def replanifier(self, request, pk=None):
         """NTMFG7 — déplace cette opération (glisser-déposer Gantt) : nouvelle
         `date_planifiee` et/ou `poste_charge` optionnel, contrôle de capacité
@@ -224,25 +256,29 @@ class OperationOFViewSet(mixins.RetrieveModelMixin, mixins.ListModelMixin,
         data['avertissement'] = avertissement
         return Response(data)
 
-    @action(detail=True, methods=['post'], url_path='demarrer')
+    @action(detail=True, methods=['post'], url_path='demarrer',
+            permission_classes=[IsResponsableOrAdmin])
     def demarrer(self, request, pk=None):
         """NTMFG8 — terminal atelier : démarre l'opération."""
         from .services import demarrer_operation
         return self._mes_action(demarrer_operation, request, pk)
 
-    @action(detail=True, methods=['post'], url_path='pauser')
+    @action(detail=True, methods=['post'], url_path='pauser',
+            permission_classes=[IsResponsableOrAdmin])
     def pauser(self, request, pk=None):
         """NTMFG8 — terminal atelier : met l'opération en pause."""
         from .services import pauser_operation
         return self._mes_action(pauser_operation, request, pk)
 
-    @action(detail=True, methods=['post'], url_path='reprendre')
+    @action(detail=True, methods=['post'], url_path='reprendre',
+            permission_classes=[IsResponsableOrAdmin])
     def reprendre(self, request, pk=None):
         """NTMFG8 — terminal atelier : reprend une opération en pause."""
         from .services import reprendre_operation
         return self._mes_action(reprendre_operation, request, pk)
 
-    @action(detail=True, methods=['post'], url_path='terminer')
+    @action(detail=True, methods=['post'], url_path='terminer',
+            permission_classes=[IsResponsableOrAdmin])
     def terminer(self, request, pk=None):
         """NTMFG8/10 — terminal atelier : termine l'opération (quantité
         bonne/rebut + motif si rebut, coût façon si sous-traitée), calcule le

@@ -496,7 +496,15 @@ class SessionCaisseViewSet(viewsets.ModelViewSet):
             },
         }
 
-    @action(detail=True, methods=['get'], url_path='rapport-x')
+    # YRBAC4 — garde DÉCLARÉE sur les deux NOUVELLES actions rapport (X et
+    # PDF du Z). Elle reprend à l'identique le ``permission_classes`` de
+    # CLASSE de ce viewset (``IsResponsableOrAdmin``, ligne ~441) : un état de
+    # caisse et un document fiscal ne se lisent pas sans rôle. Aucun
+    # ``get_permissions`` sur ``SessionCaisseViewSet`` → la déclaration est
+    # bien celle que DRF applique (même motif que ``CommandeViewSet.
+    # encaisser_facture``/``dashboard`` plus haut dans ce fichier).
+    @action(detail=True, methods=['get'], url_path='rapport-x',
+            permission_classes=[IsResponsableOrAdmin])
     def rapport_x_view(self, request, pk=None):
         """NTRET2 — Rapport X : lecture à tout moment, aucun effet de bord,
         relisible N fois (session ouverte ou déjà clôturée)."""
@@ -521,7 +529,8 @@ class SessionCaisseViewSet(viewsets.ModelViewSet):
         payload['numero_rapport_z'] = data['numero_rapport_z']
         return Response(payload)
 
-    @action(detail=True, methods=['get'], url_path='rapport-z-pdf')
+    @action(detail=True, methods=['get'], url_path='rapport-z-pdf',
+            permission_classes=[IsResponsableOrAdmin])
     def rapport_z_pdf_view(self, request, pk=None):
         """NTRET2 — PDF du rapport Z, numéroté séquentiellement. Le rapport
         DOIT déjà avoir été généré (``rapport-z/``) — ce point ne génère

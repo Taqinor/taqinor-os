@@ -13,15 +13,45 @@ un jeton pointe toujours EXACTEMENT un compte d'UNE société ; il n'existe donc
 aucune façon de le « réutiliser » pour un autre tenant.
 """
 from rest_framework import status
-from rest_framework.decorators import api_view, permission_classes
+from rest_framework.decorators import (
+    api_view, permission_classes, throttle_classes,
+)
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
+from rest_framework.throttling import SimpleRateThrottle
 
 from .selectors import get_compte_par_code_qr
 
 
+class CartePubliqueThrottle(SimpleRateThrottle):
+    """YRBAC9 — anti-force-brute du ``code_qr``, par IP.
+
+    Le jeton est le SEUL secret de cet endpoint : sans borne de débit, il
+    serait énumérable. Même patron que ``sav.public_views.SavPublicThrottle``
+    et ``stock.public_views.QuaiCheckinThrottle`` (``rate`` en dur +
+    ``get_rate``, donc aucune entrée ``DEFAULT_THROTTLE_RATES`` requise ; une
+    classe par app car importer le throttle d'une autre app passerait par ses
+    ``views``, interdit par la frontière inter-apps).
+
+    Budget 30/min : celui des autres liens tokenisés lus par un humain du
+    dépôt (``sav_public_link``, ``public_sharelink``). Large pour une caisse
+    qui enchaîne les scans à la douchette, dérisoire pour une énumération."""
+
+    scope = 'fidelite_carte_publique'
+    rate = '30/minute'
+
+    def get_rate(self):
+        return self.rate
+
+    def get_cache_key(self, request, view):
+        return self.cache_format % {
+            'scope': self.scope, 'ident': self.get_ident(request),
+        }
+
+
 @api_view(['GET'])
 @permission_classes([AllowAny])
+@throttle_classes([CartePubliqueThrottle])
 def carte_publique(request, token):
     """Carte de fidélité publique tokenisée (lecture seule)."""
     compte = get_compte_par_code_qr(token)
