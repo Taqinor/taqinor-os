@@ -598,25 +598,12 @@ def _safe_sld_svg(devis):
     Lecture pure : rien n'est écrit (aucun statut, aucune ligne — règle #4).
     Jamais bloquant : une étude illisible rend ``None``, pas une erreur 500.
     """
-    design = getattr(devis, "electrical_design", None)
-    if not isinstance(design, dict) or not design:
-        return None
     try:
-        from core.electrique import concevoir
-        from core.electrique.schema import rendre_schema
+        from .electrical_service import rendre_schema_du_devis
 
-        from .electrical_service import construire_entree
-
-        entree = construire_entree(devis)
-        if not entree.groupes:
-            return None
-        cartouche = {
-            "client": getattr(getattr(devis, "client", None), "nom", "") or "",
-            "reference": devis.reference or "",
-            "date": (devis.date_creation.strftime("%d/%m/%Y")
-                     if getattr(devis, "date_creation", None) else ""),
-        }
-        return rendre_schema(entree, concevoir(entree), cartouche=cartouche)
+        # PVSLD — une seule vérité : la page client et l'annexe du PDF rendent
+        # désormais le MÊME schéma (celui du moteur, avec ses protections).
+        return rendre_schema_du_devis(devis)
     except Exception:  # noqa: BLE001 — un schéma absent ne casse pas la page
         logger.warning("PV81 : schéma unifilaire indisponible pour le devis %s",
                        getattr(devis, "pk", None))
