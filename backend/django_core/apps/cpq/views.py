@@ -132,6 +132,30 @@ class PrixContractuelViewSet(CompanyScopedModelViewSet):
             raise ValidationError({'produit': 'Produit inconnu.'})
         serializer.save(company=company, created_by=self.request.user)
 
+    def _verifier_auteur_ou_role_eleve(self, instance):
+        """NTCPQ37 — un commercial ne peut modifier/supprimer QUE le
+        PrixContractuel qu'il a lui-même créé ; au-delà, il faut la
+        permission granulaire ``cpq_prix_contractuels_gerer`` (NTCPQ36,
+        repli légacy inclus via ``HasPermissionOrLegacy``)."""
+        from rest_framework.exceptions import PermissionDenied
+        user = self.request.user
+        if instance.created_by_id == user.id:
+            return
+        if HasPermissionOrLegacy('cpq_prix_contractuels_gerer')().has_permission(
+                self.request, self):
+            return
+        raise PermissionDenied(
+            "Seul l'auteur de ce prix contractuel (ou un rôle élevé) peut "
+            "le modifier ou le supprimer.")
+
+    def perform_update(self, serializer):
+        self._verifier_auteur_ou_role_eleve(self.get_object())
+        serializer.save()
+
+    def perform_destroy(self, instance):
+        self._verifier_auteur_ou_role_eleve(instance)
+        instance.delete()
+
 
 class QuestionConfigurateurViewSet(CompanyScopedModelViewSet):
     queryset = QuestionConfigurateur.objects.all()
