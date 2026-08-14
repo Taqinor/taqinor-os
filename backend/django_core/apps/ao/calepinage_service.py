@@ -37,7 +37,9 @@ from __future__ import annotations
 
 import logging
 
-from core.calepinage.exceptions import CalepinageIncoherent
+from core.calepinage.exceptions import (
+    CalepinageIncoherent, EntreeInvalide as EntreeMoteurInvalide,
+)
 from core.calepinage.garde_fous import valider
 from core.calepinage.obstacles import appliquer_regles, engageable
 from core.calepinage.optimum import calculer as calculer_optimum
@@ -60,8 +62,50 @@ __all__ = [
     'calepiner', 'calculer_variante', 'cout_estime', 'empreinte_document',
     'retenir_variante', 'comparer_variantes', 'calculer_sensibilites',
     'calculer_marches', 'VariantePerimee', 'cle_cache', 'resultat_en_cache',
-    'mettre_en_cache',
+    'mettre_en_cache', 'multiplicateur_tiroirs', 'multiplicateur_suggestions',
+    'PLAFOND_SUGGESTIONS',
 ]
+
+#: Suggestions PUBLIÉES par calcul (PV50). Le moteur en cape déjà 12
+#: (``PLAFOND_RECOMMANDATIONS``) ; en afficher douze reviendrait à n'en faire
+#: lire aucune. Cinq est ce qu'un panneau montre sans replier.
+PLAFOND_SUGGESTIONS = 5
+
+
+def multiplicateur_tiroirs(budget_appels=None):
+    """PV49 — combien de DP COMPLETS un jeu de tiroirs rejoue, au pire.
+
+    Un tiroir n'affiche AUCUN chiffre saisi : chaque contre-épreuve de kit,
+    chaque impact de rive, chaque point du graphe d'allée est un appel moteur
+    de plus. Le multiplicateur est donc lu SUR LE MOTEUR (``tiroirs`` publie
+    son ``BUDGET_APPELS_DEFAUT`` et rapporte ce qu'il consomme), jamais
+    recopié ici : le jour où le budget du moteur bouge, l'estimation suit.
+
+    ``1`` pour le calcul du plan lui-même, ``+ budget`` pour les impacts,
+    ``+ 1`` pour la recherche d'allée gratuite — que ``donnees_tiroirs``
+    compte à part (``recherches_allee``) parce que sa dichotomie a sa propre
+    borne : l'omettre cacherait un coût réel.
+    """
+    from core.calepinage.tiroirs import BUDGET_APPELS_DEFAUT
+
+    budget = BUDGET_APPELS_DEFAUT if budget_appels is None else int(
+        budget_appels)
+    return 1 + max(0, budget) + 1
+
+
+def multiplicateur_suggestions(plafond=None):
+    """PV50 — combien de DP COMPLETS un jeu de suggestions rejoue, au pire.
+
+    Une recommandation ne vaut que parce que son gain est REJOUÉ sur l'entrée
+    patchée : le moteur cape ce travail (``PLAFOND_RECOMMANDATIONS``), et c'est
+    ce plafond-là qu'on lit — pas un chiffre recopié. ``+ 1`` pour le compte de
+    référence, ``+ 1`` pour la recherche d'allée gratuite.
+    """
+    from core.calepinage.recommandations import PLAFOND_RECOMMANDATIONS
+
+    plafond = (PLAFOND_RECOMMANDATIONS if plafond is None else int(plafond))
+    return 1 + max(0, plafond) + 1
+
 
 #: Durée de vie d'un résultat en cache (12 h). Un résultat n'est jamais
 #: « faux » en cache — la clé porte l'empreinte de l'entrée ET la version du
@@ -150,23 +194,36 @@ def empreinte_document(document):
     return hash_entree(_entree(document))
 
 
-def cout_estime(document, *, budget=None):
+def cout_estime(document, *, budget=None, tiroirs=False, suggestions=False):
     """Chiffre le travail AVANT de le lancer, sur la surface la plus lourde.
 
     C'est ce chiffre qui pilote la bascule synchrone/asynchrone d'AOF61 : au
     delà du budget, l'API refuse de faire attendre l'utilisateur et renvoie la
     consigne d'appel asynchrone.
+
+    ``tiroirs=True`` (PV49) et ``suggestions=True`` (PV50) chiffrent le travail
+    TOUT COMPRIS : ces deux charges utiles rejouent chacune une dizaine de DP
+    complets, et les publier sans les compter reviendrait à promettre une
+    réponse synchrone qu'on ne peut pas tenir. Les multiplicateurs viennent du
+    moteur, pas d'un chiffre recopié ; le plan de base n'est compté qu'UNE
+    fois même quand les deux sont demandées.
     """
     entree = _entree(document)
     obstacles = appliquer_regles(entree.obstacles)
     par_surface = calepinage_io.affectations_du_document(
         document, entree.surfaces, obstacles)
     budget = budget or BudgetCalcul()
+    supplements = 0
+    if tiroirs:
+        supplements += multiplicateur_tiroirs() - 1
+    if suggestions:
+        supplements += multiplicateur_suggestions() - 1
+    variantes = 1 + supplements
     cumul = None
     for surface in entree.surfaces:
         cout = estimer_cout(surface, entree.parametres,
                             par_surface.get(surface.repere, ()),
-                            entree.zones, budget=budget)
+                            entree.zones, variantes=variantes, budget=budget)
         if cumul is None:
             cumul = cout
             continue
@@ -185,12 +242,36 @@ def cout_estime(document, *, budget=None):
 
 
 # ───────────────────────────────────────────────── AOF60 — calcul STATELESS
-def calepiner(document, *, company, user=None, moteur=None):
+def calepiner(document, *, company, user=None, moteur=None, budget=None,
+              tiroirs=True, suggestions=True):
     """Calcule un calepinage COMPLET et renvoie du JSON. N'écrit RIEN.
 
     ``company`` est OBLIGATOIRE : le service refuse de tourner hors société,
     de sorte qu'aucun chemin d'appel ne puisse contourner le cloisonnement
     multi-tenant en oubliant un argument.
+
+    **PV49/PV50 — la sortie porte aussi ``marges``, ``tiroirs`` et
+    ``suggestions``.** ``marges`` publie ce que la passe de robustesse a MESURÉ
+    (``None`` quand elle n'a rien mesuré, jamais ``0``). ``tiroirs`` porte les
+    5 charges utiles de l'atelier et ``suggestions`` les propositions
+    APPLICABLES à gain rejoué — toutes CALCULÉES par le moteur, jamais rédigées
+    ici. Les trois sont toujours présentes comme CLÉS : ``tiroirs`` vaut un jeu
+    dégradé (``donnees: null``) et ``suggestions`` une liste vide quand ils ne
+    sont pas produits, jamais une clé absente.
+
+    Les deux charges utiles sont DÉGRADÉES, pas silencieusement payées, dans
+    deux cas :
+
+    * document à PLUSIEURS surfaces — le moteur n'a aucun modèle de tiroir par
+      segment, et en meubler un depuis une seule surface publierait les
+      chiffres d'un segment sous le nom du site. Les SUGGESTIONS, elles, sont
+      bien calculées par surface puis FUSIONNÉES : un patch de paramètres n'est
+      publié que s'il a été mesuré à l'identique sur TOUTES les surfaces (son
+      gain est alors leur somme), sinon l'appliquer aurait un effet non mesuré
+      ailleurs ;
+    * coût estimé HORS budget synchrone — chaque impact chiffré rejoue un DP
+      complet ; les produire quand même tiendrait la promesse d'affichage en
+      brisant celle du temps de réponse.
 
     Raises:
         EntreeInvalide: document non conforme au contrat (motif français).
@@ -206,6 +287,7 @@ def calepiner(document, *, company, user=None, moteur=None):
     par_surface = calepinage_io.affectations_du_document(
         document, entree.surfaces, obstacles)
     machine = _moteur(moteur)
+    budget = budget or BudgetCalcul()
 
     plans = []
     total_modules = 0
@@ -213,11 +295,19 @@ def calepiner(document, *, company, user=None, moteur=None):
     preuves = []
     marges_globales = None
     controles = None
+    dernier_resultat = None
 
     for surface in entree.surfaces:
         lot = par_surface.get(surface.repere, ())
-        resultat = machine.calculer(surface, entree.parametres, lot,
-                                    entree.zones)
+        try:
+            resultat = machine.calculer(surface, entree.parametres, lot,
+                                        entree.zones)
+        except EntreeMoteurInvalide as erreur:
+            # PV30 — le NOYAU refuse déjà en français (rangées imposées vides,
+            # phase forcée hors du jeu possible), mais avec SON exception, que
+            # l'API ne sait pas retraduire : sans cette traduction, une faute
+            # de saisie sortirait en 500 au lieu du 400 nommé.
+            raise EntreeInvalide(str(erreur)) from erreur
         rangees = tuple((y0, entree.parametres.kit(code))
                         for y0, code in resultat.rangees)
         tables = poser_plan(surface, rangees, lot, entree.zones)
@@ -241,6 +331,7 @@ def calepiner(document, *, company, user=None, moteur=None):
             kit = entree.parametres.kit(rangee.kit_code)
             total_kwc += rangee.modules * kit.puissance_module_wc / 1000.0
         preuves.append(resultat.preuve)
+        dernier_resultat = resultat
 
     ok_engagement, motifs = engageable(obstacles)
     empreinte = hash_entree(entree)
@@ -254,7 +345,135 @@ def calepiner(document, *, company, user=None, moteur=None):
         controles=controles or (),
         pas_recherche_m=entree.parametres.pas_recherche_m)
     sortie['engagement_modules'] = entree.parametres.engagement_modules
+    sortie['marges'] = calepinage_io.marges_vers_json(marges_globales)
+    # UN SEUL pré-vol pour les deux charges utiles : chacune chiffrée de son
+    # côté, elles pourraient toutes deux « tenir » et ne pas tenir ENSEMBLE —
+    # et la promesse rompue serait celle de la réponse, pas celle d'un tiroir.
+    abordable = (tiroirs or suggestions) and _cout_charge_utile(
+        entree, par_surface, budget=budget, tiroirs=tiroirs,
+        suggestions=suggestions)
+    sortie['tiroirs'] = _tiroirs_publiables(
+        entree, par_surface, dernier_resultat,
+        demandes=bool(tiroirs and abordable))
+    # Le contrat de l'endpoint agrégé enveloppe la liste dans
+    # ``{"suggestions": […]}`` ; ICI la clé du résultat EST la liste, comme
+    # ``plans`` et ``rangees`` — chaque ÉLÉMENT, lui, a exactement la forme du
+    # contrat.
+    sortie['suggestions'] = _suggestions_publiables(
+        entree, par_surface, demandes=bool(suggestions and abordable))
     return sortie
+
+
+def _tiroirs_publiables(entree, par_surface, resultat, *, demandes=True):
+    """Les 5 tiroirs — ou leur forme DÉGRADÉE, jamais une clé absente.
+
+    Le garde de coût est un PRÉ-VOL fait par l'appelant (``calepiner``), pas un
+    regret : on chiffre le travail AVANT de le lancer et on renonce quand il ne
+    tient pas dans le budget synchrone. La promesse « cet appel répond en
+    synchrone » ne peut donc pas être rompue en douce par un tiroir.
+    """
+    if not demandes or resultat is None or len(entree.surfaces) != 1:
+        return calepinage_io.tiroirs_vides()
+    surface = entree.surfaces[0]
+    lot = par_surface.get(surface.repere, ())
+
+    from core.calepinage.recommandations import EntreeMoteur
+    from core.calepinage.tiroirs import donnees_tiroirs
+
+    donnees = donnees_tiroirs(
+        EntreeMoteur(surface=surface, parametres=entree.parametres,
+                     obstacles=tuple(lot), zones=tuple(entree.zones)),
+        resultat, catalogue=entree.kits)
+    return calepinage_io.tiroirs_vers_json(donnees, entree.parametres)
+
+
+def _suggestions_publiables(entree, par_surface, *, demandes=True):
+    """PV50 — les suggestions APPLICABLES, fusionnées puis CAPÉES.
+
+    Le moteur propose PAR SURFACE ; l'écran, lui, applique au SITE. La fusion
+    est donc conservatrice : un patch de paramètres n'est publié que s'il a été
+    mesuré à l'IDENTIQUE sur toutes les surfaces (son gain devient leur somme),
+    car un patch mesuré sur un seul segment aurait, appliqué partout, un effet
+    que personne n'a chiffré. Une décision d'obstacle ne concerne qu'un repère
+    nommé : elle passe telle quelle.
+    """
+    if not demandes or not entree.surfaces:
+        return []
+
+    from core.calepinage.recommandations import EntreeMoteur, proposer
+
+    par_code = {}
+    for surface in entree.surfaces:
+        lot = tuple(par_surface.get(surface.repere, ()))
+        moteur_entree = EntreeMoteur(surface=surface,
+                                     parametres=entree.parametres,
+                                     obstacles=lot,
+                                     zones=tuple(entree.zones))
+        try:
+            propositions = proposer(moteur_entree, catalogue_kits=entree.kits)
+        except AssertionError:
+            # La contre-épreuve de kit du moteur a échoué : c'est un vrai
+            # défaut, il est JOURNALISÉ — mais il ne doit pas emporter le
+            # calepinage lui-même, qui est le résultat qu'on est venu chercher.
+            logger.exception(
+                'calepinage : contre-épreuve de recommandation en échec sur '
+                'la surface %s', surface.repere)
+            continue
+        for proposition in propositions:
+            suggestion = calepinage_io.suggestion_vers_json(proposition)
+            if suggestion is None:
+                continue
+            par_code.setdefault(suggestion['code'], []).append(suggestion)
+
+    nb_surfaces = len(entree.surfaces)
+    retenues = []
+    for suggestions in par_code.values():
+        fusionnee = _fusionner_suggestions(suggestions, nb_surfaces)
+        if fusionnee is not None:
+            retenues.append(fusionnee)
+    retenues.sort(key=lambda s: (-s['gain_modules'], s['code']))
+    return retenues[:PLAFOND_SUGGESTIONS]
+
+
+def _fusionner_suggestions(suggestions, nb_surfaces):
+    """Les occurrences d'UN code sur N surfaces -> une suggestion, ou ``None``."""
+    premiere = suggestions[0]
+    if premiere['action']['type'] == 'obstacle':
+        # Un obstacle appartient à une seule surface : aucune fusion à faire.
+        return premiere if len(suggestions) == 1 else None
+    if len(suggestions) != nb_surfaces:
+        return None  # non mesuré partout : l'appliquer partout serait un pari
+    patchs = [s['action']['patch'] for s in suggestions]
+    if any(patch != patchs[0] for patch in patchs[1:]):
+        return None  # deux valeurs différentes : aucune n'a été mesurée seule
+    fusionnee = dict(premiere)
+    fusionnee['gain_modules'] = sum(s['gain_modules'] for s in suggestions)
+    fusionnee['gain_kwc'] = round(sum(s['gain_kwc'] for s in suggestions), 3)
+    return fusionnee
+
+
+def _cout_charge_utile(entree, par_surface, *, budget, tiroirs=False,
+                       suggestions=False):
+    """Pré-vol d'une charge utile d'atelier — coût CUMULÉ sur les surfaces.
+
+    Le cumul est celui de ``cout_estime`` : on additionne les millisecondes de
+    chaque surface, parce que le serveur les paiera toutes dans la même
+    requête. Ne regarder que la plus lourde ferait passer trois segments pour
+    un seul.
+    """
+    supplements = 0
+    if tiroirs:
+        supplements += multiplicateur_tiroirs() - 1
+    if suggestions:
+        supplements += multiplicateur_suggestions() - 1
+    millisecondes = 0.0
+    for surface in entree.surfaces:
+        cout = estimer_cout(surface, entree.parametres,
+                            tuple(par_surface.get(surface.repere, ())),
+                            entree.zones, variantes=1 + supplements,
+                            budget=budget)
+        millisecondes += cout.millisecondes
+    return millisecondes <= budget.seuil_synchrone_ms
 
 
 def _cumuler_marges(cumul, marges):
@@ -325,8 +544,11 @@ def calculer_variante(toiture, params=None, *, user=None, moteur=None,
     from .models import VarianteCalepinage
 
     document = calepinage_io.document_entree(toiture, params=params)
+    # ``tiroirs=False`` (PV49) : ce chemin PERSISTE un résultat, il n'alimente
+    # aucun atelier — et la variante ne les garde pas. Les produire ferait
+    # rejouer une douzaine de DP complets pour les jeter aussitôt.
     sortie = calepiner(document, company=toiture.company, user=user,
-                       moteur=moteur)
+                       moteur=moteur, tiroirs=False, suggestions=False)
 
     if variante is None:
         variante = VarianteCalepinage(
@@ -338,7 +560,14 @@ def calculer_variante(toiture, params=None, *, user=None, moteur=None,
     variante.params = dict(params if params is not None
                            else (toiture.parametres_calepinage or {}))
     variante.entree_hash = sortie['hash_entree']
-    variante.resultat = {k: v for k, v in sortie.items() if k != 'preuve'}
+    # ``tiroirs`` (PV49) et ``suggestions`` (PV50) ne sont PAS persistés : ce
+    # sont des charges utiles d'ATELIER, recalculées à la demande, dont les
+    # impacts chiffrés valent pour les paramètres du moment. Les figer dans une
+    # variante ferait lire un jour « -4 modules si vous élargissez la rive » sur
+    # des réglages qui ont bougé. ``marges``, elle, MESURE ce plan-ci : elle
+    # reste avec lui.
+    variante.resultat = {k: v for k, v in sortie.items()
+                         if k not in ('preuve', 'tiroirs', 'suggestions')}
     variante.preuve = sortie['preuve']
     variante.version_moteur = VERSION_MOTEUR
     variante.statut = VarianteCalepinage.Statut.CALCULEE

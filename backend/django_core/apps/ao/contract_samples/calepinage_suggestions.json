@@ -1,0 +1,23 @@
+{
+  "endpoint": "GET /api/django/ao/calepinage/suggestions/<int:resultat_id>/",
+  "pourquoi": "Suggestions d'optimisation renvoyées par le moteur en UN SEUL appel, chaque entrée discriminée par `code` : `gain_modules` est SIGNÉ (positif = gain, négatif = perte assumée dans un arbitrage), et `action` décrit CE QUE l'écran doit proposer d'appliquer en un clic (`type: 'parametres'` → patch de paramètres de calepinage ; `type: 'obstacle'` → décision sur un obstacle). Les champs `gain_kwc`, `confiance` et `question_a_poser` ne sont PAS garantis sur toutes les suggestions — un arbitrage d'obstacle (ARBITRER_A) n'en porte aucun, c'est le sens de la discrimination par `code`. PACT10 : ce contrat part SEUL avant les deux lanes front/back.",
+  "exemple": {
+    "suggestions": [
+      {
+        "code": "ALLEE_GRATUITE",
+        "titre": "Allée gratuite jusqu'à 1,94 m",
+        "gain_modules": 3,
+        "gain_kwc": 1.875,
+        "confiance": "HAUTE",
+        "question_a_poser": "Peut-on élargir l'allée de maintenance à 0,72 m sans perte de modules ?",
+        "action": { "type": "parametres", "patch": { "allee_min_m": 0.72 } }
+      },
+      {
+        "code": "ARBITRER_A",
+        "titre": "Écarter l'obstacle A (nature non confirmée)",
+        "gain_modules": -4,
+        "action": { "type": "obstacle", "obstacle": "A", "provenance": "ECARTE" }
+      }
+    ]
+  }
+}

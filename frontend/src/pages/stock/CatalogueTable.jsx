@@ -84,6 +84,66 @@ const TON_SEV = {
   [SEV_OK]: 'success',
 }
 
+/* PV8 — Badge « complétude datasheet » : complet / partiel / absent, calculé
+   à partir de la FicheTechnique (PV5) d'un produit et de son `type_fiche`.
+   Champs requis alignés sur ce que le dimensionnement/calepinage consomme
+   réellement (`apps.stock.selectors.specs_for_produit` côté backend) — pas
+   un champ décoratif de plus. Un type non renseigné (fiche historique
+   `type_fiche=''`, ou `autre`) est traité comme ABSENT : on ne peut pas dire
+   ce qui manque sans savoir de quel bloc il s'agit. Exporté pour être
+   réutilisé tel quel par ProduitDetail.jsx (fiche produit, même règle). */
+export const FICHE_ABSENTE = 'absent'
+export const FICHE_PARTIELLE = 'partiel'
+export const FICHE_COMPLETE = 'complet'
+
+const CHAMPS_REQUIS_PAR_TYPE = {
+  module: [
+    ['longueur_mm', 'longueur'], ['largeur_mm', 'largeur'],
+    ['pmax_wc', 'Pmax'], ['voc_v', 'Voc'], ['vmp_v', 'Vmp'],
+    ['isc_a', 'Isc'], ['imp_a', 'Imp'],
+    ['temp_coeff_pmax_pct_c', 'coefficient de température Pmax'],
+  ],
+  onduleur: [
+    ['ond_n_mppt', 'nombre de MPPT'],
+    ['ond_mppt_v_min', 'tension MPPT min'], ['ond_mppt_v_max', 'tension MPPT max'],
+    ['ond_ac_kw', 'puissance AC'], ['ond_phases', 'phases'],
+  ],
+  batterie: [
+    ['bat_kwh_nominal', 'capacité nominale'], ['bat_dod_pct', 'profondeur de décharge'],
+  ],
+}
+
+export function completudeFiche(fiche) {
+  const champs = fiche ? CHAMPS_REQUIS_PAR_TYPE[fiche.type_fiche] : null
+  if (!champs) return { statut: FICHE_ABSENTE, manquants: [] }
+  const manquants = champs
+    .filter(([k]) => fiche[k] === null || fiche[k] === undefined || fiche[k] === '')
+    .map(([, label]) => label)
+  return manquants.length === 0
+    ? { statut: FICHE_COMPLETE, manquants: [] }
+    : { statut: FICHE_PARTIELLE, manquants }
+}
+
+const TON_FICHE = {
+  [FICHE_COMPLETE]: 'success', [FICHE_PARTIELLE]: 'warning', [FICHE_ABSENTE]: 'neutral',
+}
+const LABEL_FICHE = {
+  [FICHE_COMPLETE]: 'Fiche complète', [FICHE_PARTIELLE]: 'Fiche partielle', [FICHE_ABSENTE]: 'Fiche absente',
+}
+
+// Badge réutilisé par ProduitDetail.jsx — un seul rendu pour les deux écrans.
+export function BadgeCompletudeFiche({ fiche }) {
+  const { statut, manquants } = completudeFiche(fiche)
+  const titre = statut === FICHE_COMPLETE
+    ? 'Tous les champs requis sont renseignés.'
+    : statut === FICHE_PARTIELLE
+      ? `Champs manquants : ${manquants.join(', ')}.`
+      : (fiche
+        ? 'Type de fiche non renseigné — complétude non évaluable.'
+        : 'Aucune fiche technique pour ce produit.')
+  return <Badge tone={TON_FICHE[statut]} title={titre}>{LABEL_FICHE[statut]}</Badge>
+}
+
 // Ligne de détail du stock — TOUJOURS rendue (vide si rien à dire) : c'est ce
 // qui garantit une hauteur de ligne unique quelles que soient les données.
 function detailStock(p) {
@@ -121,6 +181,10 @@ export function CatalogueTable({
   onDetail,
   selected,
   onToggleSelect,
+  // PV8 — Map(produit_id → FicheTechnique) chargée une seule fois par l'écran
+  // liste (jamais un appel par ligne) ; absente/vide → toutes les lignes
+  // affichent « Fiche absente ».
+  fichesParProduit,
 }) {
   // L153 — n'affiche les squelettes que si l'attente se prolonge (anti-clignotement).
   const { showSkeleton } = useDelayedLoading(loading && (produits?.length ?? 0) === 0)
@@ -190,6 +254,16 @@ export function CatalogueTable({
       accessor: (p) => keySpec(p) ?? '',
       cell: (v) => (v ? <Badge tone="primary">{v}</Badge> : <span className="text-muted-foreground">—</span>),
       exportValue: (p) => keySpec(p) ?? '',
+    },
+    {
+      id: 'fiche_technique',
+      header: 'Fiche technique',
+      minWidth: 140,
+      searchable: false,
+      sortable: false,
+      accessor: (p) => fichesParProduit?.get(p.id),
+      cell: (fiche) => <BadgeCompletudeFiche fiche={fiche} />,
+      exportValue: (p) => LABEL_FICHE[completudeFiche(fichesParProduit?.get(p.id)).statut],
     },
     {
       id: 'prix_vente',
@@ -331,7 +405,7 @@ export function CatalogueTable({
       },
       exportValue: (p) => p.seuil_alerte,
     },
-  ], [editable, onInlineSave, selectable, selected, onToggleSelect])
+  ], [editable, onInlineSave, selectable, selected, onToggleSelect, fichesParProduit])
 
   // Actions de ligne (≤2 rapides + menu kebab) — historique / éditer / supprimer.
   const rowActions = (p) => {

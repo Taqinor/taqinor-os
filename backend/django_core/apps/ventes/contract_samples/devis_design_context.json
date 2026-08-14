@@ -1,0 +1,70 @@
+{
+  "endpoint": "GET /api/django/ventes/devis/<int:pk>/design-context/",
+  "pourquoi": "Le contexte agrégé que l'écran de conception 3D (calepinage de toiture) lit EN UN SEUL appel pour démarrer SUR un devis existant : identité + statut du devis, géométrie déjà enregistrée (roof_layout, pin GPS), cible de dimensionnement issue du devis (panneaux/kWc/scénario), et disponibilité de la carte (clé MapTiler/token Mapbox). PACT10 : ce fichier part SEUL, avant les deux lanes front et back — sans lui chacune invente sa propre forme, exactement l'incident du 03/08/2026 (Tableau de bord AO, zéro clé sur six concordante). `modifiable` + `raison_lecture_seule` protègent un devis déjà accepté ou un mode agricole (pompage, sans toiture à calepiner) : l'écran bascule en lecture seule SANS deviner pourquoi — le motif vient TOUJOURS du serveur, jamais rédigé côté écran. Source de vérité prévue : apps/ventes/selectors.py::devis_design_context (à construire).",
+  "exemple": {
+    "devis": {
+      "id": 412,
+      "reference": "DEV-2026-412",
+      "statut": "brouillon",
+      "mode_installation": "residentiel",
+      "lead": 88,
+      "client": 51,
+      "client_nom": "Youssef Alaoui"
+    },
+    "geometrie": {
+      "source": "devis",
+      "roof_layout": { "version": 2, "zones": [] },
+      "pin": { "lat": 33.5731, "lng": -7.5898 },
+      "outline": []
+    },
+    "cible": {
+      "panneaux": 24,
+      "kwc": 17.04,
+      "panel_watt": 710,
+      "scenario": "reseau",
+      "batterie": false,
+      "bill_kwh": 7200
+    },
+    "carte": {
+      "available": true,
+      "maptilerKey": "cle-demo",
+      "mapboxToken": ""
+    },
+    "modifiable": true,
+    "raison_lecture_seule": "",
+    "avertissements": []
+  },
+  "exemple_lecture_seule": {
+    "devis": {
+      "id": 518,
+      "reference": "DEV-2026-518",
+      "statut": "accepte",
+      "mode_installation": "agricole",
+      "lead": 102,
+      "client": 77,
+      "client_nom": "Ferme Doukkala"
+    },
+    "geometrie": {
+      "source": "none",
+      "roof_layout": null,
+      "pin": null,
+      "outline": []
+    },
+    "cible": {
+      "panneaux": 0,
+      "kwc": 0,
+      "panel_watt": 0,
+      "scenario": "",
+      "batterie": false,
+      "bill_kwh": 0
+    },
+    "carte": {
+      "available": true,
+      "maptilerKey": "cle-demo",
+      "mapboxToken": ""
+    },
+    "modifiable": false,
+    "raison_lecture_seule": "Devis agricole (pompage) — le calepinage de toiture ne s'applique pas.",
+    "avertissements": ["Aucune ligne panneau sur ce devis."]
+  }
+}
