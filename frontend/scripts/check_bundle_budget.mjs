@@ -216,7 +216,17 @@ const MODULEPRELOAD_ALLOWLIST = new Set([
 // `ParametresEntreprise.jsx` et n'en créent aucun) — réel 703. Croissance
 // une-route-un-chunk, pas une prolifération de structure ; le budget gzip
 // (3250) + PER_CHUNK_BUDGET_KB (350) restent les vrais garde-fous de poids.
-export const MAX_CHUNK_COUNT = 730
+// 2026-08-14 : 730 -> 760. Plan SUPPLY vague 2 (65 tâches livrées : mrp/scm/
+// transport/pos) : ~15 écrans neufs, chacun son propre chunk lazy (assistants
+// guidés NTMFG26-28, tableau de bord SCM + wizards NTSCM30-31, ordres de
+// transport + tableau de bord logistique NTLOG24/32, sessions/dashboard/
+// retraits/config-matériel POS NTRET…) — réel 738. Vérifié : tous les écrans
+// des 4 `module.config.jsx` (mrp/scm/transport/pos) sont en `lazy()`, aucun
+// import statique d'écran lourd, aucune nouvelle dépendance npm (@dnd-kit/core
+// déjà utilisé ailleurs — KanbanView.jsx). Croissance une-route-un-chunk, pas
+// une prolifération de structure ; le budget gzip (3320) + PER_CHUNK_BUDGET_KB
+// (350) restent les vrais garde-fous de poids.
+export const MAX_CHUNK_COUNT = 760
 
 // Extrait les `<link rel="modulepreload" href="...">` de `dist/index.html` et
 // signale tout vendor lourd nommé qui s'y trouve (hors allowlist). Silencieux
