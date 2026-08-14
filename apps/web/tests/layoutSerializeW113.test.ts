@@ -77,10 +77,27 @@ describe('W113 — serializeLayout / deserializeLayout (round-trip identité)', 
     expect(layout.zones.length).toBe(2);
     expect(layout.activeAreaId).toBe('area-1');
 
-    // JSON pur : pas de result/renderPlan/THREE qui fuient.
+    // JSON pur : aucun objet DÉRIVÉ (renderPlan / THREE) ne fuit, et aucune ZONE ne
+    // porte son `result` vivant. PV13 : le seul `result` du JSON est le résultat GLOBAL
+    // v2 ajouté au niveau racine — c'est un ajout voulu, pas une fuite.
     const flat = JSON.stringify(layout);
     expect(flat).not.toContain('renderPlan');
-    expect(flat).not.toContain('"result"');
+    for (const z of layout.zones) expect('result' in z).toBe(false);
+
+    // PV13 — le résultat v2 est DÉRIVÉ des `zone.geometry` qui viennent d'être émises :
+    // si le JSON dit N panneaux, le résultat dit N (ici aucune géométrie → des zéros).
+    expect(layout.result).toEqual({
+      panels: layout.zones.reduce((n, z) => n + (z.geometry?.count ?? 0), 0),
+      kwc: layout.zones.reduce((n, z) => n + (z.geometry?.kwc ?? 0), 0),
+      annualKwh: 0,
+      savings: null, // jamais recalculées ici (une somme zone à zone sur-compte)
+    });
+    // enveloppe v2 : les champs ajoutés sont présents avec leurs défauts documentés.
+    expect(layout.scenario).toBe('reseau');
+    expect(layout.panelWatt).toBeGreaterThan(0);
+    expect(layout.battery).toBeNull();
+    expect(layout.source).toBe('lead');
+    expect(layout.devisId).toBeNull();
 
     const back = deserializeLayout(layout);
     expect(back.length).toBe(2);
