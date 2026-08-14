@@ -44,7 +44,7 @@ from .wms import (
     PortailTiersTokenViewSet, DemandeTransfertViewSet, RetourClientViewSet,
     MouvementRebutViewSet, PlanChargementViewSet, BlocageQualiteViewSet,
     entrepot_productivite_view, entrepot_pertes_view,
-    reslotting_suggestions_view,
+    reslotting_suggestions_view, casiers_etiquettes_pdf_view,
 )
 from .scanner import scanner_resoudre_view, scanner_mouvement_view
 
@@ -95,6 +95,7 @@ __all__ = [
     'entrepot_productivite_view',
     'entrepot_pertes_view',
     'reslotting_suggestions_view',
+    'casiers_etiquettes_pdf_view',
     'scanner_resoudre_view',
     'scanner_mouvement_view',
 ]

@@ -600,3 +600,40 @@ def render_etiquettes_sscc_html(unites):
         'sous_titre': u.get('sous_titre') or '',
     } for u in unites]
     return render_labels_html(items, symbology='code128')
+
+
+# ---------------------------------------------------------------------------
+# NTWMS32 -- Etiquettes de CASIER (planche a coller en rayonnage).
+#
+# Le jeton encode est le CODE BRUT du casier : c'est exactement ce que le
+# poste scanner NTWMS5 resout en premier (`resoudre_code_scanne` essaie le
+# casier avant le produit). Une etiquette imprimee est donc scannable telle
+# quelle, sans prefixe maison a maintenir des deux cotes.
+# ---------------------------------------------------------------------------
+
+def casier_token(code) -> str:
+    """Contenu encode par le code d'une etiquette de casier : son CODE brut."""
+    return str(code or '')
+
+
+def render_etiquettes_casiers_html(casiers, symbology='qr'):
+    """Planche d'etiquettes de casier prete a coller en rayonnage.
+
+    `casiers` = liste de dicts {code, zone, allee, casier, emplacement}.
+    Le titre est le code (ce que le magasinier lit de loin), le sous-titre
+    situe le casier (zone / allee / entrepot).
+    """
+    items = []
+    for casier in casiers:
+        situation = ' · '.join(
+            part for part in [
+                casier.get('emplacement') or '',
+                f"Zone {casier['zone']}" if casier.get('zone') else '',
+                f"Allée {casier['allee']}" if casier.get('allee') else '',
+            ] if part)
+        items.append({
+            'token': casier_token(casier.get('code')),
+            'titre': casier.get('code') or '',
+            'sous_titre': situation,
+        })
+    return render_labels_html(items, symbology=symbology)

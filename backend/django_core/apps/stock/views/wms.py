@@ -1142,6 +1142,68 @@ def _date_param(valeur):
 
 
 @extend_schema(responses={
+    (200, 'application/pdf'): bytes,
+    400: inline_serializer('StockEtiquettesCasiersErreur', {
+        'detail': serializers.CharField(),
+    }),
+})
+@api_view(['GET'])
+@permission_classes([IsAnyRole])
+def casiers_etiquettes_pdf_view(request):
+    """NTWMS32 — planche A4 d'étiquettes de CASIER, prête à coller.
+
+    ``?emplacement=<id>`` (obligatoire) ; ``?symbology=qr|code128`` ;
+    ``?sortie=html`` pour l'aperçu navigateur. Le code encodé est celui que le
+    poste scanner NTWMS5 résout directement. Réutilise le moteur d'étiquettes
+    existant (``labels.py``) — aucun second moteur d'impression.
+    """
+    from django.http import HttpResponse
+
+    from .. import labels
+    from ..models_wms import LignePicking
+
+    emplacement_id = request.query_params.get('emplacement')
+    if not str(emplacement_id or '').isdigit():
+        return Response(
+            {'detail': 'Précisez l\'emplacement dont vous voulez les '
+                       'étiquettes de casier.'},
+            status=status.HTTP_400_BAD_REQUEST)
+
+    # Le modèle de casier est atteint par l'accesseur de NOTRE string-FK :
+    # aucun import de `apps.installations.models`.
+    modele_bin = LignePicking._meta.get_field('bin').related_model
+    casiers = (modele_bin.objects
+               .filter(company=request.user.company,
+                       emplacement_id=int(emplacement_id), archived=False)
+               .select_related('emplacement')
+               .order_by('ordre', 'code'))
+    if not casiers:
+        return Response(
+            {'detail': 'Aucun casier à imprimer pour cet emplacement.'},
+            status=status.HTTP_404_NOT_FOUND)
+
+    symbology = request.query_params.get('symbology', 'qr')
+    if symbology not in ('qr', 'code128'):
+        symbology = 'qr'
+    html = labels.render_etiquettes_casiers_html([{
+        'code': casier.code,
+        'zone': casier.zone or '',
+        'allee': casier.allee or '',
+        'casier': casier.casier or '',
+        'emplacement': (casier.emplacement.nom
+                        if casier.emplacement_id else ''),
+    } for casier in casiers], symbology=symbology)
+    if request.query_params.get('sortie') == 'html':
+        return HttpResponse(html, content_type='text/html; charset=utf-8')
+
+    from apps.ventes.utils.pdf import _html_to_pdf
+    reponse = HttpResponse(_html_to_pdf(html), content_type='application/pdf')
+    reponse['Content-Disposition'] = (
+        f'inline; filename="etiquettes-casiers-{emplacement_id}.pdf"')
+    return reponse
+
+
+@extend_schema(responses={
     200: inline_serializer('StockReslottingSuggestions', {
         'suggestions': serializers.ListField(child=serializers.DictField()),
     }),

@@ -21,7 +21,7 @@ from .views import (
     PortailTiersTokenViewSet, DemandeTransfertViewSet, RetourClientViewSet,
     MouvementRebutViewSet, PlanChargementViewSet, BlocageQualiteViewSet,
     entrepot_productivite_view, entrepot_pertes_view,
-    reslotting_suggestions_view,
+    reslotting_suggestions_view, casiers_etiquettes_pdf_view,
     scanner_resoudre_view, scanner_mouvement_view,
 )
 
@@ -93,6 +93,9 @@ urlpatterns = [
     # NTWMS30 - suggestions de reslotting (lecture seule, aucune action auto).
     path('reslotting-suggestions/', reslotting_suggestions_view,
          name='stock-reslotting-suggestions'),
+    # NTWMS32 - planche d'etiquettes de casier a coller en rayonnage.
+    path('casiers/etiquettes-pdf/', casiers_etiquettes_pdf_view,
+         name='stock-casiers-etiquettes-pdf'),
     # NTWMS5 - poste scanner mobile (resolution universelle + mouvement scanne).
     path('scanner/resoudre/', scanner_resoudre_view,
          name='stock-scanner-resoudre'),
