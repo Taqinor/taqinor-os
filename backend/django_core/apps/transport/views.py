@@ -280,6 +280,51 @@ class CoutFretReelViewSet(CompanyScopedModelViewSet):
             ordre_transport=serializer.validated_data.get('ordre_transport'))
         serializer.save(company=self.request.user.company)
 
+    # ── NTLOG27 — export comptable des coûts de fret ─────────────────────
+    # YRBAC4 — garde DÉCLARÉE. GET = méthode sûre, ouverte à tout utilisateur
+    # authentifié de la société (motif `DossierExportViewSet.export`,
+    # NTLOG47 — rapprochement comptable, pas une décision qui engage
+    # l'entreprise).
+    @action(detail=False, methods=['get'], url_path='export',
+            permission_classes=[ScopedPermission],
+            content_negotiation_class=_ExportFormatContentNegotiation)
+    def export(self, request):
+        """NTLOG27 — ``couts-fret/export/?periode=YYYY-MM`` génère un .xlsx
+        listant les coûts de fret par ordre/BCF/période (réutilise le
+        pattern ``export=xlsx`` de ``apps.douane.views``/``reporting``) pour
+        rapprochement comptable manuel avant intégration éventuelle dans
+        ``compta``. Filtre par ``created_at`` — EXACTEMENT le même filtre que
+        `selectors.tableau_bord_logistique` (NTLOG24) : le total exporté ici
+        correspond au dernier chiffre près au total affiché sur son
+        dashboard pour la même période (critère d'acceptation)."""
+        from . import selectors
+
+        periode = request.query_params.get('periode')
+        qs = selectors._filtre_periode(
+            self.get_queryset().order_by('ordre_transport_id', 'id'),
+            periode)
+
+        headers = [
+            'Ordre de transport', 'BCF (stock.BonCommandeFournisseur)',
+            'Type de coût', 'Montant HT', 'Devise', 'Date',
+        ]
+        rows = [
+            [
+                c.ordre_transport.numero or f'#{c.ordre_transport_id}',
+                c.stock_boncommandefournisseur_id or '',
+                c.get_type_cout_display(),
+                c.montant_ht,
+                c.devise,
+                c.created_at.date().isoformat(),
+            ]
+            for c in qs
+        ]
+
+        from apps.records.xlsx import build_xlsx_response
+        return build_xlsx_response(
+            'couts-fret-transport.xlsx', headers, rows,
+            sheet_title='Coûts de fret')
+
 
 class LitigeTransportViewSet(CompanyScopedModelViewSet):
     """NTLOG17 — litiges transport, machine à états calquée sur
