@@ -182,6 +182,18 @@ class RechercheGlobaleView(GenericAPIView):
     # cette vue n'ajoute rien au cliquet, qui ne peut que décroître.
     serializer_class = RechercheGlobaleRequeteSerializer
 
+    def get_queryset(self):
+        """Index sémantique de la SOCIÉTÉ de l'appelant, jamais au-delà.
+
+        La recherche elle-même passe par ``recherche_globale(company=...)``
+        ; ce ``get_queryset`` rend ce périmètre EXPLICITE et vérifiable par
+        la garde d'isolation multi-société (YDATA21), au lieu de le laisser
+        enfoui dans le service.
+        """
+        from core.models import SearchChunk
+
+        return SearchChunk.objects.filter(company=self.request.user.company)
+
     @extend_schema(responses=inline_serializer('RechercheGlobaleReponse', {
         'question': drf_serializers.CharField(),
         'reponse': drf_serializers.CharField(),

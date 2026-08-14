@@ -381,7 +381,7 @@ export class Outbox {
 // Elles partagent la MÊME base IndexedDB, le MÊME moteur et le MÊME badge : ce
 // sont des clés, pas des outbox concurrents.
 
-// DOIT rester aligné sur `OfflineOperation.Module` (backend, apps/offlinesync).
+// source-choix: offlinesync.OfflineOperation.module
 export const OFFLINE_MODULES = ['crm', 'ventes', 'stock', 'installations', 'sav']
 
 // Point de synchro unique, côté serveur : POST /offlinesync/operations/batch/.
