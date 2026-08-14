@@ -176,14 +176,63 @@ def cloturer_of(of, user=None):
 
 
 def confirmer_of(of, user=None):
-    """NTMFG3 — confirme un OF brouillon : instancie ses opérations depuis la
-    gamme, calcule les dates prévues (capacité poste), passe le statut à
-    `planifie`. Idempotent (rappeler sur un OF déjà planifié ne recrée rien)."""
+    """NTMFG3/6 — confirme un OF brouillon : instancie ses opérations depuis
+    la gamme, calcule les dates prévues (capacité poste), sème les
+    réservations de composants (NTMFG6), passe le statut à `planifie`.
+    Idempotent (rappeler sur un OF déjà planifié ne recrée/rejoue rien)."""
     from .models import OrdreFabrication
 
     with transaction.atomic():
         planifier_of(of)
+        reserver_composants_of(of)
         if of.statut == OrdreFabrication.Statut.BROUILLON:
             of.statut = OrdreFabrication.Statut.PLANIFIE
             of.save(update_fields=['statut'])
     return of
+
+
+# ── NTMFG6 — Réservation de composants sur l'Ordre de Fabrication ────────
+
+def reserver_composants_of(of):
+    """NTMFG6 — sème les `ReservationOF` depuis la nomenclature résolue de
+    l'OF (même source que le backflush NTMFG4, `_composants_of`). Idempotent :
+    ne recrée rien si l'OF a déjà des réservations."""
+    from .models import ReservationOF
+
+    if of.reservations.exists():
+        return list(of.reservations.all())
+    composants = _composants_of(of)
+    return [
+        ReservationOF.objects.create(
+            ordre_fabrication=of, produit_id=c['produit_id'],
+            quantite=_dec(c['quantite']))
+        for c in composants
+    ]
+
+
+def liberer_reservations_of(of):
+    """NTMFG6 — libère (supprime) les réservations NON encore consommées de
+    cet OF (annulation). Les réservations déjà `consomme=True` (backflush
+    passé) sont conservées comme trace historique."""
+    from .models import ReservationOF
+
+    return ReservationOF.objects.filter(
+        ordre_fabrication=of, consomme=False).delete()[0]
+
+
+def annuler_of(of, user=None, motif=''):
+    """NTMFG6 — annule un OF : libère ses réservations, passe le statut à
+    `annule`. Refuse si le stock a déjà été mouvementé (NTMFG4) — comme
+    XMFG4, une annulation ne défait jamais un backflush déjà posé."""
+    from .models import OrdreFabrication
+
+    with transaction.atomic():
+        locked = OrdreFabrication.objects.select_for_update().get(pk=of.pk)
+        if locked.stock_mouvemente:
+            raise ValueError(
+                "Impossible d'annuler un OF dont le stock a déjà été "
+                "mouvementé.")
+        liberer_reservations_of(locked)
+        locked.statut = OrdreFabrication.Statut.ANNULE
+        locked.save(update_fields=['statut'])
+    return locked

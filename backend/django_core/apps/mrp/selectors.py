@@ -133,3 +133,38 @@ def calculer_besoins_nets(company, *, produits=None, demande_independante=None,
         _traiter(produit_id)
 
     return sorted(resultats.values(), key=lambda r: r['produit_nom'].lower())
+
+
+# ── NTMFG6 — dispo par ligne de réservation d'un OF ──────────────────────
+
+def disponibilite_par_ligne_of(of):
+    """NTMFG6 — pour chaque `ReservationOF` de cet OF, la disponibilité
+    courante du produit réservé (statut disponible/partiel/manquant).
+    Lecture seule, ne modifie aucune réservation."""
+    from apps.stock.selectors import get_produit_scoped
+    from apps.stock.services import available_quantity
+
+    lignes = []
+    for reservation in of.reservations.select_related('produit').all():
+        produit_obj = reservation.produit or get_produit_scoped(
+            of.company, reservation.produit_id)
+        if produit_obj is None:
+            continue
+        dispo = _dec(available_quantity(produit_obj))
+        quantite = _dec(reservation.quantite)
+        if dispo <= 0:
+            statut = 'manquant'
+        elif dispo >= quantite:
+            statut = 'disponible'
+        else:
+            statut = 'partiel'
+        lignes.append({
+            'reservation_id': reservation.id,
+            'produit_id': produit_obj.id,
+            'produit_nom': produit_obj.nom,
+            'quantite_reservee': str(quantite),
+            'disponible': str(dispo),
+            'consomme': reservation.consomme,
+            'statut': statut,
+        })
+    return lignes

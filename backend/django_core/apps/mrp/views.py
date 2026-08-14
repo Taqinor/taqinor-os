@@ -116,6 +116,27 @@ class OrdreFabricationViewSet(CompanyScopedModelViewSet):
         of.refresh_from_db()
         return Response(self.get_serializer(of).data)
 
+    @action(detail=True, methods=['post'], url_path='annuler')
+    def annuler(self, request, pk=None):
+        """NTMFG6 — annule l'OF : libère ses réservations de composants.
+        Refuse (400) si le stock a déjà été mouvementé."""
+        from .services import annuler_of
+        of = self.get_object()
+        try:
+            annuler_of(of, user=request.user, motif=request.data.get('motif', ''))
+        except ValueError as exc:
+            return Response({'detail': str(exc)}, status=400)
+        of.refresh_from_db()
+        return Response(self.get_serializer(of).data)
+
+    @action(detail=True, methods=['get'], url_path='dispo-composants')
+    def dispo_composants(self, request, pk=None):
+        """NTMFG6 — disponibilité par ligne réservée (disponible/partiel/
+        manquant)."""
+        from .selectors import disponibilite_par_ligne_of
+        of = self.get_object()
+        return Response(disponibilite_par_ligne_of(of))
+
 
 class OperationOFViewSet(viewsets.ModelViewSet):
     """NTMFG3 — opérations d'un OF. Pas de `company` propre : scope via l'OF

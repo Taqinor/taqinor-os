@@ -250,3 +250,35 @@ class OperationOF(models.Model):
 
     def __str__(self):
         return f'{self.ordre_fabrication_id} · {self.ordre}. {self.libelle}'
+
+
+class ReservationOF(models.Model):
+    """NTMFG6 — réservation de composant sur un OF (miroir de
+    `installations.ReservationAssemblage`, mais au niveau
+    `mrp.OrdreFabrication`). Pas de `company` propre — scopée via
+    `ordre_fabrication.company`. Bookkeeping MRP interne : n'affecte PAS le
+    disponible cross-app (`stock.services.available_quantity`, qui reste
+    dérivé des seules réservations `installations`) — visible uniquement sur
+    l'écran de l'OF via `selectors.disponibilite_par_ligne_of`."""
+
+    ordre_fabrication = models.ForeignKey(
+        OrdreFabrication, on_delete=models.CASCADE, related_name='reservations')
+    produit = models.ForeignKey(
+        'stock.Produit', on_delete=models.PROTECT,
+        related_name='mrp_reservations_of')
+    quantite = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    consomme = models.BooleanField(default=False)
+    date_creation = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Réservation d'OF"
+        verbose_name_plural = "Réservations d'OF"
+        ordering = ['ordre_fabrication_id', 'id']
+        indexes = [
+            models.Index(fields=['ordre_fabrication'],
+                         name='mrp_resof_of_idx'),
+            models.Index(fields=['produit'], name='mrp_resof_produit_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.ordre_fabrication_id} · {self.produit_id} × {self.quantite}'

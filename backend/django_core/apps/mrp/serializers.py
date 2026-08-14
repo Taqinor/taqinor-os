@@ -1,6 +1,9 @@
 from rest_framework import serializers
 
-from .models import Gamme, OperationGamme, OperationOF, OrdreFabrication, PosteDeCharge
+from .models import (
+    Gamme, OperationGamme, OperationOF, OrdreFabrication, PosteDeCharge,
+    ReservationOF,
+)
 
 
 class PosteDeChargeSerializer(serializers.ModelSerializer):
@@ -55,8 +58,19 @@ class OperationOFSerializer(serializers.ModelSerializer):
         read_only_fields = ['id']
 
 
+class ReservationOFSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ReservationOF
+        fields = [
+            'id', 'ordre_fabrication', 'produit', 'quantite', 'consomme',
+            'date_creation',
+        ]
+        read_only_fields = ['id', 'date_creation']
+
+
 class OrdreFabricationSerializer(serializers.ModelSerializer):
     operations = OperationOFSerializer(many=True, read_only=True)
+    reservations = ReservationOFSerializer(many=True, read_only=True)
 
     class Meta:
         model = OrdreFabrication
@@ -64,7 +78,7 @@ class OrdreFabricationSerializer(serializers.ModelSerializer):
             'id', 'produit', 'quantite', 'gamme', 'statut',
             'date_debut_planifiee', 'date_fin_planifiee', 'priorite',
             'kit_ordre_assemblage', 'stock_mouvemente', 'operations',
-            'created_at', 'updated_at',
+            'reservations', 'created_at', 'updated_at',
         ]
         read_only_fields = [
             'id', 'statut', 'date_debut_planifiee', 'date_fin_planifiee',
