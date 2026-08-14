@@ -12,7 +12,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('authentication', '0027_company_tours_actifs'),
+        ('authentication', '0028_company_tours_actifs'),
         ('onboarding', '0006_seed_ntdmo26_items'),
     ]
 

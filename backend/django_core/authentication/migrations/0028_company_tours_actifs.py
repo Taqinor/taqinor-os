@@ -11,7 +11,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('authentication', '0026_ntmob6_customuser_mobile_home_route'),
+        ('authentication', '0027_ntadm22_customuser_is_taqinor_support'),
     ]
 
     operations = [
