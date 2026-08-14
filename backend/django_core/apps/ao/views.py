@@ -215,6 +215,19 @@ class AppelOffreViewSet(AoBaseViewSet):
     #: AOF12 — filtres d'égalité exposés en paramètres de requête.
     FILTRES_EXACTS = ('statut', 'type_marche', 'mode_passation')
 
+    def get_serializer_context(self):
+        """PV68 — la synthèse de calepinage est un bloc de DÉTAIL.
+
+        Elle coûte deux requêtes par affaire : la calculer sur une LISTE ferait
+        cinquante requêtes pour une donnée qu'aucune liste n'affiche. La clé
+        reste publiée dans les deux cas (``null`` en liste) — voir
+        ``AppelOffreSerializer.get_synthese_calepinage``.
+        """
+        contexte = super().get_serializer_context()
+        contexte['synthese_calepinage'] = getattr(self, 'action', '') in (
+            'retrieve', 'update', 'partial_update')
+        return contexte
+
     def get_queryset(self):
         params = self.request.query_params
         qs = _filtres_exacts(

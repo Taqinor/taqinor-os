@@ -45,6 +45,22 @@ from .models import (
 
 # ── FG222 — Appels d'offres ────────────────────────────────────────────────
 
+class SyntheseCalepinageAffaireSerializer(serializers.Serializer):
+    """PV68 — la synthèse de calepinage d'une affaire, forme DÉCLARÉE.
+
+    PACT7 : un « type: object » sans propriété ne contredit rien. Les cinq clés
+    que ``selectors.synthese_calepinage_affaire`` renvoie TOUJOURS sont donc
+    nommées ici.
+    """
+
+    total_modules = serializers.IntegerField(read_only=True)
+    total_kwc = serializers.FloatField(read_only=True)
+    toitures_total = serializers.IntegerField(read_only=True)
+    toitures_calepinees = serializers.IntegerField(read_only=True)
+    toitures = serializers.ListField(child=serializers.JSONField(),
+                                     read_only=True)
+
+
 class AppelOffreSerializer(serializers.ModelSerializer):
     type_marche_display = serializers.CharField(
         source='get_type_marche_display', read_only=True)
@@ -65,6 +81,8 @@ class AppelOffreSerializer(serializers.ModelSerializer):
     surface_toitures_m2 = serializers.DecimalField(
         max_digits=12, decimal_places=3, read_only=True)
     engagement_modules_batiments = serializers.IntegerField(read_only=True)
+    # PV68 — la synthèse de calepinage de l'affaire (variantes RETENUES).
+    synthese_calepinage = serializers.SerializerMethodField()
 
     class Meta:
         model = AppelOffre
@@ -80,9 +98,25 @@ class AppelOffreSerializer(serializers.ModelSerializer):
             'engagement_modules_batiments', 'surface_toitures_m2',
             'montant_estime', 'montant_offre_ht', 'montant_offre_ttc',
             'caution_provisoire', 'statut', 'statut_display', 'lead_id',
-            'date_creation',
+            'date_creation', 'synthese_calepinage',
         ]
         read_only_fields = ['date_creation']
+
+    @extend_schema_field(SyntheseCalepinageAffaireSerializer)
+    def get_synthese_calepinage(self, obj):
+        """PV68 — bloc de DÉTAIL : ``null`` en liste, et c'est délibéré.
+
+        La synthèse coûte deux requêtes par affaire. Sur une liste de vingt-cinq
+        dossiers, ce serait cinquante requêtes pour une donnée qu'aucune liste
+        n'affiche. La CLÉ, elle, est toujours là : un écran qui reçoit parfois
+        une clé et parfois pas finit par tester l'absence de clé au lieu de
+        l'absence de données, et c'est là qu'il casse.
+        """
+        if not self.context.get('synthese_calepinage'):
+            return None
+        from . import selectors
+
+        return selectors.synthese_calepinage_affaire(obj)
 
 
 # ── AOF18 — Bâtiments et toitures ──────────────────────────────────────────
