@@ -530,8 +530,36 @@ class EmplacementStockSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = EmplacementStock
-        fields = ['id', 'nom', 'is_principal', 'ordre', 'archived']
+        fields = [
+            'id', 'nom', 'is_principal', 'ordre', 'archived',
+            # NTWMS19 — stock 3PL (chez des tiers / de tiers).
+            'type_proprietaire', 'tiers_nom',
+        ]
         read_only_fields = ['is_principal']
+
+    def validate(self, attrs):
+        """NTWMS19 — le dépôt PRINCIPAL reste toujours interne (il porte le
+        stock non ventilé de la société) ; un emplacement de tiers doit
+        nommer son tiers."""
+        instance = getattr(self, 'instance', None)
+        type_proprietaire = attrs.get(
+            'type_proprietaire',
+            getattr(instance, 'type_proprietaire',
+                    EmplacementStock.TypeProprietaire.INTERNE))
+        tiers_nom = attrs.get(
+            'tiers_nom', getattr(instance, 'tiers_nom', '') or '')
+        est_principal = getattr(instance, 'is_principal', False)
+        if (est_principal
+                and type_proprietaire
+                != EmplacementStock.TypeProprietaire.INTERNE):
+            raise serializers.ValidationError(
+                {'type_proprietaire': 'Le dépôt principal est toujours '
+                                      'interne.'})
+        if (type_proprietaire != EmplacementStock.TypeProprietaire.INTERNE
+                and not tiers_nom.strip()):
+            raise serializers.ValidationError(
+                {'tiers_nom': 'Nommez le tiers concerné par cet emplacement.'})
+        return attrs
 
 
 class TransfertStockSerializer(serializers.ModelSerializer):

@@ -731,19 +731,52 @@ def _cout_moyen_produit_a_date(produit, date):
     return (produit.prix_achat or Decimal('0')), 'catalogue'
 
 
+def quantite_de_tiers(company, produit=None):
+    """NTWMS19 — quantité qui appartient à un TIERS et dort dans nos murs.
+
+    Somme des ``StockEmplacement`` posés sur un emplacement
+    ``type_proprietaire=DE_TIERS``. Cette marchandise reste pilotable
+    opérationnellement mais n'est JAMAIS un actif de la société : elle est
+    retirée de toute valorisation comptable. Sans emplacement DE_TIERS (le
+    cas de toutes les sociétés existantes), renvoie 0 — comportement
+    historique strictement inchangé.
+
+    ``produit`` — un produit précis, ou ``None`` pour la carte complète
+    ``{produit_id: quantite}``.
+    """
+    from .models import EmplacementStock, StockEmplacement
+
+    qs = StockEmplacement.objects.filter(
+        company=company,
+        emplacement__type_proprietaire=(
+            EmplacementStock.TypeProprietaire.DE_TIERS))
+    if produit is not None:
+        return sum(
+            qs.filter(produit=produit).values_list('quantite', flat=True))
+    carte = {}
+    for produit_id, quantite in qs.values_list('produit_id', 'quantite'):
+        carte[produit_id] = carte.get(produit_id, 0) + (quantite or 0)
+    return carte
+
+
 def valorisation_a_date(company, date):
     """XSTK13 — valorisation du stock reconstruite À UNE DATE PASSÉE.
 
     Renvoie {date, total, lignes:[{produit_id, sku, designation, quantite,
     cout_moyen, valeur, source}]} — une ligne par produit dont la quantité
     reconstruite à `date` est non nulle. INTERNE (admin) — jamais
-    client-facing."""
+    client-facing.
+
+    NTWMS19 — la quantité appartenant à un TIERS (emplacement DE_TIERS) est
+    retirée : elle est dans nos murs, jamais dans notre bilan."""
     from .models import Produit
     produits = Produit.objects.filter(company=company)
+    de_tiers = quantite_de_tiers(company)
     lignes = []
     total = Decimal('0')
     for p in produits:
         quantite = _quantite_produit_a_date(p, date)
+        quantite = max(quantite - de_tiers.get(p.id, 0), 0)
         if quantite == 0:
             continue
         cout, source = _cout_moyen_produit_a_date(p, date)
@@ -825,7 +858,12 @@ def creer_revalorisation(*, company, produit, nouveau_cout, motif, user):
         raise ValueError('Le motif de la revalorisation est obligatoire.')
     ancien_cout, _source = average_cost_with_source(produit)
     nouveau_cout = Decimal(str(nouveau_cout))
-    quantite = produit.quantite_stock or 0
+    # NTWMS19 — le stock DE TIERS présent dans nos murs n'est pas notre actif :
+    # il ne participe jamais au delta de revalorisation (0 sans emplacement
+    # DE_TIERS, soit le comportement historique de toutes les sociétés).
+    quantite = max(
+        (produit.quantite_stock or 0)
+        - quantite_de_tiers(company, produit=produit), 0)
     delta = (nouveau_cout - ancien_cout) * quantite
     return RevalorisationStock.objects.create(
         company=company, produit=produit, ancien_cout=ancien_cout,

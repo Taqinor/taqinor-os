@@ -1072,6 +1072,13 @@ class EmplacementStock(models.Model):
     que tout le stock existant est par défaut au dépôt principal et que le
     comportement actuel est strictement inchangé. Entièrement additif.
     """
+    # NTWMS19 — À QUI appartient le stock qui dort dans cet emplacement.
+    # INTERNE (défaut) = comportement historique strict, rien ne change.
+    class TypeProprietaire(models.TextChoices):
+        INTERNE = 'interne', 'Interne (notre stock, nos murs)'
+        CHEZ_TIERS = 'chez_tiers', 'Notre stock chez un tiers (3PL, dépôt loué)'
+        DE_TIERS = 'de_tiers', 'Stock d\'un tiers dans nos murs (dépôt-vente)'
+
     company = models.ForeignKey(
         'authentication.Company', on_delete=models.CASCADE,
         null=True, blank=True, related_name='emplacements_stock')
@@ -1082,6 +1089,20 @@ class EmplacementStock(models.Model):
                   'par société).')
     ordre = models.PositiveSmallIntegerField(default=100)
     archived = models.BooleanField(default=False)
+    # ── NTWMS19 — stock 3PL (chez des tiers / de tiers) ───────────────────
+    # CHEZ_TIERS : notre marchandise est physiquement chez un partenaire —
+    # elle reste NOTRE actif, donc valorisée normalement.
+    # DE_TIERS : la marchandise est chez nous mais appartient à un client ou
+    # un fournisseur — elle est gérée opérationnellement (entrées, sorties,
+    # casiers) mais JAMAIS valorisée dans NOTRE bilan (`valorisation_a_date`,
+    # `InventaireAnnuel`, `RevalorisationStock` l'excluent).
+    type_proprietaire = models.CharField(
+        max_length=20, choices=TypeProprietaire.choices,
+        default=TypeProprietaire.INTERNE)
+    tiers_nom = models.CharField(
+        max_length=150, blank=True, default='',
+        help_text='Nom du dépositaire (CHEZ_TIERS) ou du propriétaire du '
+                  'stock (DE_TIERS). Vide pour un emplacement interne.')
 
     class Meta:
         verbose_name = 'Emplacement de stock'
