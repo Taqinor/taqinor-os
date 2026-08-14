@@ -211,6 +211,12 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
             # PV18 — resynchronisation des lignes sur un nouveau calepinage
             # (écriture chirurgicale, jamais le statut).
             'sync_layout',
+            # PV41 — étude électrique du devis (GET affiche, POST recalcule).
+            # Même périmètre que le générateur (responsable + admin) : la garde
+            # doit être ICI, get_permissions PRIME sur le
+            # ``permission_classes`` de l'@action — qui déclare donc la MÊME
+            # classe pour ne jamais mentir sur la garde effective.
+            'conception_electrique',
         ]:
             return [IsResponsableOrAdmin()]
         elif self.action == 'destroy':
@@ -463,6 +469,41 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
                  'revision_possible': exc.revision_possible},
                 status=status.HTTP_409_CONFLICT)
         return Response(resultat)
+
+    @action(detail=True, methods=['get', 'post'],
+            url_path='conception-electrique',
+            permission_classes=[IsResponsableOrAdmin])
+    def conception_electrique(self, request, pk=None):
+        """PV41 — l'ÉTUDE ÉLECTRIQUE du devis, en UN SEUL appel.
+
+        ``GET`` renvoie l'étude rangée sur le devis, et la calcule si elle
+        n'existe pas encore. ``POST`` la RECALCULE en appliquant les
+        surcharges du corps (``dc_m``, ``ac_m``, ``phases``, ``regime``,
+        ``batterie``, ``zone_keraunique``, ``temp_froid_c``, ``temp_chaud_c``,
+        ``longueur_chaine_forcee``, ``plafond_kwc_par_onduleur`` — toute autre
+        clé est ignorée). Les DEUX rendent EXACTEMENT la même forme, celle du
+        contrat partagé ``contract_samples/conception_electrique.json``
+        (``chaines``, ``conformite``, ``ratio_dc_ac``, ``ratio_ac_dc``,
+        ``protections``, ``cables``, ``bom``, ``note``, ``parametres``) —
+        toutes les clés TOUJOURS présentes, une liste vide valant ``[]``.
+
+        Recalculer aux mêmes entrées n'écrit RIEN (empreinte identique,
+        idempotence QJ17). Aucun statut, aucune ligne, aucun prix n'est touché
+        — l'étude est une pièce technique et le moteur ne connaît aucun montant
+        (règle #4 : ``/proposal`` reste le seul chemin du PDF client). Scopé
+        société par ``get_queryset`` : un devis d'une autre société → 404.
+        """
+        from ..electrical_service import (
+            build_electrical_design, conception_electrique_stockee)
+
+        devis = self.get_object()  # borné société par get_queryset
+        if request.method == 'GET':
+            stockee = conception_electrique_stockee(devis)
+            if stockee is not None:
+                return Response(stockee)
+            return Response(build_electrical_design(devis))
+        surcharges = request.data if isinstance(request.data, dict) else {}
+        return Response(build_electrical_design(devis, overrides=surcharges))
 
     @action(detail=False, methods=['post'], url_path='atomic',
             permission_classes=[IsResponsableOrAdmin])
