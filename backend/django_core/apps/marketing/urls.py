@@ -29,7 +29,7 @@ from .views import (
     AvisClientViewSet,
     BilletEvenementViewSet,
     BlocContenuViewSet,
-    CampagneViewSet,
+    CampagneViewSetAudite,
     CommunicationEvenementViewSet,
     CompteFideliteViewSet,
     DomaineEnvoiViewSet,
@@ -79,7 +79,9 @@ from .views import (
 
 router = DefaultRouter()
 # ── Mailing / campagnes (FG201, XMKT*) ──────────────────────────────────────
-router.register(r'campagnes', CampagneViewSet, basename='mkt-campagne')
+# NTMKT45 — CampagneViewSetAudite (étend la classe compta SANS la modifier) :
+# journalise l'envoi réel d'une campagne dans apps.audit.
+router.register(r'campagnes', CampagneViewSetAudite, basename='mkt-campagne')
 router.register(r'envois-campagne', EnvoiCampagneViewSet,
                 basename='mkt-envoi-campagne')
 router.register(r'approbations-envoi-campagne', ApprobationEnvoiCampagneViewSet,

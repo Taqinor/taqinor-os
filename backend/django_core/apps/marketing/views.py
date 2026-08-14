@@ -291,10 +291,16 @@ def parametres_marketing_view(request):
         request.user.company)
     if request.method == 'GET':
         return Response(ParametresMarketingSerializer(parametres).data)
+    ancien_modele = parametres.modele_attribution
     serializer = ParametresMarketingSerializer(
         parametres, data=request.data, partial=(request.method == 'PATCH'))
     serializer.is_valid(raise_exception=True)
     serializer.save()
+    # NTMKT45 — journalise UNIQUEMENT un changement RÉEL du modèle
+    # d'attribution (NTMKT20), jamais un PATCH qui ne le touche pas.
+    if serializer.instance.modele_attribution != ancien_modele:
+        marketing_services.journaliser_modele_attribution(
+            serializer.instance, request.user, ancien_modele)
     return Response(serializer.data)
 
 
@@ -377,6 +383,10 @@ def export_campagnes_xlsx_view(request):
         statut=request.query_params.get('statut') or None,
         canal=request.query_params.get('canal') or None,
     )
+    # NTMKT45 — traçabilité RGPD des extractions.
+    marketing_services.journaliser_export_marketing(
+        request.user, request.user.company,
+        detail='Export XLSX des campagnes.')
     resp = HttpResponse(
         contenu,
         content_type=(
@@ -395,6 +405,10 @@ def export_envois_campagne_csv_view(request, pk=None):
     campagne = get_object_or_404(
         Campagne, pk=pk, company=request.user.company)
     contenu = marketing_services.export_envois_campagne_csv(campagne)
+    # NTMKT45 — traçabilité RGPD des extractions.
+    marketing_services.journaliser_export_marketing(
+        request.user, request.user.company, instance=campagne,
+        detail=f'Export CSV de la trace d\'envoi — campagne « {campagne.nom} ».')
     resp = HttpResponse(contenu, content_type='text/csv; charset=utf-8')
     resp['Content-Disposition'] = (
         f'attachment; filename="envois_campagne_{pk}.csv"')
@@ -414,6 +428,10 @@ def export_membres_segment_xlsx_view(request, pk=None):
     segment = get_object_or_404(
         SegmentMarketing, pk=pk, company=request.user.company)
     contenu = marketing_services.export_membres_segment_xlsx(segment)
+    # NTMKT45 — traçabilité RGPD des extractions.
+    marketing_services.journaliser_export_marketing(
+        request.user, request.user.company, instance=segment,
+        detail=f'Export XLSX des membres — segment « {segment.nom} ».')
     resp = HttpResponse(
         contenu,
         content_type=(
@@ -465,6 +483,23 @@ def importer_inscriptions_evenement_view(request, pk=None):
 # les modifier (jamais un import de leurs modèles, juste leur fonction
 # publique), pour ajouter la notification sans toucher à un fichier hors
 # périmètre CRM_VENTES.
+
+class CampagneViewSetAudite(CampagneViewSet):
+    """NTMKT45 — étend ``CampagneViewSet`` (``apps.compta.views``) SANS le
+    modifier : journalise l'envoi RÉEL d'une campagne (qui/quand/combien de
+    destinataires) dans ``apps.audit`` (jamais un second journal).
+    Enregistrée à la place de la classe de base UNIQUEMENT dans le routeur
+    marketing — la route legacy `/compta/…` continue de servir la classe de
+    base inchangée, sans journalisation."""
+
+    def envoyer(self, request, pk=None):
+        response = super().envoyer(request, pk)
+        if response.status_code == 200 and not response.data.get(
+                'approbation_requise'):
+            marketing_services.journaliser_envoi_campagne(
+                self.get_object(), request.user)
+        return response
+
 
 class EnqueteNPSViewSetNotifiant(EnqueteNPSViewSet):
     """NTMKT44 — étend ``EnqueteNPSViewSet`` (``apps.compta.views``) SANS le

@@ -1298,6 +1298,57 @@ def inscrire_evenement_et_notifier(evenement, *, nom, email='', telephone='',
     return inscription
 
 
+def journaliser_action_marketing(action, *, user, company, detail='',
+                                 instance=None):
+    """NTMKT45 — journalise une action marketing SENSIBLE dans
+    ``apps.audit`` (``AuditLog``, réservé au Directeur — jamais un second
+    journal). Best-effort via ``apps.audit.recorder.record`` (n'élève
+    jamais)."""
+    from apps.audit.recorder import record
+
+    record(action, instance=instance, company=company, user=user,
+           detail=detail)
+
+
+def journaliser_envoi_campagne(campagne, user):
+    """NTMKT45 — journalise l'envoi RÉEL d'une campagne (qui/quand/combien
+    de destinataires) dans ``apps.audit``."""
+    from apps.audit.models import AuditLog
+
+    journaliser_action_marketing(
+        AuditLog.Action.EMAIL, user=user, company=campagne.company,
+        instance=campagne,
+        detail=(f'Campagne « {campagne.nom} » envoyée '
+                f'({campagne.nb_destinataires} destinataire(s)).'),
+    )
+
+
+def journaliser_export_marketing(user, company, *, detail, instance=None):
+    """NTMKT45 — journalise un export de segment/campagne (NTMKT39/40) dans
+    ``apps.audit`` — traçabilité RGPD des extractions."""
+    from apps.audit.models import AuditLog
+
+    journaliser_action_marketing(
+        AuditLog.Action.EXPORT, user=user, company=company, detail=detail,
+        instance=instance)
+
+
+def journaliser_modele_attribution(parametres, user, ancien_modele):
+    """NTMKT45 — journalise la modification du modèle d'attribution société
+    (NTMKT20) dans ``apps.audit``. No-op si la valeur n'a pas réellement
+    changé (l'appelant compare avant d'invoquer cette fonction)."""
+    from apps.audit.recorder import record_field_change
+
+    record_field_change(
+        parametres, 'modele_attribution', ancien_modele,
+        parametres.modele_attribution, user=user,
+        field_label="Modèle d'attribution", company=parametres.company,
+        # Réglage technique, pas un événement métier lisible sur une fiche
+        # objet précise — jamais de doublon avec le chatter d'un lead/devis.
+        chatter=False,
+    )
+
+
 def attribution_comparaison(company, devis_id):
     """NTMKT20 — comparaison des 4 modèles d'attribution pour UN devis signé
     (aide à la décision, jamais un recalcul persistant). ``None`` si le devis
