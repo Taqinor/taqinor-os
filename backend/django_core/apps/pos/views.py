@@ -374,6 +374,30 @@ class VenteComptoirViewSet(viewsets.ModelViewSet):
         client — la marge n'apparaît que dans l'agrégat JSON, jamais ici)."""
         return selectors.export_dashboard_xlsx(company=request.user.company)
 
+    @action(detail=False, methods=['get'], url_path='dashboard-retail',
+            permission_classes=[IsResponsableOrAdmin])
+    def dashboard_retail(self, request):
+        """NTRET16 — Tableau de bord retail (panier moyen, transformation,
+        ventes/m², top produits/catégories/vendeurs, comparatif boutiques)."""
+        data = selectors.dashboard_retail(
+            company=request.user.company,
+            date_debut=request.query_params.get('date_debut'),
+            date_fin=request.query_params.get('date_fin'),
+            boutique=request.query_params.get('boutique'),
+            include_marge=_peut_voir_marge(request.user),
+        )
+        return Response(data)
+
+    @action(detail=False, methods=['get'], url_path='dashboard-retail-export',
+            permission_classes=[IsResponsableOrAdmin])
+    def dashboard_retail_export(self, request):
+        """NTRET16 — export xlsx du tableau de bord retail (jamais de marge)."""
+        return selectors.export_dashboard_retail_xlsx(
+            company=request.user.company,
+            date_debut=request.query_params.get('date_debut'),
+            date_fin=request.query_params.get('date_fin'),
+        )
+
 
 class SessionCaisseViewSet(viewsets.ModelViewSet):
     """XPOS4 — Sessions de caisse comptoir."""
