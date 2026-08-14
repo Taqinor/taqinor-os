@@ -968,8 +968,13 @@ class CompanyViewSet(viewsets.ModelViewSet):
         try:
             from apps.audit import recorder
             etat = 'activé' if company.mode_presentation_actif else 'désactivé'
+            # NOTE : code court à dessein — ``AuditLog.action`` est un
+            # CharField(max_length=20) (cf. audit/migrations/
+            # 0005_alter_auditlog_action.py) ; même convention que
+            # 'demo_company_reset'/'demo_company_purge' ci-dessous et dans
+            # ``authentication/tasks.py`` (codes démo bespoke, tous ≤20 car.).
             recorder.record(
-                'demo_mode_presentation_toggle', instance=company,
+                'demo_mode_toggle', instance=company,
                 company=company, user=user,
                 detail=f'Mode présentation {etat}.')
         except Exception:  # noqa: BLE001 — best-effort, jamais bloquant

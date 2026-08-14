@@ -16,7 +16,7 @@ from apps.onboarding.services import (
     demasquer_item_pour_societe, marquer_item_complete,
     masquer_item_pour_societe,
 )
-from apps.roles.models import Role
+from apps.roles.models import ALL_PERMISSIONS, Role
 
 User = get_user_model()
 
@@ -80,7 +80,14 @@ class MasquageServiceTest(TestCase):
 class MasquageEndpointTest(TestCase):
     def setUp(self):
         self.company = Company.objects.create(nom='Ep28', slug='co-ep28')
-        self.role_admin = Role.objects.create(company=self.company, nom='Administrateur')
+        # ``IsAdminOrResponsableTier`` dérive le palier de ``menu_tier`` (donc
+        # de ``role.permissions``/``est_systeme``, jamais du seul ``nom`` —
+        # cf. ``authentication.role_tiers.tier_for_role_fields``) : un rôle
+        # « Administrateur » sans ces champs retombe au palier 'normal' et
+        # se voit refuser l'accès, comme n'importe quel rôle limité.
+        self.role_admin = Role.objects.create(
+            company=self.company, nom='Administrateur',
+            permissions=ALL_PERMISSIONS, est_systeme=True)
         self.role_limite = Role.objects.create(company=self.company, nom='Commercial')
         self.admin = User.objects.create_user(
             'admin-28', password='x', company=self.company, role=self.role_admin)
