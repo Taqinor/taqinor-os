@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { useDispatch, useSelector } from 'react-redux'
 import api from '../../../api/axios'
 import crmApi from '../../../api/crmApi'
+import ventesApi from '../../../api/ventesApi'
 import {
   createLead, archiveLead, restoreLead,
 } from '../store/crmSlice'
@@ -35,6 +36,9 @@ import LeadDevisPanel from '../../../pages/crm/leads/LeadDevisPanel'
 import SigneDialog from '../../../pages/crm/leads/SigneDialog'
 import PlanActiviteDialog from '../../../pages/crm/leads/PlanActiviteDialog'
 import ConvertirClientDialog from '../../../pages/crm/leads/ConvertirClientDialog'
+// PV22 — les deux seuls moments où « Concevoir la toiture (3D) » a besoin d'une
+// décision humaine (plusieurs brouillons / refus de dimensionnement serveur).
+import ChoisirDevisPourDesign, { DevisAutoImpossibleDialog } from '../../ventes/ChoisirDevisPourDesign'
 
 // LW10 — Le shell `LeadWorkspace` : UNE fenêtre, deux enveloppes (Dialog quasi
 // plein écran depuis la liste/kanban ; pleine page à /crm/leads/:id), le scroll
@@ -212,6 +216,11 @@ export default function LeadWorkspace({
   const [planOpen, setPlanOpen] = useState(false)
   const [convertOpen, setConvertOpen] = useState(false)
   const [archiveBusy, setArchiveBusy] = useState(false)
+  // PV22 — « Concevoir la toiture (3D) » : la liste des brouillons à départager
+  // (plusieurs candidats) et le message SERVEUR quand le dimensionnement
+  // automatique est refusé. `null` = aucun dialogue ouvert.
+  const [choixDesign, setChoixDesign] = useState(null)
+  const [designBloque, setDesignBloque] = useState(null)
 
   // Ouverture directe sur un mode devis (⚡ d'une carte / liste).
   const devisIntentRan = useRef(false)
@@ -251,6 +260,58 @@ export default function LeadWorkspace({
     return changeStage(cible, { confirmeRecul: true })
   }, [changeStage, confirmerRecul, stageCourant, leadNom])
 
+  /* PV22 — « Concevoir la toiture (3D) » NE MÈNE PLUS À UN ÉCRAN VIDE.
+     La conception 3D travaille désormais SUR un devis (PV20/PV21) : le geste
+     résout donc d'abord quel devis calepiner.
+
+     * exactement 1 brouillon  → on l'ouvre, sans rien demander ;
+     * plusieurs brouillons    → on les montre et le commercial choisit (on ne
+                                 devine JAMAIS lequel est le bon) ;
+     * aucun brouillon         → le Copilote en dimensionne un depuis la fiche
+                                 (jamais un brouillon vide) ; s'il refuse (422),
+                                 son message FR est affiché tel quel et la seule
+                                 sortie est le générateur complet.
+
+     NOTE — `?statut=` n'est PAS un filtre du serveur (`DevisViewSet.
+     get_queryset` ne connaît que `?lead=`) : le tri par statut se fait donc ICI,
+     en clair, plutôt qu'en envoyant un paramètre silencieusement ignoré (qui
+     ferait ouvrir un devis accepté). */
+  const ouvrirConceptionToiture = useCallback(async () => {
+    if (!leadId) return
+    setChoixDesign(null)
+    setDesignBloque(null)
+
+    let brouillons = []
+    try {
+      const res = await ventesApi.getDevis({ lead: leadId })
+      const rows = Array.isArray(res?.data) ? res.data : (res?.data?.results ?? [])
+      brouillons = rows.filter((d) => d && d.statut === 'brouillon')
+    } catch { brouillons = [] }
+
+    if (brouillons.length === 1) {
+      navigate(`/ventes/devis/${brouillons[0].id}/design`)
+      return
+    }
+    if (brouillons.length > 1) {
+      setChoixDesign(brouillons)
+      return
+    }
+
+    try {
+      const res = await ventesApi.creerDevisAuto({ lead: leadId })
+      const nouveau = res?.data?.id
+      if (nouveau) {
+        navigate(`/ventes/devis/${nouveau}/design`)
+        return
+      }
+      setDesignBloque('Devis créé sans identifiant — ouvrez-le depuis la liste des devis.')
+    } catch (err) {
+      setDesignBloque(
+        err?.response?.data?.detail
+        || "Impossible de créer un devis pour ce lead — ouvrez le générateur.")
+    }
+  }, [leadId, navigate])
+
   // Contrat d'action des rails (IdentityRail/ContextRail — autres lanes) :
   // toutes les sorties/points de mutation passent par ici.
   const onAction = useCallback((type, payload) => {
@@ -259,8 +320,9 @@ export default function LeadWorkspace({
       case 'convert': return setConvertOpen(true)
       case 'plan': return setPlanOpen(true)
       case 'signe': return setSigneOpen(true)
+      // PV22 — le geste résout le devis à calepiner avant de naviguer.
       case 'toiture-3d':
-        return leaveGuard(() => { if (leadId) navigate(`/devis-design/${leadId}`) })
+        return leaveGuard(() => { ouvrirConceptionToiture() })
       // EZ5 — le payload reste la CHAÎNE de mode historique ('auto', 'remise',
       // 'onepage', 'premium', 'edit' — IdentityRail, palette, DevisTab sans
       // cible) ; il accepte EN PLUS un objet { mode, targetKwc } quand une
@@ -290,7 +352,8 @@ export default function LeadWorkspace({
       case 'close': return leaveGuard(onClose)
       default: return undefined
     }
-  }, [doArchive, leaveGuard, leadId, navigate, draft, onClose, setField, changeStageConfirme])
+  }, [doArchive, leaveGuard, draft, onClose, setField,
+    changeStageConfirme, ouvrirConceptionToiture])
 
   // ── File de rafale (◀▶ + J/K), gardée par leaveGuard (draft flushé) ───────
   const queueIndex = (leadsQueue && mode === 'edit')
@@ -758,6 +821,30 @@ export default function LeadWorkspace({
           lead={state.server}
           onClose={() => setConvertOpen(false)}
           onConverted={draft.refreshServer}
+        />
+      )}
+      {/* PV22 — plusieurs brouillons : le commercial départage. */}
+      {choixDesign && (
+        <ChoisirDevisPourDesign
+          open
+          devis={choixDesign}
+          onChoisir={(d) => {
+            setChoixDesign(null)
+            navigate(`/ventes/devis/${d.id}/design`)
+          }}
+          onClose={() => setChoixDesign(null)}
+        />
+      )}
+      {/* PV22 — le serveur refuse de dimensionner : son message, son geste. */}
+      {designBloque && (
+        <DevisAutoImpossibleDialog
+          open
+          message={designBloque}
+          onGenerateur={() => {
+            setDesignBloque(null)
+            navigate(`/ventes/devis/nouveau?lead=${encodeURIComponent(leadId)}`)
+          }}
+          onClose={() => setDesignBloque(null)}
         />
       )}
     </>

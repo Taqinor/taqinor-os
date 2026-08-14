@@ -54,6 +54,27 @@ const ventesApi = {
   shareLinkDevis: (id) => api.post(`/ventes/devis/${id}/share-link/`),
   // Révision : crée une nouvelle version (v2, v3…) d'un devis.
   reviserDevis: (id) => api.post(`/ventes/devis/${id}/reviser/`),
+  // PV20 — TOUT ce que l'écran de conception 3D doit savoir d'un devis, en UN
+  // SEUL appel : identité + statut, géométrie déjà enregistrée (roof_layout /
+  // pin / contour), cible vendue (panneaux, kWc, scénario), disponibilité de la
+  // carte, et `modifiable` + `raison_lecture_seule` — le motif de la lecture
+  // seule vient TOUJOURS du serveur, jamais rédigé côté écran. Forme figée par
+  // le contrat partagé `apps/ventes/contract_samples/devis_design_context.json`.
+  getDevisDesignContext: (id) => api.get(`/ventes/devis/${id}/design-context/`),
+  // PV21 — resynchronise les LIGNES du devis sur un nouveau calepinage. Mise à
+  // jour CHIRURGICALE d'un brouillon (quantité de panneaux + présence batterie,
+  // rien d'autre : prix négociés, remises, notes et groupes restent intacts) ;
+  // le STATUT n'est jamais écrit. Corps : `{layout}`. Renvoyer le MÊME layout
+  // ne fait aucune écriture (`inchange: true`). 409 `revision_possible: true` =
+  // le client a déjà cette version sous les yeux, le bon geste est « Réviser » ;
+  // 409 `revision_possible: false` = document clos (lecture seule).
+  syncDevisLayout: (id, body) => api.post(`/ventes/devis/${id}/sync-layout/`, body),
+  // PV22 — Copilote : crée un devis RÉSIDENTIEL automatiquement dimensionné
+  // depuis la fiche lead (jamais un brouillon vide). Corps `{lead}` (ou
+  // `{client}`). 422 + `detail` FR quand les données de dimensionnement
+  // manquent ou que le marché n'est pas résidentiel : le message vient du
+  // serveur et oriente vers le générateur complet.
+  creerDevisAuto: (data) => api.post('/ventes/devis/auto/', data),
   // QJ14 — Envoyer par email : PDF premium + lien tokenisé → client, consigne EmailLog, marque envoyé.
   envoyerEmailDevis: (id, payload = {}) => api.post(`/ventes/devis/${id}/envoyer-email/`, payload),
   // QG8 — « Envoyer » = flux WhatsApp : lien wa.me + lien tokenisé, marque envoyé.

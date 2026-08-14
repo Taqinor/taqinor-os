@@ -866,6 +866,30 @@ function DevisRow({ d, ctx }) {
                   Variante
                 </DropdownMenuItem>
               )}
+              {/* PV23 — porte d'entrée du CALEPINAGE depuis la liste. Un devis
+                  encore ouvert (brouillon / envoyé) se CONÇOIT — l'écran de
+                  conception resynchronise ses lignes (PV21). Un devis figé ne
+                  se conçoit plus : il se CONSULTE, et seulement s'il porte
+                  réellement un plan (`roof_layout`, exposé par le serializer —
+                  aucun champ backend ajouté pour cette entrée). */}
+              {(effStatut === 'brouillon' || effStatut === 'envoye') && (
+                <DropdownMenuItem
+                  onSelect={() => navigate(`/ventes/devis/${d.id}/design`)}
+                  aria-label={`Concevoir la toiture 3D de ${d.reference}`}
+                >
+                  <Box className="size-3.5" aria-hidden="true" />
+                  Concevoir en 3D
+                </DropdownMenuItem>
+              )}
+              {effStatut !== 'brouillon' && effStatut !== 'envoye' && d.roof_layout && (
+                <DropdownMenuItem
+                  onSelect={() => navigate(`/ventes/devis/${d.id}/3d`)}
+                  aria-label={`Voir le design 3D de ${d.reference}`}
+                >
+                  <Box className="size-3.5" aria-hidden="true" />
+                  Voir le design 3D
+                </DropdownMenuItem>
+              )}
               {/* QG11/QG12 — « Voir le design 3D » : ouvre le plan de toiture
                   (roof_layout) en lecture seule dans le détail, ou dans une
                   fenêtre séparée. N'apparaît que si un plan existe. */}
@@ -1099,15 +1123,29 @@ function DevisRow({ d, ctx }) {
               <p className="text-xs font-medium text-muted-foreground">
                 Design 3D de la toiture — {d.reference}
               </p>
-              <Button
-                size="sm"
-                variant="ghost"
-                onClick={() => window.open(`/ventes/devis/${d.id}/3d`, '_blank', 'noopener')}
-                title="Ouvrir dans une nouvelle fenêtre"
-              >
-                <ExternalLink className="size-3.5 mr-1" aria-hidden="true" />
-                Ouvrir dans une fenêtre
-              </Button>
+              <div className="flex items-center gap-2">
+                {/* PV23 — depuis l'aperçu, reprendre le calepinage (devis
+                    encore ouvert seulement : au-delà, le document est figé). */}
+                {(effStatut === 'brouillon' || effStatut === 'envoye') && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => navigate(`/ventes/devis/${d.id}/design`)}
+                    title="Reprendre le calepinage de cette toiture"
+                  >
+                    Concevoir en 3D
+                  </Button>
+                )}
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => window.open(`/ventes/devis/${d.id}/3d`, '_blank', 'noopener')}
+                  title="Ouvrir dans une nouvelle fenêtre"
+                >
+                  <ExternalLink className="size-3.5 mr-1" aria-hidden="true" />
+                  Ouvrir dans une fenêtre
+                </Button>
+              </div>
             </div>
             <div className="max-w-2xl">
               <RoofViewer layout={d.roof_layout} />
