@@ -106,7 +106,11 @@ class CatalogueAchatViewSet(TenantMixin, viewsets.ReadOnlyModelViewSet):
         return produits_recemment_demandes(
             self.request.user.company, self.request.user.pk, limite=limite)
 
-    @action(detail=False, methods=['get', 'put'])
+    # Garde EXPLICITE sur l'action (ratchet `test_action_permissions`) :
+    # même palier que le viewset, mais déclaré ici pour qu'une action ne
+    # puisse jamais hériter d'un palier par accident.
+    @action(detail=False, methods=['get', 'put'],
+            permission_classes=[IsAnyRole])
     def favoris(self, request):
         """NTP2P22 — favoris du demandeur pour l'écran de demande d'achat.
 

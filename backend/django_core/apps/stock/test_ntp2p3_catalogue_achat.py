@@ -103,14 +103,19 @@ class CatalogueAchatTests(TestCase):
         self.assertEqual(str(article['prix_achat_dernier']), '1000.00')
 
     def test_prix_achat_dernier_prend_le_tarif_fournisseur_recent(self):
+        # `PrixFournisseur` est UNIQUE par (produit, fournisseur) : le
+        # « tarif le plus récent » se compare donc ENTRE fournisseurs, pas
+        # entre deux lignes du même. Deux fournisseurs, deux dates.
         from apps.stock.models import PrixFournisseur
+        autre_fournisseur = Fournisseur.objects.create(
+            company=self.company, nom='SolarImport 2')
         PrixFournisseur.objects.create(
             company=self.company, produit=self.produit,
             fournisseur=self.fournisseur, prix_achat=880,
             date_dernier_achat=date(2026, 1, 5))
         PrixFournisseur.objects.create(
             company=self.company, produit=self.produit,
-            fournisseur=self.fournisseur, prix_achat=930,
+            fournisseur=autre_fournisseur, prix_achat=930,
             date_dernier_achat=date(2026, 6, 20))
         article = rows(self.api.get(URL))[0]
         self.assertEqual(str(article['prix_achat_dernier']), '930.00')

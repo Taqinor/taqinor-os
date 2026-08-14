@@ -1479,9 +1479,15 @@ def _documents_fournisseur(company, fournisseur_id):
             }
         return 0, {'dossier': None, 'expires': [], 'manquants': []}
     detail = progression_onboarding(dossier)
+    # Une pièce EXPIRÉE figure aussi dans `manquants` (elle n'est plus « reçue »
+    # — c'est voulu : elle doit bloquer comme une pièce absente). Mais pour le
+    # SCORE elle ne se paie pas deux fois : on ne compte en « manquant » que ce
+    # qui n'a jamais été fourni.
+    jamais_fournis = [t for t in detail['manquants']
+                      if t not in detail['expires']]
     penalite = min(
         PLAFOND_DOCUMENTS,
-        10 * len(detail['expires']) + 5 * len(detail['manquants']))
+        10 * len(detail['expires']) + 5 * len(jamais_fournis))
     return penalite, {
         'dossier': dossier.pk, 'statut_dossier': dossier.statut,
         'expires': detail['expires'], 'manquants': detail['manquants'],

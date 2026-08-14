@@ -24,7 +24,7 @@ from rest_framework_simplejwt.tokens import AccessToken
 from apps.stock import selectors as stock_selectors
 from apps.stock.models import (
     AchatsParametres, DocumentFournisseur, DossierOnboardingFournisseur,
-    Fournisseur,
+    Fournisseur, Produit,
 )
 
 User = get_user_model()
@@ -81,6 +81,9 @@ class OnboardingInactifTests(TestCase):
         self.api = auth(self.user)
         self.fournisseur = Fournisseur.objects.create(
             company=self.company, nom='SolarImport')
+        self.produit = Produit.objects.create(
+            company=self.company, nom='Panneau 710W',
+            prix_achat=800, prix_vente=1000)
 
     def test_flag_off_par_defaut(self):
         params = AchatsParametres.for_company(self.company)
@@ -104,6 +107,9 @@ class OnboardingInactifTests(TestCase):
         resp = self.api.post(f'{STOCK}/bons-commande-fournisseur/', {
             'fournisseur': self.fournisseur.pk,
             'date_commande': str(timezone.localdate()),
+            # `lignes` est obligatoire depuis la vague supply.
+            'lignes': [{'produit': self.produit.pk, 'quantite': 1,
+                        'prix_achat_unitaire': '800.00'}],
         }, format='json')
         self.assertEqual(resp.status_code, 201)
 
@@ -117,6 +123,9 @@ class OnboardingObligatoireTests(TestCase):
         self.api = auth(self.user)
         self.fournisseur = Fournisseur.objects.create(
             company=self.company, nom='SolarImport')
+        self.produit = Produit.objects.create(
+            company=self.company, nom='Panneau 710W',
+            prix_achat=800, prix_vente=1000)
         params = AchatsParametres.for_company(self.company)
         params.onboarding_fournisseur_obligatoire = True
         params.save(update_fields=['onboarding_fournisseur_obligatoire'])
@@ -125,6 +134,9 @@ class OnboardingObligatoireTests(TestCase):
         resp = self.api.post(f'{STOCK}/bons-commande-fournisseur/', {
             'fournisseur': self.fournisseur.pk,
             'date_commande': str(timezone.localdate()),
+            # `lignes` est obligatoire depuis la vague supply.
+            'lignes': [{'produit': self.produit.pk, 'quantite': 1,
+                        'prix_achat_unitaire': '800.00'}],
         }, format='json')
         self.assertEqual(resp.status_code, 400)
         self.assertIn('Onboarding', resp.data['detail'])
@@ -135,6 +147,9 @@ class OnboardingObligatoireTests(TestCase):
         resp = self.api.post(f'{STOCK}/bons-commande-fournisseur/', {
             'fournisseur': self.fournisseur.pk,
             'date_commande': str(timezone.localdate()),
+            # `lignes` est obligatoire depuis la vague supply.
+            'lignes': [{'produit': self.produit.pk, 'quantite': 1,
+                        'prix_achat_unitaire': '800.00'}],
         }, format='json')
         self.assertEqual(resp.status_code, 400)
         self.assertIn('Onboarding', resp.data['detail'])
@@ -152,6 +167,9 @@ class OnboardingObligatoireTests(TestCase):
         resp = self.api.post(f'{STOCK}/bons-commande-fournisseur/', {
             'fournisseur': self.fournisseur.pk,
             'date_commande': str(timezone.localdate()),
+            # `lignes` est obligatoire depuis la vague supply.
+            'lignes': [{'produit': self.produit.pk, 'quantite': 1,
+                        'prix_achat_unitaire': '800.00'}],
         }, format='json')
         self.assertEqual(resp.status_code, 201)
 
@@ -164,6 +182,9 @@ class ProgressionEtValidationTests(TestCase):
         self.api = auth(self.user)
         self.fournisseur = Fournisseur.objects.create(
             company=self.company, nom='SolarImport')
+        self.produit = Produit.objects.create(
+            company=self.company, nom='Panneau 710W',
+            prix_achat=800, prix_vente=1000)
         self.dossier = make_dossier(self.company, self.fournisseur)
 
     def test_progression_deux_pieces_sur_cinq(self):
