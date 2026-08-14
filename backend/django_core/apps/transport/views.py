@@ -160,22 +160,25 @@ class OrdreTransportViewSet(ChatterViewSetMixin, CompanyScopedModelViewSet):
     # agrégat avec `OrdreTransportSerializer` (le `serializer_class` de ce
     # ViewSet) alors qu'il renvoie une forme entièrement différente (motif
     # `apps.flotte.views.FlotteViewSet.tableau_bord`).
+    # Champs numériques en `FloatField` (pas `DecimalField`) : cette action
+    # renvoie un DICT BRUT (pas une instance passée par un `ModelSerializer`
+    # qui coercerait ses `Decimal` en chaînes) — `rest_framework.utils.
+    # encoders.JSONEncoder` convertit un `Decimal` non sérialisé en `float`,
+    # motif exact `apps.flotte.views.FlotteViewSet.tableau_bord` (mêmes
+    # `FloatField` sur son propre dict brut de coûts).
     @extend_schema(responses=inline_serializer('TransportTableauBordLogistique', {
         'periode': drf_serializers.CharField(allow_null=True),
         'nb_ordres': drf_serializers.IntegerField(),
         'nb_livres': drf_serializers.IntegerField(),
-        'total_fret_ht': drf_serializers.DecimalField(max_digits=14, decimal_places=2),
-        'poids_livre_kg': drf_serializers.DecimalField(max_digits=12, decimal_places=2),
-        'cout_par_kg_transporte': drf_serializers.DecimalField(
-            max_digits=16, decimal_places=6, allow_null=True),
+        'total_fret_ht': drf_serializers.FloatField(),
+        'poids_livre_kg': drf_serializers.FloatField(),
+        'cout_par_kg_transporte': drf_serializers.FloatField(allow_null=True),
         'taux_service_pct': drf_serializers.FloatField(allow_null=True),
         'litiges_ouverts_count': drf_serializers.IntegerField(),
-        'litiges_ouverts_montant_conteste': drf_serializers.DecimalField(
-            max_digits=14, decimal_places=2),
+        'litiges_ouverts_montant_conteste': drf_serializers.FloatField(),
         'repartition_mode_transport': drf_serializers.DictField(
             child=drf_serializers.IntegerField()),
-        'co2_total_estime_kg': drf_serializers.DecimalField(
-            max_digits=16, decimal_places=3),
+        'co2_total_estime_kg': drf_serializers.FloatField(),
     }))
     @action(detail=False, methods=['get'], url_path='tableau-bord-logistique',
             permission_classes=[ScopedPermission])
