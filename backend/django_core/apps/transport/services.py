@@ -125,3 +125,27 @@ def apres_changement_statut_etape(etape, ancien_statut, *, user=None):
         old_value=ancien_statut, new_value=etape.statut_etape)
     recalculer_statut_ordre(etape.ordre, user=user)
     return etape
+
+
+def creer_litige_depuis_reserve(reserve, *, user=None):
+    """NTLOG18 — une réserve saisie à la livraison crée automatiquement un
+    `LitigeTransport` « ouvert », avec référence croisée (`reserve.litige`).
+    Idempotent : no-op si la réserve porte déjà un litige."""
+    if reserve.litige_id:
+        return reserve.litige
+    from .models import LitigeTransport
+
+    litige = LitigeTransport.objects.create(
+        company=reserve.company,
+        ordre_transport=reserve.etape.ordre,
+        type_litige=LitigeTransport.TypeLitige.AVARIE,
+        statut=LitigeTransport.Statut.OUVERT,
+        montant_conteste=reserve.montant_estime_dommage or 0,
+        description=(
+            f'Réserve à réception (étape {reserve.etape.sequence}) : '
+            f'{reserve.nature_reserve}'.strip()),
+        created_by=user,
+    )
+    reserve.litige = litige
+    reserve.save(update_fields=['litige'])
+    return litige

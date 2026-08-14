@@ -4,7 +4,7 @@ from rest_framework import serializers
 
 from .models import (
     CoutFretReel, EtapeTransport, LigneOrdreTransport, LitigeTransport,
-    OrdreTransport,
+    OrdreTransport, ReserveReception,
 )
 
 
@@ -65,6 +65,20 @@ class LitigeTransportSerializer(serializers.ModelSerializer):
             'created_by', 'created_at',
         ]
         read_only_fields = ['statut', 'created_by', 'created_at']
+
+
+class ReserveReceptionSerializer(serializers.ModelSerializer):
+    """NTLOG18 — réserve à réception (photos via `records.Attachment`
+    générique). `litige` est posé côté serveur (référence croisée
+    automatique, `services.creer_litige_depuis_reserve`)."""
+
+    class Meta:
+        model = ReserveReception
+        fields = [
+            'id', 'etape', 'nature_reserve', 'montant_estime_dommage',
+            'litige', 'created_at',
+        ]
+        read_only_fields = ['litige', 'created_at']
 
 
 class OrdreTransportSerializer(serializers.ModelSerializer):

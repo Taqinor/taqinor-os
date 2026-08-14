@@ -270,3 +270,29 @@ class LitigeTransport(TenantModel):
 
     def __str__(self):
         return f'{self.type_litige} · {self.ordre_transport_id}'
+
+
+class ReserveReception(TenantModel):
+    """NTLOG18 — réserve saisie à la réception (au moment du POD), avec
+    photos via `records.Attachment` générique (jamais un nouveau
+    `FileField`). Sa création fait automatiquement naître un
+    `LitigeTransport` « ouvert » (`services.creer_litige_depuis_reserve`)."""
+
+    etape = models.ForeignKey(
+        EtapeTransport, on_delete=models.CASCADE, related_name='reserves')
+    nature_reserve = models.TextField(blank=True, default='')
+    montant_estime_dommage = models.DecimalField(
+        max_digits=14, decimal_places=2, null=True, blank=True)
+    # Référence croisée posée côté serveur à la création (jamais lue du
+    # corps de requête) — voir services.creer_litige_depuis_reserve.
+    litige = models.ForeignKey(
+        LitigeTransport, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='reserves')
+
+    class Meta:
+        verbose_name = 'Réserve à réception'
+        verbose_name_plural = 'Réserves à réception'
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f'Réserve · étape {self.etape_id}'

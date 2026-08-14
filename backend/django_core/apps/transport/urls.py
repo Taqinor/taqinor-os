@@ -16,6 +16,9 @@ router.register(
 router.register(
     'litiges-transport', views.LitigeTransportViewSet,
     basename='litiges-transport')
+router.register(
+    'reserves-reception', views.ReserveReceptionViewSet,
+    basename='reserves-reception')
 
 urlpatterns = [
     path('', include(router.urls)),

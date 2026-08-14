@@ -3,7 +3,8 @@
 `record_targets` déclare les cibles chatter/pièces jointes (ARC8/ARC26) :
 `OrdreTransport` reçoit le chatter générique (`ChatterViewSetMixin`, NTLOG8),
 `EtapeTransport` reçoit les photos/signatures de la preuve de livraison
-(NTLOG9, via `records.Attachment` générique). Sans cette déclaration,
+(NTLOG9), `ReserveReception` ses photos de réserve (NTLOG18) — toutes via
+`records.Attachment`/`records.Activity` génériques. Sans cette déclaration,
 `records.ALLOWED_TARGETS`/`records.Attachment` refusent ces cibles
 (« Type de cible non autorisé »).
 """
@@ -14,6 +15,7 @@ PLATFORM = {
     'record_targets': [
         'transport.ordretransport',
         'transport.etapetransport',
+        'transport.reservereception',
     ],
     'searchable_models': [],
     'customfield_models': [],

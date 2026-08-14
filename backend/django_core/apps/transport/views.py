@@ -13,12 +13,12 @@ from apps.records.views import ChatterViewSetMixin
 from . import services
 from .models import (
     CoutFretReel, EtapeTransport, LigneOrdreTransport, LitigeTransport,
-    OrdreTransport,
+    OrdreTransport, ReserveReception,
 )
 from .serializers import (
     CoutFretReelSerializer, EtapeTransportSerializer,
     LigneOrdreTransportSerializer, LitigeTransportSerializer,
-    OrdreTransportSerializer,
+    OrdreTransportSerializer, ReserveReceptionSerializer,
 )
 
 
@@ -255,3 +255,26 @@ class LitigeTransportViewSet(CompanyScopedModelViewSet):
                 LitigeTransport.Statut.EN_TRAITEMENT,
             },
             target=LitigeTransport.Statut.REJETE)
+
+
+class ReserveReceptionViewSet(CompanyScopedModelViewSet):
+    """NTLOG18 — réserve à réception, capturable depuis l'écran POD. Sa
+    création fait automatiquement naître un `LitigeTransport` ouvert
+    (`services.creer_litige_depuis_reserve`)."""
+
+    queryset = ReserveReception.objects.select_related('etape', 'litige').all()
+    serializer_class = ReserveReceptionSerializer
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        etape = self.request.query_params.get('etape')
+        if etape:
+            qs = qs.filter(etape_id=etape)
+        return qs
+
+    def perform_create(self, serializer):
+        _check_same_company(
+            self.request, etape=serializer.validated_data.get('etape'))
+        serializer.save(company=self.request.user.company)
+        services.creer_litige_depuis_reserve(
+            serializer.instance, user=self.request.user)
