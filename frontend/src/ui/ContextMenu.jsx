@@ -15,8 +15,11 @@ export const ContextMenuGroup = ContextMenuPrimitive.Group
 export const ContextMenuRadioGroup = ContextMenuPrimitive.RadioGroup
 export const ContextMenuSub = ContextMenuPrimitive.Sub
 
+// --z-popover, PAS --z-dropdown : même correctif que DropdownMenu.jsx — un menu
+// portalé à 1000 se peint DERRIÈRE une modale (--z-modal 1300) ouverte en frère
+// sur <body> ; clic muet. Cf. le commentaire détaillé dans DropdownMenu.jsx.
 const menuContent =
-  'z-[var(--z-dropdown)] min-w-44 overflow-hidden rounded-lg border border-border bg-popover p-1 text-popover-foreground shadow-ui-lg ' +
+  'z-[var(--z-popover)] min-w-44 overflow-hidden rounded-lg border border-border bg-popover p-1 text-popover-foreground shadow-ui-lg ' +
   'data-[state=open]:animate-pop-in data-[state=closed]:animate-pop-out focus:outline-none'
 
 const menuItem =
