@@ -9,7 +9,8 @@ crédit de points est déclenché EXCLUSIVEMENT par l'abonné
 from decimal import ROUND_DOWN, Decimal
 
 from django.db import IntegrityError, transaction
-from django.db.models import F
+from django.db.models import F, Sum
+from django.utils import timezone
 
 from .models import CompteFidelite, MouvementFidelite, ProgrammeFidelite
 
@@ -65,4 +66,62 @@ def crediter_points_pour_vente(*, company, client, montant_ttc, source_type,
             else f"Vente {source_type}",
             created_by=user,
         )
+        # NTRET10 — recalcule le palier DANS la même transaction : le compte
+        # est déjà verrouillé (select_for_update ci-dessus), donc pas de
+        # nouvelle course possible sur ce recalcul.
+        recalculer_palier(compte, user=user)
     return mouvement
+
+
+def recalculer_palier(compte, *, user=None):
+    """NTRET10 — recalcule le palier courant d'un compte fidélité.
+
+    Compare le solde de points ET le CA TTC cumulé de l'année civile en cours
+    aux seuils des paliers du programme actif (le plus haut ``ordre`` atteint
+    gagne). Trace tout changement au chatter générique
+    (``records.services.log_field_change`` — ARC8, jamais un nouveau modèle
+    de journal maison). Renvoie ``True`` si le palier a changé, ``False``
+    sinon (idempotent — pas de re-notification sur un re-passage).
+
+    Appelé depuis ``crediter_points_pour_vente`` DANS sa transaction : le
+    compte y est déjà verrouillé (``select_for_update``). Un appelant qui
+    invoquerait cette fonction hors de ce contexte devrait poser son propre
+    verrou s'il écrit en concurrence."""
+    programme = ProgrammeFidelite.objects.filter(
+        company=compte.company, actif=True).first()
+    if programme is None:
+        return False
+
+    annee = timezone.now().year
+    cumul_ca = MouvementFidelite.objects.filter(
+        compte=compte, type_mouvement=MouvementFidelite.TypeMouvement.GAIN,
+        created_at__year=annee,
+    ).aggregate(total=Sum('montant_source'))['total'] or Decimal('0')
+
+    meilleur = None
+    for palier in programme.paliers.order_by('-ordre'):
+        atteint_points = (
+            palier.seuil_points is not None
+            and compte.solde_points >= palier.seuil_points)
+        atteint_ca = (
+            palier.seuil_ca_cumule is not None
+            and cumul_ca >= palier.seuil_ca_cumule)
+        if atteint_points or atteint_ca:
+            meilleur = palier
+            break
+
+    nouveau_id = meilleur.id if meilleur else None
+    if nouveau_id == compte.palier_actuel_id:
+        return False
+
+    ancien = compte.palier_actuel
+    compte.palier_actuel = meilleur
+    compte.save(update_fields=['palier_actuel'])
+
+    from apps.records.services import log_field_change
+    log_field_change(
+        compte, 'palier_actuel',
+        ancien.libelle if ancien else '(aucun)',
+        meilleur.libelle if meilleur else '(aucun)',
+        user=user, field_label='Palier fidélité', company=compte.company)
+    return True

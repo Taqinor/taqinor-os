@@ -53,8 +53,54 @@ class ProgrammeFidelite(TenantModel):
         return f'{self.nom} ({"actif" if self.actif else "inactif"})'
 
 
+class PalierFidelite(TenantModel):
+    """Palier de fidélité (Bronze/Argent/Or…) — NTRET10.
+
+    Un compte franchit un palier quand son solde de points OU son CA TTC
+    cumulé de l'année civile atteint le seuil du palier (l'un des deux
+    seuils suffit — ``services.recalculer_palier`` retient le palier du plus
+    haut ``ordre`` atteint).
+    """
+
+    programme = models.ForeignKey(
+        ProgrammeFidelite, on_delete=models.CASCADE, related_name='paliers')
+    libelle = models.CharField(max_length=60)
+    ordre = models.PositiveSmallIntegerField(
+        help_text=(
+            'Rang croissant (1 = le plus bas). Détermine le palier retenu '
+            '(le plus haut `ordre` atteint gagne).'))
+    seuil_points = models.PositiveIntegerField(null=True, blank=True)
+    seuil_ca_cumule = models.DecimalField(
+        max_digits=12, decimal_places=2, null=True, blank=True,
+        help_text="Seuil de chiffre d'affaires TTC cumulé sur l'année civile.")
+    remise_pct = models.DecimalField(
+        max_digits=5, decimal_places=2, null=True, blank=True,
+        help_text='Remise automatique (%) appliquée à la caisse pour ce palier.')
+    points_bonus_pct = models.DecimalField(
+        max_digits=5, decimal_places=2, null=True, blank=True,
+        help_text='Bonus (%) de points supplémentaires accordé à ce palier.')
+
+    class Meta:
+        verbose_name = 'Palier de fidélité'
+        verbose_name_plural = 'Paliers de fidélité'
+        ordering = ['programme', 'ordre']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['programme', 'ordre'],
+                name='uniq_palierfidelite_programme_ordre'),
+            models.CheckConstraint(
+                check=(
+                    models.Q(seuil_points__isnull=False)
+                    | models.Q(seuil_ca_cumule__isnull=False)),
+                name='chk_palierfidelite_seuil_requis'),
+        ]
+
+    def __str__(self):
+        return f'{self.libelle} ({self.programme.nom})'
+
+
 class CompteFidelite(TenantModel):
-    """Compte fidélité d'un client (1-1) — solde de points courant.
+    """Compte fidélité d'un client (1-1) — solde de points courant + palier.
 
     Naît automatiquement au premier crédit de points
     (``services.crediter_points_pour_vente``), jamais d'une création
@@ -65,6 +111,9 @@ class CompteFidelite(TenantModel):
         'crm.Client', on_delete=models.CASCADE,
         related_name='compte_fidelite')
     solde_points = models.PositiveIntegerField(default=0)
+    palier_actuel = models.ForeignKey(
+        PalierFidelite, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='comptes')
 
     class Meta:
         verbose_name = 'Compte de fidélité'

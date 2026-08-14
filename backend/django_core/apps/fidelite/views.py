@@ -8,10 +8,10 @@ from rest_framework.response import Response
 
 from core.viewsets import CompanyScopedModelViewSet
 
-from .models import CompteFidelite, ProgrammeFidelite
+from .models import CompteFidelite, PalierFidelite, ProgrammeFidelite
 from .serializers import (
     CompteFideliteSerializer, MouvementFideliteSerializer,
-    ProgrammeFideliteSerializer,
+    PalierFideliteSerializer, ProgrammeFideliteSerializer,
 )
 
 
@@ -42,12 +42,27 @@ class ProgrammeFideliteViewSet(CompanyScopedModelViewSet):
                 {'actif': "Un programme actif existe déjà pour cette société."})
 
 
+class PalierFideliteViewSet(CompanyScopedModelViewSet):
+    """Paliers de fidélité (NTRET10) — filtrable par ``?programme=<id>``."""
+
+    queryset = PalierFidelite.objects.select_related('programme').all()
+    serializer_class = PalierFideliteSerializer
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        programme_id = self.request.query_params.get('programme')
+        if programme_id:
+            qs = qs.filter(programme_id=programme_id)
+        return qs
+
+
 class CompteFideliteViewSet(CompanyScopedModelViewSet):
     """Lecture seule (NTRET9) : un compte naît du crédit de points
     (``services.crediter_points_pour_vente``), jamais d'une création API
     directe — filtrable par ``?client=<id>`` (fiche client)."""
 
-    queryset = CompteFidelite.objects.select_related('client').all()
+    queryset = CompteFidelite.objects.select_related(
+        'client', 'palier_actuel').all()
     serializer_class = CompteFideliteSerializer
     http_method_names = ['get', 'head', 'options']
 
