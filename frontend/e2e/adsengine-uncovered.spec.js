@@ -110,10 +110,22 @@ test.describe('PUB14 — L\'Arbre : nœud d\'hypothèse réel', () => {
 
   test('un nœud créé via l\'API réelle apparaît dans son groupe de statut', async ({ page, request }) => {
     const enonce = `PUB14 — nœud e2e ${Date.now()}`
+    // `enjeux_s` (S) et `pertinence_r` (R) sont OBLIGATOIRES : deux `FloatField`
+    // sans `default` et non `blank` sur `AssumptionNode` (apps/adsengine/
+    // models.py), donc `required=True` dans `AssumptionNodeSerializer` — les
+    // omettre rendait ce POST 400 depuis toujours. Valeurs dans [0, 1] (bornes
+    // Min/MaxValueValidator du modèle) : enjeu fort, décision franche.
     const res = await request.post(`${API}/noeuds-hypothese/`, {
-      data: { classe: 'creatif', enonce_fr: enonce },
+      data: {
+        classe: 'creatif',
+        enonce_fr: enonce,
+        enjeux_s: 0.6,
+        pertinence_r: 0.8,
+      },
     })
-    expect(res.ok()).toBeTruthy()
+    // Le corps de la réponse est NOMMÉ dans l'échec : un 400 de validation dit
+    // quel champ manque, au lieu d'un « expected true, received false » muet.
+    expect(res.ok(), `POST /noeuds-hypothese/ → ${res.status()} ${await res.text()}`).toBeTruthy()
     const node = await res.json()
     createdNodeIds.push(node.id)
 

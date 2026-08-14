@@ -10,9 +10,17 @@
 //
 // Stabilité (Done= AOF187) : aucune assertion sur la date du jour, aucun nom
 // accessible dérivé d'une icône — voir le commentaire d'en-tête de helpers.js.
+//
+// ── CORRECTION 14/08/2026 — l'atelier toiture est un ONGLET, pas un lien ─────
+// `getByRole('link', { name: /Toiture/ })` ne pouvait pas atteindre la section
+// « Toitures & relevés » de la fiche (onglet Radix `role="tab"`, rendu par
+// `AffaireDetail.jsx` → `RecordShell` → `ui/Tabs.jsx`) : il résolvait vers
+// l'entrée de nav GLOBALE du module, qui mène à `/ao/toitures` — l'atelier de
+// TOUTE la société, hors du contexte de l'affaire qu'on vient de créer.
 import { test, expect } from '@playwright/test'
 import {
-  uniq, gotoAo, AO_ROUTES, selectAoOutil, clickAoCanvas, waitAoVerdict,
+  uniq, gotoAo, AO_ROUTES, ouvrirOngletAffaire, selectAoOutil, clickAoCanvas,
+  waitAoVerdict,
 } from './helpers'
 
 // Même fixture PDF minimale (1 page, valide) que attachments.spec.js — aucun
@@ -30,7 +38,7 @@ test('AOF187: créer une affaire → importer un plan → calibrer → tracer �
   // L'affaire fraîchement créée s'ouvre (fiche projet), puis on rejoint son
   // atelier toiture — la « porte d'entrée » n°1 du plan (plan fourni).
   await expect(page.getByText(nomAffaire)).toBeVisible()
-  await page.getByRole('link', { name: /Toiture/ }).click()
+  await ouvrirOngletAffaire(page, 'Toitures & relevés')
 
   // Porte n°1 : import d'un plan PDF/image calibré à 2 points.
   await page.getByRole('button', { name: /Importer un plan/ }).click()

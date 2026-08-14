@@ -25,7 +25,9 @@ from django.utils import timezone
 
 from core.models import TenantModel
 
-from .rules import RULE_TEMPLATE_CHOICES
+# Callable (jamais une liste figée) : les choix de ``RulePolicy.template_key``
+# sont DÉRIVÉS du catalogue réel à la demande — cf. ``rules.rule_template_choices``.
+from .rules import rule_template_choices
 
 
 class MetaConnection(TenantModel):
@@ -1359,8 +1361,12 @@ class RulePolicy(TenantModel):
         PROPOSE = 'propose', 'Proposer'
         AUTO = 'auto', 'Automatique'
 
+    # ``choices`` CALLABLE (Django ≥ 5.0) : évalué à la demande depuis le
+    # catalogue réel, donc un gabarit ajouté à ``rule_templates`` devient
+    # armable sans nouvelle migration (la migration ne fige que la RÉFÉRENCE
+    # de la fonction, jamais la liste).
     template_key = models.CharField(
-        max_length=48, choices=RULE_TEMPLATE_CHOICES,
+        max_length=48, choices=rule_template_choices,
         verbose_name='Template de règle')
     enabled = models.BooleanField(default=False, verbose_name='Activée')
     mode = models.CharField(
