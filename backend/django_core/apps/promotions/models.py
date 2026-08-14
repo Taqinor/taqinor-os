@@ -25,7 +25,7 @@ class ReglexPromotion(TenantModel):
         PLAGE_HORAIRE = 'plage_horaire', 'Plage horaire (happy hour)'
 
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: composition — l'objet n'existe que dans sa societe
         related_name='regles_promotion')
     nom = models.CharField(max_length=150)
     type_regle = models.CharField(max_length=30, choices=TypeRegle.choices)
@@ -105,7 +105,7 @@ class CouponUnique(TenantModel):
         GLOBAL = 'global', 'N utilisations au total (global)'
 
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: composition — l'objet n'existe que dans sa societe
         related_name='coupons_uniques')
     code = models.CharField(max_length=32, default=default_coupon_code)
     regle = models.ForeignKey(
@@ -141,10 +141,10 @@ class CouponUtilisation(TenantModel):
     des coupons en mode ``unique_par_client`` (jamais seulement applicative)."""
 
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: composition — l'objet n'existe que dans sa societe
         related_name='utilisations_coupon')
     coupon = models.ForeignKey(
-        CouponUnique, on_delete=models.CASCADE, related_name='utilisations')
+        CouponUnique, on_delete=models.CASCADE, related_name='utilisations')  # on_delete: composition — une utilisation n'existe que pour son coupon
     client = models.ForeignKey(
         'crm.Client', on_delete=models.SET_NULL, null=True, blank=True,
         related_name='utilisations_coupon')
@@ -187,7 +187,7 @@ class CarteCadeau(TenantModel):
         EXPIREE = 'expiree', 'Expirée'
 
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: composition — l'objet n'existe que dans sa societe
         related_name='cartes_cadeaux')
     # Code unique généré, OU physique saisi (carte pré-imprimée) — les deux
     # passent par le même champ, `default` ne s'applique que si absent.

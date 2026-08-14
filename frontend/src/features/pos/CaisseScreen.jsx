@@ -1,5 +1,10 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Plus, Minus, Trash2, Printer, Link2, Usb } from 'lucide-react'
+import { useSelector } from 'react-redux'
+import { Plus, Minus, Trash2, Printer, Link2, Usb, Lock } from 'lucide-react'
+// NTRET3 — verrouillage rapide entre deux ventes : overlay plein écran qui
+// laisse le panier INTACT dans l'état de cet écran (pas de re-login, la
+// session JWT n'est jamais perdue).
+import PinLock from './PinLock'
 import posApi from '../../api/posApi'
 import api from '../../api/axios'
 import { prixTtc, sansPrix } from '../stock/catalogue'
@@ -24,6 +29,11 @@ import {
    (1 frappe + Entrée/clic) → ajouter au panier (1 clic) → Encaisser (1 clic) →
    choisir un mode + confirmer (1 clic) → imprimer/télécharger (1 clic). */
 export default function CaisseScreen() {
+  // NTRET3 — l'utilisateur attendu au déverrouillage est le compte JWT du
+  // poste ; `verrouille` reste local à cet écran pour que le panier survive
+  // au verrouillage.
+  const currentUser = useSelector((s) => s.auth.user)
+  const [verrouille, setVerrouille] = useState(false)
   const [produits, setProduits] = useState([])
   const [query, setQuery] = useState('')
   const [cart, setCart] = useState([])
@@ -298,11 +308,28 @@ export default function CaisseScreen() {
 
   return (
     <div className="flex flex-col gap-4 p-4 sm:p-6">
+      {/* NTRET3 — overlay de verrouillage : monté par-dessus l'écran, le
+          panier ci-dessous reste intact pendant tout le verrouillage. */}
+      <PinLock
+        userId={currentUser?.id}
+        verrouille={verrouille}
+        onUnlock={() => setVerrouille(false)}
+      />
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex flex-wrap items-center gap-3">
           <h1 className="font-display text-xl font-semibold">Caisse — vente rapide</h1>
           <Button type="button" variant="outline" size="sm" onClick={ouvrirFactureDialog}>
             Encaisser une facture existante
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => setVerrouille(true)}
+            data-testid="verrouiller-caisse"
+          >
+            <Lock className="mr-1.5 size-4" aria-hidden="true" />
+            Verrouiller
           </Button>
         </div>
         {tickets.length > 0 && (

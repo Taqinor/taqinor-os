@@ -588,7 +588,7 @@ def definir_pin(*, company, user, raw_pin):
     code, _ = CodePinCaissier.objects.get_or_create(
         company=company, user=user)
     code.set_pin(pin)
-    code.save(update_fields=['pin_hash', 'date_modification'])
+    code.save(update_fields=['pin_hash', 'updated_at'])
     return code
 
 

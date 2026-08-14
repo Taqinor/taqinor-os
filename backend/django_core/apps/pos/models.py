@@ -25,6 +25,8 @@ from django.core.exceptions import ValidationError
 from django.db import models
 from django.utils import timezone
 
+from core.models import TenantModel
+
 
 def default_code_retrait():
     import secrets
@@ -453,26 +455,29 @@ class ConfigMaterielPOS(models.Model):
 
 # ── NTRET3 — Multi-caissiers avec PIN de session ────────────────────────────
 
-class CodePinCaissier(models.Model):
+class CodePinCaissier(TenantModel):
     """PIN de verrouillage rapide (NTRET3) : un utilisateur déjà connecté au
     poste caisse (JWT valide) peut ouvrir/reverrouiller l'écran caisse SANS
     re-login complet et SANS perdre le panier en cours — utile pour changer
     de caissier plusieurs fois par jour sur le même poste partagé. Le PIN est
     hashé (jamais en clair) via les hashers Django standard, même politique
-    que le mot de passe utilisateur. Un PIN par (company, user)."""
+    que le mot de passe utilisateur. Un PIN par (company, user).
+
+    Hérite de ``core.models.TenantModel`` (FK ``company`` + ``created_at``/
+    ``updated_at``) — jamais une paire multi-société re-bricolée à la main
+    (garde SCA4). ``company`` est redéclaré ici uniquement pour conserver le
+    ``related_name`` historique ``codes_pin_caissier``."""
     company = models.ForeignKey(
         'authentication.Company',
-        on_delete=models.CASCADE,
+        on_delete=models.CASCADE,  # on_delete: composition — un PIN de caisse n'existe que dans sa société
         related_name='codes_pin_caissier',
     )
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL,
-        on_delete=models.CASCADE,
+        on_delete=models.CASCADE,  # on_delete: composition — le PIN suit le compte utilisateur qu'il déverrouille
         related_name='codes_pin_caissier',
     )
     pin_hash = models.CharField(max_length=128)
-    date_creation = models.DateTimeField(auto_now_add=True)
-    date_modification = models.DateTimeField(auto_now=True)
 
     class Meta:
         verbose_name = 'Code PIN caissier'

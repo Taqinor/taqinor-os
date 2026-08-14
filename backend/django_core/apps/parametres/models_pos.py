@@ -26,7 +26,7 @@ class ParametresPos(TenantModel):
     vente. Valeurs vides/NULL par défaut = comportement actuel inchangé."""
 
     company = models.OneToOneField(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: composition — l'objet n'existe que dans sa societe
         related_name='parametres_pos')
     # Distinct de CompanyProfile.taux_horaire_sav (XFSM1) : NULL = aucun taux
     # configuré, aucune ligne main-d'œuvre auto-chiffrée côté comptoir.
@@ -56,10 +56,10 @@ class BoutiquePos(TenantModel):
     porte ni l'un ni l'autre)."""
 
     company = models.ForeignKey(
-        'authentication.Company', on_delete=models.CASCADE,
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: composition — l'objet n'existe que dans sa societe
         related_name='boutiques_pos')
     emplacement = models.OneToOneField(
-        'stock.EmplacementStock', on_delete=models.CASCADE,
+        'stock.EmplacementStock', on_delete=models.CASCADE,  # on_delete: composition — la boutique EST cet emplacement de stock (1-1)
         related_name='boutique_pos')
     actif = models.BooleanField(default=True)
     adresse = models.TextField(blank=True, default='')

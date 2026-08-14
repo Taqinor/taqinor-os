@@ -19,9 +19,9 @@ class Migration(migrations.Migration):
             fields=[
                 ("id", models.BigAutoField(auto_created=True, primary_key=True,
                                             serialize=False, verbose_name="ID")),
+                ("created_at", models.DateTimeField(auto_now_add=True)),
+                ("updated_at", models.DateTimeField(auto_now=True)),
                 ("pin_hash", models.CharField(max_length=128)),
-                ("date_creation", models.DateTimeField(auto_now_add=True)),
-                ("date_modification", models.DateTimeField(auto_now=True)),
                 ("company", models.ForeignKey(
                     on_delete=django.db.models.deletion.CASCADE,
                     related_name="codes_pin_caissier", to="authentication.company")),
