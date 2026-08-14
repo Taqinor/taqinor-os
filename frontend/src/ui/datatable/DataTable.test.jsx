@@ -300,6 +300,123 @@ describe('M154 — repli tableau → cartes sur mobile', () => {
   })
 })
 
+/* ====== ARC49-FIX — AUCUN MODE NE DOIT LAISSER L'ÉCRAN VIDE SOUS 768 px ======
+   Bug de production : le conteneur `data-dt-table` était `hidden dt-desktop:block`
+   de façon INCONDITIONNELLE, alors que le repli en cartes `data-dt-cards` n'est
+   émis que si `!(renderRow || hideMobileCards || groupBy)`. Les écrans qui
+   passent l'une de ces trois options n'avaient donc NI table NI carte sur
+   téléphone : /ventes/factures et /ventes/devis étaient littéralement vides.
+   Aucun test ne gardait cet invariant — ces tests-ci le gardent, pour les DEUX
+   sens (rien de vide sur mobile, aucun doublon sur bureau). ========== */
+
+/* jsdom n'applique aucune media query et ne compile aucun utilitaire Tailwind :
+   on modélise ici la seule sémantique qui compte, celle des trois utilitaires
+   posés par le moteur —
+     `hidden`            → display:none à TOUTE largeur (donc masqué < 768 px) ;
+     `dt-desktop:block`  → display:block UNIQUEMENT ≥ 768 px (lève `hidden` là) ;
+     `dt-desktop:hidden` → display:none UNIQUEMENT ≥ 768 px.
+   La preuve au seuil de 768 px RÉELS vit dans e2e/datatable-breakpoint.spec.js. */
+function classesDe(el) {
+  return (typeof el.className === 'string' ? el.className : '').split(/\s+/)
+}
+function masqueSousMobile(el) {
+  return classesDe(el).includes('hidden')
+}
+function masqueSurBureau(el) {
+  const c = classesDe(el)
+  if (c.includes('dt-desktop:hidden')) return true
+  // `hidden` sans contrepartie `dt-desktop:*` masque aussi le bureau.
+  return c.includes('hidden') && !c.includes('dt-desktop:block')
+}
+/* Rendus de lignes réellement peints à la largeur donnée : un nœud ne compte que
+   si NI lui NI aucun de ses ancêtres n'est masqué (un ancêtre `display:none`
+   masque tous ses descendants, quelles que soient leurs propres règles CSS —
+   c'est précisément ce que l'ancien commentaire ARC49 avait négligé). */
+function rendusPeints(container, masque) {
+  return [...container.querySelectorAll('[data-dt-table], [data-dt-cards]')].filter((n) => {
+    for (let el = n; el && el !== container; el = el.parentElement) {
+      if (masque(el)) return false
+    }
+    return true
+  })
+}
+
+/* Chaque cas reproduit la forme de props d'un écran RÉEL de production. */
+const MODES_ECRANS = [
+  {
+    nom: 'défaut (la grande majorité des écrans : repli en cartes)',
+    props: {},
+  },
+  {
+    nom: 'renderRow (FactureList, DevisList, GedNavigator)',
+    props: {
+      tableClassName: 'data-table',
+      tableRole: 'table',
+      renderRow: (row) => (
+        <tr key={row.id}>
+          <td data-label="Nom">{row.nom}</td>
+          <td data-label="Ville">{row.ville}</td>
+        </tr>
+      ),
+    },
+  },
+  {
+    nom: 'hideMobileCards (RolesManagement, PilotageStock)',
+    props: { hideMobileCards: true, hidePagination: true },
+  },
+  {
+    nom: 'groupBy (NTUX19 — grille groupée)',
+    props: { groupBy: 'ville' },
+  },
+  {
+    nom: 'renderRow + hideMobileCards combinés',
+    props: {
+      hideMobileCards: true,
+      renderRow: (row) => (
+        <tr key={row.id}><td>{row.nom}</td></tr>
+      ),
+    },
+  },
+]
+
+describe('ARC49-FIX — aucun mode du moteur ne laisse l\'écran vide sous 768 px', () => {
+  it.each(MODES_ECRANS)('mode $nom : les lignes restent peintes sur téléphone', ({ props }) => {
+    const { container } = renderTable(props)
+    const peints = rendusPeints(container, masqueSousMobile)
+    // 1) Au moins un des deux rendus (table OU cartes) survit sous 768 px.
+    expect(peints.length).toBeGreaterThanOrEqual(1)
+    // 2) …et il contient VRAIMENT les données (un conteneur vide ne suffit pas).
+    expect(peints.some((n) => n.textContent.includes('Kasri'))).toBe(true)
+  })
+
+  it.each(MODES_ECRANS)('mode $nom : exactement UN rendu des lignes sur bureau (pas de doublon)', ({ props }) => {
+    const { container } = renderTable(props)
+    // Non-régression du sens inverse : « rendre la table visible partout » ne
+    // doit jamais dupliquer les lignes (table + cartes) au-dessus de 768 px.
+    expect(rendusPeints(container, masqueSurBureau).length).toBe(1)
+  })
+
+  it('mode défaut : ce sont bien les CARTES qui prennent le relais sous 768 px', () => {
+    const { container } = renderTable()
+    const peints = rendusPeints(container, masqueSousMobile)
+    expect(peints.length).toBe(1)
+    expect(peints[0].hasAttribute('data-dt-cards')).toBe(true)
+    // La table, elle, reste réservée au bureau (comportement historique).
+    expect(container.querySelector('[data-dt-table]').className).toContain('hidden')
+  })
+
+  it('sans repli en cartes : c\'est la TABLE qui reste peinte, dans un conteneur défilable', () => {
+    const { container } = renderTable({ hideMobileCards: true })
+    const peints = rendusPeints(container, masqueSousMobile)
+    expect(peints.length).toBe(1)
+    expect(peints[0].hasAttribute('data-dt-table')).toBe(true)
+    expect(container.querySelector('[data-dt-cards]')).toBeNull()
+    // Le débordement horizontal reste confiné au tableau (la page ne déborde pas).
+    expect(peints[0].className).toContain('overflow-hidden')
+    expect(container.querySelector('[data-dt-scroll]').className).toContain('overflow-auto')
+  })
+})
+
 /* ============================== N160 — ACCESSIBILITÉ ============================== */
 
 describe('N160 — accessibilité du DataTable', () => {
