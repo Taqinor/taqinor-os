@@ -260,6 +260,30 @@ def dashboard_retail(*, company, date_debut=None, date_fin=None, boutique=None,
     }
 
 
+# ── NTRET30 — Commission vendeur sur vente comptoir ─────────────────────────
+
+def commissions_ventes_comptoir(company, *, date_debut=None, date_fin=None):
+    """NTRET30 — ventes comptoir VALIDÉES agrégées par caissier (CA HT),
+    point d'entrée cross-app pour ``apps.reporting.insights.commissions``
+    (import fonction-local depuis reporting, jamais l'inverse — règle de
+    modularité). Renvoie ``{caissier_id: {'caissier': CustomUser,
+    'total_ht': Decimal, 'count': int}}`` — une vente sans caissier (NULL,
+    ex. import) n'est jamais comptée."""
+    ventes_qs = VenteComptoir.objects.filter(
+        company=company, statut=VenteComptoir.Statut.VALIDEE,
+        caissier__isnull=False)
+    ventes_qs = _date_filtered(ventes_qs, date_debut, date_fin)
+    ventes_qs = ventes_qs.select_related('caissier').prefetch_related('lignes')
+
+    agg = {}
+    for vente in ventes_qs:
+        slot = agg.setdefault(vente.caissier_id, {
+            'caissier': vente.caissier, 'total_ht': Decimal('0'), 'count': 0})
+        slot['total_ht'] += vente.total_ht
+        slot['count'] += 1
+    return agg
+
+
 def export_dashboard_retail_xlsx(*, company, date_debut=None, date_fin=None):
     """Export xlsx du tableau de bord retail (NTRET16) — jamais de
     prix_achat/marge (export client/interne-safe par construction)."""
