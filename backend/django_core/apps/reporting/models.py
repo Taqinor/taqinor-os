@@ -213,6 +213,16 @@ class KpiAlerte(models.Model):
         # sur ce même fichier, voir docs/plans/PLAN_SUPPLY.md NTLOG51).
         DELAI_MOYEN_DEDOUANEMENT = (
             'delai_moyen_dedouanement', 'Délai moyen de dédouanement (jours)')
+        # NTSCM46 — taux de service supply chain (NTSCM28 : % de SKU sous
+        # politique de stock qui ne sont PAS en rupture/à commander, voir
+        # ``apps.scm.selectors.tableau_bord_executif``). Volet des 3 AUTRES
+        # métriques NTSCM28 (OTIF pondéré, MAPE global, valeur de stock par
+        # classe ABC) HORS PÉRIMÈTRE de cette entrée : un seuil KpiAlerte
+        # (nombre unique + opérateur) ne modélise qu'UNE métrique scalaire à
+        # la fois — les 3 autres restent consultables via le tableau de bord
+        # SCM exécutif natif (``/scm/dashboard``), pas dupliquées ici.
+        TAUX_SERVICE_SCM = (
+            'taux_service_scm', 'Supply chain — taux de service (%)')
 
     class Operateur(models.TextChoices):
         SUP = 'sup', '>'

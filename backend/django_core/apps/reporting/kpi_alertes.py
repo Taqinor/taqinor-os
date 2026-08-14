@@ -19,6 +19,9 @@ Catalogue fermé (``KpiAlerte.Kpi``) :
                                 clôturés du mois
                                 (``apps.douane.selectors.
                                 delai_moyen_dedouanement``).
+  * ``taux_service_scm`` (NTSCM46) — % de SKU sous politique de stock qui ne
+                                sont pas en rupture/à commander
+                                (``apps.scm.selectors.tableau_bord_executif``).
 """
 from decimal import Decimal
 
@@ -106,6 +109,17 @@ def _compute_delai_moyen_dedouanement(company):
     return delai_moyen_dedouanement(company)
 
 
+def _compute_taux_service_scm(company):
+    """NTSCM46 — ``apps.scm.selectors.tableau_bord_executif`` (NTSCM28,
+    réutilisé tel quel — jamais un système parallèle) : % de SKU sous
+    politique de stock qui ne sont PAS en rupture/à commander. ``None`` (KPI
+    ignoré, jamais 0 trompeur) si la société n'a encore aucune politique de
+    stock (NTSCM6)."""
+    from apps.scm.selectors import tableau_bord_executif
+    taux = tableau_bord_executif(company)['taux_service_pct']
+    return Decimal(str(taux)) if taux is not None else None
+
+
 _KPI_COMPUTERS = {
     KpiAlerte.Kpi.DSO: lambda company, user: _compute_dso(company),
     KpiAlerte.Kpi.ENCOURS_ECHU_TOTAL: lambda company, user:
@@ -114,6 +128,8 @@ _KPI_COMPUTERS = {
         _compute_valeur_stock_totale(company),
     KpiAlerte.Kpi.DELAI_MOYEN_DEDOUANEMENT: lambda company, user:
         _compute_delai_moyen_dedouanement(company),
+    KpiAlerte.Kpi.TAUX_SERVICE_SCM: lambda company, user:
+        _compute_taux_service_scm(company),
 }
 
 
