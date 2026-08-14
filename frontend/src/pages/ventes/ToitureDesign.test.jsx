@@ -18,13 +18,35 @@ vi.mock('../../api/axios', () => ({
   default: { get: vi.fn(), post: vi.fn() },
 }))
 vi.mock('../../api/ventesApi', () => ({
-  default: { getDevisDesignContext: vi.fn() },
+  default: {
+    getDevisDesignContext: vi.fn(),
+    syncDevisLayout: vi.fn(),
+    shareLinkDevis: vi.fn(),
+    whatsappPreviewDevis: vi.fn(),
+    reviserDevis: vi.fn(),
+  },
 }))
-const initRoofToolPro8 = vi.fn()
+vi.mock('../../lib/toast', () => ({ toastInfo: vi.fn() }))
+const navigateMock = vi.fn()
+vi.mock('react-router-dom', async (importOriginal) => {
+  const actual = await importOriginal()
+  return { ...actual, useNavigate: () => navigateMock }
+})
+
+// Le builder est stubé : il expose seulement l'API que la page consomme
+// (`serializeLayout` / `snapshot`), posée via `onApiReady` comme en vrai.
+const LAYOUT = { version: 2, zones: [{ id: 'z1' }] }
+const serializeLayout = vi.fn(() => LAYOUT)
+const snapshot = vi.fn(() => null)
+const initRoofToolPro8 = vi.fn((options) => {
+  options?.onApiReady?.({ serializeLayout, snapshot })
+})
 vi.mock('@roofbuilder', () => ({ initRoofToolPro8: (...a) => initRoofToolPro8(...a) }))
 
+import userEvent from '@testing-library/user-event'
 import api from '../../api/axios'
 import ventesApi from '../../api/ventesApi'
+import { toastInfo } from '../../lib/toast'
 import ToitureDesign from './ToitureDesign'
 
 const CTX = exempleContrat('ventes', 'devis_design_context')
@@ -44,6 +66,11 @@ function rendreDevis(id) {
 
 beforeEach(() => {
   delete window.__taqinorRoofBooted
+  serializeLayout.mockReturnValue(LAYOUT)
+  snapshot.mockReturnValue(null)
+  initRoofToolPro8.mockImplementation((options) => {
+    options?.onApiReady?.({ serializeLayout, snapshot })
+  })
 })
 afterEach(() => { cleanup(); vi.clearAllMocks() })
 
@@ -121,6 +148,116 @@ describe('ToitureDesign — mode devis (PV20)', () => {
 
     expect(await screen.findByRole('alert')).toHaveTextContent('Devis introuvable.')
     expect(initRoofToolPro8).not.toHaveBeenCalled()
+  })
+})
+
+/* PV21 — la boucle de finalisation du mode devis : resynchronisation des lignes
+   sur le calepinage, « aucun changement », et le geste « Réviser (v2) » quand le
+   client a déjà la version sous les yeux. */
+describe('ToitureDesign — PV21 : enregistrer la conception', () => {
+  async function ouvrirModifiable() {
+    ventesApi.getDevisDesignContext.mockResolvedValue(
+      reponseContrat('ventes', 'devis_design_context'))
+    rendreDevis(CTX.devis.id)
+    return screen.findByRole('button', { name: /Enregistrer la conception/ })
+  }
+
+  it('resynchronise les lignes, envoie la 3D et ouvre le bloc de livraison', async () => {
+    snapshot.mockReturnValue('data:image/png;base64,QUJD')
+    ventesApi.syncDevisLayout.mockResolvedValue({
+      data: {
+        inchange: false, panneaux: 24, kwc: 17.04, scenario: 'reseau',
+        batterie: false, lignes_modifiees: 1, avertissements: [],
+      },
+    })
+    ventesApi.shareLinkDevis.mockResolvedValue({ data: { token: 'tok', path: '/proposition/tok' } })
+    ventesApi.whatsappPreviewDevis.mockResolvedValue({
+      data: { wa_url: 'https://wa.me/212600000000?text=x', preview: true },
+    })
+    api.post.mockResolvedValue({ data: {} })
+
+    const bouton = await ouvrirModifiable()
+    await userEvent.click(bouton)
+
+    await waitFor(() => expect(ventesApi.syncDevisLayout).toHaveBeenCalled())
+    // Le layout envoyé est celui SÉRIALISÉ par le builder, sous l'enveloppe
+    // `{layout}` que le serveur déballe.
+    expect(ventesApi.syncDevisLayout).toHaveBeenCalledWith(
+      String(CTX.devis.id), { layout: LAYOUT })
+    // Instantané 3D poussé sur le MÊME devis (best-effort, patron du flux lead).
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith(
+      `/ventes/devis/${CTX.devis.id}/roof-image/`, expect.any(FormData)))
+    // Livraison : lien tokenisé + aperçu WhatsApp LECTURE SEULE (aucun
+    // marquage « envoyé »).
+    expect(await screen.findByText('Prêt à envoyer')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'WhatsApp' }))
+      .toHaveAttribute('href', 'https://wa.me/212600000000?text=x')
+    expect(screen.getByDisplayValue('https://taqinor.ma/proposition/tok'))
+      .toBeInTheDocument()
+    // Aucun devis n'a été recréé.
+    expect(ventesApi.reviserDevis).not.toHaveBeenCalled()
+  })
+
+  it('même calepinage : « Aucun changement », rien n\'est envoyé ni livré', async () => {
+    ventesApi.syncDevisLayout.mockResolvedValue({
+      data: {
+        inchange: true, panneaux: 24, kwc: 17.04, scenario: 'reseau',
+        batterie: false, lignes_modifiees: 0, avertissements: [],
+      },
+    })
+
+    const bouton = await ouvrirModifiable()
+    await userEvent.click(bouton)
+
+    await waitFor(() => expect(toastInfo).toHaveBeenCalledWith('Aucun changement'))
+    expect(api.post).not.toHaveBeenCalled()
+    expect(ventesApi.shareLinkDevis).not.toHaveBeenCalled()
+    expect(screen.queryByText('Prêt à envoyer')).toBeNull()
+  })
+
+  it('409 révisable : encart « Réviser (v2) » → nouvelle version puis sa conception', async () => {
+    ventesApi.syncDevisLayout.mockRejectedValue({
+      response: {
+        status: 409,
+        data: {
+          detail: 'Devis déjà envoyé au client — créez une révision (v2).',
+          revision_possible: true,
+        },
+      },
+    })
+    ventesApi.reviserDevis.mockResolvedValue({ data: { id: 777, reference: 'DEV-2026-777' } })
+
+    const bouton = await ouvrirModifiable()
+    await userEvent.click(bouton)
+
+    const encart = await screen.findByTestId('pv21-reviser')
+    // Le motif affiché est celui du SERVEUR, jamais rédigé côté écran.
+    expect(encart).toHaveTextContent('Devis déjà envoyé au client — créez une révision (v2).')
+
+    await userEvent.click(screen.getByRole('button', { name: 'Réviser (v2)' }))
+    await waitFor(() => expect(ventesApi.reviserDevis)
+      .toHaveBeenCalledWith(String(CTX.devis.id)))
+    expect(navigateMock).toHaveBeenCalledWith('/ventes/devis/777/design')
+  })
+
+  it('409 document clos : bandeau de lecture seule, aucune révision proposée', async () => {
+    ventesApi.syncDevisLayout.mockRejectedValue({
+      response: {
+        status: 409,
+        data: {
+          detail: 'Devis accepté — aucune révision de calepinage possible.',
+          revision_possible: false,
+        },
+      },
+    })
+
+    const bouton = await ouvrirModifiable()
+    await userEvent.click(bouton)
+
+    const bandeau = await screen.findByTestId('pv21-conflit-lecture-seule')
+    expect(bandeau).toHaveTextContent('Devis accepté — aucune révision de calepinage possible.')
+    expect(screen.queryByTestId('pv21-reviser')).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Réviser (v2)' })).toBeNull()
   })
 })
 

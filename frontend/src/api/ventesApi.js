@@ -61,6 +61,14 @@ const ventesApi = {
   // seule vient TOUJOURS du serveur, jamais rédigé côté écran. Forme figée par
   // le contrat partagé `apps/ventes/contract_samples/devis_design_context.json`.
   getDevisDesignContext: (id) => api.get(`/ventes/devis/${id}/design-context/`),
+  // PV21 — resynchronise les LIGNES du devis sur un nouveau calepinage. Mise à
+  // jour CHIRURGICALE d'un brouillon (quantité de panneaux + présence batterie,
+  // rien d'autre : prix négociés, remises, notes et groupes restent intacts) ;
+  // le STATUT n'est jamais écrit. Corps : `{layout}`. Renvoyer le MÊME layout
+  // ne fait aucune écriture (`inchange: true`). 409 `revision_possible: true` =
+  // le client a déjà cette version sous les yeux, le bon geste est « Réviser » ;
+  // 409 `revision_possible: false` = document clos (lecture seule).
+  syncDevisLayout: (id, body) => api.post(`/ventes/devis/${id}/sync-layout/`, body),
   // QJ14 — Envoyer par email : PDF premium + lien tokenisé → client, consigne EmailLog, marque envoyé.
   envoyerEmailDevis: (id, payload = {}) => api.post(`/ventes/devis/${id}/envoyer-email/`, payload),
   // QG8 — « Envoyer » = flux WhatsApp : lien wa.me + lien tokenisé, marque envoyé.
