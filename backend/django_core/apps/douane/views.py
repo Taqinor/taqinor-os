@@ -1,5 +1,7 @@
 from django.db import transaction
-from rest_framework import viewsets
+from django.http import HttpResponse
+from rest_framework import status, viewsets
+from rest_framework.decorators import action
 from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.response import Response
 
@@ -12,6 +14,30 @@ from .serializers import (
     DossierExportSerializer, ParametresDouaneSerializer, PieceDossierExportSerializer,
 )
 from .services import attribuer_numero_dossier_export
+
+# NTLOG47 — export CSV/xlsx dossiers-export pour l'expert-comptable. La
+# colonne « estimation non contractuelle » est le contrat que NTLOG13/21
+# (valeur en douane calculée, droits/taxes estimés) devront remplir une fois
+# débloqués (dépendent de NTLOG10, BLOCKED) — présente dès aujourd'hui,
+# vide tant qu'aucun calcul réel n'existe, JAMAIS présentée comme la
+# déclaration douanière officielle.
+_EXPORT_HEADERS = [
+    'Numéro', 'Statut', 'Incoterm', 'Devise', 'Valeur marchandise (devise)',
+    'Pays destinataire',
+    'Droits/taxes estimés — estimation non contractuelle',
+]
+
+
+def _export_row(dossier):
+    return [
+        dossier.numero,
+        dossier.get_statut_display(),
+        dossier.get_incoterm_display(),
+        dossier.devise,
+        dossier.valeur_marchandise_devise,
+        dossier.pays_destinataire,
+        '',
+    ]
 
 
 class DossierExportViewSet(CompanyScopedModelViewSet):
@@ -64,6 +90,49 @@ class DossierExportViewSet(CompanyScopedModelViewSet):
     def perform_update(self, serializer):
         self._check_tenant(serializer)
         super().perform_update(serializer)
+
+    @action(detail=False, methods=['get'], url_path='export')
+    def export(self, request):
+        """NTLOG47 — export ``dossiers-export/export/?periode=YYYY-MM&format=
+        csv|xlsx`` pour transmission périodique à l'expert-comptable. Volet
+        ``dossiers-import/`` NON couvert (n'existe pas dans cette app —
+        NTLOG10 BLOCKED). GET = méthode sûre, déjà ouverte à tout utilisateur
+        authentifié de la société (couvre le rôle lecture-seule
+        ``comptabilite``, cohérent avec l'usage rapprochement comptable)."""
+        fmt = request.query_params.get('format', 'csv')
+        if fmt not in ('csv', 'xlsx'):
+            return Response(
+                {'detail': "Le paramètre 'format' doit être 'csv' ou 'xlsx'."},
+                status=status.HTTP_400_BAD_REQUEST)
+        qs = self.get_queryset()
+        periode = request.query_params.get('periode')
+        if periode:
+            try:
+                annee, mois = periode.split('-')
+                qs = qs.filter(created_at__year=int(annee), created_at__month=int(mois))
+            except (ValueError, TypeError):
+                return Response(
+                    {'detail': "Le paramètre 'periode' doit être au format YYYY-MM."},
+                    status=status.HTTP_400_BAD_REQUEST)
+        rows = [_export_row(d) for d in qs.order_by('numero')]
+
+        if fmt == 'xlsx':
+            from apps.records.xlsx import build_xlsx_response
+            return build_xlsx_response(
+                'dossiers-export-douane.xlsx', _EXPORT_HEADERS, rows,
+                sheet_title='Dossiers export')
+
+        import csv
+        import io
+        buffer = io.StringIO()
+        writer = csv.writer(buffer, delimiter=';', lineterminator='\r\n')
+        writer.writerow(_EXPORT_HEADERS)
+        for row in rows:
+            writer.writerow(row)
+        resp = HttpResponse(buffer.getvalue(), content_type='text/csv; charset=utf-8')
+        resp['Content-Disposition'] = (
+            'attachment; filename="dossiers-export-douane.csv"')
+        return resp
 
 
 class PieceDossierExportViewSet(CompanyScopedModelViewSet):
