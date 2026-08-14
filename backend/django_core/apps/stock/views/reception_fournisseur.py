@@ -44,9 +44,11 @@ WRITE_ACTIONS = ['create', 'update', 'partial_update']
 
 
 from .qualite_reception import ControleReceptionActionsMixin  # noqa: E402
+from .catch_weight import PeseeLigneActionsMixin  # noqa: E402
 
 
 class ReceptionFournisseurViewSet(ControleReceptionActionsMixin,
+                                  PeseeLigneActionsMixin,
                                   CompanyScopedModelViewSet):
     """G5 — Réceptions fournisseur (goods-in / entrée de marchandises).
 
@@ -71,7 +73,9 @@ class ReceptionFournisseurViewSet(ControleReceptionActionsMixin,
                 'scan_gs1', 'etiquettes', 'suggestions_rangement',
                 'proposer_cross_dock',
                 # NTWMS34 — l'état de l'échantillonnage est une LECTURE.
-                'echantillonnage']:
+                'echantillonnage',
+                # NTWMS37 — consulter les relevés à unité variable : LECTURE.
+                'pesees']:
             # NTWMS2 — les suggestions de rangement sont une LECTURE (elles
             # n'écrivent rien) : même garde que les autres lectures. Ce
             # `get_permissions` prime sur le `permission_classes` de l'@action,
@@ -80,7 +84,9 @@ class ReceptionFournisseurViewSet(ControleReceptionActionsMixin,
         elif self.action in WRITE_ACTIONS + [
                 'confirmer', 'annuler', 'facturer', 'affecter_cross_dock',
                 # NTWMS34 — la saisie du verdict qualité est une ÉCRITURE.
-                'controle_qualite']:
+                'controle_qualite',
+                # NTWMS37 — la saisie d'un relevé réel est une ÉCRITURE.
+                'pesee_ligne']:
             # « facturer » déclarait IsResponsableOrAdmin sur son décorateur
             # mais ce get_permissions l'écrasait vers IsAdminRole (le repli
             # par défaut) — bug préexistant attrapé par le test P2P YTEST6.

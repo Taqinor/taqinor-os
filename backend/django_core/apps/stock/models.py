@@ -2088,6 +2088,9 @@ from .models_qualite_reception import (  # noqa: E402,F401
     PlanEchantillonnage,
 )
 
+# ── NTWMS37 — réception à quantité/poids VARIABLE (catch-weight). ──────────
+from .models_catch_weight import PeseeLigneReception  # noqa: E402,F401
+
 
 # ── ODX19 — MODULE ACHATS (déplacé) ────────────────────────────────────────
 # PrixFournisseur, BonCommandeFournisseur, LigneBonCommandeFournisseur,
