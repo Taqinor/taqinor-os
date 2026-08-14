@@ -5,7 +5,7 @@ même palier que les modules de conformité/planification voisins, ex.
 ``apps.fiscal``) : ``get_permissions`` renvoie ``[IsResponsableOrAdmin()]``
 sur chaque viewset, société toujours scopée par ``CompanyScopedModelViewSet``.
 """
-from rest_framework.decorators import action
+from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.response import Response
 
 from authentication.permissions import IsResponsableOrAdmin
@@ -130,3 +130,79 @@ class PolitiqueStockViewSet(CompanyScopedModelViewSet):
             'nb_politiques': len(politiques),
             'politiques': PolitiqueStockSerializer(politiques, many=True).data,
         })
+
+
+@api_view(['GET'])
+@permission_classes([IsResponsableOrAdmin])
+def tableau_bord_reappro_view(request):
+    """NTSCM7 — ``GET /api/django/scm/tableau-bord-reappro/``.
+
+    Filtres optionnels : ``?statut=ok|a_commander|rupture_imminente``,
+    ``?classe_abc=A|B|C``, ``?fournisseur=<id>``."""
+    from . import selectors
+
+    data = selectors.tableau_bord_reappro(
+        request.user.company,
+        statut=request.query_params.get('statut'),
+        classe_abc=request.query_params.get('classe_abc'),
+        fournisseur_id=request.query_params.get('fournisseur'),
+    )
+    return Response(data)
+
+
+@api_view(['POST'])
+@permission_classes([IsResponsableOrAdmin])
+def creer_brouillons_bcf_reappro_view(request):
+    """NTSCM7 — ``POST /api/django/scm/tableau-bord-reappro/creer-bcf/``.
+
+    Groupe les lignes du tableau de bord (statut ``a_commander`` ou
+    ``rupture_imminente``, fournisseur connu) PAR FOURNISSEUR et crée un
+    ``BonCommandeFournisseur`` BROUILLON par fournisseur via
+    ``apps.stock.services.creer_bcf_depuis_lignes`` (réutilise l'existant,
+    jamais une écriture directe dans ``apps.stock``). Corps optionnel :
+    ``{"produit_ids": [...]}`` pour restreindre la sélection (défaut : toutes
+    les lignes à commander)."""
+    from apps.stock.selectors import get_fournisseur_by_id
+    from apps.stock.services import creer_bcf_depuis_lignes
+
+    from . import selectors
+
+    lignes_tableau = selectors.tableau_bord_reappro(request.user.company)
+
+    produit_ids = request.data.get('produit_ids')
+    if produit_ids:
+        wanted = {int(pid) for pid in produit_ids}
+        lignes_tableau = [
+            ligne for ligne in lignes_tableau if ligne['produit_id'] in wanted]
+
+    lignes_a_commander = [
+        ligne for ligne in lignes_tableau
+        if ligne['statut'] != 'ok' and ligne['fournisseur_id']
+    ]
+
+    groupes = {}
+    for ligne in lignes_a_commander:
+        groupes.setdefault(ligne['fournisseur_id'], []).append(ligne)
+
+    bons_crees = []
+    for fournisseur_id, lignes in groupes.items():
+        fournisseur = get_fournisseur_by_id(request.user.company, fournisseur_id)
+        if fournisseur is None:
+            continue
+        lignes_bcf = [
+            (ligne['produit_id'], ligne['produit_nom'],
+             ligne['quantite_suggeree'] or 1, ligne['prix_achat_unitaire'] or 0)
+            for ligne in lignes
+        ]
+        bon = creer_bcf_depuis_lignes(
+            company=request.user.company, user=request.user,
+            fournisseur=fournisseur, lignes=lignes_bcf,
+            note='Brouillon généré depuis le tableau de bord réappro (NTSCM7).')
+        bons_crees.append({
+            'fournisseur_id': fournisseur_id,
+            'bon_commande_id': bon.id,
+            'reference': bon.reference,
+            'nb_lignes': len(lignes_bcf),
+        })
+
+    return Response({'bons_crees': bons_crees})

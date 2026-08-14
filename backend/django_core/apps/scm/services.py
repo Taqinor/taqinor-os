@@ -184,7 +184,7 @@ def appliquer_politique_stock(
     }
 
 
-def _lead_time_moyen_fournisseur(company, produit):
+def lead_time_moyen_fournisseur(company, produit):
     """Délai fournisseur moyen (jours) — réutilise le scorecard FG59 déjà
     bâti (``apps.stock.services.supplier_performance``, LECTURE SEULE,
     import fonction-local) plutôt que de dupliquer un calcul de délai côté
@@ -235,7 +235,7 @@ def recalculer_politiques_stock(company):
         )
         service_level = niveau_defaut if created else politique.service_level_pct
 
-        lead_time_days = _lead_time_moyen_fournisseur(company, produit)
+        lead_time_days = lead_time_moyen_fournisseur(company, produit)
         calc = appliquer_politique_stock(
             produit, service_level, company, lead_time_days=lead_time_days)
 

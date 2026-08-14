@@ -101,3 +101,91 @@ def classifier_abc(company, fenetre_mois=12, *, persist=True):
             )
 
     return resultat
+
+
+def tableau_bord_reappro(company, *, statut=None, classe_abc=None, fournisseur_id=None):
+    """NTSCM7 — tableau de bord réappro consolidé (remplace/étend FG364 brut).
+
+    Pour chaque produit avec ``PolitiqueStock`` (NTSCM6), combine :
+
+      * le stock actuel (``stock.Produit.quantite_stock``, champ canonique) ;
+      * :func:`core.stock_reorder.predict_reorder` (FG364, déjà bâti) —
+        date de rupture prévue + quantité suggérée ;
+      * la politique de stock (NTSCM6) — ROP, stock de sécurité effectif ;
+      * le fournisseur le moins cher
+        (``apps.stock.services.cheapest_prix_fournisseur``, déjà bâti).
+
+    Statut par ligne : ``'ok'`` (pas de réappro nécessaire), ``'a_commander'``
+    (``reorder_now`` mais la rupture n'arrive pas avant qu'une commande
+    lancée aujourd'hui ne livre), ``'rupture_imminente'`` (la rupture
+    surviendrait AVANT la livraison d'une commande lancée aujourd'hui —
+    ``jours_avant_rupture <= délai_fournisseur``).
+
+    LECTURE SEULE — ne réutilise QUE des primitives déjà exposées par
+    ``apps.stock`` (``services.cheapest_prix_fournisseur``,
+    ``apps.scm.services.lead_time_moyen_fournisseur`` qui s'appuie lui-même
+    sur ``apps.stock.services.supplier_performance``) ; jamais un import de
+    modèle ``apps.stock``."""
+    from django.utils import timezone
+
+    from apps.stock.services import cheapest_prix_fournisseur
+    from core.stock_reorder import predict_reorder
+
+    from . import services
+    from .models import PolitiqueStock
+
+    qs = PolitiqueStock.objects.filter(company=company).select_related('produit')
+    if classe_abc:
+        qs = qs.filter(classe_abc=classe_abc)
+
+    today = timezone.localdate()
+    lignes = []
+    for politique in qs:
+        produit = politique.produit
+        lead_time = services.lead_time_moyen_fournisseur(company, produit)
+        calc = services.appliquer_politique_stock(
+            produit, politique.service_level_pct, company, lead_time_days=lead_time)
+        stock_securite_effectif = float(
+            politique.stock_securite_manuel
+            if politique.stock_securite_manuel is not None
+            else politique.stock_securite_calcule
+        )
+
+        resultat = predict_reorder(
+            current_stock=produit.quantite_stock, today=today,
+            avg_daily_consumption=calc['avg_daily_consumption'],
+            lead_time_days=lead_time, safety_stock=stock_securite_effectif,
+        )
+
+        if not resultat.reorder_now:
+            ligne_statut = 'ok'
+        elif (resultat.days_until_rupture is not None
+                and resultat.days_until_rupture <= lead_time):
+            ligne_statut = 'rupture_imminente'
+        else:
+            ligne_statut = 'a_commander'
+
+        if statut and ligne_statut != statut:
+            continue
+
+        cheapest = cheapest_prix_fournisseur(produit)
+        fid = cheapest.fournisseur_id if cheapest else produit.fournisseur_id
+        if fournisseur_id and str(fid) != str(fournisseur_id):
+            continue
+
+        lignes.append({
+            'produit_id': produit.id,
+            'produit_nom': produit.nom,
+            'classe_abc': politique.classe_abc,
+            'stock_actuel': produit.quantite_stock,
+            'point_commande': politique.point_commande,
+            'quantite_suggeree': resultat.suggested_quantity,
+            'statut': ligne_statut,
+            'rupture_date': (
+                resultat.rupture_date.isoformat() if resultat.rupture_date else None),
+            'fournisseur_id': fid,
+            'fournisseur_nom': cheapest.fournisseur.nom if cheapest else None,
+            'prix_achat_unitaire': str(cheapest.prix_achat) if cheapest else None,
+        })
+
+    return lignes
