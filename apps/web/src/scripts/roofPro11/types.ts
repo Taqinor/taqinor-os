@@ -3,8 +3,8 @@
  * Extraits de roof-tool-pro11.ts (split modulaire 2026-06-20) — INCHANGÉS.
  */
 import { type RoofTypeSelect } from '../../lib/roofTypeSelect';
-import { type PackResult, type PanelGrid, type ConfigFamily } from '../../lib/estimatorBrainV2';
-import { type Obstacle } from '../../lib/obstacles';
+import { type PackResult, type PanelGrid, type ConfigFamily, OBSTACLE_CLEARANCE_M } from '../../lib/estimatorBrainV2';
+import { type Obstacle, type ObstacleType } from '../../lib/obstacles';
 import { type AreaResult } from '../../lib/roofAreas';
 import { type LngLat } from '../../lib/roof';
 import { type ProductionSource, type SpecificDateProfile } from '../../lib/productionEngine';
@@ -61,6 +61,54 @@ export interface LeadPayload {
   phone?: string;
   city?: string;
   [k: string]: unknown;
+}
+
+// ═══════════ PV61 — TYPES D'OBSTACLE & DÉGAGEMENT PAR TYPE ═══════════
+export type { ObstacleType };
+
+/** Choix du sélecteur « type d'obstacle » (libellés FR, ordre du menu). */
+export const OBSTACLE_TYPES: { id: ObstacleType; label: string }[] = [
+  { id: 'cheminee', label: 'Cheminée' },
+  { id: 'ventilation', label: 'Ventilation / VMC' },
+  { id: 'chien_assis', label: 'Chien-assis / lucarne' },
+  { id: 'edicule', label: 'Édicule / local technique' },
+  { id: 'antenne', label: 'Antenne / parabole' },
+  { id: 'autre', label: 'Autre' },
+];
+
+/**
+ * Dégagement (m) laissé autour d'un obstacle SELON SON TYPE.
+ *
+ * SOURCE des valeurs (règles de pose, pas des chiffres inventés) : `OBSTACLE_CLEARANCE_M`
+ * (0,30 m) est le recul de base déjà appliqué à tout obstacle — il correspond au passage
+ * de maintenance minimal entre un panneau et un accident de toiture. On l'ÉLARGIT pour les
+ * obstacles HAUTS ou SALISSANTS, qui portent une ombre portée et demandent un accès :
+ *  - cheminée 0,50 m : suie/fumées + ramonage, et une souche dépasse toujours du plan ;
+ *  - chien-assis / lucarne 0,50 m : volume haut → ombre portée + accès à la fenêtre ;
+ *  - édicule / local technique 0,50 m : même raison (le plus haut des trois) ;
+ *  - ventilation / VMC 0,30 m : petit et bas → le recul de base suffit ;
+ *  - antenne / parabole 0,30 m : encombrement faible, pas d'entretien récurrent ;
+ *  - autre 0,30 m : on retombe exactement sur le comportement historique.
+ * Un obstacle SANS type garde donc 0,30 m — le calepinage d'aujourd'hui, inchangé.
+ */
+export const CLEARANCE_BY_TYPE: Record<ObstacleType, number> = {
+  cheminee: 0.5,
+  ventilation: OBSTACLE_CLEARANCE_M,
+  chien_assis: 0.5,
+  edicule: 0.5,
+  antenne: OBSTACLE_CLEARANCE_M,
+  autre: OBSTACLE_CLEARANCE_M,
+};
+
+/** Dégagement (m) d'un type d'obstacle. Type absent/inconnu → `OBSTACLE_CLEARANCE_M`. */
+export function clearanceForType(type?: ObstacleType | null): number {
+  if (!type) return OBSTACLE_CLEARANCE_M;
+  return CLEARANCE_BY_TYPE[type] ?? OBSTACLE_CLEARANCE_M;
+}
+
+/** Dégagements (m) PARALLÈLES à une liste d'obstacles (même ordre que leurs anneaux). */
+export function obstructionClearancesFor(obstacles: readonly { type?: ObstacleType }[]): number[] {
+  return obstacles.map((o) => clearanceForType(o.type));
 }
 
 export type TiltMode = 'reco' | number;

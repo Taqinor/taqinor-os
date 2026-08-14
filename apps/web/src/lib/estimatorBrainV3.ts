@@ -443,6 +443,8 @@ export interface RoofPlane {
   /** Azimut de la face / sens de la pente descendante (0=N, 90=E, 180=S, 270=O). */
   facingAzimuthDeg: number;
   obstructions?: LngLat[][];
+  /** PV61 — dégagement (m) par obstruction, même ordre que `obstructions`. Absent → uniforme. */
+  obstructionClearancesM?: number[];
 }
 
 export interface FlushGrid {
@@ -537,6 +539,7 @@ function packFlushCells(
   clearanceM: number,
   overhangM = 0,
   obstacleRule: ObstacleRule = 'footprint',
+  clearancesM?: number[],
 ): { cx: number; cy: number }[] {
   if (ringENU.length < 3) return [];
   const azRad = azimuthDeg * DEG2RAD;
@@ -570,8 +573,17 @@ function packFlushCells(
   // PV60 — l'empreinte COMPLÈTE du panneau (ses 4 coins + son centre) est sondée contre
   // l'obstacle et son dégagement : un panneau à moitié dans la cheminée ne se pose plus.
   // `center` = ancienne règle (centre seul), gardée pour le diff de comptage des tests.
+  // PV61 — dégagement PAR obstruction (tableau parallèle) ; entrée absente/aberrante →
+  // dégagement uniforme `clearanceM` (comportement historique).
+  const clearanceAt = (i: number): number => {
+    const v = clearancesM?.[i];
+    return typeof v === 'number' && Number.isFinite(v) && v >= 0 ? v : clearanceM;
+  };
   const hitsObstruction = (probe: [number, number][]): boolean =>
-    obstructionsENU.some((o) => probe.some((c) => pointInPolygon(c, o) || distToBoundary(c, o) <= clearanceM));
+    obstructionsENU.some((o, i) => {
+      const cl = clearanceAt(i);
+      return probe.some((c) => pointInPolygon(c, o) || distToBoundary(c, o) <= cl);
+    });
   // W108 — distance SIGNÉE au bord (+ dedans, − dehors) : un coin tient s'il est à
   // au moins `setbackM` à l'intérieur OU déborde d'au plus `overhangM`. overhangM=0
   // → équivaut exactement à l'ancienne règle (dedans/pile-rive ET retrait).
@@ -610,7 +622,14 @@ function packFlushCells(
  */
 export function packFlushPlane(
   plane: RoofPlane,
-  opts: { setbackM?: number; clearanceM?: number; overhangM?: number; obstacleRule?: ObstacleRule } = {},
+  opts: {
+    setbackM?: number;
+    clearanceM?: number;
+    overhangM?: number;
+    obstacleRule?: ObstacleRule;
+    /** PV61 — dégagement (m) par obstruction, même ordre que `plane.obstructions`. */
+    obstructionClearancesM?: number[];
+  } = {},
 ): FlushPack {
   const { ring, pitchDeg, facingAzimuthDeg } = plane;
   const areaM2 = geodesicAreaM2(ring);
@@ -630,7 +649,10 @@ export function packFlushPlane(
   const buildGrid = (orientation: AxisOrient, slopeLenM: number, rowWidthM: number, ringENU: [number, number][], obsENU: [number, number][][]): FlushGrid => {
     const panelPlanDepthM = slopeLenM * Math.cos(beta);
     const rowPitchM = panelPlanDepthM + FLUSH_MAINTENANCE_GAP_M;
-    const panels = packFlushCells(ringENU, obsENU, facingAzimuthDeg, setbackM, { panelPlanDepthM, rowPitchM, rowWidthM }, clearanceM, overhangM, obstacleRule);
+    // PV61 — dégagement par obstruction : l'option explicite l'emporte, sinon celui porté
+    // par le pan lui-même (`plane.obstructionClearancesM`), sinon uniforme.
+    const clearancesM = opts.obstructionClearancesM ?? plane.obstructionClearancesM;
+    const panels = packFlushCells(ringENU, obsENU, facingAzimuthDeg, setbackM, { panelPlanDepthM, rowPitchM, rowWidthM }, clearanceM, overhangM, obstacleRule, clearancesM);
     return {
       orientation,
       count: panels.length,

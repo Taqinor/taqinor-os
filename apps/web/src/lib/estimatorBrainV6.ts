@@ -399,6 +399,7 @@ function evalMatrixConfig(
   tariff: TariffGrid,
   yieldFn: YieldFn | undefined,
   cache: Map<string, PackResult>,
+  obstructionClearancesM?: number[],
 ): MatrixEvalV6 {
   const setbackM = cfg.margin === 'keep' ? defaultSetbackM : 0;
   // W109 — overhangM dans la clé (sinon collision entre overhangs) ; 0 → clé/pavage inchangés.
@@ -412,6 +413,7 @@ function evalMatrixConfig(
       obstructions,
       setbackM,
       overhangM,
+      obstructionClearancesM, // PV61 — dégagement par type d'obstacle
     });
     cache.set(key, pack);
   }
@@ -476,6 +478,8 @@ export interface MatrixV6Options {
   forceAligned?: boolean;
   /** W109 — débord panneaux autorisé au-delà de la rive (m). Défaut 0 → calepinage inchangé. */
   overhangM?: number;
+  /** PV61 — dégagement (m) par obstruction (même ordre que `obstructions`). Absent → uniforme. */
+  obstructionClearancesM?: number[];
 }
 
 export interface MatrixV6Result {
@@ -530,7 +534,7 @@ export function fineGridMatrixV6(
   let anyPvgis = false;
 
   const consider = (cfg: MatrixCfg) => {
-    const e = evalMatrixConfig(ring, latitudeDeg, cfg, needed, target, obstructions, setback, overhang, tariff, options.yieldFn, cache);
+    const e = evalMatrixConfig(ring, latitudeDeg, cfg, needed, target, obstructions, setback, overhang, tariff, options.yieldFn, cache, options.obstructionClearancesM);
     rows.push(e);
     if (e.yieldSource === 'pvgis') anyPvgis = true;
     if (!winner || betterMatrixV6(e, winner)) winner = e;

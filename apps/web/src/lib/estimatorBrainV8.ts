@@ -129,6 +129,8 @@ interface PitchedCtx {
   obstructions: LngLat[][];
   /** W109 — débord panneaux autorisé au-delà de la rive (m). 0 → calepinage inchangé. */
   overhangM: number;
+  /** PV61 — dégagement (m) par obstruction (même ordre que `obstructions`). */
+  obstructionClearancesM?: number[];
   tariff: TariffGrid;
   yieldFn: PitchedYieldFn | undefined;
   packCache: Map<string, FlushPack>;
@@ -143,7 +145,7 @@ function evalPitched(ctx: PitchedCtx, layout: PitchedLayoutAxis, margin: Pitched
   if (!pack) {
     pack = packFlushPlane(
       { ring: ctx.ring, pitchDeg: ctx.pitchDeg, facingAzimuthDeg: ctx.facingAzimuthDeg, obstructions: ctx.obstructions },
-      { setbackM, overhangM: ctx.overhangM },
+      { setbackM, overhangM: ctx.overhangM, obstructionClearancesM: ctx.obstructionClearancesM }, // PV61
     );
     ctx.packCache.set(key, pack);
   }
@@ -205,6 +207,8 @@ export interface PitchedSolveOptions {
   yieldFn?: PitchedYieldFn;
   /** W109 — débord panneaux autorisé au-delà de la rive (m). Défaut 0 → calepinage inchangé. */
   overhangM?: number;
+  /** PV61 — dégagement (m) par obstruction (même ordre que `obstructions`). Absent → uniforme. */
+  obstructionClearancesM?: number[];
 }
 
 export interface PitchedLiveResult {
@@ -279,6 +283,7 @@ export function solveLivePitched(
     effectiveNeed,
     obstructions,
     overhangM: Math.max(0, options.overhangM ?? 0),
+    obstructionClearancesM: options.obstructionClearancesM, // PV61
     tariff,
     yieldFn: options.yieldFn,
     packCache: new Map<string, FlushPack>(),

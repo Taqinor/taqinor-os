@@ -811,6 +811,12 @@ export interface PackOptions {
   overhangM?: number;
   /** PV60 — règle d'exclusion obstacle. Défaut `footprint` (empreinte complète). */
   obstacleRule?: ObstacleRule;
+  /**
+   * PV61 — dégagement (m) PAR obstruction, dans le MÊME ordre que `obstructions` : une
+   * cheminée recule plus qu'une antenne. Une entrée absente/non finie/négative retombe
+   * sur `clearanceM` (donc `OBSTACLE_CLEARANCE_M`). Tableau absent → calepinage inchangé.
+   */
+  obstructionClearancesM?: number[];
 }
 
 /**
@@ -982,6 +988,7 @@ function packCells(
   clearanceM: number,
   overhangM = 0,
   obstacleRule: ObstacleRule = 'footprint',
+  clearancesM?: number[],
 ): PackedPanel[] {
   if (ringENU.length < 3) return [];
   const azRad = azimuthDeg * DEG2RAD;
@@ -1019,8 +1026,18 @@ function packCells(
   // `footprint`, la physique : un panneau dont un coin mord la cheminée ne se pose pas).
   // L'ancienne règle `center` (centre seul) laissait passer un panneau à moitié dans
   // l'obstacle ; elle n'est gardée que pour mesurer le diff de comptage dans les tests.
+  // PV61 — le dégagement est PROPRE À CHAQUE obstruction (cheminée > antenne) : on lit
+  // le tableau parallèle `clearancesM`, et toute entrée absente/aberrante retombe sur le
+  // dégagement uniforme `clearanceM` (comportement historique).
+  const clearanceAt = (i: number): number => {
+    const v = clearancesM?.[i];
+    return typeof v === 'number' && Number.isFinite(v) && v >= 0 ? v : clearanceM;
+  };
   const hitsObstruction = (probe: [number, number][]): boolean =>
-    obstructionsENU.some((o) => probe.some((c) => pointInPolygon(c, o) || distToBoundary(c, o) <= clearanceM));
+    obstructionsENU.some((o, i) => {
+      const cl = clearanceAt(i);
+      return probe.some((c) => pointInPolygon(c, o) || distToBoundary(c, o) <= cl);
+    });
   // EPS : les vecteurs de base portent un bruit flottant (sin(180°) ≈ 1e−16) qui
   // place les cellules pile au retrait à 0,5 − ε ; sans tolérance on perdrait toute
   // la première rangée/colonne (asymétrique entre Sud et E-O sur petits toits).
@@ -1181,7 +1198,7 @@ export function packConfig(ring: LngLat[], latitudeDeg: number, opts: PackOption
 
   const makeGrid = (panelOrientation: 'portrait' | 'landscape', slopeLenM: number, rowWidthM: number): PanelGrid => {
     const cell = cellFor(slopeLenM, rowWidthM);
-    const panels = packCells(ringENU, obstructionsENU, azimuthDeg, setbackM, cell, clearanceM, overhangM, obstacleRule);
+    const panels = packCells(ringENU, obstructionsENU, azimuthDeg, setbackM, cell, clearanceM, overhangM, obstacleRule, opts.obstructionClearancesM);
     return {
       panelOrientation,
       count: panels.length,

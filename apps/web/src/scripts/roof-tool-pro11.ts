@@ -105,6 +105,7 @@ import {
   type ZoneRenderPlan,
   type AreaRecord,
   type RenderConfigOpts,
+  obstructionClearancesFor,
 } from './roofPro11/types';
 import {
   GOLD,
@@ -357,6 +358,9 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
   // Les obstacles sont stockés par centre + dimensions ; le cerveau reçoit leurs
   // rectangles lng/lat comme obstructions (zones d'exclusion).
   const obstructionRings = (): LngLat[][] => obstacles.map(obstacleRing);
+  // PV61 — dégagement (m) de CHAQUE obstacle selon son TYPE (cheminée > antenne), dans le
+  // MÊME ordre que `obstructionRings()`. Obstacle sans type → dégagement historique.
+  const obstructionClearances = (): number[] => obstructionClearancesFor(obstacles);
   const fmt1 = (n: number) => n.toLocaleString('fr-FR', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
   const dimsLabel = (o: Obstacle) => `${fmt1(o.lengthM)} × ${fmt1(o.widthM)} m`;
   let centroid: LngLat = [0, 0];
@@ -1199,6 +1203,7 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
     renderMatrixOptimumCard: () => renderMatrixOptimumCard(),
     monthlyBill: () => monthlyBill(),
     obstructionRings,
+    obstructionClearances, // PV61 — dégagement par type d'obstacle
     setStatus,
   });
   const liveResolveFlat = optimizer.liveResolveFlat;

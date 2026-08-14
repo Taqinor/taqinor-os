@@ -15,7 +15,7 @@
 import { DEG2RAD, WGS84_RADIUS } from './constants';
 import { $ } from './dom';
 import { type Ctx } from './context';
-import { type AreaRecord, type CardData, type LeadPayload } from './types';
+import { type AreaRecord, type CardData, type LeadPayload, type ObstacleType } from './types';
 import { type LngLat } from '../../lib/roof';
 import { BILL_RANGES } from '../../lib/billRange';
 import { ROOF_TYPES } from '../../lib/lead';
@@ -200,8 +200,10 @@ export interface SerializedZone {
   label: string;
   /** Contour lng/lat [[lng,lat],…]. */
   vertices: LngLat[];
-  /** Obstacles (zones d'exclusion) — objets plats {id,centerLng,centerLat,lengthM,widthM}. */
-  obstacles: Array<{ id: string; centerLng: number; centerLat: number; lengthM: number; widthM: number }>;
+  /** Obstacles (zones d'exclusion) — objets plats {id,centerLng,centerLat,lengthM,widthM}.
+   *  PV61 — `type` (optionnel) porte le dégagement de l'obstacle ; absent = comportement
+   *  historique (dégagement uniforme). Jamais émis pour un obstacle sans type. */
+  obstacles: Array<{ id: string; centerLng: number; centerLat: number; lengthM: number; widthM: number; type?: ObstacleType }>;
   roofType: 'flat' | 'pitched';
   pitchDeg: number;
   facingAzimuthDeg: number;
@@ -263,6 +265,7 @@ export function serializeLayout(ctx: Ctx, billKwh: number | null = null): Serial
         centerLat: o.centerLat,
         lengthM: o.lengthM,
         widthM: o.widthM,
+        ...(o.type ? { type: o.type } : {}), // PV61 — additif, jamais émis si absent
       })),
       roofType: isActive ? ctx.roofType : a.roofType,
       pitchDeg: isActive ? ctx.pitchDeg : a.pitchDeg,
@@ -335,6 +338,7 @@ export function deserializeLayout(json: SerializedLayout): AreaRecord[] {
       centerLat: o.centerLat,
       lengthM: o.lengthM,
       widthM: o.widthM,
+      ...(o.type ? { type: o.type } : {}), // PV61 — le type survit au round-trip
     })),
     roofType: z.roofType,
     pitchDeg: z.pitchDeg,
