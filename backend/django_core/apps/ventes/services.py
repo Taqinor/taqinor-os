@@ -302,7 +302,8 @@ def extract_roof_config(layout):
 
     Lit les PANS de toiture (``areas``/``zones``/``pans``) — chacun portant
     ``roofType``, ``pitchDeg``/``pitch``, ``facingAzimuthDeg``/``aspect`` et un
-    ``result`` ``{count, kwc, areaM2}`` — et en agrège :
+    ``result`` ``{count, kwc, areaM2}`` (PV14 : à défaut, le bloc ``geometry``
+    par pan de la sérialisation v1) — et en agrège :
 
         {surface_m2, nb_pans, nb_panneaux, kwc, orientation_principale,
          azimut_deg, inclinaison_deg, pans: [{...}]}
@@ -326,9 +327,24 @@ def extract_roof_config(layout):
         if not isinstance(a, dict):
             continue
         res = a.get('result') or {}
-        count = int(res.get('count') or a.get('neededPanels') or 0)
-        kwc = float(res.get('kwc') or 0.0)
-        surface = float(res.get('areaM2') or a.get('areaM2') or 0.0)
+        # PV14 — les layouts DÉJÀ STOCKÉS (sérialisation roofPro11 v1) ne
+        # portent PAS de bloc ``result`` par pan : la puissance et le compte
+        # RÉELS y vivent dans le bloc ``geometry`` de la zone (WJ24 :
+        # {azimuthDeg, tiltDeg, family, flush, kwc, count, origin, panels}).
+        # Sans cette lecture un tel blob remontait 0 kWc — et le devis
+        # reconstruit perdait le wattage panneau (aucun watt déductible, donc
+        # plus de choix de produit à wattage exact). L'ordre est STRICT :
+        # ``result`` d'abord (comportement historique inchangé au bit près),
+        # ``geometry`` ensuite, ``neededPanels`` en tout dernier recours (le
+        # compte SOUHAITÉ, pas le compte POSÉ).
+        geo = a.get('geometry')
+        if not isinstance(geo, dict):
+            geo = {}
+        count = int(res.get('count') or geo.get('count')
+                    or a.get('neededPanels') or 0)
+        kwc = float(res.get('kwc') or geo.get('kwc') or 0.0)
+        surface = float(res.get('areaM2') or geo.get('areaM2')
+                        or a.get('areaM2') or 0.0)
         aspect = a.get('facingAzimuthDeg')
         if aspect is None:
             aspect = a.get('aspect')
