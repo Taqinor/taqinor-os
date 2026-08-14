@@ -2190,8 +2190,18 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
   // W34 — Chaque groupe d'options est un AXE. Un clic VERROUILLE cet axe puis re-résout
   // en direct (renderSelection = liveResolveFlat). Re-cliquer la valeur déjà verrouillée
   // RELÂCHE cet axe (retour AUTO). Les verrous s'accumulent ; « Réinitialiser » relâche tout.
+  // PV28 — GARDE-FOU : les changements d'AXE (orientation, inclinaison, pose, azimut,
+  // marge, optimum, réinitialisation) re-résolvent et RE-PAVENT le toit — la lattice
+  // change, donc une disposition posée à la main est perdue. Contrairement à une édition
+  // d'obstacle (qui passe par recalc() et RE-SNAPPE la pose), ces chemins-là partent
+  // directement au solveur. On DEMANDE donc avant, en français, et un refus abandonne
+  // l'action en laissant la disposition intacte. Aucun panneau n'est « verrouillé » :
+  // on prévient, on ne fige pas.
+  const axisChangeAllowed = (): boolean => layoutEditor.confirmDiscardEdits();
+
   document.querySelectorAll<HTMLButtonElement>('[data-family]').forEach((b) => {
     b.addEventListener('click', () => {
+      if (!axisChangeAllowed()) return; // PV28
       const fam = b.dataset.family as ConfigFamily;
       // re-clic sur l'orientation déjà verrouillée (sans sous-verrou azimut) → AUTO
       if (pinned.has('family') && !pinned.has('azimuth') && sel.family === fam) {
@@ -2207,6 +2217,7 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
   });
   document.querySelectorAll<HTMLButtonElement>('[data-tilt]').forEach((b) => {
     b.addEventListener('click', () => {
+      if (!axisChangeAllowed()) return; // PV28
       if (b.dataset.tilt === 'reco') {
         pinned.delete('tilt'); // « Recommandé » = inclinaison AUTO (re-résolue)
         sel = { ...sel, tilt: 'reco' }; // W46 — efface la valeur numérique figée (sinon currentPins/affichage la garde)
@@ -2310,6 +2321,7 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
 
   document.querySelectorAll<HTMLButtonElement>('[data-orient]').forEach((b) => {
     b.addEventListener('click', () => {
+      if (!axisChangeAllowed()) return; // PV28
       const o = b.dataset.orient as OrientMode;
       if (roofType === 'pitched') {
         // W35 — pose = axe LIBRE en pente. « Auto » ou re-clic → AUTO ; sinon verrouille.
@@ -2330,6 +2342,7 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
   // W34 — Groupe AZIMUT (plein sud / aligné toit) = sous-axe de l'orientation.
   document.querySelectorAll<HTMLButtonElement>('[data-azimuth]').forEach((b) => {
     b.addEventListener('click', () => {
+      if (!axisChangeAllowed()) return; // PV28
       const az = b.dataset.azimuth as AzimuthMode;
       if (pinned.has('azimuth') && sel.azimuth === az) {
         pinned.delete('azimuth'); // re-clic → AUTO
@@ -2346,6 +2359,7 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
   // retrait → le solveur vivant suffit (la matrice balaie déjà les deux marges).
   document.querySelectorAll<HTMLButtonElement>('[data-margin]').forEach((b) => {
     b.addEventListener('click', () => {
+      if (!axisChangeAllowed()) return; // PV28
       const m = b.dataset.margin as MarginMode;
       if (roofType === 'pitched') {
         // W35 — marge = axe LIBRE en pente. re-clic → AUTO ; sinon verrouille.
@@ -2367,6 +2381,7 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
   // (toit plat = W34 ; toit en pente = W35, pose/marge re-libérées).
   optimumBtn?.addEventListener('click', () => {
     if (!closed || vertices.length < 3) return;
+    if (!axisChangeAllowed()) return; // PV28 — « Réinitialiser » détruit la pose manuelle
     if (roofType === 'pitched') resetPitchedLocks();
     else resetFlatLocks();
   });
@@ -2587,6 +2602,7 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
   // verrouillés — l'optimiseur SEMBLAIT « cesser de tenir » les choix après quelques
   // verrous. On aligne ce bouton sur la puce data-tilt="reco" : delete('tilt') seulement.
   tiltRecoBtn?.addEventListener('click', () => {
+    if (!axisChangeAllowed()) return; // PV28
     pinned.delete('tilt');
     sel = { ...sel, tilt: 'reco' };
     renderSelection();

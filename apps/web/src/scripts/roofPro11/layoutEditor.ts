@@ -21,6 +21,7 @@ import {
   removePanel,
   resetToOptimal,
   fillAll,
+  hasManualEdits as hasManualEditsPure,
   cellsInRect,
   moveGroup,
   rowMembers,
@@ -73,6 +74,9 @@ export interface LayoutEditorDeps {
   isObstacleMode: () => boolean;
   /** W88 — surligne (or) le panneau 3D de la cellule donnée, ou efface tout (null). */
   setPanelHighlight: (cellIndex: number | null) => void;
+  /** PV28 — demande de confirmation (injectable pour les tests). Défaut : `window.confirm`.
+   *  Doit renvoyer true si l'utilisateur accepte de PERDRE sa disposition personnalisée. */
+  confirmDiscard?: (message: string) => boolean;
   /** PV25 — recalcul COMPLET de la zone active (re-pavage) qui re-entre ensuite la
    *  disposition personnalisée (capture des centres → re-snap). C'est le `recalc()` de
    *  l'entrée. Optionnel : absent → le nudge d'azimut retombe sur `renderActive`. */
@@ -99,6 +103,11 @@ export interface LayoutEditor {
   /** PV26 — annule / rétablit la dernière action de disposition (true si effectué). */
   undo: () => boolean;
   redo: () => boolean;
+  /** PV28 — la disposition courante diverge-t-elle de l'optimum (édition manuelle) ? */
+  hasManualEdits: () => boolean;
+  /** PV28 — à appeler AVANT tout ré-agencement automatique : true = on peut continuer
+   *  (aucune édition manuelle, ou l'utilisateur a accepté de la perdre). */
+  confirmDiscardEdits: () => boolean;
   /** PV27 — HYDRATE la disposition depuis les centres de panneaux d'un layout exporté
    *  (leur repère d'origine si différent de celui du pavage courant). Re-snappe chaque
    *  centre sur la lattice courante et rend la 3D avec CETTE occupation. Renvoie true si
@@ -413,6 +422,30 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
       layoutNoteEl.textContent = `Disposition du dossier rechargée — ${fmt(placed)} panneaux reposés à l'identique.`;
     }
     return placed > 0;
+  }
+
+  // ── PV28 — garde-fou « ne perds pas le travail manuel » ─────────────────────
+  /** La disposition posée diverge-t-elle de l'optimum ? (ajout, retrait ou déplacement). */
+  function hasManualEdits(): boolean {
+    return hasManualEditsPure(ctx.layoutState, ctx.layoutOptimalCount);
+  }
+  /**
+   * PV28 — À appeler AVANT un ré-agencement automatique (changement d'axe, optimum,
+   * réinitialisation des verrous…). Sans édition manuelle : rien ne se passe, on continue.
+   * Avec édition manuelle : on DEMANDE, en français, et un refus laisse l'état INTACT
+   * (l'appelant abandonne son action). On ne verrouille aucun panneau : on prévient.
+   */
+  function confirmDiscardEdits(): boolean {
+    if (!hasManualEdits()) return true;
+    const count = ctx.layoutState ? ctx.layoutState.occupied.size : 0;
+    const ask =
+      deps.confirmDiscard ??
+      ((msg: string) => (typeof window !== 'undefined' && typeof window.confirm === 'function' ? window.confirm(msg) : true));
+    const ok = ask(
+      `Vous avez placé ${count} panneaux à la main. Cette action recalcule la disposition et remplacera votre placement. Continuer ?`,
+    );
+    if (!ok && layoutNoteEl) layoutNoteEl.textContent = 'Modification annulée — votre disposition est conservée.';
+    return ok;
   }
 
   /** Entrée/sortie du mode personnalisation. */
@@ -898,5 +931,7 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
     undo,
     redo,
     hydrateLayout,
+    hasManualEdits,
+    confirmDiscardEdits,
   };
 }

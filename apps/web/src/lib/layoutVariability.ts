@@ -395,6 +395,22 @@ export function nudgeAzimuthDeg(currentDeg: number, deltaDeg: number): number {
 }
 
 /**
+ * PV28 — la disposition courante DIVERGE-T-ELLE de l'optimum ? On compare l'occupation
+ * réelle à celle que produirait `resetToOptimal(optimalCount)` (les `optimalCount`
+ * premières cellules). Vrai dès qu'un panneau a été ajouté, retiré ou déplacé à la main :
+ * c'est le signal qu'un ré-agencement automatique DÉTRUIRAIT un travail manuel, et donc
+ * qu'il faut demander confirmation AVANT. Pas de notion de « panneau verrouillé » : on
+ * ne fige rien, on prévient.
+ */
+export function hasManualEdits(state: LayoutState | null | undefined, optimalCount: number): boolean {
+  if (!state) return false;
+  const n = Math.max(0, Math.min(state.cells.length, Math.trunc(Number.isFinite(optimalCount) ? optimalCount : 0)));
+  if (state.occupied.size !== n) return true;
+  for (let i = 0; i < n; i++) if (!state.occupied.has(i)) return true;
+  return false;
+}
+
+/**
  * INVARIANT de cohérence : tout index occupé est une cellule valide de la lattice, et le
  * comptage ne dépasse jamais la taille de la lattice (le plafond footprint/besoin tient
  * par construction puisque la lattice = le pavage capé). Utilisé par les tests + une
