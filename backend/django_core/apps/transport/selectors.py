@@ -89,3 +89,49 @@ def frais_transport_pour_landed_cost(company, bon_commande_fournisseur_id):
         stock_boncommandefournisseur_id=bon_commande_fournisseur_id,
     ).aggregate(total=Sum('montant_ht'))['total']
     return total or Decimal('0')
+
+
+def estimer_co2_transport(ordre_transport_id, company=None):
+    """NTLOG20 — estimation INDICATIVE des émissions CO2 d'un ordre :
+    poids total (tonnes) × distance (km) × facteur d'émission éditable
+    (`FacteurEmissionCO2`, par mode route/mer/air). Toujours recalculée en
+    LECTURE DIRECTE (aucun cache) : éditer le facteur en Paramètres se
+    répercute immédiatement sur le prochain appel."""
+    from django.db.models import Sum
+
+    from .models import FacteurEmissionCO2
+
+    ordre = _ordre_scoped(ordre_transport_id, company=company)
+    if ordre is None:
+        return None
+
+    libelle = 'Estimation indicative — facteurs génériques, non certifiée.'
+    poids_total_kg = ordre.lignes.aggregate(
+        total=Sum('poids_kg'))['total'] or Decimal('0')
+    poids_tonnes = Decimal(poids_total_kg) / Decimal('1000')
+
+    base = {
+        'ordre_transport_id': ordre.id,
+        'mode': ordre.mode_acheminement_physique,
+        'poids_total_kg': poids_total_kg,
+        'distance_km': ordre.distance_km,
+        'facteur_kg_co2_par_tonne_km': None,
+        'estimation_kg_co2': None,
+        'libelle': libelle,
+    }
+    if ordre.distance_km is None:
+        base['motif'] = 'distance_km non renseignée.'
+        return base
+
+    facteur = FacteurEmissionCO2.objects.filter(
+        company=ordre.company, mode=ordre.mode_acheminement_physique).first()
+    if facteur is None:
+        base['motif'] = (
+            f"Aucun facteur d'émission configuré pour le mode "
+            f"« {ordre.mode_acheminement_physique} » (Paramètres).")
+        return base
+
+    estimation = poids_tonnes * ordre.distance_km * facteur.facteur_kg_co2_par_tonne_km
+    base['facteur_kg_co2_par_tonne_km'] = facteur.facteur_kg_co2_par_tonne_km
+    base['estimation_kg_co2'] = estimation
+    return base

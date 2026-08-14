@@ -19,6 +19,9 @@ router.register(
 router.register(
     'reserves-reception', views.ReserveReceptionViewSet,
     basename='reserves-reception')
+router.register(
+    'facteurs-emission-co2', views.FacteurEmissionCO2ViewSet,
+    basename='facteurs-emission-co2')
 
 urlpatterns = [
     path('', include(router.urls)),

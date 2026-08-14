@@ -13,13 +13,14 @@ from apps.records.views import ChatterViewSetMixin
 
 from . import services
 from .models import (
-    CoutFretReel, EtapeTransport, LigneOrdreTransport, LitigeTransport,
-    OrdreTransport, ReserveReception,
+    CoutFretReel, EtapeTransport, FacteurEmissionCO2, LigneOrdreTransport,
+    LitigeTransport, OrdreTransport, ReserveReception,
 )
 from .serializers import (
     CoutFretReelSerializer, EtapeTransportSerializer,
-    LigneOrdreTransportSerializer, LitigeTransportSerializer,
-    OrdreTransportSerializer, ReserveReceptionSerializer,
+    FacteurEmissionCO2Serializer, LigneOrdreTransportSerializer,
+    LitigeTransportSerializer, OrdreTransportSerializer,
+    ReserveReceptionSerializer,
 )
 
 
@@ -100,6 +101,15 @@ class OrdreTransportViewSet(ChatterViewSetMixin, CompanyScopedModelViewSet):
         from . import selectors
         return Response(
             selectors.comparer_transporteurs(
+                ordre.id, company=request.user.company))
+
+    # ── NTLOG20 — estimation CO2 (affichée sur le détail de l'ordre) ─────
+    @action(detail=True, methods=['get'], url_path='co2')
+    def co2(self, request, pk=None):
+        ordre = self.get_object()
+        from . import selectors
+        return Response(
+            selectors.estimer_co2_transport(
                 ordre.id, company=request.user.company))
 
 
@@ -298,3 +308,10 @@ class ReserveReceptionViewSet(CompanyScopedModelViewSet):
         serializer.save(company=self.request.user.company)
         services.creer_litige_depuis_reserve(
             serializer.instance, user=self.request.user)
+
+
+class FacteurEmissionCO2ViewSet(CompanyScopedModelViewSet):
+    """NTLOG20 — facteur d'émission CO2, éditable en Paramètres."""
+
+    queryset = FacteurEmissionCO2.objects.all()
+    serializer_class = FacteurEmissionCO2Serializer

@@ -55,6 +55,13 @@ class OrdreTransport(TenantModel):
         FLOTTE_PROPRE = 'flotte_propre', 'Flotte propre'
         AFFRETEMENT = 'affretement', 'Affrètement'
 
+    class ModeAcheminementPhysique(models.TextChoices):
+        # NTLOG20 — mode PHYSIQUE (route/mer/air), sert au facteur d'émission
+        # CO2 — sans rapport avec `ModeTransport` ci-dessus.
+        ROUTE = 'route', 'Route'
+        MER = 'mer', 'Mer'
+        AIR = 'air', 'Air'
+
     numero = models.CharField(max_length=30, blank=True, default='')
     type_flux = models.CharField(
         max_length=25, choices=TypeFlux.choices,
@@ -94,6 +101,13 @@ class OrdreTransport(TenantModel):
     installations_transporteur_id = models.PositiveIntegerField(
         null=True, blank=True,
         verbose_name='Transporteur (installations.Transporteur)')
+
+    # NTLOG20 — mode physique + distance pour l'estimation CO2 (indicative).
+    mode_acheminement_physique = models.CharField(
+        max_length=10, choices=ModeAcheminementPhysique.choices,
+        default=ModeAcheminementPhysique.ROUTE)
+    distance_km = models.DecimalField(
+        max_digits=8, decimal_places=1, null=True, blank=True)
 
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
@@ -300,3 +314,29 @@ class ReserveReception(TenantModel):
 
     def __str__(self):
         return f'Réserve · étape {self.etape_id}'
+
+
+class FacteurEmissionCO2(TenantModel):
+    """NTLOG20 — facteur d'émission CO2 éditable en Paramètres, par mode
+    physique d'acheminement (route/mer/air), en kg CO2 par tonne.km."""
+
+    class Mode(models.TextChoices):
+        ROUTE = 'route', 'Route'
+        MER = 'mer', 'Mer'
+        AIR = 'air', 'Air'
+
+    mode = models.CharField(max_length=10, choices=Mode.choices)
+    facteur_kg_co2_par_tonne_km = models.DecimalField(
+        max_digits=10, decimal_places=4, default=Decimal('0'))
+
+    class Meta:
+        verbose_name = "Facteur d'émission CO2"
+        verbose_name_plural = "Facteurs d'émission CO2"
+        ordering = ['mode']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'mode'], name='uniq_facteurco2_co_mode'),
+        ]
+
+    def __str__(self):
+        return f'{self.mode} · {self.facteur_kg_co2_par_tonne_km} kgCO2/t.km'

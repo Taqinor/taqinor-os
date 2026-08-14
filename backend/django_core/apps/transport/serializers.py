@@ -3,8 +3,8 @@ from decimal import Decimal
 from rest_framework import serializers
 
 from .models import (
-    CoutFretReel, EtapeTransport, LigneOrdreTransport, LitigeTransport,
-    OrdreTransport, ReserveReception,
+    CoutFretReel, EtapeTransport, FacteurEmissionCO2, LigneOrdreTransport,
+    LitigeTransport, OrdreTransport, ReserveReception,
 )
 
 
@@ -85,6 +85,12 @@ class ReserveReceptionSerializer(serializers.ModelSerializer):
         read_only_fields = ['litige', 'created_at']
 
 
+class FacteurEmissionCO2Serializer(serializers.ModelSerializer):
+    class Meta:
+        model = FacteurEmissionCO2
+        fields = ['id', 'mode', 'facteur_kg_co2_par_tonne_km']
+
+
 class OrdreTransportSerializer(serializers.ModelSerializer):
     """NTLOG1 — ordre de transport. `numero`/`statut`/`created_by` posés
     côté serveur (jamais lus du corps de requête — voir
@@ -111,9 +117,10 @@ class OrdreTransportSerializer(serializers.ModelSerializer):
             'instructions_speciales', 'ventes_boncommande_id',
             'ventes_devis_id', 'installations_installation_id',
             'mode_transport', 'mode_transport_display', 'flotte_actif_id',
-            'conducteur', 'installations_transporteur_id', 'lignes',
-            'etapes', 'poids_total_kg', 'volume_total_m3', 'created_by',
-            'created_at', 'updated_at',
+            'conducteur', 'installations_transporteur_id',
+            'mode_acheminement_physique', 'distance_km', 'lignes', 'etapes',
+            'poids_total_kg', 'volume_total_m3', 'created_by', 'created_at',
+            'updated_at',
         ]
         read_only_fields = [
             'numero', 'statut', 'created_by', 'created_at', 'updated_at',
