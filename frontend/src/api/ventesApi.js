@@ -92,6 +92,23 @@ const ventesApi = {
   dupliquerVariante: (id, payload = {}) => api.post(`/ventes/devis/${id}/dupliquer-variante/`, payload),
   // QJ15 — Lister les variantes liées à ce devis (même version_parent).
   getVariantes: (id) => api.get(`/ventes/devis/${id}/variantes/`),
+  // PV41/PV43 — étude ÉLECTRIQUE agrégée du devis, en UN SEUL appel. GET la lit
+  // (et la calcule si absente) ; POST la RECALCULE avec des surcharges
+  // (`dc_m`/`ac_m`/`phases`/`regime`…). Les deux rendent EXACTEMENT la forme du
+  // contrat partagé `apps/ventes/contract_samples/conception_electrique.json` —
+  // jamais de prix/marge (règle du dépôt).
+  getConceptionElectrique: (id) => api.get(`/ventes/devis/${id}/conception-electrique/`),
+  recalculerConceptionElectrique: (id, overrides = {}) =>
+    api.post(`/ventes/devis/${id}/conception-electrique/`, overrides),
+  // PV40/PV43 — planche « schéma unifilaire » déduite du devis : `?format=json`
+  // renvoie `{params, svg}` (aperçu inline), `?format=pdf` la même planche en
+  // PDF (blob, jamais un document client — rule #4).
+  getSchemaUnifilaireDevis: (id) =>
+    api.get(`/ventes/devis/${id}/schema-unifilaire/`, { params: { format: 'json' } }),
+  getSchemaUnifilairePdf: (id) =>
+    api.get(`/ventes/devis/${id}/schema-unifilaire/`, {
+      params: { format: 'pdf' }, responseType: 'blob',
+    }),
   // QG9/QG10 — lit (GET) ou règle (PUT, Directeur/Commercial responsable) le
   // pourcentage par défaut des variantes de devis.
   getVarianteConfig: () => api.get('/ventes/devis/variante-config/'),

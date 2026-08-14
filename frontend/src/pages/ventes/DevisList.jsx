@@ -62,6 +62,8 @@ import { DataTable } from '../../ui/datatable'
 import RoofViewer from './RoofViewer'
 // WIR96 — panneau « Suivi du partage » (ouvertures du lien + relances).
 import DevisSuiviPartagePanel from './DevisSuiviPartagePanel'
+// PV43 — panneau « Conception électrique » (chaînes/conformité/schéma/surcharges).
+import ConceptionElectrique from '../../features/ventes/ConceptionElectrique'
 import { StateBlock } from '../../components/StateBlock'
 import DocumentStageTrack from '../../ui/DocumentStageTrack'
 // APX13 — la piste devis→BC→facture, définie UNE fois pour les 3 écrans.
@@ -363,6 +365,7 @@ function DevisRow({ d, ctx }) {
     versionsOpenId, setVersionsOpenId, roofOpenId, setRoofOpenId,
     histoOpenId, toggleHistorique, histoCache, histoLoadingId,
     suiviOpenId, toggleSuiviPartage, suiviCache, suiviLoadingId,
+    conceptionOpenId, setConceptionOpenId,
     versionChain, effStatutOf,
     navigate, dispatch,
     role, canDelete, canValiderVente, canSeePublicite, highlightId,
@@ -959,6 +962,14 @@ function DevisRow({ d, ctx }) {
               <DropdownMenuItem onSelect={() => toggleSuiviPartage(d.id)}>
                 {suiviOpenId === d.id ? 'Masquer le suivi du partage' : 'Suivi du partage'}
               </DropdownMenuItem>
+              {/* PV43 — étude électrique agrégée (chaînes/conformité/schéma
+                  unifilaire/surcharges DC-AC-phases), calculée depuis les
+                  lignes + le calepinage du devis. */}
+              <DropdownMenuItem onSelect={() => setConceptionOpenId(
+                conceptionOpenId === d.id ? null : d.id)}>
+                {conceptionOpenId === d.id
+                  ? 'Masquer la conception électrique' : 'Conception électrique'}
+              </DropdownMenuItem>
               {/* QX27 — actions historiquement dans « Autres actions » :
                   Réviser, Approuver remise, Contacter mon supérieur, Email. */}
               {d.is_active && d.statut !== 'brouillon' && (
@@ -1154,6 +1165,20 @@ function DevisRow({ d, ctx }) {
         </td>
       </tr>
     )}
+    {/* PV43 — Panneau « Conception électrique » : chaînes par MPPT,
+        conformité, aperçu du schéma unifilaire, surcharges DC/AC/phases. */}
+    {conceptionOpenId === d.id && (
+      <tr>
+        <td colSpan={8} className="bg-muted/30">
+          <div className="px-3 py-3">
+            <p className="mb-2 text-xs font-medium text-muted-foreground">
+              Conception électrique — {d.reference}
+            </p>
+            <ConceptionElectrique devisId={d.id} />
+          </div>
+        </td>
+      </tr>
+    )}
     </Fragment>
   )
 }
@@ -1264,6 +1289,12 @@ export default function DevisList() {
         .finally(() => setSuiviLoadingId(l => (l === id ? null : l)))
     }
   }
+
+  // PV43 — Panneau « Conception électrique » : id du devis dont l'étude
+  // électrique (chaînes/conformité/schéma/surcharges) est ouverte. Le
+  // composant `<ConceptionElectrique>` gère lui-même son chargement/cache —
+  // ce state ne fait QUE basculer sa visibilité (même patron que roofOpenId).
+  const [conceptionOpenId, setConceptionOpenId] = useState(null)
 
   // ── Filtre statut + recherche (référence / client) ──
   // QX12 — deep-link ?statut=<key> pré-règle le filtre au montage (liens de
@@ -2160,6 +2191,7 @@ export default function DevisList() {
     versionsOpenId, setVersionsOpenId, roofOpenId, setRoofOpenId,
     histoOpenId, toggleHistorique, histoCache, histoLoadingId,
     suiviOpenId, toggleSuiviPartage, suiviCache, suiviLoadingId,
+    conceptionOpenId, setConceptionOpenId,
     versionChain, effStatutOf,
     navigate, dispatch,
     role, canDelete, canValiderVente, canSeePublicite, highlightId,
