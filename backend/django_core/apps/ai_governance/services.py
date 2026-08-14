@@ -927,3 +927,116 @@ def traiter_document_ai_job(job):
         'categorie', 'schema', 'confiance', 'resultat_json', 'statut',
         'message', 'traite_le', 'updated_at'])
     return job
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# NTAI18 — Boucle de correction humaine des extractions (feedback → qualité)
+# ─────────────────────────────────────────────────────────────────────────────
+#
+# La revue est le SEUL chemin par lequel une extraction devient une donnée de
+# confiance : l'utilisateur valide ou corrige CHAMP PAR CHAMP, et chaque écart
+# est journalisé (``ExtractionCorrection``). On obtient gratuitement deux
+# choses : le taux de correction RÉEL par gabarit (donc la qualité mesurée, pas
+# supposée) et un « jeu d'or » de cas vrais pour évaluer un futur modèle.
+#
+# Toujours AUCUNE écriture métier : la valeur retenue est appliquée au RÉSULTAT
+# du job (la proposition), jamais à une facture, un contrat ou un stock.
+
+
+def enregistrer_corrections(job, corrections, *, user=None):
+    """NTAI18 — Journalise la revue humaine d'une extraction et l'applique.
+
+    ``corrections`` est une liste de ``{'champ': ..., 'valeur_corrigee': ...}``.
+    Pour chaque entrée : la valeur PROPOSÉE est relue dans le résultat du job,
+    l'écart est enregistré, puis la valeur RETENUE remplace la proposée dans
+    ``resultat_json['champs']``.
+
+    Lève ``AiCopiloteUnavailable`` (→ 400) si la charge est vide ou mal formée.
+    Renvoie ``{'job', 'corrections': [...], 'champs': {...}}``.
+    """
+    from .models import ExtractionCorrection
+
+    if not isinstance(corrections, (list, tuple)) or not corrections:
+        raise AiCopiloteUnavailable(
+            'Fournissez au moins une correction '
+            '{champ, valeur_corrigee}.')
+
+    resultat = dict(job.resultat_json or {})
+    champs = dict(resultat.get('champs') or {})
+    lignes = []
+    for entree in corrections:
+        if not isinstance(entree, dict):
+            raise AiCopiloteUnavailable(
+                'Chaque correction doit être un objet '
+                '{champ, valeur_corrigee}.')
+        champ = str(entree.get('champ') or '').strip()
+        if not champ:
+            raise AiCopiloteUnavailable('Le nom du champ est requis.')
+        valeur_corrigee = entree.get('valeur_corrigee')
+        valeur_corrigee = ('' if valeur_corrigee is None
+                           else str(valeur_corrigee))
+        valeur_ia = champs.get(champ)
+        valeur_ia = '' if valeur_ia is None else str(valeur_ia)
+
+        lignes.append(ExtractionCorrection(
+            company_id=job.company_id, job=job, champ=champ,
+            valeur_ia=valeur_ia, valeur_corrigee=valeur_corrigee,
+            corrige_par=user if getattr(user, 'pk', None) else None))
+        champs[champ] = valeur_corrigee
+
+    creees = ExtractionCorrection.objects.bulk_create(lignes)
+    resultat['champs'] = champs
+    # Marque la revue humaine ; ``applique`` reste FAUX — la proposition n'est
+    # toujours pas écrite dans un modèle métier (ce n'est pas le rôle de la GED).
+    resultat['revu_par_humain'] = True
+    job.resultat_json = resultat
+    job.save(update_fields=['resultat_json', 'updated_at'])
+    return {
+        'job': job.pk,
+        'champs': champs,
+        'corrections': [
+            {'champ': c.champ, 'valeur_ia': c.valeur_ia,
+             'valeur_corrigee': c.valeur_corrigee,
+             'modifie': (c.valeur_ia or '') != (c.valeur_corrigee or '')}
+            for c in creees
+        ],
+    }
+
+
+def taux_correction_par_schema(company) -> list:
+    """NTAI18 — Qualité mesurée de chaque gabarit d'extraction, par société.
+
+    Pour chaque schéma : combien de champs ont été REVUS, combien ont été
+    réellement MODIFIÉS, et le taux qui en découle. Purement en lecture, scopé
+    société, aucun appel LLM.
+    """
+    from .models import DocumentAiJob, ExtractionCorrection
+
+    par_schema = {}
+    jobs = dict(
+        DocumentAiJob.objects.filter(company=company)
+        .values_list('pk', 'schema'))
+    for job_pk, schema in jobs.items():
+        par_schema.setdefault(schema or '(aucun)',
+                              {'revus': 0, 'corriges': 0})
+    corrections = ExtractionCorrection.objects.filter(
+        company=company).values_list('job_id', 'valeur_ia', 'valeur_corrigee')
+    for job_id, valeur_ia, valeur_corrigee in corrections:
+        cle = jobs.get(job_id) or '(aucun)'
+        stats = par_schema.setdefault(cle, {'revus': 0, 'corriges': 0})
+        stats['revus'] += 1
+        if (valeur_ia or '') != (valeur_corrigee or ''):
+            stats['corriges'] += 1
+
+    sortie = []
+    for schema in sorted(par_schema):
+        stats = par_schema[schema]
+        revus = stats['revus']
+        sortie.append({
+            'schema': schema,
+            'champs_revus': revus,
+            'champs_corriges': stats['corriges'],
+            'taux_correction': (round(stats['corriges'] / revus, 4)
+                                if revus else 0.0),
+        })
+    return sortie

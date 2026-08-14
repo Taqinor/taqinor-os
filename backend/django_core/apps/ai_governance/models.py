@@ -4,6 +4,7 @@ MULTI-TENANT : tout modèle ici hérite de ``core.models.TenantModel`` (FK
 ``company`` + horodatage) — la société est TOUJOURS posée côté serveur, jamais
 lue d'un corps de requête.
 """
+from django.conf import settings
 from django.db import models
 
 from core.models import TenantModel
@@ -137,3 +138,51 @@ class DocumentAiJob(TenantModel):
 
     def __str__(self):
         return f'Job IA #{self.pk} ({self.statut})'
+
+
+class ExtractionCorrection(TenantModel):
+    """NTAI18 — Un écart entre ce que l'IA a extrait et ce que l'humain valide.
+
+    Chaque champ corrigé lors de la revue laisse une ligne : la valeur PROPOSÉE
+    (``valeur_ia``) ET la valeur RETENUE (``valeur_corrigee``). Deux usages :
+
+      * mesurer la qualité RÉELLE d'un gabarit (taux de correction par schéma) ;
+      * constituer, sans travail supplémentaire, le « jeu d'or » qui permettra
+        plus tard d'évaluer un nouveau modèle sur des cas vrais.
+
+    Une ligne où ``valeur_ia == valeur_corrigee`` est une VALIDATION (l'humain a
+    confirmé) ; elle compte dans le dénominateur, pas dans les corrections.
+    """
+
+    job = models.ForeignKey(
+        # on_delete: la correction documente l'extraction d'un job précis ;
+        # sans lui elle ne veut plus rien dire (ce n'est ni une donnée métier
+        # ni une pièce comptable).
+        DocumentAiJob, on_delete=models.CASCADE, related_name='corrections')
+    champ = models.CharField(
+        max_length=120, help_text='Clé du champ extrait (ex. « numero_cin »).')
+    valeur_ia = models.TextField(
+        blank=True, default='', help_text="Valeur proposée par l'extraction.")
+    valeur_corrigee = models.TextField(
+        blank=True, default='', help_text="Valeur retenue par l'humain.")
+    corrige_par = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='ai_extraction_corrections')
+    corrige_le = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Correction d'extraction"
+        verbose_name_plural = "Corrections d'extraction"
+        ordering = ['-corrige_le', '-id']
+        indexes = [
+            models.Index(fields=['company', 'job'],
+                         name='ai_gov_corr_co_job_idx'),
+        ]
+
+    @property
+    def est_une_correction(self) -> bool:
+        """True quand l'humain a MODIFIÉ la valeur (et non simplement validée)."""
+        return (self.valeur_ia or '') != (self.valeur_corrigee or '')
+
+    def __str__(self):
+        return f'{self.champ} (job #{self.job_id})'
