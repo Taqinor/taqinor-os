@@ -680,9 +680,9 @@ Généré par `python scripts/check_on_delete.py --financial`. Ce tableau recens
 | `backend/django_core/apps/notifications/models.py:1022` | ApprovalReminderState.company | authentication.Company | CASCADE |
 | `backend/django_core/apps/notifications/models.py:1067` | SnoozedItem.company | authentication.Company | CASCADE |
 | `backend/django_core/apps/onboarding/models.py:30` | OnboardingChecklistItem.company | authentication.Company | CASCADE |
-| `backend/django_core/apps/onboarding/models.py:68` | OnboardingProgress.company | authentication.Company | CASCADE |
-| `backend/django_core/apps/onboarding/models.py:106` | ProductTourStep.company | authentication.Company | CASCADE |
-| `backend/django_core/apps/onboarding/models.py:139` | TourProgress.company | authentication.Company | CASCADE |
+| `backend/django_core/apps/onboarding/models.py:76` | OnboardingProgress.company | authentication.Company | CASCADE |
+| `backend/django_core/apps/onboarding/models.py:114` | ProductTourStep.company | authentication.Company | CASCADE |
+| `backend/django_core/apps/onboarding/models.py:147` | TourProgress.company | authentication.Company | CASCADE |
 | `backend/django_core/apps/outillage/models.py:26` | Outillage.company | authentication.Company | CASCADE |
 | `backend/django_core/apps/outillage/models.py:79` | KitOutillage.company | authentication.Company | CASCADE |
 | `backend/django_core/apps/outillage/models.py:101` | KitOutillageItem.company | authentication.Company | CASCADE |
@@ -1079,8 +1079,8 @@ Généré par `python scripts/check_on_delete.py --financial`. Ce tableau recens
 | `backend/django_core/apps/voip/models.py:33` | VoipParametres.company | authentication.Company | CASCADE |
 | `backend/django_core/apps/voip/models.py:65` | VoipIdentifiantUtilisateur.company | authentication.Company | CASCADE |
 | `backend/django_core/apps/voip/models.py:107` | Appel.company | authentication.Company | CASCADE |
-| `backend/django_core/authentication/models.py:182` | CustomUser.company | Company | SET_NULL |
-| `backend/django_core/authentication/models.py:582` | UserSession.company | Company | CASCADE |
+| `backend/django_core/authentication/models.py:195` | CustomUser.company | Company | SET_NULL |
+| `backend/django_core/authentication/models.py:595` | UserSession.company | Company | CASCADE |
 | `backend/django_core/core/models.py:75` | TenantModel.company | authentication.Company | CASCADE |
 | `backend/django_core/core/models.py:214` | DeletionRecord.company | authentication.Company | CASCADE |
 | `backend/django_core/core/models.py:291` | AnomalyFlag.company | authentication.Company | CASCADE |
