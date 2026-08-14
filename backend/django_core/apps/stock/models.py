@@ -1760,6 +1760,7 @@ class FicheTechnique(models.Model):
     rendement ONDULEUR, capacité/DoD/tension BATTERIE."""
 
     company = models.ForeignKey(
+        # on_delete: cascade tenant standard — la fiche technique suit sa société.
         'authentication.Company', on_delete=models.CASCADE,
         null=True, blank=True, related_name='fiches_techniques')
     produit = models.OneToOneField(
@@ -1896,6 +1897,7 @@ class ModeleBonCommandeFournisseur(models.Model):
     avant envoi. Le modèle lui-même ne bouge jamais aucun stock/mouvement."""
 
     company = models.ForeignKey(
+        # on_delete: cascade tenant standard — le modèle de BCF suit sa société.
         'authentication.Company', on_delete=models.CASCADE,
         null=True, blank=True, related_name='modeles_bcf')
     nom = models.CharField(max_length=150)
@@ -1924,9 +1926,11 @@ class ModeleBonCommandeFournisseurLigne(models.Model):
     """ZPUR3 — ligne d'un modèle de BCF : produit + quantité par défaut."""
 
     modele = models.ForeignKey(
+        # on_delete: une ligne de modèle n'existe que dans son modèle de BCF.
         ModeleBonCommandeFournisseur, on_delete=models.CASCADE,
         related_name='lignes')
     produit = models.ForeignKey(
+        # on_delete: modèle de commande, pas un document légal — produit supprimé = ligne caduque.
         Produit, on_delete=models.CASCADE,
         related_name='lignes_modele_bcf')
     quantite = models.PositiveIntegerField(default=1)
@@ -1956,6 +1960,7 @@ class NomenclatureCodeBarres(models.Model):
         GS1 = 'gs1', 'GS1'
 
     company = models.ForeignKey(
+        # on_delete: cascade tenant standard — la nomenclature suit sa société.
         'authentication.Company', on_delete=models.CASCADE,
         null=True, blank=True,
         related_name='nomenclatures_code_barres')
@@ -1989,6 +1994,7 @@ class RegleCodeBarres(models.Model):
         QUANTITE = 'quantite', 'Quantité'
 
     nomenclature = models.ForeignKey(
+        # on_delete: une règle n'existe que dans sa nomenclature de codes-barres.
         NomenclatureCodeBarres, on_delete=models.CASCADE,
         related_name='regles')
     # Regex (compilée avec `re.match`) OU préfixe simple selon

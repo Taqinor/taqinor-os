@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 8969, operations: 16282, components: 4691}
+counts: {paths: 8995, operations: 16318, components: 4722}
 securitySchemes:
 - cookieJWT
 - publicApiKey
@@ -526,6 +526,7 @@ operations:
 - post /api/django/ao/calepinage/lancer/ -> django_ao_calepinage_lancer_create
 - get /api/django/ao/calepinage/resultat/{job_id}/ -> django_ao_calepinage_resultat_retrieve
 - get /api/django/ao/calepinage/variantes/comparer/ -> django_ao_calepinage_variantes_comparer_retrieve
+- post /api/django/ao/calepinage/variantes/{id}/generer-variantes/ -> django_ao_calepinage_variantes_generer_variantes_create
 - get /api/django/ao/calepinage/variantes/{id}/marches/ -> django_ao_calepinage_variantes_marches_retrieve
 - post /api/django/ao/calepinage/variantes/{id}/retenir/ -> django_ao_calepinage_variantes_retenir_create
 - post /api/django/ao/calepinage/variantes/{id}/sensibilites/ -> django_ao_calepinage_variantes_sensibilites_create
@@ -773,6 +774,7 @@ operations:
 - get /api/django/ao/tableau-marches/ -> django_ao_tableau_marches_retrieve
 - get /api/django/ao/toitures/ -> django_ao_toitures_list
 - post /api/django/ao/toitures/ -> django_ao_toitures_create
+- post /api/django/ao/toitures/dxf/analyser/ -> django_ao_toitures_dxf_analyser_create
 - delete /api/django/ao/toitures/{id}/ -> django_ao_toitures_destroy
 - get /api/django/ao/toitures/{id}/ -> django_ao_toitures_retrieve
 - patch /api/django/ao/toitures/{id}/ -> django_ao_toitures_partial_update
@@ -790,6 +792,14 @@ operations:
 - post /api/django/ao/variantes-calepinage/{id}/chatter/noter/ -> django_ao_variantes_calepinage_chatter_noter_create
 - post /api/django/ao/variantes-calepinage/{id}/publier/ -> django_ao_variantes_calepinage_publier_create
 - post /api/django/ao/variantes-calepinage/{id}/retenir/ -> django_ao_variantes_calepinage_retenir_create
+- get /api/django/ao/zones/ -> django_ao_zones_list
+- post /api/django/ao/zones/ -> django_ao_zones_create
+- delete /api/django/ao/zones/{id}/ -> django_ao_zones_destroy
+- get /api/django/ao/zones/{id}/ -> django_ao_zones_retrieve
+- patch /api/django/ao/zones/{id}/ -> django_ao_zones_partial_update
+- put /api/django/ao/zones/{id}/ -> django_ao_zones_update
+- get /api/django/ao/zones/{id}/chatter/historique/ -> django_ao_zones_chatter_historique_retrieve
+- post /api/django/ao/zones/{id}/chatter/noter/ -> django_ao_zones_chatter_noter_create
 - get /api/django/assurances/actifs-couverts/ -> django_assurances_actifs_couverts_list
 - post /api/django/assurances/actifs-couverts/ -> django_assurances_actifs_couverts_create
 - delete /api/django/assurances/actifs-couverts/{id}/ -> django_assurances_actifs_couverts_destroy
@@ -7945,15 +7955,19 @@ operations:
 - patch /api/django/ventes/devis/{id}/ -> django_ventes_devis_partial_update
 - put /api/django/ventes/devis/{id}/ -> django_ventes_devis_update
 - post /api/django/ventes/devis/{id}/accepter/ -> django_ventes_devis_accepter_create
+- post /api/django/ventes/devis/{id}/ajouter-boq-electrique/ -> django_ventes_devis_ajouter_boq_electrique_create
 - post /api/django/ventes/devis/{id}/apply-preset/ -> django_ventes_devis_apply_preset_create
 - get /api/django/ventes/devis/{id}/approbation/ -> django_ventes_devis_approbation_retrieve
 - post /api/django/ventes/devis/{id}/approuver-etape/ -> django_ventes_devis_approuver_etape_create
 - post /api/django/ventes/devis/{id}/approuver-remise/ -> django_ventes_devis_approuver_remise_create
 - get /api/django/ventes/devis/{id}/avenants/ -> django_ventes_devis_avenants_retrieve
 - post /api/django/ventes/devis/{id}/avenants/ -> django_ventes_devis_avenants_create
+- get /api/django/ventes/devis/{id}/conception-electrique/ -> django_ventes_devis_conception_electrique_retrieve
+- post /api/django/ventes/devis/{id}/conception-electrique/ -> django_ventes_devis_conception_electrique_create
 - post /api/django/ventes/devis/{id}/contacter-superieur/ -> django_ventes_devis_contacter_superieur_create
 - post /api/django/ventes/devis/{id}/convertir-bc/ -> django_ventes_devis_convertir_bc_create
 - get /api/django/ventes/devis/{id}/declaration-raccordement/ -> django_ventes_devis_declaration_raccordement_retrieve
+- get /api/django/ventes/devis/{id}/design-context/ -> django_ventes_devis_design_context_retrieve
 - post /api/django/ventes/devis/{id}/dupliquer-variante/ -> django_ventes_devis_dupliquer_variante_create
 - post /api/django/ventes/devis/{id}/dupliquer/ -> django_ventes_devis_dupliquer_create
 - post /api/django/ventes/devis/{id}/envoyer-email/ -> django_ventes_devis_envoyer_email_create
@@ -7977,8 +7991,11 @@ operations:
 - post /api/django/ventes/devis/{id}/save-preset/ -> django_ventes_devis_save_preset_create
 - get /api/django/ventes/devis/{id}/schema-unifilaire/ -> django_ventes_devis_schema_unifilaire_retrieve
 - post /api/django/ventes/devis/{id}/share-link/ -> django_ventes_devis_share_link_create
+- get /api/django/ventes/devis/{id}/simulation-status/{token}/ -> django_ventes_devis_simulation_status_retrieve
+- post /api/django/ventes/devis/{id}/simuler/ -> django_ventes_devis_simuler_create
 - get /api/django/ventes/devis/{id}/suivi-partage/ -> django_ventes_devis_suivi_partage_retrieve
 - get /api/django/ventes/devis/{id}/superior-contact-status/ -> django_ventes_devis_superior_contact_status_retrieve
+- post /api/django/ventes/devis/{id}/sync-layout/ -> django_ventes_devis_sync_layout_create
 - get /api/django/ventes/devis/{id}/telecharger-pdf/ -> django_ventes_devis_telecharger_pdf_retrieve
 - get /api/django/ventes/devis/{id}/variantes/ -> django_ventes_devis_variantes_retrieve
 - post /api/django/ventes/devis/{id}/whatsapp-preview/ -> django_ventes_devis_whatsapp_preview_create
@@ -8002,6 +8019,7 @@ operations:
 - patch /api/django/ventes/dossiers-reglementaires/{id}/ -> django_ventes_dossiers_reglementaires_partial_update
 - put /api/django/ventes/dossiers-reglementaires/{id}/ -> django_ventes_dossiers_reglementaires_update
 - post /api/django/ventes/dossiers-reglementaires/{id}/generer-checklist/ -> django_ventes_dossiers_reglementaires_generer_checklist_create
+- post /api/django/ventes/dossiers-reglementaires/{id}/generer-schema/ -> django_ventes_dossiers_reglementaires_generer_schema_create
 - get /api/django/ventes/email-config/ -> django_ventes_email_config_retrieve
 - get /api/django/ventes/etats/analyse-facturation/ -> django_ventes_etats_analyse_facturation_retrieve
 - get /api/django/ventes/export-comptable/ -> django_ventes_export_comptable_retrieve
@@ -8699,6 +8717,7 @@ operations:
 - post /api/v1/ao/calepinage/lancer/ -> v1_ao_calepinage_lancer_create
 - get /api/v1/ao/calepinage/resultat/{job_id}/ -> v1_ao_calepinage_resultat_retrieve
 - get /api/v1/ao/calepinage/variantes/comparer/ -> v1_ao_calepinage_variantes_comparer_retrieve
+- post /api/v1/ao/calepinage/variantes/{id}/generer-variantes/ -> v1_ao_calepinage_variantes_generer_variantes_create
 - get /api/v1/ao/calepinage/variantes/{id}/marches/ -> v1_ao_calepinage_variantes_marches_retrieve
 - post /api/v1/ao/calepinage/variantes/{id}/retenir/ -> v1_ao_calepinage_variantes_retenir_create
 - post /api/v1/ao/calepinage/variantes/{id}/sensibilites/ -> v1_ao_calepinage_variantes_sensibilites_create
@@ -8946,6 +8965,7 @@ operations:
 - get /api/v1/ao/tableau-marches/ -> v1_ao_tableau_marches_retrieve
 - get /api/v1/ao/toitures/ -> v1_ao_toitures_list
 - post /api/v1/ao/toitures/ -> v1_ao_toitures_create
+- post /api/v1/ao/toitures/dxf/analyser/ -> v1_ao_toitures_dxf_analyser_create
 - delete /api/v1/ao/toitures/{id}/ -> v1_ao_toitures_destroy
 - get /api/v1/ao/toitures/{id}/ -> v1_ao_toitures_retrieve
 - patch /api/v1/ao/toitures/{id}/ -> v1_ao_toitures_partial_update
@@ -8963,6 +8983,14 @@ operations:
 - post /api/v1/ao/variantes-calepinage/{id}/chatter/noter/ -> v1_ao_variantes_calepinage_chatter_noter_create
 - post /api/v1/ao/variantes-calepinage/{id}/publier/ -> v1_ao_variantes_calepinage_publier_create
 - post /api/v1/ao/variantes-calepinage/{id}/retenir/ -> v1_ao_variantes_calepinage_retenir_create
+- get /api/v1/ao/zones/ -> v1_ao_zones_list
+- post /api/v1/ao/zones/ -> v1_ao_zones_create
+- delete /api/v1/ao/zones/{id}/ -> v1_ao_zones_destroy
+- get /api/v1/ao/zones/{id}/ -> v1_ao_zones_retrieve
+- patch /api/v1/ao/zones/{id}/ -> v1_ao_zones_partial_update
+- put /api/v1/ao/zones/{id}/ -> v1_ao_zones_update
+- get /api/v1/ao/zones/{id}/chatter/historique/ -> v1_ao_zones_chatter_historique_retrieve
+- post /api/v1/ao/zones/{id}/chatter/noter/ -> v1_ao_zones_chatter_noter_create
 - get /api/v1/assurances/actifs-couverts/ -> v1_assurances_actifs_couverts_list
 - post /api/v1/assurances/actifs-couverts/ -> v1_assurances_actifs_couverts_create
 - delete /api/v1/assurances/actifs-couverts/{id}/ -> v1_assurances_actifs_couverts_destroy
@@ -16077,15 +16105,19 @@ operations:
 - patch /api/v1/ventes/devis/{id}/ -> v1_ventes_devis_partial_update
 - put /api/v1/ventes/devis/{id}/ -> v1_ventes_devis_update
 - post /api/v1/ventes/devis/{id}/accepter/ -> v1_ventes_devis_accepter_create
+- post /api/v1/ventes/devis/{id}/ajouter-boq-electrique/ -> v1_ventes_devis_ajouter_boq_electrique_create
 - post /api/v1/ventes/devis/{id}/apply-preset/ -> v1_ventes_devis_apply_preset_create
 - get /api/v1/ventes/devis/{id}/approbation/ -> v1_ventes_devis_approbation_retrieve
 - post /api/v1/ventes/devis/{id}/approuver-etape/ -> v1_ventes_devis_approuver_etape_create
 - post /api/v1/ventes/devis/{id}/approuver-remise/ -> v1_ventes_devis_approuver_remise_create
 - get /api/v1/ventes/devis/{id}/avenants/ -> v1_ventes_devis_avenants_retrieve
 - post /api/v1/ventes/devis/{id}/avenants/ -> v1_ventes_devis_avenants_create
+- get /api/v1/ventes/devis/{id}/conception-electrique/ -> v1_ventes_devis_conception_electrique_retrieve
+- post /api/v1/ventes/devis/{id}/conception-electrique/ -> v1_ventes_devis_conception_electrique_create
 - post /api/v1/ventes/devis/{id}/contacter-superieur/ -> v1_ventes_devis_contacter_superieur_create
 - post /api/v1/ventes/devis/{id}/convertir-bc/ -> v1_ventes_devis_convertir_bc_create
 - get /api/v1/ventes/devis/{id}/declaration-raccordement/ -> v1_ventes_devis_declaration_raccordement_retrieve
+- get /api/v1/ventes/devis/{id}/design-context/ -> v1_ventes_devis_design_context_retrieve
 - post /api/v1/ventes/devis/{id}/dupliquer-variante/ -> v1_ventes_devis_dupliquer_variante_create
 - post /api/v1/ventes/devis/{id}/dupliquer/ -> v1_ventes_devis_dupliquer_create
 - post /api/v1/ventes/devis/{id}/envoyer-email/ -> v1_ventes_devis_envoyer_email_create
@@ -16109,8 +16141,11 @@ operations:
 - post /api/v1/ventes/devis/{id}/save-preset/ -> v1_ventes_devis_save_preset_create
 - get /api/v1/ventes/devis/{id}/schema-unifilaire/ -> v1_ventes_devis_schema_unifilaire_retrieve
 - post /api/v1/ventes/devis/{id}/share-link/ -> v1_ventes_devis_share_link_create
+- get /api/v1/ventes/devis/{id}/simulation-status/{token}/ -> v1_ventes_devis_simulation_status_retrieve
+- post /api/v1/ventes/devis/{id}/simuler/ -> v1_ventes_devis_simuler_create
 - get /api/v1/ventes/devis/{id}/suivi-partage/ -> v1_ventes_devis_suivi_partage_retrieve
 - get /api/v1/ventes/devis/{id}/superior-contact-status/ -> v1_ventes_devis_superior_contact_status_retrieve
+- post /api/v1/ventes/devis/{id}/sync-layout/ -> v1_ventes_devis_sync_layout_create
 - get /api/v1/ventes/devis/{id}/telecharger-pdf/ -> v1_ventes_devis_telecharger_pdf_retrieve
 - get /api/v1/ventes/devis/{id}/variantes/ -> v1_ventes_devis_variantes_retrieve
 - post /api/v1/ventes/devis/{id}/whatsapp-preview/ -> v1_ventes_devis_whatsapp_preview_create
@@ -16134,6 +16169,7 @@ operations:
 - patch /api/v1/ventes/dossiers-reglementaires/{id}/ -> v1_ventes_dossiers_reglementaires_partial_update
 - put /api/v1/ventes/dossiers-reglementaires/{id}/ -> v1_ventes_dossiers_reglementaires_update
 - post /api/v1/ventes/dossiers-reglementaires/{id}/generer-checklist/ -> v1_ventes_dossiers_reglementaires_generer_checklist_create
+- post /api/v1/ventes/dossiers-reglementaires/{id}/generer-schema/ -> v1_ventes_dossiers_reglementaires_generer_schema_create
 - get /api/v1/ventes/email-config/ -> v1_ventes_email_config_retrieve
 - get /api/v1/ventes/etats/analyse-facturation/ -> v1_ventes_etats_analyse_facturation_retrieve
 - get /api/v1/ventes/export-comptable/ -> v1_ventes_export_comptable_retrieve
@@ -16353,6 +16389,7 @@ components:
 - ActionProjet
 - ActionProjetRequest
 - ActionProjetStatutEnum
+- ActionSuggestion
 - Activity
 - ActivityRequest
 - ActivityType
@@ -16388,6 +16425,7 @@ components:
 - AlerteContratStatutEnum
 - AllocationRecurrente
 - AllocationRecurrenteRequest
+- AnalyseDxfReponse
 - AnalyseIncident
 - AnalyseIncidentMethodeEnum
 - AnalyseIncidentRequest
@@ -16416,8 +16454,11 @@ components:
 - AoCalepinageComparaisonLigne
 - AoCalepinageMarche
 - AoCalepinageMarches
+- AoCalepinageOrientationIgnoree
 - AoCalepinageSensibilite
 - AoCalepinageSensibilites
+- AoCalepinageVarianteOrientation
+- AoCalepinageVariantesOrientation
 - AoTableauMarches
 - AoTableauMarchesCapacite
 - AoTableauMarchesCautions
@@ -16654,6 +16695,7 @@ components:
 - CaisseRequest
 - CalendrierProjet
 - CalendrierProjetRequest
+- CalqueDxf
 - Campagne
 - CampagneCulturale
 - CampagneCulturaleRequest
@@ -17861,6 +17903,7 @@ components:
 - MarcheEnum
 - MargeInterneStock
 - MargeInterneStockRequest
+- MargesCalepinage
 - Marque
 - MarqueRequest
 - MaterielAgricole
@@ -18051,6 +18094,7 @@ components:
 - OffreGroupeeRequest
 - OmbrageEnum
 - OnboardingItemMasquable
+- OndPhasesEnum
 - OperateurEnum
 - OperationGamme
 - OperationGammeRequest
@@ -19042,6 +19086,7 @@ components:
 - PaginatedWebsiteLeadPayloadList
 - PaginatedWhatsAppTemplateList
 - PaginatedWorksheetMaintenanceModeleList
+- PaginatedZoneAOList
 - PaginatedZoneGeographiqueList
 - Paiement
 - PaiementFacturePortail
@@ -19953,6 +19998,7 @@ components:
 - PatchedWorkflowDefinitionRequest
 - PatchedWorkflowStepDefinitionRequest
 - PatchedWorksheetMaintenanceModeleRequest
+- PatchedZoneAORequest
 - PatchedZoneGeographiqueRequest
 - Patient
 - PatientRequest
@@ -20700,8 +20746,10 @@ components:
 - SubventionDossierProgrammeEnum
 - SubventionDossierRequest
 - SubventionDossierStatutEnum
+- SuggestionCalepinage
 - SupportOffline
 - SupportOfflineRequest
+- SyntheseCalepinageAffaire
 - Tache
 - TacheCloture
 - TacheClotureModele
@@ -20760,6 +20808,12 @@ components:
 - Timesheet
 - TimesheetRequest
 - TimesheetStatutEnum
+- TiroirAllees
+- TiroirElectrique
+- TiroirKits
+- TiroirOrientation
+- TiroirRives
+- TiroirsCalepinage
 - ToitureAO
 - ToitureAORequest
 - TokenRefresh
@@ -20851,6 +20905,7 @@ components:
 - TypeExerciceEnum
 - TypeExigenceEnum
 - TypeFacture2a7Enum
+- TypeFicheEnum
 - TypeFichierEnum
 - TypeFinancementEnum
 - TypeFiscalEnum
@@ -20983,9 +21038,21 @@ components:
 - WorkflowStepDefinitionRequest
 - WorksheetMaintenanceModele
 - WorksheetMaintenanceModeleRequest
+- ZoneAO
+- ZoneAONatureEnum
+- ZoneAORequest
 - ZoneGeographique
 - ZoneGeographiqueRequest
+- _ChaineElectrique
+- _ConformiteElectrique
+- _DonneesAllees
+- _DonneesElectrique
+- _DonneesKits
+- _DonneesOrientation
+- _DonneesRives
 - _FactureSousTraitant
 - _FactureSousTraitantRequest
+- _OnduleursElectrique
 - _PaiementSousTraitant
 - _PaiementSousTraitantRequest
+- _RatioElectrique
