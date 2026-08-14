@@ -777,3 +777,29 @@ def _poster_encaissement_especes(*, vente, mode, montant, facture, motif, user):
         tiers_type='client', tiers_id=vente.client_id,
         tiers_nom=str(vente.client) if vente.client_id else '',
         libelle=motif, user=user)
+
+
+# ── NTRET12 — Moteur de promotions panier (apps.promotions) ────────────────
+
+def promotions_applicables(vente, *, maintenant=None):
+    """NTRET12 — promotions actives applicables au panier de ``vente``.
+
+    Import FONCTION-LOCAL vers ``apps.promotions.services`` — jamais
+    l'inverse (règle de modularité cross-app, CLAUDE.md). Best-effort : une
+    erreur du moteur promo (ex. app absente, règle mal configurée) ne
+    bloque JAMAIS une vente — renvoie ``[]`` plutôt que de lever. Consommé
+    par l'écran caisse (aperçu avant encaissement) et par
+    ``apps/promotions`` pour les tests d'intégration."""
+    try:
+        from apps.promotions.services import evaluer_panier
+        return evaluer_panier(
+            vente.company, vente.lignes.all(), maintenant=maintenant)
+    except Exception:
+        return []
+
+
+def total_remises_promotions(vente, *, maintenant=None):
+    """Somme des remises promo retenues (MAD) pour le panier de ``vente``."""
+    return sum(
+        (r.montant for r in promotions_applicables(vente, maintenant=maintenant)),
+        Decimal('0'))

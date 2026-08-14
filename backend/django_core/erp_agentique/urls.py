@@ -100,6 +100,9 @@ _APP_URLS = [
     path('voip/', include('apps.voip.urls')),
     # XPOS1 — Vente comptoir (point of sale).
     path('pos/', include('apps.pos.urls')),
+    # NTRET12 — Moteur de promotions panier (règles configurables, coupons
+    # NTRET13, cartes cadeaux NTRET15).
+    path('promotions/', include('apps.promotions.urls')),
     # NTSEC — Fondation Identité & accès (NTSEC11 : allowlist IP/CIDR).
     path('identity/', include('apps.identity.urls')),
     # NTSEC19/20 — Gouvernance des accès (revue d'accès + SoD). WIR136 :

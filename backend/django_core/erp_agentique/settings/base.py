@@ -288,6 +288,12 @@ INSTALLED_APPS = [
     # un sas, et c'est un humain qui tranche. Couplage vers `ao` par entier
     # opaque (`appel_offre_id`), jamais par FK.
     'apps.veille_ao',
+    # NTRET12 — Moteur de promotions panier (règles configurables : remise %
+    # produit/catégorie, remise montant panier, N-pour-M, plage horaire
+    # happy hour). NTRET13 y ajoute les coupons à code unique, NTRET15 les
+    # cartes cadeaux. App satellite : `apps/pos/services.py` l'appelle en
+    # import fonction-local (jamais l'inverse).
+    'apps.promotions',
 ]
 
 MIDDLEWARE = [
