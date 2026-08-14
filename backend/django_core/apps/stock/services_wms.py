@@ -747,3 +747,110 @@ def liberer_vagues_planifiees(*, company=None, maintenant=None):
             continue
         liberees.append(vague.reference)
     return {'liberees': liberees, 'examinees': examinees}
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# NTWMS13 — Comptage tournant ABC récurrent (cycle counting)
+# ═══════════════════════════════════════════════════════════════════════════
+
+# Fenêtre d'analyse de rotation : 12 mois glissants.
+FENETRE_ROTATION_JOURS = 365
+
+
+def assurer_plans_comptage_tournant(company):
+    """Crée (idempotent) les trois plans A/B/C par défaut d'une société.
+
+    A = 30 j, B = 90 j, C = 180 j — les fréquences RESTENT configurables
+    ensuite ; cette fonction ne les écrase jamais.
+    """
+    from .models_wms import PlanComptageTournant
+
+    plans = []
+    for classe, frequence in PlanComptageTournant.FREQUENCES_DEFAUT.items():
+        plan, _cree = PlanComptageTournant.objects.get_or_create(
+            company=company, classe_abc=classe,
+            defaults={'frequence_jours': frequence})
+        plans.append(plan)
+    return plans
+
+
+def generer_comptages_tournants(*, company=None, aujourd_hui=None):
+    """Génère les ``InventaireSession`` de comptage tournant DUES.
+
+    Pour chaque plan actif dont l'échéance est atteinte, crée UNE session
+    d'inventaire en brouillon contenant les produits de la classe concernée
+    (quantité comptée pré-remplie à la quantité théorique : le magasinier n'a
+    qu'à corriger les écarts), puis horodate le plan.
+
+    IDEMPOTENTE : rejouée le même jour, elle ne recrée rien (l'échéance vient
+    d'être repoussée). ``aujourd_hui`` (date) est FOURNI par l'appelant dans
+    les tests — jamais l'horloge, sinon la suite bascule à minuit.
+
+    Renvoie ``{'sessions': [references…], 'plans_dus': n}``.
+    """
+    import datetime
+
+    from django.db import transaction
+    from django.utils import timezone
+    from core.numbering import create_with_reference
+    from .models import InventaireSession, LigneInventaire, Produit
+    from .models_wms import PlanComptageTournant
+    from .selectors_wms import classes_abc_produits
+
+    aujourd_hui = aujourd_hui or timezone.localdate()
+    depuis = aujourd_hui - datetime.timedelta(days=FENETRE_ROTATION_JOURS)
+
+    plans = PlanComptageTournant.objects.filter(actif=True).select_related(
+        'company')
+    if company is not None:
+        plans = plans.filter(company=company)
+
+    sessions, plans_dus = [], 0
+    classes_par_company = {}
+    for plan in plans:
+        if not plan.est_du(aujourd_hui):
+            continue
+        plans_dus += 1
+        if plan.company_id not in classes_par_company:
+            classes_par_company[plan.company_id] = classes_abc_produits(
+                plan.company, depuis=depuis, jusqu_a=aujourd_hui)
+        classes = classes_par_company[plan.company_id]
+        produit_ids = [pid for pid, classe in classes.items()
+                       if classe == plan.classe_abc]
+        if not produit_ids:
+            # Aucun produit dans cette classe : on horodate quand même pour ne
+            # pas réexaminer ce plan à chaque passage.
+            plan.date_dernier_comptage = aujourd_hui
+            plan.save(update_fields=['date_dernier_comptage'])
+            continue
+
+        produits = list(Produit.objects.filter(
+            company=plan.company, id__in=produit_ids, is_archived=False))
+        if not produits:
+            plan.date_dernier_comptage = aujourd_hui
+            plan.save(update_fields=['date_dernier_comptage'])
+            continue
+
+        with transaction.atomic():
+            def _save(reference, plan=plan):
+                return InventaireSession.objects.create(
+                    company=plan.company, reference=reference,
+                    motif=f'Comptage tournant — classe {plan.classe_abc} '
+                          f'(tous les {plan.frequence_jours} jours)')
+
+            session = create_with_reference(
+                InventaireSession, 'INV', plan.company, _save)
+            LigneInventaire.objects.bulk_create([
+                LigneInventaire(
+                    session=session, produit=produit,
+                    quantite_theorique=produit.quantite_stock,
+                    # Pré-rempli au théorique : valider sans rien toucher
+                    # n'émet AUCUN ajustement (une session de comptage ne
+                    # doit jamais bouger le stock toute seule).
+                    quantite_comptee=produit.quantite_stock)
+                for produit in produits
+            ])
+            plan.date_dernier_comptage = aujourd_hui
+            plan.save(update_fields=['date_dernier_comptage'])
+        sessions.append(session.reference)
+    return {'sessions': sessions, 'plans_dus': plans_dus}

@@ -6,8 +6,9 @@
 from rest_framework import serializers
 
 from .models_wms import (
-    ExpeditionTransporteur, LignePicking, Quai, RendezVousTransporteur,
-    UniteLogistique, UniteLogistiqueLigne, VaguePicking,
+    ExpeditionTransporteur, LignePicking, PlanComptageTournant, Quai,
+    RendezVousTransporteur, UniteLogistique, UniteLogistiqueLigne,
+    VaguePicking,
 )
 
 
@@ -194,3 +195,21 @@ class ExpeditionTransporteurSerializer(serializers.ModelSerializer):
         # La CLÉ MinIO elle-même n'est jamais exposée (chemin de stockage
         # interne) : le client sait seulement qu'une étiquette existe.
         return bool(obj.etiquette_pdf_key)
+
+
+class PlanComptageTournantSerializer(serializers.ModelSerializer):
+    """NTWMS13 — fréquence de recomptage d'une classe ABC."""
+
+    class Meta:
+        model = PlanComptageTournant
+        fields = [
+            'id', 'classe_abc', 'frequence_jours', 'actif',
+            'date_dernier_comptage',
+        ]
+        read_only_fields = ['date_dernier_comptage']
+
+    def validate_frequence_jours(self, value):
+        if value is None or int(value) <= 0:
+            raise serializers.ValidationError(
+                'La fréquence doit être un nombre de jours positif.')
+        return value

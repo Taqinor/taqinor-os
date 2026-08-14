@@ -1200,6 +1200,8 @@ def nb_produits_par_entite(company, entite_ids):
 # Definis dans `selectors_wms.py` ; re-exportes ici pour que les appelants
 # continuent d'ecrire `from apps.stock.selectors import ...`.
 from .selectors_wms import (  # noqa: E402,F401
+    classe_abc_produit,
+    classes_abc_produits,
     comparer_tarifs_transporteurs,
     localisation_casiers,
     planning_quais,

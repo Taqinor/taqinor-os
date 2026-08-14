@@ -470,3 +470,61 @@ class ExpeditionTransporteur(TenantModel):
 
     def __str__(self):
         return f'{self.transporteur_provider} {self.numero_suivi}'.strip()
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# NTWMS13 — Comptage tournant ABC récurrent (cycle counting)
+# ═══════════════════════════════════════════════════════════════════════════
+
+class PlanComptageTournant(TenantModel):
+    """Fréquence de recomptage d'une CLASSE ABC de produits.
+
+    Le comptage tournant remplace l'inventaire annuel « tout d'un coup » par un
+    recomptage CONTINU : les articles de classe A (les 20 % de la valeur de
+    rotation) sont recomptés souvent, les C rarement. Ce plan génère
+    automatiquement des ``InventaireSession`` CIBLÉES (commande
+    ``generer_comptages_tournants``) — jamais un mécanisme d'inventaire
+    parallèle : c'est la session existante qui est produite.
+    """
+
+    class ClasseAbc(models.TextChoices):
+        A = 'A', 'A — forte rotation'
+        B = 'B', 'B — rotation moyenne'
+        C = 'C', 'C — faible rotation'
+
+    # Fréquences par défaut (jours) — configurables par société.
+    FREQUENCES_DEFAUT = {'A': 30, 'B': 90, 'C': 180}
+
+    classe_abc = models.CharField(max_length=1, choices=ClasseAbc.choices)
+    frequence_jours = models.PositiveIntegerField(default=30)
+    actif = models.BooleanField(default=True)
+    date_dernier_comptage = models.DateField(null=True, blank=True)
+
+    class Meta:
+        verbose_name = 'Plan de comptage tournant'
+        verbose_name_plural = 'Plans de comptage tournant'
+        ordering = ['classe_abc']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'classe_abc'],
+                name='stock_plancomptage_company_classe_uniq'),
+        ]
+
+    def __str__(self):
+        return f'Classe {self.classe_abc} — tous les {self.frequence_jours} j'
+
+    def est_du(self, a_la_date):
+        """Vrai si un comptage de cette classe est DÛ à la date fournie.
+
+        Jamais compté = toujours dû. La date est toujours FOURNIE par
+        l'appelant (le service/la commande) : ce modèle ne lit pas l'horloge.
+        """
+        import datetime
+
+        if not self.actif:
+            return False
+        if self.date_dernier_comptage is None:
+            return True
+        echeance = self.date_dernier_comptage + datetime.timedelta(
+            days=self.frequence_jours or 0)
+        return a_la_date >= echeance

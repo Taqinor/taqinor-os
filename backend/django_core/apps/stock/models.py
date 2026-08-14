@@ -1938,6 +1938,7 @@ class RegleCodeBarres(models.Model):
 from .models_wms import (  # noqa: E402,F401
     ExpeditionTransporteur,
     LignePicking,
+    PlanComptageTournant,
     Quai,
     RendezVousTransporteur,
     UniteLogistique,

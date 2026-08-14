@@ -374,3 +374,95 @@ def comparer_tarifs_transporteurs(unite_logistique, destination=''):
 
     lignes.sort(key=_cle)
     return lignes
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# NTWMS13 — Classification ABC de rotation (comptage tournant)
+# ═══════════════════════════════════════════════════════════════════════════
+
+# Bornes de PARETO : A = les produits couvrant les 20 premiers % de la valeur
+# de rotation cumulée, B = les 30 % suivants, C = le reste.
+SEUIL_CLASSE_A = 0.20
+SEUIL_CLASSE_B = 0.50
+
+
+def classes_abc_produits(company, *, depuis=None, jusqu_a=None):
+    """Classe ABC de CHAQUE produit de la société, sur la valeur de rotation.
+
+    La rotation d'un produit = Σ des quantités SORTIES sur la période × son
+    ``prix_achat`` (valeur interne, jamais client-facing). Les produits triés
+    par valeur décroissante sont coupés selon Pareto : 20 % de la valeur
+    cumulée → A, 30 % suivants → B, reste → C. Un produit SANS mouvement de
+    sortie est classé C (il ne tourne pas).
+
+    ``depuis``/``jusqu_a`` (dates) bornent la fenêtre — l'appelant fournit
+    TOUJOURS la fenêtre (12 mois par défaut côté service) : ce sélecteur ne lit
+    jamais l'horloge, pour rester déterministe.
+
+    Renvoie ``{produit_id: 'A'|'B'|'C'}``. LECTURE SEULE.
+    """
+    from decimal import Decimal
+
+    from django.db.models import Sum
+
+    from .models import MouvementStock, Produit
+
+    if company is None:
+        return {}
+
+    sorties = MouvementStock.objects.filter(
+        company=company,
+        type_mouvement=MouvementStock.TypeMouvement.SORTIE)
+    if depuis is not None:
+        sorties = sorties.filter(date__date__gte=depuis)
+    if jusqu_a is not None:
+        sorties = sorties.filter(date__date__lte=jusqu_a)
+    quantites = {
+        ligne['produit_id']: ligne['total'] or 0
+        for ligne in sorties.values('produit_id').annotate(
+            total=Sum('quantite'))
+    }
+
+    prix = {
+        produit.id: produit.prix_achat or Decimal('0')
+        for produit in Produit.objects.filter(company=company).only(
+            'id', 'prix_achat')
+    }
+
+    valeurs = {
+        produit_id: Decimal(str(abs(quantites.get(produit_id, 0)))) * prix_unit
+        for produit_id, prix_unit in prix.items()
+    }
+    total = sum(valeurs.values())
+    classes = {produit_id: 'C' for produit_id in prix}
+    if total <= 0:
+        # Aucune rotation valorisée : tout est C (rien ne justifie un
+        # recomptage fréquent).
+        return classes
+
+    cumul = Decimal('0')
+    for produit_id, valeur in sorted(
+            valeurs.items(), key=lambda item: (-item[1], item[0])):
+        if valeur <= 0:
+            classes[produit_id] = 'C'
+            continue
+        # La classe est décidée sur le cumul AVANT ce produit : le premier
+        # produit est donc toujours A, même s'il pèse à lui seul plus de 20 %.
+        part_avant = float(cumul / total)
+        if part_avant < SEUIL_CLASSE_A:
+            classes[produit_id] = 'A'
+        elif part_avant < SEUIL_CLASSE_B:
+            classes[produit_id] = 'B'
+        else:
+            classes[produit_id] = 'C'
+        cumul += valeur
+    return classes
+
+
+def classe_abc_produit(produit, *, depuis=None, jusqu_a=None):
+    """Classe ABC d'UN produit (``'A'``/``'B'``/``'C'``)."""
+    if produit is None:
+        return 'C'
+    classes = classes_abc_produits(
+        produit.company, depuis=depuis, jusqu_a=jusqu_a)
+    return classes.get(produit.id, 'C')

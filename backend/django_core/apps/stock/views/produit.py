@@ -80,7 +80,8 @@ class ProduitViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         # pour les comptes hérités sans rôle fin.
         if self.action in READ_ACTIONS + [
                 'export_xlsx', 'resolve', 'previsionnel', 'tracer',
-                'etiquettes_showroom', 'casiers', 'plan_picking']:
+                'etiquettes_showroom', 'casiers', 'plan_picking',
+                'classe_abc']:
             # XSTK3/XSTK4 — `resolve` (scan code-barres/GS1) est LECTURE
             # SEULE, accessible à tout rôle authentifié — même garde que
             # `@action(permission_classes=[IsAnyRole])` sur l'action
@@ -334,6 +335,28 @@ class ProduitViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         from ..selectors import localisation_casiers
         produit = self.get_object()
         return Response(localisation_casiers(produit))
+
+    @action(detail=True, methods=['get'], url_path='classe-abc',
+            permission_classes=[IsAnyRole])
+    def classe_abc(self, request, *args, **kwargs):
+        """NTWMS13 — classe ABC de rotation de ce produit sur 12 mois
+        glissants (A = 20 % de la valeur de rotation cumulée, B = 30 %
+        suivants, C = reste). LECTURE SEULE."""
+        import datetime
+        from django.utils import timezone
+        from ..selectors import classe_abc_produit
+        from ..services import FENETRE_ROTATION_JOURS
+
+        produit = self.get_object()
+        jusqu_a = timezone.localdate()
+        depuis = jusqu_a - datetime.timedelta(days=FENETRE_ROTATION_JOURS)
+        return Response({
+            'produit': produit.id,
+            'classe_abc': classe_abc_produit(
+                produit, depuis=depuis, jusqu_a=jusqu_a),
+            'depuis': depuis,
+            'jusqu_a': jusqu_a,
+        })
 
     @action(detail=True, methods=['get'], url_path='plan-picking',
             permission_classes=[IsAnyRole])

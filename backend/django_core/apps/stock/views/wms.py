@@ -14,13 +14,13 @@ from authentication.permissions import (
 )
 
 from ..models_wms import (
-    ExpeditionTransporteur, Quai, RendezVousTransporteur, UniteLogistique,
-    VaguePicking,
+    ExpeditionTransporteur, PlanComptageTournant, Quai,
+    RendezVousTransporteur, UniteLogistique, VaguePicking,
 )
 from ..serializers_wms import (
-    ExpeditionTransporteurSerializer, QuaiSerializer,
-    RendezVousTransporteurSerializer, UniteLogistiqueSerializer,
-    VaguePickingSerializer,
+    ExpeditionTransporteurSerializer, PlanComptageTournantSerializer,
+    QuaiSerializer, RendezVousTransporteurSerializer,
+    UniteLogistiqueSerializer, VaguePickingSerializer,
 )
 
 READ_ACTIONS = ['list', 'retrieve']
@@ -460,3 +460,34 @@ class ExpeditionTransporteurViewSet(CompanyScopedModelViewSet):
                 unite, destination=request.query_params.get('destination')
                 or ''),
         })
+
+
+class PlanComptageTournantViewSet(CompanyScopedModelViewSet):
+    """NTWMS13 — plans de comptage tournant ABC.
+
+    La liste AMORCE les trois plans par défaut (A=30 j, B=90 j, C=180 j) au
+    premier accès — idempotent, jamais d'écrasement d'une fréquence déjà
+    personnalisée. ``generer/`` déclenche la génération des sessions dues (la
+    même que la commande plannifiable).
+    """
+    queryset = PlanComptageTournant.objects.all()
+    serializer_class = PlanComptageTournantSerializer
+    ordering = ['classe_abc']
+
+    def get_permissions(self):
+        if self.action in READ_ACTIONS:
+            return [IsAnyRole()]
+        return [IsAdminRole()]
+
+    def list(self, request, *args, **kwargs):
+        from ..services import assurer_plans_comptage_tournant
+        if request.user.company_id:
+            assurer_plans_comptage_tournant(request.user.company)
+        return super().list(request, *args, **kwargs)
+
+    @action(detail=False, methods=['post'], url_path='generer')
+    def generer(self, request):
+        """Génère MAINTENANT les sessions de comptage dues de cette société."""
+        from ..services import generer_comptages_tournants
+        resultat = generer_comptages_tournants(company=request.user.company)
+        return Response(resultat, status=status.HTTP_201_CREATED)
