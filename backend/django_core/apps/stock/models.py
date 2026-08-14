@@ -2121,6 +2121,11 @@ from .models_reappro_casier import (  # noqa: E402,F401
     TacheReapproInterne,
 )
 
+# ── NTSCM9 — incidents qualité fournisseur (alimente scorecard + TCO). ─────
+from .models_incident_fournisseur import (  # noqa: E402,F401
+    IncidentQualiteFournisseur,
+)
+
 
 # ── ODX19 — MODULE ACHATS (déplacé) ────────────────────────────────────────
 # PrixFournisseur, BonCommandeFournisseur, LigneBonCommandeFournisseur,

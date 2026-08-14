@@ -1323,3 +1323,11 @@ from .selectors_entrepot import (  # noqa: E402,F401
     suggerer_tache_retour,
     zones_en_surcapacite,
 )
+# -- Groupe NTSCM -- performance fournisseur (OTIF, delais, TCO) --
+from .selectors_fournisseur import (  # noqa: E402,F401
+    comparer_tco_fournisseurs,
+    cout_total_acquisition,
+    delai_mesure_vs_annonce,
+    otif_fournisseur,
+    point_de_commande_avec_delai_reel,
+)

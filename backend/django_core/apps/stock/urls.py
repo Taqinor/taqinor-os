@@ -28,6 +28,7 @@ from .views import (
     CompatibiliteHazmatCasierViewSet, historique_casier_view,
     SeuilReapproCasierViewSet, TacheReapproInterneViewSet,
     casiers_a_reapprovisionner_view, scanner_retour_fournisseur_view,
+    IncidentQualiteFournisseurViewSet,
 )
 
 router = DefaultRouter()
@@ -85,6 +86,9 @@ router.register(r'casiers-hazmat', CompatibiliteHazmatCasierViewSet)
 # NTWMS40 - seuils de reappro par casier picking + taches de reappro interne.
 router.register(r'seuils-reappro-casier', SeuilReapproCasierViewSet)
 router.register(r'taches-reappro-interne', TacheReapproInterneViewSet)
+# NTSCM9 - incidents qualite fournisseur.
+router.register(
+    r'incidents-qualite-fournisseur', IncidentQualiteFournisseurViewSet)
 
 urlpatterns = [
     # NTWMS8 - kiosque de quai (chemin nomme par la tache : /stock/public/...).

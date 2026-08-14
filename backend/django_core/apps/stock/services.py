@@ -2971,10 +2971,27 @@ def supplier_performance(company, fournisseur):
     # comportement historique inchangé pour les BCF sans XPUR7 renseigné).
     otd = otd_stats(company, fournisseur)
 
+    # NTSCM8 — OTIF RÉEL (à l'heure ET complet), distinct du taux de service
+    # générique ci-dessus : une commande complète mais en retard n'est PAS
+    # OTIF. Champs additifs ; `taux_otif_pct` vaut None sans livraison
+    # mesurable (jamais 0 %, qui se lirait comme un fournisseur catastrophique).
+    from .selectors_fournisseur import otif_fournisseur
+    otif = otif_fournisseur(company, fournisseur)
+    # NTSCM9 — un incident CRITIQUE non résolu doit sauter aux yeux ici.
+    from .models import IncidentQualiteFournisseur
+    incidents_critiques = IncidentQualiteFournisseur.objects.filter(
+        company=company, fournisseur=fournisseur, resolu=False,
+        gravite=IncidentQualiteFournisseur.Gravite.CRITIQUE).count()
+
     return {
         'fournisseur_id': fournisseur.id,
         'fournisseur_nom': fournisseur.nom,
         'nb_bons': nb_bons,
+        'taux_otif_pct': otif['taux_otif_pct'],
+        'otif_total_livraisons': otif['total_livraisons'],
+        'otif_nb_retard': otif['nb_retard'],
+        'otif_nb_incomplet': otif['nb_incomplet'],
+        'incidents_qualite_critiques_ouverts': incidents_critiques,
         'avg_lead_time_days': round(sum(lead_times) / len(lead_times), 1) if lead_times else None,
         'fill_rate_pct': round(sum(fill_rates) / len(fill_rates), 1) if fill_rates else None,
         'nb_retours': nb_retours,

@@ -52,7 +52,11 @@ PRODUIT_CREATE_PERMISSION = HasPermissionAndRole(
     'stock_creer', 'Directeur', 'Commercial responsable')
 
 
-class ProduitViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
+from .fournisseur_scm import ScmProduitTcoMixin  # noqa: E402
+
+
+class ProduitViewSet(ScmProduitTcoMixin, EntiteScopeMixin,
+                     CompanyScopedModelViewSet):
     # YOPSB13 — le FournisseurSerializer imbriqué (ProduitSerializer.fournisseur)
     # lit contacts.all() + nb_produits/nb_bons_commande (repli .count()) PAR
     # ligne : N+1. On précharge le fournisseur avec les mêmes annotations que
@@ -115,7 +119,10 @@ class ProduitViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
             return [IsAdminRole()]
         elif self.action in (
                 'analyse_achats', 'analyse_achats_export_xlsx',
-                'analyse_achats_pdf'):
+                'analyse_achats_pdf',
+                # NTSCM26 — le TCO expose des COÛTS internes (prix d'achat,
+                # coût qualité) : jamais ouvert au-delà de responsable/admin.
+                'comparer_tco'):
             # XPUR24/ZPUR9 — tableau de bord + rapport imprimable achats :
             # Admin/Responsable uniquement (get_permissions prime sur le
             # permission_classes de l'@action, d'où ce cas explicite —
