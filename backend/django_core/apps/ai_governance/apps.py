@@ -27,3 +27,10 @@ class AiGovernanceConfig(AppConfig):
         ),
         'categorie': 'Technique',
     }
+
+    def ready(self):
+        # NTAI17 — branche « dépôt d'une pièce GED → job de traitement IA ».
+        # Référence par CHAÎNE au modèle GED (aucun import d'app métier) et
+        # no-op complet tant que ``AI_DOCUMENT_JOBS_ENABLED`` est éteint.
+        from .receivers import connect_receivers
+        connect_receivers()

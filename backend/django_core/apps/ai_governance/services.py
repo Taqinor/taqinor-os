@@ -760,3 +760,170 @@ def assistant_config(*, question, role=None, max_tokens=300) -> dict:
         'source': 'faq',
         'modifie': False,
     }
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# NTAI17 — File de traitement document AI (classification + extraction)
+# ─────────────────────────────────────────────────────────────────────────────
+#
+# Une pièce déposée dans la GED crée un JOB (``DocumentAiJob``) que la tâche
+# Celery traite HORS REQUÊTE. Deux étages, du moins coûteux au plus :
+#
+#   1. CLASSIFICATION — réutilise ``ged.services.classer_document`` (GED34) :
+#      heuristique locale gratuite, puis provider IA s'il est configuré. On ne
+#      recode PAS un second classifieur.
+#   2. EXTRACTION — le gabarit ``core.ai.schemas`` correspondant à la catégorie
+#      détectée, via ``core.ai.extract_document``. KEY-GATED : sans provider OCR
+#      actif, on ne lit MÊME PAS les octets du stockage (aucun appel réseau,
+#      aucun coût) et le job finit « traité » avec ``extraction_disponible``
+#      à faux.
+#
+# RIEN N'EST ÉCRIT dans un modèle métier : le résultat attend une validation
+# humaine (NTAI18). Cross-app : les lectures GED passent par ses
+# ``selectors``/``services``, jamais par ses modèles.
+
+#: Catégorie GED34 → nom de gabarit ``core.ai.schemas``. Une catégorie absente
+#: (ou dont le gabarit n'existe pas encore, ex. « facture » tant que NTAI16
+#: n'a pas posé ``facture_fournisseur``) donne une extraction vide, jamais une
+#: erreur : la classification seule reste utile.
+CATEGORIE_VERS_SCHEMA = {
+    'cin': 'cin',
+    'contrat': 'contrat',
+    'bon_livraison': 'bon_livraison',
+    'facture': 'facture_fournisseur',
+    'cv': 'cv',
+    'carte_visite': 'carte_visite',
+}
+
+
+def document_jobs_enabled() -> bool:
+    """NTAI17 — True si la file de traitement documentaire est activée.
+
+    KEY-GATED, **OFF par défaut** (``AI_DOCUMENT_JOBS_ENABLED``) : sans clé IA
+    configurée, empiler des jobs que rien ne peut traiter n'apporte rien. Quand
+    le flag est éteint, aucun job n'est créé et le dépôt d'une pièce GED reste
+    byte-identique à ce qu'il était.
+    """
+    from django.conf import settings
+    return bool(getattr(settings, 'AI_DOCUMENT_JOBS_ENABLED', False))
+
+
+def schema_pour_categorie(categorie: str) -> str:
+    """Gabarit d'extraction pour ``categorie``, ou '' si aucun n'est disponible.
+
+    Consulte ``core.ai.schemas.available_schemas()`` À L'EXÉCUTION : le jour où
+    un nouveau gabarit est ajouté (NTAI15/NTAI16), la file l'utilise sans
+    modification ici.
+    """
+    from core.ai.schemas import available_schemas
+
+    nom = CATEGORIE_VERS_SCHEMA.get((categorie or '').strip().lower(), '')
+    return nom if nom in available_schemas() else ''
+
+
+def creer_document_ai_job(document):
+    """NTAI17 — Crée le job « en attente » d'une pièce GED (ou None).
+
+    Renvoie None (sans lever) quand la file est éteinte ou quand la pièce n'a
+    pas de société (le scoping serait impossible). Si un job est DÉJÀ en
+    attente pour cette pièce, il est renvoyé tel quel : l'appel est IDEMPOTENT
+    sur un double enregistrement.
+    """
+    from .models import DocumentAiJob
+
+    if not document_jobs_enabled():
+        return None
+    company_id = getattr(document, 'company_id', None)
+    if not company_id:
+        return None
+    deja = DocumentAiJob.objects.filter(
+        company_id=company_id, document=document,
+        statut=DocumentAiJob.STATUT_EN_ATTENTE).first()
+    if deja is not None:
+        return deja
+    return DocumentAiJob.objects.create(
+        company_id=company_id, document=document,
+        statut=DocumentAiJob.STATUT_EN_ATTENTE)
+
+
+def _octets_du_document(document):
+    """(contenu, mime) de la dernière version stockée, ou ``(None, '')``.
+
+    Passe par les ``selectors`` de la GED (jamais ses modèles) puis par le
+    stockage objet partagé. Ne lève jamais."""
+    try:
+        from apps.ged import selectors as ged_selectors
+        from apps.records.storage import fetch_attachment
+    except Exception:  # noqa: BLE001 - app absente/mal chargée : no-op.
+        return None, ''
+    try:
+        version = ged_selectors.latest_version(document)
+    except Exception:  # noqa: BLE001
+        return None, ''
+    if version is None or not getattr(version, 'file_key', ''):
+        return None, ''
+    try:
+        data, _erreur = fetch_attachment(version.file_key)
+    except Exception:  # noqa: BLE001 - stockage indisponible : no-op propre.
+        return None, ''
+    return data, (getattr(version, 'mime', '') or '')
+
+
+def traiter_document_ai_job(job):
+    """NTAI17 — Classe puis extrait, et remplit ``resultat_json``.
+
+    BEST-EFFORT : toute exception est CAPTURÉE dans ``statut='erreur'`` +
+    ``message`` ; la fonction ne lève jamais. Renvoie le job mis à jour.
+    """
+    from django.utils import timezone
+
+    from .models import DocumentAiJob
+
+    resultat = {
+        'categorie': '',
+        'schema': '',
+        'champs': {},
+        'extraction_disponible': False,
+        # Contrat explicite : le résultat est une PROPOSITION ; l'application
+        # aux modèles métier reste une action humaine (NTAI18).
+        'applique': False,
+    }
+    try:
+        from apps.ged import services as ged_services
+
+        document = job.document
+        categorie = ged_services.classer_document(document) or ''
+        resultat['categorie'] = categorie
+        schema = schema_pour_categorie(categorie)
+        resultat['schema'] = schema
+
+        confiance = 0.0
+        if schema and is_capability_configured('ocr'):
+            from core.ai.services import extract_document
+
+            contenu, mime = _octets_du_document(document)
+            if contenu:
+                res = extract_document(
+                    content=contenu, mime_type=mime or 'application/pdf',
+                    schema=schema)
+                if res.configured:
+                    resultat['extraction_disponible'] = True
+                if res.ok:
+                    donnees = dict(res.data or {})
+                    confiance = float(donnees.pop('confiance', 0.0) or 0.0)
+                    resultat['champs'] = donnees
+        job.categorie = categorie
+        job.schema = schema
+        job.confiance = confiance
+        job.resultat_json = resultat
+        job.statut = DocumentAiJob.STATUT_TRAITE
+        job.message = ''
+    except Exception as exc:  # noqa: BLE001 - un échec ne casse jamais la GED.
+        job.statut = DocumentAiJob.STATUT_ERREUR
+        job.message = str(exc)[:500]
+        job.resultat_json = resultat
+    job.traite_le = timezone.now()
+    job.save(update_fields=[
+        'categorie', 'schema', 'confiance', 'resultat_json', 'statut',
+        'message', 'traite_le', 'updated_at'])
+    return job

@@ -1,4 +1,6 @@
-"""NTAI29 — Tâche Celery mensuelle de surveillance de dérive (drift).
+"""Tâches Celery du module « ai_governance » (Groupe NTAI).
+
+NTAI29 — Tâche mensuelle de surveillance de dérive (drift).
 
 Autodécouverte par ``erp_agentique.celery`` (``autodiscover_tasks()``), comme
 ``apps.stock.tasks``/``apps.rh.tasks``. Boucle PAR société (jamais une société
@@ -59,3 +61,25 @@ def surveiller_drift_mensuel_task():
         if par_modele:
             resultat[company.id] = par_modele
     return resultat
+
+
+@shared_task(name='ai_governance.traiter_document_ai_job')
+def traiter_document_ai_job_task(job_id):
+    """NTAI17 — Classe + extrait la pièce d'un ``DocumentAiJob`` (à la demande).
+
+    Déclenchée au DÉPÔT d'une pièce GED (``receivers.on_document_cree``), jamais
+    périodique — un job n'existe que si un document a été déposé. Reçoit une PK
+    (jamais une instance : elle doit survivre à la sérialisation + un rejeu).
+
+    BEST-EFFORT : un job disparu (document supprimé entre-temps) ou un échec
+    fournisseur ne fait jamais échouer la tâche — l'erreur est capturée dans le
+    job lui-même.
+    """
+    from .models import DocumentAiJob
+    from .services import traiter_document_ai_job
+
+    job = DocumentAiJob.objects.filter(pk=job_id).first()
+    if job is None:
+        return None
+    traiter_document_ai_job(job)
+    return job.statut

@@ -61,3 +61,76 @@ class DriftSnapshot(TenantModel):
 
     def __str__(self):
         return f'{self.modele} @ {self.date} (PSI {self.psi:.3f})'
+
+
+class DocumentAiJob(TenantModel):
+    """NTAI17 — Un traitement IA (classification + extraction) d'une pièce GED.
+
+    La pièce est déposée dans la GED ; un job est créé (``en_attente``) et une
+    tâche Celery BEST-EFFORT le traite hors requête : elle CLASSE le document
+    (réutilise l'heuristique GED34, gratuite et déterministe, puis le provider
+    IA s'il est configuré) puis EXTRAIT les champs du gabarit correspondant au
+    type détecté (``core.ai.extract_document``).
+
+    INVARIANTS :
+
+      * **Rien n'est écrit dans un modèle métier.** Le résultat vit dans
+        ``resultat_json`` et attend une validation humaine (NTAI18) — le job ne
+        crée ni facture, ni contrat, ni ligne de stock.
+      * **Key-gated.** Sans provider OCR configuré, l'extraction est un no-op
+        propre : aucun octet n'est lu du stockage, aucun appel réseau, le job
+        finit ``traite`` avec ``extraction_disponible: false``.
+      * **Jamais bloquant.** Une erreur est CAPTURÉE dans ``statut='erreur'`` +
+        ``message`` ; elle ne remonte jamais à l'écriture documentaire.
+    """
+
+    STATUT_EN_ATTENTE = 'en_attente'
+    STATUT_TRAITE = 'traite'
+    STATUT_ERREUR = 'erreur'
+    STATUT_CHOICES = [
+        (STATUT_EN_ATTENTE, 'En attente'),
+        (STATUT_TRAITE, 'Traité'),
+        (STATUT_ERREUR, 'Erreur'),
+    ]
+
+    #: FK déclarée par CHAÎNE (``'ged.Document'``) — ``ai_governance`` ne monte
+    #: jamais dans les modèles d'une autre app ; les lectures passent par les
+    #: ``selectors``/``services`` de la GED.
+    document = models.ForeignKey(
+        'ged.Document', on_delete=models.CASCADE, related_name='ai_jobs',
+        help_text='Pièce GED traitée (le job meurt avec elle).')
+    categorie = models.CharField(
+        max_length=60, blank=True, default='',
+        help_text='Catégorie détectée par la classification (GED34).')
+    schema = models.CharField(
+        max_length=60, blank=True, default='',
+        help_text="Gabarit d'extraction retenu pour la catégorie détectée.")
+    statut = models.CharField(
+        max_length=20, choices=STATUT_CHOICES, default=STATUT_EN_ATTENTE)
+    resultat_json = models.JSONField(
+        default=dict, blank=True,
+        help_text='Résultat brut proposé (champs extraits) — jamais appliqué '
+                  'automatiquement à un modèle métier.')
+    confiance = models.FloatField(
+        default=0.0,
+        help_text='Confiance rapportée par le fournisseur (0 = inconnue).')
+    message = models.TextField(
+        blank=True, default='',
+        help_text="Message d'erreur capturé (statut « erreur »).")
+    traite_le = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        verbose_name = 'Traitement IA de document'
+        verbose_name_plural = 'Traitements IA de documents'
+        ordering = ['-created_at', '-id']
+        indexes = [
+            # Noms EXPLICITES (≤30 car.) : sans eux Django dérive un hash qui
+            # diverge du nom écrit à la main dans la migration.
+            models.Index(fields=['company', 'statut'],
+                         name='ai_gov_docjob_co_stat_idx'),
+            models.Index(fields=['company', 'document'],
+                         name='ai_gov_docjob_co_doc_idx'),
+        ]
+
+    def __str__(self):
+        return f'Job IA #{self.pk} ({self.statut})'

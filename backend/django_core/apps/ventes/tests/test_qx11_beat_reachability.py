@@ -69,6 +69,11 @@ ON_DEMAND_ALLOWLIST = {
     # demande, ``visibilite='directeur'`` (exclu de tout manifeste de dépôt),
     # distribué par URL signée courte. Jamais périodique.
     'ao.produire_rentabilite_xlsx',
+    # NTAI17 — traitement IA d'une pièce GED (classification + extraction) :
+    # déclenché À LA DEMANDE au dépôt du document (``.delay()`` depuis le
+    # receiver ``ai_governance.receivers``, après commit), jamais périodique —
+    # un job n'existe que si quelqu'un a déposé une pièce.
+    'ai_governance.traiter_document_ai_job',
 }
 
 

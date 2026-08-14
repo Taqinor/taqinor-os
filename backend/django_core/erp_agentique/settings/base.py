@@ -1306,6 +1306,14 @@ try:
 except (ValueError, TypeError):
     AI_PROVIDERS = {}
 
+# NTAI17 — file de traitement documentaire IA (classification + extraction à
+# l'upload GED). ÉTEINTE par défaut : sans clé IA, empiler des jobs que rien ne
+# peut traiter n'apporte rien, et le dépôt d'une pièce reste byte-identique.
+# L'activer (AI_DOCUMENT_JOBS_ENABLED=1) crée un job par pièce déposée ; le
+# traitement lui-même reste key-gated (extraction no-op sans provider OCR).
+AI_DOCUMENT_JOBS_ENABLED = (
+    os.environ.get('AI_DOCUMENT_JOBS_ENABLED', '0') == '1')
+
 # ─────────────────────────────────────────────────────────────────────────────
 # YHARD6 — endpoint /metrics (Prometheus). JAMAIS public par défaut : la vue
 # (core/views.py::metrics_view) exige soit un utilisateur authentifié admin
