@@ -1000,6 +1000,47 @@ def historique_maturite(company, lead_id, limite=30):
         company=company, lead_id=lead_id).order_by('-created_at')[:limite])
 
 
+# ── NTMKT34 — Recalcul quotidien du score de maturité (pénalité inactivité) ─
+# Le calcul ÉVÉNEMENTIEL de NTMKT18 (``recalculer_score_maturite``) ne couvre
+# QUE les événements ENTRANTS (ouverture/clic/visite) : il ne réagit jamais au
+# SILENCE d'un lead. Cette tâche quotidienne applique la pénalité
+# d'inactivité 30j sur les leads qui ont DÉJÀ un ``ScoreMaturite`` (créé par
+# un premier événement NTMKT18) — jamais un balayage de tous les leads de la
+# société (no-op complet si NTMKT18 n'a jamais rien créé, cf.
+# ``score_maturite_actif``).
+
+def recalculer_scores_maturite_inactivite(company, *, now=None):
+    """NTMKT34 — recalcule le score de maturité de chaque lead PORTANT DÉJÀ
+    un ``ScoreMaturite`` pour ``company``, en tenant compte du dernier point
+    de contact (``apps.crm.selectors.dernier_contact_lead``) pour appliquer
+    la pénalité d'inactivité 30j. Émet ``core.events.lead_maturite_changee``
+    pour CHAQUE changement effectif (jamais à un tick no-op). Renvoie la
+    liste des ``lead_id`` dont le score a changé."""
+    from django.utils import timezone as _tz
+
+    from core import events
+
+    from apps.crm.selectors import dernier_contact_lead
+
+    from .models import ScoreMaturite
+
+    now = now or _tz.now()
+    changes = []
+    for score in ScoreMaturite.objects.filter(company=company):
+        avant = score.valeur
+        dernier_contact = dernier_contact_lead(company, score.lead_id)
+        recalcule = recalculer_score_maturite(
+            company, score.lead_id, dernier_contact=dernier_contact, now=now)
+        apres = recalcule.valeur if recalcule is not None else avant
+        if apres != avant:
+            changes.append(score.lead_id)
+            events.lead_maturite_changee.send(
+                sender='marketing.recalculer_scores_maturite_inactivite',
+                lead_id=score.lead_id, company=company,
+                ancienne_valeur=avant, nouvelle_valeur=apres)
+    return changes
+
+
 # ── NTMKT20 — Modèles d'attribution configurables (étend FG204/XMKT17) ─────
 
 def modele_attribution_pour(company):

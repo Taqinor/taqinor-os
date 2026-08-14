@@ -87,6 +87,13 @@ ALLOWED_UNCONSUMED = {
     # lui-même, pas par un récepteur : le signal n'existe que pour qu'une app
     # future (notification commerciale…) réagisse sans coupler ``apps.crm``.
     "salle_vente_signal_interet",
+    # NTMKT34 — ``lead_maturite_changee`` : seam émis par
+    # ``apps/marketing/services.recalculer_scores_maturite_inactivite`` (beat
+    # quotidien) quand le score de maturité NTMKT18 d'un lead change. Destiné
+    # à un futur récepteur ``apps.crm.receivers`` (aucun import direct
+    # crm↔marketing) ; aucun abonné requis aujourd'hui — réservé ici plutôt
+    # qu'orphelin, comme les seams ci-dessus.
+    "lead_maturite_changee",
 }
 
 # Membres ``EventType`` déclarés mais sans producteur ``notify()`` encore câblé
