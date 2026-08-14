@@ -313,6 +313,12 @@ class UnLayoutSansGeometrieNeBougePas(_Base):
             ('Onduleur réseau Huawei 10kW Triphasé', 1, Decimal('14000')),
         ]))
         self.assertEqual(devis.etude_params, {
+            # PVSCE — le scénario est désormais STOCKÉ dès la création : sans
+            # lui, le moteur PDF (QF6) déduit l'option depuis les lignes, et se
+            # trompe dès que la composition est partielle. Ici le catalogue n'a
+            # ni hybride ni batterie ⇒ « Sans batterie », ce que les lignes
+            # peuvent réellement servir.
+            'scenario': 'Sans batterie',
             'production_annuelle': 8000,
             'economies_annuelles': 7000,
             'puissance_kwc': 4.95,

@@ -241,6 +241,25 @@ def _is_reseau_inverter(name: str) -> bool:
         "réseau" in n or "reseau" in n or "injection" in n)
 
 
+# PVSCE — vocabulaire du choix de scénario, tel que le moteur PDF le LIT dans
+# ``etude_params['scenario']`` (quote_engine/builder.py, QF6). Le LIBELLÉ
+# FRANÇAIS est le contrat : un 'reseau'/'avec_batterie' n'y serait pas reconnu
+# et le moteur retomberait sur l'inférence par les lignes — c'est-à-dire sur le
+# repli qu'on cherche précisément à ne plus dépendre.
+SCENARIO_SANS_BATTERIE = 'Sans batterie'
+SCENARIO_AVEC_BATTERIE = 'Avec batterie'
+
+
+def _scenario_stocke(avec_batterie):
+    """Le libellé à ranger dans ``etude_params['scenario']``.
+
+    On ne stocke « Avec batterie » que quand l'équipement peut réellement le
+    servir (onduleur hybride ET batterie) : un choix stocké que les lignes ne
+    peuvent pas honorer serait un mensonge que le moteur devrait défaire.
+    """
+    return SCENARIO_AVEC_BATTERIE if avec_batterie else SCENARIO_SANS_BATTERIE
+
+
 def _has_price(produit) -> bool:
     """A product is quotable only when it carries a real sell price.
 
@@ -1392,6 +1411,13 @@ def build_devis_from_layout(*, layout, user, company, lead=None, client=None,
     )
 
     etude_params = {}
+    # PVSCE — le SCÉNARIO est stocké dès la création. Sans lui, le moteur PDF
+    # (QF6) retombe sur l'inférence par les lignes, qui se trompe dès que la
+    # composition est partielle. On stocke ce que les lignes peuvent RÉELLEMENT
+    # servir : « Avec batterie » exige l'onduleur hybride ET la batterie.
+    etude_params['scenario'] = _scenario_stocke(
+        any(_is_battery(spec.designation) for spec in line_specs)
+        and any(_is_hybrid_inverter(spec.designation) for spec in line_specs))
     if annual_kwh is not None:
         etude_params['production_annuelle'] = int(annual_kwh)
     if savings is not None:
@@ -1524,13 +1550,18 @@ def sync_devis_from_layout(devis, layout, user=None):
       global, jamais un produit sans prix) ;
     * la BATTERIE suit le scénario : ajoutée si le layout en veut une et qu'il
       n'y en a pas, supprimée s'il n'en veut plus ;
+    * l'ONDULEUR suit la batterie (PVSCE) : réseau → hybride quand une batterie
+      entre, hybride → réseau quand elle sort, à quantité INCHANGÉE. Sans cette
+      permutation la batterie serait « fantôme » — comptée dans le total du
+      devis mais absente du PDF, que le moteur rendrait en « Sans batterie »
+      faute d'onduleur hybride ;
     * TOUT le reste est intact — prix unitaires, remises, TVA de ligne,
       sections, notes, ordre d'affichage, groupes multi-villa, et les produits
       des lignes non touchées ne sont JAMAIS re-choisis ;
     * ``roof_layout`` / ``layout_hash`` sont re-posés, et ``etude_params`` ne
       reçoit que ``puissance_kwc`` / ``production_annuelle`` /
-      ``economies_annuelles`` / ``toiture`` — les champs d'étude du générateur
-      (autoconsommation, payback, pompe…) ne sont jamais touchés.
+      ``economies_annuelles`` / ``toiture`` / ``scenario`` — les champs d'étude
+      du générateur (autoconsommation, payback, pompe…) ne sont jamais touchés.
 
     Re-soumettre le MÊME layout (même empreinte) ne fait AUCUNE écriture et
     renvoie ``inchange=True``.
@@ -1668,7 +1699,59 @@ def sync_devis_from_layout(devis, layout, user=None):
             lignes_modifiees += len(lignes_batterie)
             a_batterie = False
 
-        # ── Étude : QUATRE clés, jamais les champs d'étude du générateur ──
+        # ── L'ONDULEUR DOIT S'ACCORDER AU SCÉNARIO (batterie fantôme) ──
+        #
+        # La resynchro n'a longtemps touché QUE les panneaux et la batterie —
+        # « chirurgical ». Mais un devis réseau resynchronisé « avec batterie »
+        # finissait avec un onduleur RÉSEAU face à une batterie, et le moteur
+        # PDF n'accorde l'option « Avec » qu'à un devis portant onduleur
+        # hybride ET batterie (builder.py : ``avec_ok = has_hybride and
+        # has_batterie``). Le document retombait donc sur « Sans batterie »,
+        # qui EXCLUT la ligne batterie : elle gonflait le total du devis sans
+        # apparaître ni au PDF ni au total affiché. Une batterie fantôme —
+        # facturée, invisible.
+        #
+        # La permutation est aussi chirurgicale que le reste : la ligne
+        # d'onduleur garde sa QUANTITÉ, seuls le produit, la désignation et le
+        # prix catalogue changent. Le sens inverse compte tout autant : sans
+        # lui, retirer la batterie d'un devis hybride laisserait un document
+        # SANS aucune option rendable (le moteur refuse alors le PDF).
+        lignes_reseau = [li for li in lignes
+                         if _classe_ligne(li, _is_reseau_inverter)]
+        lignes_hybride = [li for li in lignes
+                          if _classe_ligne(li, _is_hybrid_inverter)]
+
+        def _permuter_onduleur(ligne, predicat, motif_absence):
+            remplacant = _pick_product(verrou.company, predicat)
+            if remplacant is None:
+                avertissements.append(motif_absence)
+                return False
+            ligne.produit = remplacant
+            ligne.designation = remplacant.nom
+            ligne.prix_unitaire = Decimal(remplacant.prix_vente)
+            ligne.save(update_fields=['produit', 'designation',
+                                      'prix_unitaire'])
+            return True
+
+        if a_batterie and lignes_reseau and not lignes_hybride:
+            if _permuter_onduleur(
+                    lignes_reseau[0], _is_hybrid_inverter,
+                    'Aucun onduleur hybride tarifé au catalogue : l\'onduleur '
+                    'réseau a été conservé. La proposition ne pourra pas '
+                    'présenter l\'option avec batterie.'):
+                lignes_hybride, lignes_reseau = [lignes_reseau[0]], []
+                lignes_modifiees += 1
+        elif not a_batterie and lignes_hybride and not lignes_reseau:
+            if _permuter_onduleur(
+                    lignes_hybride[0], _is_reseau_inverter,
+                    'Aucun onduleur réseau tarifé au catalogue : l\'onduleur '
+                    'hybride a été conservé alors que la batterie a été '
+                    'retirée.'):
+                lignes_reseau, lignes_hybride = [lignes_hybride[0]], []
+                lignes_modifiees += 1
+
+        # ── Étude : les clés géométriques + le scénario, jamais les champs
+        # d'étude du générateur ──
         result = dict(layout.get('result') or {})
         kwc = float(result.get('kwc') or toiture.get('kwc') or 0.0)
         if not kwc and total_panneaux:
@@ -1682,6 +1765,11 @@ def sync_devis_from_layout(devis, layout, user=None):
             etude['puissance_kwc'] = kwc
         if toiture:
             etude['toiture'] = toiture
+        # PVSCE — le scénario suit l'état RÉEL des lignes après resynchro : sans
+        # lui, le moteur PDF garderait le choix stocké d'avant (ou déduirait
+        # « Sans batterie » par repli) alors que l'équipement vient de changer.
+        etude['scenario'] = _scenario_stocke(
+            a_batterie and bool(lignes_hybride))
 
         # QJ21 — le layout stocké porte la géométrie par pan DÉJÀ traitée, pour
         # que ses consommateurs n'aient pas à ré-extraire. Copie, jamais une
