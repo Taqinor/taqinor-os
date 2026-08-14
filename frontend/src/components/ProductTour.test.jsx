@@ -77,6 +77,38 @@ describe('ProductTour (NTDMO15)', () => {
     expect(screen.queryByText('Créer un devis')).not.toBeInTheDocument()
   })
 
+  // Régression e2e E4 (PR #518) : une étape sans cible (`selecteur: ''` — la 1re
+  // étape de CHAQUE tour du catalogue) rendait un voile plein écran qui avalait
+  // TOUS les clics de l'écran réel (`+ Nouveau lead` injoignable pendant 15 s).
+  // Le contrat en tête de ProductTour.jsx est « jamais bloquant » : on l'épingle.
+  it("ne bloque jamais l'écran : voile et calque ne captent aucun clic", async () => {
+    api.get.mockResolvedValueOnce({ data: TOURS })
+    renderTour(RECENT_USER)
+    await screen.findByText('Créer un devis')
+    const calque = screen.getByRole('dialog')
+    expect(calque.className).toContain('pointer-events-none')
+    const voile = calque.querySelector('.backdrop-blur-sm')
+    expect(voile).not.toBeNull()
+    expect(voile.className).toContain('pointer-events-none')
+    // La bulle, elle, reste bien interactive (ses boutons doivent rester cliquables).
+    expect(screen.getByRole('button', { name: /Suivant/ }).closest('.pointer-events-auto'))
+      .not.toBeNull()
+  })
+
+  it('un clic hors de la bulle ferme la visite (et un clic dedans ne la ferme pas)', async () => {
+    api.get.mockResolvedValueOnce({ data: TOURS })
+    api.post.mockResolvedValueOnce({ data: [{ ...TOURS[0], vu: true }] })
+    renderTour(RECENT_USER)
+    await screen.findByText('Créer un devis')
+    // Dedans : ne ferme pas.
+    fireEvent.pointerDown(screen.getByRole('button', { name: /Suivant/ }))
+    expect(api.post).not.toHaveBeenCalled()
+    // Dehors : ferme et marque vu, comme le faisait le clic sur le voile.
+    fireEvent.pointerDown(document.body)
+    await waitFor(() => expect(api.post).toHaveBeenCalledWith('/onboarding/tours/devis/vu/'))
+    expect(screen.queryByText('Créer un devis')).not.toBeInTheDocument()
+  })
+
   it('« Suivant » avance puis « Terminer » ferme et marque vu', async () => {
     api.get.mockResolvedValueOnce({ data: TOURS })
     api.post.mockResolvedValueOnce({ data: [{ ...TOURS[0], vu: true }] })

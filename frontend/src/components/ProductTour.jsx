@@ -11,7 +11,7 @@
 // utilisateur récent (< 30 jours, `isNewUser`), jamais s'il a déjà vu/fermé ce
 // tour. Jamais bloquant : Échap ferme, un clic sur le voile ferme, aucun
 // fond opaque plein écran qui empêcherait d'utiliser l'écran réel en dessous.
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useLocation } from 'react-router-dom'
 import { useSelector } from 'react-redux'
@@ -31,6 +31,7 @@ export default function ProductTour() {
   const [step, setStep] = useState(0)
   const [rect, setRect] = useState(null)
   const [activeKey, setActiveKey] = useState(null)
+  const bubbleRef = useRef(null)
 
   // Chargement du catalogue (un seul appel réseau, mis en cache — NTDMO14).
   useEffect(() => {
@@ -105,6 +106,25 @@ export default function ProductTour() {
     return () => window.removeEventListener('keydown', onKey)
   }, [open, finish, next, prev])
 
+  // « Un clic sur le voile ferme » (contrat en tête de fichier) SANS que le voile
+  // n'intercepte quoi que ce soit : le voile est décoratif (`pointer-events-none`,
+  // comme le spotlight), et la fermeture est ÉCOUTÉE au niveau document. Le geste
+  // atteint donc l'écran réel en dessous ET ferme la visite, au lieu d'être avalé.
+  // Sans cela, une étape sans cible (`selecteur: ''` — la 1re étape de CHAQUE tour
+  // du catalogue NTDMO14) rendait un voile plein écran qui bloquait tout l'écran
+  // jusqu'à fermeture explicite, en contradiction directe avec « jamais bloquant ».
+  // Écoute limitée au cas voile (`!rect`) : la branche spotlight n'a jamais eu de
+  // clic-pour-fermer, son comportement reste identique.
+  useEffect(() => {
+    if (!open || rect) return undefined
+    const onPointerDown = (e) => {
+      if (bubbleRef.current?.contains(e.target)) return
+      finish()
+    }
+    document.addEventListener('pointerdown', onPointerDown)
+    return () => document.removeEventListener('pointerdown', onPointerDown)
+  }, [open, rect, finish])
+
   if (!open || !current) return null
 
   const isLast = step === etapes.length - 1
@@ -127,8 +147,8 @@ export default function ProductTour() {
   }
 
   return createPortal(
-    <div className="fixed inset-0 z-[var(--z-popover)]" role="dialog" aria-modal="false"
-         aria-label={`Visite guidée — ${tour?.tour_key ?? ''}`}>
+    <div className="pointer-events-none fixed inset-0 z-[var(--z-popover)]" role="dialog"
+         aria-modal="false" aria-label={`Visite guidée — ${tour?.tour_key ?? ''}`}>
       {rect ? (
         <div className="pointer-events-none fixed rounded-xl ring-2 ring-primary transition-all"
              style={{
@@ -137,12 +157,12 @@ export default function ProductTour() {
                boxShadow: '0 0 0 9999px rgba(15,23,42,0.5)',
              }} />
       ) : (
-        <div className="fixed inset-0 bg-nuit/50 backdrop-blur-sm" onClick={finish} />
+        <div className="pointer-events-none fixed inset-0 bg-nuit/50 backdrop-blur-sm" />
       )}
 
       {/* Réutilise le style de `ui/Popover` (PopoverContent) pour la bulle. */}
-      <div style={bubbleStyle}
-           className="animate-pop-in rounded-lg border border-border bg-popover p-3 text-popover-foreground shadow-ui-lg">
+      <div ref={bubbleRef} style={bubbleStyle}
+           className="pointer-events-auto animate-pop-in rounded-lg border border-border bg-popover p-3 text-popover-foreground shadow-ui-lg">
         <div className="mb-1.5 flex items-start justify-between gap-3">
           <h3 className="font-display text-sm font-bold tracking-tight text-foreground">
             {current.titre}
