@@ -627,7 +627,10 @@ class TestPdfFormats(TestCase):
         # que le base64 du logo. Le scan des prix de lignes porte donc sur le
         # TEXTE que le client lit — balises et attributs retirés — tandis que
         # les gardes sémantiques ci-dessus restent sur le HTML brut entier.
-        texte = re.sub(r'<[^>]+>', ' ', lisible)
+        # Effeuillage par découpage (jamais un regex de balise : CodeQL y voit
+        # un ReDoS polynomial) : tout ce qui suit un '<' jusqu'au '>' tombe.
+        texte = ' '.join(
+            morceau.split('>', 1)[-1] for morceau in lisible.split('<'))
         for _designation, _qte, _prix in self.FULL_LINES:
             self.assertNotIn(_prix, texte)
         self.assertIn('Nomenclature électrique', annexe)
