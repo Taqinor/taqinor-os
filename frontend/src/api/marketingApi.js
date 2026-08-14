@@ -292,6 +292,12 @@ const marketingApi = {
     comparaison: (devisId) =>
       api.get('/marketing/attribution/comparaison/', { params: { devis_id: devisId } }),
   },
+
+  // ── NTMKT39 — Export CSV/XLSX des campagnes et de leur trace d'envoi ──
+  exportCampagnesXlsx: (params) =>
+    api.get('/marketing/campagnes/export/', { params, responseType: 'blob' }),
+  exportEnvoisCampagneCsv: (id) =>
+    api.get(`/marketing/campagnes/${id}/envois/export/`, { responseType: 'blob' }),
 }
 
 export default marketingApi

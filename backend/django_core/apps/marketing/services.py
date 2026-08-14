@@ -1049,6 +1049,87 @@ def modele_attribution_pour(company):
     return parametres_marketing_pour(company).modele_attribution
 
 
+def _cellule_export(valeur):
+    """NTMKT39/40 — rendu d'une valeur pour une cellule XLSX (même esprit que
+    ``apps.dataimport.exporters._cell``, sans en dépendre — ce module reste
+    autonome)."""
+    import datetime
+    from decimal import Decimal
+
+    if valeur is None:
+        return ''
+    if isinstance(valeur, (datetime.datetime, datetime.date)):
+        return valeur.isoformat()
+    if isinstance(valeur, Decimal):
+        return str(valeur)
+    return valeur
+
+
+# ── NTMKT39 — Export CSV/XLSX des campagnes et de leur trace d'envoi ───────
+
+_EXPORT_CAMPAGNES_COLONNES = [
+    ('nom', 'Nom'), ('canal', 'Canal'), ('statut', 'Statut'),
+    ('nb_destinataires', 'Destinataires'), ('nb_envois', 'Envoyés'),
+    ('nb_ouvertures', 'Ouvertures'), ('nb_clics', 'Clics'),
+    ('cout_reel_mad', 'Coût réel (MAD)'), ('date_creation', 'Créée le'),
+]
+
+
+def export_campagnes_xlsx(company, *, statut=None, canal=None):
+    """NTMKT39 — export XLSX des campagnes de la société, MÊMES colonnes que
+    la liste (``CampagnesList.jsx``), filtrable par statut/canal comme
+    l'écran. ``openpyxl`` est déjà une dépendance du repo (cf.
+    ``apps.dataimport.parsing``) — aucune nouvelle dépendance ajoutée."""
+    import io
+
+    from openpyxl import Workbook
+
+    from .models import Campagne
+
+    qs = Campagne.objects.filter(company=company).order_by('-date_creation')
+    if statut:
+        qs = qs.filter(statut=statut)
+    if canal:
+        qs = qs.filter(canal=canal)
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = 'Campagnes'
+    ws.append([libelle for _, libelle in _EXPORT_CAMPAGNES_COLONNES])
+    for campagne in qs:
+        ws.append([
+            _cellule_export(getattr(campagne, champ))
+            for champ, _ in _EXPORT_CAMPAGNES_COLONNES
+        ])
+    buf = io.BytesIO()
+    wb.save(buf)
+    return buf.getvalue()
+
+
+def export_envois_campagne_csv(campagne):
+    """NTMKT39 — export CSV de la trace ``EnvoiCampagne`` d'UNE campagne
+    (destinataire/statut/date_envoi/date_ouverture), correctement échappé
+    (virgules/accents) via le module ``csv`` standard — jamais une nouvelle
+    lib."""
+    import csv
+    import io
+
+    buf = io.StringIO()
+    writer = csv.writer(buf)
+    writer.writerow(
+        ['Destinataire', 'Statut', 'Envoyé le', 'Ouvert le', 'Cliqué le'])
+    for envoi in campagne.envois.all().order_by('-date_creation'):
+        writer.writerow([
+            envoi.destinataire, envoi.statut,
+            envoi.envoye_le.isoformat() if envoi.envoye_le else '',
+            envoi.ouvert_le.isoformat() if envoi.ouvert_le else '',
+            envoi.clique_le.isoformat() if envoi.clique_le else '',
+        ])
+    # BOM UTF-8 : Excel ouvre alors correctement les accents FR (même
+    # convention que ``apps.dataimport.exporters.export_csv``).
+    return ('﻿' + buf.getvalue()).encode('utf-8')
+
+
 def attribution_comparaison(company, devis_id):
     """NTMKT20 — comparaison des 4 modèles d'attribution pour UN devis signé
     (aide à la décision, jamais un recalcul persistant). ``None`` si le devis

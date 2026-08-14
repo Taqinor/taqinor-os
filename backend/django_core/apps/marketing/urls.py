@@ -63,12 +63,14 @@ from .views import (
     enquete_publique,
     enquete_soumettre,
     evenement_inscription_publique,
+    export_campagnes_xlsx_view,
+    export_envois_campagne_csv_view,
     heatmap_engagement_view,
     importer_couts_publicitaires_view,
     parametres_marketing_view,
     redirection_lien_tracke,
-    score_maturite_lead_view,
     registre_consentement_export_pdf_view,
+    score_maturite_lead_view,
     webhook_brevo_campagne,
     webhook_sms_stop,
 )
@@ -158,6 +160,14 @@ urlpatterns = [
     # NTMKT27 — bilan de campagne PDF (usage interne)
     path('campagnes/<int:pk>/rapport-pdf/', campagne_rapport_pdf_view,
          name='mkt-campagne-rapport-pdf'),
+    # NTMKT39 — export XLSX des campagnes filtrées + CSV de la trace d'envoi
+    # d'une campagne (montés AVANT le routeur — un `pk` de routeur DRF
+    # avalerait sinon `export` comme s'il s'agissait d'un id).
+    path('campagnes/export/', export_campagnes_xlsx_view,
+         name='mkt-campagnes-export-xlsx'),
+    path('campagnes/<int:pk>/envois/export/',
+         export_envois_campagne_csv_view,
+         name='mkt-campagne-envois-export-csv'),
     # NTMKT28 — export PDF du registre de consentement (CNDP)
     path('registre-consentement/export-pdf/',
          registre_consentement_export_pdf_view,

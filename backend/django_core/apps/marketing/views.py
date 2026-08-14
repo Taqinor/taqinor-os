@@ -362,3 +362,40 @@ def attribution_comparaison_view(request):
         return Response(
             {'detail': 'Devis introuvable ou non accepté.'}, status=404)
     return Response(resultat)
+
+
+# ── NTMKT39 — Export CSV/XLSX des campagnes et de leur trace d'envoi ───────
+
+@extend_schema(responses={200: OpenApiTypes.BINARY})
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def export_campagnes_xlsx_view(request):
+    """NTMKT39 — export XLSX des campagnes filtrées (``?statut=&canal=``,
+    mêmes colonnes que la liste)."""
+    contenu = marketing_services.export_campagnes_xlsx(
+        request.user.company,
+        statut=request.query_params.get('statut') or None,
+        canal=request.query_params.get('canal') or None,
+    )
+    resp = HttpResponse(
+        contenu,
+        content_type=(
+            'application/vnd.openxmlformats-officedocument'
+            '.spreadsheetml.sheet'))
+    resp['Content-Disposition'] = 'attachment; filename="campagnes.xlsx"'
+    return resp
+
+
+@extend_schema(responses={200: OpenApiTypes.BINARY})
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def export_envois_campagne_csv_view(request, pk=None):
+    """NTMKT39 — export CSV de la trace d'envoi (``EnvoiCampagne``) d'UNE
+    campagne."""
+    campagne = get_object_or_404(
+        Campagne, pk=pk, company=request.user.company)
+    contenu = marketing_services.export_envois_campagne_csv(campagne)
+    resp = HttpResponse(contenu, content_type='text/csv; charset=utf-8')
+    resp['Content-Disposition'] = (
+        f'attachment; filename="envois_campagne_{pk}.csv"')
+    return resp
