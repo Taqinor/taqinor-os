@@ -69,6 +69,12 @@ const ventesApi = {
   // le client a déjà cette version sous les yeux, le bon geste est « Réviser » ;
   // 409 `revision_possible: false` = document clos (lecture seule).
   syncDevisLayout: (id, body) => api.post(`/ventes/devis/${id}/sync-layout/`, body),
+  // PV22 — Copilote : crée un devis RÉSIDENTIEL automatiquement dimensionné
+  // depuis la fiche lead (jamais un brouillon vide). Corps `{lead}` (ou
+  // `{client}`). 422 + `detail` FR quand les données de dimensionnement
+  // manquent ou que le marché n'est pas résidentiel : le message vient du
+  // serveur et oriente vers le générateur complet.
+  creerDevisAuto: (data) => api.post('/ventes/devis/auto/', data),
   // QJ14 — Envoyer par email : PDF premium + lien tokenisé → client, consigne EmailLog, marque envoyé.
   envoyerEmailDevis: (id, payload = {}) => api.post(`/ventes/devis/${id}/envoyer-email/`, payload),
   // QG8 — « Envoyer » = flux WhatsApp : lien wa.me + lien tokenisé, marque envoyé.

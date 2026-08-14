@@ -164,6 +164,18 @@ export default function IdentityRail({ state, onAction, users = [], archiveBusy 
   const devisNotReadyMsg = (server.devis_auto && server.devis_auto.message)
     || 'Renseignez la facture du lead pour activer le devis automatique.'
 
+  // PV22 — conception 3D DÉJÀ faite pour ce lead : `{kwc, image_url}` servis par
+  // la fiche (PV78, RETRIEVE seulement — aucun appel réseau ajouté ici). NULL-SAFE :
+  // sans conception le chip DISPARAÎT — jamais un « 0 kWc », jamais une vignette
+  // vide (règle « fait vérifié ou rien »).
+  const conception = (server.conception && typeof server.conception === 'object')
+    ? server.conception : null
+  const conceptionKwcBrut = conception?.kwc
+  const conceptionKwc = (conceptionKwcBrut != null && conceptionKwcBrut !== '')
+    ? Number(conceptionKwcBrut) : null
+  const showConception = Number.isFinite(conceptionKwc) && conceptionKwc > 0
+  const conceptionImage = (conception?.image_url || '').trim()
+
   // ── PUB53 — lien retour vers l'annonce Meta d'origine (pur frontend : le
   // serializer crm expose déjà `meta_ad_id` en '__all__', aucun sélecteur
   // adsengine n'est nécessaire côté lecture). Gaté aux rôles qui voient
@@ -393,6 +405,30 @@ export default function IdentityRail({ state, onAction, users = [], archiveBusy 
         >
           ⚡ {devisReady ? 'Prêt à deviser' : 'Devis non prêt'}
         </Badge>
+        {/* PV22 — la toiture de ce lead a DÉJÀ été calepinée en 3D : puissance
+            conçue + vignette du toit. Absent tant qu'aucune conception
+            n'existe (jamais un chip « 0 kWc »). */}
+        {showConception && (
+          <Badge
+            tone="success"
+            title="Puissance conçue sur le calepinage 3D de ce lead"
+            data-testid="lw-chip-conception"
+          >
+            {conceptionImage && (
+              <img
+                src={conceptionImage}
+                alt=""
+                aria-hidden="true"
+                style={{
+                  width: 16, height: 16, objectFit: 'cover',
+                  marginRight: 4, borderRadius: 2, display: 'inline-block',
+                  verticalAlign: 'middle',
+                }}
+              />
+            )}
+            🛰️ {conceptionKwc.toLocaleString('fr-FR', { maximumFractionDigits: 2 })} kWc conçus
+          </Badge>
+        )}
         {/* PUB53 — traçabilité retour : ce lead vient d'une ad Meta →
             lien direct vers sa fiche « histoire complète » (PUB44). */}
         {showAdBadge && (
