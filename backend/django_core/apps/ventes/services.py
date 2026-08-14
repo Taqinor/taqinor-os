@@ -465,6 +465,184 @@ def validate_composition_for_layout(layout, company):
     return errors if errors else None
 
 
+# ── PV16 — la CIBLE de calepinage se lit dans les LIGNES du devis ───────────
+#
+# L'écran de conception 3D doit repartir de ce que le devis DIT AUJOURD'HUI
+# (combien de panneaux, quelle puissance unitaire, quel scénario), pas d'un
+# blob de layout qui peut être absent, périmé ou d'une version antérieure de
+# l'outil. Les lignes du devis, elles, sont la source vivante — c'est ce qui a
+# été chiffré et, pour un devis envoyé, ce que le client a sous les yeux.
+#
+# Fonction PURE de lecture : elle ne touche NI le statut, NI les lignes, NI
+# l'étude. Elle expose ses doutes plutôt que de les cacher — d'où la liste
+# ``avertissements`` en français, affichable telle quelle.
+
+#: Wattage retenu quand plus rien n'est lisible (panneau catalogue courant).
+CIBLE_WATT_DEFAUT = 550
+
+
+def _pmax_wc_du_produit(produit):
+    """Pmax (Wc) de la fiche technique d'un produit, ou ``None``.
+
+    Passe par ``apps.stock.selectors.specs_for_produit`` — le point d'entrée
+    cross-app SANCTIONNÉ pour lire une ``FicheTechnique`` (jamais un import de
+    ``apps.stock.models`` ici). Ce sélecteur peut ne pas encore exister dans
+    l'arbre : son absence est un NON-ÉVÉNEMENT (on retombe simplement sur la
+    lecture du wattage dans le libellé), jamais une exception.
+    """
+    if produit is None:
+        return None
+    try:
+        from apps.stock import selectors as _stock_selectors
+    except Exception:  # noqa: BLE001 — app absente / import cassé : on ignore
+        return None
+    lire = getattr(_stock_selectors, 'specs_for_produit', None)
+    if lire is None:
+        return None
+    try:
+        specs = lire(produit)
+    except TypeError:
+        # Le sélecteur peut attendre un id plutôt que l'objet.
+        try:
+            specs = lire(getattr(produit, 'id', None))
+        except Exception:  # noqa: BLE001
+            return None
+    except Exception:  # noqa: BLE001
+        return None
+    if specs is None:
+        return None
+    pmax = (specs.get('pmax_wc') if isinstance(specs, dict)
+            else getattr(specs, 'pmax_wc', None))
+    try:
+        pmax = int(round(float(pmax)))
+    except (TypeError, ValueError):
+        return None
+    return pmax if pmax > 0 else None
+
+
+def cible_depuis_lignes(devis):
+    """PV16 — cible de calepinage LUE DANS LES LIGNES du devis.
+
+    Rend toujours le même dict, quelles que soient les données :
+
+        {panneaux, kwc, panel_watt, scenario, batterie, avertissements}
+
+    * ``panneaux`` — somme des quantités des lignes classées « panneau » par le
+      classifieur partagé ``_is_panel`` (aligné sur ``quote_engine/builder.py``).
+      Les lignes de SECTION/NOTE (sans prix ni quantité) sont ignorées.
+    * ``panel_watt`` — wattage unitaire, dans cet ordre : la fiche technique du
+      produit dominant (``pmax_wc``), sinon le wattage lu dans le libellé
+      (désignation puis nom du produit), sinon déduit du kWc de l'étude, sinon
+      ``CIBLE_WATT_DEFAUT`` — et là SEULEMENT un avertissement est levé.
+    * ``kwc`` — puissance recalculée DEPUIS LES LIGNES (``panneaux × watt``),
+      pas recopiée de l'étude : c'est le devis qui fait foi ici, pas un
+      paramètre d'étude qui a pu se désynchroniser.
+    * ``scenario`` — ``avec_batterie`` dès qu'une batterie est présente, sinon
+      ``hybride`` si un onduleur hybride l'est, sinon ``reseau`` (défaut
+      résidentiel, même arbitrage que ``build_devis_from_layout``).
+    * ``avertissements`` — messages FRANÇAIS affichables tels quels.
+
+    LECTURE PURE : aucun statut, aucune ligne, aucune étude n'est écrite.
+    """
+    lignes = []
+    if devis is not None:
+        lignes = [
+            ligne for ligne in devis.lignes.all()
+            if getattr(ligne, 'type_ligne', 'produit') == 'produit'
+        ]
+
+    def _nom(ligne):
+        return ligne.designation or getattr(ligne.produit, 'nom', '') or ''
+
+    def _classe(ligne, predicat):
+        """Classe sur la désignation, à défaut sur le nom du produit."""
+        return (predicat(ligne.designation or '')
+                or predicat(getattr(ligne.produit, 'nom', '') or ''))
+
+    lignes_panneau = [li for li in lignes if _classe(li, _is_panel)]
+    panneaux = 0
+    for ligne in lignes_panneau:
+        try:
+            # ArithmeticError couvre decimal.InvalidOperation.
+            panneaux += int(Decimal(str(ligne.quantite or 0)))
+        except (ArithmeticError, TypeError, ValueError):
+            continue
+
+    batterie = any(_classe(li, _is_battery) for li in lignes)
+    hybride = any(_classe(li, _is_hybrid_inverter) for li in lignes)
+    if batterie:
+        scenario = 'avec_batterie'
+    elif hybride:
+        scenario = 'hybride'
+    else:
+        scenario = 'reseau'
+
+    avertissements = []
+    if not lignes_panneau:
+        avertissements.append(
+            'Aucune ligne de panneau dans ce devis : la cible de calepinage '
+            'est vide. Ajoutez les panneaux au devis avant de concevoir la '
+            'toiture.')
+
+    # Ligne dominante = la plus GROSSE quantité : c'est elle qui porte le
+    # wattage de référence, et c'est elle que PV18 ajustera en cas d'écart.
+    dominante = None
+    if lignes_panneau:
+        dominante = max(
+            lignes_panneau,
+            key=lambda li: Decimal(str(li.quantite or 0)))
+
+    # Deux modèles de panneau différents dans un même devis : le calepinage ne
+    # sait pas répartir l'écart — on le DIT au lieu de choisir en silence.
+    identites = {
+        (li.produit_id, (li.designation or '').strip().lower())
+        for li in lignes_panneau
+    }
+    if len(identites) > 1:
+        avertissements.append(
+            'Ce devis porte %d modèles de panneau différents : l\'écart de '
+            'calepinage sera appliqué à la ligne la plus grosse (« %s »).'
+            % (len(identites), _nom(dominante)))
+
+    panel_watt = None
+    if dominante is not None:
+        panel_watt = _pmax_wc_du_produit(dominante.produit)
+        if not panel_watt:
+            panel_watt = (_parse_watt(dominante.designation or '')
+                          or _parse_watt(
+                              getattr(dominante.produit, 'nom', '') or ''))
+
+    if not panel_watt and panneaux > 0:
+        # Dernier repli chiffré : la puissance de l'étude, divisée par le
+        # nombre de panneaux réellement en ligne.
+        etude = getattr(devis, 'etude_params', None) or {}
+        try:
+            kwc_etude = float(etude.get('puissance_kwc') or 0)
+        except (TypeError, ValueError):
+            kwc_etude = 0.0
+        if kwc_etude > 0:
+            panel_watt = int(round(kwc_etude * 1000 / panneaux / 10) * 10)
+
+    if not panel_watt:
+        panel_watt = CIBLE_WATT_DEFAUT
+        if lignes_panneau:
+            avertissements.append(
+                'Puissance unitaire du panneau illisible (ni fiche technique '
+                'ni wattage dans le libellé) : %d Wc retenus par défaut.'
+                % CIBLE_WATT_DEFAUT)
+
+    kwc = round(panneaux * panel_watt / 1000.0, 3) if panneaux else 0.0
+
+    return {
+        'panneaux': panneaux,
+        'kwc': kwc,
+        'panel_watt': int(panel_watt),
+        'scenario': scenario,
+        'batterie': bool(batterie),
+        'avertissements': avertissements,
+    }
+
+
 # ── AOF164 — bascule du calcul résidentiel sur le MOTEUR PARTAGÉ ────────────
 #
 # Le compte de panneaux du devis résidentiel vient aujourd'hui du cerveau
