@@ -80,6 +80,15 @@ class OrdreFabricationViewSet(CompanyScopedModelViewSet):
     serializer_class = OrdreFabricationSerializer
     filterset_fields = ['statut', 'produit', 'gamme']
 
+    def get_queryset(self):
+        # NTMFG9 — filtre poste (les opérations portent le poste, pas l'OF
+        # lui-même) : un OF matche s'il a AU MOINS une opération sur ce poste.
+        qs = super().get_queryset()
+        poste = self.request.query_params.get('poste')
+        if poste:
+            qs = qs.filter(operations__poste_charge_id=poste).distinct()
+        return qs
+
     def _check_tenant(self, serializer):
         company = self.request.user.company
         cid = getattr(company, 'id', None)

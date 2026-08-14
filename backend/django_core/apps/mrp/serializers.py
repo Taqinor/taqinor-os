@@ -75,11 +75,14 @@ class ReservationOFSerializer(serializers.ModelSerializer):
 class OrdreFabricationSerializer(serializers.ModelSerializer):
     operations = OperationOFSerializer(many=True, read_only=True)
     reservations = ReservationOFSerializer(many=True, read_only=True)
+    # NTMFG9 — confort écran (kanban/liste) : évite un aller-retour produit
+    # séparé côté frontend. Lecture seule, dérivée de `produit.nom`.
+    produit_nom = serializers.CharField(source='produit.nom', read_only=True)
 
     class Meta:
         model = OrdreFabrication
         fields = [
-            'id', 'produit', 'quantite', 'gamme', 'statut',
+            'id', 'produit', 'produit_nom', 'quantite', 'gamme', 'statut',
             'date_debut_planifiee', 'date_fin_planifiee', 'priorite',
             'kit_ordre_assemblage', 'stock_mouvemente', 'operations',
             'reservations', 'created_at', 'updated_at',
