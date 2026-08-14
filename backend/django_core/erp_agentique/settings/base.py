@@ -1080,6 +1080,8 @@ CELERY_TASK_ROUTES = {
     'education.relancer_reinscriptions': {'queue': 'scheduled'},
     # WIR5/FLOTTE16 — génération quotidienne des échéances d'entretien flotte.
     'flotte.generer_echeances_entretien_quotidien': {'queue': 'scheduled'},
+    # NTLOG38 — rappel quotidien des étapes de transport en retard.
+    'transport.check_etapes_transport_retard': {'queue': 'scheduled'},
     # WIR25 — écritures récurrentes (XACC8) + rappels d'échéance fiscale
     # (NTMAR15), planifiés au beat, heures creuses.
     'compta.generer_ecritures_recurrentes': {'queue': 'scheduled'},

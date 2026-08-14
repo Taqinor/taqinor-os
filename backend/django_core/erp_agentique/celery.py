@@ -738,6 +738,13 @@ app.conf.beat_schedule = {
         'task': 'flotte.generer_echeances_entretien_quotidien',
         'schedule': crontab(hour=6, minute=45),
     },
+    # NTLOG38 — rappel J-3 sur les étapes de transport en retard
+    # (`date_prevue` dépassée, jamais clôturées) : quotidien, heure creuse,
+    # idempotent (une seule notification par étape par jour).
+    'transport-check-etapes-retard-quotidien': {
+        'task': 'transport.check_etapes_transport_retard',
+        'schedule': crontab(hour=6, minute=50),
+    },
     # ── WIR50 — trois commandes périodiques de SÉCURITÉ/GOUVERNANCE bâties mais
     # jamais planifiées (P0 : elles ne tournaient JAMAIS en prod). ──
     # NTSEC22 — révoque les accès break-glass ÉCHUS (un octroi expiré conserve
