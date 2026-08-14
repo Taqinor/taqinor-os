@@ -130,6 +130,17 @@ class VenteComptoir(models.Model):
                   'réglé, ou override admin journalisé). Indépendant du '
                   'statut : un override peut la poser à True alors que le '
                   'statut reste EN_ATTENTE_SOLDE (solde toujours dû).')
+    # NTRET25 — arrondi caisse (espèces) : écart entre le montant dû en
+    # espèces et son arrondi au pas configuré (Paramètres POS), posé à la
+    # validation SEULEMENT si l'arrondi est actif et qu'un montant est dû en
+    # espèces. Peut être positif ou négatif ; NULL = arrondi non applicable
+    # (désactivé, ou aucun montant dû en espèces) — comportement historique
+    # inchangé. Jamais fondu dans le prix d'un produit — tracé en ligne
+    # distincte sur le ticket (``receipt.py``).
+    ecart_arrondi_especes = models.DecimalField(
+        max_digits=6, decimal_places=2, null=True, blank=True,
+        help_text="NTRET25 — écart d'arrondi caisse (espèces), tracé "
+                  'séparément sur le ticket.')
 
     class Meta:
         verbose_name = 'Vente comptoir'

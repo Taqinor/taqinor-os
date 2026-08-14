@@ -28,6 +28,21 @@ def _q2(value):
     return Decimal(value or 0).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
 
 
+# ── NTRET25 — Arrondi caisse (espèces uniquement) ───────────────────────────
+
+def arrondir_especes(montant, pas):
+    """NTRET25 — arrondit ``montant`` (Decimal) au multiple de ``pas`` le
+    plus proche (ex. pas=0.05 → arrondit au 5 centimes le plus proche). PURE
+    — aucun accès base, testable isolément. ``pas`` nul/vide renvoie
+    ``montant`` inchangé (garde défensive, jamais une division par zéro)."""
+    montant = Decimal(str(montant or 0))
+    pas = Decimal(str(pas or 0))
+    if pas <= 0:
+        return _q2(montant)
+    unites = (montant / pas).quantize(Decimal('1'), rounding=ROUND_HALF_UP)
+    return _q2(unites * pas)
+
+
 def _discount_threshold_ok(company, remise, *, approuve, user):
     """T17 — remise ligne plafonnée par le seuil d'approbation existant.
 
@@ -102,6 +117,29 @@ def valider_vente(*, vente, paiements, user):
             'espèces.')
     if a_du_cash and vente.session_caisse.statut != SessionCaisse.Statut.OUVERTE:
         raise VenteComptoirError('La session de caisse est clôturée.')
+
+    # (NTRET25) — arrondi caisse : calculé sur le MONTANT DÛ en espèces (total
+    # − paiements non-espèces), AVANT calcul du rendu — jamais sur les
+    # paiements carte/virement. Tracé sur `vente.ecart_arrondi_especes`
+    # (ligne distincte du ticket), jamais fondu dans le prix d'un produit.
+    # Désactivé par défaut, ou aucun montant dû en espèces → None (comportement
+    # historique inchangé).
+    ecart_arrondi_especes = None
+    if a_du_cash:
+        from apps.parametres.models_pos import ParametresPos
+        parametres_pos = ParametresPos.get(vente.company)
+        if parametres_pos.arrondi_caisse_actif:
+            total_non_especes = sum(
+                (_q2(p.get('montant')) for p in paiements
+                 if (p.get('mode') or '').strip().lower() != MODE_ESPECES),
+                Decimal('0'))
+            du_especes = total_ttc_q - total_non_especes
+            if du_especes > 0:
+                arrondi = arrondir_especes(
+                    du_especes, parametres_pos.arrondi_caisse_pas)
+                ecart = arrondi - du_especes
+                if ecart != 0:
+                    ecart_arrondi_especes = ecart
 
     # (NTRET15) — pré-vol : valide chaque carte cadeau AVANT toute écriture
     # (même style que le pré-vol espèces/session ci-dessus). Un code
@@ -247,8 +285,10 @@ def valider_vente(*, vente, paiements, user):
     vente.statut = VenteComptoir.Statut.VALIDEE
     vente.date_validation = timezone.now()
     vente.caissier = vente.caissier or user
+    vente.ecart_arrondi_especes = ecart_arrondi_especes
     vente.save(update_fields=[
-        'facture', 'statut', 'date_validation', 'caissier'])
+        'facture', 'statut', 'date_validation', 'caissier',
+        'ecart_arrondi_especes'])
     return vente
 
 

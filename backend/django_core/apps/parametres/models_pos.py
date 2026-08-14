@@ -16,6 +16,8 @@ devis) — jamais dupliqué ici. La config imprimante/TPE RÉUTILISE
 ``BoutiquePos.emplacement`` référence ``stock.EmplacementStock`` par FK
 CHAÎNE (``'stock.EmplacementStock'``) : ceci reste une lecture — aucune
 migration ni modèle de ``apps/stock`` n'est jamais touché ici."""
+from decimal import Decimal
+
 from django.db import models
 
 from core.models import TenantModel
@@ -41,6 +43,13 @@ class ParametresPos(TenantModel):
         help_text="Click & Collect : délai (jours) avant libération "
                   "automatique d'une réservation non retirée. Vide/0 = "
                   "désactivé.")
+    # NTRET25 — arrondi caisse (espèces uniquement, jamais carte/virement) :
+    # arrondit le montant dû en espèces au pas configuré. Désactivé par
+    # défaut — comportement historique inchangé (aucun arrondi appliqué).
+    arrondi_caisse_actif = models.BooleanField(default=False)
+    arrondi_caisse_pas = models.DecimalField(
+        max_digits=4, decimal_places=2, default=Decimal('0.05'),
+        help_text="Pas d'arrondi caisse en espèces (MAD), ex. 0.05 ou 0.10.")
 
     class Meta:
         verbose_name = 'Paramètres POS'
