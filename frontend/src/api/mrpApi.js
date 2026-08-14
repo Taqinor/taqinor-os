@@ -27,6 +27,9 @@ const mrpApi = {
   updateOrdreFabrication: (id, data) => api.patch(`/mrp/ordres-fabrication/${id}/`, data),
   confirmerOrdreFabrication: (id) => api.post(`/mrp/ordres-fabrication/${id}/confirmer/`),
   cloturerOrdreFabrication: (id) => api.post(`/mrp/ordres-fabrication/${id}/cloturer/`),
+  // NTMFG28 — clôture assistée (saisie qualité groupée), réservée responsable/admin.
+  clotureAssisteeOF: (id, data) =>
+    api.post(`/mrp/ordres-fabrication/${id}/cloture-assistee/`, data),
   annulerOrdreFabrication: (id, motif) =>
     api.post(`/mrp/ordres-fabrication/${id}/annuler/`, { motif }),
   getDispoComposants: (id) => api.get(`/mrp/ordres-fabrication/${id}/dispo-composants/`),
@@ -55,6 +58,19 @@ const mrpApi = {
   // TRS/OEE par poste (NTMFG12)
   getOeePoste: (posteId, params) => api.get(`/mrp/postes-charge/${posteId}/oee/`, { params }),
   getOeeTousPostes: (params) => api.get('/mrp/oee-postes/', { params }),
+
+  // Simulation de charge « et si » (NTMFG18) — aucune écriture.
+  simulerCharge: (body) => api.post('/mrp/simuler-charge/', body),
+
+  // Fiche suiveuse / traveler imprimable (NTMFG19) — interne, aucun prix.
+  getTravelerPdf: (ofId) =>
+    api.get(`/mrp/ordres-fabrication/${ofId}/traveler-pdf/`, { responseType: 'blob' }),
+
+  // Généalogie amont/aval (NTMFG20) — lecture seule.
+  getGenealogieOF: (ofId) => api.get(`/mrp/ordres-fabrication/${ofId}/genealogie/`),
+
+  // Tableau de bord Production consolidé (NTMFG22) — responsable/admin.
+  getTableauBordProduction: () => api.get('/mrp/tableau-bord/'),
 }
 
 export default mrpApi

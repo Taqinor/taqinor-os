@@ -4,13 +4,19 @@
 // vit sous `/mrp/*`, appelé « Atelier MRP » dans le menu pour éviter toute
 // confusion.
 import { useEffect, useMemo, useState } from 'react'
-import { Factory } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
+import { ClipboardCheck, Factory, Printer } from 'lucide-react'
 import mrpApi from '../../api/mrpApi'
 import {
   Card, CardContent, Badge, Spinner, EmptyState, Button,
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
 } from '../../ui'
 import { PageHeader } from '../../ui/PageHeader'
+// NTMFG19 — ouverture/téléchargement du traveler PDF (même helper que le
+// reste de l'app pour les blobs PDF, VX49/VX172 déjà gérés).
+import { openPdfBlob } from '../../utils/pdfBlob'
+// NTMFG20 — vue arbre de généalogie amont/aval, embarquée dans le détail OF.
+import GenealogieOFPanel from './GenealogieOFPanel'
 
 // Radix Select interdit une valeur vide (réservée à l'effacement) — même
 // sentinelle que `pages/parametres/ApplicationsSection.jsx`.
@@ -42,12 +48,26 @@ function OfCard({ of, selected, onSelect }) {
 }
 
 function OfDetail({ ofId }) {
+  const navigate = useNavigate()
   const [of, setOf] = useState(null)
+  const [travelerBusy, setTravelerBusy] = useState(false)
 
   useEffect(() => {
     if (!ofId) return
     mrpApi.getOrdreFabrication(ofId).then((resp) => setOf(resp.data))
   }, [ofId])
+
+  // NTMFG19 — fiche suiveuse (traveler) imprimable, aucun prix.
+  const imprimerTraveler = async () => {
+    if (!of) return
+    setTravelerBusy(true)
+    try {
+      const resp = await mrpApi.getTravelerPdf(of.id)
+      await openPdfBlob(resp.data, `traveler-of-${of.id}.pdf`)
+    } finally {
+      setTravelerBusy(false)
+    }
+  }
 
   if (!ofId) return <EmptyState title="Sélectionnez un OF pour voir le détail." />
   if (!of) return <Spinner />
@@ -55,7 +75,14 @@ function OfDetail({ ofId }) {
   return (
     <Card>
       <CardContent>
-        <h3 className="font-medium mb-2">OF-{of.id}</h3>
+        <div className="flex items-start justify-between gap-2">
+          <h3 className="font-medium mb-2">OF-{of.id}</h3>
+          <Button variant="outline" size="sm" loading={travelerBusy}
+                  onClick={imprimerTraveler}
+                  title="Fiche suiveuse (traveler) imprimable — document interne, aucun prix">
+            <Printer size={14} /> Traveler
+          </Button>
+        </div>
         <div className="text-sm mb-1">Statut : <Badge tone="info">{of.statut}</Badge></div>
         <div className="text-sm mb-3">Quantité : {of.quantite}</div>
 
@@ -87,10 +114,19 @@ function OfDetail({ ofId }) {
           </Button>
         )}
         {(of.statut === 'planifie' || of.statut === 'lance') && (
-          <Button className="mt-3" onClick={() => mrpApi.cloturerOrdreFabrication(of.id)}>
-            Clôturer
-          </Button>
+          <>
+            <Button className="mt-3" onClick={() => mrpApi.cloturerOrdreFabrication(of.id)}>
+              Clôturer
+            </Button>
+            {/* NTMFG28 — saisie qualité groupée (responsable/admin) plutôt
+                qu'opération par opération sur le terminal atelier (NTMFG8). */}
+            <Button className="mt-3 ml-2" variant="outline"
+                    onClick={() => navigate(`/mrp/ordres-fabrication/${of.id}/cloture-assistee`)}>
+              <ClipboardCheck size={14} /> Clôture assistée
+            </Button>
+          </>
         )}
+        <GenealogieOFPanel ofId={of.id} />
       </CardContent>
     </Card>
   )
