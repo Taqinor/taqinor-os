@@ -170,6 +170,15 @@ export interface ProposalResponse {
    */
   roof_layout?: unknown;
   /**
+   * WJ128 — schéma unifilaire (SLD) OPTIONNEL, déjà rendu en SVG CLIENT-SAFE
+   * côté serveur (aucun prix d'achat/marge, aucune donnée interne — le
+   * backend ne l'expose que quand l'étude électrique du devis existe).
+   * `null`/absent → la section « Schéma électrique » ne rend RIEN (le PDF
+   * téléchargeable, quand l'étude existe, embarque déjà le schéma — flux
+   * INCHANGÉ, voir CLAUDE.md règle #4). Lu défensivement via `hasSldSvg`.
+   */
+  sld_svg?: string | null;
+  /**
    * WJ32 — bloc de financement backend (QJ12, `compute_financing_block`),
    * DIFFÉRENT du calcul générique `financingComparison` ci-dessus : porte un
    * programme réel (Tatwir Croissance Verte / ISTIDAMA…) et une comparaison
@@ -665,6 +674,37 @@ export function monthlySeries(arr: number[] | undefined | null): number[] | null
  */
 export function hasProductionSeries(p: ProposalResponse): boolean {
   return monthlySeries(p.monthly_production) !== null;
+}
+
+// ── WJ128 · Schéma électrique (SLD) — affichage + téléchargement SVG ────────
+//
+// Le backend rend le schéma unifilaire en SVG CLIENT-SAFE (aucun prix
+// d'achat/marge) et l'expose dans `sld_svg` UNIQUEMENT quand l'étude
+// électrique du devis existe (sinon `null`) — jamais un placeholder inventé.
+// Le PDF téléchargeable embarque déjà le schéma quand l'étude existe (flux
+// PDF INCHANGÉ, CLAUDE.md règle #4) : cette section est un affichage web
+// SUPPLÉMENTAIRE, pas un nouveau chemin de génération.
+
+/**
+ * Vrai quand la proposition porte un schéma électrique exploitable. Simple
+ * garde de présence (chaîne non vide) — le SVG lui-même n'est jamais reparsé
+ * côté client, il est injecté tel quel (déjà nettoyé côté serveur).
+ */
+export function hasSldSvg(p: Pick<ProposalResponse, 'sld_svg'>): boolean {
+  return typeof p.sld_svg === 'string' && p.sld_svg.trim().length > 0;
+}
+
+/**
+ * Nom de fichier du schéma téléchargé : `schema-electrique-<référence>.svg`.
+ * La référence devis peut porter des caractères peu sûrs pour un nom de
+ * fichier (espaces, slashes…) — on ne garde que [A-Za-z0-9_-], le reste
+ * devient `-` ; une référence qui ne laisse rien d'exploitable retombe sur
+ * `devis` (jamais un nom de fichier vide).
+ */
+export function sldSvgFilename(reference: string | null | undefined): string {
+  const raw = (reference ?? '').trim();
+  const safe = raw.replace(/[^A-Za-z0-9_-]+/g, '-').replace(/^-+|-+$/g, '');
+  return `schema-electrique-${safe || 'devis'}.svg`;
 }
 
 /**
@@ -1332,6 +1372,47 @@ export interface RoofLayoutObstacle {
   widthM: number;
 }
 
+/** Face d'un panneau dans un pack chevron Est-Ouest (toit plat). */
+export type RoofLayoutPanelFace = 'E' | 'W';
+
+/** Un panneau RÉELLEMENT posé (centre ENU mètres, repère `RoofLayoutZoneGeometry.origin`). */
+export interface RoofLayoutGeometryPanel {
+  cx: number;
+  cy: number;
+  face?: RoofLayoutPanelFace;
+}
+
+/**
+ * WJ127 — Géométrie RÉELLE (posée) d'une zone, telle que sérialisée par le
+ * builder (`roofPro11/prefill.ts` `serializeLayout`, champ additif `geometry`
+ * d'une `SerializedZone` — présent seulement quand un plan de rendu existe
+ * pour la zone). C'est le calepinage EXACT conçu dans l'ERP (édition manuelle
+ * comprise, cellules réellement occupées — voir PV27), jamais un re-pavage
+ * illustratif. `origin` est le repère [lng,lat] des centres `panels[].{cx,cy}`
+ * (mètres ENU, x=Est, y=Nord — même convention que `roofPro2.ts`/
+ * `estimatorBrainV2.ts`).
+ */
+export interface RoofLayoutZoneGeometry {
+  /** Azimut de FACE du pan (°, 0=N, 90=E, 180=S, 270=O). */
+  azimuthDeg: number;
+  /** Inclinaison RÉELLE des panneaux posés (°). */
+  tiltDeg: number;
+  family: 'south' | 'eastwest';
+  /** Pose affleurante (toit en pente) ? */
+  flush: boolean;
+  /**
+   * Nombre de panneaux RÉELLEMENT posés (== `panels.length` côté builder,
+   * PV27) — le chiffre à afficher partout où « combien de panneaux » compte
+   * réellement (légende de zone), DISTINCT de `neededPanels` (la CIBLE
+   * dimensionnée par l'étude, qui peut différer du posé).
+   */
+  count: number;
+  /** Origine [lng,lat] du repère ENU des centres de panneaux. */
+  origin: [number, number];
+  /** Centres ENU (m, repère `origin`) des panneaux RÉELLEMENT posés. */
+  panels: RoofLayoutGeometryPanel[];
+}
+
 /** Une zone (pan de toit) du layout backend, déjà validée. */
 export interface RoofLayoutZone {
   id: string;
@@ -1346,6 +1427,13 @@ export interface RoofLayoutZone {
   facingAzimuthDeg: number;
   /** Nombre de panneaux dimensionné par l'étude (0 = « tout ce qui tient »). */
   neededPanels: number;
+  /**
+   * WJ127 — Calepinage RÉEL de la zone (présent seulement si le backend l'a
+   * fourni ET qu'il est exploitable — voir `parseRoofLayout`). Absent → la
+   * visionneuse retombe sur le re-pavage ILLUSTRATIF historique (zéro
+   * régression sur un `roof_layout` déjà en base, sans ce champ).
+   */
+  geometry?: RoofLayoutZoneGeometry;
 }
 
 /** Layout de toiture validé (miroir défensif de `serializeLayout` du builder). */
@@ -1356,6 +1444,50 @@ export interface RoofLayout {
 
 function isFiniteNum(v: unknown): v is number {
   return typeof v === 'number' && Number.isFinite(v);
+}
+
+/**
+ * WJ127 — Parse DÉFENSIF de `zone.geometry` (voir `RoofLayoutZoneGeometry`) :
+ * ne jette JAMAIS — toute forme douteuse (champ manquant/invalide, aucun
+ * panneau exploitable) renvoie `null`, et la zone reste alors géométriquement
+ * valide SANS `geometry` (repli illustratif dans `buildViewerModel`).
+ */
+function parseZoneGeometry(raw: unknown): RoofLayoutZoneGeometry | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const g = raw as Record<string, unknown>;
+  if (!isFiniteNum(g.azimuthDeg) || !isFiniteNum(g.tiltDeg)) return null;
+  const family: 'south' | 'eastwest' | null =
+    g.family === 'south' || g.family === 'eastwest' ? g.family : null;
+  if (!family) return null;
+  const originRaw = g.origin;
+  if (!Array.isArray(originRaw) || originRaw.length < 2) return null;
+  const olng = originRaw[0];
+  const olat = originRaw[1];
+  if (!isFiniteNum(olng) || !isFiniteNum(olat)) return null;
+  if (olng < -180 || olng > 180 || olat < -90 || olat > 90) return null;
+  const panelsRaw = Array.isArray(g.panels) ? g.panels : [];
+  const panels: RoofLayoutGeometryPanel[] = [];
+  for (const p of panelsRaw) {
+    if (!p || typeof p !== 'object') continue;
+    const po = p as Record<string, unknown>;
+    if (!isFiniteNum(po.cx) || !isFiniteNum(po.cy)) continue;
+    const face: RoofLayoutPanelFace | undefined = po.face === 'E' || po.face === 'W' ? po.face : undefined;
+    panels.push(face ? { cx: po.cx, cy: po.cy, face } : { cx: po.cx, cy: po.cy });
+  }
+  if (panels.length === 0) return null;
+  // `count` (déclaré par le builder) DOIT normalement valoir panels.length —
+  // repli sur panels.length si absent/incohérent (jamais un chiffre inventé,
+  // jamais un throw sur une divergence mineure).
+  const count = isFiniteNum(g.count) && g.count >= 0 ? Math.floor(g.count) : panels.length;
+  return {
+    azimuthDeg: ((g.azimuthDeg % 360) + 360) % 360,
+    tiltDeg: Math.min(60, Math.max(0, g.tiltDeg)),
+    family,
+    flush: g.flush === true,
+    count,
+    origin: [olng, olat],
+    panels,
+  };
 }
 
 /**
@@ -1410,6 +1542,9 @@ export function parseRoofLayout(raw: unknown): RoofLayout | null {
     const needed = isFiniteNum(zo.neededPanels) && zo.neededPanels > 0
       ? Math.floor(zo.neededPanels)
       : 0;
+    // WJ127 — géométrie RÉELLE optionnelle (jamais requise : un layout ancien,
+    // sans ce champ, reste un layout valide — repli illustratif inchangé).
+    const geometry = parseZoneGeometry(zo.geometry);
     zones.push({
       id: typeof zo.id === 'string' ? zo.id : `zone-${zones.length + 1}`,
       label: typeof zo.label === 'string' && zo.label.trim() ? zo.label.trim() : `Pan ${zones.length + 1}`,
@@ -1419,6 +1554,7 @@ export function parseRoofLayout(raw: unknown): RoofLayout | null {
       pitchDeg,
       facingAzimuthDeg,
       neededPanels: needed,
+      ...(geometry ? { geometry } : {}),
     });
   }
   if (zones.length === 0) return null;
@@ -1558,6 +1694,48 @@ export function packZonePanels(
 }
 
 /**
+ * WJ127 — Calepinage RÉEL d'une zone : reprend les panneaux EXACTEMENT posés
+ * dans le builder (`zone.geometry`, cellules réellement occupées — PV27),
+ * jamais un re-pavage. `zone.geometry.panels[].{cx,cy}` sont en ENU mètres
+ * dans le repère `zone.geometry.origin` (voir `roofPro2.ts`/`estimatorBrainV2.ts` :
+ * x=Est, y=Nord, origine = centroïde du tracé au moment du pack) — on repasse
+ * donc par lat/lng (inverse exact de cette conversion) puis on reprojette avec
+ * `toGlobalENU`, la MÊME fonction que celle utilisée pour le contour de la
+ * zone (`buildViewerModel`), pour que panneaux et contour partagent un seul
+ * repère cohérent. Renvoie `null` quand la zone n'a pas de géométrie réelle
+ * exploitable (layout ancien, ou `geometry` invalide) — l'appelant retombe
+ * alors sur `packZonePanels` (comportement illustratif inchangé). Pur.
+ */
+export function realZonePanels(
+  zone: RoofLayoutZone,
+  toGlobalENU: (pt: [number, number]) => [number, number],
+): { panels: ViewerPanel[]; alongM: number; depthM: number } | null {
+  const g = zone.geometry;
+  if (!g || g.panels.length === 0) return null;
+  const [olng, olat] = g.origin;
+  const cosOriginLat = Math.cos(olat * VIEWER_DEG2RAD);
+  if (!(cosOriginLat > 0.01)) return null; // garde-fou latitude aberrante (jamais en pratique)
+  const panels: ViewerPanel[] = [];
+  for (const p of g.panels) {
+    const lng = olng + p.cx / (VIEWER_DEG2M * cosOriginLat);
+    const lat = olat + p.cy / VIEWER_DEG2M;
+    const [x, y] = toGlobalENU([lng, lat]);
+    panels.push({ x, y });
+    if (panels.length >= VIEWER_MAX_PANELS) break;
+  }
+  if (panels.length === 0) return null;
+  // Empreinte du panneau : même règle que le repli illustratif (portrait sur
+  // pan incliné affleurant, paysage sur toit plat) — l'orientation par-panneau
+  // (mixte) n'est pas exportée par `serializeLayout`, seule la position l'est ;
+  // seule l'inclinaison RÉELLE (`g.tiltDeg`) change vs. le repli.
+  const tilt = g.tiltDeg * VIEWER_DEG2RAD;
+  const alongM = zone.roofType === 'pitched' ? VIEWER_PANEL_SHORT_M : VIEWER_PANEL_LONG_M;
+  const slopeM = zone.roofType === 'pitched' ? VIEWER_PANEL_LONG_M : VIEWER_PANEL_SHORT_M;
+  const depthM = slopeM * Math.cos(tilt);
+  return { panels, alongM, depthM };
+}
+
+/**
  * WJ25 — Construit le modèle 3D complet à partir d'un layout validé : centroïde
  * global comme origine ENU, une ViewerZone par zone (contour + obstacles +
  * calepinage), rayon englobant pour cadrer la caméra. Renvoie `null` quand rien
@@ -1594,8 +1772,14 @@ export function buildViewerModel(layout: RoofLayout | null): ViewerModel | null 
       const [x, y] = toENU([o.centerLng, o.centerLat]);
       return { x, y, widthM: o.widthM, lengthM: o.lengthM };
     });
-    const tiltDeg = z.roofType === 'pitched' ? z.pitchDeg : VIEWER_FLAT_TILT_DEG;
-    const packed = packZonePanels(ringENU, z.facingAzimuthDeg, tiltDeg, z.roofType, z.neededPanels, obstaclesENU);
+    // WJ127 — calepinage RÉEL (zone.geometry) en priorité ; repli illustratif
+    // (packZonePanels, comportement historique STRICTEMENT inchangé) quand la
+    // zone n'a pas de géométrie réelle exploitable — zéro régression sur un
+    // roof_layout déjà en base (sans `geometry`).
+    const real = realZonePanels(z, toENU);
+    const tiltDeg = real && z.geometry ? z.geometry.tiltDeg : z.roofType === 'pitched' ? z.pitchDeg : VIEWER_FLAT_TILT_DEG;
+    const azimuthDeg = real && z.geometry ? z.geometry.azimuthDeg : z.facingAzimuthDeg;
+    const packed = real ?? packZonePanels(ringENU, azimuthDeg, tiltDeg, z.roofType, z.neededPanels, obstaclesENU);
     const panels = packed.panels.slice(0, Math.max(0, budget));
     budget -= panels.length;
     totalPanels += panels.length;
@@ -1604,7 +1788,7 @@ export function buildViewerModel(layout: RoofLayout | null): ViewerModel | null 
       obstaclesENU,
       roofType: z.roofType,
       tiltDeg,
-      azimuthDeg: z.facingAzimuthDeg,
+      azimuthDeg,
       panels,
       panelAlongM: packed.alongM,
       panelDepthM: packed.depthM,
@@ -1723,10 +1907,16 @@ export interface ZoneAnnotation {
 }
 
 /**
- * WJ26 — Annotations par pan, à afficher en légende autour de la 3D. Le nombre
- * de panneaux vient du layout SERVEUR (`neededPanels`), la puissance par
- * panneau du payload quote (`watt_par_panneau`) — le kWc n'est calculé que si
- * les deux sont présents (produit de deux valeurs serveur, pas une invention).
+ * WJ26/WJ127 — Annotations par pan, à afficher en légende autour de la 3D. Le
+ * nombre de panneaux préfère le POSÉ RÉEL (`zone.geometry.count`, le calepinage
+ * effectivement dessiné) quand la zone porte une géométrie exploitable — sinon
+ * repli sur la CIBLE dimensionnée par l'étude (`neededPanels`), comportement
+ * historique. Sans ce repli, la légende affichait la cible d'étude (ex. 20)
+ * pendant que le bloc devis affiche le posé (`q.nb_panneaux`, ex. 18) : deux
+ * chiffres différents sur la même page pour « le nombre de panneaux ». La
+ * puissance par panneau vient du payload quote (`watt_par_panneau`) — le kWc
+ * n'est calculé que si les deux sont présents (produit de deux valeurs
+ * serveur, pas une invention).
  */
 export function zoneAnnotations(
   layout: RoofLayout,
@@ -1734,7 +1924,9 @@ export function zoneAnnotations(
 ): ZoneAnnotation[] {
   const watt = isFiniteNum(wattParPanneau) && wattParPanneau > 0 ? wattParPanneau : null;
   return layout.zones.map((z) => {
-    const panels = z.neededPanels > 0 ? z.neededPanels : null;
+    const panels = z.geometry && z.geometry.count > 0
+      ? z.geometry.count
+      : z.neededPanels > 0 ? z.neededPanels : null;
     return {
       label: z.label,
       panels,
