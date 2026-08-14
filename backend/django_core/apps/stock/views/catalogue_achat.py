@@ -19,11 +19,13 @@ prix d'achat, lui, est la donnée utile au demandeur pour estimer sa réquisitio
 """
 from django.db.models import Q
 from rest_framework import serializers, viewsets
+from rest_framework.decorators import action
+from rest_framework.response import Response
 
 from authentication.permissions import IsAnyRole
 from core.mixins import TenantMixin
 
-from ..models import Produit
+from ..models import FavorisCatalogueAchat, Produit
 
 
 class CatalogueAchatSerializer(serializers.ModelSerializer):
@@ -68,7 +70,8 @@ class CatalogueAchatViewSet(TenantMixin, viewsets.ReadOnlyModelViewSet):
     composer sa réquisition. Aucune écriture n'est exposée (ReadOnly).
 
     Filtres : ``?q=`` (nom / SKU / catégorie), ``?categorie=<id>``,
-    ``?fournisseur=<id>``.
+    ``?fournisseur=<id>``, ``?recent=1`` (NTP2P22 — « déjà commandé
+    récemment » : restreint aux articles que CET employé a déjà demandés).
     """
     serializer_class = CatalogueAchatSerializer
     permission_classes = [IsAnyRole]
@@ -90,4 +93,62 @@ class CatalogueAchatViewSet(TenantMixin, viewsets.ReadOnlyModelViewSet):
         fournisseur = params.get('fournisseur')
         if fournisseur:
             qs = qs.filter(fournisseur_id=fournisseur)
+        if params.get('recent') in ('1', 'true', 'True'):
+            qs = qs.filter(id__in=self._produits_recents(limite=50))
         return qs.order_by('nom', 'id')
+
+    def _produits_recents(self, *, limite=5):
+        """Derniers produits demandés par l'appelant.
+
+        Lecture cross-app par ``installations.selectors`` UNIQUEMENT (jamais
+        un import de ``installations.models``)."""
+        from apps.installations.selectors import produits_recemment_demandes
+        return produits_recemment_demandes(
+            self.request.user.company, self.request.user.pk, limite=limite)
+
+    @action(detail=False, methods=['get', 'put'])
+    def favoris(self, request):
+        """NTP2P22 — favoris du demandeur pour l'écran de demande d'achat.
+
+        ``GET`` renvoie ``{'epingles', 'recents', 'produit_ids'}`` où
+        ``produit_ids`` est l'ordre d'affichage effectif : les articles
+        ÉPINGLÉS d'abord, puis les 5 derniers demandés (dédoublonnés) — c'est
+        ce qui met « les 5 derniers produits demandés en tête de liste ».
+
+        ``PUT`` remplace la liste épinglée (``{"produit_ids": [1, 2]}``). Les
+        ids sont validés contre le catalogue de la SOCIÉTÉ : un id étranger
+        est silencieusement écarté, jamais stocké."""
+        company = request.user.company
+        if request.method == 'PUT':
+            demandes = request.data.get('produit_ids') or []
+            if not isinstance(demandes, list):
+                demandes = []
+            valides = list(Produit.objects.filter(
+                company=company, id__in=[
+                    i for i in demandes if isinstance(i, int)]
+            ).values_list('id', flat=True))
+            # Conserve l'ordre demandé par l'utilisateur.
+            ordonnes = [i for i in demandes if i in set(valides)]
+            favoris, _ = FavorisCatalogueAchat.objects.get_or_create(
+                company=company, utilisateur=request.user,
+                defaults={'produit_ids': ordonnes})
+            if favoris.produit_ids != ordonnes:
+                favoris.produit_ids = ordonnes
+                favoris.save(update_fields=['produit_ids', 'updated_at'])
+        else:
+            favoris = FavorisCatalogueAchat.objects.filter(
+                company=company, utilisateur=request.user).first()
+
+        epingles = list(getattr(favoris, 'produit_ids', None) or [])
+        recents = self._produits_recents(limite=5)
+        vus, ordre = set(), []
+        for produit_id in list(epingles) + list(recents):
+            if produit_id in vus:
+                continue
+            vus.add(produit_id)
+            ordre.append(produit_id)
+        return Response({
+            'epingles': epingles,
+            'recents': recents,
+            'produit_ids': ordre,
+        })

@@ -14,6 +14,10 @@ const stockApi = {
   // `prix_vente`, donc aucune marge n'est visible du demandeur.
   getCatalogueAchat: (params, config) =>
     api.get('/stock/catalogue-achat/', { params, ...config }),
+  // NTP2P22 — favoris du demandeur (épinglés + 5 derniers demandés).
+  getFavorisCatalogueAchat: () => api.get('/stock/catalogue-achat/favoris/'),
+  setFavorisCatalogueAchat: (produitIds) =>
+    api.put('/stock/catalogue-achat/favoris/', { produit_ids: produitIds }),
   unarchiveProduit: (id) => api.patch(`/stock/produits/${id}/unarchive/`),
   forceDeleteProduit: (id) => api.delete(`/stock/produits/${id}/force-delete/`),
   // QP2 — clone serveur (nouveau nom, SKU frais, prix d'achat copié côté

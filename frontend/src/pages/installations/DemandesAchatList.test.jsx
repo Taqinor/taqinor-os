@@ -28,7 +28,12 @@ vi.mock('../../api/installationsApi', () => ({
 
 vi.mock('../../api/stockApi', () => ({
   // NTP2P3 — l'écran lit le CATALOGUE D'ACHAT (jamais `/stock/produits/`).
-  default: { getProduits: vi.fn(), getCatalogueAchat: vi.fn() },
+  default: {
+    getProduits: vi.fn(),
+    getCatalogueAchat: vi.fn(),
+    // NTP2P22 — favoris (épinglés + 5 derniers demandés).
+    getFavorisCatalogueAchat: vi.fn(),
+  },
 }))
 
 import installationsApi from '../../api/installationsApi'
@@ -67,6 +72,9 @@ beforeEach(() => {
   }
   stockApi.getProduits.mockResolvedValue({ data: [] })
   stockApi.getCatalogueAchat.mockResolvedValue({ data: [] })
+  stockApi.getFavorisCatalogueAchat.mockResolvedValue({
+    data: { epingles: [], recents: [], produit_ids: [] },
+  })
   installationsApi.getInstallations.mockResolvedValue({ data: [] })
   installationsApi.getDemandesAchat.mockResolvedValue({
     data: [

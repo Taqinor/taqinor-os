@@ -2162,6 +2162,40 @@ class DocumentFournisseur(TenantModel):
         return self.date_expiration >= (a_la_date or timezone.localdate())
 
 
+# ── NTP2P22 — Favoris du catalogue d'achat, par employé ────────────────────
+
+class FavorisCatalogueAchat(TenantModel):
+    """NTP2P22 — articles ÉPINGLÉS par un employé sur l'écran de demande.
+
+    Une seule ligne par (société, utilisateur) portant une LISTE d'ids produits
+    (JSON léger) : un employé épingle une poignée d'articles, pas des
+    milliers — une table de liaison serait ici plus lourde que la donnée.
+    Les ids sont des références lâches vers ``stock.Produit`` (même app) : un
+    produit supprimé disparaît simplement de la liste au rendu, sans casser
+    la ligne de favoris.
+    """
+
+    utilisateur = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE,  # on_delete: CASCADE — une préférence d'affichage n'a aucune existence sans son utilisateur (aucune donnée métier, aucune écriture comptable) ; le compte supprimé, ses épingles le sont aussi
+        related_name='favoris_catalogue_achat', verbose_name='Utilisateur')
+    produit_ids = models.JSONField(
+        default=list, blank=True,
+        verbose_name='Ids produits épinglés')
+
+    class Meta:
+        verbose_name = "Favoris du catalogue d'achat"
+        verbose_name_plural = "Favoris du catalogue d'achat"
+        ordering = ['-updated_at', '-id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'utilisateur'],
+                name='uniq_favoris_cat_achat_user'),
+        ]
+
+    def __str__(self):
+        return f'Favoris catalogue · {self.utilisateur_id}'
+
+
 # ── ODX19 — MODULE ACHATS (déplacé) ────────────────────────────────────────
 # PrixFournisseur, BonCommandeFournisseur, LigneBonCommandeFournisseur,
 # ReceptionFournisseur, LigneReceptionFournisseur, FactureFournisseur,

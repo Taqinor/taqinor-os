@@ -64,6 +64,8 @@ export default function DemandesAchatList() {
   const [items, setItems] = useState([])
   const [loading, setLoading] = useState(true)
   const [produits, setProduits] = useState([])
+  // NTP2P22 — ids produits à remonter en tête du picker (épinglés + récents).
+  const [favoris, setFavoris] = useState([])
   const [chantiers, setChantiers] = useState([])
 
   // Dialogue de création (form) et de détail (une demande existante).
@@ -101,6 +103,13 @@ export default function DemandesAchatList() {
     // visible du demandeur.
     stockApi.getCatalogueAchat().then(
       (r) => { if (alive) setProduits(r.data?.results ?? r.data ?? []) },
+      () => {},
+    )
+    // NTP2P22 — favoris : les articles épinglés puis les 5 derniers demandés
+    // remontent en tête du picker. Un échec laisse simplement la liste dans
+    // son ordre alphabétique (jamais un écran cassé).
+    stockApi.getFavorisCatalogueAchat().then(
+      (r) => { if (alive) setFavoris(r.data?.produit_ids ?? []) },
       () => {},
     )
     installationsApi.getInstallations().then(
@@ -378,6 +387,7 @@ export default function DemandesAchatList() {
                     <div className="col-span-12 sm:col-span-5">
                       <CatalogueAchatPicker
                         items={produits}
+                        favoris={favoris}
                         value={l.produit}
                         onSearch={chercherCatalogue}
                         onChange={(v, article) => pickProduit(l._key, v, article)}
