@@ -944,3 +944,69 @@ class MouvementRebut(TenantModel):
 
     def __str__(self):
         return f'Rebut {self.produit_id} × {self.quantite} ({self.motif})'
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# NTWMS26 — Chargement camion & taux de remplissage
+# ═══════════════════════════════════════════════════════════════════════════
+
+class PlanChargement(TenantModel):
+    """NTWMS26 — ce qu'on met dans le camion, et si ça rentre.
+
+    Regroupe des unités logistiques (NTWMS6) pour UNE course, et compare leur
+    poids/volume à la capacité du véhicule. La capacité est portée par le plan
+    (``capacite_kg``/``capacite_m3``) : le référentiel ``flotte.Vehicule`` ne
+    déclare aujourd'hui AUCUNE capacité de charge — le service la lit quand
+    même par ``getattr`` sur le véhicule (via le selector de ``flotte``), donc
+    le jour où ``flotte`` ajoutera le champ, le plan s'en servira sans
+    modification ici.
+    """
+
+    class Statut(models.TextChoices):
+        BROUILLON = 'brouillon', 'Brouillon'
+        VALIDE = 'valide', 'Validé'
+        CHARGE = 'charge', 'Chargé'
+
+    reference = models.CharField(max_length=50)
+    # Destinations possibles (string-FK cross-app / FK interne).
+    livraison = models.ForeignKey(
+        'installations.Livraison', on_delete=models.SET_NULL, null=True,
+        blank=True, related_name='plans_chargement')
+    expedition = models.ForeignKey(
+        ExpeditionTransporteur, on_delete=models.SET_NULL, null=True,
+        blank=True, related_name='plans_chargement')
+    vehicule = models.ForeignKey(
+        'flotte.Vehicule', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='plans_chargement_stock')
+    unites_logistiques = models.ManyToManyField(
+        UniteLogistique, blank=True, related_name='plans_chargement')
+    capacite_kg = models.DecimalField(
+        max_digits=10, decimal_places=2, null=True, blank=True,
+        help_text='Charge utile du véhicule (kg). Vide = capacité inconnue, '
+                  'aucun dépassement ne peut être signalé.')
+    capacite_m3 = models.DecimalField(
+        max_digits=10, decimal_places=3, null=True, blank=True,
+        help_text='Volume utile du véhicule (m³). Optionnel.')
+    statut = models.CharField(
+        max_length=20, choices=Statut.choices, default=Statut.BROUILLON)
+    note = models.TextField(blank=True, default='')
+    cree_par = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='plans_chargement_crees')
+
+    class Meta:
+        verbose_name = 'Plan de chargement'
+        verbose_name_plural = 'Plans de chargement'
+        ordering = ['-created_at']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'reference'],
+                name='stock_planchargement_company_reference_uniq'),
+        ]
+        indexes = [
+            models.Index(fields=['company', 'statut'],
+                         name='idx_plancharg_co_statut'),
+        ]
+
+    def __str__(self):
+        return f'{self.reference} ({self.statut})'

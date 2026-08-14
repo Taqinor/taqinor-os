@@ -7,7 +7,7 @@ from rest_framework import serializers
 
 from .models_wms import (
     AlerteRappel, DemandeTransfert, ExpeditionTransporteur, LignePicking,
-    LigneRetourClient, MouvementRebut, PlanComptageTournant,
+    LigneRetourClient, MouvementRebut, PlanChargement, PlanComptageTournant,
     PortailTiersToken, Quai,
     RendezVousTransporteur, RetourClient, UniteLogistique,
     UniteLogistiqueLigne, VaguePicking,
@@ -269,6 +269,28 @@ class PortailTiersTokenSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 'Nommez le dépositaire concerné par ce jeton.')
         return value
+
+
+class PlanChargementSerializer(serializers.ModelSerializer):
+    """NTWMS26 — plan de chargement camion. La référence est posée côté
+    serveur ; les unités s'ajoutent par l'action dédiée (qui renvoie
+    l'avertissement de capacité)."""
+
+    nb_unites = serializers.SerializerMethodField()
+
+    class Meta:
+        model = PlanChargement
+        fields = [
+            'id', 'reference', 'livraison', 'expedition', 'vehicule',
+            'unites_logistiques', 'nb_unites', 'capacite_kg', 'capacite_m3',
+            'statut', 'note', 'cree_par', 'created_at',
+        ]
+        read_only_fields = [
+            'reference', 'unites_logistiques', 'cree_par', 'created_at',
+        ]
+
+    def get_nb_unites(self, obj) -> int:
+        return obj.unites_logistiques.count()
 
 
 class MouvementRebutSerializer(serializers.ModelSerializer):

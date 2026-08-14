@@ -6417,6 +6417,7 @@ from .services_wms import (  # noqa: E402,F401
     FENETRE_ROTATION_JOURS,
     affecter_reception_cross_dock,
     ajouter_ligne_unite_logistique,
+    ajouter_unite_plan_chargement,
     assurer_plans_comptage_tournant,
     cloturer_alerte_rappel,
     configurer_liberation_vague,
@@ -6424,6 +6425,7 @@ from .services_wms import (  # noqa: E402,F401
     decider_demande_transfert,
     creer_expedition_transporteur,
     creer_demande_transfert,
+    creer_plan_chargement,
     creer_retour_client,
     creer_unite_logistique,
     declarer_mouvement_rebut,
@@ -6451,4 +6453,5 @@ from .services_wms import (  # noqa: E402,F401
     suggestions_rangement_reception,
     transfert_exige_approbation,
     valeur_transfert,
+    verifier_capacite_plan,
 )

@@ -1129,6 +1129,152 @@ def notifier_rappel(alerte, impact=None):
 
 
 # ═══════════════════════════════════════════════════════════════════════════
+# NTWMS26 — Chargement camion & taux de remplissage
+# ═══════════════════════════════════════════════════════════════════════════
+
+def _volume_m3(dimensions):
+    """Volume en m³ depuis une chaîne libre « L × l × h » en CENTIMÈTRES.
+
+    Tolère ``x``, ``*``, ``×`` et les décimales à virgule. Une chaîne
+    illisible renvoie 0 (le poids reste alors le seul critère) : un texte
+    libre ne doit JAMAIS faire échouer un plan de chargement.
+    """
+    import re
+    from decimal import Decimal, InvalidOperation
+
+    if not dimensions:
+        return Decimal('0')
+    nombres = re.findall(r'\d+(?:[.,]\d+)?', str(dimensions))
+    if len(nombres) < 3:
+        return Decimal('0')
+    try:
+        cotes = [Decimal(n.replace(',', '.')) for n in nombres[:3]]
+    except InvalidOperation:
+        return Decimal('0')
+    return (cotes[0] * cotes[1] * cotes[2] / Decimal('1000000')).quantize(
+        Decimal('0.001'))
+
+
+def _capacite_vehicule(company, vehicule_id):
+    """Charge utile déclarée par ``flotte`` pour ce véhicule, ou ``None``.
+
+    Lecture cross-app par le selector de ``flotte`` (jamais un import de ses
+    modèles) + ``getattr`` défensif : ``flotte.Vehicule`` ne porte AUCUN champ
+    de capacité aujourd'hui, donc cette fonction renvoie ``None`` — et
+    commencera à renvoyer une valeur le jour où le champ existera, sans
+    modification ici.
+    """
+    if not vehicule_id:
+        return None
+    try:
+        from apps.flotte.selectors import vehicules_de_la_societe
+
+        vehicule = vehicules_de_la_societe(company).filter(
+            id=vehicule_id).first()
+    except Exception:  # pragma: no cover - défensif (app absente/désactivée)
+        return None
+    if vehicule is None:
+        return None
+    return getattr(vehicule, 'capacite_charge_kg', None)
+
+
+def verifier_capacite_plan(plan, unite_supplementaire=None):
+    """Poids/volume embarqués vs capacité — et l'avertissement qui va avec.
+
+    ``unite_supplementaire`` permet de SIMULER l'ajout d'une palette AVANT de
+    l'ajouter (c'est l'avertissement attendu au moment du geste). Sans
+    capacité déclarée, aucun dépassement n'est signalé (jamais un faux
+    positif). LECTURE SEULE.
+    """
+    from decimal import Decimal
+
+    if plan is None:
+        return {}
+    unites = list(plan.unites_logistiques.all())
+    if unite_supplementaire is not None:
+        unites = unites + [unite_supplementaire]
+
+    poids = Decimal('0')
+    volume = Decimal('0')
+    for unite in unites:
+        poids += Decimal(str(unite.poids_kg or 0))
+        volume += _volume_m3(unite.dimensions)
+
+    capacite_kg = plan.capacite_kg
+    if capacite_kg in (None, 0):
+        capacite_kg = _capacite_vehicule(plan.company, plan.vehicule_id)
+    capacite_kg = (Decimal(str(capacite_kg))
+                   if capacite_kg not in (None, '') else None)
+    capacite_m3 = (Decimal(str(plan.capacite_m3))
+                   if plan.capacite_m3 is not None else None)
+
+    def _pct(utilise, capacite):
+        if not capacite or capacite <= 0:
+            return None
+        return (utilise / capacite * Decimal('100')).quantize(Decimal('0.01'))
+
+    poids_pct = _pct(poids, capacite_kg)
+    volume_pct = _pct(volume, capacite_m3)
+    depassement_poids = bool(
+        capacite_kg and capacite_kg > 0 and poids > capacite_kg)
+    depassement_volume = bool(
+        capacite_m3 and capacite_m3 > 0 and volume > capacite_m3)
+    depassement = depassement_poids or depassement_volume
+    return {
+        'plan': plan.id,
+        'nb_unites': len(unites),
+        'poids_kg': poids,
+        'volume_m3': volume,
+        'capacite_kg': capacite_kg,
+        'capacite_m3': capacite_m3,
+        'poids_utilise_pct': poids_pct,
+        'volume_utilise_pct': volume_pct,
+        'depassement': depassement,
+        'avertissement': (
+            'Ce chargement dépasse la capacité déclarée du véhicule.'
+            if depassement else ''),
+    }
+
+
+def creer_plan_chargement(*, company, user=None, livraison=None,
+                          expedition=None, vehicule=None, capacite_kg=None,
+                          capacite_m3=None, note=''):
+    """Crée un plan de chargement numéroté (``CHG-YYYYMM-NNNN``)."""
+    from django.db import transaction
+    from core.numbering import create_with_reference
+
+    from .models_wms import PlanChargement
+
+    with transaction.atomic():
+        def _save(reference):
+            return PlanChargement.objects.create(
+                company=company, reference=reference, livraison=livraison,
+                expedition=expedition, vehicule=vehicule,
+                capacite_kg=capacite_kg, capacite_m3=capacite_m3,
+                note=(note or '').strip(), cree_par=user)
+
+        return create_with_reference(PlanChargement, 'CHG', company, _save)
+
+
+def ajouter_unite_plan_chargement(*, plan, unite):
+    """Ajoute une unité au plan et renvoie le contrôle de capacité.
+
+    L'ajout n'est JAMAIS bloqué (le magasinier reste maître de son
+    chargement) : le service RENVOIE l'avertissement de dépassement pour que
+    l'écran le montre avant validation.
+    """
+    if plan is None or unite is None:
+        raise ValueError('Plan ou unité logistique introuvable.')
+    if unite.company_id != plan.company_id:
+        raise ValueError('Unité logistique introuvable dans cette société.')
+    if plan.statut == plan.Statut.CHARGE:
+        raise ValueError('Ce plan est déjà chargé : il ne bouge plus.')
+    controle = verifier_capacite_plan(plan, unite_supplementaire=unite)
+    plan.unites_logistiques.add(unite)
+    return controle
+
+
+# ═══════════════════════════════════════════════════════════════════════════
 # NTWMS25 — Déplacement d'une unité logistique entière (license plate)
 # ═══════════════════════════════════════════════════════════════════════════
 

@@ -16,14 +16,14 @@ from authentication.permissions import (
 
 from ..models_wms import (
     AlerteRappel, DemandeTransfert, ExpeditionTransporteur, MouvementRebut,
-    PlanComptageTournant, PortailTiersToken, Quai, RendezVousTransporteur,
-    RetourClient, UniteLogistique, VaguePicking,
+    PlanChargement, PlanComptageTournant, PortailTiersToken, Quai,
+    RendezVousTransporteur, RetourClient, UniteLogistique, VaguePicking,
 )
 from ..serializers_wms import (
     AlerteRappelSerializer, DemandeTransfertSerializer,
     ExpeditionTransporteurSerializer, MouvementRebutSerializer,
-    PlanComptageTournantSerializer, PortailTiersTokenSerializer,
-    QuaiSerializer,
+    PlanChargementSerializer, PlanComptageTournantSerializer,
+    PortailTiersTokenSerializer, QuaiSerializer,
     RendezVousTransporteurSerializer, RetourClientSerializer,
     UniteLogistiqueSerializer, VaguePickingSerializer,
 )
@@ -601,6 +601,108 @@ class PlanComptageTournantViewSet(CompanyScopedModelViewSet):
         from ..services import generer_comptages_tournants
         resultat = generer_comptages_tournants(company=request.user.company)
         return Response(resultat, status=status.HTTP_201_CREATED)
+
+
+class PlanChargementViewSet(CompanyScopedModelViewSet):
+    """NTWMS26 — plans de chargement camion et taux de remplissage.
+
+    ``{id}/unites/`` ajoute une palette ET renvoie l'avertissement de
+    dépassement ; ``{id}/verifier-capacite/`` recalcule le contrôle à tout
+    moment (lecture seule).
+    """
+    queryset = PlanChargement.objects.select_related(
+        'livraison', 'expedition', 'vehicule', 'cree_par'
+    ).prefetch_related('unites_logistiques').all()
+    serializer_class = PlanChargementSerializer
+    ordering = ['-created_at']
+
+    def get_permissions(self):
+        if self.action in READ_ACTIONS + ['verifier_capacite']:
+            return [IsAnyRole()]
+        if self.action in WRITE_ACTIONS + ['ajouter_unite']:
+            return [IsResponsableOrAdmin()]
+        return [IsAdminRole()]
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        statut = self.request.query_params.get('statut')
+        if statut:
+            qs = qs.filter(statut=statut)
+        return qs
+
+    def create(self, request, *args, **kwargs):
+        from ..services import creer_plan_chargement
+        company = request.user.company
+
+        def _lie(nom, valeur):
+            if not valeur:
+                return None
+            modele = PlanChargement._meta.get_field(nom).related_model
+            return modele.objects.filter(id=valeur, company=company).first()
+
+        plan = creer_plan_chargement(
+            company=company, user=request.user,
+            livraison=_lie('livraison', request.data.get('livraison')),
+            expedition=_lie('expedition', request.data.get('expedition')),
+            vehicule=_lie('vehicule', request.data.get('vehicule')),
+            capacite_kg=request.data.get('capacite_kg') or None,
+            capacite_m3=request.data.get('capacite_m3') or None,
+            note=request.data.get('note') or '')
+        return Response(self.get_serializer(plan).data,
+                        status=status.HTTP_201_CREATED)
+
+    @extend_schema(responses={
+        200: inline_serializer('StockPlanChargementCapacite', {
+            'plan': serializers.IntegerField(),
+            'nb_unites': serializers.IntegerField(),
+            'poids_kg': serializers.DecimalField(
+                max_digits=12, decimal_places=3),
+            'volume_m3': serializers.DecimalField(
+                max_digits=12, decimal_places=3),
+            'capacite_kg': serializers.DecimalField(
+                max_digits=12, decimal_places=2, allow_null=True),
+            'capacite_m3': serializers.DecimalField(
+                max_digits=12, decimal_places=3, allow_null=True),
+            'poids_utilise_pct': serializers.DecimalField(
+                max_digits=8, decimal_places=2, allow_null=True),
+            'volume_utilise_pct': serializers.DecimalField(
+                max_digits=8, decimal_places=2, allow_null=True),
+            'depassement': serializers.BooleanField(),
+            'avertissement': serializers.CharField(),
+        }),
+    })
+    @action(detail=True, methods=['get'], url_path='verifier-capacite')
+    def verifier_capacite(self, request, pk=None):
+        """Poids/volume embarqués vs capacité déclarée. LECTURE SEULE."""
+        from ..services import verifier_capacite_plan
+        return Response(verifier_capacite_plan(self.get_object()))
+
+    @extend_schema(responses={
+        201: inline_serializer('StockPlanChargementAjout', {
+            'plan': serializers.IntegerField(),
+            'nb_unites': serializers.IntegerField(),
+            'depassement': serializers.BooleanField(),
+            'avertissement': serializers.CharField(),
+        }),
+        400: inline_serializer('StockPlanChargementErreur', {
+            'detail': serializers.CharField(),
+        }),
+    })
+    @action(detail=True, methods=['post'], url_path='unites')
+    def ajouter_unite(self, request, pk=None):
+        """Ajoute une unité (``{unite_logistique}``) et renvoie le contrôle
+        de capacité — l'avertissement AVANT validation."""
+        from ..services import ajouter_unite_plan_chargement
+        plan = self.get_object()
+        unite = UniteLogistique.objects.filter(
+            id=request.data.get('unite_logistique'),
+            company=request.user.company).first()
+        try:
+            controle = ajouter_unite_plan_chargement(plan=plan, unite=unite)
+        except ValueError as exc:
+            return Response({'detail': str(exc)},
+                            status=status.HTTP_400_BAD_REQUEST)
+        return Response(controle, status=status.HTTP_201_CREATED)
 
 
 class MouvementRebutViewSet(CompanyScopedModelViewSet):

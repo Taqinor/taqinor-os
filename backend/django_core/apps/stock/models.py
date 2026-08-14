@@ -1979,6 +1979,7 @@ from .models_wms import (  # noqa: E402,F401
     LignePicking,
     LigneRetourClient,
     MouvementRebut,
+    PlanChargement,
     PlanComptageTournant,
     PortailTiersToken,
     Quai,
