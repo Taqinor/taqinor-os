@@ -10,6 +10,8 @@ Rendu à la volée via le MÊME pipeline que les autres PDF internes
 Non stocké. STRICTEMENT INTERNE : AUCUN prix — ni `Produit.prix_achat`, ni
 `PosteDeCharge.cout_horaire`, ni aucun coût (même règle que `assembly_pdf`,
 DC28)."""
+from decimal import Decimal
+
 from apps.ventes.utils.pdf import _company_context, _html_to_pdf, _render_html
 
 from .services import temps_operation_min
@@ -93,4 +95,28 @@ def fiche_lancement_pdf(of):
         'gamme_resumee': _gamme_resumee_payload(of),
     })
     html = _render_html('mrp_fiche_lancement.html', context)
+    return _html_to_pdf(html)
+
+
+# ── NTMFG24 — Rapport « Analyse des écarts de production » exportable ────
+
+def analyse_couts_pdf(company, *, produit_id=None, date_debut=None, date_fin=None):
+    """NTMFG24 — export PDF du rapport d'écarts (NTMFG11 `selectors.
+    analyse_couts`) : mêmes lignes/colonnes que l'écran, total consolidé en
+    pied de page. STRICTEMENT INTERNE (coûts standard vs réel — jamais
+    client-facing, DC28)."""
+    from .selectors import analyse_couts
+
+    lignes = analyse_couts(
+        company, produit_id=produit_id, date_debut=date_debut, date_fin=date_fin)
+    total_ecart = sum((Decimal(ligne['ecart_total']) for ligne in lignes), Decimal('0'))
+
+    context = _company_context(company=company)
+    context.update({
+        'lignes': lignes,
+        'total_ecart': str(total_ecart),
+        'date_debut': date_debut,
+        'date_fin': date_fin,
+    })
+    html = _render_html('mrp_analyse_couts.html', context)
     return _html_to_pdf(html)

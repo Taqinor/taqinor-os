@@ -633,6 +633,58 @@ def analyse_couts_view(request):
     return Response(resultats)
 
 
+@api_view(['GET'])
+@permission_classes([IsResponsableOrAdmin])
+def analyse_couts_export_view(request):
+    """NTMFG24 — ``GET /api/django/mrp/analyse-couts/export/?format=pdf|xlsx
+    &produit=&date_debut=&date_fin=`` : export téléchargeable du rapport
+    d'écarts NTMFG11 (mêmes chiffres que l'écran), admin/responsable
+    UNIQUEMENT. `format` invalide -> 400 (whitelist stricte)."""
+    from django.http import HttpResponse
+
+    from apps.records.xlsx import build_xlsx_response
+
+    from . import pdf as mrp_pdf
+    from .selectors import analyse_couts
+
+    fmt = (request.query_params.get('format') or 'xlsx').lower()
+    if fmt not in ('pdf', 'xlsx'):
+        return Response({'detail': "format doit être 'pdf' ou 'xlsx'."}, status=400)
+
+    produit_id = request.query_params.get('produit')
+    date_debut = request.query_params.get('date_debut')
+    date_fin = request.query_params.get('date_fin')
+
+    if fmt == 'pdf':
+        pdf_bytes = mrp_pdf.analyse_couts_pdf(
+            request.user.company, produit_id=produit_id,
+            date_debut=date_debut, date_fin=date_fin)
+        resp = HttpResponse(pdf_bytes, content_type='application/pdf')
+        resp['Content-Disposition'] = 'inline; filename="analyse-couts-production.pdf"'
+        return resp
+
+    lignes = analyse_couts(
+        request.user.company, produit_id=produit_id,
+        date_debut=date_debut, date_fin=date_fin)
+    headers = [
+        'Produit', 'Nb OF', 'Coût matière std', 'Coût matière réel',
+        'Écart matière', 'Coût MO std', 'Coût MO réel', 'Écart MO',
+        'Écart rendement', 'Écart total',
+    ]
+    rows = [
+        [
+            ligne['produit_nom'], ligne['nb_of'], ligne['cout_matiere_standard'],
+            ligne['cout_matiere_reel'], ligne['ecart_matiere'],
+            ligne['cout_main_oeuvre_standard'], ligne['cout_main_oeuvre_reel'],
+            ligne['ecart_main_oeuvre'], ligne['ecart_rendement'], ligne['ecart_total'],
+        ]
+        for ligne in lignes
+    ]
+    return build_xlsx_response(
+        'analyse-couts-production.xlsx', headers, rows,
+        sheet_title='Analyse écarts production')
+
+
 @extend_schema(responses=inline_serializer('MrpOeeTousPostesLigne', {
     'poste_id': serializers.IntegerField(),
     'poste_nom': serializers.CharField(),

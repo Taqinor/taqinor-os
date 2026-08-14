@@ -6,9 +6,9 @@ from rest_framework.routers import DefaultRouter
 from .views import (
     CoutStandardViewSet, GammeViewSet, OperationGammeViewSet, OperationOFViewSet,
     OrdreFabricationViewSet, OrdreModificationViewSet, PosteDeChargeViewSet,
-    ReglesKanbanProductionViewSet, analyse_couts_view, charge_postes_view,
-    kanban_declencher_view, mrp_run_view, oee_tous_postes_view, simuler_charge_view,
-    tableau_bord_production_view,
+    ReglesKanbanProductionViewSet, analyse_couts_export_view, analyse_couts_view,
+    charge_postes_view, kanban_declencher_view, mrp_run_view, oee_tous_postes_view,
+    simuler_charge_view, tableau_bord_production_view,
 )
 
 router = DefaultRouter()
@@ -26,6 +26,7 @@ urlpatterns = [
     path('mrp-run/', mrp_run_view, name='mrp-run'),
     path('charge-postes/', charge_postes_view, name='mrp-charge-postes'),
     path('analyse-couts/', analyse_couts_view, name='mrp-analyse-couts'),
+    path('analyse-couts/export/', analyse_couts_export_view, name='mrp-analyse-couts-export'),
     path('oee-postes/', oee_tous_postes_view, name='mrp-oee-postes'),
     path('kanban/declencher/', kanban_declencher_view, name='mrp-kanban-declencher'),
     path('simuler-charge/', simuler_charge_view, name='mrp-simuler-charge'),
