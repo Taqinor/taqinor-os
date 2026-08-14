@@ -189,6 +189,15 @@ class ClassificationABC(TenantModel):
         verbose_name = 'Classification ABC'
         verbose_name_plural = 'Classifications ABC'
         ordering = ['rang']
+        constraints = [
+            # `selectors.classifier_abc` fait un update_or_create(company,
+            # produit) : sans cette contrainte, deux recalculs concurrents
+            # creent DEUX lignes pour le meme produit (garde
+            # check_get_or_create).
+            models.UniqueConstraint(
+                fields=['company', 'produit'],
+                name='scm_classificationabc_co_produit_uniq'),
+        ]
 
     def __str__(self):
         return f'{self.produit_id} = {self.classe}'
@@ -247,6 +256,13 @@ class PolitiqueStock(TenantModel):
         verbose_name = 'Politique de stock'
         verbose_name_plural = 'Politiques de stock'
         ordering = ['produit_id']
+        constraints = [
+            # `services.recalculer_politiques_stock` fait un
+            # get_or_create(company, produit) : meme raison que ci-dessus.
+            models.UniqueConstraint(
+                fields=['company', 'produit'],
+                name='scm_politiquestock_co_produit_uniq'),
+        ]
 
     def __str__(self):
         return f'{self.produit_id} ROP={self.point_commande}'

@@ -130,6 +130,7 @@ Généré par `python scripts/check_get_or_create.py`. Chaque appel liste ses cl
 | `backend/django_core/apps/customfields/catalogue.py:106` | get_or_create | CustomFieldDef.objects | code, company, module |
 | `backend/django_core/apps/dataimport/services.py:282` | update_or_create | ImportMapping.objects | company, entity, nom |
 | `backend/django_core/apps/dataimport/services.py:328` | get_or_create | ExternalRef.objects | company, external_id, external_system |
+| `backend/django_core/apps/douane/models.py:180` | get_or_create | cls.objects | company |
 | `backend/django_core/apps/education/models.py:772` | get_or_create | cls.objects | company |
 | `backend/django_core/apps/education/services.py:547` | get_or_create | Famille.objects | company, nom |
 | `backend/django_core/apps/education/services_planning.py:81` | get_or_create | Seance.objects | classe, company, date, heure_debut, matiere |
@@ -228,6 +229,7 @@ Généré par `python scripts/check_get_or_create.py`. Chaque appel liste ses cl
 | `backend/django_core/apps/parametres/models_documents.py:100` | get_or_create | cls.objects | company |
 | `backend/django_core/apps/parametres/models_documents.py:102` | get_or_create | cls.objects | pk |
 | `backend/django_core/apps/parametres/models_payment_terms.py:89` | get_or_create | cls.objects | company, delai_jours, escompte_pct, fin_de_mois |
+| `backend/django_core/apps/parametres/models_pos.py:48` | get_or_create | cls.objects | company |
 | `backend/django_core/apps/parametres/models_tariff.py:137` | get_or_create | cls.objects | company |
 | `backend/django_core/apps/parametres/models_tariff.py:139` | get_or_create | cls.objects | pk |
 | `backend/django_core/apps/parametres/models_taxes.py:103` | get_or_create | cls.objects | code, company |
@@ -241,6 +243,7 @@ Généré par `python scripts/check_get_or_create.py`. Chaque appel liste ses cl
 | `backend/django_core/apps/portail/services.py:146` | get_or_create | ComptePortailClient.objects | client, company |
 | `backend/django_core/apps/portail/services.py:163` | get_or_create | Role.objects | company, nom |
 | `backend/django_core/apps/portail/views_client.py:118` | get_or_create | AcceptationDevisPortail.objects | company, devis |
+| `backend/django_core/apps/pos/services.py:588` | get_or_create | CodePinCaissier.objects | company, user |
 | `backend/django_core/apps/publicapi/idempotency.py:64` | get_or_create | IdempotencyRecord.objects | api_key, endpoint, idempotency_key |
 | `backend/django_core/apps/qhse/management/commands/seed_aspects_environnementaux_solaire.py:72` | get_or_create | AspectEnvironnemental.objects | activite, aspect, company |
 | `backend/django_core/apps/qhse/management/commands/seed_clauses_norme.py:87` | get_or_create | ClauseNorme.objects | company, numero, referentiel |
@@ -275,6 +278,11 @@ Généré par `python scripts/check_get_or_create.py`. Chaque appel liste ses cl
 | `backend/django_core/apps/sav/services.py:1080` | get_or_create | TicketFollower.objects | company, ticket, user |
 | `backend/django_core/apps/sav/views.py:1229` | get_or_create | TicketFollower.objects | company, ticket, user |
 | `backend/django_core/apps/sav/views.py:1711` | get_or_create | TicketChecklistItem.objects | cle, ticket |
+| `backend/django_core/apps/scm/selectors.py:92` | update_or_create | ClassificationABC.objects | company, produit |
+| `backend/django_core/apps/scm/services.py:138` | update_or_create | PrevisionDemande.objects | company, periode, produit, segment |
+| `backend/django_core/apps/scm/services.py:235` | get_or_create | PolitiqueStock.objects | company, produit |
+| `backend/django_core/apps/scm/services.py:332` | update_or_create | LigneDemandeSOP.objects | cycle, produit_id |
+| `backend/django_core/apps/scm/services.py:374` | update_or_create | LigneOffreSOP.objects | cycle, produit |
 | `backend/django_core/apps/stock/management/commands/backfill_unites_mesure.py:52` | get_or_create | UniteMesure.objects | code, company |
 | `backend/django_core/apps/stock/management/commands/seed_catalogue.py:391` | get_or_create | Categorie.objects | company, nom |
 | `backend/django_core/apps/stock/management/commands/seed_catalogue.py:550` | get_or_create | Categorie.objects | company, nom |

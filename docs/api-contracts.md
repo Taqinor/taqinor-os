@@ -652,8 +652,6 @@
     facture:inconnu, id:inconnu, mode:inconnu, montant:texte
 - frontend/src/api/posApi.js :: getDashboard -> /api/django/pos/ventes/dashboard
     nb_ventes:inconnu, panier_moyen:texte, par_caissier:inconnu, par_categorie:inconnu, par_jour:inconnu, par_mode_paiement:inconnu, par_produit:inconnu, par_session:inconnu, taux_retour_pct:texte, total_ttc:texte
-- frontend/src/api/posApi.js :: rapportZ -> /api/django/pos/sessions/<>/rapport-z
-    nb_ventes:inconnu, par_mode:inconnu, total:texte
 - frontend/src/api/posApi.js :: searchClients -> /api/django/crm/clients/search
     results:inconnu
 - frontend/src/api/posApi.js :: ticketShareLink -> /api/django/pos/ventes/<>/ticket-share-link
@@ -822,6 +820,14 @@
     detail:texte
 - frontend/src/api/savApi.js :: suivreTicket -> /api/django/sav/tickets/<>/suivre
     suivi:booleen
+- frontend/src/api/scmApi.js :: creerBrouillonsBcfReappro -> /api/django/scm/tableau-bord-reappro/creer-bcf
+    bons_crees:inconnu
+- frontend/src/api/scmApi.js :: impactFinancierCycleSop -> /api/django/scm/cycles-sop/<>/impact-financier
+    alerte_ecart:inconnu, ca_forecast_ht:inconnu, ca_previsionnel_ht:inconnu, cycle_id:inconnu, detail:texte, ecart_pct:inconnu, lignes:inconnu, periode:inconnu, seuil_alerte_pct:inconnu
+- frontend/src/api/scmApi.js :: recalculerClassificationAbc -> /api/django/scm/classification-abc/recalculer
+    classement:inconnu, nb_produits_classes:nombre
+- frontend/src/api/scmApi.js :: recalculerPolitiquesStock -> /api/django/scm/politiques-stock/recalculer
+    nb_politiques:nombre, politiques:inconnu
 - frontend/src/api/stockApi.js :: bulkProduits -> /api/django/stock/produits/bulk
     detail:texte, ok:booleen, skipped:inconnu, total:nombre, updated:inconnu
 - frontend/src/api/stockApi.js :: envoyerEmailBcf -> /api/django/stock/bons-commande-fournisseur/<>/envoyer-email
@@ -2664,6 +2670,52 @@
     source ∈ {auto, manual}
 - frontend/src/api/monitoringApi.js :: getWarranties -> /api/django/monitoring/warranties  [ProductionWarrantySerializer]
     champs: compensation_mad_per_kwh, date_creation, date_modification, degradation_pct_per_year, guaranteed_year1_kwh, id, installation, note, start_year, tolerance_pct
+- frontend/src/api/mrpApi.js :: createGamme -> /api/django/mrp/gammes  [GammeSerializer]
+    champs: actif, created_at, id, kit_source, nom, operations, produit, temps_total_prevu_1_unite, updated_at, version
+- frontend/src/api/mrpApi.js :: createOperationGamme -> /api/django/mrp/operations-gamme  [OperationGammeSerializer]
+    champs: gamme, id, libelle, ordre, poste_charge, temps_min_par_lot, temps_prepa_min, temps_unitaire_min
+- frontend/src/api/mrpApi.js :: createOrdreFabrication -> /api/django/mrp/ordres-fabrication  [OrdreFabricationSerializer]
+    champs: created_at, date_debut_planifiee, date_fin_planifiee, gamme, id, kit_ordre_assemblage, operations, priorite, produit, produit_nom, quantite, reservations, statut, stock_mouvemente, updated_at
+    statut ∈ {annule, brouillon, lance, planifie, termine}
+- frontend/src/api/mrpApi.js :: createPosteCharge -> /api/django/mrp/postes-charge  [PosteDeChargeSerializer]
+    champs: actif, calendrier_travail, capacite_heures_jour, code, cout_horaire, created_at, id, nom, sous_traitant, type_poste, updated_at
+    type_poste ∈ {ligne, machine, manuel, sous_traite}
+- frontend/src/api/mrpApi.js :: deleteOperationGamme -> /api/django/mrp/operations-gamme/<>  [OperationGammeSerializer]
+    champs: gamme, id, libelle, ordre, poste_charge, temps_min_par_lot, temps_prepa_min, temps_unitaire_min
+- frontend/src/api/mrpApi.js :: deletePosteCharge -> /api/django/mrp/postes-charge/<>  [PosteDeChargeSerializer]
+    champs: actif, calendrier_travail, capacite_heures_jour, code, cout_horaire, created_at, id, nom, sous_traitant, type_poste, updated_at
+    type_poste ∈ {ligne, machine, manuel, sous_traite}
+- frontend/src/api/mrpApi.js :: getCoutsStandard -> /api/django/mrp/couts-standard  [CoutStandardSerializer]
+    champs: cout_indirect_pct, cout_main_oeuvre, cout_matiere, cout_unitaire_total, created_at, date_effective, id, produit, version
+- frontend/src/api/mrpApi.js :: getGamme -> /api/django/mrp/gammes/<>  [GammeSerializer]
+    champs: actif, created_at, id, kit_source, nom, operations, produit, temps_total_prevu_1_unite, updated_at, version
+- frontend/src/api/mrpApi.js :: getGammes -> /api/django/mrp/gammes  [GammeSerializer]
+    champs: actif, created_at, id, kit_source, nom, operations, produit, temps_total_prevu_1_unite, updated_at, version
+- frontend/src/api/mrpApi.js :: getOperationsGamme -> /api/django/mrp/operations-gamme  [OperationGammeSerializer]
+    champs: gamme, id, libelle, ordre, poste_charge, temps_min_par_lot, temps_prepa_min, temps_unitaire_min
+- frontend/src/api/mrpApi.js :: getOperationsOF -> /api/django/mrp/operations-of  [OperationOFSerializer]
+    champs: cout_faconnage, date_planifiee, demarree_le, id, libelle, motif_rebut, operation_gamme, ordre, ordre_fabrication, poste_charge, quantite_bonne, quantite_rebut, statut, temps_reel_min, terminee_le
+    motif_rebut ∈ {autre, casse, defaut, erreur}
+    statut ∈ {a_faire, en_cours, en_pause, terminee}
+- frontend/src/api/mrpApi.js :: getOrdreFabrication -> /api/django/mrp/ordres-fabrication/<>  [OrdreFabricationSerializer]
+    champs: created_at, date_debut_planifiee, date_fin_planifiee, gamme, id, kit_ordre_assemblage, operations, priorite, produit, produit_nom, quantite, reservations, statut, stock_mouvemente, updated_at
+    statut ∈ {annule, brouillon, lance, planifie, termine}
+- frontend/src/api/mrpApi.js :: getOrdresFabrication -> /api/django/mrp/ordres-fabrication  [OrdreFabricationSerializer]
+    champs: created_at, date_debut_planifiee, date_fin_planifiee, gamme, id, kit_ordre_assemblage, operations, priorite, produit, produit_nom, quantite, reservations, statut, stock_mouvemente, updated_at
+    statut ∈ {annule, brouillon, lance, planifie, termine}
+- frontend/src/api/mrpApi.js :: getPostesCharge -> /api/django/mrp/postes-charge  [PosteDeChargeSerializer]
+    champs: actif, calendrier_travail, capacite_heures_jour, code, cout_horaire, created_at, id, nom, sous_traitant, type_poste, updated_at
+    type_poste ∈ {ligne, machine, manuel, sous_traite}
+- frontend/src/api/mrpApi.js :: updateGamme -> /api/django/mrp/gammes/<>  [GammeSerializer]
+    champs: actif, created_at, id, kit_source, nom, operations, produit, temps_total_prevu_1_unite, updated_at, version
+- frontend/src/api/mrpApi.js :: updateOperationGamme -> /api/django/mrp/operations-gamme/<>  [OperationGammeSerializer]
+    champs: gamme, id, libelle, ordre, poste_charge, temps_min_par_lot, temps_prepa_min, temps_unitaire_min
+- frontend/src/api/mrpApi.js :: updateOrdreFabrication -> /api/django/mrp/ordres-fabrication/<>  [OrdreFabricationSerializer]
+    champs: created_at, date_debut_planifiee, date_fin_planifiee, gamme, id, kit_ordre_assemblage, operations, priorite, produit, produit_nom, quantite, reservations, statut, stock_mouvemente, updated_at
+    statut ∈ {annule, brouillon, lance, planifie, termine}
+- frontend/src/api/mrpApi.js :: updatePosteCharge -> /api/django/mrp/postes-charge/<>  [PosteDeChargeSerializer]
+    champs: actif, calendrier_travail, capacite_heures_jour, code, cout_horaire, created_at, id, nom, sous_traitant, type_poste, updated_at
+    type_poste ∈ {ligne, machine, manuel, sous_traite}
 - frontend/src/api/notificationsApi.js :: createAnnonce -> /api/django/notifications/annonces  [AnnonceSerializer]
     champs: auteur, auteur_username, cible_departement_nom, cible_role, cible_type, cible_type_label, corps, created_at, date_expiration, date_publication, date_publication_effective, epinglee, id, is_expiree, lecture_obligatoire, lus_count, publiee, titre, updated_at
     cible_type ∈ {departement, role, tous}
@@ -2820,8 +2872,8 @@
     champs: client, client_nom, code_retrait, created_by, date_creation, date_pret, date_retrait, devis, id, lignes, reference, statut, vente_comptoir
     statut ∈ {a_preparer, annule, pret, retire}
 - frontend/src/api/posApi.js :: createVente -> /api/django/pos/ventes  [VenteComptoirSerializer]
-    champs: caissier, client, client_nom, created_by, date_creation, date_validation, facture, id, lignes, note, reference, session_caisse, statut, taux_tva, total_ht, total_ttc
-    statut ∈ {annulee, brouillon, validee}
+    champs: caissier, client, client_nom, created_by, date_creation, date_validation, facture, id, lignes, marchandise_remise, montant_arrhes, note, reference, session_caisse, statut, taux_tva, total_ht, total_ttc, uuid_client
+    statut ∈ {annulee, brouillon, en_attente_solde, validee}
 - frontend/src/api/posApi.js :: getConfigMateriel -> /api/django/pos/config-materiel  [ConfigMaterielPOSSerializer]
     champs: id, imprimante_active, imprimante_ip, imprimante_port
 - frontend/src/api/posApi.js :: getProduits -> /api/django/stock/produits  [ProduitSerializer]
@@ -2834,8 +2886,8 @@
     champs: caisse_comptable, caissier, cloture_caisse_comptable, commentaire, date_cloture, date_ouverture, ecart_tpe, fond_ouverture, id, montant_compte_cloture, montant_tpe_compte, statut
     statut ∈ {cloturee, ouverte}
 - frontend/src/api/posApi.js :: getVente -> /api/django/pos/ventes/<>  [VenteComptoirSerializer]
-    champs: caissier, client, client_nom, created_by, date_creation, date_validation, facture, id, lignes, note, reference, session_caisse, statut, taux_tva, total_ht, total_ttc
-    statut ∈ {annulee, brouillon, validee}
+    champs: caissier, client, client_nom, created_by, date_creation, date_validation, facture, id, lignes, marchandise_remise, montant_arrhes, note, reference, session_caisse, statut, taux_tva, total_ht, total_ttc, uuid_client
+    statut ∈ {annulee, brouillon, en_attente_solde, validee}
 - frontend/src/api/posApi.js :: ouvrirSession -> /api/django/pos/sessions  [SessionCaisseSerializer]
     champs: caisse_comptable, caissier, cloture_caisse_comptable, commentaire, date_cloture, date_ouverture, ecart_tpe, fond_ouverture, id, montant_compte_cloture, montant_tpe_compte, statut
     statut ∈ {cloturee, ouverte}
@@ -3271,6 +3323,29 @@
 - frontend/src/api/savApi.js :: getWorksheetModeles -> /api/django/sav/worksheet-modeles  [WorksheetMaintenanceModeleSerializer]
     champs: actif, champs, date_creation, id, nom, type_ticket_applicable
     type_ticket_applicable ∈ {correctif, preventif, tous}
+- frontend/src/api/scmApi.js :: classificationAbc -> /api/django/scm/classification-abc  [ClassificationABCSerializer]
+    champs: calcule_le, classe, fenetre_mois, id, part_valeur_pct, produit, produit_nom, produit_sku, rang, valeur_cumulee_ht
+    classe ∈ {A, B, C}
+- frontend/src/api/scmApi.js :: creerCycleSop -> /api/django/scm/cycles-sop  [CyclePlanificationSOPSerializer]
+    champs: anime_par, anime_par_nom, date_creation, date_reunion, id, notes_reunion, periode, statut, statut_display
+    statut ∈ {approuve, brouillon, clos, reunion_reconciliation, revue_demande, revue_finance, revue_offre}
+- frontend/src/api/scmApi.js :: creerEvenementDemande -> /api/django/scm/evenements-demande  [EvenementDemandeSerializer]
+    champs: categorie, categorie_nom, date_creation, date_debut, date_fin, id, impact_pct, libelle, produit, produit_nom, type_evenement, type_evenement_display
+    type_evenement ∈ {autre, chantier_majeur, promotion, rupture_fournisseur, saisonnalite_locale}
+- frontend/src/api/scmApi.js :: cycleSop -> /api/django/scm/cycles-sop/<>  [CyclePlanificationSOPSerializer]
+    champs: anime_par, anime_par_nom, date_creation, date_reunion, id, notes_reunion, periode, statut, statut_display
+    statut ∈ {approuve, brouillon, clos, reunion_reconciliation, revue_demande, revue_finance, revue_offre}
+- frontend/src/api/scmApi.js :: cyclesSop -> /api/django/scm/cycles-sop  [CyclePlanificationSOPSerializer]
+    champs: anime_par, anime_par_nom, date_creation, date_reunion, id, notes_reunion, periode, statut, statut_display
+    statut ∈ {approuve, brouillon, clos, reunion_reconciliation, revue_demande, revue_finance, revue_offre}
+- frontend/src/api/scmApi.js :: evenementsDemande -> /api/django/scm/evenements-demande  [EvenementDemandeSerializer]
+    champs: categorie, categorie_nom, date_creation, date_debut, date_fin, id, impact_pct, libelle, produit, produit_nom, type_evenement, type_evenement_display
+    type_evenement ∈ {autre, chantier_majeur, promotion, rupture_fournisseur, saisonnalite_locale}
+- frontend/src/api/scmApi.js :: politiquesStock -> /api/django/scm/politiques-stock  [PolitiqueStockSerializer]
+    champs: classe_abc, id, point_commande, produit, produit_nom, revise_le, service_level_pct, stock_max, stock_min, stock_securite_calcule, stock_securite_manuel
+- frontend/src/api/scmApi.js :: previsionsDemande -> /api/django/scm/previsions-demande  [PrevisionDemandeSerializer]
+    champs: genere_le, genere_par, genere_par_nom, id, methode, methode_display, periode, produit, produit_nom, quantite_prevue, segment
+    methode ∈ {manuel, moyenne_mobile, saisonnier, tendance}
 - frontend/src/api/stockApi.js :: createAcompteFournisseur -> /api/django/stock/acomptes-fournisseur  [AcompteFournisseurSerializer]
     champs: bon_commande, bon_commande_reference, created_by, date_creation, date_versement, facture_imputee, id, mode, mode_display, montant, montant_consomme, montant_non_consomme, note
     mode ∈ {autre, carte, cheque, effet, especes, virement}
@@ -3538,3 +3613,9 @@
     champs: company, conteste, created_at, date_declaration, date_survenance, description, dossier_contentieux_ref, flotte_sinistre_id, id, montant_estime_degats, nature_sinistre, numero_dossier, police, risque_libelle, risque_ref, statut, type_sinistre, type_sinistre_display
     statut ∈ {clos, declare, en_expertise, indemnise, refuse}
     type_sinistre ∈ {autre, cyber, decennale, dommage_materiel, incendie, responsabilite_civile, vol}
+- frontend/src/pages/transport/ComparateurTransporteurs.jsx :: select -> /api/django/transport/ordres-transport/<>  [OrdreTransportSerializer]
+    champs: conducteur, created_at, created_by, date_enlevement_prevue, date_livraison_prevue, destinataire_adresse, destinataire_nom, distance_km, etapes, expediteur_adresse, expediteur_nom, flotte_actif_id, id, installations_installation_id, installations_transporteur_id, instructions_speciales, lignes, mode_acheminement_physique, mode_transport, mode_transport_display, numero, poids_total_kg, statut, statut_display, type_flux, type_flux_display, updated_at, ventes_boncommande_id, ventes_devis_id, volume_total_m3
+    mode_acheminement_physique ∈ {air, mer, route}
+    mode_transport ∈ {affretement, flotte_propre}
+    statut ∈ {annule, brouillon, en_cours, livre, planifie}
+    type_flux ∈ {enlevement_livraison, export, import, inter_site}

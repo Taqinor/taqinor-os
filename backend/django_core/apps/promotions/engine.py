@@ -170,7 +170,14 @@ def evaluer_promotions(lignes: list[LignePanier], regles: list[Regle], *,
     seule celle de plus haute priorité (plus petit ``priorite``), puis à
     égalité la remise la plus avantageuse, est retenue — les autres se
     neutralisent (jamais appliquées ensemble)."""
-    maintenant = maintenant or datetime.datetime.now()
+    if maintenant is None:
+        # `timezone.localtime()` et pas `datetime.now()` : les fenêtres
+        # « happy hour » se comparent à l'heure LOCALE de la société, et un
+        # `datetime` naïf explose (TypeError) dès qu'il croise un datetime
+        # aware venu de la base. Import local pour que ce moteur reste un
+        # module de calcul pur, importable sans Django configuré.
+        from django.utils import timezone
+        maintenant = timezone.localtime()
     total_panier = sum((ligne.total_ttc for ligne in lignes), Decimal('0'))
 
     applicables: list[tuple[Regle, RemiseAppliquee]] = []
