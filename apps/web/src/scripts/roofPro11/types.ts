@@ -112,7 +112,9 @@ export function obstructionClearancesFor(obstacles: readonly { type?: ObstacleTy
 }
 
 export type TiltMode = 'reco' | number;
-export type OrientMode = 'auto' | 'portrait' | 'landscape';
+// PV62 — 'mixed' = pose MIXTE (portrait/paysage choisi rangée par rangée). Axe de pose
+// comme les autres, verrouillable par la puce « Mixte » (toit plat uniquement).
+export type OrientMode = 'auto' | 'portrait' | 'landscape' | 'mixed';
 // W1 : groupe AZIMUT (plein sud ou aligné sur les arêtes du toit) et groupe MARGE
 // de rive (garder la marge de design ou la retirer pour récupérer la rive).
 export type AzimuthMode = 'south' | 'aligned';

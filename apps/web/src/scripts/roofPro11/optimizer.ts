@@ -344,7 +344,8 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
       setbackM,
       overhangM: ctx.overhangM, // W109 — le gagnant rendu déborde comme le solve l'a évalué
     });
-    const grid = w.layout === 'portrait' ? pack.portrait : pack.landscape;
+    // PV62 — pose MIXTE : grille dédiée du pack (repli meilleur uniforme si le mixte perd).
+    const grid = w.layout === 'mixed' ? pack.mixed ?? pack.best : w.layout === 'portrait' ? pack.portrait : pack.landscape;
     renderScene(pack, grid, w.tiltDeg, w.family, w.placedCount);
     // W94 — écrête la production AFFICHÉE au plafond AC de l'onduleur (le solveur V7
     // calcule le kWh DC brut sans clip) : un Sud est inchangé (ratio = design), une
@@ -969,6 +970,7 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
   function gridFor(pack: PackResult): PanelGrid {
     if (ctx.sel.orient === 'portrait') return pack.portrait;
     if (ctx.sel.orient === 'landscape') return pack.landscape;
+    if (ctx.sel.orient === 'mixed') return pack.mixed ?? pack.best; // PV62
     return pack.best;
   }
 
