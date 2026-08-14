@@ -18,6 +18,10 @@ const stockApi = {
   getFavorisCatalogueAchat: () => api.get('/stock/catalogue-achat/favoris/'),
   setFavorisCatalogueAchat: (produitIds) =>
     api.put('/stock/catalogue-achat/favoris/', { produit_ids: produitIds }),
+  // NTP2P23 — simulateur d'impact budgétaire (LECTURE SEULE : n'engage rien).
+  simulerBudgetDisponible: (montant, config) =>
+    api.get('/stock/budgets-departement/disponible/',
+      { params: { montant }, ...config }),
   unarchiveProduit: (id) => api.patch(`/stock/produits/${id}/unarchive/`),
   forceDeleteProduit: (id) => api.delete(`/stock/produits/${id}/force-delete/`),
   // QP2 — clone serveur (nouveau nom, SKU frais, prix d'achat copié côté

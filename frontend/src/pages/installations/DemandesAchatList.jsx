@@ -192,6 +192,31 @@ export default function DemandesAchatList() {
     )
   }, [])
 
+  // NTP2P23 — montant courant du formulaire (Σ quantité × prix estimé).
+  const montantForm = useMemo(
+    () => form.lignes.reduce(
+      (acc, l) => acc + (Number(l.quantite) || 0) * (Number(l.prix_estime) || 0),
+      0),
+    [form.lignes])
+
+  // NTP2P23 — simulation d'impact budgétaire, débouncée, LECTURE SEULE :
+  // aucun engagement n'est posé tant que la demande n'est pas soumise.
+  // Silencieuse en cas d'échec (le contrôle réel reste côté serveur).
+  const [budgetSim, setBudgetSim] = useState(null)
+  useEffect(() => {
+    // Pas de setState synchrone ici : hors dialogue on ne relance rien et le
+    // rendu du bandeau est de toute façon conditionné par `creating`.
+    if (!creating) return undefined
+    let alive = true
+    const t = setTimeout(() => {
+      stockApi.simulerBudgetDisponible(String(montantForm)).then(
+        (r) => { if (alive) setBudgetSim(r.data ?? null) },
+        () => { if (alive) setBudgetSim(null) },
+      )
+    }, 300)
+    return () => { alive = false; clearTimeout(t) }
+  }, [creating, montantForm])
+
   const submitCreate = async (thenSoumettre) => {
     setFormError('')
     if (!form.objet.trim()) {
@@ -430,6 +455,36 @@ export default function DemandesAchatList() {
                 Un article = un produit du catalogue OU une désignation libre. Le prix estimé est
                 indicatif (interne).
               </p>
+              {/* NTP2P23 — impact budgétaire AVANT la soumission. Lecture
+                  seule : rien n'est engagé tant que « Soumettre » n'est pas
+                  cliqué. Silencieux quand le contrôle budgétaire est inactif
+                  ou qu'aucun budget n'est configuré. */}
+              {creating && budgetSim?.controle_actif && (
+                <div
+                  data-testid="da-impact-budget"
+                  role={budgetSim.suffisant ? undefined : 'alert'}
+                  className={
+                    budgetSim.suffisant
+                      ? 'rounded-lg border border-border bg-muted/40 p-3 text-xs text-muted-foreground'
+                      : 'rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-xs text-destructive'
+                  }
+                >
+                  {budgetSim.suffisant ? (
+                    <>
+                      Budget du département : {formatMAD(budgetSim.restant)} restant —
+                      il resterait {formatMAD(Number(budgetSim.restant) - montantForm)} après
+                      cette demande.
+                    </>
+                  ) : (
+                    <>
+                      Cette demande ({formatMAD(montantForm)}) dépasse le budget
+                      restant du département ({formatMAD(budgetSim.restant)}) de{' '}
+                      {formatMAD(budgetSim.montant_manquant)}. La soumission sera
+                      refusée sans dérogation approuvée.
+                    </>
+                  )}
+                </div>
+              )}
             </div>
 
             <div className="space-y-1.5">

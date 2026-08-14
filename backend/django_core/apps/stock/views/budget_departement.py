@@ -132,11 +132,16 @@ class BudgetDepartementViewSet(CompanyScopedModelViewSet):
     def disponible(self, request):
         """NTP2P23 — simulateur : reste-t-il ``montant`` sur ce département ?
 
-        LECTURE SEULE — aucun engagement n'est posé (le simulateur tourne
-        AVANT la soumission). ``?departement=<id>&montant=<mad>``."""
+        LECTURE SEULE — AUCUN engagement n'est posé : le simulateur tourne
+        AVANT la soumission, c'est tout l'intérêt (voir le mur avant de le
+        heurter). ``?montant=<mad>`` suffit : sans ``?departement=<id>``, le
+        département de l'APPELANT est résolu côté serveur (via
+        ``rh.selectors``), pour que l'écran n'ait pas à le deviner."""
         from decimal import Decimal, InvalidOperation
 
         departement_id = request.query_params.get('departement')
+        if not departement_id:
+            departement_id = self._departement_de_lappelant(request)
         try:
             montant = Decimal(request.query_params.get('montant') or '0')
         except (InvalidOperation, TypeError):
@@ -145,10 +150,24 @@ class BudgetDepartementViewSet(CompanyScopedModelViewSet):
             request.user.company, departement_id, None, montant)
         budget = verdict.pop('budget', None)
         verdict['budget_id'] = budget.pk if budget is not None else None
+        verdict['departement_id'] = departement_id
         verdict['montant_alloue'] = (
             budget.montant_alloue if budget is not None else None)
         verdict['montant_demande'] = montant
         return Response(verdict)
+
+    @staticmethod
+    def _departement_de_lappelant(request):
+        """Département RH de l'appelant (lecture via ``rh.selectors``)."""
+        from apps.rh import selectors as rh_selectors
+
+        company = request.user.company
+        dossier = rh_selectors.dossier_employe_for_user(
+            company, request.user.pk)
+        if dossier is None:
+            return None
+        mapping = rh_selectors.departements_par_employe(company, [dossier.id])
+        return (mapping.get(dossier.id) or {}).get('departement_id')
 
 
 class EngagementBudgetViewSet(TenantMixin, viewsets.ReadOnlyModelViewSet):
