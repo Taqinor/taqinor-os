@@ -324,15 +324,20 @@ class LaMiseAJourDeLEtudeEstChirurgicale(_Base):
 
     def test_une_seconde_simulation_remplace_la_precedente(self, _prod, _tmy):
         devis = self._devis(etude=dict(self.ETUDE_EXISTANTE))
+        # Le delta est mesuré sur l'état RÉEL d'avant la tâche, pas sur le
+        # dictionnaire de classe : le récepteur QX24 dérive ``payback_annees``
+        # à l'écriture de la ligne du montage, bien avant toute simulation.
+        # Le comparer au dictionnaire retapé accusait la tâche d'une clé
+        # qu'elle n'écrit pas — et masquait la vraie promesse.
+        devis.refresh_from_db()
+        avant = set(devis.etude_params)
         tasks_mod.task_simulate_bankable_study.run(devis.pk, self.co.id, 'tk')
         tasks_mod.task_simulate_bankable_study.run(devis.pk, self.co.id, 'tk2')
         devis.refresh_from_db()
         # UNE simulation vit sur le devis, jamais un historique implicite qui
         # ferait enfler ``etude_params`` à chaque clic.
         self.assertIsInstance(devis.etude_params['simulation'], dict)
-        self.assertEqual(
-            set(devis.etude_params) - set(self.ETUDE_EXISTANTE),
-            {'simulation'})
+        self.assertEqual(set(devis.etude_params) - avant, {'simulation'})
 
     def test_un_devis_introuvable_ne_fait_pas_boucler_la_tache(self, _prod,
                                                                _tmy):
