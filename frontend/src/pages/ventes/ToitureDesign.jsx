@@ -26,8 +26,9 @@
  * builder n'est PAS modifiée : on l'importe seulement via l'alias `@roofbuilder`.
  */
 import { useEffect, useRef, useState } from 'react'
-import { useParams, useSearchParams } from 'react-router-dom'
+import { Link, useParams, useSearchParams } from 'react-router-dom'
 import api from '../../api/axios'
+import ventesApi from '../../api/ventesApi'
 import '../../styles/roofbuilder.css'
 
 // ── Helpers de livraison (portés de apps/web/src/lib/devisDesign.ts +
@@ -94,6 +95,33 @@ function leadToBuilderPayload(lead) {
   }
 }
 
+// PV20 — MODE DEVIS. Le builder s'hydrate depuis un `DevisPayload` (PV19 :
+// `geometrie.roof_layout | roof_point | roof_outline` + `cible.panneaux |
+// panel_watt | scenario`). Le contexte serveur (contrat
+// `contract_samples/devis_design_context.json`) nomme le repère `pin` et le
+// contour `outline` : cette projection est le SEUL endroit qui les renomme —
+// l'écran ne devine ni ne complète aucune clé absente.
+function contexteToDevisPayload(contexte) {
+  if (!contexte) return null
+  const geo = contexte.geometrie ?? {}
+  const cible = contexte.cible ?? {}
+  const nom = (contexte.devis?.client_nom ?? '').trim()
+  return {
+    id: contexte.devis?.id ?? null,
+    geometrie: {
+      roof_layout: geo.roof_layout ?? null,
+      roof_point: geo.pin ?? null,
+      roof_outline: geo.outline ?? null,
+    },
+    cible: {
+      panneaux: cible.panneaux ?? null,
+      panel_watt: cible.panel_watt ?? null,
+      scenario: cible.scenario || null,
+    },
+    fullName: nom || undefined,
+  }
+}
+
 function httpMessage(status, responseData) {
   // QJ17 — the backend returns a structured French error for 422 (composition
   // pre-flight failures). Surface it directly instead of a generic message.
@@ -112,11 +140,16 @@ function httpMessage(status, responseData) {
   return `Création du devis impossible (erreur ${status}).`
 }
 
-export default function ToitureDesign() {
+export default function ToitureDesign({ mode = 'lead' }) {
   const { id: idParam } = useParams()
   const [searchParams] = useSearchParams()
+  // PV20 — deux modes sur le MÊME écran. `lead` (défaut) est le flux d'origine,
+  // strictement inchangé ; `devis` démarre SUR un devis existant.
+  const estDevis = mode === 'devis'
   // Accepte /devis-design/:id ET ?lead=<id> (parité avec l'ancien lien public).
-  const leadId = idParam || searchParams.get('lead') || ''
+  const leadId = estDevis ? '' : (idParam || searchParams.get('lead') || '')
+  const devisId = estDevis ? (idParam || '') : ''
+  const cibleId = estDevis ? devisId : leadId
 
   const reducedMotion =
     typeof window !== 'undefined' &&
@@ -124,11 +157,20 @@ export default function ToitureDesign() {
 
   // État initial dérivé de la présence du leadId (évite un setState synchrone
   // dans l'effet) : sans identifiant, on affiche directement le message d'erreur.
-  const [status, setStatus] = useState(() =>
-    leadId ? 'Chargement du lead…' : 'Aucun lead indiqué (identifiant manquant).')
+  const [status, setStatus] = useState(() => {
+    if (cibleId) return estDevis ? 'Chargement du devis…' : 'Chargement du lead…'
+    return estDevis
+      ? 'Aucun devis indiqué (identifiant manquant).'
+      : 'Aucun lead indiqué (identifiant manquant).'
+  })
   const [lead, setLead] = useState(null)
-  const [loadError, setLoadError] = useState(() =>
-    leadId ? null : 'Aucun lead indiqué.')
+  // PV20 — contexte agrégé du devis (mode devis uniquement) : identité, cible,
+  // `modifiable` + `raison_lecture_seule`. Toujours null en mode lead.
+  const [contexte, setContexte] = useState(null)
+  const [loadError, setLoadError] = useState(() => {
+    if (cibleId) return null
+    return estDevis ? 'Aucun devis indiqué.' : 'Aucun lead indiqué.'
+  })
 
   // API exposée par le builder (serializeLayout / snapshot), posée à onApiReady.
   const builderApi = useRef(null)
@@ -144,7 +186,7 @@ export default function ToitureDesign() {
   useEffect(() => {
     let cancelled = false
     // Sans identifiant, l'état initial affiche déjà l'erreur — rien à booter.
-    if (!leadId) return undefined
+    if (!cibleId) return undefined
 
     // Le builder a une garde module-niveau `booted` (one-shot par chargement de
     // page). En SPA, revenir sur la route ne le ré-initialiserait pas : si on a
@@ -210,9 +252,60 @@ export default function ToitureDesign() {
       setStatus('Repère du client chargé. Dessinez / ajustez, puis « Générer le devis & envoyer au client ».')
     }
 
-    boot()
+    // ── PV20 — boot MODE DEVIS : UN SEUL appel (design-context) ─────────────
+    // Identité + géométrie + cible + carte + `modifiable` arrivent ensemble :
+    // l'écran ne fait aucune requête de complément et ne devine aucun motif de
+    // lecture seule (il vient toujours du serveur).
+    async function bootDevis() {
+      let ctx = null
+      try {
+        const res = await ventesApi.getDevisDesignContext(devisId)
+        ctx = res.data
+      } catch (err) {
+        if (cancelled) return
+        const code = err?.response?.status
+        setLoadError(
+          code === 404
+            ? 'Devis introuvable.'
+            : 'Impossible de charger le devis — réessayez.'
+        )
+        setStatus(`Devis introuvable (erreur ${code ?? '?'}).`)
+        return
+      }
+      if (cancelled) return
+      setContexte(ctx)
+
+      const carte = ctx?.carte ?? {}
+      if (!carte.available || !carte.maptilerKey) {
+        setStatus('Carte indisponible (clé MapTiler manquante côté serveur).')
+        setLoadError('Carte indisponible : la clé MapTiler n’est pas configurée sur le serveur ERP.')
+        return
+      }
+
+      const mod = await import('@roofbuilder')
+      if (cancelled) return
+      window.__taqinorRoofBooted = true
+      // Un devis en lecture seule BOOTE quand même : on peut regarder le
+      // calepinage vendu — seule l'action d'enregistrement disparaît.
+      mod.initRoofToolPro8({
+        maptilerKey: carte.maptilerKey,
+        mapboxToken: carte.mapboxToken || undefined,
+        reducedMotion: !!reducedMotion,
+        hydrate: { devis: contexteToDevisPayload(ctx) },
+        onApiReady: (a) => { builderApi.current = a },
+      })
+      const reference = ctx?.devis?.reference ?? ''
+      setStatus(
+        ctx?.modifiable
+          ? `Devis ${reference} chargé. Ajustez le calepinage, puis « Enregistrer la conception ».`
+          : `Devis ${reference} en lecture seule — consultation du calepinage vendu.`
+      )
+    }
+
+    if (estDevis) bootDevis()
+    else boot()
     return () => { cancelled = true }
-  }, [leadId, reducedMotion])
+  }, [cibleId, devisId, leadId, estDevis, reducedMotion])
 
   // ── UN SEUL BOUTON : devis + snapshot + livraison ──────────────────────────
   const generer = async () => {
@@ -302,6 +395,14 @@ export default function ToitureDesign() {
   }
 
   const leadLabel = lead ? `${lead.nom ?? ''} ${lead.prenom ?? ''}`.trim() : ''
+  // PV20 — en mode devis, le titre porte la référence + le client servis par le
+  // contexte ; en lecture seule, le motif AFFICHÉ est celui du serveur.
+  const devisLabel = (contexte?.devis?.client_nom ?? '').trim()
+  const devisReference = contexte?.devis?.reference ?? ''
+  const lectureSeule = estDevis && contexte != null && !contexte.modifiable
+  const raisonLectureSeule = (contexte?.raison_lecture_seule ?? '').trim()
+  const avertissements = Array.isArray(contexte?.avertissements)
+    ? contexte.avertissements : []
 
   const inputClass =
     'w-full border border-white/15 bg-white/5 px-3 py-3 text-base text-white outline-none focus:border-brass-400'
@@ -313,15 +414,45 @@ export default function ToitureDesign() {
 
       <div className="mt-6">
         <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-2">
-          <h1 className="display text-xl text-white sm:text-2xl">
-            Lead <span className="text-brass-300">{leadId || '—'}</span> ·{' '}
-            <span className="text-lune-soft">{leadLabel || '—'}</span>
-          </h1>
+          {estDevis ? (
+            <h1 className="display text-xl text-white sm:text-2xl">
+              Devis <span className="text-brass-300">{devisReference || devisId || '—'}</span> ·{' '}
+              <span className="text-lune-soft">{devisLabel || '—'}</span>
+            </h1>
+          ) : (
+            <h1 className="display text-xl text-white sm:text-2xl">
+              Lead <span className="text-brass-300">{leadId || '—'}</span> ·{' '}
+              <span className="text-lune-soft">{leadLabel || '—'}</span>
+            </h1>
+          )}
         </div>
         <p className="mt-2 text-sm text-lune-faint" aria-live="polite">{status}</p>
 
         {loadError && (
           <p className="mt-3 text-sm text-alert-300" role="alert">{loadError}</p>
+        )}
+
+        {/* PV20 — LECTURE SEULE : le motif vient du serveur, jamais rédigé ici. */}
+        {lectureSeule && (
+          <div className="cine-card mt-6 border border-brass-400/40 p-5" data-testid="pv20-lecture-seule">
+            <p className="tech-label rule-brass text-brass-300">Lecture seule</p>
+            <p className="mt-3 text-sm text-lune-soft" role="status">
+              {raisonLectureSeule || 'Ce devis ne peut plus être modifié.'}
+            </p>
+            <Link
+              to={`/ventes/devis/${devisId}/3d`}
+              className="mt-4 inline-flex items-center gap-2 border border-brass-400 px-5 py-3 text-base font-bold text-brass-300"
+            >
+              Voir en 3D
+            </Link>
+          </div>
+        )}
+
+        {/* PV20 — avertissements serveur (multi-villa, aucune ligne panneau…). */}
+        {estDevis && avertissements.length > 0 && (
+          <ul className="mt-4 space-y-1 text-xs text-lune-faint" data-testid="pv20-avertissements">
+            {avertissements.map((a) => <li key={a}>{a}</li>)}
+          </ul>
         )}
 
         {/* ÉTAPE FACTURE (alimente l'optimiseur). */}
@@ -482,7 +613,10 @@ export default function ToitureDesign() {
           <p id="rp9-maxline" className="mt-3 text-xs text-lune-faint"></p>
         </div>
 
-        {/* UN SEUL BOUTON — génère le devis, capture la 3D, mint le lien. */}
+        {/* UN SEUL BOUTON — génère le devis, capture la 3D, mint le lien.
+            PV20 — mode lead UNIQUEMENT : un devis existant n'est jamais recréé
+            depuis cet écran (sa boucle d'enregistrement arrive en PV21). */}
+        {!estDevis && (
         <div className="cine-card mt-6 p-6">
           {!deliver ? (
             <div>
@@ -536,6 +670,7 @@ export default function ToitureDesign() {
             </div>
           )}
         </div>
+        )}
       </div>
     </div>
   )

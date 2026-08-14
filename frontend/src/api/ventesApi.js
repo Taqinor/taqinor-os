@@ -54,6 +54,13 @@ const ventesApi = {
   shareLinkDevis: (id) => api.post(`/ventes/devis/${id}/share-link/`),
   // Révision : crée une nouvelle version (v2, v3…) d'un devis.
   reviserDevis: (id) => api.post(`/ventes/devis/${id}/reviser/`),
+  // PV20 — TOUT ce que l'écran de conception 3D doit savoir d'un devis, en UN
+  // SEUL appel : identité + statut, géométrie déjà enregistrée (roof_layout /
+  // pin / contour), cible vendue (panneaux, kWc, scénario), disponibilité de la
+  // carte, et `modifiable` + `raison_lecture_seule` — le motif de la lecture
+  // seule vient TOUJOURS du serveur, jamais rédigé côté écran. Forme figée par
+  // le contrat partagé `apps/ventes/contract_samples/devis_design_context.json`.
+  getDevisDesignContext: (id) => api.get(`/ventes/devis/${id}/design-context/`),
   // QJ14 — Envoyer par email : PDF premium + lien tokenisé → client, consigne EmailLog, marque envoyé.
   envoyerEmailDevis: (id, payload = {}) => api.post(`/ventes/devis/${id}/envoyer-email/`, payload),
   // QG8 — « Envoyer » = flux WhatsApp : lien wa.me + lien tokenisé, marque envoyé.
