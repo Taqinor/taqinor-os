@@ -293,11 +293,25 @@ class SessionCaisse(models.Model):
         related_name='sessions_pos',
     )
     commentaire = models.TextField(blank=True, default='')
+    # NTRET2 — Rapport Z officiel : numérotation séquentielle anti-collision
+    # (jamais count()+1 — ``core.numbering.next_reference``), exigée par les
+    # contrôles fiscaux marocains. Posé UNE SEULE FOIS, à la première
+    # génération réussie (``services.generer_rapport_z``) — un 2e appel sur
+    # la même session refuse (409). NULL = Z pas encore généré (comportement
+    # historique inchangé pour toute session déjà close avant NTRET2).
+    numero_rapport_z = models.CharField(max_length=50, null=True, blank=True)
 
     class Meta:
         verbose_name = 'Session de caisse (POS)'
         verbose_name_plural = 'Sessions de caisse (POS)'
         ordering = ['-date_ouverture']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'numero_rapport_z'],
+                condition=models.Q(numero_rapport_z__isnull=False),
+                name='pos_sessioncaisse_unique_numero_rapport_z_per_company',
+            ),
+        ]
 
     def __str__(self):
         return f'Session #{self.pk} ({self.get_statut_display()})'

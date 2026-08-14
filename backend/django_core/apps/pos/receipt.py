@@ -142,3 +142,69 @@ def receipt_pdf(vente, *, paiements=None, timbre=None):
     (ARC12 — plomberie WeasyPrint centralisée)."""
     html = receipt_html(vente, paiements=paiements, timbre=timbre)
     return render_pdf(html=html)
+
+
+# ── NTRET2 — Rapport Z officiel (PDF, numéroté séquentiellement) ────────────
+
+def rapport_z_html(session, data):
+    """HTML du rapport Z officiel : identité vendeur, numéro séquentiel
+    (jamais count()+1 — ``core.numbering``), totaux par mode de paiement,
+    nombre de ventes. ``data`` = l'agrégat renvoyé par
+    ``services.generer_rapport_z``/``services.rapport_x`` (avec ou sans la
+    clé ``numero_rapport_z`` — la vue passe le numéro déjà posé sur la
+    session dans les deux cas)."""
+    identite = _company_identity(session.company)
+    lignes_mode = []
+    for mode, agg in sorted((data.get('par_mode') or {}).items()):
+        lignes_mode.append(
+            f'<tr><td>{escape(str(mode))}</td>'
+            f'<td class="num">{agg["nb"]}</td>'
+            f'<td class="num">{Decimal(agg["total"] or 0):.2f}</td></tr>')
+
+    numero = session.numero_rapport_z or data.get('numero_rapport_z') or ''
+    date_cloture = (
+        session.date_cloture.strftime('%d/%m/%Y %H:%M')
+        if session.date_cloture else '')
+
+    return f"""
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  @page {{ size: 80mm auto; margin: 3mm; }}
+  body {{ font-family: monospace; font-size: 10px; width: 74mm; }}
+  h1 {{ font-size: 12px; text-align: center; margin: 2px 0; }}
+  .identite {{ text-align: center; font-size: 9px; margin-bottom: 4px; }}
+  table {{ width: 100%; border-collapse: collapse; }}
+  td {{ padding: 1px 0; }}
+  .num {{ text-align: right; }}
+  hr {{ border: none; border-top: 1px dashed #000; }}
+</style>
+</head>
+<body>
+  <h1>{escape(identite['nom'])}</h1>
+  <div class="identite">
+    {escape(identite['adresse'])}<br>
+    ICE : {escape(identite['ice'])} — IF : {escape(identite['if_fiscal'])}
+  </div>
+  <hr>
+  <p><strong>Rapport Z n° {escape(str(numero))}</strong></p>
+  <p>Session #{session.pk} — clôturée le {escape(date_cloture)}</p>
+  <hr>
+  <table>
+    <tr><td>Mode</td><td class="num">Nb</td><td class="num">Total</td></tr>
+    {''.join(lignes_mode)}
+  </table>
+  <hr>
+  <p><strong>Total : {Decimal(data.get('total') or 0):.2f} MAD</strong></p>
+  <p>Nombre de ventes : {data.get('nb_ventes', 0)}</p>
+</body>
+</html>
+"""
+
+
+def rapport_z_pdf(session, data):
+    """Génère le PDF du rapport Z officiel (octets) via
+    ``core.pdf.render_pdf`` — même plomberie mutualisée que le ticket."""
+    html = rapport_z_html(session, data)
+    return render_pdf(html=html)

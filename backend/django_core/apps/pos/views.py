@@ -292,18 +292,57 @@ class SessionCaisseViewSet(viewsets.ModelViewSet):
             raise ValidationError(str(exc))
         return Response(SessionCaisseSerializer(session).data)
 
-    @action(detail=True, methods=['get'], url_path='rapport-z')
-    def rapport_z_view(self, request, pk=None):
-        session = self.get_object()
-        z = services.rapport_z(session)
-        return Response({
-            'nb_ventes': z['nb_ventes'],
-            'total': str(z['total']),
+    @staticmethod
+    def _serialize_rapport(data):
+        return {
+            'nb_ventes': data['nb_ventes'],
+            'total': str(data['total']),
             'par_mode': {
                 mode: {'total': str(v['total']), 'nb': v['nb']}
-                for mode, v in z['par_mode'].items()
+                for mode, v in data['par_mode'].items()
             },
-        })
+        }
+
+    @action(detail=True, methods=['get'], url_path='rapport-x')
+    def rapport_x_view(self, request, pk=None):
+        """NTRET2 — Rapport X : lecture à tout moment, aucun effet de bord,
+        relisible N fois (session ouverte ou déjà clôturée)."""
+        session = self.get_object()
+        x = services.rapport_x(session)
+        return Response(self._serialize_rapport(x))
+
+    @action(detail=True, methods=['get'], url_path='rapport-z')
+    def rapport_z_view(self, request, pk=None):
+        """NTRET2 — Rapport Z OFFICIEL : exige la clôture, numéroté
+        séquentiellement, une seule fois par session (2e appel → 409)."""
+        session = self.get_object()
+        try:
+            data = services.generer_rapport_z(session, user=request.user)
+        except services.RapportZDejaGenereError as exc:
+            return Response(
+                {'detail': str(exc), 'numero_rapport_z': session.numero_rapport_z},
+                status=status.HTTP_409_CONFLICT)
+        except services.RapportZError as exc:
+            raise ValidationError(str(exc))
+        payload = self._serialize_rapport(data)
+        payload['numero_rapport_z'] = data['numero_rapport_z']
+        return Response(payload)
+
+    @action(detail=True, methods=['get'], url_path='rapport-z-pdf')
+    def rapport_z_pdf_view(self, request, pk=None):
+        """NTRET2 — PDF du rapport Z, numéroté séquentiellement. Le rapport
+        DOIT déjà avoir été généré (``rapport-z/``) — ce point ne génère
+        jamais un nouveau numéro, il ne fait que rendre le PDF."""
+        session = self.get_object()
+        if not session.numero_rapport_z:
+            raise ValidationError(
+                'Le rapport Z doit être généré (GET rapport-z/) avant le PDF.')
+        data = services.rapport_x(session)
+        pdf_bytes = receipt.rapport_z_pdf(session, data)
+        response = HttpResponse(pdf_bytes, content_type='application/pdf')
+        response['Content-Disposition'] = (
+            f'inline; filename="rapport-z-{session.numero_rapport_z}.pdf"')
+        return response
 
 
 class CommandeRetraitViewSet(viewsets.ModelViewSet):

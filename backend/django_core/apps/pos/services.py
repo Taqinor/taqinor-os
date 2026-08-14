@@ -279,6 +279,62 @@ def rapport_z(session):
     }
 
 
+# ── NTRET2 — Rapport X (lecture) / Rapport Z (clôture définitive) formels ───
+
+def rapport_x(session):
+    """Rapport X (NTRET2) : lecture à tout moment, AUCUN effet de bord,
+    relisible autant de fois que nécessaire (session ouverte ou déjà
+    clôturée). Alias explicite de l'agrégat pur ``rapport_z`` sous un nom
+    distinct — jamais confondu avec le rapport Z OFFICIEL (numéroté, généré
+    une seule fois, voir ``generer_rapport_z``)."""
+    return rapport_z(session)
+
+
+class RapportZError(Exception):
+    """Erreur métier sur la génération du rapport Z officiel."""
+
+
+class RapportZDejaGenereError(RapportZError):
+    """Le rapport Z de cette session a déjà été généré (2e appel → 409)."""
+
+
+@transaction.atomic
+def generer_rapport_z(session, *, user=None):
+    """Rapport Z OFFICIEL (NTRET2) : clôture définitive de la session.
+
+    Exige une session déjà CLÔTURÉE (``cloturer_session``) et ne peut être
+    généré qu'UNE SEULE FOIS — la numérotation séquentielle anti-collision
+    (``core.numbering.next_reference``, jamais count()+1) est posée à la
+    première génération réussie et n'est plus jamais réattribuée. Un 2e appel
+    sur la même session lève ``RapportZDejaGenereError`` (traduit en 409 côté
+    vue) — exigence des contrôles fiscaux marocains : un Z unique par
+    clôture. Renvoie l'agrégat + le numéro attribué.
+    """
+    if session.statut != SessionCaisse.Statut.CLOTUREE:
+        raise RapportZError(
+            'La session doit être clôturée avant de générer le rapport Z.')
+    if session.numero_rapport_z:
+        raise RapportZDejaGenereError(
+            'Le rapport Z de cette session a déjà été généré '
+            f'(n° {session.numero_rapport_z}).')
+
+    from core.numbering import next_reference
+    numero = next_reference(
+        SessionCaisse, 'Z', session.company, field='numero_rapport_z')
+    session.numero_rapport_z = numero
+    session.save(update_fields=['numero_rapport_z'])
+
+    from apps.audit import recorder
+    recorder.record(
+        'update', instance=session, company=session.company,
+        user=user or session.caissier,
+        detail=f'Rapport Z généré — n° {numero}.')
+
+    data = rapport_z(session)
+    data['numero_rapport_z'] = numero
+    return data
+
+
 @transaction.atomic
 def cloturer_session(*, session, montant_compte, montant_tpe_compte=None,
                      commentaire='', user=None):
