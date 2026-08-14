@@ -38,7 +38,13 @@ class GenererPrevisionsMensuellesTaskTests(TestCase):
             mvt.date = timezone.make_aware(timezone.datetime(y, m0 + 1, 15))
             mvt.save(update_fields=['date'])
 
-        idx_horizon = today.year * 12 + (today.month - 1) + 1
+        # generer_previsions()/forecast_demand() projettent l'horizon depuis
+        # le DERNIER mois d'historique (``idx_dernier`` ci-dessus = le mois
+        # dernier), jamais depuis ``today`` — même convention que
+        # test_ntscm2_demand_forecast.py (historique s'arrêtant toujours au
+        # dernier mois complet). Avec horizon_mois=1, la période visée est
+        # donc ``idx_dernier + 1`` = le mois COURANT, pas le mois suivant.
+        idx_horizon = today.year * 12 + (today.month - 1)
         y_h, m0_h = divmod(idx_horizon, 12)
         self.periode_horizon = f'{y_h:04d}-{m0_h + 1:02d}'
         # Valeur volontairement très basse : la vraie prévision recalculée
