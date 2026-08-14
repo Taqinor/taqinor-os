@@ -12,6 +12,9 @@ from django.utils import timezone
 from .models import CommandeRetrait, SessionCaisse, VenteComptoir
 
 MODE_ESPECES = 'especes'
+# NTRET15 — mode de paiement carte cadeau (apps.promotions.CarteCadeau).
+# Même liste de modes que MODES_PAIEMENT côté frontend (features/pos/pos.js).
+MODE_CARTE_CADEAU = 'carte_cadeau'
 
 
 # ── XPOS1 — Validation d'une vente comptoir ─────────────────────────────────
@@ -89,6 +92,22 @@ def valider_vente(*, vente, paiements, user):
     if a_du_cash and vente.session_caisse.statut != SessionCaisse.Statut.OUVERTE:
         raise VenteComptoirError('La session de caisse est clôturée.')
 
+    # (NTRET15) — pré-vol : valide chaque carte cadeau AVANT toute écriture
+    # (même style que le pré-vol espèces/session ci-dessus). Un code
+    # inconnu/solde insuffisant ne doit jamais laisser une facture à moitié
+    # créée derrière lui.
+    for p in paiements:
+        if (p.get('mode') or '').strip().lower() == MODE_CARTE_CADEAU:
+            from apps.promotions.services import (
+                CarteCadeauError, verifier_carte_cadeau,
+            )
+            try:
+                verifier_carte_cadeau(
+                    vente.company, p.get('carte_code') or p.get('reference'),
+                    montant=_q2(p.get('montant')))
+            except CarteCadeauError as exc:
+                raise VenteComptoirError(str(exc))
+
     # (a) Facture légale classique (sans devis) — via le thin service exposé
     # par ventes.services (numérotation collision-proof, jamais count()+1).
     from apps.ventes import services as ventes_services
@@ -129,6 +148,13 @@ def valider_vente(*, vente, paiements, user):
         )
         if mode == MODE_ESPECES:
             total_especes += montant
+        elif mode == MODE_CARTE_CADEAU:
+            # (NTRET15) — débit RÉEL (déjà validé en pré-vol ci-dessus) :
+            # dans la même transaction atomique que la facture/le paiement,
+            # jamais en négatif, plusieurs passages jusqu'à épuisement.
+            from apps.promotions.services import debiter_carte_cadeau
+            debiter_carte_cadeau(
+                vente.company, p.get('carte_code') or p.get('reference'), montant)
 
     # (b bis) — les espèces encaissées entrent dans la caisse comptable de la
     # session (XPOS4) : sans ce mouvement, le solde théorique de la caisse à la
@@ -656,8 +682,9 @@ def encaisser_arrhes(*, vente, montant_arrhes, paiement, user):
         note=f'Arrhes sur {vente.reference}',
     )
     _poster_encaissement_especes(
-        vente=vente, mode=mode, montant=montant_paiement,
-        facture=facture, motif=f'Arrhes {vente.reference}', user=user)
+        company=vente.company, mode=mode, montant=montant_paiement,
+        facture=facture, motif=f'Arrhes {vente.reference}', user=user,
+        session_caisse=vente.session_caisse, client=vente.client)
 
     vente.facture = facture
     vente.statut = VenteComptoir.Statut.EN_ATTENTE_SOLDE
@@ -702,8 +729,9 @@ def encaisser_solde_arrhes(*, vente, paiement, user):
         note=f'Solde sur {vente.reference}',
     )
     _poster_encaissement_especes(
-        vente=vente, mode=mode, montant=montant_paiement,
-        facture=vente.facture, motif=f'Solde {vente.reference}', user=user)
+        company=vente.company, mode=mode, montant=montant_paiement,
+        facture=vente.facture, motif=f'Solde {vente.reference}', user=user,
+        session_caisse=vente.session_caisse, client=vente.client)
 
     from apps.stock import services as stock_services
     for ligne in vente.lignes.all():
@@ -756,26 +784,30 @@ def remettre_marchandise_override(*, vente, user, motif):
     return vente
 
 
-def _poster_encaissement_especes(*, vente, mode, montant, facture, motif, user):
+def _poster_encaissement_especes(*, company, mode, montant, facture, motif, user,
+                                 session_caisse=None, client=None):
     """Mouvement de caisse + timbre fiscal sur un règlement espèces
-    (factorisé entre ``encaisser_arrhes``/``encaisser_solde_arrhes`` et le
-    même bloc dans ``valider_vente``)."""
+    (factorisé entre ``encaisser_arrhes``/``encaisser_solde_arrhes``,
+    ``emettre_carte_cadeau_comptoir`` (NTRET15) et le même bloc dans
+    ``valider_vente``). Paramètres explicites (pas un objet ``vente`` —
+    l'émission d'une carte cadeau n'a pas de ``VenteComptoir`` : c'est une
+    transaction financière sans ligne de stock)."""
     if mode != MODE_ESPECES or montant <= 0:
         return
     today = timezone.localdate()
-    if vente.session_caisse_id:
+    if session_caisse is not None:
         from apps.compta.models import MouvementCaisse
         from apps.compta.services import enregistrer_mouvement_caisse
         enregistrer_mouvement_caisse(
-            vente.session_caisse.caisse_comptable,
+            session_caisse.caisse_comptable,
             sens=MouvementCaisse.Sens.ENTREE, montant=montant,
             date_mouvement=today, motif=motif, user=user)
     from apps.compta.services import enregistrer_timbre_fiscal
     enregistrer_timbre_fiscal(
-        vente.company, date_encaissement=today, base=montant,
+        company, date_encaissement=today, base=montant,
         mode_reglement=MODE_ESPECES, facture_ref=facture.reference,
-        tiers_type='client', tiers_id=vente.client_id,
-        tiers_nom=str(vente.client) if vente.client_id else '',
+        tiers_type='client', tiers_id=client.id if client else None,
+        tiers_nom=str(client) if client else '',
         libelle=motif, user=user)
 
 
@@ -825,3 +857,68 @@ def appliquer_coupon(*, vente, code, user=None):
     except CouponError as exc:
         raise CouponPosError(str(exc))
     return coupon, montant
+
+
+# ── NTRET15 — Cartes cadeaux (apps.promotions) ──────────────────────────────
+
+class CarteCadeauPosError(Exception):
+    """Erreur métier sur une carte cadeau au comptoir (NTRET15)."""
+
+
+@transaction.atomic
+def emettre_carte_cadeau_comptoir(*, company, montant, paiement, user, client,
+                                  session_caisse=None, code=None,
+                                  date_expiration=None):
+    """NTRET15 — Émission d'une carte cadeau au comptoir : encaissée sur les
+    MÊMES rails qu'une vente normale (facture légale + paiement + timbre
+    fiscal cash + mouvement de caisse) mais SANS ligne de stock — une carte
+    cadeau n'est pas un produit inventorié, ``apps/pos`` ne crée jamais de
+    ``stock.Produit`` factice pour ça (cf. règle de modularité cross-app,
+    CLAUDE.md : jamais d'écriture dans ``apps/stock``). Import FONCTION-LOCAL
+    vers ``apps.promotions.services`` — jamais l'inverse. Le règlement fourni
+    doit correspondre EXACTEMENT au montant de la carte."""
+    from apps.promotions.services import CarteCadeauError
+    from apps.promotions.services import emettre_carte_cadeau as _emettre
+
+    montant = _q2(montant)
+    if montant <= 0:
+        raise CarteCadeauPosError(
+            'Le montant de la carte cadeau doit être positif.')
+    montant_paiement = _q2((paiement or {}).get('montant'))
+    if montant_paiement != montant:
+        raise CarteCadeauPosError(
+            'Le règlement doit correspondre exactement au montant de la '
+            'carte cadeau.')
+    if client is None:
+        raise CarteCadeauPosError(
+            'Un client est requis pour émettre la facture légale.')
+
+    from apps.ventes import services as ventes_services
+
+    # TVA 0 — aucun bien/service n'est délivré à l'émission (le fait
+    # générateur TVA marocain intervient à l'UTILISATION de la carte contre
+    # de vraies marchandises, pas à l'émission).
+    facture = ventes_services.creer_facture_classique(
+        company=company, client=client, user=user,
+        taux_tva=Decimal('0'), montant_ht=montant, montant_tva=Decimal('0'),
+        montant_ttc=montant, libelle='Émission carte cadeau',
+    )
+    mode = (paiement.get('mode') or '').strip().lower() or MODE_ESPECES
+    today = timezone.localdate()
+    ventes_services.enregistrer_paiement(
+        facture=facture, montant=montant_paiement, mode=mode,
+        date_paiement=paiement.get('date_paiement') or today, user=user,
+        reference=paiement.get('reference') or '',
+        note='Émission carte cadeau',
+    )
+    _poster_encaissement_especes(
+        company=company, mode=mode, montant=montant_paiement, facture=facture,
+        motif='Émission carte cadeau', user=user,
+        session_caisse=session_caisse, client=client)
+
+    try:
+        carte = _emettre(
+            company, montant, code=code, date_expiration=date_expiration)
+    except CarteCadeauError as exc:
+        raise CarteCadeauPosError(str(exc))
+    return carte, facture

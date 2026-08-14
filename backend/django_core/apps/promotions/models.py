@@ -8,6 +8,7 @@
 (``'stock.Categorie'``/``'stock.Produit'``) — jamais un import direct des
 modèles stock (règle de modularité cross-app, CLAUDE.md)."""
 from django.db import models
+from django.utils import timezone
 
 from core.models import TenantModel
 
@@ -163,3 +164,58 @@ class CouponUtilisation(TenantModel):
 
     def __str__(self):
         return f'{self.coupon.code} — {self.client_id}'
+
+
+# ── NTRET15 — Cartes cadeaux ─────────────────────────────────────────────────
+
+def default_carte_cadeau_code():
+    import secrets
+    import string
+    alphabet = string.ascii_uppercase + string.digits
+    return ''.join(secrets.choice(alphabet) for _ in range(10))
+
+
+class CarteCadeau(TenantModel):
+    """Une carte cadeau (NTRET15) : émise au comptoir (encaissée normalement,
+    sans ligne de stock — une carte cadeau n'est pas un produit inventorié),
+    utilisable comme mode de paiement partiel/total sur une vente ultérieure,
+    plusieurs passages possibles jusqu'à épuisement."""
+
+    class Statut(models.TextChoices):
+        ACTIVE = 'active', 'Active'
+        EPUISEE = 'epuisee', 'Épuisée'
+        EXPIREE = 'expiree', 'Expirée'
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        related_name='cartes_cadeaux')
+    # Code unique généré, OU physique saisi (carte pré-imprimée) — les deux
+    # passent par le même champ, `default` ne s'applique que si absent.
+    code = models.CharField(max_length=32, default=default_carte_cadeau_code)
+    montant_initial = models.DecimalField(max_digits=12, decimal_places=2)
+    # Solde courant — décrémenté à chaque utilisation, jamais négatif (garde
+    # dans ``services.debiter_carte_cadeau``, jamais seulement applicative).
+    solde = models.DecimalField(max_digits=12, decimal_places=2)
+    date_emission = models.DateTimeField(auto_now_add=True)
+    date_expiration = models.DateField(
+        null=True, blank=True, help_text='Vide = aucune expiration.')
+    statut = models.CharField(
+        max_length=10, choices=Statut.choices, default=Statut.ACTIVE)
+
+    class Meta:
+        verbose_name = 'Carte cadeau'
+        verbose_name_plural = 'Cartes cadeaux'
+        unique_together = [('company', 'code')]
+
+    def __str__(self):
+        return self.code
+
+    def est_utilisable(self):
+        """Utilisable MAINTENANT : statut actif en base ET pas expirée à la
+        date du jour (l'expiration est évaluée dynamiquement — jamais besoin
+        d'une tâche planifiée pour « faire passer » une carte en expirée)."""
+        if self.statut != self.Statut.ACTIVE:
+            return False
+        if self.date_expiration and timezone.localdate() > self.date_expiration:
+            return False
+        return self.solde > 0

@@ -1,5 +1,5 @@
 """apps.promotions.services — pont ORM ↔ moteur pur (NTRET12) + coupons à
-code unique (NTRET13).
+code unique (NTRET13) + cartes cadeaux (NTRET15).
 
 ``engine.py`` ne connaît aucun modèle Django ; ce module charge les
 ``ReglexPromotion`` actives d'une société, les convertit en structures
@@ -152,3 +152,81 @@ def consommer_coupon(company, code, lignes, *, client=None, maintenant=None):
         coupon.save(update_fields=['utilise_par', 'utilise_le'])
     montant = montant_remise_coupon(coupon, lignes, maintenant=maintenant)
     return coupon, montant
+
+
+# ── NTRET15 — Cartes cadeaux ─────────────────────────────────────────────────
+
+class CarteCadeauError(Exception):
+    """Erreur métier sur une carte cadeau (NTRET15)."""
+
+
+def _normaliser_code(code):
+    return (code or '').strip().upper()
+
+
+def verifier_carte_cadeau(company, code, *, montant=None):
+    """Vérifie qu'une carte cadeau est UTILISABLE maintenant (existe, non
+    épuisée, non expirée) et, si ``montant`` est fourni, que le solde le
+    couvre. LECTURE SEULE — ne débite jamais."""
+    from .models import CarteCadeau
+
+    code = _normaliser_code(code)
+    if not code:
+        raise CarteCadeauError('Code de carte cadeau requis.')
+    carte = CarteCadeau.objects.filter(company=company, code=code).first()
+    if carte is None:
+        raise CarteCadeauError('Carte cadeau introuvable.')
+    if not carte.est_utilisable():
+        raise CarteCadeauError(
+            f'Carte cadeau {carte.get_statut_display().lower()} — non utilisable.')
+    if montant is not None and Decimal(str(montant)) > carte.solde:
+        raise CarteCadeauError(
+            f'Solde insuffisant sur la carte cadeau ({carte.solde} MAD disponibles).')
+    return carte
+
+
+@transaction.atomic
+def debiter_carte_cadeau(company, code, montant):
+    """Débite une carte cadeau (NTRET15) — JAMAIS en négatif, plusieurs
+    passages possibles jusqu'à épuisement. ``select_for_update`` verrouille
+    la ligne pour empêcher une double-dépense concurrente (deux caisses qui
+    débitent la même carte en même temps)."""
+    from .models import CarteCadeau
+
+    montant = Decimal(str(montant))
+    code = _normaliser_code(code)
+    carte = CarteCadeau.objects.select_for_update().filter(
+        company=company, code=code).first()
+    if carte is None:
+        raise CarteCadeauError('Carte cadeau introuvable.')
+    if not carte.est_utilisable():
+        raise CarteCadeauError(
+            f'Carte cadeau {carte.get_statut_display().lower()} — non utilisable.')
+    if montant > carte.solde:
+        raise CarteCadeauError('Solde insuffisant sur la carte cadeau.')
+
+    carte.solde = carte.solde - montant
+    if carte.solde <= 0:
+        carte.solde = Decimal('0')
+        carte.statut = CarteCadeau.Statut.EPUISEE
+    carte.save(update_fields=['solde', 'statut'])
+    return carte
+
+
+def emettre_carte_cadeau(company, montant_initial, *, code=None, date_expiration=None):
+    """Émet une nouvelle carte cadeau (NTRET15) — le solde de départ =
+    ``montant_initial``. ``code`` : physique (carte pré-imprimée saisie),
+    sinon généré automatiquement (unique, alphanumérique)."""
+    from .models import CarteCadeau
+
+    montant_initial = Decimal(str(montant_initial))
+    if montant_initial <= 0:
+        raise CarteCadeauError('Le montant initial doit être positif.')
+    kwargs = {
+        'company': company, 'montant_initial': montant_initial,
+        'solde': montant_initial, 'date_expiration': date_expiration,
+    }
+    code = _normaliser_code(code)
+    if code:
+        kwargs['code'] = code
+    return CarteCadeau.objects.create(**kwargs)

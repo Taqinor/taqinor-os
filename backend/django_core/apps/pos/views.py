@@ -282,6 +282,60 @@ class VenteComptoirViewSet(viewsets.ModelViewSet):
             'facture': facture.reference,
         }, status=status.HTTP_201_CREATED)
 
+    @action(detail=False, methods=['post'], url_path='emettre-carte-cadeau',
+            permission_classes=[IsResponsableOrAdmin])
+    def emettre_carte_cadeau(self, request):
+        """NTRET15 — Émet une carte cadeau au comptoir (encaissée comme une
+        vente normale, sans ligne de stock)."""
+        company = request.user.company
+        client = None
+        client_id = request.data.get('client')
+        if client_id:
+            from apps.crm.selectors import get_company_client
+            client = get_company_client(company, client_id)
+            if client is None:
+                raise ValidationError({'client': 'Client inconnu.'})
+        try:
+            montant = Decimal(str(request.data.get('montant')))
+        except (InvalidOperation, TypeError):
+            raise ValidationError({'montant': 'Montant invalide.'})
+
+        session_caisse = None
+        session_id = request.data.get('session_caisse')
+        if session_id:
+            session_caisse = SessionCaisse.objects.filter(
+                id=session_id, company=company).first()
+
+        try:
+            carte, facture = services.emettre_carte_cadeau_comptoir(
+                company=company, montant=montant,
+                paiement=request.data.get('paiement') or {}, user=request.user,
+                client=client, session_caisse=session_caisse,
+                code=request.data.get('code'),
+                date_expiration=request.data.get('date_expiration'),
+            )
+        except services.CarteCadeauPosError as exc:
+            raise ValidationError(str(exc))
+        return Response({
+            'code': carte.code,
+            'solde': str(carte.solde),
+            'facture': facture.reference,
+        }, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['post'], url_path='payer-carte-cadeau')
+    def payer_carte_cadeau(self, request, pk=None):
+        """NTRET15 — Vérifie (sans consommer) une carte cadeau comme mode de
+        paiement candidat pour cette vente — aperçu du solde disponible
+        avant de l'inclure dans les ``paiements`` de ``valider/``."""
+        vente = self.get_object()
+        from apps.promotions.services import CarteCadeauError, verifier_carte_cadeau
+        try:
+            carte = verifier_carte_cadeau(
+                vente.company, request.data.get('code'))
+        except CarteCadeauError as exc:
+            raise ValidationError(str(exc))
+        return Response({'code': carte.code, 'solde': str(carte.solde)})
+
     @action(detail=False, methods=['get'], url_path='factures-recherche',
             permission_classes=[IsResponsableOrAdmin])
     def factures_recherche(self, request):
