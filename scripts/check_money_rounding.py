@@ -63,13 +63,13 @@ BASELINE_ALLOWLIST = {
     # +2 avant le bloc retiré, -30 après. MÊMES sites de round() (NPS / ROI /
     # pourcentages), aucune logique déplacée, aucun NOUVEAU site —
     # bug-class #34.
-    "backend/django_core/apps/compta/services.py:9625",
-    "backend/django_core/apps/compta/services.py:7601",
-    "backend/django_core/apps/compta/services.py:7604",
-    "backend/django_core/apps/compta/services.py:12093",
-    "backend/django_core/apps/compta/services.py:12495",
-    "backend/django_core/apps/compta/services.py:8910",
-    "backend/django_core/apps/compta/services.py:8914",
+    "backend/django_core/apps/compta/services.py:9702",
+    "backend/django_core/apps/compta/services.py:7678",
+    "backend/django_core/apps/compta/services.py:7681",
+    "backend/django_core/apps/compta/services.py:12170",
+    "backend/django_core/apps/compta/services.py:12572",
+    "backend/django_core/apps/compta/services.py:8987",
+    "backend/django_core/apps/compta/services.py:8991",
     # XSAL14 (2026-07-16) — builder.py edits shifted existing display-round
     # sites; re-based 1:1 (premium engine, sanctioned rounding).
     "backend/django_core/apps/ventes/quote_engine/builder.py:1285",

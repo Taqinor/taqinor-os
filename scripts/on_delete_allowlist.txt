@@ -41,7 +41,7 @@
 # apps/frais) : les FK pré-existantes de compta/models.py situées APRÈS le
 # bloc déplacé glissent de -607 lignes (626 retirées, 19 de shim insérées) ;
 # les 5 entrées DU bloc (les FK company des 5 modèles) deviennent
-# apps/frais/models.py:74/255/375/438/519.
+# apps/frais/models.py:74/264/384/460/541 (recale NTP2P11).
 # Même jeu de FK, aucun nouveau CASCADE — pur remappage de lignes.
 # Rebased 2026-07-17 (NTDMO CI fix): 2 pre-existing SET_NULL_ON_TENANT_FIELD
 # entries remapped (authentication/models.py CustomUser.company +ventes/models.py
@@ -642,10 +642,10 @@ backend/django_core/apps/flotte/models.py:784
 backend/django_core/apps/flotte/models.py:878
 backend/django_core/apps/flotte/models.py:974
 backend/django_core/apps/fpa/models.py:26
-backend/django_core/apps/frais/models.py:255
-backend/django_core/apps/frais/models.py:375
-backend/django_core/apps/frais/models.py:438
-backend/django_core/apps/frais/models.py:519
+backend/django_core/apps/frais/models.py:264
+backend/django_core/apps/frais/models.py:384
+backend/django_core/apps/frais/models.py:460
+backend/django_core/apps/frais/models.py:541
 backend/django_core/apps/frais/models.py:74
 backend/django_core/apps/ged/models.py:1050
 backend/django_core/apps/ged/models.py:1054

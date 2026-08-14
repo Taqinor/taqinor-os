@@ -1014,6 +1014,8 @@ class NoteFraisSerializer(serializers.ModelSerializer):
             'mode_remboursement', 'compte_tresorerie', 'date_remboursement',
             'rembourse_par', 'ecriture_remboursement', 'date_creation',
             'hors_politique',
+            # NTP2P11 — posés serveur à la soumission, visibles du valideur.
+            'escalade_direction', 'warning_delai',
             'refacturable', 'taux_marge', 'client_refacturation_id',
             'chantier_refacturation', 'facture_refacturation_id',
         ]
@@ -1022,6 +1024,7 @@ class NoteFraisSerializer(serializers.ModelSerializer):
             'ecriture_charge', 'motif_rejet', 'compte_tresorerie',
             'date_remboursement', 'rembourse_par', 'ecriture_remboursement',
             'date_creation', 'hors_politique', 'facture_refacturation_id',
+            'escalade_direction', 'warning_delai',
         ]
 
     def validate_employe(self, value):
@@ -1086,7 +1089,10 @@ class PlafondNoteFraisSerializer(serializers.ModelSerializer):
         model = PlafondNoteFrais
         fields = [
             'id', 'categorie', 'categorie_display', 'montant_max',
-            'seuil_justificatif_obligatoire', 'date_creation',
+            'seuil_justificatif_obligatoire',
+            # NTP2P11 — délai de soumission + escalade direction (optionnels).
+            'jours_max_apres_depense', 'escalade_direction_au_dela_de',
+            'date_creation',
         ]
         read_only_fields = ['date_creation']
 
@@ -1094,6 +1100,12 @@ class PlafondNoteFraisSerializer(serializers.ModelSerializer):
         if value is not None and value < 0:
             raise serializers.ValidationError(
                 "Le plafond ne peut pas être négatif.")
+        return value
+
+    def validate_escalade_direction_au_dela_de(self, value):
+        if value is not None and value < 0:
+            raise serializers.ValidationError(
+                "Le seuil d'escalade ne peut pas être négatif.")
         return value
 
 

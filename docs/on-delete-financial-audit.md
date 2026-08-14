@@ -344,10 +344,10 @@ Généré par `python scripts/check_on_delete.py --financial`. Ce tableau recens
 | `backend/django_core/apps/flotte/models.py:4404` | ZoneGeographique.company | authentication.Company | CASCADE |
 | `backend/django_core/apps/flotte/models.py:4479` | RappelConstructeur.company | authentication.Company | CASCADE |
 | `backend/django_core/apps/frais/models.py:74` | NoteFrais.company | authentication.Company | CASCADE |
-| `backend/django_core/apps/frais/models.py:255` | RapportNoteFrais.company | authentication.Company | CASCADE |
-| `backend/django_core/apps/frais/models.py:375` | PlafondNoteFrais.company | authentication.Company | CASCADE |
-| `backend/django_core/apps/frais/models.py:438` | BaremeIndemnite.company | authentication.Company | CASCADE |
-| `backend/django_core/apps/frais/models.py:519` | IndemniteChantier.company | authentication.Company | CASCADE |
+| `backend/django_core/apps/frais/models.py:264` | RapportNoteFrais.company | authentication.Company | CASCADE |
+| `backend/django_core/apps/frais/models.py:384` | PlafondNoteFrais.company | authentication.Company | CASCADE |
+| `backend/django_core/apps/frais/models.py:460` | BaremeIndemnite.company | authentication.Company | CASCADE |
+| `backend/django_core/apps/frais/models.py:541` | IndemniteChantier.company | authentication.Company | CASCADE |
 | `backend/django_core/apps/ged/models.py:254` | Cabinet.company | authentication.Company | CASCADE |
 | `backend/django_core/apps/ged/models.py:286` | Folder.company | authentication.Company | CASCADE |
 | `backend/django_core/apps/ged/models.py:374` | Coffre.company | authentication.Company | CASCADE |
