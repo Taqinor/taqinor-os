@@ -6,10 +6,13 @@ import unittest
 
 from core.calepinage.optimum import optimiser
 from core.calepinage.politique_pas import (
+    ELEVATION_DIMENSIONNEMENT_DEG,
+    ELEVATION_PLANCHER_DEG,
     Affleurant,
     AlleeFixe,
     AntiOmbrage,
     politique_par_defaut,
+    position_solaire_solstice,
 )
 from core.calepinage.surfaces.rectangle import SurfaceRectangle
 from core.calepinage.types import (
@@ -19,6 +22,7 @@ from core.calepinage.types import (
     Parametres,
     Rives,
 )
+from core.calepinage.version import VERSION_MOTEUR, version_tuple
 
 RIVES_AO = Rives(laterale_m=0.35, extremite_m=0.35)
 
@@ -123,6 +127,104 @@ class AntiOmbrageVilla(unittest.TestCase):
             self.assertGreaterEqual(
                 droite[0] - gauche[0],
                 politique.pas_de_rangee_m(KIT_VILLA_720) - 0.02)
+
+
+class LElevationVientDeLaLatitude(unittest.TestCase):
+    """PV65 — le soleil de dimensionnement est celui du LIEU, s'il est déclaré.
+
+    Le point sensible est le DÉFAUT : sans latitude, l'ombre doit rester
+    identique au bit près, sinon toutes les études villa déjà publiées
+    changeraient de compte sans que personne n'ait touché une toiture.
+    """
+
+    def _alpha_a_la_main(self, latitude_deg, heure=10.0):
+        """La formule réécrite ICI, indépendamment du module testé."""
+        phi = math.radians(latitude_deg)
+        delta = math.radians(-23.44)
+        h = math.radians(15.0 * (heure - 12.0))
+        return math.degrees(math.asin(
+            math.sin(phi) * math.sin(delta)
+            + math.cos(phi) * math.cos(delta) * math.cos(h)))
+
+    def test_sans_latitude_l_elevation_reste_la_constante_historique(self):
+        politique = AntiOmbrage()
+        self.assertIsNone(politique.latitude_deg)
+        self.assertEqual(politique.elevation_effective_deg(),
+                         ELEVATION_DIMENSIONNEMENT_DEG)
+        self.assertEqual(politique.elevation_effective_deg(), 21.0)
+
+    def test_sans_latitude_l_ombre_est_identique_au_bit_pres(self):
+        """Le chemin de non-régression : les golden villa en dépendent."""
+        hauteur = (KIT_VILLA_720.cote_dans_la_pente_m
+                   * math.sin(math.radians(KIT_VILLA_720.inclinaison_deg)))
+        attendu = hauteur / math.tan(math.radians(21.0))
+        self.assertEqual(AntiOmbrage().longueur_ombre_m(KIT_VILLA_720),
+                         attendu)
+
+    def test_la_formule_portee_redonne_les_valeurs_calculees_a_la_main(self):
+        for latitude, attendu in ((30.4, 28.948492), (33.6, 26.210601),
+                                  (35.8, 24.314703)):
+            with self.subTest(latitude=latitude):
+                elevation, _azimut = position_solaire_solstice(latitude)
+                self.assertAlmostEqual(elevation, attendu, places=5)
+                self.assertAlmostEqual(elevation,
+                                       self._alpha_a_la_main(latitude),
+                                       places=9)
+
+    def test_a_midi_solaire_l_elevation_vaut_la_forme_fermee(self):
+        """h = 0 -> α = 90 − |φ − δ| : contrôle indépendant de la formule."""
+        for latitude in (0.0, 30.4, 35.8):
+            with self.subTest(latitude=latitude):
+                elevation, azimut = position_solaire_solstice(latitude, 12.0)
+                self.assertAlmostEqual(elevation,
+                                       90.0 - abs(latitude - (-23.44)),
+                                       places=9)
+                self.assertAlmostEqual(abs(azimut), 0.0, places=9)
+
+    def test_agadir_recoit_un_soleil_plus_haut_que_tanger(self):
+        agadir = AntiOmbrage(latitude_deg=30.4)
+        tanger = AntiOmbrage(latitude_deg=35.8)
+        self.assertGreater(agadir.elevation_effective_deg(),
+                           tanger.elevation_effective_deg())
+        # soleil plus haut -> ombre plus courte -> rangées plus serrées
+        self.assertLess(agadir.longueur_ombre_m(KIT_VILLA_720),
+                        tanger.longueur_ombre_m(KIT_VILLA_720))
+        self.assertLess(agadir.pas_de_rangee_m(KIT_VILLA_720),
+                        tanger.pas_de_rangee_m(KIT_VILLA_720))
+
+    def test_le_plancher_de_5_degres_protege_des_latitudes_extremes(self):
+        """Sans plancher, tan(α) tendrait vers 0 et le pas vers l'infini."""
+        polaire = AntiOmbrage(latitude_deg=80.0)
+        self.assertEqual(polaire.elevation_effective_deg(),
+                         ELEVATION_PLANCHER_DEG)
+        self.assertLess(polaire.pas_de_rangee_m(KIT_VILLA_720), 10.0)
+
+    def test_une_latitude_ou_une_heure_hors_bornes_est_refusee(self):
+        with self.assertRaises(ValueError):
+            AntiOmbrage(latitude_deg=120.0)
+        with self.assertRaises(ValueError):
+            AntiOmbrage(latitude_deg=-91.0)
+        with self.assertRaises(ValueError):
+            AntiOmbrage(heure_solaire=25.0)
+
+    def test_le_dp_villa_serre_les_rangees_quand_la_latitude_est_donnee(self):
+        surface = SurfaceRectangle(repere="VILLA", longueur_m=14.0,
+                                   largeur_m=20.0,
+                                   rives=Rives(laterale_m=0.50,
+                                               extremite_m=0.50),
+                                   axe_rangee=Axe.EST_OUEST)
+        parametres = Parametres(kits=(KIT_VILLA_720,),
+                                rives=Rives(laterale_m=0.50, extremite_m=0.50),
+                                axe_rangee=Axe.EST_OUEST, pas_recherche_m=0.01)
+        national = optimiser(surface, parametres, politique=AntiOmbrage())
+        agadir = optimiser(surface, parametres,
+                           politique=AntiOmbrage(latitude_deg=30.4))
+        self.assertGreaterEqual(len(agadir.rangees), len(national.rangees))
+        self.assertGreaterEqual(agadir.modules, national.modules)
+
+    def test_le_majeur_du_moteur_a_ete_incremente(self):
+        """Un compte publiable peut changer à toiture identique : MAJEUR."""
+        self.assertGreaterEqual(version_tuple(VERSION_MOTEUR)[0], 2)
 
 
 class AffleurantEnPente(unittest.TestCase):

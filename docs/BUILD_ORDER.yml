@@ -446,6 +446,11 @@ unmapped_ok:
   # 5 trajets quotidiens au budget de clics + undo/dictée/gardes, frontend
   # (2 SCHEMA additifs), hors ordonnancement de vagues.
   - EZ
+  # PV/PVG — Toiture 3D + calepinage direction PVsyst (Groupe PV de PLAN2,
+  # fondateur 2026-08-14) : câblage de moteurs déjà livrés (calepinage, solar_design,
+  # SLD) + noyau core/electrique pur — aucun prérequis de vague noyau -> floods.
+  - PV
+  - PVG
   # VAO — Veille appels d'offres (Groupe VAO de PLAN2, fondateur 2026-08-01) :
   # app satellite NEUVE apps/veille_ao (collecte des avis publics + porte
   # manuelle), ne compose que des primitives plateforme livrées à 100 % et

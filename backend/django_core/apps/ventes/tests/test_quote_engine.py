@@ -2589,3 +2589,166 @@ class TestNoInventedNumberGuard(TestCase):
         self.assertLessEqual(roi["eco_a_ann"], max_possible)
         # And they should reflect only the self-consumed share
         self.assertEqual(roi["eco_a_ann"], round(prod * AUTOCONSO_AVEC * 1.75))
+
+
+# ── PV11 : la fiche technique prime sur la regex pour le wattage panneau ──────
+class TestPanelWattFromFicheTechnique(TestCase):
+    """PV11 — ordre de résolution : fiche technique (Pmax réel) > regex
+    désignation/nom > repli catalogue.
+
+    RÈGLE #4 : le moteur ne fait que RENDRE. Les tests ci-dessous vérifient donc
+    aussi que rien d'autre ne bouge — nombre de pages et totaux identiques avec
+    et sans fiche.
+    """
+
+    LINES = [
+        ('Panneau Canadien Solar 710W', '10', '1400'),
+        ('Onduleur réseau 8kW', '1', '14000'),
+    ]
+
+    def setUp(self):
+        self.company = make_company()
+        self.user = make_user(self.company)
+        self.client_obj = make_client(self.company)
+
+    def _devis(self, reference):
+        return make_devis(self.company, self.user, self.client_obj,
+                          self.LINES, reference=reference)
+
+    def _panneau(self, devis):
+        return devis.lignes.get(
+            designation='Panneau Canadien Solar 710W').produit
+
+    def _fiche(self, produit, **kwargs):
+        from apps.stock.models import FicheTechnique
+        return FicheTechnique.objects.create(
+            company=self.company, produit=produit, **kwargs)
+
+    # ── Fiche présente : sa puissance EXACTE est utilisée ──
+    def test_fiche_pmax_wins_over_designation_regex(self):
+        from apps.ventes.quote_engine import build_quote_data
+        from apps.stock.models import FicheTechnique
+        devis = self._devis('DEV-PV11-FICHE')
+        # La désignation dit 710 W, la fiche constructeur dit 705 Wc : c'est la
+        # FICHE qui fait foi.
+        self._fiche(self._panneau(devis),
+                    type_fiche=FicheTechnique.TypeFiche.MODULE,
+                    pmax_wc=Decimal('705.00'))
+        data = build_quote_data(devis)
+        self.assertEqual(data['watt_par_panneau'], 705)
+        self.assertEqual(data['nb_panneaux'], 10)
+        self.assertEqual(data['puissance_kwc'], 7.05)
+
+    def test_fiche_pmax_used_when_designation_has_no_wattage(self):
+        """Désignation illisible + fiche → la vraie puissance, pas le repli."""
+        from apps.ventes.quote_engine import build_quote_data
+        from apps.ventes.quote_engine.builder import _DEFAULT_WATT
+        from apps.stock.models import FicheTechnique
+        devis = make_devis(self.company, self.user, self.client_obj, [
+            ('Panneau photovoltaïque monocristallin', '12', '1400'),
+            ('Onduleur réseau 8kW', '1', '14000'),
+        ], reference='DEV-PV11-NOWATT')
+        produit = devis.lignes.get(
+            designation='Panneau photovoltaïque monocristallin').produit
+        self._fiche(produit, type_fiche=FicheTechnique.TypeFiche.MODULE,
+                    pmax_wc=Decimal('580.00'))
+        data = build_quote_data(devis)
+        self.assertEqual(data['watt_par_panneau'], 580)
+        self.assertNotEqual(data['watt_par_panneau'], _DEFAULT_WATT)
+
+    def test_legacy_fiche_without_type_still_counts(self):
+        """Une fiche ANTÉRIEURE à PV5 (``type_fiche`` vide) porte déjà un Pmax
+        de panneau : elle reste exploitée."""
+        from apps.ventes.quote_engine import build_quote_data
+        devis = self._devis('DEV-PV11-LEGACY')
+        self._fiche(self._panneau(devis), pmax_wc=Decimal('665.00'))
+        data = build_quote_data(devis)
+        self.assertEqual(data['watt_par_panneau'], 665)
+
+    # ── Fiche absente / inexploitable : chemin regex STRICTEMENT inchangé ──
+    def test_without_fiche_regex_path_is_unchanged(self):
+        from apps.ventes.quote_engine import build_quote_data
+        devis = self._devis('DEV-PV11-SANS')
+        data = build_quote_data(devis)
+        self.assertEqual(data['watt_par_panneau'], 710)  # lu dans « 710W »
+        self.assertEqual(data['puissance_kwc'], 7.1)
+
+    def test_fiche_without_pmax_falls_back_to_regex(self):
+        from apps.ventes.quote_engine import build_quote_data
+        from apps.stock.models import FicheTechnique
+        devis = self._devis('DEV-PV11-NOPMAX')
+        self._fiche(self._panneau(devis),
+                    type_fiche=FicheTechnique.TypeFiche.MODULE,
+                    voc_v=Decimal('48.00'))  # aucun pmax_wc
+        data = build_quote_data(devis)
+        self.assertEqual(data['watt_par_panneau'], 710)
+
+    def test_non_module_fiche_is_ignored(self):
+        """Un Pmax saisi par erreur sur une fiche onduleur/batterie ne dicte
+        JAMAIS la puissance d'un panneau."""
+        from apps.ventes.quote_engine import build_quote_data
+        from apps.stock.models import FicheTechnique
+        devis = self._devis('DEV-PV11-ONDFICHE')
+        self._fiche(self._panneau(devis),
+                    type_fiche=FicheTechnique.TypeFiche.ONDULEUR,
+                    pmax_wc=Decimal('12000.00'))
+        data = build_quote_data(devis)
+        self.assertEqual(data['watt_par_panneau'], 710)
+
+    def test_zero_pmax_falls_back_to_regex(self):
+        from apps.ventes.quote_engine import build_quote_data
+        from apps.stock.models import FicheTechnique
+        devis = self._devis('DEV-PV11-ZERO')
+        self._fiche(self._panneau(devis),
+                    type_fiche=FicheTechnique.TypeFiche.MODULE,
+                    pmax_wc=Decimal('0.00'))
+        data = build_quote_data(devis)
+        self.assertEqual(data['watt_par_panneau'], 710)
+
+    # ── RÈGLE #4 : ni les totaux ni le nombre de pages ne bougent ──
+    def test_totals_identical_with_and_without_fiche(self):
+        from apps.ventes.quote_engine import build_quote_data
+        from apps.stock.models import FicheTechnique
+        sans = build_quote_data(self._devis('DEV-PV11-T1'))
+        devis = self._devis('DEV-PV11-T2')
+        self._fiche(self._panneau(devis),
+                    type_fiche=FicheTechnique.TypeFiche.MODULE,
+                    pmax_wc=Decimal('705.00'))
+        avec = build_quote_data(devis)
+        for key in ('totaux_sans', 'totaux_avec', 'totaux_all'):
+            self.assertEqual(avec[key], sans[key], key)
+        # Seule la puissance change — c'est bien le seul effet de PV11.
+        self.assertNotEqual(avec['watt_par_panneau'],
+                            sans['watt_par_panneau'])
+
+    def test_page_counts_unchanged_with_fiche(self):
+        from weasyprint import HTML
+        from apps.stock.models import FicheTechnique
+        from apps.ventes.quote_engine.builder import build_quote_data
+        from apps.ventes.quote_engine import generate_devis_premium as G
+
+        # MÊME fixture golden que les garde-fous de pagination existants.
+        devis = make_devis(self.company, self.user, self.client_obj,
+                           TestPdfFormats.FULL_LINES, reference='DEV-PV11-PDF')
+        produit = devis.lignes.get(designation='Panneau mono 550W').produit
+        FicheTechnique.objects.create(
+            company=self.company, produit=produit,
+            type_fiche=FicheTechnique.TypeFiche.MODULE,
+            pmax_wc=Decimal('545.00'))
+
+        def _render(pdf_options=None):
+            data = build_quote_data(devis, pdf_options)
+            cap = {}
+            orig = G._render_pdf_weasyprint
+            G._render_pdf_weasyprint = lambda html, out: cap.update(html=html)
+            try:
+                G.generate_premium_pdf(data, '/tmp/_pv11_test.pdf')
+            finally:
+                G._render_pdf_weasyprint = orig
+            return data, HTML(string=cap['html']).render()
+
+        data, doc = _render()
+        self.assertEqual(len(doc.pages), 3)
+        self.assertEqual(data['watt_par_panneau'], 545)
+        _, doc_one = _render({'pdf_mode': 'onepage'})
+        self.assertEqual(len(doc_one.pages), 1)
