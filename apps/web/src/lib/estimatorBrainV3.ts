@@ -40,11 +40,12 @@
  * JAMAIS un devis : une fourchette indicative. Voir apps/web/BRAIN_V3_NOTES.md.
  */
 import { geodesicAreaM2, geodesicPerimeterM, pointInPolygon, type LngLat } from './roof';
-import { PANEL2_LONG_M, PANEL2_SHORT_M, PERIMETER_SETBACK_M } from './roofPro2';
+import { PANEL2_LONG_M, PANEL2_SHORT_M, PERIMETER_SETBACK_M, resolveSetbacks, type PerimeterSetbacks } from './roofPro2';
 import {
   PANEL2_WATT,
   REGIE_TARIFF,
   type ConfigFamily,
+  type ObstacleRule,
   type TariffGrid,
   aspectForAzimuth,
   annualSavingsMad,
@@ -442,6 +443,10 @@ export interface RoofPlane {
   /** Azimut de la face / sens de la pente descendante (0=N, 90=E, 180=S, 270=O). */
   facingAzimuthDeg: number;
   obstructions?: LngLat[][];
+  /** PV61 — dégagement (m) par obstruction, même ordre que `obstructions`. Absent → uniforme. */
+  obstructionClearancesM?: number[];
+  /** PV63 — retraits de rive séparés portés par le pan (latéral / extrémité / acrotère). */
+  setbacksM?: Partial<PerimeterSetbacks>;
 }
 
 export interface FlushGrid {
@@ -531,10 +536,12 @@ function packFlushCells(
   ringENU: [number, number][],
   obstructionsENU: [number, number][][],
   azimuthDeg: number,
-  setbackM: number,
+  setbacks: PerimeterSetbacks,
   p: FlushCellParams,
   clearanceM: number,
   overhangM = 0,
+  obstacleRule: ObstacleRule = 'footprint',
+  clearancesM?: number[],
 ): { cx: number; cy: number }[] {
   if (ringENU.length < 3) return [];
   const azRad = azimuthDeg * DEG2RAD;
@@ -565,32 +572,48 @@ function packFlushCells(
   if (rows <= 0 || cols <= 0 || (rows + 1) * (cols + 1) > MAX_CELLS) return [];
 
   const toENU = (uu: number, vv: number): [number, number] => [uu * u[0] + vv * s[0], uu * u[1] + vv * s[1]];
-  const inObstruction = (c: [number, number]): boolean =>
-    obstructionsENU.some((o) => pointInPolygon(c, o) || distToBoundary(c, o) <= clearanceM);
+  // PV60 — l'empreinte COMPLÈTE du panneau (ses 4 coins + son centre) est sondée contre
+  // l'obstacle et son dégagement : un panneau à moitié dans la cheminée ne se pose plus.
+  // `center` = ancienne règle (centre seul), gardée pour le diff de comptage des tests.
+  // PV61 — dégagement PAR obstruction (tableau parallèle) ; entrée absente/aberrante →
+  // dégagement uniforme `clearanceM` (comportement historique).
+  const clearanceAt = (i: number): number => {
+    const v = clearancesM?.[i];
+    return typeof v === 'number' && Number.isFinite(v) && v >= 0 ? v : clearanceM;
+  };
+  const hitsObstruction = (probe: [number, number][]): boolean =>
+    obstructionsENU.some((o, i) => {
+      const cl = clearanceAt(i);
+      return probe.some((c) => pointInPolygon(c, o) || distToBoundary(c, o) <= cl);
+    });
   // W108 — distance SIGNÉE au bord (+ dedans, − dehors) : un coin tient s'il est à
   // au moins `setbackM` à l'intérieur OU déborde d'au plus `overhangM`. overhangM=0
   // → équivaut exactement à l'ancienne règle (dedans/pile-rive ET retrait).
+  // PV63 — acrotère = distance minimale à toute rive (chaque coin) ; latéral/extrémité
+  // décalent le départ du balayage. Trois valeurs égales → comportement historique.
   const cellInside = (corners: [number, number][]): boolean =>
     corners.every((c) => {
       const d = distToBoundary(c, ringENU);
       const sd = pointInPolygon(c, ringENU) ? d : -d;
-      return sd >= setbackM - overhangM - EDGE_EPS_M;
+      return sd >= setbacks.parapetM - overhangM - EDGE_EPS_M;
     });
 
-  const vStart = vMin + setbackM - ohRows * p.rowPitchM;
-  const uStart = uMin + setbackM - ohCols * colPitch;
+  const vStart = vMin + setbacks.extremityM - ohRows * p.rowPitchM;
+  const uStart = uMin + setbacks.lateralM - ohCols * colPitch;
   const panels: { cx: number; cy: number }[] = [];
   for (let r = 0; r < rows; r++) {
     const v0 = vStart + r * p.rowPitchM;
     const v1 = v0 + p.panelPlanDepthM;
-    if (v1 > vMax - setbackM + overhangM + EDGE_EPS_M) break;
+    if (v1 > vMax - setbacks.extremityM + overhangM + EDGE_EPS_M) break;
     for (let c = 0; c < cols; c++) {
       const u0 = uStart + c * colPitch;
       const u1 = u0 + p.rowWidthM;
       const corners: [number, number][] = [toENU(u0, v0), toENU(u1, v0), toENU(u1, v1), toENU(u0, v1)];
       if (!cellInside(corners)) continue;
       const center = toENU(u0 + p.rowWidthM / 2, v0 + p.panelPlanDepthM / 2);
-      if (inObstruction(center)) continue;
+      // PV60 — la cellule EST l'empreinte du panneau en pose affleurante : on sonde ses
+      // 4 coins + son centre (règle `footprint`), ou le centre seul (règle `center`).
+      if (hitsObstruction(obstacleRule === 'center' ? [center] : [...corners, center])) continue;
       panels.push({ cx: center[0], cy: center[1] });
     }
   }
@@ -601,13 +624,27 @@ function packFlushCells(
  * Pave UN pan en pente, en portrait ET paysage, garde le meilleur. L'inclinaison =
  * la pente du pan, l'azimut = la face du pan — imposés, jamais balayés.
  */
-export function packFlushPlane(plane: RoofPlane, opts: { setbackM?: number; clearanceM?: number; overhangM?: number } = {}): FlushPack {
+export function packFlushPlane(
+  plane: RoofPlane,
+  opts: {
+    setbackM?: number;
+    clearanceM?: number;
+    overhangM?: number;
+    obstacleRule?: ObstacleRule;
+    /** PV61 — dégagement (m) par obstruction, même ordre que `plane.obstructions`. */
+    obstructionClearancesM?: number[];
+    /** PV63 — retraits séparés (latéral / extrémité / acrotère) ; absent → `setbackM`. */
+    setbacksM?: Partial<PerimeterSetbacks>;
+  } = {},
+): FlushPack {
   const { ring, pitchDeg, facingAzimuthDeg } = plane;
   const areaM2 = geodesicAreaM2(ring);
   const setbackM = opts.setbackM ?? PERIMETER_SETBACK_M;
   const clearanceM = opts.clearanceM ?? OBSTACLE_CLEARANCE_M;
   // W108 — débord autorisé des panneaux au-delà de la rive (rails sur le toit).
   const overhangM = Math.max(0, opts.overhangM ?? 0);
+  const obstacleRule: ObstacleRule = opts.obstacleRule ?? 'footprint'; // PV60
+  const setbacks = resolveSetbacks(opts.setbacksM ?? plane.setbacksM, setbackM); // PV63
   const beta = pitchDeg * DEG2RAD;
   const obstructions = plane.obstructions ?? [];
   // W108 — borne « Σ empreintes ≤ utile » élargie de l'anneau de débord (Minkowski).
@@ -619,7 +656,10 @@ export function packFlushPlane(plane: RoofPlane, opts: { setbackM?: number; clea
   const buildGrid = (orientation: AxisOrient, slopeLenM: number, rowWidthM: number, ringENU: [number, number][], obsENU: [number, number][][]): FlushGrid => {
     const panelPlanDepthM = slopeLenM * Math.cos(beta);
     const rowPitchM = panelPlanDepthM + FLUSH_MAINTENANCE_GAP_M;
-    const panels = packFlushCells(ringENU, obsENU, facingAzimuthDeg, setbackM, { panelPlanDepthM, rowPitchM, rowWidthM }, clearanceM, overhangM);
+    // PV61 — dégagement par obstruction : l'option explicite l'emporte, sinon celui porté
+    // par le pan lui-même (`plane.obstructionClearancesM`), sinon uniforme.
+    const clearancesM = opts.obstructionClearancesM ?? plane.obstructionClearancesM;
+    const panels = packFlushCells(ringENU, obsENU, facingAzimuthDeg, setbacks, { panelPlanDepthM, rowPitchM, rowWidthM }, clearanceM, overhangM, obstacleRule, clearancesM);
     return {
       orientation,
       count: panels.length,

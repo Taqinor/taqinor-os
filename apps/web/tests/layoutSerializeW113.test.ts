@@ -71,7 +71,8 @@ describe('W113 — serializeLayout / deserializeLayout (round-trip identité)', 
     const ctx = makeCtx([z1, z2], 'area-1');
     const layout = serializeLayout(ctx, 9000);
 
-    expect(layout.version).toBe(1);
+    // PV13 — le layout est passé en v2 (ajouts additifs) ; tous les champs v1 restent là.
+    expect(layout.version).toBe(2);
     expect(layout.billKwh).toBe(9000);
     expect(layout.zones.length).toBe(2);
     expect(layout.activeAreaId).toBe('area-1');

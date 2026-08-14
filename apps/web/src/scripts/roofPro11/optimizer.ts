@@ -40,7 +40,7 @@ import {
   type PanelGrid,
   type ConfigFamily,
 } from '../../lib/estimatorBrainV2';
-import { PERIMETER_SETBACK_M, PANEL2_LONG_M, PANEL2_SHORT_M } from '../../lib/roofPro2';
+import { PERIMETER_SETBACK_M, PANEL2_LONG_M, PANEL2_SHORT_M, uniformSetbacks, type PerimeterSetbacks } from '../../lib/roofPro2';
 import {
   recommendPitched,
   type FlushPack,
@@ -53,6 +53,8 @@ import {
   pvgisCoarsePairs,
   pvgisMatrixCandidatePairs,
   pvgisRefinePairs,
+  type MatrixEvalV6,
+  type MatrixV6Result,
 } from '../../lib/estimatorBrainV6';
 import {
   solveLive,
@@ -71,6 +73,105 @@ import { type LngLat } from '../../lib/roof';
 import { $, fmt, fmtMad } from './dom';
 import { type CardData, type RenderConfigOpts } from './types';
 import { type Ctx } from './context';
+
+// ═══════════ PV64 — TROIS VARIANTES LISIBLES DU BALAYAGE DÉJÀ CALCULÉ ═══════════
+// Le balayage V6 (`fineGridMatrixV6`) évalue déjà des centaines de configurations, mais
+// le tableau complet est illisible sur un téléphone. On en EXTRAIT trois points
+// REPRÉSENTATIFS, sans RIEN recalculer (couche d'affichage + sélection pure) :
+//  1. la densité maximale plein sud (le plus de panneaux posés en famille « sud ») ;
+//  2. la meilleure « tente » Est-Ouest dos à dos ;
+//  3. le meilleur azimut ALIGNÉ sur les arêtes du toit.
+// Cliquer une carte ne fait que poser les VERROUS d'axes correspondants et relancer le
+// solveur vivant existant — aucun second moteur, aucun chiffre inventé.
+
+export type VariantCardId = 'south-max' | 'eastwest' | 'aligned';
+
+export interface VariantCard {
+  id: VariantCardId;
+  /** Libellé FR de la carte. */
+  title: string;
+  /** Pourquoi cette variante existe (une phrase). */
+  reason: string;
+  count: number;
+  kwc: number;
+  annualKwh: number;
+  /** La ligne du balayage dont la carte est le reflet (source des verrous au clic). */
+  row: MatrixEvalV6;
+}
+
+const VARIANT_TITLES: Record<VariantCardId, string> = {
+  'south-max': 'Densité maximale (plein sud)',
+  eastwest: 'Est-Ouest dos à dos',
+  aligned: 'Aligné sur le toit',
+};
+
+/** Clé d'identité d'une ligne de balayage (dédoublonnage des cartes). */
+function variantRowKey(r: MatrixEvalV6): string {
+  return `${r.family}|${r.tiltDeg}|${Math.round(r.azimuthDeg * 10)}|${r.orientation}|${r.margin}`;
+}
+
+/**
+ * PV64 — extrait jusqu'à 3 variantes représentatives du balayage V6 DÉJÀ calculé.
+ * PURE : ne pave rien, ne résout rien, ne touche pas au DOM. Une catégorie sans ligne
+ * (pas d'Est-Ouest évalué, toit déjà plein sud donc pas d'axe « aligné ») est simplement
+ * ABSENTE — on n'invente pas une carte pour remplir la grille. Deux catégories qui
+ * pointent la MÊME configuration n'en produisent qu'une (la première dans l'ordre).
+ */
+export function pickVariantCards(result: MatrixV6Result | null | undefined): VariantCard[] {
+  const rows = result?.rows;
+  if (!Array.isArray(rows) || rows.length === 0) return [];
+  /** Meilleure ligne d'un sous-ensemble selon un score, départage par énergie annuelle. */
+  const pick = (filter: (r: MatrixEvalV6) => boolean, score: (r: MatrixEvalV6) => number): MatrixEvalV6 | null => {
+    let best: MatrixEvalV6 | null = null;
+    let bestScore = -Infinity;
+    for (const r of rows) {
+      if (!filter(r)) continue;
+      const sc = score(r);
+      if (sc > bestScore || (sc === bestScore && best !== null && r.annualKwh > best.annualKwh)) {
+        best = r;
+        bestScore = sc;
+      }
+    }
+    return best;
+  };
+  const candidates: { id: VariantCardId; row: MatrixEvalV6 | null; reason: (r: MatrixEvalV6) => string }[] = [
+    {
+      id: 'south-max',
+      // Densité = le plus de panneaux qui TIENNENT (fitCount, pas le nombre posé : celui-ci
+      // est plafonné au besoin et ne dirait rien de la densité). À égalité, le plus productif.
+      row: pick((r) => r.family === 'south', (r) => r.fitCount),
+      reason: (r) => `La plus dense en plein sud : ${r.fitCount} panneaux tiennent à ${r.tiltDeg}°, ${r.layoutLabel}.`,
+    },
+    {
+      id: 'eastwest',
+      row: pick((r) => r.family === 'eastwest', (r) => r.annualKwh),
+      reason: (r) => `Tente Est-Ouest à ${r.tiltDeg}° : ${r.placedCount} panneaux, la densité sans rangées espacées.`,
+    },
+    {
+      id: 'aligned',
+      row: pick((r) => r.azimuthAxis === 'aligned', (r) => r.annualKwh),
+      reason: (r) => `Rangées alignées sur les arêtes du toit (${Math.round(r.azimuthDeg)}°) : ${r.placedCount} panneaux.`,
+    },
+  ];
+  const seen = new Set<string>();
+  const cards: VariantCard[] = [];
+  for (const c of candidates) {
+    if (!c.row) continue;
+    const key = variantRowKey(c.row);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    cards.push({
+      id: c.id,
+      title: VARIANT_TITLES[c.id],
+      reason: c.reason(c.row),
+      count: c.row.placedCount,
+      kwc: c.row.kwc,
+      annualKwh: c.row.annualKwh,
+      row: c.row,
+    });
+  }
+  return cards;
+}
 
 /** Dépendances injectées (rendu 3D + matrice + fenêtres + entrée). Les fonctions
  *  déclarées plus tard dans l'entrée sont passées en wrappers paresseux pour éviter
@@ -102,6 +203,12 @@ export interface OptimizerDeps {
   monthlyBill: () => number;
   /** Anneaux lng/lat des obstacles (zones d'exclusion) — entrée. */
   obstructionRings: () => LngLat[][];
+  /** PV61 — dégagement (m) de CHAQUE obstacle selon son type, même ordre que
+   *  `obstructionRings()`. Optionnel : absent → dégagement uniforme (historique). */
+  obstructionClearances?: () => number[];
+  /** PV63 — retraits de rive SAISIS (latéral / extrémité / acrotère) quand la marge est
+   *  gardée — entrée. Optionnel : absent → retrait unique PERIMETER_SETBACK_M. */
+  setbacksOf?: () => PerimeterSetbacks;
   /** Affiche un message dans le bandeau de statut — entrée. */
   setStatus: (msg: string) => void;
 }
@@ -142,6 +249,13 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
     obstructionRings,
     setStatus,
   } = deps;
+  /** PV61 — dégagements par obstacle (type) ; dépendance absente → uniforme. */
+  const obstructionClearances = (): number[] | undefined => deps.obstructionClearances?.();
+  /** PV63 — retraits saisis quand la marge est GARDÉE ; absent → retrait unique. */
+  const keepSetbacks = (): PerimeterSetbacks | undefined => deps.setbacksOf?.();
+  /** PV63 — retraits effectifs d'une marge donnée : pleine rive = zéro partout. */
+  const setbacksForMargin = (margin: 'keep' | 'remove'): PerimeterSetbacks | undefined =>
+    margin === 'keep' ? keepSetbacks() : uniformSetbacks(0);
 
   // — DOM propre à l'optimiseur (mêmes nœuds que l'entrée ; getElementById idempotent) —
   const needInputEl = $<HTMLInputElement>('rp9-need-input');
@@ -335,10 +449,13 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
       tiltDeg: w.tiltDeg,
       azimuthDeg: w.azimuthDeg,
       obstructions: obstructionRings(),
+      obstructionClearancesM: obstructionClearances(), // PV61 — dégagement par type
+      setbacksM: setbacksForMargin(w.margin), // PV63 — latéral / extrémité / acrotère
       setbackM,
       overhangM: ctx.overhangM, // W109 — le gagnant rendu déborde comme le solve l'a évalué
     });
-    const grid = w.layout === 'portrait' ? pack.portrait : pack.landscape;
+    // PV62 — pose MIXTE : grille dédiée du pack (repli meilleur uniforme si le mixte perd).
+    const grid = w.layout === 'mixed' ? pack.mixed ?? pack.best : w.layout === 'portrait' ? pack.portrait : pack.landscape;
     renderScene(pack, grid, w.tiltDeg, w.family, w.placedCount);
     // W94 — écrête la production AFFICHÉE au plafond AC de l'onduleur (le solveur V7
     // calcule le kWh DC brut sans clip) : un Sud est inchangé (ratio = design), une
@@ -394,7 +511,12 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
       const v = ctx.v4YieldCache.get(v4Key(tiltDeg, aspect));
       return v == null ? null : v;
     };
-    const res = solveLive(ring, ctx.centroidLat, bill, obstructionRings(), locks, { yieldFn, overhangM: ctx.overhangM });
+    const res = solveLive(ring, ctx.centroidLat, bill, obstructionRings(), locks, {
+      yieldFn,
+      overhangM: ctx.overhangM,
+      obstructionClearancesM: obstructionClearances(), // PV61
+      setbacksM: keepSetbacks(), // PV63
+    });
     ctx.liveResult = res;
     if (ctx.neededAuto) ctx.neededPanels = res.neededPanels > 0 ? clampNeeded(res.neededPanels) : 0;
     const hasLocks = !!(locks.orientation || locks.tiltDeg != null || locks.layout || locks.margin || locks.need != null);
@@ -514,6 +636,94 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
       cta.hidden = false;
       cta.onclick = () => prefillLead(d);
     }
+  }
+
+  // ── PV64 — rendu + sélection des trois cartes de variante ────────────────────
+  /** Conteneur des cartes, créé sous le bloc résultat si la page ne le fournit pas. */
+  function variantsHost(): HTMLElement | null {
+    const existing = $('rp9-variants');
+    if (existing) return existing;
+    const results = $('rp9-results');
+    if (!results || typeof document.createElement !== 'function') return null;
+    const host = document.createElement('div');
+    host.id = 'rp9-variants';
+    host.className = 'rp9-variants';
+    results.appendChild(host);
+    return host;
+  }
+
+  /** La carte `c` correspond-elle à la configuration actuellement affichée ? */
+  function variantIsCurrent(c: VariantCard): boolean {
+    const w = ctx.liveResult?.winner;
+    if (!w) return false;
+    const azAxis = w.orientation === 'aligned' ? 'aligned' : 'south';
+    return (
+      w.family === c.row.family &&
+      Math.round(w.tiltDeg) === Math.round(c.row.tiltDeg) &&
+      w.layout === c.row.orientation &&
+      w.margin === c.row.margin &&
+      azAxis === (c.row.azimuthAxis === 'aligned' ? 'aligned' : 'south')
+    );
+  }
+
+  /**
+   * PV64 — peint les trois cartes (compte / kWc / kWh) issues du balayage DÉJÀ calculé.
+   * Aucun nouveau solve : c'est de l'affichage. Un clic VERROUILLE les axes de la carte
+   * et relance le solveur vivant existant (même chemin qu'un clic sur une puce).
+   */
+  function renderVariantCards() {
+    const host = variantsHost();
+    if (!host) return;
+    const cards = pickVariantCards(ctx.matrixResult);
+    if (!cards.length || ctx.roofType !== 'flat') {
+      host.innerHTML = '';
+      host.hidden = true;
+      return;
+    }
+    host.hidden = false;
+    host.innerHTML = '';
+    for (const c of cards) {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'rp9-variant';
+      btn.dataset.variant = c.id;
+      btn.setAttribute('aria-pressed', String(variantIsCurrent(c)));
+      btn.title = c.reason;
+      const title = document.createElement('strong');
+      title.textContent = c.title;
+      const figures = document.createElement('span');
+      figures.className = 'rp9-variant-figures';
+      figures.textContent = `${fmt(c.count)} panneaux · ${c.kwc.toLocaleString('fr-FR', { maximumFractionDigits: 1 })} kWc · ${fmt(Math.round(c.annualKwh))} kWh/an`;
+      const why = document.createElement('span');
+      why.className = 'rp9-variant-why';
+      why.textContent = c.reason;
+      btn.append(title, figures, why);
+      btn.addEventListener('click', () => applyVariant(c));
+      host.appendChild(btn);
+    }
+  }
+
+  /**
+   * PV64 — applique une carte : ses axes deviennent des VERROUS (comme si l'utilisateur
+   * avait cliqué chaque puce), puis le solveur vivant re-résout et re-rend. Aucune
+   * nouvelle physique n'est calculée ici.
+   */
+  function applyVariant(c: VariantCard) {
+    ctx.sel = {
+      family: c.row.family,
+      tilt: c.row.tiltDeg,
+      orient: c.row.orientation,
+      azimuth: c.row.azimuthAxis === 'aligned' ? 'aligned' : 'south',
+      margin: c.row.margin,
+    };
+    ctx.pinned.add('family');
+    ctx.pinned.add('tilt');
+    ctx.pinned.add('orient');
+    ctx.pinned.add('azimuth');
+    ctx.pinned.add('margin');
+    ctx.useRecommended = false;
+    liveResolveFlat();
+    renderVariantCards(); // reflète la carte désormais sélectionnée
   }
 
   function paintMaxLine() {
@@ -644,7 +854,12 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
       const v = ctx.pitchedYieldCache.get(pitchedKey(pitch, facing));
       return v == null ? null : v;
     };
-    const res = solveLivePitched(ring, ctx.centroidLat, bill, ctx.pitchDeg, ctx.facingAzimuthDeg, obstructionRings(), locks, { yieldFn, overhangM: ctx.overhangM });
+    const res = solveLivePitched(ring, ctx.centroidLat, bill, ctx.pitchDeg, ctx.facingAzimuthDeg, obstructionRings(), locks, {
+      yieldFn,
+      overhangM: ctx.overhangM,
+      obstructionClearancesM: obstructionClearances(), // PV61
+      setbacksM: keepSetbacks(), // PV63
+    });
     ctx.pitchedLiveResult = res;
     if (ctx.neededAuto) ctx.neededPanels = res.neededPanels > 0 ? clampNeeded(res.neededPanels) : 0;
     const hasLocks = !!(locks.layout || locks.margin || locks.need != null);
@@ -800,7 +1015,14 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
   function pitchedRecompute() {
     if (!ctx.closed || ctx.vertices.length < 3) return;
     const ring: LngLat[] = [...ctx.vertices];
-    const plane: RoofPlane = { ring, pitchDeg: ctx.pitchDeg, facingAzimuthDeg: ctx.facingAzimuthDeg, obstructions: obstructionRings() };
+    const plane: RoofPlane = {
+      ring,
+      pitchDeg: ctx.pitchDeg,
+      facingAzimuthDeg: ctx.facingAzimuthDeg,
+      obstructions: obstructionRings(),
+      obstructionClearancesM: obstructionClearances(), // PV61
+      setbacksM: keepSetbacks(), // PV63
+    };
     ctx.pitchedRec = recommendPitched([plane], ctx.centroidLat, monthlyBill());
     ctx.pitchedPvgisPerKwc = null; // nouvelle config → chiffre PVGIS obsolète (repli table)
     if (ctx.neededAuto) {
@@ -907,9 +1129,15 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
       const v = ctx.v4YieldCache.get(v4Key(tiltDeg, aspect));
       return v == null ? null : v;
     };
-    ctx.matrixResult = fineGridMatrixV6(ring, ctx.centroidLat, bill, obstructionRings(), { yieldFn, overhangM: ctx.overhangM });
+    ctx.matrixResult = fineGridMatrixV6(ring, ctx.centroidLat, bill, obstructionRings(), {
+      yieldFn,
+      overhangM: ctx.overhangM,
+      obstructionClearancesM: obstructionClearances(), // PV61
+      setbacksM: keepSetbacks(), // PV63
+    });
     paintComparison();
     renderMatrixOptimumCard();
+    renderVariantCards(); // PV64 — trois variantes lisibles du MÊME balayage
     // W34 — le cache PVGIS vient d'être enrichi : re-résout le solveur vivant pour que
     // le gagnant affiché + les badges « Recommandé » suivent la production PVGIS exacte.
     if (ctx.roofType === 'flat') liveResolveFlat();
@@ -945,6 +1173,7 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
   function gridFor(pack: PackResult): PanelGrid {
     if (ctx.sel.orient === 'portrait') return pack.portrait;
     if (ctx.sel.orient === 'landscape') return pack.landscape;
+    if (ctx.sel.orient === 'mixed') return pack.mixed ?? pack.best; // PV62
     return pack.best;
   }
 

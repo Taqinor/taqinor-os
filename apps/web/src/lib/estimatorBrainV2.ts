@@ -34,7 +34,7 @@
  * (yieldTable.ts). JAMAIS un devis. Voir apps/web/ESTIMATOR_BRAIN_NOTES.md.
  */
 import { geodesicAreaM2, geodesicPerimeterM, pointInPolygon, type LngLat } from './roof';
-import { PANEL2_LONG_M, PANEL2_SHORT_M, PANEL2_WATT, PERIMETER_SETBACK_M } from './roofPro2';
+import { PANEL2_LONG_M, PANEL2_SHORT_M, PANEL2_WATT, PERIMETER_SETBACK_M, resolveSetbacks, type PerimeterSetbacks } from './roofPro2';
 import { YIELD_TABLE } from './yieldTable';
 
 export { PANEL2_WATT };
@@ -774,6 +774,17 @@ export function annualSavingsMad(
 export type ConfigFamily = 'south' | 'eastwest';
 export type PanelFace = 'E' | 'W';
 
+/**
+ * PV60 — RÈGLE D'EXCLUSION d'un panneau par un obstacle.
+ *  - `footprint` (DÉFAUT, la règle physique) : le panneau est retiré si son EMPREINTE
+ *    (ses 4 coins posés + son centre) tombe dans l'obstacle ou entre dans son
+ *    dégagement. Un panneau dont la moitié mord la cheminée n'est plus compté.
+ *  - `center` (LEGACY) : l'ancienne règle qui ne testait QUE le centre du panneau —
+ *    conservée UNIQUEMENT pour mesurer le diff de comptage AVANT/APRÈS dans les tests.
+ *    Aucun chemin de production ne doit l'utiliser.
+ */
+export type ObstacleRule = 'footprint' | 'center';
+
 export interface PackOptions {
   family: ConfigFamily;
   tiltDeg: number;
@@ -798,6 +809,20 @@ export interface PackOptions {
    * `overhangM`. Défaut 0 → calepinage IDENTIQUE à aujourd'hui.
    */
   overhangM?: number;
+  /** PV60 — règle d'exclusion obstacle. Défaut `footprint` (empreinte complète). */
+  obstacleRule?: ObstacleRule;
+  /**
+   * PV63 — retraits de rive SÉPARÉS (latéral / extrémité / acrotère). Un champ absent
+   * retombe sur `setbackM` (donc PERIMETER_SETBACK_M) : objet absent → calepinage
+   * identique au retrait unique historique.
+   */
+  setbacksM?: Partial<PerimeterSetbacks>;
+  /**
+   * PV61 — dégagement (m) PAR obstruction, dans le MÊME ordre que `obstructions` : une
+   * cheminée recule plus qu'une antenne. Une entrée absente/non finie/négative retombe
+   * sur `clearanceM` (donc `OBSTACLE_CLEARANCE_M`). Tableau absent → calepinage inchangé.
+   */
+  obstructionClearancesM?: number[];
 }
 
 /**
@@ -882,15 +907,24 @@ export function obstructionOverlapM2(ring: LngLat[], obstructions: LngLat[][], r
   return roofAreaM2 * (blocked / inRoof);
 }
 
+/** Pose d'UN panneau (grand côté dans le sens de la pente = portrait). */
+export type PanelLayoutOrient = 'portrait' | 'landscape';
+/** PV62 — pose d'un PAVAGE : uniforme, ou MIXTE (pose choisie rangée par rangée). */
+export type PanelOrientationMode = PanelLayoutOrient | 'mixed';
+
 export interface PackedPanel {
   cx: number;
   cy: number;
   /** Sens de la pente, pour le rendu Est-Ouest en chevrons (sinon absent). */
   face?: PanelFace;
+  /** PV62 — pose PROPRE à ce panneau, présente UNIQUEMENT dans un pavage mixte
+   *  (absente = le panneau suit la pose du pavage, comportement historique). */
+  orient?: PanelLayoutOrient;
 }
 
 export interface PanelGrid {
-  panelOrientation: 'portrait' | 'landscape';
+  /** PV62 — 'mixed' = pose choisie rangée par rangée ; chaque panneau porte alors `orient`. */
+  panelOrientation: PanelOrientationMode;
   count: number;
   kwc: number;
   /** Pas d'empilement appliqué (m) : rangée Sud, ou paire de chevrons E-O. */
@@ -917,6 +951,13 @@ export interface PackResult {
   landscape: PanelGrid;
   /** La meilleure des deux orientations sur CE tracé. */
   best: PanelGrid;
+  /**
+   * PV62 — pavage MIXTE (pose choisie rangée par rangée). Calculé À LA DEMANDE (accès
+   * paresseux mémorisé) : les chemins qui ne le lisent pas ne paient rien, et le pavage
+   * uniforme reste identique au byte près. Ne fait JAMAIS pire que la meilleure pose
+   * uniforme (repli explicite). Absent sur les packs adaptés depuis la pose affleurante.
+   */
+  mixed?: PanelGrid;
 }
 
 function distToSegment(p: [number, number], a: [number, number], b: [number, number]): number {
@@ -964,10 +1005,12 @@ function packCells(
   ringENU: [number, number][],
   obstructionsENU: [number, number][][],
   azimuthDeg: number,
-  setbackM: number,
+  setbacks: PerimeterSetbacks,
   p: CellParams,
   clearanceM: number,
   overhangM = 0,
+  obstacleRule: ObstacleRule = 'footprint',
+  clearancesM?: number[],
 ): PackedPanel[] {
   if (ringENU.length < 3) return [];
   const azRad = azimuthDeg * DEG2RAD;
@@ -998,11 +1041,25 @@ function packCells(
   if (rows <= 0 || cols <= 0 || (rows + 1) * (cols + 1) > MAX_CELLS) return [];
 
   const toENU = (uu: number, vv: number): [number, number] => [uu * u[0] + vv * s[0], uu * u[1] + vv * s[1]];
-  // Un panneau est retiré si son centre tombe DANS un obstacle OU à moins de
-  // `clearanceM` de son bord (zone d'exclusion + dégagement) — une seule règle
-  // qui couvre l'union d'obstacles superposés et la part qui chevauche le toit.
-  const inObstruction = (c: [number, number]): boolean =>
-    obstructionsENU.some((o) => pointInPolygon(c, o) || distToBoundary(c, o) <= clearanceM);
+  // Un panneau est retiré si l'un des POINTS SONDÉS tombe DANS un obstacle OU à moins
+  // de `clearanceM` de son bord (zone d'exclusion + dégagement) — une seule règle qui
+  // couvre l'union d'obstacles superposés et la part qui chevauche le toit.
+  // PV60 — les points sondés sont les 4 COINS de l'empreinte posée + son centre (règle
+  // `footprint`, la physique : un panneau dont un coin mord la cheminée ne se pose pas).
+  // L'ancienne règle `center` (centre seul) laissait passer un panneau à moitié dans
+  // l'obstacle ; elle n'est gardée que pour mesurer le diff de comptage dans les tests.
+  // PV61 — le dégagement est PROPRE À CHAQUE obstruction (cheminée > antenne) : on lit
+  // le tableau parallèle `clearancesM`, et toute entrée absente/aberrante retombe sur le
+  // dégagement uniforme `clearanceM` (comportement historique).
+  const clearanceAt = (i: number): number => {
+    const v = clearancesM?.[i];
+    return typeof v === 'number' && Number.isFinite(v) && v >= 0 ? v : clearanceM;
+  };
+  const hitsObstruction = (probe: [number, number][]): boolean =>
+    obstructionsENU.some((o, i) => {
+      const cl = clearanceAt(i);
+      return probe.some((c) => pointInPolygon(c, o) || distToBoundary(c, o) <= cl);
+    });
   // EPS : les vecteurs de base portent un bruit flottant (sin(180°) ≈ 1e−16) qui
   // place les cellules pile au retrait à 0,5 − ε ; sans tolérance on perdrait toute
   // la première rangée/colonne (asymétrique entre Sud et E-O sur petits toits).
@@ -1017,22 +1074,25 @@ function packCells(
   // au moins `setbackM` à l'intérieur OU déborde d'au plus `overhangM` (rails sur le
   // toit). overhangM=0 → équivaut exactement à l'ancienne règle (dedans/pile-rive
   // ET retrait), y compris la tolérance EDGE_EPS à retrait nul.
+  // PV63 — l'ACROTÈRE (distance minimale à toute rive) borne chaque coin de cellule ; le
+  // LATÉRAL et l'EXTRÉMITÉ décalent le DÉPART du balayage (u et v). Trois retraits égaux
+  // → règle et séquence identiques au retrait unique historique.
   const cellInside = (corners: [number, number][]): boolean =>
     corners.every((c) => {
       const d = distToBoundary(c, ringENU);
       const sd = pointInPolygon(c, ringENU) ? d : -d;
-      return sd >= setbackM - overhangM - EDGE_EPS_M;
+      return sd >= setbacks.parapetM - overhangM - EDGE_EPS_M;
     });
 
   // Départ décalé de ohRows/ohCols pas entiers vers l'extérieur ; borne haute
-  // étendue du débord. overhangM=0 : vStart=vMin+setbackM, séquence et borne identiques.
-  const vStart = vMin + setbackM - ohRows * p.pitchM;
-  const uStart = uMin + setbackM - ohCols * colPitch;
+  // étendue du débord. overhangM=0 : vStart=vMin+extrémité, séquence et borne identiques.
+  const vStart = vMin + setbacks.extremityM - ohRows * p.pitchM;
+  const uStart = uMin + setbacks.lateralM - ohCols * colPitch;
   const panels: PackedPanel[] = [];
   for (let r = 0; r < rows; r++) {
     const v0 = vStart + r * p.pitchM;
     const v1 = v0 + p.cellDepthM;
-    if (v1 > vMax - setbackM + overhangM + EDGE_EPS_M) break;
+    if (v1 > vMax - setbacks.extremityM + overhangM + EDGE_EPS_M) break;
     for (let c = 0; c < cols; c++) {
       const u0 = uStart + c * colPitch;
       const u1 = u0 + p.rowWidthM;
@@ -1040,13 +1100,217 @@ function packCells(
       if (!cellInside(corners)) continue;
       const uMid = u0 + p.rowWidthM / 2;
       for (let k = 0; k < p.panelsPerCell; k++) {
-        const vc = v0 + p.panelDepthM * (k + 0.5);
-        const center = toENU(uMid, vc);
-        if (inObstruction(center)) continue;
+        const va = v0 + p.panelDepthM * k;
+        const vb = va + p.panelDepthM;
+        const center = toENU(uMid, va + p.panelDepthM / 2);
+        // PV60 — empreinte RÉELLE du panneau k de la cellule (u0..u1 × va..vb).
+        const probe: [number, number][] =
+          obstacleRule === 'center'
+            ? [center]
+            : [toENU(u0, va), toENU(u1, va), toENU(u1, vb), toENU(u0, vb), center];
+        if (hitsObstruction(probe)) continue;
         const panel: PackedPanel = { cx: center[0], cy: center[1] };
         if (p.panelsPerCell === 2) panel.face = k === 0 ? 'W' : 'E';
         panels.push(panel);
       }
+    }
+  }
+  return panels;
+}
+
+/**
+ * PV62 — pas de BALAYAGE en u : la largeur d'un panneau change avec sa pose, donc le
+ * mixte re-pave CHAQUE bande libre depuis SON bord gauche (au lieu du lattice à phase
+ * fixe de `packCells`) — c'est là que des panneaux perdus au bord/autour d'un obstacle
+ * reviennent. 20 cm est assez fin : l'exclusion d'un obstacle fait au moins
+ * OBSTACLE_MIN_DIM_M + 2 × dégagement (> 1 m), donc ce pas ne peut pas la rater. Les
+ * BORDS d'une bande sont quantifiés à ce pas — toujours vers l'intérieur (on n'invente
+ * jamais de place), et chaque panneau émis est de toute façon RE-VALIDÉ au rectangle exact.
+ */
+const MIXED_SCAN_STEP_M = 0.2;
+/** Garde-fou de boucle du pavage mixte (rangées à pas variable). */
+const MIXED_MAX_ROWS = 400;
+/** Tolérance de comparaison des densités de rangée (départage déterministe). */
+const DENSITY_EPS = 1e-9;
+
+/**
+ * PV62 — PAVAGE MIXTE : la pose (portrait/paysage) est choisie RANGÉE PAR RANGÉE, et
+ * dans chaque rangée les panneaux sont posés bande libre par bande libre.
+ *
+ * Pourquoi ça loge plus que les deux poses uniformes :
+ *  1. les deux poses n'ont ni la même PROFONDEUR ni le même PAS de rangée — la bande
+ *     qui reste en bout de toit accepte souvent une rangée paysage (peu profonde) là où
+ *     une rangée portrait ne rentre plus ;
+ *  2. autour d'un obstacle (ou d'un bord biscornu), chaque bande libre est re-pavée
+ *     depuis SON bord, sans la phase globale du lattice qui gaspille une demi-largeur.
+ *
+ * Choix par rangée = la DENSITÉ (panneaux ÷ pas de rangée), pas le comptage brut : une
+ * rangée qui loge 1 panneau de plus mais mange deux fois la profondeur fait perdre le
+ * toit. Départage : plus de panneaux, puis le pas le plus court. Déterministe.
+ *
+ * Sud uniquement (1 panneau par cellule) : en Est-Ouest le chevron dos à dos impose sa
+ * propre géométrie, le mixte n'y a pas de sens — l'appelant garde alors l'uniforme.
+ */
+function packMixedCells(
+  ringENU: [number, number][],
+  obstructionsENU: [number, number][][],
+  azimuthDeg: number,
+  setbacks: PerimeterSetbacks,
+  portrait: CellParams,
+  landscape: CellParams,
+  clearanceM: number,
+  overhangM = 0,
+  clearancesM?: number[],
+): PackedPanel[] {
+  if (ringENU.length < 3) return [];
+  const azRad = azimuthDeg * DEG2RAD;
+  const f: [number, number] = [Math.sin(azRad), Math.cos(azRad)];
+  const s = f;
+  const u: [number, number] = [-f[1], f[0]];
+  const toENU = (uu: number, vv: number): [number, number] => [uu * u[0] + vv * s[0], uu * u[1] + vv * s[1]];
+
+  const ringUV = ringENU.map(([x, y]) => [x * u[0] + y * u[1], x * s[0] + y * s[1]] as [number, number]);
+  let uMin = Infinity;
+  let uMax = -Infinity;
+  let vMin = Infinity;
+  let vMax = -Infinity;
+  for (const [uu, vv] of ringUV) {
+    if (uu < uMin) uMin = uu;
+    if (uu > uMax) uMax = uu;
+    if (vv < vMin) vMin = vv;
+    if (vv > vMax) vMax = vv;
+  }
+
+  const clearanceAt = (i: number): number => {
+    const v = clearancesM?.[i];
+    return typeof v === 'number' && Number.isFinite(v) && v >= 0 ? v : clearanceM;
+  };
+  // Boîte englobante de chaque obstruction : le balayage fin sonde surtout du toit LIBRE,
+  // et un point hors de la boîte élargie du dégagement ne peut pas toucher l'obstacle.
+  // Filtre EXACT (jamais un raccourci qui laisserait passer un panneau interdit).
+  const obsBox = obstructionsENU.map((o) => {
+    let minX = Infinity;
+    let minY = Infinity;
+    let maxX = -Infinity;
+    let maxY = -Infinity;
+    for (const [x, y] of o) {
+      if (x < minX) minX = x;
+      if (x > maxX) maxX = x;
+      if (y < minY) minY = y;
+      if (y > maxY) maxY = y;
+    }
+    return { minX, minY, maxX, maxY };
+  });
+  const hitsObstruction = (probe: [number, number][]): boolean =>
+    obstructionsENU.some((o, i) => {
+      const cl = clearanceAt(i);
+      const b = obsBox[i];
+      return probe.some((c) => {
+        if (c[0] < b.minX - cl || c[0] > b.maxX + cl || c[1] < b.minY - cl || c[1] > b.maxY + cl) return false;
+        return pointInPolygon(c, o) || distToBoundary(c, o) <= cl;
+      });
+    });
+  const cellInside = (corners: [number, number][]): boolean =>
+    corners.every((c) => {
+      const d = distToBoundary(c, ringENU);
+      const sd = pointInPolygon(c, ringENU) ? d : -d;
+      return sd >= setbacks.parapetM - overhangM - EDGE_EPS_M; // PV63 — acrotère
+    });
+  /** Rectangle (u0..u1 × v0..v1) posable : entièrement dans le toit ET hors obstacle. */
+  const rectOk = (u0: number, u1: number, v0: number, v1: number): boolean => {
+    const corners: [number, number][] = [toENU(u0, v0), toENU(u1, v0), toENU(u1, v1), toENU(u0, v1)];
+    if (!cellInside(corners)) return false;
+    return !hitsObstruction([...corners, toENU((u0 + u1) / 2, (v0 + v1) / 2)]);
+  };
+
+  const uStart = uMin + setbacks.lateralM - overhangM; // PV63 — retrait latéral
+  const uEnd = uMax - setbacks.lateralM + overhangM;
+  const vStart = vMin + setbacks.extremityM - overhangM; // PV63 — retrait d'extrémité
+  const vEnd = vMax - setbacks.extremityM + overhangM;
+
+  /** Panneaux posables dans la rangée qui commence en `v0` avec la pose `cp`. */
+  const rowFor = (v0: number, cp: CellParams, orient: PanelLayoutOrient): PackedPanel[] => {
+    const depth = cp.cellDepthM;
+    const v1 = v0 + depth;
+    if (v1 > vEnd + EDGE_EPS_M) return [];
+    // Bandes libres en u : segments contigus de sondes valides. Deux sondes voisines
+    // PARTAGENT une arête verticale : on ne teste chaque arête QU'UNE fois (le balayage
+    // fin est le coût dominant du mixte).
+    const edgeAt = (uu: number): { inside: boolean; hit: boolean } => {
+      const a0: [number, number] = toENU(uu, v0);
+      const a1: [number, number] = toENU(uu, v1);
+      const inside = [a0, a1].every((c) => {
+        const d = distToBoundary(c, ringENU);
+        const sd = pointInPolygon(c, ringENU) ? d : -d;
+        return sd >= setbacks.parapetM - overhangM - EDGE_EPS_M;
+      });
+      return { inside, hit: inside ? hitsObstruction([a0, a1]) : false };
+    };
+    const bands: { a: number; b: number }[] = [];
+    let cur: { a: number; b: number } | null = null;
+    let left = edgeAt(uStart);
+    for (let uu = uStart; uu <= uEnd - MIXED_SCAN_STEP_M + EDGE_EPS_M; uu += MIXED_SCAN_STEP_M) {
+      const ub = uu + MIXED_SCAN_STEP_M;
+      const right = edgeAt(ub);
+      const ok =
+        left.inside &&
+        right.inside &&
+        !left.hit &&
+        !right.hit &&
+        !hitsObstruction([toENU(uu + MIXED_SCAN_STEP_M / 2, (v0 + v1) / 2)]);
+      left = right;
+      if (ok) {
+        if (cur) cur.b = ub;
+        else cur = { a: uu, b: ub };
+      } else if (cur) {
+        bands.push(cur);
+        cur = null;
+      }
+    }
+    if (cur) bands.push(cur);
+
+    const w = cp.rowWidthM;
+    const step = w + PANEL_SIDE_GAP_M;
+    const out: PackedPanel[] = [];
+    for (const band of bands) {
+      const n = Math.floor((band.b - band.a + PANEL_SIDE_GAP_M) / step);
+      for (let k = 0; k < n; k++) {
+        const u0 = band.a + k * step;
+        const u1 = u0 + w;
+        if (!rectOk(u0, u1, v0, v1)) continue; // re-validation stricte du panneau réel
+        const c = toENU(u0 + w / 2, v0 + cp.panelDepthM / 2);
+        out.push({ cx: c[0], cy: c[1], orient });
+      }
+    }
+    return out;
+  };
+
+  const panels: PackedPanel[] = [];
+  const minPitch = Math.min(portrait.pitchM, landscape.pitchM);
+  const minDepth = Math.min(portrait.cellDepthM, landscape.cellDepthM);
+  let v = vStart;
+  for (let guard = 0; guard < MIXED_MAX_ROWS && v + minDepth <= vEnd + EDGE_EPS_M; guard++) {
+    const options = [
+      { cp: portrait, orient: 'portrait' as const, row: rowFor(v, portrait, 'portrait') },
+      { cp: landscape, orient: 'landscape' as const, row: rowFor(v, landscape, 'landscape') },
+    ];
+    let best = options[0];
+    for (const o of options.slice(1)) {
+      const da = best.row.length / best.cp.pitchM;
+      const db = o.row.length / o.cp.pitchM;
+      if (db > da + DENSITY_EPS) best = o;
+      else if (Math.abs(db - da) <= DENSITY_EPS) {
+        if (o.row.length > best.row.length) best = o;
+        else if (o.row.length === best.row.length && o.cp.pitchM < best.cp.pitchM) best = o;
+      }
+    }
+    if (best.row.length > 0) {
+      panels.push(...best.row);
+      v += best.cp.pitchM;
+    } else {
+      // Rien ne tient à cette hauteur (échancrure, obstacle traversant) : on avance du
+      // plus petit pas plutôt que d'abandonner le reste du toit.
+      v += minPitch;
     }
   }
   return panels;
@@ -1057,8 +1321,11 @@ export function packConfig(ring: LngLat[], latitudeDeg: number, opts: PackOption
   const areaM2 = geodesicAreaM2(ring);
   const azimuthDeg = opts.azimuthDeg ?? familyAzimuthDeg(opts.family);
   const setbackM = opts.setbackM ?? PERIMETER_SETBACK_M;
+  // PV63 — trois retraits (latéral / extrémité / acrotère). Champ absent → `setbackM`.
+  const setbacks = resolveSetbacks(opts.setbacksM, setbackM);
   const clearanceM = opts.clearanceM ?? OBSTACLE_CLEARANCE_M;
   const overhangM = Math.max(0, opts.overhangM ?? 0);
+  const obstacleRule: ObstacleRule = opts.obstacleRule ?? 'footprint'; // PV60
   const tiltDeg = opts.tiltDeg;
   const beta = tiltDeg * DEG2RAD;
   const eastWest = opts.family === 'eastwest';
@@ -1156,7 +1423,7 @@ export function packConfig(ring: LngLat[], latitudeDeg: number, opts: PackOption
 
   const makeGrid = (panelOrientation: 'portrait' | 'landscape', slopeLenM: number, rowWidthM: number): PanelGrid => {
     const cell = cellFor(slopeLenM, rowWidthM);
-    const panels = packCells(ringENU, obstructionsENU, azimuthDeg, setbackM, cell, clearanceM, overhangM);
+    const panels = packCells(ringENU, obstructionsENU, azimuthDeg, setbacks, cell, clearanceM, overhangM, obstacleRule, opts.obstructionClearancesM);
     return {
       panelOrientation,
       count: panels.length,
@@ -1174,6 +1441,43 @@ export function packConfig(ring: LngLat[], latitudeDeg: number, opts: PackOption
   const landscape = makeGrid('landscape', PANEL2_SHORT_M, PANEL2_LONG_M);
   const best = portrait.count >= landscape.count ? portrait : landscape;
 
+  // PV62 — pavage MIXTE, calculé PARESSEUSEMENT (le balayage fin coûte plus cher que le
+  // lattice ; tous les chemins qui ne lisent pas `mixed` restent à leur coût d'avant).
+  // Garantie : le mixte ne fait JAMAIS pire que la meilleure pose uniforme — s'il perd,
+  // on renvoie le meilleur uniforme (panneaux compris), donc verrouiller « Mixte » ne
+  // peut pas coûter de panneaux.
+  let mixedMemo: PanelGrid | null = null;
+  const buildMixed = (): PanelGrid => {
+    if (mixedMemo) return mixedMemo;
+    // Est-Ouest : le chevron dos à dos impose sa géométrie → le mixte n'a pas de sens.
+    if (eastWest) return (mixedMemo = best);
+    const cP = cellFor(PANEL2_LONG_M, PANEL2_SHORT_M);
+    const cL = cellFor(PANEL2_SHORT_M, PANEL2_LONG_M);
+    const panels = packMixedCells(ringENU, obstructionsENU, azimuthDeg, setbacks, cP, cL, clearanceM, overhangM, opts.obstructionClearancesM);
+    if (panels.length <= best.count) return (mixedMemo = best);
+    // Pose DOMINANTE = celle du plus grand nombre de panneaux : elle porte les
+    // dimensions/pas de la grille ; chaque panneau garde SA pose dans `orient`.
+    let nPortrait = 0;
+    for (const p of panels) if (p.orient === 'portrait') nPortrait++;
+    const dominant: PanelLayoutOrient = nPortrait * 2 >= panels.length ? 'portrait' : 'landscape';
+    const slopeLenM = dominant === 'portrait' ? PANEL2_LONG_M : PANEL2_SHORT_M;
+    const rowWidthM = dominant === 'portrait' ? PANEL2_SHORT_M : PANEL2_LONG_M;
+    mixedMemo = {
+      panelOrientation: 'mixed',
+      count: panels.length,
+      kwc: (panels.length * PANEL2_WATT) / 1000,
+      rowPitchM: cellFor(slopeLenM, rowWidthM).pitchM,
+      panels,
+      slopeLenM,
+      rowWidthM,
+      // Les deux poses ont la MÊME empreinte au sol (L·cos β × l = l·cos β × L n'est pas
+      // vrai en général, mais ici la profondeur suit la pose) : on prend celle de la pose
+      // dominante, cohérente avec slopeLenM/rowWidthM ci-dessus.
+      footprintPerPanelM2: slopeLenM * Math.cos(beta) * rowWidthM,
+    };
+    return mixedMemo;
+  };
+
   return {
     origin: [olng, olat],
     ringENU,
@@ -1185,6 +1489,9 @@ export function packConfig(ring: LngLat[], latitudeDeg: number, opts: PackOption
     portrait,
     landscape,
     best,
+    get mixed(): PanelGrid {
+      return buildMixed();
+    },
   };
 }
 
@@ -1197,7 +1504,7 @@ export interface ConfigResult {
   /** Azimut de face réel (180 = plein sud ; ≠180 = aligné sur un toit tourné). */
   azimuthDeg: number;
   label: string;
-  panelOrientation: 'portrait' | 'landscape';
+  panelOrientation: PanelOrientationMode;
   count: number;
   kwc: number;
   specificYield: number;
@@ -1310,7 +1617,7 @@ function buildConfigResult(
  * marge de rive. */
 export interface RecommendedOptions {
   family: ConfigFamily;
-  panelOrientation: 'portrait' | 'landscape';
+  panelOrientation: PanelOrientationMode;
   tiltDeg: number;
   azimuthDeg: number;
   margin: 'keep' | 'remove';

@@ -27,7 +27,7 @@
  *  la table committée (« estimé ») si PVGIS est injoignable. JAMAIS un devis.
  */
 import { type LngLat } from './roof';
-import { PERIMETER_SETBACK_M } from './roofPro2';
+import { PERIMETER_SETBACK_M, type PerimeterSetbacks } from './roofPro2';
 import {
   PANEL2_WATT,
   type TariffGrid,
@@ -129,6 +129,10 @@ interface PitchedCtx {
   obstructions: LngLat[][];
   /** W109 — débord panneaux autorisé au-delà de la rive (m). 0 → calepinage inchangé. */
   overhangM: number;
+  /** PV61 — dégagement (m) par obstruction (même ordre que `obstructions`). */
+  obstructionClearancesM?: number[];
+  /** PV63 — retraits de rive séparés quand la marge est gardée. */
+  setbacksM?: Partial<PerimeterSetbacks>;
   tariff: TariffGrid;
   yieldFn: PitchedYieldFn | undefined;
   packCache: Map<string, FlushPack>;
@@ -136,14 +140,18 @@ interface PitchedCtx {
 
 function evalPitched(ctx: PitchedCtx, layout: PitchedLayoutAxis, margin: PitchedMarginAxis): PitchedLiveEval {
   const setbackM = margin === 'keep' ? PERIMETER_SETBACK_M : 0;
+  // PV63 — marge gardée : les trois retraits saisis ; pleine rive : tout à zéro.
+  const setbacksM: Partial<PerimeterSetbacks> | undefined =
+    margin === 'keep' ? ctx.setbacksM : { lateralM: 0, extremityM: 0, parapetM: 0 };
+  const sbKey = setbacksM ? `${setbacksM.lateralM ?? ''}/${setbacksM.extremityM ?? ''}/${setbacksM.parapetM ?? ''}` : '';
   // W109 — overhangM entre dans la clé de cache (sinon deux solves d'overhang différents
   // entreraient en collision). overhangM=0 → même clé/pavage qu'avant (rétro-compatible).
-  const key = `${Math.round(setbackM * 1000)}|${Math.round(ctx.overhangM * 1000)}`;
+  const key = `${Math.round(setbackM * 1000)}|${Math.round(ctx.overhangM * 1000)}|${sbKey}`;
   let pack = ctx.packCache.get(key);
   if (!pack) {
     pack = packFlushPlane(
       { ring: ctx.ring, pitchDeg: ctx.pitchDeg, facingAzimuthDeg: ctx.facingAzimuthDeg, obstructions: ctx.obstructions },
-      { setbackM, overhangM: ctx.overhangM },
+      { setbackM, overhangM: ctx.overhangM, obstructionClearancesM: ctx.obstructionClearancesM, setbacksM }, // PV61 + PV63
     );
     ctx.packCache.set(key, pack);
   }
@@ -205,6 +213,10 @@ export interface PitchedSolveOptions {
   yieldFn?: PitchedYieldFn;
   /** W109 — débord panneaux autorisé au-delà de la rive (m). Défaut 0 → calepinage inchangé. */
   overhangM?: number;
+  /** PV61 — dégagement (m) par obstruction (même ordre que `obstructions`). Absent → uniforme. */
+  obstructionClearancesM?: number[];
+  /** PV63 — retraits de rive séparés (latéral / extrémité / acrotère) quand la marge est gardée. */
+  setbacksM?: Partial<PerimeterSetbacks>;
 }
 
 export interface PitchedLiveResult {
@@ -279,6 +291,8 @@ export function solveLivePitched(
     effectiveNeed,
     obstructions,
     overhangM: Math.max(0, options.overhangM ?? 0),
+    obstructionClearancesM: options.obstructionClearancesM, // PV61
+    setbacksM: options.setbacksM, // PV63
     tariff,
     yieldFn: options.yieldFn,
     packCache: new Map<string, FlushPack>(),

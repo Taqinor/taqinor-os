@@ -3,8 +3,9 @@
  * Extraits de roof-tool-pro11.ts (split modulaire 2026-06-20) — INCHANGÉS.
  */
 import { type RoofTypeSelect } from '../../lib/roofTypeSelect';
-import { type PackResult, type PanelGrid, type ConfigFamily } from '../../lib/estimatorBrainV2';
-import { type Obstacle } from '../../lib/obstacles';
+import { type PackResult, type PanelGrid, type ConfigFamily, OBSTACLE_CLEARANCE_M } from '../../lib/estimatorBrainV2';
+import { type Obstacle, type ObstacleType } from '../../lib/obstacles';
+import { type SerializeMeta, type DevisPayload } from './prefill';
 import { type AreaResult } from '../../lib/roofAreas';
 import { type LngLat } from '../../lib/roof';
 import { type ProductionSource, type SpecificDateProfile } from '../../lib/productionEngine';
@@ -35,7 +36,10 @@ export interface InitOptions {
   // W113 — HYDRATATION optionnelle depuis un lead (le fetch est fait par la page,
   // pas par l'outil). Sème le pin/tracé de la carte + les champs contact à partir
   // d'un payload lead. Le boot complet reste inchangé quand `hydrate` est absent.
-  hydrate?: { lead?: LeadPayload };
+  // PV19 — `devis` (optionnel) hydrate depuis un DEVIS existant : son design (layout
+  // sérialisé) et sa CIBLE vendue, qui impose le nombre de panneaux. Le boot lead reste
+  // strictement inchangé quand `devis` est absent.
+  hydrate?: { lead?: LeadPayload; devis?: DevisPayload };
   // W114/W115 — l'outil expose une petite API à la page (sérialiser le layout
   // finalisé, capturer le PNG 3D) une fois le boot complet terminé. Invoqué
   // seulement en boot complet (jamais en capture). Absent → comportement inchangé.
@@ -44,8 +48,10 @@ export interface InitOptions {
 
 /** W114/W115 — API minimale exposée par l'outil à la page de design. */
 export interface RoofToolApi {
-  /** Layout finalisé sérialisé en JSON pur (zones + repère). `billKwh` optionnel. */
-  serializeLayout: (billKwh?: number | null) => unknown;
+  /** Layout finalisé sérialisé en JSON pur (zones + repère). `billKwh` optionnel.
+   *  PV13 — `meta` (optionnel) porte scénario / puissance panneau / batterie / origine
+   *  devis-lead : la page les CONNAÎT, l'outil ne les devine jamais. */
+  serializeLayout: (billKwh?: number | null, meta?: SerializeMeta) => unknown;
   /** Instantané PNG (data URL) de la 3D rendue, ou null. */
   snapshot: () => string | null;
 }
@@ -63,8 +69,58 @@ export interface LeadPayload {
   [k: string]: unknown;
 }
 
+// ═══════════ PV61 — TYPES D'OBSTACLE & DÉGAGEMENT PAR TYPE ═══════════
+export type { ObstacleType };
+
+/** Choix du sélecteur « type d'obstacle » (libellés FR, ordre du menu). */
+export const OBSTACLE_TYPES: { id: ObstacleType; label: string }[] = [
+  { id: 'cheminee', label: 'Cheminée' },
+  { id: 'ventilation', label: 'Ventilation / VMC' },
+  { id: 'chien_assis', label: 'Chien-assis / lucarne' },
+  { id: 'edicule', label: 'Édicule / local technique' },
+  { id: 'antenne', label: 'Antenne / parabole' },
+  { id: 'autre', label: 'Autre' },
+];
+
+/**
+ * Dégagement (m) laissé autour d'un obstacle SELON SON TYPE.
+ *
+ * SOURCE des valeurs (règles de pose, pas des chiffres inventés) : `OBSTACLE_CLEARANCE_M`
+ * (0,30 m) est le recul de base déjà appliqué à tout obstacle — il correspond au passage
+ * de maintenance minimal entre un panneau et un accident de toiture. On l'ÉLARGIT pour les
+ * obstacles HAUTS ou SALISSANTS, qui portent une ombre portée et demandent un accès :
+ *  - cheminée 0,50 m : suie/fumées + ramonage, et une souche dépasse toujours du plan ;
+ *  - chien-assis / lucarne 0,50 m : volume haut → ombre portée + accès à la fenêtre ;
+ *  - édicule / local technique 0,50 m : même raison (le plus haut des trois) ;
+ *  - ventilation / VMC 0,30 m : petit et bas → le recul de base suffit ;
+ *  - antenne / parabole 0,30 m : encombrement faible, pas d'entretien récurrent ;
+ *  - autre 0,30 m : on retombe exactement sur le comportement historique.
+ * Un obstacle SANS type garde donc 0,30 m — le calepinage d'aujourd'hui, inchangé.
+ */
+export const CLEARANCE_BY_TYPE: Record<ObstacleType, number> = {
+  cheminee: 0.5,
+  ventilation: OBSTACLE_CLEARANCE_M,
+  chien_assis: 0.5,
+  edicule: 0.5,
+  antenne: OBSTACLE_CLEARANCE_M,
+  autre: OBSTACLE_CLEARANCE_M,
+};
+
+/** Dégagement (m) d'un type d'obstacle. Type absent/inconnu → `OBSTACLE_CLEARANCE_M`. */
+export function clearanceForType(type?: ObstacleType | null): number {
+  if (!type) return OBSTACLE_CLEARANCE_M;
+  return CLEARANCE_BY_TYPE[type] ?? OBSTACLE_CLEARANCE_M;
+}
+
+/** Dégagements (m) PARALLÈLES à une liste d'obstacles (même ordre que leurs anneaux). */
+export function obstructionClearancesFor(obstacles: readonly { type?: ObstacleType }[]): number[] {
+  return obstacles.map((o) => clearanceForType(o.type));
+}
+
 export type TiltMode = 'reco' | number;
-export type OrientMode = 'auto' | 'portrait' | 'landscape';
+// PV62 — 'mixed' = pose MIXTE (portrait/paysage choisi rangée par rangée). Axe de pose
+// comme les autres, verrouillable par la puce « Mixte » (toit plat uniquement).
+export type OrientMode = 'auto' | 'portrait' | 'landscape' | 'mixed';
 // W1 : groupe AZIMUT (plein sud ou aligné sur les arêtes du toit) et groupe MARGE
 // de rive (garder la marge de design ou la retirer pour récupérer la rive).
 export type AzimuthMode = 'south' | 'aligned';
