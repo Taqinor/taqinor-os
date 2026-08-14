@@ -1129,6 +1129,132 @@ def notifier_rappel(alerte, impact=None):
 
 
 # ═══════════════════════════════════════════════════════════════════════════
+# NTWMS27 — Bordereau ASN (avis d'expédition anticipé), prêt-pour-EDI
+# ═══════════════════════════════════════════════════════════════════════════
+
+# Version du format INTERNE. Ce n'est PAS de l'EDI X12/EDIFACT : c'est un
+# bordereau structuré, exportable/importable à la main, qui décrit exactement
+# ce qu'un futur mapping EDI aura besoin de connaître. Aucun partenaire EDI
+# n'est connecté, aucun appel réseau n'est fait.
+ASN_VERSION = 'TAQINOR-ASN-1'
+
+
+def exporter_asn(unite):
+    """Bordereau ASN d'une unité logistique SCELLÉE.
+
+    Renvoie un dictionnaire JSON-sérialisable : en-tête (SSCC, type, poids,
+    dimensions, date de scellage) + une ligne par contenu (SKU, désignation,
+    quantité, lot, péremption) + totaux. Une unité non scellée est refusée :
+    un ASN annonce un contenu FIGÉ, sinon il ment.
+    """
+    from decimal import Decimal
+
+    if unite is None:
+        raise ValueError('Unité logistique introuvable.')
+    if not unite.est_figee:
+        raise ValueError(
+            'Seule une unité scellée peut produire un ASN (son contenu doit '
+            'être figé).')
+
+    lignes = []
+    total_quantite = 0
+    for ligne in unite.lignes.select_related('produit', 'lot').order_by('id'):
+        total_quantite += ligne.quantite or 0
+        lignes.append({
+            'sku': ligne.produit.sku or '',
+            'designation': ligne.produit.nom,
+            'quantite': ligne.quantite,
+            'numero_lot': (ligne.lot.numero_lot if ligne.lot_id else ''),
+            'date_peremption': (
+                ligne.lot.date_peremption.isoformat()
+                if ligne.lot_id and ligne.lot.date_peremption else None),
+        })
+    return {
+        'version': ASN_VERSION,
+        'unite': {
+            'sscc': unite.sscc,
+            'type_unite': unite.type_unite,
+            'statut': unite.statut,
+            'poids_kg': (str(unite.poids_kg)
+                         if unite.poids_kg is not None else None),
+            'dimensions': unite.dimensions or '',
+            'date_scellage': (unite.date_scellage.isoformat()
+                              if unite.date_scellage else None),
+            'sscc_parent': (unite.parent.sscc if unite.parent_id else None),
+        },
+        'lignes': lignes,
+        'totaux': {
+            'nb_lignes': len(lignes),
+            'quantite_totale': total_quantite,
+            'volume_m3': str(_volume_m3(unite.dimensions) or Decimal('0')),
+        },
+    }
+
+
+def importer_asn(company, donnees):
+    """Import MIROIR d'un ASN : valide, résout, ne modifie RIEN.
+
+    Contrôle la version, le SSCC (clé GS1), la présence de lignes, puis
+    rapproche chaque SKU du catalogue de la société. Renvoie
+    ``{valide, erreurs, unite_connue, lignes}`` — un import ASN ne crée ni
+    stock ni colis (aucun partenaire EDI n'est connecté : c'est un contrôle
+    de cohérence, pas une intégration).
+    """
+    from .gs1 import sscc_valide
+    from .models import Produit
+    from .models_wms import UniteLogistique
+
+    if not isinstance(donnees, dict):
+        return {'valide': False, 'erreurs': ['Bordereau ASN illisible.'],
+                'unite_connue': False, 'lignes': []}
+
+    erreurs = []
+    if donnees.get('version') != ASN_VERSION:
+        erreurs.append(
+            f'Version de bordereau inattendue : {donnees.get("version")!r}.')
+    entete = donnees.get('unite') or {}
+    sscc = str(entete.get('sscc') or '').strip()
+    if not sscc_valide(sscc):
+        erreurs.append('SSCC absent ou clé de contrôle GS1 invalide.')
+    lignes_source = donnees.get('lignes')
+    if not isinstance(lignes_source, list) or not lignes_source:
+        erreurs.append('Le bordereau ne contient aucune ligne.')
+        lignes_source = []
+
+    skus = [str(ligne.get('sku') or '').strip()
+            for ligne in lignes_source if isinstance(ligne, dict)]
+    catalogue = {
+        p.sku: p for p in Produit.objects.filter(
+            company=company, sku__in=[s for s in skus if s])
+    }
+    lignes = []
+    for ligne in lignes_source:
+        if not isinstance(ligne, dict):
+            erreurs.append('Ligne de bordereau illisible.')
+            continue
+        sku = str(ligne.get('sku') or '').strip()
+        produit = catalogue.get(sku)
+        if produit is None:
+            erreurs.append(f'SKU inconnu dans cette société : {sku!r}.')
+        lignes.append({
+            'sku': sku,
+            'produit_id': produit.id if produit is not None else None,
+            'designation': ligne.get('designation') or '',
+            'quantite': ligne.get('quantite') or 0,
+            'numero_lot': ligne.get('numero_lot') or '',
+        })
+
+    return {
+        'valide': not erreurs,
+        'erreurs': erreurs,
+        'unite_connue': UniteLogistique.objects.filter(
+            company=company, sscc=sscc).exists(),
+        'sscc': sscc,
+        'lignes': lignes,
+    }
+
+
+# ═══════════════════════════════════════════════════════════════════════════
 # NTWMS26 — Chargement camion & taux de remplissage
 # ═══════════════════════════════════════════════════════════════════════════
 

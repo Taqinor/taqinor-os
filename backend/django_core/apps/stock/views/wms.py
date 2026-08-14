@@ -146,10 +146,11 @@ class UniteLogistiqueViewSet(CompanyScopedModelViewSet):
     ordering = ['-created_at']
 
     def get_permissions(self):
-        if self.action in READ_ACTIONS + ['etiquette_pdf']:
+        if self.action in READ_ACTIONS + ['etiquette_pdf', 'export_asn']:
             return [IsAnyRole()]
         if self.action in WRITE_ACTIONS + [
-                'sceller', 'ajouter_ligne', 'controler_scan', 'deplacer']:
+                'sceller', 'ajouter_ligne', 'controler_scan', 'deplacer',
+                'import_asn']:
             return [IsResponsableOrAdmin()]
         return [IsAdminRole()]
 
@@ -280,6 +281,53 @@ class UniteLogistiqueViewSet(CompanyScopedModelViewSet):
             return Response({'detail': str(exc)},
                             status=status.HTTP_400_BAD_REQUEST)
         return Response(resultat)
+
+    @extend_schema(responses={
+        200: inline_serializer('StockUniteAsn', {
+            'version': serializers.CharField(),
+            'unite': serializers.DictField(),
+            'lignes': serializers.ListField(child=serializers.DictField()),
+            'totaux': serializers.DictField(),
+        }),
+        400: inline_serializer('StockUniteAsnErreur', {
+            'detail': serializers.CharField(),
+        }),
+    })
+    @action(detail=True, methods=['get'], url_path='export-asn')
+    def export_asn(self, request, pk=None):
+        """NTWMS27 — bordereau ASN (avis d'expédition anticipé) de l'unité.
+
+        Fichier structuré JSON, prêt pour un futur mapping EDI ; aucune
+        connexion EDI n'existe (export/import manuel). ``?telecharger=1``
+        renvoie le même contenu en pièce jointe."""
+        from ..services import exporter_asn
+        unite = self.get_object()
+        try:
+            bordereau = exporter_asn(unite)
+        except ValueError as exc:
+            return Response({'detail': str(exc)},
+                            status=status.HTTP_400_BAD_REQUEST)
+        reponse = Response(bordereau)
+        if request.query_params.get('telecharger'):
+            reponse['Content-Disposition'] = (
+                f'attachment; filename="asn-{unite.sscc}.json"')
+        return reponse
+
+    @extend_schema(responses={
+        200: inline_serializer('StockUniteAsnImport', {
+            'valide': serializers.BooleanField(),
+            'erreurs': serializers.ListField(child=serializers.CharField()),
+            'unite_connue': serializers.BooleanField(),
+            'sscc': serializers.CharField(),
+            'lignes': serializers.ListField(child=serializers.DictField()),
+        }),
+    })
+    @action(detail=False, methods=['post'], url_path='import-asn')
+    def import_asn(self, request):
+        """NTWMS27 — import MIROIR d'un bordereau ASN : valide et rapproche,
+        n'écrit RIEN (contrôle de cohérence, pas une intégration EDI)."""
+        from ..services import importer_asn
+        return Response(importer_asn(request.user.company, request.data))
 
     @action(detail=True, methods=['post'], url_path='sceller')
     def sceller(self, request, pk=None):
