@@ -24,7 +24,8 @@ from django.core.exceptions import (
     FieldDoesNotExist, ValidationError as DjangoValidationError,
 )
 from django.db import models
-from drf_spectacular.utils import extend_schema
+from drf_spectacular.utils import extend_schema, inline_serializer
+from rest_framework import serializers as drf_serializers
 from rest_framework import filters, serializers, status
 from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError as DrfValidationError
@@ -221,9 +222,24 @@ class AnalyserDxfView(APIView):
     write_permission = AO_GERER
     parser_classes = [MultiPartParser, FormParser]
 
-    @extend_schema(request=None, responses={200: dict},
-                   description="Analyse un DXF en mémoire (calques/entités/"
-                               "sommets + unité $INSUNITS) — rien n'est persisté.")
+    @extend_schema(
+        request=None,
+        responses={200: inline_serializer(
+            name='AnalyseDxfReponse',
+            fields={
+                'unite': drf_serializers.CharField(),
+                'calques': inline_serializer(
+                    name='CalqueDxf', many=True,
+                    fields={
+                        'nom': drf_serializers.CharField(),
+                        'entites': drf_serializers.IntegerField(),
+                        'sommets': drf_serializers.ListField(
+                            child=drf_serializers.ListField(
+                                child=drf_serializers.FloatField())),
+                    }),
+            })},
+        description="Analyse un DXF en mémoire (calques/entités/"
+                    "sommets + unité $INSUNITS) — rien n'est persisté.")
     def post(self, request):
         from . import dxf
 
