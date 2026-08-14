@@ -24,7 +24,11 @@ def appliquer_offre_groupee(*, offre, devis, user=None):
     ``mode_prix`` (``REMISE_PCT`` / ``PRIX_COMPOSANT``).
 
     Renvoie la liste des ``LigneDevis`` créées. Écriture cross-app ventes via
-    import local (aucun import de ``ventes.models`` au niveau module)."""
+    import local (aucun import de ``ventes.models`` au niveau module).
+
+    NTCPQ45 — pose une entrée chatter factuelle (auteur, horodatage, résumé)
+    sur le devis via ``apps.ventes.activity.log_devis_note`` — le mécanisme
+    ``historique``/``noter`` déjà en prod, aucune nouvelle infrastructure."""
     from apps.ventes.models import LigneDevis
 
     lignes = list(offre.lignes.select_related('produit').all())
@@ -73,6 +77,13 @@ def appliquer_offre_groupee(*, offre, devis, user=None):
                 devis=devis, produit=li.produit,
                 designation=li.produit.nom, quantite=qte,
                 prix_unitaire=pu, remise=remise))
+
+    if created:
+        from apps.ventes import activity
+        activity.log_devis_note(
+            devis, user,
+            f'Offre groupée « {offre.nom} » appliquée '
+            f'({len(created)} ligne(s) ajoutée(s)).')
     return created
 
 
