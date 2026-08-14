@@ -744,12 +744,74 @@ def _zone_villa_depuis_pan(pan):
     }
 
 
-def compte_moteur_du_layout(layout):
+def _produit_panneau_du_devis(devis):
+    """PV42 — le produit PANNEAU d'un devis EXISTANT, ou ``None``.
+
+    Première ligne classée « panneau » qui porte une fiche produit (une ligne
+    libre n'a pas de géométrie à donner au calepinage). Même classification que
+    partout ailleurs — la désignation d'abord, le nom du produit ensuite.
+    """
+    if devis is None:
+        return None
+    for ligne in _lignes_produit(devis):
+        if not _classe_ligne(ligne, _is_panel):
+            continue
+        produit = getattr(ligne, 'produit', None)
+        if produit is not None:
+            return produit
+    return None
+
+
+def _panneau_pour_calepinage(layout, *, company=None, devis=None):
+    """PV42 — le PANNEAU sur lequel calepiner, et la société qui le scope.
+
+    Deux sources, dans cet ordre : la ligne panneau du devis quand il en existe
+    un (le module RÉELLEMENT vendu), sinon le catalogue de la société au
+    wattage annoncé par le layout (``panelWatt``/``watt``, à défaut déduit du
+    kWc) — la même sélection que celle qui composera les lignes du devis.
+
+    Rend ``(produit, company_de_scoping)``. La société n'est rendue QUE si le
+    produit lui appartient vraiment : un produit GLOBAL (``company`` nulle,
+    catalogue partagé) passé avec une société ferait lever le garde-fou de
+    ``kit_panneau_du_produit`` (« appartient à une autre société ») et on
+    perdrait le kit réel pour rien. Aucun produit trouvé → ``(None, None)``,
+    et le moteur retombe sur son kit villa par défaut.
+    """
+    produit = _produit_panneau_du_devis(devis)
+    if produit is None and company is not None:
+        layout = layout or {}
+        watt = layout.get('panelWatt') or layout.get('watt')
+        if not watt:
+            result = dict(layout.get('result') or {})
+            panneaux = int(result.get('panels') or 0)
+            kwc = float(result.get('kwc') or 0.0)
+            if panneaux and kwc:
+                watt = int(round(kwc * 1000 / panneaux / 10) * 10)
+        try:
+            produit = _pick_product(company, _is_panel, watt=watt)
+        except Exception:      # pragma: no cover - catalogue indisponible
+            produit = None
+    if produit is None:
+        return None, None
+    proprietaire = getattr(produit, 'company_id', None)
+    if proprietaire is None:
+        # Produit du catalogue GLOBAL : aucun scoping société à opposer.
+        return produit, None
+    return produit, company
+
+
+def compte_moteur_du_layout(layout, *, company=None, devis=None):
     """Compte de modules rendu par le MOTEUR pour ce layout, ou ``None``.
 
     Somme les pans : chacun passe par ``apps.ao.selectors.calepinage_villa``
     (lecture cross-app sanctionnée — jamais ``apps.ao.models``), qui délègue au
     moteur partagé d'AOF163. Aucune ligne AO n'est créée.
+
+    PV42 — ``company``/``devis`` servent à résoudre le PANNEAU réellement vendu
+    et à le passer en ``produit_panneau`` (PV12) : le calepinage est alors posé
+    sur la géométrie de CE module, plus sur le kit villa générique. Sans
+    panneau résoluble (ni devis, ni société, ni catalogue), l'appel est
+    strictement celui d'hier.
 
     Rend ``None`` (et jamais une exception) dès que la géométrie manque ou que
     le moteur refuse : l'appelant garde alors le compte historique.
@@ -761,6 +823,9 @@ def compte_moteur_du_layout(layout):
 
     from apps.ao.selectors import calepinage_villa
 
+    produit_panneau, societe_panneau = _panneau_pour_calepinage(
+        layout, company=company, devis=devis)
+
     modules = 0
     detail = []
     for pan in pans:
@@ -768,7 +833,9 @@ def compte_moteur_du_layout(layout):
         if zone is None:
             continue
         try:
-            sortie = calepinage_villa(zone, ordre='lnglat')
+            sortie = calepinage_villa(zone, ordre='lnglat',
+                                      produit_panneau=produit_panneau,
+                                      company=societe_panneau)
         except Exception:
             logger.warning(
                 'AOF164: le moteur a refusé le pan %s — compte historique '
@@ -786,21 +853,26 @@ def compte_moteur_du_layout(layout):
         })
     if not detail:
         return None
-    return {'modules': modules, 'pans': tuple(detail)}
+    return {'modules': modules, 'pans': tuple(detail),
+            'produit_panneau': getattr(produit_panneau, 'pk', None)}
 
 
-def arbitrer_compte_calepinage(layout, compte_historique):
+def arbitrer_compte_calepinage(layout, compte_historique, *, company=None,
+                               devis=None):
     """Compare ancien et nouveau compte et JOURNALISE l'écart, ou rend ``None``.
 
     ``None`` signifie « ne change rien » : drapeau baissé (cas par défaut,
     retour AVANT tout calcul et tout journal) ou moteur sans réponse.
     Sinon rend ``{'ancien', 'nouveau', 'ecart', 'retenu', 'pans'}`` où
     ``retenu`` est le compte du MOTEUR — c'est le sens même de la bascule.
+
+    PV42 — ``company``/``devis`` sont transmis au moteur pour qu'il calepine sur
+    le panneau réellement vendu (PV12).
     """
     if not moteur_calepinage_actif():
         return None
     try:
-        mesure = compte_moteur_du_layout(layout)
+        mesure = compte_moteur_du_layout(layout, company=company, devis=devis)
     except Exception:
         # Une panne du moteur ne fait JAMAIS échouer une création de devis :
         # on journalise et on garde le compte historique.
@@ -818,6 +890,33 @@ def arbitrer_compte_calepinage(layout, compte_historique):
         ancien, nouveau, ecart, len(mesure['pans']))
     return {'ancien': ancien, 'nouveau': nouveau, 'ecart': ecart,
             'retenu': nouveau, 'pans': mesure['pans']}
+
+
+def concevoir_electrique_du_devis(devis, *, origine=''):
+    """PV42 — enchaîne la conception ÉLECTRIQUE derrière le calepinage, SANS
+    jamais pouvoir casser le devis.
+
+    Le calepinage vient d'être rangé dans ``roof_layout`` : ses pans
+    (``_pans_geometry``) sont exactement ce que ``electrical_service`` attend
+    pour composer UN GROUPE DE CHAÎNES PAR PAN — deux orientations ne partagent
+    jamais une entrée MPPT (le moteur PV34 le refuse structurellement).
+
+    **Meilleur effort, et c'est structurel** : une panne d'étude électrique est
+    une pièce technique manquante, jamais une création (ou une resynchro) de
+    devis perdue. Toute exception est journalisée et avalée, et la fonction rend
+    ``None``. Elle n'écrit que ``electrical_design``/``electrical_design_hash``
+    (règle #4 : aucun statut, aucune ligne, aucun prix).
+    """
+    try:
+        from apps.ventes import electrical_service
+        return electrical_service.build_electrical_design(devis)
+    except Exception:
+        logger.warning(
+            'PV42: conception électrique indisponible pour le devis %s (%s) — '
+            'le devis est intact, la pièce technique sera recalculée à la '
+            'demande', getattr(devis, 'reference', '?'), origine or 'layout',
+            exc_info=True)
+        return None
 
 
 def build_devis_from_layout(*, layout, user, company, lead=None, client=None,
@@ -874,7 +973,8 @@ def build_devis_from_layout(*, layout, user, company, lead=None, client=None,
     # rend ``None`` AVANT tout calcul — aucun appel moteur, aucun journal,
     # comportement bit-identique à aujourd'hui. Drapeau ON : le compte vient du
     # moteur et l'écart ancien/nouveau est journalisé pour arbitrage.
-    arbitrage = arbitrer_compte_calepinage(layout, nb_panneaux)
+    arbitrage = arbitrer_compte_calepinage(layout, nb_panneaux,
+                                           company=company)
     if arbitrage is not None and arbitrage['retenu'] != nb_panneaux:
         watt_reference = layout.get('panelWatt') or layout.get('watt')
         if not watt_reference and nb_panneaux and kwc:
@@ -965,6 +1065,9 @@ def build_devis_from_layout(*, layout, user, company, lead=None, client=None,
     devis = create_with_reference(Devis, 'DEV', company, _create)
     # QX23be — fige la marge interne dès la création (manager-only).
     refresh_marge_snapshot(devis)
+    # PV42 — la boucle se ferme ici : calepinage rangé → conception électrique
+    # par pan. Meilleur effort : un échec ne fait JAMAIS perdre le devis.
+    concevoir_electrique_du_devis(devis, origine='création')
     logger.info(
         'Q3/QJ21: devis %s built from layout (%d lignes, %.2f kWc, %d pans, company %s)',
         devis.reference, len(line_specs), kwc,
@@ -1230,7 +1333,7 @@ def sync_devis_from_layout(devis, layout, user=None):
             getattr(verrou.company, 'id', '?'),
             getattr(user, 'username', '?'))
 
-        return {
+        resultat = {
             'inchange': False,
             'panneaux': total_panneaux,
             'kwc': kwc,
@@ -1239,6 +1342,13 @@ def sync_devis_from_layout(devis, layout, user=None):
             'lignes_modifiees': lignes_modifiees,
             'avertissements': avertissements,
         }
+
+    # PV42 — la toiture a bougé : la conception ÉLECTRIQUE la suit, par pan.
+    # HORS de la transaction, et en meilleur effort : une étude électrique en
+    # panne ne doit ni annuler la resynchro déjà validée, ni salir sa
+    # transaction. L'empreinte d'entrée (PV41) évite toute réécriture inutile.
+    concevoir_electrique_du_devis(verrou, origine='resynchronisation')
+    return resultat
 
 
 # ── Copilote — devis AUTOMATIQUE (résidentiel) ───────────────────────────────
