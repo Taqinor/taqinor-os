@@ -57,6 +57,9 @@ from apps.compta.views import _ComptaBaseViewSet
 
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import extend_schema, inline_serializer
+from rest_framework import serializers as drf_serializers
 from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
@@ -136,6 +139,24 @@ class ModeleJourneyViewSet(_ComptaBaseViewSet):
             {'sequence_id': sequence.id, 'nom': sequence.nom}, status=201)
 
 
+@extend_schema(responses={200: inline_serializer('HeatmapEngagement', {
+    'cellules': drf_serializers.ListField(child=inline_serializer(
+        'HeatmapEngagementCellule', {
+            'jour': drf_serializers.IntegerField(),
+            'heure': drf_serializers.IntegerField(),
+            'envois': drf_serializers.IntegerField(),
+            'ouvertures': drf_serializers.IntegerField(),
+            'taux_ouverture': drf_serializers.FloatField(),
+        })),
+    'meilleur': inline_serializer('HeatmapEngagementMeilleur', {
+        'jour': drf_serializers.IntegerField(),
+        'heure': drf_serializers.IntegerField(),
+        'envois': drf_serializers.IntegerField(),
+        'ouvertures': drf_serializers.IntegerField(),
+        'taux_ouverture': drf_serializers.FloatField(),
+    }, required=False, allow_null=True),
+    'total_envois': drf_serializers.IntegerField(),
+})})
 @api_view(['GET'])
 @permission_classes([IsAuthenticated, IsResponsableOrAdmin])
 def heatmap_engagement_view(request):
@@ -194,6 +215,18 @@ class VersionFormulaireIntakeViewSet(_ComptaBaseViewSet):
 
 # ── NTMKT26 — Import de coûts publicitaires externes (CSV) ─────────────────
 
+_IMPORT_COUTS_REQUEST = inline_serializer('ImporterCoutsPublicitairesRequest', {
+    'fichier': drf_serializers.FileField(),
+})
+_IMPORT_COUTS_RESPONSE = inline_serializer('ImporterCoutsPublicitairesRapport', {
+    'matched': drf_serializers.ListField(child=drf_serializers.DictField()),
+    'unmatched': drf_serializers.ListField(child=drf_serializers.DictField()),
+    'erreur': drf_serializers.CharField(required=False),
+})
+
+
+@extend_schema(request={'multipart/form-data': _IMPORT_COUTS_REQUEST},
+               responses={200: _IMPORT_COUTS_RESPONSE})
 @api_view(['POST'])
 @permission_classes([IsAuthenticated, IsResponsableOrAdmin])
 def importer_couts_publicitaires_view(request):
@@ -209,6 +242,7 @@ def importer_couts_publicitaires_view(request):
 
 # ── NTMKT27 — Bilan de campagne (PDF interne) ───────────────────────────────
 
+@extend_schema(responses={200: OpenApiTypes.BINARY})
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def campagne_rapport_pdf_view(request, pk=None):
@@ -225,6 +259,7 @@ def campagne_rapport_pdf_view(request, pk=None):
 
 # ── NTMKT28 — Registre de consentement (export CNDP, PDF) ──────────────────
 
+@extend_schema(responses={200: OpenApiTypes.BINARY})
 @api_view(['GET'])
 @permission_classes([IsAuthenticated, IsResponsableOrAdmin])
 def registre_consentement_export_pdf_view(request):
@@ -245,6 +280,8 @@ def registre_consentement_export_pdf_view(request):
 
 # ── NTMKT31 — Réglages tenant « Marketing » ─────────────────────────────────
 
+@extend_schema(request=ParametresMarketingSerializer,
+               responses=ParametresMarketingSerializer)
 @api_view(['GET', 'PUT', 'PATCH'])
 @permission_classes([IsAuthenticated, IsResponsableOrAdmin])
 def parametres_marketing_view(request):

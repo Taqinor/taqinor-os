@@ -12,6 +12,8 @@ Contrat de sécurité :
 - seul un formulaire ``actif=True`` est adressable ;
 - l'écriture crm passe par ``apps.marketing.services`` → ``apps.crm.services``.
 """
+from drf_spectacular.utils import extend_schema, inline_serializer
+from rest_framework import serializers as drf_serializers
 from rest_framework.decorators import (
     api_view, permission_classes, throttle_classes,
 )
@@ -20,6 +22,26 @@ from rest_framework.response import Response
 from rest_framework.throttling import SimpleRateThrottle
 
 from . import services
+
+_PREFERENCES_RESPONSE = inline_serializer('PreferencesPubliques', {
+    'destinataire': drf_serializers.CharField(),
+    'canaux': drf_serializers.DictField(child=drf_serializers.BooleanField()),
+    'listes': drf_serializers.ListField(child=inline_serializer(
+        'PreferencesPubliquesListe', {
+            'id': drf_serializers.IntegerField(),
+            'nom': drf_serializers.CharField(),
+            'abonne': drf_serializers.BooleanField(),
+        })),
+})
+# GET n'a pas de corps ; POST en a un (canaux/listes choisis) — sans
+# `request=`, drf-spectacular tente de deviner un serializer pour LA MEME
+# vue GET+POST et echoue sur le cote POST (« unable to guess serializer »).
+_PREFERENCES_REQUEST = inline_serializer('PreferencesPubliquesRequest', {
+    'canaux': drf_serializers.DictField(
+        child=drf_serializers.BooleanField(), required=False),
+    'listes': drf_serializers.DictField(
+        child=drf_serializers.BooleanField(), required=False),
+})
 
 
 class _IntakePublicThrottle(SimpleRateThrottle):
@@ -92,6 +114,7 @@ def formulaire_intake_soumettre(request, slug):
 # signé porte la société ET le destinataire ; aucune donnée n'est lue de
 # l'URL en clair, aucun autre contact n'est adressable avec un jeton donné.
 
+@extend_schema(request=_PREFERENCES_REQUEST, responses=_PREFERENCES_RESPONSE)
 @api_view(['GET', 'POST'])
 @permission_classes([AllowAny])
 @throttle_classes([_IntakePublicThrottle])

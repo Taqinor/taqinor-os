@@ -3,7 +3,9 @@
 Tous les ViewSets héritent de ``CompanyScopedModelViewSet`` (ARC2) : le
 queryset est scopé société et ``perform_create`` force ``company`` côté
 serveur. La liste des produits n'est jamais lue du corps pour le scope."""
-from rest_framework import status
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import extend_schema, inline_serializer
+from rest_framework import serializers as drf_serializers, status
 from rest_framework.decorators import action
 from rest_framework.renderers import BrowsableAPIRenderer, JSONRenderer
 from rest_framework.response import Response
@@ -220,6 +222,20 @@ class ProduitEquivalentViewSet(CompanyScopedModelViewSet):
         return [IsResponsableOrAdmin()]
 
 
+# Classe PARTAGEE (fabriquee UNE SEULE fois) : appeler inline_serializer()
+# a nouveau creerait une deuxieme classe Python de meme nom, vue par
+# drf-spectacular comme un composant en collision (« identical names,
+# different identities »). GET et POST renvoient la MEME instance en liste
+# (many=True) a partir de cette classe unique.
+_CpqVarianteSerializer = inline_serializer('CpqVariante', {
+    'devis_id': drf_serializers.IntegerField(),
+    'reference': drf_serializers.CharField(),
+    'tier': drf_serializers.CharField(),
+    'statut': drf_serializers.CharField(),
+    'total_ht': drf_serializers.CharField(),
+}).__class__
+
+
 class DevisVariantesView(APIView):
     """NTCPQ16 — ``cpq/devis/{id}/variantes/``.
 
@@ -249,6 +265,7 @@ class DevisVariantesView(APIView):
             'total_ht': str(v.total_ht),
         } for v in variantes]
 
+    @extend_schema(responses=_CpqVarianteSerializer(many=True))
     def get(self, request, pk):
         devis = self._devis(request, pk)
         if devis is None:
@@ -257,6 +274,8 @@ class DevisVariantesView(APIView):
         return Response(self._payload(
             devis.variantes_cpq.all().order_by('variante_tier', 'id')))
 
+    @extend_schema(request=None,
+                   responses={201: _CpqVarianteSerializer(many=True)})
     def post(self, request, pk):
         devis = self._devis(request, pk)
         if devis is None:
@@ -297,6 +316,22 @@ class RapportConformiteView(APIView):
     COLONNES = ['reference', 'date_envoi', 'commercial', 'conforme',
                 'bloquant', 'nb_violations']
 
+    @extend_schema(responses={200: inline_serializer('CpqRapportConformite', {
+        'total': drf_serializers.IntegerField(),
+        'conformes': drf_serializers.IntegerField(),
+        'non_conformes': drf_serializers.IntegerField(),
+        'taux_conformite_pct': drf_serializers.FloatField(),
+        'lignes': drf_serializers.ListField(child=inline_serializer(
+            'CpqRapportConformiteLigne', {
+                'devis_id': drf_serializers.IntegerField(),
+                'reference': drf_serializers.CharField(),
+                'date_envoi': drf_serializers.CharField(allow_null=True),
+                'commercial': drf_serializers.CharField(allow_null=True),
+                'conforme': drf_serializers.BooleanField(),
+                'bloquant': drf_serializers.BooleanField(),
+                'nb_violations': drf_serializers.IntegerField(),
+            })),
+    })})
     def get(self, request):
         rapport = reports.rapport_conformite_configurations(
             request.user.company,
@@ -329,6 +364,9 @@ class MargeSousSeuilView(APIView):
     ``?famille=``."""
     permission_classes = [IsResponsableOrAdmin]
 
+    @extend_schema(responses={200: inline_serializer('CpqMargeSousSeuil', {
+        'devis': drf_serializers.ListField(child=drf_serializers.DictField()),
+    })})
     def get(self, request):
         return Response({'devis': reports.devis_sous_seuil_marge(
             request.user.company,
@@ -349,6 +387,7 @@ class FeuilleConfigurationView(APIView):
     interne / test)."""
     permission_classes = [IsResponsableOrAdmin]
 
+    @extend_schema(responses={200: OpenApiTypes.BINARY})
     def get(self, request, pk):
         from django.http import HttpResponse
         from apps.ventes.models import Devis
@@ -376,6 +415,15 @@ class SuggestionsProduitView(APIView):
     d'achat exposé."""
     permission_classes = [IsAuthenticated]
 
+    @extend_schema(responses={200: inline_serializer('CpqSuggestionsProduit', {
+        'suggestions': drf_serializers.ListField(child=inline_serializer(
+            'CpqSuggestionProduit', {
+                'produit_id': drf_serializers.IntegerField(),
+                'nom': drf_serializers.CharField(),
+                'source': drf_serializers.CharField(),
+                'occurrences': drf_serializers.IntegerField(),
+            })),
+    })})
     def get(self, request):
         produit_id = request.query_params.get('produit_id')
         if not produit_id:

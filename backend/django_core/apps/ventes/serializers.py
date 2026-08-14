@@ -1,3 +1,4 @@
+from drf_spectacular.utils import extend_schema_field, inline_serializer
 from rest_framework import serializers
 from rest_framework.validators import UniqueTogetherValidator
 from .models import (
@@ -439,6 +440,15 @@ class DevisSerializer(serializers.ModelSerializer):
     # clé est retirée en mode liste pour ne pas payer N évaluations).
     configuration = serializers.SerializerMethodField()
 
+    @extend_schema_field(inline_serializer('DevisConfigurationEtat', {
+        'configuration_valide': serializers.BooleanField(),
+        'bloquant': serializers.BooleanField(),
+        # Les entrées mélangent deux formes (violation de compatibilité vs
+        # violation de règle produit, cf. `cpq.selectors.
+        # etat_configuration_devis`) — décrites en DictField plutôt que
+        # figées dans une forme unique.
+        'violations': serializers.ListField(child=serializers.DictField()),
+    }))
     def get_configuration(self, obj):
         from apps.cpq.selectors import etat_configuration_devis
         return etat_configuration_devis(obj)

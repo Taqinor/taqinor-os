@@ -1,3 +1,4 @@
+from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 from rest_framework.exceptions import PermissionDenied
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
@@ -205,6 +206,7 @@ class UserSerializer(serializers.ModelSerializer):
     # existante) renvoie toujours False.
     company_essai_expire = serializers.SerializerMethodField()
 
+    @extend_schema_field(serializers.BooleanField())
     def get_company_essai_expire(self, obj):
         from datetime import date
         company = getattr(obj, 'company', None)
