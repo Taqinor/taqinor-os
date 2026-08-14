@@ -528,6 +528,12 @@ class CampagneViewSetAudite(CampagneViewSet):
     marketing — la route legacy `/compta/…` continue de servir la classe de
     base inchangée, sans journalisation."""
 
+    # Le décorateur DOIT être redéclaré : `get_extra_actions()` de DRF collecte
+    # les attributs portant `.mapping`, posé par `@action`. Surcharger la
+    # méthode SANS le décorateur écrase cet attribut et l'action disparaît du
+    # routeur — l'endpoint renvoie alors 404 en silence (aucun test ne le voit,
+    # la route legacy `/compta/…` continuant de fonctionner).
+    @action(detail=True, methods=['post'])
     def envoyer(self, request, pk=None):
         response = super().envoyer(request, pk)
         if response.status_code == 200 and not response.data.get(
@@ -544,6 +550,9 @@ class EnqueteNPSViewSetNotifiant(EnqueteNPSViewSet):
     marketing (``apps.marketing.urls``) — la route legacy `/compta/…`
     continue de servir la classe de base inchangée."""
 
+    # Décorateur redéclaré — même raison que `CampagneViewSetAudite.envoyer`
+    # ci-dessus : sans lui, DRF ne route plus l'action et l'endpoint est 404.
+    @action(detail=True, methods=['post'])
     def repondre(self, request, pk=None):
         response = super().repondre(request, pk)
         if response.status_code == 200:
