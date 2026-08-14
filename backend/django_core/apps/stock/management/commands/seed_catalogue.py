@@ -361,6 +361,30 @@ FICHES = {
 }
 
 
+# ── PV9 — Fiches techniques (FicheTechnique, PV5) : SEULES les valeurs
+# SOURCÉES ci-dessous sont saisies. Aucune fiche EXISTANTE n'est jamais
+# modifiée (skip-if-exists) ; tout le reste NULL sur la fiche créée
+# (« à vérifier fondateur — PVG4 »).
+FICHES_TECHNIQUES = {
+    'PAN-CS-710': {
+        'type_fiche': 'module',
+        'longueur_mm': 2384,
+        'largeur_mm': 1303,
+        'epaisseur_mm': 33,
+        # Source : datasheets distributeurs convergents, Canadian Solar
+        # TOPBiHiKu7 CS7N-710TB-AG.
+        'temp_coeff_pmax_pct_c': Decimal('-0.290'),
+    },
+    'PAN-JK-710': {
+        'type_fiche': 'module',
+        # Source : datasheet JKM710-735N-66HL5-BDV. Pas de dimensions —
+        # non vérifiées, à confirmer fondateur (PVG4).
+        'temp_coeff_pmax_pct_c': Decimal('-0.290'),
+        'temp_coeff_voc_pct_c': Decimal('-0.250'),
+    },
+}
+
+
 class Command(BaseCommand):
     help = "Seed the stock with the devis-simulator catalogue (idempotent, additive only)."
 
@@ -537,6 +561,21 @@ class Command(BaseCommand):
                                         if f in fiche])
             fiches_updated += 1
 
+        # ── PV9 — Fiches techniques (dimensions/coefficients datasheet) ──
+        # Additif + idempotent : SKU absent du catalogue → ignoré ; fiche
+        # DÉJÀ existante pour ce produit → jamais écrasée (skip).
+        from apps.stock.models import FicheTechnique
+        fiches_techniques_created = 0
+        for sku, valeurs in FICHES_TECHNIQUES.items():
+            produit = Produit.objects.filter(company=company, sku=sku).first()
+            if not produit:
+                continue  # SKU pas seedé par ce catalogue — rien à rattacher
+            if FicheTechnique.objects.filter(produit=produit).exists():
+                continue  # fiche déjà présente — jamais modifiée
+            FicheTechnique.objects.create(
+                company=company, produit=produit, **valeurs)
+            fiches_techniques_created += 1
+
         # ── Réforme TVA 2024–2026 (autorisation explicite du fondateur) ──
         # Panneaux PV → 10 % avec HT re-dérivé pour PRÉSERVER le TTC à
         # l'identique ; tout produit sans taux → 20 %. Idempotent : un panneau
@@ -592,6 +631,7 @@ class Command(BaseCommand):
             f"\nCatalogue seed for '{company.nom}': "
             f"{len(created)} created, {len(skipped)} already present (untouched), "
             f"{fiches_updated} fiches commerciales mises à jour, "
+            f"{fiches_techniques_created} fiches techniques créées, "
             f"{archived_count} placeholders archivés, "
             f"{tva_updated} taux TVA alignés (réforme 10 % panneaux), "
             f"{recategorises} produits rangés dans la taxonomie."

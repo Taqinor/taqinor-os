@@ -74,6 +74,56 @@ class TestSeedCatalogue(TestCase):
         # Prix existants jamais modifiés par la passe fiches
         self.assertEqual(huawei.prix_vente, Decimal('16666.67'))
 
+    def test_pv9_fiches_techniques_seeded_with_sourced_values_only(self):
+        from apps.stock.models import FicheTechnique
+        seed(self.company)
+        cs = Produit.objects.get(company=self.company, sku='PAN-CS-710')
+        fiche_cs = FicheTechnique.objects.get(produit=cs)
+        self.assertEqual(fiche_cs.type_fiche, 'module')
+        self.assertEqual(fiche_cs.longueur_mm, 2384)
+        self.assertEqual(fiche_cs.largeur_mm, 1303)
+        self.assertEqual(fiche_cs.epaisseur_mm, 33)
+        self.assertEqual(fiche_cs.temp_coeff_pmax_pct_c, Decimal('-0.290'))
+        # Rien d'inventé : coefficients module non sourcés restent NULL.
+        self.assertIsNone(fiche_cs.temp_coeff_voc_pct_c)
+        self.assertIsNone(fiche_cs.poids_kg)
+
+        jk = Produit.objects.get(company=self.company, sku='PAN-JK-710')
+        fiche_jk = FicheTechnique.objects.get(produit=jk)
+        self.assertEqual(fiche_jk.type_fiche, 'module')
+        self.assertEqual(fiche_jk.temp_coeff_pmax_pct_c, Decimal('-0.290'))
+        self.assertEqual(fiche_jk.temp_coeff_voc_pct_c, Decimal('-0.250'))
+        # Dimensions Jinko non vérifiées : jamais inventées.
+        self.assertIsNone(fiche_jk.longueur_mm)
+        self.assertIsNone(fiche_jk.largeur_mm)
+
+    def test_pv9_fiches_techniques_idempotent_second_run(self):
+        from apps.stock.models import FicheTechnique
+        seed(self.company)
+        cs = Produit.objects.get(company=self.company, sku='PAN-CS-710')
+        fiche = FicheTechnique.objects.get(produit=cs)
+        # Un run seedeur ne re-crée ni ne modifie une fiche existante.
+        seed(self.company)
+        self.assertEqual(
+            FicheTechnique.objects.filter(produit=cs).count(), 1)
+        fiche.refresh_from_db()
+        self.assertEqual(fiche.temp_coeff_pmax_pct_c, Decimal('-0.290'))
+
+    def test_pv9_never_overwrites_existing_fiche_technique(self):
+        from apps.stock.models import FicheTechnique
+        seed(self.company)
+        cs = Produit.objects.get(company=self.company, sku='PAN-CS-710')
+        FicheTechnique.objects.filter(produit=cs).delete()
+        # Une fiche pré-existante (saisie manuellement) n'est jamais écrasée.
+        manuelle = FicheTechnique.objects.create(
+            company=self.company, produit=cs, type_fiche='module',
+            longueur_mm=1, largeur_mm=1)
+        seed(self.company)
+        manuelle.refresh_from_db()
+        self.assertEqual(manuelle.longueur_mm, 1)
+        self.assertEqual(manuelle.largeur_mm, 1)
+        self.assertIsNone(manuelle.temp_coeff_pmax_pct_c)
+
     def test_veichi_seeded_with_real_buy_and_sell_prices(self):
         seed(self.company)
         qs = Produit.objects.filter(company=self.company)
