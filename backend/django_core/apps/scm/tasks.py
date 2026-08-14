@@ -97,6 +97,42 @@ def generer_previsions_mensuelles_task(horizon_mois=None):
     return resume_global
 
 
+@shared_task(name='scm.recalculer_politiques_stock_hebdo')
+def recalculer_politiques_stock_hebdo():
+    """NTSCM35 — tâche planifiée HEBDOMADAIRE (Celery beat, tous les lundis) :
+    recalcule ``PolitiqueStock`` (``services.recalculer_politiques_stock``,
+    NTSCM6) de CHAQUE société ayant déjà un ``ParametresSCM`` configuré
+    (singleton créé paresseusement dès qu'une société a touché aux réglages
+    SCM ou l'écran S&OP — NTSCM22/33) — jamais toutes les sociétés
+    indistinctement (à la différence de NTSCM21, qui vise TOUT le monde).
+
+    Best-effort PAR SOCIÉTÉ : une société aux données incomplètes (aucun
+    produit, aucun historique de sorties…) ne lève jamais d'exception qui
+    interromprait les suivantes — même patron que
+    ``generer_previsions_mensuelles_task``. Renvoie
+    ``[{'company_id', 'nb_politiques'}, ...]``."""
+    from . import services
+    from .models import ParametresSCM
+
+    resume = []
+    company_ids = ParametresSCM.objects.values_list('company_id', flat=True)
+    for company in _companies_by_ids(company_ids):
+        try:
+            politiques = services.recalculer_politiques_stock(company)
+        except Exception:  # noqa: BLE001 — best-effort par société
+            logger.warning(
+                'scm.recalculer_politiques_stock_hebdo: échec société %s',
+                company.id, exc_info=True)
+            continue
+        resume.append({'company_id': company.id, 'nb_politiques': len(politiques)})
+    return resume
+
+
+def _companies_by_ids(company_ids):
+    from authentication.models import Company
+    return Company.objects.filter(id__in=list(company_ids))
+
+
 @shared_task(name='scm.ouvrir_cycle_sop_mensuel')
 def ouvrir_cycle_sop_mensuel_task(*, today=None):
     """NTSCM22 — crée le ``CyclePlanificationSOP`` du mois SUIVANT (statut

@@ -856,6 +856,19 @@ app.conf.beat_schedule = {
         'task': 'scm.ouvrir_cycle_sop_mensuel',
         'schedule': crontab(hour=5, minute=30, day_of_month=20),
     },
+    # NTSCM35 — recalcule PolitiqueStock (NTSCM6) de chaque société avec
+    # ParametresSCM configuré, tous les lundis — apps/scm/tasks.py.
+    'scm-recalculer-politiques-stock-hebdo': {
+        'task': 'scm.recalculer_politiques_stock_hebdo',
+        'schedule': crontab(hour=5, minute=45, day_of_week=1),
+    },
+    # NTSCM36 — purge les PrevisionDemande > ParametresSCM.
+    # retention_previsions_mois (défaut 24 mois), sauf si référencées par un
+    # LigneDemandeSOP figé d'un cycle CLOS — apps/scm/tasks.py. Mensuel.
+    'scm-purger-donnees-scm-anciennes': {
+        'task': 'scm.purger_donnees_scm_anciennes',
+        'schedule': crontab(hour=6, minute=0, day_of_month=2),
+    },
 }
 
 # YHARD6 — compteurs Celery succès/échec (process-local, best-effort) pour
