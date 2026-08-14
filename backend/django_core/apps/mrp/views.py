@@ -10,6 +10,7 @@ from rest_framework.negotiation import DefaultContentNegotiation
 from rest_framework.parsers import MultiPartParser
 from rest_framework.response import Response
 
+from apps.records.views import ChatterViewSetMixin
 from core.permissions import ScopedPermission
 from core.viewsets import CompanyScopedModelViewSet
 
@@ -184,10 +185,17 @@ class OperationGammeViewSet(CompanyScopedModelViewSet):
         super().perform_update(serializer)
 
 
-class OrdreFabricationViewSet(CompanyScopedModelViewSet):
+class OrdreFabricationViewSet(ChatterViewSetMixin, CompanyScopedModelViewSet):
     """NTMFG3 — CRUD des Ordres de Fabrication (company-scopé). `confirmer/`
     instancie les opérations depuis la gamme et calcule les dates prévues
-    (NTMFG3)."""
+    (NTMFG3).
+
+    NTMFG38 — `ChatterViewSetMixin` (ARC8, `records.Activity` générique,
+    même patron que `apps.transport.views.OrdreTransportViewSet`) donne
+    `chatter/historique/` (GET) et `chatter/noter/` (POST) SANS nouveau
+    modèle `*Activity` maison. Les transitions de statut (confirmer/
+    cloturer/annuler) écrivent une ligne automatique via
+    `services.log_activite_of` — voir cette fonction pour le détail."""
     queryset = OrdreFabrication.objects.select_related(
         'produit', 'gamme', 'kit_ordre_assemblage').prefetch_related(
         'operations__poste_charge').all()

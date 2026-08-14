@@ -134,6 +134,23 @@ def _composants_of(of):
             for ligne in lignes]
 
 
+def log_activite_of(of, *, user=None, field='', field_label='', old_value='',
+                    new_value='', body=''):
+    """NTMFG38 — journalise (chatter générique `records.Activity`, ARC8)
+    une entrée sur l'OF — AUCUN nouveau modèle `*Activity` maison (motif
+    `apps.transport.services.log_activite_ordre`). N'écrit JAMAIS
+    `audit.AuditLog` (chatter ≠ audit — NTMFG39 audite des actions
+    SENSIBLES précises, distinctes, jamais les transitions OF routine)."""
+    from apps.records.models import Activity
+    from apps.records.services import log_activity
+
+    kind = Activity.Kind.NOTE if body else Activity.Kind.MODIFICATION
+    return log_activity(
+        of, kind, user=user, field=field, field_label=field_label,
+        old_value=str(old_value), new_value=str(new_value), body=body,
+        company=of.company)
+
+
 def cloturer_of(of, user=None):
     """NTMFG4 — clôture un OF : consomme les composants et produit le
     composite (backflush), EXACTEMENT une fois (idempotence
@@ -149,6 +166,7 @@ def cloturer_of(of, user=None):
     with transaction.atomic():
         # select_for_update — même garde de course que XMFG1 (`OrdreAssemblage`).
         locked = OrdreFabrication.objects.select_for_update().get(pk=of.pk)
+        ancien_statut = locked.statut
         if locked.kit_ordre_assemblage_id is None and not locked.stock_mouvemente:
             composants = _composants_of(locked)
             if composants:
@@ -173,6 +191,13 @@ def cloturer_of(of, user=None):
             locked.stock_mouvemente = True
         locked.statut = OrdreFabrication.Statut.TERMINE
         locked.save(update_fields=['stock_mouvemente', 'statut'])
+        # NTMFG38 — chatter UNIQUEMENT sur un VRAI franchissement (jamais un
+        # rappel de clôture déjà actée — idempotence du chatter, pas
+        # seulement du backflush).
+        if ancien_statut != OrdreFabrication.Statut.TERMINE:
+            log_activite_of(
+                locked, user=user, field='statut', field_label='Statut',
+                old_value=ancien_statut, new_value=OrdreFabrication.Statut.TERMINE)
     return locked
 
 
@@ -187,8 +212,12 @@ def confirmer_of(of, user=None):
         planifier_of(of)
         reserver_composants_of(of)
         if of.statut == OrdreFabrication.Statut.BROUILLON:
+            ancien_statut = of.statut
             of.statut = OrdreFabrication.Statut.PLANIFIE
             of.save(update_fields=['statut'])
+            log_activite_of(
+                of, user=user, field='statut', field_label='Statut',
+                old_value=ancien_statut, new_value=of.statut)
     return of
 
 
@@ -299,9 +328,15 @@ def annuler_of(of, user=None, motif=''):
             raise ValueError(
                 "Impossible d'annuler un OF dont le stock a déjà été "
                 "mouvementé.")
+        ancien_statut = locked.statut
         liberer_reservations_of(locked)
         locked.statut = OrdreFabrication.Statut.ANNULE
         locked.save(update_fields=['statut'])
+        if ancien_statut != OrdreFabrication.Statut.ANNULE:
+            log_activite_of(
+                locked, user=user, field='statut', field_label='Statut',
+                old_value=ancien_statut, new_value=locked.statut,
+                body=(f'Annulé — motif : {motif}' if motif else ''))
     return locked
 
 
