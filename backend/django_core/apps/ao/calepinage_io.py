@@ -48,6 +48,8 @@ __all__ = [
     'rangees_imposees_du_preset', 'surface_vers_document',
     'obstacles_vers_document', 'resultat_vers_json', 'preuve_vers_json',
     'marges_vers_json', 'tiroirs_vers_json', 'tiroirs_vides',
+    'PATCH_MOTEUR_VERS_PARAMS', 'PATCH_MOTEUR_VERS_OBSTACLE',
+    'action_de_patch', 'suggestion_vers_json', 'suggestions_vers_json',
 ]
 
 
@@ -687,6 +689,112 @@ def tiroirs_vers_json(donnees, parametres):
                        'valeurs': _valeurs_rives(parametres)}
     sortie['orientation'] = {'donnees': brut['orientation'],
                              'valeurs': _valeurs_orientation(parametres)}
+    return sortie
+
+
+# ─────────────────────────────────────────────────── suggestions (PV50)
+#
+# ``recommandations.proposer`` rend des ``Recommandation`` dont le
+# ``patch_entree`` est écrit dans le vocabulaire du MOTEUR (``allee_m``,
+# ``kits``, ``ecarter``…). L'écran, lui, ne sait appliquer que deux choses :
+# un patch de PARAMÈTRES de calepinage (le dict que ``parametres_vers_document``
+# relit) ou une décision sur un OBSTACLE (le champ ``provenance`` d'un
+# ``ObstacleAO``). La traduction est donc EXPLICITE, clé par clé — et une clé
+# non cartographiée fait TOMBER la suggestion entière plutôt que de publier un
+# bouton « appliquer » qui n'appliquerait rien.
+
+#: Patch MOTEUR -> clé du dict de PARAMÈTRES de l'API (vocabulaire du preset).
+#: Seul ``allee_m`` change de nom : les autres portent déjà le même.
+PATCH_MOTEUR_VERS_PARAMS = {
+    'allee_m': 'allee_min_m',
+    'rive_laterale_m': 'rive_laterale_m',
+    'rive_extremite_m': 'rive_extremite_m',
+    'axe_rangee': 'axe_rangee',
+    'kits': 'kits_autorises',
+}
+
+#: Patch MOTEUR -> provenance AO visée. Le vocabulaire AO est le format
+#: CANONIQUE (cf. ``PROVENANCE_VERS_MOTEUR``) : le moteur nomme ``RELEVE`` ce
+#: que l'AO nomme ``MESURE``, et c'est la valeur AO qui doit voyager, puisque
+#: c'est elle que l'écran écrira sur ``ObstacleAO.provenance``.
+PATCH_MOTEUR_VERS_OBSTACLE = {
+    'ecarter': 'ECARTE',
+    'confirmer': 'MESURE',
+}
+
+
+def _valeur_de_patch(cle, valeur):
+    """Convertit la valeur d'un patch (le moteur les écrit en CHAÎNES)."""
+    if cle in ('allee_m', 'rive_laterale_m', 'rive_extremite_m'):
+        return float(valeur)
+    if cle == 'kits':
+        return [code for code in str(valeur).split('+') if code]
+    return str(valeur)
+
+
+def action_de_patch(patch_entree):
+    """``patch_entree`` du moteur -> ``action`` DISCRIMINÉE, ou ``None``.
+
+    Deux familles, jamais mélangées dans la même action : un patch qui
+    toucherait à la fois un paramètre et un obstacle n'aurait aucun bouton
+    capable de l'appliquer d'un clic. ``None`` = suggestion à JETER.
+    """
+    patch = list(patch_entree or ())
+    if not patch:
+        return None
+    cles = {cle for cle, _valeur in patch}
+    if not cles <= (set(PATCH_MOTEUR_VERS_PARAMS)
+                    | set(PATCH_MOTEUR_VERS_OBSTACLE)):
+        # Clé de patch inconnue de cette table : le moteur a gagné un levier
+        # que l'écran ne sait pas appliquer. On JETTE la suggestion — publier
+        # un bouton qui n'applique rien est pire que ne rien proposer.
+        return None
+    if cles <= set(PATCH_MOTEUR_VERS_OBSTACLE):
+        if len(patch) != 1:
+            return None  # deux décisions d'obstacle = deux suggestions
+        cle, repere = patch[0]
+        return {'type': 'obstacle', 'obstacle': str(repere),
+                'provenance': PATCH_MOTEUR_VERS_OBSTACLE[cle]}
+    if cles <= set(PATCH_MOTEUR_VERS_PARAMS):
+        return {'type': 'parametres',
+                'patch': {PATCH_MOTEUR_VERS_PARAMS[cle]:
+                          _valeur_de_patch(cle, valeur)
+                          for cle, valeur in patch}}
+    return None  # patch MIXTE paramètres + obstacle : inapplicable en un clic
+
+
+def suggestion_vers_json(recommandation):
+    """Une ``Recommandation`` du moteur -> une suggestion du contrat.
+
+    Rend ``None`` quand l'action n'est pas traduisible (cf. ``action_de_patch``).
+
+    ``gain_modules`` est SIGNÉ : un arbitrage d'obstacle peut coûter des
+    modules, et le publier positif ferait passer une perte assumée pour un
+    gain. ``gain_kwc``, ``confiance`` et ``question_a_poser`` sont déclarés
+    FACULTATIFS par le contrat ; le moteur les CALCULE pour toutes ses
+    propositions, alors on ne les jette pas.
+    """
+    action = action_de_patch(recommandation.patch_entree)
+    if action is None:
+        return None
+    return {
+        'code': recommandation.code,
+        'titre': recommandation.titre,
+        'gain_modules': int(recommandation.gain_modules),
+        'gain_kwc': round(float(recommandation.gain_kwc), 3),
+        'confiance': recommandation.confiance.value,
+        'question_a_poser': recommandation.question_a_poser,
+        'action': action,
+    }
+
+
+def suggestions_vers_json(recommandations):
+    """La liste des suggestions traduisibles, dans l'ordre reçu."""
+    sortie = []
+    for recommandation in recommandations or ():
+        suggestion = suggestion_vers_json(recommandation)
+        if suggestion is not None:
+            sortie.append(suggestion)
     return sortie
 
 

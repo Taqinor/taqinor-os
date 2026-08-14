@@ -17,6 +17,7 @@ __all__ = [
     'ResultatCalepinageSerializer', 'JobCalepinageSerializer',
     'ComparaisonVariantesSerializer', 'PreuveCalepinageSerializer',
     'MargesCalepinageSerializer', 'TiroirsCalepinageSerializer',
+    'SuggestionCalepinageSerializer',
 ]
 
 
@@ -217,6 +218,41 @@ class TiroirsCalepinageSerializer(serializers.Serializer):
     electrique = TiroirElectriqueSerializer(read_only=True)
 
 
+class ActionSuggestionSerializer(serializers.Serializer):
+    """PV50 — ce que l'écran DOIT proposer d'appliquer en un clic.
+
+    L'action est DISCRIMINÉE par ``type`` : ``parametres`` porte un ``patch``
+    du dict de paramètres de calepinage ; ``obstacle`` porte le repère visé et
+    la ``provenance`` à lui donner. Les clés de l'autre famille sont alors
+    absentes — d'où ``required=False`` sur les trois : un schéma qui les
+    déclarerait toutes obligatoires décrirait une réponse que le serveur
+    n'envoie jamais.
+    """
+
+    type = serializers.CharField(read_only=True)
+    patch = serializers.JSONField(read_only=True, required=False)
+    obstacle = serializers.CharField(read_only=True, required=False)
+    provenance = serializers.CharField(read_only=True, required=False)
+
+
+class SuggestionCalepinageSerializer(serializers.Serializer):
+    """PV50 — une proposition APPLICABLE, à gain REJOUÉ par le moteur.
+
+    ``gain_modules`` est SIGNÉ : un arbitrage d'obstacle peut coûter des
+    modules, et le publier positif ferait passer une perte assumée pour un
+    gain.
+    """
+
+    code = serializers.CharField(read_only=True)
+    titre = serializers.CharField(read_only=True)
+    gain_modules = serializers.IntegerField(read_only=True)
+    gain_kwc = serializers.FloatField(read_only=True, required=False)
+    confiance = serializers.CharField(read_only=True, required=False)
+    question_a_poser = serializers.CharField(read_only=True, required=False,
+                                             allow_blank=True)
+    action = ActionSuggestionSerializer(read_only=True)
+
+
 class ResultatCalepinageSerializer(serializers.Serializer):
     """Le résultat d'un calepinage — il porte TOUJOURS (hash, version)."""
 
@@ -241,6 +277,9 @@ class ResultatCalepinageSerializer(serializers.Serializer):
     #: quand ils n'ont pas été produits.
     marges = MargesCalepinageSerializer(read_only=True)
     tiroirs = TiroirsCalepinageSerializer(read_only=True)
+    #: PV50 — capées côté service ; une liste VIDE quand elles ne sont pas
+    #: produites, jamais une clé absente.
+    suggestions = SuggestionCalepinageSerializer(many=True, read_only=True)
     depuis_cache = serializers.BooleanField(read_only=True, required=False)
 
 
