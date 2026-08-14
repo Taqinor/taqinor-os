@@ -1,3 +1,4 @@
+from django.db import transaction
 from rest_framework.exceptions import PermissionDenied, ValidationError
 
 from core.viewsets import CompanyScopedModelViewSet
@@ -38,9 +39,15 @@ class DossierExportViewSet(CompanyScopedModelViewSet):
 
     def perform_create(self, serializer):
         self._check_tenant(serializer)
-        instance = serializer.save(
-            company=self.request.user.company, created_by=self.request.user)
-        attribuer_numero_dossier_export(instance)
+        # `atomic` OBLIGATOIRE : la ligne est d'abord insérée avec
+        # `numero=''`, puis numérotée. Sans transaction, un échec de la
+        # numérotation laisse committée une ligne à `numero=''` — et comme
+        # (company, numero) est unique, cette société ne peut PLUS JAMAIS
+        # créer de dossier (IntegrityError sur chaque insertion suivante).
+        with transaction.atomic():
+            instance = serializer.save(
+                company=self.request.user.company, created_by=self.request.user)
+            attribuer_numero_dossier_export(instance)
 
     def perform_update(self, serializer):
         self._check_tenant(serializer)

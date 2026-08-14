@@ -4,6 +4,8 @@ Import local des modèles d'autres apps (jamais au niveau module) — toute
 lecture d'un document d'une autre app se fait via son ``selectors.py`` ou en
 recevant directement l'instance/l'id en paramètre (jamais un import direct de
 ``apps.<autre_app>.models`` depuis ce fichier)."""
+from django.db import transaction
+
 from core.numbering import next_reference
 
 
@@ -16,8 +18,12 @@ def attribuer_numero_dossier_export(dossier):
 
     from .models import DossierExport
 
+    # `field='numero'` est OBLIGATOIRE : next_reference cherche par défaut un
+    # champ `reference`, absent de ce modèle — l'omettre lève un FieldError à
+    # chaque création (« Cannot resolve keyword 'reference' into field »).
     dossier.numero = next_reference(
-        DossierExport, 'EXP', dossier.company, padding=4, period='monthly')
+        DossierExport, 'EXP', dossier.company, padding=4, period='monthly',
+        field='numero')
     dossier.save(update_fields=['numero'])
     return dossier
 
@@ -35,10 +41,16 @@ def creer_dossier_export_depuis_facture(
     même appel », jamais une déduction magique d'un champ inexistant."""
     from .models import DossierExport
 
-    dossier = DossierExport.objects.create(
-        company=company, facture=facture, pays_destinataire=pays_destinataire,
-        incoterm=incoterm, port_embarquement=port_embarquement,
-        port_debarquement=port_debarquement, devise=devise,
-        valeur_marchandise_devise=valeur_marchandise_devise,
-        created_by=created_by)
-    return attribuer_numero_dossier_export(dossier)
+    # Même garde que le viewset : insertion + numérotation dans UNE
+    # transaction, sinon un échec de numérotation laisse une ligne
+    # `numero=''` committée qui bloque définitivement la société
+    # (unique_together (company, numero)).
+    with transaction.atomic():
+        dossier = DossierExport.objects.create(
+            company=company, facture=facture,
+            pays_destinataire=pays_destinataire,
+            incoterm=incoterm, port_embarquement=port_embarquement,
+            port_debarquement=port_debarquement, devise=devise,
+            valeur_marchandise_devise=valeur_marchandise_devise,
+            created_by=created_by)
+        return attribuer_numero_dossier_export(dossier)
