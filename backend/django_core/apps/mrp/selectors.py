@@ -617,6 +617,94 @@ def simuler_charge(company, lignes, *, date_souhaitee=None):
     }
 
 
+# ── NTMFG20 — Traçabilité amont/aval par OF (généalogie) ─────────────────
+#
+# Généalogie au niveau `mrp.OrdreFabrication` : quel OF a produit le
+# composant consommé par CET OF (amont, via `ReservationOF`), et quels
+# autres OF ont consommé le composite QUE CET OF a produit (aval). Lecture
+# seule, jamais d'écriture. Le lien vers `installations.OrdreAssemblage`
+# (kitting boutique) reste SUPERFICIEL — le simple id déjà porté par le
+# string-FK EXISTANT `OrdreFabrication.kit_ordre_assemblage` (aucun nouvel
+# import de modèle cross-app) — la profondeur de traçabilité au-delà de
+# `mrp` (jusqu'au chantier client) reste un point d'extension documenté,
+# pas une intégration inventée ici.
+
+def _amont_of(of, profondeur, visites=None):
+    """NTMFG20 — pour chaque composant réservé (NTMFG6) sur `of`, remonte à
+    l'OF de la MÊME société qui l'a PRODUIT (dernier OF terminé sur ce
+    produit, hors `of` lui-même), récursivement sur `profondeur` niveaux.
+    `visites` protège contre un cycle improbable (jamais infini)."""
+    from .models import OrdreFabrication
+
+    visites = visites if visites is not None else set()
+    if of.id in visites or profondeur <= 0:
+        return []
+    visites.add(of.id)
+
+    lignes = []
+    for reservation in of.reservations.select_related('produit').all():
+        entree = {
+            'produit_id': reservation.produit_id,
+            'produit_nom': reservation.produit.nom if reservation.produit_id else '—',
+            'quantite': _fmt_dec(reservation.quantite),
+            'consomme': reservation.consomme,
+            'of_source': None,
+        }
+        of_source = (
+            OrdreFabrication.objects.filter(
+                company_id=of.company_id, produit_id=reservation.produit_id,
+                statut=OrdreFabrication.Statut.TERMINE)
+            .exclude(id=of.id).order_by('-id').first())
+        if of_source is not None:
+            entree['of_source'] = {
+                'of_id': of_source.id,
+                'amont': _amont_of(of_source, profondeur - 1, visites),
+            }
+        lignes.append(entree)
+    return lignes
+
+
+def _aval_of(of, profondeur, visites=None):
+    """NTMFG20 — OF de la MÊME société qui ont RÉSERVÉ (NTMFG6) le produit
+    que CET OF fabrique — les consommateurs en aval — récursivement sur
+    `profondeur` niveaux. Expose le lien `kit_ordre_assemblage` (string-FK
+    déjà porté par le modèle, lecture d'ID seulement) quand présent."""
+    from .models import OrdreFabrication
+
+    visites = visites if visites is not None else set()
+    if of.id in visites or profondeur <= 0:
+        return []
+    visites.add(of.id)
+
+    consommateurs = (
+        OrdreFabrication.objects.filter(
+            company_id=of.company_id, reservations__produit_id=of.produit_id)
+        .exclude(id=of.id).distinct())
+    resultats = []
+    for consommateur in consommateurs:
+        entree = {
+            'of_id': consommateur.id,
+            'statut': consommateur.statut,
+            'kit_ordre_assemblage_id': consommateur.kit_ordre_assemblage_id,
+            'aval': _aval_of(consommateur, profondeur - 1, visites),
+        }
+        resultats.append(entree)
+    return resultats
+
+
+def genealogie_of(of, *, profondeur=2):
+    """NTMFG20 — généalogie amont (composants consommés, remontée aux OF qui
+    les ont produits) + aval (OF qui ont consommé le produit de CET OF), sur
+    `profondeur` niveaux (défaut 2). Lecture seule — utile pour un rappel
+    qualité fournisseur (« quels OF ont reçu un lot de composant X »)."""
+    return {
+        'of_id': of.id,
+        'produit_id': of.produit_id,
+        'amont': _amont_of(of, profondeur),
+        'aval': _aval_of(of, profondeur),
+    }
+
+
 def oee_tous_postes(company, debut, fin):
     """NTMFG12 — TRS de TOUS les postes actifs de la société sur la fenêtre
     (comparaison inter-postes), triés par TRS décroissant."""

@@ -62,6 +62,9 @@ const mrpApi = {
   // Fiche suiveuse / traveler imprimable (NTMFG19) — interne, aucun prix.
   getTravelerPdf: (ofId) =>
     api.get(`/mrp/ordres-fabrication/${ofId}/traveler-pdf/`, { responseType: 'blob' }),
+
+  // Généalogie amont/aval (NTMFG20) — lecture seule.
+  getGenealogieOF: (ofId) => api.get(`/mrp/ordres-fabrication/${ofId}/genealogie/`),
 }
 
 export default mrpApi

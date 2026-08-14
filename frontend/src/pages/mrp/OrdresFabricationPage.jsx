@@ -14,6 +14,8 @@ import { PageHeader } from '../../ui/PageHeader'
 // NTMFG19 — ouverture/téléchargement du traveler PDF (même helper que le
 // reste de l'app pour les blobs PDF, VX49/VX172 déjà gérés).
 import { openPdfBlob } from '../../utils/pdfBlob'
+// NTMFG20 — vue arbre de généalogie amont/aval, embarquée dans le détail OF.
+import GenealogieOFPanel from './GenealogieOFPanel'
 
 // Radix Select interdit une valeur vide (réservée à l'effacement) — même
 // sentinelle que `pages/parametres/ApplicationsSection.jsx`.
@@ -114,6 +116,7 @@ function OfDetail({ ofId }) {
             Clôturer
           </Button>
         )}
+        <GenealogieOFPanel ofId={of.id} />
       </CardContent>
     </Card>
   )

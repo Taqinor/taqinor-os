@@ -215,6 +215,15 @@ class OrdreFabricationViewSet(CompanyScopedModelViewSet):
         of = self.get_object()
         return Response(disponibilite_par_ligne_of(of))
 
+    @action(detail=True, methods=['get'], url_path='genealogie',
+            permission_classes=[ScopedPermission])
+    def genealogie(self, request, pk=None):
+        """NTMFG20 — traçabilité amont (composants consommés, remontée à
+        l'OF producteur) + aval (OF consommateurs) de cet OF. Lecture seule."""
+        from .selectors import genealogie_of
+        of = self.get_object()
+        return Response(genealogie_of(of))
+
     @action(detail=True, methods=['get'], url_path='traveler-pdf',
             permission_classes=[ScopedPermission])
     def traveler_pdf(self, request, pk=None):
