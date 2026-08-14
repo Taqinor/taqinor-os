@@ -49,6 +49,13 @@ class PosteDeCharge(TenantModel):
     sous_traitant = models.ForeignKey(
         'stock.Fournisseur', on_delete=models.SET_NULL, null=True, blank=True,
         related_name='mrp_postes_charge', verbose_name='Sous-traitant')
+    # NTMFG14 — horodatage de la dernière remise à zéro du compteur d'usage
+    # (clôture d'une échéance d'entretien basée sur les heures d'usage,
+    # `services.cloturer_echeance_entretien`). `None` = jamais réinitialisé
+    # (le cumul part alors de `created_at`).
+    usage_reinitialise_le = models.DateTimeField(
+        null=True, blank=True,
+        verbose_name="Compteur d'usage réinitialisé le")
 
     class Meta:
         verbose_name = 'Poste de charge'
@@ -398,3 +405,70 @@ class CoutStandard(TenantModel):
 
     def __str__(self):
         return f'{self.produit_id} · std v{self.version}'
+
+
+class PlanEntretienPoste(TenantModel):
+    """NTMFG14 — plan de maintenance PRÉVENTIVE d'un poste de charge (machine
+    /ligne de PRODUCTION INTERNE : compresseur, banc de test, sertisseuse…).
+
+    `sav.Equipement`/`ContratMaintenance`/`PlanEntretien` (FG15/16) couvrent
+    le parc CLIENT et les véhicules — AUCUN équivalent n'existait pour
+    l'outillage de production interne avant ce ticket. Jamais d'import du
+    modèle `sav` (frontière cross-app respectée, ce plan est un modèle `mrp`
+    à part entière, pattern réutilisé côté FG16 mais schéma propre)."""
+
+    poste_charge = models.ForeignKey(
+        PosteDeCharge,
+        on_delete=models.CASCADE,  # on_delete: composition — un plan n'existe que pour son poste
+        related_name='plans_entretien', verbose_name='Poste de charge')
+    description = models.CharField(max_length=200, verbose_name='Description')
+    intervalle_jours = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name='Intervalle (jours)')
+    intervalle_heures_usage = models.DecimalField(
+        max_digits=10, decimal_places=2, null=True, blank=True,
+        verbose_name="Intervalle (heures d'usage)")
+    actif = models.BooleanField(default=True, verbose_name='Actif')
+
+    class Meta:
+        verbose_name = "Plan d'entretien de poste"
+        verbose_name_plural = "Plans d'entretien de poste"
+        ordering = ['poste_charge_id', 'id']
+        indexes = [
+            models.Index(fields=['poste_charge', 'actif'],
+                         name='mrp_planent_poste_actif_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.poste_charge_id} · {self.description}'
+
+
+class EcheanceEntretienPoste(models.Model):
+    """NTMFG14 — échéance générée depuis un `PlanEntretienPoste`
+    (`services.generer_echeances_poste`). Pas de `company` propre — scopée
+    via `plan.poste_charge.company`."""
+
+    class Statut(models.TextChoices):
+        A_FAIRE = 'a_faire', 'À faire'
+        PLANIFIE = 'planifie', 'Planifié'
+        FAIT = 'fait', 'Fait'
+
+    plan = models.ForeignKey(
+        PlanEntretienPoste,
+        on_delete=models.CASCADE, related_name='echeances')  # on_delete: composition — une échéance n'existe que pour son plan
+    date_prevue = models.DateField(verbose_name='Date prévue')
+    statut = models.CharField(
+        max_length=10, choices=Statut.choices, default=Statut.A_FAIRE)
+    date_realisee = models.DateField(null=True, blank=True)
+    note = models.CharField(max_length=300, blank=True, default='')
+
+    class Meta:
+        verbose_name = "Échéance d'entretien de poste"
+        verbose_name_plural = "Échéances d'entretien de poste"
+        ordering = ['plan_id', 'date_prevue']
+        indexes = [
+            models.Index(fields=['plan', 'statut'],
+                         name='mrp_echeanceent_plan_statut_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.plan_id} · {self.date_prevue} ({self.statut})'

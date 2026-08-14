@@ -259,9 +259,21 @@ class OperationOFViewSet(mixins.RetrieveModelMixin, mixins.ListModelMixin,
     @action(detail=True, methods=['post'], url_path='demarrer',
             permission_classes=[IsResponsableOrAdmin])
     def demarrer(self, request, pk=None):
-        """NTMFG8 — terminal atelier : démarre l'opération."""
+        """NTMFG8 — terminal atelier : démarre l'opération. NTMFG14 —
+        `avertissement_maintenance` (non bloquant) signale un poste dont une
+        échéance d'entretien est en retard."""
+        from .selectors import postes_en_alerte_maintenance
         from .services import demarrer_operation
-        return self._mes_action(demarrer_operation, request, pk)
+        operation = self.get_object()
+        try:
+            demarrer_operation(operation, user=request.user)
+        except ValueError as exc:
+            return Response({'detail': str(exc)}, status=400)
+        operation.refresh_from_db()
+        data = self.get_serializer(operation).data
+        alertes = postes_en_alerte_maintenance(request.user.company)
+        data['avertissement_maintenance'] = operation.poste_charge_id in alertes
+        return Response(data)
 
     @action(detail=True, methods=['post'], url_path='pauser',
             permission_classes=[IsResponsableOrAdmin])

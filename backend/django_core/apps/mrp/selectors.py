@@ -205,7 +205,11 @@ def charge_postes(company, debut, fin):
     l'opération n'a pas encore démarré. Renvoie une liste triée par poste
     puis par jour :
       [{poste_id, poste_nom, jour, minutes_planifiees, capacite_minutes,
-        taux_charge_pct, surcharge}]."""
+        taux_charge_pct, surcharge, alerte_maintenance}].
+
+    `alerte_maintenance` (NTMFG14) — badge NON BLOQUANT : vrai si ce poste a
+    au moins une échéance d'entretien `a_faire` en retard, indépendamment de
+    la charge planifiée elle-même."""
     from .models import OperationOF
 
     operations = (
@@ -225,6 +229,7 @@ def charge_postes(company, debut, fin):
         charge[cle] = charge.get(cle, Decimal('0')) + temps
         postes_vus[op.poste_charge_id] = op.poste_charge
 
+    postes_en_alerte = postes_en_alerte_maintenance(company)
     resultats = []
     for (poste_id, jour), minutes in charge.items():
         poste = postes_vus[poste_id]
@@ -239,9 +244,28 @@ def charge_postes(company, debut, fin):
             'capacite_minutes': _fmt_dec(capacite_min),
             'taux_charge_pct': str(taux.quantize(Decimal('0.1'))),
             'surcharge': minutes > capacite_min,
+            'alerte_maintenance': poste_id in postes_en_alerte,
         })
     resultats.sort(key=lambda r: (r['poste_nom'].lower(), r['jour']))
     return resultats
+
+
+# ── NTMFG14 — Alerte maintenance de poste (Gantt + terminal) ─────────────
+
+def postes_en_alerte_maintenance(company, today=None):
+    """NTMFG14 — ensemble des `poste_charge_id` de `company` portant AU
+    MOINS une `EcheanceEntretienPoste` `a_faire` dont `date_prevue` est
+    dépassée. Lecture seule, utilisée pour le badge non bloquant du Gantt
+    (NTMFG7) et l'avertissement du terminal atelier (NTMFG8)."""
+    from .models import EcheanceEntretienPoste
+
+    today = today or dj_timezone.localdate()
+    return set(
+        EcheanceEntretienPoste.objects.filter(
+            plan__poste_charge__company=company,
+            statut=EcheanceEntretienPoste.Statut.A_FAIRE,
+            date_prevue__lt=today,
+        ).values_list('plan__poste_charge_id', flat=True))
 
 
 # ── NTMFG11 — Coût de revient standard vs réel ────────────────────────────

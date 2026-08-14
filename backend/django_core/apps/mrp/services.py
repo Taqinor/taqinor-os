@@ -3,6 +3,7 @@ from datetime import timedelta
 from decimal import Decimal
 
 from django.db import transaction
+from django.db.models import Sum
 from django.utils import timezone
 
 
@@ -576,3 +577,92 @@ def figer_cout_standard(company, produit, gamme, *, cout_indirect_pct=0,
         cout_main_oeuvre=calculer_cout_main_oeuvre_standard(gamme),
         cout_indirect_pct=_dec(cout_indirect_pct),
         date_effective=date_effective)
+
+
+# ── NTMFG14 — Maintenance préventive des postes de charge ────────────────
+
+def _usage_minutes_depuis_reset(poste, today=None):
+    """NTMFG14 — cumul des minutes RÉELLES (NTMFG8, opérations terminées) de
+    CE poste depuis la dernière réinitialisation du compteur
+    (`PosteDeCharge.usage_reinitialise_le`), ou depuis sa création si le
+    compteur n'a jamais été réinitialisé."""
+    from .models import OperationOF
+
+    depuis = poste.usage_reinitialise_le or poste.created_at
+    total = (
+        OperationOF.objects
+        .filter(poste_charge=poste, statut='terminee', terminee_le__gte=depuis)
+        .aggregate(total=Sum('temps_reel_min'))['total'] or 0)
+    return _dec(total)
+
+
+def generer_echeances_poste(plan, today=None):
+    """NTMFG14 — génère (idempotent) la PROCHAINE échéance d'un plan actif,
+    par intervalle de jours et/ou par heures d'usage cumulées depuis la
+    dernière réinitialisation du compteur (NTMFG8). Ne crée jamais de
+    doublon : no-op tant qu'une échéance `a_faire`/`planifie` est déjà
+    ouverte pour ce plan. Renvoie l'échéance créée, ou `None`."""
+    from .models import EcheanceEntretienPoste
+
+    today = today or timezone.localdate()
+    if not plan.actif:
+        return None
+    ouverte = plan.echeances.filter(
+        statut__in=[EcheanceEntretienPoste.Statut.A_FAIRE,
+                    EcheanceEntretienPoste.Statut.PLANIFIE]).exists()
+    if ouverte:
+        return None
+
+    doit_generer = False
+    if plan.intervalle_jours:
+        derniere = plan.echeances.order_by('-date_prevue').first()
+        if derniere is None:
+            doit_generer = True
+        else:
+            base = derniere.date_realisee or derniere.date_prevue
+            if today >= base + timedelta(days=int(plan.intervalle_jours)):
+                doit_generer = True
+    if not doit_generer and plan.intervalle_heures_usage:
+        usage_heures = _usage_minutes_depuis_reset(
+            plan.poste_charge, today) / Decimal('60')
+        if usage_heures >= _dec(plan.intervalle_heures_usage):
+            doit_generer = True
+
+    if not doit_generer:
+        return None
+    return EcheanceEntretienPoste.objects.create(plan=plan, date_prevue=today)
+
+
+def generer_echeances_entretien(company, today=None):
+    """NTMFG14 — génère les échéances dues pour TOUS les plans actifs de
+    `company` (appelé par la commande de gestion ou manuellement). Renvoie
+    la liste des échéances créées."""
+    from .models import PlanEntretienPoste
+
+    today = today or timezone.localdate()
+    creees = []
+    for plan in PlanEntretienPoste.objects.filter(
+            poste_charge__company=company, actif=True):
+        echeance = generer_echeances_poste(plan, today=today)
+        if echeance is not None:
+            creees.append(echeance)
+    return creees
+
+
+def cloturer_echeance_entretien(echeance, *, date_realisee=None, note=''):
+    """NTMFG14 — clôture une échéance (`fait`) et remet À ZÉRO le compteur
+    d'usage du poste (`PosteDeCharge.usage_reinitialise_le`) quand le plan
+    est basé sur les heures d'usage — la prochaine échéance ne se
+    redéclenchera qu'après un nouveau cumul complet."""
+    from .models import EcheanceEntretienPoste
+
+    with transaction.atomic():
+        echeance.statut = EcheanceEntretienPoste.Statut.FAIT
+        echeance.date_realisee = date_realisee or timezone.localdate()
+        echeance.note = note or ''
+        echeance.save(update_fields=['statut', 'date_realisee', 'note'])
+        if echeance.plan.intervalle_heures_usage:
+            poste = echeance.plan.poste_charge
+            poste.usage_reinitialise_le = timezone.now()
+            poste.save(update_fields=['usage_reinitialise_le'])
+    return echeance
