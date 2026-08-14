@@ -2,11 +2,12 @@
 création depuis un chantier, isolation multi-société."""
 from django.test import TestCase
 
-from apps.transport.models import OrdreTransport
+from apps.transport.models import LigneOrdreTransport, OrdreTransport
 
 from ._helpers import auth, make_company, make_user
 
 BASE = '/api/django/transport/ordres-transport/'
+LIGNES_BASE = '/api/django/transport/lignes-transport/'
 
 
 def _rows(resp):
@@ -68,6 +69,27 @@ class OrdreTransportTests(TestCase):
             auth(self.user_a), installations_installation_id=42)
         self.assertEqual(resp.status_code, 201, resp.data)
         self.assertEqual(resp.data['installations_installation_id'], 42)
+
+    # ── NTLOG2 — agrégats poids/volume des lignes ─────────────────────────
+    def test_poids_volume_total_agrege_les_lignes(self):
+        api = auth(self.user_a)
+        ordre_id = self._create(api).data['id']
+        LigneOrdreTransport.objects.create(
+            company=self.co_a, ordre_id=ordre_id,
+            designation='Panneaux', poids_kg='120.50', volume_m3='0.800')
+        LigneOrdreTransport.objects.create(
+            company=self.co_a, ordre_id=ordre_id,
+            designation='Onduleur', poids_kg='30.00', volume_m3='0.100')
+        resp = api.get(f'{BASE}{ordre_id}/')
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(str(resp.data['poids_total_kg']), '150.50')
+        self.assertEqual(str(resp.data['volume_total_m3']), '0.900')
+
+    def test_ligne_cross_tenant_refusee(self):
+        ordre_a = self._create(auth(self.user_a)).data['id']
+        resp = auth(self.user_b).post(
+            LIGNES_BASE, {'ordre': ordre_a, 'designation': 'x'}, format='json')
+        self.assertEqual(resp.status_code, 400)
 
     # ── Isolation multi-société ────────────────────────────────────────
     def test_liste_isolee_par_societe(self):

@@ -22,6 +22,8 @@ déclarées dans `apps/transport/platform.py`). Pas de `FileField` (ARC26) :
 les photos/signatures (preuve de livraison, réserves à réception) passent
 par `records.Attachment` générique.
 """
+from decimal import Decimal
+
 from django.conf import settings
 from django.db import models
 
@@ -94,3 +96,34 @@ class OrdreTransport(TenantModel):
 
     def __str__(self):
         return self.numero or f'Ordre transport #{self.pk}'
+
+
+class LigneOrdreTransport(TenantModel):
+    """NTLOG2 — marchandise d'un ordre de transport. `stock_produit_id` est
+    une string-FK optionnelle vers `stock.Produit` (jamais un import)."""
+
+    ordre = models.ForeignKey(
+        OrdreTransport, on_delete=models.CASCADE, related_name='lignes')
+    stock_produit_id = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name='Produit (stock.Produit)')
+    designation = models.CharField(max_length=255, blank=True, default='')
+    quantite = models.DecimalField(
+        max_digits=10, decimal_places=2, default=Decimal('0'))
+    unite = models.CharField(max_length=20, blank=True, default='')
+    poids_kg = models.DecimalField(
+        max_digits=10, decimal_places=2, default=Decimal('0'))
+    volume_m3 = models.DecimalField(
+        max_digits=10, decimal_places=3, default=Decimal('0'))
+    valeur_declaree = models.DecimalField(
+        max_digits=14, decimal_places=2, null=True, blank=True)
+
+    class Meta:
+        verbose_name = "Ligne d'ordre de transport"
+        verbose_name_plural = "Lignes d'ordre de transport"
+        ordering = ['ordre_id', 'id']
+        indexes = [
+            models.Index(fields=['ordre'], name='idx_lot_ordre'),
+        ]
+
+    def __str__(self):
+        return f'{self.designation or self.stock_produit_id} × {self.quantite}'
