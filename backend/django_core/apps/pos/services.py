@@ -10,7 +10,7 @@ from decimal import ROUND_HALF_UP, Decimal
 from django.db import transaction
 from django.utils import timezone
 
-from .models import CommandeRetrait, SessionCaisse, VenteComptoir
+from .models import CommandeRetrait, LigneVenteComptoir, SessionCaisse, VenteComptoir
 
 MODE_ESPECES = 'especes'
 # NTRET15 — mode de paiement carte cadeau (apps.promotions.CarteCadeau).
@@ -1089,3 +1089,76 @@ def emettre_carte_cadeau_comptoir(*, company, montant, paiement, user, client,
     except CarteCadeauError as exc:
         raise CarteCadeauPosError(str(exc))
     return carte, facture
+
+
+# ── NTRET28 — Kits/bundles vendus comme un seul article ─────────────────────
+# RÉUTILISE le moteur de kits/nomenclatures EXISTANT
+# (``stock.KitProduit``/``KitComposant``/``services.exploser_kit_par_id`` —
+# FG66/DC36, déjà le point d'entrée cross-app documenté pour `ventes`) plutôt
+# que de dupliquer un second système de composition dans `apps/pos` (même
+# principe que la garde fidélité de CLAUDE.md : ne jamais reconstruire un
+# sous-système déjà livré et en service). Vendre un kit au comptoir explose
+# donc ses composants en autant de ``LigneVenteComptoir`` réelles — la vente
+# décrémente ENSUITE le stock de CHAQUE composant via les rails normaux de
+# ``valider_vente`` (jamais le stock d'un « kit », qui n'en a pas).
+
+class KitPosError(Exception):
+    """Erreur métier lors de l'ajout d'un kit au panier comptoir (NTRET28)."""
+
+
+@transaction.atomic
+def ajouter_kit_a_vente(*, vente, kit_id, quantite_kit=1, user, forcer=False,
+                        motif_force=''):
+    """NTRET28 — Ajoute le kit ``kit_id`` (``stock.KitProduit``) au panier de
+    ``vente`` (BROUILLON) : une ``LigneVenteComptoir`` par composant, au
+    prix/TVA réels du ``stock.Produit`` composant (jamais un prix de kit —
+    DC36, le kit ne stocke aucun prix propre). Un composant en rupture
+    refuse l'ajout, SAUF ``forcer=True`` avec un ``motif_force`` obligatoire
+    (override admin journalisé via ``apps.audit`` — même patron que
+    ``remettre_marchandise_override``, NTRET5). Renvoie la liste des lignes
+    créées."""
+    if vente.statut != VenteComptoir.Statut.BROUILLON:
+        raise KitPosError('Vente déjà validée.')
+
+    from apps.stock.services import KitCycleError, exploser_kit_par_id
+    try:
+        lignes_kit = exploser_kit_par_id(vente.company, kit_id, quantite_kit)
+    except (KitCycleError, ValueError) as exc:
+        raise KitPosError(str(exc))
+    if lignes_kit is None:
+        raise KitPosError('Kit introuvable.')
+    if not lignes_kit:
+        raise KitPosError('Ce kit ne contient aucun composant.')
+
+    ruptures = [
+        ligne for ligne in lignes_kit
+        if Decimal(str(ligne['quantite'])) > Decimal(str(ligne.get('disponible') or 0))
+    ]
+    if ruptures and not forcer:
+        noms = ', '.join(sorted(ligne['designation'] for ligne in ruptures))
+        raise KitPosError(f'Composant(s) en rupture de stock : {noms}.')
+    if ruptures and forcer and not (motif_force or '').strip():
+        raise KitPosError(
+            'Un motif est requis pour forcer une vente avec composant en rupture.')
+
+    from apps.stock.selectors import get_produit_scoped
+    creees = []
+    for ligne in lignes_kit:
+        produit = get_produit_scoped(vente.company, ligne['produit_id'])
+        if produit is None:
+            continue
+        creees.append(LigneVenteComptoir.objects.create(
+            vente=vente, produit=produit, designation=ligne['designation'],
+            quantite=ligne['quantite'],
+            prix_unitaire_ttc=ligne['prix_vente_unitaire'],
+            taux_tva=ligne.get('tva'),
+        ))
+
+    if ruptures and forcer:
+        from apps.audit import recorder
+        recorder.record(
+            'update', instance=vente, company=vente.company, user=user,
+            detail=(
+                'Override admin — kit ajouté malgré composant(s) en rupture '
+                f'de stock. Motif : {motif_force}'))
+    return creees

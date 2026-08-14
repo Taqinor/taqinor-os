@@ -121,6 +121,31 @@ class VenteComptoirViewSet(viewsets.ModelViewSet):
             LigneVenteComptoirSerializer(ligne).data,
             status=status.HTTP_201_CREATED)
 
+    # ── NTRET28 — Kits/bundles vendus comme un seul article ─────────────────
+
+    @action(detail=True, methods=['post'], url_path='lignes-kit')
+    def ajouter_kit(self, request, pk=None):
+        """NTRET28 — Ajoute un kit (``stock.KitProduit``) au panier, décomposé
+        en une ligne par composant réel (réutilise le moteur d'explosion
+        existant — jamais un second système de composition dans apps/pos)."""
+        vente = self.get_object()
+        try:
+            quantite_kit = Decimal(str(request.data.get('quantite_kit', 1)))
+        except (InvalidOperation, TypeError):
+            raise ValidationError({'quantite_kit': 'Quantité invalide.'})
+        try:
+            lignes = services.ajouter_kit_a_vente(
+                vente=vente, kit_id=request.data.get('kit'),
+                quantite_kit=quantite_kit, user=request.user,
+                forcer=bool(request.data.get('forcer')),
+                motif_force=request.data.get('motif_force', ''))
+        except services.KitPosError as exc:
+            raise ValidationError(str(exc))
+        from .serializers import LigneVenteComptoirSerializer
+        return Response(
+            LigneVenteComptoirSerializer(lignes, many=True).data,
+            status=status.HTTP_201_CREATED)
+
     @action(detail=True, methods=['post'], url_path='valider')
     def valider(self, request, pk=None):
         vente = self.get_object()
