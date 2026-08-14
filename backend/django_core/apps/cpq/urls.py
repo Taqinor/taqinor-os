@@ -11,6 +11,7 @@ from .views import (
     ClauseCGVViewSet, ProduitEquivalentViewSet, DevisVariantesView,
     SuggestionsProduitView, FeuilleConfigurationView, MargeSousSeuilView,
     RapportConformiteView, ParametresCPQViewSet, RapportApprobationsView,
+    ComparaisonVariantesView,
 )
 
 router = DefaultRouter()
@@ -52,6 +53,10 @@ urlpatterns = [
     path('devis/<int:pk>/feuille-configuration/',
          FeuilleConfigurationView.as_view(),
          name='cpq-feuille-configuration'),
+    # NTCPQ26 — feuille de comparaison de variantes INTERNE (jamais client).
+    path('devis/<int:pk>/comparaison-variantes/',
+         ComparaisonVariantesView.as_view(),
+         name='cpq-comparaison-variantes'),
     path('configurateur/demarrer/', ConfigurateurDemarrerView.as_view(),
          name='cpq-configurateur-demarrer'),
     path('configurateur/<uuid:token>/repondre/',

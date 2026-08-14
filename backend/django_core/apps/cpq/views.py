@@ -465,6 +465,36 @@ class RapportApprobationsView(APIView):
         return Response({'lignes': lignes})
 
 
+class ComparaisonVariantesView(APIView):
+    """NTCPQ26 — GET ``cpq/devis/{id}/comparaison-variantes/``.
+
+    Export PDF interne (même famille que NTCPQ22, généré par ``apps.cpq``,
+    jamais ``quote_engine``) listant côte à côte les variantes générées
+    (NTCPQ16) d'un devis — 3 colonnes économique/standard/premium avec
+    marge par colonne, outil de préparation d'entretien commercial, jamais
+    transmis au client. ``?format=json`` renvoie les mêmes données sans
+    rendre le PDF (usage écran interne / test)."""
+    permission_classes = [IsResponsableOrAdmin]
+
+    @extend_schema(responses={200: OpenApiTypes.BINARY})
+    def get(self, request, pk):
+        from django.http import HttpResponse
+        from apps.ventes.models import Devis
+        devis = Devis.objects.filter(
+            pk=pk, company=request.user.company).first()
+        if devis is None:
+            return Response({'detail': 'Devis introuvable.'},
+                            status=status.HTTP_404_NOT_FOUND)
+        if request.query_params.get('format') == 'json':
+            return Response(services.donnees_comparaison_variantes(devis))
+        pdf = services.generer_comparaison_variantes_pdf(devis)
+        reponse = HttpResponse(pdf, content_type='application/pdf')
+        reponse['Content-Disposition'] = (
+            'inline; filename="comparaison-variantes-'
+            f'{devis.reference}.pdf"')
+        return reponse
+
+
 class SuggestionsProduitView(APIView):
     """NTCPQ19 — GET ``cpq/suggestions/?produit_id=``.
 

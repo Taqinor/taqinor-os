@@ -259,6 +259,129 @@ def generer_feuille_configuration_pdf(devis):
     return render_pdf(html=rendre_feuille_configuration_html(devis))
 
 
+def donnees_comparaison_variantes(devis):
+    """NTCPQ26 — Données de la FEUILLE DE COMPARAISON DE VARIANTES (INTERNE).
+
+    Une colonne par tier (``économique``/``standard``/``premium``,
+    NTCPQ16) avec totaux HT + marge (prix d'achat inclus — INTERNE, ne
+    doit JAMAIS apparaître dans un document client, règle #4) — outil de
+    préparation d'entretien commercial, distinct du fichier généré par
+    ``/proposal``. Un tier sans variante générée est marqué
+    ``disponible: False`` (pas d'erreur).
+
+    Renvoie ``{reference_base, date, colonnes}``."""
+    from django.utils import timezone
+    from .models import ProduitEquivalent
+
+    variantes = {
+        v.variante_tier: v
+        for v in devis.variantes_cpq.all().select_related(None)}
+
+    colonnes = []
+    for tier in ProduitEquivalent.Tier.values:
+        variante = variantes.get(tier)
+        if variante is None:
+            colonnes.append({'tier': tier, 'disponible': False})
+            continue
+        total_ht = Decimal('0')
+        total_achat = Decimal('0')
+        produits = []
+        for ligne in variante.lignes.all().select_related('produit'):
+            if not ligne.compte_dans_totaux:
+                continue
+            ht = Decimal(str(ligne.total_ht or 0))
+            qte = Decimal(str(ligne.quantite or 0))
+            achat_unitaire = Decimal(
+                str(getattr(ligne.produit, 'prix_achat', None) or 0))
+            total_ht += ht
+            total_achat += achat_unitaire * qte
+            produits.append(ligne.designation)
+        marge = total_ht - total_achat
+        marge_pct = ((marge / total_ht * Decimal('100')).quantize(
+            _CENT, ROUND_HALF_UP) if total_ht > 0 else Decimal('0'))
+        colonnes.append({
+            'tier': tier, 'disponible': True,
+            'devis_id': variante.id, 'reference': variante.reference,
+            'statut': variante.statut,
+            'total_ht': str(total_ht.quantize(_CENT, ROUND_HALF_UP)),
+            'marge': str(marge.quantize(_CENT, ROUND_HALF_UP)),
+            'marge_pct': str(marge_pct),
+            'produits': produits,
+        })
+
+    return {
+        'reference_base': devis.reference,
+        'date': timezone.now().date().isoformat(),
+        'colonnes': colonnes,
+    }
+
+
+def rendre_comparaison_variantes_html(devis):
+    """NTCPQ26 — HTML de la feuille de comparaison de variantes (INTERNE).
+
+    Gabarit dédié à ``apps.cpq`` : aucun appel à ``quote_engine`` (règle #4)."""
+    data = donnees_comparaison_variantes(devis)
+    disponibles = [c for c in data['colonnes'] if c['disponible']]
+    if not disponibles:
+        corps = '<p>Aucune variante générée pour ce devis.</p>'
+    else:
+        entetes = ''.join(f'<th>{_echapper(c["tier"].capitalize())}</th>'
+                          for c in disponibles)
+        refs = ''.join(f'<td>{_echapper(c["reference"])}</td>'
+                       for c in disponibles)
+        totaux = ''.join(f'<td class="n">{c["total_ht"]}</td>'
+                         for c in disponibles)
+        marges = ''.join(f'<td class="n">{c["marge"]}</td>'
+                         for c in disponibles)
+        marges_pct = ''.join(f'<td class="n">{c["marge_pct"]} %</td>'
+                             for c in disponibles)
+        max_produits = max(len(c['produits']) for c in disponibles)
+        lignes_produits = ''
+        for i in range(max_produits):
+            cellules = ''.join(
+                f'<td>{_echapper(c["produits"][i]) if i < len(c["produits"]) else ""}</td>'
+                for c in disponibles)
+            lignes_produits += f'<tr><td></td>{cellules}</tr>'
+        corps = f"""<table>
+<thead><tr><th>Variante</th>{entetes}</tr></thead>
+<tbody>
+<tr><th>Référence</th>{refs}</tr>
+<tr><th colspan="{len(disponibles) + 1}">Produits</th></tr>
+{lignes_produits}
+</tbody>
+<tfoot>
+<tr><th>Total HT</th>{totaux}</tr>
+<tr><th>Marge</th>{marges}</tr>
+<tr><th>Marge %</th>{marges_pct}</tr>
+</tfoot>
+</table>"""
+    return f"""<!DOCTYPE html><html lang="fr"><head><meta charset="utf-8">
+<title>Comparaison de variantes {_echapper(data['reference_base'])}</title>
+<style>
+ body {{ font-family: Helvetica, Arial, sans-serif; font-size: 10pt; }}
+ h1 {{ font-size: 14pt; margin-bottom: 2mm; }}
+ .interne {{ color: #b00; font-weight: bold; }}
+ table {{ width: 100%; border-collapse: collapse; margin-top: 4mm; }}
+ th, td {{ border: 1px solid #999; padding: 1.5mm; text-align: left; }}
+ td.n {{ text-align: right; }}
+</style></head><body>
+<h1>Comparaison de variantes — {_echapper(data['reference_base'])}</h1>
+<p class="interne">DOCUMENT INTERNE — préparation d'entretien commercial.
+Ne pas transmettre au client.</p>
+<p>Date : {_echapper(data['date'])}</p>
+{corps}
+</body></html>"""
+
+
+def generer_comparaison_variantes_pdf(devis):
+    """NTCPQ26 — Rend la feuille de comparaison de variantes en PDF (INTERNE).
+
+    Passe par ``core.pdf.render_pdf`` (ARC11), JAMAIS par ``quote_engine``
+    (réservé au PDF client, règle #4)."""
+    from core.pdf import render_pdf
+    return render_pdf(html=rendre_comparaison_variantes_html(devis))
+
+
 def generer_variantes_devis(devis, *, user=None, tiers=None):
     """NTCPQ16 — Génère les variantes d'un devis par SUBSTITUTION de produits.
 
