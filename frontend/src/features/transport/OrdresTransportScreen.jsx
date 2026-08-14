@@ -10,6 +10,9 @@ import ComparateurTransporteurs from '../../pages/transport/ComparateurTransport
 import OrdreTransportTimeline from '../../pages/transport/OrdreTransportTimeline'
 // NTLOG25 — vue kanban par statut, alternative à la liste ci-dessous.
 import OrdresTransportKanban from '../../pages/transport/OrdresTransportKanban'
+// NTLOG34 — mini-wizard « clôturer une réserve / ouvrir un litige », atteint
+// depuis le détail d'un ordre livré/en cours (étape de livraison connue).
+import ReserveEtLitigeWizard from '../../pages/transport/ReserveEtLitigeWizard'
 
 /* ============================================================================
    NTLOG7/NTLOG8 — Écran `/transport/ordres` : liste des ordres de transport.
@@ -65,6 +68,8 @@ export default function OrdresTransportScreen() {
   )
 
   const selected = ordres.find((o) => o.id === selectedId) || null
+  const [reserveWizardOpen, setReserveWizardOpen] = useState(false)
+  const etapeLivraison = selected?.etapes?.find((e) => e.type_etape === 'livraison') || null
 
   const columns = useMemo(() => [
     {
@@ -144,11 +149,16 @@ export default function OrdresTransportScreen() {
 
       {selected && (
         <Card>
-          <CardHeader>
+          <CardHeader className="flex-row items-center justify-between gap-3">
             <CardTitle className="flex items-center gap-2">
               <Truck className="size-4" aria-hidden="true" />
               {selected.numero || `Ordre #${selected.id}`}
             </CardTitle>
+            {etapeLivraison && (
+              <Button size="sm" variant="outline" onClick={() => setReserveWizardOpen(true)}>
+                Réserve à réception
+              </Button>
+            )}
           </CardHeader>
           <CardContent>
             <Tabs defaultValue="historique">
@@ -165,6 +175,15 @@ export default function OrdresTransportScreen() {
             </Tabs>
           </CardContent>
         </Card>
+      )}
+
+      {reserveWizardOpen && etapeLivraison && (
+        <ReserveEtLitigeWizard
+          etape={etapeLivraison}
+          ordre={selected}
+          onClose={() => setReserveWizardOpen(false)}
+          onCreated={() => { setReserveWizardOpen(false); refetch() }}
+        />
       )}
     </div>
   )
