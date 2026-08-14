@@ -24,7 +24,10 @@ function frErr(err, fallback = 'Une erreur est survenue.') {
   return fallback
 }
 
-function Section({ icon: Icon, titre, compteur, children }) {
+function Section({ icon, titre, compteur, children }) {
+  // Classe lint maison #23b : le rename de destructuration (`icon: Icon`)
+  // n'est pas credite par no-unused-vars — on reassigne dans le corps.
+  const Icon = icon
   return (
     <section className="rounded-lg border border-[var(--border)] bg-[var(--card)] p-4">
       <h2 className="mb-3 flex items-center gap-2 text-sm font-semibold">
@@ -118,7 +121,9 @@ export default function CockpitEntrepot() {
     } finally { setLoading(false) }
   }, [])
 
-  useEffect(() => { charger() }, [charger])
+  // Differe d'un microtask : `charger` pose `loading`/l'erreur de facon
+  // synchrone (react-hooks/set-state-in-effect). Comportement inchange.
+  useEffect(() => { Promise.resolve().then(charger) }, [charger])
 
   const zones = data?.zones ?? []
   const vagues = data?.vagues ?? []

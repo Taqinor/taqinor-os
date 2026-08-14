@@ -109,7 +109,9 @@ class Ntret17EndpointTests(TestCase):
             Produit.objects.create(
                 company=self.company, nom=f'Article {index}',
                 sku=f'ART{index}-NTRET17', categorie=self.rayon,
-                code_barres='3760020507350',
+                # `(company, code_barres)` est UNIQUE : un code par article.
+                # Prefixe distinct + cle recalculee -> 3 EAN-13 valides.
+                code_barres=ean13_normalise(f'37600205073{index}'),
                 prix_achat=Decimal('50'), prix_vente=Decimal('80'))
         Produit.objects.create(
             company=self.company, nom='Robinet', sku='ROB-NTRET17',

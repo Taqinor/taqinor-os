@@ -305,8 +305,8 @@ def public_api_reference():
                     'scope': 'read:scm',
                     'description': (
                         "Tableau de bord réappro consolidé (NTSCM7) — "
-                        "``{'lignes': [...]}``. Jamais de prix d'achat "
-                        "(``prix_achat_unitaire`` retiré)."
+                        "``{'lignes': [...]}``. Le coût d'achat interne "
+                        "est toujours retiré avant sérialisation."
                     ),
                 },
             ],

@@ -459,6 +459,14 @@ class PlanEntretienPoste(TenantModel):
     def __str__(self):
         return f'{self.poste_charge_id} · {self.description}'
 
+    def save(self, *args, **kwargs):
+        # Autofill depuis `poste_charge.company` quand absent (creations
+        # directes hors ViewSet, ex. fixtures) — le ViewSet pose deja `company`
+        # AVANT ce save(), donc ce chemin ne s'applique jamais a l'API.
+        if self.company_id is None and self.poste_charge_id is not None:
+            self.company_id = self.poste_charge.company_id
+        super().save(*args, **kwargs)
+
 
 class EcheanceEntretienPoste(models.Model):
     """NTMFG14 — échéance générée depuis un `PlanEntretienPoste`
