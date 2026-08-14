@@ -4,13 +4,17 @@
 from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 
-from .views import DossierExportViewSet, PieceDossierExportViewSet
+from .views import (
+    DossierExportViewSet, ParametresDouaneViewSet, PieceDossierExportViewSet,
+)
 
 router = DefaultRouter()
 router.register(r'dossiers-export', DossierExportViewSet, basename='douane-dossier-export')
 router.register(
     r'dossiers-export-pieces', PieceDossierExportViewSet,
     basename='douane-piece-dossier-export')
+router.register(
+    r'parametres-douane', ParametresDouaneViewSet, basename='douane-parametres')
 
 urlpatterns = [
     path('', include(router.urls)),

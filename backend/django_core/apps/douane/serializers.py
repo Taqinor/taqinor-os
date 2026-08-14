@@ -1,6 +1,6 @@
 from rest_framework import serializers
 
-from .models import DossierExport, PieceDossierExport
+from .models import DossierExport, ParametresDouane, PieceDossierExport
 
 
 class PieceDossierExportSerializer(serializers.ModelSerializer):
@@ -27,3 +27,13 @@ class DossierExportSerializer(serializers.ModelSerializer):
         read_only_fields = [
             'id', 'numero', 'created_by', 'created_at', 'updated_at', 'pieces',
         ]
+
+
+class ParametresDouaneSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ParametresDouane
+        fields = [
+            'id', 'regime_douanier_par_defaut', 'alerte_expiration_jours',
+            'mention_estimation_droits',
+        ]
+        read_only_fields = ['id']

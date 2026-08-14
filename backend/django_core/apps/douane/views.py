@@ -1,11 +1,16 @@
 from django.db import transaction
+from rest_framework import viewsets
 from rest_framework.exceptions import PermissionDenied, ValidationError
+from rest_framework.response import Response
 
+from core.permissions import ScopedPermission
 from core.viewsets import CompanyScopedModelViewSet
 
-from .models import DossierExport, PieceDossierExport
+from .models import DossierExport, ParametresDouane, PieceDossierExport
 from .permissions import DOUANE_RESPONSABLE
-from .serializers import DossierExportSerializer, PieceDossierExportSerializer
+from .serializers import (
+    DossierExportSerializer, ParametresDouaneSerializer, PieceDossierExportSerializer,
+)
 from .services import attribuer_numero_dossier_export
 
 
@@ -90,3 +95,25 @@ class PieceDossierExportViewSet(CompanyScopedModelViewSet):
         if dossier is not None and user_company_id and dossier.company_id != user_company_id:
             raise PermissionDenied("Dossier hors de votre société.")
         serializer.save(company=self.request.user.company)
+
+
+class ParametresDouaneViewSet(viewsets.ViewSet):
+    """NTLOG36 — réglages douane, singleton par société (motif
+    ``stock.AchatsParametresViewSet``, XPUR1). GET (``list``, sur
+    ``parametres-douane/``) renvoie le réglage courant, le créant si besoin ;
+    PATCH (``partial_update``) le met à jour. ``company`` toujours dérivée de
+    l'utilisateur, jamais du corps de requête. Écriture réservée à
+    ``douane_responsable`` (même garde que les autres viewsets — NTLOG43)."""
+    permission_classes = [ScopedPermission]
+    write_permission = DOUANE_RESPONSABLE
+
+    def list(self, request):
+        obj = ParametresDouane.for_company(request.user.company)
+        return Response(ParametresDouaneSerializer(obj).data)
+
+    def partial_update(self, request, pk=None):
+        obj = ParametresDouane.for_company(request.user.company)
+        serializer = ParametresDouaneSerializer(obj, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(serializer.data)

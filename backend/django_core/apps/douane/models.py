@@ -22,6 +22,12 @@ from django.db import models
 from core.models import TenantModel
 
 
+def _defaut_alerte_jours():
+    """NTLOG36 — J-30/J-15/J-7 (fonction nommée, pas un ``lambda`` : un
+    ``default`` de ``JSONField`` doit rester sérialisable en migration)."""
+    return [30, 15, 7]
+
+
 class DossierExport(TenantModel):
     """NTLOG14 — dossier d'export vers un client étranger. ``numero`` attribué
     côté serveur via ``core.numbering`` (plus-haut-utilisé+1 par société,
@@ -125,3 +131,51 @@ class PieceDossierExport(TenantModel):
 
     def __str__(self):
         return f'{self.get_type_piece_display()} · {self.get_statut_piece_display()}'
+
+
+class ParametresDouane(TenantModel):
+    """NTLOG36 — réglages du module douane, un par société (motif
+    ``adminops.AdminOpsSettings``/``stock.AchatsParametres`` : singleton
+    accédé via ``for_company``, jamais via ``count()+1`` ni un ``get()`` qui
+    plante s'il manque). Hérite de ``TenantModel`` mais REdéclare ``company``
+    en ``OneToOneField`` (motif ARC1/SCA4 documenté sur ``TenantModel`` —
+    un ``company = models.OneToOneField`` hors-socle NON précédé de
+    ``TenantModel`` dans les bases casserait le garde CI ``check_platform.py``
+    « pas de nouvelle FK company à la main »).
+    ``alerte_expiration_jours`` alimente NTLOG22/23 (échéances engagement/
+    grille tarifaire) ; ``mention_estimation_droits`` est le libellé affiché
+    sur l'estimation droits/taxes (NTLOG13) et le PDF de synthèse transitaire
+    (NTLOG30) — NTLOG13/30 restent BLOCKED (dépendent de NTLOG10) donc rien
+    ne consomme encore ce champ, mais son contrat est déjà fixé pour eux."""
+
+    class RegimeDouanier(models.TextChoices):
+        MISE_CONSOMMATION = 'mise_consommation', 'Mise à la consommation'
+        ADMISSION_TEMPORAIRE = 'admission_temporaire', 'Admission temporaire'
+        ENTREPOT_DOUANE = 'entrepot_douane', 'Entrepôt sous douane'
+        TRANSIT = 'transit', 'Transit'
+        PERFECTIONNEMENT_ACTIF = 'perfectionnement_actif', 'Perfectionnement actif'
+
+    company = models.OneToOneField(
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: réglages liés au cycle de vie de la société
+        related_name='douane_parametres', verbose_name='Société')
+    regime_douanier_par_defaut = models.CharField(
+        max_length=24, choices=RegimeDouanier.choices,
+        default=RegimeDouanier.MISE_CONSOMMATION)
+    # Liste de jours avant échéance (J-30/J-15/J-7 par défaut) — NTLOG22/23
+    # notifient à chacun de ces paliers, jamais un seul seuil fixe.
+    alerte_expiration_jours = models.JSONField(default=_defaut_alerte_jours)
+    mention_estimation_droits = models.TextField(
+        blank=True,
+        default='Estimation — non contractuelle, barème à vérifier à jour.')
+
+    class Meta:
+        verbose_name = 'Paramètres douane'
+        verbose_name_plural = 'Paramètres douane'
+
+    def __str__(self):
+        return f'Paramètres douane — {self.company}'
+
+    @classmethod
+    def for_company(cls, company):
+        obj, _ = cls.objects.get_or_create(company=company)
+        return obj
