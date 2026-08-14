@@ -46,7 +46,8 @@ class VaguePickingViewSet(CompanyScopedModelViewSet):
         # chaque action est donc listée explicitement ici.
         if self.action in READ_ACTIONS + ['lignes']:
             return [IsAnyRole()]
-        if self.action in WRITE_ACTIONS + ['lancer', 'prelever']:
+        if self.action in WRITE_ACTIONS + [
+                'lancer', 'prelever', 'configurer_liberation']:
             return [IsResponsableOrAdmin()]
         return [IsAdminRole()]
 
@@ -80,6 +81,23 @@ class VaguePickingViewSet(CompanyScopedModelViewSet):
         vague = self.get_object()
         try:
             lancer_vague(vague)
+        except ValueError as exc:
+            return Response({'detail': str(exc)},
+                            status=status.HTTP_400_BAD_REQUEST)
+        vague.refresh_from_db()
+        return Response(self.get_serializer(vague).data)
+
+    @action(detail=True, methods=['post'], url_path='configurer-liberation')
+    def configurer_liberation(self, request, pk=None):
+        """NTWMS12 — règle de libération de la vague
+        (``{mode: manuel|auto_heure|auto_seuil, seuil_lignes?}``). Seule une
+        vague en brouillon est reconfigurable."""
+        from ..services import configurer_liberation_vague
+        vague = self.get_object()
+        try:
+            configurer_liberation_vague(
+                vague=vague, mode=request.data.get('mode'),
+                seuil_lignes=request.data.get('seuil_lignes'))
         except ValueError as exc:
             return Response({'detail': str(exc)},
                             status=status.HTTP_400_BAD_REQUEST)

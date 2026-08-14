@@ -47,13 +47,15 @@ class VaguePickingSerializer(serializers.ModelSerializer):
     class Meta:
         model = VaguePicking
         fields = [
-            'id', 'reference', 'statut', 'note', 'date_lancement',
-            'date_cloture', 'cree_par', 'cree_par_username', 'nb_lignes',
-            'lignes', 'created_at', 'updated_at',
+            'id', 'reference', 'statut', 'mode_liberation', 'seuil_lignes',
+            'note', 'date_lancement', 'date_cloture', 'cree_par',
+            'cree_par_username', 'nb_lignes', 'lignes', 'created_at',
+            'updated_at',
         ]
         read_only_fields = [
-            'reference', 'statut', 'date_lancement', 'date_cloture',
-            'cree_par', 'created_at', 'updated_at',
+            'reference', 'statut', 'mode_liberation', 'seuil_lignes',
+            'date_lancement', 'date_cloture', 'cree_par', 'created_at',
+            'updated_at',
         ]
 
     def get_nb_lignes(self, obj):

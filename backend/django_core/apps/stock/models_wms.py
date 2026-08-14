@@ -46,7 +46,21 @@ class VaguePicking(TenantModel):
         LANCEE = 'lancee', 'Lancée'
         TERMINEE = 'terminee', 'Terminée'
 
+    # NTWMS12 — stratégie de LIBÉRATION. MANUEL (défaut) = comportement
+    # historique strict : la vague ne part que sur clic.
+    class ModeLiberation(models.TextChoices):
+        MANUEL = 'manuel', 'Manuel'
+        AUTO_HEURE = 'auto_heure', 'Automatique à l\'heure de coupure'
+        AUTO_SEUIL = 'auto_seuil', 'Automatique au seuil de lignes'
+
     reference = models.CharField(max_length=50)
+    mode_liberation = models.CharField(
+        max_length=20, choices=ModeLiberation.choices,
+        default=ModeLiberation.MANUEL)
+    seuil_lignes = models.PositiveIntegerField(
+        null=True, blank=True,
+        help_text='NTWMS12 — nombre de lignes déclenchant la libération en '
+                  'mode AUTO_SEUIL. Vide = jamais déclenché.')
     statut = models.CharField(
         max_length=20, choices=Statut.choices, default=Statut.BROUILLON)
     note = models.TextField(blank=True, null=True)

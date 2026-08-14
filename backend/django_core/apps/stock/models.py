@@ -460,6 +460,18 @@ class AchatsParametres(models.Model):
         obj, _created = cls.objects.get_or_create(company=company)
         return obj
 
+    # NTWMS12 — heure de coupure PAR SOCIÉTÉ des vagues en libération
+    # automatique. Même parti pris que les autres réglages ci-dessus : on
+    # étend ce singleton société plutôt que de toucher `authentication`/
+    # `parametres` (apps de fondation hors périmètre). NULL = aucune coupure
+    # configurée → une vague AUTO_HEURE ne se libère jamais toute seule
+    # (comportement inchangé tant que le réglage n'est pas posé).
+    heure_coupure_vagues = models.TimeField(
+        null=True, blank=True,
+        help_text='NTWMS12 — heure de coupure quotidienne à laquelle les '
+                  'vagues en mode AUTO_HEURE sont lancées. Vide = pas de '
+                  'libération automatique.')
+
 
 class DocumentConformiteFournisseur(models.Model):
     """XPUR1 — pièce de conformité fiscale/administrative d'un FOURNISSEUR

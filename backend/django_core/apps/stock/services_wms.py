@@ -651,3 +651,99 @@ def controler_scan_emballage(*, company, unite, produit, quantite=1,
     ligne.scanne_par = user
     ligne.save()
     return ligne
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# NTWMS12 — Règles de libération de vague (wave release strategy)
+# ═══════════════════════════════════════════════════════════════════════════
+
+def configurer_liberation_vague(*, vague, mode, seuil_lignes=None):
+    """Pose le mode de libération d'une vague (et son seuil éventuel).
+
+    Refuse un mode inconnu, un mode AUTO_SEUIL sans seuil positif, et toute
+    reconfiguration d'une vague déjà lancée ou terminée (elle est partie : la
+    règle de libération n'a plus de sens).
+    """
+    from .models_wms import VaguePicking
+
+    if vague.statut != VaguePicking.Statut.BROUILLON:
+        raise ValueError(
+            'Seule une vague en brouillon peut changer de mode de '
+            'libération.')
+    if mode not in dict(VaguePicking.ModeLiberation.choices):
+        raise ValueError('Mode de libération inconnu.')
+    if mode == VaguePicking.ModeLiberation.AUTO_SEUIL:
+        try:
+            seuil_lignes = int(seuil_lignes)
+        except (TypeError, ValueError):
+            raise ValueError(
+                'Le mode AUTO_SEUIL exige un seuil de lignes positif.')
+        if seuil_lignes <= 0:
+            raise ValueError(
+                'Le mode AUTO_SEUIL exige un seuil de lignes positif.')
+    else:
+        seuil_lignes = None
+    vague.mode_liberation = mode
+    vague.seuil_lignes = seuil_lignes
+    vague.save(update_fields=['mode_liberation', 'seuil_lignes'])
+    return vague
+
+
+def liberer_vagues_planifiees(*, company=None, maintenant=None):
+    """Lance les vagues BROUILLON dont la règle de libération est atteinte.
+
+    IDEMPOTENTE : une vague déjà lancée n'est jamais retouchée ; deux passages
+    consécutifs produisent le même état. Conçue pour être plannifiée par Celery
+    beat comme les autres jobs du module.
+
+      * ``AUTO_HEURE`` — libérée quand l'heure locale a atteint
+        ``AchatsParametres.heure_coupure_vagues`` de la société. Sans heure
+        configurée : jamais libérée (comportement inchangé).
+      * ``AUTO_SEUIL`` — libérée dès que le nombre de lignes atteint
+        ``seuil_lignes``.
+      * ``MANUEL`` — jamais touchée.
+
+    ``maintenant`` (datetime aware) permet un test DÉTERMINISTE : la fonction
+    ne lit jamais l'horloge quand il est fourni.
+
+    Renvoie ``{'liberees': [references…], 'examinees': n}``.
+    """
+    from django.utils import timezone
+    from .models import AchatsParametres
+    from .models_wms import VaguePicking
+
+    maintenant = maintenant or timezone.now()
+    heure_locale = timezone.localtime(maintenant).time()
+
+    qs = (VaguePicking.objects
+          .filter(statut=VaguePicking.Statut.BROUILLON)
+          .exclude(mode_liberation=VaguePicking.ModeLiberation.MANUEL)
+          .select_related('company'))
+    if company is not None:
+        qs = qs.filter(company=company)
+
+    liberees, examinees = [], 0
+    # Un seul réglage lu par société (jamais un get_or_create par vague).
+    parametres = {}
+    for vague in qs:
+        examinees += 1
+        declencher = False
+        if vague.mode_liberation == VaguePicking.ModeLiberation.AUTO_HEURE:
+            if vague.company_id not in parametres:
+                parametres[vague.company_id] = AchatsParametres.for_company(
+                    vague.company)
+            coupure = parametres[vague.company_id].heure_coupure_vagues
+            declencher = bool(coupure) and heure_locale >= coupure
+        elif vague.mode_liberation == VaguePicking.ModeLiberation.AUTO_SEUIL:
+            seuil = vague.seuil_lignes or 0
+            declencher = seuil > 0 and vague.lignes.count() >= seuil
+        if not declencher:
+            continue
+        try:
+            lancer_vague(vague)
+        except ValueError:
+            # Vague sans ligne : on la laisse en brouillon, sans faire échouer
+            # tout le lot (le job doit rester idempotent et tolérant).
+            continue
+        liberees.append(vague.reference)
+    return {'liberees': liberees, 'examinees': examinees}
