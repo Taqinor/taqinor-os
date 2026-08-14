@@ -85,6 +85,10 @@ HISTORICAL_TARGETS = {
     ('transport', 'ordretransport'),
     ('transport', 'etapetransport'),
     ('transport', 'reservereception'),
+    # NTLOG49 (14/08/2026) — chatter/follower/tag génériques sur le dossier
+    # d'export douanier, ciblé par ``apps/douane/platform.py``. Le volet
+    # IMPORT n'est PAS déclaré : NTLOG10 reste BLOCKED (GARDE WIR80).
+    ('douane', 'dossierexport'),
 }
 
 
@@ -99,7 +103,7 @@ class TestAllowedTargetsNonRegression(SimpleTestCase):
             f"en trop: {resolved - HISTORICAL_TARGETS}")
 
     def test_len_matches(self):
-        self.assertEqual(len(ALLOWED_TARGETS), 36)
+        self.assertEqual(len(ALLOWED_TARGETS), 37)
 
     def test_contains_works_for_each_historical_pair(self):
         for pair in HISTORICAL_TARGETS:

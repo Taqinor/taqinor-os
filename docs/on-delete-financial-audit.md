@@ -845,11 +845,11 @@ Généré par `python scripts/check_on_delete.py --financial`. Ce tableau recens
 | `backend/django_core/apps/records/models.py:375` | Follower.company | authentication.Company | CASCADE |
 | `backend/django_core/apps/reporting/models.py:30` | SavedReport.company | authentication.Company | CASCADE |
 | `backend/django_core/apps/reporting/models.py:130` | DashboardConfig.company | authentication.Company | CASCADE |
-| `backend/django_core/apps/reporting/models.py:214` | KpiAlerte.company | authentication.Company | CASCADE |
-| `backend/django_core/apps/reporting/models.py:286` | Classeur.company | authentication.Company | CASCADE |
-| `backend/django_core/apps/reporting/models.py:327` | ApprobationSlaConfig.company | authentication.Company | CASCADE |
-| `backend/django_core/apps/reporting/models.py:363` | ClasseurPartageInterne.company | authentication.Company | CASCADE |
-| `backend/django_core/apps/reporting/models.py:416` | WebVitalMetric.company | authentication.Company | CASCADE |
+| `backend/django_core/apps/reporting/models.py:223` | KpiAlerte.company | authentication.Company | CASCADE |
+| `backend/django_core/apps/reporting/models.py:295` | Classeur.company | authentication.Company | CASCADE |
+| `backend/django_core/apps/reporting/models.py:336` | ApprobationSlaConfig.company | authentication.Company | CASCADE |
+| `backend/django_core/apps/reporting/models.py:372` | ClasseurPartageInterne.company | authentication.Company | CASCADE |
+| `backend/django_core/apps/reporting/models.py:425` | WebVitalMetric.company | authentication.Company | CASCADE |
 | `backend/django_core/apps/rh/models.py:33` | Departement.company | authentication.Company | CASCADE |
 | `backend/django_core/apps/rh/models.py:96` | Poste.company | authentication.Company | CASCADE |
 | `backend/django_core/apps/rh/models.py:147` | HoraireTravail.company | authentication.Company | CASCADE |
