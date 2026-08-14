@@ -253,6 +253,147 @@ export function fillAll(state: LayoutState): { ok: boolean; count: number } {
   return { ok: state.occupied.size > before, count: state.occupied.size };
 }
 
+// ═══════════ PV25 — SÉLECTION MULTIPLE, DÉPLACEMENT DE GROUPE ET DE RANGÉE ═══════════
+// Tout reste dans le MÊME cadre de sécurité que le déplacement d'un panneau : on ne fait
+// que changer les INDEX de cellules occupées, et toute cellule de la lattice est valide
+// par construction. Un groupe ne peut donc jamais atterrir dans un obstacle ou hors toit.
+
+/** Rectangle de sélection en ENU (mètres). Les coins peuvent être donnés dans n'importe
+ *  quel ordre : la fonction normalise. */
+export interface EnuRect {
+  x0: number;
+  y0: number;
+  x1: number;
+  y1: number;
+}
+
+/**
+ * PV25 — cellules dont le CENTRE tombe dans le rectangle (marquee). Par défaut on ne
+ * renvoie que les cellules OCCUPÉES (on sélectionne des panneaux, pas du vide). Indices
+ * triés — l'ordre de la lattice, donc un rendu stable.
+ */
+export function cellsInRect(state: LayoutState, rect: EnuRect, occupiedOnly = true): number[] {
+  const xMin = Math.min(rect.x0, rect.x1);
+  const xMax = Math.max(rect.x0, rect.x1);
+  const yMin = Math.min(rect.y0, rect.y1);
+  const yMax = Math.max(rect.y0, rect.y1);
+  const out: number[] = [];
+  for (const c of state.cells) {
+    if (occupiedOnly && !state.occupied.has(c.index)) continue;
+    if (c.cx < xMin || c.cx > xMax || c.cy < yMin || c.cy > yMax) continue;
+    out.push(c.index);
+  }
+  return out.sort((a, b) => a - b);
+}
+
+/** Résultat d'un déplacement de GROUPE : tout ou rien. */
+export interface GroupMoveResult {
+  ok: boolean;
+  /** Cellules d'arrivée (même ordre que les membres fournis) — vide si refusé. */
+  targets: number[];
+  /** Pourquoi c'est refusé (diagnostic pour la note de l'interface). */
+  reason?: 'empty' | 'not-occupied' | 'no-target';
+}
+
+/**
+ * PV25 — déplace TOUT un groupe de panneaux de (dx, dy) mètres. Règle absolue :
+ * TOUT OU RIEN. On calcule d'abord la cellule d'arrivée de CHAQUE membre (la cellule
+ * libre valide la plus proche de sa position translatée, les cellules du groupe étant
+ * considérées comme libérées, sans qu'aucune ne soit prise deux fois) ; si UN SEUL membre
+ * n'a pas de cible valide — ou atterrit trop loin de sa position visée (`maxSnapM`) —, le
+ * déplacement est REFUSÉ et l'état n'est pas touché du tout. Un demi-groupe déplacé serait
+ * un calepinage que l'utilisateur n'a pas dessiné.
+ */
+export function moveGroup(
+  state: LayoutState,
+  indices: readonly number[],
+  dx: number,
+  dy: number,
+  opts: { maxSnapM?: number } = {},
+): GroupMoveResult {
+  const members = [...new Set(indices)];
+  if (members.length === 0) return { ok: false, targets: [], reason: 'empty' };
+  for (const i of members) if (!state.occupied.has(i)) return { ok: false, targets: [], reason: 'not-occupied' };
+  if (!Number.isFinite(dx) || !Number.isFinite(dy)) return { ok: false, targets: [], reason: 'no-target' };
+  const maxSnap = Number.isFinite(opts.maxSnapM as number) ? (opts.maxSnapM as number) : Infinity;
+
+  const group = new Set(members);
+  const taken = new Set<number>();
+  const targets: number[] = [];
+  for (const i of members) {
+    const cell = state.cells[i];
+    const wantX = cell.cx + dx;
+    const wantY = cell.cy + dy;
+    let best = -1;
+    let bestD = Infinity;
+    for (const c of state.cells) {
+      // Cible admissible : une cellule libre, ou une cellule du groupe (qui se libère),
+      // et jamais une cellule déjà attribuée à un autre membre.
+      if (taken.has(c.index)) continue;
+      if (state.occupied.has(c.index) && !group.has(c.index)) continue;
+      const d = (c.cx - wantX) ** 2 + (c.cy - wantY) ** 2;
+      if (d < bestD) {
+        bestD = d;
+        best = c.index;
+      }
+    }
+    if (best < 0 || Math.sqrt(bestD) > maxSnap) return { ok: false, targets: [], reason: 'no-target' };
+    taken.add(best);
+    targets.push(best);
+  }
+  // Commit atomique : on n'a touché à rien tant que tous les membres n'avaient pas de cible.
+  for (const i of members) state.occupied.delete(i);
+  for (const t of targets) state.occupied.add(t);
+  return { ok: true, targets };
+}
+
+/** Tolérance (m) par défaut pour considérer deux panneaux sur la MÊME rangée. */
+export const ROW_EPSILON_M = 0.5;
+
+/**
+ * PV25 — les panneaux de la MÊME RANGÉE que `index` : les cellules OCCUPÉES dont le
+ * centre partage la même coordonnée `cy` à `epsilonM` près (les rangées sont empilées
+ * selon cet axe). Inclut `index` lui-même. Rangée vide (index non occupé) → [].
+ */
+export function rowMembers(state: LayoutState, index: number, epsilonM = ROW_EPSILON_M): number[] {
+  if (!state.occupied.has(index)) return [];
+  const ref = state.cells[index];
+  if (!ref) return [];
+  const out: number[] = [];
+  for (const c of state.cells) {
+    if (!state.occupied.has(c.index)) continue;
+    if (Math.abs(c.cy - ref.cy) <= epsilonM) out.push(c.index);
+  }
+  return out.sort((a, b) => a - b);
+}
+
+/**
+ * PV25 — glisse une RANGÉE ENTIÈRE de `dx` mètres. Le déplacement est CONTRAINT à l'axe
+ * de la rangée (aucune composante en `y`) : une rangée reste une rangée, on ne la fait pas
+ * dériver entre deux pas d'espacement solaire. Tout ou rien, comme `moveGroup`.
+ */
+export function moveRowBy(
+  state: LayoutState,
+  index: number,
+  dx: number,
+  opts: { maxSnapM?: number; epsilonM?: number } = {},
+): GroupMoveResult {
+  const members = rowMembers(state, index, opts.epsilonM ?? ROW_EPSILON_M);
+  if (!members.length) return { ok: false, targets: [], reason: 'not-occupied' };
+  return moveGroup(state, members, dx, 0, { maxSnapM: opts.maxSnapM });
+}
+
+/**
+ * PV25 — azimut nudgé de `deltaDeg`, ramené dans [0, 360). PURE : la valeur sert au
+ * ré-calcul (le calepinage suit la nouvelle face), jamais arrondie à un pas imposé —
+ * l'appelant choisit son incrément.
+ */
+export function nudgeAzimuthDeg(currentDeg: number, deltaDeg: number): number {
+  const base = Number.isFinite(currentDeg) ? currentDeg : 0;
+  const d = Number.isFinite(deltaDeg) ? deltaDeg : 0;
+  return ((base + d) % 360 + 360) % 360;
+}
+
 /**
  * INVARIANT de cohérence : tout index occupé est une cellule valide de la lattice, et le
  * comptage ne dépasse jamais la taille de la lattice (le plafond footprint/besoin tient

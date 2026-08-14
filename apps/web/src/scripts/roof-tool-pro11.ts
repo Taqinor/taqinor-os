@@ -1112,6 +1112,9 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
     // W88 — surlignage/pick des panneaux 3D : `setPanelHighlight` (scene3d) est déclaré plus
     // bas → wrapper paresseux (référencé seulement à l'exécution d'un survol/clic 3D).
     setPanelHighlight: (cellIndex) => setPanelHighlight(cellIndex),
+    // PV25 — le nudge d'azimut passe par le recalc COMPLET de l'entrée, qui capture puis
+    // re-snappe la disposition personnalisée (wrapper paresseux : recalc est déclaré plus bas).
+    recalcWithReenter: () => recalc(),
   });
   // `renderLayoutPanel` est appelé depuis l'entrée (injecté dans la fenêtre de production) ;
   // W79 — `occupiedCenters`/`reenterCustomLayout` permettent à recalc() de re-entrer la
