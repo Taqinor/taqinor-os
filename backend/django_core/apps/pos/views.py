@@ -6,6 +6,7 @@ from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
+from rest_framework.throttling import SimpleRateThrottle
 from rest_framework.views import APIView
 
 from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
@@ -443,3 +444,65 @@ class PublicTicketPDFView(APIView):
         response['Content-Disposition'] = (
             f'inline; filename="ticket-{vente.reference}.pdf"')
         return response
+
+
+# ── NTRET3 — Multi-caissiers avec PIN de session ────────────────────────────
+
+class PinCaissierThrottle(SimpleRateThrottle):
+    """5 tentatives / 5 minutes, par (société, utilisateur CIBLÉ) — jamais par
+    IP seule : plusieurs caissiers partagent le même poste physique, throttler
+    par IP bloquerait tout le monde ensemble sur une erreur d'un seul."""
+    scope = 'pos_pin_caissier'
+
+    def get_cache_key(self, request, view):
+        if not (request.user and request.user.is_authenticated):
+            return None
+        target = request.data.get('user_id') or request.user.id
+        ident = f'{getattr(request.user, "company_id", "")}:{target}'
+        return self.cache_format % {'scope': self.scope, 'ident': ident}
+
+    def parse_rate(self, rate):
+        # DRF n'exprime nativement que minute/heure/jour (settings.py garde
+        # une entrée DEFAULT_THROTTLE_RATES['pos_pin_caissier'] pour que
+        # get_rate() ne lève pas — sa valeur est ignorée, le couple
+        # (nombre, durée) réel est câblé ici : 5 tentatives / 5 min = 300 s).
+        return (5, 300)
+
+
+class VerifierPinView(APIView):
+    """NTRET3 — Vérifie le PIN d'un caissier : déverrouille l'écran caisse
+    sans re-login JWT complet et sans perdre le panier en cours. Journalise un
+    changement de caissier (apps.audit) quand l'utilisateur déverrouillé
+    diffère du caissier précédemment actif sur ce poste."""
+    permission_classes = [IsAnyRole]
+    throttle_classes = [PinCaissierThrottle]
+
+    def post(self, request):
+        company = request.user.company
+        user_id = request.data.get('user_id')
+        pin = request.data.get('pin')
+        if not user_id or not pin:
+            raise ValidationError({'detail': 'user_id et pin requis.'})
+        try:
+            user = services.verifier_pin(
+                company=company, user_id=user_id, raw_pin=pin,
+                caissier_precedent=request.data.get('caissier_precedent'),
+                acting_user=request.user,
+            )
+        except services.PinCaissierError as exc:
+            raise ValidationError(str(exc))
+        return Response({'id': user.id, 'username': user.username})
+
+
+class DefinirPinView(APIView):
+    """NTRET3 — Définit (ou change) SON PROPRE PIN de verrouillage rapide."""
+    permission_classes = [IsAnyRole]
+
+    def post(self, request):
+        try:
+            services.definir_pin(
+                company=request.user.company, user=request.user,
+                raw_pin=request.data.get('pin'))
+        except services.PinCaissierError as exc:
+            raise ValidationError(str(exc))
+        return Response({'ok': True})

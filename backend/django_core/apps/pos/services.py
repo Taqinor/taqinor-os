@@ -543,3 +543,53 @@ def remettre_commande(*, commande, code_saisi, user):
     commande.date_retrait = timezone.now()
     commande.save(update_fields=['statut', 'date_retrait'])
     return commande
+
+
+# ── NTRET3 — Multi-caissiers avec PIN de session ────────────────────────────
+
+class PinCaissierError(Exception):
+    """Erreur métier sur le PIN de verrouillage rapide caissier."""
+
+
+def definir_pin(*, company, user, raw_pin):
+    """Définit (ou change) le PIN de verrouillage rapide d'un caissier
+    (NTRET3). 4 à 6 chiffres — jamais stocké en clair (hashers Django)."""
+    from .models import CodePinCaissier
+
+    pin = str(raw_pin or '').strip()
+    if not pin.isdigit() or not (4 <= len(pin) <= 6):
+        raise PinCaissierError('Le PIN doit comporter entre 4 et 6 chiffres.')
+    code, _ = CodePinCaissier.objects.get_or_create(
+        company=company, user=user)
+    code.set_pin(pin)
+    code.save(update_fields=['pin_hash', 'date_modification'])
+    return code
+
+
+def verifier_pin(*, company, user_id, raw_pin, caissier_precedent=None,
+                 acting_user=None):
+    """Vérifie le PIN d'un caissier (NTRET3) : déverrouille l'écran caisse
+    sans re-login JWT complet, sans perdre le panier en cours. Refuse un PIN
+    inconnu/erroné — le throttle applicatif (5 tentatives/5 min) vit côté vue
+    (``PinCaissierThrottle``). Journalise un CHANGEMENT DE CAISSIER (via
+    ``apps.audit``) quand l'utilisateur qui se déverrouille diffère du
+    caissier précédemment actif sur ce poste (transmis par le client)."""
+    from .models import CodePinCaissier
+
+    code = CodePinCaissier.objects.filter(
+        company=company, user_id=user_id).select_related('user').first()
+    if code is None or not code.check_pin(raw_pin):
+        raise PinCaissierError('PIN incorrect.')
+
+    user = code.user
+    caissier_precedent = str(caissier_precedent) if caissier_precedent else None
+    if caissier_precedent and caissier_precedent != str(user.id):
+        from apps.audit import recorder
+        recorder.record(
+            'update', instance=code, company=company,
+            user=acting_user or user,
+            detail=(
+                f'Changement de caissier au poste (PIN) : '
+                f'{caissier_precedent} → {user.username} (#{user.id}).'),
+        )
+    return user

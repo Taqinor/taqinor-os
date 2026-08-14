@@ -431,3 +431,45 @@ class ConfigMaterielPOS(models.Model):
 
     def __str__(self):
         return f'ConfigMaterielPOS ({self.company_id})'
+
+
+# ── NTRET3 — Multi-caissiers avec PIN de session ────────────────────────────
+
+class CodePinCaissier(models.Model):
+    """PIN de verrouillage rapide (NTRET3) : un utilisateur déjà connecté au
+    poste caisse (JWT valide) peut ouvrir/reverrouiller l'écran caisse SANS
+    re-login complet et SANS perdre le panier en cours — utile pour changer
+    de caissier plusieurs fois par jour sur le même poste partagé. Le PIN est
+    hashé (jamais en clair) via les hashers Django standard, même politique
+    que le mot de passe utilisateur. Un PIN par (company, user)."""
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='codes_pin_caissier',
+    )
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='codes_pin_caissier',
+    )
+    pin_hash = models.CharField(max_length=128)
+    date_creation = models.DateTimeField(auto_now_add=True)
+    date_modification = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = 'Code PIN caissier'
+        verbose_name_plural = 'Codes PIN caissier'
+        unique_together = [('company', 'user')]
+
+    def __str__(self):
+        return f'PIN caissier — {self.user_id}'
+
+    def set_pin(self, raw_pin):
+        from django.contrib.auth.hashers import make_password
+        self.pin_hash = make_password(str(raw_pin))
+
+    def check_pin(self, raw_pin):
+        from django.contrib.auth.hashers import check_password
+        if not self.pin_hash:
+            return False
+        return check_password(str(raw_pin), self.pin_hash)
