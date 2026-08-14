@@ -41,10 +41,25 @@ test('E5: the winter bill on a lead autosaves and reflects', async ({ page }) =>
 
   // Réouverture : la valeur est bien persistée.
   await openLead(page, name)
+  const reouvert = modalXl(page)
+  // ROUND 5 (draftCore.sectionAutoRepliee) — une section dont le CŒUR est
+  // complet se rouvre REPLIÉE, et un corps replié quitte le DOM
+  // (SectionsPane). Le cœur de « Profil énergétique » est justement
+  // `facture_hiver`, qu'on vient de renseigner : le champ n'est donc plus
+  // monté à la réouverture. On déplie la section par son en-tête (son
+  // affordance publique, `aria-expanded`) avant de relire la valeur — la
+  // preuve reste la MÊME : la facture saisie a bien été persistée côté
+  // serveur et se relit telle quelle.
+  const energie = reouvert.locator('.lw-section[data-nav-id="energie"]')
+  const teteEnergie = energie.locator('.lw-section-head')
+  await expect(teteEnergie).toBeVisible() // le centre est monté avant qu'on lise son état
+  if ((await teteEnergie.getAttribute('aria-expanded')) === 'false') {
+    await teteEnergie.click()
+  }
   // À la réouverture le champ lit l'écho serveur (décimal sérialisé en chaîne
   // « 800.00 ») — pendant la frappe, le texte tapé « 800 » ne snappe JAMAIS
   // (draftCore SET_FIELD garde le texte tapé, critique Fable #1).
-  await expect(modalXl(page).locator('#lf-facture-hiver')).toHaveValue(/^800([.,]00)?$/)
+  await expect(energie.locator('#lf-facture-hiver')).toHaveValue(/^800([.,]00)?$/)
   await closeLeadModal(page)
 })
 
@@ -105,7 +120,13 @@ test('E7: move a lead between stages, including into Signé', async ({ page }) =
   await page.locator('select.ie-input').selectOption({ label: 'Signé' })
   await page.keyboard.press('Tab')
 
-  const dialog = page.locator('.modal', { hasText: 'Passer en « Signé »' })
+  // VX182 — SigneDialog est passé à ResponsiveDialog (Radix) : son conteneur
+  // n'a plus la classe `.modal`, mais garde son en-tête `<h3 class="modal-title">`.
+  // On cible donc LE dialogue par son titre — même preuve (la boîte
+  // d'acceptation s'ouvre au lieu d'un passage direct en Signé, puis disparaît
+  // une fois confirmée).
+  const dialog = page.locator('[role="dialog"]')
+    .filter({ has: page.locator('.modal-title', { hasText: 'Passer en « Signé »' }) })
   await expect(dialog).toBeVisible()
   const devisSelect = dialog.locator('#sd-devis')
   const values = await devisSelect

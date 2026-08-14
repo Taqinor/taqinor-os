@@ -7,9 +7,17 @@ test.use({ storageState: { cookies: [], origins: [] } })
 
 test('E2: invalid login is rejected', async ({ page }) => {
   await uiLogin(page, { username: ADMIN.username, password: 'definitely-wrong' })
-  // The login error box (⚠️ + the server's message) appears; the exact text is
-  // the backend `detail`, so assert on the box, not a specific wording.
-  await expect(page.getByText('⚠️')).toBeVisible()
+  // The login error box appears; the exact text is the backend `detail`, so
+  // assert on the box, not a specific wording.
+  // VX45 — the box no longer opens with a raw ⚠️ emoji: it is a lucide
+  // component (`<AlertCircle>` in Login.jsx → `svg.lucide-circle-alert`), the
+  // product rule pinned in /ui ("toujours un composant lucide, jamais un emoji
+  // brut"). We target the box through that icon and assert its message slot is
+  // non-empty — same proof as before (the error box is shown, carrying the
+  // server's message), independent of the wording.
+  const errorMessage = page.locator('div:has(> svg.lucide-circle-alert) > span')
+  await expect(errorMessage).toBeVisible()
+  await expect(errorMessage).not.toBeEmpty()
   // Stayed on the login screen — never reached the app (ODY3: the app now
   // opens on the home menu `/apps`, not `/dashboard`).
   await expect(page).toHaveURL(/\/login/)
