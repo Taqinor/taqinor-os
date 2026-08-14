@@ -1936,6 +1936,7 @@ class RegleCodeBarres(models.Model):
 # que `installations/models_kitting.py`) ; ré-exportés ici pour que
 # `from apps.stock.models import VaguePicking` fonctionne partout.
 from .models_wms import (  # noqa: E402,F401
+    AffectationCrossDock,
     ExpeditionTransporteur,
     LignePicking,
     PlanComptageTournant,

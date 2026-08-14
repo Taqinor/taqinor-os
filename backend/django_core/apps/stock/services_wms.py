@@ -854,3 +854,173 @@ def generer_comptages_tournants(*, company=None, aujourd_hui=None):
             plan.save(update_fields=['date_dernier_comptage'])
         sessions.append(session.reference)
     return {'sessions': sessions, 'plans_dus': plans_dus}
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# NTWMS15 — Cross-dock (réception → expédition, sans passage en stock rangé)
+# ═══════════════════════════════════════════════════════════════════════════
+
+# Statuts de vague qui ATTENDENT encore de la marchandise : seule une vague
+# non terminée peut justifier un cross-dock.
+STATUTS_VAGUE_EN_ATTENTE = ('brouillon', 'lancee')
+
+
+def _lignes_picking_en_attente(company, produit_id):
+    """Lignes de vague NON servies attendant ce produit, vague la plus
+    ancienne d'abord (LECTURE SEULE)."""
+    from .models_wms import LignePicking
+
+    return [
+        ligne for ligne in (
+            LignePicking.objects
+            .filter(company=company, produit_id=produit_id,
+                    vague__statut__in=STATUTS_VAGUE_EN_ATTENTE)
+            .select_related('vague')
+            .order_by('vague_id', 'ordre_parcours', 'id'))
+        if ligne.reste_a_prelever > 0
+    ]
+
+
+def proposer_cross_dock(reception):
+    """Vagues en attente qui MATCHENT les lignes d'une réception.
+
+    Renvoie ``[{ligne_id, produit_id, produit_nom, quantite, deja_affectee,
+    vagues: [{ligne_picking_id, vague_id, vague_reference,
+    reste_a_prelever}]}]`` — une entrée par ligne reçue, ``vagues`` vide quand
+    rien n'attend ce produit (la ligne suit alors le rangement normal,
+    NTWMS2). LECTURE SEULE : cette fonction PROPOSE, elle n'écrit rien.
+    """
+    from .models_wms import AffectationCrossDock
+
+    if reception is None:
+        return []
+    company = reception.company
+    deja = set(
+        AffectationCrossDock.objects
+        .filter(company=company, reception=reception)
+        .values_list('ligne_reception_id', flat=True))
+
+    sorties = []
+    for ligne in reception.lignes.select_related('produit').order_by('id'):
+        vagues = []
+        if ligne.produit_id:
+            for lp in _lignes_picking_en_attente(company, ligne.produit_id):
+                vagues.append({
+                    'ligne_picking_id': lp.id,
+                    'vague_id': lp.vague_id,
+                    'vague_reference': lp.vague.reference,
+                    'reste_a_prelever': lp.reste_a_prelever,
+                })
+        sorties.append({
+            'ligne_id': ligne.id,
+            'produit_id': ligne.produit_id,
+            'produit_nom': getattr(ligne.produit, 'nom', '') or '',
+            'quantite': ligne.quantite or 0,
+            'deja_affectee': ligne.id in deja,
+            'vagues': vagues,
+        })
+    return sorties
+
+
+def reception_est_cross_dock(reception):
+    """Vrai quand TOUTES les lignes d'une réception sont routées en cross-dock.
+
+    C'est l'équivalent, du bon côté de la frontière d'apps, du drapeau
+    « destiné au cross-dock » : aucune colonne n'est ajoutée à ``achats``, la
+    vérité est portée par les affectations de ``stock``.
+    """
+    from .models_wms import AffectationCrossDock
+
+    if reception is None:
+        return False
+    lignes = list(reception.lignes.values_list('id', flat=True))
+    if not lignes:
+        return False
+    affectees = set(
+        AffectationCrossDock.objects
+        .filter(company=reception.company, ligne_reception_id__in=lignes)
+        .values_list('ligne_reception_id', flat=True))
+    return len(affectees) == len(lignes)
+
+
+def affecter_reception_cross_dock(*, reception, user=None, lignes=None,
+                                  unite=None):
+    """Route les lignes reçues qui matchent une vague en attente vers un COLIS.
+
+    ``lignes`` — ids de lignes de réception à router (défaut : toutes celles
+    qui matchent). ``unite`` — colis existant à alimenter (défaut : un colis
+    ``en_preparation`` créé pour l'occasion, rattaché à la vague matchée).
+
+    Le put-away (NTWMS2) est explicitement SAUTÉ : aucun ``MouvementStock``
+    vers un casier de stockage n'est posé ici, la marchandise ne transite
+    jamais par un casier. L'entrée en stock reste celle, inchangée, de la
+    confirmation de réception.
+
+    Renvoie ``{unite_logistique, sscc, lignes_affectees, lignes_ignorees}``.
+    Lève ``ValueError`` si aucune ligne ne matche ou si le colis est scellé.
+    """
+    from django.db import transaction
+
+    from .models import Produit
+    from .models_wms import AffectationCrossDock, LignePicking, VaguePicking
+
+    if reception is None:
+        raise ValueError('Réception introuvable.')
+    company = reception.company
+    filtre = {int(x) for x in (lignes or []) if str(x).isdigit()}
+    propositions = [
+        p for p in proposer_cross_dock(reception)
+        if p['vagues'] and not p['deja_affectee']
+        and (not filtre or p['ligne_id'] in filtre)
+    ]
+    if not propositions:
+        raise ValueError(
+            'Aucune ligne de cette réception ne correspond à une vague en '
+            'attente.')
+    if unite is not None and unite.est_figee:
+        raise ValueError(
+            'Cette unité logistique est scellée : son contenu est figé.')
+
+    produits = {
+        p.id: p for p in Produit.objects.filter(
+            company=company,
+            id__in=[p['produit_id'] for p in propositions])
+    }
+    affectees, ignorees = [], []
+    colis = unite
+    with transaction.atomic():
+        for proposition in propositions:
+            produit = produits.get(proposition['produit_id'])
+            quantite = proposition['quantite'] or 0
+            if produit is None or quantite <= 0:
+                ignorees.append(proposition['ligne_id'])
+                continue
+            tete = proposition['vagues'][0]
+            if colis is None:
+                vague = VaguePicking.objects.filter(
+                    id=tete['vague_id'], company=company).first()
+                colis = creer_unite_logistique(
+                    company=company, type_unite='colis', vague=vague)
+            ligne_picking = LignePicking.objects.filter(
+                id=tete['ligne_picking_id'], company=company).first()
+            ajouter_ligne_unite_logistique(
+                company=company, unite=colis, produit=produit,
+                quantite=quantite, ligne_picking=ligne_picking)
+            AffectationCrossDock.objects.create(
+                company=company, reception=reception,
+                ligne_reception_id=proposition['ligne_id'], produit=produit,
+                quantite=quantite, unite_logistique=colis,
+                ligne_picking=ligne_picking)
+            affectees.append(proposition['ligne_id'])
+    logger.info(
+        'NTWMS15 cross-dock : réception %s → colis %s (%s ligne(s))',
+        getattr(reception, 'reference', reception.pk),
+        getattr(colis, 'sscc', None), len(affectees))
+    return {
+        'unite_logistique': colis.id if colis is not None else None,
+        'sscc': colis.sscc if colis is not None else '',
+        'lignes_affectees': affectees,
+        'lignes_ignorees': ignorees,
+        'reception_entierement_cross_dockee': reception_est_cross_dock(
+            reception),
+    }

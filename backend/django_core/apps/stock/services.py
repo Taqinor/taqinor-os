@@ -6365,6 +6365,7 @@ def decider_candidature_fournisseur(fournisseur, *, valider):
 # continuent d'ecrire `from apps.stock.services import ...`.
 from .services_wms import (  # noqa: E402,F401
     FENETRE_ROTATION_JOURS,
+    affecter_reception_cross_dock,
     ajouter_ligne_unite_logistique,
     assurer_plans_comptage_tournant,
     configurer_liberation_vague,
@@ -6379,6 +6380,8 @@ from .services_wms import (  # noqa: E402,F401
     lancer_vague,
     liberer_vagues_planifiees,
     prelever_ligne_picking,
+    proposer_cross_dock,
+    reception_est_cross_dock,
     sceller_unite_logistique,
     suggestions_rangement_reception,
 )

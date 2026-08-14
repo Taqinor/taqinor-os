@@ -532,3 +532,64 @@ class PlanComptageTournant(TenantModel):
         echeance = self.date_dernier_comptage + datetime.timedelta(
             days=self.frequence_jours or 0)
         return a_la_date >= echeance
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# NTWMS15 — Cross-dock : de la réception à l'expédition, sans passer en stock
+# ═══════════════════════════════════════════════════════════════════════════
+
+class AffectationCrossDock(TenantModel):
+    """NTWMS15 — une ligne REÇUE routée DIRECTEMENT vers une expédition.
+
+    Le cross-dock est le raccourci du magasin : la marchandise qui arrive est
+    déjà attendue par une vague de prélèvement (NTWMS4), donc elle ne monte
+    JAMAIS en rayon — elle va du quai de réception au colis d'expédition. Ce
+    modèle est la TRACE de cette décision : tant qu'une ligne de réception
+    porte une affectation, le rangement guidé (put-away NTWMS2) est
+    explicitement sauté pour elle.
+
+    FRONTIÈRE INTER-APPS. ``ReceptionFournisseur``/``LigneReceptionFournisseur``
+    vivent dans ``achats`` (ODX19) : elles sont référencées en STRING-FK, et
+    l'app ``achats`` n'est jamais modifiée depuis ``stock``. Le drapeau
+    « cette réception est destinée au cross-dock » n'est donc pas une colonne
+    de la réception mais l'EXISTENCE de ces affectations, lue par
+    ``services.reception_est_cross_dock`` — même information, du bon côté de
+    la frontière.
+    """
+
+    reception = models.ForeignKey(
+        'achats.ReceptionFournisseur', on_delete=models.CASCADE,  # on_delete: CASCADE - une affectation ne decrit qu'une reception ; sans elle elle ne designe plus rien
+        related_name='affectations_cross_dock')
+    ligne_reception = models.ForeignKey(
+        'achats.LigneReceptionFournisseur', on_delete=models.CASCADE,  # on_delete: CASCADE - l'affectation route UNE ligne recue ; la ligne disparue, elle est vide de sens
+        related_name='affectations_cross_dock')
+    produit = models.ForeignKey(
+        'stock.Produit', on_delete=models.PROTECT,
+        related_name='affectations_cross_dock')  # on_delete: PROTECT — trace d'exécution magasin (aligné sur LignePicking/MouvementStock)
+    quantite = models.PositiveIntegerField(default=0)
+    unite_logistique = models.ForeignKey(
+        UniteLogistique, on_delete=models.CASCADE,  # on_delete: CASCADE - le routage n'existe que par le colis d'expedition qu'il alimente
+        related_name='affectations_cross_dock')
+    ligne_picking = models.ForeignKey(
+        LignePicking, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='affectations_cross_dock',
+        help_text='Ligne de vague en attente qui a justifié le cross-dock.')
+
+    class Meta:
+        verbose_name = 'Affectation cross-dock'
+        verbose_name_plural = 'Affectations cross-dock'
+        ordering = ['-created_at']
+        constraints = [
+            # Une ligne reçue n'est routée qu'UNE fois (ré-appeler le service
+            # ne duplique jamais le contenu du colis).
+            models.UniqueConstraint(
+                fields=['company', 'ligne_reception'],
+                name='stock_crossdock_company_ligne_uniq'),
+        ]
+        indexes = [
+            models.Index(fields=['company', 'reception'],
+                         name='idx_crossdock_co_reception'),
+        ]
+
+    def __str__(self):
+        return f'Cross-dock {self.ligne_reception_id} → {self.unite_logistique_id}'
