@@ -529,6 +529,13 @@ class ParametresSCM(TenantModel):
     # planifiée mensuelle (`tasks.purger_donnees_scm_anciennes`).
     retention_previsions_mois = models.PositiveSmallIntegerField(
         default=24, verbose_name='Rétention des prévisions (mois)')
+    # NTSCM45 — seuil d'alerte MAPE mensuel (`selectors.precision_prevision`,
+    # NTSCM24) déclenchant une notification ciblée (`tasks.
+    # notifier_ecarts_prevision_importants`). Absent de la liste NTSCM33
+    # d'origine — ajouté ici, additif, même modèle singleton.
+    seuil_alerte_mape_pct = models.DecimalField(
+        max_digits=5, decimal_places=2, default=Decimal('40'),
+        verbose_name="Seuil d'alerte écart de prévision — MAPE (%)")
 
     class Meta:
         verbose_name = 'Paramètres SCM'

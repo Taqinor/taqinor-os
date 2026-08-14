@@ -869,6 +869,12 @@ app.conf.beat_schedule = {
         'task': 'scm.purger_donnees_scm_anciennes',
         'schedule': crontab(hour=6, minute=0, day_of_month=2),
     },
+    # NTSCM45 — notifie les followers/destinataires résolus d'un écart de
+    # prévision (MAPE) important — apps/scm/tasks.py. Mensuel.
+    'scm-notifier-ecarts-prevision-importants': {
+        'task': 'scm.notifier_ecarts_prevision_importants',
+        'schedule': crontab(hour=6, minute=15, day_of_month=3),
+    },
 }
 
 # YHARD6 — compteurs Celery succès/échec (process-local, best-effort) pour

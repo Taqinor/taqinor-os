@@ -260,3 +260,107 @@ def purger_donnees_scm_anciennes():
             continue
         resume.append({'company_id': company.id, 'nb_supprimees': len(ids_a_supprimer)})
     return resume
+
+
+@shared_task(name='scm.notifier_ecarts_prevision_importants')
+def notifier_ecarts_prevision_importants():
+    """NTSCM45 — tâche planifiée MENSUELLE : pour CHAQUE produit dont le MAPE
+    mensuel (``selectors.precision_prevision``, NTSCM24) dépasse
+    ``ParametresSCM.seuil_alerte_mape_pct`` (défaut 40%, NTSCM45), notifie
+    (``notifications.services.notify``) les ``records.Follower`` EXPLICITES
+    du produit, ou — à défaut — les destinataires résolus par
+    ``resolve_recipients`` (managers par défaut, ou un rôle dédié via une
+    ``NotificationRoutingRule`` de société — c'est la voie de configuration
+    d'un rôle « Acheteur » qui n'existe pas comme rôle système dans ce repo).
+
+    Idempotent PAR MOIS : une notification déjà envoyée à CE destinataire
+    pour CE produit CE MOIS-CI n'est jamais dupliquée si la tâche est
+    relancée (recherche dans ``notifications.Notification`` par
+    destinataire+événement+lien+mois). Best-effort par société ET par
+    produit. Renvoie ``[{'company_id', 'nb_notifications'}, ...]``."""
+    from authentication.models import Company
+    from django.apps import apps as django_apps
+    from django.utils import timezone
+
+    from apps.notifications.models import EventType, Notification
+    from apps.notifications.services import notify, resolve_recipients
+
+    from . import selectors
+
+    from django.contrib.contenttypes.models import ContentType
+
+    Produit = django_apps.get_model('stock', 'Produit')
+    Follower = django_apps.get_model('records', 'Follower')
+    produit_ct = ContentType.objects.get_for_model(Produit)
+
+    today = timezone.localdate()
+    resume = []
+    for company in Company.objects.all():
+        nb_notifications = 0
+        try:
+            seuil = selectors.parametres(company).seuil_alerte_mape_pct
+            precision = selectors.precision_prevision(company, fenetre_mois=1)
+        except Exception:  # noqa: BLE001 — best-effort par société
+            logger.warning(
+                'scm.notifier_ecarts_prevision_importants: échec société %s',
+                company.id, exc_info=True)
+            continue
+
+        produits_en_ecart = [
+            ligne for ligne in precision['par_produit']
+            if ligne['mape_pct'] > seuil
+        ]
+        if not produits_en_ecart:
+            resume.append({'company_id': company.id, 'nb_notifications': 0})
+            continue
+
+        recipients_repli = None
+        for ligne in produits_en_ecart:
+            try:
+                produit = Produit.objects.filter(
+                    company=company, pk=ligne['produit_id']).first()
+                if produit is None:
+                    continue
+                lien = f'/stock?produit={produit.id}'
+
+                follower_ids = list(Follower.objects.filter(
+                    company=company, content_type=produit_ct, object_id=produit.id,
+                ).values_list('user_id', flat=True))
+
+                if follower_ids:
+                    from django.contrib.auth import get_user_model
+                    User = get_user_model()
+                    destinataires = list(User.objects.filter(
+                        pk__in=follower_ids, is_active=True))
+                else:
+                    if recipients_repli is None:
+                        recipients_repli = list(resolve_recipients(
+                            company, EventType.SCM_ECART_PREVISION_IMPORTANT))
+                    destinataires = recipients_repli
+
+                for user in destinataires:
+                    deja_notifie = Notification.objects.filter(
+                        recipient=user,
+                        event_type=EventType.SCM_ECART_PREVISION_IMPORTANT,
+                        link=lien, created_at__year=today.year,
+                        created_at__month=today.month,
+                    ).exists()
+                    if deja_notifie:
+                        continue
+                    notify(
+                        user, EventType.SCM_ECART_PREVISION_IMPORTANT,
+                        f'Écart de prévision important — {produit.nom}',
+                        body=(
+                            f'MAPE de {ligne["mape_pct"]}% ce mois-ci pour '
+                            f'{produit.nom} (seuil {seuil}%).'),
+                        link=lien, company=company)
+                    nb_notifications += 1
+            except Exception:  # noqa: BLE001 — best-effort par produit
+                logger.warning(
+                    'scm.notifier_ecarts_prevision_importants: échec produit '
+                    '%s (société %s)', ligne.get('produit_id'), company.id,
+                    exc_info=True)
+                continue
+
+        resume.append({'company_id': company.id, 'nb_notifications': nb_notifications})
+    return resume

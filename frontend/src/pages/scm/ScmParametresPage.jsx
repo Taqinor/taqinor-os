@@ -28,6 +28,7 @@ const emptyForm = {
   seuil_alerte_score_fournisseur_pts: '15',
   seuil_alerte_ecart_financier_pct: '15',
   retention_previsions_mois: '24',
+  seuil_alerte_mape_pct: '40',
 }
 
 function frErr(err, fallback = 'Une erreur est survenue.') {
@@ -172,6 +173,12 @@ export default function ScmParametresPage() {
                 <Input id="scm-seuil-score" type="number" step="any" noValidate
                        value={form.seuil_alerte_score_fournisseur_pts}
                        onChange={(e) => setField('seuil_alerte_score_fournisseur_pts', e.target.value)} />
+              </div>
+              <div>
+                <Label htmlFor="scm-seuil-mape">Écart de prévision — MAPE (%)</Label>
+                <Input id="scm-seuil-mape" type="number" step="any" noValidate
+                       value={form.seuil_alerte_mape_pct}
+                       onChange={(e) => setField('seuil_alerte_mape_pct', e.target.value)} />
               </div>
             </div>
           </CardContent>

@@ -275,6 +275,14 @@ class EventType(models.TextChoices):
     # jamais émis.
     CAISSE_ECART_ANORMAL = (
         'caisse_ecart_anormal', 'Écart de caisse anormal')
+    # NTSCM45 — MAPE mensuel d'un produit au-delà du seuil configuré
+    # (`apps.scm.models.ParametresSCM.seuil_alerte_mape_pct`, défaut 40%,
+    # tâche planifiée `apps.scm.tasks.notifier_ecarts_prevision_importants`) :
+    # notifie les `records.Follower` explicites du produit, sinon les
+    # destinataires résolus (`resolve_recipients` — managers par défaut,
+    # ou un rôle dédié via une `NotificationRoutingRule`).
+    SCM_ECART_PREVISION_IMPORTANT = (
+        'scm_ecart_prevision_important', 'Écart de prévision important (MAPE)')
 
 
 class Channel(models.TextChoices):

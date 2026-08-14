@@ -927,6 +927,8 @@ _PARAMETRES_SCM_FIELDS = [
     'service_level_defaut_b_pct', 'service_level_defaut_c_pct',
     'seuil_ecart_delai_pct', 'seuil_alerte_score_fournisseur_pts',
     'seuil_alerte_ecart_financier_pct', 'retention_previsions_mois',
+    # NTSCM45 — seuil d'alerte MAPE (notification ciblée écart de prévision).
+    'seuil_alerte_mape_pct',
 ]
 
 
