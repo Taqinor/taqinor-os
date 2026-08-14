@@ -748,6 +748,13 @@ app.conf.beat_schedule = {
         'task': 'authentication.desactiver_comptes_dormants',
         'schedule': crontab(hour=2, minute=20),
     },
+    # NTDMO30 — purge hebdomadaire des sociétés démo TAQINOR expirées
+    # (staging/marketing uniquement). No-op tant que
+    # DEMO_AUTO_PURGE_ENABLED=0 (défaut) — le founder l'active explicitement.
+    'authentication-purger-societes-demo-expirees': {
+        'task': 'authentication.purger_societes_demo_expirees',
+        'schedule': crontab(hour=3, minute=45, day_of_week=1),
+    },
     # FG366 — escalade les étapes de workflow au SLA dépassé (balayage par
     # société, WorkflowStepInstance en attente échue). Horaire.
     'core-escalate-workflow-sla': {
