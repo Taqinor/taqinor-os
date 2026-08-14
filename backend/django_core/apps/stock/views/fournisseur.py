@@ -66,7 +66,7 @@ class FournisseurViewSet(CompanyScopedModelViewSet):
             # ouverte à tout rôle porteur du droit `stock_modifier` (get_permissions
             # prime sur le permission_classes de l'@action, d'où ce cas explicite).
             return [HasPermissionOrLegacy('stock_modifier')()]
-        elif self.action == 'onboarding':
+        elif self.action in ('onboarding', 'score_risque'):
             # NTP2P7 — dossier d'entrée en relation : LECTURE (mêmes gardes
             # que `performance`/`vue_360` — get_permissions prime sur le
             # permission_classes de l'@action, d'où ce cas explicite).
@@ -340,6 +340,23 @@ class FournisseurViewSet(CompanyScopedModelViewSet):
                 request.user.company),
             'progression': stock_selectors.progression_onboarding(dossier),
         })
+
+    @action(detail=True, methods=['get'], url_path='score-risque')
+    def score_risque(self, request, *args, **kwargs):
+        """NTP2P8 — score de risque 0-100 (100 = risque nul) + facteurs.
+
+        Calcul PUR côté serveur (aucun service externe) : ponctualité OTD,
+        documents légaux, retours, litiges ouverts, statut de blocage."""
+        from .. import selectors as stock_selectors
+
+        fournisseur = self.get_object()
+        resultat = stock_selectors.score_risque_fournisseur(
+            request.user.company, fournisseur.pk)
+        if resultat is None:
+            return Response({'detail': 'Fournisseur inconnu pour cette '
+                                       'société.'},
+                            status=status.HTTP_404_NOT_FOUND)
+        return Response(resultat)
 
     @action(detail=True, methods=['get'], url_path='vue-360')
     def vue_360(self, request, *args, **kwargs):

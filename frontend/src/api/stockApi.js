@@ -233,6 +233,20 @@ const stockApi = {
   // serveur (voir apps/stock/views/fournisseur.py `FournisseurViewSet.
   // vue_360`).
   getFournisseur360: (id) => api.get(`/stock/fournisseurs/${id}/vue-360/`),
+  // NTP2P8 — score de risque fournisseur (0-100, 100 = risque nul) + facteurs.
+  getScoreRisqueFournisseur: (id) =>
+    api.get(`/stock/fournisseurs/${id}/score-risque/`),
+  // NTP2P7 — dossier d'onboarding (pièces légales) d'un fournisseur.
+  getOnboardingFournisseur: (id) =>
+    api.get(`/stock/fournisseurs/${id}/onboarding/`),
+  createDossierOnboarding: (data) =>
+    api.post('/stock/dossiers-onboarding-fournisseur/', data),
+  validerDossierOnboarding: (id, data) =>
+    api.post(`/stock/dossiers-onboarding-fournisseur/${id}/valider-dossier/`, data),
+  createDocumentFournisseur: (data) =>
+    api.post('/stock/documents-fournisseur/', data),
+  televerserDocumentFournisseur: (id, formData) =>
+    api.post(`/stock/documents-fournisseur/${id}/televerser/`, formData),
   // Onglets détaillés — réutilisent les endpoints EXISTANTS déjà câblés
   // ailleurs (WR4/FG55/FG56/FG58/FG59, XPUR1, XPUR9), filtrés par fournisseur
   // côté frontend quand l'API ne filtre pas déjà nativement.
