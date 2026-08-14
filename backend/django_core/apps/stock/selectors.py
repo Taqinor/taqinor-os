@@ -1208,4 +1208,5 @@ from .selectors_wms import (  # noqa: E402,F401
     resoudre_allocation_picking,
     resoudre_code_scanne,
     strategie_picking_produit,
+    tracabilite_produit,
 )
