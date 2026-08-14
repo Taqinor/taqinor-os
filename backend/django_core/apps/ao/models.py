@@ -1192,6 +1192,135 @@ class ObstacleAO(TenantModel):
             )})
 
 
+# ── PV54 — Zones de toiture : le CONTOUR NOMMÉ que le moteur sait déjà lire ─
+
+class ZoneAO(TenantModel):
+    """Un contour NOMMÉ d'une toiture — enveloppe, interdit, réservé, préféré.
+
+    Un obstacle (``ObstacleAO``) dit « il y a quelque chose ICI ». Une zone dit
+    autre chose : « cette PARTIE du toit se traite ainsi ». Le moteur
+    (``core.calepinage.zones``) sait déjà consommer les quatre natures ;
+    ``calepinage_io`` envoyait pourtant une liste de zones VIDE, faute d'un
+    endroit où les saisir. Ce modèle est cet endroit — et rien de plus : il ne
+    porte AUCUNE géométrie de calcul, seulement le contour et sa nature.
+
+    **Les quatre natures sont celles du moteur** (``core.calepinage.types``
+    ``NatureZone``), à la lettre : une cinquième nature inventée ici serait
+    silencieusement refusée à la désérialisation du contrat.
+    """
+
+    class Nature(models.TextChoices):
+        # Les VALEURS reprennent ``NatureZone`` du moteur — jamais un synonyme.
+        ENVELOPPE = 'ENVELOPPE', 'Enveloppe posable'
+        INTERDITE = 'INTERDITE', 'Zone interdite'
+        RESERVEE = 'RESERVEE', 'Zone réservée (technique, circulation)'
+        PREFEREE = 'PREFEREE', 'Zone préférée'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,  # on_delete: purge multi-tenant — les zones suivent la societe
+        related_name='zones_ao',
+        verbose_name='Société',
+    )
+    toiture = models.ForeignKey(
+        ToitureAO,
+        on_delete=models.CASCADE,  # on_delete: zone fille d'une toiture : aucune existence hors d'elle
+        related_name='zones',
+        verbose_name='Toiture',
+    )
+    repere = models.CharField(
+        max_length=16, blank=True, default='',
+        verbose_name='Repère (Z1, Z2…)')
+    nature = models.CharField(
+        max_length=12, choices=Nature.choices, default=Nature.INTERDITE,
+        verbose_name='Nature')
+    #: Contour : liste de ``[x, y]`` en MÈTRES, repère LOCAL de la toiture — la
+    #: même convention que ``ToitureAO.contour_local_m`` (AOF18). Le nom porte
+    #: l'unité : une zone en degrés serait indétectable.
+    sommets = models.JSONField(
+        default=list, blank=True,
+        verbose_name='Sommets [x, y] en mètres (repère local)')
+    hauteur_m = models.DecimalField(
+        max_digits=8, decimal_places=3, null=True, blank=True,
+        verbose_name='Hauteur (m)')
+    #: Retrait appliqué AUTOUR du contour. ``0`` est une valeur pleine et
+    #: entière ici (« la zone s'arrête exactement à son tracé »), pas une
+    #: absence de mesure — d'où un défaut et non un ``null``.
+    retrait_m = models.DecimalField(
+        max_digits=6, decimal_places=2, default=Decimal('0.00'),
+        verbose_name='Retrait (m)')
+
+    class Meta:
+        verbose_name = 'Zone de toiture (AO)'
+        verbose_name_plural = 'Zones de toiture (AO)'
+        db_table = 'ao_zone'
+        ordering = ['toiture', 'repere', 'id']
+        constraints = [
+            # Le repère EST la clé naturelle d'une zone sur sa toiture, comme
+            # pour un obstacle : deux « Z1 » sur le même toit rendraient toute
+            # reprise d'import indécidable. ``company`` fait partie de la
+            # contrainte (règle de scoping du dépôt) ; partielle, car le repère
+            # reste facultatif.
+            models.UniqueConstraint(
+                fields=['company', 'toiture', 'repere'],
+                condition=~models.Q(repere=''),
+                name='uniq_zone_repere_par_toiture'),
+        ]
+        indexes = [
+            # Nom EXPLICITE (et identique dans la migration) : un nom laissé à
+            # Django est haché à la génération, et un index écrit à la main
+            # divergerait alors du modèle — c'est le motif de dérive déjà
+            # rencontré dans ce dépôt.
+            models.Index(fields=['company', 'toiture'],
+                         name='ao_zone_company_toiture_idx'),
+        ]
+
+    def __str__(self):
+        etiquette = self.repere or self.get_nature_display()
+        return f'{etiquette} — {self.get_nature_display()}'
+
+    @property
+    def exploitable(self):
+        """Un contour de moins de 3 sommets n'est pas une zone : c'est un trait.
+
+        DÉRIVÉE et jamais saisie : c'est elle que la couture consulte pour
+        décider si la zone entre dans le document de calepinage. Le moteur
+        (``types.Zone``) REFUSE un contour à moins de 3 sommets ; une zone
+        incomplète en base ne doit pas faire échouer tout un calcul.
+        """
+        return len(self.sommets or []) >= 3
+
+    def clean(self):
+        """Refuse un contour qui n'en est pas un — en français, champ nommé."""
+        from django.core.exceptions import ValidationError
+
+        sommets = self.sommets or []
+        if sommets and len(sommets) < 3:
+            raise ValidationError({'sommets': (
+                'Une zone exige au moins 3 sommets : deux points ne délimitent '
+                "aucune surface."
+            )})
+        for index, point in enumerate(sommets, start=1):
+            if (isinstance(point, (str, bytes, dict))
+                    or not isinstance(point, (list, tuple))
+                    or len(point) != 2):
+                raise ValidationError({'sommets': (
+                    'Sommet n°%d : attendu un couple [x, y] en mètres, '
+                    'reçu %r.' % (index, point)
+                )})
+            try:
+                float(point[0]), float(point[1])
+            except (TypeError, ValueError):
+                raise ValidationError({'sommets': (
+                    'Sommet n°%d : les coordonnées doivent être des nombres '
+                    'de mètres (reçu %r).' % (index, point)
+                )}) from None
+        if self.retrait_m is not None and self.retrait_m < 0:
+            raise ValidationError({'retrait_m': (
+                'Un retrait ne se compte pas en négatif.'
+            )})
+
+
 # ── AOF25 — Le workflow Q/R sur documents annotés ──────────────────────────
 
 class SerieQuestions(TenantModel):

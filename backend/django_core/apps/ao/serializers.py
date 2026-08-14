@@ -39,6 +39,7 @@ from .models import (
     SerieQuestions,
     ToitureAO,
     VarianteCalepinage,
+    ZoneAO,
 )
 
 
@@ -249,6 +250,55 @@ class ObstacleAOSerializer(serializers.ModelSerializer):
                 "retouchée sans justification n'est pas défendable devant le "
                 "maître d'ouvrage."
             )})
+        return attrs
+
+
+class ZoneAOSerializer(serializers.ModelSerializer):
+    """PV54 — un contour NOMMÉ de toiture (enveloppe / interdit / réservé /
+    préféré).
+
+    ``company`` n'est PAS un champ : elle est posée côté serveur par
+    ``AoBaseViewSet``. ``exploitable`` est DÉRIVÉE (un contour de moins de
+    3 sommets n'est pas une surface) — jamais saisie.
+    """
+    nature_display = serializers.CharField(
+        source='get_nature_display', read_only=True)
+    exploitable = serializers.BooleanField(read_only=True)
+
+    class Meta:
+        model = ZoneAO
+        fields = [
+            'id', 'toiture', 'repere', 'nature', 'nature_display', 'sommets',
+            'hauteur_m', 'retrait_m', 'exploitable',
+        ]
+
+    def validate_sommets(self, valeur):
+        if valeur in (None, ''):
+            return []
+        if isinstance(valeur, dict) or not isinstance(valeur, (list, tuple)):
+            raise serializers.ValidationError(
+                'Les sommets doivent être une liste de couples [x, y] en '
+                'mètres.')
+        return list(valeur)
+
+    def validate(self, attrs):
+        """Les refus de ``ZoneAO.clean`` — mais rendus en 400 NOMMÉ.
+
+        Un ``ModelSerializer`` n'appelle pas ``clean()`` : sans ce relais, une
+        zone à deux sommets passerait l'API et ferait échouer un calcul plus
+        tard, loin de la saisie qui l'a produite.
+        """
+        from django.core.exceptions import ValidationError as DjangoValidation
+
+        instance = self.instance or ZoneAO()
+        for champ in ('sommets', 'retrait_m'):
+            if champ in attrs:
+                setattr(instance, champ, attrs[champ])
+        try:
+            instance.clean()
+        except DjangoValidation as erreur:
+            raise serializers.ValidationError(
+                getattr(erreur, 'message_dict', None) or erreur.messages)
         return attrs
 
 
