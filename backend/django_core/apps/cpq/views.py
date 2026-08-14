@@ -439,6 +439,32 @@ class FeuilleConfigurationView(APIView):
         return reponse
 
 
+class RapportApprobationsView(APIView):
+    """NTCPQ25 — GET ``cpq/rapports/approbations/?approbateur_id=&export=xlsx``.
+
+    Rapport INTERNE (staff) de l'historique des approbations de remise
+    (NTCPQ7) : devis, remise demandée, approbateur, délai de traitement
+    (heures), motif de rejet. ``?export=xlsx`` renvoie un classeur (jamais
+    ``?format=`` — réservé par la négociation de contenu DRF, motif NTCPQ24 ;
+    jamais passé par ``apps/dataimport``, module hors périmètre de cette app
+    — même patron auto-suffisant que ``apps.ventes.exports``, openpyxl
+    directement)."""
+    permission_classes = [IsResponsableOrAdmin]
+
+    @extend_schema(responses={200: inline_serializer(
+        'CpqRapportApprobations', {
+            'lignes': drf_serializers.ListField(
+                child=drf_serializers.DictField()),
+        })})
+    def get(self, request):
+        lignes = reports.rapport_approbations(
+            request.user.company,
+            approbateur_id=request.query_params.get('approbateur_id') or None)
+        if request.query_params.get('export') == 'xlsx':
+            return reports.rapport_approbations_xlsx(lignes)
+        return Response({'lignes': lignes})
+
+
 class SuggestionsProduitView(APIView):
     """NTCPQ19 — GET ``cpq/suggestions/?produit_id=``.
 

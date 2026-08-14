@@ -1,4 +1,4 @@
-"""Rapports CPQ qui LISENT le domaine Ventes (NTCPQ19/23/24).
+"""Rapports CPQ qui LISENT le domaine Ventes (NTCPQ19/23/24/25).
 
 Module SÉPARÉ de ``selectors.py`` À DESSEIN : ``ventes.models`` importe
 ``cpq.selectors`` (NTCPQ8, propriété ``approbation_remise_en_attente``) ; si
@@ -10,8 +10,102 @@ ce module depuis ``ventes`` — le contrat reste intact.
 Toutes les lectures cross-app passent par ``apps.ventes.selectors`` (jamais
 ``ventes.models``) et restent scopées société.
 """
-from .models import ContrainteCompatibilite
+from .models import ContrainteCompatibilite, EtapeApprobationDevis
 from .selectors import devis_marge_sous_seuil, etat_configuration_devis
+
+
+def rapport_approbations(company, *, approbateur_id=None):
+    """NTCPQ25 — Historique des approbations de remise (NTCPQ7) sur TOUTE
+    la société, une ligne par ``EtapeApprobationDevis``.
+
+    ``remise_demandee`` reflète la remise globale COURANTE du devis (aucun
+    snapshot de la remise au moment de l'étape n'existe côté modèle — la
+    remise réelle qui a déclenché l'étape peut donc différer si le devis a
+    été modifié depuis). ``delai_traitement_heures`` = ``decision_le -
+    date_creation`` en heures (arrondi 2 décimales), ``None`` tant que
+    l'étape est ``en_attente``. ``motif_rejet`` = ``commentaire`` de
+    l'étape UNIQUEMENT quand ``statut == rejete`` (vide sinon — le
+    commentaire d'une approbation n'est pas un motif de rejet).
+
+    ``?approbateur_id=`` filtre strictement sur les étapes assignées à CET
+    approbateur (une étape sans ``approbateur`` — jamais réclamée — n'est
+    listée que sans ce filtre). Renvoie une liste de dicts JSON-safe,
+    triée par date de création décroissante."""
+    qs = (EtapeApprobationDevis.objects
+          .filter(company=company)
+          .select_related('devis', 'approbateur', 'regle')
+          .order_by('-date_creation', 'id'))
+    if approbateur_id:
+        qs = qs.filter(approbateur_id=approbateur_id)
+
+    lignes = []
+    for etape in qs:
+        devis = etape.devis
+        delai_heures = None
+        if etape.decision_le is not None:
+            delta = etape.decision_le - etape.date_creation
+            delai_heures = round(delta.total_seconds() / 3600, 2)
+        lignes.append({
+            'etape_id': etape.id,
+            'devis_id': devis.id if devis is not None else None,
+            'devis_reference': getattr(devis, 'reference', ''),
+            'niveau': etape.niveau,
+            'niveau_approbation': etape.niveau_approbation,
+            'remise_demandee': (
+                str(devis.remise_globale) if devis is not None
+                and devis.remise_globale is not None else None),
+            'approbateur': (
+                getattr(etape.approbateur, 'username', None)
+                if etape.approbateur_id else None),
+            'statut': etape.statut,
+            'date_creation': etape.date_creation.isoformat(),
+            'decision_le': (
+                etape.decision_le.isoformat()
+                if etape.decision_le else None),
+            'delai_traitement_heures': delai_heures,
+            'motif_rejet': (
+                etape.commentaire
+                if etape.statut == EtapeApprobationDevis.Statut.REJETE
+                else ''),
+        })
+    return lignes
+
+
+_APPROBATIONS_COLONNES = [
+    ('devis_reference', 'Devis'), ('niveau', 'Niveau'),
+    ('niveau_approbation', "Palier d'approbation"),
+    ('remise_demandee', 'Remise (%)'), ('approbateur', 'Approbateur'),
+    ('statut', 'Statut'), ('date_creation', 'Créée le'),
+    ('decision_le', 'Décidée le'),
+    ('delai_traitement_heures', 'Délai de traitement (h)'),
+    ('motif_rejet', 'Motif de rejet'),
+]
+
+
+def rapport_approbations_xlsx(lignes):
+    """NTCPQ25 — classeur .xlsx de ``rapport_approbations`` (openpyxl direct,
+    même patron auto-suffisant que ``apps.ventes.exports`` — jamais un
+    passage par ``apps/dataimport``, hors périmètre de cette app)."""
+    from openpyxl import Workbook
+    from openpyxl.styles import Font
+    from django.http import HttpResponse
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = 'Historique approbations'
+    bold = Font(bold=True)
+    ws.append([label for _, label in _APPROBATIONS_COLONNES])
+    for c in ws[1]:
+        c.font = bold
+    for ligne in lignes:
+        ws.append([ligne.get(champ) for champ, _ in _APPROBATIONS_COLONNES])
+
+    resp = HttpResponse(content_type=(
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'))
+    resp['Content-Disposition'] = (
+        'attachment; filename="historique-approbations.xlsx"')
+    wb.save(resp)
+    return resp
 
 
 def suggestions_produit(*, company, produit_id, limite=3):

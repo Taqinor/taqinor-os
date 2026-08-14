@@ -10,7 +10,7 @@ from .views import (
     SeuilMargeFamilleViewSet, RegleApprobationRemiseViewSet,
     ClauseCGVViewSet, ProduitEquivalentViewSet, DevisVariantesView,
     SuggestionsProduitView, FeuilleConfigurationView, MargeSousSeuilView,
-    RapportConformiteView, ParametresCPQViewSet,
+    RapportConformiteView, ParametresCPQViewSet, RapportApprobationsView,
 )
 
 router = DefaultRouter()
@@ -36,6 +36,9 @@ urlpatterns = [
     # NTCPQ24 — rapport interne « taux de conformité des configurations ».
     path('rapports/conformite/', RapportConformiteView.as_view(),
          name='cpq-rapport-conformite'),
+    # NTCPQ25 — rapport interne « historique des approbations de remise ».
+    path('rapports/approbations/', RapportApprobationsView.as_view(),
+         name='cpq-rapport-approbations'),
     # NTCPQ23 — tableau de bord interne « marge sous seuil » (staff).
     path('marge-sous-seuil/', MargeSousSeuilView.as_view(),
          name='cpq-marge-sous-seuil'),
