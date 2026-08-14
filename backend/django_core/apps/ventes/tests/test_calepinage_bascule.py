@@ -1,6 +1,6 @@
 """AOF164 — bascule A/B du devis résidentiel sur le moteur de calepinage.
 
-Ce module verrouille les quatre promesses de la bascule, et rien de plus :
+Ce module verrouille les promesses de la bascule, et rien de plus :
 
   1. **Drapeau OFF = comportement bit-identique.** C'est le défaut. Aucun appel
      moteur, aucun journal, le même devis qu'hier — un drapeau de bascule qui
@@ -14,6 +14,11 @@ Ce module verrouille les quatre promesses de la bascule, et rien de plus :
      sont le contrat d'alignement avec ``quote_engine/builder.py`` dont dépend
      le découpage des options du PDF (CLAUDE.md, règle #4). Cette tâche ne
      touche que le COMPTE.
+  5. **PVG2 — le moteur ne gagne que DANS la tolérance.** Un écart de quelques
+     modules est une correction (c'est le but de la bascule) ; un écart énorme
+     est une ANOMALIE : le compte historique est conservé et l'écart part en
+     avertissement structuré. Sécurité par défaut, jamais un remplacement
+     silencieux (décision fondateur).
 
 Run :
     python manage.py test apps.ventes.tests.test_calepinage_bascule -v2
@@ -22,6 +27,7 @@ import io
 import math
 import os
 from decimal import Decimal
+from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
 from django.test import SimpleTestCase, TestCase, override_settings
@@ -176,24 +182,42 @@ class DrapeauOffLeComportementNeBougePas(_Base):
 
 @override_settings(USE_MOTEUR_CALEPINAGE=True)
 class DrapeauOnLeMoteurDonneLeCompte(_Base):
-    def test_le_compte_vient_du_moteur_et_diverge_du_typescript(self):
-        """Le layout annonce 12 ; le moteur compte ce que la toiture porte."""
+    def _layout_a_un_module_pres(self):
+        """Layout dont le compte TypeScript diverge d'UN module du moteur.
+
+        PVG2 — la bascule ne gagne QUE dans sa tolérance : un layout qui annonce
+        n'importe quoi (12 face à 40) est désormais une ANOMALIE, pas une
+        correction. On mesure donc le moteur d'abord et on fait annoncer au
+        layout un module de moins : l'écart reste une vraie divergence, mais du
+        genre que la bascule a été construite pour corriger.
+
+        (``_zone_villa_depuis_pan`` ne transmet NI ``neededPanels`` NI
+        ``result.count`` au moteur : changer le compte annoncé ne change donc
+        jamais ce que le moteur compte sur cette géométrie.)
+        """
         mesure = services.compte_moteur_du_layout(layout_avec_geometrie())
         self.assertIsNotNone(mesure)
-        self.assertGreater(mesure['modules'], 0)
-        # Le test n'aurait aucune valeur si les deux comptes coïncidaient par
-        # hasard : la divergence EST ce que la bascule doit faire remonter.
-        self.assertNotEqual(mesure['modules'], 12)
+        self.assertGreater(mesure['modules'], 1)
+        annonce = mesure['modules'] - 1
+        return mesure, layout_avec_geometrie(
+            panels=annonce, kwc=round(annonce * 0.55, 3))
+
+    def test_le_compte_vient_du_moteur_et_diverge_du_typescript(self):
+        """Le layout annonce un compte ; le moteur tranche (écart toléré)."""
+        mesure, layout = self._layout_a_un_module_pres()
+        # Le test n'aurait aucune valeur si les deux comptes coïncidaient : la
+        # divergence EST ce que la bascule doit corriger.
+        self.assertNotEqual(mesure['modules'], layout['result']['panels'])
         devis = build_devis_from_layout(
-            layout=layout_avec_geometrie(panels=12, kwc=6.6),
-            user=self.user, company=self.company, lead=self._lead())
+            layout=layout, user=self.user, company=self.company,
+            lead=self._lead())
         self.assertEqual(self._panneaux(devis), mesure['modules'])
 
     def test_le_kwc_suit_le_compte(self):
-        mesure = services.compte_moteur_du_layout(layout_avec_geometrie())
+        mesure, layout = self._layout_a_un_module_pres()
         devis = build_devis_from_layout(
-            layout=layout_avec_geometrie(panels=12, kwc=6.6),
-            user=self.user, company=self.company, lead=self._lead())
+            layout=layout, user=self.user, company=self.company,
+            lead=self._lead())
         attendu = round(mesure['modules'] * 550 / 1000.0, 3)
         self.assertAlmostEqual(devis.etude_params['puissance_kwc'], attendu, 3)
 
@@ -297,6 +321,151 @@ class UnDevisDejaEmisNEstJamaisRecalcule(_Base):
         rapport = selectors.comparaison_calepinage_devis(devis)
         self.assertTrue(rapport['recalculable'])
         self.assertIsNotNone(rapport['compte_moteur'])
+
+
+class _MoteurAuCompteImpose:
+    """Remplace ``compte_moteur_du_layout`` par un compte CHOISI.
+
+    Les trois régimes de PVG2 se jugent sur l'ÉCART, pas sur la géométrie : un
+    moteur au compte imposé rend le test déterministe (et indépendant de toute
+    évolution future du calepineur).
+    """
+
+    def __init__(self, modules):
+        self.modules = modules
+        self.appels = []
+
+    def __call__(self, layout, **kwargs):
+        self.appels.append(kwargs)
+        return {'modules': self.modules, 'pans': ({'zone': 'Z1'},),
+                'produit_panneau': None}
+
+
+class LaGardeDeToleranceProtegeLeDevis(_Base):
+    """PVG2 — sécurité par défaut : un GRAND écart ne remplace jamais en silence.
+
+    Trois régimes, et rien d'autre :
+
+      1. drapeau OFF  → strictement rien (aucun appel moteur, aucun arbitrage) ;
+      2. drapeau ON, écart DANS la tolérance (modules OU %) → le moteur gagne,
+         exactement comme AOF164 ;
+      3. drapeau ON, écart AU-DELÀ → le compte HISTORIQUE est conservé et
+         l'anomalie part en avertissement structuré (les deux comptes + motif).
+    """
+
+    def _arbitrage(self, historique, compte_moteur, layout=None):
+        moteur = _MoteurAuCompteImpose(compte_moteur)
+        with patch.object(services, 'compte_moteur_du_layout', moteur):
+            resultat = services.arbitrer_compte_calepinage(
+                layout or layout_avec_geometrie(), historique)
+        return resultat, moteur
+
+    # ── Régime 1 : drapeau baissé ────────────────────────────────────────────
+    def test_off_zero_appel_zero_changement(self):
+        arbitrage, moteur = self._arbitrage(12, 999)
+        self.assertIsNone(arbitrage)
+        self.assertEqual(moteur.appels, [])
+
+    def test_off_le_devis_garde_son_compte_meme_avec_un_moteur_delirant(self):
+        moteur = _MoteurAuCompteImpose(999)
+        with patch.object(services, 'compte_moteur_du_layout', moteur):
+            devis = build_devis_from_layout(
+                layout=layout_avec_geometrie(panels=12, kwc=6.6),
+                user=self.user, company=self.company, lead=self._lead())
+        self.assertEqual(self._panneaux(devis), 12)
+        self.assertEqual(devis.etude_params['puissance_kwc'], 6.6)
+        self.assertEqual(moteur.appels, [])
+
+    # ── Régime 2 : écart toléré → le moteur gagne ────────────────────────────
+    @override_settings(USE_MOTEUR_CALEPINAGE=True)
+    def test_ecart_en_modules_tolere_le_moteur_gagne(self):
+        arbitrage, _ = self._arbitrage(12, 14)   # +2 modules = la limite
+        self.assertEqual(arbitrage['retenu'], 14)
+        self.assertEqual(arbitrage['ecart'], 2)
+        self.assertFalse(arbitrage['hors_tolerance'])
+        self.assertEqual(arbitrage['motif'], '')
+
+    @override_settings(USE_MOTEUR_CALEPINAGE=True)
+    def test_un_ecart_tolere_en_moins_passe_aussi(self):
+        arbitrage, _ = self._arbitrage(12, 10)   # -2 modules
+        self.assertEqual(arbitrage['retenu'], 10)
+        self.assertFalse(arbitrage['hors_tolerance'])
+
+    @override_settings(USE_MOTEUR_CALEPINAGE=True)
+    def test_ecart_en_pourcentage_tolere_sur_une_grande_toiture(self):
+        """200 modules : +8 dépasse la tolérance ABSOLUE mais fait 4 %."""
+        arbitrage, _ = self._arbitrage(200, 208)
+        self.assertEqual(arbitrage['retenu'], 208)
+        self.assertFalse(arbitrage['hors_tolerance'])
+
+    @override_settings(USE_MOTEUR_CALEPINAGE=True)
+    def test_la_frontiere_des_5_pourcent_est_inclusive(self):
+        self.assertEqual(self._arbitrage(200, 210)[0]['retenu'], 210)  # 5,0 %
+        hors = self._arbitrage(200, 211)[0]                            # 5,5 %
+        self.assertEqual(hors['retenu'], 200)
+        self.assertTrue(hors['hors_tolerance'])
+
+    @override_settings(USE_MOTEUR_CALEPINAGE=True)
+    def test_le_devis_prend_le_compte_moteur_quand_l_ecart_est_tolere(self):
+        moteur = _MoteurAuCompteImpose(13)
+        with patch.object(services, 'compte_moteur_du_layout', moteur):
+            devis = build_devis_from_layout(
+                layout=layout_avec_geometrie(panels=12, kwc=6.6),
+                user=self.user, company=self.company, lead=self._lead())
+        self.assertEqual(self._panneaux(devis), 13)
+        self.assertAlmostEqual(devis.etude_params['puissance_kwc'], 7.15, 3)
+
+    # ── Régime 3 : écart hors tolérance → compte historique + alerte ─────────
+    @override_settings(USE_MOTEUR_CALEPINAGE=True)
+    def test_ecart_hors_tolerance_le_compte_historique_est_conserve(self):
+        arbitrage, _ = self._arbitrage(12, 40)
+        self.assertEqual(arbitrage['ancien'], 12)
+        self.assertEqual(arbitrage['nouveau'], 40)
+        self.assertEqual(arbitrage['ecart'], 28)
+        # Le compte du moteur reste LISIBLE (l'arbitrage se juge sur des écarts
+        # mesurés) mais n'est PAS appliqué.
+        self.assertEqual(arbitrage['retenu'], 12)
+        self.assertTrue(arbitrage['hors_tolerance'])
+        self.assertIn('tolérance', arbitrage['motif'])
+
+    @override_settings(USE_MOTEUR_CALEPINAGE=True)
+    def test_ecart_hors_tolerance_l_anomalie_est_journalisee(self):
+        moteur = _MoteurAuCompteImpose(40)
+        with patch.object(services, 'compte_moteur_du_layout', moteur):
+            with self.assertLogs('apps.ventes.services',
+                                 level='WARNING') as journal:
+                services.arbitrer_compte_calepinage(
+                    layout_avec_geometrie(), 12)
+        alerte = [ligne for ligne in journal.output if 'PVG2' in ligne]
+        self.assertTrue(alerte, journal.output)
+        texte = alerte[0]
+        self.assertIn('écart au-delà de la tolérance', texte)
+        self.assertIn('compte historique conservé', texte)
+        # Les DEUX comptes sont dans l'alerte : diagnosticable sans rejouer.
+        self.assertIn('12', texte)
+        self.assertIn('40', texte)
+
+    @override_settings(USE_MOTEUR_CALEPINAGE=True)
+    def test_le_devis_garde_ses_panneaux_quand_l_ecart_est_aberrant(self):
+        moteur = _MoteurAuCompteImpose(40)
+        with patch.object(services, 'compte_moteur_du_layout', moteur):
+            devis = build_devis_from_layout(
+                layout=layout_avec_geometrie(panels=12, kwc=6.6),
+                user=self.user, company=self.company, lead=self._lead())
+        self.assertEqual(self._panneaux(devis), 12)
+        # Le kWc ne suit pas un compte qu'on n'a pas retenu.
+        self.assertEqual(devis.etude_params['puissance_kwc'], 6.6)
+
+    # ── La règle elle-même, unitairement ─────────────────────────────────────
+    def test_les_deux_tolerances_sont_nommees(self):
+        self.assertEqual(services.TOLERANCE_ARBITRAGE_MODULES, 2)
+        self.assertEqual(services.TOLERANCE_ARBITRAGE_PCT, 5.0)
+
+    def test_un_compte_historique_nul_n_a_que_la_tolerance_en_modules(self):
+        """Aucune division par zéro : 0 → 2 est toléré, 0 → 3 ne l'est pas."""
+        self.assertTrue(services._ecart_dans_la_tolerance(0, 2))
+        self.assertFalse(services._ecart_dans_la_tolerance(0, 3))
+        self.assertTrue(services._ecart_dans_la_tolerance(-5, -1))
 
 
 class LeContratDeClassificationEstIntact(SimpleTestCase):
