@@ -262,6 +262,51 @@ export interface SerializeMeta {
   savingsMad?: number | null;
 }
 
+// ═══════════ PV71 — MATRICE D'OMBRAGE 12 × 24 (sérialisation) ═══════════
+// `ctx.shadeFactors` est une matrice 12 mois × 24 heures de facteurs de dérate (0–1,
+// 1 = aucun ombrage), calculée par le tracé d'ombres (shadingUi → hourlyShadeFactors).
+// Elle vit sur le ctx GLOBALEMENT (pas par zone) — le layout la porte donc à la RACINE.
+// Sans elle, rouvrir un dossier perdait tout le travail d'ombrage voisin et la production
+// remontait artificiellement.
+
+/** Mois et heures de la matrice — la taille est FIXE, donc la charge utile est bornée. */
+export const SHADING_MONTHS = 12;
+export const SHADING_HOURS = 24;
+/** Décimales conservées par facteur : 3 → ±0,1 % de dérate, ~6 caractères par valeur. */
+const SHADING_DECIMALS = 3;
+
+/**
+ * PV71 — normalise une matrice d'ombrage pour la sérialisation : exactement 12 × 24
+ * facteurs, chacun borné à [0, 1] et arrondi à 3 décimales (taille bornée, ~1,5 ko).
+ * Toute matrice de mauvaise forme (mois manquant, heure en trop, valeur non finie) est
+ * REFUSÉE en bloc → `null` : mieux vaut aucune ombre qu'une matrice à moitié fausse.
+ */
+export function serializeShading(factors: readonly (readonly number[])[] | null | undefined): number[][] | null {
+  if (!Array.isArray(factors) || factors.length !== SHADING_MONTHS) return null;
+  const out: number[][] = [];
+  const round = 10 ** SHADING_DECIMALS;
+  for (const row of factors) {
+    if (!Array.isArray(row) || row.length !== SHADING_HOURS) return null;
+    const clean: number[] = [];
+    for (const v of row) {
+      if (typeof v !== 'number' || !Number.isFinite(v)) return null;
+      clean.push(Math.round(Math.max(0, Math.min(1, v)) * round) / round);
+    }
+    out.push(clean);
+  }
+  return out;
+}
+
+/**
+ * PV71 — relit une matrice d'ombrage sérialisée. Mêmes garde-fous que l'écriture (forme
+ * exacte, valeurs bornées) : un JSON douteux rend `null` et l'outil repart sans ombrage
+ * plutôt qu'avec un dérate inventé. Renvoie une matrice NEUVE (aucun alias sur le JSON).
+ */
+export function deserializeShading(json: unknown): number[][] | null {
+  const raw = (json as { shading12x24?: unknown } | null | undefined)?.shading12x24 ?? json;
+  return serializeShading(raw as readonly (readonly number[])[] | null | undefined);
+}
+
 /** Layout complet sérialisé : version + zones + repère léger (pin/outline). */
 export interface SerializedLayout {
   version: 1 | 2;
@@ -287,6 +332,9 @@ export interface SerializedLayout {
   source?: 'devis' | 'lead';
   /** Identifiant du devis d'origine, ou null. */
   devisId?: string | number | null;
+  /** PV71 — matrice d'ombrage 12 mois × 24 heures (facteurs 0–1), ou null si aucune ombre
+   *  n'a été tracée. Taille FIXE, donc charge utile bornée. */
+  shading12x24?: number[][] | null;
 }
 
 /** Centroïde {lat,lng} d'un contour lng/lat, ou null si < 1 sommet. */
@@ -416,6 +464,9 @@ export function serializeLayout(ctx: Ctx, billKwh: number | null = null, meta?: 
     battery: meta?.battery ?? null,
     source: meta?.source ?? 'lead',
     devisId: meta?.devisId ?? null,
+    // PV71 — les ombres tracées voyagent avec le design (sinon la production remonte
+    // artificiellement au ré-import).
+    shading12x24: serializeShading(ctx.shadeFactors),
   };
 }
 
