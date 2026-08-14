@@ -733,6 +733,60 @@ SPECTACULAR_SETTINGS = {
         # installations.CommissioningRecord et ventes.CommissioningTest.
         'ResultatCommissioningEnum':
             'apps.installations.models_chantier.CommissioningRecord.Resultat',
+        # SCA-lot-7-apps — le lot promotions/mrp/scm/fidelite/… (apps neuves)
+        # a fait apparaître des champs `type_regle`/`motif_rebut`/
+        # `type_evenement`/`classe_abc` qui portent le MÊME nom que des jeux
+        # de choix déjà publiés sous un nom court (sans préfixe de modèle) :
+        # sans les entrées ci-dessous, drf-spectacular retombe sur le nommage
+        # `<Modèle><Champ>Enum` pour les DEUX jeux, ce qui fait DISPARAÎTRE le
+        # nom historique du schéma (rupture pour tout client déjà généré).
+        # On ré-épingle le nom historique sur le jeu PRÉEXISTANT et on donne
+        # un nom explicite et stable (jamais un hachage auto-généré) au
+        # nouveau.
+        #
+        # prix_fixe / remise_pct / formule_sur_prix_vente — ventes.RegleListePrix
+        # (préexistant, garde le nom historique) ; promotions.ReglexPromotion
+        # porte un jeu DIFFÉRENT sous le même champ `type_regle`.
+        'TypeRegleEnum': 'apps.ventes.models.RegleListePrix.TypeRegle',
+        'TypeReglePromotionEnum':
+            'apps.promotions.models.ReglexPromotion.TypeRegle',
+        # casse / defaut / erreur / obsolete / perime / vol / autre —
+        # stock.MouvementStock (préexistant) ; mrp.OperationOF porte un jeu
+        # DISTINCT (motif de rebut d'une opération de fabrication) sous le
+        # même champ `motif_rebut`.
+        'MotifRebutEnum': 'apps.stock.models.MouvementStock.MotifRebut',
+        'MotifRebutOFEnum': 'apps.mrp.models.OperationOF.MotifRebut',
+        # salon / porte_ouverte / webinaire — marketing.EvenementMarketing
+        # (préexistant, champ `type_evenement`) ; scm.EvenementDemande porte
+        # un jeu DISTINCT (promotion/chantier majeur/rupture fournisseur…)
+        # sous le même nom de champ.
+        'TypeEvenementEnum': 'apps.marketing.models.EvenementMarketing.Type',
+        'TypeEvenementDemandeEnum':
+            'apps.scm.models.EvenementDemande.TypeEvenement',
+        # A/B/C/toutes — installations.SessionComptage (préexistant, comptage
+        # tournant FG324) ; stock.models_wms.PlanComptageTournant (NTWMS13)
+        # porte un jeu DISTINCT (mêmes lettres, libellés différents) sous le
+        # même champ `classe_abc`.
+        'ClasseAbcEnum':
+            'apps.installations.models_comptage.SessionComptage.ClasseABC',
+        'ClasseAbcPlanComptageTournantEnum':
+            'apps.stock.models_wms.PlanComptageTournant.ClasseAbc',
+        # bronze / argent / or / platine — marketing.CompteFidelite.palier
+        # (préexistant). Choix INLINE (pas de classe TextChoices imbriquée),
+        # donc pointé par sa liste littérale plutôt que par un chemin
+        # `Modèle.Classe` (drf-spectacular accepte les deux formes). Aucun
+        # second jeu de choix ne partage ce nom de champ à l'identique — la
+        # disparition observée vient d'une collision de nom de COMPOSANT
+        # ("CompteFidelite" existe aussi comme modèle dans la nouvelle app
+        # fidelite, cf. avertissement drf-spectacular "components with
+        # identical names") : hors du périmètre d'ENUM_NAME_OVERRIDES, qui ne
+        # nomme que des jeux de choix, jamais des composants d'objet.
+        'CompteFidelitePalierEnum': [
+            ('bronze', 'Bronze'),
+            ('argent', 'Argent'),
+            ('or', 'Or'),
+            ('platine', 'Platine'),
+        ],
     },
 }
 
