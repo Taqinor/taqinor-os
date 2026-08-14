@@ -10,7 +10,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('stock', '0097_ntp2p7_onboarding_fournisseur'),
+        ('stock', '0098_ntp2p7_onboarding_fournisseur'),
     ]
 
     operations = [

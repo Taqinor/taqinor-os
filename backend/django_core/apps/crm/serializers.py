@@ -216,6 +216,11 @@ class LeadSerializer(serializers.ModelSerializer):
     # LW30 — 50 dernières LeadActivity embarquées sur le RETRIEVE seulement
     # (jamais list() — payload) : voir get_fields() plus bas.
     chatter_recent = serializers.SerializerMethodField()
+    # PV78 — conception 3D du lead {kwc, image_url}. RETRIEVE SEULEMENT, même
+    # porte que chatter_recent : ce bloc coûte une requête devis + une URL
+    # pré-signée PAR LEAD, ce qui serait un N+1 franc sur une liste de 50
+    # cartes. Voir get_fields() plus bas.
+    conception = serializers.SerializerMethodField()
     # LB39 — marqueur d'ANNULATION du dernier changement d'étape. Champ HORS
     # MODÈLE, write-only, jamais persisté (retiré dans validate()) : à lui
     # seul il n'autorise RIEN — il déclenche seulement la vérification
@@ -520,6 +525,13 @@ class LeadSerializer(serializers.ModelSerializer):
         # payload list() — jamais juste null, la clé elle-même disparaît.
         if not self.context.get('include_chatter_recent'):
             fields.pop('chatter_recent', None)
+            # PV78 — même porte : ``include_chatter_recent`` est le marqueur
+            # « vue DÉTAIL » du dépôt (posé UNIQUEMENT par
+            # ``LeadViewSet.retrieve``). On le RÉUTILISE plutôt que d'ajouter
+            # un second drapeau qu'il faudrait poser au même endroit — et la
+            # conception, qui coûte une requête + une URL pré-signée par lead,
+            # ne descend donc jamais dans une liste.
+            fields.pop('conception', None)
         return fields
 
     def to_representation(self, instance):
@@ -536,6 +548,18 @@ class LeadSerializer(serializers.ModelSerializer):
         verrouillés-cadenas au lieu de laisser croire à une édition qui
         sera jetée (drop silencieux au PATCH)."""
         return self._pii_masked()
+
+    def get_conception(self, obj):
+        """PV78 — ``{kwc, image_url}`` de la conception 3D du lead.
+
+        Lecture cross-app par le SÉLECTEUR de l'app cible
+        (``crm.selectors.conception_3d_du_lead`` → ``ventes.selectors``), jamais
+        par un import des modèles ventes. Company-scopée côté ventes. Les deux
+        clés sont TOUJOURS là : un lead sans devis calepiné vaut deux valeurs
+        vides, jamais une clé absente.
+        """
+        from .selectors import conception_3d_du_lead
+        return conception_3d_du_lead(obj)
 
     def get_chatter_recent(self, obj):
         """LW30 — 50 dernières LeadActivity (auto + notes), épingle-d'abord

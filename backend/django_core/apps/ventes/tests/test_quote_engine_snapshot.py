@@ -137,6 +137,39 @@ REQUIRED_TOTALS_LITERALS = (
     'Sous-total HT', 'Total HT', 'TVA', 'Total TTC',
 )
 
+
+def _normaliser_pour_recherche(texte: str) -> str:
+    """Casse + espaces normalisés avant de chercher une figure clé dans un PDF.
+
+    2026-08-14 — POURQUOI : le moteur rend ces libellés avec
+    ``text-transform:uppercase`` (cf. ``_tot_line`` dans
+    ``generate_devis_premium.py``), donc le PDF contient « SOUS-TOTAL HT » et
+    l'extraction ``fitz`` le rend tel quel. Un ``assertIn('Sous-total HT', …)``
+    sensible à la casse ne pouvait donc JAMAIS passer : cette garde — celle qui
+    protège la chaîne Sous-total HT → Remise → Total HT → TVA → Total TTC
+    exigée par CLAUDE.md — était rouge chaque nuit et ne protégeait plus rien.
+    Le PDF, lui, a toujours été correct.
+
+    Et ``letter-spacing`` : sur les pages de couverture, ``fitz`` rend un titre
+    espacé glyphe par glyphe — le run 31797942794 a extrait littéralement
+    « r é f. d e v i s » et « p r o p o s i t i o n ». Une comparaison qui
+    garde les espaces échoue donc AUSSI. On retire par conséquent TOUTE espace
+    des deux côtés, pas seulement on les normalise.
+
+    LIMITE ASSUMÉE, à ne pas se raconter autrement : sans les espaces,
+    « Total HT » est une sous-chaîne de « Sous-total HT », donc sa présence
+    dans la liste ci-dessus est satisfaite par le sous-total. Ce trou
+    PRÉEXISTAIT (l'ancienne comparaison sensible à la casse avait déjà le même
+    défaut) et il est SAIN au regard du moteur : ``_tot_line("Total HT")`` n'est
+    rendu que si une remise existe (``DISCOUNT_PCT > 0``) — un devis sans remise
+    n'a légitimement pas de ligne « Total HT » séparée. Durcir la garde (chaîne
+    ORDONNÉE, ou exigence conditionnée à la remise) demande de pouvoir
+    l'exécuter ; ce correctif se borne à lui rendre son mordant sur les figures
+    qu'elle peut réellement prouver.
+    """
+    return ''.join(texte.split()).casefold()
+
+
 # Marqueurs de prix d'achat interdits sur TOUT rendu client (jamais un centime
 # du prix d'achat revendeur ne doit fuiter — CLAUDE.md).
 FORBIDDEN_BUY_PRICE_MARKERS = ('9876', '9 876', '9 876', '9&#8239;876', 'achat')
@@ -251,11 +284,47 @@ def check_or_write_baseline(name, pdf_bytes, *, page_count, update=None):
 def _build_snapshot_devis(company, user, client_obj, case):
     """Construit le Devis fixe d'un cas de baseline (ORM nue, réutilisable
     hors TestCase par ``update_pdf_baselines``)."""
-    return make_devis(
+    devis = make_devis(
         company, user, client_obj, case['lines'],
         reference=case['reference'],
         mode_installation=case.get('mode_installation', ''),
         etude_params=case.get('etude_params'))
+    _pin_share_token(devis, case)
+    return devis
+
+
+def _pin_share_token(devis, case):
+    """Fige le jeton du lien de signature — SANS ce verrou, aucun baseline
+    golden ne peut être stable.
+
+    2026-08-14 — POURQUOI. Le builder mint (ou réutilise) un ``ShareLink`` pour
+    le CTA de signature, et son jeton est ``secrets.token_urlsafe(32)`` : 43
+    caractères ALÉATOIRES à chaque nouveau devis. Or ce lien est IMPRIMÉ EN
+    TOUTES LETTRES sur la page 4 du devis agricole
+    (``agricole/economics_page.py`` : ``{_disp(l_sign)}``) et encodé dans le QR
+    de la page 3 du devis résidentiel (``residential/trust.py``). La comparaison
+    pixel de ces pages comparait donc, en partie, du bruit cryptographique : le
+    nightly a mesuré 2,13 % puis 2,06 % de diff sur ``agricole_pompage_full_p4``
+    entre deux exécutions du MÊME code agricole (seuil 2 %). Régénérer le
+    baseline ne l'aurait pas rendu stable — il aurait redérivé dès la nuit
+    suivante, et le baseline ``residentiel_full`` (encore à générer, avec son QR
+    en page 3) serait né instable.
+
+    ``ShareLink.for_devis`` réutilise tout lien encore valide : en poser un avec
+    un jeton FIXE avant le rendu passe donc par le VRAI chemin de production
+    (aucun mock, aucune branche de test dans le moteur) et rend les octets
+    reproductibles. Le jeton dérive de la référence du cas → stable d'une
+    exécution à l'autre, et distinct d'un cas à l'autre (la colonne est
+    ``unique`` et ``update_pdf_baselines`` construit les 5 cas dans UNE seule
+    transaction).
+
+    Appelé depuis ``_build_snapshot_devis``, donc partagé à l'identique par le
+    test et par la commande ``update_pdf_baselines`` — jamais deux logiques.
+    """
+    from apps.ventes.models import ShareLink
+    ShareLink.objects.create(
+        company=devis.company, devis=devis,
+        token=f"snapshot-{case['reference'].lower()}-token")
 
 
 # Un cas par format — SOURCE UNIQUE partagée par le test (TestCase, DB de
@@ -328,10 +397,12 @@ class TestQuoteEngineGoldenSnapshots(TestCase):
 
     def _structural_asserts(self, pdf_bytes):
         text = _extract_text(pdf_bytes)
+        cherchable = _normaliser_pour_recherche(text)
         for literal in REQUIRED_TOTALS_LITERALS:
             self.assertIn(
-                literal, text,
-                f'figure clé absente du PDF : « {literal} »')
+                _normaliser_pour_recherche(literal), cherchable,
+                f'figure clé absente du PDF : « {literal} ». Texte extrait '
+                f'(500 premiers caractères) : {text[:500]!r}')
 
     def _assert_no_buy_price(self, pdf_bytes):
         text = _extract_text(pdf_bytes).lower()

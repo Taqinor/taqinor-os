@@ -10,6 +10,7 @@ and orders are untouched.
 """
 from __future__ import annotations
 
+import copy
 import logging
 import re
 import tempfile
@@ -23,7 +24,8 @@ _WATT_RE = re.compile(r"(\d{3,4})\s*(?:wc|w)\b", re.IGNORECASE)
 # désignation ni dans le nom du produit lié : on prend le STANDARD du catalogue
 # (710 W — « Panneau Canadien Solar 710W »/« Panneau Jinko 710W », cf.
 # seed_catalogue + generate_devis_premium.watt_par_panneau), JAMAIS l'ancien 450
-# obsolète. Le chemin normal lit la VRAIE puissance via _parse_watt(nom produit).
+# obsolète. Le chemin normal lit la VRAIE puissance sur la fiche technique du
+# produit (PV11, _fiche_watt) puis, à défaut, via _parse_watt(nom produit).
 _DEFAULT_WATT = 710
 
 # ── Conditions de paiement par mode d'installation (SOURCE UNIQUE) ──
@@ -87,6 +89,26 @@ def _roof_photo_data_uri(devis) -> str:
         return ""
 
 
+def _sld_svg(devis) -> str:
+    """PV46 — schéma unifilaire du devis, en SVG INLINE pour l'annexe technique.
+
+    Pourquoi le SVG et pas la photo de toiture : le moteur ne fait AUCUN accès
+    réseau (une URL pré-signée MinIO ne serait pas suivie au rendu) ; le schéma,
+    lui, est du texte généré à la volée par un module PUR, donc embarquable tel
+    quel. Le SVG ne porte que des grandeurs électriques et des étiquettes —
+    jamais un montant (règle #4). '' en cas d'échec : la page se rend alors sans
+    schéma plutôt que de faire tomber tout le PDF.
+    """
+    try:
+        from apps.ventes.single_line_diagram import (
+            build_single_line_svg, diagram_params_from_devis)
+        return build_single_line_svg(diagram_params_from_devis(devis))
+    except Exception:  # noqa: BLE001 — un schéma absent ne casse jamais un devis
+        logger.warning("PV46: schéma unifilaire indisponible pour le devis %s",
+                       getattr(devis, "pk", None))
+        return ""
+
+
 def _parse_marque(*texts) -> str:
     """Extract the product brand from designation/product name (one-page badge)."""
     blob = " ".join(t for t in texts if t).lower()
@@ -105,6 +127,40 @@ def _parse_watt(*texts) -> int | None:
         if m:
             return int(m.group(1))
     return None
+
+
+# PV11 — types de fiche technique dont le Pmax décrit bien un MODULE : les
+# fiches historiques (antérieures à PV5) ont un ``type_fiche`` vide et portent
+# déjà un ``pmax_wc`` de panneau ; une fiche onduleur/batterie n'en décrit pas un.
+_WATT_FICHE_TYPES = ("", "module")
+
+
+def _fiche_watt(produit) -> int | None:
+    """PV11 — puissance panneau LUE SUR LA FICHE TECHNIQUE (Pmax Wc réel).
+
+    La fiche constructeur (``stock.FicheTechnique``, OneToOne ``fiche_technique``)
+    porte la VRAIE puissance du module ; elle prime donc sur la regex de
+    désignation, qui reste le repli. Accès identique à celui déjà pratiqué ici
+    pour ``marque``/``description``/``garantie`` (attributs du produit lié, via
+    ``getattr`` gardés) — aucun import ni requête supplémentaire.
+
+    Renvoie ``None`` (→ repli regex, comportement inchangé) dès que la valeur
+    n'est pas exploitable : produit absent, pas de fiche, fiche onduleur ou
+    batterie, ``pmax_wc`` nul, négatif ou illisible.
+    """
+    fiche = getattr(produit, "fiche_technique", None)
+    if fiche is None:
+        return None
+    if (getattr(fiche, "type_fiche", "") or "") not in _WATT_FICHE_TYPES:
+        return None
+    pmax = getattr(fiche, "pmax_wc", None)
+    if pmax is None:
+        return None
+    try:
+        watt = int(round(float(pmax)))
+    except (TypeError, ValueError):
+        return None
+    return watt if watt > 0 else None
 
 
 def _normalize_site_host(site: str) -> str:
@@ -230,6 +286,12 @@ DEFAULT_PDF_OPTIONS = {
     'payment_mode': 'standard',  # 'standard' (30/60/10) | 'custom'
     'custom_acompte': None,    # MAD down-payment when payment_mode == 'custom'
     'include_etude': False,    # page Étude (industriel) — 4th premium page
+    # PV46 — page « Annexe technique » (schéma unifilaire + nomenclature de la
+    # conception électrique PV41). DÉFAUT OFF : sans ce drapeau, aucune clé
+    # nouvelle n'entre dans la charge utile et le PDF reste byte-identique.
+    # Absente de conception électrique → la page est OMISE (même dégradation
+    # gracieuse qu'``include_etude`` : 4 → 3 pages).
+    'include_annexe_technique': False,
     # ── Agricole (pompage) — toggleable persuasion sections (default on) ──
     'show_subsidy': True,          # FDA 30% subsidy block
     'show_fuel_comparison': True,  # solaire vs butane vs diesel + payback
@@ -252,6 +314,8 @@ def clean_pdf_options(raw) -> dict:
         opts['devis_final'] = bool(raw['devis_final'])
     if 'include_etude' in raw:
         opts['include_etude'] = bool(raw['include_etude'])
+    if 'include_annexe_technique' in raw:
+        opts['include_annexe_technique'] = bool(raw['include_annexe_technique'])
     if raw.get('payment_mode') in ('standard', 'custom'):
         opts['payment_mode'] = raw['payment_mode']
     # Agricole toggles — booleans default True; current_fuel a small enum.
@@ -446,7 +510,10 @@ def build_quote_data(devis, pdf_options=None) -> dict:
 
     client = devis.client
     taux_tva = devis.taux_tva or Decimal(20)
-    lignes = list(devis.lignes.select_related("produit").all())
+    # PV11 — la fiche technique du produit est jointe ici : la résolution du
+    # wattage panneau la lit sans requête supplémentaire par ligne.
+    lignes = list(
+        devis.lignes.select_related("produit", "produit__fiche_technique").all())
 
     # ── XSAL14 — Lignes de section/note : rendues HORS totaux, à part ─────────
     # Une ligne de section (intertitre) ou de note (texte sans prix) ne porte NI
@@ -474,12 +541,19 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     per_line_tva = any(getattr(li, "taux_tva", None) is not None for li in lignes)
 
     # ── Derive power from the panel line(s) ──────────────────────────────────
+    # PV11 — ORDRE DE RÉSOLUTION de la puissance panneau : fiche technique du
+    # produit (Pmax constructeur) > regex sur désignation/nom > repli catalogue.
+    # Sans fiche exploitable, ``_fiche_watt`` rend None et le chemin regex
+    # historique s'applique à l'identique. La première ligne panneau qui donne
+    # une puissance l'emporte, comme avant.
     nb_panneaux = 0
     watt = None
-    for it in items:
+    for li, it in zip(lignes, items):
         if _is_panel(it["designation"], it.get("_produit_nom", "")):
             nb_panneaux += int(round(it["quantite"]))
-            watt = watt or _parse_watt(it["designation"], it.get("_produit_nom", ""))
+            watt = (watt
+                    or _fiche_watt(getattr(li, "produit", None))
+                    or _parse_watt(it["designation"], it.get("_produit_nom", "")))
     watt = watt or _DEFAULT_WATT
 
     # ── Split into the two options ───────────────────────────────────────────
@@ -1051,6 +1125,23 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     include_etude = opts['include_etude'] or (
         mode in ("industriel", "commercial") and bool(etude))
 
+    # ── PV77 — étude bancable (PV69/PV74) portée jusqu'au moteur de rendu ─────
+    # ``Devis.etude_params['simulation']`` (P50/P90, ratio de performance et son
+    # arbre de pertes) est recopiée SOUS UNE CLÉ DÉDIÉE ``etude['bankable']`` —
+    # jamais fondue dans les clés historiques de l'étude (additivité stricte,
+    # PV69) : la table 5 villes QX38 reste la source canonique des chiffres
+    # affichés, le bloc bancable ne fait que S'AJOUTER à côté.
+    # Devis SANS simulation → AUCUNE clé nouvelle, donc charge utile (et
+    # proposition publique, qui appelle ce même builder) strictement identique à
+    # aujourd'hui — exactement la discipline de l'annexe technique PV46 au repos.
+    # Posé APRÈS ``include_etude`` : la présence du bloc ne peut donc jamais
+    # décider d'une page en plus — le nombre de pages du PDF ne bouge pas.
+    _simulation = (getattr(devis, "etude_params", None) or {}).get("simulation")
+    if isinstance(_simulation, dict) and _simulation:
+        # Copie défensive : le rendu ne doit jamais pouvoir muter l'étude
+        # stockée sur le devis (le builder ne fait que LIRE — règle #4).
+        etude["bankable"] = copy.deepcopy(_simulation)
+
     # Puces des cartes d'option de la page 1 — générées depuis l'équipement
     # RÉEL de chaque option, jamais du texte boilerplate.
     def _bullets(rows):
@@ -1330,6 +1421,16 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     roof_image = getattr(devis, "roof_image", None)
     if roof_image:
         data["roof_image_key"] = roof_image
+    # PV46 — annexe technique : les clés ne sont ajoutées QUE si l'option est
+    # demandée ET que le devis porte une conception électrique (PV41). Option
+    # au repos → aucune clé nouvelle → charge utile (et proposition publique,
+    # qui appelle ce même builder) strictement identique à aujourd'hui.
+    if opts['include_annexe_technique']:
+        _design = getattr(devis, "electrical_design", None)
+        if isinstance(_design, dict) and _design:
+            data["include_annexe_technique"] = True
+            data["electrical_design"] = _design
+            data["sld_svg"] = _sld_svg(devis)
     # QJ12 — financing block (indicatif / à confirmer). Added additively after
     # all other keys so omitting it never changes any existing key's value.
     # Degrades to None when display_total is unavailable — callers omit the block.

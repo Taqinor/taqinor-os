@@ -57,6 +57,10 @@ CATALOG = {
     'devis_sent': _e(
         'Un devis passe à « envoyé » (partage client).',
         ['devis', 'user', 'ancien_statut']),
+    'layout_finalise': _e(
+        'La conception 3D d\'un devis est finalisée (création depuis un '
+        'calepinage ou resynchronisation réussie) — aucun statut ne bouge.',
+        ['devis', 'user']),
     'devis_refused': _e(
         'Un devis passe à « refusé ».',
         ['devis', 'user', 'motif_refus', 'marquer_lead_perdu']),

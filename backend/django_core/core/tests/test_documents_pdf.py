@@ -36,8 +36,20 @@ class _FakeInstance:
 
 
 def _fake_weasyprint():
-    """Faux module ``weasyprint`` : ``HTML(string=...).write_pdf(buf)`` écrit un
-    entête PDF minimal (même patron que core/tests/test_pdf.py)."""
+    """Faux module ``weasyprint`` reproduisant le contrat RÉEL de la lib :
+    ``write_pdf(cible)`` écrit dans la cible, ``write_pdf()`` SANS cible
+    RENVOIE les octets (même patron que core/tests/test_pdf.py).
+
+    2026-08-14 — POURQUOI ce faux a dû être corrigé. Il n'implémentait que la
+    première forme et renvoyait ``None`` sans cible. Or ``core.pdf`` appelle
+    aujourd'hui ``weasyprint.HTML(string=…).write_pdf()`` sans cible et retourne
+    directement le résultat (commit c750224e, « core.pdf write_pdf() forme
+    retour-octets », pour rester compatible avec les mocks des pilotes RH/compta).
+    Le jumeau ``core/tests/test_pdf.py`` a bien été mis à jour à l'époque ; ce
+    faux-ci est resté sur l'ancienne convention et rendait donc ``None`` — d'où
+    l'échec « None is not an instance of bytes ». Le SERVICE était correct : le
+    vrai WeasyPrint renvoie bien les octets quand aucune cible n'est passée.
+    """
     fake_module = types.ModuleType("weasyprint")
 
     class _HTML:
@@ -45,8 +57,11 @@ def _fake_weasyprint():
             self.string = string
 
         def write_pdf(self, target=None):
+            data = b"%PDF-1.4 fake"
             if target is not None:
-                target.write(b"%PDF-1.4 fake")
+                target.write(data)
+                return None
+            return data
 
     fake_module.HTML = _HTML
     return fake_module

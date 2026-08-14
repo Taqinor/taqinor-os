@@ -16,6 +16,8 @@ __all__ = [
     'DemandeCalepinageSerializer', 'DemandeJobCalepinageSerializer',
     'ResultatCalepinageSerializer', 'JobCalepinageSerializer',
     'ComparaisonVariantesSerializer', 'PreuveCalepinageSerializer',
+    'MargesCalepinageSerializer', 'TiroirsCalepinageSerializer',
+    'SuggestionCalepinageSerializer',
 ]
 
 
@@ -108,6 +110,192 @@ class PreuveCalepinageSerializer(serializers.Serializer):
     version_moteur = serializers.CharField(read_only=True)
 
 
+class MargesCalepinageSerializer(serializers.Serializer):
+    """PV49 — les marges MESURÉES par la passe de robustesse, en centimètres.
+
+    Les deux grandeurs sont ``allow_null`` et c'est le cœur du contrat : une
+    marge NON MESURÉE vaut ``null``, jamais ``0`` — un ``0`` ferait lire « au
+    ras » là où rien n'a été mesuré (une toiture sans obstacle n'a AUCUNE marge
+    de bande). Le repère fautif dit lequel des deux cas s'applique : il est
+    vide quand rien n'a été mesuré.
+    """
+
+    troncon_min_cm = serializers.FloatField(read_only=True, allow_null=True)
+    bande_min_cm = serializers.FloatField(read_only=True, allow_null=True)
+    rangee_critique = serializers.CharField(read_only=True, allow_blank=True)
+    obstacle_critique = serializers.CharField(read_only=True, allow_blank=True)
+
+
+# ── PV49 — les 5 tiroirs de l'atelier ────────────────────────────────────────
+# PACT7 : ces sérialiseurs sont le MIROIR du dictionnaire que
+# ``calepinage_io.tiroirs_vers_json`` construit. Un « type: object » sans
+# propriété ne contredit rien — c'est exactement ce qui a laissé passer
+# l'incident du 03/08/2026. Chaque clé publiée est donc NOMMÉE ici, et les
+# feuilles (listes d'options, points de graphe) restent des objets JSON parce
+# qu'elles portent des clés optionnelles que le moteur n'émet que lorsqu'il a
+# réellement mesuré quelque chose.
+
+class _DonneesKitsSerializer(serializers.Serializer):
+    kits = serializers.ListField(child=serializers.JSONField(),
+                                 read_only=True)
+    granularites = serializers.ListField(child=serializers.JSONField(),
+                                         read_only=True)
+    approvisionnement = serializers.JSONField(read_only=True)
+    recommandation = serializers.JSONField(read_only=True, required=False)
+    composition = serializers.JSONField(read_only=True, required=False)
+    contre_epreuve = serializers.ListField(child=serializers.JSONField(),
+                                           read_only=True, required=False)
+
+
+class _DonneesAlleesSerializer(serializers.Serializer):
+    presets = serializers.ListField(child=serializers.JSONField(),
+                                    read_only=True)
+    graphe = serializers.JSONField(read_only=True, required=False)
+
+
+class _DonneesRivesSerializer(serializers.Serializer):
+    champs = serializers.ListField(child=serializers.JSONField(),
+                                   read_only=True)
+    variante_conservatrice = serializers.JSONField(read_only=True,
+                                                   required=False)
+
+
+class _DonneesOrientationSerializer(serializers.Serializer):
+    sens_rangees = serializers.ListField(child=serializers.JSONField(),
+                                         read_only=True)
+    orientations_tables = serializers.ListField(child=serializers.JSONField(),
+                                                read_only=True)
+    segmentations = serializers.ListField(child=serializers.JSONField(),
+                                          read_only=True)
+    formes_l = serializers.ListField(child=serializers.JSONField(),
+                                     read_only=True)
+
+
+# Chaque tiroir a sa PROPRE classe nommée — pas une fabrique qui rendrait cinq
+# classes de même nom : drf-spectacular nomme ses composants d'après la classe,
+# et cinq homonymes se recouvriraient dans le schéma publié.
+#
+# ``donnees`` est TOUJOURS ``allow_null`` : un tiroir dégradé garde sa clé et
+# rend ``null``, si bien que l'écran teste l'absence de DONNÉES et jamais
+# l'absence de clé. ``valeurs`` porte la sélection courante à préremplir.
+
+class TiroirKitsSerializer(serializers.Serializer):
+    donnees = _DonneesKitsSerializer(read_only=True, allow_null=True)
+    valeurs = serializers.JSONField(read_only=True)
+
+
+class TiroirAlleesSerializer(serializers.Serializer):
+    donnees = _DonneesAlleesSerializer(read_only=True, allow_null=True)
+    valeurs = serializers.JSONField(read_only=True)
+
+
+class TiroirRivesSerializer(serializers.Serializer):
+    donnees = _DonneesRivesSerializer(read_only=True, allow_null=True)
+    valeurs = serializers.JSONField(read_only=True)
+
+
+class TiroirOrientationSerializer(serializers.Serializer):
+    donnees = _DonneesOrientationSerializer(read_only=True, allow_null=True)
+    valeurs = serializers.JSONField(read_only=True)
+
+
+class _ChaineElectriqueSerializer(serializers.Serializer):
+    libelle_taille = serializers.CharField(read_only=True, allow_blank=True)
+    reste_texte = serializers.CharField(read_only=True, allow_blank=True)
+
+
+class _OnduleursElectriqueSerializer(serializers.Serializer):
+    nombre_texte = serializers.CharField(read_only=True, allow_blank=True)
+    puissance_texte = serializers.CharField(read_only=True, allow_blank=True)
+    plafond_texte = serializers.CharField(read_only=True, allow_blank=True)
+
+
+class _RatioElectriqueSerializer(serializers.Serializer):
+    texte = serializers.CharField(read_only=True, allow_blank=True)
+    fourchette_texte = serializers.CharField(read_only=True, allow_blank=True)
+
+
+class _ConformiteElectriqueSerializer(serializers.Serializer):
+    conforme = serializers.BooleanField(read_only=True)
+    bloquant = serializers.BooleanField(read_only=True)
+    alerte = serializers.CharField(read_only=True, allow_blank=True)
+    #: ``{texte, patch}`` ou ``null`` — le patch est REJOUABLE par
+    #: ``majParametres`` (vocabulaire des paramètres), sinon la proposition est
+    #: nulle : un bouton « appliquer » qui n'applique rien est pire que rien.
+    repartition_proposee = serializers.JSONField(read_only=True,
+                                                 allow_null=True)
+
+
+class _DonneesElectriqueSerializer(serializers.Serializer):
+    """PV44 — miroir EXACT de ``core.electrique.projeter_tiroirs``.
+
+    Les quatre blocs sont ceux que ``TiroirElectrique.jsx`` lit, ni plus ni
+    moins : une clé en trop est du code mort côté écran, une clé en moins est
+    une ligne vide pour toujours.
+    """
+
+    chaine = _ChaineElectriqueSerializer(read_only=True)
+    onduleurs = _OnduleursElectriqueSerializer(read_only=True)
+    ratio_dc_ac = _RatioElectriqueSerializer(read_only=True)
+    conformite = _ConformiteElectriqueSerializer(read_only=True)
+
+
+class TiroirElectriqueSerializer(serializers.Serializer):
+    """PV44 — le tiroir est ALIMENTÉ par ``core.electrique``.
+
+    ``donnees`` reste ``allow_null`` : hors budget synchrone, le tiroir retombe
+    sur sa forme dégradée, exactement comme les quatre autres.
+    """
+
+    donnees = _DonneesElectriqueSerializer(read_only=True, allow_null=True)
+    valeurs = serializers.JSONField(read_only=True)
+
+
+class TiroirsCalepinageSerializer(serializers.Serializer):
+    """PV49 — les 5 tiroirs en UN SEUL bloc, chacun sous sa clé."""
+
+    kits = TiroirKitsSerializer(read_only=True)
+    allees = TiroirAlleesSerializer(read_only=True)
+    rives = TiroirRivesSerializer(read_only=True)
+    orientation = TiroirOrientationSerializer(read_only=True)
+    electrique = TiroirElectriqueSerializer(read_only=True)
+
+
+class ActionSuggestionSerializer(serializers.Serializer):
+    """PV50 — ce que l'écran DOIT proposer d'appliquer en un clic.
+
+    L'action est DISCRIMINÉE par ``type`` : ``parametres`` porte un ``patch``
+    du dict de paramètres de calepinage ; ``obstacle`` porte le repère visé et
+    la ``provenance`` à lui donner. Les clés de l'autre famille sont alors
+    absentes — d'où ``required=False`` sur les trois : un schéma qui les
+    déclarerait toutes obligatoires décrirait une réponse que le serveur
+    n'envoie jamais.
+    """
+
+    type = serializers.CharField(read_only=True)
+    patch = serializers.JSONField(read_only=True, required=False)
+    obstacle = serializers.CharField(read_only=True, required=False)
+    provenance = serializers.CharField(read_only=True, required=False)
+
+
+class SuggestionCalepinageSerializer(serializers.Serializer):
+    """PV50 — une proposition APPLICABLE, à gain REJOUÉ par le moteur.
+
+    ``gain_modules`` est SIGNÉ : un arbitrage d'obstacle peut coûter des
+    modules, et le publier positif ferait passer une perte assumée pour un
+    gain.
+    """
+
+    code = serializers.CharField(read_only=True)
+    titre = serializers.CharField(read_only=True)
+    gain_modules = serializers.IntegerField(read_only=True)
+    gain_kwc = serializers.FloatField(read_only=True, required=False)
+    confiance = serializers.CharField(read_only=True, required=False)
+    question_a_poser = serializers.CharField(read_only=True, required=False,
+                                             allow_blank=True)
+    action = ActionSuggestionSerializer(read_only=True)
+
+
 class ResultatCalepinageSerializer(serializers.Serializer):
     """Le résultat d'un calepinage — il porte TOUJOURS (hash, version)."""
 
@@ -127,6 +315,14 @@ class ResultatCalepinageSerializer(serializers.Serializer):
     rangees = serializers.ListField(child=serializers.JSONField(),
                                     read_only=True)
     preuve = PreuveCalepinageSerializer(read_only=True)
+    #: PV49 — les deux blocs de l'atelier. Toujours PRÉSENTS : ``marges`` porte
+    #: des ``null`` pour ce qui n'a pas été mesuré, ``tiroirs`` un jeu dégradé
+    #: quand ils n'ont pas été produits.
+    marges = MargesCalepinageSerializer(read_only=True)
+    tiroirs = TiroirsCalepinageSerializer(read_only=True)
+    #: PV50 — capées côté service ; une liste VIDE quand elles ne sont pas
+    #: produites, jamais une clé absente.
+    suggestions = SuggestionCalepinageSerializer(many=True, read_only=True)
     depuis_cache = serializers.BooleanField(read_only=True, required=False)
 
 

@@ -10,7 +10,7 @@ from apps.ventes.utils.references import create_with_reference
 from .models import (
     Installation, ChecklistTemplate, ChecklistEtapeModele,
     ChantierChecklistItem, StageModele, StockReservation,
-    DemandeTransfert,
+    DemandeTransfert, DocumentProjet,
 )
 
 
@@ -55,6 +55,11 @@ def methode_reservation_stock(company):
 
 # Étapes de checklist d'exécution par défaut (N4). `capture_serie` marque les
 # étapes où l'on relève des n° de série (N9). Toutes « système » (protégées).
+# PV80 — « Schéma électrique validé » AJOUTÉE en fin de liste (jamais insérée
+# au milieu) : ça préserve l'`ordre` de toutes les étapes historiques pour les
+# sociétés déjà amorcées ; les sociétés existantes reçoivent le même ajout,
+# à la même position relative (fin), via la migration de données PV80
+# (0101_pv80_schema_electrique_checklist.py — même patron que 0006).
 DEFAULT_CHECKLIST_ETAPES = [
     ('materiel_recu', 'Matériel reçu', False),
     ('structure_posee', 'Structure posée', False),
@@ -63,6 +68,7 @@ DEFAULT_CHECKLIST_ETAPES = [
     ('mise_en_service', 'Mise en service', False),
     ('photos_prises', 'Photos prises', False),
     ('pv_reception_signe', 'PV de réception signé', False),
+    ('schema_electrique_valide', 'Schéma électrique validé', False),
 ]
 
 # N74 — nom du template de repli, sélectionné quand aucun template ne
@@ -315,12 +321,62 @@ def create_installation_from_devis(devis, user, company):
     # (`reserver-stock`) appelle le MÊME service, aucune logique dupliquée.
     if methode_reservation_stock(company) != METHODE_RESERVATION_MANUELLE:
         seed_reservations(inst)
+    # PV80 — le chantier hérite du schéma : si le devis porte une conception
+    # électrique (PV41), pose le document pointeur « schéma unifilaire » sur
+    # le pack de remise (CH4/assemble_handover_pieces). Ré-accepter le devis
+    # retourne le chantier existant (created=False) plus haut sans repasser
+    # ici — pas de doublon, pas d'appel superflu au devis sans design.
+    _seed_schema_unifilaire_document(inst, devis)
     # VX213 (a) — handoff AVAL : le plus gros transfert de l'entreprise
     # (chantier assigné à un technicien) n'est plus silencieux. Notify UNIQUEMENT
     # à la création (created=True) ; ré-accepter le devis retourne le chantier
     # existant (created=False) plus haut sans repasser ici — pas de doublon.
     _notifier_chantier_assigne(inst, inst.technicien_responsable)
     return inst, True
+
+
+def _seed_schema_unifilaire_document(installation, devis):
+    """PV80 — « le chantier hérite du schéma ».
+
+    Quand le devis porte une conception électrique (``Devis.electrical_design``,
+    PV41), pose sur le chantier un ``DocumentProjet`` POINTEUR
+    (``type_doc='schema_unifilaire'``) — c'est la pièce que
+    ``assemble_handover_pieces`` (CH4) cherche déjà via
+    ``installation.inst_documents`` et qui, aujourd'hui, était TOUJOURS absente
+    (aucun code ne la créait). Volontairement THIN : on ne stocke JAMAIS de
+    binaire ni de re-rendu ici — seulement une référence vers la SOURCE
+    canonique, le brouillon SLD du devis (PV40, ``diagram_views.
+    schema_unifilaire_devis`` / route ``devis/<id>/schema-unifilaire/``), qui
+    se recalcule à la volée depuis les lignes + ``electrical_design`` à chaque
+    consultation — donc jamais périmé. Un devis SANS conception électrique ne
+    pose aucun document (dégradation propre : la pièce reste `present=False`
+    dans le pack de remise, comme avant PV80).
+
+    Idempotent et RAFRAÎCHISSABLE : un seul document par (chantier, type_doc)
+    — le ré-appeler (ex. ré-acceptation, re-génération de l'étude électrique)
+    ne duplique jamais la pièce, il réaligne son libellé/pointeur si la
+    référence du devis a changé entre-temps."""
+    design = getattr(devis, 'electrical_design', None)
+    if not isinstance(design, dict) or not design:
+        return None
+    reference = devis.reference or str(devis.pk)
+    titre = f'Schéma unifilaire — {reference}'
+    pointeur = (
+        f'Brouillon SLD du devis {reference} (dossier technique, PV40) : '
+        f'/api/django/ventes/devis/{devis.pk}/schema-unifilaire/?format=pdf')
+    doc, created = DocumentProjet.objects.get_or_create(
+        installation=installation,
+        type_doc=DocumentProjet.TypeDoc.SCHEMA_UNIFILAIRE,
+        defaults={
+            'company': installation.company,
+            'titre': titre,
+            'notes': pointeur,
+        })
+    if not created and (doc.titre != titre or doc.notes != pointeur):
+        doc.titre = titre
+        doc.notes = pointeur
+        doc.save(update_fields=['titre', 'notes'])
+    return doc
 
 
 def _notifier_chantier_assigne(inst, technicien):

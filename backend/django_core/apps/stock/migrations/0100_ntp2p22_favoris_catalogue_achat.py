@@ -9,7 +9,7 @@ class Migration(migrations.Migration):
 
     dependencies = [
         ('authentication', '0027_ntadm22_customuser_is_taqinor_support'),
-        ('stock', '0098_ntp2p37_sod_stricte'),
+        ('stock', '0099_ntp2p37_sod_stricte'),
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
     ]
 

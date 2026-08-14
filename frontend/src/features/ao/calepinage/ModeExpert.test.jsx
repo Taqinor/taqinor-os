@@ -22,7 +22,7 @@ describe('ModeExpert — désactivé par défaut', () => {
     expect(screen.queryByLabelText('Mode de pose')).not.toBeInTheDocument()
   })
 
-  it('révèle pas de recherche, seuils, phase, mode de pose et forçage de rangée à l’activation', async () => {
+  it('révèle pas de recherche, seuils, phase et mode de pose à l’activation', async () => {
     const user = userEvent.setup()
     render(<ModeExpert valeurs={{}} onChange={() => {}} />)
     await user.click(screen.getByRole('switch', { name: /mode expert/i }))
@@ -30,7 +30,6 @@ describe('ModeExpert — désactivé par défaut', () => {
     expect(screen.getByLabelText('Phase (m)')).toBeInTheDocument()
     expect(screen.getByLabelText('Seuil marge tronçon (cm)')).toBeInTheDocument()
     expect(screen.getByLabelText('Seuil marge bande (cm)')).toBeInTheDocument()
-    expect(screen.getByLabelText('Forçage de rangée (repère)')).toBeInTheDocument()
     expect(screen.getByRole('radiogroup', { name: 'Mode de pose' })).toBeInTheDocument()
   })
 })
@@ -90,13 +89,33 @@ describe('ModeExpert — réglages fins', () => {
     expect(onChange).toHaveBeenCalledWith({ marge_troncon_min_m: 0.03 })
   })
 
-  it('un forçage de rangée vide remonte `null` (aucun forçage)', async () => {
+  // PV51 — le seul consommateur serveur (`apps/ao/calepinage_io.
+  // parametres_vers_document`) lit `phase_forcee_m` : `phase_m` voyageait
+  // jusqu'au corps de `/ao/calepinage/calculer/` et le serveur l'ignorait en
+  // silence.
+  it('la Phase se PRÉREMPLIT depuis `phase_forcee_m` et remonte cette MÊME clé', async () => {
     const user = userEvent.setup()
     const onChange = vi.fn()
-    render(<ModeExpert valeurs={{ rangee_forcee: 'R7' }} onChange={onChange} />)
+    render(<ModeExpert
+      valeurs={{ mode_pose: 'rangees_uniformes_phase', phase_forcee_m: 1.2 }}
+      onChange={onChange}
+    />)
     await user.click(screen.getByRole('switch', { name: /mode expert/i }))
-    const champ = screen.getByLabelText('Forçage de rangée (repère)')
+    const champ = screen.getByLabelText('Phase (m)')
+    expect(champ).toHaveValue(1.2)
+
     await user.clear(champ)
-    expect(onChange).toHaveBeenCalledWith({ rangee_forcee: null })
+    await user.type(champ, '2.5')
+    expect(onChange).toHaveBeenCalledWith({ phase_forcee_m: 2.5 })
+    expect(onChange).not.toHaveBeenCalledWith(expect.objectContaining({ phase_m: expect.anything() }))
+  })
+
+  // PV51 — `rangee_forcee` a été RETIRÉ : aucun consommateur serveur
+  // (`calepinage_io.parametres_vers_document` ne lit jamais cette clé).
+  it('ne rend plus de champ « Forçage de rangée » (dead field retiré)', async () => {
+    const user = userEvent.setup()
+    render(<ModeExpert valeurs={{}} onChange={() => {}} />)
+    await user.click(screen.getByRole('switch', { name: /mode expert/i }))
+    expect(screen.queryByLabelText(/forçage de rangée/i)).not.toBeInTheDocument()
   })
 })

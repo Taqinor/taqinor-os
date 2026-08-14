@@ -24,7 +24,75 @@ export const PANEL2_WATT = 720; // 0,72 kWc par panneau
 
 // — Décisions géométriques (ajustables ici) —
 export const PANEL2_TILT_DEG = 13; // inclinaison toit plat (plage densité 12–15°)
-export const PERIMETER_SETBACK_M = 0.5; // retrait de rive
+export const PERIMETER_SETBACK_M = 0.5; // retrait de rive (valeur par défaut des trois)
+
+/**
+ * PV63 — RETRAITS DE RIVE, séparés en trois. Un seul chiffre pour tout le pourtour est
+ * un raccourci : sur un toit réel, le recul n'est pas le même selon le bord.
+ *  - `lateralM` : de part et d'autre des rangées (le long de leur axe) — passage de
+ *    maintenance latéral ;
+ *  - `extremityM` : en BOUT de rangée, dans le sens d'empilement (première et dernière
+ *    rangée) — c'est là qu'on garde le chemin de circulation ;
+ *  - `parapetM` : distance minimale à N'IMPORTE QUELLE rive du tracé (acrotère, garde-
+ *    corps, bord de dalle) — la contrainte de sécurité, appliquée à chaque coin de panneau.
+ * Les trois valent `PERIMETER_SETBACK_M` par défaut : le calepinage est alors IDENTIQUE
+ * au comportement historique à un seul retrait.
+ */
+export interface PerimeterSetbacks {
+  lateralM: number;
+  extremityM: number;
+  parapetM: number;
+}
+
+/** Les trois retraits à une même valeur (défaut : la marge de design). */
+export function uniformSetbacks(m: number = PERIMETER_SETBACK_M): PerimeterSetbacks {
+  return { lateralM: m, extremityM: m, parapetM: m };
+}
+
+/**
+ * Retraits utilisables par le calepinage. Une valeur SAISIE n'est jamais arrondie ni
+ * « snappée » : on ne remplace que ce qui n'a aucun sens géométrique — non finie
+ * (champ vide, texte) → la valeur de repli ; négative → 0 (pleine rive). L'interface,
+ * elle, AVERTIT au lieu de rejeter la frappe.
+ */
+export function resolveSetbacks(
+  s: Partial<PerimeterSetbacks> | undefined,
+  fallbackM: number = PERIMETER_SETBACK_M,
+): PerimeterSetbacks {
+  const one = (v: number | undefined): number => {
+    if (typeof v !== 'number' || !Number.isFinite(v)) return fallbackM;
+    return v < 0 ? 0 : v;
+  };
+  return { lateralM: one(s?.lateralM), extremityM: one(s?.extremityM), parapetM: one(s?.parapetM) };
+}
+
+/** PV63 — au-delà de ce retrait, on AVERTIT (sans jamais refuser) : c'est inhabituel. */
+export const SETBACK_UNUSUAL_M = 3;
+
+/**
+ * PV63 — lecture d'un champ « retrait » SAISI. Règle de la maison : on n'ARRONDIT jamais
+ * et on ne REJETTE jamais une frappe — on lit la valeur telle quelle et on AVERTIT quand
+ * elle est douteuse. Les seuls cas où la valeur n'est pas utilisable telle quelle :
+ *  - champ vide / illisible → on GARDE le retrait précédent (rien ne bouge sous les doigts) ;
+ *  - valeur négative → 0 m (pleine rive), avec avertissement — un retrait négatif n'existe pas.
+ * Une valeur grande mais valide (ex. 4 m) est ACCEPTÉE telle quelle, avec un simple
+ * avertissement. Accepte la virgule décimale française et les espaces.
+ */
+export function readSetbackInput(raw: string, previousM: number): { valueM: number; warning: string | null } {
+  const cleaned = String(raw ?? '').replace(/\s/g, '').replace(',', '.');
+  if (cleaned === '') return { valueM: previousM, warning: 'Champ vide — le retrait précédent est conservé.' };
+  const v = Number(cleaned);
+  if (!Number.isFinite(v)) {
+    return { valueM: previousM, warning: 'Valeur illisible — le retrait précédent est conservé.' };
+  }
+  if (v < 0) {
+    return { valueM: 0, warning: 'Un retrait négatif n’existe pas : 0 m (pleine rive) est appliqué.' };
+  }
+  if (v > SETBACK_UNUSUAL_M) {
+    return { valueM: v, warning: `Retrait inhabituel (${v} m) — appliqué tel quel, vérifiez la valeur.` };
+  }
+  return { valueM: v, warning: null };
+}
 export const PANEL_SIDE_GAP_M = 0.02; // jeu entre panneaux d'une rangée
 export const FRONT_STRUT_M = 0.1; // hauteur du montant avant (bas) du châssis
 export const SOLAR_DECLINATION_DEG = 23.44; // déclinaison au solstice

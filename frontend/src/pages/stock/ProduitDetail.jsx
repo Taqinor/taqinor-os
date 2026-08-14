@@ -21,6 +21,9 @@ import {
 // PACT128 — onglet « Options » (groupes d'options NTCPQ1) sur la fiche
 // produit, en AJOUT au système d'onglets existant.
 import ProduitOptionsTab from './ProduitOptionsTab.jsx'
+// PV8 — badge de complétude datasheet, même règle que CatalogueTable (grille
+// catalogue) : un seul calcul, réutilisé sur les deux écrans.
+import { BadgeCompletudeFiche } from './CatalogueTable.jsx'
 
 // ZPUR10 / ZSTK3 — Fiche produit (au-delà du catalogue) : quantité « en
 // commande » (BCF brouillon/envoyé, jamais annulé/reçu) + rapport
@@ -167,9 +170,43 @@ function CourbePompe({ produit }) {
   )
 }
 
+// PV8 — fiche technique (PV5, datasheet du produit) : complet/partiel/absent
+// selon `type_fiche`. UN appel réseau, filtré serveur par `?produit=` (jamais
+// la liste entière) — cohérent avec le reste de l'écran (fiche = 1 produit).
+function useFicheTechnique(produitId) {
+  // L'état est CLÉ PAR PRODUIT : un changement d'id rend `undefined` (en cours)
+  // par dérivation, sans setState synchrone dans l'effet (règle
+  // react-hooks/set-state-in-effect — les rendus en cascade).
+  const [etat, setEtat] = useState({ id: null, fiche: undefined })
+  useEffect(() => {
+    let active = true
+    stockApi.getFichesTechniques(produitId)
+      .then((r) => {
+        if (!active) return
+        const liste = r.data?.results ?? r.data ?? []
+        setEtat({ id: produitId, fiche: liste[0] ?? null })
+      })
+      .catch(() => { if (active) setEtat({ id: produitId, fiche: null }) })
+    return () => { active = false }
+  }, [produitId])
+  return etat.id === produitId ? etat.fiche : undefined
+}
+
 function OngletFicheTechnique({ produit }) {
+  const fiche = useFicheTechnique(produit.id)
   return (
     <div className="flex flex-col gap-3" data-testid="pdet-fiche-technique">
+      {/* PV8 — badge de complétude, même règle que la grille catalogue.
+          `fiche === undefined` (chargement) → rien, pour ne pas afficher
+          « Fiche absente » une fraction de seconde avant la vraie réponse. */}
+      {fiche !== undefined && (
+        <div className="flex items-center gap-2" data-testid="pdet-fiche-completude">
+          <span className="text-xs uppercase tracking-wide text-muted-foreground">
+            Fiche technique (PV5)
+          </span>
+          <BadgeCompletudeFiche fiche={fiche} />
+        </div>
+      )}
       <div className="rounded-lg border border-border">
         <div className="px-3 py-1">
           <Ligne label="Marque" valeur={produit.marque} />

@@ -8,6 +8,7 @@ explicites de la planche V2. AOF53 et AOF184 le réutilisent.
 
 import unittest
 
+from core.calepinage.exceptions import EntreeInvalide
 from core.calepinage.moteur import compter_plan
 from core.calepinage.obstacles import appliquer_regles
 from core.calepinage.optimum import calculer, optimiser
@@ -17,7 +18,9 @@ from core.calepinage.pose_uniforme import (
     jeu_de_rangees,
     jeu_maximal,
     nb_rangees,
+    phases_a_evaluer,
 )
+from core.calepinage.serialisation import EntreeCalepinage
 from core.calepinage.surfaces.arc import SurfaceArc
 from core.calepinage.surfaces.rectangle import SurfaceRectangle
 from core.calepinage.types import (
@@ -262,6 +265,102 @@ class VocabulaireDuModeUniforme(unittest.TestCase):
         self.assertEqual(
             compter_uniforme(surface, KIT_AO_PORTRAIT, allee=0.60).modules,
             direct.modules)
+
+
+class LaPhaseForcee(unittest.TestCase):
+    """PV52 — republier une pose EXISTANTE : sa phase est une donnée du
+    terrain, pas un paramètre à ré-optimiser."""
+
+    def setUp(self):
+        self.surface = SurfaceRectangle(repere="BAT_C", longueur_m=51.10,
+                                        largeur_m=25.62, rives=RIVES_AO)
+        self.obstacles = appliquer_regles(ECOLE_OBSTACLES)
+        self.parametres = Parametres(kits=(KIT_AO_PORTRAIT,), rives=RIVES_AO,
+                                     allee_m=0.60)
+
+    def _forcee(self, phase):
+        return remplacer(self.parametres, phase_forcee_m=phase)
+
+    def test_la_phase_forcee_rend_exactement_cette_phase_la(self):
+        for phase in (0.0, 1.00, 2.50):
+            with self.subTest(phase=phase):
+                resultat = balayer_phase(self.surface, self._forcee(phase),
+                                         self.obstacles)
+                attendu = compter_uniforme(self.surface, KIT_AO_PORTRAIT,
+                                           self.obstacles, allee=0.60,
+                                           phase=phase)
+                self.assertEqual(resultat.modules, attendu.modules)
+                self.assertAlmostEqual(resultat.rangees[0][0],
+                                       attendu.rangees[0].y0, delta=1e-9)
+
+    def test_une_phase_forcee_mediocre_n_est_pas_corrigee_en_douce(self):
+        """Le balayage libre trouve 314 ; la phase 0 en rend moins et le
+        moteur PUBLIE ce moins — sinon « phase forcée » ne voudrait rien dire."""
+        libre = balayer_phase(self.surface, self.parametres, self.obstacles)
+        forcee = balayer_phase(self.surface, self._forcee(0.0), self.obstacles)
+        self.assertEqual(libre.modules, 314)
+        self.assertLessEqual(forcee.modules, libre.modules)
+        self.assertEqual(
+            forcee.modules,
+            compter_uniforme(self.surface, KIT_AO_PORTRAIT, self.obstacles,
+                             allee=0.60, phase=0.0).modules)
+
+    def test_sans_phase_forcee_le_balayage_est_inchange(self):
+        self.assertIsNone(self.parametres.phase_forcee_m)
+        self.assertEqual(
+            balayer_phase(self.surface, self.parametres, self.obstacles).modules,
+            314)
+
+    def test_les_phases_a_evaluer_sont_le_balayage_ou_le_singleton(self):
+        balayage = phases_a_evaluer(self.surface, KIT_AO_PORTRAIT, 0.60, 0.05)
+        self.assertGreater(len(balayage), 1)
+        self.assertAlmostEqual(balayage[0], 0.0, delta=1e-9)
+        unique = phases_a_evaluer(self.surface, KIT_AO_PORTRAIT, 0.60, 0.05,
+                                  phase_forcee=1.00)
+        self.assertEqual(len(unique), 1)
+        self.assertAlmostEqual(unique[0], 1.00, delta=1e-9)
+
+    def test_une_phase_hors_du_jeu_maximal_est_refusee_poliment(self):
+        maximal = jeu_maximal(self.surface, KIT_AO_PORTRAIT, 0.60)
+        with self.assertRaises(EntreeInvalide) as capture:
+            balayer_phase(self.surface, self._forcee(maximal + 1.0),
+                          self.obstacles)
+        self.assertIn("jeu maximal", str(capture.exception))
+        self.assertIn("AO_PORTRAIT", str(capture.exception))
+
+    def test_une_phase_negative_est_refusee(self):
+        with self.assertRaises(EntreeInvalide):
+            balayer_phase(self.surface, self._forcee(-0.10), self.obstacles)
+
+    def test_le_mode_de_pose_porte_la_phase_forcee_de_bout_en_bout(self):
+        parametres = remplacer(self.parametres,
+                               mode_pose=ModePose.RANGEES_UNIFORMES_PHASE,
+                               pas_recherche_m=0.01, phase_forcee_m=1.00)
+        resultat = calculer(self.surface, parametres, self.obstacles)
+        self.assertIs(resultat.preuve.methode, MethodePreuve.HEURISTIQUE_BORNEE)
+        self.assertEqual(
+            resultat.modules,
+            compter_uniforme(self.surface, KIT_AO_PORTRAIT, self.obstacles,
+                             allee=0.60, phase=1.00).modules)
+
+    def test_l_aller_retour_json_conserve_la_phase_et_l_omet_sinon(self):
+        surface = SurfaceRectangle(repere="R", longueur_m=20.0, largeur_m=12.0,
+                                   rives=RIVES_AO)
+        avec = EntreeCalepinage(
+            repere="PV52", surfaces=(surface,), kits=(KIT_AO_PORTRAIT,),
+            parametres=remplacer(self.parametres, phase_forcee_m=1.25))
+        refaite = EntreeCalepinage.depuis_json(avec.vers_json())
+        self.assertAlmostEqual(refaite.parametres.phase_forcee_m, 1.25,
+                               delta=1e-9)
+        self.assertEqual(refaite.hash_entree, avec.hash_entree)
+        sans = EntreeCalepinage(repere="PV52", surfaces=(surface,),
+                                kits=(KIT_AO_PORTRAIT,),
+                                parametres=self.parametres)
+        self.assertNotIn("phase_forcee_m", sans.vers_dict()["parametres"])
+        self.assertIsNone(
+            EntreeCalepinage.depuis_json(sans.vers_json())
+            .parametres.phase_forcee_m)
+        self.assertNotEqual(sans.hash_entree, avec.hash_entree)
 
 
 if __name__ == "__main__":  # pragma: no cover

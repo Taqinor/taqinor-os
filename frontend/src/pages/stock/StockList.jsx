@@ -658,12 +658,21 @@ export default function StockList() {
   const [scanCode, setScanCode]       = useState('')
   const [scanBusy, setScanBusy]       = useState(false)
   const [camOpen, setCamOpen]         = useState(false) // FG384 — scan caméra
+  // PV8 — Map(produit_id → FicheTechnique), chargée UNE fois pour tout le
+  // catalogue (jamais un appel par ligne) : alimente le badge de complétude
+  // datasheet de CatalogueTable.
+  const [fichesTechniques, setFichesTechniques] = useState(() => new Map())
 
   useEffect(() => {
     dispatch(fetchProduits()); dispatch(fetchCategories())
     stockApi.getMarques().then(r => setMarques(r.data?.results ?? r.data ?? [])).catch(() => {})
     stockApi.getEmplacements()
       .then(r => setEmplacementsList((r.data?.results ?? r.data ?? []).filter(e => !e.archived)))
+      .catch(() => {})
+    stockApi.getFichesTechniques()
+      .then(r => setFichesTechniques(
+        new Map((r.data?.results ?? r.data ?? []).map((f) => [f.produit, f])),
+      ))
       .catch(() => {})
   }, [dispatch])
 
@@ -1340,6 +1349,7 @@ export default function StockList() {
               onInlineSave={canWrite ? onInlineSave : null}
               selected={visibleSelected}
               onToggleSelect={canWrite ? onToggleSelect : null}
+              fichesParProduit={fichesTechniques}
             />
           )}
           {filtered.length === 0 && !loading && (

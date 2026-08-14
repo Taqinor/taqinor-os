@@ -654,6 +654,24 @@ def lead_card(lead_id, company):
     }
 
 
+def conception_3d_du_lead(lead):
+    """PV78 — la conception 3D du lead ``{kwc, image_url}``, lecture seule.
+
+    Passe-plat vers ``apps.ventes.selectors.conception_pour_lead`` (import
+    FONCTION-LOCAL : la lecture cross-app passe exclusivement par le sélecteur
+    de l'app cible, et l'import différé évite tout cycle au chargement).
+    ``crm`` n'importe donc JAMAIS les modèles ventes.
+
+    Rend toujours les deux clés — un lead sans devis calepiné vaut
+    ``{'kwc': None, 'image_url': None}``, jamais une clé absente.
+    """
+    vide = {'kwc': None, 'image_url': None}
+    if lead is None:
+        return vide
+    from apps.ventes.selectors import conception_pour_lead
+    return conception_pour_lead(lead, getattr(lead, 'company', None)) or vide
+
+
 # DC12 — profil site/énergie réutilisable par client ─────────────────────────
 
 # Champs du profil que le générateur peut pré-remplir (source unique).

@@ -367,6 +367,14 @@ const stockApi = {
     api.patch(`/stock/fiches-techniques/${id}/`, data),
   deleteFicheTechnique: (id) =>
     api.delete(`/stock/fiches-techniques/${id}/`),
+  // PV7 — PDF constructeur (FileField `pdf`), envoyé séparément en multipart.
+  uploadFicheTechniquePdf: (id, file) => {
+    const fd = new FormData()
+    fd.append('pdf', file)
+    return api.patch(`/stock/fiches-techniques/${id}/`, fd, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    })
+  },
 
   // ── WIR108 — fiche fournisseur : acomptes, avoirs, contacts, catégories ──
 

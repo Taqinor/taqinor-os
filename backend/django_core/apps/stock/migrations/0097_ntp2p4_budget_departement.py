@@ -14,9 +14,9 @@ class Migration(migrations.Migration):
     dependencies = [
         ('achats', '0003_protect_fournisseur_prix'),
         ('authentication', '0027_ntadm22_customuser_is_taqinor_support'),
-        ('installations', '0101_ntp2p2_approbation_achat'),
+        ('installations', '0102_ntp2p2_approbation_achat'),
         ('rh', '0083_yhard1_encrypt_dossieremploye'),
-        ('stock', '0095_ntwms13_plan_comptage_tournant'),
+        ('stock', '0096_pv5_fiche_technique_specs'),
     ]
 
     operations = [

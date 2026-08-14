@@ -15,9 +15,21 @@ Convention MAJEUR.MINEUR.CORRECTIF :
 
 Un changement de MAJEUR invalide les études déjà publiées : elles doivent être
 rejouées avant d'être re-remises à un maître d'ouvrage.
+
+Journal des MAJEUR :
+
+* **2.0.0 — PV65, élévation solaire dérivée de la LATITUDE.** ``AntiOmbrage``
+  sait désormais calculer le soleil de dimensionnement du lieu (déclinaison du
+  solstice + angle horaire de 10 h) au lieu de la seule constante nationale de
+  21°. Une villa d'Agadir et une villa de Tanger cessent d'être espacées
+  pareil, donc **un compte publiable change à toiture identique** dès que la
+  latitude est déclarée : c'est la définition même d'un MAJEUR ici. Le chemin
+  sans latitude reste IDENTIQUE au bit près (les golden villa passent sans
+  être régénérés) — le MAJEUR dit qu'une étude publiée sous 1.x doit être
+  rejouée avant d'être re-remise, pas que son chiffre a bougé tout seul.
 """
 
-VERSION_MOTEUR = "1.0.0"
+VERSION_MOTEUR = "2.0.0"
 
 #: Version du schéma JSON d'entrée/sortie (``serialisation.py``). Elle évolue
 #: indépendamment de ``VERSION_MOTEUR`` : un moteur peut gagner une capacité

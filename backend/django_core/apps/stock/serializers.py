@@ -1436,7 +1436,18 @@ class FicheTechniqueSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'produit', 'produit_nom', 'produit_marque',
             'produit_garantie', 'pmax_wc', 'voc_v', 'isc_a', 'vmp_v', 'imp_a',
-            'rendement_pct', 'pdf', 'date_creation', 'date_mise_a_jour',
+            'rendement_pct',
+            # PV5 — type + blocs module/onduleur/batterie (tous optionnels).
+            'type_fiche',
+            'longueur_mm', 'largeur_mm', 'epaisseur_mm', 'poids_kg',
+            'techno_cellule', 'bifacial',
+            'temp_coeff_voc_pct_c', 'temp_coeff_pmax_pct_c',
+            'ond_n_mppt', 'ond_mppt_v_min', 'ond_mppt_v_max', 'ond_v_max_abs',
+            'ond_i_max_mppt_a', 'ond_ac_kw', 'ond_phases',
+            'ond_rendement_euro_pct',
+            'bat_kwh_nominal', 'bat_kwh_usable', 'bat_dod_pct',
+            'bat_v_nominal', 'bat_max_charge_kw',
+            'pdf', 'date_creation', 'date_mise_a_jour',
         ]
         # company is force-assigned in perform_create — never from the body.
         read_only_fields = ['company', 'date_creation', 'date_mise_a_jour']

@@ -26,8 +26,10 @@
  * builder n'est PAS modifiée : on l'importe seulement via l'alias `@roofbuilder`.
  */
 import { useEffect, useRef, useState } from 'react'
-import { useParams, useSearchParams } from 'react-router-dom'
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import api from '../../api/axios'
+import ventesApi from '../../api/ventesApi'
+import { toastInfo } from '../../lib/toast'
 import '../../styles/roofbuilder.css'
 
 // ── Helpers de livraison (portés de apps/web/src/lib/devisDesign.ts +
@@ -94,6 +96,51 @@ function leadToBuilderPayload(lead) {
   }
 }
 
+// PV20 — MODE DEVIS. Le builder s'hydrate depuis un `DevisPayload` (PV19 :
+// `geometrie.roof_layout | roof_point | roof_outline` + `cible.panneaux |
+// panel_watt | scenario`). Le contexte serveur (contrat
+// `contract_samples/devis_design_context.json`) nomme le repère `pin` et le
+// contour `outline` : cette projection est le SEUL endroit qui les renomme —
+// l'écran ne devine ni ne complète aucune clé absente.
+function contexteToDevisPayload(contexte) {
+  if (!contexte) return null
+  const geo = contexte.geometrie ?? {}
+  const cible = contexte.cible ?? {}
+  const nom = (contexte.devis?.client_nom ?? '').trim()
+  return {
+    id: contexte.devis?.id ?? null,
+    geometrie: {
+      roof_layout: geo.roof_layout ?? null,
+      roof_point: geo.pin ?? null,
+      roof_outline: geo.outline ?? null,
+    },
+    cible: {
+      panneaux: cible.panneaux ?? null,
+      panel_watt: cible.panel_watt ?? null,
+      scenario: cible.scenario || null,
+    },
+    fullName: nom || undefined,
+  }
+}
+
+// PV75 — projette `Devis.etude_params.simulation.pr` (étude bancable PV69/PV74 :
+// P50/P90, ratio de performance, cascade des pertes) vers le payload `bankable`
+// consommé par la fenêtre de production du builder. Le contexte agrégé
+// (`devis_design_context.json`, PACT10) NE PORTE PAS `simulation` — on ne l'y
+// ajoute pas depuis cette lane, on le lit sur le devis complet (endpoint déjà
+// existant, `DevisSerializer` expose `etude_params` en entier). Aucune étude
+// lancée/rangée → `pr` absent → null (fenêtre de production inchangée).
+function bankableFromDevis(devis) {
+  const pr = devis?.etude_params?.simulation?.pr
+  if (!pr) return null
+  return {
+    p50_kwh: pr.p50_kwh,
+    p90_kwh: pr.p90_kwh,
+    performance_ratio: pr.performance_ratio,
+    loss_breakdown: pr.loss_breakdown ?? {},
+  }
+}
+
 function httpMessage(status, responseData) {
   // QJ17 — the backend returns a structured French error for 422 (composition
   // pre-flight failures). Surface it directly instead of a generic message.
@@ -112,11 +159,17 @@ function httpMessage(status, responseData) {
   return `Création du devis impossible (erreur ${status}).`
 }
 
-export default function ToitureDesign() {
+export default function ToitureDesign({ mode = 'lead' }) {
   const { id: idParam } = useParams()
   const [searchParams] = useSearchParams()
+  const navigate = useNavigate()
+  // PV20 — deux modes sur le MÊME écran. `lead` (défaut) est le flux d'origine,
+  // strictement inchangé ; `devis` démarre SUR un devis existant.
+  const estDevis = mode === 'devis'
   // Accepte /devis-design/:id ET ?lead=<id> (parité avec l'ancien lien public).
-  const leadId = idParam || searchParams.get('lead') || ''
+  const leadId = estDevis ? '' : (idParam || searchParams.get('lead') || '')
+  const devisId = estDevis ? (idParam || '') : ''
+  const cibleId = estDevis ? devisId : leadId
 
   const reducedMotion =
     typeof window !== 'undefined' &&
@@ -124,11 +177,20 @@ export default function ToitureDesign() {
 
   // État initial dérivé de la présence du leadId (évite un setState synchrone
   // dans l'effet) : sans identifiant, on affiche directement le message d'erreur.
-  const [status, setStatus] = useState(() =>
-    leadId ? 'Chargement du lead…' : 'Aucun lead indiqué (identifiant manquant).')
+  const [status, setStatus] = useState(() => {
+    if (cibleId) return estDevis ? 'Chargement du devis…' : 'Chargement du lead…'
+    return estDevis
+      ? 'Aucun devis indiqué (identifiant manquant).'
+      : 'Aucun lead indiqué (identifiant manquant).'
+  })
   const [lead, setLead] = useState(null)
-  const [loadError, setLoadError] = useState(() =>
-    leadId ? null : 'Aucun lead indiqué.')
+  // PV20 — contexte agrégé du devis (mode devis uniquement) : identité, cible,
+  // `modifiable` + `raison_lecture_seule`. Toujours null en mode lead.
+  const [contexte, setContexte] = useState(null)
+  const [loadError, setLoadError] = useState(() => {
+    if (cibleId) return null
+    return estDevis ? 'Aucun devis indiqué.' : 'Aucun lead indiqué.'
+  })
 
   // API exposée par le builder (serializeLayout / snapshot), posée à onApiReady.
   const builderApi = useRef(null)
@@ -139,12 +201,16 @@ export default function ToitureDesign() {
   const [genStatus, setGenStatus] = useState(null)
   const [deliver, setDeliver] = useState(null) // {reference, proposalUrl, waUrl, mailUrl}
   const [copied, setCopied] = useState(false)
+  // PV21 — conflit 409 renvoyé par sync-layout : {detail, revision_possible}.
+  // Le texte est TOUJOURS celui du serveur ; l'écran choisit seulement entre
+  // l'encart « Réviser (v2) » et le bandeau de document clos.
+  const [conflit, setConflit] = useState(null)
 
   // ── Boot : charge lead + config carte, puis initialise le builder ──────────
   useEffect(() => {
     let cancelled = false
     // Sans identifiant, l'état initial affiche déjà l'erreur — rien à booter.
-    if (!leadId) return undefined
+    if (!cibleId) return undefined
 
     // Le builder a une garde module-niveau `booted` (one-shot par chargement de
     // page). En SPA, revenir sur la route ne le ré-initialiserait pas : si on a
@@ -210,9 +276,74 @@ export default function ToitureDesign() {
       setStatus('Repère du client chargé. Dessinez / ajustez, puis « Générer le devis & envoyer au client ».')
     }
 
-    boot()
+    // ── PV20 — boot MODE DEVIS : UN SEUL appel CRITIQUE (design-context) ────
+    // Identité + géométrie + cible + carte + `modifiable` arrivent ensemble :
+    // l'écran ne fait aucune requête de complément et ne devine aucun motif de
+    // lecture seule (il vient toujours du serveur).
+    async function bootDevis() {
+      // PV75 — étude bancable (P50/P90/PR/pertes), lancée EN PARALLÈLE du
+      // design-context : best-effort, ne bloque jamais le boot, n'invente rien
+      // si l'étude n'a jamais été lancée (endpoint backend `POST .../simuler/`,
+      // PV74 — pas encore câblé côté écran) ou n'est pas encore rangée. Le
+      // contexte agrégé ne porte pas `simulation` (contrat
+      // `devis_design_context.json`, PACT10) donc on la lit à part, sur le devis
+      // complet déjà exposé par `getDevisById`.
+      const bankablePromise = Promise.resolve()
+        .then(() => ventesApi.getDevisById(devisId))
+        .then((res) => bankableFromDevis(res.data))
+        .catch(() => null)
+
+      let ctx = null
+      try {
+        const res = await ventesApi.getDevisDesignContext(devisId)
+        ctx = res.data
+      } catch (err) {
+        if (cancelled) return
+        const code = err?.response?.status
+        setLoadError(
+          code === 404
+            ? 'Devis introuvable.'
+            : 'Impossible de charger le devis — réessayez.'
+        )
+        setStatus(`Devis introuvable (erreur ${code ?? '?'}).`)
+        return
+      }
+      if (cancelled) return
+      setContexte(ctx)
+
+      const carte = ctx?.carte ?? {}
+      if (!carte.available || !carte.maptilerKey) {
+        setStatus('Carte indisponible (clé MapTiler manquante côté serveur).')
+        setLoadError('Carte indisponible : la clé MapTiler n’est pas configurée sur le serveur ERP.')
+        return
+      }
+
+      const mod = await import('@roofbuilder')
+      const bankable = await bankablePromise
+      if (cancelled) return
+      window.__taqinorRoofBooted = true
+      // Un devis en lecture seule BOOTE quand même : on peut regarder le
+      // calepinage vendu — seule l'action d'enregistrement disparaît.
+      mod.initRoofToolPro8({
+        maptilerKey: carte.maptilerKey,
+        mapboxToken: carte.mapboxToken || undefined,
+        reducedMotion: !!reducedMotion,
+        hydrate: { devis: contexteToDevisPayload(ctx) },
+        bankable,
+        onApiReady: (a) => { builderApi.current = a },
+      })
+      const reference = ctx?.devis?.reference ?? ''
+      setStatus(
+        ctx?.modifiable
+          ? `Devis ${reference} chargé. Ajustez le calepinage, puis « Enregistrer la conception ».`
+          : `Devis ${reference} en lecture seule — consultation du calepinage vendu.`
+      )
+    }
+
+    if (estDevis) bootDevis()
+    else boot()
     return () => { cancelled = true }
-  }, [leadId, reducedMotion])
+  }, [cibleId, devisId, leadId, estDevis, reducedMotion])
 
   // ── UN SEUL BOUTON : devis + snapshot + livraison ──────────────────────────
   const generer = async () => {
@@ -292,6 +423,129 @@ export default function ToitureDesign() {
     }
   }
 
+  // ── PV21 — BOUCLE DE FINALISATION MODE DEVIS ───────────────────────────────
+  // Le devis EXISTE : on ne le recrée pas, on resynchronise ses lignes sur le
+  // calepinage. Le statut n'est jamais écrit ici (règle #4) — le serveur refuse
+  // (409) dès que le document est parti chez le client ou clos.
+  const enregistrerConception = async () => {
+    if (sending) return
+    setGenError(null)
+    setConflit(null)
+    const apiTool = builderApi.current
+    if (!apiTool) {
+      setGenError('Outil non prêt — ajustez le calepinage puis réessayez.')
+      return
+    }
+    setSending(true)
+    setGenStatus('Enregistrement de la conception…')
+    try {
+      const layout = apiTool.serializeLayout()
+
+      // 1) Resynchronisation chirurgicale des lignes sur le calepinage.
+      let resultat
+      try {
+        const res = await ventesApi.syncDevisLayout(devisId, { layout })
+        resultat = res.data
+      } catch (err) {
+        const code = err?.response?.status
+        const data = err?.response?.data
+        setGenStatus(null)
+        setSending(false)
+        if (code === 409) {
+          setConflit({
+            detail: data?.detail || 'Ce devis ne peut plus être resynchronisé.',
+            revision_possible: !!data?.revision_possible,
+          })
+          return
+        }
+        setGenError(httpMessage(code ?? 0, data))
+        return
+      }
+
+      // 2) Même géométrie → ZÉRO écriture serveur : on le DIT, sans rien
+      //    prétendre avoir enregistré.
+      if (resultat?.inchange) {
+        toastInfo('Aucun changement')
+        setGenStatus(null)
+        setSending(false)
+        setStatus('Calepinage inchangé — le devis n’a pas bougé.')
+        return
+      }
+
+      // 3) Capture le PNG de la 3D et l'envoie (multipart, best-effort) —
+      //    même patron que le flux lead.
+      setGenStatus('Capture de la vue 3D…')
+      const png = apiTool.snapshot()
+      if (png) {
+        const blob = dataUrlToBlob(png)
+        if (blob) {
+          const form = new FormData()
+          form.append('image', blob, `devis-${devisId}.png`)
+          try {
+            await api.post(`/ventes/devis/${devisId}/roof-image/`, form)
+          } catch { /* image best-effort */ }
+        }
+      }
+
+      // 4) Lien client : le lien tokenisé est (re)frappé sans aucune transition
+      //    de statut, et l'aperçu WhatsApp est LECTURE SEULE (QX22 : ouvrir
+      //    l'aperçu ne marque jamais un devis « envoyé »).
+      setGenStatus('Préparation du lien client…')
+      let proposalUrl = ''
+      try {
+        const lien = await ventesApi.shareLinkDevis(devisId)
+        proposalUrl = designProposalUrl(PUBLIC_SITE_URL, lien.data?.path)
+      } catch { /* le lien reste optionnel */ }
+      let waUrl = null
+      try {
+        const apercu = await ventesApi.whatsappPreviewDevis(devisId)
+        waUrl = apercu.data?.wa_url || null
+      } catch { /* pas de numéro chez ce client → pas de bouton WhatsApp */ }
+
+      setDeliver({
+        reference: contexte?.devis?.reference ?? '',
+        proposalUrl,
+        waUrl,
+        mailUrl: null,
+      })
+      setGenStatus(null)
+      setSending(false)
+      setStatus(
+        `Conception enregistrée — ${resultat.panneaux} panneaux (${resultat.kwc} kWc), `
+        + `${resultat.lignes_modifiees} ligne(s) de devis mise(s) à jour.`
+      )
+    } catch {
+      setGenStatus(null)
+      setGenError('Erreur réseau pendant l’enregistrement. Vérifiez votre connexion puis réessayez.')
+      setSending(false)
+    }
+  }
+
+  // PV21 — « Réviser (v2) » : le devis est déjà chez le client, on en crée une
+  // NOUVELLE version (brouillon) et on rouvre la conception dessus.
+  const reviser = async () => {
+    if (sending) return
+    setSending(true)
+    setGenError(null)
+    setGenStatus('Création de la révision…')
+    try {
+      const res = await ventesApi.reviserDevis(devisId)
+      const nouveau = res?.data?.id
+      setGenStatus(null)
+      setSending(false)
+      if (!nouveau) {
+        setGenError('Révision créée sans identifiant — rouvrez le devis depuis la liste.')
+        return
+      }
+      setConflit(null)
+      navigate(`/ventes/devis/${nouveau}/design`)
+    } catch (err) {
+      setGenStatus(null)
+      setSending(false)
+      setGenError(httpMessage(err?.response?.status ?? 0, err?.response?.data))
+    }
+  }
+
   const copyLink = () => {
     if (!deliver?.proposalUrl) return
     try {
@@ -302,10 +556,62 @@ export default function ToitureDesign() {
   }
 
   const leadLabel = lead ? `${lead.nom ?? ''} ${lead.prenom ?? ''}`.trim() : ''
+  // PV20 — en mode devis, le titre porte la référence + le client servis par le
+  // contexte ; en lecture seule, le motif AFFICHÉ est celui du serveur.
+  const devisLabel = (contexte?.devis?.client_nom ?? '').trim()
+  const devisReference = contexte?.devis?.reference ?? ''
+  const lectureSeule = estDevis && contexte != null && !contexte.modifiable
+  const raisonLectureSeule = (contexte?.raison_lecture_seule ?? '').trim()
+  const avertissements = Array.isArray(contexte?.avertissements)
+    ? contexte.avertissements : []
 
   const inputClass =
     'w-full border border-white/15 bg-white/5 px-3 py-3 text-base text-white outline-none focus:border-brass-400'
   const chipClass = 'rp9-chip'
+
+  // PV21 — le bloc « Prêt à envoyer » est PARTAGÉ par les deux modes : un devis
+  // conçu depuis sa propre fiche se livre exactement comme un devis né d'un
+  // lead (mêmes liens, même bouton copier). Une seule différence : la phrase
+  // qui dit ce qui vient de se passer.
+  const blocLivraison = () => (
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+        <p className="tech-label rule-brass text-brass-300">Prêt à envoyer</p>
+        <p className="text-sm text-lune-soft">Devis <span className="font-semibold text-white">{deliver.reference}</span></p>
+      </div>
+      <p className="text-sm text-lune-soft">
+        {estDevis
+          ? 'La conception est enregistrée et la vue 3D mise à jour. Envoyez le lien au client par WhatsApp, e-mail, ou copiez-le.'
+          : 'Le devis est créé et la vue 3D enregistrée. Envoyez le lien au client par WhatsApp, e-mail, ou copiez-le.'}
+      </p>
+      {deliver.proposalUrl && (
+        <label className="block text-sm text-lune-soft">
+          Lien de la proposition
+          <input type="text" readOnly value={deliver.proposalUrl} className={`${inputClass} mt-1`} />
+        </label>
+      )}
+      <div className="flex flex-wrap items-center gap-3">
+        {deliver.waUrl && (
+          <a href={deliver.waUrl} target="_blank" rel="noopener"
+            className="inline-flex items-center gap-2 px-5 py-3 text-base font-bold text-white"
+            style={{ background: 'var(--rp-ok-600)' }}>WhatsApp</a>
+        )}
+        {deliver.mailUrl && (
+          <a href={deliver.mailUrl}
+            className="inline-flex items-center gap-2 border border-brass-400 px-5 py-3 text-base font-bold text-brass-300">E-mail</a>
+        )}
+        <button type="button" onClick={copyLink}
+          className="inline-flex items-center gap-2 border border-white/25 px-5 py-3 text-base font-semibold text-lune-soft">Copier le lien</button>
+        {copied && <span className="text-sm font-semibold text-ok-400" aria-live="polite">Lien copié</span>}
+      </div>
+      {deliver.proposalUrl && (
+        <a href={deliver.proposalUrl} target="_blank" rel="noopener"
+          className="inline-block text-sm text-lune-faint underline">
+          Ouvrir la proposition dans un nouvel onglet
+        </a>
+      )}
+    </div>
+  )
 
   return (
     <div className="rp9-host">
@@ -313,15 +619,45 @@ export default function ToitureDesign() {
 
       <div className="mt-6">
         <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-2">
-          <h1 className="display text-xl text-white sm:text-2xl">
-            Lead <span className="text-brass-300">{leadId || '—'}</span> ·{' '}
-            <span className="text-lune-soft">{leadLabel || '—'}</span>
-          </h1>
+          {estDevis ? (
+            <h1 className="display text-xl text-white sm:text-2xl">
+              Devis <span className="text-brass-300">{devisReference || devisId || '—'}</span> ·{' '}
+              <span className="text-lune-soft">{devisLabel || '—'}</span>
+            </h1>
+          ) : (
+            <h1 className="display text-xl text-white sm:text-2xl">
+              Lead <span className="text-brass-300">{leadId || '—'}</span> ·{' '}
+              <span className="text-lune-soft">{leadLabel || '—'}</span>
+            </h1>
+          )}
         </div>
         <p className="mt-2 text-sm text-lune-faint" aria-live="polite">{status}</p>
 
         {loadError && (
           <p className="mt-3 text-sm text-alert-300" role="alert">{loadError}</p>
+        )}
+
+        {/* PV20 — LECTURE SEULE : le motif vient du serveur, jamais rédigé ici. */}
+        {lectureSeule && (
+          <div className="cine-card mt-6 border border-brass-400/40 p-5" data-testid="pv20-lecture-seule">
+            <p className="tech-label rule-brass text-brass-300">Lecture seule</p>
+            <p className="mt-3 text-sm text-lune-soft" role="status">
+              {raisonLectureSeule || 'Ce devis ne peut plus être modifié.'}
+            </p>
+            <Link
+              to={`/ventes/devis/${devisId}/3d`}
+              className="mt-4 inline-flex items-center gap-2 border border-brass-400 px-5 py-3 text-base font-bold text-brass-300"
+            >
+              Voir en 3D
+            </Link>
+          </div>
+        )}
+
+        {/* PV20 — avertissements serveur (multi-villa, aucune ligne panneau…). */}
+        {estDevis && avertissements.length > 0 && (
+          <ul className="mt-4 space-y-1 text-xs text-lune-faint" data-testid="pv20-avertissements">
+            {avertissements.map((a) => <li key={a}>{a}</li>)}
+          </ul>
         )}
 
         {/* ÉTAPE FACTURE (alimente l'optimiseur). */}
@@ -482,7 +818,10 @@ export default function ToitureDesign() {
           <p id="rp9-maxline" className="mt-3 text-xs text-lune-faint"></p>
         </div>
 
-        {/* UN SEUL BOUTON — génère le devis, capture la 3D, mint le lien. */}
+        {/* UN SEUL BOUTON — génère le devis, capture la 3D, mint le lien.
+            PV20 — mode lead UNIQUEMENT : un devis existant n'est jamais recréé
+            depuis cet écran (sa boucle d'enregistrement arrive en PV21). */}
+        {!estDevis && (
         <div className="cine-card mt-6 p-6">
           {!deliver ? (
             <div>
@@ -501,41 +840,61 @@ export default function ToitureDesign() {
               {genStatus && <p className="mt-3 text-sm text-lune-soft" aria-live="polite">{genStatus}</p>}
               {genError && <p className="mt-3 text-sm text-alert-300" aria-live="assertive">{genError}</p>}
             </div>
-          ) : (
-            <div className="space-y-4">
-              <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
-                <p className="tech-label rule-brass text-brass-300">Prêt à envoyer</p>
-                <p className="text-sm text-lune-soft">Devis <span className="font-semibold text-white">{deliver.reference}</span></p>
-              </div>
-              <p className="text-sm text-lune-soft">
-                Le devis est créé et la vue 3D enregistrée. Envoyez le lien au client par WhatsApp,
-                e-mail, ou copiez-le.
-              </p>
-              <label className="block text-sm text-lune-soft">
-                Lien de la proposition
-                <input type="text" readOnly value={deliver.proposalUrl} className={`${inputClass} mt-1`} />
-              </label>
-              <div className="flex flex-wrap items-center gap-3">
-                {deliver.waUrl && (
-                  <a href={deliver.waUrl} target="_blank" rel="noopener"
-                    className="inline-flex items-center gap-2 px-5 py-3 text-base font-bold text-white"
-                    style={{ background: 'var(--rp-ok-600)' }}>WhatsApp</a>
-                )}
-                {deliver.mailUrl && (
-                  <a href={deliver.mailUrl}
-                    className="inline-flex items-center gap-2 border border-brass-400 px-5 py-3 text-base font-bold text-brass-300">E-mail</a>
-                )}
-                <button type="button" onClick={copyLink}
-                  className="inline-flex items-center gap-2 border border-white/25 px-5 py-3 text-base font-semibold text-lune-soft">Copier le lien</button>
-                {copied && <span className="text-sm font-semibold text-ok-400" aria-live="polite">Lien copié</span>}
-              </div>
-              <a href={deliver.proposalUrl} target="_blank" rel="noopener"
-                className="inline-block text-sm text-lune-faint underline">
-                Ouvrir la proposition dans un nouvel onglet
-              </a>
-            </div>
-          )}
+          ) : blocLivraison()}
         </div>
+        )}
+
+        {/* PV21 — MODE DEVIS : « Enregistrer la conception ». Le devis existe
+            déjà — on resynchronise ses lignes, on ne le recrée jamais. Absent
+            en lecture seule (l'action de sauvegarde disparaît, PV20). */}
+        {estDevis && !lectureSeule && (
+        <div className="cine-card mt-6 p-6">
+          {!deliver ? (
+            <div>
+              <button type="button" onClick={enregistrerConception} disabled={sending}
+                className="inline-flex w-full items-center justify-center gap-3 bg-ok-600 px-6 py-4 text-base font-bold text-white disabled:cursor-not-allowed disabled:opacity-60"
+                style={{ background: 'var(--rp-ok-600)' }}>
+                {sending && (
+                  <span aria-hidden="true"
+                    className="h-5 w-5 shrink-0 animate-spin rounded-full border-2 border-white/30 border-t-white"></span>
+                )}
+                <span>{sending ? 'Enregistrement en cours…' : 'Enregistrer la conception'}</span>
+              </button>
+              <p className="mt-3 text-xs text-lune-faint">
+                Seuls le nombre de panneaux et la batterie suivent le calepinage :
+                prix négociés, remises et notes du devis restent intacts.
+              </p>
+              {genStatus && <p className="mt-3 text-sm text-lune-soft" aria-live="polite">{genStatus}</p>}
+              {genError && <p className="mt-3 text-sm text-alert-300" aria-live="assertive">{genError}</p>}
+
+              {/* 409 « déjà envoyé » : le bon geste est une NOUVELLE version. */}
+              {conflit?.revision_possible && (
+                <div className="mt-4 border border-brass-400/40 p-4" data-testid="pv21-reviser">
+                  <p className="text-sm text-lune-soft" role="status">{conflit.detail}</p>
+                  <button type="button" onClick={reviser} disabled={sending}
+                    className="mt-3 inline-flex items-center gap-2 border border-brass-400 px-5 py-3 text-base font-bold text-brass-300 disabled:cursor-not-allowed disabled:opacity-60">
+                    Réviser (v2)
+                  </button>
+                </div>
+              )}
+
+              {/* 409 document clos : plus aucune révision possible. */}
+              {conflit && !conflit.revision_possible && (
+                <div className="mt-4 border border-alert-300/40 p-4" data-testid="pv21-conflit-lecture-seule">
+                  <p className="tech-label text-alert-300">Lecture seule</p>
+                  <p className="mt-2 text-sm text-alert-300" role="alert">{conflit.detail}</p>
+                  <Link
+                    to={`/ventes/devis/${devisId}/3d`}
+                    className="mt-3 inline-flex items-center gap-2 border border-brass-400 px-5 py-3 text-base font-bold text-brass-300"
+                  >
+                    Voir en 3D
+                  </Link>
+                </div>
+              )}
+            </div>
+          ) : blocLivraison()}
+        </div>
+        )}
       </div>
     </div>
   )

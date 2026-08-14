@@ -114,6 +114,29 @@ SENSIBILITES_RESPONSE = inline_serializer('AoCalepinageSensibilites', {
     }, many=True),
 })
 
+VARIANTES_ORIENTATION_RESPONSE = inline_serializer(
+    'AoCalepinageVariantesOrientation', {
+        'toiture': serializers.IntegerField(),
+        'retenue': serializers.IntegerField(),
+        'reference_modules': serializers.IntegerField(),
+        'variantes': inline_serializer('AoCalepinageVarianteOrientation', {
+            'id': serializers.IntegerField(),
+            'code': serializers.CharField(),
+            'libelle': serializers.CharField(),
+            'nom': serializers.CharField(),
+            'statut': serializers.CharField(),
+            'modules': serializers.IntegerField(),
+            'kwc': serializers.FloatField(),
+            'delta_modules': serializers.IntegerField(),
+            'patch': serializers.DictField(),
+        }, many=True),
+        'ignorees': inline_serializer('AoCalepinageOrientationIgnoree', {
+            'code': serializers.CharField(),
+            'libelle': serializers.CharField(),
+            'motif': serializers.CharField(),
+        }, many=True),
+    })
+
 MARCHES_RESPONSE = inline_serializer('AoCalepinageMarches', {
     'recit': serializers.CharField(),
     'depart': serializers.IntegerField(),
@@ -442,6 +465,34 @@ class CalepinageVarianteViewSet(IdempotentActionMixin, viewsets.GenericViewSet):
             try:
                 return Response(calepinage_service.calculer_sensibilites(
                     variante, user=request.user))
+            except EntreeInvalide as erreur:
+                return _erreur('entree', str(erreur))
+            except CalepinageIncoherent as erreur:
+                return Response({'calepinage': [str(erreur)]},
+                                status=status.HTTP_400_BAD_REQUEST)
+
+        return self.executer_idempotent(request, calcul)
+
+    @extend_schema(request=None, responses=VARIANTES_ORIENTATION_RESPONSE)
+    @action(detail=True, methods=['post'], url_path='generer-variantes')
+    def generer_variantes(self, request, pk=None):
+        """PV67 — pose les alternatives d'ORIENTATION de la toiture, REJOUÉES.
+
+        La cible est la TOITURE de la variante appelée (comme
+        ``sensibilites``) : les alternatives se rattachent à la variante
+        RETENUE de cette toiture, qui est leur point de comparaison. Sans
+        variante retenue, **400** avec le motif — jamais une comparaison sans
+        référence.
+        """
+        variante = self.get_object()
+
+        def calcul():
+            try:
+                return Response(
+                    calepinage_service.generer_variantes_orientation(
+                        variante.toiture, user=request.user))
+            except calepinage_service.SansVarianteRetenue as erreur:
+                return _erreur('retenue', str(erreur))
             except EntreeInvalide as erreur:
                 return _erreur('entree', str(erreur))
             except CalepinageIncoherent as erreur:

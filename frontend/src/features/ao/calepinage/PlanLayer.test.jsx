@@ -1,5 +1,5 @@
-import { describe, it, expect } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { describe, it, expect, vi } from 'vitest'
+import { render, screen, fireEvent } from '@testing-library/react'
 import PlanLayer from './PlanLayer'
 
 /* AOF92 — le plan rendu est EXACTEMENT celui renvoyé par le serveur :
@@ -126,5 +126,110 @@ describe('PlanLayer (AOF92)', () => {
   it('ne rend rien sans cadre serveur (pas de plan inventé côté front)', () => {
     const { container } = render(<PlanLayer plan={{ rangees: [] }} />)
     expect(container.querySelector('[data-ao-canvas]')).toBeNull()
+  })
+})
+
+/* ============================================================================
+   PV31 — bandes d'accroche du mode « rangées imposées par l'utilisateur ».
+   ----------------------------------------------------------------------------
+   `getBoundingClientRect` est simulé sur le SVG (même patron que
+   `GanttChart.test.jsx` pour son drag-to-reposition) : jsdom ne mesure jamais
+   un vrai layout, et ni `getScreenCTM` ni `createSVGPoint` n'y existent.
+   ========================================================================== */
+describe('PlanLayer (PV31) — bandes d’accroche des rangées imposées', () => {
+  const RANGEES = [[2, 'AO-TABLE-PORTRAIT'], [10, 'AO-TABLE-PORTRAIT']]
+
+  it('sans `rangeesImposees`, aucune bande n’apparaît (compatibilité arrière)', () => {
+    const { container } = render(<PlanLayer plan={PLAN} />)
+    expect(container.querySelectorAll('[data-item="rangee-bande"]')).toHaveLength(0)
+  })
+
+  it('une bande par rangée, à son y0 RÉEL, avec son index en attribut', () => {
+    const { container } = render(<PlanLayer plan={PLAN} rangeesImposees={RANGEES} />)
+    const bandes = [...container.querySelectorAll('[data-item="rangee-bande"]')]
+    expect(bandes).toHaveLength(2)
+    expect(bandes[0].getAttribute('y')).toBe('2')
+    expect(bandes[1].getAttribute('y')).toBe('10')
+    expect(bandes[0].getAttribute('data-rangee-index')).toBe('0')
+    expect(bandes[1].getAttribute('data-rangee-index')).toBe('1')
+  })
+
+  it('la rangée sélectionnée porte `data-rangee-selectionnee`, jamais une autre', () => {
+    const { container } = render(
+      <PlanLayer plan={PLAN} rangeesImposees={RANGEES} rangeeSelectionnee={1} />,
+    )
+    const bandes = [...container.querySelectorAll('[data-item="rangee-bande"]')]
+    expect(bandes[0].getAttribute('data-rangee-selectionnee')).toBeNull()
+    expect(bandes[1].getAttribute('data-rangee-selectionnee')).toBe('true')
+  })
+
+  it('pointerdown sur une bande appelle `onRangeePointerDown`, JAMAIS `onFondPointerDown`', () => {
+    const onRangeePointerDown = vi.fn()
+    const onFondPointerDown = vi.fn()
+    const { container } = render(
+      <PlanLayer
+        plan={PLAN}
+        rangeesImposees={RANGEES}
+        onRangeePointerDown={onRangeePointerDown}
+        onFondPointerDown={onFondPointerDown}
+      />,
+    )
+    fireEvent.pointerDown(container.querySelector('[data-rangee-index="1"]'))
+    expect(onRangeePointerDown).toHaveBeenCalledWith(1, expect.anything())
+    expect(onFondPointerDown).not.toHaveBeenCalled()
+  })
+
+  it('pointerdown sur le FOND calcule l’ordonnée SVG et appelle `onFondPointerDown`', () => {
+    const onFondPointerDown = vi.fn()
+    const { container } = render(<PlanLayer plan={PLAN} onFondPointerDown={onFondPointerDown} />)
+    const svg = container.querySelector('[data-ao-canvas]')
+    vi.spyOn(svg, 'getBoundingClientRect').mockReturnValue({ top: 100, height: 250 })
+
+    // viewBox = « 0 0 40 25 » (cadre de PLAN) ; clientY à mi-hauteur du SVG
+    // simulé (100 + 125) doit tomber à mi-hauteur du cadre (12,5 m).
+    fireEvent.pointerDown(svg, { clientY: 225 })
+
+    expect(onFondPointerDown).toHaveBeenCalledTimes(1)
+    expect(onFondPointerDown.mock.calls[0][0]).toBeCloseTo(12.5, 5)
+  })
+
+  it('un pointerdown sur une bande n’atteint jamais le fond (stopPropagation)', () => {
+    const onFondPointerDown = vi.fn()
+    const { container } = render(
+      <PlanLayer plan={PLAN} rangeesImposees={RANGEES} onFondPointerDown={onFondPointerDown} />,
+    )
+    fireEvent.pointerDown(container.querySelector('[data-rangee-index="0"]'))
+    expect(onFondPointerDown).not.toHaveBeenCalled()
+  })
+
+  it('pointermove/pointerup relaient l’ordonnée SVG au canvas', () => {
+    const onPointerMoveSvg = vi.fn()
+    const onPointerUpSvg = vi.fn()
+    const { container } = render(
+      <PlanLayer plan={PLAN} onPointerMoveSvg={onPointerMoveSvg} onPointerUpSvg={onPointerUpSvg} />,
+    )
+    const svg = container.querySelector('[data-ao-canvas]')
+    vi.spyOn(svg, 'getBoundingClientRect').mockReturnValue({ top: 100, height: 250 })
+
+    fireEvent.pointerMove(svg, { clientY: 100 })
+    expect(onPointerMoveSvg).toHaveBeenCalledWith(0, expect.anything())
+
+    fireEvent.pointerUp(svg)
+    expect(onPointerUpSvg).toHaveBeenCalledTimes(1)
+  })
+
+  it('`yPropose` dessine un TRAIT pointillé, jamais un rectangle (pas de table inventée)', () => {
+    const { container } = render(<PlanLayer plan={PLAN} yPropose={5} />)
+    const ligne = container.querySelector('[data-item="rangee-proposee"]')
+    expect(ligne).not.toBeNull()
+    expect(ligne.tagName.toLowerCase()).toBe('line')
+    expect(ligne.getAttribute('y1')).toBe('5')
+    expect(ligne.getAttribute('y2')).toBe('5')
+    expect(container.querySelector('rect[data-item="rangee-proposee"]')).toBeNull()
+  })
+
+  it('sans glissé en cours, aucune ligne proposée', () => {
+    const { container } = render(<PlanLayer plan={PLAN} />)
+    expect(container.querySelector('[data-item="rangee-proposee"]')).toBeNull()
   })
 })

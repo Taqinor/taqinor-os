@@ -14,7 +14,7 @@ class Migration(migrations.Migration):
     dependencies = [
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
         ('authentication', '0001_initial'),
-        ('installations', '0100_photochecklistmeta_tenantmodel_timestamps'),
+        ('installations', '0101_pv80_schema_electrique_checklist'),
     ]
 
     operations = [
