@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 8504, operations: 15479, components: 4393}
+counts: {paths: 8995, operations: 16318, components: 4722}
 securitySchemes:
 - cookieJWT
 - publicApiKey
@@ -96,6 +96,7 @@ operations:
 - post /api/django/achats/receptions-fournisseur/{id}/confirmer/ -> django_achats_receptions_fournisseur_confirmer_create
 - get /api/django/achats/receptions-fournisseur/{id}/etiquettes/ -> django_achats_receptions_fournisseur_etiquettes_retrieve
 - post /api/django/achats/receptions-fournisseur/{id}/facturer/ -> django_achats_receptions_fournisseur_facturer_create
+- get /api/django/achats/receptions-fournisseur/{id}/suggestions-rangement/ -> django_achats_receptions_fournisseur_suggestions_rangement_retrieve
 - get /api/django/achats/retours-fournisseur/ -> django_achats_retours_fournisseur_list
 - post /api/django/achats/retours-fournisseur/ -> django_achats_retours_fournisseur_create
 - delete /api/django/achats/retours-fournisseur/{id}/ -> django_achats_retours_fournisseur_destroy
@@ -525,6 +526,7 @@ operations:
 - post /api/django/ao/calepinage/lancer/ -> django_ao_calepinage_lancer_create
 - get /api/django/ao/calepinage/resultat/{job_id}/ -> django_ao_calepinage_resultat_retrieve
 - get /api/django/ao/calepinage/variantes/comparer/ -> django_ao_calepinage_variantes_comparer_retrieve
+- post /api/django/ao/calepinage/variantes/{id}/generer-variantes/ -> django_ao_calepinage_variantes_generer_variantes_create
 - get /api/django/ao/calepinage/variantes/{id}/marches/ -> django_ao_calepinage_variantes_marches_retrieve
 - post /api/django/ao/calepinage/variantes/{id}/retenir/ -> django_ao_calepinage_variantes_retenir_create
 - post /api/django/ao/calepinage/variantes/{id}/sensibilites/ -> django_ao_calepinage_variantes_sensibilites_create
@@ -772,6 +774,7 @@ operations:
 - get /api/django/ao/tableau-marches/ -> django_ao_tableau_marches_retrieve
 - get /api/django/ao/toitures/ -> django_ao_toitures_list
 - post /api/django/ao/toitures/ -> django_ao_toitures_create
+- post /api/django/ao/toitures/dxf/analyser/ -> django_ao_toitures_dxf_analyser_create
 - delete /api/django/ao/toitures/{id}/ -> django_ao_toitures_destroy
 - get /api/django/ao/toitures/{id}/ -> django_ao_toitures_retrieve
 - patch /api/django/ao/toitures/{id}/ -> django_ao_toitures_partial_update
@@ -789,6 +792,14 @@ operations:
 - post /api/django/ao/variantes-calepinage/{id}/chatter/noter/ -> django_ao_variantes_calepinage_chatter_noter_create
 - post /api/django/ao/variantes-calepinage/{id}/publier/ -> django_ao_variantes_calepinage_publier_create
 - post /api/django/ao/variantes-calepinage/{id}/retenir/ -> django_ao_variantes_calepinage_retenir_create
+- get /api/django/ao/zones/ -> django_ao_zones_list
+- post /api/django/ao/zones/ -> django_ao_zones_create
+- delete /api/django/ao/zones/{id}/ -> django_ao_zones_destroy
+- get /api/django/ao/zones/{id}/ -> django_ao_zones_retrieve
+- patch /api/django/ao/zones/{id}/ -> django_ao_zones_partial_update
+- put /api/django/ao/zones/{id}/ -> django_ao_zones_update
+- get /api/django/ao/zones/{id}/chatter/historique/ -> django_ao_zones_chatter_historique_retrieve
+- post /api/django/ao/zones/{id}/chatter/noter/ -> django_ao_zones_chatter_noter_create
 - get /api/django/assurances/actifs-couverts/ -> django_assurances_actifs_couverts_list
 - post /api/django/assurances/actifs-couverts/ -> django_assurances_actifs_couverts_create
 - delete /api/django/assurances/actifs-couverts/{id}/ -> django_assurances_actifs_couverts_destroy
@@ -877,6 +888,8 @@ operations:
 - post /api/django/auth/console/tenants/creer/ -> django_auth_console_tenants_creer_create
 - post /api/django/auth/console/tenants/{id}/note/ -> django_auth_console_tenants_note_create
 - post /api/django/auth/console/tenants/{id}/statut/ -> django_auth_console_tenants_statut_create
+- post /api/django/auth/demo-wizard/ -> django_auth_demo_wizard_create
+- get /api/django/auth/demo-wizard/statut/ -> django_auth_demo_wizard_statut_retrieve
 - post /api/django/auth/logout/ -> django_auth_logout_create
 - get /api/django/auth/me/ -> django_auth_me_retrieve
 - post /api/django/auth/mobile-home-route/ -> django_auth_mobile_home_route_create
@@ -925,6 +938,7 @@ operations:
 - get /api/django/automation/rules/{id}/ -> django_automation_rules_retrieve
 - patch /api/django/automation/rules/{id}/ -> django_automation_rules_partial_update
 - put /api/django/automation/rules/{id}/ -> django_automation_rules_update
+- post /api/django/automation/rules/{id}/simuler/ -> django_automation_rules_simuler_create
 - post /api/django/automation/rules/{id}/toggle/ -> django_automation_rules_toggle_create
 - get /api/django/automation/runs/ -> django_automation_runs_list
 - get /api/django/automation/runs/{id}/ -> django_automation_runs_retrieve
@@ -1064,6 +1078,8 @@ operations:
 - get /api/django/companies/{id}/ -> django_companies_retrieve
 - patch /api/django/companies/{id}/ -> django_companies_partial_update
 - put /api/django/companies/{id}/ -> django_companies_update
+- get /api/django/companies/{id}/demo-kit/ -> django_companies_demo_kit_retrieve
+- get /api/django/companies/{id}/demo-kit/export.xlsx -> django_companies_demo_kit_export.xlsx_retrieve
 - post /api/django/companies/{id}/reset-demo/ -> django_companies_reset_demo_create
 - get /api/django/compta/abonnements-ecriture/ -> django_compta_abonnements_ecriture_list
 - post /api/django/compta/abonnements-ecriture/ -> django_compta_abonnements_ecriture_create
@@ -2293,6 +2309,14 @@ operations:
 - put /api/django/core/workflow-step-definitions/{id}/ -> django_core_workflow_step_definitions_update
 - get /api/django/core/workflow-templates/ -> django_core_workflow_templates_retrieve
 - post /api/django/core/workflow-templates/installer/ -> django_core_workflow_templates_installer_create
+- get /api/django/cpq/clauses-cgv/ -> django_cpq_clauses_cgv_list
+- post /api/django/cpq/clauses-cgv/ -> django_cpq_clauses_cgv_create
+- delete /api/django/cpq/clauses-cgv/{id}/ -> django_cpq_clauses_cgv_destroy
+- get /api/django/cpq/clauses-cgv/{id}/ -> django_cpq_clauses_cgv_retrieve
+- patch /api/django/cpq/clauses-cgv/{id}/ -> django_cpq_clauses_cgv_partial_update
+- put /api/django/cpq/clauses-cgv/{id}/ -> django_cpq_clauses_cgv_update
+- get /api/django/cpq/clauses-cgv/{id}/tester/ -> django_cpq_clauses_cgv_tester_retrieve
+- post /api/django/cpq/clauses-cgv/{id}/tester/ -> django_cpq_clauses_cgv_tester_create
 - get /api/django/cpq/configurateur-questions/ -> django_cpq_configurateur_questions_list
 - post /api/django/cpq/configurateur-questions/ -> django_cpq_configurateur_questions_create
 - delete /api/django/cpq/configurateur-questions/{id}/ -> django_cpq_configurateur_questions_destroy
@@ -2309,6 +2333,12 @@ operations:
 - get /api/django/cpq/contraintes-compatibilite/{id}/ -> django_cpq_contraintes_compatibilite_retrieve
 - patch /api/django/cpq/contraintes-compatibilite/{id}/ -> django_cpq_contraintes_compatibilite_partial_update
 - put /api/django/cpq/contraintes-compatibilite/{id}/ -> django_cpq_contraintes_compatibilite_update
+- get /api/django/cpq/devis/{id}/comparaison-variantes/ -> django_cpq_devis_comparaison_variantes_retrieve
+- get /api/django/cpq/devis/{id}/feuille-configuration/ -> django_cpq_devis_feuille_configuration_retrieve
+- post /api/django/cpq/devis/{id}/relancer-approbation/ -> django_cpq_devis_relancer_approbation_create
+- get /api/django/cpq/devis/{id}/variantes/ -> django_cpq_devis_variantes_list
+- post /api/django/cpq/devis/{id}/variantes/ -> django_cpq_devis_variantes_create
+- get /api/django/cpq/marge-sous-seuil/ -> django_cpq_marge_sous_seuil_retrieve
 - get /api/django/cpq/offres-groupees/ -> django_cpq_offres_groupees_list
 - post /api/django/cpq/offres-groupees/ -> django_cpq_offres_groupees_create
 - delete /api/django/cpq/offres-groupees/{id}/ -> django_cpq_offres_groupees_destroy
@@ -2322,12 +2352,30 @@ operations:
 - get /api/django/cpq/options-produit/{id}/ -> django_cpq_options_produit_retrieve
 - patch /api/django/cpq/options-produit/{id}/ -> django_cpq_options_produit_partial_update
 - put /api/django/cpq/options-produit/{id}/ -> django_cpq_options_produit_update
+- get /api/django/cpq/parametres-cpq/ -> django_cpq_parametres_cpq_list
+- post /api/django/cpq/parametres-cpq/ -> django_cpq_parametres_cpq_create
+- get /api/django/cpq/parametres-cpq/courant/ -> django_cpq_parametres_cpq_courant_retrieve
+- patch /api/django/cpq/parametres-cpq/courant/ -> django_cpq_parametres_cpq_courant_partial_update
+- delete /api/django/cpq/parametres-cpq/{id}/ -> django_cpq_parametres_cpq_destroy
+- get /api/django/cpq/parametres-cpq/{id}/ -> django_cpq_parametres_cpq_retrieve
+- patch /api/django/cpq/parametres-cpq/{id}/ -> django_cpq_parametres_cpq_partial_update
+- put /api/django/cpq/parametres-cpq/{id}/ -> django_cpq_parametres_cpq_update
 - get /api/django/cpq/prix-contractuels/ -> django_cpq_prix_contractuels_list
 - post /api/django/cpq/prix-contractuels/ -> django_cpq_prix_contractuels_create
+- post /api/django/cpq/prix-contractuels/import-csv/ -> django_cpq_prix_contractuels_import_csv_create
 - delete /api/django/cpq/prix-contractuels/{id}/ -> django_cpq_prix_contractuels_destroy
 - get /api/django/cpq/prix-contractuels/{id}/ -> django_cpq_prix_contractuels_retrieve
 - patch /api/django/cpq/prix-contractuels/{id}/ -> django_cpq_prix_contractuels_partial_update
 - put /api/django/cpq/prix-contractuels/{id}/ -> django_cpq_prix_contractuels_update
+- get /api/django/cpq/produits-equivalents/ -> django_cpq_produits_equivalents_list
+- post /api/django/cpq/produits-equivalents/ -> django_cpq_produits_equivalents_create
+- delete /api/django/cpq/produits-equivalents/{id}/ -> django_cpq_produits_equivalents_destroy
+- get /api/django/cpq/produits-equivalents/{id}/ -> django_cpq_produits_equivalents_retrieve
+- patch /api/django/cpq/produits-equivalents/{id}/ -> django_cpq_produits_equivalents_partial_update
+- put /api/django/cpq/produits-equivalents/{id}/ -> django_cpq_produits_equivalents_update
+- get /api/django/cpq/rapports/approbations/ -> django_cpq_rapports_approbations_retrieve
+- get /api/django/cpq/rapports/catalogue-regles/ -> django_cpq_rapports_catalogue_regles_retrieve
+- get /api/django/cpq/rapports/conformite/ -> django_cpq_rapports_conformite_retrieve
 - get /api/django/cpq/regles-approbation-remise/ -> django_cpq_regles_approbation_remise_list
 - post /api/django/cpq/regles-approbation-remise/ -> django_cpq_regles_approbation_remise_create
 - delete /api/django/cpq/regles-approbation-remise/{id}/ -> django_cpq_regles_approbation_remise_destroy
@@ -2347,6 +2395,7 @@ operations:
 - get /api/django/cpq/seuils-marge/{id}/ -> django_cpq_seuils_marge_retrieve
 - patch /api/django/cpq/seuils-marge/{id}/ -> django_cpq_seuils_marge_partial_update
 - put /api/django/cpq/seuils-marge/{id}/ -> django_cpq_seuils_marge_update
+- get /api/django/cpq/suggestions/ -> django_cpq_suggestions_retrieve
 - post /api/django/cpq/valider-compatibilite/ -> django_cpq_valider_compatibilite_create
 - get /api/django/credit/badges/ -> django_credit_badges_retrieve
 - get /api/django/credit/clients/{client_id}/fiche/ -> django_credit_clients_fiche_retrieve
@@ -2406,6 +2455,13 @@ operations:
 - put /api/django/crm/appointments/{id}/ -> django_crm_appointments_update
 - post /api/django/crm/appointments/{id}/confirmer-whatsapp/ -> django_crm_appointments_confirmer_whatsapp_create
 - get /api/django/crm/appointments/{id}/ics/ -> django_crm_appointments_ics_retrieve
+- get /api/django/crm/apporteur-portail/{token}/mes-deals/ -> django_crm_apporteur_portail_mes_deals_retrieve
+- get /api/django/crm/apporteurs/ -> django_crm_apporteurs_list
+- post /api/django/crm/apporteurs/ -> django_crm_apporteurs_create
+- delete /api/django/crm/apporteurs/{id}/ -> django_crm_apporteurs_destroy
+- get /api/django/crm/apporteurs/{id}/ -> django_crm_apporteurs_retrieve
+- patch /api/django/crm/apporteurs/{id}/ -> django_crm_apporteurs_partial_update
+- put /api/django/crm/apporteurs/{id}/ -> django_crm_apporteurs_update
 - get /api/django/crm/assignable-users/ -> django_crm_assignable_users_retrieve
 - get /api/django/crm/canaux/ -> django_crm_canaux_list
 - post /api/django/crm/canaux/ -> django_crm_canaux_create
@@ -2415,7 +2471,10 @@ operations:
 - put /api/django/crm/canaux/{id}/ -> django_crm_canaux_update
 - get /api/django/crm/clients/ -> django_crm_clients_list
 - post /api/django/crm/clients/ -> django_crm_clients_create
+- get /api/django/crm/clients/dormants/ -> django_crm_clients_dormants_retrieve
+- get /api/django/crm/clients/engagement-bulk/ -> django_crm_clients_engagement_bulk_retrieve
 - post /api/django/crm/clients/export-xlsx/ -> django_crm_clients_export_xlsx_create
+- get /api/django/crm/clients/mon-portefeuille/ -> django_crm_clients_mon_portefeuille_retrieve
 - get /api/django/crm/clients/search/ -> django_crm_clients_search_retrieve
 - get /api/django/crm/clients/segments/ -> django_crm_clients_segments_retrieve
 - delete /api/django/crm/clients/{id}/ -> django_crm_clients_destroy
@@ -2427,6 +2486,8 @@ operations:
 - get /api/django/crm/clients/{id}/data-export/ -> django_crm_clients_data_export_retrieve
 - get /api/django/crm/clients/{id}/documents/ -> django_crm_clients_documents_retrieve
 - post /api/django/crm/clients/{id}/dupliquer/ -> django_crm_clients_dupliquer_create
+- get /api/django/crm/clients/{id}/engagement/ -> django_crm_clients_engagement_retrieve
+- post /api/django/crm/clients/{id}/relancer-dormance/ -> django_crm_clients_relancer_dormance_create
 - get /api/django/crm/commissions-partenaire/ -> django_crm_commissions_partenaire_list
 - post /api/django/crm/commissions-partenaire/ -> django_crm_commissions_partenaire_create
 - get /api/django/crm/commissions-partenaire/releve/ -> django_crm_commissions_partenaire_releve_retrieve
@@ -2441,6 +2502,23 @@ operations:
 - get /api/django/crm/concurrents-perte/{id}/ -> django_crm_concurrents_perte_retrieve
 - patch /api/django/crm/concurrents-perte/{id}/ -> django_crm_concurrents_perte_partial_update
 - put /api/django/crm/concurrents-perte/{id}/ -> django_crm_concurrents_perte_update
+- get /api/django/crm/deals-enregistres/ -> django_crm_deals_enregistres_list
+- post /api/django/crm/deals-enregistres/ -> django_crm_deals_enregistres_create
+- get /api/django/crm/deals-enregistres/a-payer/ -> django_crm_deals_enregistres_a_payer_retrieve
+- delete /api/django/crm/deals-enregistres/{id}/ -> django_crm_deals_enregistres_destroy
+- get /api/django/crm/deals-enregistres/{id}/ -> django_crm_deals_enregistres_retrieve
+- patch /api/django/crm/deals-enregistres/{id}/ -> django_crm_deals_enregistres_partial_update
+- put /api/django/crm/deals-enregistres/{id}/ -> django_crm_deals_enregistres_update
+- post /api/django/crm/deals-enregistres/{id}/approuver/ -> django_crm_deals_enregistres_approuver_create
+- post /api/django/crm/deals-enregistres/{id}/rejeter/ -> django_crm_deals_enregistres_rejeter_create
+- get /api/django/crm/defis/ -> django_crm_defis_list
+- post /api/django/crm/defis/ -> django_crm_defis_create
+- delete /api/django/crm/defis/{id}/ -> django_crm_defis_destroy
+- get /api/django/crm/defis/{id}/ -> django_crm_defis_retrieve
+- patch /api/django/crm/defis/{id}/ -> django_crm_defis_partial_update
+- put /api/django/crm/defis/{id}/ -> django_crm_defis_update
+- get /api/django/crm/defis/{id}/classement/ -> django_crm_defis_classement_retrieve
+- get /api/django/crm/defis/{id}/export-xlsx/ -> django_crm_defis_export_xlsx_retrieve
 - get /api/django/crm/equipes/ -> django_crm_equipes_list
 - post /api/django/crm/equipes/ -> django_crm_equipes_create
 - get /api/django/crm/equipes/statistiques/ -> django_crm_equipes_statistiques_retrieve
@@ -2484,6 +2562,7 @@ operations:
 - post /api/django/crm/leads/{id}/noter/ -> django_crm_leads_noter_create
 - get /api/django/crm/leads/{id}/points-contact/ -> django_crm_leads_points_contact_retrieve
 - post /api/django/crm/leads/{id}/restaurer/ -> django_crm_leads_restaurer_create
+- get /api/django/crm/leads/{id}/salle-vente-analytics/ -> django_crm_leads_salle_vente_analytics_retrieve
 - post /api/django/crm/leads/{id}/whatsapp-devis/ -> django_crm_leads_whatsapp_devis_create
 - get /api/django/crm/leads/{lead_id}/playbook/ -> django_crm_leads_playbook_retrieve
 - post /api/django/crm/leads/{lead_id}/playbook/ -> django_crm_leads_playbook_create
@@ -2575,6 +2654,16 @@ operations:
 - get /api/django/crm/revues-compte/{id}/ -> django_crm_revues_compte_retrieve
 - patch /api/django/crm/revues-compte/{id}/ -> django_crm_revues_compte_partial_update
 - put /api/django/crm/revues-compte/{id}/ -> django_crm_revues_compte_update
+- get /api/django/crm/salle-vente/{token}/ -> django_crm_salle_vente_retrieve
+- get /api/django/crm/salles-vente/ -> django_crm_salles_vente_list
+- post /api/django/crm/salles-vente/ -> django_crm_salles_vente_create
+- delete /api/django/crm/salles-vente/{id}/ -> django_crm_salles_vente_destroy
+- get /api/django/crm/salles-vente/{id}/ -> django_crm_salles_vente_retrieve
+- patch /api/django/crm/salles-vente/{id}/ -> django_crm_salles_vente_partial_update
+- put /api/django/crm/salles-vente/{id}/ -> django_crm_salles_vente_update
+- get /api/django/crm/salles-vente/{id}/analytics/ -> django_crm_salles_vente_analytics_retrieve
+- post /api/django/crm/salles-vente/{id}/items/ -> django_crm_salles_vente_items_create
+- delete /api/django/crm/salles-vente/{id}/items/{item_id}/ -> django_crm_salles_vente_items_destroy
 - get /api/django/crm/site-profiles/ -> django_crm_site_profiles_list
 - post /api/django/crm/site-profiles/ -> django_crm_site_profiles_create
 - delete /api/django/crm/site-profiles/{id}/ -> django_crm_site_profiles_destroy
@@ -2626,10 +2715,44 @@ operations:
 - get /api/django/custom-fields/objects/{id}/ -> django_custom_fields_objects_retrieve
 - patch /api/django/custom-fields/objects/{id}/ -> django_custom_fields_objects_partial_update
 - put /api/django/custom-fields/objects/{id}/ -> django_custom_fields_objects_update
+- get /api/django/custom-fields/objets-catalogue/ -> django_custom_fields_objets_catalogue_retrieve
+- post /api/django/custom-fields/objets-catalogue/installer/{code}/ -> django_custom_fields_objets_catalogue_installer_create
 - get /api/django/documents/chantiers/{id}/attestation/ -> django_documents_chantiers_attestation_retrieve
 - get /api/django/documents/chantiers/{id}/bon-livraison/ -> django_documents_chantiers_bon_livraison_retrieve
 - get /api/django/documents/chantiers/{id}/dossier-remise/ -> django_documents_chantiers_dossier_remise_retrieve
 - get /api/django/documents/chantiers/{id}/pv-reception/ -> django_documents_chantiers_pv_reception_retrieve
+- get /api/django/douane/dossiers-export-pieces/ -> django_douane_dossiers_export_pieces_list
+- post /api/django/douane/dossiers-export-pieces/ -> django_douane_dossiers_export_pieces_create
+- delete /api/django/douane/dossiers-export-pieces/{id}/ -> django_douane_dossiers_export_pieces_destroy
+- get /api/django/douane/dossiers-export-pieces/{id}/ -> django_douane_dossiers_export_pieces_retrieve
+- patch /api/django/douane/dossiers-export-pieces/{id}/ -> django_douane_dossiers_export_pieces_partial_update
+- put /api/django/douane/dossiers-export-pieces/{id}/ -> django_douane_dossiers_export_pieces_update
+- get /api/django/douane/dossiers-export/ -> django_douane_dossiers_export_list
+- post /api/django/douane/dossiers-export/ -> django_douane_dossiers_export_create
+- get /api/django/douane/dossiers-export/export/ -> django_douane_dossiers_export_export_retrieve
+- delete /api/django/douane/dossiers-export/{id}/ -> django_douane_dossiers_export_destroy
+- get /api/django/douane/dossiers-export/{id}/ -> django_douane_dossiers_export_retrieve
+- patch /api/django/douane/dossiers-export/{id}/ -> django_douane_dossiers_export_partial_update
+- put /api/django/douane/dossiers-export/{id}/ -> django_douane_dossiers_export_update
+- get /api/django/douane/parametres-douane/ -> django_douane_parametres_douane_list
+- patch /api/django/douane/parametres-douane/{id}/ -> django_douane_parametres_douane_partial_update
+- get /api/django/ecommerce-connect/commandes/ -> django_ecommerce_connect_commandes_list
+- get /api/django/ecommerce-connect/commandes/{id}/ -> django_ecommerce_connect_commandes_retrieve
+- get /api/django/ecommerce-connect/connexions/ -> django_ecommerce_connect_connexions_list
+- post /api/django/ecommerce-connect/connexions/ -> django_ecommerce_connect_connexions_create
+- delete /api/django/ecommerce-connect/connexions/{id}/ -> django_ecommerce_connect_connexions_destroy
+- get /api/django/ecommerce-connect/connexions/{id}/ -> django_ecommerce_connect_connexions_retrieve
+- patch /api/django/ecommerce-connect/connexions/{id}/ -> django_ecommerce_connect_connexions_partial_update
+- put /api/django/ecommerce-connect/connexions/{id}/ -> django_ecommerce_connect_connexions_update
+- post /api/django/ecommerce-connect/connexions/{id}/sync-catalogue/ -> django_ecommerce_connect_connexions_sync_catalogue_create
+- get /api/django/ecommerce-connect/produits-sync/ -> django_ecommerce_connect_produits_sync_list
+- post /api/django/ecommerce-connect/produits-sync/ -> django_ecommerce_connect_produits_sync_create
+- delete /api/django/ecommerce-connect/produits-sync/{id}/ -> django_ecommerce_connect_produits_sync_destroy
+- get /api/django/ecommerce-connect/produits-sync/{id}/ -> django_ecommerce_connect_produits_sync_retrieve
+- patch /api/django/ecommerce-connect/produits-sync/{id}/ -> django_ecommerce_connect_produits_sync_partial_update
+- put /api/django/ecommerce-connect/produits-sync/{id}/ -> django_ecommerce_connect_produits_sync_update
+- post /api/django/ecommerce-connect/shopify/webhook/commande/ -> django_ecommerce_connect_shopify_webhook_commande_create
+- post /api/django/ecommerce-connect/woocommerce/webhook/commande/ -> django_ecommerce_connect_woocommerce_webhook_commande_create
 - get /api/django/education/annees-scolaires/ -> django_education_annees_scolaires_list
 - post /api/django/education/annees-scolaires/ -> django_education_annees_scolaires_create
 - delete /api/django/education/annees-scolaires/{id}/ -> django_education_annees_scolaires_destroy
@@ -2863,6 +2986,7 @@ operations:
 - get /api/django/esg/periodes-esg/{id}/indicateurs/ -> django_esg_periodes_esg_indicateurs_retrieve
 - get /api/django/esg/periodes-esg/{id}/rapport-pdf/ -> django_esg_periodes_esg_rapport_pdf_retrieve
 - get /api/django/extensions/catalogue/ -> django_extensions_catalogue_list
+- get /api/django/extensions/journal/ -> django_extensions_journal_retrieve
 - get /api/django/facturation/avoirs/ -> django_facturation_avoirs_list
 - get /api/django/facturation/avoirs/{id}/ -> django_facturation_avoirs_retrieve
 - post /api/django/facturation/avoirs/{id}/annuler/ -> django_facturation_avoirs_annuler_create
@@ -5011,6 +5135,13 @@ operations:
 - get /api/django/marketing/approbations-envoi-campagne/{id}/ -> django_marketing_approbations_envoi_campagne_retrieve
 - post /api/django/marketing/approbations-envoi-campagne/{id}/approuver/ -> django_marketing_approbations_envoi_campagne_approuver_create
 - post /api/django/marketing/approbations-envoi-campagne/{id}/rejeter/ -> django_marketing_approbations_envoi_campagne_rejeter_create
+- get /api/django/marketing/arcs-journey/ -> django_marketing_arcs_journey_list
+- post /api/django/marketing/arcs-journey/ -> django_marketing_arcs_journey_create
+- delete /api/django/marketing/arcs-journey/{id}/ -> django_marketing_arcs_journey_destroy
+- get /api/django/marketing/arcs-journey/{id}/ -> django_marketing_arcs_journey_retrieve
+- patch /api/django/marketing/arcs-journey/{id}/ -> django_marketing_arcs_journey_partial_update
+- put /api/django/marketing/arcs-journey/{id}/ -> django_marketing_arcs_journey_update
+- get /api/django/marketing/attribution/comparaison/ -> django_marketing_attribution_comparaison_retrieve
 - get /api/django/marketing/avis-clients/ -> django_marketing_avis_clients_list
 - post /api/django/marketing/avis-clients/ -> django_marketing_avis_clients_create
 - delete /api/django/marketing/avis-clients/{id}/ -> django_marketing_avis_clients_destroy
@@ -5025,10 +5156,18 @@ operations:
 - get /api/django/marketing/billets-evenement/{id}/ -> django_marketing_billets_evenement_retrieve
 - patch /api/django/marketing/billets-evenement/{id}/ -> django_marketing_billets_evenement_partial_update
 - put /api/django/marketing/billets-evenement/{id}/ -> django_marketing_billets_evenement_update
+- get /api/django/marketing/blocs-contenu/ -> django_marketing_blocs_contenu_list
+- post /api/django/marketing/blocs-contenu/ -> django_marketing_blocs_contenu_create
+- delete /api/django/marketing/blocs-contenu/{id}/ -> django_marketing_blocs_contenu_destroy
+- get /api/django/marketing/blocs-contenu/{id}/ -> django_marketing_blocs_contenu_retrieve
+- patch /api/django/marketing/blocs-contenu/{id}/ -> django_marketing_blocs_contenu_partial_update
+- put /api/django/marketing/blocs-contenu/{id}/ -> django_marketing_blocs_contenu_update
 - get /api/django/marketing/campagnes/ -> django_marketing_campagnes_list
 - post /api/django/marketing/campagnes/ -> django_marketing_campagnes_create
+- get /api/django/marketing/campagnes/export/ -> django_marketing_campagnes_export_retrieve
 - get /api/django/marketing/campagnes/generer-ia-disponible/ -> django_marketing_campagnes_generer_ia_disponible_retrieve
 - post /api/django/marketing/campagnes/generer-ia/ -> django_marketing_campagnes_generer_ia_create
+- post /api/django/marketing/campagnes/importer-couts/ -> django_marketing_campagnes_importer_couts_create
 - get /api/django/marketing/campagnes/kanban/ -> django_marketing_campagnes_kanban_retrieve
 - get /api/django/marketing/campagnes/modeles/ -> django_marketing_campagnes_modeles_retrieve
 - get /api/django/marketing/campagnes/reporting/ -> django_marketing_campagnes_reporting_retrieve
@@ -5043,10 +5182,12 @@ operations:
 - get /api/django/marketing/campagnes/{id}/cout-sms/ -> django_marketing_campagnes_cout_sms_retrieve
 - post /api/django/marketing/campagnes/{id}/creer-depuis-modele/ -> django_marketing_campagnes_creer_depuis_modele_create
 - post /api/django/marketing/campagnes/{id}/dupliquer/ -> django_marketing_campagnes_dupliquer_create
+- get /api/django/marketing/campagnes/{id}/envois/export/ -> django_marketing_campagnes_envois_export_retrieve
 - post /api/django/marketing/campagnes/{id}/envoyer-test/ -> django_marketing_campagnes_envoyer_test_create
 - post /api/django/marketing/campagnes/{id}/envoyer/ -> django_marketing_campagnes_envoyer_create
 - get /api/django/marketing/campagnes/{id}/kpi-mere/ -> django_marketing_campagnes_kpi_mere_retrieve
 - get /api/django/marketing/campagnes/{id}/precheck/ -> django_marketing_campagnes_precheck_retrieve
+- get /api/django/marketing/campagnes/{id}/rapport-pdf/ -> django_marketing_campagnes_rapport_pdf_retrieve
 - post /api/django/marketing/campagnes/{id}/rattacher/ -> django_marketing_campagnes_rattacher_create
 - get /api/django/marketing/campagnes/{id}/rendu-lead/ -> django_marketing_campagnes_rendu_lead_retrieve
 - post /api/django/marketing/campagnes/{id}/renvoyer-echecs/ -> django_marketing_campagnes_renvoyer_echecs_create
@@ -5122,12 +5263,14 @@ operations:
 - get /api/django/marketing/evenements-marketing/{id}/badges/ -> django_marketing_evenements_marketing_badges_retrieve
 - get /api/django/marketing/evenements-marketing/{id}/borne/ -> django_marketing_evenements_marketing_borne_retrieve
 - post /api/django/marketing/evenements-marketing/{id}/cloturer-presences/ -> django_marketing_evenements_marketing_cloturer_presences_create
+- post /api/django/marketing/evenements-marketing/{id}/importer-inscrits/ -> django_marketing_evenements_marketing_importer_inscrits_create
 - get /api/django/marketing/formulaires-intake/ -> django_marketing_formulaires_intake_list
 - post /api/django/marketing/formulaires-intake/ -> django_marketing_formulaires_intake_create
 - delete /api/django/marketing/formulaires-intake/{id}/ -> django_marketing_formulaires_intake_destroy
 - get /api/django/marketing/formulaires-intake/{id}/ -> django_marketing_formulaires_intake_retrieve
 - patch /api/django/marketing/formulaires-intake/{id}/ -> django_marketing_formulaires_intake_partial_update
 - put /api/django/marketing/formulaires-intake/{id}/ -> django_marketing_formulaires_intake_update
+- get /api/django/marketing/heatmap-engagement/ -> django_marketing_heatmap_engagement_retrieve
 - get /api/django/marketing/inscriptions-evenement/ -> django_marketing_inscriptions_evenement_list
 - post /api/django/marketing/inscriptions-evenement/ -> django_marketing_inscriptions_evenement_create
 - delete /api/django/marketing/inscriptions-evenement/{id}/ -> django_marketing_inscriptions_evenement_destroy
@@ -5156,12 +5299,25 @@ operations:
 - post /api/django/marketing/listes-diffusion/{id}/importer/ -> django_marketing_listes_diffusion_importer_create
 - get /api/django/marketing/messages-whatsapp/ -> django_marketing_messages_whatsapp_list
 - get /api/django/marketing/messages-whatsapp/{id}/ -> django_marketing_messages_whatsapp_retrieve
+- get /api/django/marketing/modeles-journey/ -> django_marketing_modeles_journey_list
+- post /api/django/marketing/modeles-journey/ -> django_marketing_modeles_journey_create
+- delete /api/django/marketing/modeles-journey/{id}/ -> django_marketing_modeles_journey_destroy
+- get /api/django/marketing/modeles-journey/{id}/ -> django_marketing_modeles_journey_retrieve
+- patch /api/django/marketing/modeles-journey/{id}/ -> django_marketing_modeles_journey_partial_update
+- put /api/django/marketing/modeles-journey/{id}/ -> django_marketing_modeles_journey_update
+- post /api/django/marketing/modeles-journey/{id}/instancier/ -> django_marketing_modeles_journey_instancier_create
 - get /api/django/marketing/mouvements-fidelite/ -> django_marketing_mouvements_fidelite_list
 - post /api/django/marketing/mouvements-fidelite/ -> django_marketing_mouvements_fidelite_create
 - delete /api/django/marketing/mouvements-fidelite/{id}/ -> django_marketing_mouvements_fidelite_destroy
 - get /api/django/marketing/mouvements-fidelite/{id}/ -> django_marketing_mouvements_fidelite_retrieve
 - patch /api/django/marketing/mouvements-fidelite/{id}/ -> django_marketing_mouvements_fidelite_partial_update
 - put /api/django/marketing/mouvements-fidelite/{id}/ -> django_marketing_mouvements_fidelite_update
+- get /api/django/marketing/noeuds-journey/ -> django_marketing_noeuds_journey_list
+- post /api/django/marketing/noeuds-journey/ -> django_marketing_noeuds_journey_create
+- delete /api/django/marketing/noeuds-journey/{id}/ -> django_marketing_noeuds_journey_destroy
+- get /api/django/marketing/noeuds-journey/{id}/ -> django_marketing_noeuds_journey_retrieve
+- patch /api/django/marketing/noeuds-journey/{id}/ -> django_marketing_noeuds_journey_partial_update
+- put /api/django/marketing/noeuds-journey/{id}/ -> django_marketing_noeuds_journey_update
 - get /api/django/marketing/ouvertures-partage/ -> django_marketing_ouvertures_partage_list
 - post /api/django/marketing/ouvertures-partage/ -> django_marketing_ouvertures_partage_create
 - post /api/django/marketing/ouvertures-partage/ping/ -> django_marketing_ouvertures_partage_ping_create
@@ -5169,6 +5325,11 @@ operations:
 - get /api/django/marketing/ouvertures-partage/{id}/ -> django_marketing_ouvertures_partage_retrieve
 - patch /api/django/marketing/ouvertures-partage/{id}/ -> django_marketing_ouvertures_partage_partial_update
 - put /api/django/marketing/ouvertures-partage/{id}/ -> django_marketing_ouvertures_partage_update
+- get /api/django/marketing/parametres/ -> django_marketing_parametres_retrieve
+- patch /api/django/marketing/parametres/ -> django_marketing_parametres_partial_update
+- put /api/django/marketing/parametres/ -> django_marketing_parametres_update
+- get /api/django/marketing/preferences/{token}/ -> django_marketing_preferences_retrieve
+- post /api/django/marketing/preferences/{token}/ -> django_marketing_preferences_create
 - get /api/django/marketing/questions-evenement/ -> django_marketing_questions_evenement_list
 - post /api/django/marketing/questions-evenement/ -> django_marketing_questions_evenement_create
 - delete /api/django/marketing/questions-evenement/{id}/ -> django_marketing_questions_evenement_destroy
@@ -5176,6 +5337,7 @@ operations:
 - patch /api/django/marketing/questions-evenement/{id}/ -> django_marketing_questions_evenement_partial_update
 - put /api/django/marketing/questions-evenement/{id}/ -> django_marketing_questions_evenement_update
 - get /api/django/marketing/r/{token}/ -> django_marketing_r_retrieve
+- get /api/django/marketing/registre-consentement/export-pdf/ -> django_marketing_registre_consentement_export_pdf_retrieve
 - get /api/django/marketing/regles-upsell/ -> django_marketing_regles_upsell_list
 - post /api/django/marketing/regles-upsell/ -> django_marketing_regles_upsell_create
 - post /api/django/marketing/regles-upsell/suggestions/ -> django_marketing_regles_upsell_suggestions_create
@@ -5190,12 +5352,14 @@ operations:
 - patch /api/django/marketing/relances-devis-abandonnes/{id}/ -> django_marketing_relances_devis_abandonnes_partial_update
 - put /api/django/marketing/relances-devis-abandonnes/{id}/ -> django_marketing_relances_devis_abandonnes_update
 - get /api/django/marketing/reponses-enquete/{reponse_id}/certificat/ -> django_marketing_reponses_enquete_certificat_retrieve
+- get /api/django/marketing/scores-maturite/{lead_id}/ -> django_marketing_scores_maturite_retrieve
 - get /api/django/marketing/segments-marketing/ -> django_marketing_segments_marketing_list
 - post /api/django/marketing/segments-marketing/ -> django_marketing_segments_marketing_create
 - delete /api/django/marketing/segments-marketing/{id}/ -> django_marketing_segments_marketing_destroy
 - get /api/django/marketing/segments-marketing/{id}/ -> django_marketing_segments_marketing_retrieve
 - patch /api/django/marketing/segments-marketing/{id}/ -> django_marketing_segments_marketing_partial_update
 - put /api/django/marketing/segments-marketing/{id}/ -> django_marketing_segments_marketing_update
+- get /api/django/marketing/segments-marketing/{id}/export/ -> django_marketing_segments_marketing_export_retrieve
 - post /api/django/marketing/segments-marketing/{id}/exporter-audience-meta/ -> django_marketing_segments_marketing_exporter_audience_meta_create
 - get /api/django/marketing/segments-marketing/{id}/previsualiser/ -> django_marketing_segments_marketing_previsualiser_retrieve
 - get /api/django/marketing/sequences-relance/ -> django_marketing_sequences_relance_list
@@ -5223,6 +5387,13 @@ operations:
 - patch /api/django/marketing/types-evenement/{id}/ -> django_marketing_types_evenement_partial_update
 - put /api/django/marketing/types-evenement/{id}/ -> django_marketing_types_evenement_update
 - post /api/django/marketing/types-evenement/{id}/creer-evenement/ -> django_marketing_types_evenement_creer_evenement_create
+- get /api/django/marketing/versions-formulaire-intake/ -> django_marketing_versions_formulaire_intake_list
+- post /api/django/marketing/versions-formulaire-intake/ -> django_marketing_versions_formulaire_intake_create
+- delete /api/django/marketing/versions-formulaire-intake/{id}/ -> django_marketing_versions_formulaire_intake_destroy
+- get /api/django/marketing/versions-formulaire-intake/{id}/ -> django_marketing_versions_formulaire_intake_retrieve
+- patch /api/django/marketing/versions-formulaire-intake/{id}/ -> django_marketing_versions_formulaire_intake_partial_update
+- put /api/django/marketing/versions-formulaire-intake/{id}/ -> django_marketing_versions_formulaire_intake_update
+- post /api/django/marketing/versions-formulaire-intake/{id}/publier/ -> django_marketing_versions_formulaire_intake_publier_create
 - post /api/django/marketing/webhooks/brevo/ -> django_marketing_webhooks_brevo_create
 - post /api/django/marketing/webhooks/sms-stop/ -> django_marketing_webhooks_sms_stop_create
 - get /api/django/migration/lots-migration/ -> django_migration_lots_migration_list
@@ -5299,6 +5470,49 @@ operations:
 - put /api/django/monitoring/warranties/{id}/ -> django_monitoring_warranties_update
 - get /api/django/monitoring/warranties/{id}/curve/ -> django_monitoring_warranties_curve_retrieve
 - get /api/django/monitoring/warranties/{id}/status/ -> django_monitoring_warranties_status_retrieve
+- get /api/django/mrp/analyse-couts/ -> django_mrp_analyse_couts_list
+- get /api/django/mrp/charge-postes/ -> django_mrp_charge_postes_list
+- get /api/django/mrp/couts-standard/ -> django_mrp_couts_standard_list
+- post /api/django/mrp/couts-standard/figer/ -> django_mrp_couts_standard_figer_create
+- get /api/django/mrp/couts-standard/{id}/ -> django_mrp_couts_standard_retrieve
+- get /api/django/mrp/gammes/ -> django_mrp_gammes_list
+- post /api/django/mrp/gammes/ -> django_mrp_gammes_create
+- delete /api/django/mrp/gammes/{id}/ -> django_mrp_gammes_destroy
+- get /api/django/mrp/gammes/{id}/ -> django_mrp_gammes_retrieve
+- patch /api/django/mrp/gammes/{id}/ -> django_mrp_gammes_partial_update
+- put /api/django/mrp/gammes/{id}/ -> django_mrp_gammes_update
+- post /api/django/mrp/mrp-run/ -> django_mrp_mrp_run_create
+- get /api/django/mrp/oee-postes/ -> django_mrp_oee_postes_list
+- get /api/django/mrp/operations-gamme/ -> django_mrp_operations_gamme_list
+- post /api/django/mrp/operations-gamme/ -> django_mrp_operations_gamme_create
+- delete /api/django/mrp/operations-gamme/{id}/ -> django_mrp_operations_gamme_destroy
+- get /api/django/mrp/operations-gamme/{id}/ -> django_mrp_operations_gamme_retrieve
+- patch /api/django/mrp/operations-gamme/{id}/ -> django_mrp_operations_gamme_partial_update
+- put /api/django/mrp/operations-gamme/{id}/ -> django_mrp_operations_gamme_update
+- get /api/django/mrp/operations-of/ -> django_mrp_operations_of_list
+- get /api/django/mrp/operations-of/{id}/ -> django_mrp_operations_of_retrieve
+- post /api/django/mrp/operations-of/{id}/demarrer/ -> django_mrp_operations_of_demarrer_create
+- post /api/django/mrp/operations-of/{id}/pauser/ -> django_mrp_operations_of_pauser_create
+- patch /api/django/mrp/operations-of/{id}/replanifier/ -> django_mrp_operations_of_replanifier_partial_update
+- post /api/django/mrp/operations-of/{id}/reprendre/ -> django_mrp_operations_of_reprendre_create
+- post /api/django/mrp/operations-of/{id}/terminer/ -> django_mrp_operations_of_terminer_create
+- get /api/django/mrp/ordres-fabrication/ -> django_mrp_ordres_fabrication_list
+- post /api/django/mrp/ordres-fabrication/ -> django_mrp_ordres_fabrication_create
+- delete /api/django/mrp/ordres-fabrication/{id}/ -> django_mrp_ordres_fabrication_destroy
+- get /api/django/mrp/ordres-fabrication/{id}/ -> django_mrp_ordres_fabrication_retrieve
+- patch /api/django/mrp/ordres-fabrication/{id}/ -> django_mrp_ordres_fabrication_partial_update
+- put /api/django/mrp/ordres-fabrication/{id}/ -> django_mrp_ordres_fabrication_update
+- post /api/django/mrp/ordres-fabrication/{id}/annuler/ -> django_mrp_ordres_fabrication_annuler_create
+- post /api/django/mrp/ordres-fabrication/{id}/cloturer/ -> django_mrp_ordres_fabrication_cloturer_create
+- post /api/django/mrp/ordres-fabrication/{id}/confirmer/ -> django_mrp_ordres_fabrication_confirmer_create
+- get /api/django/mrp/ordres-fabrication/{id}/dispo-composants/ -> django_mrp_ordres_fabrication_dispo_composants_retrieve
+- get /api/django/mrp/postes-charge/ -> django_mrp_postes_charge_list
+- post /api/django/mrp/postes-charge/ -> django_mrp_postes_charge_create
+- delete /api/django/mrp/postes-charge/{id}/ -> django_mrp_postes_charge_destroy
+- get /api/django/mrp/postes-charge/{id}/ -> django_mrp_postes_charge_retrieve
+- patch /api/django/mrp/postes-charge/{id}/ -> django_mrp_postes_charge_partial_update
+- put /api/django/mrp/postes-charge/{id}/ -> django_mrp_postes_charge_update
+- get /api/django/mrp/postes-charge/{id}/oee/ -> django_mrp_postes_charge_oee_retrieve
 - get /api/django/notifications/annonces/ -> django_notifications_annonces_list
 - post /api/django/notifications/annonces/ -> django_notifications_annonces_create
 - delete /api/django/notifications/annonces/{id}/ -> django_notifications_annonces_destroy
@@ -5345,10 +5559,16 @@ operations:
 - get /api/django/notifications/working-hours/ -> django_notifications_working_hours_retrieve
 - patch /api/django/notifications/working-hours/{id}/ -> django_notifications_working_hours_partial_update
 - put /api/django/notifications/working-hours/{id}/ -> django_notifications_working_hours_update
+- get /api/django/onboarding/items-masques/ -> django_onboarding_items_masques_list
+- post /api/django/onboarding/items-masques/{id}/demasquer/ -> django_onboarding_items_masques_demasquer_create
+- post /api/django/onboarding/items-masques/{id}/masquer/ -> django_onboarding_items_masques_masquer_create
 - get /api/django/onboarding/progress/ -> django_onboarding_progress_retrieve
 - post /api/django/onboarding/progress/ignorer-tout/ -> django_onboarding_progress_ignorer_tout_create
 - post /api/django/onboarding/progress/{id}/ignorer/ -> django_onboarding_progress_ignorer_create
 - post /api/django/onboarding/progress/{id}/marquer-fait/ -> django_onboarding_progress_marquer_fait_create
+- get /api/django/onboarding/tours/ -> django_onboarding_tours_list
+- post /api/django/onboarding/tours/{id}/revoir/ -> django_onboarding_tours_revoir_create
+- post /api/django/onboarding/tours/{id}/vu/ -> django_onboarding_tours_vu_create
 - get /api/django/outillage/kit-items/ -> django_outillage_kit_items_list
 - post /api/django/outillage/kit-items/ -> django_outillage_kit_items_create
 - delete /api/django/outillage/kit-items/{id}/ -> django_outillage_kit_items_destroy
@@ -5561,9 +5781,21 @@ operations:
 - get /api/django/parametres/email-templates/{id}/ -> django_parametres_email_templates_retrieve
 - patch /api/django/parametres/email-templates/{id}/ -> django_parametres_email_templates_partial_update
 - put /api/django/parametres/email-templates/{id}/ -> django_parametres_email_templates_update
+- get /api/django/parametres/gabarits-document/ -> django_parametres_gabarits_document_list
+- get /api/django/parametres/gabarits-document/{code}/ -> django_parametres_gabarits_document_retrieve
+- get /api/django/parametres/gabarits-document/{code}/rendre/ -> django_parametres_gabarits_document_rendre_retrieve
 - get /api/django/parametres/messages/ -> django_parametres_messages_retrieve
 - patch /api/django/parametres/messages/ -> django_parametres_messages_partial_update
 - put /api/django/parametres/messages/ -> django_parametres_messages_update
+- get /api/django/parametres/pos-boutiques/ -> django_parametres_pos_boutiques_list
+- post /api/django/parametres/pos-boutiques/ -> django_parametres_pos_boutiques_create
+- delete /api/django/parametres/pos-boutiques/{id}/ -> django_parametres_pos_boutiques_destroy
+- get /api/django/parametres/pos-boutiques/{id}/ -> django_parametres_pos_boutiques_retrieve
+- patch /api/django/parametres/pos-boutiques/{id}/ -> django_parametres_pos_boutiques_partial_update
+- put /api/django/parametres/pos-boutiques/{id}/ -> django_parametres_pos_boutiques_update
+- get /api/django/parametres/pos/ -> django_parametres_pos_retrieve
+- patch /api/django/parametres/pos/update/ -> django_parametres_pos_update_partial_update
+- put /api/django/parametres/pos/update/ -> django_parametres_pos_update_update
 - get /api/django/parametres/statuts/ -> django_parametres_statuts_list
 - post /api/django/parametres/statuts/ -> django_parametres_statuts_create
 - put /api/django/parametres/statuts/bulk/ -> django_parametres_statuts_bulk_update
@@ -5661,6 +5893,7 @@ operations:
 - get /api/django/pos/config-materiel/{id}/ -> django_pos_config_materiel_retrieve
 - patch /api/django/pos/config-materiel/{id}/ -> django_pos_config_materiel_partial_update
 - put /api/django/pos/config-materiel/{id}/ -> django_pos_config_materiel_update
+- post /api/django/pos/definir-pin/ -> django_pos_definir_pin_create
 - get /api/django/pos/retraits/ -> django_pos_retraits_list
 - post /api/django/pos/retraits/ -> django_pos_retraits_create
 - delete /api/django/pos/retraits/{id}/ -> django_pos_retraits_destroy
@@ -5677,22 +5910,42 @@ operations:
 - patch /api/django/pos/sessions/{id}/ -> django_pos_sessions_partial_update
 - put /api/django/pos/sessions/{id}/ -> django_pos_sessions_update
 - post /api/django/pos/sessions/{id}/cloturer/ -> django_pos_sessions_cloturer_create
+- get /api/django/pos/sessions/{id}/rapport-x/ -> django_pos_sessions_rapport_x_retrieve
+- get /api/django/pos/sessions/{id}/rapport-z-pdf/ -> django_pos_sessions_rapport_z_pdf_retrieve
 - get /api/django/pos/sessions/{id}/rapport-z/ -> django_pos_sessions_rapport_z_retrieve
 - get /api/django/pos/ventes/ -> django_pos_ventes_list
 - post /api/django/pos/ventes/ -> django_pos_ventes_create
 - get /api/django/pos/ventes/dashboard-export/ -> django_pos_ventes_dashboard_export_retrieve
+- get /api/django/pos/ventes/dashboard-retail-export/ -> django_pos_ventes_dashboard_retail_export_retrieve
+- get /api/django/pos/ventes/dashboard-retail/ -> django_pos_ventes_dashboard_retail_retrieve
 - get /api/django/pos/ventes/dashboard/ -> django_pos_ventes_dashboard_retrieve
+- post /api/django/pos/ventes/emettre-carte-cadeau/ -> django_pos_ventes_emettre_carte_cadeau_create
 - post /api/django/pos/ventes/encaisser-facture/ -> django_pos_ventes_encaisser_facture_create
 - get /api/django/pos/ventes/factures-recherche/ -> django_pos_ventes_factures_recherche_retrieve
 - delete /api/django/pos/ventes/{id}/ -> django_pos_ventes_destroy
 - get /api/django/pos/ventes/{id}/ -> django_pos_ventes_retrieve
 - patch /api/django/pos/ventes/{id}/ -> django_pos_ventes_partial_update
 - put /api/django/pos/ventes/{id}/ -> django_pos_ventes_update
+- post /api/django/pos/ventes/{id}/arrhes/ -> django_pos_ventes_arrhes_create
+- post /api/django/pos/ventes/{id}/coupon/ -> django_pos_ventes_coupon_create
 - post /api/django/pos/ventes/{id}/lignes/ -> django_pos_ventes_lignes_create
+- post /api/django/pos/ventes/{id}/payer-carte-cadeau/ -> django_pos_ventes_payer_carte_cadeau_create
+- get /api/django/pos/ventes/{id}/promotions/ -> django_pos_ventes_promotions_retrieve
+- post /api/django/pos/ventes/{id}/remettre-marchandise/ -> django_pos_ventes_remettre_marchandise_create
+- post /api/django/pos/ventes/{id}/solde-arrhes/ -> django_pos_ventes_solde_arrhes_create
+- get /api/django/pos/ventes/{id}/ticket-arrhes-pdf/ -> django_pos_ventes_ticket_arrhes_pdf_retrieve
 - post /api/django/pos/ventes/{id}/ticket-escpos/ -> django_pos_ventes_ticket_escpos_create
 - get /api/django/pos/ventes/{id}/ticket-pdf/ -> django_pos_ventes_ticket_pdf_retrieve
 - post /api/django/pos/ventes/{id}/ticket-share-link/ -> django_pos_ventes_ticket_share_link_create
 - post /api/django/pos/ventes/{id}/valider/ -> django_pos_ventes_valider_create
+- post /api/django/pos/verifier-pin/ -> django_pos_verifier_pin_create
+- get /api/django/promotions/regles/ -> django_promotions_regles_list
+- post /api/django/promotions/regles/ -> django_promotions_regles_create
+- post /api/django/promotions/regles/simuler/ -> django_promotions_regles_simuler_create
+- delete /api/django/promotions/regles/{id}/ -> django_promotions_regles_destroy
+- get /api/django/promotions/regles/{id}/ -> django_promotions_regles_retrieve
+- patch /api/django/promotions/regles/{id}/ -> django_promotions_regles_partial_update
+- put /api/django/promotions/regles/{id}/ -> django_promotions_regles_update
 - get /api/django/public/bcf/{token}/ -> django_public_bcf_retrieve
 - get /api/django/public/contrats/portail/{token}/ -> django_public_contrats_portail_retrieve
 - post /api/django/public/contrats/portail/{token}/{contrat_id}/demande/ -> django_public_contrats_portail_demande_create
@@ -5727,6 +5980,7 @@ operations:
 - post /api/django/public/sav/ticket/{token}/satisfaction/ -> django_public_sav_ticket_satisfaction_create
 - get /api/django/public/stock/portail-fournisseur/{token}/ -> django_public_stock_portail_fournisseur_retrieve
 - post /api/django/public/stock/portail-fournisseur/{token}/bcf/{bcf_id}/confirmer/ -> django_public_stock_portail_fournisseur_bcf_confirmer_create
+- post /api/django/public/stock/quai-checkin/ -> django_public_stock_quai_checkin_create
 - get /api/django/public/stock/showroom/{token}/produit/{produit_id}/ -> django_public_stock_showroom_produit_retrieve
 - post /api/django/public/stock/showroom/{token}/produit/{produit_id}/etre-rappele/ -> django_public_stock_showroom_produit_etre_rappele_create
 - get /api/django/public/suivi/{token}/ -> django_public_suivi_retrieve
@@ -6265,6 +6519,7 @@ operations:
 - patch /api/django/reporting/rapport-definitions/{id}/ -> django_reporting_rapport_definitions_partial_update
 - put /api/django/reporting/rapport-definitions/{id}/ -> django_reporting_rapport_definitions_update
 - post /api/django/reporting/rapport-definitions/{id}/executer/ -> django_reporting_rapport_definitions_executer_create
+- get /api/django/reporting/rapport-definitions/{id}/export/ -> django_reporting_rapport_definitions_export_retrieve
 - get /api/django/reporting/reports/field/ -> django_reporting_reports_field_retrieve
 - get /api/django/reporting/reports/kpi-federes/ -> django_reporting_reports_kpi_federes_retrieve
 - get /api/django/reporting/reports/sales/ -> django_reporting_reports_sales_retrieve
@@ -7125,6 +7380,49 @@ operations:
 - get /api/django/sav/worksheet-modeles/{id}/ -> django_sav_worksheet_modeles_retrieve
 - patch /api/django/sav/worksheet-modeles/{id}/ -> django_sav_worksheet_modeles_partial_update
 - put /api/django/sav/worksheet-modeles/{id}/ -> django_sav_worksheet_modeles_update
+- get /api/django/scm/classification-abc/ -> django_scm_classification_abc_list
+- post /api/django/scm/classification-abc/ -> django_scm_classification_abc_create
+- post /api/django/scm/classification-abc/recalculer/ -> django_scm_classification_abc_recalculer_create
+- delete /api/django/scm/classification-abc/{id}/ -> django_scm_classification_abc_destroy
+- get /api/django/scm/classification-abc/{id}/ -> django_scm_classification_abc_retrieve
+- patch /api/django/scm/classification-abc/{id}/ -> django_scm_classification_abc_partial_update
+- put /api/django/scm/classification-abc/{id}/ -> django_scm_classification_abc_update
+- get /api/django/scm/cycles-sop/ -> django_scm_cycles_sop_list
+- post /api/django/scm/cycles-sop/ -> django_scm_cycles_sop_create
+- delete /api/django/scm/cycles-sop/{id}/ -> django_scm_cycles_sop_destroy
+- get /api/django/scm/cycles-sop/{id}/ -> django_scm_cycles_sop_retrieve
+- patch /api/django/scm/cycles-sop/{id}/ -> django_scm_cycles_sop_partial_update
+- put /api/django/scm/cycles-sop/{id}/ -> django_scm_cycles_sop_update
+- post /api/django/scm/cycles-sop/{id}/ajuster-demande/ -> django_scm_cycles_sop_ajuster_demande_create
+- post /api/django/scm/cycles-sop/{id}/avancer-statut/ -> django_scm_cycles_sop_avancer_statut_create
+- post /api/django/scm/cycles-sop/{id}/calculer-offre/ -> django_scm_cycles_sop_calculer_offre_create
+- get /api/django/scm/cycles-sop/{id}/ecarts/ -> django_scm_cycles_sop_ecarts_retrieve
+- get /api/django/scm/cycles-sop/{id}/historique/ -> django_scm_cycles_sop_historique_retrieve
+- get /api/django/scm/cycles-sop/{id}/impact-financier/ -> django_scm_cycles_sop_impact_financier_retrieve
+- get /api/django/scm/cycles-sop/{id}/lignes-demande/ -> django_scm_cycles_sop_lignes_demande_retrieve
+- post /api/django/scm/cycles-sop/{id}/reouvrir/ -> django_scm_cycles_sop_reouvrir_create
+- get /api/django/scm/evenements-demande/ -> django_scm_evenements_demande_list
+- post /api/django/scm/evenements-demande/ -> django_scm_evenements_demande_create
+- delete /api/django/scm/evenements-demande/{id}/ -> django_scm_evenements_demande_destroy
+- get /api/django/scm/evenements-demande/{id}/ -> django_scm_evenements_demande_retrieve
+- patch /api/django/scm/evenements-demande/{id}/ -> django_scm_evenements_demande_partial_update
+- put /api/django/scm/evenements-demande/{id}/ -> django_scm_evenements_demande_update
+- get /api/django/scm/politiques-stock/ -> django_scm_politiques_stock_list
+- post /api/django/scm/politiques-stock/ -> django_scm_politiques_stock_create
+- post /api/django/scm/politiques-stock/recalculer/ -> django_scm_politiques_stock_recalculer_create
+- delete /api/django/scm/politiques-stock/{id}/ -> django_scm_politiques_stock_destroy
+- get /api/django/scm/politiques-stock/{id}/ -> django_scm_politiques_stock_retrieve
+- patch /api/django/scm/politiques-stock/{id}/ -> django_scm_politiques_stock_partial_update
+- put /api/django/scm/politiques-stock/{id}/ -> django_scm_politiques_stock_update
+- get /api/django/scm/previsions-demande/ -> django_scm_previsions_demande_list
+- post /api/django/scm/previsions-demande/ -> django_scm_previsions_demande_create
+- post /api/django/scm/previsions-demande/generer/ -> django_scm_previsions_demande_generer_create
+- delete /api/django/scm/previsions-demande/{id}/ -> django_scm_previsions_demande_destroy
+- get /api/django/scm/previsions-demande/{id}/ -> django_scm_previsions_demande_retrieve
+- patch /api/django/scm/previsions-demande/{id}/ -> django_scm_previsions_demande_partial_update
+- put /api/django/scm/previsions-demande/{id}/ -> django_scm_previsions_demande_update
+- get /api/django/scm/tableau-bord-reappro/ -> django_scm_tableau_bord_reappro_list
+- post /api/django/scm/tableau-bord-reappro/creer-bcf/ -> django_scm_tableau_bord_reappro_creer_bcf_create
 - get /api/django/stock/achats-parametres/ -> django_stock_achats_parametres_retrieve
 - patch /api/django/stock/achats-parametres/{id}/ -> django_stock_achats_parametres_partial_update
 - get /api/django/stock/acomptes-fournisseur/ -> django_stock_acomptes_fournisseur_list
@@ -7202,6 +7500,15 @@ operations:
 - patch /api/django/stock/emplacements/{id}/ -> django_stock_emplacements_partial_update
 - put /api/django/stock/emplacements/{id}/ -> django_stock_emplacements_update
 - get /api/django/stock/emplacements/{id}/etiquettes-kanban/ -> django_stock_emplacements_etiquettes_kanban_retrieve
+- get /api/django/stock/expeditions/ -> django_stock_expeditions_list
+- post /api/django/stock/expeditions/ -> django_stock_expeditions_create
+- get /api/django/stock/expeditions/tarifs/ -> django_stock_expeditions_tarifs_retrieve
+- delete /api/django/stock/expeditions/{id}/ -> django_stock_expeditions_destroy
+- get /api/django/stock/expeditions/{id}/ -> django_stock_expeditions_retrieve
+- patch /api/django/stock/expeditions/{id}/ -> django_stock_expeditions_partial_update
+- put /api/django/stock/expeditions/{id}/ -> django_stock_expeditions_update
+- post /api/django/stock/expeditions/{id}/generer-etiquette/ -> django_stock_expeditions_generer_etiquette_create
+- get /api/django/stock/expeditions/{id}/tracking/ -> django_stock_expeditions_tracking_retrieve
 - get /api/django/stock/factures-fournisseur/ -> django_stock_factures_fournisseur_list
 - post /api/django/stock/factures-fournisseur/ -> django_stock_factures_fournisseur_create
 - get /api/django/stock/factures-fournisseur/comptes-a-payer/ -> django_stock_factures_fournisseur_comptes_a_payer_retrieve
@@ -7302,6 +7609,13 @@ operations:
 - get /api/django/stock/paiements-fournisseur/{id}/ -> django_stock_paiements_fournisseur_retrieve
 - patch /api/django/stock/paiements-fournisseur/{id}/ -> django_stock_paiements_fournisseur_partial_update
 - put /api/django/stock/paiements-fournisseur/{id}/ -> django_stock_paiements_fournisseur_update
+- get /api/django/stock/plans-comptage-tournant/ -> django_stock_plans_comptage_tournant_list
+- post /api/django/stock/plans-comptage-tournant/ -> django_stock_plans_comptage_tournant_create
+- post /api/django/stock/plans-comptage-tournant/generer/ -> django_stock_plans_comptage_tournant_generer_create
+- delete /api/django/stock/plans-comptage-tournant/{id}/ -> django_stock_plans_comptage_tournant_destroy
+- get /api/django/stock/plans-comptage-tournant/{id}/ -> django_stock_plans_comptage_tournant_retrieve
+- patch /api/django/stock/plans-comptage-tournant/{id}/ -> django_stock_plans_comptage_tournant_partial_update
+- put /api/django/stock/plans-comptage-tournant/{id}/ -> django_stock_plans_comptage_tournant_update
 - get /api/django/stock/prix-fournisseurs/ -> django_stock_prix_fournisseurs_list
 - post /api/django/stock/prix-fournisseurs/ -> django_stock_prix_fournisseurs_create
 - get /api/django/stock/prix-fournisseurs/export-xlsx/ -> django_stock_prix_fournisseurs_export_xlsx_retrieve
@@ -7336,16 +7650,27 @@ operations:
 - get /api/django/stock/produits/{id}/ -> django_stock_produits_retrieve
 - patch /api/django/stock/produits/{id}/ -> django_stock_produits_partial_update
 - put /api/django/stock/produits/{id}/ -> django_stock_produits_update
+- get /api/django/stock/produits/{id}/casiers/ -> django_stock_produits_casiers_retrieve
+- get /api/django/stock/produits/{id}/classe-abc/ -> django_stock_produits_classe_abc_retrieve
 - get /api/django/stock/produits/{id}/comparer-fournisseurs/ -> django_stock_produits_comparer_fournisseurs_retrieve
 - post /api/django/stock/produits/{id}/dupliquer/ -> django_stock_produits_dupliquer_create
 - get /api/django/stock/produits/{id}/emplacements/ -> django_stock_produits_emplacements_retrieve
 - delete /api/django/stock/produits/{id}/force-delete/ -> django_stock_produits_force_delete_destroy
 - delete /api/django/stock/produits/{id}/photo/ -> django_stock_produits_photo_destroy
 - post /api/django/stock/produits/{id}/photo/ -> django_stock_produits_photo_create
+- get /api/django/stock/produits/{id}/plan-picking/ -> django_stock_produits_plan_picking_retrieve
 - get /api/django/stock/produits/{id}/previsionnel/ -> django_stock_produits_previsionnel_retrieve
 - get /api/django/stock/produits/{id}/prix-fournisseurs/ -> django_stock_produits_prix_fournisseurs_retrieve
 - post /api/django/stock/produits/{id}/rebuter/ -> django_stock_produits_rebuter_create
 - patch /api/django/stock/produits/{id}/unarchive/ -> django_stock_produits_unarchive_partial_update
+- post /api/django/stock/public/quai-checkin/ -> django_stock_public_quai_checkin_create
+- get /api/django/stock/quais/ -> django_stock_quais_list
+- post /api/django/stock/quais/ -> django_stock_quais_create
+- get /api/django/stock/quais/planning/ -> django_stock_quais_planning_retrieve
+- delete /api/django/stock/quais/{id}/ -> django_stock_quais_destroy
+- get /api/django/stock/quais/{id}/ -> django_stock_quais_retrieve
+- patch /api/django/stock/quais/{id}/ -> django_stock_quais_partial_update
+- put /api/django/stock/quais/{id}/ -> django_stock_quais_update
 - get /api/django/stock/receptions-fournisseur/ -> django_stock_receptions_fournisseur_list
 - post /api/django/stock/receptions-fournisseur/ -> django_stock_receptions_fournisseur_create
 - get /api/django/stock/receptions-fournisseur/scan-gs1/ -> django_stock_receptions_fournisseur_scan_gs1_retrieve
@@ -7357,12 +7682,19 @@ operations:
 - post /api/django/stock/receptions-fournisseur/{id}/confirmer/ -> django_stock_receptions_fournisseur_confirmer_create
 - get /api/django/stock/receptions-fournisseur/{id}/etiquettes/ -> django_stock_receptions_fournisseur_etiquettes_retrieve
 - post /api/django/stock/receptions-fournisseur/{id}/facturer/ -> django_stock_receptions_fournisseur_facturer_create
+- get /api/django/stock/receptions-fournisseur/{id}/suggestions-rangement/ -> django_stock_receptions_fournisseur_suggestions_rangement_retrieve
 - get /api/django/stock/regles-code-barres/ -> django_stock_regles_code_barres_list
 - post /api/django/stock/regles-code-barres/ -> django_stock_regles_code_barres_create
 - delete /api/django/stock/regles-code-barres/{id}/ -> django_stock_regles_code_barres_destroy
 - get /api/django/stock/regles-code-barres/{id}/ -> django_stock_regles_code_barres_retrieve
 - patch /api/django/stock/regles-code-barres/{id}/ -> django_stock_regles_code_barres_partial_update
 - put /api/django/stock/regles-code-barres/{id}/ -> django_stock_regles_code_barres_update
+- get /api/django/stock/rendez-vous-transporteur/ -> django_stock_rendez_vous_transporteur_list
+- post /api/django/stock/rendez-vous-transporteur/ -> django_stock_rendez_vous_transporteur_create
+- delete /api/django/stock/rendez-vous-transporteur/{id}/ -> django_stock_rendez_vous_transporteur_destroy
+- get /api/django/stock/rendez-vous-transporteur/{id}/ -> django_stock_rendez_vous_transporteur_retrieve
+- patch /api/django/stock/rendez-vous-transporteur/{id}/ -> django_stock_rendez_vous_transporteur_partial_update
+- put /api/django/stock/rendez-vous-transporteur/{id}/ -> django_stock_rendez_vous_transporteur_update
 - get /api/django/stock/retours-fournisseur/ -> django_stock_retours_fournisseur_list
 - post /api/django/stock/retours-fournisseur/ -> django_stock_retours_fournisseur_create
 - delete /api/django/stock/retours-fournisseur/{id}/ -> django_stock_retours_fournisseur_destroy
@@ -7379,9 +7711,31 @@ operations:
 - patch /api/django/stock/revalorisations-stock/{id}/ -> django_stock_revalorisations_stock_partial_update
 - put /api/django/stock/revalorisations-stock/{id}/ -> django_stock_revalorisations_stock_update
 - post /api/django/stock/revalorisations-stock/{id}/valider/ -> django_stock_revalorisations_stock_valider_create
+- post /api/django/stock/scanner/mouvement/ -> django_stock_scanner_mouvement_create
+- get /api/django/stock/scanner/resoudre/ -> django_stock_scanner_resoudre_retrieve
 - get /api/django/stock/transferts/ -> django_stock_transferts_list
 - post /api/django/stock/transferts/ -> django_stock_transferts_create
 - get /api/django/stock/transferts/{id}/ -> django_stock_transferts_retrieve
+- get /api/django/stock/unites-logistiques/ -> django_stock_unites_logistiques_list
+- post /api/django/stock/unites-logistiques/ -> django_stock_unites_logistiques_create
+- delete /api/django/stock/unites-logistiques/{id}/ -> django_stock_unites_logistiques_destroy
+- get /api/django/stock/unites-logistiques/{id}/ -> django_stock_unites_logistiques_retrieve
+- patch /api/django/stock/unites-logistiques/{id}/ -> django_stock_unites_logistiques_partial_update
+- put /api/django/stock/unites-logistiques/{id}/ -> django_stock_unites_logistiques_update
+- post /api/django/stock/unites-logistiques/{id}/controler-scan/ -> django_stock_unites_logistiques_controler_scan_create
+- get /api/django/stock/unites-logistiques/{id}/etiquette-pdf/ -> django_stock_unites_logistiques_etiquette_pdf_retrieve
+- post /api/django/stock/unites-logistiques/{id}/lignes/ -> django_stock_unites_logistiques_lignes_create
+- post /api/django/stock/unites-logistiques/{id}/sceller/ -> django_stock_unites_logistiques_sceller_create
+- get /api/django/stock/vagues-picking/ -> django_stock_vagues_picking_list
+- post /api/django/stock/vagues-picking/ -> django_stock_vagues_picking_create
+- delete /api/django/stock/vagues-picking/{id}/ -> django_stock_vagues_picking_destroy
+- get /api/django/stock/vagues-picking/{id}/ -> django_stock_vagues_picking_retrieve
+- patch /api/django/stock/vagues-picking/{id}/ -> django_stock_vagues_picking_partial_update
+- put /api/django/stock/vagues-picking/{id}/ -> django_stock_vagues_picking_update
+- post /api/django/stock/vagues-picking/{id}/configurer-liberation/ -> django_stock_vagues_picking_configurer_liberation_create
+- post /api/django/stock/vagues-picking/{id}/lancer/ -> django_stock_vagues_picking_lancer_create
+- post /api/django/stock/vagues-picking/{id}/lignes/{ligne_id}/prelever/ -> django_stock_vagues_picking_lignes_prelever_create
+- get /api/django/territoires/couverture/ -> django_territoires_couverture_retrieve
 - get /api/django/territoires/membres/ -> django_territoires_membres_list
 - post /api/django/territoires/membres/ -> django_territoires_membres_create
 - delete /api/django/territoires/membres/{id}/ -> django_territoires_membres_destroy
@@ -7411,6 +7765,58 @@ operations:
 - post /api/django/token/ -> django_token_create
 - post /api/django/token/refresh/ -> django_token_refresh_create
 - post /api/django/token/verify/ -> django_token_verify_create
+- get /api/django/transport/couts-fret/ -> django_transport_couts_fret_list
+- post /api/django/transport/couts-fret/ -> django_transport_couts_fret_create
+- delete /api/django/transport/couts-fret/{id}/ -> django_transport_couts_fret_destroy
+- get /api/django/transport/couts-fret/{id}/ -> django_transport_couts_fret_retrieve
+- patch /api/django/transport/couts-fret/{id}/ -> django_transport_couts_fret_partial_update
+- put /api/django/transport/couts-fret/{id}/ -> django_transport_couts_fret_update
+- get /api/django/transport/etapes-transport/ -> django_transport_etapes_transport_list
+- post /api/django/transport/etapes-transport/ -> django_transport_etapes_transport_create
+- delete /api/django/transport/etapes-transport/{id}/ -> django_transport_etapes_transport_destroy
+- get /api/django/transport/etapes-transport/{id}/ -> django_transport_etapes_transport_retrieve
+- patch /api/django/transport/etapes-transport/{id}/ -> django_transport_etapes_transport_partial_update
+- put /api/django/transport/etapes-transport/{id}/ -> django_transport_etapes_transport_update
+- post /api/django/transport/etapes-transport/{id}/livrer/ -> django_transport_etapes_transport_livrer_create
+- get /api/django/transport/facteurs-emission-co2/ -> django_transport_facteurs_emission_co2_list
+- post /api/django/transport/facteurs-emission-co2/ -> django_transport_facteurs_emission_co2_create
+- delete /api/django/transport/facteurs-emission-co2/{id}/ -> django_transport_facteurs_emission_co2_destroy
+- get /api/django/transport/facteurs-emission-co2/{id}/ -> django_transport_facteurs_emission_co2_retrieve
+- patch /api/django/transport/facteurs-emission-co2/{id}/ -> django_transport_facteurs_emission_co2_partial_update
+- put /api/django/transport/facteurs-emission-co2/{id}/ -> django_transport_facteurs_emission_co2_update
+- get /api/django/transport/lignes-transport/ -> django_transport_lignes_transport_list
+- post /api/django/transport/lignes-transport/ -> django_transport_lignes_transport_create
+- delete /api/django/transport/lignes-transport/{id}/ -> django_transport_lignes_transport_destroy
+- get /api/django/transport/lignes-transport/{id}/ -> django_transport_lignes_transport_retrieve
+- patch /api/django/transport/lignes-transport/{id}/ -> django_transport_lignes_transport_partial_update
+- put /api/django/transport/lignes-transport/{id}/ -> django_transport_lignes_transport_update
+- get /api/django/transport/litiges-transport/ -> django_transport_litiges_transport_list
+- post /api/django/transport/litiges-transport/ -> django_transport_litiges_transport_create
+- delete /api/django/transport/litiges-transport/{id}/ -> django_transport_litiges_transport_destroy
+- get /api/django/transport/litiges-transport/{id}/ -> django_transport_litiges_transport_retrieve
+- patch /api/django/transport/litiges-transport/{id}/ -> django_transport_litiges_transport_partial_update
+- put /api/django/transport/litiges-transport/{id}/ -> django_transport_litiges_transport_update
+- post /api/django/transport/litiges-transport/{id}/prendre-en-charge/ -> django_transport_litiges_transport_prendre_en_charge_create
+- post /api/django/transport/litiges-transport/{id}/reclamer-transporteur/ -> django_transport_litiges_transport_reclamer_transporteur_create
+- post /api/django/transport/litiges-transport/{id}/rejeter/ -> django_transport_litiges_transport_rejeter_create
+- post /api/django/transport/litiges-transport/{id}/resoudre/ -> django_transport_litiges_transport_resoudre_create
+- get /api/django/transport/ordres-transport/ -> django_transport_ordres_transport_list
+- post /api/django/transport/ordres-transport/ -> django_transport_ordres_transport_create
+- delete /api/django/transport/ordres-transport/{id}/ -> django_transport_ordres_transport_destroy
+- get /api/django/transport/ordres-transport/{id}/ -> django_transport_ordres_transport_retrieve
+- patch /api/django/transport/ordres-transport/{id}/ -> django_transport_ordres_transport_partial_update
+- put /api/django/transport/ordres-transport/{id}/ -> django_transport_ordres_transport_update
+- get /api/django/transport/ordres-transport/{id}/chatter/historique/ -> django_transport_ordres_transport_chatter_historique_retrieve
+- post /api/django/transport/ordres-transport/{id}/chatter/noter/ -> django_transport_ordres_transport_chatter_noter_create
+- get /api/django/transport/ordres-transport/{id}/co2/ -> django_transport_ordres_transport_co2_retrieve
+- get /api/django/transport/ordres-transport/{id}/comparer-transporteurs/ -> django_transport_ordres_transport_comparer_transporteurs_retrieve
+- get /api/django/transport/ordres-transport/{id}/etapes/ -> django_transport_ordres_transport_etapes_retrieve
+- get /api/django/transport/reserves-reception/ -> django_transport_reserves_reception_list
+- post /api/django/transport/reserves-reception/ -> django_transport_reserves_reception_create
+- delete /api/django/transport/reserves-reception/{id}/ -> django_transport_reserves_reception_destroy
+- get /api/django/transport/reserves-reception/{id}/ -> django_transport_reserves_reception_retrieve
+- patch /api/django/transport/reserves-reception/{id}/ -> django_transport_reserves_reception_partial_update
+- put /api/django/transport/reserves-reception/{id}/ -> django_transport_reserves_reception_update
 - get /api/django/trash/corbeille/ -> django_trash_corbeille_list
 - post /api/django/trash/corbeille/ -> django_trash_corbeille_create
 - get /api/django/trash/corbeille/{id}/ -> django_trash_corbeille_retrieve
@@ -7549,34 +7955,47 @@ operations:
 - patch /api/django/ventes/devis/{id}/ -> django_ventes_devis_partial_update
 - put /api/django/ventes/devis/{id}/ -> django_ventes_devis_update
 - post /api/django/ventes/devis/{id}/accepter/ -> django_ventes_devis_accepter_create
+- post /api/django/ventes/devis/{id}/ajouter-boq-electrique/ -> django_ventes_devis_ajouter_boq_electrique_create
 - post /api/django/ventes/devis/{id}/apply-preset/ -> django_ventes_devis_apply_preset_create
 - get /api/django/ventes/devis/{id}/approbation/ -> django_ventes_devis_approbation_retrieve
 - post /api/django/ventes/devis/{id}/approuver-etape/ -> django_ventes_devis_approuver_etape_create
 - post /api/django/ventes/devis/{id}/approuver-remise/ -> django_ventes_devis_approuver_remise_create
+- get /api/django/ventes/devis/{id}/avenants/ -> django_ventes_devis_avenants_retrieve
+- post /api/django/ventes/devis/{id}/avenants/ -> django_ventes_devis_avenants_create
+- get /api/django/ventes/devis/{id}/conception-electrique/ -> django_ventes_devis_conception_electrique_retrieve
+- post /api/django/ventes/devis/{id}/conception-electrique/ -> django_ventes_devis_conception_electrique_create
 - post /api/django/ventes/devis/{id}/contacter-superieur/ -> django_ventes_devis_contacter_superieur_create
 - post /api/django/ventes/devis/{id}/convertir-bc/ -> django_ventes_devis_convertir_bc_create
 - get /api/django/ventes/devis/{id}/declaration-raccordement/ -> django_ventes_devis_declaration_raccordement_retrieve
+- get /api/django/ventes/devis/{id}/design-context/ -> django_ventes_devis_design_context_retrieve
 - post /api/django/ventes/devis/{id}/dupliquer-variante/ -> django_ventes_devis_dupliquer_variante_create
 - post /api/django/ventes/devis/{id}/dupliquer/ -> django_ventes_devis_dupliquer_create
 - post /api/django/ventes/devis/{id}/envoyer-email/ -> django_ventes_devis_envoyer_email_create
 - post /api/django/ventes/devis/{id}/generer-facture/ -> django_ventes_devis_generer_facture_create
 - post /api/django/ventes/devis/{id}/generer-pdf/ -> django_ventes_devis_generer_pdf_create
+- get /api/django/ventes/devis/{id}/historique-configuration/ -> django_ventes_devis_historique_configuration_retrieve
 - get /api/django/ventes/devis/{id}/historique/ -> django_ventes_devis_historique_retrieve
 - get /api/django/ventes/devis/{id}/layout/ -> django_ventes_devis_layout_retrieve
 - post /api/django/ventes/devis/{id}/layout/ -> django_ventes_devis_layout_create
+- get /api/django/ventes/devis/{id}/lots/ -> django_ventes_devis_lots_retrieve
+- post /api/django/ventes/devis/{id}/lots/ -> django_ventes_devis_lots_create
 - post /api/django/ventes/devis/{id}/noter/ -> django_ventes_devis_noter_create
 - post /api/django/ventes/devis/{id}/proforma-pdf/ -> django_ventes_devis_proforma_pdf_create
 - get /api/django/ventes/devis/{id}/proposal/ -> django_ventes_devis_proposal_retrieve
 - post /api/django/ventes/devis/{id}/refuser/ -> django_ventes_devis_refuser_create
 - post /api/django/ventes/devis/{id}/rejeter-etape/ -> django_ventes_devis_rejeter_etape_create
+- post /api/django/ventes/devis/{id}/renouveler/ -> django_ventes_devis_renouveler_create
 - post /api/django/ventes/devis/{id}/replace-lines/ -> django_ventes_devis_replace_lines_create
 - post /api/django/ventes/devis/{id}/reviser/ -> django_ventes_devis_reviser_create
 - post /api/django/ventes/devis/{id}/roof-image/ -> django_ventes_devis_roof_image_create
 - post /api/django/ventes/devis/{id}/save-preset/ -> django_ventes_devis_save_preset_create
 - get /api/django/ventes/devis/{id}/schema-unifilaire/ -> django_ventes_devis_schema_unifilaire_retrieve
 - post /api/django/ventes/devis/{id}/share-link/ -> django_ventes_devis_share_link_create
+- get /api/django/ventes/devis/{id}/simulation-status/{token}/ -> django_ventes_devis_simulation_status_retrieve
+- post /api/django/ventes/devis/{id}/simuler/ -> django_ventes_devis_simuler_create
 - get /api/django/ventes/devis/{id}/suivi-partage/ -> django_ventes_devis_suivi_partage_retrieve
 - get /api/django/ventes/devis/{id}/superior-contact-status/ -> django_ventes_devis_superior_contact_status_retrieve
+- post /api/django/ventes/devis/{id}/sync-layout/ -> django_ventes_devis_sync_layout_create
 - get /api/django/ventes/devis/{id}/telecharger-pdf/ -> django_ventes_devis_telecharger_pdf_retrieve
 - get /api/django/ventes/devis/{id}/variantes/ -> django_ventes_devis_variantes_retrieve
 - post /api/django/ventes/devis/{id}/whatsapp-preview/ -> django_ventes_devis_whatsapp_preview_create
@@ -7600,6 +8019,7 @@ operations:
 - patch /api/django/ventes/dossiers-reglementaires/{id}/ -> django_ventes_dossiers_reglementaires_partial_update
 - put /api/django/ventes/dossiers-reglementaires/{id}/ -> django_ventes_dossiers_reglementaires_update
 - post /api/django/ventes/dossiers-reglementaires/{id}/generer-checklist/ -> django_ventes_dossiers_reglementaires_generer_checklist_create
+- post /api/django/ventes/dossiers-reglementaires/{id}/generer-schema/ -> django_ventes_dossiers_reglementaires_generer_schema_create
 - get /api/django/ventes/email-config/ -> django_ventes_email_config_retrieve
 - get /api/django/ventes/etats/analyse-facturation/ -> django_ventes_etats_analyse_facturation_retrieve
 - get /api/django/ventes/export-comptable/ -> django_ventes_export_comptable_retrieve
@@ -7867,6 +8287,7 @@ operations:
 - post /api/v1/achats/receptions-fournisseur/{id}/confirmer/ -> v1_achats_receptions_fournisseur_confirmer_create
 - get /api/v1/achats/receptions-fournisseur/{id}/etiquettes/ -> v1_achats_receptions_fournisseur_etiquettes_retrieve
 - post /api/v1/achats/receptions-fournisseur/{id}/facturer/ -> v1_achats_receptions_fournisseur_facturer_create
+- get /api/v1/achats/receptions-fournisseur/{id}/suggestions-rangement/ -> v1_achats_receptions_fournisseur_suggestions_rangement_retrieve
 - get /api/v1/achats/retours-fournisseur/ -> v1_achats_retours_fournisseur_list
 - post /api/v1/achats/retours-fournisseur/ -> v1_achats_retours_fournisseur_create
 - delete /api/v1/achats/retours-fournisseur/{id}/ -> v1_achats_retours_fournisseur_destroy
@@ -8296,6 +8717,7 @@ operations:
 - post /api/v1/ao/calepinage/lancer/ -> v1_ao_calepinage_lancer_create
 - get /api/v1/ao/calepinage/resultat/{job_id}/ -> v1_ao_calepinage_resultat_retrieve
 - get /api/v1/ao/calepinage/variantes/comparer/ -> v1_ao_calepinage_variantes_comparer_retrieve
+- post /api/v1/ao/calepinage/variantes/{id}/generer-variantes/ -> v1_ao_calepinage_variantes_generer_variantes_create
 - get /api/v1/ao/calepinage/variantes/{id}/marches/ -> v1_ao_calepinage_variantes_marches_retrieve
 - post /api/v1/ao/calepinage/variantes/{id}/retenir/ -> v1_ao_calepinage_variantes_retenir_create
 - post /api/v1/ao/calepinage/variantes/{id}/sensibilites/ -> v1_ao_calepinage_variantes_sensibilites_create
@@ -8543,6 +8965,7 @@ operations:
 - get /api/v1/ao/tableau-marches/ -> v1_ao_tableau_marches_retrieve
 - get /api/v1/ao/toitures/ -> v1_ao_toitures_list
 - post /api/v1/ao/toitures/ -> v1_ao_toitures_create
+- post /api/v1/ao/toitures/dxf/analyser/ -> v1_ao_toitures_dxf_analyser_create
 - delete /api/v1/ao/toitures/{id}/ -> v1_ao_toitures_destroy
 - get /api/v1/ao/toitures/{id}/ -> v1_ao_toitures_retrieve
 - patch /api/v1/ao/toitures/{id}/ -> v1_ao_toitures_partial_update
@@ -8560,6 +8983,14 @@ operations:
 - post /api/v1/ao/variantes-calepinage/{id}/chatter/noter/ -> v1_ao_variantes_calepinage_chatter_noter_create
 - post /api/v1/ao/variantes-calepinage/{id}/publier/ -> v1_ao_variantes_calepinage_publier_create
 - post /api/v1/ao/variantes-calepinage/{id}/retenir/ -> v1_ao_variantes_calepinage_retenir_create
+- get /api/v1/ao/zones/ -> v1_ao_zones_list
+- post /api/v1/ao/zones/ -> v1_ao_zones_create
+- delete /api/v1/ao/zones/{id}/ -> v1_ao_zones_destroy
+- get /api/v1/ao/zones/{id}/ -> v1_ao_zones_retrieve
+- patch /api/v1/ao/zones/{id}/ -> v1_ao_zones_partial_update
+- put /api/v1/ao/zones/{id}/ -> v1_ao_zones_update
+- get /api/v1/ao/zones/{id}/chatter/historique/ -> v1_ao_zones_chatter_historique_retrieve
+- post /api/v1/ao/zones/{id}/chatter/noter/ -> v1_ao_zones_chatter_noter_create
 - get /api/v1/assurances/actifs-couverts/ -> v1_assurances_actifs_couverts_list
 - post /api/v1/assurances/actifs-couverts/ -> v1_assurances_actifs_couverts_create
 - delete /api/v1/assurances/actifs-couverts/{id}/ -> v1_assurances_actifs_couverts_destroy
@@ -8648,6 +9079,8 @@ operations:
 - post /api/v1/auth/console/tenants/creer/ -> v1_auth_console_tenants_creer_create
 - post /api/v1/auth/console/tenants/{id}/note/ -> v1_auth_console_tenants_note_create
 - post /api/v1/auth/console/tenants/{id}/statut/ -> v1_auth_console_tenants_statut_create
+- post /api/v1/auth/demo-wizard/ -> v1_auth_demo_wizard_create
+- get /api/v1/auth/demo-wizard/statut/ -> v1_auth_demo_wizard_statut_retrieve
 - post /api/v1/auth/logout/ -> v1_auth_logout_create
 - get /api/v1/auth/me/ -> v1_auth_me_retrieve
 - post /api/v1/auth/mobile-home-route/ -> v1_auth_mobile_home_route_create
@@ -8696,6 +9129,7 @@ operations:
 - get /api/v1/automation/rules/{id}/ -> v1_automation_rules_retrieve
 - patch /api/v1/automation/rules/{id}/ -> v1_automation_rules_partial_update
 - put /api/v1/automation/rules/{id}/ -> v1_automation_rules_update
+- post /api/v1/automation/rules/{id}/simuler/ -> v1_automation_rules_simuler_create
 - post /api/v1/automation/rules/{id}/toggle/ -> v1_automation_rules_toggle_create
 - get /api/v1/automation/runs/ -> v1_automation_runs_list
 - get /api/v1/automation/runs/{id}/ -> v1_automation_runs_retrieve
@@ -8835,6 +9269,8 @@ operations:
 - get /api/v1/companies/{id}/ -> v1_companies_retrieve
 - patch /api/v1/companies/{id}/ -> v1_companies_partial_update
 - put /api/v1/companies/{id}/ -> v1_companies_update
+- get /api/v1/companies/{id}/demo-kit/ -> v1_companies_demo_kit_retrieve
+- get /api/v1/companies/{id}/demo-kit/export.xlsx -> v1_companies_demo_kit_export.xlsx_retrieve
 - post /api/v1/companies/{id}/reset-demo/ -> v1_companies_reset_demo_create
 - get /api/v1/compta/abonnements-ecriture/ -> v1_compta_abonnements_ecriture_list
 - post /api/v1/compta/abonnements-ecriture/ -> v1_compta_abonnements_ecriture_create
@@ -10064,6 +10500,14 @@ operations:
 - put /api/v1/core/workflow-step-definitions/{id}/ -> v1_core_workflow_step_definitions_update
 - get /api/v1/core/workflow-templates/ -> v1_core_workflow_templates_retrieve
 - post /api/v1/core/workflow-templates/installer/ -> v1_core_workflow_templates_installer_create
+- get /api/v1/cpq/clauses-cgv/ -> v1_cpq_clauses_cgv_list
+- post /api/v1/cpq/clauses-cgv/ -> v1_cpq_clauses_cgv_create
+- delete /api/v1/cpq/clauses-cgv/{id}/ -> v1_cpq_clauses_cgv_destroy
+- get /api/v1/cpq/clauses-cgv/{id}/ -> v1_cpq_clauses_cgv_retrieve
+- patch /api/v1/cpq/clauses-cgv/{id}/ -> v1_cpq_clauses_cgv_partial_update
+- put /api/v1/cpq/clauses-cgv/{id}/ -> v1_cpq_clauses_cgv_update
+- get /api/v1/cpq/clauses-cgv/{id}/tester/ -> v1_cpq_clauses_cgv_tester_retrieve
+- post /api/v1/cpq/clauses-cgv/{id}/tester/ -> v1_cpq_clauses_cgv_tester_create
 - get /api/v1/cpq/configurateur-questions/ -> v1_cpq_configurateur_questions_list
 - post /api/v1/cpq/configurateur-questions/ -> v1_cpq_configurateur_questions_create
 - delete /api/v1/cpq/configurateur-questions/{id}/ -> v1_cpq_configurateur_questions_destroy
@@ -10080,6 +10524,12 @@ operations:
 - get /api/v1/cpq/contraintes-compatibilite/{id}/ -> v1_cpq_contraintes_compatibilite_retrieve
 - patch /api/v1/cpq/contraintes-compatibilite/{id}/ -> v1_cpq_contraintes_compatibilite_partial_update
 - put /api/v1/cpq/contraintes-compatibilite/{id}/ -> v1_cpq_contraintes_compatibilite_update
+- get /api/v1/cpq/devis/{id}/comparaison-variantes/ -> v1_cpq_devis_comparaison_variantes_retrieve
+- get /api/v1/cpq/devis/{id}/feuille-configuration/ -> v1_cpq_devis_feuille_configuration_retrieve
+- post /api/v1/cpq/devis/{id}/relancer-approbation/ -> v1_cpq_devis_relancer_approbation_create
+- get /api/v1/cpq/devis/{id}/variantes/ -> v1_cpq_devis_variantes_list
+- post /api/v1/cpq/devis/{id}/variantes/ -> v1_cpq_devis_variantes_create
+- get /api/v1/cpq/marge-sous-seuil/ -> v1_cpq_marge_sous_seuil_retrieve
 - get /api/v1/cpq/offres-groupees/ -> v1_cpq_offres_groupees_list
 - post /api/v1/cpq/offres-groupees/ -> v1_cpq_offres_groupees_create
 - delete /api/v1/cpq/offres-groupees/{id}/ -> v1_cpq_offres_groupees_destroy
@@ -10093,12 +10543,30 @@ operations:
 - get /api/v1/cpq/options-produit/{id}/ -> v1_cpq_options_produit_retrieve
 - patch /api/v1/cpq/options-produit/{id}/ -> v1_cpq_options_produit_partial_update
 - put /api/v1/cpq/options-produit/{id}/ -> v1_cpq_options_produit_update
+- get /api/v1/cpq/parametres-cpq/ -> v1_cpq_parametres_cpq_list
+- post /api/v1/cpq/parametres-cpq/ -> v1_cpq_parametres_cpq_create
+- get /api/v1/cpq/parametres-cpq/courant/ -> v1_cpq_parametres_cpq_courant_retrieve
+- patch /api/v1/cpq/parametres-cpq/courant/ -> v1_cpq_parametres_cpq_courant_partial_update
+- delete /api/v1/cpq/parametres-cpq/{id}/ -> v1_cpq_parametres_cpq_destroy
+- get /api/v1/cpq/parametres-cpq/{id}/ -> v1_cpq_parametres_cpq_retrieve
+- patch /api/v1/cpq/parametres-cpq/{id}/ -> v1_cpq_parametres_cpq_partial_update
+- put /api/v1/cpq/parametres-cpq/{id}/ -> v1_cpq_parametres_cpq_update
 - get /api/v1/cpq/prix-contractuels/ -> v1_cpq_prix_contractuels_list
 - post /api/v1/cpq/prix-contractuels/ -> v1_cpq_prix_contractuels_create
+- post /api/v1/cpq/prix-contractuels/import-csv/ -> v1_cpq_prix_contractuels_import_csv_create
 - delete /api/v1/cpq/prix-contractuels/{id}/ -> v1_cpq_prix_contractuels_destroy
 - get /api/v1/cpq/prix-contractuels/{id}/ -> v1_cpq_prix_contractuels_retrieve
 - patch /api/v1/cpq/prix-contractuels/{id}/ -> v1_cpq_prix_contractuels_partial_update
 - put /api/v1/cpq/prix-contractuels/{id}/ -> v1_cpq_prix_contractuels_update
+- get /api/v1/cpq/produits-equivalents/ -> v1_cpq_produits_equivalents_list
+- post /api/v1/cpq/produits-equivalents/ -> v1_cpq_produits_equivalents_create
+- delete /api/v1/cpq/produits-equivalents/{id}/ -> v1_cpq_produits_equivalents_destroy
+- get /api/v1/cpq/produits-equivalents/{id}/ -> v1_cpq_produits_equivalents_retrieve
+- patch /api/v1/cpq/produits-equivalents/{id}/ -> v1_cpq_produits_equivalents_partial_update
+- put /api/v1/cpq/produits-equivalents/{id}/ -> v1_cpq_produits_equivalents_update
+- get /api/v1/cpq/rapports/approbations/ -> v1_cpq_rapports_approbations_retrieve
+- get /api/v1/cpq/rapports/catalogue-regles/ -> v1_cpq_rapports_catalogue_regles_retrieve
+- get /api/v1/cpq/rapports/conformite/ -> v1_cpq_rapports_conformite_retrieve
 - get /api/v1/cpq/regles-approbation-remise/ -> v1_cpq_regles_approbation_remise_list
 - post /api/v1/cpq/regles-approbation-remise/ -> v1_cpq_regles_approbation_remise_create
 - delete /api/v1/cpq/regles-approbation-remise/{id}/ -> v1_cpq_regles_approbation_remise_destroy
@@ -10118,6 +10586,7 @@ operations:
 - get /api/v1/cpq/seuils-marge/{id}/ -> v1_cpq_seuils_marge_retrieve
 - patch /api/v1/cpq/seuils-marge/{id}/ -> v1_cpq_seuils_marge_partial_update
 - put /api/v1/cpq/seuils-marge/{id}/ -> v1_cpq_seuils_marge_update
+- get /api/v1/cpq/suggestions/ -> v1_cpq_suggestions_retrieve
 - post /api/v1/cpq/valider-compatibilite/ -> v1_cpq_valider_compatibilite_create
 - get /api/v1/credit/badges/ -> v1_credit_badges_retrieve
 - get /api/v1/credit/clients/{client_id}/fiche/ -> v1_credit_clients_fiche_retrieve
@@ -10177,6 +10646,13 @@ operations:
 - put /api/v1/crm/appointments/{id}/ -> v1_crm_appointments_update
 - post /api/v1/crm/appointments/{id}/confirmer-whatsapp/ -> v1_crm_appointments_confirmer_whatsapp_create
 - get /api/v1/crm/appointments/{id}/ics/ -> v1_crm_appointments_ics_retrieve
+- get /api/v1/crm/apporteur-portail/{token}/mes-deals/ -> v1_crm_apporteur_portail_mes_deals_retrieve
+- get /api/v1/crm/apporteurs/ -> v1_crm_apporteurs_list
+- post /api/v1/crm/apporteurs/ -> v1_crm_apporteurs_create
+- delete /api/v1/crm/apporteurs/{id}/ -> v1_crm_apporteurs_destroy
+- get /api/v1/crm/apporteurs/{id}/ -> v1_crm_apporteurs_retrieve
+- patch /api/v1/crm/apporteurs/{id}/ -> v1_crm_apporteurs_partial_update
+- put /api/v1/crm/apporteurs/{id}/ -> v1_crm_apporteurs_update
 - get /api/v1/crm/assignable-users/ -> v1_crm_assignable_users_retrieve
 - get /api/v1/crm/canaux/ -> v1_crm_canaux_list
 - post /api/v1/crm/canaux/ -> v1_crm_canaux_create
@@ -10186,7 +10662,10 @@ operations:
 - put /api/v1/crm/canaux/{id}/ -> v1_crm_canaux_update
 - get /api/v1/crm/clients/ -> v1_crm_clients_list
 - post /api/v1/crm/clients/ -> v1_crm_clients_create
+- get /api/v1/crm/clients/dormants/ -> v1_crm_clients_dormants_retrieve
+- get /api/v1/crm/clients/engagement-bulk/ -> v1_crm_clients_engagement_bulk_retrieve
 - post /api/v1/crm/clients/export-xlsx/ -> v1_crm_clients_export_xlsx_create
+- get /api/v1/crm/clients/mon-portefeuille/ -> v1_crm_clients_mon_portefeuille_retrieve
 - get /api/v1/crm/clients/search/ -> v1_crm_clients_search_retrieve
 - get /api/v1/crm/clients/segments/ -> v1_crm_clients_segments_retrieve
 - delete /api/v1/crm/clients/{id}/ -> v1_crm_clients_destroy
@@ -10198,6 +10677,8 @@ operations:
 - get /api/v1/crm/clients/{id}/data-export/ -> v1_crm_clients_data_export_retrieve
 - get /api/v1/crm/clients/{id}/documents/ -> v1_crm_clients_documents_retrieve
 - post /api/v1/crm/clients/{id}/dupliquer/ -> v1_crm_clients_dupliquer_create
+- get /api/v1/crm/clients/{id}/engagement/ -> v1_crm_clients_engagement_retrieve
+- post /api/v1/crm/clients/{id}/relancer-dormance/ -> v1_crm_clients_relancer_dormance_create
 - get /api/v1/crm/commissions-partenaire/ -> v1_crm_commissions_partenaire_list
 - post /api/v1/crm/commissions-partenaire/ -> v1_crm_commissions_partenaire_create
 - get /api/v1/crm/commissions-partenaire/releve/ -> v1_crm_commissions_partenaire_releve_retrieve
@@ -10212,6 +10693,23 @@ operations:
 - get /api/v1/crm/concurrents-perte/{id}/ -> v1_crm_concurrents_perte_retrieve
 - patch /api/v1/crm/concurrents-perte/{id}/ -> v1_crm_concurrents_perte_partial_update
 - put /api/v1/crm/concurrents-perte/{id}/ -> v1_crm_concurrents_perte_update
+- get /api/v1/crm/deals-enregistres/ -> v1_crm_deals_enregistres_list
+- post /api/v1/crm/deals-enregistres/ -> v1_crm_deals_enregistres_create
+- get /api/v1/crm/deals-enregistres/a-payer/ -> v1_crm_deals_enregistres_a_payer_retrieve
+- delete /api/v1/crm/deals-enregistres/{id}/ -> v1_crm_deals_enregistres_destroy
+- get /api/v1/crm/deals-enregistres/{id}/ -> v1_crm_deals_enregistres_retrieve
+- patch /api/v1/crm/deals-enregistres/{id}/ -> v1_crm_deals_enregistres_partial_update
+- put /api/v1/crm/deals-enregistres/{id}/ -> v1_crm_deals_enregistres_update
+- post /api/v1/crm/deals-enregistres/{id}/approuver/ -> v1_crm_deals_enregistres_approuver_create
+- post /api/v1/crm/deals-enregistres/{id}/rejeter/ -> v1_crm_deals_enregistres_rejeter_create
+- get /api/v1/crm/defis/ -> v1_crm_defis_list
+- post /api/v1/crm/defis/ -> v1_crm_defis_create
+- delete /api/v1/crm/defis/{id}/ -> v1_crm_defis_destroy
+- get /api/v1/crm/defis/{id}/ -> v1_crm_defis_retrieve
+- patch /api/v1/crm/defis/{id}/ -> v1_crm_defis_partial_update
+- put /api/v1/crm/defis/{id}/ -> v1_crm_defis_update
+- get /api/v1/crm/defis/{id}/classement/ -> v1_crm_defis_classement_retrieve
+- get /api/v1/crm/defis/{id}/export-xlsx/ -> v1_crm_defis_export_xlsx_retrieve
 - get /api/v1/crm/equipes/ -> v1_crm_equipes_list
 - post /api/v1/crm/equipes/ -> v1_crm_equipes_create
 - get /api/v1/crm/equipes/statistiques/ -> v1_crm_equipes_statistiques_retrieve
@@ -10255,6 +10753,7 @@ operations:
 - post /api/v1/crm/leads/{id}/noter/ -> v1_crm_leads_noter_create
 - get /api/v1/crm/leads/{id}/points-contact/ -> v1_crm_leads_points_contact_retrieve
 - post /api/v1/crm/leads/{id}/restaurer/ -> v1_crm_leads_restaurer_create
+- get /api/v1/crm/leads/{id}/salle-vente-analytics/ -> v1_crm_leads_salle_vente_analytics_retrieve
 - post /api/v1/crm/leads/{id}/whatsapp-devis/ -> v1_crm_leads_whatsapp_devis_create
 - get /api/v1/crm/leads/{lead_id}/playbook/ -> v1_crm_leads_playbook_retrieve
 - post /api/v1/crm/leads/{lead_id}/playbook/ -> v1_crm_leads_playbook_create
@@ -10346,6 +10845,16 @@ operations:
 - get /api/v1/crm/revues-compte/{id}/ -> v1_crm_revues_compte_retrieve
 - patch /api/v1/crm/revues-compte/{id}/ -> v1_crm_revues_compte_partial_update
 - put /api/v1/crm/revues-compte/{id}/ -> v1_crm_revues_compte_update
+- get /api/v1/crm/salle-vente/{token}/ -> v1_crm_salle_vente_retrieve
+- get /api/v1/crm/salles-vente/ -> v1_crm_salles_vente_list
+- post /api/v1/crm/salles-vente/ -> v1_crm_salles_vente_create
+- delete /api/v1/crm/salles-vente/{id}/ -> v1_crm_salles_vente_destroy
+- get /api/v1/crm/salles-vente/{id}/ -> v1_crm_salles_vente_retrieve
+- patch /api/v1/crm/salles-vente/{id}/ -> v1_crm_salles_vente_partial_update
+- put /api/v1/crm/salles-vente/{id}/ -> v1_crm_salles_vente_update
+- get /api/v1/crm/salles-vente/{id}/analytics/ -> v1_crm_salles_vente_analytics_retrieve
+- post /api/v1/crm/salles-vente/{id}/items/ -> v1_crm_salles_vente_items_create
+- delete /api/v1/crm/salles-vente/{id}/items/{item_id}/ -> v1_crm_salles_vente_items_destroy
 - get /api/v1/crm/site-profiles/ -> v1_crm_site_profiles_list
 - post /api/v1/crm/site-profiles/ -> v1_crm_site_profiles_create
 - delete /api/v1/crm/site-profiles/{id}/ -> v1_crm_site_profiles_destroy
@@ -10397,10 +10906,44 @@ operations:
 - get /api/v1/custom-fields/objects/{id}/ -> v1_custom_fields_objects_retrieve
 - patch /api/v1/custom-fields/objects/{id}/ -> v1_custom_fields_objects_partial_update
 - put /api/v1/custom-fields/objects/{id}/ -> v1_custom_fields_objects_update
+- get /api/v1/custom-fields/objets-catalogue/ -> v1_custom_fields_objets_catalogue_retrieve
+- post /api/v1/custom-fields/objets-catalogue/installer/{code}/ -> v1_custom_fields_objets_catalogue_installer_create
 - get /api/v1/documents/chantiers/{id}/attestation/ -> v1_documents_chantiers_attestation_retrieve
 - get /api/v1/documents/chantiers/{id}/bon-livraison/ -> v1_documents_chantiers_bon_livraison_retrieve
 - get /api/v1/documents/chantiers/{id}/dossier-remise/ -> v1_documents_chantiers_dossier_remise_retrieve
 - get /api/v1/documents/chantiers/{id}/pv-reception/ -> v1_documents_chantiers_pv_reception_retrieve
+- get /api/v1/douane/dossiers-export-pieces/ -> v1_douane_dossiers_export_pieces_list
+- post /api/v1/douane/dossiers-export-pieces/ -> v1_douane_dossiers_export_pieces_create
+- delete /api/v1/douane/dossiers-export-pieces/{id}/ -> v1_douane_dossiers_export_pieces_destroy
+- get /api/v1/douane/dossiers-export-pieces/{id}/ -> v1_douane_dossiers_export_pieces_retrieve
+- patch /api/v1/douane/dossiers-export-pieces/{id}/ -> v1_douane_dossiers_export_pieces_partial_update
+- put /api/v1/douane/dossiers-export-pieces/{id}/ -> v1_douane_dossiers_export_pieces_update
+- get /api/v1/douane/dossiers-export/ -> v1_douane_dossiers_export_list
+- post /api/v1/douane/dossiers-export/ -> v1_douane_dossiers_export_create
+- get /api/v1/douane/dossiers-export/export/ -> v1_douane_dossiers_export_export_retrieve
+- delete /api/v1/douane/dossiers-export/{id}/ -> v1_douane_dossiers_export_destroy
+- get /api/v1/douane/dossiers-export/{id}/ -> v1_douane_dossiers_export_retrieve
+- patch /api/v1/douane/dossiers-export/{id}/ -> v1_douane_dossiers_export_partial_update
+- put /api/v1/douane/dossiers-export/{id}/ -> v1_douane_dossiers_export_update
+- get /api/v1/douane/parametres-douane/ -> v1_douane_parametres_douane_list
+- patch /api/v1/douane/parametres-douane/{id}/ -> v1_douane_parametres_douane_partial_update
+- get /api/v1/ecommerce-connect/commandes/ -> v1_ecommerce_connect_commandes_list
+- get /api/v1/ecommerce-connect/commandes/{id}/ -> v1_ecommerce_connect_commandes_retrieve
+- get /api/v1/ecommerce-connect/connexions/ -> v1_ecommerce_connect_connexions_list
+- post /api/v1/ecommerce-connect/connexions/ -> v1_ecommerce_connect_connexions_create
+- delete /api/v1/ecommerce-connect/connexions/{id}/ -> v1_ecommerce_connect_connexions_destroy
+- get /api/v1/ecommerce-connect/connexions/{id}/ -> v1_ecommerce_connect_connexions_retrieve
+- patch /api/v1/ecommerce-connect/connexions/{id}/ -> v1_ecommerce_connect_connexions_partial_update
+- put /api/v1/ecommerce-connect/connexions/{id}/ -> v1_ecommerce_connect_connexions_update
+- post /api/v1/ecommerce-connect/connexions/{id}/sync-catalogue/ -> v1_ecommerce_connect_connexions_sync_catalogue_create
+- get /api/v1/ecommerce-connect/produits-sync/ -> v1_ecommerce_connect_produits_sync_list
+- post /api/v1/ecommerce-connect/produits-sync/ -> v1_ecommerce_connect_produits_sync_create
+- delete /api/v1/ecommerce-connect/produits-sync/{id}/ -> v1_ecommerce_connect_produits_sync_destroy
+- get /api/v1/ecommerce-connect/produits-sync/{id}/ -> v1_ecommerce_connect_produits_sync_retrieve
+- patch /api/v1/ecommerce-connect/produits-sync/{id}/ -> v1_ecommerce_connect_produits_sync_partial_update
+- put /api/v1/ecommerce-connect/produits-sync/{id}/ -> v1_ecommerce_connect_produits_sync_update
+- post /api/v1/ecommerce-connect/shopify/webhook/commande/ -> v1_ecommerce_connect_shopify_webhook_commande_create
+- post /api/v1/ecommerce-connect/woocommerce/webhook/commande/ -> v1_ecommerce_connect_woocommerce_webhook_commande_create
 - get /api/v1/education/annees-scolaires/ -> v1_education_annees_scolaires_list
 - post /api/v1/education/annees-scolaires/ -> v1_education_annees_scolaires_create
 - delete /api/v1/education/annees-scolaires/{id}/ -> v1_education_annees_scolaires_destroy
@@ -10634,6 +11177,7 @@ operations:
 - get /api/v1/esg/periodes-esg/{id}/indicateurs/ -> v1_esg_periodes_esg_indicateurs_retrieve
 - get /api/v1/esg/periodes-esg/{id}/rapport-pdf/ -> v1_esg_periodes_esg_rapport_pdf_retrieve
 - get /api/v1/extensions/catalogue/ -> v1_extensions_catalogue_list
+- get /api/v1/extensions/journal/ -> v1_extensions_journal_retrieve
 - get /api/v1/facturation/avoirs/ -> v1_facturation_avoirs_list
 - get /api/v1/facturation/avoirs/{id}/ -> v1_facturation_avoirs_retrieve
 - post /api/v1/facturation/avoirs/{id}/annuler/ -> v1_facturation_avoirs_annuler_create
@@ -12782,6 +13326,13 @@ operations:
 - get /api/v1/marketing/approbations-envoi-campagne/{id}/ -> v1_marketing_approbations_envoi_campagne_retrieve
 - post /api/v1/marketing/approbations-envoi-campagne/{id}/approuver/ -> v1_marketing_approbations_envoi_campagne_approuver_create
 - post /api/v1/marketing/approbations-envoi-campagne/{id}/rejeter/ -> v1_marketing_approbations_envoi_campagne_rejeter_create
+- get /api/v1/marketing/arcs-journey/ -> v1_marketing_arcs_journey_list
+- post /api/v1/marketing/arcs-journey/ -> v1_marketing_arcs_journey_create
+- delete /api/v1/marketing/arcs-journey/{id}/ -> v1_marketing_arcs_journey_destroy
+- get /api/v1/marketing/arcs-journey/{id}/ -> v1_marketing_arcs_journey_retrieve
+- patch /api/v1/marketing/arcs-journey/{id}/ -> v1_marketing_arcs_journey_partial_update
+- put /api/v1/marketing/arcs-journey/{id}/ -> v1_marketing_arcs_journey_update
+- get /api/v1/marketing/attribution/comparaison/ -> v1_marketing_attribution_comparaison_retrieve
 - get /api/v1/marketing/avis-clients/ -> v1_marketing_avis_clients_list
 - post /api/v1/marketing/avis-clients/ -> v1_marketing_avis_clients_create
 - delete /api/v1/marketing/avis-clients/{id}/ -> v1_marketing_avis_clients_destroy
@@ -12796,10 +13347,18 @@ operations:
 - get /api/v1/marketing/billets-evenement/{id}/ -> v1_marketing_billets_evenement_retrieve
 - patch /api/v1/marketing/billets-evenement/{id}/ -> v1_marketing_billets_evenement_partial_update
 - put /api/v1/marketing/billets-evenement/{id}/ -> v1_marketing_billets_evenement_update
+- get /api/v1/marketing/blocs-contenu/ -> v1_marketing_blocs_contenu_list
+- post /api/v1/marketing/blocs-contenu/ -> v1_marketing_blocs_contenu_create
+- delete /api/v1/marketing/blocs-contenu/{id}/ -> v1_marketing_blocs_contenu_destroy
+- get /api/v1/marketing/blocs-contenu/{id}/ -> v1_marketing_blocs_contenu_retrieve
+- patch /api/v1/marketing/blocs-contenu/{id}/ -> v1_marketing_blocs_contenu_partial_update
+- put /api/v1/marketing/blocs-contenu/{id}/ -> v1_marketing_blocs_contenu_update
 - get /api/v1/marketing/campagnes/ -> v1_marketing_campagnes_list
 - post /api/v1/marketing/campagnes/ -> v1_marketing_campagnes_create
+- get /api/v1/marketing/campagnes/export/ -> v1_marketing_campagnes_export_retrieve
 - get /api/v1/marketing/campagnes/generer-ia-disponible/ -> v1_marketing_campagnes_generer_ia_disponible_retrieve
 - post /api/v1/marketing/campagnes/generer-ia/ -> v1_marketing_campagnes_generer_ia_create
+- post /api/v1/marketing/campagnes/importer-couts/ -> v1_marketing_campagnes_importer_couts_create
 - get /api/v1/marketing/campagnes/kanban/ -> v1_marketing_campagnes_kanban_retrieve
 - get /api/v1/marketing/campagnes/modeles/ -> v1_marketing_campagnes_modeles_retrieve
 - get /api/v1/marketing/campagnes/reporting/ -> v1_marketing_campagnes_reporting_retrieve
@@ -12814,10 +13373,12 @@ operations:
 - get /api/v1/marketing/campagnes/{id}/cout-sms/ -> v1_marketing_campagnes_cout_sms_retrieve
 - post /api/v1/marketing/campagnes/{id}/creer-depuis-modele/ -> v1_marketing_campagnes_creer_depuis_modele_create
 - post /api/v1/marketing/campagnes/{id}/dupliquer/ -> v1_marketing_campagnes_dupliquer_create
+- get /api/v1/marketing/campagnes/{id}/envois/export/ -> v1_marketing_campagnes_envois_export_retrieve
 - post /api/v1/marketing/campagnes/{id}/envoyer-test/ -> v1_marketing_campagnes_envoyer_test_create
 - post /api/v1/marketing/campagnes/{id}/envoyer/ -> v1_marketing_campagnes_envoyer_create
 - get /api/v1/marketing/campagnes/{id}/kpi-mere/ -> v1_marketing_campagnes_kpi_mere_retrieve
 - get /api/v1/marketing/campagnes/{id}/precheck/ -> v1_marketing_campagnes_precheck_retrieve
+- get /api/v1/marketing/campagnes/{id}/rapport-pdf/ -> v1_marketing_campagnes_rapport_pdf_retrieve
 - post /api/v1/marketing/campagnes/{id}/rattacher/ -> v1_marketing_campagnes_rattacher_create
 - get /api/v1/marketing/campagnes/{id}/rendu-lead/ -> v1_marketing_campagnes_rendu_lead_retrieve
 - post /api/v1/marketing/campagnes/{id}/renvoyer-echecs/ -> v1_marketing_campagnes_renvoyer_echecs_create
@@ -12893,12 +13454,14 @@ operations:
 - get /api/v1/marketing/evenements-marketing/{id}/badges/ -> v1_marketing_evenements_marketing_badges_retrieve
 - get /api/v1/marketing/evenements-marketing/{id}/borne/ -> v1_marketing_evenements_marketing_borne_retrieve
 - post /api/v1/marketing/evenements-marketing/{id}/cloturer-presences/ -> v1_marketing_evenements_marketing_cloturer_presences_create
+- post /api/v1/marketing/evenements-marketing/{id}/importer-inscrits/ -> v1_marketing_evenements_marketing_importer_inscrits_create
 - get /api/v1/marketing/formulaires-intake/ -> v1_marketing_formulaires_intake_list
 - post /api/v1/marketing/formulaires-intake/ -> v1_marketing_formulaires_intake_create
 - delete /api/v1/marketing/formulaires-intake/{id}/ -> v1_marketing_formulaires_intake_destroy
 - get /api/v1/marketing/formulaires-intake/{id}/ -> v1_marketing_formulaires_intake_retrieve
 - patch /api/v1/marketing/formulaires-intake/{id}/ -> v1_marketing_formulaires_intake_partial_update
 - put /api/v1/marketing/formulaires-intake/{id}/ -> v1_marketing_formulaires_intake_update
+- get /api/v1/marketing/heatmap-engagement/ -> v1_marketing_heatmap_engagement_retrieve
 - get /api/v1/marketing/inscriptions-evenement/ -> v1_marketing_inscriptions_evenement_list
 - post /api/v1/marketing/inscriptions-evenement/ -> v1_marketing_inscriptions_evenement_create
 - delete /api/v1/marketing/inscriptions-evenement/{id}/ -> v1_marketing_inscriptions_evenement_destroy
@@ -12927,12 +13490,25 @@ operations:
 - post /api/v1/marketing/listes-diffusion/{id}/importer/ -> v1_marketing_listes_diffusion_importer_create
 - get /api/v1/marketing/messages-whatsapp/ -> v1_marketing_messages_whatsapp_list
 - get /api/v1/marketing/messages-whatsapp/{id}/ -> v1_marketing_messages_whatsapp_retrieve
+- get /api/v1/marketing/modeles-journey/ -> v1_marketing_modeles_journey_list
+- post /api/v1/marketing/modeles-journey/ -> v1_marketing_modeles_journey_create
+- delete /api/v1/marketing/modeles-journey/{id}/ -> v1_marketing_modeles_journey_destroy
+- get /api/v1/marketing/modeles-journey/{id}/ -> v1_marketing_modeles_journey_retrieve
+- patch /api/v1/marketing/modeles-journey/{id}/ -> v1_marketing_modeles_journey_partial_update
+- put /api/v1/marketing/modeles-journey/{id}/ -> v1_marketing_modeles_journey_update
+- post /api/v1/marketing/modeles-journey/{id}/instancier/ -> v1_marketing_modeles_journey_instancier_create
 - get /api/v1/marketing/mouvements-fidelite/ -> v1_marketing_mouvements_fidelite_list
 - post /api/v1/marketing/mouvements-fidelite/ -> v1_marketing_mouvements_fidelite_create
 - delete /api/v1/marketing/mouvements-fidelite/{id}/ -> v1_marketing_mouvements_fidelite_destroy
 - get /api/v1/marketing/mouvements-fidelite/{id}/ -> v1_marketing_mouvements_fidelite_retrieve
 - patch /api/v1/marketing/mouvements-fidelite/{id}/ -> v1_marketing_mouvements_fidelite_partial_update
 - put /api/v1/marketing/mouvements-fidelite/{id}/ -> v1_marketing_mouvements_fidelite_update
+- get /api/v1/marketing/noeuds-journey/ -> v1_marketing_noeuds_journey_list
+- post /api/v1/marketing/noeuds-journey/ -> v1_marketing_noeuds_journey_create
+- delete /api/v1/marketing/noeuds-journey/{id}/ -> v1_marketing_noeuds_journey_destroy
+- get /api/v1/marketing/noeuds-journey/{id}/ -> v1_marketing_noeuds_journey_retrieve
+- patch /api/v1/marketing/noeuds-journey/{id}/ -> v1_marketing_noeuds_journey_partial_update
+- put /api/v1/marketing/noeuds-journey/{id}/ -> v1_marketing_noeuds_journey_update
 - get /api/v1/marketing/ouvertures-partage/ -> v1_marketing_ouvertures_partage_list
 - post /api/v1/marketing/ouvertures-partage/ -> v1_marketing_ouvertures_partage_create
 - post /api/v1/marketing/ouvertures-partage/ping/ -> v1_marketing_ouvertures_partage_ping_create
@@ -12940,6 +13516,11 @@ operations:
 - get /api/v1/marketing/ouvertures-partage/{id}/ -> v1_marketing_ouvertures_partage_retrieve
 - patch /api/v1/marketing/ouvertures-partage/{id}/ -> v1_marketing_ouvertures_partage_partial_update
 - put /api/v1/marketing/ouvertures-partage/{id}/ -> v1_marketing_ouvertures_partage_update
+- get /api/v1/marketing/parametres/ -> v1_marketing_parametres_retrieve
+- patch /api/v1/marketing/parametres/ -> v1_marketing_parametres_partial_update
+- put /api/v1/marketing/parametres/ -> v1_marketing_parametres_update
+- get /api/v1/marketing/preferences/{token}/ -> v1_marketing_preferences_retrieve
+- post /api/v1/marketing/preferences/{token}/ -> v1_marketing_preferences_create
 - get /api/v1/marketing/questions-evenement/ -> v1_marketing_questions_evenement_list
 - post /api/v1/marketing/questions-evenement/ -> v1_marketing_questions_evenement_create
 - delete /api/v1/marketing/questions-evenement/{id}/ -> v1_marketing_questions_evenement_destroy
@@ -12947,6 +13528,7 @@ operations:
 - patch /api/v1/marketing/questions-evenement/{id}/ -> v1_marketing_questions_evenement_partial_update
 - put /api/v1/marketing/questions-evenement/{id}/ -> v1_marketing_questions_evenement_update
 - get /api/v1/marketing/r/{token}/ -> v1_marketing_r_retrieve
+- get /api/v1/marketing/registre-consentement/export-pdf/ -> v1_marketing_registre_consentement_export_pdf_retrieve
 - get /api/v1/marketing/regles-upsell/ -> v1_marketing_regles_upsell_list
 - post /api/v1/marketing/regles-upsell/ -> v1_marketing_regles_upsell_create
 - post /api/v1/marketing/regles-upsell/suggestions/ -> v1_marketing_regles_upsell_suggestions_create
@@ -12961,12 +13543,14 @@ operations:
 - patch /api/v1/marketing/relances-devis-abandonnes/{id}/ -> v1_marketing_relances_devis_abandonnes_partial_update
 - put /api/v1/marketing/relances-devis-abandonnes/{id}/ -> v1_marketing_relances_devis_abandonnes_update
 - get /api/v1/marketing/reponses-enquete/{reponse_id}/certificat/ -> v1_marketing_reponses_enquete_certificat_retrieve
+- get /api/v1/marketing/scores-maturite/{lead_id}/ -> v1_marketing_scores_maturite_retrieve
 - get /api/v1/marketing/segments-marketing/ -> v1_marketing_segments_marketing_list
 - post /api/v1/marketing/segments-marketing/ -> v1_marketing_segments_marketing_create
 - delete /api/v1/marketing/segments-marketing/{id}/ -> v1_marketing_segments_marketing_destroy
 - get /api/v1/marketing/segments-marketing/{id}/ -> v1_marketing_segments_marketing_retrieve
 - patch /api/v1/marketing/segments-marketing/{id}/ -> v1_marketing_segments_marketing_partial_update
 - put /api/v1/marketing/segments-marketing/{id}/ -> v1_marketing_segments_marketing_update
+- get /api/v1/marketing/segments-marketing/{id}/export/ -> v1_marketing_segments_marketing_export_retrieve
 - post /api/v1/marketing/segments-marketing/{id}/exporter-audience-meta/ -> v1_marketing_segments_marketing_exporter_audience_meta_create
 - get /api/v1/marketing/segments-marketing/{id}/previsualiser/ -> v1_marketing_segments_marketing_previsualiser_retrieve
 - get /api/v1/marketing/sequences-relance/ -> v1_marketing_sequences_relance_list
@@ -12994,6 +13578,13 @@ operations:
 - patch /api/v1/marketing/types-evenement/{id}/ -> v1_marketing_types_evenement_partial_update
 - put /api/v1/marketing/types-evenement/{id}/ -> v1_marketing_types_evenement_update
 - post /api/v1/marketing/types-evenement/{id}/creer-evenement/ -> v1_marketing_types_evenement_creer_evenement_create
+- get /api/v1/marketing/versions-formulaire-intake/ -> v1_marketing_versions_formulaire_intake_list
+- post /api/v1/marketing/versions-formulaire-intake/ -> v1_marketing_versions_formulaire_intake_create
+- delete /api/v1/marketing/versions-formulaire-intake/{id}/ -> v1_marketing_versions_formulaire_intake_destroy
+- get /api/v1/marketing/versions-formulaire-intake/{id}/ -> v1_marketing_versions_formulaire_intake_retrieve
+- patch /api/v1/marketing/versions-formulaire-intake/{id}/ -> v1_marketing_versions_formulaire_intake_partial_update
+- put /api/v1/marketing/versions-formulaire-intake/{id}/ -> v1_marketing_versions_formulaire_intake_update
+- post /api/v1/marketing/versions-formulaire-intake/{id}/publier/ -> v1_marketing_versions_formulaire_intake_publier_create
 - post /api/v1/marketing/webhooks/brevo/ -> v1_marketing_webhooks_brevo_create
 - post /api/v1/marketing/webhooks/sms-stop/ -> v1_marketing_webhooks_sms_stop_create
 - get /api/v1/migration/lots-migration/ -> v1_migration_lots_migration_list
@@ -13070,6 +13661,49 @@ operations:
 - put /api/v1/monitoring/warranties/{id}/ -> v1_monitoring_warranties_update
 - get /api/v1/monitoring/warranties/{id}/curve/ -> v1_monitoring_warranties_curve_retrieve
 - get /api/v1/monitoring/warranties/{id}/status/ -> v1_monitoring_warranties_status_retrieve
+- get /api/v1/mrp/analyse-couts/ -> v1_mrp_analyse_couts_list
+- get /api/v1/mrp/charge-postes/ -> v1_mrp_charge_postes_list
+- get /api/v1/mrp/couts-standard/ -> v1_mrp_couts_standard_list
+- post /api/v1/mrp/couts-standard/figer/ -> v1_mrp_couts_standard_figer_create
+- get /api/v1/mrp/couts-standard/{id}/ -> v1_mrp_couts_standard_retrieve
+- get /api/v1/mrp/gammes/ -> v1_mrp_gammes_list
+- post /api/v1/mrp/gammes/ -> v1_mrp_gammes_create
+- delete /api/v1/mrp/gammes/{id}/ -> v1_mrp_gammes_destroy
+- get /api/v1/mrp/gammes/{id}/ -> v1_mrp_gammes_retrieve
+- patch /api/v1/mrp/gammes/{id}/ -> v1_mrp_gammes_partial_update
+- put /api/v1/mrp/gammes/{id}/ -> v1_mrp_gammes_update
+- post /api/v1/mrp/mrp-run/ -> v1_mrp_mrp_run_create
+- get /api/v1/mrp/oee-postes/ -> v1_mrp_oee_postes_list
+- get /api/v1/mrp/operations-gamme/ -> v1_mrp_operations_gamme_list
+- post /api/v1/mrp/operations-gamme/ -> v1_mrp_operations_gamme_create
+- delete /api/v1/mrp/operations-gamme/{id}/ -> v1_mrp_operations_gamme_destroy
+- get /api/v1/mrp/operations-gamme/{id}/ -> v1_mrp_operations_gamme_retrieve
+- patch /api/v1/mrp/operations-gamme/{id}/ -> v1_mrp_operations_gamme_partial_update
+- put /api/v1/mrp/operations-gamme/{id}/ -> v1_mrp_operations_gamme_update
+- get /api/v1/mrp/operations-of/ -> v1_mrp_operations_of_list
+- get /api/v1/mrp/operations-of/{id}/ -> v1_mrp_operations_of_retrieve
+- post /api/v1/mrp/operations-of/{id}/demarrer/ -> v1_mrp_operations_of_demarrer_create
+- post /api/v1/mrp/operations-of/{id}/pauser/ -> v1_mrp_operations_of_pauser_create
+- patch /api/v1/mrp/operations-of/{id}/replanifier/ -> v1_mrp_operations_of_replanifier_partial_update
+- post /api/v1/mrp/operations-of/{id}/reprendre/ -> v1_mrp_operations_of_reprendre_create
+- post /api/v1/mrp/operations-of/{id}/terminer/ -> v1_mrp_operations_of_terminer_create
+- get /api/v1/mrp/ordres-fabrication/ -> v1_mrp_ordres_fabrication_list
+- post /api/v1/mrp/ordres-fabrication/ -> v1_mrp_ordres_fabrication_create
+- delete /api/v1/mrp/ordres-fabrication/{id}/ -> v1_mrp_ordres_fabrication_destroy
+- get /api/v1/mrp/ordres-fabrication/{id}/ -> v1_mrp_ordres_fabrication_retrieve
+- patch /api/v1/mrp/ordres-fabrication/{id}/ -> v1_mrp_ordres_fabrication_partial_update
+- put /api/v1/mrp/ordres-fabrication/{id}/ -> v1_mrp_ordres_fabrication_update
+- post /api/v1/mrp/ordres-fabrication/{id}/annuler/ -> v1_mrp_ordres_fabrication_annuler_create
+- post /api/v1/mrp/ordres-fabrication/{id}/cloturer/ -> v1_mrp_ordres_fabrication_cloturer_create
+- post /api/v1/mrp/ordres-fabrication/{id}/confirmer/ -> v1_mrp_ordres_fabrication_confirmer_create
+- get /api/v1/mrp/ordres-fabrication/{id}/dispo-composants/ -> v1_mrp_ordres_fabrication_dispo_composants_retrieve
+- get /api/v1/mrp/postes-charge/ -> v1_mrp_postes_charge_list
+- post /api/v1/mrp/postes-charge/ -> v1_mrp_postes_charge_create
+- delete /api/v1/mrp/postes-charge/{id}/ -> v1_mrp_postes_charge_destroy
+- get /api/v1/mrp/postes-charge/{id}/ -> v1_mrp_postes_charge_retrieve
+- patch /api/v1/mrp/postes-charge/{id}/ -> v1_mrp_postes_charge_partial_update
+- put /api/v1/mrp/postes-charge/{id}/ -> v1_mrp_postes_charge_update
+- get /api/v1/mrp/postes-charge/{id}/oee/ -> v1_mrp_postes_charge_oee_retrieve
 - get /api/v1/notifications/annonces/ -> v1_notifications_annonces_list
 - post /api/v1/notifications/annonces/ -> v1_notifications_annonces_create
 - delete /api/v1/notifications/annonces/{id}/ -> v1_notifications_annonces_destroy
@@ -13116,10 +13750,16 @@ operations:
 - get /api/v1/notifications/working-hours/ -> v1_notifications_working_hours_retrieve
 - patch /api/v1/notifications/working-hours/{id}/ -> v1_notifications_working_hours_partial_update
 - put /api/v1/notifications/working-hours/{id}/ -> v1_notifications_working_hours_update
+- get /api/v1/onboarding/items-masques/ -> v1_onboarding_items_masques_list
+- post /api/v1/onboarding/items-masques/{id}/demasquer/ -> v1_onboarding_items_masques_demasquer_create
+- post /api/v1/onboarding/items-masques/{id}/masquer/ -> v1_onboarding_items_masques_masquer_create
 - get /api/v1/onboarding/progress/ -> v1_onboarding_progress_retrieve
 - post /api/v1/onboarding/progress/ignorer-tout/ -> v1_onboarding_progress_ignorer_tout_create
 - post /api/v1/onboarding/progress/{id}/ignorer/ -> v1_onboarding_progress_ignorer_create
 - post /api/v1/onboarding/progress/{id}/marquer-fait/ -> v1_onboarding_progress_marquer_fait_create
+- get /api/v1/onboarding/tours/ -> v1_onboarding_tours_list
+- post /api/v1/onboarding/tours/{id}/revoir/ -> v1_onboarding_tours_revoir_create
+- post /api/v1/onboarding/tours/{id}/vu/ -> v1_onboarding_tours_vu_create
 - get /api/v1/outillage/kit-items/ -> v1_outillage_kit_items_list
 - post /api/v1/outillage/kit-items/ -> v1_outillage_kit_items_create
 - delete /api/v1/outillage/kit-items/{id}/ -> v1_outillage_kit_items_destroy
@@ -13332,9 +13972,21 @@ operations:
 - get /api/v1/parametres/email-templates/{id}/ -> v1_parametres_email_templates_retrieve
 - patch /api/v1/parametres/email-templates/{id}/ -> v1_parametres_email_templates_partial_update
 - put /api/v1/parametres/email-templates/{id}/ -> v1_parametres_email_templates_update
+- get /api/v1/parametres/gabarits-document/ -> v1_parametres_gabarits_document_list
+- get /api/v1/parametres/gabarits-document/{code}/ -> v1_parametres_gabarits_document_retrieve
+- get /api/v1/parametres/gabarits-document/{code}/rendre/ -> v1_parametres_gabarits_document_rendre_retrieve
 - get /api/v1/parametres/messages/ -> v1_parametres_messages_retrieve
 - patch /api/v1/parametres/messages/ -> v1_parametres_messages_partial_update
 - put /api/v1/parametres/messages/ -> v1_parametres_messages_update
+- get /api/v1/parametres/pos-boutiques/ -> v1_parametres_pos_boutiques_list
+- post /api/v1/parametres/pos-boutiques/ -> v1_parametres_pos_boutiques_create
+- delete /api/v1/parametres/pos-boutiques/{id}/ -> v1_parametres_pos_boutiques_destroy
+- get /api/v1/parametres/pos-boutiques/{id}/ -> v1_parametres_pos_boutiques_retrieve
+- patch /api/v1/parametres/pos-boutiques/{id}/ -> v1_parametres_pos_boutiques_partial_update
+- put /api/v1/parametres/pos-boutiques/{id}/ -> v1_parametres_pos_boutiques_update
+- get /api/v1/parametres/pos/ -> v1_parametres_pos_retrieve
+- patch /api/v1/parametres/pos/update/ -> v1_parametres_pos_update_partial_update
+- put /api/v1/parametres/pos/update/ -> v1_parametres_pos_update_update
 - get /api/v1/parametres/statuts/ -> v1_parametres_statuts_list
 - post /api/v1/parametres/statuts/ -> v1_parametres_statuts_create
 - put /api/v1/parametres/statuts/bulk/ -> v1_parametres_statuts_bulk_update
@@ -13432,6 +14084,7 @@ operations:
 - get /api/v1/pos/config-materiel/{id}/ -> v1_pos_config_materiel_retrieve
 - patch /api/v1/pos/config-materiel/{id}/ -> v1_pos_config_materiel_partial_update
 - put /api/v1/pos/config-materiel/{id}/ -> v1_pos_config_materiel_update
+- post /api/v1/pos/definir-pin/ -> v1_pos_definir_pin_create
 - get /api/v1/pos/retraits/ -> v1_pos_retraits_list
 - post /api/v1/pos/retraits/ -> v1_pos_retraits_create
 - delete /api/v1/pos/retraits/{id}/ -> v1_pos_retraits_destroy
@@ -13448,22 +14101,42 @@ operations:
 - patch /api/v1/pos/sessions/{id}/ -> v1_pos_sessions_partial_update
 - put /api/v1/pos/sessions/{id}/ -> v1_pos_sessions_update
 - post /api/v1/pos/sessions/{id}/cloturer/ -> v1_pos_sessions_cloturer_create
+- get /api/v1/pos/sessions/{id}/rapport-x/ -> v1_pos_sessions_rapport_x_retrieve
+- get /api/v1/pos/sessions/{id}/rapport-z-pdf/ -> v1_pos_sessions_rapport_z_pdf_retrieve
 - get /api/v1/pos/sessions/{id}/rapport-z/ -> v1_pos_sessions_rapport_z_retrieve
 - get /api/v1/pos/ventes/ -> v1_pos_ventes_list
 - post /api/v1/pos/ventes/ -> v1_pos_ventes_create
 - get /api/v1/pos/ventes/dashboard-export/ -> v1_pos_ventes_dashboard_export_retrieve
+- get /api/v1/pos/ventes/dashboard-retail-export/ -> v1_pos_ventes_dashboard_retail_export_retrieve
+- get /api/v1/pos/ventes/dashboard-retail/ -> v1_pos_ventes_dashboard_retail_retrieve
 - get /api/v1/pos/ventes/dashboard/ -> v1_pos_ventes_dashboard_retrieve
+- post /api/v1/pos/ventes/emettre-carte-cadeau/ -> v1_pos_ventes_emettre_carte_cadeau_create
 - post /api/v1/pos/ventes/encaisser-facture/ -> v1_pos_ventes_encaisser_facture_create
 - get /api/v1/pos/ventes/factures-recherche/ -> v1_pos_ventes_factures_recherche_retrieve
 - delete /api/v1/pos/ventes/{id}/ -> v1_pos_ventes_destroy
 - get /api/v1/pos/ventes/{id}/ -> v1_pos_ventes_retrieve
 - patch /api/v1/pos/ventes/{id}/ -> v1_pos_ventes_partial_update
 - put /api/v1/pos/ventes/{id}/ -> v1_pos_ventes_update
+- post /api/v1/pos/ventes/{id}/arrhes/ -> v1_pos_ventes_arrhes_create
+- post /api/v1/pos/ventes/{id}/coupon/ -> v1_pos_ventes_coupon_create
 - post /api/v1/pos/ventes/{id}/lignes/ -> v1_pos_ventes_lignes_create
+- post /api/v1/pos/ventes/{id}/payer-carte-cadeau/ -> v1_pos_ventes_payer_carte_cadeau_create
+- get /api/v1/pos/ventes/{id}/promotions/ -> v1_pos_ventes_promotions_retrieve
+- post /api/v1/pos/ventes/{id}/remettre-marchandise/ -> v1_pos_ventes_remettre_marchandise_create
+- post /api/v1/pos/ventes/{id}/solde-arrhes/ -> v1_pos_ventes_solde_arrhes_create
+- get /api/v1/pos/ventes/{id}/ticket-arrhes-pdf/ -> v1_pos_ventes_ticket_arrhes_pdf_retrieve
 - post /api/v1/pos/ventes/{id}/ticket-escpos/ -> v1_pos_ventes_ticket_escpos_create
 - get /api/v1/pos/ventes/{id}/ticket-pdf/ -> v1_pos_ventes_ticket_pdf_retrieve
 - post /api/v1/pos/ventes/{id}/ticket-share-link/ -> v1_pos_ventes_ticket_share_link_create
 - post /api/v1/pos/ventes/{id}/valider/ -> v1_pos_ventes_valider_create
+- post /api/v1/pos/verifier-pin/ -> v1_pos_verifier_pin_create
+- get /api/v1/promotions/regles/ -> v1_promotions_regles_list
+- post /api/v1/promotions/regles/ -> v1_promotions_regles_create
+- post /api/v1/promotions/regles/simuler/ -> v1_promotions_regles_simuler_create
+- delete /api/v1/promotions/regles/{id}/ -> v1_promotions_regles_destroy
+- get /api/v1/promotions/regles/{id}/ -> v1_promotions_regles_retrieve
+- patch /api/v1/promotions/regles/{id}/ -> v1_promotions_regles_partial_update
+- put /api/v1/promotions/regles/{id}/ -> v1_promotions_regles_update
 - get /api/v1/publicapi/catalogue/ -> v1_publicapi_catalogue_retrieve
 - get /api/v1/publicapi/docs/ -> v1_publicapi_docs_retrieve
 - get /api/v1/publicapi/keys/ -> v1_publicapi_keys_list
@@ -13999,6 +14672,7 @@ operations:
 - patch /api/v1/reporting/rapport-definitions/{id}/ -> v1_reporting_rapport_definitions_partial_update
 - put /api/v1/reporting/rapport-definitions/{id}/ -> v1_reporting_rapport_definitions_update
 - post /api/v1/reporting/rapport-definitions/{id}/executer/ -> v1_reporting_rapport_definitions_executer_create
+- get /api/v1/reporting/rapport-definitions/{id}/export/ -> v1_reporting_rapport_definitions_export_retrieve
 - get /api/v1/reporting/reports/field/ -> v1_reporting_reports_field_retrieve
 - get /api/v1/reporting/reports/kpi-federes/ -> v1_reporting_reports_kpi_federes_retrieve
 - get /api/v1/reporting/reports/sales/ -> v1_reporting_reports_sales_retrieve
@@ -14859,6 +15533,49 @@ operations:
 - get /api/v1/sav/worksheet-modeles/{id}/ -> v1_sav_worksheet_modeles_retrieve
 - patch /api/v1/sav/worksheet-modeles/{id}/ -> v1_sav_worksheet_modeles_partial_update
 - put /api/v1/sav/worksheet-modeles/{id}/ -> v1_sav_worksheet_modeles_update
+- get /api/v1/scm/classification-abc/ -> v1_scm_classification_abc_list
+- post /api/v1/scm/classification-abc/ -> v1_scm_classification_abc_create
+- post /api/v1/scm/classification-abc/recalculer/ -> v1_scm_classification_abc_recalculer_create
+- delete /api/v1/scm/classification-abc/{id}/ -> v1_scm_classification_abc_destroy
+- get /api/v1/scm/classification-abc/{id}/ -> v1_scm_classification_abc_retrieve
+- patch /api/v1/scm/classification-abc/{id}/ -> v1_scm_classification_abc_partial_update
+- put /api/v1/scm/classification-abc/{id}/ -> v1_scm_classification_abc_update
+- get /api/v1/scm/cycles-sop/ -> v1_scm_cycles_sop_list
+- post /api/v1/scm/cycles-sop/ -> v1_scm_cycles_sop_create
+- delete /api/v1/scm/cycles-sop/{id}/ -> v1_scm_cycles_sop_destroy
+- get /api/v1/scm/cycles-sop/{id}/ -> v1_scm_cycles_sop_retrieve
+- patch /api/v1/scm/cycles-sop/{id}/ -> v1_scm_cycles_sop_partial_update
+- put /api/v1/scm/cycles-sop/{id}/ -> v1_scm_cycles_sop_update
+- post /api/v1/scm/cycles-sop/{id}/ajuster-demande/ -> v1_scm_cycles_sop_ajuster_demande_create
+- post /api/v1/scm/cycles-sop/{id}/avancer-statut/ -> v1_scm_cycles_sop_avancer_statut_create
+- post /api/v1/scm/cycles-sop/{id}/calculer-offre/ -> v1_scm_cycles_sop_calculer_offre_create
+- get /api/v1/scm/cycles-sop/{id}/ecarts/ -> v1_scm_cycles_sop_ecarts_retrieve
+- get /api/v1/scm/cycles-sop/{id}/historique/ -> v1_scm_cycles_sop_historique_retrieve
+- get /api/v1/scm/cycles-sop/{id}/impact-financier/ -> v1_scm_cycles_sop_impact_financier_retrieve
+- get /api/v1/scm/cycles-sop/{id}/lignes-demande/ -> v1_scm_cycles_sop_lignes_demande_retrieve
+- post /api/v1/scm/cycles-sop/{id}/reouvrir/ -> v1_scm_cycles_sop_reouvrir_create
+- get /api/v1/scm/evenements-demande/ -> v1_scm_evenements_demande_list
+- post /api/v1/scm/evenements-demande/ -> v1_scm_evenements_demande_create
+- delete /api/v1/scm/evenements-demande/{id}/ -> v1_scm_evenements_demande_destroy
+- get /api/v1/scm/evenements-demande/{id}/ -> v1_scm_evenements_demande_retrieve
+- patch /api/v1/scm/evenements-demande/{id}/ -> v1_scm_evenements_demande_partial_update
+- put /api/v1/scm/evenements-demande/{id}/ -> v1_scm_evenements_demande_update
+- get /api/v1/scm/politiques-stock/ -> v1_scm_politiques_stock_list
+- post /api/v1/scm/politiques-stock/ -> v1_scm_politiques_stock_create
+- post /api/v1/scm/politiques-stock/recalculer/ -> v1_scm_politiques_stock_recalculer_create
+- delete /api/v1/scm/politiques-stock/{id}/ -> v1_scm_politiques_stock_destroy
+- get /api/v1/scm/politiques-stock/{id}/ -> v1_scm_politiques_stock_retrieve
+- patch /api/v1/scm/politiques-stock/{id}/ -> v1_scm_politiques_stock_partial_update
+- put /api/v1/scm/politiques-stock/{id}/ -> v1_scm_politiques_stock_update
+- get /api/v1/scm/previsions-demande/ -> v1_scm_previsions_demande_list
+- post /api/v1/scm/previsions-demande/ -> v1_scm_previsions_demande_create
+- post /api/v1/scm/previsions-demande/generer/ -> v1_scm_previsions_demande_generer_create
+- delete /api/v1/scm/previsions-demande/{id}/ -> v1_scm_previsions_demande_destroy
+- get /api/v1/scm/previsions-demande/{id}/ -> v1_scm_previsions_demande_retrieve
+- patch /api/v1/scm/previsions-demande/{id}/ -> v1_scm_previsions_demande_partial_update
+- put /api/v1/scm/previsions-demande/{id}/ -> v1_scm_previsions_demande_update
+- get /api/v1/scm/tableau-bord-reappro/ -> v1_scm_tableau_bord_reappro_list
+- post /api/v1/scm/tableau-bord-reappro/creer-bcf/ -> v1_scm_tableau_bord_reappro_creer_bcf_create
 - get /api/v1/stock/achats-parametres/ -> v1_stock_achats_parametres_retrieve
 - patch /api/v1/stock/achats-parametres/{id}/ -> v1_stock_achats_parametres_partial_update
 - get /api/v1/stock/acomptes-fournisseur/ -> v1_stock_acomptes_fournisseur_list
@@ -14936,6 +15653,15 @@ operations:
 - patch /api/v1/stock/emplacements/{id}/ -> v1_stock_emplacements_partial_update
 - put /api/v1/stock/emplacements/{id}/ -> v1_stock_emplacements_update
 - get /api/v1/stock/emplacements/{id}/etiquettes-kanban/ -> v1_stock_emplacements_etiquettes_kanban_retrieve
+- get /api/v1/stock/expeditions/ -> v1_stock_expeditions_list
+- post /api/v1/stock/expeditions/ -> v1_stock_expeditions_create
+- get /api/v1/stock/expeditions/tarifs/ -> v1_stock_expeditions_tarifs_retrieve
+- delete /api/v1/stock/expeditions/{id}/ -> v1_stock_expeditions_destroy
+- get /api/v1/stock/expeditions/{id}/ -> v1_stock_expeditions_retrieve
+- patch /api/v1/stock/expeditions/{id}/ -> v1_stock_expeditions_partial_update
+- put /api/v1/stock/expeditions/{id}/ -> v1_stock_expeditions_update
+- post /api/v1/stock/expeditions/{id}/generer-etiquette/ -> v1_stock_expeditions_generer_etiquette_create
+- get /api/v1/stock/expeditions/{id}/tracking/ -> v1_stock_expeditions_tracking_retrieve
 - get /api/v1/stock/factures-fournisseur/ -> v1_stock_factures_fournisseur_list
 - post /api/v1/stock/factures-fournisseur/ -> v1_stock_factures_fournisseur_create
 - get /api/v1/stock/factures-fournisseur/comptes-a-payer/ -> v1_stock_factures_fournisseur_comptes_a_payer_retrieve
@@ -15036,6 +15762,13 @@ operations:
 - get /api/v1/stock/paiements-fournisseur/{id}/ -> v1_stock_paiements_fournisseur_retrieve
 - patch /api/v1/stock/paiements-fournisseur/{id}/ -> v1_stock_paiements_fournisseur_partial_update
 - put /api/v1/stock/paiements-fournisseur/{id}/ -> v1_stock_paiements_fournisseur_update
+- get /api/v1/stock/plans-comptage-tournant/ -> v1_stock_plans_comptage_tournant_list
+- post /api/v1/stock/plans-comptage-tournant/ -> v1_stock_plans_comptage_tournant_create
+- post /api/v1/stock/plans-comptage-tournant/generer/ -> v1_stock_plans_comptage_tournant_generer_create
+- delete /api/v1/stock/plans-comptage-tournant/{id}/ -> v1_stock_plans_comptage_tournant_destroy
+- get /api/v1/stock/plans-comptage-tournant/{id}/ -> v1_stock_plans_comptage_tournant_retrieve
+- patch /api/v1/stock/plans-comptage-tournant/{id}/ -> v1_stock_plans_comptage_tournant_partial_update
+- put /api/v1/stock/plans-comptage-tournant/{id}/ -> v1_stock_plans_comptage_tournant_update
 - get /api/v1/stock/prix-fournisseurs/ -> v1_stock_prix_fournisseurs_list
 - post /api/v1/stock/prix-fournisseurs/ -> v1_stock_prix_fournisseurs_create
 - get /api/v1/stock/prix-fournisseurs/export-xlsx/ -> v1_stock_prix_fournisseurs_export_xlsx_retrieve
@@ -15070,16 +15803,27 @@ operations:
 - get /api/v1/stock/produits/{id}/ -> v1_stock_produits_retrieve
 - patch /api/v1/stock/produits/{id}/ -> v1_stock_produits_partial_update
 - put /api/v1/stock/produits/{id}/ -> v1_stock_produits_update
+- get /api/v1/stock/produits/{id}/casiers/ -> v1_stock_produits_casiers_retrieve
+- get /api/v1/stock/produits/{id}/classe-abc/ -> v1_stock_produits_classe_abc_retrieve
 - get /api/v1/stock/produits/{id}/comparer-fournisseurs/ -> v1_stock_produits_comparer_fournisseurs_retrieve
 - post /api/v1/stock/produits/{id}/dupliquer/ -> v1_stock_produits_dupliquer_create
 - get /api/v1/stock/produits/{id}/emplacements/ -> v1_stock_produits_emplacements_retrieve
 - delete /api/v1/stock/produits/{id}/force-delete/ -> v1_stock_produits_force_delete_destroy
 - delete /api/v1/stock/produits/{id}/photo/ -> v1_stock_produits_photo_destroy
 - post /api/v1/stock/produits/{id}/photo/ -> v1_stock_produits_photo_create
+- get /api/v1/stock/produits/{id}/plan-picking/ -> v1_stock_produits_plan_picking_retrieve
 - get /api/v1/stock/produits/{id}/previsionnel/ -> v1_stock_produits_previsionnel_retrieve
 - get /api/v1/stock/produits/{id}/prix-fournisseurs/ -> v1_stock_produits_prix_fournisseurs_retrieve
 - post /api/v1/stock/produits/{id}/rebuter/ -> v1_stock_produits_rebuter_create
 - patch /api/v1/stock/produits/{id}/unarchive/ -> v1_stock_produits_unarchive_partial_update
+- post /api/v1/stock/public/quai-checkin/ -> v1_stock_public_quai_checkin_create
+- get /api/v1/stock/quais/ -> v1_stock_quais_list
+- post /api/v1/stock/quais/ -> v1_stock_quais_create
+- get /api/v1/stock/quais/planning/ -> v1_stock_quais_planning_retrieve
+- delete /api/v1/stock/quais/{id}/ -> v1_stock_quais_destroy
+- get /api/v1/stock/quais/{id}/ -> v1_stock_quais_retrieve
+- patch /api/v1/stock/quais/{id}/ -> v1_stock_quais_partial_update
+- put /api/v1/stock/quais/{id}/ -> v1_stock_quais_update
 - get /api/v1/stock/receptions-fournisseur/ -> v1_stock_receptions_fournisseur_list
 - post /api/v1/stock/receptions-fournisseur/ -> v1_stock_receptions_fournisseur_create
 - get /api/v1/stock/receptions-fournisseur/scan-gs1/ -> v1_stock_receptions_fournisseur_scan_gs1_retrieve
@@ -15091,12 +15835,19 @@ operations:
 - post /api/v1/stock/receptions-fournisseur/{id}/confirmer/ -> v1_stock_receptions_fournisseur_confirmer_create
 - get /api/v1/stock/receptions-fournisseur/{id}/etiquettes/ -> v1_stock_receptions_fournisseur_etiquettes_retrieve
 - post /api/v1/stock/receptions-fournisseur/{id}/facturer/ -> v1_stock_receptions_fournisseur_facturer_create
+- get /api/v1/stock/receptions-fournisseur/{id}/suggestions-rangement/ -> v1_stock_receptions_fournisseur_suggestions_rangement_retrieve
 - get /api/v1/stock/regles-code-barres/ -> v1_stock_regles_code_barres_list
 - post /api/v1/stock/regles-code-barres/ -> v1_stock_regles_code_barres_create
 - delete /api/v1/stock/regles-code-barres/{id}/ -> v1_stock_regles_code_barres_destroy
 - get /api/v1/stock/regles-code-barres/{id}/ -> v1_stock_regles_code_barres_retrieve
 - patch /api/v1/stock/regles-code-barres/{id}/ -> v1_stock_regles_code_barres_partial_update
 - put /api/v1/stock/regles-code-barres/{id}/ -> v1_stock_regles_code_barres_update
+- get /api/v1/stock/rendez-vous-transporteur/ -> v1_stock_rendez_vous_transporteur_list
+- post /api/v1/stock/rendez-vous-transporteur/ -> v1_stock_rendez_vous_transporteur_create
+- delete /api/v1/stock/rendez-vous-transporteur/{id}/ -> v1_stock_rendez_vous_transporteur_destroy
+- get /api/v1/stock/rendez-vous-transporteur/{id}/ -> v1_stock_rendez_vous_transporteur_retrieve
+- patch /api/v1/stock/rendez-vous-transporteur/{id}/ -> v1_stock_rendez_vous_transporteur_partial_update
+- put /api/v1/stock/rendez-vous-transporteur/{id}/ -> v1_stock_rendez_vous_transporteur_update
 - get /api/v1/stock/retours-fournisseur/ -> v1_stock_retours_fournisseur_list
 - post /api/v1/stock/retours-fournisseur/ -> v1_stock_retours_fournisseur_create
 - delete /api/v1/stock/retours-fournisseur/{id}/ -> v1_stock_retours_fournisseur_destroy
@@ -15113,9 +15864,31 @@ operations:
 - patch /api/v1/stock/revalorisations-stock/{id}/ -> v1_stock_revalorisations_stock_partial_update
 - put /api/v1/stock/revalorisations-stock/{id}/ -> v1_stock_revalorisations_stock_update
 - post /api/v1/stock/revalorisations-stock/{id}/valider/ -> v1_stock_revalorisations_stock_valider_create
+- post /api/v1/stock/scanner/mouvement/ -> v1_stock_scanner_mouvement_create
+- get /api/v1/stock/scanner/resoudre/ -> v1_stock_scanner_resoudre_retrieve
 - get /api/v1/stock/transferts/ -> v1_stock_transferts_list
 - post /api/v1/stock/transferts/ -> v1_stock_transferts_create
 - get /api/v1/stock/transferts/{id}/ -> v1_stock_transferts_retrieve
+- get /api/v1/stock/unites-logistiques/ -> v1_stock_unites_logistiques_list
+- post /api/v1/stock/unites-logistiques/ -> v1_stock_unites_logistiques_create
+- delete /api/v1/stock/unites-logistiques/{id}/ -> v1_stock_unites_logistiques_destroy
+- get /api/v1/stock/unites-logistiques/{id}/ -> v1_stock_unites_logistiques_retrieve
+- patch /api/v1/stock/unites-logistiques/{id}/ -> v1_stock_unites_logistiques_partial_update
+- put /api/v1/stock/unites-logistiques/{id}/ -> v1_stock_unites_logistiques_update
+- post /api/v1/stock/unites-logistiques/{id}/controler-scan/ -> v1_stock_unites_logistiques_controler_scan_create
+- get /api/v1/stock/unites-logistiques/{id}/etiquette-pdf/ -> v1_stock_unites_logistiques_etiquette_pdf_retrieve
+- post /api/v1/stock/unites-logistiques/{id}/lignes/ -> v1_stock_unites_logistiques_lignes_create
+- post /api/v1/stock/unites-logistiques/{id}/sceller/ -> v1_stock_unites_logistiques_sceller_create
+- get /api/v1/stock/vagues-picking/ -> v1_stock_vagues_picking_list
+- post /api/v1/stock/vagues-picking/ -> v1_stock_vagues_picking_create
+- delete /api/v1/stock/vagues-picking/{id}/ -> v1_stock_vagues_picking_destroy
+- get /api/v1/stock/vagues-picking/{id}/ -> v1_stock_vagues_picking_retrieve
+- patch /api/v1/stock/vagues-picking/{id}/ -> v1_stock_vagues_picking_partial_update
+- put /api/v1/stock/vagues-picking/{id}/ -> v1_stock_vagues_picking_update
+- post /api/v1/stock/vagues-picking/{id}/configurer-liberation/ -> v1_stock_vagues_picking_configurer_liberation_create
+- post /api/v1/stock/vagues-picking/{id}/lancer/ -> v1_stock_vagues_picking_lancer_create
+- post /api/v1/stock/vagues-picking/{id}/lignes/{ligne_id}/prelever/ -> v1_stock_vagues_picking_lignes_prelever_create
+- get /api/v1/territoires/couverture/ -> v1_territoires_couverture_retrieve
 - get /api/v1/territoires/membres/ -> v1_territoires_membres_list
 - post /api/v1/territoires/membres/ -> v1_territoires_membres_create
 - delete /api/v1/territoires/membres/{id}/ -> v1_territoires_membres_destroy
@@ -15142,6 +15915,58 @@ operations:
 - get /api/v1/tiers/tiers/{id}/ -> v1_tiers_tiers_retrieve
 - patch /api/v1/tiers/tiers/{id}/ -> v1_tiers_tiers_partial_update
 - put /api/v1/tiers/tiers/{id}/ -> v1_tiers_tiers_update
+- get /api/v1/transport/couts-fret/ -> v1_transport_couts_fret_list
+- post /api/v1/transport/couts-fret/ -> v1_transport_couts_fret_create
+- delete /api/v1/transport/couts-fret/{id}/ -> v1_transport_couts_fret_destroy
+- get /api/v1/transport/couts-fret/{id}/ -> v1_transport_couts_fret_retrieve
+- patch /api/v1/transport/couts-fret/{id}/ -> v1_transport_couts_fret_partial_update
+- put /api/v1/transport/couts-fret/{id}/ -> v1_transport_couts_fret_update
+- get /api/v1/transport/etapes-transport/ -> v1_transport_etapes_transport_list
+- post /api/v1/transport/etapes-transport/ -> v1_transport_etapes_transport_create
+- delete /api/v1/transport/etapes-transport/{id}/ -> v1_transport_etapes_transport_destroy
+- get /api/v1/transport/etapes-transport/{id}/ -> v1_transport_etapes_transport_retrieve
+- patch /api/v1/transport/etapes-transport/{id}/ -> v1_transport_etapes_transport_partial_update
+- put /api/v1/transport/etapes-transport/{id}/ -> v1_transport_etapes_transport_update
+- post /api/v1/transport/etapes-transport/{id}/livrer/ -> v1_transport_etapes_transport_livrer_create
+- get /api/v1/transport/facteurs-emission-co2/ -> v1_transport_facteurs_emission_co2_list
+- post /api/v1/transport/facteurs-emission-co2/ -> v1_transport_facteurs_emission_co2_create
+- delete /api/v1/transport/facteurs-emission-co2/{id}/ -> v1_transport_facteurs_emission_co2_destroy
+- get /api/v1/transport/facteurs-emission-co2/{id}/ -> v1_transport_facteurs_emission_co2_retrieve
+- patch /api/v1/transport/facteurs-emission-co2/{id}/ -> v1_transport_facteurs_emission_co2_partial_update
+- put /api/v1/transport/facteurs-emission-co2/{id}/ -> v1_transport_facteurs_emission_co2_update
+- get /api/v1/transport/lignes-transport/ -> v1_transport_lignes_transport_list
+- post /api/v1/transport/lignes-transport/ -> v1_transport_lignes_transport_create
+- delete /api/v1/transport/lignes-transport/{id}/ -> v1_transport_lignes_transport_destroy
+- get /api/v1/transport/lignes-transport/{id}/ -> v1_transport_lignes_transport_retrieve
+- patch /api/v1/transport/lignes-transport/{id}/ -> v1_transport_lignes_transport_partial_update
+- put /api/v1/transport/lignes-transport/{id}/ -> v1_transport_lignes_transport_update
+- get /api/v1/transport/litiges-transport/ -> v1_transport_litiges_transport_list
+- post /api/v1/transport/litiges-transport/ -> v1_transport_litiges_transport_create
+- delete /api/v1/transport/litiges-transport/{id}/ -> v1_transport_litiges_transport_destroy
+- get /api/v1/transport/litiges-transport/{id}/ -> v1_transport_litiges_transport_retrieve
+- patch /api/v1/transport/litiges-transport/{id}/ -> v1_transport_litiges_transport_partial_update
+- put /api/v1/transport/litiges-transport/{id}/ -> v1_transport_litiges_transport_update
+- post /api/v1/transport/litiges-transport/{id}/prendre-en-charge/ -> v1_transport_litiges_transport_prendre_en_charge_create
+- post /api/v1/transport/litiges-transport/{id}/reclamer-transporteur/ -> v1_transport_litiges_transport_reclamer_transporteur_create
+- post /api/v1/transport/litiges-transport/{id}/rejeter/ -> v1_transport_litiges_transport_rejeter_create
+- post /api/v1/transport/litiges-transport/{id}/resoudre/ -> v1_transport_litiges_transport_resoudre_create
+- get /api/v1/transport/ordres-transport/ -> v1_transport_ordres_transport_list
+- post /api/v1/transport/ordres-transport/ -> v1_transport_ordres_transport_create
+- delete /api/v1/transport/ordres-transport/{id}/ -> v1_transport_ordres_transport_destroy
+- get /api/v1/transport/ordres-transport/{id}/ -> v1_transport_ordres_transport_retrieve
+- patch /api/v1/transport/ordres-transport/{id}/ -> v1_transport_ordres_transport_partial_update
+- put /api/v1/transport/ordres-transport/{id}/ -> v1_transport_ordres_transport_update
+- get /api/v1/transport/ordres-transport/{id}/chatter/historique/ -> v1_transport_ordres_transport_chatter_historique_retrieve
+- post /api/v1/transport/ordres-transport/{id}/chatter/noter/ -> v1_transport_ordres_transport_chatter_noter_create
+- get /api/v1/transport/ordres-transport/{id}/co2/ -> v1_transport_ordres_transport_co2_retrieve
+- get /api/v1/transport/ordres-transport/{id}/comparer-transporteurs/ -> v1_transport_ordres_transport_comparer_transporteurs_retrieve
+- get /api/v1/transport/ordres-transport/{id}/etapes/ -> v1_transport_ordres_transport_etapes_retrieve
+- get /api/v1/transport/reserves-reception/ -> v1_transport_reserves_reception_list
+- post /api/v1/transport/reserves-reception/ -> v1_transport_reserves_reception_create
+- delete /api/v1/transport/reserves-reception/{id}/ -> v1_transport_reserves_reception_destroy
+- get /api/v1/transport/reserves-reception/{id}/ -> v1_transport_reserves_reception_retrieve
+- patch /api/v1/transport/reserves-reception/{id}/ -> v1_transport_reserves_reception_partial_update
+- put /api/v1/transport/reserves-reception/{id}/ -> v1_transport_reserves_reception_update
 - get /api/v1/trash/corbeille/ -> v1_trash_corbeille_list
 - post /api/v1/trash/corbeille/ -> v1_trash_corbeille_create
 - get /api/v1/trash/corbeille/{id}/ -> v1_trash_corbeille_retrieve
@@ -15280,34 +16105,47 @@ operations:
 - patch /api/v1/ventes/devis/{id}/ -> v1_ventes_devis_partial_update
 - put /api/v1/ventes/devis/{id}/ -> v1_ventes_devis_update
 - post /api/v1/ventes/devis/{id}/accepter/ -> v1_ventes_devis_accepter_create
+- post /api/v1/ventes/devis/{id}/ajouter-boq-electrique/ -> v1_ventes_devis_ajouter_boq_electrique_create
 - post /api/v1/ventes/devis/{id}/apply-preset/ -> v1_ventes_devis_apply_preset_create
 - get /api/v1/ventes/devis/{id}/approbation/ -> v1_ventes_devis_approbation_retrieve
 - post /api/v1/ventes/devis/{id}/approuver-etape/ -> v1_ventes_devis_approuver_etape_create
 - post /api/v1/ventes/devis/{id}/approuver-remise/ -> v1_ventes_devis_approuver_remise_create
+- get /api/v1/ventes/devis/{id}/avenants/ -> v1_ventes_devis_avenants_retrieve
+- post /api/v1/ventes/devis/{id}/avenants/ -> v1_ventes_devis_avenants_create
+- get /api/v1/ventes/devis/{id}/conception-electrique/ -> v1_ventes_devis_conception_electrique_retrieve
+- post /api/v1/ventes/devis/{id}/conception-electrique/ -> v1_ventes_devis_conception_electrique_create
 - post /api/v1/ventes/devis/{id}/contacter-superieur/ -> v1_ventes_devis_contacter_superieur_create
 - post /api/v1/ventes/devis/{id}/convertir-bc/ -> v1_ventes_devis_convertir_bc_create
 - get /api/v1/ventes/devis/{id}/declaration-raccordement/ -> v1_ventes_devis_declaration_raccordement_retrieve
+- get /api/v1/ventes/devis/{id}/design-context/ -> v1_ventes_devis_design_context_retrieve
 - post /api/v1/ventes/devis/{id}/dupliquer-variante/ -> v1_ventes_devis_dupliquer_variante_create
 - post /api/v1/ventes/devis/{id}/dupliquer/ -> v1_ventes_devis_dupliquer_create
 - post /api/v1/ventes/devis/{id}/envoyer-email/ -> v1_ventes_devis_envoyer_email_create
 - post /api/v1/ventes/devis/{id}/generer-facture/ -> v1_ventes_devis_generer_facture_create
 - post /api/v1/ventes/devis/{id}/generer-pdf/ -> v1_ventes_devis_generer_pdf_create
+- get /api/v1/ventes/devis/{id}/historique-configuration/ -> v1_ventes_devis_historique_configuration_retrieve
 - get /api/v1/ventes/devis/{id}/historique/ -> v1_ventes_devis_historique_retrieve
 - get /api/v1/ventes/devis/{id}/layout/ -> v1_ventes_devis_layout_retrieve
 - post /api/v1/ventes/devis/{id}/layout/ -> v1_ventes_devis_layout_create
+- get /api/v1/ventes/devis/{id}/lots/ -> v1_ventes_devis_lots_retrieve
+- post /api/v1/ventes/devis/{id}/lots/ -> v1_ventes_devis_lots_create
 - post /api/v1/ventes/devis/{id}/noter/ -> v1_ventes_devis_noter_create
 - post /api/v1/ventes/devis/{id}/proforma-pdf/ -> v1_ventes_devis_proforma_pdf_create
 - get /api/v1/ventes/devis/{id}/proposal/ -> v1_ventes_devis_proposal_retrieve
 - post /api/v1/ventes/devis/{id}/refuser/ -> v1_ventes_devis_refuser_create
 - post /api/v1/ventes/devis/{id}/rejeter-etape/ -> v1_ventes_devis_rejeter_etape_create
+- post /api/v1/ventes/devis/{id}/renouveler/ -> v1_ventes_devis_renouveler_create
 - post /api/v1/ventes/devis/{id}/replace-lines/ -> v1_ventes_devis_replace_lines_create
 - post /api/v1/ventes/devis/{id}/reviser/ -> v1_ventes_devis_reviser_create
 - post /api/v1/ventes/devis/{id}/roof-image/ -> v1_ventes_devis_roof_image_create
 - post /api/v1/ventes/devis/{id}/save-preset/ -> v1_ventes_devis_save_preset_create
 - get /api/v1/ventes/devis/{id}/schema-unifilaire/ -> v1_ventes_devis_schema_unifilaire_retrieve
 - post /api/v1/ventes/devis/{id}/share-link/ -> v1_ventes_devis_share_link_create
+- get /api/v1/ventes/devis/{id}/simulation-status/{token}/ -> v1_ventes_devis_simulation_status_retrieve
+- post /api/v1/ventes/devis/{id}/simuler/ -> v1_ventes_devis_simuler_create
 - get /api/v1/ventes/devis/{id}/suivi-partage/ -> v1_ventes_devis_suivi_partage_retrieve
 - get /api/v1/ventes/devis/{id}/superior-contact-status/ -> v1_ventes_devis_superior_contact_status_retrieve
+- post /api/v1/ventes/devis/{id}/sync-layout/ -> v1_ventes_devis_sync_layout_create
 - get /api/v1/ventes/devis/{id}/telecharger-pdf/ -> v1_ventes_devis_telecharger_pdf_retrieve
 - get /api/v1/ventes/devis/{id}/variantes/ -> v1_ventes_devis_variantes_retrieve
 - post /api/v1/ventes/devis/{id}/whatsapp-preview/ -> v1_ventes_devis_whatsapp_preview_create
@@ -15331,6 +16169,7 @@ operations:
 - patch /api/v1/ventes/dossiers-reglementaires/{id}/ -> v1_ventes_dossiers_reglementaires_partial_update
 - put /api/v1/ventes/dossiers-reglementaires/{id}/ -> v1_ventes_dossiers_reglementaires_update
 - post /api/v1/ventes/dossiers-reglementaires/{id}/generer-checklist/ -> v1_ventes_dossiers_reglementaires_generer_checklist_create
+- post /api/v1/ventes/dossiers-reglementaires/{id}/generer-schema/ -> v1_ventes_dossiers_reglementaires_generer_schema_create
 - get /api/v1/ventes/email-config/ -> v1_ventes_email_config_retrieve
 - get /api/v1/ventes/etats/analyse-facturation/ -> v1_ventes_etats_analyse_facturation_retrieve
 - get /api/v1/ventes/export-comptable/ -> v1_ventes_export_comptable_retrieve
@@ -15550,6 +16389,7 @@ components:
 - ActionProjet
 - ActionProjetRequest
 - ActionProjetStatutEnum
+- ActionSuggestion
 - Activity
 - ActivityRequest
 - ActivityType
@@ -15585,6 +16425,7 @@ components:
 - AlerteContratStatutEnum
 - AllocationRecurrente
 - AllocationRecurrenteRequest
+- AnalyseDxfReponse
 - AnalyseIncident
 - AnalyseIncidentMethodeEnum
 - AnalyseIncidentRequest
@@ -15613,8 +16454,11 @@ components:
 - AoCalepinageComparaisonLigne
 - AoCalepinageMarche
 - AoCalepinageMarches
+- AoCalepinageOrientationIgnoree
 - AoCalepinageSensibilite
 - AoCalepinageSensibilites
+- AoCalepinageVarianteOrientation
+- AoCalepinageVariantesOrientation
 - AoTableauMarches
 - AoTableauMarchesCapacite
 - AoTableauMarchesCautions
@@ -15640,6 +16484,8 @@ components:
 - Appointment
 - AppointmentRequest
 - AppointmentStatutEnum
+- Apporteur
+- ApporteurRequest
 - ApprobationBCF
 - ApprobationBCFPalierEnum
 - ApprobationBCFRequest
@@ -15658,6 +16504,9 @@ components:
 - ApprovalStatusEnum
 - ApproverTierEnum
 - AptitudeEnum
+- ArcJourney
+- ArcJourneyConditionEnum
+- ArcJourneyRequest
 - ArchivageLegal
 - ArchivageLegalRequest
 - ArmDailyStat
@@ -15668,6 +16517,7 @@ components:
 - AsBuiltPack
 - AsBuiltPackRequest
 - AspectEnvironnemental
+- AspectEnvironnementalConditionEnum
 - AspectEnvironnementalRequest
 - AssetTypeEnum
 - AssumptionNode
@@ -15696,6 +16546,12 @@ components:
 - Attribution
 - AttributionBadge
 - AttributionBadgeRequest
+- AttributionComparaison
+- AttributionComparaisonModeles
+- AttributionPartDernierTouche
+- AttributionPartLineaire
+- AttributionPartPondereTemporel
+- AttributionPartPremierTouche
 - Audit
 - AuditLog
 - AuditLogActionEnum
@@ -15783,6 +16639,8 @@ components:
 - BinLocation
 - BinLocationRequest
 - BlankEnum
+- BlocContenu
+- BlocContenuRequest
 - BlocEnum
 - BlocReutilisable
 - BlocReutilisablePorteeEnum
@@ -15801,6 +16659,8 @@ components:
 - BordereauSuiviDechet
 - BordereauSuiviDechetRequest
 - BordereauSuiviDechetStatutEnum
+- BoutiquePos
+- BoutiquePosRequest
 - BrandKit
 - BrandKitRequest
 - BrandedTemplate
@@ -15835,6 +16695,7 @@ components:
 - CaisseRequest
 - CalendrierProjet
 - CalendrierProjetRequest
+- CalqueDxf
 - Campagne
 - CampagneCulturale
 - CampagneCulturaleRequest
@@ -15929,18 +16790,22 @@ components:
 - ChecklistEtapeModeleRequest
 - ChecklistTemplate
 - ChecklistTemplateRequest
-- CibleEnum
 - CibleFinanciere
 - CibleFinanciereRequest
 - CircuitTransport
 - CircuitTransportRequest
 - Classe
 - ClasseAbcEnum
+- ClasseAbcPlanComptageTournantEnum
 - ClasseRequest
 - Classeur
 - ClasseurRequest
+- ClassificationABC
+- ClassificationABCClasseEnum
 - ClassificationImpactEnum
 - Clause
+- ClauseCGV
+- ClauseCGVRequest
 - ClauseContrat
 - ClauseContratRequest
 - ClauseRequest
@@ -15973,6 +16838,8 @@ components:
 - CommandeRetrait
 - CommandeRetraitRequest
 - CommandeRetraitStatutEnum
+- CommandeSync
+- CommandeSyncStatutEnum
 - Comment
 - CommentKeywordRule
 - CommentKeywordRuleRequest
@@ -16001,6 +16868,7 @@ components:
 - CommunicationEvenementRequest
 - Company
 - CompanyRequest
+- CompatibiliteModeEnum
 - CompatibilitePiece
 - CompatibilitePieceRequest
 - Compensation
@@ -16043,7 +16911,6 @@ components:
 - ConclusionEnum
 - ConcurrentPerte
 - ConcurrentPerteRequest
-- ConditionEnum
 - ConditionPaiement
 - ConditionPaiementRequest
 - ConditionPaiementSegment
@@ -16061,6 +16928,8 @@ components:
 - ConformiteEnvironnementale
 - ConformiteEnvironnementaleRequest
 - ConformiteEnvironnementaleStatutEnum
+- ConnexionEcommerce
+- ConnexionEcommerceRequest
 - ConsentRecord
 - ConsentRecordCanalEnum
 - ConsentRecordRequest
@@ -16125,10 +16994,26 @@ components:
 - CorpsFormatEnum
 - Courtier
 - CourtierRequest
+- CoutFretReel
+- CoutFretReelRequest
+- CoutStandard
+- CoutStandardRequest
 - CoutVehicule
 - CoutVehiculeCategorieEnum
 - CoutVehiculeRequest
 - CouvertureEnum
+- CouvertureLead
+- CouvertureRapport
+- CpqCatalogueReglesCompatibilite
+- CpqImportPrixContractuelsResultat
+- CpqMargeSousSeuil
+- CpqRapportApprobations
+- CpqRapportConformite
+- CpqRapportConformiteLigne
+- CpqRelancerApprobationResponse
+- CpqSuggestionProduit
+- CpqSuggestionsProduit
+- CpqVariante
 - CreativeAsset
 - CreativeAssetRequest
 - CreativeBacklogItem
@@ -16163,6 +17048,9 @@ components:
 - CycleEnum
 - CycleFacturationLog
 - CycleFacturationLogStatutEnum
+- CyclePlanificationSOP
+- CyclePlanificationSOPRequest
+- CyclePlanificationSOPStatutEnum
 - CycleSterilisation
 - CycleSterilisationRequest
 - CycleSterilisationStatutEnum
@@ -16175,6 +17063,9 @@ components:
 - DataSubjectRequest
 - DataSubjectRequestRequest
 - DataSubjectStatutEnum
+- DealEnregistre
+- DealEnregistreRequest
+- DealEnregistreStatutEnum
 - Dechet
 - DechetCategorieEnum
 - DechetRequest
@@ -16195,6 +17086,8 @@ components:
 - DecompteGeneral
 - DecompteGeneralRequest
 - DecompteGeneralStatutEnum
+- Defi
+- DefiRequest
 - DeletionRecord
 - DemandeAchat
 - DemandeAchatLigne
@@ -16246,6 +17139,9 @@ components:
 - DemandeVehicule
 - DemandeVehiculeRequest
 - DemandeVehiculeStatutEnum
+- DemoWizardCreateRequestRequest
+- DemoWizardStatut
+- DensiteEnum
 - Departement
 - DepartementRequest
 - DependanceTache
@@ -16257,6 +17153,7 @@ components:
 - DepreciationImmobilisation
 - DepreciationImmobilisationRequest
 - DeriverCautionDefinitiveRequest
+- DernierStatutEnum
 - Derogation
 - DerogationCredit
 - DerogationCreditRequest
@@ -16271,6 +17168,7 @@ components:
 - DevisActionLigne
 - DevisActionPanier
 - DevisActionRequise
+- DevisConfigurationEtat
 - DevisPreset
 - DevisRequest
 - DevisWrite
@@ -16325,6 +17223,9 @@ components:
 - DossierExchange
 - DossierExchangeRequest
 - DossierExchangeSensEnum
+- DossierExport
+- DossierExportRequest
+- DossierExportStatutEnum
 - DossierImport
 - DossierImportRequest
 - DossierSoumission
@@ -16370,6 +17271,8 @@ components:
 - EcheancierReconnaissanceRequest
 - EcheancierReconnaissanceStatutEnum
 - EcheancierScolarite
+- EcommerceWebhookCommandeResultat
+- EcommerceWebhookErreur
 - EconomieAO
 - EconomieAORequest
 - EcritureComptable
@@ -16476,6 +17379,9 @@ components:
 - EtapeSequence
 - EtapeSequenceCanalEnum
 - EtapeSequenceRequest
+- EtapeTransport
+- EtapeTransportRequest
+- EtapeTransportTypeEtapeEnum
 - EtatDesLieux
 - EtatDesLieuxEtatGeneralEnum
 - EtatDesLieuxMomentEnum
@@ -16500,6 +17406,10 @@ components:
 - EvenementBanquet
 - EvenementBanquetRequest
 - EvenementBanquetStatutEnum
+- EvenementDemande
+- EvenementDemandeRequest
+- EvenementInscriptionNotifianteRequestRequest
+- EvenementInscriptionNotifianteResponse
 - EvenementMarketing
 - EvenementMarketingEtapeEnum
 - EvenementMarketingRequest
@@ -16520,6 +17430,9 @@ components:
 - ExigenceCPSRequest
 - ExigenceDossier
 - ExigenceDossierRequest
+- ExpeditionTransporteur
+- ExpeditionTransporteurRequest
+- ExpeditionTransporteurStatutEnum
 - Experiment
 - ExperimentArm
 - ExperimentArmRequest
@@ -16533,6 +17446,8 @@ components:
 - FactEntryRequest
 - FactTable
 - FactTableStatutEnum
+- FacteurEmissionCO2
+- FacteurEmissionCO2Request
 - FacteurEmissionReference
 - FacteurEmissionReferenceRequest
 - FacturationEnum
@@ -16611,8 +17526,12 @@ components:
 - FraisImport
 - FraisImportCategorieEnum
 - FraisImportRequest
+- GabaritDocumentCustom
+- GabaritDocumentCustomCibleEnum
 - GabaritEmailRecrutement
 - GabaritEmailRecrutementRequest
+- Gamme
+- GammeRequest
 - Garage
 - GarageRequest
 - GarantieFlotte
@@ -16637,6 +17556,9 @@ components:
 - Habilitation
 - HabilitationRequest
 - HabilitationTypeEnum
+- HeatmapEngagement
+- HeatmapEngagementCellule
+- HeatmapEngagementMeilleur
 - HeuresSupp
 - HeuresSuppRequest
 - Holiday
@@ -16665,6 +17587,10 @@ components:
 - ImmobilisationEnCoursStatutEnum
 - ImmobilisationRequest
 - ImpersonationCibles
+- ImporterCoutsPublicitairesRapport
+- ImporterCoutsPublicitairesRequestRequest
+- ImporterInscritsEvenementRapport
+- ImporterInscritsEvenementRequestRequest
 - ImputationAvoirFournisseur
 - ImputationAvoirFournisseurRequest
 - ImputationAxe
@@ -16770,6 +17696,7 @@ components:
 - JournalAcces
 - JournalChantier
 - JournalChantierRequest
+- JournalPlateforme
 - JournalRequest
 - JustificationVariation
 - JustificationVariationRequest
@@ -16890,8 +17817,12 @@ components:
 - LigneNoteDebit
 - LigneOffreGroupee
 - LigneOffreGroupeeRequest
+- LigneOrdreTransport
+- LigneOrdreTransportRequest
 - LigneParcours
 - LigneParcoursRequest
+- LignePicking
+- LignePickingRequest
 - LignePrevisionGlissante
 - LignePrevisionGlissanteRequest
 - LignePrevisionGlissanteSourceEnum
@@ -16926,6 +17857,9 @@ components:
 - ListeDiffusionRequest
 - ListePrix
 - ListePrixRequest
+- LitigeTransport
+- LitigeTransportRequest
+- LitigeTransportStatutEnum
 - LitigesTableauBord
 - Livraison
 - LivraisonLigne
@@ -16969,6 +17903,7 @@ components:
 - MarcheEnum
 - MargeInterneStock
 - MargeInterneStockRequest
+- MargesCalepinage
 - Marque
 - MarqueRequest
 - MaterielAgricole
@@ -16999,15 +17934,18 @@ components:
 - MeteoEnum
 - MethodeReconnaissanceEnum
 - MetricEnum
+- MetriqueEnum
 - MilieuToucheEnum
 - ModeAccesEnum
 - ModeAcheminementEnum
+- ModeAcheminementPhysiqueEnum
 - ModeAcquittementEnum
 - ModeB24Enum
 - ModeEnchainementEnum
 - ModeHoldEnum
 - ModeHoldOverrideEnum
 - ModeInstallationEnum
+- ModeLiberationEnum
 - ModePaginationEnum
 - ModePaiementReglementEnum
 - ModePassationEnum
@@ -17018,6 +17956,8 @@ components:
 - ModeSaisieEnum
 - ModeScoringEnum
 - ModeTraitementEnum
+- ModeTransportEnum
+- ModeleAttributionEnum
 - ModeleBonCommandeFournisseur
 - ModeleBonCommandeFournisseurLigne
 - ModeleBonCommandeFournisseurLigneRequest
@@ -17041,6 +17981,8 @@ components:
 - ModeleInspectionRequest
 - ModeleIntegration
 - ModeleIntegrationRequest
+- ModeleJourney
+- ModeleJourneyRequest
 - ModelePack
 - ModelePackRequest
 - ModeleProjet
@@ -17069,6 +18011,7 @@ components:
 - MotifPerteRequest
 - MotifPrincipalEnum
 - MotifRebutEnum
+- MotifRebutOFEnum
 - MotifRequest
 - MotifResiliation
 - MotifResiliationCategorieEnum
@@ -17079,6 +18022,10 @@ components:
 - MouvementStock
 - MouvementStockRequest
 - MouvementStockTypeMouvementEnum
+- MrpAnalyseCoutsLigne
+- MrpBesoinNetLigne
+- MrpChargePostesLigne
+- MrpOeeTousPostesLigne
 - MutationImmobilisation
 - MutationImmobilisationRequest
 - NetworkPolicy
@@ -17091,6 +18038,8 @@ components:
 - NiveauD1fEnum
 - NiveauRequest
 - NiveauRequisEnum
+- NoeudJourney
+- NoeudJourneyRequest
 - NomenclatureCodeBarres
 - NomenclatureCodeBarresRequest
 - NonConformite
@@ -17144,10 +18093,17 @@ components:
 - OffreGroupee
 - OffreGroupeeRequest
 - OmbrageEnum
+- OnboardingItemMasquable
+- OndPhasesEnum
 - OperateurEnum
+- OperationGamme
+- OperationGammeRequest
 - OperationInterco
 - OperationIntercoRequest
 - OperationIntercoStatutEnum
+- OperationOF
+- OperationOFRequest
+- OperationOFStatutEnum
 - OptionAccepteeEnum
 - OptionProduit
 - OptionProduitRequest
@@ -17162,6 +18118,9 @@ components:
 - OrdreDemontageLigneRequest
 - OrdreDemontageRequest
 - OrdreDemontageStatutEnum
+- OrdreFabrication
+- OrdreFabricationRequest
+- OrdreFabricationStatutEnum
 - OrdreLocation
 - OrdreLocationRequest
 - OrdreLocationStatutEnum
@@ -17174,6 +18133,9 @@ components:
 - OrdreSousTraitance
 - OrdreSousTraitanceRequest
 - OrdreSousTraitanceStatutEnum
+- OrdreTransport
+- OrdreTransportRequest
+- OrdreTransportStatutEnum
 - OrdreVirement
 - OrdreVirementStatutEnum
 - Orientation4c8Enum
@@ -17184,6 +18146,7 @@ components:
 - OutillageRequest
 - OutillageStatutEnum
 - OuverturePartage
+- OuverturePartageCibleEnum
 - OuverturePartageRequest
 - OuverturePoste
 - OuverturePosteRequest
@@ -17238,12 +18201,14 @@ components:
 - PaginatedAppelOffreList
 - PaginatedAppelTelephoniqueList
 - PaginatedAppointmentList
+- PaginatedApporteurList
 - PaginatedApprobationBCFList
 - PaginatedApprobationEnvoiCampagneList
 - PaginatedApprovalDelegationList
 - PaginatedApprovalPolicyList
 - PaginatedApprovalRequestList
 - PaginatedApprovalRequestTypeList
+- PaginatedArcJourneyList
 - PaginatedArchivageLegalList
 - PaginatedArmDailyStatList
 - PaginatedArretTransportList
@@ -17292,12 +18257,14 @@ components:
 - PaginatedBilletEvenementList
 - PaginatedBinAffectationList
 - PaginatedBinLocationList
+- PaginatedBlocContenuList
 - PaginatedBlocReutilisableList
 - PaginatedBonCommandeFournisseurList
 - PaginatedBonCommandeList
 - PaginatedBordereauPrixList
 - PaginatedBordereauRemiseList
 - PaginatedBordereauSuiviDechetList
+- PaginatedBoutiquePosList
 - PaginatedBrandKitList
 - PaginatedBudgetChargesList
 - PaginatedBudgetEngagementList
@@ -17346,6 +18313,8 @@ components:
 - PaginatedCircuitTransportList
 - PaginatedClasseList
 - PaginatedClasseurList
+- PaginatedClassificationABCList
+- PaginatedClauseCGVList
 - PaginatedClauseContratList
 - PaginatedClauseList
 - PaginatedCleRepartitionList
@@ -17360,6 +18329,7 @@ components:
 - PaginatedCommandeCadreLigneList
 - PaginatedCommandeCadreList
 - PaginatedCommandeRetraitList
+- PaginatedCommandeSyncList
 - PaginatedCommentKeywordRuleList
 - PaginatedCommentList
 - PaginatedCommentaireProjetList
@@ -17394,6 +18364,7 @@ components:
 - PaginatedConfigMaterielPOSList
 - PaginatedConfigPackageList
 - PaginatedConformiteEnvironnementaleList
+- PaginatedConnexionEcommerceList
 - PaginatedConsentRecordList
 - PaginatedConsignationLotoList
 - PaginatedContactClientList
@@ -17414,6 +18385,8 @@ components:
 - PaginatedConventionList
 - PaginatedConversationList
 - PaginatedCourtierList
+- PaginatedCoutFretReelList
+- PaginatedCoutStandardList
 - PaginatedCoutVehiculeList
 - PaginatedCreativeAssetList
 - PaginatedCreativeBacklogItemList
@@ -17428,16 +18401,19 @@ components:
 - PaginatedCycleBudgetaireList
 - PaginatedCycleConsolidationList
 - PaginatedCycleFacturationLogList
+- PaginatedCyclePlanificationSOPList
 - PaginatedCycleSterilisationList
 - PaginatedDashboardConfigList
 - PaginatedDashboardPartageInterneList
 - PaginatedDataSubjectRequestList
+- PaginatedDealEnregistreList
 - PaginatedDechetList
 - PaginatedDecisionLogList
 - PaginatedDeclarationCnssList
 - PaginatedDeclarationSinistreList
 - PaginatedDeclarationTVAList
 - PaginatedDecompteGeneralList
+- PaginatedDefiList
 - PaginatedDemandeAchatLigneList
 - PaginatedDemandeAchatList
 - PaginatedDemandeActionFournisseurList
@@ -17481,6 +18457,7 @@ components:
 - PaginatedDossierChecklistItemList
 - PaginatedDossierEmployeList
 - PaginatedDossierExchangeList
+- PaginatedDossierExportList
 - PaginatedDossierImportList
 - PaginatedDossierSoumissionList
 - PaginatedDotationAmortissementList
@@ -17537,6 +18514,7 @@ components:
 - PaginatedEtapeDeclarationAtList
 - PaginatedEtapeDunningList
 - PaginatedEtapeSequenceList
+- PaginatedEtapeTransportList
 - PaginatedEtatDesLieuxList
 - PaginatedEtatLieuxImmoList
 - PaginatedEvaluationEmployeList
@@ -17544,6 +18522,7 @@ components:
 - PaginatedEvaluationRisqueList
 - PaginatedEvaluationSousTraitantList
 - PaginatedEvenementBanquetList
+- PaginatedEvenementDemandeList
 - PaginatedEvenementMarketingList
 - PaginatedExecutionCollecteList
 - PaginatedExerciceComptableList
@@ -17551,12 +18530,14 @@ components:
 - PaginatedExigenceAssuranceMarcheList
 - PaginatedExigenceCPSList
 - PaginatedExigenceDossierList
+- PaginatedExpeditionTransporteurList
 - PaginatedExperimentArmList
 - PaginatedExperimentList
 - PaginatedExploitationList
 - PaginatedExtensionPackageList
 - PaginatedFactEntryList
 - PaginatedFactTableList
+- PaginatedFacteurEmissionCO2List
 - PaginatedFacteurEmissionReferenceList
 - PaginatedFactureElectroniqueList
 - PaginatedFactureFournisseurList
@@ -17580,7 +18561,9 @@ components:
 - PaginatedFormulaireIntakeList
 - PaginatedFournisseurList
 - PaginatedFraisImportList
+- PaginatedGabaritDocumentCustomList
 - PaginatedGabaritEmailRecrutementList
+- PaginatedGammeList
 - PaginatedGarageList
 - PaginatedGarantieFlotteList
 - PaginatedGarantiePoliceList
@@ -17677,6 +18660,7 @@ components:
 - PaginatedLigneIncitationList
 - PaginatedLigneJustificationCompteList
 - PaginatedLigneModeleEcritureList
+- PaginatedLigneOrdreTransportList
 - PaginatedLigneParcoursList
 - PaginatedLignePrevisionGlissanteList
 - PaginatedLignePrevisionnelTresorerieList
@@ -17686,6 +18670,7 @@ components:
 - PaginatedLimiteCreditList
 - PaginatedListeDiffusionList
 - PaginatedListePrixList
+- PaginatedLitigeTransportList
 - PaginatedLivraisonLigneList
 - PaginatedLivraisonList
 - PaginatedLocalList
@@ -17723,6 +18708,7 @@ components:
 - PaginatedModeleEvaluationList
 - PaginatedModeleInspectionList
 - PaginatedModeleIntegrationList
+- PaginatedModeleJourneyList
 - PaginatedModelePackList
 - PaginatedModeleProjetList
 - PaginatedModeleRapprochementList
@@ -17739,6 +18725,7 @@ components:
 - PaginatedMutationImmobilisationList
 - PaginatedNetworkPolicyList
 - PaginatedNiveauList
+- PaginatedNoeudJourneyList
 - PaginatedNomenclatureCodeBarresList
 - PaginatedNonConformiteList
 - PaginatedNotationFinChantierList
@@ -17758,16 +18745,20 @@ components:
 - PaginatedObstacleAOList
 - PaginatedOffreFinancementList
 - PaginatedOffreGroupeeList
+- PaginatedOperationGammeList
 - PaginatedOperationIntercoList
+- PaginatedOperationOFList
 - PaginatedOptionProduitList
 - PaginatedOrdreAssemblageLigneList
 - PaginatedOrdreAssemblageList
 - PaginatedOrdreDemontageLigneList
 - PaginatedOrdreDemontageList
+- PaginatedOrdreFabricationList
 - PaginatedOrdreLocationList
 - PaginatedOrdreMissionList
 - PaginatedOrdreReparationList
 - PaginatedOrdreSousTraitanceList
+- PaginatedOrdreTransportList
 - PaginatedOrdreVirementList
 - PaginatedOutboxEventList
 - PaginatedOutillageList
@@ -17780,6 +18771,7 @@ components:
 - PaginatedPalierUsageList
 - PaginatedParametrageRelanceClientList
 - PaginatedParametrePaieList
+- PaginatedParametresCPQList
 - PaginatedParametresEducationList
 - PaginatedParametresLocationList
 - PaginatedParcelleList
@@ -17808,6 +18800,7 @@ components:
 - PaginatedPieceConformiteList
 - PaginatedPieceConsultationList
 - PaginatedPieceDossierAOList
+- PaginatedPieceDossierExportList
 - PaginatedPieceEtatLieuxList
 - PaginatedPieceFlotteList
 - PaginatedPieceJustificativeList
@@ -17817,6 +18810,7 @@ components:
 - PaginatedPlanAbonnementList
 - PaginatedPlanActiviteList
 - PaginatedPlanComptableList
+- PaginatedPlanComptageTournantList
 - PaginatedPlanCompteList
 - PaginatedPlanControleReceptionList
 - PaginatedPlanEntretienList
@@ -17843,9 +18837,11 @@ components:
 - PaginatedPoliceAssuranceCreditList
 - PaginatedPoliceAssuranceList
 - PaginatedPolitiqueRetentionList
+- PaginatedPolitiqueStockList
 - PaginatedPortailProjetTokenList
 - PaginatedPositionTechnicienList
 - PaginatedPostSocialList
+- PaginatedPosteDeChargeList
 - PaginatedPosteList
 - PaginatedPouvoirBancaireList
 - PaginatedPraticienList
@@ -17855,6 +18851,7 @@ components:
 - PaginatedPresetCalepinageList
 - PaginatedPresquAccidentList
 - PaginatedPreuveLivraisonList
+- PaginatedPrevisionDemandeList
 - PaginatedPrevisionGlissanteList
 - PaginatedPrimeAttribueeList
 - PaginatedPriseEnChargeList
@@ -17863,7 +18860,9 @@ components:
 - PaginatedProcedureQualiteList
 - PaginatedProductionReadingList
 - PaginatedProductionWarrantyList
+- PaginatedProduitEquivalentList
 - PaginatedProduitList
+- PaginatedProduitSyncList
 - PaginatedProfilPaieList
 - PaginatedProjetChantierList
 - PaginatedProjetDevisList
@@ -17884,6 +18883,7 @@ components:
 - PaginatedPublicProduitList
 - PaginatedPutAwayList
 - PaginatedQhseChatterEntryList
+- PaginatedQuaiList
 - PaginatedQuestionAOList
 - PaginatedQuestionConfigurateurList
 - PaginatedQuestionEvenementList
@@ -17921,6 +18921,7 @@ components:
 - PaginatedRegleRangementList
 - PaginatedRegleReapproList
 - PaginatedRegleUpsellList
+- PaginatedReglexPromotionList
 - PaginatedRegularisation8221List
 - PaginatedRegularisationChargesList
 - PaginatedRegulatoryDossierList
@@ -17938,11 +18939,13 @@ components:
 - PaginatedRemiseList
 - PaginatedRemunerationList
 - PaginatedRendezVousList
+- PaginatedRendezVousTransporteurList
 - PaginatedReponseCritereList
 - PaginatedReponseTypeList
 - PaginatedReservationList
 - PaginatedReservationVehiculeList
 - PaginatedReserveChantierList
+- PaginatedReserveReceptionList
 - PaginatedResiliationList
 - PaginatedRessourceProfilList
 - PaginatedResultatAOList
@@ -17976,6 +18979,7 @@ components:
 - PaginatedSaisieArretList
 - PaginatedSalleEvenementList
 - PaginatedSalleList
+- PaginatedSalleVenteList
 - PaginatedSanctionList
 - PaginatedSandboxEnvironmentList
 - PaginatedSavSlaSettingsList
@@ -18058,15 +19062,18 @@ components:
 - PaginatedTypeInterventionList
 - PaginatedTypeLigneParcoursList
 - PaginatedTypePrimeList
+- PaginatedUniteLogistiqueList
 - PaginatedUniteMesureList
 - PaginatedUserList
 - PaginatedUtilisationMaterielList
+- PaginatedVaguePickingList
 - PaginatedValidationOcrDocumentList
 - PaginatedVarianteCalepinageList
 - PaginatedVehiculeList
 - PaginatedVeilleReglementaireList
 - PaginatedVenteComptoirList
 - PaginatedVersionContratList
+- PaginatedVersionFormulaireIntakeList
 - PaginatedVirementInterneList
 - PaginatedVisaDocumentList
 - PaginatedVisiteMedicaleList
@@ -18079,6 +19086,7 @@ components:
 - PaginatedWebsiteLeadPayloadList
 - PaginatedWhatsAppTemplateList
 - PaginatedWorksheetMaintenanceModeleList
+- PaginatedZoneAOList
 - PaginatedZoneGeographiqueList
 - Paiement
 - PaiementFacturePortail
@@ -18104,10 +19112,17 @@ components:
 - ParametrageRelanceClientRequest
 - ParametrePaie
 - ParametrePaieRequest
+- ParametresCPQ
+- ParametresCPQRequest
+- ParametresDouane
 - ParametresEducation
 - ParametresEducationRequest
 - ParametresLocation
 - ParametresLocationRequest
+- ParametresMarketing
+- ParametresMarketingRequest
+- ParametresPos
+- ParametresPosRequest
 - ParametresTresorerie
 - Parcelle
 - ParcelleRequest
@@ -18171,10 +19186,12 @@ components:
 - PatchedAppelOffreRequest
 - PatchedAppelTelephoniqueRequest
 - PatchedAppointmentRequest
+- PatchedApporteurRequest
 - PatchedApprovalDelegationRequest
 - PatchedApprovalPolicyRequest
 - PatchedApprovalRequestRequest
 - PatchedApprovalRequestTypeRequest
+- PatchedArcJourneyRequest
 - PatchedArmDailyStatRequest
 - PatchedArretTransportRequest
 - PatchedAsBuiltPackRequest
@@ -18215,11 +19232,13 @@ components:
 - PatchedBilletEvenementRequest
 - PatchedBinAffectationRequest
 - PatchedBinLocationRequest
+- PatchedBlocContenuRequest
 - PatchedBlocReutilisableRequest
 - PatchedBonCommandeFournisseurRequest
 - PatchedBonCommandeRequest
 - PatchedBordereauPrixRequest
 - PatchedBordereauSuiviDechetRequest
+- PatchedBoutiquePosRequest
 - PatchedBrandKitRequest
 - PatchedBrandedTemplateRequest
 - PatchedBudgetChargesRequest
@@ -18268,6 +19287,7 @@ components:
 - PatchedCircuitTransportRequest
 - PatchedClasseRequest
 - PatchedClasseurRequest
+- PatchedClauseCGVRequest
 - PatchedClauseContratRequest
 - PatchedClauseRequest
 - PatchedCleRepartitionRequest
@@ -18314,6 +19334,7 @@ components:
 - PatchedConducteurRequest
 - PatchedConfigMaterielPOSRequest
 - PatchedConformiteEnvironnementaleRequest
+- PatchedConnexionEcommerceRequest
 - PatchedConsentRecordRequest
 - PatchedConsignationLotoRequest
 - PatchedContactClientRequest
@@ -18334,6 +19355,7 @@ components:
 - PatchedConventionRequest
 - PatchedConversationRequest
 - PatchedCourtierRequest
+- PatchedCoutFretReelRequest
 - PatchedCoutVehiculeRequest
 - PatchedCreativeAssetRequest
 - PatchedCreativeBacklogItemRequest
@@ -18346,16 +19368,19 @@ components:
 - PatchedCustomRecordRequest
 - PatchedCycleBudgetaireRequest
 - PatchedCycleConsolidationRequest
+- PatchedCyclePlanificationSOPRequest
 - PatchedCycleSterilisationRequest
 - PatchedDashboardConfigRequest
 - PatchedDashboardPartageInterneRequest
 - PatchedDashboardRequest
 - PatchedDataSubjectRequestRequest
+- PatchedDealEnregistreRequest
 - PatchedDechetRequest
 - PatchedDeclarationCnssRequest
 - PatchedDeclarationSinistreRequest
 - PatchedDeclarationTVARequest
 - PatchedDecompteGeneralRequest
+- PatchedDefiRequest
 - PatchedDemandeAchatLigneRequest
 - PatchedDemandeAchatRequest
 - PatchedDemandeActionFournisseurRequest
@@ -18394,6 +19419,7 @@ components:
 - PatchedDossierChecklistItemRequest
 - PatchedDossierEmployeRequest
 - PatchedDossierExchangeRequest
+- PatchedDossierExportRequest
 - PatchedDossierImportRequest
 - PatchedDossierSoumissionRequest
 - PatchedDotationEpiRequest
@@ -18444,6 +19470,7 @@ components:
 - PatchedEtapeDeclarationAtRequest
 - PatchedEtapeDunningRequest
 - PatchedEtapeSequenceRequest
+- PatchedEtapeTransportRequest
 - PatchedEtatDesLieuxRequest
 - PatchedEtatLieuxImmoRequest
 - PatchedEvaluationEmployeRequest
@@ -18451,16 +19478,19 @@ components:
 - PatchedEvaluationRisqueRequest
 - PatchedEvaluationSousTraitantRequest
 - PatchedEvenementBanquetRequest
+- PatchedEvenementDemandeRequest
 - PatchedEvenementMarketingRequest
 - PatchedExerciceComptableRequest
 - PatchedExerciceUrgenceRequest
 - PatchedExigenceAssuranceMarcheRequest
 - PatchedExigenceCPSRequest
 - PatchedExigenceDossierRequest
+- PatchedExpeditionTransporteurRequest
 - PatchedExperimentArmRequest
 - PatchedExperimentRequest
 - PatchedExploitationRequest
 - PatchedFactEntryRequest
+- PatchedFacteurEmissionCO2Request
 - PatchedFactureFournisseurRequest
 - PatchedFactureSanteRequest
 - PatchedFactureWriteRequest
@@ -18481,6 +19511,7 @@ components:
 - PatchedFournisseurRequest
 - PatchedFraisImportRequest
 - PatchedGabaritEmailRecrutementRequest
+- PatchedGammeRequest
 - PatchedGarageRequest
 - PatchedGarantieFlotteRequest
 - PatchedGarantiePoliceRequest
@@ -18570,6 +19601,7 @@ components:
 - PatchedLigneIncitationRequest
 - PatchedLigneJustificationCompteRequest
 - PatchedLigneModeleEcritureRequest
+- PatchedLigneOrdreTransportRequest
 - PatchedLigneParcoursRequest
 - PatchedLignePrevisionGlissanteRequest
 - PatchedLignePrevisionnelTresorerieRequest
@@ -18578,6 +19610,7 @@ components:
 - PatchedLimiteCreditRequest
 - PatchedListeDiffusionRequest
 - PatchedListePrixRequest
+- PatchedLitigeTransportRequest
 - PatchedLivraisonLigneRequest
 - PatchedLivraisonRequest
 - PatchedLocalRequest
@@ -18611,6 +19644,7 @@ components:
 - PatchedModeleEvaluationRequest
 - PatchedModeleInspectionRequest
 - PatchedModeleIntegrationRequest
+- PatchedModeleJourneyRequest
 - PatchedModelePackRequest
 - PatchedModeleProjetRequest
 - PatchedModeleRapprochementRequest
@@ -18628,6 +19662,7 @@ components:
 - PatchedMutationImmobilisationRequest
 - PatchedNetworkPolicyRequest
 - PatchedNiveauRequest
+- PatchedNoeudJourneyRequest
 - PatchedNomenclatureCodeBarresRequest
 - PatchedNonConformiteRequest
 - PatchedNotationFinChantierRequest
@@ -18644,16 +19679,20 @@ components:
 - PatchedObstacleAORequest
 - PatchedOffreFinancementRequest
 - PatchedOffreGroupeeRequest
+- PatchedOperationGammeRequest
 - PatchedOperationIntercoRequest
+- PatchedOperationOFRequest
 - PatchedOptionProduitRequest
 - PatchedOrdreAssemblageLigneRequest
 - PatchedOrdreAssemblageRequest
 - PatchedOrdreDemontageLigneRequest
 - PatchedOrdreDemontageRequest
+- PatchedOrdreFabricationRequest
 - PatchedOrdreLocationRequest
 - PatchedOrdreMissionRequest
 - PatchedOrdreReparationRequest
 - PatchedOrdreSousTraitanceRequest
+- PatchedOrdreTransportRequest
 - PatchedOutillageRequest
 - PatchedOuverturePartageRequest
 - PatchedOuverturePosteRequest
@@ -18663,8 +19702,12 @@ components:
 - PatchedPalierUsageRequest
 - PatchedParametrageRelanceClientRequest
 - PatchedParametrePaieRequest
+- PatchedParametresCPQRequest
+- PatchedParametresDouaneRequest
 - PatchedParametresEducationRequest
 - PatchedParametresLocationRequest
+- PatchedParametresMarketingRequest
+- PatchedParametresPosRequest
 - PatchedParametresTresorerieRequest
 - PatchedParcelleRequest
 - PatchedParrainageRequest
@@ -18691,6 +19734,7 @@ components:
 - PatchedPieceConformiteRequest
 - PatchedPieceConsultationRequest
 - PatchedPieceDossierAORequest
+- PatchedPieceDossierExportRequest
 - PatchedPieceEtatLieuxRequest
 - PatchedPieceFlotteRequest
 - PatchedPieceJustificativeRequest
@@ -18699,6 +19743,7 @@ components:
 - PatchedPlanAbonnementRequest
 - PatchedPlanActiviteRequest
 - PatchedPlanComptableRequest
+- PatchedPlanComptageTournantRequest
 - PatchedPlanCompteRequest
 - PatchedPlanControleReceptionRequest
 - PatchedPlanEntretienRequest
@@ -18725,8 +19770,10 @@ components:
 - PatchedPoliceAssuranceCreditRequest
 - PatchedPoliceAssuranceRequest
 - PatchedPolitiqueRetentionRequest
+- PatchedPolitiqueStockRequest
 - PatchedPortailProjetTokenRequest
 - PatchedPostSocialRequest
+- PatchedPosteDeChargeRequest
 - PatchedPosteRequest
 - PatchedPouvoirBancaireRequest
 - PatchedPraticienRequest
@@ -18736,6 +19783,7 @@ components:
 - PatchedPresetCalepinageRequest
 - PatchedPresquAccidentRequest
 - PatchedPreuveLivraisonRequest
+- PatchedPrevisionDemandeRequest
 - PatchedPrevisionGlissanteRequest
 - PatchedPrimeAttribueeRequest
 - PatchedPriseEnChargeRequest
@@ -18744,7 +19792,9 @@ components:
 - PatchedProcedureQualiteRequest
 - PatchedProductionReadingRequest
 - PatchedProductionWarrantyRequest
+- PatchedProduitEquivalentRequest
 - PatchedProduitRequest
+- PatchedProduitSyncRequest
 - PatchedProfilPaieRequest
 - PatchedProjetChantierRequest
 - PatchedProjetDevisRequest
@@ -18758,6 +19808,7 @@ components:
 - PatchedProvisionCreanceRequest
 - PatchedProvisionRequest
 - PatchedPutAwayRequest
+- PatchedQuaiRequest
 - PatchedQuestionAORequest
 - PatchedQuestionConfigurateurRequest
 - PatchedQuestionEvenementRequest
@@ -18794,6 +19845,7 @@ components:
 - PatchedRegleRangementRequest
 - PatchedRegleReapproRequest
 - PatchedRegleUpsellRequest
+- PatchedReglexPromotionRequest
 - PatchedRegularisation8221Request
 - PatchedRegulatoryDossierRequest
 - PatchedRelanceDevisAbandonneRequest
@@ -18809,11 +19861,13 @@ components:
 - PatchedRemiseRequest
 - PatchedRemunerationRequest
 - PatchedRendezVousRequest
+- PatchedRendezVousTransporteurRequest
 - PatchedReponseCritereRequest
 - PatchedReponseTypeRequest
 - PatchedReservationRequest
 - PatchedReservationVehiculeRequest
 - PatchedReserveChantierRequest
+- PatchedReserveReceptionRequest
 - PatchedRessourceProfilRequest
 - PatchedResultatAORequest
 - PatchedRetentionPolicyRequest
@@ -18845,6 +19899,7 @@ components:
 - PatchedSaisieArretRequest
 - PatchedSalleEvenementRequest
 - PatchedSalleRequest
+- PatchedSalleVenteRequest
 - PatchedSanctionRequest
 - PatchedSavSlaSettingsRequest
 - PatchedSavedQueryRequest
@@ -18920,14 +19975,17 @@ components:
 - PatchedTypeInterventionRequest
 - PatchedTypeLigneParcoursRequest
 - PatchedTypePrimeRequest
+- PatchedUniteLogistiqueRequest
 - PatchedUniteMesureRequest
 - PatchedUserRequest
 - PatchedUtilisationMaterielRequest
 - PatchedUxParametresRequest
+- PatchedVaguePickingRequest
 - PatchedVarianteCalepinageRequest
 - PatchedVehiculeRequest
 - PatchedVeilleReglementaireRequest
 - PatchedVenteComptoirRequest
+- PatchedVersionFormulaireIntakeRequest
 - PatchedVirementInterneRequest
 - PatchedVisaDocumentRequest
 - PatchedVisiteMedicaleRequest
@@ -18940,6 +19998,7 @@ components:
 - PatchedWorkflowDefinitionRequest
 - PatchedWorkflowStepDefinitionRequest
 - PatchedWorksheetMaintenanceModeleRequest
+- PatchedZoneAORequest
 - PatchedZoneGeographiqueRequest
 - Patient
 - PatientRequest
@@ -18998,6 +20057,9 @@ components:
 - PieceDossierAORequest
 - PieceDossierAOTypePieceEnum
 - PieceDossierAOVisibiliteEnum
+- PieceDossierExport
+- PieceDossierExportRequest
+- PieceDossierExportTypePieceEnum
 - PieceEtatLieux
 - PieceEtatLieuxRequest
 - PieceFlotte
@@ -19016,6 +20078,8 @@ components:
 - PlanActiviteRequest
 - PlanComptable
 - PlanComptableRequest
+- PlanComptageTournant
+- PlanComptageTournantRequest
 - PlanCompte
 - PlanCompteRequest
 - PlanControleReception
@@ -19042,6 +20106,7 @@ components:
 - PlanUrgenceRequest
 - PlanificationDocument
 - PlanificationDocumentRequest
+- PlateformeEnum
 - Playbook
 - PlaybookEtape
 - PlaybookEtapeRequest
@@ -19078,8 +20143,16 @@ components:
 - PolitiqueFacturationEnum
 - PolitiqueRetention
 - PolitiqueRetentionRequest
+- PolitiqueStock
+- PolitiqueStockRequest
 - PortailProjetToken
 - PortailProjetTokenRequest
+- PosDashboardRetail
+- PosDashboardRetailTopCategorie
+- PosDashboardRetailTopProduit
+- PosDashboardRetailTopVendeur
+- PosDefinirPinResultat
+- PosVerifierPinResultat
 - PositionEnum
 - PositionTechnicien
 - PositionTechnicienRequest
@@ -19087,6 +20160,8 @@ components:
 - PostSocialRequest
 - PostSocialStatutEnum
 - Poste
+- PosteDeCharge
+- PosteDeChargeRequest
 - PosteRequest
 - PouvoirBancaire
 - PouvoirBancaireRequest
@@ -19095,6 +20170,9 @@ components:
 - PraticienRequest
 - PraticienSite
 - PraticienSiteRequest
+- PreferencesPubliques
+- PreferencesPubliquesListe
+- PreferencesPubliquesRequestRequest
 - Presence
 - PresenceChantier
 - PresenceChantierRequest
@@ -19110,6 +20188,9 @@ components:
 - PreuveCalepinage
 - PreuveLivraison
 - PreuveLivraisonRequest
+- PrevisionDemande
+- PrevisionDemandeMethodeEnum
+- PrevisionDemandeRequest
 - PrevisionGlissante
 - PrevisionGlissanteRequest
 - PrimeAttribuee
@@ -19128,13 +20209,20 @@ components:
 - ProcedureQualite
 - ProcedureQualiteRequest
 - ProcedureQualiteStatutEnum
+- ProductTour
+- ProductTourEtape
 - ProductionReading
 - ProductionReadingRequest
 - ProductionReadingSourceEnum
 - ProductionWarranty
 - ProductionWarrantyRequest
 - Produit
+- ProduitEquivalent
+- ProduitEquivalentRequest
 - ProduitRequest
+- ProduitSync
+- ProduitSyncRequest
+- ProfilEnum
 - ProfilPaie
 - ProfilPaieModePaiementEnum
 - ProfilPaieRequest
@@ -19174,6 +20262,8 @@ components:
 - ProvisionCreanceStatutEnum
 - ProvisionNatureEnum
 - ProvisionRequest
+- PublicApporteurDeal
+- PublicApporteurMesDeals
 - PublicChantier
 - PublicDevis
 - PublicFacture
@@ -19181,12 +20271,16 @@ components:
 - PublicLigneDevis
 - PublicLigneFacture
 - PublicProduit
+- PublicSalleVente
+- PublicSalleVenteItem
 - PutAway
 - PutAwayRequest
 - PutAwayStatutEnum
 - QhseChatterEntry
 - QhseChatterEntryCibleTypeEnum
 - QhseChatterEntryKindEnum
+- Quai
+- QuaiRequest
 - QuantiteSourceEnum
 - QuestionAO
 - QuestionAORequest
@@ -19264,6 +20358,7 @@ components:
 - ReferentielFlotteDomaineEnum
 - ReferentielFlotteRequest
 - Regime8221E51Enum
+- RegimeDouanierParDefautEnum
 - RegimeEnum
 - RegimeExonerationEnum
 - RegimeMutuelle
@@ -19302,6 +20397,8 @@ components:
 - RegleUpsell
 - RegleUpsellDeclencheurEnum
 - RegleUpsellRequest
+- ReglexPromotion
+- ReglexPromotionRequest
 - Regularisation8221
 - Regularisation8221Request
 - Regularisation8221StatutEnum
@@ -19349,6 +20446,9 @@ components:
 - RendezVous
 - RendezVousRequest
 - RendezVousStatutEnum
+- RendezVousTransporteur
+- RendezVousTransporteurRequest
+- RendezVousTransporteurStatutEnum
 - ReponseCritere
 - ReponseCritereRequest
 - ReponseCritereResultatEnum
@@ -19356,6 +20456,8 @@ components:
 - ReponseTypeRequest
 - ReseauEnum
 - Reservation
+- ReservationOF
+- ReservationOFRequest
 - ReservationOrigineEnum
 - ReservationRequest
 - ReservationStatutEnum
@@ -19367,6 +20469,8 @@ components:
 - ReserveChantierHistorique
 - ReserveChantierRequest
 - ReserveChantierStatutEnum
+- ReserveReception
+- ReserveReceptionRequest
 - Resiliation
 - ResiliationStatutEnum
 - ResolutionEnum
@@ -19458,6 +20562,11 @@ components:
 - SalleEvenementRequest
 - SalleRequest
 - SalleTypeEnum
+- SalleVente
+- SalleVenteItem
+- SalleVenteItemRequest
+- SalleVenteItemTypeEnum
+- SalleVenteRequest
 - Sanction
 - SanctionRequest
 - SanctionStatutEnum
@@ -19484,6 +20593,10 @@ components:
 - ScheduledMessage
 - ScheduledMessageRequest
 - ScheduledMessageStatusEnum
+- ScmBrouillonBcfReapproLigne
+- ScmBrouillonsBcfReappro
+- ScmTableauBordReapproLigne
+- ScoreMaturiteLead
 - Seance
 - SeanceRequest
 - Secouriste
@@ -19607,13 +20720,23 @@ components:
 - StatutDe9Enum
 - StatutDouaneEnum
 - StatutE26Enum
+- StatutEtapeEnum
 - StatutLegacyEnum
 - StatutOnboardingEnum
+- StatutPieceEnum
 - StatutPublicationEnum
 - StatutRelationEnum
 - StatutTeledeclarationEnum
 - StatutValidationEnum
 - StatutVerificationEnum
+- StockQuaiCheckinErreur
+- StockQuaiCheckinResultat
+- StockScannerCodeInconnu
+- StockScannerErreur
+- StockScannerMouvementErreur
+- StockScannerMouvementResultat
+- StockScannerResoudreResultat
+- StrategiePickingDefautEnum
 - StructurePaie
 - StructurePaieRequest
 - StructurePaieRubrique
@@ -19623,8 +20746,10 @@ components:
 - SubventionDossierProgrammeEnum
 - SubventionDossierRequest
 - SubventionDossierStatutEnum
+- SuggestionCalepinage
 - SupportOffline
 - SupportOfflineRequest
+- SyntheseCalepinageAffaire
 - Tache
 - TacheCloture
 - TacheClotureModele
@@ -19675,6 +20800,7 @@ components:
 - TicketRequest
 - TicketStatutEnum
 - TicketTypeEnum
+- TierEnum
 - Tiers
 - TiersRequest
 - TimbreFiscal
@@ -19682,6 +20808,12 @@ components:
 - Timesheet
 - TimesheetRequest
 - TimesheetStatutEnum
+- TiroirAllees
+- TiroirElectrique
+- TiroirKits
+- TiroirOrientation
+- TiroirRives
+- TiroirsCalepinage
 - ToitureAO
 - ToitureAORequest
 - TokenRefresh
@@ -19704,6 +20836,7 @@ components:
 - TransmissionDGI
 - TransmissionDGIStatutEnum
 - Transporteur
+- TransporteurProviderEnum
 - TransporteurRequest
 - TravauxEnCours
 - TravauxEnCoursNatureEnum
@@ -19724,10 +20857,12 @@ components:
 - TypeActiviteEnum
 - TypeAlerteEnum
 - TypeAnnotationEnum
+- TypeApporteurEnum
 - TypeApprobationEnum
 - TypeAttestationEnum
 - TypeAuditEnum
 - TypeBailEnum
+- TypeBlocEnum
 - TypeBulletinEnum
 - TypeCauseEnum
 - TypeCertificationEnum
@@ -19748,6 +20883,7 @@ components:
 - TypeContratBb8Enum
 - TypeContratDefautEnum
 - TypeControleEnum
+- TypeCoutEnum
 - TypeCouvertureEnum
 - TypeCycleEnum
 - TypeDependanceEnum
@@ -19763,14 +20899,17 @@ components:
 - TypeEpiEnum
 - TypeEquipementEnum
 - TypeEvenement
+- TypeEvenementDemandeEnum
 - TypeEvenementEnum
 - TypeEvenementRequest
 - TypeExerciceEnum
 - TypeExigenceEnum
 - TypeFacture2a7Enum
+- TypeFicheEnum
 - TypeFichierEnum
 - TypeFinancementEnum
 - TypeFiscalEnum
+- TypeFluxEnum
 - TypeHabilitationEnum
 - TypeHoraireEnum
 - TypeInfractionEnum
@@ -19783,10 +20922,12 @@ components:
 - TypeLigneEnum
 - TypeLigneParcours
 - TypeLigneParcoursRequest
+- TypeLitigeEnum
 - TypeLocalEnum
 - TypeLocataireEnum
 - TypeMarcheEnum
 - TypeMotifEnum
+- TypeNoeudEnum
 - TypeNomenclatureEnum
 - TypeObservationEnum
 - TypePartenaireEnum
@@ -19797,13 +20938,16 @@ components:
 - TypePointageEnum
 - TypePoliceEnum
 - TypePoliceRequisEnum
+- TypePosteEnum
 - TypePrestationEnum
 - TypePrime
 - TypePrimeNatureEnum
 - TypePrimeRequest
+- TypeQuaiEnum
 - TypeQuestionEnum
 - TypeReclamationEnum
 - TypeRegleEnum
+- TypeReglePromotionEnum
 - TypeReleveEnum
 - TypeRemunerationEnum
 - TypeRoEnum
@@ -19816,9 +20960,15 @@ components:
 - TypeTiersParticulierEntrepriseEnum
 - TypeToitureEnum
 - TypeTransporteurEnum
+- TypeUniteEnum
 - TypeVisaEnum
 - TypeZoneEnum
 - UniteIntervalleEnum
+- UniteLogistique
+- UniteLogistiqueLigne
+- UniteLogistiqueLigneRequest
+- UniteLogistiqueRequest
+- UniteLogistiqueStatutEnum
 - UniteMesure
 - UniteMesureRequest
 - User
@@ -19830,12 +20980,16 @@ components:
 - UtilisationMateriel
 - UtilisationMaterielRequest
 - UxParametres
+- VaguePicking
+- VaguePickingRequest
+- VaguePickingStatutEnum
 - ValidationOcrDocument
 - ValidationOcrDocumentRequest
 - VarianteCalepinage
 - VarianteCalepinageRequest
 - VarianteCalepinageRoleEnum
 - VarianteCalepinageStatutEnum
+- VariationScoreMaturite
 - Vehicule
 - VehiculeRequest
 - VehiculeStatutEnum
@@ -19848,6 +21002,8 @@ components:
 - VenteComptoirStatutEnum
 - VersionContrat
 - VersionDocument
+- VersionFormulaireIntake
+- VersionFormulaireIntakeRequest
 - VirementInterne
 - VirementInterneRequest
 - VisaDocument
@@ -19882,9 +21038,21 @@ components:
 - WorkflowStepDefinitionRequest
 - WorksheetMaintenanceModele
 - WorksheetMaintenanceModeleRequest
+- ZoneAO
+- ZoneAONatureEnum
+- ZoneAORequest
 - ZoneGeographique
 - ZoneGeographiqueRequest
+- _ChaineElectrique
+- _ConformiteElectrique
+- _DonneesAllees
+- _DonneesElectrique
+- _DonneesKits
+- _DonneesOrientation
+- _DonneesRives
 - _FactureSousTraitant
 - _FactureSousTraitantRequest
+- _OnduleursElectrique
 - _PaiementSousTraitant
 - _PaiementSousTraitantRequest
+- _RatioElectrique

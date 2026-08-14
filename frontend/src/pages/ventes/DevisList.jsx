@@ -62,6 +62,10 @@ import { DataTable } from '../../ui/datatable'
 import RoofViewer from './RoofViewer'
 // WIR96 — panneau « Suivi du partage » (ouvertures du lien + relances).
 import DevisSuiviPartagePanel from './DevisSuiviPartagePanel'
+// PV43 — panneau « Conception électrique » (chaînes/conformité/schéma/surcharges).
+import ConceptionElectrique from '../../features/ventes/ConceptionElectrique'
+// PV76 — carte « Étude bancable » (P50/P90/PR/cascade/payback/VAN/TRI).
+import EtudeBancable from '../../features/ventes/EtudeBancable'
 import { StateBlock } from '../../components/StateBlock'
 import DocumentStageTrack from '../../ui/DocumentStageTrack'
 // APX13 — la piste devis→BC→facture, définie UNE fois pour les 3 écrans.
@@ -223,6 +227,7 @@ function buildRelanceWaUrl(waData, reference) {
 
 // XSAL16 — libellés FR des sections suivies sur la proposition web (miroir de
 // `_ENGAGEMENT_SECTIONS` côté serveur, apps/ventes/public_views.py).
+// source-choix: ventes.public_views._ENGAGEMENT_SECTIONS
 const ENGAGEMENT_LABELS = {
   hero: 'accueil', prix: 'prix', etude: 'étude', garanties: 'garanties', signature: 'signature',
 }
@@ -362,6 +367,8 @@ function DevisRow({ d, ctx }) {
     versionsOpenId, setVersionsOpenId, roofOpenId, setRoofOpenId,
     histoOpenId, toggleHistorique, histoCache, histoLoadingId,
     suiviOpenId, toggleSuiviPartage, suiviCache, suiviLoadingId,
+    conceptionOpenId, setConceptionOpenId,
+    etudeOpenId, setEtudeOpenId,
     versionChain, effStatutOf,
     navigate, dispatch,
     role, canDelete, canValiderVente, canSeePublicite, highlightId,
@@ -370,7 +377,7 @@ function DevisRow({ d, ctx }) {
     openEdit, openVarianteModal, handleDelete, handleEnvoyer, handleRelancer, handleContacterSuperieur,
     openEmailModal, handleCopierLienProposition, copierLienInterne, handlePreview, openPdfModal,
     handleTelechargerPdf, handlePartagerPdf, openAcceptModal, openRefusModal, handleConvertBC,
-    handleProformaPdf,
+    handleProformaPdf, handleBonCommandePdf,
     handleChantier, handleCreerProjet, handleGenererFacture,
   } = ctx
   // Expiration calculée à la volée (T7) : un devis en attente dont la
@@ -865,6 +872,30 @@ function DevisRow({ d, ctx }) {
                   Variante
                 </DropdownMenuItem>
               )}
+              {/* PV23 — porte d'entrée du CALEPINAGE depuis la liste. Un devis
+                  encore ouvert (brouillon / envoyé) se CONÇOIT — l'écran de
+                  conception resynchronise ses lignes (PV21). Un devis figé ne
+                  se conçoit plus : il se CONSULTE, et seulement s'il porte
+                  réellement un plan (`roof_layout`, exposé par le serializer —
+                  aucun champ backend ajouté pour cette entrée). */}
+              {(effStatut === 'brouillon' || effStatut === 'envoye') && (
+                <DropdownMenuItem
+                  onSelect={() => navigate(`/ventes/devis/${d.id}/design`)}
+                  aria-label={`Concevoir la toiture 3D de ${d.reference}`}
+                >
+                  <Box className="size-3.5" aria-hidden="true" />
+                  Concevoir en 3D
+                </DropdownMenuItem>
+              )}
+              {effStatut !== 'brouillon' && effStatut !== 'envoye' && d.roof_layout && (
+                <DropdownMenuItem
+                  onSelect={() => navigate(`/ventes/devis/${d.id}/3d`)}
+                  aria-label={`Voir le design 3D de ${d.reference}`}
+                >
+                  <Box className="size-3.5" aria-hidden="true" />
+                  Voir le design 3D
+                </DropdownMenuItem>
+              )}
               {/* QG11/QG12 — « Voir le design 3D » : ouvre le plan de toiture
                   (roof_layout) en lecture seule dans le détail, ou dans une
                   fenêtre séparée. N'apparaît que si un plan existe. */}
@@ -921,10 +952,32 @@ function DevisRow({ d, ctx }) {
               <DropdownMenuItem onSelect={() => handleProformaPdf(d)}>
                 Proforma (PDF)
               </DropdownMenuItem>
+              {/* ZSAL8 — PDF du bon de commande lié (client `getBonCommandePdf`
+                  déjà présent dans ventesApi.js, jamais appelé). Endpoint BC
+                  distinct, ne touche pas au rendu /proposal du devis (règle #4). */}
+              {d.bon_commande_etat?.exists && (
+                <DropdownMenuItem onSelect={() => handleBonCommandePdf(d)}>
+                  Bon de commande (PDF)
+                </DropdownMenuItem>
+              )}
               {/* WIR96 — suivi du partage : « vu le … » (OuverturePartage)
                   + relances consignées (RelanceDevisAbandonne). */}
               <DropdownMenuItem onSelect={() => toggleSuiviPartage(d.id)}>
                 {suiviOpenId === d.id ? 'Masquer le suivi du partage' : 'Suivi du partage'}
+              </DropdownMenuItem>
+              {/* PV43 — étude électrique agrégée (chaînes/conformité/schéma
+                  unifilaire/surcharges DC-AC-phases), calculée depuis les
+                  lignes + le calepinage du devis. */}
+              <DropdownMenuItem onSelect={() => setConceptionOpenId(
+                conceptionOpenId === d.id ? null : d.id)}>
+                {conceptionOpenId === d.id
+                  ? 'Masquer la conception électrique' : 'Conception électrique'}
+              </DropdownMenuItem>
+              {/* PV76 — carte « Étude bancable » (P50/P90/PR/cascade des
+                  pertes/payback/VAN/TRI), lecture de `etude_params.simulation`. */}
+              <DropdownMenuItem onSelect={() => setEtudeOpenId(
+                etudeOpenId === d.id ? null : d.id)}>
+                {etudeOpenId === d.id ? "Masquer l'étude bancable" : 'Étude bancable'}
               </DropdownMenuItem>
               {/* QX27 — actions historiquement dans « Autres actions » :
                   Réviser, Approuver remise, Contacter mon supérieur, Email. */}
@@ -1090,19 +1143,61 @@ function DevisRow({ d, ctx }) {
               <p className="text-xs font-medium text-muted-foreground">
                 Design 3D de la toiture — {d.reference}
               </p>
-              <Button
-                size="sm"
-                variant="ghost"
-                onClick={() => window.open(`/ventes/devis/${d.id}/3d`, '_blank', 'noopener')}
-                title="Ouvrir dans une nouvelle fenêtre"
-              >
-                <ExternalLink className="size-3.5 mr-1" aria-hidden="true" />
-                Ouvrir dans une fenêtre
-              </Button>
+              <div className="flex items-center gap-2">
+                {/* PV23 — depuis l'aperçu, reprendre le calepinage (devis
+                    encore ouvert seulement : au-delà, le document est figé). */}
+                {(effStatut === 'brouillon' || effStatut === 'envoye') && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => navigate(`/ventes/devis/${d.id}/design`)}
+                    title="Reprendre le calepinage de cette toiture"
+                  >
+                    Concevoir en 3D
+                  </Button>
+                )}
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => window.open(`/ventes/devis/${d.id}/3d`, '_blank', 'noopener')}
+                  title="Ouvrir dans une nouvelle fenêtre"
+                >
+                  <ExternalLink className="size-3.5 mr-1" aria-hidden="true" />
+                  Ouvrir dans une fenêtre
+                </Button>
+              </div>
             </div>
             <div className="max-w-2xl">
               <RoofViewer layout={d.roof_layout} />
             </div>
+          </div>
+        </td>
+      </tr>
+    )}
+    {/* PV43 — Panneau « Conception électrique » : chaînes par MPPT,
+        conformité, aperçu du schéma unifilaire, surcharges DC/AC/phases. */}
+    {conceptionOpenId === d.id && (
+      <tr>
+        <td colSpan={8} className="bg-muted/30">
+          <div className="px-3 py-3">
+            <p className="mb-2 text-xs font-medium text-muted-foreground">
+              Conception électrique — {d.reference}
+            </p>
+            <ConceptionElectrique devisId={d.id} />
+          </div>
+        </td>
+      </tr>
+    )}
+    {/* PV76 — Carte « Étude bancable » : lecture de
+        `etude_params.simulation`, recalcul asynchrone (PV74). */}
+    {etudeOpenId === d.id && (
+      <tr>
+        <td colSpan={8} className="bg-muted/30">
+          <div className="px-3 py-3">
+            <p className="mb-2 text-xs font-medium text-muted-foreground">
+              Étude bancable — {d.reference}
+            </p>
+            <EtudeBancable devis={d} onRefresh={() => dispatch(fetchDevis())} />
           </div>
         </td>
       </tr>
@@ -1217,6 +1312,18 @@ export default function DevisList() {
         .finally(() => setSuiviLoadingId(l => (l === id ? null : l)))
     }
   }
+
+  // PV43 — Panneau « Conception électrique » : id du devis dont l'étude
+  // électrique (chaînes/conformité/schéma/surcharges) est ouverte. Le
+  // composant `<ConceptionElectrique>` gère lui-même son chargement/cache —
+  // ce state ne fait QUE basculer sa visibilité (même patron que roofOpenId).
+  const [conceptionOpenId, setConceptionOpenId] = useState(null)
+
+  // PV76 — Carte « Étude bancable » : id du devis dont la carte
+  // P50/P90/PR/cascade/payback/VAN/TRI est ouverte. `<EtudeBancable>` lit
+  // `d.etude_params.simulation` directement (déjà porté par la ligne, comme
+  // `roof_layout`) — aucun cache séparé nécessaire ici.
+  const [etudeOpenId, setEtudeOpenId] = useState(null)
 
   // ── Filtre statut + recherche (référence / client) ──
   // QX12 — deep-link ?statut=<key> pré-règle le filtre au montage (liens de
@@ -1939,6 +2046,19 @@ export default function DevisList() {
     }
   }
 
+  // ZSAL8 — PDF du bon de commande lié (endpoint GET .../pdf/ backend
+  // complet, jamais appelé côté client).
+  const handleBonCommandePdf = async (d) => {
+    const bcId = d.bon_commande_etat?.id
+    if (!bcId) return
+    try {
+      const res = await ventesApi.getBonCommandePdf(bcId)
+      openPdfBlob(res.data, filenameFromResponse(res, `${d.bon_commande_etat.reference}.pdf`))
+    } catch {
+      toast.error('PDF du bon de commande indisponible.')
+    }
+  }
+
   const handleTelechargerPdf = async (d) => {
     setPdfDownloading(prev => ({ ...prev, [d.id]: true }))
     try {
@@ -2100,6 +2220,8 @@ export default function DevisList() {
     versionsOpenId, setVersionsOpenId, roofOpenId, setRoofOpenId,
     histoOpenId, toggleHistorique, histoCache, histoLoadingId,
     suiviOpenId, toggleSuiviPartage, suiviCache, suiviLoadingId,
+    conceptionOpenId, setConceptionOpenId,
+    etudeOpenId, setEtudeOpenId,
     versionChain, effStatutOf,
     navigate, dispatch,
     role, canDelete, canValiderVente, canSeePublicite, highlightId,
@@ -2108,7 +2230,7 @@ export default function DevisList() {
     openEdit, openVarianteModal, handleDelete, handleEnvoyer, handleRelancer, handleContacterSuperieur,
     openEmailModal, handleCopierLienProposition, copierLienInterne, handlePreview, openPdfModal,
     handleTelechargerPdf, handlePartagerPdf, openAcceptModal, openRefusModal, handleConvertBC,
-    handleProformaPdf,
+    handleProformaPdf, handleBonCommandePdf,
     handleChantier, handleCreerProjet, handleGenererFacture,
   }
 

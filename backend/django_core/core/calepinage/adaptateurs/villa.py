@@ -19,23 +19,27 @@ intact ; la bascule se fera derrière un drapeau, avec comparaison A/B.
 import math
 from dataclasses import dataclass
 
+from core.calepinage.orientation import axe_rangee_impose
 from core.calepinage.politique_pas import Affleurant, AntiOmbrage
 from core.calepinage.serialisation import EntreeCalepinage
 from core.calepinage.surfaces.polygone import SurfacePolygone
 from core.calepinage.types import (
     KIT_VILLA_720,
+    KIT_VILLA_EW,
     Axe,
     Obstacle,
     Parametres,
     Provenance,
     Rives,
     TypeObstacle,
+    remplacer,
 )
 
 __all__ = [
     "RAYON_TERRE_M", "RETRAIT_VILLA_M", "DEGAGEMENT_VILLA_M", "Projection",
     "projection_locale", "vers_entree", "vers_panneaux", "politique_villa",
-    "expliquer_ecart",
+    "expliquer_ecart", "FAMILLE_SUD", "FAMILLE_EST_OUEST", "FAMILLES_VILLA",
+    "kit_de_famille", "kit_sud", "kit_est_ouest",
 ]
 
 #: Rayon terrestre moyen (WGS84 demi-grand axe) — projection ENU locale.
@@ -43,6 +47,12 @@ RAYON_TERRE_M = 6378137.0
 #: Retrait de rive villa (setback) et dégagement autour d'un obstacle déclaré.
 RETRAIT_VILLA_M = 0.50
 DEGAGEMENT_VILLA_M = 0.30
+
+#: PV66 — les DEUX familles de pose villa, nommées comme sur le site
+#: (``ConfigFamily = 'south' | 'eastwest'``).
+FAMILLE_SUD = "SUD"
+FAMILLE_EST_OUEST = "EST_OUEST"
+FAMILLES_VILLA = (FAMILLE_SUD, FAMILLE_EST_OUEST)
 
 
 @dataclass(frozen=True)
@@ -97,6 +107,87 @@ def projection_locale(points, ordre="lnglat"):
     return Projection(lat0_deg=lat0, lng0_deg=lng0)
 
 
+# ============================================================ familles de kit
+#
+# PV66 — deux façons de couvrir la MÊME villa avec le MÊME panneau :
+#
+# * **SUD** — un module par table, plein sud, rangées est-ouest : le rendement
+#   par panneau est maximal, la toiture en loge moins ;
+# * **EST-OUEST** — deux modules dos-à-dos en chevron, faîtage nord-sud,
+#   rangées nord-sud : chaque panneau produit un peu moins mais la toiture en
+#   loge nettement plus, et la production est étalée matin/soir.
+#
+# Le choix est un ARGUMENT, jamais une devinette : ni l'inclinaison, ni le
+# nombre de modules par table ne se déduisent d'un ``AreaRecord``. Sans famille
+# demandée, RIEN ne change — le kit reçu est utilisé tel quel.
+
+
+def kit_sud(base=KIT_VILLA_720):
+    """Le kit SUD (un module) portant la géométrie de module de ``base``.
+
+    ``base`` déjà à un module est rendu TEL QUEL — c'est le chemin par défaut
+    de la villa et le kit dérivé d'un produit (PV12) : sa géométrie, son SKU et
+    son inclinaison sont déjà un choix, on ne les réécrit pas.
+    """
+    if not base.dos_a_dos:
+        return base
+    return remplacer(
+        KIT_VILLA_720,
+        code="%s_SUD" % base.code,
+        libelle="Module unique plein sud dérivé de %s" % base.libelle,
+        module_long_m=base.module_long_m,
+        module_court_m=base.module_court_m,
+        puissance_module_wc=base.puissance_module_wc)
+
+
+def kit_est_ouest(base=KIT_VILLA_720):
+    """Le CHEVRON dos-à-dos est-ouest portant la géométrie de ``base``.
+
+    Le gabarit est ``KIT_VILLA_EW`` : on n'y remplace que les trois grandeurs
+    qui appartiennent au module vendu (longueur, largeur, puissance). Tout le
+    reste — deux modules par table, paysage, 10°, aucun jeu de faîte — est la
+    définition MÊME du chevron et ne dépend pas du panneau qu'on y pose.
+
+    Conséquence directe : le panneau du catalogue (PV12) s'applique aux DEUX
+    familles. Un ``base`` déjà dos-à-dos est rendu tel quel (c'est déjà un
+    chevron, le redécrire inventerait un second gabarit).
+    """
+    if base.dos_a_dos:
+        return base
+    if (base.module_long_m == KIT_VILLA_EW.module_long_m
+            and base.module_court_m == KIT_VILLA_EW.module_court_m
+            and base.puissance_module_wc == KIT_VILLA_EW.puissance_module_wc):
+        return KIT_VILLA_EW
+    return remplacer(
+        KIT_VILLA_EW,
+        code="%s_EW" % base.code,
+        libelle="Chevron dos-à-dos est-ouest dérivé de %s" % base.libelle,
+        module_long_m=base.module_long_m,
+        module_court_m=base.module_court_m,
+        puissance_module_wc=base.puissance_module_wc)
+
+
+def kit_de_famille(famille, base=KIT_VILLA_720):
+    """Rend le kit de la famille demandée — ``None`` laisse ``base`` INTACT.
+
+    C'est le point de composition avec le kit-produit de PV12 : l'appelant
+    résout d'abord SON kit (kit explicite > fiche technique du produit > kit
+    villa par défaut), puis cette fonction lui donne la forme de table de la
+    famille choisie. L'ordre importe : la famille change la TABLE, jamais le
+    panneau — sans quoi choisir « est-ouest » changerait en douce le module
+    facturé au client.
+    """
+    if famille is None:
+        return base
+    code = str(famille).strip().upper()
+    if code in ("", FAMILLE_SUD, "SOUTH"):
+        return kit_sud(base)
+    if code in (FAMILLE_EST_OUEST, "EST-OUEST", "EASTWEST", "EAST_WEST", "EW"):
+        return kit_est_ouest(base)
+    raise ValueError("famille de pose villa inconnue : %r (%s)"
+                     % (famille, " | ".join(FAMILLES_VILLA)))
+
+
 def politique_villa(area):
     """Toit PLAT -> anti-ombrage ; toit en PENTE -> pose affleurante."""
     plat = area.get("flat", area.get("plat", True))
@@ -106,8 +197,25 @@ def politique_villa(area):
     return Affleurant()
 
 
-def _obstacles_villa(area, projection, ordre):
-    """``centre + dimensions`` -> rectangles, provenance DÉCLARÉE PAR LE CLIENT."""
+def _vers_repere(est, nord, axe):
+    """``(est, nord)`` -> ``(x, y)`` du moteur, où ``x`` court LE LONG des rangées.
+
+    ``SurfacePolygone`` n'interprète PAS ``axe_rangee`` : son contour est déjà
+    exprimé dans le repère de la rangée (``x`` le long, ``y`` en travers).
+    Déclarer un axe nord-sud en laissant ``x`` = est produirait des rangées
+    est-ouest étiquetées nord-sud — plausible et faux, exactement la classe de
+    bug que ce paquet refuse. La conversion est donc faite ICI, une fois.
+    """
+    return (nord, est) if axe is Axe.NORD_SUD else (est, nord)
+
+
+def _obstacles_villa(area, projection, ordre, axe=Axe.EST_OUEST):
+    """``centre + dimensions`` -> rectangles, provenance DÉCLARÉE PAR LE CLIENT.
+
+    ``widthM`` est une largeur EST-OUEST et ``heightM`` une profondeur
+    NORD-SUD : sur des rangées nord-sud, les deux échangent leur rôle en même
+    temps que les coordonnées.
+    """
     obstacles = []
     for i, brut in enumerate(area.get("obstacles", ()) or ()):
         centre = brut.get("center", brut.get("centre"))
@@ -115,12 +223,14 @@ def _obstacles_villa(area, projection, ordre):
             continue
         lat, lng = _couple(centre, ordre)
         est, nord = projection.vers_local(lat, lng)
+        x, y = _vers_repere(est, nord, axe)
         largeur = float(brut.get("widthM", brut.get("largeur_m", 1.0)))
         profondeur = float(brut.get("heightM", brut.get("profondeur_m", 1.0)))
+        demi_x, demi_y = _vers_repere(largeur / 2.0, profondeur / 2.0, axe)
         obstacles.append(Obstacle(
             repere=str(brut.get("id", "OBS%d" % (i + 1))),
-            x0=est - largeur / 2.0, x1=est + largeur / 2.0,
-            y0=nord - profondeur / 2.0, y1=nord + profondeur / 2.0,
+            x0=x - demi_x, x1=x + demi_x,
+            y0=y - demi_y, y1=y + demi_y,
             type_obstacle=TypeObstacle.NATURE_INCONNUE,
             provenance=Provenance.DECLARE_CLIENT,
             degagement_m=DEGAGEMENT_VILLA_M,
@@ -131,45 +241,63 @@ def _obstacles_villa(area, projection, ordre):
 
 
 def vers_entree(area, ordre="lnglat", kit=KIT_VILLA_720,
-                retrait_m=RETRAIT_VILLA_M, pas_recherche_m=0.01):
+                retrait_m=RETRAIT_VILLA_M, pas_recherche_m=0.01,
+                famille=None):
     """``AreaRecord`` -> ``(EntreeCalepinage, Projection, PolitiquePas)``.
 
-    Le repère du moteur pour la villa : ``x`` = EST (les rangées courent
-    est-ouest pour des modules plein sud), ``y`` = NORD.
+    Le repère du moteur a TOUJOURS ``x`` le long des rangées. En pose SUD
+    (module unique plein sud) les rangées courent est-ouest : ``x`` = EST,
+    ``y`` = NORD, comme depuis AOF162. En pose EST-OUEST (chevron dos-à-dos,
+    PV66) le faîtage est nord-sud, donc les rangées aussi : ``x`` = NORD et les
+    chevrons s'empilent vers l'est.
+
+    ``famille`` (PV66) — ``None`` (défaut) laisse le kit reçu INTACT et rend un
+    calcul bit-à-bit identique à l'existant ; ``SUD``/``EST_OUEST`` demandent
+    explicitement une famille de table. L'axe des rangées n'est jamais saisi :
+    il est DÉRIVÉ du kit par ``orientation.axe_rangee_impose``, la seule source
+    de vérité du dépôt sur ce qui est constructible.
     """
     points = area.get("polygon", area.get("points", ()))
     if len(points) < 3:
         raise ValueError("toiture villa %r : contour de moins de 3 sommets"
                          % (area.get("id", "?"),))
+    kit = kit_de_famille(famille, kit)
+    azimut = float(area.get("azimuth", 180.0) or 180.0)
+    axe = axe_rangee_impose(kit, azimut)
     projection = projection_locale(points, ordre)
-    contour = tuple(projection.vers_local(*_couple(p, ordre)) for p in points)
+    contour = tuple(_vers_repere(*projection.vers_local(*_couple(p, ordre)),
+                                 axe=axe)
+                    for p in points)
     rives = Rives(laterale_m=retrait_m, extremite_m=retrait_m)
     surface = SurfacePolygone(
         repere=str(area.get("id", "VILLA")), contour=contour, rives=rives,
-        axe_rangee=Axe.EST_OUEST,
+        axe_rangee=axe,
         pente_deg=float(area.get("tilt", 0.0) or 0.0),
-        azimut_deg=float(area.get("azimuth", 180.0) or 180.0))
-    parametres = Parametres(kits=(kit,), rives=rives, axe_rangee=Axe.EST_OUEST,
+        azimut_deg=azimut)
+    parametres = Parametres(kits=(kit,), rives=rives, axe_rangee=axe,
                             allee_m=0.0, pas_recherche_m=pas_recherche_m)
     entree = EntreeCalepinage(
         repere=surface.repere, surfaces=(surface,), kits=(kit,),
         parametres=parametres,
-        obstacles=_obstacles_villa(area, projection, ordre))
+        obstacles=_obstacles_villa(area, projection, ordre, axe))
     return (entree, projection, politique_villa(area))
 
 
-def vers_panneaux(tables, projection, kit=KIT_VILLA_720):
+def vers_panneaux(tables, projection, kit=KIT_VILLA_720, axe=Axe.EST_OUEST):
     """Tables posées -> structure compatible ``PanelGrid`` (écran existant).
 
     Chaque panneau porte ses 4 sommets en ``[lng, lat]`` — la convention du
-    lecteur de cartes, pour que rien ne change côté écran.
+    lecteur de cartes, pour que rien ne change côté écran. ``axe`` est celui
+    des rangées : il défait exactement la transposition de ``_vers_repere``,
+    sinon un chevron est-ouest se dessinerait à 90° de là où il est posé.
     """
     panneaux = []
     for i, table in enumerate(tables):
         sommets = table.polygone or ((table.x0, table.y0), (table.x1, table.y0),
                                      (table.x1, table.y1), (table.x0, table.y1))
         coins = []
-        for est, nord in sommets:
+        for x, y in sommets:
+            est, nord = _vers_repere(x, y, axe)
             lat, lng = projection.vers_geo(est, nord)
             coins.append([lng, lat])
         panneaux.append({

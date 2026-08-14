@@ -90,6 +90,10 @@ PREFIX_TO_MODULE = {
     # le module ne couperait PAS ses endpoints (le manifeste annoncerait un
     # gating qui n'existe pas).
     'ai': 'ai_governance',
+    # NTRET18/19 — monté sous `api/django/ecommerce-connect/` (tiret) alors que
+    # la clé du module est `ecommerce_connect` (souligné) : sans cette entrée,
+    # désactiver le module ne couperait PAS ses endpoints.
+    'ecommerce-connect': 'ecommerce_connect',
 }
 
 # Racine commune de toutes les routes de l'API Django.

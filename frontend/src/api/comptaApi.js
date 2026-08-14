@@ -115,7 +115,11 @@ const comptaApi = {
     clotureList: (id) => api.get(`/compta/caisses/${id}/cloturer/`),
     cloturer: (id, data) => api.post(`/compta/caisses/${id}/cloturer/`, data),
   },
-  virements: resource('virements'),
+  // FG125 — virements internes : `poster` passe l'écriture équilibrée au GL.
+  virements: {
+    ...resource('virements'),
+    poster: (id) => api.post(`/compta/virements/${id}/poster/`),
+  },
   previsionnel: resource('previsionnel'),
 
   // ── UX7 — Fiscalité & déclarations ──
@@ -222,6 +226,10 @@ const comptaApi = {
     accepterSuggestions: (id) =>
       api.post(`/compta/rapprochements/${id}/accepter-suggestions/`),
     cloturer: (id) => api.post(`/compta/rapprochements/${id}/cloturer/`),
+    // XACC30 — OCR d'un relevé (PDF/scan, gated) : extraction (multipart
+    // { releve }) puis acceptation explicite ({ accepter: '1', lignes }).
+    ocrImport: (id, formData) =>
+      api.post(`/compta/rapprochements/${id}/ocr-import/`, formData),
   },
   modelesRapprochement: {
     ...resource('modeles-rapprochement'),

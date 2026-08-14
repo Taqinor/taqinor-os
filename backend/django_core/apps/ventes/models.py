@@ -1,6 +1,8 @@
 from django.db import models
 from django.conf import settings
 
+from core.models import TenantModel
+
 # M1 — cross-app FKs use Django's lazy "app.Model" string form so this module
 # imports no sibling app's models at load time (breaks the crm⇄ventes /
 # stock⇄ventes import cycles without any schema change).
@@ -206,6 +208,21 @@ class Devis(models.Model):
     # mais on plafonne à 64 pour la cohérence). Index ≤ 30 chars : lyt_hash_idx.
     layout_hash = models.CharField(max_length=64, null=True, blank=True, db_index=True)
 
+    # ── PV41 — Conception ÉLECTRIQUE du devis (additif, optionnel) ──
+    # Sortie COMPLÈTE de ``core.electrique.concevoir()`` projetée sur le contrat
+    # ``contract_samples/conception_electrique.json`` : chaînes, conformité, les
+    # deux ratios, protections, câbles, bordereau, note de calcul, paramètres.
+    # AUCUN PRIX n'y entre jamais — le moteur ne manipule que des grandeurs
+    # électriques publiques et des quantités (le chiffrage reste dans les lignes
+    # du devis). Vide → aucun comportement existant ne change.
+    electrical_design = models.JSONField(null=True, blank=True)
+    # Empreinte SHA-256 des ENTRÉES de ce calcul (layout_hash + specs module et
+    # onduleur + longueurs de liaison + phases). Même empreinte ⇒ même étude ⇒
+    # AUCUNE réécriture (patron d'idempotence QJ17). Null pour les devis
+    # antérieurs ou sans conception électrique.
+    electrical_design_hash = models.CharField(
+        max_length=64, blank=True, null=True, db_index=True)
+
     # ── QX23be — instantané de MARGE (usage manager UNIQUEMENT) ──
     # Marge HT figée au save/envoi = Σ(HT lignes) − Σ(qté × prix_achat produit).
     # NULLABLE (les devis dont aucun produit lié n'a de prix_achat gardent None).
@@ -227,6 +244,62 @@ class Devis(models.Model):
         on_delete=models.SET_NULL,
         null=True, blank=True,
         related_name='devis_modifies',
+    )
+
+    # ── NTCPQ16 — Variante générée par substitution de produits ──
+    # Une variante « économique / standard / premium » est un devis BROUILLON
+    # complet lié à son devis de base par ``variante_de`` (le tier est mémorisé
+    # dans ``variante_tier``). DISTINCT des variantes de TAILLE (QJ15, qui
+    # utilise ``version_parent``) et du couple solaire Sans-batterie/Avec-
+    # batterie. NULL = devis normal (comportement historique inchangé).
+    variante_de = models.ForeignKey(
+        'self',
+        # on_delete: supprimer le devis de base ne détruit pas les variantes
+        # déjà présentées ; elles redeviennent autonomes.
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='variantes_cpq',
+        verbose_name='Variante de (devis de base)',
+    )
+    variante_tier = models.CharField(
+        max_length=20, blank=True, default='',
+        verbose_name='Tier de la variante',
+        help_text='economique / standard / premium. Vide = devis normal.',
+    )
+
+    # ── NTCPQ13 — Renouvellement d'un devis déjà accepté/clos ──
+    # DISTINCT de la révision (T10 : ``version``/``version_parent``, qui corrige
+    # un devis NON encore accepté). ``devis_origine`` pointe vers la RACINE de
+    # la chaîne de renouvellement (le tout premier devis), ``numero_renouvellement``
+    # compte les renouvellements successifs (0 = devis d'origine). Le devis
+    # source n'est JAMAIS modifié : il reste accepté, figé, avec sa chaîne
+    # BC/Facture intacte.
+    devis_origine = models.ForeignKey(
+        'self',
+        # on_delete: un renouvellement survit à la disparition de son origine —
+        # il redevient simplement autonome (jamais de cascade sur du CA).
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='renouvellements',
+        verbose_name="Devis d'origine (renouvellement)",
+    )
+    numero_renouvellement = models.PositiveIntegerField(
+        default=0,
+        verbose_name='N° de renouvellement',
+        help_text='0 = devis d\'origine ; 1, 2… = renouvellements successifs.',
+    )
+
+    # ── NTCPQ11 — Clauses/CGV dynamiques FIGÉES à l'envoi ──
+    # Snapshot JSON de la liste des clauses (``apps.cpq.ClauseCGV``) applicables
+    # au devis, calculé UNE SEULE FOIS au passage brouillon → envoyé et JAMAIS
+    # recalculé ensuite (éditer une clause n'altère pas un devis déjà envoyé).
+    # NULL / [] = comportement historique strictement inchangé. Lu en LECTURE
+    # SEULE par le quote_engine (aucun nouveau renderer — règle #4).
+    clauses_appliquees = models.JSONField(
+        null=True, blank=True,
+        verbose_name='Clauses/CGV appliquées (figées à l\'envoi)',
+        help_text='Snapshot [{clause_id, nom, corps_texte, type_deal, ordre}] '
+                  'figé au moment de l\'envoi. Jamais recalculé ensuite.',
     )
 
     # NTADM2 — rattachement OPTIONNEL à une entité intra-tenant (holding /
@@ -414,6 +487,19 @@ class LigneDevis(models.Model):
         help_text='Ligne optionnelle (add-on) : proposée au client hors total '
                   "tant qu'elle n'est pas activée. Défaut False = ligne normale.")
 
+    # ── NTCPQ18 — Rattachement à un LOT (site/bâtiment) — additif, optionnel ──
+    # NULL = ligne « hors lot » (comportement historique strictement inchangé :
+    # un devis sans lot ne connaît aucun sous-total de lot).
+    lot = models.ForeignKey(
+        'LotDevis',
+        # on_delete: supprimer un lot ne supprime JAMAIS ses lignes (elles
+        # redeviennent « hors lot ») — aucune perte de montant.
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='lignes',
+        verbose_name='Lot (site/bâtiment)',
+    )
+
     class Meta:
         verbose_name = 'Ligne de Devis'
         verbose_name_plural = 'Lignes de Devis'
@@ -453,6 +539,127 @@ class LigneDevis(models.Model):
     def taux_tva_effectif(self):
         """Taux réellement appliqué : celui de la ligne, sinon celui du devis."""
         return self.taux_tva if self.taux_tva is not None else self.devis.taux_tva
+
+
+class ConfigurationDevisSnapshot(TenantModel):
+    """NTCPQ20 — Instantané FIN de la configuration d'un devis BROUILLON.
+
+    Pris automatiquement à chaque modification significative des lignes
+    (ajout / retrait / quantité / prix) tant que le devis est en brouillon.
+    DISTINCT de la révision de version (T10, qui numérote une nouvelle version
+    d'un devis déjà envoyé) : c'est un historique fin PRÉ-envoi, jamais une
+    version. ``contenu`` ne porte que des données de configuration
+    (désignation, quantité, P.U., remise) — jamais de prix d'achat / marge.
+
+    ARC1 — hérite de ``core.models.TenantModel`` (FK ``company`` + timestamps) ;
+    ``company`` est redéclarée à l'identique pour garder l'accesseur inverse
+    explicite et rester optionnelle comme les autres satellites du devis."""
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: purge tenant
+        null=True, blank=True, related_name='devis_config_snapshots')
+    devis = models.ForeignKey(
+        Devis, on_delete=models.CASCADE,  # on_delete: historique sans objet si devis supprimé
+        related_name='config_snapshots')
+    contenu = models.JSONField(default=dict, blank=True)
+    auteur = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='devis_config_snapshots')
+    date_creation = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'Instantané de configuration de devis'
+        verbose_name_plural = 'Instantanés de configuration de devis'
+        ordering = ['date_creation', 'id']
+        indexes = [
+            models.Index(fields=['devis', 'date_creation'],
+                         name='ventes_cfgsnap_dv_date'),
+        ]
+
+    def __str__(self):
+        return f'Config devis {self.devis_id} @ {self.date_creation}'
+
+
+class LotDevis(TenantModel):
+    """NTCPQ18 — Lot (site / bâtiment) d'un devis multi-sites.
+
+    Un devis unique peut couvrir plusieurs sites : chaque ``LotDevis`` regroupe
+    des ``LigneDevis`` (``LigneDevis.lot``) et reçoit son PROPRE sous-total,
+    le devis affichant en plus un total consolidé au centime.
+
+    Intersection assumée avec le multi-villa QJ29 (``LigneDevis.groupe_index``,
+    qui reste le mécanisme d'AFFICHAGE côté proposition résidentielle) : ce
+    ticket ne traite QUE le calcul de prix consolidé multi-lot, jamais l'UX
+    site — les deux cohabitent sans se remplacer.
+
+    ARC1 — hérite de ``core.models.TenantModel``; ``company`` redéclarée à
+    l'identique (accesseur inverse explicite, optionnelle)."""
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: purge tenant
+        null=True, blank=True, related_name='devis_lots')
+    devis = models.ForeignKey(
+        Devis, on_delete=models.CASCADE,  # on_delete: lot sans objet si devis supprimé
+        related_name='lots')
+    nom_lot = models.CharField(max_length=150)
+    adresse_site = models.CharField(max_length=255, blank=True, default='')
+    ordre = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        verbose_name = 'Lot de devis'
+        verbose_name_plural = 'Lots de devis'
+        ordering = ['ordre', 'id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['devis', 'nom_lot'],
+                name='ventes_lotdevis_unique_devis_nom'),
+        ]
+
+    def __str__(self):
+        return f'{self.nom_lot} (devis {self.devis_id})'
+
+
+class AvenantDevis(TenantModel):
+    """NTCPQ14 — Avenant (amendment) d'un devis déjà accepté.
+
+    Trace le DIFF appliqué au devis : ``lignes_ajoutees`` et
+    ``lignes_retirees`` sont des snapshots JSON (designation, quantité, P.U.,
+    remise) — jamais des prix d'achat / marges (donnée interne). Le devis
+    source n'est PAS versionné : l'avenant est un complément tracé, distinct de
+    la révision (T10) et du renouvellement (NTCPQ13).
+
+    ``approbation_requise`` mémorise si l'avenant a redéclenché la matrice
+    d'approbation NTCPQ7 (nouveau taux de remise global au-dessus du seuil).
+
+    ARC1 — hérite de ``core.models.TenantModel``; ``company`` redéclarée à
+    l'identique (accesseur inverse explicite, optionnelle)."""
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: purge tenant
+        null=True, blank=True, related_name='devis_avenants')
+    devis = models.ForeignKey(
+        Devis, on_delete=models.CASCADE,  # on_delete: avenant sans objet si devis supprimé
+        related_name='avenants')
+    lignes_ajoutees = models.JSONField(default=list, blank=True)
+    lignes_retirees = models.JSONField(default=list, blank=True)
+    motif = models.TextField(blank=True, default='')
+    taux_remise_global = models.DecimalField(
+        max_digits=6, decimal_places=2, null=True, blank=True,
+        help_text='Taux de remise global du devis APRÈS avenant (%).')
+    approbation_requise = models.BooleanField(default=False)
+    auteur = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='devis_avenants')
+    date_creation = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'Avenant de devis'
+        verbose_name_plural = 'Avenants de devis'
+        ordering = ['-date_creation', '-id']
+        indexes = [
+            models.Index(fields=['company', 'devis'],
+                         name='ventes_avenant_co_dv'),
+        ]
+
+    def __str__(self):
+        return f'Avenant #{self.pk} · devis {self.devis_id}'
 
 
 class DevisActivity(models.Model):
@@ -2178,6 +2385,66 @@ class RegleListePrix(models.Model):
         if self.marque:
             return (produit.marque or '') == self.marque
         return True
+
+
+class PalierRemiseVolume(TenantModel):
+    """NTCPQ17 — Palier de remise automatique par VOLUME, avec cascade.
+
+    Étend les paliers de quantité XSAL2 (``RegleListePrix``, qui restent
+    attachés à une liste de prix) d'une remise volume transverse à la société,
+    et surtout d'une CASCADE multi-paliers :
+
+      * ``priorite`` (décroissante) fixe l'ordre d'application ;
+      * ``cumulable`` autorise le palier à s'ajouter à la remise de LIGNE, sur
+        le sous-total global, quand plusieurs catégories atteignent chacune
+        leur seuil (sinon il reste exclusif à sa ligne).
+
+    ``categorie_nom`` est une string-ref vers ``stock.Categorie.nom`` (même
+    convention que ``RegleListePrix`` — jamais d'import de ``stock.models``) ;
+    vide = tout le catalogue. Ne touche JAMAIS ``prix_achat``.
+
+    ARC1 — hérite de ``core.models.TenantModel``; ``company`` redéclarée à
+    l'identique (accesseur inverse historique explicite)."""
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: purge tenant
+        related_name='paliers_remise_volume')
+    categorie_nom = models.CharField(
+        max_length=150, blank=True, default='',
+        help_text='Catégorie visée (nom). Vide = tout le catalogue.')
+    quantite_min = models.DecimalField(
+        max_digits=10, decimal_places=2, default=1,
+        help_text='Quantité minimale pour que le palier se déclenche.')
+    remise_pct = models.DecimalField(
+        max_digits=5, decimal_places=2, default=0,
+        help_text='Remise accordée par ce palier (%).')
+    priorite = models.PositiveIntegerField(
+        default=0,
+        help_text='Ordre de la cascade (plus haut = appliqué en premier).')
+    cumulable = models.BooleanField(
+        default=False,
+        help_text='Le palier s\'ajoute à la remise de ligne (cascade globale) '
+                  'quand plusieurs catégories atteignent leur seuil.')
+    actif = models.BooleanField(default=True)
+
+    class Meta:
+        verbose_name = 'Palier de remise volume'
+        verbose_name_plural = 'Paliers de remise volume'
+        ordering = ['-priorite', '-quantite_min', 'id']
+        indexes = [
+            models.Index(fields=['company', 'actif'],
+                         name='ventes_palvol_co_actif'),
+        ]
+
+    def __str__(self):
+        cat = self.categorie_nom or 'tout le catalogue'
+        return f'{cat} ≥ {self.quantite_min} → {self.remise_pct} %'
+
+    def matches_produit(self, produit):
+        """Le palier vise-t-il ce produit ? (catégorie vide = tout)."""
+        if not self.categorie_nom:
+            return True
+        cat = getattr(produit, 'categorie', None)
+        return bool(cat) and cat.nom == self.categorie_nom
 
 
 class PlanCommission(models.Model):

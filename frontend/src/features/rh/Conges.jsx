@@ -20,6 +20,8 @@ const VUES = [
   { value: 'demandes', label: 'Demandes' },
   { value: 'soldes', label: 'Soldes' },
   { value: 'calendrier', label: 'Calendrier équipe' },
+  // ZRH3 — rapport congés par type et par employé (année civile).
+  { value: 'rapport', label: 'Rapport' },
 ]
 
 export default function Conges() {
@@ -29,6 +31,8 @@ export default function Conges() {
   const [demandes, setDemandes] = useState([])
   const [soldes, setSoldes] = useState([])
   const [calendrier, setCalendrier] = useState([])
+  // ZRH3 — rapport annuel {par_type, par_employe}.
+  const [rapport, setRapport] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
 
@@ -40,12 +44,14 @@ export default function Conges() {
       rhApi.getDemandesConge(),
       rhApi.getSoldesConge(),
       rhApi.getCalendrierConges(),
+      rhApi.getRapportConges(),
     ])
-      .then(([dRes, sRes, cRes]) => {
+      .then(([dRes, sRes, cRes, rRes]) => {
         if (!vivant) return
         setDemandes(unwrap(dRes.data))
         setSoldes(unwrap(sRes.data))
         setCalendrier(unwrap(cRes.data))
+        setRapport(rRes.data)
       })
       .catch(() => {
         if (!vivant) return
@@ -160,6 +166,18 @@ export default function Conges() {
     },
   ], [])
 
+  // ZRH3 — colonnes du rapport (clés du sélecteur serveur).
+  const rapportTypeColumns = [
+    { id: 'code', header: 'Type', width: 120, accessor: (r) => r.code || '', cell: (v) => <span className="font-medium">{v || '—'}</span> },
+    { id: 'libelle', header: 'Libellé', width: 220, accessor: (r) => r.libelle || '', cell: (v) => v || '—' },
+    { id: 'jours', header: 'Jours', width: 100, align: 'right', numeric: true, searchable: false, accessor: (r) => Number(r.jours ?? 0), cell: (v) => formatNumber(v, { decimals: 1 }) },
+  ]
+  const rapportEmployeColumns = [
+    { id: 'nom', header: 'Employé', width: 200, accessor: (r) => r.nom || '', cell: (v) => <span className="font-medium">{v || '—'}</span> },
+    { id: 'jours', header: 'Jours pris', width: 110, align: 'right', numeric: true, searchable: false, accessor: (r) => Number(r.jours ?? 0), cell: (v) => formatNumber(v, { decimals: 1 }) },
+    { id: 'solde', header: 'Solde disponible', width: 140, align: 'right', numeric: true, searchable: false, accessor: (r) => Number(r.solde_disponible ?? 0), cell: (v) => formatNumber(v, { decimals: 1 }) },
+  ]
+
   return (
     <div className="page flex flex-col gap-4">
       <div className="page-header">
@@ -189,6 +207,31 @@ export default function Conges() {
             ))}
           </div>
         )
+      ) : vue === 'rapport' ? (
+        <div className="flex flex-col gap-4">
+          <ListShell
+            title="Congés par type"
+            columns={rapportTypeColumns}
+            rows={rapport?.par_type ?? []}
+            loading={loading}
+            error={error}
+            searchable
+            exportName="rapport-conges-par-type"
+            emptyTitle="Aucun congé validé"
+            emptyDescription="Aucune demande validée sur l’année."
+          />
+          <ListShell
+            title="Congés par employé"
+            columns={rapportEmployeColumns}
+            rows={rapport?.par_employe ?? []}
+            loading={loading}
+            error={error}
+            searchable
+            exportName="rapport-conges-par-employe"
+            emptyTitle="Aucun congé validé"
+            emptyDescription="Aucune demande validée sur l’année."
+          />
+        </div>
       ) : vue === 'calendrier' ? (
         <ListShell
           title="Calendrier d’équipe"

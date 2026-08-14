@@ -62,6 +62,10 @@ const posApi = {
   getDashboard: (params) => api.get('/pos/ventes/dashboard/', { params }),
   exportDashboardUrl: () => '/pos/ventes/dashboard-export/',
 
+  // ── Tableau de bord retail (NTRET16) ───────────────────────────────────────
+  getDashboardRetail: (params) => api.get('/pos/ventes/dashboard-retail/', { params }),
+  exportDashboardRetailUrl: () => '/pos/ventes/dashboard-retail-export/',
+
   // ── Sessions de caisse (XPOS4) ────────────────────────────────────────────
   getSessions: (params) => api.get('/pos/sessions/', { params }),
   ouvrirSession: (data) => api.post('/pos/sessions/', data),

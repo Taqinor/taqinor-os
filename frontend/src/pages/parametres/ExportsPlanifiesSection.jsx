@@ -31,7 +31,9 @@ import { SectionTitle } from './peComponents'
 import { formatDateTime } from '../../lib/format'
 
 // Miroir de ScheduledExport.FORMAT_CHOICES / DEST_CHOICES.
+// source-choix: core.ScheduledExport.format
 const FORMATS = [['csv', 'CSV'], ['parquet', 'Parquet']]
+// source-choix: core.ScheduledExport.destination
 const DESTINATIONS = [['sftp', 'SFTP'], ['s3', 'Bucket S3']]
 
 // Statuts renvoyés par le runner `core.scheduled_export` (+ le cas « jamais

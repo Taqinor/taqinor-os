@@ -19,6 +19,12 @@ vi.mock('../../api/gedApi', () => ({
     getTags: vi.fn(() => Promise.resolve({ data: [] })),
     searchDocuments: vi.fn(() => Promise.resolve({ data: [] })),
     semanticSearch: vi.fn(() => Promise.resolve({ data: [] })),
+    // ZGED7/8/13 — favoris/récents/vues (rendus par GedSearch, monté ici).
+    getMesFavoris: vi.fn(() => Promise.resolve({ data: { dossiers: [], documents: [] } })),
+    getMesRecents: vi.fn(() => Promise.resolve({ data: { consultes: [], deposes: [] } })),
+    getVues: vi.fn(() => Promise.resolve({ data: [] })),
+    createVue: vi.fn(() => Promise.resolve({ data: { id: 1 } })),
+    deleteVue: vi.fn(() => Promise.resolve({ data: {} })),
     // GED14 — aperçu inline.
     getVersions: vi.fn(() => Promise.resolve({ data: [] })),
     apercuVersionUrl: (id) => `/api/django/ged/versions/${id}/apercu/`,
@@ -28,6 +34,15 @@ vi.mock('../../api/gedApi', () => ({
     mettreEnCorbeille: vi.fn(() => Promise.resolve({ data: {} })),
     // XGED14 — opérations en lot.
     operationsLot: vi.fn(() => Promise.resolve({ data: { resultats: [], erreurs: [] } })),
+    // XGED24 — caviardage.
+    caviarderDocument: vi.fn(() => Promise.resolve({ data: { id: 99 } })),
+    // XGED10/17 — scission, fusion, comparaison de versions.
+    scinderDocument: vi.fn(() => Promise.resolve({ data: [{ id: 100 }, { id: 101 }] })),
+    fusionnerDocuments: vi.fn(() => Promise.resolve({ data: { id: 102 } })),
+    comparerVersions: vi.fn(() => Promise.resolve({ data: {
+      metadonnees: { size: { v1: 100, v2: 200 } }, texte_disponible: false,
+      message: 'Comparaison binaire indisponible.',
+    } })),
   },
 }))
 
@@ -167,6 +182,105 @@ describe('GedNavigator — écriture (U14)', () => {
       expect(iframe).toBeTruthy()
       expect(iframe.getAttribute('src')).toContain('/ged/versions/22/apercu/')
     })
+  })
+
+  it('XGED24 — caviarde une zone du PDF depuis l’aperçu (copie, original intact)', async () => {
+    gedApi.getCabinets.mockResolvedValue(ok([{ id: 1, nom: 'Cab' }]))
+    gedApi.getDossiers.mockResolvedValue(ok([
+      { id: 5, nom: 'Docs', cabinet: 1, parent: null, path: '/5/' },
+    ]))
+    gedApi.getDocuments.mockResolvedValue(ok([
+      { id: 8, nom: 'facture.pdf', version_count: 1, updated_at: '2026-06-01T10:00:00Z' },
+    ]))
+    gedApi.getVersions.mockResolvedValue(ok([
+      { id: 22, numero: 1, mime: 'application/pdf', filename: 'facture.pdf' },
+    ]))
+
+    renderGed()
+    await userEvent.click(await screen.findByText('Docs'))
+    await userEvent.click(await screen.findByRole('button', { name: /Aperçu de facture\.pdf/i }))
+    await waitFor(() => expect(gedApi.getVersions).toHaveBeenCalledWith({ document: 8 }))
+
+    await userEvent.click(await screen.findByRole('button', { name: /Caviarder…/i }))
+    await userEvent.click(await screen.findByRole('button', { name: /^Caviarder$/i }))
+
+    await waitFor(() => expect(gedApi.caviarderDocument).toHaveBeenCalledWith(8, {
+      zones: [{ page: 0, x0: 0, y0: 0, x1: 20, y1: 10 }], version: 22,
+    }))
+  })
+
+  it('XGED10 — scinde un PDF depuis l’aperçu (points de coupe)', async () => {
+    gedApi.getCabinets.mockResolvedValue(ok([{ id: 1, nom: 'Cab' }]))
+    gedApi.getDossiers.mockResolvedValue(ok([
+      { id: 5, nom: 'Docs', cabinet: 1, parent: null, path: '/5/' },
+    ]))
+    gedApi.getDocuments.mockResolvedValue(ok([
+      { id: 8, nom: 'facture.pdf', version_count: 1, updated_at: '2026-06-01T10:00:00Z' },
+    ]))
+    gedApi.getVersions.mockResolvedValue(ok([
+      { id: 22, numero: 1, mime: 'application/pdf', filename: 'facture.pdf' },
+    ]))
+
+    renderGed()
+    await userEvent.click(await screen.findByText('Docs'))
+    await userEvent.click(await screen.findByRole('button', { name: /Aperçu de facture\.pdf/i }))
+    await waitFor(() => expect(gedApi.getVersions).toHaveBeenCalledWith({ document: 8 }))
+
+    await userEvent.click(await screen.findByRole('button', { name: /^Scinder…$/i }))
+    await userEvent.type(await screen.findByLabelText('Points de coupe'), '1, 3')
+    await userEvent.click(screen.getByRole('button', { name: /^Scinder$/i }))
+
+    await waitFor(() => expect(gedApi.scinderDocument).toHaveBeenCalledWith(8, {
+      pointsDeCoupe: [1, 3], version: 22,
+    }))
+  })
+
+  it('XGED10 — fusionne les documents sélectionnés depuis la barre en lot', async () => {
+    gedApi.getCabinets.mockResolvedValue(ok([{ id: 1, nom: 'Cab' }]))
+    gedApi.getDossiers.mockResolvedValue(ok([
+      { id: 5, nom: 'Docs', cabinet: 1, parent: null, path: '/5/' },
+    ]))
+    gedApi.getDocuments.mockResolvedValue(ok([
+      { id: 8, nom: 'a.pdf', updated_at: '2026-06-01T10:00:00Z' },
+      { id: 9, nom: 'b.pdf', updated_at: '2026-06-02T10:00:00Z' },
+    ]))
+
+    renderGed()
+    await userEvent.click(await screen.findByText('Docs'))
+    await userEvent.click(await screen.findByRole('checkbox', { name: /Sélectionner a\.pdf/i }))
+    await userEvent.click(screen.getByRole('checkbox', { name: /Sélectionner b\.pdf/i }))
+
+    await userEvent.click(await screen.findByRole('button', { name: /^Fusionner$/i }))
+    await userEvent.click(await screen.findByRole('button', { name: /^Fusionner$/i }))
+
+    await waitFor(() => expect(gedApi.fusionnerDocuments).toHaveBeenCalledWith({
+      documents: [8, 9], nom: undefined,
+    }))
+  })
+
+  it('XGED17 — compare deux versions d’un document', async () => {
+    gedApi.getCabinets.mockResolvedValue(ok([{ id: 1, nom: 'Cab' }]))
+    gedApi.getDossiers.mockResolvedValue(ok([
+      { id: 5, nom: 'Docs', cabinet: 1, parent: null, path: '/5/' },
+    ]))
+    gedApi.getDocuments.mockResolvedValue(ok([
+      { id: 8, nom: 'facture.pdf', version_count: 2, updated_at: '2026-06-01T10:00:00Z' },
+    ]))
+    gedApi.getVersions.mockResolvedValue(ok([
+      { id: 22, numero: 1, mime: 'application/pdf', filename: 'facture.pdf' },
+      { id: 23, numero: 2, mime: 'application/pdf', filename: 'facture.pdf' },
+    ]))
+
+    renderGed()
+    await userEvent.click(await screen.findByText('Docs'))
+    await userEvent.click(await screen.findByRole('button', { name: /Aperçu de facture\.pdf/i }))
+    await waitFor(() => expect(gedApi.getVersions).toHaveBeenCalledWith({ document: 8 }))
+
+    await userEvent.click(await screen.findByRole('button', { name: /Comparer versions…/i }))
+    await userEvent.click(await screen.findByRole('button', { name: /^Comparer$/i }))
+
+    await waitFor(() => expect(gedApi.comparerVersions).toHaveBeenCalledWith(8, '22', '23'))
+    expect(await screen.findByText('Comparaison binaire indisponible.')).toBeInTheDocument()
   })
 
   it('GED16 — extrait un document (check-out)', async () => {

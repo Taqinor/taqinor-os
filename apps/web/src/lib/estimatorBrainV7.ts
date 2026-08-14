@@ -30,7 +30,7 @@
  *  committée (« estimé ») si PVGIS est injoignable. JAMAIS un devis : une fourchette.
  */
 import { type LngLat } from './roof';
-import { PERIMETER_SETBACK_M } from './roofPro2';
+import { PERIMETER_SETBACK_M, type PerimeterSetbacks } from './roofPro2';
 import {
   PANEL2_WATT,
   type ConfigFamily,
@@ -59,8 +59,11 @@ const norm360 = (a: number) => ((a % 360) + 360) % 360;
 
 /** Orientation = ce que les puces proposent réellement (3 valeurs discrètes). */
 export type OrientationAxis = 'south' | 'aligned' | 'eastwest';
-/** Pose des panneaux. */
-export type LayoutAxis = 'portrait' | 'landscape';
+/** Pose des panneaux. PV62 — 'mixed' = pose choisie rangée par rangée (jamais pire que
+ *  la meilleure pose uniforme). C'est un axe VERROUILLABLE : il n'entre pas dans le
+ *  balayage AUTO (son pavage fin coûte plus cher que le lattice), il se choisit à la
+ *  puce « Mixte » et le solveur le tient alors comme n'importe quel autre verrou. */
+export type LayoutAxis = 'portrait' | 'landscape' | 'mixed';
 /** Marge de rive : garder le retrait, ou poser pleine rive. */
 export type MarginAxis = 'keep' | 'remove';
 
@@ -110,7 +113,7 @@ const ORIENT_FR: Record<OrientationAxis, string> = {
   aligned: 'aligné toit',
   eastwest: 'Est-Ouest',
 };
-const LAYOUT_FR: Record<LayoutAxis, string> = { portrait: 'portrait', landscape: 'paysage' };
+const LAYOUT_FR: Record<LayoutAxis, string> = { portrait: 'portrait', landscape: 'paysage', mixed: 'mixte' };
 
 /** W48 — n'accepte qu'un rendement FINI ≥ 0 (rejette NaN/Infinity/négatif). */
 const safeYield = (v: number): number => (Number.isFinite(v) && v >= 0 ? v : 0);
@@ -160,6 +163,10 @@ interface SolveCtx {
   defaultSetbackM: number;
   /** W109 — débord panneaux autorisé au-delà de la rive (m). 0 → calepinage inchangé. */
   overhangM: number;
+  /** PV61 — dégagement (m) par obstruction (même ordre que `obstructions`). */
+  obstructionClearancesM?: number[];
+  /** PV63 — retraits de rive séparés quand la marge est gardée. */
+  setbacksM?: Partial<PerimeterSetbacks>;
   tariff: TariffGrid;
   yieldFn: YieldFn | undefined;
   roofAz: number;
@@ -189,15 +196,29 @@ function evalOne(
   margin: MarginAxis,
 ): LiveConfigEval {
   const setbackM = margin === 'keep' ? ctx.defaultSetbackM : 0;
+  // PV63 — marge GARDÉE : les trois retraits saisis ; PLEINE RIVE : tout à zéro.
+  const setbacksM: Partial<PerimeterSetbacks> | undefined =
+    margin === 'keep' ? ctx.setbacksM : { lateralM: 0, extremityM: 0, parapetM: 0 };
+  const sbKey = setbacksM ? `${setbacksM.lateralM ?? ''}/${setbacksM.extremityM ?? ''}/${setbacksM.parapetM ?? ''}` : '';
   // W109 — overhangM entre dans la clé de cache (sinon deux solves d'overhang différents
   // entreraient en collision). overhangM=0 → même clé/pavage qu'avant (rétro-compatible).
-  const key = `${family}|${tiltDeg}|${Math.round(azimuthDeg * 1000)}|${Math.round(setbackM * 1000)}|${Math.round(ctx.overhangM * 1000)}`;
+  const key = `${family}|${tiltDeg}|${Math.round(azimuthDeg * 1000)}|${Math.round(setbackM * 1000)}|${Math.round(ctx.overhangM * 1000)}|${sbKey}`;
   let pack = ctx.cache.get(key);
   if (!pack) {
-    pack = packConfig(ctx.ring, ctx.latitudeDeg, { family, tiltDeg, azimuthDeg, obstructions: ctx.obstructions, setbackM, overhangM: ctx.overhangM });
+    pack = packConfig(ctx.ring, ctx.latitudeDeg, {
+      family,
+      tiltDeg,
+      azimuthDeg,
+      obstructions: ctx.obstructions,
+      setbackM,
+      overhangM: ctx.overhangM,
+      obstructionClearancesM: ctx.obstructionClearancesM, // PV61 — dégagement par type
+      setbacksM, // PV63 — retraits latéral / extrémité / acrotère
+    });
     ctx.cache.set(key, pack);
   }
-  const grid = layout === 'portrait' ? pack.portrait : pack.landscape;
+  // PV62 — pose MIXTE : grille dédiée (repli sur la meilleure uniforme si le mixte perd).
+  const grid = layout === 'mixed' ? pack.mixed ?? pack.best : layout === 'portrait' ? pack.portrait : pack.landscape;
   // W48 — borne défensive : un pavage ne rend JAMAIS un compte négatif/non entier/NaN.
   const fitCount = Number.isFinite(grid.count) && grid.count > 0 ? Math.floor(grid.count) : 0;
   // Posé = min(besoin, ce qui tient) ≤ besoin, plafond TOUJOURS respecté, jamais < 0.
@@ -270,6 +291,8 @@ function tiltCandidates(ctx: SolveCtx, locked: number | undefined): number[] {
   return matrixTiltGrid(ctx.latitudeDeg);
 }
 function layoutCandidates(locked: LayoutAxis | undefined): LayoutAxis[] {
+  // PV62 — 'mixed' n'est PAS balayé en AUTO (coût du pavage fin) : il n'apparaît que
+  // verrouillé, via la puce « Mixte ». Le balayage libre reste identique à avant.
   return locked ? [locked] : ['portrait', 'landscape'];
 }
 function marginCandidates(locked: MarginAxis | undefined): MarginAxis[] {
@@ -299,6 +322,11 @@ export interface LiveSolveOptions {
   yieldFn?: YieldFn;
   /** W109 — débord panneaux autorisé au-delà de la rive (m). Défaut 0 → calepinage inchangé. */
   overhangM?: number;
+  /** PV61 — dégagement (m) par obstruction (même ordre que `obstructions`). Absent → uniforme. */
+  obstructionClearancesM?: number[];
+  /** PV63 — retraits de rive séparés (latéral / extrémité / acrotère) quand la marge est
+   *  GARDÉE. Absent → retrait unique PERIMETER_SETBACK_M (historique). */
+  setbacksM?: Partial<PerimeterSetbacks>;
 }
 
 export interface LiveSolveResult {
@@ -371,6 +399,9 @@ export function solveLive(
     obstructions,
     defaultSetbackM: PERIMETER_SETBACK_M,
     overhangM: Math.max(0, options.overhangM ?? 0),
+    obstructionClearancesM: options.obstructionClearancesM, // PV61
+    setbacksM: options.setbacksM, // PV63
+
     tariff,
     yieldFn: options.yieldFn,
     roofAz,

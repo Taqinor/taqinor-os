@@ -54,6 +54,27 @@ const ventesApi = {
   shareLinkDevis: (id) => api.post(`/ventes/devis/${id}/share-link/`),
   // Révision : crée une nouvelle version (v2, v3…) d'un devis.
   reviserDevis: (id) => api.post(`/ventes/devis/${id}/reviser/`),
+  // PV20 — TOUT ce que l'écran de conception 3D doit savoir d'un devis, en UN
+  // SEUL appel : identité + statut, géométrie déjà enregistrée (roof_layout /
+  // pin / contour), cible vendue (panneaux, kWc, scénario), disponibilité de la
+  // carte, et `modifiable` + `raison_lecture_seule` — le motif de la lecture
+  // seule vient TOUJOURS du serveur, jamais rédigé côté écran. Forme figée par
+  // le contrat partagé `apps/ventes/contract_samples/devis_design_context.json`.
+  getDevisDesignContext: (id) => api.get(`/ventes/devis/${id}/design-context/`),
+  // PV21 — resynchronise les LIGNES du devis sur un nouveau calepinage. Mise à
+  // jour CHIRURGICALE d'un brouillon (quantité de panneaux + présence batterie,
+  // rien d'autre : prix négociés, remises, notes et groupes restent intacts) ;
+  // le STATUT n'est jamais écrit. Corps : `{layout}`. Renvoyer le MÊME layout
+  // ne fait aucune écriture (`inchange: true`). 409 `revision_possible: true` =
+  // le client a déjà cette version sous les yeux, le bon geste est « Réviser » ;
+  // 409 `revision_possible: false` = document clos (lecture seule).
+  syncDevisLayout: (id, body) => api.post(`/ventes/devis/${id}/sync-layout/`, body),
+  // PV22 — Copilote : crée un devis RÉSIDENTIEL automatiquement dimensionné
+  // depuis la fiche lead (jamais un brouillon vide). Corps `{lead}` (ou
+  // `{client}`). 422 + `detail` FR quand les données de dimensionnement
+  // manquent ou que le marché n'est pas résidentiel : le message vient du
+  // serveur et oriente vers le générateur complet.
+  creerDevisAuto: (data) => api.post('/ventes/devis/auto/', data),
   // QJ14 — Envoyer par email : PDF premium + lien tokenisé → client, consigne EmailLog, marque envoyé.
   envoyerEmailDevis: (id, payload = {}) => api.post(`/ventes/devis/${id}/envoyer-email/`, payload),
   // QG8 — « Envoyer » = flux WhatsApp : lien wa.me + lien tokenisé, marque envoyé.
@@ -71,6 +92,30 @@ const ventesApi = {
   dupliquerVariante: (id, payload = {}) => api.post(`/ventes/devis/${id}/dupliquer-variante/`, payload),
   // QJ15 — Lister les variantes liées à ce devis (même version_parent).
   getVariantes: (id) => api.get(`/ventes/devis/${id}/variantes/`),
+  // PV41/PV43 — étude ÉLECTRIQUE agrégée du devis, en UN SEUL appel. GET la lit
+  // (et la calcule si absente) ; POST la RECALCULE avec des surcharges
+  // (`dc_m`/`ac_m`/`phases`/`regime`…). Les deux rendent EXACTEMENT la forme du
+  // contrat partagé `apps/ventes/contract_samples/conception_electrique.json` —
+  // jamais de prix/marge (règle du dépôt).
+  getConceptionElectrique: (id) => api.get(`/ventes/devis/${id}/conception-electrique/`),
+  recalculerConceptionElectrique: (id, overrides = {}) =>
+    api.post(`/ventes/devis/${id}/conception-electrique/`, overrides),
+  // PV40/PV43 — planche « schéma unifilaire » déduite du devis : `?format=json`
+  // renvoie `{params, svg}` (aperçu inline), `?format=pdf` la même planche en
+  // PDF (blob, jamais un document client — rule #4).
+  getSchemaUnifilaireDevis: (id) =>
+    api.get(`/ventes/devis/${id}/schema-unifilaire/`, { params: { format: 'json' } }),
+  getSchemaUnifilairePdf: (id) =>
+    api.get(`/ventes/devis/${id}/schema-unifilaire/`, {
+      params: { format: 'pdf' }, responseType: 'blob',
+    }),
+  // PV74/PV76 — étude BANCABLE : lance le calcul (PVGIS par pan) en tâche de
+  // fond → 202 + jeton, puis sonder `simulation-status` jusqu'à
+  // `{status:'ready', simulation}`. La charge lue reste TOUJOURS
+  // `Devis.etude_params.simulation` (jamais recopiée depuis le cache du job).
+  simulerEtudeDevis: (id, payload = {}) => api.post(`/ventes/devis/${id}/simuler/`, payload),
+  getSimulationStatus: (id, token) =>
+    api.get(`/ventes/devis/${id}/simulation-status/${token}/`),
   // QG9/QG10 — lit (GET) ou règle (PUT, Directeur/Commercial responsable) le
   // pourcentage par défaut des variantes de devis.
   getVarianteConfig: () => api.get('/ventes/devis/variante-config/'),
@@ -130,6 +175,10 @@ const ventesApi = {
   // Export comptable : journal des ventes + résumé TVA (.xlsx) sur une période.
   journalVentes: (params) =>
     api.get('/ventes/journal-ventes/', { params, responseType: 'blob' }),
+  // FE-SCA41 — statut d'un export xlsx volumineux parti en tâche de fond
+  // (réponse 202 initiale de journalVentes / export-comptable) : poller
+  // jusqu'à {status:'ready', download_url, filename} ou {status:'error'}.
+  exportStatus: (jobId) => api.get(`/ventes/export/status/${jobId}/`),
   // Échéancier devis → factures : génère la prochaine tranche (acompte → solde).
   genererFacture: (id) => api.post(`/ventes/devis/${id}/generer-facture/`),
   // QX29 — « Relances du jour » : devis nécessitant une action (envoyés sans

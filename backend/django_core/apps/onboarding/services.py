@@ -22,8 +22,20 @@ from django.utils import timezone
 # (marquer_fait_manuel ci-dessous, alternative EXPLICITEMENT prévue par le
 # founder quand aucun jalon de bus n'existe).
 DEFAULT_ITEMS = [
+    # NTDMO26 — item de suivi de l'assistant first-run « Configurez votre
+    # société en 5 minutes » (/onboarding/demarrage, société RÉELLE non-démo
+    # fraîchement créée). `ignore_le` posé = « Passer » a été cliqué : le
+    # wizard ne se redéclenche plus jamais automatiquement pour cet
+    # utilisateur (réutilise `ignorer_item` existant, aucun nouveau modèle).
+    ('assistant_demarrage', 'Assistant de démarrage rapide (5 min)', 5,
+     ['Administrateur', 'Directeur'], '/onboarding/demarrage', ''),
     ('configurer_societe', 'Configurer votre société', 10,
      ['Administrateur', 'Directeur'], '/parametres', ''),
+    # NTDMO26 — sous-étape « premier produit du catalogue » de l'assistant
+    # first-run (aucun event_key adapté sans importer `stock` — complétion
+    # manuelle explicite, même patron que les items sans event_key ci-dessous).
+    ('premier_produit', 'Ajouter votre premier produit', 15,
+     ['Administrateur', 'Directeur'], '/stock', ''),
     ('import_clients', 'Importer vos clients', 20,
      [], '/crm/clients', ''),
     ('premier_devis', 'Créer votre 1er devis', 30,
@@ -133,6 +145,35 @@ def marquer_fait_manuel(company, user, item_id):
     return marquer_item_complete(company, user, item.key)
 
 
+# ── NTDMO28 — masquage/démasquage par société (jamais une suppression) ─────
+def masquer_item_pour_societe(company, item_id):
+    """Masque un item de catalogue GLOBAL pour ``company`` (idempotent) —
+    l'item reste intact pour toute autre société. Renvoie ``True`` si l'item
+    existe (global, actif), ``False`` sinon (aucun effet)."""
+    if company is None:
+        return False
+    from .models import OnboardingChecklistItem
+    item = OnboardingChecklistItem.objects.filter(
+        pk=item_id, company__isnull=True).first()
+    if item is None:
+        return False
+    item.masque_pour.add(company)
+    return True
+
+
+def demasquer_item_pour_societe(company, item_id):
+    """Réaffiche un item précédemment masqué pour ``company`` (idempotent)."""
+    if company is None:
+        return False
+    from .models import OnboardingChecklistItem
+    item = OnboardingChecklistItem.objects.filter(
+        pk=item_id, company__isnull=True).first()
+    if item is None:
+        return False
+    item.masque_pour.remove(company)
+    return True
+
+
 def completer_par_evenement(event_key, company, user):
     """Coche tous les items dont ``event_key`` correspond (NTDMO12)."""
     if not event_key or company is None or user is None:
@@ -142,3 +183,110 @@ def completer_par_evenement(event_key, company, user):
         event_key=event_key, actif=True).values_list('key', flat=True)
     for key in keys:
         marquer_item_complete(company, user, key)
+
+
+# ── NTDMO14 — catalogue des 6 visites guidées (product tours) ──────────────
+# Un tour par écran money-path déjà construit. Chaque tuple :
+# (tour_key, ordre, sélecteur CSS, titre, texte FR, écran_cible).
+# ``écran_cible`` est répété sur chaque étape (dénormalisé, lecture simple) —
+# toutes les étapes d'un même ``tour_key`` portent le même écran.
+DEFAULT_TOUR_STEPS = [
+    # Tour « devis » — création de devis.
+    ('devis', 10, '', 'Créer un devis',
+     'Composez votre devis solaire en quelques clics : marché, produits, '
+     'remise — tout se calcule automatiquement.', '/ventes/devis/nouveau'),
+    ('devis', 20, '[data-tour="devis-marche"]', 'Choisissez le marché',
+     'Résidentiel, Industriel/Commercial ou Agricole : chaque mode adapte '
+     'les champs et les calculs à votre client.', '/ventes/devis/nouveau'),
+    ('devis', 30, '[data-tour="devis-lignes"]', 'Ajoutez vos produits',
+     'Chaque ligne calcule son total HT ; la remise et la TVA se répercutent '
+     'automatiquement jusqu\'au total TTC.', '/ventes/devis/nouveau'),
+    # Tour « leads » — kanban CRM.
+    ('leads', 10, '', 'Suivre vos prospects',
+     "Le kanban CRM affiche vos leads classés par étape du pipeline, de "
+     "nouveau à signé.", '/crm/leads'),
+    ('leads', 20, '[data-tour="leads-kanban"]', 'Faites glisser une carte',
+     'Déplacez un lead entre les colonnes pour faire avancer son étape — '
+     'chaque mouvement est journalisé.', '/crm/leads'),
+    # Tour « factures » — facturation.
+    ('factures', 10, '', 'Facturer un client',
+     'Retrouvez ici toutes vos factures, leur statut de paiement et les '
+     'relances en retard.', '/ventes/factures'),
+    ('factures', 20, '[data-tour="factures-liste"]', 'Suivez les encaissements',
+     'Le statut de chaque facture (payée, en retard, partielle) est visible '
+     'd\'un coup d\'œil.', '/ventes/factures'),
+    # Tour « chantiers » — suivi chantier.
+    ('chantiers', 10, '', 'Suivre un chantier',
+     'De la planification à la réception, suivez chaque étape de vos '
+     'installations.', '/chantiers'),
+    ('chantiers', 20, '[data-tour="chantiers-liste"]', 'Consultez le planning',
+     "Chaque chantier affiche son avancement et l'équipe assignée.",
+     '/chantiers'),
+    # Tour « stock » — catalogue.
+    ('stock', 10, '', 'Gérer votre catalogue',
+     'Panneaux, onduleurs, batteries : gérez vos produits et leurs prix '
+     'depuis cet écran.', '/stock'),
+    ('stock', 20, '[data-tour="stock-liste"]', 'Ajoutez un produit',
+     'Un nouveau produit apparaît immédiatement dans le générateur de '
+     'devis.', '/stock'),
+    # Tour « dashboard » — lecture des KPI.
+    ('dashboard', 10, '', 'Votre tableau de bord',
+     'Vue d\'ensemble de votre activité : devis envoyés, chantiers en cours, '
+     'chiffre d\'affaires.', '/dashboard'),
+    ('dashboard', 20, '[data-tour="dashboard-kpi"]', 'Lisez vos indicateurs',
+     'Chaque tuile résume un indicateur clé — cliquez pour le détail.',
+     '/dashboard'),
+]
+
+
+def seed_default_tour_steps(model=None):
+    """Crée/complète le catalogue global des étapes de tours (idempotent, par
+    ``(tour_key, ordre)``)."""
+    if model is None:
+        from .models import ProductTourStep as model
+    for tour_key, ordre, selecteur, titre, texte, ecran_cible in DEFAULT_TOUR_STEPS:
+        obj = model.objects.filter(tour_key=tour_key, ordre=ordre).first()
+        values = {
+            'company': None, 'selecteur': selecteur, 'titre': titre,
+            'texte': texte, 'ecran_cible': ecran_cible,
+        }
+        if obj is None:
+            model.objects.create(tour_key=tour_key, ordre=ordre, **values)
+        else:
+            for field, val in values.items():
+                setattr(obj, field, val)
+            obj.save()
+
+
+def marquer_tour_vu(company, user, tour_key):
+    """NTDMO16 — marque un tour comme vu/fermé pour ``user`` (idempotent,
+    company-scopé). Renvoie le ``TourProgress`` ou None si company/user
+    manquent."""
+    if company is None or user is None or not getattr(user, 'pk', None):
+        return None
+    from django.utils import timezone
+
+    from .models import TourProgress
+    progress = TourProgress.objects.filter(user=user, tour_key=tour_key).first()
+    if progress is None:
+        progress = TourProgress.objects.create(
+            company=company, user=user, tour_key=tour_key)
+    if progress.vu_le is None:
+        progress.vu_le = timezone.now()
+        progress.save(update_fields=['vu_le'])
+    return progress
+
+
+def reinitialiser_tour(company, user, tour_key):
+    """NTDMO16 — bouton « Revoir » : remet le tour à zéro (``vu_le=None``)
+    pour cet utilisateur SEULEMENT, afin qu'il réapparaisse à la prochaine
+    visite de l'écran cible."""
+    if company is None or user is None or not getattr(user, 'pk', None):
+        return None
+    from .models import TourProgress
+    progress = TourProgress.objects.filter(
+        company=company, user=user, tour_key=tour_key).first()
+    if progress is not None and progress.vu_le is not None:
+        progress.vu_le = None
+        progress.save(update_fields=['vu_le'])
+    return progress

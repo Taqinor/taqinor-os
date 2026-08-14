@@ -9,6 +9,14 @@ import { MemoryRouter } from 'react-router-dom'
 
 vi.mock('../api/axios', () => ({ default: { get: vi.fn(), post: vi.fn() } }))
 
+// NTDMO26 — vérifie l'auto-navigation vers l'assistant first-run sans casser
+// les tests existants (real MemoryRouter préservé via `...actual`).
+const navigateMock = vi.fn()
+vi.mock('react-router-dom', async (importOriginal) => {
+  const actual = await importOriginal()
+  return { ...actual, useNavigate: () => navigateMock }
+})
+
 import api from '../api/axios'
 import PremiersPasWidget from './PremiersPasWidget'
 
@@ -68,5 +76,19 @@ describe('PremiersPasWidget (NTDMO13/WIR59)', () => {
     const { container } = renderWidget()
     await waitFor(() => expect(api.get).toHaveBeenCalled())
     expect(container.querySelector('[data-testid="premiers-pas-widget"]')).toBeNull()
+  })
+
+  // ── NTDMO26 — auto-navigation vers l'assistant first-run ────────────────
+  it('navigue vers /onboarding/demarrage quand assistant_demarrage_auto est vrai', async () => {
+    api.get.mockResolvedValueOnce({ data: { ...RESUME, assistant_demarrage_auto: true } })
+    renderWidget()
+    await waitFor(() => expect(navigateMock).toHaveBeenCalledWith('/onboarding/demarrage'))
+  })
+
+  it('ne navigue PAS quand assistant_demarrage_auto est absent (comportement actuel)', async () => {
+    api.get.mockResolvedValueOnce({ data: RESUME })
+    renderWidget()
+    await screen.findByText('Premiers pas — 2/6')
+    expect(navigateMock).not.toHaveBeenCalled()
   })
 })

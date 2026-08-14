@@ -6,7 +6,14 @@ const mocks = vi.hoisted(() => ({
   campagnesList: vi.fn(),
   campagnesCreate: vi.fn(),
   listesList: vi.fn(),
+  // NTMKT23/24 — CampagnesList monte CampagneForm (bouton « Nouvelle
+  // campagne ») qui appelle blocsContenu.list + heatmapEngagement au montage.
+  blocsList: vi.fn(),
+  heatmap: vi.fn(),
   navigate: vi.fn(),
+  // NTMKT39 — export XLSX des campagnes filtrées.
+  exportXlsx: vi.fn(),
+  downloadBlob: vi.fn(),
 }))
 
 vi.mock('react-router-dom', async () => {
@@ -22,6 +29,10 @@ vi.mock('../../api/marketingApi', () => ({
     },
     campagnes: { list: mocks.campagnesList, create: mocks.campagnesCreate },
     listes: { list: mocks.listesList },
+    blocsContenu: { list: mocks.blocsList },
+    heatmapEngagement: mocks.heatmap,
+    exportCampagnesXlsx: mocks.exportXlsx,
+    downloadBlob: mocks.downloadBlob,
   },
 }))
 
@@ -33,6 +44,8 @@ const renderScreen = () => render(
 beforeEach(() => {
   vi.clearAllMocks()
   mocks.listesList.mockResolvedValue({ data: [] })
+  mocks.blocsList.mockResolvedValue({ data: [] })
+  mocks.heatmap.mockResolvedValue({ data: { cellules: [], meilleur: null, total_envois: 0 } })
   mocks.campagnesList.mockResolvedValue({
     data: [
       { id: 1, nom: 'Relance été', canal: 'email', canal_display: 'Email',
@@ -80,5 +93,18 @@ describe('CampagnesList', () => {
     fireEvent.click(screen.getByTestId('campagne-save'))
     await waitFor(() => expect(mocks.campagnesCreate).toHaveBeenCalled())
     await waitFor(() => expect(mocks.campagnesList).toHaveBeenCalledTimes(2))
+  })
+
+  it('« Exporter » télécharge le XLSX filtré (NTMKT39)', async () => {
+    mocks.exportXlsx.mockResolvedValue({ data: new Blob(['x']) })
+    renderScreen()
+    await screen.findByText('Relance été')
+    fireEvent.change(screen.getByTestId('campagnes-filtre-statut'),
+      { target: { value: 'envoyee' } })
+    fireEvent.click(screen.getByTestId('campagnes-exporter'))
+    await waitFor(() => expect(mocks.exportXlsx).toHaveBeenCalledWith(
+      { statut: 'envoyee', canal: '' }))
+    await waitFor(() => expect(mocks.downloadBlob).toHaveBeenCalledWith(
+      expect.anything(), 'campagnes.xlsx'))
   })
 })

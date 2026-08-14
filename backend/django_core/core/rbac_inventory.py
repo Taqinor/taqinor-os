@@ -118,6 +118,41 @@ PUBLIC_ALLOWLIST_PREFIXES = (
     "api/django/reporting/approbations-en-attente/decider-push",
     # Kiosque pointage : le motif routeur capture une ancre ^ dans le chemin :
     "api/django/rh/^pointages/kiosque",
+    # NTCRM17/18 — salle de vente PUBLIQUE (deal room client) : GET AllowAny
+    # DÉLIBÉRÉ, le client n'a par définition aucun compte. Le jeton
+    # ``SalleVente.token`` (``secrets.token_urlsafe(32)``) est le SEUL secret ;
+    # 404 générique pour un jeton inconnu/révoqué/expiré (aucune fuite
+    # d'existence), 403 distinct si un mot de passe protège le lien, throttlé
+    # 30/min par IP+jeton (PublicSalleVenteRateThrottle). Société scopée par la
+    # salle, jamais par le corps ; aucun prix d'achat/marge n'est exposé.
+    "api/django/crm/salle-vente/",
+    # NTCRM21 — portail apporteur d'affaires : GET AllowAny DÉLIBÉRÉ (un
+    # apporteur externe n'a pas de compte ERP). Le jeton
+    # ``Apporteur.token_acces`` est le seul secret, l'apporteur inactif rend un
+    # 404 générique, et la réponse est strictement limitée aux deals de CET
+    # apporteur (portée société implicite via le tenant de l'apporteur).
+    "api/django/crm/apporteur-portail/",
+    # NTMKT22 — centre de préférences marketing self-service : GET/POST
+    # AllowAny DÉLIBÉRÉ, même modèle de confiance que ``desinscription/<token>``
+    # (XMKT3) — le jeton SIGNÉ porte la société ET le destinataire, rien n'est
+    # lu de l'URL en clair, un jeton ne peut adresser aucun autre contact ;
+    # jeton invalide/expiré ⇒ 400 propre sans fuite. Throttlé (intake public).
+    "api/django/marketing/preferences/",
+    # NTRET18/19 — webhooks « commande payée » Shopify / WooCommerce. AllowAny
+    # DÉLIBÉRÉ : l'appelant est la PLATEFORME e-commerce, pas un humain — elle
+    # n'a ni session ni JWT ERP. L'authentification réelle est la SIGNATURE
+    # HMAC-SHA256 du corps brut, vérifiée AVANT tout traitement et avant tout
+    # accès base (``shopify.verify_webhook_hmac`` /
+    # ``woocommerce.verify_webhook_signature`` → ``common.verify_hmac_base64``,
+    # comparaison en temps constant via ``hmac.compare_digest``). Secret absent
+    # ou signature fausse ⇒ ``False`` (JAMAIS d'acceptation par défaut) ⇒ 401
+    # sans effet de bord ; connecteur non configuré ⇒ 503 no-op. La société est
+    # résolue depuis le domaine de boutique de l'en-tête plateforme, JAMAIS du
+    # corps, et le traitement est idempotent (clé connexion+external_order_id :
+    # un rejeu at-least-once ne crée pas deux factures). Throttlés 60/min par
+    # IP (``EcommerceWebhookThrottle``).
+    "api/django/ecommerce-connect/shopify/webhook/commande/",
+    "api/django/ecommerce-connect/woocommerce/webhook/commande/",
     "api/schema",                             # OpenAPI (si activé plus tard)
     "api/docs",
     "api/redoc",

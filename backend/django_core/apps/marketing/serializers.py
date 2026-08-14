@@ -38,3 +38,106 @@ from apps.compta.serializers import (  # noqa: F401
     SupportOfflineSerializer,
     TypeEvenementSerializer,
 )
+from rest_framework import serializers
+
+from .models import (
+    ArcJourney, BlocContenu, ModeleJourney, NoeudJourney, ParametresMarketing,
+    VersionFormulaireIntake,
+)
+
+
+# ── NTMKT12 — Journey en graphe ─────────────────────────────────────────────
+# ``company`` n'est JAMAIS acceptée du corps de requête : elle est forcée en
+# ``perform_create`` côté ViewSet depuis ``request.user.company``.
+
+class _CompanyScopedSerializer(serializers.ModelSerializer):
+    """Refuse toute référence à un objet d'une AUTRE société (fuite inter-
+    sociétés) : la société de référence vient de ``request.user``, jamais du
+    corps de la requête."""
+
+    #: champs FK dont la société doit correspondre à celle de l'utilisateur
+    champs_scopes = ()
+
+    def validate(self, attrs):
+        request = self.context.get('request')
+        company = getattr(getattr(request, 'user', None), 'company', None)
+        if company is not None:
+            for champ in self.champs_scopes:
+                objet = attrs.get(champ)
+                if objet is not None and objet.company_id != company.id:
+                    raise serializers.ValidationError(
+                        {champ: "Référence hors de votre société."})
+        return attrs
+
+
+class NoeudJourneySerializer(_CompanyScopedSerializer):
+    champs_scopes = ('sequence',)
+
+    class Meta:
+        model = NoeudJourney
+        fields = [
+            'id', 'sequence', 'type_noeud', 'libelle',
+            'position_x', 'position_y', 'config',
+        ]
+
+
+class ArcJourneySerializer(_CompanyScopedSerializer):
+    champs_scopes = ('source', 'cible')
+
+    class Meta:
+        model = ArcJourney
+        fields = ['id', 'source', 'cible', 'condition', 'valeur', 'ordre']
+
+
+class ModeleJourneySerializer(serializers.ModelSerializer):
+    """NTMKT15 — gabarit de journey (graphe pré-construit) prêt à instancier."""
+
+    class Meta:
+        model = ModeleJourney
+        fields = ['id', 'nom', 'categorie', 'description', 'graphe',
+                  'date_creation']
+        read_only_fields = ['date_creation']
+
+
+class BlocContenuSerializer(serializers.ModelSerializer):
+    """NTMKT23 — bloc de contenu réutilisable (inséré par COPIE côté écran)."""
+
+    class Meta:
+        model = BlocContenu
+        fields = ['id', 'nom', 'type_bloc', 'contenu', 'actif',
+                  'date_creation']
+        read_only_fields = ['date_creation']
+
+
+class VersionFormulaireIntakeSerializer(_CompanyScopedSerializer):
+    """NTMKT16 — version éditoriale d'une landing page.
+
+    ``version``/``publie``/``date_publication`` sont posés CÔTÉ SERVEUR : une
+    version se publie via l'action dédiée, jamais par un PATCH du corps.
+    """
+    champs_scopes = ('formulaire',)
+
+    class Meta:
+        model = VersionFormulaireIntake
+        fields = ['id', 'formulaire', 'version', 'titre', 'pitch',
+                  'image_key', 'publie', 'date_publication', 'date_creation']
+        read_only_fields = ['version', 'publie', 'date_publication',
+                            'date_creation']
+
+
+class ParametresMarketingSerializer(serializers.ModelSerializer):
+    """NTMKT31 — réglages tenant du module Marketing (singleton société)."""
+
+    class Meta:
+        model = ParametresMarketing
+        fields = ['id', 'expediteur_nom', 'expediteur_email',
+                  'expediteur_domaine', 'silence_heure_debut',
+                  'silence_heure_fin', 'plafond_envois_jour',
+                  'langue_defaut_templates',
+                  # NTMKT18 — score de maturité (pondérations éditables).
+                  'score_maturite_actif', 'ponderation_maturite_ouverture',
+                  'ponderation_maturite_clic',
+                  'ponderation_maturite_visite_proposition',
+                  'penalite_maturite_inactivite', 'mql_sur_score_maturite',
+                  # NTMKT20 — modèle d'attribution multi-touch.
+                  'modele_attribution']

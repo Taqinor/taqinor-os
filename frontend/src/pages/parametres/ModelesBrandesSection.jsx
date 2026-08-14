@@ -34,6 +34,7 @@ import {
 import { SectionTitle } from './peComponents'
 
 // Canaux du modèle (miroir de BrandedTemplate.KIND_CHOICES).
+// source-choix: core.BrandedTemplate.kind
 const KINDS = [
   ['email', 'Email', Mail],
   ['pdf', 'PDF', FileText],

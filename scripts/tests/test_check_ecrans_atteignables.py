@@ -696,12 +696,14 @@ class DepotReelTests(unittest.TestCase):
         )
 
     def test_les_routes_squelettes_du_menu_ao(self):
-        """Calepinages/Dossiers cachent un vrai ecran ; Rentabilite non —
-        et la garde doit rester MUETTE sur Rentabilite."""
+        """Dossiers cache encore un vrai ecran ; Rentabilite non — et la garde
+        doit rester MUETTE sur Rentabilite. PV59 (2026-08-14) a SOLDE
+        /ao/calepinages : l'EmptyState est devenu la vraie VariantesListPage,
+        la route quitte donc les bouchons."""
         constats, _ = analyse_reelle()
         routes = sorted(c[1].split("::")[1] for c in constats
                         if c[0] == "bouchon-route")
-        self.assertEqual(routes, ["/ao/calepinages", "/ao/dossiers"])
+        self.assertEqual(routes, ["/ao/dossiers"])
 
     def test_aucune_config_opaque_sur_le_depot(self):
         """Si une config devient illisible, la garde s'aveugle en silence."""
@@ -711,7 +713,10 @@ class DepotReelTests(unittest.TestCase):
         # apps qui n en avaient aucun (btp_chantier, portail cote ERP).
         # 47 -> 49 : le lot du 13/08/2026 ajoute deux modules frontend NEUFS
         # (cpq, segment /cpq/* ; core, module « DONNEES », segment /donnees/*).
-        self.assertEqual(stats["configs"], 49)
+        # 49 -> 52 : la vague 1 du run SUPPLY (14/08/2026) donne son PREMIER
+        # module.config.jsx a trois apps neuves (transport /transport/*,
+        # mrp /mrp/*, scm /scm/*).
+        self.assertEqual(stats["configs"], 52)
 
     def test_parametres_achats_est_desormais_navigable(self):
         """PACT150 : cas vivant du 07/08/2026 — `AchatsParametresPage` (182

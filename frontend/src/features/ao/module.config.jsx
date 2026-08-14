@@ -76,6 +76,10 @@ const PiecesAdministratives = lazy(() => import('./PiecesAdministratives'))
 // squelette honnête « pas encore construit » des DEUX routes de rentabilité :
 // `aoRentabiliteApi` (export SÉPARÉ) était câblé au bon endpoint sans écran.
 const EconomieDirecteur = lazy(() => import('./economie/EconomieDirecteur'))
+// PV59 — la VRAIE liste des calepinages : `VarianteCalepinage` (AOF28), la
+// seule ressource qui existe. Remplace le `viaAffaire()` ci-dessous, qui
+// disait honnêtement « pas de vue d'ensemble » — il y en a une désormais.
+const VariantesListPage = lazy(() => import('./calepinage/VariantesListPage'))
 
 // PACT75 — `RouteSquelette`/`squelette()` ont PERDU leur dernier appelant
 // (Rentabilité montait le squelette honnête « pas encore construit » sur ses
@@ -170,20 +174,13 @@ const config = {
     // même patron que `/publicite/ad/:id`).
     { path: '/ao/affaires/:id', component: AffaireDetail, roles: ROLES },
     { path: '/ao/toitures', component: ToituresPage, roles: ROLES },
-    // `CalepinageStudio` existe (`calepinage/CalepinageStudio.jsx`) mais exige
-    // `{ calepinageId }`, et son hook interroge `aoApi.calepinages.*`, que le
-    // client API déclare NON CONSTRUIT côté serveur (501 nommé). Le monter ici
-    // sans identifiant afficherait donc une erreur, pas un atelier. Aucun écran
-    // de liste des calepinages n'existe : on n'en fabrique pas un faux.
-    {
-      path: '/ao/calepinages',
-      component: viaAffaire({
-        titre: 'Calepinages',
-        icon: LayoutGrid,
-        description: "Un calepinage s’ouvre depuis l’affaire à laquelle il appartient : ouvrez l’affaire, puis sa toiture. Il n’y a pas de vue d’ensemble des calepinages.",
-      }),
-      roles: ROLES,
-    },
+    // PV59 — `CalepinageStudio` (l'ATELIER de calcul) reste contextuel à une
+    // toiture, ouvert depuis l'onglet « Calepinages » d'une affaire — ça ne
+    // change pas. Mais la ressource PERSISTÉE existe bel et bien
+    // (`VarianteCalepinage`, AOF28, `/ao/variantes-calepinage/`) : cette route
+    // montait un `EmptyState` disant « pas de vue d'ensemble » depuis le
+    // 03/08/2026 alors que la liste, elle, était toujours restée constructible.
+    { path: '/ao/calepinages', component: VariantesListPage, roles: ROLES },
     // L'écran RÉEL du dossier vit sur `/ao/dossiers/:id` (juste en dessous).
     // Cette entrée de premier niveau ne peut pas lui inventer un identifiant —
     // elle indique où le trouver plutôt que de charger un dossier `undefined`.

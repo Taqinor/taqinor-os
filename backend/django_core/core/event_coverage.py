@@ -74,6 +74,26 @@ ALLOWED_UNCONSUMED = {
     # comme les seams ci-dessus.
     "entite_created",
     "entite_deactivated",
+    # NTCRM22 — ``deal_commission_due`` : seam émis par ``apps/crm/receivers.py``
+    # quand la commission d'un ``DealEnregistre`` approuvé devient due. Destiné à
+    # un futur consommateur compta/paie (facture fournisseur, note de frais) ;
+    # ``crm`` n'écrit JAMAIS en compta lui-même (frontière inter-apps). Aucun
+    # abonné requis aujourd'hui — réservé ici plutôt qu'orphelin.
+    "deal_commission_due",
+    # NTCRM27 — ``salle_vente_signal_interet`` : seam émis par
+    # ``apps/crm/services.detecter_signal_interet_salle_vente`` quand une salle
+    # de vente cumule ≥3 vues en 48 h sur un lead en QUOTE_SENT. La réaction
+    # métier (note NOTE au chatter du lead) est faite EN LIGNE par le service
+    # lui-même, pas par un récepteur : le signal n'existe que pour qu'une app
+    # future (notification commerciale…) réagisse sans coupler ``apps.crm``.
+    "salle_vente_signal_interet",
+    # NTMKT34 — ``lead_maturite_changee`` : seam émis par
+    # ``apps/marketing/services.recalculer_scores_maturite_inactivite`` (beat
+    # quotidien) quand le score de maturité NTMKT18 d'un lead change. Destiné
+    # à un futur récepteur ``apps.crm.receivers`` (aucun import direct
+    # crm↔marketing) ; aucun abonné requis aujourd'hui — réservé ici plutôt
+    # qu'orphelin, comme les seams ci-dessus.
+    "lead_maturite_changee",
 }
 
 # Membres ``EventType`` déclarés mais sans producteur ``notify()`` encore câblé

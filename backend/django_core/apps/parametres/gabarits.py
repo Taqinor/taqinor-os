@@ -21,7 +21,7 @@ from django.core.exceptions import ValidationError
 from core.templating import rendre_html as _rendre_html
 from core.templating import variables_utilisees
 
-from .models import CIBLE_INTERDITE
+from .models import CIBLE_INTERDITE, GabaritDocumentCustom
 
 __all__ = ['rendre_html', 'rendre_pdf', 'variables_du_gabarit']
 
@@ -38,13 +38,29 @@ def variables_du_gabarit(gabarit):
     return variables_utilisees(getattr(gabarit, 'corps', '') or '')
 
 
-def rendre_html(gabarit, context=None, *, strict=False):
-    """Rend le corps du gabarit en HTML final."""
+def _strict_par_defaut(gabarit):
+    """NTEXT19 — un gabarit « objet personnalisé » référence des champs
+    DYNAMIQUES (définis par la société via ``customfields``, jamais figés
+    dans le code) : un placeholder mal orthographié doit rester VISIBLE
+    (littéral) pour être repéré et corrigé, jamais avalé en silence. Les
+    cibles à schéma FIXE (chantier/client/ticket, NTEXT18) gardent le
+    comportement historique testé (variable absente → chaîne vide)."""
+    return getattr(gabarit, 'cible', None) == GabaritDocumentCustom.Cible.OBJET_CUSTOM
+
+
+def rendre_html(gabarit, context=None, *, strict=None):
+    """Rend le corps du gabarit en HTML final.
+
+    ``strict=None`` (par défaut) laisse :func:`_strict_par_defaut` choisir
+    selon la cible du gabarit ; un appelant peut toujours forcer
+    ``True``/``False`` explicitement."""
     _garde_regle_4(gabarit)
+    if strict is None:
+        strict = _strict_par_defaut(gabarit)
     return _rendre_html(gabarit.corps or '', context, strict=strict)
 
 
-def rendre_pdf(gabarit, context=None, *, strict=False):
+def rendre_pdf(gabarit, context=None, *, strict=None):
     """Rend le gabarit en PDF (``bytes``) via le rendu mutualisé du noyau."""
     # Import PARESSEUX : ``core.pdf`` charge WeasyPrint ; on ne le tire que
     # lorsqu'un PDF est réellement demandé (et cela rend le point de délégation

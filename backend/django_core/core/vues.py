@@ -72,3 +72,67 @@ def filtre_visibilite(qs, user):
         condition |= Q(partage=VuePersonnalisee.Partage.EQUIPE,
                        equipe__in=equipes)
     return qs.filter(condition).distinct()
+
+
+# ── NTEXT17 — vue par DÉFAUT d'une liste (perso > rôle > société) ───────────
+
+def tier_de(user):
+    """Palier de rôle de ``user`` (``menu_tier``), ou ``''``. Ne lève jamais."""
+    try:
+        return (getattr(user, 'menu_tier', '') or '').strip()
+    except Exception:  # pragma: no cover - défensif (user exotique)
+        return ''
+
+
+def resoudre_vue_defaut(qs, user, cible):
+    """Vue par défaut APPLICABLE à ``user`` pour ``cible``, ou ``None``.
+
+    ``qs`` doit DÉJÀ être scopé société (et, en pratique, filtré par
+    :func:`filtre_visibilite`) : cette fonction ne fait qu'appliquer la
+    PRÉCÉDENCE — défaut personnel de l'utilisateur, sinon défaut de son palier
+    de rôle, sinon défaut de la société. Première trouvée, sinon ``None``.
+    """
+    from .models import VuePersonnalisee
+
+    base = qs.filter(cible=cible, est_defaut=True)
+    if getattr(user, 'pk', None):
+        perso = base.filter(
+            role_tier='', owner=user,
+            partage=VuePersonnalisee.Partage.PRIVE).first()
+        if perso is not None:
+            return perso
+    tier = tier_de(user)
+    if tier:
+        du_role = base.filter(role_tier=tier).first()
+        if du_role is not None:
+            return du_role
+    return base.filter(
+        role_tier='', partage=VuePersonnalisee.Partage.SOCIETE).first()
+
+
+def demarquer_defauts_concurrents(vue):
+    """Une SEULE vue défaut par (cible, portée) : démarque les concurrentes.
+
+    Portée déduite de la ligne elle-même : ``role_tier`` renseigné = portée
+    RÔLE ; sinon partage ``prive`` = portée PERSONNELLE (celle de son
+    propriétaire) ; sinon portée SOCIÉTÉ. Appelée au moment d'écrire une vue
+    ``est_defaut=True`` (jamais ailleurs) ; ne touche jamais une autre société
+    ni une autre cible.
+    """
+    from .models import VuePersonnalisee
+
+    if not vue.est_defaut:
+        return 0
+    concurrentes = VuePersonnalisee.objects.filter(
+        company=vue.company, cible=vue.cible, est_defaut=True,
+    ).exclude(pk=vue.pk)
+    if (vue.role_tier or '').strip():
+        concurrentes = concurrentes.filter(role_tier=vue.role_tier)
+    elif vue.partage == VuePersonnalisee.Partage.PRIVE:
+        concurrentes = concurrentes.filter(
+            role_tier='', owner_id=vue.owner_id,
+            partage=VuePersonnalisee.Partage.PRIVE)
+    else:
+        concurrentes = concurrentes.filter(
+            role_tier='').exclude(partage=VuePersonnalisee.Partage.PRIVE)
+    return concurrentes.update(est_defaut=False)

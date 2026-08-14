@@ -122,6 +122,13 @@ class RegleProduitCPQ(TenantModel):
     actions = models.JSONField(
         default=list, blank=True,
         help_text='Liste d\'actions déclenchées quand la règle est vraie.')
+    # NTCPQ21 — une règle déclenchée est par défaut un AVERTISSEMENT (badge
+    # rouge, jamais un blocage). Marquée bloquante, elle rend la configuration
+    # invalide de façon bloquante. Défaut False ⇒ comportement inchangé.
+    bloquante = models.BooleanField(
+        default=False,
+        help_text='Règle bloquante (et non simple avertissement) quand elle '
+                  'se déclenche.')
     actif = models.BooleanField(default=True)
     date_creation = models.DateTimeField(auto_now_add=True)
 
@@ -393,6 +400,10 @@ class EtapeApprobationDevis(TenantModel):
     decision_le = models.DateTimeField(null=True, blank=True)
     commentaire = models.TextField(blank=True, default='')
     date_creation = models.DateTimeField(auto_now_add=True)
+    # NTCPQ33 — horodatage de la DERNIÈRE relance automatique envoyée à
+    # l'approbateur (job planifié) ; NULL = jamais relancée. Empêche plus
+    # d'une relance par 24h par étape (idempotence du job).
+    derniere_relance_le = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         verbose_name = "Étape d'approbation de devis"
@@ -507,3 +518,175 @@ class ReponseConfigurateur(models.Model):
 
     def __str__(self):
         return f'{self.session_id}/{self.question_id}={self.valeur}'
+
+
+class ProduitEquivalent(TenantModel):
+    """NTCPQ16 — Règle de substitution produit par tier (moteur de variantes).
+
+    ``produit_source`` peut être remplacé par ``produit_substitut`` dans la
+    variante du tier donné (économique / standard / premium). Générique
+    multi-métiers — distinct du couple solaire Sans-batterie/Avec-batterie déjà
+    en production, qui reste un cas spécifique.
+
+    ARC1 — hérite de ``core.models.TenantModel``; ``company`` redéclaré à
+    l'identique (related_name explicite)."""
+    class Tier(models.TextChoices):
+        ECONOMIQUE = 'economique', 'Économique'
+        STANDARD = 'standard', 'Standard'
+        PREMIUM = 'premium', 'Premium'
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: purge tenant
+        related_name='cpq_produits_equivalents')
+    produit_source = models.ForeignKey(
+        'stock.Produit', on_delete=models.CASCADE,  # on_delete: règle sans objet si produit supprimé
+        related_name='cpq_equivalents_source')
+    produit_substitut = models.ForeignKey(
+        'stock.Produit', on_delete=models.CASCADE,  # on_delete: règle sans objet si substitut supprimé
+        related_name='cpq_equivalents_substitut')
+    tier = models.CharField(
+        max_length=20, choices=Tier.choices, default=Tier.STANDARD)
+    actif = models.BooleanField(default=True)
+
+    class Meta:
+        verbose_name = 'Produit équivalent'
+        verbose_name_plural = 'Produits équivalents'
+        ordering = ['produit_source_id', 'tier', 'id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'produit_source', 'produit_substitut',
+                        'tier'],
+                name='cpq_equiv_unique_co_src_sub_tier'),
+        ]
+        indexes = [
+            models.Index(fields=['company', 'produit_source', 'tier'],
+                         name='cpq_equiv_co_src_tier'),
+        ]
+
+    def __str__(self):
+        return (f'{self.produit_source_id} → {self.produit_substitut_id} '
+                f'({self.tier})')
+
+
+class ParametresCPQ(TenantModel):
+    """NTCPQ30 — Réglages CPQ, SINGLETON par société (pattern
+    ``contrats.ParametresLocation``/ZCTR4).
+
+    Toutes les valeurs par défaut préservent le comportement historique :
+    une société sans ligne créée (``get_or_create`` côté vue) se comporte
+    exactement comme avant NTCPQ30. ``approbation_active=False`` fait passer
+    ``envoyer``/``generer-pdf`` en direct SANS blocage NTCPQ7 pour CETTE
+    société uniquement (lu par ``services.lancer_approbation_devis``), sans
+    affecter les autres sociétés.
+
+    ARC1/SCA4 — hérite de ``core.models.TenantModel`` (FK ``company`` +
+    ``created_at``/``updated_at``) comme tous les autres modèles de cette app,
+    au lieu de re-hand-roller la paire multi-société. ``company`` est REDÉCLARÉ
+    ci-dessous À L'IDENTIQUE : le socle fournit un ``ForeignKey``, or ce modèle
+    est un SINGLETON par société — le ``OneToOneField`` (contrainte d'unicité)
+    et le ``related_name`` historique ``company.cpq_parametres`` sont conservés
+    tels quels. ``date_creation``/``date_modification`` restent également en
+    place : ils sont exposés par ``ParametresCPQSerializer`` (contrat d'API).
+    """
+    # Redéclaré à l'identique (ARC1) : OneToOne singleton + related_name
+    # historique — aucun changement de schéma sur la colonne company_id.
+    company = models.OneToOneField(
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: purge tenant
+        related_name='cpq_parametres')
+    marge_min_defaut_pct = models.DecimalField(
+        max_digits=5, decimal_places=2, null=True, blank=True,
+        help_text='Marge minimale par défaut (%) — repli quand aucun '
+                  'SeuilMargeFamille ne couvre la catégorie.')
+    approbation_active = models.BooleanField(
+        default=True,
+        help_text="Désactivé : envoyer/generer-pdf ne sont plus bloqués "
+                  "par une approbation de remise en attente (NTCPQ7).")
+    variantes_auto_generees = models.BooleanField(
+        default=False,
+        help_text='Générer automatiquement les variantes (NTCPQ16) à la '
+                  'création du devis.')
+    duree_validite_prix_contractuel_jours = models.PositiveIntegerField(
+        null=True, blank=True,
+        help_text="Durée de validité par défaut d'un PrixContractuel sans "
+                  "date_fin explicite (NULL = pas de limite, comportement "
+                  "historique inchangé).")
+
+    class ModeCompatibilite(models.TextChoices):
+        BLOQUANT = 'BLOQUANT', 'Bloquant'
+        AVERTISSEMENT = 'AVERTISSEMENT', 'Avertissement'
+
+    # NTCPQ31 — AVERTISSEMENT par défaut : ne casse rien sur les tenants
+    # existants (une violation INCOMPATIBLE/REQUIERT reste un badge NTCPQ21,
+    # jamais un blocage, tant qu'une société ne bascule pas explicitement en
+    # BLOQUANT).
+    compatibilite_mode = models.CharField(
+        max_length=20, choices=ModeCompatibilite.choices,
+        default=ModeCompatibilite.AVERTISSEMENT,
+        help_text='BLOQUANT empêche envoyer/generer-pdf tant qu’une '
+                  'violation de compatibilité bloquante (NTCPQ1) subsiste.')
+    # NTCPQ33 — nombre de jours d'attente avant relance automatique d'une
+    # étape d'approbation encore en_attente (job planifié, apps/cpq/scheduled.py).
+    delai_relance_approbation_jours = models.PositiveIntegerField(default=2)
+    date_creation = models.DateTimeField(auto_now_add=True)
+    date_modification = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = 'Paramètres CPQ'
+        verbose_name_plural = 'Paramètres CPQ'
+
+    def __str__(self):
+        return f'Paramètres CPQ — {self.company_id}'
+
+    @classmethod
+    def get_or_default(cls, company):
+        """Renvoie les réglages de ``company`` SANS écrire en base (repli
+        sur une instance non sauvegardée aux valeurs par défaut) — utile aux
+        lectures fréquentes (ex. ``lancer_approbation_devis``) qui ne
+        veulent pas créer une ligne pour chaque société lue."""
+        obj = cls.objects.filter(company=company).first()
+        return obj if obj is not None else cls(company=company)
+
+
+class ClauseCGV(TenantModel):
+    """NTCPQ11 — Clause / CGV dynamique appliquée selon le type de deal.
+
+    ``applicable_si`` est un arbre de conditions ET/OU/NON évalué par
+    ``core.rules.evaluate_condition_group`` contre le contexte du devis
+    (``type_deal``, ``montant``, ``total_ht``, ``remise_globale``…). Vide =
+    toujours applicable (seul ``type_deal`` filtre alors).
+
+    ``type_deal`` est un référentiel LIBRE (texte) : vide = tous les types.
+    Le snapshot des clauses retenues est figé sur
+    ``ventes.Devis.clauses_appliquees`` au moment de l'envoi, jamais recalculé
+    ensuite.
+
+    ARC1 — hérite de ``core.models.TenantModel``; ``company`` redéclaré à
+    l'identique (related_name explicite)."""
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: purge tenant
+        related_name='cpq_clauses_cgv')
+    nom = models.CharField(max_length=150)
+    corps_texte = models.TextField(
+        blank=True, default='',
+        help_text="Texte de la clause tel qu'il apparaîtra sur le document.")
+    type_deal = models.CharField(
+        max_length=100, blank=True, default='',
+        help_text='Référentiel libre (ex. « industriel »). Vide = tous types.')
+    applicable_si = models.JSONField(
+        default=dict, blank=True,
+        help_text='Arbre de conditions ET/OU/NON (core.rules). Vide = toujours.')
+    ordre = models.PositiveIntegerField(default=0)
+    actif = models.BooleanField(default=True)
+    date_creation = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'Clause / CGV'
+        verbose_name_plural = 'Clauses / CGV'
+        ordering = ['ordre', 'id']
+        indexes = [
+            models.Index(fields=['company', 'actif'],
+                         name='cpq_clause_co_actif'),
+        ]
+
+    def __str__(self):
+        return self.nom

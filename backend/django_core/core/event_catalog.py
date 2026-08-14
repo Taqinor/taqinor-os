@@ -57,6 +57,10 @@ CATALOG = {
     'devis_sent': _e(
         'Un devis passe à « envoyé » (partage client).',
         ['devis', 'user', 'ancien_statut']),
+    'layout_finalise': _e(
+        'La conception 3D d\'un devis est finalisée (création depuis un '
+        'calepinage ou resynchronisation réussie) — aucun statut ne bouge.',
+        ['devis', 'user']),
     'devis_refused': _e(
         'Un devis passe à « refusé ».',
         ['devis', 'user', 'motif_refus', 'marquer_lead_perdu']),
@@ -214,6 +218,28 @@ CATALOG = {
         "Un appel d'offres est ATTRIBUÉ (transition « déposé » → « gagné ») "
         "à l'ouverture des plis.",
         ['appel_offre', 'company', 'user', 'ancien_statut']),
+    # NTCRM22 — émis par ``apps/crm/receivers.py`` à l'acceptation d'un devis
+    # lié à un ``DealEnregistre`` APPROUVE. ``crm`` n'écrit jamais en compta :
+    # l'événement est le seul canal pour qu'un module compta/paie matérialise
+    # la commission (facture fournisseur, note de frais).
+    'deal_commission_due': _e(
+        "La commission d'un deal d'apporteur devient due (devis lié accepté).",
+        ['company', 'deal_id', 'apporteur_id', 'montant']),
+    # NTCRM27 — émis par ``apps/crm/services.detecter_signal_interet_salle_vente``
+    # (≥3 consultations de la salle de vente en 48 h, lead en QUOTE_SENT).
+    # Purement informationnel : JAMAIS un changement de stage automatique.
+    'salle_vente_signal_interet': _e(
+        "Une salle de vente est consultée de façon répétée (signal d'intérêt "
+        "fort sur un lead en devis envoyé).",
+        ['lead', 'salle', 'company']),
+    # NTMKT34 — émis par
+    # ``apps/marketing/services.recalculer_scores_maturite_inactivite`` quand
+    # le recalcul quotidien (pénalité d'inactivité 30j) change effectivement
+    # le score de maturité NTMKT18 d'un lead.
+    'lead_maturite_changee': _e(
+        'Le score de maturité marketing (NTMKT18) d\'un lead change lors du '
+        'recalcul quotidien (pénalité d\'inactivité 30j, NTMKT34).',
+        ['lead_id', 'company', 'ancienne_valeur', 'nouvelle_valeur']),
 }
 
 

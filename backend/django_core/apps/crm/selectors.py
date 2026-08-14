@@ -654,6 +654,24 @@ def lead_card(lead_id, company):
     }
 
 
+def conception_3d_du_lead(lead):
+    """PV78 — la conception 3D du lead ``{kwc, image_url}``, lecture seule.
+
+    Passe-plat vers ``apps.ventes.selectors.conception_pour_lead`` (import
+    FONCTION-LOCAL : la lecture cross-app passe exclusivement par le sélecteur
+    de l'app cible, et l'import différé évite tout cycle au chargement).
+    ``crm`` n'importe donc JAMAIS les modèles ventes.
+
+    Rend toujours les deux clés — un lead sans devis calepiné vaut
+    ``{'kwc': None, 'image_url': None}``, jamais une clé absente.
+    """
+    vide = {'kwc': None, 'image_url': None}
+    if lead is None:
+        return vide
+    from apps.ventes.selectors import conception_pour_lead
+    return conception_pour_lead(lead, getattr(lead, 'company', None)) or vide
+
+
 # DC12 — profil site/énergie réutilisable par client ─────────────────────────
 
 # Champs du profil que le générateur peut pré-remplir (source unique).
@@ -2009,6 +2027,31 @@ def lead_criteria_for_territoire(company, lead_id):
     }
 
 
+def leads_recents_pour_couverture(company, jours=30):
+    """NTCRM25 — Leads récents (``jours`` derniers jours) de ``company``, avec
+    leur contexte plat de matching territoire (même forme que
+    ``lead_criteria_for_territoire``), exposés à ``apps.territoires`` pour le
+    rapport de couverture — jamais un import direct de ``apps.crm.models``
+    depuis l'appelant."""
+    from django.utils import timezone
+
+    from .models import Lead
+
+    depuis = timezone.now() - timezone.timedelta(days=jours)
+    leads = Lead.objects.filter(company=company, date_creation__gte=depuis)
+    return [
+        {
+            'id': lead.id,
+            'nom': getattr(lead, 'nom', '') or getattr(lead, 'prenom', '') or f'Lead #{lead.id}',
+            'ville': lead.ville,
+            'type_installation': lead.type_installation,
+            'montant_estime': lead.montant_estime,
+            'canal': lead.canal,
+        }
+        for lead in leads
+    ]
+
+
 def forecast_rollup(company, periode=None, manager=None):
     """NTCRM5 — Roll-up hiérarchique du forecast : par commercial → par
     équipe (``EquipeCommerciale`` existant, FG39 voisin) → total société.
@@ -2391,3 +2434,383 @@ def pipeline_pondere_par_entite(company, entite_ids):
         entry['pipeline'] += _lead_forecast_value(lead) * _lead_win_weight(lead)
         entry['nb_leads'] += 1
     return out
+
+
+def _as_date(value):
+    """Normalise un DateField/DateTimeField en `date` pour comparaison sûre."""
+    if value is None:
+        return None
+    return value.date() if hasattr(value, 'date') else value
+
+
+def portefeuille_commercial(company, user, now=None):
+    """NTCRM29 — Comptes (``Client``) dont ``user`` est owner via AU MOINS un
+    lead lié, triés par score d'engagement (NTCRM16) CROISSANT (les plus
+    froids en premier — priorisation d'action). Chaque entrée porte
+    ``plan_compte_id`` (``NTCRM10``, ``None`` si aucun plan de compte formel).
+    Toujours scopé société + owner — jamais de fuite cross-tenant ni
+    cross-commercial (aucun paramètre société/utilisateur accepté depuis la
+    requête, seulement ``request.user``)."""
+    from .engagement import compute_engagement_score, engagement_label
+    from .models import Client, Lead
+
+    if company is None or user is None:
+        return []
+    client_ids = (
+        Lead.objects.filter(company=company, owner=user, client__isnull=False)
+        .values_list('client_id', flat=True).distinct()
+    )
+    clients = Client.objects.filter(company=company, id__in=client_ids)
+    out = []
+    for client in clients:
+        score = compute_engagement_score(client, now=now)
+        plan_compte_id = client.plan_compte.id if hasattr(client, 'plan_compte') else None
+        out.append({
+            'client_id': client.id,
+            'nom': str(client),
+            'score': score,
+            'label': engagement_label(score),
+            'plan_compte_id': plan_compte_id,
+        })
+    out.sort(key=lambda r: r['score'])
+    return out
+
+
+def comptes_dormants(company, seuil_jours=90, now=None):
+    """NTCRM14 — Clients avec au moins un devis/facture passé mais AUCUNE
+    activité (dernier devis créé, dernière facture émise, dernier
+    `LeadActivity`, dernier `PointContact` sur un lead lié) depuis plus de
+    `seuil_jours`.
+
+    Réutilise `apps.ventes.selectors` via import function-local (frontière
+    cross-app respectée — jamais `apps.ventes.models`). Un client sans AUCUN
+    devis/facture n'est jamais considéré dormant (rien à réactiver). Renvoie
+    une liste de dicts `{'client', 'derniere_activite', 'jours_inactivite'}`
+    triée par inactivité décroissante. Lecture seule."""
+    from django.utils import timezone
+
+    from apps.ventes.selectors import (
+        devis_du_client_portail, factures_du_client_portail,
+    )
+
+    from .models import Client, Lead, LeadActivity, PointContact
+
+    if company is None:
+        return []
+    now = now or timezone.now()
+    today = now.date() if hasattr(now, 'date') else now
+
+    out = []
+    for client in Client.objects.filter(company=company):
+        devis_list = devis_du_client_portail(company, client.id, limit=1)
+        factures_list = factures_du_client_portail(company, client.id, limit=1)
+        if not devis_list and not factures_list:
+            continue  # jamais de devis/facture : hors périmètre de la dormance
+
+        dates = []
+        if devis_list:
+            dates.append(_as_date(devis_list[0]['date_creation']))
+        if factures_list:
+            dates.append(_as_date(factures_list[0]['date_emission']))
+
+        lead_ids = list(Lead.objects.filter(
+            company=company, client=client).values_list('id', flat=True))
+        if lead_ids:
+            last_activity = (
+                LeadActivity.objects
+                .filter(lead_id__in=lead_ids)
+                .order_by('-created_at')
+                .values_list('created_at', flat=True).first())
+            dates.append(_as_date(last_activity))
+            last_contact = (
+                PointContact.objects
+                .filter(lead_id__in=lead_ids)
+                .order_by('-date_contact')
+                .values_list('date_contact', flat=True).first())
+            dates.append(_as_date(last_contact))
+
+        dates = [d for d in dates if d is not None]
+        derniere = max(dates) if dates else None
+        jours = (today - derniere).days if derniere is not None else None
+        dormant = derniere is None or jours >= seuil_jours
+        if dormant:
+            out.append({
+                'client': client,
+                'derniere_activite': derniere,
+                'jours_inactivite': jours,
+            })
+
+    out.sort(
+        key=lambda r: (r['jours_inactivite'] is None, r['jours_inactivite'] or 0),
+        reverse=True)
+    return out
+
+
+def salle_vente_analytics(salle):
+    """NTCRM19 — analytics d'une salle de vente : nombre de vues, dernière
+    vue, délai création → première vue (signal d'intérêt : plus court =
+    prospect plus chaud). Lecture seule."""
+    vues_qs = salle.vues.order_by('created_at')
+    count = vues_qs.count()
+    premiere = vues_qs.first()
+    derniere = salle.vues.order_by('-created_at').first()
+    delai_premiere_vue_heures = None
+    if premiere is not None:
+        delta = premiere.created_at - salle.created_at
+        delai_premiere_vue_heures = round(delta.total_seconds() / 3600, 1)
+    return {
+        'salle_id': salle.id,
+        'nb_vues': count,
+        'derniere_vue': derniere.created_at if derniere else None,
+        'premiere_vue': premiere.created_at if premiere else None,
+        'delai_premiere_vue_heures': delai_premiere_vue_heures,
+    }
+
+
+def salle_vente_summary_for_lead(company, lead_id):
+    """NTCRM19 — résumé consommé par la fiche lead : « le client a consulté
+    N fois, dernière fois <date> » sur la salle de vente la plus récente du
+    lead. `None` si le lead n'a aucune salle de vente."""
+    from .models import SalleVente
+
+    salle = (SalleVente.objects
+             .filter(company=company, lead_id=lead_id)
+             .order_by('-created_at').first())
+    if salle is None:
+        return None
+    analytics = salle_vente_analytics(salle)
+    analytics['salle_titre'] = salle.titre
+    return analytics
+
+
+def _metric_count_for_owner(company, metric, owner, start_dt, end_dt):
+    """NTCRM23 — même 3 métriques CRM-only que `compute_attainment` (FG39),
+    mais paramétrées par une fenêtre de dates explicite (jamais le système
+    année/mois/trimestre d'`ObjectifCommercial`) et TOUJOURS par commercial
+    (jamais l'équipe entière — un classement compare des individus)."""
+    from decimal import Decimal
+
+    from .models import Appointment, Lead
+
+    if metric == 'nb_leads':
+        return Decimal(Lead.objects.filter(
+            company=company, owner=owner,
+            date_creation__gte=start_dt, date_creation__lt=end_dt).count())
+    if metric == 'nb_contacts':
+        return Decimal(Lead.objects.filter(
+            company=company, owner=owner, first_contacted_at__isnull=False,
+            first_contacted_at__gte=start_dt,
+            first_contacted_at__lt=end_dt).count())
+    if metric == 'nb_rdv':
+        return Decimal(Appointment.objects.filter(
+            company=company, created_by=owner,
+            statut=Appointment.Statut.EFFECTUE,
+            scheduled_at__gte=start_dt, scheduled_at__lt=end_dt).count())
+    # nb_devis / ca_signe — hors périmètre crm-only (comme compute_attainment).
+    return Decimal('0')
+
+
+def classement_defi(defi):
+    """NTCRM23 — Classement PAR COMMERCIAL sur la métrique/fenêtre du défi,
+    trié décroissant. Ne considère que les commerciaux ayant AU MOINS une
+    activité mesurée (jamais un classement pollué de zéros pour toute la
+    société) — cohérent avec « le plus de RDV ce mois »."""
+    import datetime as _dt
+
+    from django.utils import timezone as _tz
+
+    from authentication.models import CustomUser
+
+    start_dt = _tz.make_aware(
+        _dt.datetime.combine(defi.periode_debut, _dt.time.min),
+        _tz.get_current_timezone())
+    end_dt = _tz.make_aware(
+        _dt.datetime.combine(defi.periode_fin, _dt.time.min),
+        _tz.get_current_timezone()) + _dt.timedelta(days=1)
+
+    classement = []
+    for user in CustomUser.objects.filter(company=defi.company):
+        realise = _metric_count_for_owner(
+            defi.company, defi.metrique, user, start_dt, end_dt)
+        if realise > 0:
+            classement.append({
+                'owner_id': user.id,
+                'owner_nom': str(user),
+                'realise': realise,
+            })
+    classement.sort(key=lambda r: r['realise'], reverse=True)
+    for rang, entry in enumerate(classement, start=1):
+        entry['rang'] = rang
+    return classement
+
+
+# ── NTMKT17 — Progressive profiling (formulaire public d'intake) ───────────
+
+_PROGRESSIVE_PROFILING_STANDARD_FIELDS = (
+    'nom', 'prenom', 'societe', 'email', 'telephone', 'ville',
+)
+
+
+def lead_known_field_codes(company, *, phone=None, email=None):
+    """NTMKT17 — codes de champs DÉJÀ CONNUS pour le lead le plus RÉCENT
+    correspondant à ``phone`` OU ``email`` normalisés (dédup QJ8 existante,
+    ``services.find_duplicates_by_contact``).
+
+    Renvoie ``None`` si aucun lead ne correspond (visiteur inconnu — le
+    formulaire public reste inchangé, comportement actuel). Sinon un
+    ``set`` des codes déjà renseignés parmi les champs standards
+    (nom/prenom/societe/email/telephone/ville, non vides) et les clés non
+    vides de ``custom_data``. Lecture seule."""
+    from .services import find_duplicates_by_contact
+
+    matches = find_duplicates_by_contact(company, phone=phone, email=email)
+    if not matches:
+        return None
+    lead = matches[0]
+    connus = {
+        code for code in _PROGRESSIVE_PROFILING_STANDARD_FIELDS
+        if getattr(lead, code, None)
+    }
+    for code, valeur in (lead.custom_data or {}).items():
+        if valeur not in (None, '', False):
+            connus.add(code)
+    return connus
+
+
+def lead_devis_ids_by_id(company, lead_id):
+    """NTMKT18 — ids (str) des devis liés à un lead, par id OPAQUE (lecture
+    seule) — pour un appelant cross-app (``marketing``) qui ne peut importer
+    ``Lead`` et ne dispose que d'un ``lead_id`` (jamais d'objet ``Lead``).
+    Renvoie ``[]`` si le lead n'existe pas ou n'a aucun devis."""
+    from .models import Lead
+
+    lead = Lead.objects.filter(company=company, pk=lead_id).only('id').first()
+    if lead is None:
+        return []
+    return [str(d.id) for d in lead.devis.all()]
+
+
+def leads_export_rows(company, lead_ids):
+    """NTMKT40 — lignes d'export (nom/prenom/email/telephone/ville) des leads
+    d'un segment marketing, par ids OPAQUES. Lecture seule, scopé société (un
+    id hors société est ignoré) — snapshot d'audit RGPD/CNDP, aucune donnée
+    interne (score/notes)."""
+    from .models import Lead
+
+    if not lead_ids:
+        return []
+    rows = Lead.objects.filter(
+        company=company, id__in=list(lead_ids),
+    ).values('id', 'nom', 'prenom', 'email', 'telephone', 'ville')
+    return list(rows)
+
+
+def dernier_contact_lead(company, lead_id):
+    """NTMKT34 — date/heure du dernier point de contact (``PointContact``,
+    FG204) d'un lead, ou ``None``. Lecture seule, par id OPAQUE pour un
+    appelant cross-app (``marketing``)."""
+    from .models import PointContact
+
+    pc = (PointContact.objects
+          .filter(company=company, lead_id=lead_id)
+          .order_by('-date_contact')
+          .first())
+    return pc.date_contact if pc else None
+
+
+# ── NTMKT20 — Modèles d'attribution configurables sur PointContact (FG204) ──
+# Complète ``revenu_attribue_campagne`` (XMKT17, implicitement dernier-touche
+# par nom de campagne) SANS le modifier : ceci répartit le revenu d'UN devis
+# signé entre les points de contact de son parcours, pour les 4 modèles
+# standards — une aide à la décision, jamais un recalcul persistant.
+
+ATTRIBUTION_MODELES = (
+    'dernier_touche', 'premier_touche', 'lineaire', 'pondere_temporel',
+)
+
+# Demi-vie (jours) du modèle « pondéré temporel » — formule de dégradation
+# temporelle standard (poids = 2^(-jours_avant_la_dernière_touche / demi_vie)).
+_ATTRIBUTION_DEMI_VIE_JOURS = 7
+
+
+def _attribution_part(point_contact, montant):
+    return {
+        'point_contact_id': point_contact.pk,
+        'canal': point_contact.canal,
+        'canal_libelle': point_contact.get_canal_display(),
+        'date_contact': point_contact.date_contact,
+        'revenu_attribue': str(montant),
+    }
+
+
+def _repartir_attribution(points, modele, total_revenu):
+    """NTMKT20 — répartit ``total_revenu`` (Decimal) entre ``points``
+    (``PointContact`` triés chronologiquement) selon ``modele``. Lecture
+    pure : aucune écriture, aucun état modifié. La somme des montants
+    répartis reste TOUJOURS égale à ``total_revenu`` au centime près."""
+    from decimal import ROUND_HALF_UP, Decimal
+
+    n = len(points)
+    if n == 0 or not total_revenu:
+        return []
+
+    if modele == 'premier_touche':
+        montants = [Decimal('0')] * n
+        montants[0] = total_revenu
+    elif modele == 'lineaire':
+        part = (total_revenu / n).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+        montants = [part] * n
+        # Ajuste le DERNIER point pour que la somme reste exacte au centime
+        # (l'arrondi par ligne peut sinon dériver de quelques centimes).
+        montants[-1] = total_revenu - part * (n - 1)
+    elif modele == 'pondere_temporel':
+        derniere_date = points[-1].date_contact
+        poids = [
+            Decimal(str(2 ** (
+                -max((derniere_date - p.date_contact).days, 0)
+                / _ATTRIBUTION_DEMI_VIE_JOURS)))
+            for p in points
+        ]
+        total_poids = sum(poids) or Decimal('1')
+        montants = [
+            (total_revenu * w / total_poids).quantize(Decimal('0.01'))
+            for w in poids
+        ]
+        ecart = total_revenu - sum(montants)
+        montants[-1] = montants[-1] + ecart
+    else:  # 'dernier_touche' — défaut, comportement historique XMKT17.
+        montants = [Decimal('0')] * n
+        montants[-1] = total_revenu
+
+    return [_attribution_part(p, m) for p, m in zip(points, montants)]
+
+
+def attribution_comparaison_devis(devis):
+    """NTMKT20 — pour un devis ACCEPTÉ, la répartition de son ``total_ttc``
+    entre les points de contact (``PointContact``, FG204) du lead lié, pour
+    les 4 modèles d'attribution côte à côte. ``None`` si le devis n'a pas de
+    lead lié ou n'est pas accepté. Lecture seule, aide à la décision — ne
+    modifie JAMAIS ``PointContact`` ni le devis."""
+    from decimal import Decimal
+
+    from .models import PointContact
+
+    lead = getattr(devis, 'lead', None)
+    if lead is None or getattr(devis, 'statut', None) != 'accepte':
+        return None
+    points = list(
+        PointContact.objects.filter(company=lead.company_id, lead=lead))
+    try:
+        total_revenu = Decimal(str(devis.total_ttc or 0))
+    except Exception:
+        total_revenu = Decimal('0')
+    return {
+        'devis_id': devis.pk,
+        'lead_id': lead.pk,
+        'total_revenu': str(total_revenu),
+        'nb_points_contact': len(points),
+        'modeles': {
+            modele: _repartir_attribution(points, modele, total_revenu)
+            for modele in ATTRIBUTION_MODELES
+        },
+    }

@@ -1,6 +1,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, cleanup, waitFor, fireEvent } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { Provider } from 'react-redux'
+import { configureStore } from '@reduxjs/toolkit'
 import { ThemeProvider } from '../../design/ThemeProvider'
 
 /* WIR70 — le panneau Détails charge la timeline et le rapport ACL d'un
@@ -25,6 +27,8 @@ const H = vi.hoisted(() => ({
     data: [{ id: 5, username: 'sami' }, { id: 6, username: 'reda' }],
   })),
   getRoles: vi.fn(() => Promise.resolve({ data: [{ id: 1, nom: 'RH' }] })),
+  // XGED15 — chatter générique (FG7), consommé via ChatterWidget/recordsApi.
+  getComments: vi.fn(() => Promise.resolve({ data: [] })),
 }))
 vi.mock('../../api/gedApi', () => ({
   default: {
@@ -41,15 +45,23 @@ vi.mock('../../api/gedApi', () => ({
 vi.mock('../../api/rolesApi', () => ({
   default: { getRoles: H.getRoles },
 }))
+vi.mock('../../api/recordsApi', () => ({
+  default: { getComments: H.getComments, createComment: vi.fn(), deleteComment: vi.fn() },
+}))
 
 import GedDocumentInsights from './GedDocumentInsights'
 
 const doc = { id: 42, nom: 'Contrat.pdf', favori: false }
-const renderPanel = () => render(
-  <ThemeProvider>
-    <GedDocumentInsights document={doc} onClose={() => {}} />
-  </ThemeProvider>,
-)
+const renderPanel = () => {
+  const store = configureStore({ reducer: { auth: () => ({ user: { username: 'reda', role: 'admin' } }) } })
+  return render(
+    <Provider store={store}>
+      <ThemeProvider>
+        <GedDocumentInsights document={doc} onClose={() => {}} />
+      </ThemeProvider>
+    </Provider>,
+  )
+}
 
 beforeEach(() => Object.values(H).forEach((f) => f.mockClear()))
 afterEach(() => cleanup())
@@ -98,5 +110,12 @@ describe('WIR70 GedDocumentInsights', () => {
     await waitFor(() => expect(H.createAcl).toHaveBeenCalledWith({
       document: 42, utilisateur: 6, niveau: 'lecture', herite: true,
     }))
+  })
+
+  it('XGED15 — onglet Notes affiche le chatter générique (@mentions) du document', async () => {
+    const user = userEvent.setup()
+    renderPanel()
+    await user.click(screen.getByRole('tab', { name: /Notes/ }))
+    await waitFor(() => expect(H.getComments).toHaveBeenCalledWith('ged.document', 42))
   })
 })

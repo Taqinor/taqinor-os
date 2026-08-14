@@ -50,13 +50,13 @@ Error|CommentListView|unable to guess serializer. This is graceful fallback hand
 Error|CommentPrivateReplyView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
 Error|CommentReplyView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
 Error|ComparateurCashFinancementViewSet|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
-Error|ContratApiAO|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
 Error|ComparateurDevisViewSet|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
 Error|ConfigurateurDemarrerView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
 Error|ConfigurateurGenererDevisView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
 Error|ConfigurateurRepondreView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
 Error|ConfigurateurResultatView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
 Error|ConsolidationViewSet|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|ContratApiAO|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
 Error|ControleBudgetaireCommandeView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
 Error|CookieTokenRefreshView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
 Error|CostPerSignatureView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
@@ -417,6 +417,7 @@ Warning|<global>|encountered multiple names for the same choice set (FormatExpor
 Warning|<global>|encountered multiple names for the same choice set (HabilitationTypeEnum). This may be unwanted even though the generate
 Warning|<global>|encountered multiple names for the same choice set (LanguePrefereeEnum). This may be unwanted even though the generated
 Warning|<global>|encountered multiple names for the same choice set (LinkedTypeEnum). This may be unwanted even though the generated sche
+Warning|<global>|encountered multiple names for the same choice set (MetricEnum). This may be unwanted even though the generated schema i
 Warning|<global>|encountered multiple names for the same choice set (ModeHoldEnum). This may be unwanted even though the generated schema
 Warning|<global>|encountered multiple names for the same choice set (NiveauRequisEnum). This may be unwanted even though the generated sc
 Warning|<global>|encountered multiple names for the same choice set (PalierApprobateurEnum). This may be unwanted even though the generat
@@ -538,10 +539,10 @@ Warning|CaisseViewSet > CaisseSerializer|unable to resolve type hint for functio
 Warning|CampagneEvaluationViewSet > CampagneEvaluationSerializer > EvaluationEmployeSerializer|unable to resolve type hint for function "get_employe_nom". Consider using a type hint or @extend_schema_field. Defaulti
 Warning|CampagneEvaluationViewSet > CampagneEvaluationSerializer > EvaluationEmployeSerializer|unable to resolve type hint for function "get_evaluateur_nom". Consider using a type hint or @extend_schema_field. Defau
 Warning|CampagneInnovationViewSet > CampagneInnovationDetailSerializer|unable to resolve type hint for function "get_historique". Consider using a type hint or @extend_schema_field. Defaultin
-Warning|CampagneViewSet > CampagneSerializer|unable to resolve type hint for function "get_taux_clic_pct". Consider using a type hint or @extend_schema_field. Defaul
-Warning|CampagneViewSet > CampagneSerializer|unable to resolve type hint for function "get_taux_delivre_pct". Consider using a type hint or @extend_schema_field. Def
-Warning|CampagneViewSet > CampagneSerializer|unable to resolve type hint for function "get_taux_desinscription_pct". Consider using a type hint or @extend_schema_fie
-Warning|CampagneViewSet > CampagneSerializer|unable to resolve type hint for function "get_taux_ouverture_pct". Consider using a type hint or @extend_schema_field. D
+Warning|CampagneViewSetAudite > CampagneSerializer|unable to resolve type hint for function "get_taux_clic_pct". Consider using a type hint or @extend_schema_field. Defaul
+Warning|CampagneViewSetAudite > CampagneSerializer|unable to resolve type hint for function "get_taux_delivre_pct". Consider using a type hint or @extend_schema_field. Def
+Warning|CampagneViewSetAudite > CampagneSerializer|unable to resolve type hint for function "get_taux_desinscription_pct". Consider using a type hint or @extend_schema_fie
+Warning|CampagneViewSetAudite > CampagneSerializer|unable to resolve type hint for function "get_taux_ouverture_pct". Consider using a type hint or @extend_schema_field. D
 Warning|CanalViewSet > CanalSerializer|unable to resolve type hint for function "get_en_usage". Consider using a type hint or @extend_schema_field. Defaulting
 Warning|CandidatureViewSet > CandidatureSerializer|unable to resolve type hint for function "get_employe_cree_nom". Consider using a type hint or @extend_schema_field. Def
 Warning|CandidatureViewSet > CandidatureSerializer|unable to resolve type hint for function "get_ouverture_intitule". Consider using a type hint or @extend_schema_field. D
@@ -857,6 +858,7 @@ Warning|OuverturePosteViewSet > OuverturePosteSerializer|unable to resolve type 
 Warning|PaiementSousTraitantViewSet|could not derive type of path parameter "id" because it is untyped and obtaining queryset from the viewset failed. Consi
 Warning|PaiementViewSet|could not derive type of path parameter "retenue_id" because model "apps.facturation.models.Paiement" contained no such
 Warning|ParametrageRelanceClientViewSet|could not derive type of path parameter "id" because it is untyped and obtaining queryset from the viewset failed. Consi
+Warning|ParametresDouaneViewSet|could not derive type of path parameter "id" because it is untyped and obtaining queryset from the viewset failed. Consi
 Warning|PartageGedViewSet > PartageGedSerializer|unable to resolve type hint for function "get_public_url". Consider using a type hint or @extend_schema_field. Defaultin
 Warning|PeriodeReportingESGViewSet > PeriodeReportingESGSerializer|unable to resolve type hint for function "get_figee_par_nom". Consider using a type hint or @extend_schema_field. Defaul
 Warning|PermisConduireViewSet > PermisConduireSerializer|unable to resolve type hint for function "get_employe_nom". Consider using a type hint or @extend_schema_field. Defaulti
@@ -880,6 +882,7 @@ Warning|PortailSelfServiceViewSet|could not derive type of path parameter "id" b
 Warning|PresenceChantierViewSet > PresenceChantierSerializer|unable to resolve type hint for function "get_employe_nom". Consider using a type hint or @extend_schema_field. Defaulti
 Warning|PresquAccidentViewSet > PresquAccidentSerializer|unable to resolve type hint for function "get_declare_par_nom". Consider using a type hint or @extend_schema_field. Defa
 Warning|PrimeAttribueeViewSet > PrimeAttribueeSerializer|unable to resolve type hint for function "get_employe_nom". Consider using a type hint or @extend_schema_field. Defaulti
+Warning|ProductTourViewSet|could not derive type of path parameter "id" because it is untyped and obtaining queryset from the viewset failed. Consi
 Warning|ProduitViewSet > ProduitSerializer|unable to resolve type hint for function "get_bcf_sources_en_commande". Consider using a type hint or @extend_schema_fie
 Warning|ProduitViewSet > ProduitSerializer|unable to resolve type hint for function "get_categorie_type_display". Consider using a type hint or @extend_schema_fiel
 Warning|ProduitViewSet > ProduitSerializer|unable to resolve type hint for function "get_derniere_date_mouvement". Consider using a type hint or @extend_schema_fie
@@ -942,6 +945,7 @@ Warning|RevisionDocumentViewSet > RevisionDocumentSerializer|unable to resolve t
 Warning|RevisionDocumentViewSet > RevisionDocumentSerializer|unable to resolve type hint for function "get_fichier_url". Consider using a type hint or @extend_schema_field. Defaulti
 Warning|RoleViewSet > RoleSerializer|unable to resolve type hint for function "get_users". Consider using a type hint or @extend_schema_field. Defaulting to
 Warning|RoleViewSet > RoleSerializer|unable to resolve type hint for function "get_users_count". Consider using a type hint or @extend_schema_field. Defaulti
+Warning|SalleVenteViewSet > SalleVenteSerializer|unable to resolve type hint for function "get_lien_public". Consider using a type hint or @extend_schema_field. Defaulti
 Warning|SanctionViewSet > SanctionSerializer|unable to resolve type hint for function "get_employe_nom". Consider using a type hint or @extend_schema_field. Defaulti
 Warning|SandboxEnvironmentViewSet|could not derive type of path parameter "id" because it is untyped and obtaining queryset from the viewset failed. Consi
 Warning|SavedViewViewSet > SavedViewSerializer|Encountered # components with identical names "PatchedSavedViewRequest" and different identities <class 'apps.uxviews.se

@@ -30,6 +30,8 @@ const VUES = [
   { value: 'formation', label: 'Formation' },
   { value: 'quiz', label: 'Quiz' },
   { value: 'organigramme', label: 'Organigramme' },
+  // ZRH10 — rapport d'évolution des niveaux (progressions/régressions).
+  { value: 'evolution', label: 'Évolution' },
 ]
 
 // Habilitation.TypeHabilitation.choices (NF C 18-510) — côté serveur.
@@ -90,6 +92,12 @@ export default function Competences() {
   const [besoins, setBesoins] = useState([])
   const [quiz, setQuiz] = useState([])
   const [arbre, setArbre] = useState([])
+  // ZRH10 — historique des changements de niveau de compétence.
+  const [evolution, setEvolution] = useState([])
+  // ZRH17 — recherche « qui maîtrise X au niveau >= N ? ».
+  const [rechCompetence, setRechCompetence] = useState('')
+  const [rechNiveauMin, setRechNiveauMin] = useState('1')
+  const [rechResultats, setRechResultats] = useState(null)
   const [employes, setEmployes] = useState([])
   const [catalogue, setCatalogue] = useState([])
   const [loading, setLoading] = useState(true)
@@ -121,8 +129,9 @@ export default function Competences() {
       rhApi.getArbreDepartements(),
       rhApi.getEmployes(),
       rhApi.getCompetences(),
+      rhApi.getEvolutionCompetences(),
     ])
-      .then(([ce, hab, cert, vm, ses, bes, qz, ar, emp, cat]) => {
+      .then(([ce, hab, cert, vm, ses, bes, qz, ar, emp, cat, evo]) => {
         if (!vivant) return
         setCompetencesEmp(unwrap(ce.data))
         setHabilitations(unwrap(hab.data))
@@ -134,6 +143,7 @@ export default function Competences() {
         setArbre(unwrap(ar.data))
         setEmployes(unwrap(emp.data))
         setCatalogue(unwrap(cat.data))
+        setEvolution(unwrap(evo.data))
       })
       .catch(() => {
         if (!vivant) return
@@ -230,6 +240,28 @@ export default function Competences() {
     { id: 'actif', header: 'Actif', width: 100, accessor: (q) => (q.actif ? 'oui' : 'non'), cell: (_v, q) => <Badge tone={q.actif ? 'success' : 'neutral'}>{q.actif ? 'Actif' : 'Inactif'}</Badge> },
   ], [])
 
+  // ZRH10 — colonnes du rapport d'évolution (clés du selector serveur).
+  const evolutionColumns = useMemo(() => [
+    { id: 'employe', header: 'Employé', width: 180, accessor: (e) => e.employe_nom || String(e.employe_id || ''), cell: (v) => <span className="font-medium">{v || '—'}</span> },
+    { id: 'competence', header: 'Compétence', width: 200, accessor: (e) => e.competence_libelle || '', cell: (v) => v || '—' },
+    { id: 'ancien', header: 'Ancien niveau', width: 130, align: 'right', searchable: false, accessor: (e) => e.ancien_niveau ?? '', cell: (v) => (v === '' ? '—' : v) },
+    { id: 'nouveau', header: 'Nouveau niveau', width: 140, align: 'right', searchable: false, accessor: (e) => e.nouveau_niveau ?? '', cell: (v) => (v === '' ? '—' : v) },
+    { id: 'sens', header: 'Sens', width: 130, accessor: (e) => (e.progression ? 'progression' : 'regression'), cell: (_v, e) => <Badge tone={e.progression ? 'success' : 'warning'}>{e.progression ? 'Progression' : 'Régression'}</Badge> },
+    { id: 'date', header: 'Date', width: 120, searchable: false, accessor: (e) => e.date || '', cell: (v) => (v ? formatDate(v) : '—') },
+  ], [])
+
+  // ZRH17 — lance la recherche transverse par compétence (staffing terrain).
+  const chercherParCompetence = async () => {
+    if (!rechCompetence) return
+    try {
+      const res = await rhApi.getEmployesParCompetence(
+        rechCompetence, { niveau_min: rechNiveauMin || 0 })
+      setRechResultats(unwrap(res.data))
+    } catch (err) {
+      toast.error(err?.response?.data?.detail ?? 'Recherche impossible.')
+    }
+  }
+
   const quizActions = (q) => [
     { id: 'toggle', label: q.actif ? 'Désactiver' : 'Activer', icon: Power, onClick: () => basculerQuiz(q) },
     { id: 'suppr', label: 'Supprimer', icon: Trash2, destructive: true, onClick: () => supprimerQuiz(q) },
@@ -245,6 +277,46 @@ export default function Competences() {
         <div className="flex flex-col gap-4">
           <Segmented options={VUES} value={vue} onChange={setVue} aria-label="Vue compétences" />
 
+          {/* ZRH17 — « Skills search » : trouver qui maîtrise une compétence. */}
+          {vue === 'matrice' && (
+            <div className="flex flex-wrap items-end gap-3 rounded-lg border border-border bg-card p-3">
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="rech-competence">Compétence recherchée</Label>
+                <select
+                  id="rech-competence"
+                  value={rechCompetence}
+                  onChange={(e) => setRechCompetence(e.target.value)}
+                  className="h-9 rounded-md border border-border bg-card px-3 text-sm"
+                >
+                  <option value="">— Choisir —</option>
+                  {catalogue.map((c) => (
+                    <option key={c.id} value={c.id}>{c.libelle}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="rech-niveau">Niveau minimum</Label>
+                <Input
+                  id="rech-niveau"
+                  type="number"
+                  step="any"
+                  value={rechNiveauMin}
+                  onChange={(e) => setRechNiveauMin(e.target.value)}
+                  className="w-28"
+                />
+              </div>
+              <Button variant="outline" disabled={!rechCompetence} onClick={chercherParCompetence}>
+                Rechercher
+              </Button>
+              {rechResultats && (
+                <p className="w-full text-sm text-muted-foreground">
+                  {rechResultats.length === 0
+                    ? 'Aucun employé ne satisfait ce niveau.'
+                    : rechResultats.map((e) => `${e.nom} ${e.prenom}`).join(' · ')}
+                </p>
+              )}
+            </div>
+          )}
           {vue === 'matrice' && (
             <ListShell title="Matrice des compétences" columns={matriceColumns} rows={competencesEmp}
               loading={loading} error={error} searchable exportName="matrice-competences"
@@ -292,6 +364,11 @@ export default function Competences() {
               loading={loading} error={error} searchable rowActions={quizActions} exportName="quiz-formation"
               actions={<Button onClick={() => setQuizOpen(true)}><Plus size={15} strokeWidth={1.75} aria-hidden="true" />Nouveau quiz</Button>}
               emptyTitle="Aucun quiz" emptyDescription="Aucun quiz d’évaluation configuré." />
+          )}
+          {vue === 'evolution' && (
+            <ListShell title="Évolution des compétences" columns={evolutionColumns} rows={evolution}
+              loading={loading} error={error} searchable exportName="evolution-competences"
+              emptyTitle="Aucun changement" emptyDescription="Aucun changement de niveau enregistré sur la période." />
           )}
           {vue === 'organigramme' && (
             <div className="rounded-lg border border-border bg-card p-4">

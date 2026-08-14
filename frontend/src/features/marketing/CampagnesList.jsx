@@ -67,6 +67,20 @@ export default function CampagnesList() {
     load()
   }
 
+  // NTMKT39 — export XLSX des campagnes FILTRÉES à l'écran (mêmes colonnes).
+  const [exportEnCours, setExportEnCours] = useState(false)
+  const exporterXlsx = async () => {
+    setExportEnCours(true)
+    try {
+      const r = await marketingApi.exportCampagnesXlsx({ statut, canal })
+      marketingApi.downloadBlob(r.data, 'campagnes.xlsx')
+    } catch {
+      setErr('Export impossible.')
+    } finally {
+      setExportEnCours(false)
+    }
+  }
+
   return (
     <div className="page">
       <div className="page-header" style={{ flexWrap: 'wrap', gap: '0.5rem' }}>
@@ -84,6 +98,17 @@ export default function CampagnesList() {
             <button className="btn btn-primary" data-testid="campagnes-nouvelle"
               onClick={startCreate}>Nouvelle campagne</button>
           )}
+          {/* NTMKT29 — wizard guidé à 4 étapes, remplace l'entrée directe pour
+             les nouveaux utilisateurs ; le formulaire ci-dessus reste
+             accessible en mode « expert ». */}
+          <button className="btn btn-light" data-testid="campagnes-nouvelle-guidee"
+            onClick={() => navigate('/marketing/campagnes/nouveau')}>
+            Créer (guidé)
+          </button>
+          <button className="btn btn-light" data-testid="campagnes-exporter"
+            disabled={exportEnCours} onClick={exporterXlsx}>
+            {exportEnCours ? 'Export…' : 'Exporter'}
+          </button>
         </div>
       </div>
 

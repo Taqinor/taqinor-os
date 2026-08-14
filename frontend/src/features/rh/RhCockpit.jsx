@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react'
 import { Users, UserCheck, CalendarClock, ShieldAlert, TrendingUp, FileWarning } from 'lucide-react'
 import { ModuleDashboard, EcheanceCenter } from '../../ui/module'
 import { BarArrondie } from '../../ui/charts'
-import { toast } from '../../ui'
+import { Link } from 'react-router-dom'
+import { Badge, toast } from '../../ui'
 import { formatNumber, formatDate } from '../../lib/format'
 import rhApi from '../../api/rhApi'
 import { ECHEANCE_TYPE_LABELS, TYPE_CONTRAT_LABELS } from './constants.jsx'
@@ -17,10 +18,30 @@ import { ECHEANCE_TYPE_LABELS, TYPE_CONTRAT_LABELS } from './constants.jsx'
    Responsable/Administrateur (gaté par la route).
    ========================================================================== */
 
+/* XRH31 — bandes RÉELLES de `core/attrition_risk.py` : faible / moyen / élevé
+   (accentué côté serveur — ne jamais réécrire ces clés). */
+const BAND_LABELS = { faible: 'Faible', moyen: 'Moyen', 'élevé': 'Élevé' }
+const BAND_TONES = { faible: 'success', moyen: 'warning', 'élevé': 'danger' }
+
+/* ZRH16 — lieux RÉELS de `localisation_hebdo` (défaut serveur : bureau). */
+const LOCALISATION_LABELS = {
+  bureau: 'Bureau',
+  domicile: 'Domicile',
+  terrain: 'Terrain',
+  autre: 'Autre',
+  absent: 'Absent',
+}
+
 export default function RhCockpit() {
   const [cockpit, setCockpit] = useState(null)
   const [echeances, setEcheances] = useState([])
   const [hse, setHse] = useState(null)
+  // XRH31 — top employés par risque d'attrition (lecture seule, gaté RH).
+  const [risques, setRisques] = useState([])
+  // ZRH11 — rapport de rétention/turnover ANNUEL (distinct du 12 mois glissants).
+  const [turnoverAnnuel, setTurnoverAnnuel] = useState(null)
+  // ZRH16 — localisation de travail attendue de l'équipe aujourd'hui.
+  const [localisations, setLocalisations] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
 
@@ -48,6 +69,24 @@ export default function RhCockpit() {
         .finally(() => { if (vivant) setLoading(false) })
     }
     charger()
+    // XRH31 — non bloquant : le cockpit reste utilisable si le score échoue.
+    rhApi.getTopRisqueAttrition({ limite: 5 })
+      .then((res) => {
+        if (!vivant) return
+        setRisques(Array.isArray(res.data) ? res.data : (res.data?.results ?? []))
+      })
+      .catch(() => { /* widget masqué */ })
+    // ZRH11 — rapport de rétention annuel, non bloquant lui aussi.
+    rhApi.getRapportTurnover()
+      .then((res) => { if (vivant) setTurnoverAnnuel(res.data) })
+      .catch(() => { /* widget masqué */ })
+    // ZRH16 — où travaille l'équipe aujourd'hui (informatif, non bloquant).
+    rhApi.getLocalisationDuJour()
+      .then((res) => {
+        if (!vivant) return
+        setLocalisations(Array.isArray(res.data) ? res.data : (res.data?.results ?? []))
+      })
+      .catch(() => { /* widget masqué */ })
     return () => { vivant = false }
   }, [])
 
@@ -166,6 +205,80 @@ export default function RhCockpit() {
           <div className="flex flex-col gap-6">
             {hseStats.length > 0 && (
               <ModuleDashboard stats={hseStats} />
+            )}
+            {/* ZRH16 — répartition des lieux de travail attendus aujourd'hui. */}
+            {localisations.length > 0 && (
+              <section className="rounded-lg border border-border bg-card p-4">
+                <h3 className="mb-3 text-sm font-medium">Où travaille l’équipe aujourd’hui</h3>
+                <ul className="flex flex-wrap gap-2">
+                  {Object.entries(
+                    localisations.reduce((acc, l) => {
+                      const cle = l.localisation || 'bureau'
+                      acc[cle] = (acc[cle] ?? 0) + 1
+                      return acc
+                    }, {}),
+                  ).map(([lieu, n]) => (
+                    <li key={lieu}>
+                      <Badge tone={lieu === 'absent' ? 'warning' : 'info'}>
+                        {LOCALISATION_LABELS[lieu] ?? lieu} · {n}
+                      </Badge>
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            )}
+            {/* ZRH11 — rétention & turnover de l'année civile. */}
+            {turnoverAnnuel && (
+              <section className="rounded-lg border border-border bg-card p-4">
+                <h3 className="mb-3 text-sm font-medium">
+                  Rétention & turnover {turnoverAnnuel.annee}
+                </h3>
+                <dl className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 text-sm">
+                  <div>
+                    <dt className="text-muted-foreground">Taux de turnover</dt>
+                    <dd className="font-medium">{formatNumber(turnoverAnnuel.taux_turnover_pct ?? 0, { decimals: 1 })} %</dd>
+                  </div>
+                  <div>
+                    <dt className="text-muted-foreground">Entrées / sorties</dt>
+                    <dd className="font-medium">{turnoverAnnuel.entrees_total ?? 0} / {turnoverAnnuel.sorties_total ?? 0}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-muted-foreground">Ancienneté moyenne</dt>
+                    <dd className="font-medium">{formatNumber(turnoverAnnuel.anciennete_moyenne_ans ?? 0, { decimals: 1 })} ans</dd>
+                  </div>
+                  <div>
+                    <dt className="text-muted-foreground">Rétention 12 mois</dt>
+                    <dd className="font-medium">
+                      {turnoverAnnuel.retention_12m_pct != null
+                        ? `${formatNumber(turnoverAnnuel.retention_12m_pct, { decimals: 1 })} %`
+                        : '—'}
+                    </dd>
+                  </div>
+                </dl>
+              </section>
+            )}
+            {/* XRH31 — top des employés par risque d'attrition (scorer serveur). */}
+            {risques.length > 0 && (
+              <section className="rounded-lg border border-border bg-card p-4">
+                <h3 className="mb-3 text-sm font-medium">Risque d’attrition — top 5</h3>
+                <ul className="flex flex-col gap-2">
+                  {risques.map((r) => (
+                    <li key={r.employe_id} className="flex items-center justify-between gap-3 text-sm">
+                      <Link className="link-blue truncate" to={`/rh/employes/${r.employe_id}`}>
+                        {r.employe_nom}
+                      </Link>
+                      <span className="flex shrink-0 items-center gap-2">
+                        <span className="text-muted-foreground">
+                          {formatNumber(r.score ?? 0, { decimals: 0 })}/100
+                        </span>
+                        <Badge tone={BAND_TONES[r.band] ?? 'neutral'}>
+                          {BAND_LABELS[r.band] ?? r.band}
+                        </Badge>
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </section>
             )}
           </div>
           <EcheanceCenter

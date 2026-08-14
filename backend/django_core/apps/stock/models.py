@@ -22,6 +22,15 @@ class Categorie(models.Model):
         COMPTEUR = 'compteur', 'Compteur'
         ACCESSOIRE = 'accessoire', 'Accessoire'
 
+    # NTWMS3 — stratégie de prélèvement par défaut des produits de cette
+    # catégorie. AUCUNE = comportement historique STRICTEMENT inchangé (le
+    # prélèvement ne consulte ni lot ni casier).
+    class StrategiePicking(models.TextChoices):
+        AUCUNE = 'aucune', 'Aucune (comportement historique)'
+        FIFO = 'fifo', 'FIFO — premier entré, premier sorti'
+        FEFO = 'fefo', 'FEFO — péremption la plus proche d\'abord'
+        ZONE = 'zone', 'Zone — casier le plus proche de la sortie'
+
     company = models.ForeignKey(
         'authentication.Company',
         on_delete=models.CASCADE,
@@ -42,6 +51,12 @@ class Categorie(models.Model):
         help_text="Type d'équipement (optionnel) pour filtrer les slots de "
                   "chantier par TYPE, quel que soit le libellé de la "
                   "catégorie. Vide = non typée (comportement historique).")
+    strategie_picking_defaut = models.CharField(
+        max_length=10,
+        choices=StrategiePicking.choices,
+        default=StrategiePicking.AUCUNE,
+        help_text='NTWMS3 — stratégie de prélèvement des produits de cette '
+                  'catégorie. « Aucune » (défaut) = comportement historique.')
 
     class Meta:
         verbose_name = "Catégorie"
@@ -444,6 +459,18 @@ class AchatsParametres(models.Model):
         = comportement historique inchangé."""
         obj, _created = cls.objects.get_or_create(company=company)
         return obj
+
+    # NTWMS12 — heure de coupure PAR SOCIÉTÉ des vagues en libération
+    # automatique. Même parti pris que les autres réglages ci-dessus : on
+    # étend ce singleton société plutôt que de toucher `authentication`/
+    # `parametres` (apps de fondation hors périmètre). NULL = aucune coupure
+    # configurée → une vague AUTO_HEURE ne se libère jamais toute seule
+    # (comportement inchangé tant que le réglage n'est pas posé).
+    heure_coupure_vagues = models.TimeField(
+        null=True, blank=True,
+        help_text='NTWMS12 — heure de coupure quotidienne à laquelle les '
+                  'vagues en mode AUTO_HEURE sont lancées. Vide = pas de '
+                  'libération automatique.')
 
 
 class DocumentConformiteFournisseur(models.Model):
@@ -1006,6 +1033,17 @@ class MouvementStock(models.Model):
     # pour tous les autres types de mouvement — comportement historique inchangé.
     motif_rebut = models.CharField(
         max_length=10, choices=MotifRebut.choices, blank=True, null=True)
+    # ── NTWMS5 — traçabilité CASIER du poste scanner ──────────────────────
+    # Casier physique d'où sort / où entre la marchandise. STRING-FK vers la
+    # hiérarchie FG319 (`installations.BinLocation`) : stock ne redéfinit
+    # JAMAIS les casiers. Nullables = tous les mouvements historiques et tous
+    # les chemins non scannés restent identiques.
+    bin_source = models.ForeignKey(
+        'installations.BinLocation', on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='mouvements_stock_source')
+    bin_destination = models.ForeignKey(
+        'installations.BinLocation', on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='mouvements_stock_destination')
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,
@@ -1714,9 +1752,15 @@ class FicheTechnique(models.Model):
 
     Un produit a au plus UNE fiche (OneToOne). Tout est optionnel : une fiche
     peut ne porter que le PDF, ou que des paramètres. Entièrement additif —
-    aucun produit existant n'est impacté."""
+    aucun produit existant n'est impacté.
+
+    PV5 — ``type_fiche`` distingue trois blocs de champs supplémentaires,
+    tous optionnels et sans effet sur les 6 champs électriques historiques
+    ci-dessus : dimensions/coefficients MODULE, entrées MPPT/tensions/
+    rendement ONDULEUR, capacité/DoD/tension BATTERIE."""
 
     company = models.ForeignKey(
+        # on_delete: cascade tenant standard — la fiche technique suit sa société.
         'authentication.Company', on_delete=models.CASCADE,
         null=True, blank=True, related_name='fiches_techniques')
     produit = models.OneToOneField(
@@ -1741,6 +1785,87 @@ class FicheTechnique(models.Model):
     rendement_pct = models.DecimalField(
         max_digits=5, decimal_places=2, null=True, blank=True,
         help_text='Rendement du module (%).')
+
+    # ── PV5 — type de fiche (détermine quel bloc de champs ci-dessous
+    # s'applique) — optionnel, vide par défaut sur les fiches existantes ──
+    class TypeFiche(models.TextChoices):
+        MODULE = 'module', 'Module (panneau)'
+        ONDULEUR = 'onduleur', 'Onduleur'
+        BATTERIE = 'batterie', 'Batterie'
+        AUTRE = 'autre', 'Autre'
+
+    type_fiche = models.CharField(
+        max_length=16, choices=TypeFiche.choices, blank=True, default='',
+        help_text='Type de fiche technique (détermine les champs applicables).')
+
+    # ── PV5 — Module : dimensions & coefficients de température ──
+    longueur_mm = models.PositiveIntegerField(
+        null=True, blank=True, help_text='Longueur du module (mm).')
+    largeur_mm = models.PositiveIntegerField(
+        null=True, blank=True, help_text='Largeur du module (mm).')
+    epaisseur_mm = models.PositiveIntegerField(
+        null=True, blank=True, help_text='Épaisseur du module (mm).')
+    poids_kg = models.DecimalField(
+        max_digits=6, decimal_places=2, null=True, blank=True,
+        help_text='Poids du module (kg).')
+    techno_cellule = models.CharField(
+        max_length=100, blank=True, default='',
+        help_text='Technologie de cellule (ex. N-type TOPCon, PERC…).')
+    bifacial = models.BooleanField(
+        default=False, help_text='Module bifacial (production face arrière).')
+    temp_coeff_voc_pct_c = models.DecimalField(
+        max_digits=5, decimal_places=3, null=True, blank=True,
+        help_text='Coefficient de température de Voc (%/°C).')
+    temp_coeff_pmax_pct_c = models.DecimalField(
+        max_digits=5, decimal_places=3, null=True, blank=True,
+        help_text='Coefficient de température de Pmax (%/°C).')
+
+    # ── PV5 — Onduleur ──
+    ond_n_mppt = models.PositiveSmallIntegerField(
+        null=True, blank=True, help_text="Nombre d'entrées MPPT.")
+    ond_mppt_v_min = models.DecimalField(
+        max_digits=6, decimal_places=1, null=True, blank=True,
+        help_text='Tension MPPT minimale (V).')
+    ond_mppt_v_max = models.DecimalField(
+        max_digits=6, decimal_places=1, null=True, blank=True,
+        help_text='Tension MPPT maximale (V).')
+    ond_v_max_abs = models.DecimalField(
+        max_digits=6, decimal_places=1, null=True, blank=True,
+        help_text='Tension DC maximale absolue (V).')
+    ond_i_max_mppt_a = models.DecimalField(
+        max_digits=5, decimal_places=1, null=True, blank=True,
+        help_text='Courant maximal par entrée MPPT (A).')
+    ond_ac_kw = models.DecimalField(
+        max_digits=6, decimal_places=2, null=True, blank=True,
+        help_text='Puissance AC nominale (kW).')
+
+    class Phases(models.IntegerChoices):
+        MONOPHASE = 1, 'Monophasé'
+        TRIPHASE = 3, 'Triphasé'
+
+    ond_phases = models.PositiveSmallIntegerField(
+        choices=Phases.choices, null=True, blank=True,
+        help_text='Nombre de phases (1 = monophasé, 3 = triphasé).')
+    ond_rendement_euro_pct = models.DecimalField(
+        max_digits=4, decimal_places=1, null=True, blank=True,
+        help_text='Rendement européen de l\'onduleur (%).')
+
+    # ── PV5 — Batterie ──
+    bat_kwh_nominal = models.DecimalField(
+        max_digits=6, decimal_places=2, null=True, blank=True,
+        help_text='Capacité nominale (kWh).')
+    bat_kwh_usable = models.DecimalField(
+        max_digits=6, decimal_places=2, null=True, blank=True,
+        help_text='Capacité utilisable (kWh).')
+    bat_dod_pct = models.DecimalField(
+        max_digits=4, decimal_places=1, null=True, blank=True,
+        help_text='Profondeur de décharge (DoD, %).')
+    bat_v_nominal = models.DecimalField(
+        max_digits=5, decimal_places=1, null=True, blank=True,
+        help_text='Tension nominale (V).')
+    bat_max_charge_kw = models.DecimalField(
+        max_digits=5, decimal_places=2, null=True, blank=True,
+        help_text='Puissance de charge maximale (kW).')
 
     # ── PDF constructeur d'origine (optionnel) ──
     pdf = models.FileField(
@@ -1772,6 +1897,7 @@ class ModeleBonCommandeFournisseur(models.Model):
     avant envoi. Le modèle lui-même ne bouge jamais aucun stock/mouvement."""
 
     company = models.ForeignKey(
+        # on_delete: cascade tenant standard — le modèle de BCF suit sa société.
         'authentication.Company', on_delete=models.CASCADE,
         null=True, blank=True, related_name='modeles_bcf')
     nom = models.CharField(max_length=150)
@@ -1800,9 +1926,11 @@ class ModeleBonCommandeFournisseurLigne(models.Model):
     """ZPUR3 — ligne d'un modèle de BCF : produit + quantité par défaut."""
 
     modele = models.ForeignKey(
+        # on_delete: une ligne de modèle n'existe que dans son modèle de BCF.
         ModeleBonCommandeFournisseur, on_delete=models.CASCADE,
         related_name='lignes')
     produit = models.ForeignKey(
+        # on_delete: modèle de commande, pas un document légal — produit supprimé = ligne caduque.
         Produit, on_delete=models.CASCADE,
         related_name='lignes_modele_bcf')
     quantite = models.PositiveIntegerField(default=1)
@@ -1832,6 +1960,7 @@ class NomenclatureCodeBarres(models.Model):
         GS1 = 'gs1', 'GS1'
 
     company = models.ForeignKey(
+        # on_delete: cascade tenant standard — la nomenclature suit sa société.
         'authentication.Company', on_delete=models.CASCADE,
         null=True, blank=True,
         related_name='nomenclatures_code_barres')
@@ -1865,6 +1994,7 @@ class RegleCodeBarres(models.Model):
         QUANTITE = 'quantite', 'Quantité'
 
     nomenclature = models.ForeignKey(
+        # on_delete: une règle n'existe que dans sa nomenclature de codes-barres.
         NomenclatureCodeBarres, on_delete=models.CASCADE,
         related_name='regles')
     # Regex (compilée avec `re.match`) OU préfixe simple selon
@@ -1891,6 +2021,22 @@ class RegleCodeBarres(models.Model):
             except re.error:
                 return False
         return code.startswith(self.motif)
+
+
+# ── Groupe NTWMS — couche ENTREPÔT (vagues, unités logistiques, quais…) ────
+# Définis dans `models_wms.py` pour ne pas alourdir ce fichier (même pratique
+# que `installations/models_kitting.py`) ; ré-exportés ici pour que
+# `from apps.stock.models import VaguePicking` fonctionne partout.
+from .models_wms import (  # noqa: E402,F401
+    ExpeditionTransporteur,
+    LignePicking,
+    PlanComptageTournant,
+    Quai,
+    RendezVousTransporteur,
+    UniteLogistique,
+    UniteLogistiqueLigne,
+    VaguePicking,
+)
 
 
 # ── ODX19 — MODULE ACHATS (déplacé) ────────────────────────────────────────

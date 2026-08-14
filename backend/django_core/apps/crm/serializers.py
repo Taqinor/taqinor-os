@@ -1,11 +1,13 @@
+from django.core.exceptions import ValidationError as DjangoValidationError
 from rest_framework import serializers
 from .models import (
-    Appointment, Client, ConcurrentPerte, EquipeCommerciale,
+    Apporteur, Appointment, Client, ConcurrentPerte, DealEnregistre, Defi,
+    EquipeCommerciale,
     EtapePlanActivite, ForecastEntry, ForecastSnapshot, Lead, LeadActivity,
     LeadPlaybookProgress, MessageTemplate, ObjectifCommercial, Parrainage,
     PlanActivite, PlanCompte, Playbook, PlaybookEtape,
-    PlaybookTache, PointContact, RevueCompte, SavedView, SiteProfile,
-    WebsiteLeadPayload,
+    PlaybookTache, PointContact, RevueCompte, SalleVente, SalleVenteItem,
+    SavedView, SiteProfile, WebsiteLeadPayload,
 )
 from .devis_auto import champs_manquants, message_manquants
 from .scoring import compute_score, score_label, score_reasons
@@ -214,6 +216,11 @@ class LeadSerializer(serializers.ModelSerializer):
     # LW30 — 50 dernières LeadActivity embarquées sur le RETRIEVE seulement
     # (jamais list() — payload) : voir get_fields() plus bas.
     chatter_recent = serializers.SerializerMethodField()
+    # PV78 — conception 3D du lead {kwc, image_url}. RETRIEVE SEULEMENT, même
+    # porte que chatter_recent : ce bloc coûte une requête devis + une URL
+    # pré-signée PAR LEAD, ce qui serait un N+1 franc sur une liste de 50
+    # cartes. Voir get_fields() plus bas.
+    conception = serializers.SerializerMethodField()
     # LB39 — marqueur d'ANNULATION du dernier changement d'étape. Champ HORS
     # MODÈLE, write-only, jamais persisté (retiré dans validate()) : à lui
     # seul il n'autorise RIEN — il déclenche seulement la vérification
@@ -518,6 +525,13 @@ class LeadSerializer(serializers.ModelSerializer):
         # payload list() — jamais juste null, la clé elle-même disparaît.
         if not self.context.get('include_chatter_recent'):
             fields.pop('chatter_recent', None)
+            # PV78 — même porte : ``include_chatter_recent`` est le marqueur
+            # « vue DÉTAIL » du dépôt (posé UNIQUEMENT par
+            # ``LeadViewSet.retrieve``). On le RÉUTILISE plutôt que d'ajouter
+            # un second drapeau qu'il faudrait poser au même endroit — et la
+            # conception, qui coûte une requête + une URL pré-signée par lead,
+            # ne descend donc jamais dans une liste.
+            fields.pop('conception', None)
         return fields
 
     def to_representation(self, instance):
@@ -534,6 +548,18 @@ class LeadSerializer(serializers.ModelSerializer):
         verrouillés-cadenas au lieu de laisser croire à une édition qui
         sera jetée (drop silencieux au PATCH)."""
         return self._pii_masked()
+
+    def get_conception(self, obj):
+        """PV78 — ``{kwc, image_url}`` de la conception 3D du lead.
+
+        Lecture cross-app par le SÉLECTEUR de l'app cible
+        (``crm.selectors.conception_3d_du_lead`` → ``ventes.selectors``), jamais
+        par un import des modèles ventes. Company-scopée côté ventes. Les deux
+        clés sont TOUJOURS là : un lead sans devis calepiné vaut deux valeurs
+        vides, jamais une clé absente.
+        """
+        from .selectors import conception_3d_du_lead
+        return conception_3d_du_lead(obj)
 
     def get_chatter_recent(self, obj):
         """LW30 — 50 dernières LeadActivity (auto + notes), épingle-d'abord
@@ -1123,7 +1149,7 @@ class PlaybookSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Playbook
-        fields = ['id', 'nom', 'actif', 'bloquant', 'etapes', 'date_creation']
+        fields = ['id', 'nom', 'actif', 'bloquant', 'condition', 'etapes', 'date_creation']
         read_only_fields = ['date_creation']
 
 
@@ -1166,4 +1192,130 @@ class SavedViewSerializer(serializers.ModelSerializer):
     class Meta:
         model = SavedView
         fields = ['id', 'page', 'name', 'rank', 'payload', 'created_at', 'user']
+        read_only_fields = ['created_at']
+
+
+class SalleVenteItemSerializer(serializers.ModelSerializer):
+    """NTCRM17 — un élément (devis/document/lien vidéo/note) d'une salle de vente."""
+
+    class Meta:
+        model = SalleVenteItem
+        fields = ['id', 'salle', 'type', 'reference', 'titre', 'ordre', 'created_at']
+        read_only_fields = ['created_at']
+
+
+class SalleVenteSerializer(serializers.ModelSerializer):
+    """NTCRM17 — salle de vente digitale (écran interne, authentifié).
+
+    ``company`` est TOUJOURS posé côté serveur (jamais lu du corps).
+    ``token``/``password_hash`` ne sont jamais exposés en écriture ; un mot
+    de passe est posé via le champ ``write_only`` ``mot_de_passe`` (haché
+    côté serveur, jamais stocké en clair). ``has_password`` expose
+    seulement un booléen — jamais le hash."""
+    company = serializers.HiddenField(default=_CurrentCompanyDefault())
+    items = SalleVenteItemSerializer(many=True, read_only=True)
+    has_password = serializers.BooleanField(read_only=True)
+    lien_public = serializers.SerializerMethodField()
+    mot_de_passe = serializers.CharField(
+        write_only=True, required=False, allow_blank=True)
+
+    class Meta:
+        model = SalleVente
+        fields = [
+            'id', 'company', 'lead', 'client', 'titre', 'token', 'expires_at',
+            'actif', 'has_password', 'mot_de_passe', 'lien_public', 'items',
+            'created_by', 'created_at', 'updated_at',
+        ]
+        read_only_fields = ['token', 'created_by', 'created_at', 'updated_at']
+
+    def get_lien_public(self, obj):
+        return f'/salle-vente/{obj.token}'
+
+    def validate(self, attrs):
+        # NTCRM17 — piège DRF/HTML : `BooleanField.default_empty_html` vaut
+        # False, donc un `actif` ABSENT d'un POST/PUT en form-data (une case
+        # décochée n'est pas envoyée par un navigateur) arrive ici à False et
+        # créait une salle immédiatement RÉVOQUÉE (lien public en 410). Une
+        # requête qui ne parle pas d'`actif` ne doit jamais le modifier : on
+        # retombe sur le défaut du modèle (création) ou sur la valeur en base
+        # (mise à jour). Un `actif: false` EXPLICITE reste évidemment honoré.
+        if 'actif' in attrs and 'actif' not in getattr(self, 'initial_data', {}):
+            attrs.pop('actif')
+        lead = attrs.get('lead', getattr(self.instance, 'lead', None))
+        client = attrs.get('client', getattr(self.instance, 'client', None))
+        if bool(lead) == bool(client):
+            raise serializers.ValidationError(
+                'Une salle de vente doit référencer exactement un lead OU un '
+                'client (jamais les deux, jamais ni l\'un ni l\'autre).')
+        return attrs
+
+    def create(self, validated_data):
+        mot_de_passe = validated_data.pop('mot_de_passe', '')
+        instance = SalleVente(**validated_data)
+        instance.set_password(mot_de_passe)
+        instance.save()
+        return instance
+
+    def update(self, instance, validated_data):
+        if 'mot_de_passe' in validated_data:
+            instance.set_password(validated_data.pop('mot_de_passe'))
+        return super().update(instance, validated_data)
+
+
+class ApporteurSerializer(serializers.ModelSerializer):
+    """NTCRM20 — apporteur d'affaires. ``company`` posé côté serveur."""
+    company = serializers.HiddenField(default=_CurrentCompanyDefault())
+
+    class Meta:
+        model = Apporteur
+        fields = [
+            'id', 'company', 'nom', 'type_apporteur', 'contact_email',
+            'contact_telephone', 'taux_commission_pct', 'actif', 'rib',
+            'created_at', 'token_acces',
+        ]
+        read_only_fields = ['created_at', 'token_acces']
+
+
+class DealEnregistreSerializer(serializers.ModelSerializer):
+    """NTCRM20 — deal enregistré par un apporteur. La fenêtre de protection
+    (``clean()`` du modèle) est appliquée via ``full_clean()`` explicite
+    (DRF n'invoque jamais la validation modèle automatiquement)."""
+    company = serializers.HiddenField(default=_CurrentCompanyDefault())
+    apporteur_nom = serializers.CharField(source='apporteur.nom', read_only=True)
+    lead_nom = serializers.CharField(source='lead.nom', read_only=True)
+
+    class Meta:
+        model = DealEnregistre
+        fields = [
+            'id', 'company', 'apporteur', 'apporteur_nom', 'lead', 'lead_nom',
+            'date_enregistrement', 'statut', 'expire_le',
+            'montant_commission_estime', 'montant_commission_du',
+        ]
+        read_only_fields = [
+            'date_enregistrement', 'statut', 'expire_le',
+            'montant_commission_estime', 'montant_commission_du',
+        ]
+
+    def validate(self, attrs):
+        instance = DealEnregistre(**{**attrs, 'pk': getattr(self.instance, 'pk', None)})
+        try:
+            instance.clean()
+        except DjangoValidationError as exc:
+            raise serializers.ValidationError(exc.message_dict if hasattr(exc, 'message_dict') else str(exc))
+        return attrs
+
+
+class DefiSerializer(serializers.ModelSerializer):
+    """NTCRM23 — défi d'équipe. ``company`` posé côté serveur."""
+    company = serializers.HiddenField(default=_CurrentCompanyDefault())
+    metrique_display = serializers.CharField(
+        source='get_metrique_display', read_only=True)
+
+    class Meta:
+        model = Defi
+        fields = [
+            'id', 'company', 'nom', 'periode_debut', 'periode_fin',
+            'metrique', 'metrique_display', 'cible_equipe', 'recompense',
+            'actif', 'created_at',
+        ]
         read_only_fields = ['created_at']

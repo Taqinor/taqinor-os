@@ -107,6 +107,9 @@ INSTALLED_APPS = [
     # installés. Interface fournisseur swappable (no-op par défaut, squelette
     # FusionSolar) ; tout no-ope tant que rien n'est configuré.
     'apps.monitoring',
+    # NTMFG1 — Production / MRP II (postes de charge, gammes, ordres de
+    # fabrication capacitaires, MRP net, terminal atelier, coût standard).
+    'apps.mrp',
     # N75 — moteur de notifications unifié (in-app + canaux existants).
     'apps.notifications',
     # N72 / N73 — moteur d'automatisations sans code (règles + approbations).
@@ -263,6 +266,7 @@ INSTALLED_APPS = [
     # NTUX1 — Vues sauvegardées serveur (personnelles/partagées), fondation de
     # la couche UX power-user (NTUX2-11). Additive, company-scopée.
     'apps.uxviews',
+    'apps.transport',
     # NTUX7 — Corbeille transverse 30 jours : UNE table `ElementSupprime` pour
     # tout le repo, alimentée par l'événement `core.events.record_soft_deleted`
     # (aucune app émettrice n'importe la corbeille). Additive, company-scopée.
@@ -288,6 +292,24 @@ INSTALLED_APPS = [
     # un sas, et c'est un humain qui tranche. Couplage vers `ao` par entier
     # opaque (`appel_offre_id`), jamais par FK.
     'apps.veille_ao',
+    # Groupe NTLOG — Douane & import/export (docs/plans/PLAN_SUPPLY.md).
+    # NTLOG14 seulement (DossierExport) : le volet import (NTLOG10, GARDE
+    # WIR80) reste BLOCKED, en conflit avec installations.DossierImport
+    # (FG315, hors perimetre d'ecriture de cette lane).
+    'apps.douane',
+    # NTRET18/19 — Connecteurs Shopify/WooCommerce ([GATED: clé API] — no-op
+    # total sans clé en .env). Additive, company-scopée.
+    'apps.ecommerce_connect',
+    # NTRET12 — Moteur de promotions panier (règles configurables : remise %
+    # produit/catégorie, remise montant panier, N-pour-M, plage horaire
+    # happy hour). NTRET13 y ajoute les coupons à code unique, NTRET15 les
+    # cartes cadeaux. App satellite : `apps/pos/services.py` l'appelle en
+    # import fonction-local (jamais l'inverse).
+    'apps.promotions',
+    # Groupe NTSCM — Planification supply chain (prévision de demande
+    # saisonnière, politiques de stock ABC/stock de sécurité, cycle S&OP
+    # mensuel) au-dessus de l'exécution `apps.stock` existante.
+    'apps.scm',
 ]
 
 MIDDLEWARE = [
@@ -594,6 +616,14 @@ REST_FRAMEWORK = {
         # ouverture de session chat public (par IP).
         'public_sharelink': '30/minute',
         'public_livechat': '30/minute',
+        # NTRET3 — PIN de verrouillage rapide caissier (POS). Cette entrée
+        # existe uniquement pour que ``SimpleRateThrottle.get_rate()`` ne lève
+        # pas ``ImproperlyConfigured`` (le scope doit être présent) — la
+        # valeur elle-même est IGNORÉE : ``PinCaissierThrottle.parse_rate``
+        # (apps/pos/views.py) câble en dur 5 tentatives / 5 minutes (300 s),
+        # une granularité que le format natif DRF (minute/heure/jour) ne
+        # peut pas exprimer.
+        'pos_pin_caissier': '5/5min',
         # NTPLT42 — budget par société (env TENANT_RATE_LIMIT, défaut 1200/min).
         # '0'/vide → None = throttle tenant désactivé (rempli plus bas, après la
         # définition de TESTING, où il est forcé off pour ne pas fausser la suite).
@@ -700,6 +730,50 @@ SPECTACULAR_SETTINGS = {
         # installations.CommissioningRecord et ventes.CommissioningTest.
         'ResultatCommissioningEnum':
             'apps.installations.models_chantier.CommissioningRecord.Resultat',
+        # SCA-lot-7-apps — le lot promotions/mrp/scm/fidelite/… (apps neuves)
+        # a fait apparaître des champs `type_regle`/`motif_rebut`/
+        # `type_evenement`/`classe_abc` qui portent le MÊME nom que des jeux
+        # de choix déjà publiés sous un nom court (sans préfixe de modèle) :
+        # sans les entrées ci-dessous, drf-spectacular retombe sur le nommage
+        # `<Modèle><Champ>Enum` pour les DEUX jeux, ce qui fait DISPARAÎTRE le
+        # nom historique du schéma (rupture pour tout client déjà généré).
+        # On ré-épingle le nom historique sur le jeu PRÉEXISTANT et on donne
+        # un nom explicite et stable (jamais un hachage auto-généré) au
+        # nouveau.
+        #
+        # prix_fixe / remise_pct / formule_sur_prix_vente — ventes.RegleListePrix
+        # (préexistant, garde le nom historique) ; promotions.ReglexPromotion
+        # porte un jeu DIFFÉRENT sous le même champ `type_regle`.
+        'TypeRegleEnum': 'apps.ventes.models.RegleListePrix.TypeRegle',
+        'TypeReglePromotionEnum':
+            'apps.promotions.models.ReglexPromotion.TypeRegle',
+        # casse / defaut / erreur / obsolete / perime / vol / autre —
+        # stock.MouvementStock (préexistant) ; mrp.OperationOF porte un jeu
+        # DISTINCT (motif de rebut d'une opération de fabrication) sous le
+        # même champ `motif_rebut`.
+        'MotifRebutEnum': 'apps.stock.models.MouvementStock.MotifRebut',
+        'MotifRebutOFEnum': 'apps.mrp.models.OperationOF.MotifRebut',
+        # salon / porte_ouverte / webinaire — marketing.EvenementMarketing
+        # (préexistant, champ `type_evenement`) ; scm.EvenementDemande porte
+        # un jeu DISTINCT (promotion/chantier majeur/rupture fournisseur…)
+        # sous le même nom de champ.
+        'TypeEvenementEnum': 'apps.marketing.models.EvenementMarketing.Type',
+        'TypeEvenementDemandeEnum':
+            'apps.scm.models.EvenementDemande.TypeEvenement',
+        # A/B/C/toutes — installations.SessionComptage (préexistant, comptage
+        # tournant FG324) ; stock.models_wms.PlanComptageTournant (NTWMS13)
+        # porte un jeu DISTINCT (mêmes lettres, libellés différents) sous le
+        # même champ `classe_abc`.
+        'ClasseAbcEnum':
+            'apps.installations.models_comptage.SessionComptage.ClasseABC',
+        'ClasseAbcPlanComptageTournantEnum':
+            'apps.stock.models_wms.PlanComptageTournant.ClasseAbc',
+        # route / mer / air — NTLOG20. drf-spectacular signalait « multiple
+        # names for the same choice set » : le MÊME triplet de valeurs est
+        # porté par un autre champ du dépôt sous un nom différent. On fige
+        # donc le nom sur le jeu de `transport`, comme les entrées voisines.
+        'ModeAcheminementPhysiqueEnum':
+            'apps.transport.models.OrdreTransport.ModeAcheminementPhysique',
     },
 }
 
@@ -864,6 +938,8 @@ CELERY_TASK_ROUTES = {
     'notifications.reveiller_snoozes': {'queue': 'scheduled'},
     'notifications.purge_notifications_anciennes': {'queue': 'scheduled'},
     'automation.time_triggers_daily': {'queue': 'scheduled'},
+    # NTEXT7 — reprise des séquences d'automatisation suspendues (beat */5min).
+    'automation.process_due_automation_steps': {'queue': 'scheduled'},
     'reporting.email_saved_reports': {'queue': 'scheduled'},
     'reporting.evaluate_kpi_alertes': {'queue': 'scheduled'},
     'reporting.controle_integrite': {'queue': 'scheduled'},
@@ -894,6 +970,8 @@ CELERY_TASK_ROUTES = {
     # comptes dormants, escalade SLA workflow) planifiées au beat.
     'identity.revoke_expired_break_glass': {'queue': 'scheduled'},
     'authentication.desactiver_comptes_dormants': {'queue': 'scheduled'},
+    # NTDMO30 — purge hebdomadaire des sociétés démo TAQINOR expirées.
+    'authentication.purger_societes_demo_expirees': {'queue': 'scheduled'},
     'core.escalate_workflow_sla': {'queue': 'scheduled'},
     'stock.recompute_reordering': {'queue': 'scheduled'},
     # ASG2 / AGEN8 — Assumption Engine : oubli hebdo des posteriors + auto-pause
@@ -931,6 +1009,13 @@ CELERY_TASK_ROUTES = {
     'compta.recalculer_dormants_marketing': {'queue': 'scheduled'},
     'compta.traiter_posts_sociaux': {'queue': 'scheduled'},
     'compta.decider_gagnants_ab': {'queue': 'scheduled'},
+    # NTMKT12/33/35/34 — app marketing : tick des journeys en graphe, purge des
+    # jetons publics expirés, rappel d'approbation d'envoi, recalcul des scores
+    # de maturité sur inactivité. Quatre jobs beat.
+    'marketing.executer_journeys': {'queue': 'scheduled'},
+    'marketing.purger_tokens_expires': {'queue': 'scheduled'},
+    'marketing.rappeler_approbations_envoi': {'queue': 'scheduled'},
+    'marketing.recalculer_scores_maturite_inactivite': {'queue': 'scheduled'},
     # KB — balayages lectures obligatoires / articles périmés.
     'kb.sweep_lectures_obligatoires': {'queue': 'scheduled'},
     'kb.sweep_articles_perimes': {'queue': 'scheduled'},
@@ -1016,6 +1101,12 @@ CELERY_TASK_ROUTES = {
     # donc queue `scheduled`. Les autres tâches AO sont, elles, déclenchées à
     # la demande (cf. ON_DEMAND_ALLOWLIST du garde QX11).
     'ao.rappeler_echeances': {'queue': 'scheduled'},
+    # NTCPQ32 — rappel quotidien des PrixContractuel expirés (beat, job planifié).
+    'cpq.expire_prix_contractuels': {'queue': 'scheduled'},
+    # NTCPQ33 — relance des étapes d'approbation en attente (beat, job planifié).
+    'cpq.relancer_approbations_en_attente': {'queue': 'scheduled'},
+    # NTCPQ34 — purge des sessions configurateur abandonnées (beat, job planifié).
+    'cpq.purger_sessions_configurateur_abandonnees': {'queue': 'scheduled'},
     # NTPLT27 — 4e queue `bulk` pour le travail de masse (imports dataimport,
     # exports planifiés volumineux, backfills, seed à l'échelle). Un import de
     # 100 000 lignes ne doit plus retarder un digest planifié ni un rendu PDF
@@ -1199,6 +1290,15 @@ BACKUP_PURGE_AUTO_APPLY = os.environ.get('BACKUP_PURGE_AUTO_APPLY', '0') == '1'
 # RETENTION_AUTO_APPLY n'est pas explicitement à 1 — aucune politique ne
 # doit alors supprimer quoi que ce soit (contrat imposé à chaque politique).
 RETENTION_AUTO_APPLY = os.environ.get('RETENTION_AUTO_APPLY', '0') == '1'
+
+# NTDMO30 — purge automatique des sociétés démo TAQINOR expirées (staging/
+# marketing uniquement). DÉSACTIVÉE PAR DÉFAUT (même convention que
+# GED_PURGE_AUTO_APPLY/BACKUP_PURGE_AUTO_APPLY/RETENTION_AUTO_APPLY
+# ci-dessus) : la tâche planifiée `authentication.purger_societes_demo_expirees`
+# ne supprime AUCUNE société tant que DEMO_AUTO_PURGE_ENABLED n'est pas
+# explicitement à 1 — le founder l'active en production le jour où il le
+# souhaite. Ne touche jamais une société non-démo (garde stricte est_demo=True).
+DEMO_AUTO_PURGE_ENABLED = os.environ.get('DEMO_AUTO_PURGE_ENABLED', '0') == '1'
 
 # GED33/GED34 — OCR de pièces + classification automatique. KEY-GATED : OFF par
 # défaut → tout est un no-op déterministe (aucun appel réseau, aucun coût, aucune

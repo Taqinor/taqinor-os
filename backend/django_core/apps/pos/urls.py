@@ -4,8 +4,10 @@ from rest_framework.routers import DefaultRouter
 from .views import (
     CommandeRetraitViewSet,
     ConfigMaterielPOSViewSet,
+    DefinirPinView,
     SessionCaisseViewSet,
     VenteComptoirViewSet,
+    VerifierPinView,
 )
 
 router = DefaultRouter()
@@ -17,4 +19,7 @@ router.register(
 
 urlpatterns = [
     path('', include(router.urls)),
+    # NTRET3 — PIN de session multi-caissiers (verrouillage rapide).
+    path('verifier-pin/', VerifierPinView.as_view(), name='pos-verifier-pin'),
+    path('definir-pin/', DefinirPinView.as_view(), name='pos-definir-pin'),
 ]

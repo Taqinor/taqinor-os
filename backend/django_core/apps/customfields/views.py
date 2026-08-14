@@ -192,9 +192,63 @@ class CustomObjectDefViewSet(TenantMixin, viewsets.ModelViewSet):
     serializer_class = CustomObjectDefSerializer
 
     def get_permissions(self):
-        if self.action in ('list', 'retrieve'):
+        if self.action in ('list', 'retrieve', 'objets_catalogue'):
             return [IsAnyRole()]
         return [IsAdminRole()]
+
+    # Exposées par des routes DÉDIÉES (``urls.py``) et non par le routeur :
+    # le catalogue vit à ``customfields/objets-catalogue/``, pas sous
+    # ``objects/`` (il ne décrit pas un objet existant de la société).
+    def objets_catalogue(self, request):
+        """NTEXT34 — modèles d'objets prêts à l'emploi + état d'installation.
+
+        ``deja_installe`` dit si la société possède déjà un objet portant ce
+        code : l'écran peut proposer « Installer » ou « Déjà installé » sans
+        second appel.
+        """
+        from .catalogue import CATALOGUE
+
+        company = request.user.company
+        installes = set(
+            CustomObjectDef.objects.filter(company=company)
+            .values_list('code', flat=True))
+        return Response({'modeles': [
+            {
+                'code': modele['code'],
+                'libelle': modele['libelle'],
+                'icone': modele.get('icone', ''),
+                'description': modele.get('description', ''),
+                'champs': [
+                    {'code': champ['code'], 'libelle': champ['libelle'],
+                     'type': champ.get('type', 'text'),
+                     'obligatoire': champ.get('obligatoire', False)}
+                    for champ in modele.get('champs') or []
+                ],
+                'deja_installe': modele['code'] in installes,
+            }
+            for modele in CATALOGUE
+        ]})
+
+    def installer_modele_catalogue(self, request, code=None):
+        """NTEXT34 — installe un modèle du catalogue pour la société (admin).
+
+        Idempotent : ré-installer ne duplique rien et n'écrase aucune
+        personnalisation locale (ni les enregistrements saisis).
+        """
+        from .catalogue import installer_modele, modele_par_code
+
+        modele = modele_par_code(code)
+        if modele is None:
+            return Response(
+                {'detail': f'Modèle « {code} » inconnu du catalogue.'},
+                status=404)
+        objet, cree, champs_crees = installer_modele(
+            request.user.company, modele, created_by=request.user)
+        return Response({
+            'objet': CustomObjectDefSerializer(objet).data,
+            'cree': cree,
+            'champs_crees': champs_crees,
+        }, status=201 if cree else 200)
 
 
 class CustomRecordViewSet(TenantMixin, viewsets.ModelViewSet):

@@ -26,6 +26,9 @@ vi.mock('../../../api/gedApi', () => ({
     getDocumentsList: vi.fn(() => Promise.resolve({ data: [] })),
     getRolesSignataire: vi.fn(() => Promise.resolve({ data: [] })),
     getLotsEnvoi: vi.fn(),
+    // XGED26/ZGED3 — analytique + tableau de bord (dégradent en `null`).
+    getAnalytique: vi.fn(() => Promise.resolve({ data: null })),
+    getTableauBordSignatures: vi.fn(() => Promise.resolve({ data: null })),
     envoyerLotSignature: vi.fn(() => Promise.resolve({
       data: { id: 9, libelle: 'Relance 2026', total: 2, nb_envoyes: 2, nb_vus: 0, nb_signes: 0, nb_refuses: 0, nb_erreurs: 0 },
     })),
@@ -108,5 +111,36 @@ describe('PACT135 ApprobationPage — Envoi en masse', () => {
 
     expect(gedApi.envoyerLotSignature).not.toHaveBeenCalled()
     expect(toast.error).toHaveBeenCalledWith('Choisissez un fichier CSV.')
+  })
+})
+
+describe('XGED26/ZGED3 ApprobationPage — Tableau de bord & Analytique', () => {
+  it('affiche le kanban des demandes de signature par statut', async () => {
+    gedApi.getTableauBordSignatures.mockResolvedValueOnce({ data: {
+      colonnes: {
+        en_attente: [{
+          id: 1, document_id: 8, document_nom: 'Contrat.pdf', statut: 'en_attente',
+          emetteur: 'reda', date_demande: '2026-07-01T09:00:00Z',
+          expires_at: null, pourcentage_completion: 50,
+        }],
+        signe: [],
+      },
+      total: 1,
+    } })
+    renderPage()
+    await userEvent.click(await screen.findByRole('tab', { name: /Tableau de bord/i }))
+    expect(await screen.findByText('Contrat.pdf')).toBeInTheDocument()
+    expect(screen.getByText('50%')).toBeInTheDocument()
+  })
+
+  it('affiche les KPIs d’approbation et de signature', async () => {
+    gedApi.getAnalytique.mockResolvedValueOnce({ data: {
+      approbations: { temps_cycle_moyen_jours: 2.5, par_statut: { approuve: 3 } },
+      signatures: { taux_completion: 80, delai_moyen_envoi_signature_jours: 1.2, par_statut: { signe: 4 } },
+    } })
+    renderPage()
+    await userEvent.click(await screen.findByRole('tab', { name: /Analytique/i }))
+    expect(await screen.findByText('2.5 j')).toBeInTheDocument()
+    expect(screen.getByText('80%')).toBeInTheDocument()
   })
 })

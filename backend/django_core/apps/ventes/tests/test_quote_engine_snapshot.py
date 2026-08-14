@@ -137,6 +137,39 @@ REQUIRED_TOTALS_LITERALS = (
     'Sous-total HT', 'Total HT', 'TVA', 'Total TTC',
 )
 
+
+def _normaliser_pour_recherche(texte: str) -> str:
+    """Casse + espaces normalisés avant de chercher une figure clé dans un PDF.
+
+    2026-08-14 — POURQUOI : le moteur rend ces libellés avec
+    ``text-transform:uppercase`` (cf. ``_tot_line`` dans
+    ``generate_devis_premium.py``), donc le PDF contient « SOUS-TOTAL HT » et
+    l'extraction ``fitz`` le rend tel quel. Un ``assertIn('Sous-total HT', …)``
+    sensible à la casse ne pouvait donc JAMAIS passer : cette garde — celle qui
+    protège la chaîne Sous-total HT → Remise → Total HT → TVA → Total TTC
+    exigée par CLAUDE.md — était rouge chaque nuit et ne protégeait plus rien.
+    Le PDF, lui, a toujours été correct.
+
+    Et ``letter-spacing`` : sur les pages de couverture, ``fitz`` rend un titre
+    espacé glyphe par glyphe — le run 31797942794 a extrait littéralement
+    « r é f. d e v i s » et « p r o p o s i t i o n ». Une comparaison qui
+    garde les espaces échoue donc AUSSI. On retire par conséquent TOUTE espace
+    des deux côtés, pas seulement on les normalise.
+
+    LIMITE ASSUMÉE, à ne pas se raconter autrement : sans les espaces,
+    « Total HT » est une sous-chaîne de « Sous-total HT », donc sa présence
+    dans la liste ci-dessus est satisfaite par le sous-total. Ce trou
+    PRÉEXISTAIT (l'ancienne comparaison sensible à la casse avait déjà le même
+    défaut) et il est SAIN au regard du moteur : ``_tot_line("Total HT")`` n'est
+    rendu que si une remise existe (``DISCOUNT_PCT > 0``) — un devis sans remise
+    n'a légitimement pas de ligne « Total HT » séparée. Durcir la garde (chaîne
+    ORDONNÉE, ou exigence conditionnée à la remise) demande de pouvoir
+    l'exécuter ; ce correctif se borne à lui rendre son mordant sur les figures
+    qu'elle peut réellement prouver.
+    """
+    return ''.join(texte.split()).casefold()
+
+
 # Marqueurs de prix d'achat interdits sur TOUT rendu client (jamais un centime
 # du prix d'achat revendeur ne doit fuiter — CLAUDE.md).
 FORBIDDEN_BUY_PRICE_MARKERS = ('9876', '9 876', '9 876', '9&#8239;876', 'achat')
@@ -328,10 +361,12 @@ class TestQuoteEngineGoldenSnapshots(TestCase):
 
     def _structural_asserts(self, pdf_bytes):
         text = _extract_text(pdf_bytes)
+        cherchable = _normaliser_pour_recherche(text)
         for literal in REQUIRED_TOTALS_LITERALS:
             self.assertIn(
-                literal, text,
-                f'figure clé absente du PDF : « {literal} »')
+                _normaliser_pour_recherche(literal), cherchable,
+                f'figure clé absente du PDF : « {literal} ». Texte extrait '
+                f'(500 premiers caractères) : {text[:500]!r}')
 
     def _assert_no_buy_price(self, pdf_bytes):
         text = _extract_text(pdf_bytes).lower()

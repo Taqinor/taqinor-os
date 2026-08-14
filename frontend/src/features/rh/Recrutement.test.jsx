@@ -51,6 +51,8 @@ vi.mock('../../api/rhApi', () => {
         data: [{ id: 12, nom: 'Alaoui', prenom: 'Sara' }],
       })),
       createRetourFeedback360: vi.fn(() => Promise.resolve({ data: { id: 1 } })),
+      // XRH15 — candidats internes classés par couverture du profil requis.
+      getCandidatsInternes: vi.fn(empty),
     },
   }
 })
@@ -219,5 +221,23 @@ describe('Recrutement — PACT20 : les 4 tuiles affichent une VRAIE valeur', () 
     // `delai_embauche_moyen_jours` est `null` dans l'état vide : c'est le SEUL
     // « — » légitime (le serveur n'a vraiment rien à dire).
     expect(screen.getAllByText('—').length).toBe(1)
+  })
+  it('classe les candidats internes d’une ouverture (XRH15)', async () => {
+    rhApi.getOuverturesPoste.mockResolvedValueOnce({
+      data: [{
+        id: 5, intitule: 'Technicien PV', poste_ref: 2,
+        nombre_postes: 1, statut: 'ouvert', statut_display: 'Ouvert',
+      }],
+    })
+    rhApi.getCandidatsInternes.mockResolvedValueOnce({
+      data: [{ employe_id: 9, employe_nom: 'Bennani Youssef', couverture_pct: 75.0 }],
+    })
+    renderRecrutement()
+    await screen.findAllByText('EPI, recrutement & évaluations')
+    fireEvent.click(screen.getByRole('radio', { name: 'Recrutement' }))
+
+    fireEvent.click((await screen.findAllByRole('button', { name: 'Candidats internes' }))[0])
+    await waitFor(() => expect(rhApi.getCandidatsInternes).toHaveBeenCalledWith(2))
+    expect(await screen.findByText('Bennani Youssef')).toBeInTheDocument()
   })
 })

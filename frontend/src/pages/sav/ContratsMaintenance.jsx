@@ -279,13 +279,42 @@ export function Component() {
       exportValue: (row) => formatDateFR(row.prochaine_visite),
     },
     {
-      // L327 — nombre de visites (tickets préventifs) générées.
-      id: 'visites', header: 'Visites', width: 110, searchable: false,
+      // FE-XCTR2 — équipements couverts par le registre du contrat
+      // (`equipements_detail`, sérialisé par ContratMaintenanceSerializer).
+      id: 'couverture', header: 'Équipements couverts', width: 170, searchable: false,
       cell: (_v, row) => {
+        const eqs = row.equipements_detail ?? []
+        if (eqs.length === 0) return <span className="text-muted-foreground">—</span>
+        const label = eqs.map((e) => e.numero_serie || e.produit_nom || `#${e.id}`).join(', ')
+        return <Badge tone="neutral" title={label}>{eqs.length} équipement{eqs.length > 1 ? 's' : ''}</Badge>
+      },
+      exportValue: (row) => (row.equipements_detail ?? []).length,
+    },
+    {
+      // FE-XCTR3 — visites incluses/consommées (`droits_restants`, XCTR3).
+      // Quota NULL = illimité : on retombe sur le décompte historique des
+      // tickets préventifs générés (comportement inchangé).
+      id: 'visites', header: 'Visites', width: 130, searchable: false,
+      cell: (_v, row) => {
+        const droits = row.droits_restants
+        if (droits && droits.visites_incluses_an != null) {
+          const epuise = droits.visites_restantes === 0
+          return (
+            <Badge tone={epuise ? 'danger' : 'neutral'}>
+              {droits.visites_consommees}/{droits.visites_incluses_an} visites
+            </Badge>
+          )
+        }
         const n = preventifCount(row)
         return n ? `${n} visite(s)` : '—'
       },
-      exportValue: (row) => preventifCount(row),
+      exportValue: (row) => {
+        const droits = row.droits_restants
+        if (droits && droits.visites_incluses_an != null) {
+          return `${droits.visites_consommees}/${droits.visites_incluses_an}`
+        }
+        return preventifCount(row)
+      },
     },
     {
       id: 'date_renouvellement', header: 'Renouvellement', width: 160,

@@ -14,7 +14,7 @@ import { useEffect, useMemo, useState } from 'react'
 import {
   Folder, FolderOpen, ChevronRight, ChevronDown, FileText, Loader2, Inbox,
   RefreshCw, Plus, FolderPlus, Pencil, Upload, MoveRight, Eye, Lock, LockOpen,
-  Trash2, Info, Link2,
+  Trash2, Info, Link2, EyeOff, X,
 } from 'lucide-react'
 import gedApi from '../../api/gedApi'
 // APX32 (e) — en-tête UNIQUE de l'app (VX28), fin du 4ᵉ idiome.
@@ -103,6 +103,8 @@ export default function GedNavigator() {
   // XGED14 — multi-sélection de documents pour les opérations en lot.
   const [selectedIds, setSelectedIds] = useState(() => new Set())
   const [bulkBusy, setBulkBusy] = useState(false)
+  // XGED10 — fusion de plusieurs PDF sélectionnés (dialogue de confirmation).
+  const [mergeDlg, setMergeDlg] = useState(false)
 
   // ── Chargement des cabinets (armoires racines) ──
   const loadCabinets = (preferId) => {
@@ -292,9 +294,10 @@ export default function GedNavigator() {
         )}
       />
 
-      {/* GED13 — Filtres & recherche avancée (plein-texte/sémantique + tags). */}
+      {/* GED13 — Filtres & recherche avancée (plein-texte/sémantique + tags).
+          ZGED7/13 — favoris/récents ouvrent l'aperçu inline GED14. */}
       <div className="mb-4">
-        <GedSearch />
+        <GedSearch onOpenDocument={setPreviewDoc} />
       </div>
 
       {error ? (
@@ -413,6 +416,12 @@ export default function GedNavigator() {
                         <Button size="sm" variant="ghost" onClick={() => setSelectedIds(new Set())}>
                           Désélectionner
                         </Button>
+                        {/* XGED10 — fusionne les PDF sélectionnés (≥2) en un seul document. */}
+                        {selectedIds.size >= 2 && (
+                          <Button size="sm" variant="outline" onClick={() => setMergeDlg(true)}>
+                            <FileText className="size-4" aria-hidden="true" /> Fusionner
+                          </Button>
+                        )}
                         <Button size="sm" variant="destructive"
                           onClick={bulkCorbeille} disabled={bulkBusy}>
                           {bulkBusy ? <Loader2 className="size-4 animate-spin" aria-hidden="true" /> : <Trash2 className="size-4" aria-hidden="true" />}
@@ -547,7 +556,16 @@ export default function GedNavigator() {
         cabinetId={cabinetId} folders={folders} onChanged={onFolderChanged} />
       <UploadDialog open={uploadDlg} onOpenChange={setUploadDlg}
         folder={selected} onUploaded={onDocumentUploaded} />
-      <DocumentPreviewDialog document={previewDoc} onClose={() => setPreviewDoc(null)} />
+      <DocumentPreviewDialog document={previewDoc} onClose={() => setPreviewDoc(null)}
+        onCaviarde={reloadDocuments} />
+      {/* XGED10 — fusion des documents sélectionnés (bordure de la barre en lot). */}
+      {mergeDlg && (
+        <MergeDocumentsDialog
+          documents={documents.filter((d) => selectedIds.has(d.id))}
+          onClose={() => setMergeDlg(false)}
+          onDone={() => { setMergeDlg(false); setSelectedIds(new Set()); reloadDocuments() }}
+        />
+      )}
       {/* WIR70 — panneau Détails (timeline + rapport ACL + favori). */}
       {insightsDoc && (
         <GedDocumentInsights document={insightsDoc} onClose={() => setInsightsDoc(null)} />
@@ -560,10 +578,19 @@ export default function GedNavigator() {
 // Récupère les versions du document, prend la plus récente et l'affiche via le
 // proxy même-origine (versions/<id>/apercu/). Dégrade proprement en lien de
 // téléchargement si l'aperçu n'est pas disponible.
-function DocumentPreviewDialog({ document: doc, onClose }) {
+function DocumentPreviewDialog({ document: doc, onClose, onCaviarde }) {
   const [version, setVersion] = useState(null)
+  // XGED17 — toutes les versions (pour le comparateur), pas seulement la
+  // plus récente affichée dans l'aperçu.
+  const [allVersions, setAllVersions] = useState([])
   const [loading, setLoading] = useState(false)
   const [failed, setFailed] = useState(false)
+  // XGED24 — caviardage (rédaction) de zones, PDF uniquement.
+  const [redactOpen, setRedactOpen] = useState(false)
+  // XGED10 — scission en segments, PDF uniquement.
+  const [splitOpen, setSplitOpen] = useState(false)
+  // XGED17 — comparateur de versions.
+  const [compareOpen, setCompareOpen] = useState(false)
 
   useEffect(() => {
     if (!doc?.id) return
@@ -571,11 +598,13 @@ function DocumentPreviewDialog({ document: doc, onClose }) {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement à l'ouverture
     setLoading(true)
     setVersion(null)
+    setAllVersions([])
     setFailed(false)
     gedApi.getVersions({ document: doc.id })
       .then((r) => {
         if (!alive) return
         const list = rows(r)
+        setAllVersions(list)
         const courante = [...list].sort((a, b) => (b.numero || 0) - (a.numero || 0))[0]
         if (courante) setVersion(courante)
         else setFailed(true)
@@ -587,6 +616,7 @@ function DocumentPreviewDialog({ document: doc, onClose }) {
 
   const src = version ? gedApi.apercuVersionUrl(version.id) : null
   const isImage = String(version?.mime || '').startsWith('image/')
+  const isPdf = String(version?.mime || '') === 'application/pdf'
 
   return (
     <Dialog open={!!doc} onOpenChange={(v) => { if (!v) onClose() }}>
@@ -610,6 +640,25 @@ function DocumentPreviewDialog({ document: doc, onClose }) {
             className="h-[70vh] w-full rounded border border-border" />
         )}
         <DialogFooter>
+          {/* XGED10 — scinder ce PDF en segments (nouveaux documents). */}
+          {isPdf && (
+            <Button variant="outline" onClick={() => setSplitOpen(true)}>
+              Scinder…
+            </Button>
+          )}
+          {/* XGED17 — comparer deux versions de ce document. */}
+          {allVersions.length > 1 && (
+            <Button variant="outline" onClick={() => setCompareOpen(true)}>
+              Comparer versions…
+            </Button>
+          )}
+          {/* XGED24 — caviarder une COPIE (PDF uniquement, l'original n'est
+              jamais modifié). */}
+          {isPdf && (
+            <Button variant="outline" onClick={() => setRedactOpen(true)}>
+              <EyeOff /> Caviarder…
+            </Button>
+          )}
           {src && (
             <ExternalLink href={src}>
               <Button variant="outline">Ouvrir dans un onglet</Button>
@@ -619,6 +668,334 @@ function DocumentPreviewDialog({ document: doc, onClose }) {
             <Button variant="ghost">Fermer</Button>
           </DialogClose>
         </DialogFooter>
+      </DialogContent>
+      {redactOpen && (
+        <RedactZonesDialog
+          documentId={doc.id}
+          versionId={version?.id}
+          onClose={() => setRedactOpen(false)}
+          onDone={() => { setRedactOpen(false); onClose(); onCaviarde?.() }}
+        />
+      )}
+      {splitOpen && (
+        <SplitDocumentDialog
+          documentId={doc.id}
+          versionId={version?.id}
+          onClose={() => setSplitOpen(false)}
+          onDone={() => { setSplitOpen(false); onClose(); onCaviarde?.() }}
+        />
+      )}
+      {compareOpen && (
+        <CompareVersionsDialog
+          documentId={doc.id}
+          versions={allVersions}
+          onClose={() => setCompareOpen(false)}
+        />
+      )}
+    </Dialog>
+  )
+}
+
+// ── XGED24 — Dialogue : zones à caviarder (rédaction PDF, copie publiée) ───
+// Chaque zone : { page (0-based), x0, y0, x1, y1 } en POURCENTAGE (0-100) de
+// la page (même convention que les annotations XGED16). Le texte sous la
+// zone est SUPPRIMÉ côté serveur (PyMuPDF) — jamais un simple rectangle
+// visuel — sur une COPIE ; l'original n'est jamais modifié.
+const EMPTY_ZONE = { page: '0', x0: '0', y0: '0', x1: '20', y1: '10' }
+
+function RedactZonesDialog({ documentId, versionId, onClose, onDone }) {
+  const [zones, setZones] = useState([{ ...EMPTY_ZONE }])
+  const [busy, setBusy] = useState(false)
+
+  const updateZone = (i, field, value) =>
+    setZones((prev) => prev.map((z, idx) => (idx === i ? { ...z, [field]: value } : z)))
+  const addZone = () => setZones((prev) => [...prev, { ...EMPTY_ZONE }])
+  const removeZone = (i) => setZones((prev) => prev.filter((_, idx) => idx !== i))
+
+  const submit = async (e) => {
+    e.preventDefault()
+    if (busy) return
+    setBusy(true)
+    try {
+      const payload = zones.map((z) => ({
+        page: Number(z.page) || 0,
+        x0: Number(z.x0) || 0, y0: Number(z.y0) || 0,
+        x1: Number(z.x1) || 0, y1: Number(z.y1) || 0,
+      }))
+      await gedApi.caviarderDocument(documentId, { zones: payload, version: versionId })
+      toast.success('Copie caviardée créée dans le dossier.')
+      onDone()
+    } catch (err) {
+      toast.error(errText(err, 'Caviardage impossible.'))
+    } finally { setBusy(false) }
+  }
+
+  return (
+    <Dialog open onOpenChange={(v) => { if (!v) onClose() }}>
+      <DialogContent className="max-w-lg">
+        <DialogHeader>
+          <DialogTitle>Caviarder ce document</DialogTitle>
+          <DialogDescription>
+            Une COPIE est créée avec les zones ci-dessous définitivement noircies
+            (texte supprimé) ; l&apos;original reste intact. Coordonnées en % de
+            la page (page 0 = première page).
+          </DialogDescription>
+        </DialogHeader>
+        <form onSubmit={submit} className="flex flex-col gap-3">
+          {zones.map((z, i) => (
+            <div key={i} className="flex items-end gap-1.5">
+              <div className="flex flex-col gap-0.5">
+                <label className="text-xs text-muted-foreground" htmlFor={`z-page-${i}`}>Page</label>
+                <Input id={`z-page-${i}`} type="number" min={0} className="w-16"
+                  value={z.page} onChange={(e) => updateZone(i, 'page', e.target.value)} />
+              </div>
+              <div className="flex flex-col gap-0.5">
+                <label className="text-xs text-muted-foreground" htmlFor={`z-x0-${i}`}>X0 %</label>
+                <Input id={`z-x0-${i}`} type="number" min={0} max={100} className="w-16"
+                  value={z.x0} onChange={(e) => updateZone(i, 'x0', e.target.value)} />
+              </div>
+              <div className="flex flex-col gap-0.5">
+                <label className="text-xs text-muted-foreground" htmlFor={`z-y0-${i}`}>Y0 %</label>
+                <Input id={`z-y0-${i}`} type="number" min={0} max={100} className="w-16"
+                  value={z.y0} onChange={(e) => updateZone(i, 'y0', e.target.value)} />
+              </div>
+              <div className="flex flex-col gap-0.5">
+                <label className="text-xs text-muted-foreground" htmlFor={`z-x1-${i}`}>X1 %</label>
+                <Input id={`z-x1-${i}`} type="number" min={0} max={100} className="w-16"
+                  value={z.x1} onChange={(e) => updateZone(i, 'x1', e.target.value)} />
+              </div>
+              <div className="flex flex-col gap-0.5">
+                <label className="text-xs text-muted-foreground" htmlFor={`z-y1-${i}`}>Y1 %</label>
+                <Input id={`z-y1-${i}`} type="number" min={0} max={100} className="w-16"
+                  value={z.y1} onChange={(e) => updateZone(i, 'y1', e.target.value)} />
+              </div>
+              {zones.length > 1 && (
+                <Button type="button" variant="ghost" size="sm"
+                  aria-label="Retirer cette zone" onClick={() => removeZone(i)}>
+                  <X size={14} />
+                </Button>
+              )}
+            </div>
+          ))}
+          <Button type="button" variant="outline" size="sm" className="self-start" onClick={addZone}>
+            <Plus /> Ajouter une zone
+          </Button>
+          <DialogFooter>
+            <Button type="button" variant="ghost" onClick={onClose}>Annuler</Button>
+            <Button type="submit" disabled={busy}>
+              {busy ? <Loader2 className="size-4 animate-spin" aria-hidden="true" /> : <EyeOff />} Caviarder
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+// ── XGED10 — Dialogue : scinder un PDF en segments ──────────────────────────
+// `pointsDeCoupe` : numéros de page 1-based où commence chaque nouveau
+// segment (ex. "1,3" sur un PDF de 6 pages → [1-2] puis [3-6]).
+function SplitDocumentDialog({ documentId, versionId, onClose, onDone }) {
+  const [points, setPoints] = useState('')
+  const [busy, setBusy] = useState(false)
+
+  const submit = async (e) => {
+    e.preventDefault()
+    if (busy) return
+    const pointsDeCoupe = points.split(',').map((p) => p.trim()).filter(Boolean).map(Number)
+    if (pointsDeCoupe.length === 0 || pointsDeCoupe.some((p) => !Number.isInteger(p) || p < 1)) {
+      toast.error('Indiquez au moins un numéro de page (entiers ≥ 1) séparés par des virgules.')
+      return
+    }
+    setBusy(true)
+    try {
+      await gedApi.scinderDocument(documentId, { pointsDeCoupe, version: versionId })
+      toast.success('Document scindé en segments.')
+      onDone()
+    } catch (err) {
+      toast.error(errText(err, 'Scission impossible.'))
+    } finally { setBusy(false) }
+  }
+
+  return (
+    <Dialog open onOpenChange={(v) => { if (!v) onClose() }}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Scinder ce document</DialogTitle>
+          <DialogDescription>
+            Chaque segment devient un nouveau document ; l&apos;original reste
+            intact. Indiquez les numéros de PAGE (1 = première page) où
+            commence chaque nouveau segment, séparés par des virgules
+            (ex. « 1, 3 » sur un PDF de 6 pages donne [1-2] et [3-6]).
+          </DialogDescription>
+        </DialogHeader>
+        <form onSubmit={submit} className="flex flex-col gap-3">
+          <div className="flex flex-col gap-1">
+            <label className="text-sm text-muted-foreground" htmlFor="split-points">
+              Points de coupe
+            </label>
+            <Input id="split-points" placeholder="1, 3"
+              value={points} onChange={(e) => setPoints(e.target.value)} />
+          </div>
+          <DialogFooter>
+            <Button type="button" variant="ghost" onClick={onClose}>Annuler</Button>
+            <Button type="submit" disabled={busy}>
+              {busy && <Loader2 className="size-4 animate-spin" aria-hidden="true" />} Scinder
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+// ── XGED17 — Dialogue : comparer deux versions d'un document ───────────────
+function CompareVersionsDialog({ documentId, versions, onClose }) {
+  const sorted = [...versions].sort((a, b) => (b.numero || 0) - (a.numero || 0))
+  const [v1, setV1] = useState(String(sorted[1]?.id ?? sorted[0]?.id ?? ''))
+  const [v2, setV2] = useState(String(sorted[0]?.id ?? ''))
+  const [diff, setDiff] = useState(null)
+  const [busy, setBusy] = useState(false)
+
+  const compare = async () => {
+    if (!v1 || !v2) return
+    setBusy(true)
+    try {
+      const r = await gedApi.comparerVersions(documentId, v1, v2)
+      setDiff(r.data)
+    } catch (err) {
+      toast.error(errText(err, 'Comparaison impossible.'))
+    } finally { setBusy(false) }
+  }
+
+  const metaEntries = diff?.metadonnees ? Object.entries(diff.metadonnees) : []
+
+  return (
+    <Dialog open onOpenChange={(v) => { if (!v) onClose() }}>
+      <DialogContent className="max-w-2xl">
+        <DialogHeader>
+          <DialogTitle>Comparer deux versions</DialogTitle>
+        </DialogHeader>
+        <div className="flex items-end gap-2">
+          <div className="flex flex-col gap-1">
+            <label className="text-xs text-muted-foreground" htmlFor="cmp-v1">Version A</label>
+            <Select value={v1} onValueChange={setV1}>
+              <SelectTrigger id="cmp-v1" aria-label="Version A" className="w-32"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {sorted.map((v) => (
+                  <SelectItem key={v.id} value={String(v.id)}>v{v.numero}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-xs text-muted-foreground" htmlFor="cmp-v2">Version B</label>
+            <Select value={v2} onValueChange={setV2}>
+              <SelectTrigger id="cmp-v2" aria-label="Version B" className="w-32"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {sorted.map((v) => (
+                  <SelectItem key={v.id} value={String(v.id)}>v{v.numero}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <Button type="button" onClick={compare} disabled={busy || v1 === v2}>
+            {busy && <Loader2 className="size-4 animate-spin" aria-hidden="true" />} Comparer
+          </Button>
+        </div>
+        {diff && (
+          <div className="mt-3 flex flex-col gap-3">
+            {metaEntries.length === 0 ? (
+              <p className="text-sm text-muted-foreground">Aucune différence de métadonnées.</p>
+            ) : (
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-left text-muted-foreground">
+                    <th>Champ</th><th>Version A</th><th>Version B</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {metaEntries.map(([champ, { v1: a, v2: b }]) => (
+                    <tr key={champ} className="border-t border-border">
+                      <td className="py-1 font-medium">{champ}</td>
+                      <td className="py-1">{String(a ?? '—')}</td>
+                      <td className="py-1">{String(b ?? '—')}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+            {diff.texte_disponible ? (
+              <pre className="max-h-64 overflow-auto rounded-md border border-border bg-muted/40 p-2 text-xs">
+                {(diff.diff_texte || []).join('\n')}
+              </pre>
+            ) : (
+              <p className="text-xs text-muted-foreground">{diff.message}</p>
+            )}
+          </div>
+        )}
+        <DialogFooter>
+          <Button variant="ghost" onClick={onClose}>Fermer</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+// ── XGED10 — Dialogue : fusionner les documents sélectionnés en un seul PDF ─
+// L'ordre de fusion suit l'ordre de sélection (Set → insertion order). Un
+// nouveau document est créé dans le dossier du 1er document source ; les
+// sources ne sont jamais modifiées.
+function MergeDocumentsDialog({ documents, onClose, onDone }) {
+  const [nom, setNom] = useState('')
+  const [busy, setBusy] = useState(false)
+
+  const submit = async (e) => {
+    e.preventDefault()
+    if (busy) return
+    setBusy(true)
+    try {
+      await gedApi.fusionnerDocuments({
+        documents: documents.map((d) => d.id), nom: nom.trim() || undefined,
+      })
+      toast.success('Documents fusionnés.')
+      onDone()
+    } catch (err) {
+      toast.error(errText(err, 'Fusion impossible.'))
+    } finally { setBusy(false) }
+  }
+
+  return (
+    <Dialog open onOpenChange={(v) => { if (!v) onClose() }}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Fusionner {documents.length} documents</DialogTitle>
+          <DialogDescription>
+            Un nouveau document PDF est créé, dans l&apos;ordre ci-dessous. Les
+            documents sources restent intacts.
+          </DialogDescription>
+        </DialogHeader>
+        <ol className="flex flex-col gap-1 text-sm">
+          {documents.map((d, i) => (
+            <li key={d.id} className="rounded-md border px-2 py-1">
+              {i + 1}. {d.nom}
+            </li>
+          ))}
+        </ol>
+        <form onSubmit={submit} className="flex flex-col gap-3">
+          <div className="flex flex-col gap-1">
+            <label className="text-sm text-muted-foreground" htmlFor="merge-nom">
+              Nom du document fusionné (optionnel)
+            </label>
+            <Input id="merge-nom" value={nom} onChange={(e) => setNom(e.target.value)} />
+          </div>
+          <DialogFooter>
+            <Button type="button" variant="ghost" onClick={onClose}>Annuler</Button>
+            <Button type="submit" disabled={busy}>
+              {busy && <Loader2 className="size-4 animate-spin" aria-hidden="true" />} Fusionner
+            </Button>
+          </DialogFooter>
+        </form>
       </DialogContent>
     </Dialog>
   )

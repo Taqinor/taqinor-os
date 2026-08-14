@@ -4,6 +4,9 @@ from django.utils.text import slugify
 from rest_framework import generics, permissions, viewsets, status
 from rest_framework.decorators import action
 from rest_framework.parsers import MultiPartParser
+from rest_framework.renderers import (
+    BrowsableAPIRenderer, JSONRenderer, StaticHTMLRenderer,
+)
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework_simplejwt.views import TokenObtainPairView
@@ -904,6 +907,15 @@ def _run_demo_reset(slug):
 class CompanyViewSet(viewsets.ModelViewSet):
     queryset = Company.objects.all().order_by('date_creation')
     serializer_class = CompanySerializer
+    # NTDMO33 — ``IsAdminUser`` (``request.user.is_staff``) est déjà le SEUL
+    # portail vers ce PATCH : ``mode_presentation_actif``/``tours_actifs``
+    # (Paramètres → Démo & Onboarding, NTDMO27) et reset-demo/demo-kit en
+    # dépendent tous. Un rôle Technicien/Terrain n'a JAMAIS ``is_staff=True``
+    # (seul un compte admin/démo explicitement promu, ex.
+    # ``seed_demo_company``, le porte) — pas de permission fine dédiée à
+    # ajouter ici (« jamais une nouvelle permission redondante », NTDMO33).
+    # Verrouillé par test de régression (voir
+    # test_ntdmo33_technicien_ne_peut_pas.py).
     permission_classes = [permissions.IsAdminUser]
 
     def perform_update(self, serializer):
@@ -917,7 +929,63 @@ class CompanyViewSet(viewsets.ModelViewSet):
             raise PermissionDenied(
                 "Le mode présentation n'est disponible que sur une société de "
                 "démonstration.")
+        # NTDMO39 — capture AVANT sauvegarde : le chatter (ci-dessous) doit
+        # journaliser un vrai basculement (ON→OFF ou OFF→ON), jamais une
+        # écriture sans changement réel.
+        ancien_mode_presentation = company.mode_presentation_actif
         serializer.save()
+        if ('mode_presentation_actif' in serializer.validated_data
+                and serializer.instance.mode_presentation_actif
+                != ancien_mode_presentation):
+            self._log_activity_mode_presentation(
+                serializer.instance, self.request.user)
+            # NTDMO40 — trace aussi dans le journal d'audit plateforme
+            # (``audit.AuditLog``, jamais un nouveau journal), IP/user-agent
+            # déjà capturés par le middleware d'audit en place ailleurs.
+            self._log_audit_mode_presentation(
+                serializer.instance, self.request.user)
+
+    def _log_activity_mode_presentation(self, company, user):
+        """NTDMO39 — entrée de chatter (``records.Activity``, jamais un
+        journal parallèle) sur la bascule du mode présentation (NTDMO10),
+        visible dans l'historique déjà affiché ailleurs dans l'ERP pour tout
+        objet suivi. Best-effort : ne bloque jamais la requête PATCH."""
+        try:
+            from apps.records.services import log_note
+            etat = 'activé' if company.mode_presentation_actif else 'désactivé'
+            actor = getattr(user, 'username', '') or 'système'
+            # ``company=`` EXPLICITE et obligatoire : la cible EST la société.
+            # ``log_activity`` déduit la société via ``getattr(target,
+            # 'company')``, or une ``Company`` ne porte pas ce champ — sans cet
+            # argument la ligne de chatter part avec ``company=NULL``, donc
+            # invisible dans l'historique de la société (``chatter_qs`` filtre
+            # sur ``company``) et hors de tout cloisonnement multi-tenant.
+            log_note(
+                company, user if getattr(user, 'pk', None) else None,
+                f'Mode présentation {etat} par {actor}.',
+                company=company)
+        except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+            pass
+
+    def _log_audit_mode_presentation(self, company, user):
+        """NTDMO40 — ``audit.AuditLog`` (journal plateforme), en plus du
+        chatter ci-dessus (deux surfaces distinctes déjà utilisées ailleurs
+        dans l'ERP : le chatter est l'historique métier lisible sur la fiche,
+        l'audit log est le registre de sécurité/conformité)."""
+        try:
+            from apps.audit import recorder
+            etat = 'activé' if company.mode_presentation_actif else 'désactivé'
+            # NOTE : code court à dessein — ``AuditLog.action`` est un
+            # CharField(max_length=20) (cf. audit/migrations/
+            # 0005_alter_auditlog_action.py) ; même convention que
+            # 'demo_company_reset'/'demo_company_purge' ci-dessous et dans
+            # ``authentication/tasks.py`` (codes démo bespoke, tous ≤20 car.).
+            recorder.record(
+                'demo_mode_toggle', instance=company,
+                company=company, user=user,
+                detail=f'Mode présentation {etat}.')
+        except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+            pass
 
     @action(detail=True, methods=['post'], url_path='reset-demo')
     def reset_demo(self, request, pk=None):
@@ -949,11 +1017,224 @@ class CompanyViewSet(viewsets.ModelViewSet):
         #      supprimé. Pas de notification in-app : sa cible n'existe plus.
         from apps.audit import recorder
         from django.contrib.auth.models import AnonymousUser
+        # NTDMO39 — capturé AVANT la purge : ``request.user`` devient un
+        # fantôme juste après (voir la note ci-dessus), donc son ``username``
+        # ne peut plus être lu une fois le reset lancé.
+        actor_username = getattr(request.user, 'username', '') or 'système'
+        # NTDMO40 — journal d'audit plateforme, AVANT la purge (``audit.
+        # AuditLog.company`` est SET_NULL — contrairement au chatter NTDMO39
+        # ci-dessous, cette ligne survit intacte même si `company` disparaît).
+        try:
+            recorder.record(
+                'demo_company_reset', instance=company, company=company,
+                user=request.user,
+                detail=f'Société démo "{slug}" réinitialisée par '
+                       f'{actor_username}.')
+        except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+            pass
         recorder.end_request()
         _run_demo_reset(slug)
         request.user = AnonymousUser()
+        # NTDMO39 — entrée de chatter APRÈS la purge, contre la société
+        # FRAÎCHEMENT recréée (même slug, nouveau PK) : logguer AVANT aurait
+        # visé l'ancienne ligne, elle-même supprimée par la cascade du reset
+        # (``records.Activity.company`` est CASCADE, contrairement à
+        # ``audit.AuditLog.company`` qui est SET_NULL — voir NTDMO30/40).
+        self._log_activity_reset_demo(slug, actor_username)
         return Response({'detail': 'Données de démonstration réinitialisées.',
                          'slug': slug})
+
+    def _log_activity_reset_demo(self, slug, actor_username):
+        """NTDMO39 — entrée de chatter (``records.Activity``) sur le reset
+        démo (NTDMO7), visible dans l'historique de la société. Best-effort :
+        ne fait jamais échouer la réponse déjà envoyée à l'appelant."""
+        try:
+            from apps.records.services import log_note
+            fraiche = Company.objects.filter(slug=slug).first()
+            if fraiche is None:
+                return
+            # ``company=fraiche`` EXPLICITE : même trou que la bascule du mode
+            # présentation ci-dessus — la cible est une ``Company``, qui ne
+            # porte pas de champ ``company``, donc sans cet argument la note
+            # part avec ``company=NULL`` (hors cloisonnement, invisible dans
+            # l'historique de la société recréée).
+            log_note(
+                fraiche, None,
+                f'Données de démonstration réinitialisées par '
+                f'{actor_username}.',
+                company=fraiche)
+        except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+            pass
+
+    # ── NTDMO22/23/24 — kit de démonstration (scénario, pas un devis client) ─
+    def _demo_kit_contexte(self, company):
+        """Construit le contexte du kit de démo : les 6 écrans money-path
+        (NTDMO14) + un enregistrement/chiffre parlant par écran, tirés des
+        VRAIES données démo de ``company`` (jamais de valeur inventée)."""
+        from apps.onboarding.selectors import catalogue_ecrans_money_path
+        from apps.crm.models import Lead
+        from apps.ventes.models import Devis, Facture
+        from apps.installations.models import Installation
+        from apps.stock.models import Produit
+
+        ecrans = catalogue_ecrans_money_path()
+        lignes = []
+        for ecran in ecrans:
+            key = ecran['tour_key']
+            compte = 'demo_admin_full'
+            exemples, chiffre = [], ''
+            if key == 'devis':
+                qs = Devis.objects.filter(
+                    company=company, statut=Devis.Statut.ACCEPTE
+                ).order_by('-date_creation')[:2]
+                exemples = [f'{d.reference} — {d.client}' for d in qs]
+                chiffre = f'{qs.count()} devis signés'
+            elif key == 'leads':
+                qs = Lead.objects.filter(company=company, perdu=False)[:2]
+                exemples = [f'{ld.prenom} {ld.nom} ({ld.ville})' for ld in qs]
+                chiffre = (
+                    f'{Lead.objects.filter(company=company).count()} leads '
+                    'au total')
+            elif key == 'factures':
+                qs = Facture.objects.filter(
+                    company=company, statut='emise').order_by(
+                    'date_echeance')[:2]
+                exemples = [f.reference for f in qs]
+                chiffre = f'{qs.count()} factures en retard à relancer'
+            elif key == 'chantiers':
+                qs = Installation.objects.filter(company=company)[:2]
+                exemples = [str(c) for c in qs]
+                chiffre = f'{qs.count()} chantiers en cours'
+            elif key == 'stock':
+                qs = Produit.objects.filter(company=company)[:2]
+                exemples = [p.nom for p in qs]
+                chiffre = f'{Produit.objects.filter(company=company).count()} produits au catalogue'
+            elif key == 'dashboard':
+                exemples = ['Vue synthétique du mois en cours']
+                chiffre = 'KPI ventes/chantiers/factures du tableau de bord'
+            lignes.append({
+                'tour_key': key, 'ecran_cible': ecran['ecran_cible'],
+                'titre': ecran['titre'], 'compte': compte,
+                'exemples': exemples, 'chiffre': chiffre,
+            })
+        return lignes
+
+    def _demo_kit_html(self, company, lignes):
+        from html import escape
+        rows = ''.join(
+            '<tr><td>{titre}</td><td>{ecran}</td><td>{compte}</td>'
+            '<td>{exemples}</td><td>{chiffre}</td></tr>'.format(
+                titre=escape(li['titre']), ecran=escape(li['ecran_cible']),
+                compte=escape(li['compte']),
+                exemples=escape(' ; '.join(li['exemples']) or '—'),
+                chiffre=escape(li['chiffre'] or '—'))
+            for li in lignes)
+        return (
+            '<html><head><meta charset="utf-8">'
+            '<title>Scénario de démo — {nom}</title>'
+            '<style>body{{font-family:sans-serif;font-size:13px}}'
+            'table{{width:100%;border-collapse:collapse}}'
+            'td,th{{border:1px solid #ccc;padding:6px;text-align:left}}'
+            '@media print{{@page{{size:A4;margin:14mm}}}}</style></head>'
+            '<body><h1>Scénario de démonstration — {nom}</h1>'
+            '<p>Un tableau par écran money-path (compte à utiliser, '
+            'enregistrements les plus parlants, chiffre clé à l\'oral).</p>'
+            '<table><thead><tr><th>Écran</th><th>Route</th><th>Compte</th>'
+            '<th>Enregistrements</th><th>Chiffre clé</th></tr></thead>'
+            '<tbody>{rows}</tbody></table>'
+            '<script>window.onload=function(){{}};</script>'
+            '</body></html>'
+        ).format(nom=escape(company.nom), rows=rows)
+
+    @action(detail=True, methods=['get'], url_path='demo-kit',
+            renderer_classes=[JSONRenderer, BrowsableAPIRenderer,
+                              StaticHTMLRenderer])
+    def demo_kit(self, request, pk=None):
+        """NTDMO22/23 — guide du scénario de démo pour préparer une démo
+        prospect sans improviser. ``?format=html`` (NTDMO23) rend une page
+        HTML imprimable (moteur de templates interne — jamais WeasyPrint,
+        jamais `/proposal`, rule #4) ; par défaut un PDF léger (NTDMO22, via
+        le service PDF interne PARTAGÉ ``core.pdf`` — jamais le moteur
+        premium de devis). Réservé aux sociétés de démonstration.
+
+        ``renderer_classes`` déclare explicitement ``StaticHTMLRenderer``
+        (format ``html``) : sans lui, la négociation de contenu DRF lève un
+        Http404 dès que ``?format=html`` est présent (aucun renderer par
+        défaut n'a ce format), AVANT même que ce corps de vue ne s'exécute.
+        La vue continue de construire sa réponse elle-même via
+        ``HttpResponse`` — ce renderer ne fait que satisfaire la
+        négociation, il ne rend rien."""
+        company = self.get_object()
+        if not company.est_demo:
+            return Response(
+                {'detail': "Le kit de démonstration n'est disponible que sur "
+                           'une société de démonstration.'},
+                status=status.HTTP_403_FORBIDDEN)
+        lignes = self._demo_kit_contexte(company)
+        if request.query_params.get('format') == 'html':
+            html = self._demo_kit_html(company, lignes)
+            return HttpResponse(html, content_type='text/html; charset=utf-8')
+        from core.pdf import render_pdf
+        pdf_bytes = render_pdf(html=self._demo_kit_html(company, lignes))
+        response = HttpResponse(pdf_bytes, content_type='application/pdf')
+        response['Content-Disposition'] = (
+            'inline; filename="kit-demo.pdf"')
+        return response
+
+    def demo_kit_export_xlsx(self, request, pk=None):
+        """NTDMO24 — journal des 12 mois de démo en 4 onglets (Leads, Devis,
+        Chantiers, Factures), pour vérification hors-ligne avant un
+        rendez-vous. Réservé aux sociétés de démonstration.
+
+        PAS de ``@action`` : le routeur DRF ajoute TOUJOURS un slash final
+        après ``url_path`` (même un ``url_path`` contenant lui-même un
+        ``/``), donc ``.../export.xlsx`` (sans slash, l'URL attendue côté
+        client) aurait toujours répondu 301 (APPEND_SLASH) vers
+        ``.../export.xlsx/``. Montée en ``path()`` explicite dans
+        ``urls.py`` à la place, avec la barre oblique EXACTE attendue."""
+        from openpyxl import Workbook
+        from openpyxl.styles import Font
+        from apps.records.xlsx import XLSX_CONTENT_TYPE, coerce_cell
+        from apps.crm.models import Lead
+        from apps.ventes.models import Devis, Facture
+        from apps.installations.models import Installation
+
+        company = self.get_object()
+        if not company.est_demo:
+            return Response(
+                {'detail': "Le kit de démonstration n'est disponible que sur "
+                           'une société de démonstration.'},
+                status=status.HTTP_403_FORBIDDEN)
+
+        feuilles = [
+            ('Leads', ('Nom', 'Prénom', 'Ville', 'Étape', 'Créé le'), [
+                (ld.nom, ld.prenom, ld.ville, ld.stage, ld.date_creation)
+                for ld in Lead.objects.filter(company=company)]),
+            ('Devis', ('Référence', 'Client', 'Statut', 'Créé le'), [
+                (d.reference, str(d.client), d.statut, d.date_creation)
+                for d in Devis.objects.filter(company=company)]),
+            ('Chantiers', ('Référence', 'Statut', 'Créé le'), [
+                (getattr(c, 'reference', c.pk), c.statut, c.date_creation)
+                for c in Installation.objects.filter(company=company)]),
+            ('Factures', ('Référence', 'Statut', 'Échéance'), [
+                (f.reference, f.statut, f.date_echeance)
+                for f in Facture.objects.filter(company=company)]),
+        ]
+        wb = Workbook()
+        wb.remove(wb.active)
+        bold = Font(bold=True)
+        for titre, headers, rows in feuilles:
+            ws = wb.create_sheet(title=titre[:31])
+            ws.append(list(headers))
+            for cell in ws[1]:
+                cell.font = bold
+            for row in rows:
+                ws.append([coerce_cell(v) for v in row])
+        response = HttpResponse(content_type=XLSX_CONTENT_TYPE)
+        response['Content-Disposition'] = (
+            'attachment; filename="journal-demo-12-mois.xlsx"')
+        wb.save(response)
+        return response
 
 
 # ── Double authentification (2FA TOTP) — opt-in par utilisateur (N96) ──────

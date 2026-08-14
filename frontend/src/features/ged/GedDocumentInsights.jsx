@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
-import { Clock, ShieldCheck, Download, Star, Plus, Trash2 } from 'lucide-react'
+import { Clock, ShieldCheck, MessageSquare, Download, Star, Plus, Trash2 } from 'lucide-react'
 import gedApi from '../../api/gedApi'
 import rolesApi from '../../api/rolesApi'
+import ChatterWidget from '../../components/ChatterWidget'
 import {
   Sheet, SheetContent, SheetHeader, SheetTitle,
   Button, Badge, Spinner, EmptyState, Tabs, TabsList, TabsTrigger, TabsContent,
@@ -130,6 +131,7 @@ export default function GedDocumentInsights({ document, onClose }) {
         <Tabs defaultValue="timeline" className="mt-3">
           <TabsList>
             <TabsTrigger value="timeline"><Clock size={14} /> Timeline</TabsTrigger>
+            <TabsTrigger value="chatter"><MessageSquare size={14} /> Notes</TabsTrigger>
             <TabsTrigger value="acl"><ShieldCheck size={14} /> Accès</TabsTrigger>
           </TabsList>
 
@@ -154,6 +156,14 @@ export default function GedDocumentInsights({ document, onClose }) {
                 ))}
               </ul>
             )}
+          </TabsContent>
+
+          {/* XGED15 — chatter documentaire générique (notes + @mentions),
+              réutilise le composant FG7 déjà branché sur kb/veille_ao (aucun
+              système parallèle) ; le backend expose `('ged', 'document')`
+              dans `records.ALLOWED_TARGETS` (voir apps/ged/platform.py). */}
+          <TabsContent value="chatter">
+            <ChatterWidget model="ged.document" id={document.id} />
           </TabsContent>
 
           <TabsContent value="acl">

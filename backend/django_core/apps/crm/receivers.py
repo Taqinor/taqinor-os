@@ -14,8 +14,9 @@ from django.db.models.signals import post_save, pre_save
 from django.dispatch import receiver
 
 from core.events import (
-    ao_depose, ao_gagne, appointment_effectue, devis_accepted, devis_refused,
-    devis_sent, lead_stage_changed, ticket_resolu,
+    ao_depose, ao_gagne, appointment_effectue, deal_commission_due,
+    devis_accepted, devis_refused, devis_sent, layout_finalise,
+    lead_stage_changed, ticket_resolu,
 )
 
 from . import stages
@@ -44,6 +45,42 @@ def _avancer_stage_on_devis_accepted(sender, devis, user, ancien_statut,
     avancer_stage_pour_devis(devis, ancien_statut, devis.statut, user)
 
 
+@receiver(devis_accepted, dispatch_uid="crm_deal_commission_on_devis_accepted")
+def _calculer_commission_deal_on_devis_accepted(sender, devis, user,
+                                                ancien_statut, **kwargs):
+    """NTCRM22 — À l'acceptation d'un devis lié à un ``DealEnregistre``
+    APPROUVE, calcule la commission due (taux × montant HT accepté), la pose
+    sur ``montant_commission_du`` et passe le deal à À_PAYER. Émet
+    ``deal_commission_due`` (core.events) pour un futur consommateur compta —
+    jamais d'écriture comptable automatique ici (frontière compta respectée).
+    """
+    from .models import DealEnregistre
+
+    if devis.lead_id is None:
+        return
+    deal = (DealEnregistre.objects
+            .filter(lead_id=devis.lead_id, statut=DealEnregistre.Statut.APPROUVE)
+            .select_related('apporteur')
+            .first())
+    if deal is None:
+        return
+    taux = deal.apporteur.taux_commission_pct
+    if not taux:
+        return
+    try:
+        montant = (devis.total_ht * taux) / 100
+    except Exception:  # noqa: BLE001 — jamais bloquer l'acceptation du devis
+        logger.exception('NTCRM22 — échec calcul commission deal %s', deal.pk)
+        return
+    deal.montant_commission_du = montant
+    deal.statut = DealEnregistre.Statut.A_PAYER
+    deal.save(update_fields=['montant_commission_du', 'statut'])
+
+    deal_commission_due.send(
+        sender='crm.receivers', company=devis.company, deal_id=deal.pk,
+        apporteur_id=deal.apporteur_id, montant=montant)
+
+
 @receiver(devis_sent, dispatch_uid="crm_advance_stage_on_devis_sent")
 def _avancer_stage_on_devis_sent(sender, devis, user, ancien_statut,
                                  **kwargs):
@@ -54,6 +91,47 @@ def _avancer_stage_on_devis_sent(sender, devis, user, ancien_statut,
     est sûre et idempotente (un lead déjà ≥ QUOTE_SENT ne bouge pas).
     """
     avancer_stage_pour_devis(devis, ancien_statut, devis.statut, user)
+
+
+@receiver(layout_finalise, dispatch_uid="crm_note_chatter_on_layout_finalise")
+def _noter_conception_on_layout_finalise(sender, devis, user=None, **kwargs):
+    """PV79 — pose une note au chatter du lead quand la toiture est finalisée.
+
+    « Conception 3D finalisée — X kWc » : la commerciale voit dans
+    l'historique du lead que la toiture a été dessinée (ou redessinée), sans
+    avoir à ouvrir le devis. Même câblage que ``devis_sent`` — c'est le BUS qui
+    porte l'information, ``ventes`` n'importe jamais ``crm``.
+
+    No-op quand le devis n'a pas de lead (un devis client direct n'a pas de
+    chatter de lead à alimenter). La puissance est lue par le SÉLECTEUR
+    ``ventes`` (PV78) : jamais un import de ses modèles ; absente, la note se
+    contente de dire que la conception est finalisée — jamais un « 0 kWc »
+    fabriqué.
+    """
+    if not getattr(devis, 'lead_id', None):
+        return
+    from .models import Lead
+    lead = Lead.objects.filter(
+        pk=devis.lead_id, company_id=getattr(devis, 'company_id', None)).first()
+    if lead is None:
+        return
+
+    kwc = None
+    try:
+        from .selectors import conception_3d_du_lead
+        kwc = (conception_3d_du_lead(lead) or {}).get('kwc')
+    except Exception:  # noqa: BLE001 — une puissance illisible ne bloque rien
+        kwc = None
+    if kwc:
+        corps = ('Conception 3D finalisée — %s kWc'
+                 % ('%.2f' % float(kwc)).rstrip('0').rstrip('.').replace(
+                     '.', ','))
+    else:
+        corps = 'Conception 3D finalisée'
+
+    LeadActivity.objects.create(
+        company=lead.company, lead=lead, kind=LeadActivity.Kind.NOTE,
+        body=corps, user=user)
 
 
 @receiver(devis_refused, dispatch_uid="crm_mark_lead_perdu_on_devis_refused")

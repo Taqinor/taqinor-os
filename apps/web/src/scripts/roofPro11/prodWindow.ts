@@ -6,6 +6,11 @@
  *
  * GARDE-FOU : ce module n'interroge QUE /api/roof-production (estimation de
  * production) ; il ne poste AUCUN lead (ni route lead, ni route de simulation).
+ *
+ * PV75 — couche d'AFFICHAGE bancable (P50/P90 + ratio de performance + cascade des
+ * pertes) optionnelle, en pur AJOUT sous le chiffre de tête : lue depuis
+ * `ctx.opts.bankable` (jamais calculée/appelée ici — la page hôte l'injecte au boot
+ * après l'avoir lue elle-même sur le devis). Absent → rendu strictement inchangé.
  */
 import {
   yearSeries,
@@ -65,6 +70,50 @@ export function createProdWindow(ctx: Ctx, dom: ProdWindowDom, deps: ProdWindowD
 
   const prodPlaneKeyOf = (p: ProdPlaneKey): string =>
     `${p.lat.toFixed(4)},${p.lon.toFixed(4)},${Math.round(p.tiltDeg)},${Math.round(p.aspect)},${p.mountingplace}`;
+
+  // PV75 — éléments DYNAMIQUES (ligne P50/P90 + mini cascade des pertes), créés
+  // UNIQUEMENT si `ctx.opts.bankable` est fourni par la page hôte. Zéro modification
+  // du DOM astro (`toiture-3d-pro-11.astro`) : quand `bankable` est absent, ces
+  // éléments ne sont jamais créés → rendu de la fenêtre STRICTEMENT INCHANGÉ (golden).
+  let bankableLineEl: HTMLElement | null = null;
+  let lossCascadeEl: HTMLElement | null = null;
+
+  /** Crée (une seule fois, paresseusement) les deux éléments bancables, insérés
+   *  juste après le chiffre de tête et juste après le graphe. Idempotent. */
+  function ensureBankableEls(): void {
+    const { prodHeadlineEl, prodGraphEl } = dom;
+    if (!bankableLineEl && prodHeadlineEl) {
+      bankableLineEl = document.createElement('p');
+      bankableLineEl.className = 'mt-1 text-xs text-lune-faint';
+      bankableLineEl.dataset.prodBankable = 'true';
+      prodHeadlineEl.insertAdjacentElement('afterend', bankableLineEl);
+    }
+    const graphWrap = prodGraphEl?.parentElement ?? null;
+    if (!lossCascadeEl && graphWrap) {
+      lossCascadeEl = document.createElement('div');
+      lossCascadeEl.className = 'mt-2';
+      lossCascadeEl.dataset.prodLossCascade = 'true';
+      graphWrap.insertAdjacentElement('afterend', lossCascadeEl);
+    }
+  }
+
+  /** Rend la ligne compacte « ~P50 kWh/an (P50) · P90 … · PR … » + la mini cascade
+   *  des pertes, SEULEMENT si la page hôte a fourni un payload bancable (PV75). Ces
+   *  chiffres sont ANNUELS (étude bancable) — affichés indépendamment du scope
+   *  année/mois/jour de la fenêtre, en complément du chiffre de tête scopé. */
+  function renderBankable(): void {
+    const bankable = ctx.opts.bankable;
+    if (!bankable) return;
+    ensureBankableEls();
+    if (bankableLineEl) {
+      const pr = Number.isFinite(bankable.performance_ratio) ? bankable.performance_ratio : 0;
+      bankableLineEl.textContent =
+        `${fmtKwh(bankable.p50_kwh, true)}/an (P50) · P90 ${fmtKwh(bankable.p90_kwh)} · PR ${Math.round(pr * 100)} %`;
+    }
+    if (lossCascadeEl) {
+      lossCascadeEl.innerHTML = graphs.renderLossCascade(bankable.loss_breakdown || {});
+    }
+  }
 
   /** Rend la fenêtre de production complète (toggle, pickers, headline, graphe, économies). */
   function renderProdWindow() {
@@ -137,6 +186,9 @@ export function createProdWindow(ctx: Ctx, dom: ProdWindowDom, deps: ProdWindowD
     if (prodGraphEl) prodGraphEl.innerHTML = graph;
     if (prodSourceEl) prodSourceEl.textContent = `Source : ${prodSourceLabel(ctx.prodSource)}`;
     if (prodSavingsEl) prodSavingsEl.textContent = savingsTxt;
+    // PV75 — P50/P90/PR + cascade des pertes, SEULEMENT si la page hôte a injecté un
+    // payload bancable. Aucun appel réseau ici : lecture pure de `ctx.opts.bankable`.
+    renderBankable();
     // W68 — la fenêtre « Affiner ma consommation » suit le même plan/production.
     renderConsumption();
   }

@@ -1,3 +1,4 @@
+from drf_spectacular.utils import extend_schema_field, inline_serializer
 from rest_framework import serializers
 from rest_framework.validators import UniqueTogetherValidator
 from .models import (
@@ -5,7 +6,24 @@ from .models import (
     Avoir, LigneAvoir, DevisActivity, DevisPreset, RoofLayout,
     RemiseEncaissement, LigneRemiseEncaissement,
     MandatPaiement, ListePrix, LignePrixListe, RegleListePrix,
+    AvenantDevis,
 )
+
+
+def _peut_voir_marge_cpq(user):
+    """NTCPQ36 — un utilisateur voit-il ``marge_sous_seuil`` (NTCPQ6) ?
+
+    Permission granulaire ``cpq_marge_voir`` (catalogue ``roles.Role``),
+    jamais un simple check de rôle nommé en dur. Même patron de repli que
+    ``CustomUser.can_view_buy_prices`` : un compte SANS rôle fin (légacy)
+    garde le comportement historique (visible) — on ne retire jamais un
+    accès existant à un compte hérité."""
+    if getattr(user, 'is_superuser', False):
+        return True
+    role = getattr(user, 'role', None)
+    if role is None:
+        return True  # compte légacy sans rôle fin → comportement historique
+    return 'cpq_marge_voir' in (role.permissions or [])
 
 
 def _fallback_taux_tva(company, designation):
@@ -432,6 +450,25 @@ class DevisSerializer(serializers.ModelSerializer):
             return str(val) if val is not None else None
         return None
 
+    # NTCPQ21 — badge « configuration validée » : champ CALCULÉ (jamais
+    # stocké) exécutant les règles produit (NTCPQ2) + les contraintes de
+    # compatibilité (NTCPQ1). Rendu uniquement sur le DÉTAIL d'un devis (la
+    # clé est retirée en mode liste pour ne pas payer N évaluations).
+    configuration = serializers.SerializerMethodField()
+
+    @extend_schema_field(inline_serializer('DevisConfigurationEtat', {
+        'configuration_valide': serializers.BooleanField(),
+        'bloquant': serializers.BooleanField(),
+        # Les entrées mélangent deux formes (violation de compatibilité vs
+        # violation de règle produit, cf. `cpq.selectors.
+        # etat_configuration_devis`) — décrites en DictField plutôt que
+        # figées dans une forme unique.
+        'violations': serializers.ListField(child=serializers.DictField()),
+    }))
+    def get_configuration(self, obj):
+        from apps.cpq.selectors import etat_configuration_devis
+        return etat_configuration_devis(obj)
+
     def to_representation(self, instance):
         """QX23be / RULE #4 — the ``marge_snapshot`` KEY itself must never reach
         a client-facing / context-less path (a structural prix_achat/marge
@@ -448,6 +485,15 @@ class DevisSerializer(serializers.ModelSerializer):
             # NTCPQ6 — la clé marge_sous_seuil (dérivée de prix_achat) ne doit
             # jamais fuiter hors d'un rendu interne authentifié (règle #4).
             data.pop('marge_sous_seuil', None)
+        elif not _peut_voir_marge_cpq(user):
+            # NTCPQ36 — un utilisateur authentifié SANS la permission
+            # granulaire cpq_marge_voir ne reçoit JAMAIS le champ, même en
+            # rendu interne (même patron que marge_sous_seuil hors auth).
+            data.pop('marge_sous_seuil', None)
+        # NTCPQ21 — l'état de configuration coûte deux évaluations par devis :
+        # on ne le rend QUE sur un détail (hors liste) et pour un rendu interne.
+        if self.parent is not None or not is_auth:
+            data.pop('configuration', None)
         return data
 
     class Meta:
@@ -459,7 +505,29 @@ class DevisSerializer(serializers.ModelSerializer):
         # jamais exposé côté client/PDF).
         read_only_fields = ['reference', 'created_by', 'fichier_pdf',
                             'date_creation', 'prix_par_kwc',
+                            # NTCPQ11/13 — snapshot de clauses figé à l'envoi
+                            # et chaîne de renouvellement : posés côté serveur
+                            # (services), jamais acceptés du corps.
+                            'clauses_appliquees', 'devis_origine',
+                            'numero_renouvellement',
+                            # NTCPQ16 — lien de variante posé par le moteur.
+                            'variante_de', 'variante_tier',
                             'updated_at', 'updated_by']  # VX98 — server-side only
+
+
+class AvenantDevisSerializer(serializers.ModelSerializer):
+    """NTCPQ14 — Avenant d'un devis accepté (lecture seule côté API : la
+    création passe par le service ``cpq.services.appliquer_avenant_devis``,
+    qui applique le diff et arbitre le redéclenchement d'approbation)."""
+    auteur_nom = serializers.CharField(
+        source='auteur.username', read_only=True, default=None)
+
+    class Meta:
+        model = AvenantDevis
+        fields = ['id', 'devis', 'lignes_ajoutees', 'lignes_retirees',
+                  'motif', 'taux_remise_global', 'approbation_requise',
+                  'auteur', 'auteur_nom', 'date_creation']
+        read_only_fields = fields
 
 
 class DevisWriteSerializer(serializers.ModelSerializer):
@@ -477,7 +545,11 @@ class DevisWriteSerializer(serializers.ModelSerializer):
         # SCA47 — prix_par_kwc est dérivé/gelé côté serveur (write-once), jamais
         # accepté du corps de requête.
         read_only_fields = ['created_by', 'date_creation', 'company',
-                            'prix_par_kwc']
+                            'prix_par_kwc',
+                            # NTCPQ11/13 — posés côté serveur uniquement.
+                            'clauses_appliquees', 'devis_origine',
+                            'numero_renouvellement',
+                            'variante_de', 'variante_tier']
         extra_kwargs = {'client': {'required': False}}
 
 

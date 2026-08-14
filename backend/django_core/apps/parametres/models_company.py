@@ -691,6 +691,21 @@ class CompanyProfile(models.Model):
                   "bloque jamais la création d'un compte.",
     )
 
+    # ── NTDMO20 — bannière d'expiration d'essai (fondation, additive) ──────
+    # Date nullable, JAMAIS peuplée automatiquement — assignation réservée au
+    # founder (admin Django / Paramètres). Vide (défaut, comportement de
+    # TOUTE société existante) = aucun changement. Renseignée ET dépassée =
+    # bannière non-bloquante affichée par le frontend ; aucune logique de
+    # facturation/paiement liée (hors-scope, gated future).
+    essai_expire_le = models.DateField(
+        null=True, blank=True,
+        verbose_name="Date d'expiration de l'essai",
+        help_text="Vide = aucun essai en cours (défaut). Renseignée et "
+                  'dépassée : une bannière non-bloquante « Votre essai a '
+                  'expiré » est affichée sur toutes les pages, sans jamais '
+                  "bloquer d'action. Assignation réservée au founder.",
+    )
+
     class Meta:
         verbose_name = 'Profil entreprise'
 

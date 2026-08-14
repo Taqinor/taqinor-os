@@ -44,6 +44,14 @@ class OnboardingChecklistItem(TenantModel):
     # Vide = item coché manuellement uniquement.
     event_key = models.CharField(max_length=60, blank=True, default='')
     actif = models.BooleanField(default=True)
+    # NTDMO28 — masquage PAR SOCIÉTÉ d'un item de catalogue GLOBAL non
+    # pertinent pour son activité (ex. masquer « Configurer le pompage
+    # agricole » pour une société 100 % résidentielle). Table de jonction
+    # additive : ne supprime JAMAIS l'item du catalogue global, il reste
+    # visible pour toutes les AUTRES sociétés qui ne l'ont pas masqué.
+    masque_pour = models.ManyToManyField(
+        'authentication.Company', blank=True,
+        related_name='onboarding_items_masques')
 
     class Meta:
         ordering = ['ordre', 'key']
@@ -89,3 +97,67 @@ class OnboardingProgress(TenantModel):
     def __str__(self):
         etat = 'fait' if self.complete_le else 'à faire'
         return f'{self.user_id} · {self.item.key} ({etat})'
+
+
+# NTDMO14 — catalogue statique des visites guidées (« product tours ») +
+# suivi de complétion par utilisateur. Distinct de la checklist « Premiers
+# pas » ci-dessus (jalons métier auto-cochés) : un tour est une séquence
+# d'étapes visuelles (spotlight sur un élément d'écran) jouée UNE fois par
+# écran cible pour un utilisateur donné.
+class ProductTourStep(TenantModel):
+    """Étape d'un tour produit (catalogue, généralement global).
+
+    Un tour = toutes les étapes partageant le même ``tour_key``, ordonnées
+    par ``ordre``. ``company`` NULL = étape de catalogue GLOBALE (partagée
+    par toutes les sociétés) — même divergence volontaire du socle que
+    ``OnboardingChecklistItem`` ci-dessus."""
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: purge tenant
+        null=True, blank=True, related_name='onboarding_tour_steps')
+    # Identifiant stable du tour (un par écran money-path ciblé), ex. 'devis',
+    # 'leads', 'factures', 'chantiers', 'stock', 'dashboard'.
+    tour_key = models.SlugField(max_length=60)
+    # Ordre d'affichage de l'étape DANS son tour.
+    ordre = models.PositiveIntegerField(default=10)
+    # Sélecteur CSS de l'élément à mettre en valeur (spotlight) ; vide = étape
+    # centrée sans cible (ex. écran d'introduction du tour).
+    selecteur = models.CharField(max_length=255, blank=True, default='')
+    titre = models.CharField(max_length=200)
+    texte = models.TextField()
+    # Route frontend de l'écran ciblé par ce tour, ex. '/ventes/devis/nouveau'.
+    ecran_cible = models.CharField(max_length=255)
+
+    class Meta:
+        ordering = ['tour_key', 'ordre']
+        unique_together = [('tour_key', 'ordre')]
+        verbose_name = 'Étape de visite guidée'
+        verbose_name_plural = 'Étapes de visite guidée'
+
+    def __str__(self):
+        return f'{self.tour_key}#{self.ordre} — {self.titre}'
+
+
+class TourProgress(TenantModel):
+    """Suivi PAR UTILISATEUR de la complétion d'un tour (company-scopé).
+
+    ``vu_le`` NULL = jamais montré/terminé ; non-NULL = terminé OU fermé
+    (« Passer »/Échap) — dans les deux cas le tour ne doit plus jamais se
+    redéclencher automatiquement (NTDMO15), seul un « Revoir » explicite
+    (NTDMO16) le remet à zéro."""
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: purge tenant
+        related_name='onboarding_tour_progress')
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE,  # on_delete: lié à l'utilisateur
+        related_name='onboarding_tour_progress')
+    tour_key = models.SlugField(max_length=60)
+    vu_le = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        unique_together = [('user', 'tour_key')]
+        verbose_name = 'Avancement visite guidée'
+        verbose_name_plural = 'Avancements visite guidée'
+
+    def __str__(self):
+        etat = 'vu' if self.vu_le else 'à faire'
+        return f'{self.user_id} · {self.tour_key} ({etat})'

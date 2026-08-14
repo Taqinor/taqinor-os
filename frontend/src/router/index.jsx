@@ -43,6 +43,8 @@ const Login = lazy(() => import('../pages/Login'))
 // `POST /auth/register-company/` existait deja ; il n'avait AUCUNE porte.
 const RegisterCompany = lazy(() => import('../pages/RegisterCompany'))
 const Dashboard = lazy(() => import('../pages/Dashboard').then(m => ({ default: m.Component })))
+// NTDMO26 — assistant first-run « société réelle » (voir la route ci-dessous).
+const DemarrageWizard = lazy(() => import('../pages/onboarding/DemarrageWizard'))
 // ODY2 — Menu d'accueil plein écran (`/apps`) : la porte d'entrée du paradigme
 // « j'ouvre → MES apps ». Grille des apps installées ∩ autorisées (ODY1).
 const HomeMenu = lazy(() => import('../pages/home/HomeMenu'))
@@ -60,6 +62,8 @@ const AgentActions = lazy(() => import('../pages/ia/AgentActions'))
 const UIShowcase = lazy(() => import('../pages/ui/UIShowcase'))
 // XSAL17 — page publique de réservation de visite (placeholder {lien_rdv}).
 const PublicBookingPage = lazy(() => import('../pages/crm/PublicBookingPage'))
+// NTCRM18 — page publique de la salle de vente digitale (sans login).
+const PublicSalleVentePage = lazy(() => import('../pages/crm/salle-vente/PublicSalleVentePage'))
 // XCTR14 — portail client public « Mes contrats » (token, sans login).
 const PortailContratsPage = lazy(() => import('../features/contrats/PortailContratsPage'))
 // XGED1/XGED2 — cérémonie de signature électronique publique (sans login).
@@ -335,6 +339,8 @@ const router = createBrowserRouter([
   { path: '/ui', element: <RouteErrorBoundary><Suspense fallback={<Fallback />}><UIShowcase /></Suspense></RouteErrorBoundary> },
   // XSAL17 — réservation de visite publique (sans login, sans layout ERP).
   { path: '/rdv/:token', element: <RouteErrorBoundary><Suspense fallback={<Fallback />}><PublicBookingPage /></Suspense></RouteErrorBoundary> },
+  // NTCRM18 — salle de vente digitale publique (sans login, sans layout ERP).
+  { path: '/salle-vente/:token', element: <RouteErrorBoundary><Suspense fallback={<Fallback />}><PublicSalleVentePage /></Suspense></RouteErrorBoundary> },
   // XCTR14 — portail client public « Mes contrats » (sans login, sans layout ERP).
   { path: '/portail-contrats/:token', element: <RouteErrorBoundary><Suspense fallback={<Fallback />}><PortailContratsPage /></Suspense></RouteErrorBoundary> },
   // XGED1 — cérémonie de signature publique (mono-signataire), sans login.
@@ -397,6 +403,10 @@ const router = createBrowserRouter([
   // à la place du renvoi silencieux vers /dashboard.
   { path: '/app-non-activee', loader: authLoader, element: <WithLayout><AppNotInstalled /></WithLayout> },
   { path: '/dashboard', loader: authLoader, element: <WithLayout><Dashboard /></WithLayout> },
+  // NTDMO26 — assistant first-run « Configurez votre société en 5 minutes »
+  // (société RÉELLE, jamais démo). Auto-déclenché depuis PremiersPasWidget.jsx
+  // (lien programmatique, jamais un item de menu statique).
+  { path: '/onboarding/demarrage', loader: authLoader, element: <WithLayout><DemarrageWizard /></WithLayout> },
   { path: '/messages', loader: authLoader, element: <WithLayout><ChatPage /></WithLayout> },
   // VX247(d) — glossaire métier (les HelpTip VX47 y pointent au lieu de dupliquer).
   { path: '/aide/lexique', loader: authLoader, element: <WithLayout><LexiquePage /></WithLayout> },
@@ -409,6 +419,10 @@ const router = createBrowserRouter([
   // Non-migrables (errorElement dédié, non exprimable par buildModuleRoutes) :
   // QG12 — Design 3D d'un devis en LECTURE SEULE, plein écran, ouvrable dans une fenêtre.
   { path: '/ventes/devis/:id/3d', loader: authLoader, errorElement: <RouteErrorBoundary />, element: <WithLayout><RoofViewerPage /></WithLayout> },
+  // PV20 — Conception 3D SUR un devis existant : même écran, mode « devis »
+  // (boot en UN SEUL appel sur design-context, hydraté par le calepinage et la
+  // cible DÉJÀ vendus). Le mode lead ci-dessous reste strictement inchangé.
+  { path: '/ventes/devis/:id/design', loader: authLoader, errorElement: <RouteErrorBoundary />, element: <WithLayout><ToitureDesign mode="devis" /></WithLayout> },
   // Conception 3D de la toiture (héberge le builder roofPro11 du site, en ERP).
   { path: '/devis-design/:id', loader: authLoader, errorElement: <RouteErrorBoundary />, element: <WithLayout><ToitureDesign /></WithLayout> },
 

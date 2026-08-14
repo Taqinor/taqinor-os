@@ -137,6 +137,57 @@ def devis_value_for_lead(lead_id, company):
     return {'value': float(devis.total_ttc), 'currency': devis.devise or 'MAD'}
 
 
+def conception_pour_lead(lead, company):
+    """PV78 — la conception 3D la plus RÉCENTE d'un lead, en lecture seule.
+
+    Rend TOUJOURS le même dict ``{kwc, image_url}`` — jamais une clé absente,
+    jamais un ``None`` global : une fiche lead sans conception affiche deux
+    valeurs vides, elle ne plante pas sur ``undefined``.
+
+    * ``kwc`` — la puissance crête RÉELLEMENT calepinée, lue dans le layout du
+      devis (``roof_layout['result']['kwc']``), à défaut la puissance de
+      l'étude. C'est le chiffre de la TOITURE, pas une cible commerciale ;
+    * ``image_url`` — URL PRÉ-SIGNÉE (lecture seule, expirante) du rendu 3D
+      stocké, via le helper existant ``utils.pdf.roof_image_signed_url``.
+      Jamais une URL de bucket publique.
+
+    Company-scopée : seul un devis de ``company`` est regardé (un lead d'une
+    autre société ne fait rien fuiter). Point d'entrée cross-app pour
+    ``apps.crm`` — jamais un import des modèles ventes de son côté.
+    """
+    vide = {'kwc': None, 'image_url': None}
+    lead_id = getattr(lead, 'pk', None) or getattr(lead, 'id', None)
+    if not lead_id or company is None:
+        return vide
+    from .models import Devis
+    devis = (Devis.objects
+             .filter(lead_id=lead_id, company=company,
+                     roof_layout__isnull=False)
+             .order_by('-date_creation', '-id')
+             .first())
+    if devis is None:
+        return vide
+
+    layout = devis.roof_layout if isinstance(devis.roof_layout, dict) else {}
+    resultat = layout.get('result') if isinstance(layout, dict) else None
+    kwc = (resultat or {}).get('kwc') if isinstance(resultat, dict) else None
+    if kwc in (None, ''):
+        kwc = (devis.etude_params or {}).get('puissance_kwc')
+    try:
+        kwc = float(kwc) if kwc not in (None, '') else None
+    except (TypeError, ValueError):
+        kwc = None
+
+    image_url = None
+    if devis.roof_image:
+        try:
+            from .utils.pdf import roof_image_signed_url
+            image_url = roof_image_signed_url(devis.roof_image)
+        except Exception:  # noqa: BLE001 — un rendu absent ne casse pas la fiche
+            image_url = None
+    return {'kwc': kwc, 'image_url': image_url}
+
+
 def is_devis_accepte(devis):
     """Vrai si le devis est au statut « Accepté » (sans exposer l'enum)."""
     from .models import Devis
@@ -1585,7 +1636,12 @@ def comparaison_calepinage_devis(devis):
             'ecart': None,
         }
 
-    mesure = compte_moteur_du_layout(devis.roof_layout)
+    # PV42 — le moteur calepine sur le PANNEAU du devis (kit-produit, PV12) :
+    # sans lui, cette comparaison opposerait un compte posé sur le module vendu
+    # à un compte posé sur le kit générique — un écart inventé de toutes pièces.
+    mesure = compte_moteur_du_layout(
+        devis.roof_layout, company=getattr(devis, 'company', None),
+        devis=devis)
     if mesure is None:
         return {
             'recalculable': True,
@@ -1842,3 +1898,404 @@ def _brouillon_relance_engagement(devis, declencheurs):
         corps = (f'votre proposition{suffixe} vous attend toujours — '
                  'souhaitez-vous que je vous la présente ?')
     return f'{salutation}, {corps}'
+
+
+def devis_envoyes_periode(company, *, date_debut=None, date_fin=None,
+                          commercial_id=None):
+    """NTCPQ24 — Devis ENVOYÉS (ou au-delà) d'une société sur une période.
+
+    Point d'entrée cross-app en LECTURE (``apps.cpq`` bâtit son rapport de
+    conformité dessus sans importer ``apps.ventes.models``). La période porte
+    sur ``date_envoi`` ; bornes optionnelles (ouvertes si absentes). Précharge
+    les lignes/produits (le calcul de conformité les parcourt)."""
+    from .models import Devis
+    qs = Devis.objects.filter(
+        company=company, date_envoi__isnull=False,
+    ).select_related('client', 'created_by').prefetch_related(
+        'lignes__produit__categorie')
+    if date_debut:
+        qs = qs.filter(date_envoi__date__gte=date_debut)
+    if date_fin:
+        qs = qs.filter(date_envoi__date__lte=date_fin)
+    if commercial_id:
+        qs = qs.filter(created_by_id=commercial_id)
+    return qs.order_by('date_envoi', 'id')
+
+
+def devis_en_cours(company):
+    """NTCPQ23 — Devis NON encore acceptés d'une société (brouillon/envoyé).
+
+    Point d'entrée cross-app en LECTURE (``apps.cpq`` s'en sert pour son
+    tableau de bord de marge interne, sans importer ``apps.ventes.models``).
+    Précharge les lignes et leurs produits (le calcul de marge les parcourt)."""
+    from .models import Devis
+    return Devis.objects.filter(
+        company=company,
+        statut__in=(Devis.Statut.BROUILLON, Devis.Statut.ENVOYE),
+    ).select_related('client', 'created_by').prefetch_related(
+        'lignes__produit__categorie').order_by('-date_creation')
+
+
+def frequence_co_achat(company, produit_id, *, limite=10):
+    """NTCPQ19 — Fréquence de CO-ACHAT d'un produit dans les devis ACCEPTÉS.
+
+    Point d'entrée cross-app en LECTURE (``apps.cpq`` l'appelle sans importer
+    ``apps.ventes.models``) : renvoie ``[(produit_id, nb_devis), ...]`` trié par
+    fréquence décroissante — les produits apparaissant dans les mêmes devis
+    acceptés de la SOCIÉTÉ que ``produit_id``, hors lui-même. Lecture pure,
+    jamais de prix d'achat ni de marge."""
+    from collections import Counter
+    from .models import Devis, LigneDevis
+
+    devis_ids = LigneDevis.objects.filter(
+        devis__company=company, devis__statut=Devis.Statut.ACCEPTE,
+        produit_id=produit_id).values_list('devis_id', flat=True)
+    devis_ids = set(devis_ids)
+    if not devis_ids:
+        return []
+    paires = list(LigneDevis.objects.filter(
+        devis_id__in=devis_ids).exclude(
+            produit_id=produit_id).exclude(
+                produit_id=None).values_list('devis_id', 'produit_id'))
+    compteur = Counter({pid: 0 for _, pid in paires})
+    vus = set()
+    for devis_id, pid in paires:
+        if (devis_id, pid) in vus:
+            continue  # une même paire ne compte qu'une fois par devis
+        vus.add((devis_id, pid))
+        compteur[pid] += 1
+    return compteur.most_common(limite)
+
+
+def lots_totaux(devis):
+    """NTCPQ18 — Sous-total PAR LOT + total consolidé d'un devis multi-sites.
+
+    Renvoie ``None`` quand le devis ne porte AUCUN lot (chemin mono-site
+    strictement inchangé). Sinon ::
+
+        {
+          'lots': [{'id', 'nom_lot', 'adresse_site', 'totaux': {...}}, ...],
+          'hors_lot': {...} | None,      # lignes non rattachées à un lot
+          'total_consolide': {...},      # TOUTES les lignes du devis
+        }
+
+    Chaque bloc de totaux passe par la MÊME chaîne canonique
+    (``_canonical_totaux`` : HT brut → remise → TVA par taux → TTC) que les
+    totaux du devis, donc la somme des lots + hors-lot recolle au total
+    consolidé au centime. Company scoping : seules les lignes du devis fourni
+    (déjà borné à sa société par l'appelant) sont lues."""
+    lots = list(devis.lots.all())
+    if not lots:
+        return None
+
+    lignes = list(devis.lignes.all())
+    fallback = devis.taux_tva
+    remise = devis.remise_globale
+    par_lot = {}
+    for ligne in lignes:
+        par_lot.setdefault(ligne.lot_id, []).append(ligne)
+
+    blocs = [{
+        'id': lot.id,
+        'nom_lot': lot.nom_lot,
+        'adresse_site': lot.adresse_site,
+        'totaux': _canonical_totaux(
+            par_lot.get(lot.id, []), remise_globale_pct=remise,
+            fallback_taux=fallback),
+    } for lot in lots]
+
+    orphelines = par_lot.get(None, [])
+    hors_lot = _canonical_totaux(
+        orphelines, remise_globale_pct=remise,
+        fallback_taux=fallback) if orphelines else None
+
+    return {
+        'lots': blocs,
+        'hors_lot': hors_lot,
+        'total_consolide': _canonical_totaux(
+            lignes, remise_globale_pct=remise, fallback_taux=fallback),
+    }
+
+
+# ── NTCPQ17 — Remises automatiques par palier de VOLUME, en cascade ──────────
+
+def _paliers_volume_actifs(company):
+    from .models import PalierRemiseVolume
+    return list(PalierRemiseVolume.objects.filter(
+        company=company, actif=True))
+
+
+def _meilleur_palier(paliers, produit, quantite):
+    """Palier le plus fort satisfait par ``quantite`` pour ce produit.
+
+    Ordre de préférence : ``priorite`` décroissante, puis ``quantite_min``
+    la plus élevée atteinte, puis la remise la plus forte."""
+    from decimal import Decimal
+    quantite = Decimal(str(quantite or 0))
+    candidats = [
+        p for p in paliers
+        if p.matches_produit(produit) and quantite >= p.quantite_min]
+    if not candidats:
+        return None
+    candidats.sort(
+        key=lambda p: (p.priorite, p.quantite_min, p.remise_pct),
+        reverse=True)
+    return candidats[0]
+
+
+def _categories_ayant_atteint_leur_seuil(paliers, lignes):
+    """Noms de catégories dont le VOLUME cumulé atteint un palier dédié.
+
+    ``lignes`` : itérable de ``{produit, quantite}``. Seuls les paliers portant
+    une catégorie comptent ici (un palier « tout le catalogue » n'identifie
+    aucune catégorie)."""
+    from collections import defaultdict
+    from decimal import Decimal
+    volumes = defaultdict(Decimal)
+    for ligne in lignes:
+        produit = ligne.get('produit')
+        cat = getattr(getattr(produit, 'categorie', None), 'nom', None)
+        if cat:
+            volumes[cat] += Decimal(str(ligne.get('quantite') or 0))
+    atteintes = set()
+    for palier in paliers:
+        nom = palier.categorie_nom
+        if not nom:
+            continue
+        if volumes.get(nom, Decimal('0')) >= palier.quantite_min:
+            atteintes.add(nom)
+    return atteintes
+
+
+def decomposition_remise_volume(*, company, produit, quantite, lignes=None):
+    """NTCPQ17 — DÉCOMPOSITION de la remise volume (remise ligne + cascade).
+
+    * **Remise de ligne** : le meilleur palier satisfait par la quantité de
+      CETTE ligne (comportement palier simple, comme XSAL2).
+    * **Cascade globale** : quand au moins DEUX catégories du panier atteignent
+      chacune leur seuil, les paliers marqués ``cumulable`` dont la
+      ``quantite_min`` est couverte par le volume TOTAL du panier s'ajoutent,
+      dans l'ordre de ``priorite`` décroissante.
+
+    ``lignes`` : le panier complet (``[{produit, quantite}, ...]``) ; absent, la
+    cascade ne se déclenche pas (une seule ligne ne peut pas couvrir deux
+    catégories). Renvoie ``{remise_ligne_pct, cascade, remise_totale_pct}`` —
+    les remises se COMPOSENT (jamais une addition naïve qui dépasserait 100 %).
+    Aucune donnée de marge / ``prix_achat`` n'entre dans ce calcul."""
+    from decimal import Decimal, ROUND_HALF_UP
+
+    cent = Decimal('0.01')
+    paliers = _paliers_volume_actifs(company)
+    vide = {'remise_ligne_pct': '0.00', 'cascade': [],
+            'remise_totale_pct': '0.00'}
+    if not paliers:
+        return vide
+
+    ligne_palier = _meilleur_palier(paliers, produit, quantite)
+    remise_ligne = (
+        Decimal(str(ligne_palier.remise_pct)) if ligne_palier
+        else Decimal('0'))
+
+    cascade = []
+    lignes = list(lignes or [])
+    if len(lignes) > 1:
+        atteintes = _categories_ayant_atteint_leur_seuil(paliers, lignes)
+        if len(atteintes) >= 2:
+            volume_total = sum(
+                (Decimal(str(li.get('quantite') or 0)) for li in lignes),
+                Decimal('0'))
+            cumulables = [
+                p for p in paliers
+                if p.cumulable and volume_total >= p.quantite_min
+                and (ligne_palier is None or p.id != ligne_palier.id)]
+            cumulables.sort(
+                key=lambda p: (p.priorite, p.quantite_min), reverse=True)
+            cascade = [{
+                'palier_id': p.id,
+                'categorie_nom': p.categorie_nom,
+                'quantite_min': str(p.quantite_min),
+                'remise_pct': str(p.remise_pct),
+                'portee': 'global',
+            } for p in cumulables]
+
+    reste = Decimal('1') - remise_ligne / Decimal('100')
+    for entree in cascade:
+        reste *= Decimal('1') - Decimal(entree['remise_pct']) / Decimal('100')
+    totale = ((Decimal('1') - reste) * Decimal('100')).quantize(
+        cent, ROUND_HALF_UP)
+
+    return {
+        'remise_ligne_pct': str(remise_ligne.quantize(cent, ROUND_HALF_UP)),
+        'remise_ligne_palier_id': ligne_palier.id if ligne_palier else None,
+        'cascade': cascade,
+        'remise_totale_pct': str(totale),
+    }
+
+
+# ── NTEXT6 — source de liste whitelistée pour les boucles d'automatisation ──
+
+def lignes_devis_pour_automatisation(devis_id, company, *, limite=200):
+    """Lignes d'un devis, en LECTURE SEULE, pour une boucle d'automatisation.
+
+    Thin selector cross-app (``apps.automation`` n'importe JAMAIS
+    ``ventes.models``) : renvoie une liste de dicts bornée à ``limite``, scopée
+    société, n'exposant AUCUN prix d'achat ni marge — uniquement ce qu'une
+    sous-action a besoin de connaître d'une ligne. Les décimales sont rendues
+    en CHAÎNES : le contexte d'une boucle peut être gelé en JSON (NTEXT7).
+    Liste vide si le devis n'existe pas ou appartient à une autre société.
+    """
+    from .models import Devis
+
+    devis = (Devis.objects.filter(pk=devis_id, company=company)
+             .prefetch_related('lignes').first())
+    if devis is None:
+        return []
+    lignes = []
+    for ligne in list(devis.lignes.all())[:max(0, int(limite))]:
+        lignes.append({
+            'id': ligne.pk,
+            'designation': ligne.designation,
+            'quantite': ('' if ligne.quantite is None
+                         else str(ligne.quantite)),
+            'produit_id': ligne.produit_id,
+            'total_ht': str(ligne.total_ht),
+        })
+    return lignes
+
+
+# ── PV17 — contexte COMPLET de l'écran de conception 3D d'un devis ──────────
+#
+# UN SEUL appel, UN SEUL dict, TOUTES les clés TOUJOURS présentes (contrat
+# ``apps/ventes/contract_samples/devis_design_context.json``). L'écran ne doit
+# jamais avoir à deviner : une clé absente, c'est un ``.map()`` sur
+# ``undefined`` en production — l'incident exact que ``check_api_shapes.py``
+# garde. Un panier vide vaut ``[]``, une valeur inconnue vaut ``None`` ou
+# ``''``, jamais une clé manquante.
+#
+# LECTURE PURE : aucun statut, aucune ligne, aucun layout n'est écrit ici.
+
+
+def _config_carte():
+    """Clés carte du builder 3D — MIROIR de ``views/roof_config.py``.
+
+    Mêmes variables d'environnement (``PUBLIC_MAPTILER_KEY`` /
+    ``PUBLIC_MAPBOX_TOKEN``), même forme ``{available, maptilerKey,
+    mapboxToken}`` : l'écran de conception lit la carte DANS le contexte plutôt
+    que d'enchaîner un second appel. Aucune donnée société, aucune écriture.
+    """
+    import os
+
+    maptiler = os.environ.get('PUBLIC_MAPTILER_KEY', '') or ''
+    mapbox = os.environ.get('PUBLIC_MAPBOX_TOKEN', '') or ''
+    return {
+        'available': bool(maptiler),
+        'maptilerKey': maptiler,
+        'mapboxToken': mapbox or None,
+    }
+
+
+def contexte_conception_devis(devis, company):
+    """PV17 — tout ce que l'écran de conception toiture doit savoir d'un devis.
+
+    Rend ``None`` quand le devis appartient à une AUTRE société (l'appelant
+    répond alors 404 — jamais d'oracle d'existence). Sinon un dict à la forme
+    FIXE :
+
+        {devis: {id, reference, statut, mode_installation, lead, client,
+                 client_nom},
+         geometrie: {source, roof_layout, pin, outline},
+         cible: {panneaux, kwc, panel_watt, scenario, batterie,
+                 avertissements, bill_kwh},
+         carte: {available, maptilerKey, mapboxToken},
+         modifiable, raison_lecture_seule, avertissements}
+
+    ``geometrie.source`` vaut ``'devis'`` (le devis porte déjà un layout 3D),
+    ``'lead'`` (repli sur l'épingle/le contour posés au diagnostic) ou
+    ``'none'``. ``modifiable`` est faux — avec une raison FRANÇAISE dans
+    ``raison_lecture_seule`` — pour un devis sorti du cycle d'édition
+    (accepté/refusé/expiré), un devis agricole (pompage) et un devis
+    multi-villa. ``raison_lecture_seule`` vaut ``''`` quand le devis est
+    modifiable, jamais ``None``.
+    """
+    from .models import Devis
+    from .services import cible_depuis_lignes
+
+    if devis is None:
+        return None
+    # Garde société DÉFENSIVE (le queryset de l'appelant borne déjà) : un
+    # superutilisateur sans société passe outre, comme partout ailleurs.
+    company_id = getattr(company, 'id', None)
+    if company_id is not None and devis.company_id != company_id:
+        return None
+
+    lead = getattr(devis, 'lead', None)
+
+    # ── Cible : ce que le devis DIT aujourd'hui (PV16) + la conso du lead ──
+    cible = cible_depuis_lignes(devis)
+    bill_kwh = getattr(lead, 'bill_kwh', None) if lead is not None else None
+    try:
+        cible['bill_kwh'] = float(bill_kwh) if bill_kwh is not None else None
+    except (TypeError, ValueError):
+        cible['bill_kwh'] = None
+
+    # ── Géométrie : le layout du devis PRIME sur le repère du lead ──
+    layout = devis.roof_layout if isinstance(devis.roof_layout, dict) else None
+    if layout:
+        source = 'devis'
+        roof_layout = layout
+        pin_brut = layout.get('pin')
+        contour = layout.get('outline')
+        pin = pin_brut if isinstance(pin_brut, dict) else None
+        outline = contour if isinstance(contour, list) else []
+    else:
+        roof_layout = None
+        point_lead = getattr(lead, 'roof_point', None) if lead else None
+        contour_lead = getattr(lead, 'roof_outline', None) if lead else None
+        pin = point_lead if isinstance(point_lead, dict) else None
+        outline = contour_lead if isinstance(contour_lead, list) else []
+        source = 'lead' if (pin or outline) else 'none'
+
+    # ── Modifiable ? Trois raisons de LECTURE SEULE, toutes en français ──
+    raison = ''
+    if devis.statut in (Devis.Statut.ACCEPTE, Devis.Statut.REFUSE,
+                        Devis.Statut.EXPIRE):
+        raison = (
+            'Devis « %s » : le calepinage n\'est plus modifiable. Utilisez '
+            '« Réviser » pour en créer une nouvelle version.'
+            % devis.get_statut_display())
+    elif devis.mode_installation == Devis.ModeInstallation.AGRICOLE:
+        raison = ('Devis agricole (pompage) — le calepinage de toiture ne '
+                  's\'applique pas.')
+    elif devis.lignes.filter(groupe_index__gte=1).exists():
+        raison = ('Devis multi-villa : chaque villa porte son propre '
+                  'calepinage — cet écran ne peut pas en modifier une seule.')
+
+    avertissements = list(cible['avertissements'])
+    if source == 'none':
+        avertissements.append(
+            'Aucune géométrie de toiture connue pour ce devis : commencez par '
+            'situer le bâtiment sur la carte.')
+
+    client = getattr(devis, 'client', None)
+    return {
+        'devis': {
+            'id': devis.pk,
+            'reference': devis.reference,
+            'statut': devis.statut,
+            'mode_installation': devis.mode_installation or '',
+            'lead': devis.lead_id,
+            'client': devis.client_id,
+            'client_nom': (getattr(client, 'nom', '') or '') if client else '',
+        },
+        'geometrie': {
+            'source': source,
+            'roof_layout': roof_layout,
+            'pin': pin,
+            'outline': outline,
+        },
+        'cible': cible,
+        'carte': _config_carte(),
+        'modifiable': not raison,
+        'raison_lecture_seule': raison,
+        'avertissements': avertissements,
+    }

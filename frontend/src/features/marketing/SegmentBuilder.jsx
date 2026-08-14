@@ -89,6 +89,20 @@ export default function SegmentBuilder({ initial, onSaved, onCancel }) {
     }
   }
 
+  // NTMKT40 — export XLSX SNAPSHOT des membres résolus (audit RGPD/CNDP).
+  const [exportEnCours, setExportEnCours] = useState(false)
+  const exporterMembres = async () => {
+    setExportEnCours(true)
+    try {
+      const r = await marketingApi.exportMembresSegmentXlsx(segmentId)
+      marketingApi.downloadBlob(r.data, `segment-${segmentId}-membres.xlsx`)
+    } catch {
+      setErr('Export des membres impossible.')
+    } finally {
+      setExportEnCours(false)
+    }
+  }
+
   return (
     <div data-testid="segment-builder" style={{ display: 'grid', gap: '0.6rem', maxWidth: 640 }}>
       <div style={{ display: 'flex', gap: '0.5rem' }}>
@@ -170,6 +184,12 @@ export default function SegmentBuilder({ initial, onSaved, onCancel }) {
           <button type="button" className="btn btn-primary" data-testid="segment-enregistrer"
             onClick={enregistrerNom}>
             Enregistrer
+          </button>
+        )}
+        {segmentId && (
+          <button type="button" className="btn btn-light" data-testid="segment-exporter-membres"
+            disabled={exportEnCours} onClick={exporterMembres}>
+            {exportEnCours ? 'Export…' : 'Exporter les membres'}
           </button>
         )}
         {onCancel && (

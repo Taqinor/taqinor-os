@@ -50,6 +50,27 @@ WRITE_ACTIONS = ['create', 'update', 'partial_update']
 from authentication.scoping import scope_queryset  # noqa: E402,F401
 
 
+def _emettre_layout_finalise(devis, user):
+    """PV79 — annonce que la conception 3D d'un devis est finalisée.
+
+    Passe par le bus ``core.events`` (M6) plutôt que par un appel direct à
+    ``crm`` : les deux apps restent découplées, et un futur abonné (chantier,
+    notifications…) se branche sans toucher ce fichier. Ne change AUCUN statut
+    et n'écrit rien lui-même (règle #4).
+
+    Jamais bloquant : un abonné en échec ne doit pas faire échouer la
+    finalisation d'un calepinage déjà enregistré. L'erreur est journalisée.
+    """
+    from core.events import layout_finalise
+    try:
+        layout_finalise.send(sender='ventes.views.devis', devis=devis,
+                             user=user)
+    except Exception:  # noqa: BLE001 — un abonné cassé ne casse pas le devis
+        import logging as _logging
+        _logging.getLogger(__name__).exception(
+            'PV79 : abonné en échec sur layout_finalise (devis %s)', devis.pk)
+
+
 def _company_qs(qs, user):
     """Filter queryset to user's company. Superusers without company see all."""
     if user.company_id:
@@ -190,6 +211,40 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
             'whatsapp_preview',
             # NTCPQ8 — approbation de remise (lecture + décisions).
             'approbation', 'approuver_etape', 'rejeter_etape',
+            # NTCPQ13 — renouvellement d'un devis accepté/expiré. Déclare la
+            # MÊME classe que le permission_classes de l'@action (cette
+            # surcharge PRIME sur lui — cf. le commentaire VX199 ci-dessus).
+            'renouveler',
+            # NTCPQ14 — avenants d'un devis accepté (lecture + application).
+            'avenants',
+            # NTCPQ18 — lots multi-sites (lecture + création).
+            'lots',
+            # NTCPQ20 — historique fin de configuration (lecture seule).
+            'historique_configuration',
+            # PV17 — contexte de l'écran de conception 3D. LECTURE, mais
+            # réservée au même périmètre que le générateur de devis
+            # (responsable + admin), pas ouverte à tout rôle. La garde doit
+            # être ICI : get_permissions PRIME sur le ``permission_classes``
+            # de l'@action (son repli est IsAdminRole) — l'@action déclare
+            # donc la MÊME classe pour ne jamais mentir sur la garde
+            # effective.
+            'design_context',
+            # PV18 — resynchronisation des lignes sur un nouveau calepinage
+            # (écriture chirurgicale, jamais le statut).
+            'sync_layout',
+            # PV47 — report OPT-IN du bordereau électrique en lignes de devis.
+            'ajouter_boq_electrique',
+            # PV41 — étude électrique du devis (GET affiche, POST recalcule).
+            # Même périmètre que le générateur (responsable + admin) : la garde
+            # doit être ICI, get_permissions PRIME sur le
+            # ``permission_classes`` de l'@action — qui déclare donc la MÊME
+            # classe pour ne jamais mentir sur la garde effective.
+            'conception_electrique',
+            # PV74 — étude bankable asynchrone : lancement (202) et suivi du
+            # job. Même périmètre que le générateur (responsable + admin) ; la
+            # garde vit ICI car get_permissions PRIME sur le
+            # ``permission_classes`` de l'@action, qui déclare la MÊME classe.
+            'simuler', 'simulation_status',
         ]:
             return [IsResponsableOrAdmin()]
         elif self.action == 'destroy':
@@ -370,6 +425,11 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
             Devis.objects.filter(pk=devis.pk).update(layout_hash=lhash)
             devis.layout_hash = lhash
 
+        # PV79 — la conception 3D est FINALISÉE. Aucun statut ne bouge : on
+        # ANNONCE seulement le fait, et les abonnés (crm : note au chatter du
+        # lead) réagissent — ventes n'importe donc jamais crm.
+        _emettre_layout_finalise(devis, request.user)
+
         link = ShareLink.for_devis(devis)
         return Response(
             {
@@ -380,6 +440,254 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
                 'proposal_path': f'/proposition/{link.token}',
             },
             status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['get'], url_path='design-context',
+            permission_classes=[IsResponsableOrAdmin])
+    def design_context(self, request, pk=None):
+        """PV17 — TOUT ce que l'écran de conception 3D doit savoir d'un devis,
+        en UN SEUL appel et sous UNE SEULE forme.
+
+        Renvoie ``{devis, geometrie, cible, carte, modifiable,
+        raison_lecture_seule, avertissements}`` — toutes les clés TOUJOURS
+        présentes (contrat ``contract_samples/devis_design_context.json``) : un
+        panier vide vaut ``[]``, une valeur inconnue ``None``/``''``, jamais
+        une clé absente. L'écran n'a donc rien à deviner et ne peut pas
+        ``.map()`` sur ``undefined``.
+
+        LECTURE PURE, scopée société par ``get_queryset`` (un devis d'une autre
+        société → 404) : aucun statut, aucune ligne, aucun layout n'est écrit
+        (règle #4)."""
+        from ..selectors import contexte_conception_devis
+
+        devis = self.get_object()  # borné société par get_queryset
+        contexte = contexte_conception_devis(devis, request.user.company)
+        if contexte is None:
+            return Response({'detail': 'Devis inconnu.'},
+                            status=status.HTTP_404_NOT_FOUND)
+        return Response(contexte)
+
+    @action(detail=True, methods=['post'], url_path='sync-layout',
+            permission_classes=[IsResponsableOrAdmin])
+    def sync_layout(self, request, pk=None):
+        """PV18 — resynchronise les LIGNES du devis sur un nouveau calepinage.
+
+        Corps : le layout sérialisé (on accepte aussi les enveloppes
+        ``{"layout": …}`` / ``{"roof_layout": …}``, comme l'action ``layout``).
+
+        Mise à jour CHIRURGICALE d'un brouillon : quantités de panneaux et
+        présence de la batterie, rien d'autre — prix négociés, remises,
+        sections, notes, ordre et groupes multi-villa restent intacts. Le
+        STATUT n'est jamais écrit (règle #4) : un devis « envoyé » répond 409
+        avec ``revision_possible: true`` (le bon geste est « Réviser ») ; un
+        devis accepté/refusé/expiré répond 409 avec ``revision_possible:
+        false``. Renvoyer le MÊME layout ne fait aucune écriture
+        (``inchange: true``). Devis d'une autre société → 404 (get_queryset)."""
+        from ..services import sync_devis_from_layout, SyncLayoutError
+
+        devis = self.get_object()  # borné société par get_queryset
+        payload = request.data
+        if isinstance(payload, dict):
+            for enveloppe in ('layout', 'roof_layout'):
+                if set(payload.keys()) == {enveloppe}:
+                    payload = payload[enveloppe]
+                    break
+        if not isinstance(payload, dict) or not payload:
+            return Response({'detail': 'Layout manquant ou invalide.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        try:
+            resultat = sync_devis_from_layout(devis, payload, request.user)
+        except SyncLayoutError as exc:
+            return Response(
+                {'detail': exc.detail,
+                 'revision_possible': exc.revision_possible},
+                status=status.HTTP_409_CONFLICT)
+        # PV79 — même annonce qu'à la création : la toiture vient d'être
+        # redessinée et les lignes suivent. Un renvoi du MÊME layout
+        # (``inchange``) n'annonce rien : il ne s'est rien passé.
+        if not (isinstance(resultat, dict) and resultat.get('inchange')):
+            _emettre_layout_finalise(devis, request.user)
+        return Response(resultat)
+
+    @action(detail=True, methods=['get', 'post'],
+            url_path='conception-electrique',
+            permission_classes=[IsResponsableOrAdmin])
+    def conception_electrique(self, request, pk=None):
+        """PV41 — l'ÉTUDE ÉLECTRIQUE du devis, en UN SEUL appel.
+
+        ``GET`` renvoie l'étude rangée sur le devis, et la calcule si elle
+        n'existe pas encore. ``POST`` la RECALCULE en appliquant les
+        surcharges du corps (``dc_m``, ``ac_m``, ``phases``, ``regime``,
+        ``batterie``, ``zone_keraunique``, ``temp_froid_c``, ``temp_chaud_c``,
+        ``longueur_chaine_forcee``, ``plafond_kwc_par_onduleur`` — toute autre
+        clé est ignorée). Les DEUX rendent EXACTEMENT la même forme, celle du
+        contrat partagé ``contract_samples/conception_electrique.json``
+        (``chaines``, ``conformite``, ``ratio_dc_ac``, ``ratio_ac_dc``,
+        ``protections``, ``cables``, ``bom``, ``note``, ``parametres``) —
+        toutes les clés TOUJOURS présentes, une liste vide valant ``[]``.
+
+        Recalculer aux mêmes entrées n'écrit RIEN (empreinte identique,
+        idempotence QJ17). Aucun statut, aucune ligne, aucun prix n'est touché
+        — l'étude est une pièce technique et le moteur ne connaît aucun montant
+        (règle #4 : ``/proposal`` reste le seul chemin du PDF client). Scopé
+        société par ``get_queryset`` : un devis d'une autre société → 404.
+        """
+        from ..electrical_service import (
+            build_electrical_design, conception_electrique_stockee)
+
+        devis = self.get_object()  # borné société par get_queryset
+        if request.method == 'GET':
+            stockee = conception_electrique_stockee(devis)
+            if stockee is not None:
+                return Response(stockee)
+            return Response(build_electrical_design(devis))
+        surcharges = request.data if isinstance(request.data, dict) else {}
+        return Response(build_electrical_design(devis, overrides=surcharges))
+
+    @action(detail=True, methods=['post'], url_path='simuler',
+            permission_classes=[IsResponsableOrAdmin])
+    def simuler(self, request, pk=None):
+        """PV74 — lance l'ÉTUDE BANKABLE du devis en tâche de fond → 202.
+
+        L'étude interroge PVGIS par pan de toiture : la faire dans la requête
+        bloquerait un slot serveur pendant des secondes et casserait au premier
+        hoquet réseau. On répond donc immédiatement ``202`` avec un jeton et
+        l'URL à interroger, exactement comme l'export asynchrone de cette app
+        (SCA41) :
+
+            {detail, job_id, status: 'pending', zones, status_url}
+
+        Corps : ``{"force_refresh": true}`` pour ignorer le cache PVGIS (PV73)
+        et refaire les appels réseau ; absent/false → un second calcul du même
+        toit ne recoûte aucun aller-retour.
+
+        Un devis SANS calepinage exploitable répond ``400`` plutôt que de
+        lancer une étude vide. Le STATUT du devis n'est jamais écrit (règle #4 :
+        la tâche ne pose que ``etude_params['simulation']``). Scopé société par
+        ``get_queryset`` : un devis d'une autre société → 404.
+        """
+        import uuid
+
+        from django.core.cache import cache
+
+        from ..tasks import (
+            SIMULATION_JOB_CACHE_TTL, simulation_job_cache_key,
+            task_simulate_bankable_study, zones_etude_du_devis,
+        )
+
+        devis = self.get_object()  # borné société par get_queryset
+        zones = zones_etude_du_devis(devis)
+        if not zones:
+            return Response(
+                {'detail': ('Ce devis ne porte aucun pan de toiture '
+                            'exploitable : dessinez le calepinage 3D avant de '
+                            'lancer la simulation.')},
+                status=status.HTTP_400_BAD_REQUEST)
+
+        corps = request.data if isinstance(request.data, dict) else {}
+        force_refresh = bool(corps.get('force_refresh'))
+
+        token = uuid.uuid4().hex
+        company = request.user.company
+        # État initial en cache AVANT dispatch, scopé société — le endpoint de
+        # statut vérifie cette société avant tout accès (jamais inter-tenant).
+        cache.set(simulation_job_cache_key(token), {
+            'company_id': company.id,
+            'devis_id': devis.pk,
+            'status': 'pending',
+        }, SIMULATION_JOB_CACHE_TTL)
+        task_simulate_bankable_study.apply_async(
+            args=[devis.pk, company.id, token],
+            kwargs={'force_refresh': force_refresh},
+            queue='interactive')
+
+        return Response({
+            'detail': 'Simulation lancée en arrière-plan.',
+            'job_id': token,
+            'status': 'pending',
+            'zones': len(zones),
+            'status_url': ('/api/django/ventes/devis/%s/simulation-status/%s/'
+                           % (devis.pk, token)),
+        }, status=status.HTTP_202_ACCEPTED)
+
+    @action(detail=True, methods=['get'],
+            url_path=r'simulation-status/(?P<token>[0-9a-f]{32})',
+            permission_classes=[IsResponsableOrAdmin])
+    def simulation_status(self, request, pk=None, token=None):
+        """PV74 — état d'une simulation lancée par ``simuler``.
+
+        ``202 {status: 'pending'}`` tant qu'elle tourne, ``200 {status:
+        'ready', simulation: {...}}`` quand elle est rangée, ``500 {status:
+        'error'}`` si le calcul a échoué. Un jeton inconnu — ou appartenant à
+        une AUTRE société — répond ``404`` indistinct : on ne révèle pas
+        l'existence d'un job qui n'est pas le sien (même discipline que
+        ``export_status``, SCA41).
+
+        La charge ``simulation`` est relue sur le DEVIS
+        (``etude_params['simulation']``), jamais recopiée depuis le cache : le
+        document reste l'unique source de vérité. LECTURE PURE."""
+        from django.core.cache import cache
+
+        from ..tasks import simulation_job_cache_key
+
+        devis = self.get_object()  # borné société par get_queryset
+        job = cache.get(simulation_job_cache_key(token))
+        if (not job or job.get('company_id') != request.user.company_id
+                or job.get('devis_id') != devis.pk):
+            return Response({'detail': 'Simulation introuvable.'},
+                            status=status.HTTP_404_NOT_FOUND)
+
+        etat = job.get('status')
+        if etat == 'ready':
+            simulation = (devis.etude_params or {}).get('simulation')
+            return Response({'status': 'ready', 'simulation': simulation})
+        if etat == 'error':
+            return Response(
+                {'status': 'error', 'detail': 'La simulation a échoué.'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        return Response({'status': 'pending'},
+                        status=status.HTTP_202_ACCEPTED)
+
+    @action(detail=True, methods=['post'],
+            url_path='ajouter-boq-electrique',
+            permission_classes=[IsResponsableOrAdmin])
+    def ajouter_boq_electrique(self, request, pk=None):
+        """PV47 — reporte le BORDEREAU électrique (PV41) en lignes de devis.
+
+        Geste EXPLICITE et jamais silencieux : la conception électrique se
+        recalcule à chaque changement de disposition, et si elle réécrivait les
+        lignes toute seule, le prix d'un devis bougerait sous les yeux du
+        client. Ces lignes n'apparaissent donc QUE sur cet appel.
+
+        Deux issues par ligne de bordereau : un produit du catalogue
+        correspond (ligne produit à SON prix — 0 et « à chiffrer » tant que le
+        fondateur ne l'a pas renseigné), ou aucun ne correspond (ligne de NOTE
+        « à chiffrer », sans prix, et la ligne remonte dans ``manques``).
+        Aucun prix n'est JAMAIS inventé.
+
+        GARDE DE STATUT (patron PV15) : seuls « brouillon » et « envoyé »
+        acceptent l'ajout ; au-delà, 409 avec le statut NOMMÉ (le bon geste est
+        « Réviser »). Cette garde LIT le statut, elle ne l'écrit jamais
+        (règle #4). Devis d'une autre société → 404 (get_queryset).
+        """
+        from ..services import ajouter_lignes_boq_electrique
+
+        devis = self.get_object()  # borné société par get_queryset
+        _MODIFIABLES = (Devis.Statut.BROUILLON, Devis.Statut.ENVOYE)
+        if devis.statut not in _MODIFIABLES:
+            return Response(
+                {'detail': (
+                    'Devis « %s » : on ne peut plus y ajouter de lignes. '
+                    'Utilisez « Réviser » pour en créer une nouvelle version.'
+                    % devis.get_statut_display())},
+                status=status.HTTP_409_CONFLICT)
+        design = getattr(devis, 'electrical_design', None)
+        if not isinstance(design, dict) or not design.get('bom'):
+            return Response(
+                {'detail': "Ce devis n'a pas encore de conception électrique : "
+                           'lancez d\'abord « Conception électrique ».'},
+                status=status.HTTP_400_BAD_REQUEST)
+        resultat = ajouter_lignes_boq_electrique(devis, request.user)
+        return Response(resultat)
 
     @action(detail=False, methods=['post'], url_path='atomic',
             permission_classes=[IsResponsableOrAdmin])
@@ -458,9 +766,25 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
         """QX21be — remplace ATOMIQUEMENT toutes les lignes d'un devis en un
         seul commit (édition). Remplace le delete-all-puis-recréer à erreurs
         avalées du générateur, qui pouvait laisser un devis avec moins/aucune
-        ligne. Un échec préserve les lignes d'origine (rollback complet)."""
+        ligne. Un échec préserve les lignes d'origine (rollback complet).
+
+        PV15 — GARDE DE STATUT. Cet endpoint SUPPRIME puis recrée toutes les
+        lignes : sans garde, un appel sur un devis ACCEPTÉ (ou refusé/expiré)
+        effaçait le contenu d'un document déjà engagé, dont la chaîne
+        BonCommande/Facture dépend. Seuls « brouillon » et « envoyé » restent
+        modifiables ; au-delà, 409 avec le statut NOMMÉ (le bon geste est
+        « Réviser », qui crée une nouvelle version). Cette garde ne CHANGE
+        jamais le statut — elle le LIT (règle #4)."""
         from django.db import transaction
         devis = self.get_object()  # borné société par get_queryset
+        _MODIFIABLES = (Devis.Statut.BROUILLON, Devis.Statut.ENVOYE)
+        if devis.statut not in _MODIFIABLES:
+            return Response(
+                {'detail': (
+                    'Devis « %s » : ses lignes ne peuvent plus être '
+                    'remplacées. Utilisez « Réviser » pour en créer une '
+                    'nouvelle version.' % devis.get_statut_display())},
+                status=status.HTTP_409_CONFLICT)
         lignes_in = request.data.get('lignes')
         if not isinstance(lignes_in, list):
             return Response({'detail': 'Champ « lignes » requis (liste).'},
@@ -476,14 +800,16 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
 
     def _replace_lines_atomic(self, devis, lignes_in, company):
         """QX21be — supprime puis recrée les lignes du devis (appelé SOUS une
-        transaction par l'appelant). Produits bornés société ; jamais de
-        ``prix_achat`` accepté du corps.
+        transaction par l'appelant). Produits bornés à la société de
+        l'utilisateur OU au catalogue global (PV15, même portée que
+        ``services._pick_product``) ; jamais de ``prix_achat`` accepté du corps.
 
         XSAL5 — ``optionnelle`` (add-on hors total) est persistée.
         XSAL14 — ``type_ligne`` (produit [défaut] / section / note) + ``ordre`` :
         une ligne section/note ne porte NI produit NI prix (jamais comptée dans
         les totaux). ``ordre`` par défaut = position dans la liste envoyée."""
         from decimal import Decimal, InvalidOperation
+        from django.db.models import Q
         from ..models import LigneDevis
         from apps.stock.models import Produit
         _VALID_TYPES = {c.value for c in LigneDevis.TypeLigne}
@@ -515,8 +841,17 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
                 produit_id = int(li.get('produit'))
             except (TypeError, ValueError):
                 raise ValueError('Ligne sans produit valide.')
+            # PV15 — le catalogue GLOBAL (``company IS NULL``) est quotable :
+            # c'est exactement la portée que ``services._pick_product`` retient
+            # pour composer un devis. Le filtre société-stricte d'origine
+            # REFUSAIT ici des produits que l'auto-composition venait de poser
+            # sur le même devis (« Produit N inconnu » sur un simple
+            # ré-enregistrement). La portée reste bornée : société de
+            # l'utilisateur OU catalogue global — jamais celui d'un autre
+            # tenant.
             produit = Produit.objects.filter(
-                id=produit_id, company=company).first()
+                Q(company=company) | Q(company__isnull=True),
+                id=produit_id).first()
             if produit is None:
                 raise ValueError(f'Produit {produit_id} inconnu.')
             try:
@@ -1114,6 +1449,119 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
             DevisSerializer(nd, context={'request': request}).data,
             status=status.HTTP_201_CREATED)
 
+    @action(detail=True, methods=['get'],
+            url_path='historique-configuration',
+            permission_classes=[IsResponsableOrAdmin])
+    def historique_configuration(self, request, pk=None):
+        """NTCPQ20 — Historique FIN des configurations d'un devis brouillon.
+
+        GET : la liste des instantanés (id, horodatage, auteur, nombre de
+        lignes, contenu). ``?a=<id>&b=<id>`` renvoie EN PLUS le diff des lignes
+        entre deux instantanés (ajoutées / retirées / modifiées). Lecture
+        seule : ne crée ni ne modifie aucun instantané."""
+        from ..services import diff_configurations_devis
+        devis = self.get_object()
+        snapshots = list(devis.config_snapshots.select_related('auteur').all())
+        payload = {
+            'snapshots': [{
+                'id': s.id,
+                'date': s.date_creation.isoformat(),
+                'auteur': (getattr(s.auteur, 'username', None)
+                           if s.auteur_id else None),
+                'nb_lignes': len((s.contenu or {}).get('lignes') or []),
+                'contenu': s.contenu,
+            } for s in snapshots],
+        }
+        a_id = request.query_params.get('a')
+        b_id = request.query_params.get('b')
+        if a_id and b_id:
+            index = {str(s.id): s for s in snapshots}
+            a = index.get(str(a_id))
+            b = index.get(str(b_id))
+            if a is None or b is None:
+                return Response({'detail': 'Instantané introuvable.'},
+                                status=status.HTTP_404_NOT_FOUND)
+            payload['diff'] = diff_configurations_devis(a, b)
+        return Response(payload)
+
+    @action(detail=True, methods=['get', 'post'], url_path='lots',
+            permission_classes=[IsResponsableOrAdmin])
+    def lots(self, request, pk=None):
+        """NTCPQ18 — Lots (sites/bâtiments) d'un devis multi-sites.
+
+        GET : sous-total HT par lot + total consolidé (chaîne canonique, donc
+        cohérent au centime avec le total du devis). Devis sans lot →
+        ``{'lots': [], 'total_consolide': None}`` (comportement mono-site
+        inchangé).
+        POST : crée un lot — corps ``{nom_lot, adresse_site?, ordre?,
+        lignes?: [ligne_id, ...]}`` ; les lignes citées lui sont rattachées."""
+        from rest_framework.exceptions import ValidationError
+        from ..models import LotDevis
+        from ..selectors import lots_totaux
+        devis = self.get_object()
+        if request.method == 'POST':
+            nom = (request.data.get('nom_lot') or '').strip()
+            if not nom:
+                raise ValidationError({'nom_lot': 'Nom de lot requis.'})
+            if devis.lots.filter(nom_lot=nom).exists():
+                raise ValidationError(
+                    {'nom_lot': 'Ce lot existe déjà sur ce devis.'})
+            lot = LotDevis.objects.create(
+                company=devis.company, devis=devis, nom_lot=nom,
+                adresse_site=(request.data.get('adresse_site') or '').strip(),
+                ordre=int(request.data.get('ordre') or 0))
+            ids = request.data.get('lignes') or []
+            if ids:
+                # Jamais une ligne d'un autre devis (donc d'une autre société).
+                devis.lignes.filter(id__in=ids).update(lot=lot)
+        resultat = lots_totaux(devis)
+        if resultat is None:
+            resultat = {'lots': [], 'hors_lot': None,
+                        'total_consolide': None}
+        return Response(
+            resultat,
+            status=(status.HTTP_201_CREATED if request.method == 'POST'
+                    else status.HTTP_200_OK))
+
+    @action(detail=True, methods=['get', 'post'], url_path='avenants',
+            permission_classes=[IsResponsableOrAdmin])
+    def avenants(self, request, pk=None):
+        """NTCPQ14 — Avenants d'un devis ACCEPTÉ.
+
+        GET : liste des avenants (les plus récents d'abord).
+        POST : applique un avenant — corps ``{lignes_ajoutees: [...],
+        lignes_retirees: [id, ...], motif}``. Les totaux sont recalculés et
+        l'approbation NTCPQ7 n'est redéclenchée que si le NOUVEAU taux de
+        remise global dépasse le seuil configuré."""
+        from ..serializers import AvenantDevisSerializer
+        devis = self.get_object()
+        if request.method == 'GET':
+            return Response(AvenantDevisSerializer(
+                devis.avenants.all(), many=True).data)
+        from apps.cpq.services import appliquer_avenant_devis
+        avenant = appliquer_avenant_devis(
+            devis,
+            lignes_ajoutees=request.data.get('lignes_ajoutees') or [],
+            lignes_retirees=request.data.get('lignes_retirees') or [],
+            motif=(request.data.get('motif') or '').strip(),
+            user=request.user)
+        return Response(AvenantDevisSerializer(avenant).data,
+                        status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['post'], url_path='renouveler',
+            permission_classes=[IsResponsableOrAdmin])
+    def renouveler(self, request, pk=None):
+        """NTCPQ13 — Renouvelle un devis ACCEPTÉ (ou expiré) : nouveau brouillon
+        reprenant les lignes actuelles aux PRIX CATALOGUE COURANTS, lié à son
+        devis d'origine (``devis_origine``) et numéroté
+        (``numero_renouvellement``). Le devis source reste intact — distinct de
+        ``reviser`` (qui corrige un devis non encore accepté)."""
+        from ..services import renouveler_devis
+        nouveau = renouveler_devis(self.get_object(), user=request.user)
+        return Response(
+            DevisSerializer(nouveau, context={'request': request}).data,
+            status=status.HTTP_201_CREATED)
+
     @action(detail=True, methods=['post'], url_path='accepter',
             permission_classes=[HasPermissionOrLegacy('ventes_valider')])
     def accepter(self, request, pk=None):
@@ -1281,7 +1729,7 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
         return Response(etapes_approbation_devis(devis))
 
     @action(detail=True, methods=['post'], url_path='approuver-etape',
-            permission_classes=[IsResponsableOrAdmin])
+            permission_classes=[HasPermissionOrLegacy('cpq_approbation_approuver')])
     def approuver_etape(self, request, pk=None):
         """NTCPQ8 — Approuve l'étape courante d'approbation de remise."""
         devis = self.get_object()
@@ -1296,7 +1744,7 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
         })
 
     @action(detail=True, methods=['post'], url_path='rejeter-etape',
-            permission_classes=[IsResponsableOrAdmin])
+            permission_classes=[HasPermissionOrLegacy('cpq_approbation_approuver')])
     def rejeter_etape(self, request, pk=None):
         """NTCPQ8 — Rejette l'étape courante : renvoie le devis en brouillon."""
         devis = self.get_object()
@@ -1608,10 +2056,20 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
         """NTCPQ7/8 — instancie les étapes d'approbation par palier de remise
         pour ce devis puis bloque l'envoi tant qu'une étape est en attente. Un
         devis sans remise qualifiante ne crée aucune étape (envoi libre)."""
-        from apps.cpq.services import lancer_approbation_devis
+        from apps.cpq.services import (
+            lancer_approbation_devis, verifier_compatibilite_envoyable,
+        )
         from ..services import verifier_devis_envoyable
         lancer_approbation_devis(devis)
         verifier_devis_envoyable(devis)
+        # NTCPQ31 — mode compatibilité « BLOQUANT » de la société : empêche
+        # l'envoi tant qu'une violation bloquante (NTCPQ1) subsiste. No-op en
+        # AVERTISSEMENT (défaut, comportement historique inchangé).
+        verifier_compatibilite_envoyable(devis)
+        # NTCPQ11 — l'envoi est autorisé : fige les clauses/CGV dynamiques
+        # (write-once, jamais recalculé après envoi).
+        from ..services import figer_clauses_devis
+        figer_clauses_devis(devis)
 
     def perform_update(self, serializer):
         from rest_framework.exceptions import ValidationError

@@ -24,6 +24,7 @@ export const VEHICULE_STATUTS = {
 // XFLT4 — checklist de mise en service (gate du passage commande→actif),
 // miroir de `Vehicule.CHECKLIST_MISE_EN_SERVICE` (jamais renommer/ajouter
 // sans mettre à jour le backend).
+// source-choix: flotte.Vehicule.CHECKLIST_MISE_EN_SERVICE
 export const CHECKLIST_MISE_EN_SERVICE_ITEMS = {
   immatriculation_faite: 'Immatriculation faite',
   plaques: 'Plaques posées',

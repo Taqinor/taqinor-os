@@ -171,6 +171,12 @@ app.conf.beat_schedule = {
         'task': 'automation.time_triggers_daily',
         'schedule': crontab(hour=8, minute=5),
     },
+    # NTEXT7 — reprise des séquences d'automatisation suspendues par une étape
+    # « Attendre » (toutes les 5 min ; sans échéance due, no-op total).
+    'automation-process-due-steps': {
+        'task': 'automation.process_due_automation_steps',
+        'schedule': crontab(minute='*/5'),
+    },
     'reporting-email-saved-reports-daily': {
         'task': 'reporting.email_saved_reports',
         'schedule': crontab(hour=6, minute=0),
@@ -433,6 +439,28 @@ app.conf.beat_schedule = {
     'compta-decider-gagnants-ab': {
         'task': 'compta.decider_gagnants_ab',
         'schedule': crontab(hour=8, minute=25),
+    },
+    # NTMKT12 — tick des séquences EN GRAPHE (journeys) : complément strict du
+    # tick linéaire XMKT1 ci-dessus, décalé de 5 min pour ne pas les superposer.
+    'marketing-executer-journeys': {
+        'task': 'marketing.executer_journeys',
+        'schedule': crontab(hour=8, minute=15),
+    },
+    # NTMKT33 — purge quotidienne des jetons publics marketing expirés (+90j).
+    'marketing-purger-tokens-expires': {
+        'task': 'marketing.purger_tokens_expires',
+        'schedule': crontab(hour=3, minute=0),
+    },
+    # NTMKT35 — rappel d'approbation d'envoi de campagne en attente (+24h).
+    'marketing-rappeler-approbations-envoi': {
+        'task': 'marketing.rappeler_approbations_envoi',
+        'schedule': crontab(minute=0, hour='*/4'),
+    },
+    # NTMKT34 — recalcul quotidien du score de maturité (pénalité inactivité
+    # 30j) — no-op pour une société qui n'a jamais activé NTMKT18.
+    'marketing-recalculer-scores-maturite-inactivite': {
+        'task': 'marketing.recalculer_scores_maturite_inactivite',
+        'schedule': crontab(hour=4, minute=0),
     },
     # XKB7 — relance quotidienne des non-lecteurs de lecture obligatoire.
     'kb-sweep-lectures-obligatoires': {
@@ -726,6 +754,13 @@ app.conf.beat_schedule = {
         'task': 'authentication.desactiver_comptes_dormants',
         'schedule': crontab(hour=2, minute=20),
     },
+    # NTDMO30 — purge hebdomadaire des sociétés démo TAQINOR expirées
+    # (staging/marketing uniquement). No-op tant que
+    # DEMO_AUTO_PURGE_ENABLED=0 (défaut) — le founder l'active explicitement.
+    'authentication-purger-societes-demo-expirees': {
+        'task': 'authentication.purger_societes_demo_expirees',
+        'schedule': crontab(hour=3, minute=45, day_of_week=1),
+    },
     # FG366 — escalade les étapes de workflow au SLA dépassé (balayage par
     # société, WorkflowStepInstance en attente échue). Horaire.
     'core-escalate-workflow-sla': {
@@ -771,6 +806,27 @@ app.conf.beat_schedule = {
     'ai-governance-surveiller-drift-mensuel': {
         'task': 'ai_governance.surveiller_drift_mensuel',
         'schedule': crontab(hour=4, minute=25, day_of_month=1),
+    },
+    # NTCPQ32 — rappel quotidien (activité, jamais d'email auto) des
+    # PrixContractuel dont date_fin est dépassée — apps/cpq/scheduled.py.
+    # Idempotent (une seule activité par prix expiré). Heure creuse.
+    'cpq-expire-prix-contractuels': {
+        'task': 'cpq.expire_prix_contractuels',
+        'schedule': crontab(hour=4, minute=40),
+    },
+    # NTCPQ33 — relance les EtapeApprobationDevis en_attente depuis plus de
+    # N jours (ParametresCPQ.delai_relance_approbation_jours) — apps/cpq/
+    # scheduled.py. Idempotent (max 1 relance/24h/étape).
+    'cpq-relancer-approbations-en-attente': {
+        'task': 'cpq.relancer_approbations_en_attente',
+        'schedule': crontab(hour=7, minute=20),
+    },
+    # NTCPQ34 — purge les SessionConfigurateur inactives >30j sans devis lié
+    # — apps/cpq/scheduled.py. Additive-safe (aucune session ayant abouti à
+    # un devis, même brouillon, n'est jamais touchée).
+    'cpq-purger-sessions-configurateur-abandonnees': {
+        'task': 'cpq.purger_sessions_configurateur_abandonnees',
+        'schedule': crontab(hour=3, minute=50),
     },
 }
 

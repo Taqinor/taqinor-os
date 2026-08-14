@@ -26,14 +26,16 @@ test('zéro table écrite à la main dans features/compta/pages/', () => {
   assert.deepEqual(offenders, [], `table nue restante : ${offenders.join(', ')}`)
 })
 
-test('les SEPT tables sont migrées (6 APX33 + le plan fiscal PACT163)', () => {
+test('les HUIT tables sont migrées (6 APX33 + plan fiscal PACT163 + OCR XACC30)', () => {
   const attendu = {
     'TresoreriePage.jsx': 3, // Position, Prévisionnel, Journal de caisse
     'EngagementsPage.jsx': 1, // Provisions FNP/FAE
     // PACT163 (XACC16) a ajouté le PLAN FISCAL dérogatoire à côté du plan
     // comptable : deux tableaux distincts, deux bases légales distinctes.
     'ImmobilisationsPage.jsx': 2, // Plan d'amortissement + plan fiscal
-    'RapprochementsPage.jsx': 1, // Suggestions d'appariement (dialogue)
+    // XACC30 a ajouté l'import OCR d'un relevé : l'aperçu des lignes
+    // extraites est un second tableau, distinct des suggestions.
+    'RapprochementsPage.jsx': 2, // Suggestions d'appariement + lignes OCR
   }
   let total = 0
   for (const [f, n] of Object.entries(attendu)) {
@@ -43,8 +45,9 @@ test('les SEPT tables sont migrées (6 APX33 + le plan fiscal PACT163)', () => {
     assert.equal(count, n, `${f} : ${count} table(s) migrée(s) au lieu de ${n}`)
     total += count
   }
-  // 6 tables APX33 d'origine + le plan fiscal ajouté par PACT163.
-  assert.equal(total, 7)
+  // 6 tables APX33 d'origine + le plan fiscal (PACT163) + l'aperçu OCR
+  // (XACC30).
+  assert.equal(total, 8)
 })
 
 test('ComptaTable s’appuie sur le primitif partagé, sans le réécrire', () => {

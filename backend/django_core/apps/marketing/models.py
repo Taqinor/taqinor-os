@@ -18,6 +18,11 @@ from decimal import Decimal
 from django.conf import settings
 from django.db import models
 
+# SCA4 — socle multi-société partagé (FK company + horodatage) : les modèles
+# AJOUTÉS depuis en héritent au lieu de re-déclarer la paire à la main.
+# ``core`` est une app de FONDATION (import exempt de la frontière M3).
+from core.models import TenantModel
+
 
 # ── FG201 — Campagnes d'envoi groupé email / SMS ───────────────────────────
 
@@ -581,6 +586,19 @@ class InscriptionSequence(models.Model):
         related_name='inscriptions_en_cours',
         verbose_name='Étape courante',
     )
+    # ── NTMKT12 — position dans le GRAPHE (journey) quand la séquence en a un.
+    # Reste NULL pour toute séquence linéaire : le moteur XMKT1 existant est
+    # strictement inchangé pour ces inscriptions.
+    noeud_courant = models.ForeignKey(
+        'marketing.NoeudJourney',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='inscriptions_en_cours',
+        verbose_name='Nœud courant (journey)',
+    )
+    noeud_depuis = models.DateTimeField(
+        null=True, blank=True,
+        verbose_name='Entrée sur le nœud courant')
     statut = models.CharField(
         max_length=10, choices=Statut.choices, default=Statut.ACTIF,
         verbose_name='Statut')
@@ -630,8 +648,19 @@ class ExecutionEtapeSequence(models.Model):
     etape = models.ForeignKey(
         EtapeSequence,
         on_delete=models.CASCADE,
+        null=True, blank=True,
         related_name='executions',
         verbose_name='Étape',
+    )
+    # ── NTMKT12 — trace d'un nœud de journey (au lieu d'une étape linéaire).
+    # Exactement une des deux références est renseignée : ``etape`` pour le
+    # moteur linéaire XMKT1 (inchangé), ``noeud`` pour le parcours en graphe.
+    noeud = models.ForeignKey(
+        'marketing.NoeudJourney',
+        on_delete=models.CASCADE,
+        null=True, blank=True,
+        related_name='executions',
+        verbose_name='Nœud (journey)',
     )
     execute_le = models.DateTimeField(
         auto_now_add=True, verbose_name='Exécutée le')
@@ -842,6 +871,11 @@ class ApprobationEnvoiCampagne(models.Model):
         auto_now_add=True, verbose_name='Créée le')
     date_decision = models.DateTimeField(
         null=True, blank=True, verbose_name='Décidée le')
+    # NTMKT35 — anti-doublon du rappel « approbation en attente depuis +24h » :
+    # NULL = jamais rappelé (comportement actuel). Posé au premier rappel émis,
+    # jamais effacé (une seule relance par demande, pas de rappel répété).
+    rappel_envoye_le = models.DateTimeField(
+        null=True, blank=True, verbose_name='Rappel de relance envoyé le')
 
     class Meta:
         db_table = 'compta_approbationenvoicampagne'
@@ -971,6 +1005,11 @@ class FormulaireIntake(models.Model):
     actif = models.BooleanField(default=True, verbose_name='Actif')
     date_creation = models.DateTimeField(
         auto_now_add=True, verbose_name='Créé le')
+    # NTMKT16 — compteur PERSISTANT du plus haut numéro de version ATTRIBUÉ
+    # (jamais un count()/Max() sur les versions restantes : celui-ci
+    # régresserait après la suppression de la version la plus récente).
+    dernier_numero_version = models.PositiveIntegerField(
+        default=0, verbose_name='Dernier numéro de version attribué')
 
     class Meta:
         db_table = 'compta_formulaireintake'
@@ -1755,6 +1794,8 @@ class InscriptionEvenement(models.Model):
     )
     evenement = models.ForeignKey(
         EvenementMarketing,
+        # on_delete: une inscription n'existe que par son événement — sans lui
+        # c'est une ligne orpheline sans aucun sens métier.
         on_delete=models.CASCADE,
         related_name='inscriptions',
         verbose_name='Événement',
@@ -1811,6 +1852,8 @@ class SupportOffline(models.Model):
     """
     company = models.ForeignKey(
         'authentication.Company',
+        # on_delete: donnée strictement multi-société — la suppression d'une
+        # société emporte ses supports (aucune valeur hors de son tenant).
         on_delete=models.CASCADE,
         related_name='supports_offline',
         verbose_name='Société',
@@ -1850,6 +1893,8 @@ class DomaineEnvoi(models.Model):
     """
     company = models.ForeignKey(
         'authentication.Company',
+        # on_delete: donnée strictement multi-société (domaine d'envoi propre
+        # au tenant) — supprimée avec sa société.
         on_delete=models.CASCADE,
         related_name='domaines_envoi',
         verbose_name='Société',
@@ -1907,6 +1952,8 @@ class PostSocial(models.Model):
 
     company = models.ForeignKey(
         'authentication.Company',
+        # on_delete: donnée strictement multi-société — les posts d'une société
+        # disparaissent avec elle.
         on_delete=models.CASCADE,
         related_name='posts_sociaux',
         verbose_name='Société',
@@ -1953,3 +2000,385 @@ class PostSocial(models.Model):
 
     def __str__(self):
         return f'{self.get_reseau_display()} — {self.texte[:40]} ({self.statut})'
+
+
+# ── NTMKT12 — Journey en graphe (nœuds + arêtes), extension ADDITIVE ───────
+# Le moteur linéaire XMKT1 (``EtapeSequence`` + ``InscriptionSequence``) reste
+# intact : une ``SequenceRelance`` SANS nœud graphe s'exécute exactement comme
+# aujourd'hui (fallback linéaire préservé à l'octet). Les nœuds/arcs ci-dessous
+# ne font qu'AJOUTER un mode de routage multi-embranchements par-dessus le même
+# moteur d'exécution et les mêmes traces (``ExecutionEtapeSequence``).
+
+class NoeudJourney(TenantModel):
+    """Un nœud du graphe d'une séquence de relance (NTMKT12).
+
+    Le graphe appartient à une ``SequenceRelance`` EXISTANTE (jamais un second
+    moteur) : quand une séquence porte au moins un nœud, le tick parcourt le
+    graphe ; sinon il déroule la liste linéaire d'``EtapeSequence`` comme
+    avant.
+
+    SCA4 — socle multi-société hérité de ``core.models.TenantModel`` (FK
+    ``company`` + horodatage), jamais re-déclaré à la main.
+    """
+    class Type(models.TextChoices):
+        DECLENCHEUR = 'declencheur', 'Déclencheur'
+        ATTENTE = 'attente', 'Attente (J+n)'
+        # NTMKT14 — attente jusqu'à une date / un créneau ouvré.
+        ATTENTE_JUSQU_A = 'attente_jusqu_a', "Attente jusqu'à"
+        ACTION = 'action', 'Action (message / CRM)'
+        BRANCHE = 'branche', 'Branche'
+        SORTIE = 'sortie', 'Sortie'
+
+    sequence = models.ForeignKey(
+        SequenceRelance,
+        # on_delete: un nœud n'existe que dans le graphe de SA séquence —
+        # supprimer la séquence supprime son graphe.
+        on_delete=models.CASCADE,
+        related_name='noeuds',
+        verbose_name='Séquence',
+    )
+    type_noeud = models.CharField(
+        max_length=20, choices=Type.choices, default=Type.ACTION,
+        verbose_name='Type de nœud')
+    libelle = models.CharField(
+        max_length=200, blank=True, default='', verbose_name='Libellé')
+    position_x = models.IntegerField(default=0, verbose_name='Position X')
+    position_y = models.IntegerField(default=0, verbose_name='Position Y')
+    # Config libre selon le type :
+    #  attente          -> {"delai_jours": 3}
+    #  attente_jusqu_a  -> {"mode": "date"|"jour_ouvre", "date": "...",
+    #                       "heure": 9, "jour_semaine": 0}
+    #  action           -> {"canal": "email"|"whatsapp"|"appel",
+    #                       "modele_message": "..."}
+    config = models.JSONField(default=dict, blank=True, verbose_name='Config')
+
+    class Meta:
+        verbose_name = 'Nœud de journey'
+        verbose_name_plural = 'Nœuds de journey'
+        ordering = ['sequence', 'id']
+        indexes = [
+            models.Index(fields=['company', 'sequence'],
+                         name='mkt_noeudjrn_co_seq_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.sequence_id} · {self.type_noeud} ({self.libelle})'
+
+
+class ArcJourney(TenantModel):
+    """Une arête orientée entre deux nœuds d'un journey (NTMKT12).
+
+    Surclasse le champ ``condition`` UNIQUE d'``EtapeSequence`` (XMKT18) : un
+    nœud peut porter N arcs sortants, chacun avec sa propre condition ; le
+    premier arc (par ``ordre``) dont la condition est vraie est emprunté.
+    """
+    class Condition(models.TextChoices):
+        TOUJOURS = 'toujours', 'Toujours'
+        A_OUVERT = 'a_ouvert', 'A ouvert'
+        A_CLIQUE = 'a_clique', 'A cliqué'
+        SCORE_SEUIL = 'score_seuil', 'Score >= seuil'
+        TAG_PRESENT = 'tag_present', 'Tag présent'
+
+    source = models.ForeignKey(
+        NoeudJourney,
+        # on_delete: une arête sans son nœud source n'a aucun sens (arc mort).
+        on_delete=models.CASCADE,
+        related_name='arcs_sortants',
+        verbose_name='Nœud source',
+    )
+    cible = models.ForeignKey(
+        NoeudJourney,
+        # on_delete: idem — une arête sans nœud cible ne mène nulle part.
+        on_delete=models.CASCADE,
+        related_name='arcs_entrants',
+        verbose_name='Nœud cible',
+    )
+    condition = models.CharField(
+        max_length=20, choices=Condition.choices, default=Condition.TOUJOURS,
+        verbose_name='Condition')
+    # Valeur associée à la condition : seuil de score, nom du tag…
+    valeur = models.CharField(
+        max_length=200, blank=True, default='', verbose_name='Valeur')
+    ordre = models.PositiveIntegerField(
+        default=1, verbose_name="Ordre d'évaluation")
+
+    class Meta:
+        verbose_name = 'Arc de journey'
+        verbose_name_plural = 'Arcs de journey'
+        ordering = ['source', 'ordre', 'id']
+        indexes = [
+            models.Index(fields=['company', 'source'],
+                         name='mkt_arcjrn_co_src_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.source_id} → {self.cible_id} ({self.condition})'
+
+
+# ── NTMKT15 — Bibliothèque de modèles de journeys ──────────────────────────
+
+class ModeleJourney(TenantModel):
+    """Gabarit de journey prêt à instancier (NTMKT15).
+
+    Complète les 5 recettes LINÉAIRES seedées par XMKT20 (qui restent
+    intactes) : un modèle porte ici un GRAPHE pré-construit (nœuds + arcs
+    NTMKT12) qu'on instancie dans une nouvelle ``SequenceRelance`` éditable.
+    """
+    nom = models.CharField(max_length=200, verbose_name='Nom du modèle')
+    categorie = models.CharField(
+        max_length=80, blank=True, default='', verbose_name='Catégorie')
+    description = models.TextField(
+        blank=True, default='', verbose_name='Description')
+    # Graphe pré-construit :
+    # {"noeuds": [{"cle": "n1", "type_noeud": "...", "libelle": "...",
+    #              "position_x": 0, "position_y": 0, "config": {...}}],
+    #  "arcs":   [{"source": "n1", "cible": "n2", "condition": "...",
+    #              "valeur": "", "ordre": 1}]}
+    graphe = models.JSONField(default=dict, blank=True, verbose_name='Graphe')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Modèle de journey'
+        verbose_name_plural = 'Modèles de journey'
+        ordering = ['categorie', 'nom']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'nom'],
+                name='uniq_modele_journey_nom_par_societe',
+            ),
+        ]
+
+    def __str__(self):
+        return f'{self.nom} ({self.categorie})'
+
+
+# ── NTMKT16 — Landing pages versionnées et publiées ────────────────────────
+
+class VersionFormulaireIntake(TenantModel):
+    """Une version éditoriale d'une landing page ``FormulaireIntake``
+    (NTMKT16).
+
+    ``FormulaireIntake.champs`` décrit les CHAMPS du formulaire ; cette
+    version porte le CONTENU de la page (titre, pitch, image). Chaque édition
+    crée une nouvelle version en brouillon ; la page publique rend TOUJOURS la
+    dernière version ``publie=True`` (aucune si le formulaire n'a jamais été
+    publié — la landing garde alors son rendu historique, sans contenu).
+    """
+    formulaire = models.ForeignKey(
+        FormulaireIntake,
+        # on_delete: une version de page n'existe que par son formulaire.
+        on_delete=models.CASCADE,
+        related_name='versions',
+        verbose_name='Formulaire',
+    )
+    # Incrémentée CÔTÉ SERVEUR (jamais acceptée du corps de requête).
+    version = models.PositiveIntegerField(default=1, verbose_name='Version')
+    titre = models.CharField(
+        max_length=200, blank=True, default='', verbose_name='Titre de la page')
+    pitch = models.TextField(
+        blank=True, default='', verbose_name='Pitch / corps de page')
+    # Clé d'objet MinIO de l'image d'en-tête — opaque, optionnelle.
+    image_key = models.CharField(
+        max_length=512, blank=True, default='',
+        verbose_name="Image d'en-tête (clé MinIO)")
+    publie = models.BooleanField(default=False, verbose_name='Publiée')
+    date_publication = models.DateTimeField(
+        null=True, blank=True, verbose_name='Publiée le')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créée le')
+
+    class Meta:
+        verbose_name = "Version de landing page"
+        verbose_name_plural = "Versions de landing page"
+        ordering = ['-version', '-id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['formulaire', 'version'],
+                name='uniq_version_formulaire_intake',
+            ),
+        ]
+
+    def __str__(self):
+        etat = 'publiée' if self.publie else 'brouillon'
+        return f'{self.formulaire_id} v{self.version} ({etat})'
+
+
+# ── NTMKT23 — Blocs de contenu réutilisables ───────────────────────────────
+
+class BlocContenu(TenantModel):
+    """Fragment de contenu réutilisable dans l'éditeur de campagne (NTMKT23).
+
+    L'insertion COPIE le fragment dans le corps de la campagne (snapshot au
+    moment de l'insertion) : modifier le bloc source ne rétro-modifie JAMAIS
+    une campagne déjà écrite ou envoyée.
+    """
+    class Type(models.TextChoices):
+        TEXTE = 'texte', 'Texte'
+        IMAGE = 'image', 'Image'
+        CTA = 'cta', 'Bouton (CTA)'
+
+    nom = models.CharField(max_length=200, verbose_name='Nom du bloc')
+    type_bloc = models.CharField(
+        max_length=10, choices=Type.choices, default=Type.TEXTE,
+        verbose_name='Type de bloc')
+    contenu = models.TextField(
+        blank=True, default='', verbose_name='Fragment HTML')
+    actif = models.BooleanField(default=True, verbose_name='Actif')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Bloc de contenu'
+        verbose_name_plural = 'Blocs de contenu'
+        ordering = ['nom']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'nom'],
+                name='uniq_bloc_contenu_nom_par_societe',
+            ),
+        ]
+
+    def __str__(self):
+        return f'{self.nom} ({self.type_bloc})'
+
+
+# ── NTMKT31 — Réglages tenant « Marketing » (Paramètres) ───────────────────
+
+class ParametresMarketing(TenantModel):
+    """Réglages société du module Marketing (NTMKT31), singleton par
+    ``company`` — un seul enregistrement par société (voir
+    ``services.parametres_marketing_pour``, qui crée l'enregistrement par
+    défaut au premier accès plutôt que de laisser un écran gérer le get-or-
+    create).
+
+    Tous les champs sont ADDITIFS : une société sans ligne ``ParametresMarketing``
+    garde le comportement actuel (plafond désactivé = pas de blocage,
+    fenêtre silencieuse déjà gérée par ``notifications.WorkingHoursConfig``).
+    """
+    expediteur_nom = models.CharField(
+        max_length=120, blank=True, default='',
+        verbose_name="Nom de l'expéditeur par défaut")
+    expediteur_email = models.EmailField(
+        blank=True, default='', verbose_name="Email de l'expéditeur par défaut")
+    expediteur_domaine = models.CharField(
+        max_length=120, blank=True, default='',
+        verbose_name="Domaine d'envoi par défaut (XMKT33)")
+    # ── Fenêtre silencieuse additive : NULL/NULL = pas de fenêtre propre au
+    # module marketing (comportement actuel — seul le calendrier ouvré
+    # ``notifications.WorkingHoursConfig``, consulté via son selector, reste
+    # en vigueur). Renseigner les deux heures ajoute une contrainte marketing
+    # SUPPLÉMENTAIRE (aucun envoi avant/après ces heures).
+    silence_heure_debut = models.PositiveSmallIntegerField(
+        null=True, blank=True,
+        verbose_name='Aucun envoi avant (heure locale)')
+    silence_heure_fin = models.PositiveSmallIntegerField(
+        null=True, blank=True,
+        verbose_name='Aucun envoi après (heure locale)')
+    # 0/NULL = plafond désactivé (comportement actuel).
+    plafond_envois_jour = models.PositiveIntegerField(
+        null=True, blank=True,
+        verbose_name="Plafond d'envois par jour (anti-spam)")
+    langue_defaut_templates = models.CharField(
+        max_length=10, blank=True, default='fr',
+        verbose_name='Langue par défaut des templates (XMKT11)')
+
+    # ── NTMKT18 — Score de maturité marketing multi-signal (additif) ────────
+    # ``score_maturite_actif`` = False par DÉFAUT : aucune ligne
+    # ``ScoreMaturite`` n'est jamais créée/recalculée tant que la société ne
+    # l'active pas — comportement actuel strictement inchangé (no-op).
+    score_maturite_actif = models.BooleanField(
+        default=False,
+        verbose_name='Score de maturité marketing actif (NTMKT18)')
+    ponderation_maturite_ouverture = models.SmallIntegerField(
+        default=2, verbose_name='Points par ouverture de campagne')
+    ponderation_maturite_clic = models.SmallIntegerField(
+        default=5, verbose_name='Points par clic sur un lien tracké')
+    ponderation_maturite_visite_proposition = models.SmallIntegerField(
+        default=10, verbose_name='Points par visite de page proposition')
+    penalite_maturite_inactivite = models.SmallIntegerField(
+        default=10,
+        verbose_name="Pénalité par palier d'inactivité (30j, NTMKT34)")
+    # XMKT21 — le seuil MQL reste déclenché SUR LE SCORE DE QUALITÉ (QJ6) par
+    # défaut ; activer ce booléen le fait AUSSI se déclencher sur le score de
+    # maturité (OR), sans jamais changer QJ6 lui-même.
+    mql_sur_score_maturite = models.BooleanField(
+        default=False,
+        verbose_name='Seuil MQL déclenché aussi sur le score de maturité')
+
+    # ── NTMKT20 — Modèle d'attribution configurable (étend FG204/XMKT17) ────
+    class ModeleAttribution(models.TextChoices):
+        DERNIER_TOUCHE = 'dernier_touche', 'Dernier touché'
+        PREMIER_TOUCHE = 'premier_touche', 'Premier touché'
+        LINEAIRE = 'lineaire', 'Linéaire'
+        PONDERE_TEMPOREL = 'pondere_temporel', 'Pondéré temporel'
+
+    modele_attribution = models.CharField(
+        max_length=20, choices=ModeleAttribution.choices,
+        default=ModeleAttribution.DERNIER_TOUCHE,
+        verbose_name="Modèle d'attribution multi-touch")
+
+    class Meta:
+        verbose_name = 'Paramètres marketing'
+        verbose_name_plural = 'Paramètres marketing'
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company'], name='uniq_parametres_marketing_par_societe'),
+        ]
+
+    def __str__(self):
+        return f'Paramètres marketing — {self.company_id}'
+
+
+# ── NTMKT18 — Score de maturité marketing multi-signal (additif à QJ6) ─────
+# Distinct du score de QUALITÉ ``crm.Lead.score`` (QJ6, jamais modifié ici) :
+# un score de MATURITÉ recalculé (jamais un delta incrémental non rejouable)
+# à partir des signaux marketing bruts (ouvertures/clics/visites de la page
+# proposition) + une pénalité d'inactivité 30j appliquée par le beat NTMKT34.
+# ``lead_id`` reste OPAQUE (pas de FK cross-app vers ``crm.Lead``), comme
+# ``EnvoiCampagne.contact_ref``/``OuverturePartage`` ailleurs dans ce module.
+
+class ScoreMaturite(TenantModel):
+    lead_id = models.PositiveIntegerField(
+        verbose_name='Lead (id opaque)')
+    valeur = models.PositiveSmallIntegerField(
+        default=0, verbose_name='Score de maturité (0-100)')
+
+    class Meta:
+        verbose_name = 'Score de maturité'
+        verbose_name_plural = 'Scores de maturité'
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'lead_id'],
+                name='uniq_score_maturite_par_lead'),
+        ]
+        indexes = [
+            models.Index(fields=['company', 'lead_id'],
+                         name='mkt_scoremat_co_lead_idx'),
+        ]
+
+    def __str__(self):
+        return f'Lead {self.lead_id} — maturité {self.valeur}'
+
+
+class VariationScoreMaturite(TenantModel):
+    """Historique horodaté des variations du score de maturité d'un lead —
+    une ligne PAR CHANGEMENT effectif (jamais une ligne par recalcul no-op)."""
+    lead_id = models.PositiveIntegerField(verbose_name='Lead (id opaque)')
+    delta = models.SmallIntegerField(verbose_name='Variation')
+    valeur_apres = models.PositiveSmallIntegerField(
+        verbose_name='Valeur après variation')
+    motif = models.CharField(
+        max_length=200, blank=True, default='', verbose_name='Motif')
+
+    class Meta:
+        verbose_name = 'Variation de score de maturité'
+        verbose_name_plural = 'Variations de score de maturité'
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['company', 'lead_id'],
+                         name='mkt_varscoremat_co_lead_idx'),
+        ]
+
+    def __str__(self):
+        return f'Lead {self.lead_id} — {self.delta:+d} -> {self.valeur_apres}'

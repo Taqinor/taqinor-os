@@ -66,6 +66,19 @@ class Company(models.Model):
         help_text="Quand True, masque les coordonnées PII des clients/leads en "
                   "LECTURE seule (jamais en écriture, jamais les factures). "
                   "Réservé aux sociétés démo.")
+    # ── NTDMO27 — toggle global « tours contextuels » par société ──────────
+    # Additif, défaut True = comportement actuel byte-identique pour TOUTE
+    # société existante (les visites guidées NTDMO14/15 restent actives).
+    # Une société qui ne veut plus jamais voir de `<ProductTour>` le désactive
+    # une fois pour toutes ici (regroupé dans l'onglet Paramètres « Démo &
+    # Onboarding »). Jamais réservé aux sociétés démo (contrairement à
+    # `mode_presentation_actif` ci-dessus) : toute société, réelle ou démo,
+    # peut couper les tours.
+    tours_actifs = models.BooleanField(
+        'Visites guidées actives', default=True,
+        help_text="Désactive l'apparition automatique de toute visite guidée "
+                  "(<ProductTour>, NTDMO14/15) pour les nouveaux utilisateurs "
+                  "de cette société. Actif par défaut (comportement inchangé).")
     date_creation = models.DateTimeField(auto_now_add=True)
 
     class Meta:

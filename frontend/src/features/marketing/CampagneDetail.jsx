@@ -45,6 +45,9 @@ export default function CampagneDetail() {
   const [precheck, setPrecheck] = useState(null)
   const [precheckLoading, setPrecheckLoading] = useState(false)
 
+  // ── NTMKT27 — export du bilan de campagne (PDF interne) ──
+  const [exportEnCours, setExportEnCours] = useState(false)
+
   const load = useCallback(() => {
     setLoading(true)
     setErr('')
@@ -92,6 +95,34 @@ export default function CampagneDetail() {
     }
   }
 
+  const exporterBilanPdf = async () => {
+    setExportEnCours(true)
+    setErr('')
+    try {
+      const r = await marketingApi.rapportCampagnePdf(id)
+      marketingApi.downloadBlob(r.data, `bilan-campagne-${id}.pdf`)
+    } catch {
+      setErr('Export du bilan PDF impossible.')
+    } finally {
+      setExportEnCours(false)
+    }
+  }
+
+  // NTMKT39 — export CSV de la trace d'envoi (destinataire/statut/dates).
+  const [exportTraceEnCours, setExportTraceEnCours] = useState(false)
+  const exporterTraceCsv = async () => {
+    setExportTraceEnCours(true)
+    setErr('')
+    try {
+      const r = await marketingApi.exportEnvoisCampagneCsv(id)
+      marketingApi.downloadBlob(r.data, `envois-campagne-${id}.csv`)
+    } catch {
+      setErr('Export de la trace CSV impossible.')
+    } finally {
+      setExportTraceEnCours(false)
+    }
+  }
+
   const confirmerEnvoi = async () => {
     setErr('')
     try {
@@ -115,6 +146,14 @@ export default function CampagneDetail() {
           ← Campagnes
         </button>
         <h2>{campagne.nom}</h2>
+        <button className="btn btn-light" data-testid="campagne-exporter-bilan-pdf"
+          disabled={exportEnCours} onClick={exporterBilanPdf}>
+          {exportEnCours ? 'Export…' : 'Exporter le bilan PDF'}
+        </button>
+        <button className="btn btn-light" data-testid="campagne-exporter-trace-csv"
+          disabled={exportTraceEnCours} onClick={exporterTraceCsv}>
+          {exportTraceEnCours ? 'Export…' : 'Exporter la trace CSV'}
+        </button>
       </div>
 
       {err && <p style={{ color: '#dc2626' }}>{err}</p>}

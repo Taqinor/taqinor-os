@@ -22,6 +22,10 @@ vi.mock('../../api/rhApi', () => {
       getBesoinsFormation: vi.fn(empty),
       getQuizFormation: vi.fn(empty),
       getArbreDepartements: vi.fn(empty),
+      // ZRH10 — rapport d'évolution des compétences.
+      getEvolutionCompetences: vi.fn(empty),
+      // ZRH17 — recherche « qui maîtrise X au niveau >= N ? ».
+      getEmployesParCompetence: vi.fn(empty),
       getEmployes: vi.fn(() => Promise.resolve({ data: [{ id: 9, nom: 'Bennani', prenom: 'Youssef' }] })),
       getCompetences: vi.fn(() => Promise.resolve({ data: [{ id: 4, code: 'PV1', libelle: 'Installation PV' }] })),
       createCompetenceEmploye: vi.fn(),
@@ -112,5 +116,38 @@ describe('Competences — saisie manuelle (WIR36)', () => {
     await waitFor(() => expect(rhApi.createQuizFormation).toHaveBeenCalledWith(
       expect.objectContaining({ intitule: 'Sécurité chantier', score_reussite: 80 }),
     ))
+  })
+  it('affiche le rapport d’évolution des compétences (ZRH10)', async () => {
+    rhApi.getEvolutionCompetences.mockResolvedValueOnce({
+      data: [{
+        employe_id: 9, employe_nom: 'Bennani Youssef',
+        competence_id: 4, competence_libelle: 'Installation PV',
+        ancien_niveau: 1, nouveau_niveau: 3, progression: true,
+        source: 'manuelle', date: '2026-08-01',
+      }],
+    })
+    renderCompetences()
+    await screen.findByText('Compétences & habilitations')
+    fireEvent.click(screen.getByRole('radio', { name: 'Évolution' }))
+
+    expect((await screen.findAllByText('Installation PV')).length).toBeGreaterThan(0)
+    expect(screen.getAllByText('Progression').length).toBeGreaterThan(0)
+  })
+
+  it('cherche les employés qualifiés sur une compétence (ZRH17)', async () => {
+    rhApi.getEmployesParCompetence.mockResolvedValueOnce({
+      data: [{ id: 9, nom: 'Bennani', prenom: 'Youssef' }],
+    })
+    renderCompetences()
+    await screen.findByText('Compétences & habilitations')
+
+    fireEvent.change(await screen.findByLabelText('Compétence recherchée'), { target: { value: '4' } })
+    fireEvent.change(screen.getByLabelText('Niveau minimum'), { target: { value: '2' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Rechercher' }))
+
+    await waitFor(() => expect(rhApi.getEmployesParCompetence).toHaveBeenCalledWith(
+      '4', { niveau_min: '2' },
+    ))
+    expect(await screen.findByText(/Bennani Youssef/)).toBeInTheDocument()
   })
 })

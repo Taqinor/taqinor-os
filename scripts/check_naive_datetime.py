@@ -61,7 +61,7 @@ DATEFIELD_AUTO_NOW_ALLOWLIST = {
     "backend/django_core/apps/facturation/models.py:113",
     "backend/django_core/apps/facturation/models.py:904",
     "backend/django_core/apps/facturation/models.py:1088",
-    "backend/django_core/apps/ventes/models.py:781",  # NoteDebit.date_emission — remapped +15 (NTCPQ on_delete comments in ventes/models.py), same reviewed date-anchor field
+    "backend/django_core/apps/ventes/models.py:988",  # NoteDebit.date_emission (PV41 décale +15) — remapped +192 (modèles CPQ NTCPQ11-24 ajoutés dans ventes/models.py), même champ date-ancre relu
     # NTASS — champs DATE métier (jour, pas horodatage) : date d'ajout d'un
     # actif couvert et date de déclaration d'un sinistre ; même motif que les
     # dates-ancre ventes ci-dessus (l'horodatage précis vit dans TenantModel.
@@ -81,7 +81,10 @@ TIMESTAMP_AS_DATEFIELD_ALLOWLIST = {
     # champ pré-existant, même motif que les dates-ancre ventes du
     # DATEFIELD_AUTO_NOW_ALLOWLIST ci-dessus — pas un bug d'horodatage.
     # Modèle relocalisé compta→crm par ODX13 (2026-07-12) : clé remappée.
-    "backend/django_core/apps/crm/models.py:2017",  # remapped +15 (PUB28 MotifPerte.est_junk) — same field (CommissionPartenaire.paye_le)
+    # Remappé 2017->2027 (lanes NTCRM14-30 : +10 lignes insérées avant
+    # CommissionPartenaire dans crm/models.py) — MÊME champ, déclaration
+    # identique avant/après (vérifié contre origin/main), pas un nouveau site.
+    "backend/django_core/apps/crm/models.py:2027",  # CommissionPartenaire.paye_le (précédemment :2017, :2002)
     # PUB75 (batch-2) — ConsentRecord.date_consentement : DATE (jour) de recueil
     # du consentement image/témoignage (loi 09-08), pas un horodatage. Le champ
     # timestamp de ce modèle (revoked_at) EST bien un DateTimeField. Pas un bug.

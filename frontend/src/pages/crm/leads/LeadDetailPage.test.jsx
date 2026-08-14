@@ -29,6 +29,11 @@ vi.mock('../../../api/aiGovernanceApi', () => ({ default: { rediger: (...a) => r
 vi.mock('../../../features/crm/workspace/LeadWorkspace', () => ({
   default: () => <div data-testid="lead-workspace-stub" />,
 }))
+// NTMKT18/19 — badge de score de maturité (mocké : module désactivé par
+// défaut, comportement identique à une société sans ParametresMarketing).
+vi.mock('../../../api/marketingApi', () => ({
+  default: { scoreMaturite: { get: vi.fn(() => Promise.resolve({ data: { actif: false } })) } },
+}))
 
 import LeadDetailPage from './LeadDetailPage'
 

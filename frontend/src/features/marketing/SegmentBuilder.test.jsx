@@ -78,6 +78,8 @@ const mocks = vi.hoisted(() => ({
   create: vi.fn(),
   update: vi.fn(),
   previsualiser: vi.fn(),
+  exportMembres: vi.fn(),
+  downloadBlob: vi.fn(),
 }))
 
 vi.mock('../../api/marketingApi', () => ({
@@ -85,6 +87,8 @@ vi.mock('../../api/marketingApi', () => ({
     segments: {
       create: mocks.create, update: mocks.update, previsualiser: mocks.previsualiser,
     },
+    exportMembresSegmentXlsx: mocks.exportMembres,
+    downloadBlob: mocks.downloadBlob,
   },
 }))
 
@@ -136,5 +140,16 @@ describe('SegmentBuilder (NTMKT4)', () => {
       onSaved={vi.fn()} onCancel={vi.fn()} />)
     fireEvent.change(screen.getByTestId('segment-ville'), { target: { value: 'Fès' } })
     await waitFor(() => expect(screen.getByText(/impossible/i)).toBeInTheDocument())
+  })
+
+  it('« Exporter les membres » (NTMKT40) télécharge le XLSX du segment', async () => {
+    mocks.exportMembres.mockResolvedValue({ data: new Blob(['x']) })
+    render(<SegmentBuilder
+      initial={{ id: 9, nom: 'Segment X', regles: {} }}
+      onSaved={vi.fn()} onCancel={vi.fn()} />)
+    fireEvent.click(screen.getByTestId('segment-exporter-membres'))
+    await waitFor(() => expect(mocks.exportMembres).toHaveBeenCalledWith(9))
+    expect(mocks.downloadBlob).toHaveBeenCalledWith(
+      expect.anything(), 'segment-9-membres.xlsx')
   })
 })

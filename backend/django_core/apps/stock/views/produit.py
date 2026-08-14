@@ -80,7 +80,8 @@ class ProduitViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         # pour les comptes hérités sans rôle fin.
         if self.action in READ_ACTIONS + [
                 'export_xlsx', 'resolve', 'previsionnel', 'tracer',
-                'etiquettes_showroom']:
+                'etiquettes_showroom', 'casiers', 'plan_picking',
+                'classe_abc']:
             # XSTK3/XSTK4 — `resolve` (scan code-barres/GS1) est LECTURE
             # SEULE, accessible à tout rôle authentifié — même garde que
             # `@action(permission_classes=[IsAnyRole])` sur l'action
@@ -320,6 +321,69 @@ class ProduitViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         from ..services import stock_breakdown
         produit = self.get_object()
         return Response(stock_breakdown(produit))
+
+    @action(detail=True, methods=['get'], url_path='casiers',
+            permission_classes=[IsAnyRole])
+    def casiers(self, request, *args, **kwargs):
+        """NTWMS1 — localisation CASIER PAR CASIER de ce produit (zone/allée/
+        casier), dans l'ordre de parcours physique du magasin.
+
+        La hiérarchie de casiers est celle de FG319 (`installations
+        .BinLocation`/`BinAffectation`) — lue ici par l'accesseur inverse posé
+        sur `Produit`, jamais dupliquée dans stock. Liste vide tant qu'aucun
+        casier n'est affecté (comportement historique)."""
+        from ..selectors import localisation_casiers
+        produit = self.get_object()
+        return Response(localisation_casiers(produit))
+
+    @action(detail=True, methods=['get'], url_path='classe-abc',
+            permission_classes=[IsAnyRole])
+    def classe_abc(self, request, *args, **kwargs):
+        """NTWMS13 — classe ABC de rotation de ce produit sur 12 mois
+        glissants (A = 20 % de la valeur de rotation cumulée, B = 30 %
+        suivants, C = reste). LECTURE SEULE."""
+        import datetime
+        from django.utils import timezone
+        from ..selectors import classe_abc_produit
+        from ..services import FENETRE_ROTATION_JOURS
+
+        produit = self.get_object()
+        jusqu_a = timezone.localdate()
+        depuis = jusqu_a - datetime.timedelta(days=FENETRE_ROTATION_JOURS)
+        return Response({
+            'produit': produit.id,
+            'classe_abc': classe_abc_produit(
+                produit, depuis=depuis, jusqu_a=jusqu_a),
+            'depuis': depuis,
+            'jusqu_a': jusqu_a,
+        })
+
+    @action(detail=True, methods=['get'], url_path='plan-picking',
+            permission_classes=[IsAnyRole])
+    def plan_picking(self, request, *args, **kwargs):
+        """NTWMS3 — plan de prélèvement de ce produit pour la quantité
+        demandée (`?quantite=`), ordonné par la stratégie de sa catégorie
+        (FIFO/FEFO/ZONE) ou libre (`aucune`, défaut historique).
+        `?strategie=` force ponctuellement une stratégie. LECTURE SEULE."""
+        from ..selectors import (
+            resoudre_allocation_picking, strategie_picking_produit,
+        )
+        produit = self.get_object()
+        try:
+            quantite = int(request.query_params.get('quantite') or 1)
+        except (TypeError, ValueError):
+            return Response({'detail': 'Quantité invalide.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        strategie = request.query_params.get('strategie') or None
+        if strategie and strategie not in dict(
+                Categorie.StrategiePicking.choices):
+            return Response({'detail': 'Stratégie de prélèvement inconnue.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        return Response({
+            'strategie': strategie or strategie_picking_produit(produit),
+            'lignes': resoudre_allocation_picking(
+                produit, quantite, strategie),
+        })
 
     @action(detail=True, methods=['post', 'delete'], url_path='photo')
     def photo(self, request, *args, **kwargs):

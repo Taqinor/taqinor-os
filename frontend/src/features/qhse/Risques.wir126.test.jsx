@@ -54,6 +54,7 @@ const LOTO_ROW = {
 vi.mock('../../api/qhseApi', () => ({
   default: {
     evaluationsRisque: { list: empty },
+    risquesOpportunites: { list: empty, revuesDues: empty },
     permisTravail: {
       list: vi.fn(() => Promise.resolve({ data: [PERMIS_ROW] })),
       create: (...a) => permisCreate(...a),
@@ -72,6 +73,9 @@ vi.mock('../../api/qhseApi', () => ({
     incidents: {
       list: empty,
       create: (...a) => incidentCreate(...a),
+      cloturer: vi.fn(() => Promise.resolve({ data: {} })),
+      notificationsEnRetard: empty,
+      relancerNotifications: vi.fn(() => Promise.resolve({ data: { relances: 0 } })),
     },
     declarationsCnss: { list: empty },
     analysesIncident: {
