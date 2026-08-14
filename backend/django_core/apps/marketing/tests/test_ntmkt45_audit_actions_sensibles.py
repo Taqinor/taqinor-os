@@ -5,6 +5,16 @@ Couvre les 3 actions journalisées : envoi réel d'une campagne, export de
 segment/campagne (NTMKT39/40), modification du modèle d'attribution société
 (NTMKT20) — chacune avec l'utilisateur acteur + la société, filtrable via
 l'écran d'audit existant (``AuditLog``).
+
+Corps de requête : ``format='json'``, JAMAIS ``content_type='application/
+json'``. ``TenantAPITestCase.client_as`` rend un ``APIClient`` DRF (pas le
+``django.test.Client``) : quand un ``content_type`` est passé EXPLICITEMENT,
+DRF traite ``data`` comme un corps brut et l'encode via ``force_bytes`` — un
+dict part donc en ``repr()`` Python (guillemets simples,
+``{'a': 'b'}``), JSON invalide. ``JSONParser`` lève alors ``ParseError`` et
+la vue répond 400 avant même d'exécuter sa logique. ``format='json'``
+sérialise réellement en JSON (idiome DRF déjà utilisé ailleurs dans le
+repo).
 """
 from apps.audit.models import AuditLog
 from apps.crm.models import Lead
@@ -30,7 +40,7 @@ class AuditEnvoiCampagneTests(TenantAPITestCase):
         res = self.client_as().post(
             f'/api/django/marketing/campagnes/{campagne.id}/envoyer/',
             data={'destinataires': ['audit@ex.ma']},
-            content_type='application/json')
+            format='json')
         self.assertEqual(res.status_code, 200)
         entree = AuditLog.objects.filter(
             company=self.company, action=AuditLog.Action.EMAIL).latest('id')
@@ -78,7 +88,7 @@ class AuditModeleAttributionTests(TenantAPITestCase):
         res = self.client_as(role='responsable').patch(
             '/api/django/marketing/parametres/',
             data={'modele_attribution': 'lineaire'},
-            content_type='application/json')
+            format='json')
         self.assertEqual(res.status_code, 200)
         entree = AuditLog.objects.filter(
             company=self.company, action=AuditLog.Action.UPDATE).latest('id')
@@ -91,7 +101,7 @@ class AuditModeleAttributionTests(TenantAPITestCase):
         res = self.client_as(role='responsable').patch(
             '/api/django/marketing/parametres/',
             data={'expediteur_nom': 'Nouveau nom'},
-            content_type='application/json')
+            format='json')
         self.assertEqual(res.status_code, 200)
         apres = AuditLog.objects.filter(
             company=self.company, action=AuditLog.Action.UPDATE).count()
