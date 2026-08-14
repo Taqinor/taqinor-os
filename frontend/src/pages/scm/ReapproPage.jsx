@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { ShoppingCart, RefreshCw } from 'lucide-react'
+import { ShoppingCart, RefreshCw, TrendingUp, AlertTriangle } from 'lucide-react'
 import scmApi from '../../api/scmApi'
 import { formatMAD } from '../../lib/format'
 import { Button, Badge, DataTable, EmptyState, Skeleton } from '../../ui'
@@ -44,6 +44,10 @@ export default function ReapproPage() {
   const [creerBusy, setCreerBusy] = useState(false)
   const [creerMsg, setCreerMsg] = useState(null)
   const [creerErr, setCreerErr] = useState(null)
+  // NTSCM24 — précision de prévision (MAPE global, widget de fiabilité).
+  const [precision, setPrecision] = useState(null)
+  // NTSCM25 — anomalies de demande ouvertes (badge « pic inhabituel »).
+  const [nbAnomalies, setNbAnomalies] = useState(0)
 
   const charger = useCallback(() => {
     setLoading(true)
@@ -63,6 +67,17 @@ export default function ReapproPage() {
   // Différé d'un microtask : `charger` pose `loading`/l'erreur de façon
   // synchrone (react-hooks/set-state-in-effect). Comportement inchangé.
   useEffect(() => { Promise.resolve().then(charger) }, [charger])
+
+  // NTSCM24/25 — widgets best-effort : une erreur ne doit jamais empêcher le
+  // tableau de bord réappro principal de s'afficher.
+  useEffect(() => {
+    Promise.resolve().then(() => {
+      scmApi.precisionPrevisions().then((r) => setPrecision(r.data)).catch(() => {})
+      scmApi.anomaliesDemande()
+        .then((r) => setNbAnomalies((r.data ?? []).length))
+        .catch(() => {})
+    })
+  }, [])
 
   const creerBrouillonsBcf = async () => {
     setCreerBusy(true); setCreerMsg(null); setCreerErr(null)
@@ -146,6 +161,25 @@ export default function ReapproPage() {
           jamais sur un document client.
         </p>
       </div>
+
+      {(precision?.mape_global_pct != null || nbAnomalies > 0) && (
+        <div className="mb-4 flex flex-wrap items-center gap-2">
+          {precision?.mape_global_pct != null && (
+            <Badge tone="neutral">
+              <TrendingUp size={14} strokeWidth={1.75} aria-hidden="true" />
+              {' '}Précision moyenne du moteur de prévision :{' '}
+              {(100 - Math.min(100, precision.mape_global_pct)).toFixed(0)}%
+              {' '}({precision.nb_mois_couverts} mois)
+            </Badge>
+          )}
+          {nbAnomalies > 0 && (
+            <Badge tone="warning" title="Pic ou creux de demande inhabituel détecté sur au moins un produit">
+              <AlertTriangle size={14} strokeWidth={1.75} aria-hidden="true" />
+              {' '}⚠ {nbAnomalies} pic{nbAnomalies > 1 ? 's' : ''} inhabituel{nbAnomalies > 1 ? 's' : ''} détecté{nbAnomalies > 1 ? 's' : ''}
+            </Badge>
+          )}
+        </div>
+      )}
 
       <div className="mb-4 flex flex-wrap items-center gap-2">
         <select

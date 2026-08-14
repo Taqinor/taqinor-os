@@ -842,6 +842,20 @@ app.conf.beat_schedule = {
         'task': 'cpq.purger_sessions_configurateur_abandonnees',
         'schedule': crontab(hour=3, minute=50),
     },
+    # NTSCM21 — (re)génère les prévisions de demande (NTSCM2) de tous les
+    # produits actifs, pour chaque société, le 1er de chaque mois — apps/scm/
+    # tasks.py. Best-effort par société ET par produit ; notifie un résumé.
+    'scm-generer-previsions-mensuelles': {
+        'task': 'scm.generer_previsions_mensuelles',
+        'schedule': crontab(hour=5, minute=10, day_of_month=1),
+    },
+    # NTSCM22 — ouvre le CyclePlanificationSOP du mois suivant (brouillon)
+    # le 20 de chaque mois, UNIQUEMENT pour les sociétés opt-in
+    # (`ParametresSCM.sop_actif`, défaut désactivé) — apps/scm/tasks.py.
+    'scm-ouvrir-cycle-sop-mensuel': {
+        'task': 'scm.ouvrir_cycle_sop_mensuel',
+        'schedule': crontab(hour=5, minute=30, day_of_month=20),
+    },
 }
 
 # YHARD6 — compteurs Celery succès/échec (process-local, best-effort) pour
