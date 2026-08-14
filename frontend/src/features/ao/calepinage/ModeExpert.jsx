@@ -15,8 +15,7 @@ import RobustesseBadges from './RobustesseBadges'
      · pas de recherche du DP (`Parametres.pas_recherche_m`, 1 cm par défaut) ;
      · seuils de robustesse (`marge_troncon_min_m` / `marge_bande_min_m`) ;
      · phase (mode de pose « rangées uniformes à phase balayée », AOF47) ;
-     · mode de pose : rangées explicites (DP) vs rangées uniformes (phase) ;
-     · forçage d'une rangée précise.
+     · mode de pose : rangées explicites (DP) vs rangées uniformes (phase).
 
    **Désactivé par défaut, mémorisé PAR UTILISATEUR** (`safeStorage.js`,
    VX170 — jamais un `localStorage.setItem` direct) : un opérateur qui active
@@ -26,6 +25,18 @@ import RobustesseBadges from './RobustesseBadges'
    **Aucun chiffre n'est recalculé ici** (garde AOF94) : `RobustesseBadges`
    (2/2) affiche les marges et leurs seuils tels que renvoyés par le moteur,
    ce composant ne fait que les transmettre et exposer les réglages.
+
+   **PV51 — la clé de la Phase est `phase_forcee_m`, pas `phase_m`.** Le champ
+   envoyait `{ phase_m }` par `majParametres` alors que le SEUL consommateur
+   serveur (`apps/ao/calepinage_io.parametres_vers_document`) lit
+   `params.get('phase_forcee_m')` : la clé voyageait jusqu'au corps de
+   `/ao/calepinage/calculer/` et le serveur l'ignorait purement et simplement,
+   silencieusement, en retombant sur la phase par défaut. Corrigé ici.
+
+   **Le forçage de rangée a été RETIRÉ (PV51) :** `rangee_forcee` n'a jamais eu
+   de consommateur côté serveur (`calepinage_io.parametres_vers_document` ne le
+   lit nulle part) — un champ qui envoyait un patch dans le vide, sans jamais
+   rien changer au calcul.
    ========================================================================== */
 
 const MODES_POSE = [
@@ -94,7 +105,6 @@ export function ModeExpert({
   const idPhase = `${uid}-phase`
   const idSeuilTroncon = `${uid}-seuil-troncon`
   const idSeuilBande = `${uid}-seuil-bande`
-  const idRangeeForcee = `${uid}-rangee-forcee`
 
   const basculer = (valeur) => {
     setActif(valeur)
@@ -109,7 +119,7 @@ export function ModeExpert({
         <div className="flex flex-col gap-0.5">
           <Label htmlFor={idExpert}>Mode expert</Label>
           <p id={idDescription} className="text-xs font-normal text-muted-foreground">
-            Réglages fins du moteur — pas de recherche, seuils, phase, forçage de rangée.
+            Réglages fins du moteur — pas de recherche, seuils, phase.
           </p>
         </div>
         <Switch
@@ -144,9 +154,9 @@ export function ModeExpert({
             <ChampNombreExpert
               id={idPhase}
               label="Phase (m)"
-              valeur={valeurs.phase_m}
+              valeur={valeurs.phase_forcee_m}
               disabled={modePose !== 'rangees_uniformes_phase'}
-              onValide={(n) => onChange?.({ phase_m: n })}
+              onValide={(n) => onChange?.({ phase_forcee_m: n })}
             />
             <ChampNombreExpert
               id={idSeuilTroncon}
@@ -161,16 +171,6 @@ export function ModeExpert({
               valeur={Number.isFinite(valeurs.marge_bande_min_m) ? valeurs.marge_bande_min_m * 100 : null}
               suffixe={100}
               onValide={(n) => onChange?.({ marge_bande_min_m: n })}
-            />
-          </div>
-
-          <div className="flex flex-col gap-1">
-            <Label htmlFor={idRangeeForcee}>Forçage de rangée (repère)</Label>
-            <Input
-              id={idRangeeForcee}
-              value={valeurs.rangee_forcee ?? ''}
-              placeholder="Aucun forçage"
-              onChange={(e) => onChange?.({ rangee_forcee: e.target.value || null })}
             />
           </div>
         </div>
