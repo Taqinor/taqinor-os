@@ -50,6 +50,27 @@ WRITE_ACTIONS = ['create', 'update', 'partial_update']
 from authentication.scoping import scope_queryset  # noqa: E402,F401
 
 
+def _emettre_layout_finalise(devis, user):
+    """PV79 — annonce que la conception 3D d'un devis est finalisée.
+
+    Passe par le bus ``core.events`` (M6) plutôt que par un appel direct à
+    ``crm`` : les deux apps restent découplées, et un futur abonné (chantier,
+    notifications…) se branche sans toucher ce fichier. Ne change AUCUN statut
+    et n'écrit rien lui-même (règle #4).
+
+    Jamais bloquant : un abonné en échec ne doit pas faire échouer la
+    finalisation d'un calepinage déjà enregistré. L'erreur est journalisée.
+    """
+    from core.events import layout_finalise
+    try:
+        layout_finalise.send(sender='ventes.views.devis', devis=devis,
+                             user=user)
+    except Exception:  # noqa: BLE001 — un abonné cassé ne casse pas le devis
+        import logging as _logging
+        _logging.getLogger(__name__).exception(
+            'PV79 : abonné en échec sur layout_finalise (devis %s)', devis.pk)
+
+
 def _company_qs(qs, user):
     """Filter queryset to user's company. Superusers without company see all."""
     if user.company_id:
@@ -211,6 +232,14 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
             # PV18 — resynchronisation des lignes sur un nouveau calepinage
             # (écriture chirurgicale, jamais le statut).
             'sync_layout',
+            # PV47 — report OPT-IN du bordereau électrique en lignes de devis.
+            'ajouter_boq_electrique',
+            # PV41 — étude électrique du devis (GET affiche, POST recalcule).
+            # Même périmètre que le générateur (responsable + admin) : la garde
+            # doit être ICI, get_permissions PRIME sur le
+            # ``permission_classes`` de l'@action — qui déclare donc la MÊME
+            # classe pour ne jamais mentir sur la garde effective.
+            'conception_electrique',
         ]:
             return [IsResponsableOrAdmin()]
         elif self.action == 'destroy':
@@ -391,6 +420,11 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
             Devis.objects.filter(pk=devis.pk).update(layout_hash=lhash)
             devis.layout_hash = lhash
 
+        # PV79 — la conception 3D est FINALISÉE. Aucun statut ne bouge : on
+        # ANNONCE seulement le fait, et les abonnés (crm : note au chatter du
+        # lead) réagissent — ventes n'importe donc jamais crm.
+        _emettre_layout_finalise(devis, request.user)
+
         link = ShareLink.for_devis(devis)
         return Response(
             {
@@ -462,6 +496,88 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
                 {'detail': exc.detail,
                  'revision_possible': exc.revision_possible},
                 status=status.HTTP_409_CONFLICT)
+        # PV79 — même annonce qu'à la création : la toiture vient d'être
+        # redessinée et les lignes suivent. Un renvoi du MÊME layout
+        # (``inchange``) n'annonce rien : il ne s'est rien passé.
+        if not (isinstance(resultat, dict) and resultat.get('inchange')):
+            _emettre_layout_finalise(devis, request.user)
+        return Response(resultat)
+
+    @action(detail=True, methods=['get', 'post'],
+            url_path='conception-electrique',
+            permission_classes=[IsResponsableOrAdmin])
+    def conception_electrique(self, request, pk=None):
+        """PV41 — l'ÉTUDE ÉLECTRIQUE du devis, en UN SEUL appel.
+
+        ``GET`` renvoie l'étude rangée sur le devis, et la calcule si elle
+        n'existe pas encore. ``POST`` la RECALCULE en appliquant les
+        surcharges du corps (``dc_m``, ``ac_m``, ``phases``, ``regime``,
+        ``batterie``, ``zone_keraunique``, ``temp_froid_c``, ``temp_chaud_c``,
+        ``longueur_chaine_forcee``, ``plafond_kwc_par_onduleur`` — toute autre
+        clé est ignorée). Les DEUX rendent EXACTEMENT la même forme, celle du
+        contrat partagé ``contract_samples/conception_electrique.json``
+        (``chaines``, ``conformite``, ``ratio_dc_ac``, ``ratio_ac_dc``,
+        ``protections``, ``cables``, ``bom``, ``note``, ``parametres``) —
+        toutes les clés TOUJOURS présentes, une liste vide valant ``[]``.
+
+        Recalculer aux mêmes entrées n'écrit RIEN (empreinte identique,
+        idempotence QJ17). Aucun statut, aucune ligne, aucun prix n'est touché
+        — l'étude est une pièce technique et le moteur ne connaît aucun montant
+        (règle #4 : ``/proposal`` reste le seul chemin du PDF client). Scopé
+        société par ``get_queryset`` : un devis d'une autre société → 404.
+        """
+        from ..electrical_service import (
+            build_electrical_design, conception_electrique_stockee)
+
+        devis = self.get_object()  # borné société par get_queryset
+        if request.method == 'GET':
+            stockee = conception_electrique_stockee(devis)
+            if stockee is not None:
+                return Response(stockee)
+            return Response(build_electrical_design(devis))
+        surcharges = request.data if isinstance(request.data, dict) else {}
+        return Response(build_electrical_design(devis, overrides=surcharges))
+
+    @action(detail=True, methods=['post'],
+            url_path='ajouter-boq-electrique',
+            permission_classes=[IsResponsableOrAdmin])
+    def ajouter_boq_electrique(self, request, pk=None):
+        """PV47 — reporte le BORDEREAU électrique (PV41) en lignes de devis.
+
+        Geste EXPLICITE et jamais silencieux : la conception électrique se
+        recalcule à chaque changement de disposition, et si elle réécrivait les
+        lignes toute seule, le prix d'un devis bougerait sous les yeux du
+        client. Ces lignes n'apparaissent donc QUE sur cet appel.
+
+        Deux issues par ligne de bordereau : un produit du catalogue
+        correspond (ligne produit à SON prix — 0 et « à chiffrer » tant que le
+        fondateur ne l'a pas renseigné), ou aucun ne correspond (ligne de NOTE
+        « à chiffrer », sans prix, et la ligne remonte dans ``manques``).
+        Aucun prix n'est JAMAIS inventé.
+
+        GARDE DE STATUT (patron PV15) : seuls « brouillon » et « envoyé »
+        acceptent l'ajout ; au-delà, 409 avec le statut NOMMÉ (le bon geste est
+        « Réviser »). Cette garde LIT le statut, elle ne l'écrit jamais
+        (règle #4). Devis d'une autre société → 404 (get_queryset).
+        """
+        from ..services import ajouter_lignes_boq_electrique
+
+        devis = self.get_object()  # borné société par get_queryset
+        _MODIFIABLES = (Devis.Statut.BROUILLON, Devis.Statut.ENVOYE)
+        if devis.statut not in _MODIFIABLES:
+            return Response(
+                {'detail': (
+                    'Devis « %s » : on ne peut plus y ajouter de lignes. '
+                    'Utilisez « Réviser » pour en créer une nouvelle version.'
+                    % devis.get_statut_display())},
+                status=status.HTTP_409_CONFLICT)
+        design = getattr(devis, 'electrical_design', None)
+        if not isinstance(design, dict) or not design.get('bom'):
+            return Response(
+                {'detail': "Ce devis n'a pas encore de conception électrique : "
+                           'lancez d\'abord « Conception électrique ».'},
+                status=status.HTTP_400_BAD_REQUEST)
+        resultat = ajouter_lignes_boq_electrique(devis, request.user)
         return Response(resultat)
 
     @action(detail=False, methods=['post'], url_path='atomic',

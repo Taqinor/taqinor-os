@@ -137,6 +137,57 @@ def devis_value_for_lead(lead_id, company):
     return {'value': float(devis.total_ttc), 'currency': devis.devise or 'MAD'}
 
 
+def conception_pour_lead(lead, company):
+    """PV78 — la conception 3D la plus RÉCENTE d'un lead, en lecture seule.
+
+    Rend TOUJOURS le même dict ``{kwc, image_url}`` — jamais une clé absente,
+    jamais un ``None`` global : une fiche lead sans conception affiche deux
+    valeurs vides, elle ne plante pas sur ``undefined``.
+
+    * ``kwc`` — la puissance crête RÉELLEMENT calepinée, lue dans le layout du
+      devis (``roof_layout['result']['kwc']``), à défaut la puissance de
+      l'étude. C'est le chiffre de la TOITURE, pas une cible commerciale ;
+    * ``image_url`` — URL PRÉ-SIGNÉE (lecture seule, expirante) du rendu 3D
+      stocké, via le helper existant ``utils.pdf.roof_image_signed_url``.
+      Jamais une URL de bucket publique.
+
+    Company-scopée : seul un devis de ``company`` est regardé (un lead d'une
+    autre société ne fait rien fuiter). Point d'entrée cross-app pour
+    ``apps.crm`` — jamais un import des modèles ventes de son côté.
+    """
+    vide = {'kwc': None, 'image_url': None}
+    lead_id = getattr(lead, 'pk', None) or getattr(lead, 'id', None)
+    if not lead_id or company is None:
+        return vide
+    from .models import Devis
+    devis = (Devis.objects
+             .filter(lead_id=lead_id, company=company,
+                     roof_layout__isnull=False)
+             .order_by('-date_creation', '-id')
+             .first())
+    if devis is None:
+        return vide
+
+    layout = devis.roof_layout if isinstance(devis.roof_layout, dict) else {}
+    resultat = layout.get('result') if isinstance(layout, dict) else None
+    kwc = (resultat or {}).get('kwc') if isinstance(resultat, dict) else None
+    if kwc in (None, ''):
+        kwc = (devis.etude_params or {}).get('puissance_kwc')
+    try:
+        kwc = float(kwc) if kwc not in (None, '') else None
+    except (TypeError, ValueError):
+        kwc = None
+
+    image_url = None
+    if devis.roof_image:
+        try:
+            from .utils.pdf import roof_image_signed_url
+            image_url = roof_image_signed_url(devis.roof_image)
+        except Exception:  # noqa: BLE001 — un rendu absent ne casse pas la fiche
+            image_url = None
+    return {'kwc': kwc, 'image_url': image_url}
+
+
 def is_devis_accepte(devis):
     """Vrai si le devis est au statut « Accepté » (sans exposer l'enum)."""
     from .models import Devis

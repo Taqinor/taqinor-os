@@ -8,6 +8,8 @@ Protections (L855) : chaque réponse publique porte « X-Robots-Tag: noindex »
 pour rester hors des moteurs de recherche, et l'accès est limité en débit par
 IP + jeton (throttle cache-based, sans dépendance externe ni rendu modifié).
 """
+import logging
+
 from django.db import models
 from django.db.models import F
 from django.http import HttpResponse
@@ -23,6 +25,8 @@ from rest_framework.throttling import SimpleRateThrottle
 from .models import PaymentLink, ShareLink
 from .quote_engine import clean_pdf_options, generate_premium_devis_pdf
 from .utils.pdf import download_pdf, generate_facture_pdf
+
+logger = logging.getLogger(__name__)
 
 
 # ── Profil saisonnier de production solaire au Maroc (T4) ────────────────────
@@ -435,6 +439,52 @@ def _safe_roof_layout(devis) -> dict | None:
     return safe or None
 
 
+def _safe_sld_svg(devis):
+    """PV81 — schéma unifilaire CLIENT-SAFE de la proposition (SVG, ou None).
+
+    Même discipline que ``_safe_roof_layout`` : on ne publie que ce qui est
+    montrable. Ici c'est structurel, pas une whitelist : ``core.electrique``
+    (PV33-39) est un moteur SANS AUCUN PRIX — il ne manipule que des grandeurs
+    électriques publiques, des calibres et des quantités. Le schéma qu'il rend
+    porte les organes, les repères et un cartouche (client, référence,
+    puissance, régime) ; ni montant, ni marge, ni note interne n'y ont accès,
+    et un test l'arme.
+
+    LA CONCEPTION STOCKÉE EST LE PORTAIL : sans ``Devis.electrical_design``
+    (PV41), on retourne ``None`` — le client ne voit un schéma que lorsque
+    l'étude a réellement été faite, jamais une esquisse fabriquée à la volée.
+    Le SVG lui-même est re-RENDU depuis les mêmes entrées (le calcul est pur et
+    idempotent par empreinte, cf. ``electrical_service``), parce que le rendu
+    demande les objets du moteur, que le contrat stocké ne conserve pas.
+
+    Lecture pure : rien n'est écrit (aucun statut, aucune ligne — règle #4).
+    Jamais bloquant : une étude illisible rend ``None``, pas une erreur 500.
+    """
+    design = getattr(devis, "electrical_design", None)
+    if not isinstance(design, dict) or not design:
+        return None
+    try:
+        from core.electrique import concevoir
+        from core.electrique.schema import rendre_schema
+
+        from .electrical_service import construire_entree
+
+        entree = construire_entree(devis)
+        if not entree.groupes:
+            return None
+        cartouche = {
+            "client": getattr(getattr(devis, "client", None), "nom", "") or "",
+            "reference": devis.reference or "",
+            "date": (devis.date_creation.strftime("%d/%m/%Y")
+                     if getattr(devis, "date_creation", None) else ""),
+        }
+        return rendre_schema(entree, concevoir(entree), cartouche=cartouche)
+    except Exception:  # noqa: BLE001 — un schéma absent ne casse pas la page
+        logger.warning("PV81 : schéma unifilaire indisponible pour le devis %s",
+                       getattr(devis, "pk", None))
+        return None
+
+
 def _variant_summaries(devis) -> list:
     """QJ15 — côte-à-côte : résumé minimal de chaque variante du devis.
 
@@ -598,6 +648,11 @@ def proposal_data(request, token):
             # jamais de prix/marge/champ interne). None quand absent → le PNG
             # poster (roof_image_url) reste le repli.
             'roof_layout': _safe_roof_layout(devis),
+            # PV81 — schéma unifilaire de l'installation (SVG texte), rendu par
+            # le moteur électrique SANS AUCUN PRIX (il n'en connaît aucun).
+            # None tant que la conception électrique (PV41) n'a pas été faite :
+            # le client ne voit un schéma que lorsqu'il en existe un vrai.
+            'sld_svg': _safe_sld_svg(devis),
             'option_totals': {
                 'sans_batterie': data.get('totaux_sans'),
                 'avec_batterie': data.get('totaux_avec'),

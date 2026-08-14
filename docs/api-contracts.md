@@ -3434,6 +3434,9 @@
 - frontend/src/api/stockApi.js :: updateRegleCodeBarres -> /api/django/stock/regles-code-barres/<>  [RegleCodeBarresSerializer]
     champs: encode, est_regex, id, motif, nomenclature, priorite
     encode ∈ {emplacement, lot, produit, quantite, serie}
+- frontend/src/api/stockApi.js :: uploadFicheTechniquePdf -> /api/django/stock/fiches-techniques/<>  [FicheTechniqueSerializer]
+    champs: bat_dod_pct, bat_kwh_nominal, bat_kwh_usable, bat_max_charge_kw, bat_v_nominal, bifacial, date_creation, date_mise_a_jour, epaisseur_mm, id, imp_a, isc_a, largeur_mm, longueur_mm, ond_ac_kw, ond_i_max_mppt_a, ond_mppt_v_max, ond_mppt_v_min, ond_n_mppt, ond_phases, ond_rendement_euro_pct, ond_v_max_abs, pdf, pmax_wc, poids_kg, produit, produit_garantie, produit_marque, produit_nom, rendement_pct, techno_cellule, temp_coeff_pmax_pct_c, temp_coeff_voc_pct_c, type_fiche, vmp_v, voc_v
+    type_fiche ∈ {autre, batterie, module, onduleur}
 - frontend/src/api/uxviewsApi.js :: createSavedView -> /api/django/uxviews/saved-views  [SavedViewSerializer]
     champs: configuration, created_at, ecran, est_defaut_role, id, nom, owner, owner_nom, role, role_nom, updated_at, visibilite
     visibilite ∈ {EQUIPE, PERSONNELLE}

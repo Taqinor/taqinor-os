@@ -36,8 +36,12 @@ PLATFORM = {
     # ODX17 a déplacé Facture vers l'app ``facturation`` (state-only) : la cible
     # chatter/records est résolue en ContentType, donc l'app_label DOIT suivre le
     # modèle (``facturation.facture``), sinon la résolution est cassée.
+    # PV45 — le dossier réglementaire devient une cible de pièce jointe : le
+    # schéma unifilaire généré s'y attache par ``records.Attachment`` (jamais
+    # un FileField, ARC26).
     'record_targets': [
         'ventes.devis', 'ventes.boncommande', 'facturation.facture',
+        'ventes.regulatorydossier',
     ],
     'customfield_models': [],
     'import_specs': [],

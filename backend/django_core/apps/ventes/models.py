@@ -208,6 +208,21 @@ class Devis(models.Model):
     # mais on plafonne à 64 pour la cohérence). Index ≤ 30 chars : lyt_hash_idx.
     layout_hash = models.CharField(max_length=64, null=True, blank=True, db_index=True)
 
+    # ── PV41 — Conception ÉLECTRIQUE du devis (additif, optionnel) ──
+    # Sortie COMPLÈTE de ``core.electrique.concevoir()`` projetée sur le contrat
+    # ``contract_samples/conception_electrique.json`` : chaînes, conformité, les
+    # deux ratios, protections, câbles, bordereau, note de calcul, paramètres.
+    # AUCUN PRIX n'y entre jamais — le moteur ne manipule que des grandeurs
+    # électriques publiques et des quantités (le chiffrage reste dans les lignes
+    # du devis). Vide → aucun comportement existant ne change.
+    electrical_design = models.JSONField(null=True, blank=True)
+    # Empreinte SHA-256 des ENTRÉES de ce calcul (layout_hash + specs module et
+    # onduleur + longueurs de liaison + phases). Même empreinte ⇒ même étude ⇒
+    # AUCUNE réécriture (patron d'idempotence QJ17). Null pour les devis
+    # antérieurs ou sans conception électrique.
+    electrical_design_hash = models.CharField(
+        max_length=64, blank=True, null=True, db_index=True)
+
     # ── QX23be — instantané de MARGE (usage manager UNIQUEMENT) ──
     # Marge HT figée au save/envoi = Σ(HT lignes) − Σ(qté × prix_achat produit).
     # NULLABLE (les devis dont aucun produit lié n'a de prix_achat gardent None).

@@ -219,15 +219,84 @@ def fenetre_onduleur_pour_produit(produit):
 # ═════════════════════════════════════════════════════════════════════════════
 # FG246 — Calcul de chaînes (string design) & vérification du ratio DC/AC
 # ═════════════════════════════════════════════════════════════════════════════
+# PV83 (ARC6) — la PHYSIQUE de ce calcul ne vit plus ici : elle vit dans
+# ``core.electrique.chaines`` (PV34), d'où ``apps.ao`` la consomme aussi. Ce
+# module n'en garde que l'ADAPTATEUR : il traduit les dicts historiques
+# (``module=`` / ``inverter=``) en ``EntreeElectrique``, appelle le noyau, et
+# reconstruit la charge utile historique clé pour clé.
+#
+# CE QUI RESTE LOCAL, ET POURQUOI (aucun comportement changé en silence) :
+#
+# 1. **Les tensions PUBLIÉES et les contrôles sont ARRONDIS au dixième.**
+#    L'historique compare ``round(voc_froid × longueur, 1)`` à ``v_max`` ; le
+#    noyau compare la valeur non arrondie. Sur un cas juste à la borne les deux
+#    ne rendent pas le même verdict — l'arrondi historique est donc conservé
+#    ici, sur les tensions unitaires FOURNIES PAR LE NOYAU.
+# 2. **Le repli « répartition non homogène » compte les chaînes au PLAFOND.**
+#    L'historique fait ``strings = ceil(n / longueur)`` (la dernière chaîne est
+#    incomplète) ; le noyau fait un plancher et ANNONCE le reste en réserve
+#    d'appoint. Les deux longueurs de chaîne sont identiques, le nombre de
+#    chaînes non : la convention historique est conservée ici.
+# 3. **``dc_kw`` compte TOUS les panneaux**, réserve d'appoint comprise, alors
+#    que le noyau ne compte que la puissance réellement mise en chaîne.
+# 4. **Le texte des avertissements** est celui de l'historique (« V_max
+#    onduleur », « ratio DC/AC … élevé ») : des écrans, des tests et des
+#    dossiers le citent. Le noyau rédige les siens autrement.
 def _voltage_at_temp(v_stc: float, temp_coeff_pct_per_c: float,
                      cell_temp_c: float) -> float:
     """Tension à ``cell_temp_c`` à partir d'une tension STC (25 °C).
 
-    ``temp_coeff_pct_per_c`` est en %/°C (négatif). À FROID (temp < 25 °C) la
-    tension MONTE (coeff négatif × écart négatif = positif).
+    RE-EXPORT (PV83) de la dérive linéaire du noyau
+    ``core.electrique.types`` : même formule, même convention de signe (à FROID
+    la tension MONTE, coeff négatif × écart négatif = positif). Conservé comme
+    point d'entrée nommé pour les appelants historiques de ce module.
     """
-    delta = cell_temp_c - STC_TEMP_C
-    return v_stc * (1.0 + (temp_coeff_pct_per_c / 100.0) * delta)
+    from core.electrique.types import _tension_a_temperature
+    return _tension_a_temperature(v_stc, temp_coeff_pct_per_c, cell_temp_c)
+
+
+def _entree_electrique_du_dict(mod, inv, n, n_mppt, cold_temp_c, hot_temp_c):
+    """PV83 — traduit les dicts historiques en ``EntreeElectrique`` du noyau.
+
+    Un seul ``GroupePan`` : le calcul historique ne connaît pas les pans, il
+    répartit un total de panneaux sur les entrées MPPT d'un onduleur. Les
+    grandeurs dont l'historique ne dispose pas (Isc/Imp module, courant d'entrée
+    MPPT admissible) sont mises à 0 — le noyau saute alors les verdicts de
+    courant, exactement comme l'historique qui ne les rendait pas.
+    """
+    from core.electrique.types import (
+        EntreeElectrique, GroupePan, SpecModule, SpecOnduleur)
+
+    spec_module = SpecModule(
+        vmp_v=float(mod["vmp"]),
+        voc_v=float(mod["voc"]),
+        isc_a=0.0,
+        imp_a=0.0,
+        pmax_wc=float(mod.get("puissance_w")
+                      or DEFAULT_MODULE["puissance_w"]),
+        temp_coeff_voc_pct_c=float(mod["temp_coeff_voc"]),
+        temp_coeff_pmax_pct_c=float(mod["temp_coeff_vmp"]),
+    )
+    spec_onduleur = SpecOnduleur(
+        n_mppt=n_mppt,
+        mppt_v_min=float(inv["v_mppt_min"]),
+        mppt_v_max=float(inv["v_mppt_max"]),
+        v_max_abs=float(inv["v_max"]),
+        i_max_mppt_a=0.0,
+        ac_kw=_as_kw(inv.get("ac_kw")) or 0.0,
+        # L'historique distingue la tension de DÉMARRAGE (``v_min``) du bas de
+        # plage MPPT ; le noyau retombe sur le bas de plage à défaut : on la
+        # lui passe explicitement pour garder les deux bornes distinctes.
+        v_demarrage_v=float(inv["v_min"]),
+    )
+    return EntreeElectrique(
+        module=spec_module,
+        onduleur=spec_onduleur,
+        groupes=(GroupePan(label="champ", nb_modules=n,
+                           azimut_deg=0.0, inclinaison_deg=0.0),),
+        temp_froid_c=cold_temp_c,
+        temp_chaud_c=hot_temp_c,
+    )
 
 
 def string_design(n_panels, module=None, inverter=None,
@@ -257,7 +326,13 @@ def string_design(n_panels, module=None, inverter=None,
     panels_per_string, dc_kw, ac_kw, dc_ac_ratio, voltages{...}, checks{...},
     ok, warnings[]}``. Ne lève jamais sur des entrées dégradées : sur 0 panneau,
     retourne une structure vide cohérente.
+
+    PV83 (ARC6) — SHIM : la physique (fenêtre de tension et découpe en chaînes
+    égales) est celle de ``core.electrique.chaines``. Les quatre points
+    volontairement conservés ici sont listés en tête de section.
     """
+    from core.electrique.chaines import concevoir_chaines
+
     mod = {**DEFAULT_MODULE, **(module or {})}
     inv = {**DEFAULT_INVERTER_WINDOW, **(inverter or {})}
 
@@ -270,18 +345,11 @@ def string_design(n_panels, module=None, inverter=None,
     warnings = []
 
     vmp_stc = float(mod["vmp"])
-    voc_stc = float(mod["voc"])
-    panel_w = float(mod.get("puissance_w") or DEFAULT_MODULE["puissance_w"])
 
     v_max = float(inv["v_max"])
     v_min = float(inv["v_min"])
     v_mppt_min = float(inv["v_mppt_min"])
     v_mppt_max = float(inv["v_mppt_max"])
-
-    # Tensions unitaires aux températures de dimensionnement.
-    voc_cold = _voltage_at_temp(voc_stc, mod["temp_coeff_voc"], cold_temp_c)
-    vmp_cold = _voltage_at_temp(vmp_stc, mod["temp_coeff_vmp"], cold_temp_c)
-    vmp_hot = _voltage_at_temp(vmp_stc, mod["temp_coeff_vmp"], hot_temp_c)
 
     if n <= 0:
         return {
@@ -293,38 +361,41 @@ def string_design(n_panels, module=None, inverter=None,
             "warnings": ["aucun panneau à répartir"],
         }
 
-    # ── Longueur de chaîne admissible (bornée par le Voc à froid) ──
-    # Max modules avant de dépasser v_max au Voc froid (sécurité absolue).
-    max_by_voc = int(math.floor(v_max / voc_cold)) if voc_cold > 0 else n
-    # Max modules avant de dépasser le haut de la plage MPPT au Vmp froid.
-    max_by_mppt = int(math.floor(v_mppt_max / vmp_cold)) if vmp_cold > 0 else n
-    # Min modules pour démarrer le MPPT au Vmp chaud (le pire cas bas).
-    min_by_mppt = int(math.ceil(v_mppt_min / vmp_hot)) if vmp_hot > 0 else 1
-    min_by_start = int(math.ceil(v_min / vmp_hot)) if vmp_hot > 0 else 1
-    min_len = max(1, min_by_mppt, min_by_start)
-    max_len = max(1, min(max_by_voc, max_by_mppt))
+    entree = _entree_electrique_du_dict(mod, inv, n, n_mppt,
+                                        cold_temp_c, hot_temp_c)
+    panel_w = entree.module.pmax_wc
+    resultat_chaines = concevoir_chaines(entree)
+    fenetre = resultat_chaines.fenetre
 
-    window_too_narrow = False
-    if max_len < min_len:
-        window_too_narrow = True
+    # Tensions unitaires aux températures de dimensionnement — celles du noyau.
+    voc_cold = fenetre.voc_froid_unitaire_v
+    vmp_cold = fenetre.vmp_froid_unitaire_v
+    vmp_hot = fenetre.vmp_chaud_unitaire_v
+
+    # ── Longueur de chaîne admissible (bornée par le Voc à froid) ──
+    # Les quatre bornes sont celles de ``fenetre_admissible`` (PV34), qui est le
+    # port À L'IDENTIQUE du calcul historique.
+    max_len = fenetre.longueur_max
+    window_too_narrow = fenetre.trop_etroite
+    if window_too_narrow:
+        # Motif rédigé à l'identique de l'historique (le noyau rédige le sien).
         warnings.append(
             "fenêtre de tension trop étroite pour ce module : aucune longueur "
             "de chaîne ne respecte à la fois la borne haute (froid) et le "
             "démarrage MPPT (chaud) — vérifier le couple module/onduleur")
-        # On garde quand même une répartition « best effort » bornée par v_max.
-        max_len = max(1, max_by_voc)
-        min_len = 1
 
     # ── Répartition équilibrée sur les MPPT ──
-    # On vise une longueur de chaîne qui partitionne n en chaînes ÉGALES sur les
-    # entrées MPPT, dans [min_len, max_len], la plus longue possible.
-    panels_per_string, strings = _choose_string_layout(
-        n, n_mppt, min_len, max_len)
+    # Le noyau vise une longueur de chaîne qui partitionne n en chaînes ÉGALES
+    # sur les entrées MPPT, dans [longueur_min, longueur_max], la plus longue
+    # possible — un seul pan ici, donc toutes les entrées lui sont allouées.
+    repartition = resultat_chaines.repartitions[0]
+    panels_per_string = repartition.longueur_chaine
+    strings = repartition.nb_chaines
 
-    uneven = False
-    if panels_per_string == 0:
-        # Aucun découpage propre — repli : chaînes de longueur bornée.
-        uneven = True
+    uneven = not repartition.homogene
+    if uneven:
+        # Aucun découpage propre — repli HISTORIQUE : la dernière chaîne est
+        # incomplète (plafond), là où le noyau annonce un reste en réserve.
         panels_per_string = min(n, max_len)
         strings = int(math.ceil(n / panels_per_string))
         warnings.append(
@@ -410,29 +481,15 @@ def string_design(n_panels, module=None, inverter=None,
 def _choose_string_layout(n, n_mppt, min_len, max_len):
     """Choisit (panels_per_string, strings) : chaînes ÉGALES, longueur valide.
 
-    Cherche une partition de ``n`` en chaînes ÉGALES telle que la longueur de
-    chaîne ∈ [min_len, max_len], en privilégiant un usage équilibré des entrées
-    MPPT (nombre de chaînes multiple de n_mppt) puis les chaînes les plus
-    longues (moins de câblage). Renvoie ``(0, 0)`` si aucune partition égale
-    n'existe.
+    PV83 (ARC6) — RE-EXPORT de ``core.electrique.chaines._choisir_longueur`` :
+    même recherche (partition de ``n`` en chaînes ÉGALES dont la longueur ∈
+    [min_len, max_len], en privilégiant un nombre de chaînes multiple de
+    ``n_mppt`` puis les chaînes les plus longues), même ``(0, 0)`` quand aucune
+    partition égale n'existe. Conservé comme point d'entrée nommé pour les
+    appelants historiques de ce module.
     """
-    best = (0, 0)
-    best_score = None
-    # On essaie tous les nombres de chaînes de 1 à n.
-    for strings in range(1, n + 1):
-        if n % strings != 0:
-            continue
-        length = n // strings
-        if length < min_len or length > max_len:
-            continue
-        # Score : préférer un nombre de chaînes multiple de n_mppt (réparti
-        # également), puis les chaînes les plus longues (moins de câblage).
-        balanced = 0 if strings % n_mppt == 0 else 1
-        score = (balanced, -length)
-        if best_score is None or score < best_score:
-            best_score = score
-            best = (length, strings)
-    return best
+    from core.electrique.chaines import _choisir_longueur
+    return _choisir_longueur(n, n_mppt, min_len, max_len)
 
 
 def _distribute_strings(strings, n_mppt):
@@ -858,6 +915,31 @@ def generate_boq(*, n_panels=0, kwc=None, string_result=None,
 
     Retourne ``{items: [{categorie, designation, quantite, unite, spec}],
     summary: {...}, warnings: []}``. JSON-sérialisable, jamais de prix.
+
+    PV83 (ARC6) — POURQUOI CE BORDEREAU N'EST **PAS** UN SHIM.
+    ``core.electrique.nomenclature.nomenclature_dict`` (PV37) rend la MÊME
+    FORME (``items``/``summary``/``warnings``, mêmes clés de résumé) mais un
+    CONTENU délibérément différent, et le remplacement serait un changement de
+    comportement silencieux — pas une refactorisation :
+
+    * la SOURCE des lignes diffère. Ici chaque organe est posé par DÉFAUT
+      (parafoudre DC, sectionneur-fusible par chaîne, câble « DC 6 mm² » écrit
+      en dur). Là-bas chaque ligne descend d'un organe RETENU par une règle
+      (IEC 62548, UTE C 15-712-1) ou d'un câble DIMENSIONNÉ : sur une liaison
+      DC courte, le parafoudre DISPARAÎT du bordereau ;
+    * les DÉSIGNATIONS diffèrent. Le noyau préfixe le repère
+      (« F1 — Fusible gPV »), l'historique nomme l'organe (« Sectionneur-fusible
+      DC par chaîne ») — des écrans, des exports et des dossiers citent la
+      seconde forme ;
+    * les SPÉCIFICATIONS diffèrent au caractère près (« selon couverture
+      (tuile/bac acier) » ici, « (tuile / bac acier) » là-bas ; la mise à la
+      terre cite NF C 15-100 §542 là-bas) ;
+    * ``ac_breaker_amp`` est un ENTIER plafonné à 160 A ici (barème
+      ``_STD_BREAKERS``) et un FLOTTANT allant à 250 A dans le noyau.
+
+    Le bordereau NORMATIF est donc offert par le noyau, à un appelant qui le
+    demande explicitement ; celui-ci reste le bordereau historique du devis,
+    inchangé. Un test épingle les deux formes (``test_pv83_shims_electrique``).
     """
     warnings = []
     sr = string_result or {}

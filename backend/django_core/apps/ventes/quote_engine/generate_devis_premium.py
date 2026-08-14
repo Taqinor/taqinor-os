@@ -320,8 +320,13 @@ CUSTOM_ACOMPTE = None          # user-defined acompte (MAD) for custom mode
 # FG52 — devise portée par le document (ISO 4217, défaut MAD). Lue depuis
 # data["devise"] ; permet l'affichage de la bonne devise sur le PDF.
 DEVISE = "MAD"
-PAGES_TOTAL = 3                # nombre réel de pages (4 avec l'étude)
+PAGES_TOTAL = 3                # nombre réel de pages (+1 étude, +1 annexe PV46)
 PAGE3_NUM = 3                  # numéro de la page de signature
+# PV46 — annexe technique : défauts INERTES (le chemin autonome et tout appel
+# sans les clés du builder rendent exactement le PDF d'aujourd'hui).
+INCLUDE_ANNEXE = False
+ELECTRICAL_DESIGN = {}
+SLD_SVG = ""
 TOTAUX_ALL = None              # totaux canoniques toutes-lignes (one-page)
 # Conditions de paiement par mode — TOUJOURS fournies par le builder ;
 # défaut résidentiel pour le chemin autonome.
@@ -2011,11 +2016,111 @@ def page_etude():
 """
 
 
+def page_annexe_technique():
+    """PV46 \u2014 annexe technique : sch\u00e9ma unifilaire + nomenclature \u00e9lectrique.
+
+    Rendue depuis ``devis.electrical_design`` (PV41) et le SVG du sch\u00e9ma, tous
+    deux fournis par le builder. **AUCUN PRIX** n'y figure : le moteur
+    \u00e9lectrique ne manipule que des grandeurs publiques et des quantit\u00e9s, et le
+    bordereau d'annexe est une pi\u00e8ce TECHNIQUE (le chiffrage reste la liste
+    d'\u00e9quipements de la page 2). Une section sans donn\u00e9e est OMISE \u2014 jamais un
+    tableau vide ni un tiret fabriqu\u00e9.
+    """
+    design = ELECTRICAL_DESIGN or {}
+
+    schema_html = (
+        f'<div style="background:white;border:1px solid {CG2};border-radius:7px;'
+        f'padding:8px 10px;margin-bottom:10px;">'
+        f'<div style="font-size:7pt;font-weight:700;color:{CN};'
+        f'text-transform:uppercase;letter-spacing:.5px;margin-bottom:5px;">'
+        f'Sch\u00e9ma unifilaire</div>{SLD_SVG}</div>'
+    ) if SLD_SVG else ""
+
+    def _cell(texte, align="left", bold=False):
+        return (f'<td style="padding:3px 6px;border-bottom:1px solid {CG2};'
+                f'text-align:{align};'
+                f'{"font-weight:700;" if bold else ""}">{texte}</td>')
+
+    lignes = []
+    for item in (design.get("bom") or [])[:22]:
+        if not isinstance(item, dict):
+            continue
+        quantite = item.get("quantite")
+        quantite = "" if quantite in (None, "") else _esc(quantite)
+        lignes.append(
+            "<tr>"
+            + _cell(_esc(item.get("designation") or ""))
+            + _cell(quantite, align="right")
+            + _cell(f'<span style="color:{CG4};">'
+                    f'{_esc(item.get("spec") or "")}</span>')
+            + "</tr>")
+    bom_html = (
+        f'<div style="background:{CG1};border:1px solid {CG2};border-radius:7px;'
+        f'padding:8px 10px;">'
+        f'<div style="font-size:7pt;font-weight:700;color:{CN};'
+        f'text-transform:uppercase;letter-spacing:.5px;margin-bottom:5px;">'
+        f'Nomenclature \u00e9lectrique</div>'
+        f'<table style="width:100%;border-collapse:collapse;font-size:7pt;">'
+        f'<tr><th style="text-align:left;padding:3px 6px;border-bottom:2px solid '
+        f'{CN};">D\u00e9signation</th>'
+        f'<th style="text-align:right;padding:3px 6px;border-bottom:2px solid '
+        f'{CN};">Qt\u00e9</th>'
+        f'<th style="text-align:left;padding:3px 6px;border-bottom:2px solid '
+        f'{CN};">Sp\u00e9cification</th></tr>'
+        + "".join(lignes) + '</table></div>'
+    ) if lignes else ""
+
+    parametres = design.get("parametres") or {}
+    _phases = parametres.get("phases")
+    reperes = []
+    if design.get("chaines"):
+        reperes.append("%d cha\u00eene(s)" % len(design["chaines"]))
+    if _phases:
+        reperes.append("triphas\u00e9" if int(_phases) == 3 else "monophas\u00e9")
+    if parametres.get("regime"):
+        reperes.append("r\u00e9gime %s" % _esc(parametres["regime"]))
+    reperes_html = (
+        f'<div style="font-size:8pt;color:{CG4};margin-bottom:10px;">'
+        f'{" \u2014 ".join(reperes)}</div>') if reperes else ""
+
+    return f"""
+<div class="page">
+  <div style="background:{CN};padding:12px 24px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;">
+    <div>
+      <div style="color:white;font-size:10pt;font-weight:700;">Annexe technique</div>
+      <div style="color:rgba(255,255,255,0.45);font-size:7pt;margin-top:2px;">Devis N\u00b0\u00a0{REF} \u2014 {CLIENT_NAME} \u2014 {DATE_STR}</div>
+    </div>
+    {logo_html("42px")}
+  </div>
+  <div style="height:3px;background:{CA};flex-shrink:0;"></div>
+
+  <div style="padding:14px 24px;flex:1;min-height:0;">
+    {reperes_html}
+    {schema_html}
+    {bom_html}
+    <div style="margin-top:10px;font-size:6.5pt;color:{CG4};font-style:italic;">
+      Pi\u00e8ce technique jointe au dossier de raccordement. Les quantit\u00e9s de
+      l'annexe sont donn\u00e9es \u00e0 titre d'\u00e9tude\u00a0; seule la liste d'\u00e9quipements du
+      devis fait foi commercialement.
+    </div>
+  </div>
+
+  <div style="background:{CN};padding:6px 24px 5px;flex-shrink:0;display:flex;align-items:center;justify-content:space-between;">
+    <div style="font-size:9pt;font-weight:800;color:{CA};letter-spacing:1px;">{ENT_NOM_MARQUE}</div>
+    <div style="font-size:7pt;color:#888;">{ENT_ETUDE_CONTACT}</div>
+    <div style="font-size:7pt;color:#888;">Annexe technique \u2014 R\u00e9f.\u00a0{REF}</div>
+  </div>
+</div>
+"""
+
+
 def build_html():
     print("  Generating charts...")
     img_roi = make_chart_roi()
     img_mon = make_chart_monthly() if SHOW_MONTHLY else ""
     etude_html = page_etude() if (INCLUDE_ETUDE and ETUDE) else ""
+    annexe_html = (page_annexe_technique()
+                   if (INCLUDE_ANNEXE and ELECTRICAL_DESIGN) else "")
     return f"""<!DOCTYPE html>
 <html lang="fr" style="background:#FFFFFF !important;"><head><meta charset="UTF-8">
 <title>Devis TAQINOR N\u00b0 {REF}</title>
@@ -2024,6 +2129,7 @@ def build_html():
 {page1()}
 {page2(SANS_ITEMS, img_roi, img_mon)}
 {etude_html}
+{annexe_html}
 {page3()}
 </body></html>"""
 
@@ -2418,6 +2524,10 @@ def _render_premium_pdf(data: dict, out_path) -> str:
     global SCENARIO, RECOMMENDED, SHOW_MONTHLY
     global DEVIS_FINAL, PAYMENT_MODE, CUSTOM_ACOMPTE
     global TVA_PCT, MODE_INSTALLATION, ETUDE, INCLUDE_ETUDE
+    # PV46 — annexe technique (schéma unifilaire + nomenclature). Même patron
+    # de global que INCLUDE_ETUDE, mêmes défauts inertes : sans les clés du
+    # builder, la page n'existe pas et le PDF est byte-identique.
+    global INCLUDE_ANNEXE, ELECTRICAL_DESIGN, SLD_SVG
     global TVA_NOTE, TOTAUX_SANS, TOTAUX_AVEC, TOTAUX_ALL, SANS_BULLETS, AVEC_BULLETS
     global PAY_A, PAY_M, PAY_S, ONEPAGE_NOTE_BATTERIE
     global DOC_TEXTS, ACCEPTE_PAR_NOM, DATE_ACCEPTATION
@@ -2467,6 +2577,9 @@ def _render_premium_pdf(data: dict, out_path) -> str:
     MODE_INSTALLATION = data.get("mode_installation", "") or ""
     ETUDE          = data.get("etude") or {}
     INCLUDE_ETUDE  = bool(data.get("include_etude", False))
+    INCLUDE_ANNEXE = bool(data.get("include_annexe_technique", False))
+    ELECTRICAL_DESIGN = data.get("electrical_design") or {}
+    SLD_SVG        = data.get("sld_svg") or ""
     _tva_lbl = int(TVA_PCT) if TVA_PCT == int(TVA_PCT) else TVA_PCT
     TVA_NOTE       = data.get("tva_note") or (
         f"TVA {_tva_lbl} % appliquée sur l'ensemble des équipements et travaux.")
@@ -2526,8 +2639,13 @@ def _render_premium_pdf(data: dict, out_path) -> str:
     # Numérotation des pages cohérente avec le nombre RÉEL de pages rendues
     # (l'étude insérée entre les pages 2 et 3 porte le total à 4).
     global PAGES_TOTAL, PAGE3_NUM
-    _with_etude = bool(INCLUDE_ETUDE and ETUDE) and data.get("pdf_mode", "full") == "full"
-    PAGES_TOTAL = 4 if _with_etude else 3
+    _full = data.get("pdf_mode", "full") == "full"
+    _with_etude = bool(INCLUDE_ETUDE and ETUDE) and _full
+    # PV46 — l'annexe technique s'intercale APRÈS l'étude, avant la signature.
+    # Sans conception électrique, elle DISPARAÎT (même dégradation gracieuse
+    # que l'étude : la page n'est ni rendue ni comptée).
+    _with_annexe = bool(INCLUDE_ANNEXE and ELECTRICAL_DESIGN) and _full
+    PAGES_TOTAL = 3 + (1 if _with_etude else 0) + (1 if _with_annexe else 0)
     PAGE3_NUM = PAGES_TOTAL
     # ERR37 — escape user text in line items at the ingestion boundary so every
     # downstream renderer (full + one-page) emits safe HTML.
