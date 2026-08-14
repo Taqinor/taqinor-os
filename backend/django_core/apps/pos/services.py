@@ -80,9 +80,19 @@ def valider_vente(*, vente, paiements, user):
                 'dépasse le seuil autorisé sans approbation.')
 
     total_ttc = vente.total_ttc
+    total_ttc_q = _q2(total_ttc)
     total_paiements = sum((_q2(p.get('montant')) for p in paiements), Decimal('0'))
     if total_paiements <= 0:
         raise VenteComptoirError('Le montant réglé doit être positif.')
+    # NTRET24 — paiement fractionné multi-modes : la SOMME des paiements doit
+    # couvrir le total dû (un excédent réglé en espèces est légitime — c'est
+    # la monnaie rendue, cf. `pos.js::calculerRendu` côté écran) ; un solde
+    # restant dû (règlement insuffisant, tous modes confondus) refuse la
+    # validation plutôt que de créer une facture partiellement soldée.
+    if total_paiements < total_ttc_q:
+        raise VenteComptoirError(
+            f'Montant réglé ({total_paiements}) insuffisant — il manque '
+            f'{_q2(total_ttc_q - total_paiements)} MAD.')
 
     a_du_cash = any(
         (p.get('mode') or '').strip().lower() == MODE_ESPECES for p in paiements)
