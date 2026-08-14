@@ -70,7 +70,9 @@ class PalierFidelite(TenantModel):
     """
 
     programme = models.ForeignKey(
-        ProgrammeFidelite, on_delete=models.CASCADE, related_name='paliers')
+        ProgrammeFidelite,
+        on_delete=models.CASCADE,  # on_delete: composition — un palier n'existe que dans son programme
+        related_name='paliers')
     libelle = models.CharField(max_length=60)
     ordre = models.PositiveSmallIntegerField(
         help_text=(
@@ -115,7 +117,11 @@ class CompteFidelite(TenantModel):
     """
 
     client = models.OneToOneField(
-        'crm.Client', on_delete=models.CASCADE,
+        'crm.Client',
+        # on_delete: composition — la carte de fidélité est un attribut du client
+        # (1-1) ; supprimer le client doit emporter sa carte et ses mouvements,
+        # sinon il resterait un solde de points orphelin non rattachable.
+        on_delete=models.CASCADE,
         related_name='compte_fidelite')
     solde_points = models.PositiveIntegerField(default=0)
     palier_actuel = models.ForeignKey(
@@ -152,7 +158,9 @@ class MouvementFidelite(TenantModel):
         AJUSTEMENT = 'ajustement', 'Ajustement manuel'
 
     compte = models.ForeignKey(
-        CompteFidelite, on_delete=models.CASCADE, related_name='mouvements')
+        CompteFidelite,
+        on_delete=models.CASCADE,  # on_delete: composition — un mouvement de points n'existe que dans son compte
+        related_name='mouvements')
     type_mouvement = models.CharField(
         max_length=12, choices=TypeMouvement.choices)
     points = models.IntegerField(

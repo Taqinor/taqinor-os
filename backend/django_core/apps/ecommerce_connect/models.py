@@ -69,7 +69,9 @@ class ProduitSync(TenantModel):
         EN_ATTENTE = 'en_attente', 'En attente'
 
     connexion = models.ForeignKey(
-        ConnexionEcommerce, on_delete=models.CASCADE, related_name='produits')
+        ConnexionEcommerce,
+        on_delete=models.CASCADE,  # on_delete: composition — un mapping de sync n'a aucun sens sans sa connexion boutique
+        related_name='produits')
     produit_id = models.PositiveIntegerField(
         help_text="Référence opaque vers stock.Produit.id (jamais une FK).")
     vendable_en_ligne = models.BooleanField(default=True)
@@ -108,7 +110,9 @@ class CommandeSync(TenantModel):
         ERREUR = 'erreur', 'Erreur'
 
     connexion = models.ForeignKey(
-        ConnexionEcommerce, on_delete=models.CASCADE, related_name='commandes')
+        ConnexionEcommerce,
+        on_delete=models.CASCADE,  # on_delete: composition — le suivi de sync d'une commande n'a aucun sens sans sa connexion boutique
+        related_name='commandes')
     external_order_id = models.CharField(max_length=100)
     facture_id = models.PositiveIntegerField(
         null=True, blank=True,
