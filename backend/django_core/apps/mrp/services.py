@@ -666,3 +666,105 @@ def cloturer_echeance_entretien(echeance, *, date_realisee=None, note=''):
             poste.usage_reinitialise_le = timezone.now()
             poste.save(update_fields=['usage_reinitialise_le'])
     return echeance
+
+
+# ── NTMFG15 — PLM léger : Ordres de Modification (ECO) ───────────────────
+
+def appliquer_eco(eco):
+    """NTMFG15 — applique les changements d'un ECO `approuve` (idempotent :
+    un ECO déjà `applique` n'est jamais rejoué). Un ECO `gamme`/`les_deux`
+    active la VERSION de `Gamme` déjà créée (NTMFG2) désignée par
+    `changements['gamme_id']` (les autres versions du même produit repassent
+    `actif=False`). Un ECO `nomenclature`/`les_deux` pointe la gamme ACTIVE
+    courante du produit vers `changements['kit_source_id']`. Les OF déjà
+    LANCÉS gardent leur `gamme` figée — AUCUNE rétroactivité, leur FK
+    `OrdreFabrication.gamme` n'est jamais touchée ici."""
+    from .models import Gamme, OrdreModification
+
+    if eco.statut == OrdreModification.Statut.APPLIQUE:
+        return eco
+    if eco.statut != OrdreModification.Statut.APPROUVE:
+        raise ValueError('Seul un ECO approuvé peut être appliqué.')
+
+    with transaction.atomic():
+        changements = eco.changements or {}
+
+        gamme_id = changements.get('gamme_id')
+        if gamme_id and eco.type_eco in (
+                OrdreModification.TypeEco.GAMME, OrdreModification.TypeEco.LES_DEUX):
+            nouvelle = Gamme.objects.filter(
+                id=gamme_id, company=eco.company, produit=eco.produit).first()
+            if nouvelle is not None:
+                Gamme.objects.filter(
+                    company=eco.company, produit=eco.produit
+                ).exclude(id=nouvelle.id).update(actif=False)
+                if not nouvelle.actif:
+                    nouvelle.actif = True
+                    nouvelle.save(update_fields=['actif'])
+
+        kit_source_id = changements.get('kit_source_id')
+        if kit_source_id and eco.type_eco in (
+                OrdreModification.TypeEco.NOMENCLATURE, OrdreModification.TypeEco.LES_DEUX):
+            gamme_active = (
+                Gamme.objects.filter(
+                    company=eco.company, produit=eco.produit, actif=True)
+                .order_by('-version').first())
+            if gamme_active is not None:
+                gamme_active.kit_source_id = kit_source_id
+                gamme_active.save(update_fields=['kit_source'])
+
+        eco.statut = OrdreModification.Statut.APPLIQUE
+        eco.applique_le = timezone.now()
+        eco.save(update_fields=['statut', 'applique_le'])
+    return eco
+
+
+def approuver_eco(eco, user=None):
+    """NTMFG15 — passe l'ECO en `approuve`. Si `date_effectivite` est déjà
+    atteinte (ou absente = immédiat), applique aussitôt (`appliquer_eco`) ;
+    sinon reste en attente du sweep périodique (`sweep_ecos_effectivite`)."""
+    from .models import OrdreModification
+
+    if eco.statut not in (
+            OrdreModification.Statut.BROUILLON, OrdreModification.Statut.EN_REVUE):
+        raise ValueError('Seul un ECO brouillon/en revue peut être approuvé.')
+    with transaction.atomic():
+        eco.statut = OrdreModification.Statut.APPROUVE
+        eco.approbateur = user if getattr(user, 'is_authenticated', False) else None
+        eco.save(update_fields=['statut', 'approbateur'])
+        today = timezone.localdate()
+        if eco.date_effectivite is None or eco.date_effectivite <= today:
+            appliquer_eco(eco)
+    eco.refresh_from_db()
+    return eco
+
+
+def rejeter_eco(eco):
+    """NTMFG15 — rejette l'ECO : AUCUN changement n'est appliqué, jamais.
+    Refuse si l'ECO est déjà `applique` (un ECO appliqué ne se rejette
+    plus — créer un nouvel ECO)."""
+    from .models import OrdreModification
+
+    if eco.statut == OrdreModification.Statut.APPLIQUE:
+        raise ValueError('Un ECO déjà appliqué ne peut plus être rejeté.')
+    eco.statut = OrdreModification.Statut.REJETE
+    eco.save(update_fields=['statut'])
+    return eco
+
+
+def sweep_ecos_effectivite(company, today=None):
+    """NTMFG15 — balaie les ECO `approuve` de `company` dont la date
+    d'effectivité est atteinte et les applique (pattern beat existant :
+    commande de gestion appelable manuellement ou par planificateur).
+    Renvoie la liste des ECO appliqués."""
+    from .models import OrdreModification
+
+    today = today or timezone.localdate()
+    appliques = []
+    qs = OrdreModification.objects.filter(
+        company=company, statut=OrdreModification.Statut.APPROUVE,
+        date_effectivite__isnull=False, date_effectivite__lte=today)
+    for eco in qs:
+        appliquer_eco(eco)
+        appliques.append(eco)
+    return appliques

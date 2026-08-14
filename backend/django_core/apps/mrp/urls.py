@@ -5,8 +5,8 @@ from rest_framework.routers import DefaultRouter
 
 from .views import (
     CoutStandardViewSet, GammeViewSet, OperationGammeViewSet, OperationOFViewSet,
-    OrdreFabricationViewSet, PosteDeChargeViewSet, analyse_couts_view,
-    charge_postes_view, mrp_run_view, oee_tous_postes_view,
+    OrdreFabricationViewSet, OrdreModificationViewSet, PosteDeChargeViewSet,
+    analyse_couts_view, charge_postes_view, mrp_run_view, oee_tous_postes_view,
 )
 
 router = DefaultRouter()
@@ -17,6 +17,7 @@ router.register(
     r'ordres-fabrication', OrdreFabricationViewSet, basename='mrp-ordre-fabrication')
 router.register(r'operations-of', OperationOFViewSet, basename='mrp-operation-of')
 router.register(r'couts-standard', CoutStandardViewSet, basename='mrp-cout-standard')
+router.register(r'ecos', OrdreModificationViewSet, basename='mrp-eco')
 
 urlpatterns = [
     path('mrp-run/', mrp_run_view, name='mrp-run'),

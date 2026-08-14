@@ -2,7 +2,7 @@ from rest_framework import serializers
 
 from .models import (
     CoutStandard, Gamme, OperationGamme, OperationOF, OrdreFabrication,
-    PosteDeCharge, ReservationOF,
+    OrdreModification, PosteDeCharge, ReservationOF,
 )
 
 
@@ -107,4 +107,18 @@ class CoutStandardSerializer(serializers.ModelSerializer):
         read_only_fields = [
             'id', 'version', 'cout_matiere', 'cout_main_oeuvre',
             'cout_unitaire_total', 'created_at',
+        ]
+
+
+class OrdreModificationSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = OrdreModification
+        fields = [
+            'id', 'produit', 'type_eco', 'description', 'statut',
+            'date_effectivite', 'changements', 'demandeur', 'approbateur',
+            'applique_le', 'created_at', 'updated_at',
+        ]
+        read_only_fields = [
+            'id', 'statut', 'demandeur', 'approbateur', 'applique_le',
+            'created_at', 'updated_at',
         ]

@@ -6,6 +6,7 @@ de fabrication capacitaires. Distinct du kitting boutique déjà livré côté
 magasin) — jamais reconstruit ici. `mrp` référence `stock`/`installations`
 UNIQUEMENT par string-FK (jamais d'import de leurs modules `models`).
 """
+from django.conf import settings
 from django.db import models
 
 from core.models import TenantModel
@@ -472,3 +473,63 @@ class EcheanceEntretienPoste(models.Model):
 
     def __str__(self):
         return f'{self.plan_id} · {self.date_prevue} ({self.statut})'
+
+
+class OrdreModification(TenantModel):
+    """NTMFG15 — PLM léger : Ordre de Modification (ECO — Engineering Change
+    Order), un WORKFLOW de changement PILOTÉ avec effectivité (brouillon ->
+    en_revue -> approuve -> applique/rejete), distinct de `RevisionKit`
+    (XMFG18, un simple SNAPSHOT historique de composition, jamais un
+    workflow). L'application des changements passe par les services `mrp`
+    EXISTANTS (`Gamme`/`kit_source`) — un OF déjà LANCÉ garde sa gamme
+    FIGÉE (`OrdreFabrication.gamme`), aucune rétroactivité."""
+
+    class TypeEco(models.TextChoices):
+        NOMENCLATURE = 'nomenclature', 'Nomenclature'
+        GAMME = 'gamme', 'Gamme'
+        LES_DEUX = 'les_deux', 'Nomenclature + gamme'
+
+    class Statut(models.TextChoices):
+        BROUILLON = 'brouillon', 'Brouillon'
+        EN_REVUE = 'en_revue', 'En revue'
+        APPROUVE = 'approuve', 'Approuvé'
+        APPLIQUE = 'applique', 'Appliqué'
+        REJETE = 'rejete', 'Rejeté'
+
+    produit = models.ForeignKey(
+        'stock.Produit', on_delete=models.PROTECT,
+        related_name='mrp_ecos', verbose_name='Produit')
+    type_eco = models.CharField(
+        max_length=16, choices=TypeEco.choices, default=TypeEco.GAMME,
+        verbose_name='Type de changement')
+    description = models.TextField(blank=True, default='')
+    statut = models.CharField(
+        max_length=10, choices=Statut.choices, default=Statut.BROUILLON)
+    date_effectivite = models.DateField(
+        null=True, blank=True,
+        verbose_name="Date d'effectivité (vide = immédiat)")
+    # NTMFG15 — changement PROPOSÉ, stocké en JSON, appliqué à l'effectivité
+    # via les services mrp existants : {"gamme_id": id} active une VERSION de
+    # `Gamme` déjà créée (NTMFG2) ; {"kit_source_id": id} pointe la
+    # nomenclature source (`stock.KitProduit`, lecture seule) à activer sur
+    # la gamme active du produit. `type_eco` détermine quelles clés sont lues.
+    changements = models.JSONField(default=dict, blank=True)
+    demandeur = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='mrp_ecos_demandes', verbose_name='Demandeur')
+    approbateur = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='mrp_ecos_approuves', verbose_name='Approbateur')
+    applique_le = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        verbose_name = 'Ordre de modification (ECO)'
+        verbose_name_plural = 'Ordres de modification (ECO)'
+        ordering = ['-id']
+        indexes = [
+            models.Index(fields=['company', 'statut'], name='mrp_eco_co_statut_idx'),
+            models.Index(fields=['company', 'produit'], name='mrp_eco_co_produit_idx'),
+        ]
+
+    def __str__(self):
+        return f'ECO-{self.id} · {self.produit_id} ({self.statut})'

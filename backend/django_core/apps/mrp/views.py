@@ -12,11 +12,13 @@ from core.permissions import ScopedPermission
 from core.viewsets import CompanyScopedModelViewSet
 
 from .models import (
-    CoutStandard, Gamme, OperationGamme, OperationOF, OrdreFabrication, PosteDeCharge,
+    CoutStandard, Gamme, OperationGamme, OperationOF, OrdreFabrication,
+    OrdreModification, PosteDeCharge,
 )
 from .serializers import (
     CoutStandardSerializer, GammeSerializer, OperationGammeSerializer,
-    OperationOFSerializer, OrdreFabricationSerializer, PosteDeChargeSerializer,
+    OperationOFSerializer, OrdreFabricationSerializer, OrdreModificationSerializer,
+    PosteDeChargeSerializer,
 )
 
 
@@ -419,6 +421,64 @@ class CoutStandardViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin,
             user=request.user)
         return Response(
             self.get_serializer(standard).data, status=201)
+
+
+class OrdreModificationViewSet(CompanyScopedModelViewSet):
+    """NTMFG15 — PLM léger : Ordres de Modification (ECO). Le `demandeur` est
+    posé CÔTÉ SERVEUR (jamais accepté du corps de requête) ; `approuver/` et
+    `rejeter/` sont les SEULES transitions de statut (jamais de PATCH direct
+    sur `statut`, verrouillé en lecture seule côté serializer). Écriture
+    réservée responsable/admin (un ECO approuvé modifie une gamme/nomenclature
+    active — acte d'exploitation, même palier que `OrdreFabricationViewSet`)."""
+    queryset = OrdreModification.objects.select_related(
+        'produit', 'demandeur', 'approbateur').all()
+    serializer_class = OrdreModificationSerializer
+    filterset_fields = ['produit', 'statut', 'type_eco']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        produit = self.request.query_params.get('produit')
+        if produit:
+            qs = qs.filter(produit_id=produit)
+        statut = self.request.query_params.get('statut')
+        if statut:
+            qs = qs.filter(statut=statut)
+        return qs
+
+    def get_permissions(self):
+        return [IsResponsableOrAdmin()]
+
+    def perform_create(self, serializer):
+        company = self.request.user.company
+        produit = serializer.validated_data.get('produit')
+        if produit is not None and getattr(produit, 'company_id', None) != getattr(company, 'id', None):
+            raise ValidationError({'produit': 'Produit inconnu pour cette société.'})
+        serializer.save(company=company, demandeur=self.request.user)
+
+    @action(detail=True, methods=['post'], url_path='approuver')
+    def approuver(self, request, pk=None):
+        """NTMFG15 — approuve l'ECO ; applique aussitôt si l'effectivité est
+        déjà atteinte (ou absente = immédiat)."""
+        from .services import approuver_eco
+        eco = self.get_object()
+        try:
+            approuver_eco(eco, user=request.user)
+        except ValueError as exc:
+            return Response({'detail': str(exc)}, status=400)
+        eco.refresh_from_db()
+        return Response(self.get_serializer(eco).data)
+
+    @action(detail=True, methods=['post'], url_path='rejeter')
+    def rejeter(self, request, pk=None):
+        """NTMFG15 — rejette l'ECO : aucun changement appliqué."""
+        from .services import rejeter_eco
+        eco = self.get_object()
+        try:
+            rejeter_eco(eco)
+        except ValueError as exc:
+            return Response({'detail': str(exc)}, status=400)
+        eco.refresh_from_db()
+        return Response(self.get_serializer(eco).data)
 
 
 # PACT7 — sans cette déclaration, le schéma OpenAPI publiait cet agrégat VIDE
