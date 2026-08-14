@@ -351,7 +351,43 @@ def score_maturite_lead_view(request, lead_id):
 
 # ── NTMKT20 — Comparaison des modèles d'attribution (?devis_id=) ───────────
 
-@extend_schema(responses={200: OpenApiTypes.OBJECT})
+def _forme_repartition_attribution(nom):
+    """PACT7 — forme d'UNE répartition : la liste des points de contact du
+    lead avec le revenu qui leur est attribué. Miroir EXACT de
+    ``apps.crm.selectors._attribution_part`` (la source) et des colonnes lues
+    par ``features/marketing/AttributionReport.jsx``. Une fabrique, pas une
+    constante : chaque ``inline_serializer`` doit recevoir ses PROPRES
+    instances de champs (un champ DRF se lie à un seul serializer)."""
+    return inline_serializer(nom, {
+        'point_contact_id': drf_serializers.IntegerField(),
+        'canal': drf_serializers.CharField(),
+        'canal_libelle': drf_serializers.CharField(),
+        'date_contact': drf_serializers.DateTimeField(),
+        'revenu_attribue': drf_serializers.CharField(),
+    }, many=True)
+
+
+# PACT7 — forme REELLE de la réponse (jamais « un objet » : une forme vide
+# valide tout, donc elle ne protège rien). Les 4 clés de ``modeles`` sont
+# celles de ``apps.crm.selectors.ATTRIBUTION_MODELES``, exactement celles que
+# l'écran indexe (`donnees.modeles?.[modele]`).
+@extend_schema(responses=inline_serializer('AttributionComparaison', {
+    'devis_id': drf_serializers.IntegerField(),
+    'lead_id': drf_serializers.IntegerField(),
+    'total_revenu': drf_serializers.CharField(),
+    'nb_points_contact': drf_serializers.IntegerField(),
+    'modele_actuel': drf_serializers.CharField(),
+    'modeles': inline_serializer('AttributionComparaisonModeles', {
+        'dernier_touche': _forme_repartition_attribution(
+            'AttributionPartDernierTouche'),
+        'premier_touche': _forme_repartition_attribution(
+            'AttributionPartPremierTouche'),
+        'lineaire': _forme_repartition_attribution(
+            'AttributionPartLineaire'),
+        'pondere_temporel': _forme_repartition_attribution(
+            'AttributionPartPondereTemporel'),
+    }),
+}))
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def attribution_comparaison_view(request):
