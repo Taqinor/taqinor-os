@@ -2,7 +2,7 @@
    Fichier de configuration de module (données + composants lazy), collecté par
    `router/moduleRoutes.jsx` via glob — pas un module de composants. */
 import { lazy } from 'react'
-import { LineChart, ShoppingCart, CalendarClock, LayoutDashboard, ListPlus, Rocket } from 'lucide-react'
+import { LineChart, ShoppingCart, CalendarClock, LayoutDashboard, ListPlus, Rocket, Settings2, ArrowLeftRight } from 'lucide-react'
 import { appGlyph } from '../../lib/apps/appGlyph'
 
 /* ============================================================================
@@ -19,8 +19,15 @@ const ScmDashboardPage = lazy(() => import('../../pages/scm/ScmDashboardPage'))
 // NTSCM30 — assistant guidé « Créer une politique de stock » en lot.
 const PolitiqueStockWizardPage = lazy(
   () => import('../../pages/scm/PolitiqueStockWizardPage'))
+// NTSCM44 — fiche détail politique de stock (réglages + fil d'activité).
+const PolitiqueStockDetailPage = lazy(
+  () => import('../../pages/scm/PolitiqueStockDetailPage'))
 // NTSCM31 — assistant guidé « Lancer un cycle S&OP ».
 const CycleSopWizardPage = lazy(() => import('../../pages/scm/CycleSopWizardPage'))
+// NTSCM33 — écran de réglages SCM par société.
+const ScmParametresPage = lazy(() => import('../../pages/scm/ScmParametresPage'))
+// NTSCM20/41 — suggestions de transfert inter-sites (anticipatif) + export.
+const TransfertsSuggeresPage = lazy(() => import('../../pages/scm/TransfertsSuggeresPage'))
 
 const ROLES = ['responsable', 'admin']
 // NTSCM15 — le cycle S&OP (Demande/Offre/Finance, dont le CA/marge en clair)
@@ -41,9 +48,11 @@ const config = {
     items: [
       { to: '/scm/dashboard', label: 'Tableau de bord exécutif', icon: <LayoutDashboard size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
       { to: '/scm/reappro', label: 'Tableau de bord réappro', icon: <ShoppingCart size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
+      { to: '/scm/transferts-suggeres', label: 'Transferts suggérés', icon: <ArrowLeftRight size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
       { to: '/scm/politiques-stock/nouveau', label: 'Nouvelle politique de stock', icon: <ListPlus size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
       { to: '/scm/sop', label: 'Cycle S&OP', icon: <CalendarClock size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES_SOP },
       { to: '/scm/sop/nouveau', label: 'Lancer un cycle S&OP', icon: <Rocket size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES_SOP },
+      { to: '/scm/parametres', label: 'Réglages', icon: <Settings2 size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
     ],
   },
   titles: [
@@ -56,15 +65,23 @@ const config = {
     // ci-dessus pour toute fiche `/scm/sop/<id>` (plus long préfixe l'emporte,
     // voir `titleFor` dans `routes.meta.js`).
     ['/scm/sop/', 'Cycle S&OP'],
+    ['/scm/parametres', 'Réglages SCM'],
+    ['/scm/transferts-suggeres', 'Suggestions de transfert inter-sites'],
+    // Préfixe plus long : gagne sur `/scm/politiques-stock/nouveau` pour
+    // toute fiche `/scm/politiques-stock/<id>` (même règle que `/scm/sop/`).
+    ['/scm/politiques-stock/', 'Politique de stock'],
   ],
   sectionLabels: { scm: 'Planification supply chain' },
   routes: [
     { path: '/scm/dashboard', component: ScmDashboardPage, roles: ROLES },
     { path: '/scm/reappro', component: ReapproPage, roles: ROLES },
+    { path: '/scm/transferts-suggeres', component: TransfertsSuggeresPage, roles: ROLES },
     { path: '/scm/politiques-stock/nouveau', component: PolitiqueStockWizardPage, roles: ROLES },
+    { path: '/scm/politiques-stock/:id', component: PolitiqueStockDetailPage, roles: ROLES },
     { path: '/scm/sop', component: CyclesSopListPage, roles: ROLES_SOP },
     { path: '/scm/sop/nouveau', component: CycleSopWizardPage, roles: ROLES_SOP },
     { path: '/scm/sop/:id', component: CycleSopPage, roles: ROLES_SOP },
+    { path: '/scm/parametres', component: ScmParametresPage, roles: ROLES },
   ],
 }
 

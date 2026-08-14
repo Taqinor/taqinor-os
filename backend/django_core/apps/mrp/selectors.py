@@ -766,3 +766,81 @@ def tableau_bord_production(company, today=None):
         'trs_moyen_pct': str(trs_moyen_pct.quantize(Decimal('0.1'))),
         'postes_en_alerte_maintenance': postes_en_alerte,
     }
+
+
+# ── NTMFG36 — Export CSV/XLSX des Ordres de Fabrication + opérations ─────
+
+def export_ordres_fabrication(company, *, debut=None, fin=None, statut=None):
+    """NTMFG36 — mêmes données que l'écran NTMFG9, prêtes pour un export
+    fichier : un onglet OF (produit, quantité, statut, dates prévues) + un
+    onglet opérations détaillées (poste, temps prévu/réel, quantité bonne/
+    rebut), COHÉRENTS entre eux (les deux listes couvrent EXACTEMENT les
+    mêmes OF de la période). `debut`/`fin` filtrent sur `created_at` (date de
+    création de l'OF) — bornes incluses. Aucun champ « opérateur » : le
+    modèle `OperationOF` n'a jamais tracé l'utilisateur qui a exécuté une
+    opération (limitation de données existante, hors périmètre d'un export).
+
+    Renvoie ``(lignes_of, lignes_operations)``, deux listes de dicts."""
+    from .models import OrdreFabrication
+
+    qs = (OrdreFabrication.objects
+          .filter(company=company)
+          .select_related('produit')
+          .prefetch_related('operations__poste_charge'))
+    if debut:
+        qs = qs.filter(created_at__date__gte=debut)
+    if fin:
+        qs = qs.filter(created_at__date__lte=fin)
+    if statut:
+        qs = qs.filter(statut=statut)
+    qs = qs.order_by('id')
+
+    lignes_of = []
+    lignes_operations = []
+    for of in qs:
+        lignes_of.append({
+            'of_id': of.id,
+            'produit_nom': of.produit.nom,
+            'quantite': _fmt_dec(of.quantite),
+            'statut': of.statut,
+            'date_debut_planifiee': (
+                of.date_debut_planifiee.isoformat() if of.date_debut_planifiee else ''),
+            'date_fin_planifiee': (
+                of.date_fin_planifiee.isoformat() if of.date_fin_planifiee else ''),
+        })
+        for op in of.operations.all():
+            temps_prevu = (
+                temps_operation_min(op.operation_gamme, of.quantite)
+                if op.operation_gamme_id else Decimal('0'))
+            lignes_operations.append({
+                'of_id': of.id,
+                'poste_nom': op.poste_charge.nom if op.poste_charge_id else '',
+                'libelle': op.libelle,
+                'statut': op.statut,
+                'temps_prevu_min': _fmt_dec(temps_prevu),
+                'temps_reel_min': _fmt_dec(op.temps_reel_min),
+                'quantite_bonne': _fmt_dec(op.quantite_bonne),
+                'quantite_rebut': _fmt_dec(op.quantite_rebut),
+            })
+    return lignes_of, lignes_operations
+
+
+# ── NTMFG40 — Provider KPI fédéré (ARC40, core.platform.kpi_providers) ───
+
+def kpi_production(company):
+    """NTMFG40 — provider KPI fédéré (``core.platform.kpi_providers``,
+    déclaré dans ``apps/mrp/platform.py``) : 3 tuiles — taux de charge
+    atelier, TRS moyen, OF en retard — DÉLÈGUE ENTIÈREMENT à
+    `tableau_bord_production` (NTMFG22, qui réutilise elle-même NTMFG7/12) :
+    ZÉRO nouveau calcul, valeurs STRICTEMENT identiques à l'écran dédié
+    `/mrp/tableau-bord` sur le même jeu de données. Company-scopée (le hub
+    `reporting.kpi_federes` passe déjà la société de l'acteur)."""
+    donnees = tableau_bord_production(company)
+    return [
+        {'id': 'mrp_taux_charge_atelier', 'label': 'Taux de charge atelier',
+         'valeur': donnees['charge_moyenne_pct'], 'unite': '%'},
+        {'id': 'mrp_trs_moyen', 'label': 'TRS moyen (7 jours)',
+         'valeur': donnees['trs_moyen_pct'], 'unite': '%'},
+        {'id': 'mrp_of_en_retard', 'label': 'OF en retard',
+         'valeur': donnees['of_en_retard'], 'unite': ''},
+    ]

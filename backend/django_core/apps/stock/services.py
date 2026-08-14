@@ -1051,6 +1051,11 @@ def confirm_reception_fournisseur(reception, user):
     lignes = list(reception.lignes.select_related('ligne_commande', 'produit'))
     if not lignes:
         raise ValueError('La réception ne contient aucune ligne.')
+    # NTWMS34 — un plan d'échantillonnage applicable BLOQUE la confirmation
+    # tant que le résultat du contrôle qualité n'est pas saisi. No-op total
+    # pour une société sans plan (comportement historique inchangé).
+    from .services_qualite_reception import verifier_controle_reception
+    verifier_controle_reception(reception)
 
     today = timezone.now().date()
     bc = reception.bon_commande
@@ -1148,6 +1153,14 @@ def confirm_reception_fournisseur(reception, user):
             company=reception.company, user=user)
     except Exception:  # pragma: no cover - défensif, best-effort
         pass
+    # NTWMS34 — routage post-contrôle : un verdict NON CONFORME met la
+    # marchandise reçue en quarantaine (NTWMS31) au lieu du put-away normal.
+    try:
+        from .services_qualite_reception import router_apres_controle
+        router_apres_controle(reception, user)
+    except Exception:  # pragma: no cover - défensif, best-effort
+        logger.exception('NTWMS34 routage quarantaine impossible pour %s',
+                         reception.reference)
     return reception
 
 
@@ -2958,10 +2971,27 @@ def supplier_performance(company, fournisseur):
     # comportement historique inchangé pour les BCF sans XPUR7 renseigné).
     otd = otd_stats(company, fournisseur)
 
+    # NTSCM8 — OTIF RÉEL (à l'heure ET complet), distinct du taux de service
+    # générique ci-dessus : une commande complète mais en retard n'est PAS
+    # OTIF. Champs additifs ; `taux_otif_pct` vaut None sans livraison
+    # mesurable (jamais 0 %, qui se lirait comme un fournisseur catastrophique).
+    from .selectors_fournisseur import otif_fournisseur
+    otif = otif_fournisseur(company, fournisseur)
+    # NTSCM9 — un incident CRITIQUE non résolu doit sauter aux yeux ici.
+    from .models import IncidentQualiteFournisseur
+    incidents_critiques = IncidentQualiteFournisseur.objects.filter(
+        company=company, fournisseur=fournisseur, resolu=False,
+        gravite=IncidentQualiteFournisseur.Gravite.CRITIQUE).count()
+
     return {
         'fournisseur_id': fournisseur.id,
         'fournisseur_nom': fournisseur.nom,
         'nb_bons': nb_bons,
+        'taux_otif_pct': otif['taux_otif_pct'],
+        'otif_total_livraisons': otif['total_livraisons'],
+        'otif_nb_retard': otif['nb_retard'],
+        'otif_nb_incomplet': otif['nb_incomplet'],
+        'incidents_qualite_critiques_ouverts': incidents_critiques,
         'avg_lead_time_days': round(sum(lead_times) / len(lead_times), 1) if lead_times else None,
         'fill_rate_pct': round(sum(fill_rates) / len(fill_rates), 1) if fill_rates else None,
         'nb_retours': nb_retours,

@@ -3,6 +3,18 @@ from datetime import date
 from decimal import Decimal
 
 
+def parametres(company):
+    """NTSCM33 — réglages SCM de ``company`` (délègue au lazy get_or_create
+    de ``services.parametres_scm`` : source UNIQUE, jamais deux chemins de
+    création du même singleton). Tous les consommateurs (NTSCM5/6/15, tâches
+    beat NTSCM21/35/36) lisent leurs seuils/défauts via CETTE fonction plutôt
+    qu'une constante codée en dur — avec repli sur les défauts du modèle
+    (voir ``models.ParametresSCM``) si la ligne vient d'être créée."""
+    from . import services
+
+    return services.parametres_scm(company)
+
+
 def classifier_abc(company, fenetre_mois=12, *, persist=True):
     """NTSCM4 — classification ABC (Pareto) des produits par valeur de
     sortie cumulée (``quantité × prix_vente`` HT, JAMAIS ``prix_achat``) sur
@@ -176,6 +188,10 @@ def tableau_bord_reappro(company, *, statut=None, classe_abc=None, fournisseur_i
         lignes.append({
             'produit_id': produit.id,
             'produit_nom': produit.nom,
+            # NTSCM44 — id de la PolitiqueStock elle-même (distinct de
+            # `produit_id`) : permet au frontend de lier vers la fiche détail
+            # `/scm/politiques-stock/<id>` (réglages + fil d'activité).
+            'politique_id': politique.id,
             'classe_abc': politique.classe_abc,
             'stock_actuel': produit.quantite_stock,
             'point_commande': politique.point_commande,
@@ -192,6 +208,10 @@ def tableau_bord_reappro(company, *, statut=None, classe_abc=None, fournisseur_i
 
 
 # Seuil d'alerte (jamais de blocage) sur l'écart CA prévisionnel vs forecast.
+# NTSCM33 — repli historique UNIQUEMENT : `impact_financier_cycle` lit
+# désormais `ParametresSCM.seuil_alerte_ecart_financier_pct` (même défaut,
+# 15%) via `parametres(company)` ; cette constante ne reste que pour un
+# éventuel appelant externe qui l'importait directement.
 SEUIL_ALERTE_ECART_CA_PCT = Decimal('15')
 
 
@@ -257,13 +277,15 @@ def impact_financier_cycle(cycle):
             ca_forecast = Decimal(str(point.value))
             break
 
+    seuil_alerte_pct = parametres(cycle.company).seuil_alerte_ecart_financier_pct
+
     ecart_pct = None
     alerte_ecart = False
     if ca_forecast:
         ecart_pct = (
             (ca_previsionnel - ca_forecast) / ca_forecast * 100
         ).quantize(Decimal('0.01'))
-        alerte_ecart = abs(ecart_pct) > SEUIL_ALERTE_ECART_CA_PCT
+        alerte_ecart = abs(ecart_pct) > seuil_alerte_pct
 
     return {
         'cycle_id': cycle.id,
@@ -272,7 +294,7 @@ def impact_financier_cycle(cycle):
         'ca_forecast_ht': ca_forecast,
         'ecart_pct': ecart_pct,
         'alerte_ecart': alerte_ecart,
-        'seuil_alerte_pct': SEUIL_ALERTE_ECART_CA_PCT,
+        'seuil_alerte_pct': seuil_alerte_pct,
         'lignes': lignes_valorisees,
     }
 
@@ -462,6 +484,88 @@ def precision_prevision(company, produit=None, fenetre_mois=6):
         'nb_mois_couverts': len(toutes_erreurs),
         'par_produit': lignes,
     }
+
+
+def ecarts_prevision(company, *, fenetre_mois=6, produit=None):
+    """NTSCM32 — écarts de prévision par produit sur la fenêtre demandée :
+    quantité prévue totale, quantité réelle totale, écart absolu
+    (réel − prévu) et écart % (écart absolu / réel × 100), pour l'export
+    « Écarts de prévision » (bouton sur ``/scm/reappro``).
+
+    Mêmes sources cross-app en LECTURE SEULE que :func:`precision_prevision`
+    (NTSCM24, réutilisé au sens de la même fenêtre de mois ÉCOULÉS, mois
+    courant exclu) — mais agrège les quantités BRUTES (prévu/réel) plutôt que
+    des erreurs mensuelles moyennées (MAPE), ce que le rapport d'écarts a
+    besoin d'afficher tel quel.
+
+    Renvoie ``[{'produit_id', 'produit_nom', 'quantite_prevue_totale',
+    'quantite_reelle_totale', 'ecart_absolu', 'ecart_pct'}, ...]`` trié par
+    écart absolu décroissant (en valeur absolue) — les plus gros écarts
+    d'abord."""
+    from django.apps import apps as django_apps
+    from django.db.models import Sum
+    from django.db.models.functions import TruncMonth
+    from django.utils import timezone
+
+    from .models import PrevisionDemande
+
+    MouvementStock = django_apps.get_model('stock', 'MouvementStock')
+    Produit = django_apps.get_model('stock', 'Produit')
+
+    today = timezone.localdate()
+    idx_debut = today.year * 12 + (today.month - 1) - max(0, int(fenetre_mois))
+    y0, m0 = divmod(idx_debut, 12)
+    debut = date(y0, m0 + 1, 1)
+    fin_exclusive = date(today.year, today.month, 1)
+
+    qs_previsions = PrevisionDemande.objects.filter(
+        company=company, periode__gte=f'{y0:04d}-{m0 + 1:02d}')
+    if produit is not None:
+        qs_previsions = qs_previsions.filter(produit=produit)
+
+    prevu_par_produit = {}
+    for p in qs_previsions:
+        prevu_par_produit[p.produit_id] = (
+            prevu_par_produit.get(p.produit_id, Decimal('0')) + p.quantite_prevue)
+
+    qs_reel = MouvementStock.objects.filter(
+        company=company, type_mouvement=MouvementStock.TypeMouvement.SORTIE,
+        date__date__gte=debut, date__date__lt=fin_exclusive)
+    if produit is not None:
+        qs_reel = qs_reel.filter(produit_id=produit.id)
+    qs_reel = (
+        qs_reel.annotate(mois=TruncMonth('date')).values('produit_id')
+        .annotate(total=Sum('quantite')))
+    reel_par_produit = {
+        row['produit_id']: Decimal(str(row['total'] or 0)) for row in qs_reel}
+
+    noms_produits = {}
+    if produit is not None:
+        noms_produits[produit.id] = produit.nom
+    else:
+        noms_produits = dict(
+            Produit.objects.filter(company=company).values_list('id', 'nom'))
+
+    produit_ids = set(prevu_par_produit) | set(reel_par_produit)
+    lignes = []
+    for pid in produit_ids:
+        prevu = prevu_par_produit.get(pid, Decimal('0'))
+        reel = reel_par_produit.get(pid, Decimal('0'))
+        ecart_absolu = reel - prevu
+        ecart_pct = (
+            (ecart_absolu / reel * 100).quantize(Decimal('0.01'))
+            if reel else None)
+        lignes.append({
+            'produit_id': pid,
+            'produit_nom': noms_produits.get(pid, ''),
+            'quantite_prevue_totale': prevu,
+            'quantite_reelle_totale': reel,
+            'ecart_absolu': ecart_absolu,
+            'ecart_pct': ecart_pct,
+        })
+
+    lignes.sort(key=lambda r: abs(r['ecart_absolu']), reverse=True)
+    return lignes
 
 
 def tableau_bord_executif(company):

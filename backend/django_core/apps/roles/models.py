@@ -264,6 +264,25 @@ ALL_PERMISSIONS = [
     'cpq_prix_contractuels_gerer',
     'cpq_marge_voir',
     'cpq_approbation_approuver',
+    # NTSCM37 — permissions granulaires du module planification supply chain
+    # (apps/scm), vérifiées via ``apps.scm.permissions`` (HasPermissionOrLegacy,
+    # repli sur le palier Responsable/Admin historique) :
+    #   * ``scm_previsions_voir``/``scm_previsions_editer`` — prévisions de
+    #     demande (NTSCM1/2/3) et événements de demande.
+    #   * ``scm_politiques_stock_editer`` — écrire les politiques de stock
+    #     (NTSCM6, recalcul en masse, assistant NTSCM30).
+    #   * ``scm_sop_voir`` — lecture des cycles S&OP.
+    #   * ``scm_sop_animer`` — avancer le statut d'un cycle S&OP
+    #     (``avancer-statut``, NTSCM12) — réservé Administrateur/Directeur.
+    #   * ``scm_fournisseurs_classement_voir`` — réservé pour un futur écran
+    #     de classement/scorecard fournisseur (NTSCM23, pas encore au plan) ;
+    #     enregistré ici sans viewset consommateur pour l'instant.
+    'scm_previsions_voir',
+    'scm_previsions_editer',
+    'scm_politiques_stock_editer',
+    'scm_sop_voir',
+    'scm_sop_animer',
+    'scm_fournisseurs_classement_voir',
 ]
 
 # Permissions de portée : un rôle qui en porte une voit un sous-ensemble ; sans
@@ -354,6 +373,12 @@ RESPONSABLE_PERMISSIONS = [
     # (ELEVATED_PERMISSIONS) — le Responsable ne les porte pas non plus.
     'cpq_regles_gerer', 'cpq_prix_contractuels_gerer',
     'cpq_approbation_approuver',
+    # NTSCM37 — comportement historique préservé (accès complet via l'ancien
+    # IsResponsableOrAdmin, non-différencié) SAUF `scm_sop_animer` — réservé
+    # Administrateur/Directeur (avancer le statut d'un cycle S&OP).
+    'scm_previsions_voir', 'scm_previsions_editer',
+    'scm_politiques_stock_editer', 'scm_sop_voir',
+    'scm_fournisseurs_classement_voir',
 ]
 
 UTILISATEUR_PERMISSIONS = [

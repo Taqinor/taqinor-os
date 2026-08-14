@@ -3,20 +3,80 @@
 // `/production` (monitoring photovoltaïque N51, module `installations`) —
 // vit sous `/mrp/*`, appelé « Atelier MRP » dans le menu pour éviter toute
 // confusion.
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ClipboardCheck, Factory, Printer } from 'lucide-react'
+import api from '../../api/axios'
 import mrpApi from '../../api/mrpApi'
+import useResource from '../../hooks/useResource'
 import {
-  Card, CardContent, Badge, Spinner, EmptyState, Button,
+  Card, CardContent, Badge, Spinner, EmptyState, Button, Textarea,
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
 } from '../../ui'
 import { PageHeader } from '../../ui/PageHeader'
+import ChatterTimeline from '../../components/ChatterTimeline'
 // NTMFG19 — ouverture/téléchargement du traveler PDF (même helper que le
 // reste de l'app pour les blobs PDF, VX49/VX172 déjà gérés).
 import { openPdfBlob } from '../../utils/pdfBlob'
 // NTMFG20 — vue arbre de généalogie amont/aval, embarquée dans le détail OF.
 import GenealogieOFPanel from './GenealogieOFPanel'
+
+// NTMFG38 — chatter générique de l'OF (`records.Activity`, `ChatterViewSetMixin`
+// côté serveur, endpoints `chatter/historique`/`chatter/noter` — mêmes que
+// `pages/transport/OrdreTransportTimeline.jsx`, jamais un modèle `*Activity`
+// maison). Historique automatique des transitions de statut + notes manuelles.
+function OfChatterPanel({ ofId }) {
+  const [note, setNote] = useState('')
+  const [envoi, setEnvoi] = useState(false)
+
+  const { data, loading, error, refetch } = useResource(
+    () => api.get(`/mrp/ordres-fabrication/${ofId}/chatter/historique/`),
+    ofId,
+    { initialData: [], select: (res) => res.data, enabled: !!ofId },
+  )
+
+  const envoyerNote = useCallback(async () => {
+    const body = note.trim()
+    if (!body) return
+    setEnvoi(true)
+    try {
+      await api.post(`/mrp/ordres-fabrication/${ofId}/chatter/noter/`, { body })
+      setNote('')
+      await refetch()
+    } finally {
+      setEnvoi(false)
+    }
+  }, [note, ofId, refetch])
+
+  if (!ofId) return null
+
+  // `ChatterActivitySerializer` renvoie `user_username` — `ChatterTimeline`
+  // (composant générique VX23) lit `user_nom` : simple alias.
+  const entries = (data ?? []).map((e) => ({ ...e, user_nom: e.user_username }))
+
+  return (
+    <div className="mt-4 flex flex-col gap-3">
+      <h4 className="text-sm font-medium">Historique</h4>
+      <div className="flex gap-2">
+        <Textarea
+          value={note}
+          onChange={(e) => setNote(e.target.value)}
+          placeholder="Ajouter une note…"
+          rows={2}
+          className="flex-1"
+        />
+        <Button onClick={envoyerNote} loading={envoi} disabled={!note.trim()}>
+          Noter
+        </Button>
+      </div>
+      {loading && <Spinner />}
+      {error && <p className="text-sm text-destructive">{error}</p>}
+      {!loading && !error && (
+        <ChatterTimeline entries={entries} emptyLabel="Aucun événement pour le moment." />
+      )}
+    </div>
+  )
+}
 
 // Radix Select interdit une valeur vide (réservée à l'effacement) — même
 // sentinelle que `pages/parametres/ApplicationsSection.jsx`.
@@ -127,6 +187,7 @@ function OfDetail({ ofId }) {
           </>
         )}
         <GenealogieOFPanel ofId={of.id} />
+        <OfChatterPanel ofId={of.id} />
       </CardContent>
     </Card>
   )

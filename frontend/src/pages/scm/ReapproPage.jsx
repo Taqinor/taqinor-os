@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { ShoppingCart, RefreshCw, TrendingUp, AlertTriangle } from 'lucide-react'
+import { Link } from 'react-router-dom'
+import { ShoppingCart, RefreshCw, TrendingUp, AlertTriangle, Download } from 'lucide-react'
 import scmApi from '../../api/scmApi'
 import { formatMAD } from '../../lib/format'
 import { Button, Badge, DataTable, EmptyState, Skeleton } from '../../ui'
@@ -79,6 +80,44 @@ export default function ReapproPage() {
     })
   }, [])
 
+  // NTSCM32/41 — exports .xlsx (écarts de prévision, suggestions d'achat
+  // groupées) — même patron de téléchargement `Blob`.
+  const [exportBusy, setExportBusy] = useState(false)
+  const [exportAchatBusy, setExportAchatBusy] = useState(false)
+
+  const _telechargerBlob = async (fetcher, filename) => {
+    const res = await fetcher()
+    const url = window.URL.createObjectURL(new Blob([res.data]))
+    const a = document.createElement('a')
+    a.href = url
+    a.download = filename
+    a.click()
+    window.URL.revokeObjectURL(url)
+  }
+
+  const exporterEcartsPrevision = async () => {
+    setExportBusy(true)
+    try {
+      await _telechargerBlob(scmApi.exportEcartsPrevision, 'ecarts-prevision.xlsx')
+    } catch {
+      setCreerErr("L'export des écarts de prévision a échoué.")
+    } finally {
+      setExportBusy(false)
+    }
+  }
+
+  const exporterSuggestionsAchat = async () => {
+    setExportAchatBusy(true)
+    try {
+      await _telechargerBlob(
+        scmApi.exportSuggestionsAchatGroupe, 'suggestions-achat-groupe.xlsx')
+    } catch {
+      setCreerErr("L'export des suggestions d'achat groupées a échoué.")
+    } finally {
+      setExportAchatBusy(false)
+    }
+  }
+
   const creerBrouillonsBcf = async () => {
     setCreerBusy(true); setCreerMsg(null); setCreerErr(null)
     try {
@@ -98,7 +137,16 @@ export default function ReapproPage() {
   }
 
   const columns = useMemo(() => [
-    { id: 'produit_nom', header: 'Produit', accessor: (r) => r.produit_nom },
+    {
+      id: 'produit_nom', header: 'Produit', accessor: (r) => r.produit_nom,
+      // NTSCM44 — lien vers la fiche politique de stock (réglages + fil
+      // d'activité) : écran livré = écran atteignable.
+      cell: (v, r) => (
+        <Link to={`/scm/politiques-stock/${r.politique_id}`} className="font-medium hover:underline">
+          {r.produit_nom}
+        </Link>
+      ),
+    },
     {
       id: 'classe_abc', header: 'Classe', width: 90,
       accessor: (r) => r.classe_abc || '—',
@@ -211,6 +259,20 @@ export default function ReapproPage() {
           title="Groupe les lignes à commander par fournisseur et crée un bon de commande brouillon par fournisseur."
         >
           <ShoppingCart /> Créer les brouillons BCF ({nbACommander})
+        </Button>
+        <Button
+          type="button" variant="outline" size="sm" loading={exportBusy}
+          onClick={exporterEcartsPrevision}
+          title="Exporte le rapport écarts de prévision (prévision, réel, écart absolu, écart %) au format .xlsx."
+        >
+          <Download /> Exporter les écarts de prévision
+        </Button>
+        <Button
+          type="button" variant="outline" size="sm" loading={exportAchatBusy}
+          onClick={exporterSuggestionsAchat}
+          title="Exporte les suggestions d'achat groupées par fournisseur (MOQ/paliers) au format .xlsx."
+        >
+          <Download /> Exporter les suggestions d&apos;achat
         </Button>
         {creerMsg && <span className="text-sm text-success" role="status">{creerMsg}</span>}
         {creerErr && <span className="text-sm text-destructive" role="alert">{creerErr}</span>}

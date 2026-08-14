@@ -278,7 +278,9 @@ class ManagementEndpointTests(TestCase):
         self.assertIn('endpoints', data)
         # XSTK23 a ajouté /produits/ (5ᵉ endpoint : leads/devis/factures/
         # chantiers/produits).
-        self.assertEqual(len(data['endpoints']), 5)
+        # NTSCM38 (14/08/2026) ajoute les 2 surfaces SCM en lecture seule
+        # (prévisions de demande, politiques de stock) — 7 au total.
+        self.assertEqual(len(data['endpoints']), 7)
         self.assertIn('authentification', data)
         self.assertIn('Api-Key', data['authentification']['entete'])
         self.assertIn('scopes', data)

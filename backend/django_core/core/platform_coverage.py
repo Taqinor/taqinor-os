@@ -175,6 +175,13 @@ BASELINE_DRIFT: set[tuple[str, str]] = {
     # ASSUMÉE que les trois entrées ``transport.*`` ci-dessus, à retirer le
     # jour où douane entrera dans ``apps/reporting/search.py``.
     ('douane.dossierexport', 'chatter_sans_recherche'),
+    # NTMFG — ``OrdreFabrication`` reçoit le chatter générique
+    # (``apps/mrp/platform.py`` : suivi d'atelier, pièces jointes de contrôle)
+    # mais n'est pas encore cherchable — ``apps/reporting/search.py`` est HORS
+    # du périmètre de la lane SUPPLY propriétaire de mrp, exactement comme les
+    # entrées ``transport.*``/``douane.*`` ci-dessus. Dérive ASSUMÉE, à retirer
+    # le jour où mrp entrera dans ``apps/reporting/search.py``.
+    ('mrp.ordrefabrication', 'chatter_sans_recherche'),
 }
 
 

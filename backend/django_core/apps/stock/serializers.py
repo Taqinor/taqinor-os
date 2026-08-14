@@ -588,14 +588,25 @@ class TransfertStockSerializer(serializers.ModelSerializer):
     created_by_username = serializers.CharField(
         source='created_by.username', read_only=True)
 
+    # NTRET7 — cycle en deux temps. Tous LECTURE SEULE : le statut n'avance
+    # que par les actions dédiées (demander/expedier/receptionner), jamais par
+    # un PATCH — sinon la garde d'ordre du cycle se contourne en une requête.
+    ecart_reception = serializers.IntegerField(read_only=True)
+
     class Meta:
         model = TransfertStock
         fields = [
             'id', 'produit', 'produit_nom', 'source', 'source_nom',
             'destination', 'destination_nom', 'quantite', 'note',
             'created_by_username', 'date',
+            'statut', 'reference', 'quantite_recue', 'ecart_reception',
+            'date_expedition', 'date_reception',
         ]
-        read_only_fields = ['created_by_username', 'date']
+        read_only_fields = [
+            'created_by_username', 'date',
+            'statut', 'reference', 'quantite_recue', 'ecart_reception',
+            'date_expedition', 'date_reception',
+        ]
 
 
 class LigneRetourFournisseurSerializer(serializers.ModelSerializer):

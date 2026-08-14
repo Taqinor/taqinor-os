@@ -8,6 +8,7 @@ import {
   TabsContent,
 } from '../../ui'
 import { StateBlock } from '../../components/StateBlock'
+import ChatterTimeline from '../../components/ChatterTimeline'
 
 /* ============================================================================
    NTSCM12-15 — Écran « Cycle S&OP » (Demande / Offre / Finance), 3 vues
@@ -34,6 +35,8 @@ export default function CycleSopPage() {
   const [lignesDemande, setLignesDemande] = useState([])
   const [lignesOffre, setLignesOffre] = useState([])
   const [finance, setFinance] = useState(null)
+  // NTSCM44 — fil d'activité (chatter générique) du cycle.
+  const [historique, setHistorique] = useState([])
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState(null)
   const [avancerBusy, setAvancerBusy] = useState(false)
@@ -49,12 +52,14 @@ export default function CycleSopPage() {
           scmApi.lignesDemandeCycleSop(id),
           scmApi.ecartsCycleSop(id),
           scmApi.impactFinancierCycleSop(id),
+          scmApi.historiqueCycleSop(id),
         ])
       })
-      .then(([demandeRes, offreRes, financeRes]) => {
+      .then(([demandeRes, offreRes, financeRes, historiqueRes]) => {
         setLignesDemande(demandeRes.status === 'fulfilled' ? (demandeRes.value.data ?? []) : [])
         setLignesOffre(offreRes.status === 'fulfilled' ? (offreRes.value.data ?? []) : [])
         setFinance(financeRes.status === 'fulfilled' ? financeRes.value.data : null)
+        setHistorique(historiqueRes.status === 'fulfilled' ? (historiqueRes.value.data ?? []) : [])
       })
       .catch((e) => setLoadError(
         e?.response?.status === 404
@@ -182,6 +187,7 @@ export default function CycleSopPage() {
           <TabsTrigger value="demande">Demande</TabsTrigger>
           <TabsTrigger value="offre">Offre</TabsTrigger>
           <TabsTrigger value="finance">Finance</TabsTrigger>
+          <TabsTrigger value="historique">Historique</TabsTrigger>
         </TabsList>
 
         <TabsContent value="demande">
@@ -257,6 +263,17 @@ export default function CycleSopPage() {
               </div>
             </div>
           )}
+        </TabsContent>
+
+        <TabsContent value="historique">
+          {/* NTSCM44 — fil d'activité : chaque changement de statut du cycle
+              génère une entrée automatique horodatée + utilisateur (déjà
+              journalisée côté serveur par `services.avancer_statut_cycle`/
+              `reouvrir_cycle`, NTSCM12). */}
+          <ChatterTimeline
+            entries={historique}
+            emptyLabel="Aucune activité pour le moment."
+          />
         </TabsContent>
       </Tabs>
     </div>

@@ -349,6 +349,13 @@ app.conf.beat_schedule = {
         'task': 'stock.expiration_alerts',
         'schedule': crontab(hour=6, minute=20),
     },
+    # NTWMS42 — alerte PASSIVE de sur-stockage par zone (seuil 95 % par
+    # défaut). Une zone sans capacité déclarée n'est jamais signalée, donc
+    # no-op tant qu'aucune `CategorieStockage` n'est posée sur les casiers.
+    'stock-alerter-surcapacite-zones': {
+        'task': 'stock.alerter_surcapacite_zones',
+        'schedule': crontab(hour=6, minute=25),
+    },
     # YOPSB1 — pg_dump réel quotidien vers MinIO (heure creuse).
     'core-dump-database': {
         'task': 'core.dump_database',
@@ -855,6 +862,44 @@ app.conf.beat_schedule = {
     'scm-ouvrir-cycle-sop-mensuel': {
         'task': 'scm.ouvrir_cycle_sop_mensuel',
         'schedule': crontab(hour=5, minute=30, day_of_month=20),
+    },
+    # NTMFG30 — recalcul MRP nocturne (NTMFG5) + notification des ruptures
+    # prévisionnelles sur l'horizon `ParametresMRP.horizon_mrp_jours`
+    # (NTMFG29) — apps/mrp/tasks.py. Best-effort par société.
+    'mrp-recalculer-besoins-nocturne': {
+        'task': 'mrp.recalculer_besoins_nocturne',
+        'schedule': crontab(hour=1, minute=30),
+    },
+    # NTMFG31 — archive (soft-delete) les OF prototype clôturés dépassant
+    # `ParametresMRP.retention_prototype_jours` (NTMFG29) — apps/mrp/tasks.py.
+    'mrp-archiver-of-prototype-anciens': {
+        'task': 'mrp.archiver_of_prototype_anciens',
+        'schedule': crontab(hour=2, minute=15),
+    },
+    # NTMFG32 — rappel proactif J-7 avant échéance d'entretien de poste
+    # (NTMFG14) — apps/mrp/tasks.py.
+    'mrp-rappeler-entretiens-poste-j7': {
+        'task': 'mrp.rappeler_entretiens_poste_j7',
+        'schedule': crontab(hour=6, minute=45),
+    },
+    # NTSCM35 — recalcule PolitiqueStock (NTSCM6) de chaque société avec
+    # ParametresSCM configuré, tous les lundis — apps/scm/tasks.py.
+    'scm-recalculer-politiques-stock-hebdo': {
+        'task': 'scm.recalculer_politiques_stock_hebdo',
+        'schedule': crontab(hour=5, minute=45, day_of_week=1),
+    },
+    # NTSCM36 — purge les PrevisionDemande > ParametresSCM.
+    # retention_previsions_mois (défaut 24 mois), sauf si référencées par un
+    # LigneDemandeSOP figé d'un cycle CLOS — apps/scm/tasks.py. Mensuel.
+    'scm-purger-donnees-scm-anciennes': {
+        'task': 'scm.purger_donnees_scm_anciennes',
+        'schedule': crontab(hour=6, minute=0, day_of_month=2),
+    },
+    # NTSCM45 — notifie les followers/destinataires résolus d'un écart de
+    # prévision (MAPE) important — apps/scm/tasks.py. Mensuel.
+    'scm-notifier-ecarts-prevision-importants': {
+        'task': 'scm.notifier_ecarts_prevision_importants',
+        'schedule': crontab(hour=6, minute=15, day_of_month=3),
     },
 }
 

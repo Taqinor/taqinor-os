@@ -2,7 +2,8 @@ from rest_framework import serializers
 
 from .models import (
     CoutStandard, Gamme, OperationGamme, OperationOF, OrdreFabrication,
-    OrdreModification, PosteDeCharge, ReglesKanbanProduction, ReservationOF,
+    OrdreModification, ParametresMRP, PosteDeCharge, ReglesKanbanProduction,
+    ReservationOF,
 )
 
 
@@ -130,5 +131,20 @@ class ReglesKanbanProductionSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'produit', 'poste_charge_defaut', 'quantite_lot',
             'seuil_declenchement', 'actif', 'created_at', 'updated_at',
+        ]
+        read_only_fields = ['id', 'created_at', 'updated_at']
+
+
+class ParametresMRPSerializer(serializers.ModelSerializer):
+    """NTMFG29 — jamais de `company` en écriture (posée côté serveur par la
+    vue, `services.parametres_mrp`)."""
+
+    class Meta:
+        model = ParametresMRP
+        fields = [
+            'id', 'horizon_mrp_jours', 'stock_securite_pct_defaut',
+            'tolerance_surcharge_poste_pct',
+            'blocage_qc_force_motif_obligatoire', 'activer_kanban_production',
+            'retention_prototype_jours', 'created_at', 'updated_at',
         ]
         read_only_fields = ['id', 'created_at', 'updated_at']

@@ -247,6 +247,17 @@ CATALOG = {
     'dossier_export_cloture': _e(
         "Un dossier d'export douane (DossierExport) est clôturé.",
         ['dossier', 'company', 'user', 'ancien_statut']),
+    # NTSCM39 — émis par ``apps.scm.services.
+    # detecter_ruptures_imminentes_et_notifier`` (tâche beat NTSCM35).
+    'scm_rupture_imminente_detectee': _e(
+        'Un produit passe en rupture de stock imminente (tableau de bord '
+        'réappro NTSCM7).',
+        ['company', 'produit_id', 'produit_nom', 'rupture_date', 'quantite_suggeree']),
+    # NTSCM39 — émis par ``apps.scm.services.avancer_statut_cycle`` à la
+    # clôture d'un cycle S&OP.
+    'scm_cycle_sop_cloture': _e(
+        'Un cycle de planification S&OP (CyclePlanificationSOP) est clôturé.',
+        ['cycle', 'user']),
 }
 
 

@@ -474,3 +474,99 @@ def portail_tiers_solde_view(request, token):
             status=status.HTTP_404_NOT_FOUND,
         ))
     return _noindex(Response(solde_portail_tiers(token_obj)))
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# NTWMS35 — Créneaux de rendez-vous ENTRANT proposés au fournisseur.
+# Le portail fournisseur (XPUR22) gagne la prise de rendez-vous : le
+# fournisseur voit les créneaux LIBRES des quais de réception (NTWMS7) et
+# réserve lui-même — plus d'arrivée non planifiée à absorber au quai. Mêmes
+# garanties que le reste du portail : jeton opaque, throttle, noindex,
+# isolation stricte au SEUL fournisseur porteur du jeton.
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+@extend_schema(responses={
+    200: inline_serializer('StockPortailCreneauxDisponibles', {
+        'date_debut': serializers.CharField(allow_blank=True),
+        'periode_jours': serializers.IntegerField(),
+        'creneaux': serializers.ListField(child=serializers.DictField()),
+    }),
+})
+@api_view(['GET'])
+@permission_classes([AllowAny])
+@throttle_classes([PortailFournisseurThrottle])
+def portail_fournisseur_creneaux_view(request, token):
+    """NTWMS35 — créneaux LIBRES des quais de réception
+    (``?quai=&periode=`` en jours, plafonné). Lecture seule."""
+    from .services import resoudre_token_portail_fournisseur
+    from .services_creneaux import creneaux_disponibles
+
+    token_obj = resoudre_token_portail_fournisseur(token)
+    if token_obj is None:
+        return _not_found()
+
+    periode = request.query_params.get('periode') or 7
+    try:
+        creneaux = creneaux_disponibles(
+            token_obj.company,
+            quai_id=request.query_params.get('quai'),
+            date_debut=request.query_params.get('date_debut'),
+            periode_jours=periode)
+    except ValueError as exc:
+        return _noindex(Response({'detail': str(exc)},
+                                 status=status.HTTP_400_BAD_REQUEST))
+    try:
+        periode_int = int(periode)
+    except (TypeError, ValueError):
+        periode_int = 7
+    return _noindex(Response({
+        'date_debut': (creneaux[0]['date'] if creneaux else ''),
+        'periode_jours': periode_int,
+        'creneaux': creneaux,
+    }))
+
+
+@extend_schema(request=None, responses={
+    201: inline_serializer('StockPortailCreneauReserve', {
+        'id': serializers.IntegerField(),
+        'quai': serializers.IntegerField(),
+        'debut': serializers.CharField(),
+        'fin': serializers.CharField(),
+        'code_checkin': serializers.CharField(),
+    }),
+})
+@api_view(['POST'])
+@permission_classes([AllowAny])
+@throttle_classes([PortailFournisseurThrottle])
+def portail_fournisseur_reserver_creneau_view(request, token):
+    """NTWMS35 — le fournisseur réserve LUI-MÊME un créneau entrant.
+
+    Corps : ``{quai, debut (ISO), bon_commande?, chauffeur_nom?,
+    immatriculation?}``. Renvoie le code de check-in NTWMS8 à remettre au
+    chauffeur — il ne donne accès à rien d'autre que la confirmation
+    d'arrivée."""
+    from .services import resoudre_token_portail_fournisseur
+    from .services_creneaux import reserver_creneau_fournisseur
+
+    token_obj = resoudre_token_portail_fournisseur(token)
+    if token_obj is None:
+        return _not_found()
+
+    try:
+        rdv = reserver_creneau_fournisseur(
+            token_obj,
+            quai_id=request.data.get('quai'),
+            debut=request.data.get('debut'),
+            bon_commande_id=request.data.get('bon_commande'),
+            chauffeur_nom=request.data.get('chauffeur_nom') or '',
+            immatriculation=request.data.get('immatriculation') or '')
+    except ValueError as exc:
+        return _noindex(Response({'detail': str(exc)},
+                                 status=status.HTTP_400_BAD_REQUEST))
+    return _noindex(Response({
+        'id': rdv.id, 'quai': rdv.quai_id,
+        'debut': rdv.date_heure_debut.isoformat(),
+        'fin': rdv.date_heure_fin.isoformat(),
+        'code_checkin': rdv.code_checkin,
+    }, status=status.HTTP_201_CREATED))

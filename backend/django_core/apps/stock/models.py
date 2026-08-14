@@ -603,6 +603,24 @@ class Produit(models.Model):
     tva = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
     is_archived = models.BooleanField(default=False)
 
+    # ── NTWMS38 — Marchandises dangereuses / matières sensibles ────────────
+    # Le catalogue solaire contient des BATTERIES LITHIUM : leur stockage et
+    # leur transport sont réglementés (ADR classe 9). AUCUNE = défaut, donc
+    # tous les produits existants restent exactement ce qu'ils étaient et le
+    # rangement guidé (NTWMS2) ne filtre rien tant que rien n'est déclaré.
+    class ClasseDanger(models.TextChoices):
+        AUCUNE = 'AUCUNE', 'Aucune'
+        BATTERIE_LITHIUM = 'BATTERIE_LITHIUM', 'Batterie lithium'
+        INFLAMMABLE = 'INFLAMMABLE', 'Inflammable'
+        CORROSIF = 'CORROSIF', 'Corrosif'
+
+    classe_danger = models.CharField(
+        max_length=20, choices=ClasseDanger.choices,
+        default=ClasseDanger.AUCUNE,
+        verbose_name='Classe de danger',
+        help_text='Matière dangereuse : conditionne les casiers autorisés '
+                  'au rangement (NTWMS38).')
+
     # ── Fiche commerciale (devis PDF riches, 2026-06) — tout optionnel ──
     marque = models.CharField(max_length=100, blank=True, null=True)
     description = models.TextField(
@@ -1269,14 +1287,62 @@ class TransfertStock(models.Model):
         null=True, blank=True, related_name='transferts_stock')
     date = models.DateTimeField(auto_now_add=True)
 
+    # ── NTRET7 — cycle physique en DEUX TEMPS (demande → expédié → reçu) ──
+    # Le monde réel a un délai camion et un contrôle à l'arrivée : la source
+    # décrémente AU DÉPART, la destination incrémente de ce qui est
+    # RÉELLEMENT reçu, et l'écart est journalisé.
+    # DÉFAUT `RECU` : tout transfert DIRECT historique (N15, `transfer_stock`)
+    # naît déjà terminé — comportement strictement inchangé. Le cycle en deux
+    # temps est OPT-IN (`creer_demande_transfert`).
+    class Statut(models.TextChoices):
+        DEMANDE = 'demande', 'Demandé'
+        EXPEDIE = 'expedie', 'Expédié'
+        RECU = 'recu', 'Reçu'
+        ANNULE = 'annule', 'Annulé'
+
+    statut = models.CharField(
+        max_length=20, choices=Statut.choices, default=Statut.RECU)
+    reference = models.CharField(
+        max_length=50, blank=True, default='',
+        help_text='Référence du bon de transfert (cycle en deux temps).')
+    quantite_recue = models.PositiveIntegerField(
+        null=True, blank=True,
+        help_text='Quantité réellement comptée à la réception (vide tant '
+                  "qu'elle n'a pas eu lieu).")
+    date_expedition = models.DateTimeField(null=True, blank=True)
+    date_reception = models.DateTimeField(null=True, blank=True)
+    expedie_par = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='transferts_expedies')
+    recu_par = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='transferts_recus')
+
     class Meta:
         verbose_name = 'Transfert de stock'
         verbose_name_plural = 'Transferts de stock'
         ordering = ['-date']
+        constraints = [
+            # NTRET7 — la référence de bon est unique PAR SOCIÉTÉ (condition
+            # sur référence non vide : les transferts directs historiques,
+            # tous sans référence, ne s'entre-bloquent pas).
+            models.UniqueConstraint(
+                fields=['company', 'reference'],
+                condition=~models.Q(reference=''),
+                name='stock_transfertstock_company_reference_uniq'),
+        ]
 
     def __str__(self):
         return (f'{self.produit_id}: {self.quantite} '
                 f'{self.source_id}→{self.destination_id}')
+
+    @property
+    def ecart_reception(self):
+        """Reçu − expédié. ``None`` tant que la réception n'a pas eu lieu ;
+        négatif = manquant, positif = surplus."""
+        if self.quantite_recue is None:
+            return None
+        return self.quantite_recue - self.quantite
 
 
 # ── ODX19 — RetourFournisseur, LigneRetourFournisseur, PrixFournisseur ─────
@@ -2081,6 +2147,41 @@ from .models_wms import (  # noqa: E402,F401
     UniteLogistiqueLigne,
     VaguePicking,
 )
+
+# ── NTWMS34 — contrôle qualité à réception (plan d'échantillonnage). ───────
+from .models_qualite_reception import (  # noqa: E402,F401
+    ControleReception,
+    PlanEchantillonnage,
+)
+
+# ── NTWMS37 — réception à quantité/poids VARIABLE (catch-weight). ──────────
+from .models_catch_weight import PeseeLigneReception  # noqa: E402,F401
+
+# ── NTWMS38 — compatibilité casier ↔ classe de danger (hazmat). ────────────
+from .models_hazmat import CompatibiliteHazmatCasier  # noqa: E402,F401
+
+# ── NTWMS39 — journal léger des casiers (plan d'entrepôt). ─────────────────
+from .models_historique_casier import HistoriqueCasier  # noqa: E402,F401
+
+# ── NTWMS40 — réappro d'un casier picking depuis le stockage. ──────────────
+from .models_reappro_casier import (  # noqa: E402,F401
+    SeuilReapproCasier,
+    TacheReapproInterne,
+)
+
+# ── NTSCM9 — incidents qualité fournisseur (alimente scorecard + TCO). ─────
+from .models_incident_fournisseur import (  # noqa: E402,F401
+    IncidentQualiteFournisseur,
+)
+
+# ── Groupe NTDST — NÉGOCE (consignation, RFA, van sales, paramètres). ──────
+from .models_negoce_params import ParametresNegoce  # noqa: E402,F401
+from .models_consignation import (  # noqa: E402,F401
+    DeclarationConsommation,
+    DepotConsignation,
+)
+from .models_rfa import AccordRFAFournisseur  # noqa: E402,F401
+from .models_van_sales import StockVehicule  # noqa: E402,F401
 
 
 # ── ODX19 — MODULE ACHATS (déplacé) ────────────────────────────────────────
