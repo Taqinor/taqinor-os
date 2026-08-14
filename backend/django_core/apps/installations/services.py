@@ -3580,3 +3580,151 @@ def chantier_peut_cloturer(chantier_id, company):
     """
     from apps.qhse.selectors import chantier_peut_cloturer as _qhse_gate
     return _qhse_gate(chantier_id, company)
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# NTP2P2 — Plan d'approbation générique des demandes d'achat (FG310)
+# ══════════════════════════════════════════════════════════════════════════
+# Patron repris de ``contrats.services.lancer_workflow_approbation`` (règle par
+# seuil → N étapes séquentielles) SANS import cross-app : les modèles vivent
+# dans CETTE app (``models_approbation_achat``). Opt-in total : sans règle
+# active couvrant le montant, aucune étape n'est créée et le cycle FG310
+# historique (soumettre → approuver) reste byte-identique.
+
+
+class ApprobationAchatError(Exception):
+    """Règle métier d'approbation d'achat violée (mappée en 400 par la vue)."""
+
+
+def resoudre_regle_approbation_achat(demande):
+    """Renvoie la règle ACTIVE la plus spécifique couvrant cette demande.
+
+    Arbitrage (identique au patron ``contrats``) : priorité décroissante, puis
+    périmètre le plus ciblé (chantier/programme), puis intervalle de montant le
+    plus étroit, puis id. Renvoie ``None`` si aucune règle ne couvre — c'est le
+    cas historique (approbation directe, comportement inchangé).
+    """
+    from .models import RegleApprobationAchat
+
+    montant = demande.montant_estime
+    candidates = [
+        regle for regle in RegleApprobationAchat.objects.filter(
+            company=demande.company, actif=True)
+        if regle.couvre(montant, chantier_id=demande.chantier_id,
+                        programme_id=demande.programme_id)
+    ]
+    if not candidates:
+        return None
+    candidates.sort(
+        key=lambda r: (-r.priorite, -r.specificite(),
+                       r.largeur_intervalle(), r.id))
+    return candidates[0]
+
+
+def workflow_approbation_achat_actif(demande):
+    """True si la demande a au moins une étape encore ``en_attente``."""
+    from .models import EtapeApprobationAchat
+    return demande.etapes_approbation.filter(
+        statut=EtapeApprobationAchat.Statut.EN_ATTENTE).exists()
+
+
+def lancer_workflow_approbation_achat(demande, *, regle=None):
+    """Instancie les étapes d'approbation d'une demande SOUMISE.
+
+    Renvoie la liste des étapes créées (vide si aucune règle ne couvre la
+    demande — comportement historique). Idempotent : ne recrée rien tant qu'un
+    workflow est encore en cours sur la demande.
+    """
+    from .models import EtapeApprobationAchat
+
+    if workflow_approbation_achat_actif(demande):
+        return list(demande.etapes_approbation.filter(
+            statut=EtapeApprobationAchat.Statut.EN_ATTENTE))
+    regle = regle or resoudre_regle_approbation_achat(demande)
+    if regle is None:
+        return []
+    nombre = max(1, int(regle.nombre_approbateurs or 1))
+    etapes = [
+        EtapeApprobationAchat(
+            company=demande.company,
+            demande=demande,
+            regle=regle,
+            niveau=rang,
+            niveau_approbation=regle.niveau_approbation,
+            statut=EtapeApprobationAchat.Statut.EN_ATTENTE,
+        )
+        for rang in range(1, nombre + 1)
+    ]
+    return EtapeApprobationAchat.objects.bulk_create(etapes)
+
+
+def prochaine_etape_approbation_achat(demande):
+    """Première étape ``en_attente`` de la demande (ordre séquentiel), ou None."""
+    from .models import EtapeApprobationAchat
+    return demande.etapes_approbation.filter(
+        statut=EtapeApprobationAchat.Statut.EN_ATTENTE
+    ).order_by('niveau', 'id').first()
+
+
+def _decider_etape_approbation_achat(etape, *, statut_cible, approbateur,
+                                     commentaire=''):
+    """Décide UNE étape en respectant l'ordre séquentiel."""
+    from django.utils import timezone
+    from .models import EtapeApprobationAchat
+
+    if etape.statut != EtapeApprobationAchat.Statut.EN_ATTENTE:
+        raise ApprobationAchatError('Cette étape a déjà été décidée.')
+    attendue = prochaine_etape_approbation_achat(etape.demande)
+    if attendue is not None and attendue.pk != etape.pk:
+        raise ApprobationAchatError(
+            "Les étapes se décident dans l'ordre : l'étape "
+            f'{attendue.niveau} est encore en attente.')
+    etape.statut = statut_cible
+    etape.approbateur = approbateur
+    etape.decision_le = timezone.now()
+    etape.commentaire = (commentaire or '').strip()
+    etape.save(update_fields=['statut', 'approbateur', 'decision_le',
+                              'commentaire', 'updated_at'])
+    return etape
+
+
+def approuver_etape_achat(etape, *, approbateur, commentaire=''):
+    """Approuve une étape ; bascule la demande ``approuvee`` à la dernière."""
+    from django.utils import timezone
+    from .models import DemandeAchat, EtapeApprobationAchat
+
+    etape = _decider_etape_approbation_achat(
+        etape, statut_cible=EtapeApprobationAchat.Statut.APPROUVE,
+        approbateur=approbateur, commentaire=commentaire)
+    demande = etape.demande
+    if not workflow_approbation_achat_actif(demande):
+        demande.statut = DemandeAchat.Statut.APPROUVEE
+        demande.approuvee_par = approbateur
+        demande.date_decision = timezone.now()
+        demande.motif_refus = None
+        demande.save(update_fields=['statut', 'approuvee_par', 'date_decision',
+                                    'motif_refus', 'date_modification'])
+    return etape
+
+
+def rejeter_etape_achat(etape, *, approbateur, commentaire=''):
+    """Rejette une étape : la demande bascule ``refusee`` immédiatement et les
+    étapes restantes sont annulées (rejetées sans approbateur)."""
+    from django.utils import timezone
+    from .models import DemandeAchat, EtapeApprobationAchat
+
+    etape = _decider_etape_approbation_achat(
+        etape, statut_cible=EtapeApprobationAchat.Statut.REJETE,
+        approbateur=approbateur, commentaire=commentaire)
+    demande = etape.demande
+    demande.etapes_approbation.filter(
+        statut=EtapeApprobationAchat.Statut.EN_ATTENTE
+    ).update(statut=EtapeApprobationAchat.Statut.REJETE,
+             decision_le=timezone.now())
+    demande.statut = DemandeAchat.Statut.REFUSEE
+    demande.approuvee_par = approbateur
+    demande.date_decision = timezone.now()
+    demande.motif_refus = (commentaire or '').strip() or None
+    demande.save(update_fields=['statut', 'approuvee_par', 'date_decision',
+                                'motif_refus', 'date_modification'])
+    return etape

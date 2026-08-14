@@ -112,6 +112,10 @@ from .models_demande_achat import (
     DemandeAchat,
     DemandeAchatLigne,
 )
+from .models_approbation_achat import (
+    RegleApprobationAchat,
+    EtapeApprobationAchat,
+)
 from .models_rfq import (
     RFQ,
     RFQOffre,
@@ -279,6 +283,8 @@ __all__ = [
     'RetenueGarantieSousTraitant',
     'DemandeAchat',
     'DemandeAchatLigne',
+    'RegleApprobationAchat',
+    'EtapeApprobationAchat',
     'RFQ',
     'RFQOffre',
     'RFQConsultation',
