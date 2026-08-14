@@ -178,6 +178,69 @@ class DepotConsignationViewSet(CompanyScopedModelViewSet):
         from ..services_consignation import releve_consignation
         return Response(releve_consignation(self.get_object()))
 
+    @extend_schema(responses={(200, 'application/pdf'): bytes})
+    @action(detail=True, methods=['get'], url_path='releve-pdf',
+            permission_classes=[IsAnyRole])
+    def releve_pdf(self, request, pk=None):
+        """NTDST24 — relevé imprimable remis AU CLIENT comme justificatif.
+
+        Mouvements triés par date, solde restant en pied de tableau. Rendu par
+        le WeasyPrint des documents internes — jamais le moteur de devis
+        vendorisé (règle #4). En-tête white-label (profil de la société).
+        """
+        from django.http import HttpResponse
+
+        from ..utils.pdf_consignation import generate_releve_consignation_pdf
+
+        depot = self.get_object()
+        pdf = generate_releve_consignation_pdf(depot)
+        reponse = HttpResponse(pdf, content_type='application/pdf')
+        reponse['Content-Disposition'] = (
+            f'inline; filename="releve-consignation-{depot.id}.pdf"')
+        return reponse
+
+    @extend_schema(responses={
+        (200, 'application/vnd.openxmlformats-officedocument.'
+              'spreadsheetml.sheet'): bytes})
+    @action(detail=False, methods=['get'], url_path='export-xlsx',
+            permission_classes=[IsResponsableOrAdmin])
+    def export_xlsx(self, request):
+        """NTDST41 — export XLSX de TOUS les dépôts (``?statut=actif``).
+
+        Destiné au contrôle physique périodique multi-sites. Le total
+        « restant » de l'export est exactement la somme des restants des
+        dépôts exportés (ligne de total en fin de feuille).
+        """
+        from apps.records.xlsx import build_xlsx_response
+
+        depots = self.filter_queryset(self.get_queryset())
+        statut = request.query_params.get('statut')
+        if statut:
+            depots = depots.filter(statut=statut)
+
+        entetes = ['Client', 'Produit', 'SKU', 'Site', 'Déposé', 'Consommé',
+                   'Restant', 'Dernière déclaration', 'Statut']
+        lignes, total_restant = [], 0
+        for depot in depots.select_related('client', 'produit'):
+            derniere = depot.declarations.order_by(
+                '-date_declaration', '-id').first()
+            total_restant += depot.quantite_restante
+            lignes.append([
+                getattr(depot.client, 'nom', '') or '',
+                getattr(depot.produit, 'nom', '') or '',
+                getattr(depot.produit, 'sku', '') or '',
+                depot.adresse_site,
+                depot.quantite_deposee,
+                depot.quantite_consommee_declaree,
+                depot.quantite_restante,
+                (derniere.date_declaration.isoformat() if derniere else ''),
+                depot.get_statut_display(),
+            ])
+        lignes.append(['TOTAL', '', '', '', '', '', total_restant, '', ''])
+        return build_xlsx_response(
+            'consignations.xlsx', entetes, lignes,
+            sheet_title='Consignations')
+
 
 # ═══════════════════════════════════════════════════════════════════════════
 # NTDST5 — Remises arrière (RFA) fournisseurs
