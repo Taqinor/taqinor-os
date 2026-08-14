@@ -22,6 +22,15 @@ class Categorie(models.Model):
         COMPTEUR = 'compteur', 'Compteur'
         ACCESSOIRE = 'accessoire', 'Accessoire'
 
+    # NTWMS3 — stratégie de prélèvement par défaut des produits de cette
+    # catégorie. AUCUNE = comportement historique STRICTEMENT inchangé (le
+    # prélèvement ne consulte ni lot ni casier).
+    class StrategiePicking(models.TextChoices):
+        AUCUNE = 'aucune', 'Aucune (comportement historique)'
+        FIFO = 'fifo', 'FIFO — premier entré, premier sorti'
+        FEFO = 'fefo', 'FEFO — péremption la plus proche d\'abord'
+        ZONE = 'zone', 'Zone — casier le plus proche de la sortie'
+
     company = models.ForeignKey(
         'authentication.Company',
         on_delete=models.CASCADE,
@@ -42,6 +51,12 @@ class Categorie(models.Model):
         help_text="Type d'équipement (optionnel) pour filtrer les slots de "
                   "chantier par TYPE, quel que soit le libellé de la "
                   "catégorie. Vide = non typée (comportement historique).")
+    strategie_picking_defaut = models.CharField(
+        max_length=10,
+        choices=StrategiePicking.choices,
+        default=StrategiePicking.AUCUNE,
+        help_text='NTWMS3 — stratégie de prélèvement des produits de cette '
+                  'catégorie. « Aucune » (défaut) = comportement historique.')
 
     class Meta:
         verbose_name = "Catégorie"

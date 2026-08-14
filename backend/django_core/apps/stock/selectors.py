@@ -1201,4 +1201,6 @@ def nb_produits_par_entite(company, entite_ids):
 # continuent d'ecrire `from apps.stock.selectors import ...`.
 from .selectors_wms import (  # noqa: E402,F401
     localisation_casiers,
+    resoudre_allocation_picking,
+    strategie_picking_produit,
 )

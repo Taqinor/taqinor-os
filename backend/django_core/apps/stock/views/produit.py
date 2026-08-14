@@ -80,7 +80,7 @@ class ProduitViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         # pour les comptes hérités sans rôle fin.
         if self.action in READ_ACTIONS + [
                 'export_xlsx', 'resolve', 'previsionnel', 'tracer',
-                'etiquettes_showroom', 'casiers']:
+                'etiquettes_showroom', 'casiers', 'plan_picking']:
             # XSTK3/XSTK4 — `resolve` (scan code-barres/GS1) est LECTURE
             # SEULE, accessible à tout rôle authentifié — même garde que
             # `@action(permission_classes=[IsAnyRole])` sur l'action
@@ -334,6 +334,33 @@ class ProduitViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         from ..selectors import localisation_casiers
         produit = self.get_object()
         return Response(localisation_casiers(produit))
+
+    @action(detail=True, methods=['get'], url_path='plan-picking',
+            permission_classes=[IsAnyRole])
+    def plan_picking(self, request, *args, **kwargs):
+        """NTWMS3 — plan de prélèvement de ce produit pour la quantité
+        demandée (`?quantite=`), ordonné par la stratégie de sa catégorie
+        (FIFO/FEFO/ZONE) ou libre (`aucune`, défaut historique).
+        `?strategie=` force ponctuellement une stratégie. LECTURE SEULE."""
+        from ..selectors import (
+            resoudre_allocation_picking, strategie_picking_produit,
+        )
+        produit = self.get_object()
+        try:
+            quantite = int(request.query_params.get('quantite') or 1)
+        except (TypeError, ValueError):
+            return Response({'detail': 'Quantité invalide.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        strategie = request.query_params.get('strategie') or None
+        if strategie and strategie not in dict(
+                Categorie.StrategiePicking.choices):
+            return Response({'detail': 'Stratégie de prélèvement inconnue.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        return Response({
+            'strategie': strategie or strategie_picking_produit(produit),
+            'lignes': resoudre_allocation_picking(
+                produit, quantite, strategie),
+        })
 
     @action(detail=True, methods=['post', 'delete'], url_path='photo')
     def photo(self, request, *args, **kwargs):
