@@ -147,3 +147,89 @@ def resoudre_allocation_picking(produit, quantite, strategie=None):
 
     # AUCUNE (défaut) — comportement historique.
     return [_ligne(quantite)]
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# NTWMS5 — Résolution universelle d'un code scanné (poste scanner mobile)
+# ═══════════════════════════════════════════════════════════════════════════
+
+def resoudre_code_scanne(company, code):
+    """Résout un code scanné vers l'objet du magasin qu'il désigne.
+
+    Ordre de résolution (le premier qui répond gagne) : casier (code
+    ``BinLocation``) → produit (code-barres GTIN, puis SKU) → emplacement
+    (nom) → lot (numéro de lot avec du restant). Renvoie
+    ``{type, id, label, detail}`` ou ``None`` — jamais une erreur, jamais un
+    objet d'une autre société.
+    """
+    from .models import EmplacementStock, LotEntrepot, Produit
+
+    code = (code or '').strip()
+    if not code or company is None:
+        return None
+
+    # 1) Casier (FG319) — lu par l'accesseur inverse de NOTRE string-FK, sans
+    #    importer `apps.installations.models`.
+    from .models_wms import LignePicking
+    modele_bin = LignePicking._meta.get_field('bin').related_model
+    casier = modele_bin.objects.filter(
+        company=company, code__iexact=code, archived=False).first()
+    if casier is not None:
+        return {
+            'type': 'casier',
+            'id': casier.id,
+            'label': casier.code,
+            'detail': {
+                'zone': casier.zone or '',
+                'allee': casier.allee or '',
+                'casier': casier.casier or '',
+                'ordre': casier.ordre,
+                'emplacement_id': casier.emplacement_id,
+            },
+        }
+
+    # 2) Produit — code-barres (GTIN) puis SKU.
+    produit = Produit.objects.filter(
+        company=company, code_barres=code).first()
+    if produit is None:
+        produit = Produit.objects.filter(company=company, sku=code).first()
+    if produit is not None:
+        return {
+            'type': 'produit',
+            'id': produit.id,
+            'label': produit.nom,
+            'detail': {
+                'sku': produit.sku or '',
+                'quantite_stock': produit.quantite_stock,
+                'strategie_picking': strategie_picking_produit(produit),
+            },
+        }
+
+    # 3) Emplacement (dépôt/camionnette).
+    emplacement = EmplacementStock.objects.filter(
+        company=company, nom__iexact=code, archived=False).first()
+    if emplacement is not None:
+        return {
+            'type': 'emplacement',
+            'id': emplacement.id,
+            'label': emplacement.nom,
+            'detail': {'is_principal': emplacement.is_principal},
+        }
+
+    # 4) Lot encore disponible.
+    lot = (LotEntrepot.objects
+           .filter(company=company, numero_lot=code, quantite_restante__gt=0)
+           .order_by('date_peremption', 'id')
+           .first())
+    if lot is not None:
+        return {
+            'type': 'lot',
+            'id': lot.id,
+            'label': lot.numero_lot,
+            'detail': {
+                'produit_id': lot.produit_id,
+                'quantite_restante': lot.quantite_restante,
+                'date_peremption': lot.date_peremption,
+            },
+        }
+    return None

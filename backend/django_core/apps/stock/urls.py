@@ -15,6 +15,7 @@ from .views import (
     ConditionnementProduitViewSet, ModeleBonCommandeFournisseurViewSet,
     NomenclatureCodeBarresViewSet, RegleCodeBarresViewSet,
     VaguePickingViewSet,
+    scanner_resoudre_view, scanner_mouvement_view,
 )
 
 router = DefaultRouter()
@@ -55,5 +56,10 @@ router.register(r'regles-code-barres', RegleCodeBarresViewSet)
 router.register(r'vagues-picking', VaguePickingViewSet)
 
 urlpatterns = [
+    # NTWMS5 - poste scanner mobile (resolution universelle + mouvement scanne).
+    path('scanner/resoudre/', scanner_resoudre_view,
+         name='stock-scanner-resoudre'),
+    path('scanner/mouvement/', scanner_mouvement_view,
+         name='stock-scanner-mouvement'),
     path('', include(router.urls)),
 ]

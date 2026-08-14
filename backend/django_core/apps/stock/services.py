@@ -1691,7 +1691,8 @@ def resolve_fournisseur(company, fournisseur_id, installation):
 
 def record_stock_movement(*, company, produit, type_mouvement, quantite,
                           quantite_avant, quantite_apres, reference, note,
-                          created_by, save_produit=True, emplacement_source=None):
+                          created_by, save_produit=True, emplacement_source=None,
+                          bin_source=None, bin_destination=None):
     """Crée UN MouvementStock et (par défaut) cale `produit.quantite_stock` sur
     `quantite_apres`. Renvoie le mouvement créé. Écriture identique au
     `MouvementStock.objects.create(...) + produit.save(update_fields=...)` que les
@@ -1720,6 +1721,10 @@ def record_stock_movement(*, company, produit, type_mouvement, quantite,
         reference=reference,
         note=note,
         created_by=created_by,
+        # NTWMS5 — casiers source/destination du poste scanner. None partout
+        # ailleurs : comportement historique strictement inchangé.
+        bin_source=bin_source,
+        bin_destination=bin_destination,
     )
     if save_produit:
         produit.quantite_stock = quantite_apres
@@ -6360,6 +6365,7 @@ def decider_candidature_fournisseur(fournisseur, *, valider):
 # continuent d'ecrire `from apps.stock.services import ...`.
 from .services_wms import (  # noqa: E402,F401
     creer_vague_depuis_besoins,
+    enregistrer_mouvement_scanne,
     lancer_vague,
     prelever_ligne_picking,
     suggestions_rangement_reception,

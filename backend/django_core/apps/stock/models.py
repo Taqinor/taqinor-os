@@ -1021,6 +1021,17 @@ class MouvementStock(models.Model):
     # pour tous les autres types de mouvement — comportement historique inchangé.
     motif_rebut = models.CharField(
         max_length=10, choices=MotifRebut.choices, blank=True, null=True)
+    # ── NTWMS5 — traçabilité CASIER du poste scanner ──────────────────────
+    # Casier physique d'où sort / où entre la marchandise. STRING-FK vers la
+    # hiérarchie FG319 (`installations.BinLocation`) : stock ne redéfinit
+    # JAMAIS les casiers. Nullables = tous les mouvements historiques et tous
+    # les chemins non scannés restent identiques.
+    bin_source = models.ForeignKey(
+        'installations.BinLocation', on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='mouvements_stock_source')
+    bin_destination = models.ForeignKey(
+        'installations.BinLocation', on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='mouvements_stock_destination')
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,

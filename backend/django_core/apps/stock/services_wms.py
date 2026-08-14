@@ -244,3 +244,76 @@ def prelever_ligne_picking(*, ligne, quantite, user=None):
             vague.date_cloture = timezone.now()
             vague.save(update_fields=['statut', 'date_cloture'])
     return ligne
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# NTWMS5 — Mouvement de stock posé depuis le poste scanner (casiers tracés)
+# ═══════════════════════════════════════════════════════════════════════════
+
+# Un scan ne peut poser que ces trois natures de mouvement : le rebut (motivé)
+# et l'ajustement d'inventaire gardent leurs chemins dédiés et leurs gardes.
+TYPES_MOUVEMENT_SCANNABLES = ('entree', 'sortie', 'transfert')
+
+
+def enregistrer_mouvement_scanne(*, company, user, produit_id, type_mouvement,
+                                 quantite, bin_source_id=None,
+                                 bin_destination_id=None, reference='SCAN',
+                                 note=''):
+    """Pose UN ``MouvementStock`` scanné, casiers source/destination tracés.
+
+    Réutilise ``record_stock_movement`` (jamais un chemin d'écriture
+    parallèle). Un TRANSFERT ne change pas le total du produit : il ne fait que
+    tracer le déplacement d'un casier vers un autre. Lève ``ValueError`` sur
+    quantité non positive, produit/casier hors société, type inconnu, ou sortie
+    supérieure au stock.
+    """
+    from django.db import transaction
+    from .models import MouvementStock, Produit
+    from .models_wms import LignePicking
+    from .services import record_stock_movement
+
+    if type_mouvement not in TYPES_MOUVEMENT_SCANNABLES:
+        raise ValueError('Type de mouvement non scannable.')
+    try:
+        quantite = int(quantite)
+    except (TypeError, ValueError):
+        raise ValueError('Quantité invalide.')
+    if quantite <= 0:
+        raise ValueError('La quantité doit être positive.')
+
+    produit = Produit.objects.filter(id=produit_id, company=company).first()
+    if produit is None:
+        raise ValueError('Produit introuvable dans cette société.')
+
+    modele_bin = LignePicking._meta.get_field('bin').related_model
+
+    def _casier(bin_id):
+        if not bin_id:
+            return None
+        casier = modele_bin.objects.filter(id=bin_id, company=company).first()
+        if casier is None:
+            raise ValueError('Casier introuvable dans cette société.')
+        return casier
+
+    bin_source = _casier(bin_source_id)
+    bin_destination = _casier(bin_destination_id)
+
+    with transaction.atomic():
+        verrouille = Produit.objects.select_for_update().get(id=produit.id)
+        avant = verrouille.quantite_stock
+        if type_mouvement == 'entree':
+            apres = avant + quantite
+        elif type_mouvement == 'sortie':
+            if quantite > avant:
+                raise ValueError(
+                    f'Stock insuffisant ({avant} disponible).')
+            apres = avant - quantite
+        else:  # transfert : déplacement physique, total inchangé
+            apres = avant
+        return record_stock_movement(
+            company=company, produit=verrouille,
+            type_mouvement=getattr(
+                MouvementStock.TypeMouvement, type_mouvement.upper()),
+            quantite=quantite, quantite_avant=avant, quantite_apres=apres,
+            reference=reference, note=note, created_by=user,
+            bin_source=bin_source, bin_destination=bin_destination)
