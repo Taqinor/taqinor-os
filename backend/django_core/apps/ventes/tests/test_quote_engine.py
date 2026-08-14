@@ -476,6 +476,129 @@ class TestPdfFormats(TestCase):
         _, doc2 = self._render({'include_etude': True})
         self.assertEqual(len(doc2.pages), 3)
 
+    # ── PV46 — page « Annexe technique » (défaut OFF) ────────────────────────
+    _ELECTRICAL_DESIGN = {
+        'chaines': [
+            {'pan': 1, 'mppt': 1, 'nb_modules': 7, 'vmp_froid_v': 268.0,
+             'voc_froid_v': 327.2, 'vmp_chaud_v': 212.8, 'conforme': True},
+            {'pan': 1, 'mppt': 2, 'nb_modules': 7, 'vmp_froid_v': 268.0,
+             'voc_froid_v': 327.2, 'vmp_chaud_v': 212.8, 'conforme': True},
+        ],
+        'conformite': {'conforme': True, 'bloquants': [], 'alertes': []},
+        'ratio_dc_ac': 1.18, 'ratio_ac_dc': 0.847,
+        'protections': [
+            {'repere': 'QAC1', 'designation': 'Disjoncteur AC général',
+             'calibre': '32 A', 'quantite': 1},
+        ],
+        'cables': [
+            {'liaison': 'Liaison DC', 'longueur_m': 40.0,
+             'section_mm2': 6.0, 'chute_pct': 0.62},
+        ],
+        'bom': [
+            {'designation': 'Câble solaire H1Z2Z2-K 6,0 mm²', 'quantite': 80.0,
+             'spec': 'chute de tension 0,62 %'},
+            {'designation': 'QAC1 — Disjoncteur AC général', 'quantite': 1,
+             'spec': '32 A ; NF C 15-100 §433'},
+        ],
+        'note': ["Fenêtre de tension entre -5 °C et 70 °C"],
+        'parametres': {'dc_m': 40.0, 'ac_m': 15.0, 'phases': 3,
+                       'regime': 'TT'},
+    }
+
+    def test_annexe_technique_is_off_by_default(self):
+        """Sans le drapeau, la charge utile et le PDF sont ceux d'aujourd'hui."""
+        from apps.ventes.quote_engine.builder import (
+            DEFAULT_PDF_OPTIONS, build_quote_data, clean_pdf_options)
+
+        self.assertFalse(DEFAULT_PDF_OPTIONS['include_annexe_technique'])
+        self.assertFalse(clean_pdf_options({})['include_annexe_technique'])
+        self.devis.electrical_design = self._ELECTRICAL_DESIGN
+        self.devis.save(update_fields=['electrical_design'])
+        data = build_quote_data(self.devis)
+        for clef in ('include_annexe_technique', 'electrical_design',
+                     'sld_svg'):
+            self.assertNotIn(clef, data)
+        _, doc = self._render()
+        self.assertEqual(len(doc.pages), 3)
+
+    def test_annexe_technique_adds_a_fourth_page(self):
+        self.devis.electrical_design = self._ELECTRICAL_DESIGN
+        self.devis.save(update_fields=['electrical_design'])
+        html, doc = self._render({'include_annexe_technique': True})
+        self.assertEqual(len(doc.pages), 4)
+        self.assertIn('Annexe technique', html)
+        self.assertIn('Nomenclature électrique', html)
+        self.assertIn('Disjoncteur AC général', html)
+        self.assertIn('Schéma unifilaire', html)
+        self.assertIn('<svg', html)
+        self.assertIn('Page 4', html)   # la signature reste la DERNIÈRE page
+
+    def test_annexe_technique_degrades_without_design(self):
+        """Drapeau activé mais aucune conception électrique → 3 pages, sans
+        erreur (même dégradation gracieuse qu'``include_etude``)."""
+        self.devis.electrical_design = None
+        self.devis.save(update_fields=['electrical_design'])
+        html, doc = self._render({'include_annexe_technique': True})
+        self.assertEqual(len(doc.pages), 3)
+        self.assertNotIn('Annexe technique', html)
+
+    def test_annexe_and_etude_together_make_five_pages(self):
+        self.devis.mode_installation = 'industriel'
+        self.devis.etude_params = {
+            'kwc': 9.94, 'production_annuelle': 12486, 'conso_annuelle': 120000,
+            'taux_autoconso': 100, 'taux_couverture': 10.4,
+            'economies_annuelles': 21851, 'payback': 3.0, 'prix_kwc': 6543,
+            'prod_mensuelle': [1040] * 12, 'conso_mensuelle': [10000] * 12,
+        }
+        self.devis.electrical_design = self._ELECTRICAL_DESIGN
+        self.devis.save()
+        _, doc = self._render({'include_etude': True,
+                               'include_annexe_technique': True})
+        self.assertEqual(len(doc.pages), 5)
+
+    def test_annexe_technique_ignored_in_onepage_mode(self):
+        self.devis.electrical_design = self._ELECTRICAL_DESIGN
+        self.devis.save(update_fields=['electrical_design'])
+        html, doc = self._render({'pdf_mode': 'onepage',
+                                  'include_annexe_technique': True})
+        self.assertEqual(len(doc.pages), 1)
+        self.assertNotIn('Nomenclature électrique', html)
+
+    def test_annexe_technique_totals_unchanged(self):
+        """L'annexe n'ajoute AUCUN montant : les totaux du devis sont
+        identiques avec et sans elle."""
+        from apps.ventes.quote_engine.builder import build_quote_data
+
+        self.devis.electrical_design = self._ELECTRICAL_DESIGN
+        self.devis.save(update_fields=['electrical_design'])
+        sans = build_quote_data(self.devis)
+        avec = build_quote_data(self.devis,
+                                {'include_annexe_technique': True})
+        for clef in ('totaux_sans', 'totaux_avec', 'totaux_all',
+                     'display_total', 'total_sans', 'total_avec'):
+            self.assertEqual(sans.get(clef), avec.get(clef), clef)
+
+    def test_annexe_technique_carries_no_price(self):
+        self.devis.electrical_design = self._ELECTRICAL_DESIGN
+        self.devis.save(update_fields=['electrical_design'])
+        from apps.ventes.quote_engine import generate_devis_premium as G
+        annexe = self._annexe_html()
+        # Ni les prix d'achat/marge, ni AUCUN prix de ligne du devis.
+        for interdit in ('prix_achat', 'marge', 'Total TTC', 'Sous-total'):
+            self.assertNotIn(interdit, annexe)
+        for _designation, _qte, _prix in self.FULL_LINES:
+            self.assertNotIn(_prix, annexe)
+        self.assertIn('Nomenclature électrique', annexe)
+        # La page de signature reste la DERNIÈRE page numérotée.
+        self.assertEqual(G.PAGE3_NUM, G.PAGES_TOTAL)
+
+    def _annexe_html(self):
+        """Rend la SEULE page d'annexe (globals posés par un rendu complet)."""
+        from apps.ventes.quote_engine import generate_devis_premium as G
+
+        self._render({'include_annexe_technique': True})
+        return G.page_annexe_technique()
+
     def test_pompage_summary_on_onepage(self):
         """A pompage quote shows pump CV/débit/HMT in the one-page summary."""
         self.devis.mode_installation = 'agricole'

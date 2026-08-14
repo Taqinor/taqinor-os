@@ -88,6 +88,26 @@ def _roof_photo_data_uri(devis) -> str:
         return ""
 
 
+def _sld_svg(devis) -> str:
+    """PV46 — schéma unifilaire du devis, en SVG INLINE pour l'annexe technique.
+
+    Pourquoi le SVG et pas la photo de toiture : le moteur ne fait AUCUN accès
+    réseau (une URL pré-signée MinIO ne serait pas suivie au rendu) ; le schéma,
+    lui, est du texte généré à la volée par un module PUR, donc embarquable tel
+    quel. Le SVG ne porte que des grandeurs électriques et des étiquettes —
+    jamais un montant (règle #4). '' en cas d'échec : la page se rend alors sans
+    schéma plutôt que de faire tomber tout le PDF.
+    """
+    try:
+        from apps.ventes.single_line_diagram import (
+            build_single_line_svg, diagram_params_from_devis)
+        return build_single_line_svg(diagram_params_from_devis(devis))
+    except Exception:  # noqa: BLE001 — un schéma absent ne casse jamais un devis
+        logger.warning("PV46: schéma unifilaire indisponible pour le devis %s",
+                       getattr(devis, "pk", None))
+        return ""
+
+
 def _parse_marque(*texts) -> str:
     """Extract the product brand from designation/product name (one-page badge)."""
     blob = " ".join(t for t in texts if t).lower()
@@ -265,6 +285,12 @@ DEFAULT_PDF_OPTIONS = {
     'payment_mode': 'standard',  # 'standard' (30/60/10) | 'custom'
     'custom_acompte': None,    # MAD down-payment when payment_mode == 'custom'
     'include_etude': False,    # page Étude (industriel) — 4th premium page
+    # PV46 — page « Annexe technique » (schéma unifilaire + nomenclature de la
+    # conception électrique PV41). DÉFAUT OFF : sans ce drapeau, aucune clé
+    # nouvelle n'entre dans la charge utile et le PDF reste byte-identique.
+    # Absente de conception électrique → la page est OMISE (même dégradation
+    # gracieuse qu'``include_etude`` : 4 → 3 pages).
+    'include_annexe_technique': False,
     # ── Agricole (pompage) — toggleable persuasion sections (default on) ──
     'show_subsidy': True,          # FDA 30% subsidy block
     'show_fuel_comparison': True,  # solaire vs butane vs diesel + payback
@@ -287,6 +313,8 @@ def clean_pdf_options(raw) -> dict:
         opts['devis_final'] = bool(raw['devis_final'])
     if 'include_etude' in raw:
         opts['include_etude'] = bool(raw['include_etude'])
+    if 'include_annexe_technique' in raw:
+        opts['include_annexe_technique'] = bool(raw['include_annexe_technique'])
     if raw.get('payment_mode') in ('standard', 'custom'):
         opts['payment_mode'] = raw['payment_mode']
     # Agricole toggles — booleans default True; current_fuel a small enum.
@@ -1375,6 +1403,16 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     roof_image = getattr(devis, "roof_image", None)
     if roof_image:
         data["roof_image_key"] = roof_image
+    # PV46 — annexe technique : les clés ne sont ajoutées QUE si l'option est
+    # demandée ET que le devis porte une conception électrique (PV41). Option
+    # au repos → aucune clé nouvelle → charge utile (et proposition publique,
+    # qui appelle ce même builder) strictement identique à aujourd'hui.
+    if opts['include_annexe_technique']:
+        _design = getattr(devis, "electrical_design", None)
+        if isinstance(_design, dict) and _design:
+            data["include_annexe_technique"] = True
+            data["electrical_design"] = _design
+            data["sld_svg"] = _sld_svg(devis)
     # QJ12 — financing block (indicatif / à confirmer). Added additively after
     # all other keys so omitting it never changes any existing key's value.
     # Degrades to None when display_total is unavailable — callers omit the block.
