@@ -28,6 +28,14 @@ const mocks = vi.hoisted(() => ({
   toituresCreate: vi.fn(),
   toituresUpdate: vi.fn(),
   batimentsList: vi.fn(),
+  obstaclesList: vi.fn(),
+  obstaclesCreate: vi.fn(),
+  obstaclesUpdate: vi.fn(),
+  obstaclesRemove: vi.fn(),
+  chainesList: vi.fn(),
+  chainesCreate: vi.fn(),
+  chainesUpdate: vi.fn(),
+  chainesRemove: vi.fn(),
 }))
 const toastMocks = vi.hoisted(() => ({ success: vi.fn(), error: vi.fn() }))
 
@@ -40,6 +48,20 @@ vi.mock('../../../api/aoApi', () => ({
       update: mocks.toituresUpdate,
     },
     batiments: { list: mocks.batimentsList },
+    // PV53 — obstacles/chaînes de cotes, désormais persistés par l'atelier
+    // (diff create/update/delete + hydratation à l'ouverture).
+    obstacles: {
+      list: mocks.obstaclesList,
+      create: mocks.obstaclesCreate,
+      update: mocks.obstaclesUpdate,
+      remove: mocks.obstaclesRemove,
+    },
+    chaines: {
+      list: mocks.chainesList,
+      create: mocks.chainesCreate,
+      update: mocks.chainesUpdate,
+      remove: mocks.chainesRemove,
+    },
   },
 }))
 vi.mock('../../../api/recordsApi', () => ({
@@ -74,6 +96,15 @@ beforeEach(() => {
   mocks.batimentsList.mockResolvedValue({ data: BATIMENTS })
   mocks.toituresCreate.mockResolvedValue({ data: { id: 99 } })
   mocks.toituresUpdate.mockResolvedValue({ data: { id: 41 } })
+  // PV53 — vide par défaut : la plupart des tests n'ont rien à hydrater.
+  mocks.obstaclesList.mockResolvedValue({ data: [] })
+  mocks.obstaclesCreate.mockResolvedValue({ data: {} })
+  mocks.obstaclesUpdate.mockResolvedValue({ data: {} })
+  mocks.obstaclesRemove.mockResolvedValue({ data: {} })
+  mocks.chainesList.mockResolvedValue({ data: [] })
+  mocks.chainesCreate.mockResolvedValue({ data: {} })
+  mocks.chainesUpdate.mockResolvedValue({ data: {} })
+  mocks.chainesRemove.mockResolvedValue({ data: {} })
 })
 
 /* Ouvre le wizard, remplit ses deux champs et valide. Le wizard se ferme
@@ -490,5 +521,152 @@ describe('ToituresPage — boîte à outils de l’atelier (PACT167)', () => {
     expect(document.querySelector('[data-ao-chaines]')).not.toBeNull()
     expect(document.querySelector('[data-ao-fermetures]')).not.toBeNull()
     expect(document.querySelector('[data-ao-points-lever]')).not.toBeNull()
+  })
+})
+
+/* ============================================================================
+   PV53 — obstacles et chaînes de cotes PERSISTÉS : hydratation à l'ouverture,
+   diff create/update/delete sur « Enregistrer », échec nommé sans succès
+   silencieux.
+   ----------------------------------------------------------------------------
+   Avant PV53, l'atelier ne lisait ni n'écrivait obstacles/chaînes : ils
+   restaient LOCAUX (l'écran l'annonçait), donc invisibles au rechargement.
+   ========================================================================== */
+
+const OBSTACLE_A_SERVEUR = {
+  id: 501, repere: 'A', nature: 'edicule', provenance: 'MESURE',
+  polygone_local_m: [[1, 1], [3, 1], [3, 3], [1, 3]],
+  rect_x0_m: '1.000', rect_x1_m: '3.000', rect_y0_m: '1.000', rect_y1_m: '3.000',
+  hauteur_m: null, degagement_m: '0.30', degagement_surcharge: false,
+  motif_surcharge: '', hors_zone_pv: false, actif: true, decision: '',
+}
+const OBSTACLE_B_SERVEUR = {
+  id: 502, repere: 'B', nature: 'souche', provenance: 'PLAN',
+  polygone_local_m: [[5, 1], [6, 1], [6, 2], [5, 2]],
+  rect_x0_m: '5.000', rect_x1_m: '6.000', rect_y0_m: '1.000', rect_y1_m: '2.000',
+  hauteur_m: null, degagement_m: '0.50', degagement_surcharge: false,
+  motif_surcharge: '', hors_zone_pv: false, actif: true, decision: '',
+}
+const CHAINE_SERVEUR = {
+  id: 701, toiture: 41, libelle: 'Façade nord', axe: 'x',
+  segments: [{ libelle: 'S1', valeur_m: 4.1, statut: 'A_CONFIRMER' }],
+  mesure_globale_m: '4.100', tolerance_m: '0.050',
+}
+
+describe('ToituresPage — hydratation depuis le serveur à l’ouverture de l’atelier (PV53)', () => {
+  it('charge obstacles et chaînes de cotes du serveur À L’OUVERTURE (jamais un atelier vide qui a l’air complet)', async () => {
+    mocks.toituresList.mockResolvedValue({ data: [TOITURE_TRACEE] })
+    mocks.obstaclesList.mockResolvedValue({ data: [OBSTACLE_A_SERVEUR] })
+    mocks.chainesList.mockResolvedValue({ data: [CHAINE_SERVEUR] })
+    render(<ToituresPage affaireId={7} />)
+    await screen.findByText('Toiture atelier')
+
+    await waitFor(() => expect(mocks.obstaclesList).toHaveBeenCalledWith({ toiture: 41 }))
+    await waitFor(() => expect(mocks.chainesList).toHaveBeenCalledWith({ toiture: 41 }))
+    // 4 sommets du contour, 1 obstacle hydraté du serveur.
+    await waitFor(() => expect(
+      document.querySelector('[data-tableau-geometrie]').dataset.tableauGeometrie,
+    ).toBe('4:1'))
+
+    await userEvent.click(screen.getByRole('tab', { name: 'Cotes' }))
+    expect(screen.getByText(/Façade nord/)).toBeInTheDocument()
+  })
+
+  it('fermer (changer de toiture) puis ROUVRIR ré-hydrate depuis le serveur (rien ne se perd)', async () => {
+    const AUTRE = { ...TOITURE, id: 42, designation: 'Toiture bureaux', contour_local_m: [] }
+    mocks.toituresList.mockResolvedValue({ data: [TOITURE_TRACEE, AUTRE] })
+    mocks.obstaclesList.mockImplementation(({ toiture } = {}) =>
+      Promise.resolve({ data: toiture === 41 ? [OBSTACLE_A_SERVEUR] : [] }))
+    render(<ToituresPage affaireId={7} />)
+    await screen.findByLabelText('Toiture')
+
+    await waitFor(() => expect(
+      document.querySelector('[data-tableau-geometrie]').dataset.tableauGeometrie,
+    ).toBe('4:1'))
+
+    await userEvent.selectOptions(screen.getByLabelText('Toiture'), '42')
+    await waitFor(() => expect(
+      document.querySelector('[data-tableau-geometrie]').dataset.tableauGeometrie,
+    ).toBe('0:0'))
+
+    await userEvent.selectOptions(screen.getByLabelText('Toiture'), '41')
+    await waitFor(() => expect(
+      document.querySelector('[data-tableau-geometrie]').dataset.tableauGeometrie,
+    ).toBe('4:1'))
+
+    // La toiture 41 a bien été rouverte deux fois — chaque ouverture recharge.
+    expect(mocks.obstaclesList.mock.calls.filter(([p]) => p.toiture === 41).length)
+      .toBeGreaterThan(1)
+  })
+})
+
+describe('ToituresPage — « Enregistrer » diffère obstacles ET chaînes (create/update/delete, PV53)', () => {
+  it('une seule action « Enregistrer » crée, met à jour ET supprime — jamais une suite silencieuse', async () => {
+    mocks.toituresList.mockResolvedValue({ data: [TOITURE_TRACEE] })
+    mocks.obstaclesList.mockResolvedValue({ data: [OBSTACLE_A_SERVEUR, OBSTACLE_B_SERVEUR] })
+    mocks.obstaclesCreate.mockResolvedValue({ data: { id: 999, repere: 'B' } })
+    render(<ToituresPage affaireId={7} />)
+    await screen.findByText('Toiture atelier')
+
+    // Hydratation : les DEUX obstacles serveur sont dans le tableau.
+    await waitFor(() => expect(
+      document.querySelector('[data-tableau-geometrie]').dataset.tableauGeometrie,
+    ).toBe('4:2'))
+
+    // DELETE — l'obstacle B est retiré LOCALEMENT (pas encore au serveur).
+    await userEvent.click(screen.getByRole('button', { name: "Supprimer l'obstacle B" }))
+    await waitFor(() => expect(
+      document.querySelector('[data-tableau-geometrie]').dataset.tableauGeometrie,
+    ).toBe('4:1'))
+
+    // CREATE — un nouvel obstacle, purement local jusqu'à l'enregistrement.
+    await userEvent.click(screen.getByRole('button', { name: 'Ajouter un obstacle' }))
+    await waitFor(() => expect(
+      document.querySelector('[data-tableau-geometrie]').dataset.tableauGeometrie,
+    ).toBe('4:2'))
+
+    await userEvent.click(screen.getByRole('button', { name: 'Enregistrer' }))
+
+    // La séquence est STRICTEMENT ordonnée (delete puis update puis create) :
+    // attendre le SUCCÈS final garantit que les trois ont déjà eu lieu.
+    await waitFor(() => expect(toastMocks.success).toHaveBeenCalled())
+
+    // DELETE — l'obstacle B (id serveur 502), jamais A.
+    expect(mocks.obstaclesRemove).toHaveBeenCalledWith(502)
+    expect(mocks.obstaclesRemove).not.toHaveBeenCalledWith(501)
+
+    // UPDATE — l'obstacle A (id serveur 501), avec son vocabulaire TRADUIT
+    // (nature/provenance en MAJUSCULES, `caisson_technique`/`edicule` etc.).
+    expect(mocks.obstaclesUpdate).toHaveBeenCalledWith(501, expect.objectContaining({
+      toiture: 41, repere: 'A', nature: 'edicule', provenance: 'MESURE',
+    }))
+    expect(mocks.obstaclesUpdate).not.toHaveBeenCalledWith(502, expect.anything())
+
+    // CREATE — le nouvel obstacle, jamais avec un id (il n'en a pas encore).
+    expect(mocks.obstaclesCreate).toHaveBeenCalledTimes(1)
+    const corpsCreation = mocks.obstaclesCreate.mock.calls[0][0]
+    expect(corpsCreation.toiture).toBe(41)
+    expect(corpsCreation).not.toHaveProperty('id')
+  })
+
+  it('un échec PARTIEL (l’obstacle refuse) est NOMMÉ — jamais un succès affiché à moitié', async () => {
+    mocks.toituresList.mockResolvedValue({ data: [TOITURE_TRACEE] })
+    mocks.obstaclesList.mockResolvedValue({ data: [OBSTACLE_A_SERVEUR] })
+    mocks.obstaclesUpdate.mockRejectedValue({
+      response: { data: { nature: ['Nature inconnue.'] } },
+    })
+    render(<ToituresPage affaireId={7} />)
+    await screen.findByText('Toiture atelier')
+
+    await waitFor(() => expect(
+      document.querySelector('[data-tableau-geometrie]').dataset.tableauGeometrie,
+    ).toBe('4:1'))
+
+    await userEvent.click(screen.getByRole('button', { name: 'Enregistrer' }))
+
+    // Le motif NOMME la ressource ET l'élément fautif — jamais un « erreur »
+    // générique qui laisserait deviner ce qui n'a pas été enregistré.
+    expect(await screen.findByText(/Obstacle A non enregistré/)).toBeInTheDocument()
+    expect(toastMocks.error).toHaveBeenCalled()
   })
 })

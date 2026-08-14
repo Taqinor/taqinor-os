@@ -1,4 +1,4 @@
-import { Suspense, lazy, useCallback, useMemo, useRef, useState } from 'react'
+import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Hand, MousePointer2 } from 'lucide-react'
 import aoApi from '../../../api/aoApi'
 import recordsApi from '../../../api/recordsApi'
@@ -262,17 +262,21 @@ function FicheToitures({ toitures, loading, error }) {
    deux piles séparées produiraient un annuler qui ne défait pas ce que
    l'utilisateur vient de faire.
 
-   PERSISTANCE, et ses LIMITES, dites franchement :
+   PERSISTANCE (PV53) :
      · « Enregistrer » écrit `contour_local_m` via `aoApi.toitures.update` —
        le MÊME champ que le wizard de création, une liste de `[x, y]` en
        mètres dans le repère local (`apps/ao/models.py:619`). La surface est
        RECALCULÉE par le serveur à chaque écriture : elle n'est jamais
        envoyée, jamais devinée ici ;
-     · les OBSTACLES, ZONES et CHAÎNES DE COTES de la boîte à outils (PACT167)
-       restent LOCAUX à l'atelier : aucune des trois n'a de chemin d'écriture
-       ici (les zones n'ont même AUCUN endpoint — `aoApi` le dit noir sur
-       blanc). L'écran l'ANNONCE avant qu'on en saisisse une, plutôt que de
-       les laisser croire enregistrées.
+     · les OBSTACLES et les CHAÎNES DE COTES de la boîte à outils (PACT167)
+       partent EUX AUSSI, dans la MÊME action « Enregistrer » : diff
+       create/update/delete vs le dernier instantané serveur connu
+       (`synchroniserRessource`). À l'OUVERTURE de l'atelier (ce composant est
+       remonté avec `key={toiture.id}`), les deux listes sont RE-CHARGÉES
+       depuis le serveur — fermer/rouvrir conserve donc tout ;
+     · les ZONES restent LOCALES à l'atelier (PV56, pas encore construit) —
+       l'écran l'ANNONCE avant qu'on en saisisse une, plutôt que de la laisser
+       croire enregistrée.
    ========================================================================== */
 
 // Le modèle sert le contour en `[x, y]` (mètres, repère local, y↑ nord) ;
@@ -325,6 +329,234 @@ function obstacleDepuisSommets(o) {
 
 const sommetsSvg = (sommets) => (sommets ?? []).map((p) => `${nb(p.x)},${nb(p.y)}`).join(' ')
 
+/* ── PV53 — diff LOCAL vs SERVEUR : create/update/delete en une écriture ────
+   L'atelier ne persistait QUE le contour ; obstacles et chaînes de cotes
+   restaient locaux (l'écran l'annonçait). Les deux voies d'écriture RÉELLES
+   (`apps/ao/serializers.py` `ObstacleAOSerializer`/`ChaineCotesSerializer`)
+   parlent un vocabulaire DIFFÉRENT de celui de l'atelier (nature/provenance
+   en MAJUSCULES côté serveur, minuscules côté outils locaux — deux tableaux
+   qui ne se recouvrent pas terme à terme) : chaque correspondance EXACTE est
+   prise, et ce qui n'a pas d'équivalent retombe sur le DÉFAUT DU MODÈLE
+   lui-même — jamais une valeur inventée pour l'occasion. */
+
+// Vocabulaire LOCAL (`repereLettre.js` NATURES_OBSTACLE) → `ObstacleAO.Nature`.
+const NATURE_OBSTACLE_VERS_SERVEUR = {
+  edicule: 'edicule',
+  cage_escalier: 'cage_escalier',
+  cheminee: 'souche',
+  lanterneau: 'lanterneau',
+  exutoire: 'exutoire_fumee',
+  climatisation: 'groupe_clim',
+  acrotere: 'acrotere',
+  joint_dilatation: 'joint_dilatation',
+  muret: 'muret',
+  // Sans équivalent serveur — repli sur le défaut du modèle (`caisson_technique`).
+  gaine: 'caisson_technique',
+  antenne: 'caisson_technique',
+  trappe: 'caisson_technique',
+  reservation: 'caisson_technique',
+}
+const NATURE_OBSTACLE_DEPUIS_SERVEUR = {
+  edicule: 'edicule',
+  cage_escalier: 'cage_escalier',
+  souche: 'cheminee',
+  lanterneau: 'lanterneau',
+  exutoire_fumee: 'exutoire',
+  groupe_clim: 'climatisation',
+  acrotere: 'acrotere',
+  joint_dilatation: 'joint_dilatation',
+  muret: 'muret',
+  // Natures serveur sans équivalent local (13 clés côté outil, 13 AUTRES
+  // clés côté modèle) — meilleure correspondance visuelle disponible.
+  caisson_technique: 'gaine',
+  decrochement_niveau: 'edicule',
+  pan_coupe: 'edicule',
+  chemin_cables: 'gaine',
+}
+
+// Vocabulaire LOCAL (`ObstacleInspecteur.jsx` PROVENANCES) → `ObstacleAO.Provenance`.
+const PROVENANCE_OBSTACLE_VERS_SERVEUR = {
+  mesure: 'MESURE',
+  confirmer: 'MESURE_DOUTEUX',
+  deduit: 'PLAN',
+  devine: 'DEVINE',
+}
+const PROVENANCE_OBSTACLE_DEPUIS_SERVEUR = {
+  MESURE: 'mesure',
+  MESURE_DOUTEUX: 'confirmer',
+  PLAN: 'deduit',
+  DEVINE: 'devine',
+  // Sans équivalent local — la donnée n'est de toute façon pas MESURÉE.
+  DECLARE_CLIENT: 'deduit',
+  ECARTE: 'deduit',
+}
+
+// Vocabulaire LOCAL (`ChainesCotes.jsx` PROVENANCES des segments) → `StatutCote`.
+const STATUT_COTE_VERS_SERVEUR = {
+  mesure: 'MESURE',
+  confirmer: 'A_CONFIRMER',
+  deduit: 'PLAN_OU_DEDUIT',
+  devine: 'A_CONFIRMER', // deviné = incertain, comme « à confirmer »
+}
+const STATUT_COTE_DEPUIS_SERVEUR = {
+  MESURE: 'mesure',
+  A_CONFIRMER: 'confirmer',
+  PLAN_OU_DEDUIT: 'deduit',
+}
+
+function nombreOuNull(v) {
+  if (v === null || v === undefined || v === '') return null
+  const n = Number(String(v).replace(',', '.'))
+  return Number.isFinite(n) ? n : null
+}
+
+// Un id local NUMÉRIQUE (posé par une hydratation ou un enregistrement
+// précédent) désigne un enregistrement DÉJÀ connu du serveur ; un id
+// non-numérique (`obs-A-169…`, `chaine-3`) vient d'être saisi dans CETTE
+// session et n'existe encore nulle part côté serveur.
+function estIdServeur(id) {
+  return typeof id === 'number' || (typeof id === 'string' && /^\d+$/.test(id))
+}
+
+function sommetsDepuisRectServeur(x0, x1, y0, y1) {
+  if ([x0, x1, y0, y1].some((v) => v === null || v === undefined)) return []
+  return [
+    { x: nb(x0), y: nb(y0) }, { x: nb(x1), y: nb(y0) },
+    { x: nb(x1), y: nb(y1) }, { x: nb(x0), y: nb(y1) },
+  ]
+}
+
+function obstacleDepuisServeur(record) {
+  const sommets = Array.isArray(record.polygone_local_m) && record.polygone_local_m.length >= 3
+    ? record.polygone_local_m.map(([x, y]) => ({ x: nb(x), y: nb(y) }))
+    : sommetsDepuisRectServeur(
+      record.rect_x0_m, record.rect_x1_m, record.rect_y0_m, record.rect_y1_m,
+    )
+  return {
+    id: record.id,
+    repere: record.repere || '',
+    nature: NATURE_OBSTACLE_DEPUIS_SERVEUR[record.nature] ?? 'edicule',
+    provenance: PROVENANCE_OBSTACLE_DEPUIS_SERVEUR[record.provenance] ?? 'mesure',
+    sommets,
+    rectX0M: record.rect_x0_m, rectX1M: record.rect_x1_m,
+    rectY0M: record.rect_y0_m, rectY1M: record.rect_y1_m,
+    epaisseurM: null,
+    verrouille: false,
+    // Champs que l'outil local ne modélise PAS (hauteur, décision, hors-zone
+    // PV…) : gardés tels quels pour être ÉCHOÉS intacts au prochain
+    // enregistrement — jamais silencieusement effacés par cet écran.
+    _serveur: record,
+  }
+}
+
+// DRF ignore silencieusement les clés en lecture seule ou inconnues d'un
+// ModelSerializer (`id`, `*_display`, `engageable`…) : échoer le dernier
+// enregistrement serveur PUIS écraser le sous-ensemble ÉDITABLE localement ne
+// peut donc jamais réécrire un champ que l'atelier ne montre pas.
+function obstacleVersPayload(o, toitureId) {
+  const sommets = o.sommets ?? []
+  const bbox = bboxDePoints(sommets)
+  return {
+    ...(o._serveur ?? {}),
+    toiture: toitureId,
+    repere: o.repere ?? '',
+    nature: NATURE_OBSTACLE_VERS_SERVEUR[o.nature] ?? 'caisson_technique',
+    provenance: PROVENANCE_OBSTACLE_VERS_SERVEUR[o.provenance] ?? 'MESURE',
+    polygone_local_m: sommets.map((s) => [nb(s.x), nb(s.y)]),
+    rect_x0_m: bbox ? bbox.xMin : null,
+    rect_x1_m: bbox ? bbox.xMax : null,
+    rect_y0_m: bbox ? bbox.yMin : null,
+    rect_y1_m: bbox ? bbox.yMax : null,
+  }
+}
+
+function chaineDepuisServeur(record) {
+  return {
+    id: record.id,
+    axe: record.axe ?? 'x',
+    nom: record.libelle || `Chaîne ${record.id}`,
+    origine: { x: 0, y: 0 }, // repère d'affichage LOCAL — pas une donnée serveur
+    tolerance: record.tolerance_m !== null && record.tolerance_m !== undefined
+      ? Number(record.tolerance_m) : 0.05,
+    coteMesuree: record.mesure_globale_m !== null && record.mesure_globale_m !== undefined
+      ? Number(record.mesure_globale_m) : 0,
+    segments: (record.segments ?? []).map((s, i) => ({
+      id: `seg-srv-${record.id}-${i}`,
+      libelle: s.libelle ?? `S${i + 1}`,
+      valeur: Number(s.valeur_m ?? 0),
+      provenance: STATUT_COTE_DEPUIS_SERVEUR[s.statut] ?? 'mesure',
+    })),
+    _serveur: record,
+  }
+}
+
+function chaineVersPayload(c, toitureId) {
+  return {
+    ...(c._serveur ?? {}),
+    toiture: toitureId,
+    libelle: c.nom ?? '',
+    axe: c.axe ?? 'x',
+    mesure_globale_m: nombreOuNull(c.coteMesuree),
+    tolerance_m: nombreOuNull(c.tolerance) ?? 0.05,
+    segments: (c.segments ?? []).map((s) => ({
+      libelle: s.libelle ?? '',
+      valeur_m: nombreOuNull(s.valeur) ?? 0,
+      statut: STATUT_COTE_VERS_SERVEUR[s.provenance] ?? 'MESURE',
+    })),
+  }
+}
+
+function erreurNommee(nom, etiquette, e, verbe) {
+  const err = new Error(
+    `${nom} ${etiquette || ''} non ${verbe} — ${errMsg(e, 'le serveur a refusé l’écriture.')}`
+      .replace(/\s+—/, ' —').trim(),
+  )
+  err.aoMotifPret = true
+  return err
+}
+
+/* Diff 3 voies (create/update/delete) d'UNE ressource fille de la toiture, vs
+   le dernier instantané serveur connu. Un ÉCHEC N'IMPORTE OÙ arrête TOUT (pas
+   de suite silencieuse) : le motif nomme la ressource ET l'élément — un
+   « Enregistrer » qui échoue à moitié doit se VOIR, jamais se deviner. */
+async function synchroniserRessource({ ressource, nomRessource, locaux, distants, versPayload }) {
+  const idsLocaux = new Set(
+    locaux.filter((l) => estIdServeur(l.id)).map((l) => Number(l.id)),
+  )
+  for (const distant of distants) {
+    if (idsLocaux.has(distant.id)) continue
+    try {
+      // eslint-disable-next-line no-await-in-loop
+      await ressource.remove(distant.id)
+    } catch (e) {
+      throw erreurNommee(
+        nomRessource, distant.repere || distant.libelle || distant.id, e, 'supprimé')
+    }
+  }
+  const resultats = []
+  for (const local of locaux) {
+    const payload = versPayload(local)
+    if (estIdServeur(local.id)) {
+      try {
+        // eslint-disable-next-line no-await-in-loop
+        const { data } = await ressource.update(Number(local.id), payload)
+        resultats.push({ ...local, _serveur: data })
+      } catch (e) {
+        throw erreurNommee(nomRessource, local.repere || local.nom || local.id, e, 'enregistré')
+      }
+    } else {
+      try {
+        // eslint-disable-next-line no-await-in-loop
+        const { data } = await ressource.create(payload)
+        resultats.push({ ...local, id: data.id, _serveur: data })
+      } catch (e) {
+        throw erreurNommee(nomRessource, local.repere || local.nom || local.id, e, 'créé')
+      }
+    }
+  }
+  return resultats
+}
+
 /* Export d'un CSV produit par un helper PUR (`exporterPointsALever`) : le
    fichier part du navigateur, aucun aller-retour serveur — donc aucune
    promesse d'enregistrement qui n'aurait pas lieu. */
@@ -362,11 +594,25 @@ function AtelierToiture({ toiture, selecteur, onEnregistre }) {
   const contourInitial = useMemo(() => contourVersPoints(contourServeur), [contourServeur])
 
   // Monté avec `key={toiture.id}` : changer de toiture REMONTE l'atelier, donc
-  // remet l'historique à zéro — jamais un `reinitialiser` dans un effet, qui
-  // laisserait un rendu intermédiaire montrer le contour de l'autre toiture.
+  // remet l'historique à zéro — jamais un `reinitialiser` dans un effet QUI
+  // REMPLACE LE CONTOUR, ce qui laisserait un rendu intermédiaire montrer le
+  // contour de l'autre toiture. `reinitialiser` sert seulement plus bas à
+  // (a) hydrater les obstacles depuis le serveur SANS toucher aux points, et
+  // (b) faire des ids locaux les ids serveur après un enregistrement réussi.
   const histoire = useHistoire({ points: contourInitial, obstacles: [] })
-  const { appliquer, terminer, annuler, retablir } = histoire
+  const { appliquer, terminer, annuler, retablir, reinitialiser } = histoire
   const { points, obstacles } = histoire.etat
+
+  // PV53 — dernier instantané SERVEUR connu de chaque ressource fille, pour le
+  // diff create/update/delete de « Enregistrer » (une `useRef` : ces valeurs
+  // ne pilotent aucun rendu, elles ne servent qu'à la PROCHAINE écriture).
+  const distantsObstaclesRef = useRef([])
+  const distantsChainesRef = useRef([])
+  // Un utilisateur qui a DÉJÀ commencé à éditer (points, obstacles, chaînes…)
+  // avant que l'hydratation réseau ne réponde ne doit JAMAIS se faire écraser
+  // par elle : l'hydratation s'efface silencieusement dans ce cas, plutôt que
+  // de faire disparaître ce que l'utilisateur vient de saisir.
+  const interactionRef = useRef(false)
 
   const svgRef = useRef(null)
   const [vue, setVue] = useState(null)
@@ -420,13 +666,55 @@ function AtelierToiture({ toiture, selecteur, onEnregistre }) {
     }
     : null
 
+  // PV53 — hydrate l'atelier depuis le serveur À L'OUVERTURE. L'atelier est
+  // remonté avec `key={toiture.id}` : CE mount EST « ouvrir cette toiture »,
+  // donc changer de toiture ou y revenir relance cette hydratation — c'est ce
+  // qui fait tenir « fermer/rouvrir conserve tout ».
+  useEffect(() => {
+    let annule = false
+    if (!toitureId) return undefined
+    ;(async () => {
+      try {
+        const [obsRes, chaRes] = await Promise.all([
+          aoApi.obstacles.list({ toiture: toitureId }),
+          aoApi.chaines.list({ toiture: toitureId }),
+        ])
+        if (annule || interactionRef.current) return
+        const obstaclesDistants = unwrapList(obsRes)
+        const chainesDistantes = unwrapList(chaRes)
+        distantsObstaclesRef.current = obstaclesDistants
+        distantsChainesRef.current = chainesDistantes
+        reinitialiser(
+          {
+            points: histoire.etat.points,
+            obstacles: obstaclesDistants.map(obstacleDepuisServeur),
+          },
+          'Chargé depuis le serveur',
+        )
+        setChaines(chainesDistantes.map(chaineDepuisServeur))
+      } catch (e) {
+        if (annule) return
+        setNote(errMsg(
+          e,
+          'Obstacles et chaînes de cotes non chargés depuis le serveur — l’atelier '
+          + 'reste utilisable, mais « Enregistrer » partirait d’une liste locale '
+          + 'incomplète tant que la page n’est pas rechargée.',
+        ))
+      }
+    })()
+    return () => { annule = true }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- une seule hydratation par mount (= par toiture ouverte)
+  }, [toitureId])
+
   const majPoints = useCallback((suivants, libelle, opts) => {
+    interactionRef.current = true
     setRefus(null)
     appliquer((prec) => ({ ...prec, points: suivants }), libelle, opts)
   }, [appliquer])
 
   // Voie TABLEAU (clavier) : le rectangle vient d'être écrit → il fait foi.
   const majObstacles = useCallback((suivants, libelle, opts) => {
+    interactionRef.current = true
     setRefus(null)
     appliquer(
       (prec) => ({ ...prec, obstacles: suivants.map(obstacleDepuisRect) }), libelle, opts,
@@ -435,12 +723,18 @@ function AtelierToiture({ toiture, selecteur, onEnregistre }) {
 
   // Voie PLANCHE (souris) : les sommets viennent d'être posés → ils font foi.
   const majObstaclesPlanche = useCallback((suivants) => {
+    interactionRef.current = true
     setRefus(null)
     appliquer(
       (prec) => ({ ...prec, obstacles: suivants.map(obstacleDepuisSommets) }),
       'Modifier les obstacles',
     )
   }, [appliquer])
+
+  const majChaines = useCallback((suivantes) => {
+    interactionRef.current = true
+    setChaines(suivantes)
+  }, [])
 
   const bbox = useMemo(() => bboxDePoints(points), [points])
 
@@ -464,27 +758,54 @@ function AtelierToiture({ toiture, selecteur, onEnregistre }) {
       // JAMAIS `surface_m2` (read_only, recalculée par `ToitureAOViewSet`),
       // jamais `company` (forcée par le serveur) : seul le contour part.
       await aoApi.toitures.update(toitureId, { contour_local_m: pointsVersContour(points) })
+
+      // PV53 — UNE SEULE écriture cohérente : le contour ET la différence
+      // d'obstacles/chaînes de cotes. Un échec ICI (après un contour déjà
+      // écrit) est nommé PRÉCISÉMENT par `synchroniserRessource` — jamais un
+      // succès affiché alors qu'une partie n'est pas passée.
+      const resultatsObstacles = await synchroniserRessource({
+        ressource: aoApi.obstacles, nomRessource: 'Obstacle',
+        locaux: obstacles, distants: distantsObstaclesRef.current,
+        versPayload: (o) => obstacleVersPayload(o, toitureId),
+      })
+      const resultatsChaines = await synchroniserRessource({
+        ressource: aoApi.chaines, nomRessource: 'Chaîne de cotes',
+        locaux: chaines, distants: distantsChainesRef.current,
+        versPayload: (c) => chaineVersPayload(c, toitureId),
+      })
+
+      // Les ids locaux DEVIENNENT les ids serveur : un second « Enregistrer »
+      // dans la même session diffère juste, il ne recrée rien en double.
+      distantsObstaclesRef.current = resultatsObstacles.map((r) => r._serveur)
+      distantsChainesRef.current = resultatsChaines.map((r) => r._serveur)
+      reinitialiser({ points, obstacles: resultatsObstacles }, 'Enregistré')
+      setChaines(resultatsChaines)
+
       setRefus(null)
-      toast.success('Contour enregistré — la surface est recalculée par le serveur.')
+      toast.success('Enregistré — contour, obstacles et chaînes de cotes.')
       onEnregistre?.()
     } catch (e) {
-      const motif = errMsg(e, 'Contour non enregistré — le serveur a refusé l’écriture.')
+      // `synchroniserRessource` fabrique un motif déjà prêt en français
+      // (`aoMotifPret`) ; une réponse axios brute passe par `errMsg` comme
+      // avant, pour le refus du CONTOUR lui-même.
+      const motif = e?.aoMotifPret
+        ? e.message
+        : errMsg(e, 'Contour non enregistré — le serveur a refusé l’écriture.')
       setRefus(motif)
       toast.error(motif)
     } finally {
       setEnregistrement(false)
     }
-  }, [toitureId, points, onEnregistre])
+  }, [toitureId, points, obstacles, chaines, onEnregistre, reinitialiser])
 
   const ongletGeometrie = (
     <div className="flex flex-col gap-3">
       <LegendeProvenance />
       <p className="rounded-md border border-border bg-muted p-2 text-xs text-muted-foreground">
-        « Enregistrer » écrit le CONTOUR de cette toiture, et lui seul. Les
-        obstacles, zones et chaînes de cotes saisis dans la boîte à outils
-        restent LOCAUX à l’atelier : les y raccorder au serveur est une tâche à
-        part. Ils ne sont pas conservés en quittant l’écran — c’est dit ici,
-        avant d’en saisir un.
+        « Enregistrer » écrit le CONTOUR de cette toiture, les obstacles et les
+        chaînes de cotes de la boîte à outils, en une seule écriture (PV53).
+        Les zones restent LOCALES à l’atelier — les y raccorder au serveur est
+        une tâche à part.
       </p>
       <TableauGeometrie
         points={points}
@@ -641,11 +962,11 @@ function AtelierToiture({ toiture, selecteur, onEnregistre }) {
       <ChainesCotes
         chainesInitiales={chaines}
         pixelsParMetre={mpp > 0 ? 1 / mpp : 1}
-        onChange={setChaines}
+        onChange={majChaines}
       />
       <FermeturesPanel
         chaines={chaines}
-        onChaines={setChaines}
+        onChaines={majChaines}
         onCalepiner={() => setNote(
           'Chaînes arbitrées. Le calepinage se lance depuis l’onglet « Calepinages » '
           + 'de la fiche affaire (le calcul est sans état, piloté par la toiture) : '
