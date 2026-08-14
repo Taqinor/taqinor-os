@@ -1129,6 +1129,94 @@ def notifier_rappel(alerte, impact=None):
 
 
 # ═══════════════════════════════════════════════════════════════════════════
+# NTWMS24 — Casse / freinte / rebut motivé (et sa valeur de perte)
+# ═══════════════════════════════════════════════════════════════════════════
+
+def declarer_mouvement_rebut(*, company, user, produit, quantite, motif,
+                             bin_source=None, note=''):
+    """Déclare une perte MOTIVÉE et chiffrée.
+
+    Le mouvement de stock réel passe par le service de rebut EXISTANT
+    (``rebuter_produit``, type ``REBUT``) : jamais un second chemin
+    d'écriture, et la perte reste distincte d'un ajustement d'inventaire.
+    La valeur est figée au coût moyen d'achat du moment (INTERNE).
+    """
+    from decimal import Decimal
+
+    from django.db import transaction
+
+    from .models_wms import MouvementRebut
+    from .services import average_cost_with_source, rebuter_produit
+
+    try:
+        quantite = int(quantite)
+    except (TypeError, ValueError):
+        raise ValueError('Quantité invalide.')
+    if quantite <= 0:
+        raise ValueError('La quantité de rebut doit être positive.')
+    if produit is None or produit.company_id != getattr(company, 'id', None):
+        raise ValueError('Produit introuvable dans cette société.')
+    if motif not in dict(MouvementRebut.Motif.choices):
+        raise ValueError('Motif de rebut invalide.')
+
+    cout, _source = average_cost_with_source(produit)
+    valeur = (Decimal(str(cout or 0)) * Decimal(quantite)).quantize(
+        Decimal('0.01'))
+    with transaction.atomic():
+        # `rebuter_produit` (XSTK10) pose le MouvementStock REBUT, applique le
+        # garde de stock négatif et renvoie {mouvement, valeur_perdue}.
+        resultat = rebuter_produit(
+            company=company, produit=produit, quantite=quantite,
+            motif=MouvementRebut.MOTIF_MOUVEMENT[motif], user=user)
+        return MouvementRebut.objects.create(
+            company=company, produit=produit, quantite=quantite, motif=motif,
+            bin=bin_source, valeur_perte=valeur,
+            mouvement=resultat['mouvement'],
+            note=(note or '').strip(), declare_par=user)
+
+
+def rapport_pertes_entrepot(company, *, debut=None, fin=None):
+    """NTWMS24 — valeur totale de perte PAR MOTIF sur une période.
+
+    Nom explicitement distinct de ``rapport_pertes`` (XSTK10, agrégation PAR
+    PRODUIT des mouvements REBUT) : les deux coexistent, celui-ci agrège les
+    DÉCLARATIONS motivées par motif. Distincte, par construction, des
+    ajustements d'inventaire : seules les
+    déclarations de rebut (``MouvementRebut``) sont comptées. ``debut``/``fin``
+    sont des DATES fournies par l'appelant (bornes incluses). LECTURE SEULE.
+    """
+    from decimal import Decimal
+
+    from django.db.models import Count, Sum
+
+    from .models_wms import MouvementRebut
+
+    qs = MouvementRebut.objects.filter(company=company)
+    if debut:
+        qs = qs.filter(created_at__date__gte=debut)
+    if fin:
+        qs = qs.filter(created_at__date__lte=fin)
+    lignes = list(
+        qs.values('motif')
+        .annotate(nb=Count('id'), quantite=Sum('quantite'),
+                  valeur=Sum('valeur_perte'))
+        .order_by('-valeur'))
+    total = sum((ligne['valeur'] or Decimal('0')) for ligne in lignes)
+    libelles = dict(MouvementRebut.Motif.choices)
+    return {
+        'total_valeur': total,
+        'total_quantite': sum((ligne['quantite'] or 0) for ligne in lignes),
+        'par_motif': [{
+            'motif': ligne['motif'],
+            'libelle': libelles.get(ligne['motif'], ligne['motif']),
+            'nb_declarations': ligne['nb'],
+            'quantite': ligne['quantite'] or 0,
+            'valeur': ligne['valeur'] or Decimal('0'),
+        } for ligne in lignes],
+    }
+
+
+# ═══════════════════════════════════════════════════════════════════════════
 # NTWMS23 — Retours client (RMA) côté entrepôt
 # ═══════════════════════════════════════════════════════════════════════════
 

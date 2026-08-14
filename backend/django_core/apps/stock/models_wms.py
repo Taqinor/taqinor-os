@@ -872,3 +872,70 @@ class LigneRetourClient(TenantModel):
 
     def __str__(self):
         return f'{self.produit_id} × {self.quantite} ({self.etat_constate})'
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# NTWMS24 — Casse / freinte / mise au rebut AVEC MOTIF
+# ═══════════════════════════════════════════════════════════════════════════
+
+class MouvementRebut(TenantModel):
+    """NTWMS24 — déclaration de perte MOTIVÉE, chiffrée, traçable au casier.
+
+    L'ajustement d'inventaire générique dit COMBIEN mais jamais POURQUOI :
+    une casse, une péremption, un vol et une erreur de réception se
+    ressemblent toutes une fois fondues dans un ajustement. Ce document porte
+    la taxonomie de motif, le casier d'origine et la valeur de la perte, et
+    reste DISTINCT des ajustements d'inventaire dans tous les rapports.
+
+    Le mouvement de stock réel est celui, existant, du service de rebut
+    (``rebuter_produit``, type ``REBUT``) — jamais un second chemin
+    d'écriture. ``valeur_perte`` est INTERNE (coût moyen d'achat au moment de
+    la déclaration) : elle n'apparaît JAMAIS dans un document client.
+    """
+
+    class Motif(models.TextChoices):
+        CASSE = 'casse', 'Casse'
+        PERIME = 'perime', 'Périmé'
+        VOL = 'vol', 'Vol'
+        ERREUR_RECEPTION = 'erreur_reception', 'Erreur de réception'
+
+    # Correspondance vers la taxonomie historique de `MouvementStock`
+    # (XMFG11/XSTK10) : le mouvement posé reste lisible par les rapports
+    # existants, sans inventer un second vocabulaire de motifs.
+    MOTIF_MOUVEMENT = {
+        'casse': 'casse', 'perime': 'perime', 'vol': 'vol',
+        'erreur_reception': 'erreur',
+    }
+
+    produit = models.ForeignKey(
+        'stock.Produit', on_delete=models.PROTECT,
+        related_name='mouvements_rebut')  # on_delete: PROTECT — pièce de suivi comptable des pertes (aligné sur MouvementStock)
+    quantite = models.PositiveIntegerField(default=0)
+    motif = models.CharField(max_length=20, choices=Motif.choices)
+    bin = models.ForeignKey(
+        'installations.BinLocation', on_delete=models.SET_NULL, null=True,
+        blank=True, related_name='mouvements_rebut',
+        help_text='Casier d\'où sort la marchandise perdue.')
+    valeur_perte = models.DecimalField(
+        max_digits=14, decimal_places=2, default=0,
+        help_text='Coût moyen × quantité au moment de la déclaration '
+                  '(INTERNE, jamais client-facing).')
+    mouvement = models.ForeignKey(
+        'stock.MouvementStock', on_delete=models.SET_NULL, null=True,
+        blank=True, related_name='rebuts_declares')
+    note = models.TextField(blank=True, default='')
+    declare_par = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='mouvements_rebut_declares')
+
+    class Meta:
+        verbose_name = 'Déclaration de rebut'
+        verbose_name_plural = 'Déclarations de rebut'
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['company', 'motif'],
+                         name='idx_mvtrebut_co_motif'),
+        ]
+
+    def __str__(self):
+        return f'Rebut {self.produit_id} × {self.quantite} ({self.motif})'

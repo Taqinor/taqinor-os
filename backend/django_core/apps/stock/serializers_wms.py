@@ -7,7 +7,8 @@ from rest_framework import serializers
 
 from .models_wms import (
     AlerteRappel, DemandeTransfert, ExpeditionTransporteur, LignePicking,
-    LigneRetourClient, PlanComptageTournant, PortailTiersToken, Quai,
+    LigneRetourClient, MouvementRebut, PlanComptageTournant,
+    PortailTiersToken, Quai,
     RendezVousTransporteur, RetourClient, UniteLogistique,
     UniteLogistiqueLigne, VaguePicking,
 )
@@ -267,6 +268,29 @@ class PortailTiersTokenSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 'Nommez le dépositaire concerné par ce jeton.')
         return value
+
+
+class MouvementRebutSerializer(serializers.ModelSerializer):
+    """NTWMS24 — déclaration de perte motivée. La valeur de perte et le
+    mouvement de stock sont posés côté serveur (jamais acceptés du client) ;
+    la valeur reste INTERNE."""
+
+    produit_nom = serializers.CharField(source='produit.nom', read_only=True)
+    bin_code = serializers.CharField(
+        source='bin.code', read_only=True, default='')
+    motif_libelle = serializers.CharField(
+        source='get_motif_display', read_only=True)
+
+    class Meta:
+        model = MouvementRebut
+        fields = [
+            'id', 'produit', 'produit_nom', 'quantite', 'motif',
+            'motif_libelle', 'bin', 'bin_code', 'valeur_perte', 'mouvement',
+            'note', 'declare_par', 'created_at',
+        ]
+        read_only_fields = [
+            'valeur_perte', 'mouvement', 'declare_par', 'created_at',
+        ]
 
 
 class LigneRetourClientSerializer(serializers.ModelSerializer):

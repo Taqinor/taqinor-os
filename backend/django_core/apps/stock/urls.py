@@ -19,7 +19,7 @@ from .views import (
     RendezVousTransporteurViewSet, ExpeditionTransporteurViewSet,
     PlanComptageTournantViewSet, AlerteRappelViewSet,
     PortailTiersTokenViewSet, DemandeTransfertViewSet, RetourClientViewSet,
-    entrepot_productivite_view,
+    MouvementRebutViewSet, entrepot_productivite_view, entrepot_pertes_view,
     scanner_resoudre_view, scanner_mouvement_view,
 )
 
@@ -69,6 +69,7 @@ router.register(r'alertes-rappel', AlerteRappelViewSet)
 router.register(r'portails-tiers', PortailTiersTokenViewSet)
 router.register(r'demandes-transfert', DemandeTransfertViewSet)
 router.register(r'retours-client', RetourClientViewSet)
+router.register(r'mouvements-rebut', MouvementRebutViewSet)
 
 urlpatterns = [
     # NTWMS8 - kiosque de quai (chemin nomme par la tache : /stock/public/...).
@@ -82,6 +83,9 @@ urlpatterns = [
     # possede que l'app stock -- la donnee et sa garde restent au meme endroit.
     path('entrepot/productivite/', entrepot_productivite_view,
          name='stock-entrepot-productivite'),
+    # NTWMS24 - valeur des pertes par motif (responsable/admin).
+    path('entrepot/pertes/', entrepot_pertes_view,
+         name='stock-entrepot-pertes'),
     # NTWMS5 - poste scanner mobile (resolution universelle + mouvement scanne).
     path('scanner/resoudre/', scanner_resoudre_view,
          name='stock-scanner-resoudre'),

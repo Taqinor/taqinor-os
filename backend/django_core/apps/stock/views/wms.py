@@ -15,14 +15,15 @@ from authentication.permissions import (
 )
 
 from ..models_wms import (
-    AlerteRappel, DemandeTransfert, ExpeditionTransporteur,
+    AlerteRappel, DemandeTransfert, ExpeditionTransporteur, MouvementRebut,
     PlanComptageTournant, PortailTiersToken, Quai, RendezVousTransporteur,
     RetourClient, UniteLogistique, VaguePicking,
 )
 from ..serializers_wms import (
     AlerteRappelSerializer, DemandeTransfertSerializer,
-    ExpeditionTransporteurSerializer, PlanComptageTournantSerializer,
-    PortailTiersTokenSerializer, QuaiSerializer,
+    ExpeditionTransporteurSerializer, MouvementRebutSerializer,
+    PlanComptageTournantSerializer, PortailTiersTokenSerializer,
+    QuaiSerializer,
     RendezVousTransporteurSerializer, RetourClientSerializer,
     UniteLogistiqueSerializer, VaguePickingSerializer,
 )
@@ -564,6 +565,63 @@ class PlanComptageTournantViewSet(CompanyScopedModelViewSet):
         return Response(resultat, status=status.HTTP_201_CREATED)
 
 
+class MouvementRebutViewSet(CompanyScopedModelViewSet):
+    """NTWMS24 — déclarations de casse / freinte / rebut MOTIVÉES.
+
+    La déclaration pose elle-même le mouvement de stock (service de rebut
+    existant) : ce viewset est en création seule côté écriture — une perte
+    déclarée ne se modifie pas, elle se corrige par un ajustement tracé.
+    """
+    queryset = MouvementRebut.objects.select_related(
+        'produit', 'bin', 'declare_par', 'mouvement').all()
+    serializer_class = MouvementRebutSerializer
+    ordering = ['-created_at']
+    http_method_names = ['get', 'post', 'head', 'options']
+
+    def get_permissions(self):
+        if self.action in READ_ACTIONS:
+            return [IsAnyRole()]
+        if self.action == 'create':
+            # Le magasinier déclare ce qu'il casse : la déclaration doit être
+            # à sa portée, sinon elle n'est jamais faite.
+            return [IsAnyRole()]
+        return [IsAdminRole()]
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        params = self.request.query_params
+        motif = params.get('motif')
+        if motif:
+            qs = qs.filter(motif=motif)
+        produit = params.get('produit')
+        if produit and str(produit).isdigit():
+            qs = qs.filter(produit_id=int(produit))
+        return qs
+
+    def create(self, request, *args, **kwargs):
+        from ..models import Produit
+        from ..services import declarer_mouvement_rebut
+        company = request.user.company
+        produit = Produit.objects.filter(
+            id=request.data.get('produit'), company=company).first()
+        bin_source = None
+        if request.data.get('bin'):
+            modele_bin = MouvementRebut._meta.get_field('bin').related_model
+            bin_source = modele_bin.objects.filter(
+                id=request.data.get('bin'), company=company).first()
+        try:
+            rebut = declarer_mouvement_rebut(
+                company=company, user=request.user, produit=produit,
+                quantite=request.data.get('quantite'),
+                motif=request.data.get('motif'), bin_source=bin_source,
+                note=request.data.get('note') or '')
+        except ValueError as exc:
+            return Response({'detail': str(exc)},
+                            status=status.HTTP_400_BAD_REQUEST)
+        return Response(self.get_serializer(rebut).data,
+                        status=status.HTTP_201_CREATED)
+
+
 class RetourClientViewSet(CompanyScopedModelViewSet):
     """NTWMS23 — retours client (RMA) côté entrepôt.
 
@@ -790,6 +848,38 @@ def _date_param(valeur):
         return datetime.date.fromisoformat(valeur)
     except ValueError:
         return None
+
+
+@extend_schema(responses={
+    200: inline_serializer('StockEntrepotPertes', {
+        'debut': serializers.CharField(allow_null=True),
+        'fin': serializers.CharField(allow_null=True),
+        'total_valeur': serializers.DecimalField(
+            max_digits=14, decimal_places=2),
+        'total_quantite': serializers.IntegerField(),
+        'par_motif': serializers.ListField(child=serializers.DictField()),
+    }),
+})
+@api_view(['GET'])
+@permission_classes([IsResponsableOrAdmin])
+def entrepot_pertes_view(request):
+    """NTWMS24 — valeur de perte par motif et par période (``?debut=&fin=``).
+
+    Ne compte QUE les déclarations de rebut motivées : les ajustements
+    d'inventaire normaux n'y entrent jamais. Valeurs INTERNES (coût d'achat)
+    — réservé aux responsables/admins, jamais client-facing.
+    """
+    from ..services import rapport_pertes_entrepot
+
+    debut = _date_param(request.query_params.get('debut'))
+    fin = _date_param(request.query_params.get('fin'))
+    rapport = rapport_pertes_entrepot(
+        request.user.company, debut=debut, fin=fin)
+    rapport.update({
+        'debut': debut.isoformat() if debut else None,
+        'fin': fin.isoformat() if fin else None,
+    })
+    return Response(rapport)
 
 
 @extend_schema(responses={
