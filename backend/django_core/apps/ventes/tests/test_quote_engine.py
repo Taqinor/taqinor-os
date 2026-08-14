@@ -621,18 +621,19 @@ class TestPdfFormats(TestCase):
         # Ni les prix d'achat/marge, ni AUCUN prix de ligne du devis.
         for interdit in ('prix_achat', 'marge', 'Total TTC', 'Sous-total'):
             self.assertNotIn(interdit, annexe)
-        lisible = self._sans_donnees_binaires(annexe)
-        # PVSLD — le schéma v2 du moteur est un SVG riche : ses ATTRIBUTS de
-        # coordonnées (x1="67", y="375"…) refont surgir le même faux positif
-        # que le base64 du logo. Le scan des prix de lignes porte donc sur le
-        # TEXTE que le client lit — balises et attributs retirés — tandis que
-        # les gardes sémantiques ci-dessus restent sur le HTML brut entier.
-        # Effeuillage par découpage (jamais un regex de balise : CodeQL y voit
-        # un ReDoS polynomial) : tout ce qui suit un '<' jusqu'au '>' tombe.
-        texte = ' '.join(
-            morceau.split('>', 1)[-1] for morceau in lisible.split('<'))
+        # PVSLD — le schéma v2 du moteur a rendu le scan de SOUS-CHAÎNE nue
+        # intenable : « 67 » surgissait d'une coordonnée SVG (x1="67"), puis
+        # « 1000 » de « 1000 V DC » — des grandeurs électriques LÉGITIMES.
+        # Le vrai vecteur de fuite d'un prix est son RENDU MONÉTAIRE : tout
+        # montant que le moteur imprime passe par ``fmt`` (« 11 700 MAD »,
+        # séparateurs insécables), et un contournement naïf écrirait
+        # « 11700 MAD ». On scanne donc l'annexe BRUTE ENTIÈRE pour ces deux
+        # formes — aucune collision possible avec tensions/calibres, et une
+        # fuite réelle reste attrapée à coup sûr.
         for _designation, _qte, _prix in self.FULL_LINES:
-            self.assertNotIn(_prix, texte)
+            self.assertNotIn(G.fmt(float(_prix)), annexe)
+            self.assertNotIn(f'{_prix} MAD', annexe)
+            self.assertNotIn(f'{_prix} MAD', annexe)
         self.assertIn('Nomenclature électrique', annexe)
         # La page de signature reste la DERNIÈRE page numérotée.
         self.assertEqual(G.PAGE3_NUM, G.PAGES_TOTAL)
