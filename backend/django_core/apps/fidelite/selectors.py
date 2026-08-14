@@ -21,6 +21,20 @@ def get_compte(company, client_id):
         company=company, client_id=client_id).select_related('palier_actuel').first()
 
 
+def get_compte_par_code_qr(token):
+    """NTRET11 — ``CompteFidelite`` par jeton QR opaque, ou None. Lecture seule.
+
+    PAS de filtre société ici À DESSEIN : l'appelant public (douchette caisse,
+    lien scanné) ne connaît aucune société — c'est justement le jeton,
+    GLOBALEMENT unique, qui résout le bon compte/tenant sans jamais pouvoir en
+    atteindre un autre (voir ``models.CompteFidelite.code_qr``)."""
+    from .models import CompteFidelite
+    if not token:
+        return None
+    return CompteFidelite.objects.select_related(
+        'client', 'palier_actuel').filter(code_qr=token).first()
+
+
 def palier_et_remise_pour_client(company, client_id):
     """NTRET10 — lecture seule : palier actuel + remise % applicable pour un
     client, DESTINÉE aux autres apps (ex. ``apps.pos`` à l'écran caisse) qui

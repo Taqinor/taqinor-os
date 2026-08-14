@@ -8,12 +8,19 @@ jamais lue d'un corps de requête.
 Frontière inter-app (CLAUDE.md) : le lien vers le client passe par une FK À
 CHAÎNE ``'crm.Client'`` — jamais un import direct de ``apps.crm.models``.
 """
+import secrets
 from decimal import Decimal
 
 from django.conf import settings
 from django.db import models
 
 from core.models import TenantModel
+
+
+def generer_code_qr():
+    """NTRET11 — jeton opaque non séquentiel pour la carte dématérialisée
+    (jamais l'id de la ligne, ni une valeur devinable)."""
+    return secrets.token_urlsafe(24)
 
 
 class ProgrammeFidelite(TenantModel):
@@ -114,6 +121,12 @@ class CompteFidelite(TenantModel):
     palier_actuel = models.ForeignKey(
         PalierFidelite, on_delete=models.SET_NULL, null=True, blank=True,
         related_name='comptes')
+    code_qr = models.CharField(
+        max_length=64, unique=True, default=generer_code_qr, editable=False,
+        help_text=(
+            'Jeton opaque non séquentiel (carte dématérialisée NTRET11) — '
+            "globalement unique : résout LUI-MÊME LA société, jamais "
+            'réutilisable pour un autre tenant.'))
 
     class Meta:
         verbose_name = 'Compte de fidélité'
