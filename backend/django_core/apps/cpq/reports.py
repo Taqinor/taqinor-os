@@ -10,8 +10,10 @@ ce module depuis ``ventes`` — le contrat reste intact.
 Toutes les lectures cross-app passent par ``apps.ventes.selectors`` (jamais
 ``ventes.models``) et restent scopées société.
 """
-from .models import ContrainteCompatibilite, EtapeApprobationDevis
-from .selectors import devis_marge_sous_seuil, etat_configuration_devis
+from .models import ContrainteCompatibilite, EtapeApprobationDevis, RegleProduitCPQ
+from .selectors import (
+    condition_en_clair, devis_marge_sous_seuil, etat_configuration_devis,
+)
 
 
 def rapport_approbations(company, *, approbateur_id=None):
@@ -104,6 +106,109 @@ def rapport_approbations_xlsx(lignes):
         'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'))
     resp['Content-Disposition'] = (
         'attachment; filename="historique-approbations.xlsx"')
+    wb.save(resp)
+    return resp
+
+
+# ── NTCPQ42 — export lecture seule du catalogue de règles de compatibilité ──
+
+_TYPE_CONTRAINTE_LABELS = dict(ContrainteCompatibilite.TypeContrainte.choices)
+
+
+def _actions_en_clair(actions):
+    """NTCPQ42 — traduit la liste ``actions`` d'une ``RegleProduitCPQ`` en
+    résumé FR lisible sans jargon technique (ex. « ajoute produit #12 (x2) »,
+    « applique offre groupée #3 »). Purement descriptif."""
+    if not isinstance(actions, list) or not actions:
+        return ''
+    parties = []
+    for action in actions:
+        if not isinstance(action, dict):
+            continue
+        if action.get('produit_id'):
+            qte = action.get('quantite', 1)
+            parties.append(
+                f"ajoute produit #{action['produit_id']} (x{qte})")
+        elif action.get('offre_id'):
+            parties.append(f"applique offre groupée #{action['offre_id']}")
+        else:
+            parties.append(str(action))
+    return ' ; '.join(parties)
+
+
+def catalogue_regles_compatibilite(company):
+    """NTCPQ42 — catalogue LECTURE SEULE des règles de compatibilité CPQ,
+    pour audit/revue hors-ligne par le bureau d'études.
+
+    Renvoie ``{'contraintes': [...], 'regles_produit': [...]}`` — deux
+    listes de dicts JSON-safe, libellés FR, sans jargon technique."""
+    contraintes = []
+    for c in (ContrainteCompatibilite.objects
+              .filter(company=company)
+              .select_related('produit_a', 'produit_b').order_by('id')):
+        contraintes.append({
+            'produit_a': getattr(c.produit_a, 'nom', c.produit_a_id),
+            'produit_b': getattr(c.produit_b, 'nom', c.produit_b_id),
+            'type': _TYPE_CONTRAINTE_LABELS.get(c.type, c.type),
+            'message': c.message_utilisateur,
+        })
+
+    regles = []
+    for r in (RegleProduitCPQ.objects.filter(company=company)
+              .order_by('-date_creation', 'id')):
+        regles.append({
+            'nom': r.nom,
+            'condition': condition_en_clair(r.condition_group),
+            'actions': _actions_en_clair(r.actions),
+            'bloquante': 'Oui' if r.bloquante else 'Non (avertissement)',
+            'actif': 'Oui' if r.actif else 'Non',
+        })
+
+    return {'contraintes': contraintes, 'regles_produit': regles}
+
+
+_CONTRAINTES_COLONNES = [
+    ('produit_a', 'Produit A'), ('produit_b', 'Produit B'),
+    ('type', 'Type'), ('message', 'Message utilisateur'),
+]
+_REGLES_COLONNES = [
+    ('nom', 'Nom'), ('condition', 'Condition'), ('actions', 'Actions'),
+    ('bloquante', 'Bloquante'), ('actif', 'Active'),
+]
+
+
+def catalogue_regles_compatibilite_xlsx(company):
+    """NTCPQ42 — classeur .xlsx du catalogue (une feuille par type de
+    règle), auto-suffisant (openpyxl direct — jamais un passage par
+    ``apps/dataimport``, hors périmètre de cette app). Lecture seule :
+    jamais un import inverse dans cette tâche."""
+    from openpyxl import Workbook
+    from openpyxl.styles import Font
+    from django.http import HttpResponse
+
+    data = catalogue_regles_compatibilite(company)
+    wb = Workbook()
+    bold = Font(bold=True)
+
+    ws1 = wb.active
+    ws1.title = 'Contraintes de compatibilité'
+    ws1.append([label for _, label in _CONTRAINTES_COLONNES])
+    for c in ws1[1]:
+        c.font = bold
+    for ligne in data['contraintes']:
+        ws1.append([ligne.get(champ) for champ, _ in _CONTRAINTES_COLONNES])
+
+    ws2 = wb.create_sheet('Règles produit')
+    ws2.append([label for _, label in _REGLES_COLONNES])
+    for c in ws2[1]:
+        c.font = bold
+    for ligne in data['regles_produit']:
+        ws2.append([ligne.get(champ) for champ, _ in _REGLES_COLONNES])
+
+    resp = HttpResponse(content_type=(
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'))
+    resp['Content-Disposition'] = (
+        'attachment; filename="catalogue-regles-compatibilite.xlsx"')
     wb.save(resp)
     return resp
 

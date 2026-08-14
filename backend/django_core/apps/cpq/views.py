@@ -501,6 +501,31 @@ class ImportPrixContractuelsCsvView(APIView):
         return Response(resultat)
 
 
+class CatalogueReglesCompatibiliteView(APIView):
+    """NTCPQ42 — GET ``cpq/rapports/catalogue-regles/?export=xlsx``.
+
+    Export LECTURE SEULE (audit/revue hors-ligne bureau d'études) de
+    ``ContrainteCompatibilite`` (NTCPQ1) et ``RegleProduitCPQ`` (NTCPQ2).
+    Jamais un import inverse dans cette tâche (pas de risque d'écrasement
+    accidentel de règles). ``?export=xlsx`` renvoie un classeur (une feuille
+    par type de règle) — jamais ``?format=``, réservé par DRF."""
+    permission_classes = [IsResponsableOrAdmin]
+
+    @extend_schema(responses={200: inline_serializer(
+        'CpqCatalogueReglesCompatibilite', {
+            'contraintes': drf_serializers.ListField(
+                child=drf_serializers.DictField()),
+            'regles_produit': drf_serializers.ListField(
+                child=drf_serializers.DictField()),
+        })})
+    def get(self, request):
+        if request.query_params.get('export') == 'xlsx':
+            return reports.catalogue_regles_compatibilite_xlsx(
+                request.user.company)
+        return Response(
+            reports.catalogue_regles_compatibilite(request.user.company))
+
+
 class RapportApprobationsView(APIView):
     """NTCPQ25 — GET ``cpq/rapports/approbations/?approbateur_id=&export=xlsx``.
 
