@@ -9,7 +9,10 @@ Endpoints (company + user scopés côté serveur, jamais lus du corps) :
   coche manuellement un item SANS ``event_key`` (aucun déclencheur
   automatique adapté sans importer une app métier — alternative explicite).
 """
-from drf_spectacular.utils import extend_schema, inline_serializer
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import (
+    OpenApiParameter, extend_schema, inline_serializer,
+)
 from rest_framework import serializers as drf_serializers, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
@@ -129,6 +132,16 @@ _ItemMasquableSerializer = inline_serializer('OnboardingItemMasquable', {
     'masque': drf_serializers.BooleanField(),
 }).__class__
 
+# ``OnboardingItemsMasquesViewSet`` est un ``viewsets.ViewSet`` SANS queryset
+# (le catalogue vient de ``OnboardingChecklistItem`` via le sélecteur, jamais
+# une queryset de vue) : drf-spectacular ne peut donc pas déduire seul le
+# type du paramètre de chemin ``id`` des actions ``detail=True`` — annoté ici
+# explicitement (entier, pk de ``OnboardingChecklistItem``) plutôt que laissé
+# en avertissement.
+_ID_PATH_PARAMETER = [OpenApiParameter(
+    'id', OpenApiTypes.INT, OpenApiParameter.PATH,
+    description="Identifiant de l'item du catalogue « Premiers pas ».")]
+
 
 class OnboardingItemsMasquesViewSet(viewsets.ViewSet):
     """NTDMO28 — masquage PAR SOCIÉTÉ d'items du catalogue « Premiers pas »
@@ -149,7 +162,8 @@ class OnboardingItemsMasquesViewSet(viewsets.ViewSet):
     def list(self, request):
         return Response(items_masquables_pour_societe(self._company(request)))
 
-    @extend_schema(request=None, responses=_ItemMasquableSerializer(many=True))
+    @extend_schema(request=None, responses=_ItemMasquableSerializer(many=True),
+                   parameters=_ID_PATH_PARAMETER)
     @action(detail=True, methods=['post'], url_path='masquer',
             permission_classes=[IsAdminOrResponsableTier])
     def masquer(self, request, pk=None):
@@ -158,7 +172,8 @@ class OnboardingItemsMasquesViewSet(viewsets.ViewSet):
             items_masquables_pour_societe(self._company(request)),
             status=status.HTTP_200_OK)
 
-    @extend_schema(request=None, responses=_ItemMasquableSerializer(many=True))
+    @extend_schema(request=None, responses=_ItemMasquableSerializer(many=True),
+                   parameters=_ID_PATH_PARAMETER)
     @action(detail=True, methods=['post'], url_path='demasquer',
             permission_classes=[IsAdminOrResponsableTier])
     def demasquer(self, request, pk=None):
