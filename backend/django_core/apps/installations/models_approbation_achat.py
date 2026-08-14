@@ -66,12 +66,12 @@ class RegleApprobationAchat(TenantModel):
     # Périmètre OPTIONNEL : une règle peut ne viser qu'un chantier ou un
     # programme. Même app → FK directe (aucune frontière franchie).
     chantier = models.ForeignKey(
-        'installations.Installation', on_delete=models.CASCADE,
+        'installations.Installation', on_delete=models.CASCADE,  # on_delete: CASCADE — une règle CIBLÉE sur un chantier n'a aucun sens sans lui : le chantier supprimé, la règle disparaît (les étapes déjà instanciées gardent leur trace, `EtapeApprobationAchat.regle` est SET_NULL)
         null=True, blank=True,
         related_name='regles_approbation_achat',
         verbose_name='Chantier (optionnel)')
     programme = models.ForeignKey(
-        'installations.Projet', on_delete=models.CASCADE,
+        'installations.Projet', on_delete=models.CASCADE,  # on_delete: CASCADE — symétrique de `chantier` ci-dessus : une règle ciblée sur un programme supprimé n'a plus de périmètre
         null=True, blank=True,
         related_name='regles_approbation_achat',
         verbose_name='Programme (optionnel)')
@@ -165,7 +165,7 @@ class EtapeApprobationAchat(TenantModel):
         REJETE = 'rejete', 'Rejetée'
 
     demande = models.ForeignKey(
-        'installations.DemandeAchat', on_delete=models.CASCADE,
+        'installations.DemandeAchat', on_delete=models.CASCADE,  # on_delete: CASCADE — une étape d'approbation est une PARTIE de sa demande (comme une ligne) : elle n'a aucune existence propre, aucune écriture comptable n'en dépend
         related_name='etapes_approbation',
         verbose_name="Demande d'achat")
     regle = models.ForeignKey(

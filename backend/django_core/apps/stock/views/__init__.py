@@ -37,6 +37,9 @@ from .nomenclature_code_barres import (
     NomenclatureCodeBarresViewSet, RegleCodeBarresViewSet,
 )
 from .catalogue_achat import CatalogueAchatViewSet
+from .budget_departement import (
+    BudgetDepartementViewSet, EngagementBudgetViewSet,
+)
 
 __all__ = [
     'ProduitViewSet',
@@ -68,6 +71,8 @@ __all__ = [
     'ConditionnementProduitViewSet',
     'ModeleBonCommandeFournisseurViewSet',
     'CatalogueAchatViewSet',
+    'BudgetDepartementViewSet',
+    'EngagementBudgetViewSet',
     'NomenclatureCodeBarresViewSet',
     'RegleCodeBarresViewSet',
 ]

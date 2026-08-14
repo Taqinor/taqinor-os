@@ -15,6 +15,7 @@ from .views import (
     ConditionnementProduitViewSet, ModeleBonCommandeFournisseurViewSet,
     NomenclatureCodeBarresViewSet, RegleCodeBarresViewSet,
     CatalogueAchatViewSet,
+    BudgetDepartementViewSet, EngagementBudgetViewSet,
 )
 
 router = DefaultRouter()
@@ -54,6 +55,9 @@ router.register(r'regles-code-barres', RegleCodeBarresViewSet)
 # NTP2P3 — catalogue interne d'achat (lecture seule, sans prix de vente).
 router.register(
     r'catalogue-achat', CatalogueAchatViewSet, basename='catalogue-achat')
+# NTP2P4 — budgets d'engagement par département + engagements (lecture seule).
+router.register(r'budgets-departement', BudgetDepartementViewSet)
+router.register(r'engagements-budget', EngagementBudgetViewSet)
 
 urlpatterns = [
     path('', include(router.urls)),

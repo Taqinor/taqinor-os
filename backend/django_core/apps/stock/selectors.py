@@ -1194,3 +1194,117 @@ def nb_produits_par_entite(company, entite_ids):
               .values('entite_id')
               .annotate(nb=Count('id')))
     return {ligne['entite_id']: ligne['nb'] for ligne in lignes}
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# NTP2P4 — Budget d'engagement par département (lecture cross-app)
+# ══════════════════════════════════════════════════════════════════════════
+# ``installations`` (soumission d'une demande d'achat) lit le budget PAR ICI —
+# jamais en important ``stock.models``. Tout est lecture seule ; l'écriture de
+# l'engagement passe par ``stock.services``.
+
+def budget_departement_actif(company):
+    """True si le contrôle budgétaire dur est activé pour cette société.
+
+    OFF par défaut (NTP2P4) : sans activation explicite, la soumission d'une
+    demande d'achat n'est soumise à AUCUN contrôle budgétaire — comportement
+    historique strictement inchangé."""
+    if company is None:
+        return False
+    from .models import AchatsParametres
+    params = AchatsParametres.objects.filter(company=company).first()
+    return bool(params and params.budget_departement_actif)
+
+
+def resoudre_budget_departement(company, departement_id, periode=None):
+    """Budget applicable à ce département pour cette période, ou None.
+
+    Le budget MENSUEL de la période visée l'emporte sur le budget ANNUEL de
+    l'année (le mensuel est plus spécifique). ``periode`` est une ``date``
+    (défaut : aujourd'hui, en heure locale)."""
+    if company is None or not departement_id:
+        return None
+    from django.utils import timezone
+    from .models import BudgetDepartement
+
+    jour = periode or timezone.localdate()
+    base = BudgetDepartement.objects.filter(
+        company=company, departement_id=departement_id, actif=True,
+        annee=jour.year)
+    mensuel = base.filter(
+        periodicite=BudgetDepartement.Periodicite.MENSUELLE,
+        mois=jour.month).first()
+    if mensuel is not None:
+        return mensuel
+    return base.filter(
+        periodicite=BudgetDepartement.Periodicite.ANNUELLE, mois=0).first()
+
+
+def consommation_budget(budget):
+    """Détail ``engagé`` / ``réalisé`` / ``restant`` d'un budget.
+
+    ``engage``   — engagements encore ACTIFS (demande soumise, pas de BCF) ;
+    ``realise``  — engagements CONSOMMÉS (le bon de commande est passé) ;
+    ``restant``  — alloué − (engagé + réalisé). Les engagements LIBÉRÉS
+    (demande refusée/annulée) ne pèsent plus."""
+    from decimal import Decimal
+    from django.db.models import Sum
+    from .models import EngagementBudget
+
+    if budget is None:
+        return None
+    agreges = budget.engagements.values('statut').annotate(
+        total=Sum('montant'))
+    par_statut = {row['statut']: row['total'] or Decimal('0')
+                  for row in agreges}
+    engage = par_statut.get(EngagementBudget.Statut.ACTIF, Decimal('0'))
+    realise = par_statut.get(EngagementBudget.Statut.CONSOMME, Decimal('0'))
+    alloue = Decimal(budget.montant_alloue or 0)
+    return {
+        'budget_id': budget.pk,
+        'departement_id': budget.departement_id,
+        'periodicite': budget.periodicite,
+        'annee': budget.annee,
+        'mois': budget.mois,
+        'montant_alloue': alloue,
+        'engage': engage,
+        'realise': realise,
+        'consomme_total': engage + realise,
+        'restant': alloue - (engage + realise),
+        'taux_consommation_pct': (
+            round(float((engage + realise) / alloue * 100), 2)
+            if alloue else 0.0),
+    }
+
+
+def verifier_budget_disponible(company, departement_id, periode, montant):
+    """NTP2P4 — le département a-t-il encore ``montant`` de disponible ?
+
+    Renvoie un dict ``{'controle_actif', 'budget', 'restant', 'depassement',
+    'suffisant', 'montant_manquant'}``. ``controle_actif=False`` (réglage OFF
+    ou aucun budget configuré) ⇒ ``suffisant=True`` : jamais de blocage
+    implicite. LECTURE SEULE — aucun engagement n'est posé ici."""
+    from decimal import Decimal
+
+    montant = Decimal(montant or 0)
+    vide = {
+        'controle_actif': False, 'budget': None, 'restant': None,
+        'depassement': Decimal('0'), 'suffisant': True,
+        'montant_manquant': Decimal('0'),
+    }
+    if not budget_departement_actif(company):
+        return vide
+    budget = resoudre_budget_departement(company, departement_id, periode)
+    if budget is None:
+        return vide
+    detail = consommation_budget(budget)
+    restant = detail['restant']
+    manquant = montant - restant
+    return {
+        'controle_actif': True,
+        'budget': budget,
+        'restant': restant,
+        'depassement': max(manquant, Decimal('0')),
+        'suffisant': manquant <= 0,
+        'montant_manquant': max(manquant, Decimal('0')),
+    }

@@ -138,7 +138,12 @@ class DemandeAchatViewSet(ChatterViewSetMixin, CompanyScopedModelViewSet):
 
         NTP2P2 — instancie en outre le plan d'approbation (N étapes
         séquentielles) si une ``RegleApprobationAchat`` active couvre le
-        montant estimé. Sans règle : aucune étape, comportement historique."""
+        montant estimé. Sans règle : aucune étape, comportement historique.
+
+        NTP2P4 — contrôle budgétaire départemental AVANT tout changement
+        d'état : si le budget restant du département du demandeur ne couvre
+        pas la demande, la soumission est refusée (400) — sauf dérogation
+        autorisée par la règle d'approbation. Inactif par défaut."""
         from .. import services
 
         da = self.get_object()
@@ -147,9 +152,15 @@ class DemandeAchatViewSet(ChatterViewSetMixin, CompanyScopedModelViewSet):
             return Response(
                 {'detail': "Seule une demande brouillon peut être soumise."},
                 status=status.HTTP_400_BAD_REQUEST)
+        regle = services.resoudre_regle_approbation_achat(da)
+        try:
+            services.controler_budget_demande_achat(da, regle=regle)
+        except services.BudgetAchatError as exc:
+            return Response({'detail': str(exc)},
+                            status=status.HTTP_400_BAD_REQUEST)
         da.statut = DemandeAchat.Statut.SOUMISE
         da.save(update_fields=['statut', 'date_modification'])
-        services.lancer_workflow_approbation_achat(da)
+        services.lancer_workflow_approbation_achat(da, regle=regle)
         return Response(self.get_serializer(da).data)
 
     @action(detail=True, methods=['get'], url_path='etapes-approbation')
@@ -238,6 +249,8 @@ class DemandeAchatViewSet(ChatterViewSetMixin, CompanyScopedModelViewSet):
     @action(detail=True, methods=['post'])
     def refuser(self, request, pk=None):
         """FG310 — refuse la demande (soumise → refusée) avec un motif."""
+        from .. import services
+
         da = self.get_object()
         if da.statut != DemandeAchat.Statut.SOUMISE:
             return Response(
@@ -255,6 +268,8 @@ class DemandeAchatViewSet(ChatterViewSetMixin, CompanyScopedModelViewSet):
             statut=EtapeApprobationAchat.Statut.EN_ATTENTE
         ).update(statut=EtapeApprobationAchat.Statut.REJETE,
                  decision_le=timezone.now())
+        # NTP2P4 — l'enveloppe budgétaire engagée est rendue.
+        services.liberer_budget_demande_achat(da)
         _notifier_demandeur_decision(da, approuvee=False)
         return Response(self.get_serializer(da).data)
 
@@ -325,6 +340,9 @@ class DemandeAchatViewSet(ChatterViewSetMixin, CompanyScopedModelViewSet):
         da.bon_commande = bon
         da.statut = DemandeAchat.Statut.COMMANDEE
         da.save(update_fields=['bon_commande', 'statut', 'date_modification'])
+        # NTP2P4 — l'engagement devient RÉALISÉ (le BCF est passé).
+        from .. import services
+        services.consommer_budget_demande_achat(da, bon_commande_id=bon.pk)
         return Response(self.get_serializer(da).data)
 
 

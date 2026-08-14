@@ -3666,6 +3666,82 @@ def prochaine_etape_approbation_achat(demande):
     ).order_by('niveau', 'id').first()
 
 
+# ══════════════════════════════════════════════════════════════════════════
+# NTP2P4 — Contrôle budgétaire départemental à la soumission
+# ══════════════════════════════════════════════════════════════════════════
+# Cross-app STRICT : le budget est lu via ``stock.selectors`` et l'engagement
+# écrit via ``stock.services`` ; le département du demandeur est lu via
+# ``rh.selectors``. Aucun import de ``models`` d'une autre app.
+
+
+class BudgetAchatError(Exception):
+    """Budget départemental dépassé à la soumission (mappé en 400)."""
+
+
+def departement_du_demandeur(company, user_id):
+    """Département RH du demandeur, ou None (lecture via ``rh.selectors``)."""
+    if company is None or not user_id:
+        return None
+    from apps.rh import selectors as rh_selectors
+    dossier = rh_selectors.dossier_employe_for_user(company, user_id)
+    if dossier is None:
+        return None
+    mapping = rh_selectors.departements_par_employe(company, [dossier.id])
+    return (mapping.get(dossier.id) or {}).get('departement_id')
+
+
+def controler_budget_demande_achat(demande, *, regle=None):
+    """NTP2P4 — engage le budget du département du demandeur, ou refuse.
+
+    No-op total quand le contrôle est désactivé (défaut) ou qu'aucun budget
+    n'est configuré pour le département : la soumission reste ce qu'elle était.
+    Une ``RegleApprobationAchat`` avec ``autorise_depassement_budget`` (NTP2P2)
+    laisse passer le dépassement — la dérogation est alors tranchée par les
+    étapes d'approbation, pas par un blocage muet.
+    """
+    from apps.stock import selectors as stock_selectors
+    from apps.stock import services as stock_services
+
+    company = demande.company
+    if not stock_selectors.budget_departement_actif(company):
+        return None
+    departement_id = departement_du_demandeur(
+        company, getattr(demande, 'created_by_id', None))
+    if not departement_id:
+        return None
+    regle = regle if regle is not None else resoudre_regle_approbation_achat(
+        demande)
+    autoriser = bool(regle and regle.autorise_depassement_budget)
+    try:
+        return stock_services.engager_budget(
+            company, departement_id=departement_id,
+            montant=demande.montant_estime,
+            periode=getattr(demande, 'date_besoin', None),
+            demande_achat_id=demande.pk,
+            autoriser_depassement=autoriser,
+            note=f'Demande {demande.reference}')
+    except stock_services.BudgetDepasseError as exc:
+        raise BudgetAchatError(
+            'Budget départemental dépassé : il reste '
+            f'{exc.restant} MAD, il manque {exc.manquant} MAD. '
+            "Une règle d'approbation autorisant le dépassement est requise."
+        ) from exc
+
+
+def liberer_budget_demande_achat(demande):
+    """NTP2P4 — rend l'enveloppe engagée (demande refusée/annulée)."""
+    from apps.stock import services as stock_services
+    return stock_services.liberer_engagements_demande(
+        demande.company, demande.pk)
+
+
+def consommer_budget_demande_achat(demande, bon_commande_id=None):
+    """NTP2P4 — l'engagement devient RÉALISÉ (le BCF est émis)."""
+    from apps.stock import services as stock_services
+    return stock_services.consommer_engagements_demande(
+        demande.company, demande.pk, bon_commande_id=bon_commande_id)
+
+
 def _decider_etape_approbation_achat(etape, *, statut_cible, approbateur,
                                      commentaire=''):
     """Décide UNE étape en respectant l'ordre séquentiel."""
@@ -3727,4 +3803,6 @@ def rejeter_etape_achat(etape, *, approbateur, commentaire=''):
     demande.motif_refus = (commentaire or '').strip() or None
     demande.save(update_fields=['statut', 'approuvee_par', 'date_decision',
                                 'motif_refus', 'date_modification'])
+    # NTP2P4 — une demande refusée rend son enveloppe budgétaire.
+    liberer_budget_demande_achat(demande)
     return etape
