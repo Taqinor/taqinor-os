@@ -351,8 +351,24 @@ export function serializeLayout(ctx: Ctx, billKwh: number | null = null, meta?: 
           }
         : null;
     if (g && g.grid.panels.length) {
-      const posed = Math.max(0, Math.min(g.grid.panels.length, Math.round(g.count)));
-      const panels = g.grid.panels.slice(0, posed).map((p) => ({ cx: p.cx, cy: p.cy, ...(p.face ? { face: p.face } : {}) }));
+      // PV27 — les panneaux exportés sont les cellules RÉELLEMENT OCCUPÉES, pas les
+      // `count` premières du pavage. L'ancien `slice(0, count)` était un mensonge dès que
+      // la disposition avait été éditée à la main : retirer le panneau nº12 et en garder
+      // un nº47 exportait quand même « les 46 premiers », donc l'édition manuelle était
+      // silencieusement effacée à l'export (puis au ré-import). La liste occupée n'existe
+      // que pour la zone ACTIVE (c'est la seule en cours d'édition) ; une zone figée garde
+      // le comportement historique (les `count` premières du pavage).
+      const live =
+        isActive && ctx.layoutState && ctx.layoutState.cells.length === g.grid.panels.length
+          ? [...ctx.layoutState.occupied].filter((i) => i >= 0 && i < g.grid.panels.length).sort((a, b) => a - b)
+          : null;
+      const posedIdx =
+        live ?? Array.from({ length: Math.max(0, Math.min(g.grid.panels.length, Math.round(g.count))) }, (_, i) => i);
+      const panels = posedIdx.map((i) => {
+        const p = g.grid.panels[i];
+        return { cx: p.cx, cy: p.cy, ...(p.face ? { face: p.face } : {}) };
+      });
+      const posed = panels.length;
       zone.geometry = {
         azimuthDeg: g.pack.azimuthDeg,
         tiltDeg: g.tiltDeg,

@@ -1356,6 +1356,7 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
    */
   function applyDevisHydration(devis: import('./roofPro11/prefill').DevisPayload): boolean {
     const h = hydrateFromDevis(devis);
+    const layout = devis.geometrie?.roof_layout ?? null;
     const setIf = (id: string, v?: string) => {
       const el = $<HTMLInputElement>(id);
       if (el && v && !el.value.trim()) el.value = v;
@@ -1396,6 +1397,12 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
       redrawObstacles();
       if (vertices.length >= 3) {
         close(); // referme le tracé du devis → optimiseur + rendu
+        // PV27 — le dossier porte la POSE EXACTE (liste des panneaux réellement posés) :
+        // on la repose sur la lattice fraîchement pavée (re-snap au plus proche) au lieu
+        // de laisser l'optimum s'afficher à sa place.
+        const zoneGeo = layout?.zones?.find((z) => z.id === activeAreaId) ?? layout?.zones?.[0];
+        const posed = zoneGeo?.geometry;
+        if (posed?.panels?.length) layoutEditor.hydrateLayout(posed.panels, posed.origin);
         return true;
       }
     }

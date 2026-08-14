@@ -99,6 +99,11 @@ export interface LayoutEditor {
   /** PV26 — annule / rétablit la dernière action de disposition (true si effectué). */
   undo: () => boolean;
   redo: () => boolean;
+  /** PV27 — HYDRATE la disposition depuis les centres de panneaux d'un layout exporté
+   *  (leur repère d'origine si différent de celui du pavage courant). Re-snappe chaque
+   *  centre sur la lattice courante et rend la 3D avec CETTE occupation. Renvoie true si
+   *  la disposition a été appliquée. */
+  hydrateLayout: (centers: readonly { cx: number; cy: number }[], origin?: readonly [number, number]) => boolean;
 }
 
 export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEditor {
@@ -161,6 +166,9 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
   // `recordHistory()`. Annuler ré-applique la photo précédente ; une nouvelle action vide
   // la pile « rétablir ».
   const history = createLayoutHistory();
+  /** PV27 — une disposition a-t-elle été HYDRATÉE (ou éditée) sur le plan courant ? Si oui,
+   *  entrer en mode « Personnaliser » la PRÉSERVE au lieu de repartir de l'optimum. */
+  let hydrated = false;
   /** Photographie l'occupation AVANT de la muter (no-op sans état de disposition). */
   function recordHistory() {
     if (ctx.layoutState) history.push(ctx.layoutState.occupied);
@@ -362,6 +370,51 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
     renderLayoutPanel();
   }
 
+  /**
+   * PV27 — HYDRATATION de la disposition depuis un layout exporté. C'était le troisième
+   * chemin par lequel une pose manuelle disparaissait : le JSON portait les panneaux, mais
+   * personne ne les REPOSAIT au boot — l'outil réaffichait l'optimum. On re-snappe ici
+   * chaque centre exporté sur la cellule VALIDE la plus proche (même mécanique que
+   * `reenterCustomLayout` après un recalcul), puis on rend la 3D avec cette occupation.
+   *
+   * `origin` = le repère ENU dans lequel les centres ont été enregistrés. S'il diffère du
+   * repère du pavage courant (centroïde légèrement différent), on translate d'abord — sans
+   * ça, tout le champ serait décalé de quelques mètres.
+   */
+  function hydrateLayout(centers: readonly { cx: number; cy: number }[], origin?: readonly [number, number]): boolean {
+    if (!centers.length || !ctx.layoutPlan) return false;
+    ensureLayoutState();
+    const st = ctx.layoutState;
+    if (!st || !st.cells.length) return false;
+    let dx = 0;
+    let dy = 0;
+    if (origin) {
+      const cur = ctx.layoutPlan.pack.origin;
+      const cosLat = Math.cos(cur[1] * DEG2RAD);
+      dx = (origin[0] - cur[0]) * DEG2M * cosLat;
+      dy = (origin[1] - cur[1]) * DEG2M;
+    }
+    st.occupied.clear();
+    let placed = 0;
+    for (const c of centers) {
+      const idx = nearestEmptyCell(st, c.cx + dx, c.cy + dy);
+      if (idx >= 0) {
+        st.occupied.add(idx);
+        placed++;
+      }
+    }
+    ctx.layoutSel = null;
+    setSelection([]);
+    history.clear(); // une hydratation est un POINT DE DÉPART, pas une action annulable
+    hydrated = true; // PV27 — entrer en mode disposition ne doit plus l'écraser
+    renderCustomLayout();
+    renderLayoutPanel();
+    if (layoutNoteEl && placed) {
+      layoutNoteEl.textContent = `Disposition du dossier rechargée — ${fmt(placed)} panneaux reposés à l'identique.`;
+    }
+    return placed > 0;
+  }
+
   /** Entrée/sortie du mode personnalisation. */
   function setLayoutMode(on: boolean) {
     ctx.layoutMode = on;
@@ -374,9 +427,12 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
     if (opts.reducedMotion) map.jumpTo(view);
     else map.easeTo({ ...view, duration: 500, essential: true });
     if (on) {
-      ctx.layoutState = null; // repart de l'optimum courant
-      ensureLayoutState();
-      history.clear(); // PV26 — l'historique appartient à UNE session d'édition
+      // PV27 — on PRÉSERVE une disposition déjà posée (hydratée depuis un dossier, ou
+      // éditée à la main juste avant) : la remettre à l'optimum ici effaçait le travail
+      // manuel dès qu'on rouvrait le panneau. Repartir de l'optimum reste possible — c'est
+      // le bouton « Réinitialiser la disposition optimale », explicite.
+      if (!ctx.layoutState) ensureLayoutState();
+      if (!hydrated) history.clear(); // PV26 — historique propre pour une nouvelle session
       setSelection([]);
       renderCustomLayout();
     } else {
@@ -441,6 +497,7 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
   layoutResetEl?.addEventListener('click', () => {
     if (!ctx.layoutState) return;
     recordHistory(); // PV26 — « réinitialiser » s'annule comme n'importe quelle action
+    hydrated = false; // PV27 — retour explicite à l'optimum : plus rien à préserver
     resetToOptimal(ctx.layoutState, ctx.layoutOptimalCount);
     ctx.layoutSel = null;
     if (layoutNoteEl) layoutNoteEl.textContent = `Disposition optimale restaurée — ${occupiedCount(ctx.layoutState)} panneaux.`;
@@ -840,5 +897,6 @@ export function createLayoutEditor(ctx: Ctx, deps: LayoutEditorDeps): LayoutEdit
     setSelection,
     undo,
     redo,
+    hydrateLayout,
   };
 }
