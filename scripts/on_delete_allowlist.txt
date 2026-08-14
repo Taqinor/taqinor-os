@@ -1319,9 +1319,9 @@ backend/django_core/apps/pos/models.py:171
 backend/django_core/apps/pos/models.py:230
 backend/django_core/apps/pos/models.py:236
 backend/django_core/apps/pos/models.py:280
-backend/django_core/apps/pos/models.py:384
-backend/django_core/apps/pos/models.py:444
-backend/django_core/apps/pos/models.py:466
+backend/django_core/apps/pos/models.py:391
+backend/django_core/apps/pos/models.py:451
+backend/django_core/apps/pos/models.py:473
 backend/django_core/apps/portail/models.py:112
 backend/django_core/apps/portail/models.py:177
 backend/django_core/apps/portail/models.py:243

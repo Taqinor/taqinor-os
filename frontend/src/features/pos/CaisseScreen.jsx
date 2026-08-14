@@ -62,6 +62,10 @@ export default function CaisseScreen() {
   const [factureSel, setFactureSel] = useState(null) // { id, reference, client, montant_du }
   const [factureMontant, setFactureMontant] = useState('')
   const [factureMode, setFactureMode] = useState('especes')
+  // NTRET31 — écran client : session ouverte détectée une fois au montage
+  // (best-effort, `?.()` — jamais d'exception si l'API n'est pas montée,
+  // ex. un test qui mocke un posApi partiel).
+  const [sessionId, setSessionId] = useState(null)
 
   useEffect(() => {
     posApi.getProduits().then((r) => {
@@ -70,12 +74,36 @@ export default function CaisseScreen() {
     }).catch(() => setProduits([]))
   }, [])
 
+  useEffect(() => {
+    posApi.getSessions?.()?.then((r) => {
+      const data = r?.data?.results ?? r?.data ?? []
+      const ouverte = (Array.isArray(data) ? data : []).find((s) => s.statut === 'ouverte')
+      if (ouverte) setSessionId(ouverte.id)
+    }).catch(() => {})
+  }, [])
+
   const resultats = useMemo(() => searchProduitsPos(produits, query), [produits, query])
 
   const total = useMemo(() => cartTotal(cart), [cart])
   const nbArticles = useMemo(() => cartItemCount(cart), [cart])
   const rendu = useMemo(() => calculerRendu(total, paiements), [total, paiements])
   const encaissable = useMemo(() => peutEncaisser(total, paiements), [total, paiements])
+
+  // NTRET31 — pousse un snapshot du panier vers l'écran client (débounced,
+  // best-effort — une erreur réseau ne doit JAMAIS perturber la vente en
+  // cours). No-op tant qu'aucune session ouverte n'a été détectée.
+  useEffect(() => {
+    if (!sessionId) return undefined
+    const timer = setTimeout(() => {
+      posApi.pushPanierCourant?.(sessionId, {
+        lignes: cart.map((l) => ({ nom: l.nom, quantite: l.quantite, prix_ttc: l.prixTtc })),
+        total,
+        client_nom: client?.nom || '',
+        rendu: encaissementOpen ? rendu.rendu : 0,
+      })?.catch(() => {})
+    }, 500)
+    return () => clearTimeout(timer)
+  }, [sessionId, cart, total, client, encaissementOpen, rendu.rendu])
 
   const handleAjouter = (produit) => {
     if (sansPrix(produit)) {

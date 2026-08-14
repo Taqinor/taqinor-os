@@ -341,6 +341,13 @@ class SessionCaisse(models.Model):
     # la même session refuse (409). NULL = Z pas encore généré (comportement
     # historique inchangé pour toute session déjà close avant NTRET2).
     numero_rapport_z = models.CharField(max_length=50, null=True, blank=True)
+    # NTRET31 — écran client (customer-facing display) : snapshot BEST-EFFORT
+    # du panier en cours, poussé par l'écran caisse (CaisseScreen) et lu en
+    # polling léger (±2s) par l'écran client dédié. Purement informatif —
+    # aucune action possible depuis cet écran. NULL/vide = comportement
+    # historique inchangé (aucun panier affichable).
+    panier_courant = models.JSONField(null=True, blank=True, default=None)
+    panier_maj_le = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         verbose_name = 'Session de caisse (POS)'

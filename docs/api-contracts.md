@@ -660,6 +660,10 @@
     facture:inconnu, id:inconnu, mode:inconnu, montant:texte
 - frontend/src/api/posApi.js :: getDashboard -> /api/django/pos/ventes/dashboard
     nb_ventes:inconnu, panier_moyen:texte, par_caissier:inconnu, par_categorie:inconnu, par_jour:inconnu, par_mode_paiement:inconnu, par_produit:inconnu, par_session:inconnu, taux_retour_pct:texte, total_ttc:texte
+- frontend/src/api/posApi.js :: getPanierCourant -> /api/django/pos/sessions/<>/panier-courant
+    panier:inconnu, updated_at:inconnu
+- frontend/src/api/posApi.js :: pushPanierCourant -> /api/django/pos/sessions/<>/panier-courant
+    panier:inconnu, updated_at:inconnu
 - frontend/src/api/posApi.js :: searchClients -> /api/django/crm/clients/search
     results:inconnu
 - frontend/src/api/posApi.js :: ticketShareLink -> /api/django/pos/ventes/<>/ticket-share-link

@@ -1,6 +1,7 @@
 from decimal import Decimal, InvalidOperation
 
 from django.http import HttpResponse
+from django.utils import timezone
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import extend_schema, inline_serializer
 from rest_framework import serializers, status, viewsets
@@ -582,6 +583,33 @@ class SessionCaisseViewSet(viewsets.ModelViewSet):
         response['Content-Disposition'] = (
             f'inline; filename="rapport-z-{session.numero_rapport_z}.pdf"')
         return response
+
+    # ── NTRET31 — Écran client (customer-facing display) ────────────────────
+
+    @extend_schema(responses=inline_serializer('PosPanierCourant', {
+        'panier': serializers.DictField(allow_null=True),
+        'updated_at': serializers.DateTimeField(allow_null=True),
+    }))
+    @action(detail=True, methods=['get', 'patch'], url_path='panier-courant',
+            permission_classes=[IsAnyRole])
+    def panier_courant(self, request, pk=None):
+        """NTRET31 — snapshot best-effort du panier en cours de la session.
+
+        PATCH : l'écran caisse (CaisseScreen) pousse l'état courant du
+        panier (lignes/total, aucune écriture métier, pur affichage) —
+        n'importe quel utilisateur pouvant vendre peut pousser (même palier
+        que la vente elle-même), pas seulement responsable/admin (à la
+        différence du reste de ce ViewSet). GET : lu en polling léger (±2s)
+        par l'écran client dédié, lecture seule, aucune action exposée."""
+        session = self.get_object()
+        if request.method == 'PATCH':
+            session.panier_courant = request.data.get('panier') or {}
+            session.panier_maj_le = timezone.now()
+            session.save(update_fields=['panier_courant', 'panier_maj_le'])
+        return Response({
+            'panier': session.panier_courant,
+            'updated_at': session.panier_maj_le,
+        })
 
 
 class CommandeRetraitViewSet(viewsets.ModelViewSet):
