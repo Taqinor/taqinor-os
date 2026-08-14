@@ -135,16 +135,23 @@ def calepinage_sans_projet(*, surface, kits, parametres, obstacles=(),
         obstacles=obstacles, zones=zones, politique=politique, repere=repere)
 
 
-def calepinage_villa(area, *, ordre='lnglat', kit=None, retrait_m=None,
-                     pas_recherche_m=0.01):
+def calepinage_villa(area, *, ordre='lnglat', kit=None, produit_panneau=None,
+                     company=None, retrait_m=None, pas_recherche_m=0.01):
     """Calepine une toiture villa (``AreaRecord``) — LECTURE PURE.
 
     ``ordre`` reste un argument EXPLICITE jusqu'ici : aucun appelant ne doit
     pouvoir hériter d'un défaut deviné sur l'ordre lat/lng.
+
+    ``produit_panneau`` (PV12) — identifiant OU instance de ``stock.Produit``,
+    résolu DANS ``company`` : le calepinage est alors posé sur le panneau
+    réellement vendu. Une fiche technique incomplète retombe sur le kit villa
+    par défaut, jamais sur une géométrie devinée.
     """
     from .services import calepiner_villa
 
-    return calepiner_villa(area, ordre=ordre, kit=kit, retrait_m=retrait_m,
+    return calepiner_villa(area, ordre=ordre, kit=kit,
+                           produit_panneau=produit_panneau, company=company,
+                           retrait_m=retrait_m,
                            pas_recherche_m=pas_recherche_m)
 
 
