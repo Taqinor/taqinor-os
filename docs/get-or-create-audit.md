@@ -129,8 +129,8 @@ Généré par `python scripts/check_get_or_create.py`. Chaque appel liste ses cl
 | `backend/django_core/apps/customfields/blueprint.py:201` | update_or_create | modele.objects |  |
 | `backend/django_core/apps/customfields/catalogue.py:99` | get_or_create | CustomObjectDef.objects | code, company |
 | `backend/django_core/apps/customfields/catalogue.py:106` | get_or_create | CustomFieldDef.objects | code, company, module |
-| `backend/django_core/apps/dataimport/services.py:282` | update_or_create | ImportMapping.objects | company, entity, nom |
-| `backend/django_core/apps/dataimport/services.py:328` | get_or_create | ExternalRef.objects | company, external_id, external_system |
+| `backend/django_core/apps/dataimport/services.py:295` | update_or_create | ImportMapping.objects | company, entity, nom |
+| `backend/django_core/apps/dataimport/services.py:341` | get_or_create | ExternalRef.objects | company, external_id, external_system |
 | `backend/django_core/apps/douane/models.py:180` | get_or_create | cls.objects | company |
 | `backend/django_core/apps/education/models.py:772` | get_or_create | cls.objects | company |
 | `backend/django_core/apps/education/services.py:547` | get_or_create | Famille.objects | company, nom |
@@ -284,13 +284,13 @@ Généré par `python scripts/check_get_or_create.py`. Chaque appel liste ses cl
 | `backend/django_core/apps/sav/services.py:1080` | get_or_create | TicketFollower.objects | company, ticket, user |
 | `backend/django_core/apps/sav/views.py:1229` | get_or_create | TicketFollower.objects | company, ticket, user |
 | `backend/django_core/apps/sav/views.py:1711` | get_or_create | TicketChecklistItem.objects | cle, ticket |
-| `backend/django_core/apps/scm/selectors.py:92` | update_or_create | ClassificationABC.objects | company, produit |
-| `backend/django_core/apps/scm/services.py:138` | update_or_create | PrevisionDemande.objects | company, periode, produit, segment |
-| `backend/django_core/apps/scm/services.py:235` | get_or_create | PolitiqueStock.objects | company, produit |
-| `backend/django_core/apps/scm/services.py:347` | update_or_create | LigneDemandeSOP.objects | cycle, produit_id |
-| `backend/django_core/apps/scm/services.py:389` | update_or_create | LigneOffreSOP.objects | cycle, produit |
-| `backend/django_core/apps/scm/services.py:763` | get_or_create | ParametresSCM.objects | company |
-| `backend/django_core/apps/scm/services.py:1005` | get_or_create | PolitiqueStock.objects | company, produit |
+| `backend/django_core/apps/scm/selectors.py:104` | update_or_create | ClassificationABC.objects | company, produit |
+| `backend/django_core/apps/scm/services.py:154` | update_or_create | PrevisionDemande.objects | company, periode, produit, segment |
+| `backend/django_core/apps/scm/services.py:252` | get_or_create | PolitiqueStock.objects | company, produit |
+| `backend/django_core/apps/scm/services.py:378` | update_or_create | LigneDemandeSOP.objects | cycle, produit_id |
+| `backend/django_core/apps/scm/services.py:420` | update_or_create | LigneOffreSOP.objects | cycle, produit |
+| `backend/django_core/apps/scm/services.py:797` | get_or_create | ParametresSCM.objects | company |
+| `backend/django_core/apps/scm/services.py:1039` | get_or_create | PolitiqueStock.objects | company, produit |
 | `backend/django_core/apps/stock/management/commands/backfill_unites_mesure.py:52` | get_or_create | UniteMesure.objects | code, company |
 | `backend/django_core/apps/stock/management/commands/seed_catalogue.py:695` | get_or_create | Categorie.objects | company, nom |
 | `backend/django_core/apps/stock/management/commands/seed_catalogue.py:896` | get_or_create | Categorie.objects | company, nom |
