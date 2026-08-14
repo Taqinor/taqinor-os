@@ -838,10 +838,14 @@
     bloquants:inconnu, detail:texte
 - frontend/src/api/stockApi.js :: getComptesAPayer -> /api/django/stock/factures-fournisseur/comptes-a-payer
     results:inconnu, total_du:texte
+- frontend/src/api/stockApi.js :: getFavorisCatalogueAchat -> /api/django/stock/catalogue-achat/favoris
+    epingles:inconnu, produit_ids:inconnu, recents:inconnu
 - frontend/src/api/stockApi.js :: getFournisseur360 -> /api/django/stock/fournisseurs/<>/vue-360
     accords_prix:inconnu, accords_prix_actifs:nombre, bcf_en_retard:inconnu, bcf_ouverts:inconnu, conformite_documents_manquants:nombre, conformite_ok:booleen, factures_ouvertes:inconnu, fournisseur_id:inconnu, nb_retours_avoirs:inconnu, receptions_attendues:inconnu, score_performance:inconnu, solde_total_du:texte
 - frontend/src/api/stockApi.js :: getKitDisponibilite -> /api/django/stock/kits/<>/disponibilite
     composants:inconnu, detail:texte, goulots:inconnu, kit_id:inconnu, kit_nom:inconnu, kits_assemblables:inconnu
+- frontend/src/api/stockApi.js :: getOnboardingFournisseur -> /api/django/stock/fournisseurs/<>/onboarding
+    dossier:inconnu, obligatoire:inconnu, progression:inconnu
 - frontend/src/api/stockApi.js :: inventaire -> /api/django/stock/produits/inventaire
     ajustes:nombre, detail:texte, inchanges:nombre, mouvements:liste
 - frontend/src/api/stockApi.js :: performanceFournisseur -> /api/django/stock/fournisseurs/<>/performance
@@ -852,6 +856,8 @@
     chantier:inconnu, client:inconnu, created:inconnu, date_fin_garantie:inconnu, date_peremption:inconnu, detail:texte, gs1:inconnu, id:inconnu, label:inconnu, nb_tickets_ouverts:inconnu, numero_lot:inconnu, numero_serie:inconnu, quantite:inconnu, quantite_restante:inconnu, reference:inconnu, route:texte, serie:texte, sku:texte, statut:inconnu, type:texte
 - frontend/src/api/stockApi.js :: scanGs1ReceptionFournisseur -> /api/django/stock/receptions-fournisseur/scan-gs1
     date_peremption:inconnu, detail:texte, numero_lot:inconnu, numeros_serie:inconnu, produit_id:inconnu, produit_nom:inconnu
+- frontend/src/api/stockApi.js :: setFavorisCatalogueAchat -> /api/django/stock/catalogue-achat/favoris
+    epingles:inconnu, produit_ids:inconnu, recents:inconnu
 - frontend/src/api/stockApi.js :: validerInventaireSession -> /api/django/stock/inventaire-sessions/<>/valider
     ajustes:inconnu, detail:texte, inchanges:inconnu
 - frontend/src/api/stockApi.js :: valorisation -> /api/django/stock/produits/valorisation
@@ -3299,6 +3305,12 @@
     champs: code_barres, date_creation, facteur, id, nom, produit, produit_nom, unite_stock
 - frontend/src/api/stockApi.js :: createContactFournisseur -> /api/django/stock/contacts-fournisseur  [ContactFournisseurSerializer]
     champs: email, fonction, fournisseur, id, nom, telephone
+- frontend/src/api/stockApi.js :: createDocumentFournisseur -> /api/django/stock/documents-fournisseur  [DocumentFournisseurSerializer]
+    champs: date_creation, date_emission, date_expiration, dossier, est_valide, filename, id, mime, note, reference, taille, type_document, type_document_display
+    type_document ∈ {assurance, attestation_cnss, attestation_fiscale, autre, rc, rib_certifie}
+- frontend/src/api/stockApi.js :: createDossierOnboarding -> /api/django/stock/dossiers-onboarding-fournisseur  [DossierOnboardingFournisseurSerializer]
+    champs: date_creation, date_decision, documents, fournisseur, fournisseur_nom, id, motif_rejet, note, progression, statut, statut_display, valide_par
+    statut ∈ {documents_recus, en_attente, rejete, valide}
 - frontend/src/api/stockApi.js :: createFicheTechnique -> /api/django/stock/fiches-techniques  [FicheTechniqueSerializer]
     champs: date_creation, date_mise_a_jour, id, imp_a, isc_a, pdf, pmax_wc, produit, produit_garantie, produit_marque, produit_nom, rendement_pct, vmp_v, voc_v
 - frontend/src/api/stockApi.js :: createInventaireSession -> /api/django/stock/inventaire-sessions  [InventaireSessionSerializer]
@@ -3353,6 +3365,8 @@
 - frontend/src/api/stockApi.js :: getAvoirsFournisseurDe -> /api/django/stock/avoirs-fournisseur  [AvoirFournisseurSerializer]
     champs: created_by, date_creation, date_mise_a_jour, facture_origine, fournisseur, fournisseur_nom, id, imputations, montant_disponible, montant_ht, montant_impute, montant_ttc, montant_tva, note, reference, retour, retour_reference, statut, statut_display
     statut ∈ {brouillon, impute, valide}
+- frontend/src/api/stockApi.js :: getCatalogueAchat -> /api/django/stock/catalogue-achat  [CatalogueAchatSerializer]
+    champs: categorie, categorie_nom, fournisseur_prefere, fournisseur_prefere_nom, id, nom, prix_achat_dernier, sku
 - frontend/src/api/stockApi.js :: getCategoriesFournisseur -> /api/django/stock/categories-fournisseur  [CategorieFournisseurSerializer]
     champs: archived, id, nom
 - frontend/src/api/stockApi.js :: getConditionnementsProduit -> /api/django/stock/conditionnements  [ConditionnementProduitSerializer]

@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 8598, operations: 15597, components: 4424}
+counts: {paths: 8648, operations: 15681, components: 4448}
 securitySchemes:
 - cookieJWT
 - publicApiKey
@@ -4389,13 +4389,16 @@ operations:
 - get /api/django/installations/demandes-achat/{id}/ -> django_installations_demandes_achat_retrieve
 - patch /api/django/installations/demandes-achat/{id}/ -> django_installations_demandes_achat_partial_update
 - put /api/django/installations/demandes-achat/{id}/ -> django_installations_demandes_achat_update
+- post /api/django/installations/demandes-achat/{id}/approuver-etape/ -> django_installations_demandes_achat_approuver_etape_create
 - post /api/django/installations/demandes-achat/{id}/approuver/ -> django_installations_demandes_achat_approuver_create
 - get /api/django/installations/demandes-achat/{id}/chatter/historique/ -> django_installations_demandes_achat_chatter_historique_retrieve
 - post /api/django/installations/demandes-achat/{id}/chatter/noter/ -> django_installations_demandes_achat_chatter_noter_create
+- get /api/django/installations/demandes-achat/{id}/etapes-approbation/ -> django_installations_demandes_achat_etapes_approbation_retrieve
 - post /api/django/installations/demandes-achat/{id}/generer-bcf/ -> django_installations_demandes_achat_generer_bcf_create
 - post /api/django/installations/demandes-achat/{id}/importer-lignes-csv/ -> django_installations_demandes_achat_importer_lignes_csv_create
 - post /api/django/installations/demandes-achat/{id}/marquer_commandee/ -> django_installations_demandes_achat_marquer_commandee_create
 - post /api/django/installations/demandes-achat/{id}/refuser/ -> django_installations_demandes_achat_refuser_create
+- post /api/django/installations/demandes-achat/{id}/rejeter-etape/ -> django_installations_demandes_achat_rejeter_etape_create
 - post /api/django/installations/demandes-achat/{id}/soumettre/ -> django_installations_demandes_achat_soumettre_create
 - get /api/django/installations/demandes-transfert/ -> django_installations_demandes_transfert_list
 - post /api/django/installations/demandes-transfert/ -> django_installations_demandes_transfert_create
@@ -4783,6 +4786,12 @@ operations:
 - get /api/django/installations/recurrences-intervention/{id}/ -> django_installations_recurrences_intervention_retrieve
 - patch /api/django/installations/recurrences-intervention/{id}/ -> django_installations_recurrences_intervention_partial_update
 - put /api/django/installations/recurrences-intervention/{id}/ -> django_installations_recurrences_intervention_update
+- get /api/django/installations/regles-approbation-achat/ -> django_installations_regles_approbation_achat_list
+- post /api/django/installations/regles-approbation-achat/ -> django_installations_regles_approbation_achat_create
+- delete /api/django/installations/regles-approbation-achat/{id}/ -> django_installations_regles_approbation_achat_destroy
+- get /api/django/installations/regles-approbation-achat/{id}/ -> django_installations_regles_approbation_achat_retrieve
+- patch /api/django/installations/regles-approbation-achat/{id}/ -> django_installations_regles_approbation_achat_partial_update
+- put /api/django/installations/regles-approbation-achat/{id}/ -> django_installations_regles_approbation_achat_update
 - get /api/django/installations/regles-rangement/ -> django_installations_regles_rangement_list
 - post /api/django/installations/regles-rangement/ -> django_installations_regles_rangement_create
 - delete /api/django/installations/regles-rangement/{id}/ -> django_installations_regles_rangement_destroy
@@ -7223,6 +7232,18 @@ operations:
 - post /api/django/stock/bons-commande-fournisseur/{id}/reviser/ -> django_stock_bons_commande_fournisseur_reviser_create
 - post /api/django/stock/bons-commande-fournisseur/{id}/rouvrir/ -> django_stock_bons_commande_fournisseur_rouvrir_create
 - post /api/django/stock/bons-commande-fournisseur/{id}/whatsapp/ -> django_stock_bons_commande_fournisseur_whatsapp_create
+- get /api/django/stock/budgets-departement/ -> django_stock_budgets_departement_list
+- post /api/django/stock/budgets-departement/ -> django_stock_budgets_departement_create
+- get /api/django/stock/budgets-departement/disponible/ -> django_stock_budgets_departement_disponible_retrieve
+- delete /api/django/stock/budgets-departement/{id}/ -> django_stock_budgets_departement_destroy
+- get /api/django/stock/budgets-departement/{id}/ -> django_stock_budgets_departement_retrieve
+- patch /api/django/stock/budgets-departement/{id}/ -> django_stock_budgets_departement_partial_update
+- put /api/django/stock/budgets-departement/{id}/ -> django_stock_budgets_departement_update
+- get /api/django/stock/budgets-departement/{id}/consommation/ -> django_stock_budgets_departement_consommation_retrieve
+- get /api/django/stock/catalogue-achat/ -> django_stock_catalogue_achat_list
+- get /api/django/stock/catalogue-achat/favoris/ -> django_stock_catalogue_achat_favoris_retrieve
+- put /api/django/stock/catalogue-achat/favoris/ -> django_stock_catalogue_achat_favoris_update
+- get /api/django/stock/catalogue-achat/{id}/ -> django_stock_catalogue_achat_retrieve
 - get /api/django/stock/categories-fournisseur/ -> django_stock_categories_fournisseur_list
 - post /api/django/stock/categories-fournisseur/ -> django_stock_categories_fournisseur_create
 - delete /api/django/stock/categories-fournisseur/{id}/ -> django_stock_categories_fournisseur_destroy
@@ -7253,6 +7274,22 @@ operations:
 - get /api/django/stock/documents-conformite-fournisseur/{id}/ -> django_stock_documents_conformite_fournisseur_retrieve
 - patch /api/django/stock/documents-conformite-fournisseur/{id}/ -> django_stock_documents_conformite_fournisseur_partial_update
 - put /api/django/stock/documents-conformite-fournisseur/{id}/ -> django_stock_documents_conformite_fournisseur_update
+- get /api/django/stock/documents-fournisseur/ -> django_stock_documents_fournisseur_list
+- post /api/django/stock/documents-fournisseur/ -> django_stock_documents_fournisseur_create
+- delete /api/django/stock/documents-fournisseur/{id}/ -> django_stock_documents_fournisseur_destroy
+- get /api/django/stock/documents-fournisseur/{id}/ -> django_stock_documents_fournisseur_retrieve
+- patch /api/django/stock/documents-fournisseur/{id}/ -> django_stock_documents_fournisseur_partial_update
+- put /api/django/stock/documents-fournisseur/{id}/ -> django_stock_documents_fournisseur_update
+- get /api/django/stock/documents-fournisseur/{id}/telecharger/ -> django_stock_documents_fournisseur_telecharger_retrieve
+- post /api/django/stock/documents-fournisseur/{id}/televerser/ -> django_stock_documents_fournisseur_televerser_create
+- get /api/django/stock/dossiers-onboarding-fournisseur/ -> django_stock_dossiers_onboarding_fournisseur_list
+- post /api/django/stock/dossiers-onboarding-fournisseur/ -> django_stock_dossiers_onboarding_fournisseur_create
+- delete /api/django/stock/dossiers-onboarding-fournisseur/{id}/ -> django_stock_dossiers_onboarding_fournisseur_destroy
+- get /api/django/stock/dossiers-onboarding-fournisseur/{id}/ -> django_stock_dossiers_onboarding_fournisseur_retrieve
+- patch /api/django/stock/dossiers-onboarding-fournisseur/{id}/ -> django_stock_dossiers_onboarding_fournisseur_partial_update
+- put /api/django/stock/dossiers-onboarding-fournisseur/{id}/ -> django_stock_dossiers_onboarding_fournisseur_update
+- get /api/django/stock/dossiers-onboarding-fournisseur/{id}/progression/ -> django_stock_dossiers_onboarding_fournisseur_progression_retrieve
+- post /api/django/stock/dossiers-onboarding-fournisseur/{id}/valider-dossier/ -> django_stock_dossiers_onboarding_fournisseur_valider_dossier_create
 - get /api/django/stock/emplacements/ -> django_stock_emplacements_list
 - post /api/django/stock/emplacements/ -> django_stock_emplacements_create
 - get /api/django/stock/emplacements/suggestions-reappro/ -> django_stock_emplacements_suggestions_reappro_retrieve
@@ -7261,6 +7298,8 @@ operations:
 - patch /api/django/stock/emplacements/{id}/ -> django_stock_emplacements_partial_update
 - put /api/django/stock/emplacements/{id}/ -> django_stock_emplacements_update
 - get /api/django/stock/emplacements/{id}/etiquettes-kanban/ -> django_stock_emplacements_etiquettes_kanban_retrieve
+- get /api/django/stock/engagements-budget/ -> django_stock_engagements_budget_list
+- get /api/django/stock/engagements-budget/{id}/ -> django_stock_engagements_budget_retrieve
 - get /api/django/stock/factures-fournisseur/ -> django_stock_factures_fournisseur_list
 - post /api/django/stock/factures-fournisseur/ -> django_stock_factures_fournisseur_create
 - get /api/django/stock/factures-fournisseur/comptes-a-payer/ -> django_stock_factures_fournisseur_comptes_a_payer_retrieve
@@ -7286,16 +7325,19 @@ operations:
 - put /api/django/stock/fiches-techniques/{id}/ -> django_stock_fiches_techniques_update
 - get /api/django/stock/fournisseurs/ -> django_stock_fournisseurs_list
 - post /api/django/stock/fournisseurs/ -> django_stock_fournisseurs_create
+- get /api/django/stock/fournisseurs/export-conformite/ -> django_stock_fournisseurs_export_conformite_retrieve
 - delete /api/django/stock/fournisseurs/{id}/ -> django_stock_fournisseurs_destroy
 - get /api/django/stock/fournisseurs/{id}/ -> django_stock_fournisseurs_retrieve
 - patch /api/django/stock/fournisseurs/{id}/ -> django_stock_fournisseurs_partial_update
 - put /api/django/stock/fournisseurs/{id}/ -> django_stock_fournisseurs_update
 - post /api/django/stock/fournisseurs/{id}/decider-candidature/ -> django_stock_fournisseurs_decider_candidature_create
 - delete /api/django/stock/fournisseurs/{id}/force-delete/ -> django_stock_fournisseurs_force_delete_destroy
+- get /api/django/stock/fournisseurs/{id}/onboarding/ -> django_stock_fournisseurs_onboarding_retrieve
 - get /api/django/stock/fournisseurs/{id}/performance/ -> django_stock_fournisseurs_performance_retrieve
 - get /api/django/stock/fournisseurs/{id}/portail-tokens/ -> django_stock_fournisseurs_portail_tokens_retrieve
 - post /api/django/stock/fournisseurs/{id}/portail-tokens/ -> django_stock_fournisseurs_portail_tokens_create
 - post /api/django/stock/fournisseurs/{id}/portail-tokens/{token_id}/revoquer/ -> django_stock_fournisseurs_portail_tokens_revoquer_create
+- get /api/django/stock/fournisseurs/{id}/score-risque/ -> django_stock_fournisseurs_score_risque_retrieve
 - patch /api/django/stock/fournisseurs/{id}/unarchive/ -> django_stock_fournisseurs_unarchive_partial_update
 - get /api/django/stock/fournisseurs/{id}/vue-360/ -> django_stock_fournisseurs_vue_360_retrieve
 - get /api/django/stock/inventaire-sessions/ -> django_stock_inventaire_sessions_list
@@ -12219,13 +12261,16 @@ operations:
 - get /api/v1/installations/demandes-achat/{id}/ -> v1_installations_demandes_achat_retrieve
 - patch /api/v1/installations/demandes-achat/{id}/ -> v1_installations_demandes_achat_partial_update
 - put /api/v1/installations/demandes-achat/{id}/ -> v1_installations_demandes_achat_update
+- post /api/v1/installations/demandes-achat/{id}/approuver-etape/ -> v1_installations_demandes_achat_approuver_etape_create
 - post /api/v1/installations/demandes-achat/{id}/approuver/ -> v1_installations_demandes_achat_approuver_create
 - get /api/v1/installations/demandes-achat/{id}/chatter/historique/ -> v1_installations_demandes_achat_chatter_historique_retrieve
 - post /api/v1/installations/demandes-achat/{id}/chatter/noter/ -> v1_installations_demandes_achat_chatter_noter_create
+- get /api/v1/installations/demandes-achat/{id}/etapes-approbation/ -> v1_installations_demandes_achat_etapes_approbation_retrieve
 - post /api/v1/installations/demandes-achat/{id}/generer-bcf/ -> v1_installations_demandes_achat_generer_bcf_create
 - post /api/v1/installations/demandes-achat/{id}/importer-lignes-csv/ -> v1_installations_demandes_achat_importer_lignes_csv_create
 - post /api/v1/installations/demandes-achat/{id}/marquer_commandee/ -> v1_installations_demandes_achat_marquer_commandee_create
 - post /api/v1/installations/demandes-achat/{id}/refuser/ -> v1_installations_demandes_achat_refuser_create
+- post /api/v1/installations/demandes-achat/{id}/rejeter-etape/ -> v1_installations_demandes_achat_rejeter_etape_create
 - post /api/v1/installations/demandes-achat/{id}/soumettre/ -> v1_installations_demandes_achat_soumettre_create
 - get /api/v1/installations/demandes-transfert/ -> v1_installations_demandes_transfert_list
 - post /api/v1/installations/demandes-transfert/ -> v1_installations_demandes_transfert_create
@@ -12613,6 +12658,12 @@ operations:
 - get /api/v1/installations/recurrences-intervention/{id}/ -> v1_installations_recurrences_intervention_retrieve
 - patch /api/v1/installations/recurrences-intervention/{id}/ -> v1_installations_recurrences_intervention_partial_update
 - put /api/v1/installations/recurrences-intervention/{id}/ -> v1_installations_recurrences_intervention_update
+- get /api/v1/installations/regles-approbation-achat/ -> v1_installations_regles_approbation_achat_list
+- post /api/v1/installations/regles-approbation-achat/ -> v1_installations_regles_approbation_achat_create
+- delete /api/v1/installations/regles-approbation-achat/{id}/ -> v1_installations_regles_approbation_achat_destroy
+- get /api/v1/installations/regles-approbation-achat/{id}/ -> v1_installations_regles_approbation_achat_retrieve
+- patch /api/v1/installations/regles-approbation-achat/{id}/ -> v1_installations_regles_approbation_achat_partial_update
+- put /api/v1/installations/regles-approbation-achat/{id}/ -> v1_installations_regles_approbation_achat_update
 - get /api/v1/installations/regles-rangement/ -> v1_installations_regles_rangement_list
 - post /api/v1/installations/regles-rangement/ -> v1_installations_regles_rangement_create
 - delete /api/v1/installations/regles-rangement/{id}/ -> v1_installations_regles_rangement_destroy
@@ -15016,6 +15067,18 @@ operations:
 - post /api/v1/stock/bons-commande-fournisseur/{id}/reviser/ -> v1_stock_bons_commande_fournisseur_reviser_create
 - post /api/v1/stock/bons-commande-fournisseur/{id}/rouvrir/ -> v1_stock_bons_commande_fournisseur_rouvrir_create
 - post /api/v1/stock/bons-commande-fournisseur/{id}/whatsapp/ -> v1_stock_bons_commande_fournisseur_whatsapp_create
+- get /api/v1/stock/budgets-departement/ -> v1_stock_budgets_departement_list
+- post /api/v1/stock/budgets-departement/ -> v1_stock_budgets_departement_create
+- get /api/v1/stock/budgets-departement/disponible/ -> v1_stock_budgets_departement_disponible_retrieve
+- delete /api/v1/stock/budgets-departement/{id}/ -> v1_stock_budgets_departement_destroy
+- get /api/v1/stock/budgets-departement/{id}/ -> v1_stock_budgets_departement_retrieve
+- patch /api/v1/stock/budgets-departement/{id}/ -> v1_stock_budgets_departement_partial_update
+- put /api/v1/stock/budgets-departement/{id}/ -> v1_stock_budgets_departement_update
+- get /api/v1/stock/budgets-departement/{id}/consommation/ -> v1_stock_budgets_departement_consommation_retrieve
+- get /api/v1/stock/catalogue-achat/ -> v1_stock_catalogue_achat_list
+- get /api/v1/stock/catalogue-achat/favoris/ -> v1_stock_catalogue_achat_favoris_retrieve
+- put /api/v1/stock/catalogue-achat/favoris/ -> v1_stock_catalogue_achat_favoris_update
+- get /api/v1/stock/catalogue-achat/{id}/ -> v1_stock_catalogue_achat_retrieve
 - get /api/v1/stock/categories-fournisseur/ -> v1_stock_categories_fournisseur_list
 - post /api/v1/stock/categories-fournisseur/ -> v1_stock_categories_fournisseur_create
 - delete /api/v1/stock/categories-fournisseur/{id}/ -> v1_stock_categories_fournisseur_destroy
@@ -15046,6 +15109,22 @@ operations:
 - get /api/v1/stock/documents-conformite-fournisseur/{id}/ -> v1_stock_documents_conformite_fournisseur_retrieve
 - patch /api/v1/stock/documents-conformite-fournisseur/{id}/ -> v1_stock_documents_conformite_fournisseur_partial_update
 - put /api/v1/stock/documents-conformite-fournisseur/{id}/ -> v1_stock_documents_conformite_fournisseur_update
+- get /api/v1/stock/documents-fournisseur/ -> v1_stock_documents_fournisseur_list
+- post /api/v1/stock/documents-fournisseur/ -> v1_stock_documents_fournisseur_create
+- delete /api/v1/stock/documents-fournisseur/{id}/ -> v1_stock_documents_fournisseur_destroy
+- get /api/v1/stock/documents-fournisseur/{id}/ -> v1_stock_documents_fournisseur_retrieve
+- patch /api/v1/stock/documents-fournisseur/{id}/ -> v1_stock_documents_fournisseur_partial_update
+- put /api/v1/stock/documents-fournisseur/{id}/ -> v1_stock_documents_fournisseur_update
+- get /api/v1/stock/documents-fournisseur/{id}/telecharger/ -> v1_stock_documents_fournisseur_telecharger_retrieve
+- post /api/v1/stock/documents-fournisseur/{id}/televerser/ -> v1_stock_documents_fournisseur_televerser_create
+- get /api/v1/stock/dossiers-onboarding-fournisseur/ -> v1_stock_dossiers_onboarding_fournisseur_list
+- post /api/v1/stock/dossiers-onboarding-fournisseur/ -> v1_stock_dossiers_onboarding_fournisseur_create
+- delete /api/v1/stock/dossiers-onboarding-fournisseur/{id}/ -> v1_stock_dossiers_onboarding_fournisseur_destroy
+- get /api/v1/stock/dossiers-onboarding-fournisseur/{id}/ -> v1_stock_dossiers_onboarding_fournisseur_retrieve
+- patch /api/v1/stock/dossiers-onboarding-fournisseur/{id}/ -> v1_stock_dossiers_onboarding_fournisseur_partial_update
+- put /api/v1/stock/dossiers-onboarding-fournisseur/{id}/ -> v1_stock_dossiers_onboarding_fournisseur_update
+- get /api/v1/stock/dossiers-onboarding-fournisseur/{id}/progression/ -> v1_stock_dossiers_onboarding_fournisseur_progression_retrieve
+- post /api/v1/stock/dossiers-onboarding-fournisseur/{id}/valider-dossier/ -> v1_stock_dossiers_onboarding_fournisseur_valider_dossier_create
 - get /api/v1/stock/emplacements/ -> v1_stock_emplacements_list
 - post /api/v1/stock/emplacements/ -> v1_stock_emplacements_create
 - get /api/v1/stock/emplacements/suggestions-reappro/ -> v1_stock_emplacements_suggestions_reappro_retrieve
@@ -15054,6 +15133,8 @@ operations:
 - patch /api/v1/stock/emplacements/{id}/ -> v1_stock_emplacements_partial_update
 - put /api/v1/stock/emplacements/{id}/ -> v1_stock_emplacements_update
 - get /api/v1/stock/emplacements/{id}/etiquettes-kanban/ -> v1_stock_emplacements_etiquettes_kanban_retrieve
+- get /api/v1/stock/engagements-budget/ -> v1_stock_engagements_budget_list
+- get /api/v1/stock/engagements-budget/{id}/ -> v1_stock_engagements_budget_retrieve
 - get /api/v1/stock/factures-fournisseur/ -> v1_stock_factures_fournisseur_list
 - post /api/v1/stock/factures-fournisseur/ -> v1_stock_factures_fournisseur_create
 - get /api/v1/stock/factures-fournisseur/comptes-a-payer/ -> v1_stock_factures_fournisseur_comptes_a_payer_retrieve
@@ -15079,16 +15160,19 @@ operations:
 - put /api/v1/stock/fiches-techniques/{id}/ -> v1_stock_fiches_techniques_update
 - get /api/v1/stock/fournisseurs/ -> v1_stock_fournisseurs_list
 - post /api/v1/stock/fournisseurs/ -> v1_stock_fournisseurs_create
+- get /api/v1/stock/fournisseurs/export-conformite/ -> v1_stock_fournisseurs_export_conformite_retrieve
 - delete /api/v1/stock/fournisseurs/{id}/ -> v1_stock_fournisseurs_destroy
 - get /api/v1/stock/fournisseurs/{id}/ -> v1_stock_fournisseurs_retrieve
 - patch /api/v1/stock/fournisseurs/{id}/ -> v1_stock_fournisseurs_partial_update
 - put /api/v1/stock/fournisseurs/{id}/ -> v1_stock_fournisseurs_update
 - post /api/v1/stock/fournisseurs/{id}/decider-candidature/ -> v1_stock_fournisseurs_decider_candidature_create
 - delete /api/v1/stock/fournisseurs/{id}/force-delete/ -> v1_stock_fournisseurs_force_delete_destroy
+- get /api/v1/stock/fournisseurs/{id}/onboarding/ -> v1_stock_fournisseurs_onboarding_retrieve
 - get /api/v1/stock/fournisseurs/{id}/performance/ -> v1_stock_fournisseurs_performance_retrieve
 - get /api/v1/stock/fournisseurs/{id}/portail-tokens/ -> v1_stock_fournisseurs_portail_tokens_retrieve
 - post /api/v1/stock/fournisseurs/{id}/portail-tokens/ -> v1_stock_fournisseurs_portail_tokens_create
 - post /api/v1/stock/fournisseurs/{id}/portail-tokens/{token_id}/revoquer/ -> v1_stock_fournisseurs_portail_tokens_revoquer_create
+- get /api/v1/stock/fournisseurs/{id}/score-risque/ -> v1_stock_fournisseurs_score_risque_retrieve
 - patch /api/v1/stock/fournisseurs/{id}/unarchive/ -> v1_stock_fournisseurs_unarchive_partial_update
 - get /api/v1/stock/fournisseurs/{id}/vue-360/ -> v1_stock_fournisseurs_vue_360_retrieve
 - get /api/v1/stock/inventaire-sessions/ -> v1_stock_inventaire_sessions_list
@@ -15931,6 +16015,9 @@ components:
 - BudgetCharges
 - BudgetChargesPosteEnum
 - BudgetChargesRequest
+- BudgetDepartement
+- BudgetDepartementPeriodiciteEnum
+- BudgetDepartementRequest
 - BudgetEngagement
 - BudgetEngagementRequest
 - BudgetEngagementSourceEnum
@@ -15983,6 +16070,7 @@ components:
 - CarteCarburantRequest
 - CarteGriseVehicule
 - CarteGriseVehiculeRequest
+- CatalogueAchat
 - CatalogueIndicateurESG
 - Categorie
 - Categorie706Enum
@@ -16416,6 +16504,9 @@ components:
 - DocumentEmploye
 - DocumentEmployeRequest
 - DocumentEmployeTypeDocumentEnum
+- DocumentFournisseur
+- DocumentFournisseurRequest
+- DocumentFournisseurTypeDocumentEnum
 - DocumentLien
 - DocumentPolitiqueESG
 - DocumentPolitiqueESGRequest
@@ -16451,6 +16542,9 @@ components:
 - DossierExchangeSensEnum
 - DossierImport
 - DossierImportRequest
+- DossierOnboardingFournisseur
+- DossierOnboardingFournisseurRequest
+- DossierOnboardingFournisseurStatutEnum
 - DossierSoumission
 - DossierSoumissionRequest
 - DossierStatutEnum
@@ -16535,6 +16629,8 @@ components:
 - EncoursGarantiClient
 - EncoursGarantiClientRequest
 - EnergieEnum
+- EngagementBudget
+- EngagementBudgetStatutEnum
 - EngagementComptable
 - EngagementComptableRequest
 - EngagementComptableStatutEnum
@@ -17436,6 +17532,7 @@ components:
 - PaginatedBordereauSuiviDechetList
 - PaginatedBrandKitList
 - PaginatedBudgetChargesList
+- PaginatedBudgetDepartementList
 - PaginatedBudgetEngagementList
 - PaginatedBudgetFlotteList
 - PaginatedBudgetList
@@ -17455,6 +17552,7 @@ components:
 - PaginatedCandidatureList
 - PaginatedCarteCarburantList
 - PaginatedCarteGriseVehiculeList
+- PaginatedCatalogueAchatList
 - PaginatedCatalogueIndicateurESGList
 - PaginatedCategorieEquipementList
 - PaginatedCategorieFournisseurList
@@ -17606,6 +17704,7 @@ components:
 - PaginatedDocumentClientPortailList
 - PaginatedDocumentConformiteFournisseurList
 - PaginatedDocumentEmployeList
+- PaginatedDocumentFournisseurList
 - PaginatedDocumentLienList
 - PaginatedDocumentList
 - PaginatedDocumentPolitiqueESGList
@@ -17620,6 +17719,7 @@ components:
 - PaginatedDossierEmployeList
 - PaginatedDossierExchangeList
 - PaginatedDossierImportList
+- PaginatedDossierOnboardingFournisseurList
 - PaginatedDossierSoumissionList
 - PaginatedDotationAmortissementList
 - PaginatedDotationEpiList
@@ -17651,6 +17751,7 @@ components:
 - PaginatedEmplacementStockList
 - PaginatedEmployeDeviceMapList
 - PaginatedEncoursGarantiClientList
+- PaginatedEngagementBudgetList
 - PaginatedEngagementComptableList
 - PaginatedEngagementSLAList
 - PaginatedEnginRoulantList
@@ -18052,6 +18153,7 @@ components:
 - PaginatedReferentielFlotteList
 - PaginatedRegimeMutuelleList
 - PaginatedRegleAclMetadonneeList
+- PaginatedRegleApprobationAchatList
 - PaginatedRegleApprobationGedList
 - PaginatedRegleApprobationList
 - PaginatedRegleApprobationRemiseList
@@ -18365,6 +18467,7 @@ components:
 - PatchedBrandKitRequest
 - PatchedBrandedTemplateRequest
 - PatchedBudgetChargesRequest
+- PatchedBudgetDepartementRequest
 - PatchedBudgetEngagementRequest
 - PatchedBudgetFlotteRequest
 - PatchedBudgetProjetRequest
@@ -18525,6 +18628,7 @@ components:
 - PatchedDocumentClientPortailRequest
 - PatchedDocumentConformiteFournisseurRequest
 - PatchedDocumentEmployeRequest
+- PatchedDocumentFournisseurRequest
 - PatchedDocumentPolitiqueESGRequest
 - PatchedDocumentProjetRequest
 - PatchedDocumentPropositionRequest
@@ -18538,6 +18642,7 @@ components:
 - PatchedDossierEmployeRequest
 - PatchedDossierExchangeRequest
 - PatchedDossierImportRequest
+- PatchedDossierOnboardingFournisseurRequest
 - PatchedDossierSoumissionRequest
 - PatchedDotationEpiRequest
 - PatchedECatalogueRequest
@@ -18928,6 +19033,7 @@ components:
 - PatchedRegimeMutuelleRequest
 - PatchedRegistreTraitementRequest
 - PatchedRegleAclMetadonneeRequest
+- PatchedRegleApprobationAchatRequest
 - PatchedRegleApprobationGedRequest
 - PatchedRegleApprobationRemiseRequest
 - PatchedRegleApprobationRequest
@@ -19424,6 +19530,8 @@ components:
 - RegleAclMetadonnee
 - RegleAclMetadonneeRequest
 - RegleApprobation
+- RegleApprobationAchat
+- RegleApprobationAchatRequest
 - RegleApprobationGed
 - RegleApprobationGedRequest
 - RegleApprobationRemise
