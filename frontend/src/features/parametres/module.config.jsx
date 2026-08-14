@@ -5,6 +5,7 @@ import { lazy } from 'react'
 import {
   MapPin, ListChecks, LayoutList, Copy, Sparkles, Settings, UserCog, Shield,
   Key, ShieldCheck, DownloadCloud, AlertTriangle, Percent, ShoppingCart, Boxes,
+  Ship,
 } from 'lucide-react'
 import { appGlyph } from '../../lib/apps/appGlyph'
 
@@ -107,6 +108,13 @@ const TaxeSejourHospitality = lazy(() => import('./TaxeSejourHospitality'))
 // (XPUR10). Écriture réservée responsable/admin (le backend applique déjà
 // `stock_modifier`/legacy responsable ; lecture ouverte à tout rôle).
 const AchatsParametresPage = lazy(() => import('../../pages/parametres/AchatsParametresPage'))
+// NTLOG36 — Paramètres → Douane (`douane.ParametresDouane`, singleton par
+// société) : régime par défaut, rappels d'échéance (NTLOG22/23), mention
+// estimation droits/taxes (NTLOG13/30). Écriture réservée douane_responsable
+// (le backend applique déjà ScopedPermission ; lecture ouverte à tout rôle) —
+// nav ET route déclarées ensemble ici (motif PACT150 : ne jamais répéter
+// l'oubli de menu d'AchatsParametresPage).
+const DouaneParametresPage = lazy(() => import('../../pages/parametres/DouaneParametresPage'))
 // WIR152 — Paramètres → Doublons tiers (`tiers.TiersViewSet.doublons`,
 // ARC20, admin-only côté backend — même gating ici).
 const TiersDoublonsPage = lazy(() => import('../../pages/parametres/TiersDoublonsPage'))
@@ -158,6 +166,8 @@ const config = {
       // PACT150 — même défaut que ODY23(c) : route déclarée (WIR26), aucune
       // entrée de menu, écran réel de 182 lignes invisible pour toujours.
       { to: '/parametres/achats', label: 'Achats', icon: <ShoppingCart size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ['responsable', 'admin'] },
+      // NTLOG36 — nav ET route ensemble (voir commentaire du lazy import ci-dessus).
+      { to: '/parametres/douane', label: 'Douane', icon: <Ship size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ['responsable', 'admin'] },
       // PACT140 — Objets métier personnalisés (l'écran des enregistrements
       // `/objets/:code` s'atteint depuis cette page, un lien par objet).
       { to: '/parametres/objets-personnalises', label: 'Objets personnalisés', icon: <Boxes size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ['admin'] },
@@ -174,6 +184,7 @@ const config = {
     { path: '/parametres/playbooks', component: Playbooks, roles: ['responsable', 'admin'] },
     { path: '/parametres/hospitality/taxe-sejour', component: TaxeSejourHospitality, roles: ['responsable', 'admin'] },
     { path: '/parametres/achats', component: AchatsParametresPage, roles: ['responsable', 'admin'] },
+    { path: '/parametres/douane', component: DouaneParametresPage, roles: ['responsable', 'admin'] },
     { path: '/parametres/tiers-doublons', component: TiersDoublonsPage, roles: ['admin'] },
     { path: '/parametres/ia', component: IaDiagnostic, roles: ['admin'] },
     { path: '/parametres/objets-personnalises', component: ObjetsPersonnalisesPage, roles: ['admin'] },
