@@ -4,7 +4,8 @@ logistiques, quais, expéditions, comptage tournant).
 Toutes les vues héritent de ``CompanyScopedModelViewSet`` (scoping société +
 ``perform_create`` côté serveur) — jamais un ``ModelViewSet`` nu.
 """
-from rest_framework import status
+from drf_spectacular.utils import extend_schema, inline_serializer
+from rest_framework import serializers, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
@@ -14,13 +15,14 @@ from authentication.permissions import (
 )
 
 from ..models_wms import (
-    ExpeditionTransporteur, PlanComptageTournant, Quai,
+    AlerteRappel, ExpeditionTransporteur, PlanComptageTournant, Quai,
     RendezVousTransporteur, UniteLogistique, VaguePicking,
 )
 from ..serializers_wms import (
-    ExpeditionTransporteurSerializer, PlanComptageTournantSerializer,
-    QuaiSerializer, RendezVousTransporteurSerializer,
-    UniteLogistiqueSerializer, VaguePickingSerializer,
+    AlerteRappelSerializer, ExpeditionTransporteurSerializer,
+    PlanComptageTournantSerializer, QuaiSerializer,
+    RendezVousTransporteurSerializer, UniteLogistiqueSerializer,
+    VaguePickingSerializer,
 )
 
 READ_ACTIONS = ['list', 'retrieve']
@@ -460,6 +462,73 @@ class ExpeditionTransporteurViewSet(CompanyScopedModelViewSet):
                 unite, destination=request.query_params.get('destination')
                 or ''),
         })
+
+
+class AlerteRappelViewSet(CompanyScopedModelViewSet):
+    """NTWMS17 — rappels produit/lot (recall).
+
+    ``{id}/impact/`` liste EN UN CLIC le stock restant en casier ET les
+    chantiers/colis déjà servis avec le lot rappelé (réutilise la traçabilité
+    NTWMS16). ``{id}/cloturer/`` clôt le rappel.
+    """
+    queryset = AlerteRappel.objects.select_related(
+        'produit', 'lot', 'declenchee_par').all()
+    serializer_class = AlerteRappelSerializer
+    ordering = ['-date_declenchement', '-id']
+
+    def get_permissions(self):
+        if self.action in READ_ACTIONS + ['impact']:
+            return [IsAnyRole()]
+        if self.action in WRITE_ACTIONS + ['cloturer']:
+            return [IsResponsableOrAdmin()]
+        return [IsAdminRole()]
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        params = self.request.query_params
+        statut = params.get('statut')
+        if statut:
+            qs = qs.filter(statut=statut)
+        produit = params.get('produit')
+        if produit and str(produit).isdigit():
+            qs = qs.filter(produit_id=int(produit))
+        return qs
+
+    def perform_create(self, serializer):
+        """Déclenche le rappel : auteur posé côté serveur + notification
+        best-effort aux responsables (jamais bloquante)."""
+        from ..services import notifier_rappel
+        alerte = serializer.save(
+            company=self.request.user.company,
+            declenchee_par=self.request.user)
+        notifier_rappel(alerte)
+
+    @extend_schema(responses={
+        200: inline_serializer('StockRappelImpact', {
+            'alerte': serializers.IntegerField(),
+            'produit': serializers.DictField(),
+            'lots': serializers.ListField(child=serializers.DictField()),
+            'stock_restant': serializers.IntegerField(),
+            'casiers': serializers.ListField(child=serializers.DictField()),
+            'chantiers': serializers.ListField(child=serializers.DictField()),
+            'colis': serializers.ListField(child=serializers.DictField()),
+        }),
+    })
+    @action(detail=True, methods=['get'], url_path='impact')
+    def impact(self, request, pk=None):
+        """Portée du rappel : stock encore en casier + chantiers/colis
+        déjà servis. LECTURE SEULE."""
+        from ..services import impact_rappel
+        return Response(impact_rappel(self.get_object()))
+
+    @action(detail=True, methods=['post'], url_path='cloturer')
+    def cloturer(self, request, pk=None):
+        """Clôt le rappel (idempotent)."""
+        from ..services import cloturer_alerte_rappel
+        alerte = self.get_object()
+        cloturer_alerte_rappel(alerte)
+        alerte.refresh_from_db()
+        return Response(self.get_serializer(alerte).data)
 
 
 class PlanComptageTournantViewSet(CompanyScopedModelViewSet):

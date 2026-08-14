@@ -24,6 +24,7 @@ import secrets
 
 from django.conf import settings
 from django.db import models
+from django.utils import timezone
 
 from core.models import TenantModel
 
@@ -593,3 +594,52 @@ class AffectationCrossDock(TenantModel):
 
     def __str__(self):
         return f'Cross-dock {self.ligne_reception_id} → {self.unite_logistique_id}'
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# NTWMS17 — Rappel produit (recall) par lot / série
+# ═══════════════════════════════════════════════════════════════════════════
+
+class AlerteRappel(TenantModel):
+    """NTWMS17 — rappel fournisseur/fabricant sur un produit ou un lot.
+
+    Un rappel devient un incident SAV quand on découvre TROP TARD où la
+    marchandise est partie. Ce modèle déclenche l'inverse : dès la
+    déclaration, ``services.impact_rappel`` réutilise la traçabilité NTWMS16
+    pour lister EN UN CLIC le stock encore en casier ET les chantiers/clients
+    déjà livrés avec ce lot.
+    """
+
+    class Statut(models.TextChoices):
+        EN_COURS = 'en_cours', 'En cours'
+        CLOS = 'clos', 'Clos'
+
+    produit = models.ForeignKey(
+        'stock.Produit', on_delete=models.PROTECT,
+        related_name='alertes_rappel')  # on_delete: PROTECT — un rappel est une trace réglementaire ; il ne disparaît pas avec la fiche produit
+    lot = models.ForeignKey(
+        'stock.LotEntrepot', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='alertes_rappel',
+        help_text='Lot concerné. Vide = le rappel porte sur TOUT le produit.')
+    motif = models.TextField()
+    date_declenchement = models.DateTimeField(
+        default=timezone.now,
+        help_text='Horodatage du déclenchement (aware, jamais naïf).')
+    statut = models.CharField(
+        max_length=20, choices=Statut.choices, default=Statut.EN_COURS)
+    declenchee_par = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='alertes_rappel_declenchees')
+    date_cloture = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        verbose_name = 'Alerte de rappel produit'
+        verbose_name_plural = 'Alertes de rappel produit'
+        ordering = ['-date_declenchement', '-id']
+        indexes = [
+            models.Index(fields=['company', 'statut'],
+                         name='idx_alerterappel_co_statut'),
+        ]
+
+    def __str__(self):
+        return f'Rappel {self.produit_id} ({self.statut})'

@@ -1024,3 +1024,118 @@ def affecter_reception_cross_dock(*, reception, user=None, lignes=None,
         'reception_entierement_cross_dockee': reception_est_cross_dock(
             reception),
     }
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# NTWMS17 — Rappel produit (recall) : impact immédiat stock + chantiers
+# ═══════════════════════════════════════════════════════════════════════════
+
+def impact_rappel(alerte):
+    """Portée COMPLÈTE d'un rappel : ce qui reste en casier, ce qui est parti.
+
+    Réutilise la traçabilité NTWMS16 (``tracabilite_produit``) lot par lot —
+    aucun deuxième algorithme de traçabilité. Renvoie
+    ``{produit, lots, stock_restant, casiers, chantiers, colis}`` ; les
+    chantiers/colis sont dédupliqués. LECTURE SEULE.
+    """
+    from .models import LotEntrepot
+    from .selectors_wms import localisation_casiers, tracabilite_produit
+
+    if alerte is None:
+        return {}
+    company = alerte.company
+    produit = alerte.produit
+    if alerte.lot_id:
+        numeros = [alerte.lot.numero_lot]
+    else:
+        numeros = list(
+            LotEntrepot.objects
+            .filter(company=company, produit=produit)
+            .values_list('numero_lot', flat=True).distinct())
+
+    lots, chantiers, colis = [], {}, {}
+    stock_restant = 0
+    for numero in numeros:
+        chaine = tracabilite_produit(company, lot=numero)
+        if chaine is None:
+            continue
+        restant = chaine['stock'].get('quantite_restante') or 0
+        stock_restant += restant
+        lots.append({
+            'numero_lot': numero,
+            'quantite_restante': restant,
+            'fournisseurs': sorted({
+                entree.get('fournisseur_nom') for entree in chaine['amont']
+                if entree.get('fournisseur_nom')}),
+        })
+        for entree in chaine['aval']:
+            if entree['type'] == 'picking' and entree.get('chantier_id'):
+                chantiers[entree['chantier_id']] = {
+                    'chantier_id': entree['chantier_id'],
+                    'chantier_reference': entree.get('chantier_reference'),
+                    'numero_lot': numero,
+                }
+            elif entree['type'] == 'colis':
+                colis[entree['sscc']] = {
+                    'sscc': entree['sscc'], 'statut': entree['statut'],
+                    'quantite': entree['quantite'], 'numero_lot': numero,
+                }
+
+    return {
+        'alerte': alerte.id,
+        'produit': {'id': produit.id, 'nom': produit.nom,
+                    'sku': produit.sku or ''},
+        'lots': lots,
+        'stock_restant': stock_restant,
+        # Le stock ENCORE en rayon : les casiers qui portent le produit.
+        'casiers': localisation_casiers(produit),
+        'chantiers': list(chantiers.values()),
+        'colis': list(colis.values()),
+    }
+
+
+def notifier_rappel(alerte, impact=None):
+    """Prévient les responsables qu'un rappel est déclenché (BEST-EFFORT).
+
+    Réutilise strictement ``notifications.services.notify_many`` — jamais un
+    canal maison. Le type d'événement est un type EXISTANT du catalogue
+    (``INCIDENT_CRITICAL`` : un rappel produit EST un incident critique) ;
+    créer un type dédié appartiendrait à ``apps/notifications``, hors
+    périmètre de cette app. Toute erreur est avalée et journalisée : une
+    notification ne fait JAMAIS échouer la déclaration d'un rappel.
+    """
+    try:
+        from django.contrib.auth import get_user_model
+        from apps.notifications.models import EventType
+        from apps.notifications.services import notify_many
+
+        impact = impact or impact_rappel(alerte)
+        destinataires = list(
+            get_user_model().objects
+            .filter(company=alerte.company, is_active=True,
+                    role_legacy__in=['admin', 'responsable']))
+        if not destinataires:
+            return []
+        return notify_many(
+            destinataires, EventType.INCIDENT_CRITICAL,
+            f'Rappel produit — {alerte.produit.nom}',
+            body=(f"{len(impact.get('chantiers', []))} chantier(s) livré(s), "
+                  f"{impact.get('stock_restant', 0)} unité(s) encore en "
+                  f"stock. Motif : {alerte.motif}"),
+            company=alerte.company)
+    except Exception as exc:  # pragma: no cover - défensif
+        logger.warning('NTWMS17 notification de rappel échouée : %s', exc)
+        return []
+
+
+def cloturer_alerte_rappel(alerte):
+    """Clôt un rappel (idempotent : un rappel déjà clos n'est pas rouvert)."""
+    from django.utils import timezone
+    from .models_wms import AlerteRappel
+
+    if alerte.statut == AlerteRappel.Statut.CLOS:
+        return alerte
+    alerte.statut = AlerteRappel.Statut.CLOS
+    alerte.date_cloture = timezone.now()
+    alerte.save(update_fields=['statut', 'date_cloture'])
+    return alerte

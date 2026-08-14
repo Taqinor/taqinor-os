@@ -6,8 +6,8 @@
 from rest_framework import serializers
 
 from .models_wms import (
-    ExpeditionTransporteur, LignePicking, PlanComptageTournant, Quai,
-    RendezVousTransporteur, UniteLogistique, UniteLogistiqueLigne,
+    AlerteRappel, ExpeditionTransporteur, LignePicking, PlanComptageTournant,
+    Quai, RendezVousTransporteur, UniteLogistique, UniteLogistiqueLigne,
     VaguePicking,
 )
 
@@ -212,4 +212,31 @@ class PlanComptageTournantSerializer(serializers.ModelSerializer):
         if value is None or int(value) <= 0:
             raise serializers.ValidationError(
                 'La fréquence doit être un nombre de jours positif.')
+        return value
+
+
+class AlerteRappelSerializer(serializers.ModelSerializer):
+    """NTWMS17 — rappel produit/lot. Le statut et l'auteur sont posés côté
+    serveur (jamais acceptés du corps de requête)."""
+
+    produit_nom = serializers.CharField(source='produit.nom', read_only=True)
+    numero_lot = serializers.CharField(
+        source='lot.numero_lot', read_only=True, default='')
+
+    class Meta:
+        model = AlerteRappel
+        fields = [
+            'id', 'produit', 'produit_nom', 'lot', 'numero_lot', 'motif',
+            'date_declenchement', 'statut', 'declenchee_par', 'date_cloture',
+            'created_at', 'updated_at',
+        ]
+        read_only_fields = [
+            'statut', 'declenchee_par', 'date_cloture', 'date_declenchement',
+            'created_at', 'updated_at',
+        ]
+
+    def validate_motif(self, value):
+        if not (value or '').strip():
+            raise serializers.ValidationError(
+                'Le motif du rappel est obligatoire.')
         return value

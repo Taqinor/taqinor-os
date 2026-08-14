@@ -40,7 +40,7 @@ from .nomenclature_code_barres import (
 from .wms import (
     VaguePickingViewSet, UniteLogistiqueViewSet, QuaiViewSet,
     RendezVousTransporteurViewSet, ExpeditionTransporteurViewSet,
-    PlanComptageTournantViewSet,
+    PlanComptageTournantViewSet, AlerteRappelViewSet,
 )
 from .scanner import scanner_resoudre_view, scanner_mouvement_view
 
@@ -81,6 +81,7 @@ __all__ = [
     'RendezVousTransporteurViewSet',
     'ExpeditionTransporteurViewSet',
     'PlanComptageTournantViewSet',
+    'AlerteRappelViewSet',
     'scanner_resoudre_view',
     'scanner_mouvement_view',
 ]
