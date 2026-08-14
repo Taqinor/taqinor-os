@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 8969, operations: 16282, components: 4669}
+counts: {paths: 8969, operations: 16282, components: 4691}
 securitySchemes:
 - cookieJWT
 - publicApiKey
@@ -2724,7 +2724,7 @@ operations:
 - get /api/django/douane/dossiers-export/{id}/ -> django_douane_dossiers_export_retrieve
 - patch /api/django/douane/dossiers-export/{id}/ -> django_douane_dossiers_export_partial_update
 - put /api/django/douane/dossiers-export/{id}/ -> django_douane_dossiers_export_update
-- get /api/django/douane/parametres-douane/ -> django_douane_parametres_douane_retrieve
+- get /api/django/douane/parametres-douane/ -> django_douane_parametres_douane_list
 - patch /api/django/douane/parametres-douane/{id}/ -> django_douane_parametres_douane_partial_update
 - get /api/django/ecommerce-connect/commandes/ -> django_ecommerce_connect_commandes_list
 - get /api/django/ecommerce-connect/commandes/{id}/ -> django_ecommerce_connect_commandes_retrieve
@@ -5461,7 +5461,7 @@ operations:
 - get /api/django/monitoring/warranties/{id}/curve/ -> django_monitoring_warranties_curve_retrieve
 - get /api/django/monitoring/warranties/{id}/status/ -> django_monitoring_warranties_status_retrieve
 - get /api/django/mrp/analyse-couts/ -> django_mrp_analyse_couts_list
-- get /api/django/mrp/charge-postes/ -> django_mrp_charge_postes_retrieve
+- get /api/django/mrp/charge-postes/ -> django_mrp_charge_postes_list
 - get /api/django/mrp/couts-standard/ -> django_mrp_couts_standard_list
 - post /api/django/mrp/couts-standard/figer/ -> django_mrp_couts_standard_figer_create
 - get /api/django/mrp/couts-standard/{id}/ -> django_mrp_couts_standard_retrieve
@@ -5472,7 +5472,7 @@ operations:
 - patch /api/django/mrp/gammes/{id}/ -> django_mrp_gammes_partial_update
 - put /api/django/mrp/gammes/{id}/ -> django_mrp_gammes_update
 - post /api/django/mrp/mrp-run/ -> django_mrp_mrp_run_create
-- get /api/django/mrp/oee-postes/ -> django_mrp_oee_postes_retrieve
+- get /api/django/mrp/oee-postes/ -> django_mrp_oee_postes_list
 - get /api/django/mrp/operations-gamme/ -> django_mrp_operations_gamme_list
 - post /api/django/mrp/operations-gamme/ -> django_mrp_operations_gamme_create
 - delete /api/django/mrp/operations-gamme/{id}/ -> django_mrp_operations_gamme_destroy
@@ -10897,7 +10897,7 @@ operations:
 - get /api/v1/douane/dossiers-export/{id}/ -> v1_douane_dossiers_export_retrieve
 - patch /api/v1/douane/dossiers-export/{id}/ -> v1_douane_dossiers_export_partial_update
 - put /api/v1/douane/dossiers-export/{id}/ -> v1_douane_dossiers_export_update
-- get /api/v1/douane/parametres-douane/ -> v1_douane_parametres_douane_retrieve
+- get /api/v1/douane/parametres-douane/ -> v1_douane_parametres_douane_list
 - patch /api/v1/douane/parametres-douane/{id}/ -> v1_douane_parametres_douane_partial_update
 - get /api/v1/ecommerce-connect/commandes/ -> v1_ecommerce_connect_commandes_list
 - get /api/v1/ecommerce-connect/commandes/{id}/ -> v1_ecommerce_connect_commandes_retrieve
@@ -13634,7 +13634,7 @@ operations:
 - get /api/v1/monitoring/warranties/{id}/curve/ -> v1_monitoring_warranties_curve_retrieve
 - get /api/v1/monitoring/warranties/{id}/status/ -> v1_monitoring_warranties_status_retrieve
 - get /api/v1/mrp/analyse-couts/ -> v1_mrp_analyse_couts_list
-- get /api/v1/mrp/charge-postes/ -> v1_mrp_charge_postes_retrieve
+- get /api/v1/mrp/charge-postes/ -> v1_mrp_charge_postes_list
 - get /api/v1/mrp/couts-standard/ -> v1_mrp_couts_standard_list
 - post /api/v1/mrp/couts-standard/figer/ -> v1_mrp_couts_standard_figer_create
 - get /api/v1/mrp/couts-standard/{id}/ -> v1_mrp_couts_standard_retrieve
@@ -13645,7 +13645,7 @@ operations:
 - patch /api/v1/mrp/gammes/{id}/ -> v1_mrp_gammes_partial_update
 - put /api/v1/mrp/gammes/{id}/ -> v1_mrp_gammes_update
 - post /api/v1/mrp/mrp-run/ -> v1_mrp_mrp_run_create
-- get /api/v1/mrp/oee-postes/ -> v1_mrp_oee_postes_retrieve
+- get /api/v1/mrp/oee-postes/ -> v1_mrp_oee_postes_list
 - get /api/v1/mrp/operations-gamme/ -> v1_mrp_operations_gamme_list
 - post /api/v1/mrp/operations-gamme/ -> v1_mrp_operations_gamme_create
 - delete /api/v1/mrp/operations-gamme/{id}/ -> v1_mrp_operations_gamme_destroy
@@ -17229,6 +17229,8 @@ components:
 - EcheancierReconnaissanceRequest
 - EcheancierReconnaissanceStatutEnum
 - EcheancierScolarite
+- EcommerceWebhookCommandeResultat
+- EcommerceWebhookErreur
 - EconomieAO
 - EconomieAORequest
 - EcritureComptable
@@ -17978,6 +17980,9 @@ components:
 - MouvementStockRequest
 - MouvementStockTypeMouvementEnum
 - MrpAnalyseCoutsLigne
+- MrpBesoinNetLigne
+- MrpChargePostesLigne
+- MrpOeeTousPostesLigne
 - MutationImmobilisation
 - MutationImmobilisationRequest
 - NetworkPolicy
@@ -19064,12 +19069,15 @@ components:
 - ParametrePaieRequest
 - ParametresCPQ
 - ParametresCPQRequest
+- ParametresDouane
 - ParametresEducation
 - ParametresEducationRequest
 - ParametresLocation
 - ParametresLocationRequest
 - ParametresMarketing
 - ParametresMarketingRequest
+- ParametresPos
+- ParametresPosRequest
 - ParametresTresorerie
 - Parcelle
 - ParcelleRequest
@@ -19650,9 +19658,11 @@ components:
 - PatchedParametrageRelanceClientRequest
 - PatchedParametrePaieRequest
 - PatchedParametresCPQRequest
+- PatchedParametresDouaneRequest
 - PatchedParametresEducationRequest
 - PatchedParametresLocationRequest
 - PatchedParametresMarketingRequest
+- PatchedParametresPosRequest
 - PatchedParametresTresorerieRequest
 - PatchedParcelleRequest
 - PatchedParrainageRequest
@@ -20095,6 +20105,8 @@ components:
 - PosDashboardRetailTopCategorie
 - PosDashboardRetailTopProduit
 - PosDashboardRetailTopVendeur
+- PosDefinirPinResultat
+- PosVerifierPinResultat
 - PositionEnum
 - PositionTechnicien
 - PositionTechnicienRequest
@@ -20300,6 +20312,7 @@ components:
 - ReferentielFlotteDomaineEnum
 - ReferentielFlotteRequest
 - Regime8221E51Enum
+- RegimeDouanierParDefautEnum
 - RegimeEnum
 - RegimeExonerationEnum
 - RegimeMutuelle
@@ -20534,6 +20547,8 @@ components:
 - ScheduledMessage
 - ScheduledMessageRequest
 - ScheduledMessageStatusEnum
+- ScmBrouillonBcfReapproLigne
+- ScmBrouillonsBcfReappro
 - ScmTableauBordReapproLigne
 - ScoreMaturiteLead
 - Seance
@@ -20668,6 +20683,13 @@ components:
 - StatutTeledeclarationEnum
 - StatutValidationEnum
 - StatutVerificationEnum
+- StockQuaiCheckinErreur
+- StockQuaiCheckinResultat
+- StockScannerCodeInconnu
+- StockScannerErreur
+- StockScannerMouvementErreur
+- StockScannerMouvementResultat
+- StockScannerResoudreResultat
 - StrategiePickingDefautEnum
 - StructurePaie
 - StructurePaieRequest
