@@ -440,6 +440,22 @@ app.conf.beat_schedule = {
         'task': 'compta.decider_gagnants_ab',
         'schedule': crontab(hour=8, minute=25),
     },
+    # NTMKT12 — tick des séquences EN GRAPHE (journeys) : complément strict du
+    # tick linéaire XMKT1 ci-dessus, décalé de 5 min pour ne pas les superposer.
+    'marketing-executer-journeys': {
+        'task': 'marketing.executer_journeys',
+        'schedule': crontab(hour=8, minute=15),
+    },
+    # NTMKT33 — purge quotidienne des jetons publics marketing expirés (+90j).
+    'marketing-purger-tokens-expires': {
+        'task': 'marketing.purger_tokens_expires',
+        'schedule': crontab(hour=3, minute=0),
+    },
+    # NTMKT35 — rappel d'approbation d'envoi de campagne en attente (+24h).
+    'marketing-rappeler-approbations-envoi': {
+        'task': 'marketing.rappeler_approbations_envoi',
+        'schedule': crontab(minute=0, hour='*/4'),
+    },
     # XKB7 — relance quotidienne des non-lecteurs de lecture obligatoire.
     'kb-sweep-lectures-obligatoires': {
         'task': 'kb.sweep_lectures_obligatoires',

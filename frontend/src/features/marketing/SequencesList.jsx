@@ -58,7 +58,14 @@ export default function SequencesList() {
 
   return (
     <div className="page">
-      <div className="page-header"><h2>Séquences de relance</h2></div>
+      <div className="page-header">
+        <h2>Séquences de relance</h2>
+        {/* NTMKT30 — wizard guidé (délai + canal + contenu, calendrier prévu) */}
+        <button className="btn btn-light" data-testid="sequences-nouvelle-guidee"
+          onClick={() => navigate('/marketing/sequences/nouveau')}>
+          Configurer (guidé)
+        </button>
+      </div>
 
       <form onSubmit={creer} style={{ display: 'flex', gap: '0.5rem',
         flexWrap: 'wrap', marginBottom: '1rem' }}>

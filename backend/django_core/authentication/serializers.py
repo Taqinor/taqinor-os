@@ -1,3 +1,4 @@
+from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 from rest_framework.exceptions import PermissionDenied
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
@@ -199,6 +200,21 @@ class UserSerializer(serializers.ModelSerializer):
     company_mode_presentation_actif = serializers.BooleanField(
         source='company.mode_presentation_actif', read_only=True, default=False
     )
+    # NTDMO20 — vrai UNIQUEMENT si `CompanyProfile.essai_expire_le` est
+    # renseignée ET dépassée (jamais peuplée automatiquement, founder-only).
+    # Une société sans date renseignée (comportement actuel de TOUTE société
+    # existante) renvoie toujours False.
+    company_essai_expire = serializers.SerializerMethodField()
+
+    @extend_schema_field(serializers.BooleanField())
+    def get_company_essai_expire(self, obj):
+        from datetime import date
+        company = getattr(obj, 'company', None)
+        if company is None:
+            return False
+        profile = getattr(company, 'profile', None)
+        expire_le = getattr(profile, 'essai_expire_le', None)
+        return bool(expire_le and expire_le < date.today())
     role_nom = serializers.CharField(
         source='role.nom', read_only=True
     )
@@ -254,6 +270,7 @@ class UserSerializer(serializers.ModelSerializer):
             'password', 'date_joined', 'last_login',
             'company_id', 'company_nom',
             'company_est_demo', 'company_mode_presentation_actif',
+            'company_essai_expire',
             # NTPRT8 — portée du compte (NTPRT1) + id de l'entité portail
             # rattachée. Le shell frontend en a besoin pour router un compte
             # PORTAIL vers `/portail/<scope>` et le tenir hors de l'ERP interne.
@@ -266,6 +283,7 @@ class UserSerializer(serializers.ModelSerializer):
             'id', 'date_joined', 'last_login',
             'company_id', 'company_nom',
             'company_est_demo', 'company_mode_presentation_actif',
+            'company_essai_expire',
             'societes_operables', 'active_company_id',
             'password_changed_at',
             'role_nom', 'role_legacy', 'menu_tier', 'permissions',

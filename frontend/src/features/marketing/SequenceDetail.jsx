@@ -2,6 +2,7 @@ import { Fragment, useEffect, useState, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import marketingApi from '../../api/marketingApi'
 import { formatDateTime } from '../../lib/format'
+import JourneyBuilder from './JourneyBuilder'
 
 /* ============================================================================
    NTMKT6 — Détail d'une séquence : étapes ordonnées + vue participant.
@@ -67,7 +68,16 @@ export default function SequenceDetail() {
           data-testid="sequence-onglet-participants" onClick={() => setOnglet('participants')}>
           Participants
         </button>
+        {/* NTMKT13 — canevas du journey (nœuds/arcs NTMKT12) */}
+        <button className={`btn ${onglet === 'journey' ? 'btn-primary' : 'btn-light'}`}
+          data-testid="sequence-onglet-journey" onClick={() => setOnglet('journey')}>
+          Journey
+        </button>
       </div>
+
+      {onglet === 'journey' && (
+        <JourneyBuilder sequenceId={sequence.id} sequenceNom={sequence.nom} />
+      )}
 
       {onglet === 'etapes' && (
         <table className="data-table" data-testid="etapes-table">

@@ -61,7 +61,7 @@ DATEFIELD_AUTO_NOW_ALLOWLIST = {
     "backend/django_core/apps/facturation/models.py:113",
     "backend/django_core/apps/facturation/models.py:904",
     "backend/django_core/apps/facturation/models.py:1088",
-    "backend/django_core/apps/ventes/models.py:781",  # NoteDebit.date_emission — remapped +15 (NTCPQ on_delete comments in ventes/models.py), same reviewed date-anchor field
+    "backend/django_core/apps/ventes/models.py:973",  # NoteDebit.date_emission — remapped +192 (modèles CPQ NTCPQ11-24 ajoutés dans ventes/models.py), même champ date-ancre relu
     # NTASS — champs DATE métier (jour, pas horodatage) : date d'ajout d'un
     # actif couvert et date de déclaration d'un sinistre ; même motif que les
     # dates-ancre ventes ci-dessus (l'horodatage précis vit dans TenantModel.
@@ -85,7 +85,14 @@ TIMESTAMP_AS_DATEFIELD_ALLOWLIST = {
     # Partenaire, +96 lignes AVANT CommissionPartenaire dans le même
     # fichier) — même champ inchangé (vérifié : déclaration identique
     # DateField(null=True, blank=True) avant/après).
-    "backend/django_core/apps/crm/models.py:2113",  # CommissionPartenaire.paye_le
+    # 2002 -> 2017 -> 2027 -> 2113 -> 2123 : MÊME champ, poussé par les
+    # insertions successives dans crm/models.py (fusion de deux sessions
+    # parallèles le 14/08/2026). Une seule entrée désormais, les doublons
+    # périmés ci-dessous ayant été retirés. Bug-class #34.
+    "backend/django_core/apps/crm/models.py:2123",  # CommissionPartenaire.paye_le
+    # Remappé 2017->2027 (lanes NTCRM14-30 : +10 lignes insérées avant
+    # CommissionPartenaire dans crm/models.py) — MÊME champ, déclaration
+    # identique avant/après (vérifié contre origin/main), pas un nouveau site.
     # PUB75 (batch-2) — ConsentRecord.date_consentement : DATE (jour) de recueil
     # du consentement image/témoignage (loi 09-08), pas un horodatage. Le champ
     # timestamp de ce modèle (revoked_at) EST bien un DateTimeField. Pas un bug.

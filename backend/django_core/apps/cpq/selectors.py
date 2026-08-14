@@ -7,7 +7,7 @@ from decimal import Decimal
 from core.rules import evaluate_condition_group
 from .models import (
     ContrainteCompatibilite, RegleProduitCPQ, SeuilMargeFamille,
-    EtapeApprobationDevis,
+    EtapeApprobationDevis, ClauseCGV,
 )
 
 
@@ -115,8 +115,85 @@ def evaluer_regles_produit(*, company, context):
                 'regle_id': regle.id,
                 'nom': regle.nom,
                 'actions': regle.actions,
+                # NTCPQ21 — avertissement (défaut) vs règle bloquante.
+                'bloquante': regle.bloquante,
             })
     return declenchees
+
+
+def contexte_regles_devis(devis):
+    """NTCPQ21 — Contexte plat d'un devis pour l'évaluation des règles NTCPQ2.
+
+    Expose ``produit_ids`` (liste — utilisable avec l'opérateur ``contains``),
+    ``designations``, ``mode_installation``, ``total_ht``, ``nb_lignes`` et
+    ``puissance_kwc``. Aucune donnée de marge / ``prix_achat``."""
+    lignes = list(devis.lignes.all())
+    etude = devis.etude_params if isinstance(devis.etude_params, dict) else {}
+    try:
+        kwc = float(etude.get('puissance_kwc') or 0)
+    except (TypeError, ValueError):
+        kwc = 0.0
+    try:
+        total_ht = float(devis.total_ht or 0)
+    except (TypeError, ValueError):
+        total_ht = 0.0
+    return {
+        'produit_ids': [li.produit_id for li in lignes if li.produit_id],
+        'designations': [li.designation for li in lignes],
+        'mode_installation': devis.mode_installation or '',
+        'type_deal': devis.mode_installation or '',
+        'total_ht': total_ht,
+        'nb_lignes': len(lignes),
+        'puissance_kwc': kwc,
+    }
+
+
+def etat_configuration_devis(devis):
+    """NTCPQ21 — État de conformité de la configuration d'un devis.
+
+    Exécute les règles produit (NTCPQ2) ET les contraintes de compatibilité
+    (NTCPQ1) et renvoie ::
+
+        {'configuration_valide': bool, 'bloquant': bool, 'violations': [...]}
+
+    ``configuration_valide`` est faux dès qu'une violation existe (badge
+    rouge) ; ``bloquant`` n'est vrai que pour une contrainte bloquante
+    (INCOMPATIBLE/REQUIERT) ou une règle explicitement ``bloquante`` — un
+    simple avertissement n'empêche JAMAIS l'enregistrement en brouillon.
+    Calculé à la volée, jamais stocké."""
+    company = getattr(devis, 'company', None)
+    if company is None:
+        return {'configuration_valide': True, 'bloquant': False,
+                'violations': []}
+
+    violations = []
+    produit_ids = [li.produit_id for li in devis.lignes.all() if li.produit_id]
+    for v in violations_compatibilite(company=company,
+                                      produit_ids=produit_ids):
+        violations.append({
+            'source': 'compatibilite',
+            'type': v['type'],
+            'message': v['message'] or (
+                f"Produits {v['produit_a']} / {v['produit_b']} : "
+                f"{v['type'].lower()}"),
+            'bloquante': v['bloquante'],
+        })
+
+    for regle in evaluer_regles_produit(
+            company=company, context=contexte_regles_devis(devis)):
+        violations.append({
+            'source': 'regle',
+            'type': 'REGLE',
+            'regle_id': regle['regle_id'],
+            'message': regle['nom'],
+            'bloquante': bool(regle.get('bloquante')),
+        })
+
+    return {
+        'configuration_valide': not violations,
+        'bloquant': any(v['bloquante'] for v in violations),
+        'violations': violations,
+    }
 
 
 def devis_marge_sous_seuil(devis):
@@ -150,3 +227,84 @@ def devis_marge_sous_seuil(devis):
         if marge_pct < Decimal(str(seuil)):
             return True
     return False
+
+
+def clause_sapplique(clause, context):
+    """NTCPQ11 — Une clause s'applique-t-elle à ce contexte de devis ?
+
+    Deux filtres cumulés : ``type_deal`` (référentiel libre, vide = tous types,
+    comparaison insensible à la casse/aux espaces) puis ``applicable_si``
+    (arbre ET/OU/NON évalué par ``core.rules`` ; vide = toujours vrai)."""
+    if not isinstance(context, dict):
+        context = {}
+    attendu = (clause.type_deal or '').strip().lower()
+    if attendu:
+        recu = str(context.get('type_deal') or '').strip().lower()
+        if recu != attendu:
+            return False
+    arbre = clause.applicable_si
+    if not arbre:
+        return True
+    return evaluate_condition_group(arbre, context)
+
+
+_OPERATEURS_LISIBLES = {
+    'eq': '=', 'ne': '≠', 'gt': '>', 'gte': '≥', 'lt': '<', 'lte': '≤',
+    'in': 'parmi', 'not_in': 'hors de', 'contains': 'contient',
+    'startswith': 'commence par', 'exists': 'est renseigné',
+}
+_GROUPES_LISIBLES = {'and': ' ET ', 'or': ' OU '}
+
+
+def condition_en_clair(noeud):
+    """NTCPQ12 — Traduit un arbre ``core.rules`` en français lisible.
+
+    Ex. ``{'op': 'and', 'conditions': [{'field': 'type_deal', ...}, ...]}``
+    → ``"type_deal=Industriel ET montant>500000"``. Arbre vide → « toujours »
+    (une clause sans condition s'applique systématiquement). Purement
+    descriptif : n'évalue rien, ne lève jamais."""
+    if not noeud:
+        return 'toujours'
+    if not isinstance(noeud, dict):
+        return str(noeud)
+    op = noeud.get('op')
+    if 'conditions' in noeud or op in ('and', 'or', 'not'):
+        enfants = noeud.get('conditions') or []
+        rendus = [condition_en_clair(e) for e in enfants if e]
+        if not rendus:
+            return 'toujours'
+        if op == 'not':
+            return f'NON ({rendus[0]})'
+        joint = _GROUPES_LISIBLES.get(op or 'and', ' ET ')
+        if len(rendus) == 1:
+            return rendus[0]
+        return joint.join(f'({r})' if ' ET ' in r or ' OU ' in r else r
+                          for r in rendus)
+    champ = noeud.get('field', '?')
+    operateur = noeud.get('operator', 'eq')
+    valeur = noeud.get('value')
+    lisible = _OPERATEURS_LISIBLES.get(operateur, operateur)
+    if operateur == 'exists':
+        return f'{champ} {lisible}'
+    if isinstance(valeur, (list, tuple)):
+        valeur = ', '.join(str(v) for v in valeur)
+    if lisible in ('=', '≠', '>', '≥', '<', '≤'):
+        return f'{champ}{lisible}{valeur}'
+    return f'{champ} {lisible} {valeur}'
+
+
+def clauses_applicables(*, company, context):
+    """NTCPQ11 — Clauses/CGV actives de la société qui s'appliquent au contexte.
+
+    Renvoie une liste JSON-safe (ordonnée par ``ordre`` puis ``id``) :
+    ``[{clause_id, nom, corps_texte, type_deal, ordre}, ...]``. C'est cette
+    liste qui est FIGÉE sur ``Devis.clauses_appliquees`` à l'envoi."""
+    clauses = ClauseCGV.objects.filter(
+        company=company, actif=True).order_by('ordre', 'id')
+    return [{
+        'clause_id': c.id,
+        'nom': c.nom,
+        'corps_texte': c.corps_texte,
+        'type_deal': c.type_deal,
+        'ordre': c.ordre,
+    } for c in clauses if clause_sapplique(c, context)]

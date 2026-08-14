@@ -27,6 +27,18 @@ vi.mock('./leads/CrmInsightsPanel', () => ({
   default: () => <div data-testid="crm-insights-stub" />,
 }))
 
+// NTCRM15 — le widget comptes dormants a son propre appel réseau (couvert
+// par son propre test) ; ce smoke test ne vérifie que l'assemblage cockpit.
+vi.mock('./DormantAccountsWidget', () => ({
+  default: () => <div data-testid="dormant-accounts-stub" />,
+}))
+
+// NTCRM29 — même patron : le widget portefeuille a son propre appel réseau
+// (couvert par son propre test), stubé ici pour ce smoke test d'assemblage.
+vi.mock('./dashboard/PortfolioWidget', () => ({
+  default: () => <div data-testid="portfolio-widget-stub" />,
+}))
+
 afterEach(() => { cleanup(); vi.clearAllMocks() })
 
 function makeStore({ clients = [], leads = [] } = {}) {

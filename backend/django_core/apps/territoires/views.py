@@ -1,14 +1,17 @@
 """Vues du moteur de territoires (NTCRM1). Réservé Administrateur/Directeur —
 même RBAC simple que le reste du CRM (``authentication.permissions``), pas de
 nouveau code de permission fine (pas de rôle 'territoire_*' à enregistrer)."""
+from drf_spectacular.utils import extend_schema, inline_serializer
+from rest_framework import serializers as drf_serializers
 from rest_framework.decorators import action
 from rest_framework.response import Response
+from rest_framework.views import APIView
 
 from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
 from core.viewsets import CompanyScopedModelViewSet
 
 from .models import Territoire, TerritoireMembre, TerritoireRegle
-from .selectors import previsualiser_territoire
+from .selectors import previsualiser_territoire, rapport_couverture
 from .serializers import (
     TerritoireMembreSerializer, TerritoireRegleSerializer, TerritoireSerializer,
 )
@@ -91,3 +94,31 @@ class TerritoireMembreViewSet(CompanyScopedModelViewSet):
 
     def perform_create(self, serializer):
         serializer.save()
+
+
+class CouvertureView(APIView):
+    """NTCRM25 — Rapport de couverture : leads récents (30 j par défaut) qui
+    n'ont matché AUCUN territoire actif. Réservé Responsable/Admin (donnée de
+    pilotage direction), jamais cross-tenant (scope via ``request.user.
+    company``, jamais depuis la query string)."""
+    permission_classes = [IsResponsableOrAdmin]
+
+    @extend_schema(responses={200: inline_serializer('CouvertureRapport', {
+        'total_non_couverts': drf_serializers.IntegerField(),
+        'leads': drf_serializers.ListField(child=inline_serializer(
+            'CouvertureLead', {
+                'lead_id': drf_serializers.IntegerField(),
+                'nom': drf_serializers.CharField(),
+                'ville': drf_serializers.CharField(allow_null=True),
+                'type_installation': drf_serializers.CharField(allow_null=True),
+            })),
+        'par_region': drf_serializers.DictField(child=drf_serializers.IntegerField()),
+        'par_segment': drf_serializers.DictField(child=drf_serializers.IntegerField()),
+    })})
+    def get(self, request):
+        try:
+            jours = int(request.query_params.get('jours', 30))
+        except (TypeError, ValueError):
+            jours = 30
+        data = rapport_couverture(request.user.company, jours=jours)
+        return Response(data)

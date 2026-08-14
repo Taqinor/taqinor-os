@@ -455,12 +455,12 @@ class DepotReelTests(unittest.TestCase):
     def test_le_corpus_est_reellement_lu(self):
         """Si l'extraction casse, la garde devient muette EN SILENCE."""
         _, stats = analyse_reelle()
-        # 1500 -> 1200 : le lot du 14/08/2026 (primitives débloquantes +
-        # vague NT) a COCHÉ ~90 tâches et dédoublonné des lignes
-        # ressuscitées par des fusions, donc le corpus OUVERT rétrécit
-        # légitimement (1468 aujourd’hui). Le plancher garde son rôle de
-        # canari — une extraction cassée rendrait ~0 — sans punir le fait
-        # d’avoir livré (même raisonnement que les deux planchers ci-dessous).
+        # DEUX sessions ont abaissé ce plancher en parallèle : la vague NT +
+        # primitives (1500 -> 1200) et le lot PLAN_CRM_VENTES #518 (1500 ->
+        # 1400). L'arbre fusionné cumule LEURS DEUX lots de tâches cochées,
+        # donc aucune des deux bornes n'a été mesurée sur cet arbre : on garde
+        # la borne BASSE. Le rôle de canari tient — une extraction cassée
+        # rendrait ~0 — sans punir le fait d'avoir livré.
         self.assertGreater(stats["taches"], 1200)
         # 250 -> 150 : le lot §E du 08/08/2026 a COCHÉ 76 tâches, donc le
         # corpus de candidates rétrécit légitimement (191 aujourd'hui).

@@ -109,3 +109,20 @@ def export_clients_xlsx(clients):
     ] for c in clients]
     return build_xlsx_response(
         'clients.xlsx', CLIENT_EXPORT_HEADERS, rows, sheet_title='Clients')
+
+
+DEFI_CLASSEMENT_HEADERS = ['Rang', 'Nom', 'Score (valeur réalisée)']
+
+
+def export_defi_classement_xlsx(defi, classement):
+    """NTCRM28 — Export .xlsx du classement d'un défi (NTCRM23), même
+    contenu que l'endpoint JSON ``defis/{id}/classement/`` — colonnes
+    rang/nom/score, pour partage en réunion commerciale."""
+    rows = [
+        [entry['rang'], entry['owner_nom'], str(entry['realise'])]
+        for entry in classement
+    ]
+    filename = f'classement-{defi.pk}.xlsx'
+    return build_xlsx_response(
+        filename, DEFI_CLASSEMENT_HEADERS, rows,
+        sheet_title=defi.nom[:31] or 'Classement')

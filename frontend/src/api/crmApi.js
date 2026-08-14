@@ -20,6 +20,17 @@ const crmApi = {
   anonymizeClient: (id) => api.post(`/crm/clients/${id}/anonymize/`),
   // XSAL9 — rollup CA groupe (société mère + filiales, récursif).
   getClientConsolidation: (id) => api.get(`/crm/clients/${id}/consolidation/`),
+  // NTCRM14/15 — comptes dormants : au moins un devis/facture passé, aucune
+  // activité (devis/facture/LeadActivity/PointContact) depuis `seuil` jours.
+  getComptesDormants: (seuil) =>
+    api.get('/crm/clients/dormants/', { params: seuil ? { seuil } : {} }),
+  // NTCRM15 — bouton one-click « créer une activité de relance » du widget
+  // comptes dormants (journalise une note sur le lead le plus récent lié).
+  relancerDormance: (clientId) =>
+    api.post(`/crm/clients/${clientId}/relancer-dormance/`),
+  // NTCRM29 — widget « portefeuille de comptes » : comptes du commercial
+  // connecté (owner via leads liés), triés par score d'engagement croissant.
+  getMonPortefeuille: () => api.get('/crm/clients/mon-portefeuille/'),
 
   // Leads / opportunities
   // VX55 — même `config` optionnel (signal d'annulation) que getClients.
@@ -217,6 +228,16 @@ const crmApi = {
   // `saisi_par` posés côté serveur.
   getConcurrentsPerte: (params) => api.get('/crm/concurrents-perte/', { params }),
   createConcurrentPerte: (data) => api.post('/crm/concurrents-perte/', data),
+
+  // NTCRM23/24 — défis d'équipe (gamification) : CRUD + classement.
+  getDefis: (params) => api.get('/crm/defis/', { params }),
+  createDefi: (data) => api.post('/crm/defis/', data),
+  getDefiClassement: (id) => api.get(`/crm/defis/${id}/classement/`),
+
+  // NTCRM19 — résumé de consultation salle de vente pour la fiche lead
+  // (« le client a consulté N fois, dernière fois <date> »).
+  getLeadSalleVenteAnalytics: (leadId) =>
+    api.get(`/crm/leads/${leadId}/salle-vente-analytics/`),
 
   // PACT104 — Points de contact (FG204) : la lecture agrégée (`getLead
   // PointsContact`, ci-dessus) est déjà câblée ; la collection racine
