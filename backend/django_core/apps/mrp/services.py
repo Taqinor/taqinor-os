@@ -831,3 +831,32 @@ def parametres_mrp(company):
 
     obj, _created = ParametresMRP.objects.get_or_create(company=company)
     return obj
+
+
+# ── NTMFG31 — Purge/archivage des OF prototype anciens ───────────────────
+
+def archiver_of_prototype_anciens(company, *, today=None, user=None):
+    """NTMFG31 — archive (soft-delete, `core.SoftDeleteModel`) les OF
+    `est_prototype=True` CLÔTURÉS (`statut=termine`, `updated_at` sert de
+    proxy de date de clôture — même convention que `selectors.analyse_couts`)
+    depuis plus de `ParametresMRP.retention_prototype_jours` (NTMFG29,
+    défaut 180). Ne touche JAMAIS un OF de production normale
+    (`est_prototype=False`, filtré explicitement) ni un OF déjà archivé
+    (`objects` masque déjà les archivés — la requête ne les revoit pas,
+    donc `soft_delete()` — lui-même idempotent — n'est jamais rejoué).
+    Renvoie la liste des OF archivés par cet appel."""
+    from .models import OrdreFabrication
+
+    today = today or timezone.localdate()
+    parametres = parametres_mrp(company)
+    seuil = today - timedelta(days=int(parametres.retention_prototype_jours))
+
+    candidats = OrdreFabrication.objects.filter(
+        company=company, est_prototype=True,
+        statut=OrdreFabrication.Statut.TERMINE,
+        updated_at__date__lte=seuil)
+    archives = []
+    for of in candidats:
+        of.soft_delete(user=user)
+        archives.append(of)
+    return archives

@@ -9,7 +9,7 @@ UNIQUEMENT par string-FK (jamais d'import de leurs modules `models`).
 from django.conf import settings
 from django.db import models
 
-from core.models import TenantModel
+from core.models import SoftDeleteModel, TenantModel
 
 
 class PosteDeCharge(TenantModel):
@@ -172,14 +172,22 @@ class OperationGamme(TenantModel):
         return f'{self.gamme_id} · {self.ordre}. {self.libelle}'
 
 
-class OrdreFabrication(TenantModel):
+class OrdreFabrication(TenantModel, SoftDeleteModel):
     """NTMFG3 — Ordre de Fabrication (OF) capacitaire, lié à une gamme et des
     postes. ÉTEND `installations.OrdreAssemblage` (qui reste l'ordre
     « kitting boutique » léger, sans poste ni temps par opération) — ne le
     duplique JAMAIS. `kit_ordre_assemblage` est un lien OPTIONNEL (string-FK)
     vers cet ordre existant pour les OF qui restent gérés côté kitting
     boutique : dans ce cas le mouvement matière reste porté par lui (XMFG1,
-    jamais de double mouvement)."""
+    jamais de double mouvement).
+
+    NTMFG31 — SECOND adoptant du soft-delete partagé (`core.SoftDeleteModel`,
+    FG388, après `crm.Lead` VX96) : `services.archiver_of_prototype_anciens`
+    l'utilise pour archiver (jamais supprimer) les OF `est_prototype` clôturés
+    depuis plus de `ParametresMRP.retention_prototype_jours` (NTMFG29) — les
+    OF de production normale ne sont JAMAIS soft-supprimés. `objects` masque
+    les archivés (comportement par défaut de toutes les requêtes/vues
+    existantes) ; `all_objects` les inclut."""
 
     class Statut(models.TextChoices):
         BROUILLON = 'brouillon', 'Brouillon'

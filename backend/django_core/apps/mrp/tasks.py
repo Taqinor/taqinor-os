@@ -101,3 +101,29 @@ def recalculer_besoins_nocturne():
                     exc_info=True)
         result[company.id] = notifiees
     return result
+
+
+# ── NTMFG31 — Purge/archivage des OF prototype anciens ───────────────────
+
+@shared_task(name='mrp.archiver_of_prototype_anciens')
+def archiver_of_prototype_anciens_task():
+    """NTMFG31 — pour CHAQUE société active, archive (soft-delete) les OF
+    prototype clôturés depuis plus de `ParametresMRP.retention_prototype_jours`
+    (NTMFG29, `services.archiver_of_prototype_anciens`) — jamais les OF de
+    production normale. Idempotent (double exécution sans effet
+    supplémentaire — les OF déjà archivés sortent du queryset). Renvoie
+    ``{company_id: nb_of_archives}``."""
+    from authentication.selectors import active_companies
+
+    from .services import archiver_of_prototype_anciens
+
+    result = {}
+    for company in active_companies():  # SCA19 — exclut les tenants suspendus
+        try:
+            archives = archiver_of_prototype_anciens(company)
+            result[company.id] = len(archives)
+        except Exception:  # noqa: BLE001 — une société en échec n'arrête pas
+            logger.warning(
+                'mrp.archiver_of_prototype_anciens: échec société %s',
+                company.pk, exc_info=True)
+    return result

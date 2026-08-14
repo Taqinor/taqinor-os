@@ -863,6 +863,12 @@ app.conf.beat_schedule = {
         'task': 'mrp.recalculer_besoins_nocturne',
         'schedule': crontab(hour=1, minute=30),
     },
+    # NTMFG31 — archive (soft-delete) les OF prototype clôturés dépassant
+    # `ParametresMRP.retention_prototype_jours` (NTMFG29) — apps/mrp/tasks.py.
+    'mrp-archiver-of-prototype-anciens': {
+        'task': 'mrp.archiver_of_prototype_anciens',
+        'schedule': crontab(hour=2, minute=15),
+    },
 }
 
 # YHARD6 — compteurs Celery succès/échec (process-local, best-effort) pour
