@@ -270,10 +270,17 @@ class LeGardeDeCout(BasePv49):
         for cle in ('kits', 'allees', 'rives', 'orientation'):
             self.assertEqual(sortie['tiroirs'][cle], vides[cle])
         self.assertEqual(set(sortie['tiroirs']), set(vides))
-        electrique = sortie['tiroirs']['electrique']
-        if electrique is not None:
-            self.assertIn('chaine', electrique)
-            self.assertIn('conformite', electrique)
+        # PV44 — la charge utile d'un tiroir vit sous ``donnees`` (enveloppe
+        # ``{'donnees': …, 'valeurs': …}`` commune aux cinq tiroirs, cf.
+        # ``tiroir_electrique_vers_json``). Chercher ``chaine`` sur l'enveloppe
+        # rendait la promesse inatteignable ; et la garde ``if … is not None``
+        # ne pouvait jamais être fausse, l'enveloppe étant toujours un dict —
+        # ce qui aurait laissé passer un tiroir électrique VIDE, exactement ce
+        # que ce test doit interdire.
+        electrique = sortie['tiroirs']['electrique']['donnees']
+        self.assertIsNotNone(electrique)
+        self.assertIn('chaine', electrique)
+        self.assertIn('conformite', electrique)
 
 
 class LesTiroirsNeSontPasPersistes(BasePv49):
