@@ -12,6 +12,7 @@ Une `django.core.exceptions.ValidationError` levée depuis `Model.save()` ne
 serait PAS rattrapée par DRF et retomberait en 500 — piège déjà payé
 ailleurs dans ce dépôt.
 """
+from django.utils import timezone
 
 
 def attribuer_numero(ordre):
@@ -148,4 +149,20 @@ def creer_litige_depuis_reserve(reserve, *, user=None):
     )
     reserve.litige = litige
     reserve.save(update_fields=['litige'])
+    return litige
+
+
+def envoyer_reclamation_transporteur(litige, *, destinataire=''):
+    """NTLOG19 — marque la réclamation transporteur comme envoyée (trace
+    date + destinataire), et fait avancer le litige `ouvert → en_traitement`
+    (idempotent : un litige déjà `en_traitement` n'est pas re-transitionné en
+    erreur — régénérer le PDF n'est jamais bloqué)."""
+    from .models import LitigeTransport
+
+    if litige.statut == LitigeTransport.Statut.OUVERT:
+        litige.statut = LitigeTransport.Statut.EN_TRAITEMENT
+    litige.reclamation_envoyee_le = timezone.now()
+    litige.reclamation_destinataire = destinataire
+    litige.save(update_fields=[
+        'statut', 'reclamation_envoyee_le', 'reclamation_destinataire'])
     return litige

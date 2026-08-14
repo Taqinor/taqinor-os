@@ -256,6 +256,10 @@ class LitigeTransport(TenantModel):
     montant_conteste = models.DecimalField(
         max_digits=14, decimal_places=2, default=Decimal('0'))
     description = models.TextField(blank=True, default='')
+    # NTLOG19 — trace de l'envoi de la réclamation transporteur chiffrée.
+    reclamation_envoyee_le = models.DateTimeField(null=True, blank=True)
+    reclamation_destinataire = models.CharField(
+        max_length=255, blank=True, default='')
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
         null=True, blank=True, related_name='litiges_transport_crees')

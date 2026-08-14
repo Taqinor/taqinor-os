@@ -60,6 +60,20 @@ def comparer_transporteurs(ordre_transport_id, company=None):
     ]
 
 
+def transporteur_nom_pour_ordre(ordre):
+    """NTLOG19 — nom du transporteur affrété (`installations.Transporteur`)
+    d'un ordre, ou `''` si non affrété/inconnu. Lecture seule, jamais un
+    import de modèle."""
+    if not ordre.installations_transporteur_id:
+        return ''
+    from django.apps import apps as django_apps
+
+    Transporteur = django_apps.get_model('installations', 'Transporteur')
+    transporteur = Transporteur.objects.filter(
+        id=ordre.installations_transporteur_id, company=ordre.company).first()
+    return transporteur.nom if transporteur else ''
+
+
 def frais_transport_pour_landed_cost(company, bon_commande_fournisseur_id):
     """NTLOG16 — somme des `CoutFretReel.montant_ht` d'un
     `stock.BonCommandeFournisseur` donné, scopée société (jamais un import

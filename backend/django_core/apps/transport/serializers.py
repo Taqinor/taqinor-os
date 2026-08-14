@@ -62,9 +62,13 @@ class LitigeTransportSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'ordre_transport', 'type_litige', 'type_litige_display',
             'statut', 'statut_display', 'montant_conteste', 'description',
+            'reclamation_envoyee_le', 'reclamation_destinataire',
             'created_by', 'created_at',
         ]
-        read_only_fields = ['statut', 'created_by', 'created_at']
+        read_only_fields = [
+            'statut', 'reclamation_envoyee_le', 'reclamation_destinataire',
+            'created_by', 'created_at',
+        ]
 
 
 class ReserveReceptionSerializer(serializers.ModelSerializer):

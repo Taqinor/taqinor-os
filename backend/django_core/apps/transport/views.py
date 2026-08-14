@@ -2,6 +2,7 @@
 `core.viewsets.CompanyScopedModelViewSet` (jamais un `ModelViewSet` nu,
 SCA4)."""
 from django.contrib.contenttypes.models import ContentType
+from django.http import HttpResponse
 from rest_framework import status
 from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
@@ -255,6 +256,25 @@ class LitigeTransportViewSet(CompanyScopedModelViewSet):
                 LitigeTransport.Statut.EN_TRAITEMENT,
             },
             target=LitigeTransport.Statut.REJETE)
+
+    # ── NTLOG19 — réclamation transporteur chiffrée (PDF) ────────────────
+    @action(detail=True, methods=['post'], url_path='reclamer-transporteur')
+    def reclamer_transporteur(self, request, pk=None):
+        litige = self.get_object()
+        from . import selectors
+        from .reclamation_pdf import render_reclamation_transporteur_pdf
+
+        destinataire = selectors.transporteur_nom_pour_ordre(
+            litige.ordre_transport)
+        pdf_bytes = render_reclamation_transporteur_pdf(litige)
+        services.envoyer_reclamation_transporteur(
+            litige, destinataire=destinataire)
+        resp = HttpResponse(pdf_bytes, content_type='application/pdf')
+        nom_fichier = (
+            f'reclamation-transporteur-'
+            f'{litige.ordre_transport.numero or litige.id}.pdf')
+        resp['Content-Disposition'] = f'attachment; filename="{nom_fichier}"'
+        return resp
 
 
 class ReserveReceptionViewSet(CompanyScopedModelViewSet):
