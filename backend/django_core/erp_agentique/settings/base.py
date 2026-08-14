@@ -299,6 +299,12 @@ INSTALLED_APPS = [
     # NTRET9 — Programme de fidélité par points (gain automatique à la vente
     # via core.events, paliers, carte QR). Additive, company-scopée.
     'apps.fidelite',
+    # NTRET12 — Moteur de promotions panier (règles configurables : remise %
+    # produit/catégorie, remise montant panier, N-pour-M, plage horaire
+    # happy hour). NTRET13 y ajoute les coupons à code unique, NTRET15 les
+    # cartes cadeaux. App satellite : `apps/pos/services.py` l'appelle en
+    # import fonction-local (jamais l'inverse).
+    'apps.promotions',
 ]
 
 MIDDLEWARE = [
@@ -605,6 +611,14 @@ REST_FRAMEWORK = {
         # ouverture de session chat public (par IP).
         'public_sharelink': '30/minute',
         'public_livechat': '30/minute',
+        # NTRET3 — PIN de verrouillage rapide caissier (POS). Cette entrée
+        # existe uniquement pour que ``SimpleRateThrottle.get_rate()`` ne lève
+        # pas ``ImproperlyConfigured`` (le scope doit être présent) — la
+        # valeur elle-même est IGNORÉE : ``PinCaissierThrottle.parse_rate``
+        # (apps/pos/views.py) câble en dur 5 tentatives / 5 minutes (300 s),
+        # une granularité que le format natif DRF (minute/heure/jour) ne
+        # peut pas exprimer.
+        'pos_pin_caissier': '5/5min',
         # NTPLT42 — budget par société (env TENANT_RATE_LIMIT, défaut 1200/min).
         # '0'/vide → None = throttle tenant désactivé (rempli plus bas, après la
         # définition de TESTING, où il est forcé off pour ne pas fausser la suite).

@@ -12,6 +12,9 @@ from django.utils import timezone
 from .models import CommandeRetrait, SessionCaisse, VenteComptoir
 
 MODE_ESPECES = 'especes'
+# NTRET15 — mode de paiement carte cadeau (apps.promotions.CarteCadeau).
+# Même liste de modes que MODES_PAIEMENT côté frontend (features/pos/pos.js).
+MODE_CARTE_CADEAU = 'carte_cadeau'
 
 
 # ── XPOS1 — Validation d'une vente comptoir ─────────────────────────────────
@@ -89,6 +92,22 @@ def valider_vente(*, vente, paiements, user):
     if a_du_cash and vente.session_caisse.statut != SessionCaisse.Statut.OUVERTE:
         raise VenteComptoirError('La session de caisse est clôturée.')
 
+    # (NTRET15) — pré-vol : valide chaque carte cadeau AVANT toute écriture
+    # (même style que le pré-vol espèces/session ci-dessus). Un code
+    # inconnu/solde insuffisant ne doit jamais laisser une facture à moitié
+    # créée derrière lui.
+    for p in paiements:
+        if (p.get('mode') or '').strip().lower() == MODE_CARTE_CADEAU:
+            from apps.promotions.services import (
+                CarteCadeauError, verifier_carte_cadeau,
+            )
+            try:
+                verifier_carte_cadeau(
+                    vente.company, p.get('carte_code') or p.get('reference'),
+                    montant=_q2(p.get('montant')))
+            except CarteCadeauError as exc:
+                raise VenteComptoirError(str(exc))
+
     # (a) Facture légale classique (sans devis) — via le thin service exposé
     # par ventes.services (numérotation collision-proof, jamais count()+1).
     from apps.ventes import services as ventes_services
@@ -129,6 +148,13 @@ def valider_vente(*, vente, paiements, user):
         )
         if mode == MODE_ESPECES:
             total_especes += montant
+        elif mode == MODE_CARTE_CADEAU:
+            # (NTRET15) — débit RÉEL (déjà validé en pré-vol ci-dessus) :
+            # dans la même transaction atomique que la facture/le paiement,
+            # jamais en négatif, plusieurs passages jusqu'à épuisement.
+            from apps.promotions.services import debiter_carte_cadeau
+            debiter_carte_cadeau(
+                vente.company, p.get('carte_code') or p.get('reference'), montant)
 
     # (b bis) — les espèces encaissées entrent dans la caisse comptable de la
     # session (XPOS4) : sans ce mouvement, le solde théorique de la caisse à la
@@ -277,6 +303,62 @@ def rapport_z(session):
         'total': sum(
             (v['total'] for v in par_mode.values()), Decimal('0')),
     }
+
+
+# ── NTRET2 — Rapport X (lecture) / Rapport Z (clôture définitive) formels ───
+
+def rapport_x(session):
+    """Rapport X (NTRET2) : lecture à tout moment, AUCUN effet de bord,
+    relisible autant de fois que nécessaire (session ouverte ou déjà
+    clôturée). Alias explicite de l'agrégat pur ``rapport_z`` sous un nom
+    distinct — jamais confondu avec le rapport Z OFFICIEL (numéroté, généré
+    une seule fois, voir ``generer_rapport_z``)."""
+    return rapport_z(session)
+
+
+class RapportZError(Exception):
+    """Erreur métier sur la génération du rapport Z officiel."""
+
+
+class RapportZDejaGenereError(RapportZError):
+    """Le rapport Z de cette session a déjà été généré (2e appel → 409)."""
+
+
+@transaction.atomic
+def generer_rapport_z(session, *, user=None):
+    """Rapport Z OFFICIEL (NTRET2) : clôture définitive de la session.
+
+    Exige une session déjà CLÔTURÉE (``cloturer_session``) et ne peut être
+    généré qu'UNE SEULE FOIS — la numérotation séquentielle anti-collision
+    (``core.numbering.next_reference``, jamais count()+1) est posée à la
+    première génération réussie et n'est plus jamais réattribuée. Un 2e appel
+    sur la même session lève ``RapportZDejaGenereError`` (traduit en 409 côté
+    vue) — exigence des contrôles fiscaux marocains : un Z unique par
+    clôture. Renvoie l'agrégat + le numéro attribué.
+    """
+    if session.statut != SessionCaisse.Statut.CLOTUREE:
+        raise RapportZError(
+            'La session doit être clôturée avant de générer le rapport Z.')
+    if session.numero_rapport_z:
+        raise RapportZDejaGenereError(
+            'Le rapport Z de cette session a déjà été généré '
+            f'(n° {session.numero_rapport_z}).')
+
+    from core.numbering import next_reference
+    numero = next_reference(
+        SessionCaisse, 'Z', session.company, field='numero_rapport_z')
+    session.numero_rapport_z = numero
+    session.save(update_fields=['numero_rapport_z'])
+
+    from apps.audit import recorder
+    recorder.record(
+        'update', instance=session, company=session.company,
+        user=user or session.caissier,
+        detail=f'Rapport Z généré — n° {numero}.')
+
+    data = rapport_z(session)
+    data['numero_rapport_z'] = numero
+    return data
 
 
 @transaction.atomic
@@ -487,3 +569,356 @@ def remettre_commande(*, commande, code_saisi, user):
     commande.date_retrait = timezone.now()
     commande.save(update_fields=['statut', 'date_retrait'])
     return commande
+
+
+# ── NTRET3 — Multi-caissiers avec PIN de session ────────────────────────────
+
+class PinCaissierError(Exception):
+    """Erreur métier sur le PIN de verrouillage rapide caissier."""
+
+
+def definir_pin(*, company, user, raw_pin):
+    """Définit (ou change) le PIN de verrouillage rapide d'un caissier
+    (NTRET3). 4 à 6 chiffres — jamais stocké en clair (hashers Django)."""
+    from .models import CodePinCaissier
+
+    pin = str(raw_pin or '').strip()
+    if not pin.isdigit() or not (4 <= len(pin) <= 6):
+        raise PinCaissierError('Le PIN doit comporter entre 4 et 6 chiffres.')
+    code, _ = CodePinCaissier.objects.get_or_create(
+        company=company, user=user)
+    code.set_pin(pin)
+    code.save(update_fields=['pin_hash', 'date_modification'])
+    return code
+
+
+def verifier_pin(*, company, user_id, raw_pin, caissier_precedent=None,
+                 acting_user=None):
+    """Vérifie le PIN d'un caissier (NTRET3) : déverrouille l'écran caisse
+    sans re-login JWT complet, sans perdre le panier en cours. Refuse un PIN
+    inconnu/erroné — le throttle applicatif (5 tentatives/5 min) vit côté vue
+    (``PinCaissierThrottle``). Journalise un CHANGEMENT DE CAISSIER (via
+    ``apps.audit``) quand l'utilisateur qui se déverrouille diffère du
+    caissier précédemment actif sur ce poste (transmis par le client)."""
+    from .models import CodePinCaissier
+
+    code = CodePinCaissier.objects.filter(
+        company=company, user_id=user_id).select_related('user').first()
+    if code is None or not code.check_pin(raw_pin):
+        raise PinCaissierError('PIN incorrect.')
+
+    user = code.user
+    caissier_precedent = str(caissier_precedent) if caissier_precedent else None
+    if caissier_precedent and caissier_precedent != str(user.id):
+        from apps.audit import recorder
+        recorder.record(
+            'update', instance=code, company=company,
+            user=acting_user or user,
+            detail=(
+                f'Changement de caissier au poste (PIN) : '
+                f'{caissier_precedent} → {user.username} (#{user.id}).'),
+        )
+    return user
+
+
+# ── NTRET5 — Arrhes / acompte sur commande comptoir ─────────────────────────
+
+class ArrhesError(Exception):
+    """Erreur métier sur un encaissement d'arrhes/solde (NTRET5)."""
+
+
+@transaction.atomic
+def encaisser_arrhes(*, vente, montant_arrhes, paiement, user):
+    """Encaisse des arrhes sur une vente comptoir (NTRET5) : article manquant
+    en stock ou sur-mesure. Crée la facture légale + le paiement PARTIEL sur
+    les mêmes rails que ``valider_vente`` (numérotation, timbre fiscal,
+    mouvement de caisse), mais passe la vente en ``EN_ATTENTE_SOLDE`` — la
+    marchandise reste bloquée (``marchandise_remise=False``) tant que le
+    solde n'est pas réglé. Le stock N'EST PAS décrémenté ici (la marchandise
+    ne bouge pas encore) — voir ``encaisser_solde_arrhes``. Le règlement
+    fourni doit correspondre EXACTEMENT au montant des arrhes (pas
+    d'ambiguïté sur un trop/pas assez perçu)."""
+    if vente.statut != VenteComptoir.Statut.BROUILLON:
+        raise ArrhesError(
+            'Cette vente a déjà été validée, mise en arrhes ou annulée.')
+    lignes = list(vente.lignes.all())
+    if not lignes:
+        raise ArrhesError('Aucune ligne dans cette vente.')
+    if vente.client_id is None:
+        raise ArrhesError('Un client est requis pour émettre la facture légale.')
+
+    total_ttc = _q2(vente.total_ttc)
+    montant_arrhes = _q2(montant_arrhes)
+    if montant_arrhes <= 0:
+        raise ArrhesError('Le montant des arrhes doit être positif.')
+    if montant_arrhes >= total_ttc:
+        raise ArrhesError(
+            'Le montant des arrhes doit être strictement inférieur au total '
+            'de la vente (sinon utilisez un encaissement complet).')
+    montant_paiement = _q2((paiement or {}).get('montant'))
+    if montant_paiement != montant_arrhes:
+        raise ArrhesError(
+            'Le règlement doit correspondre exactement au montant des '
+            f'arrhes ({montant_arrhes}).')
+
+    from apps.ventes import services as ventes_services
+
+    taux_tva = vente.taux_tva or Decimal('20')
+    total_ht = _q2(vente.total_ht)
+    montant_tva = _q2(total_ttc - total_ht)
+    facture = ventes_services.creer_facture_classique(
+        company=vente.company, client=vente.client, user=user,
+        taux_tva=taux_tva, montant_ht=total_ht, montant_tva=montant_tva,
+        montant_ttc=total_ttc,
+        libelle=f'Vente comptoir {vente.reference} (arrhes)',
+    )
+
+    mode = (paiement.get('mode') or '').strip().lower() or MODE_ESPECES
+    today = timezone.localdate()
+    ventes_services.enregistrer_paiement(
+        facture=facture, montant=montant_paiement, mode=mode,
+        date_paiement=paiement.get('date_paiement') or today, user=user,
+        reference=paiement.get('reference') or '',
+        note=f'Arrhes sur {vente.reference}',
+    )
+    _poster_encaissement_especes(
+        company=vente.company, mode=mode, montant=montant_paiement,
+        facture=facture, motif=f'Arrhes {vente.reference}', user=user,
+        session_caisse=vente.session_caisse, client=vente.client)
+
+    vente.facture = facture
+    vente.statut = VenteComptoir.Statut.EN_ATTENTE_SOLDE
+    vente.montant_arrhes = montant_arrhes
+    vente.caissier = vente.caissier or user
+    vente.save(update_fields=[
+        'facture', 'statut', 'montant_arrhes', 'caissier'])
+    return vente
+
+
+def solde_restant_arrhes(vente):
+    """Solde restant à régler avant remise de marchandise (NTRET5). 0 pour
+    une vente qui n'est pas (ou plus) en attente de solde."""
+    if vente.montant_arrhes is None:
+        return Decimal('0')
+    return _q2(vente.total_ttc) - _q2(vente.montant_arrhes)
+
+
+@transaction.atomic
+def encaisser_solde_arrhes(*, vente, paiement, user):
+    """Encaisse le SOLDE restant d'une vente ``EN_ATTENTE_SOLDE`` (NTRET5) —
+    décrémente ENFIN le stock (jamais fait à l'encaissement des arrhes),
+    passe la vente à ``VALIDEE`` et débloque la remise de marchandise. Le
+    règlement doit correspondre exactement au solde restant."""
+    if vente.statut != VenteComptoir.Statut.EN_ATTENTE_SOLDE:
+        raise ArrhesError("Cette vente n'est pas en attente de solde.")
+    solde = solde_restant_arrhes(vente)
+    montant_paiement = _q2((paiement or {}).get('montant'))
+    if montant_paiement != solde:
+        raise ArrhesError(
+            f'Le règlement ({montant_paiement}) doit correspondre exactement '
+            f'au solde restant ({solde}).')
+
+    from apps.ventes import services as ventes_services
+
+    mode = (paiement.get('mode') or '').strip().lower() or MODE_ESPECES
+    today = timezone.localdate()
+    ventes_services.enregistrer_paiement(
+        facture=vente.facture, montant=montant_paiement, mode=mode,
+        date_paiement=paiement.get('date_paiement') or today, user=user,
+        reference=paiement.get('reference') or '',
+        note=f'Solde sur {vente.reference}',
+    )
+    _poster_encaissement_especes(
+        company=vente.company, mode=mode, montant=montant_paiement,
+        facture=vente.facture, motif=f'Solde {vente.reference}', user=user,
+        session_caisse=vente.session_caisse, client=vente.client)
+
+    from apps.stock import services as stock_services
+    for ligne in vente.lignes.all():
+        produit = ligne.produit
+        produit.refresh_from_db()
+        avant = produit.quantite_stock
+        apres = avant - int(ligne.quantite)
+        stock_services.record_stock_movement(
+            company=vente.company, produit=produit,
+            type_mouvement=stock_services.mouvement_type_sortie(),
+            quantite=ligne.quantite, quantite_avant=avant, quantite_apres=apres,
+            reference=vente.reference,
+            note=f'Vente comptoir {vente.reference} (solde arrhes)',
+            created_by=user,
+        )
+
+    vente.statut = VenteComptoir.Statut.VALIDEE
+    vente.date_validation = timezone.now()
+    vente.marchandise_remise = True
+    vente.save(update_fields=[
+        'statut', 'date_validation', 'marchandise_remise'])
+    return vente
+
+
+@transaction.atomic
+def remettre_marchandise_override(*, vente, user, motif):
+    """Override ADMIN (NTRET5) : débloque la remise de marchandise AVANT que
+    le solde soit réglé — cas exceptionnel (client de confiance, urgence
+    chantier…). Motif OBLIGATOIRE, journalisé via ``apps.audit``. Ne change
+    PAS le statut de la vente (reste ``EN_ATTENTE_SOLDE`` — le solde reste
+    dû) : seule la remise physique est débloquée."""
+    if vente.statut != VenteComptoir.Statut.EN_ATTENTE_SOLDE:
+        raise ArrhesError("Cette vente n'est pas en attente de solde.")
+    if vente.marchandise_remise:
+        raise ArrhesError('La marchandise a déjà été remise.')
+    if not (motif or '').strip():
+        raise ArrhesError('Un motif est requis pour cet override.')
+
+    vente.marchandise_remise = True
+    vente.save(update_fields=['marchandise_remise'])
+
+    from apps.audit import recorder
+    recorder.record(
+        'update', instance=vente, company=vente.company, user=user,
+        detail=(
+            'Override admin — marchandise remise AVANT solde réglé '
+            f'(solde restant {solde_restant_arrhes(vente)}). '
+            f'Motif : {motif}'),
+    )
+    return vente
+
+
+def _poster_encaissement_especes(*, company, mode, montant, facture, motif, user,
+                                 session_caisse=None, client=None):
+    """Mouvement de caisse + timbre fiscal sur un règlement espèces
+    (factorisé entre ``encaisser_arrhes``/``encaisser_solde_arrhes``,
+    ``emettre_carte_cadeau_comptoir`` (NTRET15) et le même bloc dans
+    ``valider_vente``). Paramètres explicites (pas un objet ``vente`` —
+    l'émission d'une carte cadeau n'a pas de ``VenteComptoir`` : c'est une
+    transaction financière sans ligne de stock)."""
+    if mode != MODE_ESPECES or montant <= 0:
+        return
+    today = timezone.localdate()
+    if session_caisse is not None:
+        from apps.compta.models import MouvementCaisse
+        from apps.compta.services import enregistrer_mouvement_caisse
+        enregistrer_mouvement_caisse(
+            session_caisse.caisse_comptable,
+            sens=MouvementCaisse.Sens.ENTREE, montant=montant,
+            date_mouvement=today, motif=motif, user=user)
+    from apps.compta.services import enregistrer_timbre_fiscal
+    enregistrer_timbre_fiscal(
+        company, date_encaissement=today, base=montant,
+        mode_reglement=MODE_ESPECES, facture_ref=facture.reference,
+        tiers_type='client', tiers_id=client.id if client else None,
+        tiers_nom=str(client) if client else '',
+        libelle=motif, user=user)
+
+
+# ── NTRET12 — Moteur de promotions panier (apps.promotions) ────────────────
+
+def promotions_applicables(vente, *, maintenant=None):
+    """NTRET12 — promotions actives applicables au panier de ``vente``.
+
+    Import FONCTION-LOCAL vers ``apps.promotions.services`` — jamais
+    l'inverse (règle de modularité cross-app, CLAUDE.md). Best-effort : une
+    erreur du moteur promo (ex. app absente, règle mal configurée) ne
+    bloque JAMAIS une vente — renvoie ``[]`` plutôt que de lever. Consommé
+    par l'écran caisse (aperçu avant encaissement) et par
+    ``apps/promotions`` pour les tests d'intégration."""
+    try:
+        from apps.promotions.services import evaluer_panier
+        return evaluer_panier(
+            vente.company, vente.lignes.all(), maintenant=maintenant)
+    except Exception:
+        return []
+
+
+def total_remises_promotions(vente, *, maintenant=None):
+    """Somme des remises promo retenues (MAD) pour le panier de ``vente``."""
+    return sum(
+        (r.montant for r in promotions_applicables(vente, maintenant=maintenant)),
+        Decimal('0'))
+
+
+# ── NTRET13 — Coupons à code unique (apps.promotions) ───────────────────────
+
+class CouponPosError(Exception):
+    """Erreur métier sur l'application d'un coupon au comptoir (NTRET13)."""
+
+
+def appliquer_coupon(*, vente, code, user=None):
+    """NTRET13 — Applique un coupon à code unique saisi à l'écran caisse
+    (XPOS2) sur le panier de ``vente``. Import FONCTION-LOCAL vers
+    ``apps.promotions.services`` — jamais l'inverse. CONSOMME réellement le
+    coupon (contrairement à ``promotions_applicables``, best-effort) : un
+    coupon invalide/expiré/déjà utilisé remonte une erreur explicite à
+    l'appelant, jamais un échec muet."""
+    from apps.promotions.services import CouponError, consommer_coupon
+    try:
+        coupon, montant = consommer_coupon(
+            vente.company, code, vente.lignes.all(), client=vente.client)
+    except CouponError as exc:
+        raise CouponPosError(str(exc))
+    return coupon, montant
+
+
+# ── NTRET15 — Cartes cadeaux (apps.promotions) ──────────────────────────────
+
+class CarteCadeauPosError(Exception):
+    """Erreur métier sur une carte cadeau au comptoir (NTRET15)."""
+
+
+@transaction.atomic
+def emettre_carte_cadeau_comptoir(*, company, montant, paiement, user, client,
+                                  session_caisse=None, code=None,
+                                  date_expiration=None):
+    """NTRET15 — Émission d'une carte cadeau au comptoir : encaissée sur les
+    MÊMES rails qu'une vente normale (facture légale + paiement + timbre
+    fiscal cash + mouvement de caisse) mais SANS ligne de stock — une carte
+    cadeau n'est pas un produit inventorié, ``apps/pos`` ne crée jamais de
+    ``stock.Produit`` factice pour ça (cf. règle de modularité cross-app,
+    CLAUDE.md : jamais d'écriture dans ``apps/stock``). Import FONCTION-LOCAL
+    vers ``apps.promotions.services`` — jamais l'inverse. Le règlement fourni
+    doit correspondre EXACTEMENT au montant de la carte."""
+    from apps.promotions.services import CarteCadeauError
+    from apps.promotions.services import emettre_carte_cadeau as _emettre
+
+    montant = _q2(montant)
+    if montant <= 0:
+        raise CarteCadeauPosError(
+            'Le montant de la carte cadeau doit être positif.')
+    montant_paiement = _q2((paiement or {}).get('montant'))
+    if montant_paiement != montant:
+        raise CarteCadeauPosError(
+            'Le règlement doit correspondre exactement au montant de la '
+            'carte cadeau.')
+    if client is None:
+        raise CarteCadeauPosError(
+            'Un client est requis pour émettre la facture légale.')
+
+    from apps.ventes import services as ventes_services
+
+    # TVA 0 — aucun bien/service n'est délivré à l'émission (le fait
+    # générateur TVA marocain intervient à l'UTILISATION de la carte contre
+    # de vraies marchandises, pas à l'émission).
+    facture = ventes_services.creer_facture_classique(
+        company=company, client=client, user=user,
+        taux_tva=Decimal('0'), montant_ht=montant, montant_tva=Decimal('0'),
+        montant_ttc=montant, libelle='Émission carte cadeau',
+    )
+    mode = (paiement.get('mode') or '').strip().lower() or MODE_ESPECES
+    today = timezone.localdate()
+    ventes_services.enregistrer_paiement(
+        facture=facture, montant=montant_paiement, mode=mode,
+        date_paiement=paiement.get('date_paiement') or today, user=user,
+        reference=paiement.get('reference') or '',
+        note='Émission carte cadeau',
+    )
+    _poster_encaissement_especes(
+        company=company, mode=mode, montant=montant_paiement, facture=facture,
+        motif='Émission carte cadeau', user=user,
+        session_caisse=session_caisse, client=client)
+
+    try:
+        carte = _emettre(
+            company, montant, code=code, date_expiration=date_expiration)
+    except CarteCadeauError as exc:
+        raise CarteCadeauPosError(str(exc))
+    return carte, facture

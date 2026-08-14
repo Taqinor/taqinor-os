@@ -12,6 +12,11 @@ from .views_referentiels import (
     TauxTVAViewSet,
     UniteMesureViewSet,
 )
+from .views_pos import (
+    BoutiquePosViewSet,
+    get_parametres_pos,
+    update_parametres_pos,
+)
 
 # N58 — configuration d'affichage des statuts métier (chantier/SAV/BC).
 # Routeur isolé (registre dédié) pour ne pas perturber les vues fonctions.
@@ -49,6 +54,11 @@ referentiels_router.register(r'unites-mesure', UniteMesureViewSet,
 gabarits_router = DefaultRouter()
 gabarits_router.register(r'gabarits-document', GabaritDocumentCustomViewSet,
                          basename='gabarit-document')
+
+# NTRET8 — Paramètres POS (Point de vente) : boutiques actives. Routeur isolé.
+pos_router = DefaultRouter()
+pos_router.register(r'pos-boutiques', BoutiquePosViewSet,
+                    basename='pos-boutique')
 
 urlpatterns = [
     path('', views.get_profile),
@@ -89,4 +99,9 @@ urlpatterns = [
     path('', include(referentiels_router.urls)),
     # NTEXT19 — gabarits de document custom (lecture + rendu PDF par cible).
     path('', include(gabarits_router.urls)),
+    # NTRET8 — Paramètres POS (Point de vente) : taux horaire comptoir +
+    # boutiques actives (surface m²/adresse/horaires).
+    path('pos/', get_parametres_pos),
+    path('pos/update/', update_parametres_pos),
+    path('', include(pos_router.urls)),
 ]
