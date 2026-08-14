@@ -63,7 +63,12 @@ export default function ProductTour() {
   // héritait d'une bulle ouverte à l'étape du précédent, et sa fermeture
   // marquait « vu » le tour du MAUVAIS écran.
   useEffect(() => {
-    const eligible = Boolean(tour) && !tour.vu && isNewUser(user)
+    // NTDMO27 — toggle société « Visites guidées actives » (Paramètres →
+    // Démo & Onboarding). `!== false` : absent (bootstrap pas encore résolu,
+    // ou champ pas encore chargé côté client) se comporte comme actif
+    // (défaut serveur True) — jamais un flash de désactivation involontaire.
+    const toursActifs = user?.company_tours_actifs !== false
+    const eligible = toursActifs && Boolean(tour) && !tour.vu && isNewUser(user)
     // setState différé au prochain microtask (jamais synchrone dans l'effet) —
     // évite react-hooks/set-state-in-effect sans changer le comportement visible.
     queueMicrotask(() => {
