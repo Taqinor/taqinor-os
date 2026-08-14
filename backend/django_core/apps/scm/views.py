@@ -11,8 +11,11 @@ from rest_framework.response import Response
 from authentication.permissions import IsResponsableOrAdmin
 from core.viewsets import CompanyScopedModelViewSet
 
-from .models import EvenementDemande, PrevisionDemande
-from .serializers import EvenementDemandeSerializer, PrevisionDemandeSerializer
+from .models import ClassificationABC, EvenementDemande, PrevisionDemande
+from .serializers import (
+    ClassificationABCSerializer, EvenementDemandeSerializer,
+    PrevisionDemandeSerializer,
+)
 
 
 class PrevisionDemandeViewSet(CompanyScopedModelViewSet):
@@ -73,3 +76,32 @@ class EvenementDemandeViewSet(CompanyScopedModelViewSet):
 
     def get_permissions(self):
         return [IsResponsableOrAdmin()]
+
+
+class ClassificationABCViewSet(CompanyScopedModelViewSet):
+    """NTSCM4 — classement ABC (Pareto) des produits, recalculé par
+    ``selectors.classifier_abc`` (``@action`` ``recalculer``, admin/
+    responsable). Voir ``models.ClassificationABC`` pour l'adaptation de
+    périmètre (persisté ici plutôt que sur ``stock.Produit``, frontière
+    cross-app)."""
+    queryset = ClassificationABC.objects.select_related('produit').all()
+    serializer_class = ClassificationABCSerializer
+    filterset_fields = ['classe']
+
+    def get_permissions(self):
+        return [IsResponsableOrAdmin()]
+
+    @action(detail=False, methods=['post'], url_path='recalculer')
+    def recalculer(self, request):
+        """NTSCM4 — recalcule et persiste le classement ABC de la société.
+        Corps optionnel : ``{"fenetre_mois": 12}``."""
+        from . import selectors
+
+        fenetre_mois = int(request.data.get('fenetre_mois') or 12)
+        resultat = selectors.classifier_abc(request.user.company, fenetre_mois)
+        qs = ClassificationABC.objects.filter(
+            company=request.user.company).select_related('produit')
+        return Response({
+            'nb_produits_classes': len(resultat),
+            'classement': ClassificationABCSerializer(qs, many=True).data,
+        })

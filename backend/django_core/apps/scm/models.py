@@ -144,3 +144,51 @@ class EvenementDemande(TenantModel):
 
     def __str__(self):
         return f'{self.libelle} ({self.impact_pct:+}%)'
+
+
+class ClassificationABC(TenantModel):
+    """NTSCM4 — classement ABC (Pareto) d'un produit, recalculé par
+    ``selectors.classifier_abc`` (jamais saisi manuellement).
+
+    ADAPTATION DE PÉRIMÈTRE (frontière cross-app, CLAUDE.md) : le plan
+    d'origine prévoyait un champ persisté directement sur ``stock.Produit``
+    (``Produit.classe_abc``) — cette lane ne peut pas écrire dans
+    ``apps/stock`` (propriété d'une autre lane du même run). Le classement
+    est donc persisté ICI, avec le même contrat (recalcul serveur uniquement,
+    OneToOne avec le produit, jamais d'édition manuelle exposée par l'API)."""
+
+    class Classe(models.TextChoices):
+        A = 'A', 'A'
+        B = 'B', 'B'
+        C = 'C', 'C'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,  # on_delete: tenant
+        related_name='scm_classifications_abc', verbose_name='Société')
+    produit = models.OneToOneField(
+        'stock.Produit',
+        on_delete=models.CASCADE,
+        related_name='scm_classification_abc', verbose_name='Produit')
+    classe = models.CharField(
+        max_length=1, choices=Classe.choices, verbose_name='Classe')
+    valeur_cumulee_ht = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('0'),
+        verbose_name="Valeur de sortie (HT, sur la fenêtre)")
+    part_valeur_pct = models.DecimalField(
+        max_digits=6, decimal_places=2, default=Decimal('0'),
+        verbose_name='Part individuelle de la valeur totale (%)')
+    rang = models.PositiveIntegerField(
+        default=0, verbose_name='Rang (1 = plus grosse valeur)')
+    fenetre_mois = models.PositiveSmallIntegerField(
+        default=12, verbose_name="Fenêtre d'analyse (mois)")
+    calcule_le = models.DateTimeField(
+        auto_now=True, verbose_name='Calculé le')
+
+    class Meta:
+        verbose_name = 'Classification ABC'
+        verbose_name_plural = 'Classifications ABC'
+        ordering = ['rang']
+
+    def __str__(self):
+        return f'{self.produit_id} = {self.classe}'

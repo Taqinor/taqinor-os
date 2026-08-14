@@ -5,7 +5,7 @@
 """
 from rest_framework import serializers
 
-from .models import EvenementDemande, PrevisionDemande
+from .models import ClassificationABC, EvenementDemande, PrevisionDemande
 
 
 class PrevisionDemandeSerializer(serializers.ModelSerializer):
@@ -50,3 +50,18 @@ class EvenementDemandeSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 {'date_fin': 'Doit être postérieure ou égale à date_debut.'})
         return attrs
+
+
+class ClassificationABCSerializer(serializers.ModelSerializer):
+    produit_nom = serializers.CharField(source='produit.nom', read_only=True)
+    produit_sku = serializers.CharField(
+        source='produit.sku', read_only=True, default=None)
+
+    class Meta:
+        model = ClassificationABC
+        fields = [
+            'id', 'produit', 'produit_nom', 'produit_sku', 'classe',
+            'valeur_cumulee_ht', 'part_valeur_pct', 'rang', 'fenetre_mois',
+            'calcule_le',
+        ]
+        read_only_fields = fields
