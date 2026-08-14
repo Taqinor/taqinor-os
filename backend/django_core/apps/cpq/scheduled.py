@@ -130,3 +130,34 @@ def relancer_approbations_en_attente():
         'cpq.relancer_approbations_en_attente: %s relance(s) envoyée(s)',
         relances)
     return relances
+
+
+# NTCPQ34 — inactivité au-delà de laquelle une session configurateur sans
+# devis lié est purgeable (jours). Une session ayant abouti à un devis (même
+# brouillon) n'est JAMAIS purgée, quel que soit son âge.
+PURGE_SESSION_INACTIVITE_JOURS = 30
+
+
+@shared_task(name='cpq.purger_sessions_configurateur_abandonnees')
+def purger_sessions_configurateur_abandonnees():
+    """NTCPQ34 — supprime les ``SessionConfigurateur``/``ReponseConfigurateur``
+    (NTCPQ9) inactives depuis plus de
+    ``PURGE_SESSION_INACTIVITE_JOURS`` jours SANS devis généré (NTCPQ10).
+
+    Ne touche JAMAIS une session ayant abouti à un devis (``devis_id`` non
+    nul), même brouillon — purge additive-safe : aucune donnée métier
+    engagée n'est jamais perdue. Renvoie le nombre de sessions supprimées."""
+    from django.utils import timezone
+    from .models import SessionConfigurateur
+
+    seuil = timezone.now() - timedelta(days=PURGE_SESSION_INACTIVITE_JOURS)
+    candidates = SessionConfigurateur.objects.filter(
+        devis__isnull=True, updated_at__lt=seuil)
+    count = candidates.count()
+    if count:
+        candidates.delete()
+
+    logger.info(
+        'cpq.purger_sessions_configurateur_abandonnees: %s session(s) '
+        'purgée(s)', count)
+    return count

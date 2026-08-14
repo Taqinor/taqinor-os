@@ -808,6 +808,13 @@ app.conf.beat_schedule = {
         'task': 'cpq.relancer_approbations_en_attente',
         'schedule': crontab(hour=7, minute=20),
     },
+    # NTCPQ34 — purge les SessionConfigurateur inactives >30j sans devis lié
+    # — apps/cpq/scheduled.py. Additive-safe (aucune session ayant abouti à
+    # un devis, même brouillon, n'est jamais touchée).
+    'cpq-purger-sessions-configurateur-abandonnees': {
+        'task': 'cpq.purger_sessions_configurateur_abandonnees',
+        'schedule': crontab(hour=3, minute=50),
+    },
 }
 
 # YHARD6 — compteurs Celery succès/échec (process-local, best-effort) pour
