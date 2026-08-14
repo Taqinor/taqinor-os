@@ -1194,3 +1194,18 @@ def nb_produits_par_entite(company, entite_ids):
               .values('entite_id')
               .annotate(nb=Count('id')))
     return {ligne['entite_id']: ligne['nb'] for ligne in lignes}
+
+
+# -- Groupe NTWMS -- couche ENTREPOT (casiers, strategies de picking, tarifs) --
+# Definis dans `selectors_wms.py` ; re-exportes ici pour que les appelants
+# continuent d'ecrire `from apps.stock.selectors import ...`.
+from .selectors_wms import (  # noqa: E402,F401
+    classe_abc_produit,
+    classes_abc_produits,
+    comparer_tarifs_transporteurs,
+    localisation_casiers,
+    planning_quais,
+    resoudre_allocation_picking,
+    resoudre_code_scanne,
+    strategie_picking_produit,
+)

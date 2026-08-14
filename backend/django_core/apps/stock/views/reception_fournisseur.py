@@ -62,7 +62,12 @@ class ReceptionFournisseurViewSet(CompanyScopedModelViewSet):
     ordering = ['-date_creation']
 
     def get_permissions(self):
-        if self.action in READ_ACTIONS + ['scan_gs1', 'etiquettes']:
+        if self.action in READ_ACTIONS + [
+                'scan_gs1', 'etiquettes', 'suggestions_rangement']:
+            # NTWMS2 — les suggestions de rangement sont une LECTURE (elles
+            # n'écrivent rien) : même garde que les autres lectures. Ce
+            # `get_permissions` prime sur le `permission_classes` de l'@action,
+            # d'où ce cas explicite — sinon repli IsAdminRole.
             return [IsAnyRole()]
         elif self.action in WRITE_ACTIONS + ['confirmer', 'annuler', 'facturer']:
             # « facturer » déclarait IsResponsableOrAdmin sur son décorateur
@@ -185,6 +190,19 @@ class ReceptionFournisseurViewSet(CompanyScopedModelViewSet):
         response['Content-Disposition'] = (
             f'inline; filename="etiquettes-{reception.reference}.pdf"')
         return response
+
+    @action(detail=True, methods=['get'], url_path='suggestions-rangement')
+    def suggestions_rangement(self, request, pk=None):
+        """NTWMS2 — casier SUGGÉRÉ pour chaque ligne, à afficher AVANT la
+        validation de la réception (modifiable par le magasinier).
+
+        Réutilise la règle de rangement existante
+        (`installations.selectors.suggerer_bin_putaway`, FG320/ZSTK9) : règle
+        active → casier déjà affecté au produit → premier casier libre par
+        ordre de parcours. LECTURE SEULE : n'écrit ni casier ni mouvement."""
+        from ..services import suggestions_rangement_reception
+        reception = self.get_object()
+        return Response(suggestions_rangement_reception(reception))
 
     @action(detail=True, methods=['post'], url_path='confirmer')
     def confirmer(self, request, pk=None):

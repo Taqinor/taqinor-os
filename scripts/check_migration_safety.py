@@ -66,16 +66,28 @@ def _iter_migration_files():
 
 
 def _model_declared_names():
-    """Every explicit ``name='...'`` string declared in a models.py (the set of
-    index/constraint names the models currently describe)."""
+    """Every explicit ``name='...'`` string declared in a model module (the set
+    of index/constraint names the models currently describe).
+
+    NTWMS — les MODULES DE MODÈLES ÉCLATÉS comptent aussi. Plusieurs apps
+    déclarent leurs modèles dans ``models_<sujet>.py`` réimporté par
+    ``models.py`` (convention du dépôt : ``installations/models_kitting.py``,
+    ``models_bin_location.py``, ``stock/models_wms.py``…). Ne lire que
+    ``models.py`` faisait donc voir « non déclaré » un index PARFAITEMENT
+    déclaré, juste dans le module voisin — un faux positif, jamais une vraie
+    dérive. Ce scan est strictement PLUS exact : un nom compte s'il est
+    déclaré quelque part dans les modèles de l'app.
+    """
     names = set()
     files = [DJANGO_CORE / "core" / "models.py",
              DJANGO_CORE / "authentication" / "models.py"]
     if APPS_DIR.is_dir():
         for app_dir in sorted(APPS_DIR.iterdir()):
-            m = app_dir / "models.py"
-            if m.is_file():
-                files.append(m)
+            if not app_dir.is_dir():
+                continue
+            for m in sorted(app_dir.glob("models*.py")):
+                if m.is_file():
+                    files.append(m)
     for f in files:
         if not f.is_file():
             continue

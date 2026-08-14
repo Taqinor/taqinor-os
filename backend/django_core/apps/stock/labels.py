@@ -572,3 +572,31 @@ def render_labels_html(items, symbology='qr'):
         f'<div class="sheet">{"".join(cards)}</div>'
         '</body></html>'
     )
+
+
+# ---------------------------------------------------------------------------
+# NTWMS6 -- Etiquette SSCC d'une unite logistique (colis / palette).
+#
+# Le SSCC est encode en GS1-128 avec l'identifiant d'application (00) devant :
+# c'est la forme scannable normalisee sur une etiquette d'expedition. La
+# planche reutilise le moteur d'etiquettes N20 (aucun moteur parallele).
+# ---------------------------------------------------------------------------
+
+def sscc_token(sscc) -> str:
+    """Contenu encode par le code-barres d'une etiquette SSCC : `(00)<sscc>`."""
+    return f'(00){sscc}'
+
+
+def render_etiquettes_sscc_html(unites):
+    """Planche d'etiquettes SSCC.
+
+    `unites` = liste de dicts {sscc, titre, sous_titre}. Rendue en CODE128
+    (standard des etiquettes d'expedition), via le meme moteur que les autres
+    etiquettes du module.
+    """
+    items = [{
+        'token': sscc_token(u.get('sscc')),
+        'titre': u.get('titre') or u.get('sscc') or '',
+        'sous_titre': u.get('sous_titre') or '',
+    } for u in unites]
+    return render_labels_html(items, symbology='code128')
