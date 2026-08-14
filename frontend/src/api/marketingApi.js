@@ -298,6 +298,10 @@ const marketingApi = {
     api.get('/marketing/campagnes/export/', { params, responseType: 'blob' }),
   exportEnvoisCampagneCsv: (id) =>
     api.get(`/marketing/campagnes/${id}/envois/export/`, { responseType: 'blob' }),
+
+  // ── NTMKT40 — Export XLSX des membres résolus d'un segment (audit) ──
+  exportMembresSegmentXlsx: (id) =>
+    api.get(`/marketing/segments-marketing/${id}/export/`, { responseType: 'blob' }),
 }
 
 export default marketingApi

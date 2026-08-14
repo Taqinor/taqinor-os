@@ -399,3 +399,26 @@ def export_envois_campagne_csv_view(request, pk=None):
     resp['Content-Disposition'] = (
         f'attachment; filename="envois_campagne_{pk}.csv"')
     return resp
+
+
+# ── NTMKT40 — Export XLSX des segments et de leurs membres ─────────────────
+
+@extend_schema(responses={200: OpenApiTypes.BINARY})
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def export_membres_segment_xlsx_view(request, pk=None):
+    """NTMKT40 — export XLSX des membres RÉSOLUS d'un segment marketing (au
+    moment de l'export, audit RGPD/CNDP)."""
+    from .models import SegmentMarketing
+
+    segment = get_object_or_404(
+        SegmentMarketing, pk=pk, company=request.user.company)
+    contenu = marketing_services.export_membres_segment_xlsx(segment)
+    resp = HttpResponse(
+        contenu,
+        content_type=(
+            'application/vnd.openxmlformats-officedocument'
+            '.spreadsheetml.sheet'))
+    resp['Content-Disposition'] = (
+        f'attachment; filename="segment_{pk}_membres.xlsx"')
+    return resp

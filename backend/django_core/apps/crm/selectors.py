@@ -2672,6 +2672,21 @@ def lead_devis_ids_by_id(company, lead_id):
     return [str(d.id) for d in lead.devis.all()]
 
 
+def leads_export_rows(company, lead_ids):
+    """NTMKT40 — lignes d'export (nom/prenom/email/telephone/ville) des leads
+    d'un segment marketing, par ids OPAQUES. Lecture seule, scopé société (un
+    id hors société est ignoré) — snapshot d'audit RGPD/CNDP, aucune donnée
+    interne (score/notes)."""
+    from .models import Lead
+
+    if not lead_ids:
+        return []
+    rows = Lead.objects.filter(
+        company=company, id__in=list(lead_ids),
+    ).values('id', 'nom', 'prenom', 'email', 'telephone', 'ville')
+    return list(rows)
+
+
 def dernier_contact_lead(company, lead_id):
     """NTMKT34 — date/heure du dernier point de contact (``PointContact``,
     FG204) d'un lead, ou ``None``. Lecture seule, par id OPAQUE pour un

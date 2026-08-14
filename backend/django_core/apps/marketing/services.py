@@ -1130,6 +1130,42 @@ def export_envois_campagne_csv(campagne):
     return ('﻿' + buf.getvalue()).encode('utf-8')
 
 
+def export_membres_segment_xlsx(segment):
+    """NTMKT40 — export XLSX SNAPSHOT (horodaté) des membres résolus d'un
+    segment marketing AU MOMENT DE L'EXPORT (jamais une vue live) — utile
+    pour justifier une base d'envoi lors d'un contrôle RGPD/CNDP.
+
+    Réutilise ``apps.compta.services.evaluer_segment`` — LA MÊME fonction que
+    ``previsualiser_segment`` (XMKT6) — pour que le nombre de lignes exportées
+    corresponde TOUJOURS exactement au compte affiché à l'écran."""
+    import io
+
+    from django.utils import timezone
+    from openpyxl import Workbook
+
+    from apps.compta.services import evaluer_segment
+    from apps.crm.selectors import leads_export_rows
+
+    lead_ids = evaluer_segment(segment)
+    rows = leads_export_rows(segment.company, lead_ids)
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = 'Membres du segment'
+    ws.append(['Segment', segment.nom])
+    ws.append(['Snapshot le', timezone.now().isoformat()])
+    ws.append([])
+    ws.append(['Nom', 'Prénom', 'Email', 'Téléphone', 'Ville'])
+    for r in rows:
+        ws.append([
+            r['nom'], r['prenom'] or '', r['email'] or '',
+            r['telephone'] or '', r['ville'] or '',
+        ])
+    buf = io.BytesIO()
+    wb.save(buf)
+    return buf.getvalue()
+
+
 def attribution_comparaison(company, devis_id):
     """NTMKT20 — comparaison des 4 modèles d'attribution pour UN devis signé
     (aide à la décision, jamais un recalcul persistant). ``None`` si le devis
