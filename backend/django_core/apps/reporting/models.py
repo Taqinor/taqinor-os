@@ -204,6 +204,15 @@ class KpiAlerte(models.Model):
         DSO = 'dso', 'DSO (délai moyen de recouvrement, jours)'
         ENCOURS_ECHU_TOTAL = 'encours_echu_total', 'Encours client échu total (MAD)'
         VALEUR_STOCK_TOTALE = 'valeur_stock_totale', 'Valeur de stock totale (MAD)'
+        # NTLOG51 (volet douane) — Σ jours entre l'entrée en DUM_DEPOSEE et
+        # l'entrée en LEVE des ``douane.DossierExport`` CLÔTURÉS du mois
+        # (``apps.douane.selectors.delai_moyen_dedouanement``, lu depuis la
+        # trace d'audit générique — aucune nouvelle table). Volet transport
+        # (« Coût transport / kg », « Taux de litiges transport ») NON
+        # ajouté ici — hors périmètre de la lane douane (lane concurrente
+        # sur ce même fichier, voir docs/plans/PLAN_SUPPLY.md NTLOG51).
+        DELAI_MOYEN_DEDOUANEMENT = (
+            'delai_moyen_dedouanement', 'Délai moyen de dédouanement (jours)')
 
     class Operateur(models.TextChoices):
         SUP = 'sup', '>'

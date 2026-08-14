@@ -14,6 +14,11 @@ Catalogue fermé (``KpiAlerte.Kpi``) :
   * ``valeur_stock_totale``  — valorisation vente du stock
                                 (même agrégat que ``apps.reporting.reports.
                                 stock_report``).
+  * ``delai_moyen_dedouanement`` (NTLOG51, volet douane) — Σ jours entre
+                                DUM déposée et Levé des DossierExport
+                                clôturés du mois
+                                (``apps.douane.selectors.
+                                delai_moyen_dedouanement``).
 """
 from decimal import Decimal
 
@@ -93,12 +98,22 @@ def _compute_valeur_stock_totale(company):
     return qs.aggregate(t=sum_vente)['t'] or Decimal('0')
 
 
+def _compute_delai_moyen_dedouanement(company):
+    """NTLOG51 (volet douane) — ``apps.douane.selectors.
+    delai_moyen_dedouanement`` (import paresseux — ``reporting`` reste un
+    satellite, aucun import d'app métier au niveau module)."""
+    from apps.douane.selectors import delai_moyen_dedouanement
+    return delai_moyen_dedouanement(company)
+
+
 _KPI_COMPUTERS = {
     KpiAlerte.Kpi.DSO: lambda company, user: _compute_dso(company),
     KpiAlerte.Kpi.ENCOURS_ECHU_TOTAL: lambda company, user:
         _compute_encours_echu_total(company, user),
     KpiAlerte.Kpi.VALEUR_STOCK_TOTALE: lambda company, user:
         _compute_valeur_stock_totale(company),
+    KpiAlerte.Kpi.DELAI_MOYEN_DEDOUANEMENT: lambda company, user:
+        _compute_delai_moyen_dedouanement(company),
 }
 
 
