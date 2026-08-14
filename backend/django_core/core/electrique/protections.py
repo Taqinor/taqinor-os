@@ -72,11 +72,19 @@ SENSIBILITE_DDR_MA = 300
 
 @dataclass(frozen=True)
 class ResultatProtections:
-    """Les organes retenus + ce que la règle n'a pas pu satisfaire."""
+    """Les organes retenus + ce que la règle n'a pas pu satisfaire.
+
+    ``justifications`` porte les règles qui NE se sont PAS déclenchées (« pas de
+    fusible : 2 chaînes en parallèle »). Ce n'est ni une alerte ni un bloquant —
+    c'est la preuve que la règle a été examinée. Elle appartient à la note de
+    calcul, pas au bandeau d'alertes de l'écran, qui doit rester le signal d'un
+    vrai problème.
+    """
 
     protections: Tuple[Protection, ...] = ()
     bloquants: Tuple[str, ...] = ()
     alertes: Tuple[str, ...] = ()
+    justifications: Tuple[str, ...] = ()
     #: Calibre du disjoncteur AC retenu (A) — repris par le calcul de câble.
     calibre_ac_a: Optional[float] = None
     #: Courant d'emploi AC (A) — Ib de la vérification Ib ≤ In ≤ Iz.
@@ -155,6 +163,7 @@ def concevoir_protections(entree, resultat_chaines=None, evaluation=None):
     protections = []
     alertes = []
     bloquants = []
+    justifications = []
 
     nb_chaines = resultat_chaines.nb_chaines if resultat_chaines else 0
     paralleles = _chaines_paralleles_max(resultat_chaines)
@@ -186,7 +195,7 @@ def concevoir_protections(entree, resultat_chaines=None, evaluation=None):
                        fr_a(FACTEUR_FUSIBLE_MAX * entree.module.isc_a))),
             ))
     elif nb_chaines:
-        alertes.append(
+        justifications.append(
             "fusibles de chaîne NON exigés : %d chaîne(s) en parallèle au "
             "maximum, le seuil est de %d (IEC 62548 §7.3.3)"
             % (paralleles, SEUIL_CHAINES_PARALLELES_FUSIBLE))
@@ -206,7 +215,7 @@ def concevoir_protections(entree, resultat_chaines=None, evaluation=None):
             regle_source="UTE C 15-712-1 — %s" % raison,
         ))
     elif nb_chaines:
-        alertes.append(
+        justifications.append(
             "parafoudre DC non exigé : liaison DC de %s m sous le seuil de %s m "
             "et site hors zone kéraunique (UTE C 15-712-1)"
             % (fr(dc_m, 1), fr(LONGUEUR_DC_SANS_PARAFOUDRE_M, 0)))
@@ -333,6 +342,7 @@ def concevoir_protections(entree, resultat_chaines=None, evaluation=None):
         alertes=tuple(alertes),
         calibre_ac_a=calibre_ac,
         courant_ac_ib_a=ib_ac,
+        justifications=tuple(justifications),
         calibre_fusible_a=calibre_fusible,
         fusibles_exiges=fusibles_exiges,
     )

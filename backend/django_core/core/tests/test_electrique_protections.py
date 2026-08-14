@@ -67,7 +67,11 @@ class FusibleDeChaineAuSeuil(unittest.TestCase):
         resultat = _protections(_entree(nb_modules=24, longueur=12, n_mppt=1))
         self.assertIsNone(_repere(resultat, "F1"))
         self.assertFalse(resultat.fusibles_exiges)
-        self.assertTrue(any("NON exigés" in a for a in resultat.alertes))
+        # La règle examinée sans se déclencher est une JUSTIFICATION (elle va
+        # dans la note de calcul), pas une alerte de l'écran.
+        self.assertTrue(any("NON exigés" in j
+                            for j in resultat.justifications))
+        self.assertFalse(any("NON exigés" in a for a in resultat.alertes))
 
     def test_trois_chaines_en_parallele_prennent_un_fusible(self):
         resultat = _protections(_entree(nb_modules=18, longueur=6, n_mppt=1))
@@ -109,8 +113,8 @@ class ParafoudreDcAuSeuil(unittest.TestCase):
     def test_neuf_metres_ne_declenchent_pas_le_parafoudre(self):
         resultat = _protections(_entree(dc_m=9.0))
         self.assertIsNone(_repere(resultat, "PDC1"))
-        self.assertTrue(any("parafoudre DC non exigé" in a
-                            for a in resultat.alertes))
+        self.assertTrue(any("parafoudre DC non exigé" in j
+                            for j in resultat.justifications))
 
     def test_onze_metres_declenchent_le_parafoudre(self):
         resultat = _protections(_entree(dc_m=11.0))
