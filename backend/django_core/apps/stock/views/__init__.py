@@ -52,6 +52,8 @@ from .entrepot import (
     entrepot_cockpit_view, simuler_capacite_view, zones_surcapacite_view,
     tache_retour_view,
 )
+# NTWMS34 - plans d'echantillonnage a reception (controle qualite bloquant).
+from .qualite_reception import PlanEchantillonnageViewSet
 
 __all__ = [
     'ProduitViewSet',
@@ -106,4 +108,5 @@ __all__ = [
     'simuler_capacite_view',
     'zones_surcapacite_view',
     'tache_retour_view',
+    'PlanEchantillonnageViewSet',
 ]

@@ -24,7 +24,7 @@ from .views import (
     reslotting_suggestions_view, casiers_etiquettes_pdf_view,
     scanner_resoudre_view, scanner_mouvement_view,
     entrepot_cockpit_view, simuler_capacite_view, zones_surcapacite_view,
-    tache_retour_view,
+    tache_retour_view, PlanEchantillonnageViewSet,
 )
 
 router = DefaultRouter()
@@ -75,6 +75,8 @@ router.register(r'retours-client', RetourClientViewSet)
 router.register(r'mouvements-rebut', MouvementRebutViewSet)
 router.register(r'plans-chargement', PlanChargementViewSet)
 router.register(r'blocages-qualite', BlocageQualiteViewSet)
+# NTWMS34 - plans d'echantillonnage du controle qualite a reception.
+router.register(r'plans-echantillonnage', PlanEchantillonnageViewSet)
 
 urlpatterns = [
     # NTWMS8 - kiosque de quai (chemin nomme par la tache : /stock/public/...).

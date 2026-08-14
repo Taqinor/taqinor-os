@@ -1051,6 +1051,11 @@ def confirm_reception_fournisseur(reception, user):
     lignes = list(reception.lignes.select_related('ligne_commande', 'produit'))
     if not lignes:
         raise ValueError('La réception ne contient aucune ligne.')
+    # NTWMS34 — un plan d'échantillonnage applicable BLOQUE la confirmation
+    # tant que le résultat du contrôle qualité n'est pas saisi. No-op total
+    # pour une société sans plan (comportement historique inchangé).
+    from .services_qualite_reception import verifier_controle_reception
+    verifier_controle_reception(reception)
 
     today = timezone.now().date()
     bc = reception.bon_commande
@@ -1148,6 +1153,14 @@ def confirm_reception_fournisseur(reception, user):
             company=reception.company, user=user)
     except Exception:  # pragma: no cover - défensif, best-effort
         pass
+    # NTWMS34 — routage post-contrôle : un verdict NON CONFORME met la
+    # marchandise reçue en quarantaine (NTWMS31) au lieu du put-away normal.
+    try:
+        from .services_qualite_reception import router_apres_controle
+        router_apres_controle(reception, user)
+    except Exception:  # pragma: no cover - défensif, best-effort
+        logger.exception('NTWMS34 routage quarantaine impossible pour %s',
+                         reception.reference)
     return reception
 
 

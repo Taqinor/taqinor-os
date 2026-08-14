@@ -2082,6 +2082,12 @@ from .models_wms import (  # noqa: E402,F401
     VaguePicking,
 )
 
+# ── NTWMS34 — contrôle qualité à réception (plan d'échantillonnage). ───────
+from .models_qualite_reception import (  # noqa: E402,F401
+    ControleReception,
+    PlanEchantillonnage,
+)
+
 
 # ── ODX19 — MODULE ACHATS (déplacé) ────────────────────────────────────────
 # PrixFournisseur, BonCommandeFournisseur, LigneBonCommandeFournisseur,
