@@ -152,6 +152,8 @@ _APP_URLS = [
     path('uxviews/', include('apps.uxviews.urls')),
     # NTUX7 — Corbeille transverse 30 jours (écran /parametres/corbeille).
     path('trash/', include('apps.trash.urls')),
+    # NTMOB1 — Synchro hors-ligne multi-module (rejeu idempotent d'un lot).
+    path('offlinesync/', include('apps.offlinesync.urls')),
     # Groupe NTMAR — Facturation électronique DGI (gated, EINVOICE_ENABLED).
     path('einvoice/', include('apps.einvoice.urls')),
     # Groupe NTMAR — Calendrier fiscal marocain, attestations, UBO, veille.

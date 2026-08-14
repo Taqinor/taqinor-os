@@ -267,6 +267,11 @@ INSTALLED_APPS = [
     # tout le repo, alimentée par l'événement `core.events.record_soft_deleted`
     # (aucune app émettrice n'importe la corbeille). Additive, company-scopée.
     'apps.trash',
+    # NTMOB1 — File d'attente hors-ligne MULTI-MODULE : une table
+    # `OfflineOperation` + un point de synchro unique qui rejoue chaque
+    # opération vers le `services.py` de l'app visée (idempotence par clé
+    # client). Additive, company-scopée.
+    'apps.offlinesync',
     # Groupe NTMAR — Facturation électronique DGI (schéma XML derrière flag,
     # dry-run/réel), scaffold de signature électronique et file d'attente de
     # transmission Simpl inerte (gated, voir EINVOICE_ENABLED).

@@ -6,7 +6,15 @@
 //   * vide automatiquement l'outbox au RETOUR du réseau (et au montage si déjà
 //     en ligne avec une file non vide) ;
 //   * expose `flush()` pour un déclenchement manuel (bouton « Synchroniser »).
+//
+// NTMOB1 — le hook agrège aussi les files PAR MODULE (crm, ventes, stock, sav)
+// du moteur généralisé : le badge d'en-tête reste UNIQUE et son compteur
+// comptabilise TOUT ce qui attend, quel que soit l'écran d'origine (décision
+// VX105 : jamais un 2ᵉ badge, jamais un 2ᵉ compteur).
 import { useCallback, useEffect, useState } from 'react'
+import {
+  discardModuleOp, flushModuleOutboxes, onOfflineOutboxChange, pendingModuleOps,
+} from '../../../lib/offlineOutbox'
 import { fieldOutbox, binaryOutbox } from './fieldOutbox'
 
 export function useFieldOutbox() {
@@ -25,9 +33,12 @@ export function useFieldOutbox() {
       const fail = all.filter((op) => !!op.serverError)
       const bin = await binaryOutbox.pending()
       const binFail = bin.filter((op) => !!op.serverError)
-      setPending(all.length - fail.length)
+      // NTMOB1 — files des autres modules : MÊME compteur, MÊME badge.
+      const mods = await pendingModuleOps().catch(() => [])
+      const modFail = mods.filter((op) => !!op.serverError)
+      setPending((all.length - fail.length) + (mods.length - modFail.length))
       setPendingPhotos(bin.length - binFail.length)
-      setFailed([...fail, ...binFail])
+      setFailed([...fail, ...binFail, ...modFail])
     } catch { /* défensif */ }
   }, [])
 
@@ -37,8 +48,13 @@ export function useFieldOutbox() {
       const res = await fieldOutbox.flush()
       // EZ8 — les photos partent dans le même geste (« Synchroniser » vide TOUT).
       const bin = await binaryOutbox.flush().catch(() => null)
+      // NTMOB1 — et les files des autres modules avec (un seul geste, une
+      // seule barre de progression : l'utilisateur ne synchronise pas « par
+      // écran », il synchronise son terminal).
+      const mods = await flushModuleOutboxes().catch(() => null)
       await refreshCount()
-      return bin ? { ...res, photos: bin } : res
+      const sortie = bin ? { ...res, photos: bin } : res
+      return mods ? { ...sortie, modules: mods } : sortie
     } finally {
       setFlushing(false)
     }
@@ -51,6 +67,8 @@ export function useFieldOutbox() {
     // EZ8 — l'abandon explicite vaut aussi pour une photo refusée par le
     // serveur (l'id n'existe que dans une des deux files).
     await binaryOutbox.discard(clientOpId)
+    // NTMOB1 — …et pour une op de module (l'id ne vit que dans UNE file).
+    await discardModuleOp(clientOpId).catch(() => undefined)
     await refreshCount()
   }, [refreshCount])
 
@@ -65,6 +83,9 @@ export function useFieldOutbox() {
     const onSwMessage = (e) => {
       if (e?.data?.type === 'FIELD_OUTBOX_FLUSH') flush()
     }
+    // NTMOB1 — une mise en file faite depuis N'IMPORTE quel écran rafraîchit le
+    // badge d'en-tête immédiatement (aucun sondage périodique).
+    const desabonner = onOfflineOutboxChange(() => { refreshCount() })
     if (typeof window !== 'undefined') {
       window.addEventListener('online', goOnline)
       window.addEventListener('offline', goOffline)
@@ -75,6 +96,7 @@ export function useFieldOutbox() {
       if (navigator.onLine !== false) flush()
     }
     return () => {
+      desabonner()
       if (typeof window !== 'undefined') {
         window.removeEventListener('online', goOnline)
         window.removeEventListener('offline', goOffline)
