@@ -435,3 +435,60 @@ def sceller_unite_logistique(*, unite, user=None):
     unite.scelle_par = user
     unite.save(update_fields=['statut', 'date_scellage', 'scelle_par'])
     return unite
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# NTWMS8 — Check-in chauffeur au kiosque de quai (endpoint PUBLIC)
+# ═══════════════════════════════════════════════════════════════════════════
+
+def enregistrer_arrivee_chauffeur(*, societe_slug, code):
+    """Passe un rendez-vous à ARRIVÉ depuis le kiosque public.
+
+    Renvoie ``{quai, type_quai, heure_rendez_vous, horodatage_arrivee,
+    message}`` — STRICTEMENT rien d'autre : ni client, ni transporteur, ni
+    contenu de livraison, ni identifiant interne. Renvoie ``None`` (→ 404 côté
+    vue) si la société ou le code est inconnu, sans distinguer les deux cas.
+
+    IDEMPOTENT : un chauffeur qui re-valide voit la même réponse, son heure
+    d'arrivée d'ORIGINE n'est jamais écrasée. Un rendez-vous ANNULÉ, TERMINÉ ou
+    NON PRÉSENTÉ ne peut pas être enregistré.
+    """
+    from django.utils import timezone
+    from authentication.models import Company
+    from .models_wms import RendezVousTransporteur
+
+    societe_slug = (str(societe_slug or '')).strip()
+    code = (str(code or '')).strip().upper()
+    if not societe_slug or not code:
+        return None
+
+    company = Company.objects.filter(slug=societe_slug).first()
+    if company is None:
+        return None
+
+    rdv = (RendezVousTransporteur.objects
+           .select_related('quai')
+           .filter(company=company, code_checkin=code)
+           .first())
+    if rdv is None:
+        return None
+    if rdv.statut in (RendezVousTransporteur.Statut.ANNULE,
+                      RendezVousTransporteur.Statut.TERMINE,
+                      RendezVousTransporteur.Statut.NO_SHOW):
+        return None
+
+    if rdv.statut == RendezVousTransporteur.Statut.PLANIFIE:
+        rdv.statut = RendezVousTransporteur.Statut.ARRIVE
+        # Horodatage SERVEUR : jamais une heure fournie par le kiosque.
+        rdv.date_arrivee = timezone.now()
+        # Le créneau ne bouge pas : la garde de chevauchement de `save()`
+        # s'exclut elle-même par pk et ne peut donc pas refuser ce passage.
+        rdv.save(update_fields=['statut', 'date_arrivee'])
+
+    return {
+        'quai': rdv.quai.nom if rdv.quai_id else '',
+        'type_quai': rdv.quai.type_quai if rdv.quai_id else '',
+        'heure_rendez_vous': rdv.date_heure_debut,
+        'horodatage_arrivee': rdv.date_arrivee,
+        'message': 'Arrivée enregistrée. Présentez-vous au quai indiqué.',
+    }

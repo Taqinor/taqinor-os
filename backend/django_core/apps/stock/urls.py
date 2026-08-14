@@ -1,5 +1,6 @@
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
+from .public_views import quai_checkin_view
 from .views import (
     ProduitViewSet, CategorieViewSet, FournisseurViewSet,
     MouvementStockViewSet, MarqueViewSet, BonCommandeFournisseurViewSet,
@@ -60,6 +61,9 @@ router.register(r'quais', QuaiViewSet)
 router.register(r'rendez-vous-transporteur', RendezVousTransporteurViewSet)
 
 urlpatterns = [
+    # NTWMS8 - kiosque de quai (chemin nomme par la tache : /stock/public/...).
+    path('public/quai-checkin/', quai_checkin_view,
+         name='stock-quai-checkin'),
     # NTWMS5 - poste scanner mobile (resolution universelle + mouvement scanne).
     path('scanner/resoudre/', scanner_resoudre_view,
          name='stock-scanner-resoudre'),

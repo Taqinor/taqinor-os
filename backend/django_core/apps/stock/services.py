@@ -6367,6 +6367,7 @@ from .services_wms import (  # noqa: E402,F401
     ajouter_ligne_unite_logistique,
     creer_unite_logistique,
     creer_vague_depuis_besoins,
+    enregistrer_arrivee_chauffeur,
     enregistrer_mouvement_scanne,
     lancer_vague,
     prelever_ligne_picking,

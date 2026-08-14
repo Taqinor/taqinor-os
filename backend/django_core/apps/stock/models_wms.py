@@ -20,6 +20,8 @@ Règles respectées : multi-tenant via ``core.models.TenantModel`` ; numérotati
 via ``core.numbering`` (jamais ``count()+1``) ; cross-app en STRING-FK
 uniquement.
 """
+import secrets
+
 from django.conf import settings
 from django.db import models
 
@@ -312,6 +314,11 @@ class RendezVousTransporteur(TenantModel):
     immatriculation = models.CharField(max_length=30, blank=True, default='')
     note = models.TextField(blank=True, null=True)
     date_arrivee = models.DateTimeField(null=True, blank=True)
+    # NTWMS8 — code remis au chauffeur pour s'enregistrer au kiosque de quai
+    # SANS compte ERP. Généré côté serveur, imprévisible (secrets), unique par
+    # société. Il ne donne accès à RIEN d'autre que la confirmation d'arrivée
+    # et le numéro de quai assigné.
+    code_checkin = models.CharField(max_length=12, blank=True, default='')
 
     class Meta:
         verbose_name = 'Rendez-vous transporteur'
@@ -321,6 +328,13 @@ class RendezVousTransporteur(TenantModel):
             models.CheckConstraint(
                 check=models.Q(date_heure_fin__gt=models.F('date_heure_debut')),
                 name='stock_rdvtransporteur_fin_apres_debut'),
+            # NTWMS8 — le code de check-in est unique PAR SOCIÉTÉ (condition
+            # sur code non vide : les rendez-vous historiques sans code ne
+            # s'entre-bloquent pas).
+            models.UniqueConstraint(
+                fields=['company', 'code_checkin'],
+                condition=~models.Q(code_checkin=''),
+                name='stock_rdvtransporteur_code_checkin_uniq'),
         ]
         indexes = [
             models.Index(fields=['company', 'quai', 'date_heure_debut'],
@@ -343,7 +357,20 @@ class RendezVousTransporteur(TenantModel):
             qs = qs.exclude(pk=self.pk)
         return qs
 
+    @staticmethod
+    def generer_code_checkin():
+        """Code court IMPRÉVISIBLE remis au chauffeur (NTWMS8).
+
+        Alphabet sans caractères ambigus (ni O/0, ni I/1) : il est lu à voix
+        haute ou tapé sur une tablette de quai. ``secrets`` (jamais ``random``)
+        parce qu'il autorise une écriture depuis un endpoint PUBLIC.
+        """
+        alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
+        return ''.join(secrets.choice(alphabet) for _ in range(8))
+
     def save(self, *args, **kwargs):
+        if not (self.code_checkin or '').strip():
+            self.code_checkin = self.generer_code_checkin()
         if (self.date_heure_debut and self.date_heure_fin
                 and self.date_heure_fin <= self.date_heure_debut):
             raise ValueError(
