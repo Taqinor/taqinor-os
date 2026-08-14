@@ -1039,6 +1039,35 @@ def _date_param(valeur):
 
 
 @extend_schema(responses={
+    200: inline_serializer('StockReslottingSuggestions', {
+        'suggestions': serializers.ListField(child=serializers.DictField()),
+    }),
+})
+@api_view(['GET'])
+@permission_classes([IsAnyRole])
+def reslotting_suggestions_view(request):
+    """NTWMS30 — produits à forte rotation rangés loin de l'expédition.
+
+    LECTURE SEULE, aucune action automatique : le magasinier valide chaque
+    déplacement par le transfert existant. ``?debut=&fin=`` bornent la fenêtre
+    de rotation (12 derniers mois par défaut).
+    """
+    import datetime
+
+    from django.utils import timezone
+
+    from ..selectors import suggerer_reslotting
+
+    fin = _date_param(request.query_params.get('fin')) or timezone.localdate()
+    debut = (_date_param(request.query_params.get('debut'))
+             or fin - datetime.timedelta(days=365))
+    return Response({
+        'suggestions': suggerer_reslotting(
+            request.user.company, depuis=debut, jusqu_a=fin),
+    })
+
+
+@extend_schema(responses={
     200: inline_serializer('StockEntrepotPertes', {
         'debut': serializers.CharField(allow_null=True),
         'fin': serializers.CharField(allow_null=True),

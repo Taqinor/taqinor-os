@@ -21,6 +21,7 @@ from .views import (
     PortailTiersTokenViewSet, DemandeTransfertViewSet, RetourClientViewSet,
     MouvementRebutViewSet, PlanChargementViewSet,
     entrepot_productivite_view, entrepot_pertes_view,
+    reslotting_suggestions_view,
     scanner_resoudre_view, scanner_mouvement_view,
 )
 
@@ -88,6 +89,9 @@ urlpatterns = [
     # NTWMS24 - valeur des pertes par motif (responsable/admin).
     path('entrepot/pertes/', entrepot_pertes_view,
          name='stock-entrepot-pertes'),
+    # NTWMS30 - suggestions de reslotting (lecture seule, aucune action auto).
+    path('reslotting-suggestions/', reslotting_suggestions_view,
+         name='stock-reslotting-suggestions'),
     # NTWMS5 - poste scanner mobile (resolution universelle + mouvement scanne).
     path('scanner/resoudre/', scanner_resoudre_view,
          name='stock-scanner-resoudre'),

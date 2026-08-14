@@ -705,6 +705,85 @@ def productivite_operateur(company, *, user=None, debut=None, fin=None):
                                                       ligne['operateur']))
 
 
+def suggerer_reslotting(company, *, depuis=None, jusqu_a=None,
+                        limite=50):
+    """NTWMS30 — produits de CLASSE A rangés trop loin de l'expédition.
+
+    La « distance à l'expédition » est l'ordre de parcours du casier
+    (``BinLocation.ordre``, FG319 — c'est exactement l'axe que le serpentin
+    NTWMS28 remonte) : plus il est élevé, plus le magasinier marche. Un
+    produit à forte rotation (classe A, NTWMS13) rangé au-delà de la MÉDIANE
+    des casiers occupés est signalé, avec le casier proche le plus
+    intéressant comme cible.
+
+    LECTURE SEULE, aucune action automatique : le magasinier valide (ou non)
+    en passant par le transfert existant. Renvoie
+    ``[{produit_id, produit_nom, classe_abc, bin_actuel_id, bin_actuel_code,
+    ordre_actuel, bin_suggere_id, bin_suggere_code, ordre_suggere,
+    gain_ordre, quantite}]``, du gain le plus fort au plus faible.
+    """
+    from .models import Produit
+
+    if company is None:
+        return []
+    classes = classes_abc_produits(company, depuis=depuis, jusqu_a=jusqu_a)
+    produits_a = [pid for pid, classe in classes.items() if classe == 'A']
+    if not produits_a:
+        return []
+
+    # Casiers de la société, par ordre de parcours croissant (le plus proche
+    # de la sortie d'abord). Le modèle est atteint par l'accesseur de NOTRE
+    # propre string-FK : aucun import de `apps.installations.models`.
+    from .models_wms import LignePicking
+
+    modele_bin = LignePicking._meta.get_field('bin').related_model
+    casiers = list(modele_bin.objects.filter(
+        company=company, archived=False).order_by('ordre', 'code'))
+    if not casiers:
+        return []
+    ordres = sorted(casier.ordre for casier in casiers)
+    # Médiane BASSE : avec un nombre pair de casiers, on retient la borne du
+    # bas — un casier situé au-delà est « loin » sans ambiguïté.
+    mediane = ordres[(len(ordres) - 1) // 2]
+
+    # Casiers déjà occupés par un produit de classe A : on ne propose pas de
+    # déloger une autre référence à forte rotation.
+    occupes_par_a = set()
+    for produit in Produit.objects.filter(company=company, id__in=produits_a):
+        for casier in localisation_casiers(produit):
+            occupes_par_a.add(casier['bin_id'])
+
+    suggestions = []
+    for produit in (Produit.objects
+                    .filter(company=company, id__in=produits_a)
+                    .order_by('nom')):
+        for casier in localisation_casiers(produit):
+            ordre_actuel = casier['ordre'] or 0
+            if ordre_actuel <= mediane:
+                continue  # déjà proche de l'expédition
+            cible = next(
+                (c for c in casiers
+                 if c.ordre < ordre_actuel and c.id not in occupes_par_a
+                 and c.emplacement_id == casier['emplacement_id']), None)
+            if cible is None:
+                continue
+            suggestions.append({
+                'produit_id': produit.id,
+                'produit_nom': produit.nom,
+                'classe_abc': 'A',
+                'bin_actuel_id': casier['bin_id'],
+                'bin_actuel_code': casier['code'],
+                'ordre_actuel': ordre_actuel,
+                'bin_suggere_id': cible.id,
+                'bin_suggere_code': cible.code,
+                'ordre_suggere': cible.ordre,
+                'gain_ordre': ordre_actuel - cible.ordre,
+                'quantite': casier['quantite'],
+            })
+    suggestions.sort(key=lambda s: (-s['gain_ordre'], s['produit_nom']))
+    return suggestions[:limite]
+
+
 def _produit_du_lot(company, numero_lot):
     """Produit portant ce numéro de lot (ou ``None``)."""
     from .models import LotEntrepot
