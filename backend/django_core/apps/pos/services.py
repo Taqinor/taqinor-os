@@ -593,3 +593,187 @@ def verifier_pin(*, company, user_id, raw_pin, caissier_precedent=None,
                 f'{caissier_precedent} → {user.username} (#{user.id}).'),
         )
     return user
+
+
+# ── NTRET5 — Arrhes / acompte sur commande comptoir ─────────────────────────
+
+class ArrhesError(Exception):
+    """Erreur métier sur un encaissement d'arrhes/solde (NTRET5)."""
+
+
+@transaction.atomic
+def encaisser_arrhes(*, vente, montant_arrhes, paiement, user):
+    """Encaisse des arrhes sur une vente comptoir (NTRET5) : article manquant
+    en stock ou sur-mesure. Crée la facture légale + le paiement PARTIEL sur
+    les mêmes rails que ``valider_vente`` (numérotation, timbre fiscal,
+    mouvement de caisse), mais passe la vente en ``EN_ATTENTE_SOLDE`` — la
+    marchandise reste bloquée (``marchandise_remise=False``) tant que le
+    solde n'est pas réglé. Le stock N'EST PAS décrémenté ici (la marchandise
+    ne bouge pas encore) — voir ``encaisser_solde_arrhes``. Le règlement
+    fourni doit correspondre EXACTEMENT au montant des arrhes (pas
+    d'ambiguïté sur un trop/pas assez perçu)."""
+    if vente.statut != VenteComptoir.Statut.BROUILLON:
+        raise ArrhesError(
+            'Cette vente a déjà été validée, mise en arrhes ou annulée.')
+    lignes = list(vente.lignes.all())
+    if not lignes:
+        raise ArrhesError('Aucune ligne dans cette vente.')
+    if vente.client_id is None:
+        raise ArrhesError('Un client est requis pour émettre la facture légale.')
+
+    total_ttc = _q2(vente.total_ttc)
+    montant_arrhes = _q2(montant_arrhes)
+    if montant_arrhes <= 0:
+        raise ArrhesError('Le montant des arrhes doit être positif.')
+    if montant_arrhes >= total_ttc:
+        raise ArrhesError(
+            'Le montant des arrhes doit être strictement inférieur au total '
+            'de la vente (sinon utilisez un encaissement complet).')
+    montant_paiement = _q2((paiement or {}).get('montant'))
+    if montant_paiement != montant_arrhes:
+        raise ArrhesError(
+            'Le règlement doit correspondre exactement au montant des '
+            f'arrhes ({montant_arrhes}).')
+
+    from apps.ventes import services as ventes_services
+
+    taux_tva = vente.taux_tva or Decimal('20')
+    total_ht = _q2(vente.total_ht)
+    montant_tva = _q2(total_ttc - total_ht)
+    facture = ventes_services.creer_facture_classique(
+        company=vente.company, client=vente.client, user=user,
+        taux_tva=taux_tva, montant_ht=total_ht, montant_tva=montant_tva,
+        montant_ttc=total_ttc,
+        libelle=f'Vente comptoir {vente.reference} (arrhes)',
+    )
+
+    mode = (paiement.get('mode') or '').strip().lower() or MODE_ESPECES
+    today = timezone.localdate()
+    ventes_services.enregistrer_paiement(
+        facture=facture, montant=montant_paiement, mode=mode,
+        date_paiement=paiement.get('date_paiement') or today, user=user,
+        reference=paiement.get('reference') or '',
+        note=f'Arrhes sur {vente.reference}',
+    )
+    _poster_encaissement_especes(
+        vente=vente, mode=mode, montant=montant_paiement,
+        facture=facture, motif=f'Arrhes {vente.reference}', user=user)
+
+    vente.facture = facture
+    vente.statut = VenteComptoir.Statut.EN_ATTENTE_SOLDE
+    vente.montant_arrhes = montant_arrhes
+    vente.caissier = vente.caissier or user
+    vente.save(update_fields=[
+        'facture', 'statut', 'montant_arrhes', 'caissier'])
+    return vente
+
+
+def solde_restant_arrhes(vente):
+    """Solde restant à régler avant remise de marchandise (NTRET5). 0 pour
+    une vente qui n'est pas (ou plus) en attente de solde."""
+    if vente.montant_arrhes is None:
+        return Decimal('0')
+    return _q2(vente.total_ttc) - _q2(vente.montant_arrhes)
+
+
+@transaction.atomic
+def encaisser_solde_arrhes(*, vente, paiement, user):
+    """Encaisse le SOLDE restant d'une vente ``EN_ATTENTE_SOLDE`` (NTRET5) —
+    décrémente ENFIN le stock (jamais fait à l'encaissement des arrhes),
+    passe la vente à ``VALIDEE`` et débloque la remise de marchandise. Le
+    règlement doit correspondre exactement au solde restant."""
+    if vente.statut != VenteComptoir.Statut.EN_ATTENTE_SOLDE:
+        raise ArrhesError("Cette vente n'est pas en attente de solde.")
+    solde = solde_restant_arrhes(vente)
+    montant_paiement = _q2((paiement or {}).get('montant'))
+    if montant_paiement != solde:
+        raise ArrhesError(
+            f'Le règlement ({montant_paiement}) doit correspondre exactement '
+            f'au solde restant ({solde}).')
+
+    from apps.ventes import services as ventes_services
+
+    mode = (paiement.get('mode') or '').strip().lower() or MODE_ESPECES
+    today = timezone.localdate()
+    ventes_services.enregistrer_paiement(
+        facture=vente.facture, montant=montant_paiement, mode=mode,
+        date_paiement=paiement.get('date_paiement') or today, user=user,
+        reference=paiement.get('reference') or '',
+        note=f'Solde sur {vente.reference}',
+    )
+    _poster_encaissement_especes(
+        vente=vente, mode=mode, montant=montant_paiement,
+        facture=vente.facture, motif=f'Solde {vente.reference}', user=user)
+
+    from apps.stock import services as stock_services
+    for ligne in vente.lignes.all():
+        produit = ligne.produit
+        produit.refresh_from_db()
+        avant = produit.quantite_stock
+        apres = avant - int(ligne.quantite)
+        stock_services.record_stock_movement(
+            company=vente.company, produit=produit,
+            type_mouvement=stock_services.mouvement_type_sortie(),
+            quantite=ligne.quantite, quantite_avant=avant, quantite_apres=apres,
+            reference=vente.reference,
+            note=f'Vente comptoir {vente.reference} (solde arrhes)',
+            created_by=user,
+        )
+
+    vente.statut = VenteComptoir.Statut.VALIDEE
+    vente.date_validation = timezone.now()
+    vente.marchandise_remise = True
+    vente.save(update_fields=[
+        'statut', 'date_validation', 'marchandise_remise'])
+    return vente
+
+
+@transaction.atomic
+def remettre_marchandise_override(*, vente, user, motif):
+    """Override ADMIN (NTRET5) : débloque la remise de marchandise AVANT que
+    le solde soit réglé — cas exceptionnel (client de confiance, urgence
+    chantier…). Motif OBLIGATOIRE, journalisé via ``apps.audit``. Ne change
+    PAS le statut de la vente (reste ``EN_ATTENTE_SOLDE`` — le solde reste
+    dû) : seule la remise physique est débloquée."""
+    if vente.statut != VenteComptoir.Statut.EN_ATTENTE_SOLDE:
+        raise ArrhesError("Cette vente n'est pas en attente de solde.")
+    if vente.marchandise_remise:
+        raise ArrhesError('La marchandise a déjà été remise.')
+    if not (motif or '').strip():
+        raise ArrhesError('Un motif est requis pour cet override.')
+
+    vente.marchandise_remise = True
+    vente.save(update_fields=['marchandise_remise'])
+
+    from apps.audit import recorder
+    recorder.record(
+        'update', instance=vente, company=vente.company, user=user,
+        detail=(
+            'Override admin — marchandise remise AVANT solde réglé '
+            f'(solde restant {solde_restant_arrhes(vente)}). '
+            f'Motif : {motif}'),
+    )
+    return vente
+
+
+def _poster_encaissement_especes(*, vente, mode, montant, facture, motif, user):
+    """Mouvement de caisse + timbre fiscal sur un règlement espèces
+    (factorisé entre ``encaisser_arrhes``/``encaisser_solde_arrhes`` et le
+    même bloc dans ``valider_vente``)."""
+    if mode != MODE_ESPECES or montant <= 0:
+        return
+    today = timezone.localdate()
+    if vente.session_caisse_id:
+        from apps.compta.models import MouvementCaisse
+        from apps.compta.services import enregistrer_mouvement_caisse
+        enregistrer_mouvement_caisse(
+            vente.session_caisse.caisse_comptable,
+            sens=MouvementCaisse.Sens.ENTREE, montant=montant,
+            date_mouvement=today, motif=motif, user=user)
+    from apps.compta.services import enregistrer_timbre_fiscal
+    enregistrer_timbre_fiscal(
+        vente.company, date_encaissement=today, base=montant,
+        mode_reglement=MODE_ESPECES, facture_ref=facture.reference,
+        tiers_type='client', tiers_id=vente.client_id,
+        tiers_nom=str(vente.client) if vente.client_id else '',
+        libelle=motif, user=user)

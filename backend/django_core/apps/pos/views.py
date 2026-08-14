@@ -130,6 +130,57 @@ class VenteComptoirViewSet(viewsets.ModelViewSet):
             raise ValidationError(str(exc))
         return Response(VenteComptoirSerializer(vente).data)
 
+    # ── NTRET5 — Arrhes / acompte sur commande comptoir ─────────────────────
+
+    @action(detail=True, methods=['post'], url_path='arrhes')
+    def arrhes(self, request, pk=None):
+        vente = self.get_object()
+        try:
+            montant_arrhes = Decimal(str(request.data.get('montant_arrhes')))
+        except (InvalidOperation, TypeError):
+            raise ValidationError({'montant_arrhes': 'Montant invalide.'})
+        try:
+            services.encaisser_arrhes(
+                vente=vente, montant_arrhes=montant_arrhes,
+                paiement=request.data.get('paiement') or {}, user=request.user)
+        except services.ArrhesError as exc:
+            raise ValidationError(str(exc))
+        return Response(VenteComptoirSerializer(vente).data)
+
+    @action(detail=True, methods=['post'], url_path='solde-arrhes')
+    def solde_arrhes(self, request, pk=None):
+        vente = self.get_object()
+        try:
+            services.encaisser_solde_arrhes(
+                vente=vente, paiement=request.data.get('paiement') or {},
+                user=request.user)
+        except services.ArrhesError as exc:
+            raise ValidationError(str(exc))
+        return Response(VenteComptoirSerializer(vente).data)
+
+    @action(detail=True, methods=['post'], url_path='remettre-marchandise')
+    def remettre_marchandise(self, request, pk=None):
+        vente = self.get_object()
+        try:
+            services.remettre_marchandise_override(
+                vente=vente, user=request.user,
+                motif=request.data.get('motif', ''))
+        except services.ArrhesError as exc:
+            raise ValidationError(str(exc))
+        return Response(VenteComptoirSerializer(vente).data)
+
+    @action(detail=True, methods=['get'], url_path='ticket-arrhes-pdf')
+    def ticket_arrhes_pdf(self, request, pk=None):
+        vente = self.get_object()
+        if vente.montant_arrhes is None:
+            raise ValidationError("Cette vente n'a pas d'arrhes encaissées.")
+        pdf_bytes = receipt.receipt_arrhes_pdf(
+            vente, solde_restant=services.solde_restant_arrhes(vente))
+        response = HttpResponse(pdf_bytes, content_type='application/pdf')
+        response['Content-Disposition'] = (
+            f'inline; filename="arrhes-{vente.reference}.pdf"')
+        return response
+
     @action(detail=True, methods=['get'], url_path='ticket-pdf')
     def ticket_pdf(self, request, pk=None):
         vente = self.get_object()

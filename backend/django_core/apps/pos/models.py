@@ -45,6 +45,12 @@ class VenteComptoir(models.Model):
         BROUILLON = 'brouillon', 'Brouillon'
         VALIDEE = 'validee', 'Validée'
         ANNULEE = 'annulee', 'Annulée'
+        # NTRET5 — arrhes encaissées, marchandise pas encore remise (article
+        # en rupture/sur-mesure). La facture légale + le paiement partiel
+        # existent déjà (mêmes rails que VALIDEE) ; seule la remise physique
+        # est bloquée tant que le solde n'est pas réglé (sauf override admin
+        # journalisé — cf. ``marchandise_remise``, indépendant du statut).
+        EN_ATTENTE_SOLDE = 'en_attente_solde', 'En attente de solde (arrhes)'
 
     company = models.ForeignKey(
         'authentication.Company',
@@ -63,7 +69,7 @@ class VenteComptoir(models.Model):
         related_name='ventes_comptoir',
     )
     statut = models.CharField(
-        max_length=15, choices=Statut.choices, default=Statut.BROUILLON)
+        max_length=20, choices=Statut.choices, default=Statut.BROUILLON)
     # Session de caisse active au moment de la vente (obligatoire seulement si
     # un règlement espèces est encaissé — cf. services.valider_vente / XPOS4).
     session_caisse = models.ForeignKey(
@@ -110,6 +116,18 @@ class VenteComptoir(models.Model):
     uuid_client = models.CharField(
         max_length=64, null=True, blank=True,
         help_text='UUID client (mode offline, NTRET1) — dédup serveur au rejeu.')
+    # NTRET5 — arrhes/acompte sur commande comptoir (article en rupture ou
+    # sur-mesure). Additif : NULL/False = comportement historique inchangé
+    # (une vente reste brouillon → validée → annulée, jamais en attente).
+    montant_arrhes = models.DecimalField(
+        max_digits=12, decimal_places=2, null=True, blank=True,
+        help_text="Montant des arrhes encaissé (NTRET5). NULL = pas d'arrhes.")
+    marchandise_remise = models.BooleanField(
+        default=False,
+        help_text='NTRET5 — la marchandise a été remise au client (solde '
+                  'réglé, ou override admin journalisé). Indépendant du '
+                  'statut : un override peut la poser à True alors que le '
+                  'statut reste EN_ATTENTE_SOLDE (solde toujours dû).')
 
     class Meta:
         verbose_name = 'Vente comptoir'

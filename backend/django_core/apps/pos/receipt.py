@@ -208,3 +208,73 @@ def rapport_z_pdf(session, data):
     ``core.pdf.render_pdf`` — même plomberie mutualisée que le ticket."""
     html = rapport_z_html(session, data)
     return render_pdf(html=html)
+
+
+# ── NTRET5 — Reçu d'arrhes (distinct du ticket final) ───────────────────────
+
+def receipt_arrhes_html(vente, *, solde_restant=None):
+    """HTML du « Reçu d'arrhes » (NTRET5) : DISTINCT du ticket de caisse
+    final (``receipt_html``) — montre les lignes réservées, le montant des
+    arrhes encaissé, et le solde restant dû avant remise de la marchandise.
+    N'affiche PAS de TVA détaillée par taux (ce n'est pas encore la vente
+    soldée) ni de prix d'achat."""
+    identite = _company_identity(vente.company)
+    lignes_html = []
+    for ligne in vente.lignes.all():
+        lignes_html.append(
+            f'<tr><td>{escape(ligne.designation)}</td>'
+            f'<td class="num">{ligne.quantite}</td>'
+            f'<td class="num">{ligne.total_ttc:.2f}</td></tr>'
+        )
+    total_ttc = vente.total_ttc
+    montant_arrhes = vente.montant_arrhes or Decimal('0')
+    solde = (
+        solde_restant if solde_restant is not None
+        else total_ttc - montant_arrhes)
+
+    return f"""
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  @page {{ size: 80mm auto; margin: 3mm; }}
+  body {{ font-family: monospace; font-size: 10px; width: 74mm; }}
+  h1 {{ font-size: 12px; text-align: center; margin: 2px 0; }}
+  .identite {{ text-align: center; font-size: 9px; margin-bottom: 4px; }}
+  table {{ width: 100%; border-collapse: collapse; }}
+  td {{ padding: 1px 0; }}
+  .num {{ text-align: right; }}
+  .mention {{ margin-top: 6px; font-size: 8px; text-align: center; }}
+  hr {{ border: none; border-top: 1px dashed #000; }}
+</style>
+</head>
+<body>
+  <h1>{escape(identite['nom'])}</h1>
+  <div class="identite">
+    {escape(identite['adresse'])}<br>
+    ICE : {escape(identite['ice'])} — IF : {escape(identite['if_fiscal'])}
+  </div>
+  <hr>
+  <p><strong>Reçu d'arrhes — {escape(vente.reference)}</strong></p>
+  <table>
+    <tr><td>Désignation</td><td class="num">Qté</td><td class="num">Total</td></tr>
+    {''.join(lignes_html)}
+  </table>
+  <hr>
+  <p>Total de la commande : {total_ttc:.2f} MAD</p>
+  <p><strong>Arrhes encaissées : {montant_arrhes:.2f} MAD</strong></p>
+  <p><strong>Solde restant dû : {solde:.2f} MAD</strong></p>
+  <hr>
+  <p class="mention">
+    Marchandise remise UNIQUEMENT après règlement du solde.
+    Ce reçu n'est pas le ticket de caisse final.
+  </p>
+</body>
+</html>
+"""
+
+
+def receipt_arrhes_pdf(vente, *, solde_restant=None):
+    """Génère le PDF du reçu d'arrhes (octets) via ``core.pdf.render_pdf``."""
+    html = receipt_arrhes_html(vente, solde_restant=solde_restant)
+    return render_pdf(html=html)

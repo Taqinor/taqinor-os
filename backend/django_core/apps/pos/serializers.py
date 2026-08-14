@@ -45,8 +45,17 @@ class VenteComptoirSerializer(serializers.ModelSerializer):
             'total_ht', 'total_ttc',
             # NTRET1 — mode offline (dédup serveur sur uuid_client).
             'uuid_client',
+            # NTRET5 — arrhes/acompte comptoir.
+            'montant_arrhes', 'marchandise_remise',
         ]
-        read_only_fields = ['reference', 'statut', 'facture', 'created_by']
+        read_only_fields = [
+            'reference', 'statut', 'facture', 'created_by',
+            # NTRET5 — jamais posés par un PATCH direct : uniquement via les
+            # actions dédiées `arrhes/`, `solde-arrhes/` et
+            # `remettre-marchandise/` (apps.pos.services), qui appliquent le
+            # blocage tant que le solde n'est pas réglé.
+            'montant_arrhes', 'marchandise_remise',
+        ]
 
 
 class SessionCaisseSerializer(serializers.ModelSerializer):
