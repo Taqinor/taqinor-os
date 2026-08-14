@@ -612,7 +612,11 @@ describe('ToituresPage — hydratation depuis le serveur à l’ouverture de l�
     ).toBe('4:1'))
 
     await userEvent.click(screen.getByRole('tab', { name: 'Cotes' }))
-    expect(screen.getByText(/Façade nord/)).toBeInTheDocument()
+    // Le nom de la chaîne s'affiche légitimement dans PLUSIEURS panneaux de
+    // l'onglet (liste des chaînes, fermetures…) — l'unicité de la chaîne
+    // hydratée se prouve par ses contrôles de segment, pas par le libellé.
+    expect(screen.getAllByText(/Façade nord/).length).toBeGreaterThan(0)
+    expect(screen.getAllByLabelText('Longueur du segment S1')).toHaveLength(1)
   })
 
   it('fermer (changer de toiture) puis ROUVRIR ré-hydrate depuis le serveur (rien ne se perd)', async () => {
