@@ -4,8 +4,9 @@ import react from '@vitejs/plugin-react'
 
 // La config Vitest n'embarque ni `vite-plugin-pwa` (fournit
 // `virtual:pwa-register/react`) ni le plugin `roofbuilder-ts-transpile`
-// (alias `@roofbuilder`) de `vite.config.js`. Quand un test tire
-// transitivement `features/pwa/PwaPrompts.jsx` ou `pages/ventes/ToitureDesign.jsx`,
+// (alias `@roofbuilder`/`@roofpro`) de `vite.config.js`. Quand un test tire
+// transitivement `features/pwa/PwaPrompts.jsx`, `pages/ventes/ToitureDesign.jsx`
+// ou `features/ao/toiture/RepriseCarte.jsx` (AOF82, `@roofpro/captureBoot`),
 // la résolution de ces spécifieurs échoue au transform (erreur non gérée).
 // On les redirige vers des stubs inertes : aucun test n'exerce leur runtime.
 const stub = (rel) => fileURLToPath(new URL(rel, import.meta.url))
@@ -19,6 +20,7 @@ export default defineConfig({
     alias: {
       'virtual:pwa-register/react': stub('./src/test/stubs/pwaRegister.js'),
       '@roofbuilder': stub('./src/test/stubs/roofbuilder.js'),
+      '@roofpro/captureBoot': stub('./src/test/stubs/roofproCaptureBoot.js'),
     },
   },
   test: {

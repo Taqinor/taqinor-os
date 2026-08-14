@@ -24,6 +24,7 @@ from .views_console import (
     TenantConsoleStatutView,
     TenantConsoleNoteView,
 )
+from .views_demo_wizard import DemoWizardCreateView, DemoWizardStatusView
 
 router = DefaultRouter()
 router.register(r'users', UserViewSet, basename='users')
@@ -67,6 +68,18 @@ urlpatterns = [
     # N100(b) — création administrée d'un tenant depuis la console fondateur.
     path('auth/console/tenants/creer/', TenantConsoleCreateView.as_view(),
          name='auth_console_tenant_creer'),
+    # NTDMO25 — wizard « Créer ma société de démonstration » (3 étapes).
+    path('auth/demo-wizard/', DemoWizardCreateView.as_view(),
+         name='auth_demo_wizard'),
+    path('auth/demo-wizard/statut/', DemoWizardStatusView.as_view(),
+         name='auth_demo_wizard_statut'),
+    # NTDMO24 — export .xlsx du kit de démo : `path()` explicite SANS slash
+    # final (placé avant `include(router.urls)` pour primer sur le routeur).
+    # Le routeur DRF ajoute toujours un slash après `url_path`, ce qui aurait
+    # fait répondre 301 (APPEND_SLASH) à l'URL `.../export.xlsx` attendue.
+    path('companies/<int:pk>/demo-kit/export.xlsx',
+         CompanyViewSet.as_view({'get': 'demo_kit_export_xlsx'}),
+         name='company_demo_kit_export_xlsx'),
     # N101(b) — le dépôt PUBLIC d'une demande d'inscription
     # (`auth/signup-demande/`) est monté dans l'urlconf RACINE : sa vue vit
     # dans `apps.adminops` (une demande n'est pas un compte — la surface
