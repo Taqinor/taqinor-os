@@ -17,6 +17,11 @@ SCOPE_READ_STOCK = 'read:stock'
 # (plan_code/modules_inclus/sieges_max/sieges_utilises UNIQUEMENT — jamais de
 # prix ni d'historique).
 SCOPE_READ_LICENCE = 'read:licence'
+# NTSCM38 — planification supply chain (apps.scm) : prévisions de demande,
+# politiques de stock (ROP/stock de sécurité, JAMAIS `prix_achat`) et le
+# tableau de bord réappro consolidé, en LECTURE SEULE. Intégration externe
+# (TMS, connecteur planification tiers).
+SCOPE_READ_SCM = 'read:scm'
 
 # XPLT5 — scopes d'ÉCRITURE (créer/mettre à jour un lead, créer une activité).
 # La société est TOUJOURS forcée depuis la clé (jamais du body) ; les stages
@@ -32,6 +37,7 @@ SCOPE_CHOICES = [
     (SCOPE_READ_CHANTIERS, 'Lire les chantiers'),
     (SCOPE_READ_STOCK, 'Lire le stock (disponibilité, sans coûts)'),
     (SCOPE_READ_LICENCE, 'Lire le statut de licence (plan, modules, sièges)'),
+    (SCOPE_READ_SCM, 'Lire la planification supply chain (prévisions, politiques de stock, réappro)'),
     (SCOPE_WRITE_LEADS, 'Créer/mettre à jour des leads'),
     (SCOPE_WRITE_ACTIVITIES, 'Créer des activités (notes) sur un lead'),
 ]
