@@ -7,6 +7,7 @@ from decimal import Decimal, ROUND_HALF_UP
 
 from .models import (
     LigneOffreGroupee, RegleApprobationRemise, EtapeApprobationDevis,
+    PrixContractuel,
 )
 
 _CENT = Decimal('0.01')
@@ -23,7 +24,11 @@ def appliquer_offre_groupee(*, offre, devis, user=None):
     ``mode_prix`` (``REMISE_PCT`` / ``PRIX_COMPOSANT``).
 
     Renvoie la liste des ``LigneDevis`` créées. Écriture cross-app ventes via
-    import local (aucun import de ``ventes.models`` au niveau module)."""
+    import local (aucun import de ``ventes.models`` au niveau module).
+
+    NTCPQ45 — pose une entrée chatter factuelle (auteur, horodatage, résumé)
+    sur le devis via ``apps.ventes.activity.log_devis_note`` — le mécanisme
+    ``historique``/``noter`` déjà en prod, aucune nouvelle infrastructure."""
     from apps.ventes.models import LigneDevis
 
     lignes = list(offre.lignes.select_related('produit').all())
@@ -72,7 +77,135 @@ def appliquer_offre_groupee(*, offre, devis, user=None):
                 devis=devis, produit=li.produit,
                 designation=li.produit.nom, quantite=qte,
                 prix_unitaire=pu, remise=remise))
+
+    if created:
+        from apps.ventes import activity
+        activity.log_devis_note(
+            devis, user,
+            f'Offre groupée « {offre.nom} » appliquée '
+            f'({len(created)} ligne(s) ajoutée(s)).')
     return created
+
+
+def _resoudre_client_import(company, ref):
+    """NTCPQ41 — résout un client par ID numérique, email exact, ou nom exact
+    (insensible à la casse), scopé société. ``None`` si introuvable."""
+    from apps.crm.models import Client
+    ref = (ref or '').strip()
+    if not ref:
+        return None
+    if ref.isdigit():
+        client = Client.objects.filter(company=company, id=int(ref)).first()
+        if client is not None:
+            return client
+    client = Client.objects.filter(
+        company=company, email__iexact=ref).first()
+    if client is not None:
+        return client
+    return Client.objects.filter(company=company, nom__iexact=ref).first()
+
+
+def _resoudre_produit_import(company, ref):
+    """NTCPQ41 — résout un produit par ID numérique, SKU exact, ou nom exact
+    (insensible à la casse), scopé société. ``None`` si introuvable."""
+    from apps.stock.models import Produit
+    ref = (ref or '').strip()
+    if not ref:
+        return None
+    if ref.isdigit():
+        produit = Produit.objects.filter(company=company, id=int(ref)).first()
+        if produit is not None:
+            return produit
+    produit = Produit.objects.filter(company=company, sku__iexact=ref).first()
+    if produit is not None:
+        return produit
+    return Produit.objects.filter(company=company, nom__iexact=ref).first()
+
+
+def _parse_date_import(valeur):
+    """NTCPQ41 — parse une date CSV (ISO ``AAAA-MM-JJ``). ``None`` si vide."""
+    from datetime import date
+    valeur = (valeur or '').strip()
+    if not valeur:
+        return None
+    return date.fromisoformat(valeur)
+
+
+def importer_prix_contractuels_csv(company, csv_text, *, user=None):
+    """NTCPQ41 — import CSV en masse de ``PrixContractuel``, auto-suffisant
+    (jamais un passage par ``apps/dataimport``, hors périmètre de cette app —
+    même patron que les exports ``apps.ventes.exports``).
+
+    Colonnes attendues (en-tête) : ``client_ref``, ``produit_ref``,
+    ``prix_ht``, ``date_debut``, ``date_fin``, ``motif``. ``client_ref``/
+    ``produit_ref`` acceptent un ID numérique, ou (client) l'email/le nom
+    exact, ou (produit) le SKU/le nom exact — toujours scopés à ``company``.
+
+    Valide chaque ligne INDÉPENDAMMENT : les lignes valides sont importées
+    même si d'autres échouent (comportement additif standard). Renvoie
+    ``{'importees': int, 'total': int, 'erreurs': [{'ligne': int, 'motif':
+    str}, ...]}`` — ``ligne`` compte depuis 2 (1 = en-tête)."""
+    import csv
+    import io
+    from decimal import Decimal, InvalidOperation
+
+    reader = csv.DictReader(io.StringIO(csv_text))
+    importees = 0
+    total = 0
+    erreurs = []
+    for i, row in enumerate(reader, start=2):
+        total += 1
+        try:
+            client = _resoudre_client_import(company, row.get('client_ref'))
+            if client is None:
+                raise ValueError('Client introuvable (client_ref).')
+            produit = _resoudre_produit_import(
+                company, row.get('produit_ref'))
+            if produit is None:
+                raise ValueError('Produit introuvable (produit_ref).')
+            prix_brut = (row.get('prix_ht') or '').strip()
+            if not prix_brut:
+                raise ValueError('prix_ht requis.')
+            prix_ht = Decimal(prix_brut)
+            date_debut = _parse_date_import(row.get('date_debut'))
+            date_fin = _parse_date_import(row.get('date_fin'))
+            if date_debut and date_fin and date_debut > date_fin:
+                raise ValueError('date_debut postérieure à date_fin.')
+            PrixContractuel.objects.create(
+                company=company, client=client, produit=produit,
+                prix_ht=prix_ht, date_debut=date_debut, date_fin=date_fin,
+                motif=(row.get('motif') or '').strip(), created_by=user)
+            importees += 1
+        except (ValueError, InvalidOperation, KeyError) as exc:
+            erreurs.append({'ligne': i, 'motif': str(exc)})
+
+    return {'importees': importees, 'total': total, 'erreurs': erreurs}
+
+
+def verifier_compatibilite_envoyable(devis):
+    """NTCPQ31 — lève ``ValidationError`` si le mode de compatibilité de la
+    société est ``BLOQUANT`` (``ParametresCPQ.compatibilite_mode``) ET que la
+    configuration du devis porte encore une violation bloquante (NTCPQ1/NTCPQ21).
+
+    Par défaut (``AVERTISSEMENT``, comportement historique) : ne lève jamais —
+    la violation reste un simple badge (NTCPQ21), l'envoi n'est jamais
+    empêché. Isolation multi-tenant stricte : le réglage lu est celui de LA
+    société du devis, jamais une autre."""
+    from rest_framework.exceptions import ValidationError
+    from .models import ParametresCPQ
+    from .selectors import etat_configuration_devis
+
+    parametres = ParametresCPQ.get_or_default(devis.company)
+    if parametres.compatibilite_mode != ParametresCPQ.ModeCompatibilite.BLOQUANT:
+        return
+    etat = etat_configuration_devis(devis)
+    if etat['bloquant']:
+        bloquantes = [v for v in etat['violations'] if v['bloquante']]
+        detail = bloquantes[0]['message'] if bloquantes else (
+            'Violation de compatibilité bloquante.')
+        raise ValidationError({'statut': (
+            f"Configuration incompatible ({detail}) : l'envoi est bloqué "
+            "(réglage société « compatibilité stricte »).")})
 
 
 def resoudre_regle_remise(*, company, remise):
@@ -231,6 +364,129 @@ def generer_feuille_configuration_pdf(devis):
     fichier : le PDF est renvoyé en flux à un utilisateur staff."""
     from core.pdf import render_pdf
     return render_pdf(html=rendre_feuille_configuration_html(devis))
+
+
+def donnees_comparaison_variantes(devis):
+    """NTCPQ26 — Données de la FEUILLE DE COMPARAISON DE VARIANTES (INTERNE).
+
+    Une colonne par tier (``économique``/``standard``/``premium``,
+    NTCPQ16) avec totaux HT + marge (prix d'achat inclus — INTERNE, ne
+    doit JAMAIS apparaître dans un document client, règle #4) — outil de
+    préparation d'entretien commercial, distinct du fichier généré par
+    ``/proposal``. Un tier sans variante générée est marqué
+    ``disponible: False`` (pas d'erreur).
+
+    Renvoie ``{reference_base, date, colonnes}``."""
+    from django.utils import timezone
+    from .models import ProduitEquivalent
+
+    variantes = {
+        v.variante_tier: v
+        for v in devis.variantes_cpq.all().select_related(None)}
+
+    colonnes = []
+    for tier in ProduitEquivalent.Tier.values:
+        variante = variantes.get(tier)
+        if variante is None:
+            colonnes.append({'tier': tier, 'disponible': False})
+            continue
+        total_ht = Decimal('0')
+        total_achat = Decimal('0')
+        produits = []
+        for ligne in variante.lignes.all().select_related('produit'):
+            if not ligne.compte_dans_totaux:
+                continue
+            ht = Decimal(str(ligne.total_ht or 0))
+            qte = Decimal(str(ligne.quantite or 0))
+            achat_unitaire = Decimal(
+                str(getattr(ligne.produit, 'prix_achat', None) or 0))
+            total_ht += ht
+            total_achat += achat_unitaire * qte
+            produits.append(ligne.designation)
+        marge = total_ht - total_achat
+        marge_pct = ((marge / total_ht * Decimal('100')).quantize(
+            _CENT, ROUND_HALF_UP) if total_ht > 0 else Decimal('0'))
+        colonnes.append({
+            'tier': tier, 'disponible': True,
+            'devis_id': variante.id, 'reference': variante.reference,
+            'statut': variante.statut,
+            'total_ht': str(total_ht.quantize(_CENT, ROUND_HALF_UP)),
+            'marge': str(marge.quantize(_CENT, ROUND_HALF_UP)),
+            'marge_pct': str(marge_pct),
+            'produits': produits,
+        })
+
+    return {
+        'reference_base': devis.reference,
+        'date': timezone.now().date().isoformat(),
+        'colonnes': colonnes,
+    }
+
+
+def rendre_comparaison_variantes_html(devis):
+    """NTCPQ26 — HTML de la feuille de comparaison de variantes (INTERNE).
+
+    Gabarit dédié à ``apps.cpq`` : aucun appel à ``quote_engine`` (règle #4)."""
+    data = donnees_comparaison_variantes(devis)
+    disponibles = [c for c in data['colonnes'] if c['disponible']]
+    if not disponibles:
+        corps = '<p>Aucune variante générée pour ce devis.</p>'
+    else:
+        entetes = ''.join(f'<th>{_echapper(c["tier"].capitalize())}</th>'
+                          for c in disponibles)
+        refs = ''.join(f'<td>{_echapper(c["reference"])}</td>'
+                       for c in disponibles)
+        totaux = ''.join(f'<td class="n">{c["total_ht"]}</td>'
+                         for c in disponibles)
+        marges = ''.join(f'<td class="n">{c["marge"]}</td>'
+                         for c in disponibles)
+        marges_pct = ''.join(f'<td class="n">{c["marge_pct"]} %</td>'
+                             for c in disponibles)
+        max_produits = max(len(c['produits']) for c in disponibles)
+        lignes_produits = ''
+        for i in range(max_produits):
+            cellules = ''.join(
+                f'<td>{_echapper(c["produits"][i]) if i < len(c["produits"]) else ""}</td>'
+                for c in disponibles)
+            lignes_produits += f'<tr><td></td>{cellules}</tr>'
+        corps = f"""<table>
+<thead><tr><th>Variante</th>{entetes}</tr></thead>
+<tbody>
+<tr><th>Référence</th>{refs}</tr>
+<tr><th colspan="{len(disponibles) + 1}">Produits</th></tr>
+{lignes_produits}
+</tbody>
+<tfoot>
+<tr><th>Total HT</th>{totaux}</tr>
+<tr><th>Marge</th>{marges}</tr>
+<tr><th>Marge %</th>{marges_pct}</tr>
+</tfoot>
+</table>"""
+    return f"""<!DOCTYPE html><html lang="fr"><head><meta charset="utf-8">
+<title>Comparaison de variantes {_echapper(data['reference_base'])}</title>
+<style>
+ body {{ font-family: Helvetica, Arial, sans-serif; font-size: 10pt; }}
+ h1 {{ font-size: 14pt; margin-bottom: 2mm; }}
+ .interne {{ color: #b00; font-weight: bold; }}
+ table {{ width: 100%; border-collapse: collapse; margin-top: 4mm; }}
+ th, td {{ border: 1px solid #999; padding: 1.5mm; text-align: left; }}
+ td.n {{ text-align: right; }}
+</style></head><body>
+<h1>Comparaison de variantes — {_echapper(data['reference_base'])}</h1>
+<p class="interne">DOCUMENT INTERNE — préparation d'entretien commercial.
+Ne pas transmettre au client.</p>
+<p>Date : {_echapper(data['date'])}</p>
+{corps}
+</body></html>"""
+
+
+def generer_comparaison_variantes_pdf(devis):
+    """NTCPQ26 — Rend la feuille de comparaison de variantes en PDF (INTERNE).
+
+    Passe par ``core.pdf.render_pdf`` (ARC11), JAMAIS par ``quote_engine``
+    (réservé au PDF client, règle #4)."""
+    from core.pdf import render_pdf
+    return render_pdf(html=rendre_comparaison_variantes_html(devis))
 
 
 def generer_variantes_devis(devis, *, user=None, tiers=None):
@@ -474,6 +730,12 @@ def lancer_approbation_devis(devis, *, user=None, force=False, remise=None):
     un tour précédent est déjà approuvé (avenant au-dessus du seuil) ; ``remise``
     permet d'imposer la profondeur à considérer (taux global recalculé) au lieu
     de ``remise_globale``."""
+    from .models import ParametresCPQ
+    if not ParametresCPQ.get_or_default(devis.company).approbation_active:
+        # NTCPQ30 — approbation désactivée pour CETTE société : envoi
+        # libre, jamais de blocage NTCPQ7, sans affecter les autres sociétés.
+        return []
+
     existantes = list(EtapeApprobationDevis.objects.filter(
         devis_id=devis.id).exclude(
             statut=EtapeApprobationDevis.Statut.REJETE))
@@ -567,6 +829,53 @@ def rejeter_etape_devis(devis, *, user, motif=''):
         + (f" : {motif}" if motif else "")
         + " — devis renvoyé en brouillon.")
     return etape
+
+
+def relancer_etape_approbation(devis, *, user=None):
+    """NTCPQ28 — Relance MANUELLE (côté demandeur) de la première étape
+    d'approbation ``en_attente`` du devis : notifie l'approbateur assigné
+    via ``apps.notifications`` (même événement que la relance automatique
+    NTCPQ33, ``EventType.APPROVAL_REMINDER``).
+
+    Throttlée à 1 relance/24h par étape — RÉUTILISE le marqueur
+    ``EtapeApprobationDevis.derniere_relance_le`` (NTCPQ33) : cliquer
+    « Relancer » deux fois dans la même journée n'envoie qu'une seule
+    notification, exactement comme le job planifié. Renvoie
+    ``(etape, relance_envoyee: bool)`` ; lève ``ValidationError`` s'il n'y a
+    aucune étape en attente."""
+    from datetime import timedelta
+    from django.utils import timezone
+    from rest_framework.exceptions import ValidationError
+
+    etape = EtapeApprobationDevis.objects.filter(
+        devis_id=devis.id,
+        statut=EtapeApprobationDevis.Statut.EN_ATTENTE,
+    ).order_by('niveau', 'id').first()
+    if etape is None:
+        raise ValidationError({'detail': 'Aucune étape en attente.'})
+    if etape.approbateur_id is None:
+        raise ValidationError({'detail': (
+            "Cette étape n'a pas encore d'approbateur assigné.")})
+
+    now = timezone.now()
+    if (etape.derniere_relance_le is not None
+            and (now - etape.derniere_relance_le) < timedelta(hours=24)):
+        return etape, False
+
+    from apps.notifications.models import EventType
+    from apps.notifications.services import notify
+    devis_ref = getattr(devis, 'reference', devis.id)
+    notify(
+        etape.approbateur, EventType.APPROVAL_REMINDER,
+        f'Approbation en attente — devis {devis_ref}',
+        body=(f"L'étape {etape.niveau} d'approbation de remise du devis "
+              f"{devis_ref} attend toujours votre décision "
+              f"(relance manuelle{f' — {user.username}' if user else ''})."),
+        link=f'/ventes/devis?devis={devis.id}',
+        company=devis.company)
+    etape.derniere_relance_le = now
+    etape.save(update_fields=['derniere_relance_le'])
+    return etape, True
 
 
 def _ligne_depuis_action(action, devis, company):

@@ -68,9 +68,13 @@ class CatalogueServiceTests(TestCase):
         self.assertFalse(feature_flags.module_actif(self.company, 'ventes'))
 
     def test_desactiver_leaf_module(self):
-        # pos dépend de stock mais rien ne dépend de pos → OK.
-        feature_flags.desactiver_module(self.company, 'pos')
-        self.assertFalse(feature_flags.module_actif(self.company, 'pos'))
+        # achats dépend de stock mais rien ne dépend de achats → OK.
+        # (NTRET13 a fait de `promotions` un dépendant actif de `pos`,
+        # qui n'est donc plus une feuille du graphe — `achats` reste la
+        # meilleure feuille équivalente : elle dépend aussi de `stock`
+        # et n'a elle-même aucun dépendant.)
+        feature_flags.desactiver_module(self.company, 'achats')
+        self.assertFalse(feature_flags.module_actif(self.company, 'achats'))
         self.assertTrue(feature_flags.module_actif(self.company, 'stock'))
 
     def test_unknown_module_raises(self):
@@ -135,7 +139,9 @@ class CatalogueEndpointTests(TestCase):
         self.assertTrue(feature_flags.module_actif(self.company, 'pos'))
 
     def test_tenant_isolation(self):
-        # Désactiver pos pour ACME ne touche pas Autre.
-        feature_flags.desactiver_module(self.company, 'pos')
-        self.assertFalse(feature_flags.module_actif(self.company, 'pos'))
-        self.assertTrue(feature_flags.module_actif(self.other, 'pos'))
+        # Désactiver achats pour ACME ne touche pas Autre. (`pos` a un
+        # dépendant actif — `promotions`, NTRET13 — depuis cette lane et ne
+        # se désactive donc plus seul ; `achats` reste une feuille du graphe.)
+        feature_flags.desactiver_module(self.company, 'achats')
+        self.assertFalse(feature_flags.module_actif(self.company, 'achats'))
+        self.assertTrue(feature_flags.module_actif(self.other, 'achats'))

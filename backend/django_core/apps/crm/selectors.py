@@ -2678,3 +2678,175 @@ def classement_defi(defi):
     for rang, entry in enumerate(classement, start=1):
         entry['rang'] = rang
     return classement
+
+
+# ── NTMKT17 — Progressive profiling (formulaire public d'intake) ───────────
+
+_PROGRESSIVE_PROFILING_STANDARD_FIELDS = (
+    'nom', 'prenom', 'societe', 'email', 'telephone', 'ville',
+)
+
+
+def lead_known_field_codes(company, *, phone=None, email=None):
+    """NTMKT17 — codes de champs DÉJÀ CONNUS pour le lead le plus RÉCENT
+    correspondant à ``phone`` OU ``email`` normalisés (dédup QJ8 existante,
+    ``services.find_duplicates_by_contact``).
+
+    Renvoie ``None`` si aucun lead ne correspond (visiteur inconnu — le
+    formulaire public reste inchangé, comportement actuel). Sinon un
+    ``set`` des codes déjà renseignés parmi les champs standards
+    (nom/prenom/societe/email/telephone/ville, non vides) et les clés non
+    vides de ``custom_data``. Lecture seule."""
+    from .services import find_duplicates_by_contact
+
+    matches = find_duplicates_by_contact(company, phone=phone, email=email)
+    if not matches:
+        return None
+    lead = matches[0]
+    connus = {
+        code for code in _PROGRESSIVE_PROFILING_STANDARD_FIELDS
+        if getattr(lead, code, None)
+    }
+    for code, valeur in (lead.custom_data or {}).items():
+        if valeur not in (None, '', False):
+            connus.add(code)
+    return connus
+
+
+def lead_devis_ids_by_id(company, lead_id):
+    """NTMKT18 — ids (str) des devis liés à un lead, par id OPAQUE (lecture
+    seule) — pour un appelant cross-app (``marketing``) qui ne peut importer
+    ``Lead`` et ne dispose que d'un ``lead_id`` (jamais d'objet ``Lead``).
+    Renvoie ``[]`` si le lead n'existe pas ou n'a aucun devis."""
+    from .models import Lead
+
+    lead = Lead.objects.filter(company=company, pk=lead_id).only('id').first()
+    if lead is None:
+        return []
+    return [str(d.id) for d in lead.devis.all()]
+
+
+def leads_export_rows(company, lead_ids):
+    """NTMKT40 — lignes d'export (nom/prenom/email/telephone/ville) des leads
+    d'un segment marketing, par ids OPAQUES. Lecture seule, scopé société (un
+    id hors société est ignoré) — snapshot d'audit RGPD/CNDP, aucune donnée
+    interne (score/notes)."""
+    from .models import Lead
+
+    if not lead_ids:
+        return []
+    rows = Lead.objects.filter(
+        company=company, id__in=list(lead_ids),
+    ).values('id', 'nom', 'prenom', 'email', 'telephone', 'ville')
+    return list(rows)
+
+
+def dernier_contact_lead(company, lead_id):
+    """NTMKT34 — date/heure du dernier point de contact (``PointContact``,
+    FG204) d'un lead, ou ``None``. Lecture seule, par id OPAQUE pour un
+    appelant cross-app (``marketing``)."""
+    from .models import PointContact
+
+    pc = (PointContact.objects
+          .filter(company=company, lead_id=lead_id)
+          .order_by('-date_contact')
+          .first())
+    return pc.date_contact if pc else None
+
+
+# ── NTMKT20 — Modèles d'attribution configurables sur PointContact (FG204) ──
+# Complète ``revenu_attribue_campagne`` (XMKT17, implicitement dernier-touche
+# par nom de campagne) SANS le modifier : ceci répartit le revenu d'UN devis
+# signé entre les points de contact de son parcours, pour les 4 modèles
+# standards — une aide à la décision, jamais un recalcul persistant.
+
+ATTRIBUTION_MODELES = (
+    'dernier_touche', 'premier_touche', 'lineaire', 'pondere_temporel',
+)
+
+# Demi-vie (jours) du modèle « pondéré temporel » — formule de dégradation
+# temporelle standard (poids = 2^(-jours_avant_la_dernière_touche / demi_vie)).
+_ATTRIBUTION_DEMI_VIE_JOURS = 7
+
+
+def _attribution_part(point_contact, montant):
+    return {
+        'point_contact_id': point_contact.pk,
+        'canal': point_contact.canal,
+        'canal_libelle': point_contact.get_canal_display(),
+        'date_contact': point_contact.date_contact,
+        'revenu_attribue': str(montant),
+    }
+
+
+def _repartir_attribution(points, modele, total_revenu):
+    """NTMKT20 — répartit ``total_revenu`` (Decimal) entre ``points``
+    (``PointContact`` triés chronologiquement) selon ``modele``. Lecture
+    pure : aucune écriture, aucun état modifié. La somme des montants
+    répartis reste TOUJOURS égale à ``total_revenu`` au centime près."""
+    from decimal import ROUND_HALF_UP, Decimal
+
+    n = len(points)
+    if n == 0 or not total_revenu:
+        return []
+
+    if modele == 'premier_touche':
+        montants = [Decimal('0')] * n
+        montants[0] = total_revenu
+    elif modele == 'lineaire':
+        part = (total_revenu / n).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+        montants = [part] * n
+        # Ajuste le DERNIER point pour que la somme reste exacte au centime
+        # (l'arrondi par ligne peut sinon dériver de quelques centimes).
+        montants[-1] = total_revenu - part * (n - 1)
+    elif modele == 'pondere_temporel':
+        derniere_date = points[-1].date_contact
+        poids = [
+            Decimal(str(2 ** (
+                -max((derniere_date - p.date_contact).days, 0)
+                / _ATTRIBUTION_DEMI_VIE_JOURS)))
+            for p in points
+        ]
+        total_poids = sum(poids) or Decimal('1')
+        montants = [
+            (total_revenu * w / total_poids).quantize(Decimal('0.01'))
+            for w in poids
+        ]
+        ecart = total_revenu - sum(montants)
+        montants[-1] = montants[-1] + ecart
+    else:  # 'dernier_touche' — défaut, comportement historique XMKT17.
+        montants = [Decimal('0')] * n
+        montants[-1] = total_revenu
+
+    return [_attribution_part(p, m) for p, m in zip(points, montants)]
+
+
+def attribution_comparaison_devis(devis):
+    """NTMKT20 — pour un devis ACCEPTÉ, la répartition de son ``total_ttc``
+    entre les points de contact (``PointContact``, FG204) du lead lié, pour
+    les 4 modèles d'attribution côte à côte. ``None`` si le devis n'a pas de
+    lead lié ou n'est pas accepté. Lecture seule, aide à la décision — ne
+    modifie JAMAIS ``PointContact`` ni le devis."""
+    from decimal import Decimal
+
+    from .models import PointContact
+
+    lead = getattr(devis, 'lead', None)
+    if lead is None or getattr(devis, 'statut', None) != 'accepte':
+        return None
+    points = list(
+        PointContact.objects.filter(company=lead.company_id, lead=lead))
+    try:
+        total_revenu = Decimal(str(devis.total_ttc or 0))
+    except Exception:
+        total_revenu = Decimal('0')
+    return {
+        'devis_id': devis.pk,
+        'lead_id': lead.pk,
+        'total_revenu': str(total_revenu),
+        'nb_points_contact': len(points),
+        'modeles': {
+            modele: _repartir_attribution(points, modele, total_revenu)
+            for modele in ATTRIBUTION_MODELES
+        },
+    }

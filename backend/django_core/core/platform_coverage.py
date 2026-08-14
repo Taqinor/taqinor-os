@@ -149,6 +149,20 @@ BASELINE_DRIFT: set[tuple[str, str]] = {
     # même dérive assumée que les cibles ci-dessus — retirer le jour où esg
     # entrera dans apps/reporting/search.py.
     ('esg.documentpolitiqueesg', 'chatter_sans_recherche'),
+    # NTLOG8/9/18 — les trois cibles records du module Transport
+    # (apps/transport/platform.py) : OrdreTransport porte le chatter générique
+    # (ChatterViewSetMixin), EtapeTransport les photos/signatures de preuve de
+    # livraison, ReserveReception ses photos de réserve. Aucune n'est encore
+    # cherchable : le câblage de la recherche globale se fait dans
+    # ``apps/reporting/search.py``, une app HORS du périmètre de la lane
+    # SUPPLY propriétaire de transport (règle des frontières inter-apps) — donc
+    # dérive ASSUMÉE, exactement comme btp_chantier/assurances/credit/entites/
+    # esg ci-dessus, et non un contournement de la garde. À RETIRER (les trois
+    # entrées) le jour où transport entrera dans apps/reporting/search.py et
+    # déclarera ses ``searchable_models``.
+    ('transport.ordretransport', 'chatter_sans_recherche'),
+    ('transport.etapetransport', 'chatter_sans_recherche'),
+    ('transport.reservereception', 'chatter_sans_recherche'),
 }
 
 

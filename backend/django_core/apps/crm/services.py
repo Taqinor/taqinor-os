@@ -970,7 +970,22 @@ def maybe_assign_mql(lead) -> bool:
         if not seuil:
             return False
         if (lead.score or 0) < seuil:
-            return False
+            # NTMKT18 — additif : le seuil peut AUSSI se déclencher sur le
+            # score de maturité marketing (jamais sur le score de qualité
+            # QJ6 lui-même, jamais lu si le paramètre société marketing est
+            # resté désactivé — comportement actuel inchangé par défaut).
+            # Best-effort : une erreur côté marketing ne bloque jamais XMKT21.
+            maturite_ok = False
+            try:
+                from apps.marketing import selectors as marketing_selectors
+                if marketing_selectors.maturite_active_pour_mql(lead.company):
+                    maturite_ok = (
+                        marketing_selectors.score_maturite_valeur(
+                            lead.company, lead.pk) >= seuil)
+            except Exception:
+                maturite_ok = False
+            if not maturite_ok:
+                return False
 
         assignee = None
         if not lead.owner_id:

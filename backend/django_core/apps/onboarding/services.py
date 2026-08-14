@@ -22,8 +22,20 @@ from django.utils import timezone
 # (marquer_fait_manuel ci-dessous, alternative EXPLICITEMENT prévue par le
 # founder quand aucun jalon de bus n'existe).
 DEFAULT_ITEMS = [
+    # NTDMO26 — item de suivi de l'assistant first-run « Configurez votre
+    # société en 5 minutes » (/onboarding/demarrage, société RÉELLE non-démo
+    # fraîchement créée). `ignore_le` posé = « Passer » a été cliqué : le
+    # wizard ne se redéclenche plus jamais automatiquement pour cet
+    # utilisateur (réutilise `ignorer_item` existant, aucun nouveau modèle).
+    ('assistant_demarrage', 'Assistant de démarrage rapide (5 min)', 5,
+     ['Administrateur', 'Directeur'], '/onboarding/demarrage', ''),
     ('configurer_societe', 'Configurer votre société', 10,
      ['Administrateur', 'Directeur'], '/parametres', ''),
+    # NTDMO26 — sous-étape « premier produit du catalogue » de l'assistant
+    # first-run (aucun event_key adapté sans importer `stock` — complétion
+    # manuelle explicite, même patron que les items sans event_key ci-dessous).
+    ('premier_produit', 'Ajouter votre premier produit', 15,
+     ['Administrateur', 'Directeur'], '/stock', ''),
     ('import_clients', 'Importer vos clients', 20,
      [], '/crm/clients', ''),
     ('premier_devis', 'Créer votre 1er devis', 30,
@@ -131,6 +143,35 @@ def marquer_fait_manuel(company, user, item_id):
     if item is None:
         return None
     return marquer_item_complete(company, user, item.key)
+
+
+# ── NTDMO28 — masquage/démasquage par société (jamais une suppression) ─────
+def masquer_item_pour_societe(company, item_id):
+    """Masque un item de catalogue GLOBAL pour ``company`` (idempotent) —
+    l'item reste intact pour toute autre société. Renvoie ``True`` si l'item
+    existe (global, actif), ``False`` sinon (aucun effet)."""
+    if company is None:
+        return False
+    from .models import OnboardingChecklistItem
+    item = OnboardingChecklistItem.objects.filter(
+        pk=item_id, company__isnull=True).first()
+    if item is None:
+        return False
+    item.masque_pour.add(company)
+    return True
+
+
+def demasquer_item_pour_societe(company, item_id):
+    """Réaffiche un item précédemment masqué pour ``company`` (idempotent)."""
+    if company is None:
+        return False
+    from .models import OnboardingChecklistItem
+    item = OnboardingChecklistItem.objects.filter(
+        pk=item_id, company__isnull=True).first()
+    if item is None:
+        return False
+    item.masque_pour.remove(company)
+    return True
 
 
 def completer_par_evenement(event_key, company, user):

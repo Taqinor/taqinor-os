@@ -455,12 +455,6 @@ class DepotReelTests(unittest.TestCase):
     def test_le_corpus_est_reellement_lu(self):
         """Si l'extraction casse, la garde devient muette EN SILENCE."""
         _, stats = analyse_reelle()
-        # DEUX sessions ont abaissé ce plancher en parallèle : la vague NT +
-        # primitives (1500 -> 1200) et le lot PLAN_CRM_VENTES #518 (1500 ->
-        # 1400). L'arbre fusionné cumule LEURS DEUX lots de tâches cochées,
-        # donc aucune des deux bornes n'a été mesurée sur cet arbre : on garde
-        # la borne BASSE. Le rôle de canari tient — une extraction cassée
-        # rendrait ~0 — sans punir le fait d'avoir livré.
         self.assertGreater(stats["taches"], 1200)
         # 250 -> 150 : le lot §E du 08/08/2026 a COCHÉ 76 tâches, donc le
         # corpus de candidates rétrécit légitimement (191 aujourd'hui).
@@ -476,7 +470,12 @@ class DepotReelTests(unittest.TestCase):
         # corpus est drainé. Le rôle de canari est désormais porté par
         # `taches` (1690) et `f1_candidates` (142) ci-dessus, qui eux
         # tomberaient bien à 0 si l'extraction se cassait.
-        self.assertGreater(stats["f1_conformes"], 0)
+        # 0 atteint le 14/08/2026 (vague 1 du run SUPPLY) : la DERNIÈRE tâche
+        # non cochée qui créait un écran avec montage + clause vient d'être
+        # livrée. Le compteur ne peut donc plus servir de plancher — il est
+        # conservé en OBSERVATION seulement. Les deux canaris réels restent
+        # `taches` et `f1_candidates` juste au-dessus.
+        self.assertGreaterEqual(stats["f1_conformes"], 0)
 
     def test_les_taches_conformes_du_depot_ne_rougissent_pas(self):
         """~120 taches de docs/PLAN.md portent deja la clause canonique et

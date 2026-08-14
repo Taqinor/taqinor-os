@@ -248,6 +248,22 @@ ALL_PERMISSIONS = [
     # ces deux codes n'ouvrent que ses propres routes.
     'veille_ao_voir',
     'veille_ao_gerer',
+    # NTCPQ36 — permissions granulaires CPQ (apps/cpq), vérifiées côté
+    # viewsets, jamais un simple check de rôle nommé en dur :
+    #   * ``cpq_regles_gerer``            — écrire les règles produit CPQ
+    #     (NTCPQ2) et les contraintes de compatibilité (NTCPQ1).
+    #   * ``cpq_prix_contractuels_gerer`` — modifier/supprimer un
+    #     PrixContractuel (NTCPQ5) créé par un AUTRE utilisateur (NTCPQ37 ;
+    #     son propre créateur peut toujours l'éditer sans ce code).
+    #   * ``cpq_marge_voir``              — voir ``marge_sous_seuil`` (NTCPQ6)
+    #     sur le détail devis et l'export technique (NTCPQ22). Même palier
+    #     de sensibilité que ``marge_voir``/``prix_achat_voir`` (ELEVATED).
+    #   * ``cpq_approbation_approuver``   — approuver/rejeter une étape
+    #     d'approbation de remise (NTCPQ7/8).
+    'cpq_regles_gerer',
+    'cpq_prix_contractuels_gerer',
+    'cpq_marge_voir',
+    'cpq_approbation_approuver',
 ]
 
 # Permissions de portée : un rôle qui en porte une voit un sous-ensemble ; sans
@@ -277,6 +293,8 @@ ELEVATED_PERMISSIONS = frozenset({
     # net visé). Même palier que marge/prix d'achat : un non-administrateur ne
     # peut jamais l'octroyer, et aucun rôle non-direction ne la porte.
     'ao_rentabilite_voir',
+    # NTCPQ36 — marge sous seuil CPQ (NTCPQ6/22) : même palier que marge_voir.
+    'cpq_marge_voir',
 })
 
 RESPONSABLE_PERMISSIONS = [
@@ -330,6 +348,12 @@ RESPONSABLE_PERMISSIONS = [
     'adsengine_view', 'adsengine_manage', 'adsengine_approve',
     # VAO12 — veille AO : lecture ET réglage (mots-clés, sources, règles).
     'veille_ao_voir', 'veille_ao_gerer',
+    # NTCPQ36 — comportement historique préservé (accès complet via l'ancien
+    # IsResponsableOrAdmin, non-différencié). PAS cpq_marge_voir : même
+    # palier que marge_voir/prix_achat_voir, réservé Directeur/Admin
+    # (ELEVATED_PERMISSIONS) — le Responsable ne les porte pas non plus.
+    'cpq_regles_gerer', 'cpq_prix_contractuels_gerer',
+    'cpq_approbation_approuver',
 ]
 
 UTILISATEUR_PERMISSIONS = [
@@ -401,6 +425,11 @@ COMMERCIAL_RESP_PERMISSIONS = [
     # VAO12 — veille AO : un commercial responsable lit les avis ET règle la
     # veille de son équipe (palier responsable).
     'veille_ao_voir', 'veille_ao_gerer',
+    # NTCPQ36 — comportement historique préservé (accès complet via l'ancien
+    # IsResponsableOrAdmin). PAS cpq_marge_voir : « pas de prix d'achat »
+    # pour ce rôle (même exclusion que marge_voir/prix_achat_voir).
+    'cpq_regles_gerer', 'cpq_prix_contractuels_gerer',
+    'cpq_approbation_approuver',
     SCOPE_SUBTREE,
 ]
 

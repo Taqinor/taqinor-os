@@ -456,6 +456,12 @@ app.conf.beat_schedule = {
         'task': 'marketing.rappeler_approbations_envoi',
         'schedule': crontab(minute=0, hour='*/4'),
     },
+    # NTMKT34 — recalcul quotidien du score de maturité (pénalité inactivité
+    # 30j) — no-op pour une société qui n'a jamais activé NTMKT18.
+    'marketing-recalculer-scores-maturite-inactivite': {
+        'task': 'marketing.recalculer_scores_maturite_inactivite',
+        'schedule': crontab(hour=4, minute=0),
+    },
     # XKB7 — relance quotidienne des non-lecteurs de lecture obligatoire.
     'kb-sweep-lectures-obligatoires': {
         'task': 'kb.sweep_lectures_obligatoires',
@@ -754,6 +760,13 @@ app.conf.beat_schedule = {
         'task': 'authentication.desactiver_comptes_dormants',
         'schedule': crontab(hour=2, minute=20),
     },
+    # NTDMO30 — purge hebdomadaire des sociétés démo TAQINOR expirées
+    # (staging/marketing uniquement). No-op tant que
+    # DEMO_AUTO_PURGE_ENABLED=0 (défaut) — le founder l'active explicitement.
+    'authentication-purger-societes-demo-expirees': {
+        'task': 'authentication.purger_societes_demo_expirees',
+        'schedule': crontab(hour=3, minute=45, day_of_week=1),
+    },
     # FG366 — escalade les étapes de workflow au SLA dépassé (balayage par
     # société, WorkflowStepInstance en attente échue). Horaire.
     'core-escalate-workflow-sla': {
@@ -814,6 +827,27 @@ app.conf.beat_schedule = {
     'uxviews-digest-favoris-obsoletes-hebdo': {
         'task': 'uxviews.digest_favoris_obsoletes_hebdo',
         'schedule': crontab(hour=7, minute=0, day_of_week=1),
+    },
+    # NTCPQ32 — rappel quotidien (activité, jamais d'email auto) des
+    # PrixContractuel dont date_fin est dépassée — apps/cpq/scheduled.py.
+    # Idempotent (une seule activité par prix expiré). Heure creuse.
+    'cpq-expire-prix-contractuels': {
+        'task': 'cpq.expire_prix_contractuels',
+        'schedule': crontab(hour=4, minute=40),
+    },
+    # NTCPQ33 — relance les EtapeApprobationDevis en_attente depuis plus de
+    # N jours (ParametresCPQ.delai_relance_approbation_jours) — apps/cpq/
+    # scheduled.py. Idempotent (max 1 relance/24h/étape).
+    'cpq-relancer-approbations-en-attente': {
+        'task': 'cpq.relancer_approbations_en_attente',
+        'schedule': crontab(hour=7, minute=20),
+    },
+    # NTCPQ34 — purge les SessionConfigurateur inactives >30j sans devis lié
+    # — apps/cpq/scheduled.py. Additive-safe (aucune session ayant abouti à
+    # un devis, même brouillon, n'est jamais touchée).
+    'cpq-purger-sessions-configurateur-abandonnees': {
+        'task': 'cpq.purger_sessions_configurateur_abandonnees',
+        'schedule': crontab(hour=3, minute=50),
     },
 }
 

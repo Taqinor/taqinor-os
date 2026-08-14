@@ -1,5 +1,6 @@
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
+from .public_views import quai_checkin_view
 from .views import (
     ProduitViewSet, CategorieViewSet, FournisseurViewSet,
     MouvementStockViewSet, MarqueViewSet, BonCommandeFournisseurViewSet,
@@ -17,6 +18,10 @@ from .views import (
     CatalogueAchatViewSet,
     BudgetDepartementViewSet, EngagementBudgetViewSet,
     DossierOnboardingFournisseurViewSet, DocumentFournisseurViewSet,
+    VaguePickingViewSet, UniteLogistiqueViewSet, QuaiViewSet,
+    RendezVousTransporteurViewSet, ExpeditionTransporteurViewSet,
+    PlanComptageTournantViewSet,
+    scanner_resoudre_view, scanner_mouvement_view,
 )
 
 router = DefaultRouter()
@@ -63,7 +68,23 @@ router.register(r'engagements-budget', EngagementBudgetViewSet)
 router.register(
     r'dossiers-onboarding-fournisseur', DossierOnboardingFournisseurViewSet)
 router.register(r'documents-fournisseur', DocumentFournisseurViewSet)
+# -- Groupe NTWMS -- couche ENTREPOT --
+router.register(r'vagues-picking', VaguePickingViewSet)
+router.register(r'unites-logistiques', UniteLogistiqueViewSet)
+router.register(r'quais', QuaiViewSet)
+router.register(r'rendez-vous-transporteur', RendezVousTransporteurViewSet)
+router.register(r'expeditions', ExpeditionTransporteurViewSet)
+router.register(
+    r'plans-comptage-tournant', PlanComptageTournantViewSet)
 
 urlpatterns = [
+    # NTWMS8 - kiosque de quai (chemin nomme par la tache : /stock/public/...).
+    path('public/quai-checkin/', quai_checkin_view,
+         name='stock-quai-checkin'),
+    # NTWMS5 - poste scanner mobile (resolution universelle + mouvement scanne).
+    path('scanner/resoudre/', scanner_resoudre_view,
+         name='stock-scanner-resoudre'),
+    path('scanner/mouvement/', scanner_mouvement_view,
+         name='stock-scanner-mouvement'),
     path('', include(router.urls)),
 ]

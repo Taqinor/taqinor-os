@@ -14,8 +14,12 @@ class CompanySerializer(serializers.ModelSerializer):
         # NTDMO7/8 — ``est_demo`` exposé en LECTURE SEULE (jamais posé via
         # l'API publique) ; ``mode_presentation_actif`` écrivable par un admin
         # (NTDMO10) mais uniquement sur une société démo (gardé côté viewset).
+        # NTDMO27 — `tours_actifs` écrivable par un admin (comme
+        # `mode_presentation_actif`), mais SANS la garde « société démo
+        # uniquement » : toute société peut couper ses visites guidées.
         fields = ('id', 'nom', 'slug', 'actif', 'benchmarking_opt_in',
-                  'est_demo', 'mode_presentation_actif', 'date_creation')
+                  'est_demo', 'mode_presentation_actif', 'tours_actifs',
+                  'date_creation')
         read_only_fields = ('id', 'slug', 'est_demo', 'date_creation')
 
 
@@ -200,6 +204,21 @@ class UserSerializer(serializers.ModelSerializer):
     company_mode_presentation_actif = serializers.BooleanField(
         source='company.mode_presentation_actif', read_only=True, default=False
     )
+    # NTDMO26 — date de création de la société, lecture seule, servie au
+    # bootstrap pour que le frontend sache déclencher (ou pas) l'assistant
+    # first-run « Configurez votre société en 5 minutes » sur une société
+    # RÉELLE fraîchement créée (jamais sur une société ancienne).
+    company_date_creation = serializers.DateTimeField(
+        source='company.date_creation', read_only=True, default=None
+    )
+    # NTDMO27 — lecture seule au bootstrap, gate `<ProductTour>` (NTDMO14/15)
+    # côté frontend sans appel réseau supplémentaire. Défaut True (absent de
+    # DB avant la migration = jamais rencontré, `default=True` matérialisé par
+    # la migration additive) : comportement inchangé tant que rien n'est
+    # désactivé.
+    company_tours_actifs = serializers.BooleanField(
+        source='company.tours_actifs', read_only=True, default=True
+    )
     # NTDMO20 — vrai UNIQUEMENT si `CompanyProfile.essai_expire_le` est
     # renseignée ET dépassée (jamais peuplée automatiquement, founder-only).
     # Une société sans date renseignée (comportement actuel de TOUTE société
@@ -270,7 +289,8 @@ class UserSerializer(serializers.ModelSerializer):
             'password', 'date_joined', 'last_login',
             'company_id', 'company_nom',
             'company_est_demo', 'company_mode_presentation_actif',
-            'company_essai_expire',
+            'company_essai_expire', 'company_date_creation',
+            'company_tours_actifs',
             # NTPRT8 — portée du compte (NTPRT1) + id de l'entité portail
             # rattachée. Le shell frontend en a besoin pour router un compte
             # PORTAIL vers `/portail/<scope>` et le tenir hors de l'ERP interne.
@@ -283,7 +303,8 @@ class UserSerializer(serializers.ModelSerializer):
             'id', 'date_joined', 'last_login',
             'company_id', 'company_nom',
             'company_est_demo', 'company_mode_presentation_actif',
-            'company_essai_expire',
+            'company_essai_expire', 'company_date_creation',
+            'company_tours_actifs',
             'societes_operables', 'active_company_id',
             'password_changed_at',
             'role_nom', 'role_legacy', 'menu_tier', 'permissions',

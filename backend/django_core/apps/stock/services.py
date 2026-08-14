@@ -1691,7 +1691,8 @@ def resolve_fournisseur(company, fournisseur_id, installation):
 
 def record_stock_movement(*, company, produit, type_mouvement, quantite,
                           quantite_avant, quantite_apres, reference, note,
-                          created_by, save_produit=True, emplacement_source=None):
+                          created_by, save_produit=True, emplacement_source=None,
+                          bin_source=None, bin_destination=None):
     """Crée UN MouvementStock et (par défaut) cale `produit.quantite_stock` sur
     `quantite_apres`. Renvoie le mouvement créé. Écriture identique au
     `MouvementStock.objects.create(...) + produit.save(update_fields=...)` que les
@@ -1720,6 +1721,10 @@ def record_stock_movement(*, company, produit, type_mouvement, quantite,
         reference=reference,
         note=note,
         created_by=created_by,
+        # NTWMS5 — casiers source/destination du poste scanner. None partout
+        # ailleurs : comportement historique strictement inchangé.
+        bin_source=bin_source,
+        bin_destination=bin_destination,
     )
     if save_produit:
         produit.quantite_stock = quantite_apres
@@ -5296,6 +5301,8 @@ def import_prix_fournisseur_xlsx(company, fournisseur, file_bytes, *,
 _LIGNE_CHAMPS_SUIVIS = (
     'quantite', 'prix_achat_unitaire', 'designation',
 )
+
+
 _BCF_CHAMPS_SUIVIS = (
     'date_commande', 'date_livraison_prevue', 'note',
 )
@@ -6443,3 +6450,27 @@ def consommer_engagements_demande(company, demande_achat_id,
     if bon_commande_id:
         valeurs['bon_commande_id'] = bon_commande_id
     return qs.update(**valeurs)
+
+
+# -- Groupe NTWMS -- couche ENTREPOT (rangement, vagues, colisage, quais) --
+# Definis dans `services_wms.py` ; re-exportes ici pour que les appelants
+# continuent d'ecrire `from apps.stock.services import ...`.
+from .services_wms import (  # noqa: E402,F401
+    FENETRE_ROTATION_JOURS,
+    ajouter_ligne_unite_logistique,
+    assurer_plans_comptage_tournant,
+    configurer_liberation_vague,
+    controler_scan_emballage,
+    creer_expedition_transporteur,
+    creer_unite_logistique,
+    creer_vague_depuis_besoins,
+    enregistrer_arrivee_chauffeur,
+    enregistrer_mouvement_scanne,
+    generer_comptages_tournants,
+    generer_etiquette_expedition,
+    lancer_vague,
+    liberer_vagues_planifiees,
+    prelever_ligne_picking,
+    sceller_unite_logistique,
+    suggestions_rangement_reception,
+)

@@ -44,6 +44,8 @@ _APP_URLS = [
     path('documents/', include('apps.documents.urls')),
     path('audit/', include('apps.audit.urls')),
     path('monitoring/', include('apps.monitoring.urls')),
+    # NTMFG1 — Production / MRP II.
+    path('mrp/', include('apps.mrp.urls')),
     path('notifications/', include('apps.notifications.urls')),
     path('automation/', include('apps.automation.urls')),
     # N89 — gestion des clés API & webhooks (session admin, Paramètres) ;
@@ -100,6 +102,9 @@ _APP_URLS = [
     path('voip/', include('apps.voip.urls')),
     # XPOS1 — Vente comptoir (point of sale).
     path('pos/', include('apps.pos.urls')),
+    # NTRET12 — Moteur de promotions panier (règles configurables, coupons
+    # NTRET13, cartes cadeaux NTRET15).
+    path('promotions/', include('apps.promotions.urls')),
     # NTSEC — Fondation Identité & accès (NTSEC11 : allowlist IP/CIDR).
     path('identity/', include('apps.identity.urls')),
     # NTSEC19/20 — Gouvernance des accès (revue d'accès + SoD). WIR136 :
@@ -150,6 +155,7 @@ _APP_URLS = [
     path('education/', include('apps.education.urls')),
     # NTUX1 — Vues sauvegardées serveur (personnelles/partagées).
     path('uxviews/', include('apps.uxviews.urls')),
+    path('transport/', include('apps.transport.urls')),
     # NTUX7 — Corbeille transverse 30 jours (écran /parametres/corbeille).
     path('trash/', include('apps.trash.urls')),
     # NTMOB1 — Synchro hors-ligne multi-module (rejeu idempotent d'un lot).
@@ -171,6 +177,14 @@ _APP_URLS = [
     # à dessein : le gatage 404 des modules désactivés dérive du 2ᵉ segment, et
     # un segment en tiret imposerait une entrée `core/permissions.PREFIX_TO_MODULE`.
     path('veille_ao/', include('apps.veille_ao.urls')),
+    # Groupe NTLOG - Douane & import/export (NTLOG14 seulement ; NTLOG10
+    # BLOCKED, voir apps/douane/apps.py).
+    path('douane/', include('apps.douane.urls')),
+    # NTRET18/19 — Connecteurs Shopify/WooCommerce ([GATED: clé API]).
+    path('ecommerce-connect/', include('apps.ecommerce_connect.urls')),
+    # Groupe NTSCM — Planification supply chain (prévision/S&OP), au-dessus
+    # de l'exécution `apps.stock` existante.
+    path('scm/', include('apps.scm.urls')),
 ]
 
 urlpatterns = [

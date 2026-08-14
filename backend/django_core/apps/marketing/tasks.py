@@ -8,6 +8,7 @@ from .services import (
     executer_journeys_dus,
     purger_tokens_expires,
     rappeler_approbations_envoi_en_attente,
+    recalculer_scores_maturite_inactivite,
 )
 
 
@@ -52,3 +53,16 @@ def rappeler_approbations_envoi_task():
     for company in Company.objects.all():
         total += len(rappeler_approbations_envoi_en_attente(company))
     return {'rappels': total}
+
+
+@shared_task(name='marketing.recalculer_scores_maturite_inactivite')
+def recalculer_scores_maturite_inactivite_task():
+    """NTMKT34 — recalcul quotidien du score de maturité (NTMKT18) : applique
+    la pénalité d'inactivité 30j aux leads qui ont déjà un ``ScoreMaturite``
+    (no-op complet pour une société qui n'a jamais activé NTMKT18)."""
+    from authentication.models import Company
+
+    total = 0
+    for company in Company.objects.all():
+        total += len(recalculer_scores_maturite_inactivite(company))
+    return {'scores_changes': total}
