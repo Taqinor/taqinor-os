@@ -84,6 +84,18 @@ jobs:
         # par-merge : on paie l'instrumentation là où la latence est sans enjeu.
         run: |
           pip install coverage
+          # 2026-08-14 — ce job installe les deps PROD (`requirements.txt`) pour
+          # rendre les PDF sur la MEME pile qu'en production, mais la suite de
+          # tests, elle, a besoin de trois outils dev-only. Sans eux le job ne
+          # « échoue » pas franchement : des DIZAINES de modules de test ne se
+          # CHARGENT tout simplement pas (`unittest.loader._FailedTest`,
+          # `ModuleNotFoundError: No module named 'factory'/'faker'/'freezegun'`)
+          # — tout apps/cpq, apps/accessreview, l'audit sécurité… Ce job était
+          # rouge chaque nuit depuis ≥ le 07/08/2026 pour cette seule raison.
+          # Versions ÉPINGLÉES sur `requirements-dev.txt` ; jamais ajoutées à
+          # `requirements.txt` (même précédent que le `pip install Faker` du job
+          # e2e-full ci-dessous).
+          pip install factory_boy==3.3.1 Faker==40.28.1 freezegun==1.5.1
           coverage run manage.py test apps authentication core -v 2 --keepdb
           coverage report
 
