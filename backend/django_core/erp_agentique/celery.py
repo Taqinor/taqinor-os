@@ -856,6 +856,25 @@ app.conf.beat_schedule = {
         'task': 'scm.ouvrir_cycle_sop_mensuel',
         'schedule': crontab(hour=5, minute=30, day_of_month=20),
     },
+    # NTMFG30 — recalcul MRP nocturne (NTMFG5) + notification des ruptures
+    # prévisionnelles sur l'horizon `ParametresMRP.horizon_mrp_jours`
+    # (NTMFG29) — apps/mrp/tasks.py. Best-effort par société.
+    'mrp-recalculer-besoins-nocturne': {
+        'task': 'mrp.recalculer_besoins_nocturne',
+        'schedule': crontab(hour=1, minute=30),
+    },
+    # NTMFG31 — archive (soft-delete) les OF prototype clôturés dépassant
+    # `ParametresMRP.retention_prototype_jours` (NTMFG29) — apps/mrp/tasks.py.
+    'mrp-archiver-of-prototype-anciens': {
+        'task': 'mrp.archiver_of_prototype_anciens',
+        'schedule': crontab(hour=2, minute=15),
+    },
+    # NTMFG32 — rappel proactif J-7 avant échéance d'entretien de poste
+    # (NTMFG14) — apps/mrp/tasks.py.
+    'mrp-rappeler-entretiens-poste-j7': {
+        'task': 'mrp.rappeler_entretiens_poste_j7',
+        'schedule': crontab(hour=6, minute=45),
+    },
 }
 
 # YHARD6 — compteurs Celery succès/échec (process-local, best-effort) pour
