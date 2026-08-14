@@ -149,8 +149,22 @@ class PrixContractuelViewSet(CompanyScopedModelViewSet):
             "le modifier ou le supprimer.")
 
     def perform_update(self, serializer):
-        self._verifier_auteur_ou_role_eleve(self.get_object())
+        instance = self.get_object()
+        self._verifier_auteur_ou_role_eleve(instance)
+        # NTCPQ46 — audit trail des changements de prix_ht (ancienne/nouvelle
+        # valeur, auteur, société) via l'infrastructure d'audit GÉNÉRIQUE déjà
+        # en prod (apps.audit.recorder) — aucun nouveau modèle.
+        ancien_prix = instance.prix_ht
         serializer.save()
+        nouveau_prix = serializer.instance.prix_ht
+        if ancien_prix != nouveau_prix:
+            from apps.audit import recorder
+            recorder.record_field_change(
+                serializer.instance, 'prix_ht', ancien_prix, nouveau_prix,
+                user=self.request.user, field_label='Prix HT (contractuel)',
+                # PrixContractuel n'est pas (encore) une cible chatter ARC30 —
+                # seul l'AuditLog est visé par NTCPQ46 (écran d'audit staff).
+                chatter=False)
 
     def perform_destroy(self, instance):
         self._verifier_auteur_ou_role_eleve(instance)
