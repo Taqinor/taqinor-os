@@ -64,6 +64,8 @@ import RoofViewer from './RoofViewer'
 import DevisSuiviPartagePanel from './DevisSuiviPartagePanel'
 // PV43 — panneau « Conception électrique » (chaînes/conformité/schéma/surcharges).
 import ConceptionElectrique from '../../features/ventes/ConceptionElectrique'
+// PV76 — carte « Étude bancable » (P50/P90/PR/cascade/payback/VAN/TRI).
+import EtudeBancable from '../../features/ventes/EtudeBancable'
 import { StateBlock } from '../../components/StateBlock'
 import DocumentStageTrack from '../../ui/DocumentStageTrack'
 // APX13 — la piste devis→BC→facture, définie UNE fois pour les 3 écrans.
@@ -366,6 +368,7 @@ function DevisRow({ d, ctx }) {
     histoOpenId, toggleHistorique, histoCache, histoLoadingId,
     suiviOpenId, toggleSuiviPartage, suiviCache, suiviLoadingId,
     conceptionOpenId, setConceptionOpenId,
+    etudeOpenId, setEtudeOpenId,
     versionChain, effStatutOf,
     navigate, dispatch,
     role, canDelete, canValiderVente, canSeePublicite, highlightId,
@@ -970,6 +973,12 @@ function DevisRow({ d, ctx }) {
                 {conceptionOpenId === d.id
                   ? 'Masquer la conception électrique' : 'Conception électrique'}
               </DropdownMenuItem>
+              {/* PV76 — carte « Étude bancable » (P50/P90/PR/cascade des
+                  pertes/payback/VAN/TRI), lecture de `etude_params.simulation`. */}
+              <DropdownMenuItem onSelect={() => setEtudeOpenId(
+                etudeOpenId === d.id ? null : d.id)}>
+                {etudeOpenId === d.id ? "Masquer l'étude bancable" : 'Étude bancable'}
+              </DropdownMenuItem>
               {/* QX27 — actions historiquement dans « Autres actions » :
                   Réviser, Approuver remise, Contacter mon supérieur, Email. */}
               {d.is_active && d.statut !== 'brouillon' && (
@@ -1179,6 +1188,20 @@ function DevisRow({ d, ctx }) {
         </td>
       </tr>
     )}
+    {/* PV76 — Carte « Étude bancable » : lecture de
+        `etude_params.simulation`, recalcul asynchrone (PV74). */}
+    {etudeOpenId === d.id && (
+      <tr>
+        <td colSpan={8} className="bg-muted/30">
+          <div className="px-3 py-3">
+            <p className="mb-2 text-xs font-medium text-muted-foreground">
+              Étude bancable — {d.reference}
+            </p>
+            <EtudeBancable devis={d} onRefresh={() => dispatch(fetchDevis())} />
+          </div>
+        </td>
+      </tr>
+    )}
     </Fragment>
   )
 }
@@ -1295,6 +1318,12 @@ export default function DevisList() {
   // composant `<ConceptionElectrique>` gère lui-même son chargement/cache —
   // ce state ne fait QUE basculer sa visibilité (même patron que roofOpenId).
   const [conceptionOpenId, setConceptionOpenId] = useState(null)
+
+  // PV76 — Carte « Étude bancable » : id du devis dont la carte
+  // P50/P90/PR/cascade/payback/VAN/TRI est ouverte. `<EtudeBancable>` lit
+  // `d.etude_params.simulation` directement (déjà porté par la ligne, comme
+  // `roof_layout`) — aucun cache séparé nécessaire ici.
+  const [etudeOpenId, setEtudeOpenId] = useState(null)
 
   // ── Filtre statut + recherche (référence / client) ──
   // QX12 — deep-link ?statut=<key> pré-règle le filtre au montage (liens de
@@ -2192,6 +2221,7 @@ export default function DevisList() {
     histoOpenId, toggleHistorique, histoCache, histoLoadingId,
     suiviOpenId, toggleSuiviPartage, suiviCache, suiviLoadingId,
     conceptionOpenId, setConceptionOpenId,
+    etudeOpenId, setEtudeOpenId,
     versionChain, effStatutOf,
     navigate, dispatch,
     role, canDelete, canValiderVente, canSeePublicite, highlightId,

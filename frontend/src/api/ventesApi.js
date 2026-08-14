@@ -109,6 +109,13 @@ const ventesApi = {
     api.get(`/ventes/devis/${id}/schema-unifilaire/`, {
       params: { format: 'pdf' }, responseType: 'blob',
     }),
+  // PV74/PV76 — étude BANCABLE : lance le calcul (PVGIS par pan) en tâche de
+  // fond → 202 + jeton, puis sonder `simulation-status` jusqu'à
+  // `{status:'ready', simulation}`. La charge lue reste TOUJOURS
+  // `Devis.etude_params.simulation` (jamais recopiée depuis le cache du job).
+  simulerEtudeDevis: (id, payload = {}) => api.post(`/ventes/devis/${id}/simuler/`, payload),
+  getSimulationStatus: (id, token) =>
+    api.get(`/ventes/devis/${id}/simulation-status/${token}/`),
   // QG9/QG10 — lit (GET) ou règle (PUT, Directeur/Commercial responsable) le
   // pourcentage par défaut des variantes de devis.
   getVarianteConfig: () => api.get('/ventes/devis/variante-config/'),
