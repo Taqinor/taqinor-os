@@ -907,6 +907,15 @@ def _run_demo_reset(slug):
 class CompanyViewSet(viewsets.ModelViewSet):
     queryset = Company.objects.all().order_by('date_creation')
     serializer_class = CompanySerializer
+    # NTDMO33 — ``IsAdminUser`` (``request.user.is_staff``) est déjà le SEUL
+    # portail vers ce PATCH : ``mode_presentation_actif``/``tours_actifs``
+    # (Paramètres → Démo & Onboarding, NTDMO27) et reset-demo/demo-kit en
+    # dépendent tous. Un rôle Technicien/Terrain n'a JAMAIS ``is_staff=True``
+    # (seul un compte admin/démo explicitement promu, ex.
+    # ``seed_demo_company``, le porte) — pas de permission fine dédiée à
+    # ajouter ici (« jamais une nouvelle permission redondante », NTDMO33).
+    # Verrouillé par test de régression (voir
+    # test_ntdmo33_technicien_ne_peut_pas.py).
     permission_classes = [permissions.IsAdminUser]
 
     def perform_update(self, serializer):
