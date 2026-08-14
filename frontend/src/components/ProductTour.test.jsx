@@ -95,6 +95,31 @@ describe('ProductTour (NTDMO15)', () => {
       .not.toBeNull()
   })
 
+  // Défaut visuel prouvé (PR #518, correctif) : la 1re étape de CHAQUE tour
+  // n'a pas de `selecteur` (pas de cible à spotlighter) ; la bulle doit alors
+  // être centrée à l'écran. `animate-pop-in` (tokens.css) définit lui-même un
+  // `transform` (keyframes `pop-in`, finissent sur `transform: none`, fill-mode
+  // `both`) — s'il est posé sur le MÊME nœud qu'un `transform` de centrage
+  // inline, l'animation l'écrase et la bulle atterrit décalée en bas-à-droite
+  // du centre. On verrouille donc la SÉPARATION : le centrage doit vivre sur
+  // un conteneur dédié, jamais sur l'élément qui porte `animate-pop-in`.
+  it('centre la bulle sans cible sans que l’animation pop-in n’écrase le centrage', async () => {
+    api.get.mockResolvedValueOnce({ data: TOURS })
+    renderTour(RECENT_USER)
+    await screen.findByText('Créer un devis')
+    const bulle = screen.getByRole('button', { name: /Suivant/ }).closest('.animate-pop-in')
+    expect(bulle).not.toBeNull()
+    // L'élément animé lui-même ne doit porter AUCUN transform de centrage —
+    // sinon `animate-pop-in` l'écraserait en fin d'animation.
+    expect(bulle.style.transform).not.toContain('translate')
+    // Le centrage doit vivre sur un conteneur ancêtre dédié, inerte et non
+    // animé (séparé de l'élément `animate-pop-in`).
+    const centreur = bulle.parentElement
+    expect(centreur.className).toContain('fixed')
+    expect(centreur.style.transform).toContain('translate(-50%, -50%)')
+    expect(centreur.className).toContain('pointer-events-none')
+  })
+
   it('un clic hors de la bulle ferme la visite (et un clic dedans ne la ferme pas)', async () => {
     api.get.mockResolvedValueOnce({ data: TOURS })
     api.post.mockResolvedValueOnce({ data: [{ ...TOURS[0], vu: true }] })

@@ -130,6 +130,10 @@ export default function ProductTour() {
   const isLast = step === etapes.length - 1
   const isFirst = step === 0
 
+  // Style de la bulle elle-même. Étape AVEC cible (spotlight, branche
+  // inchangée) : ancrée sous l'élément mesuré. Étape SANS cible (1re étape de
+  // CHAQUE tour) : plus AUCUN `position`/`transform` de centrage ici — voir la
+  // note sur le conteneur centreur plus bas pour le pourquoi.
   let bubbleStyle
   if (rect) {
     const vw = window.innerWidth
@@ -140,11 +144,57 @@ export default function ProductTour() {
     if (left < 12) left = 12
     bubbleStyle = { position: 'fixed', top, left, width, maxWidth: 'calc(100vw - 24px)' }
   } else {
-    bubbleStyle = {
-      position: 'fixed', top: '50%', left: '50%',
-      transform: 'translate(-50%, -50%)', width: 'min(380px, calc(100vw - 32px))',
-    }
+    bubbleStyle = { width: 'min(380px, calc(100vw - 32px))' }
   }
+
+  // Contenu partagé par les deux branches (spotlight / sans cible) ci-dessous —
+  // évite de dupliquer le corps de la bulle.
+  const bubbleBody = (
+    <>
+      <div className="mb-1.5 flex items-start justify-between gap-3">
+        <h3 className="font-display text-sm font-bold tracking-tight text-foreground">
+          {current.titre}
+        </h3>
+        <button type="button" onClick={finish} aria-label="Fermer la visite guidée"
+                className="-mr-1 -mt-1 shrink-0 rounded-md p-1 text-muted-foreground hover:bg-accent hover:text-foreground">
+          <X className="size-4" aria-hidden="true" />
+        </button>
+      </div>
+      <p className="text-sm leading-relaxed text-muted-foreground">{current.texte}</p>
+
+      <div className="mt-3 flex items-center justify-between gap-2">
+        <div className="flex items-center gap-1.5" aria-hidden="true">
+          {etapes.map((s, i) => (
+            <span key={s.ordre}
+                  className={['size-1.5 rounded-full transition-colors',
+                    i === step ? 'bg-primary' : 'bg-border'].join(' ')} />
+          ))}
+        </div>
+        <div className="flex items-center gap-1.5">
+          {!isFirst && (
+            <Button type="button" size="sm" variant="outline" onClick={prev}>
+              <ArrowLeft className="size-4" aria-hidden="true" /> Précédent
+            </Button>
+          )}
+          {!isLast && (
+            <Button type="button" size="sm" variant="ghost" onClick={finish}>
+              Passer
+            </Button>
+          )}
+          <Button type="button" size="sm" onClick={next}>
+            {isLast ? (
+              <><Check className="size-4" aria-hidden="true" /> Terminer</>
+            ) : (
+              <>Suivant <ArrowRight className="size-4" aria-hidden="true" /></>
+            )}
+          </Button>
+        </div>
+      </div>
+    </>
+  )
+
+  const bubbleClassName = 'pointer-events-auto animate-pop-in rounded-lg border border-border '
+    + 'bg-popover p-3 text-popover-foreground shadow-ui-lg'
 
   return createPortal(
     <div className="pointer-events-none fixed inset-0 z-[var(--z-popover)]" role="dialog"
@@ -161,48 +211,31 @@ export default function ProductTour() {
       )}
 
       {/* Réutilise le style de `ui/Popover` (PopoverContent) pour la bulle. */}
-      <div ref={bubbleRef} style={bubbleStyle}
-           className="pointer-events-auto animate-pop-in rounded-lg border border-border bg-popover p-3 text-popover-foreground shadow-ui-lg">
-        <div className="mb-1.5 flex items-start justify-between gap-3">
-          <h3 className="font-display text-sm font-bold tracking-tight text-foreground">
-            {current.titre}
-          </h3>
-          <button type="button" onClick={finish} aria-label="Fermer la visite guidée"
-                  className="-mr-1 -mt-1 shrink-0 rounded-md p-1 text-muted-foreground hover:bg-accent hover:text-foreground">
-            <X className="size-4" aria-hidden="true" />
-          </button>
+      {rect ? (
+        <div ref={bubbleRef} style={bubbleStyle} className={bubbleClassName}>
+          {bubbleBody}
         </div>
-        <p className="text-sm leading-relaxed text-muted-foreground">{current.texte}</p>
-
-        <div className="mt-3 flex items-center justify-between gap-2">
-          <div className="flex items-center gap-1.5" aria-hidden="true">
-            {etapes.map((s, i) => (
-              <span key={s.ordre}
-                    className={['size-1.5 rounded-full transition-colors',
-                      i === step ? 'bg-primary' : 'bg-border'].join(' ')} />
-            ))}
-          </div>
-          <div className="flex items-center gap-1.5">
-            {!isFirst && (
-              <Button type="button" size="sm" variant="outline" onClick={prev}>
-                <ArrowLeft className="size-4" aria-hidden="true" /> Précédent
-              </Button>
-            )}
-            {!isLast && (
-              <Button type="button" size="sm" variant="ghost" onClick={finish}>
-                Passer
-              </Button>
-            )}
-            <Button type="button" size="sm" onClick={next}>
-              {isLast ? (
-                <><Check className="size-4" aria-hidden="true" /> Terminer</>
-              ) : (
-                <>Suivant <ArrowRight className="size-4" aria-hidden="true" /></>
-              )}
-            </Button>
+      ) : (
+        // Étape sans cible : le centrage (`position: fixed` + `top/left: 50%` +
+        // `transform: translate(-50%, -50%)`) vit sur CE conteneur dédié, inerte
+        // (`pointer-events-none`, comme le calque/voile) et JAMAIS animé — pas
+        // sur l'enfant qui porte `animate-pop-in`. `animate-pop-in` définit lui
+        // aussi un `transform` (keyframes `pop-in`, qui finissent sur
+        // `transform: none` avec un fill-mode `both`), et une animation CSS
+        // l'emporte sur tout `transform` posé en `style` inline SUR LE MÊME
+        // nœud, pendant toute sa durée et au-delà (le `both`) : un centrage posé
+        // directement sur l'élément animé était donc écrasé, et la bulle
+        // atterrissait décalée en bas-à-droite du centre au lieu d'être centrée
+        // — la toute première chose vue par un nouvel utilisateur, sur chacun
+        // des 6 tours (leur 1re étape n'a jamais de `selecteur`). Deux nœuds,
+        // deux `transform` séparés : plus aucun conflit possible.
+        <div className="pointer-events-none fixed"
+             style={{ top: '50%', left: '50%', transform: 'translate(-50%, -50%)' }}>
+          <div ref={bubbleRef} style={bubbleStyle} className={bubbleClassName}>
+            {bubbleBody}
           </div>
         </div>
-      </div>
+      )}
     </div>,
     document.body,
   )
