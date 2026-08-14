@@ -295,6 +295,16 @@ class SessionCaisse(models.Model):
         blank=True,
         related_name='sessions_caisse_pos',
     )
+    # NTRET29 — boutique tenue par cette session (Paramètres POS, NTRET8).
+    # NULL = pas de boutique renseignée (comportement historique inchangé —
+    # aucun prix par emplacement ne peut être résolu pour cette session).
+    boutique = models.ForeignKey(
+        'parametres.BoutiquePos',
+        on_delete=models.SET_NULL,  # on_delete: la session reste valide, elle perd juste son rattachement boutique
+        null=True,
+        blank=True,
+        related_name='sessions_caisse_pos',
+    )
     statut = models.CharField(
         max_length=10, choices=Statut.choices, default=Statut.OUVERTE)
     fond_ouverture = models.DecimalField(
@@ -513,3 +523,46 @@ class CodePinCaissier(TenantModel):
         if not self.pin_hash:
             return False
         return check_password(str(raw_pin), self.pin_hash)
+
+
+# ── NTRET29 — Grille tarifaire par boutique/emplacement ─────────────────────
+
+class PrixParEmplacement(TenantModel):
+    """Prix TTC différencié par boutique (NTRET29) : override optionnel du
+    prix catalogue (``stock.Produit.prix_vente``) pour UNE boutique donnée
+    (``parametres.BoutiquePos``, NTRET8 — app de fondation, FK directe
+    autorisée). Absent pour une combinaison (produit, boutique) = repli sur
+    le prix catalogue actuel — rétro-compatible par construction, aucune
+    boutique n'est jamais impactée tant qu'aucune ligne n'est créée pour
+    elle. ``produit`` référence ``stock.Produit`` par FK — aucune écriture ni
+    migration côté ``apps/stock`` (lecture seule, même patron que
+    ``apps.promotions.ReglexPromotion.produit``)."""
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,  # on_delete: composition — l'objet n'existe que dans sa societe
+        related_name='prix_par_emplacement',
+    )
+    produit = models.ForeignKey(
+        'stock.Produit',
+        on_delete=models.CASCADE,  # on_delete: composition — un override de prix n'a pas de sens sans son produit
+        related_name='prix_par_emplacement',
+    )
+    boutique = models.ForeignKey(
+        'parametres.BoutiquePos',
+        on_delete=models.CASCADE,  # on_delete: composition — un override de prix n'a pas de sens sans sa boutique
+        related_name='prix_par_emplacement',
+    )
+    prix_ttc = models.DecimalField(max_digits=10, decimal_places=2)
+
+    class Meta:
+        verbose_name = 'Prix par emplacement'
+        verbose_name_plural = 'Prix par emplacement'
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'produit', 'boutique'],
+                name='pos_prixparemplacement_unique_produit_boutique',
+            ),
+        ]
+
+    def __str__(self):
+        return f'{self.produit_id} @ {self.boutique_id} = {self.prix_ttc}'

@@ -300,14 +300,19 @@ class SessionCaisseError(Exception):
 
 @transaction.atomic
 def ouvrir_session(*, company, caisse_comptable, caissier, fond_ouverture,
-                   user=None):
+                   user=None, boutique=None):
     """Ouvre une session de caisse comptoir (XPOS4).
 
     Refuse d'ouvrir une deuxième session tant qu'une session est déjà ouverte
     pour la même caisse comptable. Journalise l'ouverture via ``apps.audit``.
-    """
+    ``boutique`` (NTRET29, optionnel) rattache la session à une
+    ``parametres.BoutiquePos`` — permet de résoudre la grille tarifaire par
+    emplacement ; absente = comportement historique inchangé (prix
+    catalogue)."""
     if caisse_comptable.company_id != company.id:
         raise SessionCaisseError('Caisse comptable inconnue.')
+    if boutique is not None and boutique.company_id != company.id:
+        raise SessionCaisseError('Boutique inconnue.')
     deja_ouverte = SessionCaisse.objects.filter(
         company=company, caisse_comptable=caisse_comptable,
         statut=SessionCaisse.Statut.OUVERTE).exists()
@@ -320,6 +325,7 @@ def ouvrir_session(*, company, caisse_comptable, caissier, fond_ouverture,
         caissier=caissier,
         fond_ouverture=Decimal(fond_ouverture or 0),
         statut=SessionCaisse.Statut.OUVERTE,
+        boutique=boutique,
     )
     session.full_clean()
     session.save()

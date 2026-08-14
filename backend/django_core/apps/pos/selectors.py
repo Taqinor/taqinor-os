@@ -8,7 +8,7 @@ dans l'export xlsx (toujours client/interne-safe).
 """
 from decimal import Decimal
 
-from .models import VenteComptoir
+from .models import PrixParEmplacement, VenteComptoir
 
 
 def vente_par_uuid_client(company, uuid_client):
@@ -18,6 +18,23 @@ def vente_par_uuid_client(company, uuid_client):
         return None
     return VenteComptoir.objects.filter(
         company=company, uuid_client=uuid_client).first()
+
+
+# ── NTRET29 — Grille tarifaire par boutique/emplacement ─────────────────────
+
+def prix_applicable(company, produit, boutique):
+    """NTRET29 — prix TTC applicable à ``produit`` pour ``boutique``
+    (``parametres.BoutiquePos``) : l'override ``PrixParEmplacement`` s'il
+    existe, sinon le prix catalogue (``produit.prix_vente``) — REPLI
+    rétro-compatible pour toute boutique/produit sans override. ``boutique``
+    None (session sans boutique renseignée) renvoie toujours le prix
+    catalogue, comportement historique inchangé."""
+    if boutique is not None:
+        override = PrixParEmplacement.objects.filter(
+            company=company, produit=produit, boutique=boutique).first()
+        if override is not None:
+            return override.prix_ttc
+    return produit.prix_vente
 
 
 def _date_filtered(qs, date_debut, date_fin):

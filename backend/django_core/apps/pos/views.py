@@ -106,12 +106,23 @@ class VenteComptoirViewSet(viewsets.ModelViewSet):
         produit = get_produit_scoped(vente.company, produit_id)
         if produit is None:
             raise ValidationError({'produit': 'Produit inconnu.'})
+        # NTRET29 — grille tarifaire par boutique : un prix explicite dans la
+        # requête garde toujours la priorité (comportement historique
+        # inchangé) ; à défaut, résout le prix catalogue OU son override pour
+        # la boutique de la session de caisse active (absente = catalogue).
+        if prix is None:
+            boutique = (
+                vente.session_caisse.boutique
+                if vente.session_caisse_id else None)
+            prix_defaut = selectors.prix_applicable(vente.company, produit, boutique)
+        else:
+            prix_defaut = prix
         ligne = LigneVenteComptoir.objects.create(
             vente=vente,
             produit=produit,
             designation=produit.nom,
             quantite=quantite,
-            prix_unitaire_ttc=prix if prix is not None else produit.prix_vente,
+            prix_unitaire_ttc=prix_defaut,
             remise=request.data.get('remise', 0),
             taux_tva=request.data.get('taux_tva'),
             numeros_serie=request.data.get('numeros_serie') or [],
@@ -480,6 +491,7 @@ class SessionCaisseViewSet(viewsets.ModelViewSet):
                 fond_ouverture=serializer.validated_data.get(
                     'fond_ouverture', 0),
                 user=self.request.user,
+                boutique=serializer.validated_data.get('boutique'),
             )
         except services.SessionCaisseError as exc:
             raise ValidationError(str(exc))

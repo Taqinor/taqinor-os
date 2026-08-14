@@ -2888,7 +2888,7 @@
     champs: client, client_nom, code_retrait, created_by, date_creation, date_pret, date_retrait, devis, id, lignes, reference, statut, vente_comptoir
     statut ∈ {a_preparer, annule, pret, retire}
 - frontend/src/api/posApi.js :: createVente -> /api/django/pos/ventes  [VenteComptoirSerializer]
-    champs: caissier, client, client_nom, created_by, date_creation, date_validation, facture, id, lignes, marchandise_remise, montant_arrhes, note, reference, session_caisse, statut, taux_tva, total_ht, total_ttc, uuid_client
+    champs: caissier, client, client_nom, created_by, date_creation, date_validation, ecart_arrondi_especes, facture, id, lignes, marchandise_remise, montant_arrhes, note, reference, session_caisse, statut, taux_tva, total_ht, total_ttc, uuid_client
     statut ∈ {annulee, brouillon, en_attente_solde, validee}
 - frontend/src/api/posApi.js :: getConfigMateriel -> /api/django/pos/config-materiel  [ConfigMaterielPOSSerializer]
     champs: id, imprimante_active, imprimante_ip, imprimante_port
@@ -2899,13 +2899,13 @@
     champs: client, client_nom, code_retrait, created_by, date_creation, date_pret, date_retrait, devis, id, lignes, reference, statut, vente_comptoir
     statut ∈ {a_preparer, annule, pret, retire}
 - frontend/src/api/posApi.js :: getSessions -> /api/django/pos/sessions  [SessionCaisseSerializer]
-    champs: caisse_comptable, caissier, cloture_caisse_comptable, commentaire, date_cloture, date_ouverture, ecart_tpe, fond_ouverture, id, montant_compte_cloture, montant_tpe_compte, statut
+    champs: boutique, caisse_comptable, caissier, cloture_caisse_comptable, commentaire, date_cloture, date_ouverture, ecart_tpe, fond_ouverture, id, montant_compte_cloture, montant_tpe_compte, statut
     statut ∈ {cloturee, ouverte}
 - frontend/src/api/posApi.js :: getVente -> /api/django/pos/ventes/<>  [VenteComptoirSerializer]
-    champs: caissier, client, client_nom, created_by, date_creation, date_validation, facture, id, lignes, marchandise_remise, montant_arrhes, note, reference, session_caisse, statut, taux_tva, total_ht, total_ttc, uuid_client
+    champs: caissier, client, client_nom, created_by, date_creation, date_validation, ecart_arrondi_especes, facture, id, lignes, marchandise_remise, montant_arrhes, note, reference, session_caisse, statut, taux_tva, total_ht, total_ttc, uuid_client
     statut ∈ {annulee, brouillon, en_attente_solde, validee}
 - frontend/src/api/posApi.js :: ouvrirSession -> /api/django/pos/sessions  [SessionCaisseSerializer]
-    champs: caisse_comptable, caissier, cloture_caisse_comptable, commentaire, date_cloture, date_ouverture, ecart_tpe, fond_ouverture, id, montant_compte_cloture, montant_tpe_compte, statut
+    champs: boutique, caisse_comptable, caissier, cloture_caisse_comptable, commentaire, date_cloture, date_ouverture, ecart_tpe, fond_ouverture, id, montant_compte_cloture, montant_tpe_compte, statut
     statut ∈ {cloturee, ouverte}
 - frontend/src/api/posApi.js :: updateConfigMateriel -> /api/django/pos/config-materiel/<>  [ConfigMaterielPOSSerializer]
     champs: id, imprimante_active, imprimante_ip, imprimante_port

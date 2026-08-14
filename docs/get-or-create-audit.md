@@ -233,7 +233,7 @@ Généré par `python scripts/check_get_or_create.py`. Chaque appel liste ses cl
 | `backend/django_core/apps/parametres/models_documents.py:100` | get_or_create | cls.objects | company |
 | `backend/django_core/apps/parametres/models_documents.py:102` | get_or_create | cls.objects | pk |
 | `backend/django_core/apps/parametres/models_payment_terms.py:89` | get_or_create | cls.objects | company, delai_jours, escompte_pct, fin_de_mois |
-| `backend/django_core/apps/parametres/models_pos.py:48` | get_or_create | cls.objects | company |
+| `backend/django_core/apps/parametres/models_pos.py:65` | get_or_create | cls.objects | company |
 | `backend/django_core/apps/parametres/models_tariff.py:137` | get_or_create | cls.objects | company |
 | `backend/django_core/apps/parametres/models_tariff.py:139` | get_or_create | cls.objects | pk |
 | `backend/django_core/apps/parametres/models_taxes.py:103` | get_or_create | cls.objects | code, company |
@@ -247,7 +247,7 @@ Généré par `python scripts/check_get_or_create.py`. Chaque appel liste ses cl
 | `backend/django_core/apps/portail/services.py:146` | get_or_create | ComptePortailClient.objects | client, company |
 | `backend/django_core/apps/portail/services.py:163` | get_or_create | Role.objects | company, nom |
 | `backend/django_core/apps/portail/views_client.py:118` | get_or_create | AcceptationDevisPortail.objects | company, devis |
-| `backend/django_core/apps/pos/services.py:588` | get_or_create | CodePinCaissier.objects | company, user |
+| `backend/django_core/apps/pos/services.py:761` | get_or_create | CodePinCaissier.objects | company, user |
 | `backend/django_core/apps/publicapi/idempotency.py:64` | get_or_create | IdempotencyRecord.objects | api_key, endpoint, idempotency_key |
 | `backend/django_core/apps/qhse/management/commands/seed_aspects_environnementaux_solaire.py:72` | get_or_create | AspectEnvironnemental.objects | activite, aspect, company |
 | `backend/django_core/apps/qhse/management/commands/seed_clauses_norme.py:87` | get_or_create | ClauseNorme.objects | company, numero, referentiel |

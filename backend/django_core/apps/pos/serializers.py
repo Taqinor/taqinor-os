@@ -70,6 +70,9 @@ class SessionCaisseSerializer(serializers.ModelSerializer):
             'fond_ouverture', 'date_ouverture', 'date_cloture',
             'montant_compte_cloture', 'montant_tpe_compte', 'ecart_tpe',
             'cloture_caisse_comptable', 'commentaire',
+            # NTRET29 — boutique tenue (résout la grille tarifaire par
+            # emplacement) ; posable seulement à l'ouverture.
+            'boutique',
         ]
         read_only_fields = [
             'statut', 'date_ouverture', 'date_cloture',
