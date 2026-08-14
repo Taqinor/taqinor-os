@@ -17,10 +17,12 @@ from .models import (
     CoutStandard, Gamme, OperationGamme, OperationOF, OrdreFabrication,
     OrdreModification, PosteDeCharge, ReglesKanbanProduction,
 )
+from .permissions import EstAdminMRP
 from .serializers import (
     CoutStandardSerializer, GammeSerializer, OperationGammeSerializer,
     OperationOFSerializer, OrdreFabricationSerializer, OrdreModificationSerializer,
-    PosteDeChargeSerializer, ReglesKanbanProductionSerializer,
+    ParametresMRPSerializer, PosteDeChargeSerializer,
+    ReglesKanbanProductionSerializer,
 )
 
 
@@ -458,16 +460,27 @@ def mrp_run_view(request):
     """NTMFG5 — ``POST /api/django/mrp/mrp-run/`` : calcul des besoins nets
     (MRP) à la demande, company-scopé. Corps optionnel :
     ``{"produits": [id, ...], "demande_independante": {"<produit_id>": qte},
-    "stock_securite_pct": "10", "horizon_jours": 30}``."""
+    "stock_securite_pct": "10", "horizon_jours": 30}``. NTMFG29 — un appelant
+    qui ne fournit PAS ``horizon_jours``/``stock_securite_pct`` retombe sur
+    les réglages `ParametresMRP` de la société (`horizon_mrp_jours`/
+    `stock_securite_pct_defaut`) plutôt que sur une valeur codée en dur."""
     from .selectors import calculer_besoins_nets
+    from .services import parametres_mrp
 
     body = request.data or {}
+    parametres = parametres_mrp(request.user.company)
+    horizon_jours = body.get('horizon_jours')
+    if horizon_jours is None:
+        horizon_jours = parametres.horizon_mrp_jours
+    stock_securite_pct = body.get('stock_securite_pct')
+    if stock_securite_pct is None:
+        stock_securite_pct = parametres.stock_securite_pct_defaut
     resultats = calculer_besoins_nets(
         request.user.company,
         produits=body.get('produits'),
         demande_independante=body.get('demande_independante'),
-        stock_securite_pct=body.get('stock_securite_pct') or 0,
-        horizon_jours=body.get('horizon_jours'))
+        stock_securite_pct=stock_securite_pct,
+        horizon_jours=horizon_jours)
     return Response(resultats)
 
 
@@ -808,3 +821,33 @@ def tableau_bord_production_view(request):
     from .selectors import tableau_bord_production
 
     return Response(tableau_bord_production(request.user.company))
+
+
+# ── NTMFG29 — Paramètres MRP par société ──────────────────────────────────
+
+@extend_schema(responses=ParametresMRPSerializer)
+@api_view(['GET'])
+@permission_classes([EstAdminMRP])
+def parametres_mrp_view(request):
+    """NTMFG29 — ``GET /api/django/mrp/parametres/`` : réglages MRP de la
+    société courante (lazy-create, `services.parametres_mrp`). Réservé Admin
+    (un Responsable peut planifier — NTMFG3 — mais pas voir/modifier les
+    paramètres société ; un Technicien reçoit 403)."""
+    from .services import parametres_mrp
+
+    return Response(ParametresMRPSerializer(parametres_mrp(request.user.company)).data)
+
+
+@extend_schema(request=ParametresMRPSerializer, responses=ParametresMRPSerializer)
+@api_view(['PUT'])
+@permission_classes([EstAdminMRP])
+def parametres_mrp_update_view(request):
+    """NTMFG29 — ``PUT /api/django/mrp/parametres/update/`` : met à jour les
+    réglages MRP de la société courante. Réservé Admin."""
+    from .services import parametres_mrp
+
+    instance = parametres_mrp(request.user.company)
+    serializer = ParametresMRPSerializer(instance, data=request.data, partial=True)
+    serializer.is_valid(raise_exception=True)
+    serializer.save()
+    return Response(serializer.data)

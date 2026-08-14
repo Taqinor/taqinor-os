@@ -8,7 +8,8 @@ from .views import (
     OrdreFabricationViewSet, OrdreModificationViewSet, PosteDeChargeViewSet,
     ReglesKanbanProductionViewSet, analyse_couts_export_view, analyse_couts_view,
     charge_postes_view, kanban_declencher_view, mrp_run_view, oee_tous_postes_view,
-    simuler_charge_view, tableau_bord_production_view,
+    parametres_mrp_update_view, parametres_mrp_view, simuler_charge_view,
+    tableau_bord_production_view,
 )
 
 router = DefaultRouter()
@@ -31,5 +32,7 @@ urlpatterns = [
     path('kanban/declencher/', kanban_declencher_view, name='mrp-kanban-declencher'),
     path('simuler-charge/', simuler_charge_view, name='mrp-simuler-charge'),
     path('tableau-bord/', tableau_bord_production_view, name='mrp-tableau-bord'),
+    path('parametres/', parametres_mrp_view, name='mrp-parametres'),
+    path('parametres/update/', parametres_mrp_update_view, name='mrp-parametres-update'),
     path('', include(router.urls)),
 ]

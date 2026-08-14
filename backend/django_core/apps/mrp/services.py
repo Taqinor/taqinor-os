@@ -819,3 +819,15 @@ def declencher_kanban_toutes_regles(company):
         if of is not None:
             crees.append(of)
     return crees
+
+
+# ── NTMFG29 — Paramètres MRP par société ─────────────────────────────────
+
+def parametres_mrp(company):
+    """NTMFG29 — réglages MRP de la société (lazy `get_or_create`, pattern
+    `scm.services.parametres_scm` — valeurs par défaut n'affectent AUCUNE
+    société qui n'a encore rien configuré)."""
+    from .models import ParametresMRP
+
+    obj, _created = ParametresMRP.objects.get_or_create(company=company)
+    return obj

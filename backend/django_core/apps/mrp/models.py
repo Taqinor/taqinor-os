@@ -577,3 +577,53 @@ class ReglesKanbanProduction(TenantModel):
 
     def __str__(self):
         return f'Kanban · {self.produit_id} (seuil {self.seuil_declenchement})'
+
+
+class ParametresMRP(TenantModel):
+    """NTMFG29 — réglages du module MRP PAR SOCIÉTÉ (pattern
+    `scm.ParametresSCM` : OneToOne, lazy get_or_create via
+    `services.parametres_mrp`, jamais créé à la main). Chaque société règle
+    son propre comportement atelier sans toucher au code :
+
+    * ``horizon_mrp_jours`` — fenêtre du calcul de besoins nets (NTMFG5,
+      `selectors.calculer_besoins_nets`) quand l'appelant ne fournit pas
+      explicitement ``horizon_jours`` ;
+    * ``stock_securite_pct_defaut`` — % de sécurité par défaut du même calcul ;
+    * ``tolerance_surcharge_poste_pct`` — tolérance de dépassement de charge
+      poste (NTMFG7) ;
+    * ``blocage_qc_force_motif_obligatoire`` — motif obligatoire pour forcer un
+      contrôle qualité bloquant (NTMFG13, hors périmètre round 1/2 — champ posé
+      pour ce futur consommateur) ;
+    * ``activer_kanban_production`` — active le pull-flow kanban (NTMFG17) ;
+    * ``retention_prototype_jours`` (NTMFG31, additif) — jours de rétention
+      d'un OF prototype clôturé avant archivage automatique.
+    """
+
+    company = models.OneToOneField(
+        'authentication.Company',
+        on_delete=models.CASCADE,  # on_delete: tenant — réglages propres à la société
+        related_name='mrp_parametres', verbose_name='Société')
+    horizon_mrp_jours = models.PositiveIntegerField(
+        default=30, verbose_name='Horizon MRP (jours)')
+    stock_securite_pct_defaut = models.DecimalField(
+        max_digits=5, decimal_places=2, default=0,
+        verbose_name='Stock de sécurité par défaut (%)')
+    tolerance_surcharge_poste_pct = models.DecimalField(
+        max_digits=5, decimal_places=2, default=0,
+        verbose_name='Tolérance de surcharge poste (%)')
+    blocage_qc_force_motif_obligatoire = models.BooleanField(
+        default=True,
+        verbose_name='Motif obligatoire pour forcer un contrôle qualité bloquant')
+    activer_kanban_production = models.BooleanField(
+        default=False, verbose_name='Kanban de production actif')
+    # NTMFG31 — additif : rétention (jours) des OF prototype CLÔTURÉS avant
+    # archivage automatique (`tasks.archiver_of_prototype_anciens`).
+    retention_prototype_jours = models.PositiveIntegerField(
+        default=180, verbose_name='Rétention des OF prototype (jours)')
+
+    class Meta:
+        verbose_name = 'Paramètres MRP'
+        verbose_name_plural = 'Paramètres MRP'
+
+    def __str__(self):
+        return f'Paramètres MRP · société {self.company_id}'
