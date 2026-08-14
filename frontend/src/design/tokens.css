@@ -367,6 +367,14 @@
   --z-base: 0;
   --z-dropdown: 1000;
   --z-sticky: 1100;
+  /* 2026-08-14 — un cran AU-DESSUS de `--z-sticky`, pour le cas (rare) où deux
+     barres collantes se disputent le même bord de l'écran. Cas réel : sur
+     mobile, `.bottom-tabbar` et `.gen-actions-sticky` (pied d'action du
+     générateur de devis) étaient toutes deux à `--z-sticky` ; la tab-bar étant
+     un frère POSTÉRIEUR dans le DOM, elle était peinte après et avalait le
+     bouton de soumission. Reste sous `--z-overlay` : une bottom-sheet, une
+     modale ou un toast le recouvrent toujours correctement. */
+  --z-sticky-raised: 1150;
   --z-overlay: 1200;
   --z-modal: 1300;
   --z-popover: 1400;
