@@ -2133,6 +2133,7 @@ from .models_consignation import (  # noqa: E402,F401
     DepotConsignation,
 )
 from .models_rfa import AccordRFAFournisseur  # noqa: E402,F401
+from .models_van_sales import StockVehicule  # noqa: E402,F401
 
 
 # ── ODX19 — MODULE ACHATS (déplacé) ────────────────────────────────────────

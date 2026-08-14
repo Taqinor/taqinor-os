@@ -366,3 +366,55 @@ def catalogue_b2b_view(request):
         recherche=request.query_params.get('q') or '',
         limite=request.query_params.get('limite') or 50,
         offset=request.query_params.get('offset') or 0))
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# NTDST14 — Van sales : stock embarqué véhicule
+# ═══════════════════════════════════════════════════════════════════════════
+
+@extend_schema(request=None, responses={
+    200: inline_serializer('StockVehiculeEmbarque', {
+        'actif_flotte': serializers.IntegerField(),
+        'lignes': serializers.ListField(child=serializers.DictField()),
+    }),
+})
+@api_view(['GET', 'POST'])
+@permission_classes([IsResponsableOrAdmin])
+def stock_embarque_view(request, actif_flotte_id):
+    """NTDST14 — GET le contenu d'un véhicule ; POST charge ou décharge.
+
+    Corps du POST : ``{operation: 'charger'|'decharger',
+    lignes: [{produit, quantite}]}``. Charger décrémente le dépôt principal
+    et n'affecte AUCUN autre emplacement ; décharger fait l'inverse pour le
+    reliquat non vendu.
+    """
+    from ..services_van_sales import (
+        charger_vehicule, decharger_vehicule, stock_embarque, van_sales_active,
+    )
+
+    company = request.user.company
+    if not van_sales_active(company):
+        return module_desactive('van sales')
+
+    if request.method == 'POST':
+        operation = (request.data.get('operation') or '').strip()
+        lignes = request.data.get('lignes')
+        action_service = {
+            'charger': charger_vehicule, 'decharger': decharger_vehicule,
+        }.get(operation)
+        if action_service is None:
+            return Response(
+                {'detail': "Opération invalide : attendu « charger » ou "
+                           '« decharger ».'},
+                status=status.HTTP_400_BAD_REQUEST)
+        try:
+            action_service(company=company, user=request.user,
+                           actif_flotte_id=actif_flotte_id, lignes=lignes)
+        except ValueError as exc:
+            return Response({'detail': str(exc)},
+                            status=status.HTTP_400_BAD_REQUEST)
+
+    return Response({
+        'actif_flotte': int(actif_flotte_id),
+        'lignes': stock_embarque(company, actif_flotte_id),
+    })
