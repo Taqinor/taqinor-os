@@ -6,12 +6,10 @@
 from rest_framework import serializers
 
 from .models_wms import (
-    AlerteRappel, BlocageQualite, DemandeTransfert, ExpeditionTransporteur,
-    LignePicking,
+    AlerteRappel, BlocageQualite, ExpeditionTransporteur, LignePicking,
     LigneRetourClient, MouvementRebut, PlanChargement, PlanComptageTournant,
-    PortailTiersToken, Quai,
-    RendezVousTransporteur, RetourClient, UniteLogistique,
-    UniteLogistiqueLigne, VaguePicking,
+    PortailTiersToken, Quai, RendezVousTransporteur, RetourClient,
+    UniteLogistique, UniteLogistiqueLigne, VaguePicking,
 )
 
 
@@ -370,28 +368,4 @@ class RetourClientSerializer(serializers.ModelSerializer):
         read_only_fields = [
             'reference', 'statut', 'date_reception', 'date_inspection',
             'cree_par', 'created_at', 'updated_at',
-        ]
-
-
-class DemandeTransfertSerializer(serializers.ModelSerializer):
-    """NTWMS21 — demande d'approbation d'un transfert de valeur. Statut,
-    valeur et décideur sont posés côté serveur."""
-
-    produit_nom = serializers.CharField(source='produit.nom', read_only=True)
-    source_nom = serializers.CharField(
-        source='emplacement_source.nom', read_only=True, default='')
-    destination_nom = serializers.CharField(
-        source='emplacement_destination.nom', read_only=True, default='')
-
-    class Meta:
-        model = DemandeTransfert
-        fields = [
-            'id', 'produit', 'produit_nom', 'quantite', 'emplacement_source',
-            'source_nom', 'emplacement_destination', 'destination_nom',
-            'statut', 'motif', 'valeur_estimee', 'demande_par',
-            'approuve_par', 'date_decision', 'transfert', 'created_at',
-        ]
-        read_only_fields = [
-            'statut', 'valeur_estimee', 'demande_par', 'approuve_par',
-            'date_decision', 'transfert', 'created_at',
         ]

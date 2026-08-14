@@ -18,7 +18,7 @@ from .views import (
     VaguePickingViewSet, UniteLogistiqueViewSet, QuaiViewSet,
     RendezVousTransporteurViewSet, ExpeditionTransporteurViewSet,
     PlanComptageTournantViewSet, AlerteRappelViewSet,
-    PortailTiersTokenViewSet, DemandeTransfertViewSet, RetourClientViewSet,
+    PortailTiersTokenViewSet, RetourClientViewSet,
     MouvementRebutViewSet, PlanChargementViewSet, BlocageQualiteViewSet,
     entrepot_productivite_view, entrepot_pertes_view,
     reslotting_suggestions_view, casiers_etiquettes_pdf_view,
@@ -69,7 +69,6 @@ router.register(
     r'plans-comptage-tournant', PlanComptageTournantViewSet)
 router.register(r'alertes-rappel', AlerteRappelViewSet)
 router.register(r'portails-tiers', PortailTiersTokenViewSet)
-router.register(r'demandes-transfert', DemandeTransfertViewSet)
 router.register(r'retours-client', RetourClientViewSet)
 router.register(r'mouvements-rebut', MouvementRebutViewSet)
 router.register(r'plans-chargement', PlanChargementViewSet)

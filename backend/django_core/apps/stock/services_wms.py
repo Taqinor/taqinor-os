@@ -1962,8 +1962,15 @@ def _entier_ou_none(valeur):
 
 
 # ═══════════════════════════════════════════════════════════════════════════
-# NTWMS21 — Demande de transfert avec workflow d'approbation
+# NTWMS21 — Seuil d'approbation des transferts de valeur
 # ═══════════════════════════════════════════════════════════════════════════
+#
+# LE WORKFLOW DEMANDE → APPROBATION → EXÉCUTION EXISTE DÉJÀ : c'est
+# ``installations.DemandeTransfert`` (FG325), qui exécute d'ailleurs le
+# mouvement réel en appelant ``stock.services.transfer_stock``. NTWMS21
+# n'en construit donc PAS un second (ce serait la dette n°1 identifiée par
+# le fondateur) : il ajoute la seule pièce qui manquait — le SEUIL au-delà
+# duquel le transfert DIRECT est refusé et doit passer par ce workflow.
 
 def seuil_approbation_transfert(company):
     """Seuil de valeur (MAD) au-delà duquel un transfert exige une approbation.
@@ -1991,84 +1998,41 @@ def valeur_transfert(produit, quantite):
     return (prix * Decimal(int(quantite or 0))).quantize(Decimal('0.01'))
 
 
-def transfert_exige_approbation(company, produit, quantite):
-    """Vrai si CE transfert dépasse le seuil configuré par la société."""
+def demande_transfert_approuvee_existe(company, *, produit_id, source_id,
+                                       destination_id, quantite):
+    """Vrai si une demande FG325 APPROUVÉE couvre exactement ce transfert.
+
+    Le modèle vit dans ``installations`` : il est atteint par l'ACCESSEUR
+    INVERSE de la string-FK que cette app expose (``EmplacementStock`` →
+    demandes sortantes), jamais par un import de ``apps.installations.models``.
+    C'est ce qui permet à l'exécution d'une demande approuvée de traverser la
+    garde de seuil sans que l'app ``installations`` ait à changer d'appel.
+    """
+    from .models import EmplacementStock
+
+    modele = EmplacementStock._meta.get_field(
+        'installations_demandes_transfert_sortantes').related_model
+    return modele.objects.filter(
+        company=company, produit_id=produit_id, source_id=source_id,
+        destination_id=destination_id, quantite=quantite,
+        statut='approuve').exists()
+
+
+def transfert_exige_approbation(company, produit, quantite, *, source_id=None,
+                                destination_id=None):
+    """Vrai si CE transfert dépasse le seuil configuré ET n'est couvert par
+    aucune demande de transfert déjà approuvée (FG325)."""
     seuil = seuil_approbation_transfert(company)
     if seuil <= 0:
         return False
-    return valeur_transfert(produit, quantite) > seuil
-
-
-def creer_demande_transfert(*, company, user, produit, quantite,
-                            emplacement_source, emplacement_destination,
-                            motif=''):
-    """Ouvre une demande de transfert (statut DEMANDÉ, valeur figée)."""
-    from .models_wms import DemandeTransfert
-
-    try:
-        quantite = int(quantite)
-    except (TypeError, ValueError):
-        raise ValueError('Quantité invalide.')
-    if quantite <= 0:
-        raise ValueError('La quantité doit être positive.')
-    if produit is None or produit.company_id != getattr(company, 'id', None):
-        raise ValueError('Produit introuvable dans cette société.')
-    if emplacement_source is None or emplacement_destination is None:
-        raise ValueError('Emplacement introuvable dans cette société.')
-    if emplacement_source.id == emplacement_destination.id:
-        raise ValueError(
-            'La source et la destination doivent être différentes.')
-
-    return DemandeTransfert.objects.create(
-        company=company, produit=produit, quantite=quantite,
-        emplacement_source=emplacement_source,
-        emplacement_destination=emplacement_destination,
-        motif=(motif or '').strip(), demande_par=user,
-        valeur_estimee=valeur_transfert(produit, quantite))
-
-
-def decider_demande_transfert(*, demande, user, approuver=True):
-    """Approuve ou rejette une demande. Seule une demande DEMANDÉE est
-    décidable (une demande déjà exécutée n'est jamais rétrogradée)."""
-    from django.utils import timezone
-    from .models_wms import DemandeTransfert
-
-    if demande.statut != DemandeTransfert.Statut.DEMANDE:
-        raise ValueError(
-            'Seule une demande en attente peut être approuvée ou rejetée.')
-    demande.statut = (DemandeTransfert.Statut.APPROUVE if approuver
-                      else DemandeTransfert.Statut.REJETE)
-    demande.approuve_par = user
-    demande.date_decision = timezone.now()
-    demande.save(update_fields=['statut', 'approuve_par', 'date_decision'])
-    return demande
-
-
-def executer_demande_transfert(*, demande, user=None):
-    """Crée le ``TransfertStock`` RÉEL d'une demande APPROUVÉE.
-
-    Réutilise le service de transfert existant (jamais un second chemin de
-    mouvement de stock) en lui signalant que l'approbation est acquise.
-    """
-    from django.db import transaction
-    from .models_wms import DemandeTransfert
-    from .services import transfer_stock
-
-    if demande.statut != DemandeTransfert.Statut.APPROUVE:
-        raise ValueError(
-            'Seule une demande approuvée peut être exécutée.')
-    with transaction.atomic():
-        transfert = transfer_stock(
-            company=demande.company, user=user or demande.approuve_par,
-            produit_id=demande.produit_id,
-            source_id=demande.emplacement_source_id,
-            destination_id=demande.emplacement_destination_id,
-            quantite=demande.quantite, note=demande.motif,
-            demande_approuvee=True)
-        demande.statut = DemandeTransfert.Statut.EXECUTE
-        demande.transfert = transfert
-        demande.save(update_fields=['statut', 'transfert'])
-    return demande
+    if valeur_transfert(produit, quantite) <= seuil:
+        return False
+    if source_id and destination_id and demande_transfert_approuvee_existe(
+            company, produit_id=getattr(produit, 'id', None),
+            source_id=source_id, destination_id=destination_id,
+            quantite=quantite):
+        return False
+    return True
 
 
 # ═══════════════════════════════════════════════════════════════════════════

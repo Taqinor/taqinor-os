@@ -301,8 +301,12 @@ def transfer_stock(*, company, user, produit_id, source_id, destination_id,
             raise ValueError('Emplacement introuvable dans cette société.')
 
         # NTWMS21 — garde d'approbation (no-op tant que le seuil vaut 0).
+        # Une demande FG325 (`installations.DemandeTransfert`) APPROUVÉE
+        # traverse la garde : son action `executer` appelle ce service sans
+        # drapeau, et elle ne doit évidemment pas être re-bloquée.
         if not demande_approuvee and transfert_exige_approbation(
-                company, produit, quantite):
+                company, produit, quantite, source_id=source.id,
+                destination_id=destination.id):
             raise ValueError(
                 'Ce transfert dépasse le seuil d\'approbation de la société : '
                 'ouvrez une demande de transfert et faites-la approuver.')
@@ -6422,9 +6426,7 @@ from .services_wms import (  # noqa: E402,F401
     cloturer_alerte_rappel,
     configurer_liberation_vague,
     controler_scan_emballage,
-    decider_demande_transfert,
     creer_expedition_transporteur,
-    creer_demande_transfert,
     creer_plan_chargement,
     creer_retour_client,
     creer_unite_logistique,
@@ -6433,7 +6435,6 @@ from .services_wms import (  # noqa: E402,F401
     creer_vague_depuis_besoins,
     enregistrer_arrivee_chauffeur,
     enregistrer_mouvement_scanne,
-    executer_demande_transfert,
     exporter_asn,
     generer_comptages_tournants,
     generer_etiquette_expedition,
@@ -6460,6 +6461,7 @@ from .services_wms import (  # noqa: E402,F401
     seuil_approbation_transfert,
     solde_portail_tiers,
     suggestions_rangement_reception,
+    demande_transfert_approuvee_existe,
     transfert_exige_approbation,
     valeur_transfert,
     verifier_capacite_plan,

@@ -12,7 +12,7 @@ class Migration(migrations.Migration):
         ('crm', '0075_playbook_condition'),
         ('installations', '0100_photochecklistmeta_tenantmodel_timestamps'),
         ('sav', '0050_alter_equipement_client_vente_and_more'),
-        ('stock', '0100_ntwms21_demande_transfert'),
+        ('stock', '0100_ntwms21_seuil_approbation_transfert'),
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
     ]
 
