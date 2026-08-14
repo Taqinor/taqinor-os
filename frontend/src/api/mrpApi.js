@@ -55,6 +55,9 @@ const mrpApi = {
   // TRS/OEE par poste (NTMFG12)
   getOeePoste: (posteId, params) => api.get(`/mrp/postes-charge/${posteId}/oee/`, { params }),
   getOeeTousPostes: (params) => api.get('/mrp/oee-postes/', { params }),
+
+  // Simulation de charge « et si » (NTMFG18) — aucune écriture.
+  simulerCharge: (body) => api.post('/mrp/simuler-charge/', body),
 }
 
 export default mrpApi

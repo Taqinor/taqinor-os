@@ -1,6 +1,6 @@
 """Sélecteurs (lecture seule) de l'app `mrp` (Groupe NTMFG)."""
 from datetime import timedelta
-from decimal import Decimal
+from decimal import ROUND_CEILING, Decimal
 
 from django.db.models import Sum
 from django.utils import timezone as dj_timezone
@@ -510,6 +510,111 @@ def oee_tendance_hebdomadaire(company, poste_id, debut, fin):
             'trs_pct': str((trs * 100).quantize(Decimal('0.1'))),
         })
     return resultats
+
+
+# ── NTMFG18 — Simulation « et si » de charge (AUCUNE écriture) ───────────
+
+def simuler_charge(company, lignes, *, date_souhaitee=None):
+    """NTMFG18 — charge ADDITIONNELLE par poste qu'induirait la fabrication
+    de `lignes` (``[{produit_id, quantite}, ...]``) au-delà de la charge
+    déjà planifiée (NTMFG7), sur le jour `date_souhaitee` (défaut
+    aujourd'hui). AUCUNE écriture — pur calcul.
+
+    Renvoie ``{tenable, poste_goulot, retard_jours, lignes: [...]}`` où
+    `tenable` vaut :
+      * ``'sans_gamme'`` — aucun produit de la demande n'a de gamme active
+        (ex. devis 100% négoce) : no-op pour l'appelant ;
+      * ``'tenable'`` — la charge additionnelle tient dans la capacité
+        disponible du jour ;
+      * ``'tenable_avec_retard'`` — dépassement absorbable en décalant de
+        `retard_jours` jour(s) (poste identifié par `poste_goulot`) ;
+      * ``'non_tenable'`` — un poste requis a une capacité NULLE (jamais
+        absorbable par un simple décalage)."""
+    from .models import Gamme
+
+    date_souhaitee = date_souhaitee or dj_timezone.localdate()
+    charge_additionnelle = {}  # poste_id -> minutes additionnelles.
+    postes_vus = {}
+    produits_avec_gamme = 0
+
+    for ligne in (lignes or []):
+        produit_id = ligne.get('produit_id')
+        quantite = _dec(ligne.get('quantite') or 0)
+        if not produit_id or quantite <= 0:
+            continue
+        gamme = (
+            Gamme.objects.filter(
+                company=company, produit_id=produit_id, actif=True)
+            .order_by('-version').first())
+        if gamme is None:
+            continue
+        produits_avec_gamme += 1
+        for operation in gamme.operations.select_related('poste_charge').all():
+            temps = temps_operation_min(operation, quantite)
+            poste = operation.poste_charge
+            charge_additionnelle[poste.id] = (
+                charge_additionnelle.get(poste.id, Decimal('0')) + temps)
+            postes_vus[poste.id] = poste
+
+    if produits_avec_gamme == 0:
+        return {
+            'tenable': 'sans_gamme', 'poste_goulot': None, 'retard_jours': 0,
+            'lignes': [],
+        }
+
+    existante = charge_postes(company, date_souhaitee, date_souhaitee)
+    existante_par_poste = {
+        r['poste_id']: _dec(r['minutes_planifiees']) for r in existante}
+
+    resultats = []
+    goulot = None
+    pire_retard = 0
+    non_tenable = False
+    for poste_id, minutes_add in charge_additionnelle.items():
+        poste = postes_vus[poste_id]
+        capacite_min = _dec(poste.capacite_heures_jour) * 60
+        deja = existante_par_poste.get(poste_id, Decimal('0'))
+        total = deja + minutes_add
+        depasse = capacite_min <= 0 or total > capacite_min
+        retard_jours = None
+        if capacite_min > 0:
+            if total > capacite_min:
+                retard_jours = int(
+                    (total / capacite_min).to_integral_value(rounding=ROUND_CEILING)) - 1
+                retard_jours = max(retard_jours, 1)
+            else:
+                retard_jours = 0
+        resultats.append({
+            'poste_id': poste_id,
+            'poste_nom': poste.nom,
+            'minutes_additionnelles': _fmt_dec(minutes_add),
+            'minutes_deja_planifiees': _fmt_dec(deja),
+            'capacite_minutes': _fmt_dec(capacite_min),
+            'depasse': depasse,
+        })
+        if depasse:
+            if retard_jours is None:
+                non_tenable = True
+                if goulot is None:
+                    goulot = poste.nom
+            elif retard_jours > pire_retard:
+                pire_retard = retard_jours
+                goulot = poste.nom
+
+    if non_tenable:
+        verdict = 'non_tenable'
+    elif pire_retard > 0:
+        verdict = 'tenable_avec_retard'
+    else:
+        verdict = 'tenable'
+
+    resultats.sort(key=lambda r: r['poste_nom'].lower())
+    return {
+        'tenable': verdict,
+        'poste_goulot': goulot,
+        'retard_jours': pire_retard,
+        'lignes': resultats,
+    }
 
 
 def oee_tous_postes(company, debut, fin):

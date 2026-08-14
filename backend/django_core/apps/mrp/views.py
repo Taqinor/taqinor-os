@@ -386,6 +386,47 @@ def mrp_run_view(request):
     return Response(resultats)
 
 
+@extend_schema(
+    request=inline_serializer('MrpSimulerChargeBody', {
+        'lignes': serializers.ListField(child=serializers.DictField(), required=False),
+        'date_souhaitee': serializers.CharField(required=False, allow_null=True),
+    }),
+    responses=inline_serializer('MrpSimulerChargeResultat', {
+        'tenable': serializers.CharField(),
+        'poste_goulot': serializers.CharField(allow_null=True),
+        'retard_jours': serializers.IntegerField(),
+        'lignes': inline_serializer('MrpSimulerChargeLigne', {
+            'poste_id': serializers.IntegerField(),
+            'poste_nom': serializers.CharField(),
+            'minutes_additionnelles': serializers.CharField(),
+            'minutes_deja_planifiees': serializers.CharField(),
+            'capacite_minutes': serializers.CharField(),
+            'depasse': serializers.BooleanField(),
+        }, many=True),
+    }))
+@api_view(['POST'])
+def simuler_charge_view(request):
+    """NTMFG18 — ``POST /api/django/mrp/simuler-charge/`` : simulation SANS
+    écriture de la charge atelier additionnelle qu'induirait une liste
+    produit+quantité (ex. un devis en cours de saisie), à une date
+    souhaitée. Corps : ``{"lignes": [{"produit_id": id, "quantite": qte},
+    ...], "date_souhaitee": "AAAA-MM-JJ"}``."""
+    from .selectors import simuler_charge
+
+    body = request.data or {}
+    date_souhaitee = _parse_date_param(request, 'date_souhaitee', None)
+    if date_souhaitee is None and body.get('date_souhaitee'):
+        try:
+            date_souhaitee = datetime.strptime(
+                str(body['date_souhaitee']), '%Y-%m-%d').date()
+        except ValueError:
+            date_souhaitee = None
+    resultat = simuler_charge(
+        request.user.company, body.get('lignes') or [],
+        date_souhaitee=date_souhaitee)
+    return Response(resultat)
+
+
 class CoutStandardViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin,
                           viewsets.GenericViewSet):
     """NTMFG11 — coûts de revient standard (versionnés, FIGÉS — jamais créés
