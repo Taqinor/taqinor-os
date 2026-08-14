@@ -278,6 +278,13 @@ const marketingApi = {
     get: () => api.get('/marketing/parametres/'),
     maj: (data) => api.patch('/marketing/parametres/', data),
   },
+
+  // ── NTMKT18/19 — Score de maturité d'un lead (badge chaud/tiède/froid +
+  // sparkline sur la fiche/kanban). Distinct du score de qualité QJ6 (déjà
+  // porté par le lead lui-même) : { actif, valeur, historique }. ──
+  scoreMaturite: {
+    get: (leadId) => api.get(`/marketing/scores-maturite/${leadId}/`),
+  },
 }
 
 export default marketingApi
