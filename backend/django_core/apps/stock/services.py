@@ -6423,6 +6423,8 @@ from .services_wms import (  # noqa: E402,F401
     prelever_ligne_picking,
     proposer_cross_dock,
     reception_est_cross_dock,
+    resoudre_token_portail_tiers,
     sceller_unite_logistique,
+    solde_portail_tiers,
     suggestions_rangement_reception,
 )

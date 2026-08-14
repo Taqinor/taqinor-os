@@ -7,8 +7,8 @@ from rest_framework import serializers
 
 from .models_wms import (
     AlerteRappel, ExpeditionTransporteur, LignePicking, PlanComptageTournant,
-    Quai, RendezVousTransporteur, UniteLogistique, UniteLogistiqueLigne,
-    VaguePicking,
+    PortailTiersToken, Quai, RendezVousTransporteur, UniteLogistique,
+    UniteLogistiqueLigne, VaguePicking,
 )
 
 
@@ -239,4 +239,30 @@ class AlerteRappelSerializer(serializers.ModelSerializer):
         if not (value or '').strip():
             raise serializers.ValidationError(
                 'Le motif du rappel est obligatoire.')
+        return value
+
+
+class PortailTiersTokenSerializer(serializers.ModelSerializer):
+    """NTWMS20 — jeton du portail 3PL. Le jeton lui-même est GÉNÉRÉ côté
+    serveur et n'est jamais accepté du client ; il n'est lisible que par les
+    utilisateurs ERP autorisés qui envoient le lien au dépositaire."""
+
+    lien_public = serializers.SerializerMethodField()
+    est_valide = serializers.BooleanField(read_only=True)
+
+    class Meta:
+        model = PortailTiersToken
+        fields = [
+            'id', 'tiers_nom', 'token', 'lien_public', 'expires_at',
+            'revoked', 'est_valide', 'last_used_at', 'created_at',
+        ]
+        read_only_fields = ['token', 'last_used_at', 'created_at']
+
+    def get_lien_public(self, obj) -> str:
+        return f'/api/django/stock/public/tiers/{obj.token}/solde/'
+
+    def validate_tiers_nom(self, value):
+        if not (value or '').strip():
+            raise serializers.ValidationError(
+                'Nommez le dépositaire concerné par ce jeton.')
         return value

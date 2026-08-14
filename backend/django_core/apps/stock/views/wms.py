@@ -15,14 +15,15 @@ from authentication.permissions import (
 )
 
 from ..models_wms import (
-    AlerteRappel, ExpeditionTransporteur, PlanComptageTournant, Quai,
-    RendezVousTransporteur, UniteLogistique, VaguePicking,
+    AlerteRappel, ExpeditionTransporteur, PlanComptageTournant,
+    PortailTiersToken, Quai, RendezVousTransporteur, UniteLogistique,
+    VaguePicking,
 )
 from ..serializers_wms import (
     AlerteRappelSerializer, ExpeditionTransporteurSerializer,
-    PlanComptageTournantSerializer, QuaiSerializer,
-    RendezVousTransporteurSerializer, UniteLogistiqueSerializer,
-    VaguePickingSerializer,
+    PlanComptageTournantSerializer, PortailTiersTokenSerializer,
+    QuaiSerializer, RendezVousTransporteurSerializer,
+    UniteLogistiqueSerializer, VaguePickingSerializer,
 )
 
 READ_ACTIONS = ['list', 'retrieve']
@@ -560,6 +561,32 @@ class PlanComptageTournantViewSet(CompanyScopedModelViewSet):
         from ..services import generer_comptages_tournants
         resultat = generer_comptages_tournants(company=request.user.company)
         return Response(resultat, status=status.HTTP_201_CREATED)
+
+
+class PortailTiersTokenViewSet(CompanyScopedModelViewSet):
+    """NTWMS20 — jetons du portail 3PL (lecture seule côté dépositaire).
+
+    Administration RÉSERVÉE à l'admin : distribuer un lien de stock est une
+    décision d'accès. Le jeton est généré côté serveur ; la révocation se fait
+    en passant ``revoked=true``.
+    """
+    queryset = PortailTiersToken.objects.select_related('cree_par').all()
+    serializer_class = PortailTiersTokenSerializer
+    ordering = ['-created_at']
+
+    def get_permissions(self):
+        return [IsAdminRole()]
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        tiers = self.request.query_params.get('tiers_nom')
+        if tiers:
+            qs = qs.filter(tiers_nom__icontains=tiers)
+        return qs
+
+    def perform_create(self, serializer):
+        serializer.save(company=self.request.user.company,
+                        cree_par=self.request.user)
 
 
 def _date_param(valeur):

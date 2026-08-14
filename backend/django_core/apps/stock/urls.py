@@ -1,6 +1,6 @@
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
-from .public_views import quai_checkin_view
+from .public_views import quai_checkin_view, portail_tiers_solde_view
 from .views import (
     ProduitViewSet, CategorieViewSet, FournisseurViewSet,
     MouvementStockViewSet, MarqueViewSet, BonCommandeFournisseurViewSet,
@@ -18,7 +18,7 @@ from .views import (
     VaguePickingViewSet, UniteLogistiqueViewSet, QuaiViewSet,
     RendezVousTransporteurViewSet, ExpeditionTransporteurViewSet,
     PlanComptageTournantViewSet, AlerteRappelViewSet,
-    entrepot_productivite_view,
+    PortailTiersTokenViewSet, entrepot_productivite_view,
     scanner_resoudre_view, scanner_mouvement_view,
 )
 
@@ -65,11 +65,15 @@ router.register(r'expeditions', ExpeditionTransporteurViewSet)
 router.register(
     r'plans-comptage-tournant', PlanComptageTournantViewSet)
 router.register(r'alertes-rappel', AlerteRappelViewSet)
+router.register(r'portails-tiers', PortailTiersTokenViewSet)
 
 urlpatterns = [
     # NTWMS8 - kiosque de quai (chemin nomme par la tache : /stock/public/...).
     path('public/quai-checkin/', quai_checkin_view,
          name='stock-quai-checkin'),
+    # NTWMS20 - portail 3PL : solde du SEUL depositaire porteur du jeton.
+    path('public/tiers/<str:token>/solde/', portail_tiers_solde_view,
+         name='stock-portail-tiers-solde'),
     # NTWMS18 - productivite entrepot par operateur (responsable/admin).
     # L'endpoint vit dans `stock` (et non dans `reporting`) : cette lane ne
     # possede que l'app stock -- la donnee et sa garde restent au meme endroit.

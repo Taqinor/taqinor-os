@@ -1128,6 +1128,63 @@ def notifier_rappel(alerte, impact=None):
         return []
 
 
+# ═══════════════════════════════════════════════════════════════════════════
+# NTWMS20 — Portail 3PL (lecture seule, tokenisée, scope = UN dépositaire)
+# ═══════════════════════════════════════════════════════════════════════════
+
+def resoudre_token_portail_tiers(token):
+    """Jeton de portail 3PL VALIDE (non révoqué, non expiré), ou ``None``.
+
+    Marque l'usage (``last_used_at``) — jamais autre chose : ce chemin est
+    PUBLIC, il n'écrit aucune donnée métier.
+    """
+    from django.utils import timezone
+    from .models_wms import PortailTiersToken
+
+    token = (token or '').strip()
+    if not token:
+        return None
+    obj = (PortailTiersToken.objects
+           .select_related('company')
+           .filter(token=token).first())
+    if obj is None or not obj.est_valide:
+        return None
+    PortailTiersToken.objects.filter(id=obj.id).update(
+        last_used_at=timezone.now())
+    return obj
+
+
+def solde_portail_tiers(token_obj):
+    """Solde du stock DU SEUL dépositaire porteur du jeton.
+
+    Ne remonte QUE les ``StockEmplacement`` posés sur un emplacement
+    ``DE_TIERS`` de la société du jeton dont le ``tiers_nom`` correspond
+    exactement. Aucun prix, aucune marge, aucun autre dépositaire, aucun
+    stock interne : un solde de dépôt-vente, rien d'autre.
+    """
+    from .models import EmplacementStock, StockEmplacement
+
+    if token_obj is None:
+        return None
+    lignes = (StockEmplacement.objects
+              .filter(company=token_obj.company,
+                      emplacement__type_proprietaire=(
+                          EmplacementStock.TypeProprietaire.DE_TIERS),
+                      emplacement__tiers_nom=token_obj.tiers_nom)
+              .select_related('produit', 'emplacement')
+              .order_by('produit__nom'))
+    return {
+        'tiers_nom': token_obj.tiers_nom,
+        'lignes': [{
+            'produit': ligne.produit.nom,
+            'sku': ligne.produit.sku or '',
+            'emplacement': ligne.emplacement.nom,
+            'quantite': ligne.quantite,
+        } for ligne in lignes],
+        'total_unites': sum(ligne.quantite or 0 for ligne in lignes),
+    }
+
+
 def cloturer_alerte_rappel(alerte):
     """Clôt un rappel (idempotent : un rappel déjà clos n'est pas rouvert)."""
     from django.utils import timezone

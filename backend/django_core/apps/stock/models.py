@@ -1962,6 +1962,7 @@ from .models_wms import (  # noqa: E402,F401
     ExpeditionTransporteur,
     LignePicking,
     PlanComptageTournant,
+    PortailTiersToken,
     Quai,
     RendezVousTransporteur,
     UniteLogistique,

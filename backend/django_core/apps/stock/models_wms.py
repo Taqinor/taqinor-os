@@ -643,3 +643,62 @@ class AlerteRappel(TenantModel):
 
     def __str__(self):
         return f'Rappel {self.produit_id} ({self.statut})'
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# NTWMS20 — Portail 3PL : le client dépositaire consulte SON stock
+# ═══════════════════════════════════════════════════════════════════════════
+
+def _default_portail_tiers_token():
+    return secrets.token_urlsafe(32)
+
+
+def _default_portail_tiers_expiry():
+    import datetime
+
+    return timezone.now() + datetime.timedelta(days=90)
+
+
+class PortailTiersToken(TenantModel):
+    """NTWMS20 — jeton public, révocable et expirant, du portail 3PL.
+
+    Même patron que ``PortailFournisseurToken`` (XPUR22) : long, imprévisible
+    (``secrets``), révocable, expirant. La PORTÉE est ici un seul
+    ``tiers_nom`` : le porteur ne voit que le stock des emplacements
+    ``type_proprietaire=DE_TIERS`` portant CE nom, dans CETTE société —
+    jamais le stock interne, jamais un autre dépositaire, jamais un autre
+    locataire.
+    """
+
+    tiers_nom = models.CharField(
+        max_length=150,
+        help_text='Dépositaire propriétaire du stock (NTWMS19 : le '
+                  '`tiers_nom` des emplacements DE_TIERS qu\'il possède).')
+    token = models.CharField(
+        max_length=64, default=_default_portail_tiers_token, editable=False)
+    expires_at = models.DateTimeField(default=_default_portail_tiers_expiry)
+    revoked = models.BooleanField(default=False)
+    cree_par = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='portails_tiers_crees')
+    last_used_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        verbose_name = 'Jeton portail 3PL'
+        verbose_name_plural = 'Jetons portail 3PL'
+        ordering = ['-created_at']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'token'],
+                name='stock_portailtiers_company_token_uniq'),
+        ]
+        indexes = [
+            models.Index(fields=['token'], name='idx_portailtiers_token'),
+        ]
+
+    def __str__(self):
+        return f'Portail 3PL {self.tiers_nom} · {self.token[:8]}…'
+
+    @property
+    def est_valide(self):
+        return not self.revoked and self.expires_at > timezone.now()
