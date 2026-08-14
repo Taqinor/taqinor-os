@@ -192,3 +192,61 @@ class ClassificationABC(TenantModel):
 
     def __str__(self):
         return f'{self.produit_id} = {self.classe}'
+
+
+class PolitiqueStock(TenantModel):
+    """NTSCM6 — politique de stock d'un produit (min/max, ROP, stock de
+    sécurité), une par produit.
+
+    ``classe_abc`` est un SNAPSHOT (copié depuis ``ClassificationABC`` au
+    dernier recalcul, jamais recalculé ici directement). ``service_level_pct``
+    est initialisé selon la classe (A=95/B=90/C=85, voir
+    ``services.SERVICE_LEVEL_PAR_CLASSE``) mais reste ÉDITABLE — un recalcul
+    ultérieur ne l'écrase jamais si déjà personnalisé. ``point_commande``
+    (ROP) et ``stock_securite_calcule`` sont dérivés, écrits UNIQUEMENT par
+    ``services.recalculer_politiques_stock`` (NTSCM5/6). ``stock_min``/
+    ``stock_max`` restent des cibles ÉDITABLES par l'acheteur (aucune formule
+    du plan ne les dérive). ``stock_securite_manuel`` (override acheteur)
+    prime toujours sur ``stock_securite_calcule`` quand renseigné."""
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,  # on_delete: tenant
+        related_name='scm_politiques_stock', verbose_name='Société')
+    produit = models.OneToOneField(
+        'stock.Produit',
+        on_delete=models.CASCADE,
+        related_name='scm_politique_stock', verbose_name='Produit')
+    classe_abc = models.CharField(
+        max_length=1, blank=True, default='',
+        verbose_name='Classe ABC (snapshot)')
+    service_level_pct = models.DecimalField(
+        max_digits=5, decimal_places=2, default=Decimal('95'),
+        verbose_name='Niveau de service (%)')
+    stock_min = models.DecimalField(
+        max_digits=12, decimal_places=2, default=Decimal('0'),
+        verbose_name='Stock min')
+    stock_max = models.DecimalField(
+        max_digits=12, decimal_places=2, default=Decimal('0'),
+        verbose_name='Stock max')
+    point_commande = models.DecimalField(
+        max_digits=12, decimal_places=2, default=Decimal('0'),
+        verbose_name='Point de commande (ROP)',
+        help_text='Dérivé : conso_moy × délai fournisseur moyen + stock de sécurité.')
+    stock_securite_calcule = models.DecimalField(
+        max_digits=12, decimal_places=2, default=Decimal('0'),
+        verbose_name='Stock de sécurité calculé')
+    stock_securite_manuel = models.DecimalField(
+        max_digits=12, decimal_places=2, null=True, blank=True,
+        verbose_name='Stock de sécurité (override manuel)',
+        help_text='Prime toujours sur le calculé quand renseigné.')
+    revise_le = models.DateTimeField(
+        null=True, blank=True, verbose_name='Révisé le')
+
+    class Meta:
+        verbose_name = 'Politique de stock'
+        verbose_name_plural = 'Politiques de stock'
+        ordering = ['produit_id']
+
+    def __str__(self):
+        return f'{self.produit_id} ROP={self.point_commande}'

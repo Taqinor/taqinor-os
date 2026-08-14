@@ -14,7 +14,7 @@ from django.utils import timezone
 from core.demand_forecast import forecast_demand
 from core.safety_stock import compute_safety_stock
 
-from .models import EvenementDemande, PrevisionDemande
+from .models import ClassificationABC, EvenementDemande, PolitiqueStock, PrevisionDemande
 
 # Convention du module : les historiques exposés par ``_historique_sorties_
 # mensuelles`` sont MENSUELS ; ``core.safety_stock.compute_safety_stock``
@@ -22,6 +22,15 @@ from .models import EvenementDemande, PrevisionDemande
 # Conversion mensuel -> journalier au mois normalisé de 30 jours (même
 # convention que ``core.stock_reorder``, qui travaille déjà en jours).
 JOURS_PAR_MOIS = 30.0
+
+# NTSCM6 — niveau de service PAR DÉFAUT selon la classe ABC (NTSCM4), à la
+# création d'une PolitiqueStock UNIQUEMENT (un recalcul n'écrase jamais un
+# niveau déjà personnalisé par l'acheteur).
+SERVICE_LEVEL_PAR_CLASSE = {'A': Decimal('95'), 'B': Decimal('90'), 'C': Decimal('85')}
+
+# Délai fournisseur (jours) utilisé quand aucun historique de livraison
+# n'est exploitable (produit sans fournisseur, ou fournisseur jamais livré).
+DEFAULT_LEAD_TIME_DAYS = 15.0
 
 
 def _historique_sorties_mensuelles(company, produit_id, fenetre_mois):
@@ -173,3 +182,81 @@ def appliquer_politique_stock(
         'std_dev_daily': round(std_daily, 4),
         'nb_mois_historique': n,
     }
+
+
+def _lead_time_moyen_fournisseur(company, produit):
+    """Délai fournisseur moyen (jours) — réutilise le scorecard FG59 déjà
+    bâti (``apps.stock.services.supplier_performance``, LECTURE SEULE,
+    import fonction-local) plutôt que de dupliquer un calcul de délai côté
+    ``apps.scm``. Repli :data:`DEFAULT_LEAD_TIME_DAYS` si le produit n'a pas
+    de fournisseur ou qu'aucune livraison n'a encore été confirmée."""
+    if not produit.fournisseur_id:
+        return DEFAULT_LEAD_TIME_DAYS
+    from apps.stock.services import supplier_performance
+
+    perf = supplier_performance(company, produit.fournisseur)
+    avg = perf.get('avg_lead_time_days')
+    return float(avg) if avg is not None else DEFAULT_LEAD_TIME_DAYS
+
+
+def recalculer_politiques_stock(company):
+    """NTSCM6 — recalcule (tâche périodique) les ``PolitiqueStock`` de tous
+    les produits actifs d'une société :
+
+      * ``classe_abc`` — snapshot depuis ``ClassificationABC`` (NTSCM4,
+        défaut 'C' si le produit n'a encore jamais été classé) ;
+      * ``service_level_pct`` — initialisé selon la classe
+        (:data:`SERVICE_LEVEL_PAR_CLASSE`) À LA CRÉATION SEULEMENT, jamais
+        écrasé si déjà personnalisé par l'acheteur ;
+      * ``stock_securite_calcule`` — NTSCM5 (:func:`appliquer_politique_stock`) ;
+      * ``point_commande`` (ROP) = ``conso_moy_journalière × délai
+        fournisseur moyen + stock_securite`` — où ``stock_securite`` est
+        ``stock_securite_manuel`` si renseigné (override acheteur), sinon
+        ``stock_securite_calcule``.
+
+    Idempotent (``get_or_create``/``save`` par produit). Renvoie la liste des
+    ``PolitiqueStock`` recalculées."""
+    from django.apps import apps as django_apps
+
+    Produit = django_apps.get_model('stock', 'Produit')
+    produits = Produit.objects.filter(company=company, is_archived=False)
+    classes = dict(
+        ClassificationABC.objects.filter(company=company)
+        .values_list('produit_id', 'classe'))
+
+    resultats = []
+    for produit in produits:
+        classe = classes.get(produit.id, 'C')
+        niveau_defaut = SERVICE_LEVEL_PAR_CLASSE.get(classe, Decimal('95'))
+
+        politique, created = PolitiqueStock.objects.get_or_create(
+            company=company, produit=produit,
+            defaults={'service_level_pct': niveau_defaut, 'classe_abc': classe},
+        )
+        service_level = niveau_defaut if created else politique.service_level_pct
+
+        lead_time_days = _lead_time_moyen_fournisseur(company, produit)
+        calc = appliquer_politique_stock(
+            produit, service_level, company, lead_time_days=lead_time_days)
+
+        stock_securite_effectif = (
+            politique.stock_securite_manuel
+            if politique.stock_securite_manuel is not None
+            else Decimal(str(calc['stock_securite']))
+        )
+        point_commande = (
+            Decimal(str(calc['avg_daily_consumption'])) * Decimal(str(lead_time_days))
+            + stock_securite_effectif
+        )
+
+        politique.classe_abc = classe
+        politique.service_level_pct = service_level
+        politique.stock_securite_calcule = Decimal(str(calc['stock_securite']))
+        politique.point_commande = point_commande.quantize(Decimal('0.01'))
+        politique.revise_le = timezone.now()
+        politique.save(update_fields=[
+            'classe_abc', 'service_level_pct', 'stock_securite_calcule',
+            'point_commande', 'revise_le', 'updated_at',
+        ])
+        resultats.append(politique)
+    return resultats

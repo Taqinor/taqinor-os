@@ -11,10 +11,12 @@ from rest_framework.response import Response
 from authentication.permissions import IsResponsableOrAdmin
 from core.viewsets import CompanyScopedModelViewSet
 
-from .models import ClassificationABC, EvenementDemande, PrevisionDemande
+from .models import (
+    ClassificationABC, EvenementDemande, PolitiqueStock, PrevisionDemande,
+)
 from .serializers import (
     ClassificationABCSerializer, EvenementDemandeSerializer,
-    PrevisionDemandeSerializer,
+    PolitiqueStockSerializer, PrevisionDemandeSerializer,
 )
 
 
@@ -104,4 +106,27 @@ class ClassificationABCViewSet(CompanyScopedModelViewSet):
         return Response({
             'nb_produits_classes': len(resultat),
             'classement': ClassificationABCSerializer(qs, many=True).data,
+        })
+
+
+class PolitiqueStockViewSet(CompanyScopedModelViewSet):
+    """NTSCM6 — politiques de stock (min/max, ROP, stock de sécurité) par
+    produit, recalculées par ``services.recalculer_politiques_stock``
+    (``@action`` ``recalculer``, admin/responsable)."""
+    queryset = PolitiqueStock.objects.select_related('produit').all()
+    serializer_class = PolitiqueStockSerializer
+    filterset_fields = ['classe_abc']
+
+    def get_permissions(self):
+        return [IsResponsableOrAdmin()]
+
+    @action(detail=False, methods=['post'], url_path='recalculer')
+    def recalculer(self, request):
+        """NTSCM6 — recalcule les politiques de stock de la société."""
+        from . import services
+
+        politiques = services.recalculer_politiques_stock(request.user.company)
+        return Response({
+            'nb_politiques': len(politiques),
+            'politiques': PolitiqueStockSerializer(politiques, many=True).data,
         })

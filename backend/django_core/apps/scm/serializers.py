@@ -5,7 +5,9 @@
 """
 from rest_framework import serializers
 
-from .models import ClassificationABC, EvenementDemande, PrevisionDemande
+from .models import (
+    ClassificationABC, EvenementDemande, PolitiqueStock, PrevisionDemande,
+)
 
 
 class PrevisionDemandeSerializer(serializers.ModelSerializer):
@@ -65,3 +67,23 @@ class ClassificationABCSerializer(serializers.ModelSerializer):
             'calcule_le',
         ]
         read_only_fields = fields
+
+
+class PolitiqueStockSerializer(serializers.ModelSerializer):
+    produit_nom = serializers.CharField(source='produit.nom', read_only=True)
+
+    class Meta:
+        model = PolitiqueStock
+        fields = [
+            'id', 'produit', 'produit_nom', 'classe_abc', 'service_level_pct',
+            'stock_min', 'stock_max', 'point_commande',
+            'stock_securite_calcule', 'stock_securite_manuel', 'revise_le',
+        ]
+        # Champs dérivés en LECTURE SEULE — écrits uniquement par
+        # ``services.recalculer_politiques_stock``. ``service_level_pct``,
+        # ``stock_min``/``stock_max``/``stock_securite_manuel`` restent
+        # éditables (overrides acheteur).
+        read_only_fields = [
+            'id', 'classe_abc', 'point_commande', 'stock_securite_calcule',
+            'revise_le',
+        ]

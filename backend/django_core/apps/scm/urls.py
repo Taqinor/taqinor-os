@@ -4,7 +4,8 @@ from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 
 from .views import (
-    ClassificationABCViewSet, EvenementDemandeViewSet, PrevisionDemandeViewSet,
+    ClassificationABCViewSet, EvenementDemandeViewSet, PolitiqueStockViewSet,
+    PrevisionDemandeViewSet,
 )
 
 router = DefaultRouter()
@@ -14,6 +15,8 @@ router.register(
     r'evenements-demande', EvenementDemandeViewSet, basename='scm-evenement-demande')
 router.register(
     r'classification-abc', ClassificationABCViewSet, basename='scm-classification-abc')
+router.register(
+    r'politiques-stock', PolitiqueStockViewSet, basename='scm-politique-stock')
 
 urlpatterns = [
     path('', include(router.urls)),
