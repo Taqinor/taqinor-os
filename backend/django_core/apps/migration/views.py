@@ -11,6 +11,7 @@ from rest_framework.exceptions import ValidationError
 from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.permissions import BasePermission
 from rest_framework.response import Response
+from rest_framework.views import APIView
 
 from authentication.models import CustomUser
 from core.viewsets import CompanyScopedModelViewSet
@@ -402,3 +403,30 @@ class DeploiementPartenaireViewSet(CompanyScopedModelViewSet):
             crm_services.poser_compteur_deploiements(
                 partenaire_id, company,
                 services.compter_deploiements_reussis(partenaire_id, company))
+
+
+class ScoreCertificationView(APIView):
+    """NTMIG27 — score de certification PROPOSÉ pour un partenaire.
+
+    LECTURE SEULE, et volontairement : le niveau reste attribué manuellement
+    sur la fiche partenaire (PATCH ``partenaires/<id>/``). Cet endpoint dit ce
+    que le barème suggère, il ne promeut personne.
+
+    Le partenaire est résolu via ``crm.selectors`` (scopé société) : celui
+    d'une autre société est introuvable — 404, jamais son score.
+    """
+
+    permission_classes = [IsDirecteurOuAdmin]
+
+    def get(self, request, partenaire_id):
+        from apps.crm import selectors as crm_selectors
+
+        from .certification import calculer_score_certification
+
+        partenaire = crm_selectors.partenaire_pour_certification(
+            request.user.company, partenaire_id)
+        if partenaire is None:
+            return Response(
+                {'detail': 'Partenaire introuvable.'},
+                status=status.HTTP_404_NOT_FOUND)
+        return Response(calculer_score_certification(partenaire))

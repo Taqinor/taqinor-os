@@ -4,7 +4,8 @@ from rest_framework.routers import DefaultRouter
 
 from .views import (
     DeploiementPartenaireViewSet, LotMigrationViewSet,
-    PlaybookInstanceViewSet, ProjetMigrationViewSet)
+    PlaybookInstanceViewSet, ProjetMigrationViewSet,
+    ScoreCertificationView)
 
 router = DefaultRouter()
 router.register(
@@ -20,5 +21,10 @@ router.register(
     basename='migration-deploiement-partenaire')
 
 urlpatterns = [
+    # NTMIG27 — score PROPOSÉ de certification d'un partenaire (lecture seule ;
+    # l'attribution du niveau reste un PATCH admin sur la fiche partenaire).
+    path('certification/<int:partenaire_id>/score/',
+         ScoreCertificationView.as_view(),
+         name='migration-certification-score'),
     path('', include(router.urls)),
 ]
