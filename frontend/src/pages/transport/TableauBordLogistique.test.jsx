@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeAll } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { ThemeProvider } from '../../design/ThemeProvider.jsx'
 
@@ -61,9 +61,12 @@ describe('TableauBordLogistique', () => {
     withProviders(<TableauBordLogistique />)
     await waitFor(() => expect(get).toHaveBeenCalled())
 
+    // React suit la valeur d'un input CONTROLE via son propre setter : ecrire
+    // `input.value` puis emettre un Event natif contourne ce tracker, donc
+    // React ignore le changement et `onChange` ne part jamais. `fireEvent
+    // .change` applique le contournement officiel de la lib de test.
     const input = screen.getByLabelText('Période')
-    input.value = '2026-04'
-    input.dispatchEvent(new Event('input', { bubbles: true }))
+    fireEvent.change(input, { target: { value: '2026-04' } })
 
     await waitFor(() => expect(get).toHaveBeenCalledWith(
       '/transport/ordres-transport/tableau-bord-logistique/',
