@@ -954,9 +954,16 @@ class CompanyViewSet(viewsets.ModelViewSet):
             from apps.records.services import log_note
             etat = 'activé' if company.mode_presentation_actif else 'désactivé'
             actor = getattr(user, 'username', '') or 'système'
+            # ``company=`` EXPLICITE et obligatoire : la cible EST la société.
+            # ``log_activity`` déduit la société via ``getattr(target,
+            # 'company')``, or une ``Company`` ne porte pas ce champ — sans cet
+            # argument la ligne de chatter part avec ``company=NULL``, donc
+            # invisible dans l'historique de la société (``chatter_qs`` filtre
+            # sur ``company``) et hors de tout cloisonnement multi-tenant.
             log_note(
                 company, user if getattr(user, 'pk', None) else None,
-                f'Mode présentation {etat} par {actor}.')
+                f'Mode présentation {etat} par {actor}.',
+                company=company)
         except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
             pass
 
@@ -1046,10 +1053,16 @@ class CompanyViewSet(viewsets.ModelViewSet):
             fraiche = Company.objects.filter(slug=slug).first()
             if fraiche is None:
                 return
+            # ``company=fraiche`` EXPLICITE : même trou que la bascule du mode
+            # présentation ci-dessus — la cible est une ``Company``, qui ne
+            # porte pas de champ ``company``, donc sans cet argument la note
+            # part avec ``company=NULL`` (hors cloisonnement, invisible dans
+            # l'historique de la société recréée).
             log_note(
                 fraiche, None,
                 f'Données de démonstration réinitialisées par '
-                f'{actor_username}.')
+                f'{actor_username}.',
+                company=fraiche)
         except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
             pass
 
