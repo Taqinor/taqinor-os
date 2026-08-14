@@ -7,6 +7,7 @@ from decimal import Decimal, ROUND_HALF_UP
 
 from .models import (
     LigneOffreGroupee, RegleApprobationRemise, EtapeApprobationDevis,
+    PrixContractuel,
 )
 
 _CENT = Decimal('0.01')
@@ -73,6 +74,101 @@ def appliquer_offre_groupee(*, offre, devis, user=None):
                 designation=li.produit.nom, quantite=qte,
                 prix_unitaire=pu, remise=remise))
     return created
+
+
+def _resoudre_client_import(company, ref):
+    """NTCPQ41 — résout un client par ID numérique, email exact, ou nom exact
+    (insensible à la casse), scopé société. ``None`` si introuvable."""
+    from apps.crm.models import Client
+    ref = (ref or '').strip()
+    if not ref:
+        return None
+    if ref.isdigit():
+        client = Client.objects.filter(company=company, id=int(ref)).first()
+        if client is not None:
+            return client
+    client = Client.objects.filter(
+        company=company, email__iexact=ref).first()
+    if client is not None:
+        return client
+    return Client.objects.filter(company=company, nom__iexact=ref).first()
+
+
+def _resoudre_produit_import(company, ref):
+    """NTCPQ41 — résout un produit par ID numérique, SKU exact, ou nom exact
+    (insensible à la casse), scopé société. ``None`` si introuvable."""
+    from apps.stock.models import Produit
+    ref = (ref or '').strip()
+    if not ref:
+        return None
+    if ref.isdigit():
+        produit = Produit.objects.filter(company=company, id=int(ref)).first()
+        if produit is not None:
+            return produit
+    produit = Produit.objects.filter(company=company, sku__iexact=ref).first()
+    if produit is not None:
+        return produit
+    return Produit.objects.filter(company=company, nom__iexact=ref).first()
+
+
+def _parse_date_import(valeur):
+    """NTCPQ41 — parse une date CSV (ISO ``AAAA-MM-JJ``). ``None`` si vide."""
+    from datetime import date
+    valeur = (valeur or '').strip()
+    if not valeur:
+        return None
+    return date.fromisoformat(valeur)
+
+
+def importer_prix_contractuels_csv(company, csv_text, *, user=None):
+    """NTCPQ41 — import CSV en masse de ``PrixContractuel``, auto-suffisant
+    (jamais un passage par ``apps/dataimport``, hors périmètre de cette app —
+    même patron que les exports ``apps.ventes.exports``).
+
+    Colonnes attendues (en-tête) : ``client_ref``, ``produit_ref``,
+    ``prix_ht``, ``date_debut``, ``date_fin``, ``motif``. ``client_ref``/
+    ``produit_ref`` acceptent un ID numérique, ou (client) l'email/le nom
+    exact, ou (produit) le SKU/le nom exact — toujours scopés à ``company``.
+
+    Valide chaque ligne INDÉPENDAMMENT : les lignes valides sont importées
+    même si d'autres échouent (comportement additif standard). Renvoie
+    ``{'importees': int, 'total': int, 'erreurs': [{'ligne': int, 'motif':
+    str}, ...]}`` — ``ligne`` compte depuis 2 (1 = en-tête)."""
+    import csv
+    import io
+    from decimal import Decimal, InvalidOperation
+
+    reader = csv.DictReader(io.StringIO(csv_text))
+    importees = 0
+    total = 0
+    erreurs = []
+    for i, row in enumerate(reader, start=2):
+        total += 1
+        try:
+            client = _resoudre_client_import(company, row.get('client_ref'))
+            if client is None:
+                raise ValueError('Client introuvable (client_ref).')
+            produit = _resoudre_produit_import(
+                company, row.get('produit_ref'))
+            if produit is None:
+                raise ValueError('Produit introuvable (produit_ref).')
+            prix_brut = (row.get('prix_ht') or '').strip()
+            if not prix_brut:
+                raise ValueError('prix_ht requis.')
+            prix_ht = Decimal(prix_brut)
+            date_debut = _parse_date_import(row.get('date_debut'))
+            date_fin = _parse_date_import(row.get('date_fin'))
+            if date_debut and date_fin and date_debut > date_fin:
+                raise ValueError('date_debut postérieure à date_fin.')
+            PrixContractuel.objects.create(
+                company=company, client=client, produit=produit,
+                prix_ht=prix_ht, date_debut=date_debut, date_fin=date_fin,
+                motif=(row.get('motif') or '').strip(), created_by=user)
+            importees += 1
+        except (ValueError, InvalidOperation, KeyError) as exc:
+            erreurs.append({'ligne': i, 'motif': str(exc)})
+
+    return {'importees': importees, 'total': total, 'erreurs': erreurs}
 
 
 def verifier_compatibilite_envoyable(devis):

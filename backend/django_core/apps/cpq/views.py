@@ -467,6 +467,40 @@ class FeuilleConfigurationView(APIView):
         return reponse
 
 
+class ImportPrixContractuelsCsvView(APIView):
+    """NTCPQ41 — POST ``cpq/prix-contractuels/import-csv/``.
+
+    Import CSV en masse de ``PrixContractuel`` (fichier multipart clé
+    ``file``, ou corps texte brut ``text/csv``). Colonnes attendues :
+    ``client_ref, produit_ref, prix_ht, date_debut, date_fin, motif``.
+    Valide chaque ligne indépendamment — les lignes valides sont importées
+    même si d'autres échouent, jamais un import « tout ou rien ». Réservé
+    Directeur / Commercial responsable (même palier que la création directe
+    NTCPQ5)."""
+    permission_classes = [IsResponsableOrAdmin]
+
+    @extend_schema(request=None, responses={200: inline_serializer(
+        'CpqImportPrixContractuelsResultat', {
+            'importees': drf_serializers.IntegerField(),
+            'total': drf_serializers.IntegerField(),
+            'erreurs': drf_serializers.ListField(
+                child=drf_serializers.DictField()),
+        })})
+    def post(self, request):
+        upload = request.FILES.get('file')
+        if upload is not None:
+            csv_text = upload.read().decode('utf-8-sig')
+        else:
+            csv_text = request.body.decode('utf-8-sig') if request.body else ''
+        if not csv_text.strip():
+            return Response({'detail': 'Fichier CSV requis (file, ou corps '
+                                       'texte brut).'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        resultat = services.importer_prix_contractuels_csv(
+            request.user.company, csv_text, user=request.user)
+        return Response(resultat)
+
+
 class RapportApprobationsView(APIView):
     """NTCPQ25 — GET ``cpq/rapports/approbations/?approbateur_id=&export=xlsx``.
 

@@ -11,7 +11,7 @@ from .views import (
     ClauseCGVViewSet, ProduitEquivalentViewSet, DevisVariantesView,
     SuggestionsProduitView, FeuilleConfigurationView, MargeSousSeuilView,
     RapportConformiteView, ParametresCPQViewSet, RapportApprobationsView,
-    ComparaisonVariantesView,
+    ComparaisonVariantesView, ImportPrixContractuelsCsvView,
 )
 
 router = DefaultRouter()
@@ -34,6 +34,13 @@ router.register(r'parametres-cpq', ParametresCPQViewSet)
 urlpatterns = [
     path('valider-compatibilite/', ValiderCompatibiliteView.as_view(),
          name='cpq-valider-compatibilite'),
+    # NTCPQ41 — import CSV en masse de PrixContractuel (avant le routeur, un
+    # sous-chemin de 'prix-contractuels/' doit être déclaré AVANT le
+    # ViewSet du même préfixe pour ne jamais être capturé par son
+    # <pk>/ générique).
+    path('prix-contractuels/import-csv/',
+         ImportPrixContractuelsCsvView.as_view(),
+         name='cpq-prix-contractuels-import-csv'),
     # NTCPQ24 — rapport interne « taux de conformité des configurations ».
     path('rapports/conformite/', RapportConformiteView.as_view(),
          name='cpq-rapport-conformite'),
