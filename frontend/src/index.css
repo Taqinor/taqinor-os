@@ -2843,7 +2843,7 @@ textarea.form-control {
    Portée : `.gen-actions-sticky` (générateur de devis) uniquement — aucun
    autre écran n'a de pied collant à ce palier. */
 @media (max-width: 768px) {
-  .gen-actions-sticky { z-index: calc(var(--z-sticky, 1100) + 1); }
+  .gen-actions-sticky { z-index: var(--z-sticky-raised); }
 }
 
 /* VX4 — carte du générateur tokenisée (dark mode réel sur l'écran le plus
