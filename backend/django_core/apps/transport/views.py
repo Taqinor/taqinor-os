@@ -1,6 +1,8 @@
 """Vues (ViewSets) de l'app `apps.transport` — toutes scopées société via
 `core.viewsets.CompanyScopedModelViewSet` (jamais un `ModelViewSet` nu,
 SCA4)."""
+from django.contrib.contenttypes.models import ContentType
+from rest_framework import status
 from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
@@ -141,3 +143,27 @@ class EtapeTransportViewSet(CompanyScopedModelViewSet):
         super().perform_update(serializer)
         services.apres_changement_statut_etape(
             serializer.instance, ancien_statut, user=self.request.user)
+
+    # ── NTLOG9 — preuve de livraison (POD), réutilise records.Attachment ──
+    @action(detail=True, methods=['post'], url_path='livrer')
+    def livrer(self, request, pk=None):
+        """Exige AU MOINS une pièce jointe (`records.Attachment`, photo ou
+        signature) déjà déposée sur cette étape avant de la clôturer
+        « fait » — sinon 400."""
+        etape = self.get_object()
+        from apps.records.models import Attachment
+        ct = ContentType.objects.get_for_model(EtapeTransport)
+        a_une_piece = Attachment.objects.filter(
+            content_type=ct, object_id=etape.id).exists()
+        if not a_une_piece:
+            return Response(
+                {'detail': (
+                    'Photo ou signature requise avant de clôturer la '
+                    'livraison.')},
+                status=status.HTTP_400_BAD_REQUEST)
+        ancien_statut = etape.statut_etape
+        etape.statut_etape = EtapeTransport.StatutEtape.FAIT
+        etape.save(update_fields=['statut_etape'])
+        services.apres_changement_statut_etape(
+            etape, ancien_statut, user=request.user)
+        return Response(EtapeTransportSerializer(etape).data)

@@ -4,7 +4,7 @@ l'ordre quand une étape est marquée « fait ». NTLOG8 — chaque changement
 from django.contrib.contenttypes.models import ContentType
 from django.test import TestCase
 
-from apps.records.models import Activity
+from apps.records.models import Activity, Attachment
 from apps.transport.models import EtapeTransport, OrdreTransport
 
 from ._helpers import auth, make_company, make_user
@@ -91,6 +91,25 @@ class EtapeTransportTests(TestCase):
         count_apres = Activity.objects.filter(
             content_type=ct, object_id=self.ordre.id).exclude(kind='').count()
         self.assertEqual(count_avant, count_apres)
+
+    # ── NTLOG9 — preuve de livraison (POD) ────────────────────────────────
+    def test_livrer_sans_piece_jointe_refuse(self):
+        resp = auth(self.user_a).post(f'{ETAPES_BASE}{self.e2.id}/livrer/')
+        self.assertEqual(resp.status_code, 400)
+        self.e2.refresh_from_db()
+        self.assertEqual(
+            self.e2.statut_etape, EtapeTransport.StatutEtape.A_FAIRE)
+
+    def test_livrer_avec_piece_jointe_cloture_l_etape(self):
+        ct = ContentType.objects.get_for_model(EtapeTransport)
+        Attachment.objects.create(
+            company=self.co_a, content_type=ct, object_id=self.e2.id,
+            file_key='transport/x/pod.jpg', filename='pod.jpg')
+        resp = auth(self.user_a).post(f'{ETAPES_BASE}{self.e2.id}/livrer/')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.e2.refresh_from_db()
+        self.assertEqual(
+            self.e2.statut_etape, EtapeTransport.StatutEtape.FAIT)
 
     # ── Isolation multi-société ────────────────────────────────────────
     def test_etape_cross_tenant_404(self):
