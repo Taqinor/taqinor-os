@@ -296,3 +296,48 @@ def parametres_marketing_view(request):
     serializer.is_valid(raise_exception=True)
     serializer.save()
     return Response(serializer.data)
+
+
+# ── NTMKT18/19 — Score de maturité d'un lead (lecture, pour la fiche/kanban) ─
+
+_SCORE_MATURITE_RESPONSE = inline_serializer('ScoreMaturiteLead', {
+    'lead_id': drf_serializers.IntegerField(),
+    'actif': drf_serializers.BooleanField(),
+    'valeur': drf_serializers.IntegerField(),
+    'historique': drf_serializers.ListField(child=inline_serializer(
+        'VariationScoreMaturite', {
+            'delta': drf_serializers.IntegerField(),
+            'valeur_apres': drf_serializers.IntegerField(),
+            'motif': drf_serializers.CharField(),
+            'created_at': drf_serializers.DateTimeField(),
+        })),
+})
+
+
+@extend_schema(responses={200: _SCORE_MATURITE_RESPONSE})
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def score_maturite_lead_view(request, lead_id):
+    """NTMKT18/19 — score de maturité courant + historique d'un lead
+    (société toujours dérivée de ``request.user``, jamais du paramètre).
+    ``actif=False`` (module désactivé pour la société) → ``valeur=0``,
+    ``historique=[]``, jamais une erreur."""
+    parametres = marketing_services.parametres_marketing_pour(
+        request.user.company)
+    if not parametres.score_maturite_actif:
+        return Response({'lead_id': lead_id, 'actif': False, 'valeur': 0,
+                         'historique': []})
+    score = marketing_services.recalculer_score_maturite(
+        request.user.company, lead_id)
+    historique = marketing_services.historique_maturite(
+        request.user.company, lead_id)
+    return Response({
+        'lead_id': lead_id,
+        'actif': True,
+        'valeur': score.valeur if score else 0,
+        'historique': [
+            {'delta': v.delta, 'valeur_apres': v.valeur_apres,
+             'motif': v.motif, 'created_at': v.created_at}
+            for v in historique
+        ],
+    })

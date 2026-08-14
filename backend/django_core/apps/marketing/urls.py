@@ -66,6 +66,7 @@ from .views import (
     importer_couts_publicitaires_view,
     parametres_marketing_view,
     redirection_lien_tracke,
+    score_maturite_lead_view,
     registre_consentement_export_pdf_view,
     webhook_brevo_campagne,
     webhook_sms_stop,
@@ -163,6 +164,9 @@ urlpatterns = [
     # NTMKT31 — réglages tenant du module Marketing
     path('parametres/', parametres_marketing_view,
          name='mkt-parametres-marketing'),
+    # NTMKT18/19 — score de maturité d'un lead (fiche/kanban)
+    path('scores-maturite/<int:lead_id>/', score_maturite_lead_view,
+         name='mkt-score-maturite-lead'),
     # Vues publiques (token, sans login) — préfixées de noms `mkt-…` pour ne
     # pas entrer en collision avec les mêmes vues servies sous /compta/….
     # headless: rappel d'etat entrant de Brevo, appele par leur serveur

@@ -2624,3 +2624,62 @@ def classement_defi(defi):
     for rang, entry in enumerate(classement, start=1):
         entry['rang'] = rang
     return classement
+
+
+# ── NTMKT17 — Progressive profiling (formulaire public d'intake) ───────────
+
+_PROGRESSIVE_PROFILING_STANDARD_FIELDS = (
+    'nom', 'prenom', 'societe', 'email', 'telephone', 'ville',
+)
+
+
+def lead_known_field_codes(company, *, phone=None, email=None):
+    """NTMKT17 — codes de champs DÉJÀ CONNUS pour le lead le plus RÉCENT
+    correspondant à ``phone`` OU ``email`` normalisés (dédup QJ8 existante,
+    ``services.find_duplicates_by_contact``).
+
+    Renvoie ``None`` si aucun lead ne correspond (visiteur inconnu — le
+    formulaire public reste inchangé, comportement actuel). Sinon un
+    ``set`` des codes déjà renseignés parmi les champs standards
+    (nom/prenom/societe/email/telephone/ville, non vides) et les clés non
+    vides de ``custom_data``. Lecture seule."""
+    from .services import find_duplicates_by_contact
+
+    matches = find_duplicates_by_contact(company, phone=phone, email=email)
+    if not matches:
+        return None
+    lead = matches[0]
+    connus = {
+        code for code in _PROGRESSIVE_PROFILING_STANDARD_FIELDS
+        if getattr(lead, code, None)
+    }
+    for code, valeur in (lead.custom_data or {}).items():
+        if valeur not in (None, '', False):
+            connus.add(code)
+    return connus
+
+
+def lead_devis_ids_by_id(company, lead_id):
+    """NTMKT18 — ids (str) des devis liés à un lead, par id OPAQUE (lecture
+    seule) — pour un appelant cross-app (``marketing``) qui ne peut importer
+    ``Lead`` et ne dispose que d'un ``lead_id`` (jamais d'objet ``Lead``).
+    Renvoie ``[]`` si le lead n'existe pas ou n'a aucun devis."""
+    from .models import Lead
+
+    lead = Lead.objects.filter(company=company, pk=lead_id).only('id').first()
+    if lead is None:
+        return []
+    return [str(d.id) for d in lead.devis.all()]
+
+
+def dernier_contact_lead(company, lead_id):
+    """NTMKT34 — date/heure du dernier point de contact (``PointContact``,
+    FG204) d'un lead, ou ``None``. Lecture seule, par id OPAQUE pour un
+    appelant cross-app (``marketing``)."""
+    from .models import PointContact
+
+    pc = (PointContact.objects
+          .filter(company=company, lead_id=lead_id)
+          .order_by('-date_contact')
+          .first())
+    return pc.date_contact if pc else None

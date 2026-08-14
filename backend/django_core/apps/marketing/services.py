@@ -309,6 +309,39 @@ def creer_lead_depuis_intake(formulaire, data):
     return lead
 
 
+# ── NTMKT17 — Progressive profiling (champs déjà connus masqués) ───────────
+
+def _champ_code(entree):
+    if isinstance(entree, dict):
+        return entree.get('code') or entree.get('nom')
+    return entree
+
+
+def champs_publics_a_afficher(formulaire, identifiant):
+    """NTMKT17 — filtre ``formulaire.champs`` pour un visiteur RECONNU.
+
+    ``identifiant`` (email OU téléphone) vient du navigateur du visiteur
+    (cookie/stockage déjà géré côté client, aucune nouvelle dépendance
+    backend). Un visiteur INCONNU (``identifiant`` vide, ou aucun lead
+    correspondant — dédup QJ8) voit le formulaire COMPLET, comportement
+    actuel inchangé. Un visiteur RECONNU ne revoit QUE les champs non encore
+    renseignés sur son lead le plus récent — HubSpot-style."""
+    champs = formulaire.champs or []
+    identifiant = (identifiant or '').strip()
+    if not identifiant:
+        return champs
+
+    from apps.crm.selectors import lead_known_field_codes
+
+    if '@' in identifiant:
+        connus = lead_known_field_codes(formulaire.company, email=identifiant)
+    else:
+        connus = lead_known_field_codes(formulaire.company, phone=identifiant)
+    if not connus:
+        return champs
+    return [c for c in champs if _champ_code(c) not in connus]
+
+
 # ── NTMKT12 — Parcours en GRAPHE d'une séquence de relance ──────────────────
 # Extension strictement ADDITIVE du moteur XMKT1 : une séquence SANS nœud n'est
 # jamais vue par ce code (``sequence_a_graphe`` faux) et continue d'être
@@ -869,6 +902,102 @@ def plafond_envois_atteint(company, *, aujourdhui=None):
     nb = EnvoiCampagne.objects.filter(
         company=company, envoye_le__date=aujourdhui).count()
     return nb >= parametres.plafond_envois_jour
+
+
+# ── NTMKT18 — Score de maturité marketing multi-signal (additif à QJ6) ─────
+# ``lead_id`` reste OPAQUE : jamais d'import de ``crm.Lead`` ici. Le lien vers
+# le lead se fait uniquement via la convention ``contact_ref = f'lead:{id}'``
+# déjà utilisée par ``EnvoiCampagne`` (XMKT6/XMKT16) et via
+# ``apps.crm.selectors.lead_devis_ids_by_id`` (lecture cross-app sanctionnée).
+
+def _signaux_maturite(company, lead_id):
+    """Compte les signaux marketing bruts d'un lead (NTMKT18) : ouvertures,
+    clics (sur les envois de campagne le référençant) et visites de sa page
+    proposition (``OuverturePartage`` sur ses devis, via crm.selectors)."""
+    from .models import EnvoiCampagne, OuverturePartage
+
+    contact_ref = f'lead:{lead_id}'
+    envois = EnvoiCampagne.objects.filter(company=company, contact_ref=contact_ref)
+    nb_ouvertures = envois.filter(ouvert_le__isnull=False).count()
+    nb_clics = envois.filter(clique_le__isnull=False).count()
+
+    from apps.crm.selectors import lead_devis_ids_by_id
+    devis_ids = lead_devis_ids_by_id(company, lead_id)
+    nb_visites = 0
+    if devis_ids:
+        nb_visites = OuverturePartage.objects.filter(
+            company=company, cible=OuverturePartage.Cible.DEVIS,
+            cible_reference__in=devis_ids).count()
+    return nb_ouvertures, nb_clics, nb_visites
+
+
+def recalculer_score_maturite(company, lead_id, *, dernier_contact=None,
+                              now=None):
+    """NTMKT18 — recalcule (jamais un delta incrémental non rejouable) le
+    score de maturité (0-100) d'un lead à partir de ses signaux marketing
+    bruts, pondérés par les réglages société (``ParametresMarketing``).
+
+    No-op complet (renvoie ``None``, AUCUNE ligne créée) tant que la société
+    n'a pas activé ``score_maturite_actif`` — comportement actuel inchangé
+    par défaut. Applique la pénalité d'inactivité 30j (NTMKT34) si
+    ``dernier_contact`` est fourni. Journalise une ``VariationScoreMaturite``
+    UNIQUEMENT quand la valeur change effectivement (jamais un historique qui
+    grossit sans raison)."""
+    from django.utils import timezone as _tz
+
+    from .models import ScoreMaturite, VariationScoreMaturite
+
+    parametres = parametres_marketing_pour(company)
+    if not parametres.score_maturite_actif:
+        return None
+
+    now = now or _tz.now()
+    nb_ouvertures, nb_clics, nb_visites = _signaux_maturite(company, lead_id)
+    valeur = (
+        nb_ouvertures * parametres.ponderation_maturite_ouverture
+        + nb_clics * parametres.ponderation_maturite_clic
+        + nb_visites * parametres.ponderation_maturite_visite_proposition
+    )
+    motif_parts = [
+        f'{nb_ouvertures} ouverture(s)', f'{nb_clics} clic(s)',
+        f'{nb_visites} visite(s) proposition',
+    ]
+    if dernier_contact is not None:
+        jours_inactif = (now.date() - dernier_contact.date()).days
+        if jours_inactif >= 30:
+            valeur -= parametres.penalite_maturite_inactivite
+            motif_parts.append(f'inactif {jours_inactif}j')
+    valeur = max(0, min(100, valeur))
+
+    score, cree = ScoreMaturite.objects.get_or_create(
+        company=company, lead_id=lead_id, defaults={'valeur': valeur})
+    if not cree and score.valeur != valeur:
+        delta = valeur - score.valeur
+        score.valeur = valeur
+        score.save(update_fields=['valeur', 'updated_at'])
+        VariationScoreMaturite.objects.create(
+            company=company, lead_id=lead_id, delta=delta,
+            valeur_apres=valeur, motif=', '.join(motif_parts))
+    elif cree and valeur:
+        VariationScoreMaturite.objects.create(
+            company=company, lead_id=lead_id, delta=valeur,
+            valeur_apres=valeur, motif=', '.join(motif_parts))
+    return score
+
+
+def score_maturite_pour(company, lead_id):
+    """NTMKT18 — recalcule puis renvoie le ``ScoreMaturite`` courant d'un
+    lead (jamais une valeur périmée). ``None`` si le module est désactivé
+    pour la société (comportement par défaut)."""
+    return recalculer_score_maturite(company, lead_id)
+
+
+def historique_maturite(company, lead_id, limite=30):
+    """NTMKT18/NTMKT19 — historique horodaté (le plus récent en premier) des
+    variations du score de maturité d'un lead."""
+    from .models import VariationScoreMaturite
+    return list(VariationScoreMaturite.objects.filter(
+        company=company, lead_id=lead_id).order_by('-created_at')[:limite])
 
 
 # ── NTMKT33 — Purge des tokens expirés (désinscription/préférences) ────────
