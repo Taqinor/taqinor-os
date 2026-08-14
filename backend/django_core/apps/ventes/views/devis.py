@@ -208,6 +208,9 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
             # donc la MÊME classe pour ne jamais mentir sur la garde
             # effective.
             'design_context',
+            # PV18 — resynchronisation des lignes sur un nouveau calepinage
+            # (écriture chirurgicale, jamais le statut).
+            'sync_layout',
         ]:
             return [IsResponsableOrAdmin()]
         elif self.action == 'destroy':
@@ -423,6 +426,43 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
             return Response({'detail': 'Devis inconnu.'},
                             status=status.HTTP_404_NOT_FOUND)
         return Response(contexte)
+
+    @action(detail=True, methods=['post'], url_path='sync-layout',
+            permission_classes=[IsResponsableOrAdmin])
+    def sync_layout(self, request, pk=None):
+        """PV18 — resynchronise les LIGNES du devis sur un nouveau calepinage.
+
+        Corps : le layout sérialisé (on accepte aussi les enveloppes
+        ``{"layout": …}`` / ``{"roof_layout": …}``, comme l'action ``layout``).
+
+        Mise à jour CHIRURGICALE d'un brouillon : quantités de panneaux et
+        présence de la batterie, rien d'autre — prix négociés, remises,
+        sections, notes, ordre et groupes multi-villa restent intacts. Le
+        STATUT n'est jamais écrit (règle #4) : un devis « envoyé » répond 409
+        avec ``revision_possible: true`` (le bon geste est « Réviser ») ; un
+        devis accepté/refusé/expiré répond 409 avec ``revision_possible:
+        false``. Renvoyer le MÊME layout ne fait aucune écriture
+        (``inchange: true``). Devis d'une autre société → 404 (get_queryset)."""
+        from ..services import sync_devis_from_layout, SyncLayoutError
+
+        devis = self.get_object()  # borné société par get_queryset
+        payload = request.data
+        if isinstance(payload, dict):
+            for enveloppe in ('layout', 'roof_layout'):
+                if set(payload.keys()) == {enveloppe}:
+                    payload = payload[enveloppe]
+                    break
+        if not isinstance(payload, dict) or not payload:
+            return Response({'detail': 'Layout manquant ou invalide.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        try:
+            resultat = sync_devis_from_layout(devis, payload, request.user)
+        except SyncLayoutError as exc:
+            return Response(
+                {'detail': exc.detail,
+                 'revision_possible': exc.revision_possible},
+                status=status.HTTP_409_CONFLICT)
+        return Response(resultat)
 
     @action(detail=False, methods=['post'], url_path='atomic',
             permission_classes=[IsResponsableOrAdmin])
