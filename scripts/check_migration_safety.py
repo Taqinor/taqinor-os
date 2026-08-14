@@ -66,16 +66,22 @@ def _iter_migration_files():
 
 
 def _model_declared_names():
-    """Every explicit ``name='...'`` string declared in a models.py (the set of
-    index/constraint names the models currently describe)."""
+    """Every explicit ``name='...'`` string declared in a ``models*.py`` (the
+    set of index/constraint names the models currently describe)."""
     names = set()
-    files = [DJANGO_CORE / "core" / "models.py",
-             DJANGO_CORE / "authentication" / "models.py"]
+    # La moitie des apps EPARPILLE ses modeles dans des modules `models_*.py`
+    # (models_approbation_achat.py, models_email.py...). Ne lire que `models.py`
+    # rendait la garde AVEUGLE a leurs Meta : un nom d'index pourtant mirroite
+    # y etait signale comme derive. On lit donc `models*.py`.
+
+    def _modules_modeles(dossier):
+        return sorted(dossier.glob("models*.py")) if dossier.is_dir() else []
+
+    files = (_modules_modeles(DJANGO_CORE / "core")
+             + _modules_modeles(DJANGO_CORE / "authentication"))
     if APPS_DIR.is_dir():
         for app_dir in sorted(APPS_DIR.iterdir()):
-            m = app_dir / "models.py"
-            if m.is_file():
-                files.append(m)
+            files.extend(_modules_modeles(app_dir))
     for f in files:
         if not f.is_file():
             continue
