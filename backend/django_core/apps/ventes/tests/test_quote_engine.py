@@ -2875,3 +2875,153 @@ class TestPanelWattFromFicheTechnique(TestCase):
         self.assertEqual(data['watt_par_panneau'], 545)
         _, doc_one = _render({'pdf_mode': 'onepage'})
         self.assertEqual(len(doc_one.pages), 1)
+
+
+class TestLayoutV2NeBougePasLeDocument(TestCase):
+    """PV24 — le layout v2 allume un chemin du builder : on le VERROUILLE.
+
+    ``build_quote_data`` écrase ``puissance_kwc`` avec ``roof_layout['result']
+    ['kwc']`` (builder.py, bloc « Q5 — Toiture 3D »). Ce chemin est resté
+    THÉORIQUE tant que l'outil 3D sérialisait en v1 : le blob v1 ne porte
+    AUCUN bloc ``result``, donc la condition n'était jamais vraie. Depuis PV13
+    la sérialisation est en v2 et le bloc ``result`` est TOUJOURS là — ce
+    chemin s'allume donc en production, sur tous les devis venus de la 3D.
+
+    Règle #4 : la puissance affichée peut suivre le calepinage réel (c'est le
+    but), mais le DOCUMENT lui-même ne bouge pas — mêmes pages, mêmes totaux.
+    Les totaux naissent des LIGNES et d'elles seules ; aucun champ de layout
+    n'a le droit de s'inviter dans la chaîne
+    Sous-total HT → Remise → Total HT → TVA → Total TTC.
+    """
+
+    #: Clés de TOTAUX de ``build_quote_data`` — la chaîne monétaire complète.
+    CLES_TOTAUX = ('total_sans', 'total_avec', 'total_sans_before',
+                   'total_avec_before', 'totaux_sans', 'totaux_avec',
+                   'totaux_all', 'discount_pct', 'per_line_tva')
+
+    @staticmethod
+    def _layout_v1():
+        """Le blob HISTORIQUE : géométrie de zones, AUCUN bloc ``result``."""
+        return {
+            'version': 1,
+            'pin': {'lat': 33.57, 'lng': -7.58},
+            'outline': [[33.57, -7.58], [33.58, -7.58], [33.58, -7.57]],
+            'billKwh': 900,
+            'activeAreaId': 'z1',
+            'zones': [{
+                'id': 'z1', 'label': 'Pan Sud',
+                'vertices': [[0, 0], [10, 0], [10, 6], [0, 6]],
+                'obstacles': [], 'roofType': 'pitched', 'pitchDeg': 30,
+                'facingAzimuthDeg': 0, 'neededPanels': 14,
+            }],
+        }
+
+    @classmethod
+    def _layout_v2(cls):
+        """Le MÊME toit, sérialisé en v2 (PV13) : + result/scenario/panelWatt."""
+        layout = cls._layout_v1()
+        layout.update({
+            'version': 2,
+            'result': {'panels': 14, 'kwc': 8.4, 'annualKwh': 13000,
+                       'savings': 11000},
+            'scenario': 'reseau',
+            'panelWatt': 600,
+            'battery': None,
+            'source': 'devis',
+            'devisId': 4242,
+        })
+        layout['zones'][0]['geometry'] = {
+            'azimuthDeg': 0, 'tiltDeg': 30, 'family': 'portrait',
+            'flush': True, 'kwc': 8.4, 'count': 14, 'origin': [0, 0],
+            'panels': [],
+        }
+        return layout
+
+    def setUp(self):
+        self.company = make_company()
+        self.user = make_user(self.company)
+        self.client_obj = make_client(self.company)
+        # MÊME fixture golden que les garde-fous de pagination existants
+        # (``TestPdfFormats``) : le nombre de pages testé ici est donc bien
+        # celui du document de référence, pas celui d'un devis inventé.
+        self.devis = make_devis(
+            self.company, self.user, self.client_obj,
+            TestPdfFormats.FULL_LINES, reference='DEV-PV24-001')
+
+    def _data(self, layout, pdf_options=None, devis=None):
+        from apps.ventes.quote_engine.builder import build_quote_data
+
+        devis = devis or self.devis
+        Devis.objects.filter(pk=devis.pk).update(roof_layout=layout)
+        devis.refresh_from_db()
+        return build_quote_data(devis, pdf_options)
+
+    def _pages(self, layout, pdf_options=None):
+        from weasyprint import HTML
+        from apps.ventes.quote_engine import generate_devis_premium as G
+
+        data = self._data(layout, pdf_options)
+        cap = {}
+        orig = G._render_pdf_weasyprint
+        G._render_pdf_weasyprint = lambda html, out: cap.update(html=html)
+        try:
+            G.generate_premium_pdf(data, '/tmp/_pv24_test.pdf')
+        finally:
+            G._render_pdf_weasyprint = orig
+        return len(HTML(string=cap['html']).render().pages)
+
+    def test_le_chemin_v2_s_allume_vraiment(self):
+        """Sans cette divergence, tout le reste du module serait vide de sens."""
+        v1 = self._data(self._layout_v1())
+        v2 = self._data(self._layout_v2())
+        self.assertEqual(v2['puissance_kwc'], 8.4)
+        self.assertNotEqual(v1['puissance_kwc'], v2['puissance_kwc'])
+
+    def test_les_totaux_sont_identiques_au_centime(self):
+        v1 = self._data(self._layout_v1())
+        v2 = self._data(self._layout_v2())
+        for cle in self.CLES_TOTAUX:
+            self.assertEqual(v1[cle], v2[cle],
+                             'le layout v2 a bougé le total « %s »' % cle)
+
+    def test_les_totaux_remises_sont_identiques(self):
+        """La remise globale est le maillon fragile de la chaîne : verrouillé.
+
+        Un devis REMISÉ fait vivre les trois maillons intermédiaires
+        (``ht_brut`` → ``remise`` → ``ht_net``) que le devis golden, sans
+        remise, laisse au repos.
+        """
+        remise = make_devis(
+            self.company, self.user, self.client_obj,
+            TestPdfFormats.FULL_LINES, remise_globale='12',
+            reference='DEV-PV24-002')
+        v1 = self._data(self._layout_v1(), devis=remise)
+        v2 = self._data(self._layout_v2(), devis=remise)
+        self.assertGreater(v1['totaux_all']['remise'], 0)
+        for cle in self.CLES_TOTAUX:
+            self.assertEqual(v1[cle], v2[cle],
+                             'le layout v2 a bougé le total « %s »' % cle)
+
+    def test_les_totaux_ignorent_aussi_un_layout_absent(self):
+        """Aucun layout, v1, v2 : la chaîne monétaire est la MÊME partout."""
+        sans = self._data(None)
+        for layout in (self._layout_v1(), self._layout_v2()):
+            avec = self._data(layout)
+            for cle in self.CLES_TOTAUX:
+                self.assertEqual(sans[cle], avec[cle],
+                                 'le layout a bougé le total « %s »' % cle)
+
+    def test_le_premium_reste_a_trois_pages(self):
+        self.assertEqual(self._pages(self._layout_v1()), 3)
+        self.assertEqual(self._pages(self._layout_v2()), 3)
+
+    def test_la_une_page_reste_a_une_page(self):
+        options = {'pdf_mode': 'onepage'}
+        self.assertEqual(self._pages(self._layout_v1(), options), 1)
+        self.assertEqual(self._pages(self._layout_v2(), options), 1)
+
+    def test_le_layout_v2_n_ecrit_aucun_statut(self):
+        """Règle #4 — le builder REND, il ne change jamais un statut."""
+        self._data(self._layout_v2())
+        self.devis.refresh_from_db()
+        self.assertEqual(self.devis.statut, 'brouillon')

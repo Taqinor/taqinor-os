@@ -1636,7 +1636,12 @@ def comparaison_calepinage_devis(devis):
             'ecart': None,
         }
 
-    mesure = compte_moteur_du_layout(devis.roof_layout)
+    # PV42 — le moteur calepine sur le PANNEAU du devis (kit-produit, PV12) :
+    # sans lui, cette comparaison opposerait un compte posé sur le module vendu
+    # à un compte posé sur le kit générique — un écart inventé de toutes pièces.
+    mesure = compte_moteur_du_layout(
+        devis.roof_layout, company=getattr(devis, 'company', None),
+        devis=devis)
     if mesure is None:
         return {
             'recalculable': True,

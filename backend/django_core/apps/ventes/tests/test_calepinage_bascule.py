@@ -138,7 +138,7 @@ class LeDrapeauEstBaisseParDefaut(SimpleTestCase):
         """Drapeau OFF : ``arbitrer`` rend ``None`` sans toucher au moteur."""
         appels = []
 
-        def _mouchard(_layout):
+        def _mouchard(_layout, **_kwargs):
             appels.append(1)
             return {'modules': 999, 'pans': ()}
 
@@ -215,7 +215,7 @@ class DrapeauOnLeMoteurDonneLeCompte(_Base):
 
     def test_une_panne_du_moteur_ne_casse_jamais_la_creation(self):
         """Le devis se construit même si le moteur explose — compte historique."""
-        def _explose(_layout):
+        def _explose(_layout, **_kwargs):
             raise RuntimeError('moteur indisponible')
 
         original = services.compte_moteur_du_layout
