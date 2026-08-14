@@ -34,7 +34,7 @@
  * (yieldTable.ts). JAMAIS un devis. Voir apps/web/ESTIMATOR_BRAIN_NOTES.md.
  */
 import { geodesicAreaM2, geodesicPerimeterM, pointInPolygon, type LngLat } from './roof';
-import { PANEL2_LONG_M, PANEL2_SHORT_M, PANEL2_WATT, PERIMETER_SETBACK_M } from './roofPro2';
+import { PANEL2_LONG_M, PANEL2_SHORT_M, PANEL2_WATT, PERIMETER_SETBACK_M, resolveSetbacks, type PerimeterSetbacks } from './roofPro2';
 import { YIELD_TABLE } from './yieldTable';
 
 export { PANEL2_WATT };
@@ -812,6 +812,12 @@ export interface PackOptions {
   /** PV60 — règle d'exclusion obstacle. Défaut `footprint` (empreinte complète). */
   obstacleRule?: ObstacleRule;
   /**
+   * PV63 — retraits de rive SÉPARÉS (latéral / extrémité / acrotère). Un champ absent
+   * retombe sur `setbackM` (donc PERIMETER_SETBACK_M) : objet absent → calepinage
+   * identique au retrait unique historique.
+   */
+  setbacksM?: Partial<PerimeterSetbacks>;
+  /**
    * PV61 — dégagement (m) PAR obstruction, dans le MÊME ordre que `obstructions` : une
    * cheminée recule plus qu'une antenne. Une entrée absente/non finie/négative retombe
    * sur `clearanceM` (donc `OBSTACLE_CLEARANCE_M`). Tableau absent → calepinage inchangé.
@@ -999,7 +1005,7 @@ function packCells(
   ringENU: [number, number][],
   obstructionsENU: [number, number][][],
   azimuthDeg: number,
-  setbackM: number,
+  setbacks: PerimeterSetbacks,
   p: CellParams,
   clearanceM: number,
   overhangM = 0,
@@ -1068,22 +1074,25 @@ function packCells(
   // au moins `setbackM` à l'intérieur OU déborde d'au plus `overhangM` (rails sur le
   // toit). overhangM=0 → équivaut exactement à l'ancienne règle (dedans/pile-rive
   // ET retrait), y compris la tolérance EDGE_EPS à retrait nul.
+  // PV63 — l'ACROTÈRE (distance minimale à toute rive) borne chaque coin de cellule ; le
+  // LATÉRAL et l'EXTRÉMITÉ décalent le DÉPART du balayage (u et v). Trois retraits égaux
+  // → règle et séquence identiques au retrait unique historique.
   const cellInside = (corners: [number, number][]): boolean =>
     corners.every((c) => {
       const d = distToBoundary(c, ringENU);
       const sd = pointInPolygon(c, ringENU) ? d : -d;
-      return sd >= setbackM - overhangM - EDGE_EPS_M;
+      return sd >= setbacks.parapetM - overhangM - EDGE_EPS_M;
     });
 
   // Départ décalé de ohRows/ohCols pas entiers vers l'extérieur ; borne haute
-  // étendue du débord. overhangM=0 : vStart=vMin+setbackM, séquence et borne identiques.
-  const vStart = vMin + setbackM - ohRows * p.pitchM;
-  const uStart = uMin + setbackM - ohCols * colPitch;
+  // étendue du débord. overhangM=0 : vStart=vMin+extrémité, séquence et borne identiques.
+  const vStart = vMin + setbacks.extremityM - ohRows * p.pitchM;
+  const uStart = uMin + setbacks.lateralM - ohCols * colPitch;
   const panels: PackedPanel[] = [];
   for (let r = 0; r < rows; r++) {
     const v0 = vStart + r * p.pitchM;
     const v1 = v0 + p.cellDepthM;
-    if (v1 > vMax - setbackM + overhangM + EDGE_EPS_M) break;
+    if (v1 > vMax - setbacks.extremityM + overhangM + EDGE_EPS_M) break;
     for (let c = 0; c < cols; c++) {
       const u0 = uStart + c * colPitch;
       const u1 = u0 + p.rowWidthM;
@@ -1146,7 +1155,7 @@ function packMixedCells(
   ringENU: [number, number][],
   obstructionsENU: [number, number][][],
   azimuthDeg: number,
-  setbackM: number,
+  setbacks: PerimeterSetbacks,
   portrait: CellParams,
   landscape: CellParams,
   clearanceM: number,
@@ -1205,7 +1214,7 @@ function packMixedCells(
     corners.every((c) => {
       const d = distToBoundary(c, ringENU);
       const sd = pointInPolygon(c, ringENU) ? d : -d;
-      return sd >= setbackM - overhangM - EDGE_EPS_M;
+      return sd >= setbacks.parapetM - overhangM - EDGE_EPS_M; // PV63 — acrotère
     });
   /** Rectangle (u0..u1 × v0..v1) posable : entièrement dans le toit ET hors obstacle. */
   const rectOk = (u0: number, u1: number, v0: number, v1: number): boolean => {
@@ -1214,10 +1223,10 @@ function packMixedCells(
     return !hitsObstruction([...corners, toENU((u0 + u1) / 2, (v0 + v1) / 2)]);
   };
 
-  const uStart = uMin + setbackM - overhangM;
-  const uEnd = uMax - setbackM + overhangM;
-  const vStart = vMin + setbackM - overhangM;
-  const vEnd = vMax - setbackM + overhangM;
+  const uStart = uMin + setbacks.lateralM - overhangM; // PV63 — retrait latéral
+  const uEnd = uMax - setbacks.lateralM + overhangM;
+  const vStart = vMin + setbacks.extremityM - overhangM; // PV63 — retrait d'extrémité
+  const vEnd = vMax - setbacks.extremityM + overhangM;
 
   /** Panneaux posables dans la rangée qui commence en `v0` avec la pose `cp`. */
   const rowFor = (v0: number, cp: CellParams, orient: PanelLayoutOrient): PackedPanel[] => {
@@ -1233,7 +1242,7 @@ function packMixedCells(
       const inside = [a0, a1].every((c) => {
         const d = distToBoundary(c, ringENU);
         const sd = pointInPolygon(c, ringENU) ? d : -d;
-        return sd >= setbackM - overhangM - EDGE_EPS_M;
+        return sd >= setbacks.parapetM - overhangM - EDGE_EPS_M;
       });
       return { inside, hit: inside ? hitsObstruction([a0, a1]) : false };
     };
@@ -1312,6 +1321,8 @@ export function packConfig(ring: LngLat[], latitudeDeg: number, opts: PackOption
   const areaM2 = geodesicAreaM2(ring);
   const azimuthDeg = opts.azimuthDeg ?? familyAzimuthDeg(opts.family);
   const setbackM = opts.setbackM ?? PERIMETER_SETBACK_M;
+  // PV63 — trois retraits (latéral / extrémité / acrotère). Champ absent → `setbackM`.
+  const setbacks = resolveSetbacks(opts.setbacksM, setbackM);
   const clearanceM = opts.clearanceM ?? OBSTACLE_CLEARANCE_M;
   const overhangM = Math.max(0, opts.overhangM ?? 0);
   const obstacleRule: ObstacleRule = opts.obstacleRule ?? 'footprint'; // PV60
@@ -1412,7 +1423,7 @@ export function packConfig(ring: LngLat[], latitudeDeg: number, opts: PackOption
 
   const makeGrid = (panelOrientation: 'portrait' | 'landscape', slopeLenM: number, rowWidthM: number): PanelGrid => {
     const cell = cellFor(slopeLenM, rowWidthM);
-    const panels = packCells(ringENU, obstructionsENU, azimuthDeg, setbackM, cell, clearanceM, overhangM, obstacleRule, opts.obstructionClearancesM);
+    const panels = packCells(ringENU, obstructionsENU, azimuthDeg, setbacks, cell, clearanceM, overhangM, obstacleRule, opts.obstructionClearancesM);
     return {
       panelOrientation,
       count: panels.length,
@@ -1442,7 +1453,7 @@ export function packConfig(ring: LngLat[], latitudeDeg: number, opts: PackOption
     if (eastWest) return (mixedMemo = best);
     const cP = cellFor(PANEL2_LONG_M, PANEL2_SHORT_M);
     const cL = cellFor(PANEL2_SHORT_M, PANEL2_LONG_M);
-    const panels = packMixedCells(ringENU, obstructionsENU, azimuthDeg, setbackM, cP, cL, clearanceM, overhangM, opts.obstructionClearancesM);
+    const panels = packMixedCells(ringENU, obstructionsENU, azimuthDeg, setbacks, cP, cL, clearanceM, overhangM, opts.obstructionClearancesM);
     if (panels.length <= best.count) return (mixedMemo = best);
     // Pose DOMINANTE = celle du plus grand nombre de panneaux : elle porte les
     // dimensions/pas de la grille ; chaque panneau garde SA pose dans `orient`.

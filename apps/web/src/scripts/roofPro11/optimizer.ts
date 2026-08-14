@@ -40,7 +40,7 @@ import {
   type PanelGrid,
   type ConfigFamily,
 } from '../../lib/estimatorBrainV2';
-import { PERIMETER_SETBACK_M, PANEL2_LONG_M, PANEL2_SHORT_M } from '../../lib/roofPro2';
+import { PERIMETER_SETBACK_M, PANEL2_LONG_M, PANEL2_SHORT_M, uniformSetbacks, type PerimeterSetbacks } from '../../lib/roofPro2';
 import {
   recommendPitched,
   type FlushPack,
@@ -105,6 +105,9 @@ export interface OptimizerDeps {
   /** PV61 — dégagement (m) de CHAQUE obstacle selon son type, même ordre que
    *  `obstructionRings()`. Optionnel : absent → dégagement uniforme (historique). */
   obstructionClearances?: () => number[];
+  /** PV63 — retraits de rive SAISIS (latéral / extrémité / acrotère) quand la marge est
+   *  gardée — entrée. Optionnel : absent → retrait unique PERIMETER_SETBACK_M. */
+  setbacksOf?: () => PerimeterSetbacks;
   /** Affiche un message dans le bandeau de statut — entrée. */
   setStatus: (msg: string) => void;
 }
@@ -147,6 +150,11 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
   } = deps;
   /** PV61 — dégagements par obstacle (type) ; dépendance absente → uniforme. */
   const obstructionClearances = (): number[] | undefined => deps.obstructionClearances?.();
+  /** PV63 — retraits saisis quand la marge est GARDÉE ; absent → retrait unique. */
+  const keepSetbacks = (): PerimeterSetbacks | undefined => deps.setbacksOf?.();
+  /** PV63 — retraits effectifs d'une marge donnée : pleine rive = zéro partout. */
+  const setbacksForMargin = (margin: 'keep' | 'remove'): PerimeterSetbacks | undefined =>
+    margin === 'keep' ? keepSetbacks() : uniformSetbacks(0);
 
   // — DOM propre à l'optimiseur (mêmes nœuds que l'entrée ; getElementById idempotent) —
   const needInputEl = $<HTMLInputElement>('rp9-need-input');
@@ -341,6 +349,7 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
       azimuthDeg: w.azimuthDeg,
       obstructions: obstructionRings(),
       obstructionClearancesM: obstructionClearances(), // PV61 — dégagement par type
+      setbacksM: setbacksForMargin(w.margin), // PV63 — latéral / extrémité / acrotère
       setbackM,
       overhangM: ctx.overhangM, // W109 — le gagnant rendu déborde comme le solve l'a évalué
     });
@@ -405,6 +414,7 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
       yieldFn,
       overhangM: ctx.overhangM,
       obstructionClearancesM: obstructionClearances(), // PV61
+      setbacksM: keepSetbacks(), // PV63
     });
     ctx.liveResult = res;
     if (ctx.neededAuto) ctx.neededPanels = res.neededPanels > 0 ? clampNeeded(res.neededPanels) : 0;
@@ -659,6 +669,7 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
       yieldFn,
       overhangM: ctx.overhangM,
       obstructionClearancesM: obstructionClearances(), // PV61
+      setbacksM: keepSetbacks(), // PV63
     });
     ctx.pitchedLiveResult = res;
     if (ctx.neededAuto) ctx.neededPanels = res.neededPanels > 0 ? clampNeeded(res.neededPanels) : 0;
@@ -821,6 +832,7 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
       facingAzimuthDeg: ctx.facingAzimuthDeg,
       obstructions: obstructionRings(),
       obstructionClearancesM: obstructionClearances(), // PV61
+      setbacksM: keepSetbacks(), // PV63
     };
     ctx.pitchedRec = recommendPitched([plane], ctx.centroidLat, monthlyBill());
     ctx.pitchedPvgisPerKwc = null; // nouvelle config → chiffre PVGIS obsolète (repli table)
@@ -932,6 +944,7 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
       yieldFn,
       overhangM: ctx.overhangM,
       obstructionClearancesM: obstructionClearances(), // PV61
+      setbacksM: keepSetbacks(), // PV63
     });
     paintComparison();
     renderMatrixOptimumCard();

@@ -54,7 +54,13 @@ import {
   type PanelGrid,
   type ConfigFamily,
 } from '../lib/estimatorBrainV2';
-import { PERIMETER_SETBACK_M, WINTER_SOLSTICE_DAY } from '../lib/roofPro2';
+import {
+  PERIMETER_SETBACK_M,
+  WINTER_SOLSTICE_DAY,
+  uniformSetbacks,
+  readSetbackInput,
+  type PerimeterSetbacks,
+} from '../lib/roofPro2';
 import {
   reoptimize,
   type FlatPins,
@@ -392,6 +398,11 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
   // W1 — Marge de rive courante (m) déduite du toggle « Marge ». keep = marge de
   // design (PERIMETER_SETBACK_M) ; remove = pleine rive (0).
   const setbackOf = (): number => (sel.margin === 'remove' ? 0 : PERIMETER_SETBACK_M);
+  // PV63 — RETRAITS DE RIVE SÉPARÉS, saisis par l'utilisateur (marge GARDÉE). Le bouton
+  // binaire « pleine rive » reste le raccourci : il met les trois à zéro (géré par les
+  // solveurs). Départ : les trois à PERIMETER_SETBACK_M → calepinage inchangé.
+  const setbacks: PerimeterSetbacks = uniformSetbacks();
+  const setbacksOf = (): PerimeterSetbacks => setbacks;
 
   // W109 — débord panneaux autorisé au-delà de la rive (m), saisi dans #rp9-overhang-input.
   // 0 par défaut → calepinage/solve inchangés. Change la CAPACITÉ géométrique seulement :
@@ -1204,6 +1215,7 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
     monthlyBill: () => monthlyBill(),
     obstructionRings,
     obstructionClearances, // PV61 — dégagement par type d'obstacle
+    setbacksOf, // PV63 — retraits latéral / extrémité / acrotère
     setStatus,
   });
   const liveResolveFlat = optimizer.liveResolveFlat;
@@ -2139,6 +2151,63 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
     group.appendChild(chip);
   }
   ensureMixedOrientChip();
+
+  // PV63 — TROIS CHAMPS de retrait de rive (latéral / extrémité / acrotère), créés à côté
+  // du groupe « marge » si la page ne les fournit pas. Règle de saisie : `step="any"`,
+  // aucune borne HTML, et le commit se fait à la VALIDATION (`change`) — on n'arrondit
+  // jamais et on ne rejette jamais une frappe : une valeur douteuse est APPLIQUÉE (ou le
+  // retrait précédent conservé si elle est illisible) et AVERTIE dans la note.
+  const SETBACK_FIELDS: { key: keyof PerimeterSetbacks; id: string; label: string }[] = [
+    { key: 'lateralM', id: 'rp9-setback-lateral', label: 'Retrait latéral (m)' },
+    { key: 'extremityM', id: 'rp9-setback-extremity', label: 'Retrait d’extrémité (m)' },
+    { key: 'parapetM', id: 'rp9-setback-parapet', label: 'Retrait d’acrotère (m)' },
+  ];
+  const setbackNoteEl = (): HTMLElement | null => document.getElementById('rp9-setback-note');
+  function ensureSetbackInputs() {
+    if (document.getElementById(SETBACK_FIELDS[0].id)) return;
+    const marginChip = document.querySelector<HTMLButtonElement>('[data-margin]');
+    const host = marginChip?.parentElement?.parentElement ?? marginChip?.parentElement;
+    if (!host) return;
+    const wrap = document.createElement('div');
+    wrap.className = 'rp9-setbacks';
+    for (const f of SETBACK_FIELDS) {
+      const label = document.createElement('label');
+      label.setAttribute('for', f.id);
+      label.textContent = `${f.label} `;
+      const input = document.createElement('input');
+      input.id = f.id;
+      input.type = 'number';
+      input.step = 'any'; // jamais de « snap » : toute décimale est acceptée
+      input.inputMode = 'decimal';
+      input.className = 'rp9-input';
+      input.value = String(setbacks[f.key]);
+      label.appendChild(input);
+      wrap.appendChild(label);
+    }
+    const note = document.createElement('p');
+    note.id = 'rp9-setback-note';
+    note.className = 'rp9-note';
+    wrap.appendChild(note);
+    host.appendChild(wrap);
+  }
+  ensureSetbackInputs();
+  for (const f of SETBACK_FIELDS) {
+    const el = document.getElementById(f.id) as HTMLInputElement | null;
+    el?.addEventListener('change', () => {
+      const { valueM, warning } = readSetbackInput(el.value, setbacks[f.key]);
+      const changed = valueM !== setbacks[f.key];
+      setbacks[f.key] = valueM;
+      const note = setbackNoteEl();
+      if (note) {
+        note.textContent =
+          warning ??
+          `Retraits appliqués : latéral ${setbacks.lateralM} m · extrémité ${setbacks.extremityM} m · acrotère ${setbacks.parapetM} m.`;
+      }
+      // On ne réécrit PAS le champ (la frappe de l'utilisateur reste la sienne) ; seul le
+      // calepinage suit. Rien à recalculer si la valeur retenue n'a pas bougé.
+      if (changed && closed) recalc();
+    });
+  }
 
   document.querySelectorAll<HTMLButtonElement>('[data-orient]').forEach((b) => {
     b.addEventListener('click', () => {

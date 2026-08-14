@@ -30,7 +30,7 @@
  *  committée (« estimé ») si PVGIS est injoignable. JAMAIS un devis : une fourchette.
  */
 import { type LngLat } from './roof';
-import { PERIMETER_SETBACK_M } from './roofPro2';
+import { PERIMETER_SETBACK_M, type PerimeterSetbacks } from './roofPro2';
 import {
   PANEL2_WATT,
   type ConfigFamily,
@@ -165,6 +165,8 @@ interface SolveCtx {
   overhangM: number;
   /** PV61 — dégagement (m) par obstruction (même ordre que `obstructions`). */
   obstructionClearancesM?: number[];
+  /** PV63 — retraits de rive séparés quand la marge est gardée. */
+  setbacksM?: Partial<PerimeterSetbacks>;
   tariff: TariffGrid;
   yieldFn: YieldFn | undefined;
   roofAz: number;
@@ -194,9 +196,13 @@ function evalOne(
   margin: MarginAxis,
 ): LiveConfigEval {
   const setbackM = margin === 'keep' ? ctx.defaultSetbackM : 0;
+  // PV63 — marge GARDÉE : les trois retraits saisis ; PLEINE RIVE : tout à zéro.
+  const setbacksM: Partial<PerimeterSetbacks> | undefined =
+    margin === 'keep' ? ctx.setbacksM : { lateralM: 0, extremityM: 0, parapetM: 0 };
+  const sbKey = setbacksM ? `${setbacksM.lateralM ?? ''}/${setbacksM.extremityM ?? ''}/${setbacksM.parapetM ?? ''}` : '';
   // W109 — overhangM entre dans la clé de cache (sinon deux solves d'overhang différents
   // entreraient en collision). overhangM=0 → même clé/pavage qu'avant (rétro-compatible).
-  const key = `${family}|${tiltDeg}|${Math.round(azimuthDeg * 1000)}|${Math.round(setbackM * 1000)}|${Math.round(ctx.overhangM * 1000)}`;
+  const key = `${family}|${tiltDeg}|${Math.round(azimuthDeg * 1000)}|${Math.round(setbackM * 1000)}|${Math.round(ctx.overhangM * 1000)}|${sbKey}`;
   let pack = ctx.cache.get(key);
   if (!pack) {
     pack = packConfig(ctx.ring, ctx.latitudeDeg, {
@@ -207,6 +213,7 @@ function evalOne(
       setbackM,
       overhangM: ctx.overhangM,
       obstructionClearancesM: ctx.obstructionClearancesM, // PV61 — dégagement par type
+      setbacksM, // PV63 — retraits latéral / extrémité / acrotère
     });
     ctx.cache.set(key, pack);
   }
@@ -317,6 +324,9 @@ export interface LiveSolveOptions {
   overhangM?: number;
   /** PV61 — dégagement (m) par obstruction (même ordre que `obstructions`). Absent → uniforme. */
   obstructionClearancesM?: number[];
+  /** PV63 — retraits de rive séparés (latéral / extrémité / acrotère) quand la marge est
+   *  GARDÉE. Absent → retrait unique PERIMETER_SETBACK_M (historique). */
+  setbacksM?: Partial<PerimeterSetbacks>;
 }
 
 export interface LiveSolveResult {
@@ -390,6 +400,7 @@ export function solveLive(
     defaultSetbackM: PERIMETER_SETBACK_M,
     overhangM: Math.max(0, options.overhangM ?? 0),
     obstructionClearancesM: options.obstructionClearancesM, // PV61
+    setbacksM: options.setbacksM, // PV63
 
     tariff,
     yieldFn: options.yieldFn,

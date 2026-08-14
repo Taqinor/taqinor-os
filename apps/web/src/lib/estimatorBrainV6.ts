@@ -43,7 +43,7 @@
  * pour garder chaque chiffre honnête. JAMAIS un devis : une fourchette indicative.
  */
 import { type LngLat } from './roof';
-import { PERIMETER_SETBACK_M } from './roofPro2';
+import { PERIMETER_SETBACK_M, type PerimeterSetbacks } from './roofPro2';
 import {
   PANEL2_WATT,
   type ConfigFamily,
@@ -400,10 +400,15 @@ function evalMatrixConfig(
   yieldFn: YieldFn | undefined,
   cache: Map<string, PackResult>,
   obstructionClearancesM?: number[],
+  setbacksMKeep?: Partial<PerimeterSetbacks>,
 ): MatrixEvalV6 {
   const setbackM = cfg.margin === 'keep' ? defaultSetbackM : 0;
+  // PV63 — marge gardée : les trois retraits saisis ; pleine rive : tout à zéro.
+  const setbacksM: Partial<PerimeterSetbacks> | undefined =
+    cfg.margin === 'keep' ? setbacksMKeep : { lateralM: 0, extremityM: 0, parapetM: 0 };
+  const sbKey = setbacksM ? `${setbacksM.lateralM ?? ''}/${setbacksM.extremityM ?? ''}/${setbacksM.parapetM ?? ''}` : '';
   // W109 — overhangM dans la clé (sinon collision entre overhangs) ; 0 → clé/pavage inchangés.
-  const key = `${cfg.family}|${cfg.tiltDeg}|${Math.round(cfg.azimuthDeg * 1000)}|${Math.round(setbackM * 1000)}|${Math.round(overhangM * 1000)}`;
+  const key = `${cfg.family}|${cfg.tiltDeg}|${Math.round(cfg.azimuthDeg * 1000)}|${Math.round(setbackM * 1000)}|${Math.round(overhangM * 1000)}|${sbKey}`;
   let pack = cache.get(key);
   if (!pack) {
     pack = packConfig(ring, latitudeDeg, {
@@ -414,6 +419,7 @@ function evalMatrixConfig(
       setbackM,
       overhangM,
       obstructionClearancesM, // PV61 — dégagement par type d'obstacle
+      setbacksM, // PV63 — retraits latéral / extrémité / acrotère
     });
     cache.set(key, pack);
   }
@@ -480,6 +486,8 @@ export interface MatrixV6Options {
   overhangM?: number;
   /** PV61 — dégagement (m) par obstruction (même ordre que `obstructions`). Absent → uniforme. */
   obstructionClearancesM?: number[];
+  /** PV63 — retraits de rive séparés (latéral / extrémité / acrotère) quand la marge est gardée. */
+  setbacksM?: Partial<PerimeterSetbacks>;
 }
 
 export interface MatrixV6Result {
@@ -534,7 +542,7 @@ export function fineGridMatrixV6(
   let anyPvgis = false;
 
   const consider = (cfg: MatrixCfg) => {
-    const e = evalMatrixConfig(ring, latitudeDeg, cfg, needed, target, obstructions, setback, overhang, tariff, options.yieldFn, cache, options.obstructionClearancesM);
+    const e = evalMatrixConfig(ring, latitudeDeg, cfg, needed, target, obstructions, setback, overhang, tariff, options.yieldFn, cache, options.obstructionClearancesM, options.setbacksM);
     rows.push(e);
     if (e.yieldSource === 'pvgis') anyPvgis = true;
     if (!winner || betterMatrixV6(e, winner)) winner = e;

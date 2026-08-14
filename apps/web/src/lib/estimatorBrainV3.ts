@@ -40,7 +40,7 @@
  * JAMAIS un devis : une fourchette indicative. Voir apps/web/BRAIN_V3_NOTES.md.
  */
 import { geodesicAreaM2, geodesicPerimeterM, pointInPolygon, type LngLat } from './roof';
-import { PANEL2_LONG_M, PANEL2_SHORT_M, PERIMETER_SETBACK_M } from './roofPro2';
+import { PANEL2_LONG_M, PANEL2_SHORT_M, PERIMETER_SETBACK_M, resolveSetbacks, type PerimeterSetbacks } from './roofPro2';
 import {
   PANEL2_WATT,
   REGIE_TARIFF,
@@ -445,6 +445,8 @@ export interface RoofPlane {
   obstructions?: LngLat[][];
   /** PV61 — dégagement (m) par obstruction, même ordre que `obstructions`. Absent → uniforme. */
   obstructionClearancesM?: number[];
+  /** PV63 — retraits de rive séparés portés par le pan (latéral / extrémité / acrotère). */
+  setbacksM?: Partial<PerimeterSetbacks>;
 }
 
 export interface FlushGrid {
@@ -534,7 +536,7 @@ function packFlushCells(
   ringENU: [number, number][],
   obstructionsENU: [number, number][][],
   azimuthDeg: number,
-  setbackM: number,
+  setbacks: PerimeterSetbacks,
   p: FlushCellParams,
   clearanceM: number,
   overhangM = 0,
@@ -587,20 +589,22 @@ function packFlushCells(
   // W108 — distance SIGNÉE au bord (+ dedans, − dehors) : un coin tient s'il est à
   // au moins `setbackM` à l'intérieur OU déborde d'au plus `overhangM`. overhangM=0
   // → équivaut exactement à l'ancienne règle (dedans/pile-rive ET retrait).
+  // PV63 — acrotère = distance minimale à toute rive (chaque coin) ; latéral/extrémité
+  // décalent le départ du balayage. Trois valeurs égales → comportement historique.
   const cellInside = (corners: [number, number][]): boolean =>
     corners.every((c) => {
       const d = distToBoundary(c, ringENU);
       const sd = pointInPolygon(c, ringENU) ? d : -d;
-      return sd >= setbackM - overhangM - EDGE_EPS_M;
+      return sd >= setbacks.parapetM - overhangM - EDGE_EPS_M;
     });
 
-  const vStart = vMin + setbackM - ohRows * p.rowPitchM;
-  const uStart = uMin + setbackM - ohCols * colPitch;
+  const vStart = vMin + setbacks.extremityM - ohRows * p.rowPitchM;
+  const uStart = uMin + setbacks.lateralM - ohCols * colPitch;
   const panels: { cx: number; cy: number }[] = [];
   for (let r = 0; r < rows; r++) {
     const v0 = vStart + r * p.rowPitchM;
     const v1 = v0 + p.panelPlanDepthM;
-    if (v1 > vMax - setbackM + overhangM + EDGE_EPS_M) break;
+    if (v1 > vMax - setbacks.extremityM + overhangM + EDGE_EPS_M) break;
     for (let c = 0; c < cols; c++) {
       const u0 = uStart + c * colPitch;
       const u1 = u0 + p.rowWidthM;
@@ -629,6 +633,8 @@ export function packFlushPlane(
     obstacleRule?: ObstacleRule;
     /** PV61 — dégagement (m) par obstruction, même ordre que `plane.obstructions`. */
     obstructionClearancesM?: number[];
+    /** PV63 — retraits séparés (latéral / extrémité / acrotère) ; absent → `setbackM`. */
+    setbacksM?: Partial<PerimeterSetbacks>;
   } = {},
 ): FlushPack {
   const { ring, pitchDeg, facingAzimuthDeg } = plane;
@@ -638,6 +644,7 @@ export function packFlushPlane(
   // W108 — débord autorisé des panneaux au-delà de la rive (rails sur le toit).
   const overhangM = Math.max(0, opts.overhangM ?? 0);
   const obstacleRule: ObstacleRule = opts.obstacleRule ?? 'footprint'; // PV60
+  const setbacks = resolveSetbacks(opts.setbacksM ?? plane.setbacksM, setbackM); // PV63
   const beta = pitchDeg * DEG2RAD;
   const obstructions = plane.obstructions ?? [];
   // W108 — borne « Σ empreintes ≤ utile » élargie de l'anneau de débord (Minkowski).
@@ -652,7 +659,7 @@ export function packFlushPlane(
     // PV61 — dégagement par obstruction : l'option explicite l'emporte, sinon celui porté
     // par le pan lui-même (`plane.obstructionClearancesM`), sinon uniforme.
     const clearancesM = opts.obstructionClearancesM ?? plane.obstructionClearancesM;
-    const panels = packFlushCells(ringENU, obsENU, facingAzimuthDeg, setbackM, { panelPlanDepthM, rowPitchM, rowWidthM }, clearanceM, overhangM, obstacleRule, clearancesM);
+    const panels = packFlushCells(ringENU, obsENU, facingAzimuthDeg, setbacks, { panelPlanDepthM, rowPitchM, rowWidthM }, clearanceM, overhangM, obstacleRule, clearancesM);
     return {
       orientation,
       count: panels.length,
