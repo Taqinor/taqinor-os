@@ -34,6 +34,8 @@ vi.mock('../../api/stockApi', () => ({
   default: {
     getProduitPrixFournisseurs: () => Promise.resolve({ data: [] }),
     comparerFournisseurs: () => Promise.resolve({ data: [] }),
+    // NTSCM26 — colonne TCO additionnelle du panneau « Comparer fournisseurs ».
+    comparerTcoFournisseurs: () => Promise.resolve({ data: { fournisseurs: [] } }),
     createPrixFournisseur: () => Promise.resolve({ data: {} }),
     updatePrixFournisseur: () => Promise.resolve({ data: {} }),
     deletePrixFournisseur: () => Promise.resolve({ data: {} }),

@@ -450,6 +450,11 @@ const stockApi = {
   simulerCapacite: (params) => api.get('/stock/simuler-capacite/', { params }),
   getZonesSurcapacite: (params) =>
     api.get('/stock/entrepot/alertes-surcapacite/', { params }),
+
+  // NTSCM26 — TCO par fournisseur (prix nu + coût du retard + coût qualité).
+  // INTERNE : réservé responsable/admin, jamais un document client.
+  comparerTcoFournisseurs: (produitId, params) =>
+    api.get(`/stock/produits/${produitId}/comparer-tco/`, { params }),
 }
 
 export default stockApi
