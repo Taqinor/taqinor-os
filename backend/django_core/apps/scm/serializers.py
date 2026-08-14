@@ -6,8 +6,8 @@
 from rest_framework import serializers
 
 from .models import (
-    ClassificationABC, CyclePlanificationSOP, EvenementDemande, PolitiqueStock,
-    PrevisionDemande,
+    ClassificationABC, CyclePlanificationSOP, EvenementDemande, LigneDemandeSOP,
+    PolitiqueStock, PrevisionDemande,
 )
 
 
@@ -124,3 +124,25 @@ class CyclePlanificationSOPSerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError(
                     f'Un cycle S&OP existe déjà pour la période {value}.')
         return value
+
+
+class LigneDemandeSOPSerializer(serializers.ModelSerializer):
+    produit_nom = serializers.CharField(source='produit.nom', read_only=True)
+
+    class Meta:
+        model = LigneDemandeSOP
+        fields = [
+            'id', 'cycle', 'produit', 'produit_nom',
+            'quantite_prevision_systeme', 'quantite_ajustee_commercial',
+            'motif_ajustement', 'quantite_finale',
+        ]
+        # Snapshot gelé (NTSCM13) : seul l'ajustement commercial est
+        # modifiable, et UNIQUEMENT via l'action dédiée
+        # ``CyclePlanificationSOPViewSet.ajuster_demande`` (jamais un PATCH
+        # générique sur cette ressource — le motif doit toujours accompagner
+        # l'ajustement, une contrainte qu'un PATCH partiel ne peut pas garantir).
+        read_only_fields = [
+            'id', 'cycle', 'produit', 'produit_nom',
+            'quantite_prevision_systeme', 'quantite_ajustee_commercial',
+            'motif_ajustement', 'quantite_finale',
+        ]

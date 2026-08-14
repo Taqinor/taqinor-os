@@ -12,13 +12,13 @@ from authentication.permissions import IsResponsableOrAdmin
 from core.viewsets import CompanyScopedModelViewSet
 
 from .models import (
-    ClassificationABC, CyclePlanificationSOP, EvenementDemande, PolitiqueStock,
-    PrevisionDemande,
+    ClassificationABC, CyclePlanificationSOP, EvenementDemande, LigneDemandeSOP,
+    PolitiqueStock, PrevisionDemande,
 )
 from .serializers import (
     ClassificationABCSerializer, CyclePlanificationSOPSerializer,
-    EvenementDemandeSerializer, PolitiqueStockSerializer,
-    PrevisionDemandeSerializer,
+    EvenementDemandeSerializer, LigneDemandeSOPSerializer,
+    PolitiqueStockSerializer, PrevisionDemandeSerializer,
 )
 
 
@@ -188,6 +188,40 @@ class CyclePlanificationSOPViewSet(CompanyScopedModelViewSet):
         cycle = self.get_object()
         entries = chatter_qs(cycle, request.user.company)
         return Response(ChatterActivitySerializer(entries, many=True).data)
+
+    @action(detail=True, methods=['get'], url_path='lignes-demande')
+    def lignes_demande(self, request, pk=None):
+        """NTSCM13 — lignes de demande gelées du cycle (voir
+        ``services.geler_previsions_cycle``, déclenché automatiquement au
+        passage brouillon -> revue_demande)."""
+        cycle = self.get_object()
+        lignes = cycle.lignes_demande.select_related('produit').all()
+        return Response(LigneDemandeSOPSerializer(lignes, many=True).data)
+
+    @action(detail=True, methods=['post'], url_path='ajuster-demande')
+    def ajuster_demande(self, request, pk=None):
+        """NTSCM13 — ajustement commercial MOTIVÉ d'une ligne de demande
+        gelée. Corps : ``{"produit_id": …, "quantite_ajustee": …, "motif": …}``.
+        Un motif vide est refusé (400) — l'ajustement doit toujours être
+        expliqué."""
+        cycle = self.get_object()
+        produit_id = request.data.get('produit_id')
+        motif = (request.data.get('motif') or '').strip()
+        if not motif:
+            return Response({'motif': 'Requis pour tout ajustement.'}, status=400)
+        try:
+            ligne = cycle.lignes_demande.get(produit_id=produit_id)
+        except LigneDemandeSOP.DoesNotExist:
+            return Response(
+                {'produit_id': "Aucune ligne de demande gelée pour ce produit."},
+                status=404)
+        ligne.quantite_ajustee_commercial = request.data.get('quantite_ajustee')
+        ligne.motif_ajustement = motif
+        ligne.save(update_fields=[
+            'quantite_ajustee_commercial', 'motif_ajustement',
+            'quantite_finale', 'updated_at',
+        ])
+        return Response(LigneDemandeSOPSerializer(ligne).data)
 
 
 @api_view(['GET'])

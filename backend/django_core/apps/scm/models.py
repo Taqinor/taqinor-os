@@ -323,3 +323,62 @@ class CyclePlanificationSOP(TenantModel):
 
     def __str__(self):
         return f'S&OP {self.periode} ({self.get_statut_display()})'
+
+
+class LigneDemandeSOP(TenantModel):
+    """NTSCM13 — snapshot GELÉ de la demande consensuelle d'un produit pour
+    un cycle S&OP.
+
+    ``quantite_prevision_systeme`` est copiée depuis ``PrevisionDemande`` au
+    moment du gel (``services.geler_previsions_cycle``, appelé
+    AUTOMATIQUEMENT au passage brouillon -> revue_demande) — IMMUABLE
+    ensuite : modifier ``PrevisionDemande`` après coup n'affecte plus cette
+    ligne. Seul un ajustement commercial EXPLICITE et MOTIVÉ
+    (``quantite_ajustee_commercial``/``motif_ajustement``) peut la faire
+    dévier ; ``quantite_finale`` (calculée, stockée pour être filtrable/
+    triable) vaut l'ajustée si renseignée, sinon la système."""
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,  # on_delete: tenant
+        related_name='scm_lignes_demande_sop', verbose_name='Société')
+    cycle = models.ForeignKey(
+        CyclePlanificationSOP,
+        on_delete=models.CASCADE,
+        related_name='lignes_demande', verbose_name='Cycle S&OP')
+    produit = models.ForeignKey(
+        'stock.Produit',
+        on_delete=models.CASCADE,
+        related_name='scm_lignes_demande_sop', verbose_name='Produit')
+    quantite_prevision_systeme = models.DecimalField(
+        max_digits=12, decimal_places=2, default=Decimal('0'),
+        verbose_name='Quantité prévision système (gelée)')
+    quantite_ajustee_commercial = models.DecimalField(
+        max_digits=12, decimal_places=2, null=True, blank=True,
+        verbose_name='Quantité ajustée (commercial)')
+    motif_ajustement = models.TextField(
+        blank=True, default='', verbose_name="Motif de l'ajustement")
+    quantite_finale = models.DecimalField(
+        max_digits=12, decimal_places=2, default=Decimal('0'),
+        verbose_name='Quantité finale',
+        help_text='Ajustée si renseignée, sinon système — recalculée à chaque save().')
+
+    class Meta:
+        verbose_name = 'Ligne de demande S&OP'
+        verbose_name_plural = 'Lignes de demande S&OP'
+        ordering = ['cycle_id', 'produit_id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['cycle', 'produit'], name='uniq_scm_ligne_demande_sop_produit'),
+        ]
+
+    def save(self, *args, **kwargs):
+        self.quantite_finale = (
+            self.quantite_ajustee_commercial
+            if self.quantite_ajustee_commercial is not None
+            else self.quantite_prevision_systeme
+        )
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f'{self.cycle_id} / {self.produit_id} = {self.quantite_finale}'

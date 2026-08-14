@@ -14,7 +14,10 @@ from django.utils import timezone
 from core.demand_forecast import forecast_demand
 from core.safety_stock import compute_safety_stock
 
-from .models import ClassificationABC, EvenementDemande, PolitiqueStock, PrevisionDemande
+from .models import (
+    ClassificationABC, CyclePlanificationSOP, EvenementDemande, LigneDemandeSOP,
+    PolitiqueStock, PrevisionDemande,
+)
 
 # Convention du module : les historiques exposés par ``_historique_sorties_
 # mensuelles`` sont MENSUELS ; ``core.safety_stock.compute_safety_stock``
@@ -291,7 +294,50 @@ def avancer_statut_cycle(cycle, user, *, statut_cible=None):
     log_field_change(
         cycle, 'statut', ancien, prochain, user=user,
         field_label='Statut du cycle S&OP', company=cycle.company)
+
+    # NTSCM13 — le gel de la demande consensuelle se déclenche EXACTEMENT au
+    # passage brouillon -> revue_demande (jamais rejoué à une étape
+    # ultérieure : c'est ce qui rend les lignes gelées immuables une fois le
+    # cycle en revue).
+    if prochain == CyclePlanificationSOP.Statut.REVUE_DEMANDE:
+        geler_previsions_cycle(cycle)
+
     return cycle
+
+
+def geler_previsions_cycle(cycle):
+    """NTSCM13 — copie l'état COURANT de ``PrevisionDemande`` du mois cible
+    (``cycle.periode``) dans les ``LigneDemandeSOP`` du cycle (agrégées par
+    produit, tous segments confondus — le cycle S&OP raisonne au niveau
+    produit).
+
+    Appelé UNIQUEMENT au passage brouillon -> revue_demande
+    (``avancer_statut_cycle``) : le snapshot devient alors IMMUABLE — modifier
+    ``PrevisionDemande`` par la suite n'affecte plus les lignes déjà gelées,
+    puisque cette fonction n'est plus rappelée aux étapes suivantes.
+    Idempotent (``update_or_create`` par produit) pour un appel manuel de
+    rattrapage. Renvoie la liste des ``LigneDemandeSOP``."""
+    previsions = PrevisionDemande.objects.filter(
+        company=cycle.company, periode=cycle.periode)
+
+    par_produit = {}
+    for prevision in previsions:
+        par_produit[prevision.produit_id] = (
+            par_produit.get(prevision.produit_id, Decimal('0'))
+            + prevision.quantite_prevue
+        )
+
+    lignes = []
+    for produit_id, quantite in par_produit.items():
+        ligne, _ = LigneDemandeSOP.objects.update_or_create(
+            cycle=cycle, produit_id=produit_id,
+            defaults={
+                'company': cycle.company,
+                'quantite_prevision_systeme': quantite,
+            },
+        )
+        lignes.append(ligne)
+    return lignes
 
 
 def reouvrir_cycle(cycle, user, *, motif=''):
@@ -299,8 +345,6 @@ def reouvrir_cycle(cycle, user, *, motif=''):
     ``brouillon``), journalisée. C'est le SEUL chemin de retour en arrière de
     la machine à états (jamais via ``avancer_statut_cycle``)."""
     from apps.records.services import log_field_change
-
-    from .models import CyclePlanificationSOP
 
     ancien = cycle.statut
     cycle.statut = CyclePlanificationSOP.Statut.BROUILLON
