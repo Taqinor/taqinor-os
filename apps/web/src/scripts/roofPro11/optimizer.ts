@@ -53,6 +53,8 @@ import {
   pvgisCoarsePairs,
   pvgisMatrixCandidatePairs,
   pvgisRefinePairs,
+  type MatrixEvalV6,
+  type MatrixV6Result,
 } from '../../lib/estimatorBrainV6';
 import {
   solveLive,
@@ -71,6 +73,105 @@ import { type LngLat } from '../../lib/roof';
 import { $, fmt, fmtMad } from './dom';
 import { type CardData, type RenderConfigOpts } from './types';
 import { type Ctx } from './context';
+
+// ═══════════ PV64 — TROIS VARIANTES LISIBLES DU BALAYAGE DÉJÀ CALCULÉ ═══════════
+// Le balayage V6 (`fineGridMatrixV6`) évalue déjà des centaines de configurations, mais
+// le tableau complet est illisible sur un téléphone. On en EXTRAIT trois points
+// REPRÉSENTATIFS, sans RIEN recalculer (couche d'affichage + sélection pure) :
+//  1. la densité maximale plein sud (le plus de panneaux posés en famille « sud ») ;
+//  2. la meilleure « tente » Est-Ouest dos à dos ;
+//  3. le meilleur azimut ALIGNÉ sur les arêtes du toit.
+// Cliquer une carte ne fait que poser les VERROUS d'axes correspondants et relancer le
+// solveur vivant existant — aucun second moteur, aucun chiffre inventé.
+
+export type VariantCardId = 'south-max' | 'eastwest' | 'aligned';
+
+export interface VariantCard {
+  id: VariantCardId;
+  /** Libellé FR de la carte. */
+  title: string;
+  /** Pourquoi cette variante existe (une phrase). */
+  reason: string;
+  count: number;
+  kwc: number;
+  annualKwh: number;
+  /** La ligne du balayage dont la carte est le reflet (source des verrous au clic). */
+  row: MatrixEvalV6;
+}
+
+const VARIANT_TITLES: Record<VariantCardId, string> = {
+  'south-max': 'Densité maximale (plein sud)',
+  eastwest: 'Est-Ouest dos à dos',
+  aligned: 'Aligné sur le toit',
+};
+
+/** Clé d'identité d'une ligne de balayage (dédoublonnage des cartes). */
+function variantRowKey(r: MatrixEvalV6): string {
+  return `${r.family}|${r.tiltDeg}|${Math.round(r.azimuthDeg * 10)}|${r.orientation}|${r.margin}`;
+}
+
+/**
+ * PV64 — extrait jusqu'à 3 variantes représentatives du balayage V6 DÉJÀ calculé.
+ * PURE : ne pave rien, ne résout rien, ne touche pas au DOM. Une catégorie sans ligne
+ * (pas d'Est-Ouest évalué, toit déjà plein sud donc pas d'axe « aligné ») est simplement
+ * ABSENTE — on n'invente pas une carte pour remplir la grille. Deux catégories qui
+ * pointent la MÊME configuration n'en produisent qu'une (la première dans l'ordre).
+ */
+export function pickVariantCards(result: MatrixV6Result | null | undefined): VariantCard[] {
+  const rows = result?.rows;
+  if (!Array.isArray(rows) || rows.length === 0) return [];
+  /** Meilleure ligne d'un sous-ensemble selon un score, départage par énergie annuelle. */
+  const pick = (filter: (r: MatrixEvalV6) => boolean, score: (r: MatrixEvalV6) => number): MatrixEvalV6 | null => {
+    let best: MatrixEvalV6 | null = null;
+    let bestScore = -Infinity;
+    for (const r of rows) {
+      if (!filter(r)) continue;
+      const sc = score(r);
+      if (sc > bestScore || (sc === bestScore && best !== null && r.annualKwh > best.annualKwh)) {
+        best = r;
+        bestScore = sc;
+      }
+    }
+    return best;
+  };
+  const candidates: { id: VariantCardId; row: MatrixEvalV6 | null; reason: (r: MatrixEvalV6) => string }[] = [
+    {
+      id: 'south-max',
+      // Densité = le plus de panneaux qui TIENNENT (fitCount, pas le nombre posé : celui-ci
+      // est plafonné au besoin et ne dirait rien de la densité). À égalité, le plus productif.
+      row: pick((r) => r.family === 'south', (r) => r.fitCount),
+      reason: (r) => `La plus dense en plein sud : ${r.fitCount} panneaux tiennent à ${r.tiltDeg}°, ${r.layoutLabel}.`,
+    },
+    {
+      id: 'eastwest',
+      row: pick((r) => r.family === 'eastwest', (r) => r.annualKwh),
+      reason: (r) => `Tente Est-Ouest à ${r.tiltDeg}° : ${r.placedCount} panneaux, la densité sans rangées espacées.`,
+    },
+    {
+      id: 'aligned',
+      row: pick((r) => r.azimuthAxis === 'aligned', (r) => r.annualKwh),
+      reason: (r) => `Rangées alignées sur les arêtes du toit (${Math.round(r.azimuthDeg)}°) : ${r.placedCount} panneaux.`,
+    },
+  ];
+  const seen = new Set<string>();
+  const cards: VariantCard[] = [];
+  for (const c of candidates) {
+    if (!c.row) continue;
+    const key = variantRowKey(c.row);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    cards.push({
+      id: c.id,
+      title: VARIANT_TITLES[c.id],
+      reason: c.reason(c.row),
+      count: c.row.placedCount,
+      kwc: c.row.kwc,
+      annualKwh: c.row.annualKwh,
+      row: c.row,
+    });
+  }
+  return cards;
+}
 
 /** Dépendances injectées (rendu 3D + matrice + fenêtres + entrée). Les fonctions
  *  déclarées plus tard dans l'entrée sont passées en wrappers paresseux pour éviter
@@ -537,6 +638,94 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
     }
   }
 
+  // ── PV64 — rendu + sélection des trois cartes de variante ────────────────────
+  /** Conteneur des cartes, créé sous le bloc résultat si la page ne le fournit pas. */
+  function variantsHost(): HTMLElement | null {
+    const existing = $('rp9-variants');
+    if (existing) return existing;
+    const results = $('rp9-results');
+    if (!results || typeof document.createElement !== 'function') return null;
+    const host = document.createElement('div');
+    host.id = 'rp9-variants';
+    host.className = 'rp9-variants';
+    results.appendChild(host);
+    return host;
+  }
+
+  /** La carte `c` correspond-elle à la configuration actuellement affichée ? */
+  function variantIsCurrent(c: VariantCard): boolean {
+    const w = ctx.liveResult?.winner;
+    if (!w) return false;
+    const azAxis = w.orientation === 'aligned' ? 'aligned' : 'south';
+    return (
+      w.family === c.row.family &&
+      Math.round(w.tiltDeg) === Math.round(c.row.tiltDeg) &&
+      w.layout === c.row.orientation &&
+      w.margin === c.row.margin &&
+      azAxis === (c.row.azimuthAxis === 'aligned' ? 'aligned' : 'south')
+    );
+  }
+
+  /**
+   * PV64 — peint les trois cartes (compte / kWc / kWh) issues du balayage DÉJÀ calculé.
+   * Aucun nouveau solve : c'est de l'affichage. Un clic VERROUILLE les axes de la carte
+   * et relance le solveur vivant existant (même chemin qu'un clic sur une puce).
+   */
+  function renderVariantCards() {
+    const host = variantsHost();
+    if (!host) return;
+    const cards = pickVariantCards(ctx.matrixResult);
+    if (!cards.length || ctx.roofType !== 'flat') {
+      host.innerHTML = '';
+      host.hidden = true;
+      return;
+    }
+    host.hidden = false;
+    host.innerHTML = '';
+    for (const c of cards) {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'rp9-variant';
+      btn.dataset.variant = c.id;
+      btn.setAttribute('aria-pressed', String(variantIsCurrent(c)));
+      btn.title = c.reason;
+      const title = document.createElement('strong');
+      title.textContent = c.title;
+      const figures = document.createElement('span');
+      figures.className = 'rp9-variant-figures';
+      figures.textContent = `${fmt(c.count)} panneaux · ${c.kwc.toLocaleString('fr-FR', { maximumFractionDigits: 1 })} kWc · ${fmt(Math.round(c.annualKwh))} kWh/an`;
+      const why = document.createElement('span');
+      why.className = 'rp9-variant-why';
+      why.textContent = c.reason;
+      btn.append(title, figures, why);
+      btn.addEventListener('click', () => applyVariant(c));
+      host.appendChild(btn);
+    }
+  }
+
+  /**
+   * PV64 — applique une carte : ses axes deviennent des VERROUS (comme si l'utilisateur
+   * avait cliqué chaque puce), puis le solveur vivant re-résout et re-rend. Aucune
+   * nouvelle physique n'est calculée ici.
+   */
+  function applyVariant(c: VariantCard) {
+    ctx.sel = {
+      family: c.row.family,
+      tilt: c.row.tiltDeg,
+      orient: c.row.orientation,
+      azimuth: c.row.azimuthAxis === 'aligned' ? 'aligned' : 'south',
+      margin: c.row.margin,
+    };
+    ctx.pinned.add('family');
+    ctx.pinned.add('tilt');
+    ctx.pinned.add('orient');
+    ctx.pinned.add('azimuth');
+    ctx.pinned.add('margin');
+    ctx.useRecommended = false;
+    liveResolveFlat();
+    renderVariantCards(); // reflète la carte désormais sélectionnée
+  }
+
   function paintMaxLine() {
     if (!ctx.rec) return;
     const maxline = $('rp9-maxline');
@@ -948,6 +1137,7 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
     });
     paintComparison();
     renderMatrixOptimumCard();
+    renderVariantCards(); // PV64 — trois variantes lisibles du MÊME balayage
     // W34 — le cache PVGIS vient d'être enrichi : re-résout le solveur vivant pour que
     // le gagnant affiché + les badges « Recommandé » suivent la production PVGIS exacte.
     if (ctx.roofType === 'flat') liveResolveFlat();
