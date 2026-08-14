@@ -291,6 +291,9 @@ INSTALLED_APPS = [
     # NTRET9 — Programme de fidélité par points (gain automatique à la vente
     # via core.events, paliers, carte QR). Additive, company-scopée.
     'apps.fidelite',
+    # NTRET18/19 — Connecteurs Shopify/WooCommerce ([GATED: clé API] — no-op
+    # total sans clé en .env). Additive, company-scopée.
+    'apps.ecommerce_connect',
 ]
 
 MIDDLEWARE = [

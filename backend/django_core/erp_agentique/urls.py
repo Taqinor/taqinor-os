@@ -166,6 +166,8 @@ _APP_URLS = [
     path('veille_ao/', include('apps.veille_ao.urls')),
     # NTRET9 — Programme de fidélité par points (comptes/mouvements/paliers).
     path('fidelite/', include('apps.fidelite.urls')),
+    # NTRET18/19 — Connecteurs Shopify/WooCommerce ([GATED: clé API]).
+    path('ecommerce-connect/', include('apps.ecommerce_connect.urls')),
 ]
 
 urlpatterns = [
