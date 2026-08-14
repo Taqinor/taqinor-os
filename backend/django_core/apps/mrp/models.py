@@ -58,3 +58,75 @@ class PosteDeCharge(TenantModel):
 
     def __str__(self):
         return f'{self.code} — {self.nom}'
+
+
+class Gamme(TenantModel):
+    """NTMFG2 — gamme opératoire généraliste (routing) : la SÉQUENCE
+    d'opérations avec poste de charge + temps standard pour fabriquer un
+    produit, réutilisable par plusieurs Ordres de Fabrication (NTMFG3).
+
+    Distincte de `installations.EtapeAssemblage` (checklist légère d'un Kit
+    atelier-boutique, sans poste ni temps réglé séparé du temps de
+    préparation) — une `Gamme` PEUT référencer un produit qui EST un
+    `stock.KitProduit` (le composite vendable), mais porte sa propre
+    industrialisation (postes, temps, capacité)."""
+
+    nom = models.CharField(max_length=200, verbose_name='Nom')
+    produit = models.ForeignKey(
+        'stock.Produit', on_delete=models.PROTECT,
+        related_name='mrp_gammes', verbose_name='Produit fabriqué')
+    version = models.PositiveIntegerField(default=1, verbose_name='Version')
+    actif = models.BooleanField(default=True, verbose_name='Actif')
+
+    class Meta:
+        verbose_name = 'Gamme opératoire'
+        verbose_name_plural = 'Gammes opératoires'
+        ordering = ['produit_id', '-version']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'produit', 'version'],
+                name='mrp_gamme_co_produit_version_uniq'),
+        ]
+        indexes = [
+            models.Index(fields=['company', 'produit', 'actif'],
+                         name='mrp_gamme_co_produit_actif_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.nom} (v{self.version})'
+
+
+class OperationGamme(models.Model):
+    """NTMFG2 — une opération de la gamme : poste de charge + temps standard
+    (prépa/unitaire/par-lot, style routing Odoo). Pas de `company` propre —
+    scopée via `gamme.company` (même convention que
+    `installations.KitComposant`)."""
+
+    gamme = models.ForeignKey(
+        Gamme, on_delete=models.CASCADE, related_name='operations')
+    ordre = models.PositiveIntegerField(default=1, verbose_name='Ordre')
+    poste_charge = models.ForeignKey(
+        PosteDeCharge, on_delete=models.PROTECT,
+        related_name='operations_gamme', verbose_name='Poste de charge')
+    libelle = models.CharField(max_length=200, verbose_name='Libellé')
+    temps_prepa_min = models.DecimalField(
+        max_digits=10, decimal_places=2, default=0,
+        verbose_name='Temps de préparation (min)')
+    temps_unitaire_min = models.DecimalField(
+        max_digits=10, decimal_places=2, default=0,
+        verbose_name='Temps unitaire (min/pièce)')
+    temps_min_par_lot = models.DecimalField(
+        max_digits=10, decimal_places=2, default=0,
+        verbose_name='Temps minimum par lot (min)')
+
+    class Meta:
+        verbose_name = 'Opération de gamme'
+        verbose_name_plural = 'Opérations de gamme'
+        ordering = ['gamme_id', 'ordre', 'id']
+        indexes = [
+            models.Index(fields=['gamme'], name='mrp_opgamme_gamme_idx'),
+            models.Index(fields=['poste_charge'], name='mrp_opgamme_poste_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.gamme_id} · {self.ordre}. {self.libelle}'
