@@ -101,6 +101,8 @@ class ToitureAOSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'batiment', 'code_document', 'designation', 'forme',
             'forme_display', 'contour_local_m', 'angle_nord_deg',
+            # PV57 — l'ancre géographique du repère local, chaque axe NOMMÉ.
+            'origine_lat', 'origine_lng',
             'rayon_ext_m', 'largeur_m', 'arc_segments', 'murets', 'niveau',
             'altitude_m', 'type_couverture', 'type_couverture_display',
             'contraintes_structure', 'surface_m2', 'preset_applique',

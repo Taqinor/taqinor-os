@@ -666,6 +666,25 @@ class ToitureAO(TenantModel):
     angle_nord_deg = models.DecimalField(
         max_digits=6, decimal_places=2, default=Decimal('0.00'),
         verbose_name='Azimut du repère local vs Nord (°)')
+    # ── PV57 — l'ANCRE géographique du repère local ────────────────────────
+    #
+    # Le repère local est métrique et relatif (AOF18) : sans point d'ancrage,
+    # une toiture relevée ne sait pas dire OÙ elle est, et rien ne peut la
+    # reprojeter sur une carte ni la recouper avec une image satellite. Les
+    # deux champs sont NULLABLES parce qu'une toiture saisie sur plan papier
+    # n'a légitimement aucune ancre : un ``0.0`` désignerait le golfe de
+    # Guinée, ce qu'aucun relevé ne veut dire.
+    #
+    # ORDRE DES AXES : chaque champ porte son nom en clair (``lat`` / ``lng``)
+    # — c'est la parade au piège documenté du dépôt (le lecteur de cartes
+    # sérialise en ``[lng, lat]``, le lead CRM en ``[lat, lng]`` ; une paire
+    # anonyme rendrait l'inversion indétectable).
+    origine_lat = models.DecimalField(
+        max_digits=10, decimal_places=7, null=True, blank=True,
+        verbose_name="Latitude de l'origine du repère local (°)")
+    origine_lng = models.DecimalField(
+        max_digits=10, decimal_places=7, null=True, blank=True,
+        verbose_name="Longitude de l'origine du repère local (°)")
 
     # ── Paramètres d'ARC (aile courbe) ─────────────────────────────────────
     rayon_ext_m = models.DecimalField(
