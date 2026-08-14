@@ -4715,6 +4715,28 @@ def _journaliser_soumission_note_frais(note):
         pass
 
 
+def _verifier_separation_taches_note_frais(note, user):
+    """NTP2P37 — SoD sur la validation DIRECTION d'une note de frais.
+
+    Ne s'applique qu'aux notes ESCALADÉES en direction (``escalade_direction``,
+    NTP2P11) et seulement quand ``stock.AchatsParametres.sod_stricte`` est
+    activé — défaut OFF, donc comportement historique inchangé. Lecture
+    cross-app par ``stock.selectors`` (jamais un import de ``stock.models``).
+    """
+    if user is None or not getattr(user, 'pk', None):
+        return
+    if not getattr(note, 'escalade_direction', False):
+        return
+    createur_id = getattr(note, 'created_by_id', None)
+    if createur_id is None or createur_id != user.pk:
+        return
+    from apps.stock.selectors import sod_stricte_active
+    if sod_stricte_active(note.company):
+        raise ValidationError(
+            "Séparation des tâches : le créateur d'une note de frais "
+            'escaladée en direction ne peut pas la valider lui-même.')
+
+
 @transaction.atomic
 def valider_note_frais(note, *, user=None, compte_charge=None):
     """Valide une note de frais et POSTE la charge au grand livre (FG135).
@@ -4731,6 +4753,7 @@ def valider_note_frais(note, *, user=None, compte_charge=None):
     if note.statut != NoteFrais.Statut.SOUMISE:
         raise ValidationError(
             "Seule une note soumise peut être validée.")
+    _verifier_separation_taches_note_frais(note, user)
     company = note.company
     montant = Decimal(note.montant or 0)
     if montant <= 0:

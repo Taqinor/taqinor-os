@@ -439,6 +439,11 @@ class AchatsParametres(models.Model):
     # OFF par défaut = comportement historique (le statut `actif` du
     # fournisseur suffit, aucun dossier n'est exigé).
     onboarding_fournisseur_obligatoire = models.BooleanField(default=False)
+    # NTP2P37 — séparation des tâches : quand actif, le CRÉATEUR d'une
+    # demande d'achat ne peut pas approuver sa propre étape, ni le créateur
+    # d'une note de frais escaladée la valider en direction. OFF par défaut :
+    # les petites structures à un seul décideur ne sont pas cassées.
+    sod_stricte = models.BooleanField(default=False)
     date_creation = models.DateTimeField(auto_now_add=True)
     date_modification = models.DateTimeField(auto_now=True)
 

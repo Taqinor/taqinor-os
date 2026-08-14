@@ -3742,6 +3742,27 @@ def consommer_budget_demande_achat(demande, bon_commande_id=None):
         demande.company, demande.pk, bon_commande_id=bon_commande_id)
 
 
+def verifier_separation_taches_achat(etape, approbateur):
+    """NTP2P37 — SoD : le demandeur ne peut pas approuver sa propre demande.
+
+    Contrôle SERVEUR (jamais un simple masquage d'écran), activé par
+    ``stock.AchatsParametres.sod_stricte`` — défaut ``False`` pour ne pas
+    casser les petites structures à un seul décideur. Lecture cross-app via
+    ``stock.selectors`` uniquement.
+    """
+    if approbateur is None or not getattr(approbateur, 'pk', None):
+        return
+    demande = etape.demande
+    createur_id = getattr(demande, 'created_by_id', None)
+    if createur_id is None or createur_id != approbateur.pk:
+        return
+    from apps.stock.selectors import sod_stricte_active
+    if sod_stricte_active(demande.company):
+        raise ApprobationAchatError(
+            "Séparation des tâches : le créateur d'une demande d'achat ne "
+            'peut pas approuver sa propre étape.')
+
+
 def _decider_etape_approbation_achat(etape, *, statut_cible, approbateur,
                                      commentaire=''):
     """Décide UNE étape en respectant l'ordre séquentiel."""
@@ -3755,6 +3776,7 @@ def _decider_etape_approbation_achat(etape, *, statut_cible, approbateur,
         raise ApprobationAchatError(
             "Les étapes se décident dans l'ordre : l'étape "
             f'{attendue.niveau} est encore en attente.')
+    verifier_separation_taches_achat(etape, approbateur)
     etape.statut = statut_cible
     etape.approbateur = approbateur
     etape.decision_le = timezone.now()

@@ -1314,6 +1314,19 @@ def verifier_budget_disponible(company, departement_id, periode, montant):
 # NTP2P7 — Onboarding fournisseur (lecture)
 # ══════════════════════════════════════════════════════════════════════════
 
+def sod_stricte_active(company):
+    """NTP2P37 — la séparation des tâches stricte est-elle activée ?
+
+    OFF par défaut : sans activation, le créateur d'une demande d'achat peut
+    encore l'approuver (comportement historique des structures à un seul
+    décideur)."""
+    if company is None:
+        return False
+    from .models import AchatsParametres
+    params = AchatsParametres.objects.filter(company=company).first()
+    return bool(params and params.sod_stricte)
+
+
 def onboarding_fournisseur_obligatoire(company):
     """True si un dossier d'onboarding VALIDÉ est exigé avant tout BCF.
 
