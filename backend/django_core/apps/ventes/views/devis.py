@@ -200,6 +200,14 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
             'lots',
             # NTCPQ20 — historique fin de configuration (lecture seule).
             'historique_configuration',
+            # PV17 — contexte de l'écran de conception 3D. LECTURE, mais
+            # réservée au même périmètre que le générateur de devis
+            # (responsable + admin), pas ouverte à tout rôle. La garde doit
+            # être ICI : get_permissions PRIME sur le ``permission_classes``
+            # de l'@action (son repli est IsAdminRole) — l'@action déclare
+            # donc la MÊME classe pour ne jamais mentir sur la garde
+            # effective.
+            'design_context',
         ]:
             return [IsResponsableOrAdmin()]
         elif self.action == 'destroy':
@@ -390,6 +398,31 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
                 'proposal_path': f'/proposition/{link.token}',
             },
             status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['get'], url_path='design-context',
+            permission_classes=[IsResponsableOrAdmin])
+    def design_context(self, request, pk=None):
+        """PV17 — TOUT ce que l'écran de conception 3D doit savoir d'un devis,
+        en UN SEUL appel et sous UNE SEULE forme.
+
+        Renvoie ``{devis, geometrie, cible, carte, modifiable,
+        raison_lecture_seule, avertissements}`` — toutes les clés TOUJOURS
+        présentes (contrat ``contract_samples/devis_design_context.json``) : un
+        panier vide vaut ``[]``, une valeur inconnue ``None``/``''``, jamais
+        une clé absente. L'écran n'a donc rien à deviner et ne peut pas
+        ``.map()`` sur ``undefined``.
+
+        LECTURE PURE, scopée société par ``get_queryset`` (un devis d'une autre
+        société → 404) : aucun statut, aucune ligne, aucun layout n'est écrit
+        (règle #4)."""
+        from ..selectors import contexte_conception_devis
+
+        devis = self.get_object()  # borné société par get_queryset
+        contexte = contexte_conception_devis(devis, request.user.company)
+        if contexte is None:
+            return Response({'detail': 'Devis inconnu.'},
+                            status=status.HTTP_404_NOT_FOUND)
+        return Response(contexte)
 
     @action(detail=False, methods=['post'], url_path='atomic',
             permission_classes=[IsResponsableOrAdmin])
