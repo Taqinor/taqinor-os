@@ -6,7 +6,7 @@ import { lazy } from 'react'
 import {
   LayoutDashboard, CalendarDays, Megaphone, Workflow, Users2, ListChecks,
   CalendarClock, ClipboardList, Gift, FormInput, PhoneCall,
-  Send, Star, Gauge, MessageCircle, Link2,
+  Send, Star, Gauge, MessageCircle, Link2, PieChart,
 } from 'lucide-react'
 import { appGlyph } from '../../lib/apps/appGlyph'
 
@@ -75,6 +75,10 @@ const EnquetesNps = lazy(() => import('./EnquetesNps'))
 const MessagesWhatsapp = lazy(() => import('./MessagesWhatsapp'))
 // NTMKT25 — générateur d'URL de campagne (tags UTM, hors campagne ERP).
 const UtmBuilder = lazy(() => import('./UtmBuilder'))
+// NTMKT21 — rapport comparatif multi-modèle d'attribution (adossé à NTMKT20).
+// Écran de plein droit (il porte sa propre saisie de devis quand aucun
+// `devisId` ne lui est passé), donc une entrée de sous-menu, pas un détail.
+const AttributionReport = lazy(() => import('./AttributionReport'))
 // NTMKT29/30/32 — wizards guidés (campagne/séquence/enquête), ouverts par le
 // bouton « (guidé) » de leur liste respective (jamais une entrée de sous-menu
 // séparée — même traitement que les écrans de détail ci-dessus).
@@ -112,6 +116,8 @@ const config = {
       { to: '/marketing/enquetes-nps', label: 'Enquêtes NPS', icon: <Gauge size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
       { to: '/marketing/messages-whatsapp', label: 'Messages WhatsApp', icon: <MessageCircle size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
       { to: '/marketing/generateur-url', label: "Générateur d'URL", icon: <Link2 size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
+      // NTMKT21 — rapport d'attribution (comparaison des 4 modèles NTMKT20).
+      { to: '/marketing/attribution', label: "Rapport d'attribution", icon: <PieChart size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
       { to: '/parametres/marketing', label: "Domaine d'envoi", icon: <LayoutDashboard size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
       // NTMKT31 — réglages tenant (expéditeur/fenêtre silencieuse/plafond/langue).
       { to: '/marketing/parametres', label: 'Paramètres marketing', icon: <LayoutDashboard size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
@@ -141,6 +147,7 @@ const config = {
     ['/marketing/messages-whatsapp', 'Messages WhatsApp entrants'],
     ['/marketing/supports-offline', 'Supports offline (QR)'],
     ['/marketing/generateur-url', "Générateur d'URL de campagne"],
+    ['/marketing/attribution', "Rapport d'attribution"],
     // NTMKT31 — réglages tenant.
     ['/marketing/parametres', 'Paramètres marketing'],
     ['/marketing', 'Tableau de bord marketing'],
@@ -174,6 +181,7 @@ const config = {
     { path: '/marketing/messages-whatsapp', component: MessagesWhatsapp, roles: ROLES },
     { path: '/marketing/supports-offline', component: SupportsOffline, roles: ROLES },
     { path: '/marketing/generateur-url', component: UtmBuilder, roles: ROLES },
+    { path: '/marketing/attribution', component: AttributionReport, roles: ROLES },
     // NTMKT31 — réglages tenant.
     { path: '/marketing/parametres', component: MarketingParametres, roles: ROLES },
   ],

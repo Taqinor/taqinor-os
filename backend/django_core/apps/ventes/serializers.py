@@ -10,6 +10,22 @@ from .models import (
 )
 
 
+def _peut_voir_marge_cpq(user):
+    """NTCPQ36 — un utilisateur voit-il ``marge_sous_seuil`` (NTCPQ6) ?
+
+    Permission granulaire ``cpq_marge_voir`` (catalogue ``roles.Role``),
+    jamais un simple check de rôle nommé en dur. Même patron de repli que
+    ``CustomUser.can_view_buy_prices`` : un compte SANS rôle fin (légacy)
+    garde le comportement historique (visible) — on ne retire jamais un
+    accès existant à un compte hérité."""
+    if getattr(user, 'is_superuser', False):
+        return True
+    role = getattr(user, 'role', None)
+    if role is None:
+        return True  # compte légacy sans rôle fin → comportement historique
+    return 'cpq_marge_voir' in (role.permissions or [])
+
+
 def _fallback_taux_tva(company, designation):
     """DC4 / ARC23 — taux de TVA de repli d'une ligne sans taux ni produit taxé.
 
@@ -468,6 +484,11 @@ class DevisSerializer(serializers.ModelSerializer):
             data.pop('marge_snapshot', None)
             # NTCPQ6 — la clé marge_sous_seuil (dérivée de prix_achat) ne doit
             # jamais fuiter hors d'un rendu interne authentifié (règle #4).
+            data.pop('marge_sous_seuil', None)
+        elif not _peut_voir_marge_cpq(user):
+            # NTCPQ36 — un utilisateur authentifié SANS la permission
+            # granulaire cpq_marge_voir ne reçoit JAMAIS le champ, même en
+            # rendu interne (même patron que marge_sous_seuil hors auth).
             data.pop('marge_sous_seuil', None)
         # NTCPQ21 — l'état de configuration coûte deux évaluations par devis :
         # on ne le rend QUE sur un détail (hors liste) et pour un rendu interne.

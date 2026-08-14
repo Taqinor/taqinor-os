@@ -31,6 +31,14 @@ export default function PremiersPasWidget() {
 
   useEffect(() => { load() }, [load])
 
+  // NTDMO26 — assistant first-run « société réelle » : le serveur calcule
+  // `assistant_demarrage_auto` (jamais démo, société < 30 j, item encore à
+  // faire — voir `apps/onboarding/selectors.py`) ; absent/false en temps
+  // normal, donc sans effet tant qu'aucune société ne remplit les 3 conditions.
+  useEffect(() => {
+    if (resume?.assistant_demarrage_auto) navigate('/onboarding/demarrage')
+  }, [resume, navigate])
+
   if (!resume || resume.termine || resume.total === 0) return null
 
   const ignoreItem = async (id) => {

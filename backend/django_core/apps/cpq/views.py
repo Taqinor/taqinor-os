@@ -13,13 +13,15 @@ from rest_framework.views import APIView
 from rest_framework.permissions import IsAuthenticated
 
 from core.viewsets import CompanyScopedModelViewSet
-from authentication.permissions import IsResponsableOrAdmin, IsAnyRole
+from authentication.permissions import (
+    IsResponsableOrAdmin, IsAnyRole, HasPermissionOrLegacy,
+)
 
 from .models import (
     OptionProduit, ContrainteCompatibilite, RegleProduitCPQ, OffreGroupee,
     PrixContractuel, QuestionConfigurateur, SessionConfigurateur,
     ReponseConfigurateur, SeuilMargeFamille, RegleApprobationRemise,
-    ClauseCGV, ProduitEquivalent,
+    ClauseCGV, ProduitEquivalent, ParametresCPQ,
 )
 from .serializers import (
     OptionProduitSerializer, ContrainteCompatibiliteSerializer,
@@ -27,6 +29,7 @@ from .serializers import (
     PrixContractuelSerializer, QuestionConfigurateurSerializer,
     SeuilMargeFamilleSerializer, RegleApprobationRemiseSerializer,
     ClauseCGVSerializer, ProduitEquivalentSerializer,
+    ParametresCPQSerializer,
 )
 from . import reports, selectors, services
 
@@ -58,7 +61,8 @@ class RegleProduitCPQViewSet(CompanyScopedModelViewSet):
     def get_permissions(self):
         if self.action in ('list', 'retrieve', 'evaluer'):
             return [IsAnyRole()]
-        return [IsResponsableOrAdmin()]
+        # NTCPQ36 — permission granulaire cpq_regles_gerer (repli légacy).
+        return [HasPermissionOrLegacy('cpq_regles_gerer')()]
 
     @action(detail=False, methods=['post'], url_path='evaluer')
     def evaluer(self, request):
@@ -127,6 +131,44 @@ class PrixContractuelViewSet(CompanyScopedModelViewSet):
         if produit is not None and produit.company_id != company.id:
             raise ValidationError({'produit': 'Produit inconnu.'})
         serializer.save(company=company, created_by=self.request.user)
+
+    def _verifier_auteur_ou_role_eleve(self, instance):
+        """NTCPQ37 — un commercial ne peut modifier/supprimer QUE le
+        PrixContractuel qu'il a lui-même créé ; au-delà, il faut la
+        permission granulaire ``cpq_prix_contractuels_gerer`` (NTCPQ36,
+        repli légacy inclus via ``HasPermissionOrLegacy``)."""
+        from rest_framework.exceptions import PermissionDenied
+        user = self.request.user
+        if instance.created_by_id == user.id:
+            return
+        if HasPermissionOrLegacy('cpq_prix_contractuels_gerer')().has_permission(
+                self.request, self):
+            return
+        raise PermissionDenied(
+            "Seul l'auteur de ce prix contractuel (ou un rôle élevé) peut "
+            "le modifier ou le supprimer.")
+
+    def perform_update(self, serializer):
+        instance = self.get_object()
+        self._verifier_auteur_ou_role_eleve(instance)
+        # NTCPQ46 — audit trail des changements de prix_ht (ancienne/nouvelle
+        # valeur, auteur, société) via l'infrastructure d'audit GÉNÉRIQUE déjà
+        # en prod (apps.audit.recorder) — aucun nouveau modèle.
+        ancien_prix = instance.prix_ht
+        serializer.save()
+        nouveau_prix = serializer.instance.prix_ht
+        if ancien_prix != nouveau_prix:
+            from apps.audit import recorder
+            recorder.record_field_change(
+                serializer.instance, 'prix_ht', ancien_prix, nouveau_prix,
+                user=self.request.user, field_label='Prix HT (contractuel)',
+                # PrixContractuel n'est pas (encore) une cible chatter ARC30 —
+                # seul l'AuditLog est visé par NTCPQ46 (écran d'audit staff).
+                chatter=False)
+
+    def perform_destroy(self, instance):
+        self._verifier_auteur_ou_role_eleve(instance)
+        instance.delete()
 
 
 class QuestionConfigurateurViewSet(CompanyScopedModelViewSet):
@@ -220,6 +262,38 @@ class ProduitEquivalentViewSet(CompanyScopedModelViewSet):
         if self.action in ('list', 'retrieve'):
             return [IsAnyRole()]
         return [IsResponsableOrAdmin()]
+
+
+class ParametresCPQViewSet(CompanyScopedModelViewSet):
+    """NTCPQ30 — Réglages CPQ, SINGLETON par société (pattern
+    ``contrats.ParametresLocationViewSet``/ZCTR4).
+
+    ``GET/PATCH cpq/parametres-cpq/courant/`` lit/modifie la ligne unique de
+    la société (créée à la volée, ``get_or_create``) ; ``company`` posée
+    CÔTÉ SERVEUR. Le CRUD standard reste disponible (scopé société) mais
+    ``courant/`` est le point d'entrée recommandé côté frontend (jamais deux
+    lignes par société — contrainte ``OneToOneField``)."""
+    queryset = ParametresCPQ.objects.all()
+    serializer_class = ParametresCPQSerializer
+
+    def get_permissions(self):
+        if self.action in ('list', 'retrieve', 'courant'):
+            return [IsAnyRole()]
+        return [IsResponsableOrAdmin()]
+
+    @action(detail=False, methods=['get', 'patch'], url_path='courant')
+    def courant(self, request):
+        parametres, _ = ParametresCPQ.objects.get_or_create(
+            company=request.user.company)
+        if request.method == 'GET':
+            return Response(ParametresCPQSerializer(parametres).data)
+        if not IsResponsableOrAdmin().has_permission(request, self):
+            return Response(status=status.HTTP_403_FORBIDDEN)
+        serializer = ParametresCPQSerializer(
+            parametres, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(serializer.data)
 
 
 # Classe PARTAGEE (fabriquee UNE SEULE fois) : appeler inline_serializer()
@@ -384,8 +458,9 @@ class FeuilleConfigurationView(APIView):
     « devis » ni « proposition ».
 
     ``?format=json`` renvoie les mêmes données sans rendre le PDF (usage écran
-    interne / test)."""
-    permission_classes = [IsResponsableOrAdmin]
+    interne / test). NTCPQ36 — réservé ``cpq_marge_voir`` (compte à rôle fin) :
+    ce document porte le prix d'achat/la marge par ligne."""
+    permission_classes = [HasPermissionOrLegacy('cpq_marge_voir')]
 
     @extend_schema(responses={200: OpenApiTypes.BINARY})
     def get(self, request, pk):
@@ -404,6 +479,163 @@ class FeuilleConfigurationView(APIView):
             'inline; filename="feuille-configuration-'
             f'{devis.reference}.pdf"')
         return reponse
+
+
+class ImportPrixContractuelsCsvView(APIView):
+    """NTCPQ41 — POST ``cpq/prix-contractuels/import-csv/``.
+
+    Import CSV en masse de ``PrixContractuel`` (fichier multipart clé
+    ``file``, ou corps texte brut ``text/csv``). Colonnes attendues :
+    ``client_ref, produit_ref, prix_ht, date_debut, date_fin, motif``.
+    Valide chaque ligne indépendamment — les lignes valides sont importées
+    même si d'autres échouent, jamais un import « tout ou rien ». Réservé
+    Directeur / Commercial responsable (même palier que la création directe
+    NTCPQ5)."""
+    permission_classes = [IsResponsableOrAdmin]
+
+    @extend_schema(request=None, responses={200: inline_serializer(
+        'CpqImportPrixContractuelsResultat', {
+            'importees': drf_serializers.IntegerField(),
+            'total': drf_serializers.IntegerField(),
+            'erreurs': drf_serializers.ListField(
+                child=drf_serializers.DictField()),
+        })})
+    def post(self, request):
+        upload = request.FILES.get('file')
+        if upload is not None:
+            csv_text = upload.read().decode('utf-8-sig')
+        else:
+            csv_text = request.body.decode('utf-8-sig') if request.body else ''
+        if not csv_text.strip():
+            return Response({'detail': 'Fichier CSV requis (file, ou corps '
+                                       'texte brut).'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        resultat = services.importer_prix_contractuels_csv(
+            request.user.company, csv_text, user=request.user)
+        return Response(resultat)
+
+
+class CatalogueReglesCompatibiliteView(APIView):
+    """NTCPQ42 — GET ``cpq/rapports/catalogue-regles/?export=xlsx``.
+
+    Export LECTURE SEULE (audit/revue hors-ligne bureau d'études) de
+    ``ContrainteCompatibilite`` (NTCPQ1) et ``RegleProduitCPQ`` (NTCPQ2).
+    Jamais un import inverse dans cette tâche (pas de risque d'écrasement
+    accidentel de règles). ``?export=xlsx`` renvoie un classeur (une feuille
+    par type de règle) — jamais ``?format=``, réservé par DRF."""
+    permission_classes = [IsResponsableOrAdmin]
+
+    @extend_schema(responses={200: inline_serializer(
+        'CpqCatalogueReglesCompatibilite', {
+            'contraintes': drf_serializers.ListField(
+                child=drf_serializers.DictField()),
+            'regles_produit': drf_serializers.ListField(
+                child=drf_serializers.DictField()),
+        })})
+    def get(self, request):
+        if request.query_params.get('export') == 'xlsx':
+            return reports.catalogue_regles_compatibilite_xlsx(
+                request.user.company)
+        return Response(
+            reports.catalogue_regles_compatibilite(request.user.company))
+
+
+class RapportApprobationsView(APIView):
+    """NTCPQ25 — GET ``cpq/rapports/approbations/?approbateur_id=&export=xlsx``.
+
+    Rapport INTERNE (staff) de l'historique des approbations de remise
+    (NTCPQ7) : devis, remise demandée, approbateur, délai de traitement
+    (heures), motif de rejet. ``?export=xlsx`` renvoie un classeur (jamais
+    ``?format=`` — réservé par la négociation de contenu DRF, motif NTCPQ24 ;
+    jamais passé par ``apps/dataimport``, module hors périmètre de cette app
+    — même patron auto-suffisant que ``apps.ventes.exports``, openpyxl
+    directement)."""
+    permission_classes = [IsResponsableOrAdmin]
+
+    @extend_schema(responses={200: inline_serializer(
+        'CpqRapportApprobations', {
+            'lignes': drf_serializers.ListField(
+                child=drf_serializers.DictField()),
+        })})
+    def get(self, request):
+        lignes = reports.rapport_approbations(
+            request.user.company,
+            approbateur_id=request.query_params.get('approbateur_id') or None)
+        if request.query_params.get('export') == 'xlsx':
+            return reports.rapport_approbations_xlsx(lignes)
+        return Response({'lignes': lignes})
+
+
+class ComparaisonVariantesView(APIView):
+    """NTCPQ26 — GET ``cpq/devis/{id}/comparaison-variantes/``.
+
+    Export PDF interne (même famille que NTCPQ22, généré par ``apps.cpq``,
+    jamais ``quote_engine``) listant côte à côte les variantes générées
+    (NTCPQ16) d'un devis — 3 colonnes économique/standard/premium avec
+    marge par colonne, outil de préparation d'entretien commercial, jamais
+    transmis au client. ``?format=json`` renvoie les mêmes données sans
+    rendre le PDF (usage écran interne / test)."""
+    permission_classes = [IsResponsableOrAdmin]
+
+    @extend_schema(responses={200: OpenApiTypes.BINARY})
+    def get(self, request, pk):
+        from django.http import HttpResponse
+        from apps.ventes.models import Devis
+        devis = Devis.objects.filter(
+            pk=pk, company=request.user.company).first()
+        if devis is None:
+            return Response({'detail': 'Devis introuvable.'},
+                            status=status.HTTP_404_NOT_FOUND)
+        if request.query_params.get('format') == 'json':
+            return Response(services.donnees_comparaison_variantes(devis))
+        pdf = services.generer_comparaison_variantes_pdf(devis)
+        reponse = HttpResponse(pdf, content_type='application/pdf')
+        reponse['Content-Disposition'] = (
+            'inline; filename="comparaison-variantes-'
+            f'{devis.reference}.pdf"')
+        return reponse
+
+
+class RelancerApprobationView(APIView):
+    """NTCPQ28 — POST ``cpq/devis/{id}/relancer-approbation/``.
+
+    Écran guidé CÔTÉ DEMANDEUR (jamais l'écran d'approbation NTCPQ8 lui-même,
+    réservé à l'approbateur) : quand ``envoyer``/``generer-pdf`` est bloqué
+    par NTCPQ7, le demandeur relance manuellement l'approbateur assigné
+    (notification, throttlée à 1/24h — même marqueur que la relance
+    automatique NTCPQ33). Ouvert à tout rôle interne (le demandeur n'est
+    pas forcément Responsable/Admin)."""
+    permission_classes = [IsAnyRole]
+
+    @extend_schema(request=None, responses={200: inline_serializer(
+        'CpqRelancerApprobationResponse', {
+            'etape_id': drf_serializers.IntegerField(),
+            'niveau': drf_serializers.IntegerField(),
+            'approbateur': drf_serializers.CharField(allow_null=True),
+            'relance_envoyee': drf_serializers.BooleanField(),
+            'detail': drf_serializers.CharField(),
+        })})
+    def post(self, request, pk):
+        from apps.ventes.models import Devis
+        devis = Devis.objects.filter(
+            pk=pk, company=request.user.company).first()
+        if devis is None:
+            return Response({'detail': 'Devis introuvable.'},
+                            status=status.HTTP_404_NOT_FOUND)
+        etape, envoyee = services.relancer_etape_approbation(
+            devis, user=request.user)
+        detail = 'Relance envoyée.'
+        if not envoyee:
+            detail = 'Déjà relancée dans les dernières 24h.'
+        return Response({
+            'etape_id': etape.id,
+            'niveau': etape.niveau,
+            'approbateur': (
+                getattr(etape.approbateur, 'username', None)
+                if etape.approbateur_id else None),
+            'relance_envoyee': envoyee,
+            'detail': detail,
+        })
 
 
 class SuggestionsProduitView(APIView):
@@ -541,7 +773,12 @@ class ValiderCompatibiliteView(APIView):
     """NTCPQ1 — POST cpq/valider-compatibilite/.
 
     Corps : ``{"produit_ids": [1, 2, 3]}``. Renvoie les violations, séparées en
-    ``bloquantes`` (INCOMPATIBLE / REQUIERT) et ``avertissements`` (RECOMMANDE)."""
+    ``bloquantes`` (INCOMPATIBLE / REQUIERT) et ``avertissements`` (RECOMMANDE).
+
+    NTCPQ29 — chaque violation BLOQUANTE porte en plus ``alternatives``
+    (jusqu'à 3 produits compatibles, ``[]`` si aucune connue) : le wizard de
+    résolution de conflit propose ces alternatives au lieu d'un simple
+    message d'erreur bloquant sans issue."""
     permission_classes = [IsAuthenticated]
 
     def post(self, request):
@@ -554,6 +791,9 @@ class ValiderCompatibiliteView(APIView):
         violations = selectors.violations_compatibilite(
             company=company, produit_ids=produit_ids)
         bloquantes = [v for v in violations if v['bloquante']]
+        for v in bloquantes:
+            v['alternatives'] = selectors.alternatives_violation(
+                company=company, produit_ids=produit_ids, violation=v)
         avertissements = [v for v in violations if not v['bloquante']]
         return Response({
             'valide': not bloquantes,

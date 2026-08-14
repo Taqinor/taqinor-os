@@ -16,6 +16,8 @@ const mocks = vi.hoisted(() => ({
   billetsList: vi.fn(), billetsCreate: vi.fn(), billetsRemove: vi.fn(),
   questionsList: vi.fn(), questionsCreate: vi.fn(), questionsRemove: vi.fn(),
   communicationsList: vi.fn(), communicationsCreate: vi.fn(), communicationsRemove: vi.fn(),
+  // NTMKT41 — import CSV/XLSX d'inscrits en masse.
+  importerInscrits: vi.fn(),
 }))
 
 vi.mock('../../api/marketingApi', () => ({
@@ -25,7 +27,7 @@ vi.mock('../../api/marketingApi', () => ({
       return Array.isArray(data) ? data : (data?.results || [])
     },
     downloadBlob: mocks.downloadBlob,
-    evenements: { get: mocks.get },
+    evenements: { get: mocks.get, importerInscrits: mocks.importerInscrits },
     inscriptionsEvenement: {
       list: mocks.inscriptionsList, pointer: mocks.pointer, badgePdf: mocks.badgePdf,
     },
@@ -94,6 +96,22 @@ describe('EvenementDetail', () => {
     fireEvent.click(screen.getAllByTestId('inscription-badge')[0])
     await waitFor(() => expect(mocks.badgePdf).toHaveBeenCalledWith(1))
     expect(mocks.downloadBlob).toHaveBeenCalledWith(blob, 'badge-Ahmed.pdf')
+  })
+
+  it('« Importer des inscrits » (NTMKT41) envoie le fichier et affiche le rapport', async () => {
+    mocks.importerInscrits.mockResolvedValue({
+      data: { crees: 28, doublons: 2, lignes_invalides: 0, total: 30 },
+    })
+    renderScreen()
+    await screen.findByText('Ahmed')
+    const fichier = new File(['nom,email\nA,a@ex.ma'], 'inscrits.csv', { type: 'text/csv' })
+    fireEvent.change(screen.getByTestId('inscriptions-import-fichier'), {
+      target: { files: [fichier] },
+    })
+    await waitFor(() => expect(mocks.importerInscrits).toHaveBeenCalledWith('4', fichier))
+    expect(await screen.findByTestId('inscriptions-import-rapport'))
+      .toHaveTextContent('28 ajouté(s), 2 doublon(s) ignoré(s)')
+    await waitFor(() => expect(mocks.inscriptionsList).toHaveBeenCalledTimes(2))
   })
 
   it("« Créer le segment présents » pose regles: {evenement_present}", async () => {

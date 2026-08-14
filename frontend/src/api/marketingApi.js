@@ -127,6 +127,14 @@ const marketingApi = {
       api.post(`/marketing/evenements-marketing/${id}/cloturer-presences/`),
     borne: (id, q) =>
       api.get(`/marketing/evenements-marketing/${id}/borne/`, { params: { q } }),
+    // NTMKT41 — import CSV/XLSX d'inscrits en masse (hors formulaire public).
+    importerInscrits: (id, fichier) => {
+      const form = new FormData()
+      form.append('fichier', fichier)
+      return api.post(
+        `/marketing/evenements-marketing/${id}/importer-inscrits/`, form,
+        { headers: { 'Content-Type': 'multipart/form-data' } })
+    },
   },
   billetsEvenement: resource('billets-evenement'),
   // WIR162 — ZMKT14/16/17 : ces 3 ressources étaient routées côté backend
@@ -278,6 +286,30 @@ const marketingApi = {
     get: () => api.get('/marketing/parametres/'),
     maj: (data) => api.patch('/marketing/parametres/', data),
   },
+
+  // ── NTMKT18/19 — Score de maturité d'un lead (badge chaud/tiède/froid +
+  // sparkline sur la fiche/kanban). Distinct du score de qualité QJ6 (déjà
+  // porté par le lead lui-même) : { actif, valeur, historique }. ──
+  scoreMaturite: {
+    get: (leadId) => api.get(`/marketing/scores-maturite/${leadId}/`),
+  },
+
+  // ── NTMKT20/21 — Comparaison des 4 modèles d'attribution pour un devis
+  // signé (aide à la décision, jamais un recalcul persistant). ──
+  attribution: {
+    comparaison: (devisId) =>
+      api.get('/marketing/attribution/comparaison/', { params: { devis_id: devisId } }),
+  },
+
+  // ── NTMKT39 — Export CSV/XLSX des campagnes et de leur trace d'envoi ──
+  exportCampagnesXlsx: (params) =>
+    api.get('/marketing/campagnes/export/', { params, responseType: 'blob' }),
+  exportEnvoisCampagneCsv: (id) =>
+    api.get(`/marketing/campagnes/${id}/envois/export/`, { responseType: 'blob' }),
+
+  // ── NTMKT40 — Export XLSX des membres résolus d'un segment (audit) ──
+  exportMembresSegmentXlsx: (id) =>
+    api.get(`/marketing/segments-marketing/${id}/export/`, { responseType: 'blob' }),
 }
 
 export default marketingApi

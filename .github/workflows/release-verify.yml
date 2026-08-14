@@ -180,6 +180,14 @@ jobs:
           # La matrice complète ci-dessous inclut `mobile-safari`, donc la
           # même dépendance qu'en CI : sans ce seed, les specs AO expirent.
           python manage.py seed_ao_demo --company taqinor-demo --confirmer
+          # NTDMO37/38 — fixture de `demo-first-login.spec.js`/
+          # `demo-reset-isolation.spec.js` (auto-découvertes par le
+          # `--grep-invert @visual` ci-dessous, comme tout spec). `Faker` est
+          # dev-only (requirements-dev.txt) et ce job installe les deps PROD
+          # (requirements.txt) : installé ici, SEULEMENT pour cette étape de
+          # fixture — jamais ajouté à requirements.txt.
+          pip install Faker==40.28.1
+          python manage.py seed_demo_company
       - name: Install frontend dependencies
         working-directory: frontend
         run: npm ci
