@@ -7,6 +7,7 @@ est SÛRE à ré-exécuter (idempotente) et jamais destructive au-delà de ce qu
 docstring décrit explicitement.
 """
 import logging
+from datetime import timedelta
 
 from celery import shared_task
 
@@ -70,3 +71,62 @@ def expire_prix_contractuels():
 
     logger.info('cpq.expire_prix_contractuels: %s activité(s) posée(s)', poses)
     return poses
+
+
+@shared_task(name='cpq.relancer_approbations_en_attente')
+def relancer_approbations_en_attente():
+    """NTCPQ33 — parcourt les ``EtapeApprobationDevis`` ``en_attente`` depuis
+    plus de ``N`` jours (``ParametresCPQ.delai_relance_approbation_jours``,
+    défaut 2) et envoie une notification ``apps.notifications`` à
+    l'approbateur assigné.
+
+    Idempotent via ``derniere_relance_le`` sur l'étape : jamais plus d'une
+    relance par 24h par étape, même si le job tourne plusieurs fois le même
+    jour. Une étape sans approbateur assigné (personne n'a encore réclamé
+    l'étape) est ignorée — rien à notifier. Renvoie le nombre de relances
+    envoyées."""
+    from django.utils import timezone
+    from apps.notifications.models import EventType
+    from apps.notifications.services import notify
+    from .models import EtapeApprobationDevis, ParametresCPQ
+
+    now = timezone.now()
+    relances = 0
+
+    candidates = (EtapeApprobationDevis.objects
+                  .filter(statut=EtapeApprobationDevis.Statut.EN_ATTENTE)
+                  .select_related('devis', 'company', 'approbateur'))
+    for etape in candidates:
+        if etape.approbateur_id is None:
+            continue
+        delai = ParametresCPQ.get_or_default(
+            etape.company).delai_relance_approbation_jours
+        seuil = etape.date_creation + timedelta(days=delai)
+        if now < seuil:
+            continue
+        if (etape.derniere_relance_le is not None
+                and (now - etape.derniere_relance_le) < timedelta(hours=24)):
+            continue
+        try:
+            devis_ref = getattr(etape.devis, 'reference', etape.devis_id)
+            notify(
+                etape.approbateur, EventType.APPROVAL_REMINDER,
+                f'Approbation en attente — devis {devis_ref}',
+                body=(f"L'étape {etape.niveau} d'approbation de remise du "
+                      f"devis {devis_ref} attend votre décision depuis "
+                      f"plus de {delai} jour(s)."),
+                link=f'/ventes/devis?devis={etape.devis_id}',
+                company=etape.company)
+        except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+            logger.exception(
+                'cpq.relancer_approbations_en_attente: notify échoué '
+                '(étape %s)', etape.id)
+            continue
+        etape.derniere_relance_le = now
+        etape.save(update_fields=['derniere_relance_le'])
+        relances += 1
+
+    logger.info(
+        'cpq.relancer_approbations_en_attente: %s relance(s) envoyée(s)',
+        relances)
+    return relances

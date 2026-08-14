@@ -1025,6 +1025,8 @@ CELERY_TASK_ROUTES = {
     'ao.rappeler_echeances': {'queue': 'scheduled'},
     # NTCPQ32 — rappel quotidien des PrixContractuel expirés (beat, job planifié).
     'cpq.expire_prix_contractuels': {'queue': 'scheduled'},
+    # NTCPQ33 — relance des étapes d'approbation en attente (beat, job planifié).
+    'cpq.relancer_approbations_en_attente': {'queue': 'scheduled'},
     # NTPLT27 — 4e queue `bulk` pour le travail de masse (imports dataimport,
     # exports planifiés volumineux, backfills, seed à l'échelle). Un import de
     # 100 000 lignes ne doit plus retarder un digest planifié ni un rendu PDF

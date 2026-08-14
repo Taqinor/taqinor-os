@@ -400,6 +400,10 @@ class EtapeApprobationDevis(TenantModel):
     decision_le = models.DateTimeField(null=True, blank=True)
     commentaire = models.TextField(blank=True, default='')
     date_creation = models.DateTimeField(auto_now_add=True)
+    # NTCPQ33 — horodatage de la DERNIÈRE relance automatique envoyée à
+    # l'approbateur (job planifié) ; NULL = jamais relancée. Empêche plus
+    # d'une relance par 24h par étape (idempotence du job).
+    derniere_relance_le = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         verbose_name = "Étape d'approbation de devis"
@@ -609,6 +613,9 @@ class ParametresCPQ(models.Model):
         default=ModeCompatibilite.AVERTISSEMENT,
         help_text='BLOQUANT empêche envoyer/generer-pdf tant qu’une '
                   'violation de compatibilité bloquante (NTCPQ1) subsiste.')
+    # NTCPQ33 — nombre de jours d'attente avant relance automatique d'une
+    # étape d'approbation encore en_attente (job planifié, apps/cpq/scheduled.py).
+    delai_relance_approbation_jours = models.PositiveIntegerField(default=2)
     date_creation = models.DateTimeField(auto_now_add=True)
     date_modification = models.DateTimeField(auto_now=True)
 

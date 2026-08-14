@@ -801,6 +801,13 @@ app.conf.beat_schedule = {
         'task': 'cpq.expire_prix_contractuels',
         'schedule': crontab(hour=4, minute=40),
     },
+    # NTCPQ33 — relance les EtapeApprobationDevis en_attente depuis plus de
+    # N jours (ParametresCPQ.delai_relance_approbation_jours) — apps/cpq/
+    # scheduled.py. Idempotent (max 1 relance/24h/étape).
+    'cpq-relancer-approbations-en-attente': {
+        'task': 'cpq.relancer_approbations_en_attente',
+        'schedule': crontab(hour=7, minute=20),
+    },
 }
 
 # YHARD6 — compteurs Celery succès/échec (process-local, best-effort) pour
