@@ -288,6 +288,10 @@ INSTALLED_APPS = [
     # un sas, et c'est un humain qui tranche. Couplage vers `ao` par entier
     # opaque (`appel_offre_id`), jamais par FK.
     'apps.veille_ao',
+    # Groupe NTSCM — Planification supply chain (prévision de demande
+    # saisonnière, politiques de stock ABC/stock de sécurité, cycle S&OP
+    # mensuel) au-dessus de l'exécution `apps.stock` existante.
+    'apps.scm',
 ]
 
 MIDDLEWARE = [

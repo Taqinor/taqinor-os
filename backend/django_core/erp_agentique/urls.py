@@ -164,6 +164,9 @@ _APP_URLS = [
     # à dessein : le gatage 404 des modules désactivés dérive du 2ᵉ segment, et
     # un segment en tiret imposerait une entrée `core/permissions.PREFIX_TO_MODULE`.
     path('veille_ao/', include('apps.veille_ao.urls')),
+    # Groupe NTSCM — Planification supply chain (prévision/S&OP), au-dessus
+    # de l'exécution `apps.stock` existante.
+    path('scm/', include('apps.scm.urls')),
 ]
 
 urlpatterns = [
