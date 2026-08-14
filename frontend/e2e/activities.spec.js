@@ -24,7 +24,11 @@ test('E9: log an activity and see it in the cockpit', async ({ page }) => {
   // Shows in the lead's own activity list…
   await expect(modal.locator('.act-list')).toContainText(summary)
 
-  // …and in the cockpit.
+  // …and in the cockpit. The activity is displayed TWICE on /activites: once in
+  // the personal work queue (« Ma file », VX83 — every open activity assigned to
+  // the user, never truncated) and once in its due-date bucket table below. An
+  // unscoped getByText therefore violates strict mode. « Ma file » IS the
+  // logged-in user's own cockpit this test is about, so we scope on it.
   await page.goto('/activites')
-  await expect(page.getByText(summary)).toBeVisible()
+  await expect(page.getByRole('table', { name: 'Ma file' }).getByText(summary)).toBeVisible()
 })

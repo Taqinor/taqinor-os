@@ -2824,6 +2824,28 @@ textarea.form-control {
   padding-bottom: 0.6rem;
 }
 
+/* MB6 — Sous 768px, DEUX pieds `position: sticky; bottom: 0` cohabitent au
+   MÊME palier `--z-sticky` : ce bandeau d'actions (dans `.layout-content`) et
+   la barre d'onglets `.bottom-tabbar` (frère POSTÉRIEUR de `.layout-content`
+   dans `.layout-main`). À z-index égal, c'est l'ordre du DOM qui tranche — la
+   barre d'onglets est peinte APRÈS, donc AU-DESSUS : dès que les deux boîtes
+   se touchent, la NAVIGATION avale l'ACTION (bouton « Créer le devis »
+   inatteignable au pouce). Aujourd'hui seule la réserve basse de
+   `.layout-content` (MB1 : `padding-bottom: 52px + …`) les sépare — mesuré
+   66px de marge sur Chromium ET WebKit à 375×812 — et ce même commentaire MB1
+   anticipe sa perte (« même quand un moteur dégrade 100dvh en 100vh »).
+   On tranche donc explicitement : l'action prime sur la navigation. Un SEUL
+   cran au-dessus du palier collant, dérivé du jeton (jamais une valeur en dur,
+   barème MB3) : le bandeau reste SOUS les overlays (--z-overlay 1200) et les
+   modales (--z-modal 1300), donc une bottom-sheet le recouvre toujours
+   proprement. Aucun pixel ne bouge sur l'écran actuel (même géométrie, même
+   rendu) : seul l'ordre de peinture entre ces deux barres est fixé.
+   Portée : `.gen-actions-sticky` (générateur de devis) uniquement — aucun
+   autre écran n'a de pied collant à ce palier. */
+@media (max-width: 768px) {
+  .gen-actions-sticky { z-index: calc(var(--z-sticky, 1100) + 1); }
+}
+
 /* VX4 — carte du générateur tokenisée (dark mode réel sur l'écran le plus
    stratégique ; VX17 a déjà migré .gen-metric / .lines-table et le chart). */
 .gen-card {
