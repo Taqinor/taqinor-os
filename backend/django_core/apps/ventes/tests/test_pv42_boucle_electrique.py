@@ -316,6 +316,12 @@ class UnLayoutSansGeometrieNeBougePas(_Base):
             'production_annuelle': 8000,
             'economies_annuelles': 7000,
             'puissance_kwc': 4.95,
+            # ``payback_annees`` fait PARTIE d'hier : le récepteur QX24
+            # (bien antérieur au calepinage) le dérive à chaque écriture de
+            # ligne, ici 9 × 1 100 + 14 000 = 23 900 HT → 28 680 TTC, divisé
+            # par 7 000 MAD/an d'économies. L'omettre reviendrait à figer une
+            # promesse « d'hier » que le code d'hier ne tenait déjà pas.
+            'payback_annees': 4.1,
         })
         # Aucune géométrie ⇒ aucun enrichissement du layout stocké.
         self.assertEqual(devis.roof_layout, layout)
