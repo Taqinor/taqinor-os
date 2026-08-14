@@ -898,6 +898,8 @@
     buckets:inconnu, devis:inconnu, wa_drafts:inconnu
 - frontend/src/api/ventesApi.js :: getPrefillSite -> /api/django/ventes/devis/prefill-site
     client:inconnu, detail:texte, profil:inconnu
+- frontend/src/api/ventesApi.js :: getSimulationStatus -> /api/django/ventes/devis/<>/simulation-status/<>
+    detail:texte, simulation:inconnu, status:texte
 - frontend/src/api/ventesApi.js :: getSuiviPartageDevis -> /api/django/ventes/devis/<>/suivi-partage
     ouverture:inconnu, relances:inconnu
 - frontend/src/api/ventesApi.js :: getVarianteConfig -> /api/django/ventes/devis/variante-config
@@ -910,6 +912,8 @@
     detail:texte, variante_pct:texte
 - frontend/src/api/ventesApi.js :: shareLinkDevis -> /api/django/ventes/devis/<>/share-link
     path:texte, token:inconnu
+- frontend/src/api/ventesApi.js :: simulerEtudeDevis -> /api/django/ventes/devis/<>/simuler
+    detail:texte, job_id:inconnu, status:texte, status_url:inconnu, zones:nombre
 - frontend/src/api/ventesApi.js :: superiorContactStatus -> /api/django/ventes/devis/<>/superior-contact-status
     requested:booleen, requested_at:inconnu, seen:booleen, seen_by:inconnu
 - frontend/src/api/ventesApi.js :: syncDevisLayout -> /api/django/ventes/devis/<>/sync-layout

@@ -374,7 +374,10 @@ class ResultatElectrique:
     bom: Tuple[LigneNomenclature, ...] = ()
     note: Tuple[str, ...] = ()
     #: Projection PRÊTE À AFFICHER pour les tiroirs de l'écran (PV38).
-    tiroirs: Mapping = MappingProxyType({})
+    #: NB : ``default_factory`` obligatoire — Python 3.11 (la CI) refuse un
+    #: ``MappingProxyType`` comme défaut direct de dataclass (3.12+ l'accepte,
+    #: d'où le vert local trompeur).
+    tiroirs: Mapping = field(default_factory=lambda: MappingProxyType({}))
     version_moteur: str = ""
     schema_version: int = 0
 

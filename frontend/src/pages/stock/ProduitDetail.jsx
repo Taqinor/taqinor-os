@@ -174,20 +174,22 @@ function CourbePompe({ produit }) {
 // selon `type_fiche`. UN appel réseau, filtré serveur par `?produit=` (jamais
 // la liste entière) — cohérent avec le reste de l'écran (fiche = 1 produit).
 function useFicheTechnique(produitId) {
-  const [fiche, setFiche] = useState(undefined) // undefined = en cours, null = aucune
+  // L'état est CLÉ PAR PRODUIT : un changement d'id rend `undefined` (en cours)
+  // par dérivation, sans setState synchrone dans l'effet (règle
+  // react-hooks/set-state-in-effect — les rendus en cascade).
+  const [etat, setEtat] = useState({ id: null, fiche: undefined })
   useEffect(() => {
     let active = true
-    setFiche(undefined)
     stockApi.getFichesTechniques(produitId)
       .then((r) => {
         if (!active) return
         const liste = r.data?.results ?? r.data ?? []
-        setFiche(liste[0] ?? null)
+        setEtat({ id: produitId, fiche: liste[0] ?? null })
       })
-      .catch(() => { if (active) setFiche(null) })
+      .catch(() => { if (active) setEtat({ id: produitId, fiche: null }) })
     return () => { active = false }
   }, [produitId])
-  return fiche
+  return etat.id === produitId ? etat.fiche : undefined
 }
 
 function OngletFicheTechnique({ produit }) {
