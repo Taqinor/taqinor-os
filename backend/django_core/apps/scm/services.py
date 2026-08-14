@@ -3,6 +3,7 @@ NTSCM). Toute lecture cross-app (``apps.stock``, ``apps.ventes``…) passe par
 le ``selectors.py``/``services.py`` de l'app cible, jamais un import de
 modèle — voir chaque fonction pour le détail de sa frontière.
 """
+import math
 from calendar import monthrange
 from datetime import date
 from decimal import Decimal
@@ -11,8 +12,16 @@ from django.db.models import Q
 from django.utils import timezone
 
 from core.demand_forecast import forecast_demand
+from core.safety_stock import compute_safety_stock
 
 from .models import EvenementDemande, PrevisionDemande
+
+# Convention du module : les historiques exposés par ``_historique_sorties_
+# mensuelles`` sont MENSUELS ; ``core.safety_stock.compute_safety_stock``
+# attend une consommation JOURNALIÈRE (mêmes unités que son ``lead_time_days``).
+# Conversion mensuel -> journalier au mois normalisé de 30 jours (même
+# convention que ``core.stock_reorder``, qui travaille déjà en jours).
+JOURS_PAR_MOIS = 30.0
 
 
 def _historique_sorties_mensuelles(company, produit_id, fenetre_mois):
@@ -125,3 +134,42 @@ def generer_previsions(
         )
         previsions.append(obj)
     return previsions
+
+
+def appliquer_politique_stock(
+    produit, service_level_pct, company, *, lead_time_days=0, fenetre_mois=12,
+):
+    """NTSCM5 — calcule le stock de sécurité au niveau de service pour un
+    produit, à partir de son historique de sorties mensuelles (réutilise
+    ``_historique_sorties_mensuelles``, comme NTSCM2) et
+    :func:`core.safety_stock.compute_safety_stock`.
+
+    NE PERSISTE RIEN : ``PolitiqueStock`` n'existe pas encore à ce stade de
+    la lane (NTSCM6, tâche SUIVANTE, définit le modèle et appelle CETTE
+    fonction pour écrire ``PolitiqueStock.stock_securite_calcule``) —
+    fonction pure de calcul, réutilisable.
+
+    Renvoie un dict ``{stock_securite, avg_daily_consumption, std_dev_daily,
+    nb_mois_historique}``."""
+    historique = _historique_sorties_mensuelles(company, produit.id, fenetre_mois)
+    valeurs_mensuelles = [q for _, q in historique]
+    n = len(valeurs_mensuelles)
+    moyenne_mensuelle = (sum(valeurs_mensuelles) / n) if n else 0.0
+    if n > 1:
+        variance = sum((v - moyenne_mensuelle) ** 2 for v in valeurs_mensuelles) / n
+        ecart_type_mensuel = math.sqrt(variance)
+    else:
+        ecart_type_mensuel = 0.0
+
+    avg_daily = moyenne_mensuelle / JOURS_PAR_MOIS
+    std_daily = ecart_type_mensuel / JOURS_PAR_MOIS
+
+    stock_securite = compute_safety_stock(
+        avg_daily, std_daily, lead_time_days, service_level_pct)
+
+    return {
+        'stock_securite': round(stock_securite, 2),
+        'avg_daily_consumption': round(avg_daily, 4),
+        'std_dev_daily': round(std_daily, 4),
+        'nb_mois_historique': n,
+    }
