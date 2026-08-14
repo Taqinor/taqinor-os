@@ -678,6 +678,10 @@ class VerifierPinView(APIView):
     permission_classes = [IsAnyRole]
     throttle_classes = [PinCaissierThrottle]
 
+    @extend_schema(request=None, responses=inline_serializer('PosVerifierPinResultat', {
+        'id': serializers.IntegerField(),
+        'username': serializers.CharField(),
+    }))
     def post(self, request):
         company = request.user.company
         user_id = request.data.get('user_id')
@@ -699,6 +703,9 @@ class DefinirPinView(APIView):
     """NTRET3 — Définit (ou change) SON PROPRE PIN de verrouillage rapide."""
     permission_classes = [IsAnyRole]
 
+    @extend_schema(request=None, responses=inline_serializer('PosDefinirPinResultat', {
+        'ok': serializers.BooleanField(),
+    }))
     def post(self, request):
         try:
             services.definir_pin(

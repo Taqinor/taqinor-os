@@ -318,6 +318,14 @@ def tableau_bord_reappro_view(request):
     return Response(data)
 
 
+@extend_schema(request=None, responses=inline_serializer('ScmBrouillonsBcfReappro', {
+    'bons_crees': inline_serializer('ScmBrouillonBcfReapproLigne', {
+        'fournisseur_id': serializers.IntegerField(),
+        'bon_commande_id': serializers.IntegerField(),
+        'reference': serializers.CharField(),
+        'nb_lignes': serializers.IntegerField(),
+    }, many=True),
+}))
 @api_view(['POST'])
 @permission_classes([IsResponsableOrAdmin])
 def creer_brouillons_bcf_reappro_view(request):

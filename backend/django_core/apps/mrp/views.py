@@ -309,6 +309,15 @@ class OperationOFViewSet(mixins.RetrieveModelMixin, mixins.ListModelMixin,
         return Response(self.get_serializer(operation).data)
 
 
+@extend_schema(responses=inline_serializer('MrpChargePostesLigne', {
+    'poste_id': serializers.IntegerField(),
+    'poste_nom': serializers.CharField(),
+    'jour': serializers.CharField(),
+    'minutes_planifiees': serializers.CharField(),
+    'capacite_minutes': serializers.CharField(),
+    'taux_charge_pct': serializers.CharField(),
+    'surcharge': serializers.BooleanField(),
+}, many=True))
 @api_view(['GET'])
 def charge_postes_view(request):
     """NTMFG7 — ``GET /api/django/mrp/charge-postes/?debut=&fin=`` : charge
@@ -324,6 +333,18 @@ def charge_postes_view(request):
     return Response(charge_postes(request.user.company, debut, fin))
 
 
+@extend_schema(request=None, responses=inline_serializer('MrpBesoinNetLigne', {
+    'produit_id': serializers.IntegerField(),
+    'produit_nom': serializers.CharField(),
+    'sku': serializers.CharField(),
+    'demande': serializers.CharField(),
+    'stock_disponible': serializers.CharField(),
+    'en_cours_fabrication': serializers.CharField(),
+    'stock_securite': serializers.CharField(),
+    'besoin_net': serializers.CharField(),
+    'proposition': serializers.CharField(allow_null=True),
+    'date_besoin': serializers.CharField(allow_null=True),
+}, many=True))
 @api_view(['POST'])
 def mrp_run_view(request):
     """NTMFG5 — ``POST /api/django/mrp/mrp-run/`` : calcul des besoins nets
@@ -421,6 +442,18 @@ def analyse_couts_view(request):
     return Response(resultats)
 
 
+@extend_schema(responses=inline_serializer('MrpOeeTousPostesLigne', {
+    'poste_id': serializers.IntegerField(),
+    'poste_nom': serializers.CharField(),
+    'debut': serializers.CharField(),
+    'fin': serializers.CharField(),
+    'donnees': serializers.BooleanField(),
+    'nb_operations': serializers.IntegerField(),
+    'disponibilite_pct': serializers.CharField(),
+    'performance_pct': serializers.CharField(),
+    'qualite_pct': serializers.CharField(),
+    'trs_pct': serializers.CharField(),
+}, many=True))
 @api_view(['GET'])
 def oee_tous_postes_view(request):
     """NTMFG12 — ``GET /api/django/mrp/oee-postes/?debut=&fin=`` : TRS de

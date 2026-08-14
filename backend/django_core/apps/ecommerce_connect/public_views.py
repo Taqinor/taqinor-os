@@ -8,7 +8,8 @@ traitement en clair.
 """
 import json
 
-from rest_framework import status
+from drf_spectacular.utils import extend_schema, inline_serializer
+from rest_framework import serializers, status
 from rest_framework.decorators import (
     api_view, permission_classes, throttle_classes,
 )
@@ -17,6 +18,21 @@ from rest_framework.response import Response
 from rest_framework.throttling import SimpleRateThrottle
 
 from . import shopify, woocommerce
+
+# Réponse d'erreur PARTAGÉE des deux webhooks (400/401/404/503, toujours
+# `{"detail": ...}`) — une SEULE instance `inline_serializer` réutilisée :
+# en fabriquer une par site d'appel produirait deux classes Python de même
+# nom (« identical names, different identities ») pour drf-spectacular, cf.
+# authentication/views_demo_wizard.py.
+_WEBHOOK_ERREUR = inline_serializer('EcommerceWebhookErreur', {
+    'detail': serializers.CharField(),
+})
+# Même motif : forme de succès IDENTIQUE des deux webhooks (Shopify et
+# WooCommerce renvoient tous deux `{id, statut}`), une SEULE instance.
+_WEBHOOK_COMMANDE_RESULTAT = inline_serializer('EcommerceWebhookCommandeResultat', {
+    'id': serializers.IntegerField(),
+    'statut': serializers.CharField(),
+})
 
 
 class EcommerceWebhookThrottle(SimpleRateThrottle):
@@ -64,6 +80,11 @@ def _company_from_boutique_url(plateforme, url_fragment):
     return connexion.company if connexion else None
 
 
+@extend_schema(request=None, responses={
+    200: _WEBHOOK_COMMANDE_RESULTAT,
+    400: _WEBHOOK_ERREUR, 401: _WEBHOOK_ERREUR,
+    404: _WEBHOOK_ERREUR, 503: _WEBHOOK_ERREUR,
+})
 @api_view(['POST'])
 @permission_classes([AllowAny])
 @throttle_classes([EcommerceWebhookThrottle])
@@ -125,6 +146,11 @@ def webhook_commande_shopify(request):
     return Response({'id': commande.id, 'statut': commande.statut})
 
 
+@extend_schema(request=None, responses={
+    200: _WEBHOOK_COMMANDE_RESULTAT,
+    400: _WEBHOOK_ERREUR, 401: _WEBHOOK_ERREUR,
+    404: _WEBHOOK_ERREUR, 503: _WEBHOOK_ERREUR,
+})
 @api_view(['POST'])
 @permission_classes([AllowAny])
 @throttle_classes([EcommerceWebhookThrottle])

@@ -1,5 +1,6 @@
 from django.db import transaction
 from django.http import HttpResponse
+from drf_spectacular.utils import extend_schema, extend_schema_view
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import PermissionDenied, ValidationError
@@ -199,6 +200,11 @@ class PieceDossierExportViewSet(CompanyScopedModelViewSet):
         serializer.save(company=self.request.user.company)
 
 
+@extend_schema_view(
+    list=extend_schema(responses=ParametresDouaneSerializer),
+    partial_update=extend_schema(
+        request=ParametresDouaneSerializer, responses=ParametresDouaneSerializer),
+)
 class ParametresDouaneViewSet(viewsets.ViewSet):
     """NTLOG36 — réglages douane, singleton par société (motif
     ``stock.AchatsParametresViewSet``, XPUR1). GET (``list``, sur

@@ -8,6 +8,7 @@ imprimante/TPE (XPOS18) ne sont PAS dupliqués ici : le frontend les lit sur
 leurs propres endpoints existants (``parametres/update/`` et
 ``pos/config-materiel/``).
 """
+from drf_spectacular.utils import extend_schema
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
@@ -19,6 +20,7 @@ from .models_pos import BoutiquePos, ParametresPos
 from .serializers_pos import BoutiquePosSerializer, ParametresPosSerializer
 
 
+@extend_schema(responses=ParametresPosSerializer)
 @api_view(['GET'])
 @permission_classes([IsAnyRole])
 def get_parametres_pos(request):
@@ -26,6 +28,7 @@ def get_parametres_pos(request):
     return Response(ParametresPosSerializer(parametres).data)
 
 
+@extend_schema(request=ParametresPosSerializer, responses=ParametresPosSerializer)
 @api_view(['PUT', 'PATCH'])
 @permission_classes([IsAdminOrResponsableTier])
 def update_parametres_pos(request):

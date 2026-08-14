@@ -13,7 +13,8 @@ de marge. Le fournisseur peut :
 Protections : X-Robots-Tag noindex sur chaque réponse ; throttle cache-based
 par IP + jeton (sans dépendance externe).
 """
-from rest_framework import status
+from drf_spectacular.utils import extend_schema, inline_serializer
+from rest_framework import serializers, status
 from rest_framework.decorators import (
     api_view, permission_classes, throttle_classes,
 )
@@ -387,6 +388,18 @@ class QuaiCheckinThrottle(SimpleRateThrottle):
         }
 
 
+@extend_schema(request=None, responses={
+    200: inline_serializer('StockQuaiCheckinResultat', {
+        'quai': serializers.CharField(),
+        'type_quai': serializers.CharField(),
+        'heure_rendez_vous': serializers.DateTimeField(),
+        'horodatage_arrivee': serializers.DateTimeField(),
+        'message': serializers.CharField(),
+    }),
+    404: inline_serializer('StockQuaiCheckinErreur', {
+        'detail': serializers.CharField(),
+    }),
+})
 @api_view(['POST'])
 @permission_classes([AllowAny])
 @throttle_classes([QuaiCheckinThrottle])

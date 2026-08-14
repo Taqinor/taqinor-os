@@ -16,13 +16,31 @@ réception (`receptions-fournisseur/{id}/suggestions-rangement/` NTWMS2 puis
 FG320), prélèvement (`vagues-picking/{id}/lignes/{l}/prelever/` NTWMS4),
 comptage (`inventaire-sessions/`).
 """
-from rest_framework import status
+from drf_spectacular.utils import extend_schema, inline_serializer
+from rest_framework import serializers, status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 
 from authentication.permissions import IsAnyRole, HasPermissionOrLegacy
 
 
+@extend_schema(responses={
+    200: inline_serializer('StockScannerResoudreResultat', {
+        'type': serializers.CharField(),
+        'id': serializers.IntegerField(),
+        'label': serializers.CharField(),
+        # Forme variable selon `type` (casier/produit/emplacement/lot) —
+        # un DictField documente honnêtement « objet », jamais des clés
+        # qui n'existent pas dans toutes les branches.
+        'detail': serializers.DictField(),
+    }),
+    400: inline_serializer('StockScannerErreur', {
+        'detail': serializers.CharField(),
+    }),
+    404: inline_serializer('StockScannerCodeInconnu', {
+        'detail': serializers.CharField(),
+    }),
+})
 @api_view(['GET'])
 @permission_classes([IsAnyRole])
 def scanner_resoudre_view(request):
@@ -44,6 +62,21 @@ def scanner_resoudre_view(request):
     return Response(resultat)
 
 
+@extend_schema(request=None, responses={
+    201: inline_serializer('StockScannerMouvementResultat', {
+        'id': serializers.IntegerField(),
+        'produit': serializers.IntegerField(),
+        'type_mouvement': serializers.CharField(),
+        'quantite': serializers.IntegerField(),
+        'quantite_avant': serializers.IntegerField(),
+        'quantite_apres': serializers.IntegerField(),
+        'bin_source': serializers.IntegerField(allow_null=True),
+        'bin_destination': serializers.IntegerField(allow_null=True),
+    }),
+    400: inline_serializer('StockScannerMouvementErreur', {
+        'detail': serializers.CharField(),
+    }),
+})
 @api_view(['POST'])
 @permission_classes([HasPermissionOrLegacy('stock_modifier')])
 def scanner_mouvement_view(request):
