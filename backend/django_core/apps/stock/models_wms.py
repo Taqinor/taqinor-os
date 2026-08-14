@@ -107,7 +107,8 @@ class LignePicking(TenantModel):
     """
 
     vague = models.ForeignKey(
-        VaguePicking, on_delete=models.CASCADE, related_name='lignes')
+        VaguePicking, on_delete=models.CASCADE,  # on_delete: CASCADE - une ligne n'existe QUE dans sa vague (composition stricte, aucune valeur orpheline)
+        related_name='lignes')
     produit = models.ForeignKey(
         'stock.Produit', on_delete=models.PROTECT,
         related_name='lignes_picking')  # on_delete: PROTECT — une ligne prélevée est une trace d'exécution magasin ; aligné sur MouvementStock/LigneInventaire
@@ -227,7 +228,8 @@ class UniteLogistiqueLigne(TenantModel):
     """Ligne de contenu d'une unité logistique (produit + quantité + lot)."""
 
     unite = models.ForeignKey(
-        UniteLogistique, on_delete=models.CASCADE, related_name='lignes')
+        UniteLogistique, on_delete=models.CASCADE,  # on_delete: CASCADE - le contenu n'existe QUE dans son colis (composition stricte)
+        related_name='lignes')
     produit = models.ForeignKey(
         'stock.Produit', on_delete=models.PROTECT,
         related_name='lignes_unite_logistique')  # on_delete: PROTECT — contenu réel d'un colis expédié, conservé pour la traçabilité (aligné sur LignePicking/MouvementStock)
@@ -277,7 +279,7 @@ class Quai(TenantModel):
     type_quai = models.CharField(
         max_length=20, choices=TypeQuai.choices, default=TypeQuai.MIXTE)
     emplacement = models.ForeignKey(
-        'stock.EmplacementStock', on_delete=models.CASCADE,
+        'stock.EmplacementStock', on_delete=models.CASCADE,  # on_delete: CASCADE - un quai est une partie physique de son entrepot ; sans entrepot il n'a aucun sens
         related_name='quais')
     actif = models.BooleanField(default=True)
 
@@ -319,7 +321,8 @@ class RendezVousTransporteur(TenantModel):
     )
 
     quai = models.ForeignKey(
-        Quai, on_delete=models.CASCADE, related_name='rendez_vous')
+        Quai, on_delete=models.CASCADE,  # on_delete: CASCADE - un creneau ne survit pas a la suppression du quai qu'il reserve
+        related_name='rendez_vous')
     # String-FK cross-app : le référentiel transporteur vit dans installations
     # (FG324), jamais dupliqué ici.
     transporteur = models.ForeignKey(
@@ -438,7 +441,8 @@ class ExpeditionTransporteur(TenantModel):
         ANNULE = 'annule', 'Annulé'
 
     unite_logistique = models.ForeignKey(
-        UniteLogistique, on_delete=models.CASCADE, related_name='expeditions')
+        UniteLogistique, on_delete=models.CASCADE,  # on_delete: CASCADE - une expedition n'expedie qu'une unite ; sans elle elle n'a plus d'objet
+        related_name='expeditions')
     transporteur_provider = models.CharField(
         max_length=20, choices=Provider.choices, default=Provider.AUCUN)
     # Référentiel transporteur interne (FG324) — string-FK, optionnel.
