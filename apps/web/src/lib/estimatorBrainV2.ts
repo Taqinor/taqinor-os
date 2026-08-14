@@ -774,6 +774,17 @@ export function annualSavingsMad(
 export type ConfigFamily = 'south' | 'eastwest';
 export type PanelFace = 'E' | 'W';
 
+/**
+ * PV60 — RÈGLE D'EXCLUSION d'un panneau par un obstacle.
+ *  - `footprint` (DÉFAUT, la règle physique) : le panneau est retiré si son EMPREINTE
+ *    (ses 4 coins posés + son centre) tombe dans l'obstacle ou entre dans son
+ *    dégagement. Un panneau dont la moitié mord la cheminée n'est plus compté.
+ *  - `center` (LEGACY) : l'ancienne règle qui ne testait QUE le centre du panneau —
+ *    conservée UNIQUEMENT pour mesurer le diff de comptage AVANT/APRÈS dans les tests.
+ *    Aucun chemin de production ne doit l'utiliser.
+ */
+export type ObstacleRule = 'footprint' | 'center';
+
 export interface PackOptions {
   family: ConfigFamily;
   tiltDeg: number;
@@ -798,6 +809,8 @@ export interface PackOptions {
    * `overhangM`. Défaut 0 → calepinage IDENTIQUE à aujourd'hui.
    */
   overhangM?: number;
+  /** PV60 — règle d'exclusion obstacle. Défaut `footprint` (empreinte complète). */
+  obstacleRule?: ObstacleRule;
 }
 
 /**
@@ -968,6 +981,7 @@ function packCells(
   p: CellParams,
   clearanceM: number,
   overhangM = 0,
+  obstacleRule: ObstacleRule = 'footprint',
 ): PackedPanel[] {
   if (ringENU.length < 3) return [];
   const azRad = azimuthDeg * DEG2RAD;
@@ -998,11 +1012,15 @@ function packCells(
   if (rows <= 0 || cols <= 0 || (rows + 1) * (cols + 1) > MAX_CELLS) return [];
 
   const toENU = (uu: number, vv: number): [number, number] => [uu * u[0] + vv * s[0], uu * u[1] + vv * s[1]];
-  // Un panneau est retiré si son centre tombe DANS un obstacle OU à moins de
-  // `clearanceM` de son bord (zone d'exclusion + dégagement) — une seule règle
-  // qui couvre l'union d'obstacles superposés et la part qui chevauche le toit.
-  const inObstruction = (c: [number, number]): boolean =>
-    obstructionsENU.some((o) => pointInPolygon(c, o) || distToBoundary(c, o) <= clearanceM);
+  // Un panneau est retiré si l'un des POINTS SONDÉS tombe DANS un obstacle OU à moins
+  // de `clearanceM` de son bord (zone d'exclusion + dégagement) — une seule règle qui
+  // couvre l'union d'obstacles superposés et la part qui chevauche le toit.
+  // PV60 — les points sondés sont les 4 COINS de l'empreinte posée + son centre (règle
+  // `footprint`, la physique : un panneau dont un coin mord la cheminée ne se pose pas).
+  // L'ancienne règle `center` (centre seul) laissait passer un panneau à moitié dans
+  // l'obstacle ; elle n'est gardée que pour mesurer le diff de comptage dans les tests.
+  const hitsObstruction = (probe: [number, number][]): boolean =>
+    obstructionsENU.some((o) => probe.some((c) => pointInPolygon(c, o) || distToBoundary(c, o) <= clearanceM));
   // EPS : les vecteurs de base portent un bruit flottant (sin(180°) ≈ 1e−16) qui
   // place les cellules pile au retrait à 0,5 − ε ; sans tolérance on perdrait toute
   // la première rangée/colonne (asymétrique entre Sud et E-O sur petits toits).
@@ -1040,9 +1058,15 @@ function packCells(
       if (!cellInside(corners)) continue;
       const uMid = u0 + p.rowWidthM / 2;
       for (let k = 0; k < p.panelsPerCell; k++) {
-        const vc = v0 + p.panelDepthM * (k + 0.5);
-        const center = toENU(uMid, vc);
-        if (inObstruction(center)) continue;
+        const va = v0 + p.panelDepthM * k;
+        const vb = va + p.panelDepthM;
+        const center = toENU(uMid, va + p.panelDepthM / 2);
+        // PV60 — empreinte RÉELLE du panneau k de la cellule (u0..u1 × va..vb).
+        const probe: [number, number][] =
+          obstacleRule === 'center'
+            ? [center]
+            : [toENU(u0, va), toENU(u1, va), toENU(u1, vb), toENU(u0, vb), center];
+        if (hitsObstruction(probe)) continue;
         const panel: PackedPanel = { cx: center[0], cy: center[1] };
         if (p.panelsPerCell === 2) panel.face = k === 0 ? 'W' : 'E';
         panels.push(panel);
@@ -1059,6 +1083,7 @@ export function packConfig(ring: LngLat[], latitudeDeg: number, opts: PackOption
   const setbackM = opts.setbackM ?? PERIMETER_SETBACK_M;
   const clearanceM = opts.clearanceM ?? OBSTACLE_CLEARANCE_M;
   const overhangM = Math.max(0, opts.overhangM ?? 0);
+  const obstacleRule: ObstacleRule = opts.obstacleRule ?? 'footprint'; // PV60
   const tiltDeg = opts.tiltDeg;
   const beta = tiltDeg * DEG2RAD;
   const eastWest = opts.family === 'eastwest';
@@ -1156,7 +1181,7 @@ export function packConfig(ring: LngLat[], latitudeDeg: number, opts: PackOption
 
   const makeGrid = (panelOrientation: 'portrait' | 'landscape', slopeLenM: number, rowWidthM: number): PanelGrid => {
     const cell = cellFor(slopeLenM, rowWidthM);
-    const panels = packCells(ringENU, obstructionsENU, azimuthDeg, setbackM, cell, clearanceM, overhangM);
+    const panels = packCells(ringENU, obstructionsENU, azimuthDeg, setbackM, cell, clearanceM, overhangM, obstacleRule);
     return {
       panelOrientation,
       count: panels.length,

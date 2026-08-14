@@ -45,6 +45,7 @@ import {
   PANEL2_WATT,
   REGIE_TARIFF,
   type ConfigFamily,
+  type ObstacleRule,
   type TariffGrid,
   aspectForAzimuth,
   annualSavingsMad,
@@ -535,6 +536,7 @@ function packFlushCells(
   p: FlushCellParams,
   clearanceM: number,
   overhangM = 0,
+  obstacleRule: ObstacleRule = 'footprint',
 ): { cx: number; cy: number }[] {
   if (ringENU.length < 3) return [];
   const azRad = azimuthDeg * DEG2RAD;
@@ -565,8 +567,11 @@ function packFlushCells(
   if (rows <= 0 || cols <= 0 || (rows + 1) * (cols + 1) > MAX_CELLS) return [];
 
   const toENU = (uu: number, vv: number): [number, number] => [uu * u[0] + vv * s[0], uu * u[1] + vv * s[1]];
-  const inObstruction = (c: [number, number]): boolean =>
-    obstructionsENU.some((o) => pointInPolygon(c, o) || distToBoundary(c, o) <= clearanceM);
+  // PV60 — l'empreinte COMPLÈTE du panneau (ses 4 coins + son centre) est sondée contre
+  // l'obstacle et son dégagement : un panneau à moitié dans la cheminée ne se pose plus.
+  // `center` = ancienne règle (centre seul), gardée pour le diff de comptage des tests.
+  const hitsObstruction = (probe: [number, number][]): boolean =>
+    obstructionsENU.some((o) => probe.some((c) => pointInPolygon(c, o) || distToBoundary(c, o) <= clearanceM));
   // W108 — distance SIGNÉE au bord (+ dedans, − dehors) : un coin tient s'il est à
   // au moins `setbackM` à l'intérieur OU déborde d'au plus `overhangM`. overhangM=0
   // → équivaut exactement à l'ancienne règle (dedans/pile-rive ET retrait).
@@ -590,7 +595,9 @@ function packFlushCells(
       const corners: [number, number][] = [toENU(u0, v0), toENU(u1, v0), toENU(u1, v1), toENU(u0, v1)];
       if (!cellInside(corners)) continue;
       const center = toENU(u0 + p.rowWidthM / 2, v0 + p.panelPlanDepthM / 2);
-      if (inObstruction(center)) continue;
+      // PV60 — la cellule EST l'empreinte du panneau en pose affleurante : on sonde ses
+      // 4 coins + son centre (règle `footprint`), ou le centre seul (règle `center`).
+      if (hitsObstruction(obstacleRule === 'center' ? [center] : [...corners, center])) continue;
       panels.push({ cx: center[0], cy: center[1] });
     }
   }
@@ -601,13 +608,17 @@ function packFlushCells(
  * Pave UN pan en pente, en portrait ET paysage, garde le meilleur. L'inclinaison =
  * la pente du pan, l'azimut = la face du pan — imposés, jamais balayés.
  */
-export function packFlushPlane(plane: RoofPlane, opts: { setbackM?: number; clearanceM?: number; overhangM?: number } = {}): FlushPack {
+export function packFlushPlane(
+  plane: RoofPlane,
+  opts: { setbackM?: number; clearanceM?: number; overhangM?: number; obstacleRule?: ObstacleRule } = {},
+): FlushPack {
   const { ring, pitchDeg, facingAzimuthDeg } = plane;
   const areaM2 = geodesicAreaM2(ring);
   const setbackM = opts.setbackM ?? PERIMETER_SETBACK_M;
   const clearanceM = opts.clearanceM ?? OBSTACLE_CLEARANCE_M;
   // W108 — débord autorisé des panneaux au-delà de la rive (rails sur le toit).
   const overhangM = Math.max(0, opts.overhangM ?? 0);
+  const obstacleRule: ObstacleRule = opts.obstacleRule ?? 'footprint'; // PV60
   const beta = pitchDeg * DEG2RAD;
   const obstructions = plane.obstructions ?? [];
   // W108 — borne « Σ empreintes ≤ utile » élargie de l'anneau de débord (Minkowski).
@@ -619,7 +630,7 @@ export function packFlushPlane(plane: RoofPlane, opts: { setbackM?: number; clea
   const buildGrid = (orientation: AxisOrient, slopeLenM: number, rowWidthM: number, ringENU: [number, number][], obsENU: [number, number][][]): FlushGrid => {
     const panelPlanDepthM = slopeLenM * Math.cos(beta);
     const rowPitchM = panelPlanDepthM + FLUSH_MAINTENANCE_GAP_M;
-    const panels = packFlushCells(ringENU, obsENU, facingAzimuthDeg, setbackM, { panelPlanDepthM, rowPitchM, rowWidthM }, clearanceM, overhangM);
+    const panels = packFlushCells(ringENU, obsENU, facingAzimuthDeg, setbackM, { panelPlanDepthM, rowPitchM, rowWidthM }, clearanceM, overhangM, obstacleRule);
     return {
       orientation,
       count: panels.length,
