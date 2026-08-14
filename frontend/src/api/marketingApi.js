@@ -285,6 +285,13 @@ const marketingApi = {
   scoreMaturite: {
     get: (leadId) => api.get(`/marketing/scores-maturite/${leadId}/`),
   },
+
+  // ── NTMKT20/21 — Comparaison des 4 modèles d'attribution pour un devis
+  // signé (aide à la décision, jamais un recalcul persistant). ──
+  attribution: {
+    comparaison: (devisId) =>
+      api.get('/marketing/attribution/comparaison/', { params: { devis_id: devisId } }),
+  },
 }
 
 export default marketingApi
