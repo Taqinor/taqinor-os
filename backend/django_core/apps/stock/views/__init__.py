@@ -46,7 +46,10 @@ from .wms import (
     entrepot_productivite_view, entrepot_pertes_view,
     reslotting_suggestions_view, casiers_etiquettes_pdf_view,
 )
-from .scanner import scanner_resoudre_view, scanner_mouvement_view
+from .scanner import (
+    scanner_resoudre_view, scanner_mouvement_view,
+    scanner_retour_fournisseur_view,
+)
 # Groupe NTWMS (vague 3) - pilotage d'entrepot (cockpit, capacite, retour).
 from .entrepot import (
     entrepot_cockpit_view, simuler_capacite_view, zones_surcapacite_view,
@@ -121,4 +124,5 @@ __all__ = [
     'SeuilReapproCasierViewSet',
     'TacheReapproInterneViewSet',
     'casiers_a_reapprovisionner_view',
+    'scanner_retour_fournisseur_view',
 ]

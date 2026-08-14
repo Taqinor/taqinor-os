@@ -111,3 +111,44 @@ def scanner_mouvement_view(request):
         'bin_source': mouvement.bin_source_id,
         'bin_destination': mouvement.bin_destination_id,
     }, status=status.HTTP_201_CREATED)
+
+
+@extend_schema(responses={
+    200: inline_serializer('StockScannerRetourFournisseurLigne', {
+        'produit': serializers.IntegerField(),
+        'produit_nom': serializers.CharField(),
+        'sku': serializers.CharField(allow_blank=True),
+        'quantite': serializers.IntegerField(),
+        'bin_source': serializers.IntegerField(allow_null=True),
+        'bin_source_code': serializers.CharField(allow_blank=True),
+        'bin_destination': serializers.IntegerField(allow_null=True),
+        'bin_destination_code': serializers.CharField(allow_blank=True),
+        'fournisseur': serializers.IntegerField(allow_null=True),
+        'fournisseur_nom': serializers.CharField(allow_blank=True),
+    }),
+    400: inline_serializer('StockScannerRetourErreur', {
+        'detail': serializers.CharField(),
+    }),
+})
+@api_view(['GET'])
+@permission_classes([IsAnyRole])
+def scanner_retour_fournisseur_view(request):
+    """NTWMS41 — mode « Retour fournisseur » du poste scanner.
+
+    ``?code=<GTIN|SKU>[&quantite=]`` résout le produit ET son casier actuel
+    (NTWMS3/FG319) et pré-remplit la ligne de retour, avec le casier de
+    départs fournisseur en destination. LECTURE SEULE : rien n'est écrit tant
+    que le retour n'est pas validé (``retours-fournisseur/{id}/
+    valider-scanne/``).
+    """
+    from ..services_retour_scanne import preparer_ligne_retour_scannee
+
+    try:
+        ligne = preparer_ligne_retour_scannee(
+            request.user.company,
+            request.query_params.get('code'),
+            quantite=request.query_params.get('quantite') or 1)
+    except ValueError as exc:
+        return Response({'detail': str(exc)},
+                        status=status.HTTP_400_BAD_REQUEST)
+    return Response(ligne)

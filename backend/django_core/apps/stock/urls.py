@@ -27,7 +27,7 @@ from .views import (
     tache_retour_view, PlanEchantillonnageViewSet,
     CompatibiliteHazmatCasierViewSet, historique_casier_view,
     SeuilReapproCasierViewSet, TacheReapproInterneViewSet,
-    casiers_a_reapprovisionner_view,
+    casiers_a_reapprovisionner_view, scanner_retour_fournisseur_view,
 )
 
 router = DefaultRouter()
@@ -130,5 +130,8 @@ urlpatterns = [
          name='stock-scanner-resoudre'),
     path('scanner/mouvement/', scanner_mouvement_view,
          name='stock-scanner-mouvement'),
+    # NTWMS41 - mode « Retour fournisseur » du poste scanner (pre-remplissage).
+    path('scanner/retour-fournisseur/', scanner_retour_fournisseur_view,
+         name='stock-scanner-retour-fournisseur'),
     path('', include(router.urls)),
 ]
