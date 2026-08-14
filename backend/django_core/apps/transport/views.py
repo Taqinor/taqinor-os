@@ -1,13 +1,18 @@
 """Vues (ViewSets) de l'app `apps.transport` — toutes scopées société via
 `core.viewsets.CompanyScopedModelViewSet` (jamais un `ModelViewSet` nu,
 SCA4)."""
+from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
+from rest_framework.response import Response
 
 from core.viewsets import CompanyScopedModelViewSet
 
 from . import services
-from .models import LigneOrdreTransport, OrdreTransport
-from .serializers import LigneOrdreTransportSerializer, OrdreTransportSerializer
+from .models import EtapeTransport, LigneOrdreTransport, OrdreTransport
+from .serializers import (
+    EtapeTransportSerializer, LigneOrdreTransportSerializer,
+    OrdreTransportSerializer,
+)
 
 
 def _check_same_company(request, **fields):
@@ -27,7 +32,7 @@ class OrdreTransportViewSet(CompanyScopedModelViewSet):
     ARC6)."""
 
     queryset = OrdreTransport.objects.select_related(
-        'created_by').prefetch_related('lignes').all()
+        'created_by').prefetch_related('lignes', 'etapes').all()
     serializer_class = OrdreTransportSerializer
 
     def get_queryset(self):
@@ -41,6 +46,13 @@ class OrdreTransportViewSet(CompanyScopedModelViewSet):
         serializer.save(
             company=self.request.user.company, created_by=self.request.user)
         services.attribuer_numero(serializer.instance)
+
+    # ── NTLOG3 — lecture imbriquée des étapes ────────────────────────────
+    @action(detail=True, methods=['get'], url_path='etapes')
+    def etapes_action(self, request, pk=None):
+        ordre = self.get_object()
+        return Response(
+            EtapeTransportSerializer(ordre.etapes.all(), many=True).data)
 
 
 class LigneOrdreTransportViewSet(CompanyScopedModelViewSet):
@@ -60,3 +72,31 @@ class LigneOrdreTransportViewSet(CompanyScopedModelViewSet):
         _check_same_company(
             self.request, ordre=serializer.validated_data.get('ordre'))
         serializer.save(company=self.request.user.company)
+
+
+class EtapeTransportViewSet(CompanyScopedModelViewSet):
+    """NTLOG3 — étapes enlèvement/transit/livraison. Filtrable par
+    `?ordre=`. Toute écriture de `statut_etape` déclenche l'avancement
+    automatique du statut de l'ordre parent
+    (`services.apres_changement_statut_etape`)."""
+
+    queryset = EtapeTransport.objects.select_related('ordre').all()
+    serializer_class = EtapeTransportSerializer
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        ordre = self.request.query_params.get('ordre')
+        if ordre:
+            qs = qs.filter(ordre_id=ordre)
+        return qs
+
+    def perform_create(self, serializer):
+        _check_same_company(
+            self.request, ordre=serializer.validated_data.get('ordre'))
+        serializer.save(company=self.request.user.company)
+
+    def perform_update(self, serializer):
+        ancien_statut = serializer.instance.statut_etape
+        super().perform_update(serializer)
+        services.apres_changement_statut_etape(
+            serializer.instance, ancien_statut)

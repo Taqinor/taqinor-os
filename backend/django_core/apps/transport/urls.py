@@ -9,6 +9,8 @@ router.register(
 router.register(
     'lignes-transport', views.LigneOrdreTransportViewSet,
     basename='lignes-transport')
+router.register(
+    'etapes-transport', views.EtapeTransportViewSet, basename='etapes-transport')
 
 urlpatterns = [
     path('', include(router.urls)),

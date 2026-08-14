@@ -2,7 +2,7 @@ from decimal import Decimal
 
 from rest_framework import serializers
 
-from .models import LigneOrdreTransport, OrdreTransport
+from .models import EtapeTransport, LigneOrdreTransport, OrdreTransport
 
 
 class LigneOrdreTransportSerializer(serializers.ModelSerializer):
@@ -16,6 +16,24 @@ class LigneOrdreTransportSerializer(serializers.ModelSerializer):
         ]
 
 
+class EtapeTransportSerializer(serializers.ModelSerializer):
+    """NTLOG3 — étape enlèvement/transit/livraison. `statut_etape` avance
+    via `views.EtapeTransportViewSet` (auto-progression
+    `services.apres_changement_statut_etape`)."""
+    type_etape_display = serializers.CharField(
+        source='get_type_etape_display', read_only=True, default=None)
+    statut_etape_display = serializers.CharField(
+        source='get_statut_etape_display', read_only=True, default=None)
+
+    class Meta:
+        model = EtapeTransport
+        fields = [
+            'id', 'ordre', 'sequence', 'type_etape', 'type_etape_display',
+            'lieu', 'date_prevue', 'date_reelle', 'statut_etape',
+            'statut_etape_display',
+        ]
+
+
 class OrdreTransportSerializer(serializers.ModelSerializer):
     """NTLOG1 — ordre de transport. `numero`/`statut`/`created_by` posés
     côté serveur (jamais lus du corps de requête — voir
@@ -26,6 +44,7 @@ class OrdreTransportSerializer(serializers.ModelSerializer):
     type_flux_display = serializers.CharField(
         source='get_type_flux_display', read_only=True, default=None)
     lignes = LigneOrdreTransportSerializer(many=True, read_only=True)
+    etapes = EtapeTransportSerializer(many=True, read_only=True)
     poids_total_kg = serializers.SerializerMethodField()
     volume_total_m3 = serializers.SerializerMethodField()
 
@@ -38,8 +57,8 @@ class OrdreTransportSerializer(serializers.ModelSerializer):
             'date_livraison_prevue', 'statut', 'statut_display',
             'instructions_speciales', 'ventes_boncommande_id',
             'ventes_devis_id', 'installations_installation_id', 'lignes',
-            'poids_total_kg', 'volume_total_m3', 'created_by', 'created_at',
-            'updated_at',
+            'etapes', 'poids_total_kg', 'volume_total_m3', 'created_by',
+            'created_at', 'updated_at',
         ]
         read_only_fields = [
             'numero', 'statut', 'created_by', 'created_at', 'updated_at',

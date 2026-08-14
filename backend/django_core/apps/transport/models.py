@@ -127,3 +127,41 @@ class LigneOrdreTransport(TenantModel):
 
     def __str__(self):
         return f'{self.designation or self.stock_produit_id} × {self.quantite}'
+
+
+class EtapeTransport(TenantModel):
+    """NTLOG3 — étape enlèvement → transit → livraison d'un ordre."""
+
+    class TypeEtape(models.TextChoices):
+        ENLEVEMENT = 'enlevement', 'Enlèvement'
+        TRANSIT = 'transit', 'Transit'
+        LIVRAISON = 'livraison', 'Livraison'
+
+    class StatutEtape(models.TextChoices):
+        A_FAIRE = 'a_faire', 'À faire'
+        EN_COURS = 'en_cours', 'En cours'
+        FAIT = 'fait', 'Fait'
+        INCIDENT = 'incident', 'Incident'
+
+    ordre = models.ForeignKey(
+        OrdreTransport, on_delete=models.CASCADE, related_name='etapes')
+    sequence = models.PositiveIntegerField(default=1)
+    type_etape = models.CharField(
+        max_length=12, choices=TypeEtape.choices, default=TypeEtape.TRANSIT)
+    lieu = models.CharField(max_length=255, blank=True, default='')
+    date_prevue = models.DateField(null=True, blank=True)
+    date_reelle = models.DateField(null=True, blank=True)
+    statut_etape = models.CharField(
+        max_length=10, choices=StatutEtape.choices,
+        default=StatutEtape.A_FAIRE)
+
+    class Meta:
+        verbose_name = 'Étape de transport'
+        verbose_name_plural = 'Étapes de transport'
+        ordering = ['ordre_id', 'sequence', 'id']
+        indexes = [
+            models.Index(fields=['ordre', 'sequence'], name='idx_et_ordre_seq'),
+        ]
+
+    def __str__(self):
+        return f'{self.ordre_id} · étape {self.sequence} ({self.statut_etape})'

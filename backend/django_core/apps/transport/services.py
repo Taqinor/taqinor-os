@@ -28,3 +28,47 @@ def attribuer_numero(ordre):
         OrdreTransport, 'OT', ordre.company, field='numero')
     ordre.save(update_fields=['numero'])
     return ordre
+
+
+def recalculer_statut_ordre(ordre):
+    """NTLOG3 — fait avancer `ordre.statut` selon la progression de ses
+    étapes (ordonnées par `sequence`) : dès que TOUTES les étapes sont
+    « fait », l'ordre passe « livré » ; sinon, dès qu'au moins une étape est
+    faite/en cours, l'ordre passe « en cours » (jamais de retour en arrière
+    depuis « livré »/« annulé »)."""
+    from .models import OrdreTransport
+
+    if ordre.statut in (OrdreTransport.Statut.LIVRE, OrdreTransport.Statut.ANNULE):
+        return ordre
+    etapes = list(ordre.etapes.order_by('sequence', 'id'))
+    if not etapes:
+        return ordre
+
+    tous_faits = all(
+        e.statut_etape == e.StatutEtape.FAIT for e in etapes)
+    au_moins_un_avance = any(
+        e.statut_etape in (e.StatutEtape.FAIT, e.StatutEtape.EN_COURS)
+        for e in etapes)
+
+    nouveau_statut = ordre.statut
+    if tous_faits:
+        nouveau_statut = OrdreTransport.Statut.LIVRE
+    elif au_moins_un_avance and ordre.statut in (
+            OrdreTransport.Statut.BROUILLON, OrdreTransport.Statut.PLANIFIE):
+        nouveau_statut = OrdreTransport.Statut.EN_COURS
+
+    if nouveau_statut != ordre.statut:
+        ordre.statut = nouveau_statut
+        ordre.save(update_fields=['statut'])
+    return ordre
+
+
+def apres_changement_statut_etape(etape, ancien_statut):
+    """NTLOG3 — effets de bord après un changement DÉJÀ PERSISTÉ de
+    `etape.statut_etape` (PATCH normal ou action dédiée `livrer/`) : fait
+    avancer automatiquement le statut de l'ordre parent
+    (`recalculer_statut_ordre`). No-op si le statut n'a pas changé."""
+    if ancien_statut == etape.statut_etape:
+        return etape
+    recalculer_statut_ordre(etape.ordre)
+    return etape
