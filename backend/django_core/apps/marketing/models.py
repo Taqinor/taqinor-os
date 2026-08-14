@@ -2306,6 +2306,18 @@ class ParametresMarketing(TenantModel):
         default=False,
         verbose_name='Seuil MQL déclenché aussi sur le score de maturité')
 
+    # ── NTMKT20 — Modèle d'attribution configurable (étend FG204/XMKT17) ────
+    class ModeleAttribution(models.TextChoices):
+        DERNIER_TOUCHE = 'dernier_touche', 'Dernier touché'
+        PREMIER_TOUCHE = 'premier_touche', 'Premier touché'
+        LINEAIRE = 'lineaire', 'Linéaire'
+        PONDERE_TEMPOREL = 'pondere_temporel', 'Pondéré temporel'
+
+    modele_attribution = models.CharField(
+        max_length=20, choices=ModeleAttribution.choices,
+        default=ModeleAttribution.DERNIER_TOUCHE,
+        verbose_name="Modèle d'attribution multi-touch")
+
     class Meta:
         verbose_name = 'Paramètres marketing'
         verbose_name_plural = 'Paramètres marketing'

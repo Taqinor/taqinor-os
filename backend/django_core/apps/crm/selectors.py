@@ -2683,3 +2683,101 @@ def dernier_contact_lead(company, lead_id):
           .order_by('-date_contact')
           .first())
     return pc.date_contact if pc else None
+
+
+# ── NTMKT20 — Modèles d'attribution configurables sur PointContact (FG204) ──
+# Complète ``revenu_attribue_campagne`` (XMKT17, implicitement dernier-touche
+# par nom de campagne) SANS le modifier : ceci répartit le revenu d'UN devis
+# signé entre les points de contact de son parcours, pour les 4 modèles
+# standards — une aide à la décision, jamais un recalcul persistant.
+
+ATTRIBUTION_MODELES = (
+    'dernier_touche', 'premier_touche', 'lineaire', 'pondere_temporel',
+)
+
+# Demi-vie (jours) du modèle « pondéré temporel » — formule de dégradation
+# temporelle standard (poids = 2^(-jours_avant_la_dernière_touche / demi_vie)).
+_ATTRIBUTION_DEMI_VIE_JOURS = 7
+
+
+def _attribution_part(point_contact, montant):
+    return {
+        'point_contact_id': point_contact.pk,
+        'canal': point_contact.canal,
+        'canal_libelle': point_contact.get_canal_display(),
+        'date_contact': point_contact.date_contact,
+        'revenu_attribue': str(montant),
+    }
+
+
+def _repartir_attribution(points, modele, total_revenu):
+    """NTMKT20 — répartit ``total_revenu`` (Decimal) entre ``points``
+    (``PointContact`` triés chronologiquement) selon ``modele``. Lecture
+    pure : aucune écriture, aucun état modifié. La somme des montants
+    répartis reste TOUJOURS égale à ``total_revenu`` au centime près."""
+    from decimal import ROUND_HALF_UP, Decimal
+
+    n = len(points)
+    if n == 0 or not total_revenu:
+        return []
+
+    if modele == 'premier_touche':
+        montants = [Decimal('0')] * n
+        montants[0] = total_revenu
+    elif modele == 'lineaire':
+        part = (total_revenu / n).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+        montants = [part] * n
+        # Ajuste le DERNIER point pour que la somme reste exacte au centime
+        # (l'arrondi par ligne peut sinon dériver de quelques centimes).
+        montants[-1] = total_revenu - part * (n - 1)
+    elif modele == 'pondere_temporel':
+        derniere_date = points[-1].date_contact
+        poids = [
+            Decimal(str(2 ** (
+                -max((derniere_date - p.date_contact).days, 0)
+                / _ATTRIBUTION_DEMI_VIE_JOURS)))
+            for p in points
+        ]
+        total_poids = sum(poids) or Decimal('1')
+        montants = [
+            (total_revenu * w / total_poids).quantize(Decimal('0.01'))
+            for w in poids
+        ]
+        ecart = total_revenu - sum(montants)
+        montants[-1] = montants[-1] + ecart
+    else:  # 'dernier_touche' — défaut, comportement historique XMKT17.
+        montants = [Decimal('0')] * n
+        montants[-1] = total_revenu
+
+    return [_attribution_part(p, m) for p, m in zip(points, montants)]
+
+
+def attribution_comparaison_devis(devis):
+    """NTMKT20 — pour un devis ACCEPTÉ, la répartition de son ``total_ttc``
+    entre les points de contact (``PointContact``, FG204) du lead lié, pour
+    les 4 modèles d'attribution côte à côte. ``None`` si le devis n'a pas de
+    lead lié ou n'est pas accepté. Lecture seule, aide à la décision — ne
+    modifie JAMAIS ``PointContact`` ni le devis."""
+    from decimal import Decimal
+
+    from .models import PointContact
+
+    lead = getattr(devis, 'lead', None)
+    if lead is None or getattr(devis, 'statut', None) != 'accepte':
+        return None
+    points = list(
+        PointContact.objects.filter(company=lead.company_id, lead=lead))
+    try:
+        total_revenu = Decimal(str(devis.total_ttc or 0))
+    except Exception:
+        total_revenu = Decimal('0')
+    return {
+        'devis_id': devis.pk,
+        'lead_id': lead.pk,
+        'total_revenu': str(total_revenu),
+        'nb_points_contact': len(points),
+        'modeles': {
+            modele: _repartir_attribution(points, modele, total_revenu)
+            for modele in ATTRIBUTION_MODELES
+        },
+    }

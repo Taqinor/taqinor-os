@@ -138,4 +138,6 @@ class ParametresMarketingSerializer(serializers.ModelSerializer):
                   'score_maturite_actif', 'ponderation_maturite_ouverture',
                   'ponderation_maturite_clic',
                   'ponderation_maturite_visite_proposition',
-                  'penalite_maturite_inactivite', 'mql_sur_score_maturite']
+                  'penalite_maturite_inactivite', 'mql_sur_score_maturite',
+                  # NTMKT20 — modèle d'attribution multi-touch.
+                  'modele_attribution']

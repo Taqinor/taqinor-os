@@ -1000,6 +1000,34 @@ def historique_maturite(company, lead_id, limite=30):
         company=company, lead_id=lead_id).order_by('-created_at')[:limite])
 
 
+# ── NTMKT20 — Modèles d'attribution configurables (étend FG204/XMKT17) ─────
+
+def modele_attribution_pour(company):
+    """NTMKT20 — modèle d'attribution configuré pour la société (défaut
+    ``dernier_touche`` = comportement XMKT17 actuel, inchangé)."""
+    return parametres_marketing_pour(company).modele_attribution
+
+
+def attribution_comparaison(company, devis_id):
+    """NTMKT20 — comparaison des 4 modèles d'attribution pour UN devis signé
+    (aide à la décision, jamais un recalcul persistant). ``None`` si le devis
+    n'existe pas, n'appartient pas à la société ou n'est pas accepté.
+
+    Lit ``ventes`` UNIQUEMENT via son selector ``get_devis_by_pk`` (jamais un
+    import de ``apps.ventes.models``) puis délègue le calcul à
+    ``apps.crm.selectors`` (jamais un import de ``apps.crm.models``)."""
+    from apps.crm.selectors import attribution_comparaison_devis
+    from apps.ventes.selectors import get_devis_by_pk
+
+    devis = get_devis_by_pk(devis_id)
+    if devis is None or devis.company_id != company.id:
+        return None
+    resultat = attribution_comparaison_devis(devis)
+    if resultat is not None:
+        resultat['modele_actuel'] = modele_attribution_pour(company)
+    return resultat
+
+
 # ── NTMKT33 — Purge des tokens expirés (désinscription/préférences) ────────
 
 def purger_tokens_expires(company=None):

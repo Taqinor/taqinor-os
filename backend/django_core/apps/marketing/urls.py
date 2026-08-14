@@ -55,6 +55,7 @@ from .views import (
     SupportOfflineViewSet,
     TypeEvenementViewSet,
     VersionFormulaireIntakeViewSet,
+    attribution_comparaison_view,
     campagne_rapport_pdf_view,
     desinscription_publique,
     double_optin_confirmer,
@@ -167,6 +168,9 @@ urlpatterns = [
     # NTMKT18/19 — score de maturité d'un lead (fiche/kanban)
     path('scores-maturite/<int:lead_id>/', score_maturite_lead_view,
          name='mkt-score-maturite-lead'),
+    # NTMKT20 — comparaison des 4 modèles d'attribution pour un devis signé
+    path('attribution/comparaison/', attribution_comparaison_view,
+         name='mkt-attribution-comparaison'),
     # Vues publiques (token, sans login) — préfixées de noms `mkt-…` pour ne
     # pas entrer en collision avec les mêmes vues servies sous /compta/….
     # headless: rappel d'etat entrant de Brevo, appele par leur serveur

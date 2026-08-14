@@ -341,3 +341,24 @@ def score_maturite_lead_view(request, lead_id):
             for v in historique
         ],
     })
+
+
+# ── NTMKT20 — Comparaison des modèles d'attribution (?devis_id=) ───────────
+
+@extend_schema(responses={200: OpenApiTypes.OBJECT})
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def attribution_comparaison_view(request):
+    """NTMKT20 — répartition du revenu d'un devis SIGNÉ entre ses points de
+    contact, pour les 4 modèles d'attribution côte à côte (``?devis_id=``).
+    404 propre si le devis n'existe pas / n'est pas accepté / hors société —
+    jamais une fuite d'existence cross-société."""
+    devis_id = request.query_params.get('devis_id')
+    if not devis_id:
+        return Response({'detail': 'devis_id requis.'}, status=400)
+    resultat = marketing_services.attribution_comparaison(
+        request.user.company, devis_id)
+    if resultat is None:
+        return Response(
+            {'detail': 'Devis introuvable ou non accepté.'}, status=404)
+    return Response(resultat)
