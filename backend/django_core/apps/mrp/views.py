@@ -210,9 +210,10 @@ class OperationOFViewSet(mixins.RetrieveModelMixin, mixins.ListModelMixin,
 
     @action(detail=True, methods=['post'], url_path='terminer')
     def terminer(self, request, pk=None):
-        """NTMFG8 — terminal atelier : termine l'opération (quantité bonne/
-        rebut + motif si rebut), calcule le temps actif (pauses exclues),
-        rebut > 0 poste un `MouvementStock` (XMFG11)."""
+        """NTMFG8/10 — terminal atelier : termine l'opération (quantité
+        bonne/rebut + motif si rebut, coût façon si sous-traitée), calcule le
+        temps actif (pauses exclues), rebut > 0 poste un `MouvementStock`
+        (XMFG11)."""
         from .services import terminer_operation
         operation = self.get_object()
         try:
@@ -221,6 +222,7 @@ class OperationOFViewSet(mixins.RetrieveModelMixin, mixins.ListModelMixin,
                 quantite_bonne=request.data.get('quantite_bonne', 0),
                 quantite_rebut=request.data.get('quantite_rebut', 0),
                 motif_rebut=request.data.get('motif_rebut', ''),
+                cout_faconnage=request.data.get('cout_faconnage', 0),
                 user=request.user)
         except ValueError as exc:
             return Response({'detail': str(exc)}, status=400)

@@ -42,6 +42,13 @@ class PosteDeCharge(TenantModel):
     calendrier_travail = models.JSONField(
         default=dict, blank=True, verbose_name='Calendrier de travail')
     actif = models.BooleanField(default=True, verbose_name='Actif')
+    # NTMFG10 — sous-traitant (FG304/DC34, `stock.Fournisseur` type service)
+    # de CE poste quand `type_poste=sous_traite`. Optionnel : un poste
+    # sous-traité sans sous-traitant renseigné dégrade en poste normal (pas
+    # de transfert automatique).
+    sous_traitant = models.ForeignKey(
+        'stock.Fournisseur', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='mrp_postes_charge', verbose_name='Sous-traitant')
 
     class Meta:
         verbose_name = 'Poste de charge'
@@ -254,6 +261,12 @@ class OperationOF(models.Model):
         max_digits=12, decimal_places=2, default=0, verbose_name='Quantité rebut')
     motif_rebut = models.CharField(
         max_length=10, choices=MotifRebut.choices, blank=True, default='')
+    # NTMFG10 — montant façon INTERNE (prestation du sous-traitant), saisi à
+    # la clôture d'une opération sur un poste `sous_traite`. Jamais 0 par
+    # défaut sur les opérations normales, jamais client-facing.
+    cout_faconnage = models.DecimalField(
+        max_digits=10, decimal_places=2, default=0,
+        verbose_name='Coût façon (interne)')
 
     class Meta:
         verbose_name = "Opération d'OF"

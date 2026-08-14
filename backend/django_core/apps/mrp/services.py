@@ -307,19 +307,24 @@ def annuler_of(of, user=None, motif=''):
 # ── NTMFG8 — Terminal atelier MES : démarrer/pauser/reprendre/terminer ──
 
 def demarrer_operation(operation, user=None):
-    """NTMFG8 — démarre une opération (`a_faire`/`en_pause` -> `en_cours`).
+    """NTMFG8/10 — démarre une opération (`a_faire`/`en_pause` -> `en_cours`).
     Pose `demarree_le` UNE seule fois (idempotent : rappeler sur une
-    opération déjà en cours ne réinitialise pas l'horodatage)."""
+    opération déjà en cours ne réinitialise pas l'horodatage). Si le poste
+    est sous-traité (NTMFG10), confie les composants réservés de l'OF au
+    sous-traitant (best-effort, ne bloque jamais le démarrage)."""
     from .models import OperationOF
 
     if operation.statut == OperationOF.Statut.TERMINEE:
         raise ValueError('Cette opération est déjà terminée.')
     if operation.statut == OperationOF.Statut.EN_COURS:
         return operation
+    deja_demarree = operation.demarree_le is not None
     if operation.demarree_le is None:
         operation.demarree_le = timezone.now()
     operation.statut = OperationOF.Statut.EN_COURS
     operation.save(update_fields=['statut', 'demarree_le'])
+    if not deja_demarree:
+        transferer_composants_sous_traitance(operation, user=user)
     return operation
 
 
@@ -362,15 +367,17 @@ def _minutes_pauses(operation):
 
 
 def terminer_operation(operation, *, quantite_bonne=0, quantite_rebut=0,
-                       motif_rebut='', user=None):
-    """NTMFG8 — termine une opération : ferme une pause ouverte s'il y en a
+                       motif_rebut='', cout_faconnage=0, user=None):
+    """NTMFG8/10 — termine une opération : ferme une pause ouverte s'il y en a
     une, calcule le temps ACTIF réel (temps écoulé depuis `demarree_le` MOINS
     les pauses), enregistre quantité bonne/rebut. Un rebut > 0 exige un motif
     et poste un `MouvementStock` SORTIE typé rebut (XMFG11) sur le produit
     fabriqué de l'OF — INDÉPENDANT du backflush de clôture (NTMFG4), qui
     continue à produire `OrdreFabrication.quantite` (simplification
     documentée : la réconciliation fine quantité-planifiée vs quantité-bonne-
-    réelle reste un TODO explicite, hors du périmètre de ce ticket)."""
+    réelle reste un TODO explicite, hors du périmètre de ce ticket). Si le
+    poste est sous-traité (NTMFG10), rapatrie les composants confiés et
+    enregistre `cout_faconnage` (interne, jamais client-facing)."""
     from types import SimpleNamespace
 
     from .models import OperationOF
@@ -397,10 +404,11 @@ def terminer_operation(operation, *, quantite_bonne=0, quantite_rebut=0,
         operation.quantite_bonne = _dec(quantite_bonne)
         operation.quantite_rebut = _dec(quantite_rebut)
         operation.motif_rebut = motif_rebut or ''
+        operation.cout_faconnage = _dec(cout_faconnage)
         operation.statut = OperationOF.Statut.TERMINEE
         operation.save(update_fields=[
             'terminee_le', 'temps_reel_min', 'quantite_bonne',
-            'quantite_rebut', 'motif_rebut', 'statut'])
+            'quantite_rebut', 'motif_rebut', 'cout_faconnage', 'statut'])
 
         if operation.quantite_rebut > 0:
             from apps.stock.services import declarer_rebut
@@ -414,4 +422,105 @@ def terminer_operation(operation, *, quantite_bonne=0, quantite_rebut=0,
                 reference=f'OF-{of.id}-OP-{operation.id}',
                 note=f'Rebut atelier — {operation.libelle}',
                 user=user)
+
+        rapatrier_composants_sous_traitance(operation, user=user)
     return operation
+
+
+# ── NTMFG10 — Sous-traitance d'opération générique ───────────────────────
+
+def _est_operation_sous_traitee(operation):
+    from .models import PosteDeCharge
+
+    poste = operation.poste_charge
+    return (poste.type_poste == PosteDeCharge.TypePoste.SOUS_TRAITE
+            and poste.sous_traitant_id is not None)
+
+
+def transferer_composants_sous_traitance(operation, user=None):
+    """NTMFG10 — à l'entrée dans une opération sur un poste sous-traité
+    (`PosteDeCharge.type_poste=sous_traite` + `sous_traitant` renseigné),
+    confie les composants RÉSERVÉS de l'OF (NTMFG6) au sous-traitant : un
+    `TransfertStock` du dépôt principal vers l'emplacement dédié « chez
+    {sous-traitant} » (pattern XMFG16, réutilise
+    `stock.services.get_or_create_emplacement_soustraitant`). No-op si le
+    poste n'est pas sous-traité. BEST-EFFORT : une ligne en stock
+    insuffisant est ignorée (jamais bloquant pour le démarrage MES)."""
+    if not _est_operation_sous_traitee(operation):
+        return []
+    from apps.stock.services import (
+        ensure_emplacements, get_or_create_emplacement_soustraitant, transfer_stock,
+    )
+
+    of = operation.ordre_fabrication
+    poste = operation.poste_charge
+    principal = ensure_emplacements(of.company)
+    destination = get_or_create_emplacement_soustraitant(
+        of.company, poste.sous_traitant.nom)
+    transferts = []
+    for reservation in of.reservations.filter(consomme=False):
+        try:
+            quantite = int(reservation.quantite)
+        except (TypeError, ValueError):
+            continue
+        if quantite <= 0:
+            continue
+        try:
+            transferts.append(transfer_stock(
+                company=of.company, user=user, produit_id=reservation.produit_id,
+                source_id=principal.id, destination_id=destination.id,
+                quantite=quantite,
+                note=f'Sous-traitance OF-{of.id} — {poste.nom}'))
+        except ValueError:
+            continue
+    return transferts
+
+
+def rapatrier_composants_sous_traitance(operation, user=None):
+    """NTMFG10 — à la clôture d'une opération sous-traitée, rapatrie (best-
+    effort) les composants encore « chez {sous-traitant} » vers le dépôt
+    principal — symétrique de `transferer_composants_sous_traitance`. No-op
+    si le poste n'est pas sous-traité."""
+    if not _est_operation_sous_traitee(operation):
+        return []
+    from apps.stock.services import (
+        ensure_emplacements, get_or_create_emplacement_soustraitant, transfer_stock,
+    )
+
+    of = operation.ordre_fabrication
+    poste = operation.poste_charge
+    principal = ensure_emplacements(of.company)
+    source = get_or_create_emplacement_soustraitant(of.company, poste.sous_traitant.nom)
+    transferts = []
+    for reservation in of.reservations.filter(consomme=False):
+        try:
+            quantite = int(reservation.quantite)
+        except (TypeError, ValueError):
+            continue
+        if quantite <= 0:
+            continue
+        try:
+            transferts.append(transfer_stock(
+                company=of.company, user=user, produit_id=reservation.produit_id,
+                source_id=source.id, destination_id=principal.id,
+                quantite=quantite,
+                note=f'Retour sous-traitance OF-{of.id} — {poste.nom}'))
+        except ValueError:
+            continue
+    return transferts
+
+
+def cout_operation_sous_traitee(operation):
+    """NTMFG10 — coût INTERNE d'une opération sous-traitée : Σ(quantité
+    réservée × coût d'achat courant du composant) + `cout_faconnage`.
+    JAMAIS client-facing (même règle que `Produit.prix_achat`, DC28)."""
+    from apps.stock.services import cout_achat_courant
+
+    of = operation.ordre_fabrication
+    cout_composants = Decimal('0')
+    for reservation in of.reservations.select_related('produit').all():
+        if reservation.produit is None:
+            continue
+        prix = cout_achat_courant(reservation.produit) or Decimal('0')
+        cout_composants += _dec(prix) * _dec(reservation.quantite)
+    return cout_composants + _dec(operation.cout_faconnage)

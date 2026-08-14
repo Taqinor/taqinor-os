@@ -11,7 +11,7 @@ class PosteDeChargeSerializer(serializers.ModelSerializer):
         model = PosteDeCharge
         fields = [
             'id', 'code', 'nom', 'type_poste', 'capacite_heures_jour',
-            'cout_horaire', 'calendrier_travail', 'actif',
+            'cout_horaire', 'calendrier_travail', 'actif', 'sous_traitant',
             'created_at', 'updated_at',
         ]
         read_only_fields = ['id', 'created_at', 'updated_at']
@@ -54,11 +54,11 @@ class OperationOFSerializer(serializers.ModelSerializer):
             'id', 'ordre_fabrication', 'operation_gamme', 'poste_charge',
             'ordre', 'libelle', 'statut', 'date_planifiee', 'demarree_le',
             'terminee_le', 'temps_reel_min', 'quantite_bonne',
-            'quantite_rebut', 'motif_rebut',
+            'quantite_rebut', 'motif_rebut', 'cout_faconnage',
         ]
         read_only_fields = [
             'id', 'statut', 'demarree_le', 'terminee_le', 'temps_reel_min',
-            'quantite_bonne', 'quantite_rebut', 'motif_rebut',
+            'quantite_bonne', 'quantite_rebut', 'motif_rebut', 'cout_faconnage',
         ]
 
 
