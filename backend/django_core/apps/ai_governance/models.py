@@ -97,6 +97,9 @@ class DocumentAiJob(TenantModel):
     #: jamais dans les modèles d'une autre app ; les lectures passent par les
     #: ``selectors``/``services`` de la GED.
     document = models.ForeignKey(
+        # on_delete: le job n'a aucun sens sans sa pièce — il ne porte qu'une
+        # PROPOSITION d'extraction, aucune donnée métier ni comptable. Quand la
+        # pièce disparaît, la proposition disparaît avec elle.
         'ged.Document', on_delete=models.CASCADE, related_name='ai_jobs',
         help_text='Pièce GED traitée (le job meurt avec elle).')
     categorie = models.CharField(

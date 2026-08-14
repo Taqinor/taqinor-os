@@ -74,6 +74,11 @@ ON_DEMAND_ALLOWLIST = {
     # receiver ``ai_governance.receivers``, après commit), jamais périodique —
     # un job n'existe que si quelqu'un a déposé une pièce.
     'ai_governance.traiter_document_ai_job',
+    # NTAI21 — transcription d'un appel commercial : déclenchée À LA DEMANDE au
+    # téléversement de l'enregistrement (``.delay()`` après commit dans
+    # ``conversation_ai.viewsets``), jamais périodique — un appel n'existe que
+    # si quelqu'un a déposé son audio.
+    'conversation_ai.transcrire_appel',
 }
 
 

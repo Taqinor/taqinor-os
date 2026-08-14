@@ -279,6 +279,11 @@ INSTALLED_APPS = [
     # qui PROPOSENT des brouillons (jamais d'écriture métier implicite) et
     # surveillance des modèles. Sans clé, chaque surface dégrade proprement.
     'apps.ai_governance',
+    # Groupe NTAI — conversations commerciales enregistrées : téléversement
+    # d'un appel, transcription asynchrone key-gated (STT) puis analyse du
+    # transcript. App DISTINCTE d'`ai_governance` (sa chaîne de migrations lui
+    # appartient) ; rattachement CRM par FK déclarée en CHAÎNE uniquement.
+    'apps.conversation_ai',
     # Groupe VAO — Veille appels d'offres : le SAS où atterrissent les avis de
     # marché, quelle que soit la porte (portail public, tuyau partenaire,
     # import). App NEUVE et DÉLIBÉRÉMENT DISTINCTE de `apps.ao` : la chaîne de
