@@ -351,7 +351,9 @@ export const DataTable = forwardRef(function DataTable(
        - hideToolbar / hideMobileCards / hidePagination : masquent les chromes
          intégrés quand l'écran fournit les siens (opt-in, défaut = comportement
          historique inchangé). `renderRow` implique hideMobileCards par défaut
-         (une ligne custom ne se replie pas automatiquement en carte).
+         (une ligne custom ne se replie pas automatiquement en carte) — et dans
+         ce cas la TABLE reste visible sous 768 px (cf. § ARC49-FIX plus bas) :
+         supprimer les cartes ne doit jamais vider l'écran sur téléphone.
        - expandedPanels : liste d'identifiants de panneaux dépliables nommés dont
          l'état d'ouverture est suivi indépendamment PAR LIGNE (ex. ['versions',
          'roof']). Déclaratif/documentaire : `renderRow` lit/écrit via l'`api`. */
@@ -781,6 +783,23 @@ export const DataTable = forwardRef(function DataTable(
      groupement lui est incompatible et n'est simplement pas activé si
      `renderRow` est fourni sans `groupBy`, ou l'inverse. */
   const groupModeActive = !!groupBy && !customRow
+
+  /* ---- ARC49-FIX — INVARIANT « jamais d'écran vide sous 768 px » ----
+     Le repli en cartes (`data-dt-cards`) et la table (`data-dt-table`) sont les
+     DEUX seuls rendus possibles des lignes. La table vivait en `hidden
+     dt-desktop:block` de façon INCONDITIONNELLE, alors que les cartes ne sont
+     émises que si `mobileCards` : les écrans `renderRow` / `hideMobileCards` /
+     groupés n'avaient donc NI table NI carte sous 768 px (FactureList et
+     DevisList étaient littéralement vides sur téléphone). Un seul booléen pilote
+     désormais les deux branches : quand les cartes ne sont PAS émises, la table
+     reste visible sur mobile (défilement horizontal dans `data-dt-scroll`, déjà
+     `overflow-auto` ; et pour les écrans qui posent `tableClassName="data-table"`
+     — DevisList/FactureList — la règle CSS `@media (max-width:768px)` de
+     `index.css` replie réellement leurs lignes en cartes via `data-label`).
+     Ne JAMAIS redésolidariser ces deux conditions : c'est exactement ce qui a
+     produit le bug. Gardé par « ARC49-FIX » dans DataTable.test.jsx. */
+  const mobileCards = !(customRow || hideMobileCards || groupModeActive)
+
   const groupedRows = useMemo(
     () => (groupModeActive ? groupRows(allRows, groupBy, accessor) : null),
     [groupModeActive, allRows, groupBy, accessor],
@@ -958,11 +977,18 @@ export const DataTable = forwardRef(function DataTable(
         />
       ) : (
         <>
-          {/* -------- DESKTOP : tableau -------- */}
+          {/* -------- DESKTOP : tableau --------
+             ARC49-FIX — `hidden dt-desktop:block` UNIQUEMENT quand le repli en
+             cartes prend le relais sous 768 px. Sans cartes (renderRow /
+             hideMobileCards / groupBy), la table reste visible sur téléphone,
+             sinon l'écran n'affiche plus rien du tout. */}
           <div
             data-dt-table
             data-pin-shadow-left={scrollLeft > 0 ? 'true' : undefined}
-            className="hidden overflow-hidden rounded-xl border border-border bg-card dt-desktop:block"
+            className={cn(
+              'overflow-hidden rounded-xl border border-border bg-card',
+              mobileCards ? 'hidden dt-desktop:block' : 'block',
+            )}
           >
             <div
               ref={scrollRef}
@@ -1449,13 +1475,22 @@ export const DataTable = forwardRef(function DataTable(
              le reste des champs en libellé/valeur, et un chevron vers le
              détail. L'en-tête de tableau est masqué (la table desktop est en
              `hidden dt-desktop:block`). */}
-          {/* ARC49 — le mode `renderRow` (ou `hideMobileCards`) supprime le
-              repli en cartes : l'écran conserve son unique table `data-table`
-              responsive (CSS) comme aujourd'hui, sans DOM carte dupliqué.
-              NTUX19 — le groupement (desktop uniquement pour ce lot) fait de
-              même : le repli carte non groupé serait incohérent avec la
-              grille groupée au-dessus. */}
-          {!(customRow || hideMobileCards || groupModeActive) && (
+          {/* ARC49 (CORRIGÉ) — le mode `renderRow` (ou `hideMobileCards`, ou le
+              groupement NTUX19) supprime ce repli en cartes : l'écran conserve
+              alors son UNIQUE table, sans DOM carte dupliqué.
+              ATTENTION — l'ancienne rédaction affirmait que « l'écran conserve
+              son unique table `data-table` responsive (CSS) » : c'était FAUX
+              tel que câblé. Les règles `.data-table` mobiles d'`index.css`
+              (`@media (max-width:768px)`, thead masqué + `td::before {
+              content: attr(data-label) }`) ciblent des DESCENDANTS du conteneur
+              `data-dt-table`, qui était lui-même `display:none` sous 768 px de
+              façon inconditionnelle — un ancêtre masqué masque tout, quelles
+              que soient les règles des descendants. Résultat : FactureList et
+              DevisList n'affichaient RIEN sur téléphone. C'est `mobileCards`
+              (défini plus haut, § ARC49-FIX) qui rend la table visible sur
+              mobile dès que ce repli en cartes n'est pas émis — les deux
+              branches DOIVENT rester pilotées par ce seul booléen. */}
+          {mobileCards && (
           <div data-dt-cards className="flex flex-col gap-2 dt-desktop:hidden">
             {loading ? (
               Array.from({ length: 4 }).map((unused, i) => (
