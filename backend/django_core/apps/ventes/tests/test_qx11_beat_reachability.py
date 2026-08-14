@@ -69,6 +69,16 @@ ON_DEMAND_ALLOWLIST = {
     # demande, ``visibilite='directeur'`` (exclu de tout manifeste de dépôt),
     # distribué par URL signée courte. Jamais périodique.
     'ao.produire_rentabilite_xlsx',
+    # NTAI17 — traitement IA d'une pièce GED (classification + extraction) :
+    # déclenché À LA DEMANDE au dépôt du document (``.delay()`` depuis le
+    # receiver ``ai_governance.receivers``, après commit), jamais périodique —
+    # un job n'existe que si quelqu'un a déposé une pièce.
+    'ai_governance.traiter_document_ai_job',
+    # NTAI21 — transcription d'un appel commercial : déclenchée À LA DEMANDE au
+    # téléversement de l'enregistrement (``.delay()`` après commit dans
+    # ``conversation_ai.viewsets``), jamais périodique — un appel n'existe que
+    # si quelqu'un a déposé son audio.
+    'conversation_ai.transcrire_appel',
 }
 
 

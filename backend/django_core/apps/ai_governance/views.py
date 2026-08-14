@@ -154,6 +154,37 @@ class RapportPeriodeView(APIView):
         return Response(resultat)
 
 
+class RechercheGlobaleView(APIView):
+    """NTAI25 — ``POST /api/django/ai/recherche-globale/``.
+
+    Body ``{"question": "quels clients ont un litige ouvert ?"}``. Cherche dans
+    l'index sémantique cross-module (NTAI24, TOUJOURS scopé société), assemble
+    un contexte et fait rédiger une réponse FR qui CITE chaque fiche source
+    sous la forme ``[app.model#id]``.
+
+    Distinct de l'agent NL→SQL (qui interroge des agrégats) : ici on répond sur
+    des FICHES. Garde NTAI4 : toute citation absente des résultats est retirée
+    de la réponse (jamais de lien mort). Sans clé LLM, l'endpoint dégrade sur
+    la recherche par mots-clés — l'utilisateur obtient toujours ses fiches.
+    LECTURE SEULE : rien n'est jamais écrit.
+    """
+
+    permission_classes = [IsAuthenticated, IsAnyRole]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = 'ai_copilote'
+
+    def post(self, request):
+        from .services import recherche_globale
+
+        try:
+            resultat = recherche_globale(
+                company=request.user.company,
+                question=request.data.get('question') or '')
+        except AiCopiloteUnavailable as exc:
+            return _unavailable_response(exc)
+        return Response(resultat)
+
+
 class AssistantConfigView(APIView):
     """NTAI35 — ``POST /api/django/ai/assistant-config/``.
 

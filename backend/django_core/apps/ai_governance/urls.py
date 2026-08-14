@@ -1,8 +1,18 @@
 """Routes du module « ai_governance » — montées sous ``/api/django/ai/``."""
-from django.urls import path
+from django.urls import include, path
+from rest_framework.routers import SimpleRouter
 
 from .views import (AssistantConfigView, CrInterventionView,
-                    DescriptionProduitView, RapportPeriodeView, RedigerView)
+                    DescriptionProduitView, RapportPeriodeView,
+                    RechercheGlobaleView, RedigerView)
+from .viewsets import DocumentAiJobViewSet
+
+# SimpleRouter (et non DefaultRouter) : le préfixe `/api/django/ai/` ne doit
+# pas gagner une vue « api-root » qu'il n'avait pas.
+router = SimpleRouter()
+# NTAI17/NTAI18 — file des traitements IA de documents + revue humaine.
+router.register(r'documents-ai-jobs', DocumentAiJobViewSet,
+                basename='document-ai-job')
 
 urlpatterns = [
     # NTAI35 — assistant de paramétrage (guidage seul + liens profonds).
@@ -19,4 +29,8 @@ urlpatterns = [
     # NTAI36 — brouillon de rapport d'activité périodique (chiffres serveur).
     path('rapport-periode/', RapportPeriodeView.as_view(),
          name='ai-rapport-periode'),
+    # NTAI25 — recherche sémantique GLOBALE avec citations (RAG sur les fiches).
+    path('recherche-globale/', RechercheGlobaleView.as_view(),
+         name='ai-recherche-globale'),
+    path('', include(router.urls)),
 ]
