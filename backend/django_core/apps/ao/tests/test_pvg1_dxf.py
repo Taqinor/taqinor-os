@@ -30,98 +30,36 @@ User = get_user_model()
 
 URL = '/api/django/ao/toitures/dxf/analyser/'
 
-# ── DXF minimal, écrit à la main (R2000/AC1015 : LWPOLYLINE supportée) ─────
-# Un rectangle 10 x 5 sur le calque ENVELOPPE (une LWPOLYLINE fermée, 4
-# sommets), un segment sur le calque OBSTACLE1 (une LINE, 2 sommets).
-# $INSUNITS=6 → mètre (table DXF standard, code de groupe 70).
-_DXF_MINIMAL = """0
-SECTION
-2
-HEADER
-9
-$ACADVER
-1
-AC1015
-9
-$INSUNITS
-70
-6
-0
-ENDSEC
-0
-SECTION
-2
-TABLES
-0
-ENDSEC
-0
-SECTION
-2
-BLOCKS
-0
-ENDSEC
-0
-SECTION
-2
-ENTITIES
-0
-LWPOLYLINE
-5
-100
-8
-ENVELOPPE
-90
-4
-70
-1
-43
-0.0
-10
-0.0
-20
-0.0
-10
-10.0
-20
-0.0
-10
-10.0
-20
-5.0
-10
-0.0
-20
-5.0
-0
-LINE
-5
-101
-8
-OBSTACLE1
-10
-2.0
-20
-2.0
-30
-0.0
-11
-3.0
-21
-2.0
-31
-0.0
-0
-ENDSEC
-0
-EOF
-"""
+# ── DXF minimal GÉNÉRÉ PAR ezdxf lui-même (jamais écrit à la main) ─────────
+# Un DXF R2000 artisanal avait été tenté ici et refusé par le vrai ezdxf
+# (sous-classe ``AcDbPolyline`` manquante sur la LWPOLYLINE) : une fixture
+# fabriquée par la bibliothèque qui la relira est valide par construction.
+# Contenu : un rectangle 10 x 5 sur le calque ENVELOPPE (LWPOLYLINE fermée,
+# 4 sommets), un segment sur le calque OBSTACLE1 (LINE, 2 sommets),
+# $INSUNITS=6 → mètre.
+
+
+def _dxf_minimal() -> bytes:
+    import ezdxf
+
+    doc = ezdxf.new('R2000', setup=False)
+    doc.header['$INSUNITS'] = 6
+    espace = doc.modelspace()
+    espace.add_lwpolyline(
+        [(0.0, 0.0), (10.0, 0.0), (10.0, 5.0), (0.0, 5.0)],
+        close=True, dxfattribs={'layer': 'ENVELOPPE'})
+    espace.add_line((2.0, 2.0, 0.0), (3.0, 2.0, 0.0),
+                    dxfattribs={'layer': 'OBSTACLE1'})
+    flux = io.StringIO()
+    doc.write(flux)
+    return flux.getvalue().encode('utf-8')
 
 
 class AnalyserDxfDirectement(TestCase):
     """Le parsing pur (``dxf.analyser_dxf``), sans HTTP ni base de données."""
 
     def test_deux_calques_avec_leurs_sommets(self):
-        resultat = dxf.analyser_dxf(_DXF_MINIMAL.encode('utf-8'))
+        resultat = dxf.analyser_dxf(_dxf_minimal())
         noms = {c['nom'] for c in resultat['calques']}
         self.assertEqual(noms, {'ENVELOPPE', 'OBSTACLE1'})
 
@@ -136,7 +74,7 @@ class AnalyserDxfDirectement(TestCase):
         self.assertEqual(obstacle['sommets'], [[2.0, 2.0], [3.0, 2.0]])
 
     def test_unite_lue_depuis_insunits(self):
-        resultat = dxf.analyser_dxf(_DXF_MINIMAL.encode('utf-8'))
+        resultat = dxf.analyser_dxf(_dxf_minimal())
         self.assertEqual(resultat['unite'], 'm')
 
     def test_fichier_corrompu_refuse_400_motive_jamais_un_500(self):
@@ -175,7 +113,7 @@ class AnalyserDxfViaLApi(TestCase):
         return self.api.post(URL, {'fichier': fichier}, format='multipart')
 
     def test_dxf_valide_renvoie_les_calques(self):
-        reponse = self._upload(_DXF_MINIMAL.encode('utf-8'))
+        reponse = self._upload(_dxf_minimal())
         self.assertEqual(reponse.status_code, 200, reponse.data)
         noms = {c['nom'] for c in reponse.data['calques']}
         self.assertEqual(noms, {'ENVELOPPE', 'OBSTACLE1'})
@@ -194,7 +132,7 @@ class AnalyserDxfViaLApi(TestCase):
     def test_non_authentifie_refuse(self):
         anonyme = APIClient()
         reponse = anonyme.post(
-            URL, {'fichier': io.BytesIO(_DXF_MINIMAL.encode('utf-8'))},
+            URL, {'fichier': io.BytesIO(_dxf_minimal())},
             format='multipart')
         self.assertIn(reponse.status_code, (401, 403))
 
@@ -203,6 +141,6 @@ class AnalyserDxfViaLApi(TestCase):
         from apps.ao.models import PlanSource
 
         avant = PlanSource.objects.count()
-        reponse = self._upload(_DXF_MINIMAL.encode('utf-8'))
+        reponse = self._upload(_dxf_minimal())
         self.assertEqual(reponse.status_code, 200, reponse.data)
         self.assertEqual(PlanSource.objects.count(), avant)
