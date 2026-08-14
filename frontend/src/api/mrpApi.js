@@ -51,6 +51,10 @@ const mrpApi = {
   getCoutsStandard: (params) => api.get('/mrp/couts-standard/', { params }),
   figerCoutStandard: (data) => api.post('/mrp/couts-standard/figer/', data),
   getAnalyseCouts: (params) => api.get('/mrp/analyse-couts/', { params }),
+
+  // TRS/OEE par poste (NTMFG12)
+  getOeePoste: (posteId, params) => api.get(`/mrp/postes-charge/${posteId}/oee/`, { params }),
+  getOeeTousPostes: (params) => api.get('/mrp/oee-postes/', { params }),
 }
 
 export default mrpApi

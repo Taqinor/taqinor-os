@@ -18,11 +18,42 @@ from .serializers import (
 )
 
 
+def _parse_date_param(request, nom, defaut):
+    """Lit `?<nom>=AAAA-MM-JJ` sur la requête, ou `defaut` si absent/invalide
+    (NTMFG7/NTMFG12 — jamais d'exception 500 sur une date mal formée)."""
+    brut = request.query_params.get(nom)
+    if not brut:
+        return defaut
+    try:
+        return datetime.strptime(brut, '%Y-%m-%d').date()
+    except ValueError:
+        return defaut
+
+
 class PosteDeChargeViewSet(CompanyScopedModelViewSet):
     """NTMFG1 — CRUD des postes de charge (company-scopé)."""
     queryset = PosteDeCharge.objects.all()
     serializer_class = PosteDeChargeSerializer
     filterset_fields = ['type_poste', 'actif']
+
+    @action(detail=True, methods=['get'], url_path='oee')
+    def oee(self, request, pk=None):
+        """NTMFG12 — TRS/OEE du poste sur `?debut=&fin=` (AAAA-MM-JJ, défaut
+        les 28 derniers jours) + tendance hebdomadaire."""
+        from django.utils import timezone as dj_timezone
+
+        from .selectors import oee_poste, oee_tendance_hebdomadaire
+
+        poste = self.get_object()
+        aujourd_hui = dj_timezone.localdate()
+        debut = _parse_date_param(request, 'debut', aujourd_hui - timedelta(days=27))
+        fin = _parse_date_param(request, 'fin', aujourd_hui)
+        resultat = oee_poste(request.user.company, poste.id, debut, fin)
+        if resultat is None:
+            return Response({'detail': 'Poste introuvable.'}, status=404)
+        resultat['tendance_hebdomadaire'] = oee_tendance_hebdomadaire(
+            request.user.company, poste.id, debut, fin)
+        return Response(resultat)
 
 
 class GammeViewSet(CompanyScopedModelViewSet):
@@ -251,18 +282,9 @@ def charge_postes_view(request):
 
     from .selectors import charge_postes
 
-    def _parse(nom, defaut):
-        brut = request.query_params.get(nom)
-        if not brut:
-            return defaut
-        try:
-            return datetime.strptime(brut, '%Y-%m-%d').date()
-        except ValueError:
-            return defaut
-
     aujourd_hui = dj_timezone.localdate()
-    debut = _parse('debut', aujourd_hui)
-    fin = _parse('fin', aujourd_hui + timedelta(days=13))
+    debut = _parse_date_param(request, 'debut', aujourd_hui)
+    fin = _parse_date_param(request, 'fin', aujourd_hui + timedelta(days=13))
     return Response(charge_postes(request.user.company, debut, fin))
 
 
@@ -344,3 +366,17 @@ def analyse_couts_view(request):
         date_debut=request.query_params.get('date_debut'),
         date_fin=request.query_params.get('date_fin'))
     return Response(resultats)
+
+
+@api_view(['GET'])
+def oee_tous_postes_view(request):
+    """NTMFG12 — ``GET /api/django/mrp/oee-postes/?debut=&fin=`` : TRS de
+    tous les postes actifs (comparaison inter-postes), triés décroissant."""
+    from django.utils import timezone as dj_timezone
+
+    from .selectors import oee_tous_postes
+
+    aujourd_hui = dj_timezone.localdate()
+    debut = _parse_date_param(request, 'debut', aujourd_hui - timedelta(days=27))
+    fin = _parse_date_param(request, 'fin', aujourd_hui)
+    return Response(oee_tous_postes(request.user.company, debut, fin))

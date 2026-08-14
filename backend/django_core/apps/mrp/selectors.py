@@ -330,3 +330,143 @@ def analyse_couts(company, *, produit_id=None, date_debut=None, date_fin=None):
         })
     resultats.sort(key=lambda r: r['produit_nom'].lower())
     return resultats
+
+
+# ── NTMFG12 — TRS/OEE par poste de charge ─────────────────────────────────
+
+def _jours_ouvres_fenetre(debut, fin):
+    """Nombre de jours ouvrés (lun-ven) entre `debut` et `fin` inclus."""
+    if fin < debut:
+        return 0
+    return sum(
+        1 for i in range((fin - debut).days + 1)
+        if (debut + timedelta(days=i)).weekday() < 5) or 0
+
+
+def _operations_terminees_poste(poste, debut, fin):
+    from .models import OperationOF
+
+    return (OperationOF.objects
+            .filter(
+                poste_charge=poste, statut='terminee',
+                terminee_le__date__gte=debut, terminee_le__date__lte=fin)
+            .select_related('operation_gamme', 'ordre_fabrication'))
+
+
+def _oee_composants(operations):
+    """Calcule les 3 facteurs OEE bruts (avant produit) sur un jeu
+    d'opérations déjà filtré. Renvoie un dict — jamais de division par zéro
+    (dénominateur nul => facteur 0, `donnees=False`)."""
+    temps_actif = Decimal('0')
+    temps_standard_theorique = Decimal('0')
+    quantite_bonne = Decimal('0')
+    quantite_rebut = Decimal('0')
+    for op in operations:
+        temps_actif += _dec(op.temps_reel_min)
+        quantite_bonne += _dec(op.quantite_bonne)
+        quantite_rebut += _dec(op.quantite_rebut)
+        if op.operation_gamme_id:
+            temps_standard_theorique += temps_operation_min(
+                op.operation_gamme, op.quantite_bonne)
+
+    return {
+        'temps_actif_min': temps_actif,
+        'temps_standard_theorique_min': temps_standard_theorique,
+        'quantite_bonne': quantite_bonne,
+        'quantite_rebut': quantite_rebut,
+    }
+
+
+def oee_poste(company, poste_id, debut, fin):
+    """NTMFG12 — TRS/OEE (disponibilité × performance × qualité) d'un poste
+    sur [`debut`, `fin`] (dates incluses) :
+      * disponibilité = temps actif (NTMFG8, pauses exclues) ÷ temps planifié
+        de capacité (`capacite_heures_jour` × jours ouvrés de la fenêtre) ;
+      * performance = temps standard théorique (gamme × quantité BONNE) ÷
+        temps réel ;
+      * qualité = quantité bonne ÷ (bonne + rebut).
+    Renvoie `None` si le poste est introuvable pour cette société. Sans
+    aucune opération terminée sur la fenêtre, les 3 facteurs et le TRS
+    valent 0 (`donnees=False`, jamais de division par zéro)."""
+    from .models import PosteDeCharge
+
+    poste = PosteDeCharge.objects.filter(id=poste_id, company=company).first()
+    if poste is None:
+        return None
+
+    operations = list(_operations_terminees_poste(poste, debut, fin))
+    comp = _oee_composants(operations)
+
+    jours_ouvres = _jours_ouvres_fenetre(debut, fin)
+    capacite_min = _dec(poste.capacite_heures_jour) * 60 * jours_ouvres
+
+    disponibilite = (
+        min(comp['temps_actif_min'] / capacite_min, Decimal('1'))
+        if capacite_min > 0 else Decimal('0'))
+    performance = (
+        min(comp['temps_standard_theorique_min'] / comp['temps_actif_min'], Decimal('2'))
+        if comp['temps_actif_min'] > 0 else Decimal('0'))
+    total_qte = comp['quantite_bonne'] + comp['quantite_rebut']
+    qualite = (comp['quantite_bonne'] / total_qte) if total_qte > 0 else Decimal('0')
+    trs = disponibilite * performance * qualite
+
+    return {
+        'poste_id': poste.id,
+        'poste_nom': poste.nom,
+        'debut': debut.isoformat(),
+        'fin': fin.isoformat(),
+        'donnees': bool(operations),
+        'nb_operations': len(operations),
+        'disponibilite_pct': str((disponibilite * 100).quantize(Decimal('0.1'))),
+        'performance_pct': str((performance * 100).quantize(Decimal('0.1'))),
+        'qualite_pct': str((qualite * 100).quantize(Decimal('0.1'))),
+        'trs_pct': str((trs * 100).quantize(Decimal('0.1'))),
+    }
+
+
+def oee_tendance_hebdomadaire(company, poste_id, debut, fin):
+    """NTMFG12 — TRS du poste PAR SEMAINE ISO sur [`debut`, `fin`] (tendance).
+    Une semaine sans opération terminée n'apparaît pas dans le résultat."""
+    from .models import PosteDeCharge
+
+    poste = PosteDeCharge.objects.filter(id=poste_id, company=company).first()
+    if poste is None:
+        return []
+
+    operations = list(_operations_terminees_poste(poste, debut, fin))
+    par_semaine = {}
+    for op in operations:
+        annee, semaine, _ = op.terminee_le.isocalendar()
+        par_semaine.setdefault((annee, semaine), []).append(op)
+
+    resultats = []
+    for (annee, semaine), ops in sorted(par_semaine.items()):
+        comp = _oee_composants(ops)
+        capacite_min = _dec(poste.capacite_heures_jour) * 60 * 5  # 1 semaine ouvrée.
+        disponibilite = (
+            min(comp['temps_actif_min'] / capacite_min, Decimal('1'))
+            if capacite_min > 0 else Decimal('0'))
+        performance = (
+            min(comp['temps_standard_theorique_min'] / comp['temps_actif_min'], Decimal('2'))
+            if comp['temps_actif_min'] > 0 else Decimal('0'))
+        total_qte = comp['quantite_bonne'] + comp['quantite_rebut']
+        qualite = (comp['quantite_bonne'] / total_qte) if total_qte > 0 else Decimal('0')
+        trs = disponibilite * performance * qualite
+        resultats.append({
+            'annee': annee,
+            'semaine': semaine,
+            'trs_pct': str((trs * 100).quantize(Decimal('0.1'))),
+        })
+    return resultats
+
+
+def oee_tous_postes(company, debut, fin):
+    """NTMFG12 — TRS de TOUS les postes actifs de la société sur la fenêtre
+    (comparaison inter-postes), triés par TRS décroissant."""
+    from .models import PosteDeCharge
+
+    resultats = []
+    for poste in PosteDeCharge.objects.filter(company=company, actif=True):
+        resultats.append(oee_poste(company, poste.id, debut, fin))
+    resultats.sort(key=lambda r: Decimal(r['trs_pct']), reverse=True)
+    return resultats
