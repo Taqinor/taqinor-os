@@ -12,6 +12,7 @@ import {
 import crmApi from '../../api/crmApi'
 import stockApi from '../../api/stockApi'
 import ventesApi from '../../api/ventesApi'
+import cpqApi from '../../api/cpqApi'
 import { resilientMutation } from '../../lib/resilientMutation'
 import { useStaleGuard } from '../../hooks/useStaleGuard'
 import {
@@ -115,6 +116,77 @@ function ApprobationPanel({ devisId }) {
           </div>
         </div>
       )}
+    </div>
+  )
+}
+
+// NTCPQ28 — Wizard « Escalade d'approbation » CÔTÉ DEMANDEUR (distinct de
+// ApprobationPanel ci-dessus, qui est l'écran de l'APPROBATEUR). Quand
+// envoyer/generer-pdf est bloqué par une étape NTCPQ7 en attente, ce
+// panneau guide l'auteur du devis : étape en attente, approbateur assigné,
+// bouton « Relancer » (notification, throttlée serveur à 1/24h). Silencieux
+// tant qu'aucune étape n'est en attente.
+function EscaladeApprobationPanel({ devisId }) {
+  const [etapes, setEtapes] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [busy, setBusy] = useState(false)
+  const [dernierResultat, setDernierResultat] = useState(null)
+
+  const reload = useCallback(() => {
+    setLoading(true)
+    ventesApi.approbationDevis(devisId)
+      .then((r) => setEtapes(r.data || []))
+      .catch(() => setEtapes([]))
+      .finally(() => setLoading(false))
+  }, [devisId])
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- rechargement au changement de devis
+  useEffect(() => { reload() }, [reload])
+
+  const enAttente = etapes.find((e) => e.statut === 'en_attente')
+
+  const relancer = async () => {
+    setBusy(true)
+    setDernierResultat(null)
+    try {
+      const { data } = await cpqApi.relancerApprobation(devisId)
+      setDernierResultat(data)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  if (loading || !enAttente) return null
+
+  return (
+    <div
+      className="border-t border-border pt-4"
+      data-testid="cpq-escalade-approbation"
+    >
+      <p className="mb-2 text-sm font-semibold text-foreground">
+        Envoi bloqué — approbation de remise en attente
+      </p>
+      <p className="mb-3 text-sm text-muted-foreground">
+        Étape {enAttente.niveau} · {enAttente.niveau_approbation}
+        {enAttente.approbateur
+          ? ` · assignée à ${enAttente.approbateur}`
+          : ' · aucun approbateur assigné pour le moment'}
+      </p>
+      <div className="flex items-center gap-2">
+        <Button
+          type="button"
+          variant="ghost"
+          onClick={relancer}
+          loading={busy}
+          disabled={!enAttente.approbateur}
+        >
+          Relancer l'approbateur
+        </Button>
+        {dernierResultat && (
+          <span className="text-sm text-muted-foreground">
+            {dernierResultat.detail}
+          </span>
+        )}
+      </div>
     </div>
   )
 }
@@ -724,6 +796,7 @@ export default function DevisForm({ devis = null, onClose, onSaved }) {
           )}
 
           {isEdit && devis?.id && <ConfigurationBadge devisId={devis.id} />}
+          {isEdit && devis?.id && <EscaladeApprobationPanel devisId={devis.id} />}
           {isEdit && devis?.id && <ApprobationPanel devisId={devis.id} />}
 
           <FormActions sticky={false}>

@@ -12,7 +12,7 @@ from .views import (
     SuggestionsProduitView, FeuilleConfigurationView, MargeSousSeuilView,
     RapportConformiteView, ParametresCPQViewSet, RapportApprobationsView,
     ComparaisonVariantesView, ImportPrixContractuelsCsvView,
-    CatalogueReglesCompatibiliteView,
+    CatalogueReglesCompatibiliteView, RelancerApprobationView,
 )
 
 router = DefaultRouter()
@@ -69,6 +69,10 @@ urlpatterns = [
     path('devis/<int:pk>/comparaison-variantes/',
          ComparaisonVariantesView.as_view(),
          name='cpq-comparaison-variantes'),
+    # NTCPQ28 — relance manuelle (côté demandeur) d'une approbation en attente.
+    path('devis/<int:pk>/relancer-approbation/',
+         RelancerApprobationView.as_view(),
+         name='cpq-relancer-approbation'),
     path('configurateur/demarrer/', ConfigurateurDemarrerView.as_view(),
          name='cpq-configurateur-demarrer'),
     path('configurateur/<uuid:token>/repondre/',

@@ -596,6 +596,40 @@ class ComparaisonVariantesView(APIView):
         return reponse
 
 
+class RelancerApprobationView(APIView):
+    """NTCPQ28 — POST ``cpq/devis/{id}/relancer-approbation/``.
+
+    Écran guidé CÔTÉ DEMANDEUR (jamais l'écran d'approbation NTCPQ8 lui-même,
+    réservé à l'approbateur) : quand ``envoyer``/``generer-pdf`` est bloqué
+    par NTCPQ7, le demandeur relance manuellement l'approbateur assigné
+    (notification, throttlée à 1/24h — même marqueur que la relance
+    automatique NTCPQ33). Ouvert à tout rôle interne (le demandeur n'est
+    pas forcément Responsable/Admin)."""
+    permission_classes = [IsAnyRole]
+
+    def post(self, request, pk):
+        from apps.ventes.models import Devis
+        devis = Devis.objects.filter(
+            pk=pk, company=request.user.company).first()
+        if devis is None:
+            return Response({'detail': 'Devis introuvable.'},
+                            status=status.HTTP_404_NOT_FOUND)
+        etape, envoyee = services.relancer_etape_approbation(
+            devis, user=request.user)
+        detail = 'Relance envoyée.'
+        if not envoyee:
+            detail = 'Déjà relancée dans les dernières 24h.'
+        return Response({
+            'etape_id': etape.id,
+            'niveau': etape.niveau,
+            'approbateur': (
+                getattr(etape.approbateur, 'username', None)
+                if etape.approbateur_id else None),
+            'relance_envoyee': envoyee,
+            'detail': detail,
+        })
+
+
 class SuggestionsProduitView(APIView):
     """NTCPQ19 — GET ``cpq/suggestions/?produit_id=``.
 

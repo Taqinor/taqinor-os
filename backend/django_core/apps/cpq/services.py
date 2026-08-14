@@ -831,6 +831,53 @@ def rejeter_etape_devis(devis, *, user, motif=''):
     return etape
 
 
+def relancer_etape_approbation(devis, *, user=None):
+    """NTCPQ28 — Relance MANUELLE (côté demandeur) de la première étape
+    d'approbation ``en_attente`` du devis : notifie l'approbateur assigné
+    via ``apps.notifications`` (même événement que la relance automatique
+    NTCPQ33, ``EventType.APPROVAL_REMINDER``).
+
+    Throttlée à 1 relance/24h par étape — RÉUTILISE le marqueur
+    ``EtapeApprobationDevis.derniere_relance_le`` (NTCPQ33) : cliquer
+    « Relancer » deux fois dans la même journée n'envoie qu'une seule
+    notification, exactement comme le job planifié. Renvoie
+    ``(etape, relance_envoyee: bool)`` ; lève ``ValidationError`` s'il n'y a
+    aucune étape en attente."""
+    from datetime import timedelta
+    from django.utils import timezone
+    from rest_framework.exceptions import ValidationError
+
+    etape = EtapeApprobationDevis.objects.filter(
+        devis_id=devis.id,
+        statut=EtapeApprobationDevis.Statut.EN_ATTENTE,
+    ).order_by('niveau', 'id').first()
+    if etape is None:
+        raise ValidationError({'detail': 'Aucune étape en attente.'})
+    if etape.approbateur_id is None:
+        raise ValidationError({'detail': (
+            "Cette étape n'a pas encore d'approbateur assigné.")})
+
+    now = timezone.now()
+    if (etape.derniere_relance_le is not None
+            and (now - etape.derniere_relance_le) < timedelta(hours=24)):
+        return etape, False
+
+    from apps.notifications.models import EventType
+    from apps.notifications.services import notify
+    devis_ref = getattr(devis, 'reference', devis.id)
+    notify(
+        etape.approbateur, EventType.APPROVAL_REMINDER,
+        f'Approbation en attente — devis {devis_ref}',
+        body=(f"L'étape {etape.niveau} d'approbation de remise du devis "
+              f"{devis_ref} attend toujours votre décision "
+              f"(relance manuelle{f' — {user.username}' if user else ''})."),
+        link=f'/ventes/devis?devis={devis.id}',
+        company=devis.company)
+    etape.derniere_relance_le = now
+    etape.save(update_fields=['derniere_relance_le'])
+    return etape, True
+
+
 def _ligne_depuis_action(action, devis, company):
     """NTCPQ10 — Traduit une action de règle résolue en LigneDevis (ou
     application de bundle). Ignore les actions purement consultatives."""
