@@ -215,6 +215,51 @@ class OrdreFabricationViewSet(CompanyScopedModelViewSet):
         of = self.get_object()
         return Response(disponibilite_par_ligne_of(of))
 
+    @action(detail=True, methods=['post'], url_path='cloture-assistee',
+            permission_classes=[IsResponsableOrAdmin])
+    def cloture_assistee(self, request, pk=None):
+        """NTMFG28 — clôture assistée : saisie GROUPÉE quantité bonne/rebut
+        (+ motif) par opération encore non terminée, qui appelle EN SÉQUENCE
+        les MÊMES actions `terminer` que le terminal atelier (NTMFG8/
+        `services.terminer_operation`) — jamais un chemin de clôture
+        parallèle, juste une saisie groupée sur les mêmes endpoints. Réservé
+        responsable/admin. Corps : ``{"operations": [{"id": <operation_id>,
+        "quantite_bonne": x, "quantite_rebut": y, "motif_rebut": "...",
+        "cout_faconnage": z}, ...]}``. Une opération déjà terminée ou
+        inconnue de cet OF est IGNORÉE (jamais rejouée) ; une opération dont
+        la saisie échoue (ex. rebut sans motif) est reportée dans
+        `erreurs` SANS arrêter le traitement des autres lignes."""
+        from .services import terminer_operation
+
+        of = self.get_object()
+        saisies = request.data.get('operations') or []
+        terminees = []
+        erreurs = []
+        for saisie in saisies:
+            operation_id = saisie.get('id')
+            operation = of.operations.filter(
+                id=operation_id).exclude(statut='terminee').first()
+            if operation is None:
+                continue
+            try:
+                terminer_operation(
+                    operation,
+                    quantite_bonne=saisie.get('quantite_bonne', 0),
+                    quantite_rebut=saisie.get('quantite_rebut', 0),
+                    motif_rebut=saisie.get('motif_rebut', ''),
+                    cout_faconnage=saisie.get('cout_faconnage', 0),
+                    user=request.user)
+                terminees.append(operation_id)
+            except ValueError as exc:
+                erreurs.append({'id': operation_id, 'detail': str(exc)})
+
+        of.refresh_from_db()
+        return Response({
+            'ordre_fabrication': self.get_serializer(of).data,
+            'operations_terminees': terminees,
+            'erreurs': erreurs,
+        })
+
     @action(detail=True, methods=['get'], url_path='genealogie',
             permission_classes=[ScopedPermission])
     def genealogie(self, request, pk=None):

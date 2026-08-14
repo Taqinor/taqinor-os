@@ -4,7 +4,8 @@
 // vit sous `/mrp/*`, appelé « Atelier MRP » dans le menu pour éviter toute
 // confusion.
 import { useEffect, useMemo, useState } from 'react'
-import { Factory, Printer } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
+import { ClipboardCheck, Factory, Printer } from 'lucide-react'
 import mrpApi from '../../api/mrpApi'
 import {
   Card, CardContent, Badge, Spinner, EmptyState, Button,
@@ -47,6 +48,7 @@ function OfCard({ of, selected, onSelect }) {
 }
 
 function OfDetail({ ofId }) {
+  const navigate = useNavigate()
   const [of, setOf] = useState(null)
   const [travelerBusy, setTravelerBusy] = useState(false)
 
@@ -112,9 +114,17 @@ function OfDetail({ ofId }) {
           </Button>
         )}
         {(of.statut === 'planifie' || of.statut === 'lance') && (
-          <Button className="mt-3" onClick={() => mrpApi.cloturerOrdreFabrication(of.id)}>
-            Clôturer
-          </Button>
+          <>
+            <Button className="mt-3" onClick={() => mrpApi.cloturerOrdreFabrication(of.id)}>
+              Clôturer
+            </Button>
+            {/* NTMFG28 — saisie qualité groupée (responsable/admin) plutôt
+                qu'opération par opération sur le terminal atelier (NTMFG8). */}
+            <Button className="mt-3 ml-2" variant="outline"
+                    onClick={() => navigate(`/mrp/ordres-fabrication/${of.id}/cloture-assistee`)}>
+              <ClipboardCheck size={14} /> Clôture assistée
+            </Button>
+          </>
         )}
         <GenealogieOFPanel ofId={of.id} />
       </CardContent>

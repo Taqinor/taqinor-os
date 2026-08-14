@@ -27,6 +27,8 @@ const OeePage = lazy(() => import('../../pages/mrp/OeePage'))
 const AssistantCreationOF = lazy(() => import('../../pages/mrp/AssistantCreationOF'))
 // NTMFG27 — assistant guidé de création de gamme opératoire.
 const AssistantCreationGamme = lazy(() => import('../../pages/mrp/AssistantCreationGamme'))
+// NTMFG28 — assistant de clôture d'OF avec saisie qualité groupée.
+const AssistantClotureOF = lazy(() => import('../../pages/mrp/AssistantClotureOF'))
 
 // 'normal' couvre le rôle Technicien de base (pas de rôle fin dédié dans le
 // vocabulaire existant, cf. `installations/module.config.jsx`) — le terminal
@@ -70,6 +72,10 @@ const config = {
     { path: '/mrp/ordres-fabrication', component: OrdresFabricationPage, roles: ROLES },
     { path: '/mrp/assistant-creation-of', component: AssistantCreationOF, roles: ROLES },
     { path: '/mrp/assistant-nouvelle-gamme', component: AssistantCreationGamme, roles: ROLES },
+    // NTMFG28 — réservé responsable/admin CÔTÉ BACKEND (IsResponsableOrAdmin
+    // sur `cloture-assistee/`) ; ROLES_ADMIN ici évite même d'AFFICHER un
+    // écran qu'un rôle limité ne pourrait de toute façon pas valider.
+    { path: '/mrp/ordres-fabrication/:ofId/cloture-assistee', component: AssistantClotureOF, roles: ROLES_ADMIN },
     { path: '/mrp/gantt', component: GanttAtelier, roles: ROLES },
     { path: '/mrp/terminal', component: TerminalAtelier, roles: ROLES },
     { path: '/mrp/oee', component: OeePage, roles: ROLES },

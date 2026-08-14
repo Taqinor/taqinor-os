@@ -27,6 +27,9 @@ const mrpApi = {
   updateOrdreFabrication: (id, data) => api.patch(`/mrp/ordres-fabrication/${id}/`, data),
   confirmerOrdreFabrication: (id) => api.post(`/mrp/ordres-fabrication/${id}/confirmer/`),
   cloturerOrdreFabrication: (id) => api.post(`/mrp/ordres-fabrication/${id}/cloturer/`),
+  // NTMFG28 — clôture assistée (saisie qualité groupée), réservée responsable/admin.
+  clotureAssisteeOF: (id, data) =>
+    api.post(`/mrp/ordres-fabrication/${id}/cloture-assistee/`, data),
   annulerOrdreFabrication: (id, motif) =>
     api.post(`/mrp/ordres-fabrication/${id}/annuler/`, { motif }),
   getDispoComposants: (id) => api.get(`/mrp/ordres-fabrication/${id}/dispo-composants/`),
