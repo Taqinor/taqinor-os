@@ -1306,7 +1306,10 @@ def quantite_disponible_hors_quarantaine(company, produit):
 # bordereau structuré, exportable/importable à la main, qui décrit exactement
 # ce qu'un futur mapping EDI aura besoin de connaître. Aucun partenaire EDI
 # n'est connecté, aucun appel réseau n'est fait.
-ASN_VERSION = 'TAQINOR-ASN-1'
+# SCA29 — jamais la marque de l'editeur ici : ce jeton part dans un fichier
+# remis a un partenaire 3PL/client, et l'ERP est white-label (le branding
+# vient de TenantTheme/CompanyProfile, jamais d'une chaine en dur).
+ASN_VERSION = 'ASN-1'
 
 
 def exporter_asn(unite):

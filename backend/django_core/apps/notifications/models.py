@@ -269,6 +269,12 @@ class EventType(models.TextChoices):
     # par société, `apps.scm.models.ParametresSCM.sop_actif`).
     SCM_CYCLE_SOP_OUVERT = (
         'scm_cycle_sop_ouvert', 'Cycle S&OP ouvert automatiquement')
+    # NTRET32 — clôture de SessionCaisse (apps.pos) dont l'écart (espèces ou
+    # TPE) dépasse le seuil configuré (Paramètres POS) : notifie les
+    # managers/gérants (resolve_recipients). Seuil vide/0 = désactivé,
+    # jamais émis.
+    CAISSE_ECART_ANORMAL = (
+        'caisse_ecart_anormal', 'Écart de caisse anormal')
 
 
 class Channel(models.TextChoices):

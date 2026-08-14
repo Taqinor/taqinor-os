@@ -52,7 +52,7 @@ class Migration(migrations.Migration):
                 'verbose_name': "Échéance d'entretien de poste",
                 'verbose_name_plural': "Échéances d'entretien de poste",
                 'ordering': ['plan_id', 'date_prevue'],
-                'indexes': [models.Index(fields=['plan', 'statut'], name='mrp_echeanceent_plan_statut_idx')],
+                'indexes': [models.Index(fields=['plan', 'statut'], name='mrp_echeance_plan_statut_idx')],
             },
         ),
     ]

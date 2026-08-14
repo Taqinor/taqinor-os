@@ -4,12 +4,13 @@ Règle de modularité (CLAUDE.md) : AUCUN import direct des modèles
 ``ventes``/``stock``/``compta`` — uniquement leurs ``services``/``selectors``
 ou des FK chaîne. Tout le code métier POS reste dans cette app.
 """
+from datetime import timedelta
 from decimal import ROUND_HALF_UP, Decimal
 
 from django.db import transaction
 from django.utils import timezone
 
-from .models import CommandeRetrait, SessionCaisse, VenteComptoir
+from .models import CommandeRetrait, LigneVenteComptoir, SessionCaisse, VenteComptoir
 
 MODE_ESPECES = 'especes'
 # NTRET15 — mode de paiement carte cadeau (apps.promotions.CarteCadeau).
@@ -25,6 +26,21 @@ class VenteComptoirError(Exception):
 
 def _q2(value):
     return Decimal(value or 0).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+
+
+# ── NTRET25 — Arrondi caisse (espèces uniquement) ───────────────────────────
+
+def arrondir_especes(montant, pas):
+    """NTRET25 — arrondit ``montant`` (Decimal) au multiple de ``pas`` le
+    plus proche (ex. pas=0.05 → arrondit au 5 centimes le plus proche). PURE
+    — aucun accès base, testable isolément. ``pas`` nul/vide renvoie
+    ``montant`` inchangé (garde défensive, jamais une division par zéro)."""
+    montant = Decimal(str(montant or 0))
+    pas = Decimal(str(pas or 0))
+    if pas <= 0:
+        return _q2(montant)
+    unites = (montant / pas).quantize(Decimal('1'), rounding=ROUND_HALF_UP)
+    return _q2(unites * pas)
 
 
 def _discount_threshold_ok(company, remise, *, approuve, user):
@@ -79,9 +95,19 @@ def valider_vente(*, vente, paiements, user):
                 'dépasse le seuil autorisé sans approbation.')
 
     total_ttc = vente.total_ttc
+    total_ttc_q = _q2(total_ttc)
     total_paiements = sum((_q2(p.get('montant')) for p in paiements), Decimal('0'))
     if total_paiements <= 0:
         raise VenteComptoirError('Le montant réglé doit être positif.')
+    # NTRET24 — paiement fractionné multi-modes : la SOMME des paiements doit
+    # couvrir le total dû (un excédent réglé en espèces est légitime — c'est
+    # la monnaie rendue, cf. `pos.js::calculerRendu` côté écran) ; un solde
+    # restant dû (règlement insuffisant, tous modes confondus) refuse la
+    # validation plutôt que de créer une facture partiellement soldée.
+    if total_paiements < total_ttc_q:
+        raise VenteComptoirError(
+            f'Montant réglé ({total_paiements}) insuffisant — il manque '
+            f'{_q2(total_ttc_q - total_paiements)} MAD.')
 
     a_du_cash = any(
         (p.get('mode') or '').strip().lower() == MODE_ESPECES for p in paiements)
@@ -91,6 +117,29 @@ def valider_vente(*, vente, paiements, user):
             'espèces.')
     if a_du_cash and vente.session_caisse.statut != SessionCaisse.Statut.OUVERTE:
         raise VenteComptoirError('La session de caisse est clôturée.')
+
+    # (NTRET25) — arrondi caisse : calculé sur le MONTANT DÛ en espèces (total
+    # − paiements non-espèces), AVANT calcul du rendu — jamais sur les
+    # paiements carte/virement. Tracé sur `vente.ecart_arrondi_especes`
+    # (ligne distincte du ticket), jamais fondu dans le prix d'un produit.
+    # Désactivé par défaut, ou aucun montant dû en espèces → None (comportement
+    # historique inchangé).
+    ecart_arrondi_especes = None
+    if a_du_cash:
+        from apps.parametres.models_pos import ParametresPos
+        parametres_pos = ParametresPos.get(vente.company)
+        if parametres_pos.arrondi_caisse_actif:
+            total_non_especes = sum(
+                (_q2(p.get('montant')) for p in paiements
+                 if (p.get('mode') or '').strip().lower() != MODE_ESPECES),
+                Decimal('0'))
+            du_especes = total_ttc_q - total_non_especes
+            if du_especes > 0:
+                arrondi = arrondir_especes(
+                    du_especes, parametres_pos.arrondi_caisse_pas)
+                ecart = arrondi - du_especes
+                if ecart != 0:
+                    ecart_arrondi_especes = ecart
 
     # (NTRET15) — pré-vol : valide chaque carte cadeau AVANT toute écriture
     # (même style que le pré-vol espèces/session ci-dessus). Un code
@@ -236,8 +285,10 @@ def valider_vente(*, vente, paiements, user):
     vente.statut = VenteComptoir.Statut.VALIDEE
     vente.date_validation = timezone.now()
     vente.caissier = vente.caissier or user
+    vente.ecart_arrondi_especes = ecart_arrondi_especes
     vente.save(update_fields=[
-        'facture', 'statut', 'date_validation', 'caissier'])
+        'facture', 'statut', 'date_validation', 'caissier',
+        'ecart_arrondi_especes'])
     return vente
 
 
@@ -249,14 +300,19 @@ class SessionCaisseError(Exception):
 
 @transaction.atomic
 def ouvrir_session(*, company, caisse_comptable, caissier, fond_ouverture,
-                   user=None):
+                   user=None, boutique=None):
     """Ouvre une session de caisse comptoir (XPOS4).
 
     Refuse d'ouvrir une deuxième session tant qu'une session est déjà ouverte
     pour la même caisse comptable. Journalise l'ouverture via ``apps.audit``.
-    """
+    ``boutique`` (NTRET29, optionnel) rattache la session à une
+    ``parametres.BoutiquePos`` — permet de résoudre la grille tarifaire par
+    emplacement ; absente = comportement historique inchangé (prix
+    catalogue)."""
     if caisse_comptable.company_id != company.id:
         raise SessionCaisseError('Caisse comptable inconnue.')
+    if boutique is not None and boutique.company_id != company.id:
+        raise SessionCaisseError('Boutique inconnue.')
     deja_ouverte = SessionCaisse.objects.filter(
         company=company, caisse_comptable=caisse_comptable,
         statut=SessionCaisse.Statut.OUVERTE).exists()
@@ -269,6 +325,7 @@ def ouvrir_session(*, company, caisse_comptable, caissier, fond_ouverture,
         caissier=caissier,
         fond_ouverture=Decimal(fond_ouverture or 0),
         statut=SessionCaisse.Statut.OUVERTE,
+        boutique=boutique,
     )
     session.full_clean()
     session.save()
@@ -414,7 +471,52 @@ def cloturer_session(*, session, montant_compte, montant_tpe_compte=None,
     recorder.record(
         'update', instance=session, company=session.company,
         user=user or session.caissier, detail=detail)
+
+    _notifier_ecart_anormal(
+        session, ecart_especes=cloture.ecart,
+        ecart_tpe=session.ecart_tpe if montant_tpe_compte is not None else None)
     return session
+
+
+# ── NTRET32 — Alerte fondateur/gérant sur écart de caisse anormal ──────────
+
+def _notifier_ecart_anormal(session, *, ecart_especes, ecart_tpe=None):
+    """NTRET32 — alerte PROACTIVE (best-effort) au gérant/directeur quand
+    l'écart de clôture (espèces OU TPE) dépasse le seuil configuré
+    (Paramètres POS, ``seuil_alerte_ecart_caisse``). Seuil NULL/0 = désactivé
+    — jamais émise, comportement actuel inchangé. Destinataires résolus via
+    ``apps.notifications.services.resolve_recipients`` (règles de routage si
+    configurées, sinon les managers actifs de la société — comportement
+    historique du reste de l'app). Best-effort strict : une erreur ici ne
+    remet JAMAIS en cause la clôture déjà actée."""
+    try:
+        from apps.parametres.models_pos import ParametresPos
+        seuil = ParametresPos.get(session.company).seuil_alerte_ecart_caisse
+        if not seuil:
+            return
+        depasse_especes = abs(ecart_especes or Decimal('0')) > seuil
+        depasse_tpe = ecart_tpe is not None and abs(ecart_tpe) > seuil
+        if not (depasse_especes or depasse_tpe):
+            return
+
+        from apps.notifications.models import EventType
+        from apps.notifications.services import notify, resolve_recipients
+        titre = f'Écart de caisse anormal — session #{session.pk}'
+        details = [f'Écart espèces : {ecart_especes} MAD']
+        if ecart_tpe is not None:
+            details.append(f'Écart TPE : {ecart_tpe} MAD')
+        corps = ' — '.join(details) + ' (rapport Z : /pos/session)'
+        for destinataire in resolve_recipients(
+                session.company, EventType.CAISSE_ECART_ANORMAL):
+            notify(
+                destinataire, EventType.CAISSE_ECART_ANORMAL, titre,
+                body=corps, link='/pos/session', company=session.company,
+                reason='manager')
+    except Exception:
+        import logging
+        logging.getLogger(__name__).warning(
+            'NTRET32: alerte écart de caisse anormale échouée pour la '
+            'session #%s', session.pk)
 
 
 # ── XPOS6 — Encaisser un devis/une facture existants au comptoir ───────────
@@ -569,6 +671,122 @@ def remettre_commande(*, commande, code_saisi, user):
     commande.date_retrait = timezone.now()
     commande.save(update_fields=['statut', 'date_retrait'])
     return commande
+
+
+# ── NTRET23 — Click & Collect : expiration auto-libérée ─────────────────────
+
+def poser_expiration_reservation(commande):
+    """NTRET23 — pose ``date_expiration_reservation`` sur une commande retrait
+    fraîchement créée, d'après le délai configuré en Paramètres POS (NTRET8,
+    ``ParametresPos.delai_expiration_click_collect_jours``). Délai NULL/0 =
+    comportement historique inchangé — aucune expiration n'est jamais posée,
+    cette commande ne sera donc jamais libérée automatiquement."""
+    from apps.parametres.models_pos import ParametresPos
+    delai = ParametresPos.get(commande.company).delai_expiration_click_collect_jours
+    if not delai:
+        return commande
+    commande.date_expiration_reservation = timezone.now() + timedelta(days=delai)
+    commande.save(update_fields=['date_expiration_reservation'])
+    return commande
+
+
+def _notifier_reservation_expiree(commande):
+    """Notifie le client que sa réservation a expiré (best-effort, même
+    patron que ``_notifier_commande_prete`` — jamais bloquant)."""
+    import logging
+    logger = logging.getLogger(__name__)
+    client = commande.client
+    message = (
+        f'Votre réservation {commande.reference} a expiré faute de retrait '
+        'et a été annulée.')
+    phone = getattr(client, 'telephone', '') if client else ''
+    email = getattr(client, 'email', '') if client else ''
+    try:
+        if phone:
+            import urllib.parse
+            digits = ''.join(c for c in phone if c.isdigit())
+            if digits:
+                wa_url = f'https://wa.me/{digits}?text={urllib.parse.quote(message)}'
+                logger.info(
+                    'NTRET23: réservation %s expirée, lien WhatsApp %s',
+                    commande.reference, wa_url)
+                return
+        if email:
+            from django.core.mail import send_mail
+            from django.conf import settings
+            send_mail(
+                f'Réservation {commande.reference} expirée',
+                message,
+                getattr(settings, 'DEFAULT_FROM_EMAIL', None),
+                [email],
+                fail_silently=True,
+            )
+    except Exception:
+        logger.warning(
+            'NTRET23: notification « réservation expirée » échouée pour %s',
+            commande.reference)
+
+
+@transaction.atomic
+def liberer_reservation_expiree(commande, *, user=None):
+    """NTRET23 — libère UNE réservation Click & Collect expirée : annule la
+    commande et, si le stock avait déjà été sorti à la préparation (statut
+    PRET, XPOS15), le RÉ-INCRÉMENTE via ``stock.services`` (jamais fait pour
+    une commande encore À_PRÉPARER — son stock n'a jamais bougé). Idempotent
+    par construction : n'agit QUE sur A_PREPARER/PRET — une commande déjà
+    ANNULEE/RETIREE n'est jamais retouchée, un re-run est donc un no-op sur
+    elle (aucun double retour de stock)."""
+    if commande.statut not in (
+            CommandeRetrait.Statut.A_PREPARER, CommandeRetrait.Statut.PRET):
+        return commande
+
+    if commande.statut == CommandeRetrait.Statut.PRET:
+        from apps.stock import services as stock_services
+        for ligne in commande.lignes.all():
+            produit = ligne.produit
+            produit.refresh_from_db()
+            avant = produit.quantite_stock
+            apres = avant + int(ligne.quantite)
+            stock_services.record_stock_movement(
+                company=commande.company,
+                produit=produit,
+                type_mouvement=stock_services.mouvement_type_entree(),
+                quantite=ligne.quantite,
+                quantite_avant=avant,
+                quantite_apres=apres,
+                reference=commande.reference,
+                note=f'Réservation expirée — retour stock {commande.reference}',
+                created_by=user,
+            )
+
+    commande.statut = CommandeRetrait.Statut.ANNULE
+    commande.save(update_fields=['statut'])
+    _notifier_reservation_expiree(commande)
+    return commande
+
+
+def liberer_reservations_expirees(*, company=None, maintenant=None):
+    """NTRET23 — balaie les réservations Click & Collect dont l'expiration
+    est dépassée (toutes sociétés, ou UNE société si ``company`` fourni) et
+    les libère une par une. Idempotente au niveau de l'appel : ne sélectionne
+    que A_PREPARER/PRET expirées — un re-run immédiat ne retrouve plus rien à
+    faire (déjà ANNULE). Renvoie le nombre de réservations libérées — point
+    d'entrée de la commande de gestion ``liberer_reservations_expirees``
+    (Celery beat)."""
+    maintenant = maintenant or timezone.now()
+    qs = CommandeRetrait.objects.filter(
+        date_expiration_reservation__isnull=False,
+        date_expiration_reservation__lte=maintenant,
+        statut__in=[
+            CommandeRetrait.Statut.A_PREPARER, CommandeRetrait.Statut.PRET],
+    )
+    if company is not None:
+        qs = qs.filter(company=company)
+    count = 0
+    for commande in qs:
+        liberer_reservation_expiree(commande)
+        count += 1
+    return count
 
 
 # ── NTRET3 — Multi-caissiers avec PIN de session ────────────────────────────
@@ -922,3 +1140,76 @@ def emettre_carte_cadeau_comptoir(*, company, montant, paiement, user, client,
     except CarteCadeauError as exc:
         raise CarteCadeauPosError(str(exc))
     return carte, facture
+
+
+# ── NTRET28 — Kits/bundles vendus comme un seul article ─────────────────────
+# RÉUTILISE le moteur de kits/nomenclatures EXISTANT
+# (``stock.KitProduit``/``KitComposant``/``services.exploser_kit_par_id`` —
+# FG66/DC36, déjà le point d'entrée cross-app documenté pour `ventes`) plutôt
+# que de dupliquer un second système de composition dans `apps/pos` (même
+# principe que la garde fidélité de CLAUDE.md : ne jamais reconstruire un
+# sous-système déjà livré et en service). Vendre un kit au comptoir explose
+# donc ses composants en autant de ``LigneVenteComptoir`` réelles — la vente
+# décrémente ENSUITE le stock de CHAQUE composant via les rails normaux de
+# ``valider_vente`` (jamais le stock d'un « kit », qui n'en a pas).
+
+class KitPosError(Exception):
+    """Erreur métier lors de l'ajout d'un kit au panier comptoir (NTRET28)."""
+
+
+@transaction.atomic
+def ajouter_kit_a_vente(*, vente, kit_id, quantite_kit=1, user, forcer=False,
+                        motif_force=''):
+    """NTRET28 — Ajoute le kit ``kit_id`` (``stock.KitProduit``) au panier de
+    ``vente`` (BROUILLON) : une ``LigneVenteComptoir`` par composant, au
+    prix/TVA réels du ``stock.Produit`` composant (jamais un prix de kit —
+    DC36, le kit ne stocke aucun prix propre). Un composant en rupture
+    refuse l'ajout, SAUF ``forcer=True`` avec un ``motif_force`` obligatoire
+    (override admin journalisé via ``apps.audit`` — même patron que
+    ``remettre_marchandise_override``, NTRET5). Renvoie la liste des lignes
+    créées."""
+    if vente.statut != VenteComptoir.Statut.BROUILLON:
+        raise KitPosError('Vente déjà validée.')
+
+    from apps.stock.services import KitCycleError, exploser_kit_par_id
+    try:
+        lignes_kit = exploser_kit_par_id(vente.company, kit_id, quantite_kit)
+    except (KitCycleError, ValueError) as exc:
+        raise KitPosError(str(exc))
+    if lignes_kit is None:
+        raise KitPosError('Kit introuvable.')
+    if not lignes_kit:
+        raise KitPosError('Ce kit ne contient aucun composant.')
+
+    ruptures = [
+        ligne for ligne in lignes_kit
+        if Decimal(str(ligne['quantite'])) > Decimal(str(ligne.get('disponible') or 0))
+    ]
+    if ruptures and not forcer:
+        noms = ', '.join(sorted(ligne['designation'] for ligne in ruptures))
+        raise KitPosError(f'Composant(s) en rupture de stock : {noms}.')
+    if ruptures and forcer and not (motif_force or '').strip():
+        raise KitPosError(
+            'Un motif est requis pour forcer une vente avec composant en rupture.')
+
+    from apps.stock.selectors import get_produit_scoped
+    creees = []
+    for ligne in lignes_kit:
+        produit = get_produit_scoped(vente.company, ligne['produit_id'])
+        if produit is None:
+            continue
+        creees.append(LigneVenteComptoir.objects.create(
+            vente=vente, produit=produit, designation=ligne['designation'],
+            quantite=ligne['quantite'],
+            prix_unitaire_ttc=ligne['prix_vente_unitaire'],
+            taux_tva=ligne.get('tva'),
+        ))
+
+    if ruptures and forcer:
+        from apps.audit import recorder
+        recorder.record(
+            'update', instance=vente, company=vente.company, user=user,
+            detail=(
+                'Override admin — kit ajouté malgré composant(s) en rupture '
+                f'de stock. Motif : {motif_force}'))
+    return creees

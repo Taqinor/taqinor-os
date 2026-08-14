@@ -477,7 +477,7 @@ class EcheanceEntretienPoste(models.Model):
         ordering = ['plan_id', 'date_prevue']
         indexes = [
             models.Index(fields=['plan', 'statut'],
-                         name='mrp_echeanceent_plan_statut_idx'),
+                         name='mrp_echeance_plan_statut_idx'),
         ]
 
     def __str__(self):

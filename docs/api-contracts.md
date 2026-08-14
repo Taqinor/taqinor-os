@@ -562,6 +562,14 @@
     actual_kwh:inconnu, compensation_mad:inconnu, guaranteed_kwh:inconnu, has_warranty:booleen, shortfall_kwh:inconnu, within_tolerance:inconnu, year:inconnu
 - frontend/src/api/monitoringApi.js :: syncNow -> /api/django/monitoring/configs/<>/sync-now
     imported:inconnu, ok:booleen, provider:inconnu, ratio_pct:inconnu, ticket:inconnu, underperforming:inconnu
+- frontend/src/api/mrpApi.js :: clotureAssisteeOF -> /api/django/mrp/ordres-fabrication/<>/cloture-assistee
+    erreurs:inconnu, operations_terminees:inconnu, ordre_fabrication:inconnu
+- frontend/src/api/mrpApi.js :: getGenealogieOF -> /api/django/mrp/ordres-fabrication/<>/genealogie
+    amont:inconnu, aval:inconnu, of_id:inconnu, produit_id:inconnu
+- frontend/src/api/mrpApi.js :: getTableauBordProduction -> /api/django/mrp/tableau-bord
+    charge_moyenne_pct:texte, of_en_retard:inconnu, postes_en_alerte_maintenance:inconnu, trs_moyen_pct:texte
+- frontend/src/api/mrpApi.js :: simulerCharge -> /api/django/mrp/simuler-charge
+    lignes:inconnu, poste_goulot:inconnu, retard_jours:inconnu, tenable:inconnu
 - frontend/src/api/notificationsApi.js :: accuserLectureAnnonce -> /api/django/notifications/annonces/<>/accuser-lecture
     lu:booleen
 - frontend/src/api/notificationsApi.js :: attentionSummary -> /api/django/notifications/attention-summary
@@ -660,6 +668,10 @@
     facture:inconnu, id:inconnu, mode:inconnu, montant:texte
 - frontend/src/api/posApi.js :: getDashboard -> /api/django/pos/ventes/dashboard
     nb_ventes:inconnu, panier_moyen:texte, par_caissier:inconnu, par_categorie:inconnu, par_jour:inconnu, par_mode_paiement:inconnu, par_produit:inconnu, par_session:inconnu, taux_retour_pct:texte, total_ttc:texte
+- frontend/src/api/posApi.js :: getPanierCourant -> /api/django/pos/sessions/<>/panier-courant
+    panier:inconnu, updated_at:inconnu
+- frontend/src/api/posApi.js :: pushPanierCourant -> /api/django/pos/sessions/<>/panier-courant
+    panier:inconnu, updated_at:inconnu
 - frontend/src/api/posApi.js :: searchClients -> /api/django/crm/clients/search
     results:inconnu
 - frontend/src/api/posApi.js :: ticketShareLink -> /api/django/pos/ventes/<>/ticket-share-link
@@ -830,12 +842,24 @@
     suivi:booleen
 - frontend/src/api/scmApi.js :: creerBrouillonsBcfReappro -> /api/django/scm/tableau-bord-reappro/creer-bcf
     bons_crees:inconnu
+- frontend/src/api/scmApi.js :: creerPolitiquesEnLot -> /api/django/scm/politiques-stock/creer-en-lot
+    nb_politiques:nombre, politiques:inconnu, produit_ids:texte, service_level_pct:texte
+- frontend/src/api/scmApi.js :: detecterAnomaliesDemande -> /api/django/scm/anomalies-demande/detecter
+    nb_flags:nombre
 - frontend/src/api/scmApi.js :: impactFinancierCycleSop -> /api/django/scm/cycles-sop/<>/impact-financier
     alerte_ecart:inconnu, ca_forecast_ht:texte, ca_previsionnel_ht:texte, cycle_id:inconnu, detail:texte, ecart_pct:inconnu, lignes:inconnu, periode:inconnu, seuil_alerte_pct:inconnu
+- frontend/src/api/scmApi.js :: majParametresSop -> /api/django/scm/parametres-sop
+    animateur_sop:inconnu, animateur_sop_nom:inconnu, sop_actif:inconnu
+- frontend/src/api/scmApi.js :: parametresSop -> /api/django/scm/parametres-sop
+    animateur_sop:inconnu, animateur_sop_nom:inconnu, sop_actif:inconnu
+- frontend/src/api/scmApi.js :: precisionPrevisions -> /api/django/scm/precision-previsions
+    mape_global_pct:inconnu, nb_mois_couverts:nombre, par_produit:inconnu, produit:texte
 - frontend/src/api/scmApi.js :: recalculerClassificationAbc -> /api/django/scm/classification-abc/recalculer
     classement:inconnu, nb_produits_classes:nombre
 - frontend/src/api/scmApi.js :: recalculerPolitiquesStock -> /api/django/scm/politiques-stock/recalculer
     nb_politiques:nombre, politiques:inconnu
+- frontend/src/api/scmApi.js :: tableauBordExecutif -> /api/django/scm/tableau-bord
+    mape_global_pct:inconnu, otif_pondere_pct:inconnu, taux_service_pct:inconnu, valeur_stock_par_classe_abc:inconnu
 - frontend/src/api/stockApi.js :: bulkProduits -> /api/django/stock/produits/bulk
     detail:texte, ok:booleen, skipped:inconnu, total:nombre, updated:inconnu
 - frontend/src/api/stockApi.js :: envoyerEmailBcf -> /api/django/stock/bons-commande-fournisseur/<>/envoyer-email
@@ -2691,7 +2715,7 @@
 - frontend/src/api/mrpApi.js :: createOperationGamme -> /api/django/mrp/operations-gamme  [OperationGammeSerializer]
     champs: gamme, id, libelle, ordre, poste_charge, temps_min_par_lot, temps_prepa_min, temps_unitaire_min
 - frontend/src/api/mrpApi.js :: createOrdreFabrication -> /api/django/mrp/ordres-fabrication  [OrdreFabricationSerializer]
-    champs: created_at, date_debut_planifiee, date_fin_planifiee, gamme, id, kit_ordre_assemblage, operations, priorite, produit, produit_nom, quantite, reservations, statut, stock_mouvemente, updated_at
+    champs: created_at, date_debut_planifiee, date_fin_planifiee, est_prototype, gamme, id, kit_ordre_assemblage, operations, priorite, produit, produit_nom, quantite, reservations, statut, stock_mouvemente, updated_at
     statut ∈ {annule, brouillon, lance, planifie, termine}
 - frontend/src/api/mrpApi.js :: createPosteCharge -> /api/django/mrp/postes-charge  [PosteDeChargeSerializer]
     champs: actif, calendrier_travail, capacite_heures_jour, code, cout_horaire, created_at, id, nom, sous_traitant, type_poste, updated_at
@@ -2714,10 +2738,10 @@
     motif_rebut ∈ {autre, casse, defaut, erreur}
     statut ∈ {a_faire, en_cours, en_pause, terminee}
 - frontend/src/api/mrpApi.js :: getOrdreFabrication -> /api/django/mrp/ordres-fabrication/<>  [OrdreFabricationSerializer]
-    champs: created_at, date_debut_planifiee, date_fin_planifiee, gamme, id, kit_ordre_assemblage, operations, priorite, produit, produit_nom, quantite, reservations, statut, stock_mouvemente, updated_at
+    champs: created_at, date_debut_planifiee, date_fin_planifiee, est_prototype, gamme, id, kit_ordre_assemblage, operations, priorite, produit, produit_nom, quantite, reservations, statut, stock_mouvemente, updated_at
     statut ∈ {annule, brouillon, lance, planifie, termine}
 - frontend/src/api/mrpApi.js :: getOrdresFabrication -> /api/django/mrp/ordres-fabrication  [OrdreFabricationSerializer]
-    champs: created_at, date_debut_planifiee, date_fin_planifiee, gamme, id, kit_ordre_assemblage, operations, priorite, produit, produit_nom, quantite, reservations, statut, stock_mouvemente, updated_at
+    champs: created_at, date_debut_planifiee, date_fin_planifiee, est_prototype, gamme, id, kit_ordre_assemblage, operations, priorite, produit, produit_nom, quantite, reservations, statut, stock_mouvemente, updated_at
     statut ∈ {annule, brouillon, lance, planifie, termine}
 - frontend/src/api/mrpApi.js :: getPostesCharge -> /api/django/mrp/postes-charge  [PosteDeChargeSerializer]
     champs: actif, calendrier_travail, capacite_heures_jour, code, cout_horaire, created_at, id, nom, sous_traitant, type_poste, updated_at
@@ -2727,7 +2751,7 @@
 - frontend/src/api/mrpApi.js :: updateOperationGamme -> /api/django/mrp/operations-gamme/<>  [OperationGammeSerializer]
     champs: gamme, id, libelle, ordre, poste_charge, temps_min_par_lot, temps_prepa_min, temps_unitaire_min
 - frontend/src/api/mrpApi.js :: updateOrdreFabrication -> /api/django/mrp/ordres-fabrication/<>  [OrdreFabricationSerializer]
-    champs: created_at, date_debut_planifiee, date_fin_planifiee, gamme, id, kit_ordre_assemblage, operations, priorite, produit, produit_nom, quantite, reservations, statut, stock_mouvemente, updated_at
+    champs: created_at, date_debut_planifiee, date_fin_planifiee, est_prototype, gamme, id, kit_ordre_assemblage, operations, priorite, produit, produit_nom, quantite, reservations, statut, stock_mouvemente, updated_at
     statut ∈ {annule, brouillon, lance, planifie, termine}
 - frontend/src/api/mrpApi.js :: updatePosteCharge -> /api/django/mrp/postes-charge/<>  [PosteDeChargeSerializer]
     champs: actif, calendrier_travail, capacite_heures_jour, code, cout_horaire, created_at, id, nom, sous_traitant, type_poste, updated_at
@@ -2748,7 +2772,7 @@
     champs: created_at, date, id, nom, recurrent_annuel
 - frontend/src/api/notificationsApi.js :: deleteRoutingRule -> /api/django/notifications/routing-rules/<>  [NotificationRoutingRuleSerializer]
     champs: created_at, enabled, event_label, event_type, id, target_role, target_role_label, target_user
-    event_type ∈ {annonce_published, annonce_read_reminder, approval_decided, approval_escalated, approval_reminder, approval_requested, bcf_cancelled, bcf_late, bcf_relance_proposee, bon_commande_cree, chantier_assigne, chantier_due, chat_mention, chat_message, client_contact_request, contrat_signe, da_decidee, da_soumise_stale, devis_accepted, devis_expired, devis_nudge_due, devis_opened, devis_reply, devis_superior_contact_requested, digest, education_reinscription_relance, facture_overdue, facture_payee, feedback_digest, feedback_starred, flotte_budget_depassement, flotte_dtc_critique, flotte_zone_alerte, ged_signature_expiration_proche, hot_lead_unread, idea_realisee, idea_received, idea_retenue, idea_vote, impersonation_requested, incident_critical, innovation_campagne, lead_assigned, lead_callback_requested, lead_callback_sla_breach, lead_new, maintenance_due, monitoring_rapport, nps_promoteur, paie_rib_divergence, paie_run_pret, post_social_rappel, product_announcement, projet_retard, projet_statut_change, sav_activite_due, sav_equipement_remplace, sav_ticket_breaching, sav_ticket_followed_update, sav_ticket_opened, sav_ticket_resolu, sav_visites_auto_generees, security_alert, security_change, snooze_reveil, stock_expiration_soon, stock_low, supplier_doc_expiring, veille_ao_alarme_silence, veille_ao_nouveaux_avis, warranty_expiring}
+    event_type ∈ {annonce_published, annonce_read_reminder, approval_decided, approval_escalated, approval_reminder, approval_requested, bcf_cancelled, bcf_late, bcf_relance_proposee, bon_commande_cree, caisse_ecart_anormal, chantier_assigne, chantier_due, chat_mention, chat_message, client_contact_request, contrat_signe, da_decidee, da_soumise_stale, devis_accepted, devis_expired, devis_nudge_due, devis_opened, devis_reply, devis_superior_contact_requested, digest, education_reinscription_relance, facture_overdue, facture_payee, feedback_digest, feedback_starred, flotte_budget_depassement, flotte_dtc_critique, flotte_zone_alerte, ged_signature_expiration_proche, hot_lead_unread, idea_realisee, idea_received, idea_retenue, idea_vote, impersonation_requested, incident_critical, innovation_campagne, lead_assigned, lead_callback_requested, lead_callback_sla_breach, lead_new, maintenance_due, monitoring_rapport, nps_promoteur, paie_rib_divergence, paie_run_pret, post_social_rappel, product_announcement, projet_retard, projet_statut_change, sav_activite_due, sav_equipement_remplace, sav_ticket_breaching, sav_ticket_followed_update, sav_ticket_opened, sav_ticket_resolu, sav_visites_auto_generees, scm_cycle_sop_ouvert, scm_previsions_generees, security_alert, security_change, snooze_reveil, stock_expiration_soon, stock_low, supplier_doc_expiring, transport_etape_retard, veille_ao_alarme_silence, veille_ao_nouveaux_avis, warranty_expiring}
 - frontend/src/api/notificationsApi.js :: deleteWhatsAppTemplate -> /api/django/notifications/whatsapp-templates/<>  [WhatsAppTemplateSerializer]
     champs: active, body_fr, categorie, categorie_label, created_at, groupe, id, language, motif_rejet, name, statut_approbation, statut_approbation_label, updated_at
     categorie ∈ {marketing, utility}
@@ -2760,14 +2784,14 @@
     champs: created_at, date, id, nom, recurrent_annuel
 - frontend/src/api/notificationsApi.js :: getRoutingRules -> /api/django/notifications/routing-rules  [NotificationRoutingRuleSerializer]
     champs: created_at, enabled, event_label, event_type, id, target_role, target_role_label, target_user
-    event_type ∈ {annonce_published, annonce_read_reminder, approval_decided, approval_escalated, approval_reminder, approval_requested, bcf_cancelled, bcf_late, bcf_relance_proposee, bon_commande_cree, chantier_assigne, chantier_due, chat_mention, chat_message, client_contact_request, contrat_signe, da_decidee, da_soumise_stale, devis_accepted, devis_expired, devis_nudge_due, devis_opened, devis_reply, devis_superior_contact_requested, digest, education_reinscription_relance, facture_overdue, facture_payee, feedback_digest, feedback_starred, flotte_budget_depassement, flotte_dtc_critique, flotte_zone_alerte, ged_signature_expiration_proche, hot_lead_unread, idea_realisee, idea_received, idea_retenue, idea_vote, impersonation_requested, incident_critical, innovation_campagne, lead_assigned, lead_callback_requested, lead_callback_sla_breach, lead_new, maintenance_due, monitoring_rapport, nps_promoteur, paie_rib_divergence, paie_run_pret, post_social_rappel, product_announcement, projet_retard, projet_statut_change, sav_activite_due, sav_equipement_remplace, sav_ticket_breaching, sav_ticket_followed_update, sav_ticket_opened, sav_ticket_resolu, sav_visites_auto_generees, security_alert, security_change, snooze_reveil, stock_expiration_soon, stock_low, supplier_doc_expiring, veille_ao_alarme_silence, veille_ao_nouveaux_avis, warranty_expiring}
+    event_type ∈ {annonce_published, annonce_read_reminder, approval_decided, approval_escalated, approval_reminder, approval_requested, bcf_cancelled, bcf_late, bcf_relance_proposee, bon_commande_cree, caisse_ecart_anormal, chantier_assigne, chantier_due, chat_mention, chat_message, client_contact_request, contrat_signe, da_decidee, da_soumise_stale, devis_accepted, devis_expired, devis_nudge_due, devis_opened, devis_reply, devis_superior_contact_requested, digest, education_reinscription_relance, facture_overdue, facture_payee, feedback_digest, feedback_starred, flotte_budget_depassement, flotte_dtc_critique, flotte_zone_alerte, ged_signature_expiration_proche, hot_lead_unread, idea_realisee, idea_received, idea_retenue, idea_vote, impersonation_requested, incident_critical, innovation_campagne, lead_assigned, lead_callback_requested, lead_callback_sla_breach, lead_new, maintenance_due, monitoring_rapport, nps_promoteur, paie_rib_divergence, paie_run_pret, post_social_rappel, product_announcement, projet_retard, projet_statut_change, sav_activite_due, sav_equipement_remplace, sav_ticket_breaching, sav_ticket_followed_update, sav_ticket_opened, sav_ticket_resolu, sav_visites_auto_generees, scm_cycle_sop_ouvert, scm_previsions_generees, security_alert, security_change, snooze_reveil, stock_expiration_soon, stock_low, supplier_doc_expiring, transport_etape_retard, veille_ao_alarme_silence, veille_ao_nouveaux_avis, warranty_expiring}
 - frontend/src/api/notificationsApi.js :: getWhatsAppTemplates -> /api/django/notifications/whatsapp-templates  [WhatsAppTemplateSerializer]
     champs: active, body_fr, categorie, categorie_label, created_at, groupe, id, language, motif_rejet, name, statut_approbation, statut_approbation_label, updated_at
     categorie ∈ {marketing, utility}
     statut_approbation ∈ {approuve, brouillon, rejete, soumis}
 - frontend/src/api/notificationsApi.js :: list -> /api/django/notifications/notifications  [NotificationSerializer]
     champs: body, category, created_at, event_label, event_type, id, is_action, link, read, read_at, reason, reason_label, severity, title
-    event_type ∈ {annonce_published, annonce_read_reminder, approval_decided, approval_escalated, approval_reminder, approval_requested, bcf_cancelled, bcf_late, bcf_relance_proposee, bon_commande_cree, chantier_assigne, chantier_due, chat_mention, chat_message, client_contact_request, contrat_signe, da_decidee, da_soumise_stale, devis_accepted, devis_expired, devis_nudge_due, devis_opened, devis_reply, devis_superior_contact_requested, digest, education_reinscription_relance, facture_overdue, facture_payee, feedback_digest, feedback_starred, flotte_budget_depassement, flotte_dtc_critique, flotte_zone_alerte, ged_signature_expiration_proche, hot_lead_unread, idea_realisee, idea_received, idea_retenue, idea_vote, impersonation_requested, incident_critical, innovation_campagne, lead_assigned, lead_callback_requested, lead_callback_sla_breach, lead_new, maintenance_due, monitoring_rapport, nps_promoteur, paie_rib_divergence, paie_run_pret, post_social_rappel, product_announcement, projet_retard, projet_statut_change, sav_activite_due, sav_equipement_remplace, sav_ticket_breaching, sav_ticket_followed_update, sav_ticket_opened, sav_ticket_resolu, sav_visites_auto_generees, security_alert, security_change, snooze_reveil, stock_expiration_soon, stock_low, supplier_doc_expiring, veille_ao_alarme_silence, veille_ao_nouveaux_avis, warranty_expiring}
+    event_type ∈ {annonce_published, annonce_read_reminder, approval_decided, approval_escalated, approval_reminder, approval_requested, bcf_cancelled, bcf_late, bcf_relance_proposee, bon_commande_cree, caisse_ecart_anormal, chantier_assigne, chantier_due, chat_mention, chat_message, client_contact_request, contrat_signe, da_decidee, da_soumise_stale, devis_accepted, devis_expired, devis_nudge_due, devis_opened, devis_reply, devis_superior_contact_requested, digest, education_reinscription_relance, facture_overdue, facture_payee, feedback_digest, feedback_starred, flotte_budget_depassement, flotte_dtc_critique, flotte_zone_alerte, ged_signature_expiration_proche, hot_lead_unread, idea_realisee, idea_received, idea_retenue, idea_vote, impersonation_requested, incident_critical, innovation_campagne, lead_assigned, lead_callback_requested, lead_callback_sla_breach, lead_new, maintenance_due, monitoring_rapport, nps_promoteur, paie_rib_divergence, paie_run_pret, post_social_rappel, product_announcement, projet_retard, projet_statut_change, sav_activite_due, sav_equipement_remplace, sav_ticket_breaching, sav_ticket_followed_update, sav_ticket_opened, sav_ticket_resolu, sav_visites_auto_generees, scm_cycle_sop_ouvert, scm_previsions_generees, security_alert, security_change, snooze_reveil, stock_expiration_soon, stock_low, supplier_doc_expiring, transport_etape_retard, veille_ao_alarme_silence, veille_ao_nouveaux_avis, warranty_expiring}
     reason ∈ {assigne_a_vous, manager, regle_de_routage, vous_suivez}
 - frontend/src/api/outillageApi.js :: createOutil -> /api/django/outillage/outils  [OutillageSerializer]
     champs: a_calibrer, asset_tag, categorie, date_achat, date_creation, date_derniere_calibration, date_modification, date_prochaine_calibration, emplacement, emplacement_nom, id, intervalle_calibration_mois, nom, note, numero_serie, statut, statut_display
@@ -2888,7 +2912,7 @@
     champs: client, client_nom, code_retrait, created_by, date_creation, date_pret, date_retrait, devis, id, lignes, reference, statut, vente_comptoir
     statut ∈ {a_preparer, annule, pret, retire}
 - frontend/src/api/posApi.js :: createVente -> /api/django/pos/ventes  [VenteComptoirSerializer]
-    champs: caissier, client, client_nom, created_by, date_creation, date_validation, facture, id, lignes, marchandise_remise, montant_arrhes, note, reference, session_caisse, statut, taux_tva, total_ht, total_ttc, uuid_client
+    champs: caissier, client, client_nom, created_by, date_creation, date_validation, ecart_arrondi_especes, facture, id, lignes, marchandise_remise, montant_arrhes, note, reference, session_caisse, statut, taux_tva, total_ht, total_ttc, uuid_client
     statut ∈ {annulee, brouillon, en_attente_solde, validee}
 - frontend/src/api/posApi.js :: getConfigMateriel -> /api/django/pos/config-materiel  [ConfigMaterielPOSSerializer]
     champs: id, imprimante_active, imprimante_ip, imprimante_port
@@ -2899,13 +2923,13 @@
     champs: client, client_nom, code_retrait, created_by, date_creation, date_pret, date_retrait, devis, id, lignes, reference, statut, vente_comptoir
     statut ∈ {a_preparer, annule, pret, retire}
 - frontend/src/api/posApi.js :: getSessions -> /api/django/pos/sessions  [SessionCaisseSerializer]
-    champs: caisse_comptable, caissier, cloture_caisse_comptable, commentaire, date_cloture, date_ouverture, ecart_tpe, fond_ouverture, id, montant_compte_cloture, montant_tpe_compte, statut
+    champs: boutique, caisse_comptable, caissier, cloture_caisse_comptable, commentaire, date_cloture, date_ouverture, ecart_tpe, fond_ouverture, id, montant_compte_cloture, montant_tpe_compte, statut
     statut ∈ {cloturee, ouverte}
 - frontend/src/api/posApi.js :: getVente -> /api/django/pos/ventes/<>  [VenteComptoirSerializer]
-    champs: caissier, client, client_nom, created_by, date_creation, date_validation, facture, id, lignes, marchandise_remise, montant_arrhes, note, reference, session_caisse, statut, taux_tva, total_ht, total_ttc, uuid_client
+    champs: caissier, client, client_nom, created_by, date_creation, date_validation, ecart_arrondi_especes, facture, id, lignes, marchandise_remise, montant_arrhes, note, reference, session_caisse, statut, taux_tva, total_ht, total_ttc, uuid_client
     statut ∈ {annulee, brouillon, en_attente_solde, validee}
 - frontend/src/api/posApi.js :: ouvrirSession -> /api/django/pos/sessions  [SessionCaisseSerializer]
-    champs: caisse_comptable, caissier, cloture_caisse_comptable, commentaire, date_cloture, date_ouverture, ecart_tpe, fond_ouverture, id, montant_compte_cloture, montant_tpe_compte, statut
+    champs: boutique, caisse_comptable, caissier, cloture_caisse_comptable, commentaire, date_cloture, date_ouverture, ecart_tpe, fond_ouverture, id, montant_compte_cloture, montant_tpe_compte, statut
     statut ∈ {cloturee, ouverte}
 - frontend/src/api/posApi.js :: updateConfigMateriel -> /api/django/pos/config-materiel/<>  [ConfigMaterielPOSSerializer]
     champs: id, imprimante_active, imprimante_ip, imprimante_port
@@ -2922,7 +2946,7 @@
     champs: cellules, created_at, id, liens, partage, titre, updated_at
 - frontend/src/api/reportingApi.js :: createKpiAlerte -> /api/django/reporting/kpi-alertes  [KpiAlerteSerializer]
     champs: actif, created_at, deja_notifie, derniere_evaluation_le, derniere_valeur, destinataire_role, destinataires_utilisateurs, id, kpi, kpi_label, nom, operateur, operateur_label, seuil, updated_at
-    kpi ∈ {dso, encours_echu_total, valeur_stock_totale}
+    kpi ∈ {delai_moyen_dedouanement, dso, encours_echu_total, valeur_stock_totale}
     operateur ∈ {inf, inf_egal, sup, sup_egal}
 - frontend/src/api/reportingApi.js :: createRapportDefinition -> /api/django/reporting/rapport-definitions  [RapportDefinitionSerializer]
     champs: created_at, dataset, id, owner_username, partage, partage_label, pivot_spec, spec, titre, updated_at
@@ -2937,7 +2961,7 @@
     champs: cards, created_at, id, menu_tier, updated_at, user
 - frontend/src/api/reportingApi.js :: deleteKpiAlerte -> /api/django/reporting/kpi-alertes/<>  [KpiAlerteSerializer]
     champs: actif, created_at, deja_notifie, derniere_evaluation_le, derniere_valeur, destinataire_role, destinataires_utilisateurs, id, kpi, kpi_label, nom, operateur, operateur_label, seuil, updated_at
-    kpi ∈ {dso, encours_echu_total, valeur_stock_totale}
+    kpi ∈ {delai_moyen_dedouanement, dso, encours_echu_total, valeur_stock_totale}
     operateur ∈ {inf, inf_egal, sup, sup_egal}
 - frontend/src/api/reportingApi.js :: deleteRapportDefinition -> /api/django/reporting/rapport-definitions/<>  [RapportDefinitionSerializer]
     champs: created_at, dataset, id, owner_username, partage, partage_label, pivot_spec, spec, titre, updated_at
@@ -2954,7 +2978,7 @@
     champs: cards, created_at, id, menu_tier, updated_at, user
 - frontend/src/api/reportingApi.js :: listKpiAlertes -> /api/django/reporting/kpi-alertes  [KpiAlerteSerializer]
     champs: actif, created_at, deja_notifie, derniere_evaluation_le, derniere_valeur, destinataire_role, destinataires_utilisateurs, id, kpi, kpi_label, nom, operateur, operateur_label, seuil, updated_at
-    kpi ∈ {dso, encours_echu_total, valeur_stock_totale}
+    kpi ∈ {delai_moyen_dedouanement, dso, encours_echu_total, valeur_stock_totale}
     operateur ∈ {inf, inf_egal, sup, sup_egal}
 - frontend/src/api/reportingApi.js :: listRapportDefinitions -> /api/django/reporting/rapport-definitions  [RapportDefinitionSerializer]
     champs: created_at, dataset, id, owner_username, partage, partage_label, pivot_spec, spec, titre, updated_at
@@ -2967,7 +2991,7 @@
     champs: cellules, created_at, id, liens, partage, titre, updated_at
 - frontend/src/api/reportingApi.js :: updateKpiAlerte -> /api/django/reporting/kpi-alertes/<>  [KpiAlerteSerializer]
     champs: actif, created_at, deja_notifie, derniere_evaluation_le, derniere_valeur, destinataire_role, destinataires_utilisateurs, id, kpi, kpi_label, nom, operateur, operateur_label, seuil, updated_at
-    kpi ∈ {dso, encours_echu_total, valeur_stock_totale}
+    kpi ∈ {delai_moyen_dedouanement, dso, encours_echu_total, valeur_stock_totale}
     operateur ∈ {inf, inf_egal, sup, sup_egal}
 - frontend/src/api/reportingApi.js :: updateRapportDefinition -> /api/django/reporting/rapport-definitions/<>  [RapportDefinitionSerializer]
     champs: created_at, dataset, id, owner_username, partage, partage_label, pivot_spec, spec, titre, updated_at
@@ -3630,7 +3654,7 @@
     statut ∈ {clos, declare, en_expertise, indemnise, refuse}
     type_sinistre ∈ {autre, cyber, decennale, dommage_materiel, incendie, responsabilite_civile, vol}
 - frontend/src/pages/transport/ComparateurTransporteurs.jsx :: select -> /api/django/transport/ordres-transport/<>  [OrdreTransportSerializer]
-    champs: conducteur, created_at, created_by, date_enlevement_prevue, date_livraison_prevue, destinataire_adresse, destinataire_nom, distance_km, etapes, expediteur_adresse, expediteur_nom, flotte_actif_id, id, installations_installation_id, installations_transporteur_id, instructions_speciales, lignes, mode_acheminement_physique, mode_transport, mode_transport_display, numero, poids_total_kg, statut, statut_display, type_flux, type_flux_display, updated_at, ventes_boncommande_id, ventes_devis_id, volume_total_m3
+    champs: archive, conducteur, created_at, created_by, date_enlevement_prevue, date_livraison_prevue, destinataire_adresse, destinataire_nom, distance_km, etapes, expediteur_adresse, expediteur_nom, flotte_actif_id, id, installations_installation_id, installations_transporteur_id, instructions_speciales, lignes, mode_acheminement_physique, mode_transport, mode_transport_display, numero, poids_total_kg, statut, statut_display, type_flux, type_flux_display, updated_at, ventes_boncommande_id, ventes_devis_id, volume_total_m3
     mode_acheminement_physique ∈ {air, mer, route}
     mode_transport ∈ {affretement, flotte_propre}
     statut ∈ {annule, brouillon, en_cours, livre, planifie}

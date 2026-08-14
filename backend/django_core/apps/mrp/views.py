@@ -1,6 +1,7 @@
 """Vues de l'app `mrp` (Groupe NTMFG — Production / MRP II)."""
 from datetime import datetime, timedelta
 
+from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import extend_schema, inline_serializer
 from rest_framework import mixins, serializers, viewsets
 from rest_framework.decorators import action, api_view, permission_classes
@@ -678,6 +679,10 @@ def analyse_couts_view(request):
     return Response(resultats)
 
 
+# PACT7 — export FICHIER (pdf/xlsx) : sans declaration, le schema publierait
+# cet endpoint vide ou avec un serializer qu'il ne renvoie jamais. Le cliquet
+# check_openapi_shapes n'accepte QUE la decroissance.
+@extend_schema(responses={200: OpenApiTypes.BINARY})
 @api_view(['GET'])
 @permission_classes([IsResponsableOrAdmin])
 def analyse_couts_export_view(request):

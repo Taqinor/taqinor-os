@@ -130,6 +130,17 @@ class VenteComptoir(models.Model):
                   'réglé, ou override admin journalisé). Indépendant du '
                   'statut : un override peut la poser à True alors que le '
                   'statut reste EN_ATTENTE_SOLDE (solde toujours dû).')
+    # NTRET25 — arrondi caisse (espèces) : écart entre le montant dû en
+    # espèces et son arrondi au pas configuré (Paramètres POS), posé à la
+    # validation SEULEMENT si l'arrondi est actif et qu'un montant est dû en
+    # espèces. Peut être positif ou négatif ; NULL = arrondi non applicable
+    # (désactivé, ou aucun montant dû en espèces) — comportement historique
+    # inchangé. Jamais fondu dans le prix d'un produit — tracé en ligne
+    # distincte sur le ticket (``receipt.py``).
+    ecart_arrondi_especes = models.DecimalField(
+        max_digits=6, decimal_places=2, null=True, blank=True,
+        help_text="NTRET25 — écart d'arrondi caisse (espèces), tracé "
+                  'séparément sur le ticket.')
 
     class Meta:
         verbose_name = 'Vente comptoir'
@@ -284,6 +295,16 @@ class SessionCaisse(models.Model):
         blank=True,
         related_name='sessions_caisse_pos',
     )
+    # NTRET29 — boutique tenue par cette session (Paramètres POS, NTRET8).
+    # NULL = pas de boutique renseignée (comportement historique inchangé —
+    # aucun prix par emplacement ne peut être résolu pour cette session).
+    boutique = models.ForeignKey(
+        'parametres.BoutiquePos',
+        on_delete=models.SET_NULL,  # on_delete: la session reste valide, elle perd juste son rattachement boutique
+        null=True,
+        blank=True,
+        related_name='sessions_caisse_pos',
+    )
     statut = models.CharField(
         max_length=10, choices=Statut.choices, default=Statut.OUVERTE)
     fond_ouverture = models.DecimalField(
@@ -320,6 +341,13 @@ class SessionCaisse(models.Model):
     # la même session refuse (409). NULL = Z pas encore généré (comportement
     # historique inchangé pour toute session déjà close avant NTRET2).
     numero_rapport_z = models.CharField(max_length=50, null=True, blank=True)
+    # NTRET31 — écran client (customer-facing display) : snapshot BEST-EFFORT
+    # du panier en cours, poussé par l'écran caisse (CaisseScreen) et lu en
+    # polling léger (±2s) par l'écran client dédié. Purement informatif —
+    # aucune action possible depuis cet écran. NULL/vide = comportement
+    # historique inchangé (aucun panier affichable).
+    panier_courant = models.JSONField(null=True, blank=True, default=None)
+    panier_maj_le = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         verbose_name = 'Session de caisse (POS)'
@@ -402,6 +430,12 @@ class CommandeRetrait(models.Model):
         blank=True,
         related_name='commandes_retrait_creees',
     )
+    # NTRET23 — posée à la création d'après le délai configuré (Paramètres
+    # POS, NTRET8) ; NULL = pas de délai configuré, cette réservation
+    # n'expire JAMAIS automatiquement (comportement historique inchangé).
+    # Libérée par ``services.liberer_reservations_expirees`` (Celery beat/
+    # commande de gestion idempotente).
+    date_expiration_reservation = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         verbose_name = 'Commande retrait magasin'
@@ -496,3 +530,46 @@ class CodePinCaissier(TenantModel):
         if not self.pin_hash:
             return False
         return check_password(str(raw_pin), self.pin_hash)
+
+
+# ── NTRET29 — Grille tarifaire par boutique/emplacement ─────────────────────
+
+class PrixParEmplacement(TenantModel):
+    """Prix TTC différencié par boutique (NTRET29) : override optionnel du
+    prix catalogue (``stock.Produit.prix_vente``) pour UNE boutique donnée
+    (``parametres.BoutiquePos``, NTRET8 — app de fondation, FK directe
+    autorisée). Absent pour une combinaison (produit, boutique) = repli sur
+    le prix catalogue actuel — rétro-compatible par construction, aucune
+    boutique n'est jamais impactée tant qu'aucune ligne n'est créée pour
+    elle. ``produit`` référence ``stock.Produit`` par FK — aucune écriture ni
+    migration côté ``apps/stock`` (lecture seule, même patron que
+    ``apps.promotions.ReglexPromotion.produit``)."""
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,  # on_delete: composition — l'objet n'existe que dans sa societe
+        related_name='prix_par_emplacement',
+    )
+    produit = models.ForeignKey(
+        'stock.Produit',
+        on_delete=models.CASCADE,  # on_delete: composition — un override de prix n'a pas de sens sans son produit
+        related_name='prix_par_emplacement',
+    )
+    boutique = models.ForeignKey(
+        'parametres.BoutiquePos',
+        on_delete=models.CASCADE,  # on_delete: composition — un override de prix n'a pas de sens sans sa boutique
+        related_name='prix_par_emplacement',
+    )
+    prix_ttc = models.DecimalField(max_digits=10, decimal_places=2)
+
+    class Meta:
+        verbose_name = 'Prix par emplacement'
+        verbose_name_plural = 'Prix par emplacement'
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'produit', 'boutique'],
+                name='pos_prixparemplacement_unique_produit_boutique',
+            ),
+        ]
+
+    def __str__(self):
+        return f'{self.produit_id} @ {self.boutique_id} = {self.prix_ttc}'
