@@ -181,6 +181,23 @@ class OrdreTransportViewSet(ChatterViewSetMixin, CompanyScopedModelViewSet):
                 request.user.company,
                 periode=request.query_params.get('periode')))
 
+    # ── NTLOG29 — bordereau d'expédition (packing list) PDF ──────────────
+    @action(detail=True, methods=['get'], url_path='bordereau-expedition',
+            permission_classes=[ScopedPermission])
+    def bordereau_expedition(self, request, pk=None):
+        """NTLOG29 — PDF interne (document d'accompagnement chauffeur,
+        distinct du moteur devis — règle #4 non concernée) listant les
+        lignes/poids/volume de l'ordre, expéditeur/destinataire, transporteur
+        affecté et cases signature enlèvement/livraison."""
+        ordre = self.get_object()
+        from .bordereau_pdf import render_bordereau_expedition_pdf
+
+        pdf_bytes = render_bordereau_expedition_pdf(ordre)
+        resp = HttpResponse(pdf_bytes, content_type='application/pdf')
+        nom_fichier = f'bordereau-expedition-{ordre.numero or ordre.id}.pdf'
+        resp['Content-Disposition'] = f'attachment; filename="{nom_fichier}"'
+        return resp
+
 
 class LigneOrdreTransportViewSet(CompanyScopedModelViewSet):
     """NTLOG2 — marchandises d'un ordre. Filtrable par `?ordre=`."""
