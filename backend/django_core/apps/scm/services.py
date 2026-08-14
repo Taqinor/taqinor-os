@@ -3,11 +3,16 @@ NTSCM). Toute lecture cross-app (``apps.stock``, ``apps.ventes``…) passe par
 le ``selectors.py``/``services.py`` de l'app cible, jamais un import de
 modèle — voir chaque fonction pour le détail de sa frontière.
 """
+from calendar import monthrange
+from datetime import date
+from decimal import Decimal
+
+from django.db.models import Q
 from django.utils import timezone
 
 from core.demand_forecast import forecast_demand
 
-from .models import PrevisionDemande
+from .models import EvenementDemande, PrevisionDemande
 
 
 def _historique_sorties_mensuelles(company, produit_id, fenetre_mois):
@@ -34,7 +39,6 @@ def _historique_sorties_mensuelles(company, produit_id, fenetre_mois):
     today = timezone.localdate()
     idx = today.year * 12 + (today.month - 1) - max(0, int(fenetre_mois))
     y0, m0 = divmod(idx, 12)
-    from datetime import date
     debut = date(y0, m0 + 1, 1)
 
     qs = (
@@ -54,12 +58,45 @@ def _historique_sorties_mensuelles(company, produit_id, fenetre_mois):
     ]
 
 
+def _evenements_du_mois(company, produit, periode):
+    """NTSCM3 — événements chevauchant le mois ``periode`` ('YYYY-MM') pour
+    ce produit : match explicite sur le produit, sur sa catégorie (événement
+    à ``produit`` vide), ou événement GLOBAL (``produit`` et ``categorie``
+    vides tous les deux)."""
+    y, m = int(periode[:4]), int(periode[5:7])
+    debut_mois = date(y, m, 1)
+    fin_mois = date(y, m, monthrange(y, m)[1])
+
+    qs = EvenementDemande.objects.filter(
+        company=company, date_debut__lte=fin_mois, date_fin__gte=debut_mois,
+    ).filter(
+        Q(produit=produit)
+        | Q(produit__isnull=True, categorie_id=produit.categorie_id)
+        | Q(produit__isnull=True, categorie__isnull=True)
+    )
+    return qs
+
+
+def _appliquer_evenements(company, produit, periode, quantite_base):
+    """NTSCM3 — applique l'impact cumulé (somme des ``impact_pct``, jamais en
+    dessous de 0) des événements chevauchant ``periode`` à la quantité de
+    base issue de la prévision (NTSCM2)."""
+    facteur = Decimal('1')
+    for ev in _evenements_du_mois(company, produit, periode):
+        facteur += (ev.impact_pct or Decimal('0')) / Decimal('100')
+    if facteur < 0:
+        facteur = Decimal('0')
+    return (Decimal(str(quantite_base)) * facteur).quantize(Decimal('0.01'))
+
+
 def generer_previsions(
     produit, horizon_mois, company, *, segment='', fenetre_mois=24, user=None,
 ):
-    """NTSCM2 — génère/rafraîchit les ``PrevisionDemande`` d'un produit sur
+    """NTSCM2/3 — génère/rafraîchit les ``PrevisionDemande`` d'un produit sur
     ``horizon_mois`` mois, à partir de son historique de sorties (fenêtre
-    ``fenetre_mois`` mois, réutilise :func:`core.demand_forecast.forecast_demand`).
+    ``fenetre_mois`` mois, réutilise :func:`core.demand_forecast.forecast_demand`),
+    puis applique l'impact cumulé des ``EvenementDemande`` (NTSCM3)
+    chevauchant chaque mois cible.
 
     ``produit`` est une instance ``stock.Produit`` déjà résolue par
     l'APPELANT (via ``apps.stock.selectors`` — jamais un import de modèle
@@ -76,10 +113,11 @@ def generer_previsions(
 
     previsions = []
     for periode, quantite in resultat.previsions:
+        quantite_ajustee = _appliquer_evenements(company, produit, periode, quantite)
         obj, _ = PrevisionDemande.objects.update_or_create(
             company=company, produit=produit, segment=segment or '', periode=periode,
             defaults={
-                'quantite_prevue': quantite,
+                'quantite_prevue': quantite_ajustee,
                 'methode': methode,
                 'genere_le': timezone.now(),
                 'genere_par': user,

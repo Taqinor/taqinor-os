@@ -5,7 +5,7 @@
 """
 from rest_framework import serializers
 
-from .models import PrevisionDemande
+from .models import EvenementDemande, PrevisionDemande
 
 
 class PrevisionDemandeSerializer(serializers.ModelSerializer):
@@ -24,3 +24,29 @@ class PrevisionDemandeSerializer(serializers.ModelSerializer):
             'genere_le', 'genere_par', 'genere_par_nom',
         ]
         read_only_fields = ['id', 'genere_le', 'genere_par']
+
+
+class EvenementDemandeSerializer(serializers.ModelSerializer):
+    type_evenement_display = serializers.CharField(
+        source='get_type_evenement_display', read_only=True)
+    produit_nom = serializers.CharField(
+        source='produit.nom', read_only=True, default=None)
+    categorie_nom = serializers.CharField(
+        source='categorie.nom', read_only=True, default=None)
+
+    class Meta:
+        model = EvenementDemande
+        fields = [
+            'id', 'produit', 'produit_nom', 'categorie', 'categorie_nom',
+            'date_debut', 'date_fin', 'impact_pct', 'libelle',
+            'type_evenement', 'type_evenement_display', 'date_creation',
+        ]
+        read_only_fields = ['id', 'date_creation']
+
+    def validate(self, attrs):
+        debut = attrs.get('date_debut', getattr(self.instance, 'date_debut', None))
+        fin = attrs.get('date_fin', getattr(self.instance, 'date_fin', None))
+        if debut and fin and fin < debut:
+            raise serializers.ValidationError(
+                {'date_fin': 'Doit être postérieure ou égale à date_debut.'})
+        return attrs

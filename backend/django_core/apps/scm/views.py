@@ -11,8 +11,8 @@ from rest_framework.response import Response
 from authentication.permissions import IsResponsableOrAdmin
 from core.viewsets import CompanyScopedModelViewSet
 
-from .models import PrevisionDemande
-from .serializers import PrevisionDemandeSerializer
+from .models import EvenementDemande, PrevisionDemande
+from .serializers import EvenementDemandeSerializer, PrevisionDemandeSerializer
 
 
 class PrevisionDemandeViewSet(CompanyScopedModelViewSet):
@@ -60,3 +60,16 @@ class PrevisionDemandeViewSet(CompanyScopedModelViewSet):
             segment=segment, user=request.user)
         return Response(
             PrevisionDemandeSerializer(previsions, many=True).data)
+
+
+class EvenementDemandeViewSet(CompanyScopedModelViewSet):
+    """CRUD des événements de demande (NTSCM3) — promotions, chantiers
+    planifiés, ruptures fournisseur connues, appliqués par
+    ``services.generer_previsions``."""
+    queryset = EvenementDemande.objects.select_related(
+        'produit', 'categorie').all()
+    serializer_class = EvenementDemandeSerializer
+    filterset_fields = ['produit', 'categorie', 'type_evenement']
+
+    def get_permissions(self):
+        return [IsResponsableOrAdmin()]

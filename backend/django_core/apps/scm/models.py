@@ -85,3 +85,62 @@ class PrevisionDemande(TenantModel):
 
     def __str__(self):
         return f'{self.produit_id} {self.segment or "—"} {self.periode} = {self.quantite_prevue}'
+
+
+class EvenementDemande(TenantModel):
+    """NTSCM3 — événement de demande (promotion, chantier planifié, rupture
+    fournisseur connue…) impactant la prévision sur une fenêtre de dates.
+
+    ``produit`` nullable = tous les produits d'une ``categorie`` (elle-même
+    nullable) ; ``produit`` ET ``categorie`` nuls ensemble = événement GLOBAL
+    (toute la société). ``impact_pct`` est SIGNÉ (ex. ``+30`` = +30% promo,
+    ``-100`` = rupture connue → demande nulle sur la fenêtre).
+    ``services.generer_previsions`` applique l'impact cumulé des événements
+    chevauchant chaque mois prévu, avant écriture."""
+
+    class TypeEvenement(models.TextChoices):
+        PROMOTION = 'promotion', 'Promotion'
+        CHANTIER_MAJEUR = 'chantier_majeur', 'Chantier majeur'
+        RUPTURE_FOURNISSEUR = 'rupture_fournisseur', 'Rupture fournisseur'
+        SAISONNALITE_LOCALE = 'saisonnalite_locale', 'Saisonnalité locale'
+        AUTRE = 'autre', 'Autre'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,  # on_delete: tenant
+        related_name='scm_evenements_demande', verbose_name='Société')
+    produit = models.ForeignKey(
+        'stock.Produit',
+        on_delete=models.CASCADE,
+        null=True, blank=True,
+        related_name='scm_evenements_demande', verbose_name='Produit',
+        help_text='Vide = tous les produits de la catégorie (ou toute la société si catégorie aussi vide).')
+    categorie = models.ForeignKey(
+        'stock.Categorie',
+        on_delete=models.CASCADE,
+        null=True, blank=True,
+        related_name='scm_evenements_demande', verbose_name='Catégorie')
+    date_debut = models.DateField(verbose_name='Début')
+    date_fin = models.DateField(verbose_name='Fin')
+    impact_pct = models.DecimalField(
+        max_digits=6, decimal_places=2, verbose_name='Impact (%)',
+        help_text='Signé : +30 = +30% de demande, -100 = rupture connue (demande nulle).')
+    libelle = models.CharField(max_length=255, verbose_name='Libellé')
+    type_evenement = models.CharField(
+        max_length=20, choices=TypeEvenement.choices,
+        default=TypeEvenement.AUTRE, verbose_name="Type d'événement")
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Événement de demande'
+        verbose_name_plural = 'Événements de demande'
+        ordering = ['-date_debut']
+
+    def save(self, *args, **kwargs):
+        if self.date_fin < self.date_debut:
+            raise ValueError('date_fin doit être postérieure ou égale à date_debut.')
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f'{self.libelle} ({self.impact_pct:+}%)'
