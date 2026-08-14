@@ -19,7 +19,7 @@ from .models import (
     OptionProduit, ContrainteCompatibilite, RegleProduitCPQ, OffreGroupee,
     PrixContractuel, QuestionConfigurateur, SessionConfigurateur,
     ReponseConfigurateur, SeuilMargeFamille, RegleApprobationRemise,
-    ClauseCGV, ProduitEquivalent,
+    ClauseCGV, ProduitEquivalent, ParametresCPQ,
 )
 from .serializers import (
     OptionProduitSerializer, ContrainteCompatibiliteSerializer,
@@ -27,6 +27,7 @@ from .serializers import (
     PrixContractuelSerializer, QuestionConfigurateurSerializer,
     SeuilMargeFamilleSerializer, RegleApprobationRemiseSerializer,
     ClauseCGVSerializer, ProduitEquivalentSerializer,
+    ParametresCPQSerializer,
 )
 from . import reports, selectors, services
 
@@ -220,6 +221,38 @@ class ProduitEquivalentViewSet(CompanyScopedModelViewSet):
         if self.action in ('list', 'retrieve'):
             return [IsAnyRole()]
         return [IsResponsableOrAdmin()]
+
+
+class ParametresCPQViewSet(CompanyScopedModelViewSet):
+    """NTCPQ30 — Réglages CPQ, SINGLETON par société (pattern
+    ``contrats.ParametresLocationViewSet``/ZCTR4).
+
+    ``GET/PATCH cpq/parametres-cpq/courant/`` lit/modifie la ligne unique de
+    la société (créée à la volée, ``get_or_create``) ; ``company`` posée
+    CÔTÉ SERVEUR. Le CRUD standard reste disponible (scopé société) mais
+    ``courant/`` est le point d'entrée recommandé côté frontend (jamais deux
+    lignes par société — contrainte ``OneToOneField``)."""
+    queryset = ParametresCPQ.objects.all()
+    serializer_class = ParametresCPQSerializer
+
+    def get_permissions(self):
+        if self.action in ('list', 'retrieve', 'courant'):
+            return [IsAnyRole()]
+        return [IsResponsableOrAdmin()]
+
+    @action(detail=False, methods=['get', 'patch'], url_path='courant')
+    def courant(self, request):
+        parametres, _ = ParametresCPQ.objects.get_or_create(
+            company=request.user.company)
+        if request.method == 'GET':
+            return Response(ParametresCPQSerializer(parametres).data)
+        if not IsResponsableOrAdmin().has_permission(request, self):
+            return Response(status=status.HTTP_403_FORBIDDEN)
+        serializer = ParametresCPQSerializer(
+            parametres, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(serializer.data)
 
 
 # Classe PARTAGEE (fabriquee UNE SEULE fois) : appeler inline_serializer()

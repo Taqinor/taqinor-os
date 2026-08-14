@@ -474,6 +474,12 @@ def lancer_approbation_devis(devis, *, user=None, force=False, remise=None):
     un tour précédent est déjà approuvé (avenant au-dessus du seuil) ; ``remise``
     permet d'imposer la profondeur à considérer (taux global recalculé) au lieu
     de ``remise_globale``."""
+    from .models import ParametresCPQ
+    if not ParametresCPQ.get_or_default(devis.company).approbation_active:
+        # NTCPQ30 — approbation désactivée pour CETTE société : envoi
+        # libre, jamais de blocage NTCPQ7, sans affecter les autres sociétés.
+        return []
+
     existantes = list(EtapeApprobationDevis.objects.filter(
         devis_id=devis.id).exclude(
             statut=EtapeApprobationDevis.Statut.REJETE))

@@ -10,7 +10,7 @@ from .views import (
     SeuilMargeFamilleViewSet, RegleApprobationRemiseViewSet,
     ClauseCGVViewSet, ProduitEquivalentViewSet, DevisVariantesView,
     SuggestionsProduitView, FeuilleConfigurationView, MargeSousSeuilView,
-    RapportConformiteView,
+    RapportConformiteView, ParametresCPQViewSet,
 )
 
 router = DefaultRouter()
@@ -27,6 +27,8 @@ router.register(r'regles-approbation-remise', RegleApprobationRemiseViewSet)
 router.register(r'clauses-cgv', ClauseCGVViewSet)
 # NTCPQ16 — règles de substitution produit (moteur de variantes).
 router.register(r'produits-equivalents', ProduitEquivalentViewSet)
+# NTCPQ30 — réglages CPQ par société (singleton).
+router.register(r'parametres-cpq', ParametresCPQViewSet)
 
 urlpatterns = [
     path('valider-compatibilite/', ValiderCompatibiliteView.as_view(),
