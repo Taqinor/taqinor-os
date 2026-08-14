@@ -46,7 +46,8 @@ __all__ = [
     'document_entree', 'affectations_du_document',
     'kits_vers_document', 'parametres_vers_document',
     'rangees_imposees_du_preset', 'surface_vers_document',
-    'obstacles_vers_document', 'resultat_vers_json', 'preuve_vers_json',
+    'obstacles_vers_document', 'zones_vers_document',
+    'resultat_vers_json', 'preuve_vers_json',
     'marges_vers_json', 'tiroirs_vers_json', 'tiroirs_vides',
     'PATCH_MOTEUR_VERS_PARAMS', 'PATCH_MOTEUR_VERS_OBSTACLE',
     'action_de_patch', 'suggestion_vers_json', 'suggestions_vers_json',
@@ -206,6 +207,47 @@ def obstacles_vers_document(toiture):
             'degagement_m': _f(obstacle.degagement_m, 0.30),
             'hauteur_m': _f(obstacle.hauteur_m),
             'regle_appliquee': obstacle.regle_degagement or '',
+        })
+    return sortie
+
+
+# ─────────────────────────────────────────────────────── zones (PV55)
+def zones_vers_document(toiture):
+    """Les ZONES d'une toiture, en forme de contrat (``serialisation._zone``).
+
+    Le document portait ``zones: []`` EN DUR : le moteur sait consommer quatre
+    natures de contour depuis AOF57, et aucune ne lui parvenait jamais. Une
+    servitude ou une bande coupe-feu tracée par le dessinateur ne changeait donc
+    rien au compte publié — silencieusement.
+
+    Trois règles, toutes portées par la donnée :
+
+    * un contour VIDE est ignoré — une zone en cours de saisie ne délimite rien
+      et ne peut donc ni bloquer ni préférer quoi que ce soit ;
+    * un contour de 1 ou 2 sommets est un REFUS NOMMÉ : c'est un tracé à
+      moitié fait, et ``ZoneAO.clean`` le refuse déjà à la saisie. L'ignorer
+      ici laisserait croire qu'une zone interdite bloque, alors qu'elle ne
+      bloquerait rien ;
+    * la ``nature`` passe TELLE QUELLE : ``ZoneAO.Nature`` reprend les valeurs
+      de ``NatureZone`` à la lettre, précisément pour qu'aucune traduction ne
+      s'intercale ici.
+    """
+    sortie = []
+    for zone in toiture.zones.all().order_by('repere', 'id'):
+        sommets = _contour(zone.sommets)
+        if not sommets:
+            continue
+        if len(sommets) < 3:
+            raise EntreeInvalide(
+                "La zone « %s » n'a que %d sommet(s) : un contour de moins de "
+                '3 points ne délimite aucune surface.'
+                % (zone.repere or f'#{zone.pk}', len(sommets)))
+        sortie.append({
+            'repere': zone.repere or f'ZONE{zone.pk}',
+            'nature': zone.nature,
+            'sommets': sommets,
+            'hauteur_m': _f(zone.hauteur_m),
+            'retrait_m': _f(zone.retrait_m, 0.0),
         })
     return sortie
 
@@ -414,7 +456,10 @@ def document_entree(toiture, *, params=None, kits=None):
         'kits': document_kits,
         'parametres': parametres,
         'obstacles': obstacles,
-        'zones': [],
+        # PV55 — les zones de la toiture, enfin transmises (elles étaient une
+        # liste vide EN DUR : le moteur savait les lire, personne ne les lui
+        # donnait).
+        'zones': zones_vers_document(toiture),
         'engagements': [],
     }
     engagement = params.get('engagement_modules')
