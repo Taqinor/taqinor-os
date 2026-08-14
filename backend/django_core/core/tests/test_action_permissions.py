@@ -120,6 +120,31 @@ UNGUARDED_ACTION_BASELINE = {
     "installations": 4,
     "kb": 34,
     "litiges": 7,
+    # NTMKT44/45 — 0->2 : ``apps/marketing/views.py`` déclare deux sous-classes
+    # qui étendent un ViewSet de ``apps.compta.views`` SANS le modifier
+    # (``CampagneViewSetAudite(CampagneViewSet)``, ``EnqueteNPSViewSetNotifiant
+    # (EnqueteNPSViewSet)``) et REDÉCLARENT l'``@action`` du parent — le
+    # décorateur est obligatoire, sans lui ``get_extra_actions()`` de DRF perd
+    # le ``.mapping`` et la route disparaît en 404 silencieux. Le scanner ne lit
+    # que le corps de la classe portant l'``@action`` et ne suit pas l'héritage
+    # (ni vers un AUTRE fichier), d'où 2 en dette COARSE apparente. Vérifié en
+    # lisant les bases, pas supposé :
+    #   * ``envoyer`` — ``CampagneViewSet.get_permissions()`` (YRBAC13) nomme
+    #     explicitement l'action : ``'envoyer'`` -> ``HasPermissionOrLegacy(
+    #     'compta_valider')``. DRF appelle ``get_permissions()`` sur l'instance
+    #     en dispatchant sur ``self.action`` : la sous-classe en HÉRITE tel quel
+    #     → l'action est FINE-gardée, à l'identique de la route legacy.
+    #   * ``repondre`` — ``EnqueteNPSViewSet`` n'a pas de ``get_permissions()`` ;
+    #     il hérite de ``_ComptaBaseViewSet`` = ``TenantMixin`` (queryset
+    #     company-scopé) + ``permission_classes = [IsResponsableOrAdmin]``, donc
+    #     gardé au niveau CLASSE. C'est la MÊME dette coarse déjà comptée sous
+    #     ``compta`` pour l'action du parent, pas un nouveau trou.
+    # Leur coller un ``permission_classes=`` par action ferait taire le scanner
+    # SANS rien resserrer (la garde est déjà appliquée) et ferait diverger la
+    # posture de la route ``/marketing/…`` de celle de ``/compta/…`` qui sert la
+    # même action : le cran est monté honnêtement plutôt que contourné par un
+    # décorateur décoratif — même raisonnement que ``ao`` ci-dessus.
+    "marketing": 2,
     "notifications": 4,
     "paie": 70,
     "pos": 5,
