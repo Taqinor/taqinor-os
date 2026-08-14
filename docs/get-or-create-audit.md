@@ -288,8 +288,8 @@ Généré par `python scripts/check_get_or_create.py`. Chaque appel liste ses cl
 | `backend/django_core/apps/scm/services.py:235` | get_or_create | PolitiqueStock.objects | company, produit |
 | `backend/django_core/apps/scm/services.py:347` | update_or_create | LigneDemandeSOP.objects | cycle, produit_id |
 | `backend/django_core/apps/scm/services.py:389` | update_or_create | LigneOffreSOP.objects | cycle, produit |
-| `backend/django_core/apps/scm/services.py:746` | get_or_create | ParametresSCM.objects | company |
-| `backend/django_core/apps/scm/services.py:988` | get_or_create | PolitiqueStock.objects | company, produit |
+| `backend/django_core/apps/scm/services.py:763` | get_or_create | ParametresSCM.objects | company |
+| `backend/django_core/apps/scm/services.py:1005` | get_or_create | PolitiqueStock.objects | company, produit |
 | `backend/django_core/apps/stock/management/commands/backfill_unites_mesure.py:52` | get_or_create | UniteMesure.objects | code, company |
 | `backend/django_core/apps/stock/management/commands/seed_catalogue.py:695` | get_or_create | Categorie.objects | company, nom |
 | `backend/django_core/apps/stock/management/commands/seed_catalogue.py:896` | get_or_create | Categorie.objects | company, nom |
