@@ -1646,9 +1646,9 @@ def _completer_kit_residentiel(devis, *, kwc, watt, nb_panneaux,
             getattr(ligne.produit, 'marque', '') or ''))
         for ligne in onduleurs)
 
+    catalogue = catalogue_de_la_societe(devis.company)
     attendu = composition_residentielle(
-        catalogue_de_la_societe(devis.company),
-        kwc=kwc, panel_watt=watt, nb_panneaux=nb_panneaux,
+        catalogue, kwc=kwc, panel_watt=watt, nb_panneaux=nb_panneaux,
         avec_batterie=avec_batterie,
         taux_tva=devis.taux_tva if devis.taux_tva is not None
         else Decimal('20'))
@@ -1658,9 +1658,30 @@ def _completer_kit_residentiel(devis, *, kwc, watt, nb_panneaux,
         if classe and classe not in par_classe:
             par_classe[classe] = spec
 
-    # Les lignes ajoutées se rangent APRÈS l'existant : l'ordre d'affichage du
-    # commercial (sections, notes, groupes) n'est jamais réécrit.
-    ordre = max([int(ligne.ordre or 0) for ligne in lignes] or [0])
+    # Le duo Smart Meter + clé Wifi ne sort de la composition que si l'onduleur
+    # QU'ELLE a choisi est un Huawei — or ici c'est celui du DEVIS qui décide.
+    # On le retrouve donc directement au catalogue (même choix que la
+    # composition : le premier produit tarifé de la classe, à l'unité). Sans ce
+    # rattrapage, un devis Huawei face à un catalogue dont l'hybride est un
+    # Deye s'entendrait dire, à tort, que son Smart Meter manque au catalogue.
+    if huawei:
+        for classe in ('smart_meter', 'wifi_dongle'):
+            if classe in par_classe or classe in presentes:
+                continue
+            produit = next(
+                (p for p in catalogue
+                 if classer_produit(getattr(p, 'nom', '')) == classe
+                 and _has_price(p)), None)
+            if produit is not None:
+                par_classe[classe] = LigneKit(
+                    produit=produit, designation=produit.nom, quantite=1,
+                    prix_unitaire=Decimal(produit.prix_vente))
+
+    # Les lignes ajoutées se rangent APRÈS l'existant — sections et notes
+    # COMPRISES : l'ordre d'affichage du commercial n'est jamais réécrit, et
+    # une note de bas de devis ne doit pas se retrouver au milieu du kit.
+    ordre = max([int(ligne.ordre or 0)
+                 for ligne in devis.lignes.all()] or [0])
     ajoutees = 0
     for classe in CLASSES_KIT_COMPLETABLES:
         if classe in presentes:
