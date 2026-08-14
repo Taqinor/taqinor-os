@@ -2115,6 +2115,12 @@ from .models_hazmat import CompatibiliteHazmatCasier  # noqa: E402,F401
 # ── NTWMS39 — journal léger des casiers (plan d'entrepôt). ─────────────────
 from .models_historique_casier import HistoriqueCasier  # noqa: E402,F401
 
+# ── NTWMS40 — réappro d'un casier picking depuis le stockage. ──────────────
+from .models_reappro_casier import (  # noqa: E402,F401
+    SeuilReapproCasier,
+    TacheReapproInterne,
+)
+
 
 # ── ODX19 — MODULE ACHATS (déplacé) ────────────────────────────────────────
 # PrixFournisseur, BonCommandeFournisseur, LigneBonCommandeFournisseur,

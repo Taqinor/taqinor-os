@@ -56,6 +56,11 @@ from .entrepot import (
 from .qualite_reception import PlanEchantillonnageViewSet
 # NTWMS38 - compatibilite casier <-> matiere dangereuse (hazmat).
 from .hazmat import CompatibiliteHazmatCasierViewSet
+# NTWMS40 - reappro des casiers picking depuis le stockage.
+from .reappro_casier import (
+    SeuilReapproCasierViewSet, TacheReapproInterneViewSet,
+    casiers_a_reapprovisionner_view,
+)
 
 __all__ = [
     'ProduitViewSet',
@@ -113,4 +118,7 @@ __all__ = [
     'PlanEchantillonnageViewSet',
     'CompatibiliteHazmatCasierViewSet',
     'historique_casier_view',
+    'SeuilReapproCasierViewSet',
+    'TacheReapproInterneViewSet',
+    'casiers_a_reapprovisionner_view',
 ]

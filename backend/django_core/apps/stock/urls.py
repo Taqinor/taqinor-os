@@ -26,6 +26,8 @@ from .views import (
     entrepot_cockpit_view, simuler_capacite_view, zones_surcapacite_view,
     tache_retour_view, PlanEchantillonnageViewSet,
     CompatibiliteHazmatCasierViewSet, historique_casier_view,
+    SeuilReapproCasierViewSet, TacheReapproInterneViewSet,
+    casiers_a_reapprovisionner_view,
 )
 
 router = DefaultRouter()
@@ -80,6 +82,9 @@ router.register(r'blocages-qualite', BlocageQualiteViewSet)
 router.register(r'plans-echantillonnage', PlanEchantillonnageViewSet)
 # NTWMS38 - casiers autorises par classe de danger (batteries lithium...).
 router.register(r'casiers-hazmat', CompatibiliteHazmatCasierViewSet)
+# NTWMS40 - seuils de reappro par casier picking + taches de reappro interne.
+router.register(r'seuils-reappro-casier', SeuilReapproCasierViewSet)
+router.register(r'taches-reappro-interne', TacheReapproInterneViewSet)
 
 urlpatterns = [
     # NTWMS8 - kiosque de quai (chemin nomme par la tache : /stock/public/...).
@@ -114,6 +119,9 @@ urlpatterns = [
          name='stock-simuler-capacite'),
     # NTWMS36 - interleaving : tache de prelevement sur le trajet retour.
     path('tache-retour/', tache_retour_view, name='stock-tache-retour'),
+    # NTWMS40 - casiers picking sous leur seuil (GET) + generation (POST).
+    path('casiers-a-reapprovisionner/', casiers_a_reapprovisionner_view,
+         name='stock-casiers-a-reapprovisionner'),
     # NTWMS39 - journal d'un casier (creation/modification/archivage).
     path('casiers/<int:bin_id>/historique/', historique_casier_view,
          name='stock-casier-historique'),
