@@ -22,6 +22,9 @@ router.register(
 router.register(
     'facteurs-emission-co2', views.FacteurEmissionCO2ViewSet,
     basename='facteurs-emission-co2')
+router.register(
+    'parametres-transport', views.ParametresTransportViewSet,
+    basename='transport-parametres')
 
 urlpatterns = [
     path('', include(router.urls)),

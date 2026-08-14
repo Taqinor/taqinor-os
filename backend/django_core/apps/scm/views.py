@@ -7,6 +7,7 @@ sur chaque viewset, société toujours scopée par ``CompanyScopedModelViewSet``
 """
 from decimal import Decimal
 
+from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import extend_schema, inline_serializer
 from rest_framework import serializers
 from rest_framework.decorators import action, api_view, permission_classes
@@ -147,6 +148,62 @@ class PolitiqueStockViewSet(CompanyScopedModelViewSet):
             'politiques': PolitiqueStockSerializer(politiques, many=True).data,
         })
 
+    @extend_schema(responses={200: OpenApiTypes.BINARY})
+    @action(detail=True, methods=['get'], url_path='fiche-pdf')
+    def fiche_pdf(self, request, pk=None):
+        """NTSCM29 — PDF interne récapitulatif de la politique de stock
+        (jamais un document client — bandeau visible, aucun prix d'achat)."""
+        from django.http import HttpResponse
+
+        from . import services
+
+        politique = self.get_object()
+        pdf_bytes = services.generer_fiche_politique_stock(politique)
+        response = HttpResponse(pdf_bytes, content_type='application/pdf')
+        response['Content-Disposition'] = (
+            f'attachment; filename="politique-stock-{politique.produit_id}.pdf"')
+        return response
+
+    @extend_schema(
+        request=inline_serializer('ScmCreerPolitiquesEnLotRequest', {
+            'produit_ids': serializers.ListField(
+                child=serializers.IntegerField()),
+            'service_level_pct': serializers.DecimalField(
+                max_digits=5, decimal_places=2),
+        }),
+        responses=inline_serializer('ScmCreerPolitiquesEnLotResponse', {
+            'nb_politiques': serializers.IntegerField(),
+            'politiques': PolitiqueStockSerializer(many=True),
+        }))
+    @action(detail=False, methods=['post'], url_path='creer-en-lot')
+    def creer_en_lot(self, request):
+        """NTSCM30 — assistant guidé « Créer une politique de stock » :
+        applique NTSCM6 en LOT à une sélection de produits. Corps :
+        ``{"produit_ids": [...], "service_level_pct": 95}``."""
+        from apps.stock.selectors import valid_produit_ids
+
+        from . import services
+
+        produit_ids = request.data.get('produit_ids') or []
+        if not produit_ids:
+            return Response({'produit_ids': 'Requis (au moins un produit).'}, status=400)
+        service_level_pct = request.data.get('service_level_pct')
+        if service_level_pct in (None, ''):
+            return Response({'service_level_pct': 'Requis.'}, status=400)
+
+        from django.apps import apps as django_apps
+        Produit = django_apps.get_model('stock', 'Produit')
+
+        ids_valides = valid_produit_ids(request.user.company, produit_ids)
+        produits = list(Produit.objects.filter(
+            company=request.user.company, pk__in=ids_valides))
+        politiques = services.creer_politiques_en_lot(
+            produits, Decimal(str(service_level_pct)), request.user.company)
+        return Response({
+            'nb_politiques': len(politiques),
+            'politiques': PolitiqueStockSerializer(politiques, many=True).data,
+        })
+
 
 class CyclePlanificationSOPViewSet(CompanyScopedModelViewSet):
     """NTSCM12 — cycles de planification S&OP mensuels. ``statut`` est en
@@ -282,6 +339,30 @@ class CyclePlanificationSOPViewSet(CompanyScopedModelViewSet):
                 resultat['ca_forecast_ht'].quantize(Decimal('0.01')))
         return Response(resultat)
 
+    @extend_schema(responses={200: OpenApiTypes.BINARY})
+    @action(detail=True, methods=['get'], url_path='compte-rendu')
+    def compte_rendu(self, request, pk=None):
+        """NTSCM27 — télécharge le compte-rendu .xlsx du cycle (3 feuilles :
+        Demande consensuelle, Offre et écarts, Impact financier), régénéré à
+        la demande. Le DÉPÔT en GED, lui, n'a lieu QU'À LA CLÔTURE du cycle
+        (voir ``services.avancer_statut_cycle``, hook NTSCM27)."""
+        import io
+
+        from django.http import HttpResponse
+
+        from apps.records.xlsx import XLSX_CONTENT_TYPE
+
+        from . import services
+
+        cycle = self.get_object()
+        wb = services._construire_classeur_sop(cycle)
+        buf = io.BytesIO()
+        wb.save(buf)
+        response = HttpResponse(buf.getvalue(), content_type=XLSX_CONTENT_TYPE)
+        response['Content-Disposition'] = (
+            f'attachment; filename="compte-rendu-sop-{cycle.periode}.xlsx"')
+        return response
+
 
 # PACT7 — sans cette déclaration, le schéma OpenAPI publiait cet agrégat VIDE
 # (aucun ``serializer_class`` sur une vue-fonction) : la vue renvoie une LISTE
@@ -382,3 +463,245 @@ def creer_brouillons_bcf_reappro_view(request):
         })
 
     return Response({'bons_crees': bons_crees})
+
+
+# ── NTSCM16 — suggestion d'achat groupée multi-fournisseurs (MOQ/paliers) ────
+
+@extend_schema(responses=inline_serializer('ScmSuggestionAchatGroupe', {
+    'fournisseur_id': serializers.IntegerField(),
+    'fournisseur_nom': serializers.CharField(),
+    'lignes': serializers.ListField(child=serializers.DictField()),
+}, many=True))
+@api_view(['GET'])
+@permission_classes([IsResponsableOrAdmin])
+def suggestions_achat_groupe_view(request):
+    """NTSCM16 — ``GET /api/django/scm/suggestions-achat-groupe/`` : suggestions
+    d'achat groupées par fournisseur (MOQ/paliers respectés, NTSCM16/17)."""
+    from . import services
+
+    return Response(services.suggerer_achats_groupes(request.user.company))
+
+
+# ── NTSCM18 — simulation « et si… » de rupture (lecture seule) ──────────────
+
+@extend_schema(request=inline_serializer('ScmSimulerRuptureRequest', {
+    'delai_fournisseur_jours_supplementaires': serializers.IntegerField(required=False),
+    'demande_pct': serializers.FloatField(required=False),
+    'commande_annulee_quantite': serializers.FloatField(required=False),
+}), responses=inline_serializer('ScmSimulerRuptureResponse', {
+    'produit_id': serializers.IntegerField(),
+    'scenario': serializers.DictField(),
+    'base': serializers.DictField(),
+    'simule': serializers.DictField(),
+    'delta_jours_rupture': serializers.IntegerField(allow_null=True),
+    'delta_jours_date_limite_commande': serializers.IntegerField(allow_null=True),
+}))
+@api_view(['POST'])
+@permission_classes([IsResponsableOrAdmin])
+def simuler_rupture_view(request, produit_id):
+    """NTSCM18 — ``POST /api/django/scm/produits/<id>/simuler/`` : simulation
+    « et si… » EN MÉMOIRE (aucune écriture DB, voir ``services.
+    simuler_rupture``). Corps = scénario hypothétique (toutes clés
+    optionnelles)."""
+    from apps.stock.selectors import get_produit_scoped
+
+    from . import services
+
+    produit = get_produit_scoped(request.user.company, produit_id)
+    if produit is None:
+        return Response({'detail': 'Produit introuvable.'}, status=404)
+    resultat = services.simuler_rupture(produit, request.data or {}, request.user.company)
+    return Response(resultat)
+
+
+# ── NTSCM19 — allocation en pénurie multi-clients (proposition) ─────────────
+
+@extend_schema(responses=inline_serializer('ScmProposerAllocationResponse', {
+    'produit_id': serializers.IntegerField(),
+    'stock_disponible': serializers.CharField(),
+    'mode': serializers.CharField(),
+    'propositions': serializers.ListField(child=serializers.DictField()),
+}))
+@api_view(['GET'])
+@permission_classes([IsResponsableOrAdmin])
+def proposer_allocation_penurie_view(request, produit_id):
+    """NTSCM19 — ``GET /api/django/scm/produits/<id>/proposer-allocation/`` :
+    proposition (jamais une réservation automatique) de répartition du stock
+    disponible entre les devis ouverts qui en dépendent. ``?mode=fifo|priorite``
+    (défaut ``fifo``)."""
+    from apps.stock.selectors import get_produit_scoped
+
+    from . import services
+
+    produit = get_produit_scoped(request.user.company, produit_id)
+    if produit is None:
+        return Response({'detail': 'Produit introuvable.'}, status=404)
+    mode = request.query_params.get('mode') or 'fifo'
+    resultat = services.proposer_allocation_penurie(
+        produit, request.user.company, mode=mode)
+    return Response(resultat)
+
+
+# ── NTSCM20 — suggestions de transfert inter-sites (anticipatif) ────────────
+
+@extend_schema(responses=inline_serializer('ScmSuggestionTransfert', {
+    'produit_id': serializers.IntegerField(),
+    'produit_nom': serializers.CharField(),
+    'emplacement_source_id': serializers.IntegerField(),
+    'emplacement_source_nom': serializers.CharField(),
+    'emplacement_destination_id': serializers.IntegerField(),
+    'emplacement_destination_nom': serializers.CharField(),
+    'quantite_suggeree': serializers.FloatField(),
+}, many=True))
+@api_view(['GET'])
+@permission_classes([IsResponsableOrAdmin])
+def suggestions_transfert_view(request):
+    """NTSCM20 — ``GET /api/django/scm/suggestions-transfert/`` : suggestions
+    de transfert inter-sites PILOTÉES par écart offre/demande projeté
+    (anticipatif — étend FG326, réactif)."""
+    from . import selectors
+
+    return Response(selectors.suggerer_transferts_inter_sites(request.user.company))
+
+
+# ── NTSCM24 — précision de prévision auto-mesurée (MAPE) ────────────────────
+
+@extend_schema(responses=inline_serializer('ScmPrecisionPrevisions', {
+    'mape_global_pct': serializers.FloatField(allow_null=True),
+    'nb_mois_couverts': serializers.IntegerField(),
+    'par_produit': serializers.ListField(child=serializers.DictField()),
+}))
+@api_view(['GET'])
+@permission_classes([IsResponsableOrAdmin])
+def precision_previsions_view(request):
+    """NTSCM24 — ``GET /api/django/scm/precision-previsions/`` : précision de
+    prévision (MAPE) globale et par produit. ``?produit=&fenetre_mois=``."""
+    from apps.stock.selectors import get_produit_scoped
+
+    from . import selectors
+
+    produit = None
+    produit_id = request.query_params.get('produit')
+    if produit_id:
+        produit = get_produit_scoped(request.user.company, produit_id)
+        if produit is None:
+            return Response({'produit': 'Produit introuvable.'}, status=404)
+    fenetre_mois = int(request.query_params.get('fenetre_mois') or 6)
+    return Response(selectors.precision_prevision(
+        request.user.company, produit=produit, fenetre_mois=fenetre_mois))
+
+
+# ── NTSCM28 — tableau de bord SCM exécutif (KPI de synthèse) ────────────────
+
+@extend_schema(responses=inline_serializer('ScmTableauBordExecutif', {
+    'taux_service_pct': serializers.FloatField(allow_null=True),
+    'otif_pondere_pct': serializers.FloatField(allow_null=True),
+    'mape_global_pct': serializers.FloatField(allow_null=True),
+    'valeur_stock_par_classe_abc': serializers.DictField(),
+}))
+@api_view(['GET'])
+@permission_classes([IsResponsableOrAdmin])
+def tableau_bord_executif_view(request):
+    """NTSCM28 — ``GET /api/django/scm/tableau-bord/`` : 4 KPI de synthèse
+    exécutifs (taux de service, OTIF pondéré, MAPE global, valeur de stock
+    par classe ABC — jamais de ``prix_achat`` en clair)."""
+    from . import selectors
+
+    return Response(selectors.tableau_bord_executif(request.user.company))
+
+
+# ── NTSCM25 — détection d'anomalie de demande (pic/creux inattendu) ─────────
+
+@extend_schema(responses=inline_serializer('ScmAnomalieDemande', {
+    'id': serializers.IntegerField(),
+    'produit_id': serializers.CharField(allow_null=True),
+    'message': serializers.CharField(),
+    'severity': serializers.CharField(),
+    'created_at': serializers.DateTimeField(),
+}, many=True))
+@api_view(['GET'])
+@permission_classes([IsResponsableOrAdmin])
+def anomalies_demande_view(request):
+    """NTSCM25 — ``GET /api/django/scm/anomalies-demande/`` : anomalies de
+    demande OUVERTES (``core.models.AnomalyFlag``, ``subject_type=
+    'scm.demande'``, voir ``services.detecter_anomalies_demande``) — alimente
+    le badge « ⚠ pic inhabituel détecté » de ``/scm/reappro``."""
+    from core.models import AnomalyFlag
+
+    flags = (
+        AnomalyFlag.objects
+        .filter(
+            company=request.user.company, subject_type='scm.demande',
+            status=AnomalyFlag.STATUS_OUVERT)
+        .order_by('-created_at'))
+    data = [{
+        'id': f.id,
+        'produit_id': f.metric.split(':')[-1] if ':' in (f.metric or '') else None,
+        'message': f.message,
+        'severity': f.severity,
+        'created_at': f.created_at,
+    } for f in flags]
+    return Response(data)
+
+
+@extend_schema(request=None, responses=inline_serializer(
+    'ScmDetecterAnomaliesDemandeResponse', {'nb_flags': serializers.IntegerField()}))
+@api_view(['POST'])
+@permission_classes([IsResponsableOrAdmin])
+def detecter_anomalies_demande_view(request):
+    """NTSCM25 — ``POST /api/django/scm/anomalies-demande/detecter/`` :
+    déclenche manuellement le scan (``services.detecter_anomalies_demande``)."""
+    from . import services
+
+    flags = services.detecter_anomalies_demande(request.user.company)
+    return Response({'nb_flags': len(flags)})
+
+
+# ── NTSCM22 — réglages opt-in du cycle S&OP automatique (singleton société) ─
+
+# `request=None` : le PATCH accepte un corps ad-hoc (sop_actif/animateur_sop),
+# sans serializer d'entree — sans cette declaration drf-spectacular signale un
+# « unable to guess serializer » cote REQUETE, et le cliquet PACT7 n'accepte
+# que la decroissance de ce compteur.
+@extend_schema(request=None, responses=inline_serializer('ScmParametresSopResponse', {
+    'sop_actif': serializers.BooleanField(),
+    'animateur_sop': serializers.IntegerField(allow_null=True),
+    'animateur_sop_nom': serializers.CharField(allow_null=True),
+}))
+@api_view(['GET', 'PATCH'])
+@permission_classes([IsResponsableOrAdmin])
+def parametres_sop_view(request):
+    """NTSCM22 — ``GET``/``PATCH /api/django/scm/parametres-sop/`` : réglages
+    opt-in du cycle S&OP automatique (singleton par société, créé
+    paresseusement — voir ``services.parametres_scm``/``models.
+    ParametresSCM``). ``PATCH`` accepte ``{"sop_actif": bool,
+    "animateur_sop": <user_id>|null}``."""
+    from . import services
+
+    parametres = services.parametres_scm(request.user.company)
+
+    if request.method == 'PATCH':
+        from django.contrib.auth import get_user_model
+
+        if 'sop_actif' in request.data:
+            parametres.sop_actif = bool(request.data.get('sop_actif'))
+        if 'animateur_sop' in request.data:
+            animateur_id = request.data.get('animateur_sop')
+            if animateur_id in (None, ''):
+                parametres.animateur_sop = None
+            else:
+                User = get_user_model()
+                animateur = User.objects.filter(
+                    company=request.user.company, pk=animateur_id).first()
+                if animateur is None:
+                    return Response(
+                        {'animateur_sop': 'Utilisateur introuvable.'}, status=400)
+                parametres.animateur_sop = animateur
+        parametres.save(update_fields=['sop_actif', 'animateur_sop', 'updated_at'])
+
+    return Response({
+        'sop_actif': parametres.sop_actif,
+        'animateur_sop': parametres.animateur_sop_id,
+        'animateur_sop_nom': (
+            parametres.animateur_sop.username if parametres.animateur_sop_id else None),
+    })

@@ -135,3 +135,105 @@ def estimer_co2_transport(ordre_transport_id, company=None):
     base['facteur_kg_co2_par_tonne_km'] = facteur.facteur_kg_co2_par_tonne_km
     base['estimation_kg_co2'] = estimation
     return base
+
+
+def _filtre_periode(qs, periode, champ='created_at'):
+    """Filtre `qs` sur ``<champ>__year``/``<champ>__month`` pour une
+    ``periode`` au format ``YYYY-MM`` — no-op si absente/invalide. Convention
+    PARTAGÉE par NTLOG24 (dashboard)/NTLOG27 (export fret)/NTLOG31 (relevé
+    litiges) : les trois filtrent sur ``created_at``, jamais sur des champs
+    différents, pour que les totaux affichés/exportés correspondent au
+    dernier chiffre près (critères d'acceptation NTLOG27/31)."""
+    if not periode:
+        return qs
+    try:
+        annee, mois = periode.split('-')
+        return qs.filter(**{
+            f'{champ}__year': int(annee), f'{champ}__month': int(mois)})
+    except (ValueError, TypeError):
+        return qs
+
+
+def tableau_bord_logistique(company, periode=None):
+    """NTLOG24 — synthèse logistique d'une société sur une `periode`
+    optionnelle (``YYYY-MM``, filtre `_filtre_periode` sur ``created_at``) :
+    coût/kg transporté, taux de service, litiges ouverts + montant contesté,
+    répartition flotte propre/affrètement, CO2 total estimé. Exclut TOUJOURS
+    les ordres annulés (`OrdreTransport.Statut.ANNULE`).
+
+    « Taux de service » = part des ordres LIVRÉS dont la dernière étape de
+    livraison (`EtapeTransport.date_reelle`) est ≤ `date_livraison_prevue` ;
+    un ordre sans `date_livraison_prevue` renseignée ou sans étape de
+    livraison clôturée n'est pas jugeable en retard et compte « à temps »
+    (aucune preuve du contraire) — comportement documenté, pas un bug."""
+    from django.db.models import Count, Sum
+
+    from .models import CoutFretReel, EtapeTransport, LitigeTransport, OrdreTransport
+
+    ordres_qs = _filtre_periode(
+        OrdreTransport.objects.filter(company=company)
+        .exclude(statut=OrdreTransport.Statut.ANNULE),
+        periode)
+    ordres = list(ordres_qs.prefetch_related('lignes', 'etapes'))
+
+    couts_qs = _filtre_periode(
+        CoutFretReel.objects.filter(company=company), periode)
+    total_fret_ht = (
+        couts_qs.aggregate(total=Sum('montant_ht'))['total'] or Decimal('0'))
+
+    livres = [o for o in ordres if o.statut == OrdreTransport.Statut.LIVRE]
+    poids_livre_kg = sum(
+        (ligne.poids_kg for o in livres for ligne in o.lignes.all()),
+        Decimal('0'))
+    cout_par_kg_transporte = (
+        (total_fret_ht / poids_livre_kg) if poids_livre_kg else None)
+
+    a_temps = 0
+    for o in livres:
+        dates_reelles = [
+            e.date_reelle for e in o.etapes.all()
+            if e.type_etape == EtapeTransport.TypeEtape.LIVRAISON
+            and e.date_reelle]
+        if (not o.date_livraison_prevue or not dates_reelles
+                or max(dates_reelles) <= o.date_livraison_prevue):
+            a_temps += 1
+    taux_service_pct = (
+        round(a_temps / len(livres) * 100, 1) if livres else None)
+
+    litiges_qs = _filtre_periode(
+        LitigeTransport.objects.filter(
+            company=company, statut=LitigeTransport.Statut.OUVERT),
+        periode)
+    litiges_agg = litiges_qs.aggregate(
+        nb=Count('id'), montant=Sum('montant_conteste'))
+
+    repartition_mode_transport = {
+        OrdreTransport.ModeTransport.FLOTTE_PROPRE: 0,
+        OrdreTransport.ModeTransport.AFFRETEMENT: 0,
+    }
+    for o in ordres:
+        if o.mode_transport in repartition_mode_transport:
+            repartition_mode_transport[o.mode_transport] += 1
+
+    co2_total_estime_kg = Decimal('0')
+    for o in ordres:
+        if o.distance_km is None:
+            continue
+        resultat = estimer_co2_transport(o.id, company=company)
+        if resultat and resultat.get('estimation_kg_co2') is not None:
+            co2_total_estime_kg += resultat['estimation_kg_co2']
+
+    return {
+        'periode': periode,
+        'nb_ordres': len(ordres),
+        'nb_livres': len(livres),
+        'total_fret_ht': total_fret_ht,
+        'poids_livre_kg': poids_livre_kg,
+        'cout_par_kg_transporte': cout_par_kg_transporte,
+        'taux_service_pct': taux_service_pct,
+        'litiges_ouverts_count': litiges_agg['nb'] or 0,
+        'litiges_ouverts_montant_conteste': (
+            litiges_agg['montant'] or Decimal('0')),
+        'repartition_mode_transport': repartition_mode_transport,
+        'co2_total_estime_kg': co2_total_estime_kg,
+    }

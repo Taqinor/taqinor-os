@@ -240,6 +240,13 @@ CATALOG = {
         'Le score de maturité marketing (NTMKT18) d\'un lead change lors du '
         'recalcul quotidien (pénalité d\'inactivité 30j, NTMKT34).',
         ['lead_id', 'company', 'ancienne_valeur', 'nouvelle_valeur']),
+    # NTLOG44 (volet douane) — émis par
+    # ``apps.douane.services.cloturer_dossier_export`` à la clôture d'un
+    # DossierExport. Volet transport (ordre_transport_livre/
+    # litige_transport_ouvert) hors périmètre de cette entrée.
+    'dossier_export_cloture': _e(
+        "Un dossier d'export douane (DossierExport) est clôturé.",
+        ['dossier', 'company', 'user', 'ancien_statut']),
 }
 
 

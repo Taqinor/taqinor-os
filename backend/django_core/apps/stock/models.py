@@ -471,6 +471,14 @@ class AchatsParametres(models.Model):
         help_text='NTWMS12 — heure de coupure quotidienne à laquelle les '
                   'vagues en mode AUTO_HEURE sont lancées. Vide = pas de '
                   'libération automatique.')
+    # NTWMS21 — valeur (quantité × prix d'achat, INTERNE) au-delà de laquelle
+    # un transfert inter-emplacements exige une DemandeTransfert approuvée.
+    # 0 (défaut) = garde DÉSACTIVÉE : le transfert direct historique reste
+    # strictement inchangé pour toutes les sociétés existantes.
+    seuil_approbation_transfert = models.DecimalField(
+        max_digits=14, decimal_places=2, default=0,
+        help_text='NTWMS21 — valeur MAD au-dessus de laquelle un transfert '
+                  'exige une approbation. 0 = désactivé.')
 
 
 class DocumentConformiteFournisseur(models.Model):
@@ -1044,6 +1052,13 @@ class MouvementStock(models.Model):
     bin_destination = models.ForeignKey(
         'installations.BinLocation', on_delete=models.SET_NULL,
         null=True, blank=True, related_name='mouvements_stock_destination')
+    # NTWMS25 — « license plate tracking » : quand une PALETTE entière bouge,
+    # chaque ligne de son contenu porte l'unité logistique déplacée. Nullable
+    # = tous les mouvements historiques et tous les mouvements unitaires
+    # restent identiques.
+    unite_logistique = models.ForeignKey(
+        'stock.UniteLogistique', on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='mouvements_stock')
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,
@@ -1072,6 +1087,13 @@ class EmplacementStock(models.Model):
     que tout le stock existant est par défaut au dépôt principal et que le
     comportement actuel est strictement inchangé. Entièrement additif.
     """
+    # NTWMS19 — À QUI appartient le stock qui dort dans cet emplacement.
+    # INTERNE (défaut) = comportement historique strict, rien ne change.
+    class TypeProprietaire(models.TextChoices):
+        INTERNE = 'interne', 'Interne (notre stock, nos murs)'
+        CHEZ_TIERS = 'chez_tiers', 'Notre stock chez un tiers (3PL, dépôt loué)'
+        DE_TIERS = 'de_tiers', 'Stock d\'un tiers dans nos murs (dépôt-vente)'
+
     company = models.ForeignKey(
         'authentication.Company', on_delete=models.CASCADE,
         null=True, blank=True, related_name='emplacements_stock')
@@ -1082,6 +1104,20 @@ class EmplacementStock(models.Model):
                   'par société).')
     ordre = models.PositiveSmallIntegerField(default=100)
     archived = models.BooleanField(default=False)
+    # ── NTWMS19 — stock 3PL (chez des tiers / de tiers) ───────────────────
+    # CHEZ_TIERS : notre marchandise est physiquement chez un partenaire —
+    # elle reste NOTRE actif, donc valorisée normalement.
+    # DE_TIERS : la marchandise est chez nous mais appartient à un client ou
+    # un fournisseur — elle est gérée opérationnellement (entrées, sorties,
+    # casiers) mais JAMAIS valorisée dans NOTRE bilan (`valorisation_a_date`,
+    # `InventaireAnnuel`, `RevalorisationStock` l'excluent).
+    type_proprietaire = models.CharField(
+        max_length=20, choices=TypeProprietaire.choices,
+        default=TypeProprietaire.INTERNE)
+    tiers_nom = models.CharField(
+        max_length=150, blank=True, default='',
+        help_text='Nom du dépositaire (CHEZ_TIERS) ou du propriétaire du '
+                  'stock (DE_TIERS). Vide pour un emplacement interne.')
 
     class Meta:
         verbose_name = 'Emplacement de stock'
@@ -2028,10 +2064,18 @@ class RegleCodeBarres(models.Model):
 # que `installations/models_kitting.py`) ; ré-exportés ici pour que
 # `from apps.stock.models import VaguePicking` fonctionne partout.
 from .models_wms import (  # noqa: E402,F401
+    AffectationCrossDock,
+    AlerteRappel,
+    BlocageQualite,
     ExpeditionTransporteur,
     LignePicking,
+    LigneRetourClient,
+    MouvementRebut,
+    PlanChargement,
     PlanComptageTournant,
+    PortailTiersToken,
     Quai,
+    RetourClient,
     RendezVousTransporteur,
     UniteLogistique,
     UniteLogistiqueLigne,

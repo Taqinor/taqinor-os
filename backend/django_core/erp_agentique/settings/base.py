@@ -922,6 +922,12 @@ CELERY_TASK_ROUTES = {
     'chat.transcribe_voice_attachment': {'queue': 'interactive'},
     # Toutes les tâches planifiées (beat_schedule) → `scheduled`.
     'ventes.check_overdue_factures': {'queue': 'scheduled'},
+    # Vague SUPPLY (14/08/2026) — toute tache du beat_schedule DOIT etre
+    # routee explicitement vers `scheduled` (garde core/tests/
+    # test_celery_task_routes.py) : sans entree, elle tombe sur `default`
+    # et partage la file des taches interactives.
+    'scm.generer_previsions_mensuelles': {'queue': 'scheduled'},
+    'scm.ouvrir_cycle_sop_mensuel': {'queue': 'scheduled'},
     'compta.recalculer_alerte_rupture': {'queue': 'scheduled'},
     'compta.relances_tresorerie_du_jour': {'queue': 'scheduled'},
     'ventes.expire_stale_devis': {'queue': 'scheduled'},
@@ -1080,6 +1086,10 @@ CELERY_TASK_ROUTES = {
     'education.relancer_reinscriptions': {'queue': 'scheduled'},
     # WIR5/FLOTTE16 — génération quotidienne des échéances d'entretien flotte.
     'flotte.generer_echeances_entretien_quotidien': {'queue': 'scheduled'},
+    # NTLOG38 — rappel quotidien des étapes de transport en retard.
+    'transport.check_etapes_transport_retard': {'queue': 'scheduled'},
+    # NTLOG39 — archivage mensuel des ordres de transport livrés anciens.
+    'transport.archiver_ordres_transport_anciens': {'queue': 'scheduled'},
     # WIR25 — écritures récurrentes (XACC8) + rappels d'échéance fiscale
     # (NTMAR15), planifiés au beat, heures creuses.
     'compta.generer_ecritures_recurrentes': {'queue': 'scheduled'},

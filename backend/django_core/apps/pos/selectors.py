@@ -8,7 +8,7 @@ dans l'export xlsx (toujours client/interne-safe).
 """
 from decimal import Decimal
 
-from .models import VenteComptoir
+from .models import PrixParEmplacement, VenteComptoir
 
 
 def vente_par_uuid_client(company, uuid_client):
@@ -18,6 +18,23 @@ def vente_par_uuid_client(company, uuid_client):
         return None
     return VenteComptoir.objects.filter(
         company=company, uuid_client=uuid_client).first()
+
+
+# ── NTRET29 — Grille tarifaire par boutique/emplacement ─────────────────────
+
+def prix_applicable(company, produit, boutique):
+    """NTRET29 — prix TTC applicable à ``produit`` pour ``boutique``
+    (``parametres.BoutiquePos``) : l'override ``PrixParEmplacement`` s'il
+    existe, sinon le prix catalogue (``produit.prix_vente``) — REPLI
+    rétro-compatible pour toute boutique/produit sans override. ``boutique``
+    None (session sans boutique renseignée) renvoie toujours le prix
+    catalogue, comportement historique inchangé."""
+    if boutique is not None:
+        override = PrixParEmplacement.objects.filter(
+            company=company, produit=produit, boutique=boutique).first()
+        if override is not None:
+            return override.prix_ttc
+    return produit.prix_vente
 
 
 def _date_filtered(qs, date_debut, date_fin):
@@ -241,6 +258,30 @@ def dashboard_retail(*, company, date_debut=None, date_fin=None, boutique=None,
         'top_vendeurs': _top_montants(par_caissier, top_n),
         'comparatif_boutiques': {k: str(v) for k, v in par_boutique.items()},
     }
+
+
+# ── NTRET30 — Commission vendeur sur vente comptoir ─────────────────────────
+
+def commissions_ventes_comptoir(company, *, date_debut=None, date_fin=None):
+    """NTRET30 — ventes comptoir VALIDÉES agrégées par caissier (CA HT),
+    point d'entrée cross-app pour ``apps.reporting.insights.commissions``
+    (import fonction-local depuis reporting, jamais l'inverse — règle de
+    modularité). Renvoie ``{caissier_id: {'caissier': CustomUser,
+    'total_ht': Decimal, 'count': int}}`` — une vente sans caissier (NULL,
+    ex. import) n'est jamais comptée."""
+    ventes_qs = VenteComptoir.objects.filter(
+        company=company, statut=VenteComptoir.Statut.VALIDEE,
+        caissier__isnull=False)
+    ventes_qs = _date_filtered(ventes_qs, date_debut, date_fin)
+    ventes_qs = ventes_qs.select_related('caissier').prefetch_related('lignes')
+
+    agg = {}
+    for vente in ventes_qs:
+        slot = agg.setdefault(vente.caissier_id, {
+            'caissier': vente.caissier, 'total_ht': Decimal('0'), 'count': 0})
+        slot['total_ht'] += vente.total_ht
+        slot['count'] += 1
+    return agg
 
 
 def export_dashboard_retail_xlsx(*, company, date_debut=None, date_fin=None):

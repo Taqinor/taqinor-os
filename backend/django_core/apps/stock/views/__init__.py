@@ -40,7 +40,11 @@ from .nomenclature_code_barres import (
 from .wms import (
     VaguePickingViewSet, UniteLogistiqueViewSet, QuaiViewSet,
     RendezVousTransporteurViewSet, ExpeditionTransporteurViewSet,
-    PlanComptageTournantViewSet,
+    PlanComptageTournantViewSet, AlerteRappelViewSet,
+    PortailTiersTokenViewSet, RetourClientViewSet,
+    MouvementRebutViewSet, PlanChargementViewSet, BlocageQualiteViewSet,
+    entrepot_productivite_view, entrepot_pertes_view,
+    reslotting_suggestions_view, casiers_etiquettes_pdf_view,
 )
 from .scanner import scanner_resoudre_view, scanner_mouvement_view
 
@@ -81,6 +85,16 @@ __all__ = [
     'RendezVousTransporteurViewSet',
     'ExpeditionTransporteurViewSet',
     'PlanComptageTournantViewSet',
+    'AlerteRappelViewSet',
+    'PortailTiersTokenViewSet',
+    'RetourClientViewSet',
+    'MouvementRebutViewSet',
+    'PlanChargementViewSet',
+    'BlocageQualiteViewSet',
+    'entrepot_productivite_view',
+    'entrepot_pertes_view',
+    'reslotting_suggestions_view',
+    'casiers_etiquettes_pdf_view',
     'scanner_resoudre_view',
     'scanner_mouvement_view',
 ]

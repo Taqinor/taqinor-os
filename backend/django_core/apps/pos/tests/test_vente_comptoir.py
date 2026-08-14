@@ -152,6 +152,49 @@ class ValiderVenteServiceTests(TestCase):
                 vente=vente, paiements=[{'mode': 'carte', 'montant': '180'}],
                 user=self.user)
 
+    # ── NTRET24 — Paiement fractionné multi-modes ───────────────────────────
+
+    def test_paiements_multiples_multi_modes_creent_n_paiements(self):
+        vente = self._vente()  # total = 240
+        session = make_session_caisse(self.co, self.user)
+        vente.session_caisse = session
+        vente.save(update_fields=['session_caisse'])
+        paiements = [
+            {'mode': 'especes', 'montant': '100'},
+            {'mode': 'carte', 'montant': '140'},
+        ]
+        services.valider_vente(vente=vente, paiements=paiements, user=self.user)
+
+        vente.refresh_from_db()
+        self.assertEqual(vente.statut, VenteComptoir.Statut.VALIDEE)
+        self.assertEqual(vente.facture.paiements.count(), 2)
+        total = sum(
+            (p.montant for p in vente.facture.paiements.all()), Decimal('0'))
+        self.assertEqual(total, Decimal('240.00'))
+
+    def test_paiements_insuffisants_refusent_la_validation(self):
+        vente = self._vente()  # total = 240
+        with self.assertRaises(services.VenteComptoirError):
+            services.valider_vente(
+                vente=vente, paiements=[{'mode': 'carte', 'montant': '100'}],
+                user=self.user)
+        vente.refresh_from_db()
+        self.assertEqual(vente.statut, VenteComptoir.Statut.BROUILLON)
+        self.assertIsNone(vente.facture)
+
+    def test_paiement_excedentaire_espece_reste_accepte(self):
+        """Un excédent réglé en espèces est légitime (monnaie rendue) — ne
+        doit jamais être refusé côté serveur."""
+        vente = self._vente()  # total = 240
+        session = make_session_caisse(self.co, self.user)
+        vente.session_caisse = session
+        vente.save(update_fields=['session_caisse'])
+        services.valider_vente(
+            vente=vente, paiements=[{'mode': 'especes', 'montant': '300'}],
+            user=self.user)
+        vente.refresh_from_db()
+        self.assertEqual(vente.statut, VenteComptoir.Statut.VALIDEE)
+
     def test_prix_achat_never_serialized(self):
         vente = self._vente()
         services.valider_vente(

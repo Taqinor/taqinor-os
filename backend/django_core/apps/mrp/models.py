@@ -6,6 +6,7 @@ de fabrication capacitaires. Distinct du kitting boutique déjà livré côté
 magasin) — jamais reconstruit ici. `mrp` référence `stock`/`installations`
 UNIQUEMENT par string-FK (jamais d'import de leurs modules `models`).
 """
+from django.conf import settings
 from django.db import models
 
 from core.models import TenantModel
@@ -49,6 +50,13 @@ class PosteDeCharge(TenantModel):
     sous_traitant = models.ForeignKey(
         'stock.Fournisseur', on_delete=models.SET_NULL, null=True, blank=True,
         related_name='mrp_postes_charge', verbose_name='Sous-traitant')
+    # NTMFG14 — horodatage de la dernière remise à zéro du compteur d'usage
+    # (clôture d'une échéance d'entretien basée sur les heures d'usage,
+    # `services.cloturer_echeance_entretien`). `None` = jamais réinitialisé
+    # (le cumul part alors de `created_at`).
+    usage_reinitialise_le = models.DateTimeField(
+        null=True, blank=True,
+        verbose_name="Compteur d'usage réinitialisé le")
 
     class Meta:
         verbose_name = 'Poste de charge'
@@ -210,6 +218,15 @@ class OrdreFabrication(TenantModel):
     # jamais le rejouer sur une clôture répétée.
     stock_mouvemente = models.BooleanField(
         default=False, verbose_name='Stock mouvementé')
+    # NTMFG16 — première pièce bonne (First Article Inspection) : un OF
+    # prototype valide une nouvelle gamme/nomenclature (NTMFG15) AVANT
+    # libération en production normale. EXCLU des calculs AGRÉGÉS de
+    # production normale (MRP net NTMFG5, TRS/OEE NTMFG12, coût standard
+    # NTMFG11) mais reste soumis au même contrôle qualité qu'un OF normal.
+    # Non modifiable après clôture (`OrdreFabricationViewSet.perform_update`)
+    # — créer un nouvel OF plutôt que de « débasculer » un prototype clôturé.
+    est_prototype = models.BooleanField(
+        default=False, verbose_name='Prototype (hors production normale)')
 
     class Meta:
         verbose_name = 'Ordre de fabrication'
@@ -398,3 +415,165 @@ class CoutStandard(TenantModel):
 
     def __str__(self):
         return f'{self.produit_id} · std v{self.version}'
+
+
+class PlanEntretienPoste(TenantModel):
+    """NTMFG14 — plan de maintenance PRÉVENTIVE d'un poste de charge (machine
+    /ligne de PRODUCTION INTERNE : compresseur, banc de test, sertisseuse…).
+
+    `sav.Equipement`/`ContratMaintenance`/`PlanEntretien` (FG15/16) couvrent
+    le parc CLIENT et les véhicules — AUCUN équivalent n'existait pour
+    l'outillage de production interne avant ce ticket. Jamais d'import du
+    modèle `sav` (frontière cross-app respectée, ce plan est un modèle `mrp`
+    à part entière, pattern réutilisé côté FG16 mais schéma propre)."""
+
+    poste_charge = models.ForeignKey(
+        PosteDeCharge,
+        on_delete=models.CASCADE,  # on_delete: composition — un plan n'existe que pour son poste
+        related_name='plans_entretien', verbose_name='Poste de charge')
+    description = models.CharField(max_length=200, verbose_name='Description')
+    intervalle_jours = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name='Intervalle (jours)')
+    intervalle_heures_usage = models.DecimalField(
+        max_digits=10, decimal_places=2, null=True, blank=True,
+        verbose_name="Intervalle (heures d'usage)")
+    actif = models.BooleanField(default=True, verbose_name='Actif')
+
+    class Meta:
+        verbose_name = "Plan d'entretien de poste"
+        verbose_name_plural = "Plans d'entretien de poste"
+        ordering = ['poste_charge_id', 'id']
+        indexes = [
+            models.Index(fields=['poste_charge', 'actif'],
+                         name='mrp_planent_poste_actif_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.poste_charge_id} · {self.description}'
+
+
+class EcheanceEntretienPoste(models.Model):
+    """NTMFG14 — échéance générée depuis un `PlanEntretienPoste`
+    (`services.generer_echeances_poste`). Pas de `company` propre — scopée
+    via `plan.poste_charge.company`."""
+
+    class Statut(models.TextChoices):
+        A_FAIRE = 'a_faire', 'À faire'
+        PLANIFIE = 'planifie', 'Planifié'
+        FAIT = 'fait', 'Fait'
+
+    plan = models.ForeignKey(
+        PlanEntretienPoste,
+        on_delete=models.CASCADE, related_name='echeances')  # on_delete: composition — une échéance n'existe que pour son plan
+    date_prevue = models.DateField(verbose_name='Date prévue')
+    statut = models.CharField(
+        max_length=10, choices=Statut.choices, default=Statut.A_FAIRE)
+    date_realisee = models.DateField(null=True, blank=True)
+    note = models.CharField(max_length=300, blank=True, default='')
+
+    class Meta:
+        verbose_name = "Échéance d'entretien de poste"
+        verbose_name_plural = "Échéances d'entretien de poste"
+        ordering = ['plan_id', 'date_prevue']
+        indexes = [
+            models.Index(fields=['plan', 'statut'],
+                         name='mrp_echeance_plan_statut_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.plan_id} · {self.date_prevue} ({self.statut})'
+
+
+class OrdreModification(TenantModel):
+    """NTMFG15 — PLM léger : Ordre de Modification (ECO — Engineering Change
+    Order), un WORKFLOW de changement PILOTÉ avec effectivité (brouillon ->
+    en_revue -> approuve -> applique/rejete), distinct de `RevisionKit`
+    (XMFG18, un simple SNAPSHOT historique de composition, jamais un
+    workflow). L'application des changements passe par les services `mrp`
+    EXISTANTS (`Gamme`/`kit_source`) — un OF déjà LANCÉ garde sa gamme
+    FIGÉE (`OrdreFabrication.gamme`), aucune rétroactivité."""
+
+    class TypeEco(models.TextChoices):
+        NOMENCLATURE = 'nomenclature', 'Nomenclature'
+        GAMME = 'gamme', 'Gamme'
+        LES_DEUX = 'les_deux', 'Nomenclature + gamme'
+
+    class Statut(models.TextChoices):
+        BROUILLON = 'brouillon', 'Brouillon'
+        EN_REVUE = 'en_revue', 'En revue'
+        APPROUVE = 'approuve', 'Approuvé'
+        APPLIQUE = 'applique', 'Appliqué'
+        REJETE = 'rejete', 'Rejeté'
+
+    produit = models.ForeignKey(
+        'stock.Produit', on_delete=models.PROTECT,
+        related_name='mrp_ecos', verbose_name='Produit')
+    type_eco = models.CharField(
+        max_length=16, choices=TypeEco.choices, default=TypeEco.GAMME,
+        verbose_name='Type de changement')
+    description = models.TextField(blank=True, default='')
+    statut = models.CharField(
+        max_length=10, choices=Statut.choices, default=Statut.BROUILLON)
+    date_effectivite = models.DateField(
+        null=True, blank=True,
+        verbose_name="Date d'effectivité (vide = immédiat)")
+    # NTMFG15 — changement PROPOSÉ, stocké en JSON, appliqué à l'effectivité
+    # via les services mrp existants : {"gamme_id": id} active une VERSION de
+    # `Gamme` déjà créée (NTMFG2) ; {"kit_source_id": id} pointe la
+    # nomenclature source (`stock.KitProduit`, lecture seule) à activer sur
+    # la gamme active du produit. `type_eco` détermine quelles clés sont lues.
+    changements = models.JSONField(default=dict, blank=True)
+    demandeur = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='mrp_ecos_demandes', verbose_name='Demandeur')
+    approbateur = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='mrp_ecos_approuves', verbose_name='Approbateur')
+    applique_le = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        verbose_name = 'Ordre de modification (ECO)'
+        verbose_name_plural = 'Ordres de modification (ECO)'
+        ordering = ['-id']
+        indexes = [
+            models.Index(fields=['company', 'statut'], name='mrp_eco_co_statut_idx'),
+            models.Index(fields=['company', 'produit'], name='mrp_eco_co_produit_idx'),
+        ]
+
+    def __str__(self):
+        return f'ECO-{self.id} · {self.produit_id} ({self.statut})'
+
+
+class ReglesKanbanProduction(TenantModel):
+    """NTMFG17 — carte de réappro atelier (pull flow) : au passage du stock
+    disponible du produit sous `seuil_declenchement`, déclenche un OF
+    BROUILLON de `quantite_lot` unités (`services.declencher_kanban`,
+    tâche périodique ou manuelle `mrp/kanban/declencher/`)."""
+
+    produit = models.ForeignKey(
+        'stock.Produit', on_delete=models.PROTECT,
+        related_name='mrp_regles_kanban', verbose_name='Produit')
+    poste_charge_defaut = models.ForeignKey(
+        PosteDeCharge, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='regles_kanban', verbose_name='Poste de charge par défaut')
+    quantite_lot = models.DecimalField(
+        max_digits=12, decimal_places=2, default=1, verbose_name='Quantité par lot')
+    seuil_declenchement = models.DecimalField(
+        max_digits=12, decimal_places=2, default=0,
+        verbose_name='Seuil de déclenchement')
+    actif = models.BooleanField(default=True, verbose_name='Actif')
+
+    class Meta:
+        verbose_name = 'Règle kanban de production'
+        verbose_name_plural = 'Règles kanban de production'
+        ordering = ['produit_id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'produit'], name='mrp_kanban_co_produit_uniq'),
+        ]
+        indexes = [
+            models.Index(fields=['company', 'actif'], name='mrp_kanban_co_actif_idx'),
+        ]
+
+    def __str__(self):
+        return f'Kanban · {self.produit_id} (seuil {self.seuil_declenchement})'

@@ -654,6 +654,34 @@ def commissions(request):
             slot['base'] += kwc
             slot['commission'] += kwc * valeur
 
+    # NTRET30 — étend le rapport aux ventes comptoir (apps.pos) du caissier :
+    # import FONCTION-LOCAL vers ``apps.pos.selectors`` (jamais l'inverse —
+    # règle de modularité cross-app). Un caissier avec un PlanCommission
+    # dédié en base CA_DEVIS_SIGNE l'applique aussi à son CA comptoir (un CA
+    # est un CA) ; à défaut, le mode société ``pct_devis`` s'applique de la
+    # même façon. ``par_kwc`` n'a pas de sens pour un comptoir (aucun kWc
+    # installé) — jamais appliqué ici. Mode désactivé et aucun plan dédié en
+    # CA_DEVIS_SIGNE = comportement inchangé (aucune ligne ajoutée).
+    from apps.pos.selectors import commissions_ventes_comptoir
+    for caissier_id, data in commissions_ventes_comptoir(
+            company, date_debut=start, date_fin=end).items():
+        caissier = data['caissier']
+        plan_caissier = resoudre_plan_commission(company, caissier)
+        taux = None
+        if plan_caissier is not None and plan_caissier.base == PlanCommission.Base.CA_DEVIS_SIGNE:
+            taux = plan_caissier.taux_effectif()
+        elif plan_caissier is None and mode_active and mode == 'pct_devis':
+            taux = valeur
+        if not taux:
+            continue
+        base_ht = data['total_ht']
+        slot = agg.setdefault(caissier_id, {
+            'commercial': _username(caissier) or '—', 'base': Decimal('0'),
+            'commission': Decimal('0'), 'count': 0})
+        slot['base'] += base_ht
+        slot['commission'] += base_ht * Decimal(taux) / Decimal('100')
+        slot['count'] += data['count']
+
     rows = sorted(agg.values(),
                   key=lambda r: r['commission'], reverse=True)
     out = [{

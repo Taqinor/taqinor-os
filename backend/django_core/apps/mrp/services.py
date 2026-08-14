@@ -3,6 +3,7 @@ from datetime import timedelta
 from decimal import Decimal
 
 from django.db import transaction
+from django.db.models import Sum
 from django.utils import timezone
 
 
@@ -576,3 +577,245 @@ def figer_cout_standard(company, produit, gamme, *, cout_indirect_pct=0,
         cout_main_oeuvre=calculer_cout_main_oeuvre_standard(gamme),
         cout_indirect_pct=_dec(cout_indirect_pct),
         date_effective=date_effective)
+
+
+# ── NTMFG14 — Maintenance préventive des postes de charge ────────────────
+
+def _usage_minutes_depuis_reset(poste, today=None):
+    """NTMFG14 — cumul des minutes RÉELLES (NTMFG8, opérations terminées) de
+    CE poste depuis la dernière réinitialisation du compteur
+    (`PosteDeCharge.usage_reinitialise_le`), ou depuis sa création si le
+    compteur n'a jamais été réinitialisé."""
+    from .models import OperationOF
+
+    depuis = poste.usage_reinitialise_le or poste.created_at
+    total = (
+        OperationOF.objects
+        .filter(poste_charge=poste, statut='terminee', terminee_le__gte=depuis)
+        .aggregate(total=Sum('temps_reel_min'))['total'] or 0)
+    return _dec(total)
+
+
+def generer_echeances_poste(plan, today=None):
+    """NTMFG14 — génère (idempotent) la PROCHAINE échéance d'un plan actif,
+    par intervalle de jours et/ou par heures d'usage cumulées depuis la
+    dernière réinitialisation du compteur (NTMFG8). Ne crée jamais de
+    doublon : no-op tant qu'une échéance `a_faire`/`planifie` est déjà
+    ouverte pour ce plan. Renvoie l'échéance créée, ou `None`."""
+    from .models import EcheanceEntretienPoste
+
+    today = today or timezone.localdate()
+    if not plan.actif:
+        return None
+    ouverte = plan.echeances.filter(
+        statut__in=[EcheanceEntretienPoste.Statut.A_FAIRE,
+                    EcheanceEntretienPoste.Statut.PLANIFIE]).exists()
+    if ouverte:
+        return None
+
+    doit_generer = False
+    if plan.intervalle_jours:
+        derniere = plan.echeances.order_by('-date_prevue').first()
+        if derniere is None:
+            doit_generer = True
+        else:
+            base = derniere.date_realisee or derniere.date_prevue
+            if today >= base + timedelta(days=int(plan.intervalle_jours)):
+                doit_generer = True
+    if not doit_generer and plan.intervalle_heures_usage:
+        usage_heures = _usage_minutes_depuis_reset(
+            plan.poste_charge, today) / Decimal('60')
+        if usage_heures >= _dec(plan.intervalle_heures_usage):
+            doit_generer = True
+
+    if not doit_generer:
+        return None
+    return EcheanceEntretienPoste.objects.create(plan=plan, date_prevue=today)
+
+
+def generer_echeances_entretien(company, today=None):
+    """NTMFG14 — génère les échéances dues pour TOUS les plans actifs de
+    `company` (appelé par la commande de gestion ou manuellement). Renvoie
+    la liste des échéances créées."""
+    from .models import PlanEntretienPoste
+
+    today = today or timezone.localdate()
+    creees = []
+    for plan in PlanEntretienPoste.objects.filter(
+            poste_charge__company=company, actif=True):
+        echeance = generer_echeances_poste(plan, today=today)
+        if echeance is not None:
+            creees.append(echeance)
+    return creees
+
+
+def cloturer_echeance_entretien(echeance, *, date_realisee=None, note=''):
+    """NTMFG14 — clôture une échéance (`fait`) et remet À ZÉRO le compteur
+    d'usage du poste (`PosteDeCharge.usage_reinitialise_le`) quand le plan
+    est basé sur les heures d'usage — la prochaine échéance ne se
+    redéclenchera qu'après un nouveau cumul complet."""
+    from .models import EcheanceEntretienPoste
+
+    with transaction.atomic():
+        echeance.statut = EcheanceEntretienPoste.Statut.FAIT
+        echeance.date_realisee = date_realisee or timezone.localdate()
+        echeance.note = note or ''
+        echeance.save(update_fields=['statut', 'date_realisee', 'note'])
+        if echeance.plan.intervalle_heures_usage:
+            poste = echeance.plan.poste_charge
+            poste.usage_reinitialise_le = timezone.now()
+            poste.save(update_fields=['usage_reinitialise_le'])
+    return echeance
+
+
+# ── NTMFG15 — PLM léger : Ordres de Modification (ECO) ───────────────────
+
+def appliquer_eco(eco):
+    """NTMFG15 — applique les changements d'un ECO `approuve` (idempotent :
+    un ECO déjà `applique` n'est jamais rejoué). Un ECO `gamme`/`les_deux`
+    active la VERSION de `Gamme` déjà créée (NTMFG2) désignée par
+    `changements['gamme_id']` (les autres versions du même produit repassent
+    `actif=False`). Un ECO `nomenclature`/`les_deux` pointe la gamme ACTIVE
+    courante du produit vers `changements['kit_source_id']`. Les OF déjà
+    LANCÉS gardent leur `gamme` figée — AUCUNE rétroactivité, leur FK
+    `OrdreFabrication.gamme` n'est jamais touchée ici."""
+    from .models import Gamme, OrdreModification
+
+    if eco.statut == OrdreModification.Statut.APPLIQUE:
+        return eco
+    if eco.statut != OrdreModification.Statut.APPROUVE:
+        raise ValueError('Seul un ECO approuvé peut être appliqué.')
+
+    with transaction.atomic():
+        changements = eco.changements or {}
+
+        gamme_id = changements.get('gamme_id')
+        if gamme_id and eco.type_eco in (
+                OrdreModification.TypeEco.GAMME, OrdreModification.TypeEco.LES_DEUX):
+            nouvelle = Gamme.objects.filter(
+                id=gamme_id, company=eco.company, produit=eco.produit).first()
+            if nouvelle is not None:
+                Gamme.objects.filter(
+                    company=eco.company, produit=eco.produit
+                ).exclude(id=nouvelle.id).update(actif=False)
+                if not nouvelle.actif:
+                    nouvelle.actif = True
+                    nouvelle.save(update_fields=['actif'])
+
+        kit_source_id = changements.get('kit_source_id')
+        if kit_source_id and eco.type_eco in (
+                OrdreModification.TypeEco.NOMENCLATURE, OrdreModification.TypeEco.LES_DEUX):
+            gamme_active = (
+                Gamme.objects.filter(
+                    company=eco.company, produit=eco.produit, actif=True)
+                .order_by('-version').first())
+            if gamme_active is not None:
+                gamme_active.kit_source_id = kit_source_id
+                gamme_active.save(update_fields=['kit_source'])
+
+        eco.statut = OrdreModification.Statut.APPLIQUE
+        eco.applique_le = timezone.now()
+        eco.save(update_fields=['statut', 'applique_le'])
+    return eco
+
+
+def approuver_eco(eco, user=None):
+    """NTMFG15 — passe l'ECO en `approuve`. Si `date_effectivite` est déjà
+    atteinte (ou absente = immédiat), applique aussitôt (`appliquer_eco`) ;
+    sinon reste en attente du sweep périodique (`sweep_ecos_effectivite`)."""
+    from .models import OrdreModification
+
+    if eco.statut not in (
+            OrdreModification.Statut.BROUILLON, OrdreModification.Statut.EN_REVUE):
+        raise ValueError('Seul un ECO brouillon/en revue peut être approuvé.')
+    with transaction.atomic():
+        eco.statut = OrdreModification.Statut.APPROUVE
+        eco.approbateur = user if getattr(user, 'is_authenticated', False) else None
+        eco.save(update_fields=['statut', 'approbateur'])
+        today = timezone.localdate()
+        if eco.date_effectivite is None or eco.date_effectivite <= today:
+            appliquer_eco(eco)
+    eco.refresh_from_db()
+    return eco
+
+
+def rejeter_eco(eco):
+    """NTMFG15 — rejette l'ECO : AUCUN changement n'est appliqué, jamais.
+    Refuse si l'ECO est déjà `applique` (un ECO appliqué ne se rejette
+    plus — créer un nouvel ECO)."""
+    from .models import OrdreModification
+
+    if eco.statut == OrdreModification.Statut.APPLIQUE:
+        raise ValueError('Un ECO déjà appliqué ne peut plus être rejeté.')
+    eco.statut = OrdreModification.Statut.REJETE
+    eco.save(update_fields=['statut'])
+    return eco
+
+
+def sweep_ecos_effectivite(company, today=None):
+    """NTMFG15 — balaie les ECO `approuve` de `company` dont la date
+    d'effectivité est atteinte et les applique (pattern beat existant :
+    commande de gestion appelable manuellement ou par planificateur).
+    Renvoie la liste des ECO appliqués."""
+    from .models import OrdreModification
+
+    today = today or timezone.localdate()
+    appliques = []
+    qs = OrdreModification.objects.filter(
+        company=company, statut=OrdreModification.Statut.APPROUVE,
+        date_effectivite__isnull=False, date_effectivite__lte=today)
+    for eco in qs:
+        appliquer_eco(eco)
+        appliques.append(eco)
+    return appliques
+
+
+# ── NTMFG17 — Kanban de production (pull flow) ───────────────────────────
+
+def declencher_kanban(regle):
+    """NTMFG17 — si le stock disponible du produit de `regle` est SOUS le
+    seuil de déclenchement, crée un OF BROUILLON de `quantite_lot` unités
+    (jamais dupliqué : no-op si un OF brouillon/planifié/lancé est DÉJÀ
+    ouvert pour ce produit). Renvoie l'OF créé, ou `None`."""
+    from apps.stock.selectors import get_produit_scoped
+    from apps.stock.services import available_quantity
+
+    from .models import Gamme, OrdreFabrication
+
+    if not regle.actif:
+        return None
+    produit = get_produit_scoped(regle.company_id, regle.produit_id)
+    if produit is None:
+        return None
+    dispo = _dec(available_quantity(produit))
+    if dispo > _dec(regle.seuil_declenchement):
+        return None
+    deja_ouvert = OrdreFabrication.objects.filter(
+        company=regle.company, produit_id=regle.produit_id,
+        statut__in=[
+            OrdreFabrication.Statut.BROUILLON, OrdreFabrication.Statut.PLANIFIE,
+            OrdreFabrication.Statut.LANCE]).exists()
+    if deja_ouvert:
+        return None
+    gamme = (
+        Gamme.objects.filter(
+            company=regle.company, produit_id=regle.produit_id, actif=True)
+        .order_by('-version').first())
+    return OrdreFabrication.objects.create(
+        company=regle.company, produit_id=regle.produit_id,
+        quantite=regle.quantite_lot, gamme=gamme)
+
+
+def declencher_kanban_toutes_regles(company):
+    """NTMFG17 — balaie toutes les règles kanban ACTIVES de `company` (tâche
+    périodique, pattern beat existant — dégrade proprement en déclenchement
+    manuel via `mrp/kanban/declencher/` si Celery beat n'est pas déployé).
+    Renvoie la liste des OF créés."""
+    from .models import ReglesKanbanProduction
+
+    crees = []
+    for regle in ReglesKanbanProduction.objects.filter(company=company, actif=True):
+        of = declencher_kanban(regle)
+        if of is not None:
+            crees.append(of)
+    return crees

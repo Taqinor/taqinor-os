@@ -254,6 +254,27 @@ class EventType(models.TextChoices):
     # croit couvert pendant des semaines.
     VEILLE_AO_ALARME_SILENCE = (
         'veille_ao_alarme_silence', "Veille appels d'offres muette")
+    # NTLOG38 — rappel J-3 (beat quotidien) sur une `transport.EtapeTransport`
+    # dont `date_prevue` est dépassée et `statut_etape` != fait : notifie le
+    # responsable transport (motif `apps.sav.tasks._responsables`), une
+    # seule fois par étape et par jour.
+    TRANSPORT_ETAPE_RETARD = (
+        'transport_etape_retard', 'Étape de transport en retard')
+    # NTSCM21 — résumé de la génération mensuelle automatique des prévisions
+    # de demande (tâche planifiée `apps.scm.tasks.generer_previsions_
+    # mensuelles_task`).
+    SCM_PREVISIONS_GENEREES = (
+        'scm_previsions_generees', 'Prévisions de demande générées (mensuel)')
+    # NTSCM22 — ouverture automatique du cycle S&OP du mois suivant (opt-in
+    # par société, `apps.scm.models.ParametresSCM.sop_actif`).
+    SCM_CYCLE_SOP_OUVERT = (
+        'scm_cycle_sop_ouvert', 'Cycle S&OP ouvert automatiquement')
+    # NTRET32 — clôture de SessionCaisse (apps.pos) dont l'écart (espèces ou
+    # TPE) dépasse le seuil configuré (Paramètres POS) : notifie les
+    # managers/gérants (resolve_recipients). Seuil vide/0 = désactivé,
+    # jamais émis.
+    CAISSE_ECART_ANORMAL = (
+        'caisse_ecart_anormal', 'Écart de caisse anormal')
 
 
 class Channel(models.TextChoices):
