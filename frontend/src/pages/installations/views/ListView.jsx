@@ -19,6 +19,8 @@ import {
 import { buildCopyTSVAction } from '../../../ui/datatable/BulkActionBar'
 import { formatDate } from '../../../lib/format'
 import importApi, { downloadXlsx } from '../../../api/importApi'
+import OfflinePendingBadge from '../../../components/offline/OfflinePendingBadge'
+import { useOfflinePending } from '../../../components/offline/useOfflinePending'
 
 const NONE = '__none__'
 
@@ -140,6 +142,11 @@ export default function ListView({ items, onOpen, users, onChangeStatus, onReass
   const [bulk, setBulk] = useState(null) // { kind, rows, clear }
   const canBulk = typeof onChangeStatus === 'function' && typeof onReassign === 'function'
 
+  // NTMOB24 — modifications encore en file pour CE chantier (checklist cochée
+  // hors réseau, etc.). Une seule lecture pour toute la liste, jamais un hook
+  // par ligne ; l'outbox reste l'unique source (VX105).
+  const enAttente = useOfflinePending('installations', { champ: 'chantier' })
+
   const columns = useMemo(
     () => [
       {
@@ -151,6 +158,8 @@ export default function ListView({ items, onOpen, users, onChangeStatus, onReass
             <span className="font-semibold">{value ?? '—'}</span>
             {/* VX218 — badge « Nouveau » : chantier assigné depuis ma dernière visite. */}
             {nouveauxIds?.has(row.id) && <Badge tone="success">Nouveau</Badge>}
+            {/* NTMOB24 — modifications posées hors-ligne, pas encore synchro. */}
+            <OfflinePendingBadge n={enAttente.get(String(row.id)) || 0} />
           </span>
         ),
         exportValue: (row) => row.reference ?? '',
@@ -195,7 +204,7 @@ export default function ListView({ items, onOpen, users, onChangeStatus, onReass
         exportValue: (row) => formatDate(row.date_pose_prevue),
       },
     ],
-    [nouveauxIds],
+    [nouveauxIds, enAttente],
   )
 
   const rowActions = (row) => [

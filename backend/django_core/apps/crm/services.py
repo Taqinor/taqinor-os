@@ -3585,6 +3585,22 @@ def create_activity_from_public_api(*, company, lead_id, body):
     return activity.log_note(lead, None, body)
 
 
+def ajouter_note_lead(*, company, lead_id, user, body):
+    """NTMOB1 — ajoute une note (activité chatter) sur un lead DE CETTE
+    SOCIÉTÉ, avec l'utilisateur ACTEUR (contrairement à
+    ``create_activity_from_public_api``, qui journalise sans acteur).
+
+    Point d'entrée cross-app pour rejouer une note posée hors-ligne sans
+    importer ``apps.crm.models``/``views``. Lève ``Lead.DoesNotExist`` hors
+    société (jamais de fuite cross-tenant) et ``ValueError`` sur un corps vide.
+    """
+    lead = Lead.objects.get(company=company, pk=lead_id)
+    body = (body or '').strip()
+    if not body:
+        raise ValueError("Le champ « body » est obligatoire.")
+    return activity.log_note(lead, user, body)
+
+
 # ── YSERV11 — Gabarit de message « parrainage » (FR + darija, éditable) ─────
 
 # Corps par défaut — ÉDITABLES ensuite par l'admin comme tout MessageTemplate.
