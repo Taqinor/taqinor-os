@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 8558, operations: 15533, components: 4400}
+counts: {paths: 8580, operations: 15571, components: 4415}
 securitySchemes:
 - cookieJWT
 - publicApiKey
@@ -5242,6 +5242,13 @@ operations:
 - post /api/django/marketing/types-evenement/{id}/creer-evenement/ -> django_marketing_types_evenement_creer_evenement_create
 - post /api/django/marketing/webhooks/brevo/ -> django_marketing_webhooks_brevo_create
 - post /api/django/marketing/webhooks/sms-stop/ -> django_marketing_webhooks_sms_stop_create
+- get /api/django/migration/certification/{partenaire_id}/score/ -> django_migration_certification_score_retrieve
+- get /api/django/migration/deploiements-partenaire/ -> django_migration_deploiements_partenaire_list
+- post /api/django/migration/deploiements-partenaire/ -> django_migration_deploiements_partenaire_create
+- delete /api/django/migration/deploiements-partenaire/{id}/ -> django_migration_deploiements_partenaire_destroy
+- get /api/django/migration/deploiements-partenaire/{id}/ -> django_migration_deploiements_partenaire_retrieve
+- patch /api/django/migration/deploiements-partenaire/{id}/ -> django_migration_deploiements_partenaire_partial_update
+- put /api/django/migration/deploiements-partenaire/{id}/ -> django_migration_deploiements_partenaire_update
 - get /api/django/migration/lots-migration/ -> django_migration_lots_migration_list
 - post /api/django/migration/lots-migration/ -> django_migration_lots_migration_create
 - delete /api/django/migration/lots-migration/{id}/ -> django_migration_lots_migration_destroy
@@ -5256,6 +5263,15 @@ operations:
 - post /api/django/migration/lots-migration/{id}/reprendre/ -> django_migration_lots_migration_reprendre_create
 - post /api/django/migration/lots-migration/{id}/terminer/ -> django_migration_lots_migration_terminer_create
 - post /api/django/migration/lots-migration/{id}/valider-source/ -> django_migration_lots_migration_valider_source_create
+- get /api/django/migration/playbook-instances/ -> django_migration_playbook_instances_list
+- post /api/django/migration/playbook-instances/ -> django_migration_playbook_instances_create
+- post /api/django/migration/playbook-instances/instancier/ -> django_migration_playbook_instances_instancier_create
+- delete /api/django/migration/playbook-instances/{id}/ -> django_migration_playbook_instances_destroy
+- get /api/django/migration/playbook-instances/{id}/ -> django_migration_playbook_instances_retrieve
+- patch /api/django/migration/playbook-instances/{id}/ -> django_migration_playbook_instances_partial_update
+- put /api/django/migration/playbook-instances/{id}/ -> django_migration_playbook_instances_update
+- post /api/django/migration/playbook-instances/{id}/cocher/ -> django_migration_playbook_instances_cocher_create
+- post /api/django/migration/playbook-instances/{id}/terminer/ -> django_migration_playbook_instances_terminer_create
 - get /api/django/migration/projets-migration/ -> django_migration_projets_migration_list
 - post /api/django/migration/projets-migration/ -> django_migration_projets_migration_create
 - delete /api/django/migration/projets-migration/{id}/ -> django_migration_projets_migration_destroy
@@ -5366,6 +5382,9 @@ operations:
 - get /api/django/notifications/working-hours/ -> django_notifications_working_hours_retrieve
 - patch /api/django/notifications/working-hours/{id}/ -> django_notifications_working_hours_partial_update
 - put /api/django/notifications/working-hours/{id}/ -> django_notifications_working_hours_update
+- get /api/django/offlinesync/operations/ -> django_offlinesync_operations_list
+- post /api/django/offlinesync/operations/batch/ -> django_offlinesync_operations_batch_create
+- get /api/django/offlinesync/operations/{id}/ -> django_offlinesync_operations_retrieve
 - get /api/django/onboarding/progress/ -> django_onboarding_progress_retrieve
 - post /api/django/onboarding/progress/ignorer-tout/ -> django_onboarding_progress_ignorer_tout_create
 - post /api/django/onboarding/progress/{id}/ignorer/ -> django_onboarding_progress_ignorer_create
@@ -13040,6 +13059,13 @@ operations:
 - post /api/v1/marketing/types-evenement/{id}/creer-evenement/ -> v1_marketing_types_evenement_creer_evenement_create
 - post /api/v1/marketing/webhooks/brevo/ -> v1_marketing_webhooks_brevo_create
 - post /api/v1/marketing/webhooks/sms-stop/ -> v1_marketing_webhooks_sms_stop_create
+- get /api/v1/migration/certification/{partenaire_id}/score/ -> v1_migration_certification_score_retrieve
+- get /api/v1/migration/deploiements-partenaire/ -> v1_migration_deploiements_partenaire_list
+- post /api/v1/migration/deploiements-partenaire/ -> v1_migration_deploiements_partenaire_create
+- delete /api/v1/migration/deploiements-partenaire/{id}/ -> v1_migration_deploiements_partenaire_destroy
+- get /api/v1/migration/deploiements-partenaire/{id}/ -> v1_migration_deploiements_partenaire_retrieve
+- patch /api/v1/migration/deploiements-partenaire/{id}/ -> v1_migration_deploiements_partenaire_partial_update
+- put /api/v1/migration/deploiements-partenaire/{id}/ -> v1_migration_deploiements_partenaire_update
 - get /api/v1/migration/lots-migration/ -> v1_migration_lots_migration_list
 - post /api/v1/migration/lots-migration/ -> v1_migration_lots_migration_create
 - delete /api/v1/migration/lots-migration/{id}/ -> v1_migration_lots_migration_destroy
@@ -13054,6 +13080,15 @@ operations:
 - post /api/v1/migration/lots-migration/{id}/reprendre/ -> v1_migration_lots_migration_reprendre_create
 - post /api/v1/migration/lots-migration/{id}/terminer/ -> v1_migration_lots_migration_terminer_create
 - post /api/v1/migration/lots-migration/{id}/valider-source/ -> v1_migration_lots_migration_valider_source_create
+- get /api/v1/migration/playbook-instances/ -> v1_migration_playbook_instances_list
+- post /api/v1/migration/playbook-instances/ -> v1_migration_playbook_instances_create
+- post /api/v1/migration/playbook-instances/instancier/ -> v1_migration_playbook_instances_instancier_create
+- delete /api/v1/migration/playbook-instances/{id}/ -> v1_migration_playbook_instances_destroy
+- get /api/v1/migration/playbook-instances/{id}/ -> v1_migration_playbook_instances_retrieve
+- patch /api/v1/migration/playbook-instances/{id}/ -> v1_migration_playbook_instances_partial_update
+- put /api/v1/migration/playbook-instances/{id}/ -> v1_migration_playbook_instances_update
+- post /api/v1/migration/playbook-instances/{id}/cocher/ -> v1_migration_playbook_instances_cocher_create
+- post /api/v1/migration/playbook-instances/{id}/terminer/ -> v1_migration_playbook_instances_terminer_create
 - get /api/v1/migration/projets-migration/ -> v1_migration_projets_migration_list
 - post /api/v1/migration/projets-migration/ -> v1_migration_projets_migration_create
 - delete /api/v1/migration/projets-migration/{id}/ -> v1_migration_projets_migration_destroy
@@ -13164,6 +13199,9 @@ operations:
 - get /api/v1/notifications/working-hours/ -> v1_notifications_working_hours_retrieve
 - patch /api/v1/notifications/working-hours/{id}/ -> v1_notifications_working_hours_partial_update
 - put /api/v1/notifications/working-hours/{id}/ -> v1_notifications_working_hours_update
+- get /api/v1/offlinesync/operations/ -> v1_offlinesync_operations_list
+- post /api/v1/offlinesync/operations/batch/ -> v1_offlinesync_operations_batch_create
+- get /api/v1/offlinesync/operations/{id}/ -> v1_offlinesync_operations_retrieve
 - get /api/v1/onboarding/progress/ -> v1_onboarding_progress_retrieve
 - post /api/v1/onboarding/progress/ignorer-tout/ -> v1_onboarding_progress_ignorer_tout_create
 - post /api/v1/onboarding/progress/{id}/ignorer/ -> v1_onboarding_progress_ignorer_create
@@ -16135,7 +16173,6 @@ components:
 - ContratAvancement
 - ContratAvancementMethodeEnum
 - ContratAvancementRequest
-- ContratAvancementStatutEnum
 - ContratLien
 - ContratLienRequest
 - ContratLienTypeCibleEnum
@@ -16305,6 +16342,9 @@ components:
 - DependanceTacheRequest
 - DepenseCharges
 - DepenseChargesRequest
+- DeploiementPartenaire
+- DeploiementPartenaireRequest
+- DeploiementPartenaireStatutEnum
 - DepotPublic
 - DepotPublicRequest
 - DepreciationImmobilisation
@@ -17111,6 +17151,7 @@ components:
 - ModeleVehicule
 - ModeleVehiculeCategorieEnum
 - ModeleVehiculeRequest
+- ModuleEnum
 - ModuleToggle
 - ModuleToggleRequest
 - MonitoringConfig
@@ -17146,6 +17187,7 @@ components:
 - Niveau505Enum
 - NiveauApprobationEnum
 - NiveauB3eEnum
+- NiveauCertificationEnum
 - NiveauD1fEnum
 - NiveauRequest
 - NiveauRequisEnum
@@ -17197,6 +17239,8 @@ components:
 - ObstacleAO
 - ObstacleAONatureEnum
 - ObstacleAORequest
+- OfflineOperation
+- OfflineOperationStatutEnum
 - OffreFinancement
 - OffreFinancementRequest
 - OffreGroupee
@@ -17516,6 +17560,7 @@ components:
 - PaginatedDepartementList
 - PaginatedDependanceTacheList
 - PaginatedDepenseChargesList
+- PaginatedDeploiementPartenaireList
 - PaginatedDepotPublicList
 - PaginatedDepreciationImmobilisationList
 - PaginatedDerogationCreditList
@@ -17816,6 +17861,7 @@ components:
 - PaginatedObligationPerformanceList
 - PaginatedObservationSecuriteList
 - PaginatedObstacleAOList
+- PaginatedOfflineOperationList
 - PaginatedOffreFinancementList
 - PaginatedOffreGroupeeList
 - PaginatedOperationIntercoList
@@ -17889,6 +17935,7 @@ components:
 - PaginatedPlanUrgenceList
 - PaginatedPlanificationDocumentList
 - PaginatedPlaybookEtapeList
+- PaginatedPlaybookInstanceList
 - PaginatedPlaybookList
 - PaginatedPlaybookTacheList
 - PaginatedPleinCarburantList
@@ -18432,6 +18479,7 @@ components:
 - PatchedDepartementRequest
 - PatchedDependanceTacheRequest
 - PatchedDepenseChargesRequest
+- PatchedDeploiementPartenaireRequest
 - PatchedDepotPublicRequest
 - PatchedDepreciationImmobilisationRequest
 - PatchedDerogationCreditRequest
@@ -18771,6 +18819,7 @@ components:
 - PatchedPlanUrgenceRequest
 - PatchedPlanificationDocumentRequest
 - PatchedPlaybookEtapeRequest
+- PatchedPlaybookInstanceRequest
 - PatchedPlaybookRequest
 - PatchedPlaybookTacheRequest
 - PatchedPleinCarburantRequest
@@ -19105,6 +19154,8 @@ components:
 - Playbook
 - PlaybookEtape
 - PlaybookEtapeRequest
+- PlaybookInstance
+- PlaybookInstanceRequest
 - PlaybookRequest
 - PlaybookTache
 - PlaybookTacheRequest
@@ -19656,6 +19707,7 @@ components:
 - StatutApprobationEnum
 - StatutB33Enum
 - StatutB3cEnum
+- StatutB80Enum
 - StatutC42Enum
 - StatutC74Enum
 - StatutC8cEnum
@@ -19786,6 +19838,7 @@ components:
 - TypeAlerteEnum
 - TypeAnnotationEnum
 - TypeApprobationEnum
+- TypeArticleEnum
 - TypeAttestationEnum
 - TypeAuditEnum
 - TypeBailEnum
