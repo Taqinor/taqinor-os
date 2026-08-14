@@ -265,9 +265,10 @@ def point_de_commande_avec_delai_reel(company, produit, *,
         safety_stock=safety_stock)
     return {'delai': detail, 'lead_time_days': lead_time,
             'reorder_point': resultat.reorder_point,
-            'suggested_qty': resultat.suggested_qty,
-            'stockout_date': (resultat.stockout_date.isoformat()
-                              if resultat.stockout_date else None)}
+            'suggested_quantity': resultat.suggested_quantity,
+            'reorder_now': resultat.reorder_now,
+            'rupture_date': (resultat.rupture_date.isoformat()
+                             if resultat.rupture_date else None)}
 
 
 # ═══════════════════════════════════════════════════════════════════════════
