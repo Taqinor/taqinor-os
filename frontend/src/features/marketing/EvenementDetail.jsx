@@ -71,6 +71,9 @@ export default function EvenementDetail() {
   const [loading, setLoading] = useState(true)
   const [err, setErr] = useState('')
   const [segmentMsg, setSegmentMsg] = useState('')
+  // NTMKT41 — import CSV/XLSX de participants (hors formulaire public).
+  const [importEnCours, setImportEnCours] = useState(false)
+  const [importRapport, setImportRapport] = useState(null)
 
   // WIR162 — onglets Billets/Questions/Communications (chargement paresseux).
   const [onglet, setOnglet] = useState('inscrits')
@@ -228,6 +231,27 @@ export default function EvenementDetail() {
     }
   }
 
+  // NTMKT41 — import en masse d'inscrits depuis un CSV/XLSX (ex. liste de
+  // participants d'un salon partenaire), réutilise le moteur dataimport
+  // partagé côté serveur.
+  const importerInscrits = async (e) => {
+    const fichier = e.target.files?.[0]
+    e.target.value = ''
+    if (!fichier) return
+    setImportEnCours(true)
+    setErr('')
+    setImportRapport(null)
+    try {
+      const r = await marketingApi.evenements.importerInscrits(id, fichier)
+      setImportRapport(r.data)
+      loadInscriptions()
+    } catch {
+      setErr('Import impossible.')
+    } finally {
+      setImportEnCours(false)
+    }
+  }
+
   const creerSegmentPresents = async () => {
     setSegmentMsg('')
     setErr('')
@@ -280,6 +304,20 @@ export default function EvenementDetail() {
             style={{ marginBottom: 8 }}>
             {STATUTS.map(s => <option key={s.key} value={s.key}>{s.label}</option>)}
           </select>
+
+          <label className="btn btn-light" style={{ display: 'inline-block', marginBottom: 8, marginLeft: 8 }}>
+            {importEnCours ? 'Import…' : 'Importer des inscrits'}
+            <input type="file" accept=".csv,.xlsx" data-testid="inscriptions-import-fichier"
+              onChange={importerInscrits} disabled={importEnCours}
+              style={{ display: 'none' }} />
+          </label>
+          {importRapport && (
+            <p data-testid="inscriptions-import-rapport" style={{ margin: '4px 0' }}>
+              {importRapport.crees} ajouté(s), {importRapport.doublons} doublon(s) ignoré(s)
+              {importRapport.lignes_invalides
+                ? `, ${importRapport.lignes_invalides} ligne(s) invalide(s)` : ''}.
+            </p>
+          )}
 
           <table className="data-table" data-testid="inscriptions-table">
             <thead>

@@ -1166,6 +1166,70 @@ def export_membres_segment_xlsx(segment):
     return buf.getvalue()
 
 
+def importer_inscriptions_evenement(evenement, file_bytes, filename):
+    """NTMKT41 — crée des ``InscriptionEvenement`` en MASSE depuis un
+    CSV/XLSX (ex. liste de participants d'un salon partenaire), SANS passer
+    par le formulaire public.
+
+    Réutilise le PARSEUR générique partagé
+    ``apps.dataimport.parsing.iter_rows`` (CSV+XLSX, détection encodage/
+    séparateur — conçu explicitement pour tout call-site hors ``dataimport``,
+    voir sa docstring) : lecture seule d'une fonction utilitaire, jamais un
+    import des modèles/services ``dataimport``, jamais une nouvelle lib.
+
+    Colonnes reconnues (insensibles à la casse) : ``nom``, ``email``,
+    ``telephone``/``tel``. ``nom`` obligatoire par ligne (sinon signalée en
+    invalide). Doublon = email DÉJÀ inscrit à CET événement (ignoré avec
+    rapport, jamais silencieux). Renvoie
+    ``{'crees', 'doublons', 'lignes_invalides', 'total'}``."""
+    import uuid
+
+    from apps.dataimport.parsing import iter_rows
+
+    from .models import InscriptionEvenement
+
+    headers, rows = iter_rows(file_bytes, filename)
+    index_by_norm = {(h or '').strip().lower(): h for h in headers}
+
+    def _valeur(row, *alias):
+        for a in alias:
+            cle = index_by_norm.get(a)
+            if cle is not None and row.get(cle):
+                return str(row[cle]).strip()
+        return ''
+
+    emails_existants = {
+        e.lower() for e in InscriptionEvenement.objects.filter(
+            evenement=evenement, email__gt='')
+        .values_list('email', flat=True) if e
+    }
+
+    crees = 0
+    doublons = 0
+    invalides = 0
+    for row in rows:
+        nom = _valeur(row, 'nom', 'name')
+        if not nom:
+            invalides += 1
+            continue
+        email = _valeur(row, 'email', 'e-mail', 'mail')
+        telephone = _valeur(row, 'telephone', 'tel', 'téléphone')
+        if email and email.lower() in emails_existants:
+            doublons += 1
+            continue
+        InscriptionEvenement.objects.create(
+            company=evenement.company, evenement=evenement, nom=nom,
+            email=email, telephone=telephone, qr_token=uuid.uuid4().hex,
+        )
+        if email:
+            emails_existants.add(email.lower())
+        crees += 1
+    return {
+        'crees': crees, 'doublons': doublons, 'lignes_invalides': invalides,
+        'total': len(rows),
+    }
+
+
 def attribution_comparaison(company, devis_id):
     """NTMKT20 — comparaison des 4 modèles d'attribution pour UN devis signé
     (aide à la décision, jamais un recalcul persistant). ``None`` si le devis

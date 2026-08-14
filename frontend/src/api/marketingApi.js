@@ -127,6 +127,14 @@ const marketingApi = {
       api.post(`/marketing/evenements-marketing/${id}/cloturer-presences/`),
     borne: (id, q) =>
       api.get(`/marketing/evenements-marketing/${id}/borne/`, { params: { q } }),
+    // NTMKT41 — import CSV/XLSX d'inscrits en masse (hors formulaire public).
+    importerInscrits: (id, fichier) => {
+      const form = new FormData()
+      form.append('fichier', fichier)
+      return api.post(
+        `/marketing/evenements-marketing/${id}/importer-inscrits/`, form,
+        { headers: { 'Content-Type': 'multipart/form-data' } })
+    },
   },
   billetsEvenement: resource('billets-evenement'),
   // WIR162 — ZMKT14/16/17 : ces 3 ressources étaient routées côté backend

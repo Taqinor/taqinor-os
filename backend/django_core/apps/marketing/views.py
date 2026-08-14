@@ -422,3 +422,36 @@ def export_membres_segment_xlsx_view(request, pk=None):
     resp['Content-Disposition'] = (
         f'attachment; filename="segment_{pk}_membres.xlsx"')
     return resp
+
+
+# ── NTMKT41 — Import CSV de contacts d'événement (hors formulaire public) ──
+
+_IMPORT_INSCRITS_REQUEST = inline_serializer(
+    'ImporterInscritsEvenementRequest',
+    {'fichier': drf_serializers.FileField()})
+_IMPORT_INSCRITS_RESPONSE = inline_serializer(
+    'ImporterInscritsEvenementRapport', {
+        'crees': drf_serializers.IntegerField(),
+        'doublons': drf_serializers.IntegerField(),
+        'lignes_invalides': drf_serializers.IntegerField(),
+        'total': drf_serializers.IntegerField(),
+    })
+
+
+@extend_schema(request={'multipart/form-data': _IMPORT_INSCRITS_REQUEST},
+               responses={200: _IMPORT_INSCRITS_RESPONSE})
+@api_view(['POST'])
+@permission_classes([IsAuthenticated, IsResponsableOrAdmin])
+def importer_inscriptions_evenement_view(request, pk=None):
+    """NTMKT41 — importe un CSV/XLSX de participants (ex. salon partenaire)
+    en inscriptions en masse, sans passer par le formulaire public."""
+    from .models import EvenementMarketing
+
+    evenement = get_object_or_404(
+        EvenementMarketing, pk=pk, company=request.user.company)
+    fichier = request.FILES.get('fichier')
+    if fichier is None:
+        return Response({'detail': 'fichier requis.'}, status=400)
+    rapport = marketing_services.importer_inscriptions_evenement(
+        evenement, fichier.read(), fichier.name)
+    return Response(rapport)

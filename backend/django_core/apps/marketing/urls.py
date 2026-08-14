@@ -68,6 +68,7 @@ from .views import (
     export_membres_segment_xlsx_view,
     heatmap_engagement_view,
     importer_couts_publicitaires_view,
+    importer_inscriptions_evenement_view,
     parametres_marketing_view,
     redirection_lien_tracke,
     registre_consentement_export_pdf_view,
@@ -173,6 +174,10 @@ urlpatterns = [
     path('segments-marketing/<int:pk>/export/',
          export_membres_segment_xlsx_view,
          name='mkt-segment-export-membres'),
+    # NTMKT41 — import CSV/XLSX d'inscrits en masse (hors formulaire public)
+    path('evenements-marketing/<int:pk>/importer-inscrits/',
+         importer_inscriptions_evenement_view,
+         name='mkt-evenement-importer-inscrits'),
     # NTMKT28 — export PDF du registre de consentement (CNDP)
     path('registre-consentement/export-pdf/',
          registre_consentement_export_pdf_view,
