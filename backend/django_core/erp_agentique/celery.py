@@ -745,6 +745,13 @@ app.conf.beat_schedule = {
         'task': 'transport.check_etapes_transport_retard',
         'schedule': crontab(hour=6, minute=50),
     },
+    # NTLOG39 — archivage (jamais suppression) des ordres de transport livrés
+    # depuis plus de N mois (défaut 24, `ParametresTransport.
+    # archive_ordres_apres_mois`) : mensuel, 1er du mois, heure creuse.
+    'transport-archiver-ordres-anciens-mensuel': {
+        'task': 'transport.archiver_ordres_transport_anciens',
+        'schedule': crontab(hour=3, minute=10, day_of_month=1),
+    },
     # ── WIR50 — trois commandes périodiques de SÉCURITÉ/GOUVERNANCE bâties mais
     # jamais planifiées (P0 : elles ne tournaient JAMAIS en prod). ──
     # NTSEC22 — révoque les accès break-glass ÉCHUS (un octroi expiré conserve

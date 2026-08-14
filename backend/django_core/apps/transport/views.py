@@ -77,6 +77,12 @@ class OrdreTransportViewSet(ChatterViewSetMixin, CompanyScopedModelViewSet):
         statut = self.request.query_params.get('statut')
         if statut:
             qs = qs.filter(statut=statut)
+        # NTLOG39 — un ordre archivé (`archiver_ordres_transport_anciens`,
+        # jamais supprimé physiquement) disparaît des listes par défaut ;
+        # ``?inclure_archives=1`` les fait réapparaître explicitement.
+        inclure_archives = self.request.query_params.get('inclure_archives')
+        if inclure_archives not in ('1', 'true', 'True'):
+            qs = qs.filter(archive=False)
         return qs
 
     def perform_create(self, serializer):

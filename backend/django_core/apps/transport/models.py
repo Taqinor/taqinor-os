@@ -113,6 +113,13 @@ class OrdreTransport(TenantModel):
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
         null=True, blank=True, related_name='ordres_transport_crees')
 
+    # NTLOG39 — jamais de suppression physique : un ordre livré depuis plus
+    # de `ParametresTransport.archive_ordres_apres_mois` mois est SEULEMENT
+    # exclu des listes par défaut (`OrdreTransportViewSet.get_queryset`,
+    # ``?inclure_archives=1`` pour les revoir), posé par la tâche planifiée
+    # `tasks.archiver_ordres_transport_anciens`.
+    archive = models.BooleanField(default=False)
+
     class Meta:
         verbose_name = 'Ordre de transport'
         verbose_name_plural = 'Ordres de transport'
@@ -350,6 +357,9 @@ class ParametresTransport(TenantModel):
     pod_obligatoire = models.BooleanField(default=True)
     seuil_anomalie_affretement_pct = models.DecimalField(
         max_digits=5, decimal_places=2, default=Decimal('15.00'))
+    # NTLOG39 — seuil (en mois) au-delà duquel un ordre LIVRÉ est archivé
+    # (jamais supprimé) par `tasks.archiver_ordres_transport_anciens`.
+    archive_ordres_apres_mois = models.PositiveIntegerField(default=24)
 
     class Meta:
         verbose_name = 'Paramètres transport'

@@ -109,3 +109,47 @@ def check_etapes_transport_retard():
         'transport.check_etapes_transport_retard: %s société(s) traitée(s), '
         '%s étape(s) notifiée(s)', total_societes, total_notifiees)
     return {'societes': total_societes, 'etapes_notifiees': total_notifiees}
+
+
+# ── NTLOG39 — Beat mensuel : archivage (jamais suppression) des ordres ──────
+# livrés anciens.
+
+@shared_task(name='transport.archiver_ordres_transport_anciens')
+def archiver_ordres_transport_anciens():
+    """NTLOG39 — pour chaque société active, marque `archive=True` les
+    `OrdreTransport` en statut LIVRÉ dont `updated_at` (dernière mise à jour
+    — pour un ordre livré non retouché depuis, cela correspond à son passage
+    en LIVRE via `services.recalculer_statut_ordre`) dépasse
+    `ParametresTransport.archive_ordres_apres_mois` mois (défaut 24). JAMAIS
+    de suppression physique — seulement exclu des listes par défaut
+    (`OrdreTransportViewSet.get_queryset`, `?inclure_archives=1` pour les
+    revoir). Idempotent : un ordre déjà archivé n'est pas re-traité."""
+    from authentication.selectors import active_companies
+
+    from .models import OrdreTransport, ParametresTransport
+
+    total_societes = 0
+    total_archives = 0
+    maintenant = timezone.now()
+
+    for company in active_companies():
+        try:
+            seuil_mois = ParametresTransport.for_company(
+                company).archive_ordres_apres_mois
+            seuil_date = maintenant - timezone.timedelta(days=seuil_mois * 30)
+            nb = OrdreTransport.objects.filter(
+                company=company, statut=OrdreTransport.Statut.LIVRE,
+                archive=False, updated_at__lt=seuil_date,
+            ).update(archive=True)
+        except Exception:  # pragma: no cover - défensif, isolation société
+            logger.warning(
+                'transport.archiver_ordres_transport_anciens: échec société '
+                '%s', company.pk, exc_info=True)
+            continue
+        total_societes += 1
+        total_archives += nb
+
+    logger.info(
+        'transport.archiver_ordres_transport_anciens: %s société(s) '
+        'traitée(s), %s ordre(s) archivé(s)', total_societes, total_archives)
+    return {'societes': total_societes, 'ordres_archives': total_archives}

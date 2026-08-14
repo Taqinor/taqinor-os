@@ -131,11 +131,12 @@ class OrdreTransportSerializer(serializers.ModelSerializer):
             'mode_transport', 'mode_transport_display', 'flotte_actif_id',
             'conducteur', 'installations_transporteur_id',
             'mode_acheminement_physique', 'distance_km', 'lignes', 'etapes',
-            'poids_total_kg', 'volume_total_m3', 'created_by', 'created_at',
-            'updated_at',
+            'poids_total_kg', 'volume_total_m3', 'archive', 'created_by',
+            'created_at', 'updated_at',
         ]
         read_only_fields = [
-            'numero', 'statut', 'created_by', 'created_at', 'updated_at',
+            'numero', 'statut', 'archive', 'created_by', 'created_at',
+            'updated_at',
         ]
 
     def get_poids_total_kg(self, obj) -> Decimal:
