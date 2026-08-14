@@ -6353,3 +6353,11 @@ def decider_candidature_fournisseur(fournisseur, *, valider):
         else Fournisseur.StatutValidation.REJETE)
     fournisseur.save(update_fields=['statut_validation'])
     return fournisseur
+
+
+# -- Groupe NTWMS -- couche ENTREPOT (rangement, vagues, colisage, quais) --
+# Definis dans `services_wms.py` ; re-exportes ici pour que les appelants
+# continuent d'ecrire `from apps.stock.services import ...`.
+from .services_wms import (  # noqa: E402,F401
+    suggestions_rangement_reception,
+)
