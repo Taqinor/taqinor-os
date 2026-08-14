@@ -86,7 +86,7 @@ test('PV54/PV56 — `zones` EST publiée : ZoneAO existe et sa route est `zones`
 test('les actions non-CRUD nommées par AOF11 sont toutes déclarées', () => {
   const body = aoApiBody()
   const actions = [
-    'calculer:', 'suggestions:', 'sensibilites:', 'decomposition:',
+    'calculer:', 'sensibilites:', 'decomposition:',
     'alleeGratuite:', 'genererPiece:', 'statutJob:', 'zip:',
     'controlesAvantDepot:', 'bascule:',
   ]
@@ -104,6 +104,11 @@ test('AOF61/AOF62 — le calepinage expose les VRAIES routes (calcul SANS ÉTAT,
     assert.ok(body.includes(`/ao/calepinage/variantes/`), 'actions de variante absentes')
     assert.ok(body.includes(`${action}:`), `action de variante manquante : ${action}`)
   }
+})
+
+test('PV67 — genererVariantes() poste sur /ao/calepinage/variantes/<id>/generer-variantes/', () => {
+  const body = aoApiBody()
+  assert.match(body, /genererVariantes:\s*\(id\)\s*=>\s*api\.post\(`\/ao\/calepinage\/variantes\/\$\{id\}\/generer-variantes\/`\)/)
 })
 
 test('un endpoint NON CONSTRUIT échoue avec son MOTIF, sans émettre de requête', async () => {

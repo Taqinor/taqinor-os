@@ -1,8 +1,9 @@
 import { useCallback, useMemo, useState } from 'react'
-import { AlertTriangle, Minus, Maximize2, Plus, RefreshCw } from 'lucide-react'
+import { AlertTriangle, Minus, Maximize2, Plus, RefreshCw, Sparkles } from 'lucide-react'
 import { Badge, Button, EmptyState, Skeleton, toast } from '../../../ui'
 import { cn } from '../../../lib/cn'
 import aoApi from '../../../api/aoApi'
+import { unwrapList } from '../../../api/resource'
 import PlanLayer from './PlanLayer'
 import VerdictBar from './VerdictBar'
 import TiroirKits from './TiroirKits'
@@ -34,39 +35,46 @@ import planDepuisResultat from './planDepuisResultat'
    Zoom : la molette (avec Ctrl/⌘) et les trois boutons agissent sur le viewBox
    SVG — aucune position n'est recalculée.
 
-   ── L'INSPECTEUR EST VIDE, ET C'EST DIT À L'ÉCRAN ────────────────────────
+   ── PV51 — L'INSPECTEUR EST ALIMENTÉ, POUR DE VRAI ────────────────────────
    Les cinq tiroirs (AOF95-99) sont pilotés par des DESCRIPTEURS serveur
-   (`donnees` : champs, bornes, presets, impacts, recommandations). Le résultat
-   de `/ao/calepinage/calculer/` n'en publie AUCUN — aucune route ne le fait.
-   Chaque tiroir rend donc `null`, et plutôt que de laisser une colonne
-   mystérieusement vide (le symptôme exact d'un écran « livré » qui ne marche
-   pas), l'atelier NOMME ce qui manque. Les tiroirs restent montés : le jour où
-   une route publie ces descripteurs, ils s'allument sans modification.
+   (`donnees` : champs, bornes, presets, impacts, recommandations). PV49/PV50/
+   PV44 les publient désormais DANS le résultat même de `/ao/calepinage/
+   calculer|lancer/+résultat/` : `resultat.tiroirs.{kits,allees,rives,
+   orientation,electrique}`, `resultat.marges` et `resultat.suggestions`
+   (`calepinage_service.calepiner(..., tiroirs=True, suggestions=True)` par
+   défaut — voir `apps/ao/calepinage_service.py` et le contrat
+   `apps/ao/contract_samples/calepinage_tiroirs.json`). Chaque tiroir garde sa
+   garde `if (!donnees) return null` : une toiture multi-surfaces ou hors
+   budget de charge utile reste dégradée (`donnees: null`) SANS que l'écran
+   n'invente rien — mais il n'y a plus de bandeau statique prétendant
+   qu'aucune route ne les sert.
 
-   Les paramètres restent donc, aujourd'hui, ceux du preset de la toiture
-   (`ToitureAO.parametres_calepinage`), appliqués côté SERVEUR quand le corps
-   n'envoie pas de `params`.
+   Les paramètres restent, tant qu'aucun tiroir n'a encore été touché, ceux du
+   preset de la toiture (`ToitureAO.parametres_calepinage`), appliqués côté
+   SERVEUR quand le corps n'envoie pas de `params`.
 
-   ── PACT168 — MODE EXPERT ET SUGGESTIONS, MONTÉS ─────────────────────────
+   ── PACT168/PV51 — MODE EXPERT ET SUGGESTIONS, MONTÉS ET ALIMENTÉS ────────
    `ModeExpert` (AOF101, qui révèle `RobustesseBadges`) et `SuggestionsPanel`
-   (AOF100) étaient livrés et importés par PERSONNE : l'inspecteur s'arrêtait
-   aux 5 tiroirs débutant. Ils sont désormais montés À CÔTÉ d'eux, avec
-   exactement le même principe que les tiroirs — montés, alimentés par ce que
-   le moteur publie, et silencieux quand il ne publie rien :
+   (AOF100) sont montés À CÔTÉ des tiroirs, avec le même principe :
 
      · `ModeExpert` pilote de VRAIS paramètres (pas de recherche, seuils,
-       phase, mode de pose, forçage de rangée) : son `onChange` est le MÊME
-       `majParametres` que les tiroirs, donc le serveur recalcule (AOF94). Son
-       interrupteur est mémorisé côté navigateur (`safeStorage`) ;
+       phase, mode de pose) : son `onChange` est le MÊME `majParametres` que
+       les tiroirs, donc le serveur recalcule (AOF94). Son interrupteur est
+       mémorisé côté navigateur (`safeStorage`) ;
      · `RobustesseBadges` n'affiche des marges que si le moteur en publie
        (`resultat.marges`, `Optional[Marges]` dans `core/calepinage/types.py`) ;
        les seuils sont la CONVERSION en centimètres des paramètres courants,
        jamais une valeur inventée ;
-     · `SuggestionsPanel` reste vide tant qu'aucune route ne publie de
-       recommandations (`aoApi.calepinages.suggestions` est `nonConstruit` :
-       `core/calepinage/recommandations.py` existe, l'endpoint non). « Appliquer »
-       rejoue le `patch_entree` par la voie normale des paramètres — le gain
-       est donc RE-VÉRIFIÉ par le moteur, jamais cru sur parole.
+     · `SuggestionsPanel` affiche les suggestions RÉELLES du moteur
+       (`resultat.suggestions`, PV50). Chaque suggestion porte une `action`
+       DISCRIMINÉE par `action.type` (`apps/ao/calepinage_io.action_de_patch`) :
+       `'parametres'` rejoue `action.patch` par la voie normale des paramètres
+       (`majParametres`) — le gain est donc RE-VÉRIFIÉ par le moteur, jamais
+       cru sur parole ; `'obstacle'` retrouve l'`ObstacleAO` de la toiture par
+       son `repere` (`action.obstacle`) et lui PATCH sa `provenance`
+       (`action.provenance` — `ECARTE`/`MESURE`), puis force un recalcul :
+       l'obstacle est une ressource PERSISTÉE, jamais un paramètre du corps
+       de `/calculer/`.
 
    ── PV31/PV32 — MODE « RANGÉES IMPOSÉES PAR L'UTILISATEUR » ────────────────
    `useCalepinageImpose` (PV31) tient le BROUILLON local des rangées éditées
@@ -90,6 +98,16 @@ import planDepuisResultat from './planDepuisResultat'
    « Revenir au calcul optimal » — la seule action de cet écran qui EFFACE
    réellement le brouillon ; un changement de tiroir ne le fait pas (il
    fusionne son patch SANS toucher `mode_pose`/`rangees_imposees`).
+
+   ── PV51/PV67 — « GÉNÉRER DES VARIANTES » ─────────────────────────────────
+   L'action porte sur la VARIANTE RETENUE de la toiture (`CalepinageVarianteViewSet.
+   generer_variantes`, `POST /ao/calepinage/variantes/<id>/generer-variantes/`) :
+   elle rejoue 2 à 4 alternatives d'ORIENTATION à partir d'elle. Le studio
+   n'a qu'un `toitureId`, jamais un id de variante — le clic RETROUVE donc la
+   variante retenue de cette toiture (`aoApi.variantes.list({toiture,
+   est_retenue: true})`) avant d'appeler l'action ; sans variante retenue, le
+   bouton le DIT (même motif que le 400 `retenue` que le serveur renverrait de
+   toute façon) plutôt que d'appeler un endpoint sans cible valide.
    ========================================================================== */
 
 const ZOOM_MIN = 0.25
@@ -106,7 +124,22 @@ function jourMois(date) {
   return `${jj}/${mm}`
 }
 
-const messageErreurVariante = (err, repli) => err?.response?.data?.detail || repli
+// L'ERREUR SERVEUR TELLE QUELLE — `charge.detail` couvre `lancer()` (persister
+// une variante), mais PV67 (`generer-variantes`) répond en 400 NOMMÉ
+// (`{retenue: […]}` / `{entree: […]}` / `{calepinage: […]}`), sans `detail` :
+// le premier motif d'un champ est repris tel quel plutôt que de retomber sur
+// le message générique alors que le serveur en a publié un précis.
+function messageErreurVariante(err, repli) {
+  const charge = err?.response?.data
+  if (typeof charge?.detail === 'string' && charge.detail) return charge.detail
+  if (charge && typeof charge === 'object') {
+    for (const valeur of Object.values(charge)) {
+      const brut = Array.isArray(valeur) ? valeur[0] : valeur
+      if (typeof brut === 'string' && brut) return brut
+    }
+  }
+  return repli
+}
 
 /**
  * @param {number|string} toitureId  Toiture à calepiner (`ToitureAO.id`).
@@ -184,6 +217,36 @@ export default function CalepinageStudio({ toitureId, onConformite, onVarianteEn
     }
   }, [impose.actif, impose.draft, toitureId, parametres, onVarianteEnregistree])
 
+  const [generationVariantesEnCours, setGenerationVariantesEnCours] = useState(false)
+
+  // PV51/PV67 — retrouve la variante RETENUE de la toiture (le studio ne
+  // connaît que le `toitureId`, pas d'id de variante) avant d'appeler
+  // l'action serveur qui pose les alternatives d'orientation.
+  const genererVariantes = useCallback(async () => {
+    if (!toitureId) return
+    setGenerationVariantesEnCours(true)
+    try {
+      const variantes = unwrapList(await aoApi.variantes.list({ toiture: toitureId, est_retenue: true }))
+      const retenue = variantes[0]
+      if (!retenue) {
+        toast.error(
+          'Cette toiture n’a aucune variante retenue : calculez un calepinage '
+          + 'et retenez-le avant de générer des alternatives d’orientation.',
+        )
+        return
+      }
+      await aoApi.calepinage.variantes.genererVariantes(retenue.id)
+      toast.success(
+        'Variantes d’orientation générées — retrouvez-les dans l’onglet '
+        + '« Variantes » de cette affaire pour les comparer.',
+      )
+    } catch (err) {
+      toast.error(messageErreurVariante(err, 'Impossible de générer les variantes d’orientation.'))
+    } finally {
+      setGenerationVariantesEnCours(false)
+    }
+  }, [toitureId])
+
   /* ── PACT168 — suggestions du moteur ──────────────────────────────────────
      `historique` est tenu ICI : une suggestion appliquée quitte la liste
      actionnable et se retrouve marquée dans l'historique, exactement comme le
@@ -193,8 +256,7 @@ export default function CalepinageStudio({ toitureId, onConformite, onVarianteEn
   const [codeApplique, setCodeApplique] = useState(null)
   const [questionSuggeree, setQuestionSuggeree] = useState(null)
 
-  const appliquerSuggestion = useCallback((suggestion) => {
-    setCodeApplique(suggestion.code)
+  const marquerSuggestionAppliquee = useCallback((suggestion) => {
     setHistoriqueSuggestions((liste) => (
       liste.some((s) => s.code === suggestion.code)
         ? liste
@@ -205,10 +267,45 @@ export default function CalepinageStudio({ toitureId, onConformite, onVarianteEn
           gain_kwc: suggestion.gain_kwc,
         }]
     ))
+  }, [])
+
+  // PV51 — `action.type` DISCRIMINE ce qu'« Appliquer » doit faire
+  // (`apps/ao/calepinage_io.action_de_patch`, contrat `calepinage_suggestions.
+  // json`) : un patch de PARAMÈTRES rejoue la voie normale (`majParametres`,
+  // AOF94) ; une décision d'OBSTACLE écrit sur la ressource PERSISTÉE
+  // (`ObstacleAO`, retrouvée par son `repere` parmi les obstacles de la
+  // toiture) puis force le recalcul — un obstacle n'est PAS un paramètre du
+  // corps de `/calculer/`.
+  const appliquerSuggestion = useCallback(async (suggestion) => {
+    const action = suggestion.action ?? {}
+    if (action.type === 'obstacle') {
+      setCodeApplique(suggestion.code)
+      try {
+        const obstacles = unwrapList(await aoApi.obstacles.list({ toiture: toitureId }))
+        const cible = obstacles.find((o) => o.repere === action.obstacle)
+        if (!cible) {
+          toast.error(
+            `Obstacle « ${action.obstacle} » introuvable sur cette toiture — décision non appliquée.`,
+          )
+          setCodeApplique(null)
+          return
+        }
+        await aoApi.obstacles.update(cible.id, { provenance: action.provenance })
+        marquerSuggestionAppliquee(suggestion)
+        await recalculer()
+      } catch (err) {
+        setCodeApplique(null)
+        toast.error(messageErreurVariante(err, 'Impossible d’appliquer cette décision d’obstacle.'))
+      }
+      return
+    }
+
+    setCodeApplique(suggestion.code)
+    marquerSuggestionAppliquee(suggestion)
     // La voie NORMALE des paramètres : c'est le moteur qui recalcule et qui
     // dira si le gain annoncé était réel (AOF94).
-    majParametres(suggestion.patch_entree ?? {})
-  }, [majParametres])
+    majParametres(action.patch ?? {})
+  }, [majParametres, marquerSuggestionAppliquee, recalculer, toitureId])
 
   // Seuils de robustesse : simple CONVERSION m → cm des paramètres courants
   // (`RobustesseBadges` les compare aux marges du moteur). Aucun seuil par
@@ -274,19 +371,34 @@ export default function CalepinageStudio({ toitureId, onConformite, onVarianteEn
             Plan calculé par le moteur — affiché tel quel, aucune position recalculée.
           </p>
         </div>
-        <div className="flex items-center gap-1" role="group" aria-label="Zoom du plan">
-          <Button size="sm" variant="outline" aria-label="Dézoomer" onClick={() => setZoom((z) => borne(z / PAS_ZOOM))}>
-            <Minus className="size-4" aria-hidden="true" />
+        <div className="flex flex-wrap items-center gap-2">
+          {/* PV51/PV67 — pose 2 à 4 alternatives d'orientation à partir de la
+              variante RETENUE de cette toiture (le studio retrouve son id au
+              clic, voir `genererVariantes`). */}
+          <Button
+            size="sm"
+            variant="outline"
+            loading={generationVariantesEnCours}
+            disabled={generationVariantesEnCours}
+            onClick={genererVariantes}
+          >
+            <Sparkles className="size-4" aria-hidden="true" />
+            Générer des variantes
           </Button>
-          <Button size="sm" variant="outline" aria-label="Ajuster à la vue" onClick={() => setZoom(1)}>
-            <Maximize2 className="size-4" aria-hidden="true" />
-          </Button>
-          <Button size="sm" variant="outline" aria-label="Zoomer" onClick={() => setZoom((z) => borne(z * PAS_ZOOM))}>
-            <Plus className="size-4" aria-hidden="true" />
-          </Button>
-          <Button size="sm" variant="outline" aria-label="Recalculer" disabled={enVol} onClick={recalculer}>
-            <RefreshCw className={cn('size-4', enVol && 'animate-spin')} aria-hidden="true" />
-          </Button>
+          <div className="flex items-center gap-1" role="group" aria-label="Zoom du plan">
+            <Button size="sm" variant="outline" aria-label="Dézoomer" onClick={() => setZoom((z) => borne(z / PAS_ZOOM))}>
+              <Minus className="size-4" aria-hidden="true" />
+            </Button>
+            <Button size="sm" variant="outline" aria-label="Ajuster à la vue" onClick={() => setZoom(1)}>
+              <Maximize2 className="size-4" aria-hidden="true" />
+            </Button>
+            <Button size="sm" variant="outline" aria-label="Zoomer" onClick={() => setZoom((z) => borne(z * PAS_ZOOM))}>
+              <Plus className="size-4" aria-hidden="true" />
+            </Button>
+            <Button size="sm" variant="outline" aria-label="Recalculer" disabled={enVol} onClick={recalculer}>
+              <RefreshCw className={cn('size-4', enVol && 'animate-spin')} aria-hidden="true" />
+            </Button>
+          </div>
         </div>
       </div>
 
@@ -357,16 +469,12 @@ export default function CalepinageStudio({ toitureId, onConformite, onVarianteEn
         </div>
 
         {/* Inspecteur : tiroirs de paramètres. Chaque tiroir remonte un patch
-            de paramètres ; le calcul appartient au serveur (AOF94). Les
-            descripteurs (`donnees`) ne sont publiés par AUCUNE route : les
-            tiroirs restent donc masqués, et l'atelier le DIT. */}
+            de paramètres ; le calcul appartient au serveur (AOF94). PV51 —
+            `resultat.tiroirs` est publié par `/ao/calepinage/calculer|…/` : un
+            tiroir sans `donnees` (toiture multi-surfaces, hors budget) rend
+            simplement `null` — jamais un bandeau qui prétendrait qu'aucune
+            route ne les sert. */}
         <aside className="flex w-full flex-col gap-1 overflow-y-auto lg:w-96" aria-label="Tiroirs de paramètres">
-          <p className="rounded-md border border-dashed border-border p-3 text-xs text-muted-foreground" data-tiroirs="absents">
-            Les CINQ tiroirs débutant attendent un endpoint qui n’existe pas encore :
-            aucune route ne publie leurs descripteurs (champs, bornes, presets, impacts).
-            Le calcul utilise donc le preset enregistré sur la toiture. Le mode expert,
-            plus bas, pilote lui directement les paramètres du moteur.
-          </p>
           <TiroirKits
             donnees={resultat?.tiroirs?.kits}
             valeurs={parametres || {}}
@@ -405,9 +513,9 @@ export default function CalepinageStudio({ toitureId, onConformite, onVarianteEn
             seuils={seuilsRobustesse}
           />
 
-          {/* PACT168 — suggestions du moteur. Vide tant qu'aucune route ne les
-              publie : monté quand même, comme les tiroirs, pour s'allumer sans
-              modification le jour où l'endpoint existe. */}
+          {/* PACT168/PV51 — suggestions RÉELLES du moteur (`resultat.suggestions`).
+              Vide si le moteur n'en a trouvé aucune pour l'entrée courante — le
+              panneau le DIT (`SuggestionsPanel`), jamais une colonne muette. */}
           <SuggestionsPanel
             suggestions={resultat?.suggestions ?? []}
             historique={historiqueSuggestions}

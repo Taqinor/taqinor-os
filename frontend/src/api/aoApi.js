@@ -135,6 +135,12 @@ const aoApi = {
       marches: (id) => api.get(`/ao/calepinage/variantes/${id}/marches/`),
       comparer: (ids) => api.get('/ao/calepinage/variantes/comparer/',
         { params: { ids: [].concat(ids).join(',') } }),
+      // PV67 — pose les alternatives d'ORIENTATION de la TOITURE de la
+      // variante appelée (le serveur lit `variante.toiture`, quelle que soit
+      // la variante ciblée) : REJOUÉES par le moteur, jamais estimées.
+      // 400 nommé (`retenue`) si cette toiture n'a encore aucune variante
+      // RETENUE — il n'y a alors pas de référence à comparer.
+      genererVariantes: (id) => api.post(`/ao/calepinage/variantes/${id}/generer-variantes/`),
     },
   },
 
@@ -172,10 +178,6 @@ const aoApi = {
       'le calcul est SANS ÉTAT : utiliser aoApi.calepinage.calculer('
       + '{toiture, params}), puis aoApi.calepinage.lancer/resultat au-delà '
       + 'du budget synchrone (202)'),
-    // À CONSTRUIRE : `core/calepinage/recommandations.py` existe, mais AUCUNE
-    // route ne le publie — l'atelier n'affiche donc aucune suggestion.
-    suggestions: nonConstruit('/ao/calepinages/<id>/suggestions/',
-      'aucune route ne publie les recommandations du moteur'),
     // Plus AUCUN appelant depuis le 07/08/2026 (PACT172) — SensibilitesPanel.jsx
     // appelle désormais aoApi.calepinage.variantes.sensibilites(varianteId).
     sensibilites: nonConstruit('/ao/calepinages/<id>/sensibilites/',
