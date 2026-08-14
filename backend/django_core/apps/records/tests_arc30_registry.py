@@ -92,6 +92,9 @@ HISTORICAL_TARGETS = {
     # d'export douanier, ciblé par ``apps/douane/platform.py``. Le volet
     # IMPORT n'est PAS déclaré : NTLOG10 reste BLOCKED (GARDE WIR80).
     ('douane', 'dossierexport'),
+    # NTMFG38 (14/08/2026) — chatter/follower/tag generiques sur l'ordre de
+    # fabrication, cible par apps/mrp/platform.py.
+    ('mrp', 'ordrefabrication'),
 }
 
 
@@ -108,7 +111,7 @@ class TestAllowedTargetsNonRegression(SimpleTestCase):
     def test_len_matches(self):
         # 33 historiques +2 supply/retail (vague 1) +1 PV45 (regulatorydossier)
         # +1 douane.dossierexport (NTLOG49, vague 2 supply).
-        self.assertEqual(len(ALLOWED_TARGETS), 38)
+        self.assertEqual(len(ALLOWED_TARGETS), 39)
 
     def test_contains_works_for_each_historical_pair(self):
         for pair in HISTORICAL_TARGETS:
