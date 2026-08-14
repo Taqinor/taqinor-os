@@ -4714,16 +4714,115 @@ def creer_note_frais(company, *, employe, date_frais, montant, motif,
     return create_with_reference(NoteFrais, 'NDF', company, _save)
 
 
+def note_frais_escalade_direction(company, *, categorie, montant):
+    """NTP2P11 — la note dépasse-t-elle le seuil d'escalade DIRECTION ?
+
+    Sans plafond configuré (ou sans ``escalade_direction_au_dela_de``), renvoie
+    False : comportement historique inchangé, aucune escalade."""
+    plafond = plafond_note_frais_pour(company, categorie)
+    if plafond is None or plafond.escalade_direction_au_dela_de is None:
+        return False
+    return Decimal(montant or 0) > plafond.escalade_direction_au_dela_de
+
+
+def note_frais_warning_delai(company, *, categorie, date_frais, aujourdhui=None):
+    """NTP2P11 — warning NON BLOQUANT si la note arrive trop tard.
+
+    Renvoie le message (str) ou ``''``. Sans ``jours_max_apres_depense``
+    configuré, renvoie toujours ``''`` — aucun contrôle de délai."""
+    plafond = plafond_note_frais_pour(company, categorie)
+    if plafond is None or not plafond.jours_max_apres_depense:
+        return ''
+    if date_frais is None:
+        return ''
+    from django.utils import timezone
+    jour = aujourdhui or timezone.localdate()
+    ecoules = (jour - date_frais).days
+    if ecoules <= plafond.jours_max_apres_depense:
+        return ''
+    return (
+        f'Note soumise {ecoules} jours après la dépense — le délai configuré '
+        f'pour cette catégorie est de {plafond.jours_max_apres_depense} '
+        'jours.')
+
+
 def soumettre_note_frais(note):
-    """Soumet une note pour validation (brouillon → soumise) — FG135."""
+    """Soumet une note pour validation (brouillon → soumise) — FG135.
+
+    NTP2P11 — au moment de la soumission, DEUX réglages de
+    ``PlafondNoteFrais`` s'appliquent, tous deux posés CÔTÉ SERVEUR :
+
+      * au-delà de ``escalade_direction_au_dela_de``, la note exige une
+        validation DIRECTION (``escalade_direction=True``) — la note part
+        quand même, elle n'est JAMAIS bloquée en silence ;
+      * au-delà de ``jours_max_apres_depense``, un WARNING non bloquant est
+        posé sur la note ET journalisé au chatter générique (``records``),
+        pour que le valideur le voie sans que la soumission échoue.
+
+    Sans plafond configuré, les deux sont des no-op : cycle FG135 inchangé.
+    """
     if note.statut not in (NoteFrais.Statut.BROUILLON,
                            NoteFrais.Statut.REJETEE):
         raise ValidationError(
             "Seule une note en brouillon (ou rejetée) peut être soumise.")
     note.statut = NoteFrais.Statut.SOUMISE
     note.motif_rejet = ''
-    note.save(update_fields=['statut', 'motif_rejet'])
+    note.escalade_direction = note_frais_escalade_direction(
+        note.company, categorie=note.categorie, montant=note.montant)
+    note.warning_delai = note_frais_warning_delai(
+        note.company, categorie=note.categorie, date_frais=note.date_frais)
+    note.save(update_fields=['statut', 'motif_rejet', 'escalade_direction',
+                             'warning_delai'])
+    _journaliser_soumission_note_frais(note)
     return note
+
+
+def _journaliser_soumission_note_frais(note):
+    """NTP2P11 — trace l'escalade et le warning de délai au chatter générique.
+
+    Best-effort : journaliser ne doit JAMAIS casser une soumission. Utilise
+    ``records.Activity`` (ARC8 — aucun modèle de chatter maison de plus)."""
+    if not note.warning_delai and not note.escalade_direction:
+        return
+    try:
+        from apps.records.models import Activity
+        from apps.records.services import log_activity
+        if note.escalade_direction:
+            log_activity(
+                note, Activity.Kind.MODIFICATION, company=note.company,
+                field='escalade_direction',
+                field_label="Niveau d'approbation",
+                old_value='responsable', new_value='direction',
+                body='Montant au-delà du seuil configuré : validation '
+                     'DIRECTION requise.')
+        if note.warning_delai:
+            log_activity(
+                note, Activity.Kind.NOTE, company=note.company,
+                body=note.warning_delai)
+    except Exception:  # pragma: no cover - défensif, jamais bloquant
+        pass
+
+
+def _verifier_separation_taches_note_frais(note, user):
+    """NTP2P37 — SoD sur la validation DIRECTION d'une note de frais.
+
+    Ne s'applique qu'aux notes ESCALADÉES en direction (``escalade_direction``,
+    NTP2P11) et seulement quand ``stock.AchatsParametres.sod_stricte`` est
+    activé — défaut OFF, donc comportement historique inchangé. Lecture
+    cross-app par ``stock.selectors`` (jamais un import de ``stock.models``).
+    """
+    if user is None or not getattr(user, 'pk', None):
+        return
+    if not getattr(note, 'escalade_direction', False):
+        return
+    createur_id = getattr(note, 'created_by_id', None)
+    if createur_id is None or createur_id != user.pk:
+        return
+    from apps.stock.selectors import sod_stricte_active
+    if sod_stricte_active(note.company):
+        raise ValidationError(
+            "Séparation des tâches : le créateur d'une note de frais "
+            'escaladée en direction ne peut pas la valider lui-même.')
 
 
 @transaction.atomic
@@ -4742,6 +4841,7 @@ def valider_note_frais(note, *, user=None, compte_charge=None):
     if note.statut != NoteFrais.Statut.SOUMISE:
         raise ValidationError(
             "Seule une note soumise peut être validée.")
+    _verifier_separation_taches_note_frais(note, user)
     company = note.company
     montant = Decimal(note.montant or 0)
     if montant <= 0:

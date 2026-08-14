@@ -32,12 +32,19 @@ from core.viewsets import CompanyScopedModelViewSet
 
 from apps.records.views import ChatterViewSetMixin
 
-from ..models import DemandeAchat, DemandeAchatLigne
-from ..serializers import DemandeAchatSerializer, DemandeAchatLigneSerializer
+from ..models import (
+    DemandeAchat, DemandeAchatLigne, EtapeApprobationAchat,
+    RegleApprobationAchat,
+)
+from ..serializers import (
+    DemandeAchatSerializer, DemandeAchatLigneSerializer,
+    EtapeApprobationAchatSerializer, RegleApprobationAchatSerializer,
+)
 
 # SCA36 — 'chatter_historique' est une lecture (patron flotte : le
 # get_permissions maison prime sur les permission_classes d'@action du mixin).
-READ_ACTIONS = ['list', 'retrieve', 'chatter_historique']
+READ_ACTIONS = ['list', 'retrieve', 'chatter_historique',
+                'etapes_approbation']
 
 
 def _check_tenant(serializer, company, field):
@@ -129,25 +136,108 @@ class DemandeAchatViewSet(ChatterViewSetMixin, CompanyScopedModelViewSet):
 
     @action(detail=True, methods=['post'])
     def soumettre(self, request, pk=None):
-        """FG310 — soumet la demande pour approbation (brouillon → soumise)."""
+        """FG310 — soumet la demande pour approbation (brouillon → soumise).
+
+        NTP2P2 — instancie en outre le plan d'approbation (N étapes
+        séquentielles) si une ``RegleApprobationAchat`` active couvre le
+        montant estimé. Sans règle : aucune étape, comportement historique.
+
+        NTP2P4 — contrôle budgétaire départemental AVANT tout changement
+        d'état : si le budget restant du département du demandeur ne couvre
+        pas la demande, la soumission est refusée (400) — sauf dérogation
+        autorisée par la règle d'approbation. Inactif par défaut."""
+        from .. import services
+
         da = self.get_object()
         if da.statut not in (DemandeAchat.Statut.BROUILLON,
                              DemandeAchat.Statut.SOUMISE):
             return Response(
                 {'detail': "Seule une demande brouillon peut être soumise."},
                 status=status.HTTP_400_BAD_REQUEST)
+        regle = services.resoudre_regle_approbation_achat(da)
+        try:
+            services.controler_budget_demande_achat(da, regle=regle)
+        except services.BudgetAchatError as exc:
+            return Response({'detail': str(exc)},
+                            status=status.HTTP_400_BAD_REQUEST)
         da.statut = DemandeAchat.Statut.SOUMISE
         da.save(update_fields=['statut', 'date_modification'])
+        services.lancer_workflow_approbation_achat(da, regle=regle)
+        return Response(self.get_serializer(da).data)
+
+    @action(detail=True, methods=['get'], url_path='etapes-approbation')
+    def etapes_approbation(self, request, pk=None):
+        """NTP2P2 — plan d'approbation de la demande (étapes séquentielles)."""
+        da = self.get_object()
+        etapes = da.etapes_approbation.select_related(
+            'approbateur', 'regle').order_by('niveau', 'id')
+        return Response(EtapeApprobationAchatSerializer(etapes, many=True).data)
+
+    @action(detail=True, methods=['post'], url_path='approuver-etape')
+    def approuver_etape(self, request, pk=None):
+        """NTP2P2 — approuve l'étape courante du plan d'approbation. Quand la
+        DERNIÈRE étape est validée, la demande bascule ``approuvee``."""
+        from .. import services
+        return self._decider_etape(request, services.approuver_etape_achat)
+
+    @action(detail=True, methods=['post'], url_path='rejeter-etape')
+    def rejeter_etape(self, request, pk=None):
+        """NTP2P2 — rejette l'étape courante : la demande bascule ``refusee``
+        et les étapes restantes sont annulées."""
+        from .. import services
+        return self._decider_etape(request, services.rejeter_etape_achat)
+
+    def _decider_etape(self, request, operation):
+        """Résout l'étape visée (corps ``etape``, sinon la prochaine en
+        attente), SCOPÉE à la demande courante, puis applique la décision."""
+        from .. import services
+
+        da = self.get_object()
+        etape_id = request.data.get('etape')
+        if etape_id:
+            etape = da.etapes_approbation.filter(pk=etape_id).first()
+            if etape is None:
+                return Response(
+                    {'detail': 'Étape inconnue pour cette demande.'},
+                    status=status.HTTP_404_NOT_FOUND)
+        else:
+            etape = services.prochaine_etape_approbation_achat(da)
+            if etape is None:
+                return Response(
+                    {'detail': "Aucune étape d'approbation en attente."},
+                    status=status.HTTP_400_BAD_REQUEST)
+        try:
+            operation(etape, approbateur=request.user,
+                      commentaire=request.data.get('commentaire') or '')
+        except services.ApprobationAchatError as exc:
+            return Response({'detail': str(exc)},
+                            status=status.HTTP_400_BAD_REQUEST)
+        da.refresh_from_db()
+        if da.statut in (DemandeAchat.Statut.APPROUVEE,
+                         DemandeAchat.Statut.REFUSEE):
+            _notifier_demandeur_decision(
+                da, approuvee=da.statut == DemandeAchat.Statut.APPROUVEE)
         return Response(self.get_serializer(da).data)
 
     @action(detail=True, methods=['post'])
     def approuver(self, request, pk=None):
         """FG310 — approuve la demande (soumise → approuvée), prérequis avant
-        transformation en BCF. Trace l'approbateur + la date."""
+        transformation en BCF. Trace l'approbateur + la date.
+
+        NTP2P2 — refusée tant qu'une étape du plan d'approbation reste en
+        attente : la demande ne passe ``approuvee`` que quand TOUTES les étapes
+        requises sont validées (via ``approuver-etape``)."""
+        from .. import services
+
         da = self.get_object()
         if da.statut != DemandeAchat.Statut.SOUMISE:
             return Response(
                 {'detail': "Seule une demande soumise peut être approuvée."},
+                status=status.HTTP_400_BAD_REQUEST)
+        if services.workflow_approbation_achat_actif(da):
+            return Response(
+                {'detail': "Un plan d'approbation est en cours : validez les "
+                           "étapes via « approuver-etape »."},
                 status=status.HTTP_400_BAD_REQUEST)
         da.statut = DemandeAchat.Statut.APPROUVEE
         da.approuvee_par = request.user
@@ -161,6 +251,8 @@ class DemandeAchatViewSet(ChatterViewSetMixin, CompanyScopedModelViewSet):
     @action(detail=True, methods=['post'])
     def refuser(self, request, pk=None):
         """FG310 — refuse la demande (soumise → refusée) avec un motif."""
+        from .. import services
+
         da = self.get_object()
         if da.statut != DemandeAchat.Statut.SOUMISE:
             return Response(
@@ -172,6 +264,14 @@ class DemandeAchatViewSet(ChatterViewSetMixin, CompanyScopedModelViewSet):
         da.motif_refus = (request.data.get('motif_refus') or '').strip() or None
         da.save(update_fields=['statut', 'approuvee_par', 'date_decision',
                                'motif_refus', 'date_modification'])
+        # NTP2P2 — un refus direct annule les étapes encore en attente (pas
+        # de plan d'approbation orphelin sur une demande refusée).
+        da.etapes_approbation.filter(
+            statut=EtapeApprobationAchat.Statut.EN_ATTENTE
+        ).update(statut=EtapeApprobationAchat.Statut.REJETE,
+                 decision_le=timezone.now())
+        # NTP2P4 — l'enveloppe budgétaire engagée est rendue.
+        services.liberer_budget_demande_achat(da)
         _notifier_demandeur_decision(da, approuvee=False)
         return Response(self.get_serializer(da).data)
 
@@ -242,6 +342,9 @@ class DemandeAchatViewSet(ChatterViewSetMixin, CompanyScopedModelViewSet):
         da.bon_commande = bon
         da.statut = DemandeAchat.Statut.COMMANDEE
         da.save(update_fields=['bon_commande', 'statut', 'date_modification'])
+        # NTP2P4 — l'engagement devient RÉALISÉ (le BCF est passé).
+        from .. import services
+        services.consommer_budget_demande_achat(da, bon_commande_id=bon.pk)
         return Response(self.get_serializer(da).data)
 
     @action(detail=True, methods=['post'], url_path='importer-lignes-csv')
@@ -341,6 +444,49 @@ class DemandeAchatViewSet(ChatterViewSetMixin, CompanyScopedModelViewSet):
             'lignes_creees': creees,
             'erreurs': erreurs,
         }, status=status.HTTP_201_CREATED if creees else status.HTTP_200_OK)
+
+
+class RegleApprobationAchatViewSet(CompanyScopedModelViewSet):
+    """NTP2P2 — CRUD des règles d'approbation d'achat (seuil de montant +
+    périmètre chantier/programme optionnel). Lecture tout rôle, écriture
+    responsable/admin. Société posée serveur ; chantier/programme validés
+    tenant. Filtrable par `actif`, `chantier`, `programme`."""
+    queryset = RegleApprobationAchat.objects.select_related(
+        'chantier', 'programme').all()
+    serializer_class = RegleApprobationAchatSerializer
+
+    def get_permissions(self):
+        if self.action in ('list', 'retrieve'):
+            return [IsAnyRole()]
+        return [IsResponsableOrAdmin()]
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        params = self.request.query_params
+        actif = params.get('actif')
+        if actif in ('0', 'false', 'False'):
+            qs = qs.filter(actif=False)
+        elif actif in ('1', 'true', 'True'):
+            qs = qs.filter(actif=True)
+        for key, col in (('chantier', 'chantier_id'),
+                         ('programme', 'programme_id')):
+            val = params.get(key)
+            if val:
+                qs = qs.filter(**{col: val})
+        return qs
+
+    def _check_all_tenant(self, serializer):
+        company = self.request.user.company
+        _check_tenant(serializer, company, 'chantier')
+        _check_tenant(serializer, company, 'programme')
+
+    def perform_create(self, serializer):
+        self._check_all_tenant(serializer)
+        super().perform_create(serializer)
+
+    def perform_update(self, serializer):
+        self._check_all_tenant(serializer)
+        super().perform_update(serializer)
 
 
 class DemandeAchatLigneViewSet(viewsets.ModelViewSet):

@@ -25,6 +25,7 @@ from .views import (
     RetenueGarantieSousTraitantViewSet,
     DemandeAchatViewSet,
     DemandeAchatLigneViewSet,
+    RegleApprobationAchatViewSet,
     RFQViewSet,
     RFQOffreViewSet,
     RFQConsultationViewSet,
@@ -121,6 +122,8 @@ router.register(r'evaluations-sous-traitant', EvaluationSousTraitantViewSet)
 router.register(r'retenues-garantie-sous-traitant', RetenueGarantieSousTraitantViewSet)
 router.register(r'demandes-achat', DemandeAchatViewSet)
 router.register(r'demandes-achat-lignes', DemandeAchatLigneViewSet)
+# NTP2P2 — règles d'approbation des demandes d'achat (seuil + périmètre).
+router.register(r'regles-approbation-achat', RegleApprobationAchatViewSet)
 router.register(r'rfq', RFQViewSet)
 router.register(r'rfq-offres', RFQOffreViewSet)
 router.register(r'rfq-consultations', RFQConsultationViewSet)

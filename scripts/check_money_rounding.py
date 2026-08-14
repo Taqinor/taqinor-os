@@ -63,18 +63,17 @@ BASELINE_ALLOWLIST = {
     # +2 avant le bloc retiré, -30 après. MÊMES sites de round() (NPS / ROI /
     # pourcentages), aucune logique déplacée, aucun NOUVEAU site —
     # bug-class #34.
-    # RE-BASÉ 2026-08-13 (NTP2P14/27) : l'OCR réel du justificatif de note
-    # de frais et l'action `releve/` ajoutent ~88 lignes AU-DESSUS de ces
-    # sites. Décalage UNIFORME +88, mêmes sites NPS/ROI/pourcentages
-    # (aucun n'est monétaire), aucune logique déplacée, aucun NOUVEAU
-    # site — bug-class #34.
-    "backend/django_core/apps/compta/services.py:9713",
-    "backend/django_core/apps/compta/services.py:7689",
-    "backend/django_core/apps/compta/services.py:7692",
-    "backend/django_core/apps/compta/services.py:12181",
-    "backend/django_core/apps/compta/services.py:12583",
-    "backend/django_core/apps/compta/services.py:8998",
-    "backend/django_core/apps/compta/services.py:9002",
+    # RE-DÉRIVÉ 2026-08-14 après fusion de deux lanes qui avaient recalé ce
+    # bloc chacune de son côté : la fusion cumule leurs insertions, donc
+    # les deux recalages étaient faux. Numéros relus sur l’arbre fusionné.
+    # MÊMES sites NPS/ROI/pourcentages, aucun monétaire, aucun NOUVEAU.
+    "backend/django_core/apps/compta/services.py:9813",
+    "backend/django_core/apps/compta/services.py:7789",
+    "backend/django_core/apps/compta/services.py:7792",
+    "backend/django_core/apps/compta/services.py:12281",
+    "backend/django_core/apps/compta/services.py:12683",
+    "backend/django_core/apps/compta/services.py:9098",
+    "backend/django_core/apps/compta/services.py:9102",
     # XSAL14 (2026-07-16) — builder.py edits shifted existing display-round
     # sites; re-based 1:1 (premium engine, sanctioned rounding).
     "backend/django_core/apps/ventes/quote_engine/builder.py:1285",

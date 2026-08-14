@@ -18,6 +18,8 @@ import authReducer from '../../features/auth/store/authSlice'
 vi.mock('../../api/stockApi', () => ({
   default: {
     getFournisseur360: vi.fn(),
+    // NTP2P8 — badge de score de risque en tête de fiche.
+    getScoreRisqueFournisseur: vi.fn(),
     performanceFournisseur: vi.fn(),
     getBonsCommandeFournisseurDe: vi.fn(),
     getFacturesFournisseurDe: vi.fn(),
@@ -70,6 +72,9 @@ const rejectNotFound = () => Promise.reject({ response: { status: 404 } })
 
 beforeEach(() => {
   vi.clearAllMocks()
+  // NTP2P8 — défaut neutre : le badge de score ne doit jamais faire échouer
+  // un test qui ne le concerne pas (chaque test peut le surcharger).
+  stockApi.getScoreRisqueFournisseur.mockResolvedValue({ data: null })
 })
 
 describe('XPUR25 — panneau résumé (agrégat vue-360, BLOCKED côté serveur)', () => {

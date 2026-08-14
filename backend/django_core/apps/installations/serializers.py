@@ -28,6 +28,8 @@ from .models import (
     RetenueGarantieSousTraitant,
     DemandeAchat,
     DemandeAchatLigne,
+    RegleApprobationAchat,
+    EtapeApprobationAchat,
     RFQ,
     RFQOffre,
     RFQConsultation,
@@ -1548,6 +1550,64 @@ class DemandeAchatSerializer(serializers.ModelSerializer):
         if not value:
             raise serializers.ValidationError("L'objet est obligatoire.")
         return value
+
+
+class RegleApprobationAchatSerializer(serializers.ModelSerializer):
+    """NTP2P2 — règle d'approbation des demandes d'achat (seuil de montant +
+    périmètre chantier/programme optionnel). La société est posée CÔTÉ
+    SERVEUR (jamais lue du corps)."""
+    niveau_approbation_display = serializers.CharField(
+        source='get_niveau_approbation_display', read_only=True, default=None)
+
+    class Meta:
+        model = RegleApprobationAchat
+        fields = [
+            'id', 'libelle', 'montant_min', 'montant_max', 'chantier',
+            'programme', 'niveau_approbation', 'niveau_approbation_display',
+            'nombre_approbateurs', 'autorise_depassement_budget', 'priorite',
+            'actif', 'date_creation',
+        ]
+        read_only_fields = ['date_creation']
+
+    def validate_libelle(self, value):
+        value = (value or '').strip()
+        if not value:
+            raise serializers.ValidationError('Le libellé est obligatoire.')
+        return value
+
+    def validate_nombre_approbateurs(self, value):
+        if value is not None and value < 1:
+            raise serializers.ValidationError(
+                'Une règle exige au moins un approbateur.')
+        return value
+
+    def validate(self, attrs):
+        mini = attrs.get('montant_min', getattr(
+            self.instance, 'montant_min', None))
+        maxi = attrs.get('montant_max', getattr(
+            self.instance, 'montant_max', None))
+        if mini is not None and maxi is not None and mini > maxi:
+            raise serializers.ValidationError(
+                {'montant_max': 'Le montant maximum doit être ≥ au minimum.'})
+        return attrs
+
+
+class EtapeApprobationAchatSerializer(serializers.ModelSerializer):
+    """NTP2P2 — étape d'approbation séquentielle (lecture seule côté API : les
+    décisions passent par les actions `approuver-etape`/`rejeter-etape`)."""
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True, default=None)
+    approbateur_nom = serializers.CharField(
+        source='approbateur.username', read_only=True, default=None)
+
+    class Meta:
+        model = EtapeApprobationAchat
+        fields = [
+            'id', 'demande', 'regle', 'niveau', 'niveau_approbation',
+            'approbateur', 'approbateur_nom', 'statut', 'statut_display',
+            'decision_le', 'commentaire', 'date_creation',
+        ]
+        read_only_fields = fields
 
 
 class RFQOffreSerializer(serializers.ModelSerializer):

@@ -10,6 +10,18 @@ const stockApi = {
   patchProduit: (id, data) => api.patch(`/stock/produits/${id}/`, data),
   deleteProduit: (id) => api.delete(`/stock/produits/${id}/`),
   getProduitsArchived: () => api.get('/stock/produits/', { params: { show_archived: 'true' } }),
+  // NTP2P3 — catalogue interne d'achat (lecture seule) : n'expose JAMAIS
+  // `prix_vente`, donc aucune marge n'est visible du demandeur.
+  getCatalogueAchat: (params, config) =>
+    api.get('/stock/catalogue-achat/', { params, ...config }),
+  // NTP2P22 — favoris du demandeur (épinglés + 5 derniers demandés).
+  getFavorisCatalogueAchat: () => api.get('/stock/catalogue-achat/favoris/'),
+  setFavorisCatalogueAchat: (produitIds) =>
+    api.put('/stock/catalogue-achat/favoris/', { produit_ids: produitIds }),
+  // NTP2P23 — simulateur d'impact budgétaire (LECTURE SEULE : n'engage rien).
+  simulerBudgetDisponible: (montant, config) =>
+    api.get('/stock/budgets-departement/disponible/',
+      { params: { montant }, ...config }),
   unarchiveProduit: (id) => api.patch(`/stock/produits/${id}/unarchive/`),
   forceDeleteProduit: (id) => api.delete(`/stock/produits/${id}/force-delete/`),
   // QP2 — clone serveur (nouveau nom, SKU frais, prix d'achat copié côté
@@ -229,6 +241,20 @@ const stockApi = {
   // serveur (voir apps/stock/views/fournisseur.py `FournisseurViewSet.
   // vue_360`).
   getFournisseur360: (id) => api.get(`/stock/fournisseurs/${id}/vue-360/`),
+  // NTP2P8 — score de risque fournisseur (0-100, 100 = risque nul) + facteurs.
+  getScoreRisqueFournisseur: (id) =>
+    api.get(`/stock/fournisseurs/${id}/score-risque/`),
+  // NTP2P7 — dossier d'onboarding (pièces légales) d'un fournisseur.
+  getOnboardingFournisseur: (id) =>
+    api.get(`/stock/fournisseurs/${id}/onboarding/`),
+  createDossierOnboarding: (data) =>
+    api.post('/stock/dossiers-onboarding-fournisseur/', data),
+  validerDossierOnboarding: (id, data) =>
+    api.post(`/stock/dossiers-onboarding-fournisseur/${id}/valider-dossier/`, data),
+  createDocumentFournisseur: (data) =>
+    api.post('/stock/documents-fournisseur/', data),
+  televerserDocumentFournisseur: (id, formData) =>
+    api.post(`/stock/documents-fournisseur/${id}/televerser/`, formData),
   // Onglets détaillés — réutilisent les endpoints EXISTANTS déjà câblés
   // ailleurs (WR4/FG55/FG56/FG58/FG59, XPUR1, XPUR9), filtrés par fournisseur
   // côté frontend quand l'API ne filtre pas déjà nativement.

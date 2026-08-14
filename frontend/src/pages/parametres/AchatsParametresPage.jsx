@@ -21,6 +21,12 @@ const emptyForm = {
   tolerance_prix_pct: '0',
   tolerance_prix_absolu_mad: '0',
   tolerance_quantite_pct: '0',
+  // Procure-to-Pay (NTP2P4 / NTP2P7 / NTP2P37) — tous OFF par défaut :
+  // comportement historique strictement inchangé tant qu'ils ne sont pas
+  // activés par la société.
+  budget_departement_actif: false,
+  onboarding_fournisseur_obligatoire: false,
+  sod_stricte: false,
 }
 
 function frErr(err, fallback = 'Une erreur est survenue.') {
@@ -50,6 +56,9 @@ export default function AchatsParametresPage() {
           tolerance_prix_pct: data.tolerance_prix_pct ?? '0',
           tolerance_prix_absolu_mad: data.tolerance_prix_absolu_mad ?? '0',
           tolerance_quantite_pct: data.tolerance_quantite_pct ?? '0',
+          budget_departement_actif: !!data.budget_departement_actif,
+          onboarding_fournisseur_obligatoire: !!data.onboarding_fournisseur_obligatoire,
+          sod_stricte: !!data.sod_stricte,
         })
       })
       .catch(() => toast.error('Chargement des paramètres achats impossible.'))
@@ -116,6 +125,49 @@ export default function AchatsParametresPage() {
               Bloquer le paiement si un document de conformité obligatoire est
               manquant ou expiré
             </label>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardContent className="flex flex-col gap-3 pt-4 sm:pt-5">
+            <h2 className="flex items-center gap-1.5 text-sm font-semibold">
+              <ShieldCheck className="size-4 text-muted-foreground" aria-hidden="true" />
+              Procure-to-Pay
+            </h2>
+            <label className="flex items-center gap-2 text-sm text-foreground">
+              <Switch
+                id="ap-budget-departement"
+                aria-label="Activer le contrôle budgétaire par département"
+                checked={form.budget_departement_actif}
+                onCheckedChange={(v) => setField('budget_departement_actif', v)}
+              />
+              Refuser une demande d&apos;achat qui dépasse le budget restant du
+              département (NTP2P4)
+            </label>
+            <label className="flex items-center gap-2 text-sm text-foreground">
+              <Switch
+                id="ap-onboarding-obligatoire"
+                aria-label="Exiger un dossier d’onboarding fournisseur validé"
+                checked={form.onboarding_fournisseur_obligatoire}
+                onCheckedChange={(v) => setField('onboarding_fournisseur_obligatoire', v)}
+              />
+              Exiger un dossier d&apos;onboarding VALIDÉ avant tout bon de
+              commande fournisseur (NTP2P7)
+            </label>
+            <label className="flex items-center gap-2 text-sm text-foreground">
+              <Switch
+                id="ap-sod-stricte"
+                aria-label="Activer la séparation des tâches stricte"
+                checked={form.sod_stricte}
+                onCheckedChange={(v) => setField('sod_stricte', v)}
+              />
+              Séparation des tâches : interdire au créateur d&apos;approuver sa
+              propre demande ou note de frais escaladée (NTP2P37)
+            </label>
+            <p className="text-xs text-muted-foreground">
+              Les trois sont désactivés par défaut : tant qu&apos;ils le sont,
+              le cycle achats reste exactement celui d&apos;avant.
+            </p>
           </CardContent>
         </Card>
 

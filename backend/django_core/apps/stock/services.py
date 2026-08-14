@@ -6353,3 +6353,93 @@ def decider_candidature_fournisseur(fournisseur, *, valider):
         else Fournisseur.StatutValidation.REJETE)
     fournisseur.save(update_fields=['statut_validation'])
     return fournisseur
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# NTP2P4 — Engagements budgétaires (écriture)
+# ══════════════════════════════════════════════════════════════════════════
+# ``installations`` déclenche l'engagement à la SOUMISSION d'une demande
+# d'achat en passant par ici (jamais en important ``stock.models``). La
+# LECTURE (budget restant, consommation) passe par ``stock.selectors``.
+
+class BudgetDepasseError(Exception):
+    """Le budget départemental restant ne couvre pas la demande (→ 400)."""
+
+    def __init__(self, message, *, restant=None, manquant=None):
+        super().__init__(message)
+        self.restant = restant
+        self.manquant = manquant
+
+
+def engager_budget(company, *, departement_id, montant, periode=None,
+                   demande_achat_id=None, bon_commande_id=None,
+                   autoriser_depassement=False, note=''):
+    """Pose un engagement sur le budget du département, ou lève.
+
+    Renvoie l'``EngagementBudget`` créé, ou ``None`` quand le contrôle
+    budgétaire est inactif / aucun budget n'est configuré (comportement
+    historique : on n'invente pas d'enveloppe). Lève ``BudgetDepasseError``
+    si le budget est dépassé et que ``autoriser_depassement`` est faux.
+
+    Idempotent par demande : ré-engager une demande déjà engagée met le
+    montant à jour au lieu d'empiler une seconde ligne.
+    """
+    from decimal import Decimal
+    from . import selectors
+    from .models import EngagementBudget
+
+    montant = Decimal(montant or 0)
+    verdict = selectors.verifier_budget_disponible(
+        company, departement_id, periode, montant)
+    if not verdict['controle_actif']:
+        return None
+    budget = verdict['budget']
+
+    existant = None
+    if demande_achat_id:
+        existant = EngagementBudget.objects.filter(
+            company=company, budget=budget, demande_achat_id=demande_achat_id
+        ).exclude(statut=EngagementBudget.Statut.LIBERE).first()
+    if existant is not None:
+        # Le montant déjà engagé par CETTE demande ne se compte pas deux fois.
+        restant_hors_soi = verdict['restant'] + Decimal(existant.montant or 0)
+        if montant > restant_hors_soi and not autoriser_depassement:
+            raise BudgetDepasseError(
+                'Budget départemental dépassé.',
+                restant=restant_hors_soi,
+                manquant=montant - restant_hors_soi)
+        existant.montant = montant
+        existant.save(update_fields=['montant', 'updated_at'])
+        return existant
+
+    if not verdict['suffisant'] and not autoriser_depassement:
+        raise BudgetDepasseError(
+            'Budget départemental dépassé.',
+            restant=verdict['restant'],
+            manquant=verdict['montant_manquant'])
+    return EngagementBudget.objects.create(
+        company=company, budget=budget, montant=montant,
+        demande_achat_id=demande_achat_id, bon_commande_id=bon_commande_id,
+        statut=EngagementBudget.Statut.ACTIF, note=note or '')
+
+
+def liberer_engagements_demande(company, demande_achat_id):
+    """Rend l'enveloppe engagée par une demande (refus / annulation)."""
+    from .models import EngagementBudget
+    return EngagementBudget.objects.filter(
+        company=company, demande_achat_id=demande_achat_id,
+        statut=EngagementBudget.Statut.ACTIF,
+    ).update(statut=EngagementBudget.Statut.LIBERE)
+
+
+def consommer_engagements_demande(company, demande_achat_id,
+                                  bon_commande_id=None):
+    """Bascule les engagements d'une demande en CONSOMMÉ (BCF émis)."""
+    from .models import EngagementBudget
+    qs = EngagementBudget.objects.filter(
+        company=company, demande_achat_id=demande_achat_id,
+        statut=EngagementBudget.Statut.ACTIF)
+    valeurs = {'statut': EngagementBudget.Statut.CONSOMME}
+    if bon_commande_id:
+        valeurs['bon_commande_id'] = bon_commande_id
+    return qs.update(**valeurs)
