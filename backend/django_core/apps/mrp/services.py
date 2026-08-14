@@ -220,6 +220,72 @@ def liberer_reservations_of(of):
         ordre_fabrication=of, consomme=False).delete()[0]
 
 
+# ── NTMFG7 — Ordonnancement à capacité finie : replanification ──────────
+
+def _parse_date(brut):
+    if brut is None:
+        return None
+    if hasattr(brut, 'isoformat') and not isinstance(brut, str):
+        return brut
+    from datetime import datetime as _dt
+    try:
+        return _dt.strptime(str(brut), '%Y-%m-%d').date()
+    except ValueError:
+        raise ValueError(f'Date invalide : {brut!r} (attendu AAAA-MM-JJ).')
+
+
+def replanifier_operation(operation, *, nouvelle_date=None, nouveau_poste_id=None,
+                          company=None):
+    """NTMFG7 — déplace une `OperationOF` (drag & drop Gantt) : nouvelle date
+    planifiée et/ou nouveau poste, contrôle de capacité NON BLOQUANT (renvoie
+    un avertissement texte si le jour cible dépasse la capacité du poste,
+    mais applique quand même le déplacement). Renvoie `(operation,
+    avertissement_ou_None)`."""
+    from .models import OperationOF, PosteDeCharge
+
+    champs = []
+    if nouvelle_date is not None:
+        operation.date_planifiee = _parse_date(nouvelle_date)
+        champs.append('date_planifiee')
+    if nouveau_poste_id is not None:
+        poste = PosteDeCharge.objects.filter(
+            id=nouveau_poste_id, company=company).first()
+        if poste is None:
+            raise ValueError('Poste de charge inconnu pour cette société.')
+        operation.poste_charge = poste
+        champs.append('poste_charge')
+    if champs:
+        operation.save(update_fields=champs)
+
+    avertissement = None
+    if operation.date_planifiee is not None:
+        poste = operation.poste_charge
+        capacite_min = _dec(poste.capacite_heures_jour) * 60
+        statuts_en_charge = ['planifie', 'lance']
+        autres = (
+            OperationOF.objects
+            .filter(
+                poste_charge=poste, date_planifiee=operation.date_planifiee,
+                ordre_fabrication__statut__in=statuts_en_charge)
+            .exclude(id=operation.id)
+            .select_related('operation_gamme', 'ordre_fabrication'))
+        total = sum(
+            (temps_operation_min(op.operation_gamme, op.ordre_fabrication.quantite)
+             if op.operation_gamme_id else Decimal('0'))
+            for op in autres)
+        temps_cette_op = (
+            temps_operation_min(
+                operation.operation_gamme, operation.ordre_fabrication.quantite)
+            if operation.operation_gamme_id else Decimal('0'))
+        total += temps_cette_op
+        if capacite_min > 0 and total > capacite_min:
+            avertissement = (
+                f'Surcharge du poste « {poste.nom} » le '
+                f'{operation.date_planifiee.isoformat()} : '
+                f'{total} min planifiées pour {capacite_min} min de capacité.')
+    return operation, avertissement
+
+
 def annuler_of(of, user=None, motif=''):
     """NTMFG6 — annule un OF : libère ses réservations, passe le statut à
     `annule`. Refuse si le stock a déjà été mouvementé (NTMFG4) — comme

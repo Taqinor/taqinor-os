@@ -1,5 +1,7 @@
 """Vues de l'app `mrp` (Groupe NTMFG — Production / MRP II)."""
-from rest_framework import viewsets
+from datetime import datetime, timedelta
+
+from rest_framework import mixins, viewsets
 from rest_framework.decorators import action, api_view
 from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
@@ -138,13 +140,15 @@ class OrdreFabricationViewSet(CompanyScopedModelViewSet):
         return Response(disponibilite_par_ligne_of(of))
 
 
-class OperationOFViewSet(viewsets.ModelViewSet):
-    """NTMFG3 — opérations d'un OF. Pas de `company` propre : scope via l'OF
-    parent. Filtrable par `?ordre_fabrication=`."""
+class OperationOFViewSet(mixins.RetrieveModelMixin, mixins.ListModelMixin,
+                         viewsets.GenericViewSet):
+    """NTMFG3/7/8 — opérations d'un OF. Pas de `company` propre : scope via
+    l'OF parent. Filtrable par `?ordre_fabrication=`. Lecture seule + actions
+    dédiées (`replanifier/` NTMFG7 ; démarrer/pauser/terminer NTMFG8) —
+    jamais de PUT/PATCH/DELETE génériques."""
     queryset = OperationOF.objects.select_related(
         'ordre_fabrication', 'operation_gamme', 'poste_charge').all()
     serializer_class = OperationOFSerializer
-    http_method_names = ['get', 'head', 'options']
 
     def get_queryset(self):
         qs = super().get_queryset()
@@ -157,6 +161,49 @@ class OperationOFViewSet(viewsets.ModelViewSet):
         if of:
             qs = qs.filter(ordre_fabrication_id=of)
         return qs
+
+    @action(detail=True, methods=['patch'], url_path='replanifier')
+    def replanifier(self, request, pk=None):
+        """NTMFG7 — déplace cette opération (glisser-déposer Gantt) : nouvelle
+        `date_planifiee` et/ou `poste_charge` optionnel, contrôle de capacité
+        NON bloquant (avertissement seulement)."""
+        from .services import replanifier_operation
+        operation = self.get_object()
+        try:
+            operation, avertissement = replanifier_operation(
+                operation,
+                nouvelle_date=request.data.get('date_planifiee'),
+                nouveau_poste_id=request.data.get('poste_charge'),
+                company=request.user.company)
+        except ValueError as exc:
+            return Response({'detail': str(exc)}, status=400)
+        data = self.get_serializer(operation).data
+        data['avertissement'] = avertissement
+        return Response(data)
+
+
+@api_view(['GET'])
+def charge_postes_view(request):
+    """NTMFG7 — ``GET /api/django/mrp/charge-postes/?debut=&fin=`` : charge
+    par poste/jour sur la fenêtre (défaut : aujourd'hui → +13 jours, 2
+    semaines). Dates au format ``AAAA-MM-JJ``."""
+    from django.utils import timezone as dj_timezone
+
+    from .selectors import charge_postes
+
+    def _parse(nom, defaut):
+        brut = request.query_params.get(nom)
+        if not brut:
+            return defaut
+        try:
+            return datetime.strptime(brut, '%Y-%m-%d').date()
+        except ValueError:
+            return defaut
+
+    aujourd_hui = dj_timezone.localdate()
+    debut = _parse('debut', aujourd_hui)
+    fin = _parse('fin', aujourd_hui + timedelta(days=13))
+    return Response(charge_postes(request.user.company, debut, fin))
 
 
 @api_view(['POST'])

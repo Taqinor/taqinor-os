@@ -5,6 +5,8 @@ from decimal import Decimal
 from django.db.models import Sum
 from django.utils import timezone as dj_timezone
 
+from .services import temps_operation_min
+
 
 def _dec(value):
     try:
@@ -168,3 +170,56 @@ def disponibilite_par_ligne_of(of):
             'statut': statut,
         })
     return lignes
+
+
+# ── NTMFG7 — Ordonnancement à capacité finie : Gantt de charge inter-ordres ─
+
+_STATUTS_EN_CHARGE = ('planifie', 'lance')
+
+
+def charge_postes(company, debut, fin):
+    """NTMFG7 — charge (minutes prévues) par poste de charge et par jour,
+    sur la fenêtre [`debut`, `fin`] (inclus, `datetime.date`), pour toutes
+    les `OperationOF` planifiées d'OF `planifie`/`lance`. Le temps prévu est
+    TOUJOURS recalculé depuis `operation_gamme` × la quantité de l'OF (jamais
+    lu sur `temps_reel_min`, réservé au réalisé — NTMFG8) — cohérent même si
+    l'opération n'a pas encore démarré. Renvoie une liste triée par poste
+    puis par jour :
+      [{poste_id, poste_nom, jour, minutes_planifiees, capacite_minutes,
+        taux_charge_pct, surcharge}]."""
+    from .models import OperationOF
+
+    operations = (
+        OperationOF.objects
+        .filter(
+            poste_charge__company=company,
+            date_planifiee__gte=debut, date_planifiee__lte=fin,
+            ordre_fabrication__statut__in=_STATUTS_EN_CHARGE)
+        .select_related('poste_charge', 'operation_gamme', 'ordre_fabrication'))
+
+    charge = {}  # (poste_id, jour) -> minutes.
+    postes_vus = {}
+    for op in operations:
+        temps = (temps_operation_min(op.operation_gamme, op.ordre_fabrication.quantite)
+                 if op.operation_gamme_id else Decimal('0'))
+        cle = (op.poste_charge_id, op.date_planifiee)
+        charge[cle] = charge.get(cle, Decimal('0')) + temps
+        postes_vus[op.poste_charge_id] = op.poste_charge
+
+    resultats = []
+    for (poste_id, jour), minutes in charge.items():
+        poste = postes_vus[poste_id]
+        capacite_min = _dec(poste.capacite_heures_jour) * 60
+        taux = (
+            (minutes / capacite_min * 100) if capacite_min > 0 else Decimal('0'))
+        resultats.append({
+            'poste_id': poste_id,
+            'poste_nom': poste.nom,
+            'jour': jour.isoformat(),
+            'minutes_planifiees': str(minutes),
+            'capacite_minutes': str(capacite_min),
+            'taux_charge_pct': str(taux.quantize(Decimal('0.1'))),
+            'surcharge': minutes > capacite_min,
+        })
+    resultats.sort(key=lambda r: (r['poste_nom'].lower(), r['jour']))
+    return resultats
