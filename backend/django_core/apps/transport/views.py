@@ -3,9 +3,12 @@
 SCA4)."""
 from django.contrib.contenttypes.models import ContentType
 from django.http import HttpResponse
+from drf_spectacular.utils import extend_schema, inline_serializer
+from rest_framework import serializers as drf_serializers
 from rest_framework import status
 from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
+from rest_framework.negotiation import DefaultContentNegotiation
 from rest_framework.response import Response
 
 from authentication.permissions import IsResponsableOrAdmin
@@ -24,6 +27,25 @@ from .serializers import (
     LitigeTransportSerializer, OrdreTransportSerializer,
     ReserveReceptionSerializer,
 )
+
+
+class _ExportFormatContentNegotiation(DefaultContentNegotiation):
+    """NTLOG27/31 — sur les actions d'export, ``?format=`` désigne le format
+    D'EXPORT (xlsx/pdf/csv), PAS le renderer DRF — motif
+    ``apps.douane.views._ExportFormatContentNegotiation`` (elle-même motif
+    ``apps.compta.views._BankFormatContentNegotiation``). Sans cette
+    surcharge, DRF traite ``?format=xlsx``/``?format=pdf`` comme un override
+    de renderer (``URL_FORMAT_OVERRIDE``) : aucun renderer enregistré ne
+    porte ces formats → ``Http404`` AVANT même d'exécuter la vue. On neutralise
+    donc l'override par query param et on négocie toujours sur le renderer
+    JSON (la vue renvoie elle-même une ``HttpResponse``/``build_xlsx_response``
+    manuelle, jamais via ce renderer)."""
+
+    def select_renderer(self, request, renderers, format_suffix=None):
+        for renderer in renderers:
+            if renderer.format == 'json':
+                return renderer, renderer.media_type
+        return renderers[0], renderers[0].media_type
 
 
 def _check_same_company(request, **fields):
@@ -124,6 +146,40 @@ class OrdreTransportViewSet(ChatterViewSetMixin, CompanyScopedModelViewSet):
         return Response(
             selectors.estimer_co2_transport(
                 ordre.id, company=request.user.company))
+
+    # ── NTLOG24 — tableau de bord logistique ──────────────────────────────
+    # PACT7 — sans cette déclaration, le schéma OpenAPI publierait cet
+    # agrégat avec `OrdreTransportSerializer` (le `serializer_class` de ce
+    # ViewSet) alors qu'il renvoie une forme entièrement différente (motif
+    # `apps.flotte.views.FlotteViewSet.tableau_bord`).
+    @extend_schema(responses=inline_serializer('TransportTableauBordLogistique', {
+        'periode': drf_serializers.CharField(allow_null=True),
+        'nb_ordres': drf_serializers.IntegerField(),
+        'nb_livres': drf_serializers.IntegerField(),
+        'total_fret_ht': drf_serializers.DecimalField(max_digits=14, decimal_places=2),
+        'poids_livre_kg': drf_serializers.DecimalField(max_digits=12, decimal_places=2),
+        'cout_par_kg_transporte': drf_serializers.DecimalField(
+            max_digits=16, decimal_places=6, allow_null=True),
+        'taux_service_pct': drf_serializers.FloatField(allow_null=True),
+        'litiges_ouverts_count': drf_serializers.IntegerField(),
+        'litiges_ouverts_montant_conteste': drf_serializers.DecimalField(
+            max_digits=14, decimal_places=2),
+        'repartition_mode_transport': drf_serializers.DictField(
+            child=drf_serializers.IntegerField()),
+        'co2_total_estime_kg': drf_serializers.DecimalField(
+            max_digits=16, decimal_places=3),
+    }))
+    @action(detail=False, methods=['get'], url_path='tableau-bord-logistique',
+            permission_classes=[ScopedPermission])
+    def tableau_bord_logistique(self, request):
+        """NTLOG24 — cartes KPI + répartition transporteurs du dashboard
+        logistique. Lecture seule (tout rôle interne), filtrable
+        ``?periode=YYYY-MM``."""
+        from . import selectors
+        return Response(
+            selectors.tableau_bord_logistique(
+                request.user.company,
+                periode=request.query_params.get('periode')))
 
 
 class LigneOrdreTransportViewSet(CompanyScopedModelViewSet):
