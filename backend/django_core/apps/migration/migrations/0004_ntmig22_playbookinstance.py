@@ -19,7 +19,7 @@ class Migration(migrations.Migration):
     dependencies = [
         ('authentication', '0025_company_est_demo_mode_presentation'),
         ('kb', '0024_ntmig21_playbook'),
-        ('migration', '0001_initial'),
+        ('migration', '0003_ntmig38_offset_reprise'),
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
     ]
 

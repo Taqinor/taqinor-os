@@ -18,7 +18,7 @@ class Migration(migrations.Migration):
     dependencies = [
         ('authentication', '0025_company_est_demo_mode_presentation'),
         ('crm', '0069_ntmig26_certification_partenaire'),
-        ('migration', '0002_ntmig22_playbookinstance'),
+        ('migration', '0004_ntmig22_playbookinstance'),
     ]
 
     operations = [
