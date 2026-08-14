@@ -447,3 +447,43 @@ class LigneOffreSOP(TenantModel):
 
     def __str__(self):
         return f'{self.cycle_id} / {self.produit_id} écart={self.ecart_offre_demande}'
+
+
+class ParametresSCM(TenantModel):
+    """NTSCM22 — réglages minimalistes d'opt-in du cycle S&OP automatique,
+    par société.
+
+    ADAPTATION DE PÉRIMÈTRE (frontière cross-app, CLAUDE.md) : le plan
+    d'origine (NTSCM22) posait ``sop_actif``/``animateur_sop`` sur
+    ``apps.parametres.CompanyProfile`` — hors périmètre de cette lane
+    (``apps/parametres`` n'appartient pas à ``apps/scm``). Posés ICI, en
+    OneToOne société — même patron d'adaptation que ``ClassificationABC``
+    (NTSCM4, voir sa docstring). NTSCM33 (réglages SCM complets — horizon de
+    prévision, seuils d'alerte…, tâche future hors cette lane) pourra plus
+    tard enrichir CE modèle (migration additive) sans rien casser ici : le
+    nom ``ParametresSCM`` est délibérément le même que celui prévu par
+    NTSCM33 pour que la fusion soit directe."""
+
+    company = models.OneToOneField(
+        'authentication.Company',
+        on_delete=models.CASCADE,  # on_delete: tenant
+        related_name='scm_parametres', verbose_name='Société')
+    sop_actif = models.BooleanField(
+        default=False, verbose_name='Cycle S&OP automatique actif',
+        help_text=(
+            "Désactivé par défaut : n'affecte AUCUNE société existante tant "
+            'que non activé explicitement (NTSCM22).'))
+    animateur_sop = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='scm_animateur_sop_defaut',
+        verbose_name='Animateur S&OP par défaut',
+        help_text="Notifié à l'ouverture automatique du cycle du mois suivant.")
+
+    class Meta:
+        verbose_name = 'Paramètres SCM'
+        verbose_name_plural = 'Paramètres SCM'
+
+    def __str__(self):
+        return f'Paramètres SCM — société {self.company_id}'

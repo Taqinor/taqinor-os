@@ -302,6 +302,21 @@ def avancer_statut_cycle(cycle, user, *, statut_cible=None):
     if prochain == CyclePlanificationSOP.Statut.REVUE_DEMANDE:
         geler_previsions_cycle(cycle)
 
+    # NTSCM27 — le compte-rendu S&OP (3 feuilles xlsx) est généré et archivé
+    # en GED EXACTEMENT à la clôture (jamais rejoué à une étape antérieure).
+    # Best-effort : un accroc GED/stockage objet ne doit JAMAIS bloquer la
+    # transition d'état elle-même (même contrat que `_notify_rapport_envoye`,
+    # apps/monitoring/report.py) — le compte-rendu reste régénérable à la
+    # demande via l'action `compte-rendu` du viewset.
+    if prochain == CyclePlanificationSOP.Statut.CLOS:
+        try:
+            generer_compte_rendu_sop(cycle, user=user)
+        except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+            import logging
+            logging.getLogger(__name__).warning(
+                'avancer_statut_cycle: génération du compte-rendu S&OP '
+                'échouée (cycle %s)', cycle.id, exc_info=True)
+
     return cycle
 
 
@@ -399,3 +414,604 @@ def reouvrir_cycle(cycle, user, *, motif=''):
         user=user, company=cycle.company,
         field_label=f'Réouverture admin ({motif or "sans motif précisé"})')
     return cycle
+
+
+# ── NTSCM16 — suggestion d'achat groupée multi-fournisseurs (MOQ/paliers) ────
+
+def _prix_pour_quantite(prix_fournisseur, quantite):
+    """Prix unitaire applicable pour ``quantite`` : le palier
+    (``stock.PalierPrixFournisseur``, XPUR14, déjà modélisé) dont ``qte_min``
+    est le plus élevé sans dépasser ``quantite``, sinon le prix de base
+    (``prix_achat``). Un ``PrixFournisseur`` sans palier garde le
+    comportement historique (jamais de logique dupliquée avec XPUR14)."""
+    applicable = prix_fournisseur.prix_achat
+    for palier in prix_fournisseur.paliers.all():
+        if palier.qte_min <= quantite:
+            applicable = palier.prix
+    return applicable
+
+
+def _decider_quantite_achat(besoin_net, prix_fournisseur):
+    """NTSCM16 — décide la quantité à commander pour couvrir ``besoin_net``
+    (JAMAIS en dessous) au coût total le plus bas, MOQ et paliers de prix
+    respectés.
+
+    ADAPTATION DE PÉRIMÈTRE : le champ ``PrixFournisseur.
+    quantite_minimale_commande`` (NTSCM17) n'existe pas encore — hors
+    périmètre de cette lane (``apps.achats``, pas ``apps.scm``). Lu via
+    ``getattr(..., None)`` : ``None`` aujourd'hui (comportement inchangé,
+    comme un produit sans MOQ), la vraie valeur dès que NTSCM17 atterrit —
+    SANS modification de cette fonction.
+
+    Renvoie soit ``{'decision': 'commander', 'quantite', 'prix_unitaire',
+    'cout_total'}`` (besoin >= MOQ, ou pas de MOQ connu), soit
+    ``{'decision': 'sous_moq', 'moq', 'besoin_net', 'options': [...]}`` — dans
+    ce dernier cas AUCUNE quantité < MOQ n'est jamais proposée : les deux
+    SEULES options sont « attendre » ou « commander le MOQ » (+ alerte
+    surstock)."""
+    moq = getattr(prix_fournisseur, 'quantite_minimale_commande', None)
+
+    if moq is not None and besoin_net < moq:
+        return {
+            'decision': 'sous_moq',
+            'moq': moq,
+            'besoin_net': str(besoin_net),
+            'options': [
+                {
+                    'action': 'attendre',
+                    'motif': (
+                        f'Besoin net {besoin_net} sous le MOQ {moq} — '
+                        'grouper avec le prochain cycle.'),
+                },
+                {
+                    'action': 'commander_moq',
+                    'quantite': moq,
+                    'surstock': str(Decimal(str(moq)) - besoin_net),
+                    'alerte_surstock': True,
+                    'prix_unitaire': str(_prix_pour_quantite(prix_fournisseur, moq)),
+                },
+            ],
+        }
+
+    candidats = sorted({besoin_net} | {
+        Decimal(str(p.qte_min)) for p in prix_fournisseur.paliers.all()
+        if p.qte_min >= besoin_net
+    })
+    meilleure_quantite = min(
+        candidats,
+        key=lambda q: _prix_pour_quantite(prix_fournisseur, q) * q)
+    prix_unitaire = _prix_pour_quantite(prix_fournisseur, meilleure_quantite)
+    return {
+        'decision': 'commander',
+        'quantite': str(meilleure_quantite),
+        'prix_unitaire': str(prix_unitaire),
+        'cout_total': str(prix_unitaire * meilleure_quantite),
+    }
+
+
+def suggerer_achats_groupes(company):
+    """NTSCM16 — regroupe PAR FOURNISSEUR le moins cher éligible les produits
+    en statut « à_commander »/« rupture_imminente » (NTSCM7,
+    ``selectors.tableau_bord_reappro``), en choisissant pour chacun la
+    quantité qui minimise le coût total tout en couvrant le besoin net
+    (jamais en dessous), MOQ et paliers de prix respectés (voir
+    ``_decider_quantite_achat``).
+
+    LECTURE SEULE — la création du BCF brouillon reste l'action séparée
+    ``tableau-bord-reappro/creer-bcf/`` (NTSCM7, réutilisée telle quelle).
+
+    Renvoie ``[{'fournisseur_id', 'fournisseur_nom', 'lignes': [...]}, ...]``."""
+    from django.apps import apps as django_apps
+
+    from apps.stock.services import cheapest_prix_fournisseur
+
+    from . import selectors
+
+    Produit = django_apps.get_model('stock', 'Produit')
+
+    lignes_tableau = [
+        ligne for ligne in selectors.tableau_bord_reappro(company)
+        if ligne['statut'] != 'ok' and ligne['quantite_suggeree']
+    ]
+
+    groupes = {}
+    for ligne in lignes_tableau:
+        produit = Produit.objects.filter(
+            company=company, pk=ligne['produit_id']).first()
+        if produit is None:
+            continue
+        prix_fournisseur = cheapest_prix_fournisseur(produit)
+        if prix_fournisseur is None:
+            continue
+
+        besoin_net = Decimal(str(ligne['quantite_suggeree']))
+        decision = _decider_quantite_achat(besoin_net, prix_fournisseur)
+
+        fid = prix_fournisseur.fournisseur_id
+        groupe = groupes.setdefault(fid, {
+            'fournisseur_id': fid,
+            'fournisseur_nom': prix_fournisseur.fournisseur.nom,
+            'lignes': [],
+        })
+        groupe['lignes'].append({
+            'produit_id': produit.id,
+            'produit_nom': produit.nom,
+            'besoin_net': str(besoin_net),
+            **decision,
+        })
+
+    return list(groupes.values())
+
+
+# ── NTSCM18 — simulation « et si… » de rupture (lecture seule, en mémoire) ───
+
+def simuler_rupture(produit, scenario, company, *, today=None):
+    """NTSCM18 — simulation « et si… » EN MÉMOIRE (AUCUNE écriture DB) de
+    l'impact d'un scénario hypothétique sur le réappro d'un produit.
+    Réutilise ``core.stock_reorder.predict_reorder`` (FG364) — aucune
+    logique de projection dupliquée.
+
+    ``scenario`` (dict, toutes clés optionnelles) :
+      - ``delai_fournisseur_jours_supplementaires`` (peut être négatif) —
+        ajouté au délai fournisseur moyen mesuré ;
+      - ``demande_pct`` (ex. ``20`` = +20% de conso journalière) ;
+      - ``commande_annulee_quantite`` — retranchée du stock actuel AVANT
+        simulation (une commande en cours qu'on suppose annulée).
+
+    ADAPTATION : ``predict_reorder`` calcule la date de rupture PHYSIQUE
+    (``stock actuel / conso``), qui NE DÉPEND PAS du délai fournisseur (un
+    stock se vide à la même vitesse quel que soit le délai de la PROCHAINE
+    livraison) — un ``lead_time`` allongé ne peut donc jamais, à conso et
+    stock constants, avancer la date de rupture PHYSIQUE. La métrique qui
+    EN DÉPEND directement, à parts égales, est la ``date_limite_commande``
+    (dernier jour où passer commande pour la recevoir avant la rupture =
+    ``rupture_date − lead_time_days``) : c'est CETTE date qu'un délai
+    fournisseur plus long avance d'exactement le même nombre de jours — la
+    métrique renvoyée pour le scénario « délai +N jours ».
+
+    Renvoie ``{'produit_id', 'scenario', 'base': {...}, 'simule': {...},
+    'delta_jours_rupture', 'delta_jours_date_limite_commande'}``."""
+    from core.stock_reorder import predict_reorder
+
+    today = today or timezone.localdate()
+    scenario = scenario or {}
+
+    lead_time_base = lead_time_moyen_fournisseur(company, produit)
+    calc_base = appliquer_politique_stock(
+        produit, Decimal('95'), company, lead_time_days=lead_time_base)
+
+    politique = PolitiqueStock.objects.filter(
+        company=company, produit=produit).first()
+    if politique is not None:
+        stock_securite = float(
+            politique.stock_securite_manuel
+            if politique.stock_securite_manuel is not None
+            else politique.stock_securite_calcule)
+    else:
+        stock_securite = calc_base['stock_securite']
+
+    stock_actuel = float(produit.quantite_stock or 0)
+
+    resultat_base = predict_reorder(
+        current_stock=stock_actuel, today=today,
+        avg_daily_consumption=calc_base['avg_daily_consumption'],
+        lead_time_days=lead_time_base, safety_stock=stock_securite)
+
+    lead_time_simule = lead_time_base + float(
+        scenario.get('delai_fournisseur_jours_supplementaires') or 0)
+    if lead_time_simule < 0:
+        lead_time_simule = 0.0
+    demande_pct = float(scenario.get('demande_pct') or 0)
+    conso_simulee = calc_base['avg_daily_consumption'] * (1 + demande_pct / 100)
+    if conso_simulee < 0:
+        conso_simulee = 0.0
+    stock_simule = stock_actuel - float(
+        scenario.get('commande_annulee_quantite') or 0)
+
+    resultat_simule = predict_reorder(
+        current_stock=stock_simule, today=today,
+        avg_daily_consumption=conso_simulee,
+        lead_time_days=lead_time_simule, safety_stock=stock_securite)
+
+    def _serialize(resultat, lead_time):
+        date_limite = None
+        if resultat.rupture_date is not None:
+            from datetime import timedelta
+            date_limite = resultat.rupture_date - timedelta(days=lead_time)
+        return {
+            'reorder_now': resultat.reorder_now,
+            'days_until_rupture': resultat.days_until_rupture,
+            'rupture_date': (
+                resultat.rupture_date.isoformat() if resultat.rupture_date else None),
+            'date_limite_commande': (
+                date_limite.isoformat() if date_limite else None),
+            'suggested_quantity': resultat.suggested_quantity,
+        }
+
+    base = _serialize(resultat_base, lead_time_base)
+    simule = _serialize(resultat_simule, lead_time_simule)
+
+    def _delta_jours(iso_simule, iso_base):
+        if not iso_simule or not iso_base:
+            return None
+        from datetime import date as _date
+        return (_date.fromisoformat(iso_simule) - _date.fromisoformat(iso_base)).days
+
+    return {
+        'produit_id': produit.id,
+        'scenario': scenario,
+        'base': base,
+        'simule': simule,
+        'delta_jours_rupture': _delta_jours(
+            simule['rupture_date'], base['rupture_date']),
+        'delta_jours_date_limite_commande': _delta_jours(
+            simule['date_limite_commande'], base['date_limite_commande']),
+    }
+
+
+# ── NTSCM19 — allocation en pénurie multi-clients (proposition, jamais une
+# réservation automatique) ───────────────────────────────────────────────────
+
+def proposer_allocation_penurie(produit, company, *, mode='fifo'):
+    """NTSCM19 — propose une répartition PROPOSÉE (jamais une réservation
+    automatique — l'acheteur/commercial confirme manuellement via l'action
+    existante de réservation stock) du stock disponible d'un produit entre
+    les ``ventes.Devis`` OUVERTS (statut ``envoye``/``accepte`` — ni
+    brouillon, ni mort) qui en dépendent.
+
+    Lu en cross-app via ``django.apps.apps.get_model`` (LECTURE SEULE, même
+    patron que ``_historique_sorties_mensuelles``/``classifier_abc`` — jamais
+    un ``from apps.ventes.models import ...`` statique). ``ventes.
+    BonCommande`` n'est PAS interrogé séparément : il est en OneToOne avec
+    son ``Devis`` source (``BonCommande.devis``) et partage donc EXACTEMENT
+    sa quantité — compter le Devis suffit, jamais de double comptage.
+
+    ``mode`` :
+      - ``'fifo'`` (défaut) — par ``date_creation`` croissante (premier
+        arrivé, premier servi) ;
+      - ``'priorite'`` — par ``crm.Lead.priorite`` du devis (via
+        ``Devis.lead``, string-FK déjà posée — haute > normale > basse), puis
+        ``date_creation`` en cas d'égalité/absence de lead.
+
+    Renvoie ``{'produit_id', 'stock_disponible', 'mode', 'propositions': [
+    {'devis_id', 'reference', 'client_nom', 'quantite_demandee',
+    'quantite_allouee', 'quantite_non_couverte'}, ...]}`` — jamais une
+    allocation totale supérieure au disponible."""
+    from django.apps import apps as django_apps
+
+    LigneDevis = django_apps.get_model('ventes', 'LigneDevis')
+
+    ORDRE_PRIORITE = {'haute': 0, 'normale': 1, 'basse': 2}
+
+    lignes = (
+        LigneDevis.objects
+        .filter(
+            devis__company=company, produit_id=produit.id,
+            devis__statut__in=['envoye', 'accepte'])
+        .select_related('devis', 'devis__client', 'devis__lead'))
+
+    par_devis = {}
+    for ligne in lignes:
+        devis = ligne.devis
+        entree = par_devis.setdefault(devis.id, {
+            'devis': devis, 'quantite_demandee': Decimal('0'),
+        })
+        entree['quantite_demandee'] += (ligne.quantite or Decimal('0'))
+
+    def _cle_tri(entree):
+        devis = entree['devis']
+        if mode == 'priorite':
+            lead = getattr(devis, 'lead', None)
+            priorite = getattr(lead, 'priorite', 'normale') if lead else 'normale'
+            return (ORDRE_PRIORITE.get(priorite, 1), devis.date_creation)
+        return (devis.date_creation,)
+
+    entrees = sorted(par_devis.values(), key=_cle_tri)
+
+    disponible = Decimal(str(produit.quantite_stock or 0))
+    restant = disponible
+    propositions = []
+    for entree in entrees:
+        devis = entree['devis']
+        demande = entree['quantite_demandee']
+        alloue = max(Decimal('0'), min(demande, restant))
+        restant -= alloue
+        propositions.append({
+            'devis_id': devis.id,
+            'reference': devis.reference,
+            'client_nom': (
+                devis.client.nom if devis.client_id and devis.client else ''),
+            'quantite_demandee': str(demande),
+            'quantite_allouee': str(alloue),
+            'quantite_non_couverte': str(demande - alloue),
+        })
+
+    return {
+        'produit_id': produit.id,
+        'stock_disponible': str(disponible),
+        'mode': mode,
+        'propositions': propositions,
+    }
+
+
+# ── NTSCM22 — réglages opt-in du cycle S&OP automatique ─────────────────────
+
+def parametres_scm(company):
+    """NTSCM22 — réglages SCM de la société (lazy get_or_create, défaut
+    ``sop_actif=False`` — n'affecte AUCUNE société qui n'a encore rien
+    configuré). Voir ``models.ParametresSCM`` pour l'adaptation de
+    périmètre."""
+    from .models import ParametresSCM
+
+    obj, _created = ParametresSCM.objects.get_or_create(company=company)
+    return obj
+
+
+# ── NTSCM25 — détection d'anomalie de demande (pic/creux inattendu) ─────────
+
+def detecter_anomalies_demande(company, *, fenetre_mois=13):
+    """NTSCM25 — réutilise ``core.anomaly`` (FG360, fondation pure — AUCUNE
+    logique de détection dupliquée) sur la série de consommation mensuelle
+    RÉELLE par produit (``_historique_sorties_mensuelles``, même source que
+    NTSCM2/5/6). Flague le DERNIER mois écoulé quand il s'écarte de plus de
+    2 écarts-types de la série (``z_threshold=2.0``).
+
+    ADAPTATION DE PÉRIMÈTRE : le plan visait un ``AnomalyFlag`` taggé
+    ``type='demande'`` — absent des choix FERMÉS de
+    ``core.models.AnomalyFlag.CATEGORY_CHOICES`` (stock/paiement/fraude/
+    autre, contrat de fondation ``core``, hors périmètre d'extension de
+    cette lane). Catégorie ``'stock'`` (la plus proche) + ``subject_type``/
+    ``metric`` portant le tag ``'scm.demande'`` à la place — filtrable de
+    façon identique. Idempotent (dédupe intégrée à
+    ``core.anomaly.record_anomaly`` : un flag OUVERT du même (société, mois,
+    produit) n'est jamais dupliqué).
+
+    Renvoie la liste des ``AnomalyFlag`` créés/réutilisés."""
+    from django.apps import apps as django_apps
+
+    from core.anomaly import record_outliers, scan_for_outliers
+
+    Produit = django_apps.get_model('stock', 'Produit')
+
+    flags = []
+    for produit in Produit.objects.filter(company=company, is_archived=False):
+        historique = _historique_sorties_mensuelles(company, produit.id, fenetre_mois)
+        if len(historique) < 4:
+            continue
+        points = [
+            {'id': periode, 'value': quantite, 'label': produit.nom}
+            for periode, quantite in historique
+        ]
+        candidats = scan_for_outliers(points, z_threshold=2.0)
+        dernier_periode = historique[-1][0]
+        candidats_dernier_mois = [
+            c for c in candidats if c.subject_id == dernier_periode]
+        if not candidats_dernier_mois:
+            continue
+        flags.extend(record_outliers(
+            candidats_dernier_mois, company=company, category='stock',
+            subject_type='scm.demande',
+            metric=f'consommation_mensuelle:{produit.id}'))
+    return flags
+
+
+# ── NTSCM27 — rapport S&OP exportable, archivé en GED à la clôture ──────────
+
+def _construire_classeur_sop(cycle):
+    """NTSCM27 — classeur .xlsx à 3 feuilles (Demande consensuelle, Offre et
+    écarts, Impact financier) d'un cycle S&OP. Réutilise le style du builder
+    partagé (``apps.records.xlsx.coerce_cell`` — coercition fr-MA identique
+    aux autres exports) ; construit ICI en 3 feuilles car
+    ``apps.records.xlsx.build_workbook`` n'en produit qu'UNE."""
+    from openpyxl import Workbook
+    from openpyxl.styles import Font
+
+    from apps.records.xlsx import coerce_cell
+
+    from . import selectors
+
+    wb = Workbook()
+    bold = Font(bold=True)
+
+    def _en_tete(ws, headers):
+        ws.append(headers)
+        for cell in ws[1]:
+            cell.font = bold
+
+    ws1 = wb.active
+    ws1.title = 'Demande consensuelle'
+    _en_tete(ws1, [
+        'Produit', 'Prévision système', 'Ajusté commercial', 'Quantité finale',
+        "Motif de l'ajustement"])
+    for ligne in cycle.lignes_demande.select_related('produit'):
+        ws1.append([coerce_cell(v) for v in [
+            ligne.produit.nom, ligne.quantite_prevision_systeme,
+            ligne.quantite_ajustee_commercial, ligne.quantite_finale,
+            ligne.motif_ajustement]])
+
+    ws2 = wb.create_sheet('Offre et écarts')
+    _en_tete(ws2, [
+        'Produit', 'Stock disponible', 'Capacité appro fournisseur',
+        'Écart offre − demande'])
+    for ligne in cycle.lignes_offre.select_related('produit'):
+        ws2.append([coerce_cell(v) for v in [
+            ligne.produit.nom, ligne.stock_disponible_snapshot,
+            ligne.capacite_appro_fournisseur_estimee, ligne.ecart_offre_demande]])
+
+    impact = selectors.impact_financier_cycle(cycle)
+    ws3 = wb.create_sheet('Impact financier')
+    _en_tete(ws3, ['Produit', 'Quantité finale', 'Prix de vente', 'Valeur HT'])
+    for ligne in impact['lignes']:
+        ws3.append([coerce_cell(v) for v in [
+            ligne['produit_nom'], ligne['quantite_finale'],
+            ligne['prix_vente'], ligne['valeur_ht']]])
+    ws3.append([])
+    ws3.append(['CA prévisionnel HT', coerce_cell(impact['ca_previsionnel_ht'])])
+    ws3.append(['CA forecast HT', coerce_cell(impact['ca_forecast_ht'])])
+    ws3.append(['Écart %', coerce_cell(impact['ecart_pct'])])
+
+    return wb
+
+
+def generer_compte_rendu_sop(cycle, *, user=None):
+    """NTSCM27 — assemble le compte-rendu .xlsx d'un cycle S&OP
+    (``_construire_classeur_sop``, 3 feuilles) et l'archive dans GED
+    (``apps.ged.services.deposit_document`` — cross-app en SERVICE, jamais un
+    import de modèle GED) sous un dossier « S&OP » auto-créé PAR SOCIÉTÉ.
+
+    IDEMPOTENT par cycle (``source_type='scm.cycleplanificationsop'`` +
+    ``source_id=str(cycle.id)``, mécanisme natif de ``deposit_document``) :
+    un second appel pour le MÊME cycle retrouve le document déjà déposé
+    plutôt que d'en créer un doublon.
+
+    Renvoie ``(document_ged, xlsx_bytes)``."""
+    import io
+
+    from apps.ged.services import deposit_document
+    from apps.records.xlsx import XLSX_CONTENT_TYPE
+
+    wb = _construire_classeur_sop(cycle)
+    buf = io.BytesIO()
+    wb.save(buf)
+    xlsx_bytes = buf.getvalue()
+
+    document, _created = deposit_document(
+        company=cycle.company,
+        nom=f'Compte-rendu S&OP {cycle.periode}',
+        source_type='scm.cycleplanificationsop', source_id=str(cycle.id),
+        contenu_bytes=xlsx_bytes, mime=XLSX_CONTENT_TYPE,
+        description=f'Compte-rendu du cycle de planification S&OP {cycle.periode}.',
+        cabinet_nom='S&OP', folder_nom='S&OP', created_by=user)
+    return document, xlsx_bytes
+
+
+# ── NTSCM29 — fiche PDF interne « Politique de stock » ──────────────────────
+
+_FICHE_POLITIQUE_STOCK_CSS = """
+@page { size: A4; margin: 18mm 16mm; }
+* { font-family: 'Helvetica Neue', Arial, sans-serif; color: #1a1a1a; }
+h1 { font-size: 18px; margin: 0 0 4px; }
+.bandeau { background: #fde68a; color: #78350f; font-weight: 700;
+  font-size: 11px; padding: 6px 10px; border-radius: 6px; margin-bottom: 12px; }
+table { width: 100%; border-collapse: collapse; font-size: 12px; margin-top: 10px; }
+td, th { padding: 5px 6px; border-bottom: 1px solid #eee; text-align: left; }
+.section-h { font-weight: 700; font-size: 13px; margin: 16px 0 6px;
+  border-bottom: 1px solid #ddd; padding-bottom: 3px; }
+"""
+
+
+def generer_fiche_politique_stock(politique):
+    """NTSCM29 — PDF INTERNE (WeasyPrint via ``core.pdf.render_pdf``, ARC12 —
+    JAMAIS ``quote_engine``/``/proposal``, ce document n'est PAS un document
+    client, règle #4 hors périmètre) récapitulant une ``PolitiqueStock``
+    (NTSCM6) : classe ABC, niveau de service, ROP, stock min/max, stock de
+    sécurité calculé vs manuel, historique des révisions (chatter générique
+    ``records``, s'il en existe — NTSCM44, tâche future, alimentera ce fil).
+
+    AUCUN ``prix_achat``/marge n'apparaît — uniquement des quantités et
+    pourcentages. Bandeau « document interne » toujours visible."""
+    from html import escape
+
+    from core.pdf import render_pdf
+
+    produit_nom = politique.produit.nom
+    stock_securite_effectif = (
+        politique.stock_securite_manuel
+        if politique.stock_securite_manuel is not None
+        else politique.stock_securite_calcule)
+
+    historique_html = ''
+    try:
+        from apps.records.services import chatter_qs
+        entries = list(chatter_qs(politique, politique.company)[:12])
+        if entries:
+            lignes_html = ''.join(
+                '<tr>'
+                f'<td>{escape(str(e.created_at.date()) if e.created_at else "—")}</td>'
+                f'<td>{escape(e.field_label or e.body or "—")}</td>'
+                f'<td>{escape(str(e.old_value) if e.old_value else "—")}</td>'
+                f'<td>{escape(str(e.new_value) if e.new_value else "—")}</td>'
+                '</tr>'
+                for e in entries)
+            historique_html = (
+                '<div class="section-h">Historique des révisions (12 dernières)</div>'
+                '<table><tr><th>Date</th><th>Champ</th><th>Avant</th>'
+                f'<th>Après</th></tr>{lignes_html}</table>')
+    except Exception:  # noqa: BLE001 - chatter optionnel, jamais bloquant
+        historique_html = ''
+
+    body = (
+        f'<h1>Politique de stock — {escape(produit_nom)}</h1>'
+        '<div class="bandeau">Document interne — usage acheteur, '
+        'ne jamais transmettre au client.</div>'
+        '<table>'
+        f'<tr><td>Classe ABC</td><td>{escape(politique.classe_abc or "—")}</td></tr>'
+        f'<tr><td>Niveau de service</td><td>{politique.service_level_pct}%</td></tr>'
+        f'<tr><td>Point de commande (ROP)</td><td>{politique.point_commande}</td></tr>'
+        f'<tr><td>Stock min</td><td>{politique.stock_min}</td></tr>'
+        f'<tr><td>Stock max</td><td>{politique.stock_max}</td></tr>'
+        f'<tr><td>Stock de sécurité calculé</td><td>{politique.stock_securite_calcule}</td></tr>'
+        '<tr><td>Stock de sécurité manuel (override)</td>'
+        f'<td>{politique.stock_securite_manuel if politique.stock_securite_manuel is not None else "—"}</td></tr>'
+        f'<tr><td>Stock de sécurité effectif</td><td>{stock_securite_effectif}</td></tr>'
+        '</table>'
+        + historique_html
+    )
+    html = (
+        '<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8">'
+        f'<title>Politique de stock — {escape(produit_nom)}</title>'
+        f'<style>{_FICHE_POLITIQUE_STOCK_CSS}</style></head><body>{body}</body></html>'
+    )
+    return render_pdf(html=html)
+
+
+# ── NTSCM30 — assistant guidé « Créer une politique de stock » en lot ───────
+
+def creer_politiques_en_lot(produits, service_level_pct, company):
+    """NTSCM30 — applique NTSCM6 (``get_or_create`` + calcul ROP/stock de
+    sécurité, NTSCM5) EN LOT à une liste de produits, pour l'assistant guidé
+    ``/scm/politiques-stock/nouveau``.
+
+    ``service_level_pct`` s'applique UNIQUEMENT à la CRÉATION d'une
+    politique — jamais sur une politique déjà existante (override acheteur
+    respecté, même contrat que ``recalculer_politiques_stock``).
+
+    Renvoie la liste des ``PolitiqueStock`` créées/mises à jour, dans le même
+    ordre que ``produits``."""
+    classes = dict(
+        ClassificationABC.objects.filter(company=company, produit__in=produits)
+        .values_list('produit_id', 'classe'))
+
+    resultats = []
+    for produit in produits:
+        classe = classes.get(produit.id, 'C')
+        politique, created = PolitiqueStock.objects.get_or_create(
+            company=company, produit=produit,
+            defaults={'service_level_pct': service_level_pct, 'classe_abc': classe},
+        )
+        niveau = service_level_pct if created else politique.service_level_pct
+
+        lead_time_days = lead_time_moyen_fournisseur(company, produit)
+        calc = appliquer_politique_stock(
+            produit, niveau, company, lead_time_days=lead_time_days)
+
+        stock_securite_effectif = (
+            politique.stock_securite_manuel
+            if politique.stock_securite_manuel is not None
+            else Decimal(str(calc['stock_securite'])))
+        point_commande = (
+            Decimal(str(calc['avg_daily_consumption'])) * Decimal(str(lead_time_days))
+            + stock_securite_effectif
+        )
+
+        politique.classe_abc = classe
+        politique.service_level_pct = niveau
+        politique.stock_securite_calcule = Decimal(str(calc['stock_securite']))
+        politique.point_commande = point_commande.quantize(Decimal('0.01'))
+        politique.revise_le = timezone.now()
+        politique.save(update_fields=[
+            'classe_abc', 'service_level_pct', 'stock_securite_calcule',
+            'point_commande', 'revise_le', 'updated_at',
+        ])
+        resultats.append(politique)
+    return resultats

@@ -254,6 +254,15 @@ class EventType(models.TextChoices):
     # croit couvert pendant des semaines.
     VEILLE_AO_ALARME_SILENCE = (
         'veille_ao_alarme_silence', "Veille appels d'offres muette")
+    # NTSCM21 — résumé de la génération mensuelle automatique des prévisions
+    # de demande (tâche planifiée `apps.scm.tasks.generer_previsions_
+    # mensuelles_task`).
+    SCM_PREVISIONS_GENEREES = (
+        'scm_previsions_generees', 'Prévisions de demande générées (mensuel)')
+    # NTSCM22 — ouverture automatique du cycle S&OP du mois suivant (opt-in
+    # par société, `apps.scm.models.ParametresSCM.sop_actif`).
+    SCM_CYCLE_SOP_OUVERT = (
+        'scm_cycle_sop_ouvert', 'Cycle S&OP ouvert automatiquement')
 
 
 class Channel(models.TextChoices):
