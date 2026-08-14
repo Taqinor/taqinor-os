@@ -135,11 +135,42 @@ def prix_applicable_view(request):
     except InvalidOperation:
         raise ValidationError('quantite invalide.')
 
+    # NTCPQ17 — panier optionnel pour la CASCADE de remises volume :
+    # ?panier=<produit_id>:<quantite>,<produit_id>:<quantite>… La ligne courante
+    # y est ajoutée si elle en est absente. Absent → aucune cascade (réponse
+    # historique enrichie de la seule remise de ligne).
+    lignes_panier = []
+    panier_brut = request.query_params.get('panier') or ''
+    for morceau in panier_brut.split(','):
+        morceau = morceau.strip()
+        if not morceau:
+            continue
+        pid, _, qte = morceau.partition(':')
+        p = produit_qs.filter(pk=pid).select_related('categorie').first() \
+            if pid.strip().isdigit() else None
+        if p is None:
+            continue
+        try:
+            q = Decimal(str(qte or '1'))
+        except InvalidOperation:
+            q = Decimal('1')
+        lignes_panier.append({'produit': p, 'quantite': q})
+    if not any(li['produit'].pk == produit.pk for li in lignes_panier):
+        lignes_panier.append({'produit': produit, 'quantite': quantite})
+
     resolved = prix_applicable(produit=produit, client=client, quantite=quantite)
+    from ..selectors import decomposition_remise_volume
+    decomposition = decomposition_remise_volume(
+        company=company, produit=produit, quantite=quantite,
+        lignes=lignes_panier)
     return Response({
         'produit': produit.id,
         'quantite': str(quantite),
         'prix': str(resolved['prix']),
         'source': resolved['source'],
         'liste_nom': resolved['liste_nom'],
+        # NTCPQ17 — décomposition (remise de ligne + cascade globale) au lieu
+        # d'un pourcentage unique. Clés toujours présentes ; tout à 0 quand
+        # aucun palier volume n'est configuré (comportement inchangé).
+        'remise_volume': decomposition,
     })

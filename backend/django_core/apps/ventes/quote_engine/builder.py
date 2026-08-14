@@ -1465,6 +1465,23 @@ def build_quote_data(devis, pdf_options=None) -> dict:
             for li in _struct
         ]
 
+    # ── NTCPQ11 — Clauses/CGV dynamiques FIGÉES à l'envoi ───────────────────
+    # LECTURE SEULE du snapshot ``Devis.clauses_appliquees`` (jamais recalculé
+    # ici : le moteur ne fait que RENDRE). Additif : la clé n'est posée que
+    # lorsqu'au moins une clause a été figée → un devis sans clause reste
+    # octet-identique. Aucun nouveau renderer (règle #4) : simple bloc de
+    # données mis à disposition des gabarits existants.
+    _clauses = getattr(devis, "clauses_appliquees", None)
+    if isinstance(_clauses, list) and _clauses:
+        data["clauses_cgv"] = [
+            {
+                "nom": (c.get("nom") or ""),
+                "corps_texte": (c.get("corps_texte") or ""),
+                "type_deal": (c.get("type_deal") or ""),
+            }
+            for c in _clauses if isinstance(c, dict)
+        ]
+
     return data
 
 

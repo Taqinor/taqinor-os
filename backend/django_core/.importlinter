@@ -347,6 +347,17 @@ ignore_imports =
     core.tests.test_documents_viewset -> apps.records.views
     core.tests.test_documents_status -> apps.installations.models_demande_achat
     core.tests.test_documents_status -> apps.installations.models_ordre_soustraitance
+# NTDMO25 — `authentication.tasks.seed_demo_company_task` (Celery envelope)
+# imports `authentication.views_demo_wizard` LAZILY (function-local, only at
+# call time), which itself pulls in `authentication.views_console` and, from
+# there, several domain selectors (the demo-kit wizard seeds sample data
+# across apps). grimp still sees the static edge, so the legitimate
+# core.tests.test_wir50_security_beat -> authentication.tasks foundation-app
+# edge (already allowed, `authentication` not in forbidden_modules) now
+# transitively reaches those domain apps through this ONE hop. Prune just
+# that hop — the same pattern as the test-only edges above, but for a lazy
+# production edge instead of a test edge.
+    authentication.tasks -> authentication.views_demo_wizard
 
 # AOF33 — `core.calepinage` est le MOTEUR de calepinage, partagé par DEUX
 # consommateurs qui ne peuvent pas s'importer l'un l'autre (`apps.ao` pour la
