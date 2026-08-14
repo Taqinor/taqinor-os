@@ -29,6 +29,7 @@ from .views import (
     SeuilReapproCasierViewSet, TacheReapproInterneViewSet,
     casiers_a_reapprovisionner_view, scanner_retour_fournisseur_view,
     IncidentQualiteFournisseurViewSet, DepotConsignationViewSet,
+    AccordRFAFournisseurViewSet,
 )
 
 router = DefaultRouter()
@@ -91,6 +92,8 @@ router.register(
     r'incidents-qualite-fournisseur', IncidentQualiteFournisseurViewSet)
 # NTDST3 - depots de consignation chez les clients (depot-vente).
 router.register(r'consignations', DepotConsignationViewSet)
+# NTDST5 - accords de remise arriere (RFA) fournisseur.
+router.register(r'accords-rfa-fournisseur', AccordRFAFournisseurViewSet)
 
 urlpatterns = [
     # NTWMS8 - kiosque de quai (chemin nomme par la tache : /stock/public/...).

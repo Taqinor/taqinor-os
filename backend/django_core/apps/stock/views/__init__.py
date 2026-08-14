@@ -62,7 +62,7 @@ from .hazmat import CompatibiliteHazmatCasierViewSet
 # NTSCM9 - incidents qualite fournisseur (alimente scorecard + TCO).
 from .fournisseur_scm import IncidentQualiteFournisseurViewSet
 # Groupe NTDST - negoce (consignation, parametres, van sales).
-from .negoce import DepotConsignationViewSet
+from .negoce import DepotConsignationViewSet, AccordRFAFournisseurViewSet
 # NTWMS40 - reappro des casiers picking depuis le stockage.
 from .reappro_casier import (
     SeuilReapproCasierViewSet, TacheReapproInterneViewSet,
@@ -131,4 +131,5 @@ __all__ = [
     'scanner_retour_fournisseur_view',
     'IncidentQualiteFournisseurViewSet',
     'DepotConsignationViewSet',
+    'AccordRFAFournisseurViewSet',
 ]

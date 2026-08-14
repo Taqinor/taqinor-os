@@ -16,7 +16,9 @@ from authentication.permissions import (
 )
 from core.viewsets import CompanyScopedModelViewSet
 
-from ..models import DeclarationConsommation, DepotConsignation
+from ..models import (
+    AccordRFAFournisseur, DeclarationConsommation, DepotConsignation,
+)
 
 READ_ACTIONS = ['list', 'retrieve']
 WRITE_ACTIONS = ['create', 'update', 'partial_update']
@@ -173,3 +175,117 @@ class DepotConsignationViewSet(CompanyScopedModelViewSet):
         """Relevé cumulé : déposé / consommé / facturé / restant."""
         from ..services_consignation import releve_consignation
         return Response(releve_consignation(self.get_object()))
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# NTDST5 — Remises arrière (RFA) fournisseurs
+# ═══════════════════════════════════════════════════════════════════════════
+
+class AccordRFAFournisseurSerializer(serializers.ModelSerializer):
+    fournisseur_nom = serializers.CharField(
+        source='fournisseur.nom', read_only=True, default='')
+    avoir_deja_genere = serializers.BooleanField(read_only=True)
+
+    class Meta:
+        model = AccordRFAFournisseur
+        fields = [
+            'id', 'fournisseur', 'fournisseur_nom', 'periode_debut',
+            'periode_fin', 'seuil_ca_achat', 'taux_pct', 'montant_fixe',
+            'statut', 'avoir_genere', 'avoir_deja_genere', 'note',
+            'created_at',
+        ]
+        # L'avoir est posé par l'action dédiée, JAMAIS par un PATCH : sinon la
+        # garde d'idempotence se contourne en une requête.
+        read_only_fields = ['avoir_genere', 'avoir_deja_genere', 'created_at']
+
+    def validate(self, attrs):
+        taux = attrs.get('taux_pct', getattr(self.instance, 'taux_pct', None))
+        fixe = attrs.get('montant_fixe',
+                         getattr(self.instance, 'montant_fixe', None))
+        if taux is None and fixe is None:
+            raise serializers.ValidationError(
+                'Renseignez soit un taux (%), soit un montant fixe.')
+        if taux is not None and fixe is not None:
+            raise serializers.ValidationError(
+                'Taux et montant fixe sont exclusifs : choisissez-en un.')
+        debut = attrs.get('periode_debut',
+                          getattr(self.instance, 'periode_debut', None))
+        fin = attrs.get('periode_fin',
+                        getattr(self.instance, 'periode_fin', None))
+        if debut and fin and fin < debut:
+            raise serializers.ValidationError(
+                'La fin de période doit suivre son début.')
+        return attrs
+
+
+class AccordRFAFournisseurViewSet(CompanyScopedModelViewSet):
+    """NTDST5 — accords de remise arrière fournisseur.
+
+    Montants d'ACHAT : lecture responsable/admin, jamais tout rôle.
+    """
+    queryset = AccordRFAFournisseur.objects.select_related(
+        'fournisseur', 'avoir_genere').all()
+    serializer_class = AccordRFAFournisseurSerializer
+    ordering = ['-periode_debut', '-id']
+
+    def get_permissions(self):
+        if self.action in READ_ACTIONS + WRITE_ACTIONS + [
+                'calcul', 'generer_avoir']:
+            return [IsResponsableOrAdmin()]
+        return [IsAdminRole()]
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        fournisseur = self.request.query_params.get('fournisseur')
+        if fournisseur:
+            qs = qs.filter(fournisseur_id=fournisseur)
+        statut = self.request.query_params.get('statut')
+        if statut:
+            qs = qs.filter(statut=statut)
+        return qs
+
+    @extend_schema(responses={
+        200: inline_serializer('StockRfaCalcul', {
+            'accord_id': serializers.IntegerField(),
+            'fournisseur_id': serializers.IntegerField(),
+            'periode_debut': serializers.CharField(),
+            'periode_fin': serializers.CharField(),
+            'ca_achat': serializers.CharField(),
+            'seuil_ca_achat': serializers.CharField(),
+            'seuil_atteint': serializers.BooleanField(),
+            'progression_pct': serializers.CharField(),
+            'montant_du': serializers.CharField(),
+            'avoir_deja_genere': serializers.BooleanField(),
+        }),
+    })
+    @action(detail=True, methods=['get'], url_path='calcul',
+            permission_classes=[IsResponsableOrAdmin])
+    def calcul(self, request, pk=None):
+        """CA d'achat réceptionné, progression vers le seuil et montant dû."""
+        from ..services_rfa import calculer_rfa_fournisseur
+        return Response(calculer_rfa_fournisseur(self.get_object()))
+
+    @extend_schema(request=None, responses={
+        201: inline_serializer('StockRfaAvoirGenere', {
+            'avoir_id': serializers.IntegerField(),
+            'reference': serializers.CharField(),
+            'montant_ttc': serializers.CharField(),
+        }),
+    })
+    @action(detail=True, methods=['post'], url_path='generer-avoir',
+            permission_classes=[IsResponsableOrAdmin])
+    def generer_avoir(self, request, pk=None):
+        """Matérialise la remise due en AVOIR fournisseur — UNE SEULE FOIS
+        par accord (deuxième appel refusé)."""
+        from ..services_rfa import generer_avoir_rfa
+
+        accord = self.get_object()
+        try:
+            avoir = generer_avoir_rfa(accord, request.user)
+        except ValueError as exc:
+            return Response({'detail': str(exc)},
+                            status=status.HTTP_400_BAD_REQUEST)
+        return Response({
+            'avoir_id': avoir.id, 'reference': avoir.reference,
+            'montant_ttc': str(avoir.montant_ttc),
+        }, status=status.HTTP_201_CREATED)
