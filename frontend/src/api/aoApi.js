@@ -95,13 +95,12 @@ const aoApi = {
   releves: crud('releves'),
   obstacles: crud('obstacles'),
   chaines: crud('chaines-cotes'),
-  //
-  // `zones:` A ÉTÉ RETIRÉ — ENDPOINT À CONSTRUIRE, pas un renommage.
-  // L'outil de saisie des zones (AOF89 : interdite / réservée / préférée)
-  // existe côté écran, mais AUCUN modèle ni route ne les persiste, et
-  // `calepinage_io.document_entree()` envoie `'zones': []` en dur au moteur.
-  // Publier ici un `crud('zones')` ferait croire à un stockage qui n'existe
-  // pas ; le jour où le modèle est créé, la ressource revient ici.
+  // PV54/PV56 — `ZoneAO` existe désormais (contour NOMMÉ : enveloppe /
+  // interdite / réservée / préférée), routée sous `zones` (`apps/ao/urls.py`,
+  // `router.register(r'zones', ZoneAOViewSet, …)`). L'atelier de traçage
+  // (`ToituresPage.jsx`) diffère les zones locales vs cette ressource sur
+  // « Enregistrer », au même titre que les obstacles (PV53).
+  zones: crud('zones'),
 
   /* ── Calepinage (moteur `core/calepinage/`) ─────────────────────────────
      LES VRAIES ROUTES, telles que `apps/ao/calepinage_urls.py` les publie.

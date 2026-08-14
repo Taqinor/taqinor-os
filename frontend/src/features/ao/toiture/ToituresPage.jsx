@@ -262,21 +262,22 @@ function FicheToitures({ toitures, loading, error }) {
    deux piles séparées produiraient un annuler qui ne défait pas ce que
    l'utilisateur vient de faire.
 
-   PERSISTANCE (PV53) :
+   PERSISTANCE (PV53/PV56) :
      · « Enregistrer » écrit `contour_local_m` via `aoApi.toitures.update` —
        le MÊME champ que le wizard de création, une liste de `[x, y]` en
        mètres dans le repère local (`apps/ao/models.py:619`). La surface est
        RECALCULÉE par le serveur à chaque écriture : elle n'est jamais
        envoyée, jamais devinée ici ;
-     · les OBSTACLES et les CHAÎNES DE COTES de la boîte à outils (PACT167)
-       partent EUX AUSSI, dans la MÊME action « Enregistrer » : diff
+     · les OBSTACLES, les CHAÎNES DE COTES et les ZONES de la boîte à outils
+       (PACT167) partent EUX AUSSI, dans la MÊME action « Enregistrer » : diff
        create/update/delete vs le dernier instantané serveur connu
        (`synchroniserRessource`). À l'OUVERTURE de l'atelier (ce composant est
-       remonté avec `key={toiture.id}`), les deux listes sont RE-CHARGÉES
+       remonté avec `key={toiture.id}`), les trois listes sont RE-CHARGÉES
        depuis le serveur — fermer/rouvrir conserve donc tout ;
-     · les ZONES restent LOCALES à l'atelier (PV56, pas encore construit) —
-       l'écran l'ANNONCE avant qu'on en saisisse une, plutôt que de la laisser
-       croire enregistrée.
+     · les ZONES sont LUES par le moteur de calepinage
+       (`calepinage_io.zones_vers_document`, PV55) mais RIEN n'est recalculé
+       ICI : le prochain calcul serveur les applique, jamais un compte
+       d'écran.
    ========================================================================== */
 
 // Le modèle sert le contour en `[x, y]` (mètres, repère local, y↑ nord) ;
@@ -506,6 +507,44 @@ function chaineVersPayload(c, toitureId) {
   }
 }
 
+// Vocabulaire LOCAL (`OutilsZones.jsx` NATURES_ZONE) → `ZoneAO.Nature` (PV56).
+const NATURE_ZONE_VERS_SERVEUR = {
+  interdite: 'INTERDITE',
+  reservee: 'RESERVEE',
+  preferee: 'PREFEREE',
+}
+const NATURE_ZONE_DEPUIS_SERVEUR = {
+  INTERDITE: 'interdite',
+  RESERVEE: 'reservee',
+  PREFEREE: 'preferee',
+  // `ENVELOPPE` est écrite par l'outil de TRACÉ (le contour de la toiture),
+  // jamais par `OutilsZones` — repli neutre si elle apparaît malgré tout.
+  ENVELOPPE: 'interdite',
+}
+
+function zoneDepuisServeur(record) {
+  const sommets = Array.isArray(record.sommets)
+    ? record.sommets.map(([x, y]) => ({ x: nb(x), y: nb(y) }))
+    : []
+  return {
+    id: record.id,
+    nature: NATURE_ZONE_DEPUIS_SERVEUR[record.nature] ?? 'interdite',
+    nom: record.repere || `Zone ${record.id}`,
+    sommets,
+    aireM2: aire(sommets),
+    _serveur: record,
+  }
+}
+
+function zoneVersPayload(z, toitureId) {
+  return {
+    ...(z._serveur ?? {}),
+    toiture: toitureId,
+    nature: NATURE_ZONE_VERS_SERVEUR[z.nature] ?? 'INTERDITE',
+    sommets: (z.sommets ?? []).map((s) => [nb(s.x), nb(s.y)]),
+  }
+}
+
 function erreurNommee(nom, etiquette, e, verbe) {
   const err = new Error(
     `${nom} ${etiquette || ''} non ${verbe} — ${errMsg(e, 'le serveur a refusé l’écriture.')}`
@@ -608,6 +647,7 @@ function AtelierToiture({ toiture, selecteur, onEnregistre }) {
   // ne pilotent aucun rendu, elles ne servent qu'à la PROCHAINE écriture).
   const distantsObstaclesRef = useRef([])
   const distantsChainesRef = useRef([])
+  const distantsZonesRef = useRef([])
   // Un utilisateur qui a DÉJÀ commencé à éditer (points, obstacles, chaînes…)
   // avant que l'hydratation réseau ne réponde ne doit JAMAIS se faire écraser
   // par elle : l'hydratation s'efface silencieusement dans ce cas, plutôt que
@@ -675,15 +715,18 @@ function AtelierToiture({ toiture, selecteur, onEnregistre }) {
     if (!toitureId) return undefined
     ;(async () => {
       try {
-        const [obsRes, chaRes] = await Promise.all([
+        const [obsRes, chaRes, zoRes] = await Promise.all([
           aoApi.obstacles.list({ toiture: toitureId }),
           aoApi.chaines.list({ toiture: toitureId }),
+          aoApi.zones.list({ toiture: toitureId }),
         ])
         if (annule || interactionRef.current) return
         const obstaclesDistants = unwrapList(obsRes)
         const chainesDistantes = unwrapList(chaRes)
+        const zonesDistantes = unwrapList(zoRes)
         distantsObstaclesRef.current = obstaclesDistants
         distantsChainesRef.current = chainesDistantes
+        distantsZonesRef.current = zonesDistantes
         reinitialiser(
           {
             points: histoire.etat.points,
@@ -692,13 +735,14 @@ function AtelierToiture({ toiture, selecteur, onEnregistre }) {
           'Chargé depuis le serveur',
         )
         setChaines(chainesDistantes.map(chaineDepuisServeur))
+        setZones(zonesDistantes.map(zoneDepuisServeur))
       } catch (e) {
         if (annule) return
         setNote(errMsg(
           e,
-          'Obstacles et chaînes de cotes non chargés depuis le serveur — l’atelier '
-          + 'reste utilisable, mais « Enregistrer » partirait d’une liste locale '
-          + 'incomplète tant que la page n’est pas rechargée.',
+          'Obstacles, chaînes de cotes et zones non chargés depuis le serveur — '
+          + 'l’atelier reste utilisable, mais « Enregistrer » partirait d’une liste '
+          + 'locale incomplète tant que la page n’est pas rechargée.',
         ))
       }
     })()
@@ -734,6 +778,11 @@ function AtelierToiture({ toiture, selecteur, onEnregistre }) {
   const majChaines = useCallback((suivantes) => {
     interactionRef.current = true
     setChaines(suivantes)
+  }, [])
+
+  const majZones = useCallback((suivantes) => {
+    interactionRef.current = true
+    setZones(suivantes)
   }, [])
 
   const bbox = useMemo(() => bboxDePoints(points), [points])
@@ -773,16 +822,30 @@ function AtelierToiture({ toiture, selecteur, onEnregistre }) {
         locaux: chaines, distants: distantsChainesRef.current,
         versPayload: (c) => chaineVersPayload(c, toitureId),
       })
+      // PV56 — les zones suivent le MÊME diff que les obstacles/chaînes
+      // (PV53). Le moteur de calepinage les LIT déjà (`calepinage_io.
+      // zones_vers_document`, PV55) : rien n'est recalculé ici, le prochain
+      // calcul serveur les applique — c'est dit dans le toast ci-dessous.
+      const resultatsZones = await synchroniserRessource({
+        ressource: aoApi.zones, nomRessource: 'Zone',
+        locaux: zones, distants: distantsZonesRef.current,
+        versPayload: (z) => zoneVersPayload(z, toitureId),
+      })
 
       // Les ids locaux DEVIENNENT les ids serveur : un second « Enregistrer »
       // dans la même session diffère juste, il ne recrée rien en double.
       distantsObstaclesRef.current = resultatsObstacles.map((r) => r._serveur)
       distantsChainesRef.current = resultatsChaines.map((r) => r._serveur)
+      distantsZonesRef.current = resultatsZones.map((r) => r._serveur)
       reinitialiser({ points, obstacles: resultatsObstacles }, 'Enregistré')
       setChaines(resultatsChaines)
+      setZones(resultatsZones)
 
       setRefus(null)
-      toast.success('Enregistré — contour, obstacles et chaînes de cotes.')
+      toast.success(
+        'Enregistré — contour, obstacles, chaînes de cotes et zones. Les zones '
+        + 's’appliquent au prochain calcul de calepinage.',
+      )
       onEnregistre?.()
     } catch (e) {
       // `synchroniserRessource` fabrique un motif déjà prêt en français
@@ -796,16 +859,15 @@ function AtelierToiture({ toiture, selecteur, onEnregistre }) {
     } finally {
       setEnregistrement(false)
     }
-  }, [toitureId, points, obstacles, chaines, onEnregistre, reinitialiser])
+  }, [toitureId, points, obstacles, chaines, zones, onEnregistre, reinitialiser])
 
   const ongletGeometrie = (
     <div className="flex flex-col gap-3">
       <LegendeProvenance />
       <p className="rounded-md border border-border bg-muted p-2 text-xs text-muted-foreground">
-        « Enregistrer » écrit le CONTOUR de cette toiture, les obstacles et les
-        chaînes de cotes de la boîte à outils, en une seule écriture (PV53).
-        Les zones restent LOCALES à l’atelier — les y raccorder au serveur est
-        une tâche à part.
+        « Enregistrer » écrit le CONTOUR de cette toiture, les obstacles, les
+        chaînes de cotes ET les zones de la boîte à outils, en une seule
+        écriture (PV53/PV56).
       </p>
       <TableauGeometrie
         points={points}
@@ -945,14 +1007,14 @@ function AtelierToiture({ toiture, selecteur, onEnregistre }) {
   const ongletZones = (
     <div className="flex flex-col gap-3">
       <p className="text-xs text-muted-foreground">
-        Zones interdites, réservées ou préférées du relevé. Le serveur ne
-        modélise PAS encore de ressource « zones » (le moteur de calepinage en
-        reçoit une liste vide) : elles restent locales à l’atelier.
+        Zones interdites, réservées ou préférées du relevé. « Enregistrer » les
+        écrit comme les obstacles (PV56) — le prochain calcul de calepinage les
+        applique, jamais un compte recalculé ici.
       </p>
       <OutilsZones
         zonesInitiales={zones}
         metresParPixel={mpp}
-        onChange={setZones}
+        onChange={majZones}
       />
     </div>
   )

@@ -36,6 +36,10 @@ const mocks = vi.hoisted(() => ({
   chainesCreate: vi.fn(),
   chainesUpdate: vi.fn(),
   chainesRemove: vi.fn(),
+  zonesList: vi.fn(),
+  zonesCreate: vi.fn(),
+  zonesUpdate: vi.fn(),
+  zonesRemove: vi.fn(),
 }))
 const toastMocks = vi.hoisted(() => ({ success: vi.fn(), error: vi.fn() }))
 
@@ -61,6 +65,13 @@ vi.mock('../../../api/aoApi', () => ({
       create: mocks.chainesCreate,
       update: mocks.chainesUpdate,
       remove: mocks.chainesRemove,
+    },
+    // PV56 — zones, même contrat CRUD que les obstacles/chaînes.
+    zones: {
+      list: mocks.zonesList,
+      create: mocks.zonesCreate,
+      update: mocks.zonesUpdate,
+      remove: mocks.zonesRemove,
     },
   },
 }))
@@ -105,6 +116,10 @@ beforeEach(() => {
   mocks.chainesCreate.mockResolvedValue({ data: {} })
   mocks.chainesUpdate.mockResolvedValue({ data: {} })
   mocks.chainesRemove.mockResolvedValue({ data: {} })
+  mocks.zonesList.mockResolvedValue({ data: [] })
+  mocks.zonesCreate.mockResolvedValue({ data: {} })
+  mocks.zonesUpdate.mockResolvedValue({ data: {} })
+  mocks.zonesRemove.mockResolvedValue({ data: {} })
 })
 
 /* Ouvre le wizard, remplit ses deux champs et valide. Le wizard se ferme
@@ -668,5 +683,77 @@ describe('ToituresPage — « Enregistrer » diffère obstacles ET chaînes (cre
     // générique qui laisserait deviner ce qui n'a pas été enregistré.
     expect(await screen.findByText(/Obstacle A non enregistré/)).toBeInTheDocument()
     expect(toastMocks.error).toHaveBeenCalled()
+  })
+})
+
+/* ============================================================================
+   PV56 — zones PERSISTÉES : `aoApi.zones`, diff create/update/delete +
+   hydratation à l'ouverture, comme les obstacles/chaînes (PV53).
+   ========================================================================== */
+
+const ZONE_SERVEUR = {
+  id: 601, toiture: 41, repere: 'Z1', nature: 'RESERVEE',
+  sommets: [[2, 2], [5, 2], [5, 5], [2, 5]], hauteur_m: null, retrait_m: '0.00',
+}
+
+describe('ToituresPage — zones : diff create/update/delete + hydratation (PV56)', () => {
+  it('une zone tracée dans l’atelier est PERSISTÉE au format ZoneAO sur « Enregistrer »', async () => {
+    mocks.toituresList.mockResolvedValue({ data: [TOITURE_TRACEE] })
+    mocks.zonesCreate.mockResolvedValue({ data: { id: 801, repere: '', nature: 'INTERDITE' } })
+    render(<ToituresPage affaireId={7} />)
+    await screen.findByText('Toiture atelier')
+    await waitFor(() => expect(mocks.zonesList).toHaveBeenCalledWith({ toiture: 41 }))
+
+    await userEvent.click(screen.getByRole('tab', { name: 'Zones' }))
+
+    // Trois points, nature « interdite » (par défaut) — devient un polygone.
+    await userEvent.type(screen.getByLabelText('Point x (m)'), '1')
+    await userEvent.type(screen.getByLabelText('Point y (m)'), '1')
+    await userEvent.click(screen.getByRole('button', { name: 'Ajouter le point' }))
+    await userEvent.type(screen.getByLabelText('Point x (m)'), '4')
+    await userEvent.type(screen.getByLabelText('Point y (m)'), '1')
+    await userEvent.click(screen.getByRole('button', { name: 'Ajouter le point' }))
+    await userEvent.type(screen.getByLabelText('Point x (m)'), '4')
+    await userEvent.type(screen.getByLabelText('Point y (m)'), '3')
+    await userEvent.click(screen.getByRole('button', { name: 'Ajouter le point' }))
+    await userEvent.click(screen.getByRole('button', { name: /Terminer la zone/ }))
+
+    await userEvent.click(screen.getByRole('button', { name: 'Enregistrer' }))
+
+    await waitFor(() => expect(mocks.zonesCreate).toHaveBeenCalled())
+    const corps = mocks.zonesCreate.mock.calls[0][0]
+    expect(corps.toiture).toBe(41)
+    expect(corps.nature).toBe('INTERDITE')
+    expect(corps.sommets).toEqual([[1, 1], [4, 1], [4, 3]])
+
+    // Le toast NOMME la limite honnête : rien n'est recalculé ici.
+    expect(toastMocks.success.mock.calls.at(-1)[0]).toMatch(/prochain calcul/)
+  })
+
+  it('hydrate les zones du serveur à l’ouverture, puis diffère un delete (fermer/rouvrir conserve tout)', async () => {
+    mocks.toituresList.mockResolvedValue({ data: [TOITURE_TRACEE] })
+    mocks.zonesList.mockResolvedValue({ data: [ZONE_SERVEUR] })
+    render(<ToituresPage affaireId={7} />)
+    await screen.findByText('Toiture atelier')
+
+    // Même lot d'hydratation que les obstacles (PV53) : ce signal prouve que
+    // le `Promise.all` a résolu et que `setZones` a donc déjà été appelé.
+    await waitFor(() => expect(
+      document.querySelector('[data-tableau-geometrie]').dataset.tableauGeometrie,
+    ).toBe('4:0'))
+
+    await userEvent.click(screen.getByRole('tab', { name: 'Zones' }))
+    await waitFor(() => expect(
+      document.querySelectorAll('[data-ao-zone-ligne]').length,
+    ).toBe(1))
+    expect(screen.getByText('Z1')).toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Supprimer Z1' }))
+    await waitFor(() => expect(
+      document.querySelectorAll('[data-ao-zone-ligne]').length,
+    ).toBe(0))
+
+    await userEvent.click(screen.getByRole('button', { name: 'Enregistrer' }))
+    await waitFor(() => expect(mocks.zonesRemove).toHaveBeenCalledWith(601))
   })
 })
