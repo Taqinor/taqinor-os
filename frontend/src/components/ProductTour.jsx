@@ -17,19 +17,31 @@ import { useLocation } from 'react-router-dom'
 import { useSelector } from 'react-redux'
 import { X, ArrowRight, ArrowLeft, Check } from 'lucide-react'
 import { Button } from '../ui/Button'
+import { useIsMobile } from '../ui/ResponsiveDialog'
 import {
   fetchTours, findTourForPath, isNewUser, markTourSeen,
 } from '../features/onboarding/productTours'
 
 const PAD = 8
 
+// MB6 — au téléphone, la bulle sans cible est ANCRÉE SOUS L'EN-TÊTE, jamais
+// posée au milieu de l'écran : tout ce que l'utilisateur vient faire sur un
+// écran mobile vit dans le tiers bas (FAB « + Nouveau lead » VX42, barre
+// d'actions collante du générateur MB3/VX138, barre d'onglets MB1). Une aide
+// NON SOLLICITÉE doit donc occuper la zone opposée. Marge sous l'en-tête réel,
+// mesuré (jamais une hauteur codée en dur) ; repli si l'en-tête est absent.
+const DOCK_GAP = 8
+const DOCK_TOP_FALLBACK = 12
+
 export default function ProductTour() {
   const { pathname } = useLocation()
   const user = useSelector((s) => s.auth?.user)
+  const isMobile = useIsMobile()
   const [tours, setTours] = useState(null)
   const [open, setOpen] = useState(false)
   const [step, setStep] = useState(0)
   const [rect, setRect] = useState(null)
+  const [dockTop, setDockTop] = useState(DOCK_TOP_FALLBACK)
   const [activeKey, setActiveKey] = useState(null)
   const bubbleRef = useRef(null)
 
@@ -43,18 +55,21 @@ export default function ProductTour() {
   const tour = useMemo(() => findTourForPath(tours, pathname), [tours, pathname])
 
   // Déclenchement automatique : nouvel écran cible, tour jamais vu, utilisateur
-  // récent — jamais si un autre tour est déjà ouvert.
+  // récent. Une visite appartient à SON écran : à chaque changement d'écran on
+  // REPART DE ZÉRO (fermeture silencieuse — aucun appel `vu/`, la visite reste
+  // due à la prochaine venue), puis on ouvre le cas échéant celle de l'écran
+  // AFFICHÉ. L'ancien garde « jamais si un autre tour est déjà ouvert » laissait
+  // fuir `open`/`step`/`activeKey` d'un écran au suivant : l'écran suivant
+  // héritait d'une bulle ouverte à l'étape du précédent, et sa fermeture
+  // marquait « vu » le tour du MAUVAIS écran.
   useEffect(() => {
-    if (open) return
-    if (!tour || tour.vu) return
-    if (!isNewUser(user)) return
-    const key = tour.tour_key
+    const eligible = Boolean(tour) && !tour.vu && isNewUser(user)
     // setState différé au prochain microtask (jamais synchrone dans l'effet) —
     // évite react-hooks/set-state-in-effect sans changer le comportement visible.
     queueMicrotask(() => {
-      setActiveKey(key)
+      setActiveKey(eligible ? tour.tour_key : null)
       setStep(0)
-      setOpen(true)
+      setOpen(eligible)
     })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tour, pathname])
@@ -76,6 +91,17 @@ export default function ProductTour() {
   const prev = useCallback(() => setStep((s) => Math.max(0, s - 1)), [])
 
   const measure = useCallback(() => {
+    // Point d'ancrage haut de la bulle sans cible (mobile) : juste sous
+    // l'en-tête d'application réellement peint, re-mesuré au scroll/resize.
+    // Mesuré UNIQUEMENT visite ouverte : `measure` est branché au scroll de
+    // toute l'application (capture), on ne paie donc aucune lecture de mise en
+    // page sur les écrans où aucune visite ne tourne.
+    if (open) {
+      const header = document.querySelector('.header')
+      const bas = header ? header.getBoundingClientRect().bottom : 0
+      const haut = Math.round(Math.max(DOCK_TOP_FALLBACK, bas + DOCK_GAP))
+      setDockTop((ancien) => (ancien === haut ? ancien : haut))
+    }
     if (!open || !current?.selecteur) { setRect(null); return }
     const el = document.querySelector(current.selecteur)
     if (!el) { setRect(null); return }
@@ -143,6 +169,10 @@ export default function ProductTour() {
     if (left + width > vw - 12) left = vw - width - 12
     if (left < 12) left = 12
     bubbleStyle = { position: 'fixed', top, left, width, maxWidth: 'calc(100vw - 24px)' }
+  } else if (isMobile) {
+    // Au téléphone la bulle occupe la largeur du dock (lui-même encarté de
+    // 12 px de chaque côté) — aucune chance de déborder horizontalement.
+    bubbleStyle = { width: '100%', maxWidth: 380 }
   } else {
     bubbleStyle = { width: 'min(380px, calc(100vw - 32px))' }
   }
@@ -216,21 +246,31 @@ export default function ProductTour() {
           {bubbleBody}
         </div>
       ) : (
-        // Étape sans cible : le centrage (`position: fixed` + `top/left: 50%` +
-        // `transform: translate(-50%, -50%)`) vit sur CE conteneur dédié, inerte
-        // (`pointer-events-none`, comme le calque/voile) et JAMAIS animé — pas
-        // sur l'enfant qui porte `animate-pop-in`. `animate-pop-in` définit lui
-        // aussi un `transform` (keyframes `pop-in`, qui finissent sur
-        // `transform: none` avec un fill-mode `both`), et une animation CSS
-        // l'emporte sur tout `transform` posé en `style` inline SUR LE MÊME
-        // nœud, pendant toute sa durée et au-delà (le `both`) : un centrage posé
-        // directement sur l'élément animé était donc écrasé, et la bulle
-        // atterrissait décalée en bas-à-droite du centre au lieu d'être centrée
-        // — la toute première chose vue par un nouvel utilisateur, sur chacun
-        // des 6 tours (leur 1re étape n'a jamais de `selecteur`). Deux nœuds,
-        // deux `transform` séparés : plus aucun conflit possible.
-        <div className="pointer-events-none fixed"
-             style={{ top: '50%', left: '50%', transform: 'translate(-50%, -50%)' }}>
+        // Étape sans cible : le positionnement (`position: fixed` + offsets, et
+        // sur bureau le centrage `top/left: 50%` + `transform: translate(-50%,
+        // -50%)`) vit sur CE conteneur dédié, inerte (`pointer-events-none`,
+        // comme le calque/voile) et JAMAIS animé — pas sur l'enfant qui porte
+        // `animate-pop-in`. `animate-pop-in` définit lui aussi un `transform`
+        // (keyframes `pop-in`, qui finissent sur `transform: none` avec un
+        // fill-mode `both`), et une animation CSS l'emporte sur tout `transform`
+        // posé en `style` inline SUR LE MÊME nœud, pendant toute sa durée et
+        // au-delà (le `both`) : un centrage posé directement sur l'élément animé
+        // était donc écrasé, et la bulle atterrissait décalée en bas-à-droite du
+        // centre au lieu d'être centrée — la toute première chose vue par un
+        // nouvel utilisateur, sur chacun des 6 tours (leur 1re étape n'a jamais
+        // de `selecteur`). Deux nœuds, deux `transform` séparés : plus aucun
+        // conflit possible.
+        //
+        // MOBILE (MB6) : plus de centrage du tout — la bulle se pose SOUS
+        // l'en-tête, pleine largeur. Centrée, elle recouvrait physiquement
+        // l'action primaire de l'écran (rouge `mobile-safari` : ses propres
+        // boutons peints par-dessus « Créer le devis »). Le tiers bas d'un
+        // téléphone appartient au pouce (FAB, barre d'actions collante, barre
+        // d'onglets) : une aide non sollicitée n'y descend jamais.
+        <div className={`pointer-events-none fixed${isMobile ? ' flex justify-center' : ''}`}
+             style={isMobile
+               ? { top: dockTop, left: 12, right: 12 }
+               : { top: '50%', left: '50%', transform: 'translate(-50%, -50%)' }}>
           <div ref={bubbleRef} style={bubbleStyle} className={bubbleClassName}>
             {bubbleBody}
           </div>

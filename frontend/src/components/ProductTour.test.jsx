@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/react'
-import { MemoryRouter } from 'react-router-dom'
+import { MemoryRouter, useNavigate } from 'react-router-dom'
 import { Provider } from 'react-redux'
 import { configureStore } from '@reduxjs/toolkit'
 
@@ -26,15 +26,48 @@ const TOURS = [
   },
 ]
 
-function renderTour(user, path = '/ventes/devis/nouveau') {
+// Second tour du catalogue (autre écran) — sert à vérifier qu'un changement
+// d'écran repart bien du tour de l'écran affiché.
+const LEADS_TOUR = {
+  tour_key: 'leads', ecran_cible: '/crm/leads', vu: false,
+  etapes: [
+    { ordre: 10, selecteur: '', titre: 'Suivre vos prospects', texte: 'Le kanban CRM.' },
+    { ordre: 20, selecteur: '[data-tour="leads-kanban"]', titre: 'Faites glisser une carte', texte: 'Déplacez un lead.' },
+  ],
+}
+
+function renderTour(user, path = '/ventes/devis/nouveau', extra = null) {
   const store = configureStore({ reducer: { auth: (s = { user }) => s } })
   return render(
     <Provider store={store}>
       <MemoryRouter initialEntries={[path]}>
         <ProductTour />
+        {extra}
       </MemoryRouter>
     </Provider>,
   )
+}
+
+// Bascule le point de rupture mobile de l'application (`useIsMobile`,
+// `max-width: 767px`) : jsdom ne fournit pas de `matchMedia` utilisable, on le
+// simule comme les autres specs du dépôt (RFQ.test.jsx…). Renvoie la fonction
+// de restauration.
+function simulerMobile() {
+  const original = window.matchMedia
+  window.matchMedia = (query) => ({
+    matches: /max-width:\s*767px/.test(query),
+    media: query,
+    onchange: null,
+    addEventListener: () => {},
+    removeEventListener: () => {},
+    addListener: () => {},
+    removeListener: () => {},
+    dispatchEvent: () => false,
+  })
+  return () => {
+    if (original) window.matchMedia = original
+    else delete window.matchMedia
+  }
 }
 
 // productTours.js met en cache la promesse `/onboarding/tours/` au niveau du
@@ -132,6 +165,66 @@ describe('ProductTour (NTDMO15)', () => {
     fireEvent.pointerDown(document.body)
     await waitFor(() => expect(api.post).toHaveBeenCalledWith('/onboarding/tours/devis/vu/'))
     expect(screen.queryByText('Créer un devis')).not.toBeInTheDocument()
+  })
+
+  // Rouge e2e MB6 (PR #518, `mobile-safari`) : au format iPhone, la bulle
+  // centrée recouvrait PHYSIQUEMENT le bouton « Créer le devis » du générateur
+  // (`div.mt-3…` de la bulle peint au-dessus de la barre d'actions collante).
+  // Le calque était bien inerte, mais une bulle posée au milieu de l'écran EST
+  // un obstacle : au téléphone, TOUTES les actions primaires du produit vivent
+  // dans le tiers bas (FAB « + Nouveau lead » VX42, `.gen-actions-sticky`
+  // MB3/VX138, barre d'onglets MB1) — une aide non sollicitée doit donc vivre à
+  // l'opposé, ancrée sous l'en-tête. On verrouille cet ancrage.
+  it("au téléphone, la bulle sans cible s'ancre en haut et libère la zone d'action", async () => {
+    const restaurer = simulerMobile()
+    try {
+      api.get.mockResolvedValueOnce({ data: TOURS })
+      renderTour(RECENT_USER)
+      await screen.findByText('Créer un devis')
+      const bulle = screen.getByRole('button', { name: /Suivant/ }).closest('.animate-pop-in')
+      const dock = bulle.parentElement
+      // Ancrée en HAUT (offset mesuré sous l'en-tête), jamais centrée à l'écran.
+      expect(dock.style.top).toMatch(/^\d+px$/)
+      expect(dock.style.transform).not.toContain('translate')
+      // …et JAMAIS ancrée au bas : le tiers bas reste entièrement au pouce.
+      expect(dock.style.bottom).toBe('')
+      // Contrat E4 inchangé : dock inerte, bulle cliquable.
+      expect(dock.className).toContain('pointer-events-none')
+      expect(bulle.className).toContain('pointer-events-auto')
+    } finally {
+      restaurer()
+    }
+  })
+
+  // Même incident, seconde cause (trouvée en instruisant le rouge MB6) : rien
+  // ne réinitialisait la visite en quittant son écran. `open`/`step`/`activeKey`
+  // restaient ceux de l'écran PRÉCÉDENT — l'écran suivant héritait donc d'une
+  // bulle ouverte à la mauvaise étape, et sa fermeture marquait « vu » le tour
+  // du mauvais écran (celui de l'écran d'avant, jamais celui affiché).
+  it("repart de zéro sur chaque écran (bonne étape, bon tour marqué vu)", async () => {
+    api.get.mockResolvedValueOnce({ data: [LEADS_TOUR, ...TOURS] })
+    api.post.mockResolvedValue({ data: [] })
+    function Aller() {
+      const navigate = useNavigate()
+      return (
+        <button type="button" onClick={() => navigate('/ventes/devis/nouveau')}>
+          aller au générateur
+        </button>
+      )
+    }
+    renderTour(RECENT_USER, '/crm/leads', <Aller />)
+    await screen.findByText('Suivre vos prospects')
+    // On avance dans le tour « leads » avant de changer d'écran.
+    fireEvent.click(screen.getByRole('button', { name: /Suivant/ }))
+    await screen.findByText('Faites glisser une carte')
+
+    fireEvent.click(screen.getByRole('button', { name: 'aller au générateur' }))
+    // Le tour du générateur démarre à SA première étape (jamais à l'index hérité).
+    expect(await screen.findByText('Créer un devis')).toBeInTheDocument()
+    // …et sa fermeture marque « devis », jamais « leads ».
+    fireEvent.keyDown(window, { key: 'Escape' })
+    await waitFor(() =>
+      expect(api.post).toHaveBeenCalledWith('/onboarding/tours/devis/vu/'))
   })
 
   it('« Suivant » avance puis « Terminer » ferme et marque vu', async () => {
