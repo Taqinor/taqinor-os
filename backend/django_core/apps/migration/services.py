@@ -521,3 +521,36 @@ def terminer_playbook(instance):
     instance.statut = instance.Statut.TERMINE
     instance.save(update_fields=['statut', 'updated_at'])
     return instance
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# NTMIG28 — traçabilité des déploiements partenaire. La table vit ici ; la
+# FICHE partenaire vit dans ``crm``, donc son compteur miroir est écrit par
+# ``crm.services`` (frontière cross-app : jamais ``crm.models`` ici).
+# ─────────────────────────────────────────────────────────────────────────
+
+
+def compter_deploiements_reussis(partenaire_id, company):
+    """Nombre de déploiements RÉUSSIS d'un partenaire, scopé société."""
+    from .models import DeploiementPartenaire
+
+    return DeploiementPartenaire.objects.filter(
+        company=company, partenaire_id=partenaire_id,
+        statut=DeploiementPartenaire.Statut.REUSSI).count()
+
+
+def resynchroniser_compteur_partenaire(deploiement):
+    """Réaligne le compteur miroir de la fiche partenaire.
+
+    Recompté à chaque fois plutôt qu'incrémenté : un déploiement repassé de
+    ``reussi`` à ``abandonne`` (ou supprimé) doit FAIRE BAISSER le compteur —
+    un simple ``+1`` laisserait un historique gonflé que rien ne corrigerait.
+    """
+    from apps.crm import services as crm_services
+
+    if deploiement.partenaire_id is None:
+        return None
+    return crm_services.poser_compteur_deploiements(
+        deploiement.partenaire_id, deploiement.company,
+        compter_deploiements_reussis(
+            deploiement.partenaire_id, deploiement.company))

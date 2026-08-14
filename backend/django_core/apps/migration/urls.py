@@ -3,7 +3,8 @@ from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 
 from .views import (
-    LotMigrationViewSet, PlaybookInstanceViewSet, ProjetMigrationViewSet)
+    DeploiementPartenaireViewSet, LotMigrationViewSet,
+    PlaybookInstanceViewSet, ProjetMigrationViewSet)
 
 router = DefaultRouter()
 router.register(
@@ -14,6 +15,9 @@ router.register(
 router.register(
     r'playbook-instances', PlaybookInstanceViewSet,
     basename='migration-playbook-instance')
+router.register(
+    r'deploiements-partenaire', DeploiementPartenaireViewSet,
+    basename='migration-deploiement-partenaire')
 
 urlpatterns = [
     path('', include(router.urls)),

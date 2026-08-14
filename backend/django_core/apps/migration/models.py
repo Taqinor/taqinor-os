@@ -14,6 +14,8 @@ Trois modèles :
 * :class:`PlaybookInstance` (NTMIG22) — l'instanciation d'un playbook kb
   (NTMIG21) pour UN déploiement client : l'intégrateur coche les étapes,
   la progression persiste.
+* :class:`DeploiementPartenaire` (NTMIG28) — qui a déployé quoi, chez quel
+  client final ; source du scoring de certification (NTMIG27).
 
 Multi-société : tout hérite de ``core.models.TenantModel`` (FK ``company`` +
 horodatage). Les FK vers d'autres apps sont des références par CHAÎNE
@@ -22,6 +24,7 @@ Aucune écriture SQL vers Odoo (règle #1).
 """
 from decimal import Decimal
 
+from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
 
 from core.models import TenantModel
@@ -311,3 +314,66 @@ class PlaybookInstance(TenantModel):
     def __str__(self):
         titre = self.playbook_titre or f'playbook {self.playbook_article_id}'
         return f'{titre} — {self.progression} %'
+
+
+class DeploiementPartenaire(TenantModel):
+    """NTMIG28 — traçabilité « qui a déployé quoi » chez quel client.
+
+    Alimente le scoring de certification (NTMIG27) : c'est la SOURCE des
+    déploiements réussis d'un partenaire, le compteur
+    ``crm.Partenaire.nb_deploiements_reussis`` n'en étant qu'un miroir
+    dénormalisé, posé par ``crm.services`` (jamais écrit depuis ici en direct).
+
+    ``client_final`` est du TEXTE LIBRE, jamais un FK cross-app dur : le client
+    déployé peut être une entreprise qui n'existe dans AUCUNE table de ce
+    tenant (c'est le client de l'intégrateur, pas le nôtre).
+    """
+
+    class Statut(models.TextChoices):
+        EN_COURS = 'en_cours', 'En cours'
+        REUSSI = 'reussi', 'Réussi'
+        ABANDONNE = 'abandonne', 'Abandonné'
+
+    # FK-CHAÎNE vers crm (jamais un import de ``apps.crm.models``). Un
+    # déploiement ne désigne plus personne sans son partenaire et ne peut
+    # alors plus alimenter aucun score.
+    partenaire = models.ForeignKey(
+        'crm.Partenaire',
+        # on_delete: composition — un déploiement n'existe que rattaché à
+        # son partenaire.
+        on_delete=models.CASCADE,
+        related_name='deploiements', verbose_name='Partenaire')
+    projet_migration = models.ForeignKey(
+        ProjetMigration, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='deploiements_partenaire',
+        verbose_name='Projet de migration')
+    client_final = models.CharField(
+        max_length=200, blank=True, default='',
+        verbose_name='Client final',
+        help_text='Nom libre du client déployé (jamais un FK cross-app dur).')
+    modules = models.JSONField(
+        default=list, blank=True, verbose_name='Modules déployés')
+    date_go_live = models.DateField(
+        null=True, blank=True, verbose_name='Date de mise en service')
+    statut = models.CharField(
+        max_length=10, choices=Statut.choices, default=Statut.EN_COURS,
+        verbose_name='Statut')
+    note_satisfaction = models.PositiveSmallIntegerField(
+        null=True, blank=True, verbose_name='Note de satisfaction (0-10)',
+        validators=[MinValueValidator(0), MaxValueValidator(10)])
+
+    class Meta:
+        ordering = ['-date_go_live', '-created_at']
+        # Noms EXPLICITES (≤30 car.) — même raison que ci-dessus.
+        indexes = [
+            models.Index(fields=['company', 'partenaire'],
+                         name='mig_deploi_soc_part_idx'),
+            models.Index(fields=['company', 'statut'],
+                         name='mig_deploi_soc_statut_idx'),
+        ]
+        verbose_name = 'Déploiement partenaire'
+        verbose_name_plural = 'Déploiements partenaire'
+
+    def __str__(self):
+        client = self.client_final or 'client non nommé'
+        return f'{client} — {self.get_statut_display()}'

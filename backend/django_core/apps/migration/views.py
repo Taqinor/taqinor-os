@@ -16,10 +16,12 @@ from authentication.models import CustomUser
 from core.viewsets import CompanyScopedModelViewSet
 
 from . import services
-from .models import LotMigration, PlaybookInstance, ProjetMigration
+from .models import (
+    DeploiementPartenaire, LotMigration, PlaybookInstance, ProjetMigration)
 from .serializers import (
-    LotMigrationSerializer, PlaybookInstanceSerializer,
-    ProjetMigrationSerializer, RapportReconciliationSerializer)
+    DeploiementPartenaireSerializer, LotMigrationSerializer,
+    PlaybookInstanceSerializer, ProjetMigrationSerializer,
+    RapportReconciliationSerializer)
 
 
 def _fichier_de(request):
@@ -349,3 +351,54 @@ class PlaybookInstanceViewSet(CompanyScopedModelViewSet):
                 {'detail': str(exc), 'etapes_restantes': exc.ecarts},
                 status=status.HTTP_400_BAD_REQUEST)
         return Response(PlaybookInstanceSerializer(instance).data)
+
+
+class DeploiementPartenaireViewSet(CompanyScopedModelViewSet):
+    """NTMIG28 — qui a déployé quoi, chez quel client final.
+
+    Chaque écriture RÉALIGNE le compteur miroir de la fiche partenaire (via
+    ``crm.services``) : le compteur est recompté, jamais incrémenté — un
+    déploiement repassé en ``abandonne`` ou supprimé doit le faire BAISSER.
+    """
+
+    queryset = DeploiementPartenaire.objects.select_related(
+        'partenaire', 'projet_migration').all()
+    serializer_class = DeploiementPartenaireSerializer
+    permission_classes = [IsDirecteurOuAdmin]
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        partenaire = self.request.query_params.get('partenaire')
+        if partenaire:
+            qs = qs.filter(partenaire_id=partenaire)
+        statut = self.request.query_params.get('statut')
+        if statut:
+            qs = qs.filter(statut=statut)
+        return qs
+
+    def perform_create(self, serializer):
+        deploiement = serializer.save(company=self.request.user.company)
+        services.resynchroniser_compteur_partenaire(deploiement)
+
+    def perform_update(self, serializer):
+        avant = serializer.instance.partenaire_id
+        deploiement = serializer.save()
+        services.resynchroniser_compteur_partenaire(deploiement)
+        # Un déploiement RÉATTRIBUÉ doit aussi décompter l'ancien partenaire,
+        # sinon son historique reste crédité d'un déploiement qui ne lui
+        # appartient plus.
+        if avant and avant != deploiement.partenaire_id:
+            from apps.crm import services as crm_services
+            crm_services.poser_compteur_deploiements(
+                avant, deploiement.company,
+                services.compter_deploiements_reussis(
+                    avant, deploiement.company))
+
+    def perform_destroy(self, instance):
+        partenaire_id, company = instance.partenaire_id, instance.company
+        super().perform_destroy(instance)
+        if partenaire_id:
+            from apps.crm import services as crm_services
+            crm_services.poser_compteur_deploiements(
+                partenaire_id, company,
+                services.compter_deploiements_reussis(partenaire_id, company))

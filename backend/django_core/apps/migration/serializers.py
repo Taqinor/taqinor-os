@@ -16,7 +16,8 @@ from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
 from .models import (
-    LotMigration, PlaybookInstance, ProjetMigration, RapportReconciliation)
+    DeploiementPartenaire, LotMigration, PlaybookInstance, ProjetMigration,
+    RapportReconciliation)
 
 
 class _CreationSeulementMixin:
@@ -192,3 +193,51 @@ class PlaybookInstanceSerializer(serializers.ModelSerializer):
                 != request.user.company_id:
             raise serializers.ValidationError('Responsable introuvable.')
         return value
+
+
+class DeploiementPartenaireSerializer(serializers.ModelSerializer):
+    """NTMIG28 — un déploiement mené par un partenaire chez un client final."""
+
+    partenaire_nom = serializers.SerializerMethodField()
+
+    class Meta:
+        model = DeploiementPartenaire
+        fields = [
+            'id', 'partenaire', 'partenaire_nom', 'projet_migration',
+            'client_final', 'modules', 'date_go_live', 'statut',
+            'note_satisfaction', 'created_at', 'updated_at',
+        ]
+        read_only_fields = [
+            'id', 'partenaire_nom', 'created_at', 'updated_at']
+
+    @extend_schema_field(serializers.CharField())
+    def get_partenaire_nom(self, obj):
+        return getattr(obj.partenaire, 'nom', '') or ''
+
+    def validate_partenaire(self, value):
+        """Le partenaire cité doit appartenir à la société de l'appelant.
+
+        Le queryset scopé ne protège que la LECTURE : sans ce contrôle, un
+        déploiement pourrait créditer le partenaire d'une autre société — et
+        gonfler son score de certification.
+        """
+        request = self.context.get('request')
+        if value is not None and request is not None \
+                and value.company_id != request.user.company_id:
+            raise serializers.ValidationError('Partenaire introuvable.')
+        return value
+
+    def validate_projet_migration(self, value):
+        request = self.context.get('request')
+        if value is not None and request is not None \
+                and value.company_id != request.user.company_id:
+            raise serializers.ValidationError('Projet introuvable.')
+        return value
+
+    def validate_modules(self, value):
+        if value in (None, ''):
+            return []
+        if not isinstance(value, list):
+            raise serializers.ValidationError(
+                'Les modules doivent être une liste.')
+        return [str(v) for v in value]
