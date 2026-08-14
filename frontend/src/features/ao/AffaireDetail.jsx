@@ -7,10 +7,10 @@ import aoApi from '../../api/aoApi'
 import recordsApi from '../../api/recordsApi'
 import useResource from '../../hooks/useResource'
 import { unwrapList } from '../../api/resource'
-import { Button, Card, Textarea, EmptyState, Skeleton, toast } from '../../ui'
+import { Badge, Button, Card, Textarea, EmptyState, Skeleton, toast } from '../../ui'
 import { RecordShell } from '../../ui/module'
 import ChatterTimeline from '../../components/ChatterTimeline'
-import { formatDate, formatMAD } from '../../lib/format'
+import { formatDate, formatMAD, formatNumber } from '../../lib/format'
 import { StatutAffaire } from './statusAo'
 
 /* ============================================================================
@@ -195,6 +195,63 @@ function OngletToitures({ affaireId }) {
   )
 }
 
+/* ── PV59 — Synthèse multi-toitures de l'onglet Calepinages ────────────────
+   `affaire.synthese_calepinage` (PV68, `AppelOffreSerializer.
+   get_synthese_calepinage` → `selectors.synthese_calepinage_affaire`) porte,
+   pour TOUTE l'affaire, les comptes des variantes RETENUES de chaque toiture
+   (les alternatives/sensibilités sont des hypothèses, jamais l'offre) :
+   `total_modules`/`total_kwc` cumulés, `toitures_calepinees`/`toitures_total`,
+   et une ligne PAR TOITURE (y compris les toitures NON ENCORE calepinées,
+   `calepinee: false` — le trou qu'un chargé d'affaires doit voir).
+
+   NULL-SAFE HIDDEN : le serializer ne publie ce bloc que sur `retrieve`
+   (jamais sur une liste), et son coût est réel (deux requêtes par affaire) —
+   `synthese_calepinage` vaut `null` tant que la fiche n'a pas fini de charger
+   OU sur un serializer plus ancien qui ne le porterait pas encore. Ce
+   composant rend alors RIEN, jamais un bloc à zéros qui aurait l'air d'une
+   vraie synthèse (AOF94 : aucun chiffre de substitution). */
+function SyntheseCalepinage({ synthese }) {
+  if (!synthese) return null
+  const manquantes = synthese.toitures_total - synthese.toitures_calepinees
+  return (
+    <Card className="flex flex-col gap-4 p-4 sm:p-5" data-ao-synthese-calepinage="">
+      <dl className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <Info label="Modules (variantes retenues)" value={formatNumber(synthese.total_modules)} />
+        <Info label="Puissance cumulée" value={`${formatNumber(synthese.total_kwc)} kWc`} />
+        <Info
+          label="Toitures calepinées"
+          value={`${synthese.toitures_calepinees} / ${synthese.toitures_total}`}
+          tone={manquantes > 0 ? 'warning' : undefined}
+        />
+        <Info
+          label="Toitures manquantes"
+          value={manquantes > 0 ? String(manquantes) : 'Aucune'}
+          tone={manquantes > 0 ? 'warning' : undefined}
+        />
+      </dl>
+      {synthese.toitures.length > 0 && (
+        <ul className="flex flex-col gap-1 text-sm" data-ao-synthese-toitures="">
+          {synthese.toitures.map((t) => (
+            <li key={t.toiture} className="flex flex-wrap items-center justify-between gap-2 border-t border-border pt-1.5 first:border-t-0 first:pt-0">
+              <span className="text-foreground">
+                {t.batiment_code && `${t.batiment_code} — `}
+                {t.code_document || t.designation || `Toiture #${t.toiture}`}
+              </span>
+              {t.calepinee ? (
+                <span className="text-muted-foreground tabular-nums">
+                  {`${formatNumber(t.modules)} modules · ${formatNumber(t.kwc)} kWc`}
+                </span>
+              ) : (
+                <Badge tone="warning">Pas encore calepinée</Badge>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+    </Card>
+  )
+}
+
 /* ── Onglet « Calepinages » ───────────────────────────────────────────────
    CONTRAT CORRIGÉ AU FOLD, 03/08/2026 — à ne pas re-casser. Cet onglet a
    d'abord listé les VARIANTES et passé une variante en `calepinageId`. Le même
@@ -211,8 +268,13 @@ function OngletToitures({ affaireId }) {
 
    `onConformite` n'est pas passé : il sert à BLOQUER la publication d'un
    dossier, et aucune porte de publication ne vit dans cette fiche — y brancher
-   un consommateur décoratif serait la façade qu'on répare. */
-function OngletCalepinages({ affaireId }) {
+   un consommateur décoratif serait la façade qu'on répare.
+
+   `synthese` (PV59) — le bloc `synthese_calepinage` de la MÊME requête
+   `aoApi.affaires.get(id)` qui a déjà chargé `affaire` (parent), jamais un
+   second fetch : ce composant ne fait qu'AFFICHER ce qu'`AffaireDetail` lui
+   passe. */
+function OngletCalepinages({ affaireId, synthese }) {
   const params = useMemo(() => ({ appel_offre: affaireId }), [affaireId])
   const [choisie, setChoisie] = useState(null)
 
@@ -246,6 +308,7 @@ function OngletCalepinages({ affaireId }) {
 
   return (
     <div className="flex flex-col gap-3">
+      <SyntheseCalepinage synthese={synthese} />
       <SelecteurEnfant
         id="ao-affaire-toiture-calepinage"
         label="Toiture"
@@ -452,7 +515,7 @@ export default function AffaireDetail() {
         {
           value: 'calepinages',
           label: 'Calepinages',
-          content: <OngletCalepinages affaireId={id} />,
+          content: <OngletCalepinages affaireId={id} synthese={affaire.synthese_calepinage} />,
         },
         {
           value: 'bordereau',
