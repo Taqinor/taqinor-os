@@ -4,6 +4,8 @@ import django.db.models.deletion
 from django.conf import settings
 from django.db import migrations, models
 
+import apps.fidelite.models
+
 
 class Migration(migrations.Migration):
 
@@ -74,6 +76,20 @@ class Migration(migrations.Migration):
                 ('created_at', models.DateTimeField(auto_now_add=True)),
                 ('updated_at', models.DateTimeField(auto_now=True)),
                 ('solde_points', models.PositiveIntegerField(default=0)),
+                # NTRET11 — créé DIRECTEMENT ici, jamais par un AddField(unique=True)
+                # ultérieur : Django applique le défaut UNE SEULE FOIS pour toutes
+                # les lignes existantes, ce qui viole l'unicité dès qu'une table est
+                # peuplée (garde ADDFIELD_UNIQUE_ONESHOT de check_migration_safety).
+                (
+                    'code_qr',
+                    models.CharField(
+                        default=apps.fidelite.models.generer_code_qr, editable=False,
+                        max_length=64, unique=True,
+                        help_text=(
+                            'Jeton opaque non séquentiel (carte dématérialisée '
+                            'NTRET11) — globalement unique : résout LUI-MÊME LA '
+                            'société, jamais réutilisable pour un autre tenant.')),
+                ),
                 (
                     'client',
                     models.OneToOneField(
