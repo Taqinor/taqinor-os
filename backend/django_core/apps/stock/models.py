@@ -1052,6 +1052,13 @@ class MouvementStock(models.Model):
     bin_destination = models.ForeignKey(
         'installations.BinLocation', on_delete=models.SET_NULL,
         null=True, blank=True, related_name='mouvements_stock_destination')
+    # NTWMS25 — « license plate tracking » : quand une PALETTE entière bouge,
+    # chaque ligne de son contenu porte l'unité logistique déplacée. Nullable
+    # = tous les mouvements historiques et tous les mouvements unitaires
+    # restent identiques.
+    unite_logistique = models.ForeignKey(
+        'stock.UniteLogistique', on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='mouvements_stock')
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,

@@ -1129,6 +1129,115 @@ def notifier_rappel(alerte, impact=None):
 
 
 # ═══════════════════════════════════════════════════════════════════════════
+# NTWMS25 — Déplacement d'une unité logistique entière (license plate)
+# ═══════════════════════════════════════════════════════════════════════════
+
+def _unites_a_deplacer(unite):
+    """L'unité et, si c'est une palette, tous ses colis enfants."""
+    unites = [unite]
+    for enfant in unite.enfants.all():
+        unites.extend(_unites_a_deplacer(enfant))
+    return unites
+
+
+def deplacer_unite_logistique(*, unite, bin_destination, user=None):
+    """Déplace une unité logistique ENTIÈRE d'un casier à un autre.
+
+    Un seul scan suffit : le contenu multi-lignes suit automatiquement (et,
+    pour une palette, ses colis enfants aussi). Chaque ligne reçoit un
+    ``MouvementStock`` TRANSFERT tracé casier→casier ET rattaché à l'unité —
+    la quantité totale du produit ne bouge pas (un déplacement interne n'est
+    ni une entrée ni une sortie).
+
+    Quand le casier de destination appartient à un AUTRE ``EmplacementStock``
+    que le casier d'origine, la ventilation par emplacement est mise à jour
+    par le service de transfert EXISTANT (``transfer_stock``) — jamais un
+    second chemin d'écriture du stock. Dans le cas courant (même entrepôt),
+    aucune quantité d'emplacement ne bouge, ce qui est correct.
+
+    L'affectation produit↔casier de FG319 (``installations.BinAffectation``)
+    appartient à ``installations`` : elle n'est PAS écrite d'ici (frontière
+    inter-apps), le mouvement en porte la trace complète.
+    """
+    from django.db import transaction
+
+    from .models import MouvementStock
+    from .services import record_stock_movement
+
+    if unite is None:
+        raise ValueError('Unité logistique introuvable.')
+    if bin_destination is None:
+        raise ValueError('Casier de destination introuvable dans cette '
+                         'société.')
+    if bin_destination.company_id != unite.company_id:
+        raise ValueError('Casier de destination introuvable dans cette '
+                         'société.')
+    if unite.statut == unite.Statut.EXPEDIE:
+        raise ValueError('Une unité expédiée ne se déplace plus en entrepôt.')
+
+    unites = _unites_a_deplacer(unite)
+    lignes = [ligne for u in unites
+              for ligne in u.lignes.select_related('produit').all()]
+    if not lignes:
+        raise ValueError('Cette unité logistique est vide : rien à déplacer.')
+
+    mouvements = []
+    with transaction.atomic():
+        for u in unites:
+            bin_source = u.bin_actuel
+            for ligne in u.lignes.select_related('produit').all():
+                produit = ligne.produit
+                stock = produit.quantite_stock
+                mouvements.append(record_stock_movement(
+                    company=u.company, produit=produit,
+                    type_mouvement=MouvementStock.TypeMouvement.TRANSFERT,
+                    quantite=ligne.quantite,
+                    # Déplacement INTERNE : le total ne bouge pas.
+                    quantite_avant=stock, quantite_apres=stock,
+                    reference=u.sscc,
+                    note=f'Déplacement unité {u.sscc} vers '
+                         f'{bin_destination.code}',
+                    created_by=user, save_produit=False,
+                    bin_source=bin_source,
+                    bin_destination=bin_destination))
+                MouvementStock.objects.filter(
+                    id=mouvements[-1].id).update(unite_logistique=u)
+                if (bin_source is not None
+                        and bin_source.emplacement_id
+                        != bin_destination.emplacement_id):
+                    _ventiler_changement_emplacement(
+                        u, produit, ligne.quantite, bin_source,
+                        bin_destination, user)
+            u.bin_actuel = bin_destination
+            u.save(update_fields=['bin_actuel'])
+    return {
+        'unite_logistique': unite.id,
+        'sscc': unite.sscc,
+        'bin_destination': bin_destination.id,
+        'bin_code': bin_destination.code,
+        'lignes_deplacees': len(mouvements),
+        'unites_deplacees': [u.id for u in unites],
+    }
+
+
+def _ventiler_changement_emplacement(unite, produit, quantite, bin_source,
+                                     bin_destination, user):
+    """Répercute un changement d'ENTREPÔT sur la ventilation par emplacement,
+    via le service de transfert existant (jamais un second chemin)."""
+    from .services import transfer_stock
+
+    transfer_stock(
+        company=unite.company, user=user, produit_id=produit.id,
+        source_id=bin_source.emplacement_id,
+        destination_id=bin_destination.emplacement_id, quantite=quantite,
+        note=f'Déplacement unité logistique {unite.sscc}',
+        # La décision de déplacer la palette a déjà été prise au scan : le
+        # seuil d'approbation NTWMS21 ne re-bloque pas un mouvement physique
+        # déjà exécuté en magasin.
+        demande_approuvee=True)
+
+
+# ═══════════════════════════════════════════════════════════════════════════
 # NTWMS24 — Casse / freinte / rebut motivé (et sa valeur de perte)
 # ═══════════════════════════════════════════════════════════════════════════
 

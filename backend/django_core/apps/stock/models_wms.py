@@ -197,6 +197,11 @@ class UniteLogistique(TenantModel):
     statut = models.CharField(
         max_length=20, choices=Statut.choices,
         default=Statut.EN_PREPARATION)
+    # NTWMS25 — casier où l'unité se trouve PHYSIQUEMENT (string-FK FG319).
+    # Vide = position non suivie (comportement historique inchangé).
+    bin_actuel = models.ForeignKey(
+        'installations.BinLocation', on_delete=models.SET_NULL, null=True,
+        blank=True, related_name='unites_logistiques')
     date_scellage = models.DateTimeField(null=True, blank=True)
     scelle_par = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,

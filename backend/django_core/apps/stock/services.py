@@ -6427,6 +6427,7 @@ from .services_wms import (  # noqa: E402,F401
     creer_retour_client,
     creer_unite_logistique,
     declarer_mouvement_rebut,
+    deplacer_unite_logistique,
     creer_vague_depuis_besoins,
     enregistrer_arrivee_chauffeur,
     enregistrer_mouvement_scanne,

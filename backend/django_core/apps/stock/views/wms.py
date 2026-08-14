@@ -149,7 +149,7 @@ class UniteLogistiqueViewSet(CompanyScopedModelViewSet):
         if self.action in READ_ACTIONS + ['etiquette_pdf']:
             return [IsAnyRole()]
         if self.action in WRITE_ACTIONS + [
-                'sceller', 'ajouter_ligne', 'controler_scan']:
+                'sceller', 'ajouter_ligne', 'controler_scan', 'deplacer']:
             return [IsResponsableOrAdmin()]
         return [IsAdminRole()]
 
@@ -242,6 +242,44 @@ class UniteLogistiqueViewSet(CompanyScopedModelViewSet):
         unite.refresh_from_db()
         return Response(self.get_serializer(unite).data,
                         status=status.HTTP_201_CREATED)
+
+    @extend_schema(responses={
+        200: inline_serializer('StockUniteDeplacement', {
+            'unite_logistique': serializers.IntegerField(),
+            'sscc': serializers.CharField(),
+            'bin_destination': serializers.IntegerField(),
+            'bin_code': serializers.CharField(),
+            'lignes_deplacees': serializers.IntegerField(),
+            'unites_deplacees': serializers.ListField(
+                child=serializers.IntegerField()),
+        }),
+        400: inline_serializer('StockUniteDeplacementErreur', {
+            'detail': serializers.CharField(),
+        }),
+    })
+    @action(detail=True, methods=['post'], url_path='deplacer')
+    def deplacer(self, request, pk=None):
+        """NTWMS25 — déplace l'unité ENTIÈRE vers un casier
+        (``?bin_destination=<id>`` ou ``{bin_destination}``).
+
+        Un seul scan : tout le contenu (et, pour une palette, ses colis
+        enfants) suit, chaque ligne recevant un mouvement tracé
+        casier→casier."""
+        from ..services import deplacer_unite_logistique
+        unite = self.get_object()
+        modele_bin = UniteLogistique._meta.get_field('bin_actuel').related_model
+        cible = (request.data.get('bin_destination')
+                 or request.query_params.get('bin_destination'))
+        bin_destination = modele_bin.objects.filter(
+            id=cible, company=request.user.company).first()
+        try:
+            resultat = deplacer_unite_logistique(
+                unite=unite, bin_destination=bin_destination,
+                user=request.user)
+        except ValueError as exc:
+            return Response({'detail': str(exc)},
+                            status=status.HTTP_400_BAD_REQUEST)
+        return Response(resultat)
 
     @action(detail=True, methods=['post'], url_path='sceller')
     def sceller(self, request, pk=None):

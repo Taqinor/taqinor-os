@@ -93,12 +93,13 @@ class UniteLogistiqueSerializer(serializers.ModelSerializer):
         model = UniteLogistique
         fields = [
             'id', 'type_unite', 'sscc', 'parent', 'vague', 'poids_kg',
-            'dimensions', 'statut', 'date_scellage', 'scelle_par',
+            'dimensions', 'statut', 'bin_actuel', 'date_scellage',
+            'scelle_par',
             'est_figee', 'nb_enfants', 'lignes', 'created_at', 'updated_at',
         ]
         read_only_fields = [
-            'sscc', 'statut', 'date_scellage', 'scelle_par', 'created_at',
-            'updated_at',
+            'sscc', 'statut', 'bin_actuel', 'date_scellage', 'scelle_par',
+            'created_at', 'updated_at',
         ]
 
     def get_nb_enfants(self, obj) -> int:
