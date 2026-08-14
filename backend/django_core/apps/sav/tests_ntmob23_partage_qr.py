@@ -26,7 +26,8 @@ class Ntmob23PartageQrTests(TestCase):
             role_legacy=CustomUser.ROLE_ADMIN)
         # `Equipement.produit` est obligatoire (NOT NULL en base).
         self.produit = Produit.objects.create(
-            company=self.company, nom='Onduleur NTMOB23')
+            company=self.company, nom='Onduleur NTMOB23',
+            sku='OND-NTMOB23', prix_vente=6000)
         self.equipement = Equipement.objects.create(
             company=self.company, produit=self.produit,
             numero_serie='SN-NTMOB23')
@@ -50,7 +51,8 @@ class Ntmob23PartageQrTests(TestCase):
 
     def test_equipement_d_une_autre_societe_invisible(self):
         produit_autre = Produit.objects.create(
-            company=self.autre, nom='Onduleur autre')
+            company=self.autre, nom='Onduleur autre',
+            sku='OND-NTMOB23-AUTRE', prix_vente=6000)
         etranger = Equipement.objects.create(
             company=self.autre, produit=produit_autre,
             numero_serie='SN-ETRANGER')

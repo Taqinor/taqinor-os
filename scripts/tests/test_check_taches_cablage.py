@@ -455,7 +455,13 @@ class DepotReelTests(unittest.TestCase):
     def test_le_corpus_est_reellement_lu(self):
         """Si l'extraction casse, la garde devient muette EN SILENCE."""
         _, stats = analyse_reelle()
-        self.assertGreater(stats["taches"], 1500)
+        # 1500 -> 1200 : le lot du 14/08/2026 (primitives débloquantes +
+        # vague NT) a COCHÉ ~90 tâches et dédoublonné des lignes
+        # ressuscitées par des fusions, donc le corpus OUVERT rétrécit
+        # légitimement (1468 aujourd’hui). Le plancher garde son rôle de
+        # canari — une extraction cassée rendrait ~0 — sans punir le fait
+        # d’avoir livré (même raisonnement que les deux planchers ci-dessous).
+        self.assertGreater(stats["taches"], 1200)
         # 250 -> 150 : le lot §E du 08/08/2026 a COCHÉ 76 tâches, donc le
         # corpus de candidates rétrécit légitimement (191 aujourd'hui).
         # 150 -> 100 : le lot du 13/08/2026 en a coché 52 de plus (142
