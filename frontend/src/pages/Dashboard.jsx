@@ -22,6 +22,12 @@ const CreditKpiCards = lazy(() => import('../features/credit/CreditKpiCards'))
 // NTIDE50 — tuiles KPI innovation fédérées (kpi_providers) : « Idées cette
 // semaine » + top idée votée, même patron que CreditKpiCards (WIR144).
 const InnovationKpiCard = lazy(() => import('../features/innovation/InnovationKpiCard'))
+// NTMFG22 — carte Production (Atelier MRP) : OF en retard, charge moyenne
+// 7j, TRS moyen 7j, alerte entretien de poste. Même patron d'intégration
+// (lazy + ErrorBoundary + gate `profile === 'directeur'`), appel direct
+// `mrp/tableau-bord/` (PAS la fédération kpi_providers — NTMFG40 s'en
+// chargera séparément).
+const ProductionKpiCard = lazy(() => import('../features/mrp/ProductionKpiCard'))
 import { useDispatch, useSelector } from 'react-redux'
 import { Navigate, useNavigate } from 'react-router-dom'
 // NTMOB6 — sélecteur de démarrage par rôle : Dashboard est le SEUL point
@@ -1099,6 +1105,16 @@ export function Component() {
             <ErrorBoundary>
               <Suspense fallback={null}>
                 <InnovationKpiCard />
+              </Suspense>
+            </ErrorBoundary>
+          )}
+
+          {/* NTMFG22 — carte Production (Atelier MRP), drill-down
+              /mrp/ordres-fabrication. Dégrade en silence (403/flux vide). */}
+          {profile === 'directeur' && (
+            <ErrorBoundary>
+              <Suspense fallback={null}>
+                <ProductionKpiCard />
               </Suspense>
             </ErrorBoundary>
           )}

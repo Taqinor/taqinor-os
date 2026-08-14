@@ -642,3 +642,20 @@ def oee_tous_postes_view(request):
     debut = _parse_date_param(request, 'debut', aujourd_hui - timedelta(days=27))
     fin = _parse_date_param(request, 'fin', aujourd_hui)
     return Response(oee_tous_postes(request.user.company, debut, fin))
+
+
+@extend_schema(responses=inline_serializer('MrpTableauBordProduction', {
+    'of_en_retard': serializers.IntegerField(),
+    'charge_moyenne_pct': serializers.CharField(),
+    'trs_moyen_pct': serializers.CharField(),
+    'postes_en_alerte_maintenance': serializers.IntegerField(),
+}))
+@api_view(['GET'])
+@permission_classes([IsResponsableOrAdmin])
+def tableau_bord_production_view(request):
+    """NTMFG22 — ``GET /api/django/mrp/tableau-bord/`` : 4 indicateurs
+    consolidés de l'atelier (OF en retard, charge moyenne 7j, TRS moyen 7j,
+    postes en alerte maintenance). Réservé responsable/admin."""
+    from .selectors import tableau_bord_production
+
+    return Response(tableau_bord_production(request.user.company))

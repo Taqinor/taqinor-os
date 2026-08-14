@@ -715,3 +715,54 @@ def oee_tous_postes(company, debut, fin):
         resultats.append(oee_poste(company, poste.id, debut, fin))
     resultats.sort(key=lambda r: Decimal(r['trs_pct']), reverse=True)
     return resultats
+
+
+# ── NTMFG22 — Tableau de bord Production consolidé ────────────────────────
+
+def tableau_bord_production(company, today=None):
+    """NTMFG22 — 4 indicateurs consolidés au niveau DIRECTION (chaque brique
+    est consultée séparément par ailleurs — NTMFG7/9/12/14) :
+      * ``of_en_retard`` — nb d'OF planifiés/lancés NON prototype (NTMFG16)
+        dont `date_fin_planifiee` est dépassée ;
+      * ``charge_moyenne_pct`` — taux de charge MOYEN tous postes actifs sur
+        les 7 PROCHAINS jours (réutilise NTMFG7 `charge_postes`) ;
+      * ``trs_moyen_pct`` — TRS moyen tous postes actifs sur les 7 DERNIERS
+        jours (réutilise NTMFG12 `oee_poste`) ;
+      * ``postes_en_alerte_maintenance`` — nb de postes avec une échéance
+        d'entretien en retard (NTMFG14).
+    Dégrade proprement (zéros) sans aucune donnée — jamais d'exception."""
+    from .models import OrdreFabrication, PosteDeCharge
+
+    today = today or dj_timezone.localdate()
+
+    of_en_retard = OrdreFabrication.objects.filter(
+        company=company,
+        statut__in=[OrdreFabrication.Statut.PLANIFIE, OrdreFabrication.Statut.LANCE],
+        est_prototype=False,
+        date_fin_planifiee__lt=dj_timezone.now(),
+    ).count()
+
+    charge_semaine = charge_postes(company, today, today + timedelta(days=6))
+    if charge_semaine:
+        charge_moyenne_pct = (
+            sum(Decimal(r['taux_charge_pct']) for r in charge_semaine)
+            / len(charge_semaine))
+    else:
+        charge_moyenne_pct = Decimal('0')
+
+    postes_actifs = list(PosteDeCharge.objects.filter(company=company, actif=True))
+    trs_values = []
+    for poste in postes_actifs:
+        resultat = oee_poste(company, poste.id, today - timedelta(days=6), today)
+        if resultat and resultat['donnees']:
+            trs_values.append(Decimal(resultat['trs_pct']))
+    trs_moyen_pct = (sum(trs_values) / len(trs_values)) if trs_values else Decimal('0')
+
+    postes_en_alerte = len(postes_en_alerte_maintenance(company, today))
+
+    return {
+        'of_en_retard': of_en_retard,
+        'charge_moyenne_pct': str(charge_moyenne_pct.quantize(Decimal('0.1'))),
+        'trs_moyen_pct': str(trs_moyen_pct.quantize(Decimal('0.1'))),
+        'postes_en_alerte_maintenance': postes_en_alerte,
+    }

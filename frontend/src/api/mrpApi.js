@@ -65,6 +65,9 @@ const mrpApi = {
 
   // Généalogie amont/aval (NTMFG20) — lecture seule.
   getGenealogieOF: (ofId) => api.get(`/mrp/ordres-fabrication/${ofId}/genealogie/`),
+
+  // Tableau de bord Production consolidé (NTMFG22) — responsable/admin.
+  getTableauBordProduction: () => api.get('/mrp/tableau-bord/'),
 }
 
 export default mrpApi
