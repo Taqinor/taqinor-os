@@ -206,6 +206,48 @@ OSP = [
     ('Pompe immergée OSP 30/35 — 40 CV / 30 kW (3", 380V)',    'PMP-OSP-30-35', '40',   '30',   [399, 371, 308, 263, 189, 147]),
 ]
 
+# ── PVG3 — Câbles & protections DC/AC (prix vides, approuvé fondateur
+# 2026-08-14) ─────────────────────────────────────────────────────────────
+# Référentiel SKU pur : sections/calibres normalisés d'une installation PV
+# résidentielle/C&I (câble solaire, protections DC/AC, coffrets). PRIX
+# VOLONTAIREMENT VIDES (0) : à renseigner par le fondateur — tant que
+# prix_vente vaut 0, le produit est exclu du chiffrage automatique, même
+# garde que les pompes OSP (cf. apps/ventes/services._has_price).
+# Câbles vendus AU MÈTRE : suit exactement le précédent CAB-6MM-M
+# (nom seul « (au mètre) », unite_stock laissé au défaut « unité »).
+# (nom, sku, qte, seuil)
+CABLES_PROTECTIONS_VIDES = [
+    # Câbles solaires H1Z2Z2-K (DC, double isolation, résistant UV)
+    ('Câble solaire H1Z2Z2-K 4 mm² (au mètre)',  'CAB-H1Z2Z2-4-M',  5000, 200),
+    ('Câble solaire H1Z2Z2-K 6 mm² (au mètre)',  'CAB-H1Z2Z2-6-M',  5000, 200),
+    ('Câble solaire H1Z2Z2-K 10 mm² (au mètre)', 'CAB-H1Z2Z2-10-M', 5000, 200),
+    ('Câble solaire H1Z2Z2-K 16 mm² (au mètre)', 'CAB-H1Z2Z2-16-M', 5000, 200),
+    # Fusibles & porte-fusible DC
+    ('Fusible gPV 1000 VDC 15 A', 'FUS-GPV-1000-15A', 200, 10),
+    ('Fusible gPV 1000 VDC 20 A', 'FUS-GPV-1000-20A', 200, 10),
+    ('Porte-fusible 1000 VDC',    'PF-1000',           200, 10),
+    # Parafoudres
+    ('Parafoudre DC type 2 1000 V', 'PARA-DC-T2-1000', 100, 5),
+    ('Parafoudre AC type 2',        'PARA-AC-T2',       100, 5),
+    # Sectionneur DC
+    ('Sectionneur DC 1000 V 25 A', 'SECT-DC-1000-25A', 100, 5),
+    # Disjoncteurs AC courbe C — mono ET tétrapolaire
+    ('Disjoncteur AC courbe C 16 A monophasé',    'DISJ-AC-C-16-1P', 100, 5),
+    ('Disjoncteur AC courbe C 20 A monophasé',    'DISJ-AC-C-20-1P', 100, 5),
+    ('Disjoncteur AC courbe C 25 A monophasé',    'DISJ-AC-C-25-1P', 100, 5),
+    ('Disjoncteur AC courbe C 32 A monophasé',    'DISJ-AC-C-32-1P', 100, 5),
+    ('Disjoncteur AC courbe C 16 A tétrapolaire', 'DISJ-AC-C-16-4P', 100, 5),
+    ('Disjoncteur AC courbe C 20 A tétrapolaire', 'DISJ-AC-C-20-4P', 100, 5),
+    ('Disjoncteur AC courbe C 25 A tétrapolaire', 'DISJ-AC-C-25-4P', 100, 5),
+    ('Disjoncteur AC courbe C 32 A tétrapolaire', 'DISJ-AC-C-32-4P', 100, 5),
+    # Différentiels (DDR) type A
+    ('Différentiel (DDR) type A 300 mA 40 A', 'DDR-A-300-40', 50, 5),
+    ('Différentiel (DDR) type A 300 mA 63 A', 'DDR-A-300-63', 50, 5),
+    # Coffrets
+    ('Coffret DC 2 strings', 'COF-DC-2STR', 100, 5),
+    ('Coffret AC',           'COF-AC',      100, 5),
+]
+
 _DESC_POMPE_IMM = ('Pompe immergée pour forage, corps inox\n'
                    'Pilotée par variateur solaire (AC, compatible champ PV)\n'
                    'Adaptée à l\'irrigation et l\'alimentation en eau agricole')
@@ -358,6 +400,73 @@ FICHES = {
                            'PMP-OSP-30-15', 'PMP-OSP-30-16', 'PMP-OSP-30-17',
                            'PMP-OSP-30-20', 'PMP-OSP-30-21', 'PMP-OSP-30-25',
                            'PMP-OSP-30-26', 'PMP-OSP-30-35')},
+    # ── PVG3 — Câbles & protections (descriptions FR courtes) ──
+    'CAB-H1Z2Z2-4-M': {
+        'description': 'Câble solaire H1Z2Z2-K 4 mm², double isolation, résistant UV (au mètre)',
+    },
+    'CAB-H1Z2Z2-6-M': {
+        'description': 'Câble solaire H1Z2Z2-K 6 mm², double isolation, résistant UV (au mètre)',
+    },
+    'CAB-H1Z2Z2-10-M': {
+        'description': 'Câble solaire H1Z2Z2-K 10 mm², double isolation, résistant UV (au mètre)',
+    },
+    'CAB-H1Z2Z2-16-M': {
+        'description': 'Câble solaire H1Z2Z2-K 16 mm², double isolation, résistant UV (au mètre)',
+    },
+    'FUS-GPV-1000-15A': {
+        'description': 'Fusible cartouche gPV 1000 VDC, calibre 15 A, protection string PV',
+    },
+    'FUS-GPV-1000-20A': {
+        'description': 'Fusible cartouche gPV 1000 VDC, calibre 20 A, protection string PV',
+    },
+    'PF-1000': {
+        'description': 'Porte-fusible 1000 VDC pour cartouche gPV (coffret DC)',
+    },
+    'PARA-DC-T2-1000': {
+        'description': 'Parafoudre DC type 2, tension max 1000 V, protection champ PV',
+    },
+    'PARA-AC-T2': {
+        'description': 'Parafoudre AC type 2, protection surtension réseau',
+    },
+    'SECT-DC-1000-25A': {
+        'description': 'Sectionneur DC 1000 V, calibre 25 A, coupure de charge champ PV',
+    },
+    'DISJ-AC-C-16-1P': {
+        'description': 'Disjoncteur AC courbe C 16 A monophasé, protection ligne onduleur',
+    },
+    'DISJ-AC-C-20-1P': {
+        'description': 'Disjoncteur AC courbe C 20 A monophasé, protection ligne onduleur',
+    },
+    'DISJ-AC-C-25-1P': {
+        'description': 'Disjoncteur AC courbe C 25 A monophasé, protection ligne onduleur',
+    },
+    'DISJ-AC-C-32-1P': {
+        'description': 'Disjoncteur AC courbe C 32 A monophasé, protection ligne onduleur',
+    },
+    'DISJ-AC-C-16-4P': {
+        'description': 'Disjoncteur AC courbe C 16 A tétrapolaire, protection ligne onduleur triphasé',
+    },
+    'DISJ-AC-C-20-4P': {
+        'description': 'Disjoncteur AC courbe C 20 A tétrapolaire, protection ligne onduleur triphasé',
+    },
+    'DISJ-AC-C-25-4P': {
+        'description': 'Disjoncteur AC courbe C 25 A tétrapolaire, protection ligne onduleur triphasé',
+    },
+    'DISJ-AC-C-32-4P': {
+        'description': 'Disjoncteur AC courbe C 32 A tétrapolaire, protection ligne onduleur triphasé',
+    },
+    'DDR-A-300-40': {
+        'description': 'Différentiel (DDR) type A 300 mA, calibre 40 A, protection des personnes',
+    },
+    'DDR-A-300-63': {
+        'description': 'Différentiel (DDR) type A 300 mA, calibre 63 A, protection des personnes',
+    },
+    'COF-DC-2STR': {
+        'description': 'Coffret DC 2 strings : sectionneur, fusibles et parafoudre DC pré-câblés',
+    },
+    'COF-AC': {
+        'description': 'Coffret AC : disjoncteur et parafoudre AC pré-câblés en sortie onduleur',
+    },
 }
 
 
@@ -536,6 +645,33 @@ class Command(BaseCommand):
                 quantite=20, quantite_avant=0, quantite_apres=20,
                 reference='SEED-CATALOGUE',
                 note='Stock initial (pompes OSP — prix à renseigner)',
+            )
+            created.append(nom)
+
+        # ── PVG3 — Câbles & protections DC/AC : PRIX VIDES (0) ──
+        # Tant que prix_vente vaut 0, le produit est exclu du chiffrage
+        # automatique — même garde que les pompes OSP ci-dessus.
+        for nom, sku, qte, seuil in CABLES_PROTECTIONS_VIDES:
+            if (Produit.objects.filter(company=company, sku=sku).exists()
+                    or Produit.objects.filter(
+                        company=company, nom__iexact=nom,
+                        is_archived=False).exists()):
+                skipped.append(nom)
+                continue
+            produit = Produit.objects.create(
+                company=company, nom=nom, sku=sku,
+                categorie=get_categorie(classify_categorie(nom)),
+                prix_achat=Decimal('0'),
+                prix_vente=Decimal('0'),  # à renseigner par le fondateur
+                quantite_stock=qte, seuil_alerte=seuil,
+                tva=Decimal('20.00'),
+            )
+            MouvementStock.objects.create(
+                company=company, produit=produit,
+                type_mouvement=MouvementStock.TypeMouvement.ENTREE,
+                quantite=qte, quantite_avant=0, quantite_apres=qte,
+                reference='SEED-CATALOGUE',
+                note='Stock initial (câbles/protections — prix à renseigner)',
             )
             created.append(nom)
 
