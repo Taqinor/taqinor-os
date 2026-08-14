@@ -125,7 +125,8 @@ class UniteLogistiqueViewSet(CompanyScopedModelViewSet):
     def get_permissions(self):
         if self.action in READ_ACTIONS + ['etiquette_pdf']:
             return [IsAnyRole()]
-        if self.action in WRITE_ACTIONS + ['sceller', 'ajouter_ligne']:
+        if self.action in WRITE_ACTIONS + [
+                'sceller', 'ajouter_ligne', 'controler_scan']:
             return [IsResponsableOrAdmin()]
         return [IsAdminRole()]
 
@@ -186,6 +187,32 @@ class UniteLogistiqueViewSet(CompanyScopedModelViewSet):
             ajouter_ligne_unite_logistique(
                 company=company, unite=unite, produit=produit,
                 quantite=request.data.get('quantite'), lot=lot)
+        except ValueError as exc:
+            return Response({'detail': str(exc)},
+                            status=status.HTTP_400_BAD_REQUEST)
+        unite.refresh_from_db()
+        return Response(self.get_serializer(unite).data,
+                        status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['post'], url_path='controler-scan')
+    def controler_scan(self, request, pk=None):
+        """NTWMS11 — poste d'EMBALLAGE : contrôle bloquant d'un produit scanné.
+
+        ``{produit, quantite}``. Un produit qui n'appartient pas à la vague en
+        cours d'emballage (ou une quantité supérieure au prélevé) est REFUSÉ en
+        400 — l'écran doit afficher l'alerte avant toute validation du colis.
+        En cas de succès, la ligne est horodatée (audit `scanne_le`)."""
+        from ..models import Produit
+        from ..services import controler_scan_emballage
+        unite = self.get_object()
+        company = request.user.company
+        produit = Produit.objects.filter(
+            id=request.data.get('produit'), company=company).first()
+        try:
+            controler_scan_emballage(
+                company=company, unite=unite, produit=produit,
+                quantite=request.data.get('quantite') or 1,
+                user=request.user)
         except ValueError as exc:
             return Response({'detail': str(exc)},
                             status=status.HTTP_400_BAD_REQUEST)

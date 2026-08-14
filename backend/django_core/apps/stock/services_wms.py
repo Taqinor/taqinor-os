@@ -577,3 +577,77 @@ def generer_etiquette_expedition(*, expedition, user=None):
     expedition.save(update_fields=[
         'numero_suivi', 'etiquette_pdf_key', 'statut', 'date_expedition'])
     return expedition
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# NTWMS11 — Poste d'emballage : contrôle de conformité BLOQUANT
+# ═══════════════════════════════════════════════════════════════════════════
+
+def controler_scan_emballage(*, company, unite, produit, quantite=1,
+                             user=None):
+    """Contrôle qu'un produit scanné APPARTIENT bien à la vague en cours.
+
+    C'est la garde qui empêche d'expédier le mauvais article. Refuse
+    (``ValueError``, donc 400 côté API — refus BLOQUANT avant validation du
+    colis) :
+      * un produit absent des lignes PRÉLEVÉES de la vague de l'unité ;
+      * une quantité qui dépasserait ce qui a été réellement prélevé ;
+      * une unité déjà scellée ;
+      * un produit d'une autre société.
+
+    Une unité SANS vague rattachée n'a pas d'attendu à comparer : le contrôle
+    se contente alors d'enregistrer le scan (comportement historique du
+    colisage libre), jamais un refus arbitraire.
+
+    En cas de succès, la ligne de contenu est créée/incrémentée et HORODATÉE
+    (``scanne_le``/``scanne_par``) pour l'audit.
+    """
+    from django.utils import timezone
+    from .models_wms import LignePicking, UniteLogistiqueLigne
+
+    if unite is None or unite.company_id != getattr(company, 'id', None):
+        raise ValueError('Unité logistique introuvable dans cette société.')
+    if unite.est_figee:
+        raise ValueError(
+            'Cette unité logistique est scellée : son contenu est figé.')
+    if produit is None or produit.company_id != getattr(company, 'id', None):
+        raise ValueError('Produit introuvable dans cette société.')
+    try:
+        quantite = int(quantite)
+    except (TypeError, ValueError):
+        raise ValueError('Quantité invalide.')
+    if quantite <= 0:
+        raise ValueError('La quantité doit être positive.')
+
+    ligne_picking = None
+    if unite.vague_id:
+        attendues = LignePicking.objects.filter(
+            vague_id=unite.vague_id, produit=produit,
+            quantite_prelevee__gt=0)
+        ligne_picking = attendues.order_by('ordre_parcours', 'id').first()
+        if ligne_picking is None:
+            raise ValueError(
+                f'« {produit.nom} » n\'appartient pas à la vague en cours '
+                f'd\'emballage — colis refusé.')
+        total_attendu = sum(
+            ligne.quantite_prelevee for ligne in attendues)
+        deja_emballe = sum(
+            ligne.quantite for ligne in UniteLogistiqueLigne.objects.filter(
+                unite__vague_id=unite.vague_id, produit=produit))
+        if deja_emballe + quantite > total_attendu:
+            raise ValueError(
+                f'Quantité emballée supérieure au prélevé pour '
+                f'« {produit.nom} » ({total_attendu} prélevé(s)) — colis '
+                f'refusé.')
+
+    ligne = UniteLogistiqueLigne.objects.filter(
+        unite=unite, produit=produit, lot=None).first()
+    if ligne is None:
+        ligne = UniteLogistiqueLigne(
+            company=company, unite=unite, produit=produit, quantite=0,
+            ligne_picking=ligne_picking)
+    ligne.quantite += quantite
+    ligne.scanne_le = timezone.now()
+    ligne.scanne_par = user
+    ligne.save()
+    return ligne

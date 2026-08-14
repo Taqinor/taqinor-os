@@ -71,9 +71,9 @@ class UniteLogistiqueLigneSerializer(serializers.ModelSerializer):
         model = UniteLogistiqueLigne
         fields = [
             'id', 'unite', 'produit', 'produit_nom', 'quantite', 'lot',
-            'numero_lot', 'ligne_picking',
+            'numero_lot', 'ligne_picking', 'scanne_le', 'scanne_par',
         ]
-        read_only_fields = ['unite']
+        read_only_fields = ['unite', 'scanne_le', 'scanne_par']
 
 
 class UniteLogistiqueSerializer(serializers.ModelSerializer):

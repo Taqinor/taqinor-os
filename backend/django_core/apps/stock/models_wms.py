@@ -225,6 +225,14 @@ class UniteLogistiqueLigne(TenantModel):
         LignePicking, on_delete=models.SET_NULL, null=True, blank=True,
         related_name='lignes_unite_logistique',
         help_text='Ligne de vague d\'origine (NTWMS4), si applicable.')
+    # NTWMS11 — audit du contrôle de conformité au poste d'emballage : QUI a
+    # scanné ce contenu, et QUAND. Vides = ligne saisie sans scan (comportement
+    # historique conservé).
+    scanne_le = models.DateTimeField(null=True, blank=True)
+    scanne_par = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='lignes_unite_logistique_scannees')
 
     class Meta:
         verbose_name = 'Ligne d\'unité logistique'
