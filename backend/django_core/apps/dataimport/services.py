@@ -125,6 +125,19 @@ FIELD_MAPS = {
         'telephone_parent': 'parent1_telephone',
         'email': 'parent1_email', 'email_parent': 'parent1_email',
     },
+    # NTSCM40 — Événements de demande (planification supply chain). Écriture
+    # DÉLÉGUÉE à ``apps.scm.services.creer_evenement_demande_import`` (jamais
+    # les modèles scm directement, motif XFLT22). Cible déclarée aussi dans
+    # ``apps/scm/platform.py`` (ARC28/32).
+    'scm_evenement_demande': {
+        'produit': 'produit', 'sku': 'produit', 'reference': 'produit',
+        'categorie': 'categorie', 'catégorie': 'categorie',
+        'date_debut': 'date_debut', 'début': 'date_debut',
+        'date_fin': 'date_fin', 'fin': 'date_fin',
+        'impact_pct': 'impact_pct', 'impact': 'impact_pct',
+        'type_evenement': 'type_evenement', 'type': 'type_evenement',
+        'libelle': 'libelle', 'libellé': 'libelle',
+    },
 }
 
 
@@ -1051,6 +1064,23 @@ def _commit_raw(file_bytes, filename, target, company, user, mode='creer',
             for i, row in enumerate(rows, 1):
                 f = _row_to_fields(row, mapped)
                 statut, message = creer_eleve_import(company, f)
+                if statut == 'cree':
+                    created += 1
+                else:
+                    skipped.append({'ligne': i, 'raison': message or 'erreur'})
+
+        # NTSCM40 — Événements de demande (planification supply chain) :
+        # écriture DÉLÉGUÉE à ``apps.scm.services.creer_evenement_demande_import``
+        # (jamais les modèles scm directement, motif XFLT22). Mode ``creer``
+        # UNIQUEMENT (jamais de mise à jour en masse — un impact déjà
+        # appliqué à des prévisions gelées ne doit jamais être écrasé) : une
+        # ligne dont le produit est introuvable est SKIPPÉE avec son motif,
+        # jamais bloquante pour les autres lignes valides.
+        elif target == 'scm_evenement_demande':
+            from apps.scm.services import creer_evenement_demande_import
+            for i, row in enumerate(rows, 1):
+                f = _row_to_fields(row, mapped)
+                statut, message = creer_evenement_demande_import(company, f)
                 if statut == 'cree':
                     created += 1
                 else:

@@ -1097,3 +1097,114 @@ def detecter_ruptures_imminentes_et_notifier(company):
                 '(société %s, produit %s)', company.id, ligne['produit_id'],
                 exc_info=True)
     return nb_emis
+
+
+# ── NTSCM40 — import CSV/XLSX des événements de demande (apps.dataimport) ───
+
+def _resoudre_produit_import(company, valeur):
+    """NTSCM40 — résout ``valeur`` (référence SKU OU nom, texte libre saisi
+    dans le fichier importé) en ``stock.Produit`` de la société, ou ``None``
+    si introuvable. LECTURE SEULE, résolution dynamique
+    (``django.apps.apps.get_model``) — même patron que le reste
+    d'``apps.scm`` (ex. ``recalculer_politiques_stock``) : aucun sélecteur
+    « résolution par SKU/nom » n'existe encore côté ``apps.stock`` (hors
+    périmètre de cette lane à créer)."""
+    from django.apps import apps as django_apps
+
+    Produit = django_apps.get_model('stock', 'Produit')
+    valeur = (valeur or '').strip()
+    if not valeur:
+        return None
+    return (
+        Produit.objects.filter(company=company, sku=valeur).first()
+        or Produit.objects.filter(company=company, nom__iexact=valeur).first()
+    )
+
+
+def _resoudre_categorie_import(company, valeur):
+    """NTSCM40 — résout ``valeur`` (nom, texte libre) en ``stock.Categorie``
+    de la société, ou ``None``. Même patron que
+    :func:`_resoudre_produit_import`."""
+    from django.apps import apps as django_apps
+
+    Categorie = django_apps.get_model('stock', 'Categorie')
+    valeur = (valeur or '').strip()
+    if not valeur:
+        return None
+    return Categorie.objects.filter(company=company, nom__iexact=valeur).first()
+
+
+def creer_evenement_demande_import(company, f):
+    """NTSCM40 — crée UN ``EvenementDemande`` (NTSCM3) depuis une ligne
+    d'import (``apps.dataimport``, ``ImportJob.target='scm_evenement_demande'``,
+    mode ``creer`` UNIQUEMENT — jamais de mise à jour en masse, pour ne
+    jamais écraser un impact déjà appliqué à des prévisions gelées).
+
+    ``f`` (dict de champs déjà mappés par ``apps.dataimport``) attend :
+    ``produit`` (SKU ou nom, optionnel), ``categorie`` (nom, optionnel),
+    ``date_debut``, ``date_fin``, ``impact_pct``, ``type_evenement``
+    (défaut ``'autre'`` si absent/inconnu), ``libelle``.
+
+    Renvoie ``('cree', None)`` ou ``('erreur', message)`` — même contrat que
+    ``apps.flotte.services.creer_vehicule_import``/``apps.contrats.services.
+    creer_contrat_import`` (patron XFLT22/ARC13), pour que
+    ``apps.dataimport.services._commit_raw`` le consomme sans code
+    spécifique."""
+    from datetime import date as _date
+
+    from .models import EvenementDemande
+
+    libelle = (f.get('libelle') or '').strip()
+    if not libelle:
+        return 'erreur', 'libelle manquant'
+
+    date_debut_raw = f.get('date_debut')
+    date_fin_raw = f.get('date_fin')
+    if not date_debut_raw or not date_fin_raw:
+        return 'erreur', 'date_debut/date_fin manquant(s)'
+
+    def _parse_date(raw):
+        if isinstance(raw, _date):
+            return raw
+        raw = str(raw).strip()
+        for fmt in ('%Y-%m-%d', '%d/%m/%Y', '%d-%m-%Y'):
+            try:
+                from datetime import datetime
+                return datetime.strptime(raw, fmt).date()
+            except ValueError:
+                continue
+        return None
+
+    date_debut = _parse_date(date_debut_raw)
+    date_fin = _parse_date(date_fin_raw)
+    if date_debut is None or date_fin is None:
+        return 'erreur', 'date_debut/date_fin invalide (format attendu AAAA-MM-JJ)'
+    if date_fin < date_debut:
+        return 'erreur', 'date_fin doit être postérieure ou égale à date_debut'
+
+    try:
+        impact_pct = Decimal(str(f.get('impact_pct') or '0'))
+    except Exception:  # noqa: BLE001 — valeur non convertible
+        return 'erreur', f'impact_pct invalide : {f.get("impact_pct")!r}'
+
+    type_evenement = (f.get('type_evenement') or '').strip().lower()
+    if type_evenement not in dict(EvenementDemande.TypeEvenement.choices):
+        type_evenement = EvenementDemande.TypeEvenement.AUTRE
+
+    produit = None
+    if f.get('produit'):
+        produit = _resoudre_produit_import(company, f['produit'])
+        if produit is None:
+            return 'erreur', f'produit introuvable : {f["produit"]!r}'
+
+    categorie = None
+    if f.get('categorie'):
+        categorie = _resoudre_categorie_import(company, f['categorie'])
+        if categorie is None:
+            return 'erreur', f'catégorie introuvable : {f["categorie"]!r}'
+
+    EvenementDemande.objects.create(
+        company=company, produit=produit, categorie=categorie,
+        date_debut=date_debut, date_fin=date_fin, impact_pct=impact_pct,
+        libelle=libelle, type_evenement=type_evenement)
+    return 'cree', None
