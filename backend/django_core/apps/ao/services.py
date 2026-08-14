@@ -2234,7 +2234,8 @@ def kit_panneau_du_produit(produit_panneau, *, company=None):
 
 
 def calepiner_villa(area, *, ordre='lnglat', kit=None, produit_panneau=None,
-                    company=None, retrait_m=None, pas_recherche_m=0.01):
+                    company=None, retrait_m=None, pas_recherche_m=0.01,
+                    famille=None):
     """Calepine une toiture VILLA (``AreaRecord`` du lecteur de cartes).
 
     ``ordre`` est EXPLICITE et jamais deviné : le lecteur de cartes sérialise
@@ -2245,6 +2246,12 @@ def calepiner_villa(area, *, ordre='lnglat', kit=None, produit_panneau=None,
     est dérivé de la fiche technique du produit, dans la société. Il ne prime
     jamais sur un ``kit`` fourni explicitement (celui-là est déjà un choix), et
     une fiche incomplète retombe sur ``KIT_VILLA_720`` — inchangé.
+
+    ``famille`` (PV66) choisit la FORME DE TABLE — ``SUD`` (module unique plein
+    sud) ou ``EST_OUEST`` (chevron dos-à-dos) — et se compose avec ce qui
+    précède : le panneau retenu, quelle que soit son origine, est celui que la
+    famille met en table. Sans famille demandée, le kit part intact et le
+    calcul est bit-à-bit celui d'avant PV66.
 
     Aucune ligne AO n'est créée ni lue : une villa n'a pas de projet AO.
     Rend le même dict que ``calepiner_surface`` + ``projection``,
@@ -2262,14 +2269,17 @@ def calepiner_villa(area, *, ordre='lnglat', kit=None, produit_panneau=None,
     entree, projection, politique = vers_entree(
         area, ordre=ordre, kit=kit,
         retrait_m=RETRAIT_VILLA_M if retrait_m is None else retrait_m,
-        pas_recherche_m=pas_recherche_m)
+        pas_recherche_m=pas_recherche_m, famille=famille)
+    kit = entree.kits[0]
     sortie = calepiner_surface(
         surface=entree.surfaces[0], kits=entree.kits,
         parametres=entree.parametres, obstacles=entree.obstacles,
         zones=entree.zones, politique=politique, repere=entree.repere)
     sortie['projection'] = projection
     sortie['politique'] = politique
-    sortie['panneaux'] = vers_panneaux(sortie['tables'], projection, kit)
+    sortie['kit'] = kit
+    sortie['panneaux'] = vers_panneaux(sortie['tables'], projection, kit,
+                                       entree.parametres.axe_rangee)
     return sortie
 
 

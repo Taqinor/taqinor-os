@@ -136,7 +136,8 @@ def calepinage_sans_projet(*, surface, kits, parametres, obstacles=(),
 
 
 def calepinage_villa(area, *, ordre='lnglat', kit=None, produit_panneau=None,
-                     company=None, retrait_m=None, pas_recherche_m=0.01):
+                     company=None, retrait_m=None, pas_recherche_m=0.01,
+                     famille=None):
     """Calepine une toiture villa (``AreaRecord``) — LECTURE PURE.
 
     ``ordre`` reste un argument EXPLICITE jusqu'ici : aucun appelant ne doit
@@ -146,13 +147,16 @@ def calepinage_villa(area, *, ordre='lnglat', kit=None, produit_panneau=None,
     résolu DANS ``company`` : le calepinage est alors posé sur le panneau
     réellement vendu. Une fiche technique incomplète retombe sur le kit villa
     par défaut, jamais sur une géométrie devinée.
+
+    ``famille`` (PV66) — ``SUD`` ou ``EST_OUEST`` : la forme de table, pas le
+    panneau. Absente, le calcul est celui d'avant PV66, à l'identique.
     """
     from .services import calepiner_villa
 
     return calepiner_villa(area, ordre=ordre, kit=kit,
                            produit_panneau=produit_panneau, company=company,
                            retrait_m=retrait_m,
-                           pas_recherche_m=pas_recherche_m)
+                           pas_recherche_m=pas_recherche_m, famille=famille)
 
 
 # ── PV68 — synthèse de calepinage d'une AFFAIRE ────────────────────────────

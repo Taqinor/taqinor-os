@@ -35,8 +35,8 @@ __all__ = [
     "ModePose", "MethodePreuve", "Confiance", "Kit", "Obstacle", "Zone",
     "Rives", "PolitiquePas", "Parametres", "Rangee", "Table", "Plan",
     "Preuve", "Marges", "Sensibilite", "Marche", "Recommandation", "Resultat",
-    "KIT_AO_PORTRAIT", "KIT_AO_PAYSAGE", "KIT_VILLA_720",
-    "remplacer",
+    "KIT_AO_PORTRAIT", "KIT_AO_PAYSAGE", "KIT_VILLA_720", "KIT_VILLA_EW",
+    "INCLINAISON_CHEVRON_EW_DEG", "remplacer",
 ]
 
 
@@ -273,6 +273,53 @@ KIT_VILLA_720 = Kit(
     inclinaison_deg=13.0,
     orientation=OrientationModule.PORTRAIT,
     modules_par_table=1,
+    faitage_m=0.0,
+)
+
+#: PV66 — inclinaison du chevron EST-OUEST. Le cerveau TypeScript du site ne
+#: balaie que 10° et 15° pour cette famille (``EW_SWEEP_TILTS``) : l'est-ouest
+#: joue la DENSITÉ, pas le rendement par panneau, et une inclinaison faible
+#: raccourcit l'ombre de faîte donc resserre les chevrons. On retient la borne
+#: basse — c'est celle qui loge le plus de modules, la raison même d'un E-O.
+INCLINAISON_CHEVRON_EW_DEG = 10.0
+
+#: Kit VILLA EST-OUEST (PV66) — le chevron dos-à-dos du lecteur de cartes
+#: (``estimatorBrainV2.familyEastWest``) exprimé comme un simple ``Kit`` : DEUX
+#: modules 720 Wc du MÊME format que ``KIT_VILLA_720`` (2,384 × 1,303), posés
+#: face à face à 10°, un face EST et l'autre face OUEST.
+#:
+#: Rien de neuf n'est introduit dans le contrat : ``modules_par_table=2`` suffit
+#: à en faire une table dos-à-dos, exactement comme les kits AO. En découlent
+#: automatiquement ``dos_a_dos`` VRAI, ``axe_faitage`` NORD-SUD — donc des
+#: rangées qui courent nord-sud (``orientation.axe_rangee_impose``) et des
+#: chevrons qui s'empilent vers l'est, la géométrie du site au mot près.
+#:
+#: ``faitage_m=0`` est un CHOIX MESURÉ, pas un oubli : le cerveau TypeScript
+#: pose la profondeur d'une cellule E-O à ``2 × empreinte`` exactement, sans
+#: jeu au faîte ; le passage de maintenance vit ENTRE deux chevrons, pas dans
+#: l'un d'eux. Le kit dit donc la même chose que l'écran :
+#: ``emprise_transversale = 2 × 1,303 × cos 10° ≈ 2,566``.
+#:
+#: PAYSAGE — le petit côté monte la pente (1,303) et le grand court le long de
+#: la rangée (2,384), soit ``cellFor(PANEL2_SHORT_M, PANEL2_LONG_M)`` du site :
+#: c'est le chevron le moins profond, donc le plus dense, et la seule raison
+#: commerciale de proposer un est-ouest.
+#:
+#: LIMITE ASSUMÉE : l'espacement entre chevrons reste celui de la politique
+#: villa (``AntiOmbrage``, ombre de faîte pleine), alors que le site retranche
+#: l'empreinte propre du chevron de cette ombre (l'ombre du faîte tombe DANS la
+#: moitié ouest du chevron) et ne garde que le résidu + 20 cm de passage. Le
+#: moteur est donc CONSERVATEUR ici : il peut poser une rangée de moins, jamais
+#: une de trop. Aucune politique n'est inventée pour masquer l'écart.
+KIT_VILLA_EW = Kit(
+    code="VILLA_720_EW",
+    libelle="Chevron dos-à-dos 2 modules 720 Wc — est-ouest (2,384 × 2,57)",
+    module_long_m=2.384,
+    module_court_m=1.303,
+    puissance_module_wc=720.0,
+    inclinaison_deg=INCLINAISON_CHEVRON_EW_DEG,
+    orientation=OrientationModule.PAYSAGE,
+    modules_par_table=2,
     faitage_m=0.0,
 )
 
