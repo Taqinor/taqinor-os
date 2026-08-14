@@ -28,6 +28,7 @@ import {
 } from './peConstants'
 import SettingsSidebar from './SettingsSidebar'
 import OnboardingSection from './OnboardingSection'
+import DemoOnboardingSection from './DemoOnboardingSection'
 import SocieteSection from './SocieteSection'
 import LeadsSection from './LeadsSection'
 import ClientsSection from './ClientsSection'
@@ -99,6 +100,10 @@ const EXPORTS_PLANIFIES_TAB = { key: 'exports_planifies', label: 'Exports planif
 // ce qui DÉCLENCHE une approbation — à ne pas confondre avec la boîte de
 // réception des approbations en attente, qui est un autre écran).
 const APPROBATIONS_POLITIQUES_TAB = { key: 'approbations_politiques', label: "Politiques d'approbation", group: 'automatisation' }
+// NTDMO27 — onglet « Démo & Onboarding » (regroupe mode présentation NTDMO10,
+// reset démo NTDMO7, « Revoir les visites guidées » NTDMO16 et le toggle
+// global `tours_actifs`). Ajouté localement, même logique que N96/N94/etc.
+const DEMO_ONBOARDING_TAB = { key: 'demo_onboarding', label: 'Démo & Onboarding', group: 'general' }
 
 // ── Conteneur de la page Paramètres (D1) ───────────────────────────────────────
 // Toute la logique (état du formulaire, chargements, handlers) vit ici, dans un
@@ -123,7 +128,7 @@ export default function ParametresEntreprise() {
   const searchResults = searchSettings(search)
   // Liste d'onglets affichée = onglets partagés + N96 (2FA) + N94 (traductions)
   // + XPLT23 (confidentialité) + ODX5 (applications).
-  const allTabs = [...TABS, SECURITE_COMPTE_TAB, TRADUCTIONS_TAB, CONFIDENTIALITE_TAB, APPLICATIONS_TAB, MARKETPLACE_TAB, REFERENTIELS_TAB, CHAT_RETENTION_TAB, MODELES_BRANDES_TAB, EXPORTS_PLANIFIES_TAB, APPROBATIONS_POLITIQUES_TAB]
+  const allTabs = [...TABS, SECURITE_COMPTE_TAB, TRADUCTIONS_TAB, CONFIDENTIALITE_TAB, APPLICATIONS_TAB, MARKETPLACE_TAB, REFERENTIELS_TAB, CHAT_RETENTION_TAB, MODELES_BRANDES_TAB, EXPORTS_PLANIFIES_TAB, APPROBATIONS_POLITIQUES_TAB, DEMO_ONBOARDING_TAB]
   // VX35 — onglets rangés en familles pour la sidebar verticale (ordre =
   // SETTINGS_GROUPS). groupTabs garantit qu'aucun onglet ne disparaît.
   const tabGroups = groupTabs(allTabs)
@@ -922,6 +927,8 @@ export default function ParametresEntreprise() {
 
           {/* FG16 — onglet « Prise en main » (checklist + rejeu du guide). */}
           {tab === 'onboarding' && <OnboardingSection />}
+          {/* NTDMO27 — onglet « Démo & Onboarding » (regroupement des toggles). */}
+          {tab === 'demo_onboarding' && <DemoOnboardingSection />}
           {tab === 'societe'  && <SocieteSection {...ctx} />}
           {tab === 'leads'    && <LeadsSection {...ctx} />}
           {tab === 'clients'  && <ClientsSection {...ctx} />}

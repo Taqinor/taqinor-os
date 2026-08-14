@@ -194,6 +194,8 @@
     questions:inconnu, session:texte
 - frontend/src/api/cpqApi.js :: genererDevisConfigurateur -> /api/django/cpq/configurateur/<>/generer-devis
     detail:texte, devis_id:inconnu, reference:inconnu
+- frontend/src/api/cpqApi.js :: relancerApprobation -> /api/django/cpq/devis/<>/relancer-approbation
+    approbateur:inconnu, detail:inconnu, etape_id:inconnu, niveau:inconnu, relance_envoyee:inconnu
 - frontend/src/api/cpqApi.js :: repondreConfigurateur -> /api/django/cpq/configurateur/<>/repondre
     detail:texte
 - frontend/src/api/cpqApi.js :: resultatConfigurateur -> /api/django/cpq/configurateur/<>/resultat
@@ -829,7 +831,7 @@
 - frontend/src/api/scmApi.js :: creerBrouillonsBcfReappro -> /api/django/scm/tableau-bord-reappro/creer-bcf
     bons_crees:inconnu
 - frontend/src/api/scmApi.js :: impactFinancierCycleSop -> /api/django/scm/cycles-sop/<>/impact-financier
-    alerte_ecart:inconnu, ca_forecast_ht:inconnu, ca_previsionnel_ht:inconnu, cycle_id:inconnu, detail:texte, ecart_pct:inconnu, lignes:inconnu, periode:inconnu, seuil_alerte_pct:inconnu
+    alerte_ecart:inconnu, ca_forecast_ht:texte, ca_previsionnel_ht:texte, cycle_id:inconnu, detail:texte, ecart_pct:inconnu, lignes:inconnu, periode:inconnu, seuil_alerte_pct:inconnu
 - frontend/src/api/scmApi.js :: recalculerClassificationAbc -> /api/django/scm/classification-abc/recalculer
     classement:inconnu, nb_produits_classes:nombre
 - frontend/src/api/scmApi.js :: recalculerPolitiquesStock -> /api/django/scm/politiques-stock/recalculer
@@ -1533,7 +1535,9 @@
     relation_module ∈ {client, devis, document, employe, fournisseur, installation, lead, produit, ticket}
     type ∈ {boolean, choice, date, fichier, ia, number, relation, text}
 - frontend/src/api/demoApi.js :: setPresentationMode -> /api/django/companies/<>  [CompanySerializer]
-    champs: actif, benchmarking_opt_in, date_creation, est_demo, id, mode_presentation_actif, nom, slug
+    champs: actif, benchmarking_opt_in, date_creation, est_demo, id, mode_presentation_actif, nom, slug, tours_actifs
+- frontend/src/api/demoApi.js :: setToursActifs -> /api/django/companies/<>  [CompanySerializer]
+    champs: actif, benchmarking_opt_in, date_creation, est_demo, id, mode_presentation_actif, nom, slug, tours_actifs
 - frontend/src/api/educationApi.js :: remove -> /api/django/education/emploi-du-temps/<>  [CreneauEmploiDuTempsSerializer]
     champs: actif, classe, heure_debut, heure_fin, id, jour_semaine, matiere_classe, salle
 - frontend/src/api/einvoiceApi.js :: list -> /api/django/einvoice/factures-electroniques  [FactureElectroniqueSerializer]

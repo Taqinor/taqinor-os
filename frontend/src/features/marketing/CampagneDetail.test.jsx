@@ -54,6 +54,7 @@ const mocks = vi.hoisted(() => ({
   envoyer: vi.fn(),
   rapportCampagnePdf: vi.fn(),
   downloadBlob: vi.fn(),
+  exportEnvoisCampagneCsv: vi.fn(),
 }))
 
 vi.mock('../../api/marketingApi', () => ({
@@ -69,6 +70,7 @@ vi.mock('../../api/marketingApi', () => ({
     envoisCampagne: { list: mocks.envoisList },
     rapportCampagnePdf: mocks.rapportCampagnePdf,
     downloadBlob: mocks.downloadBlob,
+    exportEnvoisCampagneCsv: mocks.exportEnvoisCampagneCsv,
   },
 }))
 
@@ -119,6 +121,16 @@ describe('CampagneDetail', () => {
     await waitFor(() => expect(mocks.rapportCampagnePdf).toHaveBeenCalledWith('7'))
     expect(mocks.downloadBlob).toHaveBeenCalledWith(
       expect.any(Blob), 'bilan-campagne-7.pdf')
+  })
+
+  it("« Exporter la trace CSV » (NTMKT39) télécharge les envois", async () => {
+    mocks.exportEnvoisCampagneCsv.mockResolvedValue({ data: new Blob(['csv']) })
+    renderScreen()
+    await screen.findByText('Relance été')
+    fireEvent.click(screen.getByTestId('campagne-exporter-trace-csv'))
+    await waitFor(() => expect(mocks.exportEnvoisCampagneCsv).toHaveBeenCalledWith('7'))
+    expect(mocks.downloadBlob).toHaveBeenCalledWith(
+      expect.any(Blob), 'envois-campagne-7.csv')
   })
 
   it('le filtre de statut réduit la trace affichée', async () => {

@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 8935, operations: 16238, components: 4647}
+counts: {paths: 8969, operations: 16282, components: 4669}
 securitySchemes:
 - cookieJWT
 - publicApiKey
@@ -2323,7 +2323,9 @@ operations:
 - get /api/django/cpq/contraintes-compatibilite/{id}/ -> django_cpq_contraintes_compatibilite_retrieve
 - patch /api/django/cpq/contraintes-compatibilite/{id}/ -> django_cpq_contraintes_compatibilite_partial_update
 - put /api/django/cpq/contraintes-compatibilite/{id}/ -> django_cpq_contraintes_compatibilite_update
+- get /api/django/cpq/devis/{id}/comparaison-variantes/ -> django_cpq_devis_comparaison_variantes_retrieve
 - get /api/django/cpq/devis/{id}/feuille-configuration/ -> django_cpq_devis_feuille_configuration_retrieve
+- post /api/django/cpq/devis/{id}/relancer-approbation/ -> django_cpq_devis_relancer_approbation_create
 - get /api/django/cpq/devis/{id}/variantes/ -> django_cpq_devis_variantes_list
 - post /api/django/cpq/devis/{id}/variantes/ -> django_cpq_devis_variantes_create
 - get /api/django/cpq/marge-sous-seuil/ -> django_cpq_marge_sous_seuil_retrieve
@@ -2340,8 +2342,17 @@ operations:
 - get /api/django/cpq/options-produit/{id}/ -> django_cpq_options_produit_retrieve
 - patch /api/django/cpq/options-produit/{id}/ -> django_cpq_options_produit_partial_update
 - put /api/django/cpq/options-produit/{id}/ -> django_cpq_options_produit_update
+- get /api/django/cpq/parametres-cpq/ -> django_cpq_parametres_cpq_list
+- post /api/django/cpq/parametres-cpq/ -> django_cpq_parametres_cpq_create
+- get /api/django/cpq/parametres-cpq/courant/ -> django_cpq_parametres_cpq_courant_retrieve
+- patch /api/django/cpq/parametres-cpq/courant/ -> django_cpq_parametres_cpq_courant_partial_update
+- delete /api/django/cpq/parametres-cpq/{id}/ -> django_cpq_parametres_cpq_destroy
+- get /api/django/cpq/parametres-cpq/{id}/ -> django_cpq_parametres_cpq_retrieve
+- patch /api/django/cpq/parametres-cpq/{id}/ -> django_cpq_parametres_cpq_partial_update
+- put /api/django/cpq/parametres-cpq/{id}/ -> django_cpq_parametres_cpq_update
 - get /api/django/cpq/prix-contractuels/ -> django_cpq_prix_contractuels_list
 - post /api/django/cpq/prix-contractuels/ -> django_cpq_prix_contractuels_create
+- post /api/django/cpq/prix-contractuels/import-csv/ -> django_cpq_prix_contractuels_import_csv_create
 - delete /api/django/cpq/prix-contractuels/{id}/ -> django_cpq_prix_contractuels_destroy
 - get /api/django/cpq/prix-contractuels/{id}/ -> django_cpq_prix_contractuels_retrieve
 - patch /api/django/cpq/prix-contractuels/{id}/ -> django_cpq_prix_contractuels_partial_update
@@ -2352,6 +2363,8 @@ operations:
 - get /api/django/cpq/produits-equivalents/{id}/ -> django_cpq_produits_equivalents_retrieve
 - patch /api/django/cpq/produits-equivalents/{id}/ -> django_cpq_produits_equivalents_partial_update
 - put /api/django/cpq/produits-equivalents/{id}/ -> django_cpq_produits_equivalents_update
+- get /api/django/cpq/rapports/approbations/ -> django_cpq_rapports_approbations_retrieve
+- get /api/django/cpq/rapports/catalogue-regles/ -> django_cpq_rapports_catalogue_regles_retrieve
 - get /api/django/cpq/rapports/conformite/ -> django_cpq_rapports_conformite_retrieve
 - get /api/django/cpq/regles-approbation-remise/ -> django_cpq_regles_approbation_remise_list
 - post /api/django/cpq/regles-approbation-remise/ -> django_cpq_regles_approbation_remise_create
@@ -5118,6 +5131,7 @@ operations:
 - get /api/django/marketing/arcs-journey/{id}/ -> django_marketing_arcs_journey_retrieve
 - patch /api/django/marketing/arcs-journey/{id}/ -> django_marketing_arcs_journey_partial_update
 - put /api/django/marketing/arcs-journey/{id}/ -> django_marketing_arcs_journey_update
+- get /api/django/marketing/attribution/comparaison/ -> django_marketing_attribution_comparaison_retrieve
 - get /api/django/marketing/avis-clients/ -> django_marketing_avis_clients_list
 - post /api/django/marketing/avis-clients/ -> django_marketing_avis_clients_create
 - delete /api/django/marketing/avis-clients/{id}/ -> django_marketing_avis_clients_destroy
@@ -5140,6 +5154,7 @@ operations:
 - put /api/django/marketing/blocs-contenu/{id}/ -> django_marketing_blocs_contenu_update
 - get /api/django/marketing/campagnes/ -> django_marketing_campagnes_list
 - post /api/django/marketing/campagnes/ -> django_marketing_campagnes_create
+- get /api/django/marketing/campagnes/export/ -> django_marketing_campagnes_export_retrieve
 - get /api/django/marketing/campagnes/generer-ia-disponible/ -> django_marketing_campagnes_generer_ia_disponible_retrieve
 - post /api/django/marketing/campagnes/generer-ia/ -> django_marketing_campagnes_generer_ia_create
 - post /api/django/marketing/campagnes/importer-couts/ -> django_marketing_campagnes_importer_couts_create
@@ -5157,6 +5172,7 @@ operations:
 - get /api/django/marketing/campagnes/{id}/cout-sms/ -> django_marketing_campagnes_cout_sms_retrieve
 - post /api/django/marketing/campagnes/{id}/creer-depuis-modele/ -> django_marketing_campagnes_creer_depuis_modele_create
 - post /api/django/marketing/campagnes/{id}/dupliquer/ -> django_marketing_campagnes_dupliquer_create
+- get /api/django/marketing/campagnes/{id}/envois/export/ -> django_marketing_campagnes_envois_export_retrieve
 - post /api/django/marketing/campagnes/{id}/envoyer-test/ -> django_marketing_campagnes_envoyer_test_create
 - post /api/django/marketing/campagnes/{id}/envoyer/ -> django_marketing_campagnes_envoyer_create
 - get /api/django/marketing/campagnes/{id}/kpi-mere/ -> django_marketing_campagnes_kpi_mere_retrieve
@@ -5237,6 +5253,7 @@ operations:
 - get /api/django/marketing/evenements-marketing/{id}/badges/ -> django_marketing_evenements_marketing_badges_retrieve
 - get /api/django/marketing/evenements-marketing/{id}/borne/ -> django_marketing_evenements_marketing_borne_retrieve
 - post /api/django/marketing/evenements-marketing/{id}/cloturer-presences/ -> django_marketing_evenements_marketing_cloturer_presences_create
+- post /api/django/marketing/evenements-marketing/{id}/importer-inscrits/ -> django_marketing_evenements_marketing_importer_inscrits_create
 - get /api/django/marketing/formulaires-intake/ -> django_marketing_formulaires_intake_list
 - post /api/django/marketing/formulaires-intake/ -> django_marketing_formulaires_intake_create
 - delete /api/django/marketing/formulaires-intake/{id}/ -> django_marketing_formulaires_intake_destroy
@@ -5325,12 +5342,14 @@ operations:
 - patch /api/django/marketing/relances-devis-abandonnes/{id}/ -> django_marketing_relances_devis_abandonnes_partial_update
 - put /api/django/marketing/relances-devis-abandonnes/{id}/ -> django_marketing_relances_devis_abandonnes_update
 - get /api/django/marketing/reponses-enquete/{reponse_id}/certificat/ -> django_marketing_reponses_enquete_certificat_retrieve
+- get /api/django/marketing/scores-maturite/{lead_id}/ -> django_marketing_scores_maturite_retrieve
 - get /api/django/marketing/segments-marketing/ -> django_marketing_segments_marketing_list
 - post /api/django/marketing/segments-marketing/ -> django_marketing_segments_marketing_create
 - delete /api/django/marketing/segments-marketing/{id}/ -> django_marketing_segments_marketing_destroy
 - get /api/django/marketing/segments-marketing/{id}/ -> django_marketing_segments_marketing_retrieve
 - patch /api/django/marketing/segments-marketing/{id}/ -> django_marketing_segments_marketing_partial_update
 - put /api/django/marketing/segments-marketing/{id}/ -> django_marketing_segments_marketing_update
+- get /api/django/marketing/segments-marketing/{id}/export/ -> django_marketing_segments_marketing_export_retrieve
 - post /api/django/marketing/segments-marketing/{id}/exporter-audience-meta/ -> django_marketing_segments_marketing_exporter_audience_meta_create
 - get /api/django/marketing/segments-marketing/{id}/previsualiser/ -> django_marketing_segments_marketing_previsualiser_retrieve
 - get /api/django/marketing/sequences-relance/ -> django_marketing_sequences_relance_list
@@ -5530,6 +5549,9 @@ operations:
 - get /api/django/notifications/working-hours/ -> django_notifications_working_hours_retrieve
 - patch /api/django/notifications/working-hours/{id}/ -> django_notifications_working_hours_partial_update
 - put /api/django/notifications/working-hours/{id}/ -> django_notifications_working_hours_update
+- get /api/django/onboarding/items-masques/ -> django_onboarding_items_masques_list
+- post /api/django/onboarding/items-masques/{id}/demasquer/ -> django_onboarding_items_masques_demasquer_create
+- post /api/django/onboarding/items-masques/{id}/masquer/ -> django_onboarding_items_masques_masquer_create
 - get /api/django/onboarding/progress/ -> django_onboarding_progress_retrieve
 - post /api/django/onboarding/progress/ignorer-tout/ -> django_onboarding_progress_ignorer_tout_create
 - post /api/django/onboarding/progress/{id}/ignorer/ -> django_onboarding_progress_ignorer_create
@@ -10474,7 +10496,9 @@ operations:
 - get /api/v1/cpq/contraintes-compatibilite/{id}/ -> v1_cpq_contraintes_compatibilite_retrieve
 - patch /api/v1/cpq/contraintes-compatibilite/{id}/ -> v1_cpq_contraintes_compatibilite_partial_update
 - put /api/v1/cpq/contraintes-compatibilite/{id}/ -> v1_cpq_contraintes_compatibilite_update
+- get /api/v1/cpq/devis/{id}/comparaison-variantes/ -> v1_cpq_devis_comparaison_variantes_retrieve
 - get /api/v1/cpq/devis/{id}/feuille-configuration/ -> v1_cpq_devis_feuille_configuration_retrieve
+- post /api/v1/cpq/devis/{id}/relancer-approbation/ -> v1_cpq_devis_relancer_approbation_create
 - get /api/v1/cpq/devis/{id}/variantes/ -> v1_cpq_devis_variantes_list
 - post /api/v1/cpq/devis/{id}/variantes/ -> v1_cpq_devis_variantes_create
 - get /api/v1/cpq/marge-sous-seuil/ -> v1_cpq_marge_sous_seuil_retrieve
@@ -10491,8 +10515,17 @@ operations:
 - get /api/v1/cpq/options-produit/{id}/ -> v1_cpq_options_produit_retrieve
 - patch /api/v1/cpq/options-produit/{id}/ -> v1_cpq_options_produit_partial_update
 - put /api/v1/cpq/options-produit/{id}/ -> v1_cpq_options_produit_update
+- get /api/v1/cpq/parametres-cpq/ -> v1_cpq_parametres_cpq_list
+- post /api/v1/cpq/parametres-cpq/ -> v1_cpq_parametres_cpq_create
+- get /api/v1/cpq/parametres-cpq/courant/ -> v1_cpq_parametres_cpq_courant_retrieve
+- patch /api/v1/cpq/parametres-cpq/courant/ -> v1_cpq_parametres_cpq_courant_partial_update
+- delete /api/v1/cpq/parametres-cpq/{id}/ -> v1_cpq_parametres_cpq_destroy
+- get /api/v1/cpq/parametres-cpq/{id}/ -> v1_cpq_parametres_cpq_retrieve
+- patch /api/v1/cpq/parametres-cpq/{id}/ -> v1_cpq_parametres_cpq_partial_update
+- put /api/v1/cpq/parametres-cpq/{id}/ -> v1_cpq_parametres_cpq_update
 - get /api/v1/cpq/prix-contractuels/ -> v1_cpq_prix_contractuels_list
 - post /api/v1/cpq/prix-contractuels/ -> v1_cpq_prix_contractuels_create
+- post /api/v1/cpq/prix-contractuels/import-csv/ -> v1_cpq_prix_contractuels_import_csv_create
 - delete /api/v1/cpq/prix-contractuels/{id}/ -> v1_cpq_prix_contractuels_destroy
 - get /api/v1/cpq/prix-contractuels/{id}/ -> v1_cpq_prix_contractuels_retrieve
 - patch /api/v1/cpq/prix-contractuels/{id}/ -> v1_cpq_prix_contractuels_partial_update
@@ -10503,6 +10536,8 @@ operations:
 - get /api/v1/cpq/produits-equivalents/{id}/ -> v1_cpq_produits_equivalents_retrieve
 - patch /api/v1/cpq/produits-equivalents/{id}/ -> v1_cpq_produits_equivalents_partial_update
 - put /api/v1/cpq/produits-equivalents/{id}/ -> v1_cpq_produits_equivalents_update
+- get /api/v1/cpq/rapports/approbations/ -> v1_cpq_rapports_approbations_retrieve
+- get /api/v1/cpq/rapports/catalogue-regles/ -> v1_cpq_rapports_catalogue_regles_retrieve
 - get /api/v1/cpq/rapports/conformite/ -> v1_cpq_rapports_conformite_retrieve
 - get /api/v1/cpq/regles-approbation-remise/ -> v1_cpq_regles_approbation_remise_list
 - post /api/v1/cpq/regles-approbation-remise/ -> v1_cpq_regles_approbation_remise_create
@@ -13269,6 +13304,7 @@ operations:
 - get /api/v1/marketing/arcs-journey/{id}/ -> v1_marketing_arcs_journey_retrieve
 - patch /api/v1/marketing/arcs-journey/{id}/ -> v1_marketing_arcs_journey_partial_update
 - put /api/v1/marketing/arcs-journey/{id}/ -> v1_marketing_arcs_journey_update
+- get /api/v1/marketing/attribution/comparaison/ -> v1_marketing_attribution_comparaison_retrieve
 - get /api/v1/marketing/avis-clients/ -> v1_marketing_avis_clients_list
 - post /api/v1/marketing/avis-clients/ -> v1_marketing_avis_clients_create
 - delete /api/v1/marketing/avis-clients/{id}/ -> v1_marketing_avis_clients_destroy
@@ -13291,6 +13327,7 @@ operations:
 - put /api/v1/marketing/blocs-contenu/{id}/ -> v1_marketing_blocs_contenu_update
 - get /api/v1/marketing/campagnes/ -> v1_marketing_campagnes_list
 - post /api/v1/marketing/campagnes/ -> v1_marketing_campagnes_create
+- get /api/v1/marketing/campagnes/export/ -> v1_marketing_campagnes_export_retrieve
 - get /api/v1/marketing/campagnes/generer-ia-disponible/ -> v1_marketing_campagnes_generer_ia_disponible_retrieve
 - post /api/v1/marketing/campagnes/generer-ia/ -> v1_marketing_campagnes_generer_ia_create
 - post /api/v1/marketing/campagnes/importer-couts/ -> v1_marketing_campagnes_importer_couts_create
@@ -13308,6 +13345,7 @@ operations:
 - get /api/v1/marketing/campagnes/{id}/cout-sms/ -> v1_marketing_campagnes_cout_sms_retrieve
 - post /api/v1/marketing/campagnes/{id}/creer-depuis-modele/ -> v1_marketing_campagnes_creer_depuis_modele_create
 - post /api/v1/marketing/campagnes/{id}/dupliquer/ -> v1_marketing_campagnes_dupliquer_create
+- get /api/v1/marketing/campagnes/{id}/envois/export/ -> v1_marketing_campagnes_envois_export_retrieve
 - post /api/v1/marketing/campagnes/{id}/envoyer-test/ -> v1_marketing_campagnes_envoyer_test_create
 - post /api/v1/marketing/campagnes/{id}/envoyer/ -> v1_marketing_campagnes_envoyer_create
 - get /api/v1/marketing/campagnes/{id}/kpi-mere/ -> v1_marketing_campagnes_kpi_mere_retrieve
@@ -13388,6 +13426,7 @@ operations:
 - get /api/v1/marketing/evenements-marketing/{id}/badges/ -> v1_marketing_evenements_marketing_badges_retrieve
 - get /api/v1/marketing/evenements-marketing/{id}/borne/ -> v1_marketing_evenements_marketing_borne_retrieve
 - post /api/v1/marketing/evenements-marketing/{id}/cloturer-presences/ -> v1_marketing_evenements_marketing_cloturer_presences_create
+- post /api/v1/marketing/evenements-marketing/{id}/importer-inscrits/ -> v1_marketing_evenements_marketing_importer_inscrits_create
 - get /api/v1/marketing/formulaires-intake/ -> v1_marketing_formulaires_intake_list
 - post /api/v1/marketing/formulaires-intake/ -> v1_marketing_formulaires_intake_create
 - delete /api/v1/marketing/formulaires-intake/{id}/ -> v1_marketing_formulaires_intake_destroy
@@ -13476,12 +13515,14 @@ operations:
 - patch /api/v1/marketing/relances-devis-abandonnes/{id}/ -> v1_marketing_relances_devis_abandonnes_partial_update
 - put /api/v1/marketing/relances-devis-abandonnes/{id}/ -> v1_marketing_relances_devis_abandonnes_update
 - get /api/v1/marketing/reponses-enquete/{reponse_id}/certificat/ -> v1_marketing_reponses_enquete_certificat_retrieve
+- get /api/v1/marketing/scores-maturite/{lead_id}/ -> v1_marketing_scores_maturite_retrieve
 - get /api/v1/marketing/segments-marketing/ -> v1_marketing_segments_marketing_list
 - post /api/v1/marketing/segments-marketing/ -> v1_marketing_segments_marketing_create
 - delete /api/v1/marketing/segments-marketing/{id}/ -> v1_marketing_segments_marketing_destroy
 - get /api/v1/marketing/segments-marketing/{id}/ -> v1_marketing_segments_marketing_retrieve
 - patch /api/v1/marketing/segments-marketing/{id}/ -> v1_marketing_segments_marketing_partial_update
 - put /api/v1/marketing/segments-marketing/{id}/ -> v1_marketing_segments_marketing_update
+- get /api/v1/marketing/segments-marketing/{id}/export/ -> v1_marketing_segments_marketing_export_retrieve
 - post /api/v1/marketing/segments-marketing/{id}/exporter-audience-meta/ -> v1_marketing_segments_marketing_exporter_audience_meta_create
 - get /api/v1/marketing/segments-marketing/{id}/previsualiser/ -> v1_marketing_segments_marketing_previsualiser_retrieve
 - get /api/v1/marketing/sequences-relance/ -> v1_marketing_sequences_relance_list
@@ -13681,6 +13722,9 @@ operations:
 - get /api/v1/notifications/working-hours/ -> v1_notifications_working_hours_retrieve
 - patch /api/v1/notifications/working-hours/{id}/ -> v1_notifications_working_hours_partial_update
 - put /api/v1/notifications/working-hours/{id}/ -> v1_notifications_working_hours_update
+- get /api/v1/onboarding/items-masques/ -> v1_onboarding_items_masques_list
+- post /api/v1/onboarding/items-masques/{id}/demasquer/ -> v1_onboarding_items_masques_demasquer_create
+- post /api/v1/onboarding/items-masques/{id}/masquer/ -> v1_onboarding_items_masques_masquer_create
 - get /api/v1/onboarding/progress/ -> v1_onboarding_progress_retrieve
 - post /api/v1/onboarding/progress/ignorer-tout/ -> v1_onboarding_progress_ignorer_tout_create
 - post /api/v1/onboarding/progress/{id}/ignorer/ -> v1_onboarding_progress_ignorer_create
@@ -16461,6 +16505,12 @@ components:
 - Attribution
 - AttributionBadge
 - AttributionBadgeRequest
+- AttributionComparaison
+- AttributionComparaisonModeles
+- AttributionPartDernierTouche
+- AttributionPartLineaire
+- AttributionPartPondereTemporel
+- AttributionPartPremierTouche
 - Audit
 - AuditLog
 - AuditLogActionEnum
@@ -16776,6 +16826,7 @@ components:
 - CommunicationEvenementRequest
 - Company
 - CompanyRequest
+- CompatibiliteModeEnum
 - CompatibilitePiece
 - CompatibilitePieceRequest
 - Compensation
@@ -16911,9 +16962,13 @@ components:
 - CouvertureEnum
 - CouvertureLead
 - CouvertureRapport
+- CpqCatalogueReglesCompatibilite
+- CpqImportPrixContractuelsResultat
 - CpqMargeSousSeuil
+- CpqRapportApprobations
 - CpqRapportConformite
 - CpqRapportConformiteLigne
+- CpqRelancerApprobationResponse
 - CpqSuggestionProduit
 - CpqSuggestionsProduit
 - CpqVariante
@@ -17309,6 +17364,8 @@ components:
 - EvenementBanquetStatutEnum
 - EvenementDemande
 - EvenementDemandeRequest
+- EvenementInscriptionNotifianteRequestRequest
+- EvenementInscriptionNotifianteResponse
 - EvenementMarketing
 - EvenementMarketingEtapeEnum
 - EvenementMarketingRequest
@@ -17488,6 +17545,8 @@ components:
 - ImpersonationCibles
 - ImporterCoutsPublicitairesRapport
 - ImporterCoutsPublicitairesRequestRequest
+- ImporterInscritsEvenementRapport
+- ImporterInscritsEvenementRequestRequest
 - ImputationAvoirFournisseur
 - ImputationAvoirFournisseurRequest
 - ImputationAxe
@@ -17837,7 +17896,6 @@ components:
 - ModeAcheminementPhysiqueEnum
 - ModeAcquittementEnum
 - ModeB24Enum
-- ModeE45Enum
 - ModeEnchainementEnum
 - ModeHoldEnum
 - ModeHoldOverrideEnum
@@ -17854,6 +17912,7 @@ components:
 - ModeScoringEnum
 - ModeTraitementEnum
 - ModeTransportEnum
+- ModeleAttributionEnum
 - ModeleBonCommandeFournisseur
 - ModeleBonCommandeFournisseurLigne
 - ModeleBonCommandeFournisseurLigneRequest
@@ -17986,6 +18045,7 @@ components:
 - OffreGroupee
 - OffreGroupeeRequest
 - OmbrageEnum
+- OnboardingItemMasquable
 - OperateurEnum
 - OperationGamme
 - OperationGammeRequest
@@ -18662,6 +18722,7 @@ components:
 - PaginatedPalierUsageList
 - PaginatedParametrageRelanceClientList
 - PaginatedParametrePaieList
+- PaginatedParametresCPQList
 - PaginatedParametresEducationList
 - PaginatedParametresLocationList
 - PaginatedParcelleList
@@ -19001,6 +19062,8 @@ components:
 - ParametrageRelanceClientRequest
 - ParametrePaie
 - ParametrePaieRequest
+- ParametresCPQ
+- ParametresCPQRequest
 - ParametresEducation
 - ParametresEducationRequest
 - ParametresLocation
@@ -19586,6 +19649,7 @@ components:
 - PatchedPalierUsageRequest
 - PatchedParametrageRelanceClientRequest
 - PatchedParametrePaieRequest
+- PatchedParametresCPQRequest
 - PatchedParametresEducationRequest
 - PatchedParametresLocationRequest
 - PatchedParametresMarketingRequest
@@ -20471,6 +20535,7 @@ components:
 - ScheduledMessageRequest
 - ScheduledMessageStatusEnum
 - ScmTableauBordReapproLigne
+- ScoreMaturiteLead
 - Seance
 - SeanceRequest
 - Secouriste
@@ -20847,6 +20912,7 @@ components:
 - VarianteCalepinageRequest
 - VarianteCalepinageRoleEnum
 - VarianteCalepinageStatutEnum
+- VariationScoreMaturite
 - Vehicule
 - VehiculeRequest
 - VehiculeStatutEnum

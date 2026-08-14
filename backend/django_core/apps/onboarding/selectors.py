@@ -28,9 +28,17 @@ def checklist_pour_utilisateur(company, user):
     jalon, ex. configurer_societe/import_clients/inviter_coequipier)."""
     from .models import OnboardingChecklistItem, OnboardingProgress
     role_nom = _role_nom(user)
+    # NTDMO28 — un item masqué PAR CETTE société (table de jonction
+    # ``masque_pour``) n'apparaît jamais dans SA checklist, mais reste
+    # inchangé pour toute autre société (jamais supprimé du catalogue).
+    masques = set()
+    if company is not None:
+        masques = set(
+            OnboardingChecklistItem.objects.filter(masque_pour=company)
+            .values_list('id', flat=True))
     items = [
         it for it in OnboardingChecklistItem.objects.filter(actif=True)
-        if it.concerne_role(role_nom)
+        if it.concerne_role(role_nom) and it.id not in masques
     ]
     progress = {
         p.item_id: p for p in OnboardingProgress.objects.filter(
@@ -94,6 +102,30 @@ def tours_pour_utilisateur(company, user):
     return resolved
 
 
+# ── NTDMO28 — items masquables (écran Paramètres → Démo & Onboarding) ──────
+def items_masquables_pour_societe(company):
+    """Retourne le catalogue GLOBAL (``company`` NULL) : liste de dicts
+    {id, key, libelle, masque (bool)} — ``masque`` = cette société a masqué
+    cet item (jamais une suppression, réversible). Utilisé par l'écran
+    Paramètres qui permet à un admin de masquer un item non pertinent pour
+    son activité (ex. « pompage agricole » pour une société 100 %
+    résidentielle)."""
+    from .models import OnboardingChecklistItem
+    items = (
+        OnboardingChecklistItem.objects
+        .filter(company__isnull=True)
+        .order_by('ordre', 'key'))
+    masques = set()
+    if company is not None:
+        masques = set(
+            items.filter(masque_pour=company).values_list('id', flat=True))
+    return [
+        {'id': it.id, 'key': it.key, 'libelle': it.libelle,
+         'masque': it.id in masques}
+        for it in items
+    ]
+
+
 # ── NTDMO22/23 — catalogue des tours (sans progression) pour le kit démo ───
 def catalogue_ecrans_money_path():
     """Retourne les 6 tours (catalogue NTDMO14), un dict par tour_key :
@@ -123,4 +155,27 @@ def resume_pour_utilisateur(company, user):
         'total': total,
         'pourcentage': pourcentage,
         'termine': total == 0 or faits == total,
+        # NTDMO26 — vrai seulement pour une société RÉELLE (jamais démo)
+        # fraîchement créée (< 30 j) dont l'assistant first-run
+        # (/onboarding/demarrage) n'a ni été complété ni passé. Le frontend
+        # (``PremiersPasWidget``) y navigue alors automatiquement, une fois —
+        # même fenêtre de 30 j que les visites guidées (NTDMO15).
+        'assistant_demarrage_auto': _assistant_demarrage_auto(company, items),
     }
+
+
+def _assistant_demarrage_auto(company, items):
+    """NTDMO26 — voir ``resume_pour_utilisateur``. Jamais sur une société
+    de démonstration, jamais si l'item a déjà été fait/ignoré (dans ce cas il
+    n'apparaît plus dans ``items``, cf. ``checklist_pour_utilisateur``)."""
+    if company is None or getattr(company, 'est_demo', False):
+        return False
+    date_creation = getattr(company, 'date_creation', None)
+    if date_creation is None:
+        return False
+    from django.utils import timezone
+    age_jours = (timezone.now() - date_creation).days
+    if age_jours < 0 or age_jours >= 30:
+        return False
+    return any(
+        it['key'] == 'assistant_demarrage' and not it['fait'] for it in items)

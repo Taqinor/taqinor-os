@@ -57,6 +57,11 @@
 # just shifted by unrelated line insertions elsewhere in each file). No new SET_NULL.
 # Rebased 2026-07-19 (PUB batch 1): pre-existing FK entries remapped after crm/adsengine
 # model-field insertions (MotifPerte.est_junk, token_health, etc.). Same FK set.
+# Rebased 2026-08-13 (crm_ventes vague 2) : 1 entrée SET_NULL_ON_TENANT_FIELD remappée
+# (authentication/models.py CustomUser.company 182->195) — l'ajout de Company.tours_actifs
+# (NTDMO27, 13 lignes) a décalé le fichier. Déclaration VÉRIFIÉE byte-identique à
+# origin/main (`on_delete=SET_NULL, null=True, blank=True, related_name='users'`) :
+# pure dérive de lignes, même FK déjà revue en 2026-07-12/07-17. Aucun nouveau SET_NULL.
 
 backend/django_core/apps/achats/models.py:115
 backend/django_core/apps/achats/models.py:271
@@ -2281,7 +2286,7 @@ backend/django_core/apps/voip/models.py:65
 backend/django_core/apps/voip/models.py:68
 backend/django_core/authentication/models.py:159
 backend/django_core/authentication/models.py:161
-backend/django_core/authentication/models.py:182
+backend/django_core/authentication/models.py:195
 backend/django_core/authentication/models.py:508
 backend/django_core/authentication/models.py:510
 backend/django_core/authentication/models.py:515
