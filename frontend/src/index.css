@@ -2642,7 +2642,13 @@ textarea.form-control {
        pour que la dernière ligne puisse toujours défiler AU-DESSUS des éléments
        ancrés au viewport (FAB copilote, invites PWA, barre d'actions groupées,
        toasts) et rester lisible même quand un moteur dégrade 100dvh en 100vh. */
-    padding-bottom: calc(52px + max(0.9rem, env(safe-area-inset-bottom)));
+    /* MB6 (2026-08-14) — la réserve valait 52px = la SEULE `min-height`
+       d'un `.bottom-tab`. La barre mesure en réalité ~64px : 52 de tab
+       + 6px de padding haut + 6px de padding bas, plus sa bordure. Le
+       manque (~21px mesuré par l'e2e sur « Enregistrer » de /parametres)
+       laissait la DERNIÈRE action d'une page passer sous la nav. On
+       réserve donc la hauteur RÉELLE, dérivée des mêmes constantes. */
+    padding-bottom: calc(64px + max(0.9rem, env(safe-area-inset-bottom)));
     padding-left: max(0.9rem, env(safe-area-inset-left));
     padding-right: max(0.9rem, env(safe-area-inset-right));
   }
