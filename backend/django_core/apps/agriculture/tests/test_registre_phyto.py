@@ -29,14 +29,32 @@ except ImportError:
 
 
 def _pdf_text(pdf_bytes):
-    # `fitz` est importé conditionnellement en tête de module (garde
-    # `_PDF_LIBS_DISPONIBLES`) — cette fonction n'est appelée que depuis des
-    # tests `@skipUnless(_PDF_LIBS_DISPONIBLES, ...)`, donc déjà disponible.
+    """Texte du PDF, espaces NORMALISÉS (une espace simple entre les mots).
+
+    2026-08-14 — POURQUOI la normalisation. Le registre est un tableau à HUIT
+    colonnes sur une A4 : WeasyPrint replie légitimement le contenu d'une
+    cellule étroite sur deux lignes, et ``fitz`` restitue cette coupure telle
+    quelle. Un nom commercial de deux mots ressortait donc « Bouillie\\nbordelaise »
+    et ``assertIn('Bouillie bordelaise', …)`` échouait alors que le PDF était
+    PARFAITEMENT correct (le message d'échec de la CI contenait lui-même le nom,
+    coupé). Ce test ne peut le voir qu'en CI nocturne : il porte ``@tag('pdf')``,
+    exclu du gate PR (``--exclude-tag=pdf``).
+
+    La normalisation ne relâche RIEN : elle rend les coupures de ligne
+    invisibles, pas les fautes. Un produit absent, un nom tronqué, une matière
+    active ou un n° AMM erronés font toujours tomber les assertions, et l'ordre
+    chronologique reste comparé sur des positions dans le même texte.
+
+    `fitz` est importé conditionnellement en tête de module (garde
+    `_PDF_LIBS_DISPONIBLES`) — cette fonction n'est appelée que depuis des
+    tests `@skipUnless(_PDF_LIBS_DISPONIBLES, ...)`, donc déjà disponible.
+    """
     doc = fitz.open(stream=pdf_bytes, filetype='pdf')
     try:
-        return '\n'.join(page.get_text() for page in doc)
+        brut = '\n'.join(page.get_text() for page in doc)
     finally:
         doc.close()
+    return ' '.join(brut.split())
 
 
 @tag('pdf')

@@ -115,6 +115,15 @@ describe('W316 — /api/proposition-contact rate-limit (10/min)', () => {
   it('bloque au-delà de 10 requêtes/min, jamais un état bloquant côté client (toujours JSON dégradé)', async () => {
     const { POST } = await import('../src/pages/api/proposition-contact');
     const body = { token: 'tok', channel: 'rappel' };
+    // Les 10 premiers appels passent le rate-limit et relaient vers l'upstream :
+    // sans ce bouchon (présent sur les CINQ autres cas de ce fichier, oublié ici)
+    // le test ouvrait 10 VRAIES connexions HTTPS vers api.taqinor.ma en
+    // production — ~1,4 s pièce, soit ~14 s mesurées, très au-delà du timeout de
+    // 5 s de vitest. C'est ce qui a rendu `web-full` rouge la nuit du 14/08/2026.
+    // Le bouchon ne touche AUCUNE assertion : le 429 attendu est produit par le
+    // rate-limiter AVANT tout fetch, et `ok:false`/`degraded:true` viennent de la
+    // même branche 429.
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({}), { status: 200 })));
     let last: Response | null = null;
     for (let i = 0; i < 11; i++) {
       last = (await POST({

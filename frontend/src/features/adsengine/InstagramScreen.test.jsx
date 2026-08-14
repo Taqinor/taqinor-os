@@ -70,7 +70,14 @@ describe('InstagramScreen (ADSDEEP56)', () => {
   it('affiche la grille de médias + le quota', async () => {
     renderScreen()
     await waitFor(() => expect(mocks.media).toHaveBeenCalled())
-    expect(screen.getAllByTestId('ae-ig-media-card')).toHaveLength(2)
+    // `mocks.media` est appelé DÈS le montage : attendre cet appel n'attend donc
+    // PAS le rendu des données. Après ce waitFor, RTL ne draine qu'UN SEUL
+    // setTimeout(0) ; le rendu concurrent de React, lui, passe par le Scheduler
+    // (MessageChannel) et peut céder la main quand la machine est saturée. Sous
+    // la suite complète (767 fichiers, ~600 s), l'écran était encore sur
+    // « Chargement… » à l'assertion synchrone — c'est ce qui a mis `frontend-full`
+    // au rouge le 14/08/2026. On attend donc l'état RENDU. Assertions inchangées.
+    await waitFor(() => expect(screen.getAllByTestId('ae-ig-media-card')).toHaveLength(2))
     expect(screen.getByTestId('ae-ig-quota')).toHaveTextContent('4/50')
     // Légende marquée LECTURE SEULE.
     expect(screen.getByTestId('ae-ig-caption-readonly-1')).toBeInTheDocument()
@@ -110,7 +117,9 @@ describe('InstagramScreen (ADSDEEP56)', () => {
   it('les commentaires IG sont gérables (masquer PROPOSE)', async () => {
     renderScreen()
     await waitFor(() => expect(mocks.media).toHaveBeenCalled())
-    expect(screen.getByTestId('ae-ig-comments-1')).toBeInTheDocument()
+    // Même course que ci-dessus : la liste de commentaires n'existe qu'APRÈS le
+    // chargement — on l'attend au lieu de la lire de façon synchrone.
+    expect(await screen.findByTestId('ae-ig-comments-1')).toBeInTheDocument()
     fireEvent.click(screen.getByTestId('ae-ig-comment-hide-10'))
     await waitFor(() => expect(mocks.proposeHideComment).toHaveBeenCalledWith(10, { hidden: true }))
     expect(await screen.findByTestId('ae-ig-proposed-c-10')).toBeInTheDocument()
@@ -119,7 +128,9 @@ describe('InstagramScreen (ADSDEEP56)', () => {
   it('couper les commentaires d’un média PROPOSE', async () => {
     renderScreen()
     await waitFor(() => expect(mocks.media).toHaveBeenCalled())
-    fireEvent.click(screen.getByTestId('ae-ig-toggle-comments-1'))
+    // Même course : le bouton appartient à une carte média, rendue seulement
+    // une fois le chargement terminé.
+    fireEvent.click(await screen.findByTestId('ae-ig-toggle-comments-1'))
     await waitFor(() => expect(mocks.proposeToggleComments).toHaveBeenCalledWith('m-1', { enabled: false }))
   })
 })
