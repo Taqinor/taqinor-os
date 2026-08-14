@@ -64,21 +64,20 @@ class GammeViewSet(CompanyScopedModelViewSet):
     filterset_fields = ['produit', 'actif']
 
 
-class OperationGammeViewSet(viewsets.ModelViewSet):
-    """NTMFG2 — opérations d'une gamme. Pas de `company` propre : scope via
-    la gamme parente (même convention que
-    `installations.KitComposantViewSet`). Filtrable par `?gamme=`."""
+class OperationGammeViewSet(CompanyScopedModelViewSet):
+    """NTMFG2 — opérations d'une gamme. Filtrable par `?gamme=`.
+
+    Hérite de `CompanyScopedModelViewSet` (garde SCA4) : le scoping société et
+    le forçage de `company` à l'écriture viennent de la plateforme, jamais d'un
+    filtrage maison. `_check_parent` reste indispensable — il empêche de
+    rattacher l'opération à une gamme ou un poste de charge d'une AUTRE
+    société, ce que le scoping de la ligne elle-même ne couvre pas."""
     queryset = OperationGamme.objects.select_related(
         'gamme', 'poste_charge').all()
     serializer_class = OperationGammeSerializer
 
     def get_queryset(self):
         qs = super().get_queryset()
-        user = self.request.user
-        if user.company_id:
-            qs = qs.filter(gamme__company=user.company)
-        elif not user.is_superuser:
-            qs = qs.none()
         gamme = self.request.query_params.get('gamme')
         if gamme:
             qs = qs.filter(gamme_id=gamme)
@@ -97,11 +96,11 @@ class OperationGammeViewSet(viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         self._check_parent(serializer)
-        serializer.save()
+        super().perform_create(serializer)
 
     def perform_update(self, serializer):
         self._check_parent(serializer)
-        serializer.save()
+        super().perform_update(serializer)
 
 
 class OrdreFabricationViewSet(CompanyScopedModelViewSet):

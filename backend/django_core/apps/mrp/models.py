@@ -113,14 +113,20 @@ class Gamme(TenantModel):
         return f'{self.nom} (v{self.version})'
 
 
-class OperationGamme(models.Model):
+class OperationGamme(TenantModel):
     """NTMFG2 — une opération de la gamme : poste de charge + temps standard
-    (prépa/unitaire/par-lot, style routing Odoo). Pas de `company` propre —
-    scopée via `gamme.company` (même convention que
-    `installations.KitComposant`)."""
+    (prépa/unitaire/par-lot, style routing Odoo).
+
+    Porte sa PROPRE FK ``company`` (héritée de ``TenantModel``, redondante avec
+    ``gamme.company``) — même motif que ``installations.FraisImport`` : un
+    enfant garde sa FK société propre pour que son ViewSet hérite tel quel de
+    ``CompanyScopedModelViewSet`` (garde SCA4) au lieu de re-bricoler un
+    scoping par ``gamme__company`` que rien n'impose côté écriture."""
 
     gamme = models.ForeignKey(
-        Gamme, on_delete=models.CASCADE, related_name='operations')
+        Gamme,
+        on_delete=models.CASCADE,  # on_delete: composition — une opération n'existe que dans sa gamme
+        related_name='operations')
     ordre = models.PositiveIntegerField(default=1, verbose_name='Ordre')
     poste_charge = models.ForeignKey(
         PosteDeCharge, on_delete=models.PROTECT,
@@ -234,7 +240,7 @@ class OperationOF(models.Model):
         AUTRE = 'autre', 'Autre'
 
     ordre_fabrication = models.ForeignKey(
-        OrdreFabrication, on_delete=models.CASCADE, related_name='operations')
+        OrdreFabrication, on_delete=models.CASCADE, related_name='operations')  # on_delete: composition — l'opération/réservation n'existe que dans son OF
     operation_gamme = models.ForeignKey(
         OperationGamme, on_delete=models.SET_NULL, null=True, blank=True,
         related_name='operations_of')
@@ -289,7 +295,7 @@ class PauseOperationOF(models.Model):
     `fin=None` = pause en cours."""
 
     operation = models.ForeignKey(
-        OperationOF, on_delete=models.CASCADE, related_name='pauses')
+        OperationOF, on_delete=models.CASCADE, related_name='pauses')  # on_delete: composition — une pause n'existe que pour son opération
     debut = models.DateTimeField()
     fin = models.DateTimeField(null=True, blank=True)
 
@@ -315,7 +321,7 @@ class ReservationOF(models.Model):
     l'écran de l'OF via `selectors.disponibilite_par_ligne_of`."""
 
     ordre_fabrication = models.ForeignKey(
-        OrdreFabrication, on_delete=models.CASCADE, related_name='reservations')
+        OrdreFabrication, on_delete=models.CASCADE, related_name='reservations')  # on_delete: composition — l'opération/réservation n'existe que dans son OF
     produit = models.ForeignKey(
         'stock.Produit', on_delete=models.PROTECT,
         related_name='mrp_reservations_of')
