@@ -896,6 +896,8 @@ CELERY_TASK_ROUTES = {
     # comptes dormants, escalade SLA workflow) planifiées au beat.
     'identity.revoke_expired_break_glass': {'queue': 'scheduled'},
     'authentication.desactiver_comptes_dormants': {'queue': 'scheduled'},
+    # NTDMO30 — purge hebdomadaire des sociétés démo TAQINOR expirées.
+    'authentication.purger_societes_demo_expirees': {'queue': 'scheduled'},
     'core.escalate_workflow_sla': {'queue': 'scheduled'},
     'stock.recompute_reordering': {'queue': 'scheduled'},
     # ASG2 / AGEN8 — Assumption Engine : oubli hebdo des posteriors + auto-pause
@@ -1023,6 +1025,12 @@ CELERY_TASK_ROUTES = {
     # donc queue `scheduled`. Les autres tâches AO sont, elles, déclenchées à
     # la demande (cf. ON_DEMAND_ALLOWLIST du garde QX11).
     'ao.rappeler_echeances': {'queue': 'scheduled'},
+    # NTCPQ32 — rappel quotidien des PrixContractuel expirés (beat, job planifié).
+    'cpq.expire_prix_contractuels': {'queue': 'scheduled'},
+    # NTCPQ33 — relance des étapes d'approbation en attente (beat, job planifié).
+    'cpq.relancer_approbations_en_attente': {'queue': 'scheduled'},
+    # NTCPQ34 — purge des sessions configurateur abandonnées (beat, job planifié).
+    'cpq.purger_sessions_configurateur_abandonnees': {'queue': 'scheduled'},
     # NTPLT27 — 4e queue `bulk` pour le travail de masse (imports dataimport,
     # exports planifiés volumineux, backfills, seed à l'échelle). Un import de
     # 100 000 lignes ne doit plus retarder un digest planifié ni un rendu PDF
@@ -1206,6 +1214,15 @@ BACKUP_PURGE_AUTO_APPLY = os.environ.get('BACKUP_PURGE_AUTO_APPLY', '0') == '1'
 # RETENTION_AUTO_APPLY n'est pas explicitement à 1 — aucune politique ne
 # doit alors supprimer quoi que ce soit (contrat imposé à chaque politique).
 RETENTION_AUTO_APPLY = os.environ.get('RETENTION_AUTO_APPLY', '0') == '1'
+
+# NTDMO30 — purge automatique des sociétés démo TAQINOR expirées (staging/
+# marketing uniquement). DÉSACTIVÉE PAR DÉFAUT (même convention que
+# GED_PURGE_AUTO_APPLY/BACKUP_PURGE_AUTO_APPLY/RETENTION_AUTO_APPLY
+# ci-dessus) : la tâche planifiée `authentication.purger_societes_demo_expirees`
+# ne supprime AUCUNE société tant que DEMO_AUTO_PURGE_ENABLED n'est pas
+# explicitement à 1 — le founder l'active en production le jour où il le
+# souhaite. Ne touche jamais une société non-démo (garde stricte est_demo=True).
+DEMO_AUTO_PURGE_ENABLED = os.environ.get('DEMO_AUTO_PURGE_ENABLED', '0') == '1'
 
 # GED33/GED34 — OCR de pièces + classification automatique. KEY-GATED : OFF par
 # défaut → tout est un no-op déterministe (aucun appel réseau, aucun coût, aucune

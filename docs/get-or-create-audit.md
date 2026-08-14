@@ -117,12 +117,13 @@ Généré par `python scripts/check_get_or_create.py`. Chaque appel liste ses cl
 | `backend/django_core/apps/contrats/services.py:4470` | update_or_create | CompteurUsage.objects | cible_id, code_compteur, company, periode_debut, periode_fin, type_cible |
 | `backend/django_core/apps/contrats/services.py:4895` | get_or_create | EtapeDunningLog.objects | company, contrat, etape |
 | `backend/django_core/apps/contrats/views.py:2633` | get_or_create | ParametresLocation.objects | company |
-| `backend/django_core/apps/cpq/views.py:481` | update_or_create | ReponseConfigurateur.objects | question, session |
+| `backend/django_core/apps/cpq/views.py:286` | get_or_create | ParametresCPQ.objects | company |
+| `backend/django_core/apps/cpq/views.py:705` | update_or_create | ReponseConfigurateur.objects | question, session |
 | `backend/django_core/apps/credit/tasks.py:76` | update_or_create | EncoursCache.objects | client |
 | `backend/django_core/apps/credit/views.py:389` | get_or_create | ReglageCredit.objects | company |
 | `backend/django_core/apps/crm/management/commands/snapshot_forecast_hebdo.py:58` | update_or_create | ForecastSnapshot.objects | categorie, company, owner_id, semaine_iso |
 | `backend/django_core/apps/crm/services.py:139` | get_or_create | LeadPlaybookProgress.objects | lead, tache |
-| `backend/django_core/apps/crm/services.py:3707` | get_or_create | MessageTemplate.objects | company, nom |
+| `backend/django_core/apps/crm/services.py:3722` | get_or_create | MessageTemplate.objects | company, nom |
 | `backend/django_core/apps/crm/views.py:1570` | get_or_create | MotifPerte.objects | company, nom |
 | `backend/django_core/apps/crm/views.py:1622` | get_or_create | Canal.objects | cle, company |
 | `backend/django_core/apps/customfields/blueprint.py:201` | update_or_create | modele.objects |  |
@@ -203,7 +204,8 @@ Généré par `python scripts/check_get_or_create.py`. Chaque appel liste ses cl
 | `backend/django_core/apps/kb/management/commands/seed_kb_templates.py:295` | get_or_create | KbArticle.objects | company, titre |
 | `backend/django_core/apps/kb/services.py:37` | get_or_create | KbLecture.objects | article, utilisateur |
 | `backend/django_core/apps/marketing/services.py:201` | update_or_create | AbonnementListe.objects | destinataire, liste |
-| `backend/django_core/apps/marketing/services.py:853` | get_or_create | ParametresMarketing.objects | company |
+| `backend/django_core/apps/marketing/services.py:886` | get_or_create | ParametresMarketing.objects | company |
+| `backend/django_core/apps/marketing/services.py:972` | get_or_create | ScoreMaturite.objects | company, lead_id |
 | `backend/django_core/apps/monitoring/models.py:197` | get_or_create | cls.objects | company |
 | `backend/django_core/apps/monitoring/services.py:35` | get_or_create | MonitoringConfig.objects | installation |
 | `backend/django_core/apps/monitoring/services.py:182` | get_or_create | UnderperformanceFlag.objects | installation, is_open |

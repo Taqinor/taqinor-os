@@ -907,6 +907,15 @@ def _run_demo_reset(slug):
 class CompanyViewSet(viewsets.ModelViewSet):
     queryset = Company.objects.all().order_by('date_creation')
     serializer_class = CompanySerializer
+    # NTDMO33 — ``IsAdminUser`` (``request.user.is_staff``) est déjà le SEUL
+    # portail vers ce PATCH : ``mode_presentation_actif``/``tours_actifs``
+    # (Paramètres → Démo & Onboarding, NTDMO27) et reset-demo/demo-kit en
+    # dépendent tous. Un rôle Technicien/Terrain n'a JAMAIS ``is_staff=True``
+    # (seul un compte admin/démo explicitement promu, ex.
+    # ``seed_demo_company``, le porte) — pas de permission fine dédiée à
+    # ajouter ici (« jamais une nouvelle permission redondante », NTDMO33).
+    # Verrouillé par test de régression (voir
+    # test_ntdmo33_technicien_ne_peut_pas.py).
     permission_classes = [permissions.IsAdminUser]
 
     def perform_update(self, serializer):
@@ -920,7 +929,51 @@ class CompanyViewSet(viewsets.ModelViewSet):
             raise PermissionDenied(
                 "Le mode présentation n'est disponible que sur une société de "
                 "démonstration.")
+        # NTDMO39 — capture AVANT sauvegarde : le chatter (ci-dessous) doit
+        # journaliser un vrai basculement (ON→OFF ou OFF→ON), jamais une
+        # écriture sans changement réel.
+        ancien_mode_presentation = company.mode_presentation_actif
         serializer.save()
+        if ('mode_presentation_actif' in serializer.validated_data
+                and serializer.instance.mode_presentation_actif
+                != ancien_mode_presentation):
+            self._log_activity_mode_presentation(
+                serializer.instance, self.request.user)
+            # NTDMO40 — trace aussi dans le journal d'audit plateforme
+            # (``audit.AuditLog``, jamais un nouveau journal), IP/user-agent
+            # déjà capturés par le middleware d'audit en place ailleurs.
+            self._log_audit_mode_presentation(
+                serializer.instance, self.request.user)
+
+    def _log_activity_mode_presentation(self, company, user):
+        """NTDMO39 — entrée de chatter (``records.Activity``, jamais un
+        journal parallèle) sur la bascule du mode présentation (NTDMO10),
+        visible dans l'historique déjà affiché ailleurs dans l'ERP pour tout
+        objet suivi. Best-effort : ne bloque jamais la requête PATCH."""
+        try:
+            from apps.records.services import log_note
+            etat = 'activé' if company.mode_presentation_actif else 'désactivé'
+            actor = getattr(user, 'username', '') or 'système'
+            log_note(
+                company, user if getattr(user, 'pk', None) else None,
+                f'Mode présentation {etat} par {actor}.')
+        except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+            pass
+
+    def _log_audit_mode_presentation(self, company, user):
+        """NTDMO40 — ``audit.AuditLog`` (journal plateforme), en plus du
+        chatter ci-dessus (deux surfaces distinctes déjà utilisées ailleurs
+        dans l'ERP : le chatter est l'historique métier lisible sur la fiche,
+        l'audit log est le registre de sécurité/conformité)."""
+        try:
+            from apps.audit import recorder
+            etat = 'activé' if company.mode_presentation_actif else 'désactivé'
+            recorder.record(
+                'demo_mode_presentation_toggle', instance=company,
+                company=company, user=user,
+                detail=f'Mode présentation {etat}.')
+        except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+            pass
 
     @action(detail=True, methods=['post'], url_path='reset-demo')
     def reset_demo(self, request, pk=None):
@@ -952,11 +1005,48 @@ class CompanyViewSet(viewsets.ModelViewSet):
         #      supprimé. Pas de notification in-app : sa cible n'existe plus.
         from apps.audit import recorder
         from django.contrib.auth.models import AnonymousUser
+        # NTDMO39 — capturé AVANT la purge : ``request.user`` devient un
+        # fantôme juste après (voir la note ci-dessus), donc son ``username``
+        # ne peut plus être lu une fois le reset lancé.
+        actor_username = getattr(request.user, 'username', '') or 'système'
+        # NTDMO40 — journal d'audit plateforme, AVANT la purge (``audit.
+        # AuditLog.company`` est SET_NULL — contrairement au chatter NTDMO39
+        # ci-dessous, cette ligne survit intacte même si `company` disparaît).
+        try:
+            recorder.record(
+                'demo_company_reset', instance=company, company=company,
+                user=request.user,
+                detail=f'Société démo "{slug}" réinitialisée par '
+                       f'{actor_username}.')
+        except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+            pass
         recorder.end_request()
         _run_demo_reset(slug)
         request.user = AnonymousUser()
+        # NTDMO39 — entrée de chatter APRÈS la purge, contre la société
+        # FRAÎCHEMENT recréée (même slug, nouveau PK) : logguer AVANT aurait
+        # visé l'ancienne ligne, elle-même supprimée par la cascade du reset
+        # (``records.Activity.company`` est CASCADE, contrairement à
+        # ``audit.AuditLog.company`` qui est SET_NULL — voir NTDMO30/40).
+        self._log_activity_reset_demo(slug, actor_username)
         return Response({'detail': 'Données de démonstration réinitialisées.',
                          'slug': slug})
+
+    def _log_activity_reset_demo(self, slug, actor_username):
+        """NTDMO39 — entrée de chatter (``records.Activity``) sur le reset
+        démo (NTDMO7), visible dans l'historique de la société. Best-effort :
+        ne fait jamais échouer la réponse déjà envoyée à l'appelant."""
+        try:
+            from apps.records.services import log_note
+            fraiche = Company.objects.filter(slug=slug).first()
+            if fraiche is None:
+                return
+            log_note(
+                fraiche, None,
+                f'Données de démonstration réinitialisées par '
+                f'{actor_username}.')
+        except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+            pass
 
     # ── NTDMO22/23/24 — kit de démonstration (scénario, pas un devis client) ─
     def _demo_kit_contexte(self, company):

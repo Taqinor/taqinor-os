@@ -58,19 +58,23 @@ class _IntakePublicThrottle(SimpleRateThrottle):
             'scope': self.scope, 'ident': self.get_ident(request)}
 
 
-def _serialiser_formulaire(formulaire):
+def _serialiser_formulaire(formulaire, identifiant=None):
     """Représentation PUBLIQUE d'un formulaire (aucune donnée sensible : ni
     société, ni compteurs, ni prix — juste de quoi rendre la landing).
 
     NTMKT16 — ``page`` porte le contenu éditorial de la DERNIÈRE version
     PUBLIÉE (jamais un brouillon) ; ``None`` tant qu'aucune version n'est
     publiée, ce qui laisse le rendu historique inchangé.
+
+    NTMKT17 — ``champs`` est filtré (progressive profiling) quand
+    ``identifiant`` (email/téléphone connu du navigateur revenant) correspond
+    à un lead existant : seuls les champs pas encore renseignés sont rendus.
     """
     version = services.derniere_version_publiee(formulaire)
     return {
         'slug': formulaire.slug,
         'nom': formulaire.nom,
-        'champs': formulaire.champs or [],
+        'champs': services.champs_publics_a_afficher(formulaire, identifiant),
         'page': None if version is None else {
             'version': version.version,
             'titre': version.titre,
@@ -85,11 +89,17 @@ def _serialiser_formulaire(formulaire):
 @throttle_classes([_IntakePublicThrottle])
 def formulaire_intake_public(request, slug):
     """WIR64/FG206 — définition publique d'un formulaire d'intake ACTIF, par
-    slug (pour rendre la landing). 404 si inconnu ou inactif."""
+    slug (pour rendre la landing). 404 si inconnu ou inactif.
+
+    NTMKT17 — ``?identifiant=`` (optionnel, email ou téléphone déjà connu du
+    navigateur revenant) active le progressive profiling : filtre les champs
+    déjà renseignés sur le lead correspondant, sans rien changer pour un
+    visiteur inconnu."""
     formulaire = services.formulaire_intake_actif_par_slug(slug)
     if formulaire is None:
         return Response({'detail': 'Formulaire introuvable.'}, status=404)
-    return Response(_serialiser_formulaire(formulaire))
+    identifiant = request.query_params.get('identifiant')
+    return Response(_serialiser_formulaire(formulaire, identifiant))
 
 
 @api_view(['POST'])

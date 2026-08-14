@@ -11,6 +11,9 @@ const mocks = vi.hoisted(() => ({
   blocsList: vi.fn(),
   heatmap: vi.fn(),
   navigate: vi.fn(),
+  // NTMKT39 — export XLSX des campagnes filtrées.
+  exportXlsx: vi.fn(),
+  downloadBlob: vi.fn(),
 }))
 
 vi.mock('react-router-dom', async () => {
@@ -28,6 +31,8 @@ vi.mock('../../api/marketingApi', () => ({
     listes: { list: mocks.listesList },
     blocsContenu: { list: mocks.blocsList },
     heatmapEngagement: mocks.heatmap,
+    exportCampagnesXlsx: mocks.exportXlsx,
+    downloadBlob: mocks.downloadBlob,
   },
 }))
 
@@ -88,5 +93,18 @@ describe('CampagnesList', () => {
     fireEvent.click(screen.getByTestId('campagne-save'))
     await waitFor(() => expect(mocks.campagnesCreate).toHaveBeenCalled())
     await waitFor(() => expect(mocks.campagnesList).toHaveBeenCalledTimes(2))
+  })
+
+  it('« Exporter » télécharge le XLSX filtré (NTMKT39)', async () => {
+    mocks.exportXlsx.mockResolvedValue({ data: new Blob(['x']) })
+    renderScreen()
+    await screen.findByText('Relance été')
+    fireEvent.change(screen.getByTestId('campagnes-filtre-statut'),
+      { target: { value: 'envoyee' } })
+    fireEvent.click(screen.getByTestId('campagnes-exporter'))
+    await waitFor(() => expect(mocks.exportXlsx).toHaveBeenCalledWith(
+      { statut: 'envoyee', canal: '' }))
+    await waitFor(() => expect(mocks.downloadBlob).toHaveBeenCalledWith(
+      expect.anything(), 'campagnes.xlsx'))
   })
 })

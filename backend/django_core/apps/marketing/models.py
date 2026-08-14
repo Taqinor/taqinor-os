@@ -2283,6 +2283,41 @@ class ParametresMarketing(TenantModel):
         max_length=10, blank=True, default='fr',
         verbose_name='Langue par défaut des templates (XMKT11)')
 
+    # ── NTMKT18 — Score de maturité marketing multi-signal (additif) ────────
+    # ``score_maturite_actif`` = False par DÉFAUT : aucune ligne
+    # ``ScoreMaturite`` n'est jamais créée/recalculée tant que la société ne
+    # l'active pas — comportement actuel strictement inchangé (no-op).
+    score_maturite_actif = models.BooleanField(
+        default=False,
+        verbose_name='Score de maturité marketing actif (NTMKT18)')
+    ponderation_maturite_ouverture = models.SmallIntegerField(
+        default=2, verbose_name='Points par ouverture de campagne')
+    ponderation_maturite_clic = models.SmallIntegerField(
+        default=5, verbose_name='Points par clic sur un lien tracké')
+    ponderation_maturite_visite_proposition = models.SmallIntegerField(
+        default=10, verbose_name='Points par visite de page proposition')
+    penalite_maturite_inactivite = models.SmallIntegerField(
+        default=10,
+        verbose_name="Pénalité par palier d'inactivité (30j, NTMKT34)")
+    # XMKT21 — le seuil MQL reste déclenché SUR LE SCORE DE QUALITÉ (QJ6) par
+    # défaut ; activer ce booléen le fait AUSSI se déclencher sur le score de
+    # maturité (OR), sans jamais changer QJ6 lui-même.
+    mql_sur_score_maturite = models.BooleanField(
+        default=False,
+        verbose_name='Seuil MQL déclenché aussi sur le score de maturité')
+
+    # ── NTMKT20 — Modèle d'attribution configurable (étend FG204/XMKT17) ────
+    class ModeleAttribution(models.TextChoices):
+        DERNIER_TOUCHE = 'dernier_touche', 'Dernier touché'
+        PREMIER_TOUCHE = 'premier_touche', 'Premier touché'
+        LINEAIRE = 'lineaire', 'Linéaire'
+        PONDERE_TEMPOREL = 'pondere_temporel', 'Pondéré temporel'
+
+    modele_attribution = models.CharField(
+        max_length=20, choices=ModeleAttribution.choices,
+        default=ModeleAttribution.DERNIER_TOUCHE,
+        verbose_name="Modèle d'attribution multi-touch")
+
     class Meta:
         verbose_name = 'Paramètres marketing'
         verbose_name_plural = 'Paramètres marketing'
@@ -2293,3 +2328,57 @@ class ParametresMarketing(TenantModel):
 
     def __str__(self):
         return f'Paramètres marketing — {self.company_id}'
+
+
+# ── NTMKT18 — Score de maturité marketing multi-signal (additif à QJ6) ─────
+# Distinct du score de QUALITÉ ``crm.Lead.score`` (QJ6, jamais modifié ici) :
+# un score de MATURITÉ recalculé (jamais un delta incrémental non rejouable)
+# à partir des signaux marketing bruts (ouvertures/clics/visites de la page
+# proposition) + une pénalité d'inactivité 30j appliquée par le beat NTMKT34.
+# ``lead_id`` reste OPAQUE (pas de FK cross-app vers ``crm.Lead``), comme
+# ``EnvoiCampagne.contact_ref``/``OuverturePartage`` ailleurs dans ce module.
+
+class ScoreMaturite(TenantModel):
+    lead_id = models.PositiveIntegerField(
+        verbose_name='Lead (id opaque)')
+    valeur = models.PositiveSmallIntegerField(
+        default=0, verbose_name='Score de maturité (0-100)')
+
+    class Meta:
+        verbose_name = 'Score de maturité'
+        verbose_name_plural = 'Scores de maturité'
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'lead_id'],
+                name='uniq_score_maturite_par_lead'),
+        ]
+        indexes = [
+            models.Index(fields=['company', 'lead_id'],
+                         name='mkt_scoremat_co_lead_idx'),
+        ]
+
+    def __str__(self):
+        return f'Lead {self.lead_id} — maturité {self.valeur}'
+
+
+class VariationScoreMaturite(TenantModel):
+    """Historique horodaté des variations du score de maturité d'un lead —
+    une ligne PAR CHANGEMENT effectif (jamais une ligne par recalcul no-op)."""
+    lead_id = models.PositiveIntegerField(verbose_name='Lead (id opaque)')
+    delta = models.SmallIntegerField(verbose_name='Variation')
+    valeur_apres = models.PositiveSmallIntegerField(
+        verbose_name='Valeur après variation')
+    motif = models.CharField(
+        max_length=200, blank=True, default='', verbose_name='Motif')
+
+    class Meta:
+        verbose_name = 'Variation de score de maturité'
+        verbose_name_plural = 'Variations de score de maturité'
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['company', 'lead_id'],
+                         name='mkt_varscoremat_co_lead_idx'),
+        ]
+
+    def __str__(self):
+        return f'Lead {self.lead_id} — {self.delta:+d} -> {self.valeur_apres}'

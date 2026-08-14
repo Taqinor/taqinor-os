@@ -15,8 +15,13 @@ from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
+from authentication.permissions import IsAdminOrResponsableTier
+
 from . import services
-from .selectors import resume_pour_utilisateur, tours_pour_utilisateur
+from .selectors import (
+    items_masquables_pour_societe, resume_pour_utilisateur,
+    tours_pour_utilisateur,
+)
 
 
 # Classe PARTAGEE (fabriquee UNE SEULE fois) : appeler inline_serializer() a
@@ -114,4 +119,50 @@ class ProductTourViewSet(viewsets.ViewSet):
         services.reinitialiser_tour(self._company(request), request.user, pk)
         return Response(
             tours_pour_utilisateur(self._company(request), request.user),
+            status=status.HTTP_200_OK)
+
+
+_ItemMasquableSerializer = inline_serializer('OnboardingItemMasquable', {
+    'id': drf_serializers.IntegerField(),
+    'key': drf_serializers.CharField(),
+    'libelle': drf_serializers.CharField(),
+    'masque': drf_serializers.BooleanField(),
+}).__class__
+
+
+class OnboardingItemsMasquesViewSet(viewsets.ViewSet):
+    """NTDMO28 — masquage PAR SOCIÉTÉ d'items du catalogue « Premiers pas »
+    (jamais une suppression du catalogue global — réversible, admin
+    uniquement, Paramètres → Démo & Onboarding).
+
+    * ``GET  /api/django/onboarding/items-masques/`` — catalogue global +
+      statut masqué/visible pour la société courante ;
+    * ``POST /api/django/onboarding/items-masques/{id}/masquer/`` ;
+    * ``POST /api/django/onboarding/items-masques/{id}/demasquer/``.
+    """
+    permission_classes = [IsAdminOrResponsableTier]
+
+    def _company(self, request):
+        return getattr(request.user, 'company', None)
+
+    @extend_schema(responses=_ItemMasquableSerializer(many=True))
+    def list(self, request):
+        return Response(items_masquables_pour_societe(self._company(request)))
+
+    @extend_schema(request=None, responses=_ItemMasquableSerializer(many=True))
+    @action(detail=True, methods=['post'], url_path='masquer',
+            permission_classes=[IsAdminOrResponsableTier])
+    def masquer(self, request, pk=None):
+        services.masquer_item_pour_societe(self._company(request), pk)
+        return Response(
+            items_masquables_pour_societe(self._company(request)),
+            status=status.HTTP_200_OK)
+
+    @extend_schema(request=None, responses=_ItemMasquableSerializer(many=True))
+    @action(detail=True, methods=['post'], url_path='demasquer',
+            permission_classes=[IsAdminOrResponsableTier])
+    def demasquer(self, request, pk=None):
+        services.demasquer_item_pour_societe(self._company(request), pk)
+        return Response(
+            items_masquables_pour_societe(self._company(request)),
             status=status.HTTP_200_OK)
