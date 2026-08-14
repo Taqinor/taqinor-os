@@ -151,6 +151,15 @@ class OperationGamme(TenantModel):
             models.Index(fields=['poste_charge'], name='mrp_opgamme_poste_idx'),
         ]
 
+    def save(self, *args, **kwargs):
+        # Autofill depuis `gamme.company` quand absent (créations directes
+        # hors ViewSet, ex. fixtures de test) — le ViewSet (perform_create de
+        # CompanyScopedModelViewSet) pose déjà `company` AVANT ce save(), donc
+        # ce chemin ne s'applique jamais à l'écriture API normale.
+        if self.company_id is None and self.gamme_id is not None:
+            self.company_id = self.gamme.company_id
+        super().save(*args, **kwargs)
+
     def __str__(self):
         return f'{self.gamme_id} · {self.ordre}. {self.libelle}'
 

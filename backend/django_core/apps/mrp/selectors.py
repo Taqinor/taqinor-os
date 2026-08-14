@@ -15,6 +15,25 @@ def _dec(value):
         return Decimal('0')
 
 
+def _fmt_dec(value):
+    """Chaîne décimale normalisée, sans zéros de fin parasites (`'15.00'` ->
+    `'15'`, mais `'12.50'` -> `'12.5'`). L'arithmétique `Decimal` hérite de
+    l'échelle de ses opérandes (ex. `Produit.quantite_stock` — IntegerField,
+    scale 0 — combiné à `KitComposant.quantite`/`OrdreFabrication.quantite` —
+    DecimalField(2) — dans une même soustraction), donc un `str()` brut sur le
+    résultat produit un format incohérent selon le chemin de calcul emprunté
+    (`'15.00'` vs `'15'` pour la même grandeur logique). `format(value, 'f')`
+    évite la notation scientifique qu'introduirait `Decimal.normalize()` sur
+    un entier rond (ex. `Decimal('20').normalize()` -> `Decimal('2E+1')`)."""
+    value = value if isinstance(value, Decimal) else _dec(value)
+    if value == 0:
+        return '0'
+    s = format(value, 'f')
+    if '.' in s:
+        s = s.rstrip('0').rstrip('.')
+    return s or '0'
+
+
 # ── NTMFG5 — Calcul des besoins nets (MRP) multi-produits sur horizon ────
 #
 # Le réappro existant (FG54/62/65/326/364) réagit produit par produit sous un
@@ -107,11 +126,11 @@ def calculer_besoins_nets(company, *, produits=None, demande_independante=None,
             'produit_id': produit_id,
             'produit_nom': produit_obj.nom,
             'sku': produit_obj.sku or '',
-            'demande': str(demande),
-            'stock_disponible': str(stock_dispo),
-            'en_cours_fabrication': str(en_cours),
-            'stock_securite': str(securite),
-            'besoin_net': str(besoin_net),
+            'demande': _fmt_dec(demande),
+            'stock_disponible': _fmt_dec(stock_dispo),
+            'en_cours_fabrication': _fmt_dec(en_cours),
+            'stock_securite': _fmt_dec(securite),
+            'besoin_net': _fmt_dec(besoin_net),
             'proposition': proposition,
             'date_besoin': date_besoin.isoformat() if date_besoin else None,
         }
