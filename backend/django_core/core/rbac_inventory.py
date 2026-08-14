@@ -153,15 +153,6 @@ PUBLIC_ALLOWLIST_PREFIXES = (
     # IP (``EcommerceWebhookThrottle``).
     "api/django/ecommerce-connect/shopify/webhook/commande/",
     "api/django/ecommerce-connect/woocommerce/webhook/commande/",
-    # NTRET11 — carte de fidélité dématérialisée, scannée à la douchette sur
-    # l'écran caisse. GET AllowAny DÉLIBÉRÉ : le porteur de carte n'a pas de
-    # compte ERP. Le ``code_qr`` (jeton opaque non séquentiel, GLOBALEMENT
-    # unique — jamais l'id de ligne) est le SEUL secret et porte à lui seul la
-    # société : un jeton ne peut donc adresser aucun autre tenant. LECTURE
-    # SEULE, réponse volontairement pauvre (nom, solde de points, palier) —
-    # aucun email/téléphone/adresse/CIN ; jeton inconnu ⇒ 404 générique.
-    # Throttlé 30/min par IP (``CartePubliqueThrottle``, anti-énumération).
-    "api/django/fidelite/carte/",
     "api/schema",                             # OpenAPI (si activé plus tard)
     "api/docs",
     "api/redoc",

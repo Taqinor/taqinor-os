@@ -777,19 +777,6 @@ ao_gagne = django.dispatch.Signal()
 # toggle) — voir la docstring du module ci-dessus.
 module_toggled = django.dispatch.Signal()
 
-# NTRET9 — Émis quand une vente comptoir (``apps.pos``) ou une facture
-# (``apps.ventes``) est VALIDÉE (paiement encaissé), pour créditer les points
-# de fidélité sans que ``pos``/``ventes`` importent jamais ``apps.fidelite``.
-# PAS ENCORE ÉMIS par ``pos``/``ventes`` (hors périmètre de la lane SUPPLY qui
-# a posé ce seam — émettre depuis une app métier qu'elle ne possède pas n'est
-# pas autorisé) : l'ABONNÉ existe déjà et est testé en envoyant le signal
-# directement (``apps/fidelite/receivers.py``). Le branchement de l'émission
-# réelle côté ``pos``/``ventes`` est un lot séparé, propriétaire de ces apps.
-# Arguments : company, client (crm.Client, peut être None), montant_ttc
-# (Decimal), source_type ('vente_comptoir'|'facture'), source_id (id de
-# l'objet source, peut être None), user (peut être None).
-vente_validee = django.dispatch.Signal()
-
 
 # ===========================================================================
 # NTPLT9/10 — Outbox transactionnel FIABLE (façade au-dessus des signaux M6).

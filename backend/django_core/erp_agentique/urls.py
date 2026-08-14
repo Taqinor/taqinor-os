@@ -175,8 +175,6 @@ _APP_URLS = [
     path('douane/', include('apps.douane.urls')),
     # NTRET18/19 — Connecteurs Shopify/WooCommerce ([GATED: clé API]).
     path('ecommerce-connect/', include('apps.ecommerce_connect.urls')),
-    # NTRET9 — Programme de fidélité par points (comptes/mouvements/paliers).
-    path('fidelite/', include('apps.fidelite.urls')),
     # Groupe NTSCM — Planification supply chain (prévision/S&OP), au-dessus
     # de l'exécution `apps.stock` existante.
     path('scm/', include('apps.scm.urls')),

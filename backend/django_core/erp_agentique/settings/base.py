@@ -300,9 +300,6 @@ INSTALLED_APPS = [
     # NTRET18/19 — Connecteurs Shopify/WooCommerce ([GATED: clé API] — no-op
     # total sans clé en .env). Additive, company-scopée.
     'apps.ecommerce_connect',
-    # NTRET9 — Programme de fidélité par points (gain automatique à la vente
-    # via core.events, paliers, carte QR). Additive, company-scopée.
-    'apps.fidelite',
     # NTRET12 — Moteur de promotions panier (règles configurables : remise %
     # produit/catégorie, remise montant panier, N-pour-M, plage horaire
     # happy hour). NTRET13 y ajoute les coupons à code unique, NTRET15 les
@@ -771,22 +768,6 @@ SPECTACULAR_SETTINGS = {
             'apps.installations.models_comptage.SessionComptage.ClasseABC',
         'ClasseAbcPlanComptageTournantEnum':
             'apps.stock.models_wms.PlanComptageTournant.ClasseAbc',
-        # bronze / argent / or / platine — marketing.CompteFidelite.palier
-        # (préexistant). Choix INLINE (pas de classe TextChoices imbriquée),
-        # donc pointé par sa liste littérale plutôt que par un chemin
-        # `Modèle.Classe` (drf-spectacular accepte les deux formes). Aucun
-        # second jeu de choix ne partage ce nom de champ à l'identique — la
-        # disparition observée vient d'une collision de nom de COMPOSANT
-        # ("CompteFidelite" existe aussi comme modèle dans la nouvelle app
-        # fidelite, cf. avertissement drf-spectacular "components with
-        # identical names") : hors du périmètre d'ENUM_NAME_OVERRIDES, qui ne
-        # nomme que des jeux de choix, jamais des composants d'objet.
-        'CompteFidelitePalierEnum': [
-            ('bronze', 'Bronze'),
-            ('argent', 'Argent'),
-            ('or', 'Or'),
-            ('platine', 'Platine'),
-        ],
     },
 }
 

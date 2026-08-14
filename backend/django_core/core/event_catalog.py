@@ -228,22 +228,6 @@ CATALOG = {
         "Une salle de vente est consultée de façon répétée (signal d'intérêt "
         "fort sur un lead en devis envoyé).",
         ['lead', 'salle', 'company']),
-    # NTRET9 — seam de fidélité. ATTENTION, état RÉEL du câblage : ce signal est
-    # DÉCLARÉ (``core/events.py``) et il a DÉJÀ un ABONNÉ
-    # (``apps/fidelite/receivers.py``, qui crédite les points), mais AUCUNE app
-    # ne l'ÉMET encore — ``pos``/``ventes`` sont propriétaires de l'émission et
-    # la lane SUPPLY qui a posé ce seam n'avait pas le droit d'écrire chez
-    # elles. L'abonné est donc testé en envoyant le signal directement. Le
-    # payload ci-dessous EST le contrat que l'émetteur devra respecter le jour
-    # où pos/ventes le brancheront : le cataloguer maintenant fige ce contrat
-    # au lieu de le laisser s'inventer plus tard.
-    'vente_validee': _e(
-        "Une vente comptoir (apps.pos) ou une facture (apps.ventes) est "
-        "VALIDÉE (paiement encaissé) — permet de créditer les points de "
-        "fidélité sans que pos/ventes importent apps.fidelite. NON ÉMIS à ce "
-        "jour : seul l'abonné fidélité existe.",
-        ['company', 'client', 'montant_ttc', 'source_type', 'source_id',
-         'user']),
 }
 
 

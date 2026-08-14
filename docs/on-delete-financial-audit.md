@@ -668,9 +668,9 @@ Généré par `python scripts/check_on_delete.py --financial`. Ce tableau recens
 | `backend/django_core/apps/monitoring/models.py:274` | AbonnementMonitoring.company | authentication.Company | CASCADE |
 | `backend/django_core/apps/monitoring/models_warranty.py:27` | ProductionWarranty.company | authentication.Company | CASCADE |
 | `backend/django_core/apps/mrp/models.py:82` | Gamme.produit | stock.Produit | PROTECT |
-| `backend/django_core/apps/mrp/models.py:174` | OrdreFabrication.produit | stock.Produit | PROTECT |
-| `backend/django_core/apps/mrp/models.py:325` | ReservationOF.produit | stock.Produit | PROTECT |
-| `backend/django_core/apps/mrp/models.py:355` | CoutStandard.produit | stock.Produit | PROTECT |
+| `backend/django_core/apps/mrp/models.py:183` | OrdreFabrication.produit | stock.Produit | PROTECT |
+| `backend/django_core/apps/mrp/models.py:334` | ReservationOF.produit | stock.Produit | PROTECT |
+| `backend/django_core/apps/mrp/models.py:364` | CoutStandard.produit | stock.Produit | PROTECT |
 | `backend/django_core/apps/notifications/models.py:289` | Notification.company | authentication.Company | CASCADE |
 | `backend/django_core/apps/notifications/models.py:335` | NotificationPreference.company | authentication.Company | CASCADE |
 | `backend/django_core/apps/notifications/models.py:377` | PushSubscription.company | authentication.Company | CASCADE |

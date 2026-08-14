@@ -24,9 +24,3 @@ backend/django_core/apps/extensions/models.py::ExtensionPackage.code
 # same rationale as extensions.ExtensionPackage.code above.
 backend/django_core/apps/onboarding/models.py::OnboardingChecklistItem.key
 backend/django_core/apps/adminops/models.py::PlanLicence.code
-# NTRET11 — jeton opaque de carte de fidelite (secrets.token_urlsafe(24)),
-# resolu par l'endpoint PUBLIC /fidelite/carte/<token>/ SANS contexte de
-# societe : l'unicite DOIT etre globale, sinon un meme token pourrait
-# designer deux comptes de societes differentes. Unicite globale VOULUE,
-# pas un oubli de scoping.
-backend/django_core/apps/fidelite/models.py::CompteFidelite.code_qr
