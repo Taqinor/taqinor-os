@@ -288,6 +288,9 @@ INSTALLED_APPS = [
     # un sas, et c'est un humain qui tranche. Couplage vers `ao` par entier
     # opaque (`appel_offre_id`), jamais par FK.
     'apps.veille_ao',
+    # NTRET9 — Programme de fidélité par points (gain automatique à la vente
+    # via core.events, paliers, carte QR). Additive, company-scopée.
+    'apps.fidelite',
 ]
 
 MIDDLEWARE = [

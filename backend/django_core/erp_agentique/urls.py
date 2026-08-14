@@ -164,6 +164,8 @@ _APP_URLS = [
     # à dessein : le gatage 404 des modules désactivés dérive du 2ᵉ segment, et
     # un segment en tiret imposerait une entrée `core/permissions.PREFIX_TO_MODULE`.
     path('veille_ao/', include('apps.veille_ao.urls')),
+    # NTRET9 — Programme de fidélité par points (comptes/mouvements/paliers).
+    path('fidelite/', include('apps.fidelite.urls')),
 ]
 
 urlpatterns = [
