@@ -5,12 +5,48 @@
 // cours est préservé).
 export const SESSION_EXPIRED_EVENT = 'taqinor:session-expired'
 
+// ── « Y avait-il vraiment une session ? » ────────────────────────────────────
+// Une session ne peut EXPIRER que si elle a EXISTÉ. Le dépôt n'a qu'une seule
+// source de vérité là-dessus : `auth.isAuthenticated` dans le store Redux
+// (l'auth repose sur des cookies httpOnly — aucun jeton n'est lisible en JS).
+// La couche API ne peut pas importer le store (cycle `store` → `authSlice` →
+// `api/axios`), donc le store se BRANCHE ici au démarrage (`store/index.js`) et
+// ce module se contente de RELAYER sa valeur vivante : jamais une copie tenue à
+// jour à la main, qui finirait par diverger. Tant que rien n'est branché
+// (module importé hors application), la réponse est « pas de session ».
+let lireSessionActive = () => false
+
+/** Branche la source de vérité d'authentification (appelé par `store/index.js`).
+ *  `lecteur` est une FONCTION lue à l'instant de la décision — jamais un
+ *  booléen figé au démarrage. */
+export function brancherSourceDeSession(lecteur) {
+  lireSessionActive = typeof lecteur === 'function' ? lecteur : () => false
+}
+
+/** Vrai si une session est ouverte selon la source de vérité branchée. */
+export function sessionEstActive() {
+  try {
+    return Boolean(lireSessionActive())
+  } catch {
+    // Store pas encore prêt / state inattendu : on considère « pas de session »
+    // (le repli sûr est de NE PAS déranger l'utilisateur avec une modale).
+    return false
+  }
+}
+
 /** Signale une session expirée (appelé par l'intercepteur axios). Idempotent
  *  côté écouteur : le provider ne montre qu'un seul modal. */
 export function emitSessionExpired() {
   if (typeof window === 'undefined') return
   // Ne jamais demander une ré-auth sur l'écran de login lui-même.
   if (window.location?.pathname === '/login') return
+  // Ni sur une page PUBLIQUE où personne n'était connecté : les providers
+  // globaux (I18nProvider, `initVitals()`…) tirent des endpoints authentifiés
+  // dès le montage, donc une vitrine comme `/ui` récoltait un 401 → la modale
+  // « Session expirée » s'ouvrait par-dessus toute la page et son overlay
+  // bloquait TOUS les clics. Un 401 sans session n'est pas une expiration :
+  // c'est simplement « pas connecté » — le routeur, lui, mène au login.
+  if (!sessionEstActive()) return
   window.dispatchEvent(new CustomEvent(SESSION_EXPIRED_EVENT))
 }
 

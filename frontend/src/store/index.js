@@ -1,4 +1,7 @@
 import { configureStore, combineReducers } from '@reduxjs/toolkit'
+// Pont React-free (module feuille, aucun import) : la couche API l'interroge
+// pour savoir si une session existait avant de crier « session expirée ».
+import { brancherSourceDeSession } from '../providers/session-bridge'
 import authReducer from '../features/auth/store/authSlice'
 import stockReducer from '../features/stock/store/stockSlice'
 import crmReducer from '../features/crm/store/crmSlice'
@@ -49,5 +52,12 @@ export const store = configureStore({
   // matrice de permissions, leads/devis/factures) : coupée hors dev.
   devTools: import.meta.env.DEV,
 })
+
+// Branche la SOURCE DE VÉRITÉ d'authentification sur le pont React-free. Lecture
+// à la demande (`store.getState()` à l'instant de la décision), donc aucune
+// copie du drapeau ne peut diverger de Redux. Sans ce branchement, la couche
+// API considère qu'aucune session n'existe — repli sûr (pas de modale
+// intempestive), cf. `providers/session-bridge.js`.
+brancherSourceDeSession(() => store.getState().auth.isAuthenticated)
 
 export default store

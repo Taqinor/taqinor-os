@@ -84,6 +84,10 @@ api.interceptors.response.use(
       // l'état des formulaires ouverts est préservé). Le SessionProvider écoute
       // cet événement et affiche un modal de reconnexion. La redirection vers
       // /login reste un repli ultime si personne n'écoute (ex. avant montage).
+      // NOTE : `emitSessionExpired` n'émet QUE si une session existait
+      // réellement (`auth.isAuthenticated`, cf. session-bridge.js) — un 401 sur
+      // une page publique n'est pas une expiration, et la modale ne doit pas
+      // s'ouvrir par-dessus une vitrine (son overlay bloque tous les clics).
       emitSessionExpired()
       return Promise.reject(error)
     }
