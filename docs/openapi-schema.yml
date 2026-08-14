@@ -9,7 +9,7 @@
 openapi: '3.0.3'
 title: 'TAQINOR OS — API'
 version: '1.0.0'
-counts: {paths: 8580, operations: 15571, components: 4415}
+counts: {paths: 8598, operations: 15597, components: 4424}
 securitySchemes:
 - cookieJWT
 - publicApiKey
@@ -487,7 +487,12 @@ operations:
 - post /api/django/ai/assistant-config/ -> django_ai_assistant_config_create
 - post /api/django/ai/cr-intervention/ -> django_ai_cr_intervention_create
 - post /api/django/ai/description-produit/ -> django_ai_description_produit_create
+- get /api/django/ai/documents-ai-jobs/ -> django_ai_documents_ai_jobs_list
+- get /api/django/ai/documents-ai-jobs/taux-correction/ -> django_ai_documents_ai_jobs_taux_correction_retrieve
+- get /api/django/ai/documents-ai-jobs/{id}/ -> django_ai_documents_ai_jobs_retrieve
+- post /api/django/ai/documents-ai-jobs/{id}/corriger/ -> django_ai_documents_ai_jobs_corriger_create
 - post /api/django/ai/rapport-periode/ -> django_ai_rapport_periode_create
+- post /api/django/ai/recherche-globale/ -> django_ai_recherche_globale_create
 - post /api/django/ai/rediger/ -> django_ai_rediger_create
 - get /api/django/ao/appels-offres/ -> django_ao_appels_offres_list
 - post /api/django/ao/appels-offres/ -> django_ao_appels_offres_create
@@ -2149,6 +2154,14 @@ operations:
 - post /api/django/contrats/sla/{id}/penalite/ -> django_contrats_sla_penalite_create
 - get /api/django/contrats/versions/ -> django_contrats_versions_list
 - get /api/django/contrats/versions/{id}/ -> django_contrats_versions_retrieve
+- get /api/django/conversation_ai/appels/ -> django_conversation_ai_appels_list
+- post /api/django/conversation_ai/appels/ -> django_conversation_ai_appels_create
+- delete /api/django/conversation_ai/appels/{id}/ -> django_conversation_ai_appels_destroy
+- get /api/django/conversation_ai/appels/{id}/ -> django_conversation_ai_appels_retrieve
+- patch /api/django/conversation_ai/appels/{id}/ -> django_conversation_ai_appels_partial_update
+- put /api/django/conversation_ai/appels/{id}/ -> django_conversation_ai_appels_update
+- post /api/django/conversation_ai/appels/{id}/analyser/ -> django_conversation_ai_appels_analyser_create
+- post /api/django/conversation_ai/appels/{id}/creer-relances/ -> django_conversation_ai_appels_creer_relances_create
 - get /api/django/core/api-usage/analytics/ -> django_core_api_usage_analytics_retrieve
 - get /api/django/core/api-usage/plan/ -> django_core_api_usage_plan_retrieve
 - patch /api/django/core/api-usage/plan/ -> django_core_api_usage_plan_partial_update
@@ -8304,7 +8317,12 @@ operations:
 - post /api/v1/ai/assistant-config/ -> v1_ai_assistant_config_create
 - post /api/v1/ai/cr-intervention/ -> v1_ai_cr_intervention_create
 - post /api/v1/ai/description-produit/ -> v1_ai_description_produit_create
+- get /api/v1/ai/documents-ai-jobs/ -> v1_ai_documents_ai_jobs_list
+- get /api/v1/ai/documents-ai-jobs/taux-correction/ -> v1_ai_documents_ai_jobs_taux_correction_retrieve
+- get /api/v1/ai/documents-ai-jobs/{id}/ -> v1_ai_documents_ai_jobs_retrieve
+- post /api/v1/ai/documents-ai-jobs/{id}/corriger/ -> v1_ai_documents_ai_jobs_corriger_create
 - post /api/v1/ai/rapport-periode/ -> v1_ai_rapport_periode_create
+- post /api/v1/ai/recherche-globale/ -> v1_ai_recherche_globale_create
 - post /api/v1/ai/rediger/ -> v1_ai_rediger_create
 - get /api/v1/ao/appels-offres/ -> v1_ao_appels_offres_list
 - post /api/v1/ao/appels-offres/ -> v1_ao_appels_offres_create
@@ -9966,6 +9984,14 @@ operations:
 - post /api/v1/contrats/sla/{id}/penalite/ -> v1_contrats_sla_penalite_create
 - get /api/v1/contrats/versions/ -> v1_contrats_versions_list
 - get /api/v1/contrats/versions/{id}/ -> v1_contrats_versions_retrieve
+- get /api/v1/conversation_ai/appels/ -> v1_conversation_ai_appels_list
+- post /api/v1/conversation_ai/appels/ -> v1_conversation_ai_appels_create
+- delete /api/v1/conversation_ai/appels/{id}/ -> v1_conversation_ai_appels_destroy
+- get /api/v1/conversation_ai/appels/{id}/ -> v1_conversation_ai_appels_retrieve
+- patch /api/v1/conversation_ai/appels/{id}/ -> v1_conversation_ai_appels_partial_update
+- put /api/v1/conversation_ai/appels/{id}/ -> v1_conversation_ai_appels_update
+- post /api/v1/conversation_ai/appels/{id}/analyser/ -> v1_conversation_ai_appels_analyser_create
+- post /api/v1/conversation_ai/appels/{id}/creer-relances/ -> v1_conversation_ai_appels_creer_relances_create
 - get /api/v1/core/api-usage/analytics/ -> v1_core_api_usage_analytics_retrieve
 - get /api/v1/core/api-usage/plan/ -> v1_core_api_usage_plan_retrieve
 - patch /api/v1/core/api-usage/plan/ -> v1_core_api_usage_plan_partial_update
@@ -15721,6 +15747,9 @@ components:
 - Appel
 - AppelCommande
 - AppelCommandeRequest
+- AppelCommercial
+- AppelCommercialRequest
+- AppelCommercialStatutEnum
 - AppelOffre
 - AppelOffreRequest
 - AppelOffreStatutEnum
@@ -16376,6 +16405,8 @@ components:
 - DispositionEnum
 - DistributeurEnum
 - Document
+- DocumentAiJob
+- DocumentAiJobStatutEnum
 - DocumentClientPortail
 - DocumentClientPortailRequest
 - DocumentClientPortailTypeDocumentEnum
@@ -16621,6 +16652,7 @@ components:
 - Exploitation
 - ExploitationRequest
 - ExtensionPackage
+- ExtractionCorrection
 - FacilityTypeEnum
 - FactEntry
 - FactEntryRequest
@@ -17337,6 +17369,7 @@ components:
 - PaginatedAnomalyEventList
 - PaginatedApiKeyList
 - PaginatedAppelCommandeList
+- PaginatedAppelCommercialList
 - PaginatedAppelList
 - PaginatedAppelOffreList
 - PaginatedAppelTelephoniqueList
@@ -17569,6 +17602,7 @@ components:
 - PaginatedDevisList
 - PaginatedDevisPresetList
 - PaginatedDiffusionPlanList
+- PaginatedDocumentAiJobList
 - PaginatedDocumentClientPortailList
 - PaginatedDocumentConformiteFournisseurList
 - PaginatedDocumentEmployeList
@@ -18275,6 +18309,7 @@ components:
 - PatchedAnnotationRequest
 - PatchedApiUsagePlanRequest
 - PatchedAppelCommandeRequest
+- PatchedAppelCommercialRequest
 - PatchedAppelOffreRequest
 - PatchedAppelTelephoniqueRequest
 - PatchedAppointmentRequest
