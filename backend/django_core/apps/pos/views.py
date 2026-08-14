@@ -1,7 +1,9 @@
 from decimal import Decimal, InvalidOperation
 
 from django.http import HttpResponse
-from rest_framework import status, viewsets
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import extend_schema, inline_serializer
+from rest_framework import serializers, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
 from rest_framework.permissions import AllowAny
@@ -374,6 +376,34 @@ class VenteComptoirViewSet(viewsets.ModelViewSet):
         client — la marge n'apparaît que dans l'agrégat JSON, jamais ici)."""
         return selectors.export_dashboard_xlsx(company=request.user.company)
 
+    # PACT7 — sans cette déclaration, le schéma OpenAPI publiait cet agrégat
+    # soit VIDE, soit avec le ``VenteComptoirSerializer`` du ViewSet — un
+    # MENSONGE (la vue renvoie {nb_ventes, total_ttc, ..., top_produits,
+    # top_categories, top_vendeurs, comparatif_boutiques}, jamais un objet
+    # ``VenteComptoir``). Cf. apps/flotte/views.py::VehiculeViewSet.tableau_bord.
+    # NOTE : ``include_marge`` peut ajouter une clé ``marge`` par ligne de
+    # ``top_produits`` (jamais exposée hors permission) — non déclarée ici
+    # (dette assumée, comme pour tout champ conditionnel du dépôt).
+    @extend_schema(responses=inline_serializer('PosDashboardRetail', {
+        'nb_ventes': serializers.IntegerField(),
+        'total_ttc': serializers.CharField(),
+        'panier_moyen': serializers.CharField(),
+        'taux_transformation_pct': serializers.CharField(),
+        'ventes_par_m2': serializers.CharField(allow_null=True),
+        'top_produits': inline_serializer('PosDashboardRetailTopProduit', {
+            'nom': serializers.CharField(),
+            'total': serializers.CharField(),
+        }, many=True),
+        'top_categories': inline_serializer('PosDashboardRetailTopCategorie', {
+            'nom': serializers.CharField(),
+            'total': serializers.CharField(),
+        }, many=True),
+        'top_vendeurs': inline_serializer('PosDashboardRetailTopVendeur', {
+            'nom': serializers.CharField(),
+            'total': serializers.CharField(),
+        }, many=True),
+        'comparatif_boutiques': serializers.DictField(child=serializers.CharField()),
+    }))
     @action(detail=False, methods=['get'], url_path='dashboard-retail',
             permission_classes=[IsResponsableOrAdmin])
     def dashboard_retail(self, request):
@@ -388,6 +418,10 @@ class VenteComptoirViewSet(viewsets.ModelViewSet):
         )
         return Response(data)
 
+    # PACT7 — export xlsx (fichier binaire, pas du JSON) : forme déclarée
+    # comme les autres exports du dépôt, ex.
+    # apps/adminops/views_licences.py::licence_pdf_view.
+    @extend_schema(responses={200: OpenApiTypes.BINARY})
     @action(detail=False, methods=['get'], url_path='dashboard-retail-export',
             permission_classes=[IsResponsableOrAdmin])
     def dashboard_retail_export(self, request):

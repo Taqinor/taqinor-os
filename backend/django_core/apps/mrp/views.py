@@ -1,7 +1,8 @@
 """Vues de l'app `mrp` (Groupe NTMFG — Production / MRP II)."""
 from datetime import datetime, timedelta
 
-from rest_framework import mixins, viewsets
+from drf_spectacular.utils import extend_schema, inline_serializer
+from rest_framework import mixins, serializers, viewsets
 from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
@@ -351,6 +352,23 @@ class CoutStandardViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin,
             self.get_serializer(standard).data, status=201)
 
 
+# PACT7 — sans cette déclaration, le schéma OpenAPI publiait cet agrégat VIDE
+# (aucun ``serializer_class`` sur une vue-fonction) : la vue renvoie une LISTE
+# de lignes d'écart par produit, jamais un objet unique. Cf.
+# apps/flotte/views.py::VehiculeViewSet.tableau_bord.
+@extend_schema(responses=inline_serializer('MrpAnalyseCoutsLigne', {
+    'produit_id': serializers.IntegerField(),
+    'produit_nom': serializers.CharField(),
+    'nb_of': serializers.IntegerField(),
+    'cout_matiere_standard': serializers.CharField(),
+    'cout_matiere_reel': serializers.CharField(),
+    'ecart_matiere': serializers.CharField(),
+    'cout_main_oeuvre_standard': serializers.CharField(),
+    'cout_main_oeuvre_reel': serializers.CharField(),
+    'ecart_main_oeuvre': serializers.CharField(),
+    'ecart_rendement': serializers.CharField(),
+    'ecart_total': serializers.CharField(),
+}, many=True))
 @api_view(['GET'])
 @permission_classes([IsResponsableOrAdmin])
 def analyse_couts_view(request):

@@ -5,6 +5,8 @@ même palier que les modules de conformité/planification voisins, ex.
 ``apps.fiscal``) : ``get_permissions`` renvoie ``[IsResponsableOrAdmin()]``
 sur chaque viewset, société toujours scopée par ``CompanyScopedModelViewSet``.
 """
+from drf_spectacular.utils import extend_schema, inline_serializer
+from rest_framework import serializers
 from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.response import Response
 
@@ -258,6 +260,23 @@ class CyclePlanificationSOPViewSet(CompanyScopedModelViewSet):
         return Response(selectors.impact_financier_cycle(cycle))
 
 
+# PACT7 — sans cette déclaration, le schéma OpenAPI publiait cet agrégat VIDE
+# (aucun ``serializer_class`` sur une vue-fonction) : la vue renvoie une LISTE
+# de lignes de réappro, jamais un objet unique. Cf.
+# apps/flotte/views.py::VehiculeViewSet.tableau_bord.
+@extend_schema(responses=inline_serializer('ScmTableauBordReapproLigne', {
+    'produit_id': serializers.IntegerField(),
+    'produit_nom': serializers.CharField(),
+    'classe_abc': serializers.CharField(),
+    'stock_actuel': serializers.IntegerField(),
+    'point_commande': serializers.CharField(),
+    'quantite_suggeree': serializers.IntegerField(),
+    'statut': serializers.CharField(),
+    'rupture_date': serializers.CharField(allow_null=True),
+    'fournisseur_id': serializers.IntegerField(allow_null=True),
+    'fournisseur_nom': serializers.CharField(allow_null=True),
+    'prix_achat_unitaire': serializers.CharField(allow_null=True),
+}, many=True))
 @api_view(['GET'])
 @permission_classes([IsResponsableOrAdmin])
 def tableau_bord_reappro_view(request):
