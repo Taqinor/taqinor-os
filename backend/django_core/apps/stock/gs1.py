@@ -101,3 +101,60 @@ def parse_gs1(raw_code):
             result['serie'] = value
 
     return result
+
+
+# ---------------------------------------------------------------------------
+# NTWMS6 -- SSCC (Serial Shipping Container Code, AI 00) : 18 chiffres GS1.
+#
+# Structure : 1 chiffre d'extension + prefixe entreprise + reference serie
+# (ensemble 16 chiffres) + 1 cle de controle mod-10 GS1. Calcul en stdlib
+# pure -- aucune dependance externe (regle du depot).
+# ---------------------------------------------------------------------------
+
+SSCC_LONGUEUR = 18
+
+
+def cle_controle_gs1(chiffres):
+    """Cle de controle GS1 (mod-10) des chiffres FOURNIS (sans la cle).
+
+    Ponderation 3/1 en partant de la DROITE, puis complement a la dizaine
+    superieure. Leve ValueError si l'entree n'est pas purement numerique.
+    """
+    chiffres = str(chiffres or '').strip()
+    if not chiffres.isdigit():
+        raise ValueError('La cle de controle GS1 exige des chiffres.')
+    total = 0
+    for rang, caractere in enumerate(reversed(chiffres)):
+        poids = 3 if rang % 2 == 0 else 1
+        total += int(caractere) * poids
+    return (10 - (total % 10)) % 10
+
+
+def construire_sscc(prefixe_entreprise, reference_serie, extension='0'):
+    """SSCC 18 chiffres a partir du prefixe entreprise + reference de serie.
+
+    Le corps (extension + prefixe + reference) est zero-pade a 17 chiffres,
+    puis la cle de controle est ajoutee. Leve ValueError si le corps depasse
+    17 chiffres ou n'est pas numerique.
+    """
+    extension = str(extension or '0').strip() or '0'
+    prefixe = str(prefixe_entreprise or '').strip()
+    reference = str(reference_serie or '').strip()
+    if not (extension + prefixe + reference).isdigit():
+        raise ValueError('Un SSCC ne contient que des chiffres.')
+    if len(extension) != 1:
+        raise ValueError("Le chiffre d'extension SSCC fait 1 chiffre.")
+    corps = extension + prefixe
+    reste = SSCC_LONGUEUR - 1 - len(corps)
+    if reste < len(reference) or reste < 0:
+        raise ValueError('Prefixe + reference depassent la longueur SSCC.')
+    corps = corps + reference.rjust(reste, '0')
+    return corps + str(cle_controle_gs1(corps))
+
+
+def sscc_valide(code):
+    """Vrai si `code` est un SSCC bien forme (18 chiffres, cle correcte)."""
+    code = str(code or '').strip()
+    if len(code) != SSCC_LONGUEUR or not code.isdigit():
+        return False
+    return str(cle_controle_gs1(code[:-1])) == code[-1]

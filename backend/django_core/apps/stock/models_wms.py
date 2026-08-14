@@ -128,3 +128,110 @@ class LignePicking(TenantModel):
     @property
     def reste_a_prelever(self):
         return max(self.quantite_demandee - self.quantite_prelevee, 0)
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# NTWMS6 — Unités logistiques : colis, palette, SSCC
+# ═══════════════════════════════════════════════════════════════════════════
+
+class UniteLogistique(TenantModel):
+    """Colis ou palette ADRESSABLE, porteur d'un SSCC GS1 (18 chiffres).
+
+    Étend le colisage FG322 (``installations.Colis``, contrôle avant départ)
+    en objet adressable et hiérarchique : une PALETTE (``parent``) regroupe
+    plusieurs COLIS, chaque colis regroupe des lignes issues du picking
+    (NTWMS4). Le SSCC est calculé en stdlib (clé de contrôle GS1 mod-10) —
+    aucune dépendance externe.
+
+    ``sceller()`` (service) FIGE le contenu : après scellage, aucune ligne ne
+    peut plus être ajoutée ni modifiée.
+    """
+
+    class TypeUnite(models.TextChoices):
+        COLIS = 'colis', 'Colis'
+        PALETTE = 'palette', 'Palette'
+
+    class Statut(models.TextChoices):
+        EN_PREPARATION = 'en_preparation', 'En préparation'
+        SCELLE = 'scelle', 'Scellé'
+        EXPEDIE = 'expedie', 'Expédié'
+
+    type_unite = models.CharField(
+        max_length=10, choices=TypeUnite.choices, default=TypeUnite.COLIS)
+    sscc = models.CharField(
+        max_length=18,
+        help_text='Serial Shipping Container Code GS1 (18 chiffres, clé de '
+                  'contrôle mod-10 incluse).')
+    # Hiérarchie : une palette contient des colis (self-FK, nullable).
+    parent = models.ForeignKey(
+        'self', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='enfants',
+        help_text='Palette contenante (vide = unité de premier niveau).')
+    vague = models.ForeignKey(
+        VaguePicking, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='unites_logistiques',
+        help_text='Vague de prélèvement d\'origine (NTWMS4), si applicable.')
+    poids_kg = models.DecimalField(
+        max_digits=10, decimal_places=3, null=True, blank=True)
+    dimensions = models.CharField(
+        max_length=60, blank=True, default='',
+        help_text='L × l × h en cm, texte libre (ex. « 120 × 80 × 145 »).')
+    statut = models.CharField(
+        max_length=20, choices=Statut.choices,
+        default=Statut.EN_PREPARATION)
+    date_scellage = models.DateTimeField(null=True, blank=True)
+    scelle_par = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='unites_logistiques_scellees')
+
+    class Meta:
+        verbose_name = 'Unité logistique'
+        verbose_name_plural = 'Unités logistiques'
+        ordering = ['-created_at']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'sscc'],
+                name='stock_unitelogistique_company_sscc_uniq'),
+        ]
+        indexes = [
+            models.Index(fields=['company', 'statut'],
+                         name='idx_unitelog_co_statut'),
+        ]
+
+    def __str__(self):
+        return f'{self.get_type_unite_display()} {self.sscc}'
+
+    @property
+    def est_figee(self):
+        """Une unité scellée ou expédiée ne peut plus changer de contenu."""
+        return self.statut in (self.Statut.SCELLE, self.Statut.EXPEDIE)
+
+
+class UniteLogistiqueLigne(TenantModel):
+    """Ligne de contenu d'une unité logistique (produit + quantité + lot)."""
+
+    unite = models.ForeignKey(
+        UniteLogistique, on_delete=models.CASCADE, related_name='lignes')
+    produit = models.ForeignKey(
+        'stock.Produit', on_delete=models.PROTECT,
+        related_name='lignes_unite_logistique')  # on_delete: PROTECT — contenu réel d'un colis expédié, conservé pour la traçabilité (aligné sur LignePicking/MouvementStock)
+    quantite = models.PositiveIntegerField(default=0)
+    lot = models.ForeignKey(
+        'stock.LotEntrepot', on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='lignes_unite_logistique')
+    ligne_picking = models.ForeignKey(
+        LignePicking, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='lignes_unite_logistique',
+        help_text='Ligne de vague d\'origine (NTWMS4), si applicable.')
+
+    class Meta:
+        verbose_name = 'Ligne d\'unité logistique'
+        verbose_name_plural = 'Lignes d\'unité logistique'
+        ordering = ['id']
+        indexes = [
+            models.Index(fields=['company', 'unite'],
+                         name='idx_unitelogl_co_unite'),
+        ]
+
+    def __str__(self):
+        return f'{self.produit_id} × {self.quantite}'

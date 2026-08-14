@@ -5,7 +5,9 @@
 """
 from rest_framework import serializers
 
-from .models_wms import LignePicking, VaguePicking
+from .models_wms import (
+    LignePicking, UniteLogistique, UniteLogistiqueLigne, VaguePicking,
+)
 
 
 class LignePickingSerializer(serializers.ModelSerializer):
@@ -55,3 +57,43 @@ class VaguePickingSerializer(serializers.ModelSerializer):
 
     def get_nb_lignes(self, obj):
         return obj.lignes.count()
+
+
+class UniteLogistiqueLigneSerializer(serializers.ModelSerializer):
+    """NTWMS6 — contenu d'un colis / d'une palette."""
+
+    produit_nom = serializers.CharField(source='produit.nom', read_only=True)
+    numero_lot = serializers.CharField(
+        source='lot.numero_lot', read_only=True, default='')
+
+    class Meta:
+        model = UniteLogistiqueLigne
+        fields = [
+            'id', 'unite', 'produit', 'produit_nom', 'quantite', 'lot',
+            'numero_lot', 'ligne_picking',
+        ]
+        read_only_fields = ['unite']
+
+
+class UniteLogistiqueSerializer(serializers.ModelSerializer):
+    """NTWMS6 — colis / palette adressable. Le SSCC est GÉNÉRÉ côté serveur
+    (norme GS1) : jamais accepté du client."""
+
+    lignes = UniteLogistiqueLigneSerializer(many=True, read_only=True)
+    nb_enfants = serializers.SerializerMethodField()
+    est_figee = serializers.BooleanField(read_only=True)
+
+    class Meta:
+        model = UniteLogistique
+        fields = [
+            'id', 'type_unite', 'sscc', 'parent', 'vague', 'poids_kg',
+            'dimensions', 'statut', 'date_scellage', 'scelle_par',
+            'est_figee', 'nb_enfants', 'lignes', 'created_at', 'updated_at',
+        ]
+        read_only_fields = [
+            'sscc', 'statut', 'date_scellage', 'scelle_par', 'created_at',
+            'updated_at',
+        ]
+
+    def get_nb_enfants(self, obj):
+        return obj.enfants.count()

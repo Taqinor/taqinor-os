@@ -317,3 +317,121 @@ def enregistrer_mouvement_scanne(*, company, user, produit_id, type_mouvement,
             quantite=quantite, quantite_avant=avant, quantite_apres=apres,
             reference=reference, note=note, created_by=user,
             bin_source=bin_source, bin_destination=bin_destination)
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# NTWMS6 — Unités logistiques (colis / palette) et SSCC GS1
+# ═══════════════════════════════════════════════════════════════════════════
+
+# Préfixe entreprise GS1 de repli quand la société n'a pas encore le sien :
+# un préfixe INTERNE (indicateur d'extension 0) qui produit un SSCC bien formé
+# et unique, sans jamais usurper le préfixe d'un tiers.
+PREFIXE_SSCC_INTERNE = '0000000'
+
+
+def _prochain_sscc(company):
+    """SSCC libre pour cette société (référence de série = compteur interne).
+
+    La référence de série vient du plus haut SSCC déjà émis + 1 — JAMAIS
+    ``count()+1`` (un colis supprimé rétrécirait le compteur et provoquerait
+    une collision, l'incident de production déjà payé).
+    """
+    from .gs1 import construire_sscc
+    from .models_wms import UniteLogistique
+
+    existants = (UniteLogistique.objects
+                 .filter(company=company)
+                 .values_list('sscc', flat=True))
+    plus_haut = 0
+    for code in existants:
+        code = (code or '').strip()
+        if len(code) == 18 and code.isdigit():
+            # Les 10 chiffres de référence de série vivent entre le préfixe et
+            # la clé de contrôle.
+            plus_haut = max(plus_haut, int(code[8:17]))
+    return construire_sscc(
+        PREFIXE_SSCC_INTERNE, str(plus_haut + 1), extension='0')
+
+
+def creer_unite_logistique(*, company, type_unite='colis', parent=None,
+                           vague=None, poids_kg=None, dimensions=''):
+    """Crée un colis ou une palette avec un SSCC GS1 fraîchement attribué.
+
+    Refuse un parent qui n'est pas une PALETTE, un parent d'une autre société,
+    et un parent déjà scellé.
+    """
+    from django.db import IntegrityError, transaction
+    from .models_wms import UniteLogistique
+
+    if type_unite not in dict(UniteLogistique.TypeUnite.choices):
+        raise ValueError('Type d\'unité logistique inconnu.')
+    if parent is not None:
+        if parent.company_id != getattr(company, 'id', None):
+            raise ValueError('Palette introuvable dans cette société.')
+        if parent.type_unite != UniteLogistique.TypeUnite.PALETTE:
+            raise ValueError('Seule une palette peut contenir une unité.')
+        if parent.est_figee:
+            raise ValueError('Cette palette est scellée : contenu figé.')
+
+    derniere_erreur = None
+    for _ in range(5):
+        try:
+            with transaction.atomic():
+                return UniteLogistique.objects.create(
+                    company=company, type_unite=type_unite,
+                    sscc=_prochain_sscc(company), parent=parent, vague=vague,
+                    poids_kg=poids_kg, dimensions=dimensions or '')
+        except IntegrityError as exc:
+            if 'sscc' not in str(exc).lower():
+                raise
+            derniere_erreur = exc
+    raise derniere_erreur
+
+
+def ajouter_ligne_unite_logistique(*, company, unite, produit, quantite,
+                                   lot=None, ligne_picking=None):
+    """Ajoute (ou cumule) une ligne de contenu dans une unité NON scellée."""
+    from .models_wms import UniteLogistiqueLigne
+
+    if unite.est_figee:
+        raise ValueError(
+            'Cette unité logistique est scellée : son contenu est figé.')
+    try:
+        quantite = int(quantite)
+    except (TypeError, ValueError):
+        raise ValueError('Quantité invalide.')
+    if quantite <= 0:
+        raise ValueError('La quantité doit être positive.')
+    if produit is None or produit.company_id != getattr(company, 'id', None):
+        raise ValueError('Produit introuvable dans cette société.')
+
+    ligne = UniteLogistiqueLigne.objects.filter(
+        unite=unite, produit=produit, lot=lot).first()
+    if ligne is None:
+        return UniteLogistiqueLigne.objects.create(
+            company=company, unite=unite, produit=produit, quantite=quantite,
+            lot=lot, ligne_picking=ligne_picking)
+    ligne.quantite += quantite
+    ligne.save(update_fields=['quantite'])
+    return ligne
+
+
+def sceller_unite_logistique(*, unite, user=None):
+    """FIGE le contenu d'une unité et rend son étiquette SSCC imprimable.
+
+    Idempotent (une unité déjà scellée n'est jamais re-scellée). Refuse une
+    unité vide — un colis sans contenu n'a rien à expédier.
+    """
+    from django.utils import timezone
+    from .models_wms import UniteLogistique
+
+    if unite.est_figee:
+        return unite
+    a_du_contenu = unite.lignes.exists() or unite.enfants.exists()
+    if not a_du_contenu:
+        raise ValueError('Une unité logistique vide ne peut pas être scellée.')
+    unite.statut = UniteLogistique.Statut.SCELLE
+    unite.date_scellage = timezone.now()
+    unite.scelle_par = user
+    unite.save(update_fields=['statut', 'date_scellage', 'scelle_par'])
+    return unite
