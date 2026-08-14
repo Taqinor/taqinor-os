@@ -4,7 +4,9 @@ Déclare ce que CPQ expose au hub KPI fédéré (ARC40, ``GET
 /reporting/reports/kpi-federes/`` — « générateur de dashboard » existant,
 aucun nouvel écran) :
 
-* NTCPQ48 — délai moyen + p90 d'approbation de remise (NTCPQ7).
+* NTCPQ48 — délai moyen + p90 d'approbation de remise (NTCPQ7) ;
+* NTCPQ49 — taux d'utilisation des offres groupées (NTCPQ3) et taux de
+  conversion configurateur → devis envoyé (NTCPQ9/NTCPQ10).
 
 Les autres surfaces (recherche globale, chatter/records, champs perso,
 import, agent, automatisations) restent HORS PÉRIMÈTRE de ce manifeste :
@@ -20,8 +22,9 @@ PLATFORM = {
     'import_specs': [],
     'agent_actions_module': '',
     'automation_state_fields': [],
-    # NTCPQ48 — provider dotted, résolu par reporting.reports.kpi_federes.
+    # NTCPQ48/49 — providers dotted, résolus par reporting.reports.kpi_federes.
     'kpi_providers': [
         'apps.cpq.selectors.kpi_delai_approbation',
+        'apps.cpq.selectors.kpi_taux_bundle_configurateur',
     ],
 }

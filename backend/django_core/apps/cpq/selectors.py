@@ -359,6 +359,64 @@ def kpi_delai_approbation(company):
     ]
 
 
+def taux_utilisation_offres_groupees(company):
+    """NTCPQ49(a) — % des devis ENVOYÉS (``date_envoi`` renseigné) contenant
+    au moins une ``OffreGroupee`` (NTCPQ3) appliquée. ``LigneDevis`` ne
+    porte pas de référence structurelle vers l'offre qui l'a créée — le
+    signal utilisé est l'entrée chatter posée par NTCPQ45
+    (``« Offre groupée » appliquée``, ``apps.cpq.services.
+    appliquer_offre_groupee``), unique marqueur fiable disponible.
+    ``0.0`` sans devis envoyé (jamais une division par zéro)."""
+    from apps.ventes.selectors import devis_envoyes_periode
+    devis_qs = devis_envoyes_periode(company)
+    total = devis_qs.count()
+    if not total:
+        return 0.0
+    avec_bundle = devis_qs.filter(
+        activites__body__icontains='Offre groupée').distinct().count()
+    return round(avec_bundle * 100.0 / total, 1)
+
+
+def taux_conversion_configurateur(company):
+    """NTCPQ49(b) — % des sessions configurateur (NTCPQ9, démarrage) ayant
+    abouti à un devis ENVOYÉ (funnel démarrage → devis brouillon → devis
+    envoyé). N'INCLUT JAMAIS un devis encore brouillon non envoyé au
+    numérateur (``devis__date_envoi__isnull=False`` strict). ``0.0`` sans
+    session (jamais une division par zéro)."""
+    from .models import SessionConfigurateur
+    total = SessionConfigurateur.objects.filter(company=company).count()
+    if not total:
+        return 0.0
+    envoyes = SessionConfigurateur.objects.filter(
+        company=company, devis__isnull=False,
+        devis__date_envoi__isnull=False).count()
+    return round(envoyes * 100.0 / total, 1)
+
+
+def kpi_taux_bundle_configurateur(company):
+    """NTCPQ49 — provider KPI fédéré (ARC40) : deux tuiles, taux
+    d'utilisation des offres groupées (a) et taux de conversion
+    configurateur → devis envoyé (b). Une tuile n'apparaît que si son
+    dénominateur est non nul (jamais un « 0 % » trompeur sans aucune
+    donnée)."""
+    tuiles = []
+    from apps.ventes.selectors import devis_envoyes_periode
+    from .models import SessionConfigurateur
+    if devis_envoyes_periode(company).exists():
+        tuiles.append({
+            'id': 'cpq_taux_offres_groupees',
+            'label': "Devis envoyés avec offre groupée",
+            'valeur': taux_utilisation_offres_groupees(company),
+            'unite': '%'})
+    if SessionConfigurateur.objects.filter(company=company).exists():
+        tuiles.append({
+            'id': 'cpq_taux_conversion_configurateur',
+            'label': 'Conversion configurateur → devis envoyé',
+            'valeur': taux_conversion_configurateur(company),
+            'unite': '%'})
+    return tuiles
+
+
 def clauses_applicables(*, company, context):
     """NTCPQ11 — Clauses/CGV actives de la société qui s'appliquent au contexte.
 
