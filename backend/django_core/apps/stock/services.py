@@ -264,10 +264,15 @@ def stock_breakdown_map(company):
 
 
 def transfer_stock(*, company, user, produit_id, source_id, destination_id,
-                   quantite, note=''):
+                   quantite, note='', demande_approuvee=False):
     """Transfère `quantite` d'un produit de l'emplacement source vers la
     destination. Crée un TransfertStock (le « transfer record »). Ne change
-    JAMAIS le total `Produit.quantite_stock`. Lève ValueError si invalide."""
+    JAMAIS le total `Produit.quantite_stock`. Lève ValueError si invalide.
+
+    NTWMS21 — au-dessus du seuil d'approbation de la société
+    (`AchatsParametres.seuil_approbation_transfert`, 0 = désactivé), le
+    transfert DIRECT est refusé : il faut passer par une `DemandeTransfert`
+    approuvée, qui rappelle ce service avec `demande_approuvee=True`."""
     from django.db import transaction
     from .models import (
         Produit, EmplacementStock, StockEmplacement, TransfertStock)
@@ -294,6 +299,13 @@ def transfer_stock(*, company, user, produit_id, source_id, destination_id,
             destination = emps[int(destination_id)]
         except (KeyError, TypeError, ValueError):
             raise ValueError('Emplacement introuvable dans cette société.')
+
+        # NTWMS21 — garde d'approbation (no-op tant que le seuil vaut 0).
+        if not demande_approuvee and transfert_exige_approbation(
+                company, produit, quantite):
+            raise ValueError(
+                'Ce transfert dépasse le seuil d\'approbation de la société : '
+                'ouvrez une demande de transfert et faites-la approuver.')
 
         records = {se.emplacement_id: se for se in
                    produit.stocks_emplacement.select_for_update()}
@@ -6409,11 +6421,14 @@ from .services_wms import (  # noqa: E402,F401
     cloturer_alerte_rappel,
     configurer_liberation_vague,
     controler_scan_emballage,
+    decider_demande_transfert,
     creer_expedition_transporteur,
+    creer_demande_transfert,
     creer_unite_logistique,
     creer_vague_depuis_besoins,
     enregistrer_arrivee_chauffeur,
     enregistrer_mouvement_scanne,
+    executer_demande_transfert,
     generer_comptages_tournants,
     generer_etiquette_expedition,
     impact_rappel,
@@ -6425,6 +6440,9 @@ from .services_wms import (  # noqa: E402,F401
     reception_est_cross_dock,
     resoudre_token_portail_tiers,
     sceller_unite_logistique,
+    seuil_approbation_transfert,
     solde_portail_tiers,
     suggestions_rangement_reception,
+    transfert_exige_approbation,
+    valeur_transfert,
 )

@@ -41,7 +41,8 @@ from .wms import (
     VaguePickingViewSet, UniteLogistiqueViewSet, QuaiViewSet,
     RendezVousTransporteurViewSet, ExpeditionTransporteurViewSet,
     PlanComptageTournantViewSet, AlerteRappelViewSet,
-    PortailTiersTokenViewSet, entrepot_productivite_view,
+    PortailTiersTokenViewSet, DemandeTransfertViewSet,
+    entrepot_productivite_view,
 )
 from .scanner import scanner_resoudre_view, scanner_mouvement_view
 
@@ -84,6 +85,7 @@ __all__ = [
     'PlanComptageTournantViewSet',
     'AlerteRappelViewSet',
     'PortailTiersTokenViewSet',
+    'DemandeTransfertViewSet',
     'entrepot_productivite_view',
     'scanner_resoudre_view',
     'scanner_mouvement_view',

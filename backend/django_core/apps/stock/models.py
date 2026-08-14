@@ -471,6 +471,14 @@ class AchatsParametres(models.Model):
         help_text='NTWMS12 — heure de coupure quotidienne à laquelle les '
                   'vagues en mode AUTO_HEURE sont lancées. Vide = pas de '
                   'libération automatique.')
+    # NTWMS21 — valeur (quantité × prix d'achat, INTERNE) au-delà de laquelle
+    # un transfert inter-emplacements exige une DemandeTransfert approuvée.
+    # 0 (défaut) = garde DÉSACTIVÉE : le transfert direct historique reste
+    # strictement inchangé pour toutes les sociétés existantes.
+    seuil_approbation_transfert = models.DecimalField(
+        max_digits=14, decimal_places=2, default=0,
+        help_text='NTWMS21 — valeur MAD au-dessus de laquelle un transfert '
+                  'exige une approbation. 0 = désactivé.')
 
 
 class DocumentConformiteFournisseur(models.Model):
@@ -1959,6 +1967,7 @@ class RegleCodeBarres(models.Model):
 from .models_wms import (  # noqa: E402,F401
     AffectationCrossDock,
     AlerteRappel,
+    DemandeTransfert,
     ExpeditionTransporteur,
     LignePicking,
     PlanComptageTournant,

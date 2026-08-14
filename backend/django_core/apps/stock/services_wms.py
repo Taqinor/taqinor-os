@@ -1129,6 +1129,116 @@ def notifier_rappel(alerte, impact=None):
 
 
 # ═══════════════════════════════════════════════════════════════════════════
+# NTWMS21 — Demande de transfert avec workflow d'approbation
+# ═══════════════════════════════════════════════════════════════════════════
+
+def seuil_approbation_transfert(company):
+    """Seuil de valeur (MAD) au-delà duquel un transfert exige une approbation.
+
+    0 (défaut de toutes les sociétés) = garde DÉSACTIVÉE : le transfert direct
+    historique reste strictement inchangé.
+    """
+    from decimal import Decimal
+    from .models import AchatsParametres
+
+    if company is None:
+        return Decimal('0')
+    parametres = AchatsParametres.for_company(company)
+    return Decimal(parametres.seuil_approbation_transfert or 0)
+
+
+def valeur_transfert(produit, quantite):
+    """Valeur INTERNE d'un mouvement (quantité × prix d'achat). Jamais
+    client-facing — elle ne sert qu'au seuil d'approbation."""
+    from decimal import Decimal
+
+    if produit is None:
+        return Decimal('0')
+    prix = Decimal(str(produit.prix_achat or 0))
+    return (prix * Decimal(int(quantite or 0))).quantize(Decimal('0.01'))
+
+
+def transfert_exige_approbation(company, produit, quantite):
+    """Vrai si CE transfert dépasse le seuil configuré par la société."""
+    seuil = seuil_approbation_transfert(company)
+    if seuil <= 0:
+        return False
+    return valeur_transfert(produit, quantite) > seuil
+
+
+def creer_demande_transfert(*, company, user, produit, quantite,
+                            emplacement_source, emplacement_destination,
+                            motif=''):
+    """Ouvre une demande de transfert (statut DEMANDÉ, valeur figée)."""
+    from .models_wms import DemandeTransfert
+
+    try:
+        quantite = int(quantite)
+    except (TypeError, ValueError):
+        raise ValueError('Quantité invalide.')
+    if quantite <= 0:
+        raise ValueError('La quantité doit être positive.')
+    if produit is None or produit.company_id != getattr(company, 'id', None):
+        raise ValueError('Produit introuvable dans cette société.')
+    if emplacement_source is None or emplacement_destination is None:
+        raise ValueError('Emplacement introuvable dans cette société.')
+    if emplacement_source.id == emplacement_destination.id:
+        raise ValueError(
+            'La source et la destination doivent être différentes.')
+
+    return DemandeTransfert.objects.create(
+        company=company, produit=produit, quantite=quantite,
+        emplacement_source=emplacement_source,
+        emplacement_destination=emplacement_destination,
+        motif=(motif or '').strip(), demande_par=user,
+        valeur_estimee=valeur_transfert(produit, quantite))
+
+
+def decider_demande_transfert(*, demande, user, approuver=True):
+    """Approuve ou rejette une demande. Seule une demande DEMANDÉE est
+    décidable (une demande déjà exécutée n'est jamais rétrogradée)."""
+    from django.utils import timezone
+    from .models_wms import DemandeTransfert
+
+    if demande.statut != DemandeTransfert.Statut.DEMANDE:
+        raise ValueError(
+            'Seule une demande en attente peut être approuvée ou rejetée.')
+    demande.statut = (DemandeTransfert.Statut.APPROUVE if approuver
+                      else DemandeTransfert.Statut.REJETE)
+    demande.approuve_par = user
+    demande.date_decision = timezone.now()
+    demande.save(update_fields=['statut', 'approuve_par', 'date_decision'])
+    return demande
+
+
+def executer_demande_transfert(*, demande, user=None):
+    """Crée le ``TransfertStock`` RÉEL d'une demande APPROUVÉE.
+
+    Réutilise le service de transfert existant (jamais un second chemin de
+    mouvement de stock) en lui signalant que l'approbation est acquise.
+    """
+    from django.db import transaction
+    from .models_wms import DemandeTransfert
+    from .services import transfer_stock
+
+    if demande.statut != DemandeTransfert.Statut.APPROUVE:
+        raise ValueError(
+            'Seule une demande approuvée peut être exécutée.')
+    with transaction.atomic():
+        transfert = transfer_stock(
+            company=demande.company, user=user or demande.approuve_par,
+            produit_id=demande.produit_id,
+            source_id=demande.emplacement_source_id,
+            destination_id=demande.emplacement_destination_id,
+            quantite=demande.quantite, note=demande.motif,
+            demande_approuvee=True)
+        demande.statut = DemandeTransfert.Statut.EXECUTE
+        demande.transfert = transfert
+        demande.save(update_fields=['statut', 'transfert'])
+    return demande
+
+
+# ═══════════════════════════════════════════════════════════════════════════
 # NTWMS20 — Portail 3PL (lecture seule, tokenisée, scope = UN dépositaire)
 # ═══════════════════════════════════════════════════════════════════════════
 
