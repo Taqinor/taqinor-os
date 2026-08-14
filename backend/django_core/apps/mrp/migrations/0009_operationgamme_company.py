@@ -9,6 +9,7 @@
 # de developpement/test deja migrees, en reprenant la societe de la gamme
 # parente — jamais une societe arbitraire.
 import django.db.models.deletion
+import django.utils.timezone
 from django.db import migrations, models
 
 
@@ -30,12 +31,17 @@ class Migration(migrations.Migration):
         migrations.AddField(
             model_name='operationgamme',
             name='created_at',
-            field=models.DateTimeField(auto_now_add=True, null=True),
+            # `auto_now_add` ne peut pas remplir les lignes DEJA presentes :
+            # un defaut ponctuel les date, puis `preserve_default=False` rend
+            # le champ identique a TimestampedModel (non-null, sans defaut).
+            field=models.DateTimeField(
+                auto_now_add=True, default=django.utils.timezone.now),
+            preserve_default=False,
         ),
         migrations.AddField(
             model_name='operationgamme',
             name='updated_at',
-            field=models.DateTimeField(auto_now=True, null=True),
+            field=models.DateTimeField(auto_now=True),
         ),
         migrations.AddField(
             model_name='operationgamme',

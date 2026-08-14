@@ -32,7 +32,7 @@ class Migration(migrations.Migration):
                 ('devise', models.CharField(blank=True, default='', max_length=3)),
                 ('valeur_marchandise_devise', models.DecimalField(decimal_places=2, default=0, max_digits=14)),
                 ('note', models.TextField(blank=True, default='')),
-                ('company', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='douane_dossierexport_set', to='authentication.company', verbose_name='Société')),
+                ('company', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='%(app_label)s_%(class)s_set', to='authentication.company', verbose_name='Société')),
                 ('created_by', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='dossiers_export_crees', to=settings.AUTH_USER_MODEL)),
                 ('devis', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='dossiers_export', to='ventes.devis', verbose_name='Devis lié')),
                 ('facture', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='dossiers_export', to='facturation.facture', verbose_name='Facture liée')),
@@ -53,7 +53,7 @@ class Migration(migrations.Migration):
                 ('statut_piece', models.CharField(choices=[('manquante', 'Manquante'), ('deposee', 'Déposée'), ('validee', 'Validée')], default='manquante', max_length=10)),
                 ('date_depot', models.DateField(blank=True, null=True)),
                 ('attachment', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='pieces_dossier_export', to='records.attachment')),
-                ('company', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='douane_piecedossierexport_set', to='authentication.company', verbose_name='Société')),
+                ('company', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='%(app_label)s_%(class)s_set', to='authentication.company', verbose_name='Société')),
                 ('dossier', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='pieces', to='douane.dossierexport')),
             ],
             options={
