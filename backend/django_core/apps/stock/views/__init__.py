@@ -47,6 +47,11 @@ from .wms import (
     reslotting_suggestions_view, casiers_etiquettes_pdf_view,
 )
 from .scanner import scanner_resoudre_view, scanner_mouvement_view
+# Groupe NTWMS (vague 3) - pilotage d'entrepot (cockpit, capacite, retour).
+from .entrepot import (
+    entrepot_cockpit_view, simuler_capacite_view, zones_surcapacite_view,
+    tache_retour_view,
+)
 
 __all__ = [
     'ProduitViewSet',
@@ -97,4 +102,8 @@ __all__ = [
     'casiers_etiquettes_pdf_view',
     'scanner_resoudre_view',
     'scanner_mouvement_view',
+    'entrepot_cockpit_view',
+    'simuler_capacite_view',
+    'zones_surcapacite_view',
+    'tache_retour_view',
 ]

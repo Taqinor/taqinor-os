@@ -23,6 +23,8 @@ from .views import (
     entrepot_productivite_view, entrepot_pertes_view,
     reslotting_suggestions_view, casiers_etiquettes_pdf_view,
     scanner_resoudre_view, scanner_mouvement_view,
+    entrepot_cockpit_view, simuler_capacite_view, zones_surcapacite_view,
+    tache_retour_view,
 )
 
 router = DefaultRouter()
@@ -95,6 +97,18 @@ urlpatterns = [
     # NTWMS32 - planche d'etiquettes de casier a coller en rayonnage.
     path('casiers/etiquettes-pdf/', casiers_etiquettes_pdf_view,
          name='stock-casiers-etiquettes-pdf'),
+    # NTWMS29 - cockpit entrepot (zones, vagues en retard, comptages dus,
+    # expeditions du jour, lots proches de peremption) en UNE requete.
+    path('entrepot/cockpit/', entrepot_cockpit_view,
+         name='stock-entrepot-cockpit'),
+    # NTWMS42 - zones qui franchissent le seuil de remplissage (alerte passive).
+    path('entrepot/alertes-surcapacite/', zones_surcapacite_view,
+         name='stock-entrepot-alertes-surcapacite'),
+    # NTWMS33 - simulateur what-if de capacite d'une zone.
+    path('simuler-capacite/', simuler_capacite_view,
+         name='stock-simuler-capacite'),
+    # NTWMS36 - interleaving : tache de prelevement sur le trajet retour.
+    path('tache-retour/', tache_retour_view, name='stock-tache-retour'),
     # NTWMS5 - poste scanner mobile (resolution universelle + mouvement scanne).
     path('scanner/resoudre/', scanner_resoudre_view,
          name='stock-scanner-resoudre'),

@@ -1315,3 +1315,11 @@ from .selectors_wms import (  # noqa: E402,F401
     suggerer_reslotting,
     tracabilite_produit,
 )
+# -- Groupe NTWMS (vague 3) -- pilotage d'entrepot (cockpit, capacite) --
+from .selectors_entrepot import (  # noqa: E402,F401
+    cockpit_entrepot,
+    remplissage_par_zone,
+    simuler_capacite,
+    suggerer_tache_retour,
+    zones_en_surcapacite,
+)
