@@ -10,6 +10,7 @@ and orders are untouched.
 """
 from __future__ import annotations
 
+import copy
 import logging
 import re
 import tempfile
@@ -1123,6 +1124,23 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     # (page dédiée incluse d'office quand des données d'étude existent).
     include_etude = opts['include_etude'] or (
         mode in ("industriel", "commercial") and bool(etude))
+
+    # ── PV77 — étude bancable (PV69/PV74) portée jusqu'au moteur de rendu ─────
+    # ``Devis.etude_params['simulation']`` (P50/P90, ratio de performance et son
+    # arbre de pertes) est recopiée SOUS UNE CLÉ DÉDIÉE ``etude['bankable']`` —
+    # jamais fondue dans les clés historiques de l'étude (additivité stricte,
+    # PV69) : la table 5 villes QX38 reste la source canonique des chiffres
+    # affichés, le bloc bancable ne fait que S'AJOUTER à côté.
+    # Devis SANS simulation → AUCUNE clé nouvelle, donc charge utile (et
+    # proposition publique, qui appelle ce même builder) strictement identique à
+    # aujourd'hui — exactement la discipline de l'annexe technique PV46 au repos.
+    # Posé APRÈS ``include_etude`` : la présence du bloc ne peut donc jamais
+    # décider d'une page en plus — le nombre de pages du PDF ne bouge pas.
+    _simulation = (getattr(devis, "etude_params", None) or {}).get("simulation")
+    if isinstance(_simulation, dict) and _simulation:
+        # Copie défensive : le rendu ne doit jamais pouvoir muter l'étude
+        # stockée sur le devis (le builder ne fait que LIRE — règle #4).
+        etude["bankable"] = copy.deepcopy(_simulation)
 
     # Puces des cartes d'option de la page 1 — générées depuis l'équipement
     # RÉEL de chaque option, jamais du texte boilerplate.

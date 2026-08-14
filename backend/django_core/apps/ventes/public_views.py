@@ -594,6 +594,66 @@ def _mode_kpis(data):
     return None
 
 
+#: PV77 — clés de l'étude bancable qui ne sortent JAMAIS côté client. Le bloc
+#: brut ``etude_params['simulation']`` (P75/P90, arbre de pertes, VAN/TRI,
+#: puissance souscrite…) est un outil d'INGÉNIERIE : il vit sur le PDF signé par
+#: le vendeur et dans l'écran interne, jamais dans une charge utile publique.
+_BANKABLE_CLES_INTERNES = ('simulation', 'bankable')
+
+
+def _sans_internes_bancables(data):
+    """Retire l'étude bancable BRUTE de la charge utile publique.
+
+    Ne touche RIEN quand le devis n'en porte pas : le dict est renvoyé tel quel
+    (aucune copie, aucune clé ajoutée ou retirée), donc la proposition publique
+    d'un devis sans simulation est byte-identique à celle d'aujourd'hui.
+    """
+    etude = data.get('etude')
+    if not isinstance(etude, dict):
+        return data
+    if not any(cle in etude for cle in _BANKABLE_CLES_INTERNES):
+        return data
+    propre = dict(data)
+    propre['etude'] = {
+        cle: valeur for cle, valeur in etude.items()
+        if cle not in _BANKABLE_CLES_INTERNES
+    }
+    return propre
+
+
+def _bankable_headline(devis, data):
+    """PV77 — les DEUX chiffres client de l'étude bancable, ou ``None``.
+
+    Whitelist STRICTE, dans l'esprit de ``_mode_kpis`` : la production P50
+    (médiane — le chiffre honnête à annoncer) et l'économie cumulée sur 25 ans
+    DÉJÀ affichée par le document (cashflow QX39 du scénario retenu — jamais un
+    second chiffre concurrent). Tout le reste de la simulation reste interne :
+    P90/P75, décomposition des pertes, VAN/TRI, puissance souscrite.
+
+    ``None`` quand le devis ne porte pas de simulation → la clé n'est pas
+    envoyée du tout et la page publique se comporte comme aujourd'hui.
+    """
+    simulation = (getattr(devis, 'etude_params', None) or {}).get('simulation')
+    if not isinstance(simulation, dict) or not simulation:
+        return None
+    pr = simulation.get('pr')
+    p50 = _kpi_num(pr.get('p50_kwh')) if isinstance(pr, dict) else None
+    scenario = data.get('scenario') or ''
+    gain = (data.get('net_gain_avec') if scenario == 'Avec batterie'
+            else data.get('net_gain_sans'))
+    if gain is None:
+        gain = data.get('net_gain_sans')
+        if gain is None:
+            gain = data.get('net_gain_avec')
+    return {
+        'p50_kwh': p50,
+        'economies_25_ans': _kpi_num(gain),
+        # 'pvgis' (données satellitaires) ou 'manual' (repli hors ligne) —
+        # dit au client d'où vient le chiffre, sans rien révéler du modèle.
+        'source': simulation.get('source') or None,
+    }
+
+
 @api_view(['GET'])
 @permission_classes([AllowAny])
 @throttle_classes([PublicLinkRateThrottle])
@@ -624,6 +684,11 @@ def proposal_data(request, token):
         # chaque panneau — un filtre de premier niveau les manquait. On retire
         # donc toute clé confidentielle à N'IMPORTE QUELLE profondeur.
         data = _strip_confidential_deep(data)
+        # PV77 — l'étude bancable BRUTE (P90/P75, arbre de pertes, VAN/TRI) ne
+        # franchit jamais la frontière publique : seul le titre à deux chiffres
+        # ci-dessous en sort. Devis sans simulation → dict inchangé.
+        bankable = _bankable_headline(devis, data)
+        data = _sans_internes_bancables(data)
         roof_url = None
         if data.get('roof_image_key'):
             try:
@@ -707,6 +772,11 @@ def proposal_data(request, token):
             # comme intertitres/notes. Absent quand le devis n'a aucune section.
             'lignes_structure': data.get('lignes_structure'),
         }
+        # PV77 — titre de l'étude bancable (P50 + économies 25 ans). La clé
+        # n'est AJOUTÉE que lorsque le devis porte une simulation : sans elle,
+        # la charge utile publique est exactement celle d'aujourd'hui.
+        if bankable is not None:
+            payload['bankable'] = bankable
     except Exception:  # noqa: BLE001
         return _noindex(Response(
             {'detail': 'Proposition indisponible pour le moment.'},
