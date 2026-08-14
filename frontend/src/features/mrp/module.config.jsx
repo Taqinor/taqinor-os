@@ -25,6 +25,8 @@ const AnalyseCoutsPage = lazy(() => import('../../pages/mrp/AnalyseCoutsPage'))
 const OeePage = lazy(() => import('../../pages/mrp/OeePage'))
 // NTMFG26 — assistant guidé de création d'OF en 3 étapes.
 const AssistantCreationOF = lazy(() => import('../../pages/mrp/AssistantCreationOF'))
+// NTMFG27 — assistant guidé de création de gamme opératoire.
+const AssistantCreationGamme = lazy(() => import('../../pages/mrp/AssistantCreationGamme'))
 
 // 'normal' couvre le rôle Technicien de base (pas de rôle fin dédié dans le
 // vocabulaire existant, cf. `installations/module.config.jsx`) — le terminal
@@ -46,6 +48,7 @@ const config = {
     items: [
       { to: '/mrp/ordres-fabrication', label: 'Ordres de fabrication', icon: <Factory size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
       { to: '/mrp/assistant-creation-of', label: 'Assistant nouvel OF', icon: <Wand2 size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
+      { to: '/mrp/assistant-nouvelle-gamme', label: 'Nouvelle gamme guidée', icon: <Wand2 size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
       { to: '/mrp/gantt', label: 'Gantt atelier', icon: <Gauge size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
       { to: '/mrp/terminal', label: 'Terminal atelier', icon: <Wrench size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
       { to: '/mrp/oee', label: 'TRS / OEE', icon: <Activity size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
@@ -56,6 +59,7 @@ const config = {
   titles: [
     ['/mrp/ordres-fabrication', 'Ordres de fabrication'],
     ['/mrp/assistant-creation-of', 'Assistant nouvel OF'],
+    ['/mrp/assistant-nouvelle-gamme', 'Nouvelle gamme guidée'],
     ['/mrp/gantt', 'Gantt atelier'],
     ['/mrp/terminal', 'Terminal atelier'],
     ['/mrp/oee', 'TRS / OEE'],
@@ -65,6 +69,7 @@ const config = {
   routes: [
     { path: '/mrp/ordres-fabrication', component: OrdresFabricationPage, roles: ROLES },
     { path: '/mrp/assistant-creation-of', component: AssistantCreationOF, roles: ROLES },
+    { path: '/mrp/assistant-nouvelle-gamme', component: AssistantCreationGamme, roles: ROLES },
     { path: '/mrp/gantt', component: GanttAtelier, roles: ROLES },
     { path: '/mrp/terminal', component: TerminalAtelier, roles: ROLES },
     { path: '/mrp/oee', component: OeePage, roles: ROLES },
