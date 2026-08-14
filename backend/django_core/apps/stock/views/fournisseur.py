@@ -66,6 +66,11 @@ class FournisseurViewSet(CompanyScopedModelViewSet):
             # ouverte à tout rôle porteur du droit `stock_modifier` (get_permissions
             # prime sur le permission_classes de l'@action, d'où ce cas explicite).
             return [HasPermissionOrLegacy('stock_modifier')()]
+        elif self.action == 'onboarding':
+            # NTP2P7 — dossier d'entrée en relation : LECTURE (mêmes gardes
+            # que `performance`/`vue_360` — get_permissions prime sur le
+            # permission_classes de l'@action, d'où ce cas explicite).
+            return [HasPermissionOrLegacy('stock_voir')()]
         elif self.action == 'vue_360':
             # XPUR25/WIR27 — agrégat fiche fournisseur 360 : lecture, ouverte à
             # tout rôle porteur du droit de lecture stock (même garde que
@@ -306,6 +311,35 @@ class FournisseurViewSet(CompanyScopedModelViewSet):
                 status=status.HTTP_404_NOT_FOUND)
         revoquer_token_portail_fournisseur(token_obj)
         return Response(PortailFournisseurTokenSerializer(token_obj).data)
+
+    @action(detail=True, methods=['get'])
+    def onboarding(self, request, *args, **kwargs):
+        """NTP2P7 — dossier d'entrée en relation de CE fournisseur.
+
+        Renvoie le dossier (avec ses pièces et sa progression) ou un enveloppe
+        vide explicite quand aucun dossier n'existe encore — jamais un 404 :
+        « pas encore de dossier » est un ÉTAT normal du parcours."""
+        from .. import selectors as stock_selectors
+        from .onboarding_fournisseur import (
+            DossierOnboardingFournisseurSerializer,
+        )
+
+        fournisseur = self.get_object()
+        dossier = stock_selectors.dossier_onboarding_fournisseur(
+            request.user.company, fournisseur.pk)
+        if dossier is None:
+            return Response({
+                'dossier': None,
+                'obligatoire': stock_selectors.onboarding_fournisseur_obligatoire(
+                    request.user.company),
+                'progression': stock_selectors.progression_onboarding(None),
+            })
+        return Response({
+            'dossier': DossierOnboardingFournisseurSerializer(dossier).data,
+            'obligatoire': stock_selectors.onboarding_fournisseur_obligatoire(
+                request.user.company),
+            'progression': stock_selectors.progression_onboarding(dossier),
+        })
 
     @action(detail=True, methods=['get'], url_path='vue-360')
     def vue_360(self, request, *args, **kwargs):

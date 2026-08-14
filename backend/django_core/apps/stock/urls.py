@@ -16,6 +16,7 @@ from .views import (
     NomenclatureCodeBarresViewSet, RegleCodeBarresViewSet,
     CatalogueAchatViewSet,
     BudgetDepartementViewSet, EngagementBudgetViewSet,
+    DossierOnboardingFournisseurViewSet, DocumentFournisseurViewSet,
 )
 
 router = DefaultRouter()
@@ -58,6 +59,10 @@ router.register(
 # NTP2P4 — budgets d'engagement par département + engagements (lecture seule).
 router.register(r'budgets-departement', BudgetDepartementViewSet)
 router.register(r'engagements-budget', EngagementBudgetViewSet)
+# NTP2P7 — onboarding fournisseur : dossier + pièces légales (MinIO).
+router.register(
+    r'dossiers-onboarding-fournisseur', DossierOnboardingFournisseurViewSet)
+router.register(r'documents-fournisseur', DocumentFournisseurViewSet)
 
 urlpatterns = [
     path('', include(router.urls)),

@@ -40,6 +40,9 @@ from .catalogue_achat import CatalogueAchatViewSet
 from .budget_departement import (
     BudgetDepartementViewSet, EngagementBudgetViewSet,
 )
+from .onboarding_fournisseur import (
+    DossierOnboardingFournisseurViewSet, DocumentFournisseurViewSet,
+)
 
 __all__ = [
     'ProduitViewSet',
@@ -73,6 +76,8 @@ __all__ = [
     'CatalogueAchatViewSet',
     'BudgetDepartementViewSet',
     'EngagementBudgetViewSet',
+    'DossierOnboardingFournisseurViewSet',
+    'DocumentFournisseurViewSet',
     'NomenclatureCodeBarresViewSet',
     'RegleCodeBarresViewSet',
 ]

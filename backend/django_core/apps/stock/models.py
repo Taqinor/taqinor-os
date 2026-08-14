@@ -434,6 +434,11 @@ class AchatsParametres(models.Model):
     # .autorise_depassement_budget`, NTP2P2). OFF par défaut = comportement
     # historique strictement inchangé (aucun contrôle budgétaire).
     budget_departement_actif = models.BooleanField(default=False)
+    # NTP2P7 — quand actif, aucun BonCommandeFournisseur ne peut être créé
+    # chez un fournisseur dont le dossier d'onboarding n'est pas VALIDÉ.
+    # OFF par défaut = comportement historique (le statut `actif` du
+    # fournisseur suffit, aucun dossier n'est exigé).
+    onboarding_fournisseur_obligatoire = models.BooleanField(default=False)
     date_creation = models.DateTimeField(auto_now_add=True)
     date_modification = models.DateTimeField(auto_now=True)
 
@@ -2030,6 +2035,126 @@ class EngagementBudget(TenantModel):
 
     def __str__(self):
         return f'Engagement {self.montant} ({self.get_statut_display()})'
+
+
+# ── NTP2P7 — Onboarding fournisseur avec documents légaux ──────────────────
+# ``DocumentConformiteFournisseur`` (XPUR1) reste le REGISTRE D'ÉCHÉANCES
+# historique (métadonnées seules, aucun fichier) et n'est pas touché. NTP2P7
+# ajoute la couche COFFRE + PARCOURS : un dossier par fournisseur, avec les
+# pièces réellement téléversées (MinIO) et un statut de validation. Le blocage
+# est OPT-IN (``AchatsParametres.onboarding_fournisseur_obligatoire``, défaut
+# False) : sans activation, la création d'un BCF est strictement inchangée.
+
+class DossierOnboardingFournisseur(TenantModel):
+    """NTP2P7 — dossier d'entrée en relation d'un fournisseur (1-1).
+
+    Le ``Fournisseur.statut`` n'est PAS touché : il reste ``actif`` par défaut
+    (comportement historique). C'est le dossier qui porte l'état du parcours ;
+    seul le flag société ``onboarding_fournisseur_obligatoire`` transforme un
+    dossier non ``valide`` en blocage à la création d'un bon de commande.
+    """
+
+    class Statut(models.TextChoices):
+        EN_ATTENTE = 'en_attente', 'En attente'
+        DOCUMENTS_RECUS = 'documents_recus', 'Documents reçus'
+        VALIDE = 'valide', 'Validé'
+        REJETE = 'rejete', 'Rejeté'
+
+    fournisseur = models.OneToOneField(
+        Fournisseur, on_delete=models.CASCADE,  # on_delete: CASCADE — le dossier d'onboarding est une EXTENSION 1-1 du fournisseur (aucune existence propre, aucune écriture comptable) ; le fournisseur supprimé, son dossier n'a plus d'objet
+        related_name='dossier_onboarding', verbose_name='Fournisseur')
+    statut = models.CharField(
+        max_length=20, choices=Statut.choices, default=Statut.EN_ATTENTE)
+    motif_rejet = models.TextField(blank=True, default='')
+    valide_par = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='dossiers_onboarding_valides',
+        verbose_name='Validé par')
+    date_decision = models.DateTimeField(null=True, blank=True)
+    note = models.TextField(blank=True, default='')
+    date_creation = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'Dossier onboarding fournisseur'
+        verbose_name_plural = 'Dossiers onboarding fournisseur'
+        ordering = ['-date_creation', '-id']
+        indexes = [
+            models.Index(fields=['company', 'statut'],
+                         name='idx_onbfou_co_statut'),
+        ]
+
+    def __str__(self):
+        return f'Onboarding {self.fournisseur_id} · {self.get_statut_display()}'
+
+    @property
+    def est_valide(self):
+        return self.statut == self.Statut.VALIDE
+
+
+class DocumentFournisseur(TenantModel):
+    """NTP2P7 — pièce légale téléversée d'un dossier d'onboarding.
+
+    Le fichier vit dans MinIO ; le modèle ne porte que sa CLÉ (``file_key``,
+    posée par ``apps.records.storage.store_attachment``, donc préfixée par la
+    société — SCA42). Aucun ``FileField`` (ARC26) : le fichier ne quitte jamais
+    le stockage objet et n'est servi que par une action scopée société.
+    """
+
+    class Type(models.TextChoices):
+        RC = 'rc', 'Registre du commerce'
+        ATTESTATION_FISCALE = 'attestation_fiscale', 'Attestation fiscale'
+        ATTESTATION_CNSS = 'attestation_cnss', 'Attestation CNSS'
+        RIB_CERTIFIE = 'rib_certifie', 'RIB certifié'
+        ASSURANCE = 'assurance', 'Assurance'
+        AUTRE = 'autre', 'Autre pièce'
+
+    # Les 5 pièces attendues d'un dossier complet (``AUTRE`` est un bonus).
+    TYPES_REQUIS = (
+        Type.RC, Type.ATTESTATION_FISCALE, Type.ATTESTATION_CNSS,
+        Type.RIB_CERTIFIE, Type.ASSURANCE,
+    )
+
+    dossier = models.ForeignKey(
+        DossierOnboardingFournisseur, on_delete=models.CASCADE,  # on_delete: CASCADE — une pièce n'existe que DANS son dossier (comme une ligne de document) ; le dossier supprimé, ses pièces le sont aussi
+        related_name='documents', verbose_name='Dossier')
+    type_document = models.CharField(
+        max_length=25, choices=Type.choices, default=Type.AUTRE,
+        verbose_name='Type de pièce')
+    # Clé de l'objet MinIO (jamais une URL publique).
+    file_key = models.CharField(
+        max_length=500, blank=True, default='', verbose_name='Clé de stockage')
+    filename = models.CharField(max_length=255, blank=True, default='')
+    mime = models.CharField(max_length=100, blank=True, default='')
+    taille = models.PositiveIntegerField(default=0)
+    reference = models.CharField(max_length=120, blank=True, default='')
+    date_emission = models.DateField(null=True, blank=True)
+    date_expiration = models.DateField(null=True, blank=True)
+    note = models.TextField(blank=True, default='')
+    televerse_par = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='documents_fournisseur_televerses')
+    date_creation = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'Document fournisseur'
+        verbose_name_plural = 'Documents fournisseur'
+        ordering = ['type_document', 'id']
+        indexes = [
+            models.Index(fields=['company', 'type_document'],
+                         name='idx_docfou_co_type'),
+            models.Index(fields=['dossier', 'type_document'],
+                         name='idx_docfou_dos_type'),
+        ]
+
+    def __str__(self):
+        return f'{self.get_type_document_display()} · {self.filename}'
+
+    def est_valide(self, a_la_date=None):
+        """True si la pièce n'est pas expirée (sans échéance = toujours OK)."""
+        if not self.date_expiration:
+            return True
+        from django.utils import timezone
+        return self.date_expiration >= (a_la_date or timezone.localdate())
 
 
 # ── ODX19 — MODULE ACHATS (déplacé) ────────────────────────────────────────

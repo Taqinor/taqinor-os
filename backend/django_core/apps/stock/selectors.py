@@ -1308,3 +1308,88 @@ def verifier_budget_disponible(company, departement_id, periode, montant):
         'suffisant': manquant <= 0,
         'montant_manquant': max(manquant, Decimal('0')),
     }
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# NTP2P7 — Onboarding fournisseur (lecture)
+# ══════════════════════════════════════════════════════════════════════════
+
+def onboarding_fournisseur_obligatoire(company):
+    """True si un dossier d'onboarding VALIDÉ est exigé avant tout BCF.
+
+    OFF par défaut : comportement historique inchangé (seul le ``statut`` du
+    fournisseur compte)."""
+    if company is None:
+        return False
+    from .models import AchatsParametres
+    params = AchatsParametres.objects.filter(company=company).first()
+    return bool(params and params.onboarding_fournisseur_obligatoire)
+
+
+def progression_onboarding(dossier):
+    """Avancement d'un dossier : pièces requises reçues / total requis.
+
+    Renvoie ``{'requis', 'recus', 'manquants', 'expires', 'progression_pct',
+    'complet'}``. Une pièce EXPIRÉE ne compte pas comme reçue."""
+    from .models import DocumentFournisseur
+
+    requis = list(DocumentFournisseur.TYPES_REQUIS)
+    if dossier is None:
+        return {
+            'requis': requis, 'recus': [], 'manquants': requis,
+            'expires': [], 'progression_pct': 0, 'complet': False,
+        }
+    recus, expires = [], []
+    for doc in dossier.documents.all():
+        if doc.type_document not in requis:
+            continue
+        if not doc.file_key:
+            continue
+        if doc.est_valide():
+            if doc.type_document not in recus:
+                recus.append(doc.type_document)
+        elif doc.type_document not in expires:
+            expires.append(doc.type_document)
+    manquants = [t for t in requis if t not in recus]
+    return {
+        'requis': requis,
+        'recus': recus,
+        'manquants': manquants,
+        'expires': expires,
+        'progression_pct': (
+            round(len(recus) / len(requis) * 100) if requis else 100),
+        'complet': not manquants,
+    }
+
+
+def dossier_onboarding_fournisseur(company, fournisseur_id):
+    """Dossier d'onboarding scopé société, ou None."""
+    if company is None or not fournisseur_id:
+        return None
+    from .models import DossierOnboardingFournisseur
+    return DossierOnboardingFournisseur.objects.filter(
+        company=company, fournisseur_id=fournisseur_id
+    ).prefetch_related('documents').first()
+
+
+def fournisseur_peut_recevoir_bcf(company, fournisseur_id):
+    """NTP2P7 — le fournisseur peut-il recevoir un NOUVEAU bon de commande ?
+
+    Renvoie ``(autorise: bool, motif: str)``. Quand le flag société est OFF
+    (défaut), renvoie toujours ``(True, '')`` — comportement historique."""
+    if not onboarding_fournisseur_obligatoire(company):
+        return True, ''
+    dossier = dossier_onboarding_fournisseur(company, fournisseur_id)
+    if dossier is None:
+        return False, (
+            "Onboarding obligatoire : ce fournisseur n'a aucun dossier "
+            "d'entrée en relation.")
+    if not dossier.est_valide:
+        detail = progression_onboarding(dossier)
+        manquants = ', '.join(detail['manquants']) or 'aucune'
+        return False, (
+            f'Onboarding obligatoire : dossier « '
+            f'{dossier.get_statut_display()} » '
+            f'({detail["progression_pct"]}% complet, pièces manquantes : '
+            f'{manquants}).')
+    return True, ''
