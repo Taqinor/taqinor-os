@@ -195,7 +195,7 @@ class ParametresCPQSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'marge_min_defaut_pct', 'approbation_active',
             'variantes_auto_generees', 'duree_validite_prix_contractuel_jours',
-            'date_creation', 'date_modification',
+            'compatibilite_mode', 'date_creation', 'date_modification',
         ]
         read_only_fields = ['date_creation', 'date_modification']
 

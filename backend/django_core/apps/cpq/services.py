@@ -75,6 +75,32 @@ def appliquer_offre_groupee(*, offre, devis, user=None):
     return created
 
 
+def verifier_compatibilite_envoyable(devis):
+    """NTCPQ31 — lève ``ValidationError`` si le mode de compatibilité de la
+    société est ``BLOQUANT`` (``ParametresCPQ.compatibilite_mode``) ET que la
+    configuration du devis porte encore une violation bloquante (NTCPQ1/NTCPQ21).
+
+    Par défaut (``AVERTISSEMENT``, comportement historique) : ne lève jamais —
+    la violation reste un simple badge (NTCPQ21), l'envoi n'est jamais
+    empêché. Isolation multi-tenant stricte : le réglage lu est celui de LA
+    société du devis, jamais une autre."""
+    from rest_framework.exceptions import ValidationError
+    from .models import ParametresCPQ
+    from .selectors import etat_configuration_devis
+
+    parametres = ParametresCPQ.get_or_default(devis.company)
+    if parametres.compatibilite_mode != ParametresCPQ.ModeCompatibilite.BLOQUANT:
+        return
+    etat = etat_configuration_devis(devis)
+    if etat['bloquant']:
+        bloquantes = [v for v in etat['violations'] if v['bloquante']]
+        detail = bloquantes[0]['message'] if bloquantes else (
+            'Violation de compatibilité bloquante.')
+        raise ValidationError({'statut': (
+            f"Configuration incompatible ({detail}) : l'envoi est bloqué "
+            "(réglage société « compatibilité stricte »).")})
+
+
 def resoudre_regle_remise(*, company, remise):
     """NTCPQ7 — Résout la règle d'approbation de remise la plus SPÉCIFIQUE
     couvrant ``remise`` (%) pour la société. Renvoie une

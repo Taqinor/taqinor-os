@@ -244,7 +244,7 @@ Généré par `python scripts/check_on_delete.py --financial`. Ce tableau recens
 | `backend/django_core/apps/cpq/models.py:537` | ProduitEquivalent.produit_source | stock.Produit | CASCADE |
 | `backend/django_core/apps/cpq/models.py:540` | ProduitEquivalent.produit_substitut | stock.Produit | CASCADE |
 | `backend/django_core/apps/cpq/models.py:578` | ParametresCPQ.company | authentication.Company | CASCADE |
-| `backend/django_core/apps/cpq/models.py:633` | ClauseCGV.company | authentication.Company | CASCADE |
+| `backend/django_core/apps/cpq/models.py:647` | ClauseCGV.company | authentication.Company | CASCADE |
 | `backend/django_core/apps/credit/models.py:67` | ReglageCredit.company | authentication.Company | CASCADE |
 | `backend/django_core/apps/credit/models.py:210` | DerogationCredit.devis | ventes.Devis | SET_NULL |
 | `backend/django_core/apps/crm/models.py:13` | Client.company | authentication.Company | CASCADE |

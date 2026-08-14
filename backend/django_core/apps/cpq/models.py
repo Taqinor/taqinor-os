@@ -595,6 +595,20 @@ class ParametresCPQ(models.Model):
         help_text="Durée de validité par défaut d'un PrixContractuel sans "
                   "date_fin explicite (NULL = pas de limite, comportement "
                   "historique inchangé).")
+
+    class ModeCompatibilite(models.TextChoices):
+        BLOQUANT = 'BLOQUANT', 'Bloquant'
+        AVERTISSEMENT = 'AVERTISSEMENT', 'Avertissement'
+
+    # NTCPQ31 — AVERTISSEMENT par défaut : ne casse rien sur les tenants
+    # existants (une violation INCOMPATIBLE/REQUIERT reste un badge NTCPQ21,
+    # jamais un blocage, tant qu'une société ne bascule pas explicitement en
+    # BLOQUANT).
+    compatibilite_mode = models.CharField(
+        max_length=20, choices=ModeCompatibilite.choices,
+        default=ModeCompatibilite.AVERTISSEMENT,
+        help_text='BLOQUANT empêche envoyer/generer-pdf tant qu’une '
+                  'violation de compatibilité bloquante (NTCPQ1) subsiste.')
     date_creation = models.DateTimeField(auto_now_add=True)
     date_modification = models.DateTimeField(auto_now=True)
 

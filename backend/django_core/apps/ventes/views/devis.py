@@ -1731,10 +1731,16 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
         """NTCPQ7/8 — instancie les étapes d'approbation par palier de remise
         pour ce devis puis bloque l'envoi tant qu'une étape est en attente. Un
         devis sans remise qualifiante ne crée aucune étape (envoi libre)."""
-        from apps.cpq.services import lancer_approbation_devis
+        from apps.cpq.services import (
+            lancer_approbation_devis, verifier_compatibilite_envoyable,
+        )
         from ..services import verifier_devis_envoyable
         lancer_approbation_devis(devis)
         verifier_devis_envoyable(devis)
+        # NTCPQ31 — mode compatibilité « BLOQUANT » de la société : empêche
+        # l'envoi tant qu'une violation bloquante (NTCPQ1) subsiste. No-op en
+        # AVERTISSEMENT (défaut, comportement historique inchangé).
+        verifier_compatibilite_envoyable(devis)
         # NTCPQ11 — l'envoi est autorisé : fige les clauses/CGV dynamiques
         # (write-once, jamais recalculé après envoi).
         from ..services import figer_clauses_devis
