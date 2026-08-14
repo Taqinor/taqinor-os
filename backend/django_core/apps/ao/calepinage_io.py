@@ -42,8 +42,9 @@ from core.calepinage.version import SCHEMA_VERSION, VERSION_MOTEUR
 
 __all__ = [
     'EntreeInvalide', 'NATURE_VERS_TYPE_MOTEUR', 'PROVENANCE_VERS_MOTEUR',
-    'document_entree', 'affectations_du_document', 'kits_vers_document',
-    'parametres_vers_document', 'surface_vers_document',
+    'MODE_POSE_IMPOSE', 'document_entree', 'affectations_du_document',
+    'kits_vers_document', 'parametres_vers_document',
+    'rangees_imposees_du_preset', 'surface_vers_document',
     'obstacles_vers_document', 'resultat_vers_json', 'preuve_vers_json',
 ]
 
@@ -260,18 +261,77 @@ def rives_du_preset(params):
     }
 
 
+#: Valeur de ``mode_pose`` qui EXIGE des rangées imposées (PV29).
+MODE_POSE_IMPOSE = 'rangees_imposees_utilisateur'
+
+
+def rangees_imposees_du_preset(brut, codes_kits):
+    """PV30 — ``[[y0, code_kit], …]`` du preset -> forme du contrat, ou REFUS.
+
+    Le champ traverse l'API tel que l'utilisateur l'a saisi : c'est ICI, à la
+    couture, qu'il devient une donnée du contrat ou un refus NOMMÉ en français.
+    Le moteur porte la même garde (``optimum._rangees_imposees``), mais il lève
+    l'exception du NOYAU, que l'API ne sait pas retraduire en 400 : laisser le
+    refus descendre jusque-là transformerait une faute de saisie en erreur 500.
+
+    Absent, vide ou ``None`` -> ``None`` (le paramètre est alors OMIS du
+    document, exactement comme le fait ``serialisation._parametres`` : écrire
+    ``"rangees_imposees": null`` partout ferait bouger l'empreinte de relevés
+    que personne n'a touchés).
+    """
+    if brut in (None, '', (), []):
+        return None
+    if isinstance(brut, dict) or not isinstance(brut, (list, tuple)):
+        raise EntreeInvalide(
+            'Les rangées imposées doivent être une liste de couples '
+            '[position, code de kit] — reçu %s.' % type(brut).__name__)
+    connus = list(codes_kits)
+    rangees = []
+    for rang, entree in enumerate(brut, start=1):
+        if isinstance(entree, (str, bytes, dict)) or \
+                not isinstance(entree, (list, tuple)) or len(entree) != 2:
+            raise EntreeInvalide(
+                "Rangée imposée n°%d : attendu un couple [position, code de "
+                'kit], reçu %r.' % (rang, entree))
+        position, code = entree
+        try:
+            position = float(position)
+        except (TypeError, ValueError):
+            raise EntreeInvalide(
+                "Rangée imposée n°%d : la position « %r » n'est pas un nombre "
+                'de mètres.' % (rang, position)) from None
+        code = str(code)
+        if code not in connus:
+            raise EntreeInvalide(
+                "Rangée imposée n°%d : le kit « %s » n'est pas autorisé sur "
+                'cette toiture (kits déclarés : %s).'
+                % (rang, code, ', '.join(connus) or 'aucun'))
+        rangees.append([position, code])
+    return rangees
+
+
 def parametres_vers_document(params, codes_kits):
     """Paramètres du preset AO (AOF27) -> ``Parametres`` du contrat.
 
     Les dégagements par provenance du preset servent de PLANCHER générique ;
     le dégagement réellement appliqué reste celui de chaque obstacle.
+
+    **PV30 — les deux paramètres de pose du plan passent d'un bout à l'autre.**
+    ``rangees_imposees`` (PV29 : le dessinateur fixe lui-même ses rangées) et
+    ``phase_forcee_m`` (PV52 : republier à l'identique une planche déjà posée
+    sur chantier) voyagent depuis le dict de paramètres de la requête jusqu'au
+    document du contrat, SANS nouvel endpoint : ``calculer`` et ``lancer`` les
+    portent déjà, leur champ ``params`` étant un ``JSONField`` opaque. Ils sont
+    OMIS du document quand ils ne disent rien — l'empreinte d'entrée d'un
+    relevé que personne n'a touché ne doit pas bouger.
     """
     degagements = params.get('degagements_par_provenance_m') or {}
-    return {
+    mode_pose = params.get('mode_pose', 'rangees_explicites_dp')
+    document = {
         'kits': list(codes_kits),
         'rives': rives_du_preset(params),
         'axe_rangee': params.get('axe_rangee', 'NORD_SUD'),
-        'mode_pose': params.get('mode_pose', 'rangees_explicites_dp'),
+        'mode_pose': mode_pose,
         'allee_m': float(params.get('allee_min_m', 0.60)),
         'degagement_defaut_m': float(degagements.get('MESURE', 0.30)),
         'degagement_nature_inconnue_m': float(degagements.get('DEVINE', 0.50)),
@@ -282,6 +342,29 @@ def parametres_vers_document(params, codes_kits):
         'marge_bande_min_m': float(params.get('marge_bande_min_m', 0.04)),
         'graine': int(params.get('graine', 0)),
     }
+
+    rangees = rangees_imposees_du_preset(
+        params.get('rangees_imposees'), codes_kits)
+    if rangees is not None:
+        document['rangees_imposees'] = rangees
+    elif mode_pose == MODE_POSE_IMPOSE:
+        # Se replier en silence sur le DP ferait croire à l'utilisateur qu'il a
+        # imposé un plan que personne n'a posé — et le résultat porterait la
+        # preuve « optimum prouvé » d'un plan qu'il n'a pas choisi.
+        raise EntreeInvalide(
+            'Mode « rangées imposées par l\'utilisateur » : aucune rangée '
+            "n'est fournie (`rangees_imposees`). Le moteur ne pose pas un "
+            "plan à la place de l'utilisateur.")
+
+    phase = params.get('phase_forcee_m')
+    if phase not in (None, ''):
+        try:
+            document['phase_forcee_m'] = float(phase)
+        except (TypeError, ValueError):
+            raise EntreeInvalide(
+                "La phase forcée « %r » n'est pas un nombre de mètres."
+                % (phase,)) from None
+    return document
 
 
 # ─────────────────────────────────────────────────────── document complet

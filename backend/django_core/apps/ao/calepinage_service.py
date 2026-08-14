@@ -37,7 +37,9 @@ from __future__ import annotations
 
 import logging
 
-from core.calepinage.exceptions import CalepinageIncoherent
+from core.calepinage.exceptions import (
+    CalepinageIncoherent, EntreeInvalide as EntreeMoteurInvalide,
+)
 from core.calepinage.garde_fous import valider
 from core.calepinage.obstacles import appliquer_regles, engageable
 from core.calepinage.optimum import calculer as calculer_optimum
@@ -216,8 +218,15 @@ def calepiner(document, *, company, user=None, moteur=None):
 
     for surface in entree.surfaces:
         lot = par_surface.get(surface.repere, ())
-        resultat = machine.calculer(surface, entree.parametres, lot,
-                                    entree.zones)
+        try:
+            resultat = machine.calculer(surface, entree.parametres, lot,
+                                        entree.zones)
+        except EntreeMoteurInvalide as erreur:
+            # PV30 — le NOYAU refuse déjà en français (rangées imposées vides,
+            # phase forcée hors du jeu possible), mais avec SON exception, que
+            # l'API ne sait pas retraduire : sans cette traduction, une faute
+            # de saisie sortirait en 500 au lieu du 400 nommé.
+            raise EntreeInvalide(str(erreur)) from erreur
         rangees = tuple((y0, entree.parametres.kit(code))
                         for y0, code in resultat.rangees)
         tables = poser_plan(surface, rangees, lot, entree.zones)
