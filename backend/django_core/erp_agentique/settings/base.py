@@ -1023,6 +1023,8 @@ CELERY_TASK_ROUTES = {
     # donc queue `scheduled`. Les autres tâches AO sont, elles, déclenchées à
     # la demande (cf. ON_DEMAND_ALLOWLIST du garde QX11).
     'ao.rappeler_echeances': {'queue': 'scheduled'},
+    # NTCPQ32 — rappel quotidien des PrixContractuel expirés (beat, job planifié).
+    'cpq.expire_prix_contractuels': {'queue': 'scheduled'},
     # NTPLT27 — 4e queue `bulk` pour le travail de masse (imports dataimport,
     # exports planifiés volumineux, backfills, seed à l'échelle). Un import de
     # 100 000 lignes ne doit plus retarder un digest planifié ni un rendu PDF

@@ -794,6 +794,13 @@ app.conf.beat_schedule = {
         'task': 'ai_governance.surveiller_drift_mensuel',
         'schedule': crontab(hour=4, minute=25, day_of_month=1),
     },
+    # NTCPQ32 — rappel quotidien (activité, jamais d'email auto) des
+    # PrixContractuel dont date_fin est dépassée — apps/cpq/scheduled.py.
+    # Idempotent (une seule activité par prix expiré). Heure creuse.
+    'cpq-expire-prix-contractuels': {
+        'task': 'cpq.expire_prix_contractuels',
+        'schedule': crontab(hour=4, minute=40),
+    },
 }
 
 # YHARD6 — compteurs Celery succès/échec (process-local, best-effort) pour
