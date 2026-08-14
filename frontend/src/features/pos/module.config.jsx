@@ -20,6 +20,11 @@ const SessionScreen = lazy(() => import('./SessionScreen'))
 const DashboardScreen = lazy(() => import('./DashboardScreen'))
 const RetraitsScreen = lazy(() => import('./RetraitsScreen'))
 const ConfigMaterielScreen = lazy(() => import('./ConfigMaterielScreen'))
+// NTRET16 — tableau de bord retail (panier moyen, transformation, ventes/m²,
+// top produits/catégories/vendeurs, comparatif boutiques). Distinct de
+// `DashboardScreen` (XPOS2, activité de caisse du jour) : celui-ci agrège le
+// commerce sur une période. Route ET entrée de nav déclarées ensemble.
+const DashboardRetail = lazy(() => import('./DashboardRetail'))
 
 const ROLES = ['normal', 'responsable', 'admin']
 // XPOS4 — l'ouverture/clôture de caisse est réservée aux responsables/admin
@@ -43,6 +48,7 @@ const config = {
       { to: '/pos/dashboard', label: 'Tableau de bord', icon: <ShoppingCart size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES_CAISSE },
       { to: '/pos/retraits', label: 'Retraits magasin', icon: <ShoppingCart size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES_CAISSE },
       { to: '/pos/config-materiel', label: 'Matériel de caisse', icon: <ShoppingCart size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES_CAISSE },
+      { to: '/pos/retail', label: 'Performance retail', icon: <ShoppingCart size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES_CAISSE },
     ],
   },
   titles: [
@@ -51,6 +57,7 @@ const config = {
     ['/pos/dashboard', 'Tableau de bord'],
     ['/pos/retraits', 'Retraits magasin'],
     ['/pos/config-materiel', 'Matériel de caisse'],
+    ['/pos/retail', 'Performance retail'],
   ],
   sectionLabels: { pos: 'Caisse' },
   routes: [
@@ -59,6 +66,7 @@ const config = {
     { path: '/pos/dashboard', component: DashboardScreen, roles: ROLES_CAISSE },
     { path: '/pos/retraits', component: RetraitsScreen, roles: ROLES_CAISSE },
     { path: '/pos/config-materiel', component: ConfigMaterielScreen, roles: ROLES_CAISSE },
+    { path: '/pos/retail', component: DashboardRetail, roles: ROLES_CAISSE },
   ],
 }
 

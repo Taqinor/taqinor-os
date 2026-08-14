@@ -50,13 +50,13 @@ Error|CommentListView|unable to guess serializer. This is graceful fallback hand
 Error|CommentPrivateReplyView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
 Error|CommentReplyView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
 Error|ComparateurCashFinancementViewSet|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
-Error|ContratApiAO|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
 Error|ComparateurDevisViewSet|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
 Error|ConfigurateurDemarrerView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
 Error|ConfigurateurGenererDevisView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
 Error|ConfigurateurRepondreView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
 Error|ConfigurateurResultatView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
 Error|ConsolidationViewSet|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
+Error|ContratApiAO|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
 Error|ControleBudgetaireCommandeView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
 Error|CookieTokenRefreshView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
 Error|CostPerSignatureView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
@@ -870,6 +870,7 @@ Warning|OuverturePosteViewSet > OuverturePosteSerializer|unable to resolve type 
 Warning|PaiementSousTraitantViewSet|could not derive type of path parameter "id" because it is untyped and obtaining queryset from the viewset failed. Consi
 Warning|PaiementViewSet|could not derive type of path parameter "retenue_id" because model "apps.facturation.models.Paiement" contained no such
 Warning|ParametrageRelanceClientViewSet|could not derive type of path parameter "id" because it is untyped and obtaining queryset from the viewset failed. Consi
+Warning|ParametresDouaneViewSet|could not derive type of path parameter "id" because it is untyped and obtaining queryset from the viewset failed. Consi
 Warning|PartageGedViewSet > PartageGedSerializer|unable to resolve type hint for function "get_public_url". Consider using a type hint or @extend_schema_field. Defaultin
 Warning|PeriodeReportingESGViewSet > PeriodeReportingESGSerializer|unable to resolve type hint for function "get_figee_par_nom". Consider using a type hint or @extend_schema_field. Defaul
 Warning|PermisConduireViewSet > PermisConduireSerializer|unable to resolve type hint for function "get_employe_nom". Consider using a type hint or @extend_schema_field. Defaulti

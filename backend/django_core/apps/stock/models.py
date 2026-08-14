@@ -22,6 +22,15 @@ class Categorie(models.Model):
         COMPTEUR = 'compteur', 'Compteur'
         ACCESSOIRE = 'accessoire', 'Accessoire'
 
+    # NTWMS3 — stratégie de prélèvement par défaut des produits de cette
+    # catégorie. AUCUNE = comportement historique STRICTEMENT inchangé (le
+    # prélèvement ne consulte ni lot ni casier).
+    class StrategiePicking(models.TextChoices):
+        AUCUNE = 'aucune', 'Aucune (comportement historique)'
+        FIFO = 'fifo', 'FIFO — premier entré, premier sorti'
+        FEFO = 'fefo', 'FEFO — péremption la plus proche d\'abord'
+        ZONE = 'zone', 'Zone — casier le plus proche de la sortie'
+
     company = models.ForeignKey(
         'authentication.Company',
         on_delete=models.CASCADE,
@@ -42,6 +51,12 @@ class Categorie(models.Model):
         help_text="Type d'équipement (optionnel) pour filtrer les slots de "
                   "chantier par TYPE, quel que soit le libellé de la "
                   "catégorie. Vide = non typée (comportement historique).")
+    strategie_picking_defaut = models.CharField(
+        max_length=10,
+        choices=StrategiePicking.choices,
+        default=StrategiePicking.AUCUNE,
+        help_text='NTWMS3 — stratégie de prélèvement des produits de cette '
+                  'catégorie. « Aucune » (défaut) = comportement historique.')
 
     class Meta:
         verbose_name = "Catégorie"
@@ -444,6 +459,18 @@ class AchatsParametres(models.Model):
         = comportement historique inchangé."""
         obj, _created = cls.objects.get_or_create(company=company)
         return obj
+
+    # NTWMS12 — heure de coupure PAR SOCIÉTÉ des vagues en libération
+    # automatique. Même parti pris que les autres réglages ci-dessus : on
+    # étend ce singleton société plutôt que de toucher `authentication`/
+    # `parametres` (apps de fondation hors périmètre). NULL = aucune coupure
+    # configurée → une vague AUTO_HEURE ne se libère jamais toute seule
+    # (comportement inchangé tant que le réglage n'est pas posé).
+    heure_coupure_vagues = models.TimeField(
+        null=True, blank=True,
+        help_text='NTWMS12 — heure de coupure quotidienne à laquelle les '
+                  'vagues en mode AUTO_HEURE sont lancées. Vide = pas de '
+                  'libération automatique.')
 
 
 class DocumentConformiteFournisseur(models.Model):
@@ -1006,6 +1033,17 @@ class MouvementStock(models.Model):
     # pour tous les autres types de mouvement — comportement historique inchangé.
     motif_rebut = models.CharField(
         max_length=10, choices=MotifRebut.choices, blank=True, null=True)
+    # ── NTWMS5 — traçabilité CASIER du poste scanner ──────────────────────
+    # Casier physique d'où sort / où entre la marchandise. STRING-FK vers la
+    # hiérarchie FG319 (`installations.BinLocation`) : stock ne redéfinit
+    # JAMAIS les casiers. Nullables = tous les mouvements historiques et tous
+    # les chemins non scannés restent identiques.
+    bin_source = models.ForeignKey(
+        'installations.BinLocation', on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='mouvements_stock_source')
+    bin_destination = models.ForeignKey(
+        'installations.BinLocation', on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='mouvements_stock_destination')
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,
@@ -1891,6 +1929,22 @@ class RegleCodeBarres(models.Model):
             except re.error:
                 return False
         return code.startswith(self.motif)
+
+
+# ── Groupe NTWMS — couche ENTREPÔT (vagues, unités logistiques, quais…) ────
+# Définis dans `models_wms.py` pour ne pas alourdir ce fichier (même pratique
+# que `installations/models_kitting.py`) ; ré-exportés ici pour que
+# `from apps.stock.models import VaguePicking` fonctionne partout.
+from .models_wms import (  # noqa: E402,F401
+    ExpeditionTransporteur,
+    LignePicking,
+    PlanComptageTournant,
+    Quai,
+    RendezVousTransporteur,
+    UniteLogistique,
+    UniteLogistiqueLigne,
+    VaguePicking,
+)
 
 
 # ── ODX19 — MODULE ACHATS (déplacé) ────────────────────────────────────────
