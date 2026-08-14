@@ -123,6 +123,24 @@ function contexteToDevisPayload(contexte) {
   }
 }
 
+// PV75 — projette `Devis.etude_params.simulation.pr` (étude bancable PV69/PV74 :
+// P50/P90, ratio de performance, cascade des pertes) vers le payload `bankable`
+// consommé par la fenêtre de production du builder. Le contexte agrégé
+// (`devis_design_context.json`, PACT10) NE PORTE PAS `simulation` — on ne l'y
+// ajoute pas depuis cette lane, on le lit sur le devis complet (endpoint déjà
+// existant, `DevisSerializer` expose `etude_params` en entier). Aucune étude
+// lancée/rangée → `pr` absent → null (fenêtre de production inchangée).
+function bankableFromDevis(devis) {
+  const pr = devis?.etude_params?.simulation?.pr
+  if (!pr) return null
+  return {
+    p50_kwh: pr.p50_kwh,
+    p90_kwh: pr.p90_kwh,
+    performance_ratio: pr.performance_ratio,
+    loss_breakdown: pr.loss_breakdown ?? {},
+  }
+}
+
 function httpMessage(status, responseData) {
   // QJ17 — the backend returns a structured French error for 422 (composition
   // pre-flight failures). Surface it directly instead of a generic message.
@@ -258,11 +276,23 @@ export default function ToitureDesign({ mode = 'lead' }) {
       setStatus('Repère du client chargé. Dessinez / ajustez, puis « Générer le devis & envoyer au client ».')
     }
 
-    // ── PV20 — boot MODE DEVIS : UN SEUL appel (design-context) ─────────────
+    // ── PV20 — boot MODE DEVIS : UN SEUL appel CRITIQUE (design-context) ────
     // Identité + géométrie + cible + carte + `modifiable` arrivent ensemble :
     // l'écran ne fait aucune requête de complément et ne devine aucun motif de
     // lecture seule (il vient toujours du serveur).
     async function bootDevis() {
+      // PV75 — étude bancable (P50/P90/PR/pertes), lancée EN PARALLÈLE du
+      // design-context : best-effort, ne bloque jamais le boot, n'invente rien
+      // si l'étude n'a jamais été lancée (endpoint backend `POST .../simuler/`,
+      // PV74 — pas encore câblé côté écran) ou n'est pas encore rangée. Le
+      // contexte agrégé ne porte pas `simulation` (contrat
+      // `devis_design_context.json`, PACT10) donc on la lit à part, sur le devis
+      // complet déjà exposé par `getDevisById`.
+      const bankablePromise = Promise.resolve()
+        .then(() => ventesApi.getDevisById(devisId))
+        .then((res) => bankableFromDevis(res.data))
+        .catch(() => null)
+
       let ctx = null
       try {
         const res = await ventesApi.getDevisDesignContext(devisId)
@@ -289,6 +319,7 @@ export default function ToitureDesign({ mode = 'lead' }) {
       }
 
       const mod = await import('@roofbuilder')
+      const bankable = await bankablePromise
       if (cancelled) return
       window.__taqinorRoofBooted = true
       // Un devis en lecture seule BOOTE quand même : on peut regarder le
@@ -298,6 +329,7 @@ export default function ToitureDesign({ mode = 'lead' }) {
         mapboxToken: carte.mapboxToken || undefined,
         reducedMotion: !!reducedMotion,
         hydrate: { devis: contexteToDevisPayload(ctx) },
+        bankable,
         onApiReady: (a) => { builderApi.current = a },
       })
       const reference = ctx?.devis?.reference ?? ''
