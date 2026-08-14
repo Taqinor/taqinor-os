@@ -47,6 +47,44 @@ def marquer_lu(article, *, utilisateur):
     return lecture, created
 
 
+def seeder_playbook(company, *, cle_graine, titre, categorie, corps,
+                    contenu_structure, tags=''):
+    """NTMIG23 — dépose un playbook d'implémentation, SANS jamais l'écraser.
+
+    Point d'entrée d'ÉCRITURE des seeders d'autres apps (``apps.migration``) :
+    la table des articles vit ici, donc c'est ici qu'on l'écrit — jamais un
+    ``KbArticle.objects.create()`` depuis une autre app.
+
+    IDENTITÉ STABLE = le tag de graine, pas le titre : un fondateur qui renomme
+    « Déploiement Ventes » en « Go-live Ventes » ne doit pas se retrouver avec
+    un doublon au prochain passage du seeder.
+
+    STRICTEMENT ADDITIF : si le playbook existe déjà — a fortiori s'il a été
+    personnalisé — il est renvoyé TEL QUEL, sans une seule écriture. Le
+    contenu du fondateur n'est jamais « rafraîchi » par un seeder.
+
+    Renvoie ``(article, cree)``.
+    """
+    tous_tags = ','.join(t for t in (tags, cle_graine) if t)
+    existant = (KbArticle.objects
+                .filter(company=company, tags__contains=cle_graine)
+                .order_by('id')
+                .first())
+    if existant is not None:
+        return existant, False
+    article = KbArticle.objects.create(
+        company=company,
+        titre=titre,
+        categorie=categorie,
+        tags=tous_tags,
+        corps=corps,
+        type_article=KbArticle.TypeArticle.PLAYBOOK,
+        contenu_structure=contenu_structure,
+        statut=KbArticle.Statut.PUBLIE,
+    )
+    return article, True
+
+
 def snapshot_article(article, *, auteur=None):
     """Fige titre + contenu de l'article dans une nouvelle ligne de version.
 
