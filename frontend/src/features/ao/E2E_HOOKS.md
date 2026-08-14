@@ -260,3 +260,10 @@ les deux sens.
 | `data-ao-enveloppe-arc-retenue` | Outil enveloppe en arc (`ToituresPage`, PACT167) | L'enveloppe arc RETENUE, une fois publiée dans le contour de l'atelier. |
 | `data-ao-question-proposee` | Atelier toiture (`ToituresPage`, PACT167) | Une question terrain PROPOSÉE par l'atelier, pas encore créée côté serveur. |
 | `data-ao-atelier-note` | Atelier toiture (`ToituresPage`, PACT166/167) | Une limite ÉCRITE de l'atelier (ce qu'il ne sait pas faire), jamais un bouton mort. |
+| `data-ao-impose` | Studio de calepinage, mode plan imposé (`CalepinageStudio`, PV31) | La barre d'outils du mode « rangées imposées » (annuler/rétablir/supprimer/revenir). |
+| `data-ao-impose-verdict` | Barre de verdict en mode imposé (`VerdictBar`, PV32) | Le bandeau « Plan imposé — non optimal » quand la preuve est `impose_utilisateur`. |
+| `data-ao-ecart-optimum` | Barre de verdict en mode imposé (`VerdictBar`, PV32) | Le badge d'écart honnête (« -N modules vs optimum ») lu VERBATIM du serveur. |
+| `data-ao-variante-retenue` | Liste des calepinages (`VariantesListPage`, PV59) | L'étoile de la variante RETENUE d'une toiture dans la liste transverse. |
+| `data-ao-raisons-non-publiabilite` | Liste des calepinages (`VariantesListPage`, PV59) | Le dépliant des raisons de non-publiabilité servies par la garde serveur. |
+| `data-ao-synthese-calepinage` | Onglet Calepinages de l'affaire (`AffaireDetail`, PV68/PV59) | Le bloc « Synthèse » multi-toitures (Σ modules/kWc des variantes retenues). |
+| `data-ao-synthese-toitures` | Onglet Calepinages de l'affaire (`AffaireDetail`, PV68/PV59) | La ligne par toiture de la synthèse (calepinée ou non, jamais masquée). |

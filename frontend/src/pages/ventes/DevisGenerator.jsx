@@ -2077,8 +2077,15 @@ export default function DevisGenerator({
             {selectedLead?.roof_point && (
               <div className="mt-3 flex flex-wrap items-center gap-3 rounded-lg border border-brass-400/40 bg-brass-400/10 p-3 text-sm">
                 <span>🛰️ Repère toit disponible sur ce lead (GPS).</span>
+                {/* PV23 — quand on ÉDITE un devis existant, la conception 3D
+                    doit porter sur CE devis (elle resynchronise ses lignes,
+                    PV21) et non repartir du lead, ce qui en créerait un
+                    second. Sans devis en édition, le chemin lead est
+                    strictement inchangé. */}
                 <Button type="button" variant="outline" size="sm"
-                        onClick={() => navigate(`/devis-design/${selectedLead.id}`)}>
+                        onClick={() => navigate(editDevis?.id
+                          ? `/ventes/devis/${editDevis.id}/design`
+                          : `/devis-design/${selectedLead.id}`)}>
                   Concevoir en 3D
                 </Button>
               </div>

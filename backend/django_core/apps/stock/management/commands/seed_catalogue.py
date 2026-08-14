@@ -206,6 +206,48 @@ OSP = [
     ('Pompe immergée OSP 30/35 — 40 CV / 30 kW (3", 380V)',    'PMP-OSP-30-35', '40',   '30',   [399, 371, 308, 263, 189, 147]),
 ]
 
+# ── PVG3 — Câbles & protections DC/AC (prix vides, approuvé fondateur
+# 2026-08-14) ─────────────────────────────────────────────────────────────
+# Référentiel SKU pur : sections/calibres normalisés d'une installation PV
+# résidentielle/C&I (câble solaire, protections DC/AC, coffrets). PRIX
+# VOLONTAIREMENT VIDES (0) : à renseigner par le fondateur — tant que
+# prix_vente vaut 0, le produit est exclu du chiffrage automatique, même
+# garde que les pompes OSP (cf. apps/ventes/services._has_price).
+# Câbles vendus AU MÈTRE : suit exactement le précédent CAB-6MM-M
+# (nom seul « (au mètre) », unite_stock laissé au défaut « unité »).
+# (nom, sku, qte, seuil)
+CABLES_PROTECTIONS_VIDES = [
+    # Câbles solaires H1Z2Z2-K (DC, double isolation, résistant UV)
+    ('Câble solaire H1Z2Z2-K 4 mm² (au mètre)',  'CAB-H1Z2Z2-4-M',  5000, 200),
+    ('Câble solaire H1Z2Z2-K 6 mm² (au mètre)',  'CAB-H1Z2Z2-6-M',  5000, 200),
+    ('Câble solaire H1Z2Z2-K 10 mm² (au mètre)', 'CAB-H1Z2Z2-10-M', 5000, 200),
+    ('Câble solaire H1Z2Z2-K 16 mm² (au mètre)', 'CAB-H1Z2Z2-16-M', 5000, 200),
+    # Fusibles & porte-fusible DC
+    ('Fusible gPV 1000 VDC 15 A', 'FUS-GPV-1000-15A', 200, 10),
+    ('Fusible gPV 1000 VDC 20 A', 'FUS-GPV-1000-20A', 200, 10),
+    ('Porte-fusible 1000 VDC',    'PF-1000',           200, 10),
+    # Parafoudres
+    ('Parafoudre DC type 2 1000 V', 'PARA-DC-T2-1000', 100, 5),
+    ('Parafoudre AC type 2',        'PARA-AC-T2',       100, 5),
+    # Sectionneur DC
+    ('Sectionneur DC 1000 V 25 A', 'SECT-DC-1000-25A', 100, 5),
+    # Disjoncteurs AC courbe C — mono ET tétrapolaire
+    ('Disjoncteur AC courbe C 16 A monophasé',    'DISJ-AC-C-16-1P', 100, 5),
+    ('Disjoncteur AC courbe C 20 A monophasé',    'DISJ-AC-C-20-1P', 100, 5),
+    ('Disjoncteur AC courbe C 25 A monophasé',    'DISJ-AC-C-25-1P', 100, 5),
+    ('Disjoncteur AC courbe C 32 A monophasé',    'DISJ-AC-C-32-1P', 100, 5),
+    ('Disjoncteur AC courbe C 16 A tétrapolaire', 'DISJ-AC-C-16-4P', 100, 5),
+    ('Disjoncteur AC courbe C 20 A tétrapolaire', 'DISJ-AC-C-20-4P', 100, 5),
+    ('Disjoncteur AC courbe C 25 A tétrapolaire', 'DISJ-AC-C-25-4P', 100, 5),
+    ('Disjoncteur AC courbe C 32 A tétrapolaire', 'DISJ-AC-C-32-4P', 100, 5),
+    # Différentiels (DDR) type A
+    ('Différentiel (DDR) type A 300 mA 40 A', 'DDR-A-300-40', 50, 5),
+    ('Différentiel (DDR) type A 300 mA 63 A', 'DDR-A-300-63', 50, 5),
+    # Coffrets
+    ('Coffret DC 2 strings', 'COF-DC-2STR', 100, 5),
+    ('Coffret AC',           'COF-AC',      100, 5),
+]
+
 _DESC_POMPE_IMM = ('Pompe immergée pour forage, corps inox\n'
                    'Pilotée par variateur solaire (AC, compatible champ PV)\n'
                    'Adaptée à l\'irrigation et l\'alimentation en eau agricole')
@@ -358,6 +400,268 @@ FICHES = {
                            'PMP-OSP-30-15', 'PMP-OSP-30-16', 'PMP-OSP-30-17',
                            'PMP-OSP-30-20', 'PMP-OSP-30-21', 'PMP-OSP-30-25',
                            'PMP-OSP-30-26', 'PMP-OSP-30-35')},
+    # ── PVG3 — Câbles & protections (descriptions FR courtes) ──
+    'CAB-H1Z2Z2-4-M': {
+        'description': 'Câble solaire H1Z2Z2-K 4 mm², double isolation, résistant UV (au mètre)',
+    },
+    'CAB-H1Z2Z2-6-M': {
+        'description': 'Câble solaire H1Z2Z2-K 6 mm², double isolation, résistant UV (au mètre)',
+    },
+    'CAB-H1Z2Z2-10-M': {
+        'description': 'Câble solaire H1Z2Z2-K 10 mm², double isolation, résistant UV (au mètre)',
+    },
+    'CAB-H1Z2Z2-16-M': {
+        'description': 'Câble solaire H1Z2Z2-K 16 mm², double isolation, résistant UV (au mètre)',
+    },
+    'FUS-GPV-1000-15A': {
+        'description': 'Fusible cartouche gPV 1000 VDC, calibre 15 A, protection string PV',
+    },
+    'FUS-GPV-1000-20A': {
+        'description': 'Fusible cartouche gPV 1000 VDC, calibre 20 A, protection string PV',
+    },
+    'PF-1000': {
+        'description': 'Porte-fusible 1000 VDC pour cartouche gPV (coffret DC)',
+    },
+    'PARA-DC-T2-1000': {
+        'description': 'Parafoudre DC type 2, tension max 1000 V, protection champ PV',
+    },
+    'PARA-AC-T2': {
+        'description': 'Parafoudre AC type 2, protection surtension réseau',
+    },
+    'SECT-DC-1000-25A': {
+        'description': 'Sectionneur DC 1000 V, calibre 25 A, coupure de charge champ PV',
+    },
+    'DISJ-AC-C-16-1P': {
+        'description': 'Disjoncteur AC courbe C 16 A monophasé, protection ligne onduleur',
+    },
+    'DISJ-AC-C-20-1P': {
+        'description': 'Disjoncteur AC courbe C 20 A monophasé, protection ligne onduleur',
+    },
+    'DISJ-AC-C-25-1P': {
+        'description': 'Disjoncteur AC courbe C 25 A monophasé, protection ligne onduleur',
+    },
+    'DISJ-AC-C-32-1P': {
+        'description': 'Disjoncteur AC courbe C 32 A monophasé, protection ligne onduleur',
+    },
+    'DISJ-AC-C-16-4P': {
+        'description': 'Disjoncteur AC courbe C 16 A tétrapolaire, protection ligne onduleur triphasé',
+    },
+    'DISJ-AC-C-20-4P': {
+        'description': 'Disjoncteur AC courbe C 20 A tétrapolaire, protection ligne onduleur triphasé',
+    },
+    'DISJ-AC-C-25-4P': {
+        'description': 'Disjoncteur AC courbe C 25 A tétrapolaire, protection ligne onduleur triphasé',
+    },
+    'DISJ-AC-C-32-4P': {
+        'description': 'Disjoncteur AC courbe C 32 A tétrapolaire, protection ligne onduleur triphasé',
+    },
+    'DDR-A-300-40': {
+        'description': 'Différentiel (DDR) type A 300 mA, calibre 40 A, protection des personnes',
+    },
+    'DDR-A-300-63': {
+        'description': 'Différentiel (DDR) type A 300 mA, calibre 63 A, protection des personnes',
+    },
+    'COF-DC-2STR': {
+        'description': 'Coffret DC 2 strings : sectionneur, fusibles et parafoudre DC pré-câblés',
+    },
+    'COF-AC': {
+        'description': 'Coffret AC : disjoncteur et parafoudre AC pré-câblés en sortie onduleur',
+    },
+}
+
+
+# ── PVG4 — Modèle constructeur SUPPOSÉ par palier catalogue (recherche
+# 2026-08-14, sourcée — approuvé fondateur) ─────────────────────────────────
+# Le catalogue ne référence aucun modèle réel : chaque entrée ci-dessous
+# reconstitue le modèle constructeur le PLUS PROBABLE pour ce palier de
+# puissance/gamme. Utilisé UNIQUEMENT pour agrémenter la description
+# commerciale (« Modèle supposé : … — à confirmer fondateur ») — jamais pour
+# fabriquer une caractéristique électrique non sourcée (cf. dictionnaires
+# ONDULEUR_/BATTERIE_FICHES_TECHNIQUES plus bas, où chaque champ porte sa
+# propre source ou reste NULL).
+#
+# ⚠ INCOMPATIBILITÉ MÉTIER remontée au fondateur : les Deye triphasés 15/20
+# kW réels appartiennent à la gamme HAUTE TENSION (batterie HV 160-700 V,
+# SG01HP3) ; la gamme basse tension 51,2 V (SG04LP3, compatible BAT-DEY-5/10)
+# s'arrête à 12 kW — l'appairage catalogue OND-H-DEY-15T/20T + BAT-DEY-5/10
+# est ÉLECTRIQUEMENT IMPOSSIBLE dans la gamme réelle. Les paliers Huawei mono
+# réseau 10/12 kW sont eux des ARTEFACTS catalogue : aucun SUN2000 mono
+# réseau réel ne dépasse 6 kW (au-delà la gamme Huawei mono passe en
+# hybride, autre catégorie) — d'où OND-R-HUA-10M / OND-R-HUA-12M SANS fiche
+# technique (absents des dictionnaires ci-dessous, aucune valeur inventée).
+MODELE_SUPPOSE_PVG4 = {
+    'OND-R-HUA-5M': 'Huawei SUN2000-5KTL-L1',            # solar.huawei.com sun2000-3-4-5-6ktl-l1/specs
+    'OND-R-HUA-10T': 'Huawei SUN2000-10KTL-M1',          # solar.huawei.com m1/specs
+    'OND-R-HUA-15T': 'Huawei SUN2000-15KTL-M5',          # enfsolar 16424 + huawei EDOC1100253093
+    'OND-R-HUA-20T': 'Huawei SUN2000-20KTL-M5',          # globalsunhub
+    'OND-R-HUA-25T': 'Huawei SUN2000-25KTL-M5',          # enfsolar
+    'OND-R-HUA-50T': 'Huawei SUN2000-50KTL-M0',          # huawei EDOC1100016052
+    'OND-R-HUA-100T': 'Huawei SUN2000-100KTL-M2',        # globalsunhub
+    'OND-R-HUA-150T': 'Huawei SUN2000-150K-MG0',         # solar.huawei.com mg0/specs
+    'OND-H-DEY-5M': 'Deye SUN-5K-SG04LP1-EU(-SM2)',      # liriksolar datasheet
+    'OND-H-DEY-10M': 'Deye SUN-10K-SG02LP1-EU-AM3',      # nastechsolar datasheet — divergence plage MPPT
+    'OND-H-DEY-10T': 'Deye SUN-10K-SG04LP3-EU',          # liriksolar datasheet
+    'OND-H-DEY-15T': 'Deye SUN-15K-SG01HP3-EU-AM2',      # deyeinverter datasheet sun-(5-25)k-sg01hp3
+    'OND-H-DEY-20T': 'Deye SUN-20K-SG01HP3-EU-AM2',      # solarhouse.bg + pretapower
+    'BAT-DEY-5': 'Dyness DL5.0C',                        # dyness.com DL5.0C datasheet
+    'BAT-DEY-10': 'Dyness Powerbox Pro/G2 10.24',        # inverter-warehouse.co.za
+}
+# Ajoute la mention du modèle supposé à la description commerciale existante
+# (SKU déjà présent dans FICHES ci-dessus) — additif, déterministe donc
+# idempotent (le même texte complet est reposé à chaque run).
+for _sku_pvg4, _modele_pvg4 in MODELE_SUPPOSE_PVG4.items():
+    if _sku_pvg4 in FICHES and 'description' in FICHES[_sku_pvg4]:
+        _addendum = f'\nModèle supposé : {_modele_pvg4} — à confirmer fondateur'
+        if not FICHES[_sku_pvg4]['description'].endswith(_addendum):
+            FICHES[_sku_pvg4]['description'] += _addendum
+
+
+# ── PV9 — Fiches techniques (FicheTechnique, PV5) : SEULES les valeurs
+# SOURCÉES ci-dessous sont saisies. Aucune fiche EXISTANTE n'est jamais
+# modifiée (skip-if-exists) ; tout le reste NULL sur la fiche créée
+# (« à vérifier fondateur — PVG4 »).
+FICHES_TECHNIQUES = {
+    'PAN-CS-710': {
+        'type_fiche': 'module',
+        'longueur_mm': 2384,
+        'largeur_mm': 1303,
+        'epaisseur_mm': 33,
+        # Source : datasheets distributeurs convergents, Canadian Solar
+        # TOPBiHiKu7 CS7N-710TB-AG.
+        'temp_coeff_pmax_pct_c': Decimal('-0.290'),
+    },
+    'PAN-JK-710': {
+        'type_fiche': 'module',
+        # Source : datasheet JKM710-735N-66HL5-BDV. Pas de dimensions —
+        # non vérifiées, à confirmer fondateur (PVG4).
+        'temp_coeff_pmax_pct_c': Decimal('-0.290'),
+        'temp_coeff_voc_pct_c': Decimal('-0.250'),
+    },
+    # ── PVG4 — Onduleurs réseau Huawei (valeurs SOURCÉES uniquement ; tout
+    # champ interpolé/« non confirmé »/divergent selon la source reste NULL
+    # — voir docs/PLAN2.md PVG4 pour le détail par palier). ──
+    'OND-R-HUA-5M': {
+        'type_fiche': 'onduleur', 'ond_n_mppt': 2,
+        'ond_mppt_v_min': Decimal('90.0'), 'ond_mppt_v_max': Decimal('560.0'),
+        'ond_v_max_abs': Decimal('600.0'), 'ond_i_max_mppt_a': Decimal('12.5'),
+        'ond_ac_kw': Decimal('5'), 'ond_phases': 1,
+        'ond_rendement_euro_pct': Decimal('97.8'),
+    },
+    'OND-R-HUA-10T': {
+        'type_fiche': 'onduleur', 'ond_n_mppt': 2,
+        'ond_mppt_v_min': Decimal('140.0'), 'ond_mppt_v_max': Decimal('980.0'),
+        'ond_v_max_abs': Decimal('1100.0'), 'ond_i_max_mppt_a': Decimal('13.5'),
+        'ond_ac_kw': Decimal('10'), 'ond_phases': 3,
+        'ond_rendement_euro_pct': Decimal('98.1'),
+    },
+    'OND-R-HUA-15T': {
+        # 30A(2 strings)/20A(1) : valeur composée (pas un seul courant/MPPT
+        # propre) → ond_i_max_mppt_a NULL. Rendement ≈98.0 % interpolé → NULL.
+        'type_fiche': 'onduleur', 'ond_n_mppt': 2,
+        'ond_mppt_v_min': Decimal('200.0'), 'ond_mppt_v_max': Decimal('1000.0'),
+        'ond_v_max_abs': Decimal('1100.0'),
+        'ond_ac_kw': Decimal('15'), 'ond_phases': 3,
+    },
+    'OND-R-HUA-20T': {
+        # 30A/20A composé → NULL. Nombre de MPPT non donné par la source
+        # pour ce palier précis → NULL (pas d'extrapolation depuis 15T/25T).
+        'type_fiche': 'onduleur',
+        'ond_mppt_v_min': Decimal('200.0'), 'ond_mppt_v_max': Decimal('1000.0'),
+        'ond_v_max_abs': Decimal('1100.0'),
+        'ond_ac_kw': Decimal('20'), 'ond_phases': 3,
+        'ond_rendement_euro_pct': Decimal('98.1'),
+    },
+    'OND-R-HUA-25T': {
+        'type_fiche': 'onduleur',
+        'ond_mppt_v_min': Decimal('200.0'), 'ond_mppt_v_max': Decimal('1000.0'),
+        'ond_v_max_abs': Decimal('1100.0'),
+        'ond_ac_kw': Decimal('25'), 'ond_phases': 3,
+        'ond_rendement_euro_pct': Decimal('98.2'),
+    },
+    'OND-R-HUA-50T': {
+        # Imax « non confirmé précisément » par la source → NULL. Rendement
+        # ≈98.5 % (approx., pas un rendement « euro » explicite) → NULL.
+        'type_fiche': 'onduleur', 'ond_n_mppt': 6,
+        'ond_mppt_v_min': Decimal('200.0'), 'ond_mppt_v_max': Decimal('1000.0'),
+        'ond_v_max_abs': Decimal('1100.0'),
+        'ond_ac_kw': Decimal('50'), 'ond_phases': 3,
+    },
+    'OND-R-HUA-100T': {
+        'type_fiche': 'onduleur', 'ond_n_mppt': 10,
+        'ond_mppt_v_min': Decimal('200.0'), 'ond_mppt_v_max': Decimal('1000.0'),
+        'ond_v_max_abs': Decimal('1100.0'), 'ond_i_max_mppt_a': Decimal('30.0'),
+        'ond_ac_kw': Decimal('100'), 'ond_phases': 3,
+        'ond_rendement_euro_pct': Decimal('98.4'),
+    },
+    'OND-R-HUA-150T': {
+        'type_fiche': 'onduleur', 'ond_n_mppt': 7,
+        'ond_mppt_v_min': Decimal('200.0'), 'ond_mppt_v_max': Decimal('1000.0'),
+        'ond_v_max_abs': Decimal('1100.0'), 'ond_i_max_mppt_a': Decimal('48.0'),
+        'ond_ac_kw': Decimal('150'), 'ond_phases': 3,
+        'ond_rendement_euro_pct': Decimal('98.4'),
+    },
+    # OND-R-HUA-10M / OND-R-HUA-12M : PAS de fiche — aucun Huawei mono
+    # réseau réel à cette puissance (artefact catalogue, cf. commentaire
+    # MODELE_SUPPOSE_PVG4 ci-dessus).
+    # ── PVG4 — Onduleurs hybrides Deye ──
+    'OND-H-DEY-5M': {
+        'type_fiche': 'onduleur', 'ond_n_mppt': 2,
+        'ond_mppt_v_min': Decimal('150.0'), 'ond_mppt_v_max': Decimal('425.0'),
+        'ond_v_max_abs': Decimal('600.0'),
+        'ond_ac_kw': Decimal('5'), 'ond_phases': 1,
+        # 97.6 % max / 96.5 % euro — champ = rendement EURO uniquement.
+        'ond_rendement_euro_pct': Decimal('96.5'),
+    },
+    'OND-H-DEY-10M': {
+        # DIVERGENCE plage MPPT selon la source (125-520 / 150-425 / 125-550
+        # selon nastechsolar vs autres) → ond_mppt_v_min/max NULL (fondateur
+        # à trancher). Nombre de MPPT lui-même divergent (3 vs 2×2) → NULL.
+        'type_fiche': 'onduleur',
+        'ond_ac_kw': Decimal('10'), 'ond_phases': 1,
+    },
+    'OND-H-DEY-10T': {
+        'type_fiche': 'onduleur', 'ond_n_mppt': 2,
+        'ond_mppt_v_min': Decimal('150.0'), 'ond_mppt_v_max': Decimal('550.0'),
+        'ond_v_max_abs': Decimal('600.0'), 'ond_i_max_mppt_a': Decimal('16.0'),
+        'ond_ac_kw': Decimal('10'), 'ond_phases': 3,
+    },
+    'OND-H-DEY-15T': {
+        # Confiance moyenne : plage FAMILLE SG01HP3 (5-25K) documentée, pas
+        # spécifique au 15T — seedée quand même (règle PVG4), l'incertitude
+        # est portée par la mention « modèle supposé » sur la description.
+        'type_fiche': 'onduleur',
+        'ond_mppt_v_min': Decimal('150.0'), 'ond_mppt_v_max': Decimal('850.0'),
+        'ond_v_max_abs': Decimal('1000.0'),
+        'ond_ac_kw': Decimal('15'), 'ond_phases': 3,
+        # 97.6/97.0 — même ordre max/euro que le 5M → euro = 97.0.
+        'ond_rendement_euro_pct': Decimal('97.0'),
+    },
+    'OND-H-DEY-20T': {
+        # La source donne « charge max 50A » : c'est le courant de charge
+        # BATTERIE, pas un courant d'entrée MPPT PV → ond_i_max_mppt_a
+        # reste NULL (mauvais champ sinon).
+        'type_fiche': 'onduleur',
+        'ond_mppt_v_min': Decimal('150.0'), 'ond_mppt_v_max': Decimal('850.0'),
+        'ond_v_max_abs': Decimal('1000.0'),
+        'ond_ac_kw': Decimal('20'), 'ond_phases': 3,
+    },
+    # ── PVG4 — Batteries Dyness ──
+    'BAT-DEY-5': {
+        'type_fiche': 'batterie',
+        'bat_kwh_nominal': Decimal('5.12'), 'bat_kwh_usable': Decimal('4.60'),
+        'bat_dod_pct': Decimal('90.0'), 'bat_v_nominal': Decimal('51.2'),
+        # 75 A continu × 51,2 V ≈ 3,84 kW (valeur constructeur, dyness.com).
+        'bat_max_charge_kw': Decimal('3.84'),
+    },
+    'BAT-DEY-10': {
+        'type_fiche': 'batterie',
+        'bat_kwh_nominal': Decimal('10.24'),
+        # Source : 9.216 kWh usable, arrondi aux 2 décimales du champ.
+        'bat_kwh_usable': Decimal('9.22'),
+        'bat_dod_pct': Decimal('90.0'), 'bat_v_nominal': Decimal('51.2'),
+        # 100 A × 51,2 V = 5,12 kW (valeur constructeur).
+        'bat_max_charge_kw': Decimal('5.12'),
+    },
 }
 
 
@@ -515,6 +819,33 @@ class Command(BaseCommand):
             )
             created.append(nom)
 
+        # ── PVG3 — Câbles & protections DC/AC : PRIX VIDES (0) ──
+        # Tant que prix_vente vaut 0, le produit est exclu du chiffrage
+        # automatique — même garde que les pompes OSP ci-dessus.
+        for nom, sku, qte, seuil in CABLES_PROTECTIONS_VIDES:
+            if (Produit.objects.filter(company=company, sku=sku).exists()
+                    or Produit.objects.filter(
+                        company=company, nom__iexact=nom,
+                        is_archived=False).exists()):
+                skipped.append(nom)
+                continue
+            produit = Produit.objects.create(
+                company=company, nom=nom, sku=sku,
+                categorie=get_categorie(classify_categorie(nom)),
+                prix_achat=Decimal('0'),
+                prix_vente=Decimal('0'),  # à renseigner par le fondateur
+                quantite_stock=qte, seuil_alerte=seuil,
+                tva=Decimal('20.00'),
+            )
+            MouvementStock.objects.create(
+                company=company, produit=produit,
+                type_mouvement=MouvementStock.TypeMouvement.ENTREE,
+                quantite=qte, quantite_avant=0, quantite_apres=qte,
+                reference='SEED-CATALOGUE',
+                note='Stock initial (câbles/protections — prix à renseigner)',
+            )
+            created.append(nom)
+
         # ── Archivage des coffrets variateurs PLACEHOLDER (prix estimés) ──
         # Exception ponctuelle à la règle "additif uniquement", explicitement
         # autorisée par le fondateur (2026-06-12) : ces articles n'ont jamais
@@ -536,6 +867,21 @@ class Command(BaseCommand):
             produit.save(update_fields=[f for f in ('marque', 'description', 'garantie')
                                         if f in fiche])
             fiches_updated += 1
+
+        # ── PV9 — Fiches techniques (dimensions/coefficients datasheet) ──
+        # Additif + idempotent : SKU absent du catalogue → ignoré ; fiche
+        # DÉJÀ existante pour ce produit → jamais écrasée (skip).
+        from apps.stock.models import FicheTechnique
+        fiches_techniques_created = 0
+        for sku, valeurs in FICHES_TECHNIQUES.items():
+            produit = Produit.objects.filter(company=company, sku=sku).first()
+            if not produit:
+                continue  # SKU pas seedé par ce catalogue — rien à rattacher
+            if FicheTechnique.objects.filter(produit=produit).exists():
+                continue  # fiche déjà présente — jamais modifiée
+            FicheTechnique.objects.create(
+                company=company, produit=produit, **valeurs)
+            fiches_techniques_created += 1
 
         # ── Réforme TVA 2024–2026 (autorisation explicite du fondateur) ──
         # Panneaux PV → 10 % avec HT re-dérivé pour PRÉSERVER le TTC à
@@ -592,6 +938,7 @@ class Command(BaseCommand):
             f"\nCatalogue seed for '{company.nom}': "
             f"{len(created)} created, {len(skipped)} already present (untouched), "
             f"{fiches_updated} fiches commerciales mises à jour, "
+            f"{fiches_techniques_created} fiches techniques créées, "
             f"{archived_count} placeholders archivés, "
             f"{tva_updated} taux TVA alignés (réforme 10 % panneaux), "
             f"{recategorises} produits rangés dans la taxonomie."

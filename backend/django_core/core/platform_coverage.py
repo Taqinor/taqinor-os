@@ -77,6 +77,11 @@ BASELINE_DRIFT: set[tuple[str, str]] = {
     # Chatter-isé SANS recherche globale (hérité, DC33) : à retirer le jour où
     # le fournisseur deviendra cherchable.
     ('stock.fournisseur', 'chatter_sans_recherche'),
+    # PV45 — le dossier réglementaire devient cible records UNIQUEMENT pour que
+    # le schéma unifilaire généré s'y attache (records.Attachment, ARC26).
+    # Le rendre cherchable globalement est une décision produit séparée ; à
+    # retirer le jour où le dossier entrera dans reporting/search.py.
+    ('ventes.regulatorydossier', 'chatter_sans_recherche'),
     # ARC30 — la migration des 19 cibles records vers les manifestes rend
     # VISIBLES les cibles chatter-isées historiques jamais branchées sur la
     # recherche globale (dérives héritées, préexistantes au registre — la

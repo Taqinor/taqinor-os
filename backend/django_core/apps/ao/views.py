@@ -24,7 +24,8 @@ from django.core.exceptions import (
     FieldDoesNotExist, ValidationError as DjangoValidationError,
 )
 from django.db import models
-from drf_spectacular.utils import extend_schema
+from drf_spectacular.utils import extend_schema, inline_serializer
+from rest_framework import serializers as drf_serializers
 from rest_framework import filters, serializers, status
 from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError as DrfValidationError
@@ -63,6 +64,7 @@ from .models import (
     SerieQuestions,
     ToitureAO,
     VarianteCalepinage,
+    ZoneAO,
 )
 from .serializers import (
     AppelOffreSerializer,
@@ -91,6 +93,7 @@ from .serializers import (
     TeleversementPlanSourceSerializer,
     ToitureAOSerializer,
     VarianteCalepinageSerializer,
+    ZoneAOSerializer,
 )
 from .viewsets import AoBaseViewSet
 
@@ -198,6 +201,72 @@ class ContratApiAO(APIView):
         })
 
 
+class AnalyserDxfView(APIView):
+    """``POST /api/django/ao/toitures/dxf/analyser/`` — PVG1, import DXF réel.
+
+    Complète ``ImportDxf.jsx`` (AOF81) : le fichier MULTIPART est parsé EN
+    MÉMOIRE (``dxf.analyser_dxf``) et RIEN n'est persisté — ni ``PlanSource``,
+    ni ``records.Attachment``. L'atelier ne fait que PROPOSER un mapping de
+    calques ; c'est le choix de l'utilisateur (bouton « Importer ce mapping »)
+    qui produit un contour, écrit ensuite par la voie existante de la toiture.
+
+    Gardée par ``ao_gerer`` (comme les autres écritures du domaine) : bien
+    qu'aucune donnée ne soit écrite, poser un fichier arbitraire à analyser
+    n'est pas un geste de simple lecture.
+
+    Un fichier hostile/corrompu ou trop lourd → 400 MOTIVÉ en français
+    (``dxf.DxfInvalide``, exceptions ``ezdxf`` toutes enveloppées) — jamais un
+    500.
+    """
+    permission_classes = [ScopedPermission]
+    write_permission = AO_GERER
+    parser_classes = [MultiPartParser, FormParser]
+
+    @extend_schema(
+        request=None,
+        responses={200: inline_serializer(
+            name='AnalyseDxfReponse',
+            fields={
+                'unite': drf_serializers.CharField(),
+                'calques': inline_serializer(
+                    name='CalqueDxf', many=True,
+                    fields={
+                        'nom': drf_serializers.CharField(),
+                        'entites': drf_serializers.IntegerField(),
+                        'sommets': drf_serializers.ListField(
+                            child=drf_serializers.ListField(
+                                child=drf_serializers.FloatField())),
+                    }),
+            })},
+        description="Analyse un DXF en mémoire (calques/entités/"
+                    "sommets + unité $INSUNITS) — rien n'est persisté.")
+    def post(self, request):
+        from . import dxf
+
+        fichier = request.data.get('fichier')
+        if fichier is None:
+            return Response(
+                {'fichier': 'Aucun fichier reçu.'}, status=status.HTTP_400_BAD_REQUEST)
+        taille = getattr(fichier, 'size', None)
+        if taille is not None and taille > dxf.TAILLE_MAX_OCTETS:
+            return Response({'fichier': (
+                'Ce fichier dépasse 5 Mo : simplifiez-le (purge des calques '
+                'inutiles) puis réessayez.'
+            )}, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            contenu = fichier.read()
+        except AttributeError:
+            return Response(
+                {'fichier': "Le fichier reçu n'est pas exploitable."},
+                status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            resultat = dxf.analyser_dxf(contenu)
+        except dxf.DxfInvalide as exc:
+            return Response({'fichier': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(resultat)
+
+
 # ── FG222 — Gestion des appels d'offres ────────────────────────────────────
 
 class AppelOffreViewSet(AoBaseViewSet):
@@ -212,6 +281,19 @@ class AppelOffreViewSet(AoBaseViewSet):
                        'statut']
     #: AOF12 — filtres d'égalité exposés en paramètres de requête.
     FILTRES_EXACTS = ('statut', 'type_marche', 'mode_passation')
+
+    def get_serializer_context(self):
+        """PV68 — la synthèse de calepinage est un bloc de DÉTAIL.
+
+        Elle coûte deux requêtes par affaire : la calculer sur une LISTE ferait
+        cinquante requêtes pour une donnée qu'aucune liste n'affiche. La clé
+        reste publiée dans les deux cas (``null`` en liste) — voir
+        ``AppelOffreSerializer.get_synthese_calepinage``.
+        """
+        contexte = super().get_serializer_context()
+        contexte['synthese_calepinage'] = getattr(self, 'action', '') in (
+            'retrieve', 'update', 'partial_update')
+        return contexte
 
     def get_queryset(self):
         params = self.request.query_params
@@ -648,6 +730,32 @@ class ObstacleAOViewSet(AoBaseViewSet):
             self.get_object(), provenance, user=request.user,
             motif=(request.data.get('motif') or ''))
         return Response(self.get_serializer(obstacle).data)
+
+
+class ZoneAOViewSet(AoBaseViewSet):
+    """Zones de toiture (PV54) — le contour NOMMÉ que le moteur sait déjà lire.
+
+    Même socle que ``ObstacleAOViewSet`` : société scopée et ``company`` posée
+    côté serveur par ``AoBaseViewSet``, lecture gardée par ``ao_voir``,
+    écriture par ``ao_gerer``. Aucune action métier : une zone est une donnée
+    de saisie, pas un document à faire avancer.
+    """
+    queryset = ZoneAO.objects.all()
+    serializer_class = ZoneAOSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['repere']
+    ordering_fields = ['repere', 'nature', 'id']
+
+    def get_queryset(self):
+        qs = _filtres_exacts(
+            super().get_queryset(), self.request.query_params,
+            ('toiture', 'nature'))
+        appel_offre = self.request.query_params.get('appel_offre')
+        if appel_offre not in (None, ''):
+            qs = qs.filter(
+                toiture__batiment__appel_offre_id=appel_offre) \
+                if str(appel_offre).isdigit() else qs.none()
+        return qs
 
 
 class PlanSourceViewSet(AoBaseViewSet):

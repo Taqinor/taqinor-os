@@ -76,7 +76,19 @@ const aoApi = {
 
   // ── Toiture / relevé (portes 1-2-3 : plan fourni, from-scratch, carte) ──
   batiments: crud('batiments'),
-  toitures: crud('toitures'),
+  toitures: {
+    ...crud('toitures'),
+    // PVG1 — analyse DXF réelle (MULTIPART), route HORS routeur DRF (ce
+    // n'est pas une ressource) : `apps/ao/urls.py`
+    // `path('toitures/dxf/analyser/', AnalyserDxfView.as_view(), …)`. Rien
+    // n'est persisté côté serveur — l'atelier ne fait que PROPOSER un
+    // mapping de calques (`ImportDxf.jsx`).
+    analyserDxf: (fichier) => {
+      const fd = new FormData()
+      fd.append('fichier', fichier)
+      return api.post('/ao/toitures/dxf/analyser/', fd)
+    },
+  },
   // RÉPARATION 03/08/2026 — le routeur enregistre `plans-source` et
   // `chaines-cotes` (AU SINGULIER pour le premier) ; le front appelait
   // `plans-sources` et `chaines`, deux 404 silencieuses.
@@ -95,13 +107,12 @@ const aoApi = {
   releves: crud('releves'),
   obstacles: crud('obstacles'),
   chaines: crud('chaines-cotes'),
-  //
-  // `zones:` A ÉTÉ RETIRÉ — ENDPOINT À CONSTRUIRE, pas un renommage.
-  // L'outil de saisie des zones (AOF89 : interdite / réservée / préférée)
-  // existe côté écran, mais AUCUN modèle ni route ne les persiste, et
-  // `calepinage_io.document_entree()` envoie `'zones': []` en dur au moteur.
-  // Publier ici un `crud('zones')` ferait croire à un stockage qui n'existe
-  // pas ; le jour où le modèle est créé, la ressource revient ici.
+  // PV54/PV56 — `ZoneAO` existe désormais (contour NOMMÉ : enveloppe /
+  // interdite / réservée / préférée), routée sous `zones` (`apps/ao/urls.py`,
+  // `router.register(r'zones', ZoneAOViewSet, …)`). L'atelier de traçage
+  // (`ToituresPage.jsx`) diffère les zones locales vs cette ressource sur
+  // « Enregistrer », au même titre que les obstacles (PV53).
+  zones: crud('zones'),
 
   /* ── Calepinage (moteur `core/calepinage/`) ─────────────────────────────
      LES VRAIES ROUTES, telles que `apps/ao/calepinage_urls.py` les publie.
@@ -124,6 +135,12 @@ const aoApi = {
       marches: (id) => api.get(`/ao/calepinage/variantes/${id}/marches/`),
       comparer: (ids) => api.get('/ao/calepinage/variantes/comparer/',
         { params: { ids: [].concat(ids).join(',') } }),
+      // PV67 — pose les alternatives d'ORIENTATION de la TOITURE de la
+      // variante appelée (le serveur lit `variante.toiture`, quelle que soit
+      // la variante ciblée) : REJOUÉES par le moteur, jamais estimées.
+      // 400 nommé (`retenue`) si cette toiture n'a encore aucune variante
+      // RETENUE — il n'y a alors pas de référence à comparer.
+      genererVariantes: (id) => api.post(`/ao/calepinage/variantes/${id}/generer-variantes/`),
     },
   },
 
@@ -161,10 +178,6 @@ const aoApi = {
       'le calcul est SANS ÉTAT : utiliser aoApi.calepinage.calculer('
       + '{toiture, params}), puis aoApi.calepinage.lancer/resultat au-delà '
       + 'du budget synchrone (202)'),
-    // À CONSTRUIRE : `core/calepinage/recommandations.py` existe, mais AUCUNE
-    // route ne le publie — l'atelier n'affiche donc aucune suggestion.
-    suggestions: nonConstruit('/ao/calepinages/<id>/suggestions/',
-      'aucune route ne publie les recommandations du moteur'),
     // Plus AUCUN appelant depuis le 07/08/2026 (PACT172) — SensibilitesPanel.jsx
     // appelle désormais aoApi.calepinage.variantes.sensibilites(varianteId).
     sensibilites: nonConstruit('/ao/calepinages/<id>/sensibilites/',

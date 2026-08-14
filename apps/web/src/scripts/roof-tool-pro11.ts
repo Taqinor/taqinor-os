@@ -54,7 +54,13 @@ import {
   type PanelGrid,
   type ConfigFamily,
 } from '../lib/estimatorBrainV2';
-import { PERIMETER_SETBACK_M, WINTER_SOLSTICE_DAY } from '../lib/roofPro2';
+import {
+  PERIMETER_SETBACK_M,
+  WINTER_SOLSTICE_DAY,
+  uniformSetbacks,
+  readSetbackInput,
+  type PerimeterSetbacks,
+} from '../lib/roofPro2';
 import {
   reoptimize,
   type FlatPins,
@@ -105,6 +111,7 @@ import {
   type ZoneRenderPlan,
   type AreaRecord,
   type RenderConfigOpts,
+  obstructionClearancesFor,
 } from './roofPro11/types';
 import {
   GOLD,
@@ -126,7 +133,7 @@ import { createMapDraw } from './roofPro11/mapDraw';
 import { createScene3d } from './roofPro11/scene3d';
 import { createOptimizer } from './roofPro11/optimizer';
 import { bootCaptureOnly, type CaptureOptions } from './roofPro11/captureBoot';
-import { hydrateFromLead, serializeLayout } from './roofPro11/prefill';
+import { hydrateFromLead, hydrateFromDevis, serializeLayout } from './roofPro11/prefill';
 
 let booted = false;
 
@@ -357,6 +364,9 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
   // Les obstacles sont stockés par centre + dimensions ; le cerveau reçoit leurs
   // rectangles lng/lat comme obstructions (zones d'exclusion).
   const obstructionRings = (): LngLat[][] => obstacles.map(obstacleRing);
+  // PV61 — dégagement (m) de CHAQUE obstacle selon son TYPE (cheminée > antenne), dans le
+  // MÊME ordre que `obstructionRings()`. Obstacle sans type → dégagement historique.
+  const obstructionClearances = (): number[] => obstructionClearancesFor(obstacles);
   const fmt1 = (n: number) => n.toLocaleString('fr-FR', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
   const dimsLabel = (o: Obstacle) => `${fmt1(o.lengthM)} × ${fmt1(o.widthM)} m`;
   let centroid: LngLat = [0, 0];
@@ -388,6 +398,11 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
   // W1 — Marge de rive courante (m) déduite du toggle « Marge ». keep = marge de
   // design (PERIMETER_SETBACK_M) ; remove = pleine rive (0).
   const setbackOf = (): number => (sel.margin === 'remove' ? 0 : PERIMETER_SETBACK_M);
+  // PV63 — RETRAITS DE RIVE SÉPARÉS, saisis par l'utilisateur (marge GARDÉE). Le bouton
+  // binaire « pleine rive » reste le raccourci : il met les trois à zéro (géré par les
+  // solveurs). Départ : les trois à PERIMETER_SETBACK_M → calepinage inchangé.
+  const setbacks: PerimeterSetbacks = uniformSetbacks();
+  const setbacksOf = (): PerimeterSetbacks => setbacks;
 
   // W109 — débord panneaux autorisé au-delà de la rive (m), saisi dans #rp9-overhang-input.
   // 0 par défaut → calepinage/solve inchangés. Change la CAPACITÉ géométrique seulement :
@@ -511,6 +526,9 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
       renderPlan: null,
     };
   };
+  // PV19 — origine DEVIS mémorisée à l'hydratation (jamais devinée) : elle alimente le
+  // meta de sérialisation par défaut. Null tant qu'aucun devis n'a hydraté le builder.
+  let devisOrigin: { devisId: string | number | null; panelWatt: number | null; scenario: import('./roofPro11/prefill').LayoutScenario | null } | null = null;
   const areas: AreaRecord[] = [newAreaRecord()];
   let activeAreaId = areas[0].id;
   const activeArea = (): AreaRecord | undefined => areas.find((a) => a.id === activeAreaId);
@@ -1094,6 +1112,9 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
     // W88 — surlignage/pick des panneaux 3D : `setPanelHighlight` (scene3d) est déclaré plus
     // bas → wrapper paresseux (référencé seulement à l'exécution d'un survol/clic 3D).
     setPanelHighlight: (cellIndex) => setPanelHighlight(cellIndex),
+    // PV25 — le nudge d'azimut passe par le recalc COMPLET de l'entrée, qui capture puis
+    // re-snappe la disposition personnalisée (wrapper paresseux : recalc est déclaré plus bas).
+    recalcWithReenter: () => recalc(),
   });
   // `renderLayoutPanel` est appelé depuis l'entrée (injecté dans la fenêtre de production) ;
   // W79 — `occupiedCenters`/`reenterCustomLayout` permettent à recalc() de re-entrer la
@@ -1199,6 +1220,8 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
     renderMatrixOptimumCard: () => renderMatrixOptimumCard(),
     monthlyBill: () => monthlyBill(),
     obstructionRings,
+    obstructionClearances, // PV61 — dégagement par type d'obstacle
+    setbacksOf, // PV63 — retraits latéral / extrémité / acrotère
     setStatus,
   });
   const liveResolveFlat = optimizer.liveResolveFlat;
@@ -1252,7 +1275,13 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
     // W113 — HYDRATATION depuis un lead (étude Meriem) : sème le contour/pin du client
     // + les champs contact AVANT le géocodage, puis ferme le tracé et lance le calcul.
     // Quand `hydrate` est absent, ce bloc est sauté → boot inchangé.
-    const seeded = opts.hydrate?.lead ? applyHydration(opts.hydrate.lead) : false;
+    // PV19 — un DEVIS l'emporte sur un lead (il porte déjà le design vendu). Sans
+    // `hydrate.devis`, cette ligne est un no-op et le boot lead est inchangé.
+    const seeded = opts.hydrate?.devis
+      ? applyDevisHydration(opts.hydrate.devis)
+      : opts.hydrate?.lead
+        ? applyHydration(opts.hydrate.lead)
+        : false;
     // W93 — `initialQuery` est programmatique : on auto-sélectionne le 1ᵉʳ résultat (vol
     // direct), au lieu d'ouvrir la liste de suggestions. On ne géocode pas si on a déjà
     // hydraté un contour/pin (le vol vers le lead l'emporte).
@@ -1316,6 +1345,93 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
     return false;
   }
 
+  /**
+   * PV19 — applique l'hydratation d'un DEVIS. Deux chemins, comme la fonction pure :
+   *  1. le devis porte un design (`geometrie.roof_layout`) → on REMPLACE les zones par
+   *     celles du devis et on charge la zone active ;
+   *  2. sinon → repli lead-like (contour, ou pin + marqueur).
+   * Dans les deux cas la CIBLE vendue impose le besoin (`neededAuto = false`) : c'est le
+   * nombre de panneaux du devis qui pilote l'optimiseur, pas la facture. La puissance
+   * unitaire et le scénario vendus sont mémorisés pour l'export (jamais devinés).
+   */
+  function applyDevisHydration(devis: import('./roofPro11/prefill').DevisPayload): boolean {
+    const h = hydrateFromDevis(devis);
+    const layout = devis.geometrie?.roof_layout ?? null;
+    const setIf = (id: string, v?: string) => {
+      const el = $<HTMLInputElement>(id);
+      if (el && v && !el.value.trim()) el.value = v;
+    };
+    setIf('lf-name', h.contact.name);
+    setIf('lf-phone', h.contact.phone);
+    setIf('lf-city', h.contact.city);
+    // Origine du design : reprise telle quelle dans l'export (meta de sérialisation).
+    devisOrigin = { devisId: h.devisId, panelWatt: h.panelWatt, scenario: h.scenario };
+
+    /** Impose la cible VENDUE sur l'état vivant + la zone active (avant le calcul). */
+    const imposeTarget = () => {
+      if (h.neededPanels == null) return;
+      neededPanels = clampNeeded(h.neededPanels);
+      neededAuto = false;
+      const a = activeArea();
+      if (a) {
+        a.neededPanels = neededPanels;
+        a.neededAuto = false;
+      }
+    };
+
+    if (h.zones && h.zones.length) {
+      // Le devis porte un design : ses zones REMPLACENT les zones par défaut.
+      areas.length = 0;
+      for (const z of h.zones) areas.push(z);
+      activeAreaId = h.activeAreaId ?? areas[0].id;
+      const a = activeArea() ?? areas[0];
+      vertices = [...a.vertices];
+      obstacles = a.obstacles.map((o) => ({ ...o }));
+      roofType = a.roofType;
+      pitchDeg = a.pitchDeg;
+      facingAzimuthDeg = a.facingAzimuthDeg;
+      facingManual = a.facingManual ?? false;
+      neededPanels = a.neededPanels;
+      neededAuto = a.neededAuto;
+      imposeTarget();
+      redrawObstacles();
+      if (vertices.length >= 3) {
+        close(); // referme le tracé du devis → optimiseur + rendu
+        // PV27 — le dossier porte la POSE EXACTE (liste des panneaux réellement posés) :
+        // on la repose sur la lattice fraîchement pavée (re-snap au plus proche) au lieu
+        // de laisser l'optimum s'afficher à sa place.
+        const zoneGeo = layout?.zones?.find((z) => z.id === activeAreaId) ?? layout?.zones?.[0];
+        const posed = zoneGeo?.geometry;
+        if (posed?.panels?.length) layoutEditor.hydrateLayout(posed.panels, posed.origin);
+        return true;
+      }
+    }
+    if (h.vertices.length >= 3) {
+      vertices = [...h.vertices];
+      const a = activeArea();
+      if (a) a.vertices = [...vertices];
+      imposeTarget();
+      close();
+      return true;
+    }
+    if (h.center) {
+      imposeTarget();
+      const target = { center: h.center, zoom: 19, pitch: 0 } as const;
+      const landOnPin = () => {
+        map.resize();
+        map.jumpTo(target);
+      };
+      landOnPin();
+      if (!opts.reducedMotion) map.easeTo({ ...target, duration: 600, essential: true });
+      map.once('idle', landOnPin);
+      removeClientPinMarker();
+      clientPinMarker = new maplibregl.Marker({ color: '#e8b54a' }).setLngLat(h.center).addTo(map);
+      setStatus('Devis chargé — tracez le contour du toit pour lancer le calcul.');
+      return true;
+    }
+    return false;
+  }
+
   const srcOf = (id: string) => map.getSource(id) as maplibregl.GeoJSONSource | undefined;
 
   // ═══════════ TRACÉ + GÉOCODAGE : voir roofPro11/mapDraw.ts ═══════════
@@ -1364,7 +1480,10 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
     const pins: FlatPins = {};
     if (pinned.has('family')) pins.family = sel.family;
     if (pinned.has('tilt') && sel.tilt !== 'reco') pins.tiltDeg = sel.tilt;
-    if (pinned.has('orient') && sel.orient !== 'auto') pins.orientation = sel.orient;
+    // PV62 — la recherche pleine (V3) ne connaît que portrait/paysage : une pose MIXTE
+    // épinglée n'est pas transmise ici (c'est le solveur vivant V7 qui la tient), au lieu
+    // d'être traduite en une pose uniforme qu'on n'a pas choisie.
+    if (pinned.has('orient') && (sel.orient === 'portrait' || sel.orient === 'landscape')) pins.orientation = sel.orient;
     if (pinned.has('azimuth')) pins.azimuth = sel.azimuth;
     if (pinned.has('margin')) pins.margin = sel.margin;
     return pins;
@@ -1398,6 +1517,9 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
     document.querySelectorAll<HTMLButtonElement>('[data-rooftype]').forEach((b) => {
       b.setAttribute('aria-pressed', String(b.dataset.rooftype === roofType));
     });
+    // PV62 — la pose MIXTE n'existe que sur toit plat (en pente, pose affleurante).
+    const mixedChip = document.querySelector<HTMLButtonElement>('[data-orient="mixed"]');
+    if (mixedChip) mixedChip.hidden = roofType === 'pitched';
   }
   function setRoofType(t: RoofType) {
     if (roofType === t) return;
@@ -2071,8 +2193,18 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
   // W34 — Chaque groupe d'options est un AXE. Un clic VERROUILLE cet axe puis re-résout
   // en direct (renderSelection = liveResolveFlat). Re-cliquer la valeur déjà verrouillée
   // RELÂCHE cet axe (retour AUTO). Les verrous s'accumulent ; « Réinitialiser » relâche tout.
+  // PV28 — GARDE-FOU : les changements d'AXE (orientation, inclinaison, pose, azimut,
+  // marge, optimum, réinitialisation) re-résolvent et RE-PAVENT le toit — la lattice
+  // change, donc une disposition posée à la main est perdue. Contrairement à une édition
+  // d'obstacle (qui passe par recalc() et RE-SNAPPE la pose), ces chemins-là partent
+  // directement au solveur. On DEMANDE donc avant, en français, et un refus abandonne
+  // l'action en laissant la disposition intacte. Aucun panneau n'est « verrouillé » :
+  // on prévient, on ne fige pas.
+  const axisChangeAllowed = (): boolean => layoutEditor.confirmDiscardEdits();
+
   document.querySelectorAll<HTMLButtonElement>('[data-family]').forEach((b) => {
     b.addEventListener('click', () => {
+      if (!axisChangeAllowed()) return; // PV28
       const fam = b.dataset.family as ConfigFamily;
       // re-clic sur l'orientation déjà verrouillée (sans sous-verrou azimut) → AUTO
       if (pinned.has('family') && !pinned.has('azimuth') && sel.family === fam) {
@@ -2088,6 +2220,7 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
   });
   document.querySelectorAll<HTMLButtonElement>('[data-tilt]').forEach((b) => {
     b.addEventListener('click', () => {
+      if (!axisChangeAllowed()) return; // PV28
       if (b.dataset.tilt === 'reco') {
         pinned.delete('tilt'); // « Recommandé » = inclinaison AUTO (re-résolue)
         sel = { ...sel, tilt: 'reco' }; // W46 — efface la valeur numérique figée (sinon currentPins/affichage la garde)
@@ -2102,8 +2235,96 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
       renderSelection();
     });
   });
+  // PV62 — PUCE « Mixte » (pose choisie rangée par rangée) : ajoutée au groupe de pose si
+  // la page ne la fournit pas déjà, AVANT le câblage ci-dessous pour qu'elle reçoive le
+  // même écouteur que les autres puces `[data-orient]` (verrou / re-clic = auto). Toit
+  // PLAT uniquement : en pente la pose affleurante n'a pas de mixte (masquée par
+  // `syncRoofTypeChips`). Idempotente.
+  function ensureMixedOrientChip() {
+    if (document.querySelector('[data-orient="mixed"]')) return;
+    const sibling =
+      document.querySelector<HTMLButtonElement>('[data-orient="landscape"]') ??
+      document.querySelector<HTMLButtonElement>('[data-orient="portrait"]');
+    const group = sibling?.parentElement;
+    if (!sibling || !group) return;
+    const chip = document.createElement('button');
+    chip.type = 'button';
+    chip.className = sibling.className;
+    chip.dataset.orient = 'mixed';
+    chip.setAttribute('aria-pressed', 'false');
+    chip.title =
+      'Pose mixte : portrait ou paysage choisi rangée par rangée. Ne pose jamais moins de panneaux qu’une pose uniforme.';
+    chip.textContent = 'Mixte';
+    const badge = sibling.querySelector('.rp9-reco-badge');
+    if (badge) {
+      const clone = badge.cloneNode(true) as HTMLElement;
+      clone.hidden = true; // le mixte ne se BADGE jamais « Recommandé » (il ne balaie pas)
+      chip.appendChild(clone);
+    }
+    group.appendChild(chip);
+  }
+  ensureMixedOrientChip();
+
+  // PV63 — TROIS CHAMPS de retrait de rive (latéral / extrémité / acrotère), créés à côté
+  // du groupe « marge » si la page ne les fournit pas. Règle de saisie : `step="any"`,
+  // aucune borne HTML, et le commit se fait à la VALIDATION (`change`) — on n'arrondit
+  // jamais et on ne rejette jamais une frappe : une valeur douteuse est APPLIQUÉE (ou le
+  // retrait précédent conservé si elle est illisible) et AVERTIE dans la note.
+  const SETBACK_FIELDS: { key: keyof PerimeterSetbacks; id: string; label: string }[] = [
+    { key: 'lateralM', id: 'rp9-setback-lateral', label: 'Retrait latéral (m)' },
+    { key: 'extremityM', id: 'rp9-setback-extremity', label: 'Retrait d’extrémité (m)' },
+    { key: 'parapetM', id: 'rp9-setback-parapet', label: 'Retrait d’acrotère (m)' },
+  ];
+  const setbackNoteEl = (): HTMLElement | null => document.getElementById('rp9-setback-note');
+  function ensureSetbackInputs() {
+    if (document.getElementById(SETBACK_FIELDS[0].id)) return;
+    const marginChip = document.querySelector<HTMLButtonElement>('[data-margin]');
+    const host = marginChip?.parentElement?.parentElement ?? marginChip?.parentElement;
+    if (!host) return;
+    const wrap = document.createElement('div');
+    wrap.className = 'rp9-setbacks';
+    for (const f of SETBACK_FIELDS) {
+      const label = document.createElement('label');
+      label.setAttribute('for', f.id);
+      label.textContent = `${f.label} `;
+      const input = document.createElement('input');
+      input.id = f.id;
+      input.type = 'number';
+      input.step = 'any'; // jamais de « snap » : toute décimale est acceptée
+      input.inputMode = 'decimal';
+      input.className = 'rp9-input';
+      input.value = String(setbacks[f.key]);
+      label.appendChild(input);
+      wrap.appendChild(label);
+    }
+    const note = document.createElement('p');
+    note.id = 'rp9-setback-note';
+    note.className = 'rp9-note';
+    wrap.appendChild(note);
+    host.appendChild(wrap);
+  }
+  ensureSetbackInputs();
+  for (const f of SETBACK_FIELDS) {
+    const el = document.getElementById(f.id) as HTMLInputElement | null;
+    el?.addEventListener('change', () => {
+      const { valueM, warning } = readSetbackInput(el.value, setbacks[f.key]);
+      const changed = valueM !== setbacks[f.key];
+      setbacks[f.key] = valueM;
+      const note = setbackNoteEl();
+      if (note) {
+        note.textContent =
+          warning ??
+          `Retraits appliqués : latéral ${setbacks.lateralM} m · extrémité ${setbacks.extremityM} m · acrotère ${setbacks.parapetM} m.`;
+      }
+      // On ne réécrit PAS le champ (la frappe de l'utilisateur reste la sienne) ; seul le
+      // calepinage suit. Rien à recalculer si la valeur retenue n'a pas bougé.
+      if (changed && closed) recalc();
+    });
+  }
+
   document.querySelectorAll<HTMLButtonElement>('[data-orient]').forEach((b) => {
     b.addEventListener('click', () => {
+      if (!axisChangeAllowed()) return; // PV28
       const o = b.dataset.orient as OrientMode;
       if (roofType === 'pitched') {
         // W35 — pose = axe LIBRE en pente. « Auto » ou re-clic → AUTO ; sinon verrouille.
@@ -2124,6 +2345,7 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
   // W34 — Groupe AZIMUT (plein sud / aligné toit) = sous-axe de l'orientation.
   document.querySelectorAll<HTMLButtonElement>('[data-azimuth]').forEach((b) => {
     b.addEventListener('click', () => {
+      if (!axisChangeAllowed()) return; // PV28
       const az = b.dataset.azimuth as AzimuthMode;
       if (pinned.has('azimuth') && sel.azimuth === az) {
         pinned.delete('azimuth'); // re-clic → AUTO
@@ -2140,6 +2362,7 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
   // retrait → le solveur vivant suffit (la matrice balaie déjà les deux marges).
   document.querySelectorAll<HTMLButtonElement>('[data-margin]').forEach((b) => {
     b.addEventListener('click', () => {
+      if (!axisChangeAllowed()) return; // PV28
       const m = b.dataset.margin as MarginMode;
       if (roofType === 'pitched') {
         // W35 — marge = axe LIBRE en pente. re-clic → AUTO ; sinon verrouille.
@@ -2161,6 +2384,7 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
   // (toit plat = W34 ; toit en pente = W35, pose/marge re-libérées).
   optimumBtn?.addEventListener('click', () => {
     if (!closed || vertices.length < 3) return;
+    if (!axisChangeAllowed()) return; // PV28 — « Réinitialiser » détruit la pose manuelle
     if (roofType === 'pitched') resetPitchedLocks();
     else resetFlatLocks();
   });
@@ -2381,6 +2605,7 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
   // verrouillés — l'optimiseur SEMBLAIT « cesser de tenir » les choix après quelques
   // verrous. On aligne ce bouton sur la puce data-tilt="reco" : delete('tilt') seulement.
   tiltRecoBtn?.addEventListener('click', () => {
+    if (!axisChangeAllowed()) return; // PV28
     pinned.delete('tilt');
     sel = { ...sel, tilt: 'reco' };
     renderSelection();
@@ -2394,8 +2619,22 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
   // le layout finalisé (W113) + instantané PNG de la 3D (W115). Boot complet seulement
   // (jamais en capture). Absent → aucun effet.
   opts.onApiReady?.({
-    serializeLayout: (billKwh?: number | null) =>
-      serializeLayout(ctx, billKwh ?? (closed && vertices.length >= 3 ? billToAnnualKwh(monthlyBill()) : null)),
+    serializeLayout: (billKwh?: number | null, meta?: import('./roofPro11/prefill').SerializeMeta) =>
+      serializeLayout(
+        ctx,
+        billKwh ?? (closed && vertices.length >= 3 ? billToAnnualKwh(monthlyBill()) : null),
+        // PV19 — l'origine devis (id / puissance panneau / scénario vendus) sert de socle ;
+        // ce que l'appelant fournit explicitement l'emporte toujours.
+        devisOrigin
+          ? {
+              source: 'devis',
+              devisId: devisOrigin.devisId,
+              ...(devisOrigin.panelWatt != null ? { panelWatt: devisOrigin.panelWatt } : {}),
+              ...(devisOrigin.scenario ? { scenario: devisOrigin.scenario } : {}),
+              ...(meta ?? {}),
+            }
+          : meta,
+      ),
     snapshot: () => scene3d.snapshot(),
   });
 }

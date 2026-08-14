@@ -18,7 +18,10 @@ import { formatMAD, formatNumber, formatPercent } from '../../lib/format'
    les ordres annulés (calculé côté serveur).
    ========================================================================== */
 
-function KpiCard({ icon: Icon, label, value, hint }) {
+function KpiCard({ icon, label, value, hint }) {
+  // Classe lint maison #23b : le rename de déstructuration (`icon: Icon`)
+  // n'est pas crédité par no-unused-vars (cf. LeadsPage.jsx).
+  const Icon = icon
   return (
     <Card>
       <CardContent className="flex items-start gap-3 pt-4 sm:pt-5">

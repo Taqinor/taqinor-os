@@ -1,0 +1,10 @@
+{
+  "endpoint": "GET /api/django/ao/calepinage/marges/<int:resultat_id>/",
+  "pourquoi": "Les marges minimales mesurées par la passe de sensibilité du moteur, en UN SEUL appel : le tronçon le plus serré (cm), la bande la plus serrée SI le moteur l'a mesurée, la rangée où siège la contrainte la plus critique, et l'obstacle le plus critique. Une grandeur NON mesurée est `null`, jamais `0` — un `0` laisserait croire à une marge nulle qui n'a pas été calculée. PACT10 : ce contrat part SEUL avant les deux lanes front/back.",
+  "exemple": {
+    "troncon_min_cm": 4.2,
+    "bande_min_cm": null,
+    "rangee_critique": "R7",
+    "obstacle_critique": ""
+  }
+}

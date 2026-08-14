@@ -28,6 +28,9 @@ HISTORICAL_TARGETS = {
     ('ventes', 'boncommande'),
     # ODX17 — Facture déplacée vers l'app ``facturation`` (state-only).
     ('facturation', 'facture'),
+    # PV45 — le dossier réglementaire reçoit le schéma unifilaire en pièce
+    # jointe (records.Attachment, jamais un FileField — ARC26).
+    ('ventes', 'regulatorydossier'),
     ('installations', 'installation'),
     ('sav', 'ticket'),
     ('outillage', 'outillage'),
@@ -103,6 +106,8 @@ class TestAllowedTargetsNonRegression(SimpleTestCase):
             f"en trop: {resolved - HISTORICAL_TARGETS}")
 
     def test_len_matches(self):
+        # 33 historiques +2 supply/retail (vague 1) +1 PV45 (regulatorydossier)
+        # +1 douane.dossierexport (NTLOG49, vague 2 supply).
         self.assertEqual(len(ALLOWED_TARGETS), 37)
 
     def test_contains_works_for_each_historical_pair(self):

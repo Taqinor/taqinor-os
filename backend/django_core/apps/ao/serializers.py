@@ -39,10 +39,27 @@ from .models import (
     SerieQuestions,
     ToitureAO,
     VarianteCalepinage,
+    ZoneAO,
 )
 
 
 # ── FG222 — Appels d'offres ────────────────────────────────────────────────
+
+class SyntheseCalepinageAffaireSerializer(serializers.Serializer):
+    """PV68 — la synthèse de calepinage d'une affaire, forme DÉCLARÉE.
+
+    PACT7 : un « type: object » sans propriété ne contredit rien. Les cinq clés
+    que ``selectors.synthese_calepinage_affaire`` renvoie TOUJOURS sont donc
+    nommées ici.
+    """
+
+    total_modules = serializers.IntegerField(read_only=True)
+    total_kwc = serializers.FloatField(read_only=True)
+    toitures_total = serializers.IntegerField(read_only=True)
+    toitures_calepinees = serializers.IntegerField(read_only=True)
+    toitures = serializers.ListField(child=serializers.JSONField(),
+                                     read_only=True)
+
 
 class AppelOffreSerializer(serializers.ModelSerializer):
     type_marche_display = serializers.CharField(
@@ -64,6 +81,8 @@ class AppelOffreSerializer(serializers.ModelSerializer):
     surface_toitures_m2 = serializers.DecimalField(
         max_digits=12, decimal_places=3, read_only=True)
     engagement_modules_batiments = serializers.IntegerField(read_only=True)
+    # PV68 — la synthèse de calepinage de l'affaire (variantes RETENUES).
+    synthese_calepinage = serializers.SerializerMethodField()
 
     class Meta:
         model = AppelOffre
@@ -79,9 +98,25 @@ class AppelOffreSerializer(serializers.ModelSerializer):
             'engagement_modules_batiments', 'surface_toitures_m2',
             'montant_estime', 'montant_offre_ht', 'montant_offre_ttc',
             'caution_provisoire', 'statut', 'statut_display', 'lead_id',
-            'date_creation',
+            'date_creation', 'synthese_calepinage',
         ]
         read_only_fields = ['date_creation']
+
+    @extend_schema_field(SyntheseCalepinageAffaireSerializer)
+    def get_synthese_calepinage(self, obj):
+        """PV68 — bloc de DÉTAIL : ``null`` en liste, et c'est délibéré.
+
+        La synthèse coûte deux requêtes par affaire. Sur une liste de vingt-cinq
+        dossiers, ce serait cinquante requêtes pour une donnée qu'aucune liste
+        n'affiche. La CLÉ, elle, est toujours là : un écran qui reçoit parfois
+        une clé et parfois pas finit par tester l'absence de clé au lieu de
+        l'absence de données, et c'est là qu'il casse.
+        """
+        if not self.context.get('synthese_calepinage'):
+            return None
+        from . import selectors
+
+        return selectors.synthese_calepinage_affaire(obj)
 
 
 # ── AOF18 — Bâtiments et toitures ──────────────────────────────────────────
@@ -100,6 +135,8 @@ class ToitureAOSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'batiment', 'code_document', 'designation', 'forme',
             'forme_display', 'contour_local_m', 'angle_nord_deg',
+            # PV57 — l'ancre géographique du repère local, chaque axe NOMMÉ.
+            'origine_lat', 'origine_lng',
             'rayon_ext_m', 'largeur_m', 'arc_segments', 'murets', 'niveau',
             'altitude_m', 'type_couverture', 'type_couverture_display',
             'contraintes_structure', 'surface_m2', 'preset_applique',
@@ -249,6 +286,55 @@ class ObstacleAOSerializer(serializers.ModelSerializer):
                 "retouchée sans justification n'est pas défendable devant le "
                 "maître d'ouvrage."
             )})
+        return attrs
+
+
+class ZoneAOSerializer(serializers.ModelSerializer):
+    """PV54 — un contour NOMMÉ de toiture (enveloppe / interdit / réservé /
+    préféré).
+
+    ``company`` n'est PAS un champ : elle est posée côté serveur par
+    ``AoBaseViewSet``. ``exploitable`` est DÉRIVÉE (un contour de moins de
+    3 sommets n'est pas une surface) — jamais saisie.
+    """
+    nature_display = serializers.CharField(
+        source='get_nature_display', read_only=True)
+    exploitable = serializers.BooleanField(read_only=True)
+
+    class Meta:
+        model = ZoneAO
+        fields = [
+            'id', 'toiture', 'repere', 'nature', 'nature_display', 'sommets',
+            'hauteur_m', 'retrait_m', 'exploitable',
+        ]
+
+    def validate_sommets(self, valeur):
+        if valeur in (None, ''):
+            return []
+        if isinstance(valeur, dict) or not isinstance(valeur, (list, tuple)):
+            raise serializers.ValidationError(
+                'Les sommets doivent être une liste de couples [x, y] en '
+                'mètres.')
+        return list(valeur)
+
+    def validate(self, attrs):
+        """Les refus de ``ZoneAO.clean`` — mais rendus en 400 NOMMÉ.
+
+        Un ``ModelSerializer`` n'appelle pas ``clean()`` : sans ce relais, une
+        zone à deux sommets passerait l'API et ferait échouer un calcul plus
+        tard, loin de la saisie qui l'a produite.
+        """
+        from django.core.exceptions import ValidationError as DjangoValidation
+
+        instance = self.instance or ZoneAO()
+        for champ in ('sommets', 'retrait_m'):
+            if champ in attrs:
+                setattr(instance, champ, attrs[champ])
+        try:
+            instance.clean()
+        except DjangoValidation as erreur:
+            raise serializers.ValidationError(
+                getattr(erreur, 'message_dict', None) or erreur.messages)
         return attrs
 
 

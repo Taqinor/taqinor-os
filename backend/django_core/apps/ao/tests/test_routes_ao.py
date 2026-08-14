@@ -34,7 +34,7 @@ BASE = '/api/django/ao/'
 #: ``ao_voir``/``ao_gerer``.
 PREFIXES_DOMAINE = {
     'appels-offres', 'pieces-consultation', 'exigences-cps', 'batiments',
-    'toitures', 'plans-source', 'obstacles', 'chaines-cotes', 'releves',
+    'toitures', 'plans-source', 'obstacles', 'chaines-cotes', 'zones', 'releves',
     'series-questions', 'questions', 'kits-calepinage', 'presets-calepinage',
     'modeles-pack', 'sections-memoire',
     'variantes-calepinage', 'bordereaux-prix', 'sections-bordereau',

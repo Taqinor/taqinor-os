@@ -597,6 +597,10 @@ REFUS = {
         ("Préfixes connus", "SANS_SOURCE")],
     "frontend/src/features/ventes/agronomy.js": [
         ("Aligné sur solar.js", "MIROIR_JS")],
+    "frontend/src/features/ventes/ConceptionElectrique.jsx": [
+        # PV43 — DC_M_MINIMUM/DC_M_PAR_CHAINE : constantes scalaires de
+        # préremplissage (la valeur AFFICHÉE vient du serveur), pas une liste.
+        ("electrical_service.py", "SCALAIRE")],
     "frontend/src/features/ventes/module.config.jsx": [
         ("/sav/action-requise", "COMPORTEMENT")],
     "frontend/src/features/ventes/solar.js": [

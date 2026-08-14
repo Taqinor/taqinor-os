@@ -696,12 +696,14 @@ class DepotReelTests(unittest.TestCase):
         )
 
     def test_les_routes_squelettes_du_menu_ao(self):
-        """Calepinages/Dossiers cachent un vrai ecran ; Rentabilite non —
-        et la garde doit rester MUETTE sur Rentabilite."""
+        """Dossiers cache encore un vrai ecran ; Rentabilite non — et la garde
+        doit rester MUETTE sur Rentabilite. PV59 (2026-08-14) a SOLDE
+        /ao/calepinages : l'EmptyState est devenu la vraie VariantesListPage,
+        la route quitte donc les bouchons."""
         constats, _ = analyse_reelle()
         routes = sorted(c[1].split("::")[1] for c in constats
                         if c[0] == "bouchon-route")
-        self.assertEqual(routes, ["/ao/calepinages", "/ao/dossiers"])
+        self.assertEqual(routes, ["/ao/dossiers"])
 
     def test_aucune_config_opaque_sur_le_depot(self):
         """Si une config devient illisible, la garde s'aveugle en silence."""

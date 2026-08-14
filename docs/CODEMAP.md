@@ -1054,7 +1054,7 @@ Things this map could not fully verify from source — do not over-trust:
 
 ## 10. Plan status
 
-**Done (211)**
+**Done (298)**
 
 - `N100` — Build out multi-tenant operation on the existing tenant_id foundation (strict…
 - `N101` — Tenant administration console (manage tenants/plans/usage/support) + self-serve signup…
@@ -1239,6 +1239,93 @@ Things this map could not fully verify from source — do not over-trust:
 - `PACT185` — XGED3 : le PDF signé final aplati n'a aucune route
 - `PACT186` — XSAL6 : le résolveur de plan de commission cross-app n'est jamais consommé
 - `PACT187` — Onglet « Amortissement » d'un véhicule : 3 lignes sur 4 muettes
+- `PV1` — Contrat du contexte de conception 3D d'un devis
+- `PV2` — Contrat de la conception électrique d'un devis
+- `PV3` — Contrats AO : tiroirs + marges + suggestions + plan imposé
+- `PV4` — Contrat de l'étude bancable (simulation)
+- `PV5` — FicheTechnique étendue : la datasheet PVsyst-grade
+- `PV6` — Sélecteurs stock : la datasheet lisible cross-app
+- `PV7` — Écran Fiches techniques complet
+- `PV8` — Badge « complétude datasheet »
+- `PV9` — Seed des datasheets RÉELLES (jamais inventées)
+- `PV10` — solar_design branché sur la datasheet
+- `PV11` — Wattage du PDF : la fiche avant la regex
+- `PV12` — Kit villa depuis le produit devisé (côté AO)
+- `PV13` — Layout sérialisé v2 : émettre enfin result/scenario/panelWatt/battery
+- `PV14` — `extract_roof_config` lit la géométrie par pan
+- `PV15` — Garde de statut sur `replace-lines` + produits globaux
+- `PV16` — `cible_depuis_lignes(devis)` — lire le devis, pas la facture
+- `PV17` — `GET /ventes/devis/{id}/design-context/`
+- `PV18` — `POST /ventes/devis/{id}/sync-layout/` — synchro chirurgicale
+- `PV19` — `hydrateFromDevis` + boot `hydrate.devis`
+- `PV20` — Route `/ventes/devis/:id/design` + mode devis de ToitureDesign
+- `PV21` — Boucle de finalisation mode devis
+- `PV22` — Générer-si-absent + chip conception sur le lead
+- `PV23` — Entrées « Concevoir en 3D » côté ventes
+- `PV24` — Gardes règle #4 : la v2 n'altère ni PDF ni page publique
+- `PV25` — Multi-sélection + rangées + azimut
+- `PV26` — Undo/redo + nudge clavier
+- `PV27` — FIX perte des placements manuels (3 chemins prouvés)
+- `PV28` — Avertir avant d'écraser l'édition manuelle
+- `PV29` — Mode `rangees_imposees_utilisateur` dans le moteur
+- `PV30` — Passage `rangees_imposees` + `phase_forcee_m` dans l'API AO
+- `PV31` — Édition de rangées dans le studio (drag/ajout/suppression, serveur juge)
+- `PV32` — Violations en rouge + « Enregistrer comme variante »
+- `PV33` — Squelette du noyau électrique pur
+- `PV34` — chaines.py + onduleurs.py : physique + politique réconciliées
+- `PV35` — protections.py : le règlement encodé
+- `PV36` — cables.py : ampacité + chute de tension
+- `PV37` — nomenclature.py : le BOQ nourri par le vrai design
+- `PV38` — `concevoir()` + note de calcul FR
+- `PV39` — schema.py : le schéma unifilaire v2
+- `PV40` — SLD en PDF
+- `PV41` — `Devis.electrical_design` + endpoints conception électrique
+- `PV42` — Finalisation 3D → design électrique par pan + kit-produit villa
+- `PV43` — Panneau électrique du devis (front)
+- `PV44` — Le tiroir Électrique AO s'allume
+- `PV45` — Schéma unifilaire → dossier réglementaire
+- `PV46` — PDF premium : annexe technique optionnelle (photo toit + SLD)
+- `PV47` — BOQ électrique → lignes annexes du devis (opt-in)
+- `PV48` — `core/calepinage/tiroirs.py` : les 4 tiroirs calculés
+- `PV49` — Publier tiroirs + marges + garde de coût
+- `PV50` — Publier les suggestions (action discriminée)
+- `PV51` — Le studio consomme tout
+- `PV52` — `phase_forcee_m` réel côté moteur
+- `PV53` — L'atelier de traçage PERSISTE enfin obstacles + chaînes
+- `PV54` — `ZoneAO` : les zones ont enfin un modèle
+- `PV55` — Les zones atteignent le moteur
+- `PV56` — Zones persistées depuis l'atelier
+- `PV57` — Origine géographique de la toiture
+- `PV58` — La reprise carte s'applique enfin
+- `PV59` — Vraie liste des calepinages
+- `PV60` — FIX : l'obstacle testé au centre du panneau seulement
+- `PV61` — Dégagement par TYPE d'obstacle (roofPro11)
+- `PV62` — Mix portrait/paysage par bande de rangée (roofPro11)
+- `PV63` — Retraits de rive configurables (roofPro11)
+- `PV64` — 3 cartes de variantes (roofPro11)
+- `PV65` — Anti-ombrage à la vraie latitude (moteur calepinage)
+- `PV66` — Kit villa Est-Ouest dos-à-dos
+- `PV67` — Variantes d'orientation auto-générées (AO, endpoint)
+- `PV68` — Vue agrégée multi-toitures d'une affaire (AO)
+- `PV69` — `apps/ventes/etude.py` : le cœur P50/P90
+- `PV70` — Multi-zones + pont matrice d'ombrage
+- `PV71` — La matrice d'ombrage voyage dans le layout v2
+- `PV72` — Autoconso horaire → net-metering → projection 25 ans
+- `PV73` — Cache PVGIS système
+- `PV74` — `POST /ventes/devis/{id}/simuler/` async
+- `PV75` — Fenêtre de production : P50/P90 + cascade de pertes
+- `PV76` — Carte « Étude bancable » du devis
+- `PV77` — PDF étude enrichi + P50 public
+- `PV78` — Le lead expose sa conception (backend)
+- `PV79` — Événement `layout_finalise` + chatter lead
+- `PV80` — Le chantier hérite du schéma
+- `PV81` — Schéma unifilaire client-safe sur la proposition
+- `PV82` — KPI « conçu vs vendu »
+- `PV83` — Shims de ré-export ventes (précédent ARC6)
+- `PVG1` — Import DXF réel (dépendance `ezdxf` approuvée fondateur 2026-08-14)
+- `PVG2` — Garde de tolérance sur l'arbitrage A/B calepinage villa (décision rendue : sécurité par…
+- `PVG3` — SKUs câbles/protections prix vides (création approuvée fondateur 2026-08-14)
+- `PVG4` — Datasheets onduleurs/batteries : modèles supposés sourcés (accord fondateur 2026-08-14)
 - `VAO3` — Fichier de risque `tos_risk/marchespublics_gov_ma.md` (règle #5 volet (a))
 - `VAO6` — Créer l'app `apps/veille_ao` avec le scaffolder du dépôt + câblage complet
 - `VAO7` — `SourceVeille` : le catalogue des sources, aucune source en dur dans le code

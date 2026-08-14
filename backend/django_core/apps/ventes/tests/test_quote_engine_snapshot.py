@@ -137,6 +137,35 @@ REQUIRED_TOTALS_LITERALS = (
     'Sous-total HT', 'Total HT', 'TVA', 'Total TTC',
 )
 
+
+def _normaliser_pour_recherche(texte: str) -> str:
+    """Casse + espaces normalisés avant de chercher une figure clé dans un PDF.
+
+    2026-08-14 — POURQUOI : le moteur rend ces libellés avec
+    ``text-transform:uppercase`` (cf. ``_tot_line`` dans
+    ``generate_devis_premium.py``), donc le PDF contient « SOUS-TOTAL HT » et
+    l'extraction ``fitz`` le rend tel quel. Un ``assertIn('Sous-total HT', …)``
+    sensible à la casse ne pouvait donc JAMAIS passer : cette garde — celle qui
+    protège la chaîne Sous-total HT → Remise → Total HT → TVA → Total TTC
+    exigée par CLAUDE.md — était rouge chaque nuit et ne protégeait plus rien.
+    Le PDF, lui, a toujours été correct.
+
+    On normalise la casse et les espaces (l'espace insécable ``\\xa0`` et les
+    fines ``\\u2009/\\u202f`` du moteur deviennent une espace simple).
+
+    LIMITE ASSUMÉE, à ne pas se raconter autrement : « Total HT » est une
+    sous-chaîne de « Sous-total HT », donc sa présence dans la liste ci-dessus
+    est satisfaite par le sous-total. Ce n'est pas un trou introduit ici — il
+    existait déjà — et c'est SAIN au regard du moteur : ``_tot_line("Total HT")``
+    n'est rendu que si une remise existe (``DISCOUNT_PCT > 0``), un devis sans
+    remise n'a donc légitimement pas de ligne « Total HT » séparée. Durcir cette
+    garde (chaîne ORDONNÉE, ou exigence conditionnée à la remise) demande de
+    pouvoir l'exécuter — hors de portée de ce correctif, qui se borne à réparer
+    la casse pour que la garde recommence à mordre sur les trois autres figures.
+    """
+    return ' '.join(texte.split()).casefold()
+
+
 # Marqueurs de prix d'achat interdits sur TOUT rendu client (jamais un centime
 # du prix d'achat revendeur ne doit fuiter — CLAUDE.md).
 FORBIDDEN_BUY_PRICE_MARKERS = ('9876', '9 876', '9 876', '9&#8239;876', 'achat')
@@ -328,10 +357,12 @@ class TestQuoteEngineGoldenSnapshots(TestCase):
 
     def _structural_asserts(self, pdf_bytes):
         text = _extract_text(pdf_bytes)
+        cherchable = _normaliser_pour_recherche(text)
         for literal in REQUIRED_TOTALS_LITERALS:
             self.assertIn(
-                literal, text,
-                f'figure clé absente du PDF : « {literal} »')
+                _normaliser_pour_recherche(literal), cherchable,
+                f'figure clé absente du PDF : « {literal} ». Texte extrait '
+                f'(500 premiers caractères) : {text[:500]!r}')
 
     def _assert_no_buy_price(self, pdf_bytes):
         text = _extract_text(pdf_bytes).lower()
