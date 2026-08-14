@@ -400,6 +400,10 @@ class EtapeApprobationDevis(TenantModel):
     decision_le = models.DateTimeField(null=True, blank=True)
     commentaire = models.TextField(blank=True, default='')
     date_creation = models.DateTimeField(auto_now_add=True)
+    # NTCPQ33 — horodatage de la DERNIÈRE relance automatique envoyée à
+    # l'approbateur (job planifié) ; NULL = jamais relancée. Empêche plus
+    # d'une relance par 24h par étape (idempotence du job).
+    derniere_relance_le = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         verbose_name = "Étape d'approbation de devis"
@@ -562,6 +566,74 @@ class ProduitEquivalent(TenantModel):
     def __str__(self):
         return (f'{self.produit_source_id} → {self.produit_substitut_id} '
                 f'({self.tier})')
+
+
+class ParametresCPQ(models.Model):
+    """NTCPQ30 — Réglages CPQ, SINGLETON par société (pattern
+    ``contrats.ParametresLocation``/ZCTR4).
+
+    Toutes les valeurs par défaut préservent le comportement historique :
+    une société sans ligne créée (``get_or_create`` côté vue) se comporte
+    exactement comme avant NTCPQ30. ``approbation_active=False`` fait passer
+    ``envoyer``/``generer-pdf`` en direct SANS blocage NTCPQ7 pour CETTE
+    société uniquement (lu par ``services.lancer_approbation_devis``), sans
+    affecter les autres sociétés.
+    """
+    company = models.OneToOneField(
+        'authentication.Company', on_delete=models.CASCADE,  # on_delete: purge tenant
+        related_name='cpq_parametres')
+    marge_min_defaut_pct = models.DecimalField(
+        max_digits=5, decimal_places=2, null=True, blank=True,
+        help_text='Marge minimale par défaut (%) — repli quand aucun '
+                  'SeuilMargeFamille ne couvre la catégorie.')
+    approbation_active = models.BooleanField(
+        default=True,
+        help_text="Désactivé : envoyer/generer-pdf ne sont plus bloqués "
+                  "par une approbation de remise en attente (NTCPQ7).")
+    variantes_auto_generees = models.BooleanField(
+        default=False,
+        help_text='Générer automatiquement les variantes (NTCPQ16) à la '
+                  'création du devis.')
+    duree_validite_prix_contractuel_jours = models.PositiveIntegerField(
+        null=True, blank=True,
+        help_text="Durée de validité par défaut d'un PrixContractuel sans "
+                  "date_fin explicite (NULL = pas de limite, comportement "
+                  "historique inchangé).")
+
+    class ModeCompatibilite(models.TextChoices):
+        BLOQUANT = 'BLOQUANT', 'Bloquant'
+        AVERTISSEMENT = 'AVERTISSEMENT', 'Avertissement'
+
+    # NTCPQ31 — AVERTISSEMENT par défaut : ne casse rien sur les tenants
+    # existants (une violation INCOMPATIBLE/REQUIERT reste un badge NTCPQ21,
+    # jamais un blocage, tant qu'une société ne bascule pas explicitement en
+    # BLOQUANT).
+    compatibilite_mode = models.CharField(
+        max_length=20, choices=ModeCompatibilite.choices,
+        default=ModeCompatibilite.AVERTISSEMENT,
+        help_text='BLOQUANT empêche envoyer/generer-pdf tant qu’une '
+                  'violation de compatibilité bloquante (NTCPQ1) subsiste.')
+    # NTCPQ33 — nombre de jours d'attente avant relance automatique d'une
+    # étape d'approbation encore en_attente (job planifié, apps/cpq/scheduled.py).
+    delai_relance_approbation_jours = models.PositiveIntegerField(default=2)
+    date_creation = models.DateTimeField(auto_now_add=True)
+    date_modification = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = 'Paramètres CPQ'
+        verbose_name_plural = 'Paramètres CPQ'
+
+    def __str__(self):
+        return f'Paramètres CPQ — {self.company_id}'
+
+    @classmethod
+    def get_or_default(cls, company):
+        """Renvoie les réglages de ``company`` SANS écrire en base (repli
+        sur une instance non sauvegardée aux valeurs par défaut) — utile aux
+        lectures fréquentes (ex. ``lancer_approbation_devis``) qui ne
+        veulent pas créer une ligne pour chaque société lue."""
+        obj = cls.objects.filter(company=company).first()
+        return obj if obj is not None else cls(company=company)
 
 
 class ClauseCGV(TenantModel):

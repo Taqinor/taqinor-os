@@ -801,6 +801,27 @@ app.conf.beat_schedule = {
         'task': 'ai_governance.surveiller_drift_mensuel',
         'schedule': crontab(hour=4, minute=25, day_of_month=1),
     },
+    # NTCPQ32 — rappel quotidien (activité, jamais d'email auto) des
+    # PrixContractuel dont date_fin est dépassée — apps/cpq/scheduled.py.
+    # Idempotent (une seule activité par prix expiré). Heure creuse.
+    'cpq-expire-prix-contractuels': {
+        'task': 'cpq.expire_prix_contractuels',
+        'schedule': crontab(hour=4, minute=40),
+    },
+    # NTCPQ33 — relance les EtapeApprobationDevis en_attente depuis plus de
+    # N jours (ParametresCPQ.delai_relance_approbation_jours) — apps/cpq/
+    # scheduled.py. Idempotent (max 1 relance/24h/étape).
+    'cpq-relancer-approbations-en-attente': {
+        'task': 'cpq.relancer_approbations_en_attente',
+        'schedule': crontab(hour=7, minute=20),
+    },
+    # NTCPQ34 — purge les SessionConfigurateur inactives >30j sans devis lié
+    # — apps/cpq/scheduled.py. Additive-safe (aucune session ayant abouti à
+    # un devis, même brouillon, n'est jamais touchée).
+    'cpq-purger-sessions-configurateur-abandonnees': {
+        'task': 'cpq.purger_sessions_configurateur_abandonnees',
+        'schedule': crontab(hour=3, minute=50),
+    },
 }
 
 # YHARD6 — compteurs Celery succès/échec (process-local, best-effort) pour

@@ -12,7 +12,7 @@ from .models import (
     OptionProduit, ContrainteCompatibilite, RegleProduitCPQ,
     OffreGroupee, LigneOffreGroupee, PrixContractuel,
     QuestionConfigurateur, SeuilMargeFamille, RegleApprobationRemise,
-    ClauseCGV, ProduitEquivalent,
+    ClauseCGV, ProduitEquivalent, ParametresCPQ,
 )
 
 
@@ -185,6 +185,19 @@ class ProduitEquivalentSerializer(serializers.ModelSerializer):
 
     def validate_produit_substitut(self, produit):
         return self._meme_societe(produit)
+
+
+class ParametresCPQSerializer(serializers.ModelSerializer):
+    """NTCPQ30 — Réglages CPQ singleton. ``company`` posée côté serveur."""
+
+    class Meta:
+        model = ParametresCPQ
+        fields = [
+            'id', 'marge_min_defaut_pct', 'approbation_active',
+            'variantes_auto_generees', 'duree_validite_prix_contractuel_jours',
+            'compatibilite_mode', 'date_creation', 'date_modification',
+        ]
+        read_only_fields = ['date_creation', 'date_modification']
 
 
 class ClauseCGVSerializer(serializers.ModelSerializer):

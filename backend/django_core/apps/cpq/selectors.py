@@ -99,6 +99,72 @@ def _violation(contrainte):
     }
 
 
+def alternatives_violation(*, company, produit_ids, violation):
+    """NTCPQ29 — Alternatives COMPATIBLES pour résoudre une violation
+    bloquante (issue de ``violations_compatibilite``), au lieu d'un simple
+    message d'erreur sans issue.
+
+      * ``REQUIERT`` (``produit_a`` présent sans ``produit_b``) : la SEULE
+        alternative valable est d'AJOUTER ``produit_b`` (le produit requis
+        lui-même) — ``source: 'a_ajouter'``.
+      * ``INCOMPATIBLE`` : cherche un SUBSTITUT du produit incompatible
+        (``ProduitEquivalent``, NTCPQ16, n'importe quel tier) puis, à
+        défaut, des produits ``RECOMMANDE`` (NTCPQ1) liés à l'AUTRE membre
+        de la violation — jamais un produit déjà dans la sélection.
+
+    Renvoie jusqu'à 3 dicts ``{produit_id, nom, source}``, liste vide si
+    aucune alternative connue (l'appelant retombe alors sur le simple
+    message)."""
+    from apps.stock.models import Produit
+    from .models import ProduitEquivalent
+
+    ids = {int(p) for p in produit_ids if p is not None}
+
+    if violation['type'] != ContrainteCompatibilite.TypeContrainte.INCOMPATIBLE:
+        # REQUIERT : produit_b est le produit MANQUANT — l'ajouter EST la
+        # résolution, pas un substitut.
+        produit = Produit.objects.filter(
+            company=company, id=violation['produit_b']).first()
+        if produit is None:
+            return []
+        return [{'produit_id': produit.id, 'nom': produit.nom,
+                 'source': 'a_ajouter'}]
+
+    cible = violation['produit_b']
+    autre = violation['produit_a']
+    vus = set()
+    candidats = []
+
+    for eq in (ProduitEquivalent.objects
+               .filter(company=company, produit_source_id=cible, actif=True)
+               .select_related('produit_substitut')
+               .order_by('tier', 'id')):
+        if eq.produit_substitut_id in ids or eq.produit_substitut_id in vus:
+            continue
+        vus.add(eq.produit_substitut_id)
+        candidats.append({
+            'produit_id': eq.produit_substitut_id,
+            'nom': eq.produit_substitut.nom, 'source': 'substitut'})
+
+    if len(candidats) < 3:
+        recommande = ContrainteCompatibilite.TypeContrainte.RECOMMANDE
+        qs_reco = (ContrainteCompatibilite.objects
+                   .filter(company=company, produit_a_id=autre,
+                           type=recommande)
+                   .select_related('produit_b').order_by('id'))
+        for c in qs_reco:
+            if c.produit_b_id in ids or c.produit_b_id in vus:
+                continue
+            vus.add(c.produit_b_id)
+            candidats.append({
+                'produit_id': c.produit_b_id, 'nom': c.produit_b.nom,
+                'source': 'recommande'})
+            if len(candidats) >= 3:
+                break
+
+    return candidats[:3]
+
+
 def evaluer_regles_produit(*, company, context):
     """NTCPQ2 — Évalue les règles produit actives de la société contre un
     ``context`` (dict plat construit par l'appelant depuis les lignes/champs du
@@ -291,6 +357,130 @@ def condition_en_clair(noeud):
     if lisible in ('=', '≠', '>', '≥', '<', '≤'):
         return f'{champ}{lisible}{valeur}'
     return f'{champ} {lisible} {valeur}'
+
+
+def _percentile(valeurs_triees, p):
+    """Percentile ``p`` (0-100) par interpolation linéaire (méthode « nearest
+    rank » interpolée, sans dépendance externe). ``valeurs_triees`` DOIT déjà
+    être triée. Renvoie 0 sur une liste vide."""
+    if not valeurs_triees:
+        return 0
+    if len(valeurs_triees) == 1:
+        return valeurs_triees[0]
+    k = (len(valeurs_triees) - 1) * (p / 100)
+    f = int(k)
+    c = min(f + 1, len(valeurs_triees) - 1)
+    if f == c:
+        return valeurs_triees[f]
+    return valeurs_triees[f] + (valeurs_triees[c] - valeurs_triees[f]) * (k - f)
+
+
+def delai_approbation_stats(company, *, date_debut=None, date_fin=None,
+                            approbateur_id=None):
+    """NTCPQ48 — moyenne + p90 (heures) du délai entre création d'une
+    ``EtapeApprobationDevis`` (NTCPQ7) et sa décision, sur les étapes déjà
+    DÉCIDÉES (``decision_le`` renseigné — une étape encore ``en_attente``
+    n'a pas de délai final). Filtrable par période (``date_creation``) et
+    par ``approbateur_id`` — utilisé par le widget KPI fédéré SANS filtre
+    (période complète) et directement testable AVEC filtres.
+
+    Renvoie ``{'moyenne_heures': float, 'p90_heures': float, 'count': int}``
+    (zéros si aucune étape décidée)."""
+    qs = EtapeApprobationDevis.objects.filter(
+        company=company, decision_le__isnull=False)
+    if date_debut:
+        qs = qs.filter(date_creation__date__gte=date_debut)
+    if date_fin:
+        qs = qs.filter(date_creation__date__lte=date_fin)
+    if approbateur_id:
+        qs = qs.filter(approbateur_id=approbateur_id)
+
+    delais = sorted(
+        (e.decision_le - e.date_creation).total_seconds() / 3600
+        for e in qs.only('decision_le', 'date_creation'))
+    if not delais:
+        return {'moyenne_heures': 0.0, 'p90_heures': 0.0, 'count': 0}
+    moyenne = round(sum(delais) / len(delais), 1)
+    p90 = round(_percentile(delais, 90), 1)
+    return {'moyenne_heures': moyenne, 'p90_heures': p90, 'count': len(delais)}
+
+
+def kpi_delai_approbation(company):
+    """NTCPQ48 — provider KPI fédéré (ARC40, ``core.platform.kpi_providers``) :
+    tuiles ``[{id, label, valeur, unite}]`` — délai moyen ET p90
+    d'approbation de remise (NTCPQ7), sur toute la société (pas de filtre —
+    le détail filtrable par période/approbateur vit dans
+    ``delai_approbation_stats``, appelable directement). Liste vide tant
+    qu'aucune étape n'a été décidée (jamais de tuile à 0 trompeuse)."""
+    stats = delai_approbation_stats(company)
+    if not stats['count']:
+        return []
+    return [
+        {'id': 'cpq_delai_moyen_approbation',
+         'label': "Délai moyen d'approbation de remise",
+         'valeur': stats['moyenne_heures'], 'unite': 'h'},
+        {'id': 'cpq_delai_p90_approbation',
+         'label': "Délai p90 d'approbation de remise",
+         'valeur': stats['p90_heures'], 'unite': 'h'},
+    ]
+
+
+def taux_utilisation_offres_groupees(company):
+    """NTCPQ49(a) — % des devis ENVOYÉS (``date_envoi`` renseigné) contenant
+    au moins une ``OffreGroupee`` (NTCPQ3) appliquée. ``LigneDevis`` ne
+    porte pas de référence structurelle vers l'offre qui l'a créée — le
+    signal utilisé est l'entrée chatter posée par NTCPQ45
+    (``« Offre groupée » appliquée``, ``apps.cpq.services.
+    appliquer_offre_groupee``), unique marqueur fiable disponible.
+    ``0.0`` sans devis envoyé (jamais une division par zéro)."""
+    from apps.ventes.selectors import devis_envoyes_periode
+    devis_qs = devis_envoyes_periode(company)
+    total = devis_qs.count()
+    if not total:
+        return 0.0
+    avec_bundle = devis_qs.filter(
+        activites__body__icontains='Offre groupée').distinct().count()
+    return round(avec_bundle * 100.0 / total, 1)
+
+
+def taux_conversion_configurateur(company):
+    """NTCPQ49(b) — % des sessions configurateur (NTCPQ9, démarrage) ayant
+    abouti à un devis ENVOYÉ (funnel démarrage → devis brouillon → devis
+    envoyé). N'INCLUT JAMAIS un devis encore brouillon non envoyé au
+    numérateur (``devis__date_envoi__isnull=False`` strict). ``0.0`` sans
+    session (jamais une division par zéro)."""
+    from .models import SessionConfigurateur
+    total = SessionConfigurateur.objects.filter(company=company).count()
+    if not total:
+        return 0.0
+    envoyes = SessionConfigurateur.objects.filter(
+        company=company, devis__isnull=False,
+        devis__date_envoi__isnull=False).count()
+    return round(envoyes * 100.0 / total, 1)
+
+
+def kpi_taux_bundle_configurateur(company):
+    """NTCPQ49 — provider KPI fédéré (ARC40) : deux tuiles, taux
+    d'utilisation des offres groupées (a) et taux de conversion
+    configurateur → devis envoyé (b). Une tuile n'apparaît que si son
+    dénominateur est non nul (jamais un « 0 % » trompeur sans aucune
+    donnée)."""
+    tuiles = []
+    from apps.ventes.selectors import devis_envoyes_periode
+    from .models import SessionConfigurateur
+    if devis_envoyes_periode(company).exists():
+        tuiles.append({
+            'id': 'cpq_taux_offres_groupees',
+            'label': "Devis envoyés avec offre groupée",
+            'valeur': taux_utilisation_offres_groupees(company),
+            'unite': '%'})
+    if SessionConfigurateur.objects.filter(company=company).exists():
+        tuiles.append({
+            'id': 'cpq_taux_conversion_configurateur',
+            'label': 'Conversion configurateur → devis envoyé',
+            'valeur': taux_conversion_configurateur(company),
+            'unite': '%'})
+    return tuiles
 
 
 def clauses_applicables(*, company, context):
