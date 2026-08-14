@@ -49,7 +49,7 @@ export default function PinLock({ userId, onUnlock, verrouille = true }) {
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-background/95 backdrop-blur-sm"
+      className="fixed inset-0 z-[var(--z-overlay)] flex items-center justify-center bg-background/95 backdrop-blur-sm"
       data-testid="pin-lock-overlay"
     >
       <form
