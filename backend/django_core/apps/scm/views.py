@@ -591,6 +591,56 @@ def precision_previsions_view(request):
         request.user.company, produit=produit, fenetre_mois=fenetre_mois))
 
 
+# ── NTSCM32 — export « Écarts de prévision » (.xlsx) ────────────────────────
+
+@api_view(['GET'])
+@permission_classes([IsResponsableOrAdmin])
+def export_ecarts_prevision_view(request):
+    """NTSCM32 — ``GET /api/django/scm/precision-previsions/export/`` :
+    export .xlsx du rapport « Écarts de prévision » (NTSCM24 réutilisé) —
+    une ligne par produit (prévision, réel, écart absolu, écart %) + un total
+    en pied de tableau. ``?fenetre_mois=&produit=``."""
+    from apps.records.xlsx import build_xlsx_response
+    from apps.stock.selectors import get_produit_scoped
+
+    from . import selectors, services
+
+    produit = None
+    produit_id = request.query_params.get('produit')
+    if produit_id:
+        produit = get_produit_scoped(request.user.company, produit_id)
+        if produit is None:
+            return Response({'produit': 'Produit introuvable.'}, status=404)
+    fenetre_mois = int(request.query_params.get('fenetre_mois') or 6)
+
+    lignes = selectors.ecarts_prevision(
+        request.user.company, fenetre_mois=fenetre_mois, produit=produit)
+
+    headers = [
+        'Produit', 'Prévision totale', 'Réel total', 'Écart absolu', 'Écart %']
+    rows = [[
+        ligne['produit_nom'],
+        services._fmt_dec(ligne['quantite_prevue_totale']),
+        services._fmt_dec(ligne['quantite_reelle_totale']),
+        services._fmt_dec(ligne['ecart_absolu']),
+        (f"{ligne['ecart_pct']}%" if ligne['ecart_pct'] is not None else '—'),
+    ] for ligne in lignes]
+
+    total_prevu = sum((ligne['quantite_prevue_totale'] for ligne in lignes), Decimal('0'))
+    total_reel = sum((ligne['quantite_reelle_totale'] for ligne in lignes), Decimal('0'))
+    total_ecart = total_reel - total_prevu
+    total_ecart_pct = (
+        f"{(total_ecart / total_reel * 100).quantize(Decimal('0.01'))}%"
+        if total_reel else '—')
+    rows.append([
+        'TOTAL', services._fmt_dec(total_prevu), services._fmt_dec(total_reel),
+        services._fmt_dec(total_ecart), total_ecart_pct,
+    ])
+
+    return build_xlsx_response(
+        'ecarts-prevision.xlsx', headers, rows, sheet_title='Écarts de prévision')
+
+
 # ── NTSCM28 — tableau de bord SCM exécutif (KPI de synthèse) ────────────────
 
 @extend_schema(responses=inline_serializer('ScmTableauBordExecutif', {

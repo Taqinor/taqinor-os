@@ -7,7 +7,8 @@ from .views import (
     ClassificationABCViewSet, CyclePlanificationSOPViewSet, EvenementDemandeViewSet,
     PolitiqueStockViewSet, PrevisionDemandeViewSet,
     anomalies_demande_view, creer_brouillons_bcf_reappro_view,
-    detecter_anomalies_demande_view, parametres_sop_view, precision_previsions_view,
+    detecter_anomalies_demande_view, export_ecarts_prevision_view,
+    parametres_sop_view, precision_previsions_view,
     proposer_allocation_penurie_view, simuler_rupture_view,
     suggestions_achat_groupe_view, suggestions_transfert_view,
     tableau_bord_executif_view, tableau_bord_reappro_view,
@@ -55,6 +56,10 @@ urlpatterns = [
     path(
         'precision-previsions/', precision_previsions_view,
         name='scm-precision-previsions'),
+    # NTSCM32 — export .xlsx du rapport « Écarts de prévision ».
+    path(
+        'precision-previsions/export/', export_ecarts_prevision_view,
+        name='scm-precision-previsions-export'),
     # NTSCM28 — tableau de bord SCM exécutif (KPI de synthèse).
     path('tableau-bord/', tableau_bord_executif_view, name='scm-tableau-bord'),
     # NTSCM25 — anomalies de demande (pic/creux inattendu).

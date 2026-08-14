@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { ShoppingCart, RefreshCw, TrendingUp, AlertTriangle } from 'lucide-react'
+import { ShoppingCart, RefreshCw, TrendingUp, AlertTriangle, Download } from 'lucide-react'
 import scmApi from '../../api/scmApi'
 import { formatMAD } from '../../lib/format'
 import { Button, Badge, DataTable, EmptyState, Skeleton } from '../../ui'
@@ -78,6 +78,25 @@ export default function ReapproPage() {
         .catch(() => {})
     })
   }, [])
+
+  // NTSCM32 — export .xlsx du rapport « Écarts de prévision ».
+  const [exportBusy, setExportBusy] = useState(false)
+  const exporterEcartsPrevision = async () => {
+    setExportBusy(true)
+    try {
+      const res = await scmApi.exportEcartsPrevision()
+      const url = window.URL.createObjectURL(new Blob([res.data]))
+      const a = document.createElement('a')
+      a.href = url
+      a.download = 'ecarts-prevision.xlsx'
+      a.click()
+      window.URL.revokeObjectURL(url)
+    } catch {
+      setCreerErr("L'export des écarts de prévision a échoué.")
+    } finally {
+      setExportBusy(false)
+    }
+  }
 
   const creerBrouillonsBcf = async () => {
     setCreerBusy(true); setCreerMsg(null); setCreerErr(null)
@@ -211,6 +230,13 @@ export default function ReapproPage() {
           title="Groupe les lignes à commander par fournisseur et crée un bon de commande brouillon par fournisseur."
         >
           <ShoppingCart /> Créer les brouillons BCF ({nbACommander})
+        </Button>
+        <Button
+          type="button" variant="outline" size="sm" loading={exportBusy}
+          onClick={exporterEcartsPrevision}
+          title="Exporte le rapport écarts de prévision (prévision, réel, écart absolu, écart %) au format .xlsx."
+        >
+          <Download /> Exporter les écarts de prévision
         </Button>
         {creerMsg && <span className="text-sm text-success" role="status">{creerMsg}</span>}
         {creerErr && <span className="text-sm text-destructive" role="alert">{creerErr}</span>}

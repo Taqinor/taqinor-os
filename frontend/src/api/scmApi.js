@@ -63,6 +63,10 @@ const scmApi = {
   precisionPrevisions: (params = {}) =>
     api.get('/scm/precision-previsions/', { params }),
 
+  // NTSCM32 — export .xlsx du rapport « Écarts de prévision ».
+  exportEcartsPrevision: (params = {}) =>
+    api.get('/scm/precision-previsions/export/', { params, responseType: 'blob' }),
+
   // NTSCM25 — anomalies de demande (pic/creux inattendu).
   anomaliesDemande: () => api.get('/scm/anomalies-demande/'),
   detecterAnomaliesDemande: () => api.post('/scm/anomalies-demande/detecter/', {}),
