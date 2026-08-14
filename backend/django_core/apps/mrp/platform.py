@@ -7,6 +7,13 @@ générique. Sans cette déclaration, la surface générique `records`
 (`ALLOWED_TARGETS`) refuse cette cible pour tout futur usage passant par
 elle (ex. `records.Attachment` si l'OF gagne des pièces jointes plus tard) —
 même motif que `apps/transport/platform.py`.
+
+`kpi_providers` (NTMFG40) déclare le raccordement du tableau de bord
+Production (NTMFG22) au hub KPI fédéré de l'entreprise (ARC40, ``GET
+/reporting/reports/kpi-federes/`` — « générateur de dashboard » existant,
+aucun nouvel écran) : 3 tuiles (taux de charge atelier, TRS moyen, OF en
+retard), résolues par ``reporting.reports.kpi_federes``, ZÉRO nouveau calcul
+(délègue à `apps.mrp.selectors.tableau_bord_production`, NTMFG22).
 """
 from __future__ import annotations
 
@@ -20,5 +27,7 @@ PLATFORM = {
     'import_specs': [],
     'agent_actions_module': '',
     'automation_state_fields': [],
-    'kpi_providers': [],
+    'kpi_providers': [
+        'apps.mrp.selectors.kpi_production',
+    ],
 }

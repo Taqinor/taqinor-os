@@ -823,3 +823,24 @@ def export_ordres_fabrication(company, *, debut=None, fin=None, statut=None):
                 'quantite_rebut': _fmt_dec(op.quantite_rebut),
             })
     return lignes_of, lignes_operations
+
+
+# ── NTMFG40 — Provider KPI fédéré (ARC40, core.platform.kpi_providers) ───
+
+def kpi_production(company):
+    """NTMFG40 — provider KPI fédéré (``core.platform.kpi_providers``,
+    déclaré dans ``apps/mrp/platform.py``) : 3 tuiles — taux de charge
+    atelier, TRS moyen, OF en retard — DÉLÈGUE ENTIÈREMENT à
+    `tableau_bord_production` (NTMFG22, qui réutilise elle-même NTMFG7/12) :
+    ZÉRO nouveau calcul, valeurs STRICTEMENT identiques à l'écran dédié
+    `/mrp/tableau-bord` sur le même jeu de données. Company-scopée (le hub
+    `reporting.kpi_federes` passe déjà la société de l'acteur)."""
+    donnees = tableau_bord_production(company)
+    return [
+        {'id': 'mrp_taux_charge_atelier', 'label': 'Taux de charge atelier',
+         'valeur': donnees['charge_moyenne_pct'], 'unite': '%'},
+        {'id': 'mrp_trs_moyen', 'label': 'TRS moyen (7 jours)',
+         'valeur': donnees['trs_moyen_pct'], 'unite': '%'},
+        {'id': 'mrp_of_en_retard', 'label': 'OF en retard',
+         'valeur': donnees['of_en_retard'], 'unite': ''},
+    ]
