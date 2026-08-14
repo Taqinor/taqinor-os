@@ -42,10 +42,12 @@ from core.calepinage.version import SCHEMA_VERSION, VERSION_MOTEUR
 
 __all__ = [
     'EntreeInvalide', 'NATURE_VERS_TYPE_MOTEUR', 'PROVENANCE_VERS_MOTEUR',
-    'MODE_POSE_IMPOSE', 'document_entree', 'affectations_du_document',
+    'MODE_POSE_IMPOSE', 'TIROIRS', 'CHAMPS_RIVES_VERS_CONTRAT',
+    'document_entree', 'affectations_du_document',
     'kits_vers_document', 'parametres_vers_document',
     'rangees_imposees_du_preset', 'surface_vers_document',
     'obstacles_vers_document', 'resultat_vers_json', 'preuve_vers_json',
+    'marges_vers_json', 'tiroirs_vers_json', 'tiroirs_vides',
 ]
 
 
@@ -533,6 +535,159 @@ def preuve_vers_json(preuve, marges, *, controles=(), pas_recherche_m=0.01):
         'controles': list(controles),
         'version_moteur': VERSION_MOTEUR,
     }
+
+
+def marges_vers_json(marges):
+    """PV49 — les marges de robustesse PUBLIÉES, en centimètres.
+
+    **Une grandeur NON MESURÉE vaut ``None``, jamais ``0``.** ``Marges`` du
+    moteur rend ``0.0`` aussi bien pour « au ras » que pour « ce plan n'a
+    aucune marge de ce type » (une toiture sans obstacle n'a aucune marge de
+    bande). Publier ce zéro ferait lire « marge nulle » là où rien n'a été
+    mesuré — exactement l'erreur que ``preuve_vers_json`` évite déjà, avec le
+    MÊME critère : le repère fautif. ``marges_du_plan`` ne nomme une rangée ou
+    un obstacle QUE lorsqu'il a réellement mesuré quelque chose.
+    """
+    troncon = bande = None
+    rangee = obstacle = ''
+    if marges is not None:
+        rangee = marges.rangee_critique or ''
+        obstacle = marges.obstacle_critique or ''
+        if rangee:
+            troncon = round(marges.troncon_min_cm, 3)
+        if obstacle:
+            bande = round(marges.bande_min_cm, 3)
+    return {
+        'troncon_min_cm': troncon,
+        'bande_min_cm': bande,
+        'rangee_critique': rangee,
+        'obstacle_critique': obstacle,
+    }
+
+
+# ─────────────────────────────────────────────────────── tiroirs (PV49)
+#
+# Le moteur (``core.calepinage.tiroirs``) CALCULE les charges utiles des
+# tiroirs ; il ne connaît pas le vocabulaire de l'écran. La traduction est ici,
+# et elle suit UNE règle : **on renomme ce qui a un correspondant fidèle, on ne
+# rebaptise JAMAIS une grandeur du nom d'une autre.** Un dégagement ne devient
+# pas une allée parce que le contrat aurait mis une allée à cette place.
+
+#: Vocabulaire du MOTEUR -> vocabulaire du CONTRAT, pour les champs du tiroir
+#: « Rives & dégagements » (les seuls qui divergent).
+CHAMPS_RIVES_VERS_CONTRAT = {
+    'rive_laterale_m': 'rive_laterale',
+    'rive_extremite_m': 'rive_extremite',
+    'degagement_defaut_m': 'degagement_standard',
+    'degagement_nature_inconnue_m': 'degagement_inconnu',
+}
+
+#: Les 5 tiroirs du contrat. ``electrique`` n'est PAS produit par le moteur :
+#: il n'a aucun modèle de chaîne, d'onduleur ni de ratio DC/AC. Il sort donc
+#: ``donnees: null`` — l'écran fait ``if (!donnees) return null`` — plutôt que
+#: meublé de chiffres que rien ne sait honorer.
+TIROIRS = ('kits', 'allees', 'rives', 'orientation', 'electrique')
+
+
+def tiroirs_vides():
+    """Les 5 tiroirs à l'état « rien de calculé » — la forme reste ENTIÈRE.
+
+    Un tiroir dégradé garde sa clé et son couple ``(donnees, valeurs)`` : un
+    écran qui reçoit parfois 4 clés et parfois 5 finit par tester l'absence de
+    clé au lieu de l'absence de données, et c'est là qu'il casse.
+    """
+    return {nom: {'donnees': None, 'valeurs': {}} for nom in TIROIRS}
+
+
+def _champ_rives_vers_contrat(champ):
+    """Un champ du tiroir « Rives » : code traduit, ``impacts`` TOUJOURS là."""
+    sortie = dict(champ)
+    sortie['code'] = CHAMPS_RIVES_VERS_CONTRAT.get(champ.get('code'),
+                                                   champ.get('code'))
+    sortie.setdefault('impacts', [])
+    return sortie
+
+
+def _rives_vers_contrat(donnees):
+    sortie = dict(donnees)
+    sortie['champs'] = [_champ_rives_vers_contrat(c)
+                        for c in donnees.get('champs') or ()]
+    variante = donnees.get('variante_conservatrice')
+    if variante is not None:
+        variante = dict(variante)
+        variante['valeurs'] = {
+            CHAMPS_RIVES_VERS_CONTRAT.get(cle, cle): valeur
+            for cle, valeur in (variante.get('valeurs') or {}).items()}
+        sortie['variante_conservatrice'] = variante
+    return sortie
+
+
+def _kits_vers_contrat(donnees):
+    """``approvisionnement`` porte TOUJOURS ses deux clés.
+
+    Tant qu'aucun contrôle n'a confirmé l'approvisionnement (AOF119), le moteur
+    ne rend que ``confirme: False`` ; l'argument est alors une chaîne VIDE, pas
+    une phrase inventée.
+    """
+    sortie = dict(donnees)
+    appro = dict(donnees.get('approvisionnement') or {})
+    appro.setdefault('confirme', False)
+    appro.setdefault('argument', '')
+    sortie['approvisionnement'] = appro
+    return sortie
+
+
+def _valeurs_kits(parametres):
+    kits = tuple(parametres.kits)
+    return {'kit': kits[0].code if len(kits) == 1 else '',
+            'granularite_kit': 'site'}
+
+
+def _valeurs_rives(parametres):
+    rives = parametres.rives
+    return {
+        'rive_laterale': rives.laterale_m,
+        'rive_extremite': rives.extremite_m,
+        'degagement_standard': parametres.degagement_defaut_m,
+        'degagement_inconnu': parametres.degagement_nature_inconnue_m,
+    }
+
+
+def _valeurs_orientation(parametres):
+    kits = tuple(parametres.kits)
+    return {
+        'sens_rangees': parametres.axe_rangee.value,
+        'orientation_table': (kits[0].orientation.value if len(kits) == 1
+                              else ''),
+        # Le moteur n'a NI modèle de segmentation NI traitement du L : aucune
+        # option n'est proposée, donc aucune n'est sélectionnée.
+        'segmentation': '',
+        'forme_l': '',
+    }
+
+
+def tiroirs_vers_json(donnees, parametres):
+    """``DonneesTiroirs`` du moteur -> les 5 tiroirs du contrat.
+
+    Chaque tiroir porte ``donnees`` (ce que le composant affiche) et
+    ``valeurs`` (la sélection COURANTE à préremplir). ``valeurs`` est lu sur
+    les ``Parametres`` réellement calculés — jamais recopié depuis la requête :
+    un écran préremplirait alors ce que l'utilisateur a demandé plutôt que ce
+    que le serveur a retenu.
+    """
+    if donnees is None:
+        return tiroirs_vides()
+    brut = donnees.vers_dict()
+    sortie = tiroirs_vides()
+    sortie['kits'] = {'donnees': _kits_vers_contrat(brut['kits']),
+                      'valeurs': _valeurs_kits(parametres)}
+    sortie['allees'] = {'donnees': brut['allees'],
+                        'valeurs': {'allee_m': parametres.allee_m}}
+    sortie['rives'] = {'donnees': _rives_vers_contrat(brut['rives']),
+                       'valeurs': _valeurs_rives(parametres)}
+    sortie['orientation'] = {'donnees': brut['orientation'],
+                             'valeurs': _valeurs_orientation(parametres)}
+    return sortie
 
 
 def resultat_vers_json(*, repere, hash_entree, modules, kwc, plans,

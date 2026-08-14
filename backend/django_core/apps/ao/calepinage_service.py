@@ -62,8 +62,30 @@ __all__ = [
     'calepiner', 'calculer_variante', 'cout_estime', 'empreinte_document',
     'retenir_variante', 'comparer_variantes', 'calculer_sensibilites',
     'calculer_marches', 'VariantePerimee', 'cle_cache', 'resultat_en_cache',
-    'mettre_en_cache',
+    'mettre_en_cache', 'multiplicateur_tiroirs',
 ]
+
+
+def multiplicateur_tiroirs(budget_appels=None):
+    """PV49 — combien de DP COMPLETS un jeu de tiroirs rejoue, au pire.
+
+    Un tiroir n'affiche AUCUN chiffre saisi : chaque contre-épreuve de kit,
+    chaque impact de rive, chaque point du graphe d'allée est un appel moteur
+    de plus. Le multiplicateur est donc lu SUR LE MOTEUR (``tiroirs`` publie
+    son ``BUDGET_APPELS_DEFAUT`` et rapporte ce qu'il consomme), jamais
+    recopié ici : le jour où le budget du moteur bouge, l'estimation suit.
+
+    ``1`` pour le calcul du plan lui-même, ``+ budget`` pour les impacts,
+    ``+ 1`` pour la recherche d'allée gratuite — que ``donnees_tiroirs``
+    compte à part (``recherches_allee``) parce que sa dichotomie a sa propre
+    borne : l'omettre cacherait un coût réel.
+    """
+    from core.calepinage.tiroirs import BUDGET_APPELS_DEFAUT
+
+    budget = BUDGET_APPELS_DEFAUT if budget_appels is None else int(
+        budget_appels)
+    return 1 + max(0, budget) + 1
+
 
 #: Durée de vie d'un résultat en cache (12 h). Un résultat n'est jamais
 #: « faux » en cache — la clé porte l'empreinte de l'entrée ET la version du
@@ -152,23 +174,29 @@ def empreinte_document(document):
     return hash_entree(_entree(document))
 
 
-def cout_estime(document, *, budget=None):
+def cout_estime(document, *, budget=None, tiroirs=False):
     """Chiffre le travail AVANT de le lancer, sur la surface la plus lourde.
 
     C'est ce chiffre qui pilote la bascule synchrone/asynchrone d'AOF61 : au
     delà du budget, l'API refuse de faire attendre l'utilisateur et renvoie la
     consigne d'appel asynchrone.
+
+    ``tiroirs=True`` (PV49) chiffre le travail TOUT COMPRIS : les charges
+    utiles des tiroirs rejouent chacune un DP complet, et les publier sans les
+    compter reviendrait à promettre une réponse synchrone qu'on ne peut pas
+    tenir. Le multiplicateur vient du moteur (``multiplicateur_tiroirs``).
     """
     entree = _entree(document)
     obstacles = appliquer_regles(entree.obstacles)
     par_surface = calepinage_io.affectations_du_document(
         document, entree.surfaces, obstacles)
     budget = budget or BudgetCalcul()
+    variantes = multiplicateur_tiroirs() if tiroirs else 1
     cumul = None
     for surface in entree.surfaces:
         cout = estimer_cout(surface, entree.parametres,
                             par_surface.get(surface.repere, ()),
-                            entree.zones, budget=budget)
+                            entree.zones, variantes=variantes, budget=budget)
         if cumul is None:
             cumul = cout
             continue
@@ -187,12 +215,29 @@ def cout_estime(document, *, budget=None):
 
 
 # ───────────────────────────────────────────────── AOF60 — calcul STATELESS
-def calepiner(document, *, company, user=None, moteur=None):
+def calepiner(document, *, company, user=None, moteur=None, budget=None,
+              tiroirs=True):
     """Calcule un calepinage COMPLET et renvoie du JSON. N'écrit RIEN.
 
     ``company`` est OBLIGATOIRE : le service refuse de tourner hors société,
     de sorte qu'aucun chemin d'appel ne puisse contourner le cloisonnement
     multi-tenant en oubliant un argument.
+
+    **PV49 — la sortie porte aussi ``marges`` et ``tiroirs``.** ``marges``
+    publie ce que la passe de robustesse a MESURÉ (``None`` quand elle n'a rien
+    mesuré, jamais ``0``). ``tiroirs`` porte les 5 charges utiles de l'atelier,
+    CALCULÉES par le moteur — jamais rédigées ici. Les deux sont toujours
+    présents comme CLÉS : ``tiroirs`` vaut un jeu de tiroirs dégradés
+    (``donnees: null``) quand ils ne sont pas produits, jamais une clé absente.
+
+    ``tiroirs`` sont DÉGRADÉS, pas silencieusement payés, dans deux cas :
+
+    * document à PLUSIEURS surfaces — le moteur n'a aucun modèle de tiroir par
+      segment, et en meubler un depuis une seule surface publierait les
+      chiffres d'un segment sous le nom du site ;
+    * coût estimé HORS budget synchrone — chaque impact chiffré rejoue un DP
+      complet ; les produire quand même tiendrait la promesse d'affichage en
+      brisant celle du temps de réponse.
 
     Raises:
         EntreeInvalide: document non conforme au contrat (motif français).
@@ -208,6 +253,7 @@ def calepiner(document, *, company, user=None, moteur=None):
     par_surface = calepinage_io.affectations_du_document(
         document, entree.surfaces, obstacles)
     machine = _moteur(moteur)
+    budget = budget or BudgetCalcul()
 
     plans = []
     total_modules = 0
@@ -215,6 +261,7 @@ def calepiner(document, *, company, user=None, moteur=None):
     preuves = []
     marges_globales = None
     controles = None
+    dernier_resultat = None
 
     for surface in entree.surfaces:
         lot = par_surface.get(surface.repere, ())
@@ -250,6 +297,7 @@ def calepiner(document, *, company, user=None, moteur=None):
             kit = entree.parametres.kit(rangee.kit_code)
             total_kwc += rangee.modules * kit.puissance_module_wc / 1000.0
         preuves.append(resultat.preuve)
+        dernier_resultat = resultat
 
     ok_engagement, motifs = engageable(obstacles)
     empreinte = hash_entree(entree)
@@ -263,7 +311,40 @@ def calepiner(document, *, company, user=None, moteur=None):
         controles=controles or (),
         pas_recherche_m=entree.parametres.pas_recherche_m)
     sortie['engagement_modules'] = entree.parametres.engagement_modules
+    sortie['marges'] = calepinage_io.marges_vers_json(marges_globales)
+    sortie['tiroirs'] = _tiroirs_publiables(
+        entree, par_surface, dernier_resultat, budget=budget,
+        demandes=tiroirs)
     return sortie
+
+
+def _tiroirs_publiables(entree, par_surface, resultat, *, budget,
+                        demandes=True):
+    """Les 5 tiroirs — ou leur forme DÉGRADÉE, jamais une clé absente.
+
+    Le garde de coût est un PRÉ-VOL, pas un regret : on chiffre le travail des
+    tiroirs AVANT de le lancer (même ``estimer_cout`` que la bascule 202
+    d'AOF61, multiplié par ``multiplicateur_tiroirs``) et on renonce quand il
+    ne tient pas dans le budget synchrone. La promesse « cet appel répond en
+    synchrone » ne peut donc pas être rompue en douce par un tiroir.
+    """
+    if not demandes or resultat is None or len(entree.surfaces) != 1:
+        return calepinage_io.tiroirs_vides()
+    surface = entree.surfaces[0]
+    lot = par_surface.get(surface.repere, ())
+    cout = estimer_cout(surface, entree.parametres, lot, entree.zones,
+                        variantes=multiplicateur_tiroirs(), budget=budget)
+    if not cout.synchrone:
+        return calepinage_io.tiroirs_vides()
+
+    from core.calepinage.recommandations import EntreeMoteur
+    from core.calepinage.tiroirs import donnees_tiroirs
+
+    donnees = donnees_tiroirs(
+        EntreeMoteur(surface=surface, parametres=entree.parametres,
+                     obstacles=tuple(lot), zones=tuple(entree.zones)),
+        resultat, catalogue=entree.kits)
+    return calepinage_io.tiroirs_vers_json(donnees, entree.parametres)
 
 
 def _cumuler_marges(cumul, marges):
@@ -334,8 +415,11 @@ def calculer_variante(toiture, params=None, *, user=None, moteur=None,
     from .models import VarianteCalepinage
 
     document = calepinage_io.document_entree(toiture, params=params)
+    # ``tiroirs=False`` (PV49) : ce chemin PERSISTE un résultat, il n'alimente
+    # aucun atelier — et la variante ne les garde pas. Les produire ferait
+    # rejouer une douzaine de DP complets pour les jeter aussitôt.
     sortie = calepiner(document, company=toiture.company, user=user,
-                       moteur=moteur)
+                       moteur=moteur, tiroirs=False)
 
     if variante is None:
         variante = VarianteCalepinage(
@@ -347,7 +431,13 @@ def calculer_variante(toiture, params=None, *, user=None, moteur=None,
     variante.params = dict(params if params is not None
                            else (toiture.parametres_calepinage or {}))
     variante.entree_hash = sortie['hash_entree']
-    variante.resultat = {k: v for k, v in sortie.items() if k != 'preuve'}
+    # ``tiroirs`` n'est PAS persisté (PV49) : c'est une charge utile d'ATELIER,
+    # recalculée à la demande, dont les impacts chiffrés valent pour les
+    # paramètres du moment. Les figer dans une variante ferait lire un jour
+    # « -4 modules si vous élargissez la rive » sur des réglages qui ont bougé.
+    # ``marges``, elle, MESURE ce plan-ci : elle reste avec lui.
+    variante.resultat = {k: v for k, v in sortie.items()
+                         if k not in ('preuve', 'tiroirs')}
     variante.preuve = sortie['preuve']
     variante.version_moteur = VERSION_MOTEUR
     variante.statut = VarianteCalepinage.Statut.CALCULEE
