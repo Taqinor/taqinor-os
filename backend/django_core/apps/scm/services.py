@@ -29,7 +29,23 @@ JOURS_PAR_MOIS = 30.0
 # NTSCM6 — niveau de service PAR DÉFAUT selon la classe ABC (NTSCM4), à la
 # création d'une PolitiqueStock UNIQUEMENT (un recalcul n'écrase jamais un
 # niveau déjà personnalisé par l'acheteur).
+# NTSCM33 — repli historique UNIQUEMENT : `recalculer_politiques_stock` lit
+# désormais ces défauts via `ParametresSCM.service_level_defaut_{a,b,c}_pct`
+# (mêmes valeurs) — voir `_service_level_par_classe_defaut`.
 SERVICE_LEVEL_PAR_CLASSE = {'A': Decimal('95'), 'B': Decimal('90'), 'C': Decimal('85')}
+
+
+def _service_level_par_classe_defaut(company):
+    """NTSCM33 — niveaux de service par défaut PAR CLASSE ABC, lus depuis
+    ``ParametresSCM`` (repli sur :data:`SERVICE_LEVEL_PAR_CLASSE` si la classe
+    est inconnue, ex. produit jamais classé)."""
+    p = parametres_scm(company)
+    return {
+        'A': p.service_level_defaut_a_pct,
+        'B': p.service_level_defaut_b_pct,
+        'C': p.service_level_defaut_c_pct,
+    }
+
 
 # Délai fournisseur (jours) utilisé quand aucun historique de livraison
 # n'est exploitable (produit sans fournisseur, ou fournisseur jamais livré).
@@ -226,11 +242,12 @@ def recalculer_politiques_stock(company):
     classes = dict(
         ClassificationABC.objects.filter(company=company)
         .values_list('produit_id', 'classe'))
+    service_level_par_classe = _service_level_par_classe_defaut(company)
 
     resultats = []
     for produit in produits:
         classe = classes.get(produit.id, 'C')
-        niveau_defaut = SERVICE_LEVEL_PAR_CLASSE.get(classe, Decimal('95'))
+        niveau_defaut = service_level_par_classe.get(classe, Decimal('95'))
 
         politique, created = PolitiqueStock.objects.get_or_create(
             company=company, produit=produit,

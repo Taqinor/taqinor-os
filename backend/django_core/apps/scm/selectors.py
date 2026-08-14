@@ -3,6 +3,18 @@ from datetime import date
 from decimal import Decimal
 
 
+def parametres(company):
+    """NTSCM33 — réglages SCM de ``company`` (délègue au lazy get_or_create
+    de ``services.parametres_scm`` : source UNIQUE, jamais deux chemins de
+    création du même singleton). Tous les consommateurs (NTSCM5/6/15, tâches
+    beat NTSCM21/35/36) lisent leurs seuils/défauts via CETTE fonction plutôt
+    qu'une constante codée en dur — avec repli sur les défauts du modèle
+    (voir ``models.ParametresSCM``) si la ligne vient d'être créée."""
+    from . import services
+
+    return services.parametres_scm(company)
+
+
 def classifier_abc(company, fenetre_mois=12, *, persist=True):
     """NTSCM4 — classification ABC (Pareto) des produits par valeur de
     sortie cumulée (``quantité × prix_vente`` HT, JAMAIS ``prix_achat``) sur
@@ -192,6 +204,10 @@ def tableau_bord_reappro(company, *, statut=None, classe_abc=None, fournisseur_i
 
 
 # Seuil d'alerte (jamais de blocage) sur l'écart CA prévisionnel vs forecast.
+# NTSCM33 — repli historique UNIQUEMENT : `impact_financier_cycle` lit
+# désormais `ParametresSCM.seuil_alerte_ecart_financier_pct` (même défaut,
+# 15%) via `parametres(company)` ; cette constante ne reste que pour un
+# éventuel appelant externe qui l'importait directement.
 SEUIL_ALERTE_ECART_CA_PCT = Decimal('15')
 
 
@@ -257,13 +273,15 @@ def impact_financier_cycle(cycle):
             ca_forecast = Decimal(str(point.value))
             break
 
+    seuil_alerte_pct = parametres(cycle.company).seuil_alerte_ecart_financier_pct
+
     ecart_pct = None
     alerte_ecart = False
     if ca_forecast:
         ecart_pct = (
             (ca_previsionnel - ca_forecast) / ca_forecast * 100
         ).quantize(Decimal('0.01'))
-        alerte_ecart = abs(ecart_pct) > SEUIL_ALERTE_ECART_CA_PCT
+        alerte_ecart = abs(ecart_pct) > seuil_alerte_pct
 
     return {
         'cycle_id': cycle.id,
@@ -272,7 +290,7 @@ def impact_financier_cycle(cycle):
         'ca_forecast_ht': ca_forecast,
         'ecart_pct': ecart_pct,
         'alerte_ecart': alerte_ecart,
-        'seuil_alerte_pct': SEUIL_ALERTE_ECART_CA_PCT,
+        'seuil_alerte_pct': seuil_alerte_pct,
         'lignes': lignes_valorisees,
     }
 

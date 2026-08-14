@@ -66,7 +66,7 @@ class PrevisionDemandeViewSet(CompanyScopedModelViewSet):
         de modèle)."""
         from apps.stock.selectors import get_produit_scoped
 
-        from . import services
+        from . import selectors, services
 
         produit_id = request.data.get('produit_id')
         if not produit_id:
@@ -75,7 +75,12 @@ class PrevisionDemandeViewSet(CompanyScopedModelViewSet):
         if produit is None:
             return Response({'produit_id': 'Produit introuvable.'}, status=404)
 
-        horizon_mois = int(request.data.get('horizon_mois') or 3)
+        # NTSCM33 — repli sur l'horizon par défaut de la société
+        # (`ParametresSCM.horizon_prevision_mois_defaut`) quand non précisé.
+        horizon_mois = request.data.get('horizon_mois')
+        horizon_mois = (
+            int(horizon_mois) if horizon_mois
+            else selectors.parametres(request.user.company).horizon_prevision_mois_defaut)
         segment = request.data.get('segment') or ''
         previsions = services.generer_previsions(
             produit, horizon_mois, request.user.company,
@@ -755,3 +760,59 @@ def parametres_sop_view(request):
         'animateur_sop_nom': (
             parametres.animateur_sop.username if parametres.animateur_sop_id else None),
     })
+
+
+# ── NTSCM33 — écran de réglages SCM par société (horizon/niveaux/seuils) ────
+
+_PARAMETRES_SCM_FIELDS = [
+    'horizon_prevision_mois_defaut', 'service_level_defaut_a_pct',
+    'service_level_defaut_b_pct', 'service_level_defaut_c_pct',
+    'seuil_ecart_delai_pct', 'seuil_alerte_score_fournisseur_pts',
+    'seuil_alerte_ecart_financier_pct', 'retention_previsions_mois',
+]
+
+
+def _serialize_parametres_scm(parametres):
+    return {field: str(getattr(parametres, field)) for field in _PARAMETRES_SCM_FIELDS}
+
+
+# `request=None` : PATCH ad-hoc (sous-ensemble de `_PARAMETRES_SCM_FIELDS`),
+# même motif que `parametres_sop_view` ci-dessus (PACT7).
+@extend_schema(request=None, responses=inline_serializer(
+    'ScmParametresResponse',
+    {field: serializers.CharField() for field in _PARAMETRES_SCM_FIELDS}))
+@api_view(['GET', 'PATCH'])
+@permission_classes([IsResponsableOrAdmin])
+def parametres_scm_view(request):
+    """NTSCM33 — ``GET``/``PATCH /api/django/scm/parametres/`` : réglages SCM
+    par société (horizon de prévision par défaut, niveaux de service par
+    défaut par classe ABC, seuils d'alerte) — singleton créé paresseusement
+    (``services.parametres_scm``). Distinct de ``scm/parametres-sop/``
+    (NTSCM22, cycle S&OP automatique — reste séparé pour ne rien changer à
+    son contrat existant), même modèle ``ParametresSCM``."""
+    from . import services
+
+    parametres = services.parametres_scm(request.user.company)
+
+    if request.method == 'PATCH':
+        champs_modifies = []
+        for field in _PARAMETRES_SCM_FIELDS:
+            if field not in request.data:
+                continue
+            valeur = request.data.get(field)
+            if field.endswith('_mois') or field.endswith('_mois_defaut'):
+                try:
+                    valeur = int(valeur)
+                except (TypeError, ValueError):
+                    return Response({field: 'Nombre entier requis.'}, status=400)
+            else:
+                try:
+                    valeur = Decimal(str(valeur))
+                except Exception:  # noqa: BLE001 — valeur non convertible
+                    return Response({field: 'Nombre requis.'}, status=400)
+            setattr(parametres, field, valeur)
+            champs_modifies.append(field)
+        if champs_modifies:
+            parametres.save(update_fields=champs_modifies + ['updated_at'])
+
+    return Response(_serialize_parametres_scm(parametres))

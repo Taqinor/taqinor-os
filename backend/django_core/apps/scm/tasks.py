@@ -17,11 +17,13 @@ logger = logging.getLogger(__name__)
 
 
 @shared_task(name='scm.generer_previsions_mensuelles')
-def generer_previsions_mensuelles_task(horizon_mois=3):
+def generer_previsions_mensuelles_task(horizon_mois=None):
     """NTSCM21 — pour CHAQUE société, (re)génère les prévisions de demande
     (NTSCM2, ``services.generer_previsions``) de TOUS les produits actifs sur
-    ``horizon_mois`` mois. Best-effort par société ET par produit (une
-    erreur sur l'un n'interrompt jamais les autres, journalisée).
+    ``horizon_mois`` mois — NTSCM33 : ``None`` (défaut) retombe sur
+    ``ParametresSCM.horizon_prevision_mois_defaut`` DE CHAQUE société (plus un
+    seul horizon global pour toutes). Best-effort par société ET par produit
+    (une erreur sur l'un n'interrompt jamais les autres, journalisée).
 
     Notifie (``notifications.notify_many``, réutilisé — jamais un nouveau
     canal) les rôles Administrateur/Directeur (``resolve_recipients``, repli
@@ -45,6 +47,10 @@ def generer_previsions_mensuelles_task(horizon_mois=3):
     for company in Company.objects.all():
         nb_maj = 0
         nb_ecarts = 0
+        horizon_effectif = horizon_mois
+        if horizon_effectif is None:
+            from . import selectors
+            horizon_effectif = selectors.parametres(company).horizon_prevision_mois_defaut
         produits = Produit.objects.filter(company=company, is_archived=False)
         for produit in produits:
             try:
@@ -53,7 +59,7 @@ def generer_previsions_mensuelles_task(horizon_mois=3):
                     .filter(company=company, produit=produit)
                     .values_list('periode', 'quantite_prevue'))
                 previsions = services.generer_previsions(
-                    produit, horizon_mois, company)
+                    produit, horizon_effectif, company)
             except Exception:  # noqa: BLE001 — best-effort par produit
                 logger.warning(
                     'scm.generer_previsions_mensuelles: échec produit %s '

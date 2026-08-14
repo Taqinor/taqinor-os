@@ -85,6 +85,10 @@ const scmApi = {
   // NTSCM22 — réglages opt-in du cycle S&OP automatique (singleton société).
   parametresSop: () => api.get('/scm/parametres-sop/'),
   majParametresSop: (body) => api.patch('/scm/parametres-sop/', body),
+
+  // NTSCM33 — écran de réglages SCM par société (horizon/niveaux/seuils).
+  parametresScm: () => api.get('/scm/parametres/'),
+  majParametresScm: (body) => api.patch('/scm/parametres/', body),
 }
 
 export default scmApi

@@ -8,7 +8,7 @@ from .views import (
     PolitiqueStockViewSet, PrevisionDemandeViewSet,
     anomalies_demande_view, creer_brouillons_bcf_reappro_view,
     detecter_anomalies_demande_view, export_ecarts_prevision_view,
-    parametres_sop_view, precision_previsions_view,
+    parametres_scm_view, parametres_sop_view, precision_previsions_view,
     proposer_allocation_penurie_view, simuler_rupture_view,
     suggestions_achat_groupe_view, suggestions_transfert_view,
     tableau_bord_executif_view, tableau_bord_reappro_view,
@@ -70,5 +70,7 @@ urlpatterns = [
         name='scm-anomalies-demande-detecter'),
     # NTSCM22 — réglages opt-in du cycle S&OP automatique (singleton société).
     path('parametres-sop/', parametres_sop_view, name='scm-parametres-sop'),
+    # NTSCM33 — écran de réglages SCM par société (horizon/niveaux/seuils).
+    path('parametres/', parametres_scm_view, name='scm-parametres'),
     path('', include(router.urls)),
 ]

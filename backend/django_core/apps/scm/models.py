@@ -450,19 +450,31 @@ class LigneOffreSOP(TenantModel):
 
 
 class ParametresSCM(TenantModel):
-    """NTSCM22 — réglages minimalistes d'opt-in du cycle S&OP automatique,
-    par société.
+    """NTSCM22/33 — réglages SCM par société (singleton, OneToOne).
 
     ADAPTATION DE PÉRIMÈTRE (frontière cross-app, CLAUDE.md) : le plan
     d'origine (NTSCM22) posait ``sop_actif``/``animateur_sop`` sur
     ``apps.parametres.CompanyProfile`` — hors périmètre de cette lane
     (``apps/parametres`` n'appartient pas à ``apps/scm``). Posés ICI, en
     OneToOne société — même patron d'adaptation que ``ClassificationABC``
-    (NTSCM4, voir sa docstring). NTSCM33 (réglages SCM complets — horizon de
-    prévision, seuils d'alerte…, tâche future hors cette lane) pourra plus
-    tard enrichir CE modèle (migration additive) sans rien casser ici : le
-    nom ``ParametresSCM`` est délibérément le même que celui prévu par
-    NTSCM33 pour que la fusion soit directe."""
+    (NTSCM4, voir sa docstring).
+
+    NTSCM33 enrichit CE modèle (migration additive, comme annoncé par la
+    docstring d'origine) : les constantes en dur de NTSCM6/15
+    (``services.SERVICE_LEVEL_PAR_CLASSE``,
+    ``selectors.SEUIL_ALERTE_ECART_CA_PCT``) sont remplacées par une lecture
+    de ces champs via ``selectors.parametres(company)``, avec repli sur les
+    MÊMES valeurs par défaut si la ligne n'existe pas encore (créée
+    paresseusement, ``services.parametres_scm``) — aucune régression pour une
+    société qui n'a jamais rien configuré.
+
+    ``seuil_ecart_delai_pct`` (NTSCM11) et ``seuil_alerte_score_fournisseur_pts``
+    (NTSCM23) sont stockés dès maintenant (champs prêts, mêmes défauts que le
+    plan) mais SANS consommateur pour l'instant : NTSCM11 (délai fournisseur
+    mesuré vs promis) vit dans ``apps.stock`` — hors périmètre de cette lane —
+    et NTSCM23 (score fournisseur dégradé) n'existe pas encore dans
+    ``docs/plans/PLAN_SUPPLY.md``. Un futur task les raccordera sans nouvelle
+    migration."""
 
     company = models.OneToOneField(
         'authentication.Company',
@@ -480,6 +492,43 @@ class ParametresSCM(TenantModel):
         related_name='scm_animateur_sop_defaut',
         verbose_name='Animateur S&OP par défaut',
         help_text="Notifié à l'ouverture automatique du cycle du mois suivant.")
+    # NTSCM33 — horizon par défaut de génération des prévisions (NTSCM2),
+    # utilisé quand l'appelant (action `generer`, tâche beat mensuelle) ne
+    # précise pas explicitement `horizon_mois`.
+    horizon_prevision_mois_defaut = models.PositiveSmallIntegerField(
+        default=3, verbose_name='Horizon de prévision par défaut (mois)')
+    # NTSCM33 — niveaux de service par défaut PAR CLASSE ABC (NTSCM6),
+    # remplace `services.SERVICE_LEVEL_PAR_CLASSE` codé en dur. Appliqués
+    # UNIQUEMENT à la création d'une PolitiqueStock (jamais un recalcul
+    # n'écrase un niveau déjà personnalisé — même contrat qu'avant).
+    service_level_defaut_a_pct = models.DecimalField(
+        max_digits=5, decimal_places=2, default=Decimal('95'),
+        verbose_name='Niveau de service par défaut — classe A (%)')
+    service_level_defaut_b_pct = models.DecimalField(
+        max_digits=5, decimal_places=2, default=Decimal('90'),
+        verbose_name='Niveau de service par défaut — classe B (%)')
+    service_level_defaut_c_pct = models.DecimalField(
+        max_digits=5, decimal_places=2, default=Decimal('85'),
+        verbose_name='Niveau de service par défaut — classe C (%)')
+    # NTSCM33 — seuil d'écart délai fournisseur (NTSCM11, apps.stock, pas
+    # encore bâti) : champ prêt, sans consommateur pour l'instant.
+    seuil_ecart_delai_pct = models.DecimalField(
+        max_digits=5, decimal_places=2, default=Decimal('20'),
+        verbose_name='Seuil d\'alerte écart délai fournisseur (%)')
+    # NTSCM33 — seuil d'alerte score fournisseur (NTSCM23, pas encore au
+    # plan) : champ prêt, sans consommateur pour l'instant.
+    seuil_alerte_score_fournisseur_pts = models.DecimalField(
+        max_digits=5, decimal_places=2, default=Decimal('15'),
+        verbose_name='Seuil d\'alerte score fournisseur (points)')
+    # NTSCM33 — remplace `selectors.SEUIL_ALERTE_ECART_CA_PCT` codé en dur
+    # (NTSCM15, impact financier du cycle S&OP).
+    seuil_alerte_ecart_financier_pct = models.DecimalField(
+        max_digits=5, decimal_places=2, default=Decimal('15'),
+        verbose_name='Seuil d\'alerte écart financier CA prévisionnel (%)')
+    # NTSCM36 — rétention des PrevisionDemande (mois), tâche de purge
+    # planifiée mensuelle (`tasks.purger_donnees_scm_anciennes`).
+    retention_previsions_mois = models.PositiveSmallIntegerField(
+        default=24, verbose_name='Rétention des prévisions (mois)')
 
     class Meta:
         verbose_name = 'Paramètres SCM'
