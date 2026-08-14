@@ -4,7 +4,6 @@ imprimable.
 Critère : le PDF liste les opérations dans l'ordre de gamme avec zones
 d'émargement, se génère pour un OF planifié, aucun prix dans le document
 (test de non-régression)."""
-import inspect
 from decimal import Decimal
 
 from django.test import TestCase
@@ -16,7 +15,7 @@ from apps.mrp.models import Gamme, OperationGamme, OrdreFabrication, PosteDeChar
 from apps.mrp.services import confirmer_of
 from apps.stock.models import Produit
 
-from ._fixtures import make_company, make_user
+from ._fixtures import make_company, make_user, source_sans_docstrings
 
 
 def auth(user):
@@ -61,7 +60,7 @@ class TravelerPayloadTests(TestCase):
             self.assertNotIn('prix_vente', op)
             self.assertNotIn('cout', op)
             self.assertNotIn('cout_horaire', op)
-        source = inspect.getsource(mrp_pdf)
+        source = source_sans_docstrings(mrp_pdf)
         self.assertNotIn('prix_achat', source)
         self.assertNotIn('prix_vente', source)
         self.assertNotIn('cout_horaire', source)

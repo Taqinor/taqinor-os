@@ -6,6 +6,7 @@ from drf_spectacular.utils import extend_schema, inline_serializer
 from rest_framework import mixins, serializers, viewsets
 from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.exceptions import ValidationError
+from rest_framework.negotiation import DefaultContentNegotiation
 from rest_framework.response import Response
 
 from authentication.permissions import IsResponsableOrAdmin
@@ -636,11 +637,12 @@ def kanban_declencher_view(request):
     MANUEL de toutes les règles kanban actives de la société (dégrade
     proprement sans Celery beat déployé — même effet que la tâche
     périodique)."""
+    from .selectors import _fmt_dec
     from .services import declencher_kanban_toutes_regles
 
     crees = declencher_kanban_toutes_regles(request.user.company)
     return Response([
-        {'id': of.id, 'produit': of.produit_id, 'quantite': str(of.quantite),
+        {'id': of.id, 'produit': of.produit_id, 'quantite': _fmt_dec(of.quantite),
          'statut': of.statut}
         for of in crees
     ])
@@ -677,6 +679,26 @@ def analyse_couts_view(request):
         date_debut=request.query_params.get('date_debut'),
         date_fin=request.query_params.get('date_fin'))
     return Response(resultats)
+
+
+class _ExportFormatContentNegotiation(DefaultContentNegotiation):
+    """NTMFG24 — sur ``analyse-couts/export/`` le paramètre ``?format=``
+    désigne le format D'EXPORT (pdf/xlsx), PAS le renderer DRF. Sans cette
+    surcharge, DRF traite ``?format=pdf``/``?format=xlsx`` comme un override
+    de renderer (``URL_FORMAT_OVERRIDE``) : aucun renderer enregistré ne
+    porte ces formats, donc ``DefaultContentNegotiation.filter_renderers``
+    lève un ``Http404`` (« Pas trouvé ») AVANT même d'exécuter la vue — même
+    motif que ``apps.douane.views._ExportFormatContentNegotiation`` /
+    ``apps.compta.views._BankFormatContentNegotiation``. On neutralise donc
+    l'override par query param et on négocie toujours sur le renderer JSON
+    (la vue elle-même renvoie une ``HttpResponse``/``build_xlsx_response``
+    manuelle, jamais via ce renderer)."""
+
+    def select_renderer(self, request, renderers, format_suffix=None):
+        for renderer in renderers:
+            if renderer.format == 'json':
+                return renderer, renderer.media_type
+        return renderers[0], renderers[0].media_type
 
 
 # PACT7 — export FICHIER (pdf/xlsx) : sans declaration, le schema publierait
@@ -733,6 +755,16 @@ def analyse_couts_export_view(request):
     return build_xlsx_response(
         'analyse-couts-production.xlsx', headers, rows,
         sheet_title='Analyse écarts production')
+
+
+# `@api_view` copie déjà permission/renderer/parser/auth/throttle/schema
+# depuis des attributs de fonction (voir `rest_framework.decorators.api_view`)
+# mais PAS `content_negotiation_class` : on le pose donc sur `.cls`, la
+# classe `APIView` générée que `APIView.as_view()` attache à la fonction vue
+# retournée (cf. `apps.douane.views._ExportFormatContentNegotiation`, posé là
+# via `@action(..., content_negotiation_class=...)` sur un ViewSet — même
+# attribut, mécanisme équivalent pour une vue-fonction).
+analyse_couts_export_view.cls.content_negotiation_class = _ExportFormatContentNegotiation
 
 
 @extend_schema(responses=inline_serializer('MrpOeeTousPostesLigne', {

@@ -37,11 +37,16 @@ export default function ReserveEtLitigeWizard({ etape, ordre, onClose, onCreated
 
   useEffect(() => {
     const transporteurId = ordre?.installations_transporteur_id
-    if (!transporteurId) { setTransporteurNom('—'); return }
     let active = true
-    api.get(`/installations/transporteurs/${transporteurId}/`)
-      .then((r) => { if (active) setTransporteurNom(r.data?.nom || '—') })
-      .catch(() => { if (active) setTransporteurNom('—') })
+    const charger = () => {
+      if (!transporteurId) { setTransporteurNom('—'); return }
+      api.get(`/installations/transporteurs/${transporteurId}/`)
+        .then((r) => { if (active) setTransporteurNom(r.data?.nom || '—') })
+        .catch(() => { if (active) setTransporteurNom('—') })
+    }
+    // Différé d'un microtask : cas « pas de transporteur » pose l'état de
+    // façon synchrone (react-hooks/set-state-in-effect). Comportement inchangé.
+    Promise.resolve().then(charger)
     return () => { active = false }
   }, [ordre?.installations_transporteur_id])
 

@@ -6,7 +6,8 @@ import { Plus, Minus, Trash2, Printer, Link2, Usb, Lock, ScanLine } from 'lucide
 import PinLock from './PinLock'
 // NTRET22 — mode « scan douchette en flux continu » + raccourcis clavier
 // (F2 nouveau ticket, F4 encaisser, Échap annuler la dernière ligne).
-import ScanMode, { attacherRaccourcisClavier } from './ScanMode'
+import ScanMode from './ScanMode'
+import { attacherRaccourcisClavier } from './scanApi'
 import posApi from '../../api/posApi'
 import api from '../../api/axios'
 import { prixTtc, sansPrix } from '../stock/catalogue'
@@ -145,6 +146,12 @@ export default function CaisseScreen() {
     handleAjouter(produit)
   }
 
+  const ouvrirEncaissement = () => {
+    if (cart.length === 0) return
+    setPaiements([{ mode: 'especes', montant: String(total) }])
+    setEncaissementOpen(true)
+  }
+
   // NTRET22 — raccourcis clavier caisse : F2 nouveau ticket, F4 encaisser,
   // Échap annule la dernière ligne du panier. Ré-attaché à chaque
   // changement de panier pour que les callbacks lisent l'état courant
@@ -228,12 +235,6 @@ export default function CaisseScreen() {
     setPaiements((p) => p.map((pm, i) => (i === idx ? { ...pm, ...patch } : pm)))
   const retirerPaiement = (idx) =>
     setPaiements((p) => (p.length > 1 ? p.filter((_, i) => i !== idx) : p))
-
-  const ouvrirEncaissement = () => {
-    if (cart.length === 0) return
-    setPaiements([{ mode: 'especes', montant: String(total) }])
-    setEncaissementOpen(true)
-  }
 
   // Encaissement (app POS dédiée) : crée une VenteComptoir (brouillon), ajoute
   // ses lignes (produit + qté + prix TTC + numéros de série éventuels), puis la

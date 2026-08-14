@@ -22,14 +22,28 @@ def auth(user):
     return api
 
 
-def make_produit(company, nom='Produit'):
-    return Produit.objects.create(company=company, nom=nom, prix_vente=0, tva=20)
+def make_produit(company, nom='Produit', quantite_stock=0):
+    return Produit.objects.create(
+        company=company, nom=nom, prix_vente=0, tva=20, quantite_stock=quantite_stock)
 
 
-def make_of_deux_operations(company):
-    produit = make_produit(company, 'Composite clôture')
+def make_of_deux_operations(company, quantite_stock=100):
+    # NTMFG28 — `quantite_stock` par défaut non nul (même convention que
+    # `test_ntmfg8_terminal_mes.py::make_of_avec_operation`) : `declarer_rebut`
+    # (apps.stock.services, XMFG11) clampe la sortie au stock DISPONIBLE
+    # (jamais négatif) — sans stock initial, un rebut déclaré créerait un
+    # mouvement à quantité 0 au lieu de la quantité rebutée.
+    #
+    # Le code du poste de charge est unique par (company, code) — cet helper
+    # est appelé PLUSIEURS FOIS pour la même société dans certains tests
+    # (comparaison clôture assistée vs manuelle) : suffixer par le nombre de
+    # postes déjà créés pour cette société garde chaque appel unique sans
+    # changer le comportement des appels simples (un seul par test).
+    suffixe = PosteDeCharge.objects.filter(company=company).count()
+    code = 'P-CLOASS' if suffixe == 0 else f'P-CLOASS-{suffixe}'
+    produit = make_produit(company, 'Composite clôture', quantite_stock=quantite_stock)
     poste = PosteDeCharge.objects.create(
-        company=company, code='P-CLOASS', nom='Poste clôture assistée')
+        company=company, code=code, nom='Poste clôture assistée')
     gamme = Gamme.objects.create(company=company, nom='Gamme clôture', produit=produit)
     OperationGamme.objects.create(
         gamme=gamme, ordre=1, poste_charge=poste, libelle='Op 1',

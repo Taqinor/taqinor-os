@@ -922,6 +922,12 @@ CELERY_TASK_ROUTES = {
     'chat.transcribe_voice_attachment': {'queue': 'interactive'},
     # Toutes les tâches planifiées (beat_schedule) → `scheduled`.
     'ventes.check_overdue_factures': {'queue': 'scheduled'},
+    # Vague SUPPLY (14/08/2026) — toute tache du beat_schedule DOIT etre
+    # routee explicitement vers `scheduled` (garde core/tests/
+    # test_celery_task_routes.py) : sans entree, elle tombe sur `default`
+    # et partage la file des taches interactives.
+    'scm.generer_previsions_mensuelles': {'queue': 'scheduled'},
+    'scm.ouvrir_cycle_sop_mensuel': {'queue': 'scheduled'},
     'compta.recalculer_alerte_rupture': {'queue': 'scheduled'},
     'compta.relances_tresorerie_du_jour': {'queue': 'scheduled'},
     'ventes.expire_stale_devis': {'queue': 'scheduled'},

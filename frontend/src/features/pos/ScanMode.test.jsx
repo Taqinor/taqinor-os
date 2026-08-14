@@ -2,7 +2,8 @@ import { describe, it, expect, vi } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 
-import ScanMode, { traiterScan, attacherRaccourcisClavier, SCAN_DEBOUNCE_MS } from './ScanMode'
+import ScanMode from './ScanMode'
+import { traiterScan, attacherRaccourcisClavier, SCAN_DEBOUNCE_MS } from './scanApi'
 
 /* NTRET22 — mode scan douchette en flux continu + raccourcis clavier.
    Couvre le débounce anti-double-scan (pur, sans I/O), les raccourcis

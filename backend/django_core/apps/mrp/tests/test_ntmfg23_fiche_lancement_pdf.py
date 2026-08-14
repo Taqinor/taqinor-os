@@ -4,7 +4,6 @@ lancement) distinct du traveler.
 Critère : le PDF se génère pour un OF planifié, disponibilité par ligne
 exacte vs stock au moment de la génération, aucun montant dans le document
 (test de non-régression)."""
-import inspect
 from decimal import Decimal
 
 from django.test import TestCase
@@ -16,7 +15,7 @@ from apps.mrp.models import Gamme, OperationGamme, OrdreFabrication, PosteDeChar
 from apps.mrp.services import confirmer_of
 from apps.stock.models import Produit
 
-from ._fixtures import make_company, make_user
+from ._fixtures import make_company, make_user, source_sans_docstrings
 
 
 def auth(user):
@@ -67,7 +66,7 @@ class FicheLancementPayloadTests(TestCase):
         for op in payload:
             self.assertNotIn('prix_achat', op)
             self.assertNotIn('cout_horaire', op)
-        source = inspect.getsource(mrp_pdf)
+        source = source_sans_docstrings(mrp_pdf)
         self.assertNotIn('prix_achat', source)
         self.assertNotIn('prix_vente', source)
         self.assertNotIn('cout_horaire', source)

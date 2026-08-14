@@ -111,23 +111,28 @@ function EtapeModeTransport({ mode, setMode, transporteurId, setTransporteurId, 
   const [loading, setLoading] = useState(false)
 
   useEffect(() => {
-    if (mode !== 'affretement') return
+    if (mode !== 'affretement') return undefined
     let active = true
-    setLoading(true)
     // NTLOG7 réutilisé SANS ordre existant : le wizard n'a pas encore créé
     // l'ordre à ce stade — on lit directement `installations.Transporteur`
     // via son endpoint déjà exposé (`installations/transporteurs/`), trié
     // client-side par `tarif_base` comme le fait le sélecteur serveur.
-    api.get('/installations/transporteurs/')
-      .then((r) => {
-        if (!active) return
-        const list = Array.isArray(r.data) ? r.data : (r.data?.results ?? [])
-        setTransporteurs(
-          list.filter((t) => t.active).sort((a, b) => (a.tarif_base ?? 0) - (b.tarif_base ?? 0)),
-        )
-      })
-      .catch(() => { if (active) setTransporteurs([]) })
-      .finally(() => { if (active) setLoading(false) })
+    const charger = () => {
+      setLoading(true)
+      api.get('/installations/transporteurs/')
+        .then((r) => {
+          if (!active) return
+          const list = Array.isArray(r.data) ? r.data : (r.data?.results ?? [])
+          setTransporteurs(
+            list.filter((t) => t.active).sort((a, b) => (a.tarif_base ?? 0) - (b.tarif_base ?? 0)),
+          )
+        })
+        .catch(() => { if (active) setTransporteurs([]) })
+        .finally(() => { if (active) setLoading(false) })
+    }
+    // Différé d'un microtask : `charger` pose `loading` de façon synchrone
+    // (react-hooks/set-state-in-effect). Comportement inchangé.
+    Promise.resolve().then(charger)
     return () => { active = false }
   }, [mode])
 

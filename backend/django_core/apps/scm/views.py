@@ -659,7 +659,11 @@ def detecter_anomalies_demande_view(request):
 
 # ── NTSCM22 — réglages opt-in du cycle S&OP automatique (singleton société) ─
 
-@extend_schema(responses=inline_serializer('ScmParametresSopResponse', {
+# `request=None` : le PATCH accepte un corps ad-hoc (sop_actif/animateur_sop),
+# sans serializer d'entree — sans cette declaration drf-spectacular signale un
+# « unable to guess serializer » cote REQUETE, et le cliquet PACT7 n'accepte
+# que la decroissance de ce compteur.
+@extend_schema(request=None, responses=inline_serializer('ScmParametresSopResponse', {
     'sop_actif': serializers.BooleanField(),
     'animateur_sop': serializers.IntegerField(allow_null=True),
     'animateur_sop_nom': serializers.CharField(allow_null=True),

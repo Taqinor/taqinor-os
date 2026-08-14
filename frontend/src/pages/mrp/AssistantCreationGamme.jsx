@@ -19,23 +19,11 @@ import mrpApi from '../../api/mrpApi'
 import stockApi from '../../api/stockApi'
 import { Badge, Button, Card, CardContent, Combobox, Input, Label, Spinner } from '../../ui'
 import { PageHeader } from '../../ui/PageHeader'
+// react-refresh/only-export-components : moveItem vit dans ce fichier voisin.
+import { moveItem } from './gammeReorder'
 
 let seq = 0
 const nextKey = () => `assistant-gamme-op-${(seq += 1)}`
-
-// Pure, testable sans simuler un vrai geste de glisser-déposer (jsdom ne
-// prête pas aux pointer events de dnd-kit) : déplace l'élément `fromIndex`
-// à `toIndex`, renvoie un NOUVEAU tableau (jamais de mutation en place).
-export function moveItem(list, fromIndex, toIndex) {
-  if (fromIndex === toIndex || fromIndex < 0 || toIndex < 0
-      || fromIndex >= list.length || toIndex >= list.length) {
-    return list
-  }
-  const copie = list.slice()
-  const [item] = copie.splice(fromIndex, 1)
-  copie.splice(toIndex, 0, item)
-  return copie
-}
 
 function OperationRow({ op, index, postes, onChange, onRemove }) {
   const { attributes, listeners, setNodeRef: setDragRef, isDragging } = useDraggable({ id: op.key })

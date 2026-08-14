@@ -1136,7 +1136,7 @@ export default function DevisGenerator({
       // laisse `_tvaSuggested` inchangé.
       ? { ...l, [k]: v, ...(k === 'taux_tva' ? { _tvaSuggested: false } : {}) }
       : l)))
-  }, [])
+  }, [setLines])
 
   // XSAL3 — badge « Tarif : <liste> » par ligne, quand le prix résolu vient
   // d'une liste de prix client (source !== 'standard'). Purement informatif +
@@ -1172,7 +1172,7 @@ export default function DevisGenerator({
       // jamais de blocage de la saisie.
       setTarifBadges(b => { const { [key]: _drop, ...rest } = b; return rest })
     }
-  }, [clientId])
+  }, [clientId, setLines])
 
   const onProduitChange = useCallback((key, produitId) => {
     const p = produits.find(p => String(p.id) === String(produitId))
@@ -1191,7 +1191,7 @@ export default function DevisGenerator({
       const l = lines.find(x => x._key === key)
       refreshTarif(key, produitId, l?.quantite)
     }
-  }, [produits, lines, refreshTarif])
+  }, [produits, lines, refreshTarif, setLines])
 
   // Ré-interroge le tarif applicable quand la quantité change sur une ligne
   // déjà liée à un produit (paliers XSAL2), ou quand le client change (liste
@@ -1272,7 +1272,7 @@ export default function DevisGenerator({
     return [...ls, line]
   })
   const removeLine = useCallback((key) =>
-    setLines(ls => ls.filter(l => l._key !== key)), [])
+    setLines(ls => ls.filter(l => l._key !== key)), [setLines])
   // VX188 — identité stable pour ProduitPicker.onProduitCreated (passé à
   // chaque DevisLineRow) : setProduits est déjà un setState fonctionnel,
   // aucune dépendance réelle.
@@ -1313,7 +1313,7 @@ export default function DevisGenerator({
     const grp = villaGroups.find(g => g.index === idx)
     setLines(ls => ls.map(l =>
       l._key === key ? { ...l, groupeIndex: idx, groupeLabel: grp?.label ?? '' } : l))
-  }, [villaGroups])
+  }, [villaGroups, setLines])
 
   const addVillaGroup = () => {
     setVillaGroups(gs => {

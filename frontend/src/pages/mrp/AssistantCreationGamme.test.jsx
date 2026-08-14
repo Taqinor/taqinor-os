@@ -30,7 +30,8 @@ const { getProduits } = vi.hoisted(() => ({
 
 vi.mock('../../api/stockApi', () => ({ default: { getProduits } }))
 
-import AssistantCreationGamme, { moveItem } from './AssistantCreationGamme'
+import AssistantCreationGamme from './AssistantCreationGamme'
+import { moveItem } from './gammeReorder'
 
 function renderWizard() {
   return render(
