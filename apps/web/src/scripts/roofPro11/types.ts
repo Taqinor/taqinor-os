@@ -5,6 +5,7 @@
 import { type RoofTypeSelect } from '../../lib/roofTypeSelect';
 import { type PackResult, type PanelGrid, type ConfigFamily, OBSTACLE_CLEARANCE_M } from '../../lib/estimatorBrainV2';
 import { type Obstacle, type ObstacleType } from '../../lib/obstacles';
+import { type SerializeMeta } from './prefill';
 import { type AreaResult } from '../../lib/roofAreas';
 import { type LngLat } from '../../lib/roof';
 import { type ProductionSource, type SpecificDateProfile } from '../../lib/productionEngine';
@@ -44,8 +45,10 @@ export interface InitOptions {
 
 /** W114/W115 — API minimale exposée par l'outil à la page de design. */
 export interface RoofToolApi {
-  /** Layout finalisé sérialisé en JSON pur (zones + repère). `billKwh` optionnel. */
-  serializeLayout: (billKwh?: number | null) => unknown;
+  /** Layout finalisé sérialisé en JSON pur (zones + repère). `billKwh` optionnel.
+   *  PV13 — `meta` (optionnel) porte scénario / puissance panneau / batterie / origine
+   *  devis-lead : la page les CONNAÎT, l'outil ne les devine jamais. */
+  serializeLayout: (billKwh?: number | null, meta?: SerializeMeta) => unknown;
   /** Instantané PNG (data URL) de la 3D rendue, ou null. */
   snapshot: () => string | null;
 }

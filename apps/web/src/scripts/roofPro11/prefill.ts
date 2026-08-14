@@ -18,6 +18,7 @@ import { type Ctx } from './context';
 import { type AreaRecord, type CardData, type LeadPayload, type ObstacleType } from './types';
 import { type LngLat } from '../../lib/roof';
 import { BILL_RANGES } from '../../lib/billRange';
+import { PANEL2_WATT } from '../../lib/estimatorBrainV2';
 import { ROOF_TYPES } from '../../lib/lead';
 
 /** W110 — coordonnées client OPTIONNELLES à reporter dans le diagnostic (handoff, jamais
@@ -216,9 +217,54 @@ export interface SerializedZone {
   geometry?: SerializedZoneGeometry;
 }
 
+// ═══════════ PV13 — SÉRIALISATION v2 (additive, jamais destructive) ═══════════
+// La v2 AJOUTE au JSON de quoi le lire SANS rejouer l'optimiseur : le résultat global
+// (panneaux/kWc/kWh/économies), le scénario commercial, la puissance panneau, la
+// batterie et l'origine (devis ou lead). TOUS les champs v1 restent présents, au même
+// endroit, avec la même valeur — un lecteur v1 continue de fonctionner tel quel, et
+// `deserializeLayout` IGNORE purement et simplement les ajouts (champs dérivés).
+
+/** Scénario commercial associé au design. */
+export type LayoutScenario = 'reseau' | 'avec_batterie' | 'hybride';
+
+/** Batterie retenue (forme minimale, tout optionnel). `null` = aucune batterie. */
+export interface SerializedBattery {
+  /** Capacité utile (kWh). */
+  kwh?: number;
+  /** Nombre de modules. */
+  count?: number;
+  /** Modèle/référence, tel qu'affiché. */
+  model?: string;
+}
+
+/** Résultat GLOBAL du design, cohérent avec les géométries de zone exportées. */
+export interface SerializedResult {
+  /** Somme des panneaux POSÉS des géométries exportées. */
+  panels: number;
+  /** Somme des kWc des géométries exportées. */
+  kwc: number;
+  /** Production annuelle (kWh) — somme des résultats de zone déjà calculés à l'écran. */
+  annualKwh: number;
+  /** Économies annuelles (MAD) telles qu'AFFICHÉES, ou null si l'appelant ne les fournit pas. */
+  savings: number | null;
+}
+
+/** Métadonnées passées par la page (jamais devinées ici). */
+export interface SerializeMeta {
+  scenario?: LayoutScenario;
+  /** Puissance unitaire du panneau (W). Défaut : le panneau du moteur (720 W). */
+  panelWatt?: number;
+  battery?: SerializedBattery | null;
+  /** D'où vient ce design : un devis existant, ou un lead. */
+  source?: 'devis' | 'lead';
+  devisId?: string | number | null;
+  /** Économies annuelles (MAD) affichées. Ni recalculées ni inventées ici. */
+  savingsMad?: number | null;
+}
+
 /** Layout complet sérialisé : version + zones + repère léger (pin/outline). */
 export interface SerializedLayout {
-  version: 1;
+  version: 1 | 2;
   /** Pin {lat,lng} (le centroïde du contour, ou le repère client posé), ou null. */
   pin: { lat: number; lng: number } | null;
   /** Contour de la zone active en [[lat,lng],…] (vide si pas de tracé fermé). */
@@ -228,6 +274,19 @@ export interface SerializedLayout {
   zones: SerializedZone[];
   /** Id de la zone active au moment de la sérialisation. */
   activeAreaId: string;
+  // — PV13, ajouts v2 (tous DÉRIVÉS ou fournis ; `deserializeLayout` les ignore) —
+  /** Résultat global cohérent avec les géométries exportées. */
+  result?: SerializedResult;
+  /** Scénario commercial (défaut `reseau`). */
+  scenario?: LayoutScenario;
+  /** Puissance unitaire du panneau (W). */
+  panelWatt?: number;
+  /** Batterie retenue, ou null. */
+  battery?: SerializedBattery | null;
+  /** Origine du design (défaut `lead`). */
+  source?: 'devis' | 'lead';
+  /** Identifiant du devis d'origine, ou null. */
+  devisId?: string | number | null;
 }
 
 /** Centroïde {lat,lng} d'un contour lng/lat, ou null si < 1 sommet. */
@@ -248,7 +307,7 @@ function centroidOf(vertices: LngLat[]): { lat: number; lng: number } | null {
  * écrire nulle part. `billKwh` est optionnel (passé par l'appelant — l'outil ne
  * connaît pas la conversion facture→kWh ici).
  */
-export function serializeLayout(ctx: Ctx, billKwh: number | null = null): SerializedLayout {
+export function serializeLayout(ctx: Ctx, billKwh: number | null = null, meta?: SerializeMeta): SerializedLayout {
   // On part des zones figées (ctx.areas) et on superpose l'état d'édition VIVANT de
   // la zone active (vertices/obstacles/roofType… vivent sur ctx, pas encore re-figés).
   const zones: SerializedZone[] = ctx.areas.map((a) => {
@@ -310,13 +369,37 @@ export function serializeLayout(ctx: Ctx, billKwh: number | null = null): Serial
   const activeVerts = ctx.vertices.length >= 1 ? ctx.vertices : ctx.areas.find((a) => a.id === ctx.activeAreaId)?.vertices ?? [];
   const outline: Array<[number, number]> =
     activeVerts.length >= 3 ? activeVerts.map(([lng, lat]) => [lat, lng] as [number, number]) : [];
+  // PV13 — RÉSULTAT GLOBAL, cohérent avec ce qui vient d'être exporté : panneaux et kWc
+  // sont la SOMME des `zone.geometry` émises ci-dessus (si le JSON dit 42 panneaux, le
+  // résultat dit 42) ; la production est la somme des résultats de zone DÉJÀ calculés à
+  // l'écran (même source que le total « Plusieurs zones ») ; les économies ne sont JAMAIS
+  // recalculées ni sommées ici (une somme zone à zone sur-compte le plafond facture) :
+  // l'appelant fournit le chiffre affiché, sinon `null`.
+  let panelsTotal = 0;
+  let kwcTotal = 0;
+  for (const z of zones) {
+    if (!z.geometry) continue;
+    panelsTotal += z.geometry.count;
+    kwcTotal += z.geometry.kwc;
+  }
+  let annualKwhTotal = 0;
+  for (const a of ctx.areas) if (a.result) annualKwhTotal += a.result.annualKwh;
+  const savings = typeof meta?.savingsMad === 'number' && Number.isFinite(meta.savingsMad) ? meta.savingsMad : null;
+
   return {
-    version: 1,
+    version: 2,
     pin: centroidOf(activeVerts),
     outline,
     billKwh: Number.isFinite(billKwh as number) ? billKwh : null,
     zones,
     activeAreaId: ctx.activeAreaId,
+    // — ajouts v2 (aucun champ v1 déplacé ni modifié) —
+    result: { panels: panelsTotal, kwc: kwcTotal, annualKwh: annualKwhTotal, savings },
+    scenario: meta?.scenario ?? 'reseau',
+    panelWatt: typeof meta?.panelWatt === 'number' && Number.isFinite(meta.panelWatt) ? meta.panelWatt : PANEL2_WATT,
+    battery: meta?.battery ?? null,
+    source: meta?.source ?? 'lead',
+    devisId: meta?.devisId ?? null,
   };
 }
 

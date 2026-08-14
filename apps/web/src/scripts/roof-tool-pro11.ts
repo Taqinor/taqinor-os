@@ -2501,8 +2501,8 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
   // le layout finalisé (W113) + instantané PNG de la 3D (W115). Boot complet seulement
   // (jamais en capture). Absent → aucun effet.
   opts.onApiReady?.({
-    serializeLayout: (billKwh?: number | null) =>
-      serializeLayout(ctx, billKwh ?? (closed && vertices.length >= 3 ? billToAnnualKwh(monthlyBill()) : null)),
+    serializeLayout: (billKwh?: number | null, meta?: import('./roofPro11/prefill').SerializeMeta) =>
+      serializeLayout(ctx, billKwh ?? (closed && vertices.length >= 3 ? billToAnnualKwh(monthlyBill()) : null), meta),
     snapshot: () => scene3d.snapshot(),
   });
 }
