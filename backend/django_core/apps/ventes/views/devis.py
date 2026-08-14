@@ -211,6 +211,8 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
             # PV18 — resynchronisation des lignes sur un nouveau calepinage
             # (écriture chirurgicale, jamais le statut).
             'sync_layout',
+            # PV47 — report OPT-IN du bordereau électrique en lignes de devis.
+            'ajouter_boq_electrique',
             # PV41 — étude électrique du devis (GET affiche, POST recalcule).
             # Même périmètre que le générateur (responsable + admin) : la garde
             # doit être ICI, get_permissions PRIME sur le
@@ -504,6 +506,48 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
             return Response(build_electrical_design(devis))
         surcharges = request.data if isinstance(request.data, dict) else {}
         return Response(build_electrical_design(devis, overrides=surcharges))
+
+    @action(detail=True, methods=['post'],
+            url_path='ajouter-boq-electrique',
+            permission_classes=[IsResponsableOrAdmin])
+    def ajouter_boq_electrique(self, request, pk=None):
+        """PV47 — reporte le BORDEREAU électrique (PV41) en lignes de devis.
+
+        Geste EXPLICITE et jamais silencieux : la conception électrique se
+        recalcule à chaque changement de disposition, et si elle réécrivait les
+        lignes toute seule, le prix d'un devis bougerait sous les yeux du
+        client. Ces lignes n'apparaissent donc QUE sur cet appel.
+
+        Deux issues par ligne de bordereau : un produit du catalogue
+        correspond (ligne produit à SON prix — 0 et « à chiffrer » tant que le
+        fondateur ne l'a pas renseigné), ou aucun ne correspond (ligne de NOTE
+        « à chiffrer », sans prix, et la ligne remonte dans ``manques``).
+        Aucun prix n'est JAMAIS inventé.
+
+        GARDE DE STATUT (patron PV15) : seuls « brouillon » et « envoyé »
+        acceptent l'ajout ; au-delà, 409 avec le statut NOMMÉ (le bon geste est
+        « Réviser »). Cette garde LIT le statut, elle ne l'écrit jamais
+        (règle #4). Devis d'une autre société → 404 (get_queryset).
+        """
+        from ..services import ajouter_lignes_boq_electrique
+
+        devis = self.get_object()  # borné société par get_queryset
+        _MODIFIABLES = (Devis.Statut.BROUILLON, Devis.Statut.ENVOYE)
+        if devis.statut not in _MODIFIABLES:
+            return Response(
+                {'detail': (
+                    'Devis « %s » : on ne peut plus y ajouter de lignes. '
+                    'Utilisez « Réviser » pour en créer une nouvelle version.'
+                    % devis.get_statut_display())},
+                status=status.HTTP_409_CONFLICT)
+        design = getattr(devis, 'electrical_design', None)
+        if not isinstance(design, dict) or not design.get('bom'):
+            return Response(
+                {'detail': "Ce devis n'a pas encore de conception électrique : "
+                           'lancez d\'abord « Conception électrique ».'},
+                status=status.HTTP_400_BAD_REQUEST)
+        resultat = ajouter_lignes_boq_electrique(devis, request.user)
+        return Response(resultat)
 
     @action(detail=False, methods=['post'], url_path='atomic',
             permission_classes=[IsResponsableOrAdmin])
