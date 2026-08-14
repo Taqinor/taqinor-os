@@ -1129,6 +1129,200 @@ def notifier_rappel(alerte, impact=None):
 
 
 # ═══════════════════════════════════════════════════════════════════════════
+# NTWMS23 — Retours client (RMA) côté entrepôt
+# ═══════════════════════════════════════════════════════════════════════════
+
+def creer_retour_client(*, company, user=None, client, chantier=None,
+                        ticket=None, motif='', lignes=None):
+    """Ouvre un retour client (RMA) avec ses lignes.
+
+    Référence ``RMA-YYYYMM-NNNN`` posée par ``core.numbering`` (jamais
+    ``count()+1``), dans la MÊME transaction que les lignes : aucune
+    référence vide ne peut être committée.
+    """
+    from django.db import transaction
+    from core.numbering import create_with_reference
+
+    from .models import Produit
+    from .models_wms import LigneRetourClient, RetourClient
+
+    if client is None:
+        raise ValueError('Client introuvable dans cette société.')
+    lignes = list(lignes or [])
+    if not lignes:
+        raise ValueError('Un retour client doit contenir au moins une ligne.')
+    produits = {
+        p.id: p for p in Produit.objects.filter(
+            company=company,
+            id__in=[ligne.get('produit') for ligne in lignes])
+    }
+
+    preparees = []
+    for ligne in lignes:
+        produit = produits.get(ligne.get('produit'))
+        try:
+            quantite = int(ligne.get('quantite') or 0)
+        except (TypeError, ValueError):
+            quantite = 0
+        if produit is None or quantite <= 0:
+            continue
+        preparees.append((produit, quantite, ligne.get('etat_constate'),
+                          ligne.get('bin')))
+    if not preparees:
+        raise ValueError('Aucune ligne de retour valide.')
+
+    with transaction.atomic():
+        def _save(reference):
+            return RetourClient.objects.create(
+                company=company, reference=reference, client=client,
+                chantier=chantier, ticket=ticket,
+                motif=(motif or '').strip(), cree_par=user)
+
+        retour = create_with_reference(RetourClient, 'RMA', company, _save)
+        etats = {c for c, _ in LigneRetourClient.EtatConstate.choices}
+        LigneRetourClient.objects.bulk_create([
+            LigneRetourClient(
+                company=company, retour=retour, produit=produit,
+                quantite=quantite,
+                etat_constate=(
+                    etat if etat in etats
+                    else LigneRetourClient.EtatConstate.REVENDABLE),
+                bin_id=bin_id)
+            for produit, quantite, etat, bin_id in preparees
+        ])
+    return retour
+
+
+def _reintegrer_ligne_retour(ligne, user=None):
+    """Pose l'ENTRÉE de stock d'une ligne REVENDABLE (idempotent)."""
+    from .models import MouvementStock, Produit
+    from .models_wms import LigneRetourClient
+    from .services import record_stock_movement
+
+    if ligne.stock_mouvemente:
+        return None
+    if ligne.etat_constate != LigneRetourClient.EtatConstate.REVENDABLE:
+        return None
+    produit = Produit.objects.select_for_update().get(id=ligne.produit_id)
+    avant = produit.quantite_stock
+    mouvement = record_stock_movement(
+        company=ligne.company, produit=produit,
+        type_mouvement=MouvementStock.TypeMouvement.ENTREE,
+        quantite=ligne.quantite, quantite_avant=avant,
+        quantite_apres=avant + ligne.quantite,
+        reference=ligne.retour.reference,
+        note=f'Retour client {ligne.retour.reference} (revendable)',
+        created_by=user, bin_destination=ligne.bin)
+    ligne.stock_mouvemente = True
+    ligne.save(update_fields=['stock_mouvemente'])
+    return mouvement
+
+
+def _sortir_ligne_retour(ligne, user=None):
+    """Ressort du stock une ligne entrée à tort puis déclassée (idempotent)."""
+    from .models import MouvementStock, Produit
+    from .services import record_stock_movement
+
+    if not ligne.stock_mouvemente:
+        return None
+    produit = Produit.objects.select_for_update().get(id=ligne.produit_id)
+    avant = produit.quantite_stock
+    quantite = min(ligne.quantite, avant) if avant > 0 else 0
+    mouvement = record_stock_movement(
+        company=ligne.company, produit=produit,
+        type_mouvement=MouvementStock.TypeMouvement.REBUT,
+        quantite=quantite, quantite_avant=avant,
+        quantite_apres=avant - quantite,
+        reference=ligne.retour.reference,
+        note=f'Retour client {ligne.retour.reference} — déclassé après '
+             f'inspection',
+        created_by=user)
+    MouvementStock.objects.filter(id=mouvement.id).update(motif_rebut='autre')
+    ligne.stock_mouvemente = False
+    ligne.save(update_fields=['stock_mouvemente'])
+    return mouvement
+
+
+def receptionner_retour_client(*, retour, user=None):
+    """Réceptionne physiquement le retour.
+
+    Chaque ligne REVENDABLE réintègre le stock vendable ; une ligne
+    A_REPARER ou REBUT n'incrémente RIEN. Idempotent : un retour déjà
+    réceptionné ne re-crée aucun mouvement.
+    """
+    from django.db import transaction
+    from django.utils import timezone
+
+    from .models_wms import RetourClient
+
+    if retour.statut not in (RetourClient.Statut.DEMANDE,
+                             RetourClient.Statut.EN_TRANSIT):
+        raise ValueError(
+            'Seul un retour demandé ou en transit peut être réceptionné.')
+    with transaction.atomic():
+        for ligne in retour.lignes.select_related('retour').all():
+            _reintegrer_ligne_retour(ligne, user=user)
+        retour.statut = RetourClient.Statut.RECEPTIONNE
+        retour.date_reception = timezone.now()
+        retour.save(update_fields=['statut', 'date_reception'])
+    return retour
+
+
+def inspecter_retour_client(*, retour, lignes=None, user=None):
+    """Acte le contrôle qualité : état constaté + casier par ligne.
+
+    ``lignes`` — ``[{ligne, etat_constate, bin, note}]``. Une ligne qui
+    DEVIENT revendable entre alors en stock ; une ligne déjà entrée qui
+    devient A_REPARER/REBUT en ressort — le stock vendable ne contient jamais
+    un rebut.
+    """
+    from django.db import transaction
+    from django.utils import timezone
+
+    from .models_wms import LigneRetourClient, RetourClient
+
+    if retour.statut not in (RetourClient.Statut.RECEPTIONNE,
+                             RetourClient.Statut.INSPECTE):
+        raise ValueError(
+            'Le retour doit être réceptionné avant d\'être inspecté.')
+    etats = {c for c, _ in LigneRetourClient.EtatConstate.choices}
+    par_id = {ligne.id: ligne
+              for ligne in retour.lignes.select_related('retour').all()}
+    with transaction.atomic():
+        for entree in list(lignes or []):
+            ligne = par_id.get(_entier_ou_none(entree.get('ligne')))
+            if ligne is None:
+                continue
+            etat = entree.get('etat_constate')
+            if etat not in etats:
+                raise ValueError('État constaté invalide.')
+            champs = ['etat_constate']
+            ligne.etat_constate = etat
+            if 'bin' in entree:
+                ligne.bin_id = _entier_ou_none(entree.get('bin'))
+                champs.append('bin')
+            if entree.get('note'):
+                ligne.note = entree['note']
+                champs.append('note')
+            ligne.save(update_fields=champs)
+            if etat == LigneRetourClient.EtatConstate.REVENDABLE:
+                _reintegrer_ligne_retour(ligne, user=user)
+            else:
+                _sortir_ligne_retour(ligne, user=user)
+        retour.statut = RetourClient.Statut.INSPECTE
+        retour.date_inspection = timezone.now()
+        retour.save(update_fields=['statut', 'date_inspection'])
+    return retour
+
+
+def _entier_ou_none(valeur):
+    try:
+        return int(valeur)
+    except (TypeError, ValueError):
+        return None
+
+
+# ═══════════════════════════════════════════════════════════════════════════
 # NTWMS21 — Demande de transfert avec workflow d'approbation
 # ═══════════════════════════════════════════════════════════════════════════
 

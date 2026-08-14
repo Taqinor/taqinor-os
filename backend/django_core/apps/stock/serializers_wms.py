@@ -7,8 +7,9 @@ from rest_framework import serializers
 
 from .models_wms import (
     AlerteRappel, DemandeTransfert, ExpeditionTransporteur, LignePicking,
-    PlanComptageTournant, PortailTiersToken, Quai, RendezVousTransporteur,
-    UniteLogistique, UniteLogistiqueLigne, VaguePicking,
+    LigneRetourClient, PlanComptageTournant, PortailTiersToken, Quai,
+    RendezVousTransporteur, RetourClient, UniteLogistique,
+    UniteLogistiqueLigne, VaguePicking,
 )
 
 
@@ -266,6 +267,42 @@ class PortailTiersTokenSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 'Nommez le dépositaire concerné par ce jeton.')
         return value
+
+
+class LigneRetourClientSerializer(serializers.ModelSerializer):
+    """NTWMS23 — ligne d'un retour client (lecture)."""
+
+    produit_nom = serializers.CharField(source='produit.nom', read_only=True)
+    bin_code = serializers.CharField(
+        source='bin.code', read_only=True, default='')
+
+    class Meta:
+        model = LigneRetourClient
+        fields = [
+            'id', 'retour', 'produit', 'produit_nom', 'quantite',
+            'etat_constate', 'bin', 'bin_code', 'stock_mouvemente', 'note',
+        ]
+        read_only_fields = ['retour', 'stock_mouvemente']
+
+
+class RetourClientSerializer(serializers.ModelSerializer):
+    """NTWMS23 — retour client (RMA). Référence et statut posés côté
+    serveur ; les lignes sont fournies à la création."""
+
+    lignes = LigneRetourClientSerializer(many=True, read_only=True)
+    client_nom = serializers.CharField(source='client.nom', read_only=True)
+
+    class Meta:
+        model = RetourClient
+        fields = [
+            'id', 'reference', 'client', 'client_nom', 'chantier', 'ticket',
+            'statut', 'motif', 'date_reception', 'date_inspection',
+            'cree_par', 'lignes', 'created_at', 'updated_at',
+        ]
+        read_only_fields = [
+            'reference', 'statut', 'date_reception', 'date_inspection',
+            'cree_par', 'created_at', 'updated_at',
+        ]
 
 
 class DemandeTransfertSerializer(serializers.ModelSerializer):

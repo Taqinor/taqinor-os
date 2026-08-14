@@ -766,3 +766,109 @@ class DemandeTransfert(TenantModel):
 
     def __str__(self):
         return f'Demande {self.produit_id} × {self.quantite} ({self.statut})'
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# NTWMS23 — Retours CLIENT (RMA) côté entrepôt
+# ═══════════════════════════════════════════════════════════════════════════
+
+class RetourClient(TenantModel):
+    """NTWMS23 — marchandise qui REVIENT d'un client vers l'entrepôt.
+
+    À ne pas confondre avec ``achats.RetourFournisseur``, qui part VERS le
+    fournisseur : ici le flux est entrant, et la question centrale est l'état
+    de ce qui revient. Le stock vendable n'est réintégré que pour les lignes
+    constatées REVENDABLE — un rebut n'incrémente JAMAIS le stock.
+    """
+
+    class Statut(models.TextChoices):
+        DEMANDE = 'demande', 'Demandé'
+        EN_TRANSIT = 'en_transit', 'En transit'
+        RECEPTIONNE = 'receptionne', 'Réceptionné'
+        INSPECTE = 'inspecte', 'Inspecté'
+        CLOS = 'clos', 'Clos'
+
+    reference = models.CharField(max_length=50)
+    # String-FK cross-app (crm/installations/sav) — jamais un import de leurs
+    # modèles depuis stock.
+    client = models.ForeignKey(
+        'crm.Client', on_delete=models.PROTECT,
+        related_name='retours_entrepot')  # on_delete: PROTECT — un retour est une trace logistique et comptable ; il survit à l'archivage du client
+    chantier = models.ForeignKey(
+        'installations.Installation', on_delete=models.SET_NULL, null=True,
+        blank=True, related_name='retours_entrepot')
+    ticket = models.ForeignKey(
+        'sav.Ticket', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='retours_entrepot')
+    statut = models.CharField(
+        max_length=20, choices=Statut.choices, default=Statut.DEMANDE)
+    motif = models.TextField(blank=True, default='')
+    date_reception = models.DateTimeField(null=True, blank=True)
+    date_inspection = models.DateTimeField(null=True, blank=True)
+    cree_par = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='retours_client_crees')
+
+    class Meta:
+        verbose_name = 'Retour client (RMA)'
+        verbose_name_plural = 'Retours client (RMA)'
+        ordering = ['-created_at']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'reference'],
+                name='stock_retourclient_company_reference_uniq'),
+        ]
+        indexes = [
+            models.Index(fields=['company', 'statut'],
+                         name='idx_retourclient_co_statut'),
+        ]
+
+    def __str__(self):
+        return f'{self.reference} ({self.statut})'
+
+
+class LigneRetourClient(TenantModel):
+    """Ligne d'un retour client : ce qui revient, dans quel état, et où.
+
+    ``etat_constate`` pilote TOUT : REVENDABLE réintègre le stock vendable (au
+    casier de quarantaine tant que le contrôle qualité n'a pas tranché),
+    A_REPARER et REBUT ne l'incrémentent jamais. ``stock_mouvemente`` rend
+    l'opération idempotente : une ligne déjà entrée en stock n'y entre pas
+    deux fois, et une ligne qui devient un rebut APRÈS coup en ressort une
+    seule fois.
+    """
+
+    class EtatConstate(models.TextChoices):
+        REVENDABLE = 'revendable', 'Revendable'
+        A_REPARER = 'a_reparer', 'À réparer'
+        REBUT = 'rebut', 'Rebut'
+
+    retour = models.ForeignKey(
+        RetourClient, on_delete=models.CASCADE,  # on_delete: CASCADE - une ligne n'existe QUE dans son retour (composition stricte)
+        related_name='lignes')
+    produit = models.ForeignKey(
+        'stock.Produit', on_delete=models.PROTECT,
+        related_name='lignes_retour_client')  # on_delete: PROTECT — trace d'un mouvement de stock réel (aligné sur MouvementStock)
+    quantite = models.PositiveIntegerField(default=0)
+    etat_constate = models.CharField(
+        max_length=20, choices=EtatConstate.choices,
+        default=EtatConstate.REVENDABLE)
+    # Casier de destination selon l'état (QUARANTAINE avant contrôle, zone de
+    # rebut sinon) — string-FK vers la hiérarchie FG319, jamais dupliquée.
+    bin = models.ForeignKey(
+        'installations.BinLocation', on_delete=models.SET_NULL, null=True,
+        blank=True, related_name='lignes_retour_client')
+    stock_mouvemente = models.BooleanField(default=False)
+    note = models.TextField(blank=True, default='')
+
+    class Meta:
+        verbose_name = 'Ligne de retour client'
+        verbose_name_plural = 'Lignes de retour client'
+        ordering = ['id']
+        indexes = [
+            models.Index(fields=['company', 'retour'],
+                         name='idx_ligneretcli_co_retour'),
+        ]
+
+    def __str__(self):
+        return f'{self.produit_id} × {self.quantite} ({self.etat_constate})'

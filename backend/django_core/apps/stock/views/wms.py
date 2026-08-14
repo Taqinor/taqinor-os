@@ -17,14 +17,14 @@ from authentication.permissions import (
 from ..models_wms import (
     AlerteRappel, DemandeTransfert, ExpeditionTransporteur,
     PlanComptageTournant, PortailTiersToken, Quai, RendezVousTransporteur,
-    UniteLogistique, VaguePicking,
+    RetourClient, UniteLogistique, VaguePicking,
 )
 from ..serializers_wms import (
     AlerteRappelSerializer, DemandeTransfertSerializer,
     ExpeditionTransporteurSerializer, PlanComptageTournantSerializer,
     PortailTiersTokenSerializer, QuaiSerializer,
-    RendezVousTransporteurSerializer, UniteLogistiqueSerializer,
-    VaguePickingSerializer,
+    RendezVousTransporteurSerializer, RetourClientSerializer,
+    UniteLogistiqueSerializer, VaguePickingSerializer,
 )
 
 READ_ACTIONS = ['list', 'retrieve']
@@ -562,6 +562,99 @@ class PlanComptageTournantViewSet(CompanyScopedModelViewSet):
         from ..services import generer_comptages_tournants
         resultat = generer_comptages_tournants(company=request.user.company)
         return Response(resultat, status=status.HTTP_201_CREATED)
+
+
+class RetourClientViewSet(CompanyScopedModelViewSet):
+    """NTWMS23 — retours client (RMA) côté entrepôt.
+
+    ``{id}/receptionner/`` acte l'arrivée physique (seules les lignes
+    REVENDABLE réintègrent le stock vendable) ; ``{id}/inspecter/`` acte le
+    contrôle qualité ligne par ligne.
+    """
+    queryset = RetourClient.objects.select_related(
+        'client', 'chantier', 'ticket', 'cree_par').prefetch_related(
+            'lignes__produit', 'lignes__bin').all()
+    serializer_class = RetourClientSerializer
+    ordering = ['-created_at']
+
+    def get_permissions(self):
+        if self.action in READ_ACTIONS:
+            return [IsAnyRole()]
+        if self.action in WRITE_ACTIONS + ['receptionner', 'inspecter']:
+            return [IsResponsableOrAdmin()]
+        return [IsAdminRole()]
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        params = self.request.query_params
+        statut = params.get('statut')
+        if statut:
+            qs = qs.filter(statut=statut)
+        client = params.get('client')
+        if client and str(client).isdigit():
+            qs = qs.filter(client_id=int(client))
+        return qs
+
+    def create(self, request, *args, **kwargs):
+        """``{client, chantier?, ticket?, motif?, lignes: [{produit,
+        quantite, etat_constate?, bin?}]}`` — la référence est posée côté
+        serveur."""
+        from ..services import creer_retour_client
+        company = request.user.company
+        modele_client = RetourClient._meta.get_field('client').related_model
+        client = modele_client.objects.filter(
+            id=request.data.get('client'), company=company).first()
+        chantier = None
+        if request.data.get('chantier'):
+            modele_chantier = (
+                RetourClient._meta.get_field('chantier').related_model)
+            chantier = modele_chantier.objects.filter(
+                id=request.data.get('chantier'), company=company).first()
+        ticket = None
+        if request.data.get('ticket'):
+            modele_ticket = RetourClient._meta.get_field('ticket').related_model
+            ticket = modele_ticket.objects.filter(
+                id=request.data.get('ticket'), company=company).first()
+        try:
+            retour = creer_retour_client(
+                company=company, user=request.user, client=client,
+                chantier=chantier, ticket=ticket,
+                motif=request.data.get('motif') or '',
+                lignes=request.data.get('lignes'))
+        except ValueError as exc:
+            return Response({'detail': str(exc)},
+                            status=status.HTTP_400_BAD_REQUEST)
+        return Response(self.get_serializer(retour).data,
+                        status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['post'], url_path='receptionner')
+    def receptionner(self, request, pk=None):
+        """Acte l'arrivée : seules les lignes REVENDABLE entrent en stock."""
+        from ..services import receptionner_retour_client
+        retour = self.get_object()
+        try:
+            receptionner_retour_client(retour=retour, user=request.user)
+        except ValueError as exc:
+            return Response({'detail': str(exc)},
+                            status=status.HTTP_400_BAD_REQUEST)
+        retour.refresh_from_db()
+        return Response(self.get_serializer(retour).data)
+
+    @action(detail=True, methods=['post'], url_path='inspecter')
+    def inspecter(self, request, pk=None):
+        """Acte le contrôle qualité : ``{lignes: [{ligne, etat_constate,
+        bin?, note?}]}``."""
+        from ..services import inspecter_retour_client
+        retour = self.get_object()
+        try:
+            inspecter_retour_client(
+                retour=retour, lignes=request.data.get('lignes'),
+                user=request.user)
+        except ValueError as exc:
+            return Response({'detail': str(exc)},
+                            status=status.HTTP_400_BAD_REQUEST)
+        retour.refresh_from_db()
+        return Response(self.get_serializer(retour).data)
 
 
 class DemandeTransfertViewSet(CompanyScopedModelViewSet):
