@@ -107,6 +107,9 @@ INSTALLED_APPS = [
     # installés. Interface fournisseur swappable (no-op par défaut, squelette
     # FusionSolar) ; tout no-ope tant que rien n'est configuré.
     'apps.monitoring',
+    # NTMFG1 — Production / MRP II (postes de charge, gammes, ordres de
+    # fabrication capacitaires, MRP net, terminal atelier, coût standard).
+    'apps.mrp',
     # N75 — moteur de notifications unifié (in-app + canaux existants).
     'apps.notifications',
     # N72 / N73 — moteur d'automatisations sans code (règles + approbations).
