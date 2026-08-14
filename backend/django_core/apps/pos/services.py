@@ -471,7 +471,52 @@ def cloturer_session(*, session, montant_compte, montant_tpe_compte=None,
     recorder.record(
         'update', instance=session, company=session.company,
         user=user or session.caissier, detail=detail)
+
+    _notifier_ecart_anormal(
+        session, ecart_especes=cloture.ecart,
+        ecart_tpe=session.ecart_tpe if montant_tpe_compte is not None else None)
     return session
+
+
+# ── NTRET32 — Alerte fondateur/gérant sur écart de caisse anormal ──────────
+
+def _notifier_ecart_anormal(session, *, ecart_especes, ecart_tpe=None):
+    """NTRET32 — alerte PROACTIVE (best-effort) au gérant/directeur quand
+    l'écart de clôture (espèces OU TPE) dépasse le seuil configuré
+    (Paramètres POS, ``seuil_alerte_ecart_caisse``). Seuil NULL/0 = désactivé
+    — jamais émise, comportement actuel inchangé. Destinataires résolus via
+    ``apps.notifications.services.resolve_recipients`` (règles de routage si
+    configurées, sinon les managers actifs de la société — comportement
+    historique du reste de l'app). Best-effort strict : une erreur ici ne
+    remet JAMAIS en cause la clôture déjà actée."""
+    try:
+        from apps.parametres.models_pos import ParametresPos
+        seuil = ParametresPos.get(session.company).seuil_alerte_ecart_caisse
+        if not seuil:
+            return
+        depasse_especes = abs(ecart_especes or Decimal('0')) > seuil
+        depasse_tpe = ecart_tpe is not None and abs(ecart_tpe) > seuil
+        if not (depasse_especes or depasse_tpe):
+            return
+
+        from apps.notifications.models import EventType
+        from apps.notifications.services import notify, resolve_recipients
+        titre = f'Écart de caisse anormal — session #{session.pk}'
+        details = [f'Écart espèces : {ecart_especes} MAD']
+        if ecart_tpe is not None:
+            details.append(f'Écart TPE : {ecart_tpe} MAD')
+        corps = ' — '.join(details) + ' (rapport Z : /pos/session)'
+        for destinataire in resolve_recipients(
+                session.company, EventType.CAISSE_ECART_ANORMAL):
+            notify(
+                destinataire, EventType.CAISSE_ECART_ANORMAL, titre,
+                body=corps, link='/pos/session', company=session.company,
+                reason='manager')
+    except Exception:
+        import logging
+        logging.getLogger(__name__).warning(
+            'NTRET32: alerte écart de caisse anormale échouée pour la '
+            'session #%s', session.pk)
 
 
 # ── XPOS6 — Encaisser un devis/une facture existants au comptoir ───────────

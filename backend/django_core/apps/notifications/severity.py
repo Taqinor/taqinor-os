@@ -47,6 +47,9 @@ EVENT_SEVERITY = {
     EventType.FLOTTE_DTC_CRITIQUE: CRITIQUE,
     EventType.FLOTTE_ZONE_ALERTE: CRITIQUE,
     EventType.BCF_LATE: CRITIQUE,
+    # NTRET32 — écart de clôture caisse au-delà du seuil configuré : alerte
+    # proactive au gérant/directeur, même rang qu'un incident financier.
+    EventType.CAISSE_ECART_ANORMAL: CRITIQUE,
 
     # Informationnel pur — jamais une action attendue de l'utilisateur.
     EventType.DIGEST: INFO,

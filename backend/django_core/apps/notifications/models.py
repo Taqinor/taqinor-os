@@ -254,6 +254,12 @@ class EventType(models.TextChoices):
     # croit couvert pendant des semaines.
     VEILLE_AO_ALARME_SILENCE = (
         'veille_ao_alarme_silence', "Veille appels d'offres muette")
+    # NTRET32 — clôture de SessionCaisse (apps.pos) dont l'écart (espèces ou
+    # TPE) dépasse le seuil configuré (Paramètres POS) : notifie les
+    # managers/gérants (resolve_recipients). Seuil vide/0 = désactivé,
+    # jamais émis.
+    CAISSE_ECART_ANORMAL = (
+        'caisse_ecart_anormal', 'Écart de caisse anormal')
 
 
 class Channel(models.TextChoices):

@@ -50,6 +50,13 @@ class ParametresPos(TenantModel):
     arrondi_caisse_pas = models.DecimalField(
         max_digits=4, decimal_places=2, default=Decimal('0.05'),
         help_text="Pas d'arrondi caisse en espèces (MAD), ex. 0.05 ou 0.10.")
+    # NTRET32 — seuil (MAD, écart absolu) déclenchant une alerte proactive au
+    # gérant/directeur sur un écart de clôture anormal (espèces OU TPE).
+    # NULL/0 = désactivé — comportement actuel inchangé (aucune notification).
+    seuil_alerte_ecart_caisse = models.DecimalField(
+        max_digits=10, decimal_places=2, null=True, blank=True,
+        help_text='Seuil (MAD, écart absolu) déclenchant une alerte de '
+                  'clôture anormale. Vide/0 = désactivé.')
 
     class Meta:
         verbose_name = 'Paramètres POS'
