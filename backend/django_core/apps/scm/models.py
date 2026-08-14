@@ -382,3 +382,52 @@ class LigneDemandeSOP(TenantModel):
 
     def __str__(self):
         return f'{self.cycle_id} / {self.produit_id} = {self.quantite_finale}'
+
+
+class LigneOffreSOP(TenantModel):
+    """NTSCM14 — snapshot de l'offre (capacité) d'un produit pour un cycle
+    S&OP, en miroir de ``LigneDemandeSOP`` (NTSCM13).
+
+    Peuplée par ``services.calculer_offre_cycle`` depuis
+    ``apps.stock.selectors`` (stock disponible + quantité déjà en commande
+    fournisseur — jamais une duplication de logique, jamais un import de
+    modèle ``apps.stock``). ``ecart_offre_demande`` = offre totale
+    (``stock_disponible_snapshot + capacite_appro_fournisseur_estimee``) −
+    ``LigneDemandeSOP.quantite_finale`` du même produit — négatif = pénurie
+    prévisible."""
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,  # on_delete: tenant
+        related_name='scm_lignes_offre_sop', verbose_name='Société')
+    cycle = models.ForeignKey(
+        CyclePlanificationSOP,
+        on_delete=models.CASCADE,
+        related_name='lignes_offre', verbose_name='Cycle S&OP')
+    produit = models.ForeignKey(
+        'stock.Produit',
+        on_delete=models.CASCADE,
+        related_name='scm_lignes_offre_sop', verbose_name='Produit')
+    stock_disponible_snapshot = models.DecimalField(
+        max_digits=12, decimal_places=2, default=Decimal('0'),
+        verbose_name='Stock disponible (snapshot)')
+    capacite_appro_fournisseur_estimee = models.DecimalField(
+        max_digits=12, decimal_places=2, default=Decimal('0'),
+        verbose_name='Capacité appro fournisseur estimée',
+        help_text='Quantité déjà en commande (BCF brouillon/envoyé) chez un fournisseur.')
+    ecart_offre_demande = models.DecimalField(
+        max_digits=12, decimal_places=2, default=Decimal('0'),
+        verbose_name='Écart offre − demande',
+        help_text='Négatif = pénurie prévisible sur ce produit pour ce cycle.')
+
+    class Meta:
+        verbose_name = 'Ligne d\'offre S&OP'
+        verbose_name_plural = 'Lignes d\'offre S&OP'
+        ordering = ['ecart_offre_demande', 'produit_id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['cycle', 'produit'], name='uniq_scm_ligne_offre_sop_produit'),
+        ]
+
+    def __str__(self):
+        return f'{self.cycle_id} / {self.produit_id} écart={self.ecart_offre_demande}'

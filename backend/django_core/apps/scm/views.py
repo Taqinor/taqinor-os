@@ -17,7 +17,7 @@ from .models import (
 )
 from .serializers import (
     ClassificationABCSerializer, CyclePlanificationSOPSerializer,
-    EvenementDemandeSerializer, LigneDemandeSOPSerializer,
+    EvenementDemandeSerializer, LigneDemandeSOPSerializer, LigneOffreSOPSerializer,
     PolitiqueStockSerializer, PrevisionDemandeSerializer,
 )
 
@@ -222,6 +222,25 @@ class CyclePlanificationSOPViewSet(CompanyScopedModelViewSet):
             'quantite_finale', 'updated_at',
         ])
         return Response(LigneDemandeSOPSerializer(ligne).data)
+
+    @action(detail=True, methods=['post'], url_path='calculer-offre')
+    def calculer_offre(self, request, pk=None):
+        """NTSCM14 — (re)calcule les lignes d'offre du cycle depuis
+        ``apps.stock.selectors`` (stock disponible + capacité appro
+        fournisseur)."""
+        from . import services
+
+        cycle = self.get_object()
+        lignes = services.calculer_offre_cycle(cycle)
+        return Response(LigneOffreSOPSerializer(lignes, many=True).data)
+
+    @action(detail=True, methods=['get'], url_path='ecarts')
+    def ecarts(self, request, pk=None):
+        """NTSCM14 — lignes d'offre du cycle, TRIÉES par écart le plus
+        négatif (pénurie prévisible) en premier (``Meta.ordering``)."""
+        cycle = self.get_object()
+        lignes = cycle.lignes_offre.select_related('produit').all()
+        return Response(LigneOffreSOPSerializer(lignes, many=True).data)
 
 
 @api_view(['GET'])

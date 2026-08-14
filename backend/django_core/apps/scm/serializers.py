@@ -7,7 +7,7 @@ from rest_framework import serializers
 
 from .models import (
     ClassificationABC, CyclePlanificationSOP, EvenementDemande, LigneDemandeSOP,
-    PolitiqueStock, PrevisionDemande,
+    LigneOffreSOP, PolitiqueStock, PrevisionDemande,
 )
 
 
@@ -146,3 +146,24 @@ class LigneDemandeSOPSerializer(serializers.ModelSerializer):
             'quantite_prevision_systeme', 'quantite_ajustee_commercial',
             'motif_ajustement', 'quantite_finale',
         ]
+
+
+class LigneOffreSOPSerializer(serializers.ModelSerializer):
+    produit_nom = serializers.CharField(source='produit.nom', read_only=True)
+    quantite_finale_demande = serializers.SerializerMethodField()
+
+    class Meta:
+        model = LigneOffreSOP
+        fields = [
+            'id', 'cycle', 'produit', 'produit_nom',
+            'stock_disponible_snapshot', 'capacite_appro_fournisseur_estimee',
+            'ecart_offre_demande', 'quantite_finale_demande',
+        ]
+        read_only_fields = fields
+
+    def get_quantite_finale_demande(self, obj):
+        # Snapshot demande (NTSCM13) du même produit sur ce cycle — pratique
+        # à l'écran sans un second appel réseau. None si pas encore gelée.
+        ligne_demande = LigneDemandeSOP.objects.filter(
+            cycle_id=obj.cycle_id, produit_id=obj.produit_id).first()
+        return ligne_demande.quantite_finale if ligne_demande else None

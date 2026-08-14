@@ -16,7 +16,7 @@ from core.safety_stock import compute_safety_stock
 
 from .models import (
     ClassificationABC, CyclePlanificationSOP, EvenementDemande, LigneDemandeSOP,
-    PolitiqueStock, PrevisionDemande,
+    LigneOffreSOP, PolitiqueStock, PrevisionDemande,
 )
 
 # Convention du module : les historiques exposés par ``_historique_sorties_
@@ -338,6 +338,51 @@ def geler_previsions_cycle(cycle):
         )
         lignes.append(ligne)
     return lignes
+
+
+def calculer_offre_cycle(cycle):
+    """NTSCM14 — peuple les ``LigneOffreSOP`` d'un cycle depuis
+    ``apps.stock.selectors`` (jamais un import de modèle, jamais une
+    duplication de logique) : pour chaque produit ayant une
+    ``LigneDemandeSOP`` gelée (NTSCM13), snapshotte le stock disponible
+    (``Produit.quantite_stock``, lu via ``apps.get_model('stock','Produit')``
+    en LECTURE SEULE — cf. le patron déjà établi par
+    ``_historique_sorties_mensuelles``) et la quantité déjà en commande
+    fournisseur (``apps.stock.selectors.quantite_en_commande_produit``,
+    YPROC9, déjà bâti). ``ecart_offre_demande`` = (stock disponible +
+    capacité appro) − ``LigneDemandeSOP.quantite_finale``.
+
+    Idempotent (``update_or_create`` par produit). Renvoie la liste des
+    ``LigneOffreSOP``, TRIÉE par écart croissant (pénurie la plus sévère —
+    la plus négative — en tête), comme ``Meta.ordering``."""
+    from django.apps import apps as django_apps
+
+    from apps.stock.selectors import quantite_en_commande_produit
+
+    Produit = django_apps.get_model('stock', 'Produit')
+
+    lignes_demande = LigneDemandeSOP.objects.filter(cycle=cycle).select_related('produit')
+
+    lignes = []
+    for ligne_demande in lignes_demande:
+        produit = ligne_demande.produit
+        stock_disponible = Decimal(str(Produit.objects.get(pk=produit.pk).quantite_stock))
+        capacite_appro = Decimal(str(
+            quantite_en_commande_produit(cycle.company, produit.id)))
+        ecart = (stock_disponible + capacite_appro) - ligne_demande.quantite_finale
+
+        ligne, _ = LigneOffreSOP.objects.update_or_create(
+            cycle=cycle, produit=produit,
+            defaults={
+                'company': cycle.company,
+                'stock_disponible_snapshot': stock_disponible,
+                'capacite_appro_fournisseur_estimee': capacite_appro,
+                'ecart_offre_demande': ecart,
+            },
+        )
+        lignes.append(ligne)
+
+    return sorted(lignes, key=lambda ligne_offre: ligne_offre.ecart_offre_demande)
 
 
 def reouvrir_cycle(cycle, user, *, motif=''):
