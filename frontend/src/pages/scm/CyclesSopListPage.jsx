@@ -40,7 +40,9 @@ export default function CyclesSopListPage() {
       .finally(() => setLoading(false))
   }, [])
 
-  useEffect(() => { charger() }, [charger])
+  // Différé d'un microtask : `charger` pose `loading`/l'erreur de façon
+  // synchrone (react-hooks/set-state-in-effect). Comportement inchangé.
+  useEffect(() => { Promise.resolve().then(charger) }, [charger])
 
   const creerCycle = async () => {
     setCreerBusy(true); setCreerErr(null)

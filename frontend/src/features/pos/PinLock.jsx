@@ -1,8 +1,8 @@
 import { useState } from 'react'
 import { Lock } from 'lucide-react'
-import api from '../../api/axios'
 import { Button, Input, Label, toast } from '../../ui'
 import { errorMessageFrom } from '../../lib/toast'
+import { verifierPin } from './pinApi'
 
 // NTRET3 — Multi-caissiers avec PIN de session (verrouillage rapide).
 //
@@ -12,53 +12,11 @@ import { errorMessageFrom } from '../../lib/toast'
 // composant ne fait QUE bloquer visuellement l'écran tant que le PIN n'est
 // pas vérifié) et sans re-login JWT complet (le cookie de session reste
 // valide, seul l'accès à L'ÉCRAN est reverrouillé).
-
-const CAISSIER_ACTIF_KEY = 'pos:caissier-actif'
-
-// Le « caissier précédent » (pour la journalisation du changement côté
-// serveur, apps.pos.services.verifier_pin) survit au verrouillage — stocké
-// en localStorage, PAS en state React (le composant peut être démonté/
-// remonté entre deux verrouillages).
-export function lireCaissierActif(storage = safeStorage()) {
-  try {
-    const raw = storage?.getItem(CAISSIER_ACTIF_KEY)
-    return raw ? JSON.parse(raw) : null
-  } catch {
-    return null
-  }
-}
-
-export function memoriserCaissierActif(user, storage = safeStorage()) {
-  try {
-    if (user?.id) storage?.setItem(CAISSIER_ACTIF_KEY, JSON.stringify(user))
-    else storage?.removeItem(CAISSIER_ACTIF_KEY)
-  } catch { /* quota/privé */ }
-}
-
-function safeStorage() {
-  return typeof window !== 'undefined' && window.localStorage ? window.localStorage : null
-}
-
-/**
- * Vérifie un PIN contre le backend (POST /pos/verifier-pin/). Transmet le
- * caissier précédemment actif (localStorage) pour que le serveur journalise
- * un changement de caissier — jamais posé côté client (audit server-side
- * only, cf. CLAUDE.md).
- */
-export async function verifierPin({ userId, pin }) {
-  const precedent = lireCaissierActif()
-  const res = await api.post('/pos/verifier-pin/', {
-    user_id: userId,
-    pin,
-    caissier_precedent: precedent?.id || null,
-  })
-  memoriserCaissierActif(res.data)
-  return res.data
-}
-
-export async function definirPin(pin) {
-  return api.post('/pos/definir-pin/', { pin })
-}
+//
+// Les helpers d'appel API (`verifierPin`, `definirPin`) et le stockage du
+// caissier actif (`lireCaissierActif`, `memoriserCaissierActif`) vivent dans
+// `pinApi.js` à côté — un fichier composant ne doit exporter QUE le composant
+// (react-refresh/only-export-components).
 
 /**
  * Écran de verrouillage rapide. `userId` = utilisateur attendu au

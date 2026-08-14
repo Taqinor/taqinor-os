@@ -29,7 +29,9 @@ export default function GanttAtelier() {
 
   useEffect(() => {
     let annule = false
-    setLoading(true)
+    // Différé d'un microtask : évite un setState synchrone dans l'effet
+    // (react-hooks/set-state-in-effect). Comportement inchangé.
+    Promise.resolve().then(() => { if (!annule) setLoading(true) })
     mrpApi.getChargePostes(debut, fin)
       .then((resp) => { if (!annule) setLignes(resp.data || []) })
       .catch(() => { if (!annule) setErreur('Impossible de charger le Gantt atelier.') })

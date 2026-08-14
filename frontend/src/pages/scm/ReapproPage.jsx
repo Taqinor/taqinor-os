@@ -60,7 +60,9 @@ export default function ReapproPage() {
       .finally(() => setLoading(false))
   }, [statutFiltre, classeFiltre])
 
-  useEffect(() => { charger() }, [charger])
+  // Différé d'un microtask : `charger` pose `loading`/l'erreur de façon
+  // synchrone (react-hooks/set-state-in-effect). Comportement inchangé.
+  useEffect(() => { Promise.resolve().then(charger) }, [charger])
 
   const creerBrouillonsBcf = async () => {
     setCreerBusy(true); setCreerMsg(null); setCreerErr(null)

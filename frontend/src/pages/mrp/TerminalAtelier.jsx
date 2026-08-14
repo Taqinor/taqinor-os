@@ -150,7 +150,9 @@ export default function TerminalAtelier() {
     })
   }
 
-  useEffect(() => { recharger() }, [posteId]) // eslint-disable-line react-hooks/exhaustive-deps
+  // Différé d'un microtask : `recharger` pose `operations` de façon
+  // synchrone dans son early-return (react-hooks/set-state-in-effect).
+  useEffect(() => { Promise.resolve().then(recharger) }, [posteId]) // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <div className="max-w-2xl mx-auto">

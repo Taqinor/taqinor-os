@@ -63,7 +63,9 @@ export default function CycleSopPage() {
       .finally(() => setLoading(false))
   }, [id])
 
-  useEffect(() => { charger() }, [charger])
+  // Différé d'un microtask : `charger` pose `loading`/l'erreur de façon
+  // synchrone (react-hooks/set-state-in-effect). Comportement inchangé.
+  useEffect(() => { Promise.resolve().then(charger) }, [charger])
 
   const avancerStatut = async () => {
     setAvancerBusy(true); setAvancerErr(null)

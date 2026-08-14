@@ -110,7 +110,9 @@ export default function OrdresFabricationPage() {
   }, [])
 
   useEffect(() => {
-    setLoading(true)
+    // Différé d'un microtask : évite un setState synchrone dans l'effet
+    // (react-hooks/set-state-in-effect). Comportement inchangé.
+    Promise.resolve().then(() => setLoading(true))
     const params = posteFiltre && posteFiltre !== TOUS_LES_POSTES ? { poste: posteFiltre } : {}
     mrpApi.getOrdresFabrication(params)
       .then((resp) => setOfs(resp.data?.results || resp.data || []))

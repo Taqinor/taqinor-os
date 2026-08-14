@@ -11,7 +11,8 @@ vi.mock('../../api/axios', () => ({
   default: { post: (...args) => postMock(...args) },
 }))
 
-import PinLock, { lireCaissierActif, memoriserCaissierActif } from './PinLock'
+import PinLock from './PinLock'
+import { lireCaissierActif, memoriserCaissierActif } from './pinApi'
 
 beforeEach(() => {
   postMock.mockReset()
