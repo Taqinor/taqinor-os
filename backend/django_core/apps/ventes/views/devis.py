@@ -50,6 +50,27 @@ WRITE_ACTIONS = ['create', 'update', 'partial_update']
 from authentication.scoping import scope_queryset  # noqa: E402,F401
 
 
+def _emettre_layout_finalise(devis, user):
+    """PV79 — annonce que la conception 3D d'un devis est finalisée.
+
+    Passe par le bus ``core.events`` (M6) plutôt que par un appel direct à
+    ``crm`` : les deux apps restent découplées, et un futur abonné (chantier,
+    notifications…) se branche sans toucher ce fichier. Ne change AUCUN statut
+    et n'écrit rien lui-même (règle #4).
+
+    Jamais bloquant : un abonné en échec ne doit pas faire échouer la
+    finalisation d'un calepinage déjà enregistré. L'erreur est journalisée.
+    """
+    from core.events import layout_finalise
+    try:
+        layout_finalise.send(sender='ventes.views.devis', devis=devis,
+                             user=user)
+    except Exception:  # noqa: BLE001 — un abonné cassé ne casse pas le devis
+        import logging as _logging
+        _logging.getLogger(__name__).exception(
+            'PV79 : abonné en échec sur layout_finalise (devis %s)', devis.pk)
+
+
 def _company_qs(qs, user):
     """Filter queryset to user's company. Superusers without company see all."""
     if user.company_id:
@@ -399,6 +420,11 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
             Devis.objects.filter(pk=devis.pk).update(layout_hash=lhash)
             devis.layout_hash = lhash
 
+        # PV79 — la conception 3D est FINALISÉE. Aucun statut ne bouge : on
+        # ANNONCE seulement le fait, et les abonnés (crm : note au chatter du
+        # lead) réagissent — ventes n'importe donc jamais crm.
+        _emettre_layout_finalise(devis, request.user)
+
         link = ShareLink.for_devis(devis)
         return Response(
             {
@@ -470,6 +496,11 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
                 {'detail': exc.detail,
                  'revision_possible': exc.revision_possible},
                 status=status.HTTP_409_CONFLICT)
+        # PV79 — même annonce qu'à la création : la toiture vient d'être
+        # redessinée et les lignes suivent. Un renvoi du MÊME layout
+        # (``inchange``) n'annonce rien : il ne s'est rien passé.
+        if not (isinstance(resultat, dict) and resultat.get('inchange')):
+            _emettre_layout_finalise(devis, request.user)
         return Response(resultat)
 
     @action(detail=True, methods=['get', 'post'],

@@ -480,6 +480,15 @@ devis_accepted = django.dispatch.Signal()
 # comme devis_accepted, pour que ventes n'importe jamais crm directement.
 devis_sent = django.dispatch.Signal()
 
+# Émis quand la conception 3D d'un devis est FINALISÉE (PV79) — création
+# depuis un calepinage (``from-layout``) ou resynchronisation réussie
+# (``sync-layout``). Arguments : devis, user.
+# Ce n'est PAS un changement de statut : le devis reste où il est (règle #4) ;
+# l'événement dit seulement que la toiture a été (re)dessinée et que les lignes
+# suivent. Abonné dans ce repo : crm (pose une note au chatter du lead), ce qui
+# évite que ventes importe crm directement.
+layout_finalise = django.dispatch.Signal()
+
 # Émis au refus d'un devis (FG44).
 # Arguments : devis, user, motif_refus.
 # Abonné optionnellement par crm pour marquer le lead perdu (→ COLD + perdu).
