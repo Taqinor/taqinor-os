@@ -61,13 +61,13 @@ class LitigeTransportSerializer(serializers.ModelSerializer):
         model = LitigeTransport
         fields = [
             'id', 'ordre_transport', 'type_litige', 'type_litige_display',
-            'statut', 'statut_display', 'montant_conteste', 'description',
-            'reclamation_envoyee_le', 'reclamation_destinataire',
+            'statut', 'statut_display', 'montant_conteste', 'montant_resolu',
+            'description', 'reclamation_envoyee_le', 'reclamation_destinataire',
             'created_by', 'created_at',
         ]
         read_only_fields = [
-            'statut', 'reclamation_envoyee_le', 'reclamation_destinataire',
-            'created_by', 'created_at',
+            'statut', 'montant_resolu', 'reclamation_envoyee_le',
+            'reclamation_destinataire', 'created_by', 'created_at',
         ]
 
 

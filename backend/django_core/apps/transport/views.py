@@ -1,6 +1,8 @@
 """Vues (ViewSets) de l'app `apps.transport` — toutes scopées société via
 `core.viewsets.CompanyScopedModelViewSet` (jamais un `ModelViewSet` nu,
 SCA4)."""
+from decimal import Decimal, InvalidOperation
+
 from django.contrib.contenttypes.models import ContentType
 from django.http import HttpResponse
 from drf_spectacular.utils import extend_schema, inline_serializer
@@ -366,7 +368,7 @@ class LitigeTransportViewSet(CompanyScopedModelViewSet):
         serializer.save(
             company=self.request.user.company, created_by=self.request.user)
 
-    def _transition(self, request, *, allowed_from, target):
+    def _transition(self, request, *, allowed_from, target, extra_fields=None):
         litige = self.get_object()
         if litige.statut not in allowed_from:
             return Response(
@@ -377,7 +379,11 @@ class LitigeTransportViewSet(CompanyScopedModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST)
         ancien = litige.statut
         litige.statut = target
-        litige.save(update_fields=['statut'])
+        update_fields = ['statut']
+        for field, value in (extra_fields or {}).items():
+            setattr(litige, field, value)
+            update_fields.append(field)
+        litige.save(update_fields=update_fields)
         services.log_activite_ordre(
             litige.ordre_transport, user=request.user,
             field='litige_statut', field_label=f'Litige #{litige.id}',
@@ -401,9 +407,23 @@ class LitigeTransportViewSet(CompanyScopedModelViewSet):
     @action(detail=True, methods=['post'], url_path='resoudre',
             permission_classes=[IsResponsableOrAdmin])
     def resoudre(self, request, pk=None):
+        """NTLOG31 — accepte un ``montant_resolu`` optionnel dans le corps
+        (le montant réellement obtenu du transporteur, qui peut différer de
+        ``montant_conteste``) ; absent → laissé `None` (le relevé mensuel
+        NTLOG31 l'affiche vide plutôt qu'un 0 trompeur, jamais un recopiage
+        automatique de `montant_conteste`)."""
+        extra_fields = {}
+        montant_resolu = request.data.get('montant_resolu')
+        if montant_resolu not in (None, ''):
+            try:
+                extra_fields['montant_resolu'] = Decimal(str(montant_resolu))
+            except InvalidOperation:
+                return Response(
+                    {'montant_resolu': 'Montant invalide.'},
+                    status=status.HTTP_400_BAD_REQUEST)
         return self._transition(
             request, allowed_from={LitigeTransport.Statut.EN_TRAITEMENT},
-            target=LitigeTransport.Statut.RESOLU)
+            target=LitigeTransport.Statut.RESOLU, extra_fields=extra_fields)
 
     @action(detail=True, methods=['post'], url_path='rejeter',
             permission_classes=[IsResponsableOrAdmin])
@@ -435,6 +455,63 @@ class LitigeTransportViewSet(CompanyScopedModelViewSet):
             f'{litige.ordre_transport.numero or litige.id}.pdf')
         resp['Content-Disposition'] = f'attachment; filename="{nom_fichier}"'
         return resp
+
+    # ── NTLOG31 — relevé mensuel des litiges (PDF ou xlsx au choix) ───────
+    @action(detail=False, methods=['get'], url_path='releve',
+            permission_classes=[ScopedPermission],
+            content_negotiation_class=_ExportFormatContentNegotiation)
+    def releve(self, request):
+        """NTLOG31 — ``litiges-transport/releve/?periode=YYYY-MM&format=
+        pdf|xlsx`` (défaut xlsx), filtrable ``?transporteur=<installations_
+        transporteur_id>`` pour la revue mensuelle avec CE transporteur.
+        Filtre ``periode`` sur ``created_at`` — même convention que NTLOG24/27
+        (`selectors._filtre_periode`) : le total « montant contesté » des
+        litiges OUVERTS du relevé correspond au total
+        `litiges_ouverts_montant_conteste` du dashboard NTLOG24 pour la même
+        période/société (critère d'acceptation)."""
+        from . import selectors
+
+        fmt = request.query_params.get('format', 'xlsx')
+        if fmt not in ('pdf', 'xlsx'):
+            return Response(
+                {'detail': "Le paramètre 'format' doit être 'pdf' ou 'xlsx'."},
+                status=status.HTTP_400_BAD_REQUEST)
+
+        qs = selectors._filtre_periode(
+            self.get_queryset(), request.query_params.get('periode'))
+        transporteur_id = request.query_params.get('transporteur')
+        if transporteur_id:
+            qs = qs.filter(
+                ordre_transport__installations_transporteur_id=transporteur_id)
+        litiges = list(qs.order_by('-created_at'))
+
+        if fmt == 'pdf':
+            from .releve_litiges_pdf import render_releve_litiges_pdf
+            pdf_bytes = render_releve_litiges_pdf(litiges)
+            resp = HttpResponse(pdf_bytes, content_type='application/pdf')
+            resp['Content-Disposition'] = (
+                'attachment; filename="releve-litiges-transport.pdf"')
+            return resp
+
+        headers = [
+            'Ordre de transport', 'Transporteur', 'Type de litige', 'Statut',
+            'Montant contesté', 'Montant résolu',
+        ]
+        rows = [
+            [
+                litige.ordre_transport.numero or f'#{litige.ordre_transport_id}',
+                selectors.transporteur_nom_pour_ordre(litige.ordre_transport),
+                litige.get_type_litige_display(),
+                litige.get_statut_display(),
+                litige.montant_conteste,
+                litige.montant_resolu if litige.montant_resolu is not None else '',
+            ]
+            for litige in litiges
+        ]
+        from apps.records.xlsx import build_xlsx_response
+        return build_xlsx_response(
+            'releve-litiges-transport.xlsx', headers, rows,
+            sheet_title='Litiges transport')
 
 
 class ReserveReceptionViewSet(CompanyScopedModelViewSet):

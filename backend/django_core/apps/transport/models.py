@@ -274,6 +274,13 @@ class LitigeTransport(TenantModel):
     reclamation_envoyee_le = models.DateTimeField(null=True, blank=True)
     reclamation_destinataire = models.CharField(
         max_length=255, blank=True, default='')
+    # NTLOG31 — montant réellement obtenu du transporteur à la résolution
+    # (peut différer de `montant_conteste`) ; posé optionnellement par
+    # `views.LitigeTransportViewSet.resoudre`, `None` tant que non résolu ou
+    # non renseigné (relevé NTLOG31 l'affiche vide dans ce cas, jamais un 0
+    # trompeur).
+    montant_resolu = models.DecimalField(
+        max_digits=14, decimal_places=2, null=True, blank=True)
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
         null=True, blank=True, related_name='litiges_transport_crees')
