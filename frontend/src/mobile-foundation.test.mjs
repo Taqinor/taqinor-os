@@ -72,12 +72,17 @@ test('MB1: l\'en-tête réserve sa propre place (52px + encoche) — en flux, pa
   )
 })
 
-test('MB1: .layout-content dégage la nav basse (52px + indicateur d\'accueil) sur mobile', () => {
+test('MB1: .layout-content dégage la nav basse (64px + indicateur d\'accueil) sur mobile', () => {
   const mobile = mobileShellBlock()
   const content = ruleBody(mobile, '.layout-content') ?? ''
+  // 2026-08-14 : 52 -> 64. 52px n'était que la `min-height` d'un
+  // `.bottom-tab` ; la barre mesure 52 + 6px de padding haut + 6px de
+  // padding bas. La réserve trop courte laissait la DERNIÈRE action d'une
+  // page passer sous la nav (e2e MB6 : « Enregistrer » de /parametres,
+  // 21px de dépassement mesurés). Le test suit la hauteur RÉELLE.
   assert.match(
     content,
-    /padding-bottom:\s*calc\(52px \+ max\(0\.9rem,\s*env\(safe-area-inset-bottom\)\)\)/,
+    /padding-bottom:\s*calc\(64px \+ max\(0\.9rem,\s*env\(safe-area-inset-bottom\)\)\)/,
     '.layout-content (mobile) doit réserver la hauteur de la tabbar + safe-area en bas',
   )
   assert.match(content, /padding-left:\s*max\(0\.9rem,\s*env\(safe-area-inset-left\)\)/)
