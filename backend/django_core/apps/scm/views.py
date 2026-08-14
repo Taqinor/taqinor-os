@@ -4,7 +4,13 @@ Accès réservé Responsable/Administrateur (données de planification achat —
 même palier que les modules de conformité/planification voisins, ex.
 ``apps.fiscal``) : ``get_permissions`` renvoie ``[IsResponsableOrAdmin()]``
 sur chaque viewset, société toujours scopée par ``CompanyScopedModelViewSet``.
-"""
+
+NTSCM37 — quatre viewsets (prévisions/événements, politiques de stock, cycles
+S&OP) affinent CETTE garde avec les permissions dédiées d'``apps.scm.
+permissions`` (``HasPermissionOrLegacy`` — repli sur ce MÊME palier
+Responsable/Admin pour un compte hérité sans rôle fin, donc AUCUNE régression
+pour les comptes existants). ``ClassificationABCViewSet`` reste sur le
+palier générique (aucun code dédié demandé par le plan)."""
 from decimal import Decimal
 
 from drf_spectacular.types import OpenApiTypes
@@ -20,11 +26,20 @@ from .models import (
     ClassificationABC, CyclePlanificationSOP, EvenementDemande, LigneDemandeSOP,
     PolitiqueStock, PrevisionDemande,
 )
+from .permissions import (
+    IsScmPolitiquesStockEditer, IsScmPrevisionsEditer, IsScmPrevisionsVoir,
+    IsScmSopAnimer, IsScmSopVoir,
+)
 from .serializers import (
     ClassificationABCSerializer, CyclePlanificationSOPSerializer,
     EvenementDemandeSerializer, LigneDemandeSOPSerializer, LigneOffreSOPSerializer,
     PolitiqueStockSerializer, PrevisionDemandeSerializer,
 )
+
+# NTSCM37 — actions en LECTURE d'un ModelViewSet standard (les autres,
+# create/update/partial_update/destroy + toute @action d'écriture, sont
+# considérées ÉCRITURE).
+_ACTIONS_LECTURE = frozenset({'list', 'retrieve'})
 
 
 class PrevisionDemandeViewSet(CompanyScopedModelViewSet):
@@ -35,7 +50,10 @@ class PrevisionDemandeViewSet(CompanyScopedModelViewSet):
     serializer_class = PrevisionDemandeSerializer
 
     def get_permissions(self):
-        return [IsResponsableOrAdmin()]
+        # NTSCM37 — `generer` (@action POST) est une ÉCRITURE.
+        if self.action in _ACTIONS_LECTURE:
+            return [IsScmPrevisionsVoir()]
+        return [IsScmPrevisionsEditer()]
 
     def get_queryset(self):
         # ``DjangoFilterBackend`` n'est pas monté dans ce projet (défaut
@@ -99,7 +117,11 @@ class EvenementDemandeViewSet(CompanyScopedModelViewSet):
     filterset_fields = ['produit', 'categorie', 'type_evenement']
 
     def get_permissions(self):
-        return [IsResponsableOrAdmin()]
+        # NTSCM37 — les événements de demande alimentent NTSCM2/3 : mêmes
+        # codes que les prévisions (même écran, même acheteur).
+        if self.action in _ACTIONS_LECTURE:
+            return [IsScmPrevisionsVoir()]
+        return [IsScmPrevisionsEditer()]
 
 
 class ClassificationABCViewSet(CompanyScopedModelViewSet):
@@ -140,7 +162,13 @@ class PolitiqueStockViewSet(CompanyScopedModelViewSet):
     filterset_fields = ['classe_abc']
 
     def get_permissions(self):
-        return [IsResponsableOrAdmin()]
+        # NTSCM37 — lecture (liste/détail/fiche PDF) reste au palier
+        # générique historique (aucun code « politiques_stock.voir » au
+        # plan) ; toute écriture (create/update/destroy + recalculer/
+        # creer-en-lot) exige `scm_politiques_stock_editer`.
+        if self.action in _ACTIONS_LECTURE or self.action == 'fiche_pdf':
+            return [IsResponsableOrAdmin()]
+        return [IsScmPolitiquesStockEditer()]
 
     @action(detail=False, methods=['post'], url_path='recalculer')
     def recalculer(self, request):
@@ -220,8 +248,22 @@ class CyclePlanificationSOPViewSet(CompanyScopedModelViewSet):
     serializer_class = CyclePlanificationSOPSerializer
     filterset_fields = ['statut']
 
+    # NTSCM37 — LECTURE seule (liste/détail + sous-ressources en GET) exige
+    # `scm_sop_voir` ; TOUT le reste — création, édition, et les actions qui
+    # « animent » le cycle (avancer/ajuster/calculer/réouvrir) — exige
+    # `scm_sop_animer` (réservé Administrateur/Directeur par défaut, voir
+    # `apps.roles.models.RESPONSABLE_PERMISSIONS`). `reouvrir`/
+    # `impact_financier` gardent EN PLUS leur vérification manuelle
+    # `IsAdminRole` existante (inchangée).
+    _ACTIONS_LECTURE_SOP = _ACTIONS_LECTURE | {
+        'historique', 'lignes_demande', 'ecarts', 'impact_financier',
+        'compte_rendu',
+    }
+
     def get_permissions(self):
-        return [IsResponsableOrAdmin()]
+        if self.action in self._ACTIONS_LECTURE_SOP:
+            return [IsScmSopVoir()]
+        return [IsScmSopAnimer()]
 
     @action(detail=True, methods=['post'], url_path='avancer-statut')
     def avancer_statut(self, request, pk=None):
