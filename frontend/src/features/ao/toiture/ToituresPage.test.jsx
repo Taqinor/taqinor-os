@@ -82,8 +82,32 @@ vi.mock('../../../ui', async () => {
   const actual = await vi.importActual('../../../ui')
   return { ...actual, toast: { success: toastMocks.success, error: toastMocks.error } }
 })
+/* PV58 — `RepriseCarte` réel tire le builder de toiture du site public via
+   l'alias `@roofpro` (absent de `vitest.config.js`, AOF82) : le mocker ici
+   teste le CÂBLAGE de `ToituresPage` (`onContour` → conversion mètres →
+   contour de l'atelier), sans jamais dépendre de la carte/du builder. */
+vi.mock('./RepriseCarte', () => ({
+  default: ({ onContour }) => (
+    <button
+      type="button"
+      onClick={() => onContour({
+        contour_latlng: [
+          [33.5883, -7.6328],
+          [33.5883, -7.63225],
+          [33.58853, -7.63225],
+          [33.5878, -7.6335],
+        ],
+        repere_latlng: null,
+        adresse: 'Route de test, Casablanca',
+      })}
+    >
+      Simuler reprise carte
+    </button>
+  ),
+}))
 
 import ToituresPage from './ToituresPage'
+import { ORDRE_LATLNG, contourVersSommetsM, creerRepere } from './repere'
 
 const AFFAIRES = [
   { id: 5, reference_acheteur: 'AO-2026-005' },
@@ -755,5 +779,92 @@ describe('ToituresPage — zones : diff create/update/delete + hydratation (PV56
 
     await userEvent.click(screen.getByRole('button', { name: 'Enregistrer' }))
     await waitFor(() => expect(mocks.zonesRemove).toHaveBeenCalledWith(601))
+  })
+})
+
+/* ============================================================================
+   PV58 — reprise de carte APPLIQUÉE : le contour lat/lng devient un tracé
+   métrique (`repere.js`, AOF83) au lieu d'un refus « non appliqué », et
+   l'ancre géographique (PV57) part avec le contour sur « Enregistrer ».
+   ========================================================================== */
+
+// Casablanca — MÊME jeu de points que `repere.test.mjs` (réutilisé, pas
+// redérivé), en [lat, lng] (l'ordre RENDU par `RepriseCarte`, AOF82).
+const CONTOUR_LATLNG = [
+  [33.5883, -7.6328],
+  [33.5883, -7.63225],
+  [33.58853, -7.63225],
+  [33.5878, -7.6335],
+]
+
+async function ouvrirOngletImport() {
+  render(<ToituresPage affaireId={7} />)
+  await screen.findByText('Toiture atelier')
+  await userEvent.click(screen.getByRole('tab', { name: 'Import' }))
+  return screen.findByRole('button', { name: 'Simuler reprise carte' })
+}
+
+describe('ToituresPage — reprise de carte appliquée au repère (PV58)', () => {
+  it('le contour repris devient le tracé de l’atelier, converti par repere.js (azimut de la toiture, ou 0 à défaut)', async () => {
+    mocks.toituresList.mockResolvedValue({ data: [TOITURE_VIERGE] })
+    const boutonCarte = await ouvrirOngletImport()
+
+    await userEvent.click(boutonCarte)
+
+    // Retombé automatiquement sur l'onglet Géométrie, contour à 4 sommets.
+    await waitFor(() => expect(
+      document.querySelector('[data-tableau-geometrie]').dataset.tableauGeometrie,
+    ).toBe('4:0'))
+
+    // Oracle : LA MÊME conversion que le composant, via `repere.js` — cette
+    // toiture n'a pas d'`angle_nord_deg` (azimut par défaut = 0).
+    const attendu = contourVersSommetsM(
+      creerRepere({ origine_lnglat: CONTOUR_LATLNG[0], azimut_deg: 0, ordre: ORDRE_LATLNG }),
+      CONTOUR_LATLNG,
+      ORDRE_LATLNG,
+    )
+    const lettres = ['A', 'B', 'C', 'D']
+    lettres.forEach((lettre, i) => {
+      const x = Number(screen.getByLabelText(`x (m) — Sommet ${lettre}`).value)
+      const y = Number(screen.getByLabelText(`y (m) — Sommet ${lettre}`).value)
+      expect(Math.abs(x - attendu[i].x)).toBeLessThan(1e-6)
+      expect(Math.abs(y - attendu[i].y)).toBeLessThan(1e-6)
+    })
+    // Le premier sommet EST l'origine choisie (pas de repère posé sur la
+    // carte dans ce test) : il tombe exactement sur (0, 0).
+    expect(screen.getByLabelText('x (m) — Sommet A')).toHaveValue('0')
+    expect(screen.getByLabelText('y (m) — Sommet A')).toHaveValue('0')
+  })
+
+  it('l’ancre géographique part AVEC le contour sur « Enregistrer » (PV57/PV58)', async () => {
+    mocks.toituresList.mockResolvedValue({ data: [TOITURE_VIERGE] })
+    const boutonCarte = await ouvrirOngletImport()
+
+    await userEvent.click(boutonCarte)
+    await waitFor(() => expect(
+      document.querySelector('[data-tableau-geometrie]').dataset.tableauGeometrie,
+    ).toBe('4:0'))
+
+    await userEvent.click(screen.getByRole('button', { name: 'Enregistrer' }))
+
+    await waitFor(() => expect(mocks.toituresUpdate).toHaveBeenCalled())
+    const [id, corps] = mocks.toituresUpdate.mock.calls[0]
+    expect(id).toBe(41)
+    expect(corps.origine_lat).toBe(33.5883)
+    expect(corps.origine_lng).toBe(-7.6328)
+    expect(corps.contour_local_m).toHaveLength(4)
+  })
+
+  it('sans reprise de carte, l’ancre géographique n’est PAS envoyée (toiture sur plan papier)', async () => {
+    mocks.toituresList.mockResolvedValue({ data: [TOITURE_TRACEE] })
+    render(<ToituresPage affaireId={7} />)
+    await screen.findByText('Toiture atelier')
+
+    await userEvent.click(screen.getByRole('button', { name: 'Enregistrer' }))
+
+    await waitFor(() => expect(mocks.toituresUpdate).toHaveBeenCalled())
+    const corps = mocks.toituresUpdate.mock.calls[0][1]
+    expect(corps).not.toHaveProperty('origine_lat')
+    expect(corps).not.toHaveProperty('origine_lng')
   })
 })

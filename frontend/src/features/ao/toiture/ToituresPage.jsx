@@ -45,6 +45,8 @@ import ImportDxf from './ImportDxf'
 import PlanSourcePanel from './PlanSourcePanel'
 import { estCalibree, peutTracer, reechelonner } from './calibration.js'
 import { estPdf } from './rasteriserPdf'
+// PV58 — reprise de carte : conversion lat/lng → mètres locaux (AOF83).
+import { ORDRE_LATLNG, contourVersSommetsM, creerRepere } from './repere'
 
 /* Deux outils sont chargés À LA DEMANDE, et pour une raison PRÉCISE — pas par
    goût du découpage :
@@ -262,12 +264,15 @@ function FicheToitures({ toitures, loading, error }) {
    deux piles séparées produiraient un annuler qui ne défait pas ce que
    l'utilisateur vient de faire.
 
-   PERSISTANCE (PV53/PV56) :
+   PERSISTANCE (PV53/PV56/PV58) :
      · « Enregistrer » écrit `contour_local_m` via `aoApi.toitures.update` —
        le MÊME champ que le wizard de création, une liste de `[x, y]` en
        mètres dans le repère local (`apps/ao/models.py:619`). La surface est
        RECALCULÉE par le serveur à chaque écriture : elle n'est jamais
-       envoyée, jamais devinée ici ;
+       envoyée, jamais devinée ici. `origine_lat`/`origine_lng` (PV57/PV58)
+       partent AVEC lui dès qu'une reprise de carte (`RepriseCarte`, AOF82)
+       a posé une ancre géographique — jamais `null` sur une toiture qui n'en
+       a pas encore ;
      · les OBSTACLES, les CHAÎNES DE COTES et les ZONES de la boîte à outils
        (PACT167) partent EUX AUSSI, dans la MÊME action « Enregistrer » : diff
        create/update/delete vs le dernier instantané serveur connu
@@ -632,6 +637,19 @@ function AtelierToiture({ toiture, selecteur, onEnregistre }) {
   const contourServeur = toiture?.contour_local_m
   const contourInitial = useMemo(() => contourVersPoints(contourServeur), [contourServeur])
 
+  // PV58 — l'ancre géographique du repère local (PV57 : `ToitureAO.origine_lat`/
+  // `origine_lng`, tous deux nullables). Hydratée depuis la toiture comme
+  // `contourInitial` ci-dessus ; posée par `RepriseCarte` plus bas, écrite par
+  // « Enregistrer » avec le contour.
+  const origineInitiale = useMemo(() => {
+    const lat = toiture?.origine_lat
+    const lng = toiture?.origine_lng
+    return (lat !== null && lat !== undefined && lng !== null && lng !== undefined)
+      ? { lat: Number(lat), lng: Number(lng) }
+      : { lat: null, lng: null }
+  }, [toiture?.origine_lat, toiture?.origine_lng])
+  const [origineGeo, setOrigineGeo] = useState(origineInitiale)
+
   // Monté avec `key={toiture.id}` : changer de toiture REMONTE l'atelier, donc
   // remet l'historique à zéro — jamais un `reinitialiser` dans un effet QUI
   // REMPLACE LE CONTOUR, ce qui laisserait un rendu intermédiaire montrer le
@@ -785,6 +803,30 @@ function AtelierToiture({ toiture, selecteur, onEnregistre }) {
     setZones(suivantes)
   }, [])
 
+  // PV58 — reprise du contour de la carte (`RepriseCarte`, AOF82) : origine =
+  // le repère posé sur la carte, ou à défaut le PREMIER point du contour (un
+  // contour existe toujours s'il y a un `onContour`, un repère pas toujours).
+  // L'azimut est celui de LA TOITURE (`angle_nord_deg`), jamais deviné ici.
+  const appliquerContourCarte = useCallback(({ contour_latlng: contourLatLng, repere_latlng: repereLatLng }) => {
+    if (!Array.isArray(contourLatLng) || contourLatLng.length < 3) {
+      setNote(
+        'Contour de la carte incomplet (moins de trois points) — rien n’a été appliqué.',
+      )
+      return
+    }
+    const origine = repereLatLng ?? contourLatLng[0]
+    const azimutDeg = Number(toiture?.angle_nord_deg ?? 0) || 0
+    const repereGeo = creerRepere({
+      origine_lnglat: origine, azimut_deg: azimutDeg, ordre: ORDRE_LATLNG,
+    })
+    const sommetsM = contourVersSommetsM(repereGeo, contourLatLng, ORDRE_LATLNG)
+    majPoints(sommetsM, 'Reprendre le contour de la carte')
+    terminer()
+    setOrigineGeo({ lat: Number(origine[0]), lng: Number(origine[1]) })
+    setNote(null)
+    setOnglet('geometrie')
+  }, [toiture?.angle_nord_deg, majPoints, terminer])
+
   const bbox = useMemo(() => bboxDePoints(points), [points])
 
   // Les cotes de TOUTES les chaînes : c'est sur elles que `deduction.js`
@@ -805,8 +847,16 @@ function AtelierToiture({ toiture, selecteur, onEnregistre }) {
     setEnregistrement(true)
     try {
       // JAMAIS `surface_m2` (read_only, recalculée par `ToitureAOViewSet`),
-      // jamais `company` (forcée par le serveur) : seul le contour part.
-      await aoApi.toitures.update(toitureId, { contour_local_m: pointsVersContour(points) })
+      // jamais `company` (forcée par le serveur) : le contour part TOUJOURS ;
+      // l'ancre géographique (PV58) part SEULEMENT si elle a une valeur — une
+      // toiture relevée sur plan papier n'en a légitimement aucune, et lui
+      // envoyer `null` écraserait une ancre déjà posée par une autre voie.
+      const payloadToiture = { contour_local_m: pointsVersContour(points) }
+      if (origineGeo.lat !== null && origineGeo.lng !== null) {
+        payloadToiture.origine_lat = origineGeo.lat
+        payloadToiture.origine_lng = origineGeo.lng
+      }
+      await aoApi.toitures.update(toitureId, payloadToiture)
 
       // PV53 — UNE SEULE écriture cohérente : le contour ET la différence
       // d'obstacles/chaînes de cotes. Un échec ICI (après un contour déjà
@@ -859,7 +909,7 @@ function AtelierToiture({ toiture, selecteur, onEnregistre }) {
     } finally {
       setEnregistrement(false)
     }
-  }, [toitureId, points, obstacles, chaines, zones, onEnregistre, reinitialiser])
+  }, [toitureId, points, origineGeo, obstacles, chaines, zones, onEnregistre, reinitialiser])
 
   const ongletGeometrie = (
     <div className="flex flex-col gap-3">
@@ -1062,13 +1112,13 @@ function AtelierToiture({ toiture, selecteur, onEnregistre }) {
         onTracerAlaMain={() => setOnglet('trace')}
       />
       <Suspense fallback={<Skeleton className="h-24 w-full" />}>
+        {/* PV58 — le contour repris (lat/lng) est converti en mètres locaux
+            via `repere.js` (AOF83) : origine = le repère posé sur la carte, à
+            défaut le premier point du contour ; azimut = celui DE LA TOITURE
+            (`angle_nord_deg`), jamais deviné. L'ancre part avec le contour au
+            prochain « Enregistrer ». */}
         <RepriseCarte
-          onContour={() => setNote(
-            'Contour repris de la carte, mais NON appliqué : il est en latitude / '
-            + 'longitude, et le modèle de toiture ne stocke qu’un contour en mètres '
-            + 'dans un repère local, sans point d’origine géographique. Convertir '
-            + 'l’un en l’autre demande ce point d’origine — il n’existe pas encore.',
-          )}
+          onContour={appliquerContourCarte}
           onTracerAlaMain={() => setOnglet('trace')}
         />
       </Suspense>
