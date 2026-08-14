@@ -1,6 +1,6 @@
 """Vues de l'app `mrp` (Groupe NTMFG — Production / MRP II)."""
 from rest_framework import viewsets
-from rest_framework.decorators import action
+from rest_framework.decorators import action, api_view
 from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 
@@ -136,3 +136,21 @@ class OperationOFViewSet(viewsets.ModelViewSet):
         if of:
             qs = qs.filter(ordre_fabrication_id=of)
         return qs
+
+
+@api_view(['POST'])
+def mrp_run_view(request):
+    """NTMFG5 — ``POST /api/django/mrp/mrp-run/`` : calcul des besoins nets
+    (MRP) à la demande, company-scopé. Corps optionnel :
+    ``{"produits": [id, ...], "demande_independante": {"<produit_id>": qte},
+    "stock_securite_pct": "10", "horizon_jours": 30}``."""
+    from .selectors import calculer_besoins_nets
+
+    body = request.data or {}
+    resultats = calculer_besoins_nets(
+        request.user.company,
+        produits=body.get('produits'),
+        demande_independante=body.get('demande_independante'),
+        stock_securite_pct=body.get('stock_securite_pct') or 0,
+        horizon_jours=body.get('horizon_jours'))
+    return Response(resultats)
