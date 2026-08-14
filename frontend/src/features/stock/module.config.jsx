@@ -4,7 +4,7 @@
 import { lazy } from 'react'
 import {
   Package, Boxes, Truck, ArrowLeftRight, ClipboardList, PackageCheck, Receipt,
-  Undo2, ScanLine, Layers, Lock, TrendingUp, PackagePlus, Banknote, Warehouse,
+  Undo2, ScanLine, Layers, Lock, TrendingUp, PackagePlus, Banknote, Gauge,
 } from 'lucide-react'
 import { appGlyph } from '../../lib/apps/appGlyph'
 // APX22 - accent unique de la famille inventaire (Stock/Magasin/Logistique).
@@ -117,7 +117,10 @@ const config = {
       // NTWMS29 — cockpit entrepôt. Pas de clé `k` : le catalogue i18n du
       // chrome est un ensemble fermé (fr/en/ar identiques) — `tr()` retombe
       // sur le libellé FR.
-      { to: '/stock/entrepot', label: 'Tableau de bord entrepôt', icon: navIcon(Warehouse), roles: ['responsable','admin'] },
+      // `Gauge` (cadran de cockpit) et non `Warehouse` : ce dernier est le
+      // glyphe d'APP du module Magasin — le réutiliser ici brouillerait la
+      // lecture du portail (contrat APX1/ODY34).
+      { to: '/stock/entrepot', label: 'Tableau de bord entrepôt', icon: navIcon(Gauge), roles: ['responsable','admin'] },
     ],
   },
   routes: [
