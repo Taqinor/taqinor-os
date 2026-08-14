@@ -238,6 +238,21 @@ class OrdreFabricationViewSet(CompanyScopedModelViewSet):
         resp['Content-Disposition'] = f'inline; filename="traveler-of-{of.id}.pdf"'
         return resp
 
+    @action(detail=True, methods=['get'], url_path='fiche-lancement-pdf',
+            permission_classes=[ScopedPermission])
+    def fiche_lancement_pdf(self, request, pk=None):
+        """NTMFG23 — fiche de lancement synthétique (une page, pré-démarrage),
+        PDF. STRICTEMENT INTERNE : aucun prix, aucun coût."""
+        from django.http import HttpResponse
+
+        from . import pdf as mrp_pdf
+        of = self.get_object()
+        pdf_bytes = mrp_pdf.fiche_lancement_pdf(of)
+        resp = HttpResponse(pdf_bytes, content_type='application/pdf')
+        resp['Content-Disposition'] = (
+            f'inline; filename="fiche-lancement-of-{of.id}.pdf"')
+        return resp
+
 
 class OperationOFViewSet(mixins.RetrieveModelMixin, mixins.ListModelMixin,
                          viewsets.GenericViewSet):

@@ -49,3 +49,48 @@ def traveler_pdf(of):
     })
     html = _render_html('mrp_traveler.html', context)
     return _html_to_pdf(html)
+
+
+# ── NTMFG23 — Fiche de lancement (une page, pré-démarrage) ───────────────
+
+def _nomenclature_payload(of):
+    """NTMFG23 — nomenclature consolidée depuis les réservations de
+    composants (NTMFG6) + disponibilité par ligne (`selectors.
+    disponibilite_par_ligne_of`), STRICTEMENT INTERNE : aucun prix."""
+    from .selectors import disponibilite_par_ligne_of
+
+    return disponibilite_par_ligne_of(of)
+
+
+def _gamme_resumee_payload(of):
+    """NTMFG23 — gamme RÉSUMÉE (poste + temps prévu), une ligne par
+    opération de gamme, jamais de coût horaire."""
+    if not of.gamme_id:
+        return []
+    out = []
+    for operation in of.gamme.operations.select_related('poste_charge').order_by('ordre', 'id'):
+        out.append({
+            'ordre': operation.ordre,
+            'libelle': operation.libelle,
+            'poste_nom': operation.poste_charge.nom if operation.poste_charge_id else '—',
+            'temps_prevu_min': temps_operation_min(operation, of.quantite),
+        })
+    return out
+
+
+def fiche_lancement_pdf(of):
+    """NTMFG23 — fiche de LANCEMENT synthétique (une page, pré-démarrage) :
+    produit, quantité, nomenclature consolidée + dispo par ligne, gamme
+    résumée. STRICTEMENT INTERNE : ne rend jamais un prix ni un coût."""
+    context = _company_context(company=of.company)
+    context.update({
+        'reference': f'OF-{of.id}',
+        'produit_nom': of.produit.nom if of.produit_id else '—',
+        'quantite': of.quantite,
+        'date_prevue': of.date_debut_planifiee,
+        'statut': of.get_statut_display(),
+        'nomenclature': _nomenclature_payload(of),
+        'gamme_resumee': _gamme_resumee_payload(of),
+    })
+    html = _render_html('mrp_fiche_lancement.html', context)
+    return _html_to_pdf(html)
