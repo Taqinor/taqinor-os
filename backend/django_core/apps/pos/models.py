@@ -402,6 +402,12 @@ class CommandeRetrait(models.Model):
         blank=True,
         related_name='commandes_retrait_creees',
     )
+    # NTRET23 — posée à la création d'après le délai configuré (Paramètres
+    # POS, NTRET8) ; NULL = pas de délai configuré, cette réservation
+    # n'expire JAMAIS automatiquement (comportement historique inchangé).
+    # Libérée par ``services.liberer_reservations_expirees`` (Celery beat/
+    # commande de gestion idempotente).
+    date_expiration_reservation = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         verbose_name = 'Commande retrait magasin'

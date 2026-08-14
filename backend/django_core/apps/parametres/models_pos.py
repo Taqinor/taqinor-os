@@ -33,6 +33,14 @@ class ParametresPos(TenantModel):
     taux_horaire_comptoir = models.DecimalField(
         max_digits=10, decimal_places=2, null=True, blank=True,
         help_text="Taux horaire main-d'œuvre comptoir (MAD/heure).")
+    # NTRET23 — Click & Collect (XPOS15) : délai (jours) avant libération
+    # automatique d'une réservation jamais retirée. NULL/0 = désactivé —
+    # aucune réservation n'expire jamais (comportement historique inchangé).
+    delai_expiration_click_collect_jours = models.PositiveSmallIntegerField(
+        null=True, blank=True,
+        help_text="Click & Collect : délai (jours) avant libération "
+                  "automatique d'une réservation non retirée. Vide/0 = "
+                  "désactivé.")
 
     class Meta:
         verbose_name = 'Paramètres POS'

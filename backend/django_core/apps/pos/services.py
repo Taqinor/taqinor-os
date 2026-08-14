@@ -4,6 +4,7 @@ Règle de modularité (CLAUDE.md) : AUCUN import direct des modèles
 ``ventes``/``stock``/``compta`` — uniquement leurs ``services``/``selectors``
 ou des FK chaîne. Tout le code métier POS reste dans cette app.
 """
+from datetime import timedelta
 from decimal import ROUND_HALF_UP, Decimal
 
 from django.db import transaction
@@ -569,6 +570,122 @@ def remettre_commande(*, commande, code_saisi, user):
     commande.date_retrait = timezone.now()
     commande.save(update_fields=['statut', 'date_retrait'])
     return commande
+
+
+# ── NTRET23 — Click & Collect : expiration auto-libérée ─────────────────────
+
+def poser_expiration_reservation(commande):
+    """NTRET23 — pose ``date_expiration_reservation`` sur une commande retrait
+    fraîchement créée, d'après le délai configuré en Paramètres POS (NTRET8,
+    ``ParametresPos.delai_expiration_click_collect_jours``). Délai NULL/0 =
+    comportement historique inchangé — aucune expiration n'est jamais posée,
+    cette commande ne sera donc jamais libérée automatiquement."""
+    from apps.parametres.models_pos import ParametresPos
+    delai = ParametresPos.get(commande.company).delai_expiration_click_collect_jours
+    if not delai:
+        return commande
+    commande.date_expiration_reservation = timezone.now() + timedelta(days=delai)
+    commande.save(update_fields=['date_expiration_reservation'])
+    return commande
+
+
+def _notifier_reservation_expiree(commande):
+    """Notifie le client que sa réservation a expiré (best-effort, même
+    patron que ``_notifier_commande_prete`` — jamais bloquant)."""
+    import logging
+    logger = logging.getLogger(__name__)
+    client = commande.client
+    message = (
+        f'Votre réservation {commande.reference} a expiré faute de retrait '
+        'et a été annulée.')
+    phone = getattr(client, 'telephone', '') if client else ''
+    email = getattr(client, 'email', '') if client else ''
+    try:
+        if phone:
+            import urllib.parse
+            digits = ''.join(c for c in phone if c.isdigit())
+            if digits:
+                wa_url = f'https://wa.me/{digits}?text={urllib.parse.quote(message)}'
+                logger.info(
+                    'NTRET23: réservation %s expirée, lien WhatsApp %s',
+                    commande.reference, wa_url)
+                return
+        if email:
+            from django.core.mail import send_mail
+            from django.conf import settings
+            send_mail(
+                f'Réservation {commande.reference} expirée',
+                message,
+                getattr(settings, 'DEFAULT_FROM_EMAIL', None),
+                [email],
+                fail_silently=True,
+            )
+    except Exception:
+        logger.warning(
+            'NTRET23: notification « réservation expirée » échouée pour %s',
+            commande.reference)
+
+
+@transaction.atomic
+def liberer_reservation_expiree(commande, *, user=None):
+    """NTRET23 — libère UNE réservation Click & Collect expirée : annule la
+    commande et, si le stock avait déjà été sorti à la préparation (statut
+    PRET, XPOS15), le RÉ-INCRÉMENTE via ``stock.services`` (jamais fait pour
+    une commande encore À_PRÉPARER — son stock n'a jamais bougé). Idempotent
+    par construction : n'agit QUE sur A_PREPARER/PRET — une commande déjà
+    ANNULEE/RETIREE n'est jamais retouchée, un re-run est donc un no-op sur
+    elle (aucun double retour de stock)."""
+    if commande.statut not in (
+            CommandeRetrait.Statut.A_PREPARER, CommandeRetrait.Statut.PRET):
+        return commande
+
+    if commande.statut == CommandeRetrait.Statut.PRET:
+        from apps.stock import services as stock_services
+        for ligne in commande.lignes.all():
+            produit = ligne.produit
+            produit.refresh_from_db()
+            avant = produit.quantite_stock
+            apres = avant + int(ligne.quantite)
+            stock_services.record_stock_movement(
+                company=commande.company,
+                produit=produit,
+                type_mouvement=stock_services.mouvement_type_entree(),
+                quantite=ligne.quantite,
+                quantite_avant=avant,
+                quantite_apres=apres,
+                reference=commande.reference,
+                note=f'Réservation expirée — retour stock {commande.reference}',
+                created_by=user,
+            )
+
+    commande.statut = CommandeRetrait.Statut.ANNULE
+    commande.save(update_fields=['statut'])
+    _notifier_reservation_expiree(commande)
+    return commande
+
+
+def liberer_reservations_expirees(*, company=None, maintenant=None):
+    """NTRET23 — balaie les réservations Click & Collect dont l'expiration
+    est dépassée (toutes sociétés, ou UNE société si ``company`` fourni) et
+    les libère une par une. Idempotente au niveau de l'appel : ne sélectionne
+    que A_PREPARER/PRET expirées — un re-run immédiat ne retrouve plus rien à
+    faire (déjà ANNULE). Renvoie le nombre de réservations libérées — point
+    d'entrée de la commande de gestion ``liberer_reservations_expirees``
+    (Celery beat)."""
+    maintenant = maintenant or timezone.now()
+    qs = CommandeRetrait.objects.filter(
+        date_expiration_reservation__isnull=False,
+        date_expiration_reservation__lte=maintenant,
+        statut__in=[
+            CommandeRetrait.Statut.A_PREPARER, CommandeRetrait.Statut.PRET],
+    )
+    if company is not None:
+        qs = qs.filter(company=company)
+    count = 0
+    for commande in qs:
+        liberer_reservation_expiree(commande)
+        count += 1
+    return count
 
 
 # ── NTRET3 — Multi-caissiers avec PIN de session ────────────────────────────

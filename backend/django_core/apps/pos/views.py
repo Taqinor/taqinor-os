@@ -571,6 +571,9 @@ class CommandeRetraitViewSet(viewsets.ModelViewSet):
 
         instance = create_with_reference(
             CommandeRetrait, 'RET', company, _create)
+        # NTRET23 — pose l'expiration de réservation d'après le délai
+        # configuré (Paramètres POS NTRET8) ; no-op si aucun délai réglé.
+        services.poser_expiration_reservation(instance)
         serializer.instance = instance
 
     @action(detail=True, methods=['post'], url_path='lignes')
