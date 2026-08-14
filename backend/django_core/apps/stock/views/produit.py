@@ -80,7 +80,7 @@ class ProduitViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         # pour les comptes hérités sans rôle fin.
         if self.action in READ_ACTIONS + [
                 'export_xlsx', 'resolve', 'previsionnel', 'tracer',
-                'etiquettes_showroom']:
+                'etiquettes_showroom', 'casiers']:
             # XSTK3/XSTK4 — `resolve` (scan code-barres/GS1) est LECTURE
             # SEULE, accessible à tout rôle authentifié — même garde que
             # `@action(permission_classes=[IsAnyRole])` sur l'action
@@ -320,6 +320,20 @@ class ProduitViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         from ..services import stock_breakdown
         produit = self.get_object()
         return Response(stock_breakdown(produit))
+
+    @action(detail=True, methods=['get'], url_path='casiers',
+            permission_classes=[IsAnyRole])
+    def casiers(self, request, *args, **kwargs):
+        """NTWMS1 — localisation CASIER PAR CASIER de ce produit (zone/allée/
+        casier), dans l'ordre de parcours physique du magasin.
+
+        La hiérarchie de casiers est celle de FG319 (`installations
+        .BinLocation`/`BinAffectation`) — lue ici par l'accesseur inverse posé
+        sur `Produit`, jamais dupliquée dans stock. Liste vide tant qu'aucun
+        casier n'est affecté (comportement historique)."""
+        from ..selectors import localisation_casiers
+        produit = self.get_object()
+        return Response(localisation_casiers(produit))
 
     @action(detail=True, methods=['post', 'delete'], url_path='photo')
     def photo(self, request, *args, **kwargs):
