@@ -305,6 +305,10 @@ INSTALLED_APPS = [
     # cartes cadeaux. App satellite : `apps/pos/services.py` l'appelle en
     # import fonction-local (jamais l'inverse).
     'apps.promotions',
+    # Groupe NTSCM — Planification supply chain (prévision de demande
+    # saisonnière, politiques de stock ABC/stock de sécurité, cycle S&OP
+    # mensuel) au-dessus de l'exécution `apps.stock` existante.
+    'apps.scm',
 ]
 
 MIDDLEWARE = [
