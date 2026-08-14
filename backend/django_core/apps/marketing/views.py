@@ -551,11 +551,22 @@ class EnqueteNPSViewSetNotifiant(EnqueteNPSViewSet):
         return response
 
 
-@extend_schema(responses={201: inline_serializer(
-    'EvenementInscriptionNotifianteResponse', {
-        'id': drf_serializers.IntegerField(),
-        'qr_token': drf_serializers.CharField(),
-    })})
+@extend_schema(request=inline_serializer(
+    'EvenementInscriptionNotifianteRequest', {
+        'nom': drf_serializers.CharField(),
+        'email': drf_serializers.CharField(required=False, allow_blank=True),
+        'telephone': drf_serializers.CharField(
+            required=False, allow_blank=True),
+        'billet_id': drf_serializers.IntegerField(
+            required=False, allow_null=True),
+        'reponses_questions': drf_serializers.DictField(
+            required=False, allow_null=True,
+            help_text='Réponses aux questions de l\'événement, par id.'),
+    }), responses={201: inline_serializer(
+        'EvenementInscriptionNotifianteResponse', {
+            'id': drf_serializers.IntegerField(),
+            'qr_token': drf_serializers.CharField(),
+        })})
 @api_view(['POST'])
 @permission_classes([AllowAny])
 def evenement_inscription_publique_notifiante(request, evenement_id):

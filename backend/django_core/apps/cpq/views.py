@@ -607,6 +607,14 @@ class RelancerApprobationView(APIView):
     pas forcément Responsable/Admin)."""
     permission_classes = [IsAnyRole]
 
+    @extend_schema(request=None, responses={200: inline_serializer(
+        'CpqRelancerApprobationResponse', {
+            'etape_id': drf_serializers.IntegerField(),
+            'niveau': drf_serializers.IntegerField(),
+            'approbateur': drf_serializers.CharField(allow_null=True),
+            'relance_envoyee': drf_serializers.BooleanField(),
+            'detail': drf_serializers.CharField(),
+        })})
     def post(self, request, pk):
         from apps.ventes.models import Devis
         devis = Devis.objects.filter(
