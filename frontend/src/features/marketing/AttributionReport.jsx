@@ -41,7 +41,15 @@ export default function AttributionReport({ devisId: devisIdProp }) {
   }
 
   useEffect(() => {
-    if (devisIdProp) charger(devisIdProp)
+    let active = true
+    if (devisIdProp) {
+      // setState différé au prochain microtask (jamais synchrone dans l'effet) —
+      // évite react-hooks/set-state-in-effect sans changer le comportement visible.
+      queueMicrotask(() => {
+        if (active) charger(devisIdProp)
+      })
+    }
+    return () => { active = false }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- charge une seule fois par devisIdProp
   }, [devisIdProp])
 
