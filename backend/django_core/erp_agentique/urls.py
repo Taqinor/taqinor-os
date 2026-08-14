@@ -44,6 +44,8 @@ _APP_URLS = [
     path('documents/', include('apps.documents.urls')),
     path('audit/', include('apps.audit.urls')),
     path('monitoring/', include('apps.monitoring.urls')),
+    # NTMFG1 — Production / MRP II.
+    path('mrp/', include('apps.mrp.urls')),
     path('notifications/', include('apps.notifications.urls')),
     path('automation/', include('apps.automation.urls')),
     # N89 — gestion des clés API & webhooks (session admin, Paramètres) ;
