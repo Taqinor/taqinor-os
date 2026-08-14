@@ -3,7 +3,8 @@ from decimal import Decimal
 from rest_framework import serializers
 
 from .models import (
-    CoutFretReel, EtapeTransport, LigneOrdreTransport, OrdreTransport,
+    CoutFretReel, EtapeTransport, LigneOrdreTransport, LitigeTransport,
+    OrdreTransport,
 )
 
 
@@ -46,6 +47,24 @@ class CoutFretReelSerializer(serializers.ModelSerializer):
             'stock_boncommandefournisseur_id', 'note', 'created_at',
         ]
         read_only_fields = ['created_at']
+
+
+class LitigeTransportSerializer(serializers.ModelSerializer):
+    """NTLOG17 — litige transport. `statut` avance via les actions
+    `prendre-en-charge`/`resoudre`/`rejeter` (jamais un PATCH direct)."""
+    type_litige_display = serializers.CharField(
+        source='get_type_litige_display', read_only=True, default=None)
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True, default=None)
+
+    class Meta:
+        model = LitigeTransport
+        fields = [
+            'id', 'ordre_transport', 'type_litige', 'type_litige_display',
+            'statut', 'statut_display', 'montant_conteste', 'description',
+            'created_by', 'created_at',
+        ]
+        read_only_fields = ['statut', 'created_by', 'created_at']
 
 
 class OrdreTransportSerializer(serializers.ModelSerializer):

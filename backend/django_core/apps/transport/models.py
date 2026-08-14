@@ -225,3 +225,48 @@ class CoutFretReel(TenantModel):
 
     def __str__(self):
         return f'{self.type_cout} {self.montant_ht} {self.devise}'
+
+
+class LitigeTransport(TenantModel):
+    """NTLOG17 — litige transport (avarie/retard/manquant/erreur de
+    livraison). Machine à états INDÉPENDANTE, calquée sur
+    `litiges.Reclamation` (LITIGE2) SANS importer son modèle. Les
+    transitions journalisent sur le chatter de l'ordre parent
+    (`services.log_activite_ordre`, jamais une nouvelle classe `*Activity`,
+    ARC8)."""
+
+    class TypeLitige(models.TextChoices):
+        AVARIE = 'avarie', 'Avarie'
+        RETARD = 'retard', 'Retard'
+        MANQUANT = 'manquant', 'Manquant'
+        ERREUR_LIVRAISON = 'erreur_livraison', 'Erreur de livraison'
+
+    class Statut(models.TextChoices):
+        OUVERT = 'ouvert', 'Ouvert'
+        EN_TRAITEMENT = 'en_traitement', 'En traitement'
+        RESOLU = 'resolu', 'Résolu'
+        REJETE = 'rejete', 'Rejeté'
+
+    ordre_transport = models.ForeignKey(
+        OrdreTransport, on_delete=models.CASCADE, related_name='litiges')
+    type_litige = models.CharField(
+        max_length=20, choices=TypeLitige.choices, default=TypeLitige.AVARIE)
+    statut = models.CharField(
+        max_length=15, choices=Statut.choices, default=Statut.OUVERT)
+    montant_conteste = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('0'))
+    description = models.TextField(blank=True, default='')
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='litiges_transport_crees')
+
+    class Meta:
+        verbose_name = 'Litige transport'
+        verbose_name_plural = 'Litiges transport'
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['company', 'statut'], name='idx_lt_co_statut'),
+        ]
+
+    def __str__(self):
+        return f'{self.type_litige} · {self.ordre_transport_id}'

@@ -12,11 +12,13 @@ from apps.records.views import ChatterViewSetMixin
 
 from . import services
 from .models import (
-    CoutFretReel, EtapeTransport, LigneOrdreTransport, OrdreTransport,
+    CoutFretReel, EtapeTransport, LigneOrdreTransport, LitigeTransport,
+    OrdreTransport,
 )
 from .serializers import (
     CoutFretReelSerializer, EtapeTransportSerializer,
-    LigneOrdreTransportSerializer, OrdreTransportSerializer,
+    LigneOrdreTransportSerializer, LitigeTransportSerializer,
+    OrdreTransportSerializer,
 )
 
 
@@ -189,3 +191,67 @@ class CoutFretReelViewSet(CompanyScopedModelViewSet):
             self.request,
             ordre_transport=serializer.validated_data.get('ordre_transport'))
         serializer.save(company=self.request.user.company)
+
+
+class LitigeTransportViewSet(CompanyScopedModelViewSet):
+    """NTLOG17 — litiges transport, machine à états calquée sur
+    `litiges.Reclamation` (LITIGE2) : ouvert → en_traitement → résolu, ou
+    rejeté depuis ouvert/en_traitement. Transition illégale → 400."""
+
+    queryset = LitigeTransport.objects.select_related(
+        'ordre_transport', 'created_by').all()
+    serializer_class = LitigeTransportSerializer
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        ordre = self.request.query_params.get('ordre_transport')
+        if ordre:
+            qs = qs.filter(ordre_transport_id=ordre)
+        return qs
+
+    def perform_create(self, serializer):
+        _check_same_company(
+            self.request,
+            ordre_transport=serializer.validated_data.get('ordre_transport'))
+        serializer.save(
+            company=self.request.user.company, created_by=self.request.user)
+
+    def _transition(self, request, *, allowed_from, target):
+        litige = self.get_object()
+        if litige.statut not in allowed_from:
+            return Response(
+                {'statut': (
+                    f"Transition invalide depuis « "
+                    f"{litige.get_statut_display()} » vers « "
+                    f"{LitigeTransport.Statut(target).label} ».")},
+                status=status.HTTP_400_BAD_REQUEST)
+        ancien = litige.statut
+        litige.statut = target
+        litige.save(update_fields=['statut'])
+        services.log_activite_ordre(
+            litige.ordre_transport, user=request.user,
+            field='litige_statut', field_label=f'Litige #{litige.id}',
+            old_value=ancien, new_value=target)
+        return Response(LitigeTransportSerializer(litige).data)
+
+    @action(detail=True, methods=['post'], url_path='prendre-en-charge')
+    def prendre_en_charge(self, request, pk=None):
+        return self._transition(
+            request, allowed_from={LitigeTransport.Statut.OUVERT},
+            target=LitigeTransport.Statut.EN_TRAITEMENT)
+
+    @action(detail=True, methods=['post'], url_path='resoudre')
+    def resoudre(self, request, pk=None):
+        return self._transition(
+            request, allowed_from={LitigeTransport.Statut.EN_TRAITEMENT},
+            target=LitigeTransport.Statut.RESOLU)
+
+    @action(detail=True, methods=['post'], url_path='rejeter')
+    def rejeter(self, request, pk=None):
+        return self._transition(
+            request,
+            allowed_from={
+                LitigeTransport.Statut.OUVERT,
+                LitigeTransport.Statut.EN_TRAITEMENT,
+            },
+            target=LitigeTransport.Statut.REJETE)
