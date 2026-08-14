@@ -119,9 +119,12 @@ export function completudeFiche(fiche) {
   const manquants = champs
     .filter(([k]) => fiche[k] === null || fiche[k] === undefined || fiche[k] === '')
     .map(([, label]) => label)
-  return manquants.length === 0
-    ? { statut: FICHE_COMPLETE, manquants: [] }
-    : { statut: FICHE_PARTIELLE, manquants }
+  if (manquants.length === 0) return { statut: FICHE_COMPLETE, manquants: [] }
+  // Un type déclaré mais AUCUN champ requis rempli = fiche vide : « absente »,
+  // pas « partielle » — le badge ne doit jamais faire croire qu'un début de
+  // datasheet existe quand il n'y a rien.
+  if (manquants.length === champs.length) return { statut: FICHE_ABSENTE, manquants }
+  return { statut: FICHE_PARTIELLE, manquants }
 }
 
 const TON_FICHE = {
