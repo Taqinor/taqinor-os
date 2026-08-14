@@ -394,3 +394,24 @@ class ExpeditionTransporteurViewSet(CompanyScopedModelViewSet):
             'date_expedition': expedition.date_expedition,
             'a_une_etiquette': bool(expedition.etiquette_pdf_key),
         })
+
+    @action(detail=False, methods=['get'], url_path='tarifs')
+    def tarifs(self, request):
+        """NTWMS10 — comparatif coût/délai pour une unité logistique
+        (``?unite_logistique=<id>&destination=``), AVANT de sceller le choix du
+        transporteur. Sans connecteur configuré, renvoie le tarif de base du
+        référentiel interne (repli gracieux). LECTURE SEULE."""
+        from ..selectors import comparer_tarifs_transporteurs
+        unite = UniteLogistique.objects.filter(
+            id=request.query_params.get('unite_logistique'),
+            company=request.user.company).first()
+        if unite is None:
+            return Response(
+                {'detail': 'Unité logistique introuvable dans cette société.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        return Response({
+            'unite_logistique': unite.id,
+            'offres': comparer_tarifs_transporteurs(
+                unite, destination=request.query_params.get('destination')
+                or ''),
+        })

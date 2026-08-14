@@ -302,3 +302,75 @@ def planning_quais(company, *, date_str=None, vue='jour', quai_id=None):
             'rendez_vous': par_quai.get(quai.id, []),
         } for quai in quais],
     }
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# NTWMS10 — Comparateur de tarifs transporteurs (rate shopping)
+# ═══════════════════════════════════════════════════════════════════════════
+
+def comparer_tarifs_transporteurs(unite_logistique, destination=''):
+    """Tableau comparatif coût/délai AVANT de sceller le choix du transporteur.
+
+    Interroge ``estimer_tarif`` de chaque connecteur GATED configuré pour la
+    société (NTWMS9). REPLI GRACIEUX, sans aucune régression : les
+    transporteurs du référentiel interne (``installations.Transporteur``,
+    FG331) sont TOUJOURS listés avec leur ``tarif_base`` — donc sans le moindre
+    connecteur configuré, la réponse est exactement l'information dont on
+    disposait déjà.
+
+    Renvoie ``[{source, code, libelle, cout, devise, delai_jours}]`` trié du
+    moins cher au plus cher (les lignes sans coût connu en dernier).
+    LECTURE SEULE : n'appelle aucun connecteur non configuré, n'écrit rien.
+    """
+    from decimal import Decimal
+
+    from .models_wms import ExpeditionTransporteur
+    from .providers import providers_configures
+
+    if unite_logistique is None:
+        return []
+    company = unite_logistique.company
+    poids = unite_logistique.poids_kg
+    dimensions = unite_logistique.dimensions or ''
+
+    lignes = []
+
+    # 1) Connecteurs gated réellement configurés (le NoOp ne cote jamais).
+    for code, provider in providers_configures(company):
+        estimation = provider.estimer_tarif(
+            poids_kg=poids, dimensions=dimensions, destination=destination)
+        if not estimation:
+            continue
+        lignes.append({
+            'source': 'provider',
+            'code': code,
+            'libelle': getattr(provider, 'label', '') or code,
+            'cout': estimation.get('cout'),
+            'devise': estimation.get('devise') or 'MAD',
+            'delai_jours': estimation.get('delai_jours'),
+        })
+
+    # 2) Référentiel interne — le repli qui existait déjà (FG331).
+    modele_transporteur = (
+        ExpeditionTransporteur._meta.get_field('transporteur').related_model)
+    internes = (modele_transporteur.objects
+                .filter(company=company, active=True)
+                .order_by('nom'))
+    for transporteur in internes:
+        lignes.append({
+            'source': 'interne',
+            'code': str(transporteur.id),
+            'libelle': transporteur.nom,
+            'cout': transporteur.tarif_base,
+            'devise': 'MAD',
+            'delai_jours': None,
+        })
+
+    def _cle(ligne):
+        cout = ligne.get('cout')
+        # Les lignes sans coût connu passent en dernier, jamais devant une
+        # offre chiffrée.
+        return (0, Decimal(str(cout))) if cout is not None else (1, Decimal(0))
+
+    lignes.sort(key=_cle)
+    return lignes
