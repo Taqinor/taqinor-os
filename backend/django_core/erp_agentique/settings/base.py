@@ -263,6 +263,7 @@ INSTALLED_APPS = [
     # NTUX1 — Vues sauvegardées serveur (personnelles/partagées), fondation de
     # la couche UX power-user (NTUX2-11). Additive, company-scopée.
     'apps.uxviews',
+    'apps.transport',
     # NTUX7 — Corbeille transverse 30 jours : UNE table `ElementSupprime` pour
     # tout le repo, alimentée par l'événement `core.events.record_soft_deleted`
     # (aucune app émettrice n'importe la corbeille). Additive, company-scopée.
