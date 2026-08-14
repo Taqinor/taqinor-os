@@ -1404,7 +1404,7 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
         return Response(etapes_approbation_devis(devis))
 
     @action(detail=True, methods=['post'], url_path='approuver-etape',
-            permission_classes=[IsResponsableOrAdmin])
+            permission_classes=[HasPermissionOrLegacy('cpq_approbation_approuver')])
     def approuver_etape(self, request, pk=None):
         """NTCPQ8 — Approuve l'étape courante d'approbation de remise."""
         devis = self.get_object()
@@ -1419,7 +1419,7 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
         })
 
     @action(detail=True, methods=['post'], url_path='rejeter-etape',
-            permission_classes=[IsResponsableOrAdmin])
+            permission_classes=[HasPermissionOrLegacy('cpq_approbation_approuver')])
     def rejeter_etape(self, request, pk=None):
         """NTCPQ8 — Rejette l'étape courante : renvoie le devis en brouillon."""
         devis = self.get_object()

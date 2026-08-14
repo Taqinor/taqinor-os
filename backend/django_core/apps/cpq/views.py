@@ -13,7 +13,9 @@ from rest_framework.views import APIView
 from rest_framework.permissions import IsAuthenticated
 
 from core.viewsets import CompanyScopedModelViewSet
-from authentication.permissions import IsResponsableOrAdmin, IsAnyRole
+from authentication.permissions import (
+    IsResponsableOrAdmin, IsAnyRole, HasPermissionOrLegacy,
+)
 
 from .models import (
     OptionProduit, ContrainteCompatibilite, RegleProduitCPQ, OffreGroupee,
@@ -59,7 +61,8 @@ class RegleProduitCPQViewSet(CompanyScopedModelViewSet):
     def get_permissions(self):
         if self.action in ('list', 'retrieve', 'evaluer'):
             return [IsAnyRole()]
-        return [IsResponsableOrAdmin()]
+        # NTCPQ36 — permission granulaire cpq_regles_gerer (repli légacy).
+        return [HasPermissionOrLegacy('cpq_regles_gerer')()]
 
     @action(detail=False, methods=['post'], url_path='evaluer')
     def evaluer(self, request):
@@ -417,8 +420,9 @@ class FeuilleConfigurationView(APIView):
     « devis » ni « proposition ».
 
     ``?format=json`` renvoie les mêmes données sans rendre le PDF (usage écran
-    interne / test)."""
-    permission_classes = [IsResponsableOrAdmin]
+    interne / test). NTCPQ36 — réservé ``cpq_marge_voir`` (compte à rôle fin) :
+    ce document porte le prix d'achat/la marge par ligne."""
+    permission_classes = [HasPermissionOrLegacy('cpq_marge_voir')]
 
     @extend_schema(responses={200: OpenApiTypes.BINARY})
     def get(self, request, pk):
