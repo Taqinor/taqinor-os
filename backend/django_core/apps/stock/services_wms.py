@@ -79,24 +79,91 @@ def suggestions_rangement_reception(reception):
 # ═══════════════════════════════════════════════════════════════════════════
 
 def _casier_pour_ligne(produit, quantite):
-    """(bin, lot, ordre) résolus par la stratégie de picking du produit
-    (NTWMS3). ``ordre`` est le rang de parcours du casier retenu — le tri
-    zone → allée → casier vit dans ``BinLocation.ordre`` (FG319)."""
+    """(bin, lot, ordre, zone, allée) résolus par la stratégie de picking du
+    produit (NTWMS3). ``ordre`` est le rang de parcours du casier retenu — le
+    tri zone → allée → casier vit dans ``BinLocation.ordre`` (FG319) ; zone et
+    allée servent au parcours en serpentin (NTWMS28)."""
     from .selectors_wms import resoudre_allocation_picking
 
     plan = resoudre_allocation_picking(produit, quantite)
     if not plan:
-        return None, None, 1000
+        return None, None, 1000, '', ''
     tete = plan[0]
-    ordre = 1000
+    ordre, zone, allee = 1000, '', ''
     if tete['bin_id']:
         # Le rang de parcours vient du casier lui-même (jamais recalculé ici).
         from .selectors_wms import localisation_casiers
         for casier in localisation_casiers(produit):
             if casier['bin_id'] == tete['bin_id']:
                 ordre = casier['ordre']
+                zone = casier['zone'] or ''
+                allee = casier['allee'] or ''
                 break
-    return tete['bin_id'], tete['lot_id'], ordre
+    return tete['bin_id'], tete['lot_id'], ordre, zone, allee
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# NTWMS28 — Parcours de prélèvement en SERPENTIN (S-shape routing)
+# ═══════════════════════════════════════════════════════════════════════════
+
+def ordonner_parcours_serpentin(entrees):
+    """Ordonne des lignes de prélèvement en S-shape (calcul pur, stdlib).
+
+    Un tri « zone → allée → casier » fait remonter CHAQUE allée par le même
+    bout : le magasinier redescend l'allée à vide avant de passer à la
+    suivante. Le serpentin alterne le sens de parcours d'une allée à l'autre —
+    on entre par le bout où l'on vient de sortir. Résultat : chaque allée
+    n'est traversée qu'UNE fois.
+
+    ``entrees`` — dictionnaires portant ``zone``, ``allee``, ``ordre`` (et ce
+    que l'appelant veut transporter). Les lignes SANS casier connu ne peuvent
+    pas être placées dans le magasin : elles restent à la fin, dans leur ordre
+    d'origine (comportement historique).
+    """
+    localisees, sans_casier = [], []
+    for entree in entrees or []:
+        if (entree.get('zone') or entree.get('allee')):
+            localisees.append(entree)
+        else:
+            sans_casier.append(entree)
+
+    allees = {}
+    for entree in localisees:
+        cle = (str(entree.get('zone') or ''), str(entree.get('allee') or ''))
+        allees.setdefault(cle, []).append(entree)
+
+    ordonnees = []
+    for rang, cle in enumerate(sorted(allees)):
+        lignes = sorted(allees[cle], key=lambda e: (e.get('ordre') or 0))
+        # Allées paires montantes, impaires descendantes : le serpentin.
+        if rang % 2 == 1:
+            lignes.reverse()
+        ordonnees.extend(lignes)
+    return ordonnees + sans_casier
+
+
+def recalculer_parcours_vague(vague):
+    """Renumérote ``ordre_parcours`` d'une vague existante en serpentin.
+
+    Utile après l'ajout de lignes à une vague déjà créée. Idempotent.
+    """
+    from django.db import transaction
+
+    lignes = list(vague.lignes.select_related('bin').all())
+    entrees = [{
+        'ligne': ligne,
+        'zone': (ligne.bin.zone if ligne.bin_id else '') or '',
+        'allee': (ligne.bin.allee if ligne.bin_id else '') or '',
+        'ordre': (ligne.bin.ordre if ligne.bin_id else 1000),
+    } for ligne in lignes]
+    with transaction.atomic():
+        for rang, entree in enumerate(
+                ordonner_parcours_serpentin(entrees), start=1):
+            ligne = entree['ligne']
+            if ligne.ordre_parcours != rang:
+                ligne.ordre_parcours = rang
+                ligne.save(update_fields=['ordre_parcours'])
+    return vague
 
 
 def creer_vague_depuis_besoins(*, company, user=None, besoins=None,
@@ -159,10 +226,11 @@ def creer_vague_depuis_besoins(*, company, user=None, besoins=None,
             continue
         if quantite <= 0:
             continue
-        bin_id, lot_id, ordre = _casier_pour_ligne(produit, quantite)
+        bin_id, lot_id, ordre, zone, allee = _casier_pour_ligne(
+            produit, quantite)
         preparees.append({
             'produit': produit, 'quantite': quantite, 'bin_id': bin_id,
-            'lot_id': lot_id, 'ordre': ordre,
+            'lot_id': lot_id, 'ordre': ordre, 'zone': zone, 'allee': allee,
             'installation_id': besoin.get('installation_id'),
             'bon_commande_id': besoin.get('bon_commande_id'),
         })
@@ -170,7 +238,11 @@ def creer_vague_depuis_besoins(*, company, user=None, besoins=None,
     if not preparees:
         raise ValueError('Aucun besoin valide à regrouper dans cette vague.')
 
+    # NTWMS28 — parcours en SERPENTIN : chaque allée n'est traversée qu'une
+    # fois (le tri zone → allée → casier faisait redescendre chaque allée à
+    # vide). Départage stable par nom de produit à l'intérieur d'un casier.
     preparees.sort(key=lambda ligne: (ligne['ordre'], ligne['produit'].nom))
+    preparees = ordonner_parcours_serpentin(preparees)
 
     with transaction.atomic():
         def _save(reference):
