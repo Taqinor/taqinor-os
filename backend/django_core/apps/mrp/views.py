@@ -854,6 +854,102 @@ def analyse_couts_export_view(request):
 analyse_couts_export_view.cls.content_negotiation_class = _ExportFormatContentNegotiation
 
 
+# ── NTMFG36 — Export CSV/XLSX des Ordres de Fabrication + opérations ─────
+
+_RISKY_LEADING_CELL = ('=', '+', '-', '@')
+
+
+def _cellule_sure(valeur):
+    """Même neutralisation anti-injection que
+    `apps.records.xlsx._neutralize_cell` (ERR11) — copie locale volontaire :
+    cette fonction est privée à `records.xlsx`, pas une API publique
+    réutilisable telle quelle."""
+    if isinstance(valeur, str) and valeur[:1] in _RISKY_LEADING_CELL:
+        return "'" + valeur
+    return valeur
+
+
+@extend_schema(responses={200: OpenApiTypes.BINARY})
+@api_view(['GET'])
+@permission_classes([EstResponsableOuAdminMRP])
+def ordres_fabrication_export_view(request):
+    """NTMFG36 — ``GET /api/django/mrp/ordres-fabrication/export/
+    ?format=csv|xlsx&debut=&fin=&statut=`` : export des OF + opérations
+    détaillées de la période (mêmes données que l'écran NTMFG9). `xlsx` = 2
+    onglets cohérents (OF + opérations, mêmes OF des deux côtés) ; `csv` =
+    onglet OF seul (un fichier CSV n'a pas d'onglets). `format` invalide ->
+    400 (whitelist stricte)."""
+    import csv
+    import io
+
+    from django.http import HttpResponse
+
+    from .selectors import export_ordres_fabrication
+
+    fmt = (request.query_params.get('format') or 'xlsx').lower()
+    if fmt not in ('csv', 'xlsx'):
+        return Response({'detail': "format doit être 'csv' ou 'xlsx'."}, status=400)
+
+    debut = request.query_params.get('debut')
+    fin = request.query_params.get('fin')
+    statut = request.query_params.get('statut')
+    lignes_of, lignes_operations = export_ordres_fabrication(
+        request.user.company, debut=debut, fin=fin, statut=statut)
+
+    entetes_of = [
+        'OF', 'Produit', 'Quantité', 'Statut', 'Début prévu', 'Fin prévue']
+    rows_of = [
+        [ligne['of_id'], ligne['produit_nom'], ligne['quantite'], ligne['statut'],
+         ligne['date_debut_planifiee'], ligne['date_fin_planifiee']]
+        for ligne in lignes_of
+    ]
+
+    if fmt == 'csv':
+        buf = io.StringIO()
+        writer = csv.writer(buf)
+        writer.writerow(entetes_of)
+        writer.writerows(rows_of)
+        resp = HttpResponse(buf.getvalue(), content_type='text/csv')
+        resp['Content-Disposition'] = (
+            'attachment; filename="ordres-fabrication.csv"')
+        return resp
+
+    entetes_operations = [
+        'OF', 'Poste', 'Opération', 'Statut', 'Temps prévu (min)',
+        'Temps réel (min)', 'Quantité bonne', 'Quantité rebut',
+    ]
+    rows_operations = [
+        [ligne['of_id'], ligne['poste_nom'], ligne['libelle'], ligne['statut'],
+         ligne['temps_prevu_min'], ligne['temps_reel_min'], ligne['quantite_bonne'],
+         ligne['quantite_rebut']]
+        for ligne in lignes_operations
+    ]
+
+    from openpyxl import Workbook
+
+    from apps.records.xlsx import XLSX_CONTENT_TYPE, coerce_cell
+
+    wb = Workbook()
+    ws_of = wb.active
+    ws_of.title = 'Ordres de fabrication'
+    ws_of.append(entetes_of)
+    ws_operations = wb.create_sheet('Opérations')
+    ws_operations.append(entetes_operations)
+    for row in rows_of:
+        ws_of.append([_cellule_sure(coerce_cell(v)) for v in row])
+    for row in rows_operations:
+        ws_operations.append([_cellule_sure(coerce_cell(v)) for v in row])
+
+    resp = HttpResponse(content_type=XLSX_CONTENT_TYPE)
+    resp['Content-Disposition'] = (
+        'attachment; filename="ordres-fabrication.xlsx"')
+    wb.save(resp)
+    return resp
+
+
+ordres_fabrication_export_view.cls.content_negotiation_class = _ExportFormatContentNegotiation
+
+
 @extend_schema(responses=inline_serializer('MrpOeeTousPostesLigne', {
     'poste_id': serializers.IntegerField(),
     'poste_nom': serializers.CharField(),
