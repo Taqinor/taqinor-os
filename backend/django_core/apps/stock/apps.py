@@ -27,3 +27,7 @@ class StockConfig(AppConfig):
         # ARC18 — miroir one-way stock.Fournisseur → répertoire unifié
         # tiers.Tiers (l'import câble le récepteur post_save ; pont réversible).
         from . import tiers_bridge  # noqa: F401
+        # NTWMS39 — journal léger des casiers (installations.BinLocation,
+        # résolu par apps.get_model : aucun import de leurs modèles).
+        from .receivers_casier import register_historique_casier
+        register_historique_casier()

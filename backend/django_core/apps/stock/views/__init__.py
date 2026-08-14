@@ -50,7 +50,7 @@ from .scanner import scanner_resoudre_view, scanner_mouvement_view
 # Groupe NTWMS (vague 3) - pilotage d'entrepot (cockpit, capacite, retour).
 from .entrepot import (
     entrepot_cockpit_view, simuler_capacite_view, zones_surcapacite_view,
-    tache_retour_view,
+    tache_retour_view, historique_casier_view,
 )
 # NTWMS34 - plans d'echantillonnage a reception (controle qualite bloquant).
 from .qualite_reception import PlanEchantillonnageViewSet
@@ -112,4 +112,5 @@ __all__ = [
     'tache_retour_view',
     'PlanEchantillonnageViewSet',
     'CompatibiliteHazmatCasierViewSet',
+    'historique_casier_view',
 ]

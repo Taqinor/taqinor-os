@@ -138,6 +138,47 @@ def zones_surcapacite_view(request):
 
 
 @extend_schema(responses={
+    200: inline_serializer('StockHistoriqueCasier', {
+        'bin': serializers.IntegerField(),
+        'bin_code': serializers.CharField(allow_blank=True),
+        'lignes': serializers.ListField(child=serializers.DictField()),
+    }),
+})
+@api_view(['GET'])
+@permission_classes([IsAnyRole])
+def historique_casier_view(request, bin_id):
+    """NTWMS39 — journal d'un casier : qui a changé quoi, et quand.
+
+    Création, modification d'un champ structurant (code/zone/allée/casier/
+    ordre/catégorie de stockage), archivage et réactivation. Lecture seule,
+    scopée société — le casier d'une autre société renvoie une liste vide,
+    jamais son historique.
+    """
+    from ..models import HistoriqueCasier
+
+    company = request.user.company
+    lignes = (HistoriqueCasier.objects
+              .filter(company=company, bin_id=bin_id)
+              .select_related('auteur', 'bin')
+              .order_by('-created_at', '-id'))
+    lignes = list(lignes[:200])
+    return Response({
+        'bin': int(bin_id),
+        'bin_code': (lignes[0].bin.code if lignes else ''),
+        'lignes': [{
+            'id': ligne.id,
+            'action': ligne.action,
+            'champ': ligne.champ,
+            'ancienne_valeur': ligne.ancienne_valeur,
+            'nouvelle_valeur': ligne.nouvelle_valeur,
+            'auteur': (getattr(ligne.auteur, 'username', '')
+                       if ligne.auteur_id else ''),
+            'date': ligne.created_at.isoformat(),
+        } for ligne in lignes],
+    })
+
+
+@extend_schema(responses={
     200: inline_serializer('StockTacheRetour', {
         'zone_courante': serializers.CharField(allow_blank=True),
         'suggestions': serializers.ListField(child=serializers.DictField()),

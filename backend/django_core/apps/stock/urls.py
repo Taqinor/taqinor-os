@@ -25,7 +25,7 @@ from .views import (
     scanner_resoudre_view, scanner_mouvement_view,
     entrepot_cockpit_view, simuler_capacite_view, zones_surcapacite_view,
     tache_retour_view, PlanEchantillonnageViewSet,
-    CompatibiliteHazmatCasierViewSet,
+    CompatibiliteHazmatCasierViewSet, historique_casier_view,
 )
 
 router = DefaultRouter()
@@ -114,6 +114,9 @@ urlpatterns = [
          name='stock-simuler-capacite'),
     # NTWMS36 - interleaving : tache de prelevement sur le trajet retour.
     path('tache-retour/', tache_retour_view, name='stock-tache-retour'),
+    # NTWMS39 - journal d'un casier (creation/modification/archivage).
+    path('casiers/<int:bin_id>/historique/', historique_casier_view,
+         name='stock-casier-historique'),
     # NTWMS5 - poste scanner mobile (resolution universelle + mouvement scanne).
     path('scanner/resoudre/', scanner_resoudre_view,
          name='stock-scanner-resoudre'),

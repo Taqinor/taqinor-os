@@ -2112,6 +2112,9 @@ from .models_catch_weight import PeseeLigneReception  # noqa: E402,F401
 # ── NTWMS38 — compatibilité casier ↔ classe de danger (hazmat). ────────────
 from .models_hazmat import CompatibiliteHazmatCasier  # noqa: E402,F401
 
+# ── NTWMS39 — journal léger des casiers (plan d'entrepôt). ─────────────────
+from .models_historique_casier import HistoriqueCasier  # noqa: E402,F401
+
 
 # ── ODX19 — MODULE ACHATS (déplacé) ────────────────────────────────────────
 # PrixFournisseur, BonCommandeFournisseur, LigneBonCommandeFournisseur,
