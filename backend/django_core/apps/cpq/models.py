@@ -568,7 +568,7 @@ class ProduitEquivalent(TenantModel):
                 f'({self.tier})')
 
 
-class ParametresCPQ(models.Model):
+class ParametresCPQ(TenantModel):
     """NTCPQ30 — Réglages CPQ, SINGLETON par société (pattern
     ``contrats.ParametresLocation``/ZCTR4).
 
@@ -578,7 +578,18 @@ class ParametresCPQ(models.Model):
     ``envoyer``/``generer-pdf`` en direct SANS blocage NTCPQ7 pour CETTE
     société uniquement (lu par ``services.lancer_approbation_devis``), sans
     affecter les autres sociétés.
+
+    ARC1/SCA4 — hérite de ``core.models.TenantModel`` (FK ``company`` +
+    ``created_at``/``updated_at``) comme tous les autres modèles de cette app,
+    au lieu de re-hand-roller la paire multi-société. ``company`` est REDÉCLARÉ
+    ci-dessous À L'IDENTIQUE : le socle fournit un ``ForeignKey``, or ce modèle
+    est un SINGLETON par société — le ``OneToOneField`` (contrainte d'unicité)
+    et le ``related_name`` historique ``company.cpq_parametres`` sont conservés
+    tels quels. ``date_creation``/``date_modification`` restent également en
+    place : ils sont exposés par ``ParametresCPQSerializer`` (contrat d'API).
     """
+    # Redéclaré à l'identique (ARC1) : OneToOne singleton + related_name
+    # historique — aucun changement de schéma sur la colonne company_id.
     company = models.OneToOneField(
         'authentication.Company', on_delete=models.CASCADE,  # on_delete: purge tenant
         related_name='cpq_parametres')
