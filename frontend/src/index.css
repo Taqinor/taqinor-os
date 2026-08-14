@@ -443,7 +443,13 @@ button:active, [role="button"]:active, a.btn:active,
   font-weight: 600;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: var(--color-encre-faint);
+  /* a11y — `--color-encre-faint` (#5a6488) sur le fond de barre `--color-nuit`
+     (#070b1d) ne donne que 3,36:1 : sous le plancher AA de 4,5:1 pour du texte
+     de cette taille (9,6 px). axe le relevait en `serious` sur CHAQUE écran de
+     la coquille (job nocturne `e2e-full`). On monte d'un cran dans la MÊME
+     rampe « lune » — `--color-lune-faint` (#8d96b4) = 6,66:1 — sans inventer
+     de couleur locale ni toucher au reste de la hiérarchie visuelle. */
+  color: var(--color-lune-faint);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -478,7 +484,10 @@ button:active, [role="button"]:active, a.btn:active,
   font-size: 0.68rem;
   text-transform: uppercase;
   letter-spacing: 0.07em;
-  color: var(--color-encre-faint);
+  /* Même correctif AA que `.sidebar-brand-sub` ci-dessus : 3,36:1 → 6,66:1.
+     Gras à 10,88 px ne compte PAS comme « grand texte » (seuil : 18,66 px
+     gras), donc le plancher applicable reste bien 4,5:1. */
+  color: var(--color-lune-faint);
   font-weight: 700;
 }
 
@@ -3480,6 +3489,13 @@ textarea.form-control {
   border-radius: var(--radius-md);
   font-size: 0.875rem;
   background: #f8fafc;
+  /* a11y / BUG RÉEL EN THÈME SOMBRE — ce champ (comme `.gs-panel` juste en
+     dessous) garde volontairement une surface CLAIRE codée en dur dans les deux
+     thèmes, mais il n'avait AUCUNE couleur de texte : il héritait donc de
+     `--foreground`, qui vaut #e7ecf6 en sombre → texte quasi invisible
+     (#e7ecf6 sur #f8fafc = 1,13:1). On fixe la couleur du texte sur la MÊME
+     encre que la surface impose, dans les deux thèmes : 17,3:1. */
+  color: var(--color-encre);
 }
 /* VX123 — halo de focus réel en plus du changement de bordure (plancher
    d'accessibilité : un simple #e2e8f0 → #94a3b8 était trop faible seul). */
@@ -3567,7 +3583,13 @@ textarea.form-control {
   background: none; border: none; cursor: pointer;
   line-height: 1; padding: 7px;
   border-radius: var(--radius-md);
-  color: #475569;
+  /* a11y — l'en-tête est `background: var(--card)`, donc SOMBRE en thème
+     sombre ; ce #475569 codé en dur (ardoise de thème clair) y tombait à
+     2,42:1. Visible sur `.header-lang-code` (le seul enfant TEXTE de la
+     grappe — les autres `.nb-btn` ne portent qu'une icône, qu'axe ne mesure
+     pas). Le token sémantique suit les deux thèmes : 5,81:1 en clair,
+     9,07:1 en sombre. */
+  color: var(--muted-foreground);
 }
 @media (hover: hover) {
   .nb-btn:hover { background: #f1f5f9; color: #1e293b; }
@@ -6512,8 +6534,14 @@ textarea.form-control {
   padding: 0.45rem 0.75rem;
   /* Teinte d'alerte DILUÉE dans la carte : le bandeau se remarque sans crier,
      et le texte porte `--warning-text` — le token déjà validé AA sur fond
-     clair ET sombre (design/tokens.css), jamais une couleur locale. */
-  background: color-mix(in oklch, var(--warning) 18%, var(--card));
+     clair ET sombre (design/tokens.css), jamais une couleur locale.
+     a11y — ATTENTION : ce token est validé AA contre `--card` PUR (4,7:1 sur
+     blanc). La teinte assombrit le fond et mange cette marge : à 18 % le
+     rendu réel était #f6e9da, soit 4,22:1 — SOUS le plancher (axe `serious`,
+     échec e2e LB/E6). Le plafond calculé est ~11,7 % ; on tient 10 %
+     (≈4,58:1) plutôt que de changer la couleur du texte, ce qui casserait la
+     bascule clair/sombre de `--warning-text`. Ne pas ré-augmenter. */
+  background: color-mix(in oklch, var(--warning) 10%, var(--card));
   border-bottom: 1px solid color-mix(in oklch, var(--warning-text) 25%, transparent);
 }
 .lw-todo-label {

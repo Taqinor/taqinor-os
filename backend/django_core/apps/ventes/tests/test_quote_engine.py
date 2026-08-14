@@ -9,6 +9,7 @@ Run:
         apps.ventes.tests.test_quote_engine -v 2
 """
 import itertools
+import re
 from decimal import Decimal
 from unittest.mock import patch
 
@@ -2080,6 +2081,33 @@ class TestQuoteNumbersHonestyPack(TestCase):
         self.assertEqual(data['client_city'], '')
 
     # ── (e) marques dérivées des vraies lignes ──────────────────────────────
+    #
+    # 2026-08-14 — POURQUOI CES DEUX GARDES ONT CHANGÉ D'ANCRAGE.
+    # Elles épinglaient le libellé « Équipements premium certifiés [IEC] » de la
+    # rangée de puces de la page 3. Cette rangée PAR DÉFAUT a été retirée du
+    # moteur par QRES57 (commit b2e188a2, directive fondateur du 18/07/2026 :
+    # elle répétait mot pour mot le ruban de crédibilité de la page 1) ; elle ne
+    # subsiste que pour une société ayant personnalisé ``doc_texts.trust_values``.
+    # Les assertions ne pouvaient donc plus passer — le PDF, lui, est correct.
+    # L'EXIGENCE QX7(e) n'a pas bougé d'un pouce : une marque imprimée doit
+    # VENIR D'UNE VRAIE LIGNE du devis, jamais d'une liste gravée dans le
+    # moteur. Elle est ré-épinglée sur le SEUL endroit du PDF qui imprime encore
+    # une marque : la pastille ``<span class="p2-mk">`` du tableau d'équipement
+    # (``residential/options.py::_row``), alimentée par ``item['marque']``,
+    # lui-même lu sur ``Produit.marque`` (``builder._line_to_item``).
+    _MARQUE_CHIP_RE = re.compile(r'<span class="p2-mk">([^<]*)</span>')
+
+    def _marques_imprimees(self, html):
+        """Ensemble des marques réellement IMPRIMÉES sur le PDF."""
+        return {m.strip() for m in self._MARQUE_CHIP_RE.findall(html)
+                if m.strip()}
+
+    def _marques_du_devis(self, data):
+        """Ensemble des marques portées par les VRAIES lignes du devis."""
+        lignes = (data.get('sans_items') or []) + (data.get('avec_items') or [])
+        return {(it.get('marque') or '').strip() for it in lignes
+                if (it.get('marque') or '').strip()}
+
     @tag('pdf')
     def test_brand_chips_derive_from_real_line_marques(self):
         from apps.ventes.quote_engine.residential import renderer, render
@@ -2104,23 +2132,35 @@ class TestQuoteNumbersHonestyPack(TestCase):
             li.produit.save(update_fields=['marque'])
         data = build_quote_data(devis)
         html = render.build_html(renderer._augment(data))
-        # les marques réelles apparaissent dans la puce de valeur
-        self.assertIn('Équipements premium certifiés', html)
-        self.assertIn('Huawei', html)
-        self.assertIn('Deye', html)
+        imprimees = self._marques_imprimees(html)
+        # Le panneau porte la marque PRODUIT « Canadian Solar » alors que sa
+        # DÉSIGNATION dit « Canadien Solar » : la pastille imprimée ne peut donc
+        # venir que de la vraie donnée produit, jamais d'un mot lu dans le
+        # libellé de la ligne. C'est le cœur de la garde (a).
+        self.assertIn('Canadian Solar', imprimees)
+        self.assertNotIn('Canadien Solar', imprimees)
+        # (b) et AUCUNE marque inventée : tout ce qui est imprimé est porté par
+        # une ligne réelle du devis.
+        self.assertTrue(
+            imprimees <= self._marques_du_devis(data),
+            f'marques imprimées hors des lignes du devis : '
+            f'{imprimees - self._marques_du_devis(data)}')
 
     @tag('pdf')
     def test_brand_chip_falls_back_to_iec_without_marques(self):
         from apps.ventes.quote_engine.residential import renderer, render
         from apps.ventes.quote_engine.builder import build_quote_data
-        # lignes sans marque → repli « équipements certifiés IEC »
+        # lignes sans AUCUNE marque → le moteur n'en invente pas une
         devis = self._devis(ref='DEV-QX7-NOBRAND')
         for li in devis.lignes.all():
             li.produit.marque = ''
             li.produit.save(update_fields=['marque'])
         data = build_quote_data(devis)
+        # précondition du scénario : plus une seule marque dans les données
+        self.assertEqual(self._marques_du_devis(data), set())
         html = render.build_html(renderer._augment(data))
-        self.assertIn('Équipements premium certifiés IEC', html)
+        # … donc plus une seule pastille de marque sur le PDF client.
+        self.assertEqual(self._marques_imprimees(html), set())
 
 
 @tag('pdf')
@@ -2146,6 +2186,19 @@ class TestResidentialWarmPathCache(TestCase):
         theme.logo_dark_b64()
         self.assertEqual(theme.logo_dark_b64.cache_info().misses, 1)
 
+    # 2026-08-14 — POURQUOI ON COMPTE UN ÉCART ET PLUS UN NOMBRE ABSOLU.
+    # Ces deux gardes exigeaient littéralement 1 et 2 appels à ``charts.build_all``.
+    # QRES62 (commit 307575f7) a introduit le rendu EN DEUX PASSES dans
+    # ``renderer.render_pdf_bytes`` (passe 1 → mesure du vide résiduel réel du
+    # PDF → passe 2 avec les joints élastiques dimensionnés), et chaque passe
+    # rappelle ``render.build_html`` → ``build_ctx`` → ``charts.build_all``.
+    # Un rendu À FROID coûte donc 2 appels au lieu de 1 : la CI observait 2 != 1
+    # et 4 != 2 — soit EXACTEMENT le double, la preuve que le cache marche
+    # toujours. Le nombre de passes est un détail de mise en page (il retombe
+    # même à 1 si PyMuPDF est absent : ``_measure_page_slack`` renvoie {}) ;
+    # l'EXIGENCE QX8, elle, est un ÉCART : un second rendu du même devis ne
+    # coûte RIEN, un devis édité recoûte un vrai rendu. C'est ce qu'on mesure
+    # maintenant — la garde mord donc quel que soit le nombre de passes.
     def test_second_render_reuses_bytes_and_skips_chart_work(self):
         from unittest.mock import patch
         from apps.ventes.quote_engine.residential import renderer
@@ -2159,9 +2212,14 @@ class TestResidentialWarmPathCache(TestCase):
         with patch.object(charts_mod, 'build_all',
                           side_effect=real_build_all) as spy:
             pdf1 = renderer.render_pdf_bytes(data)
+            apres_froid = spy.call_count
             pdf2 = renderer.render_pdf_bytes(data)
-        # second rendu : servi depuis le cache → graphiques NON recalculés
-        self.assertEqual(spy.call_count, 1)
+            apres_chaud = spy.call_count
+        # le rendu à froid calcule bien les graphiques…
+        self.assertGreaterEqual(apres_froid, 1)
+        # … et le second rendu est servi depuis le cache : ZÉRO travail de
+        # graphique en plus (si le cache régressait, apres_chaud doublerait).
+        self.assertEqual(apres_chaud, apres_froid)
         # octets byte-identiques
         self.assertEqual(pdf1, pdf2)
         self.assertEqual(pdf1[:4], b'%PDF')
@@ -2177,9 +2235,13 @@ class TestResidentialWarmPathCache(TestCase):
         real = charts_mod.build_all
         with patch.object(charts_mod, 'build_all', side_effect=real) as spy:
             renderer.render_pdf_bytes(data)
+            apres_froid = spy.call_count
             renderer.render_pdf_bytes(data2)
-        # empreintes différentes → deux vrais rendus (pas de PDF périmé servi)
-        self.assertEqual(spy.call_count, 2)
+            apres_edition = spy.call_count
+        # empreintes différentes → un VRAI second rendu, du même coût que le
+        # premier (jamais un PDF périmé servi depuis le cache).
+        self.assertGreaterEqual(apres_froid, 1)
+        self.assertEqual(apres_edition, 2 * apres_froid)
 
 
 class TestQuoteSignLinkAndPageNumbers(TestCase):
@@ -2293,8 +2355,12 @@ class TestResidentialSingleOptionGate(TestCase):
         # page 2 : l'en-tête « commun aux deux options » est renommé
         self.assertNotIn('Équipement commun aux deux options', html)
         self.assertIn('Votre équipement', html)
-        # page 2 : aucun bloc delta « ajoute »
-        self.assertNotIn('<small>ajoute</small>', html)
+        # page 2 : aucun bloc delta (cf. note d'ancrage sur le test à deux
+        # options ci-dessous — cette assertion était devenue VIDE DE SENS,
+        # elle interdisait un marqueur que le moteur ne rend plus depuis
+        # QRES27 ; elle mord de nouveau sur le bloc réellement rendu).
+        self.assertNotIn('<div class="p2-deltas">', html)
+        self.assertNotIn('Spécifique à l&rsquo;option 1', html)
         # aucune option « Sans batterie » fantôme (dépourvue d'onduleur)
         self.assertNotIn('Sans batterie', html)
         # l'option réelle est bien présente
@@ -2313,7 +2379,17 @@ class TestResidentialSingleOptionGate(TestCase):
         self.assertIn('Option 1', html)
         self.assertIn('Option 2', html)
         self.assertIn('Équipement commun aux deux options', html)
-        self.assertIn('<small>ajoute</small>', html)
+        # 2026-08-14 — l'ancien marqueur ``<small>ajoute</small>`` a disparu du
+        # moteur avec QRES27 (commit db7ff60f) : les en-têtes des deux cartes
+        # delta ont été recomposés en « Spécifique à l'option N — … » (le mot
+        # « ajoute » pendait sous la barre or et le contraste blanc-sur-#F5A623
+        # était mauvais). La garde QX5 épinglait ce marqueur mort ; elle est
+        # ré-ancrée sur le bloc réellement rendu — ``<div class="p2-deltas">``
+        # n'existe dans le corps QUE quand ``deux_options`` est vrai (le sélecteur
+        # CSS ``.p2-deltas {`` de la feuille de style ne matche pas cette chaîne).
+        self.assertIn('<div class="p2-deltas">', html)
+        self.assertIn('Spécifique à l&rsquo;option 1 — Sans batterie', html)
+        self.assertIn('Spécifique à l&rsquo;option 2 — Avec batterie', html)
 
 
 # ─── SCA27 — pied de page + liens du PDF résidentiel pilotés par CompanyProfile ─

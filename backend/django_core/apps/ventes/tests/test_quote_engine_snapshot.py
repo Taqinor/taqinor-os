@@ -284,11 +284,47 @@ def check_or_write_baseline(name, pdf_bytes, *, page_count, update=None):
 def _build_snapshot_devis(company, user, client_obj, case):
     """Construit le Devis fixe d'un cas de baseline (ORM nue, réutilisable
     hors TestCase par ``update_pdf_baselines``)."""
-    return make_devis(
+    devis = make_devis(
         company, user, client_obj, case['lines'],
         reference=case['reference'],
         mode_installation=case.get('mode_installation', ''),
         etude_params=case.get('etude_params'))
+    _pin_share_token(devis, case)
+    return devis
+
+
+def _pin_share_token(devis, case):
+    """Fige le jeton du lien de signature — SANS ce verrou, aucun baseline
+    golden ne peut être stable.
+
+    2026-08-14 — POURQUOI. Le builder mint (ou réutilise) un ``ShareLink`` pour
+    le CTA de signature, et son jeton est ``secrets.token_urlsafe(32)`` : 43
+    caractères ALÉATOIRES à chaque nouveau devis. Or ce lien est IMPRIMÉ EN
+    TOUTES LETTRES sur la page 4 du devis agricole
+    (``agricole/economics_page.py`` : ``{_disp(l_sign)}``) et encodé dans le QR
+    de la page 3 du devis résidentiel (``residential/trust.py``). La comparaison
+    pixel de ces pages comparait donc, en partie, du bruit cryptographique : le
+    nightly a mesuré 2,13 % puis 2,06 % de diff sur ``agricole_pompage_full_p4``
+    entre deux exécutions du MÊME code agricole (seuil 2 %). Régénérer le
+    baseline ne l'aurait pas rendu stable — il aurait redérivé dès la nuit
+    suivante, et le baseline ``residentiel_full`` (encore à générer, avec son QR
+    en page 3) serait né instable.
+
+    ``ShareLink.for_devis`` réutilise tout lien encore valide : en poser un avec
+    un jeton FIXE avant le rendu passe donc par le VRAI chemin de production
+    (aucun mock, aucune branche de test dans le moteur) et rend les octets
+    reproductibles. Le jeton dérive de la référence du cas → stable d'une
+    exécution à l'autre, et distinct d'un cas à l'autre (la colonne est
+    ``unique`` et ``update_pdf_baselines`` construit les 5 cas dans UNE seule
+    transaction).
+
+    Appelé depuis ``_build_snapshot_devis``, donc partagé à l'identique par le
+    test et par la commande ``update_pdf_baselines`` — jamais deux logiques.
+    """
+    from apps.ventes.models import ShareLink
+    ShareLink.objects.create(
+        company=devis.company, devis=devis,
+        token=f"snapshot-{case['reference'].lower()}-token")
 
 
 # Un cas par format — SOURCE UNIQUE partagée par le test (TestCase, DB de
