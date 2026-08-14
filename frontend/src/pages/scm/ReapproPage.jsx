@@ -7,7 +7,7 @@ import { StateBlock } from '../../components/StateBlock'
 
 /* ============================================================================
    NTSCM7 — Tableau de bord réappro consolidé (« remplace/étend » le mini
-   panneau FG364 brut de PilotageStock.jsx : ici chaque ligne combine stock
+   panneau FG364 brut de PilotageStock.jsx) : ici chaque ligne combine stock
    actuel, prévision de rupture (core.stock_reorder) ET la politique de stock
    NTSCM6 pour un vrai statut à 3 niveaux (OK / à commander / rupture
    imminente), plus le fournisseur le moins cher. Écran INTERNE

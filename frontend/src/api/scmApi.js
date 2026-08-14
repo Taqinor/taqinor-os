@@ -27,6 +27,21 @@ const scmApi = {
   tableauBordReappro: (params) => api.get('/scm/tableau-bord-reappro/', { params }),
   creerBrouillonsBcfReappro: (body = {}) =>
     api.post('/scm/tableau-bord-reappro/creer-bcf/', body),
+
+  // NTSCM12/13/14/15 — cycle de planification S&OP mensuel.
+  cyclesSop: (params) => api.get('/scm/cycles-sop/', { params }),
+  creerCycleSop: (body) => api.post('/scm/cycles-sop/', body),
+  cycleSop: (id) => api.get(`/scm/cycles-sop/${id}/`),
+  avancerStatutCycleSop: (id, body = {}) =>
+    api.post(`/scm/cycles-sop/${id}/avancer-statut/`, body),
+  reouvrirCycleSop: (id, body = {}) => api.post(`/scm/cycles-sop/${id}/reouvrir/`, body),
+  historiqueCycleSop: (id) => api.get(`/scm/cycles-sop/${id}/historique/`),
+  lignesDemandeCycleSop: (id) => api.get(`/scm/cycles-sop/${id}/lignes-demande/`),
+  ajusterDemandeCycleSop: (id, body) =>
+    api.post(`/scm/cycles-sop/${id}/ajuster-demande/`, body),
+  calculerOffreCycleSop: (id) => api.post(`/scm/cycles-sop/${id}/calculer-offre/`, {}),
+  ecartsCycleSop: (id) => api.get(`/scm/cycles-sop/${id}/ecarts/`),
+  impactFinancierCycleSop: (id) => api.get(`/scm/cycles-sop/${id}/impact-financier/`),
 }
 
 export default scmApi

@@ -242,6 +242,21 @@ class CyclePlanificationSOPViewSet(CompanyScopedModelViewSet):
         lignes = cycle.lignes_offre.select_related('produit').all()
         return Response(LigneOffreSOPSerializer(lignes, many=True).data)
 
+    @action(detail=True, methods=['get'], url_path='impact-financier')
+    def impact_financier(self, request, pk=None):
+        """NTSCM15 — impact financier (CA prévisionnel vs forecast) du plan
+        de demande du cycle. Réservé Administrateur (au-delà du palier
+        Responsable du viewset — donnée de marge/CA sensible)."""
+        from authentication.permissions import IsAdminRole
+
+        from . import selectors
+
+        if not IsAdminRole().has_permission(request, self):
+            return Response(
+                {'detail': 'Réservé aux administrateurs.'}, status=403)
+        cycle = self.get_object()
+        return Response(selectors.impact_financier_cycle(cycle))
+
 
 @api_view(['GET'])
 @permission_classes([IsResponsableOrAdmin])

@@ -189,3 +189,89 @@ def tableau_bord_reappro(company, *, statut=None, classe_abc=None, fournisseur_i
         })
 
     return lignes
+
+
+# Seuil d'alerte (jamais de blocage) sur l'écart CA prévisionnel vs forecast.
+SEUIL_ALERTE_ECART_CA_PCT = Decimal('15')
+
+
+def impact_financier_cycle(cycle):
+    """NTSCM15 — impact financier (CA prévisionnel) du plan de demande d'un
+    cycle S&OP, rapproché du forecast CA existant.
+
+    Valorise ``LigneDemandeSOP.quantite_finale`` (NTSCM13) × ``Produit.
+    prix_vente`` — JAMAIS ``prix_achat`` (règle transverse, moteur de devis
+    RULE #4 : le prix d'achat n'apparaît jamais dans une sortie chiffrée
+    destinée à un tableau de bord de pilotage) — agrégée en CA prévisionnel
+    du mois du cycle.
+
+    Compare au forecast CA calculé par :func:`core.forecast.forecast_series`
+    (FG361, déjà bâti, réutilisé en LECTURE SEULE) à partir des 12 mois
+    d'historique précédents. Aucun sélecteur de forecast CA mensuel n'existe
+    encore côté ``apps.ventes``/``apps.reporting`` : l'historique est lu via
+    ``apps.ventes.selectors.carnet_commande_par_mois`` (le carnet de
+    commandes ENGAGÉ — devis acceptés non encore facturés — le meilleur
+    proxy de CA mensuel déjà exposé en lecture seule par ``ventes``, jamais
+    un import de son modèle). Signale une ALERTE (jamais un blocage) si
+    l'écart dépasse :data:`SEUIL_ALERTE_ECART_CA_PCT`."""
+    from calendar import monthrange
+
+    from apps.ventes.selectors import carnet_commande_par_mois
+    from core.forecast import forecast_series
+
+    from .models import LigneDemandeSOP
+
+    lignes = LigneDemandeSOP.objects.filter(cycle=cycle).select_related('produit')
+
+    lignes_valorisees = []
+    ca_previsionnel = Decimal('0')
+    for ligne in lignes:
+        prix_vente = ligne.produit.prix_vente or Decimal('0')
+        valeur = ligne.quantite_finale * prix_vente
+        ca_previsionnel += valeur
+        lignes_valorisees.append({
+            'produit_id': ligne.produit_id,
+            'produit_nom': ligne.produit.nom,
+            'quantite_finale': ligne.quantite_finale,
+            'prix_vente': prix_vente,
+            'valeur_ht': valeur,
+        })
+
+    y, m = int(cycle.periode[:4]), int(cycle.periode[5:7])
+    idx_cible = y * 12 + (m - 1)
+    y0, m0 = divmod(idx_cible - 12, 12)
+    debut_hist = date(y0, m0 + 1, 1)
+    yf, mf = divmod(idx_cible - 1, 12)
+    fin_hist = date(yf, mf + 1, monthrange(yf, mf + 1)[1])
+
+    historique_ca = carnet_commande_par_mois(cycle.company, debut_hist, fin_hist)
+    points = [
+        {'period': periode, 'value': float(valeur)}
+        for periode, valeur in historique_ca.items()
+    ]
+    resultat_forecast = forecast_series(points, horizon=1)
+
+    ca_forecast = None
+    for point in resultat_forecast.forecast:
+        if point.period == cycle.periode:
+            ca_forecast = Decimal(str(point.value))
+            break
+
+    ecart_pct = None
+    alerte_ecart = False
+    if ca_forecast:
+        ecart_pct = (
+            (ca_previsionnel - ca_forecast) / ca_forecast * 100
+        ).quantize(Decimal('0.01'))
+        alerte_ecart = abs(ecart_pct) > SEUIL_ALERTE_ECART_CA_PCT
+
+    return {
+        'cycle_id': cycle.id,
+        'periode': cycle.periode,
+        'ca_previsionnel_ht': ca_previsionnel,
+        'ca_forecast_ht': ca_forecast,
+        'ecart_pct': ecart_pct,
+        'alerte_ecart': alerte_ecart,
+        'seuil_alerte_pct': SEUIL_ALERTE_ECART_CA_PCT,
+        'lignes': lignes_valorisees,
+    }
