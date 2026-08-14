@@ -4,6 +4,7 @@ from django.http import HttpResponse  # noqa: F401
 from drf_spectacular.utils import extend_schema, inline_serializer
 from rest_framework import viewsets, filters, serializers, status  # noqa: F401
 from rest_framework.decorators import action  # noqa: F401
+from rest_framework.negotiation import DefaultContentNegotiation
 from rest_framework.response import Response  # noqa: F401
 from core.entite_scoping import EntiteScopeMixin
 from core.viewsets import CompanyScopedModelViewSet
@@ -56,6 +57,25 @@ from .fournisseur_scm import ScmProduitTcoMixin  # noqa: E402
 from .negoce import AtpProduitMixin  # noqa: E402
 
 
+class _MarketplaceFormatContentNegotiation(DefaultContentNegotiation):
+    """NTRET20 — sur ``export-marketplace`` le paramètre ``?format=`` désigne
+    le format DU FLUX (avito/google_shopping), PAS le renderer DRF.
+
+    Sans cette surcharge, DRF traite ``?format=avito`` comme un override de
+    renderer (``URL_FORMAT_OVERRIDE``) : aucun renderer enregistré ne porte ce
+    format, donc ``filter_renderers`` lève un ``Http404`` AVANT même
+    d'exécuter la vue — motif ``apps.douane.views._ExportFormatContent
+    Negotiation`` (NTLOG47). La vue renvoie une ``HttpResponse`` manuelle,
+    jamais via ce renderer.
+    """
+
+    def select_renderer(self, request, renderers, format_suffix=None):
+        for renderer in renderers:
+            if renderer.format == 'json':
+                return renderer, renderer.media_type
+        return renderers[0], renderers[0].media_type
+
+
 class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
                      CompanyScopedModelViewSet):
     # YOPSB13 — le FournisseurSerializer imbriqué (ProduitSerializer.fournisseur)
@@ -104,6 +124,12 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
             # XPOS17 — `etiquettes-showroom` (impression) est LECTURE SEULE,
             # même garde que l'action `etiquettes` N20.
             return [IsAnyRole()]
+        elif self.action == 'export_marketplace':
+            # NTRET20 — publier un flux PUBLIC de catalogue est une décision
+            # commerciale : responsable/admin, jamais tout rôle
+            # (`get_permissions` prime sur le `permission_classes` de
+            # l'@action, d'où ce cas explicite).
+            return [IsResponsableOrAdmin()]
         elif self.action in ('create', 'dupliquer'):
             # QG4 — création réservée à Directeur + Commercial responsable.
             # QP2 — le clone (`dupliquer`) EST une création : même garde. Ce
@@ -514,6 +540,42 @@ class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
         response['Content-Disposition'] = (
             'inline; filename="etiquettes-produits.pdf"')
         return response
+
+    @extend_schema(responses={(200, 'text/csv'): bytes})
+    @action(detail=False, methods=['get'], url_path='export-marketplace',
+            permission_classes=[IsResponsableOrAdmin],
+            content_negotiation_class=_MarketplaceFormatContentNegotiation)
+    def export_marketplace(self, request):
+        """NTRET20 — flux produits pour place de marché
+        (``?format=avito|google_shopping``).
+
+        Génère le FICHIER prêt à importer / à pointer en flux URL — aucune
+        intégration API poussée (les comptes marchands Avito/Google sont une
+        étape manuelle du fondateur). Seuls les produits marqués vendables en
+        ligne (``ecommerce_connect.ProduitSync``) sortent ; ``prix_achat``
+        n'entre JAMAIS dans un flux PUBLIC.
+        """
+        from apps.parametres.models import CompanyProfile
+
+        from ..marketplace_feeds import generer_flux
+
+        company = request.user.company
+        cible = (request.query_params.get('format') or '').strip()
+        try:
+            profil = CompanyProfile.get(company=company)
+            titre = getattr(profil, 'nom', '') or 'Catalogue'
+        except Exception:  # noqa: BLE001 — profil absent : titre neutre
+            titre = 'Catalogue'
+        try:
+            contenu, content_type, nom_fichier = generer_flux(
+                company, cible, titre_flux=titre)
+        except ValueError as exc:
+            return Response({'detail': str(exc)},
+                            status=status.HTTP_400_BAD_REQUEST)
+        reponse = HttpResponse(contenu, content_type=content_type)
+        reponse['Content-Disposition'] = (
+            f'attachment; filename="{nom_fichier}"')
+        return reponse
 
     @extend_schema(responses={(200, 'application/pdf'): bytes})
     @action(detail=False, methods=['get'], url_path='etiquettes-prix',
