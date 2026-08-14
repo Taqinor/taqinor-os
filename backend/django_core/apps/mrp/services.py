@@ -910,3 +910,160 @@ def archiver_of_prototype_anciens(company, *, today=None, user=None):
         of.soft_delete(user=user)
         archives.append(of)
     return archives
+
+
+# ── NTMFG35 — Import CSV/XLSX de gammes opératoires en masse ─────────────
+
+# En-têtes acceptés (normalisés via `apps.dataimport.parsing.normalize_header`)
+# → clé canonique. `produit` référence l'ID du produit (résolu company-scopé
+# via `stock.selectors.get_produit_scoped`, jamais un import du modèle
+# `stock.Produit` — frontière cross-app) ; `poste_charge` référence
+# `PosteDeCharge.code`, un champ 100% `mrp` — aucune résolution cross-app.
+_GAMMES_IMPORT_FIELD_MAP = {
+    'produit': 'produit', 'produit_code': 'produit', 'code_produit': 'produit',
+    'ordre': 'ordre',
+    'poste_charge': 'poste_charge', 'poste': 'poste_charge',
+    'libelle': 'libelle',
+    'temps_prepa_min': 'temps_prepa_min', 'temps_preparation_min': 'temps_prepa_min',
+    'temps_unitaire_min': 'temps_unitaire_min',
+}
+
+
+def _ligne_gamme_import(row):
+    """Normalise les clés d'une ligne brute (`dataimport.parsing.iter_rows`)
+    vers les clés canoniques de `_GAMMES_IMPORT_FIELD_MAP`."""
+    from apps.dataimport.parsing import normalize_header
+
+    out = {}
+    for header, valeur in row.items():
+        cle = _GAMMES_IMPORT_FIELD_MAP.get(normalize_header(header))
+        if cle:
+            out[cle] = valeur
+    return out
+
+
+def importer_gammes_csv(company, rows, *, user=None, filename=''):
+    """NTMFG35 — importe en masse des OPÉRATIONS de gamme depuis des lignes
+    déjà parsées (`apps.dataimport.parsing.iter_rows`, réutilisé tel quel —
+    jamais un parseur ad-hoc). Colonnes attendues : produit(id)/ordre/
+    poste_charge(code)/libelle/temps_prepa_min/temps_unitaire_min.
+
+    Validation LIGNE PAR LIGNE — un produit ou un poste de charge inconnu
+    pour la société rejette CETTE ligne (motif précis), jamais tout le
+    fichier. Pour chaque ligne valide, la `Gamme` ACTIVE du produit est
+    résolue (ou créée en version 1 si aucune n'existe) et son
+    `OperationGamme` à cet `ordre` est créé, ou MIS À JOUR s'il existe déjà
+    (idempotent : ré-importer le même fichier ne duplique jamais).
+
+    Bookkeeping via `apps.dataimport.ImportJob`/`ImportJobRow` (moteur
+    générique réutilisé tel quel, jamais réécrit) — le rapport d'erreurs
+    téléchargeable se lit ensuite via
+    `apps.dataimport.services.erreurs_csv_rows(job)`. Renvoie
+    ``{job_id, total_lignes, created_count, updated_count, error_count,
+    erreurs: [{ligne, motif}]}``."""
+    from apps.dataimport.models import ImportJob, ImportJobRow
+    from apps.stock.selectors import get_produit_scoped
+
+    from .models import Gamme, OperationGamme, PosteDeCharge
+
+    created_count = 0
+    updated_count = 0
+    erreurs = []
+    gammes_par_produit = {}  # produit_id -> Gamme (évite un re-lookup par ligne).
+
+    for i, row in enumerate(rows, 1):
+        f = _ligne_gamme_import(row)
+        motif = None
+
+        produit = None
+        try:
+            produit_id = int(f.get('produit') or 0)
+        except (TypeError, ValueError):
+            produit_id = 0
+        if produit_id:
+            produit = get_produit_scoped(company, produit_id)
+        if produit is None:
+            motif = 'Produit inconnu pour cette société.'
+
+        poste = None
+        if motif is None:
+            code_poste = (f.get('poste_charge') or '').strip()
+            poste = PosteDeCharge.objects.filter(
+                company=company, code=code_poste).first()
+            if poste is None:
+                motif = f'Poste de charge inconnu pour cette société : « {code_poste} ».'
+
+        libelle = (f.get('libelle') or '').strip()
+        if motif is None and not libelle:
+            motif = 'Libellé manquant.'
+
+        try:
+            ordre = int(f.get('ordre') or 0) or 1
+        except (TypeError, ValueError):
+            ordre = 1
+        temps_prepa = _dec(f.get('temps_prepa_min') or 0)
+        temps_unitaire = _dec(f.get('temps_unitaire_min') or 0)
+
+        if motif is not None:
+            erreurs.append({'ligne': i, 'motif': motif})
+            continue
+
+        try:
+            gamme = gammes_par_produit.get(produit.id)
+            if gamme is None:
+                gamme = (Gamme.objects
+                         .filter(company=company, produit=produit, actif=True)
+                         .order_by('-version').first())
+                if gamme is None:
+                    gamme = Gamme.objects.create(
+                        company=company, produit=produit,
+                        nom=f'Gamme {produit.nom}', version=1)
+                gammes_par_produit[produit.id] = gamme
+
+            existante = OperationGamme.objects.filter(
+                gamme=gamme, ordre=ordre).first()
+            if existante is not None:
+                existante.poste_charge = poste
+                existante.libelle = libelle
+                existante.temps_prepa_min = temps_prepa
+                existante.temps_unitaire_min = temps_unitaire
+                existante.save(update_fields=[
+                    'poste_charge', 'libelle', 'temps_prepa_min',
+                    'temps_unitaire_min'])
+                updated_count += 1
+            else:
+                OperationGamme.objects.create(
+                    company=company, gamme=gamme, ordre=ordre,
+                    poste_charge=poste, libelle=libelle,
+                    temps_prepa_min=temps_prepa,
+                    temps_unitaire_min=temps_unitaire)
+                created_count += 1
+        except Exception as exc:  # noqa: BLE001 — une ligne KO n'arrête pas les autres.
+            erreurs.append({'ligne': i, 'motif': f'Erreur inattendue : {exc}'})
+
+    job = ImportJob.objects.create(
+        company=company, target='mrp_gammes', fichier_nom=filename or '',
+        mode='creer', statut=(
+            ImportJob.Statut.OK if not erreurs
+            else (ImportJob.Statut.PARTIEL if (created_count or updated_count)
+                  else ImportJob.Statut.ECHEC)),
+        total_lignes=len(rows), created_count=created_count,
+        updated_count=updated_count, error_count=len(erreurs),
+        created_by=user if getattr(user, 'is_authenticated', False) else None)
+    for erreur in erreurs:
+        brute = rows[erreur['ligne'] - 1]
+        # JSON-safe (une cellule XLSX peut renvoyer un `datetime`/`float`
+        # brut, jamais garanti sérialisable tel quel sur un `JSONField`).
+        donnees = {str(k): ('' if v is None else str(v)) for k, v in brute.items()}
+        ImportJobRow.objects.create(
+            job=job, ligne=erreur['ligne'], statut=ImportJobRow.Statut.ERREUR,
+            motif=erreur['motif'], donnees=donnees)
+
+    return {
+        'job_id': job.id,
+        'total_lignes': len(rows),
+        'created_count': created_count,
+        'updated_count': updated_count,
+        'error_count': len(erreurs),
+        'erreurs': erreurs,
+    }

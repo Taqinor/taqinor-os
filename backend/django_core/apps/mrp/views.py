@@ -7,6 +7,7 @@ from rest_framework import mixins, serializers, viewsets
 from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.exceptions import ValidationError
 from rest_framework.negotiation import DefaultContentNegotiation
+from rest_framework.parsers import MultiPartParser
 from rest_framework.response import Response
 
 from core.permissions import ScopedPermission
@@ -78,6 +79,70 @@ class GammeViewSet(CompanyScopedModelViewSet):
         'operations__poste_charge').all()
     serializer_class = GammeSerializer
     filterset_fields = ['produit', 'actif']
+
+    # PACT7 — vue-fonction/agrégat : sans déclaration explicite, le schéma
+    # publierait cette action vide (aucun serializer_class n'en tient compte,
+    # la réponse est un dict agrégé, pas un `Gamme`).
+    @extend_schema(
+        request={'multipart/form-data': {
+            'type': 'object', 'properties': {'file': {'type': 'string', 'format': 'binary'}}}},
+        responses=inline_serializer('MrpImportGammesResultat', {
+            'job_id': serializers.IntegerField(),
+            'total_lignes': serializers.IntegerField(),
+            'created_count': serializers.IntegerField(),
+            'updated_count': serializers.IntegerField(),
+            'error_count': serializers.IntegerField(),
+            'erreurs': inline_serializer('MrpImportGammesErreur', {
+                'ligne': serializers.IntegerField(),
+                'motif': serializers.CharField(),
+            }, many=True),
+        }))
+    @action(detail=False, methods=['post'], url_path='import',
+            parser_classes=[MultiPartParser],
+            permission_classes=[EstResponsableOuAdminMRP])
+    def importer(self, request):
+        """NTMFG35 — ``POST /api/django/mrp/gammes/import/`` : import CSV/XLSX
+        en masse d'opérations de gamme (produit(id)/ordre/poste_charge(code)/
+        libelle/temps_prepa_min/temps_unitaire_min). Une ligne invalide
+        (produit ou poste de charge inconnu) est rejetée avec un motif
+        précis ; les autres lignes s'importent normalement. Idempotent
+        (réimporter le même fichier met à jour, ne duplique jamais)."""
+        from apps.dataimport.parsing import iter_rows
+
+        from .services import importer_gammes_csv
+
+        f = request.FILES.get('file')
+        if f is None:
+            return Response({'detail': 'Aucun fichier fourni.'}, status=400)
+        try:
+            _headers, rows = iter_rows(f.read(), f.name)
+        except Exception:
+            return Response(
+                {'detail': 'Fichier illisible (encodage invalide).'}, status=400)
+        resultat = importer_gammes_csv(
+            request.user.company, rows, user=request.user, filename=f.name)
+        return Response(resultat, status=200)
+
+    @extend_schema(responses={200: OpenApiTypes.BINARY})
+    @action(detail=False, methods=['get'], url_path=r'import/(?P<job_id>\d+)/erreurs',
+            permission_classes=[EstResponsableOuAdminMRP])
+    def import_erreurs(self, request, job_id=None):
+        """NTMFG35 — ``GET /api/django/mrp/gammes/import/<job_id>/erreurs/`` :
+        rapport d'erreurs téléchargeable (xlsx) du job d'import
+        `job_id` — company-scopé, jamais un job d'une autre société."""
+        from apps.dataimport.models import ImportJob
+        from apps.dataimport.services import erreurs_csv_rows
+        from apps.records.xlsx import build_xlsx_response
+
+        job = ImportJob.objects.filter(
+            pk=job_id, company=request.user.company, target='mrp_gammes').first()
+        if job is None:
+            return Response({'detail': "Job d'import introuvable."}, status=404)
+        headers, rows = erreurs_csv_rows(job)
+        table_rows = [[row.get(h, '') for h in headers] for row in rows]
+        return build_xlsx_response(
+            f'import-gammes-erreurs-{job.id}.xlsx', headers, table_rows,
+            sheet_title='Erreurs import gammes')
 
 
 class OperationGammeViewSet(CompanyScopedModelViewSet):
