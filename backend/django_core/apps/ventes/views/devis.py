@@ -468,9 +468,25 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
         """QX21be — remplace ATOMIQUEMENT toutes les lignes d'un devis en un
         seul commit (édition). Remplace le delete-all-puis-recréer à erreurs
         avalées du générateur, qui pouvait laisser un devis avec moins/aucune
-        ligne. Un échec préserve les lignes d'origine (rollback complet)."""
+        ligne. Un échec préserve les lignes d'origine (rollback complet).
+
+        PV15 — GARDE DE STATUT. Cet endpoint SUPPRIME puis recrée toutes les
+        lignes : sans garde, un appel sur un devis ACCEPTÉ (ou refusé/expiré)
+        effaçait le contenu d'un document déjà engagé, dont la chaîne
+        BonCommande/Facture dépend. Seuls « brouillon » et « envoyé » restent
+        modifiables ; au-delà, 409 avec le statut NOMMÉ (le bon geste est
+        « Réviser », qui crée une nouvelle version). Cette garde ne CHANGE
+        jamais le statut — elle le LIT (règle #4)."""
         from django.db import transaction
         devis = self.get_object()  # borné société par get_queryset
+        _MODIFIABLES = (Devis.Statut.BROUILLON, Devis.Statut.ENVOYE)
+        if devis.statut not in _MODIFIABLES:
+            return Response(
+                {'detail': (
+                    'Devis « %s » : ses lignes ne peuvent plus être '
+                    'remplacées. Utilisez « Réviser » pour en créer une '
+                    'nouvelle version.' % devis.get_statut_display())},
+                status=status.HTTP_409_CONFLICT)
         lignes_in = request.data.get('lignes')
         if not isinstance(lignes_in, list):
             return Response({'detail': 'Champ « lignes » requis (liste).'},
@@ -486,14 +502,16 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
 
     def _replace_lines_atomic(self, devis, lignes_in, company):
         """QX21be — supprime puis recrée les lignes du devis (appelé SOUS une
-        transaction par l'appelant). Produits bornés société ; jamais de
-        ``prix_achat`` accepté du corps.
+        transaction par l'appelant). Produits bornés à la société de
+        l'utilisateur OU au catalogue global (PV15, même portée que
+        ``services._pick_product``) ; jamais de ``prix_achat`` accepté du corps.
 
         XSAL5 — ``optionnelle`` (add-on hors total) est persistée.
         XSAL14 — ``type_ligne`` (produit [défaut] / section / note) + ``ordre`` :
         une ligne section/note ne porte NI produit NI prix (jamais comptée dans
         les totaux). ``ordre`` par défaut = position dans la liste envoyée."""
         from decimal import Decimal, InvalidOperation
+        from django.db.models import Q
         from ..models import LigneDevis
         from apps.stock.models import Produit
         _VALID_TYPES = {c.value for c in LigneDevis.TypeLigne}
@@ -525,8 +543,17 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
                 produit_id = int(li.get('produit'))
             except (TypeError, ValueError):
                 raise ValueError('Ligne sans produit valide.')
+            # PV15 — le catalogue GLOBAL (``company IS NULL``) est quotable :
+            # c'est exactement la portée que ``services._pick_product`` retient
+            # pour composer un devis. Le filtre société-stricte d'origine
+            # REFUSAIT ici des produits que l'auto-composition venait de poser
+            # sur le même devis (« Produit N inconnu » sur un simple
+            # ré-enregistrement). La portée reste bornée : société de
+            # l'utilisateur OU catalogue global — jamais celui d'un autre
+            # tenant.
             produit = Produit.objects.filter(
-                id=produit_id, company=company).first()
+                Q(company=company) | Q(company__isnull=True),
+                id=produit_id).first()
             if produit is None:
                 raise ValueError(f'Produit {produit_id} inconnu.')
             try:
