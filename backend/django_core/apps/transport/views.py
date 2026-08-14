@@ -43,9 +43,38 @@ class OrdreTransportViewSet(CompanyScopedModelViewSet):
         return qs
 
     def perform_create(self, serializer):
+        data = serializer.validated_data
+        conducteur = data.get('conducteur')
+        erreur = services.valider_mode_transport_champs(
+            data.get('mode_transport', OrdreTransport.ModeTransport.AFFRETEMENT),
+            flotte_actif_id=data.get('flotte_actif_id'),
+            conducteur_id=getattr(conducteur, 'id', None),
+            installations_transporteur_id=data.get('installations_transporteur_id'),
+        )
+        if erreur:
+            raise ValidationError({'mode_transport': erreur})
         serializer.save(
             company=self.request.user.company, created_by=self.request.user)
         services.attribuer_numero(serializer.instance)
+
+    def perform_update(self, serializer):
+        instance = serializer.instance
+        data = serializer.validated_data
+        mode_transport = data.get('mode_transport', instance.mode_transport)
+        conducteur = data.get('conducteur', instance.conducteur)
+        flotte_actif_id = data.get('flotte_actif_id', instance.flotte_actif_id)
+        installations_transporteur_id = data.get(
+            'installations_transporteur_id',
+            instance.installations_transporteur_id)
+        erreur = services.valider_mode_transport_champs(
+            mode_transport,
+            flotte_actif_id=flotte_actif_id,
+            conducteur_id=getattr(conducteur, 'id', None),
+            installations_transporteur_id=installations_transporteur_id,
+        )
+        if erreur:
+            raise ValidationError({'mode_transport': erreur})
+        super().perform_update(serializer)
 
     # ── NTLOG3 — lecture imbriquée des étapes ────────────────────────────
     @action(detail=True, methods=['get'], url_path='etapes')

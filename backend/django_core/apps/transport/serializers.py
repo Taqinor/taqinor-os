@@ -43,6 +43,8 @@ class OrdreTransportSerializer(serializers.ModelSerializer):
         source='get_statut_display', read_only=True, default=None)
     type_flux_display = serializers.CharField(
         source='get_type_flux_display', read_only=True, default=None)
+    mode_transport_display = serializers.CharField(
+        source='get_mode_transport_display', read_only=True, default=None)
     lignes = LigneOrdreTransportSerializer(many=True, read_only=True)
     etapes = EtapeTransportSerializer(many=True, read_only=True)
     poids_total_kg = serializers.SerializerMethodField()
@@ -56,7 +58,9 @@ class OrdreTransportSerializer(serializers.ModelSerializer):
             'destinataire_adresse', 'date_enlevement_prevue',
             'date_livraison_prevue', 'statut', 'statut_display',
             'instructions_speciales', 'ventes_boncommande_id',
-            'ventes_devis_id', 'installations_installation_id', 'lignes',
+            'ventes_devis_id', 'installations_installation_id',
+            'mode_transport', 'mode_transport_display', 'flotte_actif_id',
+            'conducteur', 'installations_transporteur_id', 'lignes',
             'etapes', 'poids_total_kg', 'volume_total_m3', 'created_by',
             'created_at', 'updated_at',
         ]

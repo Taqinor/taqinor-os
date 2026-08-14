@@ -30,6 +30,33 @@ def attribuer_numero(ordre):
     return ordre
 
 
+def valider_mode_transport_champs(mode_transport, *, flotte_actif_id=None,
+                                  conducteur_id=None,
+                                  installations_transporteur_id=None):
+    """NTLOG4 — un ordre en affrètement ne peut pas être affecté à un
+    véhicule/conducteur interne, et un ordre en flotte propre ne référence
+    pas de transporteur tiers. Prend des VALEURS SCALAIRES (pas une instance
+    `OrdreTransport`) pour pouvoir être appelée à la fois avant la création
+    (`serializer.validated_data`) et à la mise à jour (fusion instance +
+    champs modifiés) — voir `views.OrdreTransportViewSet`. Renvoie un
+    message d'erreur (str) ou `None`."""
+    from .models import OrdreTransport
+
+    if mode_transport == OrdreTransport.ModeTransport.AFFRETEMENT:
+        if flotte_actif_id or conducteur_id:
+            return (
+                "Un ordre en mode affrètement ne peut pas être affecté à "
+                "un véhicule/conducteur interne — désaffectez la flotte "
+                "propre ou repassez l'ordre en « flotte propre ».")
+    elif mode_transport == OrdreTransport.ModeTransport.FLOTTE_PROPRE:
+        if installations_transporteur_id:
+            return (
+                "Un ordre en flotte propre ne référence pas de "
+                "transporteur tiers — retirez le transporteur ou repassez "
+                "l'ordre en « affrètement ».")
+    return None
+
+
 def recalculer_statut_ordre(ordre):
     """NTLOG3 — fait avancer `ordre.statut` selon la progression de ses
     étapes (ordonnées par `sequence`) : dès que TOUTES les étapes sont

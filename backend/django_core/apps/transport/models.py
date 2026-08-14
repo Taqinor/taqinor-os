@@ -50,6 +50,11 @@ class OrdreTransport(TenantModel):
         LIVRE = 'livre', 'Livré'
         ANNULE = 'annule', 'Annulé'
 
+    class ModeTransport(models.TextChoices):
+        # NTLOG4 — flotte interne vs affrètement tiers.
+        FLOTTE_PROPRE = 'flotte_propre', 'Flotte propre'
+        AFFRETEMENT = 'affretement', 'Affrètement'
+
     numero = models.CharField(max_length=30, blank=True, default='')
     type_flux = models.CharField(
         max_length=25, choices=TypeFlux.choices,
@@ -72,6 +77,23 @@ class OrdreTransport(TenantModel):
     installations_installation_id = models.PositiveIntegerField(
         null=True, blank=True,
         verbose_name='Chantier (installations.Installation)')
+
+    # NTLOG4 — affectation flotte propre vs affrètement.
+    mode_transport = models.CharField(
+        max_length=15, choices=ModeTransport.choices,
+        default=ModeTransport.AFFRETEMENT)
+    # string-FK vers flotte.ActifFlotte (référence unifiée Vehicule XOR
+    # EnginRoulant — FLOTTE5 — jamais un doublon de modèle véhicule).
+    flotte_actif_id = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name='Actif flotte (flotte.ActifFlotte)')
+    conducteur = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='ordres_transport_conduits')
+    # string-FK vers installations.Transporteur EXISTANT (NTLOG6 — jamais un
+    # nouveau modèle transporteur dans cette app).
+    installations_transporteur_id = models.PositiveIntegerField(
+        null=True, blank=True,
+        verbose_name='Transporteur (installations.Transporteur)')
 
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
