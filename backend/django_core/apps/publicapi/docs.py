@@ -155,6 +155,25 @@ def public_api_reference():
                 'tri': ['id', 'nom'],
                 'updated_since': None,
             },
+            {
+                'chemin': '/api/public/v1/scm/previsions-demande/',
+                'scope': 'read:scm',
+                'description': "Prévisions de demande (planification supply chain, NTSCM1/2/3).",
+                'filtres': ['produit', 'segment', 'periode', 'methode'],
+                'tri': ['periode', 'id'],
+                'updated_since': 'genere_le',
+            },
+            {
+                'chemin': '/api/public/v1/scm/politiques-stock/',
+                'scope': 'read:scm',
+                'description': (
+                    "Politiques de stock (ROP/stock de sécurité au niveau de "
+                    "service, NTSCM6). Jamais de prix d'achat."
+                ),
+                'filtres': ['produit', 'classe_abc'],
+                'tri': ['id', 'revise_le'],
+                'updated_since': 'revise_le',
+            },
         ],
         'endpoints_ecriture': {
             'description': (
@@ -279,6 +298,15 @@ def public_api_reference():
                         "Statut de licence de la société (plan_code, "
                         "modules_inclus, sieges_max, sieges_utilises). "
                         "Aucun champ interne (prix, historique)."
+                    ),
+                },
+                {
+                    'chemin': '/api/public/v1/scm/tableau-bord-reappro/',
+                    'scope': 'read:scm',
+                    'description': (
+                        "Tableau de bord réappro consolidé (NTSCM7) — "
+                        "``{'lignes': [...]}``. Le coût d'achat interne "
+                        "est toujours retiré avant sérialisation."
                     ),
                 },
             ],

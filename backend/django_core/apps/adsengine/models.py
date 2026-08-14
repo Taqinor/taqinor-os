@@ -25,7 +25,9 @@ from django.utils import timezone
 
 from core.models import TenantModel
 
-from .rules import RULE_TEMPLATE_CHOICES
+# Callable (jamais une liste figée) : les choix de ``RulePolicy.template_key``
+# sont DÉRIVÉS du catalogue réel à la demande — cf. ``rules.rule_template_choices``.
+from .rules import rule_template_choices
 
 
 class MetaConnection(TenantModel):
@@ -44,7 +46,7 @@ class MetaConnection(TenantModel):
 
     company = models.OneToOneField(
         'authentication.Company',
-        on_delete=models.CASCADE,
+        on_delete=models.CASCADE,  # on_delete: CASCADE — connexion Meta strictement tenant : supprimer la société purge sa connexion pub
         related_name='adsengine_meta_connection',
         verbose_name='Société',
     )
@@ -144,7 +146,7 @@ class GuardrailConfig(TenantModel):
 
     company = models.OneToOneField(
         'authentication.Company',
-        on_delete=models.CASCADE,
+        on_delete=models.CASCADE,  # on_delete: CASCADE — garde-fous pub strictement tenant : suivent la société
         related_name='adsengine_guardrail_config',
         verbose_name='Société',
     )
@@ -330,7 +332,7 @@ class AdSetMirror(TenantModel):
     # FK MÊME APP (adsengine) — autorisée. Nullable : un ad set peut être
     # synchronisé avant que son miroir de campagne parent existe.
     campaign = models.ForeignKey(
-        'adsengine.AdCampaignMirror', on_delete=models.CASCADE,
+        'adsengine.AdCampaignMirror', on_delete=models.CASCADE,  # on_delete: CASCADE — miroir d'adset sans vie propre : suit sa campagne miroir
         null=True, blank=True, related_name='adsets',
         verbose_name='Campagne')
 
@@ -399,7 +401,7 @@ class AdMirror(TenantModel):
     created_via_engine = models.BooleanField(
         default=False, verbose_name='Créée par le moteur')
     adset = models.ForeignKey(
-        'adsengine.AdSetMirror', on_delete=models.CASCADE,
+        'adsengine.AdSetMirror', on_delete=models.CASCADE,  # on_delete: CASCADE — miroir d'annonce sans vie propre : suit son adset miroir
         null=True, blank=True, related_name='ads',
         verbose_name='Ad set')
 
@@ -1359,8 +1361,12 @@ class RulePolicy(TenantModel):
         PROPOSE = 'propose', 'Proposer'
         AUTO = 'auto', 'Automatique'
 
+    # ``choices`` CALLABLE (Django ≥ 5.0) : évalué à la demande depuis le
+    # catalogue réel, donc un gabarit ajouté à ``rule_templates`` devient
+    # armable sans nouvelle migration (la migration ne fige que la RÉFÉRENCE
+    # de la fonction, jamais la liste).
     template_key = models.CharField(
-        max_length=48, choices=RULE_TEMPLATE_CHOICES,
+        max_length=48, choices=rule_template_choices,
         verbose_name='Template de règle')
     enabled = models.BooleanField(default=False, verbose_name='Activée')
     mode = models.CharField(
@@ -2459,7 +2465,7 @@ class FactEntry(TenantModel):
     modèle."""
 
     table = models.ForeignKey(
-        'adsengine.FactTable', on_delete=models.CASCADE,
+        'adsengine.FactTable', on_delete=models.CASCADE,  # on_delete: CASCADE — ligne de fait sans vie propre : suit sa table de faits
         related_name='entries', verbose_name='Table de faits')
     cle = models.CharField(max_length=100, verbose_name='Clé')
     valeur = models.CharField(max_length=255, verbose_name='Valeur')

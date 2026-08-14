@@ -143,14 +143,27 @@ export default function SessionScreen() {
                     ` · Écart TPE : ${formatMAD(s.ecart_tpe, { withSymbol: false })} DH`}
                 </span>
               </div>
-              <div className="flex gap-2">
+              <div className="flex items-center gap-2">
                 <Button type="button" variant="outline" size="sm" onClick={() => handleRapportZ(s)} disabled={busy}>
                   Rapport Z
                 </Button>
                 {s.statut === 'ouverte' && (
-                  <Button type="button" size="sm" onClick={() => ouvrirCloture(s)} disabled={busy}>
-                    Clôturer
-                  </Button>
+                  <>
+                    {/* NTRET31 — écran client (customer-facing display),
+                        second moniteur/tablette : lien réel, pas d'entrée
+                        de nav dédiée (segment dynamique :session_id). */}
+                    <a
+                      href={`/pos/ecran-client/${s.id}`}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-sm text-primary underline"
+                    >
+                      Écran client
+                    </a>
+                    <Button type="button" size="sm" onClick={() => ouvrirCloture(s)} disabled={busy}>
+                      Clôturer
+                    </Button>
+                  </>
                 )}
               </div>
             </li>

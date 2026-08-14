@@ -30,9 +30,11 @@ def suggestions_rangement_reception(reception):
 
     La suggestion réutilise ``installations.selectors.suggerer_bin_putaway``
     (FG320/ZSTK9) : règle active → casier déjà affecté au produit → premier
-    casier libre par ordre de parcours, chacun sous garde de capacité.
+    casier libre par ordre de parcours, chacun sous garde de capacité. NTWMS38
+    ajoute par-dessus la garde HAZMAT : un casier non déclaré compatible n'est
+    jamais suggéré pour un produit à classe de danger.
     """
-    from apps.installations.selectors import suggerer_bin_putaway
+    from .services_hazmat import suggerer_bin_hazmat_safe
 
     if reception is None:
         return []
@@ -60,8 +62,8 @@ def suggestions_rangement_reception(reception):
             'source': 'aucun',
         }
         if ligne.produit_id:
-            bin_loc = suggerer_bin_putaway(
-                company, ligne.produit_id, emplacement_id,
+            bin_loc = suggerer_bin_hazmat_safe(
+                company, produit or ligne.produit_id, emplacement_id,
                 ligne.quantite or 0)
             if bin_loc is not None:
                 entree.update({
@@ -79,24 +81,91 @@ def suggestions_rangement_reception(reception):
 # ═══════════════════════════════════════════════════════════════════════════
 
 def _casier_pour_ligne(produit, quantite):
-    """(bin, lot, ordre) résolus par la stratégie de picking du produit
-    (NTWMS3). ``ordre`` est le rang de parcours du casier retenu — le tri
-    zone → allée → casier vit dans ``BinLocation.ordre`` (FG319)."""
+    """(bin, lot, ordre, zone, allée) résolus par la stratégie de picking du
+    produit (NTWMS3). ``ordre`` est le rang de parcours du casier retenu — le
+    tri zone → allée → casier vit dans ``BinLocation.ordre`` (FG319) ; zone et
+    allée servent au parcours en serpentin (NTWMS28)."""
     from .selectors_wms import resoudre_allocation_picking
 
     plan = resoudre_allocation_picking(produit, quantite)
     if not plan:
-        return None, None, 1000
+        return None, None, 1000, '', ''
     tete = plan[0]
-    ordre = 1000
+    ordre, zone, allee = 1000, '', ''
     if tete['bin_id']:
         # Le rang de parcours vient du casier lui-même (jamais recalculé ici).
         from .selectors_wms import localisation_casiers
         for casier in localisation_casiers(produit):
             if casier['bin_id'] == tete['bin_id']:
                 ordre = casier['ordre']
+                zone = casier['zone'] or ''
+                allee = casier['allee'] or ''
                 break
-    return tete['bin_id'], tete['lot_id'], ordre
+    return tete['bin_id'], tete['lot_id'], ordre, zone, allee
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# NTWMS28 — Parcours de prélèvement en SERPENTIN (S-shape routing)
+# ═══════════════════════════════════════════════════════════════════════════
+
+def ordonner_parcours_serpentin(entrees):
+    """Ordonne des lignes de prélèvement en S-shape (calcul pur, stdlib).
+
+    Un tri « zone → allée → casier » fait remonter CHAQUE allée par le même
+    bout : le magasinier redescend l'allée à vide avant de passer à la
+    suivante. Le serpentin alterne le sens de parcours d'une allée à l'autre —
+    on entre par le bout où l'on vient de sortir. Résultat : chaque allée
+    n'est traversée qu'UNE fois.
+
+    ``entrees`` — dictionnaires portant ``zone``, ``allee``, ``ordre`` (et ce
+    que l'appelant veut transporter). Les lignes SANS casier connu ne peuvent
+    pas être placées dans le magasin : elles restent à la fin, dans leur ordre
+    d'origine (comportement historique).
+    """
+    localisees, sans_casier = [], []
+    for entree in entrees or []:
+        if (entree.get('zone') or entree.get('allee')):
+            localisees.append(entree)
+        else:
+            sans_casier.append(entree)
+
+    allees = {}
+    for entree in localisees:
+        cle = (str(entree.get('zone') or ''), str(entree.get('allee') or ''))
+        allees.setdefault(cle, []).append(entree)
+
+    ordonnees = []
+    for rang, cle in enumerate(sorted(allees)):
+        lignes = sorted(allees[cle], key=lambda e: (e.get('ordre') or 0))
+        # Allées paires montantes, impaires descendantes : le serpentin.
+        if rang % 2 == 1:
+            lignes.reverse()
+        ordonnees.extend(lignes)
+    return ordonnees + sans_casier
+
+
+def recalculer_parcours_vague(vague):
+    """Renumérote ``ordre_parcours`` d'une vague existante en serpentin.
+
+    Utile après l'ajout de lignes à une vague déjà créée. Idempotent.
+    """
+    from django.db import transaction
+
+    lignes = list(vague.lignes.select_related('bin').all())
+    entrees = [{
+        'ligne': ligne,
+        'zone': (ligne.bin.zone if ligne.bin_id else '') or '',
+        'allee': (ligne.bin.allee if ligne.bin_id else '') or '',
+        'ordre': (ligne.bin.ordre if ligne.bin_id else 1000),
+    } for ligne in lignes]
+    with transaction.atomic():
+        for rang, entree in enumerate(
+                ordonner_parcours_serpentin(entrees), start=1):
+            ligne = entree['ligne']
+            if ligne.ordre_parcours != rang:
+                ligne.ordre_parcours = rang
+                ligne.save(update_fields=['ordre_parcours'])
+    return vague
 
 
 def creer_vague_depuis_besoins(*, company, user=None, besoins=None,
@@ -148,6 +217,10 @@ def creer_vague_depuis_besoins(*, company, user=None, besoins=None,
             id__in=[b.get('produit_id') for b in besoins if b.get('produit_id')])
     }
 
+    # NTWMS31 — la marchandise en quarantaine n'est JAMAIS proposée à une
+    # vague : elle est physiquement là mais qualitativement bloquée.
+    quarantaine = quantite_en_quarantaine(company)
+
     preparees = []
     for besoin in besoins:
         produit = produits.get(besoin.get('produit_id'))
@@ -159,10 +232,16 @@ def creer_vague_depuis_besoins(*, company, user=None, besoins=None,
             continue
         if quantite <= 0:
             continue
-        bin_id, lot_id, ordre = _casier_pour_ligne(produit, quantite)
+        bloquee = quarantaine.get(produit.id, 0)
+        if bloquee and (produit.quantite_stock or 0) - bloquee <= 0:
+            # Tout le stock de ce produit est sous quarantaine : la ligne
+            # n'est pas servable tant que la levée n'est pas actée.
+            continue
+        bin_id, lot_id, ordre, zone, allee = _casier_pour_ligne(
+            produit, quantite)
         preparees.append({
             'produit': produit, 'quantite': quantite, 'bin_id': bin_id,
-            'lot_id': lot_id, 'ordre': ordre,
+            'lot_id': lot_id, 'ordre': ordre, 'zone': zone, 'allee': allee,
             'installation_id': besoin.get('installation_id'),
             'bon_commande_id': besoin.get('bon_commande_id'),
         })
@@ -170,7 +249,11 @@ def creer_vague_depuis_besoins(*, company, user=None, besoins=None,
     if not preparees:
         raise ValueError('Aucun besoin valide à regrouper dans cette vague.')
 
+    # NTWMS28 — parcours en SERPENTIN : chaque allée n'est traversée qu'une
+    # fois (le tri zone → allée → casier faisait redescendre chaque allée à
+    # vide). Départage stable par nom de produit à l'intérieur d'un casier.
     preparees.sort(key=lambda ligne: (ligne['ordre'], ligne['produit'].nom))
+    preparees = ordonner_parcours_serpentin(preparees)
 
     with transaction.atomic():
         def _save(reference):
@@ -854,3 +937,1174 @@ def generer_comptages_tournants(*, company=None, aujourd_hui=None):
             plan.save(update_fields=['date_dernier_comptage'])
         sessions.append(session.reference)
     return {'sessions': sessions, 'plans_dus': plans_dus}
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# NTWMS15 — Cross-dock (réception → expédition, sans passage en stock rangé)
+# ═══════════════════════════════════════════════════════════════════════════
+
+# Statuts de vague qui ATTENDENT encore de la marchandise : seule une vague
+# non terminée peut justifier un cross-dock.
+STATUTS_VAGUE_EN_ATTENTE = ('brouillon', 'lancee')
+
+
+def _lignes_picking_en_attente(company, produit_id):
+    """Lignes de vague NON servies attendant ce produit, vague la plus
+    ancienne d'abord (LECTURE SEULE)."""
+    from .models_wms import LignePicking
+
+    return [
+        ligne for ligne in (
+            LignePicking.objects
+            .filter(company=company, produit_id=produit_id,
+                    vague__statut__in=STATUTS_VAGUE_EN_ATTENTE)
+            .select_related('vague')
+            .order_by('vague_id', 'ordre_parcours', 'id'))
+        if ligne.reste_a_prelever > 0
+    ]
+
+
+def proposer_cross_dock(reception):
+    """Vagues en attente qui MATCHENT les lignes d'une réception.
+
+    Renvoie ``[{ligne_id, produit_id, produit_nom, quantite, deja_affectee,
+    vagues: [{ligne_picking_id, vague_id, vague_reference,
+    reste_a_prelever}]}]`` — une entrée par ligne reçue, ``vagues`` vide quand
+    rien n'attend ce produit (la ligne suit alors le rangement normal,
+    NTWMS2). LECTURE SEULE : cette fonction PROPOSE, elle n'écrit rien.
+    """
+    from .models_wms import AffectationCrossDock
+
+    if reception is None:
+        return []
+    company = reception.company
+    deja = set(
+        AffectationCrossDock.objects
+        .filter(company=company, reception=reception)
+        .values_list('ligne_reception_id', flat=True))
+
+    sorties = []
+    for ligne in reception.lignes.select_related('produit').order_by('id'):
+        vagues = []
+        if ligne.produit_id:
+            for lp in _lignes_picking_en_attente(company, ligne.produit_id):
+                vagues.append({
+                    'ligne_picking_id': lp.id,
+                    'vague_id': lp.vague_id,
+                    'vague_reference': lp.vague.reference,
+                    'reste_a_prelever': lp.reste_a_prelever,
+                })
+        sorties.append({
+            'ligne_id': ligne.id,
+            'produit_id': ligne.produit_id,
+            'produit_nom': getattr(ligne.produit, 'nom', '') or '',
+            'quantite': ligne.quantite or 0,
+            'deja_affectee': ligne.id in deja,
+            'vagues': vagues,
+        })
+    return sorties
+
+
+def reception_est_cross_dock(reception):
+    """Vrai quand TOUTES les lignes d'une réception sont routées en cross-dock.
+
+    C'est l'équivalent, du bon côté de la frontière d'apps, du drapeau
+    « destiné au cross-dock » : aucune colonne n'est ajoutée à ``achats``, la
+    vérité est portée par les affectations de ``stock``.
+    """
+    from .models_wms import AffectationCrossDock
+
+    if reception is None:
+        return False
+    lignes = list(reception.lignes.values_list('id', flat=True))
+    if not lignes:
+        return False
+    affectees = set(
+        AffectationCrossDock.objects
+        .filter(company=reception.company, ligne_reception_id__in=lignes)
+        .values_list('ligne_reception_id', flat=True))
+    return len(affectees) == len(lignes)
+
+
+def affecter_reception_cross_dock(*, reception, user=None, lignes=None,
+                                  unite=None):
+    """Route les lignes reçues qui matchent une vague en attente vers un COLIS.
+
+    ``lignes`` — ids de lignes de réception à router (défaut : toutes celles
+    qui matchent). ``unite`` — colis existant à alimenter (défaut : un colis
+    ``en_preparation`` créé pour l'occasion, rattaché à la vague matchée).
+
+    Le put-away (NTWMS2) est explicitement SAUTÉ : aucun ``MouvementStock``
+    vers un casier de stockage n'est posé ici, la marchandise ne transite
+    jamais par un casier. L'entrée en stock reste celle, inchangée, de la
+    confirmation de réception.
+
+    Renvoie ``{unite_logistique, sscc, lignes_affectees, lignes_ignorees}``.
+    Lève ``ValueError`` si aucune ligne ne matche ou si le colis est scellé.
+    """
+    from django.db import transaction
+
+    from .models import Produit
+    from .models_wms import AffectationCrossDock, LignePicking, VaguePicking
+
+    if reception is None:
+        raise ValueError('Réception introuvable.')
+    company = reception.company
+    filtre = {int(x) for x in (lignes or []) if str(x).isdigit()}
+    propositions = [
+        p for p in proposer_cross_dock(reception)
+        if p['vagues'] and not p['deja_affectee']
+        and (not filtre or p['ligne_id'] in filtre)
+    ]
+    if not propositions:
+        raise ValueError(
+            'Aucune ligne de cette réception ne correspond à une vague en '
+            'attente.')
+    if unite is not None and unite.est_figee:
+        raise ValueError(
+            'Cette unité logistique est scellée : son contenu est figé.')
+
+    produits = {
+        p.id: p for p in Produit.objects.filter(
+            company=company,
+            id__in=[p['produit_id'] for p in propositions])
+    }
+    affectees, ignorees = [], []
+    colis = unite
+    with transaction.atomic():
+        for proposition in propositions:
+            produit = produits.get(proposition['produit_id'])
+            quantite = proposition['quantite'] or 0
+            if produit is None or quantite <= 0:
+                ignorees.append(proposition['ligne_id'])
+                continue
+            tete = proposition['vagues'][0]
+            if colis is None:
+                vague = VaguePicking.objects.filter(
+                    id=tete['vague_id'], company=company).first()
+                colis = creer_unite_logistique(
+                    company=company, type_unite='colis', vague=vague)
+            ligne_picking = LignePicking.objects.filter(
+                id=tete['ligne_picking_id'], company=company).first()
+            ajouter_ligne_unite_logistique(
+                company=company, unite=colis, produit=produit,
+                quantite=quantite, ligne_picking=ligne_picking)
+            AffectationCrossDock.objects.create(
+                company=company, reception=reception,
+                ligne_reception_id=proposition['ligne_id'], produit=produit,
+                quantite=quantite, unite_logistique=colis,
+                ligne_picking=ligne_picking)
+            affectees.append(proposition['ligne_id'])
+    logger.info(
+        'NTWMS15 cross-dock : réception %s → colis %s (%s ligne(s))',
+        getattr(reception, 'reference', reception.pk),
+        getattr(colis, 'sscc', None), len(affectees))
+    return {
+        'unite_logistique': colis.id if colis is not None else None,
+        'sscc': colis.sscc if colis is not None else '',
+        'lignes_affectees': affectees,
+        'lignes_ignorees': ignorees,
+        'reception_entierement_cross_dockee': reception_est_cross_dock(
+            reception),
+    }
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# NTWMS17 — Rappel produit (recall) : impact immédiat stock + chantiers
+# ═══════════════════════════════════════════════════════════════════════════
+
+def impact_rappel(alerte):
+    """Portée COMPLÈTE d'un rappel : ce qui reste en casier, ce qui est parti.
+
+    Réutilise la traçabilité NTWMS16 (``tracabilite_produit``) lot par lot —
+    aucun deuxième algorithme de traçabilité. Renvoie
+    ``{produit, lots, stock_restant, casiers, chantiers, colis}`` ; les
+    chantiers/colis sont dédupliqués. LECTURE SEULE.
+    """
+    from .models import LotEntrepot
+    from .selectors_wms import localisation_casiers, tracabilite_produit
+
+    if alerte is None:
+        return {}
+    company = alerte.company
+    produit = alerte.produit
+    if alerte.lot_id:
+        numeros = [alerte.lot.numero_lot]
+    else:
+        numeros = list(
+            LotEntrepot.objects
+            .filter(company=company, produit=produit)
+            .values_list('numero_lot', flat=True).distinct())
+
+    lots, chantiers, colis = [], {}, {}
+    stock_restant = 0
+    for numero in numeros:
+        chaine = tracabilite_produit(company, lot=numero)
+        if chaine is None:
+            continue
+        restant = chaine['stock'].get('quantite_restante') or 0
+        stock_restant += restant
+        lots.append({
+            'numero_lot': numero,
+            'quantite_restante': restant,
+            'fournisseurs': sorted({
+                entree.get('fournisseur_nom') for entree in chaine['amont']
+                if entree.get('fournisseur_nom')}),
+        })
+        for entree in chaine['aval']:
+            if entree['type'] == 'picking' and entree.get('chantier_id'):
+                chantiers[entree['chantier_id']] = {
+                    'chantier_id': entree['chantier_id'],
+                    'chantier_reference': entree.get('chantier_reference'),
+                    'numero_lot': numero,
+                }
+            elif entree['type'] == 'colis':
+                colis[entree['sscc']] = {
+                    'sscc': entree['sscc'], 'statut': entree['statut'],
+                    'quantite': entree['quantite'], 'numero_lot': numero,
+                }
+
+    return {
+        'alerte': alerte.id,
+        'produit': {'id': produit.id, 'nom': produit.nom,
+                    'sku': produit.sku or ''},
+        'lots': lots,
+        'stock_restant': stock_restant,
+        # Le stock ENCORE en rayon : les casiers qui portent le produit.
+        'casiers': localisation_casiers(produit),
+        'chantiers': list(chantiers.values()),
+        'colis': list(colis.values()),
+    }
+
+
+def notifier_rappel(alerte, impact=None):
+    """Prévient les responsables qu'un rappel est déclenché (BEST-EFFORT).
+
+    Réutilise strictement ``notifications.services.notify_many`` — jamais un
+    canal maison. Le type d'événement est un type EXISTANT du catalogue
+    (``INCIDENT_CRITICAL`` : un rappel produit EST un incident critique) ;
+    créer un type dédié appartiendrait à ``apps/notifications``, hors
+    périmètre de cette app. Toute erreur est avalée et journalisée : une
+    notification ne fait JAMAIS échouer la déclaration d'un rappel.
+    """
+    try:
+        from django.contrib.auth import get_user_model
+        from apps.notifications.models import EventType
+        from apps.notifications.services import notify_many
+
+        impact = impact or impact_rappel(alerte)
+        destinataires = list(
+            get_user_model().objects
+            .filter(company=alerte.company, is_active=True,
+                    role_legacy__in=['admin', 'responsable']))
+        if not destinataires:
+            return []
+        return notify_many(
+            destinataires, EventType.INCIDENT_CRITICAL,
+            f'Rappel produit — {alerte.produit.nom}',
+            body=(f"{len(impact.get('chantiers', []))} chantier(s) livré(s), "
+                  f"{impact.get('stock_restant', 0)} unité(s) encore en "
+                  f"stock. Motif : {alerte.motif}"),
+            company=alerte.company)
+    except Exception as exc:  # pragma: no cover - défensif
+        logger.warning('NTWMS17 notification de rappel échouée : %s', exc)
+        return []
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# NTWMS31 — Quarantaine qualité : bloquer la disponibilité, pas le stock
+# ═══════════════════════════════════════════════════════════════════════════
+
+def quantite_en_quarantaine(company, produit=None):
+    """Quantité BLOQUÉE en quarantaine (non disponible à la vente/au picking).
+
+    ``produit`` — un produit précis, ou ``None`` pour la carte complète
+    ``{produit_id: quantite}``. 0 partout tant qu'aucun blocage n'existe :
+    comportement historique strictement inchangé.
+    """
+    from .models_wms import BlocageQualite
+
+    qs = BlocageQualite.objects.filter(
+        company=company, statut=BlocageQualite.Statut.EN_QUARANTAINE)
+    if produit is not None:
+        return sum(qs.filter(produit=produit)
+                   .values_list('quantite', flat=True))
+    carte = {}
+    for produit_id, quantite in qs.values_list('produit_id', 'quantite'):
+        carte[produit_id] = carte.get(produit_id, 0) + (quantite or 0)
+    return carte
+
+
+def mettre_en_quarantaine(*, company, produit, quantite, user=None,
+                          bin_quarantaine=None, lot=None, reception=None,
+                          non_conformite=None, motif=''):
+    """Bloque une quantité reçue non conforme dans un casier de quarantaine.
+
+    Aucun mouvement de stock n'est posé : la marchandise EST là, elle n'est
+    simplement plus disponible. C'est la levée (ou un rebut motivé NTWMS24)
+    qui tranche ensuite.
+    """
+    from .models_wms import BlocageQualite
+
+    try:
+        quantite = int(quantite)
+    except (TypeError, ValueError):
+        raise ValueError('Quantité invalide.')
+    if quantite <= 0:
+        raise ValueError('La quantité mise en quarantaine doit être positive.')
+    if produit is None or produit.company_id != getattr(company, 'id', None):
+        raise ValueError('Produit introuvable dans cette société.')
+
+    return BlocageQualite.objects.create(
+        company=company, produit=produit, quantite=quantite,
+        bin=bin_quarantaine, lot=lot, reception=reception,
+        non_conformite=non_conformite, motif=(motif or '').strip(),
+        bloque_par=user)
+
+
+def lever_quarantaine(*, blocage, user=None):
+    """Lève un blocage : la quantité redevient disponible (idempotent)."""
+    from django.utils import timezone
+
+    from .models_wms import BlocageQualite
+
+    if blocage.statut != BlocageQualite.Statut.EN_QUARANTAINE:
+        return blocage
+    blocage.statut = BlocageQualite.Statut.LEVEE
+    blocage.leve_par = user
+    blocage.date_levee = timezone.now()
+    blocage.save(update_fields=['statut', 'leve_par', 'date_levee'])
+    return blocage
+
+
+def lever_quarantaine_bin(*, company, bin_id, user=None):
+    """Lève TOUS les blocages d'un casier de quarantaine (un seul geste au
+    poste qualité). Renvoie le nombre de blocages levés."""
+    from .models_wms import BlocageQualite
+
+    blocages = BlocageQualite.objects.filter(
+        company=company, bin_id=bin_id,
+        statut=BlocageQualite.Statut.EN_QUARANTAINE)
+    leves = 0
+    for blocage in blocages:
+        lever_quarantaine(blocage=blocage, user=user)
+        leves += 1
+    return leves
+
+
+def quantite_disponible_hors_quarantaine(company, produit):
+    """Quantité réellement disponible : stock total − quarantaine."""
+    if produit is None:
+        return 0
+    bloquee = quantite_en_quarantaine(company, produit=produit)
+    return max((produit.quantite_stock or 0) - bloquee, 0)
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# NTWMS27 — Bordereau ASN (avis d'expédition anticipé), prêt-pour-EDI
+# ═══════════════════════════════════════════════════════════════════════════
+
+# Version du format INTERNE. Ce n'est PAS de l'EDI X12/EDIFACT : c'est un
+# bordereau structuré, exportable/importable à la main, qui décrit exactement
+# ce qu'un futur mapping EDI aura besoin de connaître. Aucun partenaire EDI
+# n'est connecté, aucun appel réseau n'est fait.
+# SCA29 — jamais la marque de l'editeur ici : ce jeton part dans un fichier
+# remis a un partenaire 3PL/client, et l'ERP est white-label (le branding
+# vient de TenantTheme/CompanyProfile, jamais d'une chaine en dur).
+ASN_VERSION = 'ASN-1'
+
+
+def exporter_asn(unite):
+    """Bordereau ASN d'une unité logistique SCELLÉE.
+
+    Renvoie un dictionnaire JSON-sérialisable : en-tête (SSCC, type, poids,
+    dimensions, date de scellage) + une ligne par contenu (SKU, désignation,
+    quantité, lot, péremption) + totaux. Une unité non scellée est refusée :
+    un ASN annonce un contenu FIGÉ, sinon il ment.
+    """
+    from decimal import Decimal
+
+    if unite is None:
+        raise ValueError('Unité logistique introuvable.')
+    if not unite.est_figee:
+        raise ValueError(
+            'Seule une unité scellée peut produire un ASN (son contenu doit '
+            'être figé).')
+
+    lignes = []
+    total_quantite = 0
+    for ligne in unite.lignes.select_related('produit', 'lot').order_by('id'):
+        total_quantite += ligne.quantite or 0
+        lignes.append({
+            'sku': ligne.produit.sku or '',
+            'designation': ligne.produit.nom,
+            'quantite': ligne.quantite,
+            'numero_lot': (ligne.lot.numero_lot if ligne.lot_id else ''),
+            'date_peremption': (
+                ligne.lot.date_peremption.isoformat()
+                if ligne.lot_id and ligne.lot.date_peremption else None),
+        })
+    return {
+        'version': ASN_VERSION,
+        'unite': {
+            'sscc': unite.sscc,
+            'type_unite': unite.type_unite,
+            'statut': unite.statut,
+            'poids_kg': (str(unite.poids_kg)
+                         if unite.poids_kg is not None else None),
+            'dimensions': unite.dimensions or '',
+            'date_scellage': (unite.date_scellage.isoformat()
+                              if unite.date_scellage else None),
+            'sscc_parent': (unite.parent.sscc if unite.parent_id else None),
+        },
+        'lignes': lignes,
+        'totaux': {
+            'nb_lignes': len(lignes),
+            'quantite_totale': total_quantite,
+            'volume_m3': str(_volume_m3(unite.dimensions) or Decimal('0')),
+        },
+    }
+
+
+def importer_asn(company, donnees):
+    """Import MIROIR d'un ASN : valide, résout, ne modifie RIEN.
+
+    Contrôle la version, le SSCC (clé GS1), la présence de lignes, puis
+    rapproche chaque SKU du catalogue de la société. Renvoie
+    ``{valide, erreurs, unite_connue, lignes}`` — un import ASN ne crée ni
+    stock ni colis (aucun partenaire EDI n'est connecté : c'est un contrôle
+    de cohérence, pas une intégration).
+    """
+    from .gs1 import sscc_valide
+    from .models import Produit
+    from .models_wms import UniteLogistique
+
+    if not isinstance(donnees, dict):
+        return {'valide': False, 'erreurs': ['Bordereau ASN illisible.'],
+                'unite_connue': False, 'lignes': []}
+
+    erreurs = []
+    if donnees.get('version') != ASN_VERSION:
+        erreurs.append(
+            f'Version de bordereau inattendue : {donnees.get("version")!r}.')
+    entete = donnees.get('unite') or {}
+    sscc = str(entete.get('sscc') or '').strip()
+    if not sscc_valide(sscc):
+        erreurs.append('SSCC absent ou clé de contrôle GS1 invalide.')
+    lignes_source = donnees.get('lignes')
+    if not isinstance(lignes_source, list) or not lignes_source:
+        erreurs.append('Le bordereau ne contient aucune ligne.')
+        lignes_source = []
+
+    skus = [str(ligne.get('sku') or '').strip()
+            for ligne in lignes_source if isinstance(ligne, dict)]
+    catalogue = {
+        p.sku: p for p in Produit.objects.filter(
+            company=company, sku__in=[s for s in skus if s])
+    }
+    lignes = []
+    for ligne in lignes_source:
+        if not isinstance(ligne, dict):
+            erreurs.append('Ligne de bordereau illisible.')
+            continue
+        sku = str(ligne.get('sku') or '').strip()
+        produit = catalogue.get(sku)
+        if produit is None:
+            erreurs.append(f'SKU inconnu dans cette société : {sku!r}.')
+        lignes.append({
+            'sku': sku,
+            'produit_id': produit.id if produit is not None else None,
+            'designation': ligne.get('designation') or '',
+            'quantite': ligne.get('quantite') or 0,
+            'numero_lot': ligne.get('numero_lot') or '',
+        })
+
+    return {
+        'valide': not erreurs,
+        'erreurs': erreurs,
+        'unite_connue': UniteLogistique.objects.filter(
+            company=company, sscc=sscc).exists(),
+        'sscc': sscc,
+        'lignes': lignes,
+    }
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# NTWMS26 — Chargement camion & taux de remplissage
+# ═══════════════════════════════════════════════════════════════════════════
+
+def _volume_m3(dimensions):
+    """Volume en m³ depuis une chaîne libre « L × l × h » en CENTIMÈTRES.
+
+    Tolère ``x``, ``*``, ``×`` et les décimales à virgule. Une chaîne
+    illisible renvoie 0 (le poids reste alors le seul critère) : un texte
+    libre ne doit JAMAIS faire échouer un plan de chargement.
+    """
+    import re
+    from decimal import Decimal, InvalidOperation
+
+    if not dimensions:
+        return Decimal('0')
+    nombres = re.findall(r'\d+(?:[.,]\d+)?', str(dimensions))
+    if len(nombres) < 3:
+        return Decimal('0')
+    try:
+        cotes = [Decimal(n.replace(',', '.')) for n in nombres[:3]]
+    except InvalidOperation:
+        return Decimal('0')
+    return (cotes[0] * cotes[1] * cotes[2] / Decimal('1000000')).quantize(
+        Decimal('0.001'))
+
+
+def _capacite_vehicule(company, vehicule_id):
+    """Charge utile déclarée par ``flotte`` pour ce véhicule, ou ``None``.
+
+    Lecture cross-app par le selector de ``flotte`` (jamais un import de ses
+    modèles) + ``getattr`` défensif : ``flotte.Vehicule`` ne porte AUCUN champ
+    de capacité aujourd'hui, donc cette fonction renvoie ``None`` — et
+    commencera à renvoyer une valeur le jour où le champ existera, sans
+    modification ici.
+    """
+    if not vehicule_id:
+        return None
+    try:
+        from apps.flotte.selectors import vehicules_de_la_societe
+
+        vehicule = vehicules_de_la_societe(company).filter(
+            id=vehicule_id).first()
+    except Exception:  # pragma: no cover - défensif (app absente/désactivée)
+        return None
+    if vehicule is None:
+        return None
+    return getattr(vehicule, 'capacite_charge_kg', None)
+
+
+def verifier_capacite_plan(plan, unite_supplementaire=None):
+    """Poids/volume embarqués vs capacité — et l'avertissement qui va avec.
+
+    ``unite_supplementaire`` permet de SIMULER l'ajout d'une palette AVANT de
+    l'ajouter (c'est l'avertissement attendu au moment du geste). Sans
+    capacité déclarée, aucun dépassement n'est signalé (jamais un faux
+    positif). LECTURE SEULE.
+    """
+    from decimal import Decimal
+
+    if plan is None:
+        return {}
+    unites = list(plan.unites_logistiques.all())
+    if unite_supplementaire is not None:
+        unites = unites + [unite_supplementaire]
+
+    poids = Decimal('0')
+    volume = Decimal('0')
+    for unite in unites:
+        poids += Decimal(str(unite.poids_kg or 0))
+        volume += _volume_m3(unite.dimensions)
+
+    capacite_kg = plan.capacite_kg
+    if capacite_kg in (None, 0):
+        capacite_kg = _capacite_vehicule(plan.company, plan.vehicule_id)
+    capacite_kg = (Decimal(str(capacite_kg))
+                   if capacite_kg not in (None, '') else None)
+    capacite_m3 = (Decimal(str(plan.capacite_m3))
+                   if plan.capacite_m3 is not None else None)
+
+    def _pct(utilise, capacite):
+        if not capacite or capacite <= 0:
+            return None
+        return (utilise / capacite * Decimal('100')).quantize(Decimal('0.01'))
+
+    poids_pct = _pct(poids, capacite_kg)
+    volume_pct = _pct(volume, capacite_m3)
+    depassement_poids = bool(
+        capacite_kg and capacite_kg > 0 and poids > capacite_kg)
+    depassement_volume = bool(
+        capacite_m3 and capacite_m3 > 0 and volume > capacite_m3)
+    depassement = depassement_poids or depassement_volume
+    return {
+        'plan': plan.id,
+        'nb_unites': len(unites),
+        'poids_kg': poids,
+        'volume_m3': volume,
+        'capacite_kg': capacite_kg,
+        'capacite_m3': capacite_m3,
+        'poids_utilise_pct': poids_pct,
+        'volume_utilise_pct': volume_pct,
+        'depassement': depassement,
+        'avertissement': (
+            'Ce chargement dépasse la capacité déclarée du véhicule.'
+            if depassement else ''),
+    }
+
+
+def creer_plan_chargement(*, company, user=None, livraison=None,
+                          expedition=None, vehicule=None, capacite_kg=None,
+                          capacite_m3=None, note=''):
+    """Crée un plan de chargement numéroté (``CHG-YYYYMM-NNNN``)."""
+    from django.db import transaction
+    from core.numbering import create_with_reference
+
+    from .models_wms import PlanChargement
+
+    with transaction.atomic():
+        def _save(reference):
+            return PlanChargement.objects.create(
+                company=company, reference=reference, livraison=livraison,
+                expedition=expedition, vehicule=vehicule,
+                capacite_kg=capacite_kg, capacite_m3=capacite_m3,
+                note=(note or '').strip(), cree_par=user)
+
+        return create_with_reference(PlanChargement, 'CHG', company, _save)
+
+
+def ajouter_unite_plan_chargement(*, plan, unite):
+    """Ajoute une unité au plan et renvoie le contrôle de capacité.
+
+    L'ajout n'est JAMAIS bloqué (le magasinier reste maître de son
+    chargement) : le service RENVOIE l'avertissement de dépassement pour que
+    l'écran le montre avant validation.
+    """
+    if plan is None or unite is None:
+        raise ValueError('Plan ou unité logistique introuvable.')
+    if unite.company_id != plan.company_id:
+        raise ValueError('Unité logistique introuvable dans cette société.')
+    if plan.statut == plan.Statut.CHARGE:
+        raise ValueError('Ce plan est déjà chargé : il ne bouge plus.')
+    controle = verifier_capacite_plan(plan, unite_supplementaire=unite)
+    plan.unites_logistiques.add(unite)
+    return controle
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# NTWMS25 — Déplacement d'une unité logistique entière (license plate)
+# ═══════════════════════════════════════════════════════════════════════════
+
+def _unites_a_deplacer(unite):
+    """L'unité et, si c'est une palette, tous ses colis enfants."""
+    unites = [unite]
+    for enfant in unite.enfants.all():
+        unites.extend(_unites_a_deplacer(enfant))
+    return unites
+
+
+def deplacer_unite_logistique(*, unite, bin_destination, user=None):
+    """Déplace une unité logistique ENTIÈRE d'un casier à un autre.
+
+    Un seul scan suffit : le contenu multi-lignes suit automatiquement (et,
+    pour une palette, ses colis enfants aussi). Chaque ligne reçoit un
+    ``MouvementStock`` TRANSFERT tracé casier→casier ET rattaché à l'unité —
+    la quantité totale du produit ne bouge pas (un déplacement interne n'est
+    ni une entrée ni une sortie).
+
+    Quand le casier de destination appartient à un AUTRE ``EmplacementStock``
+    que le casier d'origine, la ventilation par emplacement est mise à jour
+    par le service de transfert EXISTANT (``transfer_stock``) — jamais un
+    second chemin d'écriture du stock. Dans le cas courant (même entrepôt),
+    aucune quantité d'emplacement ne bouge, ce qui est correct.
+
+    L'affectation produit↔casier de FG319 (``installations.BinAffectation``)
+    appartient à ``installations`` : elle n'est PAS écrite d'ici (frontière
+    inter-apps), le mouvement en porte la trace complète.
+    """
+    from django.db import transaction
+
+    from .models import MouvementStock
+    from .services import record_stock_movement
+
+    if unite is None:
+        raise ValueError('Unité logistique introuvable.')
+    if bin_destination is None:
+        raise ValueError('Casier de destination introuvable dans cette '
+                         'société.')
+    if bin_destination.company_id != unite.company_id:
+        raise ValueError('Casier de destination introuvable dans cette '
+                         'société.')
+    if unite.statut == unite.Statut.EXPEDIE:
+        raise ValueError('Une unité expédiée ne se déplace plus en entrepôt.')
+
+    unites = _unites_a_deplacer(unite)
+    lignes = [ligne for u in unites
+              for ligne in u.lignes.select_related('produit').all()]
+    if not lignes:
+        raise ValueError('Cette unité logistique est vide : rien à déplacer.')
+
+    mouvements = []
+    with transaction.atomic():
+        for u in unites:
+            bin_source = u.bin_actuel
+            for ligne in u.lignes.select_related('produit').all():
+                produit = ligne.produit
+                stock = produit.quantite_stock
+                mouvements.append(record_stock_movement(
+                    company=u.company, produit=produit,
+                    type_mouvement=MouvementStock.TypeMouvement.TRANSFERT,
+                    quantite=ligne.quantite,
+                    # Déplacement INTERNE : le total ne bouge pas.
+                    quantite_avant=stock, quantite_apres=stock,
+                    reference=u.sscc,
+                    note=f'Déplacement unité {u.sscc} vers '
+                         f'{bin_destination.code}',
+                    created_by=user, save_produit=False,
+                    bin_source=bin_source,
+                    bin_destination=bin_destination))
+                MouvementStock.objects.filter(
+                    id=mouvements[-1].id).update(unite_logistique=u)
+                if (bin_source is not None
+                        and bin_source.emplacement_id
+                        != bin_destination.emplacement_id):
+                    _ventiler_changement_emplacement(
+                        u, produit, ligne.quantite, bin_source,
+                        bin_destination, user)
+            u.bin_actuel = bin_destination
+            u.save(update_fields=['bin_actuel'])
+    return {
+        'unite_logistique': unite.id,
+        'sscc': unite.sscc,
+        'bin_destination': bin_destination.id,
+        'bin_code': bin_destination.code,
+        'lignes_deplacees': len(mouvements),
+        'unites_deplacees': [u.id for u in unites],
+    }
+
+
+def _ventiler_changement_emplacement(unite, produit, quantite, bin_source,
+                                     bin_destination, user):
+    """Répercute un changement d'ENTREPÔT sur la ventilation par emplacement,
+    via le service de transfert existant (jamais un second chemin)."""
+    from .services import transfer_stock
+
+    transfer_stock(
+        company=unite.company, user=user, produit_id=produit.id,
+        source_id=bin_source.emplacement_id,
+        destination_id=bin_destination.emplacement_id, quantite=quantite,
+        note=f'Déplacement unité logistique {unite.sscc}',
+        # La décision de déplacer la palette a déjà été prise au scan : le
+        # seuil d'approbation NTWMS21 ne re-bloque pas un mouvement physique
+        # déjà exécuté en magasin.
+        demande_approuvee=True)
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# NTWMS24 — Casse / freinte / rebut motivé (et sa valeur de perte)
+# ═══════════════════════════════════════════════════════════════════════════
+
+def declarer_mouvement_rebut(*, company, user, produit, quantite, motif,
+                             bin_source=None, note=''):
+    """Déclare une perte MOTIVÉE et chiffrée.
+
+    Le mouvement de stock réel passe par le service de rebut EXISTANT
+    (``rebuter_produit``, type ``REBUT``) : jamais un second chemin
+    d'écriture, et la perte reste distincte d'un ajustement d'inventaire.
+    La valeur est figée au coût moyen d'achat du moment (INTERNE).
+    """
+    from decimal import Decimal
+
+    from django.db import transaction
+
+    from .models_wms import MouvementRebut
+    from .services import average_cost_with_source, rebuter_produit
+
+    try:
+        quantite = int(quantite)
+    except (TypeError, ValueError):
+        raise ValueError('Quantité invalide.')
+    if quantite <= 0:
+        raise ValueError('La quantité de rebut doit être positive.')
+    if produit is None or produit.company_id != getattr(company, 'id', None):
+        raise ValueError('Produit introuvable dans cette société.')
+    if motif not in dict(MouvementRebut.Motif.choices):
+        raise ValueError('Motif de rebut invalide.')
+
+    cout, _source = average_cost_with_source(produit)
+    valeur = (Decimal(str(cout or 0)) * Decimal(quantite)).quantize(
+        Decimal('0.01'))
+    with transaction.atomic():
+        # `rebuter_produit` (XSTK10) pose le MouvementStock REBUT, applique le
+        # garde de stock négatif et renvoie {mouvement, valeur_perdue}.
+        resultat = rebuter_produit(
+            company=company, produit=produit, quantite=quantite,
+            motif=MouvementRebut.MOTIF_MOUVEMENT[motif], user=user)
+        return MouvementRebut.objects.create(
+            company=company, produit=produit, quantite=quantite, motif=motif,
+            bin=bin_source, valeur_perte=valeur,
+            mouvement=resultat['mouvement'],
+            note=(note or '').strip(), declare_par=user)
+
+
+def rapport_pertes_entrepot(company, *, debut=None, fin=None):
+    """NTWMS24 — valeur totale de perte PAR MOTIF sur une période.
+
+    Nom explicitement distinct de ``rapport_pertes`` (XSTK10, agrégation PAR
+    PRODUIT des mouvements REBUT) : les deux coexistent, celui-ci agrège les
+    DÉCLARATIONS motivées par motif. Distincte, par construction, des
+    ajustements d'inventaire : seules les
+    déclarations de rebut (``MouvementRebut``) sont comptées. ``debut``/``fin``
+    sont des DATES fournies par l'appelant (bornes incluses). LECTURE SEULE.
+    """
+    from decimal import Decimal
+
+    from django.db.models import Count, Sum
+
+    from .models_wms import MouvementRebut
+
+    qs = MouvementRebut.objects.filter(company=company)
+    if debut:
+        qs = qs.filter(created_at__date__gte=debut)
+    if fin:
+        qs = qs.filter(created_at__date__lte=fin)
+    lignes = list(
+        qs.values('motif')
+        .annotate(nb=Count('id'), quantite=Sum('quantite'),
+                  valeur=Sum('valeur_perte'))
+        .order_by('-valeur'))
+    total = sum((ligne['valeur'] or Decimal('0')) for ligne in lignes)
+    libelles = dict(MouvementRebut.Motif.choices)
+    return {
+        'total_valeur': total,
+        'total_quantite': sum((ligne['quantite'] or 0) for ligne in lignes),
+        'par_motif': [{
+            'motif': ligne['motif'],
+            'libelle': libelles.get(ligne['motif'], ligne['motif']),
+            'nb_declarations': ligne['nb'],
+            'quantite': ligne['quantite'] or 0,
+            'valeur': ligne['valeur'] or Decimal('0'),
+        } for ligne in lignes],
+    }
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# NTWMS23 — Retours client (RMA) côté entrepôt
+# ═══════════════════════════════════════════════════════════════════════════
+
+def creer_retour_client(*, company, user=None, client, chantier=None,
+                        ticket=None, motif='', lignes=None):
+    """Ouvre un retour client (RMA) avec ses lignes.
+
+    Référence ``RMA-YYYYMM-NNNN`` posée par ``core.numbering`` (jamais
+    ``count()+1``), dans la MÊME transaction que les lignes : aucune
+    référence vide ne peut être committée.
+    """
+    from django.db import transaction
+    from core.numbering import create_with_reference
+
+    from .models import Produit
+    from .models_wms import LigneRetourClient, RetourClient
+
+    if client is None:
+        raise ValueError('Client introuvable dans cette société.')
+    lignes = list(lignes or [])
+    if not lignes:
+        raise ValueError('Un retour client doit contenir au moins une ligne.')
+    produits = {
+        p.id: p for p in Produit.objects.filter(
+            company=company,
+            id__in=[ligne.get('produit') for ligne in lignes])
+    }
+
+    preparees = []
+    for ligne in lignes:
+        produit = produits.get(ligne.get('produit'))
+        try:
+            quantite = int(ligne.get('quantite') or 0)
+        except (TypeError, ValueError):
+            quantite = 0
+        if produit is None or quantite <= 0:
+            continue
+        preparees.append((produit, quantite, ligne.get('etat_constate'),
+                          ligne.get('bin')))
+    if not preparees:
+        raise ValueError('Aucune ligne de retour valide.')
+
+    with transaction.atomic():
+        def _save(reference):
+            return RetourClient.objects.create(
+                company=company, reference=reference, client=client,
+                chantier=chantier, ticket=ticket,
+                motif=(motif or '').strip(), cree_par=user)
+
+        retour = create_with_reference(RetourClient, 'RMA', company, _save)
+        etats = {c for c, _ in LigneRetourClient.EtatConstate.choices}
+        LigneRetourClient.objects.bulk_create([
+            LigneRetourClient(
+                company=company, retour=retour, produit=produit,
+                quantite=quantite,
+                etat_constate=(
+                    etat if etat in etats
+                    else LigneRetourClient.EtatConstate.REVENDABLE),
+                bin_id=bin_id)
+            for produit, quantite, etat, bin_id in preparees
+        ])
+    return retour
+
+
+def _reintegrer_ligne_retour(ligne, user=None):
+    """Pose l'ENTRÉE de stock d'une ligne REVENDABLE (idempotent)."""
+    from .models import MouvementStock, Produit
+    from .models_wms import LigneRetourClient
+    from .services import record_stock_movement
+
+    if ligne.stock_mouvemente:
+        return None
+    if ligne.etat_constate != LigneRetourClient.EtatConstate.REVENDABLE:
+        return None
+    produit = Produit.objects.select_for_update().get(id=ligne.produit_id)
+    avant = produit.quantite_stock
+    mouvement = record_stock_movement(
+        company=ligne.company, produit=produit,
+        type_mouvement=MouvementStock.TypeMouvement.ENTREE,
+        quantite=ligne.quantite, quantite_avant=avant,
+        quantite_apres=avant + ligne.quantite,
+        reference=ligne.retour.reference,
+        note=f'Retour client {ligne.retour.reference} (revendable)',
+        created_by=user, bin_destination=ligne.bin)
+    ligne.stock_mouvemente = True
+    ligne.save(update_fields=['stock_mouvemente'])
+    return mouvement
+
+
+def _sortir_ligne_retour(ligne, user=None):
+    """Ressort du stock une ligne entrée à tort puis déclassée (idempotent)."""
+    from .models import MouvementStock, Produit
+    from .services import record_stock_movement
+
+    if not ligne.stock_mouvemente:
+        return None
+    produit = Produit.objects.select_for_update().get(id=ligne.produit_id)
+    avant = produit.quantite_stock
+    quantite = min(ligne.quantite, avant) if avant > 0 else 0
+    mouvement = record_stock_movement(
+        company=ligne.company, produit=produit,
+        type_mouvement=MouvementStock.TypeMouvement.REBUT,
+        quantite=quantite, quantite_avant=avant,
+        quantite_apres=avant - quantite,
+        reference=ligne.retour.reference,
+        note=f'Retour client {ligne.retour.reference} — déclassé après '
+             f'inspection',
+        created_by=user)
+    MouvementStock.objects.filter(id=mouvement.id).update(motif_rebut='autre')
+    ligne.stock_mouvemente = False
+    ligne.save(update_fields=['stock_mouvemente'])
+    return mouvement
+
+
+def receptionner_retour_client(*, retour, user=None):
+    """Réceptionne physiquement le retour.
+
+    Chaque ligne REVENDABLE réintègre le stock vendable ; une ligne
+    A_REPARER ou REBUT n'incrémente RIEN. Idempotent : un retour déjà
+    réceptionné ne re-crée aucun mouvement.
+    """
+    from django.db import transaction
+    from django.utils import timezone
+
+    from .models_wms import RetourClient
+
+    if retour.statut not in (RetourClient.Statut.DEMANDE,
+                             RetourClient.Statut.EN_TRANSIT):
+        raise ValueError(
+            'Seul un retour demandé ou en transit peut être réceptionné.')
+    with transaction.atomic():
+        for ligne in retour.lignes.select_related('retour').all():
+            _reintegrer_ligne_retour(ligne, user=user)
+        retour.statut = RetourClient.Statut.RECEPTIONNE
+        retour.date_reception = timezone.now()
+        retour.save(update_fields=['statut', 'date_reception'])
+    return retour
+
+
+def inspecter_retour_client(*, retour, lignes=None, user=None):
+    """Acte le contrôle qualité : état constaté + casier par ligne.
+
+    ``lignes`` — ``[{ligne, etat_constate, bin, note}]``. Une ligne qui
+    DEVIENT revendable entre alors en stock ; une ligne déjà entrée qui
+    devient A_REPARER/REBUT en ressort — le stock vendable ne contient jamais
+    un rebut.
+    """
+    from django.db import transaction
+    from django.utils import timezone
+
+    from .models_wms import LigneRetourClient, RetourClient
+
+    if retour.statut not in (RetourClient.Statut.RECEPTIONNE,
+                             RetourClient.Statut.INSPECTE):
+        raise ValueError(
+            'Le retour doit être réceptionné avant d\'être inspecté.')
+    etats = {c for c, _ in LigneRetourClient.EtatConstate.choices}
+    par_id = {ligne.id: ligne
+              for ligne in retour.lignes.select_related('retour').all()}
+    with transaction.atomic():
+        for entree in list(lignes or []):
+            ligne = par_id.get(_entier_ou_none(entree.get('ligne')))
+            if ligne is None:
+                continue
+            etat = entree.get('etat_constate')
+            if etat not in etats:
+                raise ValueError('État constaté invalide.')
+            champs = ['etat_constate']
+            ligne.etat_constate = etat
+            if 'bin' in entree:
+                ligne.bin_id = _entier_ou_none(entree.get('bin'))
+                champs.append('bin')
+            if entree.get('note'):
+                ligne.note = entree['note']
+                champs.append('note')
+            ligne.save(update_fields=champs)
+            if etat == LigneRetourClient.EtatConstate.REVENDABLE:
+                _reintegrer_ligne_retour(ligne, user=user)
+            else:
+                _sortir_ligne_retour(ligne, user=user)
+        retour.statut = RetourClient.Statut.INSPECTE
+        retour.date_inspection = timezone.now()
+        retour.save(update_fields=['statut', 'date_inspection'])
+    return retour
+
+
+def _entier_ou_none(valeur):
+    try:
+        return int(valeur)
+    except (TypeError, ValueError):
+        return None
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# NTWMS21 — Seuil d'approbation des transferts de valeur
+# ═══════════════════════════════════════════════════════════════════════════
+#
+# LE WORKFLOW DEMANDE → APPROBATION → EXÉCUTION EXISTE DÉJÀ : c'est
+# ``installations.DemandeTransfert`` (FG325), qui exécute d'ailleurs le
+# mouvement réel en appelant ``stock.services.transfer_stock``. NTWMS21
+# n'en construit donc PAS un second (ce serait la dette n°1 identifiée par
+# le fondateur) : il ajoute la seule pièce qui manquait — le SEUIL au-delà
+# duquel le transfert DIRECT est refusé et doit passer par ce workflow.
+
+def seuil_approbation_transfert(company):
+    """Seuil de valeur (MAD) au-delà duquel un transfert exige une approbation.
+
+    0 (défaut de toutes les sociétés) = garde DÉSACTIVÉE : le transfert direct
+    historique reste strictement inchangé.
+    """
+    from decimal import Decimal
+    from .models import AchatsParametres
+
+    if company is None:
+        return Decimal('0')
+    parametres = AchatsParametres.for_company(company)
+    return Decimal(parametres.seuil_approbation_transfert or 0)
+
+
+def valeur_transfert(produit, quantite):
+    """Valeur INTERNE d'un mouvement (quantité × prix d'achat). Jamais
+    client-facing — elle ne sert qu'au seuil d'approbation."""
+    from decimal import Decimal
+
+    if produit is None:
+        return Decimal('0')
+    prix = Decimal(str(produit.prix_achat or 0))
+    return (prix * Decimal(int(quantite or 0))).quantize(Decimal('0.01'))
+
+
+def demande_transfert_approuvee_existe(company, *, produit_id, source_id,
+                                       destination_id, quantite):
+    """Vrai si une demande FG325 APPROUVÉE couvre exactement ce transfert.
+
+    Le modèle vit dans ``installations`` : il est atteint par l'ACCESSEUR
+    INVERSE de la string-FK que cette app expose (``EmplacementStock`` →
+    demandes sortantes), jamais par un import de ``apps.installations.models``.
+    C'est ce qui permet à l'exécution d'une demande approuvée de traverser la
+    garde de seuil sans que l'app ``installations`` ait à changer d'appel.
+    """
+    from .models import EmplacementStock
+
+    modele = EmplacementStock._meta.get_field(
+        'installations_demandes_transfert_sortantes').related_model
+    return modele.objects.filter(
+        company=company, produit_id=produit_id, source_id=source_id,
+        destination_id=destination_id, quantite=quantite,
+        statut='approuve').exists()
+
+
+def transfert_exige_approbation(company, produit, quantite, *, source_id=None,
+                                destination_id=None):
+    """Vrai si CE transfert dépasse le seuil configuré ET n'est couvert par
+    aucune demande de transfert déjà approuvée (FG325)."""
+    seuil = seuil_approbation_transfert(company)
+    if seuil <= 0:
+        return False
+    if valeur_transfert(produit, quantite) <= seuil:
+        return False
+    if source_id and destination_id and demande_transfert_approuvee_existe(
+            company, produit_id=getattr(produit, 'id', None),
+            source_id=source_id, destination_id=destination_id,
+            quantite=quantite):
+        return False
+    return True
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# NTWMS20 — Portail 3PL (lecture seule, tokenisée, scope = UN dépositaire)
+# ═══════════════════════════════════════════════════════════════════════════
+
+def resoudre_token_portail_tiers(token):
+    """Jeton de portail 3PL VALIDE (non révoqué, non expiré), ou ``None``.
+
+    Marque l'usage (``last_used_at``) — jamais autre chose : ce chemin est
+    PUBLIC, il n'écrit aucune donnée métier.
+    """
+    from django.utils import timezone
+    from .models_wms import PortailTiersToken
+
+    token = (token or '').strip()
+    if not token:
+        return None
+    obj = (PortailTiersToken.objects
+           .select_related('company')
+           .filter(token=token).first())
+    if obj is None or not obj.est_valide:
+        return None
+    PortailTiersToken.objects.filter(id=obj.id).update(
+        last_used_at=timezone.now())
+    return obj
+
+
+def solde_portail_tiers(token_obj):
+    """Solde du stock DU SEUL dépositaire porteur du jeton.
+
+    Ne remonte QUE les ``StockEmplacement`` posés sur un emplacement
+    ``DE_TIERS`` de la société du jeton dont le ``tiers_nom`` correspond
+    exactement. Aucun prix, aucune marge, aucun autre dépositaire, aucun
+    stock interne : un solde de dépôt-vente, rien d'autre.
+    """
+    from .models import EmplacementStock, StockEmplacement
+
+    if token_obj is None:
+        return None
+    lignes = (StockEmplacement.objects
+              .filter(company=token_obj.company,
+                      emplacement__type_proprietaire=(
+                          EmplacementStock.TypeProprietaire.DE_TIERS),
+                      emplacement__tiers_nom=token_obj.tiers_nom)
+              .select_related('produit', 'emplacement')
+              .order_by('produit__nom'))
+    return {
+        'tiers_nom': token_obj.tiers_nom,
+        'lignes': [{
+            'produit': ligne.produit.nom,
+            'sku': ligne.produit.sku or '',
+            'emplacement': ligne.emplacement.nom,
+            'quantite': ligne.quantite,
+        } for ligne in lignes],
+        'total_unites': sum(ligne.quantite or 0 for ligne in lignes),
+    }
+
+
+def cloturer_alerte_rappel(alerte):
+    """Clôt un rappel (idempotent : un rappel déjà clos n'est pas rouvert)."""
+    from django.utils import timezone
+    from .models_wms import AlerteRappel
+
+    if alerte.statut == AlerteRappel.Statut.CLOS:
+        return alerte
+    alerte.statut = AlerteRappel.Statut.CLOS
+    alerte.date_cloture = timezone.now()
+    alerte.save(update_fields=['statut', 'date_cloture'])
+    return alerte

@@ -5,7 +5,7 @@ import { lazy } from 'react'
 import {
   MapPin, ListChecks, LayoutList, Copy, Sparkles, Settings, UserCog, Shield,
   Key, ShieldCheck, DownloadCloud, AlertTriangle, Percent, ShoppingCart, Boxes,
-  Ship,
+  Ship, Route, Factory,
 } from 'lucide-react'
 import { appGlyph } from '../../lib/apps/appGlyph'
 
@@ -115,6 +115,21 @@ const AchatsParametresPage = lazy(() => import('../../pages/parametres/AchatsPar
 // nav ET route déclarées ensemble ici (motif PACT150 : ne jamais répéter
 // l'oubli de menu d'AchatsParametresPage).
 const DouaneParametresPage = lazy(() => import('../../pages/parametres/DouaneParametresPage'))
+// NTLOG35 — Paramètres → Transport (`transport.ParametresTransport`,
+// singleton par société) : seuil d'alerte retard (NTLOG25), preuve de
+// livraison obligatoire (NTLOG9), seuil anomalies d'affrètement (NTLOG28).
+// Écriture réservée à un porteur de rôle (repli légataire `is_responsable` —
+// le backend applique déjà `write_permission='transport_responsable'`) ;
+// lecture ouverte à tout rôle interne — nav ET route déclarées ensemble
+// (motif PACT150, même précédent que NTLOG36 ci-dessus).
+const TransportParametresPage = lazy(() => import('../../pages/parametres/TransportParametresPage'))
+// NTMFG29 — Paramètres > Atelier MRP (`mrp.ParametresMRP`, singleton par
+// société) : horizon MRP (NTMFG5), stock de sécurité par défaut, tolérance de
+// surcharge poste (NTMFG7), motif QC obligatoire (NTMFG13), kanban production
+// (NTMFG17). Admin UNIQUEMENT côté backend (`mrp.permissions.EstAdminMRP`) —
+// un Responsable planifie (NTMFG3) mais ne voit/modifie pas ces réglages ; nav
+// ET route déclarées ensemble (motif PACT150, même précédent que NTLOG35/36).
+const MrpParametresPage = lazy(() => import('../../pages/mrp/ParametresMRP'))
 // WIR152 — Paramètres → Doublons tiers (`tiers.TiersViewSet.doublons`,
 // ARC20, admin-only côté backend — même gating ici).
 const TiersDoublonsPage = lazy(() => import('../../pages/parametres/TiersDoublonsPage'))
@@ -168,6 +183,10 @@ const config = {
       { to: '/parametres/achats', label: 'Achats', icon: <ShoppingCart size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ['responsable', 'admin'] },
       // NTLOG36 — nav ET route ensemble (voir commentaire du lazy import ci-dessus).
       { to: '/parametres/douane', label: 'Douane', icon: <Ship size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ['responsable', 'admin'] },
+      // NTLOG35 — nav ET route ensemble (voir commentaire du lazy import ci-dessus).
+      { to: '/parametres/transport', label: 'Transport', icon: <Route size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ['responsable', 'admin'] },
+      // NTMFG29 — Admin uniquement (voir commentaire du lazy import ci-dessus).
+      { to: '/parametres/mrp', label: 'Atelier MRP', icon: <Factory size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ['admin'] },
       // PACT140 — Objets métier personnalisés (l'écran des enregistrements
       // `/objets/:code` s'atteint depuis cette page, un lien par objet).
       { to: '/parametres/objets-personnalises', label: 'Objets personnalisés', icon: <Boxes size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ['admin'] },
@@ -185,6 +204,8 @@ const config = {
     { path: '/parametres/hospitality/taxe-sejour', component: TaxeSejourHospitality, roles: ['responsable', 'admin'] },
     { path: '/parametres/achats', component: AchatsParametresPage, roles: ['responsable', 'admin'] },
     { path: '/parametres/douane', component: DouaneParametresPage, roles: ['responsable', 'admin'] },
+    { path: '/parametres/transport', component: TransportParametresPage, roles: ['responsable', 'admin'] },
+    { path: '/parametres/mrp', component: MrpParametresPage, roles: ['admin'] },
     { path: '/parametres/tiers-doublons', component: TiersDoublonsPage, roles: ['admin'] },
     { path: '/parametres/ia', component: IaDiagnostic, roles: ['admin'] },
     { path: '/parametres/objets-personnalises', component: ObjetsPersonnalisesPage, roles: ['admin'] },

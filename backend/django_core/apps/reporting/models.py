@@ -204,6 +204,25 @@ class KpiAlerte(models.Model):
         DSO = 'dso', 'DSO (délai moyen de recouvrement, jours)'
         ENCOURS_ECHU_TOTAL = 'encours_echu_total', 'Encours client échu total (MAD)'
         VALEUR_STOCK_TOTALE = 'valeur_stock_totale', 'Valeur de stock totale (MAD)'
+        # NTLOG51 (volet douane) — Σ jours entre l'entrée en DUM_DEPOSEE et
+        # l'entrée en LEVE des ``douane.DossierExport`` CLÔTURÉS du mois
+        # (``apps.douane.selectors.delai_moyen_dedouanement``, lu depuis la
+        # trace d'audit générique — aucune nouvelle table). Volet transport
+        # (« Coût transport / kg », « Taux de litiges transport ») NON
+        # ajouté ici — hors périmètre de la lane douane (lane concurrente
+        # sur ce même fichier, voir docs/plans/PLAN_SUPPLY.md NTLOG51).
+        DELAI_MOYEN_DEDOUANEMENT = (
+            'delai_moyen_dedouanement', 'Délai moyen de dédouanement (jours)')
+        # NTSCM46 — taux de service supply chain (NTSCM28 : % de SKU sous
+        # politique de stock qui ne sont PAS en rupture/à commander, voir
+        # ``apps.scm.selectors.tableau_bord_executif``). Volet des 3 AUTRES
+        # métriques NTSCM28 (OTIF pondéré, MAPE global, valeur de stock par
+        # classe ABC) HORS PÉRIMÈTRE de cette entrée : un seuil KpiAlerte
+        # (nombre unique + opérateur) ne modélise qu'UNE métrique scalaire à
+        # la fois — les 3 autres restent consultables via le tableau de bord
+        # SCM exécutif natif (``/scm/dashboard``), pas dupliquées ici.
+        TAUX_SERVICE_SCM = (
+            'taux_service_scm', 'Supply chain — taux de service (%)')
 
     class Operateur(models.TextChoices):
         SUP = 'sup', '>'

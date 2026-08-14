@@ -240,6 +240,24 @@ CATALOG = {
         'Le score de maturité marketing (NTMKT18) d\'un lead change lors du '
         'recalcul quotidien (pénalité d\'inactivité 30j, NTMKT34).',
         ['lead_id', 'company', 'ancienne_valeur', 'nouvelle_valeur']),
+    # NTLOG44 (volet douane) — émis par
+    # ``apps.douane.services.cloturer_dossier_export`` à la clôture d'un
+    # DossierExport. Volet transport (ordre_transport_livre/
+    # litige_transport_ouvert) hors périmètre de cette entrée.
+    'dossier_export_cloture': _e(
+        "Un dossier d'export douane (DossierExport) est clôturé.",
+        ['dossier', 'company', 'user', 'ancien_statut']),
+    # NTSCM39 — émis par ``apps.scm.services.
+    # detecter_ruptures_imminentes_et_notifier`` (tâche beat NTSCM35).
+    'scm_rupture_imminente_detectee': _e(
+        'Un produit passe en rupture de stock imminente (tableau de bord '
+        'réappro NTSCM7).',
+        ['company', 'produit_id', 'produit_nom', 'rupture_date', 'quantite_suggeree']),
+    # NTSCM39 — émis par ``apps.scm.services.avancer_statut_cycle`` à la
+    # clôture d'un cycle S&OP.
+    'scm_cycle_sop_cloture': _e(
+        'Un cycle de planification S&OP (CyclePlanificationSOP) est clôturé.',
+        ['cycle', 'user']),
 }
 
 

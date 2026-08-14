@@ -506,20 +506,53 @@ class TestPdfFormats(TestCase):
                        'regime': 'TT'},
     }
 
-    def test_annexe_technique_is_off_by_default(self):
-        """Sans le drapeau, la charge utile et le PDF sont ceux d'aujourd'hui."""
-        from apps.ventes.quote_engine.builder import (
-            DEFAULT_PDF_OPTIONS, build_quote_data, clean_pdf_options)
+    def test_sans_etude_electrique_le_pdf_est_celui_d_hier(self):
+        """Aucune conception ⇒ aucune clé nouvelle, aucune page nouvelle."""
+        from apps.ventes.quote_engine.builder import build_quote_data
 
-        self.assertFalse(DEFAULT_PDF_OPTIONS['include_annexe_technique'])
-        self.assertFalse(clean_pdf_options({})['include_annexe_technique'])
-        self.devis.electrical_design = self._ELECTRICAL_DESIGN
+        self.devis.electrical_design = None
         self.devis.save(update_fields=['electrical_design'])
         data = build_quote_data(self.devis)
         for clef in ('include_annexe_technique', 'electrical_design',
                      'sld_svg'):
             self.assertNotIn(clef, data)
         _, doc = self._render()
+        self.assertEqual(len(doc.pages), 3)
+
+    def test_l_annexe_est_automatique_des_qu_une_etude_existe(self):
+        """PVSLD — l'annexe était INATTEIGNABLE pour un client.
+
+        `/proposal`, le document public et le PDF signé appellent tous
+        ``clean_pdf_options({})`` : avec un défaut ``False``, la seule page qui
+        porte le schéma unifilaire ne pouvait sortir que si un agent cochait la
+        case. Le défaut est donc AUTO — présente dès que l'étude existe.
+        """
+        from apps.ventes.quote_engine.builder import (
+            DEFAULT_PDF_OPTIONS, build_quote_data, clean_pdf_options)
+
+        # Tri-état : ``None`` = auto (ni un « oui » ni un « non » figés).
+        self.assertIsNone(DEFAULT_PDF_OPTIONS['include_annexe_technique'])
+        self.assertIsNone(clean_pdf_options({})['include_annexe_technique'])
+
+        self.devis.electrical_design = self._ELECTRICAL_DESIGN
+        self.devis.save(update_fields=['electrical_design'])
+        data = build_quote_data(self.devis)
+        self.assertTrue(data['include_annexe_technique'])
+        self.assertEqual(data['electrical_design'], self._ELECTRICAL_DESIGN)
+        html, doc = self._render()
+        self.assertEqual(len(doc.pages), 4)
+        self.assertIn('Annexe technique', html)
+
+    def test_un_refus_explicite_reste_souverain(self):
+        """L'opt-out marche toujours : ``False`` explicite ⇒ 3 pages."""
+        from apps.ventes.quote_engine.builder import build_quote_data
+
+        self.devis.electrical_design = self._ELECTRICAL_DESIGN
+        self.devis.save(update_fields=['electrical_design'])
+        data = build_quote_data(self.devis,
+                                {'include_annexe_technique': False})
+        self.assertNotIn('include_annexe_technique', data)
+        _, doc = self._render({'include_annexe_technique': False})
         self.assertEqual(len(doc.pages), 3)
 
     def test_annexe_technique_adds_a_fourth_page(self):
@@ -572,7 +605,8 @@ class TestPdfFormats(TestCase):
 
         self.devis.electrical_design = self._ELECTRICAL_DESIGN
         self.devis.save(update_fields=['electrical_design'])
-        sans = build_quote_data(self.devis)
+        sans = build_quote_data(self.devis,
+                                {'include_annexe_technique': False})
         avec = build_quote_data(self.devis,
                                 {'include_annexe_technique': True})
         for clef in ('totaux_sans', 'totaux_avec', 'totaux_all',
@@ -587,9 +621,19 @@ class TestPdfFormats(TestCase):
         # Ni les prix d'achat/marge, ni AUCUN prix de ligne du devis.
         for interdit in ('prix_achat', 'marge', 'Total TTC', 'Sous-total'):
             self.assertNotIn(interdit, annexe)
-        lisible = self._sans_donnees_binaires(annexe)
+        # PVSLD — le schéma v2 du moteur a rendu le scan de SOUS-CHAÎNE nue
+        # intenable : « 67 » surgissait d'une coordonnée SVG (x1="67"), puis
+        # « 1000 » de « 1000 V DC » — des grandeurs électriques LÉGITIMES.
+        # Le vrai vecteur de fuite d'un prix est son RENDU MONÉTAIRE : tout
+        # montant que le moteur imprime passe par ``fmt`` (« 11 700 MAD »,
+        # séparateurs insécables), et un contournement naïf écrirait
+        # « 11700 MAD ». On scanne donc l'annexe BRUTE ENTIÈRE pour ces deux
+        # formes — aucune collision possible avec tensions/calibres, et une
+        # fuite réelle reste attrapée à coup sûr.
         for _designation, _qte, _prix in self.FULL_LINES:
-            self.assertNotIn(_prix, lisible)
+            self.assertNotIn(G.fmt(float(_prix)), annexe)
+            self.assertNotIn(f'{_prix} MAD', annexe)
+            self.assertNotIn(f'{_prix} MAD', annexe)
         self.assertIn('Nomenclature électrique', annexe)
         # La page de signature reste la DERNIÈRE page numérotée.
         self.assertEqual(G.PAGE3_NUM, G.PAGES_TOTAL)

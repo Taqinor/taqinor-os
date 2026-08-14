@@ -349,6 +349,13 @@ app.conf.beat_schedule = {
         'task': 'stock.expiration_alerts',
         'schedule': crontab(hour=6, minute=20),
     },
+    # NTWMS42 — alerte PASSIVE de sur-stockage par zone (seuil 95 % par
+    # défaut). Une zone sans capacité déclarée n'est jamais signalée, donc
+    # no-op tant qu'aucune `CategorieStockage` n'est posée sur les casiers.
+    'stock-alerter-surcapacite-zones': {
+        'task': 'stock.alerter_surcapacite_zones',
+        'schedule': crontab(hour=6, minute=25),
+    },
     # YOPSB1 — pg_dump réel quotidien vers MinIO (heure creuse).
     'core-dump-database': {
         'task': 'core.dump_database',
@@ -744,6 +751,20 @@ app.conf.beat_schedule = {
         'task': 'flotte.generer_echeances_entretien_quotidien',
         'schedule': crontab(hour=6, minute=45),
     },
+    # NTLOG38 — rappel J-3 sur les étapes de transport en retard
+    # (`date_prevue` dépassée, jamais clôturées) : quotidien, heure creuse,
+    # idempotent (une seule notification par étape par jour).
+    'transport-check-etapes-retard-quotidien': {
+        'task': 'transport.check_etapes_transport_retard',
+        'schedule': crontab(hour=6, minute=50),
+    },
+    # NTLOG39 — archivage (jamais suppression) des ordres de transport livrés
+    # depuis plus de N mois (défaut 24, `ParametresTransport.
+    # archive_ordres_apres_mois`) : mensuel, 1er du mois, heure creuse.
+    'transport-archiver-ordres-anciens-mensuel': {
+        'task': 'transport.archiver_ordres_transport_anciens',
+        'schedule': crontab(hour=3, minute=10, day_of_month=1),
+    },
     # ── WIR50 — trois commandes périodiques de SÉCURITÉ/GOUVERNANCE bâties mais
     # jamais planifiées (P0 : elles ne tournaient JAMAIS en prod). ──
     # NTSEC22 — révoque les accès break-glass ÉCHUS (un octroi expiré conserve
@@ -848,6 +869,58 @@ app.conf.beat_schedule = {
     'cpq-purger-sessions-configurateur-abandonnees': {
         'task': 'cpq.purger_sessions_configurateur_abandonnees',
         'schedule': crontab(hour=3, minute=50),
+    },
+    # NTSCM21 — (re)génère les prévisions de demande (NTSCM2) de tous les
+    # produits actifs, pour chaque société, le 1er de chaque mois — apps/scm/
+    # tasks.py. Best-effort par société ET par produit ; notifie un résumé.
+    'scm-generer-previsions-mensuelles': {
+        'task': 'scm.generer_previsions_mensuelles',
+        'schedule': crontab(hour=5, minute=10, day_of_month=1),
+    },
+    # NTSCM22 — ouvre le CyclePlanificationSOP du mois suivant (brouillon)
+    # le 20 de chaque mois, UNIQUEMENT pour les sociétés opt-in
+    # (`ParametresSCM.sop_actif`, défaut désactivé) — apps/scm/tasks.py.
+    'scm-ouvrir-cycle-sop-mensuel': {
+        'task': 'scm.ouvrir_cycle_sop_mensuel',
+        'schedule': crontab(hour=5, minute=30, day_of_month=20),
+    },
+    # NTMFG30 — recalcul MRP nocturne (NTMFG5) + notification des ruptures
+    # prévisionnelles sur l'horizon `ParametresMRP.horizon_mrp_jours`
+    # (NTMFG29) — apps/mrp/tasks.py. Best-effort par société.
+    'mrp-recalculer-besoins-nocturne': {
+        'task': 'mrp.recalculer_besoins_nocturne',
+        'schedule': crontab(hour=1, minute=30),
+    },
+    # NTMFG31 — archive (soft-delete) les OF prototype clôturés dépassant
+    # `ParametresMRP.retention_prototype_jours` (NTMFG29) — apps/mrp/tasks.py.
+    'mrp-archiver-of-prototype-anciens': {
+        'task': 'mrp.archiver_of_prototype_anciens',
+        'schedule': crontab(hour=2, minute=15),
+    },
+    # NTMFG32 — rappel proactif J-7 avant échéance d'entretien de poste
+    # (NTMFG14) — apps/mrp/tasks.py.
+    'mrp-rappeler-entretiens-poste-j7': {
+        'task': 'mrp.rappeler_entretiens_poste_j7',
+        'schedule': crontab(hour=6, minute=45),
+    },
+    # NTSCM35 — recalcule PolitiqueStock (NTSCM6) de chaque société avec
+    # ParametresSCM configuré, tous les lundis — apps/scm/tasks.py.
+    'scm-recalculer-politiques-stock-hebdo': {
+        'task': 'scm.recalculer_politiques_stock_hebdo',
+        'schedule': crontab(hour=5, minute=45, day_of_week=1),
+    },
+    # NTSCM36 — purge les PrevisionDemande > ParametresSCM.
+    # retention_previsions_mois (défaut 24 mois), sauf si référencées par un
+    # LigneDemandeSOP figé d'un cycle CLOS — apps/scm/tasks.py. Mensuel.
+    'scm-purger-donnees-scm-anciennes': {
+        'task': 'scm.purger_donnees_scm_anciennes',
+        'schedule': crontab(hour=6, minute=0, day_of_month=2),
+    },
+    # NTSCM45 — notifie les followers/destinataires résolus d'un écart de
+    # prévision (MAPE) important — apps/scm/tasks.py. Mensuel.
+    'scm-notifier-ecarts-prevision-importants': {
+        'task': 'scm.notifier_ecarts_prevision_importants',
+        'schedule': crontab(hour=6, minute=15, day_of_month=3),
     },
 }
 

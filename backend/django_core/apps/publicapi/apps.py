@@ -21,6 +21,11 @@ class PublicApiConfig(AppConfig):
         # métier (nouveau lead, devis accepté, chantier clôturé, facture payée).
         from . import signals
         signals.connect()
+        # NTSCM39 — abonnés aux évènements SCM du bus `core.events`
+        # (`scm_rupture_imminente_detectee`/`scm_cycle_sop_cloture`), jamais
+        # un import direct `apps.scm` -> `apps.publicapi`.
+        from . import scm_event_receivers
+        scm_event_receivers.connect()
         # YOPSB11 — archivage par lots du journal WebhookDelivery (registre
         # partagé YOPSB10). Fenêtre founder-configurable via
         # WEBHOOK_DELIVERY_ARCHIVE_DAYS (défaut 0 = OFF, comportement inchangé).

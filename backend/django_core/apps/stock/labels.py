@@ -600,3 +600,164 @@ def render_etiquettes_sscc_html(unites):
         'sous_titre': u.get('sous_titre') or '',
     } for u in unites]
     return render_labels_html(items, symbology='code128')
+
+
+# ---------------------------------------------------------------------------
+# NTWMS32 -- Etiquettes de CASIER (planche a coller en rayonnage).
+#
+# Le jeton encode est le CODE BRUT du casier : c'est exactement ce que le
+# poste scanner NTWMS5 resout en premier (`resoudre_code_scanne` essaie le
+# casier avant le produit). Une etiquette imprimee est donc scannable telle
+# quelle, sans prefixe maison a maintenir des deux cotes.
+# ---------------------------------------------------------------------------
+
+def casier_token(code) -> str:
+    """Contenu encode par le code d'une etiquette de casier : son CODE brut."""
+    return str(code or '')
+
+
+def render_etiquettes_casiers_html(casiers, symbology='qr'):
+    """Planche d'etiquettes de casier prete a coller en rayonnage.
+
+    `casiers` = liste de dicts {code, zone, allee, casier, emplacement}.
+    Le titre est le code (ce que le magasinier lit de loin), le sous-titre
+    situe le casier (zone / allee / entrepot).
+    """
+    items = []
+    for casier in casiers:
+        situation = ' · '.join(
+            part for part in [
+                casier.get('emplacement') or '',
+                f"Zone {casier['zone']}" if casier.get('zone') else '',
+                f"Allée {casier['allee']}" if casier.get('allee') else '',
+            ] if part)
+        items.append({
+            'token': casier_token(casier.get('code')),
+            'titre': casier.get('code') or '',
+            'sous_titre': situation,
+        })
+    return render_labels_html(items, symbology=symbology)
+
+
+# ---------------------------------------------------------------------------
+# NTRET17 -- ETIQUETTE PRIX de rayon (boutique).
+#
+# Le format `showroom` (XPOS17) porte un QR vers une fiche produit : c'est une
+# etiquette de DEMONSTRATION. Il manquait l'etiquette de RAYON classique : prix
+# TTC en gros caracteres, nom du produit, et un code-barres EAN-13 scannable en
+# caisse. L'EAN-13 est genere ici en stdlib (meme approche que le QR et le
+# Code128 de ce module) -- aucune dependance ajoutee.
+# ---------------------------------------------------------------------------
+
+# Motifs EAN-13 : chaque chiffre a 3 encodages (L, G, R) de 7 modules.
+_EAN_L = ('0001101', '0011001', '0010011', '0111101', '0100011',
+          '0110001', '0101111', '0111011', '0110111', '0001011')
+_EAN_G = ('0100111', '0110011', '0011011', '0100001', '0011101',
+          '0111001', '0000101', '0010001', '0001001', '0010111')
+_EAN_R = tuple(''.join('1' if c == '0' else '0' for c in motif)
+               for motif in _EAN_L)
+# Parite des 6 chiffres du groupe GAUCHE, selon le 1er chiffre.
+_EAN_PARITE = ('LLLLLL', 'LLGLGG', 'LLGGLG', 'LLGGGL', 'LGLLGG',
+               'LGGLLG', 'LGGGLL', 'LGLGLG', 'LGLGGL', 'LGGLGL')
+
+
+def ean13_cle(douze_chiffres: str) -> str:
+    """Cle de controle EAN-13 (mod 10, poids 1/3 alternes)."""
+    chiffres = [int(c) for c in str(douze_chiffres)[:12]]
+    total = sum(c * (3 if i % 2 else 1) for i, c in enumerate(chiffres))
+    return str((10 - total % 10) % 10)
+
+
+def ean13_normalise(code) -> str:
+    """Renvoie un EAN-13 VALIDE (13 chiffres, cle correcte) ou '' .
+
+    12 chiffres -> la cle est calculee. 13 chiffres -> la cle est VERIFIEE
+    (un code faux n'est jamais 'repare' en silence : on renvoie ''). Toute
+    autre longueur, ou un code non numerique, renvoie '' -- l'etiquette
+    s'imprime alors sans code-barres plutot qu'avec un code non scannable.
+    """
+    brut = ''.join(ch for ch in str(code or '') if ch.isdigit())
+    if len(brut) == 12:
+        return brut + ean13_cle(brut)
+    if len(brut) == 13 and brut[12] == ean13_cle(brut[:12]):
+        return brut
+    return ''
+
+
+def ean13_svg(code, bar: int = 2, height: int = 60) -> str:
+    """Code-barres EAN-13 en SVG (stdlib). Code invalide -> chaine vide."""
+    ean = ean13_normalise(code)
+    if not ean:
+        return ''
+    premier = int(ean[0])
+    parite = _EAN_PARITE[premier]
+    bits = ['101']
+    for i, chiffre in enumerate(ean[1:7]):
+        table = _EAN_L if parite[i] == 'L' else _EAN_G
+        bits.append(table[int(chiffre)])
+    bits.append('01010')
+    for chiffre in ean[7:]:
+        bits.append(_EAN_R[int(chiffre)])
+    bits.append('101')
+    motif = ''.join(bits)
+
+    largeur = len(motif) * bar
+    rects = []
+    for index, bit in enumerate(motif):
+        if bit == '1':
+            rects.append(
+                f'<rect x="{index * bar}" y="0" width="{bar}" '
+                f'height="{height}" fill="#000"/>')
+    return (
+        f'<svg xmlns="http://www.w3.org/2000/svg" width="{largeur}" '
+        f'height="{height + 14}" viewBox="0 0 {largeur} {height + 14}">'
+        f'{"".join(rects)}'
+        f'<text x="{largeur / 2}" y="{height + 11}" text-anchor="middle" '
+        f'font-family="monospace" font-size="10">{_esc(ean)}</text>'
+        '</svg>'
+    )
+
+
+def render_etiquettes_prix_html(produits, largeur_mm: int = 58):
+    """Planche d'etiquettes PRIX de rayon.
+
+    `produits` = liste de dicts {nom, code_barres, prix_ttc, sku, marque}.
+    Le prix TTC est en GROS caracteres (c'est ce que le client lit), le
+    code-barres EAN-13 en dessous (c'est ce que la caisse scanne). Un produit
+    sans code-barres valide s'imprime quand meme -- sans code, jamais avec un
+    code non scannable. `largeur_mm` rend le gabarit compatible avec la
+    plupart des imprimantes d'etiquettes (aucune dependance ajoutee).
+    """
+    cartes = []
+    for produit in produits:
+        svg = ean13_svg(produit.get('code_barres'))
+        prix = produit.get('prix_ttc')
+        prix_txt = ('' if prix in (None, '') else f'{prix} DH')
+        cartes.append(
+            '<div class="etiquette">'
+            f'<div class="nom">{_esc(produit.get("nom"))}</div>'
+            f'<div class="marque">{_esc(produit.get("marque"))}</div>'
+            f'<div class="prix">{_esc(prix_txt)}</div>'
+            f'<div class="code">{svg}</div>'
+            f'<div class="sku">{_esc(produit.get("sku"))}</div>'
+            '</div>'
+        )
+    style = (
+        '@page { size: A4; margin: 8mm; }'
+        'body { font-family: Helvetica, Arial, sans-serif; }'
+        '.planche { display: flex; flex-wrap: wrap; gap: 4mm; }'
+        f'.etiquette {{ width: {largeur_mm}mm; border: 1px solid #ccc;'
+        ' border-radius: 2mm; padding: 2.5mm; box-sizing: border-box;'
+        ' text-align: center; page-break-inside: avoid; }'
+        '.nom { font-size: 9pt; font-weight: 700; line-height: 1.15; }'
+        '.marque { font-size: 7pt; color: #666; }'
+        '.prix { font-size: 20pt; font-weight: 800; margin: 1.5mm 0; }'
+        '.code svg { display: block; margin: 0 auto; max-width: 100%; }'
+        '.sku { font-size: 6.5pt; color: #888; font-family: monospace; }'
+    )
+    return (
+        '<!DOCTYPE html><html><head><meta charset="utf-8">'
+        f'<style>{style}</style></head><body>'
+        f'<div class="planche">{"".join(cartes)}</div>'
+        '</body></html>'
+    )

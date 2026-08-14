@@ -47,9 +47,37 @@ from .onboarding_fournisseur import (
 from .wms import (
     VaguePickingViewSet, UniteLogistiqueViewSet, QuaiViewSet,
     RendezVousTransporteurViewSet, ExpeditionTransporteurViewSet,
-    PlanComptageTournantViewSet,
+    PlanComptageTournantViewSet, AlerteRappelViewSet,
+    PortailTiersTokenViewSet, RetourClientViewSet,
+    MouvementRebutViewSet, PlanChargementViewSet, BlocageQualiteViewSet,
+    entrepot_productivite_view, entrepot_pertes_view,
+    reslotting_suggestions_view, casiers_etiquettes_pdf_view,
 )
-from .scanner import scanner_resoudre_view, scanner_mouvement_view
+from .scanner import (
+    scanner_resoudre_view, scanner_mouvement_view,
+    scanner_retour_fournisseur_view,
+)
+# Groupe NTWMS (vague 3) - pilotage d'entrepot (cockpit, capacite, retour).
+from .entrepot import (
+    entrepot_cockpit_view, simuler_capacite_view, zones_surcapacite_view,
+    tache_retour_view, historique_casier_view,
+)
+# NTWMS34 - plans d'echantillonnage a reception (controle qualite bloquant).
+from .qualite_reception import PlanEchantillonnageViewSet
+# NTWMS38 - compatibilite casier <-> matiere dangereuse (hazmat).
+from .hazmat import CompatibiliteHazmatCasierViewSet
+# NTSCM9 - incidents qualite fournisseur (alimente scorecard + TCO).
+from .fournisseur_scm import IncidentQualiteFournisseurViewSet
+# Groupe NTDST - negoce (consignation, parametres, van sales).
+from .negoce import (
+    DepotConsignationViewSet, AccordRFAFournisseurViewSet,
+    catalogue_b2b_view, stock_embarque_view, parametres_negoce_view,
+)
+# NTWMS40 - reappro des casiers picking depuis le stockage.
+from .reappro_casier import (
+    SeuilReapproCasierViewSet, TacheReapproInterneViewSet,
+    casiers_a_reapprovisionner_view,
+)
 
 __all__ = [
     'ProduitViewSet',
@@ -93,6 +121,33 @@ __all__ = [
     'RendezVousTransporteurViewSet',
     'ExpeditionTransporteurViewSet',
     'PlanComptageTournantViewSet',
+    'AlerteRappelViewSet',
+    'PortailTiersTokenViewSet',
+    'RetourClientViewSet',
+    'MouvementRebutViewSet',
+    'PlanChargementViewSet',
+    'BlocageQualiteViewSet',
+    'entrepot_productivite_view',
+    'entrepot_pertes_view',
+    'reslotting_suggestions_view',
+    'casiers_etiquettes_pdf_view',
     'scanner_resoudre_view',
     'scanner_mouvement_view',
+    'entrepot_cockpit_view',
+    'simuler_capacite_view',
+    'zones_surcapacite_view',
+    'tache_retour_view',
+    'PlanEchantillonnageViewSet',
+    'CompatibiliteHazmatCasierViewSet',
+    'historique_casier_view',
+    'SeuilReapproCasierViewSet',
+    'TacheReapproInterneViewSet',
+    'casiers_a_reapprovisionner_view',
+    'scanner_retour_fournisseur_view',
+    'IncidentQualiteFournisseurViewSet',
+    'DepotConsignationViewSet',
+    'AccordRFAFournisseurViewSet',
+    'catalogue_b2b_view',
+    'stock_embarque_view',
+    'parametres_negoce_view',
 ]

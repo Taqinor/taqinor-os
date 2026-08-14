@@ -32,10 +32,16 @@ from apps.dataimport.services import FIELD_MAPS, TARGETS, _LazyTargets
 #   résolu par ``_LazyTargets`` SANS toucher ``apps/dataimport/services.py``
 #   — c'est exactement le comportement que TestNewManifestTargetAppears...
 #   prouve avec un manifeste fictif, ici confirmé sur une vraie app.
+#   NTSCM40 — 'scm_evenement_demande' : import CSV/XLSX des événements de
+#   demande (planification supply chain), déclaré par
+#   ``apps/scm/platform.py`` (``import_specs``), mapping d'en-têtes dans
+#   ``dataimport.FIELD_MAPS``, écriture DÉLÉGUÉE à ``apps.scm.services.
+#   creer_evenement_demande_import`` (mode `creer` uniquement — pas dans
+#   ``UPSERT_TARGETS``).
 HISTORICAL_TARGETS = {
     'leads', 'clients', 'products', 'fournisseurs', 'equipements',
     'vehicules', 'contrats', 'dossiers_rh',
-    'eleves_education',
+    'eleves_education', 'scm_evenement_demande',
 }
 
 # Cibles déclarées au registre par une app qui porte son PROPRE lecteur de
@@ -77,6 +83,7 @@ TARGET_OWNER_MODULE = {
     'contrats': 'contrats',
     'dossiers_rh': 'rh',
     'eleves_education': 'education',
+    'scm_evenement_demande': 'scm',
     'obstacles': 'ao', 'chaines': 'ao', 'avis': 'ao',
     'avis_veille': 'veille_ao',
 }

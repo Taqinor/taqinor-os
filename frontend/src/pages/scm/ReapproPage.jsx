@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { ShoppingCart, RefreshCw } from 'lucide-react'
+import { Link } from 'react-router-dom'
+import { ShoppingCart, RefreshCw, TrendingUp, AlertTriangle, Download } from 'lucide-react'
 import scmApi from '../../api/scmApi'
 import { formatMAD } from '../../lib/format'
 import { Button, Badge, DataTable, EmptyState, Skeleton } from '../../ui'
@@ -44,6 +45,10 @@ export default function ReapproPage() {
   const [creerBusy, setCreerBusy] = useState(false)
   const [creerMsg, setCreerMsg] = useState(null)
   const [creerErr, setCreerErr] = useState(null)
+  // NTSCM24 — précision de prévision (MAPE global, widget de fiabilité).
+  const [precision, setPrecision] = useState(null)
+  // NTSCM25 — anomalies de demande ouvertes (badge « pic inhabituel »).
+  const [nbAnomalies, setNbAnomalies] = useState(0)
 
   const charger = useCallback(() => {
     setLoading(true)
@@ -64,6 +69,55 @@ export default function ReapproPage() {
   // synchrone (react-hooks/set-state-in-effect). Comportement inchangé.
   useEffect(() => { Promise.resolve().then(charger) }, [charger])
 
+  // NTSCM24/25 — widgets best-effort : une erreur ne doit jamais empêcher le
+  // tableau de bord réappro principal de s'afficher.
+  useEffect(() => {
+    Promise.resolve().then(() => {
+      scmApi.precisionPrevisions().then((r) => setPrecision(r.data)).catch(() => {})
+      scmApi.anomaliesDemande()
+        .then((r) => setNbAnomalies((r.data ?? []).length))
+        .catch(() => {})
+    })
+  }, [])
+
+  // NTSCM32/41 — exports .xlsx (écarts de prévision, suggestions d'achat
+  // groupées) — même patron de téléchargement `Blob`.
+  const [exportBusy, setExportBusy] = useState(false)
+  const [exportAchatBusy, setExportAchatBusy] = useState(false)
+
+  const _telechargerBlob = async (fetcher, filename) => {
+    const res = await fetcher()
+    const url = window.URL.createObjectURL(new Blob([res.data]))
+    const a = document.createElement('a')
+    a.href = url
+    a.download = filename
+    a.click()
+    window.URL.revokeObjectURL(url)
+  }
+
+  const exporterEcartsPrevision = async () => {
+    setExportBusy(true)
+    try {
+      await _telechargerBlob(scmApi.exportEcartsPrevision, 'ecarts-prevision.xlsx')
+    } catch {
+      setCreerErr("L'export des écarts de prévision a échoué.")
+    } finally {
+      setExportBusy(false)
+    }
+  }
+
+  const exporterSuggestionsAchat = async () => {
+    setExportAchatBusy(true)
+    try {
+      await _telechargerBlob(
+        scmApi.exportSuggestionsAchatGroupe, 'suggestions-achat-groupe.xlsx')
+    } catch {
+      setCreerErr("L'export des suggestions d'achat groupées a échoué.")
+    } finally {
+      setExportAchatBusy(false)
+    }
+  }
+
   const creerBrouillonsBcf = async () => {
     setCreerBusy(true); setCreerMsg(null); setCreerErr(null)
     try {
@@ -83,7 +137,16 @@ export default function ReapproPage() {
   }
 
   const columns = useMemo(() => [
-    { id: 'produit_nom', header: 'Produit', accessor: (r) => r.produit_nom },
+    {
+      id: 'produit_nom', header: 'Produit', accessor: (r) => r.produit_nom,
+      // NTSCM44 — lien vers la fiche politique de stock (réglages + fil
+      // d'activité) : écran livré = écran atteignable.
+      cell: (v, r) => (
+        <Link to={`/scm/politiques-stock/${r.politique_id}`} className="font-medium hover:underline">
+          {r.produit_nom}
+        </Link>
+      ),
+    },
     {
       id: 'classe_abc', header: 'Classe', width: 90,
       accessor: (r) => r.classe_abc || '—',
@@ -147,6 +210,25 @@ export default function ReapproPage() {
         </p>
       </div>
 
+      {(precision?.mape_global_pct != null || nbAnomalies > 0) && (
+        <div className="mb-4 flex flex-wrap items-center gap-2">
+          {precision?.mape_global_pct != null && (
+            <Badge tone="neutral">
+              <TrendingUp size={14} strokeWidth={1.75} aria-hidden="true" />
+              {' '}Précision moyenne du moteur de prévision :{' '}
+              {(100 - Math.min(100, precision.mape_global_pct)).toFixed(0)}%
+              {' '}({precision.nb_mois_couverts} mois)
+            </Badge>
+          )}
+          {nbAnomalies > 0 && (
+            <Badge tone="warning" title="Pic ou creux de demande inhabituel détecté sur au moins un produit">
+              <AlertTriangle size={14} strokeWidth={1.75} aria-hidden="true" />
+              {' '}⚠ {nbAnomalies} pic{nbAnomalies > 1 ? 's' : ''} inhabituel{nbAnomalies > 1 ? 's' : ''} détecté{nbAnomalies > 1 ? 's' : ''}
+            </Badge>
+          )}
+        </div>
+      )}
+
       <div className="mb-4 flex flex-wrap items-center gap-2">
         <select
           className="rounded-md border border-border bg-background px-2 py-1.5 text-sm"
@@ -177,6 +259,20 @@ export default function ReapproPage() {
           title="Groupe les lignes à commander par fournisseur et crée un bon de commande brouillon par fournisseur."
         >
           <ShoppingCart /> Créer les brouillons BCF ({nbACommander})
+        </Button>
+        <Button
+          type="button" variant="outline" size="sm" loading={exportBusy}
+          onClick={exporterEcartsPrevision}
+          title="Exporte le rapport écarts de prévision (prévision, réel, écart absolu, écart %) au format .xlsx."
+        >
+          <Download /> Exporter les écarts de prévision
+        </Button>
+        <Button
+          type="button" variant="outline" size="sm" loading={exportAchatBusy}
+          onClick={exporterSuggestionsAchat}
+          title="Exporte les suggestions d'achat groupées par fournisseur (MOQ/paliers) au format .xlsx."
+        >
+          <Download /> Exporter les suggestions d&apos;achat
         </Button>
         {creerMsg && <span className="text-sm text-success" role="status">{creerMsg}</span>}
         {creerErr && <span className="text-sm text-destructive" role="alert">{creerErr}</span>}

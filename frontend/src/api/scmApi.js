@@ -21,7 +21,11 @@ const scmApi = {
 
   // NTSCM6 — politiques de stock.
   politiquesStock: (params) => api.get('/scm/politiques-stock/', { params }),
+  politiqueStock: (id) => api.get(`/scm/politiques-stock/${id}/`),
+  majPolitiqueStock: (id, body) => api.patch(`/scm/politiques-stock/${id}/`, body),
   recalculerPolitiquesStock: () => api.post('/scm/politiques-stock/recalculer/', {}),
+  // NTSCM44 — fil d'activité (chatter générique) de la politique de stock.
+  historiquePolitiqueStock: (id) => api.get(`/scm/politiques-stock/${id}/historique/`),
 
   // NTSCM7 — tableau de bord réappro consolidé.
   tableauBordReappro: (params) => api.get('/scm/tableau-bord-reappro/', { params }),
@@ -42,6 +46,59 @@ const scmApi = {
   calculerOffreCycleSop: (id) => api.post(`/scm/cycles-sop/${id}/calculer-offre/`, {}),
   ecartsCycleSop: (id) => api.get(`/scm/cycles-sop/${id}/ecarts/`),
   impactFinancierCycleSop: (id) => api.get(`/scm/cycles-sop/${id}/impact-financier/`),
+  compteRenduCycleSop: (id) =>
+    api.get(`/scm/cycles-sop/${id}/compte-rendu/`, { responseType: 'blob' }),
+
+  // NTSCM16 — suggestions d'achat groupées multi-fournisseurs (MOQ/paliers).
+  suggestionsAchatGroupe: () => api.get('/scm/suggestions-achat-groupe/'),
+  // NTSCM41 — export .xlsx des suggestions d'achat groupées.
+  exportSuggestionsAchatGroupe: () =>
+    api.get('/scm/suggestions-achat-groupe/export/', { responseType: 'blob' }),
+
+  // NTSCM18 — simulation « et si… » de rupture (lecture seule, en mémoire).
+  simulerRupture: (produitId, body = {}) =>
+    api.post(`/scm/produits/${produitId}/simuler/`, body),
+
+  // NTSCM19 — allocation en pénurie multi-clients (proposition).
+  proposerAllocationPenurie: (produitId, params = {}) =>
+    api.get(`/scm/produits/${produitId}/proposer-allocation/`, { params }),
+
+  // NTSCM20 — suggestions de transfert inter-sites (anticipatif).
+  suggestionsTransfert: () => api.get('/scm/suggestions-transfert/'),
+  // NTSCM41 — export .xlsx des suggestions de transfert inter-sites.
+  exportSuggestionsTransfert: () =>
+    api.get('/scm/suggestions-transfert/export/', { responseType: 'blob' }),
+
+  // NTSCM24 — précision de prévision auto-mesurée (MAPE).
+  precisionPrevisions: (params = {}) =>
+    api.get('/scm/precision-previsions/', { params }),
+
+  // NTSCM32 — export .xlsx du rapport « Écarts de prévision ».
+  exportEcartsPrevision: (params = {}) =>
+    api.get('/scm/precision-previsions/export/', { params, responseType: 'blob' }),
+
+  // NTSCM25 — anomalies de demande (pic/creux inattendu).
+  anomaliesDemande: () => api.get('/scm/anomalies-demande/'),
+  detecterAnomaliesDemande: () => api.post('/scm/anomalies-demande/detecter/', {}),
+
+  // NTSCM28 — tableau de bord SCM exécutif (KPI de synthèse).
+  tableauBordExecutif: () => api.get('/scm/tableau-bord/'),
+
+  // NTSCM29 — fiche PDF interne « Politique de stock ».
+  fichePdfPolitiqueStock: (id) =>
+    api.get(`/scm/politiques-stock/${id}/fiche-pdf/`, { responseType: 'blob' }),
+
+  // NTSCM30 — assistant guidé « Créer une politique de stock » en lot.
+  creerPolitiquesEnLot: (body) =>
+    api.post('/scm/politiques-stock/creer-en-lot/', body),
+
+  // NTSCM22 — réglages opt-in du cycle S&OP automatique (singleton société).
+  parametresSop: () => api.get('/scm/parametres-sop/'),
+  majParametresSop: (body) => api.patch('/scm/parametres-sop/', body),
+
+  // NTSCM33 — écran de réglages SCM par société (horizon/niveaux/seuils).
+  parametresScm: () => api.get('/scm/parametres/'),
+  majParametresScm: (body) => api.patch('/scm/parametres/', body),
 }
 
 export default scmApi

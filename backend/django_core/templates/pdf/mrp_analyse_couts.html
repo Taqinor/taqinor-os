@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: 'Helvetica Neue', Arial, sans-serif; font-size: 12px; color: #333; }
+    .page { padding: 40px; }
+    .header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 32px; }
+    .header-left { display: flex; flex-direction: column; gap: 6px; }
+    .logo img { max-height: 90px; max-width: 240px; object-fit: contain; }
+    .doc-title { font-size: 24px; font-weight: bold; color: {{ couleur_principale }}; margin-top: 8px; }
+    .doc-ref { font-size: 12px; color: #666; }
+    .company-info { text-align: right; font-size: 11px; color: #555; line-height: 1.6; }
+    .company-info strong { font-size: 13px; color: #222; }
+
+    table { width: 100%; border-collapse: collapse; margin-bottom: 8px; }
+    thead tr { background: {{ couleur_principale }}; color: white; }
+    thead th { padding: 8px 10px; text-align: left; font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px; }
+    tbody tr:nth-child(even) { background: #f9fafb; }
+    tbody td { padding: 8px 10px; border-bottom: 1px solid #e5e7eb; font-size: 10.5px; }
+    .text-right { text-align: right; }
+    .ecart-negatif { color: #dc2626; }
+    .ecart-positif { color: #16a34a; }
+    tfoot td { padding: 10px; font-weight: bold; border-top: 2px solid #333; }
+
+    .footer { margin-top: 30px; border-top: 1px solid #e2e8f0; padding-top: 14px; font-size: 10px; color: #94a3b8; text-align: center; line-height: 1.8; }
+  </style>
+</head>
+<body>
+<div class="page">
+
+  <div class="header">
+    <div class="header-left">
+      {% if logo_uri %}<div class="logo"><img src="{{ logo_uri }}" alt="Logo" /></div>{% endif %}
+      <div class="doc-title">ANALYSE DES ÉCARTS DE PRODUCTION</div>
+      <div class="doc-ref">
+        {% if date_debut or date_fin %}Période : {{ date_debut or '…' }} → {{ date_fin or '…' }}{% else %}Toutes périodes{% endif %}
+      </div>
+    </div>
+    <div class="company-info">
+      <strong>{{ entreprise_nom }}</strong><br />
+      Document interne — coûts standard vs réel, jamais client-facing
+    </div>
+  </div>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Produit</th>
+        <th class="text-right">Nb OF</th>
+        <th class="text-right">Coût matière std</th>
+        <th class="text-right">Coût matière réel</th>
+        <th class="text-right">Écart matière</th>
+        <th class="text-right">Coût MO std</th>
+        <th class="text-right">Coût MO réel</th>
+        <th class="text-right">Écart MO</th>
+        <th class="text-right">Écart rendement</th>
+        <th class="text-right">Écart total</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for l in lignes %}
+      <tr>
+        <td>{{ l.produit_nom }}</td>
+        <td class="text-right">{{ l.nb_of }}</td>
+        <td class="text-right">{{ l.cout_matiere_standard }}</td>
+        <td class="text-right">{{ l.cout_matiere_reel }}</td>
+        <td class="text-right">{{ l.ecart_matiere }}</td>
+        <td class="text-right">{{ l.cout_main_oeuvre_standard }}</td>
+        <td class="text-right">{{ l.cout_main_oeuvre_reel }}</td>
+        <td class="text-right">{{ l.ecart_main_oeuvre }}</td>
+        <td class="text-right">{{ l.ecart_rendement }}</td>
+        <td class="text-right">{{ l.ecart_total }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+    <tfoot>
+      <tr>
+        <td colspan="9">Total consolidé</td>
+        <td class="text-right">{{ total_ecart }}</td>
+      </tr>
+    </tfoot>
+  </table>
+  {% if not lignes %}
+  <p style="color:#94a3b8;font-size:11px;">Aucun écart sur cette période.</p>
+  {% endif %}
+
+  <div class="footer">
+    Document interne généré automatiquement le {{ now.strftime('%d/%m/%Y à %H:%M') }} — ne jamais transmettre au client.
+  </div>
+
+</div>
+</body>
+</html>

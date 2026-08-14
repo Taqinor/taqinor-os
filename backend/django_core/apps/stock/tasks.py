@@ -171,6 +171,65 @@ def relancer_bcf_en_retard_task():
     return result
 
 
+@shared_task(name='stock.alerter_surcapacite_zones')
+def alerter_surcapacite_zones_task(seuil_pct=None):
+    """NTWMS42 — alerte PASSIVE de sur-stockage par zone.
+
+    Pour CHAQUE société, relève les zones dont le taux de remplissage franchit
+    le seuil (défaut 95 %, cf. ``selectors_entrepot.SEUIL_SURCAPACITE_PCT``) et
+    notifie best-effort le responsable d'entrepôt — sans qu'aucun utilisateur
+    n'ait à lancer le simulateur NTWMS33. Idempotent : une seule notification
+    par société et par jour (même garde ``link`` stable que ZSTK1/ZSTK2).
+
+    Une zone sans capacité déclarée (aucune ``CategorieStockage`` posée sur ses
+    casiers) n'est JAMAIS signalée : on ne devine pas un taux.
+
+    Renvoie ``{company_id: nb_zones_alertees}``.
+    """
+    from authentication.models import Company
+    from .selectors_entrepot import zones_en_surcapacite
+
+    today = timezone.localdate()
+    result = {}
+    for company in Company.objects.all():
+        try:
+            zones = zones_en_surcapacite(company, seuil_pct=seuil_pct)
+        except Exception:  # noqa: BLE001 — société suivante, jamais bloquant
+            logger.warning(
+                'stock.alerter_surcapacite_zones: échec calcul société %s',
+                company.id, exc_info=True)
+            continue
+        if not zones:
+            result[company.id] = 0
+            continue
+        link = f'stock-surcapacite-{company.id}-{today.isoformat()}'
+        if _deja_notifie_aujourdhui('stock_low', link):
+            result[company.id] = 0
+            continue
+        try:
+            from apps.notifications.models import EventType
+            from apps.notifications.services import notify_many
+            noms = ', '.join(
+                f"{z['zone']} ({z['taux_pct']} %)" for z in zones[:10])
+            suffixe = '…' if len(zones) > 10 else ''
+            # `EventType` vit dans `apps.notifications`, hors périmètre de
+            # cette lane : on EMPRUNTE la famille d'alerte stock existante
+            # plutôt que d'écrire une valeur non déclarée dans le TextChoices
+            # (le libellé de la notification, lui, est sans ambiguïté).
+            notify_many(
+                _recipients_reappro(company), EventType.STOCK_LOW,
+                title=f'{len(zones)} zone(s) entrepôt en sur-capacité',
+                body=f'Seuil de remplissage franchi : {noms}{suffixe}.',
+                link=link, company=company)
+            result[company.id] = len(zones)
+        except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+            logger.warning(
+                'stock.alerter_surcapacite_zones: notification échouée '
+                'société %s', company.id, exc_info=True)
+            result[company.id] = 0
+    return result
+
+
 @shared_task(name='stock.expiration_alerts')
 def expiration_alerts_task():
     """ZSTK2 — pour CHAQUE société, notifie (best-effort, une fois par jour)

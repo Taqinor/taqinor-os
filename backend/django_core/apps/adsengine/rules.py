@@ -45,8 +45,15 @@ DEFAULT_COOLDOWN_HOURS = {
 ESCALATION_THRESHOLD = 3
 
 
-# Catalogue des templates de règles (clé stable → métadonnées FR). Les params
-# éditables sont whitelistés par template (jamais arbitraires).
+# Registre HISTORIQUE ADSENG4 (clé stable → métadonnées FR). ⚠ Ce n'est PLUS le
+# catalogue affiché : le catalogue RÉEL (celui que ``/regles/catalogue/`` rend et
+# que le fondateur arme) vit dans ``rule_templates.RULE_TEMPLATES`` (ADSENG14 +
+# ADSDEEP38). Ce registre-ci ne survit que pour les clés HISTORIQUES encore
+# portées par des lignes en base (``cost_per_signature_ceiling``,
+# ``zero_results``) et par le seed ADSENG4 — il n'est JAMAIS la liste de choix.
+# Voir ``rule_template_choices()`` : les choix du modèle sont DÉRIVÉS des deux
+# registres, jamais recopiés à la main (une divergence a rendu 400 tout
+# armement d'un gabarit du catalogue réel).
 RULE_TEMPLATES = {
     'cost_per_signature_ceiling': {
         'label_fr': 'Plafond coût par signature',
@@ -82,15 +89,39 @@ RULE_TEMPLATES = {
 
 
 def rule_template_choices():
-    """Paires (clé, libellé FR) prêtes pour ``choices=`` (ordre stable)."""
-    return [(key, RULE_TEMPLATES[key]['label_fr']) for key in RULE_TEMPLATES]
+    """Paires (clé, libellé FR) prêtes pour ``choices=`` (ordre stable).
+
+    **DÉRIVÉES, jamais recopiées.** La liste est calculée à partir des registres
+    vivants, dans cet ordre :
+
+    1. ``rule_templates.RULE_TEMPLATES`` — le catalogue FIXE réel (ADSENG14 +
+       ADSDEEP38), celui que ``GET /regles/catalogue/`` rend et dans lequel le
+       fondateur choisit ; son ``label_fr`` gagne pour les clés partagées ;
+    2. les clés HISTORIQUES d'ADSENG4 (ci-dessus) absentes du catalogue, pour ne
+       jamais invalider une ``RulePolicy`` déjà en base.
+
+    C'est le correctif de fond d'une divergence RÉELLE : les deux registres
+    avaient été recopiés à la main, si bien qu'armer ``stop_loss_cpl`` — le
+    PREMIER gabarit du catalogue affiché — partait en 400 « n'est pas un choix
+    valide ». Ajouter un gabarit au catalogue le rend désormais armable
+    AUTOMATIQUEMENT : la divergence est structurellement impossible.
+
+    Import DIFFÉRÉ de ``rule_templates`` (qui importe ce module pour les
+    constantes de sévérité) : appelée à la demande par Django (``choices`` est
+    passé en CALLABLE au champ), donc jamais pendant l'import de ce module — le
+    cycle ``rules`` ↔ ``rule_templates`` ne peut pas se produire.
+    """
+    from .rule_templates import RULE_TEMPLATES as CATALOGUE
+
+    choices = [(key, tpl['label_fr']) for key, tpl in CATALOGUE.items()]
+    connues = {key for key, _ in choices}
+    choices.extend(
+        (key, tpl['label_fr']) for key, tpl in RULE_TEMPLATES.items()
+        if key not in connues)
+    return choices
 
 
 def default_cooldown_hours(severity):
     """Cooldown par défaut pour une sévérité (repli WARNING si inconnue)."""
     return DEFAULT_COOLDOWN_HOURS.get(severity, DEFAULT_COOLDOWN_HOURS[
         SEVERITY_WARNING])
-
-
-# Choix pré-calculé (évite de rappeler la fonction dans plusieurs migrations).
-RULE_TEMPLATE_CHOICES = rule_template_choices()

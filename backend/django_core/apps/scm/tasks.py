@@ -1,0 +1,366 @@
+"""Tâches planifiées (Celery beat) de planification supply chain
+(NTSCM21/NTSCM22/NTSCM35/NTSCM36).
+
+Autodécouvertes par ``erp_agentique.celery`` (``autodiscover_tasks()``, comme
+``apps.stock.tasks``/``apps.rh.tasks``) ; leur cadence est déclarée dans
+``erp_agentique/celery.py`` (``beat_schedule``), introspectable via
+``core.jobs`` (FG368, ``/api/django/core/jobs/``). Chaque tâche boucle PAR
+société (jamais une company lue d'une requête) et reste best-effort : une
+exception sur une société/un produit n'empêche jamais les suivants — même
+patron que ``apps/stock/tasks.py`` (ZSTK1)."""
+import logging
+
+from celery import shared_task
+from django.utils import timezone
+
+logger = logging.getLogger(__name__)
+
+
+@shared_task(name='scm.generer_previsions_mensuelles')
+def generer_previsions_mensuelles_task(horizon_mois=None):
+    """NTSCM21 — pour CHAQUE société, (re)génère les prévisions de demande
+    (NTSCM2, ``services.generer_previsions``) de TOUS les produits actifs sur
+    ``horizon_mois`` mois — NTSCM33 : ``None`` (défaut) retombe sur
+    ``ParametresSCM.horizon_prevision_mois_defaut`` DE CHAQUE société (plus un
+    seul horizon global pour toutes). Best-effort par société ET par produit
+    (une erreur sur l'un n'interrompt jamais les autres, journalisée).
+
+    Notifie (``notifications.notify_many``, réutilisé — jamais un nouveau
+    canal) les rôles Administrateur/Directeur (``resolve_recipients``, repli
+    historique) d'un résumé : nombre de prévisions mises à jour + nombre
+    d'écarts >30% détectés vs la valeur PRÉCÉDEMMENT enregistrée pour le même
+    (produit, période) — comparée AVANT écrasement par le recalcul.
+
+    Renvoie ``[{'company_id', 'nb_maj', 'nb_ecarts'}, ...]``."""
+    from authentication.models import Company
+    from django.apps import apps as django_apps
+
+    from apps.notifications.models import EventType
+    from apps.notifications.services import notify_many, resolve_recipients
+
+    from . import services
+    from .models import PrevisionDemande
+
+    Produit = django_apps.get_model('stock', 'Produit')
+
+    resume_global = []
+    for company in Company.objects.all():
+        nb_maj = 0
+        nb_ecarts = 0
+        horizon_effectif = horizon_mois
+        if horizon_effectif is None:
+            from . import selectors
+            horizon_effectif = selectors.parametres(company).horizon_prevision_mois_defaut
+        produits = Produit.objects.filter(company=company, is_archived=False)
+        for produit in produits:
+            try:
+                avant = dict(
+                    PrevisionDemande.objects
+                    .filter(company=company, produit=produit)
+                    .values_list('periode', 'quantite_prevue'))
+                previsions = services.generer_previsions(
+                    produit, horizon_effectif, company)
+            except Exception:  # noqa: BLE001 — best-effort par produit
+                logger.warning(
+                    'scm.generer_previsions_mensuelles: échec produit %s '
+                    '(société %s)', produit.id, company.id, exc_info=True)
+                continue
+
+            nb_maj += len(previsions)
+            for prevision in previsions:
+                ancienne = avant.get(prevision.periode)
+                if ancienne and ancienne > 0:
+                    ecart_pct = (
+                        abs(prevision.quantite_prevue - ancienne) / ancienne * 100)
+                    if ecart_pct > 30:
+                        nb_ecarts += 1
+
+        if nb_maj:
+            titre = f'{nb_maj} prévision(s) de demande mise(s) à jour'
+            corps = (
+                f'{nb_maj} prévisions mises à jour, {nb_ecarts} écart(s) '
+                '>30% détecté(s) vs la valeur précédente.')
+            try:
+                notify_many(
+                    resolve_recipients(company, EventType.SCM_PREVISIONS_GENEREES),
+                    EventType.SCM_PREVISIONS_GENEREES, titre, body=corps,
+                    company=company)
+            except Exception:  # noqa: BLE001 — notification best-effort
+                logger.warning(
+                    'scm.generer_previsions_mensuelles: notification échouée '
+                    '(société %s)', company.id, exc_info=True)
+
+        resume_global.append({
+            'company_id': company.id, 'nb_maj': nb_maj, 'nb_ecarts': nb_ecarts,
+        })
+
+    return resume_global
+
+
+@shared_task(name='scm.recalculer_politiques_stock_hebdo')
+def recalculer_politiques_stock_hebdo():
+    """NTSCM35 — tâche planifiée HEBDOMADAIRE (Celery beat, tous les lundis) :
+    recalcule ``PolitiqueStock`` (``services.recalculer_politiques_stock``,
+    NTSCM6) de CHAQUE société ayant déjà un ``ParametresSCM`` configuré
+    (singleton créé paresseusement dès qu'une société a touché aux réglages
+    SCM ou l'écran S&OP — NTSCM22/33) — jamais toutes les sociétés
+    indistinctement (à la différence de NTSCM21, qui vise TOUT le monde).
+
+    Best-effort PAR SOCIÉTÉ : une société aux données incomplètes (aucun
+    produit, aucun historique de sorties…) ne lève jamais d'exception qui
+    interromprait les suivantes — même patron que
+    ``generer_previsions_mensuelles_task``. NTSCM39 — une fois les politiques
+    à jour, détecte et notifie (webhook sortant, ``core.events.
+    scm_rupture_imminente_detectee``) les produits en rupture imminente
+    (``services.detecter_ruptures_imminentes_et_notifier``), best-effort
+    (un accroc n'interrompt jamais le recalcul lui-même). Renvoie
+    ``[{'company_id', 'nb_politiques', 'nb_ruptures_notifiees'}, ...]``."""
+    from . import services
+    from .models import ParametresSCM
+
+    resume = []
+    company_ids = ParametresSCM.objects.values_list('company_id', flat=True)
+    for company in _companies_by_ids(company_ids):
+        try:
+            politiques = services.recalculer_politiques_stock(company)
+        except Exception:  # noqa: BLE001 — best-effort par société
+            logger.warning(
+                'scm.recalculer_politiques_stock_hebdo: échec société %s',
+                company.id, exc_info=True)
+            continue
+
+        nb_ruptures_notifiees = 0
+        try:
+            nb_ruptures_notifiees = services.detecter_ruptures_imminentes_et_notifier(
+                company)
+        except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+            logger.warning(
+                'scm.recalculer_politiques_stock_hebdo: détection ruptures '
+                'imminentes échouée (société %s)', company.id, exc_info=True)
+
+        resume.append({
+            'company_id': company.id, 'nb_politiques': len(politiques),
+            'nb_ruptures_notifiees': nb_ruptures_notifiees,
+        })
+    return resume
+
+
+def _companies_by_ids(company_ids):
+    from authentication.models import Company
+    return Company.objects.filter(id__in=list(company_ids))
+
+
+@shared_task(name='scm.ouvrir_cycle_sop_mensuel')
+def ouvrir_cycle_sop_mensuel_task(*, today=None):
+    """NTSCM22 — crée le ``CyclePlanificationSOP`` du mois SUIVANT (statut
+    brouillon) pour CHAQUE société ayant activé l'opt-in
+    (``ParametresSCM.sop_actif`` — défaut DÉSACTIVÉ, voir
+    ``models.ParametresSCM`` pour l'adaptation de périmètre NTSCM22 :
+    n'affecte AUCUNE société tant que non activée explicitement).
+
+    Idempotent : ``CyclePlanificationSOP`` porte une contrainte unique
+    ``(company, periode)`` — un doublon (deux déclenchements le même mois)
+    est absorbé proprement (vérifié AVANT insertion, capturé en secours si
+    la course gagne quand même). Notifie l'animateur désigné
+    (``ParametresSCM.animateur_sop``) quand renseigné, best-effort.
+
+    Renvoie la liste des id de cycles créés."""
+    from django.core.exceptions import ValidationError
+    from django.db import IntegrityError
+
+    from apps.notifications.models import EventType
+    from apps.notifications.services import notify
+
+    from .models import CyclePlanificationSOP, ParametresSCM
+
+    today = today or timezone.localdate()
+    idx_suivant = today.year * 12 + (today.month - 1) + 1
+    annee, mois0 = divmod(idx_suivant, 12)
+    periode_cible = f'{annee:04d}-{mois0 + 1:02d}'
+
+    crees = []
+    parametres_actifs = (
+        ParametresSCM.objects.filter(sop_actif=True)
+        .select_related('company', 'animateur_sop'))
+    for parametres in parametres_actifs:
+        company = parametres.company
+        if CyclePlanificationSOP.objects.filter(
+                company=company, periode=periode_cible).exists():
+            continue
+        try:
+            cycle = CyclePlanificationSOP.objects.create(
+                company=company, periode=periode_cible,
+                anime_par=parametres.animateur_sop)
+        except (IntegrityError, ValidationError):  # pragma: no cover - course concurrente
+            continue
+
+        crees.append(cycle)
+        if parametres.animateur_sop_id:
+            try:
+                notify(
+                    parametres.animateur_sop, EventType.SCM_CYCLE_SOP_OUVERT,
+                    f'Cycle S&OP {periode_cible} ouvert',
+                    body=(
+                        f'Le cycle S&OP {periode_cible} a été créé '
+                        'automatiquement (brouillon) — à animer.'),
+                    company=company)
+            except Exception:  # noqa: BLE001 — notification best-effort
+                logger.warning(
+                    'scm.ouvrir_cycle_sop_mensuel: notification échouée '
+                    '(société %s)', company.id, exc_info=True)
+
+    return [cycle.id for cycle in crees]
+
+
+@shared_task(name='scm.purger_donnees_scm_anciennes')
+def purger_donnees_scm_anciennes():
+    """NTSCM36 — tâche planifiée MENSUELLE : supprime les ``PrevisionDemande``
+    de plus de ``ParametresSCM.retention_previsions_mois`` mois (défaut 24,
+    NTSCM33 — créé paresseusement) SAUF celles référencées par un
+    ``LigneDemandeSOP`` d'un cycle S&OP CLOS (produit + période EXACTEMENT
+    ceux du cycle — jamais l'historique d'un cycle clos, même si
+    ``LigneDemandeSOP`` n'a pas de FK directe vers ``PrevisionDemande`` : le
+    rapprochement se fait sur (produit, période)).
+
+    Best-effort PAR SOCIÉTÉ (même patron que les autres tâches de ce module).
+    Renvoie ``[{'company_id', 'nb_supprimees'}, ...]``."""
+    from authentication.models import Company
+
+    from . import selectors
+    from .models import CyclePlanificationSOP, LigneDemandeSOP, PrevisionDemande
+
+    resume = []
+    for company in Company.objects.all():
+        try:
+            retention_mois = selectors.parametres(company).retention_previsions_mois
+            today = timezone.localdate()
+            idx_limite = today.year * 12 + (today.month - 1) - int(retention_mois)
+            y0, m0 = divmod(idx_limite, 12)
+            periode_limite = f'{y0:04d}-{m0 + 1:02d}'
+
+            # Couples (produit, période) protégés : gelés dans un cycle CLOS.
+            proteges = set(
+                LigneDemandeSOP.objects
+                .filter(
+                    cycle__company=company,
+                    cycle__statut=CyclePlanificationSOP.Statut.CLOS)
+                .values_list('produit_id', 'cycle__periode'))
+
+            candidates = PrevisionDemande.objects.filter(
+                company=company, periode__lt=periode_limite)
+            ids_a_supprimer = [
+                p.id for p in candidates.only('id', 'produit_id', 'periode')
+                if (p.produit_id, p.periode) not in proteges
+            ]
+            PrevisionDemande.objects.filter(id__in=ids_a_supprimer).delete()
+        except Exception:  # noqa: BLE001 — best-effort par société
+            logger.warning(
+                'scm.purger_donnees_scm_anciennes: échec société %s',
+                company.id, exc_info=True)
+            continue
+        resume.append({'company_id': company.id, 'nb_supprimees': len(ids_a_supprimer)})
+    return resume
+
+
+@shared_task(name='scm.notifier_ecarts_prevision_importants')
+def notifier_ecarts_prevision_importants():
+    """NTSCM45 — tâche planifiée MENSUELLE : pour CHAQUE produit dont le MAPE
+    mensuel (``selectors.precision_prevision``, NTSCM24) dépasse
+    ``ParametresSCM.seuil_alerte_mape_pct`` (défaut 40%, NTSCM45), notifie
+    (``notifications.services.notify``) les ``records.Follower`` EXPLICITES
+    du produit, ou — à défaut — les destinataires résolus par
+    ``resolve_recipients`` (managers par défaut, ou un rôle dédié via une
+    ``NotificationRoutingRule`` de société — c'est la voie de configuration
+    d'un rôle « Acheteur » qui n'existe pas comme rôle système dans ce repo).
+
+    Idempotent PAR MOIS : une notification déjà envoyée à CE destinataire
+    pour CE produit CE MOIS-CI n'est jamais dupliquée si la tâche est
+    relancée (recherche dans ``notifications.Notification`` par
+    destinataire+événement+lien+mois). Best-effort par société ET par
+    produit. Renvoie ``[{'company_id', 'nb_notifications'}, ...]``."""
+    from authentication.models import Company
+    from django.apps import apps as django_apps
+    from django.utils import timezone
+
+    from apps.notifications.models import EventType, Notification
+    from apps.notifications.services import notify, resolve_recipients
+
+    from . import selectors
+
+    from django.contrib.contenttypes.models import ContentType
+
+    Produit = django_apps.get_model('stock', 'Produit')
+    Follower = django_apps.get_model('records', 'Follower')
+    produit_ct = ContentType.objects.get_for_model(Produit)
+
+    today = timezone.localdate()
+    resume = []
+    for company in Company.objects.all():
+        nb_notifications = 0
+        try:
+            seuil = selectors.parametres(company).seuil_alerte_mape_pct
+            precision = selectors.precision_prevision(company, fenetre_mois=1)
+        except Exception:  # noqa: BLE001 — best-effort par société
+            logger.warning(
+                'scm.notifier_ecarts_prevision_importants: échec société %s',
+                company.id, exc_info=True)
+            continue
+
+        produits_en_ecart = [
+            ligne for ligne in precision['par_produit']
+            if ligne['mape_pct'] > seuil
+        ]
+        if not produits_en_ecart:
+            resume.append({'company_id': company.id, 'nb_notifications': 0})
+            continue
+
+        recipients_repli = None
+        for ligne in produits_en_ecart:
+            try:
+                produit = Produit.objects.filter(
+                    company=company, pk=ligne['produit_id']).first()
+                if produit is None:
+                    continue
+                lien = f'/stock?produit={produit.id}'
+
+                follower_ids = list(Follower.objects.filter(
+                    company=company, content_type=produit_ct, object_id=produit.id,
+                ).values_list('user_id', flat=True))
+
+                if follower_ids:
+                    from django.contrib.auth import get_user_model
+                    User = get_user_model()
+                    destinataires = list(User.objects.filter(
+                        pk__in=follower_ids, is_active=True))
+                else:
+                    if recipients_repli is None:
+                        recipients_repli = list(resolve_recipients(
+                            company, EventType.SCM_ECART_PREVISION_IMPORTANT))
+                    destinataires = recipients_repli
+
+                for user in destinataires:
+                    deja_notifie = Notification.objects.filter(
+                        recipient=user,
+                        event_type=EventType.SCM_ECART_PREVISION_IMPORTANT,
+                        link=lien, created_at__year=today.year,
+                        created_at__month=today.month,
+                    ).exists()
+                    if deja_notifie:
+                        continue
+                    notify(
+                        user, EventType.SCM_ECART_PREVISION_IMPORTANT,
+                        f'Écart de prévision important — {produit.nom}',
+                        body=(
+                            f'MAPE de {ligne["mape_pct"]}% ce mois-ci pour '
+                            f'{produit.nom} (seuil {seuil}%).'),
+                        link=lien, company=company)
+                    nb_notifications += 1
+            except Exception:  # noqa: BLE001 — best-effort par produit
+                logger.warning(
+                    'scm.notifier_ecarts_prevision_importants: échec produit '
+                    '%s (société %s)', ligne.get('produit_id'), company.id,
+                    exc_info=True)
+                continue
+
+        resume.append({'company_id': company.id, 'nb_notifications': nb_notifications})
+    return resume

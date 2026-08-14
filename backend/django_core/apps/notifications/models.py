@@ -259,6 +259,35 @@ class EventType(models.TextChoices):
     # corbeille transverse, NTUX29). Jamais de suppression automatique du favori.
     UXVIEWS_FAVORIS_OBSOLETES = (
         'uxviews_favoris_obsoletes', 'Favoris pointant vers des éléments supprimés')
+    # NTLOG38 — rappel J-3 (beat quotidien) sur une `transport.EtapeTransport`
+    # dont `date_prevue` est dépassée et `statut_etape` != fait : notifie le
+    # responsable transport (motif `apps.sav.tasks._responsables`), une
+    # seule fois par étape et par jour.
+    TRANSPORT_ETAPE_RETARD = (
+        'transport_etape_retard', 'Étape de transport en retard')
+    # NTSCM21 — résumé de la génération mensuelle automatique des prévisions
+    # de demande (tâche planifiée `apps.scm.tasks.generer_previsions_
+    # mensuelles_task`).
+    SCM_PREVISIONS_GENEREES = (
+        'scm_previsions_generees', 'Prévisions de demande générées (mensuel)')
+    # NTSCM22 — ouverture automatique du cycle S&OP du mois suivant (opt-in
+    # par société, `apps.scm.models.ParametresSCM.sop_actif`).
+    SCM_CYCLE_SOP_OUVERT = (
+        'scm_cycle_sop_ouvert', 'Cycle S&OP ouvert automatiquement')
+    # NTRET32 — clôture de SessionCaisse (apps.pos) dont l'écart (espèces ou
+    # TPE) dépasse le seuil configuré (Paramètres POS) : notifie les
+    # managers/gérants (resolve_recipients). Seuil vide/0 = désactivé,
+    # jamais émis.
+    CAISSE_ECART_ANORMAL = (
+        'caisse_ecart_anormal', 'Écart de caisse anormal')
+    # NTSCM45 — MAPE mensuel d'un produit au-delà du seuil configuré
+    # (`apps.scm.models.ParametresSCM.seuil_alerte_mape_pct`, défaut 40%,
+    # tâche planifiée `apps.scm.tasks.notifier_ecarts_prevision_importants`) :
+    # notifie les `records.Follower` explicites du produit, sinon les
+    # destinataires résolus (`resolve_recipients` — managers par défaut,
+    # ou un rôle dédié via une `NotificationRoutingRule`).
+    SCM_ECART_PREVISION_IMPORTANT = (
+        'scm_ecart_prevision_important', 'Écart de prévision important (MAPE)')
 
 
 class Channel(models.TextChoices):

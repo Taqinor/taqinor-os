@@ -487,6 +487,14 @@ class AchatsParametres(models.Model):
         help_text='NTWMS12 — heure de coupure quotidienne à laquelle les '
                   'vagues en mode AUTO_HEURE sont lancées. Vide = pas de '
                   'libération automatique.')
+    # NTWMS21 — valeur (quantité × prix d'achat, INTERNE) au-delà de laquelle
+    # un transfert inter-emplacements exige une DemandeTransfert approuvée.
+    # 0 (défaut) = garde DÉSACTIVÉE : le transfert direct historique reste
+    # strictement inchangé pour toutes les sociétés existantes.
+    seuil_approbation_transfert = models.DecimalField(
+        max_digits=14, decimal_places=2, default=0,
+        help_text='NTWMS21 — valeur MAD au-dessus de laquelle un transfert '
+                  'exige une approbation. 0 = désactivé.')
 
 
 class DocumentConformiteFournisseur(models.Model):
@@ -610,6 +618,24 @@ class Produit(models.Model):
     )
     tva = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
     is_archived = models.BooleanField(default=False)
+
+    # ── NTWMS38 — Marchandises dangereuses / matières sensibles ────────────
+    # Le catalogue solaire contient des BATTERIES LITHIUM : leur stockage et
+    # leur transport sont réglementés (ADR classe 9). AUCUNE = défaut, donc
+    # tous les produits existants restent exactement ce qu'ils étaient et le
+    # rangement guidé (NTWMS2) ne filtre rien tant que rien n'est déclaré.
+    class ClasseDanger(models.TextChoices):
+        AUCUNE = 'AUCUNE', 'Aucune'
+        BATTERIE_LITHIUM = 'BATTERIE_LITHIUM', 'Batterie lithium'
+        INFLAMMABLE = 'INFLAMMABLE', 'Inflammable'
+        CORROSIF = 'CORROSIF', 'Corrosif'
+
+    classe_danger = models.CharField(
+        max_length=20, choices=ClasseDanger.choices,
+        default=ClasseDanger.AUCUNE,
+        verbose_name='Classe de danger',
+        help_text='Matière dangereuse : conditionne les casiers autorisés '
+                  'au rangement (NTWMS38).')
 
     # ── Fiche commerciale (devis PDF riches, 2026-06) — tout optionnel ──
     marque = models.CharField(max_length=100, blank=True, null=True)
@@ -1060,6 +1086,13 @@ class MouvementStock(models.Model):
     bin_destination = models.ForeignKey(
         'installations.BinLocation', on_delete=models.SET_NULL,
         null=True, blank=True, related_name='mouvements_stock_destination')
+    # NTWMS25 — « license plate tracking » : quand une PALETTE entière bouge,
+    # chaque ligne de son contenu porte l'unité logistique déplacée. Nullable
+    # = tous les mouvements historiques et tous les mouvements unitaires
+    # restent identiques.
+    unite_logistique = models.ForeignKey(
+        'stock.UniteLogistique', on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='mouvements_stock')
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,
@@ -1088,6 +1121,13 @@ class EmplacementStock(models.Model):
     que tout le stock existant est par défaut au dépôt principal et que le
     comportement actuel est strictement inchangé. Entièrement additif.
     """
+    # NTWMS19 — À QUI appartient le stock qui dort dans cet emplacement.
+    # INTERNE (défaut) = comportement historique strict, rien ne change.
+    class TypeProprietaire(models.TextChoices):
+        INTERNE = 'interne', 'Interne (notre stock, nos murs)'
+        CHEZ_TIERS = 'chez_tiers', 'Notre stock chez un tiers (3PL, dépôt loué)'
+        DE_TIERS = 'de_tiers', 'Stock d\'un tiers dans nos murs (dépôt-vente)'
+
     company = models.ForeignKey(
         'authentication.Company', on_delete=models.CASCADE,
         null=True, blank=True, related_name='emplacements_stock')
@@ -1098,6 +1138,20 @@ class EmplacementStock(models.Model):
                   'par société).')
     ordre = models.PositiveSmallIntegerField(default=100)
     archived = models.BooleanField(default=False)
+    # ── NTWMS19 — stock 3PL (chez des tiers / de tiers) ───────────────────
+    # CHEZ_TIERS : notre marchandise est physiquement chez un partenaire —
+    # elle reste NOTRE actif, donc valorisée normalement.
+    # DE_TIERS : la marchandise est chez nous mais appartient à un client ou
+    # un fournisseur — elle est gérée opérationnellement (entrées, sorties,
+    # casiers) mais JAMAIS valorisée dans NOTRE bilan (`valorisation_a_date`,
+    # `InventaireAnnuel`, `RevalorisationStock` l'excluent).
+    type_proprietaire = models.CharField(
+        max_length=20, choices=TypeProprietaire.choices,
+        default=TypeProprietaire.INTERNE)
+    tiers_nom = models.CharField(
+        max_length=150, blank=True, default='',
+        help_text='Nom du dépositaire (CHEZ_TIERS) ou du propriétaire du '
+                  'stock (DE_TIERS). Vide pour un emplacement interne.')
 
     class Meta:
         verbose_name = 'Emplacement de stock'
@@ -1249,14 +1303,62 @@ class TransfertStock(models.Model):
         null=True, blank=True, related_name='transferts_stock')
     date = models.DateTimeField(auto_now_add=True)
 
+    # ── NTRET7 — cycle physique en DEUX TEMPS (demande → expédié → reçu) ──
+    # Le monde réel a un délai camion et un contrôle à l'arrivée : la source
+    # décrémente AU DÉPART, la destination incrémente de ce qui est
+    # RÉELLEMENT reçu, et l'écart est journalisé.
+    # DÉFAUT `RECU` : tout transfert DIRECT historique (N15, `transfer_stock`)
+    # naît déjà terminé — comportement strictement inchangé. Le cycle en deux
+    # temps est OPT-IN (`creer_demande_transfert`).
+    class Statut(models.TextChoices):
+        DEMANDE = 'demande', 'Demandé'
+        EXPEDIE = 'expedie', 'Expédié'
+        RECU = 'recu', 'Reçu'
+        ANNULE = 'annule', 'Annulé'
+
+    statut = models.CharField(
+        max_length=20, choices=Statut.choices, default=Statut.RECU)
+    reference = models.CharField(
+        max_length=50, blank=True, default='',
+        help_text='Référence du bon de transfert (cycle en deux temps).')
+    quantite_recue = models.PositiveIntegerField(
+        null=True, blank=True,
+        help_text='Quantité réellement comptée à la réception (vide tant '
+                  "qu'elle n'a pas eu lieu).")
+    date_expedition = models.DateTimeField(null=True, blank=True)
+    date_reception = models.DateTimeField(null=True, blank=True)
+    expedie_par = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='transferts_expedies')
+    recu_par = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='transferts_recus')
+
     class Meta:
         verbose_name = 'Transfert de stock'
         verbose_name_plural = 'Transferts de stock'
         ordering = ['-date']
+        constraints = [
+            # NTRET7 — la référence de bon est unique PAR SOCIÉTÉ (condition
+            # sur référence non vide : les transferts directs historiques,
+            # tous sans référence, ne s'entre-bloquent pas).
+            models.UniqueConstraint(
+                fields=['company', 'reference'],
+                condition=~models.Q(reference=''),
+                name='stock_transfertstock_company_reference_uniq'),
+        ]
 
     def __str__(self):
         return (f'{self.produit_id}: {self.quantite} '
                 f'{self.source_id}→{self.destination_id}')
+
+    @property
+    def ecart_reception(self):
+        """Reçu − expédié. ``None`` tant que la réception n'a pas eu lieu ;
+        négatif = manquant, positif = surplus."""
+        if self.quantite_recue is None:
+            return None
+        return self.quantite_recue - self.quantite
 
 
 # ── ODX19 — RetourFournisseur, LigneRetourFournisseur, PrixFournisseur ─────
@@ -2333,15 +2435,58 @@ class FavorisCatalogueAchat(TenantModel):
 # que `installations/models_kitting.py`) ; ré-exportés ici pour que
 # `from apps.stock.models import VaguePicking` fonctionne partout.
 from .models_wms import (  # noqa: E402,F401
+    AffectationCrossDock,
+    AlerteRappel,
+    BlocageQualite,
     ExpeditionTransporteur,
     LignePicking,
+    LigneRetourClient,
+    MouvementRebut,
+    PlanChargement,
     PlanComptageTournant,
+    PortailTiersToken,
     Quai,
+    RetourClient,
     RendezVousTransporteur,
     UniteLogistique,
     UniteLogistiqueLigne,
     VaguePicking,
 )
+
+# ── NTWMS34 — contrôle qualité à réception (plan d'échantillonnage). ───────
+from .models_qualite_reception import (  # noqa: E402,F401
+    ControleReception,
+    PlanEchantillonnage,
+)
+
+# ── NTWMS37 — réception à quantité/poids VARIABLE (catch-weight). ──────────
+from .models_catch_weight import PeseeLigneReception  # noqa: E402,F401
+
+# ── NTWMS38 — compatibilité casier ↔ classe de danger (hazmat). ────────────
+from .models_hazmat import CompatibiliteHazmatCasier  # noqa: E402,F401
+
+# ── NTWMS39 — journal léger des casiers (plan d'entrepôt). ─────────────────
+from .models_historique_casier import HistoriqueCasier  # noqa: E402,F401
+
+# ── NTWMS40 — réappro d'un casier picking depuis le stockage. ──────────────
+from .models_reappro_casier import (  # noqa: E402,F401
+    SeuilReapproCasier,
+    TacheReapproInterne,
+)
+
+# ── NTSCM9 — incidents qualité fournisseur (alimente scorecard + TCO). ─────
+from .models_incident_fournisseur import (  # noqa: E402,F401
+    IncidentQualiteFournisseur,
+)
+
+# ── Groupe NTDST — NÉGOCE (consignation, RFA, van sales, paramètres). ──────
+from .models_negoce_params import ParametresNegoce  # noqa: E402,F401
+from .models_consignation import (  # noqa: E402,F401
+    DeclarationConsommation,
+    DepotConsignation,
+)
+from .models_rfa import AccordRFAFournisseur  # noqa: E402,F401
+from .models_van_sales import StockVehicule  # noqa: E402,F401
 
 
 # ── ODX19 — MODULE ACHATS (déplacé) ────────────────────────────────────────

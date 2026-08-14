@@ -28,6 +28,7 @@ import hashlib
 import json
 
 __all__ = ["build_electrical_design", "conception_electrique_stockee",
+           "rendre_schema_du_devis",
            "DC_M_MINIMUM", "DC_M_PAR_CHAINE", "AC_M_DEFAUT"]
 
 #: Longueurs de liaison PAR DÉFAUT (m), reprises du bordereau historique
@@ -420,6 +421,43 @@ def conception_electrique_stockee(devis):
     """La conception DÉJÀ calculée d'un devis, ou ``None``."""
     design = getattr(devis, "electrical_design", None)
     return design if isinstance(design, dict) and design else None
+
+
+def rendre_schema_du_devis(devis):
+    """PV81/PVSLD — le schéma unifilaire d'un devis, en SVG, ou ``None``.
+
+    **UNE SEULE VÉRITÉ.** Le schéma a longtemps existé en deux exemplaires qui
+    se contredisaient : la page web du client rendait celui du moteur
+    ``core.electrique`` (organes réels, protections, repères), pendant que
+    l'annexe du PDF dessinait une esquisse à cinq blocs fixes qui ignorait la
+    conception — et affichait donc autre chose que la nomenclature imprimée
+    juste dessous. Les deux appelants passent maintenant ICI.
+
+    LA CONCEPTION STOCKÉE EST LE PORTAIL : sans ``Devis.electrical_design``
+    (PV41), on rend ``None`` — jamais une esquisse fabriquée à la volée. Le SVG
+    lui-même est re-RENDU depuis les mêmes entrées (le calcul est pur et
+    idempotent par empreinte), parce que le rendu demande les objets du moteur,
+    que le contrat stocké ne conserve pas.
+
+    Lecture PURE : aucun statut, aucune ligne, aucun prix (règle #4 ; le moteur
+    ignore jusqu'à l'existence d'un montant). Jamais bloquant — une étude
+    illisible rend ``None``, pas une erreur.
+    """
+    if conception_electrique_stockee(devis) is None:
+        return None
+    from core.electrique import concevoir
+    from core.electrique.schema import rendre_schema
+
+    entree = construire_entree(devis)
+    if not entree.groupes:
+        return None
+    date_creation = getattr(devis, "date_creation", None)
+    cartouche = {
+        "client": getattr(getattr(devis, "client", None), "nom", "") or "",
+        "reference": getattr(devis, "reference", "") or "",
+        "date": date_creation.strftime("%d/%m/%Y") if date_creation else "",
+    }
+    return rendre_schema(entree, concevoir(entree), cartouche=cartouche)
 
 
 def build_electrical_design(devis, *, overrides=None):

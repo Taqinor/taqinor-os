@@ -15,8 +15,14 @@ export const DropdownMenuGroup = DropdownMenuPrimitive.Group
 export const DropdownMenuRadioGroup = DropdownMenuPrimitive.RadioGroup
 export const DropdownMenuSub = DropdownMenuPrimitive.Sub
 
+// --z-popover (1400), PAS --z-dropdown (1000) : le contenu est portalé en frère
+// direct des DialogContent/SheetContent (--z-modal 1300, voile 1200). À 1000, un
+// menu ouvert DANS une modale (⋯ du LeadWorkspace ouvert depuis kanban/liste,
+// StageControl…) se montait DERRIÈRE le panneau opaque — clic muet. Même panne
+// déjà corrigée pour Select/Popover/Combobox/DatePicker… (cf. Select.jsx) ;
+// DropdownMenu et ContextMenu étaient les deux seuls restés à --z-dropdown.
 const menuContent =
-  'z-[var(--z-dropdown)] min-w-44 overflow-hidden rounded-lg border border-border bg-popover p-1 text-popover-foreground shadow-ui-lg ' +
+  'z-[var(--z-popover)] min-w-44 overflow-hidden rounded-lg border border-border bg-popover p-1 text-popover-foreground shadow-ui-lg ' +
   'data-[state=open]:animate-pop-in data-[state=closed]:animate-pop-out focus:outline-none'
 
 const menuItem =

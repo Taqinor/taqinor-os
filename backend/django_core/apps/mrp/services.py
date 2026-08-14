@@ -3,6 +3,7 @@ from datetime import timedelta
 from decimal import Decimal
 
 from django.db import transaction
+from django.db.models import Sum
 from django.utils import timezone
 
 
@@ -133,6 +134,23 @@ def _composants_of(of):
             for ligne in lignes]
 
 
+def log_activite_of(of, *, user=None, field='', field_label='', old_value='',
+                    new_value='', body=''):
+    """NTMFG38 — journalise (chatter générique `records.Activity`, ARC8)
+    une entrée sur l'OF — AUCUN nouveau modèle `*Activity` maison (motif
+    `apps.transport.services.log_activite_ordre`). N'écrit JAMAIS
+    `audit.AuditLog` (chatter ≠ audit — NTMFG39 audite des actions
+    SENSIBLES précises, distinctes, jamais les transitions OF routine)."""
+    from apps.records.models import Activity
+    from apps.records.services import log_activity
+
+    kind = Activity.Kind.NOTE if body else Activity.Kind.MODIFICATION
+    return log_activity(
+        of, kind, user=user, field=field, field_label=field_label,
+        old_value=str(old_value), new_value=str(new_value), body=body,
+        company=of.company)
+
+
 def cloturer_of(of, user=None):
     """NTMFG4 — clôture un OF : consomme les composants et produit le
     composite (backflush), EXACTEMENT une fois (idempotence
@@ -148,6 +166,7 @@ def cloturer_of(of, user=None):
     with transaction.atomic():
         # select_for_update — même garde de course que XMFG1 (`OrdreAssemblage`).
         locked = OrdreFabrication.objects.select_for_update().get(pk=of.pk)
+        ancien_statut = locked.statut
         if locked.kit_ordre_assemblage_id is None and not locked.stock_mouvemente:
             composants = _composants_of(locked)
             if composants:
@@ -172,6 +191,13 @@ def cloturer_of(of, user=None):
             locked.stock_mouvemente = True
         locked.statut = OrdreFabrication.Statut.TERMINE
         locked.save(update_fields=['stock_mouvemente', 'statut'])
+        # NTMFG38 — chatter UNIQUEMENT sur un VRAI franchissement (jamais un
+        # rappel de clôture déjà actée — idempotence du chatter, pas
+        # seulement du backflush).
+        if ancien_statut != OrdreFabrication.Statut.TERMINE:
+            log_activite_of(
+                locked, user=user, field='statut', field_label='Statut',
+                old_value=ancien_statut, new_value=OrdreFabrication.Statut.TERMINE)
     return locked
 
 
@@ -186,8 +212,12 @@ def confirmer_of(of, user=None):
         planifier_of(of)
         reserver_composants_of(of)
         if of.statut == OrdreFabrication.Statut.BROUILLON:
+            ancien_statut = of.statut
             of.statut = OrdreFabrication.Statut.PLANIFIE
             of.save(update_fields=['statut'])
+            log_activite_of(
+                of, user=user, field='statut', field_label='Statut',
+                old_value=ancien_statut, new_value=of.statut)
     return of
 
 
@@ -298,9 +328,15 @@ def annuler_of(of, user=None, motif=''):
             raise ValueError(
                 "Impossible d'annuler un OF dont le stock a déjà été "
                 "mouvementé.")
+        ancien_statut = locked.statut
         liberer_reservations_of(locked)
         locked.statut = OrdreFabrication.Statut.ANNULE
         locked.save(update_fields=['statut'])
+        if ancien_statut != OrdreFabrication.Statut.ANNULE:
+            log_activite_of(
+                locked, user=user, field='statut', field_label='Statut',
+                old_value=ancien_statut, new_value=locked.statut,
+                body=(f'Annulé — motif : {motif}' if motif else ''))
     return locked
 
 
@@ -562,7 +598,11 @@ def figer_cout_standard(company, produit, gamme, *, cout_indirect_pct=0,
                         date_effective=None, user=None):
     """NTMFG11 — calcule et FIGE une nouvelle version de coût standard pour
     `produit` (roll-up nomenclature + gamme). Ne modifie JAMAIS une version
-    existante — la version suivante est `max(version existante) + 1`."""
+    existante — la version suivante est `max(version existante) + 1`.
+
+    NTMFG39 — action SENSIBLE auditée (`apps.audit.recorder`, action
+    fine, jamais un import du modèle `audit`) : figer une nouvelle version
+    remplace de facto le coût standard courant utilisé par NTMFG11/24."""
     from .models import CoutStandard
 
     date_effective = date_effective or timezone.localdate()
@@ -570,9 +610,540 @@ def figer_cout_standard(company, produit, gamme, *, cout_indirect_pct=0,
         CoutStandard.objects.filter(company=company, produit=produit)
         .order_by('-version').first())
     version = (derniere.version + 1) if derniere else 1
-    return CoutStandard.objects.create(
+    nouveau = CoutStandard.objects.create(
         company=company, produit=produit, version=version,
         cout_matiere=calculer_cout_matiere_standard(gamme),
         cout_main_oeuvre=calculer_cout_main_oeuvre_standard(gamme),
         cout_indirect_pct=_dec(cout_indirect_pct),
         date_effective=date_effective)
+
+    try:
+        from apps.audit import recorder as audit_recorder
+        from apps.audit.models import AuditLog
+
+        ancien = (
+            f'v{derniere.version} (matière {derniere.cout_matiere}, '
+            f'MO {derniere.cout_main_oeuvre})') if derniere else 'aucun'
+        audit_recorder.record(
+            AuditLog.Action.CREATE, instance=nouveau, company=company,
+            user=user,
+            detail=(f'Coût standard figé — produit {produit.id} : '
+                    f'{ancien} -> v{nouveau.version} (matière '
+                    f'{nouveau.cout_matiere}, MO {nouveau.cout_main_oeuvre}).'))
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant.
+        pass
+    return nouveau
+
+
+# ── NTMFG14 — Maintenance préventive des postes de charge ────────────────
+
+def _usage_minutes_depuis_reset(poste, today=None):
+    """NTMFG14 — cumul des minutes RÉELLES (NTMFG8, opérations terminées) de
+    CE poste depuis la dernière réinitialisation du compteur
+    (`PosteDeCharge.usage_reinitialise_le`), ou depuis sa création si le
+    compteur n'a jamais été réinitialisé."""
+    from .models import OperationOF
+
+    depuis = poste.usage_reinitialise_le or poste.created_at
+    total = (
+        OperationOF.objects
+        .filter(poste_charge=poste, statut='terminee', terminee_le__gte=depuis)
+        .aggregate(total=Sum('temps_reel_min'))['total'] or 0)
+    return _dec(total)
+
+
+def generer_echeances_poste(plan, today=None):
+    """NTMFG14 — génère (idempotent) la PROCHAINE échéance d'un plan actif,
+    par intervalle de jours et/ou par heures d'usage cumulées depuis la
+    dernière réinitialisation du compteur (NTMFG8). Ne crée jamais de
+    doublon : no-op tant qu'une échéance `a_faire`/`planifie` est déjà
+    ouverte pour ce plan. Renvoie l'échéance créée, ou `None`."""
+    from .models import EcheanceEntretienPoste
+
+    today = today or timezone.localdate()
+    if not plan.actif:
+        return None
+    ouverte = plan.echeances.filter(
+        statut__in=[EcheanceEntretienPoste.Statut.A_FAIRE,
+                    EcheanceEntretienPoste.Statut.PLANIFIE]).exists()
+    if ouverte:
+        return None
+
+    doit_generer = False
+    if plan.intervalle_jours:
+        derniere = plan.echeances.order_by('-date_prevue').first()
+        if derniere is None:
+            doit_generer = True
+        else:
+            base = derniere.date_realisee or derniere.date_prevue
+            if today >= base + timedelta(days=int(plan.intervalle_jours)):
+                doit_generer = True
+    if not doit_generer and plan.intervalle_heures_usage:
+        usage_heures = _usage_minutes_depuis_reset(
+            plan.poste_charge, today) / Decimal('60')
+        if usage_heures >= _dec(plan.intervalle_heures_usage):
+            doit_generer = True
+
+    if not doit_generer:
+        return None
+    return EcheanceEntretienPoste.objects.create(plan=plan, date_prevue=today)
+
+
+def generer_echeances_entretien(company, today=None):
+    """NTMFG14 — génère les échéances dues pour TOUS les plans actifs de
+    `company` (appelé par la commande de gestion ou manuellement). Renvoie
+    la liste des échéances créées."""
+    from .models import PlanEntretienPoste
+
+    today = today or timezone.localdate()
+    creees = []
+    for plan in PlanEntretienPoste.objects.filter(
+            poste_charge__company=company, actif=True):
+        echeance = generer_echeances_poste(plan, today=today)
+        if echeance is not None:
+            creees.append(echeance)
+    return creees
+
+
+def cloturer_echeance_entretien(echeance, *, date_realisee=None, note=''):
+    """NTMFG14 — clôture une échéance (`fait`) et remet À ZÉRO le compteur
+    d'usage du poste (`PosteDeCharge.usage_reinitialise_le`) quand le plan
+    est basé sur les heures d'usage — la prochaine échéance ne se
+    redéclenchera qu'après un nouveau cumul complet."""
+    from .models import EcheanceEntretienPoste
+
+    with transaction.atomic():
+        echeance.statut = EcheanceEntretienPoste.Statut.FAIT
+        echeance.date_realisee = date_realisee or timezone.localdate()
+        echeance.note = note or ''
+        echeance.save(update_fields=['statut', 'date_realisee', 'note'])
+        if echeance.plan.intervalle_heures_usage:
+            poste = echeance.plan.poste_charge
+            poste.usage_reinitialise_le = timezone.now()
+            poste.save(update_fields=['usage_reinitialise_le'])
+    return echeance
+
+
+# ── NTMFG32 — Rappel proactif J-7 d'échéance d'entretien de poste ────────
+
+def echeances_a_relancer_j7(company, today=None):
+    """NTMFG32 — échéances `a_faire` de `company` dont `date_prevue` tombe
+    dans les 7 prochains jours (J-7, INCLUS — comprise entre aujourd'hui et
+    aujourd'hui+7), jamais encore notifiées (`notifie=False`). Ne remonte
+    JAMAIS une échéance déjà en retard (`date_prevue < today`, couverte par
+    l'alerte NON bloquante existante `selectors.postes_en_alerte_maintenance`,
+    pas ce rappel proactif) — lecture seule."""
+    from .models import EcheanceEntretienPoste
+
+    today = today or timezone.localdate()
+    seuil = today + timedelta(days=7)
+    return (EcheanceEntretienPoste.objects
+            .filter(plan__poste_charge__company=company,
+                    statut=EcheanceEntretienPoste.Statut.A_FAIRE,
+                    notifie=False,
+                    date_prevue__gte=today, date_prevue__lte=seuil)
+            .select_related('plan__poste_charge'))
+
+
+def notifier_echeances_j7(company, *, today=None):
+    """NTMFG32 — notifie (best-effort, `notifications.notify_many`, réutilise
+    `EventType.MAINTENANCE_DUE` — même reprise que `apps.qhse.services`)
+    le responsable atelier pour chaque échéance due à J-7
+    (`echeances_a_relancer_j7`), puis pose `notifie=True` pour ne JAMAIS la
+    renotifier. Renvoie la liste des échéances notifiées."""
+    from .models import EcheanceEntretienPoste
+
+    notifiees = []
+    for echeance in echeances_a_relancer_j7(company, today=today):
+        try:
+            from apps.notifications.models import EventType
+            from apps.notifications.services import notify_many, resolve_recipients
+
+            poste = echeance.plan.poste_charge
+            recipients = resolve_recipients(company, EventType.MAINTENANCE_DUE)
+            notify_many(
+                recipients, EventType.MAINTENANCE_DUE,
+                title=f'Entretien à échéance proche — {poste.nom}',
+                body=(f'{echeance.plan.description} : échéance prévue le '
+                      f'{echeance.date_prevue.isoformat()} (J-7).'),
+                link='/mrp/oee', company=company)
+        except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+            continue
+        EcheanceEntretienPoste.objects.filter(pk=echeance.pk).update(notifie=True)
+        notifiees.append(echeance)
+    return notifiees
+
+
+# ── NTMFG15 — PLM léger : Ordres de Modification (ECO) ───────────────────
+
+def appliquer_eco(eco):
+    """NTMFG15 — applique les changements d'un ECO `approuve` (idempotent :
+    un ECO déjà `applique` n'est jamais rejoué). Un ECO `gamme`/`les_deux`
+    active la VERSION de `Gamme` déjà créée (NTMFG2) désignée par
+    `changements['gamme_id']` (les autres versions du même produit repassent
+    `actif=False`). Un ECO `nomenclature`/`les_deux` pointe la gamme ACTIVE
+    courante du produit vers `changements['kit_source_id']`. Les OF déjà
+    LANCÉS gardent leur `gamme` figée — AUCUNE rétroactivité, leur FK
+    `OrdreFabrication.gamme` n'est jamais touchée ici."""
+    from .models import Gamme, OrdreModification
+
+    if eco.statut == OrdreModification.Statut.APPLIQUE:
+        return eco
+    if eco.statut != OrdreModification.Statut.APPROUVE:
+        raise ValueError('Seul un ECO approuvé peut être appliqué.')
+
+    with transaction.atomic():
+        changements = eco.changements or {}
+
+        gamme_id = changements.get('gamme_id')
+        if gamme_id and eco.type_eco in (
+                OrdreModification.TypeEco.GAMME, OrdreModification.TypeEco.LES_DEUX):
+            nouvelle = Gamme.objects.filter(
+                id=gamme_id, company=eco.company, produit=eco.produit).first()
+            if nouvelle is not None:
+                Gamme.objects.filter(
+                    company=eco.company, produit=eco.produit
+                ).exclude(id=nouvelle.id).update(actif=False)
+                if not nouvelle.actif:
+                    nouvelle.actif = True
+                    nouvelle.save(update_fields=['actif'])
+
+        kit_source_id = changements.get('kit_source_id')
+        if kit_source_id and eco.type_eco in (
+                OrdreModification.TypeEco.NOMENCLATURE, OrdreModification.TypeEco.LES_DEUX):
+            gamme_active = (
+                Gamme.objects.filter(
+                    company=eco.company, produit=eco.produit, actif=True)
+                .order_by('-version').first())
+            if gamme_active is not None:
+                gamme_active.kit_source_id = kit_source_id
+                gamme_active.save(update_fields=['kit_source'])
+
+        eco.statut = OrdreModification.Statut.APPLIQUE
+        eco.applique_le = timezone.now()
+        eco.save(update_fields=['statut', 'applique_le'])
+    return eco
+
+
+def approuver_eco(eco, user=None):
+    """NTMFG15 — passe l'ECO en `approuve`. Si `date_effectivite` est déjà
+    atteinte (ou absente = immédiat), applique aussitôt (`appliquer_eco`) ;
+    sinon reste en attente du sweep périodique (`sweep_ecos_effectivite`).
+
+    NTMFG39 — action SENSIBLE auditée (`apps.audit.recorder`) : un ECO
+    approuvé modifie une gamme/nomenclature ACTIVE (`appliquer_eco`)."""
+    from .models import OrdreModification
+
+    if eco.statut not in (
+            OrdreModification.Statut.BROUILLON, OrdreModification.Statut.EN_REVUE):
+        raise ValueError('Seul un ECO brouillon/en revue peut être approuvé.')
+    ancien_statut = eco.statut
+    with transaction.atomic():
+        eco.statut = OrdreModification.Statut.APPROUVE
+        eco.approbateur = user if getattr(user, 'is_authenticated', False) else None
+        eco.save(update_fields=['statut', 'approbateur'])
+        today = timezone.localdate()
+        if eco.date_effectivite is None or eco.date_effectivite <= today:
+            appliquer_eco(eco)
+    eco.refresh_from_db()
+
+    try:
+        from apps.audit import recorder as audit_recorder
+        from apps.audit.models import AuditLog
+
+        # La trace porte sur la transition de CETTE action (l'approbation),
+        # PAS sur `eco.statut` relu : quand `date_effectivite` est atteinte,
+        # `appliquer_eco` a déjà poussé le statut à `applique` ci-dessus, et
+        # une entrée « ECO approuvé : brouillon -> applique » se
+        # contredirait elle-même (l'application est sa propre transition).
+        nouveau_statut = OrdreModification.Statut.APPROUVE
+        audit_recorder.record(
+            AuditLog.Action.STATUS, instance=eco, company=eco.company,
+            user=user,
+            detail=(f'ECO-{eco.id} approuvé (produit {eco.produit_id}) : '
+                    f'{ancien_statut} -> {nouveau_statut}.'),
+            changes=[{'field': 'statut', 'old': ancien_statut,
+                      'new': nouveau_statut}])
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant.
+        pass
+    return eco
+
+
+def rejeter_eco(eco):
+    """NTMFG15 — rejette l'ECO : AUCUN changement n'est appliqué, jamais.
+    Refuse si l'ECO est déjà `applique` (un ECO appliqué ne se rejette
+    plus — créer un nouvel ECO)."""
+    from .models import OrdreModification
+
+    if eco.statut == OrdreModification.Statut.APPLIQUE:
+        raise ValueError('Un ECO déjà appliqué ne peut plus être rejeté.')
+    eco.statut = OrdreModification.Statut.REJETE
+    eco.save(update_fields=['statut'])
+    return eco
+
+
+def sweep_ecos_effectivite(company, today=None):
+    """NTMFG15 — balaie les ECO `approuve` de `company` dont la date
+    d'effectivité est atteinte et les applique (pattern beat existant :
+    commande de gestion appelable manuellement ou par planificateur).
+    Renvoie la liste des ECO appliqués."""
+    from .models import OrdreModification
+
+    today = today or timezone.localdate()
+    appliques = []
+    qs = OrdreModification.objects.filter(
+        company=company, statut=OrdreModification.Statut.APPROUVE,
+        date_effectivite__isnull=False, date_effectivite__lte=today)
+    for eco in qs:
+        appliquer_eco(eco)
+        appliques.append(eco)
+    return appliques
+
+
+# ── NTMFG17 — Kanban de production (pull flow) ───────────────────────────
+
+def declencher_kanban(regle):
+    """NTMFG17 — si le stock disponible du produit de `regle` est SOUS le
+    seuil de déclenchement, crée un OF BROUILLON de `quantite_lot` unités
+    (jamais dupliqué : no-op si un OF brouillon/planifié/lancé est DÉJÀ
+    ouvert pour ce produit). Renvoie l'OF créé, ou `None`."""
+    from apps.stock.selectors import get_produit_scoped
+    from apps.stock.services import available_quantity
+
+    from .models import Gamme, OrdreFabrication
+
+    if not regle.actif:
+        return None
+    produit = get_produit_scoped(regle.company_id, regle.produit_id)
+    if produit is None:
+        return None
+    dispo = _dec(available_quantity(produit))
+    if dispo > _dec(regle.seuil_declenchement):
+        return None
+    deja_ouvert = OrdreFabrication.objects.filter(
+        company=regle.company, produit_id=regle.produit_id,
+        statut__in=[
+            OrdreFabrication.Statut.BROUILLON, OrdreFabrication.Statut.PLANIFIE,
+            OrdreFabrication.Statut.LANCE]).exists()
+    if deja_ouvert:
+        return None
+    gamme = (
+        Gamme.objects.filter(
+            company=regle.company, produit_id=regle.produit_id, actif=True)
+        .order_by('-version').first())
+    return OrdreFabrication.objects.create(
+        company=regle.company, produit_id=regle.produit_id,
+        quantite=regle.quantite_lot, gamme=gamme)
+
+
+def declencher_kanban_toutes_regles(company):
+    """NTMFG17 — balaie toutes les règles kanban ACTIVES de `company` (tâche
+    périodique, pattern beat existant — dégrade proprement en déclenchement
+    manuel via `mrp/kanban/declencher/` si Celery beat n'est pas déployé).
+    Renvoie la liste des OF créés."""
+    from .models import ReglesKanbanProduction
+
+    crees = []
+    for regle in ReglesKanbanProduction.objects.filter(company=company, actif=True):
+        of = declencher_kanban(regle)
+        if of is not None:
+            crees.append(of)
+    return crees
+
+
+# ── NTMFG29 — Paramètres MRP par société ─────────────────────────────────
+
+def parametres_mrp(company):
+    """NTMFG29 — réglages MRP de la société (lazy `get_or_create`, pattern
+    `scm.services.parametres_scm` — valeurs par défaut n'affectent AUCUNE
+    société qui n'a encore rien configuré)."""
+    from .models import ParametresMRP
+
+    obj, _created = ParametresMRP.objects.get_or_create(company=company)
+    return obj
+
+
+# ── NTMFG31 — Purge/archivage des OF prototype anciens ───────────────────
+
+def archiver_of_prototype_anciens(company, *, today=None, user=None):
+    """NTMFG31 — archive (soft-delete, `core.SoftDeleteModel`) les OF
+    `est_prototype=True` CLÔTURÉS (`statut=termine`, `updated_at` sert de
+    proxy de date de clôture — même convention que `selectors.analyse_couts`)
+    depuis plus de `ParametresMRP.retention_prototype_jours` (NTMFG29,
+    défaut 180). Ne touche JAMAIS un OF de production normale
+    (`est_prototype=False`, filtré explicitement) ni un OF déjà archivé
+    (`objects` masque déjà les archivés — la requête ne les revoit pas,
+    donc `soft_delete()` — lui-même idempotent — n'est jamais rejoué).
+    Renvoie la liste des OF archivés par cet appel."""
+    from .models import OrdreFabrication
+
+    today = today or timezone.localdate()
+    parametres = parametres_mrp(company)
+    seuil = today - timedelta(days=int(parametres.retention_prototype_jours))
+
+    candidats = OrdreFabrication.objects.filter(
+        company=company, est_prototype=True,
+        statut=OrdreFabrication.Statut.TERMINE,
+        updated_at__date__lte=seuil)
+    archives = []
+    for of in candidats:
+        of.soft_delete(user=user)
+        archives.append(of)
+    return archives
+
+
+# ── NTMFG35 — Import CSV/XLSX de gammes opératoires en masse ─────────────
+
+# En-têtes acceptés (normalisés via `apps.dataimport.parsing.normalize_header`)
+# → clé canonique. `produit` référence l'ID du produit (résolu company-scopé
+# via `stock.selectors.get_produit_scoped`, jamais un import du modèle
+# `stock.Produit` — frontière cross-app) ; `poste_charge` référence
+# `PosteDeCharge.code`, un champ 100% `mrp` — aucune résolution cross-app.
+_GAMMES_IMPORT_FIELD_MAP = {
+    'produit': 'produit', 'produit_code': 'produit', 'code_produit': 'produit',
+    'ordre': 'ordre',
+    'poste_charge': 'poste_charge', 'poste': 'poste_charge',
+    'libelle': 'libelle',
+    'temps_prepa_min': 'temps_prepa_min', 'temps_preparation_min': 'temps_prepa_min',
+    'temps_unitaire_min': 'temps_unitaire_min',
+}
+
+
+def _ligne_gamme_import(row):
+    """Normalise les clés d'une ligne brute (`dataimport.parsing.iter_rows`)
+    vers les clés canoniques de `_GAMMES_IMPORT_FIELD_MAP`."""
+    from apps.dataimport.parsing import normalize_header
+
+    out = {}
+    for header, valeur in row.items():
+        cle = _GAMMES_IMPORT_FIELD_MAP.get(normalize_header(header))
+        if cle:
+            out[cle] = valeur
+    return out
+
+
+def importer_gammes_csv(company, rows, *, user=None, filename=''):
+    """NTMFG35 — importe en masse des OPÉRATIONS de gamme depuis des lignes
+    déjà parsées (`apps.dataimport.parsing.iter_rows`, réutilisé tel quel —
+    jamais un parseur ad-hoc). Colonnes attendues : produit(id)/ordre/
+    poste_charge(code)/libelle/temps_prepa_min/temps_unitaire_min.
+
+    Validation LIGNE PAR LIGNE — un produit ou un poste de charge inconnu
+    pour la société rejette CETTE ligne (motif précis), jamais tout le
+    fichier. Pour chaque ligne valide, la `Gamme` ACTIVE du produit est
+    résolue (ou créée en version 1 si aucune n'existe) et son
+    `OperationGamme` à cet `ordre` est créé, ou MIS À JOUR s'il existe déjà
+    (idempotent : ré-importer le même fichier ne duplique jamais).
+
+    Bookkeeping via `apps.dataimport.ImportJob`/`ImportJobRow` (moteur
+    générique réutilisé tel quel, jamais réécrit) — le rapport d'erreurs
+    téléchargeable se lit ensuite via
+    `apps.dataimport.services.erreurs_csv_rows(job)`. Renvoie
+    ``{job_id, total_lignes, created_count, updated_count, error_count,
+    erreurs: [{ligne, motif}]}``."""
+    from apps.dataimport.models import ImportJob, ImportJobRow
+    from apps.stock.selectors import get_produit_scoped
+
+    from .models import Gamme, OperationGamme, PosteDeCharge
+
+    created_count = 0
+    updated_count = 0
+    erreurs = []
+    gammes_par_produit = {}  # produit_id -> Gamme (évite un re-lookup par ligne).
+
+    for i, row in enumerate(rows, 1):
+        f = _ligne_gamme_import(row)
+        motif = None
+
+        produit = None
+        try:
+            produit_id = int(f.get('produit') or 0)
+        except (TypeError, ValueError):
+            produit_id = 0
+        if produit_id:
+            produit = get_produit_scoped(company, produit_id)
+        if produit is None:
+            motif = 'Produit inconnu pour cette société.'
+
+        poste = None
+        if motif is None:
+            code_poste = (f.get('poste_charge') or '').strip()
+            poste = PosteDeCharge.objects.filter(
+                company=company, code=code_poste).first()
+            if poste is None:
+                motif = f'Poste de charge inconnu pour cette société : « {code_poste} ».'
+
+        libelle = (f.get('libelle') or '').strip()
+        if motif is None and not libelle:
+            motif = 'Libellé manquant.'
+
+        try:
+            ordre = int(f.get('ordre') or 0) or 1
+        except (TypeError, ValueError):
+            ordre = 1
+        temps_prepa = _dec(f.get('temps_prepa_min') or 0)
+        temps_unitaire = _dec(f.get('temps_unitaire_min') or 0)
+
+        if motif is not None:
+            erreurs.append({'ligne': i, 'motif': motif})
+            continue
+
+        try:
+            gamme = gammes_par_produit.get(produit.id)
+            if gamme is None:
+                gamme = (Gamme.objects
+                         .filter(company=company, produit=produit, actif=True)
+                         .order_by('-version').first())
+                if gamme is None:
+                    gamme = Gamme.objects.create(
+                        company=company, produit=produit,
+                        nom=f'Gamme {produit.nom}', version=1)
+                gammes_par_produit[produit.id] = gamme
+
+            existante = OperationGamme.objects.filter(
+                gamme=gamme, ordre=ordre).first()
+            if existante is not None:
+                existante.poste_charge = poste
+                existante.libelle = libelle
+                existante.temps_prepa_min = temps_prepa
+                existante.temps_unitaire_min = temps_unitaire
+                existante.save(update_fields=[
+                    'poste_charge', 'libelle', 'temps_prepa_min',
+                    'temps_unitaire_min'])
+                updated_count += 1
+            else:
+                OperationGamme.objects.create(
+                    company=company, gamme=gamme, ordre=ordre,
+                    poste_charge=poste, libelle=libelle,
+                    temps_prepa_min=temps_prepa,
+                    temps_unitaire_min=temps_unitaire)
+                created_count += 1
+        except Exception as exc:  # noqa: BLE001 — une ligne KO n'arrête pas les autres.
+            erreurs.append({'ligne': i, 'motif': f'Erreur inattendue : {exc}'})
+
+    job = ImportJob.objects.create(
+        company=company, target='mrp_gammes', fichier_nom=filename or '',
+        mode='creer', statut=(
+            ImportJob.Statut.OK if not erreurs
+            else (ImportJob.Statut.PARTIEL if (created_count or updated_count)
+                  else ImportJob.Statut.ECHEC)),
+        total_lignes=len(rows), created_count=created_count,
+        updated_count=updated_count, error_count=len(erreurs),
+        created_by=user if getattr(user, 'is_authenticated', False) else None)
+    for erreur in erreurs:
+        brute = rows[erreur['ligne'] - 1]
+        # JSON-safe (une cellule XLSX peut renvoyer un `datetime`/`float`
+        # brut, jamais garanti sérialisable tel quel sur un `JSONField`).
+        donnees = {str(k): ('' if v is None else str(v)) for k, v in brute.items()}
+        ImportJobRow.objects.create(
+            job=job, ligne=erreur['ligne'], statut=ImportJobRow.Statut.ERREUR,
+            motif=erreur['motif'], donnees=donnees)
+
+    return {
+        'job_id': job.id,
+        'total_lignes': len(rows),
+        'created_count': created_count,
+        'updated_count': updated_count,
+        'error_count': len(erreurs),
+        'erreurs': erreurs,
+    }

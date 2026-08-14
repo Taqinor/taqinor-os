@@ -47,6 +47,8 @@ class VenteComptoirSerializer(serializers.ModelSerializer):
             'uuid_client',
             # NTRET5 — arrhes/acompte comptoir.
             'montant_arrhes', 'marchandise_remise',
+            # NTRET25 — écart d'arrondi caisse (espèces), posé à la validation.
+            'ecart_arrondi_especes',
         ]
         read_only_fields = [
             'reference', 'statut', 'facture', 'created_by',
@@ -55,6 +57,8 @@ class VenteComptoirSerializer(serializers.ModelSerializer):
             # `remettre-marchandise/` (apps.pos.services), qui appliquent le
             # blocage tant que le solde n'est pas réglé.
             'montant_arrhes', 'marchandise_remise',
+            # NTRET25 — posé UNIQUEMENT par `services.valider_vente`.
+            'ecart_arrondi_especes',
         ]
 
 
@@ -66,6 +70,9 @@ class SessionCaisseSerializer(serializers.ModelSerializer):
             'fond_ouverture', 'date_ouverture', 'date_cloture',
             'montant_compte_cloture', 'montant_tpe_compte', 'ecart_tpe',
             'cloture_caisse_comptable', 'commentaire',
+            # NTRET29 — boutique tenue (résout la grille tarifaire par
+            # emplacement) ; posable seulement à l'ouverture.
+            'boutique',
         ]
         read_only_fields = [
             'statut', 'date_ouverture', 'date_cloture',

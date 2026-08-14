@@ -25,6 +25,11 @@ const ConfigMaterielScreen = lazy(() => import('./ConfigMaterielScreen'))
 // `DashboardScreen` (XPOS2, activité de caisse du jour) : celui-ci agrège le
 // commerce sur une période. Route ET entrée de nav déclarées ensemble.
 const DashboardRetail = lazy(() => import('./DashboardRetail'))
+// NTRET31 — écran client (customer-facing display), atteint par un lien
+// direct depuis SessionScreen.jsx (segment dynamique :session_id — pas
+// d'entrée de nav dédiée, un second moniteur/tablette n'a pas besoin du
+// menu principal).
+const EcranClient = lazy(() => import('./EcranClient'))
 
 const ROLES = ['normal', 'responsable', 'admin']
 // XPOS4 — l'ouverture/clôture de caisse est réservée aux responsables/admin
@@ -58,6 +63,7 @@ const config = {
     ['/pos/retraits', 'Retraits magasin'],
     ['/pos/config-materiel', 'Matériel de caisse'],
     ['/pos/retail', 'Performance retail'],
+    ['/pos/ecran-client/:session_id', 'Écran client'],
   ],
   sectionLabels: { pos: 'Caisse' },
   routes: [
@@ -67,6 +73,10 @@ const config = {
     { path: '/pos/retraits', component: RetraitsScreen, roles: ROLES_CAISSE },
     { path: '/pos/config-materiel', component: ConfigMaterielScreen, roles: ROLES_CAISSE },
     { path: '/pos/retail', component: DashboardRetail, roles: ROLES_CAISSE },
+    // NTRET31 — segment dynamique :session_id, contextuelle: atteinte
+    // uniquement via le lien « Écran client » de SessionScreen.jsx, pas de
+    // nav.items dédiée (second moniteur/tablette).
+    { path: '/pos/ecran-client/:session_id', component: EcranClient, roles: ROLES_CAISSE },
   ],
 }
 

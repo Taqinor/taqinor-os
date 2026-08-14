@@ -1,6 +1,6 @@
 """Sélecteurs (lecture seule) de l'app `mrp` (Groupe NTMFG)."""
 from datetime import timedelta
-from decimal import Decimal
+from decimal import ROUND_CEILING, Decimal
 
 from django.db.models import Sum
 from django.utils import timezone as dj_timezone
@@ -101,10 +101,12 @@ def calculer_besoins_nets(company, *, produits=None, demande_independante=None,
         stock_dispo = _dec(available_quantity(produit_obj))
         en_cours_statuts = [
             OrdreFabrication.Statut.PLANIFIE, OrdreFabrication.Statut.LANCE]
+        # NTMFG16 — un OF prototype (première pièce bonne, hors production
+        # normale) n'entre JAMAIS dans le besoin net agrégé.
         en_cours = _dec(
             OrdreFabrication.objects.filter(
                 company=company, produit_id=produit_id,
-                statut__in=en_cours_statuts,
+                statut__in=en_cours_statuts, est_prototype=False,
             ).aggregate(total=Sum('quantite'))['total'] or 0)
         demande = demande_totale.get(produit_id, Decimal('0'))
         securite = (
@@ -205,7 +207,11 @@ def charge_postes(company, debut, fin):
     l'opération n'a pas encore démarré. Renvoie une liste triée par poste
     puis par jour :
       [{poste_id, poste_nom, jour, minutes_planifiees, capacite_minutes,
-        taux_charge_pct, surcharge}]."""
+        taux_charge_pct, surcharge, alerte_maintenance}].
+
+    `alerte_maintenance` (NTMFG14) — badge NON BLOQUANT : vrai si ce poste a
+    au moins une échéance d'entretien `a_faire` en retard, indépendamment de
+    la charge planifiée elle-même."""
     from .models import OperationOF
 
     operations = (
@@ -225,6 +231,7 @@ def charge_postes(company, debut, fin):
         charge[cle] = charge.get(cle, Decimal('0')) + temps
         postes_vus[op.poste_charge_id] = op.poste_charge
 
+    postes_en_alerte = postes_en_alerte_maintenance(company)
     resultats = []
     for (poste_id, jour), minutes in charge.items():
         poste = postes_vus[poste_id]
@@ -239,9 +246,28 @@ def charge_postes(company, debut, fin):
             'capacite_minutes': _fmt_dec(capacite_min),
             'taux_charge_pct': str(taux.quantize(Decimal('0.1'))),
             'surcharge': minutes > capacite_min,
+            'alerte_maintenance': poste_id in postes_en_alerte,
         })
     resultats.sort(key=lambda r: (r['poste_nom'].lower(), r['jour']))
     return resultats
+
+
+# ── NTMFG14 — Alerte maintenance de poste (Gantt + terminal) ─────────────
+
+def postes_en_alerte_maintenance(company, today=None):
+    """NTMFG14 — ensemble des `poste_charge_id` de `company` portant AU
+    MOINS une `EcheanceEntretienPoste` `a_faire` dont `date_prevue` est
+    dépassée. Lecture seule, utilisée pour le badge non bloquant du Gantt
+    (NTMFG7) et l'avertissement du terminal atelier (NTMFG8)."""
+    from .models import EcheanceEntretienPoste
+
+    today = today or dj_timezone.localdate()
+    return set(
+        EcheanceEntretienPoste.objects.filter(
+            plan__poste_charge__company=company,
+            statut=EcheanceEntretienPoste.Statut.A_FAIRE,
+            date_prevue__lt=today,
+        ).values_list('plan__poste_charge_id', flat=True))
 
 
 # ── NTMFG11 — Coût de revient standard vs réel ────────────────────────────
@@ -292,8 +318,11 @@ def analyse_couts(company, *, produit_id=None, date_debut=None, date_fin=None):
     porte pas de champ `date_terminee` dédié). STRICTEMENT INTERNE."""
     from .models import OrdreFabrication
 
+    # NTMFG16 — un OF prototype (première pièce bonne) n'entre jamais dans
+    # l'analyse d'écarts vs coût standard de production normale.
     qs = (OrdreFabrication.objects
-          .filter(company=company, statut=OrdreFabrication.Statut.TERMINE)
+          .filter(company=company, statut=OrdreFabrication.Statut.TERMINE,
+                  est_prototype=False)
           .select_related('produit', 'gamme'))
     if produit_id:
         qs = qs.filter(produit_id=produit_id)
@@ -363,12 +392,16 @@ def _jours_ouvres_fenetre(debut, fin):
 
 
 def _operations_terminees_poste(poste, debut, fin):
+    """NTMFG16 — un OF prototype (première pièce bonne) est EXCLU du calcul
+    TRS/OEE de production normale (mais reste soumis au même contrôle
+    qualité — NTMFG13 hors périmètre de ce lot)."""
     from .models import OperationOF
 
     return (OperationOF.objects
             .filter(
                 poste_charge=poste, statut='terminee',
-                terminee_le__date__gte=debut, terminee_le__date__lte=fin)
+                terminee_le__date__gte=debut, terminee_le__date__lte=fin,
+                ordre_fabrication__est_prototype=False)
             .select_related('operation_gamme', 'ordre_fabrication'))
 
 
@@ -479,6 +512,199 @@ def oee_tendance_hebdomadaire(company, poste_id, debut, fin):
     return resultats
 
 
+# ── NTMFG18 — Simulation « et si » de charge (AUCUNE écriture) ───────────
+
+def simuler_charge(company, lignes, *, date_souhaitee=None):
+    """NTMFG18 — charge ADDITIONNELLE par poste qu'induirait la fabrication
+    de `lignes` (``[{produit_id, quantite}, ...]``) au-delà de la charge
+    déjà planifiée (NTMFG7), sur le jour `date_souhaitee` (défaut
+    aujourd'hui). AUCUNE écriture — pur calcul.
+
+    Renvoie ``{tenable, poste_goulot, retard_jours, lignes: [...]}`` où
+    `tenable` vaut :
+      * ``'sans_gamme'`` — aucun produit de la demande n'a de gamme active
+        (ex. devis 100% négoce) : no-op pour l'appelant ;
+      * ``'tenable'`` — la charge additionnelle tient dans la capacité
+        disponible du jour ;
+      * ``'tenable_avec_retard'`` — dépassement absorbable en décalant de
+        `retard_jours` jour(s) (poste identifié par `poste_goulot`) ;
+      * ``'non_tenable'`` — un poste requis a une capacité NULLE (jamais
+        absorbable par un simple décalage)."""
+    from .models import Gamme
+
+    date_souhaitee = date_souhaitee or dj_timezone.localdate()
+    charge_additionnelle = {}  # poste_id -> minutes additionnelles.
+    postes_vus = {}
+    produits_avec_gamme = 0
+
+    for ligne in (lignes or []):
+        produit_id = ligne.get('produit_id')
+        quantite = _dec(ligne.get('quantite') or 0)
+        if not produit_id or quantite <= 0:
+            continue
+        gamme = (
+            Gamme.objects.filter(
+                company=company, produit_id=produit_id, actif=True)
+            .order_by('-version').first())
+        if gamme is None:
+            continue
+        produits_avec_gamme += 1
+        for operation in gamme.operations.select_related('poste_charge').all():
+            temps = temps_operation_min(operation, quantite)
+            poste = operation.poste_charge
+            charge_additionnelle[poste.id] = (
+                charge_additionnelle.get(poste.id, Decimal('0')) + temps)
+            postes_vus[poste.id] = poste
+
+    if produits_avec_gamme == 0:
+        return {
+            'tenable': 'sans_gamme', 'poste_goulot': None, 'retard_jours': 0,
+            'lignes': [],
+        }
+
+    existante = charge_postes(company, date_souhaitee, date_souhaitee)
+    existante_par_poste = {
+        r['poste_id']: _dec(r['minutes_planifiees']) for r in existante}
+
+    resultats = []
+    goulot = None
+    pire_retard = 0
+    non_tenable = False
+    for poste_id, minutes_add in charge_additionnelle.items():
+        poste = postes_vus[poste_id]
+        capacite_min = _dec(poste.capacite_heures_jour) * 60
+        deja = existante_par_poste.get(poste_id, Decimal('0'))
+        total = deja + minutes_add
+        depasse = capacite_min <= 0 or total > capacite_min
+        retard_jours = None
+        if capacite_min > 0:
+            if total > capacite_min:
+                retard_jours = int(
+                    (total / capacite_min).to_integral_value(rounding=ROUND_CEILING)) - 1
+                retard_jours = max(retard_jours, 1)
+            else:
+                retard_jours = 0
+        resultats.append({
+            'poste_id': poste_id,
+            'poste_nom': poste.nom,
+            'minutes_additionnelles': _fmt_dec(minutes_add),
+            'minutes_deja_planifiees': _fmt_dec(deja),
+            'capacite_minutes': _fmt_dec(capacite_min),
+            'depasse': depasse,
+        })
+        if depasse:
+            if retard_jours is None:
+                non_tenable = True
+                if goulot is None:
+                    goulot = poste.nom
+            elif retard_jours > pire_retard:
+                pire_retard = retard_jours
+                goulot = poste.nom
+
+    if non_tenable:
+        verdict = 'non_tenable'
+    elif pire_retard > 0:
+        verdict = 'tenable_avec_retard'
+    else:
+        verdict = 'tenable'
+
+    resultats.sort(key=lambda r: r['poste_nom'].lower())
+    return {
+        'tenable': verdict,
+        'poste_goulot': goulot,
+        'retard_jours': pire_retard,
+        'lignes': resultats,
+    }
+
+
+# ── NTMFG20 — Traçabilité amont/aval par OF (généalogie) ─────────────────
+#
+# Généalogie au niveau `mrp.OrdreFabrication` : quel OF a produit le
+# composant consommé par CET OF (amont, via `ReservationOF`), et quels
+# autres OF ont consommé le composite QUE CET OF a produit (aval). Lecture
+# seule, jamais d'écriture. Le lien vers `installations.OrdreAssemblage`
+# (kitting boutique) reste SUPERFICIEL — le simple id déjà porté par le
+# string-FK EXISTANT `OrdreFabrication.kit_ordre_assemblage` (aucun nouvel
+# import de modèle cross-app) — la profondeur de traçabilité au-delà de
+# `mrp` (jusqu'au chantier client) reste un point d'extension documenté,
+# pas une intégration inventée ici.
+
+def _amont_of(of, profondeur, visites=None):
+    """NTMFG20 — pour chaque composant réservé (NTMFG6) sur `of`, remonte à
+    l'OF de la MÊME société qui l'a PRODUIT (dernier OF terminé sur ce
+    produit, hors `of` lui-même), récursivement sur `profondeur` niveaux.
+    `visites` protège contre un cycle improbable (jamais infini)."""
+    from .models import OrdreFabrication
+
+    visites = visites if visites is not None else set()
+    if of.id in visites or profondeur <= 0:
+        return []
+    visites.add(of.id)
+
+    lignes = []
+    for reservation in of.reservations.select_related('produit').all():
+        entree = {
+            'produit_id': reservation.produit_id,
+            'produit_nom': reservation.produit.nom if reservation.produit_id else '—',
+            'quantite': _fmt_dec(reservation.quantite),
+            'consomme': reservation.consomme,
+            'of_source': None,
+        }
+        of_source = (
+            OrdreFabrication.objects.filter(
+                company_id=of.company_id, produit_id=reservation.produit_id,
+                statut=OrdreFabrication.Statut.TERMINE)
+            .exclude(id=of.id).order_by('-id').first())
+        if of_source is not None:
+            entree['of_source'] = {
+                'of_id': of_source.id,
+                'amont': _amont_of(of_source, profondeur - 1, visites),
+            }
+        lignes.append(entree)
+    return lignes
+
+
+def _aval_of(of, profondeur, visites=None):
+    """NTMFG20 — OF de la MÊME société qui ont RÉSERVÉ (NTMFG6) le produit
+    que CET OF fabrique — les consommateurs en aval — récursivement sur
+    `profondeur` niveaux. Expose le lien `kit_ordre_assemblage` (string-FK
+    déjà porté par le modèle, lecture d'ID seulement) quand présent."""
+    from .models import OrdreFabrication
+
+    visites = visites if visites is not None else set()
+    if of.id in visites or profondeur <= 0:
+        return []
+    visites.add(of.id)
+
+    consommateurs = (
+        OrdreFabrication.objects.filter(
+            company_id=of.company_id, reservations__produit_id=of.produit_id)
+        .exclude(id=of.id).distinct())
+    resultats = []
+    for consommateur in consommateurs:
+        entree = {
+            'of_id': consommateur.id,
+            'statut': consommateur.statut,
+            'kit_ordre_assemblage_id': consommateur.kit_ordre_assemblage_id,
+            'aval': _aval_of(consommateur, profondeur - 1, visites),
+        }
+        resultats.append(entree)
+    return resultats
+
+
+def genealogie_of(of, *, profondeur=2):
+    """NTMFG20 — généalogie amont (composants consommés, remontée aux OF qui
+    les ont produits) + aval (OF qui ont consommé le produit de CET OF), sur
+    `profondeur` niveaux (défaut 2). Lecture seule — utile pour un rappel
+    qualité fournisseur (« quels OF ont reçu un lot de composant X »)."""
+    return {
+        'of_id': of.id,
+        'produit_id': of.produit_id,
+        'amont': _amont_of(of, profondeur),
+        'aval': _aval_of(of, profondeur),
+    }
+
+
 def oee_tous_postes(company, debut, fin):
     """NTMFG12 — TRS de TOUS les postes actifs de la société sur la fenêtre
     (comparaison inter-postes), triés par TRS décroissant."""
@@ -489,3 +715,132 @@ def oee_tous_postes(company, debut, fin):
         resultats.append(oee_poste(company, poste.id, debut, fin))
     resultats.sort(key=lambda r: Decimal(r['trs_pct']), reverse=True)
     return resultats
+
+
+# ── NTMFG22 — Tableau de bord Production consolidé ────────────────────────
+
+def tableau_bord_production(company, today=None):
+    """NTMFG22 — 4 indicateurs consolidés au niveau DIRECTION (chaque brique
+    est consultée séparément par ailleurs — NTMFG7/9/12/14) :
+      * ``of_en_retard`` — nb d'OF planifiés/lancés NON prototype (NTMFG16)
+        dont `date_fin_planifiee` est dépassée ;
+      * ``charge_moyenne_pct`` — taux de charge MOYEN tous postes actifs sur
+        les 7 PROCHAINS jours (réutilise NTMFG7 `charge_postes`) ;
+      * ``trs_moyen_pct`` — TRS moyen tous postes actifs sur les 7 DERNIERS
+        jours (réutilise NTMFG12 `oee_poste`) ;
+      * ``postes_en_alerte_maintenance`` — nb de postes avec une échéance
+        d'entretien en retard (NTMFG14).
+    Dégrade proprement (zéros) sans aucune donnée — jamais d'exception."""
+    from .models import OrdreFabrication, PosteDeCharge
+
+    today = today or dj_timezone.localdate()
+
+    of_en_retard = OrdreFabrication.objects.filter(
+        company=company,
+        statut__in=[OrdreFabrication.Statut.PLANIFIE, OrdreFabrication.Statut.LANCE],
+        est_prototype=False,
+        date_fin_planifiee__lt=dj_timezone.now(),
+    ).count()
+
+    charge_semaine = charge_postes(company, today, today + timedelta(days=6))
+    if charge_semaine:
+        charge_moyenne_pct = (
+            sum(Decimal(r['taux_charge_pct']) for r in charge_semaine)
+            / len(charge_semaine))
+    else:
+        charge_moyenne_pct = Decimal('0')
+
+    postes_actifs = list(PosteDeCharge.objects.filter(company=company, actif=True))
+    trs_values = []
+    for poste in postes_actifs:
+        resultat = oee_poste(company, poste.id, today - timedelta(days=6), today)
+        if resultat and resultat['donnees']:
+            trs_values.append(Decimal(resultat['trs_pct']))
+    trs_moyen_pct = (sum(trs_values) / len(trs_values)) if trs_values else Decimal('0')
+
+    postes_en_alerte = len(postes_en_alerte_maintenance(company, today))
+
+    return {
+        'of_en_retard': of_en_retard,
+        'charge_moyenne_pct': str(charge_moyenne_pct.quantize(Decimal('0.1'))),
+        'trs_moyen_pct': str(trs_moyen_pct.quantize(Decimal('0.1'))),
+        'postes_en_alerte_maintenance': postes_en_alerte,
+    }
+
+
+# ── NTMFG36 — Export CSV/XLSX des Ordres de Fabrication + opérations ─────
+
+def export_ordres_fabrication(company, *, debut=None, fin=None, statut=None):
+    """NTMFG36 — mêmes données que l'écran NTMFG9, prêtes pour un export
+    fichier : un onglet OF (produit, quantité, statut, dates prévues) + un
+    onglet opérations détaillées (poste, temps prévu/réel, quantité bonne/
+    rebut), COHÉRENTS entre eux (les deux listes couvrent EXACTEMENT les
+    mêmes OF de la période). `debut`/`fin` filtrent sur `created_at` (date de
+    création de l'OF) — bornes incluses. Aucun champ « opérateur » : le
+    modèle `OperationOF` n'a jamais tracé l'utilisateur qui a exécuté une
+    opération (limitation de données existante, hors périmètre d'un export).
+
+    Renvoie ``(lignes_of, lignes_operations)``, deux listes de dicts."""
+    from .models import OrdreFabrication
+
+    qs = (OrdreFabrication.objects
+          .filter(company=company)
+          .select_related('produit')
+          .prefetch_related('operations__poste_charge'))
+    if debut:
+        qs = qs.filter(created_at__date__gte=debut)
+    if fin:
+        qs = qs.filter(created_at__date__lte=fin)
+    if statut:
+        qs = qs.filter(statut=statut)
+    qs = qs.order_by('id')
+
+    lignes_of = []
+    lignes_operations = []
+    for of in qs:
+        lignes_of.append({
+            'of_id': of.id,
+            'produit_nom': of.produit.nom,
+            'quantite': _fmt_dec(of.quantite),
+            'statut': of.statut,
+            'date_debut_planifiee': (
+                of.date_debut_planifiee.isoformat() if of.date_debut_planifiee else ''),
+            'date_fin_planifiee': (
+                of.date_fin_planifiee.isoformat() if of.date_fin_planifiee else ''),
+        })
+        for op in of.operations.all():
+            temps_prevu = (
+                temps_operation_min(op.operation_gamme, of.quantite)
+                if op.operation_gamme_id else Decimal('0'))
+            lignes_operations.append({
+                'of_id': of.id,
+                'poste_nom': op.poste_charge.nom if op.poste_charge_id else '',
+                'libelle': op.libelle,
+                'statut': op.statut,
+                'temps_prevu_min': _fmt_dec(temps_prevu),
+                'temps_reel_min': _fmt_dec(op.temps_reel_min),
+                'quantite_bonne': _fmt_dec(op.quantite_bonne),
+                'quantite_rebut': _fmt_dec(op.quantite_rebut),
+            })
+    return lignes_of, lignes_operations
+
+
+# ── NTMFG40 — Provider KPI fédéré (ARC40, core.platform.kpi_providers) ───
+
+def kpi_production(company):
+    """NTMFG40 — provider KPI fédéré (``core.platform.kpi_providers``,
+    déclaré dans ``apps/mrp/platform.py``) : 3 tuiles — taux de charge
+    atelier, TRS moyen, OF en retard — DÉLÈGUE ENTIÈREMENT à
+    `tableau_bord_production` (NTMFG22, qui réutilise elle-même NTMFG7/12) :
+    ZÉRO nouveau calcul, valeurs STRICTEMENT identiques à l'écran dédié
+    `/mrp/tableau-bord` sur le même jeu de données. Company-scopée (le hub
+    `reporting.kpi_federes` passe déjà la société de l'acteur)."""
+    donnees = tableau_bord_production(company)
+    return [
+        {'id': 'mrp_taux_charge_atelier', 'label': 'Taux de charge atelier',
+         'valeur': donnees['charge_moyenne_pct'], 'unite': '%'},
+        {'id': 'mrp_trs_moyen', 'label': 'TRS moyen (7 jours)',
+         'valeur': donnees['trs_moyen_pct'], 'unite': '%'},
+        {'id': 'mrp_of_en_retard', 'label': 'OF en retard',
+         'valeur': donnees['of_en_retard'], 'unite': ''},
+    ]

@@ -11,6 +11,7 @@ from apps.crm.models import Lead
 from apps.ventes.models import Devis, LigneDevis, Facture, LigneFacture
 from apps.installations.models import Installation
 from apps.stock.models import Produit
+from apps.scm.models import PolitiqueStock, PrevisionDemande
 
 from .models import BulkJob
 
@@ -156,5 +157,35 @@ class PublicChantierSerializer(serializers.ModelSerializer):
             'type_installation',
             # FG104 — exposé pour la synchro incrémentale (?updated_since=).
             'date_creation', 'date_modification',
+        ]
+        read_only_fields = fields
+
+
+class PublicPrevisionDemandeSerializer(serializers.ModelSerializer):
+    """NTSCM38 — prévision de demande (planification supply chain), LECTURE
+    SEULE. Aucun champ de coût (`apps.scm.models.PrevisionDemande` n'en a
+    aucun)."""
+    produit = serializers.PrimaryKeyRelatedField(read_only=True)
+
+    class Meta:
+        model = PrevisionDemande
+        fields = [
+            'id', 'produit', 'segment', 'periode', 'quantite_prevue',
+            'methode', 'genere_le',
+        ]
+        read_only_fields = fields
+
+
+class PublicPolitiqueStockSerializer(serializers.ModelSerializer):
+    """NTSCM38 — politique de stock (ROP/stock de sécurité), LECTURE SEULE.
+    JAMAIS `Produit.prix_achat` — uniquement des quantités et pourcentages."""
+    produit = serializers.PrimaryKeyRelatedField(read_only=True)
+
+    class Meta:
+        model = PolitiqueStock
+        fields = [
+            'id', 'produit', 'classe_abc', 'service_level_pct', 'stock_min',
+            'stock_max', 'point_commande', 'stock_securite_calcule',
+            'stock_securite_manuel', 'revise_le',
         ]
         read_only_fields = fields

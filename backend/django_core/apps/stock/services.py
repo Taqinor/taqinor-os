@@ -264,10 +264,15 @@ def stock_breakdown_map(company):
 
 
 def transfer_stock(*, company, user, produit_id, source_id, destination_id,
-                   quantite, note=''):
+                   quantite, note='', demande_approuvee=False):
     """Transfère `quantite` d'un produit de l'emplacement source vers la
     destination. Crée un TransfertStock (le « transfer record »). Ne change
-    JAMAIS le total `Produit.quantite_stock`. Lève ValueError si invalide."""
+    JAMAIS le total `Produit.quantite_stock`. Lève ValueError si invalide.
+
+    NTWMS21 — au-dessus du seuil d'approbation de la société
+    (`AchatsParametres.seuil_approbation_transfert`, 0 = désactivé), le
+    transfert DIRECT est refusé : il faut passer par une `DemandeTransfert`
+    approuvée, qui rappelle ce service avec `demande_approuvee=True`."""
     from django.db import transaction
     from .models import (
         Produit, EmplacementStock, StockEmplacement, TransfertStock)
@@ -294,6 +299,17 @@ def transfer_stock(*, company, user, produit_id, source_id, destination_id,
             destination = emps[int(destination_id)]
         except (KeyError, TypeError, ValueError):
             raise ValueError('Emplacement introuvable dans cette société.')
+
+        # NTWMS21 — garde d'approbation (no-op tant que le seuil vaut 0).
+        # Une demande FG325 (`installations.DemandeTransfert`) APPROUVÉE
+        # traverse la garde : son action `executer` appelle ce service sans
+        # drapeau, et elle ne doit évidemment pas être re-bloquée.
+        if not demande_approuvee and transfert_exige_approbation(
+                company, produit, quantite, source_id=source.id,
+                destination_id=destination.id):
+            raise ValueError(
+                'Ce transfert dépasse le seuil d\'approbation de la société : '
+                'ouvrez une demande de transfert et faites-la approuver.')
 
         records = {se.emplacement_id: se for se in
                    produit.stocks_emplacement.select_for_update()}
@@ -731,19 +747,52 @@ def _cout_moyen_produit_a_date(produit, date):
     return (produit.prix_achat or Decimal('0')), 'catalogue'
 
 
+def quantite_de_tiers(company, produit=None):
+    """NTWMS19 — quantité qui appartient à un TIERS et dort dans nos murs.
+
+    Somme des ``StockEmplacement`` posés sur un emplacement
+    ``type_proprietaire=DE_TIERS``. Cette marchandise reste pilotable
+    opérationnellement mais n'est JAMAIS un actif de la société : elle est
+    retirée de toute valorisation comptable. Sans emplacement DE_TIERS (le
+    cas de toutes les sociétés existantes), renvoie 0 — comportement
+    historique strictement inchangé.
+
+    ``produit`` — un produit précis, ou ``None`` pour la carte complète
+    ``{produit_id: quantite}``.
+    """
+    from .models import EmplacementStock, StockEmplacement
+
+    qs = StockEmplacement.objects.filter(
+        company=company,
+        emplacement__type_proprietaire=(
+            EmplacementStock.TypeProprietaire.DE_TIERS))
+    if produit is not None:
+        return sum(
+            qs.filter(produit=produit).values_list('quantite', flat=True))
+    carte = {}
+    for produit_id, quantite in qs.values_list('produit_id', 'quantite'):
+        carte[produit_id] = carte.get(produit_id, 0) + (quantite or 0)
+    return carte
+
+
 def valorisation_a_date(company, date):
     """XSTK13 — valorisation du stock reconstruite À UNE DATE PASSÉE.
 
     Renvoie {date, total, lignes:[{produit_id, sku, designation, quantite,
     cout_moyen, valeur, source}]} — une ligne par produit dont la quantité
     reconstruite à `date` est non nulle. INTERNE (admin) — jamais
-    client-facing."""
+    client-facing.
+
+    NTWMS19 — la quantité appartenant à un TIERS (emplacement DE_TIERS) est
+    retirée : elle est dans nos murs, jamais dans notre bilan."""
     from .models import Produit
     produits = Produit.objects.filter(company=company)
+    de_tiers = quantite_de_tiers(company)
     lignes = []
     total = Decimal('0')
     for p in produits:
         quantite = _quantite_produit_a_date(p, date)
+        quantite = max(quantite - de_tiers.get(p.id, 0), 0)
         if quantite == 0:
             continue
         cout, source = _cout_moyen_produit_a_date(p, date)
@@ -825,7 +874,12 @@ def creer_revalorisation(*, company, produit, nouveau_cout, motif, user):
         raise ValueError('Le motif de la revalorisation est obligatoire.')
     ancien_cout, _source = average_cost_with_source(produit)
     nouveau_cout = Decimal(str(nouveau_cout))
-    quantite = produit.quantite_stock or 0
+    # NTWMS19 — le stock DE TIERS présent dans nos murs n'est pas notre actif :
+    # il ne participe jamais au delta de revalorisation (0 sans emplacement
+    # DE_TIERS, soit le comportement historique de toutes les sociétés).
+    quantite = max(
+        (produit.quantite_stock or 0)
+        - quantite_de_tiers(company, produit=produit), 0)
     delta = (nouveau_cout - ancien_cout) * quantite
     return RevalorisationStock.objects.create(
         company=company, produit=produit, ancien_cout=ancien_cout,
@@ -997,6 +1051,11 @@ def confirm_reception_fournisseur(reception, user):
     lignes = list(reception.lignes.select_related('ligne_commande', 'produit'))
     if not lignes:
         raise ValueError('La réception ne contient aucune ligne.')
+    # NTWMS34 — un plan d'échantillonnage applicable BLOQUE la confirmation
+    # tant que le résultat du contrôle qualité n'est pas saisi. No-op total
+    # pour une société sans plan (comportement historique inchangé).
+    from .services_qualite_reception import verifier_controle_reception
+    verifier_controle_reception(reception)
 
     today = timezone.now().date()
     bc = reception.bon_commande
@@ -1094,6 +1153,14 @@ def confirm_reception_fournisseur(reception, user):
             company=reception.company, user=user)
     except Exception:  # pragma: no cover - défensif, best-effort
         pass
+    # NTWMS34 — routage post-contrôle : un verdict NON CONFORME met la
+    # marchandise reçue en quarantaine (NTWMS31) au lieu du put-away normal.
+    try:
+        from .services_qualite_reception import router_apres_controle
+        router_apres_controle(reception, user)
+    except Exception:  # pragma: no cover - défensif, best-effort
+        logger.exception('NTWMS34 routage quarantaine impossible pour %s',
+                         reception.reference)
     return reception
 
 
@@ -2904,10 +2971,27 @@ def supplier_performance(company, fournisseur):
     # comportement historique inchangé pour les BCF sans XPUR7 renseigné).
     otd = otd_stats(company, fournisseur)
 
+    # NTSCM8 — OTIF RÉEL (à l'heure ET complet), distinct du taux de service
+    # générique ci-dessus : une commande complète mais en retard n'est PAS
+    # OTIF. Champs additifs ; `taux_otif_pct` vaut None sans livraison
+    # mesurable (jamais 0 %, qui se lirait comme un fournisseur catastrophique).
+    from .selectors_fournisseur import otif_fournisseur
+    otif = otif_fournisseur(company, fournisseur)
+    # NTSCM9 — un incident CRITIQUE non résolu doit sauter aux yeux ici.
+    from .models import IncidentQualiteFournisseur
+    incidents_critiques = IncidentQualiteFournisseur.objects.filter(
+        company=company, fournisseur=fournisseur, resolu=False,
+        gravite=IncidentQualiteFournisseur.Gravite.CRITIQUE).count()
+
     return {
         'fournisseur_id': fournisseur.id,
         'fournisseur_nom': fournisseur.nom,
         'nb_bons': nb_bons,
+        'taux_otif_pct': otif['taux_otif_pct'],
+        'otif_total_livraisons': otif['total_livraisons'],
+        'otif_nb_retard': otif['nb_retard'],
+        'otif_nb_incomplet': otif['nb_incomplet'],
+        'incidents_qualite_critiques_ouverts': incidents_critiques,
         'avg_lead_time_days': round(sum(lead_times) / len(lead_times), 1) if lead_times else None,
         'fill_rate_pct': round(sum(fill_rates) / len(fill_rates), 1) if fill_rates else None,
         'nb_retours': nb_retours,
@@ -6457,20 +6541,50 @@ def consommer_engagements_demande(company, demande_achat_id,
 # continuent d'ecrire `from apps.stock.services import ...`.
 from .services_wms import (  # noqa: E402,F401
     FENETRE_ROTATION_JOURS,
+    affecter_reception_cross_dock,
     ajouter_ligne_unite_logistique,
+    ajouter_unite_plan_chargement,
     assurer_plans_comptage_tournant,
+    cloturer_alerte_rappel,
     configurer_liberation_vague,
     controler_scan_emballage,
     creer_expedition_transporteur,
+    creer_plan_chargement,
+    creer_retour_client,
     creer_unite_logistique,
+    declarer_mouvement_rebut,
+    deplacer_unite_logistique,
     creer_vague_depuis_besoins,
     enregistrer_arrivee_chauffeur,
     enregistrer_mouvement_scanne,
+    exporter_asn,
     generer_comptages_tournants,
     generer_etiquette_expedition,
+    impact_rappel,
+    importer_asn,
+    mettre_en_quarantaine,
+    inspecter_retour_client,
     lancer_vague,
+    lever_quarantaine,
+    lever_quarantaine_bin,
     liberer_vagues_planifiees,
+    notifier_rappel,
+    ordonner_parcours_serpentin,
     prelever_ligne_picking,
+    proposer_cross_dock,
+    quantite_disponible_hors_quarantaine,
+    quantite_en_quarantaine,
+    rapport_pertes_entrepot,
+    reception_est_cross_dock,
+    recalculer_parcours_vague,
+    receptionner_retour_client,
+    resoudre_token_portail_tiers,
     sceller_unite_logistique,
+    seuil_approbation_transfert,
+    solde_portail_tiers,
     suggestions_rangement_reception,
+    demande_transfert_approuvee_existe,
+    transfert_exige_approbation,
+    valeur_transfert,
+    verifier_capacite_plan,
 )

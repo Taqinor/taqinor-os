@@ -1,7 +1,8 @@
 from django.db import transaction  # noqa: F401
 from django.db.models import ProtectedError, Count, Min, Max  # noqa: F401
 from django.http import HttpResponse  # noqa: F401
-from rest_framework import viewsets, filters, status  # noqa: F401
+from drf_spectacular.utils import extend_schema, inline_serializer
+from rest_framework import viewsets, filters, serializers, status  # noqa: F401
 from rest_framework.decorators import action  # noqa: F401
 from rest_framework.response import Response  # noqa: F401
 from core.viewsets import CompanyScopedModelViewSet
@@ -42,7 +43,13 @@ WRITE_ACTIONS = ['create', 'update', 'partial_update']
 # package __init__ ré-exporte toutes les vues publiques.
 
 
-class ReceptionFournisseurViewSet(CompanyScopedModelViewSet):
+from .qualite_reception import ControleReceptionActionsMixin  # noqa: E402
+from .catch_weight import PeseeLigneActionsMixin  # noqa: E402
+
+
+class ReceptionFournisseurViewSet(ControleReceptionActionsMixin,
+                                  PeseeLigneActionsMixin,
+                                  CompanyScopedModelViewSet):
     """G5 — Réceptions fournisseur (goods-in / entrée de marchandises).
 
     Numérotation sans trou (préfixe REC). La confirmation incrémente le stock
@@ -63,13 +70,23 @@ class ReceptionFournisseurViewSet(CompanyScopedModelViewSet):
 
     def get_permissions(self):
         if self.action in READ_ACTIONS + [
-                'scan_gs1', 'etiquettes', 'suggestions_rangement']:
+                'scan_gs1', 'etiquettes', 'suggestions_rangement',
+                'proposer_cross_dock',
+                # NTWMS34 — l'état de l'échantillonnage est une LECTURE.
+                'echantillonnage',
+                # NTWMS37 — consulter les relevés à unité variable : LECTURE.
+                'pesees']:
             # NTWMS2 — les suggestions de rangement sont une LECTURE (elles
             # n'écrivent rien) : même garde que les autres lectures. Ce
             # `get_permissions` prime sur le `permission_classes` de l'@action,
             # d'où ce cas explicite — sinon repli IsAdminRole.
             return [IsAnyRole()]
-        elif self.action in WRITE_ACTIONS + ['confirmer', 'annuler', 'facturer']:
+        elif self.action in WRITE_ACTIONS + [
+                'confirmer', 'annuler', 'facturer', 'affecter_cross_dock',
+                # NTWMS34 — la saisie du verdict qualité est une ÉCRITURE.
+                'controle_qualite',
+                # NTWMS37 — la saisie d'un relevé réel est une ÉCRITURE.
+                'pesee_ligne']:
             # « facturer » déclarait IsResponsableOrAdmin sur son décorateur
             # mais ce get_permissions l'écrasait vers IsAdminRole (le repli
             # par défaut) — bug préexistant attrapé par le test P2P YTEST6.
@@ -203,6 +220,71 @@ class ReceptionFournisseurViewSet(CompanyScopedModelViewSet):
         from ..services import suggestions_rangement_reception
         reception = self.get_object()
         return Response(suggestions_rangement_reception(reception))
+
+    @extend_schema(responses={
+        200: inline_serializer('StockReceptionCrossDockPropositions', {
+            'reception': serializers.IntegerField(),
+            'entierement_cross_dockee': serializers.BooleanField(),
+            'lignes': serializers.ListField(child=serializers.DictField()),
+        }),
+    })
+    @action(detail=True, methods=['get'], url_path='proposer-cross-dock')
+    def proposer_cross_dock(self, request, pk=None):
+        """NTWMS15 — vagues en attente qui MATCHENT les lignes reçues.
+
+        Pour chaque ligne : le produit, la quantité reçue et les lignes de
+        vague non servies qui l'attendent. LECTURE SEULE — c'est le magasinier
+        qui décide ensuite de router (``affecter-cross-dock``)."""
+        from ..services import proposer_cross_dock, reception_est_cross_dock
+        reception = self.get_object()
+        return Response({
+            'reception': reception.id,
+            'entierement_cross_dockee': reception_est_cross_dock(reception),
+            'lignes': proposer_cross_dock(reception),
+        })
+
+    @extend_schema(responses={
+        200: inline_serializer('StockReceptionCrossDockAffectation', {
+            'unite_logistique': serializers.IntegerField(allow_null=True),
+            'sscc': serializers.CharField(),
+            'lignes_affectees': serializers.ListField(
+                child=serializers.IntegerField()),
+            'lignes_ignorees': serializers.ListField(
+                child=serializers.IntegerField()),
+            'reception_entierement_cross_dockee': serializers.BooleanField(),
+        }),
+        400: inline_serializer('StockReceptionCrossDockErreur', {
+            'detail': serializers.CharField(),
+        }),
+    })
+    @action(detail=True, methods=['post'], url_path='affecter-cross-dock')
+    def affecter_cross_dock(self, request, pk=None):
+        """NTWMS15 — route les lignes reçues vers un colis d'EXPÉDITION.
+
+        Corps optionnel ``{lignes: [id…], unite_logistique: id}``. La
+        marchandise ne passe JAMAIS par un casier de stockage : le rangement
+        guidé (NTWMS2) est explicitement sauté pour les lignes routées."""
+        from ..models_wms import UniteLogistique
+        from ..services import affecter_reception_cross_dock
+        reception = self.get_object()
+        unite = None
+        if request.data.get('unite_logistique'):
+            unite = UniteLogistique.objects.filter(
+                id=request.data.get('unite_logistique'),
+                company=request.user.company).first()
+            if unite is None:
+                return Response(
+                    {'detail': 'Unité logistique introuvable dans cette '
+                               'société.'},
+                    status=status.HTTP_400_BAD_REQUEST)
+        try:
+            resultat = affecter_reception_cross_dock(
+                reception=reception, user=request.user,
+                lignes=request.data.get('lignes'), unite=unite)
+        except ValueError as exc:
+            return Response({'detail': str(exc)},
+                            status=status.HTTP_400_BAD_REQUEST)
+        return Response(resultat)
 
     @action(detail=True, methods=['post'], url_path='confirmer')
     def confirmer(self, request, pk=None):

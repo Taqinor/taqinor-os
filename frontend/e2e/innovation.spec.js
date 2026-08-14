@@ -50,7 +50,10 @@ test('NTIDE60: le vote incrémente le compteur, un second vote du même votant e
   const voterPage = await voterContext.newPage()
   try {
     await uiLogin(voterPage, { username: SECOND_USER, password: ADMIN.password })
-    await expect(voterPage).toHaveURL(/\/dashboard/)
+    // ODY3 — la connexion ouvre le Menu d'accueil `/apps` (« on ouvre l'ERP,
+    // on voit SES apps »), plus `/dashboard` : même preuve (la seconde session
+    // est bien authentifiée avant de voter), sur la vraie destination.
+    await expect(voterPage).toHaveURL(/\/apps/)
 
     await voterPage.goto(`/innovation/idees/${ideeId}`)
     await expect(voterPage.getByRole('heading', { name: titre })).toBeVisible()

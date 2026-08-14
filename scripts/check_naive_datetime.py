@@ -96,7 +96,7 @@ TIMESTAMP_AS_DATEFIELD_ALLOWLIST = {
     # PUB75 (batch-2) — ConsentRecord.date_consentement : DATE (jour) de recueil
     # du consentement image/témoignage (loi 09-08), pas un horodatage. Le champ
     # timestamp de ce modèle (revoked_at) EST bien un DateTimeField. Pas un bug.
-    "backend/django_core/apps/adsengine/models.py:2583",  # ConsentRecord.date_consentement
+    "backend/django_core/apps/adsengine/models.py:2589",  # ConsentRecord.date_consentement
 }
 
 TIMESTAMP_NAME_RE = re.compile(

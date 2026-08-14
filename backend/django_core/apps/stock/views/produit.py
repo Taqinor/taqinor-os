@@ -1,8 +1,10 @@
 from django.db import transaction  # noqa: F401
 from django.db.models import ProtectedError, Count, Min, Max, Prefetch  # noqa: F401
 from django.http import HttpResponse  # noqa: F401
-from rest_framework import viewsets, filters, status  # noqa: F401
+from drf_spectacular.utils import extend_schema, inline_serializer
+from rest_framework import viewsets, filters, serializers, status  # noqa: F401
 from rest_framework.decorators import action  # noqa: F401
+from rest_framework.negotiation import DefaultContentNegotiation
 from rest_framework.response import Response  # noqa: F401
 from core.entite_scoping import EntiteScopeMixin
 from core.viewsets import CompanyScopedModelViewSet
@@ -51,7 +53,31 @@ PRODUIT_CREATE_PERMISSION = HasPermissionAndRole(
     'stock_creer', 'Directeur', 'Commercial responsable')
 
 
-class ProduitViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
+from .fournisseur_scm import ScmProduitTcoMixin  # noqa: E402
+from .negoce import AtpProduitMixin  # noqa: E402
+
+
+class _MarketplaceFormatContentNegotiation(DefaultContentNegotiation):
+    """NTRET20 — sur ``export-marketplace`` le paramètre ``?format=`` désigne
+    le format DU FLUX (avito/google_shopping), PAS le renderer DRF.
+
+    Sans cette surcharge, DRF traite ``?format=avito`` comme un override de
+    renderer (``URL_FORMAT_OVERRIDE``) : aucun renderer enregistré ne porte ce
+    format, donc ``filter_renderers`` lève un ``Http404`` AVANT même
+    d'exécuter la vue — motif ``apps.douane.views._ExportFormatContent
+    Negotiation`` (NTLOG47). La vue renvoie une ``HttpResponse`` manuelle,
+    jamais via ce renderer.
+    """
+
+    def select_renderer(self, request, renderers, format_suffix=None):
+        for renderer in renderers:
+            if renderer.format == 'json':
+                return renderer, renderer.media_type
+        return renderers[0], renderers[0].media_type
+
+
+class ProduitViewSet(ScmProduitTcoMixin, AtpProduitMixin, EntiteScopeMixin,
+                     CompanyScopedModelViewSet):
     # YOPSB13 — le FournisseurSerializer imbriqué (ProduitSerializer.fournisseur)
     # lit contacts.all() + nb_produits/nb_bons_commande (repli .count()) PAR
     # ligne : N+1. On précharge le fournisseur avec les mêmes annotations que
@@ -81,7 +107,12 @@ class ProduitViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         if self.action in READ_ACTIONS + [
                 'export_xlsx', 'resolve', 'previsionnel', 'tracer',
                 'etiquettes_showroom', 'casiers', 'plan_picking',
-                'classe_abc']:
+                'classe_abc', 'tracabilite',
+                # NTDST10 — `atp` est LECTURE SEULE (aucun prix, aucun coût).
+                'atp',
+                # NTRET17 — étiquette PRIX de rayon : impression, LECTURE
+                # SEULE, jamais de prix d'achat (même garde qu'`etiquettes`).
+                'etiquettes_prix']:
             # XSTK3/XSTK4 — `resolve` (scan code-barres/GS1) est LECTURE
             # SEULE, accessible à tout rôle authentifié — même garde que
             # `@action(permission_classes=[IsAnyRole])` sur l'action
@@ -93,6 +124,12 @@ class ProduitViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
             # XPOS17 — `etiquettes-showroom` (impression) est LECTURE SEULE,
             # même garde que l'action `etiquettes` N20.
             return [IsAnyRole()]
+        elif self.action == 'export_marketplace':
+            # NTRET20 — publier un flux PUBLIC de catalogue est une décision
+            # commerciale : responsable/admin, jamais tout rôle
+            # (`get_permissions` prime sur le `permission_classes` de
+            # l'@action, d'où ce cas explicite).
+            return [IsResponsableOrAdmin()]
         elif self.action in ('create', 'dupliquer'):
             # QG4 — création réservée à Directeur + Commercial responsable.
             # QP2 — le clone (`dupliquer`) EST une création : même garde. Ce
@@ -114,7 +151,10 @@ class ProduitViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
             return [IsAdminRole()]
         elif self.action in (
                 'analyse_achats', 'analyse_achats_export_xlsx',
-                'analyse_achats_pdf'):
+                'analyse_achats_pdf',
+                # NTSCM26 — le TCO expose des COÛTS internes (prix d'achat,
+                # coût qualité) : jamais ouvert au-delà de responsable/admin.
+                'comparer_tco'):
             # XPUR24/ZPUR9 — tableau de bord + rapport imprimable achats :
             # Admin/Responsable uniquement (get_permissions prime sur le
             # permission_classes de l'@action, d'où ce cas explicite —
@@ -501,6 +541,117 @@ class ProduitViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
             'inline; filename="etiquettes-produits.pdf"')
         return response
 
+    @extend_schema(responses={(200, 'text/csv'): bytes})
+    @action(detail=False, methods=['get'], url_path='export-marketplace',
+            permission_classes=[IsResponsableOrAdmin],
+            content_negotiation_class=_MarketplaceFormatContentNegotiation)
+    def export_marketplace(self, request):
+        """NTRET20 — flux produits pour place de marché
+        (``?format=avito|google_shopping``).
+
+        Génère le FICHIER prêt à importer / à pointer en flux URL — aucune
+        intégration API poussée (les comptes marchands Avito/Google sont une
+        étape manuelle du fondateur). Seuls les produits marqués vendables en
+        ligne (``ecommerce_connect.ProduitSync``) sortent ; ``prix_achat``
+        n'entre JAMAIS dans un flux PUBLIC.
+        """
+        from apps.parametres.models import CompanyProfile
+
+        from ..marketplace_feeds import generer_flux
+
+        company = request.user.company
+        cible = (request.query_params.get('format') or '').strip()
+        try:
+            profil = CompanyProfile.get(company=company)
+            titre = getattr(profil, 'nom', '') or 'Catalogue'
+        except Exception:  # noqa: BLE001 — profil absent : titre neutre
+            titre = 'Catalogue'
+        try:
+            contenu, content_type, nom_fichier = generer_flux(
+                company, cible, titre_flux=titre)
+        except ValueError as exc:
+            return Response({'detail': str(exc)},
+                            status=status.HTTP_400_BAD_REQUEST)
+        reponse = HttpResponse(contenu, content_type=content_type)
+        reponse['Content-Disposition'] = (
+            f'attachment; filename="{nom_fichier}"')
+        return reponse
+
+    @extend_schema(responses={(200, 'application/pdf'): bytes})
+    @action(detail=False, methods=['get'], url_path='etiquettes-prix',
+            permission_classes=[IsAnyRole])
+    def etiquettes_prix(self, request):
+        """NTRET17 — Étiquettes PRIX de rayon (EAN-13 + prix TTC en gros).
+
+        Réimpression EN MASSE après un changement de tarif : au lieu d'une
+        liste d'ids, on cible toute une ``?categorie=`` (ou une ``?zone=`` de
+        casiers, NTWMS1/FG319) — un clic réimprime le rayon entier.
+
+        Paramètres : ``ids`` OU ``categorie`` OU ``zone`` ; ``largeur`` (mm,
+        gabarit imprimante) ; ``sortie=html|pdf`` (``format`` est réservé par
+        DRF). JAMAIS de prix d'achat — c'est une étiquette CLIENT.
+        """
+        from apps.ventes.utils.pdf import _html_to_pdf
+
+        from .. import labels
+
+        company = request.user.company
+        produits = Produit.objects.filter(
+            company=company, is_archived=False)
+
+        ids = request.query_params.getlist('ids')
+        if len(ids) == 1 and ',' in ids[0]:
+            ids = ids[0].split(',')
+        ids = [i for i in (str(x).strip() for x in ids) if i.isdigit()]
+        categorie = request.query_params.get('categorie')
+        zone = (request.query_params.get('zone') or '').strip()
+
+        if ids:
+            produits = produits.filter(id__in=ids)
+        elif categorie:
+            produits = produits.filter(categorie_id=categorie)
+        elif zone:
+            # Réimpression par ZONE de casiers : les produits réellement
+            # affectés à un casier de cette zone (FG319, lu par l'accesseur
+            # inverse de la string-FK — jamais un import d'installations).
+            produits = produits.filter(
+                installations_bin_affectations__bin__zone__iexact=zone,
+                installations_bin_affectations__bin__archived=False,
+            ).distinct()
+        else:
+            return Response(
+                {'detail': 'Précisez « ids », « categorie » ou « zone ».'},
+                status=status.HTTP_400_BAD_REQUEST)
+
+        produits = list(produits.order_by('nom', 'id'))
+        if not produits:
+            return Response({'detail': 'Aucun produit correspondant.'},
+                            status=status.HTTP_404_NOT_FOUND)
+
+        try:
+            largeur = int(request.query_params.get('largeur') or 58)
+        except (TypeError, ValueError):
+            largeur = 58
+        largeur = max(30, min(largeur, 105))
+
+        lignes = [{
+            'nom': produit.nom,
+            'marque': produit.marque or '',
+            'sku': produit.sku or '',
+            'code_barres': produit.code_barres or '',
+            'prix_ttc': produit.prix_vente,
+        } for produit in produits]
+
+        html = labels.render_etiquettes_prix_html(
+            lignes, largeur_mm=largeur)
+        if request.query_params.get('sortie') == 'html':
+            return HttpResponse(html, content_type='text/html; charset=utf-8')
+        response = HttpResponse(_html_to_pdf(html),
+                                content_type='application/pdf')
+        response['Content-Disposition'] = (
+            'inline; filename="etiquettes-prix.pdf"')
+        return response
+
     @action(detail=False, methods=['get'], url_path='etiquettes-showroom')
     def etiquettes_showroom(self, request):
         """XPOS17 — Étiquettes « showroom » : le QR encode l'URL de la fiche
@@ -731,6 +882,48 @@ class ProduitViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
                 {'detail': 'Aucune traçabilité trouvée pour ce numéro.'},
                 status=status.HTTP_404_NOT_FOUND)
         return Response(result)
+
+    @extend_schema(responses={
+        200: inline_serializer('StockTracabiliteChaine', {
+            'lot': serializers.CharField(),
+            'serie': serializers.CharField(),
+            'produit': serializers.DictField(allow_null=True),
+            'amont': serializers.ListField(child=serializers.DictField()),
+            'stock': serializers.DictField(),
+            'aval': serializers.ListField(child=serializers.DictField()),
+        }),
+        400: inline_serializer('StockTracabiliteParamManquant', {
+            'detail': serializers.CharField(),
+        }),
+        404: inline_serializer('StockTracabiliteInconnue', {
+            'detail': serializers.CharField(),
+        }),
+    })
+    @action(detail=False, methods=['get'], url_path='tracabilite',
+            permission_classes=[IsAnyRole])
+    def tracabilite(self, request):
+        """NTWMS16 — traçabilité AMONT/AVAL bout-en-bout : ``?lot=`` ou
+        ``?serie=``.
+
+        Amont : fournisseur + réception d'origine. Stock : quantité restante
+        et casiers. Aval : vagues de prélèvement (chantier demandeur), colis
+        expédiés, équipement installé chez le client. Étend le rapport XSTK7
+        (`tracer`) en arbre exploitable par l'écran Traçabilité. INTERNE,
+        lecture seule."""
+        from ..selectors import tracabilite_produit
+
+        lot = (request.query_params.get('lot') or '').strip()
+        serie = (request.query_params.get('serie') or '').strip()
+        if not lot and not serie:
+            return Response({'detail': 'Paramètre lot ou serie requis.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        chaine = tracabilite_produit(
+            request.user.company, lot=lot or None, serie=serie or None)
+        if chaine is None:
+            return Response(
+                {'detail': 'Aucune traçabilité trouvée pour ce numéro.'},
+                status=status.HTTP_404_NOT_FOUND)
+        return Response(chaine)
 
     @action(detail=False, methods=['get'], url_path='resolve',
             permission_classes=[IsAnyRole])

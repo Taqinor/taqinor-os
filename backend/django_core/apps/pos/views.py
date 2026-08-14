@@ -1,6 +1,7 @@
 from decimal import Decimal, InvalidOperation
 
 from django.http import HttpResponse
+from django.utils import timezone
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import extend_schema, inline_serializer
 from rest_framework import serializers, status, viewsets
@@ -106,12 +107,23 @@ class VenteComptoirViewSet(viewsets.ModelViewSet):
         produit = get_produit_scoped(vente.company, produit_id)
         if produit is None:
             raise ValidationError({'produit': 'Produit inconnu.'})
+        # NTRET29 — grille tarifaire par boutique : un prix explicite dans la
+        # requête garde toujours la priorité (comportement historique
+        # inchangé) ; à défaut, résout le prix catalogue OU son override pour
+        # la boutique de la session de caisse active (absente = catalogue).
+        if prix is None:
+            boutique = (
+                vente.session_caisse.boutique
+                if vente.session_caisse_id else None)
+            prix_defaut = selectors.prix_applicable(vente.company, produit, boutique)
+        else:
+            prix_defaut = prix
         ligne = LigneVenteComptoir.objects.create(
             vente=vente,
             produit=produit,
             designation=produit.nom,
             quantite=quantite,
-            prix_unitaire_ttc=prix if prix is not None else produit.prix_vente,
+            prix_unitaire_ttc=prix_defaut,
             remise=request.data.get('remise', 0),
             taux_tva=request.data.get('taux_tva'),
             numeros_serie=request.data.get('numeros_serie') or [],
@@ -119,6 +131,31 @@ class VenteComptoirViewSet(viewsets.ModelViewSet):
         from .serializers import LigneVenteComptoirSerializer
         return Response(
             LigneVenteComptoirSerializer(ligne).data,
+            status=status.HTTP_201_CREATED)
+
+    # ── NTRET28 — Kits/bundles vendus comme un seul article ─────────────────
+
+    @action(detail=True, methods=['post'], url_path='lignes-kit')
+    def ajouter_kit(self, request, pk=None):
+        """NTRET28 — Ajoute un kit (``stock.KitProduit``) au panier, décomposé
+        en une ligne par composant réel (réutilise le moteur d'explosion
+        existant — jamais un second système de composition dans apps/pos)."""
+        vente = self.get_object()
+        try:
+            quantite_kit = Decimal(str(request.data.get('quantite_kit', 1)))
+        except (InvalidOperation, TypeError):
+            raise ValidationError({'quantite_kit': 'Quantité invalide.'})
+        try:
+            lignes = services.ajouter_kit_a_vente(
+                vente=vente, kit_id=request.data.get('kit'),
+                quantite_kit=quantite_kit, user=request.user,
+                forcer=bool(request.data.get('forcer')),
+                motif_force=request.data.get('motif_force', ''))
+        except services.KitPosError as exc:
+            raise ValidationError(str(exc))
+        from .serializers import LigneVenteComptoirSerializer
+        return Response(
+            LigneVenteComptoirSerializer(lignes, many=True).data,
             status=status.HTTP_201_CREATED)
 
     @action(detail=True, methods=['post'], url_path='valider')
@@ -455,6 +492,7 @@ class SessionCaisseViewSet(viewsets.ModelViewSet):
                 fond_ouverture=serializer.validated_data.get(
                     'fond_ouverture', 0),
                 user=self.request.user,
+                boutique=serializer.validated_data.get('boutique'),
             )
         except services.SessionCaisseError as exc:
             raise ValidationError(str(exc))
@@ -546,6 +584,33 @@ class SessionCaisseViewSet(viewsets.ModelViewSet):
             f'inline; filename="rapport-z-{session.numero_rapport_z}.pdf"')
         return response
 
+    # ── NTRET31 — Écran client (customer-facing display) ────────────────────
+
+    @extend_schema(responses=inline_serializer('PosPanierCourant', {
+        'panier': serializers.DictField(allow_null=True),
+        'updated_at': serializers.DateTimeField(allow_null=True),
+    }))
+    @action(detail=True, methods=['get', 'patch'], url_path='panier-courant',
+            permission_classes=[IsAnyRole])
+    def panier_courant(self, request, pk=None):
+        """NTRET31 — snapshot best-effort du panier en cours de la session.
+
+        PATCH : l'écran caisse (CaisseScreen) pousse l'état courant du
+        panier (lignes/total, aucune écriture métier, pur affichage) —
+        n'importe quel utilisateur pouvant vendre peut pousser (même palier
+        que la vente elle-même), pas seulement responsable/admin (à la
+        différence du reste de ce ViewSet). GET : lu en polling léger (±2s)
+        par l'écran client dédié, lecture seule, aucune action exposée."""
+        session = self.get_object()
+        if request.method == 'PATCH':
+            session.panier_courant = request.data.get('panier') or {}
+            session.panier_maj_le = timezone.now()
+            session.save(update_fields=['panier_courant', 'panier_maj_le'])
+        return Response({
+            'panier': session.panier_courant,
+            'updated_at': session.panier_maj_le,
+        })
+
 
 class CommandeRetraitViewSet(viewsets.ModelViewSet):
     """XPOS15 — Click-and-collect (retrait en magasin)."""
@@ -571,6 +636,9 @@ class CommandeRetraitViewSet(viewsets.ModelViewSet):
 
         instance = create_with_reference(
             CommandeRetrait, 'RET', company, _create)
+        # NTRET23 — pose l'expiration de réservation d'après le délai
+        # configuré (Paramètres POS NTRET8) ; no-op si aucun délai réglé.
+        services.poser_expiration_reservation(instance)
         serializer.instance = instance
 
     @action(detail=True, methods=['post'], url_path='lignes')

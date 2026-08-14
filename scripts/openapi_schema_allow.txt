@@ -4,6 +4,14 @@
 # liste (nouveau serializer non resolu, nouvelle collision d'operationId,
 # nouveau type non resolu...). Une entree qui disparait est un progres :
 # elle peut etre retiree d'ici lors de la prochaine regeneration.
+# NTMKT45 (lot crm_ventes vague 2) — CampagneViewSetAudite (apps/marketing/views.py)
+# etend CampagneViewSet (apps/compta/views.py) SANS toucher a son serializer :
+# les 4 avertissements ci-dessous sont le MEME defaut deja accepte 4 lignes
+# plus haut pour CampagneViewSet > CampagneSerializer (get_taux_*_pct non type),
+# duplique uniquement parce que drf-spectacular signe par nom de classe de vue.
+# Le vrai correctif (typer les SerializerMethodField de CampagneSerializer)
+# vit dans apps/compta, hors perimetre d'ecriture CRM_VENTES (contrat de
+# propriete docs/plans/PLAN_CRM_VENTES.md) : jamais touche par cette vue fine.
 Error|AccountAuditView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
 Error|AchatsParametresViewSet|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
 Error|AdChatterView|unable to guess serializer. This is graceful fallback handling for APIViews. Consider using GenericAPIView as view base
@@ -422,6 +430,7 @@ Warning|<global>|encountered multiple names for the same choice set (ModeHoldEnu
 Warning|<global>|encountered multiple names for the same choice set (NiveauRequisEnum). This may be unwanted even though the generated sc
 Warning|<global>|encountered multiple names for the same choice set (PalierApprobateurEnum). This may be unwanted even though the generat
 Warning|<global>|encountered multiple names for the same choice set (ProbabiliteEnum). This may be unwanted even though the generated sch
+Warning|<global>|encountered multiple names for the same choice set (ResultatE#Enum). This may be unwanted even though the generated sche
 Warning|<global>|encountered multiple names for the same choice set (RoleCibleEnum). This may be unwanted even though the generated schem
 Warning|<global>|encountered multiple names for the same choice set (ScenarioPrevisionnelDefautEnum). This may be unwanted even though th
 Warning|<global>|encountered multiple names for the same choice set (SeveriteEnum). This may be unwanted even though the generated schema
@@ -435,6 +444,7 @@ Warning|<global>|enum naming encountered a non-optimally resolvable collision fo
 Warning|<global>|enum naming encountered a non-optimally resolvable collision for fields named "gravite". The same name has been used for
 Warning|<global>|enum naming encountered a non-optimally resolvable collision for fields named "kind". The same name has been used for mu
 Warning|<global>|enum naming encountered a non-optimally resolvable collision for fields named "langue". The same name has been used for
+Warning|<global>|enum naming encountered a non-optimally resolvable collision for fields named "methode". The same name has been used for
 Warning|<global>|enum naming encountered a non-optimally resolvable collision for fields named "mode". The same name has been used for mu
 Warning|<global>|enum naming encountered a non-optimally resolvable collision for fields named "niveau". The same name has been used for
 Warning|<global>|enum naming encountered a non-optimally resolvable collision for fields named "orientation". The same name has been used
@@ -442,6 +452,7 @@ Warning|<global>|enum naming encountered a non-optimally resolvable collision fo
 Warning|<global>|enum naming encountered a non-optimally resolvable collision for fields named "priorite". The same name has been used fo
 Warning|<global>|enum naming encountered a non-optimally resolvable collision for fields named "raccordement". The same name has been use
 Warning|<global>|enum naming encountered a non-optimally resolvable collision for fields named "regime_#". The same name has been used fo
+Warning|<global>|enum naming encountered a non-optimally resolvable collision for fields named "resultat". The same name has been used fo
 Warning|<global>|enum naming encountered a non-optimally resolvable collision for fields named "role". The same name has been used for mu
 Warning|<global>|enum naming encountered a non-optimally resolvable collision for fields named "source". The same name has been used for
 Warning|<global>|enum naming encountered a non-optimally resolvable collision for fields named "statut". The same name has been used for
@@ -859,6 +870,7 @@ Warning|PaiementSousTraitantViewSet|could not derive type of path parameter "id"
 Warning|PaiementViewSet|could not derive type of path parameter "retenue_id" because model "apps.facturation.models.Paiement" contained no such
 Warning|ParametrageRelanceClientViewSet|could not derive type of path parameter "id" because it is untyped and obtaining queryset from the viewset failed. Consi
 Warning|ParametresDouaneViewSet|could not derive type of path parameter "id" because it is untyped and obtaining queryset from the viewset failed. Consi
+Warning|ParametresTransportViewSet|could not derive type of path parameter "id" because it is untyped and obtaining queryset from the viewset failed. Consi
 Warning|PartageGedViewSet > PartageGedSerializer|unable to resolve type hint for function "get_public_url". Consider using a type hint or @extend_schema_field. Defaultin
 Warning|PeriodeReportingESGViewSet > PeriodeReportingESGSerializer|unable to resolve type hint for function "get_figee_par_nom". Consider using a type hint or @extend_schema_field. Defaul
 Warning|PermisConduireViewSet > PermisConduireSerializer|unable to resolve type hint for function "get_employe_nom". Consider using a type hint or @extend_schema_field. Defaulti

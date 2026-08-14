@@ -141,6 +141,10 @@ test('MB3: plus AUCUN z-index en dur dans index.css (hormis l\'exception locale 
   while ((m = re.exec(raw))) {
     const val = m[1].trim()
     if (val.startsWith('var(--z-')) continue
+    // Un calc() ANCRÉ sur un jeton du barème (ex. `.gen-actions-sticky` à
+    // calc(var(--z-sticky) + 1), juste au-dessus de l'en-tête collant) reste
+    // dans le barème — ce que ce garde interdit, ce sont les NOMBRES magiques.
+    if (val.startsWith('calc(var(--z-')) continue
     // Seule exception tolérée : la sticky `.pp-cat` (z-index:1), locale au
     // contexte d'empilement propre de .pp-pop (ne participe pas au barème global).
     if (val === '1') continue

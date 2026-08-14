@@ -4,9 +4,12 @@ Les apps tierces (sav, installations, crm…) passent par ces fonctions pour
 créer ou modifier des entités ventes (Facture, Paiement…) au lieu d'importer
 directement les models ventes. Cela respecte la règle de modularité (CLAUDE.md).
 """
+from collections import namedtuple
 from decimal import Decimal, ROUND_HALF_UP
 import logging
+import math
 import re
+import unicodedata
 
 from apps.stock.services import qr_svg_for
 
@@ -236,6 +239,25 @@ def _is_reseau_inverter(name: str) -> bool:
     n = (name or "").lower()
     return "onduleur" in n and (
         "réseau" in n or "reseau" in n or "injection" in n)
+
+
+# PVSCE — vocabulaire du choix de scénario, tel que le moteur PDF le LIT dans
+# ``etude_params['scenario']`` (quote_engine/builder.py, QF6). Le LIBELLÉ
+# FRANÇAIS est le contrat : un 'reseau'/'avec_batterie' n'y serait pas reconnu
+# et le moteur retomberait sur l'inférence par les lignes — c'est-à-dire sur le
+# repli qu'on cherche précisément à ne plus dépendre.
+SCENARIO_SANS_BATTERIE = 'Sans batterie'
+SCENARIO_AVEC_BATTERIE = 'Avec batterie'
+
+
+def _scenario_stocke(avec_batterie):
+    """Le libellé à ranger dans ``etude_params['scenario']``.
+
+    On ne stocke « Avec batterie » que quand l'équipement peut réellement le
+    servir (onduleur hybride ET batterie) : un choix stocké que les lignes ne
+    peuvent pas honorer serait un mensonge que le moteur devrait défaire.
+    """
+    return SCENARIO_AVEC_BATTERIE if avec_batterie else SCENARIO_SANS_BATTERIE
 
 
 def _has_price(produit) -> bool:
@@ -979,6 +1001,312 @@ def concevoir_electrique_du_devis(devis, *, origine=''):
         return None
 
 
+# ── PVKIT — la composition RÉSIDENTIELLE COMPLÈTE (port de solar.js) ─────────
+#
+# Un devis issu du calepinage ne composait jusqu'ici qu'un SQUELETTE : le
+# panneau, l'onduleur, et la batterie quand le scénario en veut une. Ce n'est
+# pas ce qui est vendu. Le kit réel — celui de l'ancien simulateur, porté à
+# l'écran par ``autoFillLines`` (frontend/src/features/ventes/solar.js) — porte
+# aussi les structures de fixation, les socles, les accessoires (câblage DC/AC,
+# connecteurs), le tableau de protection AC/DC, l'installation, le transport et,
+# DERRIÈRE UN ONDULEUR HUAWEI SEULEMENT, le Smart Meter et la clé Wifi.
+#
+# Ce bloc est le port Python FIDÈLE de ``autoFillLines`` : mêmes classes de
+# mots-clés (alignées sur ``quote_engine/builder.py`` — règle du dépôt, le
+# découpage des options du PDF en dépend), mêmes règles de quantités, mêmes
+# paliers de prix par blocs de 5 kWc, même choix de structure. Trois écarts,
+# assumés et seulement trois :
+#
+#   1. **Les lignes à quantité nulle ne sont pas enregistrées.** L'écran les
+#      affiche pour qu'on puisse les saisir ; ``autoFillLines`` le dit mot pour
+#      mot dans son propre en-tête (« lignes à quantité nulle comprises — elles
+#      s'affichent mais ne sont pas enregistrées »). Un devis, lui, n'écrit que
+#      ce qu'il vend.
+#   2. **Le scénario tranche entre les deux onduleurs.** L'écran propose les
+#      deux options côte à côte (option 1 sans batterie / option 2 avec) et les
+#      totaux les séparent au moment de l'affichage ; un devis construit depuis
+#      un calepinage a DÉJÀ choisi. On ne quote donc qu'un onduleur, et les
+#      batteries ne suivent que le scénario batterie.
+#   3. **Un produit SANS PRIX n'entre JAMAIS dans le kit** (garde ``_has_price``,
+#      règle du dépôt) ; l'écran, lui, affiche une ligne à 0 à compléter.
+#
+# Un composant absent du catalogue est SAUTÉ, jamais fatal : le kit se dégrade
+# proprement (c'est exactement ce que fait l'écran avec un produit introuvable).
+# Le panneau, lui, reste gardé EN AMONT par ``validate_composition_for_layout``
+# — un devis sans panneau est une erreur 422 explicite, pas un kit silencieux.
+
+#: Une ligne composée, prête à devenir une ``LigneDevis``. ``prix_unitaire``
+#: est TOUJOURS un montant **HT** (le modèle stocke du HT ; le simulateur
+#: raisonne en TTC, la conversion se fait dans la composition).
+LigneKit = namedtuple('LigneKit',
+                      'produit designation quantite prix_unitaire')
+
+#: Prix TTC des trois lignes FORFAITAIRES, indexés sur la puissance par blocs de
+#: 5 kWc — port littéral de ``auto_fill_from_power`` (le simulateur d'origine).
+_TTC_ACCESSOIRES_PAR_BLOC = 1000
+_TTC_TABLEAU_PAR_BLOC = 1500
+_TTC_INSTALLATION_PAR_BLOC = 2400
+
+_KW_RE = re.compile(r"(\d+(?:[.,]\d+)?)\s*(?:kw|kva)\b", re.IGNORECASE)
+_KWH_RE = re.compile(r"(\d+(?:[.,]\d+)?)\s*kwh\b", re.IGNORECASE)
+_TRI_RE = re.compile(r"tri\s*phas", re.IGNORECASE)
+
+
+def _sans_accents(texte):
+    """Minuscules sans accents — miroir exact du ``_norm`` de solar.js."""
+    decompose = unicodedata.normalize('NFD', str(texte or '').lower())
+    return ''.join(c for c in decompose
+                   if unicodedata.category(c) != 'Mn')
+
+
+def _arrondi_js(valeur):
+    """``Math.round`` de JavaScript : la moitié part VERS LE HAUT.
+
+    ``round()`` de Python arrondit au pair le plus proche (``round(2.5) == 2``)
+    — l'utiliser ici ferait diverger d'un panneau, d'un bloc de prix ou d'un
+    module de batterie entre l'écran et le serveur.
+    """
+    return int(math.floor(float(valeur) + 0.5))
+
+
+def _parse_kw(nom):
+    """Puissance kW/kVA lue dans un nom — les « kWh » sont retirés d'abord
+    (sans quoi « Batterie 5 kWh » passerait pour un onduleur de 5 kW)."""
+    m = _KW_RE.search(_KWH_RE.sub(' ', nom or ''))
+    return float(m.group(1).replace(',', '.')) if m else None
+
+
+def _parse_kwh(nom):
+    m = _KWH_RE.search(nom or '')
+    return float(m.group(1).replace(',', '.')) if m else None
+
+
+def _est_triphase(nom):
+    return bool(_TRI_RE.search(nom or ''))
+
+
+def classer_produit(nom):
+    """Catégorie catalogue d'un produit — port de ``classifyProduct``.
+
+    L'ORDRE des tests est signifiant et strictement celui de l'écran :
+    « onduleur hybride » AVANT « onduleur réseau/injection », et un onduleur qui
+    ne porte ni l'un ni l'autre (un micro-onduleur, par exemple) reste NON
+    classé — donc jamais composé automatiquement, seulement choisi à la main.
+    """
+    n = _sans_accents(nom)
+    if not n:
+        return None
+    if 'onduleur' in n and 'hybride' in n:
+        return 'onduleur_hybride'
+    if 'onduleur' in n and ('reseau' in n or 'injection' in n):
+        return 'onduleur_reseau'
+    if 'panneau' in n:
+        return 'panneau'
+    if 'batterie' in n:
+        return 'batterie'
+    if 'structure' in n:
+        return 'structure'
+    if 'socle' in n:
+        return 'socle'
+    if 'smart meter' in n:
+        return 'smart_meter'
+    if 'wifi' in n or 'dongle' in n:
+        return 'wifi_dongle'
+    if 'accessoire' in n:
+        return 'accessoires'
+    if 'tableau' in n:
+        return 'tableau'
+    if 'suivi' in n:
+        return 'suivi'
+    if 'installation' in n:
+        return 'installation'
+    if 'transport' in n:
+        return 'transport'
+    return None
+
+
+def catalogue_de_la_societe(company):
+    """Produits actifs visibles par ``company`` — les siens ET les globaux.
+
+    Même périmètre que ``_pick_product`` (multi-tenant : le catalogue d'une
+    autre société ne fuite jamais), trié par id pour que deux compositions aux
+    mêmes entrées donnent exactement le même kit.
+    """
+    from django.db.models import Q
+
+    from apps.stock.models import Produit
+
+    return list(Produit.objects.filter(
+        Q(company=company) | Q(company__isnull=True),
+        is_archived=False).order_by('id'))
+
+
+def composition_residentielle(produits, *, kwc, panel_watt, nb_panneaux=0,
+                              avec_batterie=False, structure_type='acier',
+                              taux_tva=Decimal('20')):
+    """Le KIT résidentiel COMPLET composé depuis un catalogue.
+
+    Fonction PURE : elle ne requête rien, n'écrit rien, ne touche aucun statut.
+    ``produits`` est un itérable de produits DÉJÀ cantonnés à la société
+    appelante (voir ``catalogue_de_la_societe``) ; les produits sans prix de
+    vente en sont écartés d'entrée de jeu.
+
+    ``taux_tva`` est le taux du DEVIS (celui qui s'appliquera réellement aux
+    lignes, dont ``taux_tva`` reste vide) : il sert à reconvertir en HT les
+    trois prix forfaitaires que le simulateur exprime en TTC, pour que le
+    montant vu par le client soit le même des deux côtés.
+
+    Rend la liste ORDONNÉE des ``LigneKit`` à créer, dans l'ordre canonique du
+    simulateur, quantités nulles exclues. Liste vide si la puissance est nulle.
+    """
+    kwp = float(kwc or 0)
+    if kwp <= 0:
+        return []
+    watt = float(panel_watt or 0) or 550.0
+
+    # Catalogue indexé par catégorie. Le filtre de prix passe ICI, une fois
+    # pour toutes : aucune branche ne peut ensuite coter un produit non tarifé.
+    par_type = {}
+    for produit in produits:
+        if not _has_price(produit):
+            continue
+        categorie = classer_produit(getattr(produit, 'nom', ''))
+        if categorie:
+            par_type.setdefault(categorie, []).append(produit)
+
+    def premier(categorie):
+        pool = par_type.get(categorie) or []
+        return pool[0] if pool else None
+
+    # ── Panneaux : compte explicite, sinon dérivé de la puissance ──
+    nb = (_arrondi_js(nb_panneaux) if float(nb_panneaux or 0) > 0
+          else max(1, _arrondi_js(kwp * 1000 / watt)))
+
+    # ── Onduleur : plus petit modèle ≥ 80 % de la puissance, sinon le plus
+    # gros du catalogue ; à puissance égale, Triphasé au-delà de 10 kW ──
+    seuil = kwp * 0.8
+
+    def choisir_onduleur(categorie):
+        candidats = []
+        for produit in par_type.get(categorie) or []:
+            kw = _parse_kw(getattr(produit, 'nom', ''))
+            if kw and kw > 0:
+                candidats.append((kw, getattr(produit, 'id', 0) or 0, produit))
+        if not candidats:
+            return None, None
+        candidats.sort(key=lambda c: (c[0], c[1]))
+        valides = [c for c in candidats if c[0] >= seuil] or [candidats[-1]]
+        meilleure = valides[0][0]
+        memes = [c for c in valides if c[0] == meilleure]
+        prefere_tri = meilleure >= 10
+        assortis = [c for c in memes
+                    if _est_triphase(getattr(c[2], 'nom', '')) == prefere_tri]
+        retenu = (assortis or memes)[0]
+        return retenu[2], retenu[0]
+
+    def quantite_onduleur(kw):
+        """Un onduleur suffit dès qu'il couvre le seuil ; sinon on en met assez
+        pour absorber le champ (blocs entiers, jamais moins d'un)."""
+        if not kw or kw >= seuil:
+            return 1
+        return max(1, int(math.ceil(kwp / kw)))
+
+    onduleur_reseau, kw_reseau = choisir_onduleur('onduleur_reseau')
+    onduleur_hybride, kw_hybride = choisir_onduleur('onduleur_hybride')
+    onduleur = onduleur_hybride if avec_batterie else onduleur_reseau
+    kw_onduleur = kw_hybride if avec_batterie else kw_reseau
+
+    # ── Panneau : wattage demandé d'abord, à défaut le plus proche ──
+    tries = []
+    for produit in par_type.get('panneau') or []:
+        w = _parse_watt(getattr(produit, 'nom', ''))
+        if w is not None:
+            tries.append((w, produit))
+    exacts = [c for c in tries if c[0] == int(watt)]
+    if exacts:
+        # Même départage qu'à l'écran : un Canadien Solar passe devant.
+        exacts.sort(key=lambda c: 0 if 'canadien' in _sans_accents(
+            getattr(c[1], 'nom', '')) else 1)
+        panneau = exacts[0][1]
+    elif tries:
+        panneau = min(tries, key=lambda c: abs(c[0] - watt))[1]
+    else:
+        panneau = None
+
+    # ── Batteries : cible = kWc arrondi au multiple de 5 (5 kWh au minimum),
+    # servie en modules Deyness 10 kWh + un 5 kWh d'appoint ──
+    cible_kwh = max(5, _arrondi_js(kwp / 5) * 5)
+    nb10 = int(cible_kwh // 10)
+    nb5 = 1 if (cible_kwh % 10) >= 5 else 0
+    batteries = [(_parse_kwh(getattr(p, 'nom', '')), p)
+                 for p in par_type.get('batterie') or []]
+    deyness = [b for b in batteries
+               if 'deyness' in _sans_accents(getattr(b[1], 'nom', ''))]
+    vivier = deyness or batteries
+    bat5 = next((p for cap, p in vivier if cap == 5), None)
+    bat10 = next((p for cap, p in vivier if cap == 10), None)
+    if bat10 is None and bat5 is not None and nb10 > 0:
+        # Pas de module 10 kWh au catalogue → toute la cible en modules 5 kWh.
+        nb5 = max(1, _arrondi_js(cible_kwh / 5))
+        nb10 = 0
+
+    # ── Structure : le type demandé (acier par défaut), une par panneau ──
+    voulu = ('alu' if _sans_accents(structure_type).startswith('alu')
+             else 'acier')
+    structure = next(
+        (p for p in par_type.get('structure') or []
+         if voulu in _sans_accents(getattr(p, 'nom', ''))), None)
+
+    # ── Forfaits indexés sur la puissance, par blocs de 5 kWc (TTC) ──
+    blocs = max(1, _arrondi_js(kwp / 5))
+    facteur = Decimal('1') + (Decimal(str(taux_tva or 20)) / Decimal('100'))
+
+    def ht_depuis_ttc(ttc):
+        return (Decimal(str(ttc)) / facteur).quantize(
+            Decimal('0.01'), rounding=ROUND_HALF_UP)
+
+    # ── Smart Meter + clé Wifi : UNIQUEMENT derrière un onduleur Huawei ──
+    # (miroir du garde ``info_hw`` de l'ancien simulateur). L'écran teste les
+    # DEUX onduleurs parce qu'il les propose tous les deux ; ici un seul est
+    # vendu, donc c'est celui-là qui décide.
+    blob = '%s %s' % (getattr(onduleur, 'marque', '') or '',
+                      getattr(onduleur, 'nom', '') or '')
+    huawei = 'huawei' in _sans_accents(blob)
+
+    lignes = []
+
+    def ajouter(produit, quantite, prix_ht=None):
+        """Ajoute une ligne — sauf produit absent du catalogue ou quantité nulle."""
+        if produit is None or quantite <= 0:
+            return
+        lignes.append(LigneKit(
+            produit=produit,
+            designation=produit.nom,
+            quantite=int(quantite),
+            prix_unitaire=(Decimal(produit.prix_vente) if prix_ht is None
+                           else prix_ht)))
+
+    # Ordre canonique du simulateur (onduleur, accessoires Huawei, panneaux,
+    # batteries, structures, socles, forfaits, transport).
+    ajouter(onduleur, quantite_onduleur(kw_onduleur))
+    ajouter(premier('smart_meter'), 1 if huawei else 0)
+    ajouter(premier('wifi_dongle'), 1 if huawei else 0)
+    ajouter(panneau, nb)
+    if avec_batterie:
+        ajouter(bat5, nb5)
+        ajouter(bat10, nb10)
+    ajouter(structure, nb)
+    ajouter(premier('socle'), nb * 2)
+    ajouter(premier('accessoires'), 1,
+            ht_depuis_ttc(blocs * _TTC_ACCESSOIRES_PAR_BLOC))
+    ajouter(premier('tableau'), 1,
+            ht_depuis_ttc(blocs * _TTC_TABLEAU_PAR_BLOC))
+    ajouter(premier('installation'), 1,
+            ht_depuis_ttc((blocs + 1) * _TTC_INSTALLATION_PAR_BLOC))
+    ajouter(premier('transport'), 1)
+    return lignes
+
+
 def build_devis_from_layout(*, layout, user, company, lead=None, client=None,
                             taux_tva=Decimal('20'), remise_globale=Decimal('0')):
     """Q3 — turn a FINALISED roof layout into a coherent, company-scoped Devis.
@@ -986,12 +1314,17 @@ def build_devis_from_layout(*, layout, user, company, lead=None, client=None,
     ``layout`` is the serialized roofPro11 output (see Devis.roof_layout):
     a ``result`` block ``{panels, kwc, annualKwh, savings}`` plus an optional
     ``scenario``/equipment hint. From it we compose Devis lines off the seeded
-    catalogue, reusing the SAME keyword classification as the quote builder
-    (panneau / onduleur réseau|injection|hybride / batterie) and the
-    collision-proof reference numbering util (never count()+1). The client is
-    resolved server-side from the lead via crm.services (no duplicates). The
-    layout's production/savings are stored into ``etude_params``. A price-less
-    catalogue product is NEVER quoted.
+    catalogue via ``composition_residentielle`` — le KIT COMPLET du simulateur
+    (panneau, onduleur du bon palier, batteries, structures, socles,
+    accessoires, tableau de protection AC/DC, installation, transport, et le
+    duo Smart Meter + clé Wifi derrière un onduleur Huawei), et non plus le seul
+    squelette panneau + onduleur. La classification par mots-clés reste celle du
+    moteur PDF (panneau / onduleur réseau|injection|hybride / batterie) et la
+    référence passe toujours par l'util anti-collision (jamais count()+1). The
+    client is resolved server-side from the lead via crm.services (no
+    duplicates). The layout's production/savings are stored into
+    ``etude_params``. A price-less catalogue product is NEVER quoted, and a
+    component missing from the catalogue is skipped rather than fatal.
 
     QJ21 — the stored ``roof_layout`` is enriched with a ``_pans_geometry`` key
     holding the processed per-pan list (azimut_deg, inclinaison_deg, kwc,
@@ -1063,25 +1396,28 @@ def build_devis_from_layout(*, layout, user, company, lead=None, client=None,
                      or bool(layout.get('battery')))
 
     # ── Compose the equipment lines from the catalogue ──
-    line_specs = []  # (produit, designation, quantite)
-    if nb_panneaux > 0:
-        panel = _pick_product(company, _is_panel, watt=watt)
-        if panel is not None:
-            line_specs.append((panel, panel.nom, nb_panneaux))
-
-    if wants_battery:
-        inv = _pick_product(company, _is_hybrid_inverter)
-        if inv is not None:
-            line_specs.append((inv, inv.nom, 1))
-        bat = _pick_product(company, _is_battery)
-        if bat is not None:
-            line_specs.append((bat, bat.nom, 1))
-    else:
-        inv = _pick_product(company, _is_reseau_inverter)
-        if inv is not None:
-            line_specs.append((inv, inv.nom, 1))
+    # PVKIT — le KIT COMPLET du simulateur (structures, socles, accessoires,
+    # tableau de protection, installation, transport…), plus le squelette
+    # panneau + onduleur ± batterie d'hier : voir ``composition_residentielle``.
+    # Un composant absent (ou non tarifé) du catalogue est simplement sauté.
+    kwc_composition = kwc or (nb_panneaux * float(watt or 550) / 1000.0)
+    line_specs = composition_residentielle(
+        catalogue_de_la_societe(company),
+        kwc=kwc_composition,
+        panel_watt=watt,
+        nb_panneaux=nb_panneaux,
+        avec_batterie=wants_battery,
+        taux_tva=taux_tva,
+    )
 
     etude_params = {}
+    # PVSCE — le SCÉNARIO est stocké dès la création. Sans lui, le moteur PDF
+    # (QF6) retombe sur l'inférence par les lignes, qui se trompe dès que la
+    # composition est partielle. On stocke ce que les lignes peuvent RÉELLEMENT
+    # servir : « Avec batterie » exige l'onduleur hybride ET la batterie.
+    etude_params['scenario'] = _scenario_stocke(
+        any(_is_battery(spec.designation) for spec in line_specs)
+        and any(_is_hybrid_inverter(spec.designation) for spec in line_specs))
     if annual_kwh is not None:
         etude_params['production_annuelle'] = int(annual_kwh)
     if savings is not None:
@@ -1115,13 +1451,13 @@ def build_devis_from_layout(*, layout, user, company, lead=None, client=None,
             etude_params=etude_params or None,
             roof_layout=stored_layout,
         )
-        for produit, designation, quantite in line_specs:
+        for spec in line_specs:
             LigneDevis.objects.create(
                 devis=devis,
-                produit=produit,
-                designation=designation,
-                quantite=Decimal(str(quantite)),
-                prix_unitaire=Decimal(produit.prix_vente),
+                produit=spec.produit,
+                designation=spec.designation,
+                quantite=Decimal(str(spec.quantite)),
+                prix_unitaire=Decimal(spec.prix_unitaire),
                 remise=Decimal('0'),
             )
         return devis
@@ -1214,13 +1550,18 @@ def sync_devis_from_layout(devis, layout, user=None):
       global, jamais un produit sans prix) ;
     * la BATTERIE suit le scénario : ajoutée si le layout en veut une et qu'il
       n'y en a pas, supprimée s'il n'en veut plus ;
+    * l'ONDULEUR suit la batterie (PVSCE) : réseau → hybride quand une batterie
+      entre, hybride → réseau quand elle sort, à quantité INCHANGÉE. Sans cette
+      permutation la batterie serait « fantôme » — comptée dans le total du
+      devis mais absente du PDF, que le moteur rendrait en « Sans batterie »
+      faute d'onduleur hybride ;
     * TOUT le reste est intact — prix unitaires, remises, TVA de ligne,
       sections, notes, ordre d'affichage, groupes multi-villa, et les produits
       des lignes non touchées ne sont JAMAIS re-choisis ;
     * ``roof_layout`` / ``layout_hash`` sont re-posés, et ``etude_params`` ne
       reçoit que ``puissance_kwc`` / ``production_annuelle`` /
-      ``economies_annuelles`` / ``toiture`` — les champs d'étude du générateur
-      (autoconsommation, payback, pompe…) ne sont jamais touchés.
+      ``economies_annuelles`` / ``toiture`` / ``scenario`` — les champs d'étude
+      du générateur (autoconsommation, payback, pompe…) ne sont jamais touchés.
 
     Re-soumettre le MÊME layout (même empreinte) ne fait AUCUNE écriture et
     renvoie ``inchange=True``.
@@ -1358,7 +1699,59 @@ def sync_devis_from_layout(devis, layout, user=None):
             lignes_modifiees += len(lignes_batterie)
             a_batterie = False
 
-        # ── Étude : QUATRE clés, jamais les champs d'étude du générateur ──
+        # ── L'ONDULEUR DOIT S'ACCORDER AU SCÉNARIO (batterie fantôme) ──
+        #
+        # La resynchro n'a longtemps touché QUE les panneaux et la batterie —
+        # « chirurgical ». Mais un devis réseau resynchronisé « avec batterie »
+        # finissait avec un onduleur RÉSEAU face à une batterie, et le moteur
+        # PDF n'accorde l'option « Avec » qu'à un devis portant onduleur
+        # hybride ET batterie (builder.py : ``avec_ok = has_hybride and
+        # has_batterie``). Le document retombait donc sur « Sans batterie »,
+        # qui EXCLUT la ligne batterie : elle gonflait le total du devis sans
+        # apparaître ni au PDF ni au total affiché. Une batterie fantôme —
+        # facturée, invisible.
+        #
+        # La permutation est aussi chirurgicale que le reste : la ligne
+        # d'onduleur garde sa QUANTITÉ, seuls le produit, la désignation et le
+        # prix catalogue changent. Le sens inverse compte tout autant : sans
+        # lui, retirer la batterie d'un devis hybride laisserait un document
+        # SANS aucune option rendable (le moteur refuse alors le PDF).
+        lignes_reseau = [li for li in lignes
+                         if _classe_ligne(li, _is_reseau_inverter)]
+        lignes_hybride = [li for li in lignes
+                          if _classe_ligne(li, _is_hybrid_inverter)]
+
+        def _permuter_onduleur(ligne, predicat, motif_absence):
+            remplacant = _pick_product(verrou.company, predicat)
+            if remplacant is None:
+                avertissements.append(motif_absence)
+                return False
+            ligne.produit = remplacant
+            ligne.designation = remplacant.nom
+            ligne.prix_unitaire = Decimal(remplacant.prix_vente)
+            ligne.save(update_fields=['produit', 'designation',
+                                      'prix_unitaire'])
+            return True
+
+        if a_batterie and lignes_reseau and not lignes_hybride:
+            if _permuter_onduleur(
+                    lignes_reseau[0], _is_hybrid_inverter,
+                    'Aucun onduleur hybride tarifé au catalogue : l\'onduleur '
+                    'réseau a été conservé. La proposition ne pourra pas '
+                    'présenter l\'option avec batterie.'):
+                lignes_hybride, lignes_reseau = [lignes_reseau[0]], []
+                lignes_modifiees += 1
+        elif not a_batterie and lignes_hybride and not lignes_reseau:
+            if _permuter_onduleur(
+                    lignes_hybride[0], _is_reseau_inverter,
+                    'Aucun onduleur réseau tarifé au catalogue : l\'onduleur '
+                    'hybride a été conservé alors que la batterie a été '
+                    'retirée.'):
+                lignes_reseau, lignes_hybride = [lignes_hybride[0]], []
+                lignes_modifiees += 1
+
+        # ── Étude : les clés géométriques + le scénario, jamais les champs
+        # d'étude du générateur ──
         result = dict(layout.get('result') or {})
         kwc = float(result.get('kwc') or toiture.get('kwc') or 0.0)
         if not kwc and total_panneaux:
@@ -1372,6 +1765,11 @@ def sync_devis_from_layout(devis, layout, user=None):
             etude['puissance_kwc'] = kwc
         if toiture:
             etude['toiture'] = toiture
+        # PVSCE — le scénario suit l'état RÉEL des lignes après resynchro : sans
+        # lui, le moteur PDF garderait le choix stocké d'avant (ou déduirait
+        # « Sans batterie » par repli) alors que l'équipement vient de changer.
+        etude['scenario'] = _scenario_stocke(
+            a_batterie and bool(lignes_hybride))
 
         # QJ21 — le layout stocké porte la géométrie par pan DÉJÀ traitée, pour
         # que ses consommateurs n'aient pas à ré-extraire. Copie, jamais une

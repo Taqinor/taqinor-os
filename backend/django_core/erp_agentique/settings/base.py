@@ -936,6 +936,17 @@ CELERY_TASK_ROUTES = {
     'trash.purger_corbeille_transverse': {'queue': 'scheduled'},
     'uxviews.digest_favoris_obsoletes_hebdo': {'queue': 'scheduled'},
     'ventes.check_overdue_factures': {'queue': 'scheduled'},
+    # Vague SUPPLY (14/08/2026) — toute tache du beat_schedule DOIT etre
+    # routee explicitement vers `scheduled` (garde core/tests/
+    # test_celery_task_routes.py) : sans entree, elle tombe sur `default`
+    # et partage la file des taches interactives.
+    'scm.generer_previsions_mensuelles': {'queue': 'scheduled'},
+    'scm.ouvrir_cycle_sop_mensuel': {'queue': 'scheduled'},
+    # NTSCM35/36 — voir le commentaire ci-dessus (chaque tache du
+    # beat_schedule DOIT etre routee explicitement vers `scheduled`).
+    'scm.recalculer_politiques_stock_hebdo': {'queue': 'scheduled'},
+    'scm.purger_donnees_scm_anciennes': {'queue': 'scheduled'},
+    'scm.notifier_ecarts_prevision_importants': {'queue': 'scheduled'},
     'compta.recalculer_alerte_rupture': {'queue': 'scheduled'},
     'compta.relances_tresorerie_du_jour': {'queue': 'scheduled'},
     'ventes.expire_stale_devis': {'queue': 'scheduled'},
@@ -1007,6 +1018,8 @@ CELERY_TASK_ROUTES = {
     'core.purge_idempotency_records': {'queue': 'scheduled'},
     'monitoring.balayage_quotidien': {'queue': 'scheduled'},
     'stock.expiration_alerts': {'queue': 'scheduled'},
+    # NTWMS42 — alerte de sur-stockage par zone (quotidienne, heure creuse).
+    'stock.alerter_surcapacite_zones': {'queue': 'scheduled'},
     'stock.relancer_bcf_en_retard': {'queue': 'scheduled'},
     'crm.escalader_rappels_demandes': {'queue': 'scheduled'},
     # QX11/QX36 — rappels d'échéance + relevés côté ventes.
@@ -1096,6 +1109,10 @@ CELERY_TASK_ROUTES = {
     'education.relancer_reinscriptions': {'queue': 'scheduled'},
     # WIR5/FLOTTE16 — génération quotidienne des échéances d'entretien flotte.
     'flotte.generer_echeances_entretien_quotidien': {'queue': 'scheduled'},
+    # NTLOG38 — rappel quotidien des étapes de transport en retard.
+    'transport.check_etapes_transport_retard': {'queue': 'scheduled'},
+    # NTLOG39 — archivage mensuel des ordres de transport livrés anciens.
+    'transport.archiver_ordres_transport_anciens': {'queue': 'scheduled'},
     # WIR25 — écritures récurrentes (XACC8) + rappels d'échéance fiscale
     # (NTMAR15), planifiés au beat, heures creuses.
     'compta.generer_ecritures_recurrentes': {'queue': 'scheduled'},
@@ -1123,6 +1140,12 @@ CELERY_TASK_ROUTES = {
     'cpq.relancer_approbations_en_attente': {'queue': 'scheduled'},
     # NTCPQ34 — purge des sessions configurateur abandonnées (beat, job planifié).
     'cpq.purger_sessions_configurateur_abandonnees': {'queue': 'scheduled'},
+    # NTMFG30 — recalcul MRP nocturne + notification des ruptures prévisionnelles.
+    'mrp.recalculer_besoins_nocturne': {'queue': 'scheduled'},
+    # NTMFG31 — purge/archivage des OF prototype anciens.
+    'mrp.archiver_of_prototype_anciens': {'queue': 'scheduled'},
+    # NTMFG32 — rappel d'entretien de poste de charge à échéance proche (J-7).
+    'mrp.rappeler_entretiens_poste_j7': {'queue': 'scheduled'},
     # NTPLT27 — 4e queue `bulk` pour le travail de masse (imports dataimport,
     # exports planifiés volumineux, backfills, seed à l'échelle). Un import de
     # 100 000 lignes ne doit plus retarder un digest planifié ni un rendu PDF

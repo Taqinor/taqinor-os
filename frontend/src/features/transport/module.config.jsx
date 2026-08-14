@@ -3,7 +3,7 @@
    `router/moduleRoutes.jsx` via glob : ce n'est pas un module de composants, le
    fast-refresh ne s'y applique pas (même dérogation que `moduleRoutes.jsx`). */
 import { lazy } from 'react'
-import { Route } from 'lucide-react'
+import { LayoutDashboard, Plus, Route } from 'lucide-react'
 import { appGlyph } from '../../lib/apps/appGlyph'
 
 /* ============================================================================
@@ -18,6 +18,13 @@ import { appGlyph } from '../../lib/apps/appGlyph'
    ========================================================================== */
 
 const OrdresTransportScreen = lazy(() => import('./OrdresTransportScreen'))
+// NTLOG24 — tableau de bord logistique (KPI + répartition flotte propre/
+// affrètement), nav ET route déclarées ensemble (motif PACT150).
+const TableauBordLogistique = lazy(() => import('../../pages/transport/TableauBordLogistique'))
+// NTLOG32 — wizard « Créer un ordre de transport » en 3 étapes, nav ET
+// route déclarées ensemble (motif PACT150) ; atteint aussi depuis le bouton
+// « Nouvel ordre » de l'écran `/transport/ordres`.
+const CreerOrdreTransportWizard = lazy(() => import('../../pages/transport/CreerOrdreTransportWizard'))
 
 const ROLES = ['normal', 'responsable', 'admin']
 
@@ -33,14 +40,20 @@ const config = {
     accent: 'brass', // VX8 — supply chain/logistique = accent brass (dérivé)
     items: [
       { to: '/transport/ordres', label: 'Ordres de transport', icon: <Route size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
+      { to: '/transport/tableau-bord', label: 'Tableau de bord', icon: <LayoutDashboard size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
+      { to: '/transport/ordres/nouveau', label: 'Nouvel ordre', icon: <Plus size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
     ],
   },
   titles: [
     ['/transport/ordres', 'Ordres de transport'],
+    ['/transport/tableau-bord', 'Tableau de bord logistique'],
+    ['/transport/ordres/nouveau', 'Créer un ordre de transport'],
   ],
   sectionLabels: { transport: 'Transport' },
   routes: [
     { path: '/transport/ordres', component: OrdresTransportScreen, roles: ROLES },
+    { path: '/transport/tableau-bord', component: TableauBordLogistique, roles: ROLES },
+    { path: '/transport/ordres/nouveau', component: CreerOrdreTransportWizard, roles: ROLES },
   ],
 }
 

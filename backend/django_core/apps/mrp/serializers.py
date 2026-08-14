@@ -2,7 +2,8 @@ from rest_framework import serializers
 
 from .models import (
     CoutStandard, Gamme, OperationGamme, OperationOF, OrdreFabrication,
-    PosteDeCharge, ReservationOF,
+    OrdreModification, ParametresMRP, PosteDeCharge, ReglesKanbanProduction,
+    ReservationOF,
 )
 
 
@@ -84,8 +85,8 @@ class OrdreFabricationSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'produit', 'produit_nom', 'quantite', 'gamme', 'statut',
             'date_debut_planifiee', 'date_fin_planifiee', 'priorite',
-            'kit_ordre_assemblage', 'stock_mouvemente', 'operations',
-            'reservations', 'created_at', 'updated_at',
+            'kit_ordre_assemblage', 'stock_mouvemente', 'est_prototype',
+            'operations', 'reservations', 'created_at', 'updated_at',
         ]
         read_only_fields = [
             'id', 'statut', 'date_debut_planifiee', 'date_fin_planifiee',
@@ -108,3 +109,42 @@ class CoutStandardSerializer(serializers.ModelSerializer):
             'id', 'version', 'cout_matiere', 'cout_main_oeuvre',
             'cout_unitaire_total', 'created_at',
         ]
+
+
+class OrdreModificationSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = OrdreModification
+        fields = [
+            'id', 'produit', 'type_eco', 'description', 'statut',
+            'date_effectivite', 'changements', 'demandeur', 'approbateur',
+            'applique_le', 'created_at', 'updated_at',
+        ]
+        read_only_fields = [
+            'id', 'statut', 'demandeur', 'approbateur', 'applique_le',
+            'created_at', 'updated_at',
+        ]
+
+
+class ReglesKanbanProductionSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ReglesKanbanProduction
+        fields = [
+            'id', 'produit', 'poste_charge_defaut', 'quantite_lot',
+            'seuil_declenchement', 'actif', 'created_at', 'updated_at',
+        ]
+        read_only_fields = ['id', 'created_at', 'updated_at']
+
+
+class ParametresMRPSerializer(serializers.ModelSerializer):
+    """NTMFG29 — jamais de `company` en écriture (posée côté serveur par la
+    vue, `services.parametres_mrp`)."""
+
+    class Meta:
+        model = ParametresMRP
+        fields = [
+            'id', 'horizon_mrp_jours', 'stock_securite_pct_defaut',
+            'tolerance_surcharge_poste_pct',
+            'blocage_qc_force_motif_obligatoire', 'activer_kanban_production',
+            'retention_prototype_jours', 'created_at', 'updated_at',
+        ]
+        read_only_fields = ['id', 'created_at', 'updated_at']

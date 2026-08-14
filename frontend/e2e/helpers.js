@@ -205,6 +205,62 @@ export async function openAoDemoAffaire(page) {
   await affaire.click()
 }
 
+// ── Onglets de la FICHE AFFAIRE — correction du 14/08/2026 ──────────────────
+//
+// LE DÉFAUT RÉPARÉ ICI. Les sections d'une affaire (Toitures & relevés,
+// Calepinages, Bordereau, Dossier, Variantes…) ne sont pas des LIENS :
+// `features/ao/AffaireDetail.jsx` les passe en `tabs` à `RecordShell` →
+// `ui/module/DetailShell.jsx` → `ui/Tabs.jsx`, qui monte des
+// `@radix-ui/react-tabs` `Trigger` — donc `role="tab"`, jamais `role="link"`.
+// Un `getByRole('link', { name: /Bordereau/ })` ne pouvait pas les atteindre.
+//
+// PIRE QUE LE ROUGE : sur le viewport bureau, ce locator résolvait quand même
+// pour trois de ces noms — vers l'entrée de NAVIGATION GLOBALE du module
+// (`features/ao/module.config.jsx`) : « Toitures & relevés » → `/ao/toitures`,
+// « Calepinages » → `/ao/calepinages`, « Dossiers » → `/ao/dossiers`. Les specs
+// quittaient donc silencieusement la fiche et balayaient un AUTRE écran tout en
+// se déclarant verts. On vise le rôle RÉEL, et on prouve qu'on est resté sur la
+// fiche : un onglet change de panneau, jamais d'écran.
+//
+// `nomOnglet` est le libellé EXACT déclaré dans `AffaireDetail.jsx` — pas une
+// sous-chaîne : un onglet renommé doit produire un rouge qui NOMME la cause,
+// pas un locator qui glisse vers un voisin.
+export async function ouvrirOngletAffaire(page, nomOnglet) {
+  const SUR_LA_FICHE = /\/ao\/affaires\/\d+/
+  await expect(
+    page,
+    'un onglet de fiche affaire ne s’ouvre que depuis /ao/affaires/<id>',
+  ).toHaveURL(SUR_LA_FICHE)
+
+  const onglet = page.getByRole('tab', { name: nomOnglet })
+  await expect(
+    onglet,
+    `l'onglet « ${nomOnglet} » est rendu par la fiche affaire (AffaireDetail.jsx → RecordShell)`,
+  ).toBeVisible()
+  await onglet.click()
+  await expect(
+    onglet,
+    `l'onglet « ${nomOnglet} » devient l'onglet actif`,
+  ).toHaveAttribute('aria-selected', 'true')
+
+  // La garde qui ferme définitivement la porte au faux vert d'origine.
+  await expect(
+    page,
+    `ouvrir l'onglet « ${nomOnglet} » ne doit PAS quitter la fiche affaire`,
+  ).toHaveURL(SUR_LA_FICHE)
+
+  // Panneaux montés en `lazy` + `Suspense`. `data-ao-panneau-differe`
+  // (E2E_HOOKS.md §2.14) EST le repère prévu pour ça : il doit céder la place
+  // au contenu réel — s'il persiste, le panneau ne se monte pas.
+  await expect(
+    page.locator('[data-ao-panneau-differe]'),
+    `le panneau de l'onglet « ${nomOnglet} » a fini de se charger`,
+  ).toHaveCount(0)
+
+  // Radix ne monte QUE le panneau actif : ce locator en désigne exactement un.
+  return page.getByRole('tabpanel')
+}
+
 // Rejoint l'atelier « Toitures & relevés » DEPUIS LE POUCE (paradigme ODY6 :
 // sur mobile, la nav de l'app active EST la barre basse).
 //

@@ -7,6 +7,7 @@ from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.negotiation import DefaultContentNegotiation
 from rest_framework.response import Response
 
+from apps.records.views import ChatterViewSetMixin
 from core.permissions import ScopedPermission
 from core.viewsets import CompanyScopedModelViewSet
 
@@ -62,7 +63,7 @@ def _export_row(dossier):
     ]
 
 
-class DossierExportViewSet(CompanyScopedModelViewSet):
+class DossierExportViewSet(ChatterViewSetMixin, CompanyScopedModelViewSet):
     """NTLOG14 — CRUD ``dossiers-export/`` + filtre ``?statut=``. ``numero``
     posé côté serveur (jamais lu du corps de la requête) via
     ``core.numbering``, JAMAIS ``count()+1`` (ARC6). Filtre manuel (pas de
@@ -74,7 +75,13 @@ class DossierExportViewSet(CompanyScopedModelViewSet):
     palier historique via ``ScopedPermission``, déjà le défaut de
     ``CompanyScopedModelViewSet`` — voir ``apps/douane/permissions.py``).
     Lecture ouverte à tout utilisateur authentifié de la société (couvre le
-    rôle lecture-seule ``comptabilite``)."""
+    rôle lecture-seule ``comptabilite``).
+
+    NTLOG49 — ``ChatterViewSetMixin`` (motif ``transport.
+    OrdreTransportViewSet``) ajoute ``chatter/historique`` (GET) et
+    ``chatter/noter`` (POST), génériques (``records.Activity``) ; le dossier
+    est aussi une cible ``records.Follower``/``Comment``/``TaggedItem``
+    (voir ``apps/douane/platform.py``)."""
     queryset = DossierExport.objects.all()
     serializer_class = DossierExportSerializer
     write_permission = DOUANE_RESPONSABLE
@@ -111,7 +118,38 @@ class DossierExportViewSet(CompanyScopedModelViewSet):
 
     def perform_update(self, serializer):
         self._check_tenant(serializer)
+        # NTLOG49/50/51 — capture AVANT le save() : à ce point
+        # ``serializer.instance`` porte encore la valeur EN BASE (DRF ne
+        # mute l'instance qu'à l'intérieur de ``.save()``/``.update()``,
+        # déclenché par ``super().perform_update()`` juste après).
+        ancien_statut = serializer.instance.statut
         super().perform_update(serializer)
+        instance = serializer.instance
+        if instance.statut != ancien_statut:
+            # Un PATCH direct ``{'statut': ...}`` reste le chemin EXISTANT
+            # (le champ est écrivable, voir DossierExportSerializer) — le
+            # tracer même s'il ne passe pas par l'action ``cloturer``,
+            # sinon la trace d'audit/chatter/NTLOG51 serait incomplète pour
+            # toute transition qui ne serait pas la clôture.
+            from .services import tracer_transition_statut_dossier_export
+            tracer_transition_statut_dossier_export(
+                instance, ancien_statut, user=self.request.user)
+
+    # YRBAC4 — garde DÉCLARÉE par l'action (POST = méthode non-sûre →
+    # ``write_permission`` de ce viewset, déjà ``douane_responsable``).
+    @action(detail=True, methods=['post'], url_path='cloturer',
+            permission_classes=[ScopedPermission])
+    def cloturer(self, request, pk=None):
+        """NTLOG44/49/50 — clôture le dossier : action douanière sensible
+        tracée dans ``audit.AuditLog`` (NTLOG50) ET le chatter générique
+        ``records.Activity`` (NTLOG49), puis émet ``core.events.
+        dossier_export_cloture`` (NTLOG44) — voir ``services.
+        cloturer_dossier_export``. Idempotente : reclôturer un dossier déjà
+        clôturé renvoie 200 sans effet de bord supplémentaire."""
+        dossier = self.get_object()
+        from .services import cloturer_dossier_export
+        cloturer_dossier_export(dossier, user=request.user)
+        return Response(self.get_serializer(dossier).data)
 
     # YRBAC4 — garde DÉCLARÉE par l'action. ``ScopedPermission`` route sur la
     # méthode HTTP : GET (méthode sûre) → ``read_permission``, ici None, donc
@@ -198,6 +236,16 @@ class PieceDossierExportViewSet(CompanyScopedModelViewSet):
         if dossier is not None and user_company_id and dossier.company_id != user_company_id:
             raise PermissionDenied("Dossier hors de votre société.")
         serializer.save(company=self.request.user.company)
+
+    def perform_destroy(self, instance):
+        # NTLOG50 — traçabilité réglementaire : la suppression d'une pièce
+        # déjà VALIDÉE est une action douane sensible, auditée AVANT que
+        # l'instance ne disparaisse (plus lisible une fois le DELETE
+        # exécuté). No-op si la pièce n'était pas VALIDÉE — voir
+        # services.auditer_suppression_piece_validee.
+        from .services import auditer_suppression_piece_validee
+        auditer_suppression_piece_validee(instance, user=self.request.user)
+        instance.delete()
 
 
 @extend_schema_view(

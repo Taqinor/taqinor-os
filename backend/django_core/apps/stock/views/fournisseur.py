@@ -44,7 +44,11 @@ WRITE_ACTIONS = ['create', 'update', 'partial_update']
 # package __init__ ré-exporte toutes les vues publiques.
 
 
-class FournisseurViewSet(CompanyScopedModelViewSet):
+from .fournisseur_scm import ScmFournisseurActionsMixin  # noqa: E402
+
+
+class FournisseurViewSet(ScmFournisseurActionsMixin,
+                         CompanyScopedModelViewSet):
     queryset = Fournisseur.objects.all()
     serializer_class = FournisseurSerializer
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
@@ -56,11 +60,16 @@ class FournisseurViewSet(CompanyScopedModelViewSet):
     def get_permissions(self):
         if self.action in READ_ACTIONS:
             return [IsAnyRole()]
-        elif self.action == 'performance':
+        elif self.action in ('performance', 'otif'):
             # XPUR7 — rapport de performance fournisseur (OTD…) : lecture, ouvert
             # à tout rôle porteur du droit de lecture stock (get_permissions
             # prime sur le permission_classes de l'@action, d'où ce cas explicite).
+            # NTSCM8 — `otif` est le même rapport, même garde.
             return [HasPermissionOrLegacy('stock_voir')()]
+        elif self.action == 'delai_mesure':
+            # NTSCM11 — délai mesuré vs annoncé : donnée de PILOTAGE achat
+            # (elle arbitre le point de commande), réservée responsable/admin.
+            return [IsResponsableOrAdmin()]
         elif self.action in ('portail_tokens', 'revoquer_portail_token'):
             # XPUR22 — gestion des jetons portail fournisseur : écriture Stock,
             # ouverte à tout rôle porteur du droit `stock_modifier` (get_permissions

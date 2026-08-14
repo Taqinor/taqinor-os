@@ -1,22 +1,31 @@
 """Vues de l'app `mrp` (Groupe NTMFG — Production / MRP II)."""
 from datetime import datetime, timedelta
 
+from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import extend_schema, inline_serializer
 from rest_framework import mixins, serializers, viewsets
 from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.exceptions import ValidationError
+from rest_framework.negotiation import DefaultContentNegotiation
+from rest_framework.parsers import MultiPartParser
 from rest_framework.response import Response
 
-from authentication.permissions import IsResponsableOrAdmin
+from apps.records.views import ChatterViewSetMixin
 from core.permissions import ScopedPermission
 from core.viewsets import CompanyScopedModelViewSet
 
 from .models import (
-    CoutStandard, Gamme, OperationGamme, OperationOF, OrdreFabrication, PosteDeCharge,
+    CoutStandard, Gamme, OperationGamme, OperationOF, OrdreFabrication,
+    OrdreModification, PosteDeCharge, ReglesKanbanProduction,
+)
+from .permissions import (
+    EstAdminMRP, EstResponsableOuAdminMRP, EstTechnicienResponsableOuAdmin,
 )
 from .serializers import (
     CoutStandardSerializer, GammeSerializer, OperationGammeSerializer,
-    OperationOFSerializer, OrdreFabricationSerializer, PosteDeChargeSerializer,
+    OperationOFSerializer, OrdreFabricationSerializer, OrdreModificationSerializer,
+    ParametresMRPSerializer, PosteDeChargeSerializer,
+    ReglesKanbanProductionSerializer,
 )
 
 
@@ -72,6 +81,70 @@ class GammeViewSet(CompanyScopedModelViewSet):
     serializer_class = GammeSerializer
     filterset_fields = ['produit', 'actif']
 
+    # PACT7 — vue-fonction/agrégat : sans déclaration explicite, le schéma
+    # publierait cette action vide (aucun serializer_class n'en tient compte,
+    # la réponse est un dict agrégé, pas un `Gamme`).
+    @extend_schema(
+        request={'multipart/form-data': {
+            'type': 'object', 'properties': {'file': {'type': 'string', 'format': 'binary'}}}},
+        responses=inline_serializer('MrpImportGammesResultat', {
+            'job_id': serializers.IntegerField(),
+            'total_lignes': serializers.IntegerField(),
+            'created_count': serializers.IntegerField(),
+            'updated_count': serializers.IntegerField(),
+            'error_count': serializers.IntegerField(),
+            'erreurs': inline_serializer('MrpImportGammesErreur', {
+                'ligne': serializers.IntegerField(),
+                'motif': serializers.CharField(),
+            }, many=True),
+        }))
+    @action(detail=False, methods=['post'], url_path='import',
+            parser_classes=[MultiPartParser],
+            permission_classes=[EstResponsableOuAdminMRP])
+    def importer(self, request):
+        """NTMFG35 — ``POST /api/django/mrp/gammes/import/`` : import CSV/XLSX
+        en masse d'opérations de gamme (produit(id)/ordre/poste_charge(code)/
+        libelle/temps_prepa_min/temps_unitaire_min). Une ligne invalide
+        (produit ou poste de charge inconnu) est rejetée avec un motif
+        précis ; les autres lignes s'importent normalement. Idempotent
+        (réimporter le même fichier met à jour, ne duplique jamais)."""
+        from apps.dataimport.parsing import iter_rows
+
+        from .services import importer_gammes_csv
+
+        f = request.FILES.get('file')
+        if f is None:
+            return Response({'detail': 'Aucun fichier fourni.'}, status=400)
+        try:
+            _headers, rows = iter_rows(f.read(), f.name)
+        except Exception:
+            return Response(
+                {'detail': 'Fichier illisible (encodage invalide).'}, status=400)
+        resultat = importer_gammes_csv(
+            request.user.company, rows, user=request.user, filename=f.name)
+        return Response(resultat, status=200)
+
+    @extend_schema(responses={200: OpenApiTypes.BINARY})
+    @action(detail=False, methods=['get'], url_path=r'import/(?P<job_id>\d+)/erreurs',
+            permission_classes=[EstResponsableOuAdminMRP])
+    def import_erreurs(self, request, job_id=None):
+        """NTMFG35 — ``GET /api/django/mrp/gammes/import/<job_id>/erreurs/`` :
+        rapport d'erreurs téléchargeable (xlsx) du job d'import
+        `job_id` — company-scopé, jamais un job d'une autre société."""
+        from apps.dataimport.models import ImportJob
+        from apps.dataimport.services import erreurs_csv_rows
+        from apps.records.xlsx import build_xlsx_response
+
+        job = ImportJob.objects.filter(
+            pk=job_id, company=request.user.company, target='mrp_gammes').first()
+        if job is None:
+            return Response({'detail': "Job d'import introuvable."}, status=404)
+        headers, rows = erreurs_csv_rows(job)
+        table_rows = [[row.get(h, '') for h in headers] for row in rows]
+        return build_xlsx_response(
+            f'import-gammes-erreurs-{job.id}.xlsx', headers, table_rows,
+            sheet_title='Erreurs import gammes')
+
 
 class OperationGammeViewSet(CompanyScopedModelViewSet):
     """NTMFG2 — opérations d'une gamme. Filtrable par `?gamme=`.
@@ -112,10 +185,17 @@ class OperationGammeViewSet(CompanyScopedModelViewSet):
         super().perform_update(serializer)
 
 
-class OrdreFabricationViewSet(CompanyScopedModelViewSet):
+class OrdreFabricationViewSet(ChatterViewSetMixin, CompanyScopedModelViewSet):
     """NTMFG3 — CRUD des Ordres de Fabrication (company-scopé). `confirmer/`
     instancie les opérations depuis la gamme et calcule les dates prévues
-    (NTMFG3)."""
+    (NTMFG3).
+
+    NTMFG38 — `ChatterViewSetMixin` (ARC8, `records.Activity` générique,
+    même patron que `apps.transport.views.OrdreTransportViewSet`) donne
+    `chatter/historique/` (GET) et `chatter/noter/` (POST) SANS nouveau
+    modèle `*Activity` maison. Les transitions de statut (confirmer/
+    cloturer/annuler) écrivent une ligne automatique via
+    `services.log_activite_of` — voir cette fonction pour le détail."""
     queryset = OrdreFabrication.objects.select_related(
         'produit', 'gamme', 'kit_ordre_assemblage').prefetch_related(
         'operations__poste_charge').all()
@@ -146,6 +226,15 @@ class OrdreFabricationViewSet(CompanyScopedModelViewSet):
 
     def perform_update(self, serializer):
         self._check_tenant(serializer)
+        # NTMFG16 — un OF déjà CLÔTURÉ (`termine`) ne peut plus basculer
+        # prototype <-> normal : la seule voie est de créer un nouvel OF.
+        instance = serializer.instance
+        if ('est_prototype' in serializer.validated_data
+                and instance.statut == OrdreFabrication.Statut.TERMINE
+                and serializer.validated_data['est_prototype'] != instance.est_prototype):
+            raise ValidationError({
+                'est_prototype': "Impossible de changer le statut prototype d'un "
+                                 'OF déjà clôturé — créez un nouvel OF.'})
         serializer.save(company=self.request.user.company)
 
     # YRBAC4 — gardes DÉCLARÉES, et un vrai RESSERREMENT sur les trois actions
@@ -159,7 +248,7 @@ class OrdreFabricationViewSet(CompanyScopedModelViewSet):
     # (``dispo-composants``) reste au tier lecture. Aucun ``get_permissions``
     # sur ce viewset ni ses bases → gardes effectives.
     @action(detail=True, methods=['post'], url_path='confirmer',
-            permission_classes=[IsResponsableOrAdmin])
+            permission_classes=[EstResponsableOuAdminMRP])
     def confirmer(self, request, pk=None):
         """NTMFG3 — instancie les opérations depuis la gamme + planifie les
         dates (capacité poste), passe le statut en `planifie`."""
@@ -170,7 +259,7 @@ class OrdreFabricationViewSet(CompanyScopedModelViewSet):
         return Response(self.get_serializer(of).data)
 
     @action(detail=True, methods=['post'], url_path='cloturer',
-            permission_classes=[IsResponsableOrAdmin])
+            permission_classes=[EstResponsableOuAdminMRP])
     def cloturer(self, request, pk=None):
         """NTMFG4 — clôture l'OF : backflush (consommation composants +
         production composite) exactement une fois, sauf si un
@@ -182,7 +271,7 @@ class OrdreFabricationViewSet(CompanyScopedModelViewSet):
         return Response(self.get_serializer(of).data)
 
     @action(detail=True, methods=['post'], url_path='annuler',
-            permission_classes=[IsResponsableOrAdmin])
+            permission_classes=[EstResponsableOuAdminMRP])
     def annuler(self, request, pk=None):
         """NTMFG6 — annule l'OF : libère ses réservations de composants.
         Refuse (400) si le stock a déjà été mouvementé."""
@@ -203,6 +292,89 @@ class OrdreFabricationViewSet(CompanyScopedModelViewSet):
         from .selectors import disponibilite_par_ligne_of
         of = self.get_object()
         return Response(disponibilite_par_ligne_of(of))
+
+    @action(detail=True, methods=['post'], url_path='cloture-assistee',
+            permission_classes=[EstResponsableOuAdminMRP])
+    def cloture_assistee(self, request, pk=None):
+        """NTMFG28 — clôture assistée : saisie GROUPÉE quantité bonne/rebut
+        (+ motif) par opération encore non terminée, qui appelle EN SÉQUENCE
+        les MÊMES actions `terminer` que le terminal atelier (NTMFG8/
+        `services.terminer_operation`) — jamais un chemin de clôture
+        parallèle, juste une saisie groupée sur les mêmes endpoints. Réservé
+        responsable/admin. Corps : ``{"operations": [{"id": <operation_id>,
+        "quantite_bonne": x, "quantite_rebut": y, "motif_rebut": "...",
+        "cout_faconnage": z}, ...]}``. Une opération déjà terminée ou
+        inconnue de cet OF est IGNORÉE (jamais rejouée) ; une opération dont
+        la saisie échoue (ex. rebut sans motif) est reportée dans
+        `erreurs` SANS arrêter le traitement des autres lignes."""
+        from .services import terminer_operation
+
+        of = self.get_object()
+        saisies = request.data.get('operations') or []
+        terminees = []
+        erreurs = []
+        for saisie in saisies:
+            operation_id = saisie.get('id')
+            operation = of.operations.filter(
+                id=operation_id).exclude(statut='terminee').first()
+            if operation is None:
+                continue
+            try:
+                terminer_operation(
+                    operation,
+                    quantite_bonne=saisie.get('quantite_bonne', 0),
+                    quantite_rebut=saisie.get('quantite_rebut', 0),
+                    motif_rebut=saisie.get('motif_rebut', ''),
+                    cout_faconnage=saisie.get('cout_faconnage', 0),
+                    user=request.user)
+                terminees.append(operation_id)
+            except ValueError as exc:
+                erreurs.append({'id': operation_id, 'detail': str(exc)})
+
+        of.refresh_from_db()
+        return Response({
+            'ordre_fabrication': self.get_serializer(of).data,
+            'operations_terminees': terminees,
+            'erreurs': erreurs,
+        })
+
+    @action(detail=True, methods=['get'], url_path='genealogie',
+            permission_classes=[ScopedPermission])
+    def genealogie(self, request, pk=None):
+        """NTMFG20 — traçabilité amont (composants consommés, remontée à
+        l'OF producteur) + aval (OF consommateurs) de cet OF. Lecture seule."""
+        from .selectors import genealogie_of
+        of = self.get_object()
+        return Response(genealogie_of(of))
+
+    @action(detail=True, methods=['get'], url_path='traveler-pdf',
+            permission_classes=[ScopedPermission])
+    def traveler_pdf(self, request, pk=None):
+        """NTMFG19 — fiche suiveuse d'OF (traveler) imprimable, PDF.
+        STRICTEMENT INTERNE : aucun prix (test de non-régression dédié)."""
+        from django.http import HttpResponse
+
+        from . import pdf as mrp_pdf
+        of = self.get_object()
+        pdf_bytes = mrp_pdf.traveler_pdf(of)
+        resp = HttpResponse(pdf_bytes, content_type='application/pdf')
+        resp['Content-Disposition'] = f'inline; filename="traveler-of-{of.id}.pdf"'
+        return resp
+
+    @action(detail=True, methods=['get'], url_path='fiche-lancement-pdf',
+            permission_classes=[ScopedPermission])
+    def fiche_lancement_pdf(self, request, pk=None):
+        """NTMFG23 — fiche de lancement synthétique (une page, pré-démarrage),
+        PDF. STRICTEMENT INTERNE : aucun prix, aucun coût."""
+        from django.http import HttpResponse
+
+        from . import pdf as mrp_pdf
+        of = self.get_object()
+        pdf_bytes = mrp_pdf.fiche_lancement_pdf(of)
+        resp = HttpResponse(pdf_bytes, content_type='application/pdf')
+        resp['Content-Disposition'] = (
+            f'inline; filename="fiche-lancement-of-{of.id}.pdf"')
+        return resp
 
 
 class OperationOFViewSet(mixins.RetrieveModelMixin, mixins.ListModelMixin,
@@ -236,8 +408,16 @@ class OperationOFViewSet(mixins.RetrieveModelMixin, mixins.ListModelMixin,
     # ``CoutStandardViewSet`` juste en dessous. Ce viewset ne définit PAS de
     # ``get_permissions`` (contrairement à ``CoutStandardViewSet``) : les
     # déclarations ci-dessous sont donc bien celles que DRF applique.
+    #
+    # NTMFG33 — matrice de rôle : `replanifier` (Gantt, NTMFG7) reste
+    # Responsable/Admin (`EstResponsableOuAdminMRP`) ; démarrer/pauser/
+    # reprendre/terminer (terminal atelier MES, NTMFG8) sont RELÂCHÉS au
+    # palier Technicien (`EstTechnicienResponsableOuAdmin`, tier-based sur
+    # `menu_tier` — jamais `IsResponsableOrAdmin`, qui passerait à tort un
+    # Technicien outillé pour le MES) : c'est exactement le poste de travail
+    # d'un Technicien, pas une action Responsable.
     @action(detail=True, methods=['patch'], url_path='replanifier',
-            permission_classes=[IsResponsableOrAdmin])
+            permission_classes=[EstResponsableOuAdminMRP])
     def replanifier(self, request, pk=None):
         """NTMFG7 — déplace cette opération (glisser-déposer Gantt) : nouvelle
         `date_planifiee` et/ou `poste_charge` optionnel, contrôle de capacité
@@ -257,28 +437,40 @@ class OperationOFViewSet(mixins.RetrieveModelMixin, mixins.ListModelMixin,
         return Response(data)
 
     @action(detail=True, methods=['post'], url_path='demarrer',
-            permission_classes=[IsResponsableOrAdmin])
+            permission_classes=[EstTechnicienResponsableOuAdmin])
     def demarrer(self, request, pk=None):
-        """NTMFG8 — terminal atelier : démarre l'opération."""
+        """NTMFG8 — terminal atelier : démarre l'opération. NTMFG14 —
+        `avertissement_maintenance` (non bloquant) signale un poste dont une
+        échéance d'entretien est en retard."""
+        from .selectors import postes_en_alerte_maintenance
         from .services import demarrer_operation
-        return self._mes_action(demarrer_operation, request, pk)
+        operation = self.get_object()
+        try:
+            demarrer_operation(operation, user=request.user)
+        except ValueError as exc:
+            return Response({'detail': str(exc)}, status=400)
+        operation.refresh_from_db()
+        data = self.get_serializer(operation).data
+        alertes = postes_en_alerte_maintenance(request.user.company)
+        data['avertissement_maintenance'] = operation.poste_charge_id in alertes
+        return Response(data)
 
     @action(detail=True, methods=['post'], url_path='pauser',
-            permission_classes=[IsResponsableOrAdmin])
+            permission_classes=[EstTechnicienResponsableOuAdmin])
     def pauser(self, request, pk=None):
         """NTMFG8 — terminal atelier : met l'opération en pause."""
         from .services import pauser_operation
         return self._mes_action(pauser_operation, request, pk)
 
     @action(detail=True, methods=['post'], url_path='reprendre',
-            permission_classes=[IsResponsableOrAdmin])
+            permission_classes=[EstTechnicienResponsableOuAdmin])
     def reprendre(self, request, pk=None):
         """NTMFG8 — terminal atelier : reprend une opération en pause."""
         from .services import reprendre_operation
         return self._mes_action(reprendre_operation, request, pk)
 
     @action(detail=True, methods=['post'], url_path='terminer',
-            permission_classes=[IsResponsableOrAdmin])
+            permission_classes=[EstTechnicienResponsableOuAdmin])
     def terminer(self, request, pk=None):
         """NTMFG8/10 — terminal atelier : termine l'opération (quantité
         bonne/rebut + motif si rebut, coût façon si sous-traitée), calcule le
@@ -350,17 +542,69 @@ def mrp_run_view(request):
     """NTMFG5 — ``POST /api/django/mrp/mrp-run/`` : calcul des besoins nets
     (MRP) à la demande, company-scopé. Corps optionnel :
     ``{"produits": [id, ...], "demande_independante": {"<produit_id>": qte},
-    "stock_securite_pct": "10", "horizon_jours": 30}``."""
+    "stock_securite_pct": "10", "horizon_jours": 30}``. NTMFG29 — un appelant
+    qui ne fournit PAS ``horizon_jours``/``stock_securite_pct`` retombe sur
+    les réglages `ParametresMRP` de la société (`horizon_mrp_jours`/
+    `stock_securite_pct_defaut`) plutôt que sur une valeur codée en dur."""
     from .selectors import calculer_besoins_nets
+    from .services import parametres_mrp
 
     body = request.data or {}
+    parametres = parametres_mrp(request.user.company)
+    horizon_jours = body.get('horizon_jours')
+    if horizon_jours is None:
+        horizon_jours = parametres.horizon_mrp_jours
+    stock_securite_pct = body.get('stock_securite_pct')
+    if stock_securite_pct is None:
+        stock_securite_pct = parametres.stock_securite_pct_defaut
     resultats = calculer_besoins_nets(
         request.user.company,
         produits=body.get('produits'),
         demande_independante=body.get('demande_independante'),
-        stock_securite_pct=body.get('stock_securite_pct') or 0,
-        horizon_jours=body.get('horizon_jours'))
+        stock_securite_pct=stock_securite_pct,
+        horizon_jours=horizon_jours)
     return Response(resultats)
+
+
+@extend_schema(
+    request=inline_serializer('MrpSimulerChargeBody', {
+        'lignes': serializers.ListField(child=serializers.DictField(), required=False),
+        'date_souhaitee': serializers.CharField(required=False, allow_null=True),
+    }),
+    responses=inline_serializer('MrpSimulerChargeResultat', {
+        'tenable': serializers.CharField(),
+        'poste_goulot': serializers.CharField(allow_null=True),
+        'retard_jours': serializers.IntegerField(),
+        'lignes': inline_serializer('MrpSimulerChargeLigne', {
+            'poste_id': serializers.IntegerField(),
+            'poste_nom': serializers.CharField(),
+            'minutes_additionnelles': serializers.CharField(),
+            'minutes_deja_planifiees': serializers.CharField(),
+            'capacite_minutes': serializers.CharField(),
+            'depasse': serializers.BooleanField(),
+        }, many=True),
+    }))
+@api_view(['POST'])
+def simuler_charge_view(request):
+    """NTMFG18 — ``POST /api/django/mrp/simuler-charge/`` : simulation SANS
+    écriture de la charge atelier additionnelle qu'induirait une liste
+    produit+quantité (ex. un devis en cours de saisie), à une date
+    souhaitée. Corps : ``{"lignes": [{"produit_id": id, "quantite": qte},
+    ...], "date_souhaitee": "AAAA-MM-JJ"}``."""
+    from .selectors import simuler_charge
+
+    body = request.data or {}
+    date_souhaitee = _parse_date_param(request, 'date_souhaitee', None)
+    if date_souhaitee is None and body.get('date_souhaitee'):
+        try:
+            date_souhaitee = datetime.strptime(
+                str(body['date_souhaitee']), '%Y-%m-%d').date()
+        except ValueError:
+            date_souhaitee = None
+    resultat = simuler_charge(
+        request.user.company, body.get('lignes') or [],
+        date_souhaitee=date_souhaitee)
+    return Response(resultat)
 
 
 class CoutStandardViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin,
@@ -374,7 +618,7 @@ class CoutStandardViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin,
     filterset_fields = ['produit']
 
     def get_permissions(self):
-        return [IsResponsableOrAdmin()]
+        return [EstResponsableOuAdminMRP()]
 
     def get_queryset(self):
         qs = super().get_queryset()
@@ -409,6 +653,96 @@ class CoutStandardViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin,
             self.get_serializer(standard).data, status=201)
 
 
+class OrdreModificationViewSet(CompanyScopedModelViewSet):
+    """NTMFG15 — PLM léger : Ordres de Modification (ECO). Le `demandeur` est
+    posé CÔTÉ SERVEUR (jamais accepté du corps de requête) ; `approuver/` et
+    `rejeter/` sont les SEULES transitions de statut (jamais de PATCH direct
+    sur `statut`, verrouillé en lecture seule côté serializer). Écriture
+    réservée responsable/admin (un ECO approuvé modifie une gamme/nomenclature
+    active — acte d'exploitation, même palier que `OrdreFabricationViewSet`)."""
+    queryset = OrdreModification.objects.select_related(
+        'produit', 'demandeur', 'approbateur').all()
+    serializer_class = OrdreModificationSerializer
+    filterset_fields = ['produit', 'statut', 'type_eco']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        produit = self.request.query_params.get('produit')
+        if produit:
+            qs = qs.filter(produit_id=produit)
+        statut = self.request.query_params.get('statut')
+        if statut:
+            qs = qs.filter(statut=statut)
+        return qs
+
+    def get_permissions(self):
+        return [EstResponsableOuAdminMRP()]
+
+    def perform_create(self, serializer):
+        company = self.request.user.company
+        produit = serializer.validated_data.get('produit')
+        if produit is not None and getattr(produit, 'company_id', None) != getattr(company, 'id', None):
+            raise ValidationError({'produit': 'Produit inconnu pour cette société.'})
+        serializer.save(company=company, demandeur=self.request.user)
+
+    @action(detail=True, methods=['post'], url_path='approuver')
+    def approuver(self, request, pk=None):
+        """NTMFG15 — approuve l'ECO ; applique aussitôt si l'effectivité est
+        déjà atteinte (ou absente = immédiat)."""
+        from .services import approuver_eco
+        eco = self.get_object()
+        try:
+            approuver_eco(eco, user=request.user)
+        except ValueError as exc:
+            return Response({'detail': str(exc)}, status=400)
+        eco.refresh_from_db()
+        return Response(self.get_serializer(eco).data)
+
+    @action(detail=True, methods=['post'], url_path='rejeter')
+    def rejeter(self, request, pk=None):
+        """NTMFG15 — rejette l'ECO : aucun changement appliqué."""
+        from .services import rejeter_eco
+        eco = self.get_object()
+        try:
+            rejeter_eco(eco)
+        except ValueError as exc:
+            return Response({'detail': str(exc)}, status=400)
+        eco.refresh_from_db()
+        return Response(self.get_serializer(eco).data)
+
+
+class ReglesKanbanProductionViewSet(CompanyScopedModelViewSet):
+    """NTMFG17 — CRUD des règles kanban de production (company-scopé)."""
+    queryset = ReglesKanbanProduction.objects.select_related(
+        'produit', 'poste_charge_defaut').all()
+    serializer_class = ReglesKanbanProductionSerializer
+    filterset_fields = ['produit', 'actif']
+
+
+@extend_schema(request=None, responses=inline_serializer('MrpKanbanDeclencheOF', {
+    'id': serializers.IntegerField(),
+    'produit': serializers.IntegerField(),
+    'quantite': serializers.CharField(),
+    'statut': serializers.CharField(),
+}, many=True))
+@api_view(['POST'])
+@permission_classes([EstResponsableOuAdminMRP])
+def kanban_declencher_view(request):
+    """NTMFG17 — ``POST /api/django/mrp/kanban/declencher/`` : déclenchement
+    MANUEL de toutes les règles kanban actives de la société (dégrade
+    proprement sans Celery beat déployé — même effet que la tâche
+    périodique)."""
+    from .selectors import _fmt_dec
+    from .services import declencher_kanban_toutes_regles
+
+    crees = declencher_kanban_toutes_regles(request.user.company)
+    return Response([
+        {'id': of.id, 'produit': of.produit_id, 'quantite': _fmt_dec(of.quantite),
+         'statut': of.statut}
+        for of in crees
+    ])
+
+
 # PACT7 — sans cette déclaration, le schéma OpenAPI publiait cet agrégat VIDE
 # (aucun ``serializer_class`` sur une vue-fonction) : la vue renvoie une LISTE
 # de lignes d'écart par produit, jamais un objet unique. Cf.
@@ -427,7 +761,7 @@ class CoutStandardViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin,
     'ecart_total': serializers.CharField(),
 }, many=True))
 @api_view(['GET'])
-@permission_classes([IsResponsableOrAdmin])
+@permission_classes([EstResponsableOuAdminMRP])
 def analyse_couts_view(request):
     """NTMFG11 — ``GET /api/django/mrp/analyse-couts/?produit=&date_debut=
     &date_fin=`` : rapport d'écarts matière/main-d'œuvre/rendement vs coût
@@ -440,6 +774,188 @@ def analyse_couts_view(request):
         date_debut=request.query_params.get('date_debut'),
         date_fin=request.query_params.get('date_fin'))
     return Response(resultats)
+
+
+class _ExportFormatContentNegotiation(DefaultContentNegotiation):
+    """NTMFG24 — sur ``analyse-couts/export/`` le paramètre ``?format=``
+    désigne le format D'EXPORT (pdf/xlsx), PAS le renderer DRF. Sans cette
+    surcharge, DRF traite ``?format=pdf``/``?format=xlsx`` comme un override
+    de renderer (``URL_FORMAT_OVERRIDE``) : aucun renderer enregistré ne
+    porte ces formats, donc ``DefaultContentNegotiation.filter_renderers``
+    lève un ``Http404`` (« Pas trouvé ») AVANT même d'exécuter la vue — même
+    motif que ``apps.douane.views._ExportFormatContentNegotiation`` /
+    ``apps.compta.views._BankFormatContentNegotiation``. On neutralise donc
+    l'override par query param et on négocie toujours sur le renderer JSON
+    (la vue elle-même renvoie une ``HttpResponse``/``build_xlsx_response``
+    manuelle, jamais via ce renderer)."""
+
+    def select_renderer(self, request, renderers, format_suffix=None):
+        for renderer in renderers:
+            if renderer.format == 'json':
+                return renderer, renderer.media_type
+        return renderers[0], renderers[0].media_type
+
+
+# PACT7 — export FICHIER (pdf/xlsx) : sans declaration, le schema publierait
+# cet endpoint vide ou avec un serializer qu'il ne renvoie jamais. Le cliquet
+# check_openapi_shapes n'accepte QUE la decroissance.
+@extend_schema(responses={200: OpenApiTypes.BINARY})
+@api_view(['GET'])
+@permission_classes([EstResponsableOuAdminMRP])
+def analyse_couts_export_view(request):
+    """NTMFG24 — ``GET /api/django/mrp/analyse-couts/export/?format=pdf|xlsx
+    &produit=&date_debut=&date_fin=`` : export téléchargeable du rapport
+    d'écarts NTMFG11 (mêmes chiffres que l'écran), admin/responsable
+    UNIQUEMENT. `format` invalide -> 400 (whitelist stricte)."""
+    from django.http import HttpResponse
+
+    from apps.records.xlsx import build_xlsx_response
+
+    from . import pdf as mrp_pdf
+    from .selectors import analyse_couts
+
+    fmt = (request.query_params.get('format') or 'xlsx').lower()
+    if fmt not in ('pdf', 'xlsx'):
+        return Response({'detail': "format doit être 'pdf' ou 'xlsx'."}, status=400)
+
+    produit_id = request.query_params.get('produit')
+    date_debut = request.query_params.get('date_debut')
+    date_fin = request.query_params.get('date_fin')
+
+    if fmt == 'pdf':
+        pdf_bytes = mrp_pdf.analyse_couts_pdf(
+            request.user.company, produit_id=produit_id,
+            date_debut=date_debut, date_fin=date_fin)
+        resp = HttpResponse(pdf_bytes, content_type='application/pdf')
+        resp['Content-Disposition'] = 'inline; filename="analyse-couts-production.pdf"'
+        return resp
+
+    lignes = analyse_couts(
+        request.user.company, produit_id=produit_id,
+        date_debut=date_debut, date_fin=date_fin)
+    headers = [
+        'Produit', 'Nb OF', 'Coût matière std', 'Coût matière réel',
+        'Écart matière', 'Coût MO std', 'Coût MO réel', 'Écart MO',
+        'Écart rendement', 'Écart total',
+    ]
+    rows = [
+        [
+            ligne['produit_nom'], ligne['nb_of'], ligne['cout_matiere_standard'],
+            ligne['cout_matiere_reel'], ligne['ecart_matiere'],
+            ligne['cout_main_oeuvre_standard'], ligne['cout_main_oeuvre_reel'],
+            ligne['ecart_main_oeuvre'], ligne['ecart_rendement'], ligne['ecart_total'],
+        ]
+        for ligne in lignes
+    ]
+    return build_xlsx_response(
+        'analyse-couts-production.xlsx', headers, rows,
+        sheet_title='Analyse écarts production')
+
+
+# `@api_view` copie déjà permission/renderer/parser/auth/throttle/schema
+# depuis des attributs de fonction (voir `rest_framework.decorators.api_view`)
+# mais PAS `content_negotiation_class` : on le pose donc sur `.cls`, la
+# classe `APIView` générée que `APIView.as_view()` attache à la fonction vue
+# retournée (cf. `apps.douane.views._ExportFormatContentNegotiation`, posé là
+# via `@action(..., content_negotiation_class=...)` sur un ViewSet — même
+# attribut, mécanisme équivalent pour une vue-fonction).
+analyse_couts_export_view.cls.content_negotiation_class = _ExportFormatContentNegotiation
+
+
+# ── NTMFG36 — Export CSV/XLSX des Ordres de Fabrication + opérations ─────
+
+_RISKY_LEADING_CELL = ('=', '+', '-', '@')
+
+
+def _cellule_sure(valeur):
+    """Même neutralisation anti-injection que
+    `apps.records.xlsx._neutralize_cell` (ERR11) — copie locale volontaire :
+    cette fonction est privée à `records.xlsx`, pas une API publique
+    réutilisable telle quelle."""
+    if isinstance(valeur, str) and valeur[:1] in _RISKY_LEADING_CELL:
+        return "'" + valeur
+    return valeur
+
+
+@extend_schema(responses={200: OpenApiTypes.BINARY})
+@api_view(['GET'])
+@permission_classes([EstResponsableOuAdminMRP])
+def ordres_fabrication_export_view(request):
+    """NTMFG36 — ``GET /api/django/mrp/ordres-fabrication/export/
+    ?format=csv|xlsx&debut=&fin=&statut=`` : export des OF + opérations
+    détaillées de la période (mêmes données que l'écran NTMFG9). `xlsx` = 2
+    onglets cohérents (OF + opérations, mêmes OF des deux côtés) ; `csv` =
+    onglet OF seul (un fichier CSV n'a pas d'onglets). `format` invalide ->
+    400 (whitelist stricte)."""
+    import csv
+    import io
+
+    from django.http import HttpResponse
+
+    from .selectors import export_ordres_fabrication
+
+    fmt = (request.query_params.get('format') or 'xlsx').lower()
+    if fmt not in ('csv', 'xlsx'):
+        return Response({'detail': "format doit être 'csv' ou 'xlsx'."}, status=400)
+
+    debut = request.query_params.get('debut')
+    fin = request.query_params.get('fin')
+    statut = request.query_params.get('statut')
+    lignes_of, lignes_operations = export_ordres_fabrication(
+        request.user.company, debut=debut, fin=fin, statut=statut)
+
+    entetes_of = [
+        'OF', 'Produit', 'Quantité', 'Statut', 'Début prévu', 'Fin prévue']
+    rows_of = [
+        [ligne['of_id'], ligne['produit_nom'], ligne['quantite'], ligne['statut'],
+         ligne['date_debut_planifiee'], ligne['date_fin_planifiee']]
+        for ligne in lignes_of
+    ]
+
+    if fmt == 'csv':
+        buf = io.StringIO()
+        writer = csv.writer(buf)
+        writer.writerow(entetes_of)
+        writer.writerows(rows_of)
+        resp = HttpResponse(buf.getvalue(), content_type='text/csv')
+        resp['Content-Disposition'] = (
+            'attachment; filename="ordres-fabrication.csv"')
+        return resp
+
+    entetes_operations = [
+        'OF', 'Poste', 'Opération', 'Statut', 'Temps prévu (min)',
+        'Temps réel (min)', 'Quantité bonne', 'Quantité rebut',
+    ]
+    rows_operations = [
+        [ligne['of_id'], ligne['poste_nom'], ligne['libelle'], ligne['statut'],
+         ligne['temps_prevu_min'], ligne['temps_reel_min'], ligne['quantite_bonne'],
+         ligne['quantite_rebut']]
+        for ligne in lignes_operations
+    ]
+
+    from openpyxl import Workbook
+
+    from apps.records.xlsx import XLSX_CONTENT_TYPE, coerce_cell
+
+    wb = Workbook()
+    ws_of = wb.active
+    ws_of.title = 'Ordres de fabrication'
+    ws_of.append(entetes_of)
+    ws_operations = wb.create_sheet('Opérations')
+    ws_operations.append(entetes_operations)
+    for row in rows_of:
+        ws_of.append([_cellule_sure(coerce_cell(v)) for v in row])
+    for row in rows_operations:
+        ws_operations.append([_cellule_sure(coerce_cell(v)) for v in row])
+
+    resp = HttpResponse(content_type=XLSX_CONTENT_TYPE)
+    resp['Content-Disposition'] = (
+        'attachment; filename="ordres-fabrication.xlsx"')
+    wb.save(resp)
+    return resp
+
+
+ordres_fabrication_export_view.cls.content_negotiation_class = _ExportFormatContentNegotiation
 
 
 @extend_schema(responses=inline_serializer('MrpOeeTousPostesLigne', {
@@ -466,3 +982,50 @@ def oee_tous_postes_view(request):
     debut = _parse_date_param(request, 'debut', aujourd_hui - timedelta(days=27))
     fin = _parse_date_param(request, 'fin', aujourd_hui)
     return Response(oee_tous_postes(request.user.company, debut, fin))
+
+
+@extend_schema(responses=inline_serializer('MrpTableauBordProduction', {
+    'of_en_retard': serializers.IntegerField(),
+    'charge_moyenne_pct': serializers.CharField(),
+    'trs_moyen_pct': serializers.CharField(),
+    'postes_en_alerte_maintenance': serializers.IntegerField(),
+}))
+@api_view(['GET'])
+@permission_classes([EstResponsableOuAdminMRP])
+def tableau_bord_production_view(request):
+    """NTMFG22 — ``GET /api/django/mrp/tableau-bord/`` : 4 indicateurs
+    consolidés de l'atelier (OF en retard, charge moyenne 7j, TRS moyen 7j,
+    postes en alerte maintenance). Réservé responsable/admin."""
+    from .selectors import tableau_bord_production
+
+    return Response(tableau_bord_production(request.user.company))
+
+
+# ── NTMFG29 — Paramètres MRP par société ──────────────────────────────────
+
+@extend_schema(responses=ParametresMRPSerializer)
+@api_view(['GET'])
+@permission_classes([EstAdminMRP])
+def parametres_mrp_view(request):
+    """NTMFG29 — ``GET /api/django/mrp/parametres/`` : réglages MRP de la
+    société courante (lazy-create, `services.parametres_mrp`). Réservé Admin
+    (un Responsable peut planifier — NTMFG3 — mais pas voir/modifier les
+    paramètres société ; un Technicien reçoit 403)."""
+    from .services import parametres_mrp
+
+    return Response(ParametresMRPSerializer(parametres_mrp(request.user.company)).data)
+
+
+@extend_schema(request=ParametresMRPSerializer, responses=ParametresMRPSerializer)
+@api_view(['PUT'])
+@permission_classes([EstAdminMRP])
+def parametres_mrp_update_view(request):
+    """NTMFG29 — ``PUT /api/django/mrp/parametres/update/`` : met à jour les
+    réglages MRP de la société courante. Réservé Admin."""
+    from .services import parametres_mrp
+
+    instance = parametres_mrp(request.user.company)
+    serializer = ParametresMRPSerializer(instance, data=request.data, partial=True)
+    serializer.is_valid(raise_exception=True)
+    serializer.save()
+    return Response(serializer.data)
