@@ -3,7 +3,9 @@
 Le CRUD est un référentiel de PARAMÉTRAGE : lecture pour tout rôle (le
 magasinier doit savoir ce qu'il devra contrôler), écriture responsable/admin.
 """
-from drf_spectacular.utils import extend_schema, inline_serializer
+from drf_spectacular.utils import (
+    extend_schema, extend_schema_serializer, inline_serializer,
+)
 from rest_framework import serializers, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -41,6 +43,11 @@ class PlanEchantillonnageSerializer(serializers.ModelSerializer):
         return value
 
 
+# YAPIC6 — `apps.qhse.serializers` publie DEJA un composant `ControleReception`
+# (modele different). Deux composants homonymes d'identites differentes
+# cassent le schema : on renomme CELUI-CI (le plus recent) pour laisser
+# intact le nom deja publie par qhse.
+@extend_schema_serializer(component_name='ControleReceptionStock')
 class ControleReceptionSerializer(serializers.ModelSerializer):
     class Meta:
         model = ControleReception

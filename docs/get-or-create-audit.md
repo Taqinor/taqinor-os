@@ -211,7 +211,7 @@ Généré par `python scripts/check_get_or_create.py`. Chaque appel liste ses cl
 | `backend/django_core/apps/monitoring/models.py:197` | get_or_create | cls.objects | company |
 | `backend/django_core/apps/monitoring/services.py:35` | get_or_create | MonitoringConfig.objects | installation |
 | `backend/django_core/apps/monitoring/services.py:182` | get_or_create | UnderperformanceFlag.objects | installation, is_open |
-| `backend/django_core/apps/mrp/services.py:955` | get_or_create | ParametresMRP.objects | company |
+| `backend/django_core/apps/mrp/services.py:962` | get_or_create | ParametresMRP.objects | company |
 | `backend/django_core/apps/notifications/management/commands/seed_ma_holidays.py:72` | get_or_create | Holiday.objects | company, date, nom |
 | `backend/django_core/apps/notifications/services.py:891` | get_or_create | AnnonceLecture.objects | annonce, utilisateur |
 | `backend/django_core/apps/notifications/services.py:978` | get_or_create | AnnonceRelance.objects | annonce, utilisateur |
@@ -317,8 +317,8 @@ Généré par `python scripts/check_get_or_create.py`. Chaque appel liste ses cl
 | `backend/django_core/apps/transport/models.py:373` | get_or_create | cls.objects | company |
 | `backend/django_core/apps/uxviews/models.py:166` | get_or_create | cls.objects | company |
 | `backend/django_core/apps/veille_ao/services.py:895` | get_or_create | SourceVeille.objects | code, company |
-| `backend/django_core/apps/ventes/services.py:3632` | get_or_create | Produit.objects | company, nom |
-| `backend/django_core/apps/ventes/services.py:5001` | get_or_create | Produit.objects | company, sku |
+| `backend/django_core/apps/ventes/services.py:4030` | get_or_create | Produit.objects | company, nom |
+| `backend/django_core/apps/ventes/services.py:5399` | get_or_create | Produit.objects | company, sku |
 | `backend/django_core/apps/ventes/views/liste_prix.py:72` | update_or_create | LignePrixListe.objects | liste, produit_id |
 | `backend/django_core/apps/ventes/views/remise_encaissement.py:81` | get_or_create | LigneRemiseEncaissement.objects | paiement, remise |
 | `backend/django_core/apps/voip/services.py:26` | get_or_create | VoipParametres.objects | company |

@@ -81,6 +81,8 @@ import {
   buildViewerModel,
   roofLayoutOutlineLatLng,
   zoneAnnotations,
+  hasSldSvg,
+  sldSvgFilename,
   walkthroughSteps,
   backendFinancing,
   proposalVariants,
@@ -491,6 +493,14 @@ const show3d = !!viewerModel && viewerModel.totalPanels >= 0;
 // si aucun roof_layout exploitable, le client saute alors l'appel réseau.
 const roofOutlineLatLng = roofLayout ? roofLayoutOutlineLatLng(roofLayout) : [];
 const viewerConfig = show3d ? JSON.stringify({ model: viewerModel, roofOutlineLatLng }) : null;
+
+// ── WJ128 — Schéma électrique (SLD) : rendu UNIQUEMENT quand le backend
+// fournit `sld_svg` (étude électrique du devis existante) — absent/null →
+// rien de nouveau sur la page (comportement actuel inchangé). Le SVG est déjà
+// nettoyé côté serveur (client-safe) : injecté tel quel, jamais reparsé.
+const showSld = ok && data ? hasSldSvg(data) : false;
+const sldSvg = showSld ? (data!.sld_svg ?? '') : '';
+const sldFilename = showSld ? sldSvgFilename(reference) : '';
 
 // ── W342 — « L'installation la plus proche de chez vous » ────────────────────
 // Priorité au VRAI GPS du toit (premier sommet du premier pan de
@@ -1012,6 +1022,41 @@ const signConfig = ok
           )}
         </section>
         <div class="seam-soft" aria-hidden="true"></div>
+        </>
+      )}
+
+      <!-- ── WJ128 · SCHÉMA ÉLECTRIQUE (SLD) — visible seulement si l'étude
+           électrique du devis existe (backend `sld_svg`). Le PDF téléchargeable
+           embarque déjà ce schéma en annexe quand l'étude existe — cette
+           section est un affichage web SUPPLÉMENTAIRE, pas un nouveau chemin
+           de génération (CLAUDE.md règle #4, flux PDF inchangé). -->
+      {showSld && (
+        <>
+        <div class="seam-soft" aria-hidden="true"></div>
+        <section id="sld" class="mx-auto max-w-4xl px-5 pt-14 sm:px-8 sm:pt-20">
+          <p class="tech-label rule-brass cine-in text-brass-300" data-i18n data-fr="Étude électrique" data-en="Electrical study" data-ar="الدراسة الكهربائية">Étude électrique</p>
+          <h2 class="display cine-in cine-in-1 mt-3 text-2xl text-lune sm:text-3xl" data-i18n data-fr="Schéma électrique" data-en="Electrical diagram" data-ar="المخطط الكهربائي">Schéma électrique</h2>
+          <p class="v2-body cine-in cine-in-2 mt-2 text-sm text-lune-soft" data-i18n
+            data-fr="Le schéma unifilaire de votre installation, tel qu’étudié par nos techniciens."
+            data-en="Your installation’s single-line diagram, as designed by our technicians."
+            data-ar="المخطط الأحادي الخط لتركيبتكم، كما درسه فنيونا.">
+            Le schéma unifilaire de votre installation, tel qu’étudié par nos techniciens.
+          </p>
+          <div class="cine-card cine-in cine-in-3 mt-5 overflow-x-auto rounded-2xl p-4 shadow-premium sm:p-6">
+            <div id="sld-svg-wrap" class="sld-svg-wrap" set:html={sldSvg}></div>
+          </div>
+          <div class="mt-4 flex justify-center sm:justify-start">
+            <button
+              id="sld-download"
+              type="button"
+              class="btn-pill inline-flex items-center justify-center gap-2"
+              data-sld-filename={sldFilename}
+              data-i18n data-fr="Télécharger le schéma (SVG)" data-en="Download the diagram (SVG)" data-ar="تحميل المخطط (SVG)"
+            >
+              Télécharger le schéma (SVG)
+            </button>
+          </div>
+        </section>
         </>
       )}
 
@@ -4077,6 +4122,34 @@ const signConfig = ok
     // Recalcule une fois au chargement (idempotent avec le rendu serveur).
     update(currentN);
   })();
+
+  // ── WJ128 — « Télécharger le schéma (SVG) » : Blob + URL.createObjectURL,
+  // AUCUNE requête réseau (le SVG est déjà dans le DOM, injecté serveur via
+  // set:html quand le backend l'a fourni — voir hasSldSvg/sld_svg). Section
+  // absente → ni bouton ni conteneur dans le DOM, cette IIFE ne trouve rien et
+  // ne fait rien. Regroupé dans CE script (voir la note WJ34/WJ53 ci-dessus :
+  // un <script> supplémentaire isolé sur cette route est un risque connu de
+  // chunk perdu au bundling), même si ce bloc n'a besoin d'aucun import.
+  (function setupSldDownload(): void {
+    const btn = document.getElementById('sld-download') as HTMLButtonElement | null;
+    const wrap = document.getElementById('sld-svg-wrap');
+    if (!btn || !wrap) return;
+    const svgEl = wrap.querySelector('svg');
+    if (!svgEl) return;
+    const filename = btn.dataset.sldFilename || 'schema-electrique.svg';
+    btn.addEventListener('click', () => {
+      const markup = svgEl.outerHTML;
+      const blob = new Blob([markup], { type: 'image/svg+xml' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    });
+  })();
 </script>
 
 <style>
@@ -4126,6 +4199,20 @@ const signConfig = ok
     width: 100%;
     height: 100%;
   }
+  /* WJ128 — schéma électrique (SLD) : pas de ratio réservé (contrairement aux
+     graphes ci-dessus) — c'est un SVG backend au contenu variable (nombre de
+     composants), pas un viewBox connu d'avance. Largeur pleine, hauteur AUTO
+     (préserve le viewBox propre du SVG) ; le conteneur `cine-card` porte déjà
+     `overflow-x-auto` pour un schéma dense sur mobile. */
+  .sld-svg-wrap {
+    width: 100%;
+  }
+  .sld-svg-wrap :global(svg) {
+    display: block;
+    width: 100%;
+    height: auto;
+  }
+
   /* WJ80 — même affordance tap-to-reveal sur le repère pic/moyenne. */
   .daily-curve-wrap :global([data-curve-scale]) {
     cursor: pointer;

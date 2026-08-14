@@ -79,6 +79,12 @@ function extractGeometry(layout) {
       pitchDeg: z.pitchDeg,
       facingAzimuthDeg: z.facingAzimuthDeg,
       neededPanels: z.neededPanels,
+      // PV27/WJ24 — le compte réellement POSÉ (cellules occupées après édition
+      // manuelle) vit dans zone.geometry.count ; neededPanels est la CIBLE
+      // d'étude. Sans cette distinction, l'aperçu affichait 20 quand le devis
+      // en vendait 18.
+      posedPanels: (z.geometry && Number.isFinite(Number(z.geometry.count)))
+        ? Number(z.geometry.count) : null,
     })
   }
 
@@ -129,7 +135,8 @@ export default function RoofViewer({ layout, imageUrl = null, className = '' }) 
       offY + (maxLat - lat) * scale,
     ]
     zoneSummaries = geom.zones.map((z, i) => {
-      const n = Number(z.neededPanels)
+      // Compte POSÉ prioritaire (geometry.count) ; cible d'étude en repli.
+      const n = z.posedPanels ?? Number(z.neededPanels)
       if (Number.isFinite(n)) panelsTotal += n
       return {
         key: z.id ?? i,

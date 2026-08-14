@@ -14,6 +14,8 @@ planification tiers) :
     NTADM42) — le champ interne ``prix_achat_unitaire`` de l'agrégat est
     TOUJOURS retiré avant sérialisation publique (jamais de coût d'achat
     client-facing, règle transverse)."""
+from drf_spectacular.utils import extend_schema, inline_serializer
+from rest_framework import serializers
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -46,6 +48,26 @@ class PublicPolitiqueStockViewSet(PublicReadOnlyViewSet):
     sync_field = 'revise_le'
 
 
+# PACT7/YAPIC6 — sans cette declaration, l'APIView publie un agregat VIDE
+# (aucun `serializer_class`). Le contrat est `{'lignes': [...]}` : une LISTE
+# de lignes, jamais un objet unique. `prix_achat_unitaire` est DELIBEREMENT
+# absent du schema publie — il est retire de chaque ligne avant serialisation
+# (aucun cout d'achat client-facing, regle transverse).
+@extend_schema(responses=inline_serializer('PublicScmTableauBordReappro', {
+    'lignes': inline_serializer('PublicScmTableauBordReapproLigne', {
+        'produit_id': serializers.IntegerField(),
+        'produit_nom': serializers.CharField(),
+        'politique_id': serializers.IntegerField(),
+        'classe_abc': serializers.CharField(),
+        'stock_actuel': serializers.IntegerField(),
+        'point_commande': serializers.CharField(),
+        'quantite_suggeree': serializers.IntegerField(),
+        'statut': serializers.CharField(),
+        'rupture_date': serializers.CharField(allow_null=True),
+        'fournisseur_id': serializers.IntegerField(allow_null=True),
+        'fournisseur_nom': serializers.CharField(allow_null=True),
+    }, many=True),
+}))
 class PublicScmTableauBordReapproView(PublicApiResponseMixin, APIView):
     """``GET /api/public/v1/scm/tableau-bord-reappro/`` — tableau de bord
     réappro consolidé (NTSCM7) de la société porteuse de la clé. Jamais

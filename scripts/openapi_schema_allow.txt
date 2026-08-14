@@ -430,6 +430,7 @@ Warning|<global>|encountered multiple names for the same choice set (ModeHoldEnu
 Warning|<global>|encountered multiple names for the same choice set (NiveauRequisEnum). This may be unwanted even though the generated sc
 Warning|<global>|encountered multiple names for the same choice set (PalierApprobateurEnum). This may be unwanted even though the generat
 Warning|<global>|encountered multiple names for the same choice set (ProbabiliteEnum). This may be unwanted even though the generated sch
+Warning|<global>|encountered multiple names for the same choice set (ResultatE#Enum). This may be unwanted even though the generated sche
 Warning|<global>|encountered multiple names for the same choice set (RoleCibleEnum). This may be unwanted even though the generated schem
 Warning|<global>|encountered multiple names for the same choice set (ScenarioPrevisionnelDefautEnum). This may be unwanted even though th
 Warning|<global>|encountered multiple names for the same choice set (SeveriteEnum). This may be unwanted even though the generated schema
@@ -443,6 +444,7 @@ Warning|<global>|enum naming encountered a non-optimally resolvable collision fo
 Warning|<global>|enum naming encountered a non-optimally resolvable collision for fields named "gravite". The same name has been used for
 Warning|<global>|enum naming encountered a non-optimally resolvable collision for fields named "kind". The same name has been used for mu
 Warning|<global>|enum naming encountered a non-optimally resolvable collision for fields named "langue". The same name has been used for
+Warning|<global>|enum naming encountered a non-optimally resolvable collision for fields named "methode". The same name has been used for
 Warning|<global>|enum naming encountered a non-optimally resolvable collision for fields named "mode". The same name has been used for mu
 Warning|<global>|enum naming encountered a non-optimally resolvable collision for fields named "niveau". The same name has been used for
 Warning|<global>|enum naming encountered a non-optimally resolvable collision for fields named "orientation". The same name has been used
@@ -450,6 +452,7 @@ Warning|<global>|enum naming encountered a non-optimally resolvable collision fo
 Warning|<global>|enum naming encountered a non-optimally resolvable collision for fields named "priorite". The same name has been used fo
 Warning|<global>|enum naming encountered a non-optimally resolvable collision for fields named "raccordement". The same name has been use
 Warning|<global>|enum naming encountered a non-optimally resolvable collision for fields named "regime_#". The same name has been used fo
+Warning|<global>|enum naming encountered a non-optimally resolvable collision for fields named "resultat". The same name has been used fo
 Warning|<global>|enum naming encountered a non-optimally resolvable collision for fields named "role". The same name has been used for mu
 Warning|<global>|enum naming encountered a non-optimally resolvable collision for fields named "source". The same name has been used for
 Warning|<global>|enum naming encountered a non-optimally resolvable collision for fields named "statut". The same name has been used for

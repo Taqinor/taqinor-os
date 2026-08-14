@@ -577,6 +577,10 @@ def suggestions_achat_groupe_view(request):
     return Response(services.suggerer_achats_groupes(request.user.company))
 
 
+# PACT7/YAPIC6 — export binaire (.xlsx) : sans declaration, une vue-fonction
+# publie un schema VIDE (`unable to guess serializer`). Meme motif que les
+# exports deja declares plus haut dans ce fichier.
+@extend_schema(responses={200: OpenApiTypes.BINARY})
 @api_view(['GET'])
 @permission_classes([IsResponsableOrAdmin])
 def export_suggestions_achat_groupe_view(request):
@@ -704,6 +708,10 @@ def suggestions_transfert_view(request):
     return Response(selectors.suggerer_transferts_inter_sites(request.user.company))
 
 
+# PACT7/YAPIC6 — export binaire (.xlsx) : sans declaration, une vue-fonction
+# publie un schema VIDE (`unable to guess serializer`). Meme motif que les
+# exports deja declares plus haut dans ce fichier.
+@extend_schema(responses={200: OpenApiTypes.BINARY})
 @api_view(['GET'])
 @permission_classes([IsResponsableOrAdmin])
 def export_suggestions_transfert_view(request):
@@ -761,6 +769,10 @@ def precision_previsions_view(request):
 
 # ── NTSCM32 — export « Écarts de prévision » (.xlsx) ────────────────────────
 
+# PACT7/YAPIC6 — export binaire (.xlsx) : sans declaration, une vue-fonction
+# publie un schema VIDE (`unable to guess serializer`). Meme motif que les
+# exports deja declares plus haut dans ce fichier.
+@extend_schema(responses={200: OpenApiTypes.BINARY})
 @api_view(['GET'])
 @permission_classes([IsResponsableOrAdmin])
 def export_ecarts_prevision_view(request):
