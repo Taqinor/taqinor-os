@@ -293,6 +293,72 @@ def condition_en_clair(noeud):
     return f'{champ} {lisible} {valeur}'
 
 
+def _percentile(valeurs_triees, p):
+    """Percentile ``p`` (0-100) par interpolation linéaire (méthode « nearest
+    rank » interpolée, sans dépendance externe). ``valeurs_triees`` DOIT déjà
+    être triée. Renvoie 0 sur une liste vide."""
+    if not valeurs_triees:
+        return 0
+    if len(valeurs_triees) == 1:
+        return valeurs_triees[0]
+    k = (len(valeurs_triees) - 1) * (p / 100)
+    f = int(k)
+    c = min(f + 1, len(valeurs_triees) - 1)
+    if f == c:
+        return valeurs_triees[f]
+    return valeurs_triees[f] + (valeurs_triees[c] - valeurs_triees[f]) * (k - f)
+
+
+def delai_approbation_stats(company, *, date_debut=None, date_fin=None,
+                            approbateur_id=None):
+    """NTCPQ48 — moyenne + p90 (heures) du délai entre création d'une
+    ``EtapeApprobationDevis`` (NTCPQ7) et sa décision, sur les étapes déjà
+    DÉCIDÉES (``decision_le`` renseigné — une étape encore ``en_attente``
+    n'a pas de délai final). Filtrable par période (``date_creation``) et
+    par ``approbateur_id`` — utilisé par le widget KPI fédéré SANS filtre
+    (période complète) et directement testable AVEC filtres.
+
+    Renvoie ``{'moyenne_heures': float, 'p90_heures': float, 'count': int}``
+    (zéros si aucune étape décidée)."""
+    qs = EtapeApprobationDevis.objects.filter(
+        company=company, decision_le__isnull=False)
+    if date_debut:
+        qs = qs.filter(date_creation__date__gte=date_debut)
+    if date_fin:
+        qs = qs.filter(date_creation__date__lte=date_fin)
+    if approbateur_id:
+        qs = qs.filter(approbateur_id=approbateur_id)
+
+    delais = sorted(
+        (e.decision_le - e.date_creation).total_seconds() / 3600
+        for e in qs.only('decision_le', 'date_creation'))
+    if not delais:
+        return {'moyenne_heures': 0.0, 'p90_heures': 0.0, 'count': 0}
+    moyenne = round(sum(delais) / len(delais), 1)
+    p90 = round(_percentile(delais, 90), 1)
+    return {'moyenne_heures': moyenne, 'p90_heures': p90, 'count': len(delais)}
+
+
+def kpi_delai_approbation(company):
+    """NTCPQ48 — provider KPI fédéré (ARC40, ``core.platform.kpi_providers``) :
+    tuiles ``[{id, label, valeur, unite}]`` — délai moyen ET p90
+    d'approbation de remise (NTCPQ7), sur toute la société (pas de filtre —
+    le détail filtrable par période/approbateur vit dans
+    ``delai_approbation_stats``, appelable directement). Liste vide tant
+    qu'aucune étape n'a été décidée (jamais de tuile à 0 trompeuse)."""
+    stats = delai_approbation_stats(company)
+    if not stats['count']:
+        return []
+    return [
+        {'id': 'cpq_delai_moyen_approbation',
+         'label': "Délai moyen d'approbation de remise",
+         'valeur': stats['moyenne_heures'], 'unite': 'h'},
+        {'id': 'cpq_delai_p90_approbation',
+         'label': "Délai p90 d'approbation de remise",
+         'valeur': stats['p90_heures'], 'unite': 'h'},
+    ]
+
+
 def clauses_applicables(*, company, context):
     """NTCPQ11 — Clauses/CGV actives de la société qui s'appliquent au contexte.
 
