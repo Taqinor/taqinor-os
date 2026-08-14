@@ -130,6 +130,35 @@ class VenteComptoirViewSet(viewsets.ModelViewSet):
             raise ValidationError(str(exc))
         return Response(VenteComptoirSerializer(vente).data)
 
+    # ── NTRET12/13 — Promotions panier + coupon à code unique ───────────────
+
+    @action(detail=True, methods=['get'], url_path='promotions')
+    def promotions(self, request, pk=None):
+        """NTRET12 — aperçu des promotions actives applicables au panier
+        (lecture seule, aucun effet de bord)."""
+        vente = self.get_object()
+        remises = services.promotions_applicables(vente)
+        return Response({
+            'remises': [
+                {'regle_id': r.regle_id, 'libelle': r.libelle, 'montant': str(r.montant)}
+                for r in remises
+            ],
+            'total_remise': str(services.total_remises_promotions(vente)),
+        })
+
+    @action(detail=True, methods=['post'], url_path='coupon')
+    def coupon(self, request, pk=None):
+        """NTRET13 — Applique (consomme) un coupon à code unique saisi à
+        l'écran caisse."""
+        vente = self.get_object()
+        code = request.data.get('code')
+        try:
+            coupon, montant = services.appliquer_coupon(
+                vente=vente, code=code, user=request.user)
+        except services.CouponPosError as exc:
+            raise ValidationError(str(exc))
+        return Response({'code': coupon.code, 'montant_remise': str(montant)})
+
     # ── NTRET5 — Arrhes / acompte sur commande comptoir ─────────────────────
 
     @action(detail=True, methods=['post'], url_path='arrhes')

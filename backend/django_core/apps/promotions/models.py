@@ -80,3 +80,86 @@ class ReglexPromotion(TenantModel):
 
     def __str__(self):
         return self.nom
+
+
+# ── NTRET13 — Coupons à code unique ─────────────────────────────────────────
+# Distinct de ``compta.CodePromotion`` (code de campagne marketing générique,
+# sans traçabilité d'usage unique) : un CouponUnique porte une limite d'usage
+# stricte (1×/client ou N× global) et une remise liée à UNE règle
+# ``ReglexPromotion`` — objets distincts, cas d'usage distincts, ni l'un ni
+# l'autre ne remplace ou ne duplique l'autre.
+
+def default_coupon_code():
+    import secrets
+    import string
+    alphabet = string.ascii_uppercase + string.digits
+    return ''.join(secrets.choice(alphabet) for _ in range(8))
+
+
+class CouponUnique(TenantModel):
+    """Un coupon à code unique (NTRET13), saisissable à l'écran caisse."""
+
+    class ModeLimite(models.TextChoices):
+        UNIQUE_PAR_CLIENT = 'unique_par_client', '1 utilisation par client'
+        GLOBAL = 'global', 'N utilisations au total (global)'
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        related_name='coupons_uniques')
+    code = models.CharField(max_length=32, default=default_coupon_code)
+    regle = models.ForeignKey(
+        ReglexPromotion, on_delete=models.PROTECT, related_name='coupons')
+    mode_limite = models.CharField(
+        max_length=20, choices=ModeLimite.choices, default=ModeLimite.GLOBAL)
+    # Nombre d'utilisations autorisées en mode GLOBAL (ignoré en mode
+    # UNIQUE_PAR_CLIENT, où la limite est structurellement 1 par client —
+    # cf. CouponUtilisation.Meta.constraints).
+    limite_usage = models.PositiveIntegerField(default=1)
+    date_expiration = models.DateField(null=True, blank=True)
+    actif = models.BooleanField(default=True)
+    # Posés côté SERVEUR à la PREMIÈRE utilisation uniquement (traçabilité —
+    # jamais réécrits ensuite, même si le coupon est réutilisé par d'autres
+    # clients en mode global).
+    utilise_par = models.ForeignKey(
+        'crm.Client', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='coupons_utilises_en_premier')
+    utilise_le = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        verbose_name = 'Coupon à code unique'
+        verbose_name_plural = 'Coupons à code unique'
+        unique_together = [('company', 'code')]
+
+    def __str__(self):
+        return self.code
+
+
+class CouponUtilisation(TenantModel):
+    """Journal d'utilisation d'un coupon (NTRET13) — UNE ligne par
+    utilisation effective. Porte la contrainte structurelle « 1×/client »
+    des coupons en mode ``unique_par_client`` (jamais seulement applicative)."""
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        related_name='utilisations_coupon')
+    coupon = models.ForeignKey(
+        CouponUnique, on_delete=models.CASCADE, related_name='utilisations')
+    client = models.ForeignKey(
+        'crm.Client', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='utilisations_coupon')
+    utilise_le = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'Utilisation de coupon'
+        verbose_name_plural = 'Utilisations de coupon'
+        ordering = ['-utilise_le']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['coupon', 'client'],
+                condition=models.Q(client__isnull=False),
+                name='promotions_couponutilisation_unique_par_client',
+            ),
+        ]
+
+    def __str__(self):
+        return f'{self.coupon.code} — {self.client_id}'

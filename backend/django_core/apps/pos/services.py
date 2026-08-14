@@ -803,3 +803,25 @@ def total_remises_promotions(vente, *, maintenant=None):
     return sum(
         (r.montant for r in promotions_applicables(vente, maintenant=maintenant)),
         Decimal('0'))
+
+
+# ── NTRET13 — Coupons à code unique (apps.promotions) ───────────────────────
+
+class CouponPosError(Exception):
+    """Erreur métier sur l'application d'un coupon au comptoir (NTRET13)."""
+
+
+def appliquer_coupon(*, vente, code, user=None):
+    """NTRET13 — Applique un coupon à code unique saisi à l'écran caisse
+    (XPOS2) sur le panier de ``vente``. Import FONCTION-LOCAL vers
+    ``apps.promotions.services`` — jamais l'inverse. CONSOMME réellement le
+    coupon (contrairement à ``promotions_applicables``, best-effort) : un
+    coupon invalide/expiré/déjà utilisé remonte une erreur explicite à
+    l'appelant, jamais un échec muet."""
+    from apps.promotions.services import CouponError, consommer_coupon
+    try:
+        coupon, montant = consommer_coupon(
+            vente.company, code, vente.lignes.all(), client=vente.client)
+    except CouponError as exc:
+        raise CouponPosError(str(exc))
+    return coupon, montant
