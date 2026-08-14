@@ -130,3 +130,107 @@ class OperationGamme(models.Model):
 
     def __str__(self):
         return f'{self.gamme_id} · {self.ordre}. {self.libelle}'
+
+
+class OrdreFabrication(TenantModel):
+    """NTMFG3 — Ordre de Fabrication (OF) capacitaire, lié à une gamme et des
+    postes. ÉTEND `installations.OrdreAssemblage` (qui reste l'ordre
+    « kitting boutique » léger, sans poste ni temps par opération) — ne le
+    duplique JAMAIS. `kit_ordre_assemblage` est un lien OPTIONNEL (string-FK)
+    vers cet ordre existant pour les OF qui restent gérés côté kitting
+    boutique : dans ce cas le mouvement matière reste porté par lui (XMFG1,
+    jamais de double mouvement)."""
+
+    class Statut(models.TextChoices):
+        BROUILLON = 'brouillon', 'Brouillon'
+        PLANIFIE = 'planifie', 'Planifié'
+        LANCE = 'lance', 'Lancé'
+        TERMINE = 'termine', 'Terminé'
+        ANNULE = 'annule', 'Annulé'
+
+    produit = models.ForeignKey(
+        'stock.Produit', on_delete=models.PROTECT,
+        related_name='mrp_ordres_fabrication', verbose_name='Produit fabriqué')
+    quantite = models.DecimalField(
+        max_digits=12, decimal_places=2, default=1, verbose_name='Quantité')
+    gamme = models.ForeignKey(
+        Gamme, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='ordres_fabrication', verbose_name='Gamme')
+    statut = models.CharField(
+        max_length=10, choices=Statut.choices, default=Statut.BROUILLON,
+        verbose_name='Statut')
+    date_debut_planifiee = models.DateTimeField(
+        null=True, blank=True, verbose_name='Début prévu')
+    date_fin_planifiee = models.DateTimeField(
+        null=True, blank=True, verbose_name='Fin prévue')
+    priorite = models.PositiveSmallIntegerField(
+        default=3, verbose_name='Priorité')
+    # Lien optionnel string-FK vers un ordre d'assemblage kitting boutique
+    # EXISTANT (`installations.OrdreAssemblage`) — quand présent, XMFG1 porte
+    # le mouvement de stock, NTMFG4 ne mouvemente rien pour cet OF.
+    kit_ordre_assemblage = models.ForeignKey(
+        'installations.OrdreAssemblage', on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='mrp_ordres_fabrication',
+        verbose_name="Ordre d'assemblage kitting lié")
+
+    class Meta:
+        verbose_name = 'Ordre de fabrication'
+        verbose_name_plural = 'Ordres de fabrication'
+        ordering = ['-id']
+        indexes = [
+            models.Index(fields=['company', 'statut'],
+                         name='mrp_of_co_statut_idx'),
+            models.Index(fields=['company', 'produit'],
+                         name='mrp_of_co_produit_idx'),
+        ]
+
+    def __str__(self):
+        return f'OF-{self.id} · {self.produit_id} × {self.quantite}'
+
+
+class OperationOF(models.Model):
+    """NTMFG3 — opération d'un OF, instanciée depuis la gamme à la
+    confirmation de l'OF. Pas de `company` propre — scopée via
+    `ordre_fabrication.company`."""
+
+    class Statut(models.TextChoices):
+        A_FAIRE = 'a_faire', 'À faire'
+        EN_COURS = 'en_cours', 'En cours'
+        TERMINEE = 'terminee', 'Terminée'
+
+    ordre_fabrication = models.ForeignKey(
+        OrdreFabrication, on_delete=models.CASCADE, related_name='operations')
+    operation_gamme = models.ForeignKey(
+        OperationGamme, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='operations_of')
+    poste_charge = models.ForeignKey(
+        PosteDeCharge, on_delete=models.PROTECT, related_name='operations_of')
+    ordre = models.PositiveIntegerField(default=1, verbose_name='Ordre')
+    libelle = models.CharField(max_length=200, verbose_name='Libellé')
+    statut = models.CharField(
+        max_length=10, choices=Statut.choices, default=Statut.A_FAIRE)
+    # NTMFG7 — jour où l'opération est planifiée sur son poste (day-bucket
+    # scheduler à capacité finie, `services.planifier_of`).
+    date_planifiee = models.DateField(
+        null=True, blank=True, verbose_name='Jour planifié')
+    temps_reel_min = models.DecimalField(
+        max_digits=10, decimal_places=2, default=0,
+        verbose_name='Temps réel (min)')
+    quantite_bonne = models.DecimalField(
+        max_digits=12, decimal_places=2, default=0, verbose_name='Quantité bonne')
+    quantite_rebut = models.DecimalField(
+        max_digits=12, decimal_places=2, default=0, verbose_name='Quantité rebut')
+
+    class Meta:
+        verbose_name = "Opération d'OF"
+        verbose_name_plural = "Opérations d'OF"
+        ordering = ['ordre_fabrication_id', 'ordre', 'id']
+        indexes = [
+            models.Index(fields=['ordre_fabrication'],
+                         name='mrp_opof_of_idx'),
+            models.Index(fields=['poste_charge', 'date_planifiee'],
+                         name='mrp_opof_poste_date_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.ordre_fabrication_id} · {self.ordre}. {self.libelle}'

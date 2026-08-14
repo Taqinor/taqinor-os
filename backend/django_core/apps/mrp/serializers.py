@@ -1,6 +1,6 @@
 from rest_framework import serializers
 
-from .models import Gamme, OperationGamme, PosteDeCharge
+from .models import Gamme, OperationGamme, OperationOF, OrdreFabrication, PosteDeCharge
 
 
 class PosteDeChargeSerializer(serializers.ModelSerializer):
@@ -42,3 +42,30 @@ class GammeSerializer(serializers.ModelSerializer):
     def get_temps_total_prevu_1_unite(self, obj):
         from .services import temps_total_gamme
         return str(temps_total_gamme(obj, 1))
+
+
+class OperationOFSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = OperationOF
+        fields = [
+            'id', 'ordre_fabrication', 'operation_gamme', 'poste_charge',
+            'ordre', 'libelle', 'statut', 'date_planifiee', 'temps_reel_min',
+            'quantite_bonne', 'quantite_rebut',
+        ]
+        read_only_fields = ['id']
+
+
+class OrdreFabricationSerializer(serializers.ModelSerializer):
+    operations = OperationOFSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = OrdreFabrication
+        fields = [
+            'id', 'produit', 'quantite', 'gamme', 'statut',
+            'date_debut_planifiee', 'date_fin_planifiee', 'priorite',
+            'kit_ordre_assemblage', 'operations', 'created_at', 'updated_at',
+        ]
+        read_only_fields = [
+            'id', 'statut', 'date_debut_planifiee', 'date_fin_planifiee',
+            'created_at', 'updated_at',
+        ]
