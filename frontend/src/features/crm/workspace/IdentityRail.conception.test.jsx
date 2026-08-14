@@ -47,7 +47,11 @@ describe('PV22 — chip conception 3D (IdentityRail)', () => {
       />,
     )
     const chip = screen.getByTestId('lw-chip-conception')
-    expect(chip).toHaveTextContent('7,7 kWc conçus')
+    // VX75 — les kWc passent par le formateur partagé (2 décimales, virgule
+    // française), comme partout ailleurs où l'app affiche une puissance
+    // crête (variante AO, choix de devis, générateur). « 7,7 » était la
+    // concaténation brute d'avant.
+    expect(chip).toHaveTextContent('7,70 kWc conçus')
     const vignette = chip.querySelector('img')
     expect(vignette).toHaveAttribute('src', 'https://minio.test/toit-7.png')
     // Décorative : jamais annoncée deux fois par le lecteur d'écran.
@@ -63,7 +67,7 @@ describe('PV22 — chip conception 3D (IdentityRail)', () => {
       />,
     )
     const chip = screen.getByTestId('lw-chip-conception')
-    expect(chip).toHaveTextContent('12 kWc conçus')
+    expect(chip).toHaveTextContent('12,00 kWc conçus')
     expect(chip.querySelector('img')).toBeNull()
   })
 
