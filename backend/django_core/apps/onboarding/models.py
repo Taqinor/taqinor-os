@@ -44,6 +44,14 @@ class OnboardingChecklistItem(TenantModel):
     # Vide = item coché manuellement uniquement.
     event_key = models.CharField(max_length=60, blank=True, default='')
     actif = models.BooleanField(default=True)
+    # NTDMO28 — masquage PAR SOCIÉTÉ d'un item de catalogue GLOBAL non
+    # pertinent pour son activité (ex. masquer « Configurer le pompage
+    # agricole » pour une société 100 % résidentielle). Table de jonction
+    # additive : ne supprime JAMAIS l'item du catalogue global, il reste
+    # visible pour toutes les AUTRES sociétés qui ne l'ont pas masqué.
+    masque_pour = models.ManyToManyField(
+        'authentication.Company', blank=True,
+        related_name='onboarding_items_masques')
 
     class Meta:
         ordering = ['ordre', 'key']

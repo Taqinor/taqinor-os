@@ -145,6 +145,35 @@ def marquer_fait_manuel(company, user, item_id):
     return marquer_item_complete(company, user, item.key)
 
 
+# ── NTDMO28 — masquage/démasquage par société (jamais une suppression) ─────
+def masquer_item_pour_societe(company, item_id):
+    """Masque un item de catalogue GLOBAL pour ``company`` (idempotent) —
+    l'item reste intact pour toute autre société. Renvoie ``True`` si l'item
+    existe (global, actif), ``False`` sinon (aucun effet)."""
+    if company is None:
+        return False
+    from .models import OnboardingChecklistItem
+    item = OnboardingChecklistItem.objects.filter(
+        pk=item_id, company__isnull=True).first()
+    if item is None:
+        return False
+    item.masque_pour.add(company)
+    return True
+
+
+def demasquer_item_pour_societe(company, item_id):
+    """Réaffiche un item précédemment masqué pour ``company`` (idempotent)."""
+    if company is None:
+        return False
+    from .models import OnboardingChecklistItem
+    item = OnboardingChecklistItem.objects.filter(
+        pk=item_id, company__isnull=True).first()
+    if item is None:
+        return False
+    item.masque_pour.remove(company)
+    return True
+
+
 def completer_par_evenement(event_key, company, user):
     """Coche tous les items dont ``event_key`` correspond (NTDMO12)."""
     if not event_key or company is None or user is None:

@@ -28,9 +28,17 @@ def checklist_pour_utilisateur(company, user):
     jalon, ex. configurer_societe/import_clients/inviter_coequipier)."""
     from .models import OnboardingChecklistItem, OnboardingProgress
     role_nom = _role_nom(user)
+    # NTDMO28 — un item masqué PAR CETTE société (table de jonction
+    # ``masque_pour``) n'apparaît jamais dans SA checklist, mais reste
+    # inchangé pour toute autre société (jamais supprimé du catalogue).
+    masques = set()
+    if company is not None:
+        masques = set(
+            OnboardingChecklistItem.objects.filter(masque_pour=company)
+            .values_list('id', flat=True))
     items = [
         it for it in OnboardingChecklistItem.objects.filter(actif=True)
-        if it.concerne_role(role_nom)
+        if it.concerne_role(role_nom) and it.id not in masques
     ]
     progress = {
         p.item_id: p for p in OnboardingProgress.objects.filter(
@@ -92,6 +100,30 @@ def tours_pour_utilisateur(company, user):
             'vu_le': p.vu_le if p else None,
         })
     return resolved
+
+
+# ── NTDMO28 — items masquables (écran Paramètres → Démo & Onboarding) ──────
+def items_masquables_pour_societe(company):
+    """Retourne le catalogue GLOBAL (``company`` NULL) : liste de dicts
+    {id, key, libelle, masque (bool)} — ``masque`` = cette société a masqué
+    cet item (jamais une suppression, réversible). Utilisé par l'écran
+    Paramètres qui permet à un admin de masquer un item non pertinent pour
+    son activité (ex. « pompage agricole » pour une société 100 %
+    résidentielle)."""
+    from .models import OnboardingChecklistItem
+    items = (
+        OnboardingChecklistItem.objects
+        .filter(company__isnull=True)
+        .order_by('ordre', 'key'))
+    masques = set()
+    if company is not None:
+        masques = set(
+            items.filter(masque_pour=company).values_list('id', flat=True))
+    return [
+        {'id': it.id, 'key': it.key, 'libelle': it.libelle,
+         'masque': it.id in masques}
+        for it in items
+    ]
 
 
 # ── NTDMO22/23 — catalogue des tours (sans progression) pour le kit démo ───

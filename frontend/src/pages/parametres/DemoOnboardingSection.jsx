@@ -4,12 +4,13 @@
 // tels quels ici, aucune logique dupliquée) + le nouveau toggle global
 // « Activer les tours contextuels pour les nouveaux utilisateurs »
 // (`Company.tours_actifs`, additif, défaut True).
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import { Compass } from 'lucide-react'
+import api from '../../api/axios'
 import demoApi from '../../api/demoApi'
 import { fetchMe } from '../../features/auth/store/authSlice'
-import { Card, CardContent } from '../../ui'
+import { Card, CardContent, Spinner } from '../../ui'
 import { toast } from '../../ui/confirm'
 import { SectionTitle } from './peComponents'
 import PresentationModeToggle from './PresentationModeToggle'
@@ -68,6 +69,64 @@ function ToursActifsToggle() {
   )
 }
 
+// NTDMO28 — liste à cocher (admin) des items du catalogue GLOBAL, pour
+// masquer un item non pertinent pour l'activité de la société (ex. masquer
+// « Configurer le pompage agricole » pour une société 100 % résidentielle).
+// Jamais une suppression : l'item masqué reste visible pour toute autre
+// société. Table de jonction additive côté serveur (``masque_pour``).
+function ItemsChecklistActifsBlock() {
+  const [items, setItems] = useState(null)
+  const [busyId, setBusyId] = useState(null)
+
+  const load = () => {
+    api.get('/onboarding/items-masques/')
+      .then((r) => setItems(r.data))
+      .catch(() => setItems([]))
+  }
+  useEffect(() => { load() }, [])
+
+  const onToggle = async (item) => {
+    setBusyId(item.id)
+    try {
+      const action = item.masque ? 'demasquer' : 'masquer'
+      const r = await api.post(`/onboarding/items-masques/${item.id}/${action}/`)
+      setItems(r.data)
+    } catch {
+      toast.error('Impossible de changer ce réglage.')
+    } finally {
+      setBusyId(null)
+    }
+  }
+
+  if (!items) {
+    return (
+      <p className="flex items-center gap-2 text-sm text-muted-foreground">
+        <Spinner className="size-4 text-primary" /> Chargement…
+      </p>
+    )
+  }
+
+  return (
+    <ul className="flex flex-col gap-2">
+      {items.map((it) => (
+        <li key={it.id} className="flex items-center justify-between gap-3 rounded-lg border border-border p-2.5">
+          <span className="text-sm text-foreground">{it.libelle}</span>
+          <label className="flex cursor-pointer items-center gap-2 text-[12px] font-medium text-muted-foreground">
+            <input
+              type="checkbox"
+              checked={!it.masque}
+              disabled={busyId === it.id}
+              onChange={() => onToggle(it)}
+              aria-label={`Afficher « ${it.libelle} » dans les Premiers pas`}
+            />
+            {it.masque ? 'Masqué pour cette société' : 'Visible'}
+          </label>
+        </li>
+      ))}
+    </ul>
+  )
+}
+
 export default function DemoOnboardingSection() {
   return (
     <div className="flex flex-col gap-4">
@@ -85,6 +144,20 @@ export default function DemoOnboardingSection() {
             « Revoir » pour cet utilisateur.
           </p>
           <VisitesGuideesBlock />
+        </CardContent>
+      </Card>
+      <Card>
+        <CardContent className="pt-4 sm:pt-5">
+          <SectionTitle
+            label="Items de checklist onboarding actifs"
+            icon={<><path d="M9 6h11M9 12h11M9 18h11" /><path d="M4 6h.01M4 12h.01M4 18h.01" /></>}
+          />
+          <p className="mb-2 text-[12px] text-muted-foreground">
+            Masquez un item de la checklist « Premiers pas » non pertinent
+            pour votre activité — il reste disponible pour les autres
+            sociétés, jamais supprimé du catalogue.
+          </p>
+          <ItemsChecklistActifsBlock />
         </CardContent>
       </Card>
     </div>
