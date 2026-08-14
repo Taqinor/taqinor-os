@@ -42,7 +42,7 @@ class GammeSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ['id', 'created_at', 'updated_at']
 
-    def get_temps_total_prevu_1_unite(self, obj):
+    def get_temps_total_prevu_1_unite(self, obj) -> str:
         from .services import temps_total_gamme
         return str(temps_total_gamme(obj, 1))
 

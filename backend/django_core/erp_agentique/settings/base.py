@@ -768,6 +768,12 @@ SPECTACULAR_SETTINGS = {
             'apps.installations.models_comptage.SessionComptage.ClasseABC',
         'ClasseAbcPlanComptageTournantEnum':
             'apps.stock.models_wms.PlanComptageTournant.ClasseAbc',
+        # route / mer / air — NTLOG20. drf-spectacular signalait « multiple
+        # names for the same choice set » : le MÊME triplet de valeurs est
+        # porté par un autre champ du dépôt sous un nom différent. On fige
+        # donc le nom sur le jeu de `transport`, comme les entrées voisines.
+        'ModeAcheminementPhysiqueEnum':
+            'apps.transport.models.OrdreTransport.ModeAcheminementPhysique',
     },
 }
 

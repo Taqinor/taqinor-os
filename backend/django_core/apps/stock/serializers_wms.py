@@ -59,7 +59,7 @@ class VaguePickingSerializer(serializers.ModelSerializer):
             'updated_at',
         ]
 
-    def get_nb_lignes(self, obj):
+    def get_nb_lignes(self, obj) -> int:
         return obj.lignes.count()
 
 
@@ -99,7 +99,7 @@ class UniteLogistiqueSerializer(serializers.ModelSerializer):
             'updated_at',
         ]
 
-    def get_nb_enfants(self, obj):
+    def get_nb_enfants(self, obj) -> int:
         return obj.enfants.count()
 
 
@@ -191,7 +191,7 @@ class ExpeditionTransporteurSerializer(serializers.ModelSerializer):
             'updated_at',
         ]
 
-    def get_a_une_etiquette(self, obj):
+    def get_a_une_etiquette(self, obj) -> bool:
         # La CLÉ MinIO elle-même n'est jamais exposée (chemin de stockage
         # interne) : le client sait seulement qu'une étiquette existe.
         return bool(obj.etiquette_pdf_key)

@@ -126,10 +126,10 @@ class OrdreTransportSerializer(serializers.ModelSerializer):
             'numero', 'statut', 'created_by', 'created_at', 'updated_at',
         ]
 
-    def get_poids_total_kg(self, obj):
+    def get_poids_total_kg(self, obj) -> Decimal:
         return sum(
             (ligne.poids_kg for ligne in obj.lignes.all()), Decimal('0'))
 
-    def get_volume_total_m3(self, obj):
+    def get_volume_total_m3(self, obj) -> Decimal:
         return sum(
             (ligne.volume_m3 for ligne in obj.lignes.all()), Decimal('0'))
