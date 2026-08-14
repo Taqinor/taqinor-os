@@ -450,20 +450,20 @@ Warning|<global>|enum naming encountered a non-optimally resolvable collision fo
 Warning|<global>|enum naming encountered a non-optimally resolvable collision for fields named "type_contrat". The same name has been use
 Warning|<global>|enum naming encountered a non-optimally resolvable collision for fields named "type_facture". The same name has been use
 Warning|<global>|enum naming encountered a non-optimally resolvable collision for fields named "type_installation". The same name has bee
-Warning|<global>|operationId "api_django_core_saved_queries_run_create" has collisions [('/api/django/core/saved-queries/{id}/run/', 'pos
-Warning|<global>|operationId "api_django_identity_scim_v#_Groups_retrieve" has collisions [('/api/django/identity/scim/v#/{company_slug}/
-Warning|<global>|operationId "api_django_identity_scim_v#_Users_retrieve" has collisions [('/api/django/identity/scim/v#/{company_slug}/U
-Warning|<global>|operationId "api_django_kb_parcours_articles_list" has collisions [('/api/django/kb/parcours-articles/', 'get'), ('/api/
-Warning|<global>|operationId "api_django_portail_mes_devis_retrieve" has collisions [('/api/django/portail/mes-devis/', 'get'), ('/api/dj
-Warning|<global>|operationId "api_django_portail_mes_factures_retrieve" has collisions [('/api/django/portail/mes-factures/', 'get'), ('/
-Warning|<global>|operationId "api_django_sav_contrats_maintenance_rentabilite_retrieve" has collisions [('/api/django/sav/contrats-mainte
-Warning|<global>|operationId "api_v#_core_saved_queries_run_create" has collisions [('/api/v#/core/saved-queries/{id}/run/', 'post'), ('/
-Warning|<global>|operationId "api_v#_identity_scim_v#_Groups_retrieve" has collisions [('/api/v#/identity/scim/v#/{company_slug}/Groups',
-Warning|<global>|operationId "api_v#_identity_scim_v#_Users_retrieve" has collisions [('/api/v#/identity/scim/v#/{company_slug}/Users', '
-Warning|<global>|operationId "api_v#_kb_parcours_articles_list" has collisions [('/api/v#/kb/parcours-articles/', 'get'), ('/api/v#/kb/pa
-Warning|<global>|operationId "api_v#_portail_mes_devis_retrieve" has collisions [('/api/v#/portail/mes-devis/', 'get'), ('/api/v#/portail
-Warning|<global>|operationId "api_v#_portail_mes_factures_retrieve" has collisions [('/api/v#/portail/mes-factures/', 'get'), ('/api/v#/p
-Warning|<global>|operationId "api_v#_sav_contrats_maintenance_rentabilite_retrieve" has collisions [('/api/v#/sav/contrats-maintenance/{i
+Warning|<global>|operationId "django_core_saved_queries_run_create" has collisions [('/api/django/core/saved-queries/{id}/run/', 'post'),
+Warning|<global>|operationId "django_identity_scim_v#_Groups_retrieve" has collisions [('/api/django/identity/scim/v#/{company_slug}/Grou
+Warning|<global>|operationId "django_identity_scim_v#_Users_retrieve" has collisions [('/api/django/identity/scim/v#/{company_slug}/Users
+Warning|<global>|operationId "django_kb_parcours_articles_list" has collisions [('/api/django/kb/parcours-articles/', 'get'), ('/api/djan
+Warning|<global>|operationId "django_portail_mes_devis_retrieve" has collisions [('/api/django/portail/mes-devis/', 'get'), ('/api/django
+Warning|<global>|operationId "django_portail_mes_factures_retrieve" has collisions [('/api/django/portail/mes-factures/', 'get'), ('/api/
+Warning|<global>|operationId "django_sav_contrats_maintenance_rentabilite_retrieve" has collisions [('/api/django/sav/contrats-maintenanc
+Warning|<global>|operationId "v#_core_saved_queries_run_create" has collisions [('/api/v#/core/saved-queries/{id}/run/', 'post'), ('/api/
+Warning|<global>|operationId "v#_identity_scim_v#_Groups_retrieve" has collisions [('/api/v#/identity/scim/v#/{company_slug}/Groups', 'ge
+Warning|<global>|operationId "v#_identity_scim_v#_Users_retrieve" has collisions [('/api/v#/identity/scim/v#/{company_slug}/Users', 'get'
+Warning|<global>|operationId "v#_kb_parcours_articles_list" has collisions [('/api/v#/kb/parcours-articles/', 'get'), ('/api/v#/kb/parcou
+Warning|<global>|operationId "v#_portail_mes_devis_retrieve" has collisions [('/api/v#/portail/mes-devis/', 'get'), ('/api/v#/portail/mes
+Warning|<global>|operationId "v#_portail_mes_factures_retrieve" has collisions [('/api/v#/portail/mes-factures/', 'get'), ('/api/v#/porta
+Warning|<global>|operationId "v#_sav_contrats_maintenance_rentabilite_retrieve" has collisions [('/api/v#/sav/contrats-maintenance/{id}/r
 Warning|AbonnementAddOnLigneViewSet > AbonnementAddOnLigneSerializer|unable to resolve type hint for function "get_montant_periode". Consider using a type hint or @extend_schema_field. Defa
 Warning|AccidentTravailViewSet > AccidentTravailSerializer|unable to resolve type hint for function "get_employe_nom". Consider using a type hint or @extend_schema_field. Defaulti
 Warning|AccuseCharteViewSet > AccuseCharteSerializer|unable to resolve type hint for function "get_conducteur_nom". Consider using a type hint or @extend_schema_field. Defau
