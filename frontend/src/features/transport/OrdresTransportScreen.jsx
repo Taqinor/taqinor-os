@@ -7,6 +7,8 @@ import { Badge, Card, CardContent, CardHeader, CardTitle, Segmented, Tabs, TabsC
 import { ListShell } from '../../ui/module'
 import ComparateurTransporteurs from '../../pages/transport/ComparateurTransporteurs'
 import OrdreTransportTimeline from '../../pages/transport/OrdreTransportTimeline'
+// NTLOG25 — vue kanban par statut, alternative à la liste ci-dessous.
+import OrdresTransportKanban from '../../pages/transport/OrdresTransportKanban'
 
 /* ============================================================================
    NTLOG7/NTLOG8 — Écran `/transport/ordres` : liste des ordres de transport.
@@ -39,15 +41,23 @@ function unwrapList(res) {
   return Array.isArray(res.data) ? res.data : (res.data?.results ?? [])
 }
 
+const VUE_OPTIONS = [
+  { value: 'liste', label: 'Liste' },
+  { value: 'kanban', label: 'Kanban' },
+]
+
 export default function OrdresTransportScreen() {
   const [statutFilter, setStatutFilter] = useState('tous')
   const [selectedId, setSelectedId] = useState(null)
+  // NTLOG25 — toggle liste/kanban ; le kanban réutilise les mêmes `ordres`
+  // (et donc le même filtre `?statut=` optionnel) que la liste.
+  const [vue, setVue] = useState('liste')
 
   const params = useMemo(
     () => (statutFilter !== 'tous' ? { statut: statutFilter } : {}),
     [statutFilter],
   )
-  const { data: ordres, loading, error } = useResource(
+  const { data: ordres, loading, error, refetch } = useResource(
     () => api.get('/transport/ordres-transport/', { params }),
     params,
     { initialData: [], select: unwrapList },
@@ -98,27 +108,35 @@ export default function OrdresTransportScreen() {
 
   return (
     <div className="flex flex-col gap-4">
-      <ListShell
-        title="Ordres de transport"
-        subtitle="Enlèvement/livraison, inter-site, import/export — ordonnancement, comparateur d'affrètement et suivi."
-        columns={columns}
-        rows={ordres}
-        loading={loading}
-        error={error}
-        searchable
-        searchPlaceholder="Rechercher un numéro, un destinataire…"
-        exportName="ordres-transport"
-        emptyTitle="Aucun ordre de transport"
-        emptyDescription="Aucun ordre ne correspond à ces filtres."
-        onRowClick={(o) => setSelectedId(o.id)}
-      >
-        <Segmented
-          options={STATUT_FILTERS}
-          value={statutFilter}
-          onChange={setStatutFilter}
-          aria-label="Filtrer par statut"
-        />
-      </ListShell>
+      <div className="flex justify-end">
+        <Segmented options={VUE_OPTIONS} value={vue} onChange={setVue} aria-label="Choisir la vue" />
+      </div>
+
+      {vue === 'kanban' ? (
+        <OrdresTransportKanban ordres={ordres} onChanged={refetch} />
+      ) : (
+        <ListShell
+          title="Ordres de transport"
+          subtitle="Enlèvement/livraison, inter-site, import/export — ordonnancement, comparateur d'affrètement et suivi."
+          columns={columns}
+          rows={ordres}
+          loading={loading}
+          error={error}
+          searchable
+          searchPlaceholder="Rechercher un numéro, un destinataire…"
+          exportName="ordres-transport"
+          emptyTitle="Aucun ordre de transport"
+          emptyDescription="Aucun ordre ne correspond à ces filtres."
+          onRowClick={(o) => setSelectedId(o.id)}
+        >
+          <Segmented
+            options={STATUT_FILTERS}
+            value={statutFilter}
+            onChange={setStatutFilter}
+            aria-label="Filtrer par statut"
+          />
+        </ListShell>
+      )}
 
       {selected && (
         <Card>
