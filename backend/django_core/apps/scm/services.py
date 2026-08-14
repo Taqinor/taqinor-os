@@ -29,7 +29,23 @@ JOURS_PAR_MOIS = 30.0
 # NTSCM6 — niveau de service PAR DÉFAUT selon la classe ABC (NTSCM4), à la
 # création d'une PolitiqueStock UNIQUEMENT (un recalcul n'écrase jamais un
 # niveau déjà personnalisé par l'acheteur).
+# NTSCM33 — repli historique UNIQUEMENT : `recalculer_politiques_stock` lit
+# désormais ces défauts via `ParametresSCM.service_level_defaut_{a,b,c}_pct`
+# (mêmes valeurs) — voir `_service_level_par_classe_defaut`.
 SERVICE_LEVEL_PAR_CLASSE = {'A': Decimal('95'), 'B': Decimal('90'), 'C': Decimal('85')}
+
+
+def _service_level_par_classe_defaut(company):
+    """NTSCM33 — niveaux de service par défaut PAR CLASSE ABC, lus depuis
+    ``ParametresSCM`` (repli sur :data:`SERVICE_LEVEL_PAR_CLASSE` si la classe
+    est inconnue, ex. produit jamais classé)."""
+    p = parametres_scm(company)
+    return {
+        'A': p.service_level_defaut_a_pct,
+        'B': p.service_level_defaut_b_pct,
+        'C': p.service_level_defaut_c_pct,
+    }
+
 
 # Délai fournisseur (jours) utilisé quand aucun historique de livraison
 # n'est exploitable (produit sans fournisseur, ou fournisseur jamais livré).
@@ -226,11 +242,12 @@ def recalculer_politiques_stock(company):
     classes = dict(
         ClassificationABC.objects.filter(company=company)
         .values_list('produit_id', 'classe'))
+    service_level_par_classe = _service_level_par_classe_defaut(company)
 
     resultats = []
     for produit in produits:
         classe = classes.get(produit.id, 'C')
-        niveau_defaut = SERVICE_LEVEL_PAR_CLASSE.get(classe, Decimal('95'))
+        niveau_defaut = service_level_par_classe.get(classe, Decimal('95'))
 
         politique, created = PolitiqueStock.objects.get_or_create(
             company=company, produit=produit,
@@ -273,11 +290,12 @@ def avancer_statut_cycle(cycle, user, *, statut_cible=None):
     suivante (``cycle.prochain_statut()``), sinon ``ValueError`` (mappé 400
     côté vue) — c'est ce qui refuse explicitement un saut d'étape (ex.
     brouillon -> approuve directement). Sans argument, avance simplement à
-    l'étape suivante. Journalise la transition via
-    ``apps.records.services.log_field_change`` (primitive plateforme
-    réutilisée — jamais un nouveau modèle ``*Activity``, foundation app
-    exemptée de la frontière cross-app)."""
-    from apps.records.services import log_field_change
+    l'étape suivante. Journalise la transition via ``apps.audit.recorder.
+    record_field_change`` (NTSCM47 — entonnoir ARC16 : écrit l'``AuditLog``
+    ET la ligne de chatter générique en UN appel, foundation app exemptée de
+    la frontière cross-app — remplace l'appel chatter-seul ``records.
+    services.log_field_change`` d'origine, comportement chatter inchangé)."""
+    from apps.audit.recorder import record_field_change
 
     prochain = cycle.prochain_statut()
     if prochain is None:
@@ -291,7 +309,7 @@ def avancer_statut_cycle(cycle, user, *, statut_cible=None):
     ancien = cycle.statut
     cycle.statut = prochain
     cycle.save(update_fields=['statut'])
-    log_field_change(
+    record_field_change(
         cycle, 'statut', ancien, prochain, user=user,
         field_label='Statut du cycle S&OP', company=cycle.company)
 
@@ -315,6 +333,19 @@ def avancer_statut_cycle(cycle, user, *, statut_cible=None):
             import logging
             logging.getLogger(__name__).warning(
                 'avancer_statut_cycle: génération du compte-rendu S&OP '
+                'échouée (cycle %s)', cycle.id, exc_info=True)
+
+        # NTSCM39 — événement bus (core.events), best-effort : consommé par
+        # apps.publicapi (webhook sortant `scm.cycle_sop_cloture`), jamais un
+        # import direct scm -> publicapi (voir docstring du signal).
+        try:
+            from core.events import scm_cycle_sop_cloture
+            scm_cycle_sop_cloture.send(
+                sender='apps.scm.services', cycle=cycle, user=user)
+        except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+            import logging
+            logging.getLogger(__name__).warning(
+                'avancer_statut_cycle: émission scm_cycle_sop_cloture '
                 'échouée (cycle %s)', cycle.id, exc_info=True)
 
     return cycle
@@ -403,13 +434,16 @@ def calculer_offre_cycle(cycle):
 def reouvrir_cycle(cycle, user, *, motif=''):
     """NTSCM12 — réouverture ADMIN EXPLICITE d'un cycle (retour à
     ``brouillon``), journalisée. C'est le SEUL chemin de retour en arrière de
-    la machine à états (jamais via ``avancer_statut_cycle``)."""
-    from apps.records.services import log_field_change
+    la machine à états (jamais via ``avancer_statut_cycle``). NTSCM47 — action
+    SENSIBLE : ``apps.audit.recorder.record_field_change`` écrit à la fois
+    l'``AuditLog`` (acteur, ancien/nouveau statut, horodatage, consultable par
+    un Administrateur) ET la ligne de chatter (comportement inchangé)."""
+    from apps.audit.recorder import record_field_change
 
     ancien = cycle.statut
     cycle.statut = CyclePlanificationSOP.Statut.BROUILLON
     cycle.save(update_fields=['statut'])
-    log_field_change(
+    record_field_change(
         cycle, 'statut', ancien, CyclePlanificationSOP.Statut.BROUILLON,
         user=user, company=cycle.company,
         field_label=f'Réouverture admin ({motif or "sans motif précisé"})')
@@ -1032,3 +1066,149 @@ def creer_politiques_en_lot(produits, service_level_pct, company):
         ])
         resultats.append(politique)
     return resultats
+
+
+# ── NTSCM39 — webhook sortant sur rupture imminente détectée ────────────────
+
+def detecter_ruptures_imminentes_et_notifier(company):
+    """NTSCM39 — pour CHAQUE produit que ``selectors.tableau_bord_reappro``
+    (NTSCM7) classe ``rupture_imminente``, émet ``core.events.
+    scm_rupture_imminente_detectee`` (bus, best-effort PAR PRODUIT — un
+    accroc sur l'un n'empêche jamais les suivants). Appelée par la tâche beat
+    hebdomadaire ``tasks.recalculer_politiques_stock_hebdo`` (NTSCM35) —
+    JAMAIS à chaque lecture du tableau de bord (qui serait rejouée à chaque
+    page vue, spammant les webhooks abonnés).
+
+    Renvoie le nombre d'événements émis."""
+    from . import selectors
+
+    lignes = selectors.tableau_bord_reappro(company, statut='rupture_imminente')
+
+    nb_emis = 0
+    for ligne in lignes:
+        try:
+            from core.events import scm_rupture_imminente_detectee
+            scm_rupture_imminente_detectee.send(
+                sender='apps.scm.services', company=company,
+                produit_id=ligne['produit_id'], produit_nom=ligne['produit_nom'],
+                rupture_date=ligne['rupture_date'],
+                quantite_suggeree=ligne['quantite_suggeree'])
+            nb_emis += 1
+        except Exception:  # noqa: BLE001 — best-effort par produit
+            import logging
+            logging.getLogger(__name__).warning(
+                'detecter_ruptures_imminentes_et_notifier: émission échouée '
+                '(société %s, produit %s)', company.id, ligne['produit_id'],
+                exc_info=True)
+    return nb_emis
+
+
+# ── NTSCM40 — import CSV/XLSX des événements de demande (apps.dataimport) ───
+
+def _resoudre_produit_import(company, valeur):
+    """NTSCM40 — résout ``valeur`` (référence SKU OU nom, texte libre saisi
+    dans le fichier importé) en ``stock.Produit`` de la société, ou ``None``
+    si introuvable. LECTURE SEULE, résolution dynamique
+    (``django.apps.apps.get_model``) — même patron que le reste
+    d'``apps.scm`` (ex. ``recalculer_politiques_stock``) : aucun sélecteur
+    « résolution par SKU/nom » n'existe encore côté ``apps.stock`` (hors
+    périmètre de cette lane à créer)."""
+    from django.apps import apps as django_apps
+
+    Produit = django_apps.get_model('stock', 'Produit')
+    valeur = (valeur or '').strip()
+    if not valeur:
+        return None
+    return (
+        Produit.objects.filter(company=company, sku=valeur).first()
+        or Produit.objects.filter(company=company, nom__iexact=valeur).first()
+    )
+
+
+def _resoudre_categorie_import(company, valeur):
+    """NTSCM40 — résout ``valeur`` (nom, texte libre) en ``stock.Categorie``
+    de la société, ou ``None``. Même patron que
+    :func:`_resoudre_produit_import`."""
+    from django.apps import apps as django_apps
+
+    Categorie = django_apps.get_model('stock', 'Categorie')
+    valeur = (valeur or '').strip()
+    if not valeur:
+        return None
+    return Categorie.objects.filter(company=company, nom__iexact=valeur).first()
+
+
+def creer_evenement_demande_import(company, f):
+    """NTSCM40 — crée UN ``EvenementDemande`` (NTSCM3) depuis une ligne
+    d'import (``apps.dataimport``, ``ImportJob.target='scm_evenement_demande'``,
+    mode ``creer`` UNIQUEMENT — jamais de mise à jour en masse, pour ne
+    jamais écraser un impact déjà appliqué à des prévisions gelées).
+
+    ``f`` (dict de champs déjà mappés par ``apps.dataimport``) attend :
+    ``produit`` (SKU ou nom, optionnel), ``categorie`` (nom, optionnel),
+    ``date_debut``, ``date_fin``, ``impact_pct``, ``type_evenement``
+    (défaut ``'autre'`` si absent/inconnu), ``libelle``.
+
+    Renvoie ``('cree', None)`` ou ``('erreur', message)`` — même contrat que
+    ``apps.flotte.services.creer_vehicule_import``/``apps.contrats.services.
+    creer_contrat_import`` (patron XFLT22/ARC13), pour que
+    ``apps.dataimport.services._commit_raw`` le consomme sans code
+    spécifique."""
+    from datetime import date as _date
+
+    from .models import EvenementDemande
+
+    libelle = (f.get('libelle') or '').strip()
+    if not libelle:
+        return 'erreur', 'libelle manquant'
+
+    date_debut_raw = f.get('date_debut')
+    date_fin_raw = f.get('date_fin')
+    if not date_debut_raw or not date_fin_raw:
+        return 'erreur', 'date_debut/date_fin manquant(s)'
+
+    def _parse_date(raw):
+        if isinstance(raw, _date):
+            return raw
+        raw = str(raw).strip()
+        for fmt in ('%Y-%m-%d', '%d/%m/%Y', '%d-%m-%Y'):
+            try:
+                from datetime import datetime
+                return datetime.strptime(raw, fmt).date()
+            except ValueError:
+                continue
+        return None
+
+    date_debut = _parse_date(date_debut_raw)
+    date_fin = _parse_date(date_fin_raw)
+    if date_debut is None or date_fin is None:
+        return 'erreur', 'date_debut/date_fin invalide (format attendu AAAA-MM-JJ)'
+    if date_fin < date_debut:
+        return 'erreur', 'date_fin doit être postérieure ou égale à date_debut'
+
+    try:
+        impact_pct = Decimal(str(f.get('impact_pct') or '0'))
+    except Exception:  # noqa: BLE001 — valeur non convertible
+        return 'erreur', f'impact_pct invalide : {f.get("impact_pct")!r}'
+
+    type_evenement = (f.get('type_evenement') or '').strip().lower()
+    if type_evenement not in dict(EvenementDemande.TypeEvenement.choices):
+        type_evenement = EvenementDemande.TypeEvenement.AUTRE
+
+    produit = None
+    if f.get('produit'):
+        produit = _resoudre_produit_import(company, f['produit'])
+        if produit is None:
+            return 'erreur', f'produit introuvable : {f["produit"]!r}'
+
+    categorie = None
+    if f.get('categorie'):
+        categorie = _resoudre_categorie_import(company, f['categorie'])
+        if categorie is None:
+            return 'erreur', f'catégorie introuvable : {f["categorie"]!r}'
+
+    EvenementDemande.objects.create(
+        company=company, produit=produit, categorie=categorie,
+        date_debut=date_debut, date_fin=date_fin, impact_pct=impact_pct,
+        libelle=libelle, type_evenement=type_evenement)
+    return 'cree', None

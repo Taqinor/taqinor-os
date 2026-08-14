@@ -33,13 +33,16 @@ class Ntapi20OpenApiSchemaTests(TestCase):
         # Les ressources montées sur le routeur lecture seule, dérivées de
         # `public_urls.py` lui-même — jamais une liste dupliquée à la main qui
         # pourrait diverger silencieusement. NTAPI16 ajoute `public-job` (suivi
-        # des jobs bulk, ReadOnlyModelViewSet) aux 5 ressources métier : on
-        # fige l'ENSEMBLE exact (plus fort qu'un simple compte), donc un
-        # 7ᵉ enregistrement resterait un choix délibéré, pas un accident.
+        # des jobs bulk, ReadOnlyModelViewSet) aux 5 ressources métier ;
+        # NTSCM38 ajoute 2 ressources de planification supply chain
+        # (`read:scm`), pour 8 au total : on fige l'ENSEMBLE exact (plus fort
+        # qu'un simple compte), donc un 9ᵉ enregistrement resterait un choix
+        # délibéré, pas un accident.
         registered_basenames = {r[2] for r in public_router.registry}
         self.assertEqual(registered_basenames, {
             'public-lead', 'public-devis', 'public-facture',
             'public-chantier', 'public-produit', 'public-job',
+            'public-scm-prevision-demande', 'public-scm-politique-stock',
         })
         for prefix, _viewset, _basename in public_router.registry:
             list_path = f'/api/public/{prefix}/'
@@ -64,11 +67,13 @@ class Ntapi20OpenApiSchemaTests(TestCase):
         # 5 ressources × 2 (list+detail) + 3 écritures + 6 bulk (NTAPI14/15/
         # 16/43/30 : exports, imports, jobs list/detail, jobs/<id>/relancer,
         # exports/<entite>.csv) + 1 lecture simple (NTADM42 : statut de
-        # licence) = 20 opérations, sur autant de chemins distincts — jamais
-        # un chemin fantôme ajouté par erreur.
+        # licence) = 20 opérations ; NTSCM38 ajoute 2 ressources supply chain
+        # × 2 (list+detail) + 1 lecture simple (tableau-bord-reappro) = 5,
+        # pour 25 au total, sur autant de chemins distincts — jamais un
+        # chemin fantôme ajouté par erreur.
         schema = build_openapi_schema()
         nb_operations = sum(len(ops) for ops in schema['paths'].values())
-        self.assertEqual(nb_operations, 20)
+        self.assertEqual(nb_operations, 25)
 
     def test_covers_licence_statut_ntadm42(self):
         schema = build_openapi_schema()

@@ -7,7 +7,9 @@ from .views import (
     ClassificationABCViewSet, CyclePlanificationSOPViewSet, EvenementDemandeViewSet,
     PolitiqueStockViewSet, PrevisionDemandeViewSet,
     anomalies_demande_view, creer_brouillons_bcf_reappro_view,
-    detecter_anomalies_demande_view, parametres_sop_view, precision_previsions_view,
+    detecter_anomalies_demande_view, export_ecarts_prevision_view,
+    export_suggestions_achat_groupe_view, export_suggestions_transfert_view,
+    parametres_scm_view, parametres_sop_view, precision_previsions_view,
     proposer_allocation_penurie_view, simuler_rupture_view,
     suggestions_achat_groupe_view, suggestions_transfert_view,
     tableau_bord_executif_view, tableau_bord_reappro_view,
@@ -38,6 +40,10 @@ urlpatterns = [
     path(
         'suggestions-achat-groupe/', suggestions_achat_groupe_view,
         name='scm-suggestions-achat-groupe'),
+    # NTSCM41 — export .xlsx des suggestions d'achat groupées.
+    path(
+        'suggestions-achat-groupe/export/', export_suggestions_achat_groupe_view,
+        name='scm-suggestions-achat-groupe-export'),
     # NTSCM18/19 — simulation « et si… » et allocation en pénurie, par produit
     # (Produit appartient à `apps.stock`, pas `apps.scm` : vue-fonction avec
     # `produit_id` en paramètre d'URL, pas un ViewSet).
@@ -51,10 +57,18 @@ urlpatterns = [
     path(
         'suggestions-transfert/', suggestions_transfert_view,
         name='scm-suggestions-transfert'),
+    # NTSCM41 — export .xlsx des suggestions de transfert inter-sites.
+    path(
+        'suggestions-transfert/export/', export_suggestions_transfert_view,
+        name='scm-suggestions-transfert-export'),
     # NTSCM24 — précision de prévision auto-mesurée (MAPE).
     path(
         'precision-previsions/', precision_previsions_view,
         name='scm-precision-previsions'),
+    # NTSCM32 — export .xlsx du rapport « Écarts de prévision ».
+    path(
+        'precision-previsions/export/', export_ecarts_prevision_view,
+        name='scm-precision-previsions-export'),
     # NTSCM28 — tableau de bord SCM exécutif (KPI de synthèse).
     path('tableau-bord/', tableau_bord_executif_view, name='scm-tableau-bord'),
     # NTSCM25 — anomalies de demande (pic/creux inattendu).
@@ -65,5 +79,7 @@ urlpatterns = [
         name='scm-anomalies-demande-detecter'),
     # NTSCM22 — réglages opt-in du cycle S&OP automatique (singleton société).
     path('parametres-sop/', parametres_sop_view, name='scm-parametres-sop'),
+    # NTSCM33 — écran de réglages SCM par société (horizon/niveaux/seuils).
+    path('parametres/', parametres_scm_view, name='scm-parametres'),
     path('', include(router.urls)),
 ]

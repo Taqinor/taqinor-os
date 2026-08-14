@@ -4,7 +4,13 @@ Accès réservé Responsable/Administrateur (données de planification achat —
 même palier que les modules de conformité/planification voisins, ex.
 ``apps.fiscal``) : ``get_permissions`` renvoie ``[IsResponsableOrAdmin()]``
 sur chaque viewset, société toujours scopée par ``CompanyScopedModelViewSet``.
-"""
+
+NTSCM37 — quatre viewsets (prévisions/événements, politiques de stock, cycles
+S&OP) affinent CETTE garde avec les permissions dédiées d'``apps.scm.
+permissions`` (``HasPermissionOrLegacy`` — repli sur ce MÊME palier
+Responsable/Admin pour un compte hérité sans rôle fin, donc AUCUNE régression
+pour les comptes existants). ``ClassificationABCViewSet`` reste sur le
+palier générique (aucun code dédié demandé par le plan)."""
 from decimal import Decimal
 
 from drf_spectacular.types import OpenApiTypes
@@ -20,11 +26,20 @@ from .models import (
     ClassificationABC, CyclePlanificationSOP, EvenementDemande, LigneDemandeSOP,
     PolitiqueStock, PrevisionDemande,
 )
+from .permissions import (
+    IsScmPolitiquesStockEditer, IsScmPrevisionsEditer, IsScmPrevisionsVoir,
+    IsScmSopAnimer, IsScmSopVoir,
+)
 from .serializers import (
     ClassificationABCSerializer, CyclePlanificationSOPSerializer,
     EvenementDemandeSerializer, LigneDemandeSOPSerializer, LigneOffreSOPSerializer,
     PolitiqueStockSerializer, PrevisionDemandeSerializer,
 )
+
+# NTSCM37 — actions en LECTURE d'un ModelViewSet standard (les autres,
+# create/update/partial_update/destroy + toute @action d'écriture, sont
+# considérées ÉCRITURE).
+_ACTIONS_LECTURE = frozenset({'list', 'retrieve'})
 
 
 class PrevisionDemandeViewSet(CompanyScopedModelViewSet):
@@ -35,7 +50,10 @@ class PrevisionDemandeViewSet(CompanyScopedModelViewSet):
     serializer_class = PrevisionDemandeSerializer
 
     def get_permissions(self):
-        return [IsResponsableOrAdmin()]
+        # NTSCM37 — `generer` (@action POST) est une ÉCRITURE.
+        if self.action in _ACTIONS_LECTURE:
+            return [IsScmPrevisionsVoir()]
+        return [IsScmPrevisionsEditer()]
 
     def get_queryset(self):
         # ``DjangoFilterBackend`` n'est pas monté dans ce projet (défaut
@@ -66,7 +84,7 @@ class PrevisionDemandeViewSet(CompanyScopedModelViewSet):
         de modèle)."""
         from apps.stock.selectors import get_produit_scoped
 
-        from . import services
+        from . import selectors, services
 
         produit_id = request.data.get('produit_id')
         if not produit_id:
@@ -75,7 +93,12 @@ class PrevisionDemandeViewSet(CompanyScopedModelViewSet):
         if produit is None:
             return Response({'produit_id': 'Produit introuvable.'}, status=404)
 
-        horizon_mois = int(request.data.get('horizon_mois') or 3)
+        # NTSCM33 — repli sur l'horizon par défaut de la société
+        # (`ParametresSCM.horizon_prevision_mois_defaut`) quand non précisé.
+        horizon_mois = request.data.get('horizon_mois')
+        horizon_mois = (
+            int(horizon_mois) if horizon_mois
+            else selectors.parametres(request.user.company).horizon_prevision_mois_defaut)
         segment = request.data.get('segment') or ''
         previsions = services.generer_previsions(
             produit, horizon_mois, request.user.company,
@@ -94,7 +117,11 @@ class EvenementDemandeViewSet(CompanyScopedModelViewSet):
     filterset_fields = ['produit', 'categorie', 'type_evenement']
 
     def get_permissions(self):
-        return [IsResponsableOrAdmin()]
+        # NTSCM37 — les événements de demande alimentent NTSCM2/3 : mêmes
+        # codes que les prévisions (même écran, même acheteur).
+        if self.action in _ACTIONS_LECTURE:
+            return [IsScmPrevisionsVoir()]
+        return [IsScmPrevisionsEditer()]
 
 
 class ClassificationABCViewSet(CompanyScopedModelViewSet):
@@ -135,7 +162,60 @@ class PolitiqueStockViewSet(CompanyScopedModelViewSet):
     filterset_fields = ['classe_abc']
 
     def get_permissions(self):
-        return [IsResponsableOrAdmin()]
+        # NTSCM37 — lecture (liste/détail/fiche PDF/historique NTSCM44) reste
+        # au palier générique historique (aucun code « politiques_stock.voir »
+        # au plan) ; toute écriture (create/update/destroy + recalculer/
+        # creer-en-lot) exige `scm_politiques_stock_editer`.
+        if self.action in _ACTIONS_LECTURE or self.action in ('fiche_pdf', 'historique'):
+            return [IsResponsableOrAdmin()]
+        return [IsScmPolitiquesStockEditer()]
+
+    # NTSCM44 — champs dont chaque révision journalise une entrée de chatter
+    # automatique (ancienne/nouvelle valeur, horodatée + utilisateur).
+    _CHAMPS_JOURNALISES = [
+        ('service_level_pct', 'Niveau de service (%)'),
+        ('stock_securite_manuel', 'Stock de sécurité (override manuel)'),
+        ('stock_min', 'Stock min'),
+        ('stock_max', 'Stock max'),
+    ]
+
+    def perform_update(self, serializer):
+        """NTSCM44/47 — journalise chaque champ RÉELLEMENT modifié par cette
+        écriture (jamais une entrée pour un champ envoyé mais identique à sa
+        valeur actuelle) via ``apps.audit.recorder.record_field_change``
+        (NTSCM47 — entonnoir ARC16 : écrit l'``AuditLog`` — acteur,
+        ancien/nouveau, horodatage, consultable par un Administrateur — ET la
+        ligne de chatter ``records.Activity`` en UN appel, même mécanisme
+        générique que ``crm.LeadActivity``). ``stock_securite_manuel`` est
+        l'action SENSIBLE explicitement visée par NTSCM47 ; les 3 autres
+        champs suivis (NTSCM44) en bénéficient de la même façon."""
+        from apps.audit.recorder import record_field_change
+
+        instance = serializer.instance
+        avant = {
+            field: getattr(instance, field) for field, _ in self._CHAMPS_JOURNALISES
+        }
+        politique = serializer.save()
+        for field, label in self._CHAMPS_JOURNALISES:
+            ancien = avant[field]
+            nouveau = getattr(politique, field)
+            if ancien != nouveau:
+                record_field_change(
+                    politique, field, ancien, nouveau,
+                    user=self.request.user, field_label=label,
+                    company=politique.company)
+
+    @action(detail=True, methods=['get'], url_path='historique')
+    def historique(self, request, pk=None):
+        """NTSCM44 — fil d'activité de la politique de stock (chatter
+        générique ``records.Activity``, plus récent d'abord) — même patron
+        que ``CyclePlanificationSOPViewSet.historique`` (NTSCM12)."""
+        from apps.records.serializers import ChatterActivitySerializer
+        from apps.records.services import chatter_qs
+
+        politique = self.get_object()
+        entries = chatter_qs(politique, request.user.company)
+        return Response(ChatterActivitySerializer(entries, many=True).data)
 
     @action(detail=False, methods=['post'], url_path='recalculer')
     def recalculer(self, request):
@@ -215,8 +295,22 @@ class CyclePlanificationSOPViewSet(CompanyScopedModelViewSet):
     serializer_class = CyclePlanificationSOPSerializer
     filterset_fields = ['statut']
 
+    # NTSCM37 — LECTURE seule (liste/détail + sous-ressources en GET) exige
+    # `scm_sop_voir` ; TOUT le reste — création, édition, et les actions qui
+    # « animent » le cycle (avancer/ajuster/calculer/réouvrir) — exige
+    # `scm_sop_animer` (réservé Administrateur/Directeur par défaut, voir
+    # `apps.roles.models.RESPONSABLE_PERMISSIONS`). `reouvrir`/
+    # `impact_financier` gardent EN PLUS leur vérification manuelle
+    # `IsAdminRole` existante (inchangée).
+    _ACTIONS_LECTURE_SOP = _ACTIONS_LECTURE | {
+        'historique', 'lignes_demande', 'ecarts', 'impact_financier',
+        'compte_rendu',
+    }
+
     def get_permissions(self):
-        return [IsResponsableOrAdmin()]
+        if self.action in self._ACTIONS_LECTURE_SOP:
+            return [IsScmSopVoir()]
+        return [IsScmSopAnimer()]
 
     @action(detail=True, methods=['post'], url_path='avancer-statut')
     def avancer_statut(self, request, pk=None):
@@ -371,6 +465,7 @@ class CyclePlanificationSOPViewSet(CompanyScopedModelViewSet):
 @extend_schema(responses=inline_serializer('ScmTableauBordReapproLigne', {
     'produit_id': serializers.IntegerField(),
     'produit_nom': serializers.CharField(),
+    'politique_id': serializers.IntegerField(),
     'classe_abc': serializers.CharField(),
     'stock_actuel': serializers.IntegerField(),
     'point_commande': serializers.CharField(),
@@ -482,6 +577,51 @@ def suggestions_achat_groupe_view(request):
     return Response(services.suggerer_achats_groupes(request.user.company))
 
 
+@api_view(['GET'])
+@permission_classes([IsResponsableOrAdmin])
+def export_suggestions_achat_groupe_view(request):
+    """NTSCM41 — ``GET /api/django/scm/suggestions-achat-groupe/export/`` :
+    export .xlsx des suggestions d'achat groupées (une ligne par produit,
+    groupée par fournisseur) — bouton d'export sur ``/scm/reappro``."""
+    from apps.records.xlsx import build_xlsx_response
+
+    from . import services
+
+    groupes = services.suggerer_achats_groupes(request.user.company)
+
+    headers = [
+        'Fournisseur', 'Produit', 'Besoin net', 'Décision', 'Quantité',
+        'Prix unitaire', 'Coût total', 'Justification',
+    ]
+    rows = []
+    for groupe in groupes:
+        for ligne in groupe['lignes']:
+            if ligne['decision'] == 'sous_moq':
+                option_moq = next(
+                    (o for o in ligne['options'] if o['action'] == 'commander_moq'),
+                    None)
+                rows.append([
+                    groupe['fournisseur_nom'], ligne['produit_nom'],
+                    ligne['besoin_net'], 'Sous le MOQ',
+                    option_moq['quantite'] if option_moq else '',
+                    option_moq['prix_unitaire'] if option_moq else '',
+                    '',
+                    f"Besoin sous le MOQ ({ligne['moq']}) — attendre ou "
+                    'commander le MOQ (surstock).',
+                ])
+            else:
+                rows.append([
+                    groupe['fournisseur_nom'], ligne['produit_nom'],
+                    ligne['besoin_net'], 'Commander', ligne['quantite'],
+                    ligne['prix_unitaire'], ligne['cout_total'],
+                    'Écart offre/demande couvert au coût total le plus bas.',
+                ])
+
+    return build_xlsx_response(
+        'suggestions-achat-groupe.xlsx', headers, rows,
+        sheet_title='Suggestions achat groupé')
+
+
 # ── NTSCM18 — simulation « et si… » de rupture (lecture seule) ──────────────
 
 @extend_schema(request=inline_serializer('ScmSimulerRuptureRequest', {
@@ -564,6 +704,34 @@ def suggestions_transfert_view(request):
     return Response(selectors.suggerer_transferts_inter_sites(request.user.company))
 
 
+@api_view(['GET'])
+@permission_classes([IsResponsableOrAdmin])
+def export_suggestions_transfert_view(request):
+    """NTSCM41 — ``GET /api/django/scm/suggestions-transfert/export/`` :
+    export .xlsx des suggestions de transfert inter-sites — bouton d'export
+    sur ``/scm/transferts-suggeres``."""
+    from apps.records.xlsx import build_xlsx_response
+
+    from . import selectors, services
+
+    lignes = selectors.suggerer_transferts_inter_sites(request.user.company)
+
+    headers = [
+        'Produit', 'Dépôt source', 'Dépôt destination', 'Quantité suggérée',
+        'Justification',
+    ]
+    rows = [[
+        ligne['produit_nom'], ligne['emplacement_source_nom'],
+        ligne['emplacement_destination_nom'],
+        services._fmt_dec(ligne['quantite_suggeree']),
+        'Surstock projeté au dépôt source, déficit projeté au dépôt destination.',
+    ] for ligne in lignes]
+
+    return build_xlsx_response(
+        'suggestions-transfert.xlsx', headers, rows,
+        sheet_title='Suggestions de transfert')
+
+
 # ── NTSCM24 — précision de prévision auto-mesurée (MAPE) ────────────────────
 
 @extend_schema(responses=inline_serializer('ScmPrecisionPrevisions', {
@@ -589,6 +757,56 @@ def precision_previsions_view(request):
     fenetre_mois = int(request.query_params.get('fenetre_mois') or 6)
     return Response(selectors.precision_prevision(
         request.user.company, produit=produit, fenetre_mois=fenetre_mois))
+
+
+# ── NTSCM32 — export « Écarts de prévision » (.xlsx) ────────────────────────
+
+@api_view(['GET'])
+@permission_classes([IsResponsableOrAdmin])
+def export_ecarts_prevision_view(request):
+    """NTSCM32 — ``GET /api/django/scm/precision-previsions/export/`` :
+    export .xlsx du rapport « Écarts de prévision » (NTSCM24 réutilisé) —
+    une ligne par produit (prévision, réel, écart absolu, écart %) + un total
+    en pied de tableau. ``?fenetre_mois=&produit=``."""
+    from apps.records.xlsx import build_xlsx_response
+    from apps.stock.selectors import get_produit_scoped
+
+    from . import selectors, services
+
+    produit = None
+    produit_id = request.query_params.get('produit')
+    if produit_id:
+        produit = get_produit_scoped(request.user.company, produit_id)
+        if produit is None:
+            return Response({'produit': 'Produit introuvable.'}, status=404)
+    fenetre_mois = int(request.query_params.get('fenetre_mois') or 6)
+
+    lignes = selectors.ecarts_prevision(
+        request.user.company, fenetre_mois=fenetre_mois, produit=produit)
+
+    headers = [
+        'Produit', 'Prévision totale', 'Réel total', 'Écart absolu', 'Écart %']
+    rows = [[
+        ligne['produit_nom'],
+        services._fmt_dec(ligne['quantite_prevue_totale']),
+        services._fmt_dec(ligne['quantite_reelle_totale']),
+        services._fmt_dec(ligne['ecart_absolu']),
+        (f"{ligne['ecart_pct']}%" if ligne['ecart_pct'] is not None else '—'),
+    ] for ligne in lignes]
+
+    total_prevu = sum((ligne['quantite_prevue_totale'] for ligne in lignes), Decimal('0'))
+    total_reel = sum((ligne['quantite_reelle_totale'] for ligne in lignes), Decimal('0'))
+    total_ecart = total_reel - total_prevu
+    total_ecart_pct = (
+        f"{(total_ecart / total_reel * 100).quantize(Decimal('0.01'))}%"
+        if total_reel else '—')
+    rows.append([
+        'TOTAL', services._fmt_dec(total_prevu), services._fmt_dec(total_reel),
+        services._fmt_dec(total_ecart), total_ecart_pct,
+    ])
+
+    return build_xlsx_response(
+        'ecarts-prevision.xlsx', headers, rows, sheet_title='Écarts de prévision')
 
 
 # ── NTSCM28 — tableau de bord SCM exécutif (KPI de synthèse) ────────────────
@@ -705,3 +923,61 @@ def parametres_sop_view(request):
         'animateur_sop_nom': (
             parametres.animateur_sop.username if parametres.animateur_sop_id else None),
     })
+
+
+# ── NTSCM33 — écran de réglages SCM par société (horizon/niveaux/seuils) ────
+
+_PARAMETRES_SCM_FIELDS = [
+    'horizon_prevision_mois_defaut', 'service_level_defaut_a_pct',
+    'service_level_defaut_b_pct', 'service_level_defaut_c_pct',
+    'seuil_ecart_delai_pct', 'seuil_alerte_score_fournisseur_pts',
+    'seuil_alerte_ecart_financier_pct', 'retention_previsions_mois',
+    # NTSCM45 — seuil d'alerte MAPE (notification ciblée écart de prévision).
+    'seuil_alerte_mape_pct',
+]
+
+
+def _serialize_parametres_scm(parametres):
+    return {field: str(getattr(parametres, field)) for field in _PARAMETRES_SCM_FIELDS}
+
+
+# `request=None` : PATCH ad-hoc (sous-ensemble de `_PARAMETRES_SCM_FIELDS`),
+# même motif que `parametres_sop_view` ci-dessus (PACT7).
+@extend_schema(request=None, responses=inline_serializer(
+    'ScmParametresResponse',
+    {field: serializers.CharField() for field in _PARAMETRES_SCM_FIELDS}))
+@api_view(['GET', 'PATCH'])
+@permission_classes([IsResponsableOrAdmin])
+def parametres_scm_view(request):
+    """NTSCM33 — ``GET``/``PATCH /api/django/scm/parametres/`` : réglages SCM
+    par société (horizon de prévision par défaut, niveaux de service par
+    défaut par classe ABC, seuils d'alerte) — singleton créé paresseusement
+    (``services.parametres_scm``). Distinct de ``scm/parametres-sop/``
+    (NTSCM22, cycle S&OP automatique — reste séparé pour ne rien changer à
+    son contrat existant), même modèle ``ParametresSCM``."""
+    from . import services
+
+    parametres = services.parametres_scm(request.user.company)
+
+    if request.method == 'PATCH':
+        champs_modifies = []
+        for field in _PARAMETRES_SCM_FIELDS:
+            if field not in request.data:
+                continue
+            valeur = request.data.get(field)
+            if field.endswith('_mois') or field.endswith('_mois_defaut'):
+                try:
+                    valeur = int(valeur)
+                except (TypeError, ValueError):
+                    return Response({field: 'Nombre entier requis.'}, status=400)
+            else:
+                try:
+                    valeur = Decimal(str(valeur))
+                except Exception:  # noqa: BLE001 — valeur non convertible
+                    return Response({field: 'Nombre requis.'}, status=400)
+            setattr(parametres, field, valeur)
+            champs_modifies.append(field)
+        if champs_modifies:
+            parametres.save(update_fields=champs_modifies + ['updated_at'])
+
+    return Response(_serialize_parametres_scm(parametres))

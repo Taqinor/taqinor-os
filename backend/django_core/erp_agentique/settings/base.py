@@ -928,6 +928,11 @@ CELERY_TASK_ROUTES = {
     # et partage la file des taches interactives.
     'scm.generer_previsions_mensuelles': {'queue': 'scheduled'},
     'scm.ouvrir_cycle_sop_mensuel': {'queue': 'scheduled'},
+    # NTSCM35/36 — voir le commentaire ci-dessus (chaque tache du
+    # beat_schedule DOIT etre routee explicitement vers `scheduled`).
+    'scm.recalculer_politiques_stock_hebdo': {'queue': 'scheduled'},
+    'scm.purger_donnees_scm_anciennes': {'queue': 'scheduled'},
+    'scm.notifier_ecarts_prevision_importants': {'queue': 'scheduled'},
     'compta.recalculer_alerte_rupture': {'queue': 'scheduled'},
     'compta.relances_tresorerie_du_jour': {'queue': 'scheduled'},
     'ventes.expire_stale_devis': {'queue': 'scheduled'},
