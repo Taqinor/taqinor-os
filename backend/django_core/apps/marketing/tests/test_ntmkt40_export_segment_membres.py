@@ -33,7 +33,12 @@ class ExportMembresSegmentXlsxTests(TenantAPITestCase):
         self.assertIn(res.status_code, (401, 403))
 
     def test_nombre_de_lignes_egal_au_compte_de_previsualisation(self):
-        preview = self.client_as().get(
+        # `previsualiser` vit sur `SegmentMarketingViewSet` (apps.compta,
+        # `_ComptaBaseViewSet` : accès Responsable/Admin uniquement, cf.
+        # apps/marketing/tests/test_xmkt6_segments_marketing.py qui utilise
+        # déjà un rôle 'responsable') — l'export XLSX, lui, n'exige que
+        # IsAuthenticated (`export_membres_segment_xlsx_view`).
+        preview = self.client_as(role='responsable').get(
             f'/api/django/marketing/segments-marketing/{self.segment.id}/previsualiser/')
         self.assertEqual(preview.status_code, 200)
         compte_affiche = preview.json()['count']

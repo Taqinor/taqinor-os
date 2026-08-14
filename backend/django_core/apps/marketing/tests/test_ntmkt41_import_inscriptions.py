@@ -81,10 +81,16 @@ class ImporterInscriptionsEndpointTests(TenantAPITestCase):
             date_debut=_date_debut())
 
     def _upload(self, contenu, user=None):
+        # `importer_inscriptions_evenement_view` exige explicitement
+        # IsResponsableOrAdmin (apps/marketing/views.py) — un utilisateur
+        # 'normal' (le défaut de TenantAPITestCase) reçoit 403 avant même
+        # d'atteindre la vue.
         from django.core.files.uploadedfile import SimpleUploadedFile
         fichier = SimpleUploadedFile(
             'inscrits.csv', contenu, content_type='text/csv')
-        return self.client_as(user=user).post(
+        client = self.client_as(user=user) if user is not None \
+            else self.client_as(role='responsable')
+        return client.post(
             f'/api/django/marketing/evenements-marketing/{self.evenement.id}'
             '/importer-inscrits/',
             {'fichier': fichier}, format='multipart')
@@ -104,7 +110,7 @@ class ImporterInscriptionsEndpointTests(TenantAPITestCase):
             evenement=self.evenement).count(), 2)
 
     def test_endpoint_sans_fichier_400(self):
-        res = self.client_as().post(
+        res = self.client_as(role='responsable').post(
             f'/api/django/marketing/evenements-marketing/{self.evenement.id}'
             '/importer-inscrits/', {}, format='multipart')
         self.assertEqual(res.status_code, 400)
@@ -113,7 +119,7 @@ class ImporterInscriptionsEndpointTests(TenantAPITestCase):
         autre = EvenementMarketing.objects.create(
             company=self.other_company, nom='Fuite',
             date_debut=_date_debut())
-        res = self.client_as().post(
+        res = self.client_as(role='responsable').post(
             f'/api/django/marketing/evenements-marketing/{autre.id}'
             '/importer-inscrits/',
             {'fichier': io.BytesIO(_csv(['A,a@ex.ma,']))}, format='multipart')

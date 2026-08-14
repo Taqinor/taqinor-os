@@ -16,6 +16,14 @@ from testkit.base import TenantAPITestCase
 
 class AuditEnvoiCampagneTests(TenantAPITestCase):
     def test_envoi_reel_est_journalise(self):
+        # `CampagneViewSet.envoyer` exige `compta_valider`
+        # (`HasPermissionOrLegacy`, apps/compta/views.py) — repli légataire
+        # sur `is_responsable` pour un compte sans rôle fin. On élève
+        # `self.user` en place (au lieu d'un utilisateur `role=` séparé) car
+        # l'assertion ci-dessous vérifie `entree.actor_username ==
+        # self.user.username` : l'acteur du journal doit rester CE user.
+        self.user.role_legacy = 'responsable'
+        self.user.save(update_fields=['role_legacy'])
         campagne = Campagne.objects.create(
             company=self.company, nom='Campagne Audit', canal='email',
             objet='Objet', corps='Corps.')
@@ -62,8 +70,12 @@ class AuditExportsTests(TenantAPITestCase):
 
 
 class AuditModeleAttributionTests(TenantAPITestCase):
+    # `parametres_marketing_view` exige explicitement IsResponsableOrAdmin
+    # (apps/marketing/views.py) — un utilisateur 'normal' reçoit 403 avant
+    # d'atteindre la vue. Aucune assertion ici ne dépend de l'identité de
+    # l'acteur, donc un utilisateur 'responsable' dédié suffit.
     def test_changement_de_modele_est_journalise(self):
-        res = self.client_as().patch(
+        res = self.client_as(role='responsable').patch(
             '/api/django/marketing/parametres/',
             data={'modele_attribution': 'lineaire'},
             content_type='application/json')
@@ -76,7 +88,7 @@ class AuditModeleAttributionTests(TenantAPITestCase):
     def test_un_patch_qui_ne_change_pas_le_modele_ne_journalise_rien(self):
         avant = AuditLog.objects.filter(
             company=self.company, action=AuditLog.Action.UPDATE).count()
-        res = self.client_as().patch(
+        res = self.client_as(role='responsable').patch(
             '/api/django/marketing/parametres/',
             data={'expediteur_nom': 'Nouveau nom'},
             content_type='application/json')

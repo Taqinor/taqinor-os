@@ -51,12 +51,18 @@ class NotifierSiNpsDetracteurTests(TenantAPITestCase):
         self.assertIn(f'/crm/leads/{self.lead.id}', notif.link)
 
     def test_promoteur_ou_passif_ne_declenche_rien(self):
+        # Baseline APRÈS setUp() : la création du lead avec owner déclenche
+        # déjà sa propre notification LEAD_ASSIGNED
+        # (apps/notifications/signals.py lead_post_save), indépendante du
+        # mécanisme NPS testé ici — asserter un compte absolu à 0 est donc
+        # invalidé par ce bruit légitime et sans rapport. On mesure le delta.
+        avant = Notification.objects.filter(recipient=self.owner).count()
         for score in (7, 9, 10):
             enquete = self._enquete(score=score)
             resultat = mkt_services.notifier_si_nps_detracteur(enquete)
             self.assertIsNone(resultat)
         self.assertEqual(
-            Notification.objects.filter(recipient=self.owner).count(), 0)
+            Notification.objects.filter(recipient=self.owner).count(), avant)
 
     def test_lead_sans_owner_ne_declenche_rien(self):
         autre_client = Client.objects.create(
