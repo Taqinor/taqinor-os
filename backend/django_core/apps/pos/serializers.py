@@ -43,6 +43,8 @@ class VenteComptoirSerializer(serializers.ModelSerializer):
             'session_caisse', 'caissier', 'taux_tva', 'facture', 'note',
             'created_by', 'date_creation', 'date_validation', 'lignes',
             'total_ht', 'total_ttc',
+            # NTRET1 — mode offline (dédup serveur sur uuid_client).
+            'uuid_client',
         ]
         read_only_fields = ['reference', 'statut', 'facture', 'created_by']
 

@@ -72,6 +72,16 @@ class VenteComptoirViewSet(viewsets.ModelViewSet):
         if client is not None and client.company_id != company.id:
             raise ValidationError({'client': 'Client inconnu.'})
 
+        # NTRET1 — mode offline : un rejeu (même uuid_client, ex. queue
+        # rejouée deux fois, ou réponse réseau perdue puis retentée) ne crée
+        # jamais une 2e vente — on renvoie l'existante telle quelle.
+        uuid_client = serializer.validated_data.get('uuid_client')
+        if uuid_client:
+            existante = selectors.vente_par_uuid_client(company, uuid_client)
+            if existante is not None:
+                serializer.instance = existante
+                return
+
         def _create(reference):
             return serializer.save(
                 company=company, created_by=self.request.user,

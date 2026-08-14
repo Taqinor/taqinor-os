@@ -11,6 +11,15 @@ from decimal import Decimal
 from .models import VenteComptoir
 
 
+def vente_par_uuid_client(company, uuid_client):
+    """NTRET1 — vente déjà créée pour cet ``uuid_client`` (mode offline), ou
+    None. Utilisé pour la dédup serveur au rejeu (jamais de doublon)."""
+    if not uuid_client:
+        return None
+    return VenteComptoir.objects.filter(
+        company=company, uuid_client=uuid_client).first()
+
+
 def _date_filtered(qs, date_debut, date_fin):
     if date_debut:
         qs = qs.filter(date_validation__date__gte=date_debut)

@@ -101,12 +101,28 @@ class VenteComptoir(models.Model):
     )
     date_creation = models.DateTimeField(auto_now_add=True)
     date_validation = models.DateTimeField(null=True, blank=True)
+    # NTRET1 — mode offline caisse : identifiant généré côté navigateur pour
+    # une vente créée sans réseau, rejouée contre POST .../ventes/ dès la
+    # reconnexion. Dédup serveur (contrainte ci-dessous) : un rejeu en double
+    # (uuid déjà connu pour cette société) ne crée jamais une 2e vente — voir
+    # ``views.VenteComptoirViewSet.perform_create``. NULL = vente créée en
+    # ligne (comportement historique inchangé).
+    uuid_client = models.CharField(
+        max_length=64, null=True, blank=True,
+        help_text='UUID client (mode offline, NTRET1) — dédup serveur au rejeu.')
 
     class Meta:
         verbose_name = 'Vente comptoir'
         verbose_name_plural = 'Ventes comptoir'
         ordering = ['-date_creation']
         unique_together = [('company', 'reference')]
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'uuid_client'],
+                condition=models.Q(uuid_client__isnull=False),
+                name='pos_ventecomptoir_unique_uuid_client_per_company',
+            ),
+        ]
 
     def __str__(self):
         return self.reference or f'VenteComptoir #{self.pk}'
