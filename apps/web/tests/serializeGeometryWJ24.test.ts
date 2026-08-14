@@ -71,7 +71,9 @@ describe('WJ24 — serializeLayout élargi (géométrie par pan, additif)', () =
       expect(z).toHaveProperty(k);
     }
     expect(z.neededPanels).toBe(10);
-    expect(layout.version).toBe(1);
+    // PV13 — v2 : le JSON gagne result/scenario/panelWatt/battery/source/devisId, et AUCUN
+    // champ antérieur ne bouge (c'est ce que la boucle ci-dessus vérifie).
+    expect(layout.version).toBe(2);
     expect(layout.billKwh).toBe(8000);
   });
 

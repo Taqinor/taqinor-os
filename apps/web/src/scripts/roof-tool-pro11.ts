@@ -1480,7 +1480,10 @@ export function initRoofToolPro8(opts: InitOptions | CaptureOptions): void {
     const pins: FlatPins = {};
     if (pinned.has('family')) pins.family = sel.family;
     if (pinned.has('tilt') && sel.tilt !== 'reco') pins.tiltDeg = sel.tilt;
-    if (pinned.has('orient') && sel.orient !== 'auto') pins.orientation = sel.orient;
+    // PV62 — la recherche pleine (V3) ne connaît que portrait/paysage : une pose MIXTE
+    // épinglée n'est pas transmise ici (c'est le solveur vivant V7 qui la tient), au lieu
+    // d'être traduite en une pose uniforme qu'on n'a pas choisie.
+    if (pinned.has('orient') && (sel.orient === 'portrait' || sel.orient === 'landscape')) pins.orientation = sel.orient;
     if (pinned.has('azimuth')) pins.azimuth = sel.azimuth;
     if (pinned.has('margin')) pins.margin = sel.margin;
     return pins;
