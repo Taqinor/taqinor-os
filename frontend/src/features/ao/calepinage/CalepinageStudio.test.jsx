@@ -18,6 +18,7 @@ vi.mock('../../../api/axios', () => ({ default: axiosMock }))
 import CalepinageStudio from './CalepinageStudio'
 
 const CALCULER = '/ao/calepinage/calculer/'
+const LANCER = '/ao/calepinage/lancer/'
 const KIT = 'AO-TABLE-PORTRAIT'
 // Rangées SEED : la forme À PLAT de `resultatReel.rangees` (voir la fixture).
 const SEED = [[0.8003, KIT], [6.9503, KIT]]
@@ -177,7 +178,7 @@ describe('CalepinageStudio — mode expert et suggestions (PACT168)', () => {
 })
 
 /* ============================================================================
-   PV31 — mode « rangées imposées par l'utilisateur ».
+   PV31/PV32 — mode « rangées imposées par l'utilisateur ».
    ----------------------------------------------------------------------------
    Bout en bout, sur les VRAIES routes : un geste sur le plan (glisser une
    bande / cliquer le fond / supprimer / annuler) doit produire un appel
@@ -288,5 +289,82 @@ describe('CalepinageStudio — PV31 brouillon de rangées imposées', () => {
       { timeout: 5000 },
     )
     expect(screen.getByRole('button', { name: 'Revenir au calcul optimal' })).toBeInTheDocument()
+  })
+})
+
+describe('CalepinageStudio — PV32 écart, enregistrement et garde-fou de sortie', () => {
+  it('« Revenir au calcul optimal » sur un brouillon divergent demande confirmation', async () => {
+    const { container } = await preparerAtelier()
+    glisserRangee(container, 0, 40)
+    await screen.findByRole('button', { name: 'Revenir au calcul optimal' })
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true)
+
+    await userEvent.click(screen.getByRole('button', { name: 'Revenir au calcul optimal' }))
+    expect(confirmSpy).toHaveBeenCalledTimes(1)
+  })
+
+  it('confirmation ANNULÉE : le brouillon (et ses rangées) restent affichés', async () => {
+    const { container } = await preparerAtelier()
+    glisserRangee(container, 0, 40)
+    await screen.findByRole('button', { name: 'Revenir au calcul optimal' })
+    vi.spyOn(window, 'confirm').mockReturnValue(false)
+
+    await userEvent.click(screen.getByRole('button', { name: 'Revenir au calcul optimal' }))
+
+    expect(screen.getByRole('button', { name: 'Revenir au calcul optimal' })).toBeInTheDocument()
+    expect(container.querySelectorAll('[data-item="rangee-bande"]')).toHaveLength(2)
+  })
+
+  it('confirmation ACCEPTÉE : mode_pose/rangees_imposees disparaissent du prochain appel', async () => {
+    const { container } = await preparerAtelier()
+    glisserRangee(container, 0, 40)
+    await screen.findByRole('button', { name: 'Revenir au calcul optimal' })
+    vi.clearAllMocks()
+    axiosMock.post.mockResolvedValue({ status: 200, data: { ...resultatReel, depuis_cache: false } })
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
+
+    await userEvent.click(screen.getByRole('button', { name: 'Revenir au calcul optimal' }))
+
+    await waitFor(
+      () => expect(axiosMock.post).toHaveBeenCalledWith(CALCULER, { toiture: 7 }),
+      { timeout: 5000 },
+    )
+    expect(screen.queryByRole('button', { name: 'Revenir au calcul optimal' })).toBeNull()
+  })
+
+  it('« Enregistrer comme variante » appelle lancer(persister, role ALTERNATIVE, nom auto)', async () => {
+    const { container } = await preparerAtelier()
+    glisserRangee(container, 0, 40)
+
+    await userEvent.click(await screen.findByRole('button', { name: /Enregistrer comme variante/ }))
+
+    await waitFor(() => {
+      const appel = axiosMock.post.mock.calls.find(([url]) => url === LANCER)
+      expect(appel).toBeTruthy()
+      const [, corps] = appel
+      expect(corps.toiture).toBe(7)
+      expect(corps.persister).toBe(true)
+      expect(corps.role).toBe('ALTERNATIVE')
+      expect(corps.nom).toMatch(/^Plan imposé du \d{2}\/\d{2}$/)
+      expect(corps.params.mode_pose).toBe('rangees_imposees_utilisateur')
+      expect(corps.params.rangees_imposees).toHaveLength(2)
+    }, { timeout: 5000 })
+  })
+
+  it('l’écart à l’optimum d’un plan imposé s’affiche verbatim depuis le moteur', async () => {
+    axiosMock.post.mockImplementation(() => Promise.resolve({
+      status: 200,
+      data: {
+        ...resultatReel,
+        depuis_cache: false,
+        plans: [{ ...resultatReel.plans[0], ecart_a_l_optimum: 6 }],
+        preuve: { ...resultatReel.preuve, methode: 'impose_utilisateur', methode_exacte: false, optimal: false },
+      },
+    }))
+    const { container } = await preparerAtelier()
+    glisserRangee(container, 0, 40)
+
+    await waitFor(() => expect(screen.getByText('-6 modules vs optimum')).toBeInTheDocument(), { timeout: 5000 })
+    expect(screen.getByText('Plan imposé — non optimal')).toBeInTheDocument()
   })
 })

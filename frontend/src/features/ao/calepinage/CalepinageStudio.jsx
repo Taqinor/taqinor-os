@@ -1,7 +1,8 @@
 import { useCallback, useMemo, useState } from 'react'
 import { AlertTriangle, Minus, Maximize2, Plus, RefreshCw } from 'lucide-react'
-import { Badge, Button, EmptyState, Skeleton } from '../../../ui'
+import { Badge, Button, EmptyState, Skeleton, toast } from '../../../ui'
 import { cn } from '../../../lib/cn'
+import aoApi from '../../../api/aoApi'
 import PlanLayer from './PlanLayer'
 import VerdictBar from './VerdictBar'
 import TiroirKits from './TiroirKits'
@@ -67,9 +68,9 @@ import planDepuisResultat from './planDepuisResultat'
        rejoue le `patch_entree` par la voie normale des paramètres — le gain
        est donc RE-VÉRIFIÉ par le moteur, jamais cru sur parole.
 
-   ── PV31 — MODE « RANGÉES IMPOSÉES PAR L'UTILISATEUR » ───────────────────
-   `useCalepinageImpose` tient le BROUILLON local des rangées éditées à la
-   main ; chaque geste (glisser/ajouter/supprimer) repasse par
+   ── PV31/PV32 — MODE « RANGÉES IMPOSÉES PAR L'UTILISATEUR » ────────────────
+   `useCalepinageImpose` (PV31) tient le BROUILLON local des rangées éditées
+   à la main ; chaque geste (glisser/ajouter/supprimer) repasse par
    `majParametres` — donc par le MÊME anti-rebond/garde de séquence que les
    tiroirs — et c'est le SERVEUR qui recalcule et publie le plan RÉEL (jamais
    une table dessinée localement). `PlanLayer` reçoit les bandes d'accroche
@@ -77,10 +78,18 @@ import planDepuisResultat from './planDepuisResultat'
    PLUS du plan, jamais à la place de lui.
 
    `majParametres` retire désormais du patch fusionné toute clé qui vaut
-   `undefined` : c'est ce qui permet à « Revenir au calcul optimal » d'effacer
-   VRAIMENT `mode_pose`/`rangees_imposees` du corps envoyé au serveur (qui
-   retombe alors sur le preset enregistré de la toiture) plutôt que d'y
-   laisser une clé fantôme à `undefined`.
+   `undefined` : c'est ce qui permet à « Revenir au calcul optimal » (PV32)
+   d'effacer VRAIMENT `mode_pose`/`rangees_imposees` du corps envoyé au
+   serveur (qui retombe alors sur le preset enregistré de la toiture) plutôt
+   que d'y laisser une clé fantôme à `undefined`.
+
+   PV32 — l'écart à l'optimum et le bouton « Enregistrer comme variante »
+   vivent dans `VerdictBar` (affichage) + ici (l'appel réseau, comme
+   `definirRetenue` dans `VariantesCompare.jsx`). Le garde-fou de confirmation
+   avant de perdre un brouillon divergent (`isDraftDirty`) ne couvre QUE
+   « Revenir au calcul optimal » — la seule action de cet écran qui EFFACE
+   réellement le brouillon ; un changement de tiroir ne le fait pas (il
+   fusionne son patch SANS toucher `mode_pose`/`rangees_imposees`).
    ========================================================================== */
 
 const ZOOM_MIN = 0.25
@@ -89,11 +98,26 @@ const PAS_ZOOM = 1.25
 
 const borne = (valeur) => Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, valeur))
 
+// PV32 — nom auto « Plan imposé du JJ/MM » : formatage de PRÉSENTATION d'une
+// `Date` locale, pas un chiffre métier (aucune donnée du moteur n'y entre).
+function jourMois(date) {
+  const jj = String(date.getDate()).padStart(2, '0')
+  const mm = String(date.getMonth() + 1).padStart(2, '0')
+  return `${jj}/${mm}`
+}
+
+const messageErreurVariante = (err, repli) => err?.response?.data?.detail || repli
+
 /**
  * @param {number|string} toitureId  Toiture à calepiner (`ToitureAO.id`).
  * @param {Function} [onConformite]  Remontée de conformité du tiroir électrique.
+ * @param {Function} [onVarianteEnregistree]  PV32 — INJECTÉ par l'appelant (même
+ *   patron que `exporterImage` d'AOF75) : appelé après un enregistrement réussi
+ *   du brouillon comme variante ALTERNATIVE, pour une navigation éventuelle vers
+ *   le comparateur. Sans lui, l'écran reste honnête : un simple texte indique où
+ *   retrouver la variante, jamais un lien qui ne mène nulle part.
  */
-export default function CalepinageStudio({ toitureId, onConformite }) {
+export default function CalepinageStudio({ toitureId, onConformite, onVarianteEnregistree }) {
   const [zoom, setZoom] = useState(1)
   // Paramètres pilotés par les tiroirs. `null` = « laisse le serveur appliquer
   // le preset de la toiture » — jamais un jeu de valeurs par défaut inventé ici.
@@ -110,7 +134,7 @@ export default function CalepinageStudio({ toitureId, onConformite }) {
   // Un tiroir ne modifie JAMAIS un résultat : il remonte un patch de
   // paramètres, et c'est le serveur qui recalcule (AOF94). Une clé du patch
   // qui vaut `undefined` est RETIRÉE après fusion (pas laissée en fantôme) :
-  // c'est ce qui permet à « Revenir au calcul optimal » (PV31) d'effacer
+  // c'est ce qui permet à PV32 (« Revenir au calcul optimal ») d'effacer
   // vraiment `mode_pose`/`rangees_imposees` du corps envoyé au serveur.
   const majParametres = useCallback((patch) => {
     setParametres((courants) => {
@@ -124,6 +148,41 @@ export default function CalepinageStudio({ toitureId, onConformite }) {
 
   // PV31 — brouillon local des rangées imposées par l'utilisateur.
   const impose = useCalepinageImpose({ resultat, majParametres, toitureId })
+
+  const [enregistrementEnCours, setEnregistrementEnCours] = useState(false)
+
+  const quitterModeImpose = useCallback(() => {
+    // Même patron que `ObjetsPersonnalisesPage.jsx` : `window.confirm` direct,
+    // une confirmation légère pour une action réversible.
+    if (impose.isDraftDirty && !window.confirm(
+      'Des rangées imposées non enregistrées comme variante seront perdues. '
+      + 'Revenir au calcul optimal ?',
+    )) return
+    impose.quitter()
+  }, [impose])
+
+  const enregistrerCommeVariante = useCallback(async () => {
+    if (!impose.actif || !toitureId) return
+    setEnregistrementEnCours(true)
+    try {
+      const reponse = await aoApi.calepinage.lancer({
+        toiture: toitureId,
+        params: { ...(parametres || {}), mode_pose: 'rangees_imposees_utilisateur', rangees_imposees: impose.draft },
+        persister: true,
+        role: 'ALTERNATIVE',
+        nom: `Plan imposé du ${jourMois(new Date())}`,
+      })
+      toast.success(
+        'Variante enregistrée — non publiable (sous l’optimum). Retrouvez-la '
+        + 'dans l’onglet « Variantes » de cette affaire pour la comparer.',
+      )
+      onVarianteEnregistree?.(reponse?.data)
+    } catch (err) {
+      toast.error(messageErreurVariante(err, 'Impossible d’enregistrer ce plan comme variante.'))
+    } finally {
+      setEnregistrementEnCours(false)
+    }
+  }, [impose.actif, impose.draft, toitureId, parametres, onVarianteEnregistree])
 
   /* ── PACT168 — suggestions du moteur ──────────────────────────────────────
      `historique` est tenu ICI : une suggestion appliquée quitte la liste
@@ -231,7 +290,12 @@ export default function CalepinageStudio({ toitureId, onConformite }) {
         </div>
       </div>
 
-      <VerdictBar resultat={resultat} perime={perime} />
+      <VerdictBar
+        resultat={resultat}
+        perime={perime}
+        onEnregistrerVariante={impose.actif ? enregistrerCommeVariante : undefined}
+        enregistrementEnCours={enregistrementEnCours}
+      />
 
       {erreur && (
         <p className="text-sm text-destructive" role="alert">{erreur}</p>
@@ -262,7 +326,7 @@ export default function CalepinageStudio({ toitureId, onConformite }) {
             <Button size="sm" variant="outline" disabled={impose.selection === null} onClick={impose.supprimerSelection}>
               Supprimer la rangée sélectionnée
             </Button>
-            <Button size="sm" variant="ghost" onClick={impose.quitter}>
+            <Button size="sm" variant="ghost" onClick={quitterModeImpose}>
               Revenir au calcul optimal
             </Button>
           </div>
