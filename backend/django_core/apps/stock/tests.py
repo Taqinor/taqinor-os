@@ -34,8 +34,8 @@ class TestSeedCatalogue(TestCase):
     def test_seeds_full_catalogue(self):
         seed(self.company)
         qs = Produit.objects.filter(company=self.company)
-        # 31 solaire + 9 pompage + 16 VEICHI + 11 pompes OSP
-        self.assertEqual(qs.count(), 67)
+        # 31 solaire + 9 pompage + 16 VEICHI + 11 pompes OSP + 22 câbles/protections
+        self.assertEqual(qs.count(), 89)
         # Spot-check key items: HT price = simulator TTC / 1.2
         huawei_10t = qs.get(sku='OND-R-HUA-10T')
         self.assertEqual(huawei_10t.nom, 'Onduleur réseau Huawei 10kW Triphasé')
@@ -53,7 +53,7 @@ class TestSeedCatalogue(TestCase):
         # Traceability: one entry movement per product
         self.assertEqual(
             MouvementStock.objects.filter(
-                company=self.company, reference='SEED-CATALOGUE').count(), 67,
+                company=self.company, reference='SEED-CATALOGUE').count(), 89,
         )
 
     def test_fiches_and_pompage_seeded(self):
@@ -124,6 +124,112 @@ class TestSeedCatalogue(TestCase):
         self.assertEqual(manuelle.largeur_mm, 1)
         self.assertIsNone(manuelle.temp_coeff_pmax_pct_c)
 
+    # ── PVG4 — Fiches techniques onduleurs/batteries (modèle supposé) ───────
+    def test_pvg4_onduleur_fiche_sourced_values_only(self):
+        from apps.stock.models import FicheTechnique
+        seed(self.company)
+        p5m = Produit.objects.get(company=self.company, sku='OND-R-HUA-5M')
+        f5m = FicheTechnique.objects.get(produit=p5m)
+        self.assertEqual(f5m.type_fiche, 'onduleur')
+        self.assertEqual(f5m.ond_n_mppt, 2)
+        self.assertEqual(f5m.ond_mppt_v_min, Decimal('90.0'))
+        self.assertEqual(f5m.ond_mppt_v_max, Decimal('560.0'))
+        self.assertEqual(f5m.ond_v_max_abs, Decimal('600.0'))
+        self.assertEqual(f5m.ond_i_max_mppt_a, Decimal('12.5'))
+        self.assertEqual(f5m.ond_ac_kw, Decimal('5'))
+        self.assertEqual(f5m.ond_phases, 1)
+        self.assertEqual(f5m.ond_rendement_euro_pct, Decimal('97.8'))
+        self.assertIn('Modèle supposé : Huawei SUN2000-5KTL-L1', p5m.description)
+        self.assertIn('à confirmer fondateur', p5m.description)
+
+    def test_pvg4_interpolated_and_ambiguous_values_left_null(self):
+        from apps.stock.models import FicheTechnique
+        seed(self.company)
+        p15t = Produit.objects.get(company=self.company, sku='OND-R-HUA-15T')
+        f15t = FicheTechnique.objects.get(produit=p15t)
+        # Rendement ≈98.0 % « interpolé » — jamais saisi.
+        self.assertIsNone(f15t.ond_rendement_euro_pct)
+        # 30A(2 strings)/20A(1) : courant composé, pas une valeur propre.
+        self.assertIsNone(f15t.ond_i_max_mppt_a)
+        # Plage MPPT/Vmax, elles, sont sourcées explicitement.
+        self.assertEqual(f15t.ond_mppt_v_min, Decimal('200.0'))
+        self.assertEqual(f15t.ond_mppt_v_max, Decimal('1000.0'))
+
+        p50t = Produit.objects.get(company=self.company, sku='OND-R-HUA-50T')
+        f50t = FicheTechnique.objects.get(produit=p50t)
+        # Imax « non confirmé précisément » par la source → NULL.
+        self.assertIsNone(f50t.ond_i_max_mppt_a)
+        # ≈98.5 % (approx., pas « euro » explicite) → NULL.
+        self.assertIsNone(f50t.ond_rendement_euro_pct)
+        self.assertEqual(f50t.ond_n_mppt, 6)
+
+    def test_pvg4_deye_10m_divergent_mppt_range_left_null(self):
+        from apps.stock.models import FicheTechnique
+        seed(self.company)
+        p = Produit.objects.get(company=self.company, sku='OND-H-DEY-10M')
+        f = FicheTechnique.objects.get(produit=p)
+        self.assertEqual(f.type_fiche, 'onduleur')
+        # DIVERGENCE selon la source → jamais tranchée par le seeder.
+        self.assertIsNone(f.ond_mppt_v_min)
+        self.assertIsNone(f.ond_mppt_v_max)
+        self.assertIsNone(f.ond_n_mppt)
+        self.assertIn('Modèle supposé : Deye SUN-10K-SG02LP1-EU-AM3', p.description)
+
+    def test_pvg4_huawei_mono_10_12kw_have_no_fiche_technique(self):
+        """OND-R-HUA-10M/12M : artefacts catalogue, aucun modèle Huawei mono
+        réseau réel à ces puissances — donc AUCUNE fiche technique créée."""
+        from apps.stock.models import FicheTechnique
+        seed(self.company)
+        for sku in ('OND-R-HUA-10M', 'OND-R-HUA-12M'):
+            p = Produit.objects.get(company=self.company, sku=sku)
+            self.assertFalse(FicheTechnique.objects.filter(produit=p).exists(), sku)
+            # Pas de mention de modèle supposé non plus (rien à confirmer).
+            self.assertNotIn('Modèle supposé', p.description)
+
+    def test_pvg4_batteries_seeded_with_sourced_values(self):
+        from apps.stock.models import FicheTechnique
+        seed(self.company)
+        b5 = Produit.objects.get(company=self.company, sku='BAT-DEY-5')
+        f5 = FicheTechnique.objects.get(produit=b5)
+        self.assertEqual(f5.type_fiche, 'batterie')
+        self.assertEqual(f5.bat_kwh_nominal, Decimal('5.12'))
+        self.assertEqual(f5.bat_kwh_usable, Decimal('4.60'))
+        self.assertEqual(f5.bat_dod_pct, Decimal('90.0'))
+        self.assertEqual(f5.bat_v_nominal, Decimal('51.2'))
+        self.assertEqual(f5.bat_max_charge_kw, Decimal('3.84'))
+        self.assertIn('Modèle supposé : Dyness DL5.0C', b5.description)
+
+        b10 = Produit.objects.get(company=self.company, sku='BAT-DEY-10')
+        f10 = FicheTechnique.objects.get(produit=b10)
+        self.assertEqual(f10.bat_kwh_nominal, Decimal('10.24'))
+        self.assertEqual(f10.bat_kwh_usable, Decimal('9.22'))
+        self.assertEqual(f10.bat_max_charge_kw, Decimal('5.12'))
+
+    def test_pvg4_idempotent_second_run_never_overwrites(self):
+        from apps.stock.models import FicheTechnique
+        seed(self.company)
+        p = Produit.objects.get(company=self.company, sku='OND-H-DEY-10T')
+        fiche = FicheTechnique.objects.get(produit=p)
+        seed(self.company)
+        self.assertEqual(FicheTechnique.objects.filter(produit=p).count(), 1)
+        fiche.refresh_from_db()
+        self.assertEqual(fiche.ond_ac_kw, Decimal('10'))
+        p.refresh_from_db()
+        self.assertEqual(
+            p.description.count('Modèle supposé'), 1,
+            "la mention ne doit jamais être dupliquée sur un second run")
+
+        # Une fiche onduleur pré-existante (saisie manuellement) n'est
+        # jamais écrasée, comme pour les modules PV9.
+        p20t = Produit.objects.get(company=self.company, sku='OND-H-DEY-20T')
+        FicheTechnique.objects.filter(produit=p20t).delete()
+        manuelle = FicheTechnique.objects.create(
+            company=self.company, produit=p20t, type_fiche='onduleur',
+            ond_ac_kw=Decimal('99'))
+        seed(self.company)
+        manuelle.refresh_from_db()
+        self.assertEqual(manuelle.ond_ac_kw, Decimal('99'))
+
     def test_veichi_seeded_with_real_buy_and_sell_prices(self):
         seed(self.company)
         qs = Produit.objects.filter(company=self.company)
@@ -151,6 +257,58 @@ class TestSeedCatalogue(TestCase):
         self.assertEqual(p.tension_v, 380)
         self.assertEqual(p.courbe_pompe['debits_m3h'], [0, 12, 24, 30, 36, 39])
         self.assertEqual(p.courbe_pompe['hmt_m'], [91, 85, 70, 60, 43, 34])
+
+    # ── PVG3 — Câbles & protections (prix vides, approuvé fondateur) ────────
+    def test_pvg3_cables_protections_seeded_with_empty_prices(self):
+        seed(self.company)
+        skus = [
+            'CAB-H1Z2Z2-4-M', 'CAB-H1Z2Z2-6-M', 'CAB-H1Z2Z2-10-M', 'CAB-H1Z2Z2-16-M',
+            'FUS-GPV-1000-15A', 'FUS-GPV-1000-20A', 'PF-1000',
+            'PARA-DC-T2-1000', 'PARA-AC-T2', 'SECT-DC-1000-25A',
+            'DISJ-AC-C-16-1P', 'DISJ-AC-C-20-1P', 'DISJ-AC-C-25-1P', 'DISJ-AC-C-32-1P',
+            'DISJ-AC-C-16-4P', 'DISJ-AC-C-20-4P', 'DISJ-AC-C-25-4P', 'DISJ-AC-C-32-4P',
+            'DDR-A-300-40', 'DDR-A-300-63', 'COF-DC-2STR', 'COF-AC',
+        ]
+        self.assertEqual(len(skus), 22)
+        for sku in skus:
+            p = Produit.objects.get(company=self.company, sku=sku)
+            self.assertEqual(p.prix_vente, Decimal('0'), sku)   # à renseigner par le fondateur
+            self.assertEqual(p.prix_achat, Decimal('0'), sku)
+            self.assertGreater(p.quantite_stock, 0, sku)  # stock présent, seul le prix manque
+            self.assertTrue(p.description, sku)  # description FR courte saisie
+        cable = Produit.objects.get(company=self.company, sku='CAB-H1Z2Z2-6-M')
+        self.assertIn('mètre', cable.nom)
+        self.assertEqual(cable.categorie.nom, 'Câbles')
+        disjoncteur = Produit.objects.get(company=self.company, sku='DISJ-AC-C-32-4P')
+        self.assertEqual(disjoncteur.categorie.nom, 'Protection & accessoires')
+
+    def test_pvg3_cables_protections_idempotent_second_run(self):
+        seed(self.company)
+        first_count = Produit.objects.filter(
+            company=self.company, sku='COF-DC-2STR').count()
+        seed(self.company)
+        self.assertEqual(
+            Produit.objects.filter(company=self.company, sku='COF-DC-2STR').count(),
+            first_count)
+        self.assertEqual(first_count, 1)
+        # Un second run ne crée rien de plus et ne touche pas les prix (0).
+        p = Produit.objects.get(company=self.company, sku='DISJ-AC-C-16-1P')
+        self.assertEqual(p.prix_vente, Decimal('0'))
+
+    def test_pvg3_priceless_products_excluded_like_osp_guard(self):
+        """Même garde que les pompes OSP (apps.ventes.services._has_price) :
+        un produit à prix_vente=0 n'est jamais auto-chiffré."""
+        from apps.ventes.services import _has_price
+        seed(self.company)
+        osp = Produit.objects.get(company=self.company, sku='PMP-OSP-30-8')
+        cable = Produit.objects.get(company=self.company, sku='CAB-H1Z2Z2-6-M')
+        disjoncteur = Produit.objects.get(company=self.company, sku='DISJ-AC-C-16-1P')
+        self.assertFalse(_has_price(osp))
+        self.assertFalse(_has_price(cable))
+        self.assertFalse(_has_price(disjoncteur))
+        # Contrôle négatif : un produit normalement prisé passe la garde.
+        priced = Produit.objects.get(company=self.company, sku='OND-R-HUA-10T')
+        self.assertTrue(_has_price(priced))
 
     def test_placeholder_coffrets_archived_prices_intact(self):
         # Un ancien coffret placeholder existant est archivé par le seeder
@@ -183,7 +341,7 @@ class TestSeedCatalogue(TestCase):
         out = seed(self.company)
         self.assertEqual(
             Produit.objects.filter(company=self.company).count(), count_after_first)
-        self.assertIn('0 created, 67 already present', out)
+        self.assertIn('0 created, 89 already present', out)
 
     def test_never_overwrites_existing_product(self):
         # Pre-existing product with the same name but a different price
