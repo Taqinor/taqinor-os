@@ -254,6 +254,12 @@ class EventType(models.TextChoices):
     # croit couvert pendant des semaines.
     VEILLE_AO_ALARME_SILENCE = (
         'veille_ao_alarme_silence', "Veille appels d'offres muette")
+    # NTLOG38 — rappel J-3 (beat quotidien) sur une `transport.EtapeTransport`
+    # dont `date_prevue` est dépassée et `statut_etape` != fait : notifie le
+    # responsable transport (motif `apps.sav.tasks._responsables`), une
+    # seule fois par étape et par jour.
+    TRANSPORT_ETAPE_RETARD = (
+        'transport_etape_retard', 'Étape de transport en retard')
 
 
 class Channel(models.TextChoices):
