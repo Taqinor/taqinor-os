@@ -2126,6 +2126,13 @@ from .models_incident_fournisseur import (  # noqa: E402,F401
     IncidentQualiteFournisseur,
 )
 
+# ── Groupe NTDST — NÉGOCE (consignation, RFA, van sales, paramètres). ──────
+from .models_negoce_params import ParametresNegoce  # noqa: E402,F401
+from .models_consignation import (  # noqa: E402,F401
+    DeclarationConsommation,
+    DepotConsignation,
+)
+
 
 # ── ODX19 — MODULE ACHATS (déplacé) ────────────────────────────────────────
 # PrixFournisseur, BonCommandeFournisseur, LigneBonCommandeFournisseur,

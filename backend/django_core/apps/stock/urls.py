@@ -28,7 +28,7 @@ from .views import (
     CompatibiliteHazmatCasierViewSet, historique_casier_view,
     SeuilReapproCasierViewSet, TacheReapproInterneViewSet,
     casiers_a_reapprovisionner_view, scanner_retour_fournisseur_view,
-    IncidentQualiteFournisseurViewSet,
+    IncidentQualiteFournisseurViewSet, DepotConsignationViewSet,
 )
 
 router = DefaultRouter()
@@ -89,6 +89,8 @@ router.register(r'taches-reappro-interne', TacheReapproInterneViewSet)
 # NTSCM9 - incidents qualite fournisseur.
 router.register(
     r'incidents-qualite-fournisseur', IncidentQualiteFournisseurViewSet)
+# NTDST3 - depots de consignation chez les clients (depot-vente).
+router.register(r'consignations', DepotConsignationViewSet)
 
 urlpatterns = [
     # NTWMS8 - kiosque de quai (chemin nomme par la tache : /stock/public/...).
