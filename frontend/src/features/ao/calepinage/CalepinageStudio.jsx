@@ -12,6 +12,7 @@ import TiroirElectrique from './TiroirElectrique'
 import ModeExpert from './ModeExpert'
 import SuggestionsPanel from './SuggestionsPanel'
 import useCalepinage from './useCalepinage'
+import useCalepinageImpose from './useCalepinageImpose'
 import planDepuisResultat from './planDepuisResultat'
 
 /* ============================================================================
@@ -65,6 +66,21 @@ import planDepuisResultat from './planDepuisResultat'
        `core/calepinage/recommandations.py` existe, l'endpoint non). « Appliquer »
        rejoue le `patch_entree` par la voie normale des paramètres — le gain
        est donc RE-VÉRIFIÉ par le moteur, jamais cru sur parole.
+
+   ── PV31 — MODE « RANGÉES IMPOSÉES PAR L'UTILISATEUR » ───────────────────
+   `useCalepinageImpose` tient le BROUILLON local des rangées éditées à la
+   main ; chaque geste (glisser/ajouter/supprimer) repasse par
+   `majParametres` — donc par le MÊME anti-rebond/garde de séquence que les
+   tiroirs — et c'est le SERVEUR qui recalcule et publie le plan RÉEL (jamais
+   une table dessinée localement). `PlanLayer` reçoit les bandes d'accroche
+   (`impose.lignesAffichees`) et l'aperçu de glissé (`impose.yPropose`) en
+   PLUS du plan, jamais à la place de lui.
+
+   `majParametres` retire désormais du patch fusionné toute clé qui vaut
+   `undefined` : c'est ce qui permet à « Revenir au calcul optimal » d'effacer
+   VRAIMENT `mode_pose`/`rangees_imposees` du corps envoyé au serveur (qui
+   retombe alors sur le preset enregistré de la toiture) plutôt que d'y
+   laisser une clé fantôme à `undefined`.
    ========================================================================== */
 
 const ZOOM_MIN = 0.25
@@ -92,10 +108,22 @@ export default function CalepinageStudio({ toitureId, onConformite }) {
   const plan = useMemo(() => planDepuisResultat(resultat), [resultat])
 
   // Un tiroir ne modifie JAMAIS un résultat : il remonte un patch de
-  // paramètres, et c'est le serveur qui recalcule (AOF94).
+  // paramètres, et c'est le serveur qui recalcule (AOF94). Une clé du patch
+  // qui vaut `undefined` est RETIRÉE après fusion (pas laissée en fantôme) :
+  // c'est ce qui permet à « Revenir au calcul optimal » (PV31) d'effacer
+  // vraiment `mode_pose`/`rangees_imposees` du corps envoyé au serveur.
   const majParametres = useCallback((patch) => {
-    setParametres((courants) => ({ ...(courants || {}), ...patch }))
+    setParametres((courants) => {
+      const suivant = { ...(courants || {}), ...patch }
+      for (const cle of Object.keys(suivant)) {
+        if (suivant[cle] === undefined) delete suivant[cle]
+      }
+      return suivant
+    })
   }, [])
+
+  // PV31 — brouillon local des rangées imposées par l'utilisateur.
+  const impose = useCalepinageImpose({ resultat, majParametres, toitureId })
 
   /* ── PACT168 — suggestions du moteur ──────────────────────────────────────
      `historique` est tenu ICI : une suggestion appliquée quitte la liste
@@ -215,10 +243,49 @@ export default function CalepinageStudio({ toitureId, onConformite }) {
         </p>
       )}
 
+      {/* PV31 — brouillon de rangées imposées : n'apparaît qu'APRÈS le premier
+          geste (glisser une bande / cliquer le fond pour en ajouter une) ;
+          avant cela, les bandes restent des poignées silencieuses. */}
+      <div className="flex flex-wrap items-center gap-2 rounded-md border border-dashed border-border bg-muted/40 p-2 text-xs" data-ao-impose={impose.actif ? 'actif' : undefined}>
+        <p className="text-muted-foreground">
+          Glissez une rangée pour la déplacer, cliquez le plan pour en ajouter une — le
+          serveur recalcule et prouve l’écart à l’optimum.
+        </p>
+        {impose.actif && (
+          <div className="ml-auto flex flex-wrap items-center gap-1.5">
+            <Button size="sm" variant="outline" disabled={!impose.peutAnnuler} onClick={impose.annuler}>
+              Annuler
+            </Button>
+            <Button size="sm" variant="outline" disabled={!impose.peutRefaire} onClick={impose.refaire}>
+              Rétablir
+            </Button>
+            <Button size="sm" variant="outline" disabled={impose.selection === null} onClick={impose.supprimerSelection}>
+              Supprimer la rangée sélectionnée
+            </Button>
+            <Button size="sm" variant="ghost" onClick={impose.quitter}>
+              Revenir au calcul optimal
+            </Button>
+          </div>
+        )}
+      </div>
+
       <div className="flex min-h-0 flex-1 flex-col gap-3 lg:flex-row">
         <div className="relative flex min-h-0 flex-1 flex-col" onWheel={onWheel}>
           <div className={cn('flex min-h-0 flex-1 flex-col', perime && 'opacity-40')}>
-            <PlanLayer plan={plan} zoom={zoom} />
+            <PlanLayer
+              plan={plan}
+              zoom={zoom}
+              rangeesImposees={impose.lignesAffichees}
+              rangeeSelectionnee={impose.selection}
+              yPropose={impose.yPropose}
+              onRangeePointerDown={impose.commencerGlisser}
+              // PlanLayer relaie `(y, event)` — le 2ᵉ paramètre d'`ajouterRangee`
+              // est `kitCode` : sans ce filtre, l'ÉVÉNEMENT pointeur serait pris
+              // pour un code de kit (aucun kit n'y correspondrait jamais).
+              onFondPointerDown={(y) => impose.ajouterRangee(y)}
+              onPointerMoveSvg={impose.deplacerVers}
+              onPointerUpSvg={impose.validerGlisser}
+            />
           </div>
           {perime && (
             <Badge tone="neutral" className="absolute right-2 top-2">recalcul…</Badge>
