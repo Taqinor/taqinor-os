@@ -1,9 +1,13 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Plus, Minus, Trash2, Printer, Link2, Usb, Lock } from 'lucide-react'
+import { Plus, Minus, Trash2, Printer, Link2, Usb, Lock, ScanLine } from 'lucide-react'
 // NTRET3 — verrouillage rapide entre deux ventes : overlay plein écran qui
 // laisse le panier INTACT dans l'état de cet écran (pas de re-login, la
 // session JWT n'est jamais perdue).
 import PinLock from './PinLock'
+// NTRET22 — mode « scan douchette en flux continu » + raccourcis clavier
+// (F2 nouveau ticket, F4 encaisser, Échap annuler la dernière ligne).
+import ScanMode from './ScanMode'
+import { attacherRaccourcisClavier } from './scanApi'
 import posApi from '../../api/posApi'
 import api from '../../api/axios'
 import { prixTtc, sansPrix } from '../stock/catalogue'
@@ -32,6 +36,9 @@ export default function CaisseScreen() {
   // au verrouillage ; l'utilisateur JWT attendu au déverrouillage est lu par
   // `PinLock` lui-même (useSelector n'y vit QUE quand l'overlay est monté).
   const [verrouille, setVerrouille] = useState(false)
+  // NTRET22 — mode scan douchette : basculable, hors état par défaut (aucun
+  // coût pour un poste qui ne l'utilise pas — même patron que `verrouille`).
+  const [modeScan, setModeScan] = useState(false)
   const [produits, setProduits] = useState([])
   const [query, setQuery] = useState('')
   const [cart, setCart] = useState([])
@@ -56,6 +63,10 @@ export default function CaisseScreen() {
   const [factureSel, setFactureSel] = useState(null) // { id, reference, client, montant_du }
   const [factureMontant, setFactureMontant] = useState('')
   const [factureMode, setFactureMode] = useState('especes')
+  // NTRET31 — écran client : session ouverte détectée une fois au montage
+  // (best-effort, `?.()` — jamais d'exception si l'API n'est pas montée,
+  // ex. un test qui mocke un posApi partiel).
+  const [sessionId, setSessionId] = useState(null)
 
   useEffect(() => {
     posApi.getProduits().then((r) => {
@@ -64,12 +75,36 @@ export default function CaisseScreen() {
     }).catch(() => setProduits([]))
   }, [])
 
+  useEffect(() => {
+    posApi.getSessions?.()?.then((r) => {
+      const data = r?.data?.results ?? r?.data ?? []
+      const ouverte = (Array.isArray(data) ? data : []).find((s) => s.statut === 'ouverte')
+      if (ouverte) setSessionId(ouverte.id)
+    }).catch(() => {})
+  }, [])
+
   const resultats = useMemo(() => searchProduitsPos(produits, query), [produits, query])
 
   const total = useMemo(() => cartTotal(cart), [cart])
   const nbArticles = useMemo(() => cartItemCount(cart), [cart])
   const rendu = useMemo(() => calculerRendu(total, paiements), [total, paiements])
   const encaissable = useMemo(() => peutEncaisser(total, paiements), [total, paiements])
+
+  // NTRET31 — pousse un snapshot du panier vers l'écran client (débounced,
+  // best-effort — une erreur réseau ne doit JAMAIS perturber la vente en
+  // cours). No-op tant qu'aucune session ouverte n'a été détectée.
+  useEffect(() => {
+    if (!sessionId) return undefined
+    const timer = setTimeout(() => {
+      posApi.pushPanierCourant?.(sessionId, {
+        lignes: cart.map((l) => ({ nom: l.nom, quantite: l.quantite, prix_ttc: l.prixTtc })),
+        total,
+        client_nom: client?.nom || '',
+        rendu: encaissementOpen ? rendu.rendu : 0,
+      })?.catch(() => {})
+    }, 500)
+    return () => clearTimeout(timer)
+  }, [sessionId, cart, total, client, encaissementOpen, rendu.rendu])
 
   const handleAjouter = (produit) => {
     if (sansPrix(produit)) {
@@ -92,6 +127,48 @@ export default function CaisseScreen() {
   // XPOS9 — capture des numéros de série (séparés par virgule/retour ligne).
   const handleNumerosSerie = (produitId, valeur) =>
     setNumerosSerie((s) => ({ ...s, [produitId]: valeur }))
+
+  // NTRET22 — un code scanné (douchette) cherche une correspondance EXACTE
+  // (code-barres, SKU, puis id en dernier recours) — jamais la recherche
+  // floue de `resultats` : un scan doit ajouter LE bon article, sans
+  // ambiguïté. Silencieux si rien ne correspond (le caissier voit le champ
+  // se vider sans effet, plutôt qu'une exception qui casserait le flux).
+  const handleScanCode = (code) => {
+    const produit = produits.find((p) => (
+      (p.code_barres && p.code_barres === code) ||
+      (p.sku && p.sku === code) ||
+      String(p.id) === code
+    ))
+    if (!produit) {
+      toast.error(`Aucun produit pour le code « ${code} ».`)
+      return
+    }
+    handleAjouter(produit)
+  }
+
+  const ouvrirEncaissement = () => {
+    if (cart.length === 0) return
+    setPaiements([{ mode: 'especes', montant: String(total) }])
+    setEncaissementOpen(true)
+  }
+
+  // NTRET22 — raccourcis clavier caisse : F2 nouveau ticket, F4 encaisser,
+  // Échap annule la dernière ligne du panier. Ré-attaché à chaque
+  // changement de panier pour que les callbacks lisent l'état courant
+  // (aucun useSelector ici — un simple écouteur DOM, sans risque pour les
+  // tests qui montent cet écran sans <Provider>).
+  useEffect(() => {
+    return attacherRaccourcisClavier({
+      onNouveauTicket: () => {
+        setCart([])
+        setClient(null)
+        setNumerosSerie({})
+      },
+      onEncaisser: () => { if (cart.length > 0) ouvrirEncaissement() },
+      onAnnulerLigne: () => setCart((c) => c.slice(0, -1)),
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cart])
 
   const parseNumerosSerie = (valeur) =>
     (valeur || '')
@@ -158,12 +235,6 @@ export default function CaisseScreen() {
     setPaiements((p) => p.map((pm, i) => (i === idx ? { ...pm, ...patch } : pm)))
   const retirerPaiement = (idx) =>
     setPaiements((p) => (p.length > 1 ? p.filter((_, i) => i !== idx) : p))
-
-  const ouvrirEncaissement = () => {
-    if (cart.length === 0) return
-    setPaiements([{ mode: 'especes', montant: String(total) }])
-    setEncaissementOpen(true)
-  }
 
   // Encaissement (app POS dédiée) : crée une VenteComptoir (brouillon), ajoute
   // ses lignes (produit + qté + prix TTC + numéros de série éventuels), puis la
@@ -326,6 +397,17 @@ export default function CaisseScreen() {
             <Lock className="mr-1.5 size-4" aria-hidden="true" />
             Verrouiller
           </Button>
+          {/* NTRET22 — bascule le mode scan douchette en flux continu. */}
+          <Button
+            type="button"
+            variant={modeScan ? 'default' : 'outline'}
+            size="sm"
+            onClick={() => setModeScan((v) => !v)}
+            data-testid="basculer-mode-scan"
+          >
+            <ScanLine className="mr-1.5 size-4" aria-hidden="true" />
+            Mode scan
+          </Button>
         </div>
         {tickets.length > 0 && (
           <div className="flex flex-wrap items-center gap-2" data-testid="tickets-en-attente">
@@ -350,6 +432,9 @@ export default function CaisseScreen() {
       <div className="grid gap-4 lg:grid-cols-[1fr_22rem]">
         {/* Recherche produit instantanée */}
         <div className="rounded-lg border border-border bg-card p-3">
+          {/* NTRET22 — mode scan douchette, monté SEULEMENT si basculé actif
+              (même patron que PinLock/NTRET3 : aucun coût hors usage). */}
+          <ScanMode actif={modeScan} onScan={handleScanCode} />
           <Label htmlFor="pos-search">Rechercher un produit — nom, SKU, référence, catégorie</Label>
           <Input
             id="pos-search"

@@ -4,7 +4,7 @@ from rest_framework import serializers
 
 from .models import (
     CoutFretReel, EtapeTransport, FacteurEmissionCO2, LigneOrdreTransport,
-    LitigeTransport, OrdreTransport, ReserveReception,
+    LitigeTransport, OrdreTransport, ParametresTransport, ReserveReception,
 )
 
 
@@ -61,13 +61,13 @@ class LitigeTransportSerializer(serializers.ModelSerializer):
         model = LitigeTransport
         fields = [
             'id', 'ordre_transport', 'type_litige', 'type_litige_display',
-            'statut', 'statut_display', 'montant_conteste', 'description',
-            'reclamation_envoyee_le', 'reclamation_destinataire',
+            'statut', 'statut_display', 'montant_conteste', 'montant_resolu',
+            'description', 'reclamation_envoyee_le', 'reclamation_destinataire',
             'created_by', 'created_at',
         ]
         read_only_fields = [
-            'statut', 'reclamation_envoyee_le', 'reclamation_destinataire',
-            'created_by', 'created_at',
+            'statut', 'montant_resolu', 'reclamation_envoyee_le',
+            'reclamation_destinataire', 'created_by', 'created_at',
         ]
 
 
@@ -89,6 +89,18 @@ class FacteurEmissionCO2Serializer(serializers.ModelSerializer):
     class Meta:
         model = FacteurEmissionCO2
         fields = ['id', 'mode', 'facteur_kg_co2_par_tonne_km']
+
+
+class ParametresTransportSerializer(serializers.ModelSerializer):
+    """NTLOG35 — réglages transport, singleton par société."""
+
+    class Meta:
+        model = ParametresTransport
+        fields = [
+            'id', 'delai_alerte_retard_heures', 'pod_obligatoire',
+            'seuil_anomalie_affretement_pct',
+        ]
+        read_only_fields = ['id']
 
 
 class OrdreTransportSerializer(serializers.ModelSerializer):
@@ -119,11 +131,12 @@ class OrdreTransportSerializer(serializers.ModelSerializer):
             'mode_transport', 'mode_transport_display', 'flotte_actif_id',
             'conducteur', 'installations_transporteur_id',
             'mode_acheminement_physique', 'distance_km', 'lignes', 'etapes',
-            'poids_total_kg', 'volume_total_m3', 'created_by', 'created_at',
-            'updated_at',
+            'poids_total_kg', 'volume_total_m3', 'archive', 'created_by',
+            'created_at', 'updated_at',
         ]
         read_only_fields = [
-            'numero', 'statut', 'created_by', 'created_at', 'updated_at',
+            'numero', 'statut', 'archive', 'created_by', 'created_at',
+            'updated_at',
         ]
 
     def get_poids_total_kg(self, obj) -> Decimal:

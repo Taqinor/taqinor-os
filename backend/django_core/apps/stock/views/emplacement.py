@@ -60,6 +60,21 @@ class EmplacementStockViewSet(CompanyScopedModelViewSet):
             return [IsAnyRole()]
         return [IsAdminRole()]
 
+    def get_queryset(self):
+        """NTWMS19 — filtre `?type_proprietaire=interne|chez_tiers|de_tiers`
+        et `?tiers_nom=` (le filtrage est manuel : aucun backend de filtre
+        DRF n'est installé sur ce projet, `filterset_fields` y serait un
+        no-op silencieux)."""
+        qs = super().get_queryset()
+        params = self.request.query_params
+        type_proprietaire = params.get('type_proprietaire')
+        if type_proprietaire:
+            qs = qs.filter(type_proprietaire=type_proprietaire)
+        tiers_nom = params.get('tiers_nom')
+        if tiers_nom:
+            qs = qs.filter(tiers_nom__icontains=tiers_nom)
+        return qs
+
     def list(self, request, *args, **kwargs):
         from ..services import ensure_emplacements
         if request.user.company_id:

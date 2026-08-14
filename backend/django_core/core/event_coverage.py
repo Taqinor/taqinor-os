@@ -94,6 +94,12 @@ ALLOWED_UNCONSUMED = {
     # crm↔marketing) ; aucun abonné requis aujourd'hui — réservé ici plutôt
     # qu'orphelin, comme les seams ci-dessus.
     "lead_maturite_changee",
+    # NTLOG44 (volet douane) — ``dossier_export_cloture`` : seam émis par
+    # ``apps/douane/services.cloturer_dossier_export`` à la clôture d'un
+    # DossierExport. Destiné à un futur abonné ``publicapi`` (webhook
+    # sortant) ; ``douane`` n'importe jamais cette app. Aucun abonné requis
+    # aujourd'hui — réservé ici plutôt qu'orphelin, comme les seams ci-dessus.
+    "dossier_export_cloture",
 }
 
 # Membres ``EventType`` déclarés mais sans producteur ``notify()`` encore câblé

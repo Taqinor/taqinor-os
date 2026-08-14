@@ -1,7 +1,8 @@
 from django.db import transaction  # noqa: F401
 from django.db.models import ProtectedError, Count, Min, Max, Prefetch  # noqa: F401
 from django.http import HttpResponse  # noqa: F401
-from rest_framework import viewsets, filters, status  # noqa: F401
+from drf_spectacular.utils import extend_schema, inline_serializer
+from rest_framework import viewsets, filters, serializers, status  # noqa: F401
 from rest_framework.decorators import action  # noqa: F401
 from rest_framework.response import Response  # noqa: F401
 from core.entite_scoping import EntiteScopeMixin
@@ -81,7 +82,7 @@ class ProduitViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
         if self.action in READ_ACTIONS + [
                 'export_xlsx', 'resolve', 'previsionnel', 'tracer',
                 'etiquettes_showroom', 'casiers', 'plan_picking',
-                'classe_abc']:
+                'classe_abc', 'tracabilite']:
             # XSTK3/XSTK4 — `resolve` (scan code-barres/GS1) est LECTURE
             # SEULE, accessible à tout rôle authentifié — même garde que
             # `@action(permission_classes=[IsAnyRole])` sur l'action
@@ -731,6 +732,48 @@ class ProduitViewSet(EntiteScopeMixin, CompanyScopedModelViewSet):
                 {'detail': 'Aucune traçabilité trouvée pour ce numéro.'},
                 status=status.HTTP_404_NOT_FOUND)
         return Response(result)
+
+    @extend_schema(responses={
+        200: inline_serializer('StockTracabiliteChaine', {
+            'lot': serializers.CharField(),
+            'serie': serializers.CharField(),
+            'produit': serializers.DictField(allow_null=True),
+            'amont': serializers.ListField(child=serializers.DictField()),
+            'stock': serializers.DictField(),
+            'aval': serializers.ListField(child=serializers.DictField()),
+        }),
+        400: inline_serializer('StockTracabiliteParamManquant', {
+            'detail': serializers.CharField(),
+        }),
+        404: inline_serializer('StockTracabiliteInconnue', {
+            'detail': serializers.CharField(),
+        }),
+    })
+    @action(detail=False, methods=['get'], url_path='tracabilite',
+            permission_classes=[IsAnyRole])
+    def tracabilite(self, request):
+        """NTWMS16 — traçabilité AMONT/AVAL bout-en-bout : ``?lot=`` ou
+        ``?serie=``.
+
+        Amont : fournisseur + réception d'origine. Stock : quantité restante
+        et casiers. Aval : vagues de prélèvement (chantier demandeur), colis
+        expédiés, équipement installé chez le client. Étend le rapport XSTK7
+        (`tracer`) en arbre exploitable par l'écran Traçabilité. INTERNE,
+        lecture seule."""
+        from ..selectors import tracabilite_produit
+
+        lot = (request.query_params.get('lot') or '').strip()
+        serie = (request.query_params.get('serie') or '').strip()
+        if not lot and not serie:
+            return Response({'detail': 'Paramètre lot ou serie requis.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        chaine = tracabilite_produit(
+            request.user.company, lot=lot or None, serie=serie or None)
+        if chaine is None:
+            return Response(
+                {'detail': 'Aucune traçabilité trouvée pour ce numéro.'},
+                status=status.HTTP_404_NOT_FOUND)
+        return Response(chaine)
 
     @action(detail=False, methods=['get'], url_path='resolve',
             permission_classes=[IsAnyRole])

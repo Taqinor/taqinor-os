@@ -448,6 +448,132 @@ class TestCommissions(InsightsBase):
         self.assertEqual(Decimal(row['commission']), Decimal('500'))
 
 
+# ── NTRET30 — Commission vendeur sur vente comptoir ─────────────────────────
+
+class TestCommissionsVentesComptoir(InsightsBase):
+    """NTRET30 — le rapport de commissions inclut les ventes comptoir
+    (apps.pos) du caissier, sur les mêmes rails que les devis signés."""
+
+    def _set_commission(self, mode, valeur):
+        prof = CompanyProfile.get(self.company)
+        prof.commission_mode = mode
+        prof.commission_valeur = valeur
+        prof.save(update_fields=['commission_mode', 'commission_valeur'])
+
+    def _vente_comptoir(self, caissier, *, montant='1000', reference='VC-CM-1'):
+        from apps.pos import services as pos_services
+        from apps.pos.models import LigneVenteComptoir, VenteComptoir
+
+        client = Client.objects.create(company=self.company, nom=f'Client {reference}')
+        produit = Produit.objects.create(
+            company=self.company, nom='Câble', sku=f'{reference}-P',
+            prix_vente=Decimal(montant), quantite_stock=50)
+        vente = VenteComptoir.objects.create(
+            company=self.company, reference=reference, client=client,
+            created_by=caissier)
+        LigneVenteComptoir.objects.create(
+            vente=vente, produit=produit, designation='Câble',
+            quantite=1, prix_unitaire_ttc=Decimal(montant))
+        pos_services.valider_vente(
+            vente=vente, paiements=[{'mode': 'carte', 'montant': montant}],
+            user=caissier)
+        return vente
+
+    def test_mode_desactive_ne_change_rien(self):
+        caissier = User.objects.create_user(
+            username='caissier-off', password='x', role_legacy='normal',
+            company=self.company)
+        self._vente_comptoir(caissier)
+        resp = self.api.get(f'{BASE}/commissions/')
+        self.assertEqual(resp.status_code, 200)
+        self.assertFalse(resp.data['enabled'])
+
+    def test_mode_societe_pct_devis_inclut_le_comptoir(self):
+        self._set_commission('pct_devis', Decimal('5'))
+        caissier = User.objects.create_user(
+            username='caissier-pct', password='x', role_legacy='normal',
+            company=self.company)
+        self._vente_comptoir(caissier, montant='1000')
+
+        resp = self.api.get(f'{BASE}/commissions/')
+        self.assertEqual(resp.status_code, 200)
+        self.assertTrue(resp.data['enabled'])
+        row = next(r for r in resp.data['rows'] if r['commercial'] == 'caissier-pct')
+        # 5 % de 1000 HT (taux_tva par défaut 20 % -> HT = 1000/1.2 ≈ 833.33).
+        from apps.pos.models import VenteComptoir
+        vente = VenteComptoir.objects.get(reference='VC-CM-1')
+        attendu = (vente.total_ht * Decimal('5') / Decimal('100'))
+        self.assertAlmostEqual(
+            Decimal(row['commission']), attendu, places=2)
+
+    def test_plan_dedie_ca_devis_signe_sapplique_au_comptoir(self):
+        """Un caissier avec un PlanCommission dédié (base CA_DEVIS_SIGNE)
+        l'applique aussi à son CA comptoir — pas seulement ses devis."""
+        caissier = User.objects.create_user(
+            username='caissier-plan', password='x', role_legacy='normal',
+            company=self.company)
+        PlanCommission.objects.create(
+            company=self.company, owner=caissier,
+            base=PlanCommission.Base.CA_DEVIS_SIGNE,
+            taux_pct=Decimal('10'), actif=True)
+        self._vente_comptoir(caissier, montant='1000')
+
+        resp = self.api.get(f'{BASE}/commissions/')
+        self.assertEqual(resp.status_code, 200)
+        row = next(r for r in resp.data['rows'] if r['commercial'] == 'caissier-plan')
+        from apps.pos.models import VenteComptoir
+        vente = VenteComptoir.objects.get(reference='VC-CM-1')
+        attendu = vente.total_ht * Decimal('10') / Decimal('100')
+        self.assertAlmostEqual(Decimal(row['commission']), attendu, places=2)
+
+    def test_plan_par_kwc_jamais_applique_au_comptoir(self):
+        """Un plan base PAR_KWC n'a pas de sens pour un comptoir (aucun kWc)
+        — jamais appliqué, la vente comptoir reste sans ligne."""
+        caissier = User.objects.create_user(
+            username='caissier-kwc', password='x', role_legacy='normal',
+            company=self.company)
+        PlanCommission.objects.create(
+            company=self.company, owner=caissier,
+            base=PlanCommission.Base.PAR_KWC,
+            montant_par_kwc=Decimal('100'), actif=True)
+        self._vente_comptoir(caissier)
+
+        resp = self.api.get(f'{BASE}/commissions/')
+        self.assertEqual(resp.status_code, 200)
+        self.assertFalse(any(
+            r['commercial'] == 'caissier-kwc' for r in resp.data['rows']))
+
+    def test_cumule_devis_et_comptoir_du_meme_commercial(self):
+        """Un commercial avec un devis signé ET une vente comptoir cumule
+        les deux dans la même ligne."""
+        self._set_commission('pct_devis', Decimal('5'))
+        commercial = User.objects.create_user(
+            username='comm-mixte', password='x', role_legacy='responsable',
+            company=self.company)
+        client = Client.objects.create(company=self.company, nom='C-Mixte')
+        lead = Lead.objects.create(
+            company=self.company, nom='L-Mixte', stage='NEW', owner=commercial)
+        produit = Produit.objects.create(
+            company=self.company, nom='Panneau', sku='CM-MIXTE',
+            prix_vente=Decimal('1000'), quantite_stock=0)
+        devis = Devis.objects.create(
+            company=self.company, reference='DEV-CM-MIXTE', client=client,
+            lead=lead, statut=Devis.Statut.ACCEPTE, date_acceptation=date.today())
+        LigneDevis.objects.create(
+            devis=devis, produit=produit, designation='P',
+            quantite=Decimal('10'), prix_unitaire=Decimal('1000'))
+        self._vente_comptoir(commercial, montant='1000')
+
+        resp = self.api.get(f'{BASE}/commissions/')
+        self.assertEqual(resp.status_code, 200)
+        row = next(r for r in resp.data['rows'] if r['commercial'] == 'comm-mixte')
+        from apps.pos.models import VenteComptoir
+        vente = VenteComptoir.objects.get(reference='VC-CM-1')
+        # 5 % de (10×1000 devis + total_ht comptoir).
+        attendu = (Decimal('10000') + vente.total_ht) * Decimal('5') / Decimal('100')
+        self.assertAlmostEqual(Decimal(row['commission']), attendu, places=2)
+
+
 class TestSalesLeaderboard(InsightsBase):
     """FG93 — classement commerciaux : CA HT, taux victoire, deal moyen, kWc."""
 

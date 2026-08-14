@@ -930,3 +930,23 @@ salle_vente_signal_interet = django.dispatch.Signal()
 #     Arguments : ``lead_id`` (opaque), ``company``, ``ancienne_valeur``,
 #     ``nouvelle_valeur``.
 lead_maturite_changee = django.dispatch.Signal()
+
+
+# NTLOG44 — Émis EXACTEMENT une fois quand un ``douane.DossierExport`` bascule
+# vers CLÔTURÉ (``apps.douane.services.cloturer_dossier_export``, garde
+# idempotente — reclôturer un dossier déjà clôturé ne réémet rien). Des 3
+# événements originellement prévus pour ce lot, seul celui-ci est émissible
+# depuis ``apps.douane`` aujourd'hui : ``ordre_transport_livre``/
+# ``litige_transport_ouvert`` appartiennent au domaine ``apps.transport``
+# (lane concurrente) ; ``dossier_import_cloture`` dépendrait de
+# ``douane.DossierImport``, qui reste BLOCKED (NTLOG10 — GARDE WIR80, voir
+# ``apps/douane/apps.py``). ``dossier_export_cloture`` couvre le volet EXPORT
+# réellement construit dans cette app — symétrique par la forme, indépendant
+# par le fond, même motif que ``DossierExport`` lui-même. Aucun abonné câblé
+# dans ce lot (réservé dans ``core.event_coverage.ALLOWED_UNCONSUMED``, même
+# motif « seam » que ``budget_cycle_clos``/``entite_created`` ci-dessus) —
+# pose le crochet pour un futur abonné ``publicapi`` (webhook sortant) sans
+# que ``douane`` importe cette app. Arguments : ``dossier`` (instance
+# ``douane.DossierExport``), ``company``, ``user`` (peut être None),
+# ``ancien_statut`` (str, le statut BRUT avant la clôture).
+dossier_export_cloture = django.dispatch.Signal()

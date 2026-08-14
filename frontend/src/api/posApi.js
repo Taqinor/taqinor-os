@@ -73,6 +73,12 @@ const posApi = {
     api.post(`/pos/sessions/${sessionId}/cloturer/`, data),
   rapportZ: (sessionId) => api.get(`/pos/sessions/${sessionId}/rapport-z/`),
 
+  // ── Écran client — panier en cours (NTRET31) ──────────────────────────────
+  getPanierCourant: (sessionId) =>
+    api.get(`/pos/sessions/${sessionId}/panier-courant/`),
+  pushPanierCourant: (sessionId, panier) =>
+    api.patch(`/pos/sessions/${sessionId}/panier-courant/`, { panier }),
+
   // ── Commandes de retrait / click-and-collect (XPOS15) ─────────────────────
   getRetraits: (params) => api.get('/pos/retraits/', { params }),
   // WIR151 — création d'une commande retrait (client + lignes), jusqu'ici

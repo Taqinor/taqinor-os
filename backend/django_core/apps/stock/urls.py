@@ -1,6 +1,6 @@
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
-from .public_views import quai_checkin_view
+from .public_views import quai_checkin_view, portail_tiers_solde_view
 from .views import (
     ProduitViewSet, CategorieViewSet, FournisseurViewSet,
     MouvementStockViewSet, MarqueViewSet, BonCommandeFournisseurViewSet,
@@ -17,7 +17,11 @@ from .views import (
     NomenclatureCodeBarresViewSet, RegleCodeBarresViewSet,
     VaguePickingViewSet, UniteLogistiqueViewSet, QuaiViewSet,
     RendezVousTransporteurViewSet, ExpeditionTransporteurViewSet,
-    PlanComptageTournantViewSet,
+    PlanComptageTournantViewSet, AlerteRappelViewSet,
+    PortailTiersTokenViewSet, RetourClientViewSet,
+    MouvementRebutViewSet, PlanChargementViewSet, BlocageQualiteViewSet,
+    entrepot_productivite_view, entrepot_pertes_view,
+    reslotting_suggestions_view, casiers_etiquettes_pdf_view,
     scanner_resoudre_view, scanner_mouvement_view,
 )
 
@@ -63,11 +67,34 @@ router.register(r'rendez-vous-transporteur', RendezVousTransporteurViewSet)
 router.register(r'expeditions', ExpeditionTransporteurViewSet)
 router.register(
     r'plans-comptage-tournant', PlanComptageTournantViewSet)
+router.register(r'alertes-rappel', AlerteRappelViewSet)
+router.register(r'portails-tiers', PortailTiersTokenViewSet)
+router.register(r'retours-client', RetourClientViewSet)
+router.register(r'mouvements-rebut', MouvementRebutViewSet)
+router.register(r'plans-chargement', PlanChargementViewSet)
+router.register(r'blocages-qualite', BlocageQualiteViewSet)
 
 urlpatterns = [
     # NTWMS8 - kiosque de quai (chemin nomme par la tache : /stock/public/...).
     path('public/quai-checkin/', quai_checkin_view,
          name='stock-quai-checkin'),
+    # NTWMS20 - portail 3PL : solde du SEUL depositaire porteur du jeton.
+    path('public/tiers/<str:token>/solde/', portail_tiers_solde_view,
+         name='stock-portail-tiers-solde'),
+    # NTWMS18 - productivite entrepot par operateur (responsable/admin).
+    # L'endpoint vit dans `stock` (et non dans `reporting`) : cette lane ne
+    # possede que l'app stock -- la donnee et sa garde restent au meme endroit.
+    path('entrepot/productivite/', entrepot_productivite_view,
+         name='stock-entrepot-productivite'),
+    # NTWMS24 - valeur des pertes par motif (responsable/admin).
+    path('entrepot/pertes/', entrepot_pertes_view,
+         name='stock-entrepot-pertes'),
+    # NTWMS30 - suggestions de reslotting (lecture seule, aucune action auto).
+    path('reslotting-suggestions/', reslotting_suggestions_view,
+         name='stock-reslotting-suggestions'),
+    # NTWMS32 - planche d'etiquettes de casier a coller en rayonnage.
+    path('casiers/etiquettes-pdf/', casiers_etiquettes_pdf_view,
+         name='stock-casiers-etiquettes-pdf'),
     # NTWMS5 - poste scanner mobile (resolution universelle + mouvement scanne).
     path('scanner/resoudre/', scanner_resoudre_view,
          name='stock-scanner-resoudre'),

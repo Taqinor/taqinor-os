@@ -431,8 +431,26 @@ class ProduitSerializer(serializers.ModelSerializer):
     def get_quantite_reservee(self, obj):
         return self._reserved_map().get(obj.id, 0)
 
+    def _quarantaine_map(self):
+        """NTWMS31 — map {produit_id: quantité en quarantaine}, calculée UNE
+        fois par sérialisation (jamais de N+1). Vide tant qu'aucun blocage
+        qualité n'existe : comportement historique inchangé."""
+        cache = getattr(self, '_quarantaine_map_cache', None)
+        if cache is not None:
+            return cache
+        from .services import quantite_en_quarantaine
+        request = self.context.get('request')
+        company = getattr(getattr(request, 'user', None), 'company', None)
+        cache = quantite_en_quarantaine(company) if company is not None else {}
+        self._quarantaine_map_cache = cache
+        return cache
+
     def get_quantite_disponible(self, obj):
-        return obj.quantite_stock - self._reserved_map().get(obj.id, 0)
+        # N14 (réservé) + NTWMS31 (quarantaine qualité) : ni l'un ni l'autre
+        # n'est disponible pour une vague de prélèvement ou une vente.
+        return (obj.quantite_stock
+                - self._reserved_map().get(obj.id, 0)
+                - self._quarantaine_map().get(obj.id, 0))
 
     def get_categorie_type_display(self, obj):
         # Libellé FR du type d'équipement (None si catégorie non typée).
@@ -530,8 +548,36 @@ class EmplacementStockSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = EmplacementStock
-        fields = ['id', 'nom', 'is_principal', 'ordre', 'archived']
+        fields = [
+            'id', 'nom', 'is_principal', 'ordre', 'archived',
+            # NTWMS19 — stock 3PL (chez des tiers / de tiers).
+            'type_proprietaire', 'tiers_nom',
+        ]
         read_only_fields = ['is_principal']
+
+    def validate(self, attrs):
+        """NTWMS19 — le dépôt PRINCIPAL reste toujours interne (il porte le
+        stock non ventilé de la société) ; un emplacement de tiers doit
+        nommer son tiers."""
+        instance = getattr(self, 'instance', None)
+        type_proprietaire = attrs.get(
+            'type_proprietaire',
+            getattr(instance, 'type_proprietaire',
+                    EmplacementStock.TypeProprietaire.INTERNE))
+        tiers_nom = attrs.get(
+            'tiers_nom', getattr(instance, 'tiers_nom', '') or '')
+        est_principal = getattr(instance, 'is_principal', False)
+        if (est_principal
+                and type_proprietaire
+                != EmplacementStock.TypeProprietaire.INTERNE):
+            raise serializers.ValidationError(
+                {'type_proprietaire': 'Le dépôt principal est toujours '
+                                      'interne.'})
+        if (type_proprietaire != EmplacementStock.TypeProprietaire.INTERNE
+                and not tiers_nom.strip()):
+            raise serializers.ValidationError(
+                {'tiers_nom': 'Nommez le tiers concerné par cet emplacement.'})
+        return attrs
 
 
 class TransfertStockSerializer(serializers.ModelSerializer):

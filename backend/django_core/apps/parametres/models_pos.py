@@ -16,6 +16,8 @@ devis) — jamais dupliqué ici. La config imprimante/TPE RÉUTILISE
 ``BoutiquePos.emplacement`` référence ``stock.EmplacementStock`` par FK
 CHAÎNE (``'stock.EmplacementStock'``) : ceci reste une lecture — aucune
 migration ni modèle de ``apps/stock`` n'est jamais touché ici."""
+from decimal import Decimal
+
 from django.db import models
 
 from core.models import TenantModel
@@ -33,6 +35,28 @@ class ParametresPos(TenantModel):
     taux_horaire_comptoir = models.DecimalField(
         max_digits=10, decimal_places=2, null=True, blank=True,
         help_text="Taux horaire main-d'œuvre comptoir (MAD/heure).")
+    # NTRET23 — Click & Collect (XPOS15) : délai (jours) avant libération
+    # automatique d'une réservation jamais retirée. NULL/0 = désactivé —
+    # aucune réservation n'expire jamais (comportement historique inchangé).
+    delai_expiration_click_collect_jours = models.PositiveSmallIntegerField(
+        null=True, blank=True,
+        help_text="Click & Collect : délai (jours) avant libération "
+                  "automatique d'une réservation non retirée. Vide/0 = "
+                  "désactivé.")
+    # NTRET25 — arrondi caisse (espèces uniquement, jamais carte/virement) :
+    # arrondit le montant dû en espèces au pas configuré. Désactivé par
+    # défaut — comportement historique inchangé (aucun arrondi appliqué).
+    arrondi_caisse_actif = models.BooleanField(default=False)
+    arrondi_caisse_pas = models.DecimalField(
+        max_digits=4, decimal_places=2, default=Decimal('0.05'),
+        help_text="Pas d'arrondi caisse en espèces (MAD), ex. 0.05 ou 0.10.")
+    # NTRET32 — seuil (MAD, écart absolu) déclenchant une alerte proactive au
+    # gérant/directeur sur un écart de clôture anormal (espèces OU TPE).
+    # NULL/0 = désactivé — comportement actuel inchangé (aucune notification).
+    seuil_alerte_ecart_caisse = models.DecimalField(
+        max_digits=10, decimal_places=2, null=True, blank=True,
+        help_text='Seuil (MAD, écart absolu) déclenchant une alerte de '
+                  'clôture anormale. Vide/0 = désactivé.')
 
     class Meta:
         verbose_name = 'Paramètres POS'

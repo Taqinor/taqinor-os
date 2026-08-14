@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: 'Helvetica Neue', Arial, sans-serif; font-size: 12px; color: #333; }
+    .page { padding: 40px; }
+    .header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 32px; }
+    .header-left { display: flex; flex-direction: column; gap: 6px; }
+    .logo img { max-height: 90px; max-width: 240px; object-fit: contain; }
+    .doc-title { font-size: 24px; font-weight: bold; color: {{ couleur_principale }}; margin-top: 8px; }
+    .doc-ref { font-size: 12px; color: #666; }
+    .company-info { text-align: right; font-size: 11px; color: #555; line-height: 1.6; }
+    .company-info strong { font-size: 13px; color: #222; }
+
+    .meta-row { display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; }
+    .meta-item { background: #f8fafc; border-radius: 4px; padding: 8px 14px; min-width: 130px; }
+    .meta-item strong { display: block; color: #555; font-size: 10px; text-transform: uppercase; margin-bottom: 2px; }
+    .meta-item span { font-size: 12px; color: #1e293b; font-weight: 500; }
+
+    .badge-prototype { display: inline-block; background: #fef3c7; color: #92400e; border-radius: 4px; padding: 2px 8px; font-size: 10px; font-weight: bold; text-transform: uppercase; margin-left: 8px; }
+
+    h2 { font-size: 13px; text-transform: uppercase; letter-spacing: 0.5px; color: {{ couleur_principale }}; margin: 20px 0 8px; }
+
+    table { width: 100%; border-collapse: collapse; margin-bottom: 8px; }
+    thead tr { background: {{ couleur_principale }}; color: white; }
+    thead th { padding: 8px 12px; text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; }
+    tbody tr:nth-child(even) { background: #f9fafb; }
+    tbody td { padding: 8px 12px; border-bottom: 1px solid #e5e7eb; font-size: 11.5px; }
+    .text-right { text-align: right; }
+    .check-box { width: 14px; height: 14px; border: 1.5px solid #94a3b8; display: inline-block; border-radius: 2px; }
+    .emargement-cell { font-size: 9.5px; color: #94a3b8; }
+
+    .footer { margin-top: 30px; border-top: 1px solid #e2e8f0; padding-top: 14px; font-size: 10px; color: #94a3b8; text-align: center; line-height: 1.8; }
+  </style>
+</head>
+<body>
+<div class="page">
+
+  <div class="header">
+    <div class="header-left">
+      {% if logo_uri %}<div class="logo"><img src="{{ logo_uri }}" alt="Logo" /></div>{% endif %}
+      <div class="doc-title">FICHE SUIVEUSE (TRAVELER)
+        {% if est_prototype %}<span class="badge-prototype">Prototype</span>{% endif %}
+      </div>
+      <div class="doc-ref">{{ reference }}</div>
+    </div>
+    <div class="company-info">
+      <strong>{{ entreprise_nom }}</strong><br />
+      Document interne — usage atelier uniquement
+    </div>
+  </div>
+
+  <div class="meta-row">
+    <div class="meta-item">
+      <strong>Produit</strong>
+      <span>{{ produit_nom }}</span>
+    </div>
+    <div class="meta-item">
+      <strong>Quantité</strong>
+      <span>{{ quantite }}</span>
+    </div>
+    <div class="meta-item">
+      <strong>Date prévue</strong>
+      <span>{{ date_prevue.strftime('%d/%m/%Y') if date_prevue else 'N/A' }}</span>
+    </div>
+    <div class="meta-item">
+      <strong>Statut</strong>
+      <span>{{ statut }}</span>
+    </div>
+  </div>
+
+  <h2>Séquence d'opérations</h2>
+  <table>
+    <thead>
+      <tr>
+        <th style="width:30px;">N°</th>
+        <th>Opération</th>
+        <th>Poste</th>
+        <th class="text-right">Temps standard</th>
+        <th>Émargement (fait par / quand)</th>
+        <th class="text-right">Qté bonne / rebut</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for op in operations %}
+      <tr>
+        <td>{{ op.ordre }}</td>
+        <td>{{ op.libelle }}</td>
+        <td>{{ op.poste_nom }}</td>
+        <td class="text-right">{{ '%d min'|format(op.temps_prevu_min) if op.temps_prevu_min is not none else '—' }}</td>
+        <td class="emargement-cell">________________________</td>
+        <td class="text-right"><span class="check-box"></span> ____ / ____</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <div class="footer">
+    Document interne généré automatiquement le {{ now.strftime('%d/%m/%Y à %H:%M') }} — ne jamais transmettre au client.
+  </div>
+
+</div>
+</body>
+</html>

@@ -6,9 +6,10 @@
 from rest_framework import serializers
 
 from .models_wms import (
-    ExpeditionTransporteur, LignePicking, PlanComptageTournant, Quai,
-    RendezVousTransporteur, UniteLogistique, UniteLogistiqueLigne,
-    VaguePicking,
+    AlerteRappel, BlocageQualite, ExpeditionTransporteur, LignePicking,
+    LigneRetourClient, MouvementRebut, PlanChargement, PlanComptageTournant,
+    PortailTiersToken, Quai, RendezVousTransporteur, RetourClient,
+    UniteLogistique, UniteLogistiqueLigne, VaguePicking,
 )
 
 
@@ -91,12 +92,13 @@ class UniteLogistiqueSerializer(serializers.ModelSerializer):
         model = UniteLogistique
         fields = [
             'id', 'type_unite', 'sscc', 'parent', 'vague', 'poids_kg',
-            'dimensions', 'statut', 'date_scellage', 'scelle_par',
+            'dimensions', 'statut', 'bin_actuel', 'date_scellage',
+            'scelle_par',
             'est_figee', 'nb_enfants', 'lignes', 'created_at', 'updated_at',
         ]
         read_only_fields = [
-            'sscc', 'statut', 'date_scellage', 'scelle_par', 'created_at',
-            'updated_at',
+            'sscc', 'statut', 'bin_actuel', 'date_scellage', 'scelle_par',
+            'created_at', 'updated_at',
         ]
 
     def get_nb_enfants(self, obj) -> int:
@@ -213,3 +215,157 @@ class PlanComptageTournantSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 'La fréquence doit être un nombre de jours positif.')
         return value
+
+
+class AlerteRappelSerializer(serializers.ModelSerializer):
+    """NTWMS17 — rappel produit/lot. Le statut et l'auteur sont posés côté
+    serveur (jamais acceptés du corps de requête)."""
+
+    produit_nom = serializers.CharField(source='produit.nom', read_only=True)
+    numero_lot = serializers.CharField(
+        source='lot.numero_lot', read_only=True, default='')
+
+    class Meta:
+        model = AlerteRappel
+        fields = [
+            'id', 'produit', 'produit_nom', 'lot', 'numero_lot', 'motif',
+            'date_declenchement', 'statut', 'declenchee_par', 'date_cloture',
+            'created_at', 'updated_at',
+        ]
+        read_only_fields = [
+            'statut', 'declenchee_par', 'date_cloture', 'date_declenchement',
+            'created_at', 'updated_at',
+        ]
+
+    def validate_motif(self, value):
+        if not (value or '').strip():
+            raise serializers.ValidationError(
+                'Le motif du rappel est obligatoire.')
+        return value
+
+
+class PortailTiersTokenSerializer(serializers.ModelSerializer):
+    """NTWMS20 — jeton du portail 3PL. Le jeton lui-même est GÉNÉRÉ côté
+    serveur et n'est jamais accepté du client ; il n'est lisible que par les
+    utilisateurs ERP autorisés qui envoient le lien au dépositaire."""
+
+    lien_public = serializers.SerializerMethodField()
+    est_valide = serializers.BooleanField(read_only=True)
+
+    class Meta:
+        model = PortailTiersToken
+        fields = [
+            'id', 'tiers_nom', 'token', 'lien_public', 'expires_at',
+            'revoked', 'est_valide', 'last_used_at', 'created_at',
+        ]
+        read_only_fields = ['token', 'last_used_at', 'created_at']
+
+    def get_lien_public(self, obj) -> str:
+        return f'/api/django/stock/public/tiers/{obj.token}/solde/'
+
+    def validate_tiers_nom(self, value):
+        if not (value or '').strip():
+            raise serializers.ValidationError(
+                'Nommez le dépositaire concerné par ce jeton.')
+        return value
+
+
+class BlocageQualiteSerializer(serializers.ModelSerializer):
+    """NTWMS31 — blocage qualité (quarantaine). Le statut et l'auteur sont
+    posés côté serveur ; la levée passe par l'action dédiée."""
+
+    produit_nom = serializers.CharField(source='produit.nom', read_only=True)
+    bin_code = serializers.CharField(
+        source='bin.code', read_only=True, default='')
+
+    class Meta:
+        model = BlocageQualite
+        fields = [
+            'id', 'produit', 'produit_nom', 'quantite', 'bin', 'bin_code',
+            'lot', 'reception', 'non_conformite', 'statut', 'motif',
+            'bloque_par', 'leve_par', 'date_levee', 'created_at',
+        ]
+        read_only_fields = [
+            'statut', 'bloque_par', 'leve_par', 'date_levee', 'created_at',
+        ]
+
+
+class PlanChargementSerializer(serializers.ModelSerializer):
+    """NTWMS26 — plan de chargement camion. La référence est posée côté
+    serveur ; les unités s'ajoutent par l'action dédiée (qui renvoie
+    l'avertissement de capacité)."""
+
+    nb_unites = serializers.SerializerMethodField()
+
+    class Meta:
+        model = PlanChargement
+        fields = [
+            'id', 'reference', 'livraison', 'expedition', 'vehicule',
+            'unites_logistiques', 'nb_unites', 'capacite_kg', 'capacite_m3',
+            'statut', 'note', 'cree_par', 'created_at',
+        ]
+        read_only_fields = [
+            'reference', 'unites_logistiques', 'cree_par', 'created_at',
+        ]
+
+    def get_nb_unites(self, obj) -> int:
+        return obj.unites_logistiques.count()
+
+
+class MouvementRebutSerializer(serializers.ModelSerializer):
+    """NTWMS24 — déclaration de perte motivée. La valeur de perte et le
+    mouvement de stock sont posés côté serveur (jamais acceptés du client) ;
+    la valeur reste INTERNE."""
+
+    produit_nom = serializers.CharField(source='produit.nom', read_only=True)
+    bin_code = serializers.CharField(
+        source='bin.code', read_only=True, default='')
+    motif_libelle = serializers.CharField(
+        source='get_motif_display', read_only=True)
+
+    class Meta:
+        model = MouvementRebut
+        fields = [
+            'id', 'produit', 'produit_nom', 'quantite', 'motif',
+            'motif_libelle', 'bin', 'bin_code', 'valeur_perte', 'mouvement',
+            'note', 'declare_par', 'created_at',
+        ]
+        read_only_fields = [
+            'valeur_perte', 'mouvement', 'declare_par', 'created_at',
+        ]
+
+
+class LigneRetourClientSerializer(serializers.ModelSerializer):
+    """NTWMS23 — ligne d'un retour client (lecture)."""
+
+    produit_nom = serializers.CharField(source='produit.nom', read_only=True)
+    bin_code = serializers.CharField(
+        source='bin.code', read_only=True, default='')
+
+    class Meta:
+        model = LigneRetourClient
+        fields = [
+            'id', 'retour', 'produit', 'produit_nom', 'quantite',
+            'etat_constate', 'bin', 'bin_code', 'stock_mouvemente', 'note',
+        ]
+        read_only_fields = ['retour', 'stock_mouvemente']
+
+
+class RetourClientSerializer(serializers.ModelSerializer):
+    """NTWMS23 — retour client (RMA). Référence et statut posés côté
+    serveur ; les lignes sont fournies à la création."""
+
+    lignes = LigneRetourClientSerializer(many=True, read_only=True)
+    client_nom = serializers.CharField(source='client.nom', read_only=True)
+
+    class Meta:
+        model = RetourClient
+        fields = [
+            'id', 'reference', 'client', 'client_nom', 'chantier', 'ticket',
+            'statut', 'motif', 'date_reception', 'date_inspection',
+            'cree_par', 'lignes', 'created_at', 'updated_at',
+        ]
+        read_only_fields = [
+            'reference', 'statut', 'date_reception', 'date_inspection',
+            'cree_par', 'created_at', 'updated_at',
+        ]

@@ -4,12 +4,15 @@ from django.urls import path
 from .public_views import (
     portail_fournisseur_documents_view, portail_fournisseur_confirmer_bcf_view,
     fiche_produit_showroom_view, fiche_produit_etre_rappele_view,
-    quai_checkin_view,
+    quai_checkin_view, portail_tiers_solde_view,
 )
 
 urlpatterns = [
     # NTWMS8 - kiosque de quai : le chauffeur externe s'enregistre sans compte.
     path('quai-checkin/', quai_checkin_view, name='stock-public-quai-checkin'),
+    # NTWMS20 - portail 3PL (lecture seule, un seul depositaire par jeton).
+    path('tiers/<str:token>/solde/', portail_tiers_solde_view,
+         name='stock-public-portail-tiers-solde'),
     path('portail-fournisseur/<str:token>/',
          portail_fournisseur_documents_view,
          name='stock-public-portail-fournisseur'),

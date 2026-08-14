@@ -85,6 +85,16 @@ def receipt_html(vente, *, paiements=None, timbre=None):
             f'<p class="timbre">Droit de timbre : '
             f'{timbre.montant:.2f} MAD</p>')
 
+    # NTRET25 — arrondi caisse (espèces) : ligne DISTINCTE, jamais fondue dans
+    # le prix d'un produit. Absent (None) = arrondi non applicable (désactivé,
+    # ou aucun montant dû en espèces) — comportement historique inchangé.
+    arrondi_html = ''
+    ecart = getattr(vente, 'ecart_arrondi_especes', None)
+    if ecart is not None and ecart != 0:
+        signe = '+' if ecart > 0 else ''
+        arrondi_html = (
+            f'<p class="arrondi">Arrondi caisse : {signe}{ecart:.2f} MAD</p>')
+
     facture_ref = vente.facture.reference if vente.facture_id else ''
     mention = (
         f'Ticket de caisse — la facture correspondante {facture_ref} '
@@ -104,6 +114,7 @@ def receipt_html(vente, *, paiements=None, timbre=None):
   .num {{ text-align: right; }}
   .mention {{ margin-top: 6px; font-size: 8px; text-align: center; }}
   .timbre {{ font-size: 9px; text-align: center; }}
+  .arrondi {{ font-size: 9px; text-align: center; }}
   hr {{ border: none; border-top: 1px dashed #000; }}
 </style>
 </head>
@@ -129,6 +140,7 @@ def receipt_html(vente, *, paiements=None, timbre=None):
   <hr>
   <p>Règlement(s) :</p>
   <table>{''.join(paiements_html)}</table>
+  {arrondi_html}
   {timbre_html}
   <hr>
   <p class="mention">{escape(mention)}</p>
