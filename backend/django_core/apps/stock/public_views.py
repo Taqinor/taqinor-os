@@ -423,3 +423,54 @@ def quai_checkin_view(request):
             status=status.HTTP_404_NOT_FOUND,
         ))
     return _noindex(Response(resultat))
+
+
+# ── NTWMS20 — Portail 3PL : le dépositaire consulte SON solde de stock ──────
+
+class PortailTiersThrottle(SimpleRateThrottle):
+    """Limite le débit du portail 3PL par IP + jeton (cache-based, sans
+    dépendance externe) — même patron que le portail fournisseur."""
+    scope = 'stock_portail_tiers'
+    rate = '30/minute'
+
+    def get_rate(self):
+        return self.rate
+
+    def get_cache_key(self, request, view):
+        token = (view.kwargs or {}).get('token', '')
+        return self.cache_format % {
+            'scope': self.scope,
+            'ident': f'{self.get_ident(request)}:{token}',
+        }
+
+
+@extend_schema(responses={
+    200: inline_serializer('StockPortailTiersSolde', {
+        'tiers_nom': serializers.CharField(),
+        'lignes': serializers.ListField(child=serializers.DictField()),
+        'total_unites': serializers.IntegerField(),
+    }),
+    404: inline_serializer('StockPortailTiersErreur', {
+        'detail': serializers.CharField(),
+    }),
+})
+@api_view(['GET'])
+@permission_classes([AllowAny])
+@throttle_classes([PortailTiersThrottle])
+def portail_tiers_solde_view(request, token):
+    """NTWMS20 — solde de stock DU SEUL dépositaire porteur de ce jeton.
+
+    Lecture seule, sans compte ERP. La réponse ne contient QUE les quantités
+    du tiers (produit, SKU, emplacement) — jamais le stock interne de la
+    société, jamais un autre dépositaire, jamais un prix ou une marge. Jeton
+    invalide, révoqué ou expiré → 404 sans fuite.
+    """
+    from .services import resoudre_token_portail_tiers, solde_portail_tiers
+
+    token_obj = resoudre_token_portail_tiers(token)
+    if token_obj is None:
+        return _noindex(Response(
+            {'detail': "Ce lien de portail est invalide, révoqué ou expiré."},
+            status=status.HTTP_404_NOT_FOUND,
+        ))
+    return _noindex(Response(solde_portail_tiers(token_obj)))

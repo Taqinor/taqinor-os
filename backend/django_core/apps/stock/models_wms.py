@@ -24,6 +24,7 @@ import secrets
 
 from django.conf import settings
 from django.db import models
+from django.utils import timezone
 
 from core.models import TenantModel
 
@@ -196,6 +197,11 @@ class UniteLogistique(TenantModel):
     statut = models.CharField(
         max_length=20, choices=Statut.choices,
         default=Statut.EN_PREPARATION)
+    # NTWMS25 — casier où l'unité se trouve PHYSIQUEMENT (string-FK FG319).
+    # Vide = position non suivie (comportement historique inchangé).
+    bin_actuel = models.ForeignKey(
+        'installations.BinLocation', on_delete=models.SET_NULL, null=True,
+        blank=True, related_name='unites_logistiques')
     date_scellage = models.DateTimeField(null=True, blank=True)
     scelle_par = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
@@ -532,3 +538,480 @@ class PlanComptageTournant(TenantModel):
         echeance = self.date_dernier_comptage + datetime.timedelta(
             days=self.frequence_jours or 0)
         return a_la_date >= echeance
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# NTWMS15 — Cross-dock : de la réception à l'expédition, sans passer en stock
+# ═══════════════════════════════════════════════════════════════════════════
+
+class AffectationCrossDock(TenantModel):
+    """NTWMS15 — une ligne REÇUE routée DIRECTEMENT vers une expédition.
+
+    Le cross-dock est le raccourci du magasin : la marchandise qui arrive est
+    déjà attendue par une vague de prélèvement (NTWMS4), donc elle ne monte
+    JAMAIS en rayon — elle va du quai de réception au colis d'expédition. Ce
+    modèle est la TRACE de cette décision : tant qu'une ligne de réception
+    porte une affectation, le rangement guidé (put-away NTWMS2) est
+    explicitement sauté pour elle.
+
+    FRONTIÈRE INTER-APPS. ``ReceptionFournisseur``/``LigneReceptionFournisseur``
+    vivent dans ``achats`` (ODX19) : elles sont référencées en STRING-FK, et
+    l'app ``achats`` n'est jamais modifiée depuis ``stock``. Le drapeau
+    « cette réception est destinée au cross-dock » n'est donc pas une colonne
+    de la réception mais l'EXISTENCE de ces affectations, lue par
+    ``services.reception_est_cross_dock`` — même information, du bon côté de
+    la frontière.
+    """
+
+    reception = models.ForeignKey(
+        'achats.ReceptionFournisseur', on_delete=models.CASCADE,  # on_delete: CASCADE - une affectation ne decrit qu'une reception ; sans elle elle ne designe plus rien
+        related_name='affectations_cross_dock')
+    ligne_reception = models.ForeignKey(
+        'achats.LigneReceptionFournisseur', on_delete=models.CASCADE,  # on_delete: CASCADE - l'affectation route UNE ligne recue ; la ligne disparue, elle est vide de sens
+        related_name='affectations_cross_dock')
+    produit = models.ForeignKey(
+        'stock.Produit', on_delete=models.PROTECT,
+        related_name='affectations_cross_dock')  # on_delete: PROTECT — trace d'exécution magasin (aligné sur LignePicking/MouvementStock)
+    quantite = models.PositiveIntegerField(default=0)
+    unite_logistique = models.ForeignKey(
+        UniteLogistique, on_delete=models.CASCADE,  # on_delete: CASCADE - le routage n'existe que par le colis d'expedition qu'il alimente
+        related_name='affectations_cross_dock')
+    ligne_picking = models.ForeignKey(
+        LignePicking, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='affectations_cross_dock',
+        help_text='Ligne de vague en attente qui a justifié le cross-dock.')
+
+    class Meta:
+        verbose_name = 'Affectation cross-dock'
+        verbose_name_plural = 'Affectations cross-dock'
+        ordering = ['-created_at']
+        constraints = [
+            # Une ligne reçue n'est routée qu'UNE fois (ré-appeler le service
+            # ne duplique jamais le contenu du colis).
+            models.UniqueConstraint(
+                fields=['company', 'ligne_reception'],
+                name='stock_crossdock_company_ligne_uniq'),
+        ]
+        indexes = [
+            models.Index(fields=['company', 'reception'],
+                         name='idx_crossdock_co_reception'),
+        ]
+
+    def __str__(self):
+        return f'Cross-dock {self.ligne_reception_id} → {self.unite_logistique_id}'
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# NTWMS17 — Rappel produit (recall) par lot / série
+# ═══════════════════════════════════════════════════════════════════════════
+
+class AlerteRappel(TenantModel):
+    """NTWMS17 — rappel fournisseur/fabricant sur un produit ou un lot.
+
+    Un rappel devient un incident SAV quand on découvre TROP TARD où la
+    marchandise est partie. Ce modèle déclenche l'inverse : dès la
+    déclaration, ``services.impact_rappel`` réutilise la traçabilité NTWMS16
+    pour lister EN UN CLIC le stock encore en casier ET les chantiers/clients
+    déjà livrés avec ce lot.
+    """
+
+    class Statut(models.TextChoices):
+        EN_COURS = 'en_cours', 'En cours'
+        CLOS = 'clos', 'Clos'
+
+    produit = models.ForeignKey(
+        'stock.Produit', on_delete=models.PROTECT,
+        related_name='alertes_rappel')  # on_delete: PROTECT — un rappel est une trace réglementaire ; il ne disparaît pas avec la fiche produit
+    lot = models.ForeignKey(
+        'stock.LotEntrepot', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='alertes_rappel',
+        help_text='Lot concerné. Vide = le rappel porte sur TOUT le produit.')
+    motif = models.TextField()
+    date_declenchement = models.DateTimeField(
+        default=timezone.now,
+        help_text='Horodatage du déclenchement (aware, jamais naïf).')
+    statut = models.CharField(
+        max_length=20, choices=Statut.choices, default=Statut.EN_COURS)
+    declenchee_par = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='alertes_rappel_declenchees')
+    date_cloture = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        verbose_name = 'Alerte de rappel produit'
+        verbose_name_plural = 'Alertes de rappel produit'
+        ordering = ['-date_declenchement', '-id']
+        indexes = [
+            models.Index(fields=['company', 'statut'],
+                         name='idx_alerterappel_co_statut'),
+        ]
+
+    def __str__(self):
+        return f'Rappel {self.produit_id} ({self.statut})'
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# NTWMS20 — Portail 3PL : le client dépositaire consulte SON stock
+# ═══════════════════════════════════════════════════════════════════════════
+
+def _default_portail_tiers_token():
+    return secrets.token_urlsafe(32)
+
+
+def _default_portail_tiers_expiry():
+    import datetime
+
+    return timezone.now() + datetime.timedelta(days=90)
+
+
+class PortailTiersToken(TenantModel):
+    """NTWMS20 — jeton public, révocable et expirant, du portail 3PL.
+
+    Même patron que ``PortailFournisseurToken`` (XPUR22) : long, imprévisible
+    (``secrets``), révocable, expirant. La PORTÉE est ici un seul
+    ``tiers_nom`` : le porteur ne voit que le stock des emplacements
+    ``type_proprietaire=DE_TIERS`` portant CE nom, dans CETTE société —
+    jamais le stock interne, jamais un autre dépositaire, jamais un autre
+    locataire.
+    """
+
+    tiers_nom = models.CharField(
+        max_length=150,
+        help_text='Dépositaire propriétaire du stock (NTWMS19 : le '
+                  '`tiers_nom` des emplacements DE_TIERS qu\'il possède).')
+    token = models.CharField(
+        max_length=64, default=_default_portail_tiers_token, editable=False)
+    expires_at = models.DateTimeField(default=_default_portail_tiers_expiry)
+    revoked = models.BooleanField(default=False)
+    cree_par = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='portails_tiers_crees')
+    last_used_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        verbose_name = 'Jeton portail 3PL'
+        verbose_name_plural = 'Jetons portail 3PL'
+        ordering = ['-created_at']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'token'],
+                name='stock_portailtiers_company_token_uniq'),
+        ]
+        indexes = [
+            models.Index(fields=['token'], name='idx_portailtiers_token'),
+        ]
+
+    def __str__(self):
+        return f'Portail 3PL {self.tiers_nom} · {self.token[:8]}…'
+
+    @property
+    def est_valide(self):
+        return not self.revoked and self.expires_at > timezone.now()
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# NTWMS23 — Retours CLIENT (RMA) côté entrepôt
+# ═══════════════════════════════════════════════════════════════════════════
+
+class RetourClient(TenantModel):
+    """NTWMS23 — marchandise qui REVIENT d'un client vers l'entrepôt.
+
+    À ne pas confondre avec ``achats.RetourFournisseur``, qui part VERS le
+    fournisseur : ici le flux est entrant, et la question centrale est l'état
+    de ce qui revient. Le stock vendable n'est réintégré que pour les lignes
+    constatées REVENDABLE — un rebut n'incrémente JAMAIS le stock.
+    """
+
+    class Statut(models.TextChoices):
+        DEMANDE = 'demande', 'Demandé'
+        EN_TRANSIT = 'en_transit', 'En transit'
+        RECEPTIONNE = 'receptionne', 'Réceptionné'
+        INSPECTE = 'inspecte', 'Inspecté'
+        CLOS = 'clos', 'Clos'
+
+    reference = models.CharField(max_length=50)
+    # String-FK cross-app (crm/installations/sav) — jamais un import de leurs
+    # modèles depuis stock.
+    client = models.ForeignKey(
+        'crm.Client', on_delete=models.PROTECT,
+        related_name='retours_entrepot')  # on_delete: PROTECT — un retour est une trace logistique et comptable ; il survit à l'archivage du client
+    chantier = models.ForeignKey(
+        'installations.Installation', on_delete=models.SET_NULL, null=True,
+        blank=True, related_name='retours_entrepot')
+    ticket = models.ForeignKey(
+        'sav.Ticket', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='retours_entrepot')
+    statut = models.CharField(
+        max_length=20, choices=Statut.choices, default=Statut.DEMANDE)
+    motif = models.TextField(blank=True, default='')
+    date_reception = models.DateTimeField(null=True, blank=True)
+    date_inspection = models.DateTimeField(null=True, blank=True)
+    cree_par = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='retours_client_crees')
+
+    class Meta:
+        verbose_name = 'Retour client (RMA)'
+        verbose_name_plural = 'Retours client (RMA)'
+        ordering = ['-created_at']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'reference'],
+                name='stock_retourclient_company_reference_uniq'),
+        ]
+        indexes = [
+            models.Index(fields=['company', 'statut'],
+                         name='idx_retourclient_co_statut'),
+        ]
+
+    def __str__(self):
+        return f'{self.reference} ({self.statut})'
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# NTWMS31 — Quarantaine qualité (blocage de disponibilité, lié au casier)
+# ═══════════════════════════════════════════════════════════════════════════
+
+class BlocageQualite(TenantModel):
+    """NTWMS31 — quantité BLOQUÉE en quarantaine tant que la qualité n'a pas
+    tranché.
+
+    Une ligne reçue signalée non conforme ne doit pas être vendable : elle est
+    routée vers un casier de quarantaine et sa quantité cesse d'être
+    DISPONIBLE (elle reste en stock physique — rien n'est sorti). La levée est
+    un acte tracé, réservé aux responsables.
+
+    Le ``type_bin`` QUARANTAINE annoncé par NTWMS1 n'existe pas :
+    ``installations.BinLocation`` (FG319) ne porte aucun type de casier, et
+    cette app n'écrit jamais dans ``installations``. La quarantaine est donc
+    portée ICI, par un blocage explicite qui référence le casier en string-FK
+    — plus honnête qu'un drapeau déduit d'un nom de casier.
+    """
+
+    class Statut(models.TextChoices):
+        EN_QUARANTAINE = 'en_quarantaine', 'En quarantaine'
+        LEVEE = 'levee', 'Levée'
+        REBUTEE = 'rebutee', 'Rebutée'
+
+    produit = models.ForeignKey(
+        'stock.Produit', on_delete=models.PROTECT,
+        related_name='blocages_qualite')  # on_delete: PROTECT — décision qualité traçable (aligné sur MouvementStock)
+    quantite = models.PositiveIntegerField(default=0)
+    bin = models.ForeignKey(
+        'installations.BinLocation', on_delete=models.SET_NULL, null=True,
+        blank=True, related_name='blocages_qualite',
+        help_text='Casier de quarantaine où la marchandise est isolée.')
+    lot = models.ForeignKey(
+        'stock.LotEntrepot', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='blocages_qualite')
+    reception = models.ForeignKey(
+        'achats.ReceptionFournisseur', on_delete=models.SET_NULL, null=True,
+        blank=True, related_name='blocages_qualite')
+    # Non-conformité QHSE d'origine (string-FK : jamais un import de `qhse`).
+    non_conformite = models.ForeignKey(
+        'qhse.NonConformite', on_delete=models.SET_NULL, null=True,
+        blank=True, related_name='blocages_qualite_stock')
+    statut = models.CharField(
+        max_length=20, choices=Statut.choices, default=Statut.EN_QUARANTAINE)
+    motif = models.TextField(blank=True, default='')
+    bloque_par = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True,
+        blank=True, related_name='blocages_qualite_poses')
+    leve_par = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True,
+        blank=True, related_name='blocages_qualite_leves')
+    date_levee = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        verbose_name = 'Blocage qualité (quarantaine)'
+        verbose_name_plural = 'Blocages qualité (quarantaine)'
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['company', 'statut'],
+                         name='idx_blocqual_co_statut'),
+            models.Index(fields=['company', 'produit'],
+                         name='idx_blocqual_co_produit'),
+        ]
+
+    def __str__(self):
+        return f'Quarantaine {self.produit_id} × {self.quantite}'
+
+
+class LigneRetourClient(TenantModel):
+    """Ligne d'un retour client : ce qui revient, dans quel état, et où.
+
+    ``etat_constate`` pilote TOUT : REVENDABLE réintègre le stock vendable (au
+    casier de quarantaine tant que le contrôle qualité n'a pas tranché),
+    A_REPARER et REBUT ne l'incrémentent jamais. ``stock_mouvemente`` rend
+    l'opération idempotente : une ligne déjà entrée en stock n'y entre pas
+    deux fois, et une ligne qui devient un rebut APRÈS coup en ressort une
+    seule fois.
+    """
+
+    class EtatConstate(models.TextChoices):
+        REVENDABLE = 'revendable', 'Revendable'
+        A_REPARER = 'a_reparer', 'À réparer'
+        REBUT = 'rebut', 'Rebut'
+
+    retour = models.ForeignKey(
+        RetourClient, on_delete=models.CASCADE,  # on_delete: CASCADE - une ligne n'existe QUE dans son retour (composition stricte)
+        related_name='lignes')
+    produit = models.ForeignKey(
+        'stock.Produit', on_delete=models.PROTECT,
+        related_name='lignes_retour_client')  # on_delete: PROTECT — trace d'un mouvement de stock réel (aligné sur MouvementStock)
+    quantite = models.PositiveIntegerField(default=0)
+    etat_constate = models.CharField(
+        max_length=20, choices=EtatConstate.choices,
+        default=EtatConstate.REVENDABLE)
+    # Casier de destination selon l'état (QUARANTAINE avant contrôle, zone de
+    # rebut sinon) — string-FK vers la hiérarchie FG319, jamais dupliquée.
+    bin = models.ForeignKey(
+        'installations.BinLocation', on_delete=models.SET_NULL, null=True,
+        blank=True, related_name='lignes_retour_client')
+    stock_mouvemente = models.BooleanField(default=False)
+    note = models.TextField(blank=True, default='')
+
+    class Meta:
+        verbose_name = 'Ligne de retour client'
+        verbose_name_plural = 'Lignes de retour client'
+        ordering = ['id']
+        indexes = [
+            models.Index(fields=['company', 'retour'],
+                         name='idx_ligneretcli_co_retour'),
+        ]
+
+    def __str__(self):
+        return f'{self.produit_id} × {self.quantite} ({self.etat_constate})'
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# NTWMS24 — Casse / freinte / mise au rebut AVEC MOTIF
+# ═══════════════════════════════════════════════════════════════════════════
+
+class MouvementRebut(TenantModel):
+    """NTWMS24 — déclaration de perte MOTIVÉE, chiffrée, traçable au casier.
+
+    L'ajustement d'inventaire générique dit COMBIEN mais jamais POURQUOI :
+    une casse, une péremption, un vol et une erreur de réception se
+    ressemblent toutes une fois fondues dans un ajustement. Ce document porte
+    la taxonomie de motif, le casier d'origine et la valeur de la perte, et
+    reste DISTINCT des ajustements d'inventaire dans tous les rapports.
+
+    Le mouvement de stock réel est celui, existant, du service de rebut
+    (``rebuter_produit``, type ``REBUT``) — jamais un second chemin
+    d'écriture. ``valeur_perte`` est INTERNE (coût moyen d'achat au moment de
+    la déclaration) : elle n'apparaît JAMAIS dans un document client.
+    """
+
+    class Motif(models.TextChoices):
+        CASSE = 'casse', 'Casse'
+        PERIME = 'perime', 'Périmé'
+        VOL = 'vol', 'Vol'
+        ERREUR_RECEPTION = 'erreur_reception', 'Erreur de réception'
+
+    # Correspondance vers la taxonomie historique de `MouvementStock`
+    # (XMFG11/XSTK10) : le mouvement posé reste lisible par les rapports
+    # existants, sans inventer un second vocabulaire de motifs.
+    MOTIF_MOUVEMENT = {
+        'casse': 'casse', 'perime': 'perime', 'vol': 'vol',
+        'erreur_reception': 'erreur',
+    }
+
+    produit = models.ForeignKey(
+        'stock.Produit', on_delete=models.PROTECT,
+        related_name='mouvements_rebut')  # on_delete: PROTECT — pièce de suivi comptable des pertes (aligné sur MouvementStock)
+    quantite = models.PositiveIntegerField(default=0)
+    motif = models.CharField(max_length=20, choices=Motif.choices)
+    bin = models.ForeignKey(
+        'installations.BinLocation', on_delete=models.SET_NULL, null=True,
+        blank=True, related_name='mouvements_rebut',
+        help_text='Casier d\'où sort la marchandise perdue.')
+    valeur_perte = models.DecimalField(
+        max_digits=14, decimal_places=2, default=0,
+        help_text='Coût moyen × quantité au moment de la déclaration '
+                  '(INTERNE, jamais client-facing).')
+    mouvement = models.ForeignKey(
+        'stock.MouvementStock', on_delete=models.SET_NULL, null=True,
+        blank=True, related_name='rebuts_declares')
+    note = models.TextField(blank=True, default='')
+    declare_par = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='mouvements_rebut_declares')
+
+    class Meta:
+        verbose_name = 'Déclaration de rebut'
+        verbose_name_plural = 'Déclarations de rebut'
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['company', 'motif'],
+                         name='idx_mvtrebut_co_motif'),
+        ]
+
+    def __str__(self):
+        return f'Rebut {self.produit_id} × {self.quantite} ({self.motif})'
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# NTWMS26 — Chargement camion & taux de remplissage
+# ═══════════════════════════════════════════════════════════════════════════
+
+class PlanChargement(TenantModel):
+    """NTWMS26 — ce qu'on met dans le camion, et si ça rentre.
+
+    Regroupe des unités logistiques (NTWMS6) pour UNE course, et compare leur
+    poids/volume à la capacité du véhicule. La capacité est portée par le plan
+    (``capacite_kg``/``capacite_m3``) : le référentiel ``flotte.Vehicule`` ne
+    déclare aujourd'hui AUCUNE capacité de charge — le service la lit quand
+    même par ``getattr`` sur le véhicule (via le selector de ``flotte``), donc
+    le jour où ``flotte`` ajoutera le champ, le plan s'en servira sans
+    modification ici.
+    """
+
+    class Statut(models.TextChoices):
+        BROUILLON = 'brouillon', 'Brouillon'
+        VALIDE = 'valide', 'Validé'
+        CHARGE = 'charge', 'Chargé'
+
+    reference = models.CharField(max_length=50)
+    # Destinations possibles (string-FK cross-app / FK interne).
+    livraison = models.ForeignKey(
+        'installations.Livraison', on_delete=models.SET_NULL, null=True,
+        blank=True, related_name='plans_chargement')
+    expedition = models.ForeignKey(
+        ExpeditionTransporteur, on_delete=models.SET_NULL, null=True,
+        blank=True, related_name='plans_chargement')
+    vehicule = models.ForeignKey(
+        'flotte.Vehicule', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='plans_chargement_stock')
+    unites_logistiques = models.ManyToManyField(
+        UniteLogistique, blank=True, related_name='plans_chargement')
+    capacite_kg = models.DecimalField(
+        max_digits=10, decimal_places=2, null=True, blank=True,
+        help_text='Charge utile du véhicule (kg). Vide = capacité inconnue, '
+                  'aucun dépassement ne peut être signalé.')
+    capacite_m3 = models.DecimalField(
+        max_digits=10, decimal_places=3, null=True, blank=True,
+        help_text='Volume utile du véhicule (m³). Optionnel.')
+    statut = models.CharField(
+        max_length=20, choices=Statut.choices, default=Statut.BROUILLON)
+    note = models.TextField(blank=True, default='')
+    cree_par = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='plans_chargement_crees')
+
+    class Meta:
+        verbose_name = 'Plan de chargement'
+        verbose_name_plural = 'Plans de chargement'
+        ordering = ['-created_at']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'reference'],
+                name='stock_planchargement_company_reference_uniq'),
+        ]
+        indexes = [
+            models.Index(fields=['company', 'statut'],
+                         name='idx_plancharg_co_statut'),
+        ]
+
+    def __str__(self):
+        return f'{self.reference} ({self.statut})'

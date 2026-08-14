@@ -459,6 +459,341 @@ def classes_abc_produits(company, *, depuis=None, jusqu_a=None):
     return classes
 
 
+def _tracabilite_squelette(lot, serie):
+    return {
+        'lot': lot or '', 'serie': serie or '',
+        'produit': None,
+        'amont': [],
+        'stock': {'quantite_restante': 0, 'emplacement_id': None,
+                  'emplacement_nom': '', 'casiers': []},
+        'aval': [],
+    }
+
+
+def tracabilite_produit(company, *, lot=None, serie=None):
+    """NTWMS16 — chaîne de traçabilité COMPLÈTE d'un lot ou d'un n° de série.
+
+    AMONT : fournisseur + réception d'origine (``achats`` lu par l'accesseur
+    inverse de nos propres string-FK). STOCK : ce qu'il reste et dans quels
+    casiers (FG319, lu par ``localisation_casiers``). AVAL : où la marchandise
+    est partie — vagues de prélèvement (chantier demandeur), colis/palettes
+    expédiés, et pour un n° de série l'équipement installé chez le client
+    (``sav``/``installations``, lus par LEURS selectors — aucune frontière
+    franchie).
+
+    Renvoie ``{lot, serie, produit, amont, stock, aval}``, ou ``None`` si le
+    numéro est inconnu dans cette société (l'appelant renvoie 404).
+    LECTURE SEULE.
+    """
+    from .models import LigneReceptionFournisseur, LotEntrepot
+    from .models_wms import LignePicking, UniteLogistiqueLigne
+
+    lot = (lot or '').strip()
+    serie = (serie or '').strip()
+    if not lot and not serie:
+        return None
+
+    chaine = _tracabilite_squelette(lot, serie)
+    trouve = False
+    produit = None
+    lots = []
+
+    if lot:
+        lots = list(LotEntrepot.objects
+                    .filter(company=company, numero_lot=lot)
+                    .select_related('produit', 'emplacement')
+                    .order_by('-date_creation'))
+        if lots:
+            trouve = True
+            produit = lots[0].produit
+            chaine['stock'].update({
+                'quantite_restante': sum(
+                    lot_obj.quantite_restante or 0 for lot_obj in lots),
+                'emplacement_id': lots[0].emplacement_id,
+                'emplacement_nom': (lots[0].emplacement.nom
+                                    if lots[0].emplacement_id else ''),
+            })
+
+    # ── AMONT — la réception fournisseur qui a fait entrer la marchandise ──
+    lignes_reception = LigneReceptionFournisseur.objects.filter(
+        reception__company=company).select_related(
+            'reception', 'reception__bon_commande',
+            'reception__bon_commande__fournisseur', 'produit')
+    if lot:
+        lignes_reception = lignes_reception.filter(numero_lot=lot)
+    else:
+        lignes_reception = lignes_reception.filter(numeros_serie__isnull=False)
+    for ligne in lignes_reception:
+        if serie:
+            valeurs = [str(v).strip() for v in (ligne.numeros_serie or [])]
+            if serie not in valeurs:
+                continue
+        trouve = True
+        produit = produit or ligne.produit
+        bon = (ligne.reception.bon_commande
+               if ligne.reception.bon_commande_id else None)
+        chaine['amont'].append({
+            'type': 'reception',
+            'reception_reference': ligne.reception.reference,
+            'bcf_reference': bon.reference if bon else None,
+            'fournisseur_nom': (bon.fournisseur.nom
+                                if bon and bon.fournisseur_id else None),
+            'date': (ligne.reception.date_reception.isoformat()
+                     if ligne.reception.date_reception else None),
+            'quantite': ligne.quantite,
+            'produit_id': ligne.produit_id,
+        })
+
+    # ── STOCK — les casiers qui portent encore ce produit (FG319) ─────────
+    if produit is not None:
+        chaine['produit'] = {
+            'id': produit.id, 'nom': produit.nom, 'sku': produit.sku or ''}
+        chaine['stock']['casiers'] = localisation_casiers(produit)
+
+    # ── AVAL — vagues de prélèvement (chantier demandeur) ─────────────────
+    lots_ids = [lot_obj.id for lot_obj in lots]
+    if lots_ids:
+        for ligne in (LignePicking.objects
+                      .filter(company=company, lot_id__in=lots_ids)
+                      .select_related('vague', 'installation')
+                      .order_by('id')):
+            trouve = True
+            chantier = ligne.installation
+            chaine['aval'].append({
+                'type': 'picking',
+                'vague_reference': ligne.vague.reference,
+                'quantite_prelevee': ligne.quantite_prelevee,
+                'chantier_id': ligne.installation_id,
+                'chantier_reference': (chantier.reference
+                                       if chantier is not None else None),
+            })
+        for ligne in (UniteLogistiqueLigne.objects
+                      .filter(company=company, lot_id__in=lots_ids)
+                      .select_related('unite')
+                      .order_by('id')):
+            trouve = True
+            chaine['aval'].append({
+                'type': 'colis',
+                'sscc': ligne.unite.sscc,
+                'statut': ligne.unite.statut,
+                'quantite': ligne.quantite,
+            })
+
+    # ── AVAL — équipement installé chez le client (n° de série) ───────────
+    if serie:
+        from apps.sav.selectors import equipement_scoped_by_serial
+        equipement = equipement_scoped_by_serial(company, serie)
+        if equipement is not None:
+            trouve = True
+            installation = equipement.installation
+            client_nom = ''
+            if installation is not None and installation.client_id:
+                client = installation.client
+                client_nom = f'{client.nom} {client.prenom or ""}'.strip()
+            chaine['aval'].append({
+                'type': 'equipement',
+                'equipement_id': equipement.id,
+                'statut': equipement.statut,
+                'chantier_reference': (installation.reference
+                                       if installation is not None else None),
+                'client_nom': client_nom or None,
+            })
+        if produit is not None:
+            from apps.installations.selectors import (
+                serie_entrepot_scoped_by_serial,
+            )
+            serie_entrepot = serie_entrepot_scoped_by_serial(
+                company, produit.id, serie)
+            if serie_entrepot is not None:
+                trouve = True
+                chaine['stock'].update({
+                    'emplacement_id': serie_entrepot.emplacement_id,
+                    'quantite_restante': (
+                        1 if serie_entrepot.statut == 'en_stock' else 0),
+                })
+
+    if not trouve:
+        return None
+    if produit is None and not lots:
+        # Un produit peut rester inconnu (série reçue sans ligne produit) :
+        # la chaîne reste honnête plutôt que d'inventer un produit.
+        chaine['produit'] = None
+    return chaine
+
+
+# NTWMS18 — champ AUTEUR associé à chaque champ de date agrégé par
+# ``productivite_operateur`` (filtre « un seul opérateur »).
+_AUTEURS = {
+    'date': 'created_by',
+    'scanne_le': 'scanne_par',
+    'created_at': 'cree_par',
+}
+
+
+def productivite_operateur(company, *, user=None, debut=None, fin=None):
+    """NTWMS18 — lignes traitées PAR OPÉRATEUR et PAR TYPE d'opération.
+
+    Aucun nouveau modèle : tout est déjà horodaté et signé côté existant —
+    ``MouvementStock.created_by`` (réceptions/rangements/prélèvements/
+    ajustements/rebuts), ``UniteLogistiqueLigne.scanne_par`` (colisage,
+    NTWMS11) et ``VaguePicking.cree_par`` (préparation de tournée). Les
+    ordres d'assemblage d'atelier (``installations``, FG328) ne sont PAS
+    comptés ici : leur exposition par opérateur demanderait un nouveau
+    sélecteur dans ``installations`` — hors périmètre de cette app.
+
+    ``debut``/``fin`` sont des DATES fournies par l'appelant (bornes incluses,
+    jamais l'horloge lue ici). Renvoie
+    ``[{operateur_id, operateur, total, operations: {…}}]`` trié du plus
+    productif au moins productif. LECTURE SEULE — indicateur, JAMAIS un
+    instrument de sanction automatisée.
+    """
+    from django.db.models import Count
+
+    from .models import MouvementStock
+    from .models_wms import UniteLogistiqueLigne, VaguePicking
+
+    def _borner(qs, champ):
+        if debut:
+            qs = qs.filter(**{f'{champ}__date__gte': debut})
+        if fin:
+            qs = qs.filter(**{f'{champ}__date__lte': fin})
+        if user is not None:
+            qs = qs.filter(**{f'{_AUTEURS[champ]}': user})
+        return qs
+
+    agrege = {}
+
+    def _ajouter(auteur_id, auteur_nom, operation, nombre):
+        if not auteur_id:
+            return
+        ligne = agrege.setdefault(auteur_id, {
+            'operateur_id': auteur_id, 'operateur': auteur_nom or '',
+            'total': 0, 'operations': {}})
+        ligne['operations'][operation] = (
+            ligne['operations'].get(operation, 0) + nombre)
+        ligne['total'] += nombre
+
+    mouvements = _borner(
+        MouvementStock.objects.filter(company=company,
+                                      created_by__isnull=False), 'date')
+    for row in (mouvements
+                .values('created_by', 'created_by__username', 'type_mouvement')
+                .annotate(nb=Count('id'))):
+        _ajouter(row['created_by'], row['created_by__username'],
+                 row['type_mouvement'], row['nb'])
+
+    colisages = _borner(
+        UniteLogistiqueLigne.objects.filter(company=company,
+                                            scanne_par__isnull=False),
+        'scanne_le')
+    for row in (colisages
+                .values('scanne_par', 'scanne_par__username')
+                .annotate(nb=Count('id'))):
+        _ajouter(row['scanne_par'], row['scanne_par__username'], 'colisage',
+                 row['nb'])
+
+    vagues = _borner(
+        VaguePicking.objects.filter(company=company,
+                                    cree_par__isnull=False), 'created_at')
+    for row in (vagues
+                .values('cree_par', 'cree_par__username')
+                .annotate(nb=Count('id'))):
+        _ajouter(row['cree_par'], row['cree_par__username'], 'vague',
+                 row['nb'])
+
+    return sorted(agrege.values(), key=lambda ligne: (-ligne['total'],
+                                                      ligne['operateur']))
+
+
+def suggerer_reslotting(company, *, depuis=None, jusqu_a=None,
+                        limite=50):
+    """NTWMS30 — produits de CLASSE A rangés trop loin de l'expédition.
+
+    La « distance à l'expédition » est l'ordre de parcours du casier
+    (``BinLocation.ordre``, FG319 — c'est exactement l'axe que le serpentin
+    NTWMS28 remonte) : plus il est élevé, plus le magasinier marche. Un
+    produit à forte rotation (classe A, NTWMS13) rangé au-delà de la MÉDIANE
+    des casiers occupés est signalé, avec le casier proche le plus
+    intéressant comme cible.
+
+    LECTURE SEULE, aucune action automatique : le magasinier valide (ou non)
+    en passant par le transfert existant. Renvoie
+    ``[{produit_id, produit_nom, classe_abc, bin_actuel_id, bin_actuel_code,
+    ordre_actuel, bin_suggere_id, bin_suggere_code, ordre_suggere,
+    gain_ordre, quantite}]``, du gain le plus fort au plus faible.
+    """
+    from .models import Produit
+
+    if company is None:
+        return []
+    classes = classes_abc_produits(company, depuis=depuis, jusqu_a=jusqu_a)
+    produits_a = [pid for pid, classe in classes.items() if classe == 'A']
+    if not produits_a:
+        return []
+
+    # Casiers de la société, par ordre de parcours croissant (le plus proche
+    # de la sortie d'abord). Le modèle est atteint par l'accesseur de NOTRE
+    # propre string-FK : aucun import de `apps.installations.models`.
+    from .models_wms import LignePicking
+
+    modele_bin = LignePicking._meta.get_field('bin').related_model
+    casiers = list(modele_bin.objects.filter(
+        company=company, archived=False).order_by('ordre', 'code'))
+    if not casiers:
+        return []
+    ordres = sorted(casier.ordre for casier in casiers)
+    # Médiane BASSE : avec un nombre pair de casiers, on retient la borne du
+    # bas — un casier situé au-delà est « loin » sans ambiguïté.
+    mediane = ordres[(len(ordres) - 1) // 2]
+
+    # Casiers déjà occupés par un produit de classe A : on ne propose pas de
+    # déloger une autre référence à forte rotation.
+    occupes_par_a = set()
+    for produit in Produit.objects.filter(company=company, id__in=produits_a):
+        for casier in localisation_casiers(produit):
+            occupes_par_a.add(casier['bin_id'])
+
+    suggestions = []
+    for produit in (Produit.objects
+                    .filter(company=company, id__in=produits_a)
+                    .order_by('nom')):
+        for casier in localisation_casiers(produit):
+            ordre_actuel = casier['ordre'] or 0
+            if ordre_actuel <= mediane:
+                continue  # déjà proche de l'expédition
+            cible = next(
+                (c for c in casiers
+                 if c.ordre < ordre_actuel and c.id not in occupes_par_a
+                 and c.emplacement_id == casier['emplacement_id']), None)
+            if cible is None:
+                continue
+            suggestions.append({
+                'produit_id': produit.id,
+                'produit_nom': produit.nom,
+                'classe_abc': 'A',
+                'bin_actuel_id': casier['bin_id'],
+                'bin_actuel_code': casier['code'],
+                'ordre_actuel': ordre_actuel,
+                'bin_suggere_id': cible.id,
+                'bin_suggere_code': cible.code,
+                'ordre_suggere': cible.ordre,
+                'gain_ordre': ordre_actuel - cible.ordre,
+                'quantite': casier['quantite'],
+            })
+    suggestions.sort(key=lambda s: (-s['gain_ordre'], s['produit_nom']))
+    return suggestions[:limite]
+
+
+def _produit_du_lot(company, numero_lot):
+    """Produit portant ce numéro de lot (ou ``None``)."""
+    from .models import LotEntrepot
+
+    lot = (LotEntrepot.objects
+           .filter(company=company, numero_lot=numero_lot)
+           .select_related('produit').first())
+    return lot.produit if lot is not None else None
+
+
 def classe_abc_produit(produit, *, depuis=None, jusqu_a=None):
     """Classe ABC d'UN produit (``'A'``/``'B'``/``'C'``)."""
     if produit is None:
