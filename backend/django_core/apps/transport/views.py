@@ -83,6 +83,15 @@ class OrdreTransportViewSet(CompanyScopedModelViewSet):
         return Response(
             EtapeTransportSerializer(ordre.etapes.all(), many=True).data)
 
+    # ── NTLOG7 — comparateur de coûts d'affrètement ──────────────────────
+    @action(detail=True, methods=['get'], url_path='comparer-transporteurs')
+    def comparer_transporteurs(self, request, pk=None):
+        ordre = self.get_object()
+        from . import selectors
+        return Response(
+            selectors.comparer_transporteurs(
+                ordre.id, company=request.user.company))
+
 
 class LigneOrdreTransportViewSet(CompanyScopedModelViewSet):
     """NTLOG2 — marchandises d'un ordre. Filtrable par `?ordre=`."""
