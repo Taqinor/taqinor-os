@@ -110,10 +110,19 @@ class NatureZone(Enum):
 
 
 class ModePose(Enum):
-    """``PosePlan`` du plan de conception — comment les rangées sont posées."""
+    """``PosePlan`` du plan de conception — comment les rangées sont posées.
+
+    ``RANGEES_IMPOSEES_UTILISATEUR`` est le troisième mode (PV29) : le
+    dessinateur FOURNIT ses rangées et le moteur se contente de les COMPTER
+    puis de les situer face à l'optimum. Il ne s'agit pas d'une méthode de
+    recherche de plus : la preuve rendue porte ``IMPOSE_UTILISATEUR``, donc
+    ``optimal`` reste FAUX et l'écart au DP est publié — un plan imposé ne peut
+    structurellement pas se réclamer d'un « optimum prouvé ».
+    """
 
     RANGEES_EXPLICITES_DP = "rangees_explicites_dp"
     RANGEES_UNIFORMES_PHASE = "rangees_uniformes_phase"
+    RANGEES_IMPOSEES_UTILISATEUR = "rangees_imposees_utilisateur"
 
 
 #: Alias historique du plan : la tâche AOF34 nomme cet énuméré ``PosePlan``.
@@ -390,6 +399,11 @@ class Parametres:
     plafond_kwc: Optional[float] = None
     marge_troncon_min_m: float = 0.02
     marge_bande_min_m: float = 0.04
+    #: Plan IMPOSÉ (PV29) : ``((y0, code_kit), …)``, lu par le seul mode
+    #: ``RANGEES_IMPOSEES_UTILISATEUR``. Le code de kit — et non l'objet ``Kit``
+    #: — parce que ce champ traverse le JSON : les kits y sont déjà décrits une
+    #: fois, les redécrire ici ferait deux vérités pour la même table.
+    rangees_imposees: Optional[Tuple[Tuple[float, str], ...]] = None
     #: pour l'aléatoire éventuel (départage) — le moteur reste déterministe.
     graine: int = 0
 
