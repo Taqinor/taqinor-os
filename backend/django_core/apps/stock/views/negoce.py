@@ -481,3 +481,52 @@ def stock_embarque_view(request, actif_flotte_id):
         'actif_flotte': int(actif_flotte_id),
         'lignes': stock_embarque(company, actif_flotte_id),
     })
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# NTDST30 — Paramètres négoce par société (singleton)
+# ═══════════════════════════════════════════════════════════════════════════
+
+class ParametresNegoceSerializer(serializers.ModelSerializer):
+    class Meta:
+        from ..models import ParametresNegoce as _ParametresNegoce
+
+        model = _ParametresNegoce
+        fields = [
+            'id', 'consignation_activee', 'van_sales_active',
+            'seuil_alerte_rfa_pct', 'heures_tournee_defaut',
+            'atp_horizon_jours', 'seuil_alerte_marge_pct',
+            'cout_rupture_jour_mad', 'updated_at',
+        ]
+        # `company` n'est JAMAIS acceptée du corps : le singleton est résolu
+        # depuis `request.user.company`.
+        read_only_fields = ['updated_at']
+
+    def validate_seuil_alerte_rfa_pct(self, value):
+        if value is not None and value > 100:
+            raise serializers.ValidationError(
+                'Le seuil de progression RFA ne peut pas dépasser 100 %.')
+        return value
+
+
+@extend_schema(request=None, responses={200: ParametresNegoceSerializer})
+@api_view(['GET', 'PATCH'])
+@permission_classes([IsResponsableOrAdmin])
+def parametres_negoce_view(request):
+    """NTDST30 — réglages négoce de LA société (singleton, créé à la demande).
+
+    Changer ``seuil_alerte_rfa_pct`` à 90 déplace le seuil de première alerte
+    RFA SANS redéploiement : toutes les fonctionnalités NTDST lisent ce
+    singleton au lieu de constantes codées en dur.
+    """
+    from ..models import ParametresNegoce
+
+    params = ParametresNegoce.get(request.user.company)
+    if request.method == 'PATCH':
+        serializer = ParametresNegoceSerializer(
+            params, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        # `company` reste celle du singleton : jamais lue du corps.
+        serializer.save(company=params.company)
+        params.refresh_from_db()
+    return Response(ParametresNegoceSerializer(params).data)
