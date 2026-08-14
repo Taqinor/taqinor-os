@@ -5,6 +5,8 @@ même palier que les modules de conformité/planification voisins, ex.
 ``apps.fiscal``) : ``get_permissions`` renvoie ``[IsResponsableOrAdmin()]``
 sur chaque viewset, société toujours scopée par ``CompanyScopedModelViewSet``.
 """
+from decimal import Decimal
+
 from drf_spectacular.utils import extend_schema, inline_serializer
 from rest_framework import serializers
 from rest_framework.decorators import action, api_view, permission_classes
@@ -30,15 +32,25 @@ class PrevisionDemandeViewSet(CompanyScopedModelViewSet):
     queryset = PrevisionDemande.objects.select_related(
         'produit', 'genere_par').all()
     serializer_class = PrevisionDemandeSerializer
-    filterset_fields = ['produit', 'segment']
 
     def get_permissions(self):
         return [IsResponsableOrAdmin()]
 
     def get_queryset(self):
+        # ``DjangoFilterBackend`` n'est pas monté dans ce projet (défaut
+        # global = OrderingFilter/SearchFilter seulement, voir
+        # ``apps/assurances/views.py``) : filtre manuel, à la main, pour que
+        # ``?produit=&segment=`` filtrent réellement la liste.
         qs = super().get_queryset()
-        periode_min = self.request.query_params.get('periode_min')
-        periode_max = self.request.query_params.get('periode_max')
+        params = self.request.query_params
+        produit = params.get('produit')
+        if produit:
+            qs = qs.filter(produit_id=produit)
+        segment = params.get('segment')
+        if segment:
+            qs = qs.filter(segment=segment)
+        periode_min = params.get('periode_min')
+        periode_max = params.get('periode_max')
         if periode_min:
             qs = qs.filter(periode__gte=periode_min)
         if periode_max:
@@ -257,7 +269,18 @@ class CyclePlanificationSOPViewSet(CompanyScopedModelViewSet):
             return Response(
                 {'detail': 'Réservé aux administrateurs.'}, status=403)
         cycle = self.get_object()
-        return Response(selectors.impact_financier_cycle(cycle))
+        resultat = selectors.impact_financier_cycle(cycle)
+        # Réponse construite à la main (pas de Serializer ici) : `resp.data`
+        # DRF ne passe PAS par le JSONRenderer avant les tests — stringifier
+        # les montants ici, comme `ventes/views/liste_prix.py`, plutôt que de
+        # laisser fuiter des `Decimal` d'échelle variable (ex. 4 décimales
+        # après une multiplication 2×2) au client.
+        resultat['ca_previsionnel_ht'] = str(
+            resultat['ca_previsionnel_ht'].quantize(Decimal('0.01')))
+        if resultat['ca_forecast_ht'] is not None:
+            resultat['ca_forecast_ht'] = str(
+                resultat['ca_forecast_ht'].quantize(Decimal('0.01')))
+        return Response(resultat)
 
 
 # PACT7 — sans cette déclaration, le schéma OpenAPI publiait cet agrégat VIDE

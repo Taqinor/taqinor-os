@@ -66,8 +66,16 @@ class EtapeTransportTests(TestCase):
         api = auth(self.user_a)
         self._patch_statut(api, self.e1, EtapeTransport.StatutEtape.FAIT)
         ct = ContentType.objects.get_for_model(OrdreTransport)
+        # e1 A_FAIRE->FAIT fait AUSSI avancer l'ordre PLANIFIE->EN_COURS
+        # (``services.recalculer_statut_ordre``) : DEUX lignes de chatter
+        # s'écrivent sur le MÊME ordre dans la même requête (l'une
+        # ``field='etape_statut'`` pour l'étape, l'autre ``field='statut'``
+        # pour le roll-up de l'ordre) — filtrer par ``field`` cible sans
+        # ambiguïté celle que NTLOG8 teste ici (``.latest('created_at')``
+        # seul ramassait la ligne 'statut' écrite juste après, la plus
+        # récente).
         entries = Activity.objects.filter(
-            content_type=ct, object_id=self.ordre.id).exclude(kind='')
+            content_type=ct, object_id=self.ordre.id, field='etape_statut')
         self.assertTrue(entries.exists())
         entry = entries.latest('created_at')
         self.assertEqual(entry.old_value, EtapeTransport.StatutEtape.A_FAIRE)

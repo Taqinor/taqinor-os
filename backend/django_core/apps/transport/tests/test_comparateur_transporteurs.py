@@ -6,6 +6,8 @@ Fixture cross-app : les modèles `installations` sont importés directement ICI
 transporteurs réels — le sélecteur lui-même (`apps.transport.selectors.
 comparer_transporteurs`) ne les lit qu'en LECTURE via
 `django.apps.apps.get_model` (jamais un import statique)."""
+from decimal import Decimal
+
 from django.test import TestCase
 
 from apps.installations.models import Transporteur
@@ -63,4 +65,10 @@ class ComparateurTransporteursTests(TestCase):
         rows = selectors.comparer_transporteurs(
             self.ordre.id, company=self.co_a)
         self.assertEqual(len(rows), 2)
-        self.assertEqual(rows[0]['prix_applicable'], self.pas_cher.tarif_base)
+        # Le sélecteur relit `Transporteur` depuis la DB (`Decimal`) ; l'objet
+        # `self.pas_cher` en mémoire garde la valeur littérale passée à
+        # `.create(tarif_base='300.00', ...)` (`str`, jamais convertie sans
+        # `refresh_from_db`) — comparer les deux exige de les ramener au même
+        # type, jamais un `assertEqual(Decimal, str)`.
+        self.assertEqual(
+            rows[0]['prix_applicable'], Decimal(self.pas_cher.tarif_base))

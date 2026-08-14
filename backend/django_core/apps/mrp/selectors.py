@@ -235,8 +235,8 @@ def charge_postes(company, debut, fin):
             'poste_id': poste_id,
             'poste_nom': poste.nom,
             'jour': jour.isoformat(),
-            'minutes_planifiees': str(minutes),
-            'capacite_minutes': str(capacite_min),
+            'minutes_planifiees': _fmt_dec(minutes),
+            'capacite_minutes': _fmt_dec(capacite_min),
             'taux_charge_pct': str(taux.quantize(Decimal('0.1'))),
             'surcharge': minutes > capacite_min,
         })

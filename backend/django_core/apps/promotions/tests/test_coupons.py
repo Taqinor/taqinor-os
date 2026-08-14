@@ -177,8 +177,13 @@ class CouponPosIntegrationTests(TestCase):
             remise_montant=Decimal('40'))
 
     def _vente(self):
+        # Référence unique par appel (contrainte `unique_together
+        # ('company', 'reference')` sur `VenteComptoir`) — ce test crée
+        # PLUSIEURS ventes dans la même société (ex. `test_appliquer_coupon_
+        # reused_beyond_limit_raises`), un littéral fixe collisionnait.
+        n = VenteComptoir.objects.filter(company=self.co).count() + 1
         vente = VenteComptoir.objects.create(
-            company=self.co, reference='VC-CPN-POS', client=self.client_obj,
+            company=self.co, reference=f'VC-CPN-POS-{n}', client=self.client_obj,
             created_by=self.user)
         LigneVenteComptoir.objects.create(
             vente=vente, produit=self.produit, designation=self.produit.nom,
