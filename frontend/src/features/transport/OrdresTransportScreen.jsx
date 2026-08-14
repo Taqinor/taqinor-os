@@ -1,9 +1,10 @@
 import { useMemo, useState } from 'react'
 import { Truck } from 'lucide-react'
+import { Link } from 'react-router-dom'
 
 import api from '../../api/axios'
 import useResource from '../../hooks/useResource'
-import { Badge, Card, CardContent, CardHeader, CardTitle, Segmented, Tabs, TabsContent, TabsList, TabsTrigger } from '../../ui'
+import { Badge, Button, Card, CardContent, CardHeader, CardTitle, Segmented, Tabs, TabsContent, TabsList, TabsTrigger } from '../../ui'
 import { ListShell } from '../../ui/module'
 import ComparateurTransporteurs from '../../pages/transport/ComparateurTransporteurs'
 import OrdreTransportTimeline from '../../pages/transport/OrdreTransportTimeline'
@@ -108,8 +109,11 @@ export default function OrdresTransportScreen() {
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex justify-end">
+      <div className="flex items-center justify-between">
         <Segmented options={VUE_OPTIONS} value={vue} onChange={setVue} aria-label="Choisir la vue" />
+        <Button asChild size="sm">
+          <Link to="/transport/ordres/nouveau">Nouvel ordre</Link>
+        </Button>
       </div>
 
       {vue === 'kanban' ? (
