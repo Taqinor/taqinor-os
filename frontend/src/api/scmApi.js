@@ -47,6 +47,9 @@ const scmApi = {
 
   // NTSCM16 — suggestions d'achat groupées multi-fournisseurs (MOQ/paliers).
   suggestionsAchatGroupe: () => api.get('/scm/suggestions-achat-groupe/'),
+  // NTSCM41 — export .xlsx des suggestions d'achat groupées.
+  exportSuggestionsAchatGroupe: () =>
+    api.get('/scm/suggestions-achat-groupe/export/', { responseType: 'blob' }),
 
   // NTSCM18 — simulation « et si… » de rupture (lecture seule, en mémoire).
   simulerRupture: (produitId, body = {}) =>
@@ -58,6 +61,9 @@ const scmApi = {
 
   // NTSCM20 — suggestions de transfert inter-sites (anticipatif).
   suggestionsTransfert: () => api.get('/scm/suggestions-transfert/'),
+  // NTSCM41 — export .xlsx des suggestions de transfert inter-sites.
+  exportSuggestionsTransfert: () =>
+    api.get('/scm/suggestions-transfert/export/', { responseType: 'blob' }),
 
   // NTSCM24 — précision de prévision auto-mesurée (MAPE).
   precisionPrevisions: (params = {}) =>

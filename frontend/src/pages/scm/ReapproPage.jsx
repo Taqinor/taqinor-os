@@ -79,22 +79,41 @@ export default function ReapproPage() {
     })
   }, [])
 
-  // NTSCM32 — export .xlsx du rapport « Écarts de prévision ».
+  // NTSCM32/41 — exports .xlsx (écarts de prévision, suggestions d'achat
+  // groupées) — même patron de téléchargement `Blob`.
   const [exportBusy, setExportBusy] = useState(false)
+  const [exportAchatBusy, setExportAchatBusy] = useState(false)
+
+  const _telechargerBlob = async (fetcher, filename) => {
+    const res = await fetcher()
+    const url = window.URL.createObjectURL(new Blob([res.data]))
+    const a = document.createElement('a')
+    a.href = url
+    a.download = filename
+    a.click()
+    window.URL.revokeObjectURL(url)
+  }
+
   const exporterEcartsPrevision = async () => {
     setExportBusy(true)
     try {
-      const res = await scmApi.exportEcartsPrevision()
-      const url = window.URL.createObjectURL(new Blob([res.data]))
-      const a = document.createElement('a')
-      a.href = url
-      a.download = 'ecarts-prevision.xlsx'
-      a.click()
-      window.URL.revokeObjectURL(url)
+      await _telechargerBlob(scmApi.exportEcartsPrevision, 'ecarts-prevision.xlsx')
     } catch {
       setCreerErr("L'export des écarts de prévision a échoué.")
     } finally {
       setExportBusy(false)
+    }
+  }
+
+  const exporterSuggestionsAchat = async () => {
+    setExportAchatBusy(true)
+    try {
+      await _telechargerBlob(
+        scmApi.exportSuggestionsAchatGroupe, 'suggestions-achat-groupe.xlsx')
+    } catch {
+      setCreerErr("L'export des suggestions d'achat groupées a échoué.")
+    } finally {
+      setExportAchatBusy(false)
     }
   }
 
@@ -237,6 +256,13 @@ export default function ReapproPage() {
           title="Exporte le rapport écarts de prévision (prévision, réel, écart absolu, écart %) au format .xlsx."
         >
           <Download /> Exporter les écarts de prévision
+        </Button>
+        <Button
+          type="button" variant="outline" size="sm" loading={exportAchatBusy}
+          onClick={exporterSuggestionsAchat}
+          title="Exporte les suggestions d'achat groupées par fournisseur (MOQ/paliers) au format .xlsx."
+        >
+          <Download /> Exporter les suggestions d&apos;achat
         </Button>
         {creerMsg && <span className="text-sm text-success" role="status">{creerMsg}</span>}
         {creerErr && <span className="text-sm text-destructive" role="alert">{creerErr}</span>}

@@ -529,6 +529,51 @@ def suggestions_achat_groupe_view(request):
     return Response(services.suggerer_achats_groupes(request.user.company))
 
 
+@api_view(['GET'])
+@permission_classes([IsResponsableOrAdmin])
+def export_suggestions_achat_groupe_view(request):
+    """NTSCM41 — ``GET /api/django/scm/suggestions-achat-groupe/export/`` :
+    export .xlsx des suggestions d'achat groupées (une ligne par produit,
+    groupée par fournisseur) — bouton d'export sur ``/scm/reappro``."""
+    from apps.records.xlsx import build_xlsx_response
+
+    from . import services
+
+    groupes = services.suggerer_achats_groupes(request.user.company)
+
+    headers = [
+        'Fournisseur', 'Produit', 'Besoin net', 'Décision', 'Quantité',
+        'Prix unitaire', 'Coût total', 'Justification',
+    ]
+    rows = []
+    for groupe in groupes:
+        for ligne in groupe['lignes']:
+            if ligne['decision'] == 'sous_moq':
+                option_moq = next(
+                    (o for o in ligne['options'] if o['action'] == 'commander_moq'),
+                    None)
+                rows.append([
+                    groupe['fournisseur_nom'], ligne['produit_nom'],
+                    ligne['besoin_net'], 'Sous le MOQ',
+                    option_moq['quantite'] if option_moq else '',
+                    option_moq['prix_unitaire'] if option_moq else '',
+                    '',
+                    f"Besoin sous le MOQ ({ligne['moq']}) — attendre ou "
+                    'commander le MOQ (surstock).',
+                ])
+            else:
+                rows.append([
+                    groupe['fournisseur_nom'], ligne['produit_nom'],
+                    ligne['besoin_net'], 'Commander', ligne['quantite'],
+                    ligne['prix_unitaire'], ligne['cout_total'],
+                    'Écart offre/demande couvert au coût total le plus bas.',
+                ])
+
+    return build_xlsx_response(
+        'suggestions-achat-groupe.xlsx', headers, rows,
+        sheet_title='Suggestions achat groupé')
+
+
 # ── NTSCM18 — simulation « et si… » de rupture (lecture seule) ──────────────
 
 @extend_schema(request=inline_serializer('ScmSimulerRuptureRequest', {
@@ -609,6 +654,34 @@ def suggestions_transfert_view(request):
     from . import selectors
 
     return Response(selectors.suggerer_transferts_inter_sites(request.user.company))
+
+
+@api_view(['GET'])
+@permission_classes([IsResponsableOrAdmin])
+def export_suggestions_transfert_view(request):
+    """NTSCM41 — ``GET /api/django/scm/suggestions-transfert/export/`` :
+    export .xlsx des suggestions de transfert inter-sites — bouton d'export
+    sur ``/scm/transferts-suggeres``."""
+    from apps.records.xlsx import build_xlsx_response
+
+    from . import selectors, services
+
+    lignes = selectors.suggerer_transferts_inter_sites(request.user.company)
+
+    headers = [
+        'Produit', 'Dépôt source', 'Dépôt destination', 'Quantité suggérée',
+        'Justification',
+    ]
+    rows = [[
+        ligne['produit_nom'], ligne['emplacement_source_nom'],
+        ligne['emplacement_destination_nom'],
+        services._fmt_dec(ligne['quantite_suggeree']),
+        'Surstock projeté au dépôt source, déficit projeté au dépôt destination.',
+    ] for ligne in lignes]
+
+    return build_xlsx_response(
+        'suggestions-transfert.xlsx', headers, rows,
+        sheet_title='Suggestions de transfert')
 
 
 # ── NTSCM24 — précision de prévision auto-mesurée (MAPE) ────────────────────

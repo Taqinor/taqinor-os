@@ -8,6 +8,7 @@ from .views import (
     PolitiqueStockViewSet, PrevisionDemandeViewSet,
     anomalies_demande_view, creer_brouillons_bcf_reappro_view,
     detecter_anomalies_demande_view, export_ecarts_prevision_view,
+    export_suggestions_achat_groupe_view, export_suggestions_transfert_view,
     parametres_scm_view, parametres_sop_view, precision_previsions_view,
     proposer_allocation_penurie_view, simuler_rupture_view,
     suggestions_achat_groupe_view, suggestions_transfert_view,
@@ -39,6 +40,10 @@ urlpatterns = [
     path(
         'suggestions-achat-groupe/', suggestions_achat_groupe_view,
         name='scm-suggestions-achat-groupe'),
+    # NTSCM41 — export .xlsx des suggestions d'achat groupées.
+    path(
+        'suggestions-achat-groupe/export/', export_suggestions_achat_groupe_view,
+        name='scm-suggestions-achat-groupe-export'),
     # NTSCM18/19 — simulation « et si… » et allocation en pénurie, par produit
     # (Produit appartient à `apps.stock`, pas `apps.scm` : vue-fonction avec
     # `produit_id` en paramètre d'URL, pas un ViewSet).
@@ -52,6 +57,10 @@ urlpatterns = [
     path(
         'suggestions-transfert/', suggestions_transfert_view,
         name='scm-suggestions-transfert'),
+    # NTSCM41 — export .xlsx des suggestions de transfert inter-sites.
+    path(
+        'suggestions-transfert/export/', export_suggestions_transfert_view,
+        name='scm-suggestions-transfert-export'),
     # NTSCM24 — précision de prévision auto-mesurée (MAPE).
     path(
         'precision-previsions/', precision_previsions_view,
