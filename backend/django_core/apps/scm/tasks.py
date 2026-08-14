@@ -1,5 +1,5 @@
 """Tâches planifiées (Celery beat) de planification supply chain
-(NTSCM21/NTSCM22).
+(NTSCM21/NTSCM22/NTSCM35/NTSCM36).
 
 Autodécouvertes par ``erp_agentique.celery`` (``autodiscover_tasks()``, comme
 ``apps.stock.tasks``/``apps.rh.tasks``) ; leur cadence est déclarée dans
@@ -193,3 +193,53 @@ def ouvrir_cycle_sop_mensuel_task(*, today=None):
                     '(société %s)', company.id, exc_info=True)
 
     return [cycle.id for cycle in crees]
+
+
+@shared_task(name='scm.purger_donnees_scm_anciennes')
+def purger_donnees_scm_anciennes():
+    """NTSCM36 — tâche planifiée MENSUELLE : supprime les ``PrevisionDemande``
+    de plus de ``ParametresSCM.retention_previsions_mois`` mois (défaut 24,
+    NTSCM33 — créé paresseusement) SAUF celles référencées par un
+    ``LigneDemandeSOP`` d'un cycle S&OP CLOS (produit + période EXACTEMENT
+    ceux du cycle — jamais l'historique d'un cycle clos, même si
+    ``LigneDemandeSOP`` n'a pas de FK directe vers ``PrevisionDemande`` : le
+    rapprochement se fait sur (produit, période)).
+
+    Best-effort PAR SOCIÉTÉ (même patron que les autres tâches de ce module).
+    Renvoie ``[{'company_id', 'nb_supprimees'}, ...]``."""
+    from authentication.models import Company
+
+    from . import selectors
+    from .models import CyclePlanificationSOP, LigneDemandeSOP, PrevisionDemande
+
+    resume = []
+    for company in Company.objects.all():
+        try:
+            retention_mois = selectors.parametres(company).retention_previsions_mois
+            today = timezone.localdate()
+            idx_limite = today.year * 12 + (today.month - 1) - int(retention_mois)
+            y0, m0 = divmod(idx_limite, 12)
+            periode_limite = f'{y0:04d}-{m0 + 1:02d}'
+
+            # Couples (produit, période) protégés : gelés dans un cycle CLOS.
+            proteges = set(
+                LigneDemandeSOP.objects
+                .filter(
+                    cycle__company=company,
+                    cycle__statut=CyclePlanificationSOP.Statut.CLOS)
+                .values_list('produit_id', 'cycle__periode'))
+
+            candidates = PrevisionDemande.objects.filter(
+                company=company, periode__lt=periode_limite)
+            ids_a_supprimer = [
+                p.id for p in candidates.only('id', 'produit_id', 'periode')
+                if (p.produit_id, p.periode) not in proteges
+            ]
+            PrevisionDemande.objects.filter(id__in=ids_a_supprimer).delete()
+        except Exception:  # noqa: BLE001 — best-effort par société
+            logger.warning(
+                'scm.purger_donnees_scm_anciennes: échec société %s',
+                company.id, exc_info=True)
+            continue
+        resume.append({'company_id': company.id, 'nb_supprimees': len(ids_a_supprimer)})
+    return resume
