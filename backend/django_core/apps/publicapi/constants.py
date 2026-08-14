@@ -81,6 +81,10 @@ EVENT_LIVRAISON_LIVREE = 'livraison.livree'
 # apps.parametres.services_licence / apps.adminops.receivers).
 EVENT_PLAN_CHANGED = 'plan.changed'
 EVENT_SIEGES_QUOTA_ATTEINT = 'sieges.quota_atteint'
+# NTSCM39 — évènements de planification supply chain (apps.scm), consommés
+# depuis `core.events` par `apps/publicapi/scm_event_receivers.py`.
+EVENT_SCM_RUPTURE_IMMINENTE = 'scm.rupture_imminente_detectee'
+EVENT_SCM_CYCLE_SOP_CLOTURE = 'scm.cycle_sop_cloture'
 
 EVENT_CHOICES = [
     (EVENT_LEAD_CREATED, 'Nouveau lead'),
@@ -99,6 +103,8 @@ EVENT_CHOICES = [
     (EVENT_LIVRAISON_LIVREE, 'Livraison — livrée'),
     (EVENT_PLAN_CHANGED, 'Plan de licence — changé'),
     (EVENT_SIEGES_QUOTA_ATTEINT, 'Sièges — quota atteint'),
+    (EVENT_SCM_RUPTURE_IMMINENTE, 'Supply chain — rupture imminente détectée'),
+    (EVENT_SCM_CYCLE_SOP_CLOTURE, 'Supply chain — cycle S&OP clôturé'),
 ]
 ALL_EVENTS = [code for code, _ in EVENT_CHOICES]
 

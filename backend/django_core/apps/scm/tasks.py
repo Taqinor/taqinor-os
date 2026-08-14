@@ -109,8 +109,12 @@ def recalculer_politiques_stock_hebdo():
     Best-effort PAR SOCIÉTÉ : une société aux données incomplètes (aucun
     produit, aucun historique de sorties…) ne lève jamais d'exception qui
     interromprait les suivantes — même patron que
-    ``generer_previsions_mensuelles_task``. Renvoie
-    ``[{'company_id', 'nb_politiques'}, ...]``."""
+    ``generer_previsions_mensuelles_task``. NTSCM39 — une fois les politiques
+    à jour, détecte et notifie (webhook sortant, ``core.events.
+    scm_rupture_imminente_detectee``) les produits en rupture imminente
+    (``services.detecter_ruptures_imminentes_et_notifier``), best-effort
+    (un accroc n'interrompt jamais le recalcul lui-même). Renvoie
+    ``[{'company_id', 'nb_politiques', 'nb_ruptures_notifiees'}, ...]``."""
     from . import services
     from .models import ParametresSCM
 
@@ -124,7 +128,20 @@ def recalculer_politiques_stock_hebdo():
                 'scm.recalculer_politiques_stock_hebdo: échec société %s',
                 company.id, exc_info=True)
             continue
-        resume.append({'company_id': company.id, 'nb_politiques': len(politiques)})
+
+        nb_ruptures_notifiees = 0
+        try:
+            nb_ruptures_notifiees = services.detecter_ruptures_imminentes_et_notifier(
+                company)
+        except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+            logger.warning(
+                'scm.recalculer_politiques_stock_hebdo: détection ruptures '
+                'imminentes échouée (société %s)', company.id, exc_info=True)
+
+        resume.append({
+            'company_id': company.id, 'nb_politiques': len(politiques),
+            'nb_ruptures_notifiees': nb_ruptures_notifiees,
+        })
     return resume
 
 

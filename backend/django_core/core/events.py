@@ -950,3 +950,34 @@ lead_maturite_changee = django.dispatch.Signal()
 # ``douane.DossierExport``), ``company``, ``user`` (peut être None),
 # ``ancien_statut`` (str, le statut BRUT avant la clôture).
 dossier_export_cloture = django.dispatch.Signal()
+
+
+# NTSCM39 — Émis pour CHAQUE produit que ``apps.scm.selectors.
+# tableau_bord_reappro`` (NTSCM7) classe ``rupture_imminente`` (rupture
+# projetée AVANT qu'une commande lancée aujourd'hui ne puisse livrer),
+# déclenché par ``apps.scm.services.detecter_ruptures_imminentes_et_notifier``
+# (appelé par la tâche beat hebdomadaire NTSCM35 — pas à chaque lecture du
+# tableau de bord, qui serait rejouée à chaque page vue). Abonné par
+# ``apps.publicapi`` (webhook sortant ``scm.rupture_imminente_detectee``,
+# ``apps/publicapi/scm_event_receivers.py``) sans que ``apps.scm`` importe
+# cette app (même patron que ``dossier_export_cloture`` ci-dessus).
+# Arguments : ``company``, ``produit_id``, ``produit_nom``, ``rupture_date``
+# (``str`` ISO-8601 ou ``None`` — déjà sérialisée par ``selectors.
+# tableau_bord_reappro``), ``quantite_suggeree``.
+scm_rupture_imminente_detectee = django.dispatch.Signal()
+
+# NTSCM39 — Émis EXACTEMENT à la clôture d'un ``scm.CyclePlanificationSOP``
+# (``apps.scm.services.avancer_statut_cycle``, transition vers ``clos`` —
+# même point d'ancrage que le hook NTSCM27 de génération du compte-rendu
+# .xlsx, juste après). Abonné par ``apps.publicapi`` (webhook sortant
+# ``scm.cycle_sop_cloture``). Arguments : ``cycle`` (instance
+# ``scm.CyclePlanificationSOP``, déjà ``clos``), ``user`` (peut être None).
+scm_cycle_sop_cloture = django.dispatch.Signal()
+
+# NTSCM39 — ADAPTATION DE PÉRIMÈTRE : le plan prévoit un 3ᵉ événement
+# ``scm.score_fournisseur_degrade`` (« émis par NTSCM23 ») — NTSCM23 (score
+# fournisseur) n'existe pas dans ``docs/plans/PLAN_SUPPLY.md`` (aucune tâche
+# de ce nom, contrairement à NTSCM8/9/11/17/26 qui EXISTENT mais sont encore
+# ``[ ]``). Sans fonctionnalité source, aucun signal n'est déclaré ici : un
+# signal jamais émis serait un seam creux, pas un contrat. Un futur task
+# scorant les fournisseurs pourra l'ajouter ici sans rien casser.

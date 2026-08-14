@@ -334,6 +334,19 @@ def avancer_statut_cycle(cycle, user, *, statut_cible=None):
                 'avancer_statut_cycle: génération du compte-rendu S&OP '
                 'échouée (cycle %s)', cycle.id, exc_info=True)
 
+        # NTSCM39 — événement bus (core.events), best-effort : consommé par
+        # apps.publicapi (webhook sortant `scm.cycle_sop_cloture`), jamais un
+        # import direct scm -> publicapi (voir docstring du signal).
+        try:
+            from core.events import scm_cycle_sop_cloture
+            scm_cycle_sop_cloture.send(
+                sender='apps.scm.services', cycle=cycle, user=user)
+        except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+            import logging
+            logging.getLogger(__name__).warning(
+                'avancer_statut_cycle: émission scm_cycle_sop_cloture '
+                'échouée (cycle %s)', cycle.id, exc_info=True)
+
     return cycle
 
 
@@ -1049,3 +1062,38 @@ def creer_politiques_en_lot(produits, service_level_pct, company):
         ])
         resultats.append(politique)
     return resultats
+
+
+# ── NTSCM39 — webhook sortant sur rupture imminente détectée ────────────────
+
+def detecter_ruptures_imminentes_et_notifier(company):
+    """NTSCM39 — pour CHAQUE produit que ``selectors.tableau_bord_reappro``
+    (NTSCM7) classe ``rupture_imminente``, émet ``core.events.
+    scm_rupture_imminente_detectee`` (bus, best-effort PAR PRODUIT — un
+    accroc sur l'un n'empêche jamais les suivants). Appelée par la tâche beat
+    hebdomadaire ``tasks.recalculer_politiques_stock_hebdo`` (NTSCM35) —
+    JAMAIS à chaque lecture du tableau de bord (qui serait rejouée à chaque
+    page vue, spammant les webhooks abonnés).
+
+    Renvoie le nombre d'événements émis."""
+    from . import selectors
+
+    lignes = selectors.tableau_bord_reappro(company, statut='rupture_imminente')
+
+    nb_emis = 0
+    for ligne in lignes:
+        try:
+            from core.events import scm_rupture_imminente_detectee
+            scm_rupture_imminente_detectee.send(
+                sender='apps.scm.services', company=company,
+                produit_id=ligne['produit_id'], produit_nom=ligne['produit_nom'],
+                rupture_date=ligne['rupture_date'],
+                quantite_suggeree=ligne['quantite_suggeree'])
+            nb_emis += 1
+        except Exception:  # noqa: BLE001 — best-effort par produit
+            import logging
+            logging.getLogger(__name__).warning(
+                'detecter_ruptures_imminentes_et_notifier: émission échouée '
+                '(société %s, produit %s)', company.id, ligne['produit_id'],
+                exc_info=True)
+    return nb_emis
