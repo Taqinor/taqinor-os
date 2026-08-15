@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { Provider } from 'react-redux'
 import { configureStore } from '@reduxjs/toolkit'
@@ -10,6 +10,11 @@ import { configureStore } from '@reduxjs/toolkit'
 const {
   statusMe, statusColleagues, setStatus, clearStatus, setDnd,
   listFollowed, listBookmarks,
+  // WIR260 — mute/archive/recherche plein-texte : bouchons par défaut pour
+  // que TAPER dans la recherche (déclenche `search` après 300 ms) ne parte
+  // jamais sur un `undefined` non-fonction dans un test qui n'a rien à voir
+  // avec WIR260.
+  search, muteConversation, archiveConversation,
 } = vi.hoisted(() => ({
   statusMe: vi.fn(() => Promise.resolve({ data: { status_emoji: '', status_text: '', is_dnd: false } })),
   statusColleagues: vi.fn(() => Promise.resolve({ data: [] })),
@@ -18,6 +23,9 @@ const {
   setDnd: vi.fn(() => Promise.resolve({ data: { is_dnd: true } })),
   listFollowed: vi.fn(() => Promise.resolve({ data: [] })),
   listBookmarks: vi.fn(() => Promise.resolve({ data: [] })),
+  search: vi.fn(() => Promise.resolve({ data: [] })),
+  muteConversation: vi.fn(() => Promise.resolve({ data: {} })),
+  archiveConversation: vi.fn(() => Promise.resolve({ data: {} })),
 }))
 vi.mock('../../api/messagesApi', () => ({
   default: {
@@ -27,6 +35,7 @@ vi.mock('../../api/messagesApi', () => ({
     },
     threads: { listFollowed },
     listBookmarks,
+    search, muteConversation, archiveConversation,
   },
 }))
 
@@ -175,5 +184,65 @@ describe('ConversationList — WIR155 (onglets Fils / Favoris)', () => {
     await userEvent.click(screen.getByRole('tab', { name: /Favoris/ }))
     await userEvent.click(await screen.findByText('À relire'))
     expect(onSelect).toHaveBeenCalledWith(2)
+  })
+})
+
+describe('ConversationList — mute/archive/recherche plein-texte (WIR260)', () => {
+  it('« Sourdine » allume l’icône BellOff sur la conversation cliquée', async () => {
+    muteConversation.mockResolvedValueOnce({ data: {} })
+    render(
+      <Provider store={storeWith(convs)}>
+        <ConversationList currentUserId={9} />
+      </Provider>,
+    )
+    // Conversation 1 (« Général ») n'est pas sourdine au départ.
+    const general = screen.getByRole('button', { name: 'Actions — Général' })
+    await userEvent.click(general)
+    await userEvent.click(await screen.findByText('Sourdine'))
+    await waitFor(() => expect(muteConversation).toHaveBeenCalledWith(1, true))
+    await waitFor(() => {
+      expect(within(screen.getByText('Général').closest('button')).getByLabelText('Notifications coupées')).toBeInTheDocument()
+    })
+  })
+
+  it('« Archiver » retire la ligne de la liste', async () => {
+    archiveConversation.mockResolvedValueOnce({ data: {} })
+    render(
+      <Provider store={storeWith(convs)}>
+        <ConversationList currentUserId={9} />
+      </Provider>,
+    )
+    await userEvent.click(screen.getByRole('button', { name: 'Actions — Général' }))
+    await userEvent.click(await screen.findByText('Archiver'))
+    await waitFor(() => expect(archiveConversation).toHaveBeenCalledWith(1))
+    await waitFor(() => expect(screen.queryByText('Général')).not.toBeInTheDocument())
+  })
+
+  it('taper ≥ 2 caractères déclenche messagesApi.search et affiche les résultats serveur', async () => {
+    search.mockResolvedValueOnce({
+      data: [{ message_id: 5, conversation: 2, conversation_name: 'Reda / Autre', snippet: '…devis à confirmer…' }],
+    })
+    render(
+      <Provider store={storeWith(convs)}>
+        <ConversationList currentUserId={9} />
+      </Provider>,
+    )
+    await userEvent.type(screen.getByLabelText('Rechercher une conversation'), 'devis')
+    await waitFor(() => expect(search).toHaveBeenCalledWith('devis'))
+    expect(await screen.findByText('…devis à confirmer…')).toBeInTheDocument()
+  })
+
+  it('une erreur réseau sur la recherche laisse le filtre local intact (aucun plantage)', async () => {
+    search.mockRejectedValueOnce(new Error('réseau'))
+    render(
+      <Provider store={storeWith(convs)}>
+        <ConversationList currentUserId={9} />
+      </Provider>,
+    )
+    await userEvent.type(screen.getByLabelText('Rechercher une conversation'), 'général')
+    await waitFor(() => expect(search).toHaveBeenCalled())
+    // Le filtre LOCAL (titre/aperçu) continue de fonctionner : « Général »
+    // matche la saisie, la conversation reste affichée.
+    expect(await screen.findByText('Général')).toBeInTheDocument()
   })
 })
