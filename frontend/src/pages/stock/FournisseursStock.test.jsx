@@ -32,6 +32,15 @@ vi.mock('../../api/stockApi', () => ({
     createFournisseur: vi.fn(() => Promise.resolve({ data: {} })),
     updateFournisseur: vi.fn(() => Promise.resolve({ data: {} })),
     deleteFournisseur: vi.fn(() => Promise.resolve({})),
+    // WIR190 — archivage par repli PROTECT.
+    getFournisseursArchived: vi.fn(() => Promise.resolve({
+      data: [
+        { id: 1, nom: 'Actif SARL', is_archived: false },
+        { id: 3, nom: 'Archivé SARL', is_archived: true, nb_produits: 4, nb_bons_commande: 2 },
+      ],
+    })),
+    unarchiveFournisseur: vi.fn(() => Promise.resolve({ data: {} })),
+    forceDeleteFournisseur: vi.fn(() => Promise.resolve({ data: {} })),
     performanceFournisseur: vi.fn(() => Promise.resolve({ data: {} })),
     // WIR108 — référentiel catégories fournisseur.
     getCategoriesFournisseur: vi.fn(() => Promise.resolve({
@@ -157,5 +166,59 @@ describe('FournisseursStock — catégories fournisseur (WIR108)', () => {
     await waitFor(() => expect(stockApi.updateFournisseur).toHaveBeenCalledWith(
       1, expect.objectContaining({ categorie: 10 }),
     ))
+  })
+})
+
+describe('FournisseursStock — archivage par repli PROTECT (WIR190)', () => {
+  it('affiche le motif d\'archivage renvoyé par le serveur au lieu de faire disparaître la ligne', async () => {
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
+    stockApi.deleteFournisseur.mockResolvedValueOnce({
+      data: {
+        archived: true,
+        detail: 'Ce fournisseur a été archivé car des données réelles lui sont rattachées (prix fournisseur).',
+        bloquants: ['prix fournisseur'],
+      },
+    })
+    renderPage()
+    const grid = await screen.findByRole('grid', { name: 'Fournisseurs' })
+    const row = within(grid).getByText('Actif SARL').closest('tr')
+
+    await userEvent.click(within(row).getByRole('button', { name: 'Supprimer' }))
+
+    expect(await screen.findByText(/archivé car des données réelles/)).toBeInTheDocument()
+  })
+
+  it('« Voir les archivés » liste les archivés et « Réactiver » appelle unarchive', async () => {
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
+    renderPage()
+    await screen.findByRole('grid', { name: 'Fournisseurs' })
+
+    await userEvent.click(screen.getByRole('button', { name: 'Voir les archivés' }))
+    const archivedGrid = await screen.findByRole('grid', { name: 'Fournisseurs archivés' })
+    // Seuls les `is_archived` du lot `show_archived=true` sont listés.
+    expect(within(archivedGrid).getByText('Archivé SARL')).toBeInTheDocument()
+    expect(within(archivedGrid).queryByText('Actif SARL')).not.toBeInTheDocument()
+
+    await userEvent.click(within(archivedGrid).getByRole('button', { name: 'Réactiver' }))
+    await waitFor(() => expect(stockApi.unarchiveFournisseur).toHaveBeenCalledWith(3))
+  })
+
+  it('remonte le 409 du serveur quand la suppression définitive est refusée', async () => {
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
+    stockApi.forceDeleteFournisseur.mockRejectedValueOnce({
+      response: {
+        status: 409,
+        data: { detail: 'Suppression définitive refusée : ce fournisseur porte encore des données réelles rattachées (bon de commande).' },
+      },
+    })
+    renderPage()
+    await screen.findByRole('grid', { name: 'Fournisseurs' })
+
+    await userEvent.click(screen.getByRole('button', { name: 'Voir les archivés' }))
+    const archivedGrid = await screen.findByRole('grid', { name: 'Fournisseurs archivés' })
+    await userEvent.click(
+      within(archivedGrid).getByRole('button', { name: 'Supprimer définitivement' }))
+
+    expect(await screen.findByText(/Suppression définitive refusée/)).toBeInTheDocument()
   })
 })

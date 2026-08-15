@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useSelector } from 'react-redux'
 import { Link } from 'react-router-dom'
 import { useHasPermission, useIsAdmin, useIsAdminOrResponsable } from '../../hooks/useHasPermission'
-import { Plus, Pencil, Trash2, Package, ShoppingCart, BarChart3, Upload, LayoutGrid, Tags, Archive, Truck,
+import { Plus, Pencil, Trash2, Package, ShoppingCart, BarChart3, Upload, LayoutGrid, Tags, Archive, Truck, RotateCcw,
 } from 'lucide-react'
 import stockApi from '../../api/stockApi'
 import { formatMAD } from '../../lib/format'
@@ -408,6 +408,12 @@ export default function FournisseursStock() {
   const [showImport, setShowImport] = useState(false) // VX109 — import Excel/CSV
   const [categories, setCategories] = useState([]) // XPUR5/WIR108 — référentiel catégories
   const [showCategories, setShowCategories] = useState(false)
+  // WIR190 — archivage par repli PROTECT : le message serveur + la liste des
+  // archivés (jusqu'ici un fournisseur archivé disparaissait sans explication
+  // et rien dans l'UI ne pouvait le réactiver).
+  const [archiveNotif, setArchiveNotif] = useState(null)
+  const [showArchived, setShowArchived] = useState(false)
+  const [archives, setArchives] = useState([])
   const isAdmin = canDelete
 
   // setState n'arrive que dans les callbacks asynchrones (jamais synchrone dans
@@ -428,18 +434,92 @@ export default function FournisseursStock() {
       ?.catch(() => {})
   }
 
+  // WIR190 — la liste par défaut EXCLUT les archivés côté serveur ; seul
+  // `?show_archived=true` les renvoie (mêlés aux actifs → on filtre ici).
+  const reloadArchives = () => {
+    stockApi.getFournisseursArchived?.({ ordering: 'nom' })
+      ?.then((r) => {
+        const rows = r.data?.results ?? r.data ?? []
+        setArchives(rows.filter((f) => f.is_archived))
+      })
+      ?.catch(() => {})
+  }
+
   useEffect(() => { reload(); reloadCategories() }, [])
+  useEffect(() => { if (showArchived) reloadArchives() }, [showArchived])
 
   const delFournisseur = async (f) => {
     if (!window.confirm(`Supprimer le fournisseur « ${f.nom} » ?`)) return
     setError(null)
+    setArchiveNotif(null)
     try {
-      await stockApi.deleteFournisseur(f.id)
+      // Repli PROTECT : 200 `{archived:true, detail}` — rien n'est détruit, la
+      // fiche est archivée. On AFFICHE le `detail` serveur tel quel (il nomme
+      // les données bloquantes) au lieu de laisser la ligne disparaître.
+      const res = await stockApi.deleteFournisseur(f.id)
+      if (res?.data?.archived) {
+        setArchiveNotif(res.data.detail ?? 'Fournisseur archivé.')
+      }
       reload()
+      if (showArchived) reloadArchives()
     } catch (err) {
       setError(frErr(err, 'Suppression impossible (fournisseur utilisé).'))
     }
   }
+
+  const reactiverFournisseur = async (f) => {
+    if (!window.confirm(`Réactiver le fournisseur « ${f.nom} » ?`)) return
+    setError(null)
+    try {
+      await stockApi.unarchiveFournisseur(f.id)
+      reload()
+      reloadArchives()
+    } catch (err) {
+      setError(frErr(err, 'Réactivation impossible.'))
+    }
+  }
+
+  const supprimerDefinitivement = async (f) => {
+    if (!window.confirm(
+      `Supprimer DÉFINITIVEMENT « ${f.nom} » ? Cette action est irréversible.`)) return
+    setError(null)
+    try {
+      await stockApi.forceDeleteFournisseur(f.id)
+      reload()
+      reloadArchives()
+    } catch (err) {
+      // 409 : le serveur NOMME les données qui retiennent encore la fiche.
+      setError(frErr(err, 'Suppression définitive refusée.'))
+    }
+  }
+
+  const archivedColumns = useMemo(() => [
+    { id: 'nom', header: 'Nom', minWidth: 180, accessor: (f) => f.nom ?? '',
+      cell: (v) => <span className="line-through">{v}</span> },
+    { id: 'email', header: 'Email', minWidth: 160, accessor: (f) => f.email ?? '',
+      cell: (v) => v || <span className="text-muted-foreground">—</span> },
+    { id: 'nb_produits', header: 'Produits', align: 'right', width: 90, searchable: false,
+      accessor: (f) => f.nb_produits ?? 0 },
+    { id: 'nb_bons_commande', header: 'BCF', align: 'right', width: 80, searchable: false,
+      accessor: (f) => f.nb_bons_commande ?? 0 },
+    { id: 'actions', header: '', width: 150, searchable: false, sortable: false,
+      cell: (_v, f) => (
+        <div className="flex items-center justify-end gap-1">
+          <IconButton size="md" variant="ghost" label="Réactiver"
+                      onClick={(e) => { e.stopPropagation(); reactiverFournisseur(f) }}>
+            <RotateCcw className="size-4" aria-hidden="true" />
+          </IconButton>
+          {isAdmin && (
+            <IconButton size="md" variant="ghost" label="Supprimer définitivement"
+                        className="text-destructive hover:text-destructive"
+                        onClick={(e) => { e.stopPropagation(); supprimerDefinitivement(f) }}>
+              <Trash2 className="size-4" aria-hidden="true" />
+            </IconButton>
+          )}
+        </div>
+      ) },
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  ], [isAdmin])
 
   const columns = useMemo(() => [
     { id: 'nom', header: 'Nom', minWidth: 160, accessor: (f) => f.nom ?? '' },
@@ -513,6 +593,11 @@ export default function FournisseursStock() {
         subtitle={`${items.length} fournisseur(s)`}
         actions={canWrite ? (
           <>
+            {/* WIR190 — les fournisseurs archivés (repli PROTECT) sortent des
+                listes : cette bascule est le SEUL chemin pour les revoir. */}
+            <Button variant="outline" onClick={() => setShowArchived((v) => !v)}>
+              <Archive /> {showArchived ? 'Masquer les archivés' : 'Voir les archivés'}
+            </Button>
             {/* XPUR5/WIR108 — CRUD du référentiel catégories fournisseur. */}
             <Button variant="outline" onClick={() => setShowCategories(true)}>
               <Tags /> Catégories
@@ -538,6 +623,18 @@ export default function FournisseursStock() {
         </div>
       )}
 
+      {/* WIR190 — explication d'archivage renvoyée par le serveur (repli
+          PROTECT) : sans elle la ligne disparaissait sans un mot. */}
+      {archiveNotif && (
+        <div role="status" className="flex flex-wrap items-center gap-3 rounded-lg border border-border bg-muted/40 p-3 text-sm">
+          <Archive className="size-4 text-muted-foreground" aria-hidden="true" />
+          <span>{archiveNotif}</span>
+          <Button size="sm" variant="outline" onClick={() => setShowArchived(true)}>
+            Voir les archivés
+          </Button>
+        </div>
+      )}
+
       <DataTable
         data={items}
         columns={columns}
@@ -553,6 +650,24 @@ export default function FournisseursStock() {
           : undefined}
         aria-label="Fournisseurs"
       />
+
+      {showArchived && (
+        <section className="flex flex-col gap-2">
+          <h2 className="text-sm font-semibold text-muted-foreground">
+            Fournisseurs archivés
+          </h2>
+          <DataTable
+            data={archives}
+            columns={archivedColumns}
+            getRowId={(f) => f.id}
+            searchPlaceholder="Rechercher un fournisseur archivé…"
+            globalColumns={['nom', 'email']}
+            emptyTitle="Aucun fournisseur archivé"
+            emptyDescription="Un fournisseur rattaché à des données réelles est archivé plutôt que supprimé."
+            aria-label="Fournisseurs archivés"
+          />
+        </section>
+      )}
 
       {selected && (
         <FournisseurForm fournisseur={selected} categories={categories}

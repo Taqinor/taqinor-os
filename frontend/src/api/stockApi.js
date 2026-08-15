@@ -54,6 +54,16 @@ const stockApi = {
   createFournisseur: (data) => api.post('/stock/fournisseurs/', data),
   updateFournisseur: (id, data) => api.put(`/stock/fournisseurs/${id}/`, data),
   deleteFournisseur: (id) => api.delete(`/stock/fournisseurs/${id}/`),
+  // WIR190 — archivage fournisseur : `destroy` REPLIE sur un archivage quand
+  // une FK PROTECT (prix d'achat négociés…) retient la fiche — il renvoie
+  // alors 200 `{archived:true, detail, bloquants}` au lieu de 204. Ces trois
+  // wrappers reprennent EXACTEMENT le patron produit (`show_archived`,
+  // `unarchive`, `force-delete` qui refuse en 409 en nommant les bloquants) :
+  // sans eux un fournisseur archivé était invisible ET irrécupérable.
+  getFournisseursArchived: (params) =>
+    api.get('/stock/fournisseurs/', { params: { ...params, show_archived: 'true' } }),
+  unarchiveFournisseur: (id) => api.patch(`/stock/fournisseurs/${id}/unarchive/`),
+  forceDeleteFournisseur: (id) => api.delete(`/stock/fournisseurs/${id}/force-delete/`),
 
   // Mouvements
   getMouvements: (params) => api.get('/stock/mouvements/', { params }),
