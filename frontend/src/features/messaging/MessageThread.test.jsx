@@ -2,8 +2,16 @@ import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import { Provider } from 'react-redux'
 import { configureStore } from '@reduxjs/toolkit'
+import { MemoryRouter } from 'react-router-dom'
 import messagingReducer, { setActiveConversation, fetchMessages, fetchPinned } from './store/messagingSlice'
 import MessageThread from './MessageThread'
+
+// WIR259 — MessageBubble monte le vrai RecordCard (`useNavigate()`) pour
+// chaque bulle : exige un Router, même quand aucun message ne partage
+// d'enregistrement.
+function withRouter(ui) {
+  return <MemoryRouter>{ui}</MemoryRouter>
+}
 
 // jsdom n'implémente pas scrollIntoView.
 beforeEach(() => {
@@ -33,30 +41,30 @@ function storeWithThread() {
 
 describe('MessageThread (S15)', () => {
   it('rend les bulles et la barre des épingles', () => {
-    render(
+    render(withRouter(
       <Provider store={storeWithThread()}>
         <MessageThread currentUserId={9} nextOlder="cursor-older" />
       </Provider>,
-    )
+    ))
     expect(screen.getByText('à moi')).toBeInTheDocument()
     expect(screen.getByLabelText('Messages épinglés')).toBeInTheDocument()
   })
 
   it('propose de charger les anciens messages quand un curseur existe', () => {
-    render(
+    render(withRouter(
       <Provider store={storeWithThread()}>
         <MessageThread currentUserId={9} nextOlder="cursor-older" />
       </Provider>,
-    )
+    ))
     expect(screen.getByText('Charger les anciens messages')).toBeInTheDocument()
   })
 
   it('VX196 — le fil est un log annoncé (polite/additions) et défilable au clavier', () => {
-    render(
+    render(withRouter(
       <Provider store={storeWithThread()}>
         <MessageThread currentUserId={9} nextOlder="cursor-older" />
       </Provider>,
-    )
+    ))
     const scrollEl = screen.getByText('à moi').closest('[role="log"]')
     expect(scrollEl).not.toBeNull()
     expect(scrollEl).toHaveAttribute('aria-live', 'polite')

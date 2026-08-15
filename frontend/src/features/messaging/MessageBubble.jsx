@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import {
-  Paperclip, FileText, Pin, PinOff, Pencil, Check, MoreHorizontal, Trash2,
+  Paperclip, Pin, PinOff, Pencil, Check, MoreHorizontal, Trash2,
   Clock, Bookmark, BookmarkCheck, Send,
 } from 'lucide-react'
 import {
@@ -14,6 +14,10 @@ import { toastError, toastSuccess } from '../../lib/toast'
 import { sendMessage } from './store/messagingSlice'
 import { bubbleTime, displayName } from './time'
 import VoiceMessage from './VoiceMessage'
+// WIR259 — remplace la fonction locale RecordCard(message) ci-dessous par le
+// vrai composant (navigation SPA + icône par type, S19) : la locale n'était
+// qu'un lien plein-page avec une icône fixe.
+import RecordCard from './RecordCard'
 import Reactions from './Reactions'
 import { renderRichText } from './richText'
 
@@ -253,24 +257,6 @@ function Attachment({ att }) {
   )
 }
 
-function RecordCard({ message }) {
-  // Le serializer expose shared_label / shared_url. On retombe sur un éventuel
-  // objet `record` (rendu local optimiste) pour la rétro-compatibilité.
-  const label = message.shared_label || message.record?.label
-  if (!label) return null
-  const url = message.shared_url || message.record?.link || '#'
-  const subtitle = message.record?.subtitle
-  return (
-    <a href={url} className="chat-record-card">
-      <FileText size={15} aria-hidden="true" />
-      <span className="chat-record-meta">
-        <strong>{label}</strong>
-        {subtitle && <span>{subtitle}</span>}
-      </span>
-    </a>
-  )
-}
-
 // Une pièce jointe vocale est rendue par VoiceMessage ; les autres par Attachment.
 function isVoice(att) {
   return att.kind === 'voice' || (att.mime || att.content_type || '').startsWith('audio/')
@@ -350,7 +336,11 @@ export default function MessageBubble({
             <em className="chat-bubble-deleted">Message supprimé</em>
           ) : (
             <>
-              <RecordCard message={m} />
+              {/* WIR259 — `m.record` porte le rendu local optimiste
+                  ({record_type,label,subtitle,url}) ; sans lui, `m` porte le
+                  snapshot serveur (`shared_label`/`shared_url`), lu par le
+                  repli du vrai composant. */}
+              <RecordCard record={m.record || m} />
               {/* XKB29 — rendu sûr du gras/italique/code/listes/liens (aucun
                   dangerouslySetInnerHTML : renderRichText construit un arbre
                   d'éléments React, un payload script reste du texte). */}

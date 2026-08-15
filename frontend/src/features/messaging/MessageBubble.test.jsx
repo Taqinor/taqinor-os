@@ -3,6 +3,7 @@ import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { Provider } from 'react-redux'
 import { configureStore } from '@reduxjs/toolkit'
+import { MemoryRouter } from 'react-router-dom'
 import MessageBubble from './MessageBubble'
 import messagingReducer from './store/messagingSlice'
 import messagesApi from '../../api/messagesApi'
@@ -46,9 +47,14 @@ function makeStore(userId = 99) {
 
 function renderBubble(props) {
   return render(
-    <Provider store={makeStore()}>
-      <MessageBubble {...props} />
-    </Provider>,
+    // WIR259 — RecordCard (le vrai composant, plus la fonction locale)
+    // appelle `useNavigate()` : exige un Router, même quand aucun message de
+    // ce test ne partage d'enregistrement.
+    <MemoryRouter>
+      <Provider store={makeStore()}>
+        <MessageBubble {...props} />
+      </Provider>
+    </MemoryRouter>,
   )
 }
 
@@ -79,6 +85,22 @@ describe('MessageBubble (S15/S17/S18)', () => {
       own: true,
     })
     expect(screen.getByTestId('voice-message')).toBeInTheDocument()
+  })
+
+  // WIR259 — le vrai composant `RecordCard` (navigation SPA + icône par
+  // type), plus la fonction locale plein-page à icône fixe.
+  it('un devis partagé est rendu en carte cliquable (data-testid="record-card")', () => {
+    renderBubble({
+      message: {
+        id: 1, created_at: 'x', sender: { id: 2 },
+        shared_label: 'Devis #42', shared_url: '/ventes/devis/42',
+      },
+      own: true,
+    })
+    const carte = screen.getByTestId('record-card')
+    expect(carte).toBeInTheDocument()
+    expect(carte.getAttribute('href')).toBe('/ventes/devis/42')
+    expect(screen.getByText('Devis #42')).toBeInTheDocument()
   })
 
   it('un message supprimé affiche un placeholder', () => {
