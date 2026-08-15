@@ -7,7 +7,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import {
   Download, Cog, Plus, CalendarClock, ClipboardList, AlertTriangle, Pencil,
-  Check, X, Route,
+  Check, X, Route, TrendingUp,
 } from 'lucide-react'
 import savApi from '../../api/savApi'
 import { formatMAD } from '../../lib/format'
@@ -91,7 +91,7 @@ export function Component() {
   const [installations, setInstallations] = useState([])
   const [equipements, setEquipements] = useState([]) // WIR120 — registre couvert
   const [preventifs, setPreventifs] = useState([]) // L327 — tickets préventifs
-  const [vue, setVue] = useState('tous') // 'tous' | 'dus' | 'renouveler' | 'tournee'
+  const [vue, setVue] = useState('tous') // 'tous' | 'dus' | 'renouveler' | 'tournee' | 'rentabilite'
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState(false) // L329 — vide vs erreur
   // WIR120 — valeurs par défaut des champs « Avancé » (tous optionnels ;
@@ -290,6 +290,29 @@ export function Component() {
     }
   }
 
+  // WIR231/XSAV18 — 5e vue « Rentabilité » : P&L par contrat (revenu/coût/
+  // marge), réservé à la permission prix d'achat — 403 SERVEUR affiché en FR,
+  // et AUCUNE valeur de coût/marge ne rejoint jamais le DOM sans elle (le
+  // tableau ne se rend qu'en cas de succès de l'appel, jamais masqué en CSS).
+  const [rentabilite, setRentabilite] = useState(null)
+  const [rentabiliteLoading, setRentabiliteLoading] = useState(false)
+  const [rentabiliteError, setRentabiliteError] = useState('')
+
+  useEffect(() => {
+    if (vue !== 'rentabilite') return
+    setRentabiliteLoading(true)
+    setRentabiliteError('')
+    savApi.getRentabiliteContrats()
+      .then((r) => setRentabilite(r.data?.results ?? r.data ?? []))
+      .catch((err) => {
+        setRentabilite(null)
+        setRentabiliteError(frenchError(err, 'Impossible de charger la rentabilité.'))
+      })
+      .finally(() => setRentabiliteLoading(false))
+  }, [vue])
+
+  const nomContrat = (contratId) => rows.find((r) => r.id === contratId)?.client_nom ?? `Contrat #${contratId}`
+
   const columns = [
     { id: 'client_nom', header: 'Client', width: 180, accessor: (r) => r.client_nom },
     {
@@ -451,6 +474,7 @@ export function Component() {
                 { value: 'dus', label: 'À venir (dus)' },
                 { value: 'renouveler', label: 'À renouveler' },
                 { value: 'tournee', label: 'Tournée' },
+                { value: 'rentabilite', label: 'Rentabilité' },
               ]}
             />
             <Button variant="outline" size="sm" onClick={generer}>
@@ -540,8 +564,71 @@ export function Component() {
           </Card>
         )}
 
+        {/* WIR231/XSAV18 — vue « Rentabilité » : P&L (revenu/coût/marge) par
+            contrat, réservé à la permission prix d'achat. Le tableau (et donc
+            toute valeur de coût/marge) n'est JAMAIS rendu sans un succès de
+            l'appel serveur — un 403 affiche SEULEMENT le message FR du serveur. */}
+        {vue === 'rentabilite' && (
+          <Card className="p-4">
+            <div className="mb-3 flex items-center justify-between">
+              <h2 className="flex items-center gap-2 text-base font-semibold">
+                <TrendingUp className="size-4" aria-hidden="true" /> Rentabilité des contrats
+              </h2>
+            </div>
+
+            {rentabiliteError && (
+              <div role="alert"
+                   className="mb-3 flex items-center gap-2 rounded-lg border border-destructive/30 bg-destructive/10 p-2.5 text-sm text-destructive">
+                <AlertTriangle className="size-4 shrink-0" aria-hidden="true" />
+                {rentabiliteError}
+              </div>
+            )}
+
+            {rentabiliteLoading && (
+              <div className="space-y-2">
+                {Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-9 w-full" />)}
+              </div>
+            )}
+
+            {!rentabiliteLoading && rentabilite != null && (
+              rentabilite.length === 0 ? (
+                <EmptyState icon={TrendingUp} title="Aucun contrat" description="Aucun contrat de maintenance à évaluer." />
+              ) : (
+                <table className="w-full border-collapse text-sm" data-testid="rentabilite-table">
+                  <thead>
+                    <tr className="text-left text-muted-foreground">
+                      <th className="p-2">Contrat</th>
+                      <th className="p-2">Revenu</th>
+                      <th className="p-2">Coût</th>
+                      <th className="p-2">Marge</th>
+                      <th className="p-2">Visites</th>
+                      <th className="p-2">Marge / visite</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {/* Trié par le SERVEUR (marge croissante — pertes en
+                        premier) : jamais retrié côté écran. */}
+                    {rentabilite.map((r) => (
+                      <tr key={r.contrat_id} className="border-t border-border">
+                        <td className="p-2">{nomContrat(r.contrat_id)}</td>
+                        <td className="p-2">{fmtDH(r.revenu)}</td>
+                        <td className="p-2">{fmtDH(r.cout)}</td>
+                        <td className="p-2">
+                          <span className={r.marge < 0 ? 'text-destructive font-medium' : ''}>{fmtDH(r.marge)}</span>
+                        </td>
+                        <td className="p-2">{r.nb_visites}</td>
+                        <td className="p-2">{r.marge_par_visite != null ? fmtDH(r.marge_par_visite) : '—'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )
+            )}
+          </Card>
+        )}
+
         {/* ── Création ── */}
-        {vue !== 'tournee' && (
+        {vue !== 'tournee' && vue !== 'rentabilite' && (
         <Card className="p-4">
           <Form onSubmit={(e) => { e.preventDefault(); create() }}
                 className="grid items-end gap-3 sm:grid-cols-[2fr_1fr_1fr_1fr] lg:grid-cols-[2fr_1fr_1fr_1fr_1fr_1fr_auto]">
@@ -676,7 +763,7 @@ export function Component() {
         </Card>
         )}
 
-        {vue !== 'tournee' && (loading ? (
+        {vue !== 'tournee' && vue !== 'rentabilite' && (loading ? (
           // L329 — état de chargement explicite.
           <Card className="space-y-2 p-4">
             {Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-9 w-full" />)}
