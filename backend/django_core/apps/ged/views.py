@@ -1,6 +1,8 @@
 """API REST de la GED — tout scopé société côté serveur.
 
-Lecture : tout rôle authentifié. Écriture : responsable/admin. La société est
+Lecture : tout rôle authentifié. Écriture : ``ged_gerer``. Gouvernance
+documentaire (caviardage, legal hold, rétention) : ``ged_gouvernance``,
+direction seule (WIR174). La société est
 TOUJOURS posée côté serveur (TenantMixin) — jamais lue du corps de requête.
 Les dossiers (Folder) ont un chemin matérialisé recalculé côté serveur, et les
 versions de document sont numérotées + déduppées via `services`.
@@ -24,7 +26,9 @@ from rest_framework.throttling import SimpleRateThrottle
 from apps.records.storage import fetch_attachment, store_attachment
 
 from authentication.mixins import TenantMixin
-from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
+from authentication.permissions import (
+    HasPermissionOrLegacy, IsAnyRole, IsResponsableOrAdmin,
+)
 # SCA4 — base transverse UNIQUE des viewsets scopés société : tout NOUVEAU
 # ModelViewSet inscriptible part d'ici (scoping + forçage de `company` garantis).
 from core.viewsets import CompanyScopedModelViewSet
@@ -71,6 +75,21 @@ from .serializers import (
 )
 
 READ_ACTIONS = ['list', 'retrieve']
+
+# WIR174 — codes de permission GED. La lecture ORDINAIRE (liste, recherche,
+# ZIP) reste ouverte à tout rôle interne : ce sont les branches ``IsAnyRole``
+# ci-dessous, PRÉSERVÉES telles quelles. Ce qui change, c'est le haut du
+# spectre : l'écriture documentaire passe de ``IsResponsableOrAdmin`` (vrai
+# pour tout porteur d'UNE écriture, même hors GED) à ``ged_gerer``, et les
+# actes à portée JURIDIQUE — caviarder, poser/lever un legal hold, fixer une
+# politique de rétention — exigent ``ged_gouvernance`` (direction seule).
+PERM_GED_VOIR = 'ged_voir'
+PERM_GED_GERER = 'ged_gerer'
+PERM_GED_GOUVERNANCE = 'ged_gouvernance'
+
+#: Actions de gouvernance de ``DocumentViewSet``.
+GOUVERNANCE_ACTIONS = (
+    'placer_legal_hold', 'lever_legal_hold', 'caviarder')
 
 # GED20 — Formats affichables inline (PDF, images, texte). Tout le reste →
 # téléchargement forcé (attachment). Partagé entre l'aperçu authentifié (GED14)
@@ -320,7 +339,18 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
         if (self.action == 'operations_lot'
                 and self.request.data.get('operation') == 'telecharger_zip'):
             return [IsAnyRole()]
-        return [IsResponsableOrAdmin()]
+        # WIR174 — gouvernance documentaire : caviardage et rétention légale
+        # sont des actes à PORTÉE JURIDIQUE, pas des écritures ordinaires.
+        # Direction seule (``ged_gouvernance`` n'est mappé sur aucun rôle
+        # Responsable/Commercial/Technicien) ; ``services.py`` revérifie
+        # (défense en profondeur).
+        if self.action in GOUVERNANCE_ACTIONS:
+            return [HasPermissionOrLegacy(PERM_GED_GOUVERNANCE)()]
+        # WIR174 — l'écriture documentaire ordinaire quitte le grossier
+        # ``IsResponsableOrAdmin`` (vrai dès qu'un rôle porte UNE écriture,
+        # même hors GED) pour le code fin ``ged_gerer``. Repli légacy
+        # inchangé pour les comptes sans rôle fin.
+        return [HasPermissionOrLegacy(PERM_GED_GERER)()]
 
     def get_queryset(self):
         # GED8 — base : documents visibles selon l'ACL coffre-fort.
@@ -2114,9 +2144,13 @@ class PolitiqueRetentionViewSet(TenantMixin, viewsets.ModelViewSet):
     ordering_fields = ['nom', 'duree_conservation_jours', 'created_at']
 
     def get_permissions(self):
+        # WIR174 — registre de GOUVERNANCE documentaire : sa lecture exige
+        # ``ged_voir`` (ce n'est pas la liste des documents, restee ouverte a
+        # tout role interne) et toute ecriture exige ``ged_gouvernance`` —
+        # direction seule.
         if self.action in READ_ACTIONS + ['echus']:
-            return [IsAnyRole()]
-        return [IsResponsableOrAdmin()]
+            return [HasPermissionOrLegacy(PERM_GED_VOIR)()]
+        return [HasPermissionOrLegacy(PERM_GED_GOUVERNANCE)()]
 
     def get_queryset(self):
         qs = selectors.politiques_retention_for_company(
@@ -2182,9 +2216,13 @@ class ArchivageLegalViewSet(TenantMixin,
     ordering_fields = ['archive_le', 'id']
 
     def get_permissions(self):
+        # WIR174 — registre de GOUVERNANCE documentaire : sa lecture exige
+        # ``ged_voir`` (ce n'est pas la liste des documents, restee ouverte a
+        # tout role interne) et toute ecriture exige ``ged_gouvernance`` —
+        # direction seule.
         if self.action in READ_ACTIONS:
-            return [IsAnyRole()]
-        return [IsResponsableOrAdmin()]
+            return [HasPermissionOrLegacy(PERM_GED_VOIR)()]
+        return [HasPermissionOrLegacy(PERM_GED_GOUVERNANCE)()]
 
     def get_queryset(self):
         qs = selectors.archivages_legaux_for_company(
@@ -2282,9 +2320,13 @@ class LegalHoldViewSet(TenantMixin,
     ordering_fields = ['date_pose', 'id']
 
     def get_permissions(self):
+        # WIR174 — registre de GOUVERNANCE documentaire : sa lecture exige
+        # ``ged_voir`` (ce n'est pas la liste des documents, restee ouverte a
+        # tout role interne) et toute ecriture exige ``ged_gouvernance`` —
+        # direction seule.
         if self.action in READ_ACTIONS:
-            return [IsAnyRole()]
-        return [IsResponsableOrAdmin()]
+            return [HasPermissionOrLegacy(PERM_GED_VOIR)()]
+        return [HasPermissionOrLegacy(PERM_GED_GOUVERNANCE)()]
 
     def get_queryset(self):
         qs = selectors.legal_holds_for_company(self.request.user.company)

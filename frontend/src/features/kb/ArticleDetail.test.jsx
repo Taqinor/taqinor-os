@@ -43,6 +43,9 @@ vi.mock('../../api/kbApi', () => ({
     listLecturesObligatoires: vi.fn().mockResolvedValue({ data: [] }),
     createLectureObligatoire: vi.fn(),
     removeLectureObligatoire: vi.fn(),
+    // WIR250 — rapport de conformité XKB7 (nominatif, gestionnaires seuls).
+    rapportConformite: vi.fn()
+      .mockResolvedValue({ data: { article: 1, lus: [], non_lus: [] } }),
   },
 }))
 
@@ -239,5 +242,51 @@ describe('ArticleDetail — emoji + couverture (ZGED10)', () => {
       'src', '/api/django/kb/articles/1/couverture-image/')
     await user.click(screen.getByRole('button', { name: /^Retirer$/i }))
     await waitFor(() => expect(kbApi.removeCouverture).toHaveBeenCalledWith(1))
+  })
+})
+
+/* WIR250 — le rapport de conformité XKB7 (`rapport-conformite`) existait côté
+   serveur sans AUCUN appelant : l'écran annonçait « N lecteurs » sans jamais
+   dire QUI n'avait pas lu, ni avant quand. Il est nominatif et réservé aux
+   gestionnaires (`canEdit`). */
+describe('ArticleDetail — conformité de lecture nominative (WIR250)', () => {
+  const RAPPORT = {
+    article: 1,
+    lus: [{ utilisateur: 3, nom: 'Sami Benali', echeance: '2026-09-30' }],
+    non_lus: [
+      { utilisateur: 4, nom: 'Nadia Amrani', echeance: '2000-01-01' },
+      { utilisateur: 5, nom: 'Youssef Idrissi', echeance: null },
+    ],
+  }
+
+  it('liste nommément les lus et les non-lus, et signale le retard', async () => {
+    mockLoads()
+    kbApi.rapportConformite.mockResolvedValue({ data: RAPPORT })
+    const user = userEvent.setup()
+    render(wrap(<ArticleDetail articleId={1} canEdit onBack={() => {}} onEdit={() => {}} />))
+
+    await waitFor(() => expect(screen.getByText('Procédure onduleur')).toBeTruthy())
+    await user.click(screen.getByRole('tab', { name: /Lecteurs/i }))
+
+    const bloc = await screen.findByTestId('kb-rapport-conformite')
+    expect(bloc).toHaveTextContent('Sami Benali')
+    expect(bloc).toHaveTextContent('Nadia Amrani')
+    expect(bloc).toHaveTextContent('Youssef Idrissi')
+    // Échéance dépassée → signalée ; absence d'échéance → aucun retard inventé.
+    expect(bloc).toHaveTextContent('En retard')
+    expect(bloc).toHaveTextContent('Sans échéance')
+  })
+
+  it('n’est pas demandé ni rendu pour un lecteur ordinaire', async () => {
+    mockLoads()
+    kbApi.rapportConformite.mockResolvedValue({ data: RAPPORT })
+    const user = userEvent.setup()
+    render(wrap(<ArticleDetail articleId={1} onBack={() => {}} onEdit={() => {}} />))
+
+    await waitFor(() => expect(screen.getByText('Procédure onduleur')).toBeTruthy())
+    await user.click(screen.getByRole('tab', { name: /Lecteurs/i }))
+
+    expect(kbApi.rapportConformite).not.toHaveBeenCalled()
+    expect(screen.queryByTestId('kb-rapport-conformite')).toBeNull()
   })
 })

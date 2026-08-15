@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { GraduationCap, Plus, UserPlus } from 'lucide-react'
+import { GraduationCap, Plus, Trash2, UserPlus } from 'lucide-react'
 import { ListShell } from '../../ui/module'
 import { Button, Badge, EmptyState, Spinner, Input, Label, toast } from '../../ui'
 import kbApi from '../../api/kbApi'
@@ -50,6 +50,12 @@ export default function KbParcoursPage() {
   const [users, setUsers] = useState([])
   const [nom, setNom] = useState('')
   const [assignUser, setAssignUser] = useState('')
+  // WIR250 — composer le parcours : `createParcoursArticle` /
+  // `removeParcoursArticle` étaient exposés sans aucun appelant, donc TOUT
+  // parcours créé depuis cet écran restait vide à vie (et les assignations
+  // portaient sur une séquence de zéro article).
+  const [articles, setArticles] = useState([])
+  const [articleAjout, setArticleAjout] = useState('')
 
   const load = () => {
     setLoading(true)
@@ -66,6 +72,10 @@ export default function KbParcoursPage() {
     messagesApi.listCompanyMembers()
       .then((res) => setUsers(Array.isArray(res.data) ? res.data : (res.data?.results ?? [])))
       .catch(() => setUsers([]))
+    // WIR250 — catalogue d'articles à composer dans un parcours.
+    kbApi.listArticles()
+      .then((res) => setArticles(Array.isArray(res.data) ? res.data : (res.data?.results ?? [])))
+      .catch(() => setArticles([]))
   }, [])
 
   const openParcours = (p) => {
@@ -88,6 +98,37 @@ export default function KbParcoursPage() {
     } catch { toast.error('Création impossible.') }
   }
 
+  const rechargerMembres = async (parcoursId) => {
+    const res = await kbApi.parcoursArticles(parcoursId)
+    setMembres(Array.isArray(res.data) ? res.data : (res.data?.results ?? []))
+  }
+
+  // WIR250 — ajout d'un article au parcours. `ordre` est calculé côté client
+  // à partir de la liste courante (fin de séquence) : on n'invente aucun
+  // trou, et deux ajouts successifs se suivent.
+  const ajouterArticle = async () => {
+    if (!articleAjout || !selected) return
+    try {
+      await kbApi.createParcoursArticle({
+        parcours: selected.id,
+        article: Number(articleAjout),
+        ordre: membres.length,
+      })
+      toast.success('Article ajouté au parcours.')
+      setArticleAjout('')
+      await rechargerMembres(selected.id)
+    } catch { toast.error('Ajout impossible (article déjà dans le parcours ?).') }
+  }
+
+  const retirerArticle = async (membreId) => {
+    if (!selected) return
+    try {
+      await kbApi.removeParcoursArticle(membreId)
+      toast.success('Article retiré du parcours.')
+      await rechargerMembres(selected.id)
+    } catch { toast.error('Retrait impossible.') }
+  }
+
   const assigner = async () => {
     if (!assignUser || !selected) return
     try {
@@ -98,6 +139,18 @@ export default function KbParcoursPage() {
       setAssignations(Array.isArray(res.data) ? res.data : (res.data?.results ?? []))
     } catch { toast.error('Assignation impossible (déjà assigné ?).') }
   }
+
+  // WIR250 — les articles DÉJÀ dans le parcours sortent de la liste : on ne
+  // propose jamais un ajout que le serveur refusera en doublon.
+  const articleOptions = useMemo(() => {
+    const deja = new Set(membres.map((m) => m.article))
+    return [
+      { value: '', label: 'Choisir un article…' },
+      ...articles
+        .filter((a) => !deja.has(a.id))
+        .map((a) => ({ value: String(a.id), label: a.titre })),
+    ]
+  }, [articles, membres])
 
   const userOptions = useMemo(() => [
     { value: '', label: 'Choisir une personne…' },
@@ -133,11 +186,30 @@ export default function KbParcoursPage() {
 
         <section className="flex flex-col gap-2">
           <h2 className="text-sm font-medium">Articles du parcours ({membres.length})</h2>
+          {/* WIR250 — composer la séquence depuis l'UI. */}
+          <div className="flex flex-wrap items-end gap-2">
+            <FilterSelect
+              value={articleAjout}
+              onChange={setArticleAjout}
+              options={articleOptions}
+              aria-label="Article à ajouter"
+            />
+            <Button type="button" variant="outline" onClick={ajouterArticle}>
+              <Plus /> Ajouter au parcours
+            </Button>
+          </div>
           {membres.length ? (
             <ol className="flex flex-col gap-1.5">
               {membres.map((m) => (
-                <li key={m.id} className="rounded-lg border border-border px-3 py-2 text-sm">
-                  {m.ordre + 1}. {m.article_titre}
+                <li key={m.id} className="flex items-center justify-between gap-3 rounded-lg border border-border px-3 py-2 text-sm">
+                  <span>{m.ordre + 1}. {m.article_titre}</span>
+                  <Button
+                    type="button" variant="ghost" size="sm"
+                    onClick={() => retirerArticle(m.id)}
+                    aria-label={`Retirer ${m.article_titre} du parcours`}
+                  >
+                    <Trash2 />
+                  </Button>
                 </li>
               ))}
             </ol>

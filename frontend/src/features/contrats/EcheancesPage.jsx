@@ -67,6 +67,8 @@ export default function EcheancesPage() {
   // est globale à la société, aucun sélecteur nécessaire).
   const [contrats, setContrats] = useState([])
   const [dialog, setDialog] = useState(null) // 'regle' | 'jalon' | 'obligation' | 'sla'
+  // WIR252 — SLA dont on calcule la pénalité (déclaratif, aucune écriture).
+  const [slaPenalite, setSlaPenalite] = useState(null)
 
   const load = () => {
     setLoading(true)
@@ -245,6 +247,17 @@ export default function EcheancesPage() {
               { header: 'Taux cible', cell: (s) => (s.taux_cible != null ? `${s.taux_cible} %` : '—') },
               { header: 'Pénalité', cell: (s) => s.mode_penalite_display || s.mode_penalite },
               { header: 'Actif', cell: (s) => <Badge tone={s.actif ? 'success' : 'neutral'}>{s.actif ? 'Actif' : 'Inactif'}</Badge> },
+              {
+                header: '',
+                align: 'right',
+                // WIR252 — `penaliteSla` était exposé par contratsApi.js sans
+                // aucun écran pour l'appeler.
+                cell: (s) => (
+                  <Button size="sm" variant="outline" onClick={() => setSlaPenalite(s)}>
+                    Calculer la pénalité
+                  </Button>
+                ),
+              },
             ]}
           />
         </TabsContent>
@@ -296,6 +309,9 @@ export default function EcheancesPage() {
           onClose={() => setDialog(null)}
           onDone={() => onCreated('Engagement SLA créé.')}
         />
+      )}
+      {slaPenalite && (
+        <PenaliteSlaDialog sla={slaPenalite} onClose={() => setSlaPenalite(null)} />
       )}
     </div>
   )
@@ -541,9 +557,92 @@ function ObligationDialog({ contrats, onClose, onDone }) {
   )
 }
 
+/* WIR252 — Calculette de pénalité SLA (CONTRAT27).
+   ----------------------------------------------------------------------------
+   `penaliteSla` était exposé par `contratsApi.js` et n'avait AUCUN écran :
+   l'engagement se lisait sans jamais pouvoir chiffrer ce qu'il coûte. Le
+   serveur est explicite : ce calcul est DÉCLARATIF — aucune écriture, aucun
+   changement de statut, aucune facture émise. L'écran le dit, et le POST du
+   calcul est le SEUL appel émis (aucune requête d'écriture ne le suit). */
+function PenaliteSlaDialog({ sla, onClose }) {
+  const [tauxRealise, setTauxRealise] = useState('')
+  const [montantContrat, setMontantContrat] = useState('')
+  const [resultat, setResultat] = useState(null)
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState(null)
+
+  const calculer = async (e) => {
+    e.preventDefault()
+    setBusy(true)
+    setErr(null)
+    const data = {}
+    if (tauxRealise !== '') data.taux_realise = Number(tauxRealise)
+    if (montantContrat !== '') data.montant_contrat = Number(montantContrat)
+    try {
+      const r = await contratsApi.penaliteSla(sla.id, data)
+      setResultat(r.data)
+    } catch (e2) {
+      setResultat(null)
+      setErr(errMsg(e2, 'Calcul de la pénalité impossible.'))
+    } finally { setBusy(false) }
+  }
+
+  return (
+    <Dialog open onOpenChange={onClose}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Pénalité SLA — {sla.libelle}</DialogTitle>
+        </DialogHeader>
+        <form onSubmit={calculer} className="flex flex-col gap-3" noValidate>
+          <p className="text-xs text-muted-foreground">
+            Calcul DÉCLARATIF : il n’enregistre rien, ne change aucun statut de
+            contrat et n’émet aucune facture.
+          </p>
+          <div className="grid gap-1.5">
+            <Label htmlFor="penalite-taux">Taux réalisé (%)</Label>
+            <Input id="penalite-taux" type="number" step="any" value={tauxRealise}
+                   onChange={(e) => setTauxRealise(e.target.value)}
+                   placeholder={sla.taux_cible != null ? `cible ${sla.taux_cible} %` : ''} />
+          </div>
+          <div className="grid gap-1.5">
+            <Label htmlFor="penalite-montant">Montant du contrat</Label>
+            <Input id="penalite-montant" type="number" step="any" value={montantContrat}
+                   onChange={(e) => setMontantContrat(e.target.value)} />
+          </div>
+          {err && <p className="text-sm text-destructive" role="alert">{err}</p>}
+          {resultat && (
+            <div className="rounded-lg border bg-muted/30 p-3 text-sm" data-testid="resultat-penalite-sla">
+              <p>
+                Pénalité : <span className="font-semibold tabular-nums">{resultat.penalite}</span>
+              </p>
+              <p className="mt-1">
+                Engagement{' '}
+                <Badge tone={resultat.respecte ? 'success' : 'danger'}>
+                  {resultat.respecte ? 'respecté' : 'non respecté'}
+                </Badge>
+              </p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Cible {resultat.taux_cible} % · Réalisé{' '}
+                {resultat.taux_realise == null ? '—' : `${resultat.taux_realise} %`}
+              </p>
+            </div>
+          )}
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={onClose}>Fermer</Button>
+            {/* Libellé volontairement DISTINCT de l'action de la ligne
+                (« Calculer la pénalité ») : les deux coexistent à l'écran
+                pendant que le dialogue est ouvert. */}
+            <Button type="submit" disabled={busy}>{busy ? 'Calcul…' : 'Calculer'}</Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
 // WIR74 — engagement SLA (CONTRAT27). `contrat` + `libelle` requis ; le
-// reste (taux/pénalité) a un défaut serveur — `penaliteSla` (calcul déclaratif
-// de la pénalité encourue) reste une action du détail contrat, hors scope ici.
+// reste (taux/pénalité) a un défaut serveur. WIR252 branche la calculette de
+// pénalité (`penaliteSla`) sur l'onglet SLA ci-dessus.
 function SlaDialog({ contrats, onClose, onDone }) {
   const [contrat, setContrat] = useState('')
   const [libelle, setLibelle] = useState('')

@@ -38,6 +38,16 @@ const NIVEAU_OPTIONS = [
   { value: 'edition', label: 'Édition' },
 ]
 
+// WIR250 — date du jour en `AAAA-MM-JJ` LOCAL (jamais `toISOString()`, qui
+// bascule en UTC et décale le jour en fin de soirée). Sert uniquement à
+// comparer une échéance déjà au même format.
+function aujourdhuiIso() {
+  const d = new Date()
+  const mm = String(d.getMonth() + 1).padStart(2, '0')
+  const jj = String(d.getDate()).padStart(2, '0')
+  return `${d.getFullYear()}-${mm}-${jj}`
+}
+
 export default function ArticleDetail({
   articleId, canEdit, onBack, onEdit, onChanged, onOpenArticle,
 }) {
@@ -53,6 +63,10 @@ export default function ArticleDetail({
   // WIR71 — lectures obligatoires (XKB7) assignées sur cet article.
   const [lecturesObl, setLecturesObl] = useState([])
   const [oblDraft, setOblDraft] = useState({ role_cible: 'normal', echeance: '' })
+  // WIR250 — rapport de conformité XKB7 (`{lus, non_lus}` nominatifs +
+  // échéance). Réservé aux gestionnaires : un lecteur ordinaire n'a pas à
+  // voir qui, nommément, n'a pas encore lu.
+  const [conformite, setConformite] = useState(null)
 
   const load = () => {
     setLoading(true)
@@ -66,8 +80,12 @@ export default function ArticleDetail({
       kbApi.retroliens(articleId),
       kbApi.listLecturesObligatoires({ article: articleId })
         .catch(() => ({ data: [] })),
+      // WIR250 — rapport de conformité, gestionnaires seulement.
+      canEdit
+        ? kbApi.rapportConformite(articleId).catch(() => null)
+        : Promise.resolve(null),
     ])
-      .then(([a, v, r, acl, part, fav, retro, obl]) => {
+      .then(([a, v, r, acl, part, fav, retro, obl, conf]) => {
         setArticle(a.data)
         setVersions(Array.isArray(v.data) ? v.data : (v.data?.results ?? []))
         setResume(r.data)
@@ -77,6 +95,7 @@ export default function ArticleDetail({
         setFavori(favRows.length > 0)
         setRetroliens(Array.isArray(retro.data) ? retro.data : (retro.data?.results ?? []))
         setLecturesObl(Array.isArray(obl.data) ? obl.data : (obl.data?.results ?? []))
+        setConformite(conf?.data ?? null)
       })
       .catch(() => toast.error('Impossible de charger l’article.'))
       .finally(() => setLoading(false))
@@ -480,6 +499,69 @@ export default function ArticleDetail({
         </ul>
       ) : (
         <EmptyState title="Aucune lecture" description="Personne n’a encore lu cet article." />
+      )}
+
+      {/* WIR250 / XKB7 — conformité NOMINATIVE : qui a lu, qui n'a pas lu, et
+          avant quand. `rapport-conformite` existait côté serveur sans aucun
+          appelant. Gestionnaires seulement (`canEdit`) : c'est une donnée de
+          suivi RH, pas un affichage pour le lecteur ordinaire. */}
+      {canEdit && conformite && (
+        <div className="border-t border-border pt-3" data-testid="kb-rapport-conformite">
+          <h4 className="mb-2 text-sm font-semibold">Conformité de lecture obligatoire</h4>
+          {(conformite.lus?.length || 0) + (conformite.non_lus?.length || 0) === 0 ? (
+            <p className="text-sm text-muted-foreground">
+              Aucune lecture obligatoire assignée sur cet article.
+            </p>
+          ) : (
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div>
+                <p className="mb-1 text-xs font-medium text-muted-foreground">
+                  Lu ({conformite.lus?.length || 0})
+                </p>
+                {conformite.lus?.length ? (
+                  <ul className="flex flex-col gap-1">
+                    {conformite.lus.map((u) => (
+                      <li key={`lu-${u.utilisateur}`} className="flex items-center justify-between gap-2 rounded-md border border-border px-2 py-1 text-sm">
+                        <span>{u.nom || `#${u.utilisateur}`}</span>
+                        <Badge tone="success">Lu</Badge>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="text-sm text-muted-foreground">—</p>
+                )}
+              </div>
+              <div>
+                <p className="mb-1 text-xs font-medium text-muted-foreground">
+                  Non lu ({conformite.non_lus?.length || 0})
+                </p>
+                {conformite.non_lus?.length ? (
+                  <ul className="flex flex-col gap-1">
+                    {conformite.non_lus.map((u) => {
+                      // Échéance DÉPASSÉE = le seul signal qui appelle une
+                      // action ; sans échéance, aucun retard n'est inventé.
+                      const enRetard = !!u.echeance && u.echeance < aujourdhuiIso()
+                      return (
+                        <li key={`nonlu-${u.utilisateur}`} className="flex items-center justify-between gap-2 rounded-md border border-border px-2 py-1 text-sm">
+                          <span>{u.nom || `#${u.utilisateur}`}</span>
+                          {u.echeance ? (
+                            <Badge tone={enRetard ? 'danger' : 'warning'}>
+                              {enRetard ? 'En retard — ' : 'avant le '}{u.echeance}
+                            </Badge>
+                          ) : (
+                            <Badge tone="neutral">Sans échéance</Badge>
+                          )}
+                        </li>
+                      )
+                    })}
+                  </ul>
+                ) : (
+                  <p className="text-sm text-muted-foreground">—</p>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
       )}
     </div>
   )

@@ -2035,6 +2035,33 @@ def _document_sous_legal_hold(document):
         document_id=document.pk, actif=True).exists()
 
 
+#: WIR174 — code de gouvernance documentaire (caviardage, legal hold,
+#: rétention). Direction seule ; déclaré au catalogue ``apps.roles``.
+PERM_GED_GOUVERNANCE = 'ged_gouvernance'
+
+
+def exiger_gouvernance_ged(user):
+    """WIR174 — défense en PROFONDEUR des actes de gouvernance documentaire.
+
+    Poser ou LEVER une rétention légale a une portée juridique : la garde de
+    vue (``DocumentViewSet.get_permissions`` / ``LegalHoldViewSet``) ne peut
+    pas être la seule — un futur appel de service, une commande de gestion ou
+    une tâche Celery contournerait la vue sans le savoir. Ce contrôle est donc
+    REJOUÉ ici, au plus près de l'écriture.
+
+    Même sémantique que les gardes de vue (``core.ScopedPermission``) : le
+    superuser passe, un compte SANS rôle fin garde le repli légacy
+    (Responsable/Admin), un porteur de rôle fin doit détenir
+    ``ged_gouvernance``. Lève ``PermissionError`` sinon — le même type que les
+    gardes multi-tenant voisines de ce module, traduit en 403 par les vues.
+    """
+    from core.permissions import _user_has_or_legacy
+    if not _user_has_or_legacy(user, PERM_GED_GOUVERNANCE):
+        raise PermissionError(
+            "Action de gouvernance documentaire réservée à la direction "
+            "(permission « ged_gouvernance »).")
+
+
 def placer_legal_hold(document, *, user, motif=''):
     """GED24 — Place une RÉTENTION LÉGALE (legal hold) sur un document.
 
@@ -2055,6 +2082,7 @@ def placer_legal_hold(document, *, user, motif=''):
 
     if document.company_id != getattr(user, 'company_id', None):
         raise PermissionError("Document inaccessible.")
+    exiger_gouvernance_ged(user)  # WIR174 — défense en profondeur.
     with transaction.atomic():
         # Idempotence : un hold actif existant tient lieu de gel — on ne pose
         # pas de doublon (le document est déjà gelé).
@@ -2093,6 +2121,7 @@ def lever_legal_hold(document, *, user):
 
     if document.company_id != getattr(user, 'company_id', None):
         raise PermissionError("Document inaccessible.")
+    exiger_gouvernance_ged(user)  # WIR174 — défense en profondeur.
     with transaction.atomic():
         actifs = list(LegalHold.objects
                       .select_for_update()

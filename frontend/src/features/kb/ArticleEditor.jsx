@@ -44,6 +44,11 @@ export default function ArticleEditor({ article, onCancel, onSaved }) {
   })
   const [saving, setSaving] = useState(false)
   const corpsRef = useRef(null)
+  // WIR250 — création d'un bloc réutilisable depuis la SÉLECTION courante.
+  // Sans ce chemin, ZGED12 était invisible par construction : le sélecteur
+  // ne s'affichait que s'il existait déjà un bloc, et rien n'en créait.
+  const [blocsVersion, setBlocsVersion] = useState(0)
+  const [blocNom, setBlocNom] = useState('')
   // VX169 — garde de navigation IN-APP (snapshot pris au montage).
   const [initialSnapshot] = useState(() => form)
   const dirty = isDirty(initialSnapshot, form)
@@ -51,6 +56,31 @@ export default function ArticleEditor({ article, onCancel, onSaved }) {
 
   const set = (key) => (e) =>
     setForm((f) => ({ ...f, [key]: e?.target ? e.target.value : e }))
+
+  const enregistrerSelectionCommeBloc = async () => {
+    const el = corpsRef.current
+    const debut = el?.selectionStart ?? 0
+    const fin = el?.selectionEnd ?? 0
+    const selection = (form.corps || '').slice(debut, fin).trim()
+    if (!selection) {
+      toast.error('Sélectionnez d’abord le texte à enregistrer comme bloc.')
+      return
+    }
+    // Nom saisi à côté du bouton ; à défaut, la première ligne tronquée.
+    const nom = blocNom.trim() || selection.split('\n')[0].slice(0, 60)
+    if (!nom) {
+      toast.error('Donnez un nom au bloc.')
+      return
+    }
+    try {
+      await kbApi.createBloc({ nom, corps: selection, portee: 'societe' })
+      toast.success(`Bloc « ${nom} » enregistré.`)
+      setBlocNom('')
+      setBlocsVersion((v) => v + 1)
+    } catch {
+      toast.error('Enregistrement du bloc impossible.')
+    }
+  }
 
   const save = async ({ publish = false } = {}) => {
     if (!form.titre.trim()) {
@@ -153,13 +183,34 @@ export default function ArticleEditor({ article, onCancel, onSaved }) {
             disabled={saving}
             onApply={(next) => setForm((f) => ({ ...f, corps: next }))}
           />
-          {/* ZGED12 — insertion d'un bloc réutilisable au curseur. */}
+          {/* ZGED12 — insertion d'un bloc réutilisable au curseur. WIR250 :
+              le sélecteur reste TOUJOURS rendu (il disparaissait quand aucun
+              bloc n'existait, rendant la fonctionnalité inatteignable) et la
+              création/suppression d'un bloc se fait ici. */}
           <BlocInsertPicker
             textareaRef={corpsRef}
             corps={form.corps}
             disabled={saving}
+            rafraichir={blocsVersion}
             onApply={(next) => setForm((f) => ({ ...f, corps: next }))}
           />
+          <div className="flex flex-wrap items-center gap-1.5">
+            <Label htmlFor="kb-bloc-nom" className="sr-only">Nom du bloc à créer</Label>
+            <Input
+              id="kb-bloc-nom"
+              value={blocNom}
+              onChange={(e) => setBlocNom(e.target.value)}
+              placeholder="Nom du bloc (optionnel)"
+              className="h-8 w-56 text-sm"
+              disabled={saving}
+            />
+            <Button
+              type="button" variant="outline" size="sm" disabled={saving}
+              onClick={enregistrerSelectionCommeBloc}
+            >
+              Enregistrer la sélection comme bloc
+            </Button>
+          </div>
           <Textarea id="kb-corps" ref={corpsRef} rows={12} value={form.corps} onChange={set('corps')} />
         </div>
 

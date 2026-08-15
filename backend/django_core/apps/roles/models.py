@@ -192,6 +192,56 @@ ALL_PERMISSIONS = [
     'litige_gerer',
     'kb_voir',
     'kb_gerer',
+    # ── WIR172 — Ressources humaines (apps/rh) : même correction que YRBAC3,
+    # sur une surface bien plus sensible. ``_RhBaseViewSet`` (66 ViewSets :
+    # dossiers employés, sanctions disciplinaires, visites médicales, congés,
+    # pointages, accidents du travail…) n'était gardée que par le grossier
+    # ``IsResponsableOrAdmin`` — or ``is_responsable`` est vrai dès qu'un rôle
+    # porte UNE permission d'écriture, MÊME hors RH : un Commercial
+    # (``crm_creer``) obtenait le CRUD complet des dossiers employés.
+    # Deux codes DISJOINTS : ``rh_voir`` (lecture) et ``rh_gerer`` (écriture).
+    # La rémunération (``salaires_voir``) et la paie (``paie_voir``/
+    # ``paie_gerer``) gardent leurs propres codes — pas de doublon ici.
+    # Ils ne sont mappés QUE sur le rôle système « Responsable » (dont l'accès
+    # RH complet est historique) : Commercial/Technicien/Viewer ne les portent
+    # pas — l'accès aux dossiers employés se RESSERRE, et reste INCHANGÉ pour
+    # Directeur/Administrateur (héritage d'ALL_PERMISSIONS) et pour les comptes
+    # hérités sans rôle fin (repli légacy ``is_responsable``).
+    'rh_voir',
+    'rh_gerer',
+    # ── WIR173 — FP&A (apps/fpa) : les 14 ViewSets (cycles budgétaires, export
+    # XLSX de la synthèse, scénarios, masse salariale) ne portaient AUCUNE
+    # ``permission_classes`` — tout utilisateur authentifié lisait ET écrivait.
+    # ``apps/fpa/permissions.py`` déclarait déjà ces quatre codes et notait leur
+    # enregistrement au catalogue comme « à faire par le run plateforme » :
+    # c'est fait ici. Aucun n'est mappé sur un rôle Responsable/Commercial/
+    # Technicien/Utilisateur — la planification financière reste à la direction
+    # (Directeur/Administrateur, par héritage d'ALL_PERMISSIONS) et aux rôles
+    # personnalisés que l'admin crée explicitement. Repli légacy inchangé.
+    'fpa_saisir',
+    'fpa_valider',
+    'fpa_consulter_tout',
+    'fpa_administrer',
+    # ── WIR174 — GED (apps/ged) : la GOUVERNANCE documentaire n'était gardée
+    # que par ``IsResponsableOrAdmin``, c'est-à-dire par tout porteur d'UNE
+    # écriture — or caviarder une pièce, poser ou LEVER une rétention légale
+    # (legal hold) et fixer une politique de rétention sont des actes à portée
+    # juridique, pas des écritures ordinaires. Trois codes :
+    #   * ``ged_voir``        — lire les REGISTRES de gouvernance (legal holds,
+    #     archivages légaux, politiques de rétention) ;
+    #   * ``ged_gerer``       — écriture documentaire ordinaire (documents,
+    #     dossiers, coffres…) ;
+    #   * ``ged_gouvernance`` — caviardage, legal hold (pose ET levée) et
+    #     rétention. RÉSERVÉ à la direction : mappé sur AUCUN rôle ci-dessous,
+    #     seuls Directeur/Administrateur le portent par héritage
+    #     d'ALL_PERMISSIONS. Défense en profondeur : ``apps/ged/services.py``
+    #     revérifie ce code, une garde de vue ne suffit pas pour un acte
+    #     juridique.
+    # La lecture ORDINAIRE de la GED (liste, recherche, téléchargement ZIP)
+    # reste ouverte à tout rôle interne (``IsAnyRole``) — inchangée.
+    'ged_voir',
+    'ged_gerer',
+    'ged_gouvernance',
     # ── AOF2 — Appels d'offres (apps/ao) : correction d'une régression de
     # confidentialité EXISTANTE. Les 8 ViewSets AO héritaient d'une base gardée
     # par le grossier ``IsResponsableOrAdmin`` : tout le palier Responsable
@@ -314,6 +364,9 @@ ELEVATED_PERMISSIONS = frozenset({
     'ao_rentabilite_voir',
     # NTCPQ36 — marge sous seuil CPQ (NTCPQ6/22) : même palier que marge_voir.
     'cpq_marge_voir',
+    # WIR174 — gouvernance documentaire (caviardage, legal hold, rétention) :
+    # actes à portée JURIDIQUE, octroi réservé à l'administrateur.
+    'ged_gouvernance',
 })
 
 RESPONSABLE_PERMISSIONS = [
@@ -363,6 +416,15 @@ RESPONSABLE_PERMISSIONS = [
     'contrat_voir', 'contrat_gerer',
     'litige_voir', 'litige_gerer',
     'kb_voir', 'kb_gerer',
+    # WIR172 — comportement historique préservé : le Responsable avait accès
+    # complet (lecture + écriture) au back-office RH via le grossier
+    # IsResponsableOrAdmin.
+    'rh_voir', 'rh_gerer',
+    # WIR174 — comportement historique préservé pour l'écriture documentaire
+    # ordinaire et la lecture des registres. PAS ``ged_gouvernance`` :
+    # caviarder / poser-lever un legal hold / fixer une rétention se
+    # RESSERRENT sur la direction (Directeur/Administrateur).
+    'ged_voir', 'ged_gerer',
     # ENG — accès complet au moteur de publicités (y compris approbation).
     'adsengine_view', 'adsengine_manage', 'adsengine_approve',
     # VAO12 — veille AO : lecture ET réglage (mots-clés, sources, règles).
