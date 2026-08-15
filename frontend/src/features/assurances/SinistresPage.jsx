@@ -8,6 +8,7 @@ import {
 import { ListShell } from '../../ui/module'
 import { formatMAD, formatDate } from '../../lib/format'
 import { SINISTRE_STATUS, SINISTRE_TYPES } from './status'
+import ChatterAssurance from './ChatterAssurance'
 
 /* ============================================================================
    NTASS27 — Écran sinistres transverses + suivi indemnisation.
@@ -147,6 +148,16 @@ export default function SinistresPage() {
           </div>
           <IndemnisationBloc sinistreId={selected.id} />
           <IndemnisationForm sinistreId={selected.id} onSaved={load} />
+          {/* WIR262 — section « Historique » + composeur de note, jamais
+              exposée jusqu'ici bien que getSinistreHistorique/noterSinistre
+              existaient côté API. Même rendu que PoliceDetail. */}
+          <div className="mt-3 border-t pt-3">
+            <ChatterAssurance
+              getHistorique={assurancesApi.getSinistreHistorique}
+              noter={assurancesApi.noterSinistre}
+              subjectId={selected.id}
+            />
+          </div>
         </div>
       )}
       {!error && (

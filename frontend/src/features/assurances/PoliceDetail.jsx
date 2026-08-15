@@ -7,8 +7,9 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from '../../ui'
 import { RecordShell } from '../../ui/module'
-import { formatMAD, formatDate, formatDateTime } from '../../lib/format'
+import { formatMAD, formatDate } from '../../lib/format'
 import { POLICE_STATUS, toneEcheance } from './status'
+import ChatterAssurance from './ChatterAssurance'
 
 /* ============================================================================
    NTASS26 — Fiche police détail (onglets).
@@ -151,7 +152,6 @@ export default function PoliceDetail() {
   const garanties = useLoader(() => assurancesApi.getGaranties(id), [id])
   const actifs = useLoader(() => assurancesApi.getActifsCouverts(id), [id])
   const echeances = useLoader(() => assurancesApi.getEcheancesPrime(id), [id])
-  const historique = useLoader(() => assurancesApi.getPoliceHistorique(id), [id])
   const attestations = useLoader(() => assurancesApi.getAttestations(id), [id])
 
   const proposerEcriture = useCallback((echeanceId) => {
@@ -269,27 +269,14 @@ export default function PoliceDetail() {
     },
   ], [garanties.data, actifs.data, echeances.data, attestations.data, proposerEcriture])
 
+  // WIR262 — composeur de note SOUS l'historique existant (noterPolice, bouton
+  // inactif à vide) : la police n'avait qu'une lecture seule jusqu'ici.
   const activity = (
-    <div className="flex flex-col gap-2">
-      <h3 className="text-sm font-semibold">Historique</h3>
-      {historique.data.length === 0
-        ? <Empty label="Aucune activité." />
-        : (
-          <ul className="flex flex-col gap-2">
-            {historique.data.map((h) => (
-              <li key={h.id} className="rounded-md border p-2 text-xs">
-                <div className="flex items-center justify-between text-muted-foreground">
-                  <span>{h.kind}</span>
-                  <span>{formatDateTime(h.created_at)}</span>
-                </div>
-                {h.field
-                  ? <p>{h.field_label || h.field} : {h.old_value} → {h.new_value}</p>
-                  : <p>{h.body}</p>}
-              </li>
-            ))}
-          </ul>
-        )}
-    </div>
+    <ChatterAssurance
+      getHistorique={assurancesApi.getPoliceHistorique}
+      noter={assurancesApi.noterPolice}
+      subjectId={id}
+    />
   )
 
   if (error) {

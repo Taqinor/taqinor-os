@@ -22,6 +22,11 @@ const api = {
   getActifsCouverts: vi.fn(() => Promise.resolve({ data: [] })),
   getEcheancesPrime: vi.fn(() => Promise.resolve({ data: [] })),
   getPoliceHistorique: vi.fn(() => Promise.resolve({ data: [] })),
+  // WIR262 — chatter partagé (ChatterAssurance) : PoliceDetail et le détail
+  // sinistre de SinistresPage l'appellent tous deux dès qu'ils rendent.
+  noterPolice: vi.fn(() => Promise.resolve({ data: {} })),
+  getSinistreHistorique: vi.fn(() => Promise.resolve({ data: [] })),
+  noterSinistre: vi.fn(() => Promise.resolve({ data: {} })),
   getAttestations: vi.fn(() => Promise.resolve({ data: [] })),
   createGarantie: vi.fn(() => Promise.resolve({ data: { id: 1 } })),
   getPolices: vi.fn(() => Promise.resolve({ data: [{ id: 7, numero_police: 'P-1', type_police: 'rc_pro' }] })),
