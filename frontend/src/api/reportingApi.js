@@ -165,6 +165,13 @@ const reportingApi = {
     api.delete(`/reporting/rapport-definitions/${id}/`),
   executerRapportDefinition: (id) =>
     api.post(`/reporting/rapport-definitions/${id}/executer/`),
+  // WIR253/NTEXT11 — export du rapport rejoué (`?format=csv|xlsx`). Blob
+  // obligatoire : sans `responseType`, axios décode le fichier en texte et
+  // l'archive xlsx est corrompue. 503 = openpyxl absent du serveur (xlsx
+  // seulement) — le CSV, lui, reste toujours disponible.
+  exportRapportDefinition: (id, format = 'csv') =>
+    api.get(`/reporting/rapport-definitions/${id}/export/`,
+      { params: { format }, responseType: 'blob' }),
 
   // WIR22 — contrôle d'intégrité inter-documents (YSERV13) : anomalies
   // détectées AUJOURD'HUI, sans attendre la notification Beat hebdomadaire
