@@ -174,6 +174,17 @@ const flotteApi = {
   // ── XFLT20 — registre de remise clés/carte/badge/tag ──
   remisesAccessoire: crud('remises-accessoire'),
 
+  // ── FLOTTE32 — demandes de véhicule du pool partagé ──
+  // WIR200 — approuver/refuser (responsable/admin), company+demandeur posés
+  // côté serveur (jamais du body).
+  demandesVehicule: {
+    ...crud('demandes-vehicule'),
+    approuver: (id, data) =>
+      api.post(`/flotte/demandes-vehicule/${id}/approuver/`, data),
+    refuser: (id, data) =>
+      api.post(`/flotte/demandes-vehicule/${id}/refuser/`, data),
+  },
+
   // ── Rapports (lecture seule, jamais de prix d'achat/marge) ──
   rapportCouts: (params) => api.get('/flotte/rapports/couts/', { params }),
   rapportRemplacement: () => api.get('/flotte/rapports/remplacement/'),

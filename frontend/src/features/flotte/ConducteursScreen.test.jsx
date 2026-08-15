@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, beforeAll } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import { ThemeProvider } from '../../design/ThemeProvider.jsx'
@@ -22,6 +22,7 @@ beforeAll(() => {
 const {
   signer, accuserCreate, empty, etatsList, conducteursCreate, getEmployes,
   reservationsCreate, demandesVehiculeCreate, etatsDesLieuxCreate, charteCreate,
+  demandeApprouver, demandeRefuser,
 } = vi.hoisted(() => ({
   signer: vi.fn(() => Promise.resolve({ data: {} })),
   accuserCreate: vi.fn(() => Promise.resolve({ data: {} })),
@@ -41,6 +42,8 @@ const {
   demandesVehiculeCreate: vi.fn(() => Promise.resolve({ data: { id: 12 } })),
   etatsDesLieuxCreate: vi.fn(() => Promise.resolve({ data: { id: 13 } })),
   charteCreate: vi.fn(() => Promise.resolve({ data: { id: 14, version: 3 } })),
+  demandeApprouver: vi.fn(() => Promise.resolve({ data: {} })),
+  demandeRefuser: vi.fn(() => Promise.resolve({ data: {} })),
 }))
 
 vi.mock('../../api/flotteApi', () => ({
@@ -52,7 +55,18 @@ vi.mock('../../api/flotteApi', () => ({
     vehicules: { list: () => Promise.resolve({ data: [{ id: 7, immatriculation: '12345-A-6' }] }) },
     affectations: { list: empty },
     reservations: { list: empty, create: (...args) => reservationsCreate(...args) },
-    demandesVehicule: { list: empty, create: (...args) => demandesVehiculeCreate(...args) },
+    demandesVehicule: {
+      list: () => Promise.resolve({
+        data: [{
+          id: 21, besoin: 'Livraison chantier Anfa', demandeur_nom: 'Youssef Alami',
+          date_debut_souhaitee: '2026-08-01', date_fin_souhaitee: '2026-08-02',
+          vehicule_label: null, statut: 'demandee', statut_display: 'Demandée',
+        }],
+      }),
+      create: (...args) => demandesVehiculeCreate(...args),
+      approuver: (...args) => demandeApprouver(...args),
+      refuser: (...args) => demandeRefuser(...args),
+    },
     etatsDesLieux: {
       list: etatsList,
       signer: (...args) => signer(...args),
@@ -163,6 +177,40 @@ describe('ConducteursScreen — Demandes de véhicule (WIR41b)', () => {
 
     await waitFor(() => expect(demandesVehiculeCreate).toHaveBeenCalledWith(
       expect.objectContaining({ besoin: 'Mission chantier' }),
+    ))
+  })
+})
+
+describe('ConducteursScreen — Demandes de véhicule, décision (WIR200)', () => {
+  it('approuve une demande demandée avec un véhicule attribué', async () => {
+    const user = userEvent.setup()
+    withProviders(<ConducteursScreen />)
+    await user.click(screen.getByRole('tab', { name: 'Demandes de véhicule' }))
+    await screen.findAllByText('Livraison chantier Anfa')
+
+    await user.click(screen.getAllByRole('button', { name: 'Approuver' })[0])
+    const approveDialog = await screen.findByRole('dialog')
+    await user.type(within(approveDialog).getByLabelText('Véhicule attribué (id, optionnel)'), '7')
+    await user.click(within(approveDialog).getByRole('button', { name: 'Approuver' }))
+
+    await waitFor(() => expect(demandeApprouver).toHaveBeenCalledWith(
+      21, expect.objectContaining({ vehicule_attribue: '7' }),
+    ))
+  })
+
+  it('refuse une demande demandée avec un motif', async () => {
+    const user = userEvent.setup()
+    withProviders(<ConducteursScreen />)
+    await user.click(screen.getByRole('tab', { name: 'Demandes de véhicule' }))
+    await screen.findAllByText('Livraison chantier Anfa')
+
+    await user.click(screen.getAllByRole('button', { name: 'Refuser' })[0])
+    const refuseDialog = await screen.findByRole('dialog')
+    await user.type(within(refuseDialog).getByLabelText('Motif (optionnel)'), 'Aucun véhicule disponible')
+    await user.click(within(refuseDialog).getByRole('button', { name: 'Refuser' }))
+
+    await waitFor(() => expect(demandeRefuser).toHaveBeenCalledWith(
+      21, expect.objectContaining({ motif_decision: 'Aucun véhicule disponible' }),
     ))
   })
 })

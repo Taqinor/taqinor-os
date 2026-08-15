@@ -248,9 +248,68 @@ function ReservationsTab({ conducteurs, vehicules }) {
 
 // WIR41(b) — Demandes de véhicule du pool (FLOTTE32) : aucun consommateur
 // frontend n'existait pour `DemandeVehiculeViewSet` (full CRUD côté serveur).
+// WIR200 — décision (approuver avec véhicule attribué, ou refuser avec
+// motif) sur une demande de véhicule du pool, statut « demandee » uniquement.
+function DecisionDemandeDialog({ demande, decision, onClose, onSaved }) {
+  const [vehiculeId, setVehiculeId] = useState('')
+  const [motif, setMotif] = useState('')
+  const [saving, setSaving] = useState(false)
+  const approuve = decision === 'approuver'
+
+  async function save() {
+    setSaving(true)
+    try {
+      const body = approuve
+        ? { vehicule_attribue: vehiculeId || undefined, motif_decision: motif || undefined }
+        : { motif_decision: motif || undefined }
+      await flotteApi.demandesVehicule[decision](demande.id, body)
+      toast.success(approuve ? 'Demande approuvée.' : 'Demande refusée.')
+      onSaved()
+    } catch (e) {
+      toast.error(e?.response?.data?.detail || 'Décision impossible.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <Dialog open onOpenChange={onClose}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>{approuve ? 'Approuver la demande' : 'Refuser la demande'}</DialogTitle>
+        </DialogHeader>
+        <div className="flex flex-col gap-3">
+          {approuve && (
+            <div>
+              <Label>Véhicule attribué (id, optionnel)</Label>
+              <Input value={vehiculeId} onChange={(e) => setVehiculeId(e.target.value)}
+                inputMode="numeric" />
+            </div>
+          )}
+          <div>
+            <Label>Motif (optionnel)</Label>
+            <Textarea value={motif} onChange={(e) => setMotif(e.target.value)} rows={2} />
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>Annuler</Button>
+          <Button onClick={save} disabled={saving}>
+            {approuve ? 'Approuver' : 'Refuser'}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
 function DemandesVehiculeTab() {
   const [showForm, setShowForm] = useState(false)
-  const { data, loading, error, reload } = useFlotteResource(flotteApi.demandesVehicule.list, {})
+  const [decidingRow, setDecidingRow] = useState(null) // { demande, decision }
+  const [aTraiter, setATraiter] = useState(false)
+  const { data, loading, error, reload } = useFlotteResource(
+    flotteApi.demandesVehicule.list,
+    aTraiter ? { statut: 'demandee' } : {},
+  )
   const columns = useMemo(() => [
     { id: 'besoin', header: 'Besoin', width: 220, accessor: (r) => r.besoin, cell: (v) => v || '—' },
     { id: 'demandeur', header: 'Demandeur', width: 160, accessor: (r) => r.demandeur_nom, cell: (v) => v || '—' },
@@ -260,8 +319,22 @@ function DemandesVehiculeTab() {
     { id: 'statut', header: 'Statut', width: 120, accessor: (r) => r.statut_display || r.statut, cell: (v) => v || '—' },
   ], [])
 
+  const rowActions = (row) => (
+    row.statut === 'demandee'
+      ? [
+        { id: 'approuver', label: 'Approuver', onClick: () => setDecidingRow({ demande: row, decision: 'approuver' }) },
+        { id: 'refuser', label: 'Refuser', onClick: () => setDecidingRow({ demande: row, decision: 'refuser' }) },
+      ]
+      : []
+  )
+
   const actions = (
-    <Button onClick={() => setShowForm(true)}>Demander un véhicule</Button>
+    <>
+      <Button variant={aTraiter ? 'default' : 'outline'} onClick={() => setATraiter((v) => !v)}>
+        À traiter
+      </Button>
+      <Button onClick={() => setShowForm(true)}>Demander un véhicule</Button>
+    </>
   )
 
   return (
@@ -274,6 +347,7 @@ function DemandesVehiculeTab() {
         rows={data}
         loading={loading}
         error={error}
+        rowActions={rowActions}
         exportName="demandes-vehicule"
         emptyTitle="Aucune demande"
         emptyDescription="Aucune demande de véhicule enregistrée."
@@ -282,6 +356,14 @@ function DemandesVehiculeTab() {
         <DemandeVehiculeDialog
           onClose={() => setShowForm(false)}
           onSaved={() => { setShowForm(false); reload(); toast.success('Demande enregistrée.') }}
+        />
+      )}
+      {decidingRow && (
+        <DecisionDemandeDialog
+          demande={decidingRow.demande}
+          decision={decidingRow.decision}
+          onClose={() => setDecidingRow(null)}
+          onSaved={() => { setDecidingRow(null); reload() }}
         />
       )}
     </>
