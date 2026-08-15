@@ -33,6 +33,10 @@ from .models import (
     Secouriste,
     SignalementPublic, VeilleReglementaire,
     CheckinSecurite, DemandeActionFournisseur,
+    # WIR275 — registres ISO jusqu'ici sans exposition REST.
+    AuditCertification, AuditPlanifie, CampagneRappel, Certification,
+    ClauseNorme, DecisionReunion, ElementRappel, ObjectifQhse,
+    ProgrammeAudit, ReunionQhse, RevueObjectif,
 )
 
 
@@ -1595,3 +1599,248 @@ class RisqueOpportuniteCapaSerializer(serializers.ModelSerializer):
         model = RisqueOpportuniteCapa
         fields = ['id', 'risque_opportunite', 'capa', 'date_creation']
         read_only_fields = fields
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# WIR275 — Registres ISO jusqu'ici SANS exposition REST
+# ══════════════════════════════════════════════════════════════════════════
+# Campagnes de rappel produit (XQHS5), certifications + audits externes
+# (XQHS9), programme d'audit interne (XQHS10), référentiel de clauses
+# (XQHS11), réunions/revues de direction (XQHS12), objectifs 6.2 (XQHS13).
+# `company` n'est JAMAIS acceptée du corps : elle est posée serveur.
+
+
+class ElementRappelSerializer(serializers.ModelSerializer):
+    """Équipement concerné par une campagne de rappel. Les rattachements parc/
+    chantier/ticket sont des références LÂCHES peuplées SERVEUR (via
+    `sav.selectors`) — jamais saisies au CRUD."""
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+
+    class Meta:
+        model = ElementRappel
+        fields = [
+            'id', 'campagne', 'equipement_id', 'numero_serie',
+            'installation_id', 'statut', 'statut_display', 'ticket_sav_id',
+            'notifie_le', 'note', 'date_creation',
+        ]
+        read_only_fields = [
+            'equipement_id', 'numero_serie', 'installation_id',
+            'ticket_sav_id', 'notifie_le', 'date_creation',
+        ]
+
+    def validate_campagne(self, value):
+        return _meme_societe(self, value, 'Campagne')
+
+
+class CampagneRappelSerializer(serializers.ModelSerializer):
+    """Campagne de rappel/containment sur un défaut produit."""
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+    gravite_display = serializers.CharField(
+        source='get_gravite_display', read_only=True)
+    nb_elements = serializers.SerializerMethodField()
+
+    class Meta:
+        model = CampagneRappel
+        fields = [
+            'id', 'titre', 'produit', 'serie_debut', 'serie_fin', 'lot',
+            'motif', 'gravite', 'gravite_display', 'statut', 'statut_display',
+            'date_verification_efficacite', 'responsable', 'nb_elements',
+            'date_creation',
+        ]
+        read_only_fields = ['statut', 'date_creation']
+
+    def get_nb_elements(self, obj):
+        return obj.elements.count()
+
+
+class CertificationSerializer(serializers.ModelSerializer):
+    """Certificat détenu par l'entreprise (ISO 9001/14001/45001, NM…).
+
+    `statut_calcule` est DÉRIVÉ (expiré / à renouveler selon la préalerte) :
+    le statut déclaré n'est jamais écrasé silencieusement."""
+    referentiel_display = serializers.CharField(
+        source='get_referentiel_display', read_only=True)
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+    statut_calcule = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Certification
+        fields = [
+            'id', 'referentiel', 'referentiel_display', 'organisme',
+            'numero_certificat', 'perimetre', 'date_emission',
+            'date_expiration', 'prealerte_jours', 'statut', 'statut_display',
+            'statut_calcule', 'responsable', 'date_creation',
+        ]
+        read_only_fields = ['date_creation']
+
+    def get_statut_calcule(self, obj):
+        return obj.statut_calcule()
+
+
+class AuditCertificationSerializer(serializers.ModelSerializer):
+    """Audit d'un organisme certificateur. `ncr_id` n'est posé que par
+    l'action `lever-ncr/` (jamais en écriture libre)."""
+    type_etape_display = serializers.CharField(
+        source='get_type_etape_display', read_only=True)
+
+    class Meta:
+        model = AuditCertification
+        fields = [
+            'id', 'certification', 'type_etape', 'type_etape_display',
+            'date_audit', 'auditeur_externe', 'constats', 'constat_majeur',
+            'ncr_id', 'date_creation',
+        ]
+        read_only_fields = ['ncr_id', 'date_creation']
+
+    def validate_certification(self, value):
+        return _meme_societe(self, value, 'Certification')
+
+
+class ProgrammeAuditSerializer(serializers.ModelSerializer):
+    """Programme d'audit interne annuel (un par société et par année)."""
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+    nb_audits_planifies = serializers.SerializerMethodField()
+
+    class Meta:
+        model = ProgrammeAudit
+        fields = [
+            'id', 'annee', 'statut', 'statut_display', 'nb_audits_planifies',
+            'date_creation',
+        ]
+        read_only_fields = ['date_creation']
+
+    def get_nb_audits_planifies(self, obj):
+        return obj.audits_planifies.count()
+
+
+class AuditPlanifieSerializer(serializers.ModelSerializer):
+    """Audit planifié d'un programme.
+
+    `independance_ok` est ADVISORY : il vaut `False` quand l'auditeur est
+    aussi le responsable du domaine audité. Il AVERTIT, il ne bloque JAMAIS
+    l'enregistrement (une PME n'a pas toujours un auditeur indépendant
+    disponible ; c'est l'ISO qui recommande, pas le logiciel qui interdit)."""
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+    independance_ok = serializers.SerializerMethodField()
+
+    class Meta:
+        model = AuditPlanifie
+        fields = [
+            'id', 'programme', 'processus_domaine', 'grille', 'date_cible',
+            'auditeur', 'responsable_domaine', 'statut', 'statut_display',
+            'audit', 'independance_ok', 'date_creation',
+        ]
+        read_only_fields = ['audit', 'date_creation']
+
+    def get_independance_ok(self, obj):
+        return obj.independance_ok()
+
+    def validate_programme(self, value):
+        return _meme_societe(self, value, 'Programme')
+
+    def validate_grille(self, value):
+        return _meme_societe(self, value, "Grille d'audit")
+
+
+class ClauseNormeSerializer(serializers.ModelSerializer):
+    """Clause d'un référentiel ISO (structure HLS partagée, seedable)."""
+
+    class Meta:
+        model = ClauseNorme
+        fields = [
+            'id', 'referentiel', 'numero', 'intitule', 'date_creation',
+        ]
+        read_only_fields = ['date_creation']
+
+
+class DecisionReunionSerializer(serializers.ModelSerializer):
+    """Décision d'une réunion QHSE. `capa_id` n'est posé que par l'action
+    `creer-capa/` (jamais en écriture libre)."""
+
+    class Meta:
+        model = DecisionReunion
+        fields = [
+            'id', 'reunion', 'texte', 'responsable', 'capa_id',
+            'date_creation',
+        ]
+        read_only_fields = ['capa_id', 'date_creation']
+
+    def validate_reunion(self, value):
+        return _meme_societe(self, value, 'Réunion')
+
+
+class ReunionQhseSerializer(serializers.ModelSerializer):
+    """Réunion QHSE (revue de direction / CSH / réunion HSE).
+
+    `checklist_9_3_complete` dit si les entrées obligatoires ISO 9.3 sont
+    couvertes — la clôture d'une revue de direction l'exige (serveur)."""
+    type_reunion_display = serializers.CharField(
+        source='get_type_reunion_display', read_only=True)
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+    checklist_9_3_complete = serializers.SerializerMethodField()
+    decisions = DecisionReunionSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = ReunionQhse
+        fields = [
+            'id', 'type_reunion', 'type_reunion_display', 'date_reunion',
+            'participants', 'ordre_du_jour', 'pv', 'attachment_ids',
+            'checklist_revue_direction', 'checklist_9_3_complete',
+            'rapport_annuel', 'statut', 'statut_display', 'decisions',
+            'date_creation',
+        ]
+        read_only_fields = ['statut', 'date_creation']
+
+    def get_checklist_9_3_complete(self, obj):
+        return obj.checklist_9_3_complete()
+
+
+class RevueObjectifSerializer(serializers.ModelSerializer):
+    """Revue périodique d'un objectif. `atteint` est DÉRIVÉ au `save()` du
+    modèle (valeur constatée vs cible + sens d'amélioration) — jamais saisi."""
+
+    class Meta:
+        model = RevueObjectif
+        fields = [
+            'id', 'objectif', 'periode', 'date_revue', 'valeur_constatee',
+            'atteint', 'commentaire', 'date_creation',
+        ]
+        read_only_fields = ['atteint', 'date_creation']
+
+    def validate_objectif(self, value):
+        return _meme_societe(self, value, 'Objectif')
+
+
+class ObjectifQhseSerializer(serializers.ModelSerializer):
+    """Objectif chiffré QHSE/ESG (ISO 6.2) avec baseline, cible, échéance."""
+    domaine_display = serializers.CharField(
+        source='get_domaine_display', read_only=True)
+    sens_amelioration_display = serializers.CharField(
+        source='get_sens_amelioration_display', read_only=True)
+    frequence_revue_display = serializers.CharField(
+        source='get_frequence_revue_display', read_only=True)
+    derniere_revue = serializers.SerializerMethodField()
+
+    class Meta:
+        model = ObjectifQhse
+        fields = [
+            'id', 'domaine', 'domaine_display', 'intitule',
+            'indicateur_libre', 'indicateur_esg', 'valeur_baseline',
+            'annee_baseline', 'valeur_cible', 'echeance', 'sens_amelioration',
+            'sens_amelioration_display', 'responsable', 'frequence_revue',
+            'frequence_revue_display', 'derniere_revue', 'date_creation',
+        ]
+        read_only_fields = ['date_creation']
+
+    def get_derniere_revue(self, obj):
+        revue = obj.revues.first()
+        return RevueObjectifSerializer(revue).data if revue else None
+
+    def validate_indicateur_esg(self, value):
+        return _meme_societe(self, value, 'Indicateur ESG')

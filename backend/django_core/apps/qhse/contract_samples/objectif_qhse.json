@@ -1,0 +1,32 @@
+{
+  "endpoint": "GET /api/django/qhse/objectifs/",
+  "pourquoi": "Objectifs chiffrés QHSE/ESG (ISO 6.2) avec baseline, cible et échéance. `derniere_revue` est la revue la plus récente (ou `null`) ; son `atteint` est DÉRIVÉ au save() du modèle depuis la valeur constatée, la cible et le sens d'amélioration — jamais saisi par l'écran. Source de vérité : apps/qhse/serializers.py::ObjectifQhseSerializer.",
+  "exemple": {
+    "id": 9,
+    "domaine": "securite",
+    "domaine_display": "Sécurité",
+    "intitule": "Réduire le taux de fréquence des accidents",
+    "indicateur_libre": "TF1 (accidents avec arrêt / million d'heures)",
+    "indicateur_esg": null,
+    "valeur_baseline": "18.40",
+    "annee_baseline": 2025,
+    "valeur_cible": "12.00",
+    "echeance": "2026-12-31",
+    "sens_amelioration": "baisse",
+    "sens_amelioration_display": "Baisse souhaitée",
+    "responsable": 3,
+    "frequence_revue": "trimestrielle",
+    "frequence_revue_display": "Trimestrielle",
+    "derniere_revue": {
+      "id": 22,
+      "objectif": 9,
+      "periode": "T2 2026",
+      "date_revue": "2026-07-05",
+      "valeur_constatee": "13.10",
+      "atteint": false,
+      "commentaire": "En progrès mais encore au-dessus de la cible.",
+      "date_creation": "2026-07-05T11:00:00Z"
+    },
+    "date_creation": "2026-01-12T08:00:00Z"
+  }
+}

@@ -1,0 +1,20 @@
+{
+  "endpoint": "GET /api/django/qhse/certifications/",
+  "pourquoi": "Registre des certificats détenus (ISO 9001/14001/45001, NM). `statut_calcule` est DÉRIVÉ serveur (expiré / à renouveler selon `prealerte_jours`) : l'écran l'AFFICHE, il ne le recalcule jamais. Source de vérité : apps/qhse/serializers.py::CertificationSerializer.",
+  "exemple": {
+    "id": 4,
+    "referentiel": "iso_9001",
+    "referentiel_display": "ISO 9001",
+    "organisme": "IMANOR",
+    "numero_certificat": "MA-9001-2024-118",
+    "perimetre": "Conception et installation de centrales photovoltaïques",
+    "date_emission": "2024-03-01",
+    "date_expiration": "2027-02-28",
+    "prealerte_jours": 60,
+    "statut": "valide",
+    "statut_display": "Valide",
+    "statut_calcule": "valide",
+    "responsable": 3,
+    "date_creation": "2024-03-02T09:12:00Z"
+  }
+}

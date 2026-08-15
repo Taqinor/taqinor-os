@@ -1,0 +1,18 @@
+{
+  "endpoint": "GET /api/django/qhse/audits-planifies/",
+  "pourquoi": "Audits du programme d'audit interne annuel (XQHS10). `independance_ok` est ADVISORY : `false` quand l'auditeur est aussi le responsable du domaine audité — l'écran AVERTIT, il ne bloque JAMAIS l'enregistrement (l'ISO recommande, le logiciel n'interdit pas). `audit` est l'ID de l'Audit réel une fois `instancier/` appelé. Source de vérité : apps/qhse/serializers.py::AuditPlanifieSerializer.",
+  "exemple": {
+    "id": 11,
+    "programme": 3,
+    "processus_domaine": "Achats et évaluation fournisseurs",
+    "grille": 2,
+    "date_cible": "2026-09-15",
+    "auditeur": 7,
+    "responsable_domaine": 7,
+    "statut": "planifie",
+    "statut_display": "Planifié",
+    "audit": null,
+    "independance_ok": false,
+    "date_creation": "2026-06-02T10:00:00Z"
+  }
+}

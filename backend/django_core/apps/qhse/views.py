@@ -46,8 +46,18 @@ from .models import (
     RevueVeilleReglementaire, RisqueOpportunite, Secouriste,
     SignalementPublic, VeilleReglementaire,
     CheckinSecurite, DemandeActionFournisseur,
+    # WIR275 — registres ISO jusqu'ici sans exposition REST.
+    AuditCertification, AuditPlanifie, CampagneRappel, Certification,
+    ClauseNorme, DecisionReunion, ElementRappel, ObjectifQhse,
+    ProgrammeAudit, ReunionQhse, RevueObjectif,
 )
 from .serializers import (
+    # WIR275 — registres ISO.
+    AuditCertificationSerializer, AuditPlanifieSerializer,
+    CampagneRappelSerializer, CertificationSerializer, ClauseNormeSerializer,
+    DecisionReunionSerializer, ElementRappelSerializer,
+    ObjectifQhseSerializer, ProgrammeAuditSerializer, ReunionQhseSerializer,
+    RevueObjectifSerializer,
     AccuseLectureSerializer,
     ActionCorrectivePreventiveSerializer, AnalyseIncidentSerializer,
     AnalyseNcrSerializer,
@@ -382,6 +392,34 @@ class NonConformiteViewSet(_ChatterMixin, _QhseBaseViewSet):
             return Response(
                 {'detail': detail}, status=status.HTTP_400_BAD_REQUEST)
         return Response(AnalyseNcrSerializer(analyse).data)
+
+    @extend_schema(responses={200: {'type': 'string', 'format': 'binary'}})
+    @action(detail=True, methods=['get'], url_path='analyse/pdf',
+            permission_classes=[ScopedPermission])
+    def analyse_pdf(self, request, pk=None):
+        """WIR275 (XQHS7) — PDF INTERNE de l'analyse 5-Pourquoi / 8D de cette
+        NCR. ``rendre_analyse_ncr_pdf`` (services.py) n'avait AUCUN appelant :
+        l'analyse existait sans jamais pouvoir sortir de l'écran.
+
+        JAMAIS ``/proposal`` (règle #4) : document interne d'investigation,
+        aucun prix, aucun contenu client-facing. 404 tant qu'aucune analyse
+        n'a été enregistrée (jamais un PDF vide qui ment)."""
+        from django.http import HttpResponse
+
+        from .services import rendre_analyse_ncr_pdf
+
+        ncr = self.get_object()
+        analyse = getattr(ncr, 'analyse', None)
+        if analyse is None:
+            return Response(
+                {'detail': "Aucune analyse enregistrée pour cette "
+                           'non-conformité.'},
+                status=status.HTTP_404_NOT_FOUND)
+        pdf = rendre_analyse_ncr_pdf(analyse)
+        response = HttpResponse(pdf, content_type='application/pdf')
+        response['Content-Disposition'] = (
+            f'attachment; filename="analyse-ncr-{ncr.pk}.pdf"')
+        return response
 
 
 class DerogationViewSet(_QhseBaseViewSet):
@@ -3100,10 +3138,363 @@ class DemandeActionFournisseurViewSet(_QhseBaseViewSet):
 # RisqueOpportunite est exposée (PACT183, RisqueOpportuniteViewSet complet +
 # actions ``revues-dues``/``lier-capa``) ; RisqueOpportuniteCapa reste SANS
 # CRUD propre (créée uniquement via ``lier-capa/``, jamais un POST direct).
-# Les suivants restent en scaffolding différé (à exposer par un lot ultérieur,
-# un viewset ``_QhseBaseViewSet`` par modèle sur le même patron) et NE doivent
-# jamais être re-listés comme « backend sombre non traité » :
-#   CampagneRappel, Certification, AuditCertification,
-#   ProgrammeAudit, ClauseNorme, ReunionQhse, ObjectifQhse,
-#   RisqueOpportuniteCapa, PartieInteressee, ContexteOrganisation,
-#   DiffusionProcedure.
+# WIR275 — le report est LEVÉ pour les registres ISO : CampagneRappel /
+# ElementRappel, Certification / AuditCertification, ProgrammeAudit /
+# AuditPlanifie, ClauseNorme, ReunionQhse / DecisionReunion, ObjectifQhse /
+# RevueObjectif sont exposés ci-dessous sur le patron ``_QhseBaseViewSet``.
+# Restent SANS CRUD propre : RisqueOpportuniteCapa (créée via ``lier-capa/``).
+# PartieInteressee / ContexteOrganisation / DiffusionProcedure sont traités
+# par WIR277 (contexte SMQ ISO 4 + diffusion des procédures).
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# WIR275 — Registres ISO exposés REST (patron _QhseBaseViewSet)
+# ══════════════════════════════════════════════════════════════════════════
+# `company` est TOUJOURS posée serveur (TenantMixin/perform_create), jamais
+# lue du corps ; un objet d'une autre société est invisible (404).
+
+
+class CampagneRappelViewSet(_QhseBaseViewSet):
+    """XQHS5 / WIR275 — campagnes de rappel produit (containment).
+
+    Actions : ``peupler/`` (remplit les éléments depuis le parc RÉEL, lu via
+    ``apps.sav.selectors`` — jamais un import de ``sav.models``, idempotent),
+    ``notifier/`` (avance les éléments « à notifier »), ``cloturer/``
+    (refuse tant que des éléments ne sont pas traités).
+    """
+    queryset = CampagneRappel.objects.select_related(
+        'produit', 'responsable').all()
+    serializer_class = CampagneRappelSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['titre', 'lot', 'motif']
+    ordering_fields = ['id', 'date_creation']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        statut = self.request.query_params.get('statut')
+        if statut:
+            qs = qs.filter(statut=statut)
+        produit = self.request.query_params.get('produit')
+        if produit not in (None, ''):
+            qs = qs.filter(produit_id=produit)
+        return qs
+
+    @action(detail=True, methods=['post'])
+    def peupler(self, request, pk=None):
+        """Peuple les éléments depuis le parc (idempotent)."""
+        from .services import peupler_campagne_rappel
+
+        campagne = self.get_object()
+        crees = peupler_campagne_rappel(campagne)
+        return Response({
+            'crees': len(crees),
+            'elements': ElementRappelSerializer(
+                campagne.elements.all(), many=True).data,
+        })
+
+    @action(detail=True, methods=['post'])
+    def notifier(self, request, pk=None):
+        """Notifie le responsable pour chaque élément « à notifier »."""
+        from .services import notifier_elements_rappel
+
+        campagne = self.get_object()
+        notifies = notifier_elements_rappel(campagne)
+        return Response({'notifies': len(notifies)})
+
+    @action(detail=True, methods=['post'])
+    def cloturer(self, request, pk=None):
+        """Clôture après vérification d'efficacité (date requise)."""
+        from .services import cloturer_campagne_rappel
+
+        campagne = self.get_object()
+        date_verif = request.data.get('date_verification_efficacite')
+        if not date_verif:
+            return Response(
+                {'detail': "La date de vérification d'efficacité est "
+                           'requise.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        try:
+            cloturer_campagne_rappel(campagne, date_verif)
+        except ValueError as exc:
+            return Response({'detail': str(exc)},
+                            status=status.HTTP_400_BAD_REQUEST)
+        return Response(self.get_serializer(campagne).data)
+
+
+class ElementRappelViewSet(_QhseBaseViewSet):
+    """XQHS5 / WIR275 — éléments d'une campagne de rappel (LECTURE + note).
+
+    Les rattachements parc/chantier sont peuplés SERVEUR : ce viewset ne sert
+    qu'à consulter la file et à déclencher le remplacement.
+    """
+    queryset = ElementRappel.objects.select_related('campagne').all()
+    serializer_class = ElementRappelSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['id', 'statut', 'date_creation']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        campagne = self.request.query_params.get('campagne')
+        if campagne not in (None, ''):
+            qs = qs.filter(campagne_id=campagne)
+        statut = self.request.query_params.get('statut')
+        if statut:
+            qs = qs.filter(statut=statut)
+        return qs
+
+    @action(detail=True, methods=['post'], url_path='planifier-remplacement')
+    def planifier_remplacement(self, request, pk=None):
+        """Crée l'intervention SAV de remplacement (via ``sav.services``)."""
+        # Le client est résolu via le SÉLECTEUR crm (jamais un import de
+        # `apps.crm.models`), scopé société : un client d'une autre société
+        # est introuvable.
+        from apps.crm.selectors import get_company_client
+
+        from .services import planifier_remplacement_element_rappel
+
+        element = self.get_object()
+        client_id = request.data.get('client')
+        if not client_id:
+            return Response(
+                {'detail': 'Le client à intervenir est requis.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        client = get_company_client(request.user.company, client_id)
+        if client is None:
+            return Response({'detail': 'Client inconnu.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        try:
+            planifier_remplacement_element_rappel(
+                element, client=client, created_by=request.user)
+        except (ValueError, TypeError) as exc:
+            return Response({'detail': str(exc)},
+                            status=status.HTTP_400_BAD_REQUEST)
+        element.refresh_from_db()
+        return Response(self.get_serializer(element).data)
+
+
+class CertificationViewSet(_QhseBaseViewSet):
+    """XQHS9 / WIR275 — certificats détenus (ISO 9001/14001/45001, NM…).
+
+    ``?expirant=1`` ne garde que les certificats dont le statut CALCULÉ est
+    « à renouveler » ou « expiré » (dérivé de la préalerte, jamais recalculé
+    côté client).
+    """
+    queryset = Certification.objects.select_related('responsable').all()
+    serializer_class = CertificationSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['organisme', 'numero_certificat', 'perimetre']
+    ordering_fields = ['id', 'date_expiration', 'date_creation']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        referentiel = self.request.query_params.get('referentiel')
+        if referentiel:
+            qs = qs.filter(referentiel=referentiel)
+        if self.request.query_params.get('expirant') in ('1', 'true'):
+            attendus = (Certification.Statut.A_RENOUVELER,
+                        Certification.Statut.EXPIRE)
+            ids = [c.id for c in qs if c.statut_calcule() in attendus]
+            qs = qs.filter(id__in=ids)
+        return qs
+
+
+class AuditCertificationViewSet(_QhseBaseViewSet):
+    """XQHS9 / WIR275 — audits d'organisme certificateur.
+
+    ``lever-ncr/`` ouvre la NCR d'un constat MAJEUR (idempotent : un second
+    appel renvoie la NCR déjà liée, jamais un doublon).
+    """
+    queryset = AuditCertification.objects.select_related(
+        'certification').all()
+    serializer_class = AuditCertificationSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['id', 'date_audit', 'date_creation']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        certification = self.request.query_params.get('certification')
+        if certification not in (None, ''):
+            qs = qs.filter(certification_id=certification)
+        return qs
+
+    @action(detail=True, methods=['post'], url_path='lever-ncr')
+    def lever_ncr(self, request, pk=None):
+        from .services import lever_ncr_audit_certification
+
+        audit_certif = self.get_object()
+        ncr = lever_ncr_audit_certification(
+            audit_certif, signale_par=request.user)
+        if ncr is None:
+            return Response(
+                {'detail': 'Aucun constat majeur : rien à lever.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        audit_certif.refresh_from_db()
+        return Response(self.get_serializer(audit_certif).data)
+
+
+class ProgrammeAuditViewSet(_QhseBaseViewSet):
+    """XQHS10 / WIR275 — programme d'audit interne annuel."""
+    queryset = ProgrammeAudit.objects.all()
+    serializer_class = ProgrammeAuditSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['annee', 'id']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        annee = self.request.query_params.get('annee')
+        if annee not in (None, ''):
+            qs = qs.filter(annee=annee)
+        return qs
+
+
+class AuditPlanifieViewSet(_QhseBaseViewSet):
+    """XQHS10 / WIR275 — audits planifiés d'un programme.
+
+    ``independance_ok`` est ADVISORY (exposé en lecture) : il AVERTIT quand
+    l'auditeur est aussi le responsable du domaine, il ne bloque JAMAIS
+    l'enregistrement. ``instancier/`` crée l'``Audit`` réel (idempotent).
+    """
+    queryset = AuditPlanifie.objects.select_related(
+        'programme', 'grille', 'auditeur', 'responsable_domaine').all()
+    serializer_class = AuditPlanifieSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['date_cible', 'id']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        programme = self.request.query_params.get('programme')
+        if programme not in (None, ''):
+            qs = qs.filter(programme_id=programme)
+        statut = self.request.query_params.get('statut')
+        if statut:
+            qs = qs.filter(statut=statut)
+        return qs
+
+    @action(detail=True, methods=['post'])
+    def instancier(self, request, pk=None):
+        """Instancie l'``Audit`` réel (idempotent)."""
+        from .services import instancier_audit_planifie
+
+        planifie = self.get_object()
+        instancier_audit_planifie(planifie)
+        planifie.refresh_from_db()
+        return Response(self.get_serializer(planifie).data)
+
+
+class ClauseNormeViewSet(_QhseBaseViewSet):
+    """XQHS11 / WIR275 — référentiel de clauses ISO (HLS multi-norme)."""
+    queryset = ClauseNorme.objects.all()
+    serializer_class = ClauseNormeSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['numero', 'intitule']
+    ordering_fields = ['referentiel', 'numero', 'id']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        referentiel = self.request.query_params.get('referentiel')
+        if referentiel:
+            qs = qs.filter(referentiel=referentiel)
+        return qs
+
+
+class ReunionQhseViewSet(_QhseBaseViewSet):
+    """XQHS12 / WIR275 — réunions QHSE (revue de direction, CSH, HSE).
+
+    ``cloturer/`` REFUSE une revue de direction dont la checklist ISO 9.3 est
+    incomplète (garde serveur, jamais rejouée côté client).
+    """
+    queryset = ReunionQhse.objects.prefetch_related('decisions').all()
+    serializer_class = ReunionQhseSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['date_reunion', 'id']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        type_reunion = self.request.query_params.get('type_reunion')
+        if type_reunion:
+            qs = qs.filter(type_reunion=type_reunion)
+        statut = self.request.query_params.get('statut')
+        if statut:
+            qs = qs.filter(statut=statut)
+        return qs
+
+    @action(detail=True, methods=['post'])
+    def cloturer(self, request, pk=None):
+        from .services import cloturer_reunion_qhse
+
+        reunion = self.get_object()
+        try:
+            cloturer_reunion_qhse(reunion)
+        except ValueError as exc:
+            return Response({'detail': str(exc)},
+                            status=status.HTTP_400_BAD_REQUEST)
+        return Response(self.get_serializer(reunion).data)
+
+
+class DecisionReunionViewSet(_QhseBaseViewSet):
+    """XQHS12 / WIR275 — décisions d'une réunion.
+
+    ``creer-capa/`` transforme la décision en CAPA suivie (idempotent : un
+    second appel renvoie la CAPA déjà liée).
+    """
+    queryset = DecisionReunion.objects.select_related(
+        'reunion', 'responsable').all()
+    serializer_class = DecisionReunionSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['id', 'date_creation']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        reunion = self.request.query_params.get('reunion')
+        if reunion not in (None, ''):
+            qs = qs.filter(reunion_id=reunion)
+        return qs
+
+    @action(detail=True, methods=['post'], url_path='creer-capa')
+    def creer_capa(self, request, pk=None):
+        from .services import creer_capa_depuis_decision
+
+        decision = self.get_object()
+        creer_capa_depuis_decision(
+            decision,
+            description=request.data.get('description'),
+            echeance=request.data.get('echeance') or None,
+        )
+        decision.refresh_from_db()
+        return Response(self.get_serializer(decision).data)
+
+
+class ObjectifQhseViewSet(_QhseBaseViewSet):
+    """XQHS13 / WIR275 — objectifs chiffrés QHSE/ESG (ISO 6.2)."""
+    queryset = ObjectifQhse.objects.select_related(
+        'indicateur_esg', 'responsable').prefetch_related('revues').all()
+    serializer_class = ObjectifQhseSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['intitule', 'indicateur_libre']
+    ordering_fields = ['id', 'echeance', 'date_creation']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        domaine = self.request.query_params.get('domaine')
+        if domaine:
+            qs = qs.filter(domaine=domaine)
+        return qs
+
+
+class RevueObjectifViewSet(_QhseBaseViewSet):
+    """XQHS13 / WIR275 — revues périodiques d'un objectif.
+
+    ``atteint`` est DÉRIVÉ au ``save()`` du modèle (valeur constatée vs cible
+    et sens d'amélioration) : il n'est jamais accepté du corps.
+    """
+    queryset = RevueObjectif.objects.select_related('objectif').all()
+    serializer_class = RevueObjectifSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['date_revue', 'id']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        objectif = self.request.query_params.get('objectif')
+        if objectif not in (None, ''):
+            qs = qs.filter(objectif_id=objectif)
+        return qs

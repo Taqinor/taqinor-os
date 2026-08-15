@@ -1,0 +1,21 @@
+{
+  "endpoint": "GET /api/django/qhse/campagnes-rappel/",
+  "pourquoi": "Campagnes de rappel produit (containment XQHS5). `nb_elements` compte les équipements du parc déjà rattachés ; `statut` n'avance que par les actions serveur (`peupler/`, `notifier/`, `cloturer/`), jamais par un PATCH. Source de vérité : apps/qhse/serializers.py::CampagneRappelSerializer.",
+  "exemple": {
+    "id": 2,
+    "titre": "Rappel onduleurs lot 2025-07",
+    "produit": 41,
+    "serie_debut": "SN-1000",
+    "serie_fin": "SN-1400",
+    "lot": "L2025-07",
+    "motif": "Défaut de soudure carte de commande signalé par le fabricant.",
+    "gravite": "majeure",
+    "gravite_display": "Majeure",
+    "statut": "en_cours",
+    "statut_display": "En cours",
+    "date_verification_efficacite": null,
+    "responsable": 3,
+    "nb_elements": 27,
+    "date_creation": "2026-07-18T08:30:00Z"
+  }
+}
