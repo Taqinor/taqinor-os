@@ -12,10 +12,14 @@ import { ThemeProvider } from '../../design/ThemeProvider.jsx'
 const mocks = vi.hoisted(() => ({
   sante: vi.fn(),
   create: vi.fn(),
+  // WIR269 — le bloc « D'où vient le CA » interroge `attribution()` au montage.
+  attribution: vi.fn(),
 }))
 
 vi.mock('../../api/veilleAoApi', () => ({
-  default: { sante: mocks.sante, avis: { create: mocks.create } },
+  default: {
+    sante: mocks.sante, avis: { create: mocks.create }, attribution: mocks.attribution,
+  },
 }))
 
 import SanteVeille from './SanteVeille'
@@ -25,6 +29,9 @@ const renderScreen = (props) => render(<ThemeProvider><SanteVeille {...props} />
 
 beforeEach(() => {
   vi.clearAllMocks()
+  // WIR269 — bouchon par défaut : `AttributionCA` interroge `attribution()`
+  // au montage de CHAQUE test de ce fichier (bloc « D'où vient le CA »).
+  mocks.attribution.mockResolvedValue({ data: {} })
 })
 
 describe('ageLabel (VAO37 Done= « l’âge de la dernière collecte est visible sans clic »)', () => {
@@ -138,5 +145,37 @@ describe('SanteVeille — « Ajouter un avis » (VAO27)', () => {
       expect.objectContaining({ informateur: 'partenaire', source: 'tuyau_partenaire' }),
     ))
     await waitFor(() => expect(onAvisAjoute).toHaveBeenCalled())
+  })
+})
+
+describe('SanteVeille — attribution du CA (VAO31 / WIR269)', () => {
+  beforeEach(() => {
+    mocks.sante.mockResolvedValue({ data: { alarme_active: false } })
+  })
+
+  it('affiche le tableau « D’où vient le chiffre d’affaires » quand le serveur a des lignes', async () => {
+    mocks.attribution.mockResolvedValue({
+      data: {
+        par_source: [
+          { cle: 'marchespublics', libelle: 'Portail public', avis: 40, retenus: 12, affaires: 8, gagnes: 3, perdus: 2, en_cours: 3 },
+        ],
+        par_informateur: [
+          { cle: 'partenaire', libelle: 'Partenaire', avis: 5, retenus: 4, affaires: 3, gagnes: 2, perdus: 0, en_cours: 1 },
+        ],
+        total: { avis: 45, retenus: 16, affaires: 11, gagnes: 5, perdus: 2, en_cours: 4 },
+      },
+    })
+    renderScreen()
+    expect(await screen.findByText('D’où vient le chiffre d’affaires')).toBeInTheDocument()
+    expect(screen.getByText('Par canal source')).toBeInTheDocument()
+    expect(screen.getByText('Par informateur')).toBeInTheDocument()
+    expect(screen.getByText('Portail public')).toBeInTheDocument()
+  })
+
+  it("n'affiche aucun bloc d'attribution quand le serveur ne renvoie aucune ligne", async () => {
+    mocks.attribution.mockResolvedValue({ data: { par_source: [], par_informateur: [], total: {} } })
+    renderScreen()
+    await screen.findByText('Un AO reçu par WhatsApp, SMS ou appel ?')
+    expect(screen.queryByText('D’où vient le chiffre d’affaires')).not.toBeInTheDocument()
   })
 })

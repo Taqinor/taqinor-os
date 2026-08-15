@@ -72,9 +72,56 @@ const comptaApi = {
     continuiteSequences: (params) =>
       api.get('/compta/etats/continuite-sequences/', { params }),
     controleIce: (params) => api.get('/compta/etats/controle-ice/', { params }),
+
+    // WIR254 — sous-ensembles d'analyse NTFIN14-49 (orphelins : @action servies
+    // sans le moindre client). Rendus génériques dans EtatsPage (ETATS) ou dans
+    // l'onglet « Synthèse » de CloturePage (celles exigeant ?periode=, déjà
+    // sélectionnée là-bas). `resultatAnalytique`/`analyseVariation` restent
+    // API-ONLY VOLONTAIRE (patron WIR107) : la première exige un code d'axe
+    // analytique choisi par l'utilisateur, la seconde deux périodes A/B — un
+    // sélecteur dédié est hors scope de ce lot ; le wrapper existe pour que la
+    // garde node:test (actions − API-only ⊆ ces clés) reste vraie.
+    balanceReferentiel: (params) =>
+      api.get('/compta/etats/balance-referentiel/', { params }),
+    balanceAnalytique: (params) =>
+      api.get('/compta/etats/balance-analytique/', { params }),
+    // API-only volontaire — ?axe= requis, pas de sélecteur d'axe construit ici.
+    resultatAnalytique: (params) =>
+      api.get('/compta/etats/resultat-analytique/', { params }),
+    executionBudgetaire: (params) =>
+      api.get('/compta/etats/execution-budgetaire/', { params }),
+    // API-only volontaire — période A + période B, hors scope de ce lot.
+    analyseVariation: (params) =>
+      api.get('/compta/etats/analyse-variation/', { params }),
+    anomaliesEcritures: (params) =>
+      api.get('/compta/etats/anomalies-ecritures/', { params }),
+    cockpitCloture: (params) => api.get('/compta/etats/cockpit-cloture/', { params }),
+    pretACloturer: (params) => api.get('/compta/etats/pret-a-cloturer/', { params }),
+    rapprochementsEnRetard: (params) =>
+      api.get('/compta/etats/rapprochements-en-retard/', { params }),
+    registreImmobilisations: (params) =>
+      api.get('/compta/etats/registre-immobilisations/', { params }),
+    projectionDotations: (params) =>
+      api.get('/compta/etats/projection-dotations/', { params }),
+    positionsContratRevenu: () =>
+      api.get('/compta/etats/positions-contrat-revenu/'),
+    // Le serveur attend `debut`/`fin` (PAS `date_debut`/`date_fin`) — mappés
+    // ici pour rester cohérent avec le filtre de dates générique d'EtatsPage.
+    fraisBancaires: (params) =>
+      api.get('/compta/etats/frais-bancaires/', {
+        params: { debut: params?.date_debut, fin: params?.date_fin },
+      }),
+    provisions: (params) => api.get('/compta/etats/provisions/', { params }),
+
     dossierCloture: (params) =>
       api.get('/compta/etats/dossier-cloture/',
         { params: { export: 'xlsx', ...params }, responseType: 'blob' }),
+    // WIR180 — SIMPL-IS (structure DGI, XML) d'un exercice. `?exercice=` requis.
+    exportSimplIs: (params) =>
+      api.get('/compta/etats/export-simpl-is/', { params, responseType: 'blob' }),
+    // WIR180 — XFAC2 conformité loi 69-21 (factures fournisseur impayées).
+    // `?periode=YYYY-MM` optionnel ; `?export=csv` télécharge.
+    loi6921: (params) => api.get('/compta/etats/loi-69-21/', { params }),
 
     // ── UX7 — Exports fichiers ──
     // Le backend renvoie un fichier UNIQUEMENT avec « ?export=... » (jamais
@@ -133,6 +180,10 @@ const comptaApi = {
       api.get(`/compta/declarations-tva/${id}/comparatif/`, { params }),
     bordereauPdf: (id) =>
       api.get(`/compta/declarations-tva/${id}/bordereau-pdf/`,
+        { responseType: 'blob' }),
+    // WIR180 — SIMPL-TVA (structure DGI, XML) d'une déclaration.
+    exportSimpl: (id) =>
+      api.get(`/compta/declarations-tva/${id}/export-simpl/`,
         { responseType: 'blob' }),
   },
   retenuesSource: {
@@ -259,6 +310,9 @@ const comptaApi = {
     // d'une saisie manuelle des 12 mois).
     genererLigneRepartie: (id, data) =>
       api.post(`/compta/budgets/${id}/generer-ligne-repartie/`, data),
+    // WIR255 — FG149 variance budget vs réalisé (URL réelle : SOULIGNÉ, comme
+    // `grand_livre` — pas d'`url_path=` déclaré côté serveur, cf. PACT18).
+    vsRealise: (id, params) => api.get(`/compta/budgets/${id}/vs_realise/`, { params }),
   },
   centresCout: resource('centres-cout'),
   provisionsCreances: resource('provisions-creances'),
@@ -507,6 +561,10 @@ const comptaApi = {
       api.get(`/compta/cycles-consolidation/${id}/variation-capitaux/`),
     annexes: (id) => api.get(`/compta/cycles-consolidation/${id}/annexes/`),
     comparatif: (id) => api.get(`/compta/cycles-consolidation/${id}/comparatif/`),
+    // WIR255 — NTFIN54 export XLSX de la liasse de consolidation.
+    exportLiasse: (id) =>
+      api.get(`/compta/cycles-consolidation/${id}/export-liasse/`,
+        { params: { export: 'xlsx' }, responseType: 'blob' }),
     etapesAudit: (id) => api.get(`/compta/cycles-consolidation/${id}/etapes-audit/`),
     simuler: (id, data) => api.post(`/compta/cycles-consolidation/${id}/simuler/`, data || {}),
     exportLiasse: (id, params) =>

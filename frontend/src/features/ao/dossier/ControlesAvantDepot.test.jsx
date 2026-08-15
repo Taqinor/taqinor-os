@@ -12,10 +12,16 @@ import {
      3. le LISEZ-MOI est FIGÉ (il décrit un état qui n'existe plus) ;
      4. l'en-tête est CONTREDIT par son propre addendum. */
 
-const mocks = vi.hoisted(() => ({ controlesAvantDepot: vi.fn() }))
+const mocks = vi.hoisted(() => ({ controlesAvantDepot: vi.fn(), changerStatut: vi.fn() }))
 
 vi.mock('../../../api/aoApi', () => ({
-  default: { dossiers: { controlesAvantDepot: mocks.controlesAvantDepot } },
+  default: {
+    dossiers: {
+      controlesAvantDepot: mocks.controlesAvantDepot,
+      // WIR206 — bouton « Marquer prêt à déposer », monté par défaut.
+      changerStatut: mocks.changerStatut,
+    },
+  },
 }))
 
 import ControlesAvantDepot from './ControlesAvantDepot'

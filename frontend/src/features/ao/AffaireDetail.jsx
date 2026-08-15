@@ -1,13 +1,13 @@
-import { lazy, Suspense, useMemo, useState } from 'react'
+import { lazy, Suspense, useEffect, useMemo, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 // `ClipboardList`/`MessagesSquare` ne sont plus importés : les panneaux réels
 // du Bordereau et des Questions terrain portent leur propre iconographie.
-import { Building2, LayoutGrid, FolderKanban } from 'lucide-react'
+import { Building2, LayoutGrid, FolderKanban, Link2, Unlink } from 'lucide-react'
 import aoApi from '../../api/aoApi'
 import recordsApi from '../../api/recordsApi'
 import useResource from '../../hooks/useResource'
 import { unwrapList } from '../../api/resource'
-import { Badge, Button, Card, Textarea, EmptyState, Skeleton, toast } from '../../ui'
+import { Badge, Button, Card, Input, Textarea, EmptyState, Skeleton, toast } from '../../ui'
 import { RecordShell } from '../../ui/module'
 import ChatterTimeline from '../../components/ChatterTimeline'
 import { formatDate, formatMAD, formatNumber } from '../../lib/format'
@@ -132,6 +132,150 @@ function VerdictBandeau({ affaire }) {
         value={affaire.dossier_completude != null ? `${Math.round(affaire.dossier_completude)} %` : null}
       />
       <Info label="Issue (ouverture des plis)" value={affaire.resultat_issue_display} />
+    </Card>
+  )
+}
+
+// WIR206 — AOF13 : SEUL chemin de mutation du statut. Les cibles servies par
+// `transitions` (jamais une liste codée en dur) alimentent le sélecteur ;
+// l'écriture passe par `changer-statut`, un 400 s'affiche TEL QUEL.
+function StatutChanger({ affaireId, statutActuel, onChange }) {
+  const [transitions, setTransitions] = useState([])
+  const [cible, setCible] = useState('')
+  const [motif, setMotif] = useState('')
+  const [envoi, setEnvoi] = useState(false)
+
+  useEffect(() => {
+    let actif = true
+    aoApi.affaires.transitions(affaireId)
+      .then((res) => { if (actif) setTransitions(res.data?.transitions || []) })
+      .catch(() => { if (actif) setTransitions([]) })
+    return () => { actif = false }
+  }, [affaireId, statutActuel])
+
+  const changer = async () => {
+    if (!cible) return
+    setEnvoi(true)
+    try {
+      await aoApi.affaires.changerStatut(affaireId, { statut: cible, motif })
+      toast.success('Statut changé.')
+      setCible('')
+      setMotif('')
+      onChange?.()
+    } catch (e) {
+      toast.error(errMsg(e, 'Transition refusée.'))
+    } finally {
+      setEnvoi(false)
+    }
+  }
+
+  if (!transitions.length) return null
+
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      <select
+        aria-label="Changer le statut"
+        className="h-[var(--control-h)] rounded-md border border-input bg-card px-[var(--control-px)] text-sm"
+        value={cible}
+        onChange={(e) => setCible(e.target.value)}
+      >
+        <option value="">Changer le statut…</option>
+        {transitions.map((t) => (
+          <option key={t.valeur} value={t.valeur}>{t.libelle}</option>
+        ))}
+      </select>
+      {cible && (
+        <>
+          <Input
+            className="h-[var(--control-h)] w-56"
+            placeholder="Motif (optionnel)"
+            value={motif}
+            onChange={(e) => setMotif(e.target.value)}
+            aria-label="Motif du changement de statut"
+          />
+          <Button size="sm" onClick={changer} disabled={envoi}>
+            {envoi ? 'Envoi…' : 'Confirmer'}
+          </Button>
+        </>
+      )}
+    </div>
+  )
+}
+
+// WIR206 — fiche-carte du lead lié (lecture seule, `apps.crm.selectors`) +
+// rattacher/détacher. `lead: null` détache côté serveur.
+function LeadPanel({ affaireId, onChange }) {
+  const [leadInfo, setLeadInfo] = useState(null)
+  const [leadIdSaisi, setLeadIdSaisi] = useState('')
+  const [chargement, setChargement] = useState(true)
+
+  const charger = () => {
+    setChargement(true)
+    aoApi.affaires.lead(affaireId)
+      .then((res) => setLeadInfo(res.data))
+      .catch(() => setLeadInfo(null))
+      .finally(() => setChargement(false))
+  }
+
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- rechargement volontaire à chaque montage/changement d'affaire
+  useEffect(() => { charger() }, [affaireId])
+
+  const rattacher = async () => {
+    if (!leadIdSaisi.trim()) return
+    try {
+      await aoApi.affaires.rattacherLead(affaireId, Number(leadIdSaisi))
+      toast.success('Lead rattaché.')
+      setLeadIdSaisi('')
+      charger()
+      onChange?.()
+    } catch (e) {
+      toast.error(errMsg(e, 'Rattachement impossible.'))
+    }
+  }
+
+  const detacher = async () => {
+    try {
+      await aoApi.affaires.rattacherLead(affaireId, null)
+      toast.success('Lead détaché.')
+      charger()
+      onChange?.()
+    } catch (e) {
+      toast.error(errMsg(e, 'Détachement impossible.'))
+    }
+  }
+
+  if (chargement) return null
+
+  return (
+    <Card className="p-4">
+      <h3 className="mb-2 font-display text-base font-semibold">Lead lié</h3>
+      {leadInfo?.fiche ? (
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <p className="font-medium">{leadInfo.fiche.nom || leadInfo.fiche.libelle || `Lead #${leadInfo.lead_id}`}</p>
+            {leadInfo.fiche.telephone && (
+              <p className="text-sm text-muted-foreground">{leadInfo.fiche.telephone}</p>
+            )}
+          </div>
+          <Button size="sm" variant="outline" onClick={detacher}>
+            <Unlink className="size-4" /> Détacher
+          </Button>
+        </div>
+      ) : (
+        <div className="flex flex-wrap items-center gap-2">
+          <p className="text-sm text-muted-foreground">Aucun lead rattaché.</p>
+          <Input
+            className="h-[var(--control-h)] w-32"
+            placeholder="ID du lead"
+            value={leadIdSaisi}
+            onChange={(e) => setLeadIdSaisi(e.target.value)}
+            aria-label="ID du lead à rattacher"
+          />
+          <Button size="sm" variant="outline" onClick={rattacher}>
+            <Link2 className="size-4" /> Rattacher
+          </Button>
+        </div>
+      )}
     </Card>
   )
 }
@@ -397,7 +541,7 @@ export default function AffaireDetail() {
   // Sans lui, `affaire` valait la réponse axios entière et TOUS les champs de
   // la fiche étaient lus un cran trop haut : titre « #undefined », objet,
   // statut et bandeau vides. Même convention que `DashboardPage.jsx`.
-  const { data: affaire, loading, error } = useResource(
+  const { data: affaire, loading, error, refetch: refetchAffaire } = useResource(
     () => aoApi.affaires.get(id), id,
     { select: (res) => res.data, errorMessage: 'Affaire introuvable.' },
   )
@@ -475,6 +619,7 @@ export default function AffaireDetail() {
       subtitle={affaire.objet}
       status={affaire.statut}
       statusPill={StatutAffaire}
+      actions={<StatutChanger affaireId={affaire.id} statutActuel={affaire.statut} onChange={refetchAffaire} />}
       backTo="/ao/affaires"
       backLabel="Retour aux affaires"
       activity={chatterPanel}
@@ -485,6 +630,7 @@ export default function AffaireDetail() {
           content: (
             <div className="flex flex-col gap-4">
               <VerdictBandeau affaire={affaire} />
+              <LeadPanel affaireId={affaire.id} onChange={refetchAffaire} />
               <Card className="p-4">
                 <dl className="grid gap-x-8 gap-y-3 sm:grid-cols-2">
                   <Info label="Acheteur" value={affaire.acheteur} />

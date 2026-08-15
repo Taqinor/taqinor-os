@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Plus, Lock, Unlock, DownloadCloud, Link2, Combine } from 'lucide-react'
+import { Plus, Lock, Unlock, DownloadCloud, Link2, Combine, FileSpreadsheet } from 'lucide-react'
 import { useTabParam } from '../components/useTabParam'
 import { ListShell } from '../../../ui/module'
 import {
@@ -59,12 +59,25 @@ function CyclesPanel() {
     { id: 'verrouille', header: 'Verrouillé', accessor: (r) => (r.verrouille ? 'Oui' : 'Non') },
   ]
 
+  // WIR255 — NTFIN54 : export XLSX de la liasse de consolidation du cycle.
+  const exporterLiasse = async (row) => {
+    try {
+      const res = await comptaApi.cyclesConsolidation.exportLiasse(row.id)
+      const blob = res.data instanceof Blob ? res.data : new Blob([res.data])
+      comptaApi.downloadBlob(blob, `liasse_consolidation_${row.id}.xlsx`)
+    } catch {
+      toast.error('Export de la liasse indisponible.')
+    }
+  }
+
   const rowActions = (row) => {
     const acts = [
       { id: 'collecter', label: 'Collecter les liasses', icon: DownloadCloud,
         onClick: () => agirGenerique(
           () => comptaApi.cyclesConsolidation.collecter(row.id, {}),
           'Collecte lancée pour le périmètre du cycle.', list.reload) },
+      { id: 'export-liasse', label: 'Exporter la liasse (XLSX)', icon: FileSpreadsheet,
+        onClick: () => exporterLiasse(row) },
     ]
     if (row.verrouille) {
       acts.push({ id: 'ouvrir', label: 'Ouvrir (déverrouiller)', icon: Unlock,

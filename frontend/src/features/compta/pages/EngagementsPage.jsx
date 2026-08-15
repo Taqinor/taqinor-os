@@ -61,6 +61,61 @@ const StatutTag = statusPill({
 
 const money = (v) => formatMAD(v)
 
+// WIR255 — bloc « Échéances sous N jours » partagé par les deux panneaux RG
+// et cautions (FG145). « Silencieux sans rôle » : un 403 (Admin/Responsable
+// requis) masque simplement le bloc, sans toast — ce n'est pas une erreur
+// pour un utilisateur qui n'a jamais eu accès à cette lecture.
+function EcheancesBlock({ fetchFn, exportName, titre, lignesKey }) {
+  const [data, setData] = useState(null)
+  const [visible, setVisible] = useState(true)
+
+  useEffect(() => {
+    let actif = true
+    fetchFn({ jours: 30 })
+      .then((res) => { if (actif) setData(res.data) })
+      .catch(() => { if (actif) setVisible(false) })
+    return () => { actif = false }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- fetchFn stable par panneau
+  }, [])
+
+  const exporter = async () => {
+    try {
+      const res = await fetchFn({ jours: 30, export: 'csv' })
+      const blob = res.data instanceof Blob ? res.data : new Blob([res.data])
+      comptaApi.downloadBlob(blob, stampedFilename(exportName, 'csv'))
+    } catch {
+      toast.error('Export indisponible.')
+    }
+  }
+
+  if (!visible || !data) return null
+  const lignes = data[lignesKey] || []
+
+  return (
+    <Card className="p-4 sm:p-5">
+      <div className="mb-2 flex items-center justify-between">
+        <h3 className="font-display text-sm font-semibold">{titre} — sous 30 jours</h3>
+        <Button variant="outline" size="sm" onClick={exporter}>
+          <Send className="size-4" /> Export CSV
+        </Button>
+      </div>
+      {!lignes.length ? (
+        <p className="text-sm text-muted-foreground">Aucune échéance sous 30 jours.</p>
+      ) : (
+        <ul className="flex flex-col gap-1 text-sm">
+          {lignes.map((l, i) => (
+            <li key={l.reference || i} className="flex items-center justify-between rounded-lg border px-3 py-2">
+              <span className="font-mono text-xs">{l.reference || `#${i}`}</span>
+              <span className="text-muted-foreground">{l.marche_ref || l.marche || ''}</span>
+              <strong className="tabular-nums">{money(l.montant ?? l.base)}</strong>
+            </li>
+          ))}
+        </ul>
+      )}
+    </Card>
+  )
+}
+
 // ── FG145 — Retenues de garantie ──
 function RetenuesGarantiePanel() {
   const [dialog, setDialog] = useState(null)
@@ -112,6 +167,12 @@ function RetenuesGarantiePanel() {
 
   return (
     <div className="flex flex-col gap-3">
+      <EcheancesBlock
+        fetchFn={comptaApi.retenuesGarantie.echeances}
+        exportName="retenues-garantie-echeances"
+        titre="Retenues de garantie à lever"
+        lignesKey="lignes"
+      />
       <div className="flex justify-end">
         <Button size="sm" onClick={() => setDialog({ row: null })}><Plus /> Nouvelle RG</Button>
       </div>
@@ -186,6 +247,12 @@ function CautionsBancairesPanel() {
 
   return (
     <div className="flex flex-col gap-3">
+      <EcheancesBlock
+        fetchFn={comptaApi.cautionsBancaires.echeances}
+        exportName="cautions-bancaires-echeances"
+        titre="Cautions bancaires à échéance"
+        lignesKey="lignes"
+      />
       <div className="flex justify-end">
         <Button size="sm" onClick={() => setDialog({ row: null })}><Plus /> Nouvelle caution</Button>
       </div>

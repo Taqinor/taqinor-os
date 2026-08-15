@@ -81,15 +81,18 @@ export default function PieceRow({
               {piece.motif_peremption ? ` ${piece.motif_peremption}` : ''}
             </span>
           </p>
+          {/* WIR207 — le libellé mentait : cliquer ici régénère TOUT LE PACK
+              (le serveur ignore tout argument de pièce), jamais cette seule
+              pièce. Le libellé dit maintenant ce que le clic fait vraiment. */}
           <Button
             size="sm"
             variant="outline"
             className="self-start"
             disabled={regenerating || verrouille}
-            onClick={() => onRegenerer?.(piece)}
+            onClick={() => onRegenerer?.()}
           >
             <RefreshCw className={`size-3.5 ${regenerating ? 'animate-spin' : ''}`} aria-hidden="true" />
-            {regenerating ? 'Régénération…' : `Régénérer « ${libelle} »`}
+            {regenerating ? 'Régénération…' : 'Régénérer le dossier complet'}
           </Button>
         </div>
       )}

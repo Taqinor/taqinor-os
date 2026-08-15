@@ -1,0 +1,40 @@
+{
+  "endpoint": "GET /api/django/compta/etats/previsionnel-tresorerie/",
+  "pourquoi": "WIR182 — le prévisionnel de trésorerie roulant 13 semaines : l'écran TresoreriePage lisait une clé `solde_projete` qui n'existe nulle part côté serveur (`apps/compta/selectors.py::previsionnel_tresorerie` renvoie `solde_fin`), donc la colonne « Solde projeté » affichait toujours « — ». PACT10 : ce contrat part SEUL pour que la lecture de la clé ne diverge plus jamais du serveur réel. Chaque semaine porte `entrees`/`sorties`/`flux_net`/`solde_fin` — jamais `solde_projete` ni `solde` seul — et `date_rupture_estimee` (racine, pas par semaine) est la première date où `solde_fin` passe sous zéro, ou `null` si aucune rupture n'est projetée.",
+  "exemple": {
+    "solde_initial": 12000.0,
+    "date_debut": "2026-08-10",
+    "nb_semaines": 13,
+    "semaines": [
+      {
+        "index": 1,
+        "date_debut": "2026-08-10",
+        "date_fin": "2026-08-16",
+        "entrees": 5000.0,
+        "sorties": 1000.0,
+        "flux_net": 4000.0,
+        "solde_fin": 16000.0,
+        "lignes": []
+      }
+    ],
+    "date_rupture_estimee": null
+  },
+  "exemple_rupture": {
+    "solde_initial": 1000.0,
+    "date_debut": "2026-08-10",
+    "nb_semaines": 2,
+    "semaines": [
+      {
+        "index": 1,
+        "date_debut": "2026-08-10",
+        "date_fin": "2026-08-16",
+        "entrees": 0.0,
+        "sorties": 5000.0,
+        "flux_net": -5000.0,
+        "solde_fin": -4000.0,
+        "lignes": []
+      }
+    ],
+    "date_rupture_estimee": "2026-08-10"
+  }
+}

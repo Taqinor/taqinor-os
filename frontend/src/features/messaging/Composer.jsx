@@ -18,6 +18,10 @@ import {
 } from './store/messagingSlice'
 import { useActiveDescendant } from '../../hooks/useActiveDescendant'
 import MentionAutocomplete from './MentionAutocomplete'
+// WIR259 — les deux actions composer déjà écrites/testées mais jamais
+// montées : partager un enregistrement (S19) et une note vocale.
+import ShareRecord from './ShareRecord'
+import VoiceRecorder from './VoiceRecorder'
 import { activeMention, insertMention, filterMembers, extractMentions } from './mentions'
 import { applyShortcut } from './richText'
 import SlashCommandPicker from './SlashCommandPicker'
@@ -115,6 +119,18 @@ export default function Composer({
   const [scheduleAt, setScheduleAt] = useState('')
   const [scheduling, setScheduling] = useState(false)
   const [scheduledQueue, setScheduledQueue] = useState([])
+
+  // WIR259 — même patron que `submitPoll` : pas de thunk dédié, on réutilise
+  // le reducer `sendMessage.fulfilled` pour fusionner le message dans
+  // messages/aperçu-conversation sans appel réseau supplémentaire.
+  const onRecordShared = (data) => {
+    if (!data) return
+    dispatch(sendMessage.fulfilled(data, `share-${data?.id ?? Date.now()}`, {}))
+  }
+  const onVoiceSent = (data) => {
+    if (!data) return
+    dispatch(sendMessage.fulfilled(data, `voice-${data?.id ?? Date.now()}`, {}))
+  }
 
   // Bascule en mode édition : préremplit le texte.
   useEffect(() => {
@@ -605,6 +621,23 @@ export default function Composer({
         >
           <BarChart3 size={18} aria-hidden="true" />
         </Button>
+
+        {/* WIR259 — partager un enregistrement (S19) : dégradation propre,
+            désactivé sans conversation active ou en mode édition. */}
+        <ShareRecord
+          conversationId={activeId}
+          onShared={onRecordShared}
+          disabled={!activeId || !!editing}
+        />
+
+        {/* WIR259 — note vocale : `VoiceRecorder` se masque lui-même
+            (`isRecordingSupported()`) si le navigateur/micro n'est pas
+            disponible — aucune dégradation à gérer ici. */}
+        <VoiceRecorder
+          conversationId={activeId}
+          onSent={onVoiceSent}
+          disabled={!activeId || !!editing}
+        />
 
         <div className="relative flex-1">
           <textarea

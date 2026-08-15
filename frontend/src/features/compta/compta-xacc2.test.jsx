@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeAll } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, fireEvent } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { Provider } from 'react-redux'
 import { configureStore } from '@reduxjs/toolkit'
@@ -45,7 +45,20 @@ vi.mock('../../api/comptaApi', () => {
       etats: {
         balance: empty, grandLivre: empty, cpc: empty, bilan: empty, esg: empty, etic: empty,
         positionTresorerie: () => Promise.resolve({ data: { comptes: [], total: 0 } }),
-        previsionnelTresorerie: () => Promise.resolve({ data: { semaines: [] } }),
+        // WIR182 — une semaine réelle (contrat apps/compta/contract_samples/
+        // previsionnel_tresorerie.json) : la clé réelle est `solde_fin`, jamais
+        // `solde_projete` (qui n'existe pas côté serveur) — un mock `{semaines:[]}`
+        // ne peut pas prouver la lecture de la bonne clé.
+        previsionnelTresorerie: () => Promise.resolve({
+          data: {
+            solde_initial: 12000, date_debut: '2026-08-10', nb_semaines: 13,
+            semaines: [{
+              index: 1, date_debut: '2026-08-10', date_fin: '2026-08-16',
+              entrees: 5000, sorties: 1000, flux_net: 8000, solde_fin: 4000, lignes: [],
+            }],
+            date_rupture_estimee: null,
+          },
+        }),
         balanceAgeeFournisseurs: empty,
         releveFournisseur: empty,
         tableauFlux: empty,
@@ -56,10 +69,11 @@ vi.mock('../../api/comptaApi', () => {
         dossierCloture: empty,
         exportFec: empty, liasseFiscale: empty, exportFiduciaire: empty,
         releveDeductionsTva: empty, declarationHonoraires: empty, aideIs: empty,
+        exportSimplIs: empty, loi6921: empty,
       },
       declarationsTva: {
         ...res(), preparer: empty, export: empty, deposer: empty,
-        comparatif: empty, bordereauPdf: empty,
+        comparatif: empty, bordereauPdf: empty, exportSimpl: empty,
       },
       retenuesSource: { ...res(), verser: empty, bordereau: empty, attestation: empty, attestationAnnuelle: empty },
       timbresFiscaux: { ...res(), verser: empty },
@@ -97,7 +111,8 @@ vi.mock('../../api/comptaApi', () => {
       },
       modelesRapprochement: { ...res(), appliquer: empty },
       rapprochements3voies: { ...res(), evaluer: empty, valider: empty },
-      budgets: res(), centresCout: res(), provisionsCreances: res(),
+      budgets: { ...res(), genererLigneRepartie: empty, vsRealise: empty },
+      centresCout: res(), provisionsCreances: res(),
       comptesAuxiliaires: res(), mappingsCompte: res(), piecesJustificatives: res(),
       periodes: { ...res(), cloturer: empty, rouvrir: empty },
       immobilisations: {
@@ -163,6 +178,14 @@ describe('EngagementsPage — rendu smoke (FG145-148/XFAC14/XACC26/COMPTA39)', (
     expect(screen.getByText('Compensations AR/AP')).toBeInTheDocument()
     expect(screen.getByText('Piste d’audit')).toBeInTheDocument()
   }, 30000)
+
+  it('affiche le bloc « Échéances sous 30 jours » sur l’onglet Retenues de garantie (WIR255)', async () => {
+    const { default: EngagementsPage } = await import('./pages/EngagementsPage.jsx')
+    mount(<EngagementsPage />)
+    await waitFor(() => {
+      expect(screen.getByText(/Retenues de garantie à lever/)).toBeInTheDocument()
+    })
+  }, 30000)
 })
 
 describe('EtatsPage — nouveaux états ZACC round 2', () => {
@@ -175,6 +198,8 @@ describe('EtatsPage — nouveaux états ZACC round 2', () => {
     expect(screen.getByText('Tableau des flux')).toBeInTheDocument()
     expect(screen.getByText('Journal items')).toBeInTheDocument()
     expect(screen.getByText('Balance âgée fournisseurs')).toBeInTheDocument()
+    // WIR180 — télédéclaration loi 69-21 atteignable depuis le sélecteur d'états.
+    expect(screen.getByText('Loi 69-21')).toBeInTheDocument()
   }, 30000)
 })
 
@@ -186,6 +211,22 @@ describe('FiscalitePage — onglet Échéances fiscales (XACC9)', () => {
       expect(screen.getByRole('heading', { name: /Fiscalité & déclarations/ })).toBeInTheDocument()
     })
     expect(screen.getByText('Échéances fiscales')).toBeInTheDocument()
+    // WIR180 — SIMPL-IS proposé dans le bloc exports (exercice requis).
+    expect(screen.getByText('Export SIMPL-IS')).toBeInTheDocument()
+  }, 30000)
+
+  it('affiche le bordereau de versement RAS sur l’onglet Retenues à la source', async () => {
+    const { default: FiscalitePage } = await import('./pages/FiscalitePage.jsx')
+    mount(<FiscalitePage />)
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: /Fiscalité & déclarations/ })).toBeInTheDocument()
+    })
+    // WIR181 — le bloc bordereau/attestations n'apparaît que sous l'onglet
+    // Retenues à la source (pas l'onglet par défaut) : on bascule dessus.
+    fireEvent.click(screen.getByText('Retenues à la source'))
+    await waitFor(() => {
+      expect(screen.getByText('Bordereau de versement & attestations RAS')).toBeInTheDocument()
+    })
   }, 30000)
 })
 
@@ -197,5 +238,19 @@ describe('TresoreriePage — onglet Position & projection (FG122/FG126)', () => 
       expect(screen.getByRole('heading', { name: /Trésorerie & prévisionnel/ })).toBeInTheDocument()
     })
     expect(screen.getByText('Position & projection')).toBeInTheDocument()
+  }, 30000)
+
+  it('lit `solde_fin` (jamais `solde_projete`, absent du serveur) sur le prévisionnel 13 semaines', async () => {
+    const { default: TresoreriePage } = await import('./pages/TresoreriePage.jsx')
+    mount(<TresoreriePage />)
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: /Trésorerie & prévisionnel/ })).toBeInTheDocument()
+    })
+    fireEvent.click(screen.getByText('Position & projection'))
+    // WIR182 — une semaine `solde_fin:4000` doit afficher « 4 000,00 MAD », plus
+    // jamais « — » (régression : lisait la clé inexistante `solde_projete`).
+    await waitFor(() => {
+      expect(screen.getByText(/4.000,00 MAD/)).toBeInTheDocument()
+    })
   }, 30000)
 })

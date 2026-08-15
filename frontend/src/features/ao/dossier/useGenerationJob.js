@@ -76,7 +76,15 @@ function etatInitial(cle) {
 }
 
 export default function useGenerationJob(dossierId, options = {}) {
-  const { intervalMs = 3000, onSucces, onEchec, onAnnulerServeur } = options
+  const {
+    intervalMs = 3000, onSucces, onEchec, onAnnulerServeur,
+    // WIR207 — `lancerFn` par défaut = ZIP (comportement historique inchangé
+    // pour `ZipButton`). Le bouton « Régénérer le dossier complet » passe
+    // `() => aoApi.dossiers.genererPiece(dossierId)` : MÊME job asynchrone
+    // (`services.generer_pack_ao`, tout le pack — jamais une pièce isolée,
+    // le serveur ignore tout argument de pièce), suivi identique.
+    lancerFn = () => aoApi.dossiers.zip(dossierId),
+  } = options
 
   const cle = useMemo(() => cleStockage(dossierId), [dossierId])
 
@@ -98,6 +106,10 @@ export default function useGenerationJob(dossierId, options = {}) {
   // recrée ses fermetures à chaque rendu.
   const cbRef = useRef({ onSucces, onEchec })
   useEffect(() => { cbRef.current = { onSucces, onEchec } })
+  // WIR207 — même patron pour `lancerFn` : un appelant qui ne la mémoïse pas
+  // (cas courant, une fermeture inline) ne doit pas recréer `lancer()`.
+  const lancerFnRef = useRef(lancerFn)
+  useEffect(() => { lancerFnRef.current = lancerFn })
   // Un job n'est notifié qu'UNE fois, même si un dernier sondage repasse.
   const notifieRef = useRef(null)
   useEffect(() => { notifieRef.current = null }, [cle])
@@ -139,7 +151,7 @@ export default function useGenerationJob(dossierId, options = {}) {
     setEtat((prev) => ({ ...prev, erreur: null, verrou: null, job: null }))
     setLancement(true)
     try {
-      const res = await aoApi.dossiers.zip(dossierId)
+      const res = await lancerFnRef.current()
       const id = res?.data?.job_id ?? res?.data?.id ?? null
       setEtat((prev) => ({ ...prev, jobId: id }))
       ecrire(cle, id)

@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useTabParam } from '../components/useTabParam'
-import { Plus, CheckCircle2, PlayCircle, Sparkles } from 'lucide-react'
+import { Plus, CheckCircle2, PlayCircle, Sparkles, RefreshCw } from 'lucide-react'
 import { ListShell, statusPill } from '../../../ui/module'
-import { Button, Segmented, Card, toast } from '../../../ui'
+import { Button, Segmented, Card, EmptyState, toast } from '../../../ui'
 import { formatMAD, formatDate } from '../../../lib/format'
 import comptaApi from '../../../api/comptaApi'
 import useComptaList from '../components/useComptaList.js'
@@ -353,11 +353,102 @@ function ModelesPanel() {
   )
 }
 
+// WIR254 — NTFIN28/34/38 : cockpit de clôture, prêt-à-clôturer et comptes de
+// bilan non rapprochés d'une période — trois @action orphelines, hébergées
+// ici plutôt que dans EtatsPage car elles exigent toutes un `?periode=`
+// (PeriodeComptable) déjà géré par `usePeriodes`/`SelecteurPeriode`.
+function SynthesePanel({ periodes }) {
+  const [periode, setPeriode] = useState('')
+  const [cockpit, setCockpit] = useState(null)
+  const [pret, setPret] = useState(null)
+  const [retard, setRetard] = useState(null)
+  const [loading, setLoading] = useState(false)
+
+  const load = () => {
+    if (!periode) { setCockpit(null); setPret(null); setRetard(null); return }
+    setLoading(true)
+    Promise.all([
+      comptaApi.etats.cockpitCloture({ periode }),
+      comptaApi.etats.pretACloturer({ periode }),
+      comptaApi.etats.rapprochementsEnRetard({ periode }),
+    ])
+      .then(([c, p, r]) => { setCockpit(c.data); setPret(p.data); setRetard(r.data) })
+      .catch(() => toast.error('Synthèse de clôture indisponible pour cette période.'))
+      .finally(() => setLoading(false))
+  }
+
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- rechargement volontaire au changement de période
+  useEffect(() => { load() }, [periode])
+
+  const retardRows = Array.isArray(retard) ? retard : (retard?.comptes || retard?.lignes || [])
+
+  return (
+    <div className="flex flex-col gap-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <SelecteurPeriode periodes={periodes} value={periode} onChange={setPeriode} />
+        <Button variant="outline" size="sm" onClick={load} disabled={!periode}>
+          <RefreshCw className="size-4" /> Actualiser
+        </Button>
+      </div>
+      {!periode ? (
+        <EmptyState title="Sélectionnez une période" description="La synthèse de clôture est calculée par période comptable." />
+      ) : loading ? (
+        <p className="py-8 text-center text-sm text-muted-foreground">Chargement…</p>
+      ) : (
+        <>
+          <Card className="p-4 sm:p-5">
+            <h3 className="mb-2 font-display text-sm font-semibold">Cockpit de clôture</h3>
+            {cockpit ? (
+              <dl className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                {Object.entries(cockpit).filter(([, v]) => typeof v !== 'object').map(([k, v]) => (
+                  <div key={k} className="flex items-center justify-between gap-3 rounded-lg border px-3 py-2">
+                    <dt className="text-sm text-muted-foreground">{k.replace(/_/g, ' ')}</dt>
+                    <dd className="tabular-nums font-medium">{String(v)}</dd>
+                  </div>
+                ))}
+              </dl>
+            ) : <EmptyState title="Aucune donnée" description="Rien à afficher." />}
+          </Card>
+          <Card className="p-4 sm:p-5">
+            <h3 className="mb-2 font-display text-sm font-semibold">Prête à clôturer ?</h3>
+            <p className="text-sm">
+              {pret?.pret_a_cloturer === true ? 'Oui — aucun blocage détecté.'
+                : pret?.pret_a_cloturer === false ? 'Non — voir les blocages ci-dessous.'
+                  : 'Statut indisponible.'}
+            </p>
+            {Array.isArray(pret?.blocages) && pret.blocages.length > 0 && (
+              <ul className="mt-2 list-disc pl-5 text-sm text-muted-foreground">
+                {pret.blocages.map((b, i) => <li key={i}>{typeof b === 'string' ? b : JSON.stringify(b)}</li>)}
+              </ul>
+            )}
+          </Card>
+          <Card className="p-4 sm:p-5">
+            <h3 className="mb-2 font-display text-sm font-semibold">Comptes de bilan non rapprochés</h3>
+            {!retardRows.length ? (
+              <EmptyState title="Aucun compte en retard" description="Tous les comptes de bilan sont rapprochés." />
+            ) : (
+              <ul className="flex flex-col gap-1 text-sm">
+                {retardRows.map((c, i) => (
+                  <li key={i} className="flex items-center justify-between rounded-lg border px-3 py-2">
+                    <span className="font-mono text-xs">{c.compte || c.numero || `#${i}`}</span>
+                    <span className="text-muted-foreground">{c.intitule || c.libelle || ''}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </Card>
+        </>
+      )}
+    </div>
+  )
+}
+
 const TABS = [
   { value: 'checklist', label: 'Checklist' },
   { value: 'accruals', label: 'Accruals' },
   { value: 'variations', label: 'Variations' },
   { value: 'modeles', label: 'Modèles' },
+  { value: 'synthese', label: 'Synthèse' },
 ]
 
 export default function CloturePage() {
@@ -378,6 +469,7 @@ export default function CloturePage() {
       {tab === 'accruals' && <AccrualsPanel periodes={periodes} />}
       {tab === 'variations' && <VariationsPanel periodes={periodes} />}
       {tab === 'modeles' && <ModelesPanel />}
+      {tab === 'synthese' && <SynthesePanel periodes={periodes} />}
     </div>
   )
 }

@@ -16,6 +16,9 @@ import { formatMAD } from '../../lib/format'
 // APX11 — en-tête unique VX28 + accent de module (identité Ventes).
 import { PageHeader } from '../../ui/PageHeader'
 import { VENTES_ACCENT_STYLE } from '../../features/ventes/accent'
+// WIR256 — lien vers l'écriture comptable auto-générée (WIR24), auto-masqué
+// tant que le réglage société `comptabilite_auto_ecritures` n'est pas actif.
+import EcritureSourceLink from '../../features/compta/components/EcritureSourceLink.jsx'
 
 const STATUT_TABS = [
   { key: 'tous', label: 'Tous' },
@@ -139,7 +142,13 @@ export default function AvoirsPage() {
             aria-label="Avoirs"
             getRowKey={(a) => a.id}
             columns={[
-              { key: 'reference', header: 'Référence', cell: (a) => <strong>{a.reference}</strong> },
+              { key: 'reference', header: 'Référence', cell: (a) => (
+                <div className="flex flex-col gap-0.5">
+                  <strong>{a.reference}</strong>
+                  {/* WIR256 — écriture comptable de cet avoir. */}
+                  <EcritureSourceLink sourceType="avoir" sourceId={a.id} />
+                </div>
+              ) },
               { key: 'facture', header: 'Facture', cell: (a) => a.facture_reference },
               { key: 'client', header: 'Client', cell: (a) => a.client_nom },
               { key: 'total_ttc', header: 'Total TTC', align: 'right', cell: (a) => formatMAD(a.total_ttc) },

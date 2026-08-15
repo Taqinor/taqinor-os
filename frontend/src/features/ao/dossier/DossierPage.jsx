@@ -8,6 +8,7 @@ import { Card, EmptyState, Skeleton, toast } from '../../../ui'
 import { formatDateTime } from '../../../lib/format'
 import PieceRow from './PieceRow'
 import { piecesVisibles } from './DossierPage.utils'
+import useGenerationJob from './useGenerationJob'
 
 /* ============================================================================
    AOF174 — Écran « Dossier de soumission » : pièces, états, péremption.
@@ -124,7 +125,6 @@ export default function DossierPage({
   const params = useParams()
   const id = dossierId ?? params.id
   const [selectedId, setSelectedId] = useState(null)
-  const [regeneratingId, setRegeneratingId] = useState(null)
 
   const { data: dossier, loading, error, refetch } = useResource(
     () => aoApi.dossiers.get(id), id,
@@ -151,19 +151,35 @@ export default function DossierPage({
   )
   const verrou = dossier?.verrou ?? null
 
-  const regenerer = useCallback(async (piece) => {
-    setRegeneratingId(piece.id)
-    try {
-      await aoApi.dossiers.genererPiece(id, piece.type || piece.code)
-      toast.success(`« ${piece.libelle || piece.code} » régénérée.`)
-      refetch()
-    } catch (e) {
-      // 409 du verrou de dossier (AOF155) : le serveur NOMME le porteur.
-      toast.error(errMsg(e, 'Régénération impossible.'))
-    } finally {
-      setRegeneratingId(null)
+  // WIR207 — le bouton disait « Régénérer « pièce » » et annonçait le succès
+  // AVANT la fin du job : `generer-piece` (a) IGNORE tout argument de pièce
+  // (c'est TOUT LE PACK qui repart, jamais une pièce isolée — argument mort
+  // retiré) et (b) répond 202 + `job_id` (async, `services.generer_pack_ao`).
+  // Le suivi passe désormais par `useGenerationJob` (même patron que
+  // `ZipButton`) : le succès n'est annoncé qu'à la fin RÉELLE du job.
+  const onRegenerationSucces = useCallback(() => {
+    toast.success('Dossier complet régénéré.')
+    refetch()
+  }, [refetch])
+  const onRegenerationEchec = useCallback((j) => {
+    toast.error(j?.message_erreur || 'Régénération du dossier impossible.')
+  }, [])
+  const jobRegeneration = useGenerationJob(id, {
+    lancerFn: () => aoApi.dossiers.genererPiece(id),
+    onSucces: onRegenerationSucces,
+    onEchec: onRegenerationEchec,
+  })
+
+  // Une seule régénération porte sur TOUT le dossier (l'argument de pièce est
+  // mort côté serveur) : peu importe la ligne cliquée, le job est unique et
+  // TOUTES les lignes se désactivent pendant qu'il tourne.
+  const regenerer = useCallback(async () => {
+    const jobId = await jobRegeneration.lancer()
+    if (!jobId) {
+      // 409 du verrou de dossier (AOF155) ou refus : le serveur NOMME le motif.
+      toast.error(jobRegeneration.erreur || 'Régénération impossible.')
     }
-  }, [id, refetch])
+  }, [jobRegeneration])
 
   if (loading && !dossier) {
     return (
@@ -216,7 +232,7 @@ export default function DossierPage({
                   selected={selected?.id === piece.id}
                   onSelect={(p) => setSelectedId(p.id)}
                   onRegenerer={regenerer}
-                  regenerating={regeneratingId === piece.id}
+                  regenerating={jobRegeneration.enCours}
                   verrouille={Boolean(verrou)}
                 />
               ))}
@@ -263,6 +279,7 @@ export default function DossierPage({
             <Suspense fallback={<Skeleton className="h-40 w-full" />}>
               <ControlesAvantDepot
                 dossierId={dossier.id}
+                onDossierChange={refetch}
                 zipSlot={({ bloque, motif }) => (
                   <ZipButton
                     dossierId={dossier.id}

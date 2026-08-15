@@ -632,6 +632,62 @@ function LegendeProvenance() {
   )
 }
 
+// WIR207 — AOF27 : applique un jeu de paramètres à CETTE toiture en un appel
+// serveur (`aoApi.toitures.appliquerPreset`), jamais un PATCH nu de la
+// ressource preset. Le sélecteur vit dans l'atelier — la SEULE cible réelle
+// (la Bibliothèque, écran global, n'en désigne aucune : voir son en-tête).
+function PresetToitureSelector({ toitureId, onApplique }) {
+  const [presets, setPresets] = useState([])
+  const [choisi, setChoisi] = useState('')
+  const [envoi, setEnvoi] = useState(false)
+
+  useEffect(() => {
+    let actif = true
+    aoApi.bibliotheque.list({ type: 'preset' })
+      .then((res) => { if (actif) setPresets(unwrapList(res)) })
+      .catch(() => { if (actif) setPresets([]) })
+    return () => { actif = false }
+  }, [])
+
+  const appliquer = async () => {
+    if (!choisi) return
+    setEnvoi(true)
+    try {
+      await aoApi.toitures.appliquerPreset(toitureId, choisi)
+      toast.success('Preset appliqué à la toiture.')
+      onApplique?.()
+    } catch (e) {
+      toast.error(e?.response?.data?.preset?.[0] || e?.response?.data?.detail || 'Application du preset impossible.')
+    } finally {
+      setEnvoi(false)
+    }
+  }
+
+  if (!presets.length) return null
+
+  return (
+    <div className="flex flex-wrap items-center gap-2 rounded-md border border-border p-2">
+      <label htmlFor="ao-atelier-preset" className="text-xs text-muted-foreground">
+        Appliquer un jeu de paramètres (bibliothèque)
+      </label>
+      <select
+        id="ao-atelier-preset"
+        className="h-8 rounded-md border border-input bg-card px-2 text-sm"
+        value={choisi}
+        onChange={(e) => setChoisi(e.target.value)}
+      >
+        <option value="">—</option>
+        {presets.map((p) => (
+          <option key={p.id} value={p.id}>{p.nom}</option>
+        ))}
+      </select>
+      <Button size="sm" variant="outline" disabled={!choisi || envoi} onClick={appliquer}>
+        {envoi ? 'Application…' : 'Appliquer'}
+      </Button>
+    </div>
+  )
+}
+
 function AtelierToiture({ toiture, selecteur, onEnregistre }) {
   const toitureId = toiture?.id
   const contourServeur = toiture?.contour_local_m
@@ -929,6 +985,9 @@ function AtelierToiture({ toiture, selecteur, onEnregistre }) {
         chaînes de cotes ET les zones de la boîte à outils, en une seule
         écriture (PV53/PV56).
       </p>
+      {toitureId != null && (
+        <PresetToitureSelector toitureId={toitureId} onApplique={onEnregistre} />
+      )}
       <TableauGeometrie
         points={points}
         obstacles={obstacles}

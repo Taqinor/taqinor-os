@@ -53,6 +53,17 @@ function renderComposer(props = {}) {
 describe('Composer (S16)', () => {
   beforeEach(() => vi.clearAllMocks())
 
+  // WIR259 — les deux actions étaient écrites/testées isolément mais jamais
+  // montées dans le composer réel.
+  it('monte les actions « partager un enregistrement » et note vocale (WIR259)', () => {
+    renderComposer()
+    expect(screen.getByRole('button', { name: 'Partager un enregistrement' })).toBeInTheDocument()
+    // VoiceRecorder se masque lui-même en environnement de test (jsdom n'a
+    // pas MediaRecorder) : ce n'est PAS une régression, `isRecordingSupported()`
+    // renvoie false et le composant rend `null` volontairement.
+    expect(screen.queryByRole('button', { name: /note vocale|enregistrer|micro/i })).toBeNull()
+  })
+
   it('taper @ affiche le sélecteur de membres', async () => {
     renderComposer()
     await userEvent.type(screen.getByLabelText('Message'), 'cc @sa')

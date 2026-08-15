@@ -53,7 +53,13 @@ vi.mock('../../../api/aoApi', () => ({
       update: mocks.toituresUpdate,
       // PVG1 — analyse DXF réelle (multipart), route hors routeur DRF.
       analyserDxf: mocks.toituresAnalyserDxf,
+      // WIR207 — sélecteur de preset de l'atelier (PresetToitureSelector).
+      appliquerPreset: vi.fn(),
     },
+    // WIR207 — le sélecteur de preset liste `presets-calepinage` via la
+    // façade bibliothèque au montage de l'onglet Géométrie : sans bouchon,
+    // TOUT l'atelier plante (`aoApi.bibliotheque` serait `undefined`).
+    bibliotheque: { list: () => Promise.resolve({ data: [] }) },
     batiments: { list: mocks.batimentsList },
     // PV53 — obstacles/chaînes de cotes, désormais persistés par l'atelier
     // (diff create/update/delete + hydratation à l'ouverture).

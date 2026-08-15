@@ -66,8 +66,11 @@ const veilleAoApi = {
   // ── AcheteurCible — le carnet de démarchage (VAO29) ──
   acheteursCibles: crud('acheteurs-cibles'),
 
-  // ── ExecutionCollecte — le journal d'exécution (VAO24) ──
-  executions: crud('executions'),
+  // WIR269 — `executions` (ExecutionCollecte, VAO24) a été retiré : export
+  // CRUD sans le moindre appelant dans tout `frontend/src/` (le journal
+  // d'exécution est déjà lu via `sante()`, l'agrégat unique VAO24/35/37 ci-
+  // dessous). Un wrapper sans appelant est une DEUXIÈME source de vérité qui
+  // peut diverger de la route réelle sans qu'aucun test ne le voie.
 
   // ── Déclenchement manuel (VAO23) — LE MÊME job que le beat de nuit. ──
   collecte: {

@@ -1,7 +1,13 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useSelector } from 'react-redux'
-import { Search, Plus, Hash, BellOff, Moon, Smile, X, MessagesSquare, Bookmark } from 'lucide-react'
-import { Avatar, AvatarFallback, Badge, Input, initials } from '../../ui'
+import {
+  Search, Plus, Hash, BellOff, Bell, Moon, Smile, X, MessagesSquare, Bookmark,
+  MoreVertical, Archive,
+} from 'lucide-react'
+import {
+  Avatar, AvatarFallback, Badge, Input, initials,
+  DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem,
+} from '../../ui'
 import { cn } from '../../lib/cn'
 import messagesApi from '../../api/messagesApi'
 import { selectConversations, selectActiveId } from './store/messagingSlice'
@@ -214,10 +220,59 @@ function FavorisList({ onSelect }) {
   )
 }
 
+// WIR260 — recherche plein-texte SERVEUR (`messagesApi.search`), distincte du
+// filtre local (titre/aperçu) sur `conversations` déjà chargées : la
+// recherche serveur porte sur le CORPS des messages, toutes conversations
+// confondues. Débounce 300 ms ; une erreur réseau laisse le filtre local
+// intact (dégradation silencieuse — la section « Messages » disparaît, la
+// liste des conversations reste utilisable).
+function useRechercheMessages(query) {
+  const [resultats, setResultats] = useState([])
+  const [enErreur, setEnErreur] = useState(false)
+
+  useEffect(() => {
+    const q = query.trim()
+    if (q.length < 2) { setResultats([]); setEnErreur(false); return undefined }
+    let actif = true
+    const t = setTimeout(() => {
+      messagesApi.search(q)
+        .then((res) => { if (actif) { setResultats(res.data || []); setEnErreur(false) } })
+        .catch(() => { if (actif) { setResultats([]); setEnErreur(true) } })
+    }, 300)
+    return () => { actif = false; clearTimeout(t) }
+  }, [query])
+
+  return { resultats, enErreur }
+}
+
 export default function ConversationList({ onSelect, onNew, currentUserId }) {
   const conversations = useSelector(selectConversations)
   const activeId = useSelector(selectActiveId)
   const [query, setQuery] = useState('')
+  // WIR260 — état optimiste local (mute/archive) : ni Files: ni le contrat de
+  // cette tâche ne touchent `messagingSlice.js` — le rendu réconcilie l'état
+  // serveur connu (`c.muted`) avec ces deux overrides locaux.
+  const [muteOverrides, setMuteOverrides] = useState({}) // { [id]: bool }
+  const [archives, setArchives] = useState(new Set())
+  const { resultats: resultatsMessages, enErreur: rechercheEnErreur } = useRechercheMessages(query)
+
+  const toggleMute = async (conv) => {
+    const cible = !(muteOverrides[conv.id] ?? conv.muted)
+    setMuteOverrides((m) => ({ ...m, [conv.id]: cible }))
+    try {
+      await messagesApi.muteConversation(conv.id, cible)
+    } catch {
+      // Repli : l'appel a échoué, on annule l'optimisme.
+      setMuteOverrides((m) => ({ ...m, [conv.id]: !cible }))
+    }
+  }
+
+  const archiver = async (conv) => {
+    try {
+      await messagesApi.archiveConversation(conv.id)
+      setArchives((s) => new Set(s).add(conv.id))
+    } catch { /* la ligne reste affichée : rien à faire de plus, aucun état à annuler */ }
+  }
   // WIR155 — bascule Discussions / Fils / Favoris (mêmes props `onSelect`
   // que la liste de conversations : ouvrir un fil/favori ouvre SA
   // conversation, sans nouvelle route ni prop remontée à ChatPage).
@@ -243,14 +298,16 @@ export default function ConversationList({ onSelect, onNew, currentUserId }) {
   }
 
   const filtered = useMemo(() => {
+    // WIR260 — une conversation archivée disparaît de la liste (optimiste).
+    const visibles = conversations.filter((c) => !archives.has(c.id))
     const q = query.trim().toLowerCase()
-    if (!q) return conversations
-    return conversations.filter((c) => {
+    if (!q) return visibles
+    return visibles.filter((c) => {
       const title = conversationTitle(c, currentUserId).toLowerCase()
       const preview = lastPreview(c).toLowerCase()
       return title.includes(q) || preview.includes(q)
     })
-  }, [conversations, query, currentUserId])
+  }, [conversations, query, currentUserId, archives])
 
   return (
     <div className="flex h-full flex-col" data-testid="conversation-list">
@@ -316,6 +373,31 @@ export default function ConversationList({ onSelect, onNew, currentUserId }) {
         </button>
       </div>
 
+      {/* WIR260 — section « Messages » : recherche plein-texte SERVEUR
+          (le corps des messages, toutes conversations confondues), distincte
+          du filtre local ci-dessus. Absente en dessous de 2 caractères ou si
+          le serveur ne renvoie rien ; une erreur réseau la masque simplement
+          (le filtre local reste, lui, pleinement utilisable). */}
+      {query.trim().length >= 2 && !rechercheEnErreur && resultatsMessages.length > 0 && (
+        <div className="border-b border-border">
+          <p className="px-3 pt-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Messages</p>
+          <ul className="max-h-48 overflow-y-auto" role="list" aria-label="Résultats de messages">
+            {resultatsMessages.map((r) => (
+              <li key={r.message_id}>
+                <button
+                  type="button"
+                  onClick={() => onSelect?.(r.conversation)}
+                  className="flex w-full flex-col items-start gap-0.5 border-b border-border/60 px-3 py-2 text-left transition-colors hover:bg-muted/50"
+                >
+                  <span className="truncate text-xs font-medium text-foreground">{r.conversation_name}</span>
+                  <span className="line-clamp-2 text-xs text-muted-foreground">{r.snippet}</span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
       <ul className="flex-1 overflow-y-auto" role="list">
         {filtered.length === 0 ? (
           <li className="px-3 py-6 text-center text-sm text-muted-foreground">Aucune conversation</li>
@@ -326,8 +408,11 @@ export default function ConversationList({ onSelect, onNew, currentUserId }) {
             const unread = c.unread_count || 0
             const isActive = c.id === activeId
             const peer = peerStatus(c)
+            // WIR260 — l'override optimiste local prime sur `c.muted` tant
+            // que l'utilisateur ne l'a pas rechargée depuis le serveur.
+            const muted = muteOverrides[c.id] ?? c.muted
             return (
-              <li key={c.id}>
+              <li key={c.id} className="group flex items-stretch">
                 <button
                   type="button"
                   onClick={() => onSelect?.(c.id)}
@@ -354,7 +439,7 @@ export default function ConversationList({ onSelect, onNew, currentUserId }) {
                           <span aria-label="Statut du collègue" className="shrink-0">{peer.status_emoji}</span>
                         )}
                         {title}
-                        {c.muted && (
+                        {muted && (
                           <BellOff size={12} aria-label="Notifications coupées"
                                    className="shrink-0 text-muted-foreground" />
                         )}
@@ -378,6 +463,28 @@ export default function ConversationList({ onSelect, onNew, currentUserId }) {
                     </span>
                   </span>
                 </button>
+                {/* WIR260 — mute/archive : menu kebab, jamais un champ mort. */}
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <button
+                      type="button"
+                      aria-label={`Actions — ${title}`}
+                      className="flex shrink-0 items-center justify-center border-b border-border/60 px-1.5 text-muted-foreground opacity-0 transition-opacity hover:bg-muted hover:text-foreground focus-ring group-hover:opacity-100 focus-visible:opacity-100"
+                    >
+                      <MoreVertical size={16} aria-hidden="true" />
+                    </button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuItem onSelect={() => toggleMute(c)}>
+                      {muted
+                        ? <><Bell size={14} aria-hidden="true" /> Réactiver</>
+                        : <><BellOff size={14} aria-hidden="true" /> Sourdine</>}
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onSelect={() => archiver(c)}>
+                      <Archive size={14} aria-hidden="true" /> Archiver
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
               </li>
             )
           })
