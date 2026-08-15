@@ -1,9 +1,9 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
-import { Check, X, ClipboardCheck, AlertTriangle, PlusCircle, RefreshCw } from 'lucide-react'
+import { Check, X, ClipboardCheck, AlertTriangle, PlusCircle, RefreshCw, Rocket } from 'lucide-react'
 import adsengineApi from './adsengineApi'
 import {
   actionTypeLabel, budgetDiff, actionCreative, formatMAD, REJECTION_REASONS,
-  actionWarnings, editCopyDiff, emptyGrid,
+  actionWarnings, editCopyDiff, emptyGrid, actionResultKey,
 } from './adsengine'
 import EditCopyComposer from './EditCopyComposer'
 // WIR63 — grille dayparting (ADSDEEP36), montée dans ManualActionComposer.jsx
@@ -141,17 +141,58 @@ export default function ApprovalsScreen() {
     })
   }, [commitActions])
 
+  // WIR208 — approuver ne RETIRE plus la carte : approuver n'est qu'une
+  // autorisation, rien n'est parti chez Meta. La carte reste, en statut
+  // « Approuvée », avec le bouton « Appliquer » — et ne quitte la boîte
+  // qu'au statut `appliquee` renvoyé par le serveur.
+  const mergeAction = useCallback((id, patch) => {
+    commitActions(actionsRef.current.map(a => (a.id === id
+      ? { ...a, ...patch, type: (patch.type ?? patch.kind ?? a.type) }
+      : a)))
+  }, [commitActions])
+
   const approve = useCallback(async (id) => {
     setBusy(true); setErr('')
     try {
-      await adsengineApi.actions.approve(id)
-      removeApplied([id])
+      const res = await adsengineApi.actions.approve(id)
+      const data = (res?.data && typeof res.data === 'object') ? res.data : {}
+      // Statut du SERVEUR ; repli `approuvee` puisque l'appel a réussi.
+      mergeAction(id, { ...data, status: data.status || 'approuvee' })
     } catch {
       setErr("Approbation refusée (permission ?). L'action reste dans la boîte.")
     } finally {
       setBusy(false)
     }
-  }, [removeApplied])
+  }, [mergeAction])
+
+  // WIR208 — APPLIQUER : le seul geste qui atteint réellement Meta.
+  const applyAction = useCallback(async (id) => {
+    setBusy(true); setErr('')
+    try {
+      const res = await adsengineApi.actions.apply(id)
+      const data = (res?.data && typeof res.data === 'object') ? res.data : {}
+      const status = String(data.status || 'appliquee').toLowerCase()
+      if (status.startsWith('appliqu')) {
+        removeApplied([id])
+      } else {
+        mergeAction(id, data)
+        setErr("L'action n'a pas été appliquée : elle reste dans la boîte.")
+      }
+    } catch (e) {
+      const code = e?.response?.status
+      if (code === 409) {
+        setErr("Cette action n'est pas approuvée : approuvez-la avant de "
+          + "l'appliquer. Rien n'a été envoyé à Meta.")
+      } else if (code === 502) {
+        setErr("Meta a refusé l'application de cette action. Elle reste dans "
+          + 'la boîte — corrigez puis réessayez.')
+      } else {
+        setErr("Application impossible. L'action reste dans la boîte.")
+      }
+    } finally {
+      setBusy(false)
+    }
+  }, [mergeAction, removeApplied])
 
   const openReject = useCallback((id) => {
     setRejectingId(id)
@@ -207,7 +248,13 @@ export default function ApprovalsScreen() {
         // le raccourci clavier ne doit pas contourner la permission.
         if (!canApprove) return
         const current = liste[focusedIndexRef.current]
-        if (current) { e.preventDefault(); approve(current.id) }
+        if (current) {
+          e.preventDefault()
+          // WIR208 — sur une carte DÉJÀ approuvée, « a » applique (le geste
+          // qui reste) au lieu de ré-approuver et de récolter un 400.
+          if (actionResultKey(current) === 'approuve') applyAction(current.id)
+          else approve(current.id)
+        }
       } else if (key === 'r') {
         // PUB10 — même garde que le bouton Rejeter.
         if (!canApprove) return
@@ -217,7 +264,7 @@ export default function ApprovalsScreen() {
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [moveFocus, approve, openReject, canApprove])
+  }, [moveFocus, approve, applyAction, openReject, canApprove])
 
   const confirmReject = async (id) => {
     setBusy(true); setErr('')
@@ -244,8 +291,14 @@ export default function ApprovalsScreen() {
     if (ids.length === 0) return
     setBusy(true); setErr('')
     try {
-      await Promise.all(ids.map(id => adsengineApi.actions.approve(id)))
-      removeApplied(ids)
+      const results = await Promise.all(
+        ids.map(id => adsengineApi.actions.approve(id)))
+      // WIR208 — même règle qu'à l'unité : approuvées, pas appliquées.
+      ids.forEach((id, i) => {
+        const data = (results[i]?.data && typeof results[i].data === 'object')
+          ? results[i].data : {}
+        mergeAction(id, { ...data, status: data.status || 'approuvee' })
+      })
     } catch {
       setErr("Une partie de la sélection n'a pu être approuvée.")
       load()
@@ -462,22 +515,36 @@ export default function ApprovalsScreen() {
                             PUB56 — cibles tactiles ≥44px (min-height/width
                             explicites, au-delà du min-height 36px de .btn). */}
                         <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.75rem', flexWrap: 'wrap' }}>
-                          <button type="button" className="btn btn-success ae-approve"
-                            data-testid={`ae-approve-${a.id}`} disabled={busy || !canApprove}
-                            title={!canApprove ? "Nécessite la permission d'approbation (adsengine_approve)." : undefined}
-                            onClick={() => approve(a.id)}
-                            style={{ display: 'inline-flex', alignItems: 'center', gap: '0.3rem',
-                              minHeight: 44, minWidth: 44, padding: '0.6rem 1.1rem' }}>
-                            <Check size={15} aria-hidden="true" /> Approuver
-                          </button>
-                          <button type="button" className="btn btn-danger-outline ae-reject"
-                            data-testid={`ae-reject-${a.id}`} disabled={busy || !canApprove}
-                            title={!canApprove ? "Nécessite la permission d'approbation (adsengine_approve)." : undefined}
-                            onClick={() => openReject(a.id)}
-                            style={{ display: 'inline-flex', alignItems: 'center', gap: '0.3rem',
-                              minHeight: 44, minWidth: 44, padding: '0.6rem 1.1rem' }}>
-                            <X size={15} aria-hidden="true" /> Rejeter
-                          </button>
+                          {/* WIR208 — une action APPROUVÉE n'offre plus
+                              Approuver/Rejeter : il lui reste exactement un
+                              geste, « Appliquer », le seul qui atteint Meta. */}
+                          {actionResultKey(a) === 'approuve' ? (
+                            <button type="button" className="btn btn-primary ae-apply"
+                              data-testid={`ae-apply-${a.id}`} disabled={busy || !canApprove}
+                              title={!canApprove ? "Nécessite la permission d'approbation (adsengine_approve)." : undefined}
+                              onClick={() => applyAction(a.id)}
+                              style={{ display: 'inline-flex', alignItems: 'center', gap: '0.3rem',
+                                minHeight: 44, minWidth: 44, padding: '0.6rem 1.1rem' }}>
+                              <Rocket size={15} aria-hidden="true" /> Appliquer
+                            </button>
+                          ) : (<>
+                            <button type="button" className="btn btn-success ae-approve"
+                              data-testid={`ae-approve-${a.id}`} disabled={busy || !canApprove}
+                              title={!canApprove ? "Nécessite la permission d'approbation (adsengine_approve)." : undefined}
+                              onClick={() => approve(a.id)}
+                              style={{ display: 'inline-flex', alignItems: 'center', gap: '0.3rem',
+                                minHeight: 44, minWidth: 44, padding: '0.6rem 1.1rem' }}>
+                              <Check size={15} aria-hidden="true" /> Approuver
+                            </button>
+                            <button type="button" className="btn btn-danger-outline ae-reject"
+                              data-testid={`ae-reject-${a.id}`} disabled={busy || !canApprove}
+                              title={!canApprove ? "Nécessite la permission d'approbation (adsengine_approve)." : undefined}
+                              onClick={() => openReject(a.id)}
+                              style={{ display: 'inline-flex', alignItems: 'center', gap: '0.3rem',
+                                minHeight: 44, minWidth: 44, padding: '0.6rem 1.1rem' }}>
+                              <X size={15} aria-hidden="true" /> Rejeter
+                            </button>
+                          </>)}
                         </div>
 
                         {/* Motif de rejet STRUCTURÉ (select — jamais du texte libre) */}

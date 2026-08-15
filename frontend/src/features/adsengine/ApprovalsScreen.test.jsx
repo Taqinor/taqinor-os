@@ -10,6 +10,7 @@ import { MemoryRouter } from 'react-router-dom'
 const mocks = vi.hoisted(() => ({
   pending: vi.fn(),
   approve: vi.fn(),
+  apply: vi.fn(),
   reject: vi.fn(),
   create: vi.fn(),
   // PUB10 — permissions effectives ; pleines par défaut (préserve le
@@ -21,7 +22,7 @@ vi.mock('./adsengineApi', () => ({
   default: {
     actions: {
       pending: mocks.pending, approve: mocks.approve, reject: mocks.reject,
-      create: mocks.create,
+      apply: mocks.apply, create: mocks.create,
     },
     // PUB48 — cloche de la console (AlertCenter), historique vide par défaut :
     // hors périmètre de ce fichier, mais montée sur l'écran (import réel).
@@ -56,7 +57,8 @@ const ACTIONS = [
 beforeEach(() => {
   vi.clearAllMocks()
   mocks.pending.mockResolvedValue({ data: ACTIONS })
-  mocks.approve.mockResolvedValue({ data: {} })
+  mocks.approve.mockResolvedValue({ data: { status: 'approuvee' } })
+  mocks.apply.mockResolvedValue({ data: { status: 'appliquee' } })
   mocks.reject.mockResolvedValue({ data: {} })
   mocks.create.mockResolvedValue({ data: { id: 100 } })
   mocks.permissions = ['adsengine_approve', 'adsengine_manage']
@@ -77,13 +79,50 @@ describe('ApprovalsScreen (ENG25)', () => {
     expect(screen.getByAltText('Reel toiture v2')).toBeInTheDocument()
   })
 
-  it('approuver appelle l\'API et l\'action QUITTE la boîte', async () => {
+  it('WIR208 — approuver n\'applique RIEN : la carte reste, avec « Appliquer »', async () => {
     renderScreen()
     await waitFor(() => expect(mocks.pending).toHaveBeenCalled())
     fireEvent.click(screen.getByTestId('ae-approve-11'))
     await waitFor(() => expect(mocks.approve).toHaveBeenCalledWith(11))
-    await waitFor(() => expect(screen.getAllByTestId('ae-action-card')).toHaveLength(2))
+    // La carte NE quitte PAS la boîte : rien n'est encore parti chez Meta.
+    await waitFor(() => expect(screen.getByTestId('ae-apply-11')).toBeInTheDocument())
+    expect(screen.getAllByTestId('ae-action-card')).toHaveLength(3)
     expect(screen.queryByTestId('ae-approve-11')).toBeNull()
+    expect(mocks.apply).not.toHaveBeenCalled()
+  })
+
+  it('WIR208 — « Appliquer » POSTe apply/ et la carte quitte la boîte au statut appliquee', async () => {
+    renderScreen()
+    await waitFor(() => expect(mocks.pending).toHaveBeenCalled())
+    fireEvent.click(screen.getByTestId('ae-approve-11'))
+    const apply = await screen.findByTestId('ae-apply-11')
+    fireEvent.click(apply)
+    await waitFor(() => expect(mocks.apply).toHaveBeenCalledWith(11))
+    await waitFor(() => expect(screen.getAllByTestId('ae-action-card')).toHaveLength(2))
+    expect(screen.queryByTestId('ae-apply-11')).toBeNull()
+  })
+
+  it('WIR208 — 502 Meta : message FR et l\'action NE disparaît PAS', async () => {
+    mocks.apply.mockRejectedValue({ response: { status: 502 } })
+    renderScreen()
+    await waitFor(() => expect(mocks.pending).toHaveBeenCalled())
+    fireEvent.click(screen.getByTestId('ae-approve-11'))
+    fireEvent.click(await screen.findByTestId('ae-apply-11'))
+    await waitFor(() => expect(mocks.apply).toHaveBeenCalledWith(11))
+    expect(await screen.findByText(/Meta a refusé/)).toBeInTheDocument()
+    expect(screen.getByTestId('ae-apply-11')).toBeInTheDocument()
+    expect(screen.getAllByTestId('ae-action-card')).toHaveLength(3)
+  })
+
+  it('WIR208 — 409 non approuvée : message FR explicite, rien envoyé à Meta', async () => {
+    mocks.apply.mockRejectedValue({ response: { status: 409 } })
+    renderScreen()
+    await waitFor(() => expect(mocks.pending).toHaveBeenCalled())
+    fireEvent.click(screen.getByTestId('ae-approve-11'))
+    fireEvent.click(await screen.findByTestId('ae-apply-11'))
+    await waitFor(() => expect(mocks.apply).toHaveBeenCalledWith(11))
+    expect(await screen.findByText(/n'est pas approuvée/)).toBeInTheDocument()
+    expect(screen.getByTestId('ae-apply-11')).toBeInTheDocument()
   })
 
   it('rejeter est STRUCTURÉ (motif via select, jamais de chat) et retire l\'action', async () => {
@@ -113,9 +152,11 @@ describe('ApprovalsScreen (ENG25)', () => {
     expect(mocks.approve).toHaveBeenCalledWith(11)
     expect(mocks.approve).toHaveBeenCalledWith(13)
     expect(mocks.approve).not.toHaveBeenCalledWith(12)
-    // Seule l'action non cochée (12) reste dans la boîte.
-    await waitFor(() => expect(screen.getAllByTestId('ae-action-card')).toHaveLength(1))
-    expect(within(screen.getByTestId('ae-action-card')).getByTestId('ae-approve-12')).toBeInTheDocument()
+    // WIR208 — les 2 approuvées attendent « Appliquer » ; seule 12 reste à approuver.
+    await waitFor(() => expect(screen.getByTestId('ae-apply-11')).toBeInTheDocument())
+    expect(screen.getByTestId('ae-apply-13')).toBeInTheDocument()
+    expect(screen.getByTestId('ae-approve-12')).toBeInTheDocument()
+    expect(screen.queryByTestId('ae-apply-12')).toBeNull()
   })
 
   it('boîte vide → message dédié', async () => {

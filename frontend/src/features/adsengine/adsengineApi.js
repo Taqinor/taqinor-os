@@ -119,6 +119,11 @@ const adsengineApi = {
     // @action backend EN : approve / reject (ADSENGINT1).
     approve: (id) => api.post(`/adsengine/actions/${id}/approve/`),
     reject: (id, payload) => api.post(`/adsengine/actions/${id}/reject/`, payload),
+    // WIR208 — APPLIQUER : la seule étape qui touche réellement Meta. Approuver
+    // ne fait qu'autoriser ; sans cet appel une action approuvée n'était JAMAIS
+    // appliquée (l'écran la retirait de la boîte et rien ne partait).
+    // 409 = pas approuvée ; 502 = échec Meta (l'action passe « echouee »).
+    apply: (id) => api.post(`/adsengine/actions/${id}/apply/`),
     // PUB22 — proposition d'action CURÉE (duplicate/set_schedule/create_ad_study)
     // via le producteur backend (résolution + validation) ; les kinds simples
     // passent par `create` ({kind, reason_fr, payload}). Tout finit en
