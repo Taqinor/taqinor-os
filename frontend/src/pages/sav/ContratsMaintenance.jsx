@@ -7,13 +7,15 @@
 import { useEffect, useMemo, useState } from 'react'
 import {
   Download, Cog, Plus, CalendarClock, ClipboardList, AlertTriangle, Pencil,
-  Check, X,
+  Check, X, Route,
 } from 'lucide-react'
 import savApi from '../../api/savApi'
 import { formatMAD } from '../../lib/format'
 import crmApi from '../../api/crmApi'
 import installationsApi from '../../api/installationsApi'
+import api from '../../api/axios'
 import { openPdfBlob } from '../../utils/pdfBlob'
+import { frenchError } from '../../lib/frenchError'
 import {
   TooltipProvider,
   Button,
@@ -89,7 +91,7 @@ export function Component() {
   const [installations, setInstallations] = useState([])
   const [equipements, setEquipements] = useState([]) // WIR120 — registre couvert
   const [preventifs, setPreventifs] = useState([]) // L327 — tickets préventifs
-  const [vue, setVue] = useState('tous') // 'tous' | 'dus' | 'renouveler'
+  const [vue, setVue] = useState('tous') // 'tous' | 'dus' | 'renouveler' | 'tournee'
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState(false) // L329 — vide vs erreur
   // WIR120 — valeurs par défaut des champs « Avancé » (tous optionnels ;
@@ -231,6 +233,61 @@ export function Component() {
       savApi.getTickets({ type: 'preventif', ouvert: 'tous' })
         .then((r) => setPreventifs(r.data.results ?? r.data ?? [])).catch(() => {})
     } catch { toast.error('Génération impossible.') }
+  }
+
+  // WIR230/FG88 — 4e vue « Tournée » : ordonnancement GPS (serveur) + case à
+  // cocher par visite + affectation en lot (date + technicien). Chargée
+  // uniquement quand la vue est active (jamais au montage de l'écran).
+  const [tournee, setTournee] = useState([])
+  const [tourneeLoading, setTourneeLoading] = useState(false)
+  const [tourneeError, setTourneeError] = useState('')
+  const [tourneeSelection, setTourneeSelection] = useState([])
+  const [tourneeDate, setTourneeDate] = useState('')
+  const [tourneeTechnicien, setTourneeTechnicien] = useState('')
+  const [tourneeUsers, setTourneeUsers] = useState([])
+  const [tourneePlanifiant, setTourneePlanifiant] = useState(false)
+
+  const chargerTournee = () => {
+    setTourneeLoading(true)
+    setTourneeError('')
+    return savApi.getTourneePreventive()
+      .then((r) => {
+        const rows = r.data?.results ?? r.data ?? []
+        setTournee(rows)
+        setTourneeSelection((sel) => sel.filter((id) => rows.some((row) => row.id === id)))
+      })
+      .catch((err) => setTourneeError(frenchError(err, 'Impossible de charger la tournée.')))
+      .finally(() => setTourneeLoading(false))
+  }
+
+  useEffect(() => {
+    if (vue !== 'tournee') return
+    chargerTournee()
+    api.get('/users/').then((r) => setTourneeUsers(r.data?.results ?? r.data ?? [])).catch(() => {})
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [vue])
+
+  const toggleTourneeSelection = (id) => setTourneeSelection((sel) => (
+    sel.includes(id) ? sel.filter((x) => x !== id) : [...sel, id]
+  ))
+
+  const planifierTournee = async () => {
+    if (!tourneeSelection.length || !tourneeDate) return
+    setTourneePlanifiant(true)
+    try {
+      await savApi.planifierTournee({
+        ticket_ids: tourneeSelection,
+        date_tournee: tourneeDate,
+        technicien_id: tourneeTechnicien || null,
+      })
+      toast.success('Tournée planifiée.')
+      setTourneeSelection([])
+      chargerTournee()
+    } catch (err) {
+      toast.error(frenchError(err, 'Impossible de planifier la tournée.'))
+    } finally {
+      setTourneePlanifiant(false)
+    }
   }
 
   const columns = [
@@ -393,6 +450,7 @@ export function Component() {
                 { value: 'tous', label: 'Tous' },
                 { value: 'dus', label: 'À venir (dus)' },
                 { value: 'renouveler', label: 'À renouveler' },
+                { value: 'tournee', label: 'Tournée' },
               ]}
             />
             <Button variant="outline" size="sm" onClick={generer}>
@@ -401,7 +459,89 @@ export function Component() {
           </div>
         </header>
 
+        {/* WIR230/FG88 — vue « Tournée » : ordonnancement GPS serveur (proximité)
+            + affectation en lot (date + technicien). Écran distinct des autres
+            vues (pas de formulaire de création ni de DataTable des contrats ici). */}
+        {vue === 'tournee' && (
+          <Card className="p-4">
+            <div className="mb-3 flex items-center justify-between">
+              <h2 className="flex items-center gap-2 text-base font-semibold">
+                <Route className="size-4" aria-hidden="true" /> Tournée de visites préventives
+              </h2>
+              <span className="text-sm text-muted-foreground">
+                {tournee.length} visite{tournee.length > 1 ? 's' : ''} due{tournee.length > 1 ? 's' : ''}
+              </span>
+            </div>
+
+            {tourneeError && (
+              <div role="alert"
+                   className="mb-3 flex items-center gap-2 rounded-lg border border-destructive/30 bg-destructive/10 p-2.5 text-sm text-destructive">
+                <AlertTriangle className="size-4 shrink-0" aria-hidden="true" />
+                {tourneeError}
+              </div>
+            )}
+
+            {tourneeLoading ? (
+              <div className="space-y-2">
+                {Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-9 w-full" />)}
+              </div>
+            ) : tournee.length === 0 ? (
+              <EmptyState
+                icon={Route}
+                title="Aucune visite due"
+                description="Aucun ticket préventif ouvert pour le moment."
+              />
+            ) : (
+              <ul className="mb-4 flex flex-col gap-1.5" data-testid="tournee-liste">
+                {tournee.map((t) => (
+                  <li key={t.id} className="flex items-center gap-2 rounded-md border border-border p-2 text-sm">
+                    <Checkbox
+                      checked={tourneeSelection.includes(t.id)}
+                      onCheckedChange={() => toggleTourneeSelection(t.id)}
+                      aria-label={`Sélectionner la visite ${t.reference ?? t.id}`}
+                    />
+                    <span className="font-medium">{t.reference ?? `#${t.id}`}</span>
+                    <span className="text-muted-foreground">{t.client_nom ?? '—'}</span>
+                    {t.distance_km != null && (
+                      <Badge tone="neutral">{t.distance_km} km</Badge>
+                    )}
+                    {t.date_tournee && (
+                      <Badge tone="success">déjà planifiée le {formatDateFR(t.date_tournee)}</Badge>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            )}
+
+            <div className="flex flex-wrap items-end gap-3">
+              <FormField label="Date de tournée">
+                <Input type="date" value={tourneeDate}
+                       onChange={(e) => setTourneeDate(e.target.value)} />
+              </FormField>
+              <FormField label="Technicien" hint="optionnel">
+                <Select value={tourneeTechnicien ? String(tourneeTechnicien) : '__none'}
+                        onValueChange={(v) => setTourneeTechnicien(v === '__none' ? '' : v)}>
+                  <SelectTrigger><SelectValue placeholder="— Technicien —" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none">— Technicien —</SelectItem>
+                    {tourneeUsers.map((u) => (
+                      <SelectItem key={u.id} value={String(u.id)}>{u.username}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </FormField>
+              <Button
+                onClick={planifierTournee}
+                disabled={!tourneeSelection.length || !tourneeDate || tourneePlanifiant}
+              >
+                <CalendarClock /> {tourneePlanifiant ? 'Planification…' : `Planifier (${tourneeSelection.length})`}
+              </Button>
+            </div>
+          </Card>
+        )}
+
         {/* ── Création ── */}
+        {vue !== 'tournee' && (
         <Card className="p-4">
           <Form onSubmit={(e) => { e.preventDefault(); create() }}
                 className="grid items-end gap-3 sm:grid-cols-[2fr_1fr_1fr_1fr] lg:grid-cols-[2fr_1fr_1fr_1fr_1fr_1fr_auto]">
@@ -534,8 +674,9 @@ export function Component() {
             </div>
           )}
         </Card>
+        )}
 
-        {loading ? (
+        {vue !== 'tournee' && (loading ? (
           // L329 — état de chargement explicite.
           <Card className="space-y-2 p-4">
             {Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-9 w-full" />)}
@@ -568,7 +709,7 @@ export function Component() {
             exportName="contrats-maintenance"
             emptyTitle="Aucun contrat"
           />
-        )}
+        ))}
 
         {/* L675 — choix de la date de visite avant téléchargement du rapport. */}
         <Dialog open={!!pdfDialog} onOpenChange={(o) => { if (!o) setPdfDialog(null) }}>
