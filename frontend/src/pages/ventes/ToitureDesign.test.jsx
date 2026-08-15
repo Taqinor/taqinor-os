@@ -15,7 +15,10 @@ import { exempleContrat, reponseContrat } from '../../test/fixtures/contractSamp
    rester strictement inchangé — même appels, même hydratation, même bouton. */
 
 vi.mock('../../api/axios', () => ({
-  default: { get: vi.fn(), post: vi.fn() },
+  default: { get: vi.fn(), post: vi.fn(), patch: vi.fn() },
+}))
+vi.mock('../../api/crmApi', () => ({
+  default: { getRoofFootprint: vi.fn() },
 }))
 vi.mock('../../api/ventesApi', () => ({
   default: {
@@ -51,6 +54,7 @@ vi.mock('@roofbuilder', () => ({ initRoofToolPro8: (...a) => initRoofToolPro8(..
 import userEvent from '@testing-library/user-event'
 import api from '../../api/axios'
 import ventesApi from '../../api/ventesApi'
+import crmApi from '../../api/crmApi'
 import { toastInfo } from '../../lib/toast'
 import ToitureDesign from './ToitureDesign'
 
@@ -355,5 +359,110 @@ describe('ToitureDesign — mode lead GOLDEN (inchangé par PV20)', () => {
     expect(screen.getByRole('button',
       { name: /Générer le devis & envoyer au client/ })).toBeInTheDocument()
     expect(screen.queryByTestId('pv20-lecture-seule')).toBeNull()
+  })
+})
+
+/* WIR227/QJ25 — le contour OSM du bâtiment épinglé (endpoint dédié,
+   `apps/crm/roof_views.py`) hydrate le builder quand le lead n'a pas encore
+   de contour utilisable (< 3 sommets), sans jamais casser le tracé manuel. */
+describe('ToitureDesign — WIR227/QJ25 : contour OSM du bâtiment épinglé', () => {
+  function mockLeadEtCarte(lead) {
+    api.get.mockImplementation((url) => {
+      if (url.startsWith('/crm/leads/')) return Promise.resolve({ data: lead })
+      if (url === '/ventes/roof-config/') {
+        return Promise.resolve({ data: { available: true, maptilerKey: 'k-lead' } })
+      }
+      return Promise.reject(new Error(`URL inattendue ${url}`))
+    })
+  }
+
+  it('hydrate le builder avec le polygone OSM quand le lead a un repère mais pas de contour', async () => {
+    const lead = {
+      id: 91, nom: 'Idrissi', prenom: 'Sara', ville: 'Rabat',
+      roof_point: { lat: 34.0, lng: -6.8 }, roof_outline: null, bill_kwh: 3600,
+    }
+    mockLeadEtCarte(lead)
+    crmApi.getRoofFootprint.mockResolvedValue({
+      data: { polygon: [{ lat: 34.001, lng: -6.801 }, { lat: 34.002, lng: -6.802 }, { lat: 34.003, lng: -6.803 }], source: 'osm' },
+    })
+
+    render(
+      <MemoryRouter initialEntries={['/devis-design/91']}>
+        <Routes><Route path="/devis-design/:id" element={<ToitureDesign />} /></Routes>
+      </MemoryRouter>,
+    )
+
+    await waitFor(() => expect(initRoofToolPro8).toHaveBeenCalled())
+    expect(crmApi.getRoofFootprint).toHaveBeenCalledWith('91')
+    const options = initRoofToolPro8.mock.calls[0][0]
+    expect(options.hydrate.lead.roof_outline).toEqual([
+      [34.001, -6.801], [34.002, -6.802], [34.003, -6.803],
+    ])
+    // Aucun message d'échec affiché : le bâtiment a été trouvé.
+    expect(screen.queryByTestId('wir227-footprint-message')).toBeNull()
+  })
+
+  it("affiche le message serveur exact et une relance manuelle quand aucun bâtiment n'est trouvé", async () => {
+    const lead = {
+      id: 92, nom: 'Bennani', prenom: 'Omar', ville: 'Fès',
+      roof_point: { lat: 34.05, lng: -5.0 }, roof_outline: null, bill_kwh: 2000,
+    }
+    mockLeadEtCarte(lead)
+    crmApi.getRoofFootprint.mockResolvedValue({
+      data: { polygon: [], source: 'osm', message: 'Aucun bâtiment trouvé à cet emplacement — tracez le contour manuellement.' },
+    })
+
+    render(
+      <MemoryRouter initialEntries={['/devis-design/92']}>
+        <Routes><Route path="/devis-design/:id" element={<ToitureDesign />} /></Routes>
+      </MemoryRouter>,
+    )
+
+    await waitFor(() => expect(initRoofToolPro8).toHaveBeenCalled())
+    expect(await screen.findByTestId('wir227-footprint-message'))
+      .toHaveTextContent('Aucun bâtiment trouvé à cet emplacement — tracez le contour manuellement.')
+    // Le tracé manuel n'est jamais cassé : le builder a bien booté avec un
+    // contour vide, pas de blocage.
+    const options = initRoofToolPro8.mock.calls[0][0]
+    expect(options.hydrate.lead.roof_outline).toBeNull()
+
+    // Relance manuelle : cette fois un bâtiment est trouvé → le lead est mis
+    // à jour puis la page recharge (fenêtre stubée, pas de vraie navigation).
+    const reloadSpy = vi.fn()
+    const originalLocation = window.location
+    Object.defineProperty(window, 'location', {
+      value: { ...originalLocation, reload: reloadSpy }, writable: true, configurable: true,
+    })
+    crmApi.getRoofFootprint.mockResolvedValue({
+      data: { polygon: [{ lat: 34.06, lng: -5.01 }, { lat: 34.07, lng: -5.02 }, { lat: 34.08, lng: -5.03 }], source: 'osm' },
+    })
+    api.patch.mockResolvedValue({ data: {} })
+
+    await userEvent.click(screen.getByRole('button', { name: 'Relancer la détection du contour' }))
+
+    await waitFor(() => expect(api.patch).toHaveBeenCalledWith(
+      '/crm/leads/92/',
+      { roof_outline: [[34.06, -5.01], [34.07, -5.02], [34.08, -5.03]] },
+    ))
+    await waitFor(() => expect(reloadSpy).toHaveBeenCalled())
+  })
+
+  it('un contour déjà utilisable (≥ 3 sommets) ne déclenche aucun appel de détection', async () => {
+    const lead = {
+      id: 93, nom: 'Chraibi', prenom: 'Nadia', ville: 'Marrakech',
+      roof_point: { lat: 31.6, lng: -8.0 },
+      roof_outline: [[31.6, -8.0], [31.601, -8.001], [31.602, -8.002]],
+      bill_kwh: 1500,
+    }
+    mockLeadEtCarte(lead)
+
+    render(
+      <MemoryRouter initialEntries={['/devis-design/93']}>
+        <Routes><Route path="/devis-design/:id" element={<ToitureDesign />} /></Routes>
+      </MemoryRouter>,
+    )
+
+    await waitFor(() => expect(initRoofToolPro8).toHaveBeenCalled())
+    expect(crmApi.getRoofFootprint).not.toHaveBeenCalled()
   })
 })

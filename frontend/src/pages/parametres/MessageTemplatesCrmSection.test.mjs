@@ -32,3 +32,16 @@ test('LeadsSection monte MessageTemplatesCrmSection', () => {
   assert.match(LEADS_SRC, /import MessageTemplatesCrmSection from '\.\/MessageTemplatesCrmSection'/)
   assert.match(LEADS_SRC, /<MessageTemplatesCrmSection \/>/)
 })
+
+// WIR229 — l'aperçu SERVEUR (crmApi.renderMessageTemplate → POST render/)
+// n'était jamais câblé : le bouton « Aperçu » doit exister ET appeler
+// exactement cette méthode (jamais un rendu recalculé côté écran).
+test("bouton « Aperçu » appelle crmApi.renderMessageTemplate (WIR229)", () => {
+  assert.match(SRC, /crmApi\.renderMessageTemplate\(tpl\.id, APERCU_EXEMPLE\)/)
+  assert.match(SRC, /onClick=\{\(\) => voirApercu\(t\)\}/)
+  assert.match(SRC, /'Aperçu'/)
+})
+
+test('le texte affiché vient de la réponse serveur (res.data.texte), jamais recalculé', () => {
+  assert.match(SRC, /res\.data\?\.texte/)
+})

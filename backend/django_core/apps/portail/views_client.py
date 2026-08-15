@@ -199,3 +199,32 @@ class MesFacturesPortailViewSet(viewsets.ViewSet):
                 'rib': identite.get('rib', ''),
             },
         })
+
+
+class MesLivraisonsPortailViewSet(viewsets.ViewSet):
+    """WIR216/XSTK22 — « Mes livraisons » : lecture seule, scopée AU COMPTE
+    portail connecté (jamais un ``client_id`` accepté du corps/de la query —
+    contrairement à l'action interne ``installations.LivraisonViewSet.portail``
+    qui prend `?client=` et reste réservée aux rôles internes/monitoring).
+
+    Lit via ``apps.installations.selectors.livraisons_client_portail`` —
+    jamais un import direct de ``apps.installations.models`` (frontière
+    cross-app CLAUDE.md). Le sélecteur n'expose jamais ``cout_transport`` ni
+    de prix d'achat (contrat testé côté sélecteur)."""
+
+    permission_classes = [IsPortalClientUser]
+
+    def list(self, request):
+        from apps.installations.selectors import livraisons_client_portail
+        company, client_id = _scope(request)
+        return Response(
+            {'results': livraisons_client_portail(company, client_id)})
+
+    def retrieve(self, request, pk=None):
+        from apps.installations.selectors import livraisons_client_portail
+        company, client_id = _scope(request)
+        for ligne in livraisons_client_portail(company, client_id):
+            if str(ligne['id']) == str(pk):
+                return Response(ligne)
+        return Response({'detail': 'Introuvable.'},
+                        status=status.HTTP_404_NOT_FOUND)

@@ -23,6 +23,7 @@ import VoiceNoteRecorder from '../../features/offlinesync/VoiceNoteRecorder'
 import { fetchTickets, updateTicket } from '../../features/sav/store/ticketsSlice'
 import savApi from '../../api/savApi'
 import stockApi from '../../api/stockApi'
+import crmApi from '../../api/crmApi'
 import api from '../../api/axios'
 // NTMOB15 — scan QR/code-barres natif : sélectionne directement l'équipement
 // concerné au lieu d'une recherche manuelle dans la liste déroulante.
@@ -505,6 +506,89 @@ export function TicketDetail({ ticket, onClose, onSaved }) {
     savApi.getTicketPieces(id).then((r) => setPieces(r.data)).catch(() => {})
   }
 
+  // WIR232/ZMFG8/XMFG10 — vue unifiée Ajout/Retrait/Recyclage
+  // (`getTicketPiecesUnifiees`, jamais consommée jusqu'ici) + formulaire de
+  // retrait TRACÉ (rebut/RMA/stock occasion) — contrairement au bouton
+  // « Retirer » historique (ci-dessous) qui SUPPRIME la ligne de consommation
+  // sans aucune trace.
+  const [piecesUnifiees, setPiecesUnifiees] = useState({ lignes: [], sous_totaux: {} })
+  const loadPiecesUnifiees = () => {
+    savApi.getTicketPiecesUnifiees(id)
+      .then((r) => setPiecesUnifiees(r.data ?? { lignes: [], sous_totaux: {} }))
+      .catch(() => {})
+  }
+  const [retraitForm, setRetraitForm] = useState(
+    { produit: '', quantite: '1', destination: 'rebut', operation: 'retrait', numero_serie: '' })
+  const [retraitBusy, setRetraitBusy] = useState(false)
+  const [retraitError, setRetraitError] = useState(null)
+
+  // WIR233/ZMFG5 — section « Instructions » éditable (PATCH `instructions`
+  // direct, indépendant du gros formulaire d'édition) + « Suggestions KB »
+  // (insertion dans le champ SANS écriture auto — l'utilisateur enregistre
+  // lui-même, cf. le commentaire serveur `instructions_suggestions`).
+  const [instructionsText, setInstructionsText] = useState(current.instructions ?? '')
+  const [instructionsSaving, setInstructionsSaving] = useState(false)
+  const [kbSuggestions, setKbSuggestions] = useState([])
+  const [kbLoading, setKbLoading] = useState(false)
+
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- resynchro au changement de ticket
+  useEffect(() => { setInstructionsText(current.instructions ?? '') }, [id])
+
+  const saveInstructions = async () => {
+    setInstructionsSaving(true)
+    try {
+      const res = await savApi.updateTicket(id, { instructions: instructionsText })
+      setCurrent(res.data)
+      toast.success('Instructions enregistrées.')
+    } catch (err) {
+      toast.error(frError(err, "Échec de l'enregistrement des instructions."))
+    } finally {
+      setInstructionsSaving(false)
+    }
+  }
+
+  const chargerSuggestionsKb = async () => {
+    setKbLoading(true)
+    try {
+      const res = await savApi.getInstructionsSuggestions(id)
+      setKbSuggestions(res.data?.results ?? [])
+    } catch {
+      setKbSuggestions([])
+    } finally {
+      setKbLoading(false)
+    }
+  }
+
+  // Insertion pure côté écran, jamais de PATCH ici (l'utilisateur valide
+  // avec « Enregistrer » quand il est satisfait du texte final).
+  const insererSuggestion = (article) => {
+    setInstructionsText((t) => `${t ? `${t}\n\n` : ''}${article.titre}\n${article.extrait ?? ''}`)
+  }
+
+  const retirerPiece = async () => {
+    if (!retraitForm.produit) return
+    setRetraitBusy(true)
+    setRetraitError(null)
+    try {
+      await savApi.retirerTicketPiece(id, {
+        produit: retraitForm.produit,
+        quantite: retraitForm.quantite || '1',
+        destination: retraitForm.destination,
+        operation: retraitForm.operation,
+        numero_serie: retraitForm.numero_serie,
+      })
+      // WIR232 — le formulaire ne se vide QU'en cas de succès (un 400 garde
+      // les valeurs saisies, jamais une re-saisie complète).
+      setRetraitForm({ produit: '', quantite: '1', destination: 'rebut', operation: 'retrait', numero_serie: '' })
+      loadPiecesUnifiees()
+      loadHistorique()
+    } catch (err) {
+      setRetraitError(frError(err, 'Échec du retrait de la pièce.'))
+    } finally {
+      setRetraitBusy(false)
+    }
+  }
+
   const reloadAll = async () => {
     try {
       const r = await savApi.getTicket(id)
@@ -523,6 +607,7 @@ export function TicketDetail({ ticket, onClose, onSaved }) {
     loadHistorique()
     loadInterventions()
     loadPieces()
+    loadPiecesUnifiees()
     api.get('/stock/produits/')
       .then((r) => setProduits(r.data?.results ?? r.data ?? [])).catch(() => {})
     // WIR117/XSAV25 — pièces compatibles avec l'équipement lié (compatibles
@@ -1300,6 +1385,120 @@ export function TicketDetail({ ticket, onClose, onSaved }) {
           </div>
         </CollapsibleSection>
 
+        {/* ── WIR232/ZMFG8/XMFG10 — vue unifiée Ajout/Retrait/Recyclage
+            (le bouton « Retirer » ci-dessus SUPPRIME la ligne de consommation
+            sans trace ; cette section trace un vrai retrait — rebut/RMA/
+            stock occasion, n° série optionnel). ── */}
+        <CollapsibleSection icon={Wrench} title="Pièces — vue unifiée (Ajout/Retrait/Recyclage)">
+          {piecesUnifiees.lignes.length === 0 ? (
+            <p className="text-sm text-muted-foreground">Aucun mouvement de pièce enregistré.</p>
+          ) : (
+            <ul className="flex flex-col divide-y divide-border rounded-lg border border-border" data-testid="pieces-unifiees-liste">
+              {piecesUnifiees.lignes.map((l) => (
+                <li key={`${l.operation}-${l.id}`} className="flex items-center gap-2 p-2.5 text-sm">
+                  <Badge tone={l.operation === 'ajout' ? 'info' : l.operation === 'recyclage' ? 'success' : 'warning'}>
+                    {l.operation === 'ajout' ? 'Ajout' : l.operation === 'recyclage' ? 'Recyclage' : 'Retrait'}
+                  </Badge>
+                  <span className="flex-1">
+                    {l.produit_nom} × {l.quantite}
+                    {l.destination && ` — ${l.destination}`}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+          <p className="text-xs text-muted-foreground">
+            Sous-totaux — ajout {piecesUnifiees.sous_totaux?.ajout ?? 0}, retrait {piecesUnifiees.sous_totaux?.retrait ?? 0}, recyclage {piecesUnifiees.sous_totaux?.recyclage ?? 0}
+          </p>
+
+          <div className="grid items-end gap-3 sm:grid-cols-[2fr_auto_auto_auto_auto]">
+            <FormField label="Produit">
+              <Select value={retraitForm.produit ? String(retraitForm.produit) : '__none'}
+                      onValueChange={(v) => setRetraitForm((s) => ({ ...s, produit: v === '__none' ? '' : v }))}>
+                <SelectTrigger><SelectValue placeholder="— Produit —" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__none">— Produit —</SelectItem>
+                  {produits.map((pr) => (
+                    <SelectItem key={pr.id} value={String(pr.id)}>
+                      {pr.nom}{pr.sku ? ` (${pr.sku})` : ''}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </FormField>
+            <FormField label="Qté" className="w-24">
+              <Input type="number" min="0" step="any" value={retraitForm.quantite}
+                     onChange={(e) => setRetraitForm((s) => ({ ...s, quantite: e.target.value }))} />
+            </FormField>
+            <FormField label="Destination">
+              <Select value={retraitForm.destination}
+                      onValueChange={(v) => setRetraitForm((s) => ({ ...s, destination: v }))}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="rebut">Rebut</SelectItem>
+                  <SelectItem value="retour_fournisseur">Retour fournisseur</SelectItem>
+                  <SelectItem value="stock_occasion">Stock occasion</SelectItem>
+                </SelectContent>
+              </Select>
+            </FormField>
+            <FormField label="Opération">
+              <Select value={retraitForm.operation}
+                      onValueChange={(v) => setRetraitForm((s) => ({ ...s, operation: v }))}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="retrait">Retrait</SelectItem>
+                  <SelectItem value="recyclage">Recyclage</SelectItem>
+                </SelectContent>
+              </Select>
+            </FormField>
+            <FormField label="N° série" hint="optionnel">
+              <Input value={retraitForm.numero_serie}
+                     onChange={(e) => setRetraitForm((s) => ({ ...s, numero_serie: e.target.value }))} />
+            </FormField>
+          </div>
+          <div>
+            <Button type="button" variant="outline" size="sm"
+                    loading={retraitBusy} disabled={!retraitForm.produit} onClick={retirerPiece}>
+              <Trash2 /> Retirer une pièce
+            </Button>
+          </div>
+          {retraitError && (
+            <p className="text-sm text-destructive" role="alert">{retraitError}</p>
+          )}
+        </CollapsibleSection>
+
+        {/* ── WIR233/ZMFG5 — Instructions éditables (PATCH direct) +
+            Suggestions KB (insertion sans écriture auto). ── */}
+        <CollapsibleSection icon={Wrench} title="Instructions">
+          <Textarea rows={5} value={instructionsText}
+                    onChange={(e) => setInstructionsText(e.target.value)}
+                    placeholder="Instructions d'intervention pour ce ticket…" />
+          <div className="flex flex-wrap items-center gap-2">
+            <Button type="button" variant="outline" size="sm"
+                    loading={instructionsSaving} onClick={saveInstructions}>
+              Enregistrer les instructions
+            </Button>
+            <Button type="button" variant="ghost" size="sm"
+                    loading={kbLoading} onClick={chargerSuggestionsKb}>
+              Suggestions KB
+            </Button>
+          </div>
+          {kbSuggestions.length > 0 && (
+            <ul className="flex flex-col divide-y divide-border rounded-lg border border-border" data-testid="kb-suggestions-liste">
+              {kbSuggestions.map((a) => (
+                <li key={a.id} className="flex items-center gap-2 p-2.5 text-sm">
+                  <span className="flex-1">
+                    <strong>{a.titre}</strong>{a.extrait ? ` — ${a.extrait}` : ''}
+                  </span>
+                  <Button type="button" variant="ghost" size="sm" onClick={() => insererSuggestion(a)}>
+                    Insérer
+                  </Button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </CollapsibleSection>
+
         {/* ── Historique (chatter) — L313 repliable ── */}
         <CollapsibleSection icon={History} title="Historique">
           {/* WIR19 — traçabilité AuditLog de CE ticket, ouverte au propriétaire
@@ -1600,11 +1799,12 @@ function CalendarDayCell({ date: cellDate, inMonth, isToday, tickets, onSelect, 
   )
 }
 
-// Formulaire minimal de création rapide (référence auto côté serveur) : type,
-// client texte libre non requis ici — on réutilise le flux normal via
-// createTicket avec juste la date_tournee proposée en info (posée ensuite par
-// le glisser-déposer si l'utilisateur veut affiner) — garde le composant
-// simple : ouvre la fiche standard n'est pas nécessaire, un POST minimal suffit.
+// WIR178 — Formulaire minimal de création rapide (référence auto côté
+// serveur) : `client` est un FK REQUIS côté serveur (`sav.Ticket.client`,
+// aucun `null=True`) — le commentaire précédent affirmait à tort qu'il
+// n'était « pas requis ici » alors que le POST renvoyait un 400 garanti sans
+// lui. Type + client (obligatoire) + description, puis la date_tournee
+// proposée est posée sur le ticket fraîchement créé.
 // VX240(d) — dernier type de ticket utilisé (localStorage, modifiable),
 // même patron que VX93 (lireLastTva/lireDernierMode) : le type ne reset plus
 // silencieusement à « correctif » à chaque ouverture.
@@ -1621,14 +1821,23 @@ const ecrireLastTicketType = (v) => {
 function CalendarQuickCreateDialog({ date: openDate, onClose, onCreated }) {
   const [description, setDescription] = useState('')
   const [type, setType] = useState(lireLastTicketType)
+  // WIR178 — `client` est un FK REQUIS côté serveur (`apps/sav/models.py`,
+  // aucun `null=True`) : sans lui le POST renvoyait un 400 garanti.
+  const [clientId, setClientId] = useState('')
+  const [clients, setClients] = useState([])
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState(null)
 
+  useEffect(() => {
+    crmApi.getClients().then((r) => setClients(r.data?.results ?? r.data ?? [])).catch(() => {})
+  }, [])
+
   const submit = async () => {
+    if (!clientId) { setErr('Le client est requis.'); return }
     setBusy(true)
     setErr(null)
     try {
-      const r = await savApi.createTicket({ type, description: description || undefined })
+      const r = await savApi.createTicket({ type, client: clientId, description: description || undefined })
       // Pose la date planifiée sur le ticket fraîchement créé.
       await savApi.replanifierTicket(r.data.id, openDate)
       ecrireLastTicketType(type)  // VX240(d) — mémorise le type pour la prochaine création
@@ -1651,6 +1860,16 @@ function CalendarQuickCreateDialog({ date: openDate, onClose, onCreated }) {
           </AlertDialogDescription>
         </AlertDialogHeader>
         <div className="grid gap-3">
+          <FormField label="Client">
+            <Select value={clientId} onValueChange={setClientId}>
+              <SelectTrigger aria-label="Client"><SelectValue placeholder="— Client —" /></SelectTrigger>
+              <SelectContent>
+                {clients.map((c) => (
+                  <SelectItem key={c.id} value={String(c.id)}>{c.nom} {c.prenom || ''}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </FormField>
           <FormField label="Type">
             {/* VX240(d) — la modale s'ouvrait sans aucun autofocus. */}
             <Select value={type} onValueChange={setType}>
@@ -1671,7 +1890,7 @@ function CalendarQuickCreateDialog({ date: openDate, onClose, onCreated }) {
         </div>
         <AlertDialogFooter>
           <AlertDialogCancel>Annuler</AlertDialogCancel>
-          <AlertDialogAction disabled={busy} onClick={(e) => { e.preventDefault(); submit() }}>
+          <AlertDialogAction disabled={busy || !clientId} onClick={(e) => { e.preventDefault(); submit() }}>
             Créer
           </AlertDialogAction>
         </AlertDialogFooter>

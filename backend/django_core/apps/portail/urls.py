@@ -28,6 +28,7 @@ from .views import (
 from .views_client import (
     MesDevisPortailViewSet,
     MesFacturesPortailViewSet,
+    MesLivraisonsPortailViewSet,
 )
 from .views_externes import (
     candidature_fournisseur,
@@ -57,6 +58,11 @@ router.register(r'mes-devis', MesDevisPortailViewSet,
                 basename='portail-mes-devis')
 router.register(r'mes-factures', MesFacturesPortailViewSet,
                 basename='portail-mes-factures')
+# WIR216/XSTK22 — « Mes livraisons » : le lien de l'email de transition
+# (livraison_en_transit/livree) pointait vers /portail/livraisons/<id>, une
+# route qui n'a jamais existé côté frontend (404 systématique).
+router.register(r'mes-livraisons', MesLivraisonsPortailViewSet,
+                basename='portail-mes-livraisons')
 
 urlpatterns = [
     # NTPRT20/NTPRT27 — tableaux de bord des portails FOURNISSEUR et

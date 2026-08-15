@@ -77,6 +77,10 @@ const crmApi = {
       headers: { 'Content-Type': 'multipart/form-data' },
     })
   },
+  // WIR227/QJ25 — contour OSM du bâtiment épinglé (Overpass, best-effort ;
+  // {polygon: [{lat,lng}...], source, message?}). Jamais consommé côté
+  // ToitureDesign jusqu'ici — cette lane hydrate le builder avec.
+  getRoofFootprint: (leadId) => api.get(`/crm/leads/${leadId}/roof-footprint/`),
   // Doublons + fusion de leads (sans perte).
   getLeadDuplicates: (id) => api.get(`/crm/leads/${id}/duplicates/`),
   // Atelier doublons : tous les clusters de la société (survivant suggéré).

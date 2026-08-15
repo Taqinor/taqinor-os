@@ -5,6 +5,7 @@
 import { lazy } from 'react'
 import {
   Table2, TrendingUp, GitCompareArrows, Scale, LayoutDashboard, CheckCircle2,
+  Settings2,
 } from 'lucide-react'
 import { appGlyph } from '../../lib/apps/appGlyph'
 
@@ -32,6 +33,10 @@ const VariancePage = lazy(() => import('../../pages/fpa/VariancePage'))
 // n'avait aucun écran : la saisie fonctionnait, son statut de validation
 // formel restait invisible.
 const SoumissionsBudgetPage = lazy(() => import('../../pages/fpa/SoumissionsBudgetPage'))
+// WIR199 — administration (départements en arbre + cycles budgétaires) :
+// jusqu'ici créables SEULEMENT en admin Django, la saisie ne pouvait pas
+// s'amorcer sans ça.
+const AdministrationPage = lazy(() => import('../../pages/fpa/AdministrationPage'))
 
 const LD = <LayoutDashboard size={17} strokeWidth={1.75} aria-hidden="true" />
 const TB = <Table2 size={17} strokeWidth={1.75} aria-hidden="true" />
@@ -39,6 +44,7 @@ const TU = <TrendingUp size={17} strokeWidth={1.75} aria-hidden="true" />
 const GC = <GitCompareArrows size={17} strokeWidth={1.75} aria-hidden="true" />
 const SC = <Scale size={17} strokeWidth={1.75} aria-hidden="true" />
 const CC = <CheckCircle2 size={17} strokeWidth={1.75} aria-hidden="true" />
+const AD = <Settings2 size={17} strokeWidth={1.75} aria-hidden="true" />
 
 export default {
   key: 'fpa',
@@ -58,6 +64,7 @@ export default {
       { to: '/fpa/previsions', label: 'Prévisions glissantes', icon: TU, roles: ROLES },
       { to: '/fpa/scenarios', label: 'Scénarios', icon: GC, roles: ROLES },
       { to: '/fpa/variance', label: 'Analyse des écarts', icon: SC, roles: ROLES },
+      { to: '/fpa/administration', label: 'Administration', icon: AD, roles: ROLES },
     ],
   },
   titles: [
@@ -67,6 +74,7 @@ export default {
     ['/fpa/previsions', 'Prévisions glissantes'],
     ['/fpa/scenarios', 'Scénarios what-if'],
     ['/fpa/variance', 'Analyse des écarts'],
+    ['/fpa/administration', 'Administration FP&A'],
   ],
   sectionLabels: { fpa: 'FP&A' },
   routes: [
@@ -76,5 +84,6 @@ export default {
     { path: '/fpa/previsions', component: PrevisionsPage, roles: ROLES },
     { path: '/fpa/scenarios', component: ScenariosPage, roles: ROLES },
     { path: '/fpa/variance', component: VariancePage, roles: ROLES },
+    { path: '/fpa/administration', component: AdministrationPage, roles: ROLES },
   ],
 }

@@ -98,6 +98,11 @@ const savApi = {
     api.delete(`/sav/tickets/${id}/pieces/${pieceId}/`),
   // ZMFG8 — vue unifiée Ajout/Retrait/Recyclage des pièces du ticket.
   getTicketPiecesUnifiees: (id) => api.get(`/sav/tickets/${id}/pieces-unifiees/`),
+  // WIR232/XMFG10 — pièces RETIRÉES du ticket (rebut/RMA/stock occasion, PAS
+  // une suppression de la consommation) : GET liste, POST trace un retrait
+  // avec sa destination + opération (retrait/recyclage) + n° série optionnel.
+  getTicketPiecesRetirees: (id) => api.get(`/sav/tickets/${id}/pieces-retirees/`),
+  retirerTicketPiece: (id, body) => api.post(`/sav/tickets/${id}/pieces-retirees/`, body),
 
   // XSAV12 — fusionne un ticket doublon dans ce ticket (principal).
   fusionnerTicket: (id, doublonId) =>
@@ -161,6 +166,18 @@ const savApi = {
   maintenanceRapportPdf: (id, date) =>
     api.get(`/sav/contrats-maintenance/${id}/rapport-pdf/`,
       { responseType: 'blob', params: date ? { date } : {} }),
+  // WIR230/FG88 — file des visites préventives dues (ordonnancement GPS
+  // serveur, haversine) + affectation en lot (date + technicien optionnel).
+  getTourneePreventive: (params) =>
+    api.get('/sav/contrats-maintenance/tournee/', { params }),
+  planifierTournee: (body) =>
+    api.post('/sav/contrats-maintenance/planifier-tournee/', body),
+  // WIR231/XSAV18 — P&L (revenu/coût/marge), rendu SEULEMENT avec la
+  // permission prix d'achat (403 côté serveur sinon).
+  getRentabiliteContrats: () => api.get('/sav/contrats-maintenance/rentabilite/'),
+  getRentabiliteContrat: (id) => api.get(`/sav/contrats-maintenance/${id}/rentabilite/`),
+  // WIR233/FG40 — facture immédiatement CE contrat (facturation_active requis).
+  facturerContrat: (id) => api.post(`/sav/contrats-maintenance/${id}/facturer/`),
 
   // FG83 — réclamations garantie fournisseur (flux RMA).
   getWarrantyClaims: (params) => api.get('/sav/warranty-claims/', { params }),
