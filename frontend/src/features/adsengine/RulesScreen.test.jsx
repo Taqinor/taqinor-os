@@ -16,6 +16,10 @@ const mocks = vi.hoisted(() => ({
   policies: vi.fn(),
   policyCreate: vi.fn(),
   policyUpdate: vi.fn(),
+  // WIR209/PUB90 — vote sur anomalie + précision par détecteur.
+  anomalyFeedback: vi.fn(),
+  detectors: vi.fn(),
+  permissions: ['adsengine_view', 'adsengine_manage'],
 }))
 
 vi.mock('./adsengineApi', () => ({
@@ -24,9 +28,18 @@ vi.mock('./adsengineApi', () => ({
       templates: mocks.templates, dryRun: mocks.dryRun, journal: mocks.journal,
       list: mocks.policies, create: mocks.policyCreate, update: mocks.policyUpdate,
     },
-    anomalies: { list: mocks.anomalies },
+    anomalies: {
+      list: mocks.anomalies, feedback: mocks.anomalyFeedback,
+      detectors: mocks.detectors,
+    },
     alerts: { history: mocks.history },
   },
+}))
+
+vi.mock('./useAdsPermissions', () => ({
+  useAdsPermissions: () => ({
+    loading: false, has: (code) => mocks.permissions.includes(code),
+  }),
 }))
 
 import RulesScreen from './RulesScreen'
@@ -52,10 +65,20 @@ beforeEach(() => {
       { id: 1, nom: 'Campagne Résidentiel', effet_fr: 'serait mise en pause' },
       { id: 2, nom: 'Campagne Pompage', effet_fr: 'inchangée' },
     ] } })
+  mocks.permissions = ['adsengine_view', 'adsengine_manage']
   mocks.anomalies.mockResolvedValue({ data: [
-    { id: 9, titre: 'CPL en forte hausse', severite: 'critique',
-      message: 'Le coût par lead a doublé en 24 h.', quand: '2026-07-15' },
+    { id: 9, titre: 'CPL en forte hausse', severite: 'critique', detector: 'cpl_spike',
+      feedback: '', message: 'Le coût par lead a doublé en 24 h.', quand: '2026-07-15' },
   ] })
+  mocks.anomalyFeedback.mockResolvedValue({ data: { id: 9, feedback: 'useful' } })
+  // Forme RÉELLE de `anomaly.all_detector_stats` (detector/total/labelled/
+  // useful/false_positive/precision/throttled/throttle_factor).
+  mocks.detectors.mockResolvedValue({ data: { detecteurs: [
+    { detector: 'cpl_spike', total: 8, labelled: 4, useful: 3, false_positive: 1,
+      precision: 0.75, throttled: false, throttle_factor: 1 },
+    { detector: 'frequency', total: 9, labelled: 6, useful: 1, false_positive: 5,
+      precision: 0.1667, throttled: true, throttle_factor: 4 },
+  ] } })
   mocks.history.mockResolvedValue({ data: { alerts: [
     { id: 1, niveau: 'alerte', message: 'Fréquence élevée', quand: '2026-07-12' },
   ] } })
@@ -169,6 +192,52 @@ describe('RulesScreen (ENG43)', () => {
       fireEvent.click(await screen.findByTestId('ae-rule-arm-overlap'))
       fireEvent.click(await screen.findByTestId('ae-rule-arm-confirm-btn-overlap'))
       expect(await screen.findByTestId('ae-rules-arm-err')).toHaveTextContent('refusé')
+    })
+  })
+
+  // ── WIR209/PUB90 — la boucle d'apprentissage des anomalies ──────────────
+  describe('WIR209 — vote sur anomalie + précision par détecteur', () => {
+    it('voter « utile » POSTe {vote} et met le vote à jour', async () => {
+      renderScreen()
+      fireEvent.click(await screen.findByTestId('ae-anomaly-useful-9'))
+      await waitFor(() => expect(mocks.anomalyFeedback)
+        .toHaveBeenCalledWith(9, 'useful'))
+      expect(await screen.findByTestId('ae-anomaly-vote-9')).toHaveTextContent('utile')
+      // Le vote recharge la précision par détecteur (elle vient d'évoluer).
+      await waitFor(() => expect(mocks.detectors).toHaveBeenCalledTimes(2))
+    })
+
+    it('voter « faux positif » POSTe la valeur attendue par le serveur', async () => {
+      mocks.anomalyFeedback.mockResolvedValue({ data: { id: 9, feedback: 'false_positive' } })
+      renderScreen()
+      fireEvent.click(await screen.findByTestId('ae-anomaly-fp-9'))
+      await waitFor(() => expect(mocks.anomalyFeedback)
+        .toHaveBeenCalledWith(9, 'false_positive'))
+      expect(await screen.findByTestId('ae-anomaly-vote-9')).toHaveTextContent('faux positif')
+    })
+
+    it('la tuile de précision rend les chiffres du serveur, throttle inclus', async () => {
+      renderScreen()
+      await screen.findByTestId('ae-detectors')
+      await waitFor(() => expect(screen.getAllByTestId('ae-detector')).toHaveLength(2))
+      expect(screen.getByTestId('ae-detector-precision-cpl_spike')).toHaveTextContent('75 %')
+      expect(screen.getByTestId('ae-detector-throttled-frequency')).toHaveTextContent('Ralenti')
+      expect(screen.queryByTestId('ae-detector-throttled-cpl_spike')).toBeNull()
+    })
+
+    it('sans adsengine_manage les votes sont grisés (jamais un 403 découvert au clic)', async () => {
+      mocks.permissions = ['adsengine_view']
+      renderScreen()
+      expect(await screen.findByTestId('ae-anomaly-useful-9')).toBeDisabled()
+      expect(screen.getByTestId('ae-anomaly-fp-9')).toBeDisabled()
+    })
+
+    it('un vote refusé affiche une erreur FR sans faire disparaître l\'anomalie', async () => {
+      mocks.anomalyFeedback.mockRejectedValue(new Error('403'))
+      renderScreen()
+      fireEvent.click(await screen.findByTestId('ae-anomaly-useful-9'))
+      expect(await screen.findByTestId('ae-anomaly-vote-error')).toHaveTextContent('impossible')
+      expect(screen.getAllByTestId('ae-anomaly')).toHaveLength(1)
     })
   })
 })

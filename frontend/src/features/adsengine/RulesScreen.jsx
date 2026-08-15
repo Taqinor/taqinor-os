@@ -1,5 +1,7 @@
 import { useEffect, useState, useCallback } from 'react'
-import { SlidersHorizontal, AlertTriangle, Play, Power, PowerOff } from 'lucide-react'
+import {
+  SlidersHorizontal, AlertTriangle, Play, Power, PowerOff, ThumbsUp, ThumbsDown,
+} from 'lucide-react'
 import adsengineApi from './adsengineApi'
 import {
   normalizeRuleTemplate, normalizeDryRun, normalizeAnomalies, normalizeAlerts,
@@ -8,6 +10,9 @@ import {
 import { formatDateTime } from '../../lib/format'
 import AlertCenter from './AlertCenter'
 import CommandPalette from './CommandPalette'
+// WIR209 — voter sur une anomalie est une ÉCRITURE (`adsengine_manage` côté
+// back) : la garde évite de découvrir le refus en 403.
+import { useAdsPermissions } from './useAdsPermissions'
 
 /* ============================================================================
    PUB23 — Armer/désarmer une règle depuis la console.
@@ -58,6 +63,18 @@ export default function RulesScreen() {
   const [confirmKey, setConfirmKey] = useState(null) // template en attente de confirmation d'armement
   const [armBusyKey, setArmBusyKey] = useState(null)
   const [armErr, setArmErr] = useState('')
+  // WIR209/PUB90 — vote utile/faux-positif + précision par détecteur.
+  const { has } = useAdsPermissions()
+  const canManage = has('adsengine_manage')
+  const [detectors, setDetectors] = useState([])
+  const [voteBusyId, setVoteBusyId] = useState(null)
+  const [voteErr, setVoteErr] = useState('')
+
+  const loadDetectors = useCallback(() => (
+    adsengineApi.anomalies.detectors()
+      .then(r => setDetectors(Array.isArray(r.data?.detecteurs) ? r.data.detecteurs : []))
+      .catch(() => setDetectors([]))
+  ), [])
 
   const reloadPolicies = useCallback(() => (
     adsengineApi.rules.list()
@@ -72,7 +89,18 @@ export default function RulesScreen() {
         .map(normalizeRuleTemplate)))
       .catch(() => setTemplates([]))
     adsengineApi.anomalies.list()
-      .then(r => setAnomalies(normalizeAnomalies(r.data)))
+      .then(r => {
+        // WIR209 — `normalizeAnomalies` ne conserve ni le vote ni le détecteur ;
+        // on les rattache depuis la réponse BRUTE (même ordre), sans toucher au
+        // normaliseur partagé.
+        const raw = Array.isArray(r.data)
+          ? r.data : (r.data?.results || r.data?.anomalies || [])
+        setAnomalies(normalizeAnomalies(r.data).map((a, i) => ({
+          ...a,
+          feedback: raw?.[i]?.feedback || '',
+          detecteur: raw?.[i]?.detector || '',
+        })))
+      })
       .catch(() => setAnomalies([]))
     adsengineApi.alerts.history()
       .then(r => setHistory(normalizeAlerts(r.data)))
@@ -83,7 +111,25 @@ export default function RulesScreen() {
       .then(r => setJournal(Array.isArray(r.data?.results) ? r.data.results : []))
       .catch(() => setJournal([]))
     reloadPolicies()
-  }, [reloadPolicies])
+    loadDetectors()
+  }, [reloadPolicies, loadDetectors])
+
+  // WIR209/PUB90 — le vote de l'opérateur : « cette anomalie m'a servi » /
+  // « c'était un faux positif ». C'est LUI qui alimente la précision par
+  // détecteur et le throttle : sans appelant, aucun détecteur ne se calmait.
+  const voteAnomaly = async (id, vote) => {
+    setVoteBusyId(id); setVoteErr('')
+    try {
+      const r = await adsengineApi.anomalies.feedback(id, vote)
+      const saved = r?.data?.feedback || vote
+      setAnomalies(list => list.map(a => (a.id === id ? { ...a, feedback: saved } : a)))
+      await loadDetectors()
+    } catch {
+      setVoteErr('Vote impossible (permission « adsengine_manage » ?).')
+    } finally {
+      setVoteBusyId(null)
+    }
+  }
 
   const policyFor = (key) => policies.find(p => p.template_key === key) || null
 
@@ -288,9 +334,78 @@ export default function RulesScreen() {
                           )}
                         </div>
                         {a.message && <p style={{ margin: '0.3rem 0 0', color: '#334155' }}>{a.message}</p>}
+                        {/* WIR209/PUB90 — vote utile / faux-positif. */}
+                        <div style={{ display: 'flex', gap: '0.4rem', marginTop: '0.5rem',
+                          alignItems: 'center', flexWrap: 'wrap' }}>
+                          <button type="button" className="btn btn-light"
+                            data-testid={`ae-anomaly-useful-${a.id}`}
+                            disabled={voteBusyId === a.id || !canManage}
+                            aria-pressed={a.feedback === 'useful'}
+                            title={!canManage ? 'Nécessite la permission « adsengine_manage ».' : undefined}
+                            onClick={() => voteAnomaly(a.id, 'useful')}
+                            style={{ display: 'inline-flex', alignItems: 'center', gap: '0.3rem',
+                              background: a.feedback === 'useful' ? '#dcfce7' : undefined }}>
+                            <ThumbsUp size={14} aria-hidden="true" /> Utile
+                          </button>
+                          <button type="button" className="btn btn-light"
+                            data-testid={`ae-anomaly-fp-${a.id}`}
+                            disabled={voteBusyId === a.id || !canManage}
+                            aria-pressed={a.feedback === 'false_positive'}
+                            title={!canManage ? 'Nécessite la permission « adsengine_manage ».' : undefined}
+                            onClick={() => voteAnomaly(a.id, 'false_positive')}
+                            style={{ display: 'inline-flex', alignItems: 'center', gap: '0.3rem',
+                              background: a.feedback === 'false_positive' ? '#fee2e2' : undefined }}>
+                            <ThumbsDown size={14} aria-hidden="true" /> Faux positif
+                          </button>
+                          {a.feedback && (
+                            <span data-testid={`ae-anomaly-vote-${a.id}`}
+                              style={{ color: '#64748b', fontSize: '0.8rem' }}>
+                              Votre vote : {a.feedback === 'useful' ? 'utile' : 'faux positif'}
+                            </span>
+                          )}
+                        </div>
                       </li>
                     )
                   })}
+                </ul>
+              )}
+            {voteErr && (
+              <p data-testid="ae-anomaly-vote-error" style={{ color: '#b91c1c' }}>{voteErr}</p>
+            )}
+          </section>
+
+          {/* ── WIR209/PUB90 — Précision PAR DÉTECTEUR (ce que vos votes ont
+              appris au moteur). Un détecteur constamment inutile finit
+              « ralenti » — c'est écrit, jamais caché. ── */}
+          <section className="ae-detectors" data-testid="ae-detectors">
+            <h3 style={{ margin: '0 0 0.6rem' }}>Précision des détecteurs</h3>
+            {detectors.length === 0
+              ? <p data-testid="ae-detectors-empty" style={{ color: '#64748b' }}>
+                  Aucun détecteur n&apos;a encore produit d&apos;anomalie.</p>
+              : (
+                <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'grid',
+                  gap: '0.4rem', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))' }}>
+                  {detectors.map(d => (
+                    <li key={d.detector} className="card" data-testid="ae-detector"
+                      style={{ padding: '0.6rem', border: '1px solid #e2e8f0' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap' }}>
+                        <strong data-testid={`ae-detector-name-${d.detector}`}>{d.detector}</strong>
+                        {d.throttled && (
+                          <span className="badge" data-testid={`ae-detector-throttled-${d.detector}`}
+                            style={{ background: '#fef3c7', color: '#92400e' }}>Ralenti</span>
+                        )}
+                      </div>
+                      <p style={{ margin: '0.3rem 0 0', color: '#475569', fontSize: '0.85rem' }}>
+                        Précision :{' '}
+                        <strong data-testid={`ae-detector-precision-${d.detector}`}>
+                          {d.precision == null
+                            ? 'non mesurée (aucun vote)'
+                            : `${Math.round(d.precision * 100)} %`}
+                        </strong>
+                        {' · '}{d.labelled ?? 0} vote(s) sur {d.total ?? 0} anomalie(s)
+                      </p>
+                    </li>
+                  ))}
                 </ul>
               )}
           </section>

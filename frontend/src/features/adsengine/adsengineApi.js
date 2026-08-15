@@ -173,6 +173,17 @@ const adsengineApi = {
     // PUB87 — calculateur MDE/puissance (vue mince sur mde.py) : « avec votre
     // volume, ~X jours pour détecter +20 % » avant lancement.
     mde: (params) => api.get('/adsengine/experiences/mde/', { params }),
+    // WIR209 — CLÔTURE humaine avec verdict (PUB18). Le serveur EXIGE un booléen
+    // `validated` : la clôture porte un verdict explicite, jamais implicite.
+    // Sans cet appel, la boucle d'apprentissage n'était jamais refermée (le
+    // posterior du nœud d'hypothèse ne bougeait pas d'un pouce).
+    conclude: (id, validated) =>
+      api.post(`/adsengine/experiences/${id}/conclure/`, { validated }),
+    // WIR209 — ADSDEEP34 : relit (LECTURE SEULE) l'étude A/B native Meta liée à
+    // l'expérience et journalise un DecisionLog. 404 = aucune étude liée,
+    // 400 = aucune connexion Meta active, 502 = panne Meta.
+    syncAdStudy: (id) =>
+      api.post(`/adsengine/experiences/${id}/sync-ad-study/`),
     // PACT110 — bras RÉELS (``ExperimentArm``, routeur ``bras/``). Ce ViewSet
     // est company-scopé mais ne filtre PAS par expérience côté serveur —
     // l'appelant filtre par ``experiment`` côté client sur la liste renvoyée.
@@ -244,6 +255,14 @@ const adsengineApi = {
   // ── ENG16/ENG43 — Anomalies (flux avec sévérités) ──
   anomalies: {
     list: (params) => api.get('/adsengine/anomalies/', { params }),
+    // WIR209/PUB90 — vote utile / faux-positif (acteur posé côté serveur).
+    // Valeurs acceptées par `AnomalyEvent.Feedback` : 'useful' | 'false_positive'.
+    // C'est ce vote qui alimente la précision par détecteur et le throttle
+    // brake-only : sans appelant, aucun détecteur ne pouvait jamais se taire.
+    feedback: (id, vote) =>
+      api.post(`/adsengine/anomalies/${id}/feedback/`, { vote }),
+    // WIR209/PUB90 — précision + état de throttle PAR DÉTECTEUR.
+    detectors: () => api.get('/adsengine/anomalies/detecteurs/'),
   },
 
   // ── ENG36/ENG44 — Simulations (rejeu visuel d'un run) ──

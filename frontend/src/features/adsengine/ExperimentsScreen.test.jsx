@@ -18,6 +18,10 @@ const mocks = vi.hoisted(() => ({
   arms: vi.fn(),
   armStats: vi.fn(),
   allDecisions: vi.fn(),
+  // WIR209 — clôture avec verdict + relecture de l'étude A/B native Meta.
+  conclude: vi.fn(),
+  syncAdStudy: vi.fn(),
+  permissions: ['adsengine_view', 'adsengine_manage'],
 }))
 
 vi.mock('./adsengineApi', () => ({
@@ -26,8 +30,15 @@ vi.mock('./adsengineApi', () => ({
       list: mocks.list, get: mocks.get, decisionLog: mocks.decisionLog,
       mde: mocks.mde, arms: mocks.arms, armStats: mocks.armStats,
       allDecisions: mocks.allDecisions,
+      conclude: mocks.conclude, syncAdStudy: mocks.syncAdStudy,
     },
   },
+}))
+
+vi.mock('./useAdsPermissions', () => ({
+  useAdsPermissions: () => ({
+    loading: false, has: (code) => mocks.permissions.includes(code),
+  }),
 }))
 
 import ExperimentsScreen from './ExperimentsScreen'
@@ -112,6 +123,10 @@ beforeEach(() => {
   mocks.arms.mockResolvedValue({ data: ARMS })
   mocks.armStats.mockResolvedValue({ data: ARM_STATS })
   mocks.allDecisions.mockResolvedValue({ data: ALL_DECISIONS })
+  mocks.permissions = ['adsengine_view', 'adsengine_manage']
+  // Forme RÉELLE de `ExperimentViewSet.conclure` : {node, decision_log, validated}.
+  mocks.conclude.mockResolvedValue({ data: { node: 12, decision_log: 44, validated: true } })
+  mocks.syncAdStudy.mockResolvedValue({ data: { id: 45, summary_fr: 'Étude relue.' } })
   mocks.mde.mockResolvedValue({ data: {
     p: 0.02, volume: 300, cible_relative: 0.20, jours_pour_cible: 14,
     phrase_fr: 'Avec votre volume (~300 essais/bras/jour), il faut ~14 jour(s) pour détecter un effet de +20 % de façon fiable.',
@@ -277,5 +292,66 @@ describe('ExperimentsScreen (ENG39/PACT110)', () => {
     fireEvent.click(screen.getByTestId('ae-mde-compute'))
     await waitFor(() => expect(mocks.mde).toHaveBeenCalledWith(
       expect.objectContaining({ volume: '600' })))
+  })
+})
+
+// ── WIR209 — la boucle d'apprentissage se referme : clôture + étude Meta ────
+describe('ExperimentsScreen — WIR209 clôture & synchro étude', () => {
+  it('« Hypothèse validée » POSTe conclure avec validated=true', async () => {
+    renderScreen()
+    fireEvent.click(await screen.findByTestId('ae-exp-conclude-validated'))
+    await waitFor(() => expect(mocks.conclude).toHaveBeenCalledWith(3, true))
+    expect(await screen.findByTestId('ae-exp-close-msg')).toHaveTextContent('VALIDÉE')
+    expect(screen.getByTestId('ae-exp-close-decision')).toHaveTextContent('44')
+  })
+
+  it('« Hypothèse invalidée » POSTe validated=false (verdict explicite, jamais implicite)', async () => {
+    mocks.conclude.mockResolvedValue({ data: { node: 12, decision_log: 45, validated: false } })
+    renderScreen()
+    fireEvent.click(await screen.findByTestId('ae-exp-conclude-invalidated'))
+    await waitFor(() => expect(mocks.conclude).toHaveBeenCalledWith(3, false))
+    expect(await screen.findByTestId('ae-exp-close-msg')).toHaveTextContent('INVALIDÉE')
+  })
+
+  it('aucun nœud d\'hypothèse rattaché : le message le DIT au lieu de faire croire à un apprentissage', async () => {
+    mocks.conclude.mockResolvedValue({ data: { node: null, decision_log: null } })
+    renderScreen()
+    fireEvent.click(await screen.findByTestId('ae-exp-conclude-validated'))
+    expect(await screen.findByTestId('ae-exp-close-msg'))
+      .toHaveTextContent(/aucun nœud d'hypothèse/i)
+  })
+
+  it('relire l\'étude Meta : 404 = aucune étude liée, message FR', async () => {
+    mocks.syncAdStudy.mockRejectedValue({ response: { status: 404 } })
+    renderScreen()
+    fireEvent.click(await screen.findByTestId('ae-exp-sync-study'))
+    await waitFor(() => expect(mocks.syncAdStudy).toHaveBeenCalledWith(3))
+    expect(await screen.findByTestId('ae-exp-sync-msg'))
+      .toHaveTextContent(/Aucune étude A\/B native/)
+  })
+
+  it('relire l\'étude Meta : 400 = aucune connexion Meta active', async () => {
+    mocks.syncAdStudy.mockRejectedValue({ response: { status: 400 } })
+    renderScreen()
+    fireEvent.click(await screen.findByTestId('ae-exp-sync-study'))
+    expect(await screen.findByTestId('ae-exp-sync-msg'))
+      .toHaveTextContent(/Aucune connexion Meta active/)
+  })
+
+  it('relire l\'étude Meta : succès → décision journalisée + rechargement du détail', async () => {
+    renderScreen()
+    await waitFor(() => expect(mocks.decisionLog).toHaveBeenCalledTimes(1))
+    fireEvent.click(screen.getByTestId('ae-exp-sync-study'))
+    await waitFor(() => expect(mocks.syncAdStudy).toHaveBeenCalledWith(3))
+    expect(await screen.findByTestId('ae-exp-sync-msg')).toHaveTextContent('journalisée')
+    await waitFor(() => expect(mocks.decisionLog).toHaveBeenCalledTimes(2))
+  })
+
+  it('sans adsengine_manage, clôture et synchro sont grisées', async () => {
+    mocks.permissions = ['adsengine_view']
+    renderScreen()
+    expect(await screen.findByTestId('ae-exp-conclude-validated')).toBeDisabled()
+    expect(screen.getByTestId('ae-exp-conclude-invalidated')).toBeDisabled()
+    expect(screen.getByTestId('ae-exp-sync-study')).toBeDisabled()
   })
 })
