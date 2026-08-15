@@ -81,6 +81,8 @@ const TicketSuiviPage = lazy(() => import('../pages/sav/TicketSuiviPage'))
 // XKB19 — page publique de consultation d'un article KB partagé (lien tokenisé).
 const PublicArticlePage = lazy(() => import('../pages/kb/PublicArticlePage'))
 const ChatPage = lazy(() => import('../pages/messaging/ChatPage'))
+// WIR177 — annonces internes (XKB5/XKB6), jusqu'ici sans écran destinataire.
+const AnnoncesPage = lazy(() => import('../features/notifications/AnnoncesPage'))
 const DocumentsPage = lazy(() => import('../pages/ged/DocumentsPage'))
 // VX78 — Écran 404 déjà construit (ui/NotFound.jsx), jusqu'ici jamais importé
 // par le routeur : le catch-all rebondissait en silence vers /dashboard.
@@ -411,6 +413,7 @@ const router = createBrowserRouter([
   // (lien programmatique, jamais un item de menu statique).
   { path: '/onboarding/demarrage', loader: authLoader, element: <WithLayout><DemarrageWizard /></WithLayout> },
   { path: '/messages', loader: authLoader, element: <WithLayout><ChatPage /></WithLayout> },
+  { path: '/annonces', loader: authLoader, element: <WithLayout><AnnoncesPage /></WithLayout> },
   // VX247(d) — glossaire métier (les HelpTip VX47 y pointent au lieu de dupliquer).
   { path: '/aide/lexique', loader: authLoader, element: <WithLayout><LexiquePage /></WithLayout> },
 
