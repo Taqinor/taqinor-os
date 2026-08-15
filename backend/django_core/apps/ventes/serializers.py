@@ -1075,7 +1075,11 @@ class ListePrixSerializer(serializers.ModelSerializer):
     class Meta:
         model = ListePrix
         fields = [
-            'id', 'company', 'nom', 'devise', 'date_debut', 'date_fin',
+            # WIR226 — `segment_client` était le seul champ du modèle absent de
+            # la forme : l'écran ne pouvait donc pas régler le segment qui pilote
+            # la résolution automatique de prix (services.prix_applicable).
+            'id', 'company', 'nom', 'devise', 'segment_client',
+            'date_debut', 'date_fin',
             'archived', 'created_at', 'lignes', 'regles', 'est_active',
         ]
         read_only_fields = ['id', 'company', 'created_at']

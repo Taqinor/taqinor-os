@@ -3595,23 +3595,23 @@
     champs: configuration, created_at, ecran, est_defaut_role, id, nom, owner, owner_nom, role, role_nom, updated_at, visibilite
     visibilite ∈ {EQUIPE, PERSONNELLE}
 - frontend/src/api/ventesApi.js :: createListePrix -> /api/django/ventes/listes-prix  [ListePrixSerializer]
-    champs: archived, company, created_at, date_debut, date_fin, devise, est_active, id, lignes, nom, regles
+    champs: archived, company, created_at, date_debut, date_fin, devise, est_active, id, lignes, nom, regles, segment_client
 - frontend/src/api/ventesApi.js :: deleteListePrix -> /api/django/ventes/listes-prix/<>  [ListePrixSerializer]
-    champs: archived, company, created_at, date_debut, date_fin, devise, est_active, id, lignes, nom, regles
+    champs: archived, company, created_at, date_debut, date_fin, devise, est_active, id, lignes, nom, regles, segment_client
 - frontend/src/api/ventesApi.js :: deleteNiveauRelance -> /api/django/ventes/niveaux-relance/<>  [FollowupLevelSerializer]
     champs: canal, delai_jours, frais_fixes, id, message, nom, ordre, taux_interet_annuel
     canal ∈ {appel, courrier, email, whatsapp}
 - frontend/src/api/ventesApi.js :: getListePrix -> /api/django/ventes/listes-prix/<>  [ListePrixSerializer]
-    champs: archived, company, created_at, date_debut, date_fin, devise, est_active, id, lignes, nom, regles
+    champs: archived, company, created_at, date_debut, date_fin, devise, est_active, id, lignes, nom, regles, segment_client
 - frontend/src/api/ventesApi.js :: getListesPrix -> /api/django/ventes/listes-prix  [ListePrixSerializer]
-    champs: archived, company, created_at, date_debut, date_fin, devise, est_active, id, lignes, nom, regles
+    champs: archived, company, created_at, date_debut, date_fin, devise, est_active, id, lignes, nom, regles, segment_client
 - frontend/src/api/ventesApi.js :: getNiveauxRelance -> /api/django/ventes/niveaux-relance  [FollowupLevelSerializer]
     champs: canal, delai_jours, frais_fixes, id, message, nom, ordre, taux_interet_annuel
     canal ∈ {appel, courrier, email, whatsapp}
 - frontend/src/api/ventesApi.js :: patchListePrix -> /api/django/ventes/listes-prix/<>  [ListePrixSerializer]
-    champs: archived, company, created_at, date_debut, date_fin, devise, est_active, id, lignes, nom, regles
+    champs: archived, company, created_at, date_debut, date_fin, devise, est_active, id, lignes, nom, regles, segment_client
 - frontend/src/api/ventesApi.js :: updateListePrix -> /api/django/ventes/listes-prix/<>  [ListePrixSerializer]
-    champs: archived, company, created_at, date_debut, date_fin, devise, est_active, id, lignes, nom, regles
+    champs: archived, company, created_at, date_debut, date_fin, devise, est_active, id, lignes, nom, regles, segment_client
 - frontend/src/api/voipApi.js :: getAppels -> /api/django/voip/appels  [AppelSerializer]
     champs: cible, direction, duree_secondes, ended_at, external_call_id, fournisseur, id, issue, numero, numero_normalise, started_at, statut, utilisateur
     direction ∈ {entrant, sortant}

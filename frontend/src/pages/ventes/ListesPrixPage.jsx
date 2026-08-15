@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Tags, Plus } from 'lucide-react'
+import { Tags, Plus, Pencil, Archive, ArchiveRestore, Trash2 } from 'lucide-react'
 import ventesApi from '../../api/ventesApi'
 import stockApi from '../../api/stockApi'
 import { formatMAD } from '../../lib/format'
@@ -9,6 +9,8 @@ import {
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
 } from '../../ui'
 import { Table } from '../reporting/Table'
+import { useConfirmDialog } from '../../ui/confirm'
+import { frenchError } from '../../lib/frenchError'
 // APX11 — en-tête unique VX28 + accent de module (identité Ventes).
 import { PageHeader } from '../../ui/PageHeader'
 import { VENTES_ACCENT_STYLE } from '../../features/ventes/accent'
@@ -123,28 +125,83 @@ export default function ListesPrixPage() {
           produits={produits}
           onClose={() => setDetail(null)}
           onChanged={() => { refreshDetail(detail.id); reload() }}
+          // WIR226 — la liste supprimée n'existe plus : on ferme le détail.
+          onDeleted={() => { setDetail(null); reload() }}
         />
       )}
     </div>
   )
 }
 
+/* WIR226 — champs partagés par la création ET l'édition d'une liste de prix
+   (le formulaire de création n'en portait que deux, si bien qu'un segment ou
+   une période de validité n'étaient réglables nulle part). */
+function ListePrixFields({ prefix, valeurs, set, autoFocus = false }) {
+  return (
+    <>
+      <div className="grid gap-1.5">
+        <Label htmlFor={`${prefix}-nom`} required>Nom</Label>
+        <Input id={`${prefix}-nom`} value={valeurs.nom} autoFocus={autoFocus}
+               onChange={(e) => set('nom', e.target.value)} placeholder="ex : Revendeur" />
+      </div>
+      <div className="grid gap-1.5">
+        <Label htmlFor={`${prefix}-devise`}>Devise</Label>
+        <Input id={`${prefix}-devise`} value={valeurs.devise}
+               onChange={(e) => set('devise', e.target.value)} />
+      </div>
+      <div className="grid gap-1.5">
+        <Label htmlFor={`${prefix}-segment`}>Segment client</Label>
+        <Input id={`${prefix}-segment`} value={valeurs.segment_client}
+               onChange={(e) => set('segment_client', e.target.value)}
+               placeholder="ex : Revendeur, Grand compte" />
+        <p className="text-[11px] text-muted-foreground">
+          Laissé vide, la liste ne s'applique qu'aux clients qui la portent
+          explicitement. Renseigné, elle s'applique à tout client de ce segment.
+        </p>
+      </div>
+      <div className="grid gap-3 sm:grid-cols-2">
+        <div className="grid gap-1.5">
+          <Label htmlFor={`${prefix}-debut`}>Début de validité</Label>
+          <Input id={`${prefix}-debut`} type="date" value={valeurs.date_debut}
+                 onChange={(e) => set('date_debut', e.target.value)} />
+        </div>
+        <div className="grid gap-1.5">
+          <Label htmlFor={`${prefix}-fin`}>Fin de validité</Label>
+          <Input id={`${prefix}-fin`} type="date" value={valeurs.date_fin}
+                 onChange={(e) => set('date_fin', e.target.value)} />
+        </div>
+      </div>
+    </>
+  )
+}
+
+// Les dates vides doivent partir en `null` (le DateField DRF refuse '').
+const payloadListe = (v) => ({
+  nom: v.nom.trim(),
+  devise: v.devise,
+  segment_client: v.segment_client.trim(),
+  date_debut: v.date_debut || null,
+  date_fin: v.date_fin || null,
+})
+
+const videListe = { nom: '', devise: 'MAD', segment_client: '', date_debut: '', date_fin: '' }
+
 function CreateListeDialog({ onClose, onCreated }) {
-  const [nom, setNom] = useState('')
-  const [devise, setDevise] = useState('MAD')
+  const [valeurs, setValeurs] = useState(videListe)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState(null)
+  const set = (k, v) => setValeurs(s => ({ ...s, [k]: v }))
 
   const handleSubmit = async (e) => {
     e.preventDefault()
-    if (!nom.trim()) { setError('Le nom est requis.'); return }
+    if (!valeurs.nom.trim()) { setError('Le nom est requis.'); return }
     setBusy(true)
     setError(null)
     try {
-      await ventesApi.createListePrix({ nom: nom.trim(), devise })
+      await ventesApi.createListePrix(payloadListe(valeurs))
       onCreated()
     } catch (err) {
-      setError(err?.response?.data?.detail || 'La création a échoué.')
+      setError(frenchError(err, 'La création a échoué.'))
     } finally {
       setBusy(false)
     }
@@ -160,15 +217,7 @@ function CreateListeDialog({ onClose, onCreated }) {
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit} noValidate className="grid gap-4">
-          <div className="grid gap-1.5">
-            <Label htmlFor="lp-nom" required>Nom</Label>
-            <Input id="lp-nom" value={nom} autoFocus
-                   onChange={(e) => setNom(e.target.value)} placeholder="ex : Revendeur" />
-          </div>
-          <div className="grid gap-1.5">
-            <Label htmlFor="lp-devise">Devise</Label>
-            <Input id="lp-devise" value={devise} onChange={(e) => setDevise(e.target.value)} />
-          </div>
+          <ListePrixFields prefix="lp" valeurs={valeurs} set={set} autoFocus />
           {error && (
             <div role="alert" className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
               {error}
@@ -184,11 +233,53 @@ function CreateListeDialog({ onClose, onCreated }) {
   )
 }
 
-function ListeDetailDialog({ liste, produits, onClose, onChanged }) {
+function ListeDetailDialog({ liste, produits, onClose, onChanged, onDeleted }) {
   const [addLigneOpen, setAddLigneOpen] = useState(false)
   const [addRegleOpen, setAddRegleOpen] = useState(false)
+  // WIR226 — édition / archivage / suppression : l'écran était Create+Read.
+  const [editOpen, setEditOpen] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState(null)
+  const { confirmDelete, confirm } = useConfirmDialog()
 
   const produitNom = (id) => produits.find(p => String(p.id) === String(id))?.nom || `Produit #${id}`
+
+  const basculerArchivage = async () => {
+    const versArchive = !liste.archived
+    if (versArchive) {
+      const ok = await confirm({
+        title: `Archiver « ${liste.nom} » ?`,
+        description: 'Une liste archivée cesse immédiatement de servir à la '
+          + 'résolution automatique des prix. Les devis déjà établis ne bougent pas.',
+        confirmLabel: 'Archiver',
+      })
+      if (!ok) return
+    }
+    setBusy(true); setError(null)
+    try {
+      await ventesApi.patchListePrix(liste.id, { archived: versArchive })
+      onChanged()
+    } catch (err) {
+      setError(frenchError(err, "L'archivage a échoué."))
+    } finally { setBusy(false) }
+  }
+
+  const supprimer = async () => {
+    const ok = await confirmDelete({
+      title: `Supprimer « ${liste.nom} » ?`,
+      description: 'La liste, ses prix fixés et ses règles sont supprimés '
+        + 'définitivement, et elle disparaît du sélecteur de la fiche client. '
+        + 'Préférez l\'archivage pour conserver l\'historique.',
+    })
+    if (!ok) return
+    setBusy(true); setError(null)
+    try {
+      await ventesApi.deleteListePrix(liste.id)
+      onDeleted()
+    } catch (err) {
+      setError(frenchError(err, 'La suppression a échoué.'))
+    } finally { setBusy(false) }
+  }
 
   return (
     <Dialog open onOpenChange={(o) => { if (!o) onClose() }}>
@@ -197,6 +288,20 @@ function ListeDetailDialog({ liste, produits, onClose, onChanged }) {
           <DialogTitle>{liste.nom}</DialogTitle>
           <DialogDescription>
             Prix fixés par produit + règles de paliers (quantité, remise, formule).
+            {/* WIR226 — l'état et les critères d'application, jusqu'ici invisibles. */}
+            {liste.archived && (
+              <span className="mt-1 block font-medium text-warning">
+                Liste archivée — elle ne sert plus à la résolution des prix.
+              </span>
+            )}
+            {liste.segment_client && (
+              <span className="mt-1 block">Segment : {liste.segment_client}</span>
+            )}
+            {(liste.date_debut || liste.date_fin) && (
+              <span className="mt-1 block">
+                Validité : {liste.date_debut || '—'} → {liste.date_fin || '—'}
+              </span>
+            )}
           </DialogDescription>
         </DialogHeader>
 
@@ -249,11 +354,39 @@ function ListeDetailDialog({ liste, produits, onClose, onChanged }) {
           </div>
         </div>
 
-        <DialogFooter>
+        {error && (
+          <div role="alert" className="mt-3 rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
+            {error}
+          </div>
+        )}
+
+        <DialogFooter className="flex-wrap gap-2">
+          {/* WIR226 — le trio manquant : modifier / archiver / supprimer. */}
+          <Button type="button" variant="outline" size="sm" disabled={busy}
+                  onClick={() => setEditOpen(true)}>
+            <Pencil className="size-3.5" /> Modifier
+          </Button>
+          <Button type="button" variant="outline" size="sm" disabled={busy}
+                  onClick={basculerArchivage}>
+            {liste.archived
+              ? <><ArchiveRestore className="size-3.5" /> Réactiver</>
+              : <><Archive className="size-3.5" /> Archiver</>}
+          </Button>
+          <Button type="button" variant="destructive" size="sm" disabled={busy}
+                  onClick={supprimer}>
+            <Trash2 className="size-3.5" /> Supprimer
+          </Button>
           <Button type="button" variant="outline" onClick={onClose}>Fermer</Button>
         </DialogFooter>
       </DialogContent>
 
+      {editOpen && (
+        <EditListeDialog
+          liste={liste}
+          onClose={() => setEditOpen(false)}
+          onSaved={() => { setEditOpen(false); onChanged() }}
+        />
+      )}
       {addLigneOpen && (
         <AddLigneDialog
           liste={liste} produits={produits}
@@ -268,6 +401,60 @@ function ListeDetailDialog({ liste, produits, onClose, onChanged }) {
           onSaved={() => { setAddRegleOpen(false); onChanged() }}
         />
       )}
+    </Dialog>
+  )
+}
+
+/* WIR226 — édition d'une liste existante par PATCH (nom / devise / segment /
+   période). PATCH et non PUT : on ne renvoie que les champs du formulaire, sans
+   jamais toucher aux lignes ni aux règles déjà posées. */
+function EditListeDialog({ liste, onClose, onSaved }) {
+  const [valeurs, setValeurs] = useState({
+    nom: liste.nom ?? '',
+    devise: liste.devise ?? 'MAD',
+    segment_client: liste.segment_client ?? '',
+    date_debut: liste.date_debut ?? '',
+    date_fin: liste.date_fin ?? '',
+  })
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState(null)
+  const set = (k, v) => setValeurs(s => ({ ...s, [k]: v }))
+
+  const handleSubmit = async (e) => {
+    e.preventDefault()
+    if (!valeurs.nom.trim()) { setError('Le nom est requis.'); return }
+    setBusy(true); setError(null)
+    try {
+      await ventesApi.patchListePrix(liste.id, payloadListe(valeurs))
+      onSaved()
+    } catch (err) {
+      setError(frenchError(err, "L'enregistrement a échoué."))
+    } finally { setBusy(false) }
+  }
+
+  return (
+    <Dialog open onOpenChange={(o) => { if (!o) onClose() }}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Modifier la liste de prix</DialogTitle>
+          <DialogDescription>
+            Les prix fixés et les règles de paliers de cette liste ne sont pas
+            touchés.
+          </DialogDescription>
+        </DialogHeader>
+        <form onSubmit={handleSubmit} noValidate className="grid gap-4">
+          <ListePrixFields prefix="lp-edit" valeurs={valeurs} set={set} autoFocus />
+          {error && (
+            <div role="alert" className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
+              {error}
+            </div>
+          )}
+          <DialogFooter>
+            <Button type="button" variant="ghost" onClick={onClose} disabled={busy}>Annuler</Button>
+            <Button type="submit" loading={busy}>{busy ? 'Enregistrement…' : 'Enregistrer'}</Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
     </Dialog>
   )
 }

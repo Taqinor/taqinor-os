@@ -36,6 +36,8 @@ vi.mock('../../api/ventesApi', () => ({
     getListesPrix: vi.fn(),
     getListePrix: vi.fn(),
     createListePrix: vi.fn(),
+    patchListePrix: vi.fn(),
+    deleteListePrix: vi.fn(),
     setLignePrixListe: vi.fn(),
     addRegleListePrix: vi.fn(),
   },
@@ -99,5 +101,112 @@ describe('ListesPrixPage', () => {
     fireEvent.click(within(addDialog).getByRole('button', { name: 'Enregistrer' }))
     await waitFor(() => expect(ventesApi.setLignePrixListe).toHaveBeenCalledWith(
       1, { produit: '1', prix_unitaire: '850' }))
+  })
+
+  // ── WIR226 — l'écran était Create+Read : ni segment, ni dates, ni archivage,
+  //    ni suppression. Le contrat « CRUD » de FE-XSAL1-3 est désormais tenu.
+  it('crée une liste avec segment et période de validité', async () => {
+    ventesApi.getListesPrix.mockResolvedValue({ data: [] })
+    ventesApi.createListePrix.mockResolvedValue({ data: { id: 7 } })
+    render(<ListesPrixPage />)
+    fireEvent.click(await screen.findByRole('button', { name: /Nouvelle liste/ }))
+    const dialog = await screen.findByRole('dialog')
+    fireEvent.change(within(dialog).getByLabelText(/^Nom/), { target: { value: 'Export' } })
+    fireEvent.change(within(dialog).getByLabelText(/Segment client/), { target: { value: 'Grand compte' } })
+    fireEvent.change(within(dialog).getByLabelText(/Début de validité/), { target: { value: '2026-01-01' } })
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Créer' }))
+    await waitFor(() => expect(ventesApi.createListePrix).toHaveBeenCalledWith({
+      nom: 'Export', devise: 'MAD', segment_client: 'Grand compte',
+      date_debut: '2026-01-01', date_fin: null,
+    }))
+  })
+
+  it('renomme une liste existante par PATCH (lignes et règles intactes)', async () => {
+    const liste = {
+      id: 1, nom: 'Revendeur', devise: 'MAD', segment_client: '', archived: false,
+      date_debut: null, date_fin: null, lignes: [], regles: [],
+    }
+    ventesApi.getListesPrix.mockResolvedValue({ data: [liste] })
+    ventesApi.getListePrix.mockResolvedValue({ data: liste })
+    ventesApi.patchListePrix.mockResolvedValue({ data: { ...liste, nom: 'Revendeur Nord' } })
+    render(<ListesPrixPage />)
+    fireEvent.click(await screen.findByText('Revendeur'))
+    const dialog = await screen.findByRole('dialog')
+    fireEvent.click(within(dialog).getByRole('button', { name: /Modifier/ }))
+    const dialogs = await screen.findAllByRole('dialog')
+    const editDialog = dialogs[dialogs.length - 1]
+    fireEvent.change(within(editDialog).getByLabelText(/^Nom/), { target: { value: 'Revendeur Nord' } })
+    fireEvent.click(within(editDialog).getByRole('button', { name: 'Enregistrer' }))
+    await waitFor(() => expect(ventesApi.patchListePrix).toHaveBeenCalledWith(1, {
+      nom: 'Revendeur Nord', devise: 'MAD', segment_client: '',
+      date_debut: null, date_fin: null,
+    }))
+  })
+
+  it('archive une liste après confirmation (elle sort de la résolution de prix)', async () => {
+    const liste = {
+      id: 1, nom: 'Revendeur', devise: 'MAD', segment_client: '', archived: false,
+      date_debut: null, date_fin: null, lignes: [], regles: [],
+    }
+    ventesApi.getListesPrix.mockResolvedValue({ data: [liste] })
+    ventesApi.getListePrix.mockResolvedValue({ data: liste })
+    ventesApi.patchListePrix.mockResolvedValue({ data: { ...liste, archived: true } })
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
+    render(<ListesPrixPage />)
+    fireEvent.click(await screen.findByText('Revendeur'))
+    const dialog = await screen.findByRole('dialog')
+    fireEvent.click(within(dialog).getByRole('button', { name: /Archiver/ }))
+    await waitFor(() => expect(ventesApi.patchListePrix)
+      .toHaveBeenCalledWith(1, { archived: true }))
+  })
+
+  it('une liste archivée propose « Réactiver » et affiche son état', async () => {
+    const liste = {
+      id: 1, nom: 'Revendeur', devise: 'MAD', segment_client: '', archived: true,
+      date_debut: null, date_fin: null, lignes: [], regles: [],
+    }
+    ventesApi.getListesPrix.mockResolvedValue({ data: [liste] })
+    ventesApi.getListePrix.mockResolvedValue({ data: liste })
+    ventesApi.patchListePrix.mockResolvedValue({ data: { ...liste, archived: false } })
+    render(<ListesPrixPage />)
+    fireEvent.click(await screen.findByText('Revendeur'))
+    const dialog = await screen.findByRole('dialog')
+    expect(within(dialog).getByText(/Liste archivée/)).toBeInTheDocument()
+    // Réactiver ne demande PAS de confirmation (action non destructive).
+    fireEvent.click(within(dialog).getByRole('button', { name: /Réactiver/ }))
+    await waitFor(() => expect(ventesApi.patchListePrix)
+      .toHaveBeenCalledWith(1, { archived: false }))
+  })
+
+  it('supprime une liste après confirmation et referme le détail', async () => {
+    const liste = {
+      id: 1, nom: 'Revendeur', devise: 'MAD', segment_client: '', archived: false,
+      date_debut: null, date_fin: null, lignes: [], regles: [],
+    }
+    ventesApi.getListesPrix.mockResolvedValue({ data: [liste] })
+    ventesApi.getListePrix.mockResolvedValue({ data: liste })
+    ventesApi.deleteListePrix.mockResolvedValue({})
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
+    render(<ListesPrixPage />)
+    fireEvent.click(await screen.findByText('Revendeur'))
+    const dialog = await screen.findByRole('dialog')
+    fireEvent.click(within(dialog).getByRole('button', { name: /Supprimer/ }))
+    await waitFor(() => expect(ventesApi.deleteListePrix).toHaveBeenCalledWith(1))
+  })
+
+  it('suppression refusée à la confirmation : aucun appel réseau', async () => {
+    const liste = {
+      id: 1, nom: 'Revendeur', devise: 'MAD', segment_client: '', archived: false,
+      date_debut: null, date_fin: null, lignes: [], regles: [],
+    }
+    ventesApi.getListesPrix.mockResolvedValue({ data: [liste] })
+    ventesApi.getListePrix.mockResolvedValue({ data: liste })
+    vi.spyOn(window, 'confirm').mockReturnValue(false)
+    render(<ListesPrixPage />)
+    fireEvent.click(await screen.findByText('Revendeur'))
+    const dialog = await screen.findByRole('dialog')
+    fireEvent.click(within(dialog).getByRole('button', { name: /Supprimer/ }))
+    await waitFor(() => expect(window.confirm).toHaveBeenCalled())
+    expect(ventesApi.deleteListePrix).not.toHaveBeenCalled()
   })
 })
