@@ -71,6 +71,10 @@ vi.mock('../../api/automationApi', () => ({
     createApprovalRequest: vi.fn(() => Promise.resolve({ data: {} })),
     approveApprovalRequest: vi.fn(() => Promise.resolve({ data: {} })),
     rejectApprovalRequest: vi.fn(() => Promise.resolve({ data: {} })),
+    // WIR261 / ZCTR8 — cycle « complément d'information ».
+    demandeInfoApprovalRequest: vi.fn(() => Promise.resolve({ data: {} })),
+    resoumettreApprovalRequest: vi.fn(() => Promise.resolve({ data: {} })),
+    deleteApprovalRequestType: vi.fn(() => Promise.resolve({ data: {} })),
   },
 }))
 
@@ -141,5 +145,90 @@ describe('ApprobationsPage — onglet Délégations (VX103)', () => {
     await userEvent.click(confirmBtn)
 
     await waitFor(() => expect(automationApi.deleteDelegation).toHaveBeenCalledWith(5))
+  })
+})
+
+/* ── WIR261 / ZCTR8 — cycle « complément d'information » ────────────────────
+   Avant : seules les demandes `pending` étaient chargées, donc une demande
+   renvoyée à son émetteur disparaissait de l'écran et n'était plus jamais
+   resoumissible. */
+describe('WIR261 — demandes ad-hoc : complément d’information', () => {
+  const TYPE = { id: 3, nom: 'Note de frais', enabled: true, champs_requis: ['montant'] }
+  const EN_ATTENTE = {
+    id: 11, request_type: 3, request_type_nom: 'Note de frais',
+    demandeur_nom: 'sami', status: 'pending', payload: { montant: '100' },
+    min_approbations: 1, approvals_count: 0,
+  }
+  const INFO = {
+    id: 12, request_type: 3, request_type_nom: 'Note de frais',
+    demandeur_nom: 'sami', status: 'info_requested',
+    decision_note: 'Joindre le justificatif.', payload: { montant: '250' },
+    min_approbations: 1, approvals_count: 0,
+  }
+
+  function armerMocks() {
+    // Ce fichier n'a pas de `beforeEach` global : on remet à zéro les compteurs
+    // d'appels des mocks que ces tests observent (jamais l'implémentation —
+    // `mockReset` viderait les files `mockResolvedValue`).
+    automationApi.demandeInfoApprovalRequest.mockClear()
+    automationApi.resoumettreApprovalRequest.mockClear()
+    automationApi.deleteApprovalRequestType.mockClear()
+    automationApi.getApprovalRequests.mockClear()
+    automationApi.getApprovalRequestTypes.mockResolvedValue({ data: { results: [TYPE] } })
+    automationApi.getApprovalRequests.mockImplementation((params) => Promise.resolve({
+      data: {
+        results: params?.status === 'info_requested' ? [INFO] : [EN_ATTENTE],
+      },
+    }))
+  }
+
+  async function ouvrirOnglet() {
+    armerMocks()
+    renderPage(<ApprobationsPage />)
+    await userEvent.click(await screen.findByRole('tab', { name: 'Demandes ad-hoc' }))
+  }
+
+  it('charge AUSSI les demandes info_requested et les affiche', async () => {
+    await ouvrirOnglet()
+    await waitFor(() => expect(automationApi.getApprovalRequests)
+      .toHaveBeenCalledWith({ status: 'info_requested' }))
+    expect(await screen.findByText('Complément demandé')).toBeInTheDocument()
+    expect(screen.getByText(/Joindre le justificatif/)).toBeInTheDocument()
+  })
+
+  it('« Demander un complément » poste le motif saisi', async () => {
+    vi.spyOn(window, 'prompt').mockReturnValue('Justificatif manquant')
+    await ouvrirOnglet()
+    await userEvent.click(await screen.findByRole('button', { name: 'Demander un complément' }))
+    await waitFor(() => expect(automationApi.demandeInfoApprovalRequest)
+      .toHaveBeenCalledWith(11, 'Justificatif manquant'))
+  })
+
+  it('un motif vide n’appelle jamais le serveur (motif obligatoire)', async () => {
+    vi.spyOn(window, 'prompt').mockReturnValue('   ')
+    await ouvrirOnglet()
+    await userEvent.click(await screen.findByRole('button', { name: 'Demander un complément' }))
+    expect(automationApi.demandeInfoApprovalRequest).not.toHaveBeenCalled()
+  })
+
+  it('« Resoumettre » renvoie le payload CORRIGÉ', async () => {
+    await ouvrirOnglet()
+    await userEvent.click(await screen.findByRole('button', { name: 'Resoumettre' }))
+    const champ = await screen.findByDisplayValue('250')
+    await userEvent.clear(champ)
+    await userEvent.type(champ, '260')
+    const boutons = screen.getAllByRole('button', { name: 'Resoumettre' })
+    await userEvent.click(boutons[boutons.length - 1])
+
+    await waitFor(() => expect(automationApi.resoumettreApprovalRequest)
+      .toHaveBeenCalledWith(12, { montant: '260' }))
+  })
+
+  it('supprimer un type appelle deleteApprovalRequestType', async () => {
+    await ouvrirOnglet()
+    await userEvent.click(
+      await screen.findByRole('button', { name: 'Supprimer le type Note de frais' }))
+    await waitFor(() => expect(automationApi.deleteApprovalRequestType)
+      .toHaveBeenCalledWith(3))
   })
 })

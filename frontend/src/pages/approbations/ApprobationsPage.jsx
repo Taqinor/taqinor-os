@@ -587,15 +587,22 @@ function DemandesAdHocTab() {
   const [demTypeId, setDemTypeId] = useState('')
   const [demValues, setDemValues] = useState({})
 
+  // WIR261 / ZCTR8 — le cycle « complément d'information » était INATTEIGNABLE :
+  // seules les demandes `pending` étaient chargées, donc une demande renvoyée à
+  // son émetteur (`info_requested`) disparaissait de l'écran et ne pouvait plus
+  // jamais être resoumise. On charge désormais les DEUX statuts.
+  const [resoumission, setResoumission] = useState(null) // { demande, valeurs }
   const load = () => {
     setLoading(true)
     Promise.all([
       automationApi.getApprovalRequestTypes(),
       automationApi.getApprovalRequests({ status: 'pending' }),
+      automationApi.getApprovalRequests({ status: 'info_requested' }),
     ])
-      .then(([t, d]) => {
-        setTypes(Array.isArray(t.data) ? t.data : (t.data?.results ?? []))
-        setDemandes(Array.isArray(d.data) ? d.data : (d.data?.results ?? []))
+      .then(([t, d, info]) => {
+        const rows = (r) => (Array.isArray(r.data) ? r.data : (r.data?.results ?? []))
+        setTypes(rows(t))
+        setDemandes([...rows(d), ...rows(info)])
       })
       .catch(() => toast.error('Chargement impossible.'))
       .finally(() => setLoading(false))
@@ -649,6 +656,50 @@ function DemandesAdHocTab() {
     finally { setBusy(false) }
   }
 
+  // WIR261 / ZCTR8 — renvoyer la demande à son émetteur SANS la rejeter. Le
+  // motif est OBLIGATOIRE côté serveur : on ne poste jamais un motif vide.
+  const demanderComplement = async (id) => {
+    const motif = window.prompt("Que manque-t-il ? (motif obligatoire) :") || ''
+    if (!motif.trim()) { toast.error('Un motif est obligatoire.'); return }
+    setBusy(true)
+    try {
+      await automationApi.demandeInfoApprovalRequest(id, motif.trim())
+      toast.success('Complément demandé — la demande est revenue à son émetteur.')
+      load()
+    } catch (err) {
+      toast.error(err?.response?.data?.detail || 'Demande de complément impossible.')
+    } finally { setBusy(false) }
+  }
+
+  // WIR261 / ZCTR8 — le DEMANDEUR corrige son payload et relance un cycle
+  // (le serveur refuse toute autre personne et tout autre statut).
+  const resoumettre = async () => {
+    if (!resoumission) return
+    setBusy(true)
+    try {
+      await automationApi.resoumettreApprovalRequest(
+        resoumission.demande.id, resoumission.valeurs)
+      toast.success('Demande resoumise.')
+      setResoumission(null)
+      load()
+    } catch (err) {
+      toast.error(err?.response?.data?.detail || 'Resoumission impossible.')
+    } finally { setBusy(false) }
+  }
+
+  const supprimerType = async (t) => {
+    setBusy(true)
+    try {
+      await automationApi.deleteApprovalRequestType(t.id)
+      toast.success('Type supprimé.')
+      load()
+    } catch (err) {
+      toast.error(err?.response?.status === 403
+        ? "Suppression réservée à l'administrateur."
+        : (err?.response?.data?.detail || 'Suppression impossible.'))
+    } finally { setBusy(false) }
+  }
+
   if (loading) return <Spinner />
 
   return (
@@ -683,7 +734,15 @@ function DemandesAdHocTab() {
         {types.length > 0 && (
           <div className="flex flex-wrap gap-2">
             {types.map((t) => (
-              <Badge key={t.id} tone={t.enabled ? 'info' : 'neutral'}>{t.nom}</Badge>
+              <span key={t.id} className="inline-flex items-center gap-1">
+                <Badge tone={t.enabled ? 'info' : 'neutral'}>{t.nom}</Badge>
+                {/* WIR261 — suppression d'un type (403 FR toléré côté rôle). */}
+                <Button type="button" variant="ghost" size="sm" disabled={busy}
+                        aria-label={`Supprimer le type ${t.nom}`}
+                        onClick={() => supprimerType(t)}>
+                  <Trash2 className="size-3.5" />
+                </Button>
+              </span>
             ))}
           </div>
         )}
@@ -719,7 +778,8 @@ function DemandesAdHocTab() {
         </div>
       </Card>
 
-      {/* (c) Approbateur — demandes en attente + décision. */}
+      {/* (c) Approbateur — demandes en attente + décision. WIR261 : les
+          demandes « complément demandé » restent VISIBLES et resoumissibles. */}
       <Card className="p-5">
         <h3 className="mb-3 text-sm font-semibold">Demandes en attente</h3>
         {demandes.length === 0 ? (
@@ -730,27 +790,92 @@ function DemandesAdHocTab() {
             {demandes.map((d) => (
               <li key={d.id} className="flex items-center justify-between gap-3 rounded-lg border border-border px-3 py-2 text-sm">
                 <span className="flex flex-col">
-                  <span className="font-medium">{d.request_type_nom || `Demande #${d.id}`}</span>
+                  <span className="flex items-center gap-2 font-medium">
+                    {d.request_type_nom || `Demande #${d.id}`}
+                    {d.status === 'info_requested' && (
+                      <Badge tone="warning">Complément demandé</Badge>
+                    )}
+                  </span>
                   <span className="text-muted-foreground">
                     {d.demandeur_nom || '—'}
                     {d.min_approbations > 1 && ` · ${d.approvals_count}/${d.min_approbations} approbations`}
+                    {d.status === 'info_requested' && d.decision_note
+                      && ` · ${d.decision_note}`}
                   </span>
                 </span>
                 <span className="flex items-center gap-1.5">
-                  <Button type="button" variant="outline" size="sm" disabled={busy}
-                          onClick={() => decider(d.id, true)}>
-                    <CheckCircle2 className="size-3.5" /> Approuver
-                  </Button>
-                  <Button type="button" variant="outline" size="sm" disabled={busy}
-                          onClick={() => decider(d.id, false)}>
-                    <XCircle className="size-3.5" /> Refuser
-                  </Button>
+                  {d.status === 'info_requested' ? (
+                    <Button type="button" variant="outline" size="sm" disabled={busy}
+                            onClick={() => setResoumission({
+                              demande: d, valeurs: { ...(d.payload ?? {}) },
+                            })}>
+                      Resoumettre
+                    </Button>
+                  ) : (
+                    <>
+                      <Button type="button" variant="outline" size="sm" disabled={busy}
+                              onClick={() => decider(d.id, true)}>
+                        <CheckCircle2 className="size-3.5" /> Approuver
+                      </Button>
+                      <Button type="button" variant="outline" size="sm" disabled={busy}
+                              onClick={() => demanderComplement(d.id)}>
+                        Demander un complément
+                      </Button>
+                      <Button type="button" variant="outline" size="sm" disabled={busy}
+                              onClick={() => decider(d.id, false)}>
+                        <XCircle className="size-3.5" /> Refuser
+                      </Button>
+                    </>
+                  )}
                 </span>
               </li>
             ))}
           </ul>
         )}
       </Card>
+
+      {/* WIR261 — correction du payload avant resoumission (le serveur
+          revalide les champs requis du type et refuse tout autre demandeur). */}
+      {resoumission && (
+        <ResponsiveDialog
+          open
+          onOpenChange={(o) => { if (!o) setResoumission(null) }}
+          title="Resoumettre la demande"
+          description="Corrigez les informations demandées puis relancez le cycle d'approbation."
+          footer={(
+            <>
+              <Button type="button" variant="ghost" onClick={() => setResoumission(null)}>
+                Annuler
+              </Button>
+              <Button type="button" disabled={busy} onClick={resoumettre}>
+                Resoumettre
+              </Button>
+            </>
+          )}
+        >
+          <div className="flex flex-col gap-3">
+            {resoumission.demande.decision_note && (
+              <p className="rounded-md border border-warning/40 bg-warning/10 p-2 text-sm">
+                {resoumission.demande.decision_note}
+              </p>
+            )}
+            {Object.keys(resoumission.valeurs).length === 0 && (
+              <p className="text-sm text-muted-foreground">
+                Cette demande ne porte aucun champ à corriger.
+              </p>
+            )}
+            {Object.entries(resoumission.valeurs).map(([champ, valeur]) => (
+              <div key={champ}>
+                <Label>{champ}</Label>
+                <Input value={valeur ?? ''}
+                       onChange={(e) => setResoumission((r) => ({
+                         ...r, valeurs: { ...r.valeurs, [champ]: e.target.value },
+                       }))} />
+              </div>
+            ))}
+          </div>
+        </ResponsiveDialog>
+      )}
     </div>
   )
 }
