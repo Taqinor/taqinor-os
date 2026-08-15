@@ -176,6 +176,13 @@ const paieApi = {
   deleteAdhesionMutuelle: (id) =>
     api.delete(`/paie/adhesions-mutuelle/${id}/`),
 
+  // ── Rubriques récurrentes par employé (PAIE9/WIR243) ──
+  getRubriquesEmploye: (params) => api.get('/paie/rubriques-employe/', { params }),
+  saveRubriqueEmploye: (id, data) =>
+    id ? api.patch(`/paie/rubriques-employe/${id}/`, data)
+      : api.post('/paie/rubriques-employe/', data),
+  deleteRubriqueEmploye: (id) => api.delete(`/paie/rubriques-employe/${id}/`),
+
   // ── Structures de paie (gabarits, XPAI24) ──
   getStructures: (params) => api.get('/paie/structures/', { params }),
   saveStructure: (id, data) =>

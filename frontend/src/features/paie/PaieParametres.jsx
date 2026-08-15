@@ -36,6 +36,7 @@ export default function PaieParametres() {
           <TabsTrigger value="parametres">Paramètres sociaux</TabsTrigger>
           <TabsTrigger value="bareme">Barème IR</TabsTrigger>
           <TabsTrigger value="rubriques">Rubriques</TabsTrigger>
+          <TabsTrigger value="structures">Structures</TabsTrigger>
           <TabsTrigger value="profils">Profils</TabsTrigger>
           <TabsTrigger value="mutuelle">Mutuelle</TabsTrigger>
           <TabsTrigger value="simulateur">Simulateur net/brut</TabsTrigger>
@@ -43,6 +44,7 @@ export default function PaieParametres() {
         <TabsContent value="parametres"><ParametresTab /></TabsContent>
         <TabsContent value="bareme"><BaremeTab /></TabsContent>
         <TabsContent value="rubriques"><RubriquesTab /></TabsContent>
+        <TabsContent value="structures"><StructuresTab /></TabsContent>
         <TabsContent value="profils"><ProfilsTab /></TabsContent>
         <TabsContent value="mutuelle"><MutuelleTab /></TabsContent>
         <TabsContent value="simulateur"><SimulateurTab /></TabsContent>
@@ -529,12 +531,107 @@ function RubriqueDialog({ rubrique, onClose, onSaved }) {
   )
 }
 
+/* ── WIR243 — Structures de paie (gabarits de rubriques par catégorie,
+   XPAI24) : la brique existait côté serveur (getStructures/saveStructure/
+   ensureStructuresStandard/appliquerStructure) sans aucun écran. ── */
+function StructuresTab() {
+  const [rows, setRows] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [busy, setBusy] = useState('')
+  const [applyingId, setApplyingId] = useState(null)
+  const [profilCible, setProfilCible] = useState('')
+
+  const load = () =>
+    paieApi.getStructures()
+      .then((r) => setRows(listOf(r.data)))
+      .catch(() => toast.error('Chargement des structures impossible.'))
+      .finally(() => setLoading(false))
+  useEffect(() => { load() }, [])
+
+  const semerStandard = async () => {
+    setBusy('standard')
+    try {
+      await paieApi.ensureStructuresStandard()
+      toast.success('Structures standard provisionnées.')
+      await load()
+    } catch {
+      toast.error('Semis impossible.')
+    } finally { setBusy('') }
+  }
+
+  const appliquer = async () => {
+    if (!profilCible) { toast.error('ID profil requis.'); return }
+    setBusy('appliquer')
+    try {
+      await paieApi.appliquerStructure(applyingId, Number(profilCible))
+      toast.success('Structure appliquée au profil.')
+      setApplyingId(null)
+      setProfilCible('')
+    } catch (e) {
+      toast.error(e?.response?.data?.detail || 'Application impossible.')
+    } finally { setBusy('') }
+  }
+
+  const columns = [
+    { id: 'code', header: 'Code', width: 100, accessor: (r) => r.code },
+    { id: 'libelle', header: 'Libellé', accessor: (r) => r.libelle },
+    {
+      id: 'rubriques', header: 'Rubriques par défaut',
+      accessor: (r) => (r.rubriques_defaut || []).length,
+      cell: (_v, r) => (r.rubriques_defaut || [])
+        .map((rd) => rd.rubrique_code || rd.rubrique).join(', ') || '—',
+    },
+  ]
+
+  return (
+    <div className="flex flex-col gap-3">
+      <div className="flex flex-wrap justify-end gap-2">
+        <Button onClick={semerStandard} loading={busy === 'standard'} variant="outline">
+          <Sprout size={16} aria-hidden="true" /> Structures standard
+        </Button>
+      </div>
+      <Card className="p-4 sm:p-5">
+        {loading ? <Loading /> : rows.length === 0 ? (
+          <EmptyState icon={Sprout} title="Aucune structure"
+            description="Provisionnez les 3 structures standard (cadre/employé/ouvrier)." />
+        ) : (
+          <DataTable data={rows} columns={columns} searchable
+            exportName="structures-paie"
+            rowActions={(r) => [
+              { id: 'appliquer', label: 'Appliquer à un profil',
+                onClick: () => setApplyingId(r.id) },
+            ]} />
+        )}
+      </Card>
+      {applyingId != null && (
+        <Dialog open onOpenChange={(o) => { if (!o) setApplyingId(null) }}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Appliquer la structure</DialogTitle>
+            </DialogHeader>
+            <label className="flex flex-col gap-1 text-sm">
+              <span className="text-muted-foreground">ID du profil de paie</span>
+              <Input value={profilCible} onChange={(e) => setProfilCible(e.target.value)}
+                inputMode="numeric" />
+            </label>
+            <DialogFooter>
+              <Button onClick={appliquer} loading={busy === 'appliquer'}>Appliquer</Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
+    </div>
+  )
+}
+
 /* ── Profils de paie par employé ── */
 function ProfilsTab() {
   const [rows, setRows] = useState([])
   const [loading, setLoading] = useState(true)
   const [stcProfil, setStcProfil] = useState(null)
   const [regimeProfil, setRegimeProfil] = useState(null)
+  // WIR243 — rubriques récurrentes (prime transport, panier…) du profil.
+  const [rubriquesProfil, setRubriquesProfil] = useState(null)
   // WIR3 — onboarding paie : création (profil=null) ou édition d'un ProfilPaie.
   const [profilDialogOpen, setProfilDialogOpen] = useState(false)
   const [editingProfil, setEditingProfil] = useState(null)
@@ -585,6 +682,8 @@ function ProfilsTab() {
                 onClick: () => setStcProfil(r) },
               { id: 'regime', label: 'Régime d’exonération IR',
                 onClick: () => setRegimeProfil(r) },
+              { id: 'rubriques-recurrentes', label: 'Rubriques récurrentes',
+                onClick: () => setRubriquesProfil(r) },
             ]} />
         )}
       </Card>
@@ -601,7 +700,130 @@ function ProfilsTab() {
           onClose={() => setRegimeProfil(null)}
           onSaved={load} />
       )}
+      {rubriquesProfil && (
+        <RubriquesRecurrentesDialog profil={rubriquesProfil}
+          onClose={() => setRubriquesProfil(null)} />
+      )}
     </>
+  )
+}
+
+/* ── WIR243 — Rubriques récurrentes rattachées à un profil (RubriqueEmploye) :
+   la brique CRUD/moteur existait sans aucun appelant côté écran. Choix d'une
+   rubrique du catalogue + surcharge montant/taux optionnelle + fenêtre de
+   dates optionnelle ; liste des rattachements déjà en place, suppression
+   possible. ── */
+function RubriquesRecurrentesDialog({ profil, onClose }) {
+  const [rows, setRows] = useState([])
+  const [catalogue, setCatalogue] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [rubriqueId, setRubriqueId] = useState('')
+  const [montant, setMontant] = useState('')
+  const [dateDebut, setDateDebut] = useState('')
+  const [dateFin, setDateFin] = useState('')
+  const [busy, setBusy] = useState(false)
+
+  const load = () => {
+    setLoading(true)
+    Promise.all([
+      paieApi.getRubriquesEmploye(),
+      paieApi.getRubriques({ ordering: 'ordre' }),
+    ])
+      .then(([re, cat]) => {
+        setRows(listOf(re.data).filter((r) => r.profil === profil.id))
+        setCatalogue(listOf(cat.data))
+      })
+      .catch(() => toast.error('Chargement des rubriques récurrentes impossible.'))
+      .finally(() => setLoading(false))
+  }
+  useEffect(() => { load() }, [])
+
+  const attacher = async () => {
+    if (!rubriqueId) { toast.error('Choisissez une rubrique.'); return }
+    setBusy(true)
+    try {
+      await paieApi.saveRubriqueEmploye(null, {
+        profil: profil.id,
+        rubrique: Number(rubriqueId),
+        montant: montant || undefined,
+        date_debut: dateDebut || undefined,
+        date_fin: dateFin || undefined,
+      })
+      toast.success('Rubrique récurrente rattachée.')
+      setRubriqueId(''); setMontant(''); setDateDebut(''); setDateFin('')
+      load()
+    } catch (e) {
+      toast.error(e?.response?.data?.detail || 'Rattachement impossible.')
+    } finally { setBusy(false) }
+  }
+
+  const detacher = async (id) => {
+    try {
+      await paieApi.deleteRubriqueEmploye(id)
+      toast.success('Rubrique récurrente détachée.')
+      load()
+    } catch {
+      toast.error('Suppression impossible.')
+    }
+  }
+
+  return (
+    <Dialog open onOpenChange={(o) => !o && onClose()}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Rubriques récurrentes — {profil.employe_nom || `Profil #${profil.id}`}</DialogTitle>
+        </DialogHeader>
+        <div className="flex flex-col gap-3">
+          {loading ? <Loading /> : (
+            <ul className="flex flex-col gap-1.5">
+              {rows.length === 0 && (
+                <li className="text-sm text-muted-foreground">Aucune rubrique récurrente.</li>
+              )}
+              {rows.map((r) => (
+                <li key={r.id} className="flex items-center justify-between gap-2 rounded-md border border-border p-2 text-sm">
+                  <span>
+                    {r.rubrique_code || r.rubrique}
+                    {r.montant != null && ` — ${formatMAD(r.montant)}`}
+                    {!r.actif && ' (inactif)'}
+                  </span>
+                  <Button variant="ghost" size="sm" onClick={() => detacher(r.id)}>Détacher</Button>
+                </li>
+              ))}
+            </ul>
+          )}
+          <div className="flex flex-col gap-2 border-t border-border pt-3">
+            <label className="flex flex-col gap-1 text-sm">
+              <span className="text-muted-foreground">Rubrique</span>
+              <Select value={rubriqueId} onValueChange={setRubriqueId}>
+                <SelectTrigger><SelectValue placeholder="Choisir…" /></SelectTrigger>
+                <SelectContent>
+                  {catalogue.map((c) => (
+                    <SelectItem key={c.id} value={String(c.id)}>{c.code} — {c.libelle}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </label>
+            <label className="flex flex-col gap-1 text-sm">
+              <span className="text-muted-foreground">Montant (surcharge, optionnel)</span>
+              <Input value={montant} onChange={(e) => setMontant(e.target.value)} inputMode="decimal" />
+            </label>
+            <div className="flex gap-2">
+              <label className="flex flex-1 flex-col gap-1 text-sm">
+                <span className="text-muted-foreground">Début (optionnel)</span>
+                <Input type="date" value={dateDebut} onChange={(e) => setDateDebut(e.target.value)} />
+              </label>
+              <label className="flex flex-1 flex-col gap-1 text-sm">
+                <span className="text-muted-foreground">Fin (optionnel)</span>
+                <Input type="date" value={dateFin} onChange={(e) => setDateFin(e.target.value)} />
+              </label>
+            </div>
+          </div>
+        </div>
+        <DialogFooter>
+          <Button onClick={attacher} loading={busy}>Rattacher</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   )
 }
 
