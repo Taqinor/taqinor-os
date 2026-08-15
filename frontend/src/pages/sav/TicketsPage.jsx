@@ -23,6 +23,7 @@ import VoiceNoteRecorder from '../../features/offlinesync/VoiceNoteRecorder'
 import { fetchTickets, updateTicket } from '../../features/sav/store/ticketsSlice'
 import savApi from '../../api/savApi'
 import stockApi from '../../api/stockApi'
+import crmApi from '../../api/crmApi'
 import api from '../../api/axios'
 // NTMOB15 — scan QR/code-barres natif : sélectionne directement l'équipement
 // concerné au lieu d'une recherche manuelle dans la liste déroulante.
@@ -1798,11 +1799,12 @@ function CalendarDayCell({ date: cellDate, inMonth, isToday, tickets, onSelect, 
   )
 }
 
-// Formulaire minimal de création rapide (référence auto côté serveur) : type,
-// client texte libre non requis ici — on réutilise le flux normal via
-// createTicket avec juste la date_tournee proposée en info (posée ensuite par
-// le glisser-déposer si l'utilisateur veut affiner) — garde le composant
-// simple : ouvre la fiche standard n'est pas nécessaire, un POST minimal suffit.
+// WIR178 — Formulaire minimal de création rapide (référence auto côté
+// serveur) : `client` est un FK REQUIS côté serveur (`sav.Ticket.client`,
+// aucun `null=True`) — le commentaire précédent affirmait à tort qu'il
+// n'était « pas requis ici » alors que le POST renvoyait un 400 garanti sans
+// lui. Type + client (obligatoire) + description, puis la date_tournee
+// proposée est posée sur le ticket fraîchement créé.
 // VX240(d) — dernier type de ticket utilisé (localStorage, modifiable),
 // même patron que VX93 (lireLastTva/lireDernierMode) : le type ne reset plus
 // silencieusement à « correctif » à chaque ouverture.
@@ -1819,14 +1821,23 @@ const ecrireLastTicketType = (v) => {
 function CalendarQuickCreateDialog({ date: openDate, onClose, onCreated }) {
   const [description, setDescription] = useState('')
   const [type, setType] = useState(lireLastTicketType)
+  // WIR178 — `client` est un FK REQUIS côté serveur (`apps/sav/models.py`,
+  // aucun `null=True`) : sans lui le POST renvoyait un 400 garanti.
+  const [clientId, setClientId] = useState('')
+  const [clients, setClients] = useState([])
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState(null)
 
+  useEffect(() => {
+    crmApi.getClients().then((r) => setClients(r.data?.results ?? r.data ?? [])).catch(() => {})
+  }, [])
+
   const submit = async () => {
+    if (!clientId) { setErr('Le client est requis.'); return }
     setBusy(true)
     setErr(null)
     try {
-      const r = await savApi.createTicket({ type, description: description || undefined })
+      const r = await savApi.createTicket({ type, client: clientId, description: description || undefined })
       // Pose la date planifiée sur le ticket fraîchement créé.
       await savApi.replanifierTicket(r.data.id, openDate)
       ecrireLastTicketType(type)  // VX240(d) — mémorise le type pour la prochaine création
@@ -1849,6 +1860,16 @@ function CalendarQuickCreateDialog({ date: openDate, onClose, onCreated }) {
           </AlertDialogDescription>
         </AlertDialogHeader>
         <div className="grid gap-3">
+          <FormField label="Client">
+            <Select value={clientId} onValueChange={setClientId}>
+              <SelectTrigger aria-label="Client"><SelectValue placeholder="— Client —" /></SelectTrigger>
+              <SelectContent>
+                {clients.map((c) => (
+                  <SelectItem key={c.id} value={String(c.id)}>{c.nom} {c.prenom || ''}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </FormField>
           <FormField label="Type">
             {/* VX240(d) — la modale s'ouvrait sans aucun autofocus. */}
             <Select value={type} onValueChange={setType}>
@@ -1869,7 +1890,7 @@ function CalendarQuickCreateDialog({ date: openDate, onClose, onCreated }) {
         </div>
         <AlertDialogFooter>
           <AlertDialogCancel>Annuler</AlertDialogCancel>
-          <AlertDialogAction disabled={busy} onClick={(e) => { e.preventDefault(); submit() }}>
+          <AlertDialogAction disabled={busy || !clientId} onClick={(e) => { e.preventDefault(); submit() }}>
             Créer
           </AlertDialogAction>
         </AlertDialogFooter>
