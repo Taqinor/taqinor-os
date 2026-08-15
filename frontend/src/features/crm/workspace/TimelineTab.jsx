@@ -4,7 +4,10 @@ import { Button, IconButton, HelpTip } from '../../../ui'
 // EZ15 — dictée INLINE navigateur (bureau). Frontière avec NTMOB30, qui
 // possède le TERRAIN (enregistrement + transcription serveur) : jamais deux
 // boutons micro sur un même champ.
-import { DictationButton, DICTATION_PRIVACY_FR } from '../../../ui/DictationButton'
+import {
+  DictationButton, DICTATION_PRIVACY_FR, isDictationSupported,
+} from '../../../ui/DictationButton'
+import VoiceNoteRecorder from '../../offlinesync/VoiceNoteRecorder'
 import api from '../../../api/axios'
 import crmApi from '../../../api/crmApi'
 import marketingApi from '../../../api/marketingApi'
@@ -325,6 +328,17 @@ export default function TimelineTab({
           })}
         />
         <HelpTip label="Confidentialité de la dictée">{DICTATION_PRIVACY_FR}</HelpTip>
+        {/* NTMOB30 — repli TERRAIN : là où le navigateur n'offre PAS la dictée
+            inline EZ15 (iOS Safari, typiquement le téléphone du technicien), on
+            propose l'enregistrement + transcription SERVEUR. Jamais les deux
+            boutons micro sur le même champ — d'où la condition exclusive. */}
+        {!isDictationSupported() && (
+          <VoiceNoteRecorder
+            onTranscrit={(txt) => setComposer({
+              note: composer.note ? `${composer.note} ${txt}` : txt,
+            })}
+          />
+        )}
         <input
           ref={noteFileInputRef}
           type="file"

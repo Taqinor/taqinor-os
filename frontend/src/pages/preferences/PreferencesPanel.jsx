@@ -25,6 +25,7 @@ import { Switch } from '../../ui/Switch'
 import { ThemeToggle } from '../../design/ThemeToggle'
 import { useDensity } from '../../design/theme-context'
 import { moduleConfigs } from '../../router/moduleRoutes'
+import AppLockSetting from '../../features/pwa/AppLockSetting'
 import api from '../../api/axios'
 import { fetchMe } from '../../features/auth/store/authSlice'
 import {
@@ -34,6 +35,10 @@ import {
   getAppResumePref, setAppResumePref, APP_RESUME_ALWAYS, APP_RESUME_NEVER,
   // EZ9 — mode « Plein soleil » (terrain).
   getSunlightPref, setSunlightPref,
+  // NTMOB17 — mode « Économie de données » (forfait mobile en tournée).
+  getDataSaverPref, setDataSaverPref,
+  // NTMOB22 — mode « une main » (terrain).
+  getOneHandPref, setOneHandPref,
 } from './prefs'
 
 // NTMOB6 — sélecteur de démarrage par rôle : « revenir au dashboard classique
@@ -125,6 +130,19 @@ export default function PreferencesPanel({ open, onOpenChange }) {
   const handleSunlightChange = (checked) => {
     setSunlight(checked)
     setSunlightPref(checked)
+  }
+
+  const [dataSaver, setDataSaver] = useState(getDataSaverPref)
+  const [oneHand, setOneHand] = useState(getOneHandPref)
+
+  const handleOneHandChange = (checked) => {
+    setOneHand(checked)
+    setOneHandPref(checked)
+  }
+
+  const handleDataSaverChange = (checked) => {
+    setDataSaver(checked)
+    setDataSaverPref(checked)
   }
 
   const handlePhotoQualityChange = (value) => {
@@ -259,6 +277,54 @@ export default function PreferencesPanel({ open, onOpenChange }) {
               la photo telle quelle.
             </p>
           </div>
+
+          {/* NTMOB17 — mode économie de données (forfait mobile en tournée). */}
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <label htmlFor="pref-data-saver" className="text-sm font-semibold text-foreground">
+                Mode économie de données
+              </label>
+              <p className="text-xs text-muted-foreground">
+                Les vignettes photo ne se chargent qu'au toucher, le chat se
+                rafraîchit moins souvent et les photos envoyées sont toujours
+                compressées au maximum.
+              </p>
+            </div>
+            <Switch
+              id="pref-data-saver"
+              checked={dataSaver}
+              onCheckedChange={handleDataSaverChange}
+            />
+          </div>
+          {dataSaver && (
+            <div
+              role="status"
+              className="rounded-md border border-border bg-muted px-3 py-2 text-xs text-muted-foreground"
+            >
+              Mode économie de données actif
+            </div>
+          )}
+
+          {/* NTMOB22 — mode « une main » (grand téléphone, terrain). */}
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <label htmlFor="pref-one-hand" className="text-sm font-semibold text-foreground">
+                Mode « une main »
+              </label>
+              <p className="text-xs text-muted-foreground">
+                Sur la checklist chantier, ramène le choix d'étape dans le tiers
+                bas de l'écran, à portée du pouce quand l'autre main est prise.
+              </p>
+            </div>
+            <Switch
+              id="pref-one-hand"
+              checked={oneHand}
+              onCheckedChange={handleOneHandChange}
+            />
+          </div>
+
+          {/* NTMOB18 — verrou d'écran local (biométrie de l'appareil). */}
+          <AppLockSetting />
 
           <MobileHomeToggle />
         </div>

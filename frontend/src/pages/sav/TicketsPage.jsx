@@ -16,7 +16,10 @@ import { isTypingTarget } from '../../providers/shortcuts'
 // EZ15 — dictée INLINE navigateur, surface BUREAU uniquement (le terrain —
 // intervention, checklist — appartient à NTMOB30 et à sa transcription
 // serveur : jamais deux boutons micro sur un même champ).
-import { DictationButton, DICTATION_PRIVACY_FR } from '../../ui/DictationButton'
+import {
+  DictationButton, DICTATION_PRIVACY_FR, isDictationSupported,
+} from '../../ui/DictationButton'
+import VoiceNoteRecorder from '../../features/offlinesync/VoiceNoteRecorder'
 import { fetchTickets, updateTicket } from '../../features/sav/store/ticketsSlice'
 import savApi from '../../api/savApi'
 import stockApi from '../../api/stockApi'
@@ -1312,6 +1315,16 @@ export function TicketDetail({ ticket, onClose, onSaved }) {
             <Input placeholder="Écrire une note…" value={noteBody}
                    onChange={(e) => setNoteBody(e.target.value)}
                    onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); postNote() } }} />
+            {/* NTMOB30 — dictée TERRAIN de la note (enregistrement +
+                transcription serveur). Affichée UNIQUEMENT là où la dictée
+                inline EZ15 n'existe pas (iOS Safari) : jamais deux boutons
+                micro sur le même champ. */}
+            {!isDictationSupported() && (
+              <VoiceNoteRecorder
+                onTranscrit={(txt) => setNoteBody(
+                  noteBody ? `${noteBody} ${txt}` : txt)}
+              />
+            )}
             <Button type="button" variant="outline" onClick={postNote}>Noter</Button>
           </div>
           <div className="flex flex-col gap-2">

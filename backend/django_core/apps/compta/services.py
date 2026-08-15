@@ -4478,38 +4478,124 @@ def ocr_notes_frais_active():
     return bool(getattr(settings, 'COMPTA_OCR_NOTES_FRAIS_ENABLED', False))
 
 
-def extraire_justificatif_note_frais(file_bytes, *, mime=''):
-    """XACC27 — Extrait montant/date/fournisseur d'un justificatif (photo).
+def _fastapi_ocr_url():
+    """NTP2P14 — URL interne de l'OCR FastAPI (même convention que
+    ``apps.crm.intake_photo._fastapi_ocr_url``)."""
+    import os
+    base = (getattr(settings, 'FASTAPI_INTERNAL_URL', '')
+            or os.environ.get('FASTAPI_INTERNAL_URL', '')
+            or 'http://fastapi_ia:8001/api/fastapi')
+    return base.rstrip('/') + '/ocr/process_document'
+
+
+def _service_token_for(user):
+    """NTP2P14 — Jeton JWT court pour relayer l'auth vers FastAPI (même motif
+    que ``apps.crm.intake_photo``). Sans utilisateur exploitable : ''."""
+    if user is None:
+        return ''
+    try:
+        from rest_framework_simplejwt.tokens import AccessToken
+        return str(AccessToken.for_user(user))
+    except Exception:  # pragma: no cover - défensif
+        return ''
+
+
+# NTP2P14 — mots-clés FR (accents neutralisés) déclenchant chaque catégorie
+# de note de frais depuis le texte OCR brut du reçu. Best-effort seulement :
+# une catégorie non détectée retombe sur AUTRE (jamais bloquant).
+_CATEGORIE_MOTS_CLES = (
+    ('repas', ('restaurant', 'cafe', 'brasserie', 'snack', 'traiteur',
+               'menu', 'plat', 'petit dejeuner', 'dejeuner', 'diner')),
+    ('carburant', ('station', 'carburant', 'gasoil', 'gazoil', 'essence',
+                   'diesel', 'afriquia', 'shell', 'total')),
+    ('peage', ('peage', 'autoroute', 'adm', 'parking', 'stationnement')),
+    ('hebergement', ('hotel', 'riad', 'nuitee', 'chambre', 'sejour')),
+    ('deplacement', ('taxi', 'transport', 'billet', 'train', 'onc',
+                     'aeroport', 'location de voiture')),
+    ('fournitures', ('papeterie', 'fourniture', 'quincaillerie')),
+)
+
+
+def _deviner_categorie_note_frais(texte):
+    """NTP2P14 — Devine la catégorie ``NoteFrais.Categorie`` depuis le texte
+    OCR brut (best-effort, jamais bloquant). None si aucun mot-clé ne matche
+    (l'appelant laisse alors la catégorie au choix de l'employé)."""
+    if not texte:
+        return None
+    normalise = texte.lower()
+    for categorie, mots in _CATEGORIE_MOTS_CLES:
+        if any(mot in normalise for mot in mots):
+            return categorie
+    return None
+
+
+def extraire_justificatif_note_frais(file_bytes, *, mime='', user=None):
+    """XACC27/NTP2P14 — Extrait montant/date/catégorie d'un justificatif
+    (photo d'un reçu de dépense) par OCR.
 
     NO-OP tant que ``ocr_notes_frais_active()`` est faux : lève
-    ``RuntimeError`` (la vue traduit en 503, message FR clair). WIR153 —
-    AUCUN module fournisseur n'existe encore dans ce dépôt (contrairement à
-    ce que disait cette docstring auparavant : elle référençait un import
-    mort ``notes_frais_ocr_provider``, jamais câblé, avalé silencieusement
-    par un ``except ImportError``). Le flag activé sans provider réel reste
-    donc un NO-OP DÉTERMINISTE — dict vide, jamais de crash de l'écran de
-    saisie. Une fois un provider branché (appel HTTP vers le service OCR
-    ``backend/fastapi_ia``, même motif que ``apps.crm.intake_photo``), il doit
-    renvoyer les clés ``montant``/``date``/``fournisseur`` attendues par
-    ``mapper_justificatif_vers_note_frais``.
-    """
+    ``RuntimeError`` (la vue traduit en 503, message FR clair). Réutilise le
+    service OCR FastAPI EXISTANT (``/ocr/process_document``, Zhipu AI —
+    JAMAIS un nouvel endpoint dédié), même motif que
+    ``apps.crm.intake_photo._run_capture_ocr`` : appel HTTP relayé par un
+    jeton JWT de service, best-effort (toute panne réseau/format retombe sur
+    un dict vide plutôt que de faire échouer la saisie). Ne crée JAMAIS de
+    note de frais : ne fait QUE lire/renvoyer des champs pour pré-remplir le
+    formulaire — l'utilisateur valide toujours."""
     if not ocr_notes_frais_active():
         raise RuntimeError('OCR indisponible (configuration manquante).')
     if not file_bytes:
         return {}
-    # Aucun provider câblé — dégradation propre (dict vide), jamais un crash.
-    return {}
+    token = _service_token_for(user)
+    if not token:
+        # Pas d'utilisateur exploitable pour le jeton — dégradation propre.
+        return {}
+    try:
+        import requests
+        fichier = ('justificatif.jpg', file_bytes, mime or 'image/jpeg')
+        resp = requests.post(
+            _fastapi_ocr_url(),
+            files={'file': fichier},
+            headers={'Authorization': f'Bearer {token}'},
+            timeout=30,
+        )
+        if resp.status_code != 200:
+            return {}
+        payload = resp.json() or {}
+    except Exception:  # noqa: BLE001 — l'OCR ne casse jamais la saisie
+        return {}
+
+    structurees = payload.get('donnees_structurees') or {}
+    texte = payload.get('texte_brut') or ''
+    champs = {}
+    montant = (structurees.get('montant') or structurees.get('montant_ttc')
+               or structurees.get('total'))
+    if montant is not None:
+        champs['montant'] = montant
+    date = structurees.get('date') or structurees.get('date_facture')
+    if date:
+        champs['date'] = date
+    fournisseur = (structurees.get('fournisseur')
+                   or structurees.get('commercant')
+                   or structurees.get('vendeur'))
+    if fournisseur:
+        champs['fournisseur'] = fournisseur
+    categorie = _deviner_categorie_note_frais(
+        texte + ' ' + ' '.join(str(v) for v in structurees.values()))
+    if categorie:
+        champs['categorie'] = categorie
+    return champs
 
 
 def mapper_justificatif_vers_note_frais(champs_bruts):
-    """XACC27 — Normalise les champs OCR bruts vers les clés du formulaire
-    ``NoteFrais`` (lecture seule, aucun effet de bord).
+    """XACC27/NTP2P14 — Normalise les champs OCR bruts vers les clés du
+    formulaire ``NoteFrais`` (lecture seule, aucun effet de bord).
 
-    Accepte ``montant``/``date``/``fournisseur`` (clés FR du provider) et
-    projette vers ``montant``/``date_frais``/``motif``. Une clé absente est
-    omise (l'utilisateur complète le reste à la main) ; NE remplace JAMAIS une
-    saisie manuelle déjà présente — c'est l'appelant (vue/frontend) qui décide
-    de fusionner sans écraser."""
+    Accepte ``montant``/``date``/``fournisseur``/``categorie`` (clés FR du
+    provider) et projette vers ``montant``/``date_frais``/``motif``/
+    ``categorie``. Une clé absente est omise (l'utilisateur complète le reste
+    à la main) ; NE remplace JAMAIS une saisie manuelle déjà présente — c'est
+    l'appelant (vue/frontend) qui décide de fusionner sans écraser."""
     if not champs_bruts:
         return {}
     resultat = {}
@@ -4519,6 +4605,8 @@ def mapper_justificatif_vers_note_frais(champs_bruts):
         resultat['date_frais'] = champs_bruts['date']
     if champs_bruts.get('fournisseur'):
         resultat['motif'] = champs_bruts['fournisseur']
+    if champs_bruts.get('categorie'):
+        resultat['categorie'] = champs_bruts['categorie']
     return resultat
 
 
@@ -4626,16 +4714,115 @@ def creer_note_frais(company, *, employe, date_frais, montant, motif,
     return create_with_reference(NoteFrais, 'NDF', company, _save)
 
 
+def note_frais_escalade_direction(company, *, categorie, montant):
+    """NTP2P11 — la note dépasse-t-elle le seuil d'escalade DIRECTION ?
+
+    Sans plafond configuré (ou sans ``escalade_direction_au_dela_de``), renvoie
+    False : comportement historique inchangé, aucune escalade."""
+    plafond = plafond_note_frais_pour(company, categorie)
+    if plafond is None or plafond.escalade_direction_au_dela_de is None:
+        return False
+    return Decimal(montant or 0) > plafond.escalade_direction_au_dela_de
+
+
+def note_frais_warning_delai(company, *, categorie, date_frais, aujourdhui=None):
+    """NTP2P11 — warning NON BLOQUANT si la note arrive trop tard.
+
+    Renvoie le message (str) ou ``''``. Sans ``jours_max_apres_depense``
+    configuré, renvoie toujours ``''`` — aucun contrôle de délai."""
+    plafond = plafond_note_frais_pour(company, categorie)
+    if plafond is None or not plafond.jours_max_apres_depense:
+        return ''
+    if date_frais is None:
+        return ''
+    from django.utils import timezone
+    jour = aujourdhui or timezone.localdate()
+    ecoules = (jour - date_frais).days
+    if ecoules <= plafond.jours_max_apres_depense:
+        return ''
+    return (
+        f'Note soumise {ecoules} jours après la dépense — le délai configuré '
+        f'pour cette catégorie est de {plafond.jours_max_apres_depense} '
+        'jours.')
+
+
 def soumettre_note_frais(note):
-    """Soumet une note pour validation (brouillon → soumise) — FG135."""
+    """Soumet une note pour validation (brouillon → soumise) — FG135.
+
+    NTP2P11 — au moment de la soumission, DEUX réglages de
+    ``PlafondNoteFrais`` s'appliquent, tous deux posés CÔTÉ SERVEUR :
+
+      * au-delà de ``escalade_direction_au_dela_de``, la note exige une
+        validation DIRECTION (``escalade_direction=True``) — la note part
+        quand même, elle n'est JAMAIS bloquée en silence ;
+      * au-delà de ``jours_max_apres_depense``, un WARNING non bloquant est
+        posé sur la note ET journalisé au chatter générique (``records``),
+        pour que le valideur le voie sans que la soumission échoue.
+
+    Sans plafond configuré, les deux sont des no-op : cycle FG135 inchangé.
+    """
     if note.statut not in (NoteFrais.Statut.BROUILLON,
                            NoteFrais.Statut.REJETEE):
         raise ValidationError(
             "Seule une note en brouillon (ou rejetée) peut être soumise.")
     note.statut = NoteFrais.Statut.SOUMISE
     note.motif_rejet = ''
-    note.save(update_fields=['statut', 'motif_rejet'])
+    note.escalade_direction = note_frais_escalade_direction(
+        note.company, categorie=note.categorie, montant=note.montant)
+    note.warning_delai = note_frais_warning_delai(
+        note.company, categorie=note.categorie, date_frais=note.date_frais)
+    note.save(update_fields=['statut', 'motif_rejet', 'escalade_direction',
+                             'warning_delai'])
+    _journaliser_soumission_note_frais(note)
     return note
+
+
+def _journaliser_soumission_note_frais(note):
+    """NTP2P11 — trace l'escalade et le warning de délai au chatter générique.
+
+    Best-effort : journaliser ne doit JAMAIS casser une soumission. Utilise
+    ``records.Activity`` (ARC8 — aucun modèle de chatter maison de plus)."""
+    if not note.warning_delai and not note.escalade_direction:
+        return
+    try:
+        from apps.records.models import Activity
+        from apps.records.services import log_activity
+        if note.escalade_direction:
+            log_activity(
+                note, Activity.Kind.MODIFICATION, company=note.company,
+                field='escalade_direction',
+                field_label="Niveau d'approbation",
+                old_value='responsable', new_value='direction',
+                body='Montant au-delà du seuil configuré : validation '
+                     'DIRECTION requise.')
+        if note.warning_delai:
+            log_activity(
+                note, Activity.Kind.NOTE, company=note.company,
+                body=note.warning_delai)
+    except Exception:  # pragma: no cover - défensif, jamais bloquant
+        pass
+
+
+def _verifier_separation_taches_note_frais(note, user):
+    """NTP2P37 — SoD sur la validation DIRECTION d'une note de frais.
+
+    Ne s'applique qu'aux notes ESCALADÉES en direction (``escalade_direction``,
+    NTP2P11) et seulement quand ``stock.AchatsParametres.sod_stricte`` est
+    activé — défaut OFF, donc comportement historique inchangé. Lecture
+    cross-app par ``stock.selectors`` (jamais un import de ``stock.models``).
+    """
+    if user is None or not getattr(user, 'pk', None):
+        return
+    if not getattr(note, 'escalade_direction', False):
+        return
+    createur_id = getattr(note, 'created_by_id', None)
+    if createur_id is None or createur_id != user.pk:
+        return
+    from apps.stock.selectors import sod_stricte_active
+    if sod_stricte_active(note.company):
+        raise ValidationError(
+            "Séparation des tâches : le créateur d'une note de frais "
+            'escaladée en direction ne peut pas la valider lui-même.')
 
 
 @transaction.atomic
@@ -4654,6 +4841,7 @@ def valider_note_frais(note, *, user=None, compte_charge=None):
     if note.statut != NoteFrais.Statut.SOUMISE:
         raise ValidationError(
             "Seule une note soumise peut être validée.")
+    _verifier_separation_taches_note_frais(note, user)
     company = note.company
     montant = Decimal(note.montant or 0)
     if montant <= 0:

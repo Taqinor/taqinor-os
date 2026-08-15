@@ -17,7 +17,11 @@ class CustomFieldDefSerializer(serializers.ModelSerializer):
         model = CustomFieldDef
         fields = ['id', 'module', 'code', 'libelle', 'type', 'options',
                   'obligatoire', 'visible_liste', 'ordre', 'actif',
-                  'relation_module', 'conditions', 'ia_prompt']
+                  'relation_module', 'conditions', 'ia_prompt', 'verrouille']
+        # NTEXT38 — le verrou ne se pose/retire QUE par les actions dédiées
+        # ``verrouiller``/``deverrouiller`` (auditées) : un PATCH ordinaire ne
+        # doit jamais pouvoir le retirer en passant.
+        read_only_fields = ['verrouille']
 
     def validate_module(self, value):
         from .models import CustomFieldDef as _CFD
@@ -286,8 +290,10 @@ def _validate_fichier_value(field_def, val):
 class CustomObjectDefSerializer(serializers.ModelSerializer):
     class Meta:
         model = CustomObjectDef
-        fields = ['id', 'code', 'libelle', 'icone', 'actif', 'date_creation']
-        read_only_fields = ['date_creation']
+        fields = ['id', 'code', 'libelle', 'icone', 'actif', 'verrouille',
+                  'date_creation']
+        # NTEXT38 — verrou en lecture seule ici (cf. CustomFieldDefSerializer).
+        read_only_fields = ['date_creation', 'verrouille']
 
 
 class CustomRecordSerializer(serializers.ModelSerializer):

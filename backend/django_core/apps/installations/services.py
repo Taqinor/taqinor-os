@@ -3636,3 +3636,251 @@ def chantier_peut_cloturer(chantier_id, company):
     """
     from apps.qhse.selectors import chantier_peut_cloturer as _qhse_gate
     return _qhse_gate(chantier_id, company)
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# NTP2P2 — Plan d'approbation générique des demandes d'achat (FG310)
+# ══════════════════════════════════════════════════════════════════════════
+# Patron repris de ``contrats.services.lancer_workflow_approbation`` (règle par
+# seuil → N étapes séquentielles) SANS import cross-app : les modèles vivent
+# dans CETTE app (``models_approbation_achat``). Opt-in total : sans règle
+# active couvrant le montant, aucune étape n'est créée et le cycle FG310
+# historique (soumettre → approuver) reste byte-identique.
+
+
+class ApprobationAchatError(Exception):
+    """Règle métier d'approbation d'achat violée (mappée en 400 par la vue)."""
+
+
+def resoudre_regle_approbation_achat(demande):
+    """Renvoie la règle ACTIVE la plus spécifique couvrant cette demande.
+
+    Arbitrage (identique au patron ``contrats``) : priorité décroissante, puis
+    périmètre le plus ciblé (chantier/programme), puis intervalle de montant le
+    plus étroit, puis id. Renvoie ``None`` si aucune règle ne couvre — c'est le
+    cas historique (approbation directe, comportement inchangé).
+    """
+    from .models import RegleApprobationAchat
+
+    montant = demande.montant_estime
+    candidates = [
+        regle for regle in RegleApprobationAchat.objects.filter(
+            company=demande.company, actif=True)
+        if regle.couvre(montant, chantier_id=demande.chantier_id,
+                        programme_id=demande.programme_id)
+    ]
+    if not candidates:
+        return None
+    candidates.sort(
+        key=lambda r: (-r.priorite, -r.specificite(),
+                       r.largeur_intervalle(), r.id))
+    return candidates[0]
+
+
+def workflow_approbation_achat_actif(demande):
+    """True si la demande a au moins une étape encore ``en_attente``."""
+    from .models import EtapeApprobationAchat
+    return demande.etapes_approbation.filter(
+        statut=EtapeApprobationAchat.Statut.EN_ATTENTE).exists()
+
+
+def lancer_workflow_approbation_achat(demande, *, regle=None):
+    """Instancie les étapes d'approbation d'une demande SOUMISE.
+
+    Renvoie la liste des étapes créées (vide si aucune règle ne couvre la
+    demande — comportement historique). Idempotent : ne recrée rien tant qu'un
+    workflow est encore en cours sur la demande.
+    """
+    from .models import EtapeApprobationAchat
+
+    if workflow_approbation_achat_actif(demande):
+        return list(demande.etapes_approbation.filter(
+            statut=EtapeApprobationAchat.Statut.EN_ATTENTE))
+    regle = regle or resoudre_regle_approbation_achat(demande)
+    if regle is None:
+        return []
+    nombre = max(1, int(regle.nombre_approbateurs or 1))
+    etapes = [
+        EtapeApprobationAchat(
+            company=demande.company,
+            demande=demande,
+            regle=regle,
+            niveau=rang,
+            niveau_approbation=regle.niveau_approbation,
+            statut=EtapeApprobationAchat.Statut.EN_ATTENTE,
+        )
+        for rang in range(1, nombre + 1)
+    ]
+    return EtapeApprobationAchat.objects.bulk_create(etapes)
+
+
+def prochaine_etape_approbation_achat(demande):
+    """Première étape ``en_attente`` de la demande (ordre séquentiel), ou None."""
+    from .models import EtapeApprobationAchat
+    return demande.etapes_approbation.filter(
+        statut=EtapeApprobationAchat.Statut.EN_ATTENTE
+    ).order_by('niveau', 'id').first()
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# NTP2P4 — Contrôle budgétaire départemental à la soumission
+# ══════════════════════════════════════════════════════════════════════════
+# Cross-app STRICT : le budget est lu via ``stock.selectors`` et l'engagement
+# écrit via ``stock.services`` ; le département du demandeur est lu via
+# ``rh.selectors``. Aucun import de ``models`` d'une autre app.
+
+
+class BudgetAchatError(Exception):
+    """Budget départemental dépassé à la soumission (mappé en 400)."""
+
+
+def departement_du_demandeur(company, user_id):
+    """Département RH du demandeur, ou None (lecture via ``rh.selectors``)."""
+    if company is None or not user_id:
+        return None
+    from apps.rh import selectors as rh_selectors
+    dossier = rh_selectors.dossier_employe_for_user(company, user_id)
+    if dossier is None:
+        return None
+    mapping = rh_selectors.departements_par_employe(company, [dossier.id])
+    return (mapping.get(dossier.id) or {}).get('departement_id')
+
+
+def controler_budget_demande_achat(demande, *, regle=None):
+    """NTP2P4 — engage le budget du département du demandeur, ou refuse.
+
+    No-op total quand le contrôle est désactivé (défaut) ou qu'aucun budget
+    n'est configuré pour le département : la soumission reste ce qu'elle était.
+    Une ``RegleApprobationAchat`` avec ``autorise_depassement_budget`` (NTP2P2)
+    laisse passer le dépassement — la dérogation est alors tranchée par les
+    étapes d'approbation, pas par un blocage muet.
+    """
+    from apps.stock import selectors as stock_selectors
+    from apps.stock import services as stock_services
+
+    company = demande.company
+    if not stock_selectors.budget_departement_actif(company):
+        return None
+    departement_id = departement_du_demandeur(
+        company, getattr(demande, 'created_by_id', None))
+    if not departement_id:
+        return None
+    regle = regle if regle is not None else resoudre_regle_approbation_achat(
+        demande)
+    autoriser = bool(regle and regle.autorise_depassement_budget)
+    try:
+        return stock_services.engager_budget(
+            company, departement_id=departement_id,
+            montant=demande.montant_estime,
+            periode=getattr(demande, 'date_besoin', None),
+            demande_achat_id=demande.pk,
+            autoriser_depassement=autoriser,
+            note=f'Demande {demande.reference}')
+    except stock_services.BudgetDepasseError as exc:
+        raise BudgetAchatError(
+            'Budget départemental dépassé : il reste '
+            f'{exc.restant} MAD, il manque {exc.manquant} MAD. '
+            "Une règle d'approbation autorisant le dépassement est requise."
+        ) from exc
+
+
+def liberer_budget_demande_achat(demande):
+    """NTP2P4 — rend l'enveloppe engagée (demande refusée/annulée)."""
+    from apps.stock import services as stock_services
+    return stock_services.liberer_engagements_demande(
+        demande.company, demande.pk)
+
+
+def consommer_budget_demande_achat(demande, bon_commande_id=None):
+    """NTP2P4 — l'engagement devient RÉALISÉ (le BCF est émis)."""
+    from apps.stock import services as stock_services
+    return stock_services.consommer_engagements_demande(
+        demande.company, demande.pk, bon_commande_id=bon_commande_id)
+
+
+def verifier_separation_taches_achat(etape, approbateur):
+    """NTP2P37 — SoD : le demandeur ne peut pas approuver sa propre demande.
+
+    Contrôle SERVEUR (jamais un simple masquage d'écran), activé par
+    ``stock.AchatsParametres.sod_stricte`` — défaut ``False`` pour ne pas
+    casser les petites structures à un seul décideur. Lecture cross-app via
+    ``stock.selectors`` uniquement.
+    """
+    if approbateur is None or not getattr(approbateur, 'pk', None):
+        return
+    demande = etape.demande
+    createur_id = getattr(demande, 'created_by_id', None)
+    if createur_id is None or createur_id != approbateur.pk:
+        return
+    from apps.stock.selectors import sod_stricte_active
+    if sod_stricte_active(demande.company):
+        raise ApprobationAchatError(
+            "Séparation des tâches : le créateur d'une demande d'achat ne "
+            'peut pas approuver sa propre étape.')
+
+
+def _decider_etape_approbation_achat(etape, *, statut_cible, approbateur,
+                                     commentaire=''):
+    """Décide UNE étape en respectant l'ordre séquentiel."""
+    from django.utils import timezone
+    from .models import EtapeApprobationAchat
+
+    if etape.statut != EtapeApprobationAchat.Statut.EN_ATTENTE:
+        raise ApprobationAchatError('Cette étape a déjà été décidée.')
+    attendue = prochaine_etape_approbation_achat(etape.demande)
+    if attendue is not None and attendue.pk != etape.pk:
+        raise ApprobationAchatError(
+            "Les étapes se décident dans l'ordre : l'étape "
+            f'{attendue.niveau} est encore en attente.')
+    verifier_separation_taches_achat(etape, approbateur)
+    etape.statut = statut_cible
+    etape.approbateur = approbateur
+    etape.decision_le = timezone.now()
+    etape.commentaire = (commentaire or '').strip()
+    etape.save(update_fields=['statut', 'approbateur', 'decision_le',
+                              'commentaire', 'updated_at'])
+    return etape
+
+
+def approuver_etape_achat(etape, *, approbateur, commentaire=''):
+    """Approuve une étape ; bascule la demande ``approuvee`` à la dernière."""
+    from django.utils import timezone
+    from .models import DemandeAchat, EtapeApprobationAchat
+
+    etape = _decider_etape_approbation_achat(
+        etape, statut_cible=EtapeApprobationAchat.Statut.APPROUVE,
+        approbateur=approbateur, commentaire=commentaire)
+    demande = etape.demande
+    if not workflow_approbation_achat_actif(demande):
+        demande.statut = DemandeAchat.Statut.APPROUVEE
+        demande.approuvee_par = approbateur
+        demande.date_decision = timezone.now()
+        demande.motif_refus = None
+        demande.save(update_fields=['statut', 'approuvee_par', 'date_decision',
+                                    'motif_refus', 'date_modification'])
+    return etape
+
+
+def rejeter_etape_achat(etape, *, approbateur, commentaire=''):
+    """Rejette une étape : la demande bascule ``refusee`` immédiatement et les
+    étapes restantes sont annulées (rejetées sans approbateur)."""
+    from django.utils import timezone
+    from .models import DemandeAchat, EtapeApprobationAchat
+
+    etape = _decider_etape_approbation_achat(
+        etape, statut_cible=EtapeApprobationAchat.Statut.REJETE,
+        approbateur=approbateur, commentaire=commentaire)
+    demande = etape.demande
+    demande.etapes_approbation.filter(
+        statut=EtapeApprobationAchat.Statut.EN_ATTENTE
+    ).update(statut=EtapeApprobationAchat.Statut.REJETE,
+             decision_le=timezone.now())
+    demande.statut = DemandeAchat.Statut.REFUSEE
+    demande.approuvee_par = approbateur
+    demande.date_decision = timezone.now()
+    demande.motif_refus = (commentaire or '').strip() or None
+    demande.save(update_fields=['statut', 'approuvee_par', 'date_decision',
+                                'motif_refus', 'date_modification'])
+    # NTP2P4 — une demande refusée rend son enveloppe budgétaire.
+    liberer_budget_demande_achat(demande)
+    return etape

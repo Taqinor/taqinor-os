@@ -75,6 +75,12 @@ class FournisseurViewSet(ScmFournisseurActionsMixin,
             # ouverte à tout rôle porteur du droit `stock_modifier` (get_permissions
             # prime sur le permission_classes de l'@action, d'où ce cas explicite).
             return [HasPermissionOrLegacy('stock_modifier')()]
+        elif self.action in ('onboarding', 'score_risque',
+                             'export_conformite'):
+            # NTP2P7 — dossier d'entrée en relation : LECTURE (mêmes gardes
+            # que `performance`/`vue_360` — get_permissions prime sur le
+            # permission_classes de l'@action, d'où ce cas explicite).
+            return [HasPermissionOrLegacy('stock_voir')()]
         elif self.action == 'vue_360':
             # XPUR25/WIR27 — agrégat fiche fournisseur 360 : lecture, ouverte à
             # tout rôle porteur du droit de lecture stock (même garde que
@@ -315,6 +321,103 @@ class FournisseurViewSet(ScmFournisseurActionsMixin,
                 status=status.HTTP_404_NOT_FOUND)
         revoquer_token_portail_fournisseur(token_obj)
         return Response(PortailFournisseurTokenSerializer(token_obj).data)
+
+    @action(detail=True, methods=['get'])
+    def onboarding(self, request, *args, **kwargs):
+        """NTP2P7 — dossier d'entrée en relation de CE fournisseur.
+
+        Renvoie le dossier (avec ses pièces et sa progression) ou un enveloppe
+        vide explicite quand aucun dossier n'existe encore — jamais un 404 :
+        « pas encore de dossier » est un ÉTAT normal du parcours."""
+        from .. import selectors as stock_selectors
+        from .onboarding_fournisseur import (
+            DossierOnboardingFournisseurSerializer,
+        )
+
+        fournisseur = self.get_object()
+        dossier = stock_selectors.dossier_onboarding_fournisseur(
+            request.user.company, fournisseur.pk)
+        if dossier is None:
+            return Response({
+                'dossier': None,
+                'obligatoire': stock_selectors.onboarding_fournisseur_obligatoire(
+                    request.user.company),
+                'progression': stock_selectors.progression_onboarding(None),
+            })
+        return Response({
+            'dossier': DossierOnboardingFournisseurSerializer(dossier).data,
+            'obligatoire': stock_selectors.onboarding_fournisseur_obligatoire(
+                request.user.company),
+            'progression': stock_selectors.progression_onboarding(dossier),
+        })
+
+    @action(detail=False, methods=['get'], url_path='export-conformite')
+    def export_conformite(self, request):
+        """NTP2P19 — audit achats : conformité par fournisseur actif.
+
+        Une ligne par fournisseur : statut d'onboarding (NTP2P7), score de
+        risque (NTP2P8), documents expirés, dernier retard OTD, montant
+        acheté sur la période. Filtrable par ``?debut=&fin=`` (dates ISO).
+
+        Le paramètre d'export est ``?export=xlsx`` et NON ``?format=`` :
+        ``format`` est RÉSERVÉ par la négociation de contenu DRF (un suffixe
+        inconnu y répondrait 404). Sans ``export``, la réponse est du JSON.
+        """
+        from apps.records.xlsx import build_xlsx_response
+
+        from .. import selectors as stock_selectors
+
+        def _date(param):
+            valeur = request.query_params.get(param)
+            if not valeur:
+                return None
+            from datetime import date as _d
+            try:
+                return _d.fromisoformat(valeur)
+            except ValueError:
+                return None
+
+        debut, fin = _date('debut'), _date('fin')
+        lignes = stock_selectors.conformite_fournisseurs(
+            request.user.company, debut=debut, fin=fin)
+        if request.query_params.get('export') != 'xlsx':
+            return Response(lignes)
+
+        entetes = [
+            'Fournisseur', 'Statut onboarding', 'Score de risque',
+            'Niveau de risque', 'Documents expirés', 'Documents manquants',
+            'Dernier retard le', 'Retard (jours)', 'Montant acheté (MAD HT)',
+        ]
+        corps = [
+            [
+                ligne['fournisseur'], ligne['statut_onboarding'],
+                ligne['score_risque'], ligne['niveau_risque'],
+                ligne['documents_expires'], ligne['documents_manquants'],
+                ligne['dernier_retard_le'], ligne['dernier_retard_jours'],
+                ligne['montant_achete'],
+            ]
+            for ligne in lignes
+        ]
+        return build_xlsx_response(
+            'conformite-fournisseurs.xlsx', entetes, corps,
+            sheet_title='Conformité fournisseurs')
+
+    @action(detail=True, methods=['get'], url_path='score-risque')
+    def score_risque(self, request, *args, **kwargs):
+        """NTP2P8 — score de risque 0-100 (100 = risque nul) + facteurs.
+
+        Calcul PUR côté serveur (aucun service externe) : ponctualité OTD,
+        documents légaux, retours, litiges ouverts, statut de blocage."""
+        from .. import selectors as stock_selectors
+
+        fournisseur = self.get_object()
+        resultat = stock_selectors.score_risque_fournisseur(
+            request.user.company, fournisseur.pk)
+        if resultat is None:
+            return Response({'detail': 'Fournisseur inconnu pour cette '
+                                       'société.'},
+                            status=status.HTTP_404_NOT_FOUND)
+        return Response(resultat)
 
     @action(detail=True, methods=['get'], url_path='vue-360')
     def vue_360(self, request, *args, **kwargs):

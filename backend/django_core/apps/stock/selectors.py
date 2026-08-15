@@ -1299,6 +1299,479 @@ def nb_produits_par_entite(company, entite_ids):
     return {ligne['entite_id']: ligne['nb'] for ligne in lignes}
 
 
+# ══════════════════════════════════════════════════════════════════════════
+# NTP2P4 — Budget d'engagement par département (lecture cross-app)
+# ══════════════════════════════════════════════════════════════════════════
+# ``installations`` (soumission d'une demande d'achat) lit le budget PAR ICI —
+# jamais en important ``stock.models``. Tout est lecture seule ; l'écriture de
+# l'engagement passe par ``stock.services``.
+
+def budget_departement_actif(company):
+    """True si le contrôle budgétaire dur est activé pour cette société.
+
+    OFF par défaut (NTP2P4) : sans activation explicite, la soumission d'une
+    demande d'achat n'est soumise à AUCUN contrôle budgétaire — comportement
+    historique strictement inchangé."""
+    if company is None:
+        return False
+    from .models import AchatsParametres
+    params = AchatsParametres.objects.filter(company=company).first()
+    return bool(params and params.budget_departement_actif)
+
+
+def resoudre_budget_departement(company, departement_id, periode=None):
+    """Budget applicable à ce département pour cette période, ou None.
+
+    Le budget MENSUEL de la période visée l'emporte sur le budget ANNUEL de
+    l'année (le mensuel est plus spécifique). ``periode`` est une ``date``
+    (défaut : aujourd'hui, en heure locale)."""
+    if company is None or not departement_id:
+        return None
+    from django.utils import timezone
+    from .models import BudgetDepartement
+
+    jour = periode or timezone.localdate()
+    base = BudgetDepartement.objects.filter(
+        company=company, departement_id=departement_id, actif=True,
+        annee=jour.year)
+    mensuel = base.filter(
+        periodicite=BudgetDepartement.Periodicite.MENSUELLE,
+        mois=jour.month).first()
+    if mensuel is not None:
+        return mensuel
+    return base.filter(
+        periodicite=BudgetDepartement.Periodicite.ANNUELLE, mois=0).first()
+
+
+def consommation_budget(budget):
+    """Détail ``engagé`` / ``réalisé`` / ``restant`` d'un budget.
+
+    ``engage``   — engagements encore ACTIFS (demande soumise, pas de BCF) ;
+    ``realise``  — engagements CONSOMMÉS (le bon de commande est passé) ;
+    ``restant``  — alloué − (engagé + réalisé). Les engagements LIBÉRÉS
+    (demande refusée/annulée) ne pèsent plus."""
+    from decimal import Decimal
+    from django.db.models import Sum
+    from .models import EngagementBudget
+
+    if budget is None:
+        return None
+    agreges = budget.engagements.values('statut').annotate(
+        total=Sum('montant'))
+    par_statut = {row['statut']: row['total'] or Decimal('0')
+                  for row in agreges}
+    engage = par_statut.get(EngagementBudget.Statut.ACTIF, Decimal('0'))
+    realise = par_statut.get(EngagementBudget.Statut.CONSOMME, Decimal('0'))
+    alloue = Decimal(budget.montant_alloue or 0)
+    return {
+        'budget_id': budget.pk,
+        'departement_id': budget.departement_id,
+        'periodicite': budget.periodicite,
+        'annee': budget.annee,
+        'mois': budget.mois,
+        'montant_alloue': alloue,
+        'engage': engage,
+        'realise': realise,
+        'consomme_total': engage + realise,
+        'restant': alloue - (engage + realise),
+        'taux_consommation_pct': (
+            round(float((engage + realise) / alloue * 100), 2)
+            if alloue else 0.0),
+    }
+
+
+def verifier_budget_disponible(company, departement_id, periode, montant):
+    """NTP2P4 — le département a-t-il encore ``montant`` de disponible ?
+
+    Renvoie un dict ``{'controle_actif', 'budget', 'restant', 'depassement',
+    'suffisant', 'montant_manquant'}``. ``controle_actif=False`` (réglage OFF
+    ou aucun budget configuré) ⇒ ``suffisant=True`` : jamais de blocage
+    implicite. LECTURE SEULE — aucun engagement n'est posé ici."""
+    from decimal import Decimal
+
+    montant = Decimal(montant or 0)
+    vide = {
+        'controle_actif': False, 'budget': None, 'restant': None,
+        'depassement': Decimal('0'), 'suffisant': True,
+        'montant_manquant': Decimal('0'),
+    }
+    if not budget_departement_actif(company):
+        return vide
+    budget = resoudre_budget_departement(company, departement_id, periode)
+    if budget is None:
+        return vide
+    detail = consommation_budget(budget)
+    restant = detail['restant']
+    manquant = montant - restant
+    return {
+        'controle_actif': True,
+        'budget': budget,
+        'restant': restant,
+        'depassement': max(manquant, Decimal('0')),
+        'suffisant': manquant <= 0,
+        'montant_manquant': max(manquant, Decimal('0')),
+    }
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# NTP2P7 — Onboarding fournisseur (lecture)
+# ══════════════════════════════════════════════════════════════════════════
+
+def sod_stricte_active(company):
+    """NTP2P37 — la séparation des tâches stricte est-elle activée ?
+
+    OFF par défaut : sans activation, le créateur d'une demande d'achat peut
+    encore l'approuver (comportement historique des structures à un seul
+    décideur)."""
+    if company is None:
+        return False
+    from .models import AchatsParametres
+    params = AchatsParametres.objects.filter(company=company).first()
+    return bool(params and params.sod_stricte)
+
+
+def onboarding_fournisseur_obligatoire(company):
+    """True si un dossier d'onboarding VALIDÉ est exigé avant tout BCF.
+
+    OFF par défaut : comportement historique inchangé (seul le ``statut`` du
+    fournisseur compte)."""
+    if company is None:
+        return False
+    from .models import AchatsParametres
+    params = AchatsParametres.objects.filter(company=company).first()
+    return bool(params and params.onboarding_fournisseur_obligatoire)
+
+
+def progression_onboarding(dossier):
+    """Avancement d'un dossier : pièces requises reçues / total requis.
+
+    Renvoie ``{'requis', 'recus', 'manquants', 'expires', 'progression_pct',
+    'complet'}``. Une pièce EXPIRÉE ne compte pas comme reçue."""
+    from .models import DocumentFournisseur
+
+    requis = list(DocumentFournisseur.TYPES_REQUIS)
+    if dossier is None:
+        return {
+            'requis': requis, 'recus': [], 'manquants': requis,
+            'expires': [], 'progression_pct': 0, 'complet': False,
+        }
+    recus, expires = [], []
+    for doc in dossier.documents.all():
+        if doc.type_document not in requis:
+            continue
+        if not doc.file_key:
+            continue
+        if doc.est_valide():
+            if doc.type_document not in recus:
+                recus.append(doc.type_document)
+        elif doc.type_document not in expires:
+            expires.append(doc.type_document)
+    manquants = [t for t in requis if t not in recus]
+    return {
+        'requis': requis,
+        'recus': recus,
+        'manquants': manquants,
+        'expires': expires,
+        'progression_pct': (
+            round(len(recus) / len(requis) * 100) if requis else 100),
+        'complet': not manquants,
+    }
+
+
+def dossier_onboarding_fournisseur(company, fournisseur_id):
+    """Dossier d'onboarding scopé société, ou None."""
+    if company is None or not fournisseur_id:
+        return None
+    from .models import DossierOnboardingFournisseur
+    return DossierOnboardingFournisseur.objects.filter(
+        company=company, fournisseur_id=fournisseur_id
+    ).prefetch_related('documents').first()
+
+
+def fournisseur_peut_recevoir_bcf(company, fournisseur_id):
+    """NTP2P7 — le fournisseur peut-il recevoir un NOUVEAU bon de commande ?
+
+    Renvoie ``(autorise: bool, motif: str)``. Quand le flag société est OFF
+    (défaut), renvoie toujours ``(True, '')`` — comportement historique."""
+    if not onboarding_fournisseur_obligatoire(company):
+        return True, ''
+    dossier = dossier_onboarding_fournisseur(company, fournisseur_id)
+    if dossier is None:
+        return False, (
+            "Onboarding obligatoire : ce fournisseur n'a aucun dossier "
+            "d'entrée en relation.")
+    if not dossier.est_valide:
+        detail = progression_onboarding(dossier)
+        manquants = ', '.join(detail['manquants']) or 'aucune'
+        return False, (
+            f'Onboarding obligatoire : dossier « '
+            f'{dossier.get_statut_display()} » '
+            f'({detail["progression_pct"]}% complet, pièces manquantes : '
+            f'{manquants}).')
+    return True, ''
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# NTP2P8 — Score de risque fournisseur (calcul PUR, aucun service externe)
+# ══════════════════════════════════════════════════════════════════════════
+# Score 0-100 où 100 = risque nul. On part de 100 et on retranche des
+# PÉNALITÉS plafonnées, facteur par facteur, pour que le détail renvoyé soit
+# lisible (« pourquoi ce fournisseur est-il à 45 ? ») et non une boîte noire.
+#
+# Barème (plafonds) :
+#   ponctualité (OTD)    -45   taux de retard sur les BCF datés
+#   documents légaux     -30   10 par pièce EXPIRÉE, 5 par pièce MANQUANTE
+#   retours              -15   taux de retours fournisseur / BCF
+#   litiges              -15   5 par réclamation ouverte
+#   blocage              -25   statut de blocage du fournisseur
+#
+# Le barème est volontairement additif et borné : un fournisseur avec 3
+# retards consécutifs (100 % de retard → -45) et un document expiré (-10)
+# tombe à 45, donc sous la barre des 50 (critère d'acceptation NTP2P8).
+
+PLAFOND_OTD = 45
+PLAFOND_DOCUMENTS = 30
+PLAFOND_RETOURS = 15
+PLAFOND_LITIGES = 15
+PLAFOND_BLOCAGE = 25
+
+SEUIL_RISQUE_ELEVE = 50
+SEUIL_RISQUE_MODERE = 75
+
+
+def _facteur(code, libelle, penalite, plafond, detail):
+    return {
+        'code': code, 'libelle': libelle,
+        'penalite': int(penalite), 'plafond': plafond, 'detail': detail,
+    }
+
+
+def _ponctualite_fournisseur(company, fournisseur_id):
+    """Taux de retard : BCF dont la date confirmée dépasse la date prévue."""
+    from django.db.models import F
+
+    from .models import BonCommandeFournisseur
+
+    qs = BonCommandeFournisseur.objects.filter(
+        company=company, fournisseur_id=fournisseur_id,
+        date_livraison_prevue__isnull=False,
+        date_confirmee_fournisseur__isnull=False)
+    total = qs.count()
+    if not total:
+        return 0, {'bcf_dates': 0, 'retards': 0, 'taux_retard_pct': 0}
+    retards = qs.filter(
+        date_confirmee_fournisseur__gt=F('date_livraison_prevue')
+    ).count()
+    taux = retards / total
+    return round(taux * PLAFOND_OTD), {
+        'bcf_dates': total, 'retards': retards,
+        'taux_retard_pct': round(taux * 100),
+    }
+
+
+def _documents_fournisseur(company, fournisseur_id):
+    """Pénalité documentaire : pièces légales expirées / manquantes."""
+    dossier = dossier_onboarding_fournisseur(company, fournisseur_id)
+    if dossier is None:
+        # Aucun dossier ouvert : on ne pénalise QUE si la société exige
+        # l'onboarding (sinon on punirait tout le référentiel historique).
+        if onboarding_fournisseur_obligatoire(company):
+            return PLAFOND_DOCUMENTS, {
+                'dossier': None, 'expires': [], 'manquants': [],
+                'motif': 'aucun dossier alors que l’onboarding est exigé',
+            }
+        return 0, {'dossier': None, 'expires': [], 'manquants': []}
+    detail = progression_onboarding(dossier)
+    # Une pièce EXPIRÉE figure aussi dans `manquants` (elle n'est plus « reçue »
+    # — c'est voulu : elle doit bloquer comme une pièce absente). Mais pour le
+    # SCORE elle ne se paie pas deux fois : on ne compte en « manquant » que ce
+    # qui n'a jamais été fourni.
+    jamais_fournis = [t for t in detail['manquants']
+                      if t not in detail['expires']]
+    penalite = min(
+        PLAFOND_DOCUMENTS,
+        10 * len(detail['expires']) + 5 * len(jamais_fournis))
+    return penalite, {
+        'dossier': dossier.pk, 'statut_dossier': dossier.statut,
+        'expires': detail['expires'], 'manquants': detail['manquants'],
+    }
+
+
+def _retours_fournisseur(company, fournisseur_id):
+    """Taux de retours : retours fournisseur rapportés au nombre de BCF."""
+    from .models import BonCommandeFournisseur, RetourFournisseur
+
+    bcf = BonCommandeFournisseur.objects.filter(
+        company=company, fournisseur_id=fournisseur_id).count()
+    retours = RetourFournisseur.objects.filter(
+        company=company, fournisseur_id=fournisseur_id).exclude(
+        statut=RetourFournisseur.Statut.ANNULE).count()
+    if not bcf:
+        return 0, {'bcf': 0, 'retours': retours, 'taux_retour_pct': 0}
+    taux = min(retours / bcf, 1)
+    return round(taux * PLAFOND_RETOURS), {
+        'bcf': bcf, 'retours': retours, 'taux_retour_pct': round(taux * 100),
+    }
+
+
+def _litiges_fournisseur(company, fournisseur_id):
+    """Réclamations ouvertes — lecture via ``litiges.selectors`` uniquement."""
+    from apps.litiges.selectors import compte_reclamations_fournisseur
+
+    compte = compte_reclamations_fournisseur(company, fournisseur_id)
+    penalite = min(PLAFOND_LITIGES, 5 * compte['ouvertes'])
+    return penalite, compte
+
+
+def _blocage_fournisseur(fournisseur):
+    from .models import Fournisseur
+
+    statut = fournisseur.statut
+    if statut == Fournisseur.Statut.BLOQUE_TOTAL:
+        return PLAFOND_BLOCAGE, {'statut': statut}
+    if statut in (Fournisseur.Statut.BLOQUE_COMMANDES,
+                  Fournisseur.Statut.BLOQUE_PAIEMENTS):
+        return 15, {'statut': statut}
+    return 0, {'statut': statut}
+
+
+def score_risque_fournisseur(company, fournisseur_id):
+    """NTP2P8 — score de risque 0-100 d'un fournisseur (100 = risque nul).
+
+    Calcul PUR (aucun service externe, aucun appel réseau). Renvoie
+    ``{'fournisseur_id', 'score', 'niveau', 'facteurs': [...]}`` où chaque
+    facteur porte sa pénalité, son plafond et son détail chiffré — le badge
+    doit pouvoir expliquer le score, jamais l'asséner.
+
+    Renvoie ``None`` si le fournisseur n'appartient pas à la société.
+    """
+    fournisseur = get_fournisseur_by_id(company, fournisseur_id)
+    if fournisseur is None:
+        return None
+
+    p_otd, d_otd = _ponctualite_fournisseur(company, fournisseur.pk)
+    p_doc, d_doc = _documents_fournisseur(company, fournisseur.pk)
+    p_ret, d_ret = _retours_fournisseur(company, fournisseur.pk)
+    p_lit, d_lit = _litiges_fournisseur(company, fournisseur.pk)
+    p_blo, d_blo = _blocage_fournisseur(fournisseur)
+
+    facteurs = [
+        _facteur('ponctualite', 'Ponctualité de livraison (OTD)',
+                 p_otd, PLAFOND_OTD, d_otd),
+        _facteur('documents', 'Documents légaux',
+                 p_doc, PLAFOND_DOCUMENTS, d_doc),
+        _facteur('retours', 'Retours fournisseur',
+                 p_ret, PLAFOND_RETOURS, d_ret),
+        _facteur('litiges', 'Litiges ouverts',
+                 p_lit, PLAFOND_LITIGES, d_lit),
+        _facteur('blocage', 'Statut de blocage',
+                 p_blo, PLAFOND_BLOCAGE, d_blo),
+    ]
+    penalite_totale = sum(f['penalite'] for f in facteurs)
+    score = max(0, min(100, 100 - penalite_totale))
+    if score < SEUIL_RISQUE_ELEVE:
+        niveau = 'eleve'
+    elif score < SEUIL_RISQUE_MODERE:
+        niveau = 'modere'
+    else:
+        niveau = 'faible'
+    return {
+        'fournisseur_id': fournisseur.pk,
+        'fournisseur_nom': fournisseur.nom,
+        'score': score,
+        'niveau': niveau,
+        'penalite_totale': penalite_totale,
+        'facteurs': facteurs,
+    }
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# NTP2P19 — Conformité fournisseur exportable (audit achats)
+# ══════════════════════════════════════════════════════════════════════════
+
+def _dernier_retard_otd(company, fournisseur_id, *, debut=None, fin=None):
+    """Dernier retard constaté : ``(date_prevue, jours_de_retard)`` ou None."""
+    from django.db.models import F
+
+    from .models import BonCommandeFournisseur
+
+    qs = BonCommandeFournisseur.objects.filter(
+        company=company, fournisseur_id=fournisseur_id,
+        date_livraison_prevue__isnull=False,
+        date_confirmee_fournisseur__isnull=False,
+        date_confirmee_fournisseur__gt=F('date_livraison_prevue'))
+    if debut:
+        qs = qs.filter(date_livraison_prevue__gte=debut)
+    if fin:
+        qs = qs.filter(date_livraison_prevue__lte=fin)
+    dernier = qs.order_by('-date_livraison_prevue', '-id').first()
+    if dernier is None:
+        return None
+    jours = (dernier.date_confirmee_fournisseur
+             - dernier.date_livraison_prevue).days
+    return dernier.date_livraison_prevue, jours
+
+
+def _montant_achete(company, fournisseur_id, *, debut=None, fin=None):
+    """Σ des lignes de BCF (HT interne) du fournisseur sur la période."""
+    from decimal import Decimal
+    from django.db.models import DecimalField, F, Sum
+    from django.db.models.functions import Coalesce
+
+    from .models import LigneBonCommandeFournisseur
+
+    qs = LigneBonCommandeFournisseur.objects.filter(
+        bon_commande__company=company,
+        bon_commande__fournisseur_id=fournisseur_id)
+    if debut:
+        qs = qs.filter(bon_commande__date_commande__gte=debut)
+    if fin:
+        qs = qs.filter(bon_commande__date_commande__lte=fin)
+    total = qs.aggregate(total=Coalesce(
+        Sum(F('quantite') * F('prix_achat_unitaire'),
+            output_field=DecimalField(max_digits=18, decimal_places=2)),
+        Decimal('0'),
+        output_field=DecimalField(max_digits=18, decimal_places=2)))['total']
+    return total or Decimal('0')
+
+
+def conformite_fournisseurs(company, *, debut=None, fin=None):
+    """NTP2P19 — une ligne d'audit de conformité par fournisseur ACTIF.
+
+    Cinq colonnes de conformité par fournisseur : statut d'onboarding
+    (NTP2P7), score de risque (NTP2P8), documents expirés, dernier retard OTD,
+    et montant total acheté sur la période. Lecture seule ; ``debut``/``fin``
+    (dates) bornent le retard et le montant, jamais le référentiel lui-même.
+    """
+    from .models import Fournisseur
+
+    lignes = []
+    fournisseurs = Fournisseur.objects.filter(
+        company=company, is_archived=False).order_by('nom', 'id')
+    for fournisseur in fournisseurs:
+        dossier = dossier_onboarding_fournisseur(company, fournisseur.pk)
+        progression = progression_onboarding(dossier)
+        score = score_risque_fournisseur(company, fournisseur.pk) or {}
+        retard = _dernier_retard_otd(
+            company, fournisseur.pk, debut=debut, fin=fin)
+        lignes.append({
+            'fournisseur_id': fournisseur.pk,
+            'fournisseur': fournisseur.nom,
+            'statut_onboarding': (
+                dossier.get_statut_display() if dossier is not None
+                else 'Aucun dossier'),
+            'score_risque': score.get('score'),
+            'niveau_risque': score.get('niveau', ''),
+            'documents_expires': ', '.join(progression['expires']),
+            'documents_manquants': ', '.join(progression['manquants']),
+            'dernier_retard_le': retard[0] if retard else None,
+            'dernier_retard_jours': retard[1] if retard else None,
+            'montant_achete': _montant_achete(
+                company, fournisseur.pk, debut=debut, fin=fin),
+        })
+    return lignes
+
+
 # -- Groupe NTWMS -- couche ENTREPOT (casiers, strategies de picking, tarifs) --
 # Definis dans `selectors_wms.py` ; re-exportes ici pour que les appelants
 # continuent d'ecrire `from apps.stock.selectors import ...`.

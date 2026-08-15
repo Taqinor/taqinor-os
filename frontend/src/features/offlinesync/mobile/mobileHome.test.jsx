@@ -6,16 +6,18 @@ describe('NTMOB6 — defaultMobileHomeRoute (logique pure)', () => {
     expect(defaultMobileHomeRoute('Technicien')).toBe('/ma-journee')
   })
 
-  it('Technicien responsable retombe sur le préfixe Technicien', () => {
-    expect(defaultMobileHomeRoute('Technicien responsable')).toBe('/ma-journee')
+  it('Technicien responsable a son accueil d’equipe dedie (NTMOB25)', () => {
+    expect(defaultMobileHomeRoute('Technicien responsable'))
+      .toBe('/mobile/equipe-terrain')
   })
 
   it('Commercial → /mobile/commercial', () => {
     expect(defaultMobileHomeRoute('Commercial')).toBe('/mobile/commercial')
   })
 
-  it('Commercial responsable retombe sur le préfixe Commercial', () => {
-    expect(defaultMobileHomeRoute('Commercial responsable')).toBe('/mobile/commercial')
+  it('Commercial responsable a son accueil d’equipe dedie (NTMOB26)', () => {
+    expect(defaultMobileHomeRoute('Commercial responsable'))
+      .toBe('/mobile/equipe-commerciale')
   })
 
   it('Directeur → /mobile/cockpit', () => {

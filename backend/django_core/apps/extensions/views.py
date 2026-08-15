@@ -8,6 +8,7 @@ from authentication.permissions import IsAdminOrResponsableTier, IsAnyRole
 from .journal import TYPES, journal_plateforme
 from .models import ExtensionPackage
 from .serializers import ExtensionPackageSerializer
+from .statistiques import statistiques_plateforme
 
 
 class ExtensionPackageCatalogueView(generics.ListAPIView):
@@ -47,3 +48,30 @@ class JournalPlateformeView(APIView):
             request.user.company, types=types or None, succes=succes,
             limite=request.query_params.get('limite') or 50)
         return Response({'entrees': entrees, 'types': list(TYPES)})
+
+
+class StatistiquesPlateformeView(APIView):
+    """NTEXT40 — cockpit admin : tout ce que la plateforme fait tourner.
+
+    ``GET extensions/statistiques/`` renvoie, POUR LA SOCIÉTÉ DU DEMANDEUR
+    (jamais lue de la requête), les compteurs d'usage : objets personnalisés +
+    enregistrements, règles actives + exécutions des 30 derniers jours
+    (succès/échec), rapports + abonnements, packages installés.
+
+    READ-ONLY strict : uniquement des ``count()`` sur les tables existantes,
+    aucun nouveau modèle, aucune écriture. Réservé au palier
+    administration/responsable, comme le journal unifié (NTEXT25).
+    """
+
+    permission_classes = [IsAdminOrResponsableTier]
+
+    @extend_schema(responses=inline_serializer('StatistiquesPlateforme', {
+        'fenetre_jours': drf_serializers.IntegerField(),
+        'objets_personnalises': drf_serializers.JSONField(),
+        'automatisations': drf_serializers.JSONField(),
+        'rapports': drf_serializers.JSONField(),
+        'extensions': drf_serializers.JSONField(),
+        'gabarits_document': drf_serializers.JSONField(),
+    }))
+    def get(self, request):
+        return Response(statistiques_plateforme(request.user.company))

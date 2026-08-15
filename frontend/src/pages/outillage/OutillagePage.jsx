@@ -4,10 +4,12 @@
 // camionnette) plus un état « En intervention ». Jamais consommé, jamais
 // client-facing. Tout le texte est en français.
 import { useEffect, useMemo, useState } from 'react'
-import { Plus, Search, Pencil, Trash2, CalendarCheck } from 'lucide-react'
+import { Plus, Search, Pencil, Trash2, CalendarCheck, ScanLine } from 'lucide-react'
 import outillageApi from '../../api/outillageApi'
 import stockApi from '../../api/stockApi'
 import AttachmentsPanel from '../../components/AttachmentsPanel'
+import BarcodeScanner from '../../features/pwa/BarcodeScanner'
+import { trouverOutil, statutApresScan } from './scanOutil'
 import {
   Card, CardContent, Button, IconButton, Input, Textarea,
   StatusPill, EmptyState, Skeleton, Badge,
@@ -52,10 +54,42 @@ export default function OutillagePage() {
   const [form, setForm] = useState(EMPTY_FORM)
   const [saving, setSaving] = useState(false)
 
+  // NTMOB31 — scan d'étiquette d'outil : bascule emprunté ↔ rendu sans
+  // recherche manuelle dans la liste (3ᵉ module branché sur `useBarcodeScanner`,
+  // après stock NTMOB14 et SAV NTMOB15).
+  const [scanOpen, setScanOpen] = useState(false)
+
   const load = () => outillageApi.getOutils()
     .then((r) => { setOutils(r.data.results ?? r.data); setError(null) })
     .catch(() => setError("Impossible de charger l'outillage. Réessayez."))
     .finally(() => setLoading(false))
+
+  // NTMOB31 — un scan bascule le statut de l'outil via l'endpoint EXISTANT.
+  // Code inconnu ou statut non basculable (réparation/perdu) → message clair,
+  // jamais une écriture au hasard.
+  const onOutilScanne = async (code) => {
+    const outil = trouverOutil(outils, code)
+    if (!outil) {
+      toast.error(`Aucun outil ne porte l'étiquette « ${code} ».`)
+      return
+    }
+    const cible = statutApresScan(outil)
+    if (!cible) {
+      toast.error(
+        `${outil.nom} est « ${STATUT_LABELS[outil.statut] ?? outil.statut} » : `
+        + 'à régler manuellement.')
+      return
+    }
+    try {
+      await outillageApi.updateOutil(outil.id, { statut: cible })
+      toast.success(cible === 'en_intervention'
+        ? `${outil.nom} : en cours d'utilisation.`
+        : `${outil.nom} : rendu au dépôt.`)
+      load()
+    } catch {
+      toast.error(`Le statut de ${outil.nom} n'a pas pu être mis à jour.`)
+    }
+  }
   useEffect(() => {
     load()
     stockApi.getEmplacements()
@@ -144,10 +178,24 @@ export default function OutillagePage() {
             Équipement durable du parc — séparé du stock vendable, jamais facturé.
           </p>
         </div>
+        {/* NTMOB31 — check-out/check-in par scan (départ/retour de tournée). */}
+        <Button variant="outline" onClick={() => setScanOpen((v) => !v)}>
+          <ScanLine className="size-4" aria-hidden="true" />
+          {scanOpen ? 'Fermer le scan' : 'Scanner un outil'}
+        </Button>
         <Button onClick={openNew}>
           <Plus className="size-4" aria-hidden="true" /> Nouvel outil
         </Button>
       </div>
+
+      {scanOpen && (
+        <div className="mb-3 w-full max-w-sm">
+          <BarcodeScanner
+            onDetected={onOutilScanne}
+            onClose={() => setScanOpen(false)}
+          />
+        </div>
+      )}
 
       {/* ── Filtres ── */}
       <div className="mb-3 flex flex-wrap items-center gap-2">

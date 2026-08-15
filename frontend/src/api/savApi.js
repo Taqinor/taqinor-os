@@ -25,6 +25,9 @@ const savApi = {
     }),
   // XSAV15 — MTBF/MTTR/coût cumulé de CET équipement (coût gated prix_achat_voir côté serveur).
   getEquipementFiabilite: (id) => api.get(`/sav/equipements/${id}/fiabilite/`),
+  // NTMOB23 — QR du lien de partage tokenisé déjà existant (/e/<token>).
+  getEquipementPartageQr: (id) =>
+    api.get(`/sav/equipements/${id}/partage-qr/`),
   // ZMFG11 — prochaine défaillance estimée (MTBF) + prochain entretien dû.
   getEquipementEstimations: (id) => api.get(`/sav/equipements/${id}/estimations-maintenance/`),
   // XSAV16 — journal d'immobilisation (downtime) : GET liste, POST ouvre une fenêtre.

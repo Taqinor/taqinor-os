@@ -271,6 +271,11 @@ INSTALLED_APPS = [
     # tout le repo, alimentée par l'événement `core.events.record_soft_deleted`
     # (aucune app émettrice n'importe la corbeille). Additive, company-scopée.
     'apps.trash',
+    # NTMOB1 — File d'attente hors-ligne MULTI-MODULE : une table
+    # `OfflineOperation` + un point de synchro unique qui rejoue chaque
+    # opération vers le `services.py` de l'app visée (idempotence par clé
+    # client). Additive, company-scopée.
+    'apps.offlinesync',
     # Groupe NTMAR — Facturation électronique DGI (schéma XML derrière flag,
     # dry-run/réel), scaffold de signature électronique et file d'attente de
     # transmission Simpl inerte (gated, voir EINVOICE_ENABLED).
@@ -283,6 +288,11 @@ INSTALLED_APPS = [
     # qui PROPOSENT des brouillons (jamais d'écriture métier implicite) et
     # surveillance des modèles. Sans clé, chaque surface dégrade proprement.
     'apps.ai_governance',
+    # Groupe NTAI — conversations commerciales enregistrées : téléversement
+    # d'un appel, transcription asynchrone key-gated (STT) puis analyse du
+    # transcript. App DISTINCTE d'`ai_governance` (sa chaîne de migrations lui
+    # appartient) ; rattachement CRM par FK déclarée en CHAÎNE uniquement.
+    'apps.conversation_ai',
     # Groupe VAO — Veille appels d'offres : le SAS où atterrissent les avis de
     # marché, quelle que soit la porte (portail public, tuyau partenaire,
     # import). App NEUVE et DÉLIBÉRÉMENT DISTINCTE de `apps.ao` : la chaîne de
@@ -921,6 +931,10 @@ CELERY_TASK_ROUTES = {
     'ventes.build_async_export': {'queue': 'interactive'},
     'chat.transcribe_voice_attachment': {'queue': 'interactive'},
     # Toutes les tâches planifiées (beat_schedule) → `scheduled`.
+    # NTUX29/NTUX30 — purge de corbeille (03h00) et digest des favoris
+    # obsolètes (lundi 07h00), tous deux enregistrés au beat.
+    'trash.purger_corbeille_transverse': {'queue': 'scheduled'},
+    'uxviews.digest_favoris_obsoletes_hebdo': {'queue': 'scheduled'},
     'ventes.check_overdue_factures': {'queue': 'scheduled'},
     # Vague SUPPLY (14/08/2026) — toute tache du beat_schedule DOIT etre
     # routee explicitement vers `scheduled` (garde core/tests/
@@ -1079,6 +1093,8 @@ CELERY_TASK_ROUTES = {
     # rappel, health score, purge packages/usage).
     'adminops.cloner_sandbox': {'queue': 'scheduled'},
     'adminops.purger_sandbox_expires': {'queue': 'scheduled'},
+    # NTMIG35 — purge planifiée des fichiers source de migration.
+    'migration.purger_fichiers_migration': {'queue': 'scheduled'},
     'adminops.rappeler_sandbox_a_expirer': {'queue': 'scheduled'},
     'adminops.recalculer_health_score_tenants': {'queue': 'scheduled'},
     'adminops.purger_config_packages_anciens': {'queue': 'scheduled'},
@@ -1426,6 +1442,22 @@ try:
         AI_PROVIDERS = {}
 except (ValueError, TypeError):
     AI_PROVIDERS = {}
+
+# NTAI17 — file de traitement documentaire IA (classification + extraction à
+# l'upload GED). ÉTEINTE par défaut : sans clé IA, empiler des jobs que rien ne
+# peut traiter n'apporte rien, et le dépôt d'une pièce reste byte-identique.
+# L'activer (AI_DOCUMENT_JOBS_ENABLED=1) crée un job par pièce déposée ; le
+# traitement lui-même reste key-gated (extraction no-op sans provider OCR).
+AI_DOCUMENT_JOBS_ENABLED = (
+    os.environ.get('AI_DOCUMENT_JOBS_ENABLED', '0') == '1')
+
+# NTAI24 — index sémantique cross-module (core.ai.search). ÉTEINT par défaut :
+# sans lui, aucune ligne d'index n'est écrite et chaque écriture métier reste
+# byte-identique. Activé, l'index se remplit au post_save des fiches déclarées
+# indexables ; le VECTEUR reste key-gated à part (sans fournisseur
+# d'embeddings, la recherche retombe sur le plein-texte, sans appel réseau).
+AI_SEMANTIC_INDEX_ENABLED = (
+    os.environ.get('AI_SEMANTIC_INDEX_ENABLED', '0') == '1')
 
 # ─────────────────────────────────────────────────────────────────────────────
 # YHARD6 — endpoint /metrics (Prometheus). JAMAIS public par défaut : la vue

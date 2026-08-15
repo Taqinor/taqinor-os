@@ -3687,6 +3687,22 @@ def create_activity_from_public_api(*, company, lead_id, body):
     return activity.log_note(lead, None, body)
 
 
+def ajouter_note_lead(*, company, lead_id, user, body):
+    """NTMOB1 — ajoute une note (activité chatter) sur un lead DE CETTE
+    SOCIÉTÉ, avec l'utilisateur ACTEUR (contrairement à
+    ``create_activity_from_public_api``, qui journalise sans acteur).
+
+    Point d'entrée cross-app pour rejouer une note posée hors-ligne sans
+    importer ``apps.crm.models``/``views``. Lève ``Lead.DoesNotExist`` hors
+    société (jamais de fuite cross-tenant) et ``ValueError`` sur un corps vide.
+    """
+    lead = Lead.objects.get(company=company, pk=lead_id)
+    body = (body or '').strip()
+    if not body:
+        raise ValueError("Le champ « body » est obligatoire.")
+    return activity.log_note(lead, user, body)
+
+
 # ── YSERV11 — Gabarit de message « parrainage » (FR + darija, éditable) ─────
 
 # Corps par défaut — ÉDITABLES ensuite par l'admin comme tout MessageTemplate.
@@ -3917,3 +3933,30 @@ def delete_leads_for_company(company):
     count = qs.count()
     qs.delete()
     return count
+
+
+# ── NTMIG28 — miroir du compteur de déploiements d'un partenaire ────────────
+
+def poser_compteur_deploiements(partenaire_id, company, nb_reussis):
+    """Pose le nombre de déploiements RÉUSSIS reconnus d'un partenaire.
+
+    Point d'entrée d'ÉCRITURE pour ``apps.migration`` (qui possède la table des
+    déploiements) : la fiche partenaire vit ici, donc c'est ici qu'on l'écrit —
+    jamais un ``Partenaire.objects.update()`` depuis une autre app.
+
+    Le compteur est un MIROIR dénormalisé, jamais la source : l'appelant fournit
+    le total qu'il vient de recompter sur SA table, on ne le devine pas ici.
+    Renvoie le partenaire mis à jour, ou ``None`` si l'id ne désigne aucun
+    partenaire de cette société (jamais une écriture cross-tenant).
+    """
+    from .models import Partenaire
+
+    partenaire = Partenaire.objects.filter(
+        pk=partenaire_id, company=company).first()
+    if partenaire is None:
+        return None
+    nb_reussis = max(0, int(nb_reussis or 0))
+    if partenaire.nb_deploiements_reussis != nb_reussis:
+        partenaire.nb_deploiements_reussis = nb_reussis
+        partenaire.save(update_fields=['nb_deploiements_reussis'])
+    return partenaire

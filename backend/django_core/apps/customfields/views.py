@@ -6,6 +6,7 @@ from rest_framework.response import Response
 from authentication.mixins import TenantMixin
 from authentication.permissions import IsAnyRole, IsAdminRole
 from apps.parametres.models import SettingsAuditLog
+from .audit_plateforme import AuditPlateformeMixin
 from .models import CustomFieldDef, CustomObjectDef, CustomRecord
 from .serializers import (
     CustomFieldDefSerializer, CustomObjectDefSerializer, CustomRecordSerializer,
@@ -22,6 +23,21 @@ _COLONNE_FORMAT_PAR_TYPE = {
     'text': 'texte', 'number': 'nombre', 'date': 'date', 'boolean': 'oui_non',
     'choice': 'badge', 'relation': 'lien', 'fichier': 'fichier', 'ia': 'texte',
 }
+
+
+# NTEXT38 — champs dont la modification revient à « renommer » une définition
+# verrouillée (la structure), par opposition aux réglages d'affichage (ordre,
+# visible_liste…) qui restent librement ajustables même verrouillés.
+_CHAMPS_STRUCTURE_CHAMP = ('code', 'libelle', 'module', 'type')
+_CHAMPS_STRUCTURE_OBJET = ('code', 'libelle')
+
+
+def _refus_verrouille(quoi, geste):
+    """403 en français — jamais un 500 ni un silence."""
+    return PermissionDenied(
+        f'{quoi} est verrouillé : impossible de le {geste} tant qu\'il n\'est '
+        f'pas déverrouillé (action « déverrouiller », réservée à '
+        f'l\'administration).')
 
 
 def _colonne_liste(field_def):
@@ -93,12 +109,50 @@ class CustomFieldDefViewSet(TenantMixin, viewsets.ModelViewSet):
         self._audit('Champ personnalisé créé', instance,
                     old=None, new=instance.libelle)
 
+    def perform_update(self, serializer):
+        # NTEXT38 — un champ VERROUILLÉ ne se renomme pas : seules les
+        # retouches d'affichage (ordre, visible_liste, actif…) passent.
+        instance = serializer.instance
+        if instance.verrouille:
+            for champ in _CHAMPS_STRUCTURE_CHAMP:
+                if champ in serializer.validated_data and \
+                        serializer.validated_data[champ] != getattr(
+                            instance, champ):
+                    raise _refus_verrouille('Ce champ personnalisé', 'renommer')
+        super().perform_update(serializer)
+
     def perform_destroy(self, instance):
+        # NTEXT38 — un champ VERROUILLÉ ne se supprime pas.
+        if instance.verrouille:
+            raise _refus_verrouille('Ce champ personnalisé', 'supprimer')
         # L818 — journaliser avant suppression (le custom_data des
         # enregistrements n'est pas touché : approche additive).
         self._audit('Champ personnalisé supprimé', instance,
                     old=instance.libelle, new=None)
         instance.delete()
+
+    @action(detail=True, methods=['post'])
+    def verrouiller(self, request, pk=None):
+        """NTEXT38 — pose le verrou anti-casse (admin), et l'audite."""
+        return self._basculer_verrou(True)
+
+    @action(detail=True, methods=['post'])
+    def deverrouiller(self, request, pk=None):
+        """NTEXT38 — retire le verrou anti-casse (admin), et l'audite."""
+        return self._basculer_verrou(False)
+
+    def _basculer_verrou(self, verrouille):
+        field_def = self.get_object()
+        avant = field_def.verrouille
+        if avant != verrouille:
+            field_def.verrouille = verrouille
+            field_def.save(update_fields=['verrouille'])
+        self._audit(
+            'Champ verrouillé' if verrouille else 'Champ déverrouillé',
+            field_def,
+            old='verrouillé' if avant else 'déverrouillé',
+            new='verrouillé' if verrouille else 'déverrouillé')
+        return Response(self.get_serializer(field_def).data)
 
     @action(detail=False, methods=['post'])
     def reorder(self, request):
@@ -184,17 +238,65 @@ def _object_permission_code(object_code, action_kind):
     return f'custom_object.{object_code}.{action_kind}'
 
 
-class CustomObjectDefViewSet(TenantMixin, viewsets.ModelViewSet):
+class CustomObjectDefViewSet(AuditPlateformeMixin, TenantMixin,
+                             viewsets.ModelViewSet):
     """Objets personnalisés no-code (Paramètres). Lecture tout rôle, écriture
     admin — comme les définitions de champs dont ils réutilisent le
-    mécanisme."""
+    mécanisme.
+
+    NTEXT36 — toute création/modification/suppression laisse une ligne dans le
+    Journal d'audit des paramètres (section='plateforme')."""
     queryset = CustomObjectDef.objects.all()
     serializer_class = CustomObjectDefSerializer
+    audit_plateforme_cible = 'objet'
+    audit_plateforme_nom = 'Objet personnalisé'
 
     def get_permissions(self):
         if self.action in ('list', 'retrieve', 'objets_catalogue'):
             return [IsAnyRole()]
         return [IsAdminRole()]
+
+    # ── NTEXT38 — verrou anti-casse ────────────────────────────────────────
+
+    def perform_update(self, serializer):
+        instance = serializer.instance
+        if instance.verrouille:
+            for champ in _CHAMPS_STRUCTURE_OBJET:
+                if champ in serializer.validated_data and \
+                        serializer.validated_data[champ] != getattr(
+                            instance, champ):
+                    raise _refus_verrouille('Cet objet personnalisé',
+                                            'renommer')
+        super().perform_update(serializer)
+
+    def perform_destroy(self, instance):
+        if instance.verrouille:
+            raise _refus_verrouille('Cet objet personnalisé', 'supprimer')
+        super().perform_destroy(instance)
+
+    @action(detail=True, methods=['post'])
+    def verrouiller(self, request, pk=None):
+        """NTEXT38 — pose le verrou anti-casse (admin), et l'audite."""
+        return self._basculer_verrou(True)
+
+    @action(detail=True, methods=['post'])
+    def deverrouiller(self, request, pk=None):
+        """NTEXT38 — retire le verrou anti-casse (admin), et l'audite."""
+        return self._basculer_verrou(False)
+
+    def _basculer_verrou(self, verrouille):
+        objet = self.get_object()
+        avant = objet.verrouille
+        if avant != verrouille:
+            objet.verrouille = verrouille
+            objet.save(update_fields=['verrouille'])
+        self._journaliser_plateforme(
+            objet,
+            'Objet personnalisé verrouillé' if verrouille
+            else 'Objet personnalisé déverrouillé',
+            old='verrouillé' if avant else 'déverrouillé',
+            new='verrouillé' if verrouille else 'déverrouillé')
+        return Response(self.get_serializer(objet).data)
 
     # Exposées par des routes DÉDIÉES (``urls.py``) et non par le routeur :
     # le catalogue vit à ``customfields/objets-catalogue/``, pas sous

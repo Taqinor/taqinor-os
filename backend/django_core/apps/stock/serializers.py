@@ -1564,6 +1564,10 @@ class AchatsParametresSerializer(serializers.ModelSerializer):
             'id', 'bloquer_paiement_conformite_expiree',
             'ras_tva_actif', 'tolerance_prix_pct',
             'tolerance_prix_absolu_mad', 'tolerance_quantite_pct',
+            # Procure-to-Pay — interrupteurs NTP2P4 / NTP2P7 / NTP2P37, tous
+            # à False par défaut (comportement historique inchangé).
+            'budget_departement_actif', 'onboarding_fournisseur_obligatoire',
+            'sod_stricte',
             'date_creation', 'date_modification',
         ]
         read_only_fields = ['date_creation', 'date_modification']

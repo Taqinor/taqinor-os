@@ -170,6 +170,15 @@ class NoteFrais(models.Model):
     hors_politique = models.BooleanField(
         default=False,
         verbose_name='Hors politique (dépasse le plafond)')
+    # ── NTP2P11 — escalade direction + warning de délai ──
+    # Posés CÔTÉ SERVEUR à la soumission depuis ``PlafondNoteFrais`` ; jamais
+    # lus du corps de la requête. Défauts = comportement historique inchangé.
+    escalade_direction = models.BooleanField(
+        default=False,
+        verbose_name='Validation DIRECTION requise (escalade de montant)')
+    warning_delai = models.TextField(
+        blank=True, default='',
+        verbose_name='Warning de délai (non bloquant, affiché au valideur)')
     # ── XACC28 — Refacturation au client (billable expense) ──
     refacturable = models.BooleanField(
         default=False, verbose_name='Refacturable au client')
@@ -387,6 +396,19 @@ class PlafondNoteFrais(models.Model):
     seuil_justificatif_obligatoire = models.DecimalField(
         max_digits=14, decimal_places=2, null=True, blank=True,
         verbose_name='Seuil au-delà duquel le justificatif est obligatoire')
+    # ── NTP2P11 — délai de soumission + escalade direction ─────────────────
+    # Deux réglages ADDITIFS et OPTIONNELS (``None`` = comportement historique
+    # inchangé : aucun contrôle de délai, aucune escalade).
+    jours_max_apres_depense = models.PositiveIntegerField(
+        null=True, blank=True,
+        verbose_name='Délai max entre la dépense et sa soumission (jours)',
+        help_text='Au-delà, un WARNING non bloquant est journalisé pour le '
+                  'valideur. Vide = aucun contrôle de délai.')
+    escalade_direction_au_dela_de = models.DecimalField(
+        max_digits=14, decimal_places=2, null=True, blank=True,
+        verbose_name='Montant au-delà duquel la direction doit valider',
+        help_text="Au-delà, la note exige une validation DIRECTION (jamais un "
+                  'blocage silencieux). Vide = aucune escalade.')
     date_creation = models.DateTimeField(
         auto_now_add=True, verbose_name='Créé le')
 

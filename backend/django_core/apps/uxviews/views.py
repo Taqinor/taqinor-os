@@ -86,10 +86,24 @@ class SavedViewViewSet(CompanyScopedModelViewSet):
             )})
 
     def perform_create(self, serializer):
-        # NTUX28 (limites anti-abus) reste hors périmètre de ce lot — posé ici
-        # comme garde-fou de base minimal : owner/company toujours serveur.
         self._verifier_partage_autorise(serializer)
+        self._verifier_limite_vues()
         serializer.save(company=self.request.user.company, owner=self.request.user)
+
+    def _verifier_limite_vues(self):
+        """NTUX28 — refuse la création au-delà de `max_vues_par_utilisateur`
+        (réglage société, NTUX27) ; jamais de suppression automatique
+        silencieuse d'une vue existante."""
+        parametres = UxParametres.get_or_default(self.request.user.company)
+        limite = parametres.max_vues_par_utilisateur
+        actuel = SavedView.objects.filter(
+            company=self.request.user.company, owner=self.request.user,
+        ).count()
+        if actuel >= limite:
+            raise ValidationError({'detail': (
+                f'Limite de {limite} vues personnelles atteinte. '
+                'Supprimez-en une avant d\'en créer une nouvelle.'
+            )})
 
     def perform_update(self, serializer):
         instance = self.get_object()
@@ -289,10 +303,32 @@ class FavoriUtilisateurViewSet(CompanyScopedModelViewSet):
         # `company` ET `owner` posés côté serveur — jamais lus du corps. Un
         # favori sans `ordre` explicite s'ajoute EN FIN de liste (le
         # glisser-déposer de NTUX21 le remontera ensuite).
+        self._verifier_limite_favoris(serializer)
         extra = {'company': self.request.user.company, 'owner': self.request.user}
         if serializer.validated_data.get('ordre') is None:
             extra['ordre'] = self._prochain_ordre()
         serializer.save(**extra)
+
+    def _verifier_limite_favoris(self, serializer):
+        """NTUX28 — refuse l'épinglage au-delà de `max_favoris_par_utilisateur`
+        (réglage société, NTUX27). Épingler deux fois la MÊME cible est un
+        no-op géré par `FavoriUtilisateurSerializer.create` : on ne bloque donc
+        jamais ce cas, seule une VRAIE nouvelle cible compte contre la limite."""
+        content_type = getattr(serializer, '_content_type', None)
+        object_id = serializer.validated_data.get('object_id')
+        if content_type is not None and object_id is not None:
+            deja_epingle = self.get_queryset().filter(
+                content_type=content_type, object_id=object_id).exists()
+            if deja_epingle:
+                return
+        parametres = UxParametres.get_or_default(self.request.user.company)
+        limite = parametres.max_favoris_par_utilisateur
+        actuel = self.get_queryset().count()
+        if actuel >= limite:
+            raise ValidationError({'detail': (
+                f'Limite de {limite} favoris atteinte. '
+                'Supprimez-en un avant d\'en épingler un nouveau.'
+            )})
 
     def perform_update(self, serializer):
         serializer.save(company=self.request.user.company, owner=self.request.user)

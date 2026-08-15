@@ -124,13 +124,17 @@ const PER_CHUNK_BUDGET_KB = 350
 // package.json/package-lock.json vide), aucun import de bibliothèque en entier,
 // aucun `import * as`. Palier généreux habituel (~130 Ko, ~62 Ko de marge
 // au-dessus du réel) pour ne pas re-bumper à chaque vague.
-// 2026-08-14 : 3250 -> 3320. Groupe PV (87 tâches — Toiture 3D départ-du-devis,
-// studio de calepinage complet, conception électrique + schéma unifilaire,
-// étude bancable) : ~6 écrans/panneaux neufs en `lazy` (ConceptionElectrique,
-// EtudeBancable, VariantesListPage, ChoisirDevisPourDesign, édition de rangées,
-// fiches techniques enrichies). Réel mesuré 3268 Ko. AUCUNE nouvelle dépendance
-// npm (three/maplibre déjà présents). Palier généreux habituel (~50 Ko de marge).
-const TOTAL_BUDGET_KB = 3320
+// 2026-08-14 : 3250 -> 3330. Fusion de DEUX vagues parallèles — primitives
+// débloquantes (offlinesync, playbooks/certification partenaire, IA
+// document/appels/recherche, procure-to-pay : catalogue d'achat, budgets,
+// onboarding fournisseur, score de risque) et la vague supply/WMS. Réel
+// 3263.7 Ko. Croissance RÉPARTIE : chaque écran neuf est en `lazy()` dans
+// son propre chunk ; aucun n'approche PER_CHUNK_BUDGET_KB (350). AUCUNE
+// nouvelle dépendance npm (diff package.json/package-lock.json VIDE,
+// vérifié), et le seul `import * as` ajouté est le namespace Radix d'un
+// primitif Popover déjà installé. Palier avec ~66 Ko de marge pour ne pas
+// re-bumper à chaque vague.
+const TOTAL_BUDGET_KB = 3330
 const VENDOR_CHUNK_BUDGETS_KB = {
   recharts: 450,
   'pdfjs-dist': 450,

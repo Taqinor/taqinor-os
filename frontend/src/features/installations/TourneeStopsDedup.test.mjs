@@ -35,7 +35,9 @@ test('la liste numérotée de la planification n’est plus dupliquée', () => {
 test('zéro endpoint nouveau : la tournée vient de getMaTournee, déjà appelé', () => {
   assert.match(PLANIF, /installationsApi\.getMaTournee\(date\)/)
   assert.match(JOURNEE, /getMaTournee\(today\)/)
-  assert.match(API, /getMaTournee: \(date\) =>/)
+  // `config` optionnel (cache de lecture NTMOB27) : toujours le MEME
+  // endpoint, ce que ce test verifie reellement.
+  assert.match(API, /getMaTournee: \(date(?:, config)?\) =>/)
   // Le composant partagé n'appelle AUCUNE API : il reçoit les arrêts en props
   // (la seule occurrence du nom est le commentaire d'en-tête).
   assert.equal(/^\s*import .*installationsApi/m.test(PARTAGE), false)

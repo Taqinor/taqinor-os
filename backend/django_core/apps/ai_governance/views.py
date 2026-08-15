@@ -5,15 +5,19 @@ brouillon, et n'écrivent JAMAIS dans un modèle métier. Sans clé LLM/STT
 configurée, elles répondent 503 avec un message FR explicite et ne font aucun
 appel réseau.
 """
+from drf_spectacular.utils import extend_schema, inline_serializer
+from rest_framework import serializers as drf_serializers
 from rest_framework import status
 from rest_framework.parsers import MultiPartParser
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.throttling import ScopedRateThrottle
+from rest_framework.generics import GenericAPIView
 from rest_framework.views import APIView
 
 from authentication.permissions import IsAnyRole
 
+from .serializers import RechercheGlobaleRequeteSerializer
 from .services import AiCopiloteUnavailable
 
 
@@ -149,6 +153,62 @@ class RapportPeriodeView(APIView):
                 company=request.user.company,
                 module=request.data.get('module') or '',
                 periode=request.data.get('periode') or '')
+        except AiCopiloteUnavailable as exc:
+            return _unavailable_response(exc)
+        return Response(resultat)
+
+
+class RechercheGlobaleView(GenericAPIView):
+    """NTAI25 — ``POST /api/django/ai/recherche-globale/``.
+
+    Body ``{"question": "quels clients ont un litige ouvert ?"}``. Cherche dans
+    l'index sémantique cross-module (NTAI24, TOUJOURS scopé société), assemble
+    un contexte et fait rédiger une réponse FR qui CITE chaque fiche source
+    sous la forme ``[app.model#id]``.
+
+    Distinct de l'agent NL→SQL (qui interroge des agrégats) : ici on répond sur
+    des FICHES. Garde NTAI4 : toute citation absente des résultats est retirée
+    de la réponse (jamais de lien mort). Sans clé LLM, l'endpoint dégrade sur
+    la recherche par mots-clés — l'utilisateur obtient toujours ses fiches.
+    LECTURE SEULE : rien n'est jamais écrit.
+    """
+
+    permission_classes = [IsAuthenticated, IsAnyRole]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = 'ai_copilote'
+
+    # R2 (check_openapi_shapes) : base GenericAPIView + serializer_class de
+    # requête + `responses=` déclaré — la forme n'est JAMAIS devinée, donc
+    # cette vue n'ajoute rien au cliquet, qui ne peut que décroître.
+    serializer_class = RechercheGlobaleRequeteSerializer
+
+    def get_queryset(self):
+        """Index sémantique de la SOCIÉTÉ de l'appelant, jamais au-delà.
+
+        La recherche elle-même passe par ``recherche_globale(company=...)``
+        ; ce ``get_queryset`` rend ce périmètre EXPLICITE et vérifiable par
+        la garde d'isolation multi-société (YDATA21), au lieu de le laisser
+        enfoui dans le service.
+        """
+        from core.models import SearchChunk
+
+        return SearchChunk.objects.filter(company=self.request.user.company)
+
+    @extend_schema(responses=inline_serializer('RechercheGlobaleReponse', {
+        'question': drf_serializers.CharField(),
+        'reponse': drf_serializers.CharField(),
+        'citations': drf_serializers.JSONField(),
+        'citations_ecartees': drf_serializers.JSONField(),
+        'resultats': drf_serializers.JSONField(),
+        'source': drf_serializers.CharField(),
+    }))
+    def post(self, request):
+        from .services import recherche_globale
+
+        try:
+            resultat = recherche_globale(
+                company=request.user.company,
+                question=request.data.get('question') or '')
         except AiCopiloteUnavailable as exc:
             return _unavailable_response(exc)
         return Response(resultat)

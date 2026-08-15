@@ -273,3 +273,27 @@ def analyse_concurrents_perte(company):
         'par_concurrent': par_concurrent_liste,
         'par_motif': par_motif_liste,
     }
+
+
+def compte_reclamations_fournisseur(company, fournisseur_id):
+    """NTP2P8 — nombre de réclamations rattachées à CE fournisseur.
+
+    Frontière cross-app : ``stock`` lit les litiges PAR ICI (jamais en
+    important ``litiges.models``). Le rattachement suit le couple lâche
+    déjà en place sur ``Reclamation`` (``source_type='fournisseur'`` /
+    ``source_id``) — aucune FK cross-app n'est créée. Renvoie
+    ``{'total', 'ouvertes'}`` ; 0/0 quand aucun litige fournisseur n'est
+    encore saisi (cas actuel de toutes les sociétés).
+    """
+    from .models import Reclamation
+
+    if company is None or not fournisseur_id:
+        return {'total': 0, 'ouvertes': 0}
+    qs = Reclamation.objects.filter(
+        company=company, source_type='fournisseur', source_id=fournisseur_id)
+    return {
+        'total': qs.count(),
+        'ouvertes': qs.filter(statut__in=(
+            Reclamation.Statut.OUVERTE,
+            Reclamation.Statut.EN_TRAITEMENT)).count(),
+    }

@@ -52,7 +52,9 @@ const crmApi = {
   getHistoriqueLead: (id) => api.get(`/crm/leads/${id}/historique/`),
   // NTMOB4 — file de relance du jour (FG31/VX83, crm.selectors.relances_du_jour).
   // ?scope=overdue|today|week (défaut today). {count, results:[Lead]}.
-  getRelances: (params) => api.get('/crm/leads/relances/', { params }),
+  // `config` optionnel (NTMOB19) : permet à un widget d'arrière-plan de
+  // passer `suppressErrorToast` sans forker l'appel.
+  getRelances: (params, config) => api.get('/crm/leads/relances/', { params, ...config }),
   // Employés assignables (id, username, poste, avatar_url) — ouvert à la
   // Commerciale (le sélecteur de responsable doit marcher pour elle aussi).
   getAssignableUsers: () => api.get('/crm/assignable-users/'),

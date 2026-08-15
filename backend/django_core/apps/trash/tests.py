@@ -249,3 +249,23 @@ class PurgeTests(CorbeilleBase):
         self.assertEqual(ElementSupprime.objects.count(), 1)
         call_command('purger_corbeille_transverse')
         self.assertEqual(ElementSupprime.objects.count(), 0)
+
+    def test_tache_beat_purge_les_entrees_expirees(self):
+        # NTUX29 — la tâche Celery planifiée (`trash.purger_corbeille_transverse`,
+        # `erp_agentique/celery.py`) délègue au même service que la commande.
+        from .tasks import purger_corbeille_transverse
+
+        archiver(self.lead)
+        self._perimer(ElementSupprime.objects.get())
+        resultat = purger_corbeille_transverse()
+        self.assertEqual(resultat, {self.co_a.id: 1})
+        self.assertEqual(ElementSupprime.objects.count(), 0)
+
+    def test_tache_beat_est_planifiee(self):
+        # NTUX29 — garde-fou minimal : la tâche est bien enregistrée dans le
+        # beat_schedule (le bug dominant du repo est une tâche bâtie/testée
+        # mais jamais planifiée, cf. QX11).
+        from erp_agentique.celery import app as celery_app
+
+        taches = {v['task'] for v in celery_app.conf.beat_schedule.values()}
+        self.assertIn('trash.purger_corbeille_transverse', taches)

@@ -160,6 +160,41 @@ export default defineConfig({
           { src: '/pwa-512.png', sizes: '512x512', type: 'image/png', purpose: 'any' },
           { src: '/pwa-maskable-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
         ],
+        // NTMOB20 — raccourcis d'accès rapide : un appui long sur l'icône de
+        // l'app installée propose ces 4 actions. API standard des raccourcis
+        // PWA ; les icônes réutilisent l'icône d'app déjà générée (aucun
+        // nouvel asset à produire, aucune dépendance).
+        // Chaque `url` DOIT être une route réelle de l'app :
+        //   • /crm/leads?new=1  → ouvre le formulaire de lead (déjà consommé)
+        //   • /stock?scan=1     → ouvre le panneau de scan (NTMOB14/15)
+        //   • /ma-journee       → écran terrain du jour
+        //   • /approbations     → boîte d'approbations (NTMOB5)
+        shortcuts: [
+          {
+            name: 'Nouveau lead',
+            short_name: 'Lead',
+            url: '/crm/leads?new=1',
+            icons: [{ src: '/pwa-192.png', sizes: '192x192', type: 'image/png' }],
+          },
+          {
+            name: 'Scanner un code-barres',
+            short_name: 'Scanner',
+            url: '/stock?scan=1',
+            icons: [{ src: '/pwa-192.png', sizes: '192x192', type: 'image/png' }],
+          },
+          {
+            name: 'Ma journée',
+            short_name: 'Ma journée',
+            url: '/ma-journee',
+            icons: [{ src: '/pwa-192.png', sizes: '192x192', type: 'image/png' }],
+          },
+          {
+            name: 'Approbations',
+            short_name: 'Approbations',
+            url: '/approbations',
+            icons: [{ src: '/pwa-192.png', sizes: '192x192', type: 'image/png' }],
+          },
+        ],
       },
       injectManifest: {
         // Shell précaché : JS/CSS/HTML/icônes + polices. Pas l'API.

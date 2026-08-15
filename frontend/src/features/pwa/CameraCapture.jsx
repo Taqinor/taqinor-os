@@ -22,6 +22,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { Camera, CameraOff, RefreshCw, Check, X, ImagePlus } from 'lucide-react'
 import { Button } from '../../ui'
 import { hapticTap } from '../../lib/haptics'
+import useWakeLock from '../../hooks/useWakeLock'
 
 function cameraCaptureSupported() {
   return (
@@ -72,6 +73,8 @@ export default function CameraCapture({
   const [supported] = useState(cameraCaptureSupported)
   const [active, setActive] = useState(false)
   const [error, setError] = useState(null)
+  // NTMOB29 — écran maintenu allumé tant que la caméra est ouverte.
+  useWakeLock(active)
   const [preview, setPreview] = useState(null) // dataURL de l'aperçu figé
   // NTMOB11 — miniatures LOCALES des photos déjà validées cette session
   // (mode `multiple` uniquement) ; jamais relu du serveur, purement visuel.

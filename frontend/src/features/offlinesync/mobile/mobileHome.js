@@ -11,12 +11,16 @@
 // (`/mobile/commercial`) ; Directeur/Administrateur → NTMOB5
 // (`/mobile/cockpit`) ; tout autre rôle → `''` (dashboard générique,
 // comportement inchangé). Les variantes « responsable » (Commercial
-// responsable, Technicien responsable) retombent sur l'accueil de base de
-// leur famille via un préfixe — aucun accueil dédié n'existe encore pour
-// elles (NTMOB25/26).
+// responsable, Technicien responsable) ont désormais leur accueil dédié
+// (NTMOB25/26) : elles sont routées par nom EXACT ci-dessous, ce qui prime
+// sur le repli par préfixe. C'est aussi ce qui rend ces deux écrans
+// ATTEIGNABLES (garde PACT150 : une route sans chemin d'accès réel est un
+// écran mort).
 const BY_EXACT_ROLE = {
   Directeur: '/mobile/cockpit',
   Administrateur: '/mobile/cockpit',
+  'Technicien responsable': '/mobile/equipe-terrain',
+  'Commercial responsable': '/mobile/equipe-commerciale',
 }
 
 const BY_ROLE_PREFIX = [

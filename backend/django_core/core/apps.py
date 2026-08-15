@@ -37,3 +37,11 @@ class CoreConfig(AppConfig):
         # le ré-enregistrement remplace, jamais de doublon d'exécution.
         from .signup_hooks import register_core_signup_hooks
         register_core_signup_hooks()
+
+        # NTAI24 — index sémantique cross-module : branchement ``post_save``/
+        # ``post_delete`` sur les modèles déclarés indexables PAR CHAÎNE (aucun
+        # import d'app métier ici). No-op complet tant que
+        # ``AI_SEMANTIC_INDEX_ENABLED`` est éteint (défaut) : le receiver rend
+        # la main immédiatement, aucune ligne n'est écrite.
+        from .ai.search import connect_signals
+        connect_signals()

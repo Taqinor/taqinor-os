@@ -88,6 +88,117 @@ def _mode_pour(entite, demande=None):
     return 'upsert'
 
 
+# ─────────────────────────────────────────────────────────────────────────
+# NTMIG35 — fichiers source TEMPORAIRES : mémorisation puis purge
+# ─────────────────────────────────────────────────────────────────────────
+#: Délai de conservation des fichiers source après la clôture d'un projet.
+RETENTION_FICHIERS_JOURS = 30
+
+
+def memoriser_fichier_source(lot, file_bytes, filename):
+    """Range le fichier source du lot dans le stockage objet (MinIO/S3).
+
+    Pourquoi le garder : sans lui, une reprise après incident (NTMIG38) ou une
+    migration à blanc (NTMIG33) exigerait de re-téléverser exactement le même
+    fichier — introuvable des semaines plus tard chez un grand compte.
+
+    Pourquoi ne PAS le garder longtemps : il contient des données personnelles
+    (clients, leads). Il est donc TEMPORAIRE par contrat — purgé
+    automatiquement `RETENTION_FICHIERS_JOURS` jours après la clôture
+    (:func:`purger_fichiers_expires`) — et n'est JAMAIS commité au dépôt.
+
+    Le fichier précédent est supprimé du stockage : garder les versions
+    intermédiaires multiplierait les copies de données personnelles sans que
+    personne ne les demande.
+    """
+    from . import stockage
+
+    ancien = lot.fichier_source_cle
+    lot.fichier_source_cle = stockage.enregistrer(
+        lot.company_id, lot.pk, file_bytes, filename)
+    lot.fichier_source_nom = filename or ''
+    if ancien and ancien != lot.fichier_source_cle:
+        stockage.supprimer(ancien)
+
+
+def fichier_source_de(lot):
+    """(octets, nom d'origine) du fichier source mémorisé — ``None`` si purgé.
+
+    ``None`` n'est pas une anomalie : c'est l'état NORMAL d'un projet clôturé
+    depuis plus de :data:`RETENTION_FICHIERS_JOURS` jours (ou d'un stockage
+    objet momentanément indisponible — l'appelant propose alors de
+    re-téléverser le fichier plutôt que de travailler sur du vide).
+    """
+    from . import stockage
+
+    contenu = stockage.lire(lot.fichier_source_cle)
+    if contenu is None:
+        return None
+    return contenu, (lot.fichier_source_nom or 'source.csv')
+
+
+def purger_fichiers_source(projet):
+    """Supprime du stockage les fichiers source des lots d'un projet.
+
+    Les RAPPORTS de réconciliation (agrégats non-PII) et les compteurs sont
+    conservés intacts : après la purge, le PV de migration reste produisible —
+    seules les données personnelles brutes disparaissent.
+    """
+    from . import stockage
+
+    purges = 0
+    for lot in lots_du_projet(projet):
+        if not lot.fichier_source_cle:
+            continue
+        stockage.supprimer(lot.fichier_source_cle)
+        lot.fichier_source_cle = ''
+        lot.fichier_source_nom = ''
+        lot.save(update_fields=[
+            'fichier_source_cle', 'fichier_source_nom', 'updated_at'])
+        purges += 1
+    if not projet.fichiers_purges:
+        projet.fichiers_purges = True
+        projet.save(update_fields=['fichiers_purges', 'updated_at'])
+    return purges
+
+
+def projets_a_purger(maintenant=None):
+    """Projets clôturés depuis plus de :data:`RETENTION_FICHIERS_JOURS` jours
+    et pas encore purgés — toutes sociétés confondues (c'est un job de
+    plateforme, la rétention ne dépend pas du tenant)."""
+    maintenant = maintenant or timezone.now()
+    limite = maintenant - timezone.timedelta(days=RETENTION_FICHIERS_JOURS)
+    return ProjetMigration.objects.filter(
+        statut=ProjetMigration.Statut.TERMINE,
+        date_fin__isnull=False, date_fin__lte=limite,
+        fichiers_purges=False)
+
+
+def purger_fichiers_expires(maintenant=None):
+    """NTMIG35 — purge planifiée (job Beat ``migration.purger_fichiers_migration``).
+
+    Best-effort par projet : un stockage indisponible sur UN projet ne doit pas
+    empêcher la purge des autres (une purge de données personnelles qui
+    s'arrête à la première erreur laisserait des fichiers en trop, ce qui est
+    exactement ce que la tâche doit éviter).
+    """
+    import logging
+
+    logger = logging.getLogger(__name__)
+    total_projets = 0
+    total_fichiers = 0
+    for projet in projets_a_purger(maintenant):
+        try:
+            total_fichiers += purger_fichiers_source(projet)
+        except Exception:
+            logger.exception(
+                'Purge des fichiers source impossible pour le projet %s',
+                projet.pk)
+            continue
+        total_projets += 1
+    return {'projets': total_projets, 'fichiers': total_fichiers}
+
+
 def analyser_lot(lot, file_bytes, filename, *, mapping_name=None):
     """Aperçu DRY-RUN STRICT : rien n'est écrit dans les tables cibles.
 
@@ -114,10 +225,92 @@ def analyser_lot(lot, file_bytes, filename, *, mapping_name=None):
     lot.erreurs = 0
     lot.import_job = None
     lot.statut = LotMigration.Statut.ANALYSE
+    # NTMIG35 — le fichier analysé est mémorisé (temporairement) pour que le
+    # chargement, la reprise (NTMIG38) et la migration à blanc (NTMIG33)
+    # rejouent EXACTEMENT le fichier validé, pas un autre.
+    memoriser_fichier_source(lot, file_bytes, filename)
     lot.save(update_fields=[
         'source_lignes', 'crees', 'maj', 'erreurs', 'import_job', 'statut',
-        'updated_at'])
+        'fichier_source_cle', 'fichier_source_nom', 'updated_at'])
     return apercu
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# NTMIG32 — qualité de la SOURCE avant chargement
+# ─────────────────────────────────────────────────────────────────────────
+def _reconstruire_csv(headers, rows, filename):
+    """Réécrit des lignes déjà parsées en CSV utf-8 (mêmes en-têtes, même ordre).
+
+    Sert à REJOUER un SOUS-ENSEMBLE du fichier source dans le moteur d'import
+    sans lui ajouter d'API : le moteur relit un fichier, on lui en donne un.
+    Le CSV est le format pivot (un XLSX d'origine ressort en CSV) — le mapping
+    par en-tête est identique, seules les lignes changent.
+    """
+    import csv
+    import io
+    import os
+
+    tampon = io.StringIO()
+    writer = csv.DictWriter(tampon, fieldnames=list(headers),
+                            extrasaction='ignore')
+    writer.writeheader()
+    for row in rows:
+        writer.writerow({h: ('' if row.get(h) is None else row.get(h))
+                         for h in headers})
+    base = os.path.splitext(os.path.basename(filename or 'source'))[0]
+    return tampon.getvalue().encode('utf-8'), f'{base}.csv'
+
+
+def fichier_sans_lignes(file_bytes, filename, lignes_exclues):
+    """Fichier source PRIVÉ des lignes citées (numéros 1-based, en-tête exclu).
+
+    C'est le « continuer sans les lignes invalides » proposé par
+    :func:`valider_source` : rien n'est corrigé automatiquement, les lignes
+    fautives sont simplement laissées de côté — et l'appelant sait lesquelles.
+    """
+    from apps.dataimport import services as dataimport_services
+
+    exclues = set(lignes_exclues or ())
+    headers, rows = dataimport_services.parse_rows(file_bytes, filename)
+    gardees = [row for numero, row in enumerate(rows, 1)
+               if numero not in exclues]
+    return _reconstruire_csv(headers, gardees, filename)
+
+
+def valider_source(lot, file_bytes, filename, *, kit_cle=None,
+                   mapping_name=None):
+    """NTMIG32 — rapport de qualité de la SOURCE, AVANT tout chargement.
+
+    Applique les règles de format (ICE/e-mail/téléphone/montant) issues du kit
+    quand il existe, sinon de ``dataquality`` (NTDATA14) s'il est présent,
+    sinon des règles locales minimales — voir :mod:`apps.migration.validation`.
+    Aucune écriture : ni en base cible, ni sur le lot (un contrôle de qualité
+    ne doit pas déplacer le lot dans le flux ; seul l'analyse dry-run le fait).
+
+    Le rapport porte les numéros des lignes invalides pour que l'écran puisse
+    proposer de continuer SANS elles (:func:`fichier_sans_lignes`) plutôt que
+    d'imposer un choix binaire « tout ou rien ».
+    """
+    from apps.dataimport import services as dataimport_services
+
+    from . import validation
+
+    # La société est passée pour que le mapping SAUVEGARDÉ (XPLT2) s'applique
+    # comme il s'appliquera au chargement : valider un fichier avec un mapping
+    # différent de celui qui sera utilisé donnerait un rapport hors sujet.
+    apercu = dataimport_services.dry_run(
+        file_bytes, filename, lot.entite, company=lot.company,
+        mapping_name=mapping_name,
+        external_system=external_system_pour(lot.projet))
+    mapped = apercu.get('mapping') or {}
+    _, rows = dataimport_services.parse_rows(file_bytes, filename)
+    regles = validation.regles_effectives(
+        mapped, kit_cle=kit_cle, company=lot.company, entite=lot.entite)
+    rapport = validation.valider_lignes(rows, mapped, regles)
+    rapport['entite'] = lot.entite
+    rapport['kit'] = kit_cle or ''
+    rapport['colonnes_non_mappees'] = apercu.get('non_mappees') or []
+    return rapport
 
 
 def charger_lot(lot, file_bytes, filename, *, mode=None,
@@ -174,13 +367,148 @@ def charger_lot(lot, file_bytes, filename, *, mode=None,
         verrou.derogation_motif = ''
         verrou.derogation_par = None
         verrou.derogation_at = None
+        # NTMIG38 — un chargement COMPLET repart de la ligne 1 : le décalage
+        # de reprise éventuel d'un chargement précédent ne vaut plus.
+        verrou.fichier_offset_lignes = 0
+        # NTMIG35 — fichier réellement chargé, gardé temporairement (reprise
+        # NTMIG38 / migration à blanc NTMIG33), purgé après clôture.
+        memoriser_fichier_source(verrou, file_bytes, filename)
         verrou.save(update_fields=[
             'source_lignes', 'crees', 'maj', 'erreurs', 'import_job',
             'statut', 'derogation_reconcile', 'derogation_motif',
-            'derogation_par', 'derogation_at', 'updated_at'])
+            'derogation_par', 'derogation_at', 'fichier_source_cle',
+            'fichier_source_nom', 'fichier_offset_lignes', 'updated_at'])
 
     lot.refresh_from_db()
     return result
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# NTMIG38 — reprise sur incident (idempotence d'un lot partiellement chargé)
+# ─────────────────────────────────────────────────────────────────────────
+class RepriseImpossible(ValueError):
+    """Rien à reprendre — ou pas de quoi reprendre sans risque de doublon."""
+
+
+def derniere_ligne_commitee(lot):
+    """Numéro, DANS LE FICHIER D'ORIGINE, de la dernière ligne commitée.
+
+    ``0`` s'il n'y a jamais eu de chargement : la « reprise » est alors un
+    chargement complet. Le décalage ``fichier_offset_lignes`` traduit les
+    numéros du dernier journal (qui portent sur le RESTE du fichier après une
+    reprise précédente) en numéros de la source d'origine.
+    """
+    from django.db.models import Max
+
+    job = lot.import_job
+    if job is None:
+        return 0
+    statut_ok = job.rows.model.Statut.OK
+    dernier = job.rows.filter(statut=statut_ok).aggregate(
+        m=Max('ligne'))['m'] or 0
+    return lot.fichier_offset_lignes + dernier
+
+
+def reprendre_lot(lot, file_bytes=None, filename=None, *, user=None,
+                  mapping_name=None):
+    """NTMIG38 — reprend un lot interrompu APRÈS sa dernière ligne commitée.
+
+    Un chargement de 1 000 lignes coupé à la 600ᵉ reprend à la 601ᵉ : les 600
+    premières ne sont ni rejouées ni dupliquées, parce qu'elles ne sont même
+    pas envoyées au moteur — le fichier est REJOUÉ TRONQUÉ (les lignes déjà
+    commitées sont retirées) plutôt que re-soumis en entier en espérant que le
+    rapprochement les reconnaisse. C'est la seule façon d'être idempotent y
+    compris sur les cibles qui ne savent pas encore faire d'``upsert``
+    (produits, fournisseurs…) : sur celles-là, un simple ré-envoi
+    RE-CRÉERAIT les 600 premières.
+
+    Ceinture ET bretelles : le mode ``upsert`` est en plus demandé quand la
+    cible le supporte, de sorte qu'une ligne à cheval (commitée mais non
+    journalisée à cause de l'incident) soit rapprochée par ``ExternalRef``
+    au lieu d'être dupliquée.
+
+    Sans fichier fourni, on reprend celui MÉMORISÉ au chargement (NTMIG35) :
+    quelques semaines après, plus personne ne retrouve le fichier d'origine —
+    et reprendre avec un AUTRE fichier décalerait toute la numérotation.
+
+    Les compteurs du lot restent CUMULÉS (source = fichier d'origine entier,
+    créés/màj = toutes passes confondues) : la réconciliation NTMIG4/5 compare
+    bien la source complète à ce qui a réellement été chargé, sinon un lot
+    repris paraîtrait « conforme » sur les seules 400 dernières lignes.
+    """
+    from apps.dataimport import services as dataimport_services
+
+    _refuser_si_fige(lot)
+
+    if file_bytes is None:
+        memorise = fichier_source_de(lot)
+        if memorise is None:
+            raise RepriseImpossible(
+                'Aucun fichier source mémorisé pour ce lot (purgé ou jamais '
+                'chargé) : re-téléversez le fichier d\'origine pour reprendre.')
+        file_bytes, filename = memorise
+    filename = filename or lot.fichier_source_nom or 'source.csv'
+
+    coupe = derniere_ligne_commitee(lot)
+    headers, rows = dataimport_services.parse_rows(file_bytes, filename)
+    total_source = len(rows)
+    restantes = rows[coupe:]
+    prior_crees, prior_maj = lot.crees, lot.maj
+    prior_erreurs = _erreurs_avant_coupe(lot)
+
+    if not restantes:
+        raise RepriseImpossible(
+            f'Rien à reprendre : les {total_source} ligne(s) du fichier ont '
+            'déjà été traitées.')
+
+    octets, nom = _reconstruire_csv(headers, restantes, filename)
+    resultat = charger_lot(
+        lot, octets, nom, mode='upsert', mapping_name=mapping_name, user=user)
+
+    lot.refresh_from_db()
+    lot.source_lignes = total_source
+    lot.crees = prior_crees + resultat.get('created', 0)
+    lot.maj = prior_maj + resultat.get('updated', 0)
+    lot.erreurs = prior_erreurs + len(resultat.get('skipped', []))
+    lot.fichier_offset_lignes = coupe
+    # Le fichier mémorisé par ``charger_lot`` est le TRONÇON rejoué : on
+    # remet l'ORIGINAL, faute de quoi une seconde reprise repartirait d'un
+    # fichier amputé de ses 600 premières lignes.
+    memoriser_fichier_source(lot, file_bytes, filename)
+    lot.save(update_fields=[
+        'source_lignes', 'crees', 'maj', 'erreurs', 'fichier_offset_lignes',
+        'fichier_source_cle', 'fichier_source_nom', 'updated_at'])
+
+    return {
+        'reprise_depuis_ligne': coupe + 1,
+        'lignes_deja_commitees': coupe,
+        'lignes_rejouees': len(restantes),
+        'total_source': total_source,
+        'resultat': resultat,
+    }
+
+
+def _erreurs_avant_coupe(lot):
+    """Erreurs cumulées à CONSERVER, hors lignes sur le point d'être rejouées.
+
+    Une ligne refusée AVANT le point de coupe ne redevient pas valide parce
+    qu'on reprend : elle reste un écart à traiter (fichier corrigé ou
+    dérogation motivée), et l'oublier ferait passer le lot « conforme » alors
+    que des lignes source n'ont jamais été importées. En revanche, les lignes
+    en erreur SITUÉES APRÈS la coupe repartent dans la passe de reprise : les
+    compter deux fois gonflerait artificiellement les écarts.
+    """
+    from django.db.models import Max
+
+    job = lot.import_job
+    if job is None:
+        return lot.erreurs
+    statuts = job.rows.model.Statut
+    dernier_ok = job.rows.filter(statut=statuts.OK).aggregate(
+        m=Max('ligne'))['m'] or 0
+    rejouees = job.rows.filter(
+        statut=statuts.ERREUR, ligne__gt=dernier_ok).count()
+    return max(lot.erreurs - rejouees, 0)
 
 
 # ─────────────────────────────────────────────────────────────────────────
@@ -313,6 +641,124 @@ def reconcilier_lot(lot, *, total_financier_cible=None):
         ecarts=ecarts, conforme=not ecarts)
 
 
+# ─────────────────────────────────────────────────────────────────────────
+# NTMIG34 — estimation d'effort (indicative, jamais bloquante)
+# ─────────────────────────────────────────────────────────────────────────
+#: Jours-homme fixes d'un projet (cadrage, réglages, recette finale).
+EFFORT_SOCLE_JOURS = Decimal('1.0')
+#: Jours-homme fixes par lot (préparation de l'export, contrôle, reconcile).
+EFFORT_PAR_LOT_JOURS = Decimal('0.5')
+#: Jours-homme par tranche de 1 000 lignes (nettoyage + contrôles).
+EFFORT_PAR_MILLE_LIGNES = Decimal('0.1')
+#: Surcoût d'une entité MAÎTRE-DÉTAIL (en-têtes + lignes à rattacher).
+EFFORT_MAITRE_DETAIL_JOURS = Decimal('1.0')
+#: Surcoût quand aucun kit ne couvre (source, entité) : mapping à la main.
+EFFORT_SANS_KIT_JOURS = Decimal('0.5')
+#: Entités à documents maître-détail (NTMIG10/11).
+ENTITES_MAITRE_DETAIL = ('devis', 'factures', 'commandes', 'avoirs')
+
+
+def _kit_disponible(source, entite):
+    """Un kit couvre-t-il ce couple ? ``False`` tant que les kits n'existent
+    pas (import paresseux — aucun registre de substitution n'est fabriqué)."""
+    import importlib
+
+    from .validation import KITS_MODULE
+
+    try:
+        module = importlib.import_module(KITS_MODULE)
+    except ImportError:
+        return False
+    registre = getattr(module, 'KIT_REGISTRY', None)
+    if not registre:
+        return False
+    return (source, entite) in registre
+
+
+def estimer_effort(projet):
+    """NTMIG34 — estimation en jours-homme + points d'attention.
+
+    PUREMENT INDICATIF : cette fonction ne bloque rien, ne change aucun statut
+    et n'écrit rien. Elle sert à répondre « combien de temps ? » avant de
+    s'engager, à partir de ce qui est déjà mesuré : les comptages source posés
+    par l'analyse (NTMIG7) et la complexité du couple (source, entité).
+
+    Déterministe par construction (que des comptages et des constantes, aucun
+    hasard ni horodatage) : deux appels sur un projet inchangé renvoient le
+    même chiffre — une estimation qui bouge toute seule ne serait pas
+    opposable au client.
+    """
+    lots = list(lots_du_projet(projet))
+    total = EFFORT_SOCLE_JOURS
+    detail = []
+    sans_kit = []
+    non_analyses = []
+    volumineux = []
+    maitre_detail = []
+    for lot in lots:
+        effort = EFFORT_PAR_LOT_JOURS
+        effort += (Decimal(lot.source_lignes) / Decimal(1000)
+                   * EFFORT_PAR_MILLE_LIGNES)
+        if lot.entite in ENTITES_MAITRE_DETAIL:
+            effort += EFFORT_MAITRE_DETAIL_JOURS
+            maitre_detail.append(lot.entite)
+        if not _kit_disponible(projet.source, lot.entite):
+            effort += EFFORT_SANS_KIT_JOURS
+            sans_kit.append(lot.entite)
+        if not lot.source_lignes:
+            non_analyses.append(lot.entite)
+        if lot.source_lignes >= 10000:
+            volumineux.append(lot.entite)
+        effort = _arrondi_demi_journee(effort)
+        detail.append({
+            'lot': lot.pk, 'entite': lot.entite,
+            'lignes_source': lot.source_lignes,
+            'jours_homme': str(effort)})
+        total += effort
+
+    points = []
+    if non_analyses:
+        points.append(
+            'Lots pas encore analysés (estimation au socle, sans volume) : '
+            + ', '.join(non_analyses))
+    if sans_kit:
+        points.append(
+            'Aucun kit de mapping pour ces entités : mapping manuel à prévoir '
+            '— ' + ', '.join(sans_kit))
+    if maitre_detail:
+        points.append(
+            'Documents maître-détail (en-têtes + lignes à rattacher) : '
+            + ', '.join(maitre_detail))
+    if volumineux:
+        points.append(
+            'Volumes supérieurs à 10 000 lignes (prévoir un chargement par '
+            'lots et une fenêtre dédiée) : ' + ', '.join(volumineux))
+    if not lots:
+        points.append('Aucun lot déclaré : estimation limitée au socle projet.')
+    points.append(
+        'Estimation INDICATIVE : elle ne conditionne aucun chargement ni '
+        'aucune clôture.')
+
+    return {
+        'projet': projet.pk,
+        'source': projet.source,
+        'nb_lots': len(lots),
+        'lignes_source_total': sum(lot.source_lignes for lot in lots),
+        'jours_homme': str(_arrondi_demi_journee(total)),
+        'detail_par_lot': detail,
+        'points_attention': points,
+    }
+
+
+def _arrondi_demi_journee(valeur):
+    """Arrondit au demi-jour SUPÉRIEUR — une estimation de migration
+    s'annonce en demi-journées, jamais en centièmes de jour."""
+    from decimal import ROUND_CEILING
+
+    return (Decimal(valeur) * 2).quantize(
+        Decimal('1'), rounding=ROUND_CEILING) / 2
+
+
 def deroger_reconcile(lot, motif, user):
     """Enregistre une dérogation explicite — bool + motif + qui + quand.
 
@@ -371,6 +817,132 @@ def marquer_lot_termine(lot, user=None):
     return lot
 
 
+# ─────────────────────────────────────────────────────────────────────────
+# NTMIG33 — migration à blanc sur le sandbox (NTADM10) — jamais la production
+# ─────────────────────────────────────────────────────────────────────────
+#: Selectors de l'app sandbox (NTADM10) — SEUL point de couplage (lecture).
+ADMINOPS_SELECTORS_MODULE = 'apps.adminops.selectors'
+
+
+class SandboxIndisponible(ValueError):
+    """Aucun environnement sandbox prêt — no-op propre (NTMIG33).
+
+    Ce n'est pas une panne : un tenant qui n'a jamais provisionné de sandbox
+    est le cas nominal. L'endpoint le dit et propose de le créer.
+    """
+
+
+def _societe_sandbox(company):
+    """Société SANDBOX d'un tenant via les selectors d'``adminops``.
+
+    Import PARESSEUX + lecture par selector : jamais un import des modèles
+    d'``adminops``, jamais une redéfinition locale de « sandbox utilisable ».
+    """
+    import importlib
+
+    try:
+        module = importlib.import_module(ADMINOPS_SELECTORS_MODULE)
+    except ImportError:
+        return None
+    lecteur = getattr(module, 'sandbox_pret', None)
+    if lecteur is None:
+        return None
+    try:
+        env = lecteur(company)
+    except Exception:
+        return None
+    return getattr(env, 'sandbox_company', None) if env is not None else None
+
+
+def migrer_a_blanc(projet, user=None):
+    """NTMIG33 — rejoue TOUT le projet sur le tenant sandbox, jamais en prod.
+
+    Objectif : valider mappings + réconciliation sur des données réelles sans
+    risque. Le projet d'origine n'est pas touché du tout (ni statut, ni
+    compteurs, ni fichiers) : un PROJET MIROIR est créé dans la société
+    sandbox, ses lots y sont chargés depuis les fichiers mémorisés (NTMIG35),
+    et chacun produit son rapport de réconciliation.
+
+    GARDE-FOU CENTRAL — la société cible est vérifiée DIFFÉRENTE de celle du
+    projet avant la moindre écriture. Un sandbox mal provisionné qui pointerait
+    sur le tenant de production ferait de cette fonction un import réel non
+    demandé : on refuse plutôt que d'écrire.
+
+    Sans sandbox prêt : :class:`SandboxIndisponible` (no-op propre, rien créé).
+    Un lot dont le fichier source a été purgé (NTMIG35) est SAUTÉ avec son
+    motif — jamais rejoué « à vide », ce qui produirait un rapport de
+    réconciliation trompeur.
+    """
+    from django.db import transaction
+
+    societe_sandbox = _societe_sandbox(projet.company)
+    if societe_sandbox is None:
+        raise SandboxIndisponible(
+            'Aucun environnement sandbox prêt pour cette société : créez-en '
+            'un (Administration → Sandbox) avant de tester une migration à '
+            'blanc.')
+    if societe_sandbox.pk == projet.company_id:
+        raise SandboxIndisponible(
+            'Le sandbox déclaré désigne la société de production : migration '
+            'à blanc refusée.')
+
+    with transaction.atomic():
+        projet_blanc = ProjetMigration.objects.create(
+            company=societe_sandbox,
+            nom=f'[À blanc] {projet.nom}'[:200],
+            source=projet.source,
+            statut=ProjetMigration.Statut.CHARGEMENT,
+            cree_par=user if getattr(user, 'pk', None) else None,
+            date_debut=timezone.now(),
+            notes=(f'Migration à blanc du projet {projet.pk} '
+                   f'({projet.company_id}) — données de test uniquement.'))
+        lots_blancs = []
+        for lot in lots_du_projet(projet).order_by('ordre', 'pk'):
+            lots_blancs.append((lot, LotMigration.objects.create(
+                company=societe_sandbox, projet=projet_blanc,
+                entite=lot.entite, ordre=lot.ordre)))
+
+    resultats = []
+    for lot, lot_blanc in lots_blancs:
+        memorise = fichier_source_de(lot)
+        if memorise is None:
+            resultats.append({
+                'entite': lot.entite, 'lot_blanc': lot_blanc.pk,
+                'saute': True,
+                'motif': ('Fichier source indisponible (purgé ou jamais '
+                          'chargé) : lot non rejoué.')})
+            continue
+        file_bytes, filename = memorise
+        try:
+            charger_lot(lot_blanc, file_bytes, filename, user=user)
+        except Exception as exc:  # un lot en échec n'arrête pas l'essai
+            resultats.append({
+                'entite': lot.entite, 'lot_blanc': lot_blanc.pk,
+                'saute': True, 'motif': f'Chargement à blanc échoué : {exc}'})
+            continue
+        lot_blanc.refresh_from_db()
+        rapport = reconcilier_lot(lot_blanc)
+        resultats.append({
+            'entite': lot.entite, 'lot_blanc': lot_blanc.pk, 'saute': False,
+            'conforme': rapport.conforme, 'ecarts': rapport.ecarts,
+            'nb_source': rapport.nb_source,
+            'nb_cible': rapport.nb_cible_crees + rapport.nb_cible_existants})
+
+    # Les copies de fichiers source posées dans le sandbox sont supprimées TOUT
+    # DE SUITE : un essai à blanc n'a aucune raison de laisser une seconde
+    # copie de données personnelles derrière lui, et le projet miroir n'étant
+    # jamais clôturé, la purge planifiée (NTMIG35) ne le ramasserait jamais.
+    purger_fichiers_source(projet_blanc)
+
+    return {
+        'projet_blanc': projet_blanc.pk,
+        'societe_sandbox': societe_sandbox.pk,
+        'lots': resultats,
+        'conforme': all(r.get('conforme') for r in resultats
+                        if not r.get('saute')) and bool(resultats),
+    }
+
+
 def lots_du_projet(projet):
     """Lots d'un projet, RE-FILTRÉS sur la société du projet.
 
@@ -413,3 +985,144 @@ def terminer_projet(projet, user=None):
         projet.date_fin = timezone.now()
         projet.save(update_fields=['statut', 'date_fin', 'updated_at'])
     return projet
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# NTMIG22 — checklist de déploiement : instancier un playbook kb et cocher
+# ses étapes. La lecture du playbook passe par ``kb.selectors`` (frontière
+# cross-app) ; ``apps.kb.models`` n'est JAMAIS importé ici.
+# ─────────────────────────────────────────────────────────────────────────
+
+
+class EtapeInconnue(ValueError):
+    """La clé d'étape cochée n'appartient pas à cette instance.
+
+    Accepter une clé inconnue ferait grossir ``avancement`` de cases
+    fantômes que rien n'afficherait jamais — et un jour, si le playbook
+    modèle réintroduisait cette clé, elle réapparaîtrait cochée sans que
+    personne ne l'ait fait.
+    """
+
+
+def _etapes_instantanees(article):
+    """Aplatit les phases d'un playbook kb en étapes plates instantanées."""
+    from apps.kb import selectors as kb_selectors
+
+    etapes, vues = [], set()
+    for phase in kb_selectors.phases_playbook(article):
+        for etape in phase['etapes']:
+            if etape['cle'] in vues:
+                continue
+            vues.add(etape['cle'])
+            etapes.append({
+                'cle': etape['cle'],
+                'libelle': etape['libelle'],
+                'phase': phase['cle'],
+                'phase_titre': phase['titre'],
+            })
+    return etapes
+
+
+def instancier_playbook(article, *, company, projet_migration=None,
+                        responsable=None, client_final=''):
+    """Crée l'instance d'un playbook kb pour un déploiement donné.
+
+    ``article`` est un playbook DÉJÀ résolu scopé société par l'appelant
+    (``kb.selectors.playbook_par_id``). Les étapes sont figées ici : voir la
+    docstring du modèle pour la raison (une checklist en cours ne se réécrit
+    pas sous les pieds de l'intégrateur).
+    """
+    from .models import PlaybookInstance
+
+    if projet_migration is not None \
+            and projet_migration.company_id != company.pk:
+        raise ValueError('Projet de migration introuvable.')
+    etapes = _etapes_instantanees(article)
+    if not etapes:
+        raise ValueError(
+            "Ce playbook n'a aucune étape : rien à cocher. Complétez sa "
+            'structure (phases → étapes) avant de l\'instancier.')
+    return PlaybookInstance.objects.create(
+        company=company,
+        playbook_article=article,
+        playbook_titre=article.titre,
+        projet_migration=projet_migration,
+        client_final=client_final or '',
+        responsable=responsable,
+        etapes=etapes,
+        avancement={},
+    )
+
+
+def cocher_etape(instance, cle, fait=True):
+    """Coche (ou décoche) UNE étape d'une instance de playbook.
+
+    Écrit uniquement ``avancement`` : le statut reste une décision explicite
+    (``terminer_playbook``), jamais un effet de bord d'une case cochée.
+    """
+    cle = str(cle or '')
+    if cle not in instance.cles_etapes:
+        raise EtapeInconnue(
+            f'Étape « {cle} » inconnue de ce playbook.')
+    avancement = dict(instance.avancement or {})
+    if fait:
+        avancement[cle] = True
+    else:
+        avancement.pop(cle, None)
+    instance.avancement = avancement
+    instance.save(update_fields=['avancement', 'updated_at'])
+    return instance
+
+
+def terminer_playbook(instance):
+    """Passe l'instance en ``termine`` — refuse tant qu'il reste des étapes.
+
+    Même esprit que NTMIG5 : pas de « déploiement terminé » déclaré au-dessus
+    d'une checklist incomplète. L'erreur porte les étapes restantes.
+    """
+    restantes = [
+        etape for etape in (instance.etapes or [])
+        if isinstance(etape, dict)
+        and not (instance.avancement or {}).get(str(etape.get('cle') or ''))
+    ]
+    if restantes:
+        raise ReconcileBloque(
+            'Des étapes du playbook ne sont pas faites : clôture refusée.',
+            ecarts=[{'cle': e.get('cle'), 'libelle': e.get('libelle')}
+                    for e in restantes])
+    instance.statut = instance.Statut.TERMINE
+    instance.save(update_fields=['statut', 'updated_at'])
+    return instance
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# NTMIG28 — traçabilité des déploiements partenaire. La table vit ici ; la
+# FICHE partenaire vit dans ``crm``, donc son compteur miroir est écrit par
+# ``crm.services`` (frontière cross-app : jamais ``crm.models`` ici).
+# ─────────────────────────────────────────────────────────────────────────
+
+
+def compter_deploiements_reussis(partenaire_id, company):
+    """Nombre de déploiements RÉUSSIS d'un partenaire, scopé société."""
+    from .models import DeploiementPartenaire
+
+    return DeploiementPartenaire.objects.filter(
+        company=company, partenaire_id=partenaire_id,
+        statut=DeploiementPartenaire.Statut.REUSSI).count()
+
+
+def resynchroniser_compteur_partenaire(deploiement):
+    """Réaligne le compteur miroir de la fiche partenaire.
+
+    Recompté à chaque fois plutôt qu'incrémenté : un déploiement repassé de
+    ``reussi`` à ``abandonne`` (ou supprimé) doit FAIRE BAISSER le compteur —
+    un simple ``+1`` laisserait un historique gonflé que rien ne corrigerait.
+    """
+    from apps.crm import services as crm_services
+
+    if deploiement.partenaire_id is None:
+        return None
+    return crm_services.poser_compteur_deploiements(
+        deploiement.partenaire_id, deploiement.company,
+        compter_deploiements_reussis(
+            deploiement.partenaire_id, deploiement.company))

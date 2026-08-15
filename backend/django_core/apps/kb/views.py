@@ -100,6 +100,12 @@ class KbArticleViewSet(_KbBaseViewSet):
         statut = params.get('statut')
         if statut:
             qs = qs.filter(statut=statut)
+        # NTMIG21 — ``?type_article=playbook`` isole les playbooks
+        # d'implémentation. Sans filtre = TOUS les articles (playbooks
+        # compris) : le comportement historique de la liste est inchangé.
+        type_article = params.get('type_article')
+        if type_article:
+            qs = qs.filter(type_article=type_article)
         return qs
 
     def list(self, request, *args, **kwargs):

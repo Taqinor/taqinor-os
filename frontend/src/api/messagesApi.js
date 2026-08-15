@@ -11,6 +11,17 @@ const messagesApi = {
   // ── Conversations ──
   // Liste mes conversations (DMs + canaux) avec aperçu du dernier message et
   // unread_count. Pagination DRF standard ({results, next, ...}).
+  // NTMOB30 — transcription vocale SYNCHRONE et générique (notes de terrain).
+  // Renvoie { enabled, texte } ; `enabled: false` = pipeline désactivé, le
+  // consommateur bascule sur la saisie clavier.
+  transcrire: (file) => {
+    const fd = new FormData()
+    fd.append('file', file)
+    return api.post('/chat/transcrire/', fd, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+      suppressErrorToast: true,
+    })
+  },
   listConversations: (params) => api.get('/chat/conversations/', { params }),
   getConversation: (id) => api.get(`/chat/conversations/${id}/`),
   // data = { kind: 'dm'|'channel', name?, member_ids: [], ... }
