@@ -15,7 +15,9 @@ champs en lecture seule dès que l'instance existe.
 from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
-from .models import LotMigration, ProjetMigration, RapportReconciliation
+from .models import (
+    DeploiementPartenaire, LotMigration, PlaybookInstance, ProjetMigration,
+    RapportReconciliation)
 
 
 class _CreationSeulementMixin:
@@ -126,3 +128,134 @@ class ProjetMigrationSerializer(_CreationSeulementMixin,
         return obj.lots.filter(
             company_id=obj.company_id,
             statut=LotMigration.Statut.RECONCILIE).count()
+
+
+class PlaybookInstanceSerializer(serializers.ModelSerializer):
+    """NTMIG22 — instance d'un playbook kb pour un déploiement.
+
+    ``etapes`` est un INSTANTANÉ posé côté serveur à l'instanciation : le
+    laisser modifiable permettrait de réécrire le dénominateur de la
+    progression après coup (ajouter/retirer des cases pour « atteindre »
+    100 %). ``avancement`` ne se pose que par l'action ``cocher`` (clé
+    validée), jamais par un PATCH libre qui accepterait des cases fantômes.
+    """
+
+    progression = serializers.SerializerMethodField()
+    nb_etapes = serializers.SerializerMethodField()
+    nb_faites = serializers.SerializerMethodField()
+    # NTMIG22 — le playbook modèle est CHOISI à la création (via l'action
+    # ``instancier``) ; le rattacher après coup à un autre article laisserait
+    # un instantané d'étapes qui ne correspond plus au playbook cité.
+    playbook_article = serializers.PrimaryKeyRelatedField(read_only=True)
+
+    class Meta:
+        model = PlaybookInstance
+        fields = [
+            'id', 'playbook_article', 'playbook_titre', 'projet_migration',
+            'client_final', 'etapes', 'avancement', 'statut', 'responsable',
+            'progression', 'nb_etapes', 'nb_faites',
+            'created_at', 'updated_at',
+        ]
+        read_only_fields = [
+            'id', 'playbook_article', 'playbook_titre', 'etapes',
+            'avancement', 'statut', 'progression', 'nb_etapes', 'nb_faites',
+            'created_at', 'updated_at',
+        ]
+
+    @extend_schema_field(serializers.IntegerField())
+    def get_progression(self, obj):
+        return obj.progression
+
+    @extend_schema_field(serializers.IntegerField())
+    def get_nb_etapes(self, obj):
+        return obj.nb_etapes
+
+    @extend_schema_field(serializers.IntegerField())
+    def get_nb_faites(self, obj):
+        return obj.nb_faites
+
+    def validate_projet_migration(self, value):
+        """Le projet cité doit appartenir à la société de l'appelant.
+
+        Le queryset scopé ne protège que la LECTURE : sans ce contrôle, une
+        instance pourrait se greffer sur le projet d'une autre société.
+        """
+        request = self.context.get('request')
+        if value is not None and request is not None \
+                and value.company_id != request.user.company_id:
+            raise serializers.ValidationError('Projet introuvable.')
+        return value
+
+    def validate_responsable(self, value):
+        request = self.context.get('request')
+        if value is not None and request is not None \
+                and getattr(value, 'company_id', None) \
+                != request.user.company_id:
+            raise serializers.ValidationError('Responsable introuvable.')
+        return value
+
+
+class DeploiementPartenaireSerializer(serializers.ModelSerializer):
+    """NTMIG28 — un déploiement mené par un partenaire chez un client final."""
+
+    partenaire_nom = serializers.SerializerMethodField()
+
+    class Meta:
+        model = DeploiementPartenaire
+        fields = [
+            'id', 'partenaire', 'partenaire_nom', 'projet_migration',
+            'client_final', 'modules', 'date_go_live', 'statut',
+            'note_satisfaction', 'created_at', 'updated_at',
+        ]
+        read_only_fields = [
+            'id', 'partenaire_nom', 'created_at', 'updated_at']
+
+    @extend_schema_field(serializers.CharField())
+    def get_partenaire_nom(self, obj):
+        return getattr(obj.partenaire, 'nom', '') or ''
+
+    def validate_partenaire(self, value):
+        """Le partenaire cité doit appartenir à la société de l'appelant.
+
+        Le queryset scopé ne protège que la LECTURE : sans ce contrôle, un
+        déploiement pourrait créditer le partenaire d'une autre société — et
+        gonfler son score de certification.
+        """
+        request = self.context.get('request')
+        if value is not None and request is not None \
+                and value.company_id != request.user.company_id:
+            raise serializers.ValidationError('Partenaire introuvable.')
+        return value
+
+    def validate_projet_migration(self, value):
+        request = self.context.get('request')
+        if value is not None and request is not None \
+                and value.company_id != request.user.company_id:
+            raise serializers.ValidationError('Projet introuvable.')
+        return value
+
+    def validate_modules(self, value):
+        if value in (None, ''):
+            return []
+        if not isinstance(value, list):
+            raise serializers.ValidationError(
+                'Les modules doivent être une liste.')
+        return [str(v) for v in value]
+
+
+class ScoreCertificationSerializer(serializers.Serializer):
+    """NTMIG27 — forme de ``GET migration/certification/<id>/score/``.
+
+    Déclarée pour que la vue publie un schéma RÉEL au lieu de laisser
+    drf-spectacular deviner (« unable to guess serializer »). LECTURE
+    SEULE : ce serialiseur ne valide aucune écriture.
+    """
+
+    partenaire = serializers.IntegerField(read_only=True)
+    partenaire_nom = serializers.CharField(read_only=True)
+    score = serializers.IntegerField(read_only=True)
+    niveau_propose = serializers.CharField(read_only=True)
+    niveau_actuel = serializers.CharField(read_only=True)
+    proposition_differente = serializers.BooleanField(read_only=True)
+    source_satisfaction = serializers.CharField(read_only=True)
+    detail = serializers.JSONField(read_only=True)

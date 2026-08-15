@@ -19,7 +19,11 @@ router.register(r'canned-responses', CannedResponseViewSet,
 router.register(r'retention-policies', RetentionPolicyViewSet,
                 basename='chat-retention-policy')
 
+from .views_transcription import transcrire  # noqa: E402  (NTMOB30)
+
 urlpatterns = router.urls + [
     path('inbound-email/', inbound_email_webhook,
          name='chat-inbound-email-webhook'),
+    # NTMOB30 — transcription vocale synchrone et générique (notes terrain).
+    path('transcrire/', transcrire, name='chat-transcrire'),
 ]

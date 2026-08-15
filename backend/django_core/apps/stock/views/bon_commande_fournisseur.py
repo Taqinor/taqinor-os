@@ -241,6 +241,15 @@ class BonCommandeFournisseurViewSet(CompanyScopedModelViewSet):
             except ValueError as exc:
                 return Response(
                     {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+            # NTP2P7 — onboarding OBLIGATOIRE (réglage société, OFF par
+            # défaut) : un fournisseur au dossier incomplet/non validé ne peut
+            # pas recevoir de nouveau BCF. No-op tant que le flag est OFF.
+            from .. import selectors as stock_selectors
+            autorise, motif = stock_selectors.fournisseur_peut_recevoir_bcf(
+                request.user.company, fournisseur_id)
+            if not autorise:
+                return Response({'detail': motif},
+                                status=status.HTTP_400_BAD_REQUEST)
         # XPUR1 — WARNING (non bloquant) si le fournisseur a un document de
         # conformité manquant/expiré ; ajouté à la réponse sans jamais
         # empêcher la création du BCF.

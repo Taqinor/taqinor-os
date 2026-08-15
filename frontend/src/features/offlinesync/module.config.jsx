@@ -15,6 +15,11 @@ import { lazy } from 'react'
 
 const CommercialHome = lazy(() => import('./mobile/CommercialHome'))
 const CockpitHome = lazy(() => import('./mobile/CockpitHome'))
+// NTMOB25 — accueil mobile du RESPONSABLE d'équipe terrain, distinct des
+// accueils individuels ci-dessus.
+const EquipeTerrainHome = lazy(() => import('./mobile/EquipeTerrainHome'))
+// NTMOB26 — accueil mobile du Commercial responsable (onglets Moi/Équipe).
+const EquipeCommercialeHome = lazy(() => import('./mobile/EquipeCommercialeHome'))
 
 const config = {
   key: 'offlinesync',
@@ -22,6 +27,8 @@ const config = {
   routes: [
     { path: '/mobile/commercial', component: CommercialHome },
     { path: '/mobile/cockpit', component: CockpitHome },
+    { path: '/mobile/equipe-terrain', component: EquipeTerrainHome },
+    { path: '/mobile/equipe-commerciale', component: EquipeCommercialeHome },
   ],
 }
 

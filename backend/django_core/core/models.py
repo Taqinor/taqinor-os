@@ -5,6 +5,9 @@ from django.contrib.contenttypes.fields import GenericForeignKey
 from django.contrib.contenttypes.models import ContentType
 from django.db import models
 from django.utils import timezone
+# NTAI24 — magasin vectoriel pgvector (déjà dans la stack Postgres du dépôt,
+# utilisé par la GED/KB) : aucune dépendance nouvelle, aucun service externe.
+from pgvector.django import VectorField
 
 
 class TimestampedModel(models.Model):
@@ -2494,6 +2497,77 @@ class VuePersonnalisee(TenantModel):
 
     def __str__(self):
         return f'{self.cible} — {self.nom} ({self.partage})'
+
+
+# ---------------------------------------------------------------------------
+# NTAI24 — Index sémantique CROSS-MODULE (embeddings unifiés).
+#
+# Une SEULE table d'index pour tout l'ERP (lead, client, devis, installation,
+# ticket, contrat, article de base de connaissances…) : la « recherche
+# sémantique globale » (NTAI25) interroge ce magasin unique plutôt qu'un index
+# par app. L'objet source est désigné de façon GÉNÉRIQUE par un couple
+# ``content_type`` (libellé ``app.model``) + ``object_id`` — donc AUCUNE FK vers
+# une app métier : ``core`` reste une couche de FONDATION (contrat import-linter
+# ``core-foundation-is-a-base-layer``).
+#
+# La LOGIQUE (registre des modèles indexables, indexation best-effort au
+# ``post_save``, recherche vectorielle + repli plein-texte) vit dans
+# ``core/ai/search.py`` ; seule la TABLE vit ici, avec les autres modèles de
+# ``core``, pour ne pas créer d'import circulaire avec ``TenantModel``.
+# ---------------------------------------------------------------------------
+
+#: Dimension des vecteurs, ALIGNÉE sur le magasin pgvector existant de la GED
+#: (``ged.models.EMBEDDING_DIM``) : même fournisseur d'embeddings, mêmes
+#: dimensions — on ne dresse pas un second magasin incompatible. La valeur est
+#: recopiée (et non importée) parce que ``core`` n'importe aucune app.
+SEARCH_EMBEDDING_DIM = 1024
+
+
+class SearchChunk(TenantModel):
+    """NTAI24 — Une fiche indexée pour la recherche sémantique globale.
+
+    Une ligne par objet indexé et par société : ``titre`` (ce qu'on affiche
+    dans une citation), ``extrait`` (le texte réellement cherché) et
+    ``embedding`` (NULL tant qu'aucune clé d'embedding n'est configurée — la
+    recherche retombe alors sur le plein-texte, sans appel réseau ni coût).
+
+    La société est TOUJOURS posée côté serveur (recopiée de l'objet source) :
+    l'index ne peut pas devenir un chemin de fuite cross-tenant.
+    """
+
+    content_type = models.CharField(
+        max_length=60,
+        help_text="Libellé du modèle source, ex. « crm.lead » (jamais une FK "
+                  "vers une app métier).")
+    object_id = models.PositiveBigIntegerField(
+        help_text='Identifiant de l\'objet source dans son app.')
+    module = models.CharField(
+        max_length=60, blank=True, default='',
+        help_text="Module propriétaire (app_label) — permet de restreindre "
+                  "une recherche à un périmètre.")
+    titre = models.CharField(max_length=255, blank=True, default='')
+    extrait = models.TextField(blank=True, default='')
+    embedding = VectorField(
+        dimensions=SEARCH_EMBEDDING_DIM, null=True, blank=True)
+
+    class Meta:
+        verbose_name = 'Fiche indexée (recherche sémantique)'
+        verbose_name_plural = 'Fiches indexées (recherche sémantique)'
+        ordering = ['content_type', 'object_id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'content_type', 'object_id'],
+                name='uniq_searchchunk_co_ct_obj'),
+        ]
+        indexes = [
+            # Nom EXPLICITE (≤30 car.) : sans lui Django dérive un hash qui
+            # diverge du nom écrit à la main dans la migration.
+            models.Index(fields=['company', 'module'],
+                         name='core_searchchunk_co_mod_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.content_type}#{self.object_id} — {self.titre}'
 
 
 # NTSEC21 — Partage niveau enregistrement : ``SharingRule`` défini dans

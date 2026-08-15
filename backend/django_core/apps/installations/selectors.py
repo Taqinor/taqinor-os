@@ -2769,3 +2769,32 @@ def chantier_ville(company, chantier_id):
     if chantier is None:
         return None
     return (getattr(chantier, 'site_ville', '') or '').strip() or None
+
+
+def produits_recemment_demandes(company, user_id, *, limite=5):
+    """NTP2P22 — ids des derniers produits demandés PAR CET employé.
+
+    Frontière cross-app : ``stock`` (catalogue d'achat) lit l'historique de
+    demandes PAR ICI, jamais en important ``installations.models``. Ordre :
+    de la demande la plus récente à la plus ancienne, dédoublonné, borné à
+    ``limite``. Liste vide si l'employé n'a jamais rien demandé.
+    """
+    from .models import DemandeAchatLigne
+
+    if company is None or not user_id:
+        return []
+    lignes = (DemandeAchatLigne.objects
+              .filter(demande__company=company,
+                      demande__created_by_id=user_id,
+                      produit__isnull=False)
+              .order_by('-demande__date_creation', '-id')
+              .values_list('produit_id', flat=True)[:limite * 10])
+    vus, resultat = set(), []
+    for produit_id in lignes:
+        if produit_id in vus:
+            continue
+        vus.add(produit_id)
+        resultat.append(produit_id)
+        if len(resultat) >= limite:
+            break
+    return resultat

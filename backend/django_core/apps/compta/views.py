@@ -3639,7 +3639,8 @@ class NoteFraisViewSet(_ComptaBaseViewSet):
                 status=status.HTTP_400_BAD_REQUEST)
         try:
             champs_bruts = extraire_justificatif_note_frais(
-                photo.read(), mime=getattr(photo, 'content_type', '') or '')
+                photo.read(), mime=getattr(photo, 'content_type', '') or '',
+                user=request.user)
         except RuntimeError as exc:
             return Response(
                 {'detail': str(exc)}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
@@ -3758,6 +3759,87 @@ class NoteFraisViewSet(_ComptaBaseViewSet):
             return CompanyProfile.get(company=request.user.company)
         except Exception:  # pragma: no cover - profil optionnel.
             return None
+
+    @action(detail=False, methods=['get'])
+    def releve(self, request):
+        """NTP2P27 — Relevé mensuel des notes de frais d'un employé.
+
+        Query : ``?employe=<id>&periode=YYYY-MM&format=pdf|xlsx``. Sans
+        ``format`` -> JSON (liste + totaux). ``periode`` invalide/absente ->
+        400 explicite. Le total « remboursé » du relevé est TOUJOURS la
+        somme des notes REMBOURSÉES de la période (critère d'acceptation)."""
+        import calendar
+        import datetime as dt
+        from decimal import Decimal
+
+        from .pdf_notes_frais import MOIS_FR
+
+        employe_id = request.query_params.get('employe')
+        periode = request.query_params.get('periode') or ''
+        fmt = request.query_params.get('format')
+        try:
+            annee, mois = (int(x) for x in periode.split('-', 1))
+            date_debut = dt.date(annee, mois, 1)
+            date_fin = dt.date(
+                annee, mois, calendar.monthrange(annee, mois)[1])
+        except (ValueError, TypeError):
+            return Response(
+                {'periode': "Paramètre 'periode' requis, format YYYY-MM."},
+                status=status.HTTP_400_BAD_REQUEST)
+
+        qs = NoteFrais.objects.filter(
+            company=request.user.company,
+            date_frais__gte=date_debut, date_frais__lte=date_fin,
+        ).select_related('employe').order_by('date_frais', 'id')
+        if employe_id:
+            qs = qs.filter(employe_id=employe_id)
+        notes = list(qs)
+
+        periode_label = f'{MOIS_FR[mois]} {annee}'
+        if notes:
+            employe = notes[0].employe
+        elif employe_id:
+            from django.contrib.auth import get_user_model
+            employe = get_user_model().objects.filter(
+                id=employe_id, company=request.user.company).first()
+        else:
+            employe = request.user
+
+        if fmt == 'pdf':
+            from .pdf_notes_frais import render_releve_note_frais_pdf
+            try:
+                pdf_bytes = render_releve_note_frais_pdf(
+                    employe, notes, periode_label,
+                    self._company_profile_for(request))
+            except RuntimeError as exc:
+                return Response(
+                    {'detail': str(exc)},
+                    status=status.HTTP_503_SERVICE_UNAVAILABLE)
+            resp = HttpResponse(pdf_bytes, content_type='application/pdf')
+            resp['Content-Disposition'] = (
+                f'attachment; filename="releve_notes_frais_{periode}.pdf"')
+            return resp
+        if fmt == 'xlsx':
+            from apps.records.xlsx import build_xlsx_response
+            headers = ['date', 'categorie', 'statut', 'motif', 'montant']
+            rows = [[
+                n.date_frais, n.get_categorie_display(),
+                n.get_statut_display(), n.motif or '', n.montant,
+            ] for n in notes]
+            return build_xlsx_response(
+                f'releve_notes_frais_{periode}.xlsx', headers, rows,
+                sheet_title='Relevé frais')
+
+        total = sum((n.montant for n in notes), Decimal('0'))
+        total_rembourse = sum(
+            (n.montant for n in notes
+             if n.statut == NoteFrais.Statut.REMBOURSEE), Decimal('0'))
+        return Response({
+            'periode': periode_label,
+            'notes': self.get_serializer(notes, many=True).data,
+            'total': total,
+            'total_rembourse': total_rembourse,
+        })
 
     @action(detail=False, methods=['get'])
     def analyse(self, request):

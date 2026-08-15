@@ -25,6 +25,7 @@ from .views import (
     RetenueGarantieSousTraitantViewSet,
     DemandeAchatViewSet,
     DemandeAchatLigneViewSet,
+    RegleApprobationAchatViewSet,
     RFQViewSet,
     RFQOffreViewSet,
     RFQConsultationViewSet,
@@ -121,6 +122,8 @@ router.register(r'evaluations-sous-traitant', EvaluationSousTraitantViewSet)
 router.register(r'retenues-garantie-sous-traitant', RetenueGarantieSousTraitantViewSet)
 router.register(r'demandes-achat', DemandeAchatViewSet)
 router.register(r'demandes-achat-lignes', DemandeAchatLigneViewSet)
+# NTP2P2 — règles d'approbation des demandes d'achat (seuil + périmètre).
+router.register(r'regles-approbation-achat', RegleApprobationAchatViewSet)
 router.register(r'rfq', RFQViewSet)
 router.register(r'rfq-offres', RFQOffreViewSet)
 router.register(r'rfq-consultations', RFQConsultationViewSet)
@@ -174,7 +177,12 @@ router.register(r'positions-techniciens', PositionTechnicienViewSet,
 router.register(r'geofence-alertes', GeofenceAlertViewSet,
                 basename='geofencealert')
 
+from .views_meteo import meteo_terrain  # noqa: E402  (NTMOB21)
+
 urlpatterns = [
+    # NTMOB21 — météo terrain du jour (Open-Meteo, cache serveur 1 h),
+    # purement informative pour « Ma journée ».
+    path('meteo/', meteo_terrain, name='installations-meteo-terrain'),
     # N91/F21 — synchro idempotente de la capture terrain hors-ligne.
     path('sync/', FieldSyncView.as_view(), name='installations-field-sync'),
     # FG313 — contrôle budgétaire consultatif avant commande.

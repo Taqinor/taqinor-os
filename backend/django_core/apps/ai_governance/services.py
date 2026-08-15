@@ -760,3 +760,421 @@ def assistant_config(*, question, role=None, max_tokens=300) -> dict:
         'source': 'faq',
         'modifie': False,
     }
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# NTAI17 — File de traitement document AI (classification + extraction)
+# ─────────────────────────────────────────────────────────────────────────────
+#
+# Une pièce déposée dans la GED crée un JOB (``DocumentAiJob``) que la tâche
+# Celery traite HORS REQUÊTE. Deux étages, du moins coûteux au plus :
+#
+#   1. CLASSIFICATION — réutilise ``ged.services.classer_document`` (GED34) :
+#      heuristique locale gratuite, puis provider IA s'il est configuré. On ne
+#      recode PAS un second classifieur.
+#   2. EXTRACTION — le gabarit ``core.ai.schemas`` correspondant à la catégorie
+#      détectée, via ``core.ai.extract_document``. KEY-GATED : sans provider OCR
+#      actif, on ne lit MÊME PAS les octets du stockage (aucun appel réseau,
+#      aucun coût) et le job finit « traité » avec ``extraction_disponible``
+#      à faux.
+#
+# RIEN N'EST ÉCRIT dans un modèle métier : le résultat attend une validation
+# humaine (NTAI18). Cross-app : les lectures GED passent par ses
+# ``selectors``/``services``, jamais par ses modèles.
+
+#: Catégorie GED34 → nom de gabarit ``core.ai.schemas``. Une catégorie absente
+#: (ou dont le gabarit n'existe pas encore, ex. « facture » tant que NTAI16
+#: n'a pas posé ``facture_fournisseur``) donne une extraction vide, jamais une
+#: erreur : la classification seule reste utile.
+CATEGORIE_VERS_SCHEMA = {
+    'cin': 'cin',
+    'contrat': 'contrat',
+    'bon_livraison': 'bon_livraison',
+    'facture': 'facture_fournisseur',
+    'cv': 'cv',
+    'carte_visite': 'carte_visite',
+}
+
+
+def document_jobs_enabled() -> bool:
+    """NTAI17 — True si la file de traitement documentaire est activée.
+
+    KEY-GATED, **OFF par défaut** (``AI_DOCUMENT_JOBS_ENABLED``) : sans clé IA
+    configurée, empiler des jobs que rien ne peut traiter n'apporte rien. Quand
+    le flag est éteint, aucun job n'est créé et le dépôt d'une pièce GED reste
+    byte-identique à ce qu'il était.
+    """
+    from django.conf import settings
+    return bool(getattr(settings, 'AI_DOCUMENT_JOBS_ENABLED', False))
+
+
+def schema_pour_categorie(categorie: str) -> str:
+    """Gabarit d'extraction pour ``categorie``, ou '' si aucun n'est disponible.
+
+    Consulte ``core.ai.schemas.available_schemas()`` À L'EXÉCUTION : le jour où
+    un nouveau gabarit est ajouté (NTAI15/NTAI16), la file l'utilise sans
+    modification ici.
+    """
+    from core.ai.schemas import available_schemas
+
+    nom = CATEGORIE_VERS_SCHEMA.get((categorie or '').strip().lower(), '')
+    return nom if nom in available_schemas() else ''
+
+
+def creer_document_ai_job(document):
+    """NTAI17 — Crée le job « en attente » d'une pièce GED (ou None).
+
+    Renvoie None (sans lever) quand la file est éteinte ou quand la pièce n'a
+    pas de société (le scoping serait impossible). Si un job est DÉJÀ en
+    attente pour cette pièce, il est renvoyé tel quel : l'appel est IDEMPOTENT
+    sur un double enregistrement.
+    """
+    from .models import DocumentAiJob
+
+    if not document_jobs_enabled():
+        return None
+    company_id = getattr(document, 'company_id', None)
+    if not company_id:
+        return None
+    deja = DocumentAiJob.objects.filter(
+        company_id=company_id, document=document,
+        statut=DocumentAiJob.STATUT_EN_ATTENTE).first()
+    if deja is not None:
+        return deja
+    return DocumentAiJob.objects.create(
+        company_id=company_id, document=document,
+        statut=DocumentAiJob.STATUT_EN_ATTENTE)
+
+
+def _octets_du_document(document):
+    """(contenu, mime) de la dernière version stockée, ou ``(None, '')``.
+
+    Passe par les ``selectors`` de la GED (jamais ses modèles) puis par le
+    stockage objet partagé. Ne lève jamais."""
+    try:
+        from apps.ged import selectors as ged_selectors
+        from apps.records.storage import fetch_attachment
+    except Exception:  # noqa: BLE001 - app absente/mal chargée : no-op.
+        return None, ''
+    try:
+        version = ged_selectors.latest_version(document)
+    except Exception:  # noqa: BLE001
+        return None, ''
+    if version is None or not getattr(version, 'file_key', ''):
+        return None, ''
+    try:
+        data, _erreur = fetch_attachment(version.file_key)
+    except Exception:  # noqa: BLE001 - stockage indisponible : no-op propre.
+        return None, ''
+    return data, (getattr(version, 'mime', '') or '')
+
+
+def traiter_document_ai_job(job):
+    """NTAI17 — Classe puis extrait, et remplit ``resultat_json``.
+
+    BEST-EFFORT : toute exception est CAPTURÉE dans ``statut='erreur'`` +
+    ``message`` ; la fonction ne lève jamais. Renvoie le job mis à jour.
+    """
+    from django.utils import timezone
+
+    from .models import DocumentAiJob
+
+    resultat = {
+        'categorie': '',
+        'schema': '',
+        'champs': {},
+        'extraction_disponible': False,
+        # Contrat explicite : le résultat est une PROPOSITION ; l'application
+        # aux modèles métier reste une action humaine (NTAI18).
+        'applique': False,
+    }
+    try:
+        from apps.ged import services as ged_services
+
+        document = job.document
+        categorie = ged_services.classer_document(document) or ''
+        resultat['categorie'] = categorie
+        schema = schema_pour_categorie(categorie)
+        resultat['schema'] = schema
+
+        confiance = 0.0
+        if schema and is_capability_configured('ocr'):
+            from core.ai.services import extract_document
+
+            contenu, mime = _octets_du_document(document)
+            if contenu:
+                res = extract_document(
+                    content=contenu, mime_type=mime or 'application/pdf',
+                    schema=schema)
+                if res.configured:
+                    resultat['extraction_disponible'] = True
+                if res.ok:
+                    donnees = dict(res.data or {})
+                    confiance = float(donnees.pop('confiance', 0.0) or 0.0)
+                    resultat['champs'] = donnees
+        job.categorie = categorie
+        job.schema = schema
+        job.confiance = confiance
+        job.resultat_json = resultat
+        job.statut = DocumentAiJob.STATUT_TRAITE
+        job.message = ''
+    except Exception as exc:  # noqa: BLE001 - un échec ne casse jamais la GED.
+        job.statut = DocumentAiJob.STATUT_ERREUR
+        job.message = str(exc)[:500]
+        job.resultat_json = resultat
+    job.traite_le = timezone.now()
+    job.save(update_fields=[
+        'categorie', 'schema', 'confiance', 'resultat_json', 'statut',
+        'message', 'traite_le', 'updated_at'])
+    return job
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# NTAI18 — Boucle de correction humaine des extractions (feedback → qualité)
+# ─────────────────────────────────────────────────────────────────────────────
+#
+# La revue est le SEUL chemin par lequel une extraction devient une donnée de
+# confiance : l'utilisateur valide ou corrige CHAMP PAR CHAMP, et chaque écart
+# est journalisé (``ExtractionCorrection``). On obtient gratuitement deux
+# choses : le taux de correction RÉEL par gabarit (donc la qualité mesurée, pas
+# supposée) et un « jeu d'or » de cas vrais pour évaluer un futur modèle.
+#
+# Toujours AUCUNE écriture métier : la valeur retenue est appliquée au RÉSULTAT
+# du job (la proposition), jamais à une facture, un contrat ou un stock.
+
+
+def enregistrer_corrections(job, corrections, *, user=None):
+    """NTAI18 — Journalise la revue humaine d'une extraction et l'applique.
+
+    ``corrections`` est une liste de ``{'champ': ..., 'valeur_corrigee': ...}``.
+    Pour chaque entrée : la valeur PROPOSÉE est relue dans le résultat du job,
+    l'écart est enregistré, puis la valeur RETENUE remplace la proposée dans
+    ``resultat_json['champs']``.
+
+    Lève ``AiCopiloteUnavailable`` (→ 400) si la charge est vide ou mal formée.
+    Renvoie ``{'job', 'corrections': [...], 'champs': {...}}``.
+    """
+    from .models import ExtractionCorrection
+
+    if not isinstance(corrections, (list, tuple)) or not corrections:
+        raise AiCopiloteUnavailable(
+            'Fournissez au moins une correction '
+            '{champ, valeur_corrigee}.')
+
+    resultat = dict(job.resultat_json or {})
+    champs = dict(resultat.get('champs') or {})
+    lignes = []
+    for entree in corrections:
+        if not isinstance(entree, dict):
+            raise AiCopiloteUnavailable(
+                'Chaque correction doit être un objet '
+                '{champ, valeur_corrigee}.')
+        champ = str(entree.get('champ') or '').strip()
+        if not champ:
+            raise AiCopiloteUnavailable('Le nom du champ est requis.')
+        valeur_corrigee = entree.get('valeur_corrigee')
+        valeur_corrigee = ('' if valeur_corrigee is None
+                           else str(valeur_corrigee))
+        valeur_ia = champs.get(champ)
+        valeur_ia = '' if valeur_ia is None else str(valeur_ia)
+
+        lignes.append(ExtractionCorrection(
+            company_id=job.company_id, job=job, champ=champ,
+            valeur_ia=valeur_ia, valeur_corrigee=valeur_corrigee,
+            corrige_par=user if getattr(user, 'pk', None) else None))
+        champs[champ] = valeur_corrigee
+
+    creees = ExtractionCorrection.objects.bulk_create(lignes)
+    resultat['champs'] = champs
+    # Marque la revue humaine ; ``applique`` reste FAUX — la proposition n'est
+    # toujours pas écrite dans un modèle métier (ce n'est pas le rôle de la GED).
+    resultat['revu_par_humain'] = True
+    job.resultat_json = resultat
+    job.save(update_fields=['resultat_json', 'updated_at'])
+    return {
+        'job': job.pk,
+        'champs': champs,
+        'corrections': [
+            {'champ': c.champ, 'valeur_ia': c.valeur_ia,
+             'valeur_corrigee': c.valeur_corrigee,
+             'modifie': (c.valeur_ia or '') != (c.valeur_corrigee or '')}
+            for c in creees
+        ],
+    }
+
+
+def taux_correction_par_schema(company) -> list:
+    """NTAI18 — Qualité mesurée de chaque gabarit d'extraction, par société.
+
+    Pour chaque schéma : combien de champs ont été REVUS, combien ont été
+    réellement MODIFIÉS, et le taux qui en découle. Purement en lecture, scopé
+    société, aucun appel LLM.
+    """
+    from .models import DocumentAiJob, ExtractionCorrection
+
+    par_schema = {}
+    jobs = dict(
+        DocumentAiJob.objects.filter(company=company)
+        .values_list('pk', 'schema'))
+    for job_pk, schema in jobs.items():
+        par_schema.setdefault(schema or '(aucun)',
+                              {'revus': 0, 'corriges': 0})
+    corrections = ExtractionCorrection.objects.filter(
+        company=company).values_list('job_id', 'valeur_ia', 'valeur_corrigee')
+    for job_id, valeur_ia, valeur_corrigee in corrections:
+        cle = jobs.get(job_id) or '(aucun)'
+        stats = par_schema.setdefault(cle, {'revus': 0, 'corriges': 0})
+        stats['revus'] += 1
+        if (valeur_ia or '') != (valeur_corrigee or ''):
+            stats['corriges'] += 1
+
+    sortie = []
+    for schema in sorted(par_schema):
+        stats = par_schema[schema]
+        revus = stats['revus']
+        sortie.append({
+            'schema': schema,
+            'champs_revus': revus,
+            'champs_corriges': stats['corriges'],
+            'taux_correction': (round(stats['corriges'] / revus, 4)
+                                if revus else 0.0),
+        })
+    return sortie
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# NTAI25 — Recherche sémantique GLOBALE avec citations (« Ask your ERP »)
+# ─────────────────────────────────────────────────────────────────────────────
+#
+# DISTINCT de l'agent NL→SQL existant : celui-là interroge des AGRÉGATS (« combien
+# de devis signés en juin ? »), celui-ci répond sur des FICHES/DOCUMENTS (« quels
+# clients ont un litige ouvert et un contrat qui expire ? ») en CITANT chaque
+# source réelle.
+#
+# GARDE NTAI4 : le LLM ne voit QUE les fiches remontées par l'index (NTAI24,
+# scopé société) et doit citer sous la forme fermée ``[app.model#id]``. Toute
+# citation qui ne figure pas dans ces résultats est RETIRÉE de la réponse et
+# rapportée dans ``citations_ecartees`` — jamais rendue à l'utilisateur, jamais
+# transformée en lien mort.
+
+#: Nombre de fiches injectées dans le contexte : assez pour répondre, assez peu
+#: pour rester lisible et borné en coût.
+RECHERCHE_GLOBALE_LIMITE = 8
+
+#: Forme FERMÉE d'une citation — c'est ce que la garde sait vérifier.
+CITATION_RE = re.compile(r'\[([a-z_]+\.[a-z_]+)#(\d+)\]')
+
+RECHERCHE_GLOBALE_SYSTEM = (
+    "Tu réponds en français à une question sur les données d'une entreprise, "
+    'en te fondant EXCLUSIVEMENT sur les fiches fournies ci-dessous. '
+    'Cite chaque fiche utilisée sous la forme exacte [app.model#id] '
+    "(par exemple [crm.lead#12]), juste après l'information qu'elle appuie. "
+    "N'invente aucune fiche, aucun chiffre et aucune citation : si les fiches "
+    'ne permettent pas de répondre, dis-le simplement.'
+)
+
+
+def _contexte_citations(resultats) -> str:
+    """Contexte injecté au LLM : une ligne par fiche, avec sa citation exacte."""
+    lignes = []
+    for fiche in resultats:
+        reference = f"[{fiche['content_type']}#{fiche['object_id']}]"
+        lignes.append(
+            f"{reference} {fiche['titre']} — {fiche['extrait']}".strip())
+    return '\n'.join(lignes)
+
+
+def filtrer_citations(reponse, resultats):
+    """NTAI4 — Retire de ``reponse`` toute citation absente des ``resultats``.
+
+    Renvoie ``(texte_nettoye, citations_utilisees, citations_ecartees)``. Une
+    citation inventée est SUPPRIMÉE du texte : l'utilisateur ne peut pas cliquer
+    sur une fiche qui n'existe pas.
+    """
+    connues = {
+        f"{f['content_type']}#{f['object_id']}": f for f in resultats
+    }
+    utilisees, ecartees = [], []
+
+    def _remplacer(match):
+        cle = f'{match.group(1)}#{match.group(2)}'
+        fiche = connues.get(cle)
+        if fiche is None:
+            if cle not in ecartees:
+                ecartees.append(cle)
+            return ''
+        if fiche not in utilisees:
+            utilisees.append(fiche)
+        return match.group(0)
+
+    texte = CITATION_RE.sub(_remplacer, str(reponse or ''))
+    # Nettoie les espaces doublés laissés par une citation retirée.
+    texte = re.sub(r'[ \t]{2,}', ' ', texte).strip()
+    return texte, utilisees, ecartees
+
+
+def recherche_globale(*, company, question, limit=RECHERCHE_GLOBALE_LIMITE,
+                      max_tokens=600) -> dict:
+    """NTAI25 — Répond à ``question`` sur les fiches de ``company``, avec sources.
+
+    Renvoie ``{question, reponse, citations, resultats, source,
+    citations_ecartees}`` où ``source`` vaut ``'llm'`` (réponse rédigée) ou
+    ``'recherche'`` (repli : la liste des fiches trouvées, sans rédaction —
+    c'est ce qui se passe sans clé LLM). N'ÉCRIT JAMAIS.
+    """
+    from core.ai.search import rechercher
+
+    question = str(question or '').strip()
+    if not question:
+        raise AiCopiloteUnavailable('Question requise.')
+
+    resultats = rechercher(company, question, limit=limit)
+    if not resultats:
+        return {
+            'question': question,
+            'reponse': ('Aucune fiche ne correspond à cette question dans '
+                        'vos données.'),
+            'citations': [],
+            'resultats': [],
+            'source': 'recherche',
+            'citations_ecartees': [],
+        }
+
+    if not is_capability_configured('llm'):
+        # Repli : la recherche existante rend ses fiches telles quelles.
+        return {
+            'question': question,
+            'reponse': ('Recherche par mots-clés : '
+                        f'{len(resultats)} fiche(s) trouvée(s).'),
+            'citations': resultats,
+            'resultats': resultats,
+            'source': 'recherche',
+            'citations_ecartees': [],
+        }
+
+    res = get_provider('llm').complete(
+        prompt=(f'Question : {question}\n\nFiches disponibles :\n'
+                f'{_contexte_citations(resultats)}'),
+        system=RECHERCHE_GLOBALE_SYSTEM, max_tokens=max_tokens)
+    if not res.ok or not (res.data or {}).get('text'):
+        # Le fournisseur a échoué : on rend les fiches, jamais une erreur.
+        return {
+            'question': question,
+            'reponse': ('Recherche par mots-clés : '
+                        f'{len(resultats)} fiche(s) trouvée(s).'),
+            'citations': resultats,
+            'resultats': resultats,
+            'source': 'recherche',
+            'citations_ecartees': [],
+        }
+
+    texte, utilisees, ecartees = filtrer_citations(
+        res.data['text'], resultats)
+    return {
+        'question': question,
+        'reponse': texte,
+        'citations': utilisees,
+        'resultats': resultats,
+        'source': 'llm',
+        'citations_ecartees': ecartees,
+    }

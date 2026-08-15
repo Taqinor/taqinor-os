@@ -1847,18 +1847,70 @@ class BookingLink(models.Model):
 # ``apps/crm/views.py``/``apps/crm/serializers.py`` pour le ré-export
 # transitoire des nouvelles routes ``/api/django/crm/…``).
 
+# NTMIG26 — spécialités (modules maîtrisés) qu'un partenaire intégrateur peut
+# déclarer. Liste FERMÉE et validée côté serializer : une spécialité libre
+# rendrait l'annuaire des certifiés infiltrable ("Compta", "compta ", "COMPTA"
+# seraient trois spécialités distinctes et aucun filtre ne les retrouverait).
+SPECIALITES_PARTENAIRE = (
+    ('crm', 'CRM & prospection'),
+    ('ventes', 'Ventes & devis'),
+    ('compta', 'Comptabilité'),
+    ('stock', 'Stock & achats'),
+    ('installations', 'Chantiers & installations'),
+    ('sav', 'SAV & maintenance'),
+    ('rh', 'RH & paie'),
+    ('migration', 'Migration de données'),
+)
+SPECIALITES_PARTENAIRE_CLES = tuple(cle for cle, _ in SPECIALITES_PARTENAIRE)
+
+
 class Partenaire(models.Model):
     """Partenaire commercial : apporteur d'affaires ou sous-revendeur (FG234).
 
     Fiche minimale ici (compte + accès tokenisé + taux de commission). FG237
-    enrichit la fiche (statut d'agrément, zone, onboarding). Un partenaire
-    soumet des leads via le portail (``SoumissionLeadPartenaire``) et suit leur
-    statut. Scopé société ; le token d'accès est posé côté serveur.
+    enrichit la fiche (statut d'agrément, zone, onboarding). NTMIG26 ajoute
+    PAR-DESSUS la couche CERTIFICATION/compétence (niveau, spécialités,
+    échéance, compteur de déploiements) — jamais les mêmes champs que
+    l'agrément de base. Un partenaire soumet des leads via le portail
+    (``SoumissionLeadPartenaire``) et suit leur statut. Scopé société ; le
+    token d'accès est posé côté serveur.
     """
     class Type(models.TextChoices):
         APPORTEUR = 'apporteur', "Apporteur d'affaires"
         SOUS_REVENDEUR = 'sous_revendeur', 'Sous-revendeur'
         INSTALLATEUR = 'installateur', 'Installateur'
+
+    class NiveauCertification(models.TextChoices):
+        """NTMIG26 — niveau de certification intégrateur.
+
+        Distinct de ``statut_onboarding`` (FG237), qui dit si le partenaire est
+        AGRÉÉ (droit de travailler) : le niveau dit à quel point il est
+        COMPÉTENT. Un partenaire agréé peut rester ``aucun`` ; un partenaire
+        ``platine`` suspendu reste suspendu. Défaut ``aucun`` = comportement
+        historique inchangé pour toutes les fiches existantes.
+        """
+        AUCUN = 'aucun', 'Aucun'
+        ENREGISTRE = 'enregistre', 'Enregistré'
+        CERTIFIE = 'certifie', 'Certifié'
+        OR = 'or', 'Or'
+        PLATINE = 'platine', 'Platine'
+
+    # Référentiel des spécialités, porté PAR LA CLASSE : les consommateurs
+    # (serializers compta, scoring NTMIG27) le lisent sur ``Partenaire``, sans
+    # importer un module d'une autre app pour une simple liste de clés.
+    SPECIALITES = SPECIALITES_PARTENAIRE
+    SPECIALITES_CLES = SPECIALITES_PARTENAIRE_CLES
+
+    # Ordre CROISSANT des niveaux — le seul endroit où « ≥ certifié » est
+    # défini (l'annuaire NTMIG29 et le scoring NTMIG27 s'y adossent, jamais
+    # une seconde échelle recopiée ailleurs).
+    NIVEAUX_ORDONNES = (
+        NiveauCertification.AUCUN,
+        NiveauCertification.ENREGISTRE,
+        NiveauCertification.CERTIFIE,
+        NiveauCertification.OR,
+        NiveauCertification.PLATINE,
+    )
 
     company = models.ForeignKey(
         'authentication.Company',
@@ -1899,6 +1951,28 @@ class Partenaire(models.Model):
         verbose_name='Zone géographique')
     date_activation = models.DateField(
         null=True, blank=True, verbose_name="Date d'activation")
+
+    # ── NTMIG26 — Couche CERTIFICATION (par-dessus l'agrément FG237) ──
+    # Additive et rétro-compatible : toute fiche existante reste ``aucun``,
+    # sans spécialité ni échéance — aucune n'est modifiée.
+    niveau_certification = models.CharField(
+        max_length=12, choices=NiveauCertification.choices,
+        default=NiveauCertification.AUCUN,
+        verbose_name='Niveau de certification')
+    date_certification = models.DateField(
+        null=True, blank=True, verbose_name='Date de certification')
+    date_expiration_certification = models.DateField(
+        null=True, blank=True,
+        verbose_name="Date d'expiration de la certification")
+    # Liste de clés de ``SPECIALITES_PARTENAIRE`` (validée au serializer).
+    specialites = models.JSONField(
+        default=list, blank=True, verbose_name='Spécialités (modules)')
+    # Compteur d'historique alimenté par les déploiements NTMIG28 ; il ne se
+    # recalcule jamais par un count() à la volée (le nombre de déploiements
+    # RECONNUS est une décision, pas une jointure).
+    nb_deploiements_reussis = models.PositiveIntegerField(
+        default=0, verbose_name='Déploiements réussis')
+
     date_creation = models.DateTimeField(
         auto_now_add=True, verbose_name='Créé le')
 
@@ -1922,6 +1996,28 @@ class Partenaire(models.Model):
         verbose_name_plural = 'Partenaires commerciaux'
         db_table = 'compta_partenaire'
         ordering = ['nom']
+
+    # ── NTMIG26 — lectures dérivées de la couche certification ──
+
+    @property
+    def rang_certification(self):
+        """Position du niveau dans l'échelle (0 = aucun). Sert aux filtres
+        « niveau ≥ certifié » — jamais une comparaison alphabétique, qui
+        classerait « or » avant « platine » mais aussi avant « certifie »."""
+        try:
+            return list(self.NIVEAUX_ORDONNES).index(
+                self.niveau_certification)
+        except ValueError:
+            return 0
+
+    @property
+    def certification_expiree(self):
+        """La certification est-elle échue ? (Faux si aucune échéance posée.)"""
+        from django.utils import timezone
+
+        if not self.date_expiration_certification:
+            return False
+        return self.date_expiration_certification < timezone.localdate()
 
     def __str__(self):
         return f'{self.nom} ({self.get_type_partenaire_display()})'

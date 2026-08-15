@@ -1,10 +1,10 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useIsAdminOrResponsable } from '../../hooks/useHasPermission'
 import { Plus, Trash2, Send, Check, X } from 'lucide-react'
 import installationsApi from '../../api/installationsApi'
 import stockApi from '../../api/stockApi'
-import ProduitPicker from '../../components/ProduitPicker'
+import CatalogueAchatPicker from '../../components/CatalogueAchatPicker'
 import { formatMAD, formatDate } from '../../lib/format'
 import { toastSuccess, toastError } from '../../lib/toast'
 import {
@@ -64,6 +64,8 @@ export default function DemandesAchatList() {
   const [items, setItems] = useState([])
   const [loading, setLoading] = useState(true)
   const [produits, setProduits] = useState([])
+  // NTP2P22 — ids produits à remonter en tête du picker (épinglés + récents).
+  const [favoris, setFavoris] = useState([])
   const [chantiers, setChantiers] = useState([])
 
   // Dialogue de création (form) et de détail (une demande existante).
@@ -96,8 +98,18 @@ export default function DemandesAchatList() {
       (res) => { if (alive) { setItems(res.data?.results ?? res.data ?? []); setLoading(false) } },
       () => { if (alive) setLoading(false) },
     )
-    stockApi.getProduits().then(
+    // NTP2P3 — le picker de la demande d'achat lit le CATALOGUE D'ACHAT
+    // (jamais `/stock/produits/`) : pas de `prix_vente`, donc pas de marge
+    // visible du demandeur.
+    stockApi.getCatalogueAchat().then(
       (r) => { if (alive) setProduits(r.data?.results ?? r.data ?? []) },
+      () => {},
+    )
+    // NTP2P22 — favoris : les articles épinglés puis les 5 derniers demandés
+    // remontent en tête du picker. Un échec laisse simplement la liste dans
+    // son ordre alphabétique (jamais un écran cassé).
+    stockApi.getFavorisCatalogueAchat().then(
+      (r) => { if (alive) setFavoris(r.data?.produit_ids ?? []) },
       () => {},
     )
     installationsApi.getInstallations().then(
@@ -150,21 +162,60 @@ export default function DemandesAchatList() {
       lignes: f.lignes.length > 1 ? f.lignes.filter((l) => l._key !== key) : f.lignes,
     }))
 
-  // Sélection d'un produit catalogue. La désignation reste libre : on ne la
-  // pré-remplit depuis le catalogue que si l'utilisateur ne l'a pas déjà saisie
-  // (jamais l'écraser).
-  const pickProduit = (key, produitId) => {
-    const p = produits.find((x) => String(x.id) === String(produitId))
+  // Sélection d'un article du catalogue d'achat. La désignation reste libre :
+  // on ne la pré-remplit que si l'utilisateur ne l'a pas déjà saisie (jamais
+  // l'écraser). NTP2P3 — le prix estimé est pré-rempli avec le DERNIER PRIX
+  // D'ACHAT connu (donnée interne), pas avec un prix de vente.
+  const pickProduit = (key, produitId, article) => {
+    const p = article ?? produits.find((x) => String(x.id) === String(produitId))
     setForm((f) => ({
       ...f,
       lignes: f.lignes.map((l) => {
         if (l._key !== key) return l
         const patch = { produit: produitId || null }
         if (p && !(l.designation || '').trim()) patch.designation = p.nom
+        if (p && !String(l.prix_estime || '').trim()
+            && p.prix_achat_dernier != null) {
+          patch.prix_estime = String(p.prix_achat_dernier)
+        }
         return { ...l, ...patch }
       }),
     }))
   }
+
+  // NTP2P3 — recherche SERVEUR du catalogue (nom / SKU / catégorie) : la
+  // liste complète n'est jamais chargée d'un bloc.
+  const chercherCatalogue = useCallback((q) => {
+    stockApi.getCatalogueAchat(q ? { q } : undefined).then(
+      (r) => setProduits(r.data?.results ?? r.data ?? []),
+      () => {},
+    )
+  }, [])
+
+  // NTP2P23 — montant courant du formulaire (Σ quantité × prix estimé).
+  const montantForm = useMemo(
+    () => form.lignes.reduce(
+      (acc, l) => acc + (Number(l.quantite) || 0) * (Number(l.prix_estime) || 0),
+      0),
+    [form.lignes])
+
+  // NTP2P23 — simulation d'impact budgétaire, débouncée, LECTURE SEULE :
+  // aucun engagement n'est posé tant que la demande n'est pas soumise.
+  // Silencieuse en cas d'échec (le contrôle réel reste côté serveur).
+  const [budgetSim, setBudgetSim] = useState(null)
+  useEffect(() => {
+    // Pas de setState synchrone ici : hors dialogue on ne relance rien et le
+    // rendu du bandeau est de toute façon conditionné par `creating`.
+    if (!creating) return undefined
+    let alive = true
+    const t = setTimeout(() => {
+      stockApi.simulerBudgetDisponible(String(montantForm)).then(
+        (r) => { if (alive) setBudgetSim(r.data ?? null) },
+        () => { if (alive) setBudgetSim(null) },
+      )
+    }, 300)
+    return () => { alive = false; clearTimeout(t) }
+  }, [creating, montantForm])
 
   const submitCreate = async (thenSoumettre) => {
     setFormError('')
@@ -359,10 +410,12 @@ export default function DemandesAchatList() {
                 {form.lignes.map((l) => (
                   <div key={l._key} className="grid grid-cols-12 items-start gap-2">
                     <div className="col-span-12 sm:col-span-5">
-                      <ProduitPicker
-                        produits={produits}
+                      <CatalogueAchatPicker
+                        items={produits}
+                        favoris={favoris}
                         value={l.produit}
-                        onChange={(v) => pickProduit(l._key, v)}
+                        onSearch={chercherCatalogue}
+                        onChange={(v, article) => pickProduit(l._key, v, article)}
                       />
                     </div>
                     <div className="col-span-6 sm:col-span-3">
@@ -402,6 +455,36 @@ export default function DemandesAchatList() {
                 Un article = un produit du catalogue OU une désignation libre. Le prix estimé est
                 indicatif (interne).
               </p>
+              {/* NTP2P23 — impact budgétaire AVANT la soumission. Lecture
+                  seule : rien n'est engagé tant que « Soumettre » n'est pas
+                  cliqué. Silencieux quand le contrôle budgétaire est inactif
+                  ou qu'aucun budget n'est configuré. */}
+              {creating && budgetSim?.controle_actif && (
+                <div
+                  data-testid="da-impact-budget"
+                  role={budgetSim.suffisant ? undefined : 'alert'}
+                  className={
+                    budgetSim.suffisant
+                      ? 'rounded-lg border border-border bg-muted/40 p-3 text-xs text-muted-foreground'
+                      : 'rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-xs text-destructive'
+                  }
+                >
+                  {budgetSim.suffisant ? (
+                    <>
+                      Budget du département : {formatMAD(budgetSim.restant)} restant —
+                      il resterait {formatMAD(Number(budgetSim.restant) - montantForm)} après
+                      cette demande.
+                    </>
+                  ) : (
+                    <>
+                      Cette demande ({formatMAD(montantForm)}) dépasse le budget
+                      restant du département ({formatMAD(budgetSim.restant)}) de{' '}
+                      {formatMAD(budgetSim.montant_manquant)}. La soumission sera
+                      refusée sans dérogation approuvée.
+                    </>
+                  )}
+                </div>
+              )}
             </div>
 
             <div className="space-y-1.5">

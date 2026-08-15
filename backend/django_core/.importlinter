@@ -366,6 +366,12 @@ ignore_imports =
     core.tests.test_yhard4_i18n_content -> apps.stock.models
     core.tests.test_yhard4_i18n_content -> apps.stock.serializers
     core.tests.test_yhard10_export_anonymise -> apps.crm.models
+# NTAI24 — l'index sémantique cross-module est une FONDATION qui ne cite que
+# des CHAÎNES (« crm.lead ») : le code de production n'importe aucune app. Son
+# test, lui, indexe un lead/client RÉEL pour prouver que le branchement
+# post_save/post_delete fonctionne de bout en bout. Même motif test→domaine que
+# les exceptions ci-dessus ; l'intention base-layer tient.
+    core.tests.test_ntai24_search_index -> apps.crm.models
 # ARC1/2/6 + SCA30-33 — les tests des primitives noyau (TenantModel, viewset
 # scopé, numérotation, kit DocumentMetier) exercent la primitive contre de VRAIS
 # modèles/viewsets domaine ; même motif que les exceptions ci-dessus (arêtes

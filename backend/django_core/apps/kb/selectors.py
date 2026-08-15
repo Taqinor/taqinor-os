@@ -762,3 +762,92 @@ def consultations_portail_total(company):
     total = (KbArticle.objects.filter(company=company)
              .aggregate(total=Sum('consultations_portail_ticket'))['total'])
     return total or 0
+
+
+# ── NTMIG21 — Playbooks d'implémentation (phases → étapes) ──────────────────
+#
+# Point d'entrée LECTURE SEULE pour les apps qui CONSOMMENT un playbook kb
+# (``apps.migration`` et ses ``PlaybookInstance``, NTMIG22) : elles appellent
+# CES fonctions, jamais ``kb.models``/``kb.views``. La structure reste un JSON
+# libre en base ; c'est ici qu'elle est NORMALISÉE une fois pour toutes, pour
+# que deux consommateurs ne réinventent pas deux lectures divergentes.
+
+
+def _normaliser_phases(structure):
+    """Normalise une ``contenu_structure`` brute en liste de phases propres.
+
+    Tolérante par construction : une structure absente, mal formée ou partielle
+    dégrade en liste vide / phase sans étape plutôt que de lever — un playbook
+    à demi rempli doit rester consultable.
+    """
+    if not isinstance(structure, list):
+        return []
+    phases = []
+    for idx, phase in enumerate(structure):
+        if not isinstance(phase, dict):
+            continue
+        cle_phase = str(phase.get('cle') or f'phase{idx + 1}')
+        etapes = []
+        brutes = phase.get('etapes')
+        if isinstance(brutes, list):
+            for jdx, etape in enumerate(brutes):
+                if isinstance(etape, dict):
+                    cle = str(etape.get('cle') or f'{cle_phase}.{jdx + 1}')
+                    libelle = str(etape.get('libelle') or cle)
+                elif isinstance(etape, str):
+                    cle, libelle = f'{cle_phase}.{jdx + 1}', etape
+                else:
+                    continue
+                etapes.append({'cle': cle, 'libelle': libelle})
+        phases.append({
+            'cle': cle_phase,
+            'titre': str(phase.get('titre') or cle_phase),
+            'etapes': etapes,
+        })
+    return phases
+
+
+def phases_playbook(article):
+    """Phases normalisées d'un article playbook (liste, jamais ``None``)."""
+    return _normaliser_phases(getattr(article, 'contenu_structure', None))
+
+
+def cles_etapes_playbook(article):
+    """Clés d'étapes d'un playbook, dans l'ordre, DÉDOUBLONNÉES.
+
+    C'est le dénominateur de la progression d'une ``PlaybookInstance`` : deux
+    étapes portant la même clé ne doivent pas compter deux fois, sinon cocher
+    une case en cocherait visuellement deux et la progression mentirait.
+    """
+    vues, cles = set(), []
+    for phase in phases_playbook(article):
+        for etape in phase['etapes']:
+            if etape['cle'] in vues:
+                continue
+            vues.add(etape['cle'])
+            cles.append(etape['cle'])
+    return cles
+
+
+def playbook_par_id(article_id, company):
+    """Article playbook d'une société par id, ou ``None``.
+
+    Scopé société (jamais le playbook d'un autre tenant) ET filtré sur le type
+    ``playbook`` : un article ordinaire n'est pas instanciable.
+    """
+    if not article_id or company is None:
+        return None
+    return (KbArticle.objects
+            .filter(pk=article_id, company=company,
+                    type_article=KbArticle.TypeArticle.PLAYBOOK)
+            .first())
+
+
+def playbooks_qs(company):
+    """Queryset LECTURE SEULE des playbooks d'une société (jamais cross-tenant)."""
+    if company is None:
+        return KbArticle.objects.none()
+    return (KbArticle.objects
+            .filter(company=company,
+                    type_article=KbArticle.TypeArticle.PLAYBOOK)
+            .order_by('titre', 'id'))

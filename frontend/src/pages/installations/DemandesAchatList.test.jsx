@@ -27,7 +27,15 @@ vi.mock('../../api/installationsApi', () => ({
 }))
 
 vi.mock('../../api/stockApi', () => ({
-  default: { getProduits: vi.fn() },
+  // NTP2P3 — l'écran lit le CATALOGUE D'ACHAT (jamais `/stock/produits/`).
+  default: {
+    getProduits: vi.fn(),
+    getCatalogueAchat: vi.fn(),
+    // NTP2P22 — favoris (épinglés + 5 derniers demandés).
+    getFavorisCatalogueAchat: vi.fn(),
+    // NTP2P23 — simulateur d'impact budgétaire (lecture seule).
+    simulerBudgetDisponible: vi.fn(),
+  },
 }))
 
 import installationsApi from '../../api/installationsApi'
@@ -65,6 +73,15 @@ beforeEach(() => {
     })
   }
   stockApi.getProduits.mockResolvedValue({ data: [] })
+  stockApi.getCatalogueAchat.mockResolvedValue({ data: [] })
+  stockApi.getFavorisCatalogueAchat.mockResolvedValue({
+    data: { epingles: [], recents: [], produit_ids: [] },
+  })
+  // Défaut : contrôle budgétaire INACTIF (cas historique) — le bandeau
+  // d'impact ne doit alors jamais apparaître.
+  stockApi.simulerBudgetDisponible.mockResolvedValue({
+    data: { controle_actif: false, suffisant: true },
+  })
   installationsApi.getInstallations.mockResolvedValue({ data: [] })
   installationsApi.getDemandesAchat.mockResolvedValue({
     data: [
@@ -105,6 +122,45 @@ describe('DemandesAchatList (FG310)', () => {
     await waitFor(() =>
       expect(installationsApi.soumettreDemandeAchat).toHaveBeenCalledWith(42),
     )
+  })
+
+  /* NTP2P23 — simulateur d'impact budgétaire AVANT la soumission. */
+  it('avertit quand la demande dépasse le budget restant du département', async () => {
+    stockApi.simulerBudgetDisponible.mockResolvedValue({
+      data: {
+        controle_actif: true, suffisant: false,
+        restant: '4000.00', montant_manquant: '1000.00',
+        montant_demande: '5000.00',
+      },
+    })
+
+    render(<DemandesAchatList />, { wrapper: makeWrapper() })
+    await screen.findAllByText('DA-202607-0007')
+
+    fireEvent.click(screen.getByRole('button', { name: /Nouvelle demande/i }))
+    fireEvent.change(await screen.findByLabelText('Quantité'), {
+      target: { value: '1' },
+    })
+    fireEvent.change(screen.getByLabelText('Prix estimé'), {
+      target: { value: '5000' },
+    })
+
+    const bandeau = await screen.findByTestId('da-impact-budget', {}, { timeout: 3000 })
+    expect(bandeau).toHaveAttribute('role', 'alert')
+    expect(bandeau.textContent).toMatch(/dépasse le budget restant/i)
+    // Le simulateur est en LECTURE SEULE : rien n'est soumis ni engagé.
+    expect(installationsApi.createDemandeAchat).not.toHaveBeenCalled()
+    expect(installationsApi.soumettreDemandeAchat).not.toHaveBeenCalled()
+  })
+
+  it('n’affiche aucun bandeau budget quand le contrôle est inactif', async () => {
+    render(<DemandesAchatList />, { wrapper: makeWrapper() })
+    await screen.findAllByText('DA-202607-0007')
+    fireEvent.click(screen.getByRole('button', { name: /Nouvelle demande/i }))
+    await screen.findByLabelText('Objet')
+    await waitFor(() =>
+      expect(stockApi.simulerBudgetDisponible).toHaveBeenCalled())
+    expect(screen.queryByTestId('da-impact-budget')).toBeNull()
   })
 
   it('un responsable peut approuver une demande soumise', async () => {

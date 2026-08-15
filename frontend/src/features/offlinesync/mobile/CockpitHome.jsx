@@ -17,6 +17,8 @@ import {
 } from '../../../ui'
 import { useIsMobile } from '../../../ui/ResponsiveDialog'
 import { formatMAD, formatNumber } from '../../../lib/format'
+import AFaireAujourdhui from './AFaireAujourdhui'
+import OnboardingTerrain from '../OnboardingTerrain'
 
 const SOURCE_LABELS = {
   automation: 'Automatisation',
@@ -68,6 +70,12 @@ export default function CockpitHome() {
 
   return (
     <div className="flex flex-col gap-3 p-3 pb-24">
+      {/* NTMOB33 — aide contextuelle premiere utilisation terrain. */}
+      <OnboardingTerrain />
+
+      {/* NTMOB19 — widget unifié cross-rôle (relances, approbations,
+          interventions, factures échues) partagé avec les autres accueils. */}
+      <AFaireAujourdhui />
       <Card>
         <CardHeader>
           <CardTitle>Chiffres clés</CardTitle>

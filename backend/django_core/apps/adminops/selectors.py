@@ -128,3 +128,17 @@ def diagnostic_tenant(company):
             company=company).count(),
         'dernieres_erreurs_audit': nb_erreurs,
     }
+
+
+def sandbox_pret(company):
+    """NTADM10 — environnement sandbox PRÊT d'un tenant (le plus récent) ou
+    ``None``.
+
+    Lecture exposée aux AUTRES apps (NTMIG33 s'en sert pour sa migration à
+    blanc) : aucune d'elles n'a ainsi à importer les modèles d'``adminops`` ni
+    à redéfinir de son côté ce qu'est un sandbox utilisable — statut ``pret``
+    ET tenant cloné réellement présent.
+    """
+    return SandboxEnvironment.objects.filter(
+        company=company, statut=SandboxEnvironment.Statut.PRET,
+        sandbox_company__isnull=False).order_by('-date_creation').first()

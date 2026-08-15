@@ -11,6 +11,7 @@ import { useEffect } from 'react'
 import { ScanLine, CameraOff, X } from 'lucide-react'
 import { Button } from '../../ui'
 import useBarcodeScanner from './useBarcodeScanner'
+import useWakeLock from '../../hooks/useWakeLock'
 
 const ERROR_MESSAGES = {
   'non-supporte':
@@ -34,6 +35,9 @@ export default function BarcodeScanner({
     onDetected,
     formats,
   })
+
+  // NTMOB29 — l'écran ne doit pas s'éteindre pendant un scan actif.
+  useWakeLock(active)
 
   // Démarrage automatique du flux (le hook nettoie la caméra au démontage).
   useEffect(() => {

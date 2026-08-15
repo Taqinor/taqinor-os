@@ -42,6 +42,11 @@ import {
 import { SignatureClientPanel } from '../../features/installations/SignatureClientPanel'
 // APX29 — carte des arrêts, partagée avec l'onglet « Ma tournée » (planification).
 import TourneeStops from '../../features/installations/TourneeStops'
+import AFaireAujourdhui from '../../features/offlinesync/mobile/AFaireAujourdhui'
+import MeteoTerrainCard from '../../features/installations/MeteoTerrainCard'
+import { readCache } from '../../features/offlinesync/readCache'
+import DonneesHorsLigneBanner from '../../features/offlinesync/DonneesHorsLigneBanner'
+import OnboardingTerrain from '../../features/offlinesync/OnboardingTerrain'
 import {
   interventionStatusLabel, INTERVENTION_TYPES,
   INTERVENTION_STATUSES, INTERVENTION_STATUS_LABELS,
@@ -53,6 +58,7 @@ import { toastWithUndo } from '../../lib/toast'
 import { formatDate } from '../../lib/format'
 // VX132 — anti-scintillement propagé (voir InstallationsPage.jsx).
 import { useDelayedLoading } from '../../hooks/useDelayedLoading'
+import useWakeLock from '../../hooks/useWakeLock'
 
 // VX105 — clés de persistance de session (survit à un backgrounding suivi d'un
 // rechargement — appel entrant en chantier) : fiche ouverte + onglet visité.
@@ -166,6 +172,9 @@ export default function MaJourneePage() {
   // VX132 — rien tant que l'attente reste imperceptible (< 300 ms).
   const { showSpinner } = useDelayedLoading(loading)
   const [active, setActive] = useState(null)
+  // NTMOB29 — une fiche d'intervention ouverte EST une session de capture
+  // (checklist, photos, séries) : l'écran reste allumé tant qu'elle l'est.
+  useWakeLock(active != null)
   // VX42 — le FAB « Photo rapide » ouvre la fiche directement sur l'onglet
   // Photos ; sinon la fiche s'ouvre normalement sur la préparation.
   const [initialTab, setInitialTab] = useState('prep')
@@ -195,6 +204,8 @@ export default function MaJourneePage() {
   // VX226(b) — horodatage du dernier fetch (ref, pas de re-rendu) : pilote le
   // throttle du refetch sur `visibilitychange` ci-dessous.
   const lastFetchedAtRef = useRef(0)
+  // NTMOB27 — horodatage de la donnée servie DEPUIS LE CACHE (null = en ligne).
+  const [cachedAt, setCachedAt] = useState(null)
   const load = useCallback(() => installationsApi
     .getMaTournee(today)
     .then((r) => {
@@ -217,11 +228,25 @@ export default function MaJourneePage() {
           }
         } catch { /* stockage indisponible */ }
       }
+      // NTMOB27 — la tournée fraîche alimente le cache de LECTURE hors-ligne
+      // (jamais l'inverse : rien de ce cache ne repart vers le serveur).
+      setCachedAt(null)
+      readCache.put('tournee', today, stops)
       // EZ6 — `load()` rend les arrêts frais : le dérivateur de statut compare
       // l'avant/après sans re-lire un état React pas encore commis.
       return stops
     })
-    .catch(() => { setRows([]); return [] })
+    // NTMOB27 — réseau indisponible : on sert la dernière tournée mise en
+    // cache (LECTURE SEULE) avec son bandeau d'ancienneté, au lieu d'un écran
+    // vide « aucune intervention » qui ferait croire à une journée libre.
+    .catch(() => readCache.get('tournee', today)
+      .then((entree) => {
+        if (!entree) { setRows([]); return [] }
+        setRows(entree.data)
+        setCachedAt(entree.cachedAt)
+        return entree.data
+      })
+      .catch(() => { setRows([]); return [] }))
     .finally(() => setLoading(false)), [today])
   useEffect(() => { load() }, [load])
 
@@ -332,6 +357,24 @@ export default function MaJourneePage() {
           <RefreshCw className={`size-4${manualRefreshing ? ' animate-spin' : ''}`} aria-hidden="true" />
         </Button>
       </header>
+
+      {/* NTMOB33 — aide contextuelle premiere utilisation terrain. */}
+      <OnboardingTerrain />
+
+      {/* NTMOB27 — la tournée affichée vient du cache hors-ligne : on datte
+          la donnée plutôt que de la faire passer pour fraîche. */}
+      <DonneesHorsLigneBanner cachedAt={cachedAt} />
+
+      {/* NTMOB21 — alerte météo du jour au point du premier chantier
+          (Open-Meteo, informatif : ne bloque et ne masque jamais rien). */}
+      <MeteoTerrainCard stops={rows} />
+
+      {/* NTMOB19 — widget unifié « À faire aujourd'hui » (tous modules) :
+          même composant que les accueils mobiles par rôle, pour que le
+          technicien voie aussi ce qui l'attend hors interventions. Les
+          interventions sont EXCLUES ici : cet écran en est déjà la vue
+          complète (pas de doublon, ni de second appel à `ma-tournee`). */}
+      <AFaireAujourdhui exclure={['intervention']} />
 
       {loading ? (
         showSpinner && (
@@ -620,7 +663,9 @@ function InterventionFlowSheet({
             monté (masqué quand inactif par Radix), au lieu de se
             remonter-refetcher à chaque re-visite d'onglet — une app
             backgroundée (appel entrant) ne perd plus la saisie en cours. */}
-        <Tabs value={tab} onValueChange={changeTab} className="p-3">
+        {/* NTMOB22 — `oh-tabs` : en mode « une main », la barre d'onglets
+            passe dans le tiers bas (zone du pouce). Purement CSS. */}
+        <Tabs value={tab} onValueChange={changeTab} className="oh-tabs p-3">
           <TabsList className="flex w-full gap-1 overflow-x-auto" data-testid="mj-tab-rail">
             {FLOW_TABS.map((t) => (
               <TabsTrigger key={t.value} value={t.value} className="shrink-0 flex-col gap-0.5 px-2.5 py-1.5 text-[11px] leading-tight">

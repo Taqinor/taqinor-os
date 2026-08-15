@@ -8,6 +8,7 @@ Multi-tenant via ``TenantMixin`` : référence/société/created_by posés côt�
 serveur ; les FK liées sont validées tenant. Cross-app : ``stock.Fournisseur``
 en string-FK.
 """
+from django.http import HttpResponse
 from django.utils import timezone
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
@@ -245,6 +246,66 @@ class RFQViewSet(CompanyScopedModelViewSet):
                 update_fields=['nb_relances', 'derniere_relance_le'])
             results.append(res)
         return Response({'resultats': results})
+
+    @action(detail=True, methods=['get'], url_path='comparatif-pdf')
+    def comparatif_pdf(self, request, pk=None):
+        """NTP2P26 — Fiche de comparaison RFQ imprimable (audit achats
+        interne). Reprend exactement ``selectors.rfq_comparatif`` — jamais un
+        document envoyé à un fournisseur (montants internes)."""
+        from ..rfq_pdf import comparatif_pdf_bytes
+
+        rfq = self.get_object()  # scopée société par TenantMixin.
+        pdf_bytes = comparatif_pdf_bytes(rfq)
+        resp = HttpResponse(pdf_bytes, content_type='application/pdf')
+        resp['Content-Disposition'] = (
+            f'attachment; filename="comparatif_{rfq.reference}.pdf"')
+        return resp
+
+    @action(detail=True, methods=['get'], url_path='export-xlsx')
+    def export_xlsx(self, request, pk=None):
+        """NTP2P41 — Export .xlsx des offres RFQ pour archivage/retraitement :
+        un onglet par fournisseur consulté + un onglet comparatif (une ligne
+        par offre × RFQ, prix/délai exploitables sans reformattage). Distinct
+        de ``comparatif_pdf`` (celui-ci = PDF de présentation)."""
+        from apps.records.xlsx import build_workbook
+
+        rfq = self.get_object()  # scopée société par TenantMixin.
+        offres = list(rfq.offres.select_related('fournisseur').all())
+
+        headers = ['fournisseur', 'montant_ht', 'delai_jours',
+                   'validite_jours', 'retenue']
+        rows = [[
+            (o.fournisseur_nom_libre
+             or (o.fournisseur.nom if o.fournisseur_id else '')),
+            o.montant_ht, o.delai_jours, o.validite_jours,
+            'Oui' if o.retenue else 'Non',
+        ] for o in offres]
+        wb = build_workbook(headers, rows, sheet_title='Comparatif')
+
+        for consultation in rfq.consultations.select_related(
+                'fournisseur', 'offre').all():
+            ws = wb.create_sheet(
+                (consultation.fournisseur.nom or 'Fournisseur')[:31])
+            ws.append(['Champ', 'Valeur'])
+            ws.append(['Fournisseur', consultation.fournisseur.nom])
+            ws.append(['A répondu', 'Oui' if consultation.a_repondu else 'Non'])
+            if consultation.offre_id:
+                o = consultation.offre
+                ws.append(['Montant HT', float(o.montant_ht)])
+                ws.append(['Délai (jours)', o.delai_jours])
+                ws.append(['Retenue', 'Oui' if o.retenue else 'Non'])
+
+        import io
+        buf = io.BytesIO()
+        wb.save(buf)
+        resp = HttpResponse(
+            buf.getvalue(),
+            content_type=(
+                'application/vnd.openxmlformats-officedocument'
+                '.spreadsheetml.sheet'))
+        resp['Content-Disposition'] = (
+            f'attachment; filename="rfq_{rfq.reference}.xlsx"')
+        return resp
 
 
 class RFQConsultationViewSet(TenantMixin, viewsets.ReadOnlyModelViewSet):

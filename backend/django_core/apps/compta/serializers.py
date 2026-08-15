@@ -1014,6 +1014,8 @@ class NoteFraisSerializer(serializers.ModelSerializer):
             'mode_remboursement', 'compte_tresorerie', 'date_remboursement',
             'rembourse_par', 'ecriture_remboursement', 'date_creation',
             'hors_politique',
+            # NTP2P11 — posés serveur à la soumission, visibles du valideur.
+            'escalade_direction', 'warning_delai',
             'refacturable', 'taux_marge', 'client_refacturation_id',
             'chantier_refacturation', 'facture_refacturation_id',
         ]
@@ -1022,6 +1024,7 @@ class NoteFraisSerializer(serializers.ModelSerializer):
             'ecriture_charge', 'motif_rejet', 'compte_tresorerie',
             'date_remboursement', 'rembourse_par', 'ecriture_remboursement',
             'date_creation', 'hors_politique', 'facture_refacturation_id',
+            'escalade_direction', 'warning_delai',
         ]
 
     def validate_employe(self, value):
@@ -1086,7 +1089,10 @@ class PlafondNoteFraisSerializer(serializers.ModelSerializer):
         model = PlafondNoteFrais
         fields = [
             'id', 'categorie', 'categorie_display', 'montant_max',
-            'seuil_justificatif_obligatoire', 'date_creation',
+            'seuil_justificatif_obligatoire',
+            # NTP2P11 — délai de soumission + escalade direction (optionnels).
+            'jours_max_apres_depense', 'escalade_direction_au_dela_de',
+            'date_creation',
         ]
         read_only_fields = ['date_creation']
 
@@ -1094,6 +1100,12 @@ class PlafondNoteFraisSerializer(serializers.ModelSerializer):
         if value is not None and value < 0:
             raise serializers.ValidationError(
                 "Le plafond ne peut pas être négatif.")
+        return value
+
+    def validate_escalade_direction_au_dela_de(self, value):
+        if value is not None and value < 0:
+            raise serializers.ValidationError(
+                "Le seuil d'escalade ne peut pas être négatif.")
         return value
 
 
@@ -2430,15 +2442,75 @@ class DemandeTicketPortailSerializer(serializers.ModelSerializer):
 
 
 class PartenaireSerializer(serializers.ModelSerializer):
+    # NTMIG26 — lectures dérivées de la couche certification.
+    certification_expiree = serializers.BooleanField(read_only=True)
+    rang_certification = serializers.IntegerField(read_only=True)
+
     class Meta:
         model = Partenaire
         fields = [
             'id', 'nom', 'type_partenaire', 'email', 'telephone',
             'taux_commission', 'token_acces', 'actif',
             'statut_onboarding', 'numero_agrement', 'zone', 'date_activation',
+            'niveau_certification', 'date_certification',
+            'date_expiration_certification', 'specialites',
+            'nb_deploiements_reussis', 'certification_expiree',
+            'rang_certification',
             'date_creation',
         ]
-        read_only_fields = ['token_acces', 'date_activation', 'date_creation']
+        read_only_fields = [
+            'token_acces', 'date_activation', 'date_creation',
+            # NTMIG26 — le compteur de déploiements est de l'HISTORIQUE : il
+            # s'alimente par l'enregistrement d'un déploiement (NTMIG28), pas
+            # par un PATCH qui permettrait de gonfler son propre score.
+            'nb_deploiements_reussis', 'certification_expiree',
+            'rang_certification',
+        ]
+
+    def validate_specialites(self, value):
+        """NTMIG26 — spécialités prises dans la liste FERMÉE du référentiel.
+
+        Une valeur libre rendrait l'annuaire des certifiés infiltrable :
+        « Compta », « compta » et « COMPTA » seraient trois spécialités
+        distinctes qu'aucun filtre ne retrouverait ensemble.
+        """
+        if value in (None, ''):
+            return []
+        if not isinstance(value, list):
+            raise serializers.ValidationError(
+                'Les spécialités doivent être une liste de clés de module.')
+        connues_cles = Partenaire.SPECIALITES_CLES
+        inconnues = [str(v) for v in value if str(v) not in connues_cles]
+        if inconnues:
+            connues = ', '.join(connues_cles)
+            raise serializers.ValidationError(
+                f"Spécialité(s) inconnue(s) : {', '.join(inconnues)}. "
+                f'Valeurs acceptées : {connues}.')
+        # Dédoublonne en préservant l'ordre de saisie.
+        vues, propres = set(), []
+        for v in value:
+            if str(v) in vues:
+                continue
+            vues.add(str(v))
+            propres.append(str(v))
+        return propres
+
+    def validate(self, attrs):
+        """NTMIG26 — une échéance de certification antérieure à sa date de
+        délivrance décrirait une certification née expirée."""
+        attrs = super().validate(attrs)
+        instance = getattr(self, 'instance', None)
+        debut = attrs.get(
+            'date_certification', getattr(instance, 'date_certification', None))
+        fin = attrs.get(
+            'date_expiration_certification',
+            getattr(instance, 'date_expiration_certification', None))
+        if debut and fin and fin < debut:
+            raise serializers.ValidationError({
+                'date_expiration_certification': (
+                    "L'expiration ne peut pas précéder la date de "
+                    'certification.')})
+        return attrs
 
 
 class SoumissionLeadPartenaireSerializer(serializers.ModelSerializer):

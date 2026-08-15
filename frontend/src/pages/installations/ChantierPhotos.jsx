@@ -12,6 +12,7 @@ import recordsApi from '../../api/recordsApi'
 import installationsApi from '../../api/installationsApi'
 import { formatDate } from '../../lib/format'
 import { compressPhotoForUpload } from '../preferences/prefs'
+import DataSaverThumb from '../../features/pwa/DataSaverThumb'
 import {
   Button,
   IconButton,
@@ -370,11 +371,15 @@ export default function ChantierPhotos({ installationId }) {
                     <div key={a.id} className="flex flex-col items-center gap-1">
                       <div className="relative">
                         {isImage(a) ? (
-                          <button type="button" title={a.filename}
-                                  onClick={() => openViewer(p.key, a)}>
-                            <img src={a.url} alt={a.filename} loading="lazy"
-                                 className={`${thumbSize} rounded-md border border-border object-cover`} />
-                          </button>
+                          // NTMOB17 — en mode économie de données la vignette
+                          // n'est chargée qu'au tap (aucune requête image sinon).
+                          <DataSaverThumb
+                            src={a.url}
+                            alt={a.filename}
+                            title={a.filename}
+                            className={`${thumbSize} rounded-md border border-border object-cover`}
+                            onActivate={() => openViewer(p.key, a)}
+                          />
                         ) : (
                           <a href={a.url} target="_blank" rel="noopener noreferrer" title={a.filename}>
                             <span className={`flex ${thumbSize} items-center justify-center rounded-md border border-border bg-muted text-muted-foreground`}>

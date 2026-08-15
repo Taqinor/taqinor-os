@@ -128,6 +128,7 @@ class UxParametresSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'duree_hover_peek_ms', 'duree_undo_toast_s',
             'permettre_vues_partagees_equipe', 'roles_autorises_definir_defaut',
+            'max_vues_par_utilisateur', 'max_favoris_par_utilisateur',
             'created_at', 'updated_at',
         ]
         read_only_fields = ['id', 'created_at', 'updated_at']

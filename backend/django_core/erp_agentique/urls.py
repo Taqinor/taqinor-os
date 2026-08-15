@@ -158,6 +158,8 @@ _APP_URLS = [
     path('transport/', include('apps.transport.urls')),
     # NTUX7 — Corbeille transverse 30 jours (écran /parametres/corbeille).
     path('trash/', include('apps.trash.urls')),
+    # NTMOB1 — Synchro hors-ligne multi-module (rejeu idempotent d'un lot).
+    path('offlinesync/', include('apps.offlinesync.urls')),
     # Groupe NTMAR — Facturation électronique DGI (gated, EINVOICE_ENABLED).
     path('einvoice/', include('apps.einvoice.urls')),
     # Groupe NTMAR — Calendrier fiscal marocain, attestations, UBO, veille.
@@ -165,6 +167,11 @@ _APP_URLS = [
     # Groupe NTAI — copilotes IA (brouillons proposés, jamais d'écriture
     # implicite ; 503 douce sans clé LLM/STT configurée).
     path('ai/', include('apps.ai_governance.urls')),
+    # Groupe NTAI — conversations commerciales enregistrées (upload d'un appel
+    # + transcription asynchrone key-gated). Le segment est IDENTIQUE à la clé
+    # de manifeste (`conversation_ai`, avec underscore) : le gatage 404 des
+    # modules désactivés vise le bon module sans entrée PREFIX_TO_MODULE.
+    path('conversation_ai/', include('apps.conversation_ai.urls')),
     # Groupe VAO — Veille appels d'offres (sas des avis de marché). Le segment
     # d'URL est IDENTIQUE à la clé de manifeste (`veille_ao`, avec underscore)
     # à dessein : le gatage 404 des modules désactivés dérive du 2ᵉ segment, et

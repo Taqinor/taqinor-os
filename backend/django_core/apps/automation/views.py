@@ -75,6 +75,20 @@ class AutomationRuleViewSet(TenantMixin, viewsets.ModelViewSet):
         except Exception:
             pass
 
+    def _audit_plateforme(self, identifiant, libelle, old=None, new=None):
+        """NTEXT36 — MÊME écriture, vue « plateforme » : le Journal des
+        paramètres gagne une section transverse ``plateforme`` qui regroupe
+        TOUS les changements de configuration no-code (objets, règles,
+        rapports…). L'audit historique section='automatisations' ci-dessus
+        est conservé tel quel — rien n'est déplacé ni réécrit."""
+        from apps.customfields.audit_plateforme import journaliser_plateforme
+
+        acteur = self.request.user
+        journaliser_plateforme(
+            company=getattr(acteur, 'company', None), user=acteur,
+            cible='regle', identifiant=identifiant, libelle=libelle,
+            old=old, new=new)
+
     def perform_create(self, serializer):
         # TenantMixin force la société côté serveur (jamais depuis la requête).
         super().perform_create(serializer)
@@ -83,6 +97,9 @@ class AutomationRuleViewSet(TenantMixin, viewsets.ModelViewSet):
             field=f'rule:{instance.nom}', label='Règle créée', old=None,
             new=f'{instance.nom} '
                 f'({"activée" if instance.enabled else "désactivée"})')
+        self._audit_plateforme(
+            instance.pk, "Règle d'automatisation créée",
+            old=None, new=instance.nom)
 
     def perform_update(self, serializer):
         old_enabled = serializer.instance.enabled
@@ -96,12 +113,24 @@ class AutomationRuleViewSet(TenantMixin, viewsets.ModelViewSet):
                     f'({"activée" if old_enabled else "désactivée"})',
                 new=f'{instance.nom} '
                     f'({"activée" if instance.enabled else "désactivée"})')
+        # NTEXT36 — le journal plateforme trace TOUTE modification (y compris
+        # un changement d'action/de configuration, que le résumé
+        # « nom + activée » ci-dessus ne rendait pas visible).
+        self._audit_plateforme(
+            instance.pk, "Règle d'automatisation modifiée",
+            old=f'{old_nom} '
+                f'({"activée" if old_enabled else "désactivée"})',
+            new=f'{instance.nom} '
+                f'({"activée" if instance.enabled else "désactivée"})')
 
     def perform_destroy(self, instance):
         nom = instance.nom
+        identifiant = instance.pk
         super().perform_destroy(instance)
         self._audit_rule(
             field=f'rule:{nom}', label='Règle supprimée', old=nom, new=None)
+        self._audit_plateforme(
+            identifiant, "Règle d'automatisation supprimée", old=nom, new=None)
 
     @action(detail=True, methods=['post'], permission_classes=[IsAdminRole])
     def toggle(self, request, pk=None):
@@ -112,6 +141,10 @@ class AutomationRuleViewSet(TenantMixin, viewsets.ModelViewSet):
         rule.save(update_fields=['enabled', 'date_modification'])
         self._audit_rule(
             field=f'rule:{rule.nom}', label='Règle (bascule)',
+            old='activée' if old else 'désactivée',
+            new='activée' if rule.enabled else 'désactivée')
+        self._audit_plateforme(
+            rule.pk, "Règle d'automatisation (bascule)",
             old='activée' if old else 'désactivée',
             new='activée' if rule.enabled else 'désactivée')
         return Response(self.get_serializer(rule).data)

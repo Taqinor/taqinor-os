@@ -81,10 +81,18 @@ TIMESTAMP_AS_DATEFIELD_ALLOWLIST = {
     # champ pré-existant, même motif que les dates-ancre ventes du
     # DATEFIELD_AUTO_NOW_ALLOWLIST ci-dessus — pas un bug d'horodatage.
     # Modèle relocalisé compta→crm par ODX13 (2026-07-12) : clé remappée.
+    # Remappé 2017->2113 (NTMIG26 : couche certification ajoutée sur
+    # Partenaire, +96 lignes AVANT CommissionPartenaire dans le même
+    # fichier) — même champ inchangé (vérifié : déclaration identique
+    # DateField(null=True, blank=True) avant/après).
+    # 2002 -> 2017 -> 2027 -> 2113 -> 2123 : MÊME champ, poussé par les
+    # insertions successives dans crm/models.py (fusion de deux sessions
+    # parallèles le 14/08/2026). Une seule entrée désormais, les doublons
+    # périmés ci-dessous ayant été retirés. Bug-class #34.
+    "backend/django_core/apps/crm/models.py:2123",  # CommissionPartenaire.paye_le
     # Remappé 2017->2027 (lanes NTCRM14-30 : +10 lignes insérées avant
     # CommissionPartenaire dans crm/models.py) — MÊME champ, déclaration
     # identique avant/après (vérifié contre origin/main), pas un nouveau site.
-    "backend/django_core/apps/crm/models.py:2027",  # CommissionPartenaire.paye_le (précédemment :2017, :2002)
     # PUB75 (batch-2) — ConsentRecord.date_consentement : DATE (jour) de recueil
     # du consentement image/témoignage (loi 09-08), pas un horodatage. Le champ
     # timestamp de ce modèle (revoked_at) EST bien un DateTimeField. Pas un bug.

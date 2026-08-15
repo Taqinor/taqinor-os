@@ -13,9 +13,16 @@ import { fileURLToPath } from 'node:url'
 const HERE = dirname(fileURLToPath(import.meta.url))
 const read = (p) => readFileSync(join(HERE, p), 'utf8')
 
-const OUTBOX = read('outbox.js')
+// NTMOB1 — le moteur a déménagé dans `src/lib/offlineOutbox.js` (file
+// généralisée multi-module) ; `outbox.js`/`idbStore.js` en sont désormais de
+// pures RÉEXPORTATIONS. Le câblage se vérifie donc à la nouvelle source, et la
+// garde « un seul outbox » devient plus forte : l'ancien chemin ne doit
+// contenir AUCUNE seconde implémentation.
+const OUTBOX = read('../../../lib/offlineOutbox.js')
+const SHIM = read('outbox.js')
 const FIELD = read('fieldOutbox.js')
-const IDB = read('idbStore.js')
+const IDB = read('../../../lib/offlineStore.js')
+const IDB_SHIM = read('idbStore.js')
 const HOOK = read('useFieldOutbox.js')
 const BADGE = read('OfflineSyncIndicator.jsx')
 const PANEL = read('../InterventionFieldExecution.jsx')
@@ -23,10 +30,16 @@ const PANEL = read('../InterventionFieldExecution.jsx')
 test('la file binaire vit dans l’outbox EXISTANT (jamais un 2ᵉ module)', () => {
   assert.match(OUTBOX, /export class BinaryOutbox/)
   assert.match(FIELD, /export const binaryOutbox = new BinaryOutbox\(/)
-  // NTMOB1 réserve `src/lib/offlineOutbox.js` : EZ8 n'y touche pas.
+  // Le moteur généralisé de NTMOB1 est bien là…
   assert.equal(
-    existsSync(join(HERE, '../../../lib/offlineOutbox.js')), false,
-    'le fichier réservé par NTMOB1 ne doit pas être créé ici')
+    existsSync(join(HERE, '../../../lib/offlineOutbox.js')), true,
+    'NTMOB1 : le moteur généralisé vit dans src/lib/offlineOutbox.js')
+  // …et l'ancien chemin ne fait que le réexporter : UNE implémentation, jamais
+  // deux files concurrentes (décision VX105).
+  assert.match(SHIM, /export \* from '\.\.\/\.\.\/\.\.\/lib\/offlineOutbox\.js'/)
+  assert.equal(/class\s+(Binary)?Outbox\b/.test(SHIM), false,
+    'outbox.js ne doit contenir aucune seconde implémentation')
+  assert.match(IDB_SHIM, /export \* from '\.\.\/\.\.\/\.\.\/lib\/offlineStore\.js'/)
 })
 
 test('rejeu par l’endpoint multipart EXISTANT (aucun endpoint nouveau)', () => {
@@ -73,6 +86,10 @@ test('UN badge, compteur exact (actions + photos) et honnêteté iOS', () => {
   assert.match(BADGE, /Safari peut les effacer après ~7 jours/)
   // Le badge ne se tait plus tant qu'une photo attend.
   assert.match(BADGE, /pending === 0 && pendingPhotos === 0 && !hasFailed\) return null/)
+  // NTMOB1 — le MÊME compteur absorbe les files des autres modules : jamais un
+  // 2ᵉ badge ni un 2ᵉ indicateur par écran.
+  assert.match(HOOK, /pendingModuleOps/)
+  assert.match(HOOK, /flushModuleOutboxes/)
 })
 
 test('purge à la déconnexion (patron LW45)', () => {

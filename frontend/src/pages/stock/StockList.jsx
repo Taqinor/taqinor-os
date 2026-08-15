@@ -1,6 +1,6 @@
 import { useEffect, useState, useMemo } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import {
   Plus, Upload, Download, Truck, Calculator, Wallet, AlertTriangle,
   Archive, PackageOpen, Pencil, Trash2, RotateCcw, Package, QrCode, ScanLine,
@@ -651,7 +651,10 @@ export default function StockList() {
   const [showPilotage, setShowPilotage] = useState(true)
   // N20 — étiquettes QR/code-barres + champ de scan (résolution serveur).
   const [labelsBusy, setLabelsBusy]   = useState(false)
-  const [scanOpen, setScanOpen]       = useState(false)
+  // NTMOB20 — raccourci PWA « Scanner un code-barres » : `/stock?scan=1`
+  // ouvre directement le panneau de scan (appui long sur l'icône de l'app).
+  const [searchParams] = useSearchParams()
+  const [scanOpen, setScanOpen]       = useState(() => searchParams.get('scan') === '1')
   const [scanCode, setScanCode]       = useState('')
   const [scanBusy, setScanBusy]       = useState(false)
   const [camOpen, setCamOpen]         = useState(false) // FG384 — scan caméra

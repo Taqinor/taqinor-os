@@ -67,10 +67,39 @@ class RapportDefinitionViewSet(CompanyScopedModelViewSet):
             | Q(owner__isnull=True)
         ).distinct()
 
+    # NTEXT36 — audit plateforme. L'aide est importée PARESSEUSEMENT (dans la
+    # méthode) pour ne pas créer d'arête d'import au chargement du module :
+    # ce fichier reste sans dépendance d'app métier en tête de fichier.
+    def _audit_plateforme(self, identifiant, libelle, old=None, new=None):
+        from apps.customfields.audit_plateforme import journaliser_plateforme
+
+        utilisateur = self.request.user
+        journaliser_plateforme(
+            company=getattr(utilisateur, 'company', None), user=utilisateur,
+            cible='rapport', identifiant=identifiant,
+            libelle=libelle, old=old, new=new)
+
     def perform_create(self, serializer):
         # company forcée côté serveur (socle) ; owner = utilisateur courant.
         serializer.save(company=self.request.user.company,
                         owner=self.request.user)
+        self._audit_plateforme(
+            serializer.instance.pk, 'Définition de rapport créée',
+            old=None, new=serializer.instance.titre)
+
+    def perform_update(self, serializer):
+        avant = serializer.instance.titre
+        super().perform_update(serializer)
+        self._audit_plateforme(
+            serializer.instance.pk, 'Définition de rapport modifiée',
+            old=avant, new=serializer.instance.titre)
+
+    def perform_destroy(self, instance):
+        avant, identifiant = instance.titre, instance.pk
+        super().perform_destroy(instance)
+        self._audit_plateforme(
+            identifiant, 'Définition de rapport supprimée',
+            old=avant, new=None)
 
     def perform_content_negotiation(self, request, force=False):
         # NTEXT11 — ``export()`` réutilise ``?format=csv|xlsx`` pour choisir

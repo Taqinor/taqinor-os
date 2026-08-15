@@ -6,7 +6,7 @@ const reportingApi = {
   // Recherche transverse : ?q=<terme> → résultats groupés par type.
   search: (q) => api.get('/reporting/search/', { params: { q } }),
   // Cloche de notifications (activités en retard, garanties, impayés).
-  getNotifications: () => api.get('/reporting/notifications/'),
+  getNotifications: (config) => api.get('/reporting/notifications/', config),
   // Tableau de bord valeur du pipeline (par étape, prévision, devis, pertes).
   getPipeline: () => api.get('/reporting/pipeline/'),
   // Hub Rapports (T13/T14/T15) — ventes, stock, service.
@@ -113,8 +113,8 @@ const reportingApi = {
   // XKB1/ZCTR7-9 — Boîte d'approbations centralisée (5 sources : automation,
   // contrats, ged, installations, workflow), UNFILTRÉE par défaut.
   // ?source=/?categorie=, ?priorite=, ?trier=urgence|anciennete|montant.
-  approbationsEnAttente: (params) =>
-    api.get('/reporting/approbations-en-attente/', { params }),
+  approbationsEnAttente: (params, config) =>
+    api.get('/reporting/approbations-en-attente/', { params, ...config }),
   deciderApprobation: (source, id, decision, motif) =>
     api.post('/reporting/approbations-en-attente/decider/', {
       source, id, decision, motif,

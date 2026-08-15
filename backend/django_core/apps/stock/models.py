@@ -443,6 +443,22 @@ class AchatsParametres(models.Model):
     # tâche autodécouverte tourne mais ne fait rien tant que la société ne
     # l'active pas).
     relance_bcf_actif = models.BooleanField(default=False)
+    # NTP2P4 — quand actif, la soumission d'une demande d'achat est REFUSÉE
+    # (400) si elle dépasse le budget restant du département du demandeur,
+    # sauf dérogation approuvée (`RegleApprobationAchat
+    # .autorise_depassement_budget`, NTP2P2). OFF par défaut = comportement
+    # historique strictement inchangé (aucun contrôle budgétaire).
+    budget_departement_actif = models.BooleanField(default=False)
+    # NTP2P7 — quand actif, aucun BonCommandeFournisseur ne peut être créé
+    # chez un fournisseur dont le dossier d'onboarding n'est pas VALIDÉ.
+    # OFF par défaut = comportement historique (le statut `actif` du
+    # fournisseur suffit, aucun dossier n'est exigé).
+    onboarding_fournisseur_obligatoire = models.BooleanField(default=False)
+    # NTP2P37 — séparation des tâches : quand actif, le CRÉATEUR d'une
+    # demande d'achat ne peut pas approuver sa propre étape, ni le créateur
+    # d'une note de frais escaladée la valider en direction. OFF par défaut :
+    # les petites structures à un seul décideur ne sont pas cassées.
+    sod_stricte = models.BooleanField(default=False)
     date_creation = models.DateTimeField(auto_now_add=True)
     date_modification = models.DateTimeField(auto_now=True)
 
@@ -2123,6 +2139,295 @@ class RegleCodeBarres(models.Model):
             except re.error:
                 return False
         return code.startswith(self.motif)
+
+
+# Imports posés ICI (et non en tête de fichier) À DESSEIN : les gardes
+# `check_on_delete` / `check_get_or_create` référencent ce fichier par
+# `path:lineno`, donc toute ligne ajoutée en tête décalerait ~40 entrées de
+# baseline pour rien. Même parti pris que le ré-export ODX19 en fin de fichier.
+from django.core.exceptions import (  # noqa: E402
+    ValidationError as DjangoValidationError,
+)
+
+
+from core.models import TenantModel  # noqa: E402  (SCA4 — socle multi-tenant)
+
+
+# ── NTP2P4 — Budget d'engagement par département ───────────────────────────
+# Un budget est une ENVELOPPE (département × période) ; chaque demande d'achat
+# soumise consomme cette enveloppe sous forme d'ENGAGEMENT. Le blocage dur est
+# OPT-IN (``AchatsParametres.budget_departement_actif``, défaut False) : sans
+# activation, la soumission d'une demande d'achat reste exactement ce qu'elle
+# était. Le département est référencé en STRING-FK vers ``rh.Departement``
+# (aucun import cross-app au chargement).
+
+class BudgetDepartement(TenantModel):
+    """NTP2P4 — enveloppe budgétaire d'achats d'un département sur une période.
+
+    Deux périodicités : ANNUELLE (``mois = 0``) et MENSUELLE (``mois`` 1-12).
+    Le résolveur privilégie le budget MENSUEL de la période visée et se replie
+    sur le budget ANNUEL de l'année. ``mois = 0`` (et non ``NULL``) pour que la
+    contrainte d'unicité company × département × périodicité × année × mois
+    tienne réellement en base (``NULL != NULL`` en Postgres).
+    """
+
+    class Periodicite(models.TextChoices):
+        MENSUELLE = 'mensuelle', 'Mensuelle'
+        ANNUELLE = 'annuelle', 'Annuelle'
+
+    departement = models.ForeignKey(
+        'rh.Departement', on_delete=models.PROTECT,  # on_delete: PROTECT — un budget porte un montant alloué RÉEL (donnée de pilotage non reconstructible) ; on refuse la suppression du département plutôt que d'effacer silencieusement son enveloppe et ses engagements
+        related_name='budgets_achat', verbose_name='Département')
+    periodicite = models.CharField(
+        max_length=10, choices=Periodicite.choices,
+        default=Periodicite.ANNUELLE, verbose_name='Périodicité')
+    annee = models.PositiveIntegerField(verbose_name='Année')
+    mois = models.PositiveSmallIntegerField(
+        default=0, verbose_name='Mois (0 = budget annuel)')
+    montant_alloue = models.DecimalField(
+        max_digits=14, decimal_places=2, default=0,
+        verbose_name='Montant alloué (MAD)')
+    actif = models.BooleanField(default=True, verbose_name='Actif')
+    note = models.TextField(blank=True, default='')
+    date_creation = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'Budget départemental'
+        verbose_name_plural = 'Budgets départementaux'
+        ordering = ['-annee', '-mois', 'id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'departement', 'periodicite', 'annee',
+                        'mois'],
+                name='uniq_budget_dep_periode'),
+        ]
+        indexes = [
+            models.Index(fields=['company', 'annee'],
+                         name='idx_budgdep_co_annee'),
+            models.Index(fields=['company', 'departement'],
+                         name='idx_budgdep_co_dept'),
+        ]
+
+    def __str__(self):
+        periode = f'{self.annee}' if not self.mois else \
+            f'{self.mois:02d}/{self.annee}'
+        return f'Budget {self.departement_id} · {periode}'
+
+    def clean(self):
+        super().clean()
+        if self.periodicite == self.Periodicite.MENSUELLE:
+            if not self.mois or not 1 <= self.mois <= 12:
+                raise DjangoValidationError(
+                    'Un budget mensuel exige un mois entre 1 et 12.')
+        elif self.mois:
+            raise DjangoValidationError(
+                'Un budget annuel ne porte pas de mois (laisser 0).')
+        if self.montant_alloue is not None and self.montant_alloue < 0:
+            raise DjangoValidationError(
+                'Le montant alloué ne peut pas être négatif.')
+
+
+class EngagementBudget(TenantModel):
+    """NTP2P4 — montant ENGAGÉ sur un budget départemental par une demande
+    d'achat (puis, en aval, par le bon de commande qui en découle).
+
+    Cycle : ``actif`` (engagé, pas encore commandé) → ``consomme`` (le BCF est
+    passé) ou ``libere`` (demande refusée/annulée : l'enveloppe est rendue).
+    Seuls ``actif`` et ``consomme`` pèsent sur le disponible.
+    """
+
+    class Statut(models.TextChoices):
+        ACTIF = 'actif', 'Actif'
+        LIBERE = 'libere', 'Libéré'
+        CONSOMME = 'consomme', 'Consommé'
+
+    budget = models.ForeignKey(
+        BudgetDepartement, on_delete=models.CASCADE,  # on_delete: CASCADE — un engagement n'a AUCUN sens sans son enveloppe : supprimer le budget d'une période supprime ses lignes d'engagement (aucune écriture comptable n'en dépend, l'engagement est un compteur de pilotage, pas une pièce)
+        related_name='engagements', verbose_name='Budget')
+    # Sources — STRING-FK (aucun import cross-app au chargement).
+    demande_achat = models.ForeignKey(
+        'installations.DemandeAchat', on_delete=models.CASCADE,  # on_delete: CASCADE — l'engagement est le REFLET de la demande qui l'a créé : la demande supprimée, l'enveloppe doit être rendue, jamais laissée bloquée par une ligne orpheline
+        null=True, blank=True, related_name='engagements_budget',
+        verbose_name="Demande d'achat")
+    bon_commande = models.ForeignKey(
+        'achats.BonCommandeFournisseur', on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='engagements_budget',
+        verbose_name='Bon de commande')
+    montant = models.DecimalField(
+        max_digits=14, decimal_places=2, default=0,
+        verbose_name='Montant engagé (MAD)')
+    statut = models.CharField(
+        max_length=10, choices=Statut.choices, default=Statut.ACTIF)
+    note = models.TextField(blank=True, default='')
+    date_creation = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'Engagement budgétaire'
+        verbose_name_plural = 'Engagements budgétaires'
+        ordering = ['-date_creation', '-id']
+        indexes = [
+            models.Index(fields=['company', 'statut'],
+                         name='idx_engbud_co_statut'),
+            models.Index(fields=['budget', 'statut'],
+                         name='idx_engbud_bud_stat'),
+        ]
+
+    def __str__(self):
+        return f'Engagement {self.montant} ({self.get_statut_display()})'
+
+
+# ── NTP2P7 — Onboarding fournisseur avec documents légaux ──────────────────
+# ``DocumentConformiteFournisseur`` (XPUR1) reste le REGISTRE D'ÉCHÉANCES
+# historique (métadonnées seules, aucun fichier) et n'est pas touché. NTP2P7
+# ajoute la couche COFFRE + PARCOURS : un dossier par fournisseur, avec les
+# pièces réellement téléversées (MinIO) et un statut de validation. Le blocage
+# est OPT-IN (``AchatsParametres.onboarding_fournisseur_obligatoire``, défaut
+# False) : sans activation, la création d'un BCF est strictement inchangée.
+
+class DossierOnboardingFournisseur(TenantModel):
+    """NTP2P7 — dossier d'entrée en relation d'un fournisseur (1-1).
+
+    Le ``Fournisseur.statut`` n'est PAS touché : il reste ``actif`` par défaut
+    (comportement historique). C'est le dossier qui porte l'état du parcours ;
+    seul le flag société ``onboarding_fournisseur_obligatoire`` transforme un
+    dossier non ``valide`` en blocage à la création d'un bon de commande.
+    """
+
+    class Statut(models.TextChoices):
+        EN_ATTENTE = 'en_attente', 'En attente'
+        DOCUMENTS_RECUS = 'documents_recus', 'Documents reçus'
+        VALIDE = 'valide', 'Validé'
+        REJETE = 'rejete', 'Rejeté'
+
+    fournisseur = models.OneToOneField(
+        Fournisseur, on_delete=models.CASCADE,  # on_delete: CASCADE — le dossier d'onboarding est une EXTENSION 1-1 du fournisseur (aucune existence propre, aucune écriture comptable) ; le fournisseur supprimé, son dossier n'a plus d'objet
+        related_name='dossier_onboarding', verbose_name='Fournisseur')
+    statut = models.CharField(
+        max_length=20, choices=Statut.choices, default=Statut.EN_ATTENTE)
+    motif_rejet = models.TextField(blank=True, default='')
+    valide_par = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='dossiers_onboarding_valides',
+        verbose_name='Validé par')
+    date_decision = models.DateTimeField(null=True, blank=True)
+    note = models.TextField(blank=True, default='')
+    date_creation = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'Dossier onboarding fournisseur'
+        verbose_name_plural = 'Dossiers onboarding fournisseur'
+        ordering = ['-date_creation', '-id']
+        indexes = [
+            models.Index(fields=['company', 'statut'],
+                         name='idx_onbfou_co_statut'),
+        ]
+
+    def __str__(self):
+        return f'Onboarding {self.fournisseur_id} · {self.get_statut_display()}'
+
+    @property
+    def est_valide(self):
+        return self.statut == self.Statut.VALIDE
+
+
+class DocumentFournisseur(TenantModel):
+    """NTP2P7 — pièce légale téléversée d'un dossier d'onboarding.
+
+    Le fichier vit dans MinIO ; le modèle ne porte que sa CLÉ (``file_key``,
+    posée par ``apps.records.storage.store_attachment``, donc préfixée par la
+    société — SCA42). Aucun ``FileField`` (ARC26) : le fichier ne quitte jamais
+    le stockage objet et n'est servi que par une action scopée société.
+    """
+
+    class Type(models.TextChoices):
+        RC = 'rc', 'Registre du commerce'
+        ATTESTATION_FISCALE = 'attestation_fiscale', 'Attestation fiscale'
+        ATTESTATION_CNSS = 'attestation_cnss', 'Attestation CNSS'
+        RIB_CERTIFIE = 'rib_certifie', 'RIB certifié'
+        ASSURANCE = 'assurance', 'Assurance'
+        AUTRE = 'autre', 'Autre pièce'
+
+    # Les 5 pièces attendues d'un dossier complet (``AUTRE`` est un bonus).
+    TYPES_REQUIS = (
+        Type.RC, Type.ATTESTATION_FISCALE, Type.ATTESTATION_CNSS,
+        Type.RIB_CERTIFIE, Type.ASSURANCE,
+    )
+
+    dossier = models.ForeignKey(
+        DossierOnboardingFournisseur, on_delete=models.CASCADE,  # on_delete: CASCADE — une pièce n'existe que DANS son dossier (comme une ligne de document) ; le dossier supprimé, ses pièces le sont aussi
+        related_name='documents', verbose_name='Dossier')
+    type_document = models.CharField(
+        max_length=25, choices=Type.choices, default=Type.AUTRE,
+        verbose_name='Type de pièce')
+    # Clé de l'objet MinIO (jamais une URL publique).
+    file_key = models.CharField(
+        max_length=500, blank=True, default='', verbose_name='Clé de stockage')
+    filename = models.CharField(max_length=255, blank=True, default='')
+    mime = models.CharField(max_length=100, blank=True, default='')
+    taille = models.PositiveIntegerField(default=0)
+    reference = models.CharField(max_length=120, blank=True, default='')
+    date_emission = models.DateField(null=True, blank=True)
+    date_expiration = models.DateField(null=True, blank=True)
+    note = models.TextField(blank=True, default='')
+    televerse_par = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='documents_fournisseur_televerses')
+    date_creation = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'Document fournisseur'
+        verbose_name_plural = 'Documents fournisseur'
+        ordering = ['type_document', 'id']
+        indexes = [
+            models.Index(fields=['company', 'type_document'],
+                         name='idx_docfou_co_type'),
+            models.Index(fields=['dossier', 'type_document'],
+                         name='idx_docfou_dos_type'),
+        ]
+
+    def __str__(self):
+        return f'{self.get_type_document_display()} · {self.filename}'
+
+    def est_valide(self, a_la_date=None):
+        """True si la pièce n'est pas expirée (sans échéance = toujours OK)."""
+        if not self.date_expiration:
+            return True
+        from django.utils import timezone
+        return self.date_expiration >= (a_la_date or timezone.localdate())
+
+
+# ── NTP2P22 — Favoris du catalogue d'achat, par employé ────────────────────
+
+class FavorisCatalogueAchat(TenantModel):
+    """NTP2P22 — articles ÉPINGLÉS par un employé sur l'écran de demande.
+
+    Une seule ligne par (société, utilisateur) portant une LISTE d'ids produits
+    (JSON léger) : un employé épingle une poignée d'articles, pas des
+    milliers — une table de liaison serait ici plus lourde que la donnée.
+    Les ids sont des références lâches vers ``stock.Produit`` (même app) : un
+    produit supprimé disparaît simplement de la liste au rendu, sans casser
+    la ligne de favoris.
+    """
+
+    utilisateur = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE,  # on_delete: CASCADE — une préférence d'affichage n'a aucune existence sans son utilisateur (aucune donnée métier, aucune écriture comptable) ; le compte supprimé, ses épingles le sont aussi
+        related_name='favoris_catalogue_achat', verbose_name='Utilisateur')
+    produit_ids = models.JSONField(
+        default=list, blank=True,
+        verbose_name='Ids produits épinglés')
+
+    class Meta:
+        verbose_name = "Favoris du catalogue d'achat"
+        verbose_name_plural = "Favoris du catalogue d'achat"
+        ordering = ['-updated_at', '-id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'utilisateur'],
+                name='uniq_favoris_cat_achat_user'),
+        ]
+
+    def __str__(self):
+        return f'Favoris catalogue · {self.utilisateur_id}'
 
 
 # ── Groupe NTWMS — couche ENTREPÔT (vagues, unités logistiques, quais…) ────

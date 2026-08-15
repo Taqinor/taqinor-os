@@ -186,3 +186,54 @@ def render_recu_rapport_note_frais_pdf(rapport, company_profile=None, *,
     return render_pdf(
         html=render_recu_rapport_note_frais_html(
             rapport, company_profile, today=today))
+
+
+# ── NTP2P27 — Relevé mensuel des notes de frais par employé ────────────────
+
+def render_releve_note_frais_html(employe, notes, periode_label,
+                                  company_profile=None, *, today=None):
+    """NTP2P27 — HTML du relevé de la période ``periode_label`` pour
+    ``employe`` : statut/montant/catégorie de chaque ``NoteFrais``, total
+    général ET total des notes REMBOURSÉES (celui-ci doit correspondre
+    exactement à la somme des notes validées du mois, critère d'acceptation).
+    """
+    if today is None:
+        today = date.today()
+    entete = _entete_societe_html(company_profile)
+    date_txt = f'{today.day} {MOIS_FR[today.month]} {today.year}'
+    employe_nom = escape(
+        getattr(employe, 'get_full_name', lambda: '')() or
+        getattr(employe, 'username', '') or '')
+    total = sum((Decimal(n.montant or 0) for n in notes), Decimal('0'))
+    total_rembourse = sum(
+        (Decimal(n.montant or 0) for n in notes
+         if n.statut == n.Statut.REMBOURSEE), Decimal('0'))
+    rows = ''.join(
+        f"<tr><td>{n.date_frais.strftime('%d/%m/%Y')}</td>"
+        f"<td>{escape(n.get_categorie_display())}</td>"
+        f"<td>{escape(n.get_statut_display())}</td>"
+        f"<td>{escape(n.motif or '')}</td>"
+        f"<td class=\"montant\">{_fmt(n.montant)}</td></tr>"
+        for n in notes
+    ) or '<tr><td colspan="5">Aucune note sur la période.</td></tr>'
+    return f"""<!DOCTYPE html><html lang="fr"><head><meta charset="utf-8">
+<style>{_STYLE}</style></head><body>
+  {entete}
+  <h1>Relevé des notes de frais — {escape(periode_label)}</h1>
+  <p>Employé : <strong>{employe_nom}</strong></p>
+  <table>
+    <thead><tr><th>Date</th><th>Catégorie</th><th>Statut</th><th>Motif</th>
+    <th class="montant">Montant (MAD)</th></tr></thead>
+    <tbody>{rows}</tbody>
+  </table>
+  <p class="total">Total de la période : {_fmt(total)} MAD</p>
+  <p class="total">Total remboursé : {_fmt(total_rembourse)} MAD</p>
+  <p class="date">Fait le {escape(date_txt)}.</p>
+</body></html>"""
+
+
+def render_releve_note_frais_pdf(employe, notes, periode_label,
+                                 company_profile=None, *, today=None):
+    return render_pdf(
+        html=render_releve_note_frais_html(
+            employe, notes, periode_label, company_profile, today=today))

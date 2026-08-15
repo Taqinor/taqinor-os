@@ -29,7 +29,7 @@ from authentication.permissions import IsAnyRole
 from core.viewsets import CompanyScopedModelViewSet
 
 from .gabarits import rendre_pdf, variables_du_gabarit
-from .gabarits_contexte import construire_contexte
+from .gabarits_contexte import construire_contexte, contexte_demonstration
 from .models import GabaritDocumentCustom
 
 
@@ -99,4 +99,35 @@ class GabaritDocumentCustomViewSet(CompanyScopedModelViewSet):
         reponse = HttpResponse(pdf, content_type='application/pdf')
         reponse['Content-Disposition'] = (
             f'inline; filename="{gabarit.code}-{cible_id}.pdf"')
+        return reponse
+
+    @action(detail=True, methods=['get'], url_path='apercu')
+    def apercu(self, request, code=None):
+        """NTEXT39 — aperçu de mise en page avec des données FACTICES.
+
+        Aucune fiche réelle n'est lue (pas de ``cible_id``, aucune requête
+        métier) : chaque placeholder du corps est rempli par une valeur de
+        DÉMONSTRATION, ce qui permet de vérifier la mise en page avant de se
+        servir du gabarit. Rien n'est écrit — c'est un rendu, pas un document
+        archivé.
+
+        L'aperçu force ``strict=False`` : contrairement au rendu réel, un
+        placeholder absent doit apparaître REMPLI (c'est une maquette), et
+        ``contexte_demonstration`` fournit précisément une valeur pour chaque
+        variable du corps.
+        """
+        gabarit = self.get_object()
+        contexte = contexte_demonstration(
+            gabarit.cible, variables_du_gabarit(gabarit))
+
+        try:
+            pdf = rendre_pdf(gabarit, contexte, strict=False)
+        except Exception:
+            return Response(
+                {'detail': 'Rendu PDF indisponible sur ce serveur.'},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE)
+
+        reponse = HttpResponse(pdf, content_type='application/pdf')
+        reponse['Content-Disposition'] = (
+            f'inline; filename="{gabarit.code}-apercu.pdf"')
         return reponse

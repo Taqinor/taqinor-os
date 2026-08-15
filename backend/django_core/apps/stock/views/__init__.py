@@ -36,6 +36,13 @@ from .modele_bcf import ModeleBonCommandeFournisseurViewSet
 from .nomenclature_code_barres import (
     NomenclatureCodeBarresViewSet, RegleCodeBarresViewSet,
 )
+from .catalogue_achat import CatalogueAchatViewSet
+from .budget_departement import (
+    BudgetDepartementViewSet, EngagementBudgetViewSet,
+)
+from .onboarding_fournisseur import (
+    DossierOnboardingFournisseurViewSet, DocumentFournisseurViewSet,
+)
 # Groupe NTWMS - couche entrepot (vagues, unites logistiques, quais...).
 from .wms import (
     VaguePickingViewSet, UniteLogistiqueViewSet, QuaiViewSet,
@@ -101,6 +108,11 @@ __all__ = [
     'RevalorisationStockViewSet',
     'ConditionnementProduitViewSet',
     'ModeleBonCommandeFournisseurViewSet',
+    'CatalogueAchatViewSet',
+    'BudgetDepartementViewSet',
+    'EngagementBudgetViewSet',
+    'DossierOnboardingFournisseurViewSet',
+    'DocumentFournisseurViewSet',
     'NomenclatureCodeBarresViewSet',
     'RegleCodeBarresViewSet',
     'VaguePickingViewSet',
