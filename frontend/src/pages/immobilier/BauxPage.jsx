@@ -50,6 +50,9 @@ export default function BauxPage() {
   const [restitution, setRestitution] = useState({ montant_retenu: '0', motif_retenue: '' })
 
   const [impayees, setImpayees] = useState([])
+  // WIR263 — {echeance_id: [relances]} : historique servi par le backend.
+  const [relances, setRelances] = useState({})
+  const NIVEAU_MAX = 3
 
   // Fetch brut (sans reset synchrone loading/erreur) : partagé entre le
   // montage (effet ci-dessous — `loading` démarre déjà à `true`, donc aucun
@@ -94,14 +97,34 @@ export default function BauxPage() {
 
   const selected = baux.find((b) => b.id === selectedId) || null
 
+  // WIR263 / NTPRO8 — historique des relances par échéance. L'escalade
+  // 1 → 2 → 3 a une PORTÉE JURIDIQUE (le niveau 3 vaut mise en demeure) :
+  // sans ce retour visuel, on relançait à l'aveugle. Le niveau et la liste
+  // viennent du SERVEUR (`relances-loyer?echeance_loyer=`), jamais d'un
+  // compteur local.
+  const chargerRelances = useCallback(async (rows) => {
+    const paires = await Promise.all(rows.map(async (ech) => {
+      try {
+        const res = await immobilierApi.relancesLoyer.parEcheance(ech.id)
+        return [ech.id, rowsFrom(res.data)]
+      } catch {
+        return [ech.id, []]
+      }
+    }))
+    setRelances(Object.fromEntries(paires))
+  }, [])
+
   const chargerEcheances = useCallback(async (bailId) => {
     const res = await immobilierApi.echeancesLoyer.list({ bail: bailId })
-    setEcheances(rowsFrom(res.data))
-  }, [])
+    const rows = rowsFrom(res.data)
+    setEcheances(rows)
+    await chargerRelances(rows)
+  }, [chargerRelances])
 
   const selectionner = useCallback((bail) => {
     setSelectedId(bail.id)
     setEcheances([])
+    setRelances({})
     setRevision({ nouveau_loyer: '', date_effet: '', indice: '' })
     setDepotDate('')
     setRestitution({ montant_retenu: '0', motif_retenue: '' })
@@ -360,36 +383,68 @@ export default function BauxPage() {
           <button type="button" onClick={genererEcheancier}>Générer l&apos;échéancier</button>
           <table data-testid="table-echeances">
             <thead>
-              <tr><th>Période</th><th>Total</th><th>Statut</th><th></th></tr>
+              <tr>
+                <th>Période</th><th>Total</th><th>Statut</th>
+                {/* WIR263 — l'escalade était totalement invisible. */}
+                <th>Relances</th><th></th>
+              </tr>
             </thead>
             <tbody>
-              {echeances.map((ech) => (
-                <tr key={ech.id}>
-                  <td>{ech.periode_debut}</td>
-                  <td>{formatMAD(Number(ech.montant_total))}</td>
-                  <td>{ech.statut_display}</td>
-                  <td>
-                    {ech.statut === 'a_emettre' && (
-                      <button type="button" onClick={() => emettreQuittance(ech.id)}>
-                        Émettre quittance
-                      </button>
-                    )}
-                    {ech.statut === 'emise' || ech.statut === 'payee' ? (
-                      <a
-                        href={immobilierApi.echeancesLoyer.quittancePdfUrl(ech.id)}
-                        target="_blank" rel="noreferrer"
-                      >
-                        PDF
-                      </a>
-                    ) : null}
-                    {(ech.statut === 'emise' || ech.statut === 'relancee') && (
-                      <button type="button" onClick={() => relancer(ech.id)}>Relancer</button>
-                    )}
-                  </td>
-                </tr>
-              ))}
+              {echeances.map((ech) => {
+                const historique = relances[ech.id] ?? []
+                const niveauAtteint = historique.reduce(
+                  (max, r) => Math.max(max, Number(r.niveau) || 0), 0)
+                return (
+                  <tr key={ech.id}>
+                    <td>{ech.periode_debut}</td>
+                    <td>{formatMAD(Number(ech.montant_total))}</td>
+                    <td>{ech.statut_display}</td>
+                    <td data-testid={`relances-${ech.id}`}>
+                      {historique.length === 0 ? (
+                        <span>Aucune relance</span>
+                      ) : (
+                        <>
+                          <strong>{`Niveau ${niveauAtteint}/${NIVEAU_MAX}`}</strong>
+                          <ul>
+                            {historique.map((r) => (
+                              <li key={r.id}>
+                                {`Niveau ${r.niveau} — ${(r.date_envoi || '').slice(0, 10)}`}
+                                {r.canal_display ? ` — ${r.canal_display}` : ''}
+                              </li>
+                            ))}
+                          </ul>
+                          {niveauAtteint >= NIVEAU_MAX && (
+                            <span role="status">
+                              Niveau maximal atteint — une nouvelle relance ne
+                              monte plus l&apos;escalade.
+                            </span>
+                          )}
+                        </>
+                      )}
+                    </td>
+                    <td>
+                      {ech.statut === 'a_emettre' && (
+                        <button type="button" onClick={() => emettreQuittance(ech.id)}>
+                          Émettre quittance
+                        </button>
+                      )}
+                      {ech.statut === 'emise' || ech.statut === 'payee' ? (
+                        <a
+                          href={immobilierApi.echeancesLoyer.quittancePdfUrl(ech.id)}
+                          target="_blank" rel="noreferrer"
+                        >
+                          PDF
+                        </a>
+                      ) : null}
+                      {(ech.statut === 'emise' || ech.statut === 'relancee') && (
+                        <button type="button" onClick={() => relancer(ech.id)}>Relancer</button>
+                      )}
+                    </td>
+                  </tr>
+                )
+              })}
               {echeances.length === 0 && (
-                <tr><td colSpan={4}>Aucune échéance générée.</td></tr>
+                <tr><td colSpan={5}>Aucune échéance générée.</td></tr>
               )}
             </tbody>
           </table>

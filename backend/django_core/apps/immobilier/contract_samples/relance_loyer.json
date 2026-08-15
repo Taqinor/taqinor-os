@@ -1,0 +1,24 @@
+{
+  "endpoint": "GET /api/django/immobilier/relances-loyer/",
+  "pourquoi": "Historique des relances d'impayé d'une échéance de loyer (NTPRO8), filtré par `?echeance_loyer=<id>`. L'escalade niveau 1 → 2 → 3 a une portée JURIDIQUE (le niveau 3 vaut mise en demeure) : l'écran DOIT afficher le niveau déjà atteint avant tout nouveau clic. LECTURE SEULE — une relance naît uniquement de `echeances-loyer/<id>/relancer/`. Source de vérité : apps/immobilier/serializers.py::RelanceLoyerSerializer.",
+  "exemple": {
+    "id": 31,
+    "echeance_loyer": 12,
+    "niveau": 2,
+    "date_envoi": "2026-08-05T09:30:00Z",
+    "canal": "whatsapp",
+    "canal_display": "WhatsApp",
+    "template_utilise": "relance_n2",
+    "company": 1
+  },
+  "exemple_niveau_1": {
+    "id": 30,
+    "echeance_loyer": 12,
+    "niveau": 1,
+    "date_envoi": "2026-07-22T09:30:00Z",
+    "canal": "email",
+    "canal_display": "Email",
+    "template_utilise": "relance_n1",
+    "company": 1
+  }
+}

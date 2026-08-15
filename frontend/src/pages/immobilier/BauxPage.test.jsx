@@ -19,10 +19,16 @@ vi.mock('../../api/immobilierApi', () => ({
       list: vi.fn(), impayees: vi.fn(), emettreQuittance: vi.fn(),
       relancer: vi.fn(), quittancePdfUrl: vi.fn((id) => `/api/django/immobilier/echeances-loyer/${id}/quittance-pdf/`),
     },
+    // WIR263 — historique des relances (escalade 1 → 3, portée juridique).
+    relancesLoyer: { list: vi.fn(), parEcheance: vi.fn() },
   },
 }))
 
 import immobilierApi from '../../api/immobilierApi'
+// PACT10/PACT13 — la charge utile vient de l'exemple COMMITTÉ, jamais d'un
+// mock écrit à la main (deuxième source de vérité = la cause racine du
+// plantage du 03/08/2026).
+import { exempleContrat } from '../../test/fixtures/contractSamples'
 import BauxPage from './BauxPage'
 
 const LOCAUX = [{ id: 1, reference: 'RDC-01' }]
@@ -43,6 +49,7 @@ function mockDefaults() {
   immobilierApi.baux.list.mockResolvedValue({ data: BAUX })
   immobilierApi.echeancesLoyer.impayees.mockResolvedValue({ data: [] })
   immobilierApi.echeancesLoyer.list.mockResolvedValue({ data: [] })
+  immobilierApi.relancesLoyer.parEcheance.mockResolvedValue({ data: [] })
 }
 
 describe('BauxPage (WIR148)', () => {
@@ -128,5 +135,63 @@ describe('BauxPage (WIR148)', () => {
     const impayeesTable = screen.getByTestId('table-impayees')
     await userEvent.click(within(impayeesTable).getByRole('button', { name: 'Relancer' }))
     await waitFor(() => expect(immobilierApi.echeancesLoyer.relancer).toHaveBeenCalledWith(30, {}))
+  })
+})
+
+/* ── WIR263 / NTPRO8 — escalade des relances de loyer (portée juridique) ────
+   Le payload N'EST PAS écrit à la main : il vient de l'exemple COMMITTÉ
+   `apps/immobilier/contract_samples/relance_loyer.json`, le même fichier que
+   le test backend affirme (PACT10/PACT13). Si le serveur change de forme,
+   l'exemple change et ce test casse tout seul. */
+describe('BauxPage — historique des relances de loyer (WIR263)', () => {
+  beforeEach(() => { vi.clearAllMocks(); mockDefaults() })
+
+  const ECHEANCE = {
+    id: 12, periode_debut: '2026-07-01', montant_total: '3200.00',
+    statut: 'relancee', statut_display: 'Relancée',
+  }
+
+  function armerEcheanceAvecRelances(relances) {
+    immobilierApi.echeancesLoyer.list.mockResolvedValue({ data: [ECHEANCE] })
+    immobilierApi.relancesLoyer.parEcheance.mockResolvedValue({ data: relances })
+  }
+
+  it('2 relances → 2 lignes + mention « niveau 2/3 »', async () => {
+    const niveau1 = exempleContrat('immobilier', 'relance_loyer', 'exemple_niveau_1')
+    const niveau2 = exempleContrat('immobilier', 'relance_loyer')
+    armerEcheanceAvecRelances([niveau2, niveau1])
+
+    render(<BauxPage />)
+    await userEvent.click(await screen.findByRole('button', { name: 'Détails' }))
+
+    await waitFor(() => expect(immobilierApi.relancesLoyer.parEcheance)
+      .toHaveBeenCalledWith(12))
+    const cellule = await screen.findByTestId('relances-12')
+    expect(within(cellule).getAllByRole('listitem')).toHaveLength(2)
+    expect(within(cellule).getByText('Niveau 2/3')).toBeInTheDocument()
+    // Le niveau maximal n'est PAS atteint : aucun avertissement.
+    expect(within(cellule).queryByRole('status')).toBeNull()
+  })
+
+  it('signale le niveau maximal atteint avant tout nouveau clic', async () => {
+    const niveau3 = {
+      ...exempleContrat('immobilier', 'relance_loyer'), id: 32, niveau: 3,
+    }
+    armerEcheanceAvecRelances([niveau3])
+
+    render(<BauxPage />)
+    await userEvent.click(await screen.findByRole('button', { name: 'Détails' }))
+
+    const cellule = await screen.findByTestId('relances-12')
+    expect(within(cellule).getByText('Niveau 3/3')).toBeInTheDocument()
+    expect(within(cellule).getByRole('status')).toBeInTheDocument()
+  })
+
+  it('sans relance, la cellule le dit au lieu de rester vide', async () => {
+    armerEcheanceAvecRelances([])
+    render(<BauxPage />)
+    await userEvent.click(await screen.findByRole('button', { name: 'Détails' }))
+    const cellule = await screen.findByTestId('relances-12')
+    expect(within(cellule).getByText('Aucune relance')).toBeInTheDocument()
   })
 })

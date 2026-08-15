@@ -50,7 +50,16 @@ const immobilierApi = {
     relancer: (id, data) =>
       api.post(`/immobilier/echeances-loyer/${id}/relancer/`, data),
   },
-  relancesLoyer: crud('relances-loyer'),
+  // NTPRO8 / WIR263 — historique des relances d'impayé. LECTURE SEULE : une
+  // relance naît uniquement de `echeances-loyer/<id>/relancer/`. L'escalade
+  // niveau 1 → 2 → 3 a une portée JURIDIQUE (le niveau 3 vaut mise en
+  // demeure), d'où l'affichage du niveau atteint AVANT tout nouveau clic.
+  relancesLoyer: {
+    ...crud('relances-loyer'),
+    parEcheance: (echeanceId) =>
+      api.get('/immobilier/relances-loyer/',
+        { params: { echeance_loyer: echeanceId } }),
+  },
   budgetsCharges: {
     ...crud('budgets-charges'),
     consommation: (id) =>
