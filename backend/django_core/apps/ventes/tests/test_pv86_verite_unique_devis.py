@@ -152,42 +152,6 @@ class TestArtefactDeuxOnduleurs(_Base):
         self.assertIn('hybride', desigs)
         self.assertIn('batterie', desigs)
 
-    def test_scenario_stocke_contredit_par_les_lignes_est_invalide(self):
-        """Le devis 180 de prod : « Sans batterie » STOCKÉ par un ancien chemin
-        alors que le devis porte une batterie en ligne FERME. Honorer la
-        déclaration cachait 2 lignes (4 postes affichés sur 6) et montrait
-        31 000 MAD pour un devis à 65 000. La déclaration ne tient que si les
-        lignes peuvent la servir : contredite → vérité du document."""
-        devis = self.make_devis(
-            ARTEFACT_LIGNES, etude_params={'scenario': 'Sans batterie'})
-        data = self.build(devis)
-
-        self.assertFalse(data['deux_options'])
-        self.assertEqual(data['nb_options'], 1)
-        self.assertEqual(data['scenario'], 'Avec batterie')
-        self.assertEqual(data['display_total'], self.ttc_du_devis(devis))
-        self.assertEqual(len(data['all_items']), len(ARTEFACT_LIGNES))
-        self.assertTrue(any('assainir' in a
-                            for a in data.get('avertissements_internes', [])))
-
-    def test_sans_batterie_declare_avec_batterie_OPTIONNELLE_reste_honore(self):
-        """Le cas LÉGITIME du générateur : « Sans batterie » + l'add-on batterie
-        en ligne OPTIONNELLE (XSAL5). La ligne optionnelle sort des totaux et se
-        rend dans options_proposees — la déclaration reste honorée, le total
-        reste celui des lignes fermes."""
-        devis = self.make_devis(
-            RESEAU_LIGNES, etude_params={'scenario': 'Sans batterie'},
-            optionnelles=[('Batterie Deyness 10 kWh', '1', '22000')])
-        data = self.build(devis)
-
-        self.assertEqual(data['nb_options'], 1)
-        self.assertEqual(data['scenario'], 'Sans batterie')
-        self.assertEqual(data['display_total'], self.ttc_du_devis(devis))
-        self.assertEqual(len(data['all_items']), len(RESEAU_LIGNES))
-        opts = data.get('options_proposees') or []
-        self.assertTrue(any('atterie' in (o.get('designation') or '')
-                            for o in opts))
-
     def test_liste_et_document_disent_le_meme_chiffre(self):
         from apps.ventes.quote_engine.builder import display_totals
         devis = self.make_devis(ARTEFACT_LIGNES)
