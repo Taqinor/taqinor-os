@@ -366,6 +366,8 @@ function DevisRow({ d, ctx }) {
     selectedIds, toggleSelected,
     versionsOpenId, setVersionsOpenId, roofOpenId, setRoofOpenId,
     histoOpenId, toggleHistorique, histoCache, histoLoadingId,
+    // WIR274 — composeur de note manuelle du panneau Historique.
+    peutNoter, noteTexte, setNoteTexte, noteBusy, envoyerNote,
     suiviOpenId, toggleSuiviPartage, suiviCache, suiviLoadingId,
     conceptionOpenId, setConceptionOpenId,
     etudeOpenId, setEtudeOpenId,
@@ -1112,6 +1114,36 @@ function DevisRow({ d, ctx }) {
                 ))}
               </ul>
             )}
+            {/* WIR274 — composeur de note MANUELLE. `noterDevis` n'avait
+                jusqu'ici qu'un seul appelant : l'auto-note WhatsApp (VX222).
+                Réservé au même palier que le reste des écritures de l'écran ;
+                le feed est relu du SERVEUR après envoi. */}
+            {peutNoter && (
+              <div className="mt-2 flex items-start gap-2">
+                <Input
+                  data-testid="devis-note-input"
+                  aria-label={`Ajouter une note au devis ${d.reference}`}
+                  placeholder="Ajouter une note…"
+                  value={noteTexte}
+                  disabled={noteBusy}
+                  onChange={(e) => setNoteTexte(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && !e.shiftKey) {
+                      e.preventDefault()
+                      envoyerNote(d.id)
+                    }
+                  }}
+                />
+                <Button
+                  size="sm" variant="outline"
+                  data-testid="devis-note-envoyer"
+                  disabled={noteBusy || !noteTexte.trim()}
+                  onClick={() => envoyerNote(d.id)}
+                >
+                  Noter
+                </Button>
+              </div>
+            )}
           </div>
         </td>
       </tr>
@@ -1217,6 +1249,9 @@ export default function DevisList() {
   const { devis, loading, error } = useSelector(s => s.ventes)
   const role = useSelector(s => s.auth.role)
   const canDelete = role === 'admin'  // règle existante : destroy = admin
+  // WIR274 — `noter` est dans le groupe responsable/admin de
+  // `DevisViewSet.get_permissions` : le composeur reflète EXACTEMENT ce palier.
+  const peutNoter = ['responsable', 'admin'].includes(role)
   // QG10 — seul le Directeur / Commercial responsable peut MODIFIER le
   // pourcentage des variantes (le backend variante-config renvoie 403 sinon).
   // Les autres rôles voient la valeur par défaut en lecture seule.
@@ -1299,8 +1334,16 @@ export default function DevisList() {
 
   // VX97 — Panneau « Historique » (journal des changements DevisActivity : qui a
   // fait quoi / ancien→nouveau) — distinct de la chaîne de VERSIONS ci-dessus.
-  // Feed existant monté en section repliable ; migrera vers ChatterTimeline (VX23)
-  // quand il atterrira. `prix_achat` n'apparaît jamais (le journal ne le porte pas).
+  // `prix_achat` n'apparaît jamais (le journal ne le porte pas).
+  //
+  // WIR274 — le commentaire VX23 annonçait une migration vers ChatterTimeline
+  // « quand elle atterrira » : elle est là, et le panneau reste ce feed-ci
+  // (rendu maison, colonne 8, contrat DOM des tests d'écran). Ce qui MANQUAIT
+  // n'était pas le composant mais le COMPOSEUR : `noterDevis` existait, wrappé
+  // et servi, mais son seul appelant était l'auto-note WhatsApp (VX222) — un
+  // commercial ne pouvait consigner AUCUNE note manuelle depuis l'écran. Le
+  // composeur ci-dessous est ce point d'entrée ; l'auto-note VX222 est
+  // strictement inchangée (même endpoint, deux appelants).
   const [histoOpenId, setHistoOpenId] = useState(null)
   const [histoCache, setHistoCache] = useState({})   // id → entrées
   const [histoLoadingId, setHistoLoadingId] = useState(null)
@@ -1313,6 +1356,27 @@ export default function DevisList() {
         .then(res => setHistoCache(c => ({ ...c, [id]: res.data || [] })))
         .catch(() => setHistoCache(c => ({ ...c, [id]: [] })))
         .finally(() => setHistoLoadingId(l => (l === id ? null : l)))
+    }
+  }
+
+  // WIR274 — composeur de note manuelle du panneau Historique.
+  const [noteTexte, setNoteTexte] = useState('')
+  const [noteBusy, setNoteBusy] = useState(false)
+  const envoyerNote = async (id) => {
+    const corps = noteTexte.trim()
+    if (!corps) return
+    setNoteBusy(true)
+    try {
+      await ventesApi.noterDevis(id, corps)
+      setNoteTexte('')
+      // Le feed est RELU DU SERVEUR (jamais une ligne bricolée côté écran :
+      // l'acteur, l'horodatage et la société sont posés côté serveur).
+      const res = await ventesApi.historiqueDevis(id)
+      setHistoCache(c => ({ ...c, [id]: res.data || [] }))
+    } catch (err) {
+      toast.error(frenchError(err, "La note n'a pas pu être enregistrée."))
+    } finally {
+      setNoteBusy(false)
     }
   }
 
@@ -2262,6 +2326,8 @@ export default function DevisList() {
     selectedIds, toggleSelected,
     versionsOpenId, setVersionsOpenId, roofOpenId, setRoofOpenId,
     histoOpenId, toggleHistorique, histoCache, histoLoadingId,
+    // WIR274 — composeur de note manuelle du panneau Historique.
+    peutNoter, noteTexte, setNoteTexte, noteBusy, envoyerNote,
     suiviOpenId, toggleSuiviPartage, suiviCache, suiviLoadingId,
     conceptionOpenId, setConceptionOpenId,
     etudeOpenId, setEtudeOpenId,
