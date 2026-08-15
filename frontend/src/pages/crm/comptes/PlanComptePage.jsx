@@ -6,6 +6,7 @@ import { useCallback, useEffect, useState } from 'react'
 import api from '../../../api/axios'
 import { Spinner, Button, Textarea, Input, Card } from '../../../ui'
 import { toast } from '../../../ui/confirm'
+import ChatterTimeline from '../../../components/ChatterTimeline'
 
 const SWOT_FIELDS = [
   { key: 'swot_forces', label: 'Forces' },
@@ -54,6 +55,18 @@ export default function PlanComptePage({ clientId, planId }) {
   // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement initial au montage
   useEffect(() => { load() }, [load])
 
+  // WIR218 — section « Activité » : chatter générique du plan de compte
+  // (`ChatterViewSetMixin`, endpoint réel `chatter/historique/`, jamais un
+  // modèle *Activity local). Chargée dès que le plan existe, rafraîchie à
+  // chaque `load()` réussi (même id ⇒ nouveau fetch inoffensif).
+  const [historique, setHistorique] = useState([])
+  useEffect(() => {
+    if (!plan?.id) return
+    api.get(`/crm/plans-compte/${plan.id}/chatter/historique/`)
+      .then((res) => setHistorique(res.data?.results ?? res.data ?? []))
+      .catch(() => {})
+  }, [plan?.id, plan?.statut])
+
   // PACT105 — la timeline des revues s'affichait déjà EN LECTURE (`plan.
   // revues`, nested read-only sur PlanCompteSerializer) mais aucun formulaire
   // n'écrivait jamais sur `/crm/revues-compte/` : l'historique restait vide
@@ -71,7 +84,13 @@ export default function PlanComptePage({ clientId, planId }) {
     if (!plan || !revueForm.date_revue) return
     setSavingRevue(true)
     try {
-      await api.post('/crm/revues-compte/', { ...revueForm, plan: plan.id })
+      await api.post('/crm/revues-compte/', {
+        ...revueForm,
+        // WIR218 — champ nullable : chaîne vide envoyée au serveur ⇒ 400
+        // systématique (convention ClientPrixContractuelsTab).
+        prochaine_action_date: revueForm.prochaine_action_date || undefined,
+        plan: plan.id,
+      })
       toast.success('Revue de compte enregistrée.')
       setRevueForm({
         date_revue: '', participants: '', decisions: '',
@@ -90,6 +109,10 @@ export default function PlanComptePage({ clientId, planId }) {
     setSaving(true)
     const payload = {
       ...form,
+      // WIR218 — champs nullables : chaîne vide envoyée au serveur ⇒ 400
+      // systématique (convention ClientPrixContractuelsTab).
+      potentiel_estime: form.potentiel_estime || undefined,
+      prochaine_revue: form.prochaine_revue || undefined,
       swot_forces: form.swot_forces.split('\n').filter(Boolean),
       swot_faiblesses: form.swot_faiblesses.split('\n').filter(Boolean),
       swot_opportunites: form.swot_opportunites.split('\n').filter(Boolean),
@@ -211,6 +234,12 @@ export default function PlanComptePage({ clientId, planId }) {
               value={revueForm.prochaine_action}
               onChange={(e) => setRevueForm((f) => ({ ...f, prochaine_action: e.target.value }))}
             />
+            <Input
+              type="date"
+              aria-label="Date de la prochaine action"
+              value={revueForm.prochaine_action_date}
+              onChange={(e) => setRevueForm((f) => ({ ...f, prochaine_action_date: e.target.value }))}
+            />
             <Button type="submit" disabled={savingRevue}>
               {savingRevue ? 'Enregistrement…' : 'Ajouter une revue'}
             </Button>
@@ -228,6 +257,13 @@ export default function PlanComptePage({ clientId, planId }) {
           ) : (
             <p className="text-muted-foreground">Aucune revue enregistrée.</p>
           )}
+        </Card>
+      )}
+
+      {plan && (
+        <Card className="p-4 space-y-3">
+          <h3 className="font-medium">Activité</h3>
+          <ChatterTimeline entries={historique} emptyLabel="Aucune activité pour le moment." />
         </Card>
       )}
     </div>
