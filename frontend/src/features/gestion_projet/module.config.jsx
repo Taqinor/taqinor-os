@@ -18,6 +18,15 @@ import { appGlyph } from '../../lib/apps/appGlyph'
    ========================================================================== */
 
 const ROLES = ['responsable', 'admin']
+// WIR171 — la LECTURE des projets est gatee serveur par `projet_voir`
+// (`HasPermissionOrLegacy`, permission accordee aux 7 roles) : l ecran restait
+// gate responsable/admin, invisible au Commercial malgre son 200. Regle unique :
+// `router/navPermission.js`. Les Parametres avances restent au palier ROLES.
+const LECTURE = {
+  roles: ['normal', 'responsable', 'admin'],
+  perm: 'projet_voir',
+  permLegacyRoles: ROLES,
+}
 
 const ProjetsPage = lazy(() => import('./pages/ProjetsPage'))
 const ProjetDetailPage = lazy(() => import('./pages/ProjetDetailPage'))
@@ -47,14 +56,14 @@ export default {
     icon: appGlyph(FolderKanban),
     accent: 'warning', // VX8 — pilotage/reporting = accent warning (dérivé)
     items: [
-      { to: '/projets', label: 'Projets', icon: <FolderKanban size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
-      { to: '/projets/planning', label: 'Planning', icon: <CalendarRange size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
-      { to: '/projets/taches', label: 'Tâches', icon: <ListChecks size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
-      { to: '/projets/taches/mes-taches', label: 'Mes tâches', icon: <ListChecks size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
-      { to: '/projets/temps', label: 'Temps', icon: <Clock3 size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
-      { to: '/projets/ressources', label: 'Ressources', icon: <Users size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
-      { to: '/projets/budget', label: 'Budget & P&L', icon: <Wallet size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
-      { to: '/projets/risques', label: 'Risques & CR', icon: <ShieldAlert size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
+      { to: '/projets', label: 'Projets', icon: <FolderKanban size={17} strokeWidth={1.75} aria-hidden="true" />, ...LECTURE },
+      { to: '/projets/planning', label: 'Planning', icon: <CalendarRange size={17} strokeWidth={1.75} aria-hidden="true" />, ...LECTURE },
+      { to: '/projets/taches', label: 'Tâches', icon: <ListChecks size={17} strokeWidth={1.75} aria-hidden="true" />, ...LECTURE },
+      { to: '/projets/taches/mes-taches', label: 'Mes tâches', icon: <ListChecks size={17} strokeWidth={1.75} aria-hidden="true" />, ...LECTURE },
+      { to: '/projets/temps', label: 'Temps', icon: <Clock3 size={17} strokeWidth={1.75} aria-hidden="true" />, ...LECTURE },
+      { to: '/projets/ressources', label: 'Ressources', icon: <Users size={17} strokeWidth={1.75} aria-hidden="true" />, ...LECTURE },
+      { to: '/projets/budget', label: 'Budget & P&L', icon: <Wallet size={17} strokeWidth={1.75} aria-hidden="true" />, ...LECTURE },
+      { to: '/projets/risques', label: 'Risques & CR', icon: <ShieldAlert size={17} strokeWidth={1.75} aria-hidden="true" />, ...LECTURE },
       { to: '/projets/parametres', label: 'Paramètres avancés', icon: <Settings2 size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ROLES },
     ],
   },
@@ -73,15 +82,15 @@ export default {
   sectionLabels: { projets: 'Projets' },
   routes: [
     // Les sous-routes fixes AVANT la route de détail paramétrée.
-    { path: '/projets/planning', component: PlanningPage, roles: ROLES },
-    { path: '/projets/taches/mes-taches', component: MesTachesPage, roles: ROLES },
-    { path: '/projets/taches', component: TachesPage, roles: ROLES },
-    { path: '/projets/temps', component: TempsPage, roles: ROLES },
-    { path: '/projets/ressources', component: RessourcesPage, roles: ROLES },
-    { path: '/projets/budget', component: BudgetPage, roles: ROLES },
-    { path: '/projets/risques', component: RisquesPage, roles: ROLES },
+    { path: '/projets/planning', component: PlanningPage, ...LECTURE },
+    { path: '/projets/taches/mes-taches', component: MesTachesPage, ...LECTURE },
+    { path: '/projets/taches', component: TachesPage, ...LECTURE },
+    { path: '/projets/temps', component: TempsPage, ...LECTURE },
+    { path: '/projets/ressources', component: RessourcesPage, ...LECTURE },
+    { path: '/projets/budget', component: BudgetPage, ...LECTURE },
+    { path: '/projets/risques', component: RisquesPage, ...LECTURE },
     { path: '/projets/parametres', component: ParametresAvances, roles: ROLES },
-    { path: '/projets/:id', component: ProjetDetailPage, roles: ROLES },
-    { path: '/projets', component: ProjetsPage, roles: ROLES },
+    { path: '/projets/:id', component: ProjetDetailPage, ...LECTURE },
+    { path: '/projets', component: ProjetsPage, ...LECTURE },
   ],
 }

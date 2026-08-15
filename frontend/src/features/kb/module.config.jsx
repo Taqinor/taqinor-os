@@ -20,6 +20,18 @@ import { appGlyph } from '../../lib/apps/appGlyph'
 const KbPage = lazy(() => import('./KbPage'))
 const KbParcoursPage = lazy(() => import('./KbParcoursPage'))
 
+/* WIR171 — la lecture KB était ouverte à tous les PALIERS mais sans déclarer la
+   permission serveur : un compte à rôle fin la voyait, un compte hérité aussi —
+   correct — mais la règle n'était pas celle du serveur (`kb_voir`,
+   `HasPermissionOrLegacy`). On la déclare explicitement pour que le retrait de
+   `kb_voir` d'un rôle fin ferme bien l'écran, sans rien changer pour les
+   comptes hérités (repli palier). Règle unique : `router/navPermission.js`. */
+const LECTURE = {
+  roles: ['normal', 'responsable', 'admin'],
+  perm: 'kb_voir',
+  permLegacyRoles: ['normal', 'responsable', 'admin'],
+}
+
 const config = {
   key: 'kb',
   order: 85,
@@ -36,7 +48,7 @@ const config = {
         to: '/kb',
         label: 'Base de connaissances',
         icon: <BookOpen size={17} strokeWidth={1.75} aria-hidden="true" />,
-        roles: ['normal', 'responsable', 'admin'],
+        ...LECTURE,
       },
       {
         to: '/kb/parcours',
@@ -52,7 +64,7 @@ const config = {
   ],
   sectionLabels: { kb: 'Base de connaissances' },
   routes: [
-    { path: '/kb', component: KbPage, roles: ['normal', 'responsable', 'admin'] },
+    { path: '/kb', component: KbPage, ...LECTURE },
     { path: '/kb/parcours', component: KbParcoursPage, roles: ['responsable', 'admin'] },
   ],
 }

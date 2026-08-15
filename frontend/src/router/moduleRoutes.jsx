@@ -81,7 +81,9 @@ export function buildModuleRoutes(deps) {
   return configs.flatMap((c) =>
     (c.routes ?? []).map((r) => {
       const Comp = r.component
-      const base = r.roles ? roleLoader(r.roles, r.perm) : authLoader
+      // WIR171 — `permLegacyRoles` (optionnel) porte le repli palier des gardes
+      // serveur `HasPermissionOrLegacy` jusqu'au roleLoader.
+      const base = r.roles ? roleLoader(r.roles, r.perm, r.permLegacyRoles) : authLoader
       const loader = (c.key && moduleLoader) ? moduleLoader(c.key, base) : base
       return {
         path: r.path,

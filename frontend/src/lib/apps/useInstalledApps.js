@@ -24,10 +24,11 @@
 // NOTE hooks : `useHasRole`/`useHasPermission` prennent une liste de rôles
 // FIXE par appel et ne peuvent donc pas être invoqués une fois PAR app dans
 // une boucle (violerait les règles des hooks, react-hooks/rules-of-hooks).
-// Ce fichier lit `role`/`permissions` UNE fois via `useSelector` — exactement
-// ce que ces deux hooks font en interne — puis rejoue leur règle en JS pur
-// sur la liste des modules, à l'identique de `Sidebar.jsx`/`BottomTabBar.jsx`
-// (`it.roles.includes(role) && (!it.perm || permissions.includes(it.perm))`).
+// Ce fichier lit `role`/`permissions`/`role_nom` UNE fois via `useSelector` —
+// exactement ce que ces deux hooks font en interne — puis applique la règle
+// PARTAGÉE `router/navPermission.js` (WIR171 : miroir de la garde serveur), la
+// même que `Sidebar.jsx`/`BottomTabBar.jsx`/`ActiveAppContext.jsx`. Elle n'est
+// plus recopiée nulle part.
 //
 // JAMAIS un 2ᵉ registre (contrainte Groupe ODY) : TOUTE surface qui liste des
 // apps — `AppLauncher.jsx`, `PinnedApps.jsx`, et plus tard `HomeMenu`
@@ -38,13 +39,17 @@ import { useMemo } from 'react'
 import { useSelector } from 'react-redux'
 import { moduleConfigs } from '../../router/moduleRoutes'
 import { selectModulesDesactives, isModuleDisabled } from '../../router/moduleGating'
+// WIR171 — règle d'autorisation PARTAGÉE (miroir de la garde serveur), même
+// implémentation que le roleLoader, la Sidebar et le mode Apps.
+import { itemAutorise } from '../../router/navPermission'
 
 const EMPTY_PERMISSIONS = []
 
-// isItemVisible — même règle que Sidebar.jsx/BottomTabBar.jsx (gating d'un
-// item de nav par palier + permission ERP fine optionnelle).
-function isItemVisible(item, role, permissions) {
-  return !!item?.roles?.includes(role) && (!item.perm || permissions.includes(item.perm))
+// isItemVisible — délègue à `router/navPermission.js` : plus AUCUNE copie de la
+// règle « palier ET permission » (WIR171). `roleNom` = nom du rôle FIN (null
+// pour un compte hérité sans rôle).
+function isItemVisible(item, role, permissions, roleNom) {
+  return itemAutorise(item, { tier: role, roleNom, permissions })
 }
 
 /* ══════════════════════════════════════════════════════════════════════════
@@ -114,7 +119,7 @@ export function allowedAppKeys(permissions) {
    visibles : `{key, label, icon, accent, to, description}`. */
 export function buildInstalledApps(
   configs,
-  { disabledModules = [], role, permissions = EMPTY_PERMISSIONS } = {},
+  { disabledModules = [], role, permissions = EMPTY_PERMISSIONS, roleNom = null } = {},
 ) {
   // ODY26 — liste blanche d'apps portée par le rôle (`null` = pas de
   // restriction, comportement historique). Calculée UNE fois, hors de la
@@ -130,7 +135,7 @@ export function buildInstalledApps(
     // NI en grille, NI en nav, NI au lanceur (toutes consomment ce hook).
     .filter((c) => !autorisees || autorisees.has(c.key))
     .map((c) => {
-      const firstVisible = c.nav.items.find((it) => isItemVisible(it, role, permissions))
+      const firstVisible = c.nav.items.find((it) => isItemVisible(it, role, permissions, roleNom))
       if (!firstVisible) return null // rôle/permissions insuffisants pour TOUS les écrans de l'app
       return {
         key: c.key,
@@ -165,10 +170,12 @@ export function useInstalledApps() {
   // chargé) — jamais une app affichée à un utilisateur sans rôle résolu.
   const role = useSelector((s) => s.auth.role) || 'normal'
   const permissions = useSelector((s) => s.auth.permissions) || EMPTY_PERMISSIONS
+  // WIR171 — rôle FIN (null = compte hérité) : cf. `router/navPermission.js`.
+  const roleNom = useSelector((s) => s.auth.role_nom) || null
 
   return useMemo(
-    () => buildInstalledApps(moduleConfigs, { disabledModules, role, permissions }),
-    [disabledModules, role, permissions],
+    () => buildInstalledApps(moduleConfigs, { disabledModules, role, permissions, roleNom }),
+    [disabledModules, role, permissions, roleNom],
   )
 }
 

@@ -23,6 +23,9 @@ import { useOnboardingSteps } from '../../features/onboarding/onboardingHelpers'
 import { prefetchRoute } from '../../router/prefetchMap'
 // ODX6 — gating par module actif/désactivé (source unique = /auth/me/).
 import { filterNavSections, selectModulesDesactives } from '../../router/moduleGating'
+// WIR171 — règle d'autorisation PARTAGÉE avec le roleLoader (miroir serveur) :
+// aucune copie de « palier ET permission » ici.
+import { itemAutorise } from '../../router/navPermission'
 // ODY4 — l'app active dérivée de la route + le kill-switch de bascule (ODY30).
 import {
   useActiveApp, APPS_SHELL_ENABLED, HOME_MENU_PATH, ORPHAN_NAV_ITEMS,
@@ -144,6 +147,9 @@ export default function Sidebar({ collapsed, onToggle, onNavigate }) {
   const navigate    = useNavigate()
   const role        = useSelector((s) => s.auth.role) || 'normal'
   const permissions = useSelector((s) => s.auth.permissions) || EMPTY_PERMISSIONS
+  // WIR171 — nom du rôle FIN (null pour un compte hérité) : c'est lui qui
+  // distingue « la permission décide » de « repli palier » (cf. navPermission).
+  const roleNom    = useSelector((s) => s.auth.role_nom) || null
   // ODX6 — clés de modules désactivés pour la société ([] par défaut).
   const modulesOff  = useSelector(selectModulesDesactives)
   const companyName = useSelector((s) => s.parametres.profile?.nom) || 'TAQINOR ERP'
@@ -198,7 +204,7 @@ export default function Sidebar({ collapsed, onToggle, onNavigate }) {
         <nav className="sidebar-nav">
           {legacySections.map((section, si) => {
             const items = section.items.filter(
-              (it) => it.roles.includes(role) && (!it.perm || permissions.includes(it.perm)))
+              (it) => itemAutorise(it, { tier: role, roleNom, permissions }))
             if (items.length === 0) return null
             const accentStyle = section.accent
               ? { '--module-accent': `var(--module-accent-${section.accent})` }
