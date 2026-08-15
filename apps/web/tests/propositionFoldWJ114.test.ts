@@ -102,13 +102,34 @@ describe('WJ114 — bloc « décider en 10 secondes » (au-dessus du pli, mobile
     );
   });
 
-  it('affiche les 4 chiffres CANONIQUES (kWc, production, TTC, économie/payback) — jamais recalculés', () => {
-    expect(heroSection).toContain('formatNumber(puissance, 2)');
-    expect(heroSection).toContain('kWc');
-    expect(heroSection).toContain('formatNumber(prodKwh)');
-    expect(heroSection).toContain('kWh');
+  // PV81 — le bloc portait QUATRE chiffres (kWc, production, TTC, économie).
+  // Au-dessus du pli, quatre valeurs d'importance égale ne se retiennent pas :
+  // il n'en garde plus que DEUX — ce que ça coûte, ce que ça rapporte. La
+  // puissance et la production n'ont pas disparu de la page, elles sont
+  // remontées à leur chapitre (« Votre installation » / « Votre production »),
+  // en pleine taille. L'esprit du test est inchangé : ces chiffres restent
+  // CANONIQUES (jamais recalculés ici).
+  it('affiche les DEUX chiffres CANONIQUES qui décident (TTC, économie/payback) — jamais recalculés', () => {
     expect(heroSection).toContain('formatMAD(heroTtc)');
     expect(heroSection).toContain('ecoHero ? formatMAD(ecoHero) : paybackHero');
+    // Le cadrage mensuel réutilise savingsHeadline, jamais une division locale.
+    expect(heroSection).toContain('headline.monthly');
+  });
+
+  it('kWc et kWh ont quitté le pli pour leurs chapitres dédiés', () => {
+    // Les commentaires du bloc EXPLIQUENT ce déménagement (ils citent donc
+    // « kWc »/« kWh ») : la garde doit lire le RENDU, pas la documentation.
+    const rendu = heroSection
+      .replace(/\{\/\*[\s\S]*?\*\/\}/g, ' ')
+      .replace(/<!--[\s\S]*?-->/g, ' ');
+    expect(rendu).not.toContain('formatNumber(puissance, 2)');
+    expect(rendu).not.toContain('kWc');
+    expect(rendu).not.toContain('kWh');
+    expect(PROPOSITION).toContain('id="installation"');
+    expect(PROPOSITION).toContain('id="production"');
+    // Les deux valeurs restent RENDUES ailleurs sur la page.
+    expect(PROPOSITION).toContain('formatNumber(puissance, 2)');
+    expect(PROPOSITION).toContain('formatNumber(prodKwh)');
   });
 
   it('heroTtc réutilise le MÊME calcul que le CTA collant (optionTtc + hasRealPrice), jamais un nouveau calcul', () => {

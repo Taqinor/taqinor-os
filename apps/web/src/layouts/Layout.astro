@@ -33,6 +33,19 @@ interface Props {
   /** Locales réellement disponibles pour CETTE page (hreflang + sélecteur).
    *  Absent / [fr] → page FR seule : rendu strictement inchangé. */
   locales?: Locale[];
+  /**
+   * PV81 — Pied de page RÉDUIT (défaut `false` : toutes les pages existantes
+   * gardent le méga-footer, rendu strictement inchangé).
+   *
+   * Le footer complet fait ~2 035 px sur mobile : un plan de site (services,
+   * villes, ressources, réseaux) parfaitement justifié sur une page publique
+   * qui cherche à faire circuler le visiteur. Sur un DOCUMENT PRIVÉ tokenisé
+   * — une proposition commerciale nominative — c'est l'inverse : le client n'a
+   * rien à explorer, et le plan de site est le dernier écran qu'il voit après
+   * avoir décidé. Cette variante ne garde que ce dont il peut avoir besoin :
+   * qui l'a envoyée, comment joindre, et les deux liens légaux obligatoires.
+   */
+  footerMinimal?: boolean;
 }
 const {
   title,
@@ -44,6 +57,7 @@ const {
   preloadHeroPoster = false,
   noindex = false,
   locales,
+  footerMinimal = false,
 } = Astro.props;
 // WJ76 — repli sur `title` quand la page ne fournit pas de titre de partage
 // dédié : rendu STRICTEMENT inchangé pour toutes les pages existantes.
@@ -245,7 +259,25 @@ const jsonLd = {
     <main id="main">
       <slot />
     </main>
-    <Footer />
+    {footerMinimal ? (
+      <!-- PV81 — pied de page réduit (documents privés tokenisés) : qui a
+           envoyé, comment joindre, et les deux liens légaux obligatoires.
+           Aucun plan de site — voir la prop `footerMinimal` ci-dessus. -->
+      <footer class="border-t border-white/10 px-4 py-8 text-center text-sm text-lune-faint">
+        <p class="font-semibold text-lune">{NAP.name}</p>
+        <p class="mt-2 flex flex-wrap items-center justify-center gap-x-4 gap-y-1">
+          <a href={`tel:${NAP.phone}`} class="transition-colors hover:text-white" dir="ltr">{NAP.phoneDisplayIntl}</a>
+          <a href={`mailto:${NAP.email}`} class="transition-colors hover:text-white" dir="ltr">{NAP.email}</a>
+        </p>
+        <p class="mt-3 text-xs">
+          © 2026 {NAP.name} ·
+          <a href="/mentions-legales" class="underline underline-offset-2 transition-colors hover:text-white">Mentions légales</a> ·
+          <a href="/politique-de-confidentialite" class="underline underline-offset-2 transition-colors hover:text-white">Confidentialité</a>
+        </p>
+      </footer>
+    ) : (
+      <Footer />
+    )}
     <!-- WB31 — Bandeau minimal de consentement analytics/tracking : fournit
          le signal `tq_consent` (localStorage) lu par la capture fbclid/UTM
          ci-dessus (WB29) et par le funnel beacon (WB30). -->

@@ -17,7 +17,6 @@
 export const prerender = false;
 
 import Layout from '../../layouts/Layout.astro';
-import ZelligeSignature from '../../components/ZelligeSignature.astro';
 import StarRating from '../../components/StarRating.astro';
 import TestimonialCarousel from '../../components/TestimonialCarousel.astro';
 import InstallCounter from '../../components/InstallCounter.astro';
@@ -27,6 +26,9 @@ import VideoCompteur from '../../components/VideoCompteur.astro';
 // cette page ne monte pas <V2Enhance/> (qui l'importe pour les pages v2). La
 // feuille est dédupliquée par Vite si une autre page l'importe déjà ailleurs.
 import '../../styles/v3-photo-motion.css';
+// PV81 — l'enveloppe « Avis clients » (carte + titre) suit la MÊME condition que
+// son contenu : sans avis réel, aucun cadre vide n'est rendu chez le client.
+import { hasTestimonials } from '../../lib/testimonials';
 import {
   type ProposalResponse,
   type OptionKey,
@@ -636,6 +638,7 @@ const signConfig = ok
   ogTitle={ogTitle}
   ogSlug="proposition"
   ogImageAlt="Taqinor — votre proposition solaire"
+  footerMinimal={true}
 >
   {!ok ? (
     <!-- ── État « lien expiré / introuvable » ─────────────────────────────── -->
@@ -781,32 +784,35 @@ const signConfig = ok
                recalculées) + UN CTA principal. Note personnelle du vendeur
                rendue UNIQUEMENT si le backend la fournit (WJ114 — lecture
                défensive, `sellerNote`) : rien n'est affiché en son absence. -->
-          <div id="prop-fold-figures" class="cine-in cine-in-3 mt-6 grid grid-cols-2 gap-3 sm:mt-7 sm:grid-cols-4 sm:gap-4">
-            {puissance ? (
-              <div class="cine-card rounded-xl p-3 sm:p-4">
-                <p class="tech-label text-lune-faint" data-i18n data-fr="Puissance" data-en="Power" data-ar="القدرة">Puissance</p>
-                <p class="fig mt-1 text-xl text-lune sm:text-2xl" dir="ltr">{formatNumber(puissance, 2)} <span class="text-sm text-lune-soft">kWc</span></p>
-              </div>
-            ) : null}
-            {prodKwh ? (
-              <div class="cine-card rounded-xl p-3 sm:p-4">
-                <p class="tech-label text-lune-faint" data-i18n data-fr="Production / an" data-en="Production / year" data-ar="الإنتاج / سنة">Production / an</p>
-                <p class="fig mt-1 text-xl text-lune sm:text-2xl" dir="ltr">{formatNumber(prodKwh)} <span class="text-sm text-lune-soft">kWh</span></p>
-              </div>
-            ) : null}
+          {/* ── PV81 · DEUX nombres, pas quatre ────────────────────────────────
+              Le bloc en portait quatre (kWc, kWh/an, TTC, économie) : au-dessus
+              du pli, quatre chiffres d'importance égale ne se retiennent pas —
+              le client repart sans aucun. Les deux qui décident restent : CE
+              QUE ÇA COÛTE et CE QUE ÇA RAPPORTE, avec le cadrage mensuel qui
+              rend l'économie tangible. La puissance et la production ne
+              disparaissent pas : elles vivent dans « Votre installation » et
+              « Votre production », à leur place, en pleine taille. Toutes les
+              valeurs restent celles du devis backend — jamais recalculées. */}
+          <div id="prop-fold-figures" class="cine-in cine-in-3 mt-6 grid grid-cols-1 gap-3 sm:mt-7 sm:grid-cols-2 sm:gap-4">
             {heroTtc !== null ? (
-              <div class="cine-card rounded-xl p-3 sm:p-4">
+              <div class="cine-card rounded-xl p-4">
                 <p class="tech-label text-lune-faint" data-i18n data-fr="Total TTC" data-en="Total (incl. tax)" data-ar="المجموع شامل الضريبة">Total TTC</p>
-                <p class="fig lum mt-1 text-xl sm:text-2xl" dir="ltr">{formatMAD(heroTtc)}</p>
+                <p class="fig lum mt-1 text-2xl sm:text-3xl" dir="ltr">{formatMAD(heroTtc)}</p>
+                <p class="mt-0.5 text-xs text-lune-faint" data-i18n data-fr="clé en main" data-en="turnkey" data-ar="تسليم مفتاح في اليد">clé en main</p>
               </div>
             ) : null}
             {(ecoHero || paybackHero) ? (
-              <div class="cine-card rounded-xl p-3 sm:p-4">
+              <div class="cine-card rounded-xl p-4">
                 <p class="tech-label text-lune-faint" data-i18n data-fr="Économie / an" data-en="Savings / year" data-ar="التوفير / سنة">Économie / an</p>
-                <p class="fig mt-1 text-xl text-lune sm:text-2xl" dir="ltr">
+                <p class="fig mt-1 text-2xl text-lune sm:text-3xl" dir="ltr">
                   {ecoHero ? formatMAD(ecoHero) : paybackHero}
                 </p>
-                {ecoHero && paybackHero ? (
+                {/* `headline.monthly` est DÉJÀ calculé par savingsHeadline — le
+                    même chiffre que le chapitre « Vos économies », jamais un
+                    second calcul. Repli sur le payback quand il manque. */}
+                {ecoHero && headline?.monthly ? (
+                  <p class="mt-0.5 text-xs text-lune-faint" dir="ltr">≈ {formatMAD(headline.monthly)}/mois</p>
+                ) : ecoHero && paybackHero ? (
                   <p class="mt-0.5 text-xs text-lune-faint" data-i18n
                     data-fr={`Rentabilisé en ${paybackHero}`} data-en={`Paid back in ${paybackHero}`} data-ar={`يُسترد خلال ${paybackHero}`}>
                     Rentabilisé en {paybackHero}
@@ -1074,27 +1080,25 @@ const signConfig = ok
       {(puissance || nbPanneaux || equipmentGroups.length > 0) && (
         <section id="installation" class="mx-auto max-w-4xl px-5 pt-12 sm:px-8">
           <p class="tech-label rule-brass text-brass-300" data-i18n data-fr="Votre installation" data-en="Your installation" data-ar="تركيبكم">Votre installation</p>
-          <div class="mt-5 grid gap-4 sm:grid-cols-3">
+          {/* PV81 — les 3 specs occupaient trois CARTES pleine largeur sur mobile
+              (~330 px) pour trois valeurs de quelques caractères. Elles tiennent
+              en UNE ligne au-dessus du tableau : c'est une légende, pas un
+              tableau de bord. Chaque valeur reste celle du devis backend. */}
+          <p class="mt-4 flex flex-wrap items-baseline gap-x-3 gap-y-1 text-lune-soft">
             {puissance ? (
-              <div class="cine-card rounded-xl p-5">
-                <p class="tech-label text-lune-faint" data-i18n data-fr="Puissance" data-en="Power" data-ar="القدرة">Puissance</p>
-                <p class="fig mt-2 text-2xl text-lune" dir="ltr">{formatNumber(puissance, 2)} <span class="text-base text-lune-soft">kWc</span></p>
-              </div>
+              <span class="fig text-xl text-lune" dir="ltr">{formatNumber(puissance, 2)} <span class="text-sm text-lune-soft">kWc</span></span>
             ) : null}
+            {puissance && nbPanneaux ? <span class="text-lune-faint" aria-hidden="true">·</span> : null}
             {nbPanneaux ? (
-              <div class="cine-card rounded-xl p-5">
-                <p class="tech-label text-lune-faint" data-i18n data-fr="Panneaux" data-en="Panels" data-ar="الألواح">Panneaux</p>
-                <p class="fig mt-2 text-2xl text-lune" dir="ltr">
-                  {formatNumber(nbPanneaux)}
-                  {wattPanneau ? <span class="text-base text-lune-soft"> × {formatNumber(wattPanneau)} W</span> : null}
-                </p>
-              </div>
+              <span class="fig text-xl text-lune" dir="ltr">
+                {formatNumber(nbPanneaux)}
+                {wattPanneau ? <span class="text-sm text-lune-soft"> × {formatNumber(wattPanneau)} W</span> : null}
+                <span class="ms-1 text-sm text-lune-soft" data-i18n data-fr="panneaux" data-en="panels" data-ar="لوحاً">panneaux</span>
+              </span>
             ) : null}
-            <div class="cine-card rounded-xl p-5">
-              <p class="tech-label text-lune-faint" data-i18n data-fr="Type" data-en="Type" data-ar="النوع">Type</p>
-              <p class="fig mt-2 text-2xl text-lune">{instLabel}</p>
-            </div>
-          </div>
+            {(puissance || nbPanneaux) ? <span class="text-lune-faint" aria-hidden="true">·</span> : null}
+            <span class="text-lune">{instLabel}</span>
+          </p>
 
           <!-- ── PV80 · CE QUI SERA POSÉ CHEZ VOUS — tableau STRUCTURÉ ────────
                Désignation × quantité, groupé par famille (production, stockage,
@@ -1888,6 +1892,139 @@ const signConfig = ok
         </>
       )}
 
+      <!-- ── WJ13/WJ35 · BLOC CRÉDIBILITÉ (garanties · certifications · réassurance) -->
+      {/* Aucune donnée chiffrée fabriquée : nombre de clients / avis / photos
+          réelles marqués `pending real content` tant que Reda ne les fournit pas.
+          Les garanties et normes ci-dessous sont des FAITS techniques vérifiables.
+          WJ35 — CertLogoRow reprend ces mêmes faits en bandeau ; le compteur
+          d'installations et la note Google sont désormais des composants premium
+          RÉUTILISABLES (InstallCounter / StarRating), avec la même intégrité. */}
+      <section id="confiance" class="mx-auto max-w-4xl px-5 pt-16 sm:px-8">
+        <p class="tech-label rule-brass text-brass-300" data-i18n data-fr="Pourquoi nous faire confiance" data-en="Why trust us" data-ar="لماذا تثقون بنا">Pourquoi nous faire confiance</p>
+        {/* ── PV81 · LES GARANTIES RACONTENT UNE SEULE HISTOIRE ────────────────
+            Trois cartes disaient trois nombres qui ne parlaient pas de la même
+            chose : un « 20 à 25 ans » SANS libellé (durée de vie, lu comme une
+            garantie), « 30 ans panneaux / 10 ans onduleur » juste en dessous, et
+            « 25 ans » du cumul d'économies plus haut. Le chiffre orphelin part ;
+            restent les DEUX garanties constructeur réelles + l'engagement de
+            pose. Les certifications (IEC, loi 82-21) ne sont plus répétées ici :
+            <CertLogoRow/> juste en dessous les porte déjà, à l'identique. */}
+        <p class="cine-card mt-5 flex flex-wrap items-baseline gap-x-3 gap-y-1 rounded-xl p-5 text-lune-soft">
+          <span class="fig text-lune" dir="ltr">30 ans</span>
+          <span data-i18n data-fr="de performance panneaux" data-en="of panel performance" data-ar="أداء الألواح">de performance panneaux</span>
+          <span class="text-lune-faint" aria-hidden="true">·</span>
+          <span class="fig text-lune" dir="ltr">10 ans</span>
+          <span data-i18n data-fr="onduleur" data-en="inverter" data-ar="العاكس">onduleur</span>
+          <span class="text-lune-faint" aria-hidden="true">·</span>
+          <span class="text-lune" data-i18n data-fr="pose garantie Taqinor" data-en="installation guaranteed by Taqinor" data-ar="التركيب مضمون من طرف تاقينور">pose garantie Taqinor</span>
+        </p>
+
+        <!-- WJ35 — compteur d'installations réel + note Google (scaffold tant qu'absente). -->
+        <div class="mt-4 cine-card rounded-xl p-5 sm:p-6">
+          <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <InstallCounter />
+            <StarRating />
+          </div>
+        </div>
+
+        {/* W342 — « L'installation la plus proche de chez vous » : GPS réel du
+            toit (roof_layout, exposé backend depuis QJ26) ou correspondance
+            texte de ville (client_addr). Absent → section entière omise,
+            jamais une ville inventée. */}
+        {nearestInstall && (
+          <div class="mt-4 cine-card rounded-xl p-5 sm:p-6">
+            <p class="tech-label text-brass-300" data-i18n
+              data-fr="L'installation la plus proche de chez vous"
+              data-en="The installation closest to you"
+              data-ar="أقرب تركيب من منزلكم">
+              L'installation la plus proche de chez vous
+            </p>
+            <p class="v2-body mt-2">
+              <span data-i18n
+                data-fr={`${nearestInstall.ville} — ${nearestInstall.kwc} — installation réelle Taqinor`}
+                data-en={`${nearestInstall.ville} — ${formatNumber(nearestInstall.kwcNum, 2)} kWc — real Taqinor installation`}
+                data-ar={`${nearestInstall.ville} — ${nearestInstall.kwc} — تركيب حقيقي لتاقينور`}>
+                {nearestInstall.ville} — {nearestInstall.kwc} — installation réelle Taqinor
+              </span>
+            </p>
+            <a href={nearestInstallHref} class="mt-2 inline-block text-sm text-brass-300 underline-offset-2 hover:underline" data-i18n
+              data-fr="Voir cette réalisation" data-en="See this project" data-ar="مشاهدة هذا الإنجاز">
+              Voir cette réalisation
+            </a>
+          </div>
+        )}
+
+        <!-- WJ35 — bandeau certifications/garanties (texte, sobre — aucun logo fabriqué). -->
+        <div class="mt-4">
+          <CertLogoRow />
+        </div>
+
+        {/* WJ35 — avis clients réels. PV81 — <TestimonialCarousel/> est no-op
+            tant que TESTIMONIALS est vide (livré vide, aucun avis fabriqué),
+            mais l'ENVELOPPE — carte + titre « Avis clients » — était rendue
+            inconditionnellement : chaque client voyait donc un cadre vide sous
+            un titre, exactement le « bientôt disponible » que la page bannit
+            partout ailleurs. L'enveloppe suit désormais la même condition que
+            son contenu. */}
+        {hasTestimonials() && (
+          <div class="mt-4 cine-card rounded-xl p-5 sm:p-6">
+            <p class="tech-label text-lune-faint" data-i18n data-fr="Avis clients" data-en="Customer reviews" data-ar="آراء العملاء">Avis clients</p>
+            <div class="mt-3">
+              <TestimonialCarousel />
+            </div>
+          </div>
+        )}
+
+        <!-- WJ86 — « Nos chantiers » (photos réelles) : NO-OP tant que WG5/WG6
+             ne fournissent pas de vraies photos — jamais de mention "à venir"
+             sur un document commercial. Même discipline que
+             <TestimonialCarousel/> (hasTestimonials()). -->
+        {REAL_PROJECT_PHOTOS_AVAILABLE && (
+          <div class="mt-4 cine-card rounded-xl p-5">
+            <p class="tech-label text-lune-faint" data-i18n data-fr="Nos chantiers" data-en="Our projects" data-ar="ورشاتنا">Nos chantiers</p>
+            <p class="mt-2 text-sm text-lune-soft" data-i18n
+              data-fr="Installations documentées, dossiers techniques à l’appui."
+              data-en="Documented installations, backed by technical files."
+              data-ar="تركيبات موثقة، بملفات تقنية داعمة.">
+              Installations documentées, dossiers techniques à l’appui.
+            </p>
+          </div>
+        )}
+
+        <!-- WJ17/WJ86 — mot du fondateur : NO-OP tant qu'aucune citation réelle
+             n'est fournie (WG6) — un texte placeholder affiché comme un vrai
+             mot du fondateur lit comme un produit inachevé au moment critique
+             de la confiance. -->
+        {REAL_FOUNDER_QUOTE_AVAILABLE && (
+          <div class="mt-4 cine-card rounded-xl p-6">
+            <p class="tech-label text-lune-faint" data-i18n data-fr="Le mot du fondateur" data-en="A word from the founder" data-ar="كلمة المؤسس">Le mot du fondateur</p>
+            <blockquote class="mt-3 v2-body text-lune" data-i18n
+              data-fr="« Chez Taqinor, nous traitons chaque toit comme le nôtre : une étude honnête, du matériel certifié, et un accompagnement après l’installation. Merci de votre confiance. »"
+              data-en="\"At Taqinor, we treat every roof as our own: an honest study, certified equipment, and support after installation. Thank you for your trust.\""
+              data-ar="« في تاقينور، نتعامل مع كل سطح كأنه سطحنا: دراسة صادقة، معدات معتمدة، ومرافقة بعد التركيب. شكراً على ثقتكم. »">
+              « Chez Taqinor, nous traitons chaque toit comme le nôtre : une étude honnête,
+              du matériel certifié, et un accompagnement après l’installation. Merci de votre confiance. »
+            </blockquote>
+            <p class="mt-2 text-sm text-lune-faint">Reda Kasri — <span data-i18n data-fr="fondateur, Taqinor" data-en="founder, Taqinor" data-ar="مؤسس تاقينور">fondateur, Taqinor</span></p>
+          </div>
+        )}
+      </section>
+
+      <!-- ── PV80 · FAQ — les TROIS objections qui reviennent vraiment. La liste
+           complète (objectionFaq) reste dans la lib ; on n’en rend plus que le
+           haut du panier — un accordéon de 5 items lit comme un mode d’emploi. -->
+      <section id="faq" class="mx-auto max-w-4xl px-5 pt-16 sm:px-8">
+        <p class="tech-label rule-brass text-brass-300" data-i18n data-fr="Vos questions, nos réponses" data-en="Your questions, our answers" data-ar="أسئلتكم، وأجوبتنا">Vos questions, nos réponses</p>
+        <div class="mt-5 space-y-3">
+          {faq.slice(0, 3).map((item) => (
+            <details class="cine-card rounded-xl p-5">
+              <summary class="cursor-pointer text-sm font-bold text-lune" data-i18n data-fr={item.question} data-en={item.questionEn} data-ar={item.questionAr}>{item.question}</summary>
+              <p class="mt-3 text-sm text-lune-soft" data-i18n data-fr={item.answer} data-en={item.answerEn} data-ar={item.answerAr}>{item.answer}</p>
+            </details>
+          ))}
+        </div>
+      </section>
+
       <!-- ── PV80 · CHAPITRE 7 — VOTRE PRIX, PUIS LA SIGNATURE ────────────────
            L'argent est dit ICI, à un seul endroit, et une seule fois : plus de
            liste d'équipement noyée dans la carte, plus de mensualités, plus de
@@ -2099,6 +2236,70 @@ const signConfig = ok
           <p id="contact-confirm" class="mt-3 text-sm text-brass-300" role="status" aria-live="polite" hidden></p>
         </div>
       </section>
+
+      {/* ── PV81 · « DEMANDER UNE MODIFICATION » — REPLIÉ, ET AVANT LA
+             SIGNATURE. Le formulaire s’ouvrait en grand JUSTE APRÈS le bloc
+             e-sign : au moment précis de décider, la page proposait
+             elle-même de ne pas décider — un amplificateur de doute de
+             ~580 px. Il vit désormais sous le bloc contact, replié dans un
+             <details> natif (accessible sans JS, zéro CLS) : trouvable pour
+             qui hésite, invisible pour qui est prêt. Même endpoint, mêmes
+             ids, même script — seule la mise en scène change. */}
+      {ok && (
+        <section class="mx-auto max-w-4xl px-5 pt-4 sm:px-8" data-revision-token={token}>
+          <details class="cine-card rounded-2xl p-5 sm:p-6">
+            <summary class="cursor-pointer text-sm text-lune-soft" data-i18n
+              data-fr="Cette version ne correspond pas tout à fait ? Demander une modification"
+              data-en="Not quite the right version? Request a change"
+              data-ar="هذه النسخة لا تناسبكم تماماً؟ اطلبوا تعديلاً">
+              Cette version ne correspond pas tout à fait ? Demander une modification
+            </summary>
+            <form id="revision-form" class="mt-4">
+              <div class="flex flex-wrap gap-2" role="radiogroup" aria-label="Type de modification">
+                <button type="button" data-revision-kind="kwc" aria-pressed="false" class="btn-pill revision-kind-btn px-3 py-1.5 text-sm">
+                  <span data-i18n data-fr="Ajuster la puissance (kWc)" data-en="Adjust the system size (kWc)" data-ar="تعديل القدرة (kWc)">Ajuster la puissance (kWc)</span>
+                </button>
+                <button type="button" data-revision-kind="batterie" aria-pressed="false" class="btn-pill revision-kind-btn px-3 py-1.5 text-sm">
+                  <span data-i18n data-fr="Changer l’option batterie" data-en="Change the battery option" data-ar="تغيير خيار البطارية">Changer l’option batterie</span>
+                </button>
+                <button type="button" data-revision-kind="autre" aria-pressed="false" class="btn-pill revision-kind-btn px-3 py-1.5 text-sm">
+                  <span data-i18n data-fr="Autre" data-en="Other" data-ar="أخرى">Autre</span>
+                </button>
+              </div>
+              <label for="revision-detail" class="mt-4 block text-sm text-lune-soft" data-i18n
+                data-fr="Précisez votre demande (facultatif, obligatoire pour « Autre »)"
+                data-en="Describe your request (optional, required for “Other”)"
+                data-ar="اشرحوا طلبكم (اختياري، وإلزامي عند اختيار «أخرى»)">
+                Précisez votre demande (facultatif, obligatoire pour « Autre »)
+              </label>
+              <textarea
+                id="revision-detail"
+                name="detail"
+                rows="3"
+                maxlength="2000"
+                class="mt-2 w-full rounded-xl border border-white/15 bg-nuit-800/60 p-3 text-sm text-lune placeholder:text-lune-faint"
+                data-i18n-placeholder
+                data-placeholder-fr="Ex. : pourriez-vous étudier une version sans batterie ?"
+                data-placeholder-en="E.g.: could you study a version without a battery?"
+                data-placeholder-ar="مثال: هل يمكنكم دراسة نسخة بدون بطارية؟"
+                placeholder="Ex. : pourriez-vous étudier une version sans batterie ?"
+              ></textarea>
+              <p id="revision-error" class="mt-2 text-sm text-alert-300" role="alert" hidden></p>
+              <div class="mt-4 flex items-center gap-3">
+                <button
+                  type="submit"
+                  id="revision-submit"
+                  class="btn-pill inline-flex items-center justify-center gap-2"
+                  style="background: var(--color-brass-400); color: var(--color-nuit); border-color: var(--color-brass-400)"
+                >
+                  <span id="revision-submit-label" data-i18n data-fr="Envoyer ma demande" data-en="Send my request" data-ar="إرسال طلبي">Envoyer ma demande</span>
+                </button>
+                <p id="revision-confirm" class="text-sm text-brass-300" role="status" aria-live="polite" hidden></p>
+              </div>
+            </form>
+          </details>
+        </section>
+      )}
 
       <!-- ── SIGNATURE EN LIGNE ───────────────────────────────────────────── -->
       <section id="signer" class="mx-auto max-w-4xl px-5 pt-16 sm:px-8">
@@ -2571,198 +2772,6 @@ const signConfig = ok
       </section>
 
 
-      <!-- ── WJ54 · « Demander une modification » — révision structurée ─────
-           Gâté sur `ok` (données chargées) : rien ne s'affiche tant que la
-           proposition elle-même n'est pas disponible (pas de coquille vide).
-           Poste vers le MÊME proxy /api/proposition-contact que WJ29 ci-dessus
-           (canal `revision` distinct) — aucun nouvel endpoint. -->
-      {ok && (
-        <section class="mx-auto max-w-4xl px-5 pt-8 sm:px-8" data-revision-token={token}>
-          <div class="cine-card rounded-2xl p-6 sm:p-7">
-            <p class="tech-label rule-brass text-brass-300" data-i18n
-              data-fr="Demander une modification" data-en="Request a change" data-ar="طلب تعديل">
-              Demander une modification
-            </p>
-            <p class="v2-body mt-3 text-lune-soft" data-i18n
-              data-fr="Pas encore convaincu par cette version ? Dites-nous ce que vous aimeriez ajuster — sans engagement."
-              data-en="Not quite convinced by this version? Tell us what you'd like to adjust — no obligation."
-              data-ar="لستم مقتنعين بعد بهذه النسخة؟ أخبرونا بما ترغبون في تعديله — بدون التزام.">
-              Pas encore convaincu par cette version ? Dites-nous ce que vous aimeriez ajuster — sans engagement.
-            </p>
-            <form id="revision-form" class="mt-4">
-              <div class="flex flex-wrap gap-2" role="radiogroup" aria-label="Type de modification">
-                <button type="button" data-revision-kind="kwc" aria-pressed="false" class="btn-pill revision-kind-btn px-3 py-1.5 text-sm">
-                  <span data-i18n data-fr="Ajuster la puissance (kWc)" data-en="Adjust the system size (kWc)" data-ar="تعديل القدرة (kWc)">Ajuster la puissance (kWc)</span>
-                </button>
-                <button type="button" data-revision-kind="batterie" aria-pressed="false" class="btn-pill revision-kind-btn px-3 py-1.5 text-sm">
-                  <span data-i18n data-fr="Changer l’option batterie" data-en="Change the battery option" data-ar="تغيير خيار البطارية">Changer l’option batterie</span>
-                </button>
-                <button type="button" data-revision-kind="autre" aria-pressed="false" class="btn-pill revision-kind-btn px-3 py-1.5 text-sm">
-                  <span data-i18n data-fr="Autre" data-en="Other" data-ar="أخرى">Autre</span>
-                </button>
-              </div>
-              <label for="revision-detail" class="mt-4 block text-sm text-lune-soft" data-i18n
-                data-fr="Précisez votre demande (facultatif, obligatoire pour « Autre »)"
-                data-en="Describe your request (optional, required for “Other”)"
-                data-ar="اشرحوا طلبكم (اختياري، وإلزامي عند اختيار «أخرى»)">
-                Précisez votre demande (facultatif, obligatoire pour « Autre »)
-              </label>
-              <textarea
-                id="revision-detail"
-                name="detail"
-                rows="3"
-                maxlength="2000"
-                class="mt-2 w-full rounded-xl border border-white/15 bg-nuit-800/60 p-3 text-sm text-lune placeholder:text-lune-faint"
-                data-i18n-placeholder
-                data-placeholder-fr="Ex. : pourriez-vous étudier une version sans batterie ?"
-                data-placeholder-en="E.g.: could you study a version without a battery?"
-                data-placeholder-ar="مثال: هل يمكنكم دراسة نسخة بدون بطارية؟"
-                placeholder="Ex. : pourriez-vous étudier une version sans batterie ?"
-              ></textarea>
-              <p id="revision-error" class="mt-2 text-sm text-alert-300" role="alert" hidden></p>
-              <div class="mt-4 flex items-center gap-3">
-                <button
-                  type="submit"
-                  id="revision-submit"
-                  class="btn-pill inline-flex items-center justify-center gap-2"
-                  style="background: var(--color-brass-400); color: var(--color-nuit); border-color: var(--color-brass-400)"
-                >
-                  <span id="revision-submit-label" data-i18n data-fr="Envoyer ma demande" data-en="Send my request" data-ar="إرسال طلبي">Envoyer ma demande</span>
-                </button>
-                <p id="revision-confirm" class="text-sm text-brass-300" role="status" aria-live="polite" hidden></p>
-              </div>
-            </form>
-          </div>
-        </section>
-      )}
-
-      <!-- ── WJ13/WJ35 · BLOC CRÉDIBILITÉ (garanties · certifications · réassurance) -->
-      {/* Aucune donnée chiffrée fabriquée : nombre de clients / avis / photos
-          réelles marqués `pending real content` tant que Reda ne les fournit pas.
-          Les garanties et normes ci-dessous sont des FAITS techniques vérifiables.
-          WJ35 — CertLogoRow reprend ces mêmes faits en bandeau ; le compteur
-          d'installations et la note Google sont désormais des composants premium
-          RÉUTILISABLES (InstallCounter / StarRating), avec la même intégrité. */}
-      <section class="mx-auto max-w-4xl px-5 pt-16 sm:px-8">
-        <p class="tech-label rule-brass text-brass-300" data-i18n data-fr="Pourquoi nous faire confiance" data-en="Why trust us" data-ar="لماذا تثقون بنا">Pourquoi nous faire confiance</p>
-        <div class="mt-5 grid gap-4 sm:grid-cols-3">
-          <div class="cine-card rounded-xl p-5">
-            <!-- WJ72 — « X à Y » est la convention de fourchette du reste du
-                 site (lib/billRange.ts paybackLabel : « 4 à 6 ans », etc.) ;
-                 corrigé depuis l'en-dash « 20–25 ans », seul écart au format
-                 commun. <bdi> isole le chiffre latin sans forcer toute la
-                 ligne en LTR (voir la même discipline sur mon-toit.astro). -->
-            <p class="fig text-2xl text-lune"><bdi>20 à 25 ans</bdi></p>
-            <p class="mt-1 text-sm text-lune-soft" data-i18n data-fr="Garanties constructeur : 30 ans de performance sur les panneaux, 10 ans sur l’onduleur." data-en="Manufacturer warranties: 30 years of performance on panels, 10 years on the inverter." data-ar="ضمانات الصانع: 30 سنة أداء للألواح، 10 سنوات للعاكس.">Garanties constructeur : 30 ans de performance sur les panneaux, 10 ans sur l’onduleur.</p>
-          </div>
-          <div class="cine-card rounded-xl p-5">
-            <p class="fig text-xl text-lune" dir="ltr">IEC 61215 / 61730</p>
-            <p class="mt-1 text-sm text-lune-soft" data-i18n data-fr="Modules certifiés aux normes internationales. Conformité étude IRESEN / AMEE." data-en="Modules certified to international standards. IRESEN / AMEE study compliance." data-ar="ألواح معتمدة وفق المعايير الدولية. مطابقة لدراسة IRESEN / AMEE.">Modules certifiés aux normes internationales. Conformité étude IRESEN / AMEE.</p>
-          </div>
-          <div class="cine-card rounded-xl p-5">
-            <p class="fig text-xl text-lune" data-i18n data-fr="Loi 82-21" data-en="Law 82-21" data-ar="القانون 82-21">Loi 82-21</p>
-            <p class="mt-1 text-sm text-lune-soft" data-i18n data-fr="Installation conforme au cadre marocain d’autoconsommation en basse tension." data-en="Installation compliant with the Moroccan low-voltage self-consumption framework." data-ar="تركيب مطابق للإطار المغربي للاستهلاك الذاتي في التوتر المنخفض.">Installation conforme au cadre marocain d’autoconsommation en basse tension.</p>
-          </div>
-        </div>
-
-        <!-- WJ35 — compteur d'installations réel + note Google (scaffold tant qu'absente). -->
-        <div class="mt-4 cine-card rounded-xl p-5 sm:p-6">
-          <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-            <InstallCounter />
-            <StarRating />
-          </div>
-        </div>
-
-        {/* W342 — « L'installation la plus proche de chez vous » : GPS réel du
-            toit (roof_layout, exposé backend depuis QJ26) ou correspondance
-            texte de ville (client_addr). Absent → section entière omise,
-            jamais une ville inventée. */}
-        {nearestInstall && (
-          <div class="mt-4 cine-card rounded-xl p-5 sm:p-6">
-            <p class="tech-label text-brass-300" data-i18n
-              data-fr="L'installation la plus proche de chez vous"
-              data-en="The installation closest to you"
-              data-ar="أقرب تركيب من منزلكم">
-              L'installation la plus proche de chez vous
-            </p>
-            <p class="v2-body mt-2">
-              <span data-i18n
-                data-fr={`${nearestInstall.ville} — ${nearestInstall.kwc} — installation réelle Taqinor`}
-                data-en={`${nearestInstall.ville} — ${formatNumber(nearestInstall.kwcNum, 2)} kWc — real Taqinor installation`}
-                data-ar={`${nearestInstall.ville} — ${nearestInstall.kwc} — تركيب حقيقي لتاقينور`}>
-                {nearestInstall.ville} — {nearestInstall.kwc} — installation réelle Taqinor
-              </span>
-            </p>
-            <a href={nearestInstallHref} class="mt-2 inline-block text-sm text-brass-300 underline-offset-2 hover:underline" data-i18n
-              data-fr="Voir cette réalisation" data-en="See this project" data-ar="مشاهدة هذا الإنجاز">
-              Voir cette réalisation
-            </a>
-          </div>
-        )}
-
-        <!-- WJ35 — bandeau certifications/garanties (texte, sobre — aucun logo fabriqué). -->
-        <div class="mt-4">
-          <CertLogoRow />
-        </div>
-
-        <!-- WJ35 — avis clients réels (carrousel, vide-mais-premium — même intégrité que <Testimonials/>). -->
-        <div class="mt-4 cine-card rounded-xl p-5 sm:p-6">
-          <p class="tech-label text-lune-faint" data-i18n data-fr="Avis clients" data-en="Customer reviews" data-ar="آراء العملاء">Avis clients</p>
-          <div class="mt-3">
-            <TestimonialCarousel />
-          </div>
-        </div>
-
-        <!-- WJ86 — « Nos chantiers » (photos réelles) : NO-OP tant que WG5/WG6
-             ne fournissent pas de vraies photos — jamais de mention "à venir"
-             sur un document commercial. Même discipline que
-             <TestimonialCarousel/> (hasTestimonials()). -->
-        {REAL_PROJECT_PHOTOS_AVAILABLE && (
-          <div class="mt-4 cine-card rounded-xl p-5">
-            <p class="tech-label text-lune-faint" data-i18n data-fr="Nos chantiers" data-en="Our projects" data-ar="ورشاتنا">Nos chantiers</p>
-            <p class="mt-2 text-sm text-lune-soft" data-i18n
-              data-fr="Installations documentées, dossiers techniques à l’appui."
-              data-en="Documented installations, backed by technical files."
-              data-ar="تركيبات موثقة، بملفات تقنية داعمة.">
-              Installations documentées, dossiers techniques à l’appui.
-            </p>
-          </div>
-        )}
-
-        <!-- WJ17/WJ86 — mot du fondateur : NO-OP tant qu'aucune citation réelle
-             n'est fournie (WG6) — un texte placeholder affiché comme un vrai
-             mot du fondateur lit comme un produit inachevé au moment critique
-             de la confiance. -->
-        {REAL_FOUNDER_QUOTE_AVAILABLE && (
-          <div class="mt-4 cine-card rounded-xl p-6">
-            <p class="tech-label text-lune-faint" data-i18n data-fr="Le mot du fondateur" data-en="A word from the founder" data-ar="كلمة المؤسس">Le mot du fondateur</p>
-            <blockquote class="mt-3 v2-body text-lune" data-i18n
-              data-fr="« Chez Taqinor, nous traitons chaque toit comme le nôtre : une étude honnête, du matériel certifié, et un accompagnement après l’installation. Merci de votre confiance. »"
-              data-en="\"At Taqinor, we treat every roof as our own: an honest study, certified equipment, and support after installation. Thank you for your trust.\""
-              data-ar="« في تاقينور، نتعامل مع كل سطح كأنه سطحنا: دراسة صادقة، معدات معتمدة، ومرافقة بعد التركيب. شكراً على ثقتكم. »">
-              « Chez Taqinor, nous traitons chaque toit comme le nôtre : une étude honnête,
-              du matériel certifié, et un accompagnement après l’installation. Merci de votre confiance. »
-            </blockquote>
-            <p class="mt-2 text-sm text-lune-faint">Reda Kasri — <span data-i18n data-fr="fondateur, Taqinor" data-en="founder, Taqinor" data-ar="مؤسس تاقينور">fondateur, Taqinor</span></p>
-          </div>
-        )}
-      </section>
-
-      <!-- ── PV80 · FAQ — les TROIS objections qui reviennent vraiment. La liste
-           complète (objectionFaq) reste dans la lib ; on n’en rend plus que le
-           haut du panier — un accordéon de 5 items lit comme un mode d’emploi. -->
-      <section class="mx-auto max-w-4xl px-5 pt-16 sm:px-8">
-        <p class="tech-label rule-brass text-brass-300" data-i18n data-fr="Vos questions, nos réponses" data-en="Your questions, our answers" data-ar="أسئلتكم، وأجوبتنا">Vos questions, nos réponses</p>
-        <div class="mt-5 space-y-3">
-          {faq.slice(0, 3).map((item) => (
-            <details class="cine-card rounded-xl p-5">
-              <summary class="cursor-pointer text-sm font-bold text-lune" data-i18n data-fr={item.question} data-en={item.questionEn} data-ar={item.questionAr}>{item.question}</summary>
-              <p class="mt-3 text-sm text-lune-soft" data-i18n data-fr={item.answer} data-en={item.answerEn} data-ar={item.answerAr}>{item.answer}</p>
-            </details>
-          ))}
-        </div>
-      </section>
-
       <!-- ── PV80 · IMPACT CO₂ — UNE ligne. Le détail du calcul (facteur
            d'émission, kg par arbre) a rejoint « Nos hypothèses » juste en
            dessous : c'est sa place, pas une demi-page d'explication ici. -->
@@ -2852,11 +2861,33 @@ const signConfig = ok
       )}
 
 
-      <!-- ── WJ28 · SIGNATURE ZELLIGE (pivot narratif avant l'appel au contact) -->
-      <ZelligeSignature
-        line="Chaque chiffre de cette proposition est mesuré, pas promis."
-        sub="L'étude d'abord. Le chantier ensuite."
-      />
+      <!-- ── PV81 · MANIFESTO — UNE phrase, et qui ne se contredit pas ────────
+           L'ancienne ligne disait « Chaque chiffre de cette proposition est
+           MESURÉ, pas promis » — alors que toute la page dit honnêtement
+           l'inverse trois fois (« production ESTIMÉE », « profil type au Maroc
+           ajusté à votre facture — jamais un chiffre mesuré », « estimation à
+           tarif constant »). Un client attentif y lit une contradiction au
+           moment exact où on lui demande sa confiance. La phrase dit désormais
+           ce que la page fait vraiment : elle ÉTUDIE sa facture.
+           <ZelligeSignature/> n'est pas traduisible (texte en prop simple, et
+           le composant est partagé avec d'autres pages — hors périmètre ici) :
+           le manifesto est rendu en ligne pour porter ses trois langues comme
+           tout le reste de la page. -->
+      <section class="mx-auto max-w-4xl px-5 pt-16 text-center sm:px-8">
+        <div class="rule-brass mx-auto text-brass-300" aria-hidden="true"></div>
+        <p class="display mt-6 text-balance text-xl text-white sm:text-2xl" data-i18n
+          data-fr="Chaque chiffre est étudié sur votre facture, pas promis."
+          data-en="Every figure is studied from your own bill, not promised."
+          data-ar="كل رقم مدروس انطلاقاً من فاتورتكم، وليس وعداً.">
+          Chaque chiffre est étudié sur votre facture, pas promis.
+        </p>
+        <p class="tech-label mt-3 text-lune-faint" data-i18n
+          data-fr="L’étude d’abord. Le chantier ensuite."
+          data-en="The study first. The installation next."
+          data-ar="الدراسة أولاً. ثم الورش.">
+          L’étude d’abord. Le chantier ensuite.
+        </p>
+      </section>
 
       <!-- ── CTA COLLANT (WJ34 — safe-area-inset-bottom pour les iPhone à encoche
            / barre de geste : le CTA ne se cache jamais derrière la zone système).

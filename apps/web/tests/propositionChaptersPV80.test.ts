@@ -80,18 +80,20 @@ describe('PV80 — plus AUCUN crédit / financement / échelonnement', () => {
   });
 });
 
-describe('PV80 — les 8 chapitres sont dans l’ordre', () => {
-  it('héros → toit 3D → installation → production → économies → schéma → prix/signature → confiance', () => {
+describe('PV81 — LA PREUVE AVANT LE STYLO : l’ordre des chapitres', () => {
+  it('héros → toit 3D → installation → production → économies → schéma → PREUVE → prix → signature → suite', () => {
     const hero = at('id="prop-fold-figures"');
     const roof3d = at('id="roof3d"');
     const install = at('id="installation"');
     const production = at('id="production"');
     const economies = at('id="financing-headline"');
     const sld = at('id="sld"');
+    const confiance = at('id="confiance"');
+    const faq = at('id="faq"');
     const prix = at('id="options"');
     const signer = at('id="signer"');
     const suite = at('id="etapes-suivantes"');
-    for (const [name, idx] of Object.entries({ hero, roof3d, install, production, economies, sld, prix, signer, suite })) {
+    for (const [name, idx] of Object.entries({ hero, roof3d, install, production, economies, sld, confiance, faq, prix, signer, suite })) {
       expect(idx, `ancre ${name} absente`).toBeGreaterThan(0);
     }
     expect(hero).toBeLessThan(roof3d);
@@ -99,14 +101,28 @@ describe('PV80 — les 8 chapitres sont dans l’ordre', () => {
     expect(install).toBeLessThan(production);
     expect(production).toBeLessThan(economies);
     expect(economies).toBeLessThan(sld);
-    expect(sld).toBeLessThan(prix);
+    expect(sld).toBeLessThan(confiance);
+    expect(confiance).toBeLessThan(faq);
+    expect(faq).toBeLessThan(prix);
     expect(prix).toBeLessThan(signer);
     expect(signer).toBeLessThan(suite);
   });
 
-  it('« Demander une modification » suit immédiatement le bloc de signature', () => {
-    expect(at('id="signer"')).toBeLessThan(at('data-revision-token'));
-    expect(at('data-revision-token')).toBeLessThan(at('id="etapes-suivantes"'));
+  it('les objections sont traitées AVANT la demande d’engagement, jamais après', () => {
+    // C'était le défaut central du premier jet : garanties, FAQ et « demander
+    // une modification » vivaient tous APRÈS le formulaire de signature.
+    expect(at('id="confiance"')).toBeLessThan(at('id="signer"'));
+    expect(at('id="faq"')).toBeLessThan(at('id="signer"'));
+    expect(at('data-revision-token')).toBeLessThan(at('id="signer"'));
+  });
+
+  it('« Demander une modification » est REPLIÉ (<details>) et précède la signature', () => {
+    const bloc = PROPOSITION.slice(at('data-revision-token'), at('id="signer"'));
+    expect(bloc).toContain('<details');
+    expect(bloc).toContain('<summary');
+    expect(bloc).toContain('id="revision-form"');
+    // Le formulaire n'a pas changé d'endpoint ni d'ids : seul l'emballage bouge.
+    expect(bloc).toContain('id="revision-submit"');
   });
 
   it('l’ancre lisible #economies double l’id historique observé par la télémétrie', () => {
@@ -175,6 +191,55 @@ describe('PV80 — chapitre 3 : l’équipement est un tableau, jamais une factu
 
   it('la carte de prix ne re-liste plus le matériel : elle y renvoie', () => {
     expect(PROPOSITION).toContain('href="#equipement"');
+  });
+});
+
+describe('PV81 — polish : rien de vide, rien qui se contredit', () => {
+  it('la carte « Avis clients » ne rend plus un cadre vide (enveloppe conditionnée)', () => {
+    const idx = at('data-fr="Avis clients"');
+    expect(idx).toBeGreaterThan(0);
+    // La condition précède immédiatement la carte qui porte le titre.
+    const avant = PROPOSITION.slice(idx - 400, idx);
+    expect(avant).toContain('hasTestimonials()');
+    expect(PROPOSITION).toContain("import { hasTestimonials } from '../../lib/testimonials'");
+  });
+
+  it('le manifesto ne promet plus un chiffre « mesuré » que la page dit estimé', () => {
+    expect(CODE).not.toContain('Chaque chiffre de cette proposition est mesuré');
+    expect(PROPOSITION).toContain('data-fr="Chaque chiffre est étudié sur votre facture, pas promis."');
+    // La page continue d'assumer l'estimation ailleurs — les deux se rejoignent.
+    expect(PROPOSITION).toContain('jamais un chiffre mesuré');
+  });
+
+  it('le héros ne garde que DEUX nombres (prix + économie), pas quatre', () => {
+    const hero = PROPOSITION.slice(at('id="prop-fold-figures"'), at('id="prop-fold-cta"'));
+    expect(hero).toContain('formatMAD(heroTtc)');
+    expect(hero).toContain('ecoHero ? formatMAD(ecoHero) : paybackHero');
+    // kWc et kWh ont quitté le pli : ils vivent dans leurs chapitres.
+    expect(hero).not.toContain('kWc');
+    expect(hero).not.toContain('kWh');
+    // Le cadrage mensuel réutilise le chiffre DÉJÀ calculé, jamais un nouveau.
+    expect(hero).toContain('headline.monthly');
+    expect(at('id="installation"')).toBeGreaterThan(0);
+    expect(at('id="production"')).toBeGreaterThan(0);
+  });
+
+  it('les garanties racontent UNE histoire (le « 20 à 25 ans » orphelin a disparu)', () => {
+    expect(CODE).not.toContain('20 à 25 ans');
+    const bloc = PROPOSITION.slice(at('id="confiance"'), at('id="faq"'));
+    expect(bloc).toContain('30 ans');
+    expect(bloc).toContain('10 ans');
+    expect(bloc).toContain('data-fr="pose garantie Taqinor"');
+  });
+
+  it('la page demande le pied de page réduit, et Layout le sert sans changer les autres pages', () => {
+    expect(PROPOSITION).toContain('footerMinimal={true}');
+    const LAYOUT = read('../src/layouts/Layout.astro');
+    expect(LAYOUT).toContain('footerMinimal?: boolean;');
+    expect(LAYOUT).toContain('footerMinimal = false,');
+    expect(LAYOUT).toContain('{footerMinimal ? (');
+    // Le méga-footer reste la branche par défaut de toutes les autres pages.
+    expect(LAYOUT).toContain('<Footer />');
   });
 });
 
