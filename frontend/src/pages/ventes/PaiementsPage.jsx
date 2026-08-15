@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
-import { Wallet } from 'lucide-react'
+import { Wallet, Upload } from 'lucide-react'
 import ventesApi from '../../api/ventesApi'
 import { formatMAD } from '../../lib/format'
 import {
@@ -89,6 +89,14 @@ export default function PaiementsPage() {
         icon={Wallet}
         title="Encaissements"
         subtitle="Tous les paiements reçus, par facture et par mode"
+        actions={(
+          /* WIR265 — porte d'entrée de l'import de relevé bancaire (FG42). */
+          <Button asChild size="sm" variant="outline">
+            <Link to="/ventes/paiements/import-releve">
+              <Upload className="size-4" /> Importer un relevé
+            </Link>
+          </Button>
+        )}
       />
 
       {/* VX231(b) — chip du filtre client actif (depuis un clic sur un nom). */}

@@ -269,6 +269,21 @@ const ventesApi = {
   getCashFlowForecast: (params) => api.get('/ventes/insights/cash-flow/', { params }),
   getAnalyseFacturation: (params) =>
     api.get('/ventes/etats/analyse-facturation/', { params }),
+  // WIR265/FG42 — import d'un relevé bancaire pour créer les encaissements
+  // clients. Deux temps : `dry-run` n'écrit RIEN (aperçu du mapping, statut par
+  // ligne, totaux), `commit` crée les Paiement manquants. FormData NU : on ne
+  // pose jamais Content-Type à la main, sinon la frontière multipart générée
+  // par le navigateur est perdue et le serveur ne voit aucun fichier.
+  importReleveDryRun: (fichier) => {
+    const corps = new FormData()
+    corps.append('file', fichier)
+    return api.post('/ventes/paiements/import-releve/dry-run/', corps)
+  },
+  importReleveCommit: (fichier) => {
+    const corps = new FormData()
+    corps.append('file', fichier)
+    return api.post('/ventes/paiements/import-releve/commit/', corps)
+  },
   getClientReleve: (clientId) => api.get(`/ventes/clients/${clientId}/releve/`),
   getClientRelevePdf: (clientId) => api.get(`/ventes/clients/${clientId}/releve-pdf/`, { responseType: 'blob' }),
   getLettreRelancePdf: (factureId) => api.get(`/ventes/factures/${factureId}/lettre-relance-pdf/`, { responseType: 'blob' }),

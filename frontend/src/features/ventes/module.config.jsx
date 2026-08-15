@@ -7,6 +7,7 @@ import {
   LayoutDashboard,
   HandCoins,
   CreditCard, Banknote,
+  Upload,
 } from 'lucide-react'
 import { appGlyph } from '../../lib/apps/appGlyph'
 
@@ -59,6 +60,8 @@ const FactureList = lazy(() => import('../../pages/ventes/FactureList'))
 const AvoirsPage = lazy(() => import('../../pages/ventes/AvoirsPage'))
 const RelancesPage = lazy(() => import('../../pages/ventes/RelancesPage'))
 const PaiementsPage = lazy(() => import('../../pages/ventes/PaiementsPage'))
+// WIR265/FG42 — import d'un releve bancaire (dry-run puis commit).
+const ImportReleveBancairePage = lazy(() => import('../../pages/ventes/ImportReleveBancairePage'))
 // XSAL1-2 — administration des listes de prix clients (écriture Responsable/Admin, gardée serveur).
 const ListesPrixPage = lazy(() => import('../../pages/ventes/ListesPrixPage'))
 // WIR104 — écran unique du cluster réglementaire / mise en service
@@ -97,6 +100,9 @@ const config = {
       { to: '/ventes/factures',      label: 'Factures',         k: 'nav.factures',   icon: navIcon(Receipt),     roles: ['normal','responsable','admin'], navGroup: 'facturation' },
       { to: '/ventes/avoirs',        label: 'Avoirs',           k: 'nav.avoirs',     icon: navIcon(FileMinus),        roles: ['normal','responsable','admin'], navGroup: 'facturation' },
       { to: '/ventes/paiements',     label: 'Encaissements',    k: 'nav.encaissements', icon: navIcon(Wallet),    roles: ['normal','responsable','admin'], navGroup: 'facturation' },
+      // WIR265 — import de releve bancaire : ecriture reservee cote serveur
+      // (IsResponsableOrAdmin sur les deux endpoints), nav gatee a l'identique.
+      { to: '/ventes/paiements/import-releve', label: 'Import de relevé', k: 'nav.import_releve', icon: navIcon(Upload), roles: ['responsable','admin'], navGroup: 'facturation' },
       { to: '/ventes/relances',      label: 'Relances / Impayés', k: 'nav.relances', icon: navIcon(CalendarClock),      roles: ['responsable','admin'], navGroup: 'facturation' },
       // WIR23 — miroir de `/sav/action-requise` (ZSAV6) : « quels devis
       // traiter aujourd'hui » (QX29/QX30), réservé responsable/admin.
@@ -134,6 +140,8 @@ const config = {
     { path: '/ventes/avoirs', component: AvoirsPage },
     { path: '/ventes/relances', component: RelancesPage },
     { path: '/ventes/paiements', component: PaiementsPage },
+    // WIR265 — ecran consommateur du couple dry-run/commit FG42.
+    { path: '/ventes/paiements/import-releve', component: ImportReleveBancairePage },
     { path: '/ventes/listes-prix', component: ListesPrixPage },
     // WIR104 — écran consommateur du cluster réglementaire (FG245, FG268-287).
     { path: '/ventes/dossiers-reglementaires', component: DossiersReglementairesPage },
