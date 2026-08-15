@@ -4365,13 +4365,19 @@ const signConfig = ok
       overlay!.hidden = false;
       overlay!.removeAttribute('hidden');
       document.body.style.overflow = 'hidden';
-      // L'overlay `fixed` vient d'apparaître : on attend une frame pour que
-      // getBoundingClientRect() du viewport reflète sa taille réelle avant
-      // de calculer le fit (sinon, mesuré à 0×0 sur certains navigateurs).
-      requestAnimationFrame(() => {
-        resetToFit();
-        closeBtn!.focus();
-      });
+      // L'overlay `fixed` vient d'apparaître : un reflow FORCÉ (lecture
+      // d'offsetWidth) suffit pour que getBoundingClientRect() du viewport
+      // reflète sa taille réelle — SYNCHRONE, donc le fit s'applique même
+      // quand requestAnimationFrame est suspendu (onglet caché/arrière-plan,
+      // le navigateur gèle les frames : un fit-par-rAF laissait alors le
+      // schéma à l'échelle 1, débordant l'écran). rAF ne reste qu'en FILET
+      // pour le cas résiduel d'un viewport mesuré à 0 pendant l'ouverture.
+      void viewportEl.offsetWidth;
+      resetToFit();
+      closeBtn!.focus();
+      if (!(viewportEl.getBoundingClientRect().width > 0)) {
+        requestAnimationFrame(() => resetToFit());
+      }
     }
 
     function close(): void {
