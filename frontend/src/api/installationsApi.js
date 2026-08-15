@@ -809,6 +809,15 @@ const installationsApi = {
     api.post('/installations/controle-qualite-modeles/', data),
   updateControleQualiteModele: (id, data) =>
     api.patch(`/installations/controle-qualite-modeles/${id}/`, data),
+
+  // WIR264/XFSM7+ZFSM2 — jetons de partage d'une intervention. Les deux
+  // actions existaient sans consommateur : elles renvoient {token, path}, où
+  // `path` désigne désormais une PAGE (/intervention/<token>,
+  // /intervention-rapport/<token>) et non plus un préfixe d'API.
+  getLienClientIntervention: (id) =>
+    api.get(`/installations/interventions/${id}/lien-client/`),
+  getLienRapportIntervention: (id) =>
+    api.get(`/installations/interventions/${id}/lien-rapport/`),
 }
 
 /* ============================================================================
@@ -820,6 +829,20 @@ const installationsApi = {
    puis la met à jour) ; un token invalide/expiré/révoqué renvoie 404 — jamais
    403, pour ne pas confirmer l'existence d'un token à un tiers.
    ========================================================================== */
+/* ============================================================================
+   WIR264/XFSM7+ZFSM2 — Pages PUBLIQUES tokenisées d'une intervention : suivi
+   « technicien en route » (ETA) et compte-rendu signé. Deux jetons DISTINCTS.
+   Les deux payloads sont read-only et ne portent AUCUNE donnée interne (ni
+   coût d'achat, ni marge, ni position GPS live). Jeton invalide → 404.
+   ========================================================================== */
+export const interventionPublicApi = {
+  suivi: (token) =>
+    api.get(`/public/installations/intervention/${encodeURIComponent(token)}/`),
+  rapport: (token) =>
+    api.get(
+      `/public/installations/intervention-rapport/${encodeURIComponent(token)}/`),
+}
+
 export const rfqPublicApi = {
   get: (token) =>
     api.get(`/public/installations/rfq/${encodeURIComponent(token)}/`),

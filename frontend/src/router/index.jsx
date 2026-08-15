@@ -80,6 +80,9 @@ const TicketSuiviPage = lazy(() => import('../pages/sav/TicketSuiviPage'))
 const PublicArticlePage = lazy(() => import('../pages/kb/PublicArticlePage'))
 // WIR215/XPUR21 — reponse fournisseur publique a une demande de prix (RFQ).
 const RfqReponsePubliquePage = lazy(() => import('../pages/installations/RfqReponsePubliquePage'))
+// WIR264/XFSM7+ZFSM2 — pages publiques d'une intervention (suivi ETA, compte-rendu).
+const InterventionSuiviPublicPage = lazy(() => import('../pages/installations/InterventionSuiviPublicPage'))
+const InterventionRapportPublicPage = lazy(() => import('../pages/installations/InterventionRapportPublicPage'))
 const ChatPage = lazy(() => import('../pages/messaging/ChatPage'))
 const DocumentsPage = lazy(() => import('../pages/ged/DocumentsPage'))
 // VX78 — Écran 404 déjà construit (ui/NotFound.jsx), jusqu'ici jamais importé
@@ -364,6 +367,10 @@ const router = createBrowserRouter([
   { path: '/kb/public/:token', element: <RouteErrorBoundary><Suspense fallback={<Fallback />}><PublicArticlePage /></Suspense></RouteErrorBoundary> },
   // WIR215 — page publique de reponse a une RFQ (le lien wa.me/email pointe ici).
   { path: '/rfq/:token', element: <RouteErrorBoundary><Suspense fallback={<Fallback />}><RfqReponsePubliquePage /></Suspense></RouteErrorBoundary> },
+  // WIR264 — suivi public « technicien en route » (jeton XFSM7).
+  { path: '/intervention/:token', element: <RouteErrorBoundary><Suspense fallback={<Fallback />}><InterventionSuiviPublicPage /></Suspense></RouteErrorBoundary> },
+  // WIR264 — compte-rendu public signe (jeton ZFSM2, DISTINCT du precedent).
+  { path: '/intervention-rapport/:token', element: <RouteErrorBoundary><Suspense fallback={<Fallback />}><InterventionRapportPublicPage /></Suspense></RouteErrorBoundary> },
 
   // NTPRT8 — PORTAIL CLIENT authentifié. Shell dédié (jamais le shell ERP) ;
   // `portalLoader` exige la portée EXACTE `portail_client` et renvoie tout

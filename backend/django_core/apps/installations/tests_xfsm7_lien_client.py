@@ -90,6 +90,25 @@ class TestLienClientToken(TestCase):
         self.interv.refresh_from_db()
         self.assertEqual(self.interv.lien_client_token, resp.data['token'])
 
+    def test_lien_client_renvoie_une_page_pas_un_prefixe_api(self):
+        """WIR264 — le `path` renvoyé pointait sur ``/public/installations/…``
+        (un préfixe API, d'ailleurs amputé de ``/api/django``) : partagé tel
+        quel au client, il donnait du JSON ou un 404. Il doit désigner la PAGE
+        publique ``/intervention/<token>``."""
+        resp = self.api.get(f'{BASE}/interventions/{self.interv.id}/lien-client/')
+        self.assertEqual(resp.status_code, 200, resp.content)
+        self.assertEqual(resp.data['path'], f"/intervention/{resp.data['token']}")
+        self.assertNotIn('/public/installations/', resp.data['path'])
+
+    def test_lien_rapport_renvoie_une_page_pas_un_prefixe_api(self):
+        """WIR264 — même correction pour le compte-rendu (ZFSM2)."""
+        resp = self.api.get(
+            f'{BASE}/interventions/{self.interv.id}/lien-rapport/')
+        self.assertEqual(resp.status_code, 200, resp.content)
+        self.assertEqual(
+            resp.data['path'], f"/intervention-rapport/{resp.data['token']}")
+        self.assertNotIn('/public/installations/', resp.data['path'])
+
     def test_lien_client_action_idempotent(self):
         resp1 = self.api.get(f'{BASE}/interventions/{self.interv.id}/lien-client/')
         resp2 = self.api.get(f'{BASE}/interventions/{self.interv.id}/lien-client/')

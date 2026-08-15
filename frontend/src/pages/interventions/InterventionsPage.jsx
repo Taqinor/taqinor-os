@@ -65,6 +65,8 @@ import {
   SerialsPanel, ConsommationPanel, MemosPanel, ReservesPanel,
   ToolReturnPanel, SafetyPanel, CompteRenduButton, CodePanel,
 } from '../../features/installations/InterventionCapturePanels'
+// WIR264 — liens publics de suivi (XFSM7) et de compte-rendu (ZFSM2).
+import InterventionPartagePanel from './InterventionPartagePanel'
 import { SignatureClientPanel } from '../../features/installations/SignatureClientPanel'
 import OfflineSyncIndicator from '../../features/installations/offline/OfflineSyncIndicator'
 import { formatDate, formatDateTime } from '../../lib/format'
@@ -436,6 +438,8 @@ function DetailSheet({ intervention, users, onClose, onChanged }) {
           <TabsContent value="outils">
             <div className="flex flex-col gap-3 py-2">
               <CompteRenduButton intervention={intervention} />
+              {/* WIR264 — liens publics de suivi et de compte-rendu. */}
+              <InterventionPartagePanel intervention={intervention} />
               <ToolReturnPanel intervention={intervention} onChanged={onChanged} />
               <CodePanel intervention={intervention} />
             </div>

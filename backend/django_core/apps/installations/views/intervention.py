@@ -656,7 +656,11 @@ class InterventionViewSet(CompanyScopedModelViewSet):
         FG86/liens WhatsApp)."""
         interv = self.get_object()
         token = interv.ensure_lien_client_token()
-        return Response({'token': token, 'path': f'/public/installations/intervention/{token}/'})
+        # WIR264 — le `path` renvoye pointait sur le prefixe API et non sur une
+        # PAGE : partage tel quel, le client recevait du JSON (ou un 404, le
+        # prefixe reel etant /api/django/public/...). Il pointe desormais sur
+        # la page publique /intervention/<token>.
+        return Response({'token': token, 'path': f'/intervention/{token}'})
 
     @action(detail=True, methods=['post'], url_path='checkin',
             permission_classes=[IsResponsableOrAdmin])
@@ -1631,9 +1635,10 @@ class InterventionViewSet(CompanyScopedModelViewSet):
         FG86/liens WhatsApp/XFSM7). Jeton DISTINCT du lien « en route »."""
         interv = self.get_object()
         token = interv.ensure_lien_rapport_token()
+        # WIR264 — meme correction que `lien-client` : PAGE, pas prefixe API.
         return Response({
             'token': token,
-            'path': f'/public/installations/intervention-rapport/{token}/'})
+            'path': f'/intervention-rapport/{token}'})
 
     # ── ZFSM4 — facturation directe d'une intervention hors contrat ─────────
     @action(detail=True, methods=['post'], url_path='generer-facture',

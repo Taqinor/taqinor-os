@@ -456,6 +456,10 @@
     count:nombre, next:inconnu, previous:inconnu, results:inconnu
 - frontend/src/api/installationsApi.js :: getLandedCostDossier -> /api/django/installations/dossiers-import/<>/landed-cost
     dossier_id:inconnu, lignes:inconnu, total_fob:nombre, total_frais:nombre, total_landed:nombre
+- frontend/src/api/installationsApi.js :: getLienClientIntervention -> /api/django/installations/interventions/<>/lien-client
+    path:texte, token:inconnu
+- frontend/src/api/installationsApi.js :: getLienRapportIntervention -> /api/django/installations/interventions/<>/lien-rapport
+    path:texte, token:inconnu
 - frontend/src/api/installationsApi.js :: getMaTournee -> /api/django/installations/interventions/ma-tournee
     date:inconnu, stops:inconnu
 - frontend/src/api/installationsApi.js :: getPaiementsSousTraitant -> /api/django/installations/paiements-sous-traitant
@@ -470,8 +474,12 @@
     depart:texte, jour:texte, sans_gps:inconnu, total:inconnu, tournee:inconnu
 - frontend/src/api/installationsApi.js :: overageReview -> /api/django/installations/interventions/overage-review
     interventions:inconnu, seuil_pct:inconnu
+- frontend/src/api/installationsApi.js :: rapport -> /api/django/public/installations/intervention-rapport/<>
+    chantier_reference:inconnu, consommation:inconnu, date_realisee:inconnu, detail:texte, equipe:inconnu, pdf_url:texte, photos:inconnu, reserves:inconnu, serials:inconnu, signataire_nom:inconnu, signe_le:inconnu, site_ville:inconnu, statut:inconnu, statut_display:inconnu, type_intervention_display:inconnu
 - frontend/src/api/installationsApi.js :: relancerNonRepondantsRFQ -> /api/django/installations/rfq/<>/relancer-non-repondants
     resultats:inconnu
+- frontend/src/api/installationsApi.js :: suivi -> /api/django/public/installations/intervention/<>
+    date_prevue:inconnu, detail:texte, distance_km:inconnu, eta_minutes:inconnu, fenetre_debut:inconnu, fenetre_fin:inconnu, site_ville:inconnu, statut:inconnu, statut_display:inconnu, technicien_avatar_url:inconnu, technicien_nom:inconnu
 - frontend/src/api/installationsApi.js :: supprimerLigneConsommation -> /api/django/installations/interventions/<>/supprimer-ligne-consommation
     detail:texte
 - frontend/src/api/installationsApi.js :: supprimerMemo -> /api/django/installations/interventions/<>/supprimer-memo
