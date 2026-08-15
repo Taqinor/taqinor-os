@@ -18,6 +18,7 @@ import {
   PANEL_PRODUCT_WARRANTY_YEARS,
   PANEL_PERFORMANCE_WARRANTY_YEARS,
   PANEL_PERFORMANCE_FLOOR_FR,
+  INSTALL_WARRANTY_YEARS,
 } from './warranty';
 
 export type FicheCategorie =
@@ -25,6 +26,7 @@ export type FicheCategorie =
   | 'Onduleurs réseau'
   | 'Onduleurs hybrides'
   | 'Batteries'
+  | 'Protection & câblage'
   | 'Supervision & comptage';
 
 /** Garantie structurée : durée + précision optionnelle (ex. seuil de performance). */
@@ -171,6 +173,67 @@ export const FICHES: Fiche[] = [
       'https://www.dyness.com/Public/Uploads/uploadfile/files/20241023/DynessDL5.0CdatasheetEN.pdf',
     pdf: '/fiches/batterie-dyness.pdf',
   },
+  // ── WJ131 · DEUX POSTES GÉNÉRIQUES DU DEVIS ───────────────────────────────
+  // « Tableau De Protection AC/DC » et « Accessoires » sont les deux lignes que
+  // le client paie sans jamais savoir ce qu'elles contiennent. Elles n'ont ni
+  // marque ni fiche constructeur : leurs fiches sont donc EXPLICATIVES et leurs
+  // faits sont NORMATIFS (NF C 15-100, guide UTE C 15-712-1, NF EN 50618,
+  // CEI 62852) — jamais une spec produit inventée, jamais un chiffre que la
+  // norme fixe au cas par cas (seuils, sections, calibres : ils sortent de
+  // l'étude, pas d'ici).
+  {
+    slug: 'tableau-protection-ac-dc',
+    nom: 'Tableau de protection AC/DC',
+    marque: 'Poste générique',
+    modele: 'Coffret AC + coffret DC — composition selon étude',
+    categorie: 'Protection & câblage',
+    resume:
+      "Le poste qu'on ne regarde jamais et qui protège tout le reste : couper, isoler, encaisser la surtension — avant l'onduleur, avant la maison.",
+    faits: [
+      'Côté AC : disjoncteur dédié + dispositif différentiel de type A au minimum, selon ce qu’exige l’onduleur',
+      'Côté AC : parafoudre de type 2 lorsque l’exposition du site l’impose',
+      'Côté DC : interrupteur-sectionneur entre le champ et l’onduleur — la seule façon de couper sous charge',
+      'Côté DC : parafoudre DC et fusibles gPV dès que plusieurs chaînes sont mises en parallèle (seuil fixé par le guide)',
+      'Règles de référence : NF C 15-100 et guide UTE C 15-712-1 — la composition exacte sort de l’étude',
+    ],
+    garantie: `Garantie de pose Taqinor ${INSTALL_WARRANTY_YEARS} ans`,
+    warranty: {
+      years: INSTALL_WARRANTY_YEARS,
+      note: 'Garantie de pose et de main-d’œuvre Taqinor ; chaque composant conserve la garantie de son fabricant.',
+    },
+    pairsWith: ['Panneaux photovoltaïques', 'Onduleurs réseau', 'Onduleurs hybrides'],
+    // Page officielle AFNOR du guide qui fait foi pour ce poste (pas un PDF
+    // constructeur : ce poste n'a pas de constructeur).
+    datasheet:
+      'https://norminfo.afnor.org/norme/ute-c15-712-1/installations-electriques-a-basse-tension-guide-pratique-installations-photovoltaiques-sans-stockage-et-raccordees-au-reseau-public-de-distribution/105394',
+    pdf: null,
+  },
+  {
+    slug: 'accessoires-cablage',
+    nom: 'Accessoires de câblage',
+    marque: 'Poste générique',
+    modele: 'Câble H1Z2Z2-K · connecteurs MC4 · cheminement',
+    categorie: 'Protection & câblage',
+    resume:
+      "La ligne la moins racontée du devis, et celle qui décide de la tenue de tout le reste : ce qui relie les panneaux à l'onduleur reste en plein soleil toute la vie de l'installation.",
+    faits: [
+      'Câble solaire H1Z2Z2-K (norme NF EN 50618) : double isolation, tenue UV et intempéries, pour la partie continue',
+      'Connecteurs PV de type MC4 (norme CEI 62852) : mâle et femelle du MÊME fabricant — jamais deux marques accouplées',
+      'Chemin de câble et goulotte : le câble est guidé et protégé, jamais posé à même la couverture',
+      'Presse-étoupes : chaque entrée de coffret reste étanche',
+      'Sections et longueurs calculées pour tenir la chute de tension du projet',
+    ],
+    garantie: `Garantie de pose Taqinor ${INSTALL_WARRANTY_YEARS} ans`,
+    warranty: {
+      years: INSTALL_WARRANTY_YEARS,
+      note: 'Garantie de pose et de main-d’œuvre Taqinor ; chaque composant conserve la garantie de son fabricant.',
+    },
+    pairsWith: ['Panneaux photovoltaïques', 'Onduleurs réseau', 'Onduleurs hybrides'],
+    // Page officielle AFNOR de la norme qui définit le câble solaire.
+    datasheet:
+      'https://norminfo.afnor.org/norme/nf-en-50618/cables-electriques-pour-systemes-photovoltaiques/105484',
+    pdf: null,
+  },
   {
     slug: 'smart-meter-huawei',
     nom: 'Smart Meter Huawei',
@@ -218,6 +281,7 @@ export const FICHE_CATEGORIES: FicheCategorie[] = [
   'Onduleurs réseau',
   'Onduleurs hybrides',
   'Batteries',
+  'Protection & câblage',
   'Supervision & comptage',
 ];
 
