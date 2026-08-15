@@ -26,6 +26,10 @@ vi.mock('../../../api/gedApi', () => ({
     getDocumentsList: vi.fn(() => Promise.resolve({ data: [] })),
     getRolesSignataire: vi.fn(() => Promise.resolve({ data: [] })),
     getLotsEnvoi: vi.fn(),
+    // WIR204/XGED3 — PDF final signé (blob).
+    pdfSigneDemande: vi.fn(() => Promise.resolve({
+      data: new Blob(['%PDF']), headers: {},
+    })),
     // XGED26/ZGED3 — analytique + tableau de bord (dégradent en `null`).
     getAnalytique: vi.fn(() => Promise.resolve({ data: null })),
     getTableauBordSignatures: vi.fn(() => Promise.resolve({ data: null })),
@@ -142,5 +146,45 @@ describe('XGED26/ZGED3 ApprobationPage — Tableau de bord & Analytique', () => 
     await userEvent.click(await screen.findByRole('tab', { name: /Analytique/i }))
     expect(await screen.findByText('2.5 j')).toBeInTheDocument()
     expect(screen.getByText('80%')).toBeInTheDocument()
+  })
+})
+
+/* WIR204/XGED3 — le PDF FINAL signé (champs aplatis) n'était récupérable par
+   AUCUN écran : la demande se terminait sans jamais rendre son artefact. */
+describe('WIR204 — PDF signé récupérable', () => {
+  const DEMANDE_SIGNEE = {
+    id: 12, document: 8, document_nom: 'Contrat.pdf', statut: 'signe',
+    signataire_nom: 'Reda', signataire_email: 'r@example.ma',
+    date_demande: '2026-07-01T09:00:00Z',
+  }
+
+  it('une demande SIGNÉE offre « Télécharger le PDF signé » et appelle le wrapper blob', async () => {
+    gedApi.getDemandesSignature.mockResolvedValue({ data: [DEMANDE_SIGNEE] })
+    renderPage()
+    await userEvent.click(await screen.findByRole('tab', { name: /^Signatures$/i }))
+    const [btn] = await screen.findAllByRole('button', { name: /Télécharger le PDF signé/i })
+    await userEvent.click(btn)
+    await waitFor(() => expect(gedApi.pdfSigneDemande).toHaveBeenCalledWith(12))
+  })
+
+  it('409 (pas encore signée) : message FR explicite, jamais un fichier vide', async () => {
+    gedApi.getDemandesSignature.mockResolvedValue({ data: [DEMANDE_SIGNEE] })
+    gedApi.pdfSigneDemande.mockRejectedValue({ response: { status: 409 } })
+    renderPage()
+    await userEvent.click(await screen.findByRole('tab', { name: /^Signatures$/i }))
+    const [btn] = await screen.findAllByRole('button', { name: /Télécharger le PDF signé/i })
+    await userEvent.click(btn)
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith(
+      expect.stringContaining("n'est pas encore signée")))
+  })
+
+  it('une demande EN ATTENTE n\'offre PAS le téléchargement du PDF final', async () => {
+    gedApi.getDemandesSignature.mockResolvedValue({
+      data: [{ ...DEMANDE_SIGNEE, statut: 'en_attente' }],
+    })
+    renderPage()
+    await userEvent.click(await screen.findByRole('tab', { name: /^Signatures$/i }))
+    await screen.findByText('Contrat.pdf')
+    expect(screen.queryByRole('button', { name: /Télécharger le PDF signé/i })).toBeNull()
   })
 })

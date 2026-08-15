@@ -3,6 +3,9 @@ import { useEffect, useMemo, useState } from 'react'
 import reportingApi from '../../api/reportingApi'
 import coreApi from '../../api/coreApi'
 import { frenchError } from '../../lib/frenchError'
+// WIR253 — l'export arrive en BINAIRE (csv/xlsx) : remise par le helper commun
+// (pré-ouverture d'onglet iOS/PWA), nom de fichier posé par le serveur.
+import { downloadBlobInGesture, filenameFromResponse } from '../../utils/downloadBlob'
 
 /* ============================================================================
    PACT146 — Générateur de rapports croisés (NTEXT10,
@@ -65,6 +68,12 @@ export default function RapportBuilderPage() {
   const [erreur, setErreur] = useState(null)
   const [rechargement, setRechargement] = useState(0)
   const [occupe, setOccupe] = useState(false)
+  // WIR253 — id de la définition en cours de MODIFICATION (null = création).
+  // Sans lui, le formulaire ne savait que CRÉER : « Modifier » n'existait pas
+  // et `updateRapportDefinition` n'avait aucun appelant — toute correction de
+  // définition passait par une suppression + recréation (l'id changeait, donc
+  // les abonnements planifiés qui la référencent tombaient).
+  const [editionId, setEditionId] = useState(null)
 
   useEffect(() => {
     let vivant = true
@@ -112,20 +121,71 @@ export default function RapportBuilderPage() {
         agg: form.pivotAgg,
       }
       : {}
+    const corps = {
+      titre: form.titre,
+      dataset: form.dataset,
+      spec: { select: form.select },
+      pivot_spec: pivotSpec,
+      partage: form.partage,
+    }
     try {
-      await reportingApi.createRapportDefinition({
-        titre: form.titre,
-        dataset: form.dataset,
-        spec: { select: form.select },
-        pivot_spec: pivotSpec,
-        partage: form.partage,
-      })
+      // WIR253 — en édition, on PATCH l'id existant ; JAMAIS un POST de
+      // création (qui laisserait un doublon et changerait l'id référencé par
+      // les abonnements planifiés).
+      if (editionId != null) {
+        await reportingApi.updateRapportDefinition(editionId, corps)
+      } else {
+        await reportingApi.createRapportDefinition(corps)
+      }
       setForm(FORM_VIDE)
+      setEditionId(null)
       setRechargement((n) => n + 1)
     } catch (err) {
-      setErreur(frenchError(err, 'Création de la définition impossible.'))
+      setErreur(frenchError(err, editionId != null
+        ? 'Modification de la définition impossible.'
+        : 'Création de la définition impossible.'))
     } finally {
       setOccupe(false)
+    }
+  }
+
+  // WIR253 — pré-remplit le formulaire depuis la définition existante (spec +
+  // pivot_spec réels du serveur), et bascule le formulaire en MODE ÉDITION.
+  function modifier(definition) {
+    const pivot = definition.pivot_spec || {}
+    setEditionId(definition.id)
+    setErreur(null)
+    setForm({
+      titre: definition.titre || '',
+      dataset: definition.dataset || '',
+      select: Array.isArray(definition.spec?.select) ? definition.spec.select : [],
+      partage: definition.partage || 'prive',
+      pivotRows: (pivot.rows || [])[0] || '',
+      pivotColumns: (pivot.columns || [])[0] || '',
+      pivotMeasure: pivot.measure || '',
+      pivotAgg: pivot.agg || 'sum',
+    })
+  }
+
+  function annulerEdition() {
+    setEditionId(null)
+    setForm(FORM_VIDE)
+  }
+
+  // WIR253/NTEXT11 — export du rapport rejoué. 503 = xlsx indisponible sur ce
+  // serveur : on le DIT et on rappelle que le CSV reste possible.
+  async function exporter(definition, format) {
+    setErreur(null)
+    const pending = downloadBlobInGesture()
+    try {
+      const res = await reportingApi.exportRapportDefinition(definition.id, format)
+      const base = (definition.titre || definition.dataset || 'rapport')
+        .replace(/[^\w-]+/g, '') || 'rapport'
+      pending.deliver(res.data, filenameFromResponse(res, `${base}.${format}`))
+    } catch (err) {
+      setErreur(err?.response?.status === 503
+        ? 'Export xlsx indisponible sur ce serveur : réessayez au format CSV.'
+        : frenchError(err, 'Export impossible.'))
     }
   }
 
@@ -197,6 +257,21 @@ export default function RapportBuilderPage() {
                     <button type="button" onClick={() => executer(d)}>
                       Exécuter
                     </button>
+                    {/* WIR253 — modification en place (PATCH), jamais une
+                        recréation qui changerait l'id. */}
+                    <button type="button" data-testid={`rapport-modifier-${d.id}`}
+                      onClick={() => modifier(d)}>
+                      Modifier
+                    </button>
+                    {/* WIR253/NTEXT11 — export du rapport rejoué. */}
+                    <button type="button" data-testid={`rapport-export-csv-${d.id}`}
+                      onClick={() => exporter(d, 'csv')}>
+                      CSV
+                    </button>
+                    <button type="button" data-testid={`rapport-export-xlsx-${d.id}`}
+                      onClick={() => exporter(d, 'xlsx')}>
+                      XLSX
+                    </button>
                     <button type="button" onClick={() => supprimer(d.id)}>
                       Supprimer
                     </button>
@@ -209,7 +284,7 @@ export default function RapportBuilderPage() {
       </section>
 
       <section data-testid="rapport-builder-creation">
-        <h4>Nouvelle définition</h4>
+        <h4>{editionId != null ? 'Modifier la définition' : 'Nouvelle définition'}</h4>
         <form onSubmit={creer}>
           <label htmlFor="rapport-titre">Titre</label>
           <input
@@ -312,9 +387,16 @@ export default function RapportBuilderPage() {
             ))}
           </select>
 
-          <button type="submit" disabled={occupe || !form.dataset}>
-            Enregistrer la définition
+          <button type="submit" disabled={occupe || !form.dataset}
+            data-testid="rapport-submit">
+            {editionId != null ? 'Enregistrer les modifications' : 'Enregistrer la définition'}
           </button>
+          {editionId != null && (
+            <button type="button" data-testid="rapport-annuler-edition"
+              onClick={annulerEdition}>
+              Annuler
+            </button>
+          )}
         </form>
       </section>
 

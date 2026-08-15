@@ -10,16 +10,26 @@ const mocks = vi.hoisted(() => ({
   upload: vi.fn(),
   policyCheck: vi.fn(),
   generateVariants: vi.fn(),
+  checklist: vi.fn(),
 }))
 
 vi.mock('./adsengineApi', () => ({
   default: {
     creatives: {
-      list: mocks.list, upload: mocks.upload,
+      list: mocks.list, upload: mocks.upload, checklist: mocks.checklist,
       policyCheck: mocks.policyCheck, generateVariants: mocks.generateVariants,
     },
   },
 }))
+
+// WIR170 — clés de règles INTERDITES telles que `apps/adsengine/policy.py`
+// (DEFAULT_FORBIDDEN) les renvoie : l'écran ne doit jamais en inventer d'autres.
+const SERVER_FORBIDDEN = [
+  { key: 'no_fake_sites', label: 'Aucun faux chantier' },
+  { key: 'no_fake_clients', label: 'Aucun faux client' },
+  { key: 'no_fake_testimonials', label: 'Aucun faux témoignage' },
+  { key: 'no_unverified_numbers', label: 'Aucun chiffre non vérifié' },
+]
 
 import CreativeLibraryScreen from './CreativeLibraryScreen'
 
@@ -33,7 +43,11 @@ beforeEach(() => {
     { id: 2, designation: 'Statique prix', type: 'static', policy_stamp: { passed: true }, reponses_whatsapp: 8, cout_mad: 400 },
   ] })
   mocks.upload.mockResolvedValue({ data: {} })
-  mocks.policyCheck.mockResolvedValue({ data: {} })
+  mocks.checklist.mockResolvedValue({ data: { forbidden: SERVER_FORBIDDEN, allowed: [] } })
+  mocks.policyCheck.mockResolvedValue({
+    data: { id: 1, designation: 'Reel toiture', type: 'reel',
+      is_policy_passed: true, policy_stamp: { passed: true } },
+  })
   mocks.generateVariants.mockResolvedValue({ data: {} })
 })
 
@@ -62,23 +76,62 @@ describe('CreativeLibraryScreen (ENG27)', () => {
     expect(screen.getByTestId('ae-creative-img')).toHaveAttribute('src', 'https://minio/signed/img.png')
   })
 
-  it('policy-check humain : l\'asset passe pending → vérifié une fois toutes les règles confirmées', async () => {
+  it('WIR170 — poste confirmed_keys = les clés INTERDITES du serveur, et le statut vient du serveur', async () => {
     renderScreen()
     await waitFor(() => expect(mocks.list).toHaveBeenCalled())
+    // La check-list serveur est chargée au montage.
+    await waitFor(() => expect(mocks.checklist).toHaveBeenCalled())
     fireEvent.click(screen.getByTestId('ae-creative-check-1'))
     const checklist = await screen.findByTestId('ae-creative-checklist-1')
     // Valider est désactivé tant que TOUTES les règles ne sont pas confirmées.
     const validate = screen.getByTestId('ae-creative-validate-1')
     expect(validate).toBeDisabled()
-    // Confirme chaque règle (rule-by-rule).
+    // Les cases rendues sont EXACTEMENT les règles interdites du serveur.
     const boxes = checklist.querySelectorAll('input[type="checkbox"]')
-    expect(boxes.length).toBeGreaterThanOrEqual(3)
+    expect(boxes.length).toBe(SERVER_FORBIDDEN.length)
+    SERVER_FORBIDDEN.forEach(r => {
+      expect(screen.getByTestId(`ae-creative-rule-1-${r.key}`)).toBeInTheDocument()
+    })
     boxes.forEach(b => fireEvent.click(b))
     expect(validate).not.toBeDisabled()
     fireEvent.click(validate)
-    await waitFor(() => expect(mocks.policyCheck).toHaveBeenCalledWith(1, expect.objectContaining({ passed: true })))
-    // pending → vérifié à l'écran.
+    await waitFor(() => expect(mocks.policyCheck).toHaveBeenCalled())
+    const [id, payload] = mocks.policyCheck.mock.calls[0]
+    expect(id).toBe(1)
+    // La SEULE clé lue par le serveur (views.policy_check) est `confirmed_keys`.
+    expect(Object.keys(payload)).toEqual(['confirmed_keys'])
+    expect([...payload.confirmed_keys].sort())
+      .toEqual(SERVER_FORBIDDEN.map(r => r.key).sort())
+    // pending → vérifié UNIQUEMENT parce que le serveur l'a renvoyé.
     await waitFor(() => expect(screen.getByTestId('ae-creative-status-1')).toHaveTextContent('Vérifié'))
+  })
+
+  it('WIR170 — un refus serveur (passed=false) ne fait JAMAIS passer l\'asset en « Vérifié »', async () => {
+    mocks.policyCheck.mockResolvedValue({
+      data: { id: 1, designation: 'Reel toiture', type: 'reel',
+        is_policy_passed: false,
+        policy_stamp: { passed: false, consent_block: 'manquant',
+          consent_block_label: 'Consentement client manquant (CNDP).' } },
+    })
+    renderScreen()
+    await waitFor(() => expect(mocks.checklist).toHaveBeenCalled())
+    fireEvent.click(screen.getByTestId('ae-creative-check-1'))
+    const checklist = await screen.findByTestId('ae-creative-checklist-1')
+    checklist.querySelectorAll('input[type="checkbox"]').forEach(b => fireEvent.click(b))
+    fireEvent.click(screen.getByTestId('ae-creative-validate-1'))
+    await waitFor(() => expect(mocks.policyCheck).toHaveBeenCalled())
+    await waitFor(() => expect(screen.getByTestId('ae-creative-msg'))
+      .toHaveTextContent(/Consentement client manquant/))
+    expect(screen.getByTestId('ae-creative-status-1')).toHaveTextContent('À vérifier')
+  })
+
+  it('WIR170 — repli local si la check-list serveur ne répond pas', async () => {
+    mocks.checklist.mockRejectedValue(new Error('boom'))
+    renderScreen()
+    await waitFor(() => expect(mocks.list).toHaveBeenCalled())
+    fireEvent.click(screen.getByTestId('ae-creative-check-1'))
+    const checklist = await screen.findByTestId('ae-creative-checklist-1')
+    expect(checklist.querySelectorAll('input[type="checkbox"]').length).toBeGreaterThan(0)
   })
 
   it('upload : soumet un FormData avec le fichier choisi', async () => {

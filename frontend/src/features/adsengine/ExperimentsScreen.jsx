@@ -1,10 +1,15 @@
 import { useEffect, useState, useMemo, useCallback } from 'react'
-import { FlaskConical, Trophy, ChevronDown, ChevronUp } from 'lucide-react'
+import {
+  FlaskConical, Trophy, ChevronDown, ChevronUp, CheckCircle2, XCircle, RefreshCw,
+} from 'lucide-react'
 import adsengineApi from './adsengineApi'
 import {
   normalizeExperiment, normalizeArms, normalizeDecisionLog, bestArm, readPaginated,
   formatPercent, formatMAD, formatNumber,
 } from './adsengine'
+// WIR209 — clôture + synchro d'étude native sont des ÉCRITURES : le back exige
+// `adsengine_manage`. Sans cette garde, l'utilisateur découvrait le refus en 403.
+import { useAdsPermissions } from './useAdsPermissions'
 
 /* ============================================================================
    ENG39 — Écran « Expérimentations » (moteur bandit).
@@ -220,6 +225,15 @@ export default function ExperimentsScreen() {
   const [allDecisions, setAllDecisions] = useState([])
   const [allDecisionsLoading, setAllDecisionsLoading] = useState(true)
 
+  // WIR209 — clôture humaine (verdict) + synchro de l'étude native Meta.
+  const { has } = useAdsPermissions()
+  const canManage = has('adsengine_manage')
+  const [closeBusy, setCloseBusy] = useState(false)
+  const [closeMsg, setCloseMsg] = useState('')
+  const [closeResult, setCloseResult] = useState(null) // {validated, node, decision_log}
+  const [syncBusy, setSyncBusy] = useState(false)
+  const [syncMsg, setSyncMsg] = useState('')
+
   // Charge le détail (expérience + ses bras réels + son DecisionLog).
   const loadDetail = useCallback((id) => {
     setSelectedId(id)
@@ -287,6 +301,62 @@ export default function ExperimentsScreen() {
       .finally(() => setAllDecisionsLoading(false))
   }, [])
 
+  // WIR209 — changer d'expérience remet la zone de clôture à zéro (jamais le
+  // verdict d'une autre expérience affiché sous celle qu'on regarde).
+  useEffect(() => {
+    setCloseMsg(''); setCloseResult(null); setSyncMsg('')
+  }, [selectedId])
+
+  // WIR209 — CLÔTURE : l'humain tranche « hypothèse validée / invalidée » ; le
+  // serveur déplace le posterior du nœud d'hypothèse et journalise la décision.
+  const conclude = async (validated) => {
+    if (!selectedId) return
+    setCloseBusy(true); setCloseMsg(''); setCloseResult(null)
+    try {
+      const r = await adsengineApi.experiments.conclude(selectedId, validated)
+      const data = (r?.data && typeof r.data === 'object') ? r.data : {}
+      setCloseResult({ ...data, validated: data.validated ?? validated })
+      setCloseMsg(data.node == null
+        ? "Verdict enregistré, mais aucun nœud d'hypothèse n'est rattaché à "
+          + "cette expérimentation : rien n'a bougé dans les croyances du moteur."
+        : (validated
+          ? 'Hypothèse VALIDÉE : le nœud d’hypothèse a été mis à jour.'
+          : 'Hypothèse INVALIDÉE : le nœud d’hypothèse a été mis à jour.'))
+      // Le DecisionLog de l'expérience vient de gagner une ligne : on relit.
+      loadDetail(selectedId)
+    } catch (e) {
+      setCloseMsg(e?.response?.status === 400
+        ? 'La clôture exige un verdict explicite (validée ou invalidée).'
+        : 'Clôture impossible (permission « adsengine_manage » ?).')
+    } finally {
+      setCloseBusy(false)
+    }
+  }
+
+  // WIR209 — SYNCHRO de l'étude A/B native Meta (lecture seule côté Meta).
+  const syncStudy = async () => {
+    if (!selectedId) return
+    setSyncBusy(true); setSyncMsg('')
+    try {
+      await adsengineApi.experiments.syncAdStudy(selectedId)
+      setSyncMsg('Étude Meta relue : une décision a été journalisée.')
+      loadDetail(selectedId)
+    } catch (e) {
+      const code = e?.response?.status
+      if (code === 404) {
+        setSyncMsg("Aucune étude A/B native n'est liée à cette expérimentation.")
+      } else if (code === 400) {
+        setSyncMsg('Aucune connexion Meta active : connectez le compte publicitaire.')
+      } else if (code === 502) {
+        setSyncMsg("Meta n'a pas répondu : réessayez plus tard. Rien n'a été modifié.")
+      } else {
+        setSyncMsg('Synchronisation impossible (permission « adsengine_manage » ?).')
+      }
+    } finally {
+      setSyncBusy(false)
+    }
+  }
+
   const expNameById = useMemo(() => {
     const map = new Map()
     list.forEach(e => map.set(e.id, e.nom || e.name || `Expérimentation ${e.id}`))
@@ -350,6 +420,61 @@ export default function ExperimentsScreen() {
                           )
                         })}
                     </ol>
+                  </section>
+
+                  {/* WIR209 — CLÔTURE de l'expérience (verdict HUMAIN) + relecture
+                      de l'étude A/B native Meta. Ces deux gestes referment la
+                      boucle d'apprentissage : sans eux, le moteur proposait des
+                      expériences que personne ne pouvait jamais conclure. */}
+                  <section className="card ae-exp-close" data-testid="ae-exp-close"
+                    style={{ padding: '1rem', marginBottom: '1rem' }}>
+                    <h3 style={{ margin: '0 0 0.4rem' }}>Clôturer l&apos;expérimentation</h3>
+                    <p style={{ margin: '0 0 0.6rem', color: '#64748b', fontSize: '0.88rem' }}>
+                      C&apos;est vous qui tranchez : le moteur enregistre le verdict,
+                      il ne le décide jamais seul.
+                    </p>
+                    <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                      <button type="button" className="btn btn-success"
+                        data-testid="ae-exp-conclude-validated"
+                        disabled={closeBusy || !canManage}
+                        title={!canManage ? 'Nécessite la permission « adsengine_manage ».' : undefined}
+                        onClick={() => conclude(true)}
+                        style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}>
+                        <CheckCircle2 size={15} aria-hidden="true" /> Hypothèse validée
+                      </button>
+                      <button type="button" className="btn btn-danger-outline"
+                        data-testid="ae-exp-conclude-invalidated"
+                        disabled={closeBusy || !canManage}
+                        title={!canManage ? 'Nécessite la permission « adsengine_manage ».' : undefined}
+                        onClick={() => conclude(false)}
+                        style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}>
+                        <XCircle size={15} aria-hidden="true" /> Hypothèse invalidée
+                      </button>
+                      <button type="button" className="btn btn-light"
+                        data-testid="ae-exp-sync-study"
+                        disabled={syncBusy || !canManage}
+                        title={!canManage ? 'Nécessite la permission « adsengine_manage ».' : undefined}
+                        onClick={syncStudy}
+                        style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}>
+                        <RefreshCw size={15} aria-hidden="true" /> Relire l&apos;étude Meta
+                      </button>
+                    </div>
+                    {closeMsg && (
+                      <p data-testid="ae-exp-close-msg" style={{ margin: '0.6rem 0 0', color: '#334155' }}>
+                        {closeMsg}
+                      </p>
+                    )}
+                    {closeResult && closeResult.decision_log != null && (
+                      <p data-testid="ae-exp-close-decision" style={{ margin: '0.3rem 0 0', color: '#64748b', fontSize: '0.85rem' }}>
+                        Décision journalisée nº {closeResult.decision_log}
+                        {closeResult.node != null ? ` · nœud d'hypothèse nº ${closeResult.node}` : ''}
+                      </p>
+                    )}
+                    {syncMsg && (
+                      <p data-testid="ae-exp-sync-msg" style={{ margin: '0.6rem 0 0', color: '#334155' }}>
+                        {syncMsg}
+                      </p>
+                    )}
                   </section>
 
                   {/* Bras — PACT110 : liste RÉELLE (ExperimentArm), enrichie des

@@ -17,8 +17,12 @@ vi.mock('../../api/reportingApi', () => ({
   default: {
     listRapportDefinitions: vi.fn(),
     createRapportDefinition: vi.fn(),
+    // WIR253 — édition en place + export NTEXT11 : deux surfaces serveur qui
+    // n'avaient AUCUN appelant frontend.
+    updateRapportDefinition: vi.fn(),
     deleteRapportDefinition: vi.fn(),
     executerRapportDefinition: vi.fn(),
+    exportRapportDefinition: vi.fn(),
   },
 }))
 vi.mock('../../api/coreApi', () => ({
@@ -88,8 +92,15 @@ beforeEach(() => {
   vi.clearAllMocks()
   reportingApi.listRapportDefinitions.mockResolvedValue({ data: DEFINITIONS })
   reportingApi.createRapportDefinition.mockResolvedValue({ data: { id: 5 } })
+  reportingApi.updateRapportDefinition.mockResolvedValue({ data: { id: 3 } })
   reportingApi.deleteRapportDefinition.mockResolvedValue({ data: {} })
+  reportingApi.exportRapportDefinition.mockResolvedValue({
+    data: new Blob(['a,b']), headers: {},
+  })
   coreApi.datasetsExplorateur.list.mockResolvedValue({ data: DATASETS })
+  // jsdom ne fournit pas createObjectURL : le helper de remise blob s'en sert.
+  globalThis.URL.createObjectURL = vi.fn(() => 'blob:fake')
+  globalThis.URL.revokeObjectURL = vi.fn()
 })
 afterEach(() => { cleanup(); vi.clearAllMocks() })
 
@@ -167,5 +178,69 @@ describe('RapportBuilderPage (PACT146)', () => {
     const ligne = await screen.findByTestId('rapport-definition-4')
     await user.click(within(ligne).getByRole('button', { name: 'Supprimer' }))
     expect(reportingApi.deleteRapportDefinition).toHaveBeenCalledWith(4)
+  })
+
+  // ── WIR253 — export NTEXT11 + édition en place ─────────────────────────
+  it('WIR253 — exporte en CSV puis en XLSX avec le format demandé', async () => {
+    const user = userEvent.setup()
+    render(<RapportBuilderPage />)
+    const ligne = await screen.findByTestId('rapport-definition-3')
+
+    await user.click(within(ligne).getByTestId('rapport-export-csv-3'))
+    expect(reportingApi.exportRapportDefinition).toHaveBeenCalledWith(3, 'csv')
+
+    await user.click(within(ligne).getByTestId('rapport-export-xlsx-3'))
+    expect(reportingApi.exportRapportDefinition).toHaveBeenCalledWith(3, 'xlsx')
+  })
+
+  it('WIR253 — un 503 xlsx dit que le CSV reste possible (jamais un fichier vide)', async () => {
+    const user = userEvent.setup()
+    reportingApi.exportRapportDefinition.mockRejectedValue({ response: { status: 503 } })
+    render(<RapportBuilderPage />)
+    const ligne = await screen.findByTestId('rapport-definition-3')
+    await user.click(within(ligne).getByTestId('rapport-export-xlsx-3'))
+    expect(await screen.findByRole('alert')).toHaveTextContent(/format CSV/)
+  })
+
+  it('WIR253 — « Modifier » pré-remplit le formulaire et PATCH avec l’id (jamais un POST)', async () => {
+    const user = userEvent.setup()
+    render(<RapportBuilderPage />)
+    const ligne = await screen.findByTestId('rapport-definition-3')
+    await user.click(within(ligne).getByTestId('rapport-modifier-3'))
+
+    // Formulaire pré-rempli depuis la définition RÉELLE (spec + pivot_spec).
+    expect(screen.getByLabelText('Titre')).toHaveValue('Tickets par technicien')
+    expect(screen.getByLabelText('Dataset')).toHaveValue('sav_tickets')
+    expect(screen.getByLabelText('technicien__username')).toBeChecked()
+    expect(screen.getByLabelText('Lignes')).toHaveValue('technicien__username')
+    expect(screen.getByLabelText('Colonnes')).toHaveValue('statut')
+    expect(screen.getByLabelText('Mesure')).toHaveValue('cout_interne')
+    expect(screen.getByLabelText('Visibilité')).toHaveValue('societe')
+
+    await user.click(screen.getByTestId('rapport-submit'))
+    expect(reportingApi.updateRapportDefinition).toHaveBeenCalledWith(3, {
+      titre: 'Tickets par technicien',
+      dataset: 'sav_tickets',
+      spec: { select: ['statut', 'technicien__username'] },
+      pivot_spec: {
+        rows: ['technicien__username'], columns: ['statut'],
+        measure: 'cout_interne', agg: 'sum',
+      },
+      partage: 'societe',
+    })
+    // Une édition ne crée JAMAIS une seconde définition.
+    expect(reportingApi.createRapportDefinition).not.toHaveBeenCalled()
+  })
+
+  it('WIR253 — « Annuler » sort du mode édition et revient à la création', async () => {
+    const user = userEvent.setup()
+    render(<RapportBuilderPage />)
+    const ligne = await screen.findByTestId('rapport-definition-3')
+    await user.click(within(ligne).getByTestId('rapport-modifier-3'))
+    expect(screen.getByRole('heading', { name: 'Modifier la définition' })).toBeInTheDocument()
+
+    await user.click(screen.getByTestId('rapport-annuler-edition'))
+    expect(screen.getByRole('heading', { name: 'Nouvelle définition' })).toBeInTheDocument()
+    expect(screen.getByLabelText('Titre')).toHaveValue('')
   })
 })

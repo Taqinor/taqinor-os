@@ -119,6 +119,11 @@ const adsengineApi = {
     // @action backend EN : approve / reject (ADSENGINT1).
     approve: (id) => api.post(`/adsengine/actions/${id}/approve/`),
     reject: (id, payload) => api.post(`/adsengine/actions/${id}/reject/`, payload),
+    // WIR208 — APPLIQUER : la seule étape qui touche réellement Meta. Approuver
+    // ne fait qu'autoriser ; sans cet appel une action approuvée n'était JAMAIS
+    // appliquée (l'écran la retirait de la boîte et rien ne partait).
+    // 409 = pas approuvée ; 502 = échec Meta (l'action passe « echouee »).
+    apply: (id) => api.post(`/adsengine/actions/${id}/apply/`),
     // PUB22 — proposition d'action CURÉE (duplicate/set_schedule/create_ad_study)
     // via le producteur backend (résolution + validation) ; les kinds simples
     // passent par `create` ({kind, reason_fr, payload}). Tout finit en
@@ -141,6 +146,12 @@ const adsengineApi = {
   creatives: {
     ...resource('creatifs'),
     upload: (formData) => api.post('/adsengine/creatifs/upload/', formData),
+    // WIR170 — la check-list policy est SERVEUR (`policy.build_checklist`,
+    // `{forbidden, allowed}`) : l'écran ne devine jamais les clés de règles.
+    checklist: () => api.get('/adsengine/creatifs/checklist/'),
+    // WIR170 — la seule clé lue par `policy_check` (views.py) est
+    // `confirmed_keys` ; tout autre nom était ignoré EN SILENCE (le serveur
+    // enregistrait alors 0 règle confirmée et `passed` restait faux).
     policyCheck: (id, payload) =>
       api.post(`/adsengine/creatifs/${id}/policy-check/`, payload),
     generateVariants: (id) => api.post(`/adsengine/creatifs/${id}/variantes/`),
@@ -162,6 +173,17 @@ const adsengineApi = {
     // PUB87 — calculateur MDE/puissance (vue mince sur mde.py) : « avec votre
     // volume, ~X jours pour détecter +20 % » avant lancement.
     mde: (params) => api.get('/adsengine/experiences/mde/', { params }),
+    // WIR209 — CLÔTURE humaine avec verdict (PUB18). Le serveur EXIGE un booléen
+    // `validated` : la clôture porte un verdict explicite, jamais implicite.
+    // Sans cet appel, la boucle d'apprentissage n'était jamais refermée (le
+    // posterior du nœud d'hypothèse ne bougeait pas d'un pouce).
+    conclude: (id, validated) =>
+      api.post(`/adsengine/experiences/${id}/conclure/`, { validated }),
+    // WIR209 — ADSDEEP34 : relit (LECTURE SEULE) l'étude A/B native Meta liée à
+    // l'expérience et journalise un DecisionLog. 404 = aucune étude liée,
+    // 400 = aucune connexion Meta active, 502 = panne Meta.
+    syncAdStudy: (id) =>
+      api.post(`/adsengine/experiences/${id}/sync-ad-study/`),
     // PACT110 — bras RÉELS (``ExperimentArm``, routeur ``bras/``). Ce ViewSet
     // est company-scopé mais ne filtre PAS par expérience côté serveur —
     // l'appelant filtre par ``experiment`` côté client sur la liste renvoyée.
@@ -228,11 +250,25 @@ const adsengineApi = {
     list: (params) => api.get('/adsengine/regles/', { params }),
     create: (payload) => api.post('/adsengine/regles/', payload),
     update: (id, payload) => api.patch(`/adsengine/regles/${id}/`, payload),
+    // WIR272/PUB91 — « Qu'aurait fait cette règle ? » : rejeu de la règle sur
+    // l'historique RÉEL (GET, lecture seule — AUCUNE EngineAction n'est créée).
+    // Exige une instance ``RulePolicy`` existante (detail=True) : le bouton ne
+    // s'affiche donc que si `policyFor(key)` existe. `jours` borne la fenêtre.
+    backtest: (id, jours) =>
+      api.get(`/adsengine/regles/${id}/backtest/`, { params: { jours } }),
   },
 
   // ── ENG16/ENG43 — Anomalies (flux avec sévérités) ──
   anomalies: {
     list: (params) => api.get('/adsengine/anomalies/', { params }),
+    // WIR209/PUB90 — vote utile / faux-positif (acteur posé côté serveur).
+    // Valeurs acceptées par `AnomalyEvent.Feedback` : 'useful' | 'false_positive'.
+    // C'est ce vote qui alimente la précision par détecteur et le throttle
+    // brake-only : sans appelant, aucun détecteur ne pouvait jamais se taire.
+    feedback: (id, vote) =>
+      api.post(`/adsengine/anomalies/${id}/feedback/`, { vote }),
+    // WIR209/PUB90 — précision + état de throttle PAR DÉTECTEUR.
+    detectors: () => api.get('/adsengine/anomalies/detecteurs/'),
   },
 
   // ── ENG36/ENG44 — Simulations (rejeu visuel d'un run) ──

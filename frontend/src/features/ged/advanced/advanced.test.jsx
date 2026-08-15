@@ -68,6 +68,10 @@ vi.mock('../../../api/gedApi', () => ({
     deleteTamponSociete: vi.fn(() => Promise.resolve({ data: {} })),
     getVersions: vi.fn(() => Promise.resolve({ data: [{ id: 55, version: 1 }] })),
     createAnnotation: vi.fn(() => Promise.resolve({ data: { id: 1 } })),
+    // WIR249/XGED16 — export du PDF annoté APLATI (blob).
+    exportAnnoteVersion: vi.fn(() => Promise.resolve({
+      data: new Blob(['%PDF']), headers: {},
+    })),
   },
 }))
 
@@ -209,5 +213,45 @@ describe('WIR164 ChecklistPage', () => {
       })
       expect(toast.success).toHaveBeenCalledWith('Tampon apposé.')
     })
+  })
+
+  // WIR249/XGED16 — apposer un tampon sans jamais pouvoir SORTIR le PDF
+  // tamponné : l'export annoté n'avait aucun appelant.
+  it('WIR249 — après apposition, exporte le PDF annoté APLATI de la version', async () => {
+    gedApi.getDocumentsList.mockResolvedValueOnce({
+      data: [{ id: 4, nom: 'Bail.pdf' }],
+    })
+    renderPage(<ChecklistPage />)
+    await userEvent.click(await screen.findByRole('tab', { name: /Tampons/ }))
+    await userEvent.click(screen.getAllByRole('button', { name: /Apposer un tampon/i })[0])
+    await userEvent.click(screen.getByRole('combobox', { name: /Choisir un document/i }))
+    await userEvent.click((await screen.findAllByText('Bail.pdf'))[0])
+    await userEvent.click(screen.getByRole('combobox', { name: /Choisir un tampon/i }))
+    await userEvent.click((await screen.findAllByText('Payé'))[0])
+    await userEvent.click(screen.getAllByRole('button', { name: 'Apposer' })[0])
+
+    // Le dialogue reste ouvert et offre l'export sur la version annotée.
+    const exportBtn = await screen.findByTestId('ged-export-annote')
+    await userEvent.click(exportBtn)
+    await waitFor(() => expect(gedApi.exportAnnoteVersion).toHaveBeenCalledWith(55))
+  })
+
+  it('WIR249 — sans PyMuPDF (400), un message FR remplace le téléchargement', async () => {
+    gedApi.getDocumentsList.mockResolvedValueOnce({
+      data: [{ id: 4, nom: 'Bail.pdf' }],
+    })
+    gedApi.exportAnnoteVersion.mockRejectedValueOnce({ response: { status: 400 } })
+    renderPage(<ChecklistPage />)
+    await userEvent.click(await screen.findByRole('tab', { name: /Tampons/ }))
+    await userEvent.click(screen.getAllByRole('button', { name: /Apposer un tampon/i })[0])
+    await userEvent.click(screen.getByRole('combobox', { name: /Choisir un document/i }))
+    await userEvent.click((await screen.findAllByText('Bail.pdf'))[0])
+    await userEvent.click(screen.getByRole('combobox', { name: /Choisir un tampon/i }))
+    await userEvent.click((await screen.findAllByText('Payé'))[0])
+    await userEvent.click(screen.getAllByRole('button', { name: 'Apposer' })[0])
+    await userEvent.click(await screen.findByTestId('ged-export-annote'))
+
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith(
+      expect.stringContaining('bibliothèque PDF absente')))
   })
 })

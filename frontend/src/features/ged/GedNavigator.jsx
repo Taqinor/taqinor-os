@@ -14,9 +14,13 @@ import { useEffect, useMemo, useState } from 'react'
 import {
   Folder, FolderOpen, ChevronRight, ChevronDown, FileText, Loader2, Inbox,
   RefreshCw, Plus, FolderPlus, Pencil, Upload, MoveRight, Eye, Lock, LockOpen,
-  Trash2, Info, Link2, EyeOff, X,
+  Trash2, Info, Link2, EyeOff, X, Archive, Tag as TagIcon, Undo2, Settings2,
 } from 'lucide-react'
 import gedApi from '../../api/gedApi'
+// WIR204 — un ZIP de lot / un PDF signé arrivent en BINAIRE : la remise passe
+// par le helper commun (pré-ouverture d'onglet iOS/PWA incluse), jamais par un
+// `<a download>` ad hoc.
+import { downloadBlobInGesture } from '../../utils/downloadBlob'
 // APX32 (e) — en-tête UNIQUE de l'app (VX28), fin du 4ᵉ idiome.
 import { PageHeader } from '../../ui/PageHeader'
 import { formatDate } from '../../lib/format'
@@ -105,6 +109,12 @@ export default function GedNavigator() {
   const [bulkBusy, setBulkBusy] = useState(false)
   // XGED10 — fusion de plusieurs PDF sélectionnés (dialogue de confirmation).
   const [mergeDlg, setMergeDlg] = useState(false)
+  // WIR204/XGED14 — dialogue d'opération de lot ('tagger'|'detaguer'|'deplacer').
+  const [bulkDlg, setBulkDlg] = useState(null)
+  const [tags, setTags] = useState([])
+  // WIR249 — actions de second rang d'UN document (OCR pièce, verrou
+  // d'avertissement ZGED9, cycle de vie GED17, éditeur Office XGED30).
+  const [advancedDoc, setAdvancedDoc] = useState(null)
 
   // ── Chargement des cabinets (armoires racines) ──
   const loadCabinets = (preferId) => {
@@ -175,6 +185,17 @@ export default function GedNavigator() {
     return () => { alive = false }
   }, [selected])
 
+  // WIR204 — taxonomie de tags (GED9), nécessaire aux opérations de lot
+  // tagger/détaguer. Chargée une fois : une liste vide désactive l'action au
+  // lieu de proposer un formulaire qui ne peut rien envoyer.
+  useEffect(() => {
+    let alive = true
+    gedApi.getTags()
+      .then((r) => { if (alive) setTags(rows(r)) })
+      .catch(() => { if (alive) setTags([]) })
+    return () => { alive = false }
+  }, [])
+
   const toggle = (id) => setExpanded((prev) => {
     const next = new Set(prev)
     if (next.has(id)) next.delete(id)
@@ -215,6 +236,47 @@ export default function GedNavigator() {
       } else {
         toast.success(`${selectedIds.size} document(s) mis en corbeille.`)
       }
+      setSelectedIds(new Set())
+      reloadDocuments()
+    } catch (err) {
+      toast.error(errText(err, 'Opération en lot impossible.'))
+    } finally { setBulkBusy(false) }
+  }
+
+  // WIR204/XGED14 — le ZIP est le SEUL retour BINAIRE d'`operations-lot` : il
+  // passe par un wrapper blob DÉDIÉ (l'appel générique JSON corrompait
+  // l'archive), avec pré-ouverture d'onglet dans le geste de clic.
+  const bulkZip = async () => {
+    if (selectedIds.size === 0) return
+    const pending = downloadBlobInGesture()
+    setBulkBusy(true)
+    try {
+      const res = await gedApi.telechargerZipLot([...selectedIds])
+      pending.deliver(res.data, 'documents.zip')
+      toast.success(`${selectedIds.size} document(s) dans l'archive.`)
+    } catch (err) {
+      toast.error(errText(err, 'Téléchargement du ZIP impossible.'))
+    } finally { setBulkBusy(false) }
+  }
+
+  // WIR204/XGED14 — tagger / détaguer / déplacer par lot. Le serveur valide
+  // CHAQUE document séparément : un item bloqué (archivé, hold légal) revient
+  // dans `erreurs` — on le DIT, on ne le tait jamais derrière un succès global.
+  const bulkOperation = async (operation, params, labelSucces) => {
+    if (selectedIds.size === 0) return
+    setBulkBusy(true)
+    try {
+      const res = await gedApi.operationsLot({
+        documents: [...selectedIds], operation, params,
+      })
+      const erreurs = res?.data?.erreurs || []
+      const resultats = res?.data?.resultats || []
+      if (erreurs.length) {
+        toast.error(`${erreurs.length} document(s) non traité(s) : `
+          + `${erreurs.map((e) => e.erreur).filter(Boolean).join(' · ')}`)
+      }
+      if (resultats.length) toast.success(`${resultats.length} ${labelSucces}`)
+      setBulkDlg(null)
       setSelectedIds(new Set())
       reloadDocuments()
     } catch (err) {
@@ -299,6 +361,13 @@ export default function GedNavigator() {
       <div className="mb-4">
         <GedSearch onOpenDocument={setPreviewDoc} />
       </div>
+
+      {/* WIR249/FG352 — DocQA : poser une QUESTION et recevoir les extraits qui
+          y répondent (GED + base de connaissances). KEY-GATED : sans clé
+          d'embedding, le serveur renvoie `enabled:false` — on l'écrit, on ne
+          simule jamais une réponse. */}
+      <DocQaPanel />
+
 
       {error ? (
         <EmptyState title="Erreur" description={error}
@@ -422,6 +491,24 @@ export default function GedNavigator() {
                             <FileText className="size-4" aria-hidden="true" /> Fusionner
                           </Button>
                         )}
+                        {/* WIR204/XGED14 — archive ZIP de la sélection (blob dédié). */}
+                        <Button size="sm" variant="outline" data-testid="ged-bulk-zip"
+                          onClick={bulkZip} disabled={bulkBusy}>
+                          <Archive className="size-4" aria-hidden="true" /> Télécharger (ZIP)
+                        </Button>
+                        {/* WIR204/XGED14 — tagger / détaguer / déplacer par lot. */}
+                        <Button size="sm" variant="outline" data-testid="ged-bulk-tag"
+                          onClick={() => setBulkDlg('tagger')} disabled={bulkBusy || tags.length === 0}>
+                          <TagIcon className="size-4" aria-hidden="true" /> Tagger
+                        </Button>
+                        <Button size="sm" variant="outline" data-testid="ged-bulk-untag"
+                          onClick={() => setBulkDlg('detaguer')} disabled={bulkBusy || tags.length === 0}>
+                          <TagIcon className="size-4" aria-hidden="true" /> Détaguer
+                        </Button>
+                        <Button size="sm" variant="outline" data-testid="ged-bulk-move"
+                          onClick={() => setBulkDlg('deplacer')} disabled={bulkBusy || folders.length === 0}>
+                          <MoveRight className="size-4" aria-hidden="true" /> Déplacer
+                        </Button>
                         <Button size="sm" variant="destructive"
                           onClick={bulkCorbeille} disabled={bulkBusy}>
                           {bulkBusy ? <Loader2 className="size-4 animate-spin" aria-hidden="true" /> : <Trash2 className="size-4" aria-hidden="true" />}
@@ -531,6 +618,16 @@ export default function GedNavigator() {
                                   <Lock className="size-4" aria-hidden="true" /> Extraire
                                 </Button>
                               )}
+                              {/* WIR249 — surfaces de second rang (OCR pièce,
+                                  verrou d'AVERTISSEMENT ZGED9 distinct du
+                                  check-out, cycle de vie GED17, éditeur
+                                  Office) : regroupées, jamais un 6ᵉ bouton. */}
+                              <Button size="sm" variant="ghost"
+                                aria-label={`Actions avancées sur ${d.nom}`}
+                                data-testid={`ged-avance-${d.id}`}
+                                onClick={() => setAdvancedDoc(d)}>
+                                <Settings2 className="size-4" aria-hidden="true" />
+                              </Button>
                               <Button size="sm" variant="ghost"
                                 aria-label={`Mettre ${d.nom} en corbeille`}
                                 onClick={() => mettreEnCorbeille(d)}>
@@ -558,6 +655,22 @@ export default function GedNavigator() {
         folder={selected} onUploaded={onDocumentUploaded} />
       <DocumentPreviewDialog document={previewDoc} onClose={() => setPreviewDoc(null)}
         onCaviarde={reloadDocuments} />
+      {/* WIR249 — actions de second rang sur un document. */}
+      {advancedDoc && (
+        <DocumentAdvancedDialog document={advancedDoc}
+          onClose={() => setAdvancedDoc(null)} onChanged={reloadDocuments} />
+      )}
+      {/* WIR204/XGED14 — tagger / détaguer / déplacer la sélection. */}
+      {bulkDlg && (
+        <BulkOperationDialog
+          operation={bulkDlg} count={selectedIds.size} tags={tags} folders={folders}
+          busy={bulkBusy} onClose={() => setBulkDlg(null)}
+          onSubmit={(params) => bulkOperation(
+            bulkDlg, params,
+            bulkDlg === 'deplacer' ? 'document(s) déplacé(s).'
+              : bulkDlg === 'tagger' ? 'document(s) taggé(s).'
+                : 'document(s) détaggé(s).')} />
+      )}
       {/* XGED10 — fusion des documents sélectionnés (bordure de la barre en lot). */}
       {mergeDlg && (
         <MergeDocumentsDialog
@@ -571,6 +684,271 @@ export default function GedNavigator() {
         <GedDocumentInsights document={insightsDoc} onClose={() => setInsightsDoc(null)} />
       )}
     </div>
+  )
+}
+
+// ── WIR249/FG352 — DocQA : poser une question, lire les extraits ────────────
+// `GET documents/docqa/?q=&k=` renvoie `{enabled, results}` où chaque résultat
+// vient de la GED (`document_nom`) OU de la base de connaissances
+// (`article_titre`). KEY-GATED : `enabled:false` = aucune clé d'embedding
+// configurée — l'écran le DIT plutôt que d'afficher un vide qui ment.
+function DocQaPanel() {
+  const [q, setQ] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [reponse, setReponse] = useState(null)
+
+  const ask = async () => {
+    const question = q.trim()
+    if (!question) return
+    setBusy(true)
+    try {
+      const r = await gedApi.docqa(question, 5)
+      setReponse({
+        enabled: r?.data?.enabled !== false,
+        results: Array.isArray(r?.data?.results) ? r.data.results : [],
+      })
+    } catch (err) {
+      toast.error(errText(err, 'Recherche de réponse impossible.'))
+    } finally { setBusy(false) }
+  }
+
+  return (
+    <Card className="mb-4">
+      <CardContent className="flex flex-col gap-2 p-4">
+        <div className="flex items-end gap-2">
+          <Input className="flex-1" aria-label="Question sur vos documents"
+            data-testid="ged-docqa-q" placeholder="Poser une question sur vos documents…"
+            value={q} onChange={(e) => setQ(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter') ask() }} />
+          <Button type="button" onClick={ask} disabled={busy || !q.trim()}
+            data-testid="ged-docqa-ask">
+            {busy && <Loader2 className="size-4 animate-spin" aria-hidden="true" />}
+            Chercher la réponse
+          </Button>
+        </div>
+        {reponse && !reponse.enabled && (
+          <p className="text-[12.5px] text-muted-foreground" data-testid="ged-docqa-disabled">
+            La recherche par question n&apos;est pas activée sur cette installation
+            (aucune clé d&apos;indexation sémantique configurée).
+          </p>
+        )}
+        {reponse?.enabled && reponse.results.length === 0 && (
+          <p className="text-[12.5px] text-muted-foreground" data-testid="ged-docqa-empty">
+            Aucun extrait ne répond à cette question.
+          </p>
+        )}
+        {reponse?.enabled && reponse.results.length > 0 && (
+          <ul className="grid gap-2" data-testid="ged-docqa-results">
+            {reponse.results.map((r, i) => (
+              <li key={`${r.source}-${r.document ?? r.article}-${r.chunk_index}-${i}`}
+                data-testid="ged-docqa-result"
+                className="rounded border border-border p-2 text-[12.5px]">
+                <strong>{r.document_nom || r.article_titre || 'Extrait'}</strong>
+                <span className="ml-1 text-muted-foreground">
+                  ({r.source === 'kb' ? 'base de connaissances' : 'GED'})
+                </span>
+                <p className="mt-0.5 text-muted-foreground">{r.texte}</p>
+              </li>
+            ))}
+          </ul>
+        )}
+      </CardContent>
+    </Card>
+  )
+}
+
+// ── WIR249 — Actions de SECOND RANG sur un document ─────────────────────────
+// Quatre surfaces exposées par le backend mais sans aucun appelant :
+//  * GED33 `ocr-piece` — OCR d'une pièce → métadonnées typées, fusion ADDITIVE ;
+//  * ZGED9 `verrouiller`/`deverrouiller` — verrou d'AVERTISSEMENT, DISTINCT du
+//    check-out GED16 (il n'empêche jamais la lecture, il prévient) ;
+//  * GED17 `cycle-vie` — statut documentaire LOCAL (sans rapport avec STAGES.py),
+//    transitions gardées côté serveur (400 explicite si interdite) ;
+//  * XGED30 `office-ouvrir` — éditeur Office embarqué, KEY-GATED (400 sans URL).
+const TYPES_PIECE = [
+  { value: '', label: 'Deviner le type' },
+  { value: 'cin', label: 'CIN' },
+  { value: 'facture', label: 'Facture' },
+  { value: 'bl', label: 'Bon de livraison' },
+]
+// GED17 — cibles possibles ; le serveur reste seul juge de la transition.
+const CYCLE_VIE = [
+  { value: 'brouillon', label: 'Brouillon' },
+  { value: 'revue', label: 'En revue' },
+  { value: 'approuve', label: 'Approuvé' },
+  { value: 'archive', label: 'Archivé' },
+  { value: 'obsolete', label: 'Obsolète' },
+]
+
+function DocumentAdvancedDialog({ document: doc, onClose, onChanged }) {
+  const [busy, setBusy] = useState(false)
+  const [typePiece, setTypePiece] = useState('')
+  const [statut, setStatut] = useState(doc.statut || 'brouillon')
+  const [motif, setMotif] = useState('')
+  const verrouille = !!(doc.est_verrouille_avertissement
+    || doc.verrou_avertissement_par)
+
+  const run = async (fn, succes) => {
+    setBusy(true)
+    try {
+      await fn()
+      toast.success(succes)
+      onChanged?.()
+      onClose()
+    } catch (err) {
+      // 409 = verrou déjà posé par un autre ; 400 = transition interdite ou
+      // éditeur Office non configuré : le message du serveur est le bon.
+      toast.error(errText(err, 'Action impossible.'))
+    } finally { setBusy(false) }
+  }
+
+  const ouvrirOffice = async () => {
+    setBusy(true)
+    try {
+      const r = await gedApi.officeOuvrirDocument(doc.id)
+      const url = r?.data?.editor_url
+      if (url) { window.open(url, '_blank', 'noopener'); onChanged?.(); onClose() }
+      else toast.error("L'éditeur Office n'a pas renvoyé d'adresse.")
+    } catch (err) {
+      toast.error(errText(err, "Éditeur Office indisponible sur cette installation."))
+    } finally { setBusy(false) }
+  }
+
+  return (
+    <Dialog open onOpenChange={(v) => { if (!v) onClose() }}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle className="truncate">Actions avancées — {doc.nom}</DialogTitle>
+          <DialogDescription>
+            Le verrou d&apos;avertissement n&apos;empêche jamais la lecture : il prévient
+            les collègues. Il est distinct de l&apos;extraction (check-out).
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="grid gap-3">
+          {/* GED33 — OCR d'une pièce. */}
+          <div className="flex items-end gap-2">
+            <div className="grid flex-1 gap-1">
+              <span className="text-xs text-muted-foreground">Type de pièce</span>
+              <Select value={typePiece} onValueChange={setTypePiece}>
+                <SelectTrigger aria-label="Type de pièce" data-testid="ged-ocr-type">
+                  <SelectValue placeholder="Deviner le type" />
+                </SelectTrigger>
+                <SelectContent>
+                  {TYPES_PIECE.filter((t) => t.value).map((t) => (
+                    <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <Button type="button" disabled={busy} data-testid="ged-ocr-piece"
+              onClick={() => run(
+                () => gedApi.ocrPieceDocument(doc.id, typePiece || undefined),
+                'Métadonnées extraites et ajoutées.')}>
+              Lire la pièce (OCR)
+            </Button>
+          </div>
+
+          {/* ZGED9 — verrou d'AVERTISSEMENT (distinct du check-out GED16). */}
+          <div className="flex items-end gap-2">
+            {verrouille ? (
+              <Button type="button" variant="outline" disabled={busy}
+                data-testid="ged-deverrouiller"
+                onClick={() => run(() => gedApi.deverrouillerDocument(doc.id),
+                  'Verrou d’avertissement levé.')}>
+                <LockOpen className="size-4" aria-hidden="true" /> Lever l&apos;avertissement
+              </Button>
+            ) : (<>
+              <Input className="flex-1" aria-label="Motif du verrou"
+                data-testid="ged-verrou-motif" placeholder="Motif (optionnel)"
+                value={motif} onChange={(e) => setMotif(e.target.value)} />
+              <Button type="button" variant="outline" disabled={busy}
+                data-testid="ged-verrouiller"
+                onClick={() => run(() => gedApi.verrouillerDocument(doc.id, motif),
+                  'Avertissement « en cours d’édition » posé.')}>
+                <Lock className="size-4" aria-hidden="true" /> Signaler « en cours d&apos;édition »
+              </Button>
+            </>)}
+          </div>
+
+          {/* GED17 — cycle de vie documentaire. */}
+          <div className="flex items-end gap-2">
+            <div className="grid flex-1 gap-1">
+              <span className="text-xs text-muted-foreground">Statut du cycle de vie</span>
+              <Select value={statut} onValueChange={setStatut}>
+                <SelectTrigger aria-label="Statut du cycle de vie"
+                  data-testid="ged-cycle-statut"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {CYCLE_VIE.map((s) => (
+                    <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <Button type="button" disabled={busy} data-testid="ged-cycle-vie"
+              onClick={() => run(
+                () => gedApi.changerCycleVieDocument(doc.id, statut),
+                'Statut du cycle de vie mis à jour.')}>
+              Appliquer
+            </Button>
+          </div>
+
+          {/* XGED30 — éditeur Office embarqué (key-gated : 400 sans URL). */}
+          <Button type="button" variant="outline" disabled={busy}
+            data-testid="ged-office-ouvrir" onClick={ouvrirOffice}>
+            Ouvrir dans l&apos;éditeur Office
+          </Button>
+        </div>
+
+        <DialogFooter>
+          <DialogClose asChild><Button variant="ghost">Fermer</Button></DialogClose>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+// ── WIR204/XGED14 — Opération de lot paramétrée (tagger/détaguer/déplacer) ──
+// Le serveur valide CHAQUE document séparément : le rapport `erreurs` est
+// remonté tel quel par l'appelant — jamais un « tout s'est bien passé » global.
+function BulkOperationDialog({ operation, count, tags, folders, busy, onClose, onSubmit }) {
+  const isMove = operation === 'deplacer'
+  const options = isMove ? folders : tags
+  const [value, setValue] = useState(String(options[0]?.id ?? ''))
+  const titres = {
+    tagger: 'Tagger la sélection',
+    detaguer: 'Détaguer la sélection',
+    deplacer: 'Déplacer la sélection',
+  }
+  return (
+    <Dialog open onOpenChange={(v) => { if (!v) onClose() }}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>{titres[operation] || 'Opération en lot'}</DialogTitle>
+          <DialogDescription>
+            {count} document(s) sélectionné(s). Chaque document est traité
+            individuellement : ceux qui sont bloqués (archivés, conservation
+            légale) seront listés à part.
+          </DialogDescription>
+        </DialogHeader>
+        <Select value={value} onValueChange={setValue}>
+          <SelectTrigger aria-label={isMove ? 'Dossier cible' : 'Tag'}
+            data-testid="ged-bulk-target"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            {options.map((o) => (
+              <SelectItem key={o.id} value={String(o.id)}>{o.nom}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <DialogFooter>
+          <DialogClose asChild><Button variant="ghost">Annuler</Button></DialogClose>
+          <Button type="button" disabled={busy || !value} data-testid="ged-bulk-confirm"
+            onClick={() => onSubmit(isMove ? { folder: value } : { tag: value })}>
+            {busy && <Loader2 className="size-4 animate-spin" aria-hidden="true" />} Confirmer
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   )
 }
 
@@ -690,6 +1068,7 @@ function DocumentPreviewDialog({ document: doc, onClose, onCaviarde }) {
           documentId={doc.id}
           versions={allVersions}
           onClose={() => setCompareOpen(false)}
+          onRestored={() => { onClose(); onCaviarde?.() }}
         />
       )}
     </Dialog>
@@ -850,12 +1229,28 @@ function SplitDocumentDialog({ documentId, versionId, onClose, onDone }) {
 }
 
 // ── XGED17 — Dialogue : comparer deux versions d'un document ───────────────
-function CompareVersionsDialog({ documentId, versions, onClose }) {
+function CompareVersionsDialog({ documentId, versions, onClose, onRestored }) {
   const sorted = [...versions].sort((a, b) => (b.numero || 0) - (a.numero || 0))
   const [v1, setV1] = useState(String(sorted[1]?.id ?? sorted[0]?.id ?? ''))
   const [v2, setV2] = useState(String(sorted[0]?.id ?? ''))
   const [diff, setDiff] = useState(null)
   const [busy, setBusy] = useState(false)
+  // WIR204/GED15 — restauration d'une version antérieure. Opération ADDITIVE :
+  // le serveur crée une NOUVELLE version copiée depuis la source, l'historique
+  // reste entier (rien n'est écrasé ni supprimé).
+  const [restoreBusy, setRestoreBusy] = useState(false)
+  const restaurer = async () => {
+    if (!v1) return
+    setRestoreBusy(true)
+    try {
+      await gedApi.restaurerVersionDocument(documentId, v1)
+      toast.success('Version restaurée : une nouvelle version a été créée.')
+      onRestored?.()
+      onClose()
+    } catch (err) {
+      toast.error(errText(err, 'Restauration de version impossible.'))
+    } finally { setRestoreBusy(false) }
+  }
 
   const compare = async () => {
     if (!v1 || !v2) return
@@ -901,6 +1296,14 @@ function CompareVersionsDialog({ documentId, versions, onClose }) {
           </div>
           <Button type="button" onClick={compare} disabled={busy || v1 === v2}>
             {busy && <Loader2 className="size-4 animate-spin" aria-hidden="true" />} Comparer
+          </Button>
+          {/* WIR204/GED15 — restaurer la version A (additif, jamais destructif). */}
+          <Button type="button" variant="outline" data-testid="ged-restaurer-version"
+            onClick={restaurer} disabled={restoreBusy || !v1}>
+            {restoreBusy
+              ? <Loader2 className="size-4 animate-spin" aria-hidden="true" />
+              : <Undo2 className="size-4" aria-hidden="true" />}
+            Restaurer la version A
           </Button>
         </div>
         {diff && (

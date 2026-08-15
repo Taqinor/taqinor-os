@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { School, Plus } from 'lucide-react'
+import { School, Plus, Images } from 'lucide-react'
 import { Badge, Button, toast } from '../../ui'
 import educationApi from '../../api/educationApi'
 import useEducationResource from '../../features/education/useEducationResource'
@@ -30,6 +30,8 @@ export default function StructurePage() {
   const [niveauForm, setNiveauForm] = useState({ nom: '', cycle: 'primaire', ordre: '1' })
   const [classeForm, setClasseForm] = useState({ annee_scolaire: '', niveau: '', nom: '', capacite_max: '30' })
   const [saving, setSaving] = useState(false)
+  // WIR212/NTEDU38 — galerie photo de la classe ouverte : { classe, eleves }.
+  const [trombinoscope, setTrombinoscope] = useState(null)
 
   const niveauNom = (id) => niveaux.find((n) => n.id === Number(id))?.nom || `Niveau #${id}`
 
@@ -76,6 +78,24 @@ export default function StructurePage() {
       reloadClasses()
     } catch {
       toast.error('Impossible de créer la classe.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  // WIR212/NTEDU38 — galerie photo d'une classe. Un élève sans photo renvoie
+  // `photo_url: null` : on affiche un avatar générique (les initiales), jamais
+  // une image cassée — c'est exactement ce que le backend documente.
+  const ouvrirTrombinoscope = async (classe) => {
+    setSaving(true)
+    try {
+      const res = await educationApi.classes.trombinoscope(classe.id)
+      setTrombinoscope({
+        classe,
+        eleves: Array.isArray(res?.data?.results) ? res.data.results : [],
+      })
+    } catch {
+      toast.error('Impossible de charger le trombinoscope.')
     } finally {
       setSaving(false)
     }
@@ -177,7 +197,16 @@ export default function StructurePage() {
                 <td>{c.nom}</td>
                 <td>{c.niveau_nom || niveauNom(c.niveau)}</td>
                 <td>{c.effectif} / {c.capacite_max}</td>
-                <td><Button variant="ghost" onClick={() => exporterClasse(c)}>Exporter (xlsx)</Button></td>
+                <td style={{ display: 'flex', gap: 6 }}>
+                  <Button variant="ghost" onClick={() => exporterClasse(c)}>Exporter (xlsx)</Button>
+                  {/* WIR212/NTEDU38 — le trombinoscope existait côté serveur
+                      sans aucun appelant : la galerie n'était atteignable
+                      d'aucun écran. */}
+                  <Button variant="ghost" data-testid={`edu-trombinoscope-${c.id}`}
+                    onClick={() => ouvrirTrombinoscope(c)}>
+                    <Images size={15} strokeWidth={1.75} aria-hidden="true" /> Trombinoscope
+                  </Button>
+                </td>
               </tr>
             ))}
             {classes.length === 0 && (
@@ -185,6 +214,44 @@ export default function StructurePage() {
             )}
           </tbody>
         </table>
+      )}
+
+      {/* WIR212/NTEDU38 — trombinoscope de la classe choisie. */}
+      {trombinoscope && (
+        <section data-testid="edu-trombinoscope" style={{ marginTop: 24 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <h2 style={{ fontSize: 15, fontWeight: 600, margin: 0 }}>
+              Trombinoscope — {trombinoscope.classe.nom}
+            </h2>
+            <Button variant="ghost" onClick={() => setTrombinoscope(null)}>Fermer</Button>
+          </div>
+          {trombinoscope.eleves.length === 0 ? (
+            <p style={{ color: '#64748b' }} data-testid="edu-trombinoscope-empty">
+              Aucun élève dans cette classe.
+            </p>
+          ) : (
+            <ul style={{ display: 'flex', flexWrap: 'wrap', gap: 12, listStyle: 'none', padding: 0 }}>
+              {trombinoscope.eleves.map((e) => (
+                <li key={e.id} data-testid="edu-trombinoscope-eleve"
+                  style={{ width: 110, textAlign: 'center' }}>
+                  {e.photo_url ? (
+                    <img src={e.photo_url} alt={`${e.prenom} ${e.nom}`}
+                      style={{ width: 96, height: 96, objectFit: 'cover', borderRadius: 8 }} />
+                  ) : (
+                    // Avatar GÉNÉRIQUE (initiales) — jamais une image cassée.
+                    <div data-testid={`edu-trombinoscope-avatar-${e.id}`} aria-hidden="true"
+                      style={{ width: 96, height: 96, borderRadius: 8, background: '#e2e8f0',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        color: '#475569', fontWeight: 600 }}>
+                      {`${(e.prenom || '').charAt(0)}${(e.nom || '').charAt(0)}`.toUpperCase() || '?'}
+                    </div>
+                  )}
+                  <p style={{ margin: '4px 0 0', fontSize: 13 }}>{e.prenom} {e.nom}</p>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
       )}
     </div>
   )
