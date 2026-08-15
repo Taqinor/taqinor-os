@@ -33,6 +33,9 @@ import {
   Popover, PopoverTrigger, PopoverContent,
 } from '../../ui'
 import { formatMAD, formatDateTime } from '../../lib/format'
+// WIR189/NTCRD23 — pastille d'état crédit du client (batch, une fois par page).
+import creditApi from '../../api/creditApi'
+import CreditBadge from '../../features/credit/CreditBadge'
 // VX156 — le devis envoyé porte la voix Taqinor (moment « devis envoyé »).
 import { voice } from '../../lib/voice'
 // VX155 — jalon « devis envoyé » : un cran au-dessus du toast succès plat.
@@ -369,7 +372,7 @@ function DevisRow({ d, ctx }) {
     suiviOpenId, toggleSuiviPartage, suiviCache, suiviLoadingId,
     conceptionOpenId, setConceptionOpenId,
     etudeOpenId, setEtudeOpenId,
-    variantesRows, variantesLoading,
+    variantesRows, variantesLoading, creditBadges,
     navigate, dispatch,
     role, canDelete, canValiderVente, canSeePublicite, highlightId,
     deletingId, statutActionId, superieurBusyId, superieurStatus, shareBusyId, previewingId,
@@ -598,6 +601,13 @@ function DevisRow({ d, ctx }) {
         {/* VX7 — calm color : le nom client est une donnée PRIMAIRE (contraste
             plein + poids medium), il ressort du chrome désaturé environnant. */}
         <span className="font-medium text-foreground">{d.client_nom ?? '—'}</span>
+        {/* WIR189/NTCRD23 — pastille d'état crédit du client. Alimentée par UN
+            appel batch pour toute la page (jamais un appel par ligne) ; absente
+            tant que le batch n'a rien dit pour ce client (403, module non
+            gaté, client sans limite) — la liste ne change pas de forme. */}
+        {creditBadges[String(d.client)] && (
+          <CreditBadge couleur={creditBadges[String(d.client)]} />
+        )}
         {d.lead && (
           <div className="mt-1">
             <button
@@ -1296,6 +1306,31 @@ export default function DevisList() {
   // en cours de chargement. `getVariantes` est l'unique source du panneau.
   const [variantesCache, setVariantesCache] = useState({})
   const [variantesLoadingId, setVariantesLoadingId] = useState(null)
+  // ── WIR189/NTCRD23 — pastilles d'état crédit des clients de la page ──
+  // UN SEUL appel batch (`getBadges(ids)`) pour toute la liste : la version
+  // par ligne aurait déclenché autant de requêtes que de devis affichés.
+  // Dégradation SILENCIEUSE : 403 (rôle sans accès au module crédit) ou
+  // réponse vide → aucune pastille, aucune erreur à l'écran.
+  const [creditBadges, setCreditBadges] = useState({})
+  // Signature des ids clients de la page : l'effet ne se relance que quand
+  // l'ENSEMBLE des clients change, pas à chaque re-rendu de la liste.
+  const clientIdsKey = useMemo(() => (
+    [...new Set(devis.map(d => d.client).filter(Boolean))].sort((a, b) => a - b).join(',')
+  ), [devis])
+  useEffect(() => {
+    if (!clientIdsKey) { setCreditBadges({}); return }
+    let annule = false
+    const ids = clientIdsKey.split(',').map(Number)
+    creditApi.getBadges(ids)
+      .then(res => {
+        if (annule) return
+        const d = res?.data
+        setCreditBadges(d && typeof d === 'object' && !Array.isArray(d) ? d : {})
+      })
+      .catch(() => { if (!annule) setCreditBadges({}) })
+    return () => { annule = true }
+  }, [clientIdsKey])
+
   // Ids déjà demandés (résolus OU en vol) — évite de relancer l'appel à chaque
   // rendu sans mettre le cache dans les dépendances de l'effet (le cache change
   // à la résolution, ce qui déclencherait un nettoyage au mauvais moment).
@@ -2263,7 +2298,7 @@ export default function DevisList() {
     suiviOpenId, toggleSuiviPartage, suiviCache, suiviLoadingId,
     conceptionOpenId, setConceptionOpenId,
     etudeOpenId, setEtudeOpenId,
-    variantesRows, variantesLoading,
+    variantesRows, variantesLoading, creditBadges,
     navigate, dispatch,
     role, canDelete, canValiderVente, canSeePublicite, highlightId,
     deletingId, statutActionId, superieurBusyId, superieurStatus, shareBusyId, previewingId,
