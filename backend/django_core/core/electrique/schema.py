@@ -71,6 +71,15 @@ _GOUTTIERE_DY = 14.0
 _TABLEAU_L = 340.0
 _TRAIT = "#1f3a5f"
 _TEXTE_SECONDAIRE = "#555555"
+#: Interligne et retrait des étiquettes d'amorce MPPT, posées dans la
+#: gouttière AU-DESSUS du bloc onduleur (cf. ``_amorces_mppt``).
+_ETIQUETTE_H = 10.0
+_ETIQUETTE_DY = 6.0
+#: Haut de la zone de dessin : juste sous le titre et le sous-titre de planche
+#: — mais l'en-tête ne court que sur ``_LARGEUR_ENTETE`` px depuis la marge
+#: gauche, au-delà desquels une étiquette peut remonter jusqu'à la marge.
+_PLAFOND_DESSIN = _MARGE + 38.0
+_LARGEUR_ENTETE = 380.0
 
 #: Teinte par famille de bloc (tuple de paires : aucune globale mutable).
 _TEINTES = (
@@ -502,25 +511,87 @@ def _branches(places):
     return "".join(morceaux)
 
 
+def _plafond_au_dessus(place, places):
+    """Le ``y`` le plus BAS qu'une étiquette posée au-dessus de ``place`` peut
+    atteindre sans mordre l'organe qui le surplombe.
+
+    On ne regarde QUE les organes dont l'emprise horizontale recoupe celle du
+    bloc et qui sont réellement au-dessus de lui : à défaut, le plafond est le
+    haut de la zone de dessin (sous le titre et le sous-titre de la planche).
+    """
+    plafond = (_PLAFOND_DESSIN if place[1] < _LARGEUR_ENTETE
+               else _MARGE + 6.0)
+    for autre in places:
+        if autre is place:
+            continue
+        bas = autre[2] + _BLOC_H
+        if bas > place[2]:
+            continue                      # pas au-dessus
+        if autre[1] >= place[1] + _BLOC_L or autre[1] + _BLOC_L <= place[1]:
+            continue                      # aucune emprise commune
+        plafond = max(plafond, bas)
+    return plafond
+
+
+def _halo(x, y, texte, taille=8.0):
+    """Fond blanc derrière un texte posé dans une gouttière.
+
+    Les liaisons série descendent par l'aplomb des blocs, donc en plein milieu
+    de la gouttière où se posent les étiquettes MPPT. Un fond opaque garde le
+    texte lisible sans déplacer la liaison (le trait, lui, reste juste).
+    """
+    largeur = len(texte) * taille * 0.58 + 6.0
+    return ('<rect x="%s" y="%s" width="%s" height="%s" fill="#ffffff"/>'
+            % (_n(x - 3), _n(y - taille), _n(largeur), _n(taille + 3.0)))
+
+
 def _amorces_mppt(entree, resultat, places):
-    """Une amorce par entrée MPPT à gauche de l'onduleur, avec ses chaînes."""
+    """Une amorce par entrée MPPT UTILISÉE, étiquetée AU-DESSUS de l'onduleur.
+
+    Les étiquettes étaient posées À GAUCHE des amorces, ancrées « end » : sur
+    une rangée parcourue de droite à gauche, l'organe suivant (le disjoncteur
+    AC) occupe précisément cette place, et le texte se dessinait PAR-DESSUS sa
+    boîte. Ce n'était pas un mauvais réglage mais une impossibilité
+    géométrique : l'espace entre deux organes vaut ``_ECART`` (34 px) et une
+    étiquette en fait trois fois plus. Elles montent donc dans la gouttière
+    au-dessus du bloc, ancrées sur son bord GAUCHE — leur ``x`` est alors, par
+    construction, à droite de tout organe qui précède l'onduleur.
+
+    Une entrée SANS chaîne n'est plus dessinée du tout : « MPPT 2 · 0
+    chaîne(s) » annonçait une amorce qui n'existe pas dans le câblage (le
+    nombre d'entrées de l'appareil, lui, reste lisible sous son titre).
+    """
     place = _place(places, "onduleur")
     if place is None:
         return ""
     _bloc, x, y, _rangee = place[:4]
-    n_mppt = max(1, entree.onduleur.n_mppt)
     par_mppt = {}
     for chaine in resultat.chaines:
         par_mppt[chaine.mppt] = par_mppt.get(chaine.mppt, 0) + 1
+    entrees = tuple(sorted(rang for rang, nombre in par_mppt.items()
+                           if nombre > 0))
+    if not entrees:
+        return ""
+
     morceaux = []
-    for rang in range(n_mppt):
-        yi = y + (_BLOC_H * (rang + 1)) / (n_mppt + 1)
+    for index, rang in enumerate(entrees):
+        yi = y + (_BLOC_H * (index + 1)) / (len(entrees) + 1)
         morceaux.append(_trait(x - 16, yi, x, yi))
+
+    libelles = ["MPPT %d · %d chaîne(s)" % (rang, par_mppt[rang])
+                for rang in entrees]
+    disponible = y - _ETIQUETTE_DY - _plafond_au_dessus(place, places)
+    if len(libelles) * _ETIQUETTE_H > disponible:
+        # Trop d'entrées pour la gouttière : une seule ligne, même contenu.
+        libelles = ["MPPT · %s chaîne(s)"
+                    % "/".join(str(par_mppt[rang]) for rang in entrees)]
+    for index, libelle in enumerate(libelles):
+        base = (y - _ETIQUETTE_DY
+                - (len(libelles) - 1 - index) * _ETIQUETTE_H)
+        morceaux.append(_halo(x, base, libelle))
         morceaux.append(
-            '<text x="%s" y="%s" text-anchor="end" font-size="8" fill="%s">'
-            'MPPT %d · %d chaîne(s)</text>'
-            % (_n(x - 19), _n(yi + 3), _TEXTE_SECONDAIRE, rang + 1,
-               par_mppt.get(rang + 1, 0)))
+            '<text x="%s" y="%s" font-size="8" fill="%s">%s</text>'
+            % (_n(x), _n(base), _TEXTE_SECONDAIRE, _esc(libelle)))
     return "".join(morceaux)
 
 

@@ -59,6 +59,17 @@ def _triphase_deux_pans():
         dc_m=25.0, ac_m=15.0, phases=3)
 
 
+def _une_seule_chaine():
+    """5 modules : UNE chaîne pour DEUX entrées MPPT — la seconde est libre."""
+    return EntreeElectrique(
+        module=MODULE_550,
+        onduleur=SpecOnduleur(n_mppt=2, mppt_v_min=80.0, mppt_v_max=550.0,
+                              v_max_abs=600.0, i_max_mppt_a=16.0, ac_kw=3.0,
+                              phases=1, v_demarrage_v=90.0),
+        groupes=(GroupePan("Sud", 5, 180.0, 20.0),),
+        dc_m=12.0, ac_m=8.0, phases=1)
+
+
 def _hybride_batterie():
     return EntreeElectrique(
         module=MODULE_550,
@@ -252,6 +263,84 @@ class AucunTraitNeTraverseUnOrgane(unittest.TestCase):
                                 and a[2] < b[4] and b[2] < a[4])
                     self.assertFalse(recouvre,
                                      "« %s » recouvre « %s »" % (a[0], b[0]))
+
+
+class LesEtiquettesMpptNeMordentAucunOrgane(unittest.TestCase):
+    """PV85 — les amorces MPPT s'écrivaient PAR-DESSUS le disjoncteur AC.
+
+    Sur une rangée parcourue de droite à gauche, l'organe qui suit l'onduleur
+    est dessiné à sa GAUCHE : c'est exactement la place où les étiquettes
+    étaient ancrées. Le test rejoue la géométrie réelle du rendu et refuse
+    qu'une étiquette recouvre une boîte — et refuse aussi qu'une entrée sans
+    chaîne soit annoncée.
+    """
+
+    #: Même estimation de largeur que le halo du rendu (font-size 8).
+    LARGEUR_CAR = 8.0 * 0.58
+
+    def _etiquettes(self, svg):
+        racine = ET.fromstring(svg)
+        espace = "{http://www.w3.org/2000/svg}"
+        return [(float(noeud.get("x")), float(noeud.get("y")),
+                 noeud.text or "")
+                for noeud in racine.iter(espace + "text")
+                if (noeud.text or "").startswith("MPPT")]
+
+    def _boites(self, entree, resultat):
+        from core.electrique.schema import (_BLOC_H, _BLOC_L, _format_planche,
+                                            _positions)
+        blocs = blocs_du_schema(entree, resultat)
+        largeur = _format_planche(len(blocs))[0]
+        return [(place[0].clef, place[1], place[2],
+                 place[1] + _BLOC_L, place[2] + _BLOC_H)
+                for place in _positions(blocs, largeur)]
+
+    def _cas(self):
+        return (("mono", _mono_reseau()), ("tri", _triphase_deux_pans()),
+                ("hybride", _hybride_batterie()), ("simple", _une_seule_chaine()))
+
+    def test_aucune_etiquette_ne_recouvre_une_boite(self):
+        for nom, entree in self._cas():
+            resultat = concevoir(entree)
+            etiquettes = self._etiquettes(rendre_schema(entree, resultat))
+            self.assertTrue(etiquettes, "%s : aucune étiquette MPPT" % nom)
+            for x, y, texte in etiquettes:
+                x2 = x + len(texte) * self.LARGEUR_CAR
+                haut, bas = y - 8.0, y + 2.0
+                for clef, bx1, by1, bx2, by2 in self._boites(entree, resultat):
+                    recouvre = (x < bx2 and bx1 < x2
+                                and haut < by2 and by1 < bas)
+                    self.assertFalse(
+                        recouvre,
+                        "%s : « %s » recouvre l'organe « %s »"
+                        % (nom, texte, clef))
+
+    def test_les_etiquettes_sont_au_dessus_du_bloc_onduleur(self):
+        """Au-dessus, jamais à gauche : à gauche il n'y a que 34 px."""
+        for nom, entree in self._cas():
+            resultat = concevoir(entree)
+            boites = dict((b[0], b) for b in self._boites(entree, resultat))
+            _clef, ond_x, ond_y, _x2, _y2 = boites["onduleur"]
+            for x, y, texte in self._etiquettes(
+                    rendre_schema(entree, resultat)):
+                self.assertGreaterEqual(x, ond_x, "%s : %s" % (nom, texte))
+                self.assertLess(y, ond_y, "%s : %s" % (nom, texte))
+
+    def test_une_entree_sans_chaine_n_est_jamais_annoncee(self):
+        """« MPPT 2 · 0 chaîne(s) » décrivait une amorce qui n'existe pas."""
+        for nom, entree in self._cas():
+            svg = rendre_schema(entree, concevoir(entree))
+            self.assertNotIn("0 chaîne(s)", svg, nom)
+        # Le cas qui produisait le défaut : 1 chaîne, 2 entrées MPPT.
+        entree = _une_seule_chaine()
+        resultat = concevoir(entree)
+        self.assertEqual(resultat.nb_chaines, 1)
+        self.assertEqual(entree.onduleur.n_mppt, 2)
+        textes = _textes(rendre_schema(entree, resultat))
+        self.assertIn("MPPT 1 · 1 chaîne(s)", textes)
+        self.assertFalse([t for t in textes if t.startswith("MPPT 2")])
+        # Le nombre d'entrées de l'appareil reste lisible sous son titre.
+        self.assertTrue(any("2 entrée(s) MPPT" in t for t in textes))
 
 
 class LeTableauEstLaListeDesProtections(unittest.TestCase):
