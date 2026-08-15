@@ -5,6 +5,7 @@ import { lazy } from 'react'
 import {
   MapPin, ListChecks, LayoutList, Copy, Sparkles, Settings, UserCog, Shield,
   Key, ShieldCheck, DownloadCloud, AlertTriangle, Percent, ShoppingCart, Boxes,
+  Paperclip,
   Ship, Route, Factory,
 } from 'lucide-react'
 import { appGlyph } from '../../lib/apps/appGlyph'
@@ -108,6 +109,8 @@ const TaxeSejourHospitality = lazy(() => import('./TaxeSejourHospitality'))
 // (XPUR10). Écriture réservée responsable/admin (le backend applique déjà
 // `stock_modifier`/legacy responsable ; lecture ouverte à tout rôle).
 const AchatsParametresPage = lazy(() => import('../../pages/parametres/AchatsParametresPage'))
+// WIR270/FG10 — centre de pieces jointes societe (endpoint pret, client mort).
+const PiecesJointesPage = lazy(() => import('../../pages/parametres/PiecesJointesPage'))
 // NTLOG36 — Paramètres → Douane (`douane.ParametresDouane`, singleton par
 // société) : régime par défaut, rappels d'échéance (NTLOG22/23), mention
 // estimation droits/taxes (NTLOG13/30). Écriture réservée douane_responsable
@@ -176,6 +179,8 @@ const config = {
       { to: '/parametres/ia', label: 'IA (diagnostic)', icon: <Sparkles size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ['admin'] },
       // ODY23(c) — écrans /parametres/* qui avaient une route sans entrée de menu.
       { to: '/parametres/export', label: 'Export / Sauvegarde', icon: <DownloadCloud size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ['admin'] },
+      // WIR270 — centre de pieces jointes (isolation societe garantie serveur).
+      { to: '/parametres/pieces-jointes', label: 'Pièces jointes', icon: <Paperclip size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ['responsable', 'admin'] },
       { to: '/parametres/alertes-kpi', label: 'Alertes KPI', icon: <AlertTriangle size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ['responsable', 'admin'] },
       { to: '/parametres/hospitality/taxe-sejour', label: 'Taxe de séjour', icon: <Percent size={17} strokeWidth={1.75} aria-hidden="true" />, roles: ['responsable', 'admin'] },
       // PACT150 — même défaut que ODY23(c) : route déclarée (WIR26), aucune
@@ -203,6 +208,7 @@ const config = {
     { path: '/parametres/playbooks', component: Playbooks, roles: ['responsable', 'admin'] },
     { path: '/parametres/hospitality/taxe-sejour', component: TaxeSejourHospitality, roles: ['responsable', 'admin'] },
     { path: '/parametres/achats', component: AchatsParametresPage, roles: ['responsable', 'admin'] },
+    { path: '/parametres/pieces-jointes', component: PiecesJointesPage, roles: ['responsable', 'admin'] },
     { path: '/parametres/douane', component: DouaneParametresPage, roles: ['responsable', 'admin'] },
     { path: '/parametres/transport', component: TransportParametresPage, roles: ['responsable', 'admin'] },
     { path: '/parametres/mrp', component: MrpParametresPage, roles: ['admin'] },
