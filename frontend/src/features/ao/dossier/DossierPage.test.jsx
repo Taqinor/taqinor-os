@@ -41,6 +41,8 @@ vi.mock('../../../api/aoApi', () => ({
       controlesAvantDepot: mocks.controlesAvantDepot,
       // PACT71 — complétude dérivée, lue par `ChecklistPartenaire`.
       completude: mocks.completude,
+      // WIR206 — bouton « Marquer prêt à déposer » (ControlesAvantDepot).
+      changerStatut: vi.fn(),
     },
     // `EcheancesDossier` ne l'appelle que depuis le formulaire de prorogation,
     // que cet écran ne monte pas (`peutProroger={false}` — le serveur ne

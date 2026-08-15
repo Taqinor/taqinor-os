@@ -1,10 +1,13 @@
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { AlertTriangle, Check, ShieldOff, X } from 'lucide-react'
 import aoApi from '../../../api/aoApi'
 import useResource from '../../../hooks/useResource'
-import { Button, Card, EmptyState, Skeleton } from '../../../ui'
+import { Button, Card, EmptyState, Skeleton, toast } from '../../../ui'
 import { StatutControle } from '../statusAo'
 import { BLOQUANT, motifBlocage, severiteDe } from './ControlesAvantDepot.utils'
+
+const errMsg = (e, fallback) => e?.response?.data?.non_field_errors?.[0]
+  || e?.response?.data?.detail || fallback
 
 /* ============================================================================
    AOF176 — Panneau « Contrôles avant dépôt » et blocage VISIBLE du ZIP.
@@ -88,6 +91,7 @@ export default function ControlesAvantDepot({
   dossierId,
   onOuvrirPiece,
   zipSlot,
+  onDossierChange,
 }) {
   const { data, loading, error, refetch } = useResource(
     () => aoApi.dossiers.controlesAvantDepot(dossierId), dossierId,
@@ -102,6 +106,23 @@ export default function ControlesAvantDepot({
   const horsControle = data?.horsControle ?? []
   const motif = useMemo(() => motifBlocage(controles), [controles])
   const bloque = Boolean(motif)
+
+  // WIR206 — porte `pret_a_deposer` : refusée côté serveur (400 motivé) tant
+  // qu'un contrôle bloquant est rouge, JAMAIS recalculée côté client — on
+  // tente l'appel, le message serveur est affiché tel quel en cas de refus.
+  const [marquage, setMarquage] = useState(false)
+  const marquerPretADeposer = async () => {
+    setMarquage(true)
+    try {
+      await aoApi.dossiers.changerStatut(dossierId, { statut: 'pret_a_deposer' })
+      toast.success('Dossier marqué prêt à déposer.')
+      onDossierChange?.()
+    } catch (e) {
+      toast.error(errMsg(e, 'Transition refusée.'))
+    } finally {
+      setMarquage(false)
+    }
+  }
 
   return (
     <Card className="flex flex-col gap-3 p-4">
@@ -166,6 +187,18 @@ export default function ControlesAvantDepot({
             {bloque ? `ZIP bloqué — ${motif}` : 'Constituer le ZIP de dépôt'}
           </Button>
         )}
+
+      {/* WIR206 — porte `pret_a_deposer`, jusqu'ici invisible : le dossier ne
+          pouvait avancer que par curl. Refus serveur affiché tel quel. */}
+      <Button
+        variant="outline"
+        className="self-start"
+        onClick={marquerPretADeposer}
+        disabled={marquage}
+        title={bloque ? motif : undefined}
+      >
+        {marquage ? 'Envoi…' : 'Marquer prêt à déposer'}
+      </Button>
     </Card>
   )
 }

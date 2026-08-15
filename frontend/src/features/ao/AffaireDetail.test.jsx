@@ -58,7 +58,15 @@ vi.mock('react-router-dom', async () => {
 
 vi.mock('../../api/aoApi', () => ({
   default: {
-    affaires: { get: mocks.get, list: mocks.affairesList },
+    // WIR206 — `transitions`/`lead` sont interrogés au montage par
+    // StatutChanger/LeadPanel : sans bouchon, un appel sur `undefined` fait
+    // planter TOUTE la fiche (pas seulement le nouveau contrôle).
+    affaires: {
+      get: mocks.get, list: mocks.affairesList,
+      transitions: () => Promise.resolve({ data: { statut: 'brouillon', statut_display: 'Brouillon', transitions: [] } }),
+      lead: () => Promise.resolve({ data: { lead_id: null, fiche: null } }),
+      changerStatut: vi.fn(), rattacherLead: vi.fn(),
+    },
     // Ce que le serveur persiste réellement pour un calepinage (AOF28).
     toitures: { list: mocks.toituresList, create: mocks.toituresCreate },
     // Le panneau Toitures ouvre le wizard de création : une toiture se

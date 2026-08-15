@@ -72,6 +72,20 @@ const aoApi = {
     // (jamais une suppression dure) réutilise le `update()` générique
     // ci-dessus (`update(id, { archive: true })`) — pas d'action dédiée.
     dupliquer: (id) => api.post(`/ao/appels-offres/${id}/dupliquer/`),
+    // WIR206 — AOF13 : SEUL chemin de mutation du statut d'un AO. Une
+    // transition interdite répond 400 (`services.TRANSITIONS_AO`) avec un
+    // message FR listant les statuts atteignables — affiché TEL QUEL.
+    changerStatut: (id, data) =>
+      api.post(`/ao/appels-offres/${id}/changer-statut/`, data),
+    // Statuts atteignables depuis l'état courant — pilote l'UI (jamais une
+    // liste de transitions codée en dur côté front).
+    transitions: (id) => api.get(`/ao/appels-offres/${id}/transitions/`),
+    // WIR206 — fiche-carte du lead lié (lecture seule, via apps.crm.selectors
+    // côté serveur — `ao` n'importe jamais `apps.crm.models`) + rattacher/
+    // détacher (`lead: null` détache).
+    lead: (id) => api.get(`/ao/appels-offres/${id}/lead/`),
+    rattacherLead: (id, leadId) =>
+      api.post(`/ao/appels-offres/${id}/rattacher-lead/`, { lead: leadId }),
   },
 
   // ── Toiture / relevé (portes 1-2-3 : plan fourni, from-scratch, carte) ──
@@ -315,6 +329,10 @@ const aoApi = {
     // jamais « interdit » — un 403 confirmerait son existence.
     statutJob: (id, jobId) =>
       api.get(`/ao/dossiers-ao/${id}/statut-de-job/`, { params: { job: jobId } }),
+    // WIR206 — porte `pret_a_deposer` : refus 400 motivé (TransitionRefusee)
+    // affiché tel quel, jamais un état recalculé côté client.
+    changerStatut: (id, data) =>
+      api.post(`/ao/dossiers-ao/${id}/changer-statut/`, data),
   },
   pieces: crud('pieces-soumission'),
 

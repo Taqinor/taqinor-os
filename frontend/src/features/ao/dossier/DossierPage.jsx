@@ -263,6 +263,7 @@ export default function DossierPage({
             <Suspense fallback={<Skeleton className="h-40 w-full" />}>
               <ControlesAvantDepot
                 dossierId={dossier.id}
+                onDossierChange={refetch}
                 zipSlot={({ bloque, motif }) => (
                   <ZipButton
                     dossierId={dossier.id}
