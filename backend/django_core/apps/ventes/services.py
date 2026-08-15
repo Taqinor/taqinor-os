@@ -1526,6 +1526,182 @@ def _watt_du_layout(layout, toiture, cible_panneaux):
     return CIBLE_WATT_DEFAUT
 
 
+# ── PVHEAL — la resynchronisation GUÉRIT les devis SQUELETTES ────────────────
+#
+# `build_devis_from_layout` compose le KIT COMPLET (PVKIT) depuis PVKIT. Mais
+# les devis créés AVANT lui sont restés des squelettes — panneau + onduleur
+# (± batterie), parfois une pose et des accessoires — sans structures, sans
+# socles, sans tableau de protection AC/DC, alors que le catalogue de la
+# société les porte, actifs et tarifés. Ce que le client reçoit est alors un
+# devis qui ne décrit pas ce qu'on lui installe.
+#
+# La resynchronisation les COMPLÈTE donc, sous trois règles DURES :
+#
+#   1. **Elle n'AJOUTE que.** Aucune ligne existante n'est modifiée, supprimée
+#      ni re-tarifée : les prix négociés sont sacrés — c'est toute la promesse
+#      « chirurgicale » de PV18, et compléter ne la desserre pas.
+#   2. **Une classe déjà présente ne revient jamais.** La présence se lit avec
+#      le MÊME classifieur par mots-clés que la composition et que le moteur PDF
+#      (`classer_produit`) : la désignation d'abord, le nom du produit ensuite —
+#      une ligne « Pose et mise en service » posée sur un produit
+#      « Installation » compte donc bien comme l'installation.
+#   3. **Un composant introuvable (ou sans prix) n'est jamais inventé** : il est
+#      sauté ET DIT, en français, dans `avertissements`. Le silence d'hier est
+#      exactement ce qui a laissé partir des devis amputés.
+#
+# Le duo Smart Meter + clé Wifi suit une quatrième règle, héritée du
+# simulateur : il ne se vend que derrière un onduleur HUAWEI. Et c'est
+# l'onduleur RÉELLEMENT posé sur le devis qui tranche — pas celui que la
+# composition aurait choisi, puisqu'on ne remplace jamais l'onduleur en place.
+
+#: Les classes du kit que la resynchronisation peut compléter : tout le kit
+#: résidentiel SAUF les trois que la logique chirurgicale gère déjà (panneau,
+#: batterie, onduleurs), dans l'ordre d'affichage du simulateur.
+CLASSES_KIT_COMPLETABLES = (
+    'smart_meter', 'wifi_dongle', 'structure', 'socle', 'accessoires',
+    'tableau', 'installation', 'transport',
+)
+
+#: Le message FRANÇAIS d'une classe manquante, écrit EN ENTIER par classe pour
+#: que l'accord soit juste (« Structure … absente », « Socles … absents »).
+AVERTISSEMENTS_KIT_ABSENT = {
+    'smart_meter': 'Smart Meter absent du catalogue ou sans prix — ligne non '
+                   'ajoutée.',
+    'wifi_dongle': 'Clé Wifi absente du catalogue ou sans prix — ligne non '
+                   'ajoutée.',
+    'structure': 'Structure de fixation absente du catalogue ou sans prix — '
+                 'ligne non ajoutée.',
+    'socle': 'Socles de lestage absents du catalogue ou sans prix — ligne non '
+             'ajoutée.',
+    'accessoires': 'Accessoires (câblage DC/AC, connecteurs) absents du '
+                   'catalogue ou sans prix — ligne non ajoutée.',
+    'tableau': 'Tableau de protection AC/DC absent du catalogue ou sans prix '
+               '— ligne non ajoutée.',
+    'installation': 'Installation (pose et mise en service) absente du '
+                    'catalogue ou sans prix — ligne non ajoutée.',
+    'transport': 'Transport absent du catalogue ou sans prix — ligne non '
+                 'ajoutée.',
+}
+
+
+def _classe_kit_de_ligne(ligne):
+    """Classe CATALOGUE d'une ligne de devis, ou ``None``.
+
+    Même lecture que ``_classe_ligne`` (désignation d'abord, nom du produit
+    ensuite) mais rendue par le classifieur PARTAGÉ ``classer_produit`` — celui
+    de la composition et du moteur PDF. Une classe inventée ici ferait diverger
+    « ce qu'on croit avoir » de « ce que le PDF montre ».
+    """
+    return (classer_produit(ligne.designation or '')
+            or classer_produit(getattr(ligne.produit, 'nom', '') or ''))
+
+
+def _est_au_prix_catalogue(ligne):
+    """La ligne est-elle restée au prix CATALOGUE, sans remise ?
+
+    Un « non » vaut prix NÉGOCIÉ : une telle ligne n'est jamais supprimée en
+    silence (le chemin appelant avertit à la place). Sans produit rattaché on
+    ne peut RIEN prouver — donc on répond non, le doute profitant à la ligne.
+    """
+    produit = getattr(ligne, 'produit', None)
+    if produit is None or not _has_price(produit):
+        return False
+    try:
+        if Decimal(str(ligne.remise or 0)) != Decimal('0'):
+            return False
+        return (Decimal(str(ligne.prix_unitaire or 0))
+                == Decimal(produit.prix_vente))
+    except (TypeError, ValueError, ArithmeticError):
+        return False
+
+
+def _completer_kit_residentiel(devis, *, kwc, watt, nb_panneaux,
+                               avec_batterie, avertissements):
+    """Ajoute les lignes du kit résidentiel ABSENTES du devis. N'écrit RIEN
+    d'autre : aucune ligne existante n'est touchée (voir le bloc PVHEAL).
+
+    ``avertissements`` est enrichi sur place pour chaque classe manquante que
+    le catalogue ne sait pas servir. Rend le nombre de lignes AJOUTÉES.
+    """
+    from apps.ventes.models import LigneDevis
+
+    if float(kwc or 0) <= 0:
+        # Sans puissance, le kit n'est pas dimensionnable : on ne devine pas.
+        return 0
+
+    lignes = _lignes_produit(devis)
+    presentes = set()
+    onduleurs = []
+    for ligne in lignes:
+        classe = _classe_kit_de_ligne(ligne)
+        if classe:
+            presentes.add(classe)
+        if classe in ('onduleur_reseau', 'onduleur_hybride'):
+            onduleurs.append(ligne)
+
+    huawei = any(
+        'huawei' in _sans_accents('%s %s %s' % (
+            ligne.designation or '',
+            getattr(ligne.produit, 'nom', '') or '',
+            getattr(ligne.produit, 'marque', '') or ''))
+        for ligne in onduleurs)
+
+    catalogue = catalogue_de_la_societe(devis.company)
+    attendu = composition_residentielle(
+        catalogue, kwc=kwc, panel_watt=watt, nb_panneaux=nb_panneaux,
+        avec_batterie=avec_batterie,
+        taux_tva=devis.taux_tva if devis.taux_tva is not None
+        else Decimal('20'))
+    par_classe = {}
+    for spec in attendu:
+        classe = classer_produit(spec.designation)
+        if classe and classe not in par_classe:
+            par_classe[classe] = spec
+
+    # Le duo Smart Meter + clé Wifi ne sort de la composition que si l'onduleur
+    # QU'ELLE a choisi est un Huawei — or ici c'est celui du DEVIS qui décide.
+    # On le retrouve donc directement au catalogue (même choix que la
+    # composition : le premier produit tarifé de la classe, à l'unité). Sans ce
+    # rattrapage, un devis Huawei face à un catalogue dont l'hybride est un
+    # Deye s'entendrait dire, à tort, que son Smart Meter manque au catalogue.
+    if huawei:
+        for classe in ('smart_meter', 'wifi_dongle'):
+            if classe in par_classe or classe in presentes:
+                continue
+            produit = next(
+                (p for p in catalogue
+                 if classer_produit(getattr(p, 'nom', '')) == classe
+                 and _has_price(p)), None)
+            if produit is not None:
+                par_classe[classe] = LigneKit(
+                    produit=produit, designation=produit.nom, quantite=1,
+                    prix_unitaire=Decimal(produit.prix_vente))
+
+    # Les lignes ajoutées se rangent APRÈS l'existant — sections et notes
+    # COMPRISES : l'ordre d'affichage du commercial n'est jamais réécrit, et
+    # une note de bas de devis ne doit pas se retrouver au milieu du kit.
+    ordre = max([int(ligne.ordre or 0)
+                 for ligne in devis.lignes.all()] or [0])
+    ajoutees = 0
+    for classe in CLASSES_KIT_COMPLETABLES:
+        if classe in presentes:
+            continue
+        if classe in ('smart_meter', 'wifi_dongle') and not huawei:
+            continue
+        spec = par_classe.get(classe)
+        if spec is None:
+            avertissements.append(AVERTISSEMENTS_KIT_ABSENT[classe])
+            continue
+        ordre += 1
+        LigneDevis.objects.create(
+            devis=devis, produit=spec.produit, designation=spec.designation,
+            quantite=Decimal(str(spec.quantite)),
+            prix_unitaire=Decimal(spec.prix_unitaire),
+            remise=Decimal('0'), ordre=ordre)
+        ajoutees += 1
+    return ajoutees
+
+
 def sync_devis_from_layout(devis, layout, user=None):
     """PV18 — aligne les LIGNES d'un devis brouillon sur un nouveau calepinage.
 
@@ -1555,6 +1731,17 @@ def sync_devis_from_layout(devis, layout, user=None):
       permutation la batterie serait « fantôme » — comptée dans le total du
       devis mais absente du PDF, que le moteur rendrait en « Sans batterie »
       faute d'onduleur hybride ;
+    * un devis portant LES DEUX onduleurs (artefact d'anciens chemins) est
+      ramené à celui du scénario — mais l'intrus n'est retiré que s'il est
+      resté AU PRIX CATALOGUE, sans remise. Un prix modifié vaut prix négocié :
+      la ligne est conservée et un avertissement le dit (PVHEAL) ;
+    * le KIT MANQUANT est COMPLÉTÉ (PVHEAL) : structures, socles, accessoires,
+      tableau de protection AC/DC, installation, transport — et le duo Smart
+      Meter + clé Wifi derrière un onduleur Huawei. Ces classes sont AJOUTÉES
+      quand elles manquent, jamais re-tarifées quand elles sont là ; un
+      composant introuvable ou non tarifé est sauté ET annoncé en français.
+      Ni sur un devis agricole (pompage) ni sur un multi-villa : les deux
+      demandent un kit qui ne se déduit pas d'une composition résidentielle ;
     * TOUT le reste est intact — prix unitaires, remises, TVA de ligne,
       sections, notes, ordre d'affichage, groupes multi-villa, et les produits
       des lignes non touchées ne sont JAMAIS re-choisis ;
@@ -1568,7 +1755,9 @@ def sync_devis_from_layout(devis, layout, user=None):
 
     Renvoie toujours le même dict :
     ``{inchange, panneaux, kwc, scenario, batterie, lignes_modifiees,
-    avertissements}``.
+    lignes_ajoutees, avertissements}`` — ``lignes_modifiees`` compte ce que la
+    logique chirurgicale a touché, ``lignes_ajoutees`` ce que la complétion du
+    kit a ajouté.
     """
     from django.db import transaction
 
@@ -1613,11 +1802,14 @@ def sync_devis_from_layout(devis, layout, user=None):
 
         avertissements = []
         # Cohérence avec PV17 : ces deux cas y sont déclarés NON modifiables.
-        if verrou.mode_installation == Devis.ModeInstallation.AGRICOLE:
+        agricole = (
+            verrou.mode_installation == Devis.ModeInstallation.AGRICOLE)
+        if agricole:
             avertissements.append(
                 'Devis agricole (pompage) — le calepinage de toiture ne '
                 's\'applique pas.')
-        if verrou.lignes.filter(groupe_index__gte=1).exists():
+        multi_villa = verrou.lignes.filter(groupe_index__gte=1).exists()
+        if multi_villa:
             avertissements.append(
                 'Devis multi-villa : l\'écart de calepinage porte sur la ligne '
                 'de panneaux la plus grosse, tous groupes confondus.')
@@ -1631,6 +1823,7 @@ def sync_devis_from_layout(devis, layout, user=None):
                 'scenario': 'avec_batterie' if a_batterie else 'reseau',
                 'batterie': a_batterie,
                 'lignes_modifiees': 0,
+                'lignes_ajoutees': 0,
                 'avertissements': avertissements,
             }
 
@@ -1721,6 +1914,36 @@ def sync_devis_from_layout(devis, layout, user=None):
         lignes_hybride = [li for li in lignes
                           if _classe_ligne(li, _is_hybrid_inverter)]
 
+        # ── ARTEFACT « DEUX ONDULEURS » (PVHEAL) ──
+        #
+        # Des devis de production portent LES DEUX onduleurs — hybride ET
+        # réseau — vestige d'anciens chemins qui composaient les deux options
+        # côte à côte. Le scénario, lui, n'en veut qu'un : le second est
+        # facturé pour rien. On retire donc l'intrus… mais SEULEMENT s'il est
+        # resté au prix catalogue, sans remise. Un prix modifié vaut prix
+        # négocié : la ligne est conservée et l'écran le dit. Supprimer en
+        # silence une ligne que quelqu'un a retouchée serait exactement la
+        # perte que PV18 s'interdit.
+        if lignes_reseau and lignes_hybride:
+            intrus = lignes_reseau if a_batterie else lignes_hybride
+            conserves = []
+            for ligne in intrus:
+                if _est_au_prix_catalogue(ligne):
+                    ligne.delete()
+                    lignes_modifiees += 1
+                else:
+                    conserves.append(ligne)
+                    avertissements.append(
+                        'Ce devis porte DEUX onduleurs (réseau et hybride). '
+                        '« %s » n\'est pas au prix catalogue : il a été '
+                        'CONSERVÉ (prix probablement négocié) — retirez-le à '
+                        'la main s\'il n\'a rien à y faire.'
+                        % (ligne.designation or 'ligne sans désignation'))
+            if a_batterie:
+                lignes_reseau = conserves
+            else:
+                lignes_hybride = conserves
+
         def _permuter_onduleur(ligne, predicat, motif_absence):
             remplacant = _pick_product(verrou.company, predicat)
             if remplacant is None:
@@ -1750,12 +1973,34 @@ def sync_devis_from_layout(devis, layout, user=None):
                 lignes_reseau, lignes_hybride = [lignes_hybride[0]], []
                 lignes_modifiees += 1
 
-        # ── Étude : les clés géométriques + le scénario, jamais les champs
-        # d'étude du générateur ──
         result = dict(layout.get('result') or {})
         kwc = float(result.get('kwc') or toiture.get('kwc') or 0.0)
         if not kwc and total_panneaux:
             kwc = round(total_panneaux * watt / 1000.0, 3)
+
+        # ── PVHEAL — COMPLÉTER le kit manquant (structures, socles, tableau…) ──
+        #
+        # Le squelette des devis d'hier devient le kit réellement installé. La
+        # complétion n'AJOUTE que : les lignes en place, leurs prix négociés et
+        # leur ordre ne sont jamais touchés (voir le bloc PVHEAL plus haut).
+        # Deux devis en sont écartés, parce qu'une composition RÉSIDENTIELLE ne
+        # décrit pas leur kit : l'agricole (pompage — ni structure de toiture
+        # ni socles) et le multi-villa (chaque villa a le sien, une série de
+        # lignes hors groupe y serait fausse).
+        lignes_ajoutees = 0
+        if agricole or multi_villa:
+            if multi_villa and not agricole:
+                avertissements.append(
+                    'Devis multi-villa : le kit manquant (structures, socles, '
+                    'tableau de protection…) n\'a pas été complété '
+                    'automatiquement — chaque villa a le sien.')
+        else:
+            lignes_ajoutees = _completer_kit_residentiel(
+                verrou, kwc=kwc, watt=watt, nb_panneaux=total_panneaux,
+                avec_batterie=a_batterie, avertissements=avertissements)
+
+        # ── Étude : les clés géométriques + le scénario, jamais les champs
+        # d'étude du générateur ──
         etude = dict(verrou.etude_params or {})
         if result.get('annualKwh') is not None:
             etude['production_annuelle'] = int(result['annualKwh'])
@@ -1790,9 +2035,10 @@ def sync_devis_from_layout(devis, layout, user=None):
 
         logger.info(
             'PV18: devis %s resynchronisé sur son calepinage (%d panneaux, '
-            '%.2f kWc, %d ligne(s) touchée(s), société %s, par %s)',
+            '%.2f kWc, %d ligne(s) touchée(s), %d ligne(s) de kit ajoutée(s), '
+            'société %s, par %s)',
             verrou.reference, total_panneaux, kwc, lignes_modifiees,
-            getattr(verrou.company, 'id', '?'),
+            lignes_ajoutees, getattr(verrou.company, 'id', '?'),
             getattr(user, 'username', '?'))
 
         resultat = {
@@ -1802,6 +2048,7 @@ def sync_devis_from_layout(devis, layout, user=None):
             'scenario': 'avec_batterie' if a_batterie else 'reseau',
             'batterie': a_batterie,
             'lignes_modifiees': lignes_modifiees,
+            'lignes_ajoutees': lignes_ajoutees,
             'avertissements': avertissements,
         }
 

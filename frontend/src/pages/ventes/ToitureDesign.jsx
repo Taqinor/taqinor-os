@@ -205,6 +205,11 @@ export default function ToitureDesign({ mode = 'lead' }) {
   // Le texte est TOUJOURS celui du serveur ; l'écran choisit seulement entre
   // l'encart « Réviser (v2) » et le bandeau de document clos.
   const [conflit, setConflit] = useState(null)
+  // PVHEAL — avertissements renvoyés par l'enregistrement (kit non complété,
+  // composant absent du catalogue, deux onduleurs…). Le TEXTE est celui du
+  // serveur, jamais rédigé ici : sans cet affichage, le devis repartait amputé
+  // en silence.
+  const [avertissementsSync, setAvertissementsSync] = useState([])
 
   // ── Boot : charge lead + config carte, puis initialise le builder ──────────
   useEffect(() => {
@@ -349,6 +354,7 @@ export default function ToitureDesign({ mode = 'lead' }) {
   const generer = async () => {
     if (sending) return
     setGenError(null)
+    setAvertissementsSync([])
     const apiTool = builderApi.current
     if (!apiTool) {
       setGenError('Outil non prêt — tracez le toit puis réessayez.')
@@ -373,6 +379,11 @@ export default function ToitureDesign({ mode = 'lead' }) {
         // QJ17 — if the backend deduplicated, show a soft notice to the agent.
         if (createRes.status === 200 && devis.deduplicated) {
           setGenStatus('Devis existant retrouvé — aucun doublon créé.')
+        }
+        // PVHEAL — si la création annonce des avertissements (composant absent
+        // du catalogue…), ils s'affichent comme ceux de la resynchronisation.
+        if (Array.isArray(devis?.avertissements)) {
+          setAvertissementsSync(devis.avertissements)
         }
       } catch (err) {
         const code = err?.response?.status
@@ -431,6 +442,7 @@ export default function ToitureDesign({ mode = 'lead' }) {
     if (sending) return
     setGenError(null)
     setConflit(null)
+    setAvertissementsSync([])
     const apiTool = builderApi.current
     if (!apiTool) {
       setGenError('Outil non prêt — ajustez le calepinage puis réessayez.')
@@ -461,6 +473,13 @@ export default function ToitureDesign({ mode = 'lead' }) {
         setGenError(httpMessage(code ?? 0, data))
         return
       }
+
+      // 1 bis) PVHEAL — ce que le serveur n'a PAS pu faire se dit tout de
+      //    suite (composant absent du catalogue, kit non complété, deux
+      //    onduleurs…), y compris quand rien n'a bougé.
+      setAvertissementsSync(
+        Array.isArray(resultat?.avertissements) ? resultat.avertissements : []
+      )
 
       // 2) Même géométrie → ZÉRO écriture serveur : on le DIT, sans rien
       //    prétendre avoir enregistré.
@@ -510,9 +529,11 @@ export default function ToitureDesign({ mode = 'lead' }) {
       })
       setGenStatus(null)
       setSending(false)
+      const ajoutees = Number(resultat.lignes_ajoutees) || 0
       setStatus(
         `Conception enregistrée — ${resultat.panneaux} panneaux (${resultat.kwc} kWc), `
-        + `${resultat.lignes_modifiees} ligne(s) de devis mise(s) à jour.`
+        + `${resultat.lignes_modifiees} ligne(s) de devis mise(s) à jour`
+        + (ajoutees > 0 ? `, ${ajoutees} ligne(s) de kit ajoutée(s).` : '.')
       )
     } catch {
       setGenStatus(null)
@@ -554,6 +575,20 @@ export default function ToitureDesign({ mode = 'lead' }) {
       window.setTimeout(() => setCopied(false), 2000)
     } catch { /* presse-papier indispo */ }
   }
+
+  // PVHEAL — le bandeau d'avertissements du serveur, partagé par les deux
+  // modes. Il reste affiché APRÈS le passage au bloc « Prêt à envoyer » : un
+  // kit incomplet doit se voir au moment où l'on s'apprête à envoyer.
+  const blocAvertissements = () => (
+    avertissementsSync.length > 0 && (
+      <div className="mt-4 border border-brass-400/40 p-4" data-testid="pvheal-avertissements">
+        <p className="tech-label text-brass-300">À vérifier</p>
+        <ul className="mt-2 space-y-1 text-sm text-lune-soft" role="status">
+          {avertissementsSync.map((a) => <li key={a}>{a}</li>)}
+        </ul>
+      </div>
+    )
+  )
 
   const leadLabel = lead ? `${lead.nom ?? ''} ${lead.prenom ?? ''}`.trim() : ''
   // PV20 — en mode devis, le titre porte la référence + le client servis par le
@@ -841,6 +876,7 @@ export default function ToitureDesign({ mode = 'lead' }) {
               {genError && <p className="mt-3 text-sm text-alert-300" aria-live="assertive">{genError}</p>}
             </div>
           ) : blocLivraison()}
+          {blocAvertissements()}
         </div>
         )}
 
@@ -861,8 +897,9 @@ export default function ToitureDesign({ mode = 'lead' }) {
                 <span>{sending ? 'Enregistrement en cours…' : 'Enregistrer la conception'}</span>
               </button>
               <p className="mt-3 text-xs text-lune-faint">
-                Seuls le nombre de panneaux et la batterie suivent le calepinage :
-                prix négociés, remises et notes du devis restent intacts.
+                Le nombre de panneaux, la batterie et l'onduleur suivent le calepinage,
+                et le kit manquant (structures, socles, tableau de protection…) est
+                ajouté : prix négociés, remises et notes du devis restent intacts.
               </p>
               {genStatus && <p className="mt-3 text-sm text-lune-soft" aria-live="polite">{genStatus}</p>}
               {genError && <p className="mt-3 text-sm text-alert-300" aria-live="assertive">{genError}</p>}
@@ -893,6 +930,7 @@ export default function ToitureDesign({ mode = 'lead' }) {
               )}
             </div>
           ) : blocLivraison()}
+          {blocAvertissements()}
         </div>
         )}
       </div>

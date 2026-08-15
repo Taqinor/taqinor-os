@@ -1042,10 +1042,45 @@ const signConfig = ok
             data-ar="المخطط الأحادي الخط لتركيبتكم، كما درسه فنيونا.">
             Le schéma unifilaire de votre installation, tel qu’étudié par nos techniciens.
           </p>
-          <div class="cine-card cine-in cine-in-3 mt-5 overflow-x-auto rounded-2xl p-4 shadow-premium sm:p-6">
-            <div id="sld-svg-wrap" class="sld-svg-wrap" set:html={sldSvg}></div>
-          </div>
-          <div class="mt-4 flex justify-center sm:justify-start">
+          <!-- WJ129 — carte-teaser cliquable (remplace l'ancien SVG écrasé à
+               302×213 px illisible en mobile) : mobile = hauteur maîtrisée +
+               crop haut-gauche + voile + affordance « Agrandir » ; desktop
+               (sm+) = SVG entier, lisible à l'échelle de la carte. Toute la
+               carte ouvre la visionneuse plein écran (#sld-viewer, JS
+               ci-dessous) ; le SVG lui-même est marqué aria-hidden ici (le
+               nom accessible du bouton vient du libellé « Agrandir »), la
+               visionneuse porte le vrai contenu accessible. -->
+          <button
+            type="button"
+            id="sld-teaser"
+            class="sld-teaser cine-card cine-in cine-in-3 mt-5 block w-full cursor-pointer overflow-hidden rounded-2xl p-0 text-start shadow-premium"
+            aria-haspopup="dialog"
+            aria-controls="sld-viewer"
+          >
+            <span class="sld-teaser-frame">
+              <span id="sld-svg-wrap" class="sld-svg-wrap" aria-hidden="true" set:html={sldSvg}></span>
+              <span class="sld-teaser-veil" aria-hidden="true"></span>
+            </span>
+            <span class="sld-teaser-cta btn-pill">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <circle cx="11" cy="11" r="7"></circle>
+                <path d="m21 21-4.3-4.3M11 8v6M8 11h6"></path>
+              </svg>
+              <span data-i18n data-fr="Agrandir le schéma" data-en="Enlarge the diagram" data-ar="تكبير المخطط">Agrandir le schéma</span>
+            </span>
+          </button>
+          <div class="mt-4 flex flex-wrap items-center justify-center gap-3 sm:justify-start">
+            <button
+              id="sld-expand"
+              type="button"
+              class="btn-pill inline-flex items-center justify-center gap-2"
+              data-i18n data-fr="Voir en plein écran" data-en="View fullscreen" data-ar="عرض بملء الشاشة"
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M8 3H5a2 2 0 0 0-2 2v3m18-5h-3a2 2 0 0 0-2 2v3M3 16v3a2 2 0 0 0 2 2h3m11-5v3a2 2 0 0 1-2 2h-3"></path>
+              </svg>
+              Voir en plein écran
+            </button>
             <button
               id="sld-download"
               type="button"
@@ -1057,6 +1092,77 @@ const signConfig = ok
             </button>
           </div>
         </section>
+
+        <!-- WJ129 — visionneuse plein écran (pan/pinch/molette/double-tap,
+             AUCUNE bibliothèque — géométrie pure dans lib/sldViewer.ts).
+             SIBLING du <section id="sld"> (jamais imbriquée dans .cine-in/
+             .cine-card) : un ancêtre transformé (l'animation d'entrée
+             .cine-in pose `transform: translateY(...)` le temps du fondu au
+             chargement) créerait un bloc de confinement local et casserait
+             `position: fixed` — voir la note CSS `.sld-viewer` plus bas.
+             `hidden` par défaut : ni rendu ni coût tant que l'utilisateur n'a
+             pas cliqué la carte ou « Voir en plein écran ». -->
+        <div
+          id="sld-viewer"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="sld-viewer-title"
+          class="sld-viewer"
+          hidden
+        >
+          <div class="sld-viewer-header">
+            <p id="sld-viewer-title" class="sld-viewer-title" data-i18n data-fr="Schéma électrique" data-en="Electrical diagram" data-ar="المخطط الكهربائي">Schéma électrique</p>
+            <button
+              type="button"
+              id="sld-viewer-close"
+              class="sld-viewer-close"
+              aria-label="Fermer"
+              data-aria-label-fr="Fermer" data-aria-label-en="Close" data-aria-label-ar="إغلاق"
+            >
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true">
+                <path d="M18 6 6 18M6 6l12 12"></path>
+              </svg>
+            </button>
+          </div>
+          <div id="sld-viewer-viewport" class="sld-viewer-viewport">
+            <div id="sld-viewer-content" class="sld-viewer-content"></div>
+          </div>
+          <div class="sld-viewer-controls">
+            <button
+              type="button"
+              id="sld-viewer-zoom-in"
+              class="sld-viewer-fab"
+              aria-label="Agrandir"
+              data-aria-label-fr="Agrandir" data-aria-label-en="Zoom in" data-aria-label-ar="تكبير"
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true">
+                <path d="M12 5v14M5 12h14"></path>
+              </svg>
+            </button>
+            <button
+              type="button"
+              id="sld-viewer-zoom-out"
+              class="sld-viewer-fab"
+              aria-label="Réduire"
+              data-aria-label-fr="Réduire" data-aria-label-en="Zoom out" data-aria-label-ar="تصغير"
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true">
+                <path d="M5 12h14"></path>
+              </svg>
+            </button>
+            <button
+              type="button"
+              id="sld-viewer-zoom-reset"
+              class="sld-viewer-fab"
+              aria-label="Réinitialiser le zoom"
+              data-aria-label-fr="Réinitialiser le zoom" data-aria-label-en="Reset zoom" data-aria-label-ar="إعادة ضبط التكبير"
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M3 12a9 9 0 1 1 3 6.7M3 21v-6h6"></path>
+              </svg>
+            </button>
+          </div>
+        </div>
         </>
       )}
 
@@ -3660,6 +3766,28 @@ const signConfig = ok
   // local au curseur (aucun re-fetch). Regroupé dans CE script (cf. note WJ34/WJ53
   // ci-dessous) ; batterySim n'a aucune dépendance runtime lourde.
   import { simulateBattery, renderBatterySplitSvg } from '../../lib/batterySim';
+  // WJ129 — géométrie PURE (testée sous vitest, propositionSldViewerWJ129.test.ts)
+  // de la visionneuse plein écran du schéma électrique. Regroupée dans CE
+  // script (cf. note WJ34/WJ53 ci-dessous : un <script> supplémentaire isolé
+  // sur cette route perd son chunk au bundling).
+  import {
+    type Point,
+    type Size,
+    type TapRecord,
+    SLD_MIN_SCALE,
+    SLD_MAX_SCALE,
+    clamp,
+    clampTranslate,
+    centeredTranslate,
+    fitScale,
+    isDoubleTap,
+    parseViewBoxSize,
+    pinchScale,
+    pointDistance,
+    pointMidpoint,
+    doubleTapScale,
+    zoomAtPoint,
+  } from '../../lib/sldViewer';
 
   const contactSection = document.querySelector<HTMLElement>('[data-contact-token]');
   const confirmEl = document.getElementById('contact-confirm');
@@ -4150,6 +4278,315 @@ const signConfig = ok
       URL.revokeObjectURL(url);
     });
   })();
+
+  // ── WJ129 — visionneuse plein écran du schéma électrique : pan (Pointer
+  // Events + capture), pincement à deux doigts, molette (simple ET ctrl+
+  // molette), double-tap/double-clic, boutons +/−/⟲, piège de focus léger,
+  // fermeture Échap/✕/clic-fond — AUCUNE bibliothèque, toute la géométrie
+  // vient de lib/sldViewer.ts (testée sous vitest). Le SVG affiché dans la
+  // visionneuse est un CLONE du SVG déjà injecté par le serveur dans la
+  // carte-teaser (#sld-svg-wrap) — cloné UNE SEULE FOIS à la première
+  // ouverture, jamais un second `set:html` côté Astro (éviterait de doubler
+  // le poids de page pour un schéma que beaucoup de visiteurs n'ouvriront
+  // jamais en plein écran). Section absente (pas d'étude électrique) → tous
+  // les `getElementById` renvoient null, l'IIFE ne fait rien.
+  (function setupSldViewer(): void {
+    const teaser = document.getElementById('sld-teaser') as HTMLButtonElement | null;
+    const expandBtn = document.getElementById('sld-expand') as HTMLButtonElement | null;
+    const overlay = document.getElementById('sld-viewer');
+    const closeBtn = document.getElementById('sld-viewer-close') as HTMLButtonElement | null;
+    const viewport = document.getElementById('sld-viewer-viewport');
+    const content = document.getElementById('sld-viewer-content') as HTMLElement | null;
+    const zoomInBtn = document.getElementById('sld-viewer-zoom-in');
+    const zoomOutBtn = document.getElementById('sld-viewer-zoom-out');
+    const zoomResetBtn = document.getElementById('sld-viewer-zoom-reset');
+    const sourceWrap = document.getElementById('sld-svg-wrap');
+    const sourceSvg = sourceWrap?.querySelector('svg') ?? null;
+    if (!teaser || !overlay || !closeBtn || !viewport || !content || !sourceSvg) return;
+
+    let contentSize: Size | null = null;
+    let scale = 1;
+    let translate: Point = { x: 0, y: 0 };
+    let fitScaleValue = 1;
+    let lastFocus: HTMLElement | null = null;
+    let cloned = false;
+
+    const viewportEl = viewport as HTMLElement;
+
+    function viewportSize(): Size {
+      const r = viewportEl.getBoundingClientRect();
+      return { width: r.width, height: r.height };
+    }
+
+    function apply(): void {
+      content!.style.transform = `translate(${translate.x}px, ${translate.y}px) scale(${scale})`;
+    }
+
+    // Clone paresseux : le SVG de la carte-teaser reste la SEULE copie tant
+    // que la visionneuse n'a jamais été ouverte.
+    function ensureClone(): void {
+      if (cloned) return;
+      const clone = sourceSvg!.cloneNode(true) as SVGSVGElement;
+      clone.removeAttribute('id');
+      clone.style.width = '100%';
+      clone.style.height = '100%';
+      content!.appendChild(clone);
+      cloned = true;
+      const viewBoxSize = parseViewBoxSize(clone.getAttribute('viewBox'));
+      const wAttr = Number(clone.getAttribute('width'));
+      const hAttr = Number(clone.getAttribute('height'));
+      contentSize =
+        viewBoxSize ?? (wAttr > 0 && hAttr > 0 ? { width: wAttr, height: hAttr } : { width: 1122, height: 794 });
+      content!.style.width = `${contentSize.width}px`;
+      content!.style.height = `${contentSize.height}px`;
+    }
+
+    function resetToFit(): void {
+      if (!contentSize) return;
+      const vp = viewportSize();
+      fitScaleValue = fitScale(vp, contentSize);
+      scale = fitScaleValue;
+      translate = centeredTranslate(vp, contentSize, scale);
+      apply();
+    }
+
+    function setScale(nextScale: number, anchor: Point): void {
+      if (!contentSize) return;
+      const clamped = clamp(nextScale, SLD_MIN_SCALE, SLD_MAX_SCALE);
+      translate = zoomAtPoint(translate, scale, clamped, anchor);
+      scale = clamped;
+      translate = clampTranslate(translate, viewportSize(), contentSize, scale);
+      apply();
+    }
+
+    function open(trigger: HTMLElement): void {
+      lastFocus = trigger;
+      ensureClone();
+      overlay!.hidden = false;
+      overlay!.removeAttribute('hidden');
+      document.body.style.overflow = 'hidden';
+      // L'overlay `fixed` vient d'apparaître : un reflow FORCÉ (lecture
+      // d'offsetWidth) suffit pour que getBoundingClientRect() du viewport
+      // reflète sa taille réelle — SYNCHRONE, donc le fit s'applique même
+      // quand requestAnimationFrame est suspendu (onglet caché/arrière-plan,
+      // le navigateur gèle les frames : un fit-par-rAF laissait alors le
+      // schéma à l'échelle 1, débordant l'écran). rAF ne reste qu'en FILET
+      // pour le cas résiduel d'un viewport mesuré à 0 pendant l'ouverture.
+      void viewportEl.offsetWidth;
+      resetToFit();
+      closeBtn!.focus();
+      if (!(viewportEl.getBoundingClientRect().width > 0)) {
+        requestAnimationFrame(() => resetToFit());
+      }
+    }
+
+    function close(): void {
+      overlay!.hidden = true;
+      document.body.style.overflow = '';
+      lastFocus?.focus();
+    }
+
+    teaser.addEventListener('click', () => open(teaser));
+    if (expandBtn) {
+      const expandBtnEl = expandBtn;
+      expandBtnEl.addEventListener('click', () => open(expandBtnEl));
+    }
+    closeBtn.addEventListener('click', close);
+    overlay.addEventListener('click', (e) => {
+      if (e.target === overlay) close();
+    });
+    overlay.addEventListener('keydown', (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        close();
+        return;
+      }
+      if (e.key !== 'Tab') return;
+      const focusable = Array.from(
+        overlay!.querySelectorAll<HTMLElement>('button, [href], [tabindex]:not([tabindex="-1"])'),
+      ).filter((el) => !el.hidden && el.offsetParent !== null);
+      if (!focusable.length) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (e.shiftKey) {
+        if (document.activeElement === first) {
+          e.preventDefault();
+          last.focus();
+        }
+      } else if (document.activeElement === last) {
+        e.preventDefault();
+        first.focus();
+      }
+    });
+
+    zoomInBtn?.addEventListener('click', () => {
+      const vp = viewportSize();
+      setScale(scale * 1.5, { x: vp.width / 2, y: vp.height / 2 });
+    });
+    zoomOutBtn?.addEventListener('click', () => {
+      const vp = viewportSize();
+      setScale(scale / 1.5, { x: vp.width / 2, y: vp.height / 2 });
+    });
+    zoomResetBtn?.addEventListener('click', resetToFit);
+
+    // ── Pan (un pointeur) + pincement (deux pointeurs) ─────────────────────
+    const pointers = new Map<number, Point>();
+    let panStart: Point | null = null;
+    let translateStart: Point | null = null;
+    let pinchStartDistance = 0;
+    let pinchStartScale = 1;
+    let gestureKind: 'none' | 'pan' | 'pinch' = 'none';
+    let tapDownPoint: Point | null = null;
+    let tapDownTime = 0;
+    let lastTap: TapRecord | null = null;
+
+    function pointFromEvent(e: PointerEvent): Point {
+      const r = viewportEl.getBoundingClientRect();
+      return { x: e.clientX - r.left, y: e.clientY - r.top };
+    }
+
+    viewportEl.addEventListener('pointerdown', (e: PointerEvent) => {
+      viewportEl.setPointerCapture(e.pointerId);
+      const p = pointFromEvent(e);
+      pointers.set(e.pointerId, p);
+      if (pointers.size === 1) {
+        panStart = p;
+        translateStart = { ...translate };
+        gestureKind = 'pan';
+        tapDownPoint = p;
+        tapDownTime = e.timeStamp;
+      } else if (pointers.size === 2) {
+        const pts = Array.from(pointers.values());
+        pinchStartDistance = pointDistance(pts[0]!, pts[1]!);
+        pinchStartScale = scale;
+        panStart = null;
+        gestureKind = 'pinch';
+      }
+      viewportEl.dataset.panning = 'true';
+      e.preventDefault();
+    });
+
+    viewportEl.addEventListener('pointermove', (e: PointerEvent) => {
+      if (!pointers.has(e.pointerId)) return;
+      pointers.set(e.pointerId, pointFromEvent(e));
+      if (pointers.size >= 2 && contentSize) {
+        const pts = Array.from(pointers.values());
+        const a = pts[0]!;
+        const b = pts[1]!;
+        const dist = pointDistance(a, b);
+        const mid = pointMidpoint(a, b);
+        const newScale = pinchScale(pinchStartScale, pinchStartDistance, dist);
+        translate = zoomAtPoint(translate, scale, newScale, mid);
+        scale = newScale;
+        translate = clampTranslate(translate, viewportSize(), contentSize, scale);
+        apply();
+      } else if (panStart && translateStart && contentSize) {
+        const p = pointFromEvent(e);
+        translate = {
+          x: translateStart.x + (p.x - panStart.x),
+          y: translateStart.y + (p.y - panStart.y),
+        };
+        translate = clampTranslate(translate, viewportSize(), contentSize, scale);
+        apply();
+      }
+      e.preventDefault();
+    });
+
+    function endPointer(e: PointerEvent): void {
+      pointers.delete(e.pointerId);
+      if (pointers.size < 2) pinchStartDistance = 0;
+      if (pointers.size === 1) {
+        // Un doigt reste après un pincement : redémarre un pan propre depuis
+        // sa position actuelle plutôt que de sauter sur l'ancien panStart.
+        const remaining = Array.from(pointers.values())[0]!;
+        panStart = remaining;
+        translateStart = { ...translate };
+        gestureKind = 'pan';
+        return;
+      }
+      if (pointers.size > 0) return;
+      viewportEl.dataset.panning = 'false';
+      // Double-tap/double-clic UNIQUEMENT si ce pointeur n'a quasiment pas
+      // bougé (un pan/pincement qui se termine près d'un point ne doit pas
+      // se faire passer pour un tap) et n'a pas traîné trop longtemps. Le
+      // viewport occupe TOUT l'espace sous l'en-tête (aucun « fond » nu
+      // n'entoure l'en-tête ou les boutons flottants) : un simple tap qui
+      // tombe HORS du rectangle actuel du schéma (translate/scale connus) EST
+      // le « clic sur le fond » qui doit fermer la visionneuse — un tap SUR
+      // le schéma continue de suivre la logique double-tap ci-dessous.
+      const p = pointFromEvent(e);
+      const wasPan = gestureKind === 'pan';
+      const movedFar = tapDownPoint ? pointDistance(tapDownPoint, p) > 10 : true;
+      const tookTooLong = e.timeStamp - tapDownTime > 500;
+      if (wasPan && !movedFar && !tookTooLong) {
+        const withinContent =
+          !!contentSize &&
+          p.x >= translate.x &&
+          p.x <= translate.x + contentSize.width * scale &&
+          p.y >= translate.y &&
+          p.y <= translate.y + contentSize.height * scale;
+        if (!withinContent) {
+          lastTap = null;
+          close();
+        } else {
+          const tap: TapRecord = { x: p.x, y: p.y, time: e.timeStamp };
+          if (isDoubleTap(lastTap, tap)) {
+            lastTap = null;
+            const next = doubleTapScale(scale, fitScaleValue);
+            if (Math.abs(next - fitScaleValue) < 0.001) {
+              resetToFit();
+            } else {
+              setScale(next, p);
+            }
+          } else {
+            lastTap = tap;
+          }
+        }
+      } else {
+        lastTap = null;
+      }
+      panStart = null;
+      translateStart = null;
+      gestureKind = 'none';
+    }
+    viewportEl.addEventListener('pointerup', endPointer);
+    viewportEl.addEventListener('pointercancel', endPointer);
+
+    // ── Molette : simple OU ctrl+molette (trackpad pinch du navigateur) —
+    // les deux zooment au curseur, jamais un scroll de page (preventDefault
+    // systématique, cohérent avec touch-action:none ci-dessus en CSS).
+    viewportEl.addEventListener(
+      'wheel',
+      (e: WheelEvent) => {
+        if (!contentSize) return;
+        e.preventDefault();
+        const r = viewportEl.getBoundingClientRect();
+        const anchor = { x: e.clientX - r.left, y: e.clientY - r.top };
+        const factor = e.deltaY > 0 ? 1 / 1.15 : 1.15;
+        setScale(scale * factor, anchor);
+      },
+      { passive: false },
+    );
+
+    // Note double-clic souris : PointerEvent unifie souris/tactile/stylet —
+    // le détecteur pointerdown/pointerup ci-dessus (`isDoubleTap`) couvre
+    // DÉJÀ le double-clic sans listener `dblclick` séparé. En ajouter un
+    // ferait doublonner le geste (deux bascules au lieu d'une, la seconde
+    // annulant visuellement la première) : un seul chemin de détection.
+
+    // ── Redimensionnement (rotation d'écran, barre d'adresse qui se
+    // rétracte…) : re-fit si l'utilisateur n'avait pas zoomé manuellement,
+    // sinon reclampe juste la translation dans les nouvelles bornes.
+    window.addEventListener('resize', () => {
+      if (overlay!.hidden || !contentSize) return;
+      const wasFit = Math.abs(scale - fitScaleValue) < 0.001;
+      if (wasFit) {
+        resetToFit();
+      } else {
+        translate = clampTranslate(translate, viewportSize(), contentSize, scale);
+        apply();
+      }
+    });
+  })();
 </script>
 
 <style>
@@ -4199,18 +4636,178 @@ const signConfig = ok
     width: 100%;
     height: 100%;
   }
-  /* WJ128 — schéma électrique (SLD) : pas de ratio réservé (contrairement aux
-     graphes ci-dessus) — c'est un SVG backend au contenu variable (nombre de
-     composants), pas un viewBox connu d'avance. Largeur pleine, hauteur AUTO
-     (préserve le viewBox propre du SVG) ; le conteneur `cine-card` porte déjà
-     `overflow-x-auto` pour un schéma dense sur mobile. */
-  .sld-svg-wrap {
-    width: 100%;
+  /* WJ129 — carte-teaser du schéma électrique (SLD). Mobile-first : cadre à
+     hauteur MAÎTRISÉE (320px, ni le ratio 302×213 illisible d'origine ni un
+     CLS — c'est une hauteur fixe, pas un ratio dépendant du contenu), le SVG
+     backend (contenu variable, aucun viewBox connu d'avance) est affiché en
+     LÉGER SURCADRAGE (155 % de la largeur du cadre) ancré haut-gauche et
+     rogné par `overflow: hidden` — un aperçu, pas une lecture (la lecture se
+     fait dans la visionneuse plein écran ci-dessous). Desktop (sm+, la carte
+     fait ~896px de large en max-w-4xl) : le SVG entier, hauteur auto,
+     redevient lisible tel quel (~×0.8) — plus de cadrage fixe. */
+  .sld-teaser-frame {
+    position: relative;
+    display: block;
+    height: 320px;
+    overflow: hidden;
+    background: var(--color-azur-950, #0a1a33);
   }
-  .sld-svg-wrap :global(svg) {
+  .sld-teaser-frame .sld-svg-wrap {
+    position: absolute;
+    inset: 0;
+  }
+  .sld-teaser-frame .sld-svg-wrap :global(svg) {
+    display: block;
+    width: 155%;
+    max-width: none;
+    height: auto;
+  }
+  @media (min-width: 640px) {
+    .sld-teaser-frame {
+      height: auto;
+      overflow: visible;
+    }
+    .sld-teaser-frame .sld-svg-wrap {
+      position: static;
+      inset: auto;
+    }
+    .sld-teaser-frame .sld-svg-wrap :global(svg) {
+      width: 100%;
+    }
+  }
+  /* Voile sombre bas + affordance « Agrandir » — pleine intensité en mobile
+     (le SVG y est de toute façon illisible, le voile ne cache rien d'utile) ;
+     très légère en desktop (le schéma y est déjà lisible, on ne veut pas
+     l'assombrir). */
+  .sld-teaser-veil {
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(to top, rgb(7 11 29 / 0.88) 0%, rgb(7 11 29 / 0.5) 40%, transparent 78%);
+    pointer-events: none;
+  }
+  @media (min-width: 640px) {
+    .sld-teaser-veil {
+      background: linear-gradient(to top, rgb(7 11 29 / 0.5) 0%, transparent 34%);
+    }
+  }
+  .sld-teaser-cta {
+    position: absolute;
+    left: 50%;
+    bottom: 1rem;
+    transform: translateX(-50%);
+    pointer-events: none;
+    white-space: nowrap;
+  }
+  .sld-teaser:hover .sld-teaser-cta,
+  .sld-teaser:focus-visible .sld-teaser-cta {
+    background: var(--color-brass-400);
+    border-color: var(--color-brass-400);
+    color: var(--color-nuit);
+  }
+
+  /* ─── WJ129 — visionneuse plein écran (pan/pointeur + pinch + molette +
+     double-tap, géométrie pure dans lib/sldViewer.ts). Même recette que le
+     lightbox photo de realisations/[slug].astro : overlay fixed inset-0,
+     fond nuit quasi opaque, bouton fermer 44px, piège de focus léger,
+     fermeture Échap/✕/clic-fond. z-index dédié à CETTE page, largement
+     au-dessus de tout le reste (sélecteur de langue z-50, CTA collant z-40).
+     Boutons flottants ancrés en position PHYSIQUE (right/bottom, jamais
+     inset-inline-end) : la visionneuse fonctionne identiquement en RTL sans
+     aucune bascule liée à `dir` — seul le TITRE (texte traduit) suit le sens
+     naturel de la langue via le flex du header. */
+  .sld-viewer {
+    position: fixed;
+    inset: 0;
+    z-index: 9000;
+    display: flex;
+    flex-direction: column;
+    background: rgb(7 11 29 / 0.97);
+  }
+  .sld-viewer[hidden] {
+    display: none;
+  }
+  .sld-viewer-header {
+    display: flex;
+    flex: none;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: max(0.75rem, env(safe-area-inset-top)) max(1rem, env(safe-area-inset-right)) 0.75rem max(1rem, env(safe-area-inset-left));
+    border-bottom: 1px solid rgb(255 255 255 / 0.12);
+  }
+  .sld-viewer-title {
+    font-family: var(--font-sans);
+    font-size: 0.9375rem;
+    font-weight: 700;
+    color: var(--color-lune);
+  }
+  .sld-viewer-close {
+    display: flex;
+    flex: none;
+    align-items: center;
+    justify-content: center;
+    width: 2.75rem;
+    height: 2.75rem;
+    color: var(--color-lune);
+    border: 1px solid rgb(255 255 255 / 0.2);
+    border-radius: 9999px;
+    background: transparent;
+    cursor: pointer;
+    transition: color 200ms, border-color 200ms;
+  }
+  .sld-viewer-close:hover,
+  .sld-viewer-close:focus-visible {
+    color: var(--color-brass-300);
+    border-color: var(--color-brass-400);
+  }
+  /* touch-action: none — le pan/pincement ne doit JAMAIS scroller la page
+     derrière (voir aussi document.body.style.overflow verrouillé en JS). */
+  .sld-viewer-viewport {
+    position: relative;
+    flex: 1 1 auto;
+    overflow: hidden;
+    touch-action: none;
+    cursor: grab;
+  }
+  .sld-viewer-viewport[data-panning="true"] {
+    cursor: grabbing;
+  }
+  .sld-viewer-content {
+    position: absolute;
+    top: 0;
+    left: 0;
+    transform-origin: 0 0;
+  }
+  .sld-viewer-content :global(svg) {
     display: block;
     width: 100%;
-    height: auto;
+    height: 100%;
+  }
+  .sld-viewer-controls {
+    position: absolute;
+    right: max(1rem, env(safe-area-inset-right));
+    bottom: max(1rem, env(safe-area-inset-bottom));
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+  .sld-viewer-fab {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 2.75rem;
+    height: 2.75rem;
+    color: var(--color-lune);
+    border: 1px solid rgb(255 255 255 / 0.2);
+    border-radius: 9999px;
+    background: rgb(7 11 29 / 0.85);
+    cursor: pointer;
+    transition: color 200ms, border-color 200ms;
+  }
+  .sld-viewer-fab:hover,
+  .sld-viewer-fab:focus-visible {
+    color: var(--color-brass-300);
+    border-color: var(--color-brass-400);
   }
 
   /* WJ80 — même affordance tap-to-reveal sur le repère pic/moyenne. */
@@ -4243,6 +4840,18 @@ const signConfig = ok
     width: 100%;
     aspect-ratio: 16 / 10;
     background: var(--color-azur-950, #0a1a33);
+  }
+  /* WJ129 — en mobile étroit, le ratio 16/10 réduisait la scène à ~209px de
+     haut (largeur de carte ~335px) : trop court pour orbiter confortablement.
+     `min-height` reste un réservoir STATIQUE (zéro CLS, comme l'aspect-ratio
+     ci-dessus — il ne dépend d'aucune donnée async) qui prend le dessus sur
+     la hauteur dérivée du ratio quand celle-ci est plus petite ; le ratio
+     16/10 continue de s'appliquer tel quel dès que la largeur suffit (sm+, où
+     209px n'était de toute façon jamais le problème). */
+  @media (max-width: 639.98px) {
+    .roof3d-stage {
+      min-height: 300px;
+    }
   }
   /* WJ118 — la scène Three.js est transparente (setClearColor 0,0,
      roofPro11/viewerOnly.ts) : sans photo satellite, le fond nuit ci-dessus
@@ -4386,6 +4995,7 @@ const signConfig = ok
     .prop-lang-switch,
     #sticky-cta,
     #roof3d-overlay,
+    #sld-viewer,
     #contact-confirm,
     #sign-form,
     #pdf-download,
