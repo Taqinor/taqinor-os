@@ -98,6 +98,10 @@ class SpecModule:
     temp_coeff_voc_pct_c: float = -0.27
     #: γ(Pmax) en %/°C, NÉGATIF — sert de coefficient de dérive du Vmp.
     temp_coeff_pmax_pct_c: float = -0.35
+    #: Désignation COMMERCIALE du module (« Canadien Solar 710 Wc ») — purement
+    #: descriptive, elle ne participe à AUCUN calcul : elle sert à ce qu'un
+    #: schéma unifilaire NOMME le matériel au lieu d'écrire « Champ PV ».
+    designation: str = ""
 
     @property
     def temp_coeff_vmp_pct_c(self):
@@ -148,7 +152,11 @@ class SpecOnduleur:
     #: 1 = monophasé 230 V, 3 = triphasé 400 V (NF C 15-100).
     phases: int = 1
     #: Rendement européen (%) — pondération EN 50530 des points de charge.
-    rendement_euro_pct: float = 97.0
+    #: AUCUN calcul du moteur ne le consomme : c'est une valeur PUBLIÉE. Elle
+    #: reste donc ``None`` tant qu'une fiche constructeur ne la donne pas —
+    #: un rendement par défaut imprimé sur une pièce technique se lirait comme
+    #: une caractéristique vérifiée de l'appareil.
+    rendement_euro_pct: Optional[float] = None
     #: Tension de DÉMARRAGE (V). À défaut, le bas de plage MPPT fait foi.
     v_demarrage_v: Optional[float] = None
     #: Courant de COURT-CIRCUIT maximal admissible par entrée MPPT (A) — borne
@@ -215,6 +223,13 @@ class EntreeElectrique:
     #: Régime de neutre (NF C 15-100) — TT par défaut (raccordement BT public).
     regime: str = REGIME_TT
     batterie: bool = False
+    #: Identité du parc de stockage — descriptive, jamais calculatoire (le
+    #: booléen ``batterie`` ci-dessus reste la seule chose qui pilote les
+    #: règles). Elle existe pour que le bloc « Batterie » du schéma NOMME le
+    #: matériel et son énergie au lieu d'écrire « stockage DC ».
+    batterie_designation: str = ""
+    batterie_kwh: float = 0.0
+    batterie_v_nominal: float = 0.0
     temp_froid_c: float = TEMP_FROID_DEFAUT_C
     temp_chaud_c: float = TEMP_CHAUD_DEFAUT_C
     # ── contraintes optionnelles ──────────────────────────────────────────────

@@ -9,7 +9,11 @@ Django). Il fait exactement trois choses :
    lues EN CROSS-APP par le sélecteur ``apps.stock.selectors.specs_for_produit``
    (jamais par un import de ses modèles) ; les groupes de modules viennent des
    pans du calepinage (``roof_layout['_pans_geometry']``), et à défaut d'un seul
-   groupe portant la cible lue dans les lignes (PV16).
+   groupe portant la cible lue dans les lignes (PV16). PV85 — l'entrée
+   transporte aussi l'IDENTITÉ du matériel (module, onduleur, stockage) pour
+   que le schéma NOMME les appareils ; seul un modèle CONFIRMÉ par le fondateur
+   y est repris, un modèle « supposé » ne s'imprime jamais sur une pièce
+   technique (cf. ``_designation_materiel``).
 2. **Appeler ``core.electrique.concevoir()``** une seule fois, et projeter son
    ``ResultatElectrique`` sur le CONTRAT PARTAGÉ
    ``apps/ventes/contract_samples/conception_electrique.json`` — clé pour clé,
@@ -107,6 +111,53 @@ def _produit_de_famille(devis, predicat):
     return repli
 
 
+#: Marqueur posé par ``seed_catalogue`` sur la description d'un produit dont le
+#: modèle constructeur a été TRANCHÉ par le fondateur. Son jumeau « Modèle
+#: supposé : … — à confirmer fondateur » n'est délibérément PAS lu : un numéro
+#: de modèle supposé imprimé sur un schéma remis au gestionnaire de réseau se
+#: lirait comme une déclaration, alors que personne ne l'a vérifié.
+MARQUEUR_MODELE_CONFIRME = 'Modèle confirmé fondateur :'
+
+
+def _modele_confirme(produit):
+    """Le modèle constructeur CONFIRMÉ d'un produit, ou ``""``."""
+    description = getattr(produit, "description", "") or ""
+    for ligne in description.splitlines():
+        if ligne.startswith(MARQUEUR_MODELE_CONFIRME):
+            return ligne[len(MARQUEUR_MODELE_CONFIRME):].strip()
+    return ""
+
+
+def _designation_materiel(produit, libelle, grandeur=""):
+    """Comment NOMMER un appareil sur une pièce technique, du sûr au flou.
+
+    Trois sources, dans cet ordre : le modèle CONFIRMÉ par le fondateur (le
+    seul numéro de modèle qu'on ait le droit d'imprimer), sinon la marque
+    accompagnée de la grandeur certaine (« Deye 10 kW », « Canadien Solar
+    710 Wc »), sinon le libellé de la ligne du devis. Vide quand on ne sait
+    rien : le schéma retombe alors sur son intitulé générique plutôt que
+    d'afficher une identité fabriquée.
+    """
+    modele = _modele_confirme(produit)
+    if modele:
+        return modele
+    marque = (getattr(produit, "marque", "") or "").strip()
+    if marque:
+        return ("%s %s" % (marque, grandeur)).strip() if grandeur else marque
+    return (libelle or "").strip()
+
+
+def _texte_grandeur(valeur, unite, decimales=0):
+    """« 710 Wc » / « 10 kW » — vide si la grandeur n'est pas connue."""
+    try:
+        nombre = float(valeur)
+    except (TypeError, ValueError):
+        return ""
+    if nombre <= 0:
+        return ""
+    return ("%.*f" % (decimales, nombre)).replace(".", ",") + " " + unite
+
+
 def spec_module_du_devis(devis):
     """``SpecModule`` du panneau du devis — fiche produit, sinon défauts sûrs.
 
@@ -148,6 +199,8 @@ def spec_module_du_devis(devis):
         temp_coeff_pmax_pct_c=_flottant(
             specs.get("temp_coeff_pmax_pct_c"),
             float(sd.DEFAULT_MODULE["temp_coeff_vmp"])),
+        designation=_designation_materiel(
+            produit, libelle, _texte_grandeur(pmax, "Wc")),
     )
 
 
@@ -190,6 +243,13 @@ def spec_onduleur_du_devis(devis):
         ac_kw=ac_kw,
         phases=phases,
         v_demarrage_v=float(defauts["v_min"]),
+        # Le rendement n'a PAS de défaut : il reste None tant qu'une fiche ne
+        # le donne pas (il serait sinon publié comme une caractéristique
+        # vérifiée de l'appareil sur une pièce technique).
+        rendement_euro_pct=(_flottant(specs.get("rendement_euro_pct"), 0.0)
+                            or None),
+        designation=_designation_materiel(
+            produit, libelle, _texte_grandeur(ac_kw, "kW", 1)),
     )
     return onduleur, phases
 
@@ -234,13 +294,27 @@ def groupes_du_devis(devis):
 
 
 def _batterie_du_devis(devis):
+    """``(présente, désignation, kWh, tension)`` du parc de stockage du devis.
+
+    Seul le booléen pilote les règles (il l'a toujours fait) ; les trois
+    autres valeurs servent UNIQUEMENT à nommer le matériel sur le schéma, et
+    restent vides quand la fiche ne les donne pas.
+    """
     from apps.ventes import solar_design as sd
     for ligne in _lignes_du_devis(devis):
         designation = ligne.designation or ""
-        nom = getattr(getattr(ligne, "produit", None), "nom", "") or ""
-        if sd.is_battery(designation) or sd.is_battery(nom):
-            return True
-    return False
+        produit = getattr(ligne, "produit", None)
+        nom = getattr(produit, "nom", "") or ""
+        if not (sd.is_battery(designation) or sd.is_battery(nom)):
+            continue
+        specs = _specs_produit(produit)
+        kwh = _flottant(specs.get("kwh_nominal"), 0.0)
+        return (True,
+                _designation_materiel(produit, designation or nom,
+                                      _texte_grandeur(kwh, "kWh", 1)),
+                kwh,
+                _flottant(specs.get("v_nominal"), 0.0))
+    return (False, "", 0.0, 0.0)
 
 
 def construire_entree(devis, overrides=None):
@@ -277,6 +351,9 @@ def construire_entree(devis, overrides=None):
     plafond = reglages.get("plafond_kwc_par_onduleur")
     plafond = (_flottant(plafond, 0.0) or None) if plafond is not None else None
 
+    (batterie_presente, batterie_designation, batterie_kwh,
+     batterie_v) = _batterie_du_devis(devis)
+
     entree = EntreeElectrique(
         module=module,
         onduleur=onduleur,
@@ -286,7 +363,10 @@ def construire_entree(devis, overrides=None):
         phases=phases,
         regime=regime,
         batterie=(bool(reglages["batterie"]) if "batterie" in reglages
-                  else _batterie_du_devis(devis)),
+                  else batterie_presente),
+        batterie_designation=batterie_designation,
+        batterie_kwh=batterie_kwh,
+        batterie_v_nominal=batterie_v,
         temp_froid_c=_flottant(reglages.get("temp_froid_c"),
                                TEMP_FROID_DEFAUT_C),
         temp_chaud_c=_flottant(reglages.get("temp_chaud_c"),

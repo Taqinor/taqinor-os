@@ -147,7 +147,7 @@ def blocs_du_schema(entree, resultat):
                        % (nb_chaines, " / ".join(str(v) for v in longueurs)))
     else:
         detail = "aucune chaîne"
-    blocs.append(Bloc("champ", "Champ PV",
+    blocs.append(Bloc("champ", entree.module.designation or "Champ PV",
                       "%d modules · %s Wc · %s"
                       % (entree.nb_modules, fr(entree.module.pmax_wc, 0),
                          detail)))
@@ -169,14 +169,21 @@ def blocs_du_schema(entree, resultat):
                           sectionneur.calibre))
 
     onduleur = entree.onduleur
-    blocs.append(Bloc(
-        "onduleur", "Onduleur",
-        "%s kW · %s · %d entrée(s) MPPT"
-        % (fr(onduleur.ac_kw, 1),
-           "triphasé" if int(entree.phases or 1) == 3 else "monophasé",
-           max(1, onduleur.n_mppt))))
+    detail_onduleur = [
+        "%s kW" % fr(onduleur.ac_kw, 1),
+        "triphasé" if int(entree.phases or 1) == 3 else "monophasé",
+        "%d entrée(s) MPPT" % max(1, onduleur.n_mppt),
+    ]
+    if onduleur.rendement_euro_pct:
+        # Publié SEULEMENT quand une fiche le donne (cf. SpecOnduleur).
+        detail_onduleur.append("η %s %%"
+                               % fr(onduleur.rendement_euro_pct, 1))
+    blocs.append(Bloc("onduleur", onduleur.designation or "Onduleur",
+                      " · ".join(detail_onduleur)))
     if entree.batterie:
-        blocs.append(Bloc("batterie", "Batterie", "stockage DC"))
+        blocs.append(Bloc("batterie",
+                          entree.batterie_designation or "Batterie",
+                          _detail_batterie(entree)))
 
     disjoncteur = _protection(resultat, "QAC1")
     if disjoncteur is not None:
@@ -198,6 +205,16 @@ def blocs_du_schema(entree, resultat):
         blocs.append(Bloc("reseau", "Compteur ONEE",
                           "injection / soutirage"))
     return tuple(blocs)
+
+
+def _detail_batterie(entree):
+    """« 10,2 kWh · 51,2 V » — ce qu'on SAIT du parc, sinon rien d'inventé."""
+    morceaux = []
+    if entree.batterie_kwh:
+        morceaux.append("%s kWh" % fr(entree.batterie_kwh, 1))
+    if entree.batterie_v_nominal:
+        morceaux.append("%s V" % fr(entree.batterie_v_nominal, 1))
+    return " · ".join(morceaux) if morceaux else "stockage DC"
 
 
 def _conducteurs_texte(entree):
@@ -676,19 +693,30 @@ def _cartouche(entree, resultat, largeur, hauteur, cartouche):
     """
     donnees = dict(cartouche or {})
     x = largeur - _MARGE - _TABLEAU_L
-    hauteur_cartouche = 108.0
-    y = hauteur - _MARGE - hauteur_cartouche
-    lignes = (
+    lignes = [
         ("Client", donnees.get("client", "—")),
         ("Référence", donnees.get("reference", "—")),
         ("Puissance crête", "%s kWc" % fr(entree.puissance_kwc, 2)),
+    ]
+    # Le matériel RÉEL, quand le dossier le connaît : un cartouche qui dit
+    # « Puissance crête 9,94 kWc » sans dire AVEC QUOI oblige le lecteur à
+    # remonter au devis. Rien n'est écrit tant que rien n'est su.
+    if entree.module.designation:
+        lignes.append(("Modules", entree.module.designation))
+    if entree.onduleur.designation:
+        lignes.append(("Onduleur", entree.onduleur.designation))
+    if entree.batterie and entree.batterie_designation:
+        lignes.append(("Stockage", entree.batterie_designation))
+    lignes.extend([
         ("Régime / phases", "%s · %s" % (
             entree.regime,
             "triphasé" if int(entree.phases or 1) == 3 else "monophasé")),
         ("Date", donnees.get("date", "—")),
         ("Indice", donnees.get("indice", "A")),
         ("Moteur", "v%s" % resultat.version_moteur),
-    )
+    ])
+    hauteur_cartouche = 14.0 + 13.0 * len(lignes) + 8.0
+    y = hauteur - _MARGE - hauteur_cartouche
     morceaux = [
         '<rect x="%s" y="%s" width="%s" height="%s" fill="#ffffff" '
         'stroke="%s" stroke-width="1.5"/>'
