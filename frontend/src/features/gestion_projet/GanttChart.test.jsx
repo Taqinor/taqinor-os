@@ -81,6 +81,55 @@ describe('GanttChart', () => {
   })
 })
 
+/* WIR244 — les dépendances CPM n'étaient créables nulle part : le Gantt les
+   listait sans jamais permettre de les poser ni de les retirer. */
+describe('GanttChart — WIR244 : écriture des dépendances', () => {
+  const TACHES = [
+    { id: 1, libelle: 'Étude', date_debut_prevue: '2026-01-01', date_fin_prevue: '2026-01-05' },
+    { id: 2, libelle: 'Pose', date_debut_prevue: '2026-01-06', date_fin_prevue: '2026-01-12' },
+  ]
+
+  it('crée une dépendance (projet dérivé serveur, jamais envoyé)', async () => {
+    const onCreerDependance = vi.fn(() => Promise.resolve())
+    withProviders(
+      <GanttChart taches={TACHES} dependances={[]} onCreerDependance={onCreerDependance} />,
+    )
+    fireEvent.click(screen.getByRole('button', { name: /Ajouter une dépendance/ }))
+    fireEvent.change(screen.getByLabelText('Prédécesseur'), { target: { value: '1' } })
+    fireEvent.change(screen.getByLabelText('Successeur'), { target: { value: '2' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Ajouter' }))
+
+    expect(onCreerDependance).toHaveBeenCalledWith({
+      predecesseur: 1, successeur: 2, type_dependance: 'fs',
+    })
+    expect(onCreerDependance.mock.calls[0][0]).not.toHaveProperty('projet')
+  })
+
+  it('supprime une dépendance existante', () => {
+    const onSupprimerDependance = vi.fn()
+    withProviders(
+      <GanttChart
+        taches={TACHES}
+        dependances={[{ id: 3, predecesseur: 1, successeur: 2, type_dependance: 'fs', lag: 0 }]}
+        onCreerDependance={vi.fn()}
+        onSupprimerDependance={onSupprimerDependance}
+      />,
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'Supprimer la dépendance' }))
+    expect(onSupprimerDependance).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 3 }))
+  })
+
+  it('sans handler d’écriture, la légende reste en lecture seule', () => {
+    withProviders(
+      <GanttChart taches={TACHES}
+                  dependances={[{ id: 3, predecesseur: 1, successeur: 2, type_dependance: 'fs' }]} />,
+    )
+    expect(screen.queryByRole('button', { name: /Ajouter une dépendance/ })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Supprimer la dépendance' })).toBeNull()
+  })
+})
+
 describe('StatutProjet', () => {
   it('mappe une valeur de statut vers son libellé français', () => {
     withProviders(<StatutProjet status="en_cours" />)
