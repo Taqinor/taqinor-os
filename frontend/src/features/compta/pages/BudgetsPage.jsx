@@ -1,8 +1,8 @@
 import { useState } from 'react'
-import { Plus, PieChart } from 'lucide-react'
+import { Plus, PieChart, GitCompare, Download } from 'lucide-react'
 import { ListShell } from '../../../ui/module'
 import {
-  Button, EmptyState,
+  Button, EmptyState, toast,
   Dialog, DialogContent, DialogHeader, DialogTitle,
 } from '../../../ui'
 import { formatMAD } from '../../../lib/format'
@@ -42,7 +42,30 @@ const LIGNE_FIELDS = [
 
 function BudgetDetailDialog({ budget, onClose, onChanged }) {
   const [ligneDialog, setLigneDialog] = useState(false)
+  const [variance, setVariance] = useState(null)
+  const [varianceOuvert, setVarianceOuvert] = useState(false)
   const lignes = budget.lignes || []
+
+  // WIR255 — FG149 : variance budget vs réalisé, lue du grand livre.
+  const voirVsRealise = async () => {
+    try {
+      const res = await comptaApi.budgets.vsRealise(budget.id)
+      setVariance(res.data)
+      setVarianceOuvert(true)
+    } catch {
+      toast.error('Variance budget vs réalisé indisponible.')
+    }
+  }
+
+  const exporterVsRealise = async () => {
+    try {
+      const res = await comptaApi.budgets.vsRealise(budget.id, { export: 'csv' })
+      const blob = res.data instanceof Blob ? res.data : new Blob([res.data])
+      comptaApi.downloadBlob(blob, `budget_vs_realise_${budget.annee}.csv`)
+    } catch {
+      toast.error('Export indisponible.')
+    }
+  }
 
   return (
     <Dialog open onOpenChange={(o) => { if (!o) onClose() }}>
@@ -51,11 +74,36 @@ function BudgetDetailDialog({ budget, onClose, onChanged }) {
           <DialogTitle>Budget {budget.annee} — {budget.libelle || 'Sans libellé'}</DialogTitle>
         </DialogHeader>
 
-        <div className="flex justify-end">
+        <div className="flex flex-wrap justify-end gap-2">
+          <Button variant="outline" onClick={voirVsRealise}>
+            <GitCompare className="size-4" /> Vs réalisé
+          </Button>
+          <Button variant="outline" onClick={exporterVsRealise}>
+            <Download className="size-4" /> Export CSV
+          </Button>
           <Button onClick={() => setLigneDialog(true)}>
             <Plus /> Générer une ligne (répartition)
           </Button>
         </div>
+
+        {varianceOuvert && variance && (
+          <ComptaTable
+            aria-label="Budget vs réalisé"
+            exportName="budget-vs-realise"
+            rows={variance.lignes || []}
+            getRowKey={(l, i) => l.compte_numero || i}
+            columns={[
+              { key: 'compte_numero', label: 'Compte', cell: (l) => l.compte_numero },
+              { key: 'compte_intitule', label: 'Intitulé', cell: (l) => l.compte_intitule || '—' },
+              { key: 'budget', label: 'Budget', align: 'right', numeric: true,
+                sortValue: (l) => Number(l.budget) || 0, cell: (l) => formatMAD(l.budget) },
+              { key: 'realise', label: 'Réalisé', align: 'right', numeric: true,
+                sortValue: (l) => Number(l.realise) || 0, cell: (l) => formatMAD(l.realise) },
+              { key: 'variance', label: 'Variance', align: 'right', numeric: true,
+                sortValue: (l) => Number(l.variance) || 0, cell: (l) => formatMAD(l.variance) },
+            ]}
+          />
+        )}
 
         {lignes.length === 0 ? (
           <EmptyState

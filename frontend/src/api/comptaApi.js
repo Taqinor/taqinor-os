@@ -310,6 +310,9 @@ const comptaApi = {
     // d'une saisie manuelle des 12 mois).
     genererLigneRepartie: (id, data) =>
       api.post(`/compta/budgets/${id}/generer-ligne-repartie/`, data),
+    // WIR255 — FG149 variance budget vs réalisé (URL réelle : SOULIGNÉ, comme
+    // `grand_livre` — pas d'`url_path=` déclaré côté serveur, cf. PACT18).
+    vsRealise: (id, params) => api.get(`/compta/budgets/${id}/vs_realise/`, { params }),
   },
   centresCout: resource('centres-cout'),
   provisionsCreances: resource('provisions-creances'),
@@ -558,6 +561,10 @@ const comptaApi = {
       api.get(`/compta/cycles-consolidation/${id}/variation-capitaux/`),
     annexes: (id) => api.get(`/compta/cycles-consolidation/${id}/annexes/`),
     comparatif: (id) => api.get(`/compta/cycles-consolidation/${id}/comparatif/`),
+    // WIR255 — NTFIN54 export XLSX de la liasse de consolidation.
+    exportLiasse: (id) =>
+      api.get(`/compta/cycles-consolidation/${id}/export-liasse/`,
+        { params: { export: 'xlsx' }, responseType: 'blob' }),
     etapesAudit: (id) => api.get(`/compta/cycles-consolidation/${id}/etapes-audit/`),
     simuler: (id, data) => api.post(`/compta/cycles-consolidation/${id}/simuler/`, data || {}),
     exportLiasse: (id, params) =>

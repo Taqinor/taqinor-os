@@ -111,7 +111,8 @@ vi.mock('../../api/comptaApi', () => {
       },
       modelesRapprochement: { ...res(), appliquer: empty },
       rapprochements3voies: { ...res(), evaluer: empty, valider: empty },
-      budgets: res(), centresCout: res(), provisionsCreances: res(),
+      budgets: { ...res(), genererLigneRepartie: empty, vsRealise: empty },
+      centresCout: res(), provisionsCreances: res(),
       comptesAuxiliaires: res(), mappingsCompte: res(), piecesJustificatives: res(),
       periodes: { ...res(), cloturer: empty, rouvrir: empty },
       immobilisations: {
@@ -176,6 +177,14 @@ describe('EngagementsPage — rendu smoke (FG145-148/XFAC14/XACC26/COMPTA39)', (
     expect(screen.getAllByText('Retenues de garantie').length).toBeGreaterThan(0)
     expect(screen.getByText('Compensations AR/AP')).toBeInTheDocument()
     expect(screen.getByText('Piste d’audit')).toBeInTheDocument()
+  }, 30000)
+
+  it('affiche le bloc « Échéances sous 30 jours » sur l’onglet Retenues de garantie (WIR255)', async () => {
+    const { default: EngagementsPage } = await import('./pages/EngagementsPage.jsx')
+    mount(<EngagementsPage />)
+    await waitFor(() => {
+      expect(screen.getByText(/Retenues de garantie à lever/)).toBeInTheDocument()
+    })
   }, 30000)
 })
 
