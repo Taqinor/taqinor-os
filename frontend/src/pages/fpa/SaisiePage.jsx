@@ -1,8 +1,15 @@
 import { useEffect, useMemo, useState } from 'react'
 import fpaApi from '../../api/fpaApi'
-import { Button, Card } from '../../ui'
+import { Button, Card, toast } from '../../ui'
 import PageHeader from '../../components/layout/PageHeader'
 import { formatMAD } from '../../lib/format'
+
+function messageErreurWorkflow(err, repli) {
+  const data = err?.response?.data
+  if (typeof data?.detail === 'string') return data.detail
+  if (typeof data === 'string' && data) return data
+  return repli
+}
 
 /* ============================================================================
    NTFPA4 — Écran de saisie budgétaire type tableur.
@@ -34,6 +41,10 @@ export default function SaisiePage() {
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState(null)
+  // WIR198 — workflow de validation (en_saisie → soumis → validé/rejeté),
+  // sans DÉCLENCHEUR UI jusqu'ici bien que les 3 actions serveur existaient.
+  const [workflowBusy, setWorkflowBusy] = useState(false)
+  const [motifRejet, setMotifRejet] = useState('')
 
   useEffect(() => {
     Promise.all([fpaApi.getCycles(), fpaApi.getDepartements({ actif: 1 })])
@@ -44,11 +55,10 @@ export default function SaisiePage() {
       .catch(() => setError('Impossible de charger cycles/départements.'))
   }, [])
 
-  useEffect(() => {
-    if (!cycleId || !departementId) return
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- load-on-mount loading state
+  const chargerLignes = () => {
+    if (!cycleId || !departementId) return undefined
     setLoading(true)
-    fpaApi.getLignesBudget({ cycle: cycleId, departement: departementId })
+    return fpaApi.getLignesBudget({ cycle: cycleId, departement: departementId })
       .then((res) => {
         setError(null)
         const rows = Array.isArray(res.data) ? res.data : (res.data?.results ?? [])
@@ -60,7 +70,60 @@ export default function SaisiePage() {
       })
       .catch(() => setError('Impossible de charger les lignes de budget.'))
       .finally(() => setLoading(false))
-  }, [cycleId, departementId])
+  }
+
+  // eslint-disable-next-line react-hooks/exhaustive-deps, react-hooks/set-state-in-effect -- load-on-mount loading state
+  useEffect(() => { chargerLignes() }, [cycleId, departementId])
+
+  // WIR198 — Soumettre/Valider/Rejeter appellent les actions serveur déjà
+  // existantes avec `?cycle=&departement=` ; un 400 de transition (statut
+  // incohérent) s'affiche en toast, jamais silencieusement avalé. Les
+  // lignes sont rechargées après une transition réussie (le statut peut
+  // affecter leur éditabilité).
+  const params = () => ({ cycle: cycleId, departement: departementId })
+
+  const soumettre = async () => {
+    if (!cycleId || !departementId || workflowBusy) return
+    setWorkflowBusy(true)
+    try {
+      await fpaApi.soumettreBudget(params())
+      toast.success('Budget soumis à validation.')
+      chargerLignes()
+    } catch (err) {
+      toast.error(messageErreurWorkflow(err, 'Soumission impossible.'))
+    } finally {
+      setWorkflowBusy(false)
+    }
+  }
+
+  const valider = async () => {
+    if (!cycleId || !departementId || workflowBusy) return
+    setWorkflowBusy(true)
+    try {
+      await fpaApi.validerBudget(params())
+      toast.success('Budget validé.')
+      chargerLignes()
+    } catch (err) {
+      toast.error(messageErreurWorkflow(err, 'Validation impossible.'))
+    } finally {
+      setWorkflowBusy(false)
+    }
+  }
+
+  const rejeter = async () => {
+    if (!cycleId || !departementId || workflowBusy) return
+    setWorkflowBusy(true)
+    try {
+      await fpaApi.rejeterBudget(params(), motifRejet.trim())
+      toast.success('Budget rejeté.')
+      setMotifRejet('')
+      chargerLignes()
+    } catch (err) {
+      toast.error(messageErreurWorkflow(err, 'Rejet impossible.'))
+    } finally {
+      setWorkflowBusy(false)
+    }
+  }
 
   const setCell = (categorie, mois, value) => {
     setGrid((prev) => ({
@@ -126,9 +189,27 @@ export default function SaisiePage() {
         title="Saisie budgétaire"
         subtitle="Grille département × mois par catégorie (budget annuel)"
         actions={
-          <Button onClick={enregistrer} disabled={saving || !cycleId || !departementId}>
-            {saving ? 'Enregistrement…' : 'Enregistrer'}
-          </Button>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+            <Button onClick={enregistrer} disabled={saving || !cycleId || !departementId}>
+              {saving ? 'Enregistrement…' : 'Enregistrer'}
+            </Button>
+            <Button variant="outline" onClick={soumettre} disabled={workflowBusy || !cycleId || !departementId}>
+              Soumettre
+            </Button>
+            <Button variant="outline" onClick={valider} disabled={workflowBusy || !cycleId || !departementId}>
+              Valider
+            </Button>
+            <input
+              placeholder="Motif du rejet"
+              aria-label="Motif du rejet"
+              value={motifRejet}
+              onChange={(e) => setMotifRejet(e.target.value)}
+              style={{ width: 140 }}
+            />
+            <Button variant="outline" onClick={rejeter} disabled={workflowBusy || !cycleId || !departementId}>
+              Rejeter
+            </Button>
+          </div>
         }
       />
       <div style={{ display: 'flex', gap: 12, marginBottom: 16 }}>
