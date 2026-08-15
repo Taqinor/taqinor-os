@@ -18,6 +18,10 @@ import {
   proposalPathSegments,
   tokenFromSegments,
   decorativeSlug,
+  classifyEquipment,
+  groupEquipment,
+  equipmentLineCount,
+  equipmentDelta,
 } from '../src/lib/propositionPage';
 
 /** Devis résidentiel complet : les deux vues, les 3 profils, le calque batterie. */
@@ -176,6 +180,82 @@ describe('PV80 — graphique fusionné : transitions', () => {
   it('une variante devenue indisponible retombe sur la première rendue', () => {
     const avail = { monthly: true, daily: true, variants: ['normal' as const], battery: false };
     expect(productionLayers({ view: 'journee', variant: 'ramadan', battery: false }, avail).variant).toBe('normal');
+  });
+});
+
+describe('PV80 — chapitre « Votre installation » : équipement structuré', () => {
+  const ITEMS = [
+    { designation: 'Panneau solaire 550 W', quantite: 12, marque: 'Longi' },
+    { designation: 'Onduleur hybride 6 kW', quantite: 1, marque: 'Deye' },
+    { designation: 'Batterie lithium LFP 5 kWh', quantite: 2, marque: 'Deyness' },
+    { designation: 'Coffret de protection DC', quantite: 1 },
+    { designation: 'Structure aluminium toiture', quantite: 1 },
+    { designation: 'Câble solaire 6 mm²', quantite: 60 },
+    { designation: 'Frais de dossier ONEE', quantite: 1 },
+  ];
+
+  it('classe chaque poste dans sa famille', () => {
+    expect(classifyEquipment('Panneau solaire 550 W')).toBe('production');
+    expect(classifyEquipment('Onduleur hybride 6 kW')).toBe('production');
+    expect(classifyEquipment('Batterie lithium LFP 5 kWh')).toBe('stockage');
+    expect(classifyEquipment('Coffret de protection DC')).toBe('protection');
+    expect(classifyEquipment('Structure aluminium toiture')).toBe('structure');
+    expect(classifyEquipment('Frais de dossier ONEE')).toBe('autres');
+  });
+
+  it('le poste le plus SPÉCIFIQUE gagne (un câble batterie reste du stockage)', () => {
+    expect(classifyEquipment('Câble batterie 25 mm²')).toBe('stockage');
+    expect(classifyEquipment('Coffret DC onduleur')).toBe('protection');
+  });
+
+  it('regroupe dans l’ordre canonique, groupes vides omis', () => {
+    const groups = groupEquipment(ITEMS);
+    expect(groups.map((g) => g.id)).toEqual(['production', 'stockage', 'protection', 'structure', 'autres']);
+    expect(groups[0].lines.map((l) => l.quantite)).toEqual([12, 1]);
+    expect(groups[1].lines[0].designation).toContain('Batterie');
+    expect(equipmentLineCount(ITEMS)).toBe(7);
+  });
+
+  it('ne perd JAMAIS une ligne du devis (libellé inconnu → « autres »)', () => {
+    const exotic = [{ designation: 'Prestation XYZ non catalogée', quantite: 1 }];
+    const groups = groupEquipment(exotic);
+    expect(groups).toHaveLength(1);
+    expect(groups[0].id).toBe('autres');
+    expect(equipmentLineCount(exotic)).toBe(1);
+  });
+
+  it('ignore les lignes vides ou à quantité nulle/invalide', () => {
+    expect(equipmentLineCount([
+      { designation: '  ', quantite: 3 },
+      { designation: 'Panneau', quantite: 0 },
+      { designation: 'Panneau', quantite: Number.NaN },
+    ])).toBe(0);
+    expect(groupEquipment(null)).toEqual([]);
+    expect(groupEquipment(undefined)).toEqual([]);
+  });
+
+  it('le delta dit ce que la seconde option AJOUTE (jamais un second tableau)', () => {
+    const sans = [
+      { designation: 'Panneau solaire 550 W', quantite: 12 },
+      { designation: 'Onduleur hybride 6 kW', quantite: 1 },
+    ];
+    const avec = [
+      { designation: 'Panneau solaire 550 W', quantite: 12 },
+      { designation: 'Onduleur hybride 6 kW', quantite: 1 },
+      { designation: 'Batterie lithium LFP 5 kWh', quantite: 2 },
+    ];
+    expect(equipmentDelta(sans, avec)).toEqual([
+      { designation: 'Batterie lithium LFP 5 kWh', quantite: 2 },
+    ]);
+    expect(equipmentDelta(avec, sans)).toEqual([]);
+  });
+
+  it('un delta de QUANTITÉ ne compte que la différence', () => {
+    const d = equipmentDelta(
+      [{ designation: 'Panneau', quantite: 10 }],
+      [{ designation: 'panneau', quantite: 14 }],
+    );
+    expect(d).toEqual([{ designation: 'panneau', quantite: 4 }]);
   });
 });
 

@@ -178,6 +178,143 @@ export function productionLayers(
   };
 }
 
+// ── Chapitre « Votre installation » : équipement STRUCTURÉ ──────────────────
+
+/** Une ligne d'équipement telle que le backend l'expose (jamais de prix ici). */
+export interface EquipmentLine {
+  designation: string;
+  quantite: number;
+  marque?: string | null;
+  description?: string | null;
+  garantie?: string | null;
+}
+
+/** Familles d'équipement, dans leur ordre de lecture. */
+export type EquipmentGroupId = 'production' | 'stockage' | 'protection' | 'structure' | 'autres';
+
+export const EQUIPMENT_GROUP_ORDER: readonly EquipmentGroupId[] = [
+  'production',
+  'stockage',
+  'protection',
+  'structure',
+  'autres',
+];
+
+export const EQUIPMENT_GROUP_LABELS: Record<EquipmentGroupId, { fr: string; en: string; ar: string }> = {
+  production: { fr: 'Production', en: 'Production', ar: 'الإنتاج' },
+  stockage: { fr: 'Stockage', en: 'Storage', ar: 'التخزين' },
+  protection: { fr: 'Protection & raccordement', en: 'Protection & connection', ar: 'الحماية والربط' },
+  structure: { fr: 'Structure & pose', en: 'Mounting & installation', ar: 'الهيكل والتركيب' },
+  autres: { fr: 'Autres postes', en: 'Other items', ar: 'بنود أخرى' },
+};
+
+export interface EquipmentGroup {
+  id: EquipmentGroupId;
+  lines: EquipmentLine[];
+}
+
+/**
+ * Mots-clés de classement. Ordre d'évaluation VOLONTAIRE : le stockage et la
+ * protection sont testés AVANT la production, parce qu'un « coffret DC pour
+ * onduleur » ou un « câble batterie » contiennent aussi un mot de production —
+ * le poste le plus spécifique gagne. Un libellé inconnu tombe dans « autres »,
+ * jamais à la poubelle : aucune ligne du devis ne disparaît de l'affichage.
+ */
+const EQUIPMENT_KEYWORDS: readonly (readonly [EquipmentGroupId, readonly string[]])[] = [
+  ['stockage', ['batterie', 'battery', 'accumulateur', 'lithium', 'lfp', 'bms', 'stockage']],
+  [
+    'protection',
+    [
+      'coffret', 'disjoncteur', 'parafoudre', 'protection', 'sectionneur', 'fusible',
+      'differentiel', 'différentiel', 'terre', 'paratonnerre', 'tableau', 'afficheur',
+      'compteur', 'interrupteur', 'porte-fusible',
+    ],
+  ],
+  [
+    'structure',
+    [
+      'structure', 'rail', 'fixation', 'support', 'chassis', 'châssis', 'lestage',
+      'cable', 'câble', 'connecteur', 'mc4', 'chemin', 'visserie', 'gaine', 'goulotte',
+      'pose', 'installation', 'main d', 'montage', 'transport', 'etude', 'étude',
+    ],
+  ],
+  [
+    'production',
+    [
+      'panneau', 'module', 'photovolta', 'onduleur', 'ondulateur', 'micro-onduleur',
+      'optimiseur', 'variateur', 'vfd', 'pompe', 'kit', 'hybride', 'string',
+    ],
+  ],
+];
+
+/** Famille d'une désignation (insensible à la casse et aux accents usuels). */
+export function classifyEquipment(designation: string | null | undefined): EquipmentGroupId {
+  const d = String(designation ?? '').toLowerCase();
+  if (!d.trim()) return 'autres';
+  for (const [group, keywords] of EQUIPMENT_KEYWORDS) {
+    for (const kw of keywords) {
+      if (d.includes(kw)) return group;
+    }
+  }
+  return 'autres';
+}
+
+/**
+ * Regroupe les lignes du devis en familles, dans l'ordre canonique. Les groupes
+ * vides sont omis ; l'ordre des lignes DANS un groupe est celui du devis (jamais
+ * re-trié — le devis reste la source de vérité). Une ligne sans désignation ou
+ * à quantité nulle est ignorée (rien d'honnête à montrer).
+ */
+export function groupEquipment(items: readonly EquipmentLine[] | null | undefined): EquipmentGroup[] {
+  const buckets = new Map<EquipmentGroupId, EquipmentLine[]>();
+  for (const it of items ?? []) {
+    const designation = String(it?.designation ?? '').trim();
+    const quantite = Number(it?.quantite);
+    if (!designation || !Number.isFinite(quantite) || quantite <= 0) continue;
+    const id = classifyEquipment(designation);
+    const list = buckets.get(id) ?? [];
+    list.push({ ...it, designation, quantite });
+    buckets.set(id, list);
+  }
+  return EQUIPMENT_GROUP_ORDER.filter((id) => (buckets.get(id) ?? []).length > 0).map((id) => ({
+    id,
+    lines: buckets.get(id) as EquipmentLine[],
+  }));
+}
+
+/** Nombre total de lignes affichées (pour décider de rendre le tableau ou non). */
+export function equipmentLineCount(items: readonly EquipmentLine[] | null | undefined): number {
+  return groupEquipment(items).reduce((n, g) => n + g.lines.length, 0);
+}
+
+/**
+ * Ce que la SECONDE option ajoute par rapport à la première (devis à deux
+ * options : le tableau montre l'option retenue, cette liste dit honnêtement ce
+ * que l'autre ajoute — sans dupliquer tout un second tableau). Comparaison sur
+ * la désignation ; une quantité supérieure compte pour son DELTA.
+ */
+export function equipmentDelta(
+  base: readonly EquipmentLine[] | null | undefined,
+  other: readonly EquipmentLine[] | null | undefined,
+): EquipmentLine[] {
+  const baseQty = new Map<string, number>();
+  for (const it of base ?? []) {
+    const key = String(it?.designation ?? '').trim().toLowerCase();
+    if (!key) continue;
+    baseQty.set(key, (baseQty.get(key) ?? 0) + (Number(it?.quantite) || 0));
+  }
+  const out: EquipmentLine[] = [];
+  for (const it of other ?? []) {
+    const designation = String(it?.designation ?? '').trim();
+    const quantite = Number(it?.quantite);
+    if (!designation || !Number.isFinite(quantite) || quantite <= 0) continue;
+    const already = baseQty.get(designation.toLowerCase()) ?? 0;
+    const extra = quantite - already;
+    if (extra > 0) out.push({ ...it, designation, quantite: extra });
+  }
+  return out;
+}
+
 // ── Route catch-all : /proposition/<token> ET /proposition/<slug>/<token> ────
 
 /**
