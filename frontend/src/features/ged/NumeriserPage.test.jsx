@@ -13,6 +13,9 @@ vi.mock('../../api/gedApi', () => ({
     getCabinets: vi.fn(),
     getDossiers: vi.fn(),
     assemblerPhotos: vi.fn(),
+    // WIR249 — GED31 (lot de fichiers) + GED32 (import CSV en masse).
+    scanLot: vi.fn(),
+    importMasse: vi.fn(),
   },
 }))
 
@@ -50,6 +53,8 @@ beforeEach(() => {
   gedApi.getDossiers.mockResolvedValue(
     ok([{ id: 10, parent: null, nom: 'Numérisations', path: '/10/' }]))
   gedApi.assemblerPhotos.mockResolvedValue(ok({ id: 99, nom: 'Chantier X' }))
+  gedApi.scanLot.mockResolvedValue(ok({ documents: [{ id: 1 }, { id: 2 }], erreurs: [] }))
+  gedApi.importMasse.mockResolvedValue(ok({ crees: 3, documents: [], erreurs: [] }))
   // jsdom ne fournit pas createObjectURL/revokeObjectURL — l'écran les
   // utilise pour l'aperçu miniature de chaque page capturée.
   globalThis.URL.createObjectURL = vi.fn(() => 'blob:fake')
@@ -133,5 +138,76 @@ describe('NumeriserPage (XGED12)', () => {
     // s'effacent au profit du flux de capture.
     expect(screen.queryByRole('button', { name: 'Photo (caméra)' })).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: /prendre la photo \(mock\)/i })).toBeInTheDocument()
+  })
+})
+
+/* WIR249 — deux entrées de MASSE jamais câblées : GED31 (scan-lot) et GED32
+   (import-masse). Le rapport `erreurs` par fichier/ligne est AFFICHÉ. */
+describe('NumeriserPage — WIR249 lot & import en masse', () => {
+  const choisirDossier = async (user) => {
+    await waitFor(() => expect(gedApi.getDossiers).toHaveBeenCalled())
+    await user.click(screen.getByLabelText(/choisir le dossier/i))
+    await user.click(await screen.findByText('Numérisations'))
+  }
+
+  it('GED31 — dépose un lot de fichiers en multipart (clé `files` répétée)', async () => {
+    const user = userEvent.setup()
+    render(<NumeriserPage />)
+    await choisirDossier(user)
+
+    await user.upload(screen.getByTestId('ged-scanlot-files'), [
+      new File(['a'], 'a.pdf', { type: 'application/pdf' }),
+      new File(['b'], 'b.pdf', { type: 'application/pdf' }),
+    ])
+    await user.click(screen.getByTestId('ged-scanlot-submit'))
+
+    await waitFor(() => expect(gedApi.scanLot).toHaveBeenCalledTimes(1))
+    const fd = gedApi.scanLot.mock.calls[0][0]
+    expect(fd).toBeInstanceOf(FormData)
+    expect(fd.get('folder')).toBe('10')
+    expect(fd.getAll('files')).toHaveLength(2)
+  })
+
+  it('GED31 — un fichier refusé est LISTÉ, jamais tu derrière un succès', async () => {
+    const user = userEvent.setup()
+    gedApi.scanLot.mockResolvedValue(ok({
+      documents: [{ id: 1 }],
+      erreurs: [{ fichier: 'virus.exe', erreur: 'Format refusé.' }],
+    }))
+    render(<NumeriserPage />)
+    await choisirDossier(user)
+    await user.upload(screen.getByTestId('ged-scanlot-files'),
+      [new File(['a'], 'a.pdf', { type: 'application/pdf' })])
+    await user.click(screen.getByTestId('ged-scanlot-submit'))
+
+    const rapport = await screen.findByTestId('ged-masse-rapport')
+    expect(rapport).toHaveTextContent('1 erreur(s)')
+    expect(screen.getByTestId('ged-masse-erreur')).toHaveTextContent('Format refusé.')
+  })
+
+  it('GED32 — import CSV (+ ZIP optionnel) et compte des créations', async () => {
+    const user = userEvent.setup()
+    render(<NumeriserPage />)
+    await choisirDossier(user)
+
+    await user.upload(screen.getByTestId('ged-import-csv'),
+      new File(['nom,fichier'], 'meta.csv', { type: 'text/csv' }))
+    await user.upload(screen.getByTestId('ged-import-zip'),
+      new File(['PK'], 'binaires.zip', { type: 'application/zip' }))
+    await user.click(screen.getByTestId('ged-import-submit'))
+
+    await waitFor(() => expect(gedApi.importMasse).toHaveBeenCalledTimes(1))
+    const fd = gedApi.importMasse.mock.calls[0][0]
+    expect(fd.get('folder')).toBe('10')
+    expect(fd.get('csv')).toBeTruthy()
+    expect(fd.get('zip')).toBeTruthy()
+    expect(await screen.findByTestId('ged-masse-rapport')).toHaveTextContent('3 document(s) créé(s)')
+  })
+
+  it('les deux entrées de masse exigent un dossier de destination', async () => {
+    render(<NumeriserPage />)
+    await waitFor(() => expect(gedApi.getDossiers).toHaveBeenCalled())
+    expect(screen.getByTestId('ged-scanlot-submit')).toBeDisabled()
+    expect(screen.getByTestId('ged-import-submit')).toBeDisabled()
   })
 })

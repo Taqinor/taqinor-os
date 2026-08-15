@@ -12,6 +12,9 @@ import {
 import { formatDateTime, formatNumber } from '../../../lib/format'
 import gedApi from '../../../api/gedApi'
 import { errMessage } from './shared.js'
+// WIR249 — l'export du PDF annoté arrive en BINAIRE : remise par le helper
+// commun (pré-ouverture d'onglet iOS/PWA), nom de fichier posé par le serveur.
+import { downloadBlobInGesture, filenameFromResponse } from '../../../utils/downloadBlob'
 
 /* ============================================================================
    WIR164 — GED avancée, groupe (a) : checklist de pièces (XGED8), validation
@@ -307,7 +310,10 @@ export default function ChecklistPage() {
       )}
       {showApposer && (
         <ApposerDialog documents={documents} stamps={stampsDisponibles}
-          onClose={() => setShowApposer(false)} onDone={() => { setShowApposer(false); load() }} />
+          onClose={() => setShowApposer(false)}
+          // WIR249 — après apposition, le dialogue RESTE ouvert pour offrir
+          // l'export du PDF annoté (sinon la surface XGED16 reste inatteignable).
+          onDone={(opts) => { if (!opts?.keepOpen) setShowApposer(false); load() }} />
       )}
     </>
   )
@@ -516,6 +522,10 @@ function ApposerDialog({ documents, stamps, onClose, onDone }) {
   const [documentId, setDocumentId] = useState('')
   const [stamp, setStamp] = useState('')
   const [saving, setSaving] = useState(false)
+  // WIR249/XGED16 — l'export du PDF ANNOTÉ APLATI n'avait aucun appelant : on
+  // apposait un tampon sans jamais pouvoir SORTIR le PDF tamponné. Le bouton
+  // apparaît juste après l'apposition, sur la version qui vient d'être annotée.
+  const [versionAnnotee, setVersionAnnotee] = useState(null)
 
   const submit = async () => {
     if (!documentId) { toast.error('Sélectionnez un document.'); return }
@@ -532,8 +542,27 @@ function ApposerDialog({ documents, stamps, onClose, onDone }) {
         page: 0, x: 10, y: 10, contenu: stamp,
       })
       toast.success('Tampon apposé.')
-      onDone()
+      setVersionAnnotee(derniere)
+      onDone({ keepOpen: true })
     } catch (err) { toast.error(errMessage(err)) } finally { setSaving(false) }
+  }
+
+  // WIR249/XGED16 — export du PDF annoté APLATI (nouveau fichier séparé).
+  // Sans PyMuPDF côté serveur : 400 explicite, affiché tel quel.
+  const exporterAnnote = async () => {
+    if (!versionAnnotee) return
+    const pending = downloadBlobInGesture()
+    setSaving(true)
+    try {
+      const res = await gedApi.exportAnnoteVersion(versionAnnotee.id)
+      pending.deliver(res.data,
+        filenameFromResponse(res, `${versionAnnotee.filename || 'document'}-annote.pdf`))
+    } catch (err) {
+      if (err?.response?.status === 400) {
+        toast.error("Export du PDF annoté indisponible sur cette installation "
+          + '(bibliothèque PDF absente côté serveur).')
+      } else { toast.error(errMessage(err)) }
+    } finally { setSaving(false) }
   }
 
   return (
@@ -569,7 +598,15 @@ function ApposerDialog({ documents, stamps, onClose, onDone }) {
           </p>
         </div>
         <DialogFooter>
-          <Button variant="outline" onClick={onClose}>Annuler</Button>
+          <Button variant="outline" onClick={onClose}>
+            {versionAnnotee ? 'Fermer' : 'Annuler'}
+          </Button>
+          {versionAnnotee && (
+            <Button variant="outline" onClick={exporterAnnote} disabled={saving}
+              data-testid="ged-export-annote">
+              Télécharger le PDF annoté
+            </Button>
+          )}
           <Button onClick={submit} disabled={saving}>{saving ? 'Apposition…' : 'Apposer'}</Button>
         </DialogFooter>
       </DialogContent>

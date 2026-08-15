@@ -53,6 +53,14 @@ export default function NumeriserPage() {
   const [description, setDescription] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState(null)
+  // WIR249/GED31 — numérisation par LOT : N fichiers déjà scannés en un appel.
+  // WIR249/GED32 — import en MASSE : un CSV de métadonnées (+ ZIP de binaires).
+  // Les deux renvoient un rapport `erreurs` PAR LIGNE : on l'affiche, on ne
+  // le tait jamais derrière un « import terminé ».
+  const [lotFiles, setLotFiles] = useState([])
+  const [csvFile, setCsvFile] = useState(null)
+  const [zipFile, setZipFile] = useState(null)
+  const [rapport, setRapport] = useState(null) // { titre, crees, erreurs: [] }
 
   useEffect(() => {
     let alive = true
@@ -119,6 +127,48 @@ export default function NumeriserPage() {
     } finally {
       setBusy(false)
     }
+  }
+
+  // WIR249/GED31 — dépôt d'un LOT de fichiers déjà numérisés (multipart, clé
+  // `files` répétée : c'est ce que `request.FILES.getlist('files')` lit).
+  const submitLot = async () => {
+    if (!folderId || lotFiles.length === 0 || busy) return
+    setBusy(true); setRapport(null)
+    try {
+      const fd = new FormData()
+      fd.append('folder', folderId)
+      lotFiles.forEach((f) => fd.append('files', f))
+      const resp = await gedApi.scanLot(fd)
+      const documents = resp?.data?.documents || []
+      const erreurs = resp?.data?.erreurs || []
+      setRapport({ titre: 'Numérisation par lot', crees: documents.length, erreurs })
+      if (documents.length) toast.success(`${documents.length} document(s) déposé(s).`)
+      if (erreurs.length) toast.error(`${erreurs.length} fichier(s) refusé(s).`)
+      setLotFiles([])
+    } catch (err) {
+      toast.error(errText(err, 'Dépôt du lot impossible.'))
+    } finally { setBusy(false) }
+  }
+
+  // WIR249/GED32 — import en MASSE depuis un CSV (+ ZIP optionnel de binaires).
+  const submitImportMasse = async () => {
+    if (!folderId || !csvFile || busy) return
+    setBusy(true); setRapport(null)
+    try {
+      const fd = new FormData()
+      fd.append('folder', folderId)
+      fd.append('csv', csvFile)
+      if (zipFile) fd.append('zip', zipFile)
+      const resp = await gedApi.importMasse(fd)
+      const crees = resp?.data?.crees ?? (resp?.data?.documents || []).length
+      const erreurs = resp?.data?.erreurs || []
+      setRapport({ titre: 'Import en masse', crees, erreurs })
+      if (crees) toast.success(`${crees} document(s) créé(s).`)
+      if (erreurs.length) toast.error(`${erreurs.length} ligne(s) en erreur.`)
+      setCsvFile(null); setZipFile(null)
+    } catch (err) {
+      toast.error(errText(err, 'Import en masse impossible.'))
+    } finally { setBusy(false) }
   }
 
   const hasCabinet = cabinetId != null
@@ -252,6 +302,72 @@ export default function NumeriserPage() {
                   <FileText className="size-3.5" aria-hidden="true" />
                   Choisissez un dossier de destination avant d'assembler.
                 </p>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* WIR249/GED31+GED32 — deux entrées de MASSE, à côté de la capture
+              photo : un lot de fichiers déjà scannés, et un CSV de métadonnées.
+              Elles partagent le dossier de destination choisi à gauche. */}
+          <Card className="md:col-span-2">
+            <CardContent className="grid gap-4 p-4 md:grid-cols-2">
+              <div className="grid gap-2">
+                <h3 className="text-sm font-semibold">Déposer un lot de fichiers</h3>
+                <p className="text-[12.5px] text-muted-foreground">
+                  Plusieurs fichiers déjà numérisés, en un seul envoi. Un fichier
+                  au format refusé est signalé sans bloquer les autres.
+                </p>
+                <input type="file" multiple aria-label="Fichiers du lot"
+                  data-testid="ged-scanlot-files"
+                  onChange={(e) => setLotFiles(Array.from(e.target.files || []))} />
+                <Button data-testid="ged-scanlot-submit" onClick={submitLot}
+                  disabled={!folderId || lotFiles.length === 0 || busy}>
+                  {busy
+                    ? <Loader2 className="size-4 animate-spin" aria-hidden="true" />
+                    : <Upload className="size-4" aria-hidden="true" />}
+                  Déposer le lot ({lotFiles.length})
+                </Button>
+              </div>
+
+              <div className="grid gap-2">
+                <h3 className="text-sm font-semibold">Import en masse (CSV)</h3>
+                <p className="text-[12.5px] text-muted-foreground">
+                  Une ligne par document (colonnes nom, description, fichier).
+                  Le ZIP est optionnel : il fournit les binaires appariés par la
+                  colonne « fichier ».
+                </p>
+                <input type="file" accept=".csv,text/csv" aria-label="Fichier CSV"
+                  data-testid="ged-import-csv"
+                  onChange={(e) => setCsvFile(e.target.files?.[0] || null)} />
+                <input type="file" accept=".zip" aria-label="Archive ZIP (optionnelle)"
+                  data-testid="ged-import-zip"
+                  onChange={(e) => setZipFile(e.target.files?.[0] || null)} />
+                <Button data-testid="ged-import-submit" onClick={submitImportMasse}
+                  disabled={!folderId || !csvFile || busy}>
+                  {busy
+                    ? <Loader2 className="size-4 animate-spin" aria-hidden="true" />
+                    : <Upload className="size-4" aria-hidden="true" />}
+                  Importer
+                </Button>
+              </div>
+
+              {/* Le rapport d'erreurs LIGNE PAR LIGNE, jamais masqué. */}
+              {rapport && (
+                <div className="md:col-span-2" data-testid="ged-masse-rapport">
+                  <p className="text-[13px]">
+                    {rapport.titre} — {rapport.crees} document(s) créé(s),{' '}
+                    {rapport.erreurs.length} erreur(s).
+                  </p>
+                  {rapport.erreurs.length > 0 && (
+                    <ul className="mt-1 grid gap-0.5 text-[12.5px] text-destructive">
+                      {rapport.erreurs.map((e, i) => (
+                        <li key={i} data-testid="ged-masse-erreur">
+                          {e.fichier || e.ligne || e.nom || '—'} : {e.erreur || e.detail || 'refusé'}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
               )}
             </CardContent>
           </Card>

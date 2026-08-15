@@ -333,6 +333,64 @@ const gedApi = {
   checkOutDocument: (id) => api.post(`/ged/documents/${id}/check-out/`),
   checkInDocument: (id) => api.post(`/ged/documents/${id}/check-in/`),
 
+  // ══════════════════════════════════════════════════════════════════════
+  // WIR249 — surfaces GED de SECOND RANG, exposées côté serveur mais sans
+  // aucun appelant frontend. Câblées ici par ordre d'impact.
+  // ══════════════════════════════════════════════════════════════════════
+  // GED31 — numérisation par LOT (N fichiers en un appel, multipart).
+  // `formData` : { folder, files: <N fichiers> } → { documents, erreurs }.
+  scanLot: (formData) => api.post('/ged/documents/scan-lot/', formData),
+  // GED32 — import en MASSE depuis un CSV de métadonnées (+ ZIP optionnel).
+  // `formData` : { folder, csv, zip? } → { crees, documents, erreurs }.
+  importMasse: (formData) => api.post('/ged/documents/import-masse/', formData),
+  // GED33 — OCR d'une PIÈCE (CIN/facture/BL) → métadonnées typées fusionnées
+  // ADDITIVEMENT dans custom_data. `type_piece` optionnel (sinon deviné).
+  ocrPieceDocument: (id, typePiece) =>
+    api.post(`/ged/documents/${id}/ocr-piece/`,
+      typePiece ? { type_piece: typePiece } : {}),
+  // ZGED9 — verrou d'AVERTISSEMENT léger (« en cours d'édition »), DISTINCT du
+  // check-out GED16 : il n'empêche jamais la lecture, il prévient. 409 si un
+  // autre utilisateur l'a déjà posé.
+  verrouillerDocument: (id, motif) =>
+    api.post(`/ged/documents/${id}/verrouiller/`, { motif: motif ?? '' }),
+  deverrouillerDocument: (id) =>
+    api.post(`/ged/documents/${id}/deverrouiller/`),
+  // GED17 — cycle de vie documentaire (brouillon→revue→approuvé→archivé→
+  // obsolète). LOCAL à la GED, sans aucun rapport avec le funnel STAGES.py.
+  // Une transition interdite renvoie 400 avec son motif.
+  changerCycleVieDocument: (id, statut) =>
+    api.post(`/ged/documents/${id}/cycle-vie/`, { statut }),
+  // XGED30 — ouverture dans l'éditeur Office embarqué (KEY-GATED :
+  // sans `GED_OFFICE_URL`, le serveur répond 400 explicite).
+  officeOuvrirDocument: (id) =>
+    api.post(`/ged/documents/${id}/office-ouvrir/`),
+  // FG352/XKB20 — DocQA / RAG : top-k fragments GED + KB pour une question.
+  // KEY-GATED : sans clé d'embedding, `enabled=false` et `results` vide.
+  docqa: (q, k) => api.get('/ged/documents/docqa/', { params: { q, k } }),
+  // XGED16 — export d'un PDF ANNOTÉ APLATI (nouveau fichier). 400 explicite
+  // sans PyMuPDF côté serveur ; blob obligatoire (binaire).
+  exportAnnoteVersion: (versionId) =>
+    api.get('/ged/annotations/export-annote/',
+      { params: { version: versionId }, responseType: 'blob' }),
+  // XGED6 — dossier de PREUVE JSON d'un archivage légal (hash au dépôt,
+  // contrôles successifs, horodatages — loi 43-20).
+  // WIR249 — RESTE API-ONLY pour l'instant, raison assumée : son écran
+  // propriétaire est `features/ged/advanced/CoffresPage.jsx` (archivages
+  // légaux), hors du périmètre de fichiers de cette tâche. Le wrapper est posé
+  // ici pour que ce câblage soit un ajout d'UI, jamais une ré-invention d'URL.
+  dossierPreuveArchivage: (id) =>
+    api.get(`/ged/archivages-legaux/${id}/dossier-preuve/`),
+  // XGED6 — contrôle d'intégrité IMMÉDIAT (hors sweep planifié).
+  // WIR249 — API-ONLY, même raison que ci-dessus (écran CoffresPage).
+  verifierIntegriteArchives: () =>
+    api.post('/ged/archivages-legaux/verifier-integrite/'),
+  // ZGED14 — prolonge l'échéance d'une demande de signature `en_attente`.
+  // WIR249 — API-ONLY, raison : son écran propriétaire est
+  // `features/ged/advanced/ApprobationPage.jsx` (onglet Signatures), hors du
+  // périmètre de fichiers de cette tâche.
+  prolongerDemandeSignature: (id, expiresAt) =>
+    api.post(`/ged/demandes-signature/${id}/prolonger/`, { expires_at: expiresAt }),
+
   // XGED14 — Opérations en lot sur une multi-sélection de documents.
   // `data` : { documents:[<id>,...], operation:'tagger'|'detaguer'|'deplacer'|
   // 'corbeille'|'partager'|'demander_signature'|'demander_revue', params?:{} }.
