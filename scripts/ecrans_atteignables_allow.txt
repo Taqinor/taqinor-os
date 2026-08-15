@@ -16,18 +16,7 @@
 #
 # La signature est le CHEMIN (jamais `fichier:ligne`) : deplacer du code ne doit
 # pas invalider la base.
-bouchon-route|frontend/src/features/ao/module.config.jsx::/ao/calepinages
 bouchon-route|frontend/src/features/ao/module.config.jsx::/ao/dossiers
-inatteignable|frontend/src/features/adsengine/LeadRetentionNotice.jsx
-inatteignable|frontend/src/features/ao/dossier/ControlesAvantDepot.jsx
-inatteignable|frontend/src/features/ao/dossier/EcheancesDossier.jsx
-inatteignable|frontend/src/features/ao/dossier/ZipButton.jsx
-inatteignable|frontend/src/features/ao/variantes/DecompositionWaterfall.jsx
-inatteignable|frontend/src/features/ao/variantes/DiffPlan.jsx
-inatteignable|frontend/src/features/ao/variantes/HistoriqueVersions.jsx
-inatteignable|frontend/src/features/ao/variantes/SensibilitesPanel.jsx
-inatteignable|frontend/src/features/ao/variantes/VarianteColonne.jsx
-inatteignable|frontend/src/features/ao/variantes/VariantesCompare.jsx
 inatteignable|frontend/src/features/compta/components/EcritureSourceLink.jsx
 inatteignable|frontend/src/features/credit/CreditBadge.jsx
 inatteignable|frontend/src/features/credit/CreditWarningBanner.jsx
@@ -42,5 +31,3 @@ inatteignable|frontend/src/features/messaging/ShareRecord.jsx
 inatteignable|frontend/src/features/messaging/VoiceRecorder.jsx
 sans-nav|frontend/src/features/admin/module.config.jsx::/admin/impersonation
 sans-nav|frontend/src/features/admin/module.config.jsx::/admin/tenants
-sans-nav|frontend/src/features/credit/module.config.jsx::/credit/conditions
-sans-nav|frontend/src/features/reporting/module.config.jsx::/reporting/dashboards
