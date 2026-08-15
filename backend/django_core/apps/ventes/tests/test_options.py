@@ -75,10 +75,17 @@ class TestOptionDownstream(TestCase):
             email='opt@example.com', telephone='+212600000009')
 
     def _two_option_devis(self, num=40):
+        # PV86 — un document à DEUX options déclare son alternative dans
+        # ``etude_params['scenario']`` (ce que le générateur persiste
+        # toujours). Sans déclaration, deux onduleurs en lignes non
+        # optionnelles sont un artefact de données : le devis n'a qu'une
+        # réalité, l'aval ne filtre plus par option et facture toutes ses
+        # lignes.
         devis = Devis.objects.create(
             company=self.company, reference=f'DEV-{MONTH}-{num:04d}',
             client=self.client_obj, statut=Devis.Statut.ENVOYE,
-            taux_tva=Decimal('20'))
+            taux_tva=Decimal('20'),
+            etude_params={'scenario': 'Les deux (Sans + Avec)'})
         lignes = [
             ('Onduleur réseau', '1', '11700'),
             ('Onduleur hybride', '1', '24000'),

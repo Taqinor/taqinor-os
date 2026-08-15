@@ -219,9 +219,14 @@ class TestLegacyFactureHonorsOption(TestCase):
             role_legacy='admin', company=cls.company)
         cls.client_obj = make_client(cls.company, email='opt@example.com')
         # Devis à DEUX options : onduleur réseau + (onduleur hybride + batterie).
+        # PV86 — un vrai document à deux options DÉCLARE son alternative
+        # (``etude_params['scenario']``, persisté par le générateur) ; sans
+        # déclaration, deux onduleurs non optionnels sont un artefact de
+        # données et l'aval facture TOUTES les lignes du devis.
         cls.devis = Devis.objects.create(
             company=cls.company, reference=f'DEV-{MONTH}-1601',
             client=cls.client_obj, statut=Devis.Statut.ACCEPTE,
+            etude_params={'scenario': 'Les deux (Sans + Avec)'},
             option_acceptee=Devis.OptionAcceptee.SANS_BATTERIE)
         for desig, qty, pu in [
             ('Onduleur réseau', '1', '11700'),

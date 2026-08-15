@@ -71,6 +71,15 @@ FULL_LINES = [
 
 
 def make_devis(company, user, client, lignes, reference, etude_params=None):
+    # PV86 — les fixtures de ce module rendent le DOCUMENT À DEUX OPTIONS
+    # (réseau + hybride/batterie) : le devis DÉCLARE donc son alternative dans
+    # ``etude_params['scenario']``, exactement comme le générateur la persiste.
+    # Sans déclaration, deux onduleurs en lignes non optionnelles seraient un
+    # artefact de données rendu en UNE présentation au total de toutes les
+    # lignes (cf. test_pv86_verite_unique_devis). Sur une composition
+    # mono-option, la déclaration est sans effet (le scénario retombe sur
+    # l'option réellement disponible).
+    etude_params = {'scenario': 'Les deux (Sans + Avec)', **(etude_params or {})}
     devis = Devis.objects.create(
         company=company, reference=reference, client=client,
         statut='envoye', taux_tva=Decimal('20.00'),

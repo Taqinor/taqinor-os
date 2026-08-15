@@ -134,14 +134,29 @@ class TestStoredScenario(TestCase):
         data = build_quote_data(devis)
         self.assertEqual(data['recommended'], 'Sans batterie')
 
-    def test_absent_scenario_falls_back_to_inference(self):
-        """No stored scenario → the historical inference applies (both options)."""
+    def test_absent_scenario_falls_back_to_reality_of_the_lines(self):
+        """PV86 — sans scénario stocké, le repli n'est PLUS une alternative
+        inférée : c'est la RÉALITÉ DES LIGNES.
+
+        Cette épingle disait l'inverse (« deux options inférées », nb_options
+        == 2). Elle contredisait le principe fondateur — LA SEULE VÉRITÉ EST LE
+        DEVIS — et protégeait exactement le bug constaté en production : pour ce
+        devis, la page client affichait « Sans batterie » à un prix (l'option 1
+        fabriquée) que ni le devis ni son PDF ne portaient. Deux onduleurs en
+        lignes NON optionnelles sans déclaration = un artefact de données ; le
+        document devient mono-option « Avec batterie » au total de TOUTES ses
+        lignes. L'alternative reste possible : il faut que le devis la DÉCLARE
+        (``scenario`` — ce que le générateur persiste toujours), cf. le test
+        ``test_stored_les_deux_shows_both`` juste au-dessus.
+        """
         from apps.ventes.quote_engine import build_quote_data
         devis = self._devis({}, 'DEV-QF6-NONE')
         data = build_quote_data(devis)
-        self.assertEqual(data['scenario'], 'Les deux (Sans + Avec)')
+        self.assertEqual(data['scenario'], 'Avec batterie')
         self.assertEqual(data['recommended'], 'Avec batterie')
-        self.assertEqual(data['nb_options'], 2)
+        self.assertEqual(data['nb_options'], 1)
+        # Le total affiché EST le total du devis (somme de toutes les lignes).
+        self.assertEqual(data['display_total'], round(float(devis.total_ttc)))
 
     def test_stored_avec_but_no_hybrid_falls_back(self):
         """A stored « Avec batterie » that the equipment can't satisfy (réseau

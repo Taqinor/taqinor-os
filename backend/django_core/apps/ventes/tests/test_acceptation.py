@@ -44,8 +44,16 @@ class TestDevisAcceptation(TestCase):
             client=self.client_obj, statut=statut, taux_tva=Decimal('20'))
 
     def _devis_deux_options(self, num=20):
-        """Devis à deux options (réseau + hybride/batterie) → nb_options == 2."""
+        """Devis à deux options (réseau + hybride/batterie) → nb_options == 2.
+
+        PV86 — le devis DÉCLARE son alternative dans ``etude_params['scenario']``
+        (ce que le générateur persiste toujours). Sans déclaration, deux
+        onduleurs en lignes non optionnelles ne sont plus un document à deux
+        options mais un artefact de données rendu en une seule présentation.
+        """
         devis = self._devis(num=num)
+        devis.etude_params = {'scenario': 'Les deux (Sans + Avec)'}
+        devis.save(update_fields=['etude_params'])
         lignes = [
             ('Onduleur réseau', '1', '11700'),
             ('Onduleur hybride', '1', '24000'),

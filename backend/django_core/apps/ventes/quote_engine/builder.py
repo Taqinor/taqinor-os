@@ -656,9 +656,6 @@ def build_quote_data(devis, pdf_options=None) -> dict:
 
     sans_ok = has_reseau
     avec_ok = has_hybride and has_batterie
-    # Deux VRAIES options (avant tout repli) — pilote la règle d'intégrité :
-    # total d'affichage = option 1, et le une-page ne mélange jamais.
-    deux_options = sans_ok and avec_ok
     if not sans_ok and not avec_ok and pdf_mode == "full":
         # RÈGLE DURE : une option ne se rend JAMAIS sans onduleur. Un devis
         # sans aucun onduleur ne peut pas produire le document à options.
@@ -669,6 +666,53 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         # Format une page (liste simple) : pas d'options — valeurs neutres.
         sans_ok = True
 
+    # ── PV86 — LA SEULE VÉRITÉ EST LE DEVIS : une alternative se DÉCLARE ──────
+    # Une présentation « deux options » n'est légitime QUE si le devis exprime
+    # réellement une alternative commerciale. Deux mécanismes la matérialisent,
+    # et deux seulement :
+    #   1. le générateur, qui persiste TOUJOURS ``etude_params['scenario']``
+    #      (garantie QF7, tous modes) — c'est la DÉCLARATION du vendeur ;
+    #   2. XSAL5 — des lignes ``optionnelle=True`` (add-on batterie). Elles sont
+    #      déjà sorties des totaux plus haut et rendues dans ``options_proposees``
+    #      : le document reste mono-option et son total reste la somme de ses
+    #      lignes — l'invariant tient sans rien faire de plus ici.
+    # Tout le reste — notamment un devis qui porte les DEUX onduleurs en lignes
+    # NON optionnelles sans rien déclarer — est un ARTEFACT d'anciens chemins :
+    # un ÉTAT DE DONNÉES, jamais une alternative commerciale. Ses lignes
+    # décrivent UNE seule réalité et son total est la somme de TOUTES ses
+    # lignes. En déduire deux « options » dont AUCUNE n'égale ce total faisait
+    # afficher à la page client un prix qui n'existait dans AUCUN document
+    # (« Sans batterie — 26 186 MAD » à l'écran contre « Avec batterie —
+    # 60 186 MAD » au PDF, pour un seul et même devis).
+    _stored_choice = (devis.etude_params or {}).get('scenario')
+    _valid_choices = {
+        'Sans batterie', 'Avec batterie', 'Les deux (Sans + Avec)'}
+    alternative_declaree = _stored_choice in _valid_choices
+    # Avertissements INTERNES (vendeur/support) — jamais rendus au client : la
+    # charge utile publique les retire (``public_views.proposal_data``) et aucun
+    # renderer ne les lit.
+    avertissements_internes = []
+    # Deux VRAIES options (avant tout repli) — pilote la règle d'intégrité :
+    # total d'affichage = option 1, et le une-page ne mélange jamais.
+    deux_options = sans_ok and avec_ok and alternative_declaree
+
+    if sans_ok and avec_ok and not alternative_declaree:
+        # ARTEFACT deux-onduleurs : UNE seule présentation, dont la composition
+        # est TOUTES les lignes du devis — donc dont le total EST le total du
+        # devis, à l'écran comme au PDF. Les deux paniers portent la même
+        # vérité : aucun consommateur (rendu, charge utile publique, liste) ne
+        # peut plus lire un prix d'option fantôme. L'étiquette suit la réalité
+        # des lignes : batterie RÉELLE (jamais la batterie de synthèse, qui
+        # n'est pas une ligne du devis) → « Avec batterie ».
+        _batterie_reelle = _has_qty(items, _is_battery)
+        sans_items = [dict(it) for it in items]
+        avec_items = [dict(it) for it in items]
+        sans_ok = not _batterie_reelle
+        avec_ok = bool(_batterie_reelle)
+        avertissements_internes.append(
+            "deux onduleurs non optionnels — devis à assainir par "
+            "resynchronisation")
+
     # ── QF6 — respecter le choix avec/sans-batterie STOCKÉ par le vendeur ─────
     # L'écran générateur persiste le scénario choisi dans etude_params
     # ('scenario' = « Sans batterie » / « Avec batterie » / « Les deux (Sans +
@@ -677,10 +721,7 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     # stocké. Un choix stocké ne peut jamais être satisfait au-delà de ce que
     # l'équipement permet : « Avec » sans onduleur hybride+batterie ne peut pas
     # rendre l'option avec — dans ce cas on retombe sur ce qui est disponible.
-    _stored_choice = (devis.etude_params or {}).get('scenario')
-    _valid_choices = {
-        'Sans batterie', 'Avec batterie', 'Les deux (Sans + Avec)'}
-    if _stored_choice in _valid_choices and (sans_ok or avec_ok):
+    if alternative_declaree and (sans_ok or avec_ok):
         if _stored_choice == 'Les deux (Sans + Avec)' and sans_ok and avec_ok:
             scenario = 'Les deux (Sans + Avec)'
         elif _stored_choice == 'Sans batterie' and sans_ok:
@@ -701,6 +742,11 @@ def build_quote_data(devis, pdf_options=None) -> dict:
             recommended = 'Sans batterie'
         else:
             recommended = 'Avec batterie'
+    # PV86 — à DÉFAUT de choix stocké, le repli est la RÉALITÉ DES LIGNES, pas
+    # une alternative inventée : une batterie non optionnelle présente donne
+    # « Avec batterie » (jamais « Sans »). Le cas « les deux » n'est plus
+    # atteignable sans déclaration (l'artefact a été ramené à une seule
+    # présentation ci-dessus) ; la branche reste par sûreté.
     elif sans_ok and avec_ok:
         scenario = "Les deux (Sans + Avec)"
         recommended = "Avec batterie"
@@ -1616,6 +1662,14 @@ def build_quote_data(devis, pdf_options=None) -> dict:
             }
             for c in _clauses if isinstance(c, dict)
         ]
+
+    # ── PV86 — Avertissements INTERNES sur l'état des données du devis ───────
+    # Additif : la clé n'est posée QUE lorsqu'il y a quelque chose à signaler →
+    # un devis sain reste octet-identique. JAMAIS rendu au client : aucun
+    # renderer ne lit cette clé et ``public_views.proposal_data`` la retire de
+    # la charge utile publique.
+    if avertissements_internes:
+        data["avertissements_internes"] = list(avertissements_internes)
 
     return data
 

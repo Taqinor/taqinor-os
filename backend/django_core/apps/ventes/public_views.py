@@ -814,6 +814,21 @@ def proposal_data(request, token):
         # ci-dessous en sort. Devis sans simulation → dict inchangé.
         bankable = _bankable_headline(devis, data)
         data = _sans_internes_bancables(data)
+        # PV86 — VÉRITÉ UNIQUE : la charge utile publique ne transporte QUE les
+        # totaux/lignes de l'option réellement proposée. Un devis mono-option
+        # laissait passer le second panier (calculé pour le découpage interne) :
+        # la page pouvait alors afficher « Sans batterie — 26 186 MAD » alors
+        # que le devis ET son PDF disaient 60 186 MAD. Un prix qui n'existe dans
+        # AUCUN document ne franchit plus la frontière publique. Les
+        # avertissements internes (devis à assainir) restent côté vendeur.
+        data.pop('avertissements_internes', None)
+        if data.get('nb_options') == 1:
+            if not data.get('avec_ok'):
+                data['totaux_avec'] = None
+                data['avec_items'] = []
+            if not data.get('sans_ok'):
+                data['totaux_sans'] = None
+                data['sans_items'] = []
         roof_url = None
         if data.get('roof_image_key'):
             try:
