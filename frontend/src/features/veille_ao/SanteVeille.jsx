@@ -7,6 +7,7 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
   Label, Input, Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
 } from '../../ui'
+import { Table as SharedTable } from '../../pages/reporting/Table'
 import { formatDateTime } from '../../lib/format'
 import { ageLabel } from './veilleAoShared'
 
@@ -99,6 +100,52 @@ function AjouterAvisDialog({ onClose, onDone }) {
   )
 }
 
+// WIR269 — VAO31 : « D'où vient le chiffre d'affaires », le constat central
+// de l'étude Groupe VAO, était calculé côté serveur (`kpis.attribution`,
+// wrappé par `veilleAoApi.attribution()`) sans le moindre écran — illisible.
+// Deux axes (source du signalement / informateur), AUCUN agrégat recalculé
+// côté client : chaque ligne est lue telle quelle du payload serveur.
+function AttributionTable({ titre, lignes }) {
+  if (!lignes?.length) return null
+  return (
+    <div>
+      <h4 className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">{titre}</h4>
+      <SharedTable
+        aria-label={titre}
+        getRowKey={(l, i) => l.cle ?? i}
+        columns={[
+          { key: 'libelle', header: 'Canal', cell: (l) => l.libelle || l.cle },
+          { key: 'avis', header: 'Avis', align: 'right', cell: (l) => l.avis },
+          { key: 'retenus', header: 'Retenus', align: 'right', cell: (l) => l.retenus },
+          { key: 'affaires', header: 'Affaires', align: 'right', cell: (l) => l.affaires },
+          { key: 'gagnes', header: 'Gagnés', align: 'right', cell: (l) => l.gagnes },
+          { key: 'perdus', header: 'Perdus', align: 'right', cell: (l) => l.perdus },
+          { key: 'en_cours', header: 'En cours', align: 'right', cell: (l) => l.en_cours },
+        ]}
+        rows={lignes}
+      />
+    </div>
+  )
+}
+
+function AttributionCA() {
+  const { data, loading } = useResource(
+    () => veilleAoApi.attribution(), undefined,
+    { select: (res) => res.data, errorMessage: () => '' },
+  )
+
+  if (loading) return null
+  if (!data?.par_source?.length && !data?.par_informateur?.length) return null
+
+  return (
+    <Card className="flex flex-col gap-3 p-4">
+      <h3 className="font-display text-sm font-semibold">D’où vient le chiffre d’affaires</h3>
+      <AttributionTable titre="Par canal source" lignes={data.par_source} />
+      <AttributionTable titre="Par informateur" lignes={data.par_informateur} />
+    </Card>
+  )
+}
+
 export default function SanteVeille({ onAvisAjoute }) {
   const [ajout, setAjout] = useState(false)
   const { data: sante, loading, refetch } = useResource(
@@ -164,6 +211,9 @@ export default function SanteVeille({ onAvisAjoute }) {
           </Button>
         </div>
       </Card>
+
+      {/* Bloc 3 — VAO31 : d'où vient le CA (le constat central de l'étude). */}
+      <AttributionCA />
 
       {ajout && (
         <AjouterAvisDialog
