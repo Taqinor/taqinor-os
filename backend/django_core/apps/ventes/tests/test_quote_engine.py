@@ -1576,6 +1576,12 @@ class TestGeneratorQuoteFlow(TestCase):
             self.assertEqual(line_resp.status_code, 201, line_resp.data)
 
         devis = Devis.objects.get(pk=devis_id)
+        # PV86 — comme les 13 autres fixtures « document à deux options » : le
+        # générateur DÉCLARE toujours son scénario (garantie QF7) ; sans la
+        # déclaration, deux onduleurs non optionnels = artefact mono-option et
+        # le split sans/avec n'existe plus.
+        devis.etude_params = {**(devis.etude_params or {}), **DEUX_OPTIONS}
+        devis.save(update_fields=['etude_params'])
         data = build_quote_data(devis)
 
         # Power from the catalogue panel line; both options split correctly.
