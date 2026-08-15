@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import {
   ShieldAlert, ListChecks, CheckCircle2, QrCode, Plus, Wrench, AlertOctagon,
   Lock, LockOpen, XCircle, FileText,
@@ -6,7 +6,7 @@ import {
 import qhseApi from '../../api/qhseApi'
 import { downloadBlobInGesture } from '../../utils/downloadBlob'
 import {
-  Tabs, TabsList, TabsTrigger, TabsContent, Badge, Dialog, DialogContent,
+  Tabs, TabsList, TabsTrigger, TabsContent, Badge, Card, Dialog, DialogContent,
   DialogTitle, Button, Input, Label, Textarea, toast,
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
 } from '../../ui'
@@ -796,6 +796,168 @@ function EtapesDeclarationDialog({ declaration, onClose }) {
   )
 }
 
+// WIR278 — création d'une partie intéressée pertinente (ISO 4.2).
+const PERTINENCE_OPTIONS = [
+  { value: 'forte', label: 'Forte' },
+  { value: 'moyenne', label: 'Moyenne' },
+  { value: 'faible', label: 'Faible' },
+]
+
+function CreerPartieInteresseeDialog({ onClose, onCreated }) {
+  const [partie, setPartie] = useState('')
+  const [attentes, setAttentes] = useState('')
+  const [pertinence, setPertinence] = useState('moyenne')
+  const [saving, setSaving] = useState(false)
+
+  async function save() {
+    if (!partie.trim()) { toast.error('La partie intéressée est requise.'); return }
+    setSaving(true)
+    try {
+      await qhseApi.partiesInteressees.create({
+        partie: partie.trim(), attentes: attentes.trim(), pertinence,
+      })
+      toast.success('Partie intéressée ajoutée.')
+      onCreated(); onClose()
+    } catch (err) {
+      toast.error(err?.response?.data?.detail ?? 'Création impossible.')
+    } finally { setSaving(false) }
+  }
+
+  return (
+    <Dialog open onOpenChange={(o) => { if (!o) onClose() }}>
+      <DialogContent>
+        <DialogTitle>Nouvelle partie intéressée</DialogTitle>
+        <div className="flex flex-col gap-3">
+          <div>
+            <Label>Partie</Label>
+            <Input aria-label="Partie" value={partie} onChange={(e) => setPartie(e.target.value)} />
+          </div>
+          <div>
+            <Label>Attentes</Label>
+            <Textarea rows={2} aria-label="Attentes" value={attentes} onChange={(e) => setAttentes(e.target.value)} />
+          </div>
+          <div>
+            <Label>Pertinence</Label>
+            <Select value={pertinence} onValueChange={setPertinence}>
+              <SelectTrigger aria-label="Pertinence"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {PERTINENCE_OPTIONS.map((o) => (
+                  <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="flex justify-end gap-2 pt-1">
+            <Button variant="outline" onClick={onClose}>Annuler</Button>
+            <Button onClick={save} disabled={saving}>{saving ? 'Création…' : 'Créer'}</Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+// WIR277/278 — Contexte SMQ ISO 4.1 (SWOT + périmètre, singleton société,
+// GET crée l'enregistrement vide au premier appel) + parties intéressées
+// (ISO 4.2). `PartieInteresseeViewSet` filtre par `?pertinence=`.
+function ContexteSmqPanel() {
+  const [swot, setSwot] = useState('')
+  const [perimetre, setPerimetre] = useState('')
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+  const [creatingPartie, setCreatingPartie] = useState(false)
+  const [reloadNonce, setReloadNonce] = useState(0)
+
+  useEffect(() => {
+    let vivant = true
+    qhseApi.contexteOrganisation.get()
+      .then((r) => {
+        if (!vivant) return
+        setSwot(r.data?.swot ?? '')
+        setPerimetre(r.data?.perimetre_smq ?? '')
+      })
+      .catch(() => { if (vivant) toast.error('Contexte illisible.') })
+      .finally(() => { if (vivant) setLoading(false) })
+    return () => { vivant = false }
+  }, [])
+
+  async function enregistrerContexte() {
+    setSaving(true)
+    try {
+      await qhseApi.contexteOrganisation.update({ swot, perimetre_smq: perimetre })
+      toast.success('Contexte enregistré.')
+    } catch (err) {
+      toast.error(err?.response?.data?.detail ?? 'Enregistrement impossible.')
+    } finally { setSaving(false) }
+  }
+
+  const partiesCols = useMemo(() => [
+    { id: 'partie', header: 'Partie intéressée', accessor: (r) => r.partie },
+    { id: 'attentes', header: 'Attentes', accessor: (r) => r.attentes || '—' },
+    {
+      id: 'pertinence', header: 'Pertinence', width: 120,
+      accessor: (r) => r.pertinence,
+      cell: (v, r) => (
+        <Badge tone={v === 'forte' ? 'danger' : v === 'moyenne' ? 'warning' : 'neutral'}>
+          {r.pertinence_display || v}
+        </Badge>
+      ),
+    },
+  ], [])
+
+  return (
+    <div className="flex flex-col gap-6">
+      <Card className="p-4 sm:p-5">
+        <h3 className="mb-3 font-display text-base font-semibold tracking-tight">
+          Contexte de l'organisation (ISO 4.1)
+        </h3>
+        {loading ? (
+          <p className="text-sm text-muted-foreground">Chargement…</p>
+        ) : (
+          <div className="flex flex-col gap-3">
+            <div>
+              <Label>Analyse SWOT</Label>
+              <Textarea rows={4} aria-label="Analyse SWOT" value={swot}
+                onChange={(e) => setSwot(e.target.value)} />
+            </div>
+            <div>
+              <Label>Périmètre du SMQ</Label>
+              <Textarea rows={3} aria-label="Périmètre du SMQ" value={perimetre}
+                onChange={(e) => setPerimetre(e.target.value)} />
+            </div>
+            <div className="flex justify-end">
+              <Button onClick={enregistrerContexte} disabled={saving}>
+                {saving ? 'Enregistrement…' : 'Enregistrer'}
+              </Button>
+            </div>
+          </div>
+        )}
+      </Card>
+
+      <QhseResourceList
+        title="Parties intéressées (ISO 4.2)"
+        subtitle="Pertinence forte/moyenne/faible — rien n'est masqué par défaut"
+        fetcher={() => qhseApi.partiesInteressees.list()}
+        columns={partiesCols}
+        exportName="qhse-parties-interessees"
+        deps={[reloadNonce]}
+        actions={(
+          <Button size="sm" onClick={() => setCreatingPartie(true)}>
+            <Plus size={16} /> Nouvelle partie intéressée
+          </Button>
+        )}
+      />
+
+      {creatingPartie && (
+        <CreerPartieInteresseeDialog
+          onClose={() => setCreatingPartie(false)}
+          onCreated={() => setReloadNonce((n) => n + 1)}
+        />
+      )}
+    </div>
+  )
+}
+
 /* ============================================================================
    UX32 — Risques, permis & incidents.
    ----------------------------------------------------------------------------
@@ -804,6 +966,7 @@ function EtapesDeclarationDialog({ declaration, onClose }) {
    • Permis & consignation : permis de travail + LOTO.
    • Préparation site : inductions sécurité + plans d'urgence + secouristes.
    • Incidents : registre incidents + déclarations CNSS + analyses de cause.
+   • Contexte SMQ (ISO 4) : SWOT/périmètre + parties intéressées (WIR277/278).
    ========================================================================== */
 
 const critTone = (c) => (c >= 15 ? 'danger' : c >= 8 ? 'warning' : 'info')
@@ -1144,6 +1307,7 @@ export default function Risques() {
           <TabsTrigger value="incidents">Incidents</TabsTrigger>
           <TabsTrigger value="observations">Observations BBS</TabsTrigger>
           <TabsTrigger value="signalement-qr">Signalement QR</TabsTrigger>
+          <TabsTrigger value="contexte-smq">Contexte SMQ (ISO 4)</TabsTrigger>
         </TabsList>
 
         <TabsContent value="document-unique" className="mt-4">
@@ -1418,6 +1582,10 @@ export default function Risques() {
             columns={signalementsCols}
             exportName="qhse-signalements-publics"
           />
+        </TabsContent>
+
+        <TabsContent value="contexte-smq" className="mt-4">
+          <ContexteSmqPanel />
         </TabsContent>
       </Tabs>
 

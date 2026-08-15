@@ -94,6 +94,10 @@ const qhseApi = {
     // courant (accusés de lecture en attente), scopées société.
     mesLecturesEnAttente: () =>
       api.get('/qhse/procedures-qualite/mes-lectures-en-attente/'),
+    // WIR277/278 — diffuse CETTE version à une population d'utilisateurs
+    // ({ user_ids }), validée serveur (même société uniquement).
+    diffuser: (id, data) =>
+      api.post(`/qhse/procedures-qualite/${id}/diffuser/`, data),
   },
   retoursClient: {
     ...crud('retours-client'),
@@ -336,6 +340,26 @@ const qhseApi = {
   },
   objectifsQhse: crud('objectifs'),
   revuesObjectif: crud('revues-objectif'),
+
+  // ── WIR277/278 — Contexte SMQ ISO 4.1/4.2 + diffusion des procédures ───
+  partiesInteressees: crud('parties-interessees'),
+  contexteOrganisation: {
+    get: () => api.get('/qhse/contexte-organisation/'),
+    update: (data) => api.put('/qhse/contexte-organisation/', data),
+  },
+  // LECTURE SEULE côté serveur (ReadOnlyModelViewSet) : une diffusion se
+  // crée uniquement via `proceduresQualite.diffuser`, jamais par POST direct.
+  diffusionsProcedure: {
+    list: (params) => api.get('/qhse/diffusions-procedure/', { params }),
+    get: (id) => api.get(`/qhse/diffusions-procedure/${id}/`),
+    accuses: (id) => api.get(`/qhse/diffusions-procedure/${id}/accuses/`),
+    // Élargit la population d'une diffusion existante (idempotent).
+    ajouterLecteurs: (id, data) =>
+      api.post(`/qhse/diffusions-procedure/${id}/ajouter-lecteurs/`, data),
+    // N'accuse la lecture QUE pour l'utilisateur courant.
+    marquerLu: (id) =>
+      api.post(`/qhse/diffusions-procedure/${id}/marquer-lu/`),
+  },
 }
 
 // ── XQHS2/XQHS23 — actions complémentaires sur `nonConformites` (UX30) ────

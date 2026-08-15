@@ -750,6 +750,8 @@
     detail:texte, devis_id:inconnu, devis_reference:inconnu, lead_id:inconnu, mode:inconnu
 - frontend/src/api/publicapiApi.js :: sandboxTry -> /api/django/publicapi/sandbox/try
     detail:texte, resource:inconnu, results:inconnu, sandbox:booleen
+- frontend/src/api/qhseApi.js :: ajouterLecteurs -> /api/django/qhse/diffusions-procedure/<>/ajouter-lecteurs
+    ajoutes:nombre, detail:texte, diffusion:inconnu
 - frontend/src/api/qhseApi.js :: calendrier -> /api/django/qhse/calendrier
     declarations_cnss:inconnu, evenements:inconnu, inspections:inconnu, permis:inconnu, today:texte, total:nombre, within_days:inconnu
 - frontend/src/api/qhseApi.js :: compteurs -> /api/django/qhse/observations-securite/compteurs

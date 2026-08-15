@@ -351,6 +351,51 @@ function ProcedureQualiteDialog({ onClose, onDone }) {
   )
 }
 
+// WIR278 — diffuse la version COURANTE d'une procédure en vigueur à une
+// population d'utilisateurs (`user_ids`, validée serveur — même société
+// uniquement). Matérialise un accusé de lecture par destinataire (WIR277).
+function DiffuserProcedureDialog({ procedure, onClose, onDone }) {
+  const [userIds, setUserIds] = useState('')
+  const [saving, setSaving] = useState(false)
+
+  async function save() {
+    const ids = userIds.split(',').map((s) => s.trim()).filter(Boolean).map(Number)
+    if (!ids.length || ids.some((n) => Number.isNaN(n))) {
+      toast.error('Au moins un id utilisateur valide est requis.'); return
+    }
+    setSaving(true)
+    try {
+      await qhseApi.proceduresQualite.diffuser(procedure.id, { user_ids: ids })
+      toast.success('Version diffusée.')
+      onDone(); onClose()
+    } catch (err) {
+      toast.error(err?.response?.data?.detail ?? 'Diffusion impossible.')
+    } finally { setSaving(false) }
+  }
+
+  return (
+    <Dialog open onOpenChange={(o) => { if (!o) onClose() }}>
+      <DialogContent>
+        <DialogTitle>Diffuser cette version</DialogTitle>
+        <div className="flex flex-col gap-3">
+          <p className="text-sm text-muted-foreground">
+            {procedure.reference} — {procedure.titre} (v{procedure.version})
+          </p>
+          <div>
+            <Label>Destinataires (ids utilisateurs, séparés par virgule)</Label>
+            <Input aria-label="Destinataires (ids utilisateurs, séparés par virgule)"
+              value={userIds} onChange={(e) => setUserIds(e.target.value)} />
+          </div>
+          <div className="flex justify-end gap-2 pt-1">
+            <Button variant="outline" onClick={onClose}>Annuler</Button>
+            <Button onClick={save} disabled={saving}>{saving ? 'Diffusion…' : 'Diffuser'}</Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
 function RetourClientDialog({ onClose, onDone }) {
   const [chantierId, setChantierId] = useState('')
   const [note, setNote] = useState('5')
@@ -472,6 +517,23 @@ export default function Inspections() {
     } catch (err) {
       toast.error(err?.response?.data?.detail ?? 'Activation impossible.')
     } finally { setBusyProc(null) }
+  }
+  // WIR278 — dialogue de diffusion d'une version de procédure (porte l'objet
+  // procédure, distinct de `dialog` qui ne porte qu'une clé de création).
+  const [diffuserProc, setDiffuserProc] = useState(null)
+  // WIR278 — accuse la lecture pour l'utilisateur COURANT uniquement
+  // (`diffusions-procedure/<id>/marquer-lu/`, WIR277) : la ligne porte
+  // `diffusion` (l'id de la diffusion), jamais l'id de l'accusé lui-même.
+  const [busyLecture, setBusyLecture] = useState(null)
+  const marquerLectureLue = async (accuse) => {
+    setBusyLecture(accuse.id)
+    try {
+      await qhseApi.diffusionsProcedure.marquerLu(accuse.diffusion)
+      toast.success('Lecture accusée.')
+      setReloadProc((n) => n + 1)
+    } catch (err) {
+      toast.error(err?.response?.data?.detail ?? 'Impossible d’accuser la lecture.')
+    } finally { setBusyLecture(null) }
   }
 
   const plansModelesCols = useMemo(() => [
@@ -709,12 +771,22 @@ export default function Inspections() {
                 <PlusCircle size={15} aria-hidden="true" /> Nouvelle procédure
               </Button>
             )}
-            rowActions={(r) => (r.statut === 'brouillon'
-              ? [{
-                  id: 'activer', label: 'Mettre en vigueur', icon: CheckCircle2,
-                  disabled: busyProc === r.id, onClick: () => activerProcedure(r),
-                }]
-              : [])}
+            rowActions={(r) => [
+              ...(r.statut === 'brouillon'
+                ? [{
+                    id: 'activer', label: 'Mettre en vigueur', icon: CheckCircle2,
+                    disabled: busyProc === r.id, onClick: () => activerProcedure(r),
+                  }]
+                : []),
+              // WIR278 — ne diffuser qu'une version EN VIGUEUR (un brouillon
+              // n'est pas encore la version de référence à faire lire).
+              ...(r.statut === 'en_vigueur'
+                ? [{
+                    id: 'diffuser', label: 'Diffuser cette version', icon: PlusCircle,
+                    onClick: () => setDiffuserProc(r),
+                  }]
+                : []),
+            ]}
           />
           <QhseResourceList
             title="Mes lectures en attente"
@@ -723,6 +795,10 @@ export default function Inspections() {
             columns={lecturesCols}
             exportName="qhse-lectures-en-attente"
             deps={[reloadProc]}
+            rowActions={(r) => [{
+              id: 'marquer-lu', label: 'Marquer comme lue', icon: CheckCircle2,
+              disabled: busyLecture === r.id, onClick: () => marquerLectureLue(r),
+            }]}
           />
           <MoyenneRetoursWidget deps={[reloadRetours]} />
           <QhseResourceList
@@ -773,6 +849,13 @@ export default function Inspections() {
         <RetourClientDialog
           onClose={() => setDialog(null)}
           onDone={() => setReloadRetours((n) => n + 1)}
+        />
+      )}
+      {diffuserProc && (
+        <DiffuserProcedureDialog
+          procedure={diffuserProc}
+          onClose={() => setDiffuserProc(null)}
+          onDone={() => setReloadProc((n) => n + 1)}
         />
       )}
     </div>
