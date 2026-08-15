@@ -204,6 +204,8 @@
     actions_declenchees:inconnu, context:inconnu, detail:texte
 - frontend/src/api/cpqApi.js :: validerCompatibilite -> /api/django/cpq/valider-compatibilite
     avertissements:inconnu, bloquantes:inconnu, detail:texte, valide:booleen, violations:inconnu
+- frontend/src/api/creditApi.js :: getLimiteHistorique -> /api/django/credit/limites/<>/historique
+    count:nombre, entries:inconnu
 - frontend/src/api/crmApi.js :: bulkLeads -> /api/django/crm/leads/bulk
     count:nombre, detail:texte, ok:booleen, op:texte, queue:inconnu, skipped:inconnu, total:nombre, unchanged:inconnu, updated:inconnu
 - frontend/src/api/crmApi.js :: checkDevisAuto -> /api/django/crm/leads/<>/devis-auto
