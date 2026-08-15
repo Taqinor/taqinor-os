@@ -25,6 +25,12 @@ Ce que le noyau AJOUTE au calcul historique — et qui n'y était pas :
    n'est acceptée que DANS la plage admissible calculée ; hors plage, elle est
    refusée AVEC MOTIF en français (et le calcul retombe sur la longueur
    physique) plutôt que d'être appliquée en silence.
+3. **Le courant d'entrée MPPT choisit la répartition** (PV85). Les chaînes
+   d'une même entrée additionnent leur Imp : deux chaînes de modules 710 Wc
+   (2 × 17,59 A) sur une entrée admettant 26 A écrêtent EN PERMANENCE. La
+   répartition « une chaîne par entrée » l'emporte donc sur l'équilibrage et
+   sur la longueur ; quand aucune répartition ne tient, l'avertissement de
+   conformité est prononcé au lieu d'un silence.
 """
 
 import math
@@ -200,14 +206,39 @@ def fenetre_admissible(module, onduleur, temp_froid_c, temp_chaud_c):
 
 
 # --------------------------------------------------------------- répartition
-def _choisir_longueur(nb_modules, n_mppt, longueur_min, longueur_max):
+def _surcharge_mppt(nb_chaines, n_mppt, imp_a, i_max_mppt_a):
+    """Le paquet de chaînes le plus chargé dépasse-t-il le courant d'entrée ?
+
+    La répartition est la plus égale possible : l'entrée la plus chargée porte
+    ``⌈nb_chaines / n_mppt⌉`` chaînes, donc autant de fois l'Imp d'une chaîne.
+    Sans limite connue (``i_max_mppt_a = 0``), la question ne se pose pas — le
+    moteur ne fabrique jamais une contrainte qu'aucune fiche ne donne.
+    """
+    if i_max_mppt_a <= 0 or imp_a <= 0:
+        return False
+    par_entree = -(-nb_chaines // max(1, n_mppt))    # division par excès
+    return par_entree * imp_a > i_max_mppt_a + 1e-9
+
+
+def _choisir_longueur(nb_modules, n_mppt, longueur_min, longueur_max,
+                      imp_a=0.0, i_max_mppt_a=0.0):
     """``(longueur, nb_chaines)`` — chaînes ÉGALES, longueur admissible.
 
-    Port À L'IDENTIQUE du choix de ``string_design`` : on cherche une partition
-    de ``nb_modules`` en chaînes ÉGALES dont la longueur tient dans la plage, en
+    Port du choix de ``string_design`` : on cherche une partition de
+    ``nb_modules`` en chaînes ÉGALES dont la longueur tient dans la plage, en
     privilégiant un nombre de chaînes multiple des entrées MPPT (usage équilibré)
     puis les chaînes les plus longues (moins de câblage). ``(0, 0)`` si aucune
     partition égale n'existe.
+
+    CE QUE LE NOYAU AJOUTE (PV85) : le courant d'entrée MPPT passe AVANT les
+    deux autres critères. Une partition qui obligerait à empiler deux chaînes
+    sur une entrée trop étroite (deux chaînes de CS7N-710 = 35,18 A sur les
+    26 A d'un Deye SG05LP3) est reléguée derrière toute partition qui tient
+    UNE chaîne par entrée — l'écrêtage qui en résulterait est permanent et
+    n'apparaîtrait sur aucune ligne du bordereau. Quand AUCUNE partition ne
+    tient (plus de chaînes que d'entrées, quoi qu'on fasse), le choix retombe
+    à l'identique sur les critères historiques et ``_verdicts_courant``
+    prononce l'avertissement de conformité.
     """
     meilleur = (0, 0)
     meilleur_score = None
@@ -217,8 +248,10 @@ def _choisir_longueur(nb_modules, n_mppt, longueur_min, longueur_max):
         longueur = nb_modules // nb_chaines
         if longueur < longueur_min or longueur > longueur_max:
             continue
+        surcharge = 1 if _surcharge_mppt(nb_chaines, n_mppt, imp_a,
+                                         i_max_mppt_a) else 0
         equilibre = 0 if nb_chaines % n_mppt == 0 else 1
-        score = (equilibre, -longueur)
+        score = (surcharge, equilibre, -longueur)
         if meilleur_score is None or score < meilleur_score:
             meilleur_score = score
             meilleur = (longueur, nb_chaines)
@@ -337,7 +370,7 @@ def concevoir_chaines(entree):
         else:
             longueur, nb_chaines = _choisir_longueur(
                 nb_modules, len(entrees), fenetre.longueur_min,
-                fenetre.longueur_max)
+                fenetre.longueur_max, module.imp_a, onduleur.i_max_mppt_a)
 
         homogene = True
         if longueur <= 0 or nb_chaines <= 0:
@@ -435,7 +468,21 @@ def _verdicts_tension(chaines, onduleur, fenetre, alertes):
 
 
 def _verdicts_courant(chaines, onduleur, alertes):
-    """Courant d'entrée MPPT : les chaînes d'une même entrée s'ADDITIONNENT."""
+    """Courant d'entrée MPPT : les chaînes d'une même entrée s'ADDITIONNENT.
+
+    DEUX bornes, deux natures — la fiche constructeur publie les deux et le
+    moteur ne les confond pas :
+
+    * la somme des **Imp** contre ``i_max_mppt_a`` — borne de FONCTIONNEMENT.
+      C'est elle qui interdit deux chaînes de gros modules sur une entrée
+      étroite (deux chaînes de CS7N-710 : 2 × 17,59 = 35,18 A sur une entrée
+      Deye SG05LP3 à 26 A) : l'onduleur ne casse pas, il écrête toute l'année
+      et la perte n'apparaît nulle part au bordereau ;
+    * la somme des **Isc** contre ``courant_isc_max_a`` — borne MATÉRIELLE, et
+      c'est la seule qui parle du court-circuit. Elle n'est PAS répétée quand
+      la borne de fonctionnement a déjà parlé pour la même entrée : le message
+      d'écrêtage porte déjà le chiffre d'Isc.
+    """
     if not chaines or onduleur.i_max_mppt_a <= 0:
         return
     par_mppt = {}
@@ -443,11 +490,21 @@ def _verdicts_courant(chaines, onduleur, alertes):
         par_mppt.setdefault(chaine.mppt, []).append(chaine)
     for entree_mppt in sorted(par_mppt):
         lot = par_mppt[entree_mppt]
-        courant = sum(c.isc_a for c in lot)
-        if courant > onduleur.i_max_mppt_a:
+        courant_imp = sum(c.imp_a for c in lot)
+        courant_isc = sum(c.isc_a for c in lot)
+        ecrete = courant_imp > onduleur.i_max_mppt_a + 1e-9
+        if ecrete:
+            alertes.append(
+                "entrée MPPT %d : %d chaînes en parallèle → Imp cumulé %s > "
+                "courant d'entrée admissible %s (Isc cumulé %s) — ÉCRÊTAGE "
+                "permanent, répartir une chaîne par entrée MPPT ou prendre un "
+                "onduleur à entrées plus larges"
+                % (entree_mppt, len(lot), fr_a(courant_imp),
+                   fr_a(onduleur.i_max_mppt_a), fr_a(courant_isc)))
+        if not ecrete and courant_isc > onduleur.courant_isc_max_a + 1e-9:
             alertes.append(
                 "entrée MPPT %d : %d chaînes en parallèle → Isc cumulé %s > "
                 "courant d'entrée admissible %s — répartir les chaînes sur "
                 "d'autres entrées"
-                % (entree_mppt, len(lot), fr_a(courant),
-                   fr_a(onduleur.i_max_mppt_a)))
+                % (entree_mppt, len(lot), fr_a(courant_isc),
+                   fr_a(onduleur.courant_isc_max_a)))

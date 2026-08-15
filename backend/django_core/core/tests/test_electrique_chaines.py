@@ -14,6 +14,7 @@ deux conventions de ratio.
 Aucune base de données : ``unittest`` pur.
 """
 
+import dataclasses
 import unittest
 
 from core.electrique.chaines import (
@@ -282,6 +283,106 @@ class GroupementParPan(unittest.TestCase):
         res = concevoir_chaines(entree)
         self.assertEqual(res.nb_chaines, 3)
         self.assertTrue(any("Isc cumulé" in a for a in res.alertes))
+
+
+# ── PV85 — le couple RÉEL du catalogue : CS7N-710TB-AG × Deye SG05LP3 ────────
+#: Canadian Solar CS7N-710TB-AG (TOPBiHiKu7) — datasheet static.csisolar.com,
+#: valeurs STC. Ce sont EXACTEMENT celles que ``seed_catalogue`` pose sur la
+#: FicheTechnique du SKU PAN-CS-710 : le test échoue si l'une des deux dérive.
+CS7N_710 = SpecModule(vmp_v=40.4, voc_v=48.3, isc_a=18.59, imp_a=17.59,
+                      pmax_wc=710.0, temp_coeff_voc_pct_c=-0.25,
+                      temp_coeff_pmax_pct_c=-0.29)
+
+#: Deye SUN-10K-SG05LP3-EU-SM2 (modèle CONFIRMÉ fondateur) — datasheet
+#: deyeinverter.com 2024-09 + manuel 2025-11 : PV 800 V max, démarrage 160 V,
+#: MPPT 200-650 V, 2 entrées, 26 A par entrée (Isc max 39 A), 10 kW triphasé.
+DEYE_SG05LP3 = SpecOnduleur(n_mppt=2, mppt_v_min=200.0, mppt_v_max=650.0,
+                            v_max_abs=800.0, i_max_mppt_a=26.0,
+                            isc_max_mppt_a=39.0, ac_kw=10.0, phases=3,
+                            rendement_euro_pct=97.0, v_demarrage_v=160.0)
+
+
+class CouplePV85_CS710_SurDeyeSG05LP3(unittest.TestCase):
+    """Le couple que TAQINOR vend réellement, vérifié sur les vraies fiches."""
+
+    def _entree(self, nb_modules, **kwargs):
+        return EntreeElectrique(
+            module=CS7N_710, onduleur=DEYE_SG05LP3,
+            groupes=(GroupePan("Toiture", nb_modules, 180.0, 15.0),),
+            phases=3, **kwargs)
+
+    def test_la_chaine_plafonne_a_14_modules_la_15e_n_a_pas_de_marge(self):
+        """Voc froid ferme à 15, la plage MPPT ferme à 14 — 14 fait foi.
+
+        La 15ᵉ tiendrait sous les 800 V absolus (15 × 52,53 V à −10 °C =
+        787,9 V, soit 1,5 % de marge seulement) mais sortirait du haut de
+        plage MPPT : le moteur retient donc 14, et la marge résiduelle est
+        lisible dans les bornes intermédiaires de la fenêtre.
+        """
+        fenetre = fenetre_admissible(CS7N_710, DEYE_SG05LP3,
+                                     temp_froid_c=-5.0, temp_chaud_c=70.0)
+        self.assertEqual(fenetre.longueur_max, 14)
+        self.assertEqual(fenetre.max_par_voc, 15)
+        self.assertEqual(fenetre.max_par_mppt, 14)
+        self.assertEqual(fenetre.longueur_min, 6)
+        self.assertFalse(fenetre.trop_etroite)
+
+    def test_a_moins_10_degres_la_15e_reste_sous_les_800_v(self):
+        """Le cas dimensionnant du fondateur : −10 °C, 15 × 52,53 = 787,9 V."""
+        fenetre = fenetre_admissible(CS7N_710, DEYE_SG05LP3,
+                                     temp_froid_c=-10.0, temp_chaud_c=70.0)
+        self.assertAlmostEqual(fenetre.voc_froid_unitaire_v, 52.526, places=2)
+        self.assertEqual(fenetre.max_par_voc, 15)
+        self.assertLess(15 * fenetre.voc_froid_unitaire_v,
+                        DEYE_SG05LP3.v_max_abs)
+
+    def test_une_chaine_par_entree_mppt_jamais_deux(self):
+        """2 × 17,59 A = 35,18 A sur une entrée à 26 A : jamais au calcul."""
+        res = concevoir_chaines(self._entree(14))
+        self.assertEqual(res.nb_chaines, 2)
+        self.assertEqual(sorted(c.mppt for c in res.chaines), [1, 2])
+        for chaine in res.chaines:
+            self.assertLessEqual(chaine.nb_modules, 14)
+        par_mppt = {}
+        for chaine in res.chaines:
+            par_mppt[chaine.mppt] = par_mppt.get(chaine.mppt, 0.0) \
+                + chaine.imp_a
+        for entree_mppt, courant in par_mppt.items():
+            self.assertLessEqual(
+                courant, DEYE_SG05LP3.i_max_mppt_a,
+                "entrée MPPT %d au-dessus de 26 A" % entree_mppt)
+        self.assertFalse([a for a in res.alertes if "ÉCRÊTAGE" in a])
+        self.assertEqual(res.bloquants, ())
+
+    def test_deux_chaines_sur_une_seule_entree_sont_refusees_en_ecretage(self):
+        """Une entrée unique n'a pas le choix — l'écrêtage est alors NOMMÉ."""
+        entree = EntreeElectrique(
+            module=CS7N_710,
+            onduleur=dataclasses.replace(DEYE_SG05LP3, n_mppt=1),
+            groupes=(GroupePan("Toiture", 14, 180.0, 15.0),),
+            phases=3, longueur_chaine_forcee=7)
+        res = concevoir_chaines(entree)
+        self.assertEqual(res.nb_chaines, 2)
+        self.assertEqual({c.mppt for c in res.chaines}, {1})
+        ecretage = [a for a in res.alertes if "ÉCRÊTAGE" in a]
+        self.assertEqual(len(ecretage), 1, res.alertes)
+        self.assertIn("35,2 A", ecretage[0])       # 2 × 17,59 A
+        self.assertIn("26,0 A", ecretage[0])
+        # Le message dit quoi FAIRE, pas seulement ce qui ne va pas.
+        self.assertIn("une chaîne par entrée MPPT", ecretage[0])
+
+    def test_l_isc_garde_sa_propre_borne_materielle(self):
+        """26 A (fonctionnement) et 39 A (Isc) ne sont pas la même borne."""
+        self.assertEqual(DEYE_SG05LP3.courant_isc_max_a, 39.0)
+        # Sans Isc max publié, le repli est PRUDENT : jamais plus permissif.
+        sans_isc = dataclasses.replace(DEYE_SG05LP3, isc_max_mppt_a=None)
+        self.assertEqual(sans_isc.courant_isc_max_a, 26.0)
+
+    def test_une_batterie_51_2_v_est_acceptee(self):
+        """51,2 V est dans la plage batterie 40-60 V du SG05LP3."""
+        res = concevoir_chaines(self._entree(14, batterie=True))
+        self.assertEqual(res.bloquants, ())
+        self.assertEqual(res.nb_chaines, 2)
 
 
 # ── Réconciliation des DEUX conventions de ratio ──────────────────────────────

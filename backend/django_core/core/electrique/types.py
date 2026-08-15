@@ -139,6 +139,10 @@ class SpecOnduleur:
     mppt_v_min: float
     mppt_v_max: float
     v_max_abs: float
+    #: Courant d'entrée maximal ADMISSIBLE par entrée MPPT (A) — c'est la
+    #: borne de FONCTIONNEMENT : au-delà, l'onduleur écrête en permanence. Elle
+    #: se compare à la somme des **Imp** des chaînes de l'entrée (le courant
+    #: réellement soutiré au point de puissance maximale), pas à leur Isc.
     i_max_mppt_a: float
     ac_kw: float
     #: 1 = monophasé 230 V, 3 = triphasé 400 V (NF C 15-100).
@@ -147,6 +151,16 @@ class SpecOnduleur:
     rendement_euro_pct: float = 97.0
     #: Tension de DÉMARRAGE (V). À défaut, le bas de plage MPPT fait foi.
     v_demarrage_v: Optional[float] = None
+    #: Courant de COURT-CIRCUIT maximal admissible par entrée MPPT (A) — borne
+    #: MATÉRIELLE, distincte et toujours plus haute que ``i_max_mppt_a`` sur
+    #: les fiches qui publient les deux (Deye SG05LP3 : 26 A / Isc 39 A). À
+    #: défaut, ``i_max_mppt_a`` fait foi : c'est le repli PRUDENT, jamais une
+    #: borne inventée plus permissive que ce que la fiche garantit.
+    isc_max_mppt_a: Optional[float] = None
+    #: Désignation COMMERCIALE de l'appareil (« Deye SUN-10K-SG05LP3 ») —
+    #: purement descriptive, elle ne participe à AUCUN calcul : elle sert à ce
+    #: qu'un schéma unifilaire NOMME le matériel au lieu d'écrire « Onduleur ».
+    designation: str = ""
 
     @property
     def tension_demarrage_v(self):
@@ -154,6 +168,13 @@ class SpecOnduleur:
         if self.v_demarrage_v is None:
             return self.mppt_v_min
         return self.v_demarrage_v
+
+    @property
+    def courant_isc_max_a(self):
+        """Isc admissible par entrée MPPT — repli PRUDENT sur ``i_max_mppt_a``."""
+        if self.isc_max_mppt_a is None:
+            return self.i_max_mppt_a
+        return self.isc_max_mppt_a
 
 
 @dataclass(frozen=True)
