@@ -250,6 +250,12 @@ const adsengineApi = {
     list: (params) => api.get('/adsengine/regles/', { params }),
     create: (payload) => api.post('/adsengine/regles/', payload),
     update: (id, payload) => api.patch(`/adsengine/regles/${id}/`, payload),
+    // WIR272/PUB91 — « Qu'aurait fait cette règle ? » : rejeu de la règle sur
+    // l'historique RÉEL (GET, lecture seule — AUCUNE EngineAction n'est créée).
+    // Exige une instance ``RulePolicy`` existante (detail=True) : le bouton ne
+    // s'affiche donc que si `policyFor(key)` existe. `jours` borne la fenêtre.
+    backtest: (id, jours) =>
+      api.get(`/adsengine/regles/${id}/backtest/`, { params: { jours } }),
   },
 
   // ── ENG16/ENG43 — Anomalies (flux avec sévérités) ──

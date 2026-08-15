@@ -19,6 +19,7 @@ const mocks = vi.hoisted(() => ({
   // WIR209/PUB90 — vote sur anomalie + précision par détecteur.
   anomalyFeedback: vi.fn(),
   detectors: vi.fn(),
+  backtest: vi.fn(), // WIR272/PUB91
   permissions: ['adsengine_view', 'adsengine_manage'],
 }))
 
@@ -27,6 +28,7 @@ vi.mock('./adsengineApi', () => ({
     rules: {
       templates: mocks.templates, dryRun: mocks.dryRun, journal: mocks.journal,
       list: mocks.policies, create: mocks.policyCreate, update: mocks.policyUpdate,
+      backtest: mocks.backtest,
     },
     anomalies: {
       list: mocks.anomalies, feedback: mocks.anomalyFeedback,
@@ -66,6 +68,18 @@ beforeEach(() => {
       { id: 2, nom: 'Campagne Pompage', effet_fr: 'inchangée' },
     ] } })
   mocks.permissions = ['adsengine_view', 'adsengine_manage']
+  // Forme RÉELLE de `rule_backtest.backtest_rule`.
+  mocks.backtest.mockResolvedValue({ data: {
+    supported: true, reason: '', template_key: 'fatigue', label_fr: 'Fatigue créative',
+    range: { debut: '2026-04-17', fin: '2026-07-15' },
+    proposals: [
+      { date: '2026-05-02', target_type: 'adset', target_meta_id: 'as1',
+        action_kind: 'swap_creative', condition_fr: 'fréquence 3,4 > 3 → vrai.', computed: {} },
+      { date: '2026-06-11', target_type: 'adset', target_meta_id: 'as2',
+        action_kind: 'swap_creative', condition_fr: 'fréquence 3,9 > 3 → vrai.', computed: {} },
+    ],
+    summary: { days: 90, would_propose: 2, distinct_targets: 2, action_kind: 'swap_creative' },
+  } })
   mocks.anomalies.mockResolvedValue({ data: [
     { id: 9, titre: 'CPL en forte hausse', severite: 'critique', detector: 'cpl_spike',
       feedback: '', message: 'Le coût par lead a doublé en 24 h.', quand: '2026-07-15' },
@@ -238,6 +252,48 @@ describe('RulesScreen (ENG43)', () => {
       fireEvent.click(await screen.findByTestId('ae-anomaly-useful-9'))
       expect(await screen.findByTestId('ae-anomaly-vote-error')).toHaveTextContent('impossible')
       expect(screen.getAllByTestId('ae-anomaly')).toHaveLength(1)
+    })
+  })
+
+  // ── WIR272/PUB91 — « Qu'aurait fait cette règle ? » ─────────────────────
+  describe('WIR272 — backtest historique', () => {
+    it('le bouton n\'existe QUE si une instance RulePolicy existe (route de détail)', async () => {
+      renderScreen() // mocks.policies = [] par défaut
+      await screen.findByTestId('ae-rules-catalogue')
+      expect(screen.queryByTestId('ae-rule-backtest-fatigue')).toBeNull()
+      // Le dry-run, lui, reste offert (il ne dépend d'aucune instance).
+      expect(screen.getByTestId('ae-rule-dryrun-fatigue')).toBeInTheDocument()
+    })
+
+    it('GET backtest?jours=90 et rendu des actions SIMULÉES (aucune action créée)', async () => {
+      mocks.policies.mockResolvedValue({ data: [
+        { id: 2, template_key: 'fatigue', enabled: false, dry_run: true },
+      ] })
+      renderScreen()
+      fireEvent.click(await screen.findByTestId('ae-rule-backtest-fatigue'))
+      await waitFor(() => expect(mocks.backtest).toHaveBeenCalledWith(2, 90))
+      const res = await screen.findByTestId('ae-rule-backtest-result-fatigue')
+      expect(res).toHaveTextContent("rien n'a été créé")
+      expect(screen.getByTestId('ae-rule-backtest-count-fatigue')).toHaveTextContent('2')
+      expect(screen.getAllByTestId('ae-rule-backtest-proposal')).toHaveLength(2)
+      // Le backtest est une LECTURE : il n'arme ni ne modifie aucune règle.
+      expect(mocks.policyCreate).not.toHaveBeenCalled()
+      expect(mocks.policyUpdate).not.toHaveBeenCalled()
+    })
+
+    it('règle non rejouable : la raison du serveur est affichée telle quelle', async () => {
+      mocks.policies.mockResolvedValue({ data: [
+        { id: 2, template_key: 'fatigue', enabled: false, dry_run: true },
+      ] })
+      mocks.backtest.mockResolvedValue({ data: {
+        supported: false, reason: 'Règle non rejouable (évaluateur non câblé).',
+        template_key: 'fatigue', proposals: [],
+        summary: { days: 90, would_propose: 0, distinct_targets: 0, action_kind: null },
+      } })
+      renderScreen()
+      fireEvent.click(await screen.findByTestId('ae-rule-backtest-fatigue'))
+      expect(await screen.findByTestId('ae-rule-backtest-unsupported-fatigue'))
+        .toHaveTextContent('évaluateur non câblé')
     })
   })
 })

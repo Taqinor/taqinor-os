@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import {
   SlidersHorizontal, AlertTriangle, Play, Power, PowerOff, ThumbsUp, ThumbsDown,
+  History,
 } from 'lucide-react'
 import adsengineApi from './adsengineApi'
 import {
@@ -37,6 +38,10 @@ function cadenceLabel(cadence) {
   return CADENCE_LABELS_FR[cadence] || cadence || '—'
 }
 
+// WIR272/PUB91 — fenêtre par défaut du rejeu historique : le dernier trimestre,
+// exactement le `DEFAULT_BACKTEST_DAYS` du backend (`rule_backtest.py`).
+const BACKTEST_DAYS = 90
+
 /* ============================================================================
    ENG43 — Écran « Règles & anomalies ».
    ----------------------------------------------------------------------------
@@ -69,6 +74,9 @@ export default function RulesScreen() {
   const [detectors, setDetectors] = useState([])
   const [voteBusyId, setVoteBusyId] = useState(null)
   const [voteErr, setVoteErr] = useState('')
+  // WIR272/PUB91 — backtest historique, par clé de gabarit.
+  const [backtests, setBacktests] = useState({})
+  const [backtestBusyKey, setBacktestBusyKey] = useState(null)
 
   const loadDetectors = useCallback(() => (
     adsengineApi.anomalies.detectors()
@@ -182,6 +190,20 @@ export default function RulesScreen() {
     }
   }
 
+  // WIR272/PUB91 — rejeu de la règle sur l'historique RÉEL. GET, lecture seule :
+  // aucune EngineAction n'est créée. À lire AVANT d'armer.
+  const runBacktest = async (key, policyId) => {
+    setBacktestBusyKey(key); setErr('')
+    try {
+      const r = await adsengineApi.rules.backtest(policyId, BACKTEST_DAYS)
+      setBacktests(m => ({ ...m, [key]: (r?.data && typeof r.data === 'object') ? r.data : null }))
+    } catch {
+      setErr("Rejeu historique impossible pour cette règle.")
+    } finally {
+      setBacktestBusyKey(null)
+    }
+  }
+
   return (
     <div className="page ae-rules">
       <div className="page-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -211,6 +233,7 @@ export default function RulesScreen() {
                 <div style={{ display: 'grid', gap: '0.75rem' }}>
                   {templates.map(t => {
                     const dr = dryRuns[t.key]
+                    const bt = backtests[t.key]
                     const policy = policyFor(t.key)
                     const armed = !!(policy && policy.enabled)
                     return (
@@ -247,6 +270,19 @@ export default function RulesScreen() {
                               style={{ display: 'inline-flex', alignItems: 'center', gap: '0.3rem' }}>
                               <Play size={14} aria-hidden="true" /> Simuler (dry-run)
                             </button>
+                            {/* WIR272/PUB91 — le backtest est une action DE DÉTAIL
+                                (`regles/<id>/backtest/`) : il exige une instance
+                                RulePolicy. Sans elle, le bouton n'existe pas —
+                                jamais un bouton qui 404 en silence. */}
+                            {policy && (
+                              <button type="button" className="btn btn-light"
+                                data-testid={`ae-rule-backtest-${t.key}`}
+                                disabled={backtestBusyKey === t.key}
+                                onClick={() => runBacktest(t.key, policy.id)}
+                                style={{ display: 'inline-flex', alignItems: 'center', gap: '0.3rem' }}>
+                                <History size={14} aria-hidden="true" /> Qu&apos;aurait fait cette règle ?
+                              </button>
+                            )}
                           </div>
                         </div>
                         {t.description && (
@@ -302,6 +338,44 @@ export default function RulesScreen() {
                                   ))}
                                 </ul>
                               )}
+                          </div>
+                        )}
+
+                        {/* WIR272/PUB91 — « Qu'aurait fait cette règle ? » sur
+                            l'historique réel. Lecture seule : aucune action
+                            n'est créée, et l'écran le DIT. */}
+                        {bt && (
+                          <div className="ae-rule-backtest-result" data-testid={`ae-rule-backtest-result-${t.key}`}
+                            style={{ marginTop: '0.75rem', background: '#f5f3ff', borderRadius: 6, padding: '0.75rem' }}>
+                            {bt.supported === false
+                              ? <p style={{ margin: 0, color: '#6b21a8' }}
+                                  data-testid={`ae-rule-backtest-unsupported-${t.key}`}>
+                                  {bt.reason || "Cette règle ne se rejoue pas sur l'historique."}
+                                </p>
+                              : (<>
+                                <p style={{ margin: '0 0 0.4rem', fontWeight: 600 }}>
+                                  Sur {bt.summary?.days ?? BACKTEST_DAYS} jour(s), cette règle aurait proposé{' '}
+                                  <span data-testid={`ae-rule-backtest-count-${t.key}`}>
+                                    {bt.summary?.would_propose ?? 0}
+                                  </span>{' '}
+                                  action(s) sur {bt.summary?.distinct_targets ?? 0} objet(s) — rien n&apos;a été créé.
+                                </p>
+                                {(bt.proposals || []).length === 0
+                                  ? <p style={{ margin: 0, color: '#64748b' }}>
+                                      Aucune action n&apos;aurait été proposée sur cette période.</p>
+                                  : (
+                                    <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'grid', gap: '0.35rem' }}>
+                                      {bt.proposals.map((p, i) => (
+                                        <li key={`${p.date}-${p.target_meta_id}-${i}`}
+                                          data-testid="ae-rule-backtest-proposal"
+                                          style={{ display: 'flex', gap: '0.5rem', alignItems: 'baseline', flexWrap: 'wrap' }}>
+                                          <strong>{p.date}</strong>
+                                          <span style={{ color: '#475569' }}>{p.condition_fr}</span>
+                                        </li>
+                                      ))}
+                                    </ul>
+                                  )}
+                              </>)}
                           </div>
                         )}
                       </article>
