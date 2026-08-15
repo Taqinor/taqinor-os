@@ -482,8 +482,8 @@ FICHES = {
 #
 # ⚠ INCOMPATIBILITÉ MÉTIER remontée au fondateur : les Deye triphasés 15/20
 # kW réels appartiennent à la gamme HAUTE TENSION (batterie HV 160-700 V,
-# SG01HP3) ; la gamme basse tension 51,2 V (SG04LP3, compatible BAT-DEY-5/10)
-# s'arrête à 12 kW — l'appairage catalogue OND-H-DEY-15T/20T + BAT-DEY-5/10
+# SG01HP3) ; la gamme basse tension 51,2 V (SG04LP3/SG05LP3, compatible
+# BAT-DEY-5/10) s'arrête à 12 kW — l'appairage OND-H-DEY-15T/20T + BAT-DEY-5/10
 # est ÉLECTRIQUEMENT IMPOSSIBLE dans la gamme réelle. Les paliers Huawei mono
 # réseau 10/12 kW sont eux des ARTEFACTS catalogue : aucun SUN2000 mono
 # réseau réel ne dépasse 6 kW (au-delà la gamme Huawei mono passe en
@@ -500,34 +500,68 @@ MODELE_SUPPOSE_PVG4 = {
     'OND-R-HUA-150T': 'Huawei SUN2000-150K-MG0',         # solar.huawei.com mg0/specs
     'OND-H-DEY-5M': 'Deye SUN-5K-SG04LP1-EU(-SM2)',      # liriksolar datasheet
     'OND-H-DEY-10M': 'Deye SUN-10K-SG02LP1-EU-AM3',      # nastechsolar datasheet — divergence plage MPPT
-    'OND-H-DEY-10T': 'Deye SUN-10K-SG04LP3-EU',          # liriksolar datasheet
+    # PV85 — TRANCHÉ PAR LE FONDATEUR (2026-08-15) : le 10 kW triphasé du
+    # catalogue est un SG05LP3 (révision SM2), PAS le SG04LP3 supposé en PVG4.
+    # Seul SKU dont le modèle est CONFIRMÉ (cf. MODELES_CONFIRMES_FONDATEUR).
+    'OND-H-DEY-10T': 'Deye SUN-10K-SG05LP3-EU-SM2',      # deyeinverter.com datasheet 2024-09 + manuel 2025-11
     'OND-H-DEY-15T': 'Deye SUN-15K-SG01HP3-EU-AM2',      # deyeinverter datasheet sun-(5-25)k-sg01hp3
     'OND-H-DEY-20T': 'Deye SUN-20K-SG01HP3-EU-AM2',      # solarhouse.bg + pretapower
     'BAT-DEY-5': 'Dyness DL5.0C',                        # dyness.com DL5.0C datasheet
     'BAT-DEY-10': 'Dyness Powerbox Pro/G2 10.24',        # inverter-warehouse.co.za
 }
-# Ajoute la mention du modèle supposé à la description commerciale existante
-# (SKU déjà présent dans FICHES ci-dessus) — additif, déterministe donc
-# idempotent (le même texte complet est reposé à chaque run).
+# PV85 — SKU dont le modèle constructeur n'est PLUS une supposition : le
+# fondateur a tranché. Leur addendum de description dit « Modèle confirmé
+# fondateur : … » (pas « supposé … — à confirmer »), et c'est cette mention
+# qui autorise le moteur électrique à NOMMER l'appareil sur le schéma.
+MODELES_CONFIRMES_FONDATEUR = ('OND-H-DEY-10T',)
+
+# Ajoute la mention du modèle (supposé ou confirmé) à la description
+# commerciale existante (SKU déjà présent dans FICHES ci-dessus) — additif,
+# déterministe donc idempotent (le même texte complet est reposé à chaque run).
 for _sku_pvg4, _modele_pvg4 in MODELE_SUPPOSE_PVG4.items():
     if _sku_pvg4 in FICHES and 'description' in FICHES[_sku_pvg4]:
-        _addendum = f'\nModèle supposé : {_modele_pvg4} — à confirmer fondateur'
+        if _sku_pvg4 in MODELES_CONFIRMES_FONDATEUR:
+            _addendum = f'\nModèle confirmé fondateur : {_modele_pvg4}'
+        else:
+            _addendum = (f'\nModèle supposé : {_modele_pvg4}'
+                         ' — à confirmer fondateur')
         if not FICHES[_sku_pvg4]['description'].endswith(_addendum):
             FICHES[_sku_pvg4]['description'] += _addendum
 
 
 # ── PV9 — Fiches techniques (FicheTechnique, PV5) : SEULES les valeurs
-# SOURCÉES ci-dessous sont saisies. Aucune fiche EXISTANTE n'est jamais
-# modifiée (skip-if-exists) ; tout le reste NULL sur la fiche créée
+# SOURCÉES ci-dessous sont saisies ; tout le reste reste NULL sur la fiche
 # (« à vérifier fondateur — PVG4 »).
+#
+# PV85 — RÉ-APPLICATION (même philosophie que les fiches commerciales
+# marque/description/garantie) : les champs DÉCLARÉS ici sont reposés à chaque
+# run, y compris sur une base DÉJÀ seedée — sans quoi une correction de
+# datasheet (ex. le 10 kW triphasé passé de SG04LP3 à SG05LP3 : 26 A/MPPT au
+# lieu de 16 A) n'atteindrait jamais une base existante. Ce qui reste
+# INTOUCHABLE : tout champ NON déclaré ici (le PDF constructeur téléversé, une
+# valeur saisie à la main sur un champ que le catalogue ne source pas) et la
+# fiche d'un produit absent de ce dictionnaire.
 FICHES_TECHNIQUES = {
+    # PV85 — Canadian Solar CS7N-710TB-AG (TOPBiHiKu7), datasheet
+    # static.csisolar.com v1.61/v1.9 — valeurs STC. NON seedés faute de champ
+    # sur FicheTechnique (jamais inventé) : NMOT 41±3 °C (537 W / Vmp 38,2 /
+    # Voc 45,7), tension système max 1500 V, fusible série max 35 A,
+    # bifacialité 80 % ±5.
     'PAN-CS-710': {
         'type_fiche': 'module',
+        'pmax_wc': Decimal('710.00'),
+        'voc_v': Decimal('48.30'),
+        'isc_a': Decimal('18.59'),
+        'vmp_v': Decimal('40.40'),
+        'imp_a': Decimal('17.59'),
+        'rendement_pct': Decimal('22.90'),
         'longueur_mm': 2384,
         'largeur_mm': 1303,
-        'epaisseur_mm': 33,
-        # Source : datasheets distributeurs convergents, Canadian Solar
-        # TOPBiHiKu7 CS7N-710TB-AG.
+        'epaisseur_mm': 35,
+        'poids_kg': Decimal('37.90'),
+        'techno_cellule': 'N-type TOPCon (TOPBiHiKu7)',
+        'bifacial': True,
+        'temp_coeff_voc_pct_c': Decimal('-0.250'),
         'temp_coeff_pmax_pct_c': Decimal('-0.290'),
     },
     'PAN-JK-710': {
@@ -619,11 +653,25 @@ FICHES_TECHNIQUES = {
         'type_fiche': 'onduleur',
         'ond_ac_kw': Decimal('10'), 'ond_phases': 1,
     },
+    # PV85 — Deye SUN-10K-SG05LP3-EU-SM2, modèle CONFIRMÉ FONDATEUR.
+    # Sources : datasheet deyeinverter.com 2024-09 + manuel 2025-11.
+    # AC 10 000 W nominal / 11 000 VA max, 3 phases 230/400 V ; PV 800 V DC
+    # max, démarrage 160 V, MPPT 200-650 V, 2 MPPT × 2 chaînes.
+    # ⚠ DIVERGENCE DOCUMENTAIRE ASSUMÉE sur le courant d'entrée : la fiche
+    # sept-2024 donnait 20 A / Isc 30 A / 1 chaîne pour TOUTE la gamme, la
+    # révision actuelle (manuel nov-2025 + page produit) donne 26 A / Isc 39 A
+    # / 2 chaînes pour les 10K et 12K précisément. On seede la révision
+    # ACTUELLE (26 A) — à confirmer au numéro de série de l'appareil livré.
+    # NON seedés faute de champ sur FicheTechnique (jamais inventé) : tension
+    # de démarrage 160 V, Isc max 39 A/MPPT, plage batterie 40-60 V,
+    # 210 A charge/décharge, rendement MAX 97,6 % (le champ est le rendement
+    # EURO), poids 35,2 kg.
     'OND-H-DEY-10T': {
         'type_fiche': 'onduleur', 'ond_n_mppt': 2,
-        'ond_mppt_v_min': Decimal('150.0'), 'ond_mppt_v_max': Decimal('550.0'),
-        'ond_v_max_abs': Decimal('600.0'), 'ond_i_max_mppt_a': Decimal('16.0'),
+        'ond_mppt_v_min': Decimal('200.0'), 'ond_mppt_v_max': Decimal('650.0'),
+        'ond_v_max_abs': Decimal('800.0'), 'ond_i_max_mppt_a': Decimal('26.0'),
         'ond_ac_kw': Decimal('10'), 'ond_phases': 3,
+        'ond_rendement_euro_pct': Decimal('97.0'),
     },
     'OND-H-DEY-15T': {
         # Confiance moyenne : plage FAMILLE SG01HP3 (5-25K) documentée, pas
@@ -868,20 +916,34 @@ class Command(BaseCommand):
                                         if f in fiche])
             fiches_updated += 1
 
-        # ── PV9 — Fiches techniques (dimensions/coefficients datasheet) ──
-        # Additif + idempotent : SKU absent du catalogue → ignoré ; fiche
-        # DÉJÀ existante pour ce produit → jamais écrasée (skip).
+        # ── PV9/PV85 — Fiches techniques (valeurs datasheet constructeur) ──
+        # Additif + idempotent : SKU absent du catalogue → ignoré. Fiche déjà
+        # existante → les champs DÉCLARÉS ci-dessus sont RÉ-APPLIQUÉS (même
+        # philosophie que marque/description/garantie), tout champ non déclaré
+        # est laissé intact (PDF téléversé, saisie manuelle hors catalogue).
+        # C'est ce qui fait qu'une correction de datasheet atteint une base
+        # déjà seedée sans jamais détruire ce que le catalogue ne source pas.
         from apps.stock.models import FicheTechnique
         fiches_techniques_created = 0
+        fiches_techniques_updated = 0
         for sku, valeurs in FICHES_TECHNIQUES.items():
             produit = Produit.objects.filter(company=company, sku=sku).first()
             if not produit:
                 continue  # SKU pas seedé par ce catalogue — rien à rattacher
-            if FicheTechnique.objects.filter(produit=produit).exists():
-                continue  # fiche déjà présente — jamais modifiée
-            FicheTechnique.objects.create(
-                company=company, produit=produit, **valeurs)
-            fiches_techniques_created += 1
+            fiche = FicheTechnique.objects.filter(produit=produit).first()
+            if fiche is None:
+                FicheTechnique.objects.create(
+                    company=company, produit=produit, **valeurs)
+                fiches_techniques_created += 1
+                continue
+            modifies = [champ for champ, valeur in valeurs.items()
+                        if getattr(fiche, champ) != valeur]
+            if not modifies:
+                continue  # déjà à jour — aucune écriture (idempotence)
+            for champ in modifies:
+                setattr(fiche, champ, valeurs[champ])
+            fiche.save(update_fields=modifies)
+            fiches_techniques_updated += 1
 
         # ── Réforme TVA 2024–2026 (autorisation explicite du fondateur) ──
         # Panneaux PV → 10 % avec HT re-dérivé pour PRÉSERVER le TTC à
@@ -939,6 +1001,7 @@ class Command(BaseCommand):
             f"{len(created)} created, {len(skipped)} already present (untouched), "
             f"{fiches_updated} fiches commerciales mises à jour, "
             f"{fiches_techniques_created} fiches techniques créées, "
+            f"{fiches_techniques_updated} fiches techniques ré-appliquées, "
             f"{archived_count} placeholders archivés, "
             f"{tva_updated} taux TVA alignés (réforme 10 % panneaux), "
             f"{recategorises} produits rangés dans la taxonomie."
