@@ -52,6 +52,19 @@ const ETATS = [
   // légal. Rendu générique (KeyValue/tableau) ; export CSV via le bouton
   // existant (?export=csv, déjà géré par `exportCsv` ci-dessous).
   { value: 'loi-69-21', label: 'Loi 69-21', fetch: comptaApi.etats.loi6921 },
+  // WIR254 — sous-ensembles d'analyse NTFIN14-49 orphelins, rendus génériques
+  // (KeyValue ou tableau selon la forme réelle de la réponse). Tous acceptent
+  // le filtre date_debut/date_fin déjà présent sur cet écran (paramètres
+  // optionnels côté serveur, sauf anomalies-ecritures qui les exige).
+  { value: 'balance-referentiel', label: 'Balance référentiel', fetch: comptaApi.etats.balanceReferentiel },
+  { value: 'balance-analytique', label: 'Balance analytique', fetch: comptaApi.etats.balanceAnalytique },
+  { value: 'execution-budgetaire', label: 'Exécution budgétaire', fetch: comptaApi.etats.executionBudgetaire },
+  { value: 'anomalies-ecritures', label: 'Anomalies écritures', fetch: comptaApi.etats.anomaliesEcritures },
+  { value: 'registre-immobilisations', label: 'Registre immobilisations', fetch: comptaApi.etats.registreImmobilisations },
+  { value: 'projection-dotations', label: 'Projection dotations', fetch: comptaApi.etats.projectionDotations },
+  { value: 'positions-contrat-revenu', label: 'Positions contrat (IFRS 15)', fetch: comptaApi.etats.positionsContratRevenu },
+  { value: 'frais-bancaires', label: 'Frais bancaires', fetch: comptaApi.etats.fraisBancaires },
+  { value: 'provisions', label: 'Provisions', fetch: comptaApi.etats.provisions },
 ]
 
 // Détecte les colonnes montant à formater en MAD.

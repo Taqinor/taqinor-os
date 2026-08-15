@@ -72,6 +72,47 @@ const comptaApi = {
     continuiteSequences: (params) =>
       api.get('/compta/etats/continuite-sequences/', { params }),
     controleIce: (params) => api.get('/compta/etats/controle-ice/', { params }),
+
+    // WIR254 — sous-ensembles d'analyse NTFIN14-49 (orphelins : @action servies
+    // sans le moindre client). Rendus génériques dans EtatsPage (ETATS) ou dans
+    // l'onglet « Synthèse » de CloturePage (celles exigeant ?periode=, déjà
+    // sélectionnée là-bas). `resultatAnalytique`/`analyseVariation` restent
+    // API-ONLY VOLONTAIRE (patron WIR107) : la première exige un code d'axe
+    // analytique choisi par l'utilisateur, la seconde deux périodes A/B — un
+    // sélecteur dédié est hors scope de ce lot ; le wrapper existe pour que la
+    // garde node:test (actions − API-only ⊆ ces clés) reste vraie.
+    balanceReferentiel: (params) =>
+      api.get('/compta/etats/balance-referentiel/', { params }),
+    balanceAnalytique: (params) =>
+      api.get('/compta/etats/balance-analytique/', { params }),
+    // API-only volontaire — ?axe= requis, pas de sélecteur d'axe construit ici.
+    resultatAnalytique: (params) =>
+      api.get('/compta/etats/resultat-analytique/', { params }),
+    executionBudgetaire: (params) =>
+      api.get('/compta/etats/execution-budgetaire/', { params }),
+    // API-only volontaire — période A + période B, hors scope de ce lot.
+    analyseVariation: (params) =>
+      api.get('/compta/etats/analyse-variation/', { params }),
+    anomaliesEcritures: (params) =>
+      api.get('/compta/etats/anomalies-ecritures/', { params }),
+    cockpitCloture: (params) => api.get('/compta/etats/cockpit-cloture/', { params }),
+    pretACloturer: (params) => api.get('/compta/etats/pret-a-cloturer/', { params }),
+    rapprochementsEnRetard: (params) =>
+      api.get('/compta/etats/rapprochements-en-retard/', { params }),
+    registreImmobilisations: (params) =>
+      api.get('/compta/etats/registre-immobilisations/', { params }),
+    projectionDotations: (params) =>
+      api.get('/compta/etats/projection-dotations/', { params }),
+    positionsContratRevenu: () =>
+      api.get('/compta/etats/positions-contrat-revenu/'),
+    // Le serveur attend `debut`/`fin` (PAS `date_debut`/`date_fin`) — mappés
+    // ici pour rester cohérent avec le filtre de dates générique d'EtatsPage.
+    fraisBancaires: (params) =>
+      api.get('/compta/etats/frais-bancaires/', {
+        params: { debut: params?.date_debut, fin: params?.date_fin },
+      }),
+    provisions: (params) => api.get('/compta/etats/provisions/', { params }),
+
     dossierCloture: (params) =>
       api.get('/compta/etats/dossier-cloture/',
         { params: { export: 'xlsx', ...params }, responseType: 'blob' }),
