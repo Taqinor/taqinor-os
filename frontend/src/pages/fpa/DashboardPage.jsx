@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { Link } from 'react-router-dom'
 import fpaApi from '../../api/fpaApi'
 import { Card } from '../../ui'
 import PageHeader from '../../components/layout/PageHeader'
@@ -70,6 +71,15 @@ export default function DashboardPage() {
         </select>
       </div>
       {error && <p role="alert" style={{ color: 'var(--danger, #c00)' }}>{error}</p>}
+      {/* WIR199 — sans aucun cycle créé, le tableau de bord restait vide sans
+          aucune indication : le seul chemin de création vit maintenant sur
+          /fpa/administration. */}
+      {!error && cycles.length === 0 && (
+        <Card>
+          <p>Aucun cycle budgétaire n'a encore été créé.</p>
+          <Link to="/fpa/administration">Créer un cycle dans Administration</Link>
+        </Card>
+      )}
       {conso && (
         <>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12, marginBottom: 16 }}>
