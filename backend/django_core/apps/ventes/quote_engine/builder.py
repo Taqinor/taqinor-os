@@ -688,6 +688,16 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     _valid_choices = {
         'Sans batterie', 'Avec batterie', 'Les deux (Sans + Avec)'}
     alternative_declaree = _stored_choice in _valid_choices
+    # Une déclaration stockée ne tient que si les LIGNES peuvent la servir
+    # (attrapé en prod sur le devis 180 : « Sans batterie » stocké par un
+    # ancien chemin ALORS QUE le devis porte une batterie en ligne FERME —
+    # honorer la déclaration cachait 2 lignes et affichait 31 000 MAD pour un
+    # devis à 65 000). Un « Sans batterie » contredit par une batterie ferme
+    # est invalidé : la branche artefact ci-dessous reprend la main et rend LA
+    # vérité du document (toutes les lignes, total du devis).
+    if _stored_choice == 'Sans batterie' and _has_qty(items, _is_battery):
+        alternative_declaree = False
+        _stored_choice = None
     # Avertissements INTERNES (vendeur/support) — jamais rendus au client : la
     # charge utile publique les retire (``public_views.proposal_data``) et aucun
     # renderer ne les lit.

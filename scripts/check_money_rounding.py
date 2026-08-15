@@ -53,10 +53,10 @@ BASELINE_ALLOWLIST = {
     "backend/django_core/apps/ventes/quote_engine/builder.py:190",
     "backend/django_core/apps/ventes/quote_engine/builder.py:497",
     "backend/django_core/apps/ventes/quote_engine/builder.py:595",
-    "backend/django_core/apps/ventes/quote_engine/builder.py:778",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:798",
     "backend/django_core/apps/ventes/quote_engine/builder.py:1279",
-    "backend/django_core/apps/ventes/quote_engine/builder.py:758",
-    "backend/django_core/apps/ventes/quote_engine/builder.py:1286",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:762",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:1296",
     # compta/services.py entries re-based (WIR153, 2026-07-31, -3 lines above
     # them from removing two dead OCR-provider try/except blocks + docstring
     # edits in extraire_releve_bancaire/extraire_justificatif_note_frais;
@@ -83,17 +83,17 @@ BASELINE_ALLOWLIST = {
     "backend/django_core/apps/compta/services.py:9102",
     # XSAL14 (2026-07-16) — builder.py edits shifted existing display-round
     # sites; re-based 1:1 (premium engine, sanctioned rounding).
-    "backend/django_core/apps/ventes/quote_engine/builder.py:1309",
-    "backend/django_core/apps/ventes/quote_engine/builder.py:1315",
-    "backend/django_core/apps/ventes/quote_engine/builder.py:1368",
-    "backend/django_core/apps/ventes/quote_engine/builder.py:1369",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:1319",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:1335",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:1378",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:1379",
     "backend/django_core/apps/ventes/quote_engine/builder.py:520",
     "backend/django_core/apps/ventes/quote_engine/builder.py:615",
     "backend/django_core/apps/ventes/quote_engine/builder.py:617",
     "backend/django_core/apps/ventes/quote_engine/builder.py:642",
     "backend/django_core/apps/ventes/quote_engine/builder.py:644",
-    "backend/django_core/apps/ventes/quote_engine/builder.py:788",
-    "backend/django_core/apps/ventes/quote_engine/builder.py:801",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:798",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:811",
     # QX ROUND 7 (2026-07-16) — QX43/QX50 builder.py edits shifted existing
     # display-round sites again; re-based 1:1 (premium engine, sanctioned
     # whole-MAD display rounding — rule #4 vendored engine, not new logic).
@@ -104,12 +104,12 @@ BASELINE_ALLOWLIST = {
     "backend/django_core/apps/ventes/quote_engine/builder.py:629",
     "backend/django_core/apps/ventes/quote_engine/builder.py:654",
     "backend/django_core/apps/ventes/quote_engine/builder.py:632",
-    "backend/django_core/apps/ventes/quote_engine/builder.py:800",
-    "backend/django_core/apps/ventes/quote_engine/builder.py:813",
-    "backend/django_core/apps/ventes/quote_engine/builder.py:1325",
-    "backend/django_core/apps/ventes/quote_engine/builder.py:1331",
-    "backend/django_core/apps/ventes/quote_engine/builder.py:1384",
-    "backend/django_core/apps/ventes/quote_engine/builder.py:1385",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:810",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:823",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:1335",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:1341",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:1394",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:1395",
     # QRES (2026-07-18) puis PV11/PV46/PV77 (fiche wattage, annexe technique,
     # bloc bankable) — les MÊMES arrondis d'affichage déjà revus, re-décalés.
     # QRES (2026-07-18) — les blocs hypothèses/tarif/photo-toiture ajoutés dans
@@ -118,34 +118,34 @@ BASELINE_ALLOWLIST = {
     "backend/django_core/apps/ventes/quote_engine/builder.py:287",
     "backend/django_core/apps/ventes/quote_engine/builder.py:288",
     "backend/django_core/apps/ventes/quote_engine/builder.py:645",
-    "backend/django_core/apps/ventes/quote_engine/builder.py:740",
-    "backend/django_core/apps/ventes/quote_engine/builder.py:742",
-    "backend/django_core/apps/ventes/quote_engine/builder.py:767",
-    "backend/django_core/apps/ventes/quote_engine/builder.py:769",
-    "backend/django_core/apps/ventes/quote_engine/builder.py:913",
-    "backend/django_core/apps/ventes/quote_engine/builder.py:926",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:750",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:752",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:777",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:779",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:923",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:936",
     # PV84 (chemin_proposition — nom du client dans le lien) — l'import
     # chemin_proposition + son commentaire ajoutés au bloc "signer" ont
     # décalé les MÊMES 4 arrondis d'affichage (PU/total ligne) de +2 lignes ;
     # aucune logique déplacée, aucun NOUVEAU site — bug-class #34.
-    "backend/django_core/apps/ventes/quote_engine/builder.py:1520",
-    "backend/django_core/apps/ventes/quote_engine/builder.py:1526",
-    "backend/django_core/apps/ventes/quote_engine/builder.py:1579",
-    "backend/django_core/apps/ventes/quote_engine/builder.py:1580",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:1530",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:1536",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:1589",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:1590",
     # PV86 (2026-08-15, « la seule vérité est le devis ») — le bloc qui exige
     # qu'une alternative soit DÉCLARÉE avant de rendre deux options a inséré
     # 46 lignes dans builder.py : les MÊMES arrondis d'affichage (HT brut,
     # TTC exact, ROI/prix-kWc, ×N villas, total de ligne d'option) glissent
     # tous de +46, à l'identique. Vérifié : le diff n'ajoute AUCUN round() —
     # aucun NOUVEAU site, simple re-calage file:line (bug-class #34).
-    "backend/django_core/apps/ventes/quote_engine/builder.py:786",
-    "backend/django_core/apps/ventes/quote_engine/builder.py:815",
-    "backend/django_core/apps/ventes/quote_engine/builder.py:959",
-    "backend/django_core/apps/ventes/quote_engine/builder.py:972",
-    "backend/django_core/apps/ventes/quote_engine/builder.py:1566",
-    "backend/django_core/apps/ventes/quote_engine/builder.py:1572",
-    "backend/django_core/apps/ventes/quote_engine/builder.py:1625",
-    "backend/django_core/apps/ventes/quote_engine/builder.py:1626",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:796",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:825",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:969",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:982",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:1576",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:1582",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:1635",
+    "backend/django_core/apps/ventes/quote_engine/builder.py:1636",
 }
 
 TARGET_FILES = [
