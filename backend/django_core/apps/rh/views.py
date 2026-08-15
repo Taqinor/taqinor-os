@@ -1,7 +1,10 @@
 """Vues des Ressources humaines (toutes scopées société, admin-gated).
 
 Le module RH est INTERNE : aucune donnée n'est exposée côté client. L'accès est
-réservé au palier Administrateur/Responsable (``IsResponsableOrAdmin``). Les
+gardé par les permissions fines ``rh_voir`` (lecture) / ``rh_gerer`` (écriture)
+posées sur ``_RhBaseViewSet`` (WIR172 — auparavant le grossier
+``IsResponsableOrAdmin``, qui laissait passer tout rôle portant UNE écriture
+même hors RH). Les
 viewsets filtrent par ``request.user.company`` (TenantMixin) et posent la société
 côté serveur ; le ``cout_horaire`` (paie/marge) ne quitte jamais cette API.
 """
@@ -19,6 +22,7 @@ from rest_framework.throttling import AnonRateThrottle
 
 from apps.records.models import Attachment
 from apps.records.storage import delete_attachment, store_attachment
+from core.permissions import WriteScopedPermissionMixin
 from authentication.mixins import TenantMixin
 from authentication.permissions import (
     HasPermission,
@@ -206,9 +210,30 @@ def _client_ip(request):
     return ip[:45]
 
 
-class _RhBaseViewSet(TenantMixin, viewsets.ModelViewSet):
-    """Base : société scopée + accès Administrateur/Responsable uniquement."""
-    permission_classes = [IsResponsableOrAdmin]
+class _RhBaseViewSet(WriteScopedPermissionMixin, TenantMixin,
+                     viewsets.ModelViewSet):
+    """Base : société scopée + permissions FINES ``rh_voir``/``rh_gerer``.
+
+    WIR172 — cette base était gardée par le grossier ``IsResponsableOrAdmin``,
+    dont ``is_responsable`` est vrai dès qu'un rôle porte UNE permission
+    d'écriture, MÊME hors RH : un Commercial (``crm_creer``) obtenait ainsi le
+    CRUD complet des dossiers employés, sanctions disciplinaires et visites
+    médicales. Le gate est désormais ``ScopedPermission`` (lecture ≠ écriture) :
+
+    * GET/HEAD/OPTIONS → ``rh_voir`` ;
+    * POST/PUT/PATCH/DELETE → ``rh_gerer``.
+
+    Le repli légacy est INCHANGÉ (``core.permissions._user_has_or_legacy``) :
+    un compte SANS rôle fin garde exactement son comportement historique
+    (Responsable/Admin passent, ``normal`` reste refusé).
+
+    Les trois exceptions de lecture élargie posées plus bas restent intactes :
+    ``compa_ratio`` (``salaires_voir``), ``annuaire`` et
+    ``localisation_du_jour`` (``IsAnyRole``) — elles remplacent le gate de
+    classe dans le ``get_permissions`` de ``DossierEmployeViewSet``.
+    """
+    read_permission = 'rh_voir'
+    write_permission = 'rh_gerer'
 
 
 class DepartementViewSet(_RhBaseViewSet):

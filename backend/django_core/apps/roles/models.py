@@ -192,6 +192,23 @@ ALL_PERMISSIONS = [
     'litige_gerer',
     'kb_voir',
     'kb_gerer',
+    # ── WIR172 — Ressources humaines (apps/rh) : même correction que YRBAC3,
+    # sur une surface bien plus sensible. ``_RhBaseViewSet`` (66 ViewSets :
+    # dossiers employés, sanctions disciplinaires, visites médicales, congés,
+    # pointages, accidents du travail…) n'était gardée que par le grossier
+    # ``IsResponsableOrAdmin`` — or ``is_responsable`` est vrai dès qu'un rôle
+    # porte UNE permission d'écriture, MÊME hors RH : un Commercial
+    # (``crm_creer``) obtenait le CRUD complet des dossiers employés.
+    # Deux codes DISJOINTS : ``rh_voir`` (lecture) et ``rh_gerer`` (écriture).
+    # La rémunération (``salaires_voir``) et la paie (``paie_voir``/
+    # ``paie_gerer``) gardent leurs propres codes — pas de doublon ici.
+    # Ils ne sont mappés QUE sur le rôle système « Responsable » (dont l'accès
+    # RH complet est historique) : Commercial/Technicien/Viewer ne les portent
+    # pas — l'accès aux dossiers employés se RESSERRE, et reste INCHANGÉ pour
+    # Directeur/Administrateur (héritage d'ALL_PERMISSIONS) et pour les comptes
+    # hérités sans rôle fin (repli légacy ``is_responsable``).
+    'rh_voir',
+    'rh_gerer',
     # ── AOF2 — Appels d'offres (apps/ao) : correction d'une régression de
     # confidentialité EXISTANTE. Les 8 ViewSets AO héritaient d'une base gardée
     # par le grossier ``IsResponsableOrAdmin`` : tout le palier Responsable
@@ -363,6 +380,10 @@ RESPONSABLE_PERMISSIONS = [
     'contrat_voir', 'contrat_gerer',
     'litige_voir', 'litige_gerer',
     'kb_voir', 'kb_gerer',
+    # WIR172 — comportement historique préservé : le Responsable avait accès
+    # complet (lecture + écriture) au back-office RH via le grossier
+    # IsResponsableOrAdmin.
+    'rh_voir', 'rh_gerer',
     # ENG — accès complet au moteur de publicités (y compris approbation).
     'adsengine_view', 'adsengine_manage', 'adsengine_approve',
     # VAO12 — veille AO : lecture ET réglage (mots-clés, sources, règles).
