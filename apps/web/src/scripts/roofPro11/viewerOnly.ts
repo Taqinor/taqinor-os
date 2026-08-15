@@ -71,9 +71,9 @@ import {
 /** Hauteur de mur (m) — même lecture visuelle que le builder (2 niveaux × 3 m),
  *  valeur dupliquée (constants.ts appartient au builder — non importé). */
 const WALL_H_M = 6;
-/** WJ130 — Épaisseur du panneau (m) : la VALEUR DU BUILDER
- *  (`PANEL2_THICK_M = 0.033`, lib/roofPro2.ts, utilisée par scene3d.ts pour la
- *  `BoxGeometry` du panneau), plus une épaisseur d'à-peu-près. */
+/** WJ130 — Épaisseur du panneau (m) : la VALEUR DU BUILDER (`PANEL2_THICK_M`,
+ *  lib/roofPro2.ts, celle que scene3d.ts passe à la `BoxGeometry` du panneau)
+ *  et non plus un 0,04 d'à-peu-près. */
 const PANEL_THICK_M = 0.033;
 /** WJ130 — Hauteur du châssis avant sur toit plat (m) : le `frontStrut` de
  *  roofPro11/scene3d.ts, pour que le panneau soit posé à la MÊME altitude que
@@ -610,7 +610,11 @@ function buildZone(
   // POSE réelle (portrait ↔ paysage) déduite des centres posés côté
   // lib/proposition.ts, donc à données égales les deux rendus se superposent.
   if (zone.panels.length > 0) {
-    const slopeLenM = zone.panelSlopeM;
+    // `panelSlopeM` est toujours émis par buildViewerModel ; le repli reprend à
+    // l'identique l'ancien calcul (empreinte ÷ cos) au cas où un modèle sérialisé
+    // plus ancien atteindrait ce chunk — jamais une géométrie NaN, donc jamais
+    // des panneaux invisibles chez un client.
+    const slopeLenM = zone.panelSlopeM || zone.panelDepthM / Math.cos(tiltRad) || zone.panelDepthM;
     const panelGeo = new THREE.BoxGeometry(zone.panelAlongM, slopeLenM, PANEL_THICK_M);
     const panelMat = new THREE.MeshStandardMaterial({ color: 0x14263f, roughness: 0.25, metalness: 0.35 });
     const im = new THREE.InstancedMesh(panelGeo, panelMat, zone.panels.length);
