@@ -1,0 +1,19 @@
+{
+  "endpoint": "POST /api/django/ventes/devis/{id}/accepter/",
+  "pourquoi": "L'acceptation d'un devis renvoie, EN PLUS du devis sérialisé, la clé `credit_warning` : l'état crédit du client au moment de l'engagement. Trois clés, jamais plus. `mode` est le mode de hold EFFECTIF (LimiteCredit du client, à défaut ReglageCredit de la société, à défaut `aucun`) ; `depassement` vaut `true` si le disponible ne couvre pas le TTC du devis ; `disponible` est `null` quand aucune limite n'est définie (illimité). Source de vérité : apps/credit/selectors.py::credit_warning. ATTENTION — ce n'est PAS le blocage : un client réellement bloqué reçoit un 403 AVANT (moteur FG41/XFAC28).",
+  "exemple": {
+    "mode": "avertissement",
+    "depassement": true,
+    "disponible": "12500.00"
+  },
+  "exemple_aucun_hold": {
+    "mode": "aucun",
+    "depassement": false,
+    "disponible": null
+  },
+  "exemple_blocage": {
+    "mode": "blocage",
+    "depassement": true,
+    "disponible": "-4200.00"
+  }
+}

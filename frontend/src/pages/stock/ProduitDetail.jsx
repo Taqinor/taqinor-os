@@ -12,7 +12,7 @@ import {
 import {
   categorieIcone, estPompage, pointsCourbePompe,
 } from '../../features/stock/catalogue'
-import { useHasPermission } from '../../hooks/useHasPermission'
+import { useHasPermission, useIsAdminOrResponsable } from '../../hooks/useHasPermission'
 import {
   Spinner, Badge, RelationCounters,
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
@@ -351,6 +351,118 @@ function OngletPrevisionnel({ produitId }) {
   )
 }
 
+/* ── XSTK10 / WIR221 — mise au rebut d'un produit ──────────────────────────
+   Casse, vol, péremption… : le mouvement de sortie existait côté serveur
+   (`produits/<id>/rebuter/`) mais AUCUN écran ne pouvait le déclencher — le
+   stock restait faux jusqu'au prochain inventaire. Le MOTIF est obligatoire
+   (garde serveur reprise ici pour ne pas envoyer une requête vouée à échouer).
+   Donnée INTERNE : la valeur perdue est au coût moyen d'achat, jamais
+   client-facing. Export nommé : réutilisé par StockList. */
+// source-choix: apps/stock/views/produit.py rebuter (motifs acceptés)
+export const MOTIFS_REBUT = [
+  { value: 'casse', label: 'Casse' },
+  { value: 'obsolete', label: 'Obsolète' },
+  { value: 'perime', label: 'Périmé' },
+  { value: 'vol', label: 'Vol' },
+  { value: 'defaut', label: 'Défaut' },
+  { value: 'erreur', label: 'Erreur de saisie' },
+  { value: 'autre', label: 'Autre' },
+]
+
+export function RebutModal({ produit, produits, onClose, onDone }) {
+  const [produitId, setProduitId] = useState(produit?.id ? String(produit.id) : '')
+  const [quantite, setQuantite] = useState('')
+  const [motif, setMotif] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState(null)
+  const [resultat, setResultat] = useState(null)
+
+  const soumettre = async () => {
+    setError(null)
+    if (!produitId) { setError('Choisissez un produit.'); return }
+    if (!(Number(quantite) > 0)) { setError('Saisissez une quantité positive.'); return }
+    if (!motif) { setError('Le motif est obligatoire.'); return }
+    setBusy(true)
+    try {
+      const r = await stockApi.rebuterProduit(Number(produitId), {
+        quantite: Number(quantite), motif,
+      })
+      setResultat(r.data ?? {})
+      onDone?.()
+    } catch (err) {
+      const d = err?.response?.data
+      setError((typeof d === 'string' ? d : d?.detail) || 'La mise au rebut a échoué.')
+    } finally { setBusy(false) }
+  }
+
+  return (
+    <Dialog open onOpenChange={(o) => { if (!o) onClose() }}>
+      <DialogContent className="max-w-lg">
+        <DialogHeader>
+          <DialogTitle>Mettre au rebut</DialogTitle>
+          <DialogDescription>
+            Sortie de stock définitive (casse, vol, péremption…). Le motif est
+            obligatoire ; la valeur perdue est calculée au coût moyen d&apos;achat
+            (donnée interne).
+          </DialogDescription>
+        </DialogHeader>
+
+        {!produit?.id && (
+          <div className="flex flex-col gap-1.5">
+            <label className="text-sm font-medium" htmlFor="rebut-produit">Produit</label>
+            <select id="rebut-produit" className="h-9 rounded-md border border-border bg-background px-2 text-sm"
+                    value={produitId} onChange={(e) => setProduitId(e.target.value)}>
+              <option value="">— Choisir un produit —</option>
+              {(produits ?? []).map((p) => (
+                <option key={p.id} value={String(p.id)}>
+                  {p.nom}{p.sku ? ` (${p.sku})` : ''}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
+
+        <div className="grid gap-3 sm:grid-cols-2">
+          <div className="flex flex-col gap-1.5">
+            <label className="text-sm font-medium" htmlFor="rebut-qte">Quantité</label>
+            <input id="rebut-qte" type="number" step="any" inputMode="decimal"
+                   className="h-9 rounded-md border border-border bg-background px-2 text-sm"
+                   value={quantite} onChange={(e) => setQuantite(e.target.value)} />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <label className="text-sm font-medium" htmlFor="rebut-motif">Motif (obligatoire)</label>
+            <select id="rebut-motif" className="h-9 rounded-md border border-border bg-background px-2 text-sm"
+                    value={motif} onChange={(e) => setMotif(e.target.value)}>
+              <option value="">— Choisir un motif —</option>
+              {MOTIFS_REBUT.map((m) => (
+                <option key={m.value} value={m.value}>{m.label}</option>
+              ))}
+            </select>
+          </div>
+        </div>
+
+        {error && (
+          <div role="alert" className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
+            {error}
+          </div>
+        )}
+        {resultat && (
+          <div className="rounded-lg border border-success/30 bg-success/10 p-3 text-sm text-success">
+            Rebut enregistré — valeur perdue : {resultat.valeur_perdue ?? '—'} DH.
+          </div>
+        )}
+
+        <DialogFooter>
+          <Button type="button" variant="ghost" onClick={onClose}>Fermer</Button>
+          <Button type="button" loading={busy} onClick={soumettre}>
+            {busy ? '…' : 'Mettre au rebut'}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
 // Export nommé : testé directement.
 export function ProduitDetail({ produit, onClose }) {
   // VX98 — bouton « Historique » → Journal pré-filtré sur CE produit, visible
@@ -363,6 +475,14 @@ export function ProduitDetail({ produit, onClose }) {
   // que de la lier a une variable PascalCase pendant le rendu (le compilateur
   // React y voit une creation de composant au rendu).
   const iconeTitre = produit.categorie?.nom ? categorieIcone(produit) : PackageSearch
+  // XSTK10 / WIR221 — mise au rebut depuis la fiche (écriture stock : réservée
+  // aux porteurs de `stock_modifier`, garde serveur inchangée).
+  // ARC47 — hooks appelés inconditionnellement ; palier de repli pour les
+  // comptes légacy sans codes ERP (même sémantique que StockList).
+  const canWriteViaPerm = useHasPermission('stock_modifier')
+  const canWriteViaRole = useIsAdminOrResponsable()
+  const canWrite = canWriteViaPerm || canWriteViaRole
+  const [showRebut, setShowRebut] = useState(false)
   return (
     <Dialog open onOpenChange={(o) => { if (!o) onClose() }}>
       <DialogContent className="max-h-[92vh] max-w-3xl overflow-y-auto">
@@ -427,9 +547,18 @@ export function ProduitDetail({ produit, onClose }) {
               </Link>
             </Button>
           )}
+          {/* XSTK10 / WIR221 — sortie de stock pour casse/vol/péremption. */}
+          {canWrite && (
+            <Button type="button" variant="outline" onClick={() => setShowRebut(true)}>
+              Mettre au rebut
+            </Button>
+          )}
           <Button type="button" variant="ghost" onClick={onClose}>Fermer</Button>
         </DialogFooter>
       </DialogContent>
+      {showRebut && (
+        <RebutModal produit={produit} onClose={() => setShowRebut(false)} />
+      )}
     </Dialog>
   )
 }

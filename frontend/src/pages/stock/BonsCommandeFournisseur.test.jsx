@@ -28,6 +28,15 @@ vi.mock('../../api/stockApi', () => ({
     rouvrirBcf: vi.fn(),
     dupliquerBcf: vi.fn(),
     facturerBcf: vi.fn(),
+    // WIR191 — révision (seul chemin de modification après envoi).
+    reviserBcf: vi.fn(),
+    updateBonCommandeFournisseur: vi.fn(),
+    // WIR220 — accusé fournisseur + 4 rapports achats.
+    confirmerBcf: vi.fn(),
+    bcfEnRetard: vi.fn(),
+    bcfSimilaires: vi.fn(),
+    historiquePrixBcf: vi.fn(),
+    achatsHorsContrat: vi.fn(),
   },
 }))
 
@@ -36,7 +45,9 @@ vi.mock('../../api/messagesApi', () => ({
 }))
 
 import stockApi from '../../api/stockApi'
-import { BcfDetail, MotifAnnulationModal } from './BonsCommandeFournisseur.jsx'
+import {
+  BcfDetail, MotifAnnulationModal, AchatsHorsContratModal,
+} from './BonsCommandeFournisseur.jsx'
 import { messageErreurBlob } from '../../utils/pdfBlob'
 
 function makeStore({ role_nom = 'Magasinier', permissions = [] } = {}) {
@@ -336,5 +347,128 @@ describe('ZPUR1 — facturer directement (politique sur commande)', () => {
     fireEvent.click(btn)
     await waitFor(() => expect(stockApi.facturerBcf).toHaveBeenCalledWith(42))
     expect(await screen.findByText(/FF-2026-0001/)).toBeInTheDocument()
+  })
+})
+
+// ── WIR191 / XPUR18 — révision d'un BCF envoyé/reçu ─────────────────────────
+describe('WIR191 — réviser un BCF envoyé (seul chemin de modification)', () => {
+  const bcfEnvoye = {
+    ...bcf,
+    statut: 'envoye',
+    revision: 1,
+    date_commande: '2026-08-01',
+    date_livraison_prevue: '2026-08-20',
+    note: 'Note initiale',
+    lignes: [{ id: 5, produit: 7, produit_nom: 'Panneau', quantite: 2, prix_achat_unitaire: 100 }],
+  }
+
+  it('le bouton « Enregistrer » standard est ABSENT à ce statut (jamais d\'update)', () => {
+    renderDetail({ bcf: bcfEnvoye })
+    expect(screen.queryByRole('button', { name: 'Enregistrer' })).toBeNull()
+    expect(screen.getByRole('button', { name: /Réviser/ })).toBeInTheDocument()
+    expect(stockApi.updateBonCommandeFournisseur).not.toHaveBeenCalled()
+  })
+
+  it('la Note est verrouillée hors mode révision (la saisie n\'était jamais enregistrée)', () => {
+    renderDetail({ bcf: bcfEnvoye })
+    expect(screen.getByLabelText('Note')).toBeDisabled()
+    fireEvent.click(screen.getByRole('button', { name: /Réviser/ }))
+    expect(screen.getByLabelText('Note')).not.toBeDisabled()
+  })
+
+  it('« Enregistrer la révision » poste lignes + dates + note à reviser et signale la ré-approbation', async () => {
+    stockApi.reviserBcf.mockResolvedValue({
+      data: { ...bcfEnvoye, revision: 2, reapprobation_requise: true },
+    })
+    renderDetail({ bcf: bcfEnvoye })
+    fireEvent.click(screen.getByRole('button', { name: /Réviser/ }))
+
+    fireEvent.change(screen.getByLabelText('Note'), { target: { value: 'Révisée' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Enregistrer la révision' }))
+
+    await waitFor(() => expect(stockApi.reviserBcf).toHaveBeenCalledWith(42, {
+      date_commande: '2026-08-01',
+      date_livraison_prevue: '2026-08-20',
+      note: 'Révisée',
+      lignes: [{ id: 5, quantite: 2, prix_achat_unitaire: 100 }],
+    }))
+    expect(await screen.findByText(/NOUVELLE APPROBATION est requise/)).toBeInTheDocument()
+    expect(stockApi.updateBonCommandeFournisseur).not.toHaveBeenCalled()
+  })
+})
+
+// ── WIR220 / XPUR7+XPUR11+XPUR13 — accusé fournisseur + rapports ────────────
+describe('WIR220 — accusé de commande fournisseur (XPUR7)', () => {
+  const bcfEnvoye = {
+    ...bcf,
+    statut: 'envoye',
+    date_livraison_prevue: '2026-08-20',
+    lignes: [{ id: 5, produit: 7, produit_nom: 'Panneau', quantite: 2, prix_achat_unitaire: 100 }],
+  }
+
+  it('persiste la date CONFIRMÉE + le n° sans toucher à la date demandée', async () => {
+    stockApi.confirmerBcf.mockResolvedValue({ data: { ...bcfEnvoye } })
+    renderDetail({ bcf: bcfEnvoye })
+
+    fireEvent.change(screen.getByLabelText('Date confirmée par le fournisseur'),
+      { target: { value: '2026-08-27' } })
+    fireEvent.change(screen.getByLabelText('N° de confirmation'),
+      { target: { value: 'ACK-991' } })
+    fireEvent.click(screen.getByRole('button', { name: /Enregistrer l'accusé/ }))
+
+    await waitFor(() => expect(stockApi.confirmerBcf).toHaveBeenCalledWith(42, {
+      date_confirmee_fournisseur: '2026-08-27',
+      numero_confirmation_fournisseur: 'ACK-991',
+    }))
+    // La date DEMANDÉE n'est jamais renvoyée par ce chemin (OTD préservé).
+    expect(screen.getByLabelText('Livraison prévue (demandée)')).toHaveValue('2026-08-20')
+  })
+
+  it('refuse un accusé sans date confirmée', async () => {
+    renderDetail({ bcf: bcfEnvoye })
+    fireEvent.click(screen.getByRole('button', { name: /Enregistrer l'accusé/ }))
+    expect(await screen.findByText(/Saisissez la date confirmée/)).toBeInTheDocument()
+    expect(stockApi.confirmerBcf).not.toHaveBeenCalled()
+  })
+
+  it('l\'historique des prix d\'une ligne appelle historiquePrixBcf', async () => {
+    stockApi.historiquePrixBcf.mockResolvedValue({
+      data: [{ bon_commande_id: 3, reference: 'BCF-0003', fournisseur_nom: 'JA Solar',
+        prix_achat_unitaire: '95.00', quantite: 4 }],
+    })
+    renderDetail({ bcf: bcfEnvoye })
+    fireEvent.click(screen.getAllByRole('button', { name: 'Historique des prix' })[0])
+    await waitFor(() => expect(stockApi.historiquePrixBcf).toHaveBeenCalledWith(7, 1))
+    expect(await screen.findByText(/BCF-0003/)).toBeInTheDocument()
+  })
+
+  it('à la création, les BCF ouverts similaires du fournisseur sont signalés', async () => {
+    stockApi.bcfSimilaires.mockResolvedValue({
+      data: [{ id: 8, reference: 'BCF-0008', statut: 'envoye', nombre_lignes: 3 }],
+    })
+    renderDetail({ bcf: { fournisseur: 1, lignes: [] }, fournisseurs: [{ id: 1, nom: 'JA Solar' }] })
+    await waitFor(() => expect(stockApi.bcfSimilaires).toHaveBeenCalledWith(1))
+    expect(await screen.findByText(/BCF-0008/)).toBeInTheDocument()
+  })
+})
+
+describe('WIR220 — rapport « achats hors contrat » (XPUR13/XPUR13)', () => {
+  it('liste les dépassements filtrés par fournisseur et période', async () => {
+    stockApi.achatsHorsContrat.mockResolvedValue({
+      data: [{
+        ligne_id: 1, bon_commande_id: 2, reference: 'BCF-0002',
+        fournisseur_nom: 'JA Solar', produit_nom: 'Panneau 550W',
+        prix_convenu: '100.00', prix_saisi: '120.00', ecart: '20.00',
+      }],
+    })
+    render(<AchatsHorsContratModal fournisseurs={[{ id: 1, nom: 'JA Solar' }]} onClose={() => {}} />,
+      { wrapper: makeWrapper() })
+
+    fireEvent.change(screen.getByLabelText('Du'), { target: { value: '2026-08-01' } })
+    fireEvent.click(screen.getByRole('button', { name: /Lancer le rapport/ }))
+
+    await waitFor(() => expect(stockApi.achatsHorsContrat).toHaveBeenCalledWith(
+      { date_debut: '2026-08-01' }))
+    expect(await screen.findByText('Panneau 550W')).toBeInTheDocument()
   })
 })

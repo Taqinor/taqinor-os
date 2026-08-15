@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useSelector } from 'react-redux'
 import { Link } from 'react-router-dom'
 import { useHasPermission, useIsAdmin, useIsAdminOrResponsable } from '../../hooks/useHasPermission'
-import { Plus, Pencil, Trash2, Package, ShoppingCart, BarChart3, Upload, LayoutGrid, Tags, Archive, Truck,
+import { Plus, Pencil, Trash2, Package, ShoppingCart, BarChart3, Upload, LayoutGrid, Tags, Archive, Truck, RotateCcw,
 } from 'lucide-react'
 import stockApi from '../../api/stockApi'
 import { formatMAD } from '../../lib/format'
@@ -33,6 +33,20 @@ const STATUT_OPTIONS = [
   { value: 'bloque_total', label: 'Bloqué (total)' },
 ]
 const STATUT_LABELS = Object.fromEntries(STATUT_OPTIONS.map((o) => [o.value, o.label]))
+
+// NTPRT25 / WIR219 — validation d'une CANDIDATURE d'auto-inscription au
+// portail fournisseur. Axe strictement SÉPARÉ de `statut` (blocage commercial
+// XPUR4) — miroir de `Fournisseur.StatutValidation`, aucune règle dupliquée.
+// source-choix: stock.Fournisseur.statut_validation
+const VALIDATION_LABELS = {
+  valide: 'Validé',
+  en_attente_validation: 'En attente de validation',
+  rejete: 'Rejeté',
+}
+const VALIDATION_TONE = {
+  valide: 'success', en_attente_validation: 'warning', rejete: 'danger',
+}
+const EN_ATTENTE = 'en_attente_validation'
 const STATUT_TONE = {
   actif: 'success',
   bloque_commandes: 'warning',
@@ -408,6 +422,14 @@ export default function FournisseursStock() {
   const [showImport, setShowImport] = useState(false) // VX109 — import Excel/CSV
   const [categories, setCategories] = useState([]) // XPUR5/WIR108 — référentiel catégories
   const [showCategories, setShowCategories] = useState(false)
+  // WIR190 — archivage par repli PROTECT : le message serveur + la liste des
+  // archivés (jusqu'ici un fournisseur archivé disparaissait sans explication
+  // et rien dans l'UI ne pouvait le réactiver).
+  const [archiveNotif, setArchiveNotif] = useState(null)
+  const [showArchived, setShowArchived] = useState(false)
+  const [archives, setArchives] = useState([])
+  // WIR219 — file des candidatures portail en attente de décision.
+  const [candidaturesSeules, setCandidaturesSeules] = useState(false)
   const isAdmin = canDelete
 
   // setState n'arrive que dans les callbacks asynchrones (jamais synchrone dans
@@ -428,18 +450,109 @@ export default function FournisseursStock() {
       ?.catch(() => {})
   }
 
+  // WIR190 — la liste par défaut EXCLUT les archivés côté serveur ; seul
+  // `?show_archived=true` les renvoie (mêlés aux actifs → on filtre ici).
+  const reloadArchives = () => {
+    stockApi.getFournisseursArchived?.({ ordering: 'nom' })
+      ?.then((r) => {
+        const rows = r.data?.results ?? r.data ?? []
+        setArchives(rows.filter((f) => f.is_archived))
+      })
+      ?.catch(() => {})
+  }
+
   useEffect(() => { reload(); reloadCategories() }, [])
+  useEffect(() => { if (showArchived) reloadArchives() }, [showArchived])
 
   const delFournisseur = async (f) => {
     if (!window.confirm(`Supprimer le fournisseur « ${f.nom} » ?`)) return
     setError(null)
+    setArchiveNotif(null)
     try {
-      await stockApi.deleteFournisseur(f.id)
+      // Repli PROTECT : 200 `{archived:true, detail}` — rien n'est détruit, la
+      // fiche est archivée. On AFFICHE le `detail` serveur tel quel (il nomme
+      // les données bloquantes) au lieu de laisser la ligne disparaître.
+      const res = await stockApi.deleteFournisseur(f.id)
+      if (res?.data?.archived) {
+        setArchiveNotif(res.data.detail ?? 'Fournisseur archivé.')
+      }
       reload()
+      if (showArchived) reloadArchives()
     } catch (err) {
       setError(frErr(err, 'Suppression impossible (fournisseur utilisé).'))
     }
   }
+
+  const reactiverFournisseur = async (f) => {
+    if (!window.confirm(`Réactiver le fournisseur « ${f.nom} » ?`)) return
+    setError(null)
+    try {
+      await stockApi.unarchiveFournisseur(f.id)
+      reload()
+      reloadArchives()
+    } catch (err) {
+      setError(frErr(err, 'Réactivation impossible.'))
+    }
+  }
+
+  const supprimerDefinitivement = async (f) => {
+    if (!window.confirm(
+      `Supprimer DÉFINITIVEMENT « ${f.nom} » ? Cette action est irréversible.`)) return
+    setError(null)
+    try {
+      await stockApi.forceDeleteFournisseur(f.id)
+      reload()
+      reloadArchives()
+    } catch (err) {
+      // 409 : le serveur NOMME les données qui retiennent encore la fiche.
+      setError(frErr(err, 'Suppression définitive refusée.'))
+    }
+  }
+
+  // WIR219 — décision sur une candidature portail (ADMIN uniquement côté
+  // serveur : un 403 est affiché en clair, jamais avalé).
+  const deciderCandidature = async (f, valider) => {
+    if (!window.confirm(valider
+      ? `Valider la candidature de « ${f.nom} » ? Le fournisseur entrera dans le sourcing.`
+      : `Rejeter la candidature de « ${f.nom} » ?`)) return
+    setError(null)
+    try {
+      await stockApi.deciderCandidatureFournisseur(f.id, valider)
+      reload()
+    } catch (err) {
+      setError(err?.response?.status === 403
+        ? "Réservé à l'administrateur : seule la direction peut faire entrer un tiers dans le référentiel."
+        : frErr(err, 'Décision impossible.'))
+    }
+  }
+
+  const archivedColumns = useMemo(() => [
+    { id: 'nom', header: 'Nom', minWidth: 180, accessor: (f) => f.nom ?? '',
+      cell: (v) => <span className="line-through">{v}</span> },
+    { id: 'email', header: 'Email', minWidth: 160, accessor: (f) => f.email ?? '',
+      cell: (v) => v || <span className="text-muted-foreground">—</span> },
+    { id: 'nb_produits', header: 'Produits', align: 'right', width: 90, searchable: false,
+      accessor: (f) => f.nb_produits ?? 0 },
+    { id: 'nb_bons_commande', header: 'BCF', align: 'right', width: 80, searchable: false,
+      accessor: (f) => f.nb_bons_commande ?? 0 },
+    { id: 'actions', header: '', width: 150, searchable: false, sortable: false,
+      cell: (_v, f) => (
+        <div className="flex items-center justify-end gap-1">
+          <IconButton size="md" variant="ghost" label="Réactiver"
+                      onClick={(e) => { e.stopPropagation(); reactiverFournisseur(f) }}>
+            <RotateCcw className="size-4" aria-hidden="true" />
+          </IconButton>
+          {isAdmin && (
+            <IconButton size="md" variant="ghost" label="Supprimer définitivement"
+                        className="text-destructive hover:text-destructive"
+                        onClick={(e) => { e.stopPropagation(); supprimerDefinitivement(f) }}>
+              <Trash2 className="size-4" aria-hidden="true" />
+            </IconButton>
+          )}
+        </div>
+      ) },
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  ], [isAdmin])
 
   const columns = useMemo(() => [
     { id: 'nom', header: 'Nom', minWidth: 160, accessor: (f) => f.nom ?? '' },
@@ -451,6 +564,16 @@ export default function FournisseursStock() {
           {STATUT_LABELS[f.statut] ?? 'Actif'}
         </Badge>
       ) },
+    // NTPRT25/WIR219 — validation de candidature portail (axe séparé du
+    // blocage commercial). Rendu SEULEMENT hors « validé » : les fournisseurs
+    // historiques (défaut `valide`) gardent une liste inchangée.
+    { id: 'statut_validation', header: 'Candidature', width: 170, searchable: false,
+      accessor: (f) => f.statut_validation ?? 'valide',
+      cell: (v) => (v === 'valide' ? <span className="text-muted-foreground">—</span> : (
+        <Badge tone={VALIDATION_TONE[v] ?? 'warning'}>
+          {VALIDATION_LABELS[v] ?? v}
+        </Badge>
+      )) },
     // XPUR5/WIR108 — catégorie assignée (référentiel « Catégories »).
     { id: 'categorie_nom', header: 'Catégorie', minWidth: 120,
       accessor: (f) => f.categorie_nom ?? '',
@@ -468,9 +591,24 @@ export default function FournisseursStock() {
       accessor: (f) => f.nb_produits ?? 0 },
     { id: 'nb_bons_commande', header: 'BCF', align: 'right', width: 80, searchable: false,
       accessor: (f) => f.nb_bons_commande ?? 0 },
-    { id: 'actions', header: '', width: 180, searchable: false, sortable: false,
+    { id: 'actions', header: '', width: 260, searchable: false, sortable: false,
       cell: (_v, f) => (
         <div className="flex items-center justify-end gap-1">
+          {/* WIR219 — décision sur une candidature portail : ADMIN seulement
+              (la garde qui compte est serveur — IsAdminRole). */}
+          {isAdmin && f.statut_validation === EN_ATTENTE && (
+            <>
+              <Button size="sm" variant="outline"
+                      onClick={(e) => { e.stopPropagation(); deciderCandidature(f, true) }}>
+                Valider
+              </Button>
+              <Button size="sm" variant="ghost"
+                      className="text-destructive hover:text-destructive"
+                      onClick={(e) => { e.stopPropagation(); deciderCandidature(f, false) }}>
+                Rejeter
+              </Button>
+            </>
+          )}
           {/* XPUR25/WIR27 — fiche 360 (BCF/factures/retours/conformité/
               accords de prix) — jusqu'ici construite mais routée nulle part. */}
           <IconButton asChild size="md" variant="ghost" label="Fiche 360"
@@ -502,6 +640,16 @@ export default function FournisseursStock() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   ], [canDelete])
 
+  // WIR219 — file « candidatures en attente » (filtre local : la liste est
+  // déjà chargée, aucun aller-retour de plus).
+  const nbCandidatures = useMemo(
+    () => items.filter((f) => f.statut_validation === EN_ATTENTE).length, [items])
+  const visibles = useMemo(
+    () => (candidaturesSeules
+      ? items.filter((f) => f.statut_validation === EN_ATTENTE)
+      : items),
+    [items, candidaturesSeules])
+
   return (
     <div className="ui-root flex flex-col gap-4 px-4 py-5 sm:px-5">
       <PageHeader
@@ -513,6 +661,17 @@ export default function FournisseursStock() {
         subtitle={`${items.length} fournisseur(s)`}
         actions={canWrite ? (
           <>
+            {/* WIR190 — les fournisseurs archivés (repli PROTECT) sortent des
+                listes : cette bascule est le SEUL chemin pour les revoir. */}
+            <Button variant="outline" onClick={() => setShowArchived((v) => !v)}>
+              <Archive /> {showArchived ? 'Masquer les archivés' : 'Voir les archivés'}
+            </Button>
+            {/* WIR219 — les candidatures déposées depuis le portail public
+                arrivaient dans la liste sans jamais pouvoir être tranchées. */}
+            <Button variant={candidaturesSeules ? 'secondary' : 'outline'}
+                    onClick={() => setCandidaturesSeules((v) => !v)}>
+              Candidatures en attente{nbCandidatures > 0 ? ` (${nbCandidatures})` : ''}
+            </Button>
             {/* XPUR5/WIR108 — CRUD du référentiel catégories fournisseur. */}
             <Button variant="outline" onClick={() => setShowCategories(true)}>
               <Tags /> Catégories
@@ -538,8 +697,20 @@ export default function FournisseursStock() {
         </div>
       )}
 
+      {/* WIR190 — explication d'archivage renvoyée par le serveur (repli
+          PROTECT) : sans elle la ligne disparaissait sans un mot. */}
+      {archiveNotif && (
+        <div role="status" className="flex flex-wrap items-center gap-3 rounded-lg border border-border bg-muted/40 p-3 text-sm">
+          <Archive className="size-4 text-muted-foreground" aria-hidden="true" />
+          <span>{archiveNotif}</span>
+          <Button size="sm" variant="outline" onClick={() => setShowArchived(true)}>
+            Voir les archivés
+          </Button>
+        </div>
+      )}
+
       <DataTable
-        data={items}
+        data={visibles}
         columns={columns}
         loading={loading}
         getRowId={(f) => f.id}
@@ -553,6 +724,24 @@ export default function FournisseursStock() {
           : undefined}
         aria-label="Fournisseurs"
       />
+
+      {showArchived && (
+        <section className="flex flex-col gap-2">
+          <h2 className="text-sm font-semibold text-muted-foreground">
+            Fournisseurs archivés
+          </h2>
+          <DataTable
+            data={archives}
+            columns={archivedColumns}
+            getRowId={(f) => f.id}
+            searchPlaceholder="Rechercher un fournisseur archivé…"
+            globalColumns={['nom', 'email']}
+            emptyTitle="Aucun fournisseur archivé"
+            emptyDescription="Un fournisseur rattaché à des données réelles est archivé plutôt que supprimé."
+            aria-label="Fournisseurs archivés"
+          />
+        </section>
+      )}
 
       {selected && (
         <FournisseurForm fournisseur={selected} categories={categories}

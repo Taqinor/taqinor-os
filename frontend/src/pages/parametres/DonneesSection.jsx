@@ -173,12 +173,57 @@ function KitExplosion() {
   const [dispo, setDispo] = useState(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState(null)
+  // XMFG18 / WIR268 — duplication avec facteur d'échelle + historique des
+  // révisions de nomenclature + « composition au JJ/MM/AAAA ».
+  const [facteur, setFacteur] = useState('')
+  const [revisions, setRevisions] = useState(null)
+  const [dateComposition, setDateComposition] = useState('')
+  const [compositionAu, setCompositionAu] = useState(null)
+  const [info, setInfo] = useState(null)
 
-  useEffect(() => {
+  const chargerKits = () => {
     stockApi.getKits({ page_size: 500 })
       .then((r) => setKits(r.data?.results ?? r.data ?? []))
       .catch(() => {})
-  }, [])
+  }
+
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { chargerKits() }, [])
+
+  const dupliquer = async () => {
+    if (!kitId) { setError('Choisissez un kit.'); return }
+    setBusy(true); setError(null); setInfo(null)
+    try {
+      const r = await stockApi.dupliquerKit(kitId, facteur || undefined)
+      setInfo(`Kit dupliqué : ${r.data?.nom ?? ''}${facteur ? ` (quantités × ${facteur})` : ''}.`)
+      chargerKits()
+    } catch (e) {
+      setError(frErr(e, 'La duplication du kit a échoué.'))
+    } finally { setBusy(false) }
+  }
+
+  const voirRevisions = async () => {
+    if (!kitId) { setError('Choisissez un kit.'); return }
+    setBusy(true); setError(null)
+    try {
+      const r = await stockApi.getKitRevisions(kitId)
+      setRevisions(r.data ?? [])
+    } catch (e) {
+      setError(frErr(e, 'Historique des révisions indisponible.'))
+    } finally { setBusy(false) }
+  }
+
+  const voirCompositionAu = async () => {
+    if (!kitId) { setError('Choisissez un kit.'); return }
+    if (!dateComposition) { setError('Saisissez une date.'); return }
+    setBusy(true); setError(null); setCompositionAu(null)
+    try {
+      const r = await stockApi.getKitCompositionAu(kitId, dateComposition)
+      setCompositionAu(r.data ?? null)
+    } catch (e) {
+      setError(frErr(e, 'Aucune révision en vigueur à cette date.'))
+    } finally { setBusy(false) }
+  }
 
   const exploser = async () => {
     if (!kitId) { setError('Choisissez un kit.'); return }
@@ -232,8 +277,62 @@ function KitExplosion() {
           <Button type="button" loading={busy} onClick={exploser}>Exploser</Button>
         </div>
 
+        {/* XMFG18 / WIR268 — dupliquer (facteur d'échelle) + traçabilité de la
+            nomenclature : ces trois routes existaient sans aucun bouton. */}
+        <div className="mt-3 flex flex-wrap items-end gap-2 rounded-lg border border-border p-2">
+          <div className="w-36">
+            <label className="mb-1 block text-[11.5px] font-medium" htmlFor="kit-facteur">
+              Facteur d&apos;échelle
+            </label>
+            <Input id="kit-facteur" type="number" step="any" inputMode="decimal"
+                   placeholder="ex. 1.67" value={facteur}
+                   onChange={(e) => setFacteur(e.target.value)} />
+          </div>
+          <Button type="button" variant="outline" loading={busy} onClick={dupliquer}>
+            Dupliquer le kit
+          </Button>
+          <Button type="button" variant="outline" loading={busy} onClick={voirRevisions}>
+            Historique des révisions
+          </Button>
+          <div className="w-40">
+            <label className="mb-1 block text-[11.5px] font-medium" htmlFor="kit-date-compo">
+              Composition au
+            </label>
+            <Input id="kit-date-compo" type="date" value={dateComposition}
+                   onChange={(e) => setDateComposition(e.target.value)} />
+          </div>
+          <Button type="button" variant="outline" loading={busy} onClick={voirCompositionAu}>
+            Voir la composition
+          </Button>
+        </div>
+
         {error && (
           <div role="alert" className="mt-2 rounded-lg border border-destructive/30 bg-destructive/10 p-2 text-sm text-destructive">{error}</div>
+        )}
+        {info && (
+          <div className="mt-2 rounded-lg border border-success/30 bg-success/10 p-2 text-sm text-success">{info}</div>
+        )}
+        {revisions && (
+          revisions.length === 0
+            ? <p className="mt-2 text-sm text-muted-foreground">Aucune révision enregistrée.</p>
+            : (
+              <ul className="mt-2 flex flex-col gap-1 text-sm">
+                {revisions.map((rev) => (
+                  <li key={rev.id ?? rev.numero} className="flex justify-between gap-3 border-b border-border py-1">
+                    <span>Révision n° {rev.numero}</span>
+                    <span className="text-muted-foreground">
+                      {rev.user_username ?? rev.user ?? '—'} · {rev.date_creation ?? rev.date ?? '—'}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )
+        )}
+        {compositionAu && (
+          <div className="mt-2 rounded-lg border border-border bg-muted/40 p-2 text-sm">
+            Composition en vigueur : révision n° {compositionAu.numero ?? '—'}
+            {' '}({(compositionAu.snapshot?.composants ?? compositionAu.composants ?? []).length} composant(s)).
+          </div>
         )}
 
         {dispo && (

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { useSelector } from 'react-redux'
-import { useHasPermission, useIsAdminOrResponsable } from '../../hooks/useHasPermission'
+import { useHasPermission, useIsAdmin, useIsAdminOrResponsable } from '../../hooks/useHasPermission'
 import {
   BarChart3, FileWarning, PackageCheck, Receipt, Wallet,
   Undo2, ShieldCheck, Tags, CreditCard, FileMinus2, Users, Plus,
@@ -192,9 +192,20 @@ function OngletFactures({ fournisseurId }) {
 }
 
 // ── Onglet Retours / avoirs ───────────────────────────────────────────────
-function OngletRetours({ fournisseurId }) {
+function OngletRetours({ fournisseurId, canWrite }) {
   const [items, setItems] = useState(null)
   const [error, setError] = useState(null)
+  // XPUR9 / WIR222 — génération de l'avoir depuis un retour VALIDÉ (le second
+  // clic est refusé côté serveur : garde anti-double-avoir).
+  const [avoirMsg, setAvoirMsg] = useState(null)
+  const [avoirErr, setAvoirErr] = useState(null)
+  const [busyId, setBusyId] = useState(null)
+
+  const charger = () => {
+    stockApi.getRetoursFournisseurDe(fournisseurId)
+      .then((r) => setItems(r.data?.results ?? r.data ?? []))
+      .catch((e) => setError(frErr(e, 'Retours indisponibles.')))
+  }
 
   useEffect(() => {
     let active = true
@@ -204,19 +215,50 @@ function OngletRetours({ fournisseurId }) {
     return () => { active = false }
   }, [fournisseurId])
 
+  const genererAvoir = async (retour) => {
+    setBusyId(retour.id); setAvoirErr(null); setAvoirMsg(null)
+    try {
+      const r = await stockApi.genererAvoirRetourFournisseur(retour.id)
+      setAvoirMsg(`Avoir ${r.data?.reference ?? ''} généré (brouillon).`)
+      charger()
+    } catch (e) {
+      setAvoirErr(frErr(e, "La génération de l'avoir a échoué."))
+    } finally { setBusyId(null) }
+  }
+
   if (error) return <Indisponible message={error} />
   if (items === null) return <div className="flex items-center gap-2 py-4 text-sm text-muted-foreground"><Spinner /> Chargement…</div>
   if (items.length === 0) return <Indisponible message="Aucun retour." />
 
   return (
-    <ul className="flex flex-col gap-2">
-      {items.map((r) => (
-        <li key={r.id} className="flex items-center justify-between rounded-md border border-border p-2 text-sm">
-          <span>{r.reference ?? `Retour #${r.id}`}</span>
-          <span className="text-muted-foreground">{r.statut ?? '—'}</span>
-        </li>
-      ))}
-    </ul>
+    <div className="flex flex-col gap-2">
+      {avoirErr && (
+        <div role="alert" className="rounded-lg border border-destructive/30 bg-destructive/10 p-2 text-sm text-destructive">
+          {avoirErr}
+        </div>
+      )}
+      {avoirMsg && (
+        <div className="rounded-lg border border-success/30 bg-success/10 p-2 text-sm text-success">
+          {avoirMsg}
+        </div>
+      )}
+      <ul className="flex flex-col gap-2">
+        {items.map((r) => (
+          <li key={r.id} className="flex items-center justify-between gap-2 rounded-md border border-border p-2 text-sm">
+            <span>{r.reference ?? `Retour #${r.id}`}</span>
+            <span className="flex items-center gap-2">
+              <span className="text-muted-foreground">{r.statut ?? '—'}</span>
+              {canWrite && r.statut === 'valide' && (
+                <Button size="sm" variant="outline" loading={busyId === r.id}
+                        onClick={() => genererAvoir(r)}>
+                  Générer l&apos;avoir
+                </Button>
+              )}
+            </span>
+          </li>
+        ))}
+      </ul>
+    </div>
   )
 }
 
@@ -779,6 +821,115 @@ function OngletDocuments({ fournisseurId }) {
 // est une fonction PAR PRODUIT) : tant que l'agrégat 360 n'existe pas, cet
 // onglet affiche ce que l'agrégat renvoie déjà (accords_prix — liste), sinon
 // un état indisponible propre.
+/* XPUR14 / WIR268 — bloc « Tarif » : export xlsx du tarif du fournisseur et
+   import du même format. L'import écrit sur la SEULE donnée non
+   reconstructible du parc (prix d'achat saisis à la main), d'où deux gardes
+   NON NÉGOCIABLES reprises telles quelles du serveur :
+     • l'APERÇU est obligatoire — un premier passage `apercu=true` n'écrit RIEN
+       et liste ce que le fichier remplacerait ;
+     • « écraser » est DÉCOCHÉ par défaut : un prix déjà saisi repart dans
+       `refuses` au lieu d'être remplacé en silence.
+   Export nommé : testé directement. */
+export function BlocTarifFournisseur({ fournisseurId }) {
+  const [fichier, setFichier] = useState(null)
+  const [ecraser, setEcraser] = useState(false)
+  const [apercu, setApercu] = useState(null)
+  const [resultat, setResultat] = useState(null)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState(null)
+
+  const exporter = async () => {
+    setBusy(true); setError(null)
+    try {
+      const r = await stockApi.exportTarifFournisseurXlsx(fournisseurId)
+      const url = URL.createObjectURL(r.data)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `tarif-fournisseur-${fournisseurId}.xlsx`
+      a.click()
+      URL.revokeObjectURL(url)
+    } catch (e) {
+      setError(frErr(e, "L'export du tarif a échoué."))
+    } finally { setBusy(false) }
+  }
+
+  const lancerApercu = async () => {
+    if (!fichier) { setError('Choisissez un fichier xlsx.'); return }
+    setBusy(true); setError(null); setResultat(null)
+    try {
+      const r = await stockApi.importTarifFournisseurXlsx(fournisseurId, fichier,
+        { apercu: true, ecraser })
+      setApercu(r.data ?? null)
+    } catch (e) {
+      setError(frErr(e, "L'aperçu de l'import a échoué."))
+    } finally { setBusy(false) }
+  }
+
+  const appliquer = async () => {
+    setBusy(true); setError(null)
+    try {
+      const r = await stockApi.importTarifFournisseurXlsx(fournisseurId, fichier,
+        { apercu: false, ecraser })
+      setResultat(r.data ?? null)
+      setApercu(null)
+    } catch (e) {
+      setError(frErr(e, "L'import du tarif a échoué."))
+    } finally { setBusy(false) }
+  }
+
+  return (
+    <div className="mb-3 flex flex-col gap-2 rounded-lg border border-border p-3 text-sm">
+      <span className="font-semibold">Tarif (xlsx)</span>
+      <div className="flex flex-wrap items-center gap-2">
+        <Button type="button" size="sm" variant="outline" loading={busy} onClick={exporter}>
+          Exporter le tarif
+        </Button>
+        <input type="file" aria-label="Fichier de tarif (xlsx)"
+               accept=".xlsx"
+               onChange={(e) => { setFichier(e.target.files?.[0] ?? null); setApercu(null) }} />
+        <label className="inline-flex items-center gap-1.5 text-xs">
+          <input type="checkbox" checked={ecraser}
+                 onChange={(e) => setEcraser(e.target.checked)} />
+          Écraser les prix déjà saisis
+        </label>
+        <Button type="button" size="sm" loading={busy} onClick={lancerApercu}>
+          Aperçu de l&apos;import
+        </Button>
+      </div>
+      <p className="text-xs text-muted-foreground">
+        L&apos;aperçu n&apos;écrit rien. Sans « écraser », un prix déjà saisi est
+        refusé plutôt que remplacé.
+      </p>
+
+      {error && (
+        <div role="alert" className="rounded-lg border border-destructive/30 bg-destructive/10 p-2 text-destructive">
+          {error}
+        </div>
+      )}
+      {apercu && (
+        <div className="flex flex-col gap-2 rounded-lg border border-warning/40 bg-warning/10 p-2">
+          <span>
+            Aperçu : {apercu.created ?? 0} création(s), {apercu.updated ?? 0} mise(s)
+            à jour, {(apercu.refuses ?? []).length} refus, {apercu.ecrasements_total ?? 0}
+            {' '}écrasement(s) potentiel(s). Rien n&apos;a été écrit.
+          </span>
+          <div>
+            <Button type="button" size="sm" loading={busy} onClick={appliquer}>
+              Appliquer l&apos;import
+            </Button>
+          </div>
+        </div>
+      )}
+      {resultat && (
+        <div className="rounded-lg border border-success/30 bg-success/10 p-2 text-success">
+          Import appliqué : {resultat.created ?? 0} création(s), {resultat.updated ?? 0}
+          {' '}mise(s) à jour, {(resultat.refuses ?? []).length} refus.
+        </div>
+      )}
+    </div>
+  )
+}
+
 function OngletAccordsPrix({ fournisseurId }) {
   const [data, setData] = useState(null)
   const [unavailable, setUnavailable] = useState(false)
@@ -791,26 +942,34 @@ function OngletAccordsPrix({ fournisseurId }) {
     return () => { active = false }
   }, [fournisseurId])
 
-  if (unavailable) {
-    return (
-      <Indisponible message="Accords de prix indisponibles (agrégat non encore construit côté serveur)." />
-    )
-  }
   const accords = data?.accords_prix ?? []
-  if (!data) return <div className="flex items-center gap-2 py-4 text-sm text-muted-foreground"><Spinner /> Chargement…</div>
-  if (accords.length === 0) return <Indisponible message="Aucun accord de prix actif." />
 
   return (
-    <ul className="flex flex-col gap-2">
-      {accords.map((a, i) => (
-        <li key={a.contrat_id ?? i} className="flex items-center justify-between rounded-md border border-border p-2 text-sm">
-          <span>Produit #{a.produit_id}</span>
-          <span className="text-muted-foreground tabular-nums">
-            {a.prix_convenu != null ? fmtMad(a.prix_convenu) : '—'}
-          </span>
-        </li>
-      ))}
-    </ul>
+    <div className="flex flex-col">
+      {/* XPUR14 / WIR268 — import/export du tarif fournisseur. */}
+      <BlocTarifFournisseur fournisseurId={fournisseurId} />
+      {unavailable && (
+        <Indisponible message="Accords de prix indisponibles (agrégat non encore construit côté serveur)." />
+      )}
+      {!unavailable && !data && (
+        <div className="flex items-center gap-2 py-4 text-sm text-muted-foreground"><Spinner /> Chargement…</div>
+      )}
+      {!unavailable && data && accords.length === 0 && (
+        <Indisponible message="Aucun accord de prix actif." />
+      )}
+      {!unavailable && data && accords.length > 0 && (
+        <ul className="flex flex-col gap-2">
+          {accords.map((a, i) => (
+            <li key={a.contrat_id ?? i} className="flex items-center justify-between rounded-md border border-border p-2 text-sm">
+              <span>Produit #{a.produit_id}</span>
+              <span className="text-muted-foreground tabular-nums">
+                {a.prix_convenu != null ? fmtMad(a.prix_convenu) : '—'}
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
   )
 }
 
@@ -868,6 +1027,34 @@ export default function FournisseurFiche360({
       .finally(() => { if (active) setResumeLoading(false) })
     return () => { active = false }
   }, [fournisseurId, canView])
+
+  // NTPRT25 / WIR219 — candidature d'auto-inscription portail : tant qu'elle
+  // n'est pas tranchée, ce fournisseur reste hors sourcing. La décision est
+  // ADMIN-only (garde serveur `IsAdminRole`) ; un 403 est affiché en clair.
+  const isAdmin = useIsAdmin()
+  const [fiche, setFiche] = useState(null)
+  const [decisionErreur, setDecisionErreur] = useState(null)
+  const [decisionBusy, setDecisionBusy] = useState(false)
+  useEffect(() => {
+    if (!fournisseurId || !canView) return undefined
+    let active = true
+    stockApi.getFournisseur(fournisseurId)
+      .then((r) => { if (active) setFiche(r.data ?? null) })
+      .catch(() => { if (active) setFiche(null) })
+    return () => { active = false }
+  }, [fournisseurId, canView])
+
+  const deciderCandidature = async (valider) => {
+    setDecisionBusy(true); setDecisionErreur(null)
+    try {
+      const r = await stockApi.deciderCandidatureFournisseur(fournisseurId, valider)
+      setFiche((f) => ({ ...(f ?? {}), ...(r.data ?? {}) }))
+    } catch (err) {
+      setDecisionErreur(err?.response?.status === 403
+        ? "Réservé à l'administrateur : seule la direction peut faire entrer un tiers dans le référentiel."
+        : (err?.response?.data?.detail ?? 'Décision impossible.'))
+    } finally { setDecisionBusy(false) }
+  }
 
   // NTP2P8 — score de risque (0-100) affiché en badge sous le titre. En cas
   // d'échec on laisse `null` : le badge disparaît plutôt que d'afficher un
@@ -954,6 +1141,34 @@ export default function FournisseurFiche360({
           />
         )}
       </PageHeader>
+
+      {/* NTPRT25 / WIR219 — candidature portail en attente de décision. */}
+      {fiche?.statut_validation === 'en_attente_validation' && (
+        <div role="alert" className="flex flex-col gap-2 rounded-lg border border-warning/40 bg-warning/10 p-3 text-sm">
+          <span className="font-semibold">
+            Candidature en attente de validation — ce fournisseur reste hors du sourcing.
+          </span>
+          {isAdmin ? (
+            <div className="flex flex-wrap gap-2">
+              <Button size="sm" loading={decisionBusy}
+                      onClick={() => deciderCandidature(true)}>
+                Valider la candidature
+              </Button>
+              <Button size="sm" variant="ghost" className="text-destructive hover:text-destructive"
+                      loading={decisionBusy} onClick={() => deciderCandidature(false)}>
+                Rejeter
+              </Button>
+            </div>
+          ) : (
+            <span className="text-xs text-muted-foreground">
+              Seul un administrateur peut trancher cette candidature.
+            </span>
+          )}
+          {decisionErreur && (
+            <span className="text-xs text-destructive">{decisionErreur}</span>
+          )}
+        </div>
+      )}
 
       <Card>
         <CardHeader>

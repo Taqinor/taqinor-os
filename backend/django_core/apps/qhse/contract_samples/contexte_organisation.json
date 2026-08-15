@@ -1,0 +1,16 @@
+{
+  "endpoint": "GET /api/django/qhse/contexte-organisation/",
+  "pourquoi": "Contexte / enjeux de l'organisation (ISO 4.1) — SINGLETON par société. Le GET CRÉE l'enregistrement vide au premier appel : l'écran reçoit donc toujours cet objet, jamais un 404. `company` n'apparaît pas dans le contrat : elle vient de l'utilisateur, jamais du corps. Source de vérité : apps/qhse/views.py::contexte_organisation.",
+  "exemple": {
+    "id": 1,
+    "swot": "Forces : équipe technique certifiée. Faiblesses : dépendance à deux fournisseurs. Opportunités : programme national d'autoconsommation. Menaces : volatilité du prix des modules.",
+    "perimetre_smq": "Conception, installation et maintenance de centrales photovoltaïques raccordées et de pompage solaire.",
+    "date_modification": "2026-07-30T14:05:00Z"
+  },
+  "exemple_vierge": {
+    "id": 1,
+    "swot": "",
+    "perimetre_smq": "",
+    "date_modification": "2026-08-15T09:00:00Z"
+  }
+}

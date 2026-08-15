@@ -22,6 +22,13 @@ const stockApi = {
   simulerBudgetDisponible: (montant, config) =>
     api.get('/stock/budgets-departement/disponible/',
       { params: { montant }, ...config }),
+  // XSTK10 / WIR221 — mise au rebut (casse/obsolète/périmé/vol/défaut/erreur/
+  // autre). Le MOTIF est obligatoire côté serveur ; l'action crée le mouvement
+  // de sortie, décrémente le stock et renvoie la VALEUR perdue au coût moyen.
+  rebuterProduit: (id, data) => api.post(`/stock/produits/${id}/rebuter/`, data),
+  // Rapport « pertes de la période » agrégé par produit puis par motif (admin).
+  rapportPertes: (params) =>
+    api.get('/stock/produits/rapport-pertes/', { params }),
   unarchiveProduit: (id) => api.patch(`/stock/produits/${id}/unarchive/`),
   forceDeleteProduit: (id) => api.delete(`/stock/produits/${id}/force-delete/`),
   // QP2 — clone serveur (nouveau nom, SKU frais, prix d'achat copié côté
@@ -51,9 +58,29 @@ const stockApi = {
 
   // Fournisseurs
   getFournisseurs: (params) => api.get('/stock/fournisseurs/', { params }),
+  // WIR219 — la fiche 360 appelait déjà `stockApi.getFournisseur(id)` (onglet
+  // Onboarding) alors que le wrapper n'existait PAS : l'appel levait un
+  // TypeError synchrone que le `.catch` de la promesse ne rattrapait pas.
+  getFournisseur: (id) => api.get(`/stock/fournisseurs/${id}/`),
   createFournisseur: (data) => api.post('/stock/fournisseurs/', data),
   updateFournisseur: (id, data) => api.put(`/stock/fournisseurs/${id}/`, data),
   deleteFournisseur: (id) => api.delete(`/stock/fournisseurs/${id}/`),
+  // WIR190 — archivage fournisseur : `destroy` REPLIE sur un archivage quand
+  // une FK PROTECT (prix d'achat négociés…) retient la fiche — il renvoie
+  // alors 200 `{archived:true, detail, bloquants}` au lieu de 204. Ces trois
+  // wrappers reprennent EXACTEMENT le patron produit (`show_archived`,
+  // `unarchive`, `force-delete` qui refuse en 409 en nommant les bloquants) :
+  // sans eux un fournisseur archivé était invisible ET irrécupérable.
+  getFournisseursArchived: (params) =>
+    api.get('/stock/fournisseurs/', { params: { ...params, show_archived: 'true' } }),
+  unarchiveFournisseur: (id) => api.patch(`/stock/fournisseurs/${id}/unarchive/`),
+  // NTPRT25 / WIR219 — candidature d'auto-inscription au portail fournisseur :
+  // `valider` est OBLIGATOIRE et sans défaut côté serveur (un corps vide ne
+  // doit jamais faire entrer un tiers dans le référentiel par accident).
+  // RÉSERVÉ ADMIN (403 sinon). N'a AUCUN effet sur `statut` (blocage XPUR4).
+  deciderCandidatureFournisseur: (id, valider) =>
+    api.post(`/stock/fournisseurs/${id}/decider-candidature/`, { valider }),
+  forceDeleteFournisseur: (id) => api.delete(`/stock/fournisseurs/${id}/force-delete/`),
 
   // Mouvements
   getMouvements: (params) => api.get('/stock/mouvements/', { params }),
@@ -85,6 +112,23 @@ const stockApi = {
   updatePrixFournisseur: (id, data) =>
     api.patch(`/stock/prix-fournisseurs/${id}/`, data),
   deletePrixFournisseur: (id) => api.delete(`/stock/prix-fournisseurs/${id}/`),
+  // XPUR14 / WIR268 — tarif fournisseur en xlsx. L'import écrit sur la SEULE
+  // donnée non reconstructible du parc (prix d'achat saisis à la main) : d'où
+  // l'APERÇU obligatoire (`apercu=true` n'écrit RIEN) et `ecraser` décoché par
+  // défaut (un prix déjà saisi repart dans `refuses`, jamais avalé).
+  exportTarifFournisseurXlsx: (fournisseurId) =>
+    api.get('/stock/prix-fournisseurs/export-xlsx/',
+      { params: { fournisseur: fournisseurId }, responseType: 'blob' }),
+  importTarifFournisseurXlsx: (fournisseurId, file, { apercu = true, ecraser = false } = {}) => {
+    const fd = new FormData()
+    fd.append('fournisseur', fournisseurId)
+    fd.append('file', file)
+    fd.append('apercu', apercu ? 'true' : 'false')
+    fd.append('ecraser', ecraser ? 'true' : 'false')
+    return api.post('/stock/prix-fournisseurs/import-xlsx/', fd, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    })
+  },
 
   // Marques gérées (Paramètres → Stock). Une marque utilisée n'est pas supprimable.
   getMarques: () => api.get('/stock/marques/'),
@@ -121,6 +165,13 @@ const stockApi = {
       { motif_annulation: motifAnnulation }),
   rouvrirBcf: (id) =>
     api.post(`/stock/bons-commande-fournisseur/${id}/rouvrir/`),
+  // XPUR18 / WIR191 — SEUL chemin de modification d'un BCF déjà ENVOYE/RECU
+  // (l'update direct est refusé en 400 à ces statuts) : journalise chaque
+  // changement, incrémente `revision` et renvoie `reapprobation_requise`.
+  // Corps : {lignes:[{id, quantite, prix_achat_unitaire, designation}],
+  // date_commande, date_livraison_prevue, note}.
+  reviserBcf: (id, data) =>
+    api.post(`/stock/bons-commande-fournisseur/${id}/reviser/`, data ?? {}),
   // ZPUR4 — clone en nouveau BROUILLON (quantités reçues à zéro).
   dupliquerBcf: (id) =>
     api.post(`/stock/bons-commande-fournisseur/${id}/dupliquer/`),
@@ -132,6 +183,32 @@ const stockApi = {
     api.post(`/stock/bons-commande-fournisseur/${id}/facturer/`),
   bcfPdf: (id) =>
     api.get(`/stock/bons-commande-fournisseur/${id}/pdf/`, { responseType: 'blob' }),
+
+  // ── XPUR7/XPUR11/XPUR13 / WIR220 — accusé fournisseur + 4 rapports achats ──
+  // `confirmer` = ACCUSÉ DE COMMANDE du fournisseur (date confirmée + n°). La
+  // date DEMANDÉE (`date_livraison_prevue`) n'est JAMAIS écrasée : c'est ce
+  // couple promis-vs-confirmé qui fait vivre le score OTD.
+  confirmerBcf: (id, data) =>
+    api.post(`/stock/bons-commande-fournisseur/${id}/confirmer/`, data ?? {}),
+  // BCF envoyés en retard (prévue/confirmée dépassée, réception incomplète).
+  bcfEnRetard: () => api.get('/stock/bons-commande-fournisseur/en-retard/'),
+  // BCF ouverts similaires du même fournisseur (aide anti-doublon, jamais
+  // bloquant). `produits` = ids séparés par des virgules.
+  bcfSimilaires: (fournisseurId, produitIds) =>
+    api.get('/stock/bons-commande-fournisseur/bcf-similaires/', {
+      params: {
+        fournisseur: fournisseurId,
+        ...(produitIds?.length ? { produits: produitIds.join(',') } : {}),
+      },
+    }),
+  // Historique des prix d'achat d'un produit (toutes sources). INTERNE.
+  historiquePrixBcf: (produitId, fournisseurId) =>
+    api.get('/stock/bons-commande-fournisseur/historique-prix/', {
+      params: { produit: produitId, ...(fournisseurId ? { fournisseur: fournisseurId } : {}) },
+    }),
+  // Rapport « achats hors contrat » (prix saisi > prix convenu en vigueur).
+  achatsHorsContrat: (params) =>
+    api.get('/stock/bons-commande-fournisseur/achats-hors-contrat/', { params }),
 
   // ZPUR3 — modèles de BCF réutilisables (« purchase templates »).
   getModelesBcf: (params) => api.get('/stock/modeles-bcf/', { params }),
@@ -153,6 +230,21 @@ const stockApi = {
     }),
   resolveCode: (code) =>
     api.get('/stock/produits/resolve/', { params: { code } }),
+  // XSTK20 / WIR268 — cartes kanban deux-bacs POUR UN EMPLACEMENT (jeton
+  // KANBAN:<produit>:<emplacement>, jamais de prix d'achat).
+  etiquettesKanbanEmplacement: (emplacementId, ids, { symbology = 'qr' } = {}) =>
+    api.get(`/stock/emplacements/${emplacementId}/etiquettes-kanban/`, {
+      params: { ids: (ids ?? []).join(','), symbology },
+      responseType: 'blob',
+    }),
+  // XPOS17 / WIR268 — étiquettes showroom : le QR pointe la fiche PUBLIQUE de
+  // l'e-catalogue tokenisé. Le jeton est OBLIGATOIRE (400/404 sinon) et seuls
+  // les produits exposés par ce catalogue sont imprimés.
+  etiquettesShowroom: (ids, catalogueToken) =>
+    api.get('/stock/produits/etiquettes-showroom/', {
+      params: { ids: (ids ?? []).join(','), catalogue_token: catalogueToken, sortie: 'pdf' },
+      responseType: 'blob',
+    }),
 
   // N19 — retours fournisseur (articles défectueux/erronés). La validation
   // décrémente le stock. Usage INTERNE (prix d'achat jamais client-facing).
@@ -166,6 +258,11 @@ const stockApi = {
     api.post(`/stock/retours-fournisseur/${id}/valider/`),
   annulerRetourFournisseur: (id) =>
     api.post(`/stock/retours-fournisseur/${id}/annuler/`),
+  // XPUR9 / WIR222 — génère l'AvoirFournisseur BROUILLON pré-rempli depuis un
+  // retour VALIDÉ. Le serveur REFUSE (400) un retour non validé ou qui porte
+  // déjà un avoir : c'est la garde anti-double-avoir, jamais dupliquée ici.
+  genererAvoirRetourFournisseur: (id) =>
+    api.post(`/stock/retours-fournisseur/${id}/generer-avoir/`),
 
   // G5 — Réceptions fournisseur (goods-in). La confirmation incrémente le
   // stock (ENTREE) + avance le statut du BCF. Usage INTERNE.
@@ -200,6 +297,20 @@ const stockApi = {
     api.get('/stock/factures-fournisseur/comptes-a-payer/', { params }),
   ajouterPaiementFournisseur: (factureId, data) =>
     api.post(`/stock/factures-fournisseur/${factureId}/paiements/`, data),
+  // XPUR10 / WIR192 — rapprochement 3 voies : une facture hors tolérance passe
+  // en `statut_controle='exception'` et le paiement est REFUSÉ tant qu'elle
+  // n'est pas résolue. Sans ces wrappers, la file d'exceptions et l'action de
+  // levée n'avaient aucune UI (blocage sans issue visible).
+  facturesFournisseurEnException: () =>
+    api.get('/stock/factures-fournisseur/en-exception/'),
+  resoudreExceptionFactureFournisseur: (id, commentaire) =>
+    api.post(`/stock/factures-fournisseur/${id}/resoudre-exception/`,
+      { commentaire: commentaire ?? '' }),
+  // XPUR6 — échéancier multi-tranches d'une facture fournisseur.
+  getEcheancierFactureFournisseur: (id) =>
+    api.get(`/stock/factures-fournisseur/${id}/echeancier/`),
+  creerEcheancierFactureFournisseur: (id, tranches) =>
+    api.post(`/stock/factures-fournisseur/${id}/echeancier/`, { tranches }),
   // XACC36 — SINK OCR → brouillon de facture d'achat. `file` optionnel (le
   // scan d'origine, rattaché en pièce jointe côté serveur).
   factureFournisseurDepuisOcr: ({ fields, file }) => {
@@ -356,6 +467,14 @@ const stockApi = {
   // ZMFG9 — disponibilité multi-niveaux du kit (kits assemblables + goulots).
   getKitDisponibilite: (id) =>
     api.get(`/stock/kits/${id}/disponibilite/`),
+  // XMFG18 / WIR268 — historique des révisions de nomenclature (sans prix),
+  // composition EN VIGUEUR à une date, et duplication avec facteur d'échelle.
+  getKitRevisions: (id) => api.get(`/stock/kits/${id}/revisions/`),
+  getKitCompositionAu: (id, date) =>
+    api.get(`/stock/kits/${id}/composition-au/`, { params: { date } }),
+  dupliquerKit: (id, facteurEchelle) =>
+    api.post(`/stock/kits/${id}/dupliquer/`,
+      facteurEchelle ? { facteur_echelle: facteurEchelle } : {}),
 
   // DC35 / FG254 — fiches techniques (datasheets) rattachées aux produits.
   getFichesTechniques: (produitId) =>

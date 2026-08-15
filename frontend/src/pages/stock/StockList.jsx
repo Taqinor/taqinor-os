@@ -16,7 +16,7 @@ import {
   forceDeleteArchivedProduit,
 } from '../../features/stock/store/stockSlice'
 import ProduitForm from './ProduitForm'
-import ProduitDetail from './ProduitDetail'
+import ProduitDetail, { RebutModal, MOTIFS_REBUT } from './ProduitDetail'
 import { CatalogueTable } from './CatalogueTable'
 import PilotageStock from './PilotageStock'
 import BulkProductBar from './BulkProductBar'
@@ -184,6 +184,97 @@ function InventaireModal({ produits, onClose, onDone }) {
 }
 
 // ── N18 — Valorisation du stock par emplacement (coût moyen d'achat, INTERNE) ──
+/* XSTK10 / WIR221 — rapport « Pertes de la période » : quantités et VALEUR au
+   coût moyen, agrégées par produit puis par motif. Admin-only, donnée INTERNE
+   (le coût d'achat ne sort jamais vers un document client). */
+function PertesModal({ onClose }) {
+  const [dateDebut, setDateDebut] = useState('')
+  const [dateFin, setDateFin] = useState('')
+  const [lignes, setLignes] = useState(null)
+  const [error, setError] = useState(null)
+  const [busy, setBusy] = useState(false)
+
+  const motifLabel = (code) => (
+    MOTIFS_REBUT.find((m) => m.value === code)?.label ?? code)
+
+  const lancer = async () => {
+    setBusy(true); setError(null)
+    try {
+      const r = await stockApi.rapportPertes({
+        ...(dateDebut ? { date_debut: dateDebut } : {}),
+        ...(dateFin ? { date_fin: dateFin } : {}),
+      })
+      setLignes(r.data ?? [])
+    } catch (err) {
+      setError(err?.response?.data?.detail ?? 'Rapport indisponible.')
+    } finally { setBusy(false) }
+  }
+
+  return (
+    <Dialog open onOpenChange={(o) => { if (!o) onClose() }}>
+      <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>Pertes de la période</DialogTitle>
+          <DialogDescription>
+            Rebuts agrégés par produit puis par motif, valorisés au coût moyen
+            d&apos;achat. Donnée interne — jamais un document client.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="grid gap-3 sm:grid-cols-2">
+          <div className="flex flex-col gap-1.5">
+            <label className="text-sm font-medium" htmlFor="pertes-debut">Du</label>
+            <Input id="pertes-debut" type="date" className="h-9" value={dateDebut}
+                   onChange={(e) => setDateDebut(e.target.value)} />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <label className="text-sm font-medium" htmlFor="pertes-fin">Au</label>
+            <Input id="pertes-fin" type="date" className="h-9" value={dateFin}
+                   onChange={(e) => setDateFin(e.target.value)} />
+          </div>
+        </div>
+
+        {error && (
+          <div role="alert" className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
+            {error}
+          </div>
+        )}
+        {lignes?.length === 0 && (
+          <p className="text-sm text-muted-foreground">Aucune perte sur la période.</p>
+        )}
+        {lignes?.length > 0 && (
+          <ul className="flex flex-col gap-2">
+            {lignes.map((l) => (
+              <li key={l.produit_id} className="rounded-md border border-border p-2 text-sm">
+                <div className="flex justify-between gap-3 font-medium">
+                  <span>{l.produit_nom}</span>
+                  <span className="tabular-nums">
+                    {l.quantite_totale} u. · {formatMAD(l.valeur_totale)}
+                  </span>
+                </div>
+                <div className="mt-1 flex flex-wrap gap-2 text-xs text-muted-foreground">
+                  {Object.entries(l.par_motif ?? {}).map(([motif, v]) => (
+                    <span key={motif}>
+                      {motifLabel(motif)} : {v.quantite} u. ({formatMAD(v.valeur)})
+                    </span>
+                  ))}
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+
+        <DialogFooter>
+          <Button type="button" variant="ghost" onClick={onClose}>Fermer</Button>
+          <Button type="button" loading={busy} onClick={lancer}>
+            {busy ? '…' : 'Lancer le rapport'}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
 function ValorisationModal({ onClose }) {
   const [data, setData] = useState(null)
   const [error, setError] = useState(null)
@@ -646,6 +737,15 @@ export default function StockList() {
   const [invMsg, setInvMsg] = useState(null)
   const [showTransfert, setShowTransfert] = useState(false)
   const [showValorisation, setShowValorisation] = useState(false)
+  // XSTK10 / WIR221 — mise au rebut + rapport « pertes de la période ».
+  const [showRebut, setShowRebut] = useState(false)
+  const [showPertes, setShowPertes] = useState(false)
+  // XSTK20/XPOS17 / WIR268 — cartes kanban (par emplacement) + étiquettes
+  // showroom (jeton e-catalogue).
+  const [showKanban, setShowKanban] = useState(false)
+  const [kanbanEmplacement, setKanbanEmplacement] = useState('')
+  const [showShowroom, setShowShowroom] = useState(false)
+  const [catalogueToken, setCatalogueToken] = useState('')
   // VX33 — panneau « Pilotage stock » (analytics + auto-BCF) : la tour de
   // contrôle du stock, ouverte PAR DÉFAUT (le bouton reste pour la masquer).
   const [showPilotage, setShowPilotage] = useState(true)
@@ -721,6 +821,48 @@ export default function StockList() {
     } catch { toastError('Génération des étiquettes indisponible.') }
     finally { setLabelsBusy(false) }
   }
+  // XSTK20 / WIR268 — cartes kanban deux-bacs POUR UN EMPLACEMENT donné
+  // (jeton KANBAN:<produit>:<emplacement>). Sans emplacement choisi, on ne
+  // devine RIEN : le serveur exige la paire produit×emplacement.
+  const printKanban = async () => {
+    if (!visibleSelected.size || !kanbanEmplacement) return
+    const pending = openPdfInGesture()
+    setLabelsBusy(true)
+    try {
+      const res = await stockApi.etiquettesKanbanEmplacement(
+        kanbanEmplacement, [...visibleSelected])
+      const blob = new Blob([res.data], { type: 'application/pdf' })
+      if (!pending.deliver(blob, 'cartes-kanban.pdf')) {
+        toastError('Ouverture bloquée par le navigateur.')
+      }
+      setShowKanban(false)
+    } catch { toastError('Génération des cartes kanban indisponible.') }
+    finally { setLabelsBusy(false) }
+  }
+
+  // XPOS17 / WIR268 — étiquettes showroom : le QR pointe la fiche PUBLIQUE de
+  // l'e-catalogue tokenisé. Sans jeton, message FR explicite (jamais un PDF
+  // muet ni un jeton deviné).
+  const printShowroom = async () => {
+    if (!visibleSelected.size) return
+    if (!catalogueToken.trim()) {
+      toastError("Renseignez le jeton de l'e-catalogue (Paramètres → e-catalogue).")
+      return
+    }
+    const pending = openPdfInGesture()
+    setLabelsBusy(true)
+    try {
+      const res = await stockApi.etiquettesShowroom(
+        [...visibleSelected], catalogueToken.trim())
+      const blob = new Blob([res.data], { type: 'application/pdf' })
+      if (!pending.deliver(blob, 'etiquettes-showroom.pdf')) {
+        toastError('Ouverture bloquée par le navigateur.')
+      }
+      setShowShowroom(false)
+    } catch { toastError("E-catalogue introuvable pour ce jeton.") }
+    finally { setLabelsBusy(false) }
+  }
+
   // N20 — Résout un code scanné/saisi (PRODUIT:<id> / SYSTEME:<id>) et navigue
   // vers la fiche correspondante (lecture seule côté serveur).
   const runScan = async (rawCode) => {
@@ -1038,6 +1180,34 @@ export default function StockList() {
                 <Truck /> Transférer
               </Button>
             )}
+            {/* XSTK10 / WIR221 — casse/vol/péremption : le mouvement existait
+                côté serveur sans aucun écran pour le déclencher. */}
+            {canWrite && (
+              <Button variant="outline" size="sm" onClick={() => setShowRebut(true)}
+                      title="Sortir du stock une quantité perdue (casse, vol, péremption…)">
+                Mettre au rebut
+              </Button>
+            )}
+            {canDelete && (
+              <Button variant="outline" size="sm" onClick={() => setShowPertes(true)}
+                      title="Rapport des pertes de la période, agrégé par motif (interne)">
+                Pertes de la période
+              </Button>
+            )}
+            {/* XSTK20/XPOS17 / WIR268 — impressions avancées sur la SÉLECTION
+                courante (les étiquettes N20 restent dans la barre de masse). */}
+            {visibleSelected.size > 0 && (
+              <Button variant="outline" size="sm" onClick={() => setShowKanban(true)}
+                      title="Cartes kanban deux-bacs pour un emplacement">
+                <QrCode /> Cartes kanban
+              </Button>
+            )}
+            {visibleSelected.size > 0 && (
+              <Button variant="outline" size="sm" onClick={() => setShowShowroom(true)}
+                      title="Étiquettes showroom (QR vers la fiche publique de l'e-catalogue)">
+                <QrCode /> Étiquettes showroom
+              </Button>
+            )}
             <Button variant="outline" size="sm" onClick={() => setScanOpen(v => !v)}
                     title="Scanner un code QR / code-barres et ouvrir la fiche">
               <ScanLine /> Scanner
@@ -1176,6 +1346,75 @@ export default function StockList() {
 
       {showValorisation && (
         <ValorisationModal onClose={() => setShowValorisation(false)} />
+      )}
+
+      {/* XSTK10 / WIR221 — mise au rebut + rapport des pertes. */}
+      {showRebut && (
+        <RebutModal produits={produits}
+                    onClose={() => setShowRebut(false)}
+                    onDone={() => dispatch(fetchProduits())} />
+      )}
+      {showPertes && (
+        <PertesModal onClose={() => setShowPertes(false)} />
+      )}
+
+      {/* XSTK20 / WIR268 — cartes kanban : le serveur exige la paire
+          produit × emplacement, on ne devine jamais l'emplacement. */}
+      {showKanban && (
+        <Dialog open onOpenChange={(o) => { if (!o) setShowKanban(false) }}>
+          <DialogContent className="max-w-md">
+            <DialogHeader>
+              <DialogTitle>Cartes kanban</DialogTitle>
+              <DialogDescription>
+                Une carte deux-bacs par produit sélectionné, pour l&apos;emplacement
+                choisi. Aucun prix d&apos;achat n&apos;y figure.
+              </DialogDescription>
+            </DialogHeader>
+            <label className="text-sm font-medium" htmlFor="kanban-emplacement">Emplacement</label>
+            <select id="kanban-emplacement"
+                    className="h-9 rounded-md border border-border bg-background px-2 text-sm"
+                    value={kanbanEmplacement}
+                    onChange={(e) => setKanbanEmplacement(e.target.value)}>
+              <option value="">— Choisir un emplacement —</option>
+              {emplacementsList.map((e) => (
+                <option key={e.id} value={String(e.id)}>{e.nom}</option>
+              ))}
+            </select>
+            <DialogFooter>
+              <Button variant="ghost" onClick={() => setShowKanban(false)}>Annuler</Button>
+              <Button loading={labelsBusy} disabled={!kanbanEmplacement} onClick={printKanban}>
+                Générer les cartes
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
+
+      {/* XPOS17 / WIR268 — étiquettes showroom (jeton e-catalogue requis). */}
+      {showShowroom && (
+        <Dialog open onOpenChange={(o) => { if (!o) setShowShowroom(false) }}>
+          <DialogContent className="max-w-md">
+            <DialogHeader>
+              <DialogTitle>Étiquettes showroom</DialogTitle>
+              <DialogDescription>
+                Le QR renvoie le client vers la fiche PUBLIQUE de l&apos;e-catalogue
+                (prix TTC, garantie). Seuls les produits exposés par ce
+                catalogue sont imprimés.
+              </DialogDescription>
+            </DialogHeader>
+            <label className="text-sm font-medium" htmlFor="showroom-token">
+              Jeton de l&apos;e-catalogue
+            </label>
+            <Input id="showroom-token" value={catalogueToken}
+                   onChange={(e) => setCatalogueToken(e.target.value)} />
+            <DialogFooter>
+              <Button variant="ghost" onClick={() => setShowShowroom(false)}>Annuler</Button>
+              <Button loading={labelsBusy} onClick={printShowroom}>
+                Générer les étiquettes
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       )}
 
       {archiveNotif && (

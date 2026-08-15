@@ -1,0 +1,36 @@
+{
+  "endpoint": "GET /api/django/qhse/reunions/",
+  "pourquoi": "Réunions QHSE : revue de direction (ISO 9.3), comité d'hygiène et de sécurité, réunion HSE. `checklist_9_3_complete` dit si les cinq entrées obligatoires sont couvertes — la clôture d'une revue de direction l'EXIGE côté serveur (`cloturer/` refuse sinon). `decisions` est imbriqué en lecture. Source de vérité : apps/qhse/serializers.py::ReunionQhseSerializer.",
+  "exemple": {
+    "id": 6,
+    "type_reunion": "revue_direction",
+    "type_reunion_display": "Revue de direction",
+    "date_reunion": "2026-06-30",
+    "participants": ["Reda Kasri", "Meryem"],
+    "ordre_du_jour": "Résultats d'audit, KPI qualité, retours clients, CAPA, ressources.",
+    "pv": "Décisions actées en séance, voir la liste ci-dessous.",
+    "attachment_ids": [812],
+    "checklist_revue_direction": {
+      "resultats_audits": true,
+      "kpi": true,
+      "retours_clients": true,
+      "statut_capa": true,
+      "ressources": false
+    },
+    "checklist_9_3_complete": false,
+    "rapport_annuel": "",
+    "statut": "tenue",
+    "statut_display": "Tenue",
+    "decisions": [
+      {
+        "id": 14,
+        "reunion": 6,
+        "texte": "Recruter un second technicien SAV avant septembre.",
+        "responsable": 3,
+        "capa_id": 58,
+        "date_creation": "2026-06-30T16:20:00Z"
+      }
+    ],
+    "date_creation": "2026-06-20T09:00:00Z"
+  }
+}

@@ -1995,6 +1995,32 @@ def diffuser_procedure(procedure, users):
 
 
 @transaction.atomic
+def ajouter_lecteurs_diffusion(diffusion, users):
+    """WIR277 (XQHS15) — élargit la population d'une diffusion EXISTANTE.
+
+    Sert le cas réel « on a oublié quelqu'un » sans re-diffuser la procédure
+    (une seconde diffusion ferait deux traces pour un même envoi). Idempotent
+    par la contrainte unique ``(diffusion, user)`` : un destinataire déjà
+    ciblé n'obtient JAMAIS un second accusé, et son ``lu_le`` déjà posé n'est
+    pas effacé. Renvoie la liste des accusés CRÉÉS par cet appel.
+    """
+    ajoutes = []
+    for user in users:
+        accuse, cree = AccuseLecture.objects.get_or_create(
+            company=diffusion.company, diffusion=diffusion, user=user)
+        if cree:
+            ajoutes.append(accuse)
+    if ajoutes:
+        cible = dict(diffusion.population_cible or {})
+        ids = list(cible.get('user_ids') or [])
+        cible['user_ids'] = sorted(
+            set(ids) | {a.user_id for a in ajoutes})
+        diffusion.population_cible = cible
+        diffusion.save(update_fields=['population_cible'])
+    return ajoutes
+
+
+@transaction.atomic
 def accuser_lecture(diffusion, user):
     """Enregistre l'accusé de lecture d'un utilisateur (XQHS15).
 

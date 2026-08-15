@@ -40,6 +40,13 @@ from .views import (
     SecouristeViewSet, SignalementPublicViewSet,
     VeilleReglementaireViewSet,
     CheckinSecuriteViewSet, DemandeActionFournisseurViewSet,
+    # WIR275 — registres ISO jusqu'ici sans exposition REST.
+    AuditCertificationViewSet, AuditPlanifieViewSet, CampagneRappelViewSet,
+    CertificationViewSet, ClauseNormeViewSet, DecisionReunionViewSet,
+    ElementRappelViewSet, ObjectifQhseViewSet, ProgrammeAuditViewSet,
+    ReunionQhseViewSet, RevueObjectifViewSet,
+    # WIR277 — contexte SMQ ISO 4 + diffusion des procédures.
+    contexte_organisation, DiffusionProcedureViewSet, PartieInteresseeViewSet,
 )
 
 router = DefaultRouter()
@@ -113,8 +120,32 @@ router.register(r'revues-veille', RevueVeilleReglementaireViewSet)
 # d'action corrective fournisseur), jusqu'ici sans exposition REST.
 router.register(r'checkins-securite', CheckinSecuriteViewSet)
 router.register(r'demandes-action-fournisseur', DemandeActionFournisseurViewSet)
+# WIR275 — registres ISO : rappels produit, certifications + audits externes,
+# programme d'audit interne, clauses de norme, réunions/revues de direction,
+# objectifs 6.2 et leurs revues.
+router.register(r'campagnes-rappel', CampagneRappelViewSet)
+router.register(r'elements-rappel', ElementRappelViewSet)
+router.register(r'certifications', CertificationViewSet)
+router.register(r'audits-certification', AuditCertificationViewSet)
+router.register(r'programmes-audit', ProgrammeAuditViewSet)
+router.register(r'audits-planifies', AuditPlanifieViewSet)
+router.register(r'clauses-norme', ClauseNormeViewSet)
+router.register(r'reunions', ReunionQhseViewSet)
+router.register(r'decisions-reunion', DecisionReunionViewSet)
+router.register(r'objectifs', ObjectifQhseViewSet)
+router.register(r'revues-objectif', RevueObjectifViewSet)
+# WIR277 — contexte SMQ ISO 4.2 (parties intéressées) + diffusions de
+# procédure en LECTURE SEULE (une diffusion se crée par
+# `procedures/<id>/diffuser/`, jamais par un POST direct).
+router.register(r'parties-interessees', PartieInteresseeViewSet)
+router.register(r'diffusions-procedure', DiffusionProcedureViewSet)
 
 urlpatterns = [
+    # WIR277 — contexte de l'organisation (ISO 4.1) : SINGLETON par société,
+    # GET (crée l'enregistrement vide au premier appel) / PUT. Déclaré AVANT
+    # le router pour rester un chemin sans identifiant.
+    path('contexte-organisation/', contexte_organisation,
+         name='qhse-contexte-organisation'),
     path('', include(router.urls)),
     # XQHS16 — endpoint PUBLIC tokenisé (sans login), en dehors du router
     # authentifié. Le préfixe `public/` ne doit jamais être capté par une

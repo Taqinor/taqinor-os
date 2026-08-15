@@ -72,7 +72,7 @@ def lead_post_save(sender, instance, created, **kwargs):
             event_type=EventType.LEAD_ASSIGNED,
             title='Nouveau lead assigné',
             body=(instance.nom or '') + (f' — {ville}' if ville else ''),
-            link=f'/leads/{instance.pk}',
+            link=f'/crm/leads?lead={instance.pk}',
             reason='assigne_a_vous',  # VX212(a)
         )
     except Exception:  # noqa: BLE001 — jamais bloquant
@@ -158,7 +158,7 @@ def facture_payee_receiver(sender, instance, company, **kwargs):
             title='Facture intégralement réglée',
             body=(f'La facture {instance.reference} est intégralement '
                   'réglée.'),
-            link=f'/factures/{instance.pk}',
+            link=f'/ventes/factures?facture={instance.pk}',
             company=company,
         )
     except Exception:  # noqa: BLE001 — jamais bloquant
@@ -187,7 +187,7 @@ def bon_commande_cree_receiver(sender, instance, company, **kwargs):
             'Bon de commande créé',
             body=(f'Le bon de commande {instance.reference} a été créé — '
                   'matériel à préparer.'),
-            link=f'/bons-commande/{instance.pk}',
+            link='/ventes/bons-commande',
             company=company,
             reason=reason,
         )
@@ -208,7 +208,7 @@ def ticket_resolu_receiver(sender, ticket, company, user, ancien_statut,
             technicien, company, EventType.SAV_TICKET_RESOLU,
             'Ticket SAV résolu',
             body=f'Le ticket {ticket.reference} est passé à Résolu.',
-            link=f'/sav/tickets/{ticket.pk}',
+            link=f'/sav?id={ticket.pk}',
         )
     except Exception:  # noqa: BLE001 — jamais bloquant
         logger.exception(
@@ -230,7 +230,7 @@ def equipement_remplace_receiver(sender, equipement, ticket, company, user,
                 'Équipement SAV remplacé',
                 body=(f'Équipement {numero} remplacé (ticket '
                       f'{getattr(ticket, "reference", ticket.pk)}).'),
-                link=f'/sav/tickets/{ticket.pk}',
+                link=f'/sav?id={ticket.pk}',
                 company=company,
             )
     except Exception:  # noqa: BLE001 — jamais bloquant
@@ -254,7 +254,7 @@ def projet_status_change_receiver(sender, projet, company, user,
             'Statut de projet modifié',
             body=(f'Le projet {projet.nom} est passé de {ancien_statut} à '
                   f'{nouveau_statut}.'),
-            link=f'/gestion-projet/projets/{projet.pk}',
+            link=f'/projets/{projet.pk}',
             company=company,
         )
     except Exception:  # noqa: BLE001 — jamais bloquant
@@ -284,7 +284,7 @@ def sav_ticket_post_save(sender, instance, created, **kwargs):
             + (f'({client_nom}) ' if client_nom else '')
             + f'a été ouvert (priorité : {instance.get_priorite_display()}).'
         )
-        link = f'/sav/tickets/{instance.pk}'
+        link = f'/sav?id={instance.pk}'
         # `_notify_user_or_managers` retombe déjà sur les managers si
         # `technicien` est None — un seul appel couvre les deux cas.
         _notify_user_or_managers(
@@ -313,7 +313,7 @@ def automation_approval_post_save(sender, instance, created, **kwargs):
     try:
         from .sweeps import _managers
         company = instance.company
-        link = f'/automation/approvals/{instance.pk}'
+        link = '/approbations?source=automation'
         if created:
             title = "Approbation demandée"
             body = instance.description or 'Une action attend votre approbation.'
@@ -360,7 +360,7 @@ def demande_approbation_post_save(sender, instance, created, **kwargs):
     try:
         from .sweeps import _managers
         company = instance.company
-        link = f'/compta/approbations/{instance.pk}'
+        link = '/comptabilite/approbations-config'
         label = instance.devis_reference or instance.devis_id or ''
         if created:
             title = "Approbation demandée"
@@ -421,7 +421,7 @@ def demande_achat_post_save(sender, instance, created, **kwargs):
         from .sweeps import _managers
         old = getattr(instance, _OLD_DA_STATUT_ATTR, None)
         company = instance.company
-        link = f'/installations/demandes-achat/{instance.pk}'
+        link = '/approbations?source=installations'
 
         if instance.statut == DemandeAchat.Statut.SOUMISE and old != instance.statut:
             title = 'Réquisition à approuver'
@@ -490,7 +490,7 @@ def ged_demande_approbation_post_save(sender, instance, created, **kwargs):
         from .sweeps import _managers, _notify_user_or_managers
         company = instance.company
         doc_label = getattr(instance.document, 'nom', None) or instance.document_id
-        link = f'/ged/documents/{instance.document_id}'
+        link = '/approbations?source=ged'
 
         if created:
             title = 'Approbation demandée'

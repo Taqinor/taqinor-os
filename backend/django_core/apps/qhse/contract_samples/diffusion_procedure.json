@@ -1,0 +1,15 @@
+{
+  "endpoint": "GET /api/django/qhse/diffusions-procedure/",
+  "pourquoi": "Diffusions d'une version de procédure qualité (XQHS15), en LECTURE SEULE : une diffusion se crée UNIQUEMENT par POST /qhse/procedures/<id>/diffuser/ (qui matérialise un accusé de lecture par destinataire). `nb_destinataires` / `nb_lus` donnent l'avancement des accusés sans second appel. Source de vérité : apps/qhse/serializers.py::DiffusionProcedureSerializer.",
+  "exemple": {
+    "id": 12,
+    "procedure": 30,
+    "procedure_reference": "PRO-QUAL-004",
+    "procedure_titre": "Réception des modules photovoltaïques",
+    "procedure_version": 3,
+    "population_cible": { "user_ids": [4, 7, 9] },
+    "nb_destinataires": 3,
+    "nb_lus": 1,
+    "date_diffusion": "2026-08-01T10:15:00Z"
+  }
+}

@@ -30,9 +30,30 @@ const fmtDateFR = (iso) => {
   return Number.isNaN(d.getTime()) ? '—' : d.toLocaleDateString('fr-FR')
 }
 
-// ── Modal de consultation d'un retour (lecture seule) ───────────────────────
-function RetourDetail({ retour, onClose }) {
+// ── Modal de consultation d'un retour ───────────────────────────────────────
+// XPUR9 / WIR222 — un retour VALIDÉ peut générer son avoir fournisseur ; le
+// serveur refuse (400) un second appel, ce qui préserve la garde
+// anti-double-avoir. Export nommé : testé directement.
+export function RetourDetail({ retour, onClose, onAvoirGenere }) {
   const lignes = retour?.lignes ?? []
+  const [busy, setBusy] = useState(false)
+  const [erreur, setErreur] = useState(null)
+  const [avoir, setAvoir] = useState(null)
+
+  const genererAvoir = async () => {
+    setBusy(true); setErreur(null)
+    try {
+      const r = await stockApi.genererAvoirRetourFournisseur(retour.id)
+      setAvoir(r.data ?? {})
+      onAvoirGenere?.()
+    } catch (err) {
+      const d = err?.response?.data
+      // 400 serveur affiché TEL QUEL (retour non validé / avoir déjà émis).
+      setErreur((typeof d === 'string' ? d : d?.detail)
+        || "La génération de l'avoir a échoué.")
+    } finally { setBusy(false) }
+  }
+
   return (
     <Dialog open onOpenChange={(o) => { if (!o) onClose() }}>
       <DialogContent className="max-h-[92vh] max-w-2xl overflow-y-auto">
@@ -80,8 +101,27 @@ function RetourDetail({ retour, onClose }) {
           </table>
         </div>
 
+        {erreur && (
+          <div role="alert" className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
+            {erreur}
+          </div>
+        )}
+        {avoir && (
+          <div className="rounded-lg border border-success/30 bg-success/10 p-3 text-sm text-success">
+            Avoir {avoir.reference ?? ''} généré (brouillon) — montant
+            {' '}{avoir.montant_ttc ?? avoir.montant_ht ?? '—'}.
+          </div>
+        )}
+
         <DialogFooter>
           <Button type="button" variant="ghost" onClick={onClose}>Fermer</Button>
+          {/* XPUR9 / WIR222 — l'avoir n'a de sens que sur un retour VALIDÉ ;
+              un second clic est refusé côté serveur (garde anti-doublon). */}
+          {retour.statut === 'valide' && (
+            <Button type="button" loading={busy} onClick={genererAvoir}>
+              {busy ? '…' : "Générer l'avoir"}
+            </Button>
+          )}
         </DialogFooter>
       </DialogContent>
     </Dialog>
@@ -94,12 +134,15 @@ export default function RetoursFournisseur() {
   const [error, setError] = useState(null)
   const [selected, setSelected] = useState(null)
 
-  useEffect(() => {
+  const reload = () => {
     stockApi.getRetoursFournisseur({ ordering: '-date_creation' })
       .then((r) => setItems(r.data?.results ?? r.data ?? []))
       .catch(() => setError('Chargement des retours impossible.'))
       .finally(() => setLoading(false))
-  }, [])
+  }
+
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { reload() }, [])
 
   // Ouvre le détail en rechargeant la version complète (lignes à jour).
   const openRetour = async (r) => {
@@ -159,7 +202,8 @@ export default function RetoursFournisseur() {
       />
 
       {selected && (
-        <RetourDetail retour={selected} onClose={() => setSelected(null)} />
+        <RetourDetail retour={selected} onClose={() => setSelected(null)}
+                      onAvoirGenere={reload} />
       )}
     </div>
   )

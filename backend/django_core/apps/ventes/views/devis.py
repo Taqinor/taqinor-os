@@ -79,6 +79,26 @@ def _company_qs(qs, user):
         return qs
     return qs.none()
 
+
+def _credit_warning_devis(devis):
+    """WIR187 — avertissement crédit du client d'un devis, ou ``None``.
+
+    Cross-app en LECTURE SEULE via ``apps.credit.selectors`` (jamais un import
+    de ``apps.credit.models``, jamais un troisième calcul d'encours — cf. la
+    note de coexistence WIR93). Best-effort : un devis sans client, ou un
+    échec de calcul, renvoie ``None`` — le crédit ne casse jamais une
+    acceptation déjà commise en base.
+    """
+    if devis.client_id is None:
+        return None
+    try:
+        from apps.credit.selectors import credit_warning
+
+        return credit_warning(devis.client, montant_ttc_nouveau=devis.total_ttc)
+    except Exception:  # noqa: BLE001 — best-effort, jamais bloquant
+        return None
+
+
 # NOTE: ce module fait partie du découpage de l'ancien views.py monolithe
 # (un module par ressource). Comportement et symboles inchangés : le
 # package __init__ ré-exporte toutes les vues publiques.
@@ -1641,8 +1661,14 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
                 {'detail': exc.message},
                 status=(status.HTTP_409_CONFLICT if exc.conflict
                         else status.HTTP_400_BAD_REQUEST))
-        return Response(
-            DevisSerializer(devis, context={'request': request}).data)
+        data = DevisSerializer(devis, context={'request': request}).data
+        # WIR187 (reprend NTCRD7/8) — avertissement crédit dans la RÉPONSE.
+        # Lecture PURE via `apps.credit.selectors` (jamais un import de
+        # `credit.models` ni un troisième calcul d'encours) : le blocage dur
+        # reste le moteur FG41/XFAC28 déjà appliqué plus haut. Best-effort :
+        # un échec de ce calcul ne casse JAMAIS une acceptation déjà commise.
+        data['credit_warning'] = _credit_warning_devis(devis)
+        return Response(data)
 
     @staticmethod
     def _resolve_accepted_option(devis, data):

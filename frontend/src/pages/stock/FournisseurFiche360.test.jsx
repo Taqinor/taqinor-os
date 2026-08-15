@@ -18,12 +18,20 @@ import authReducer from '../../features/auth/store/authSlice'
 vi.mock('../../api/stockApi', () => ({
   default: {
     getFournisseur360: vi.fn(),
+    // WIR219 — fiche fournisseur (candidature portail) + décision admin.
+    getFournisseur: vi.fn(),
+    deciderCandidatureFournisseur: vi.fn(),
     // NTP2P8 — badge de score de risque en tête de fiche.
     getScoreRisqueFournisseur: vi.fn(),
     performanceFournisseur: vi.fn(),
     getBonsCommandeFournisseurDe: vi.fn(),
     getFacturesFournisseurDe: vi.fn(),
     getRetoursFournisseurDe: vi.fn(),
+    // WIR222 — avoir généré depuis un retour validé (onglet Retours).
+    genererAvoirRetourFournisseur: vi.fn(),
+    // WIR268 — tarif fournisseur xlsx (export + import avec aperçu).
+    exportTarifFournisseurXlsx: vi.fn(),
+    importTarifFournisseurXlsx: vi.fn(),
     getDocumentsConformiteFournisseur: vi.fn(),
     // WIR108 — acomptes/avoirs/contacts.
     getAcomptesFournisseurDe: vi.fn(),
@@ -40,7 +48,7 @@ vi.mock('../../api/stockApi', () => ({
 }))
 
 import stockApi from '../../api/stockApi'
-import FournisseurFiche360 from './FournisseurFiche360.jsx'
+import FournisseurFiche360, { BlocTarifFournisseur } from './FournisseurFiche360.jsx'
 
 function makeStore({ role = 'admin', permissions = [] } = {}) {
   return configureStore({
@@ -75,6 +83,11 @@ beforeEach(() => {
   // NTP2P8 — défaut neutre : le badge de score ne doit jamais faire échouer
   // un test qui ne le concerne pas (chaque test peut le surcharger).
   stockApi.getScoreRisqueFournisseur.mockResolvedValue({ data: null })
+  // WIR219 — défaut neutre : fournisseur historique (candidature déjà validée),
+  // aucun bandeau — les tests qui la concernent surchargent ce mock.
+  stockApi.getFournisseur.mockResolvedValue({
+    data: { id: 7, nom: 'JA Solar', statut_validation: 'valide' },
+  })
 })
 
 describe('XPUR25 — panneau résumé (agrégat vue-360, BLOCKED côté serveur)', () => {
@@ -312,5 +325,98 @@ describe('XPUR25 — garde de rôle', () => {
       </Provider>,
     )
     expect(screen.getByText('Fournisseur introuvable.')).toBeInTheDocument()
+  })
+})
+
+// ── NTPRT25 / WIR219 — candidature portail en attente ───────────────────────
+describe('WIR219 — candidature d\'auto-inscription au portail', () => {
+  const enAttente = {
+    data: { id: 7, nom: 'Nouveau Candidat SARL', statut_validation: 'en_attente_validation' },
+  }
+
+  it('un admin peut valider la candidature depuis la fiche', async () => {
+    stockApi.getFournisseur360.mockImplementation(rejectNotFound)
+    stockApi.getFournisseur.mockResolvedValue(enAttente)
+    stockApi.deciderCandidatureFournisseur.mockResolvedValue({
+      data: { id: 7, statut_validation: 'valide' },
+    })
+    renderPage()
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Valider la candidature' }))
+    await waitFor(() => expect(stockApi.deciderCandidatureFournisseur)
+      .toHaveBeenCalledWith('7', true))
+    // Validée : le bandeau bloquant disparaît.
+    await waitFor(() => expect(
+      screen.queryByRole('button', { name: 'Valider la candidature' })).toBeNull())
+  })
+
+  it('un responsable non-admin voit le blocage mais AUCUNE action de décision', async () => {
+    stockApi.getFournisseur360.mockImplementation(rejectNotFound)
+    stockApi.getFournisseur.mockResolvedValue(enAttente)
+    renderPage({ authState: { role: 'responsable', permissions: [] } })
+
+    expect(await screen.findByText(/Candidature en attente de validation/)).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Valider la candidature' })).toBeNull()
+  })
+
+  it('affiche le 403 serveur en français si la décision est refusée', async () => {
+    stockApi.getFournisseur360.mockImplementation(rejectNotFound)
+    stockApi.getFournisseur.mockResolvedValue(enAttente)
+    stockApi.deciderCandidatureFournisseur.mockRejectedValue({ response: { status: 403 } })
+    renderPage()
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Valider la candidature' }))
+    expect(await screen.findByText(/Réservé à l'administrateur/)).toBeInTheDocument()
+  })
+})
+
+// ── XPUR14 / WIR268 — bloc « Tarif » (export + import avec aperçu) ──────────
+describe('WIR268 — tarif fournisseur xlsx', () => {
+  function renderBloc() {
+    return render(
+      <Provider store={makeStore()}>
+        <ThemeProvider><BlocTarifFournisseur fournisseurId="7" /></ThemeProvider>
+      </Provider>,
+    )
+  }
+
+  it('l\'aperçu n\'écrit RIEN : apercu=true, ecraser décoché par défaut', async () => {
+    stockApi.importTarifFournisseurXlsx.mockResolvedValue({
+      data: { created: 2, updated: 1, refuses: [{ sku: 'PAN-550' }], ecrasements_total: 1, apercu: true },
+    })
+    renderBloc()
+
+    const fichier = new File(['x'], 'tarif.xlsx', {
+      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    })
+    await userEvent.upload(screen.getByLabelText('Fichier de tarif (xlsx)'), fichier)
+    await userEvent.click(screen.getByRole('button', { name: /Aperçu de l'import/ }))
+
+    await waitFor(() => expect(stockApi.importTarifFournisseurXlsx).toHaveBeenCalledWith(
+      '7', fichier, { apercu: true, ecraser: false }))
+    expect(await screen.findByText(/Rien n'a été écrit/)).toBeInTheDocument()
+  })
+
+  it('« Appliquer » repasse en écriture réelle (apercu=false)', async () => {
+    stockApi.importTarifFournisseurXlsx
+      .mockResolvedValueOnce({ data: { created: 2, updated: 1, refuses: [], apercu: true } })
+      .mockResolvedValueOnce({ data: { created: 2, updated: 1, refuses: [] } })
+    renderBloc()
+
+    const fichier = new File(['x'], 'tarif.xlsx')
+    await userEvent.upload(screen.getByLabelText('Fichier de tarif (xlsx)'), fichier)
+    await userEvent.click(screen.getByRole('button', { name: /Aperçu de l'import/ }))
+    await userEvent.click(await screen.findByRole('button', { name: /Appliquer l'import/ }))
+
+    await waitFor(() => expect(stockApi.importTarifFournisseurXlsx).toHaveBeenLastCalledWith(
+      '7', fichier, { apercu: false, ecraser: false }))
+    expect(await screen.findByText(/Import appliqué/)).toBeInTheDocument()
+  })
+
+  it('sans fichier, l\'aperçu refuse et n\'appelle pas le serveur', async () => {
+    renderBloc()
+    await userEvent.click(screen.getByRole('button', { name: /Aperçu de l'import/ }))
+    expect(await screen.findByText('Choisissez un fichier xlsx.')).toBeInTheDocument()
+    expect(stockApi.importTarifFournisseurXlsx).not.toHaveBeenCalled()
   })
 })
