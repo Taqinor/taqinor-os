@@ -1560,8 +1560,11 @@ export default function DevisList() {
     setShareBusyId(d.id)
     try {
       const res = await ventesApi.shareLinkDevis(d.id)
-      // Le backend renvoie {token, path} (path = /proposition/<token>) — on
+      // Le backend renvoie {token, path} (path = /proposition/<slug-client>/
+      // <token>, PV84 — slug cosmétique, jamais vérifié côté serveur) — on
       // reconstruit l'URL publique complète (site public, cf. VITE_PUBLIC_SITE_URL).
+      // Le repli sans slug (token seul) ne sert que si le backend omettait
+      // exceptionnellement `path` : il reste une route valide côté site.
       const path = res?.data?.path || (res?.data?.token ? `/proposition/${res.data.token}` : null)
       if (path) {
         const base = (import.meta.env.VITE_PUBLIC_SITE_URL || 'https://taqinor.ma').replace(/\/+$/, '')

@@ -17,21 +17,18 @@
 export const prerender = false;
 
 import Layout from '../../layouts/Layout.astro';
-import ZelligeSignature from '../../components/ZelligeSignature.astro';
 import StarRating from '../../components/StarRating.astro';
 import TestimonialCarousel from '../../components/TestimonialCarousel.astro';
 import InstallCounter from '../../components/InstallCounter.astro';
 import CertLogoRow from '../../components/CertLogoRow.astro';
 import VideoCompteur from '../../components/VideoCompteur.astro';
-// WJ57 — « confiance au moment de la signature » : UN témoignage court (texte,
-// slot vidéo réservé pour quand WG6 fournira de vrais témoignages filmés) +
-// le bandeau certifications/garanties, juste au-dessus du bloc e-sign. Même
-// source unique de vérité que <TestimonialCarousel/> (aucun avis fabriqué).
-import { TESTIMONIALS, hasTestimonials } from '../../lib/testimonials';
 // WJ35 — grade « heure dorée » v3 (.v3-grade / .photo-grade), importé ici car
 // cette page ne monte pas <V2Enhance/> (qui l'importe pour les pages v2). La
 // feuille est dédupliquée par Vite si une autre page l'importe déjà ailleurs.
 import '../../styles/v3-photo-motion.css';
+// PV81 — l'enveloppe « Avis clients » (carte + titre) suit la MÊME condition que
+// son contenu : sans avis réel, aucun cadre vide n'est rendu chez le client.
+import { hasTestimonials } from '../../lib/testimonials';
 import {
   type ProposalResponse,
   type OptionKey,
@@ -70,9 +67,6 @@ import {
   resolveValidity,
   savingsHeadline,
   environmentalImpact,
-  financingComparison,
-  installmentSplit,
-  INSTALLMENT_MONTH_OPTIONS,
   whatsappLink,
   whatsappLinkForIntent,
   whatsappShareLink,
@@ -84,7 +78,6 @@ import {
   hasSldSvg,
   sldSvgFilename,
   walkthroughSteps,
-  backendFinancing,
   proposalVariants,
   nextSteps,
   proposalAssumptions,
@@ -111,6 +104,18 @@ import {
   HOURS_PER_DAY,
 } from '../../lib/batterySim';
 import { renderProposalChart, resolveSeries } from '../../lib/proposalChart';
+// PV80 — logique PURE de la refonte : route catch-all (token = dernier segment)
+// et machine à états du graphique fusionné « Votre production ».
+import {
+  type ProductionAvailability,
+  tokenFromSegments,
+  hasProductionBlock,
+  initialProductionState,
+  productionLayers,
+  groupEquipment,
+  equipmentDelta,
+  EQUIPMENT_GROUP_LABELS,
+} from '../../lib/propositionPage';
 import { clientIpFromRequest, rateLimit } from '../../lib/rateLimit';
 // W342 — « installation la plus proche » : haversine sur un point GPS réel
 // (premier sommet du premier pan de toiture, quand roof_layout est exposé) ou,
@@ -118,7 +123,14 @@ import { clientIpFromRequest, rateLimit } from '../../lib/rateLimit';
 import { nearestRealisation, nearestRealisationByCityText } from '../../lib/realisations';
 
 const API_BASE = (import.meta.env.PUBLIC_API_BASE as string | undefined) ?? 'https://api.taqinor.ma';
-const { token } = Astro.params as { token: string };
+// ── PV80 — ROUTE CATCH-ALL : /proposition/<token> ET /proposition/<slug>/<token>.
+// Le lien envoyé au client peut désormais porter son nom (« se lit » dans un
+// message WhatsApp) sans rien changer à la sécurité : le segment décoratif
+// n'est ni validé ni transmis, le TOKEN est TOUJOURS le DERNIER segment
+// (tokenFromSegments, testé sous vitest). Tout ce qui suit — fetch serveur,
+// signature, OTP, télémétrie, contact, révision, PDF — utilise cette SEULE
+// variable, donc hérite de l'extraction sans autre changement.
+const token = tokenFromSegments((Astro.params as { token?: string | string[] }).token);
 
 // ── Lecture serveur de la proposition ────────────────────────────────────────
 // WJ81 — la page la plus commercialement critique du site ne doit JAMAIS
@@ -426,6 +438,26 @@ const batterySimConfig = showBatterySim
     })
   : '';
 
+// ── PV80 · CHAPITRE 4 — LE GRAPHIQUE FUSIONNÉ « VOTRE PRODUCTION » ───────────
+// La page empilait TROIS dessins du même sujet : barres mensuelles, courbe
+// journalière, et (devis à deux options) un troisième graphe batterie de
+// ~1 600 px. Ils ne se contredisaient pas — ils se concurrençaient. Ils
+// fusionnent ici en UN bloc : un sélecteur année ↔ journée, les onglets de
+// profil déjà existants, et la batterie en CALQUE de la vue journée. La machine
+// à états vit dans lib/propositionPage.ts (PURE, testée) ; la page ne fait
+// qu'appliquer `prodLayers` au premier rendu, le script client rejoue la même
+// fonction au clic — zéro divergence serveur/client possible.
+const productionAvailability: ProductionAvailability = {
+  monthly: showChart,
+  daily: !!dailyCurve.svg,
+  variants: CURVE_VARIANTS,
+  battery: showBatterySim && !!batteryInitial,
+};
+const showProduction = hasProductionBlock(productionAvailability);
+const prodState0 = initialProductionState(productionAvailability);
+const prodLayers = productionLayers(prodState0, productionAvailability);
+const productionConfig = showProduction ? JSON.stringify(productionAvailability) : '';
+
 // ── WJ15 — Fenêtre de validité honnête (date backend réelle, jamais inventée) ─
 const validity = ok ? resolveValidity(data!) : { label: null, fromBackend: false, expired: false };
 
@@ -435,17 +467,16 @@ const headline = ok ? savingsHeadline(data!, reco ?? 'sans_batterie') : null;
 // ── WJ14 — Impact environnemental humain (CO₂ ≈ arbres), depuis la production ─
 const enviro = ok ? environmentalImpact(prodKwh) : null;
 
-// ── WJ10 — Comparatif de financement (cash backend + éco-prêt indicatif) ─────
-const financing = ok ? financingComparison(data!, reco ?? 'sans_batterie') : null;
-
-// ── WJ53 — Toggle « payer comptant / paiement échelonné » interactif ─────────
-// Le TTC de départ vient de l'option retenue (reco, ou sans_batterie par
-// défaut) ; le recalcul en direct (mois → mensualité) se fait CÔTÉ CLIENT via
-// installmentSplit (script de fin de page) — ce bloc ne rend RIEN sans prix
-// réel (même garde-fou zéro-total que le reste de la page).
-const installmentTtc = ok ? optionTtc(data!, reco ?? 'sans_batterie') : 0;
-const showInstallmentToggle = ok && Number.isFinite(installmentTtc) && installmentTtc > 0;
-const defaultInstallment = showInstallmentToggle ? installmentSplit(installmentTtc, 12) : null;
+// ── PV80 — AUCUN CRÉDIT, AUCUNE MENSUALITÉ, AUCUNE BANQUE SUR CETTE PAGE ────
+// Trois blocs « argent emprunté » y vivaient (comparatif éco-prêt WJ10, bloc
+// financement backend WJ32, toggle comptant/échelonné WJ53). Ils ont été
+// RETIRÉS : cette page vend une installation, pas un crédit — et un tableau de
+// mensualités indicatives « à confirmer avec votre banque » au milieu d'une
+// proposition affaiblit le seul chiffre qui compte (le prix TTC clé en main).
+// Les fonctions correspondantes de lib/proposition.ts (financingComparison,
+// backendFinancing, installmentSplit) restent INTACTES — d'autres surfaces
+// peuvent les utiliser ; seul leur USAGE ici disparaît. Rien n'est retiré du
+// payload backend : on choisit ce qu'on REND, pas ce qu'on reçoit.
 
 // ── WJ12 — Contact intégré : deep-link WhatsApp prérempli avec la réf devis ──
 // « Demander un rappel » = appeler le numéro TAQINOR (NAP), jamais le numéro du
@@ -521,10 +552,25 @@ const nearestInstallHref = nearestInstall ? `/realisations/${nearestInstall.slug
 const annotations = show3d && roofLayout ? zoneAnnotations(roofLayout, q?.watt_par_panneau ?? null) : [];
 const walkSteps = show3d && data ? walkthroughSteps(data) : [];
 
-// ── WJ32 — Complétude du contenu : financement backend réel, variantes,
-// « Et après ? », « Nos hypothèses », accompagnement, FAQ objections. Chaque
-// bloc dégrade proprement (masqué) quand sa donnée backend manque.
-const financingBlock = ok ? backendFinancing(data!) : null;
+// ── PV80 · CHAPITRE 3 — « VOTRE INSTALLATION » (équipement STRUCTURÉ) ────────
+// Le reproche « beaucoup de données non structurées » visait exactement ceci :
+// l'équipement était une liste à puces noyée DANS la carte de prix, mélangée
+// aux totaux HT/TVA/TTC. Il devient un tableau propre, à sa place — désignation
+// × quantité, groupé par famille, SANS aucun prix par ligne (le prix vit au
+// chapitre 7, une seule fois). Le tableau montre l'option retenue ; quand le
+// devis en porte deux, `equipmentExtra` dit en UNE ligne ce que la seconde
+// ajoute, au lieu d'un second tableau.
+const equipmentOption: OptionKey = reco ?? 'sans_batterie';
+const equipmentItems = ok ? optionItems(data!, equipmentOption) : [];
+const equipmentGroups = groupEquipment(equipmentItems);
+const equipmentExtra = ok && twoOptions && equipmentOption === 'sans_batterie'
+  ? equipmentDelta(equipmentItems, optionItems(data!, 'avec_batterie'))
+  : [];
+
+// ── WJ32 — Complétude du contenu : variantes, « Et après ? », « Nos
+// hypothèses », accompagnement, FAQ objections. Chaque bloc dégrade proprement
+// (masqué) quand sa donnée backend manque. PV80 — le bloc financement backend
+// (backendFinancing) n'est plus rendu : aucune mention de crédit sur la page.
 const variants = ok ? proposalVariants(data!) : [];
 const steps = nextSteps();
 const assumptions = ok ? proposalAssumptions(data!) : [];
@@ -544,14 +590,11 @@ const faq = objectionFaq();
 const REAL_PROJECT_PHOTOS_AVAILABLE = false;
 const REAL_FOUNDER_QUOTE_AVAILABLE = false;
 
-// ── WJ57 — « confiance au moment de la signature ». Même discipline no-op :
-// tant qu'aucun témoignage FILMÉ réel n'existe (WG6), le slot vidéo ne rend
-// RIEN (pas de player vide, pas de mention "bientôt") ; le repli texte réutilise
-// la MÊME source unique de vérité (`TESTIMONIALS`) que <TestimonialCarousel/> —
-// jamais un avis fabriqué pour ce placement. `signTestimonial` = le premier avis
-// réel disponible (le plus court à lire juste avant de signer).
-const REAL_TESTIMONIAL_VIDEO_AVAILABLE = false;
-const signTestimonial = hasTestimonials() ? TESTIMONIALS[0] : null;
+// PV80 — le second bandeau « confiance » (témoignage + certifications) posé
+// juste au-dessus du formulaire de signature RÉPÉTAIT mot pour mot le chapitre
+// « Pourquoi nous faire confiance » (mêmes faits, même <CertLogoRow/>, même
+// source `TESTIMONIALS`) : 332 px de doublon à l'endroit exact où le client
+// doit décider. Supprimé — la preuve de confiance vit à UN seul endroit.
 
 const pageTitle = ok ? `Proposition ${reference} — ${clientName} | Taqinor` : 'Proposition | Taqinor';
 // WJ76 — fuite de confidentialité de l'aperçu de partage : cette page est un
@@ -595,6 +638,7 @@ const signConfig = ok
   ogTitle={ogTitle}
   ogSlug="proposition"
   ogImageAlt="Taqinor — votre proposition solaire"
+  footerMinimal={true}
 >
   {!ok ? (
     <!-- ── État « lien expiré / introuvable » ─────────────────────────────── -->
@@ -740,32 +784,35 @@ const signConfig = ok
                recalculées) + UN CTA principal. Note personnelle du vendeur
                rendue UNIQUEMENT si le backend la fournit (WJ114 — lecture
                défensive, `sellerNote`) : rien n'est affiché en son absence. -->
-          <div id="prop-fold-figures" class="cine-in cine-in-3 mt-6 grid grid-cols-2 gap-3 sm:mt-7 sm:grid-cols-4 sm:gap-4">
-            {puissance ? (
-              <div class="cine-card rounded-xl p-3 sm:p-4">
-                <p class="tech-label text-lune-faint" data-i18n data-fr="Puissance" data-en="Power" data-ar="القدرة">Puissance</p>
-                <p class="fig mt-1 text-xl text-lune sm:text-2xl" dir="ltr">{formatNumber(puissance, 2)} <span class="text-sm text-lune-soft">kWc</span></p>
-              </div>
-            ) : null}
-            {prodKwh ? (
-              <div class="cine-card rounded-xl p-3 sm:p-4">
-                <p class="tech-label text-lune-faint" data-i18n data-fr="Production / an" data-en="Production / year" data-ar="الإنتاج / سنة">Production / an</p>
-                <p class="fig mt-1 text-xl text-lune sm:text-2xl" dir="ltr">{formatNumber(prodKwh)} <span class="text-sm text-lune-soft">kWh</span></p>
-              </div>
-            ) : null}
+          {/* ── PV81 · DEUX nombres, pas quatre ────────────────────────────────
+              Le bloc en portait quatre (kWc, kWh/an, TTC, économie) : au-dessus
+              du pli, quatre chiffres d'importance égale ne se retiennent pas —
+              le client repart sans aucun. Les deux qui décident restent : CE
+              QUE ÇA COÛTE et CE QUE ÇA RAPPORTE, avec le cadrage mensuel qui
+              rend l'économie tangible. La puissance et la production ne
+              disparaissent pas : elles vivent dans « Votre installation » et
+              « Votre production », à leur place, en pleine taille. Toutes les
+              valeurs restent celles du devis backend — jamais recalculées. */}
+          <div id="prop-fold-figures" class="cine-in cine-in-3 mt-6 grid grid-cols-1 gap-3 sm:mt-7 sm:grid-cols-2 sm:gap-4">
             {heroTtc !== null ? (
-              <div class="cine-card rounded-xl p-3 sm:p-4">
+              <div class="cine-card rounded-xl p-4">
                 <p class="tech-label text-lune-faint" data-i18n data-fr="Total TTC" data-en="Total (incl. tax)" data-ar="المجموع شامل الضريبة">Total TTC</p>
-                <p class="fig lum mt-1 text-xl sm:text-2xl" dir="ltr">{formatMAD(heroTtc)}</p>
+                <p class="fig lum mt-1 text-2xl sm:text-3xl" dir="ltr">{formatMAD(heroTtc)}</p>
+                <p class="mt-0.5 text-xs text-lune-faint" data-i18n data-fr="clé en main" data-en="turnkey" data-ar="تسليم مفتاح في اليد">clé en main</p>
               </div>
             ) : null}
             {(ecoHero || paybackHero) ? (
-              <div class="cine-card rounded-xl p-3 sm:p-4">
+              <div class="cine-card rounded-xl p-4">
                 <p class="tech-label text-lune-faint" data-i18n data-fr="Économie / an" data-en="Savings / year" data-ar="التوفير / سنة">Économie / an</p>
-                <p class="fig mt-1 text-xl text-lune sm:text-2xl" dir="ltr">
+                <p class="fig mt-1 text-2xl text-lune sm:text-3xl" dir="ltr">
                   {ecoHero ? formatMAD(ecoHero) : paybackHero}
                 </p>
-                {ecoHero && paybackHero ? (
+                {/* `headline.monthly` est DÉJÀ calculé par savingsHeadline — le
+                    même chiffre que le chapitre « Vos économies », jamais un
+                    second calcul. Repli sur le payback quand il manque. */}
+                {ecoHero && headline?.monthly ? (
+                  <p class="mt-0.5 text-xs text-lune-faint" dir="ltr">≈ {formatMAD(headline.monthly)}/mois</p>
+                ) : ecoHero && paybackHero ? (
                   <p class="mt-0.5 text-xs text-lune-faint" data-i18n
                     data-fr={`Rentabilisé en ${paybackHero}`} data-en={`Paid back in ${paybackHero}`} data-ar={`يُسترد خلال ${paybackHero}`}>
                     Rentabilisé en {paybackHero}
@@ -1025,241 +1072,112 @@ const signConfig = ok
         </>
       )}
 
-      <!-- ── WJ128 · SCHÉMA ÉLECTRIQUE (SLD) — visible seulement si l'étude
-           électrique du devis existe (backend `sld_svg`). Le PDF téléchargeable
-           embarque déjà ce schéma en annexe quand l'étude existe — cette
-           section est un affichage web SUPPLÉMENTAIRE, pas un nouveau chemin
-           de génération (CLAUDE.md règle #4, flux PDF inchangé). -->
-      {showSld && (
-        <>
-        <div class="seam-soft" aria-hidden="true"></div>
-        <section id="sld" class="mx-auto max-w-4xl px-5 pt-14 sm:px-8 sm:pt-20">
-          <p class="tech-label rule-brass cine-in text-brass-300" data-i18n data-fr="Étude électrique" data-en="Electrical study" data-ar="الدراسة الكهربائية">Étude électrique</p>
-          <h2 class="display cine-in cine-in-1 mt-3 text-2xl text-lune sm:text-3xl" data-i18n data-fr="Schéma électrique" data-en="Electrical diagram" data-ar="المخطط الكهربائي">Schéma électrique</h2>
-          <p class="v2-body cine-in cine-in-2 mt-2 text-sm text-lune-soft" data-i18n
-            data-fr="Le schéma unifilaire de votre installation, tel qu’étudié par nos techniciens."
-            data-en="Your installation’s single-line diagram, as designed by our technicians."
-            data-ar="المخطط الأحادي الخط لتركيبتكم، كما درسه فنيونا.">
-            Le schéma unifilaire de votre installation, tel qu’étudié par nos techniciens.
-          </p>
-          <!-- WJ129 — carte-teaser cliquable (remplace l'ancien SVG écrasé à
-               302×213 px illisible en mobile) : mobile = hauteur maîtrisée +
-               crop haut-gauche + voile + affordance « Agrandir » ; desktop
-               (sm+) = SVG entier, lisible à l'échelle de la carte. Toute la
-               carte ouvre la visionneuse plein écran (#sld-viewer, JS
-               ci-dessous) ; le SVG lui-même est marqué aria-hidden ici (le
-               nom accessible du bouton vient du libellé « Agrandir »), la
-               visionneuse porte le vrai contenu accessible. -->
-          <button
-            type="button"
-            id="sld-teaser"
-            class="sld-teaser cine-card cine-in cine-in-3 mt-5 block w-full cursor-pointer overflow-hidden rounded-2xl p-0 text-start shadow-premium"
-            aria-haspopup="dialog"
-            aria-controls="sld-viewer"
-          >
-            <span class="sld-teaser-frame">
-              <span id="sld-svg-wrap" class="sld-svg-wrap" aria-hidden="true" set:html={sldSvg}></span>
-              <span class="sld-teaser-veil" aria-hidden="true"></span>
-            </span>
-            <span class="sld-teaser-cta btn-pill">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                <circle cx="11" cy="11" r="7"></circle>
-                <path d="m21 21-4.3-4.3M11 8v6M8 11h6"></path>
-              </svg>
-              <span data-i18n data-fr="Agrandir le schéma" data-en="Enlarge the diagram" data-ar="تكبير المخطط">Agrandir le schéma</span>
-            </span>
-          </button>
-          <div class="mt-4 flex flex-wrap items-center justify-center gap-3 sm:justify-start">
-            <button
-              id="sld-expand"
-              type="button"
-              class="btn-pill inline-flex items-center justify-center gap-2"
-              data-i18n data-fr="Voir en plein écran" data-en="View fullscreen" data-ar="عرض بملء الشاشة"
-            >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                <path d="M8 3H5a2 2 0 0 0-2 2v3m18-5h-3a2 2 0 0 0-2 2v3M3 16v3a2 2 0 0 0 2 2h3m11-5v3a2 2 0 0 1-2 2h-3"></path>
-              </svg>
-              Voir en plein écran
-            </button>
-            <button
-              id="sld-download"
-              type="button"
-              class="btn-pill inline-flex items-center justify-center gap-2"
-              data-sld-filename={sldFilename}
-              data-i18n data-fr="Télécharger le schéma (SVG)" data-en="Download the diagram (SVG)" data-ar="تحميل المخطط (SVG)"
-            >
-              Télécharger le schéma (SVG)
-            </button>
-          </div>
-        </section>
-
-        <!-- WJ129 — visionneuse plein écran (pan/pinch/molette/double-tap,
-             AUCUNE bibliothèque — géométrie pure dans lib/sldViewer.ts).
-             SIBLING du <section id="sld"> (jamais imbriquée dans .cine-in/
-             .cine-card) : un ancêtre transformé (l'animation d'entrée
-             .cine-in pose `transform: translateY(...)` le temps du fondu au
-             chargement) créerait un bloc de confinement local et casserait
-             `position: fixed` — voir la note CSS `.sld-viewer` plus bas.
-             `hidden` par défaut : ni rendu ni coût tant que l'utilisateur n'a
-             pas cliqué la carte ou « Voir en plein écran ». -->
-        <div
-          id="sld-viewer"
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="sld-viewer-title"
-          class="sld-viewer"
-          hidden
-        >
-          <div class="sld-viewer-header">
-            <p id="sld-viewer-title" class="sld-viewer-title" data-i18n data-fr="Schéma électrique" data-en="Electrical diagram" data-ar="المخطط الكهربائي">Schéma électrique</p>
-            <button
-              type="button"
-              id="sld-viewer-close"
-              class="sld-viewer-close"
-              aria-label="Fermer"
-              data-aria-label-fr="Fermer" data-aria-label-en="Close" data-aria-label-ar="إغلاق"
-            >
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true">
-                <path d="M18 6 6 18M6 6l12 12"></path>
-              </svg>
-            </button>
-          </div>
-          <div id="sld-viewer-viewport" class="sld-viewer-viewport">
-            <div id="sld-viewer-content" class="sld-viewer-content"></div>
-          </div>
-          <div class="sld-viewer-controls">
-            <button
-              type="button"
-              id="sld-viewer-zoom-in"
-              class="sld-viewer-fab"
-              aria-label="Agrandir"
-              data-aria-label-fr="Agrandir" data-aria-label-en="Zoom in" data-aria-label-ar="تكبير"
-            >
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true">
-                <path d="M12 5v14M5 12h14"></path>
-              </svg>
-            </button>
-            <button
-              type="button"
-              id="sld-viewer-zoom-out"
-              class="sld-viewer-fab"
-              aria-label="Réduire"
-              data-aria-label-fr="Réduire" data-aria-label-en="Zoom out" data-aria-label-ar="تصغير"
-            >
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true">
-                <path d="M5 12h14"></path>
-              </svg>
-            </button>
-            <button
-              type="button"
-              id="sld-viewer-zoom-reset"
-              class="sld-viewer-fab"
-              aria-label="Réinitialiser le zoom"
-              data-aria-label-fr="Réinitialiser le zoom" data-aria-label-en="Reset zoom" data-aria-label-ar="إعادة ضبط التكبير"
-            >
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                <path d="M3 12a9 9 0 1 1 3 6.7M3 21v-6h6"></path>
-              </svg>
-            </button>
-          </div>
-        </div>
-        </>
-      )}
-
-      <!-- ── WJ9 · ARGENT DANS LE TEMPS (cumul 25 ans + payback + /mois) ───── -->
-      <!-- id="financing-headline" — ancre WJ55 (télémétrie « scrolled to financing »). -->
-      <!-- WJ126 — jamais en pompage (agricole) : la valeur d'un pompage solaire est
-           l'eau livrée + le carburant évité, pas un cumul de facture réseau ; le
-           cadrage « économies cumulées 25 ans » est résidentiel/autoconso. -->
-      {!isAgricole && headline && (headline.cumulative || headline.annual || paybackHero || prodKwh) && (
-        <section id="financing-headline" class="mx-auto max-w-4xl px-5 pt-12 sm:px-8 sm:pt-16">
-          {/* Accroche « coût de ne rien faire » : le cumul phare. */}
-          {headline.cumulative ? (
-            <div class="cine-card cine-in rounded-2xl p-6 shadow-premium sm:p-8" style="border-color: rgb(232 181 74 / 0.35)">
-              <p class="tech-label text-lune-faint" data-i18n
-                data-fr={`Sans le solaire, votre facture continue de courir. Avec, vous économisez sur ${headline.years} ans`}
-                data-en={`Without solar, your bill keeps climbing. With it, you save over ${headline.years} years`}
-                data-ar={`بدون الطاقة الشمسية، تستمر فاتورتكم في الارتفاع. معها، توفرون على مدى ${headline.years} سنة`}>
-                Sans le solaire, votre facture continue de courir. Avec, vous économisez sur {headline.years} ans
-              </p>
-              <p class="fig lum mt-3 text-4xl sm:text-5xl" dir="ltr">{formatMAD(headline.cumulative)}</p>
-              <!-- WJ75 — la mention « tarif constant » s'affiche désormais TOUJOURS,
-                   que le taux vienne du backend ou du repli local : les deux
-                   partagent la MÊME hypothèse 0 % d'escalade tarifaire (voir
-                   savingsHeadline/BILL_INFLATION_RATE dans lib/proposition.ts —
-                   vérifié dans le moteur PDF vendorisé, generate_devis_premium.py,
-                   qui construit sa propre courbe cumulative par une simple
-                   multiplication linéaire, sans terme de dérive). Avant ce
-                   correctif, la mention disparaissait quand le taux venait du
-                   backend, laissant croire — à tort — que ce chiffre intégrait
-                   une hausse tarifaire que ni lui ni le PDF ne modélisent. -->
-              <p class="v2-body mt-2 text-sm text-lune-soft" data-i18n
-                data-fr={`Économies cumulées estimées sur ${headline.years} ans${headline.monthly ? ` — soit ≈ ${formatMAD(headline.monthly)}/mois qui restent dans votre poche` : ''}. Estimation à tarif constant (loi 82-21, autoconsommation) — même hypothèse que votre devis PDF.`}
-                data-en={`Estimated cumulative savings over ${headline.years} years${headline.monthly ? ` — that's ≈ ${formatMAD(headline.monthly)}/month staying in your pocket` : ''}. Estimate at constant tariff (law 82-21, self-consumption) — the same assumption as your PDF quote.`}
-                data-ar={`توفير تراكمي مقدّر على مدى ${headline.years} سنة${headline.monthly ? ` — أي ما يعادل ≈ ${formatMAD(headline.monthly)}/شهر تبقى في جيبكم` : ''}. تقدير بتعريفة ثابتة (القانون 82-21، الاستهلاك الذاتي) — نفس الافتراض المعتمد في عرض PDF الخاص بكم.`}>
-                Économies cumulées estimées sur {headline.years} ans
-                {headline.monthly ? <> — soit <span class="text-brass-300">≈ {formatMAD(headline.monthly)}/mois</span> qui restent dans votre poche</> : null}.
-                <span class="text-lune-faint"> Estimation à tarif constant (loi 82-21, autoconsommation) — même hypothèse que votre devis PDF.</span>
-              </p>
-            </div>
-          ) : null}
-
-          <div class="mt-4 grid gap-4 sm:grid-cols-3">
-            {headline.annual ? (
-              <div class="cine-card rounded-xl p-5">
-                <p class="tech-label text-lune-faint" data-i18n data-fr="Économies estimées / an" data-en="Estimated savings / year" data-ar="التوفير المقدّر / سنة">Économies estimées / an</p>
-                <p class="fig fig-md lum mt-2" dir="ltr">{formatMAD(headline.annual)}</p>
-                {headline.monthly ? <p class="mt-1 text-sm text-lune-faint" dir="ltr">≈ {formatMAD(headline.monthly)}/mois</p> : null}
-              </div>
-            ) : null}
-            {paybackHero ? (
-              <div class="cine-card rounded-xl p-5">
-                <p class="tech-label text-lune-faint" data-i18n data-fr="Rentabilisé en" data-en="Paid back in" data-ar="يُسترد خلال">Rentabilisé en</p>
-                <p class="fig fig-md mt-2 text-lune" dir="ltr">{paybackHero}</p>
-                <p class="mt-1 text-sm text-lune-faint" data-i18n data-fr="puis l’énergie est gratuite" data-en="then energy is free" data-ar="ثم تصبح الطاقة مجانية">puis l’énergie est gratuite</p>
-              </div>
-            ) : null}
-            {prodKwh ? (
-              <div class="cine-card rounded-xl p-5">
-                <p class="tech-label text-lune-faint" data-i18n data-fr="Production estimée / an" data-en="Estimated production / year" data-ar="الإنتاج المقدّر / سنة">Production estimée / an</p>
-                <p class="fig fig-md mt-2 text-lune" dir="ltr">{formatNumber(prodKwh)} <span class="text-lg text-lune-soft">kWh</span></p>
-              </div>
-            ) : null}
-          </div>
-        </section>
-      )}
-
-      {/* W347 — « Compteur à zéro » : ne rend RIEN tant que le fondateur n'a
-          pas fourni le vrai clip (src/lib/compteurVideo.ts, livré vide).
-          Placé juste après les chiffres d'économies ci-dessus — le contexte
-          le plus persuasif pour ce genre de clip. */}
-      <VideoCompteur />
-
-      <!-- ── SYSTÈME : puissance / panneaux ───────────────────────────────── -->
-      {(puissance || nbPanneaux) && (
-        <section class="mx-auto max-w-4xl px-5 pt-12 sm:px-8">
-          <p class="tech-label rule-brass text-brass-300" data-i18n data-fr="Votre système" data-en="Your system" data-ar="نظامكم">Votre système</p>
-          <div class="mt-5 grid gap-4 sm:grid-cols-3">
+      <!-- ── PV80 · CHAPITRE 3 — VOTRE INSTALLATION ───────────────────────────
+           Fusion de l'ancien encart « Votre système » (3 chiffres) et de la
+           liste d'équipement qui vivait, en vrac, à l'intérieur de la carte de
+           PRIX. Les 3 specs clés restent en tête ; le matériel devient un
+           tableau structuré juste en dessous. -->
+      {(puissance || nbPanneaux || equipmentGroups.length > 0) && (
+        <section id="installation" class="mx-auto max-w-4xl px-5 pt-12 sm:px-8">
+          <p class="tech-label rule-brass text-brass-300" data-i18n data-fr="Votre installation" data-en="Your installation" data-ar="تركيبكم">Votre installation</p>
+          {/* PV81 — les 3 specs occupaient trois CARTES pleine largeur sur mobile
+              (~330 px) pour trois valeurs de quelques caractères. Elles tiennent
+              en UNE ligne au-dessus du tableau : c'est une légende, pas un
+              tableau de bord. Chaque valeur reste celle du devis backend. */}
+          <p class="mt-4 flex flex-wrap items-baseline gap-x-3 gap-y-1 text-lune-soft">
             {puissance ? (
-              <div class="cine-card rounded-xl p-5">
-                <p class="tech-label text-lune-faint" data-i18n data-fr="Puissance" data-en="Power" data-ar="القدرة">Puissance</p>
-                <p class="fig mt-2 text-2xl text-lune" dir="ltr">{formatNumber(puissance, 2)} <span class="text-base text-lune-soft">kWc</span></p>
-              </div>
+              <span class="fig text-xl text-lune" dir="ltr">{formatNumber(puissance, 2)} <span class="text-sm text-lune-soft">kWc</span></span>
             ) : null}
+            {puissance && nbPanneaux ? <span class="text-lune-faint" aria-hidden="true">·</span> : null}
             {nbPanneaux ? (
-              <div class="cine-card rounded-xl p-5">
-                <p class="tech-label text-lune-faint" data-i18n data-fr="Panneaux" data-en="Panels" data-ar="الألواح">Panneaux</p>
-                <p class="fig mt-2 text-2xl text-lune" dir="ltr">
-                  {formatNumber(nbPanneaux)}
-                  {wattPanneau ? <span class="text-base text-lune-soft"> × {formatNumber(wattPanneau)} W</span> : null}
-                </p>
-              </div>
+              <span class="fig text-xl text-lune" dir="ltr">
+                {formatNumber(nbPanneaux)}
+                {wattPanneau ? <span class="text-sm text-lune-soft"> × {formatNumber(wattPanneau)} W</span> : null}
+                <span class="ms-1 text-sm text-lune-soft" data-i18n data-fr="panneaux" data-en="panels" data-ar="لوحاً">panneaux</span>
+              </span>
             ) : null}
-            <div class="cine-card rounded-xl p-5">
-              <p class="tech-label text-lune-faint" data-i18n data-fr="Type" data-en="Type" data-ar="النوع">Type</p>
-              <p class="fig mt-2 text-2xl text-lune">{instLabel}</p>
+            {(puissance || nbPanneaux) ? <span class="text-lune-faint" aria-hidden="true">·</span> : null}
+            <span class="text-lune">{instLabel}</span>
+          </p>
+
+          <!-- ── PV80 · CE QUI SERA POSÉ CHEZ VOUS — tableau STRUCTURÉ ────────
+               Désignation × quantité, groupé par famille (production, stockage,
+               protection, structure), SANS prix par ligne : le prix vit au
+               chapitre « Votre prix » et n'y est dit qu'UNE fois. Marque et
+               garantie restent affichées quand le devis les porte — jamais la
+               DESCRIPTION (fiche produit brute du catalogue, avec ses notes
+               internes « à confirmer fondateur » : vue chez le client une fois,
+               plus jamais). Aucune ligne du devis n'est perdue :
+               un libellé non reconnu tombe dans « Autres postes ». -->
+          {equipmentGroups.length > 0 && (
+            <div class="cine-card mt-4 rounded-2xl p-5 sm:p-6" id="equipement">
+              <div class="flex flex-wrap items-baseline justify-between gap-2">
+                <p class="tech-label text-lune-faint" data-i18n
+                  data-fr="Ce qui sera posé chez vous" data-en="What will be installed" data-ar="ما سيتم تركيبه عندكم">
+                  Ce qui sera posé chez vous
+                </p>
+                {twoOptions && (
+                  <p class="text-xs text-lune-faint" data-i18n
+                    data-fr={`Détail de l’option « ${optionLabel(equipmentOption)} »`}
+                    data-en={`Detail of the “${optionLabelEn(equipmentOption)}” option`}
+                    data-ar={`تفاصيل خيار «${optionLabelAr(equipmentOption)}»`}>
+                    Détail de l’option « {optionLabel(equipmentOption)} »
+                  </p>
+                )}
+              </div>
+              <div class="mt-4 space-y-5">
+                {equipmentGroups.map((group) => (
+                  <div>
+                    <p class="tech-label text-brass-300" data-i18n
+                      data-fr={EQUIPMENT_GROUP_LABELS[group.id].fr}
+                      data-en={EQUIPMENT_GROUP_LABELS[group.id].en}
+                      data-ar={EQUIPMENT_GROUP_LABELS[group.id].ar}>
+                      {EQUIPMENT_GROUP_LABELS[group.id].fr}
+                    </p>
+                    <ul class="mt-2 divide-y divide-white/10 border-t border-white/10">
+                      {group.lines.map((it) => (
+                        <li class="flex items-start justify-between gap-4 py-2.5">
+                          <div class="min-w-0">
+                            <p class="text-sm text-lune">
+                              {it.designation}
+                              {it.marque ? <span class="text-lune-faint"> · {it.marque}</span> : null}
+                            </p>
+                            {/* JAMAIS it.description ici : c'est la fiche produit
+                                BRUTE du catalogue, avec ses notes internes
+                                (« Modèle supposé — à confirmer fondateur » a été
+                                vu chez le client). La fiche détaillée vit dans le
+                                PDF ; la page = désignation · marque · garantie. */}
+                            {it.garantie ? (
+                              <p class="mt-0.5 text-xs text-brass-300" data-i18n
+                                data-fr={`Garantie : ${it.garantie}`}
+                                data-en={`Warranty: ${it.garantie}`}
+                                data-ar={`الضمان: ${it.garantie}`}>Garantie : {it.garantie}</p>
+                            ) : null}
+                          </div>
+                          <span class="fig shrink-0 text-sm text-lune-soft" dir="ltr">×{formatNumber(it.quantite)}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ))}
+              </div>
+              {equipmentExtra.length > 0 && (
+                <p class="mt-5 border-t border-white/10 pt-4 text-sm text-lune-soft" data-i18n
+                  data-fr={`L’option « ${optionLabel('avec_batterie')} » ajoute : ${equipmentExtra.map((it) => `${it.designation} ×${formatNumber(it.quantite)}`).join(', ')}.`}
+                  data-en={`The “${optionLabelEn('avec_batterie')}” option adds: ${equipmentExtra.map((it) => `${it.designation} ×${formatNumber(it.quantite)}`).join(', ')}.`}
+                  data-ar={`يضيف خيار «${optionLabelAr('avec_batterie')}»: ${equipmentExtra.map((it) => `${it.designation} ×${formatNumber(it.quantite)}`).join('، ')}.`}>
+                  L’option « {optionLabel('avec_batterie')} » ajoute :{' '}
+                  {equipmentExtra.map((it) => `${it.designation} ×${formatNumber(it.quantite)}`).join(', ')}.
+                </p>
+              )}
+              <p class="mt-3 text-xs text-lune-faint" data-i18n
+                data-fr="Matériel neuf, garanties constructeur incluses. Le détail des prix figure plus bas, dans « Votre prix »."
+                data-en="New equipment, manufacturer warranties included. Pricing is detailed further down, under “Your price”."
+                data-ar="معدات جديدة، مع ضمانات الصانع. تفاصيل الأسعار مذكورة أسفل، في «ثمنكم».">
+                Matériel neuf, garanties constructeur incluses. Le détail des prix figure plus bas, dans « Votre prix ».
+              </p>
             </div>
-          </div>
+          )}
         </section>
       )}
 
@@ -1495,232 +1413,630 @@ const signConfig = ok
         </section>
       )}
 
-      <!-- ── P2 · PRODUCTION ESTIMÉE vs CONSOMMATION (langage pro-11) ──────── -->
-      {showChart && (
-        <section class="mx-auto max-w-4xl px-5 pt-14 sm:px-8">
+      <!-- ── PV80 · CHAPITRE 4 — VOTRE PRODUCTION (UN SEUL GRAPHIQUE) ────────
+           Trois blocs graphiques se disputaient la même histoire : les barres
+           mensuelles (« Production estimée »), la courbe journalière (« Votre
+           journée solaire ») et, pour un devis à deux options, un TROISIÈME
+           graphe batterie de ~1 600 px. Ils fusionnent ici en UN bloc : un
+           sélecteur année ↔ journée, les onglets de profil Standard/Été/
+           Ramadan, et la batterie en CALQUE de la vue journée — jamais un
+           second dessin à côté. Les calques ci-dessous sont EXACTEMENT les
+           mêmes SVG pré-rendus serveur qu'avant (aucun chiffre ne change) ;
+           seule leur mise en scène change. Quelle couche est visible est
+           décidé par productionLayers() — la MÊME fonction pure ici (premier
+           rendu) et dans le script client (au clic). -->
+      {showProduction && (
+        <section id="production" class="mx-auto max-w-4xl px-5 pt-14 sm:px-8" data-production-config={productionConfig}>
           <p class="tech-label rule-brass text-brass-300" data-i18n
-            data-fr={chartHasConso ? 'Production estimée vs votre consommation' : 'Production estimée'}
-            data-en={chartHasConso ? 'Estimated production vs your consumption' : 'Estimated production'}
-            data-ar={chartHasConso ? 'الإنتاج المقدّر مقابل استهلاككم' : 'الإنتاج المقدّر'}>
-            {chartHasConso ? 'Production estimée vs votre consommation' : 'Production estimée'}
-          </p>
+            data-fr="Votre production" data-en="Your production" data-ar="إنتاجكم">Votre production</p>
           <div class="cine-card mt-5 rounded-2xl p-5 sm:p-6">
-            <!-- WJ80 — trois variantes langue pré-rendues (FR visible par
-                 défaut) : le script de bascule de langue affiche la bonne au
-                 lieu de réimporter la chaîne de rendu SVG côté client. -->
-            <div class="chart-svg" data-chart-lang="fr" set:html={chartSvgFr}></div>
-            <div class="chart-svg" data-chart-lang="en" hidden set:html={chartSvgEn}></div>
-            <div class="chart-svg" data-chart-lang="ar" hidden set:html={chartSvgAr}></div>
-            <!-- WJ80 — tap-to-reveal : le `<title>` SVG (survol souris) est
-                 invisible au tactile — l'essentiel du trafic de cette page.
-                 Un tap/clic sur une barre affiche ici son mois + sa valeur ;
-                 câblé par le script de fin de page (délégation d'événement,
-                 aucune dépendance au SVG choisi). -->
-            <p id="chart-tap-caption" class="mt-2 min-h-[1.25rem] text-sm text-brass-300" aria-live="polite"></p>
-            <div class="mt-4 flex flex-wrap items-center gap-x-6 gap-y-2 text-sm">
-              <span class="inline-flex items-center gap-2 text-lune-soft">
-                <span class="inline-block h-3 w-3 rounded-sm" style="background: var(--color-brass-400)" aria-hidden="true"></span>
-                <span data-i18n data-fr="Production solaire estimée" data-en="Estimated solar production" data-ar="الإنتاج الشمسي المقدّر">Production solaire estimée</span>
-              </span>
+            {/* Sélecteur d'échelle — masqué quand une seule vue est rendue. */}
+            {prodLayers.showViewTabs && (
+              <div class="mb-4 flex flex-wrap items-center gap-2" role="group" aria-label="Échelle du graphique">
+                <button type="button" id="prod-view-annee" data-prod-view-btn="annee" aria-pressed={prodLayers.monthly ? 'true' : 'false'}
+                  class="btn-pill px-3 py-1 text-xs"
+                  style={prodLayers.monthly ? 'background: var(--color-brass-400); color: var(--color-nuit); border-color: var(--color-brass-400)' : undefined}
+                  data-i18n data-fr="Sur l’année" data-en="Over the year" data-ar="على مدار السنة">Sur l’année</button>
+                <button type="button" id="prod-view-journee" data-prod-view-btn="journee" aria-pressed={prodLayers.monthly ? 'false' : 'true'}
+                  class="btn-pill px-3 py-1 text-xs"
+                  style={prodLayers.monthly ? undefined : 'background: var(--color-brass-400); color: var(--color-nuit); border-color: var(--color-brass-400)'}
+                  data-i18n data-fr="Sur une journée" data-en="Over a day" data-ar="خلال يوم">Sur une journée</button>
+              </div>
+            )}
+
+
+            {/* ── CALQUE ANNÉE : 12 barres mensuelles (inchangé). ─────────── */}
+            {showChart && (
+              <div data-prod-layer="monthly" hidden={!prodLayers.monthly}>
+              <!-- WJ80 — trois variantes langue pré-rendues (FR visible par
+                   défaut) : le script de bascule de langue affiche la bonne au
+                   lieu de réimporter la chaîne de rendu SVG côté client. -->
+              <div class="chart-svg" data-chart-lang="fr" set:html={chartSvgFr}></div>
+              <div class="chart-svg" data-chart-lang="en" hidden set:html={chartSvgEn}></div>
+              <div class="chart-svg" data-chart-lang="ar" hidden set:html={chartSvgAr}></div>
+              <!-- WJ80 — tap-to-reveal : le `<title>` SVG (survol souris) est
+                   invisible au tactile — l'essentiel du trafic de cette page.
+                   Un tap/clic sur une barre affiche ici son mois + sa valeur ;
+                   câblé par le script de fin de page (délégation d'événement,
+                   aucune dépendance au SVG choisi). -->
+              <p id="chart-tap-caption" class="mt-2 min-h-[1.25rem] text-sm text-brass-300" aria-live="polite"></p>
+              <div class="mt-4 flex flex-wrap items-center gap-x-6 gap-y-2 text-sm">
+                <span class="inline-flex items-center gap-2 text-lune-soft">
+                  <span class="inline-block h-3 w-3 rounded-sm" style="background: var(--color-brass-400)" aria-hidden="true"></span>
+                  <span data-i18n data-fr="Production solaire estimée" data-en="Estimated solar production" data-ar="الإنتاج الشمسي المقدّر">Production solaire estimée</span>
+                </span>
+                {chartHasConso && (
+                  <span class="inline-flex items-center gap-2 text-lune-soft">
+                    <span class="inline-block h-3 w-3 rounded-sm" style="background: var(--color-azur-300, #7fb4e8)" aria-hidden="true"></span>
+                    <span data-i18n data-fr="Votre consommation" data-en="Your consumption" data-ar="استهلاككم">Votre consommation</span>
+                  </span>
+                )}
+                <span class="text-lune-faint" data-i18n data-fr="kWh par mois" data-en="kWh per month" data-ar="كيلوواط ساعة شهرياً">kWh par mois</span>
+              </div>
+              {/* PV80 — la phrase « Sur l’année, votre installation produit
+                  environ X kWh… Économie estimée Y/an » disait EXACTEMENT ce que
+                  les deux chiffres posés sous le graphe disent maintenant : il ne
+                  reste ici que la lecture du dessin lui-même. */}
               {chartHasConso && (
+                <p class="v2-body mt-4 text-sm text-lune-soft" data-i18n
+                  data-fr="Plus la production (laiton) couvre votre consommation (azur), plus vous économisez."
+                  data-en="The more production (brass) covers your consumption (blue), the more you save."
+                  data-ar="كلما غطى الإنتاج (الذهبي) استهلاككم (الأزرق)، كلما وفّرتم أكثر.">
+                  Plus la production (laiton) couvre votre consommation (azur), plus vous économisez.
+                </p>
+              )}
+              </div>
+            )}
+
+            {/* ── CALQUE JOURNÉE : la cloche solaire vs la conso (inchangé), avec
+                   ses onglets Standard/Été/Ramadan. ───────────────────── */}
+            {dailyCurve.svg && (
+              <div data-prod-layer="daily" hidden={!prodLayers.daily}>
+              <!-- WJ80 — mêmes trois variantes langue pré-rendues que le graphe
+                   ci-dessus (FR visible par défaut). WJ119 — croisées avec la
+                   variante été/Ramadan (normal/ete/ramadan) quand le toggle
+                   s'applique (résidentiel/commercial, curveVariantToggle) ;
+                   industriel/agricole n'ont que "normal" — zéro poids HTML en
+                   plus quand le toggle ne s'applique pas. -->
+              {CURVE_VARIANTS.map((variant) => (
+                <div class="daily-curve-wrap" data-curve-lang="fr" data-curve-variant={variant} hidden={variant !== 'normal'} set:html={dailyCurvesByVariant.fr[variant]?.svg ?? ''}></div>
+              ))}
+              {CURVE_VARIANTS.map((variant) => (
+                <div class="daily-curve-wrap" data-curve-lang="en" data-curve-variant={variant} hidden set:html={dailyCurvesByVariant.en[variant]?.svg ?? ''}></div>
+              ))}
+              {CURVE_VARIANTS.map((variant) => (
+                <div class="daily-curve-wrap" data-curve-lang="ar" data-curve-variant={variant} hidden set:html={dailyCurvesByVariant.ar[variant]?.svg ?? ''}></div>
+              ))}
+              <!-- WJ80 — tap-to-reveal du repère pic/moyenne (même discipline que
+                   le graphe ci-dessus — le survol est invisible au tactile). -->
+              <p id="curve-tap-caption" class="mt-2 min-h-[1.25rem] text-sm text-brass-300" aria-live="polite"></p>
+              <!-- WJ119 — toggle DISCRET été/Ramadan (résidentiel/commercial
+                   uniquement — un poste industriel ou un pompage agricole ne
+                   varient pas avec la clim/le jeûne). Change uniquement la
+                   SILHOUETTE de consommation affichée ; jamais un chiffre. -->
+              {curveVariantToggle && (
+                <div class="mt-3 flex flex-wrap items-center gap-2" role="group" aria-label="Variante du profil de consommation">
+                  <button type="button" id="curve-variant-normal" data-curve-variant-btn="normal" aria-pressed="true"
+                    class="btn-pill px-3 py-1 text-xs" style="background: var(--color-brass-400); color: var(--color-nuit); border-color: var(--color-brass-400)"
+                    data-i18n data-fr="Standard" data-en="Standard" data-ar="عادي">Standard</button>
+                  <button type="button" id="curve-variant-ete" data-curve-variant-btn="ete" aria-pressed="false"
+                    class="btn-pill px-3 py-1 text-xs"
+                    data-i18n data-fr="Été (clim)" data-en="Summer (AC)" data-ar="الصيف (تكييف)">Été (clim)</button>
+                  <button type="button" id="curve-variant-ramadan" data-curve-variant-btn="ramadan" aria-pressed="false"
+                    class="btn-pill px-3 py-1 text-xs"
+                    data-i18n data-fr="Ramadan" data-en="Ramadan" data-ar="رمضان">Ramadan</button>
+                </div>
+              )}
+              <div class="mt-4 flex flex-wrap items-center gap-x-6 gap-y-2 text-sm">
+                <span class="inline-flex items-center gap-2 text-lune-soft">
+                  <span class="inline-block h-3 w-3 rounded-sm" style="background: var(--color-brass-400)" aria-hidden="true"></span>
+                  <span data-i18n data-fr="Production solaire" data-en="Solar production" data-ar="الإنتاج الشمسي">Production solaire</span>
+                </span>
                 <span class="inline-flex items-center gap-2 text-lune-soft">
                   <span class="inline-block h-3 w-3 rounded-sm" style="background: var(--color-azur-300, #7fb4e8)" aria-hidden="true"></span>
                   <span data-i18n data-fr="Votre consommation" data-en="Your consumption" data-ar="استهلاككم">Votre consommation</span>
                 </span>
-              )}
-              <span class="text-lune-faint" data-i18n data-fr="kWh par mois" data-en="kWh per month" data-ar="كيلوواط ساعة شهرياً">kWh par mois</span>
-            </div>
-            {/* WJ83 — `ecoHero` gardait le rôle d'un simple booléen dans ce
-                `||` (jamais affiché lui-même) : la légende ne parlait QUE de
-                production, jamais d'économie, alors même que le chiffre existe.
-                On le SURFACE désormais explicitement quand présent — sinon la
-                légende garde son texte production-only d'origine. */}
-            {(prodKwh || ecoHero) && (
+                {!dailyCurve.hasRealScale && (
+                  <span class="text-lune-faint" data-i18n data-fr="profil — année type (forme indicative)" data-en="profile — typical year (indicative shape)" data-ar="نمط — سنة نموذجية (شكل إرشادي)">profil — année type (forme indicative)</span>
+                )}
+              </div>
+              <!-- WJ119 — libellé honnête : jamais « mesuré », toujours « type ». -->
+              <p class="mt-1 text-xs text-lune-faint" data-i18n
+                data-fr="Profil type au Maroc, ajusté à votre facture."
+                data-en="Typical Moroccan profile, adjusted to your bill."
+                data-ar="نمط نموذجي في المغرب، معدّل حسب فاتورتكم.">
+                Profil type au Maroc, ajusté à votre facture.
+              </p>
               <p class="v2-body mt-4 text-sm text-lune-soft" data-i18n
-                data-fr={`${prodKwh ? `Sur l’année, votre installation produit environ ${formatNumber(prodKwh)} kWh.` : ''}${chartHasConso ? ' Plus la production (laiton) couvre votre consommation (azur), plus vous économisez.' : ''}${ecoHero ? ` Économie estimée : ${formatMAD(ecoHero)}/an.` : ''}`}
-                data-en={`${prodKwh ? `Over the year, your installation produces around ${formatNumber(prodKwh)} kWh.` : ''}${chartHasConso ? ' The more production (brass) covers your consumption (blue), the more you save.' : ''}${ecoHero ? ` Estimated savings: ${formatMAD(ecoHero)}/year.` : ''}`}
-                data-ar={`${prodKwh ? `على مدار السنة، ينتج تركيبكم حوالي ${formatNumber(prodKwh)} kWh.` : ''}${chartHasConso ? ' كلما غطى الإنتاج (الذهبي) استهلاككم (الأزرق)، كلما وفّرتم أكثر.' : ''}${ecoHero ? ` التوفير المقدّر: ${formatMAD(ecoHero)}/سنة.` : ''}`}>
-                {prodKwh ? <>Sur l’année, votre installation produit environ <strong class="text-lune">{formatNumber(prodKwh)} kWh</strong>.</> : null}
-                {chartHasConso ? ' Plus la production (laiton) couvre votre consommation (azur), plus vous économisez.' : ''}
-                {ecoHero ? <> Économie estimée : <span class="text-brass-300">{formatMAD(ecoHero)}/an</span>.</> : null}
+                data-fr={`Le soleil produit en pleine journée : chaque kWh consommé à ce moment-là ne vient plus du réseau. ${dailyCurve.hasRealScale ? 'Les repères sont calés sur votre production estimée.' : 'Cette courbe illustre une journée type — votre profil exact est précisé avec votre conseiller.'}`}
+                data-en={`The sun produces during the day: every kWh consumed at that moment no longer comes from the grid. ${dailyCurve.hasRealScale ? 'The markers are calibrated on your estimated production.' : 'This curve illustrates a typical day — your exact profile is confirmed with your advisor.'}`}
+                data-ar={`تنتج الشمس في وضح النهار: كل كيلوواط ساعة يُستهلك في تلك اللحظة لم يعد يأتي من الشبكة. ${dailyCurve.hasRealScale ? 'المعالم مضبوطة على إنتاجكم المقدّر.' : 'يوضّح هذا المنحنى يوماً نموذجياً — يُحدَّد ملفكم الدقيق مع مستشاركم.'}`}>
+                Le soleil produit en pleine journée : chaque kWh consommé à ce moment-là
+                ne vient plus du réseau. {dailyCurve.hasRealScale
+                  ? 'Les repères sont calés sur votre production estimée.'
+                  : 'Cette courbe illustre une journée type — votre profil exact est précisé avec votre conseiller.'}
               </p>
-            )}
-          </div>
-        </section>
-      )}
-
-      <!-- ── WJ16 · COURBE JOURNALIÈRE (lever → coucher) ───────────────────── -->
-      {/* Visuel le plus persuasif : la cloche solaire couvre la conso du foyer.
-          Calée sur la production RÉELLE si présente, sinon « année type » libellée.
-          Animation gatée prefers-reduced-motion (voir <style>). */}
-      {dailyCurve.svg && (
-        <section class="mx-auto max-w-4xl px-5 pt-14 sm:px-8">
-          <p class="tech-label rule-brass text-brass-300" data-i18n data-fr="Votre journée solaire" data-en="Your solar day" data-ar="يومكم الشمسي">Votre journée solaire</p>
-          <div class="cine-card mt-5 rounded-2xl p-5 sm:p-6">
-            <!-- WJ80 — mêmes trois variantes langue pré-rendues que le graphe
-                 ci-dessus (FR visible par défaut). WJ119 — croisées avec la
-                 variante été/Ramadan (normal/ete/ramadan) quand le toggle
-                 s'applique (résidentiel/commercial, curveVariantToggle) ;
-                 industriel/agricole n'ont que "normal" — zéro poids HTML en
-                 plus quand le toggle ne s'applique pas. -->
-            {CURVE_VARIANTS.map((variant) => (
-              <div class="daily-curve-wrap" data-curve-lang="fr" data-curve-variant={variant} hidden={variant !== 'normal'} set:html={dailyCurvesByVariant.fr[variant]?.svg ?? ''}></div>
-            ))}
-            {CURVE_VARIANTS.map((variant) => (
-              <div class="daily-curve-wrap" data-curve-lang="en" data-curve-variant={variant} hidden set:html={dailyCurvesByVariant.en[variant]?.svg ?? ''}></div>
-            ))}
-            {CURVE_VARIANTS.map((variant) => (
-              <div class="daily-curve-wrap" data-curve-lang="ar" data-curve-variant={variant} hidden set:html={dailyCurvesByVariant.ar[variant]?.svg ?? ''}></div>
-            ))}
-            <!-- WJ80 — tap-to-reveal du repère pic/moyenne (même discipline que
-                 le graphe ci-dessus — le survol est invisible au tactile). -->
-            <p id="curve-tap-caption" class="mt-2 min-h-[1.25rem] text-sm text-brass-300" aria-live="polite"></p>
-            <!-- WJ119 — toggle DISCRET été/Ramadan (résidentiel/commercial
-                 uniquement — un poste industriel ou un pompage agricole ne
-                 varient pas avec la clim/le jeûne). Change uniquement la
-                 SILHOUETTE de consommation affichée ; jamais un chiffre. -->
-            {curveVariantToggle && (
-              <div class="mt-3 flex flex-wrap items-center gap-2" role="group" aria-label="Variante du profil de consommation">
-                <button type="button" id="curve-variant-normal" data-curve-variant-btn="normal" aria-pressed="true"
-                  class="btn-pill px-3 py-1 text-xs" style="background: var(--color-brass-400); color: var(--color-nuit); border-color: var(--color-brass-400)"
-                  data-i18n data-fr="Standard" data-en="Standard" data-ar="عادي">Standard</button>
-                <button type="button" id="curve-variant-ete" data-curve-variant-btn="ete" aria-pressed="false"
-                  class="btn-pill px-3 py-1 text-xs"
-                  data-i18n data-fr="Été (clim)" data-en="Summer (AC)" data-ar="الصيف (تكييف)">Été (clim)</button>
-                <button type="button" id="curve-variant-ramadan" data-curve-variant-btn="ramadan" aria-pressed="false"
-                  class="btn-pill px-3 py-1 text-xs"
-                  data-i18n data-fr="Ramadan" data-en="Ramadan" data-ar="رمضان">Ramadan</button>
               </div>
             )}
-            <div class="mt-4 flex flex-wrap items-center gap-x-6 gap-y-2 text-sm">
-              <span class="inline-flex items-center gap-2 text-lune-soft">
-                <span class="inline-block h-3 w-3 rounded-sm" style="background: var(--color-brass-400)" aria-hidden="true"></span>
-                <span data-i18n data-fr="Production solaire" data-en="Solar production" data-ar="الإنتاج الشمسي">Production solaire</span>
-              </span>
-              <span class="inline-flex items-center gap-2 text-lune-soft">
-                <span class="inline-block h-3 w-3 rounded-sm" style="background: var(--color-azur-300, #7fb4e8)" aria-hidden="true"></span>
-                <span data-i18n data-fr="Votre consommation" data-en="Your consumption" data-ar="استهلاككم">Votre consommation</span>
-              </span>
-              {!dailyCurve.hasRealScale && (
-                <span class="text-lune-faint" data-i18n data-fr="profil — année type (forme indicative)" data-en="profile — typical year (indicative shape)" data-ar="نمط — سنة نموذجية (شكل إرشادي)">profil — année type (forme indicative)</span>
-              )}
-            </div>
-            <!-- WJ119 — libellé honnête : jamais « mesuré », toujours « type ». -->
-            <p class="mt-1 text-xs text-lune-faint" data-i18n
-              data-fr="Profil type au Maroc, ajusté à votre facture."
-              data-en="Typical Moroccan profile, adjusted to your bill."
-              data-ar="نمط نموذجي في المغرب، معدّل حسب فاتورتكم.">
-              Profil type au Maroc, ajusté à votre facture.
-            </p>
-            <p class="v2-body mt-4 text-sm text-lune-soft" data-i18n
-              data-fr={`Le soleil produit en pleine journée : chaque kWh consommé à ce moment-là ne vient plus du réseau. ${dailyCurve.hasRealScale ? 'Les repères sont calés sur votre production estimée.' : 'Cette courbe illustre une journée type — votre profil exact est précisé avec votre conseiller.'}`}
-              data-en={`The sun produces during the day: every kWh consumed at that moment no longer comes from the grid. ${dailyCurve.hasRealScale ? 'The markers are calibrated on your estimated production.' : 'This curve illustrates a typical day — your exact profile is confirmed with your advisor.'}`}
-              data-ar={`تنتج الشمس في وضح النهار: كل كيلوواط ساعة يُستهلك في تلك اللحظة لم يعد يأتي من الشبكة. ${dailyCurve.hasRealScale ? 'المعالم مضبوطة على إنتاجكم المقدّر.' : 'يوضّح هذا المنحنى يوماً نموذجياً — يُحدَّد ملفكم الدقيق مع مستشاركم.'}`}>
-              Le soleil produit en pleine journée : chaque kWh consommé à ce moment-là
-              ne vient plus du réseau. {dailyCurve.hasRealScale
-                ? 'Les repères sont calés sur votre production estimée.'
-                : 'Cette courbe illustre une journée type — votre profil exact est précisé avec votre conseiller.'}
-            </p>
+
+            {/* ── CALQUE BATTERIE : REMPLACE la courbe nue sur le MÊME graphique
+                   journée — jamais un second dessin. Même moteur horaire, mêmes
+                   ids (#battery-sim*), même config sérialisée qu'avant. ────── */}
+            {showBatterySim && batteryInitial && (
+              <div data-prod-layer="battery" id="battery-sim" data-battery-sim-config={batterySimConfig} hidden={!prodLayers.battery}>
+              <p class="v2-body text-sm text-lune-soft" data-i18n
+                data-fr="Déplacez le curseur : voyez ce qu’une ou plusieurs batteries changeraient — plus de solaire gardé chez vous, moins de réseau le soir, et des heures d’autonomie en cas de coupure."
+                data-en="Move the slider: see what one or more batteries would change — more solar kept at home, less grid in the evening, and hours of backup during an outage."
+                data-ar="حرّك المؤشر: شاهد ما ستغيّره بطارية واحدة أو أكثر — طاقة شمسية أكثر تبقى في منزلك، وشبكة أقل في المساء، وساعات استقلالية عند انقطاع التيار.">
+                Déplacez le curseur : voyez ce qu’une ou plusieurs batteries changeraient — plus de solaire gardé chez vous, moins de réseau le soir, et des heures d’autonomie en cas de coupure.
+              </p>
+
+              <!-- Curseur 0/1/2/3 unités -->
+              <div class="mt-5">
+                <div class="flex items-center justify-between text-sm">
+                  <label for="battery-sim-slider" class="text-lune-soft" data-i18n data-fr="Nombre de batteries" data-en="Number of batteries" data-ar="عدد البطاريات">Nombre de batteries</label>
+                  <span class="font-semibold text-brass-300" dir="ltr"><span id="battery-sim-units">{batterySimInitialN}</span> × <span id="battery-sim-cap">{formatNumber(batteryUnitCapacityKwh, 0)}</span> kWh</span>
+                </div>
+                <input type="range" id="battery-sim-slider" min="0" max={BATTERY_SIM_MAX_UNITS} step="1" value={batterySimInitialN} class="mt-2 w-full accent-brass-400" aria-describedby="battery-sim-assumptions" />
+                <div class="mt-1 flex justify-between text-xs text-lune-faint" aria-hidden="true">
+                  <span>0</span><span>1</span><span>2</span><span>3</span>
+                </div>
+              </div>
+
+              <!-- 3 chiffres live : autoconsommation %, autosuffisance %, heures de secours -->
+              <div class="mt-6 grid grid-cols-2 gap-4 sm:grid-cols-3">
+                <div>
+                  <p class="text-2xl font-bold text-brass-300" id="battery-sim-selfconso" dir="ltr">{formatPercent(batteryInitial.selfConsumptionPct, 0)}</p>
+                  <p class="text-xs text-lune-soft" data-i18n data-fr="Autoconsommation" data-en="Self-consumption" data-ar="الاستهلاك الذاتي">Autoconsommation</p>
+                  <p class="text-[11px] text-lune-faint" data-i18n data-fr="du solaire produit, gardé chez vous" data-en="of the solar you produce, kept at home" data-ar="من الطاقة الشمسية المنتَجة، تبقى في منزلك">du solaire produit, gardé chez vous</p>
+                </div>
+                <div>
+                  <p class="text-2xl font-bold text-brass-300" id="battery-sim-selfsuff" dir="ltr">{formatPercent(batteryInitial.selfSufficiencyPct, 0)}</p>
+                  <p class="text-xs text-lune-soft" data-i18n data-fr="Autosuffisance" data-en="Self-sufficiency" data-ar="الاكتفاء الذاتي">Autosuffisance</p>
+                  <p class="text-[11px] text-lune-faint" data-i18n data-fr="de votre consommation couverte par le solaire" data-en="of your consumption covered by solar" data-ar="من استهلاككم مغطى بالطاقة الشمسية">de votre consommation couverte par le solaire</p>
+                </div>
+                <div>
+                  <p class="text-2xl font-bold text-brass-300" dir="ltr"><span id="battery-sim-backup">{formatNumber(batteryInitial.backupHours, 0)}</span> h</p>
+                  <p class="text-xs text-lune-soft" data-i18n data-fr="Heures de secours" data-en="Backup hours" data-ar="ساعات الطوارئ">Heures de secours</p>
+                  <p class="text-[11px] text-lune-faint" data-i18n data-fr="frigo + éclairage + box, batterie pleine" data-en="fridge + lighting + router, full battery" data-ar="ثلاجة + إنارة + راوتر، بطارية ممتلئة">frigo + éclairage + box, batterie pleine</p>
+                </div>
+              </div>
+
+              <!-- Aire empilée style SolarEdge : direct / batterie / réseau, sur 24 h -->
+              <div class="mt-6">
+                <div class="battery-split-wrap" id="battery-sim-chart" set:html={batterySplitSvgInitial}></div>
+                <div class="mt-3 flex flex-wrap items-center gap-x-5 gap-y-1 text-xs">
+                  <span class="inline-flex items-center gap-2 text-lune-soft">
+                    <span class="inline-block h-3 w-3 rounded-sm" style="background: var(--color-brass-400)" aria-hidden="true"></span>
+                    <span data-i18n data-fr="Solaire direct" data-en="Direct solar" data-ar="شمسي مباشر">Solaire direct</span>
+                  </span>
+                  <span class="inline-flex items-center gap-2 text-lune-soft">
+                    <span class="inline-block h-3 w-3 rounded-sm" style="background: var(--color-azur-300, #7fb4e8)" aria-hidden="true"></span>
+                    <span data-i18n data-fr="Batterie" data-en="Battery" data-ar="بطارية">Batterie</span>
+                  </span>
+                  <span class="inline-flex items-center gap-2 text-lune-soft">
+                    <span class="inline-block h-3 w-3 rounded-sm" style="background: var(--color-lune-faint)" aria-hidden="true"></span>
+                    <span data-i18n data-fr="Réseau" data-en="Grid" data-ar="الشبكة">Réseau</span>
+                  </span>
+                </div>
+                <p class="mt-3 text-sm text-lune-soft">
+                  <span data-i18n data-fr="Sur une journée type :" data-en="On a typical day:" data-ar="في يوم نموذجي:">Sur une journée type :</span>
+                  <span class="font-semibold text-brass-300" dir="ltr"><span id="battery-sim-direct">{formatNumber(batteryInitial.directKwh, 1)}</span> kWh</span> <span data-i18n data-fr="en direct" data-en="direct" data-ar="مباشرة">en direct</span>,
+                  <span class="font-semibold" style="color: var(--color-azur-300, #7fb4e8)" dir="ltr"><span id="battery-sim-battery">{formatNumber(batteryInitial.fromBatteryKwh, 1)}</span> kWh</span> <span data-i18n data-fr="via batterie" data-en="via battery" data-ar="عبر البطارية">via batterie</span>,
+                  <span class="font-semibold text-lune-faint" dir="ltr"><span id="battery-sim-grid">{formatNumber(batteryInitial.fromGridKwh, 1)}</span> kWh</span> <span data-i18n data-fr="du réseau" data-en="from the grid" data-ar="من الشبكة">du réseau</span>.
+                </p>
+              </div>
+
+              <!-- Prix : réel du devis quand N correspond à l'offre, sinon « sur étude ». -->
+              <p class="mt-4 text-sm">
+                <span class="text-lune-soft" data-i18n data-fr="Prix de cette configuration :" data-en="Price for this configuration:" data-ar="سعر هذا التكوين:">Prix de cette configuration :</span>
+                <span class="ms-1 font-semibold text-brass-300" id="battery-sim-price" dir="ltr">{batteryInitialPrice ?? 'Sur étude'}</span>
+              </p>
+
+              <!-- Hypothèses (DoD / rendement) + libellé honnête « jamais mesuré ». -->
+              <p id="battery-sim-assumptions" class="mt-4 text-xs text-lune-faint" data-i18n
+                data-fr="Hypothèses : batterie lithium LFP, décharge 90 %, rendement aller-retour ≈ 92 %. Profil type au Maroc ajusté à votre facture — jamais un chiffre mesuré. Le prix batterie affiché est celui de votre devis ; toute autre configuration est chiffrée sur étude."
+                data-en="Assumptions: LFP lithium battery, 90% depth of discharge, round-trip efficiency ≈ 92%. Typical Moroccan profile adjusted to your bill — never a measured figure. The battery price shown is from your quote; any other configuration is priced on request."
+                data-ar="الافتراضات: بطارية ليثيوم LFP، عمق تفريغ 90٪، كفاءة ذهاب وإياب ≈ 92٪. نمط نموذجي في المغرب معدّل حسب فاتورتكم — وليس رقماً مقيساً. السعر المعروض للبطارية هو سعر عرضكم؛ أي تكوين آخر يُسعّر حسب الدراسة.">
+                Hypothèses : batterie lithium LFP, décharge 90 %, rendement aller-retour ≈ 92 %. Profil type au Maroc ajusté à votre facture — jamais un chiffre mesuré. Le prix batterie affiché est celui de votre devis ; toute autre configuration est chiffrée sur étude.
+              </p>
+              </div>
+            )}
+
+            {/* ── Le calque batterie se commande ICI, sous le graphique. ──── */}
+            {productionAvailability.battery && (
+              <div data-prod-battery-control class="mt-4 border-t border-white/10 pt-4" hidden={!prodLayers.showBatteryToggle}>
+                <label for="prod-battery-toggle" class="flex cursor-pointer items-center gap-2.5 text-sm text-lune">
+                  <input type="checkbox" id="prod-battery-toggle" class="h-4 w-4 accent-brass-400" checked={prodLayers.battery} aria-describedby="prod-battery-hint" />
+                  <span data-i18n data-fr="Avec batterie" data-en="With a battery" data-ar="مع بطارية">Avec batterie</span>
+                </label>
+                <p id="prod-battery-hint" class="ms-7 mt-1 text-xs text-lune-faint" data-i18n
+                  data-fr="Rejoue la même journée avec une batterie : ce qui est consommé en direct, ce qui est stocké, ce qui reste au réseau."
+                  data-en="Replays the same day with a battery: what is used directly, what is stored, what still comes from the grid."
+                  data-ar="يعيد عرض اليوم نفسه مع بطارية: ما يُستهلك مباشرة، وما يُخزَّن، وما يبقى من الشبكة.">
+                  Rejoue la même journée avec une batterie : ce qui est consommé en direct, ce qui est stocké, ce qui reste au réseau.
+                </p>
+              </div>
+            )}
           </div>
+
+          {/* ── Le résumé annuel EN CHIFFRES, sous le graphe (jamais un chiffre
+                 recalculé : exactement ceux du devis backend). ───────────── */}
+          {(prodKwh || ecoHero) && (
+            <div class="mt-4 grid gap-4 sm:grid-cols-2">
+              {prodKwh ? (
+                <div class="cine-card rounded-xl p-5">
+                  <p class="tech-label text-lune-faint" data-i18n data-fr="Production estimée / an" data-en="Estimated production / year" data-ar="الإنتاج المقدّر / سنة">Production estimée / an</p>
+                  <p class="fig fig-md mt-2 text-lune" dir="ltr">{formatNumber(prodKwh)} <span class="text-lg text-lune-soft">kWh</span></p>
+                </div>
+              ) : null}
+              {ecoHero ? (
+                <div class="cine-card rounded-xl p-5">
+                  <p class="tech-label text-lune-faint" data-i18n data-fr="Économie estimée / an" data-en="Estimated savings / year" data-ar="التوفير المقدّر / سنة">Économie estimée / an</p>
+                  <p class="fig fig-md lum mt-2" dir="ltr">{formatMAD(ecoHero)}</p>
+                </div>
+              ) : null}
+            </div>
+          )}
         </section>
       )}
 
-      <!-- ── WJ120 · SIMULATEUR « ET AVEC N BATTERIES ? » ──────────────────── -->
-      {/* Moteur horaire glouton (lib/batterySim, jour 2 simulé) recalculé EN
-          DIRECT au curseur, 100 % côté client (aucun re-fetch). Résidentiel +
-          commercial uniquement. Capacité/unité = réf catalogue Deyness du devis ;
-          aucun prix batterie inventé (prix réel du devis, sinon « sur étude »). */}
-      {showBatterySim && batteryInitial && (
-        <section class="mx-auto max-w-4xl px-5 pt-14 sm:px-8" id="battery-sim" data-battery-sim-config={batterySimConfig}>
-          <p class="tech-label rule-brass text-brass-300" data-i18n data-fr="Et avec une batterie ?" data-en="And with a battery?" data-ar="وماذا مع بطارية؟">Et avec une batterie ?</p>
-          <div class="cine-card mt-5 rounded-2xl p-5 sm:p-6">
-            <p class="v2-body text-sm text-lune-soft" data-i18n
-              data-fr="Déplacez le curseur : voyez ce qu’une ou plusieurs batteries changeraient — plus de solaire gardé chez vous, moins de réseau le soir, et des heures d’autonomie en cas de coupure."
-              data-en="Move the slider: see what one or more batteries would change — more solar kept at home, less grid in the evening, and hours of backup during an outage."
-              data-ar="حرّك المؤشر: شاهد ما ستغيّره بطارية واحدة أو أكثر — طاقة شمسية أكثر تبقى في منزلك، وشبكة أقل في المساء، وساعات استقلالية عند انقطاع التيار.">
-              Déplacez le curseur : voyez ce qu’une ou plusieurs batteries changeraient — plus de solaire gardé chez vous, moins de réseau le soir, et des heures d’autonomie en cas de coupure.
-            </p>
 
-            <!-- Curseur 0/1/2/3 unités -->
-            <div class="mt-5">
-              <div class="flex items-center justify-between text-sm">
-                <label for="battery-sim-slider" class="text-lune-soft" data-i18n data-fr="Nombre de batteries" data-en="Number of batteries" data-ar="عدد البطاريات">Nombre de batteries</label>
-                <span class="font-semibold text-brass-300" dir="ltr"><span id="battery-sim-units">{batterySimInitialN}</span> × <span id="battery-sim-cap">{formatNumber(batteryUnitCapacityKwh, 0)}</span> kWh</span>
-              </div>
-              <input type="range" id="battery-sim-slider" min="0" max={BATTERY_SIM_MAX_UNITS} step="1" value={batterySimInitialN} class="mt-2 w-full accent-brass-400" aria-describedby="battery-sim-assumptions" />
-              <div class="mt-1 flex justify-between text-xs text-lune-faint" aria-hidden="true">
-                <span>0</span><span>1</span><span>2</span><span>3</span>
-              </div>
-            </div>
-
-            <!-- 3 chiffres live : autoconsommation %, autosuffisance %, heures de secours -->
-            <div class="mt-6 grid grid-cols-2 gap-4 sm:grid-cols-3">
-              <div>
-                <p class="text-2xl font-bold text-brass-300" id="battery-sim-selfconso" dir="ltr">{formatPercent(batteryInitial.selfConsumptionPct, 0)}</p>
-                <p class="text-xs text-lune-soft" data-i18n data-fr="Autoconsommation" data-en="Self-consumption" data-ar="الاستهلاك الذاتي">Autoconsommation</p>
-                <p class="text-[11px] text-lune-faint" data-i18n data-fr="du solaire produit, gardé chez vous" data-en="of the solar you produce, kept at home" data-ar="من الطاقة الشمسية المنتَجة، تبقى في منزلك">du solaire produit, gardé chez vous</p>
-              </div>
-              <div>
-                <p class="text-2xl font-bold text-brass-300" id="battery-sim-selfsuff" dir="ltr">{formatPercent(batteryInitial.selfSufficiencyPct, 0)}</p>
-                <p class="text-xs text-lune-soft" data-i18n data-fr="Autosuffisance" data-en="Self-sufficiency" data-ar="الاكتفاء الذاتي">Autosuffisance</p>
-                <p class="text-[11px] text-lune-faint" data-i18n data-fr="de votre consommation couverte par le solaire" data-en="of your consumption covered by solar" data-ar="من استهلاككم مغطى بالطاقة الشمسية">de votre consommation couverte par le solaire</p>
-              </div>
-              <div>
-                <p class="text-2xl font-bold text-brass-300" dir="ltr"><span id="battery-sim-backup">{formatNumber(batteryInitial.backupHours, 0)}</span> h</p>
-                <p class="text-xs text-lune-soft" data-i18n data-fr="Heures de secours" data-en="Backup hours" data-ar="ساعات الطوارئ">Heures de secours</p>
-                <p class="text-[11px] text-lune-faint" data-i18n data-fr="frigo + éclairage + box, batterie pleine" data-en="fridge + lighting + router, full battery" data-ar="ثلاجة + إنارة + راوتر، بطارية ممتلئة">frigo + éclairage + box, batterie pleine</p>
-              </div>
-            </div>
-
-            <!-- Aire empilée style SolarEdge : direct / batterie / réseau, sur 24 h -->
-            <div class="mt-6">
-              <div class="battery-split-wrap" id="battery-sim-chart" set:html={batterySplitSvgInitial}></div>
-              <div class="mt-3 flex flex-wrap items-center gap-x-5 gap-y-1 text-xs">
-                <span class="inline-flex items-center gap-2 text-lune-soft">
-                  <span class="inline-block h-3 w-3 rounded-sm" style="background: var(--color-brass-400)" aria-hidden="true"></span>
-                  <span data-i18n data-fr="Solaire direct" data-en="Direct solar" data-ar="شمسي مباشر">Solaire direct</span>
-                </span>
-                <span class="inline-flex items-center gap-2 text-lune-soft">
-                  <span class="inline-block h-3 w-3 rounded-sm" style="background: var(--color-azur-300, #7fb4e8)" aria-hidden="true"></span>
-                  <span data-i18n data-fr="Batterie" data-en="Battery" data-ar="بطارية">Batterie</span>
-                </span>
-                <span class="inline-flex items-center gap-2 text-lune-soft">
-                  <span class="inline-block h-3 w-3 rounded-sm" style="background: var(--color-lune-faint)" aria-hidden="true"></span>
-                  <span data-i18n data-fr="Réseau" data-en="Grid" data-ar="الشبكة">Réseau</span>
-                </span>
-              </div>
-              <p class="mt-3 text-sm text-lune-soft">
-                <span data-i18n data-fr="Sur une journée type :" data-en="On a typical day:" data-ar="في يوم نموذجي:">Sur une journée type :</span>
-                <span class="font-semibold text-brass-300" dir="ltr"><span id="battery-sim-direct">{formatNumber(batteryInitial.directKwh, 1)}</span> kWh</span> <span data-i18n data-fr="en direct" data-en="direct" data-ar="مباشرة">en direct</span>,
-                <span class="font-semibold" style="color: var(--color-azur-300, #7fb4e8)" dir="ltr"><span id="battery-sim-battery">{formatNumber(batteryInitial.fromBatteryKwh, 1)}</span> kWh</span> <span data-i18n data-fr="via batterie" data-en="via battery" data-ar="عبر البطارية">via batterie</span>,
-                <span class="font-semibold text-lune-faint" dir="ltr"><span id="battery-sim-grid">{formatNumber(batteryInitial.fromGridKwh, 1)}</span> kWh</span> <span data-i18n data-fr="du réseau" data-en="from the grid" data-ar="من الشبكة">du réseau</span>.
+      <!-- ── PV80 · CHAPITRE 5 — VOS ÉCONOMIES (ex-WJ9 « argent dans le temps ») ────────────────────────────────
+           Le bloc porte un id historique TROMPEUR : « financing-headline » ne
+           parle pas de financement, il porte le cumul d'ÉCONOMIES sur 25 ans.
+           On lui donne son nom lisible — ancre #economies — mais l'id observé
+           reste `financing-headline` sur la SECTION elle-même : la télémétrie
+           WJ55 (`proposal_scrolled_financing`) l'observe avec un seuil de 40 %
+           de SURFACE ; déplacer cet id sur une ancre invisible de 0 px aurait
+           silencieusement changé le moment où l'événement part. L'alias
+           lisible est donc l'ancre vide ci-dessous — zéro pixel, zéro risque. -->
+      <!-- WJ126 — jamais en pompage (agricole) : la valeur d'un pompage solaire est
+           l'eau livrée + le carburant évité, pas un cumul de facture réseau ; le
+           cadrage « économies cumulées 25 ans » est résidentiel/autoconso. -->
+      {!isAgricole && headline && (headline.cumulative || headline.annual || paybackHero || prodKwh) && (
+        <section id="financing-headline" class="mx-auto max-w-4xl px-5 pt-12 sm:px-8 sm:pt-16">
+          <span id="economies" aria-hidden="true"></span>
+          <p class="tech-label rule-brass mb-5 text-brass-300" data-i18n
+            data-fr="Vos économies" data-en="Your savings" data-ar="توفيراتكم">Vos économies</p>
+          {/* Accroche « coût de ne rien faire » : le cumul phare. */}
+          {headline.cumulative ? (
+            <div class="cine-card cine-in rounded-2xl p-6 shadow-premium sm:p-8" style="border-color: rgb(232 181 74 / 0.35)">
+              <p class="tech-label text-lune-faint" data-i18n
+                data-fr={`Sans le solaire, votre facture continue de courir. Avec, vous économisez sur ${headline.years} ans`}
+                data-en={`Without solar, your bill keeps climbing. With it, you save over ${headline.years} years`}
+                data-ar={`بدون الطاقة الشمسية، تستمر فاتورتكم في الارتفاع. معها، توفرون على مدى ${headline.years} سنة`}>
+                Sans le solaire, votre facture continue de courir. Avec, vous économisez sur {headline.years} ans
+              </p>
+              <p class="fig lum mt-3 text-4xl sm:text-5xl" dir="ltr">{formatMAD(headline.cumulative)}</p>
+              <!-- WJ75 — la mention « tarif constant » s'affiche désormais TOUJOURS,
+                   que le taux vienne du backend ou du repli local : les deux
+                   partagent la MÊME hypothèse 0 % d'escalade tarifaire (voir
+                   savingsHeadline/BILL_INFLATION_RATE dans lib/proposition.ts —
+                   vérifié dans le moteur PDF vendorisé, generate_devis_premium.py,
+                   qui construit sa propre courbe cumulative par une simple
+                   multiplication linéaire, sans terme de dérive). Avant ce
+                   correctif, la mention disparaissait quand le taux venait du
+                   backend, laissant croire — à tort — que ce chiffre intégrait
+                   une hausse tarifaire que ni lui ni le PDF ne modélisent. -->
+              <p class="v2-body mt-2 text-sm text-lune-soft" data-i18n
+                data-fr={`Économies cumulées estimées sur ${headline.years} ans${headline.monthly ? ` — soit ≈ ${formatMAD(headline.monthly)}/mois qui restent dans votre poche` : ''}. Estimation à tarif constant (loi 82-21, autoconsommation) — même hypothèse que votre devis PDF.`}
+                data-en={`Estimated cumulative savings over ${headline.years} years${headline.monthly ? ` — that's ≈ ${formatMAD(headline.monthly)}/month staying in your pocket` : ''}. Estimate at constant tariff (law 82-21, self-consumption) — the same assumption as your PDF quote.`}
+                data-ar={`توفير تراكمي مقدّر على مدى ${headline.years} سنة${headline.monthly ? ` — أي ما يعادل ≈ ${formatMAD(headline.monthly)}/شهر تبقى في جيبكم` : ''}. تقدير بتعريفة ثابتة (القانون 82-21، الاستهلاك الذاتي) — نفس الافتراض المعتمد في عرض PDF الخاص بكم.`}>
+                Économies cumulées estimées sur {headline.years} ans
+                {headline.monthly ? <> — soit <span class="text-brass-300">≈ {formatMAD(headline.monthly)}/mois</span> qui restent dans votre poche</> : null}.
+                <span class="text-lune-faint"> Estimation à tarif constant (loi 82-21, autoconsommation) — même hypothèse que votre devis PDF.</span>
               </p>
             </div>
+          ) : null}
 
-            <!-- Prix : réel du devis quand N correspond à l'offre, sinon « sur étude ». -->
-            <p class="mt-4 text-sm">
-              <span class="text-lune-soft" data-i18n data-fr="Prix de cette configuration :" data-en="Price for this configuration:" data-ar="سعر هذا التكوين:">Prix de cette configuration :</span>
-              <span class="ms-1 font-semibold text-brass-300" id="battery-sim-price" dir="ltr">{batteryInitialPrice ?? 'Sur étude'}</span>
-            </p>
-
-            <!-- Hypothèses (DoD / rendement) + libellé honnête « jamais mesuré ». -->
-            <p id="battery-sim-assumptions" class="mt-4 text-xs text-lune-faint" data-i18n
-              data-fr="Hypothèses : batterie lithium LFP, décharge 90 %, rendement aller-retour ≈ 92 %. Profil type au Maroc ajusté à votre facture — jamais un chiffre mesuré. Le prix batterie affiché est celui de votre devis ; toute autre configuration est chiffrée sur étude."
-              data-en="Assumptions: LFP lithium battery, 90% depth of discharge, round-trip efficiency ≈ 92%. Typical Moroccan profile adjusted to your bill — never a measured figure. The battery price shown is from your quote; any other configuration is priced on request."
-              data-ar="الافتراضات: بطارية ليثيوم LFP، عمق تفريغ 90٪، كفاءة ذهاب وإياب ≈ 92٪. نمط نموذجي في المغرب معدّل حسب فاتورتكم — وليس رقماً مقيساً. السعر المعروض للبطارية هو سعر عرضكم؛ أي تكوين آخر يُسعّر حسب الدراسة.">
-              Hypothèses : batterie lithium LFP, décharge 90 %, rendement aller-retour ≈ 92 %. Profil type au Maroc ajusté à votre facture — jamais un chiffre mesuré. Le prix batterie affiché est celui de votre devis ; toute autre configuration est chiffrée sur étude.
-            </p>
-          </div>
+          {/* PV80 — cette grille répétait les DEUX chiffres désormais posés sous
+                 le graphique du chapitre « Votre production » (économie/an et
+                 production/an). Seul le payback reste ici : il n’est dit nulle
+                 part ailleurs, et c’est la question que le client se pose juste
+                 après avoir vu le cumul. */}
+          {paybackHero ? (
+            <div class="cine-card mt-4 rounded-xl p-5">
+              <p class="tech-label text-lune-faint" data-i18n data-fr="Rentabilisé en" data-en="Paid back in" data-ar="يُسترد خلال">Rentabilisé en</p>
+              <p class="fig fig-md mt-2 text-lune" dir="ltr">{paybackHero}</p>
+              <p class="mt-1 text-sm text-lune-faint" data-i18n data-fr="puis l’énergie est gratuite" data-en="then energy is free" data-ar="ثم تصبح الطاقة مجانية">puis l’énergie est gratuite</p>
+            </div>
+          ) : null}
         </section>
       )}
 
-      <!-- ── OPTIONS ──────────────────────────────────────────────────────── -->
+      {/* W347 — « Compteur à zéro » : ne rend RIEN tant que le fondateur n'a
+          pas fourni le vrai clip (src/lib/compteurVideo.ts, livré vide).
+          Placé juste après les chiffres d'économies ci-dessus — le contexte
+          le plus persuasif pour ce genre de clip. */}
+      <VideoCompteur />
+
+      <!-- ── WJ128 · SCHÉMA ÉLECTRIQUE (SLD) — visible seulement si l'étude
+           électrique du devis existe (backend `sld_svg`). Le PDF téléchargeable
+           embarque déjà ce schéma en annexe quand l'étude existe — cette
+           section est un affichage web SUPPLÉMENTAIRE, pas un nouveau chemin
+           de génération (CLAUDE.md règle #4, flux PDF inchangé). -->
+      {showSld && (
+        <>
+        <div class="seam-soft" aria-hidden="true"></div>
+        <section id="sld" class="mx-auto max-w-4xl px-5 pt-14 sm:px-8 sm:pt-20">
+          <p class="tech-label rule-brass cine-in text-brass-300" data-i18n data-fr="Étude électrique" data-en="Electrical study" data-ar="الدراسة الكهربائية">Étude électrique</p>
+          <h2 class="display cine-in cine-in-1 mt-3 text-2xl text-lune sm:text-3xl" data-i18n data-fr="Schéma électrique" data-en="Electrical diagram" data-ar="المخطط الكهربائي">Schéma électrique</h2>
+          <p class="v2-body cine-in cine-in-2 mt-2 text-sm text-lune-soft" data-i18n
+            data-fr="Le schéma unifilaire de votre installation, tel qu’étudié par nos techniciens."
+            data-en="Your installation’s single-line diagram, as designed by our technicians."
+            data-ar="المخطط الأحادي الخط لتركيبتكم، كما درسه فنيونا.">
+            Le schéma unifilaire de votre installation, tel qu’étudié par nos techniciens.
+          </p>
+          <!-- WJ129 — carte-teaser cliquable (remplace l'ancien SVG écrasé à
+               302×213 px illisible en mobile) : mobile = hauteur maîtrisée +
+               crop haut-gauche + voile + affordance « Agrandir » ; desktop
+               (sm+) = SVG entier, lisible à l'échelle de la carte. Toute la
+               carte ouvre la visionneuse plein écran (#sld-viewer, JS
+               ci-dessous) ; le SVG lui-même est marqué aria-hidden ici (le
+               nom accessible du bouton vient du libellé « Agrandir »), la
+               visionneuse porte le vrai contenu accessible. -->
+          <button
+            type="button"
+            id="sld-teaser"
+            class="sld-teaser cine-card cine-in cine-in-3 mt-5 block w-full cursor-pointer overflow-hidden rounded-2xl p-0 text-start shadow-premium"
+            aria-haspopup="dialog"
+            aria-controls="sld-viewer"
+          >
+            <span class="sld-teaser-frame">
+              <span id="sld-svg-wrap" class="sld-svg-wrap" aria-hidden="true" set:html={sldSvg}></span>
+              <span class="sld-teaser-veil" aria-hidden="true"></span>
+            </span>
+            <span class="sld-teaser-cta btn-pill">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <circle cx="11" cy="11" r="7"></circle>
+                <path d="m21 21-4.3-4.3M11 8v6M8 11h6"></path>
+              </svg>
+              <span data-i18n data-fr="Agrandir le schéma" data-en="Enlarge the diagram" data-ar="تكبير المخطط">Agrandir le schéma</span>
+            </span>
+          </button>
+          <div class="mt-4 flex flex-wrap items-center justify-center gap-3 sm:justify-start">
+            <button
+              id="sld-expand"
+              type="button"
+              class="btn-pill inline-flex items-center justify-center gap-2"
+              data-i18n data-fr="Voir en plein écran" data-en="View fullscreen" data-ar="عرض بملء الشاشة"
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M8 3H5a2 2 0 0 0-2 2v3m18-5h-3a2 2 0 0 0-2 2v3M3 16v3a2 2 0 0 0 2 2h3m11-5v3a2 2 0 0 1-2 2h-3"></path>
+              </svg>
+              Voir en plein écran
+            </button>
+            <button
+              id="sld-download"
+              type="button"
+              class="btn-pill inline-flex items-center justify-center gap-2"
+              data-sld-filename={sldFilename}
+              data-i18n data-fr="Télécharger le schéma (SVG)" data-en="Download the diagram (SVG)" data-ar="تحميل المخطط (SVG)"
+            >
+              Télécharger le schéma (SVG)
+            </button>
+          </div>
+        </section>
+
+        <!-- WJ129 — visionneuse plein écran (pan/pinch/molette/double-tap,
+             AUCUNE bibliothèque — géométrie pure dans lib/sldViewer.ts).
+             SIBLING du <section id="sld"> (jamais imbriquée dans .cine-in/
+             .cine-card) : un ancêtre transformé (l'animation d'entrée
+             .cine-in pose `transform: translateY(...)` le temps du fondu au
+             chargement) créerait un bloc de confinement local et casserait
+             `position: fixed` — voir la note CSS `.sld-viewer` plus bas.
+             `hidden` par défaut : ni rendu ni coût tant que l'utilisateur n'a
+             pas cliqué la carte ou « Voir en plein écran ». -->
+        <div
+          id="sld-viewer"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="sld-viewer-title"
+          class="sld-viewer"
+          hidden
+        >
+          <div class="sld-viewer-header">
+            <p id="sld-viewer-title" class="sld-viewer-title" data-i18n data-fr="Schéma électrique" data-en="Electrical diagram" data-ar="المخطط الكهربائي">Schéma électrique</p>
+            <button
+              type="button"
+              id="sld-viewer-close"
+              class="sld-viewer-close"
+              aria-label="Fermer"
+              data-aria-label-fr="Fermer" data-aria-label-en="Close" data-aria-label-ar="إغلاق"
+            >
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true">
+                <path d="M18 6 6 18M6 6l12 12"></path>
+              </svg>
+            </button>
+          </div>
+          <div id="sld-viewer-viewport" class="sld-viewer-viewport">
+            <div id="sld-viewer-content" class="sld-viewer-content"></div>
+          </div>
+          <div class="sld-viewer-controls">
+            <button
+              type="button"
+              id="sld-viewer-zoom-in"
+              class="sld-viewer-fab"
+              aria-label="Agrandir"
+              data-aria-label-fr="Agrandir" data-aria-label-en="Zoom in" data-aria-label-ar="تكبير"
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true">
+                <path d="M12 5v14M5 12h14"></path>
+              </svg>
+            </button>
+            <button
+              type="button"
+              id="sld-viewer-zoom-out"
+              class="sld-viewer-fab"
+              aria-label="Réduire"
+              data-aria-label-fr="Réduire" data-aria-label-en="Zoom out" data-aria-label-ar="تصغير"
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true">
+                <path d="M5 12h14"></path>
+              </svg>
+            </button>
+            <button
+              type="button"
+              id="sld-viewer-zoom-reset"
+              class="sld-viewer-fab"
+              aria-label="Réinitialiser le zoom"
+              data-aria-label-fr="Réinitialiser le zoom" data-aria-label-en="Reset zoom" data-aria-label-ar="إعادة ضبط التكبير"
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M3 12a9 9 0 1 1 3 6.7M3 21v-6h6"></path>
+              </svg>
+            </button>
+          </div>
+        </div>
+        </>
+      )}
+
+      <!-- ── WJ13/WJ35 · BLOC CRÉDIBILITÉ (garanties · certifications · réassurance) -->
+      {/* Aucune donnée chiffrée fabriquée : nombre de clients / avis / photos
+          réelles marqués `pending real content` tant que Reda ne les fournit pas.
+          Les garanties et normes ci-dessous sont des FAITS techniques vérifiables.
+          WJ35 — CertLogoRow reprend ces mêmes faits en bandeau ; le compteur
+          d'installations et la note Google sont désormais des composants premium
+          RÉUTILISABLES (InstallCounter / StarRating), avec la même intégrité. */}
+      <section id="confiance" class="mx-auto max-w-4xl px-5 pt-16 sm:px-8">
+        <p class="tech-label rule-brass text-brass-300" data-i18n data-fr="Pourquoi nous faire confiance" data-en="Why trust us" data-ar="لماذا تثقون بنا">Pourquoi nous faire confiance</p>
+        {/* ── PV81 · LES GARANTIES RACONTENT UNE SEULE HISTOIRE ────────────────
+            Trois cartes disaient trois nombres qui ne parlaient pas de la même
+            chose : un « 20 à 25 ans » SANS libellé (durée de vie, lu comme une
+            garantie), « 30 ans panneaux / 10 ans onduleur » juste en dessous, et
+            « 25 ans » du cumul d'économies plus haut. Le chiffre orphelin part ;
+            restent les DEUX garanties constructeur réelles + l'engagement de
+            pose. Les certifications (IEC, loi 82-21) ne sont plus répétées ici :
+            <CertLogoRow/> juste en dessous les porte déjà, à l'identique. */}
+        <p class="cine-card mt-5 flex flex-wrap items-baseline gap-x-3 gap-y-1 rounded-xl p-5 text-lune-soft">
+          <span class="fig text-lune" dir="ltr">30 ans</span>
+          <span data-i18n data-fr="de performance panneaux" data-en="of panel performance" data-ar="أداء الألواح">de performance panneaux</span>
+          <span class="text-lune-faint" aria-hidden="true">·</span>
+          <span class="fig text-lune" dir="ltr">10 ans</span>
+          <span data-i18n data-fr="onduleur" data-en="inverter" data-ar="العاكس">onduleur</span>
+          <span class="text-lune-faint" aria-hidden="true">·</span>
+          <span class="text-lune" data-i18n data-fr="pose garantie Taqinor" data-en="installation guaranteed by Taqinor" data-ar="التركيب مضمون من طرف تاقينور">pose garantie Taqinor</span>
+        </p>
+
+        <!-- WJ35 — compteur d'installations réel + note Google (scaffold tant qu'absente). -->
+        <div class="mt-4 cine-card rounded-xl p-5 sm:p-6">
+          <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <InstallCounter />
+            <StarRating />
+          </div>
+        </div>
+
+        {/* W342 — « L'installation la plus proche de chez vous » : GPS réel du
+            toit (roof_layout, exposé backend depuis QJ26) ou correspondance
+            texte de ville (client_addr). Absent → section entière omise,
+            jamais une ville inventée. */}
+        {nearestInstall && (
+          <div class="mt-4 cine-card rounded-xl p-5 sm:p-6">
+            <p class="tech-label text-brass-300" data-i18n
+              data-fr="L'installation la plus proche de chez vous"
+              data-en="The installation closest to you"
+              data-ar="أقرب تركيب من منزلكم">
+              L'installation la plus proche de chez vous
+            </p>
+            <p class="v2-body mt-2">
+              <span data-i18n
+                data-fr={`${nearestInstall.ville} — ${nearestInstall.kwc} — installation réelle Taqinor`}
+                data-en={`${nearestInstall.ville} — ${formatNumber(nearestInstall.kwcNum, 2)} kWc — real Taqinor installation`}
+                data-ar={`${nearestInstall.ville} — ${nearestInstall.kwc} — تركيب حقيقي لتاقينور`}>
+                {nearestInstall.ville} — {nearestInstall.kwc} — installation réelle Taqinor
+              </span>
+            </p>
+            <a href={nearestInstallHref} class="mt-2 inline-block text-sm text-brass-300 underline-offset-2 hover:underline" data-i18n
+              data-fr="Voir cette réalisation" data-en="See this project" data-ar="مشاهدة هذا الإنجاز">
+              Voir cette réalisation
+            </a>
+          </div>
+        )}
+
+        <!-- WJ35 — bandeau certifications/garanties (texte, sobre — aucun logo fabriqué). -->
+        <div class="mt-4">
+          <CertLogoRow />
+        </div>
+
+        {/* WJ35 — avis clients réels. PV81 — <TestimonialCarousel/> est no-op
+            tant que TESTIMONIALS est vide (livré vide, aucun avis fabriqué),
+            mais l'ENVELOPPE — carte + titre « Avis clients » — était rendue
+            inconditionnellement : chaque client voyait donc un cadre vide sous
+            un titre, exactement le « bientôt disponible » que la page bannit
+            partout ailleurs. L'enveloppe suit désormais la même condition que
+            son contenu. */}
+        {hasTestimonials() && (
+          <div class="mt-4 cine-card rounded-xl p-5 sm:p-6">
+            <p class="tech-label text-lune-faint" data-i18n data-fr="Avis clients" data-en="Customer reviews" data-ar="آراء العملاء">Avis clients</p>
+            <div class="mt-3">
+              <TestimonialCarousel />
+            </div>
+          </div>
+        )}
+
+        <!-- WJ86 — « Nos chantiers » (photos réelles) : NO-OP tant que WG5/WG6
+             ne fournissent pas de vraies photos — jamais de mention "à venir"
+             sur un document commercial. Même discipline que
+             <TestimonialCarousel/> (hasTestimonials()). -->
+        {REAL_PROJECT_PHOTOS_AVAILABLE && (
+          <div class="mt-4 cine-card rounded-xl p-5">
+            <p class="tech-label text-lune-faint" data-i18n data-fr="Nos chantiers" data-en="Our projects" data-ar="ورشاتنا">Nos chantiers</p>
+            <p class="mt-2 text-sm text-lune-soft" data-i18n
+              data-fr="Installations documentées, dossiers techniques à l’appui."
+              data-en="Documented installations, backed by technical files."
+              data-ar="تركيبات موثقة، بملفات تقنية داعمة.">
+              Installations documentées, dossiers techniques à l’appui.
+            </p>
+          </div>
+        )}
+
+        <!-- WJ17/WJ86 — mot du fondateur : NO-OP tant qu'aucune citation réelle
+             n'est fournie (WG6) — un texte placeholder affiché comme un vrai
+             mot du fondateur lit comme un produit inachevé au moment critique
+             de la confiance. -->
+        {REAL_FOUNDER_QUOTE_AVAILABLE && (
+          <div class="mt-4 cine-card rounded-xl p-6">
+            <p class="tech-label text-lune-faint" data-i18n data-fr="Le mot du fondateur" data-en="A word from the founder" data-ar="كلمة المؤسس">Le mot du fondateur</p>
+            <blockquote class="mt-3 v2-body text-lune" data-i18n
+              data-fr="« Chez Taqinor, nous traitons chaque toit comme le nôtre : une étude honnête, du matériel certifié, et un accompagnement après l’installation. Merci de votre confiance. »"
+              data-en="\"At Taqinor, we treat every roof as our own: an honest study, certified equipment, and support after installation. Thank you for your trust.\""
+              data-ar="« في تاقينور، نتعامل مع كل سطح كأنه سطحنا: دراسة صادقة، معدات معتمدة، ومرافقة بعد التركيب. شكراً على ثقتكم. »">
+              « Chez Taqinor, nous traitons chaque toit comme le nôtre : une étude honnête,
+              du matériel certifié, et un accompagnement après l’installation. Merci de votre confiance. »
+            </blockquote>
+            <p class="mt-2 text-sm text-lune-faint">Reda Kasri — <span data-i18n data-fr="fondateur, Taqinor" data-en="founder, Taqinor" data-ar="مؤسس تاقينور">fondateur, Taqinor</span></p>
+          </div>
+        )}
+      </section>
+
+      <!-- ── PV80 · FAQ — les TROIS objections qui reviennent vraiment. La liste
+           complète (objectionFaq) reste dans la lib ; on n’en rend plus que le
+           haut du panier — un accordéon de 5 items lit comme un mode d’emploi. -->
+      <section id="faq" class="mx-auto max-w-4xl px-5 pt-16 sm:px-8">
+        <p class="tech-label rule-brass text-brass-300" data-i18n data-fr="Vos questions, nos réponses" data-en="Your questions, our answers" data-ar="أسئلتكم، وأجوبتنا">Vos questions, nos réponses</p>
+        <div class="mt-5 space-y-3">
+          {faq.slice(0, 3).map((item) => (
+            <details class="cine-card rounded-xl p-5">
+              <summary class="cursor-pointer text-sm font-bold text-lune" data-i18n data-fr={item.question} data-en={item.questionEn} data-ar={item.questionAr}>{item.question}</summary>
+              <p class="mt-3 text-sm text-lune-soft" data-i18n data-fr={item.answer} data-en={item.answerEn} data-ar={item.answerAr}>{item.answer}</p>
+            </details>
+          ))}
+        </div>
+      </section>
+
+      <!-- ── PV80 · CHAPITRE 7 — VOTRE PRIX, PUIS LA SIGNATURE ────────────────
+           L'argent est dit ICI, à un seul endroit, et une seule fois : plus de
+           liste d'équipement noyée dans la carte, plus de mensualités, plus de
+           comparatif bancaire. Le chapitre enchaîne prix → contact → signature
+           → demande de modification, sans rien intercaler. L'ancre historique
+           id="options" est CONSERVÉE (liens internes de la page). -->
       <section id="options" class="mx-auto max-w-4xl px-5 pt-14 sm:px-8">
         <p class="tech-label rule-brass text-brass-300" data-i18n
-          data-fr={twoOptions ? 'Vos deux options' : 'Votre proposition'}
-          data-en={twoOptions ? 'Your two options' : 'Your proposal'}
-          data-ar={twoOptions ? 'خياراكم' : 'عرضكم'}>
-          {twoOptions ? 'Vos deux options' : 'Votre proposition'}
+          data-fr={twoOptions ? 'Vos deux options' : 'Votre prix'}
+          data-en={twoOptions ? 'Your two options' : 'Your price'}
+          data-ar={twoOptions ? 'خياراكم' : 'ثمنكم'}>
+          {twoOptions ? 'Vos deux options' : 'Votre prix'}
         </p>
         <div class={`mt-5 grid gap-4 ${twoOptions ? 'sm:grid-cols-2' : ''}`}>
           {options.map((opt) => {
@@ -1767,31 +2083,18 @@ const signConfig = ok
                   </p>
                 ) : null}
 
-                <!-- Équipement (WJ32 : marque + garantie + description quand disponibles — jamais de lien fiche technique fabriqué, le backend n'expose pas encore cette URL publiquement) -->
+                <!-- PV80 — la liste d’équipement a quitté la carte de PRIX pour le
+                     chapitre « Votre installation » (tableau structuré, groupé par
+                     famille) : ici on ne parle plus que d’argent, une seule fois. -->
                 {items.length > 0 && (
-                  <div class="mt-5 border-t border-white/10 pt-4">
-                    <p class="tech-label text-lune-faint" data-i18n data-fr="Équipement" data-en="Equipment" data-ar="المعدات">Équipement</p>
-                    <ul class="mt-3 space-y-3 text-sm text-lune-soft">
-                      {items.map((it) => (
-                        <li>
-                          <div class="flex items-baseline justify-between gap-3">
-                            <span>
-                              <span class="text-lune">{it.designation}</span>
-                              {it.marque ? <span class="text-lune-faint"> · {it.marque}</span> : null}
-                            </span>
-                            <span class="fig shrink-0 text-lune-faint" dir="ltr">×{formatNumber(it.quantite)}</span>
-                          </div>
-                          {it.description ? (
-                            <p class="mt-0.5 text-xs text-lune-faint">{it.description}</p>
-                          ) : null}
-                          {it.garantie ? (
-                            <p class="mt-0.5 text-xs text-brass-300" data-i18n
-                              data-fr={`Garantie : ${it.garantie}`} data-en={`Warranty: ${it.garantie}`} data-ar={`الضمان: ${it.garantie}`}>Garantie : {it.garantie}</p>
-                          ) : null}
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
+                  <p class="mt-4 text-sm text-lune-faint">
+                    <a href="#equipement" class="underline-offset-2 hover:underline" data-i18n
+                      data-fr={`Voir le détail du matériel (${formatNumber(items.length)} postes)`}
+                      data-en={`See the equipment detail (${formatNumber(items.length)} items)`}
+                      data-ar={`عرض تفاصيل المعدات (${formatNumber(items.length)} بنود)`}>
+                      Voir le détail du matériel ({formatNumber(items.length)} postes)
+                    </a>
+                  </p>
                 )}
 
                 <!-- Chaîne de prix explicite -->
@@ -1827,155 +2130,6 @@ const signConfig = ok
         </div>
       </section>
 
-      <!-- ── WJ53 · TOGGLE « PAYER COMPTANT / PAIEMENT ÉCHELONNÉ » ────────────
-           Recalcul EN DIRECT (côté client) d'une mensualité indicative en
-           divisant simplement le TTC de l'option retenue par le nombre de mois
-           choisi — AUCUN taux inventé, distinct de l'éco-prêt bancaire WJ10/
-           WJ32 juste en dessous. Rendu UNIQUEMENT si un prix réel existe. -->
-      {showInstallmentToggle && defaultInstallment && (
-        <section class="mx-auto max-w-4xl px-5 pt-14 sm:px-8" data-installment-ttc={installmentTtc}>
-          <p class="tech-label rule-brass text-brass-300" data-i18n
-            data-fr="Comptant ou échelonné ?" data-en="Cash or in installments?" data-ar="نقداً أم بالتقسيط؟">
-            Comptant ou échelonné ?
-          </p>
-          <div class="cine-card mt-5 rounded-2xl p-6 sm:p-7">
-            <div class="flex flex-wrap items-center gap-2" role="group" aria-label="Payer comptant ou en plusieurs fois">
-              <button
-                type="button"
-                id="installment-cash-btn"
-                class="btn-pill px-4 py-2 text-sm"
-                data-installment-mode="cash"
-                aria-pressed="true"
-                style="background: var(--color-brass-400); color: var(--color-nuit); border-color: var(--color-brass-400)"
-              >
-                <span data-i18n data-fr="Payer comptant" data-en="Pay cash" data-ar="الدفع نقداً">Payer comptant</span>
-              </button>
-              <button
-                type="button"
-                id="installment-split-btn"
-                class="btn-pill px-4 py-2 text-sm"
-                data-installment-mode="split"
-                aria-pressed="false"
-              >
-                <span data-i18n data-fr="Paiement échelonné" data-en="Pay in installments" data-ar="الدفع بالتقسيط">Paiement échelonné</span>
-              </button>
-            </div>
-
-            <!-- État « comptant » -->
-            <div id="installment-cash-view" class="mt-5">
-              <p class="fig fig-md lum" dir="ltr">{formatMAD(installmentTtc)}</p>
-              <p class="mt-1 text-sm text-lune-soft" data-i18n data-fr="TTC, en une fois." data-en="Incl. tax, in one payment." data-ar="شامل الضريبة، دفعة واحدة.">TTC, en une fois.</p>
-            </div>
-
-            <!-- État « échelonné » (masqué par défaut, JS bascule l'affichage) -->
-            <div id="installment-split-view" class="mt-5" hidden>
-              <label for="installment-months" class="tech-label text-lune-faint" data-i18n data-fr="Nombre de mois" data-en="Number of months" data-ar="عدد الأشهر">Nombre de mois</label>
-              <select
-                id="installment-months"
-                class="mt-2 rounded-xl border border-white/15 bg-nuit-800 px-4 py-2 text-lune"
-                dir="ltr"
-              >
-                {INSTALLMENT_MONTH_OPTIONS.map((m) => (
-                  <option value={m} selected={m === 12}>{m} {m === 1 ? 'mois' : 'mois'}</option>
-                ))}
-              </select>
-              <p class="mt-4">
-                <span class="fig fig-md text-lune" dir="ltr" id="installment-monthly-value">{formatMAD(defaultInstallment.monthly)}</span>
-                <span class="text-lg text-lune-soft" data-i18n data-fr="/mois" data-en="/month" data-ar="/شهرياً">/mois</span>
-              </p>
-              <p class="mt-2 text-sm text-brass-300" data-i18n
-                data-fr="à confirmer — hors offre bancaire ferme"
-                data-en="to confirm — not a firm bank offer"
-                data-ar="للتأكيد — ليس عرضاً بنكياً نهائياً">
-                à confirmer — hors offre bancaire ferme
-              </p>
-              <p class="mt-2 text-xs text-lune-faint" data-i18n
-                data-fr="Simple division du prix TTC par le nombre de mois choisi — aucun taux ni frais ajouté ici. Les modalités exactes (calendrier, garantie) sont à convenir avec votre conseiller Taqinor."
-                data-en="Simple division of the incl.-tax price by the number of months chosen — no rate or fee added here. Exact terms (schedule, guarantee) are to be agreed with your Taqinor advisor."
-                data-ar="تقسيم بسيط للثمن شامل الضريبة على عدد الأشهر المختار — دون أي معدل أو رسوم مضافة هنا. تُحدَّد الشروط الدقيقة (الجدول، الضمان) مع مستشاركم في تاقينور.">
-                Simple division du prix TTC par le nombre de mois choisi — aucun taux ni frais ajouté ici.
-                Les modalités exactes (calendrier, garantie) sont à convenir avec votre conseiller Taqinor.
-              </p>
-            </div>
-          </div>
-        </section>
-      )}
-
-      <!-- ── WJ10/WJ32 · COMPARATIF DE FINANCEMENT ───────────────────────────
-           Priorité au bloc BACKEND réel (QJ12, programme Tatwir/ISTIDAMA +
-           comparaison ONEE déjà rédigée serveur) quand il est présent ; repli
-           sur le calcul générique WJ10 sinon — jamais les deux à la fois. -->
-      {financingBlock ? (
-        <section class="mx-auto max-w-4xl px-5 pt-14 sm:px-8">
-          <p class="tech-label rule-brass text-brass-300" data-i18n data-fr="Comment financer" data-en="How to finance" data-ar="كيفية التمويل">Comment financer</p>
-          <div class="mt-5 grid gap-4 sm:grid-cols-2">
-            <div class="cine-card rounded-2xl p-6">
-              <p class="tech-label text-lune-faint">{financingBlock.cash.label}</p>
-              <p class="fig fig-md lum mt-2" dir="ltr">{formatMAD(financingBlock.cash.montant_ttc)}</p>
-              <p class="mt-2 text-sm text-lune-soft" data-i18n data-fr="Prix clé en main, TTC. L’investissement le plus rentable sur la durée." data-en="Turnkey price, incl. tax. The most cost-effective investment over time." data-ar="ثمن تسليم مفتاح في اليد، شامل الضريبة. الاستثمار الأكثر مردودية على المدى الطويل.">Prix clé en main, TTC. L’investissement le plus rentable sur la durée.</p>
-            </div>
-            <div class="cine-card rounded-2xl p-6">
-              <p class="tech-label text-lune-faint" data-i18n data-fr={financingBlock.credit.programme_label || 'À crédit'} data-en={financingBlock.credit.programme_label || 'On credit'} data-ar={financingBlock.credit.programme_label || 'بالتقسيط'}>{financingBlock.credit.programme_label || 'À crédit'}</p>
-              <p class="fig fig-md mt-2 text-lune" dir="ltr">
-                ≈ {formatMAD(financingBlock.credit.mensualite)}<span class="text-lg text-lune-soft">/mois</span>
-              </p>
-              <p class="mt-2 text-sm text-lune-soft" data-i18n
-                data-fr={`Sur ${Math.round(financingBlock.credit.duree_mois / 12)} ans, taux indicatif ${formatNumber(financingBlock.credit.taux_annuel_pct, 2)} %/an à confirmer avec votre banque.${financingBlock.onee_comparison.show && financingBlock.onee_comparison.message ? ` ${financingBlock.onee_comparison.message}` : ''}`}
-                data-en={`Over ${Math.round(financingBlock.credit.duree_mois / 12)} years, indicative rate ${formatNumber(financingBlock.credit.taux_annuel_pct, 2)} %/year to confirm with your bank.${financingBlock.onee_comparison.show && financingBlock.onee_comparison.message ? ` ${financingBlock.onee_comparison.message}` : ''}`}
-                data-ar={`على مدى ${Math.round(financingBlock.credit.duree_mois / 12)} سنة، معدل إرشادي ${formatNumber(financingBlock.credit.taux_annuel_pct, 2)} %/سنة يُؤكَّد مع بنككم.${financingBlock.onee_comparison.show && financingBlock.onee_comparison.message ? ` ${financingBlock.onee_comparison.message}` : ''}`}>
-                Sur {Math.round(financingBlock.credit.duree_mois / 12)} ans, taux indicatif {formatNumber(financingBlock.credit.taux_annuel_pct, 2)} %/an
-                <span class="text-brass-300"> à confirmer</span> avec votre banque.
-                {financingBlock.onee_comparison.show && financingBlock.onee_comparison.message
-                  ? <> {financingBlock.onee_comparison.message}</>
-                  : null}
-              </p>
-            </div>
-          </div>
-          {financingBlock.guidance_text && (
-            <p class="mt-3 text-sm text-lune-soft">{financingBlock.guidance_text}</p>
-          )}
-          <p class="mt-3 text-xs text-lune-faint" data-i18n
-            data-fr="Mensualités calculées à titre indicatif (taux et durée non contractuels). Le montant exact dépend de l’offre bancaire retenue."
-            data-en="Monthly payments calculated for guidance only (rate and duration non-contractual). The exact amount depends on the bank offer chosen."
-            data-ar="الأقساط الشهرية محسوبة على سبيل الإرشاد (المعدل والمدة غير تعاقديين). المبلغ الدقيق يتوقف على العرض البنكي المعتمد.">
-            Mensualités calculées à titre indicatif (taux et durée non contractuels). Le montant exact dépend de l’offre bancaire retenue.
-          </p>
-        </section>
-      ) : financing && (
-        <section class="mx-auto max-w-4xl px-5 pt-14 sm:px-8">
-          <p class="tech-label rule-brass text-brass-300" data-i18n data-fr="Comment financer" data-en="How to finance" data-ar="كيفية التمويل">Comment financer</p>
-          <div class="mt-5 grid gap-4 sm:grid-cols-2">
-            <div class="cine-card rounded-2xl p-6">
-              <p class="tech-label text-lune-faint" data-i18n data-fr="Au comptant" data-en="Cash" data-ar="نقداً">Au comptant</p>
-              <p class="fig fig-md lum mt-2" dir="ltr">{formatMAD(financing.cash)}</p>
-              <p class="mt-2 text-sm text-lune-soft" data-i18n data-fr="Prix clé en main, TTC. L’investissement le plus rentable sur la durée." data-en="Turnkey price, incl. tax. The most cost-effective investment over time." data-ar="ثمن تسليم مفتاح في اليد، شامل الضريبة. الاستثمار الأكثر مردودية على المدى الطويل.">Prix clé en main, TTC. L’investissement le plus rentable sur la durée.</p>
-            </div>
-            <div class="cine-card rounded-2xl p-6">
-              <p class="tech-label text-lune-faint" data-i18n data-fr="À crédit (éco-prêt)" data-en="On credit (eco-loan)" data-ar="بالتقسيط (قرض إيكولوجي)">À crédit (éco-prêt)</p>
-              <p class="fig fig-md mt-2 text-lune" dir="ltr">
-                ≈ {formatMAD(financing.monthlyLow)}<span class="text-lg text-lune-soft"> – {formatMAD(financing.monthlyHigh)}/mois</span>
-              </p>
-              <p class="mt-2 text-sm text-lune-soft" data-i18n
-                data-fr={`Sur ${Math.round(financing.months / 12)} ans, fourchette indicative à confirmer avec votre banque.${financing.beatsBill && financing.currentBillMonthly ? ` Souvent moins que votre facture actuelle (≈ ${formatMAD(financing.currentBillMonthly)}/mois).` : ''}`}
-                data-en={`Over ${Math.round(financing.months / 12)} years, indicative range to confirm with your bank.${financing.beatsBill && financing.currentBillMonthly ? ` Often less than your current bill (≈ ${formatMAD(financing.currentBillMonthly)}/month).` : ''}`}
-                data-ar={`على مدى ${Math.round(financing.months / 12)} سنة، شريحة إرشادية تُؤكَّد مع بنككم.${financing.beatsBill && financing.currentBillMonthly ? ` غالباً أقل من فاتورتكم الحالية (≈ ${formatMAD(financing.currentBillMonthly)}/شهر).` : ''}`}>
-                Sur {Math.round(financing.months / 12)} ans, fourchette indicative
-                <span class="text-brass-300"> à confirmer</span> avec votre banque.
-                {financing.beatsBill && financing.currentBillMonthly
-                  ? <> Souvent <strong class="text-lune">moins que votre facture actuelle</strong> (≈ {formatMAD(financing.currentBillMonthly)}/mois).</>
-                  : null}
-              </p>
-            </div>
-          </div>
-          <p class="mt-3 text-xs text-lune-faint" data-i18n
-            data-fr="Mensualités calculées à titre indicatif (taux et durée non contractuels). Le montant exact dépend de l’offre bancaire retenue."
-            data-en="Monthly payments calculated for guidance only (rate and duration non-contractual). The exact amount depends on the bank offer chosen."
-            data-ar="الأقساط الشهرية محسوبة على سبيل الإرشاد (المعدل والمدة غير تعاقديين). المبلغ الدقيق يتوقف على العرض البنكي المعتمد.">
-            Mensualités calculées à titre indicatif (taux et durée non contractuels). Le montant exact dépend de l’offre bancaire retenue.
-          </p>
-        </section>
-      )}
-
       <!-- ── WJ32 · VARIANTES CÔTE-À-CÔTE (« autres tailles ») ───────────────
            Résumés minimaux des devis frères/sœurs actifs (QJ15). Masqué si le
            devis est isolé (variants=[]) — jamais un chiffre calculé ici. -->
@@ -2000,165 +2154,6 @@ const signConfig = ok
           </p>
         </section>
       )}
-
-      <!-- ── WJ13/WJ35 · BLOC CRÉDIBILITÉ (garanties · certifications · réassurance) -->
-      {/* Aucune donnée chiffrée fabriquée : nombre de clients / avis / photos
-          réelles marqués `pending real content` tant que Reda ne les fournit pas.
-          Les garanties et normes ci-dessous sont des FAITS techniques vérifiables.
-          WJ35 — CertLogoRow reprend ces mêmes faits en bandeau ; le compteur
-          d'installations et la note Google sont désormais des composants premium
-          RÉUTILISABLES (InstallCounter / StarRating), avec la même intégrité. */}
-      <section class="mx-auto max-w-4xl px-5 pt-16 sm:px-8">
-        <p class="tech-label rule-brass text-brass-300" data-i18n data-fr="Pourquoi nous faire confiance" data-en="Why trust us" data-ar="لماذا تثقون بنا">Pourquoi nous faire confiance</p>
-        <div class="mt-5 grid gap-4 sm:grid-cols-3">
-          <div class="cine-card rounded-xl p-5">
-            <!-- WJ72 — « X à Y » est la convention de fourchette du reste du
-                 site (lib/billRange.ts paybackLabel : « 4 à 6 ans », etc.) ;
-                 corrigé depuis l'en-dash « 20–25 ans », seul écart au format
-                 commun. <bdi> isole le chiffre latin sans forcer toute la
-                 ligne en LTR (voir la même discipline sur mon-toit.astro). -->
-            <p class="fig text-2xl text-lune"><bdi>20 à 25 ans</bdi></p>
-            <p class="mt-1 text-sm text-lune-soft" data-i18n data-fr="Garanties constructeur : 30 ans de performance sur les panneaux, 10 ans sur l’onduleur." data-en="Manufacturer warranties: 30 years of performance on panels, 10 years on the inverter." data-ar="ضمانات الصانع: 30 سنة أداء للألواح، 10 سنوات للعاكس.">Garanties constructeur : 30 ans de performance sur les panneaux, 10 ans sur l’onduleur.</p>
-          </div>
-          <div class="cine-card rounded-xl p-5">
-            <p class="fig text-xl text-lune" dir="ltr">IEC 61215 / 61730</p>
-            <p class="mt-1 text-sm text-lune-soft" data-i18n data-fr="Modules certifiés aux normes internationales. Conformité étude IRESEN / AMEE." data-en="Modules certified to international standards. IRESEN / AMEE study compliance." data-ar="ألواح معتمدة وفق المعايير الدولية. مطابقة لدراسة IRESEN / AMEE.">Modules certifiés aux normes internationales. Conformité étude IRESEN / AMEE.</p>
-          </div>
-          <div class="cine-card rounded-xl p-5">
-            <p class="fig text-xl text-lune" data-i18n data-fr="Loi 82-21" data-en="Law 82-21" data-ar="القانون 82-21">Loi 82-21</p>
-            <p class="mt-1 text-sm text-lune-soft" data-i18n data-fr="Installation conforme au cadre marocain d’autoconsommation en basse tension." data-en="Installation compliant with the Moroccan low-voltage self-consumption framework." data-ar="تركيب مطابق للإطار المغربي للاستهلاك الذاتي في التوتر المنخفض.">Installation conforme au cadre marocain d’autoconsommation en basse tension.</p>
-          </div>
-        </div>
-
-        <!-- WJ35 — compteur d'installations réel + note Google (scaffold tant qu'absente). -->
-        <div class="mt-4 cine-card rounded-xl p-5 sm:p-6">
-          <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-            <InstallCounter />
-            <StarRating />
-          </div>
-        </div>
-
-        {/* W342 — « L'installation la plus proche de chez vous » : GPS réel du
-            toit (roof_layout, exposé backend depuis QJ26) ou correspondance
-            texte de ville (client_addr). Absent → section entière omise,
-            jamais une ville inventée. */}
-        {nearestInstall && (
-          <div class="mt-4 cine-card rounded-xl p-5 sm:p-6">
-            <p class="tech-label text-brass-300" data-i18n
-              data-fr="L'installation la plus proche de chez vous"
-              data-en="The installation closest to you"
-              data-ar="أقرب تركيب من منزلكم">
-              L'installation la plus proche de chez vous
-            </p>
-            <p class="v2-body mt-2">
-              <span data-i18n
-                data-fr={`${nearestInstall.ville} — ${nearestInstall.kwc} — installation réelle Taqinor`}
-                data-en={`${nearestInstall.ville} — ${formatNumber(nearestInstall.kwcNum, 2)} kWc — real Taqinor installation`}
-                data-ar={`${nearestInstall.ville} — ${nearestInstall.kwc} — تركيب حقيقي لتاقينور`}>
-                {nearestInstall.ville} — {nearestInstall.kwc} — installation réelle Taqinor
-              </span>
-            </p>
-            <a href={nearestInstallHref} class="mt-2 inline-block text-sm text-brass-300 underline-offset-2 hover:underline" data-i18n
-              data-fr="Voir cette réalisation" data-en="See this project" data-ar="مشاهدة هذا الإنجاز">
-              Voir cette réalisation
-            </a>
-          </div>
-        )}
-
-        <!-- WJ35 — bandeau certifications/garanties (texte, sobre — aucun logo fabriqué). -->
-        <div class="mt-4">
-          <CertLogoRow />
-        </div>
-
-        <!-- WJ35 — avis clients réels (carrousel, vide-mais-premium — même intégrité que <Testimonials/>). -->
-        <div class="mt-4 cine-card rounded-xl p-5 sm:p-6">
-          <p class="tech-label text-lune-faint" data-i18n data-fr="Avis clients" data-en="Customer reviews" data-ar="آراء العملاء">Avis clients</p>
-          <div class="mt-3">
-            <TestimonialCarousel />
-          </div>
-        </div>
-
-        <!-- WJ86 — « Nos chantiers » (photos réelles) : NO-OP tant que WG5/WG6
-             ne fournissent pas de vraies photos — jamais de mention "à venir"
-             sur un document commercial. Même discipline que
-             <TestimonialCarousel/> (hasTestimonials()). -->
-        {REAL_PROJECT_PHOTOS_AVAILABLE && (
-          <div class="mt-4 cine-card rounded-xl p-5">
-            <p class="tech-label text-lune-faint" data-i18n data-fr="Nos chantiers" data-en="Our projects" data-ar="ورشاتنا">Nos chantiers</p>
-            <p class="mt-2 text-sm text-lune-soft" data-i18n
-              data-fr="Installations documentées, dossiers techniques à l’appui."
-              data-en="Documented installations, backed by technical files."
-              data-ar="تركيبات موثقة، بملفات تقنية داعمة.">
-              Installations documentées, dossiers techniques à l’appui.
-            </p>
-          </div>
-        )}
-
-        <!-- WJ17/WJ86 — mot du fondateur : NO-OP tant qu'aucune citation réelle
-             n'est fournie (WG6) — un texte placeholder affiché comme un vrai
-             mot du fondateur lit comme un produit inachevé au moment critique
-             de la confiance. -->
-        {REAL_FOUNDER_QUOTE_AVAILABLE && (
-          <div class="mt-4 cine-card rounded-xl p-6">
-            <p class="tech-label text-lune-faint" data-i18n data-fr="Le mot du fondateur" data-en="A word from the founder" data-ar="كلمة المؤسس">Le mot du fondateur</p>
-            <blockquote class="mt-3 v2-body text-lune" data-i18n
-              data-fr="« Chez Taqinor, nous traitons chaque toit comme le nôtre : une étude honnête, du matériel certifié, et un accompagnement après l’installation. Merci de votre confiance. »"
-              data-en="\"At Taqinor, we treat every roof as our own: an honest study, certified equipment, and support after installation. Thank you for your trust.\""
-              data-ar="« في تاقينور، نتعامل مع كل سطح كأنه سطحنا: دراسة صادقة، معدات معتمدة، ومرافقة بعد التركيب. شكراً على ثقتكم. »">
-              « Chez Taqinor, nous traitons chaque toit comme le nôtre : une étude honnête,
-              du matériel certifié, et un accompagnement après l’installation. Merci de votre confiance. »
-            </blockquote>
-            <p class="mt-2 text-sm text-lune-faint">Reda Kasri — <span data-i18n data-fr="fondateur, Taqinor" data-en="founder, Taqinor" data-ar="مؤسس تاقينور">fondateur, Taqinor</span></p>
-          </div>
-        )}
-      </section>
-
-      <!-- ── WJ32 · FAQ OBJECTIONS (4–5 questions fréquentes) ────────────────
-           <details> par item : accordéon accessible sans JS, zéro CLS. -->
-      <section class="mx-auto max-w-4xl px-5 pt-16 sm:px-8">
-        <p class="tech-label rule-brass text-brass-300" data-i18n data-fr="Vos questions, nos réponses" data-en="Your questions, our answers" data-ar="أسئلتكم، وأجوبتنا">Vos questions, nos réponses</p>
-        <div class="mt-5 space-y-3">
-          {faq.map((item) => (
-            <details class="cine-card rounded-xl p-5">
-              <summary class="cursor-pointer text-sm font-bold text-lune" data-i18n data-fr={item.question} data-en={item.questionEn} data-ar={item.questionAr}>{item.question}</summary>
-              <p class="mt-3 text-sm text-lune-soft" data-i18n data-fr={item.answer} data-en={item.answerEn} data-ar={item.answerAr}>{item.answer}</p>
-            </details>
-          ))}
-        </div>
-      </section>
-
-      <!-- ── WJ14 · IMPACT ENVIRONNEMENTAL (CO₂ ≈ arbres) — clôture émotion ── -->
-      {enviro && (
-        <section class="mx-auto max-w-4xl px-5 pt-14 sm:px-8">
-          <p class="tech-label rule-brass text-brass-300" data-i18n data-fr="Votre impact, concrètement" data-en="Your impact, in real terms" data-ar="أثركم، بالأرقام">Votre impact, concrètement</p>
-          <div class="cine-card mt-5 rounded-2xl p-6 sm:p-8">
-            <div class="grid gap-6 sm:grid-cols-2 sm:items-center">
-              <div>
-                <p class="fig lum text-4xl sm:text-5xl" dir="ltr">{formatNumber(enviro.co2TonnesPerYear, 1)} <span class="text-2xl text-lune-soft">t CO₂ / an</span></p>
-                <p class="v2-body mt-2 text-sm text-lune-soft" data-i18n
-                  data-fr={`évités chaque année — l’équivalent de ${formatNumber(enviro.trees)} arbres qui absorberaient ce CO₂.`}
-                  data-en={`avoided every year — the equivalent of ${formatNumber(enviro.trees)} trees absorbing that much CO₂.`}
-                  data-ar={`تُتجنَّب كل سنة — أي ما يعادل ${formatNumber(enviro.trees)} شجرة قادرة على امتصاص هذا الكربون.`}>
-                  évités chaque année — l’équivalent de
-                  <strong class="text-brass-300"> {formatNumber(enviro.trees)} arbres</strong> qui absorberaient ce CO₂.
-                </p>
-              </div>
-              <div class="text-sm text-lune-faint">
-                <p data-i18n
-                  data-fr={`Calcul transparent : production estimée × ${formatNumber(enviro.kgPerKwh, 2)} kg CO₂/kWh (facteur d’émission du réseau marocain), ramené à raison de ${formatNumber(enviro.kgPerTreeYear)} kg CO₂ absorbés par arbre et par an.`}
-                  data-en={`Transparent calculation: estimated production × ${formatNumber(enviro.kgPerKwh, 2)} kg CO₂/kWh (Moroccan grid emission factor), converted at ${formatNumber(enviro.kgPerTreeYear)} kg CO₂ absorbed per tree per year.`}
-                  data-ar={`حساب شفاف: الإنتاج المقدّر × ${formatNumber(enviro.kgPerKwh, 2)} كلغ CO₂/kWh (معامل انبعاث الشبكة المغربية)، مقارنة بمعدل ${formatNumber(enviro.kgPerTreeYear)} كلغ CO₂ تمتصه الشجرة الواحدة سنوياً.`}>Calcul transparent : production estimée × {formatNumber(enviro.kgPerKwh, 2)} kg CO₂/kWh (facteur d’émission du réseau marocain), ramené à raison de {formatNumber(enviro.kgPerTreeYear)} kg CO₂ absorbés par arbre et par an.</p>
-              </div>
-            </div>
-          </div>
-        </section>
-      )}
-
-      <!-- ── WJ28 · SIGNATURE ZELLIGE (pivot narratif avant l'appel au contact) -->
-      <ZelligeSignature
-        line="Chaque chiffre de cette proposition est mesuré, pas promis."
-        sub="L'étude d'abord. Le chantier ensuite."
-      />
 
       <!-- ── WJ12/WJ29 · CONTACT AU MOINDRE DOUTE (avant la signature) ─────── -->
       {/* WJ29 — les trois boutons gardent leur lien instantané (wa.me / tel:)
@@ -2242,24 +2237,23 @@ const signConfig = ok
         </div>
       </section>
 
-      <!-- ── WJ54 · « Demander une modification » — révision structurée ─────
-           Gâté sur `ok` (données chargées) : rien ne s'affiche tant que la
-           proposition elle-même n'est pas disponible (pas de coquille vide).
-           Poste vers le MÊME proxy /api/proposition-contact que WJ29 ci-dessus
-           (canal `revision` distinct) — aucun nouvel endpoint. -->
+      {/* ── PV81 · « DEMANDER UNE MODIFICATION » — REPLIÉ, ET AVANT LA
+             SIGNATURE. Le formulaire s’ouvrait en grand JUSTE APRÈS le bloc
+             e-sign : au moment précis de décider, la page proposait
+             elle-même de ne pas décider — un amplificateur de doute de
+             ~580 px. Il vit désormais sous le bloc contact, replié dans un
+             <details> natif (accessible sans JS, zéro CLS) : trouvable pour
+             qui hésite, invisible pour qui est prêt. Même endpoint, mêmes
+             ids, même script — seule la mise en scène change. */}
       {ok && (
-        <section class="mx-auto max-w-4xl px-5 pt-8 sm:px-8" data-revision-token={token}>
-          <div class="cine-card rounded-2xl p-6 sm:p-7">
-            <p class="tech-label rule-brass text-brass-300" data-i18n
-              data-fr="Demander une modification" data-en="Request a change" data-ar="طلب تعديل">
-              Demander une modification
-            </p>
-            <p class="v2-body mt-3 text-lune-soft" data-i18n
-              data-fr="Pas encore convaincu par cette version ? Dites-nous ce que vous aimeriez ajuster — sans engagement."
-              data-en="Not quite convinced by this version? Tell us what you'd like to adjust — no obligation."
-              data-ar="لستم مقتنعين بعد بهذه النسخة؟ أخبرونا بما ترغبون في تعديله — بدون التزام.">
-              Pas encore convaincu par cette version ? Dites-nous ce que vous aimeriez ajuster — sans engagement.
-            </p>
+        <section class="mx-auto max-w-4xl px-5 pt-4 sm:px-8" data-revision-token={token}>
+          <details class="cine-card rounded-2xl p-5 sm:p-6">
+            <summary class="cursor-pointer text-sm text-lune-soft" data-i18n
+              data-fr="Cette version ne correspond pas tout à fait ? Demander une modification"
+              data-en="Not quite the right version? Request a change"
+              data-ar="هذه النسخة لا تناسبكم تماماً؟ اطلبوا تعديلاً">
+              Cette version ne correspond pas tout à fait ? Demander une modification
+            </summary>
             <form id="revision-form" class="mt-4">
               <div class="flex flex-wrap gap-2" role="radiogroup" aria-label="Type de modification">
                 <button type="button" data-revision-kind="kwc" aria-pressed="false" class="btn-pill revision-kind-btn px-3 py-1.5 text-sm">
@@ -2303,40 +2297,9 @@ const signConfig = ok
                 <p id="revision-confirm" class="text-sm text-brass-300" role="status" aria-live="polite" hidden></p>
               </div>
             </form>
-          </div>
+          </details>
         </section>
       )}
-
-      <!-- ── WJ57 · CONFIANCE AU MOMENT DE SIGNER — juste au-dessus du bloc
-           e-sign (pas seulement dans la section « Pourquoi nous faire
-           confiance » plus haut). Un slot vidéo est réservé pour quand WG6
-           fournira de vrais témoignages filmés (no-op tant qu'absent — MÊME
-           discipline que REAL_FOUNDER_QUOTE_AVAILABLE) ; en attendant, repli
-           texte sur le même avis client réel (hasTestimonials()) que
-           <TestimonialCarousel/> plus haut, jamais un second avis fabriqué.
-           Les badges certifications/garanties (mêmes FAITS que CertLogoRow
-           plus haut) sont TOUJOURS affichés ici, qu'un témoignage soit
-           disponible ou non — ce sont des faits vérifiables, pas du contenu
-           gated. -->
-      <section class="mx-auto max-w-4xl px-5 pt-14 sm:px-8">
-        <div class="cine-card rounded-2xl p-6 sm:p-7">
-          {REAL_TESTIMONIAL_VIDEO_AVAILABLE ? (
-            <!-- Slot vidéo réservé (WG6) : à remplir par Reda avec le vrai
-                 témoignage filmé le jour où il devient disponible. -->
-            <div class="video-testimonial-slot" data-testimonial-video></div>
-          ) : signTestimonial ? (
-            <blockquote class="v2-body text-lune">
-              &ldquo;{signTestimonial.quote}&rdquo;
-              <footer class="mt-3 text-sm text-lune-faint not-italic">
-                <span class="font-bold text-lune">{signTestimonial.name}</span> · {signTestimonial.city} · {signTestimonial.system}
-              </footer>
-            </blockquote>
-          ) : null}
-          <div class={signTestimonial || REAL_TESTIMONIAL_VIDEO_AVAILABLE ? 'mt-5 border-t border-white/10 pt-5' : ''}>
-            <CertLogoRow />
-          </div>
-        </div>
-      </section>
 
       <!-- ── SIGNATURE EN LIGNE ───────────────────────────────────────────── -->
       <section id="signer" class="mx-auto max-w-4xl px-5 pt-16 sm:px-8">
@@ -2809,6 +2772,23 @@ const signConfig = ok
       </section>
 
 
+      <!-- ── PV80 · IMPACT CO₂ — UNE ligne. Le détail du calcul (facteur
+           d'émission, kg par arbre) a rejoint « Nos hypothèses » juste en
+           dessous : c'est sa place, pas une demi-page d'explication ici. -->
+      {enviro && (
+        <section class="mx-auto max-w-4xl px-5 pt-14 sm:px-8">
+          <p class="cine-card v2-body flex flex-wrap items-baseline gap-x-3 gap-y-1 rounded-2xl p-5 text-sm text-lune-soft sm:p-6">
+            <span class="fig lum text-2xl" dir="ltr">{formatNumber(enviro.co2TonnesPerYear, 1)} t CO₂ / an</span>
+            <span data-i18n
+              data-fr={`évités — l’équivalent de ${formatNumber(enviro.trees)} arbres.`}
+              data-en={`avoided — the equivalent of ${formatNumber(enviro.trees)} trees.`}
+              data-ar={`تُتجنَّب — أي ما يعادل ${formatNumber(enviro.trees)} شجرة.`}>
+              évités — l’équivalent de <strong class="text-brass-300">{formatNumber(enviro.trees)} arbres</strong>.
+            </span>
+          </p>
+        </section>
+      )}
+
       <!-- ── WJ32 · « ET APRÈS ? » — timeline des prochaines étapes ───────────
            WJ78 — ancre ciblée par le lien « Voir « Et après ? » » du bloc de
            succès (au-dessus, plus haut sur la page). -->
@@ -2823,13 +2803,13 @@ const signConfig = ok
             </li>
           ))}
         </ol>
-      </section>
-
-      <!-- ── WJ32 · ACCOMPAGNEMENT POST-INSTALLATION ─────────────────────────  -->
-      <section class="mx-auto max-w-4xl px-5 pt-16 sm:px-8">
-        <p class="tech-label rule-brass text-brass-300" data-i18n data-fr="Après l’installation" data-en="After installation" data-ar="بعد التركيب">Après l’installation</p>
-        <div class="cine-card mt-5 rounded-2xl p-6 sm:p-7">
-          <ul class="space-y-3 text-sm text-lune-soft">
+        <!-- PV80 — « Après l’installation » était une SECTION à part, juste
+             en dessous, avec son propre titre pour trois puces de suivi : elle
+             raconte la même histoire que la timeline ci-dessus. Fusionnée ici,
+             en pied du même bloc. -->
+        <div class="cine-card mt-4 rounded-2xl p-5 sm:p-6">
+          <p class="tech-label text-lune-faint" data-i18n data-fr="Après l’installation" data-en="After installation" data-ar="بعد التركيب">Après l’installation</p>
+          <ul class="mt-3 space-y-2 text-sm text-lune-soft">
             {monitoring.map((m) => (
               <li data-i18n data-fr={m.label} data-en={m.labelEn} data-ar={m.labelAr}>{m.label}</li>
             ))}
@@ -2839,7 +2819,7 @@ const signConfig = ok
 
       <!-- ── WJ32 · « NOS HYPOTHÈSES » — disclosure sourcée ──────────────────
            <details> natif : accessible sans JS, zéro CLS (rien ne bouge autour). -->
-      {assumptions.length > 0 && (
+      {(assumptions.length > 0 || enviro) && (
         <section class="mx-auto max-w-4xl px-5 pt-16 sm:px-8">
           <details class="cine-card rounded-2xl p-6 sm:p-7">
             <summary class="tech-label cursor-pointer text-brass-300" data-i18n data-fr="Nos hypothèses" data-en="Our assumptions" data-ar="فرضياتنا">Nos hypothèses</summary>
@@ -2850,6 +2830,19 @@ const signConfig = ok
                   <dd class="mt-0.5 text-lune-soft" data-i18n data-fr={a.value} data-en={a.valueEn} data-ar={a.valueAr}>{a.value}</dd>
                 </div>
               ))}
+              {/* PV80 — le calcul CO₂ détaillé occupait une demi-carte à l'écran ;
+                  il est ici, avec les autres hypothèses, à sa juste place. */}
+              {enviro && (
+                <div>
+                  <dt class="text-lune-faint" data-i18n data-fr="Impact CO₂" data-en="CO₂ impact" data-ar="أثر ثاني أكسيد الكربون">Impact CO₂</dt>
+                  <dd class="mt-0.5 text-lune-soft" data-i18n
+                    data-fr={`Production estimée × ${formatNumber(enviro.kgPerKwh, 2)} kg CO₂/kWh (facteur d’émission du réseau marocain), ramené à ${formatNumber(enviro.kgPerTreeYear)} kg CO₂ absorbés par arbre et par an.`}
+                    data-en={`Estimated production × ${formatNumber(enviro.kgPerKwh, 2)} kg CO₂/kWh (Moroccan grid emission factor), converted at ${formatNumber(enviro.kgPerTreeYear)} kg CO₂ absorbed per tree per year.`}
+                    data-ar={`الإنتاج المقدّر × ${formatNumber(enviro.kgPerKwh, 2)} كلغ CO₂/kWh (معامل انبعاث الشبكة المغربية)، مقارنة بمعدل ${formatNumber(enviro.kgPerTreeYear)} كلغ CO₂ تمتصه الشجرة الواحدة سنوياً.`}>
+                    Production estimée × {formatNumber(enviro.kgPerKwh, 2)} kg CO₂/kWh (facteur d’émission du réseau marocain), ramené à {formatNumber(enviro.kgPerTreeYear)} kg CO₂ absorbés par arbre et par an.
+                  </dd>
+                </div>
+              )}
             </dl>
             <!-- W359 — lien vers la page de transparence méthodologique
                  (source PVGIS, pertes système, autoconsommation d'abord,
@@ -2867,6 +2860,34 @@ const signConfig = ok
         </section>
       )}
 
+
+      <!-- ── PV81 · MANIFESTO — UNE phrase, et qui ne se contredit pas ────────
+           L'ancienne ligne disait « Chaque chiffre de cette proposition est
+           MESURÉ, pas promis » — alors que toute la page dit honnêtement
+           l'inverse trois fois (« production ESTIMÉE », « profil type au Maroc
+           ajusté à votre facture — jamais un chiffre mesuré », « estimation à
+           tarif constant »). Un client attentif y lit une contradiction au
+           moment exact où on lui demande sa confiance. La phrase dit désormais
+           ce que la page fait vraiment : elle ÉTUDIE sa facture.
+           <ZelligeSignature/> n'est pas traduisible (texte en prop simple, et
+           le composant est partagé avec d'autres pages — hors périmètre ici) :
+           le manifesto est rendu en ligne pour porter ses trois langues comme
+           tout le reste de la page. -->
+      <section class="mx-auto max-w-4xl px-5 pt-16 text-center sm:px-8">
+        <div class="rule-brass mx-auto text-brass-300" aria-hidden="true"></div>
+        <p class="display mt-6 text-balance text-xl text-white sm:text-2xl" data-i18n
+          data-fr="Chaque chiffre est étudié sur votre facture, pas promis."
+          data-en="Every figure is studied from your own bill, not promised."
+          data-ar="كل رقم مدروس انطلاقاً من فاتورتكم، وليس وعداً.">
+          Chaque chiffre est étudié sur votre facture, pas promis.
+        </p>
+        <p class="tech-label mt-3 text-lune-faint" data-i18n
+          data-fr="L’étude d’abord. Le chantier ensuite."
+          data-en="The study first. The installation next."
+          data-ar="الدراسة أولاً. ثم الورش.">
+          L’étude d’abord. Le chantier ensuite.
+        </p>
+      </section>
 
       <!-- ── CTA COLLANT (WJ34 — safe-area-inset-bottom pour les iPhone à encoche
            / barre de geste : le CTA ne se cache jamais derrière la zone système).
@@ -2962,6 +2983,16 @@ const signConfig = ok
     type SignFormState,
     type PropLang as SignPropLang,
   } from '../../lib/proposition';
+  // PV80 — la MÊME machine à états pure que celle qui a décidé du premier rendu
+  // serveur du graphique fusionné : rejouée ici au clic, donc zéro divergence.
+  import {
+    type ProductionAvailability,
+    type ProductionView,
+    initialProductionState,
+    productionLayers,
+    setProductionView,
+    setBatteryLayer,
+  } from '../../lib/propositionPage';
 
   interface SignConfig {
     token: string;
@@ -3106,6 +3137,64 @@ const signConfig = ok
     const variant = btn.getAttribute('data-curve-variant-btn') as CurveVariantId | null;
     if (variant) btn.addEventListener('click', () => applyCurveVariant(variant));
   });
+
+  // ── PV80 — LE GRAPHIQUE FUSIONNÉ « Votre production » ──────────────────────
+  // Le serveur a déjà posé le bon calque au premier rendu ; ce bloc rejoue
+  // EXACTEMENT la même fonction pure (productionLayers, lib/propositionPage)
+  // à chaque clic, donc aucune divergence serveur/client n'est possible. Rien
+  // ici ne recalcule un chiffre : on ne fait qu'afficher/masquer des SVG déjà
+  // rendus. Sans le bloc dans le DOM (aucune série backend), tout est no-op.
+  (function setupProductionChart(): void {
+    const section = document.getElementById('production');
+    if (!section) return;
+    let availability: ProductionAvailability;
+    try {
+      availability = JSON.parse(section.getAttribute('data-production-config') || '{}') as ProductionAvailability;
+    } catch {
+      return;
+    }
+    let state = initialProductionState(availability);
+
+    function apply(): void {
+      const layers = productionLayers(state, availability);
+      const setLayer = (key: string, on: boolean) => {
+        section!.querySelectorAll<HTMLElement>(`[data-prod-layer="${key}"]`).forEach((el) => {
+          el.hidden = !on;
+        });
+      };
+      setLayer('monthly', layers.monthly);
+      setLayer('daily', layers.daily);
+      setLayer('battery', layers.battery);
+      section!.querySelectorAll<HTMLElement>('[data-prod-view-btn]').forEach((btn) => {
+        const on = btn.getAttribute('data-prod-view-btn') === (layers.monthly ? 'annee' : 'journee');
+        btn.setAttribute('aria-pressed', String(on));
+        btn.setAttribute(
+          'style',
+          on ? 'background: var(--color-brass-400); color: var(--color-nuit); border-color: var(--color-brass-400)' : '',
+        );
+      });
+      const control = section!.querySelector<HTMLElement>('[data-prod-battery-control]');
+      if (control) control.hidden = !layers.showBatteryToggle;
+      // La courbe journalière reste synchrone de l'onglet de profil actif.
+      if (layers.variant !== currentCurveVariant) applyCurveVariant(layers.variant);
+    }
+
+    section.querySelectorAll<HTMLElement>('[data-prod-view-btn]').forEach((btn) => {
+      const view = btn.getAttribute('data-prod-view-btn') as ProductionView | null;
+      if (!view) return;
+      btn.addEventListener('click', () => {
+        state = setProductionView(state, view, availability);
+        apply();
+      });
+    });
+    const batteryToggle = document.getElementById('prod-battery-toggle') as HTMLInputElement | null;
+    batteryToggle?.addEventListener('change', () => {
+      state = setBatteryLayer(state, batteryToggle.checked, availability);
+      if (batteryToggle.checked !== state.battery) batteryToggle.checked = state.battery;
+      apply();
+    });
+    apply();
+  })();
   // Exposé aux AUTRES <script> de cette page (PDF affordance) — chaque bloc
   // <script> d'une île Astro est un module séparé, donc pas de portée
   // partagée native ; `window` est le pont volontairement minimal ici.
@@ -3750,16 +3839,12 @@ const signConfig = ok
   // le navigateur suivre le lien normalement (tel:/wa.me s'ouvrent tout de
   // suite) et on poste en parallèle vers le proxy same-origin — un échec ne
   // gêne jamais le client, il garde de toute façon son canal instantané.
-  // QRES66 — installmentSplit est appelé PLUS BAS dans CE script client (échéancier
-  // au changement de durée) mais n'était importé que dans le frontmatter SERVEUR :
-  // ReferenceError au chargement sur toute page complète → TOUT le module mourait
-  // (échéancier ET curseur batterie muets, sans erreur visible). L'import client
-  // manquant est LA cause racine du curseur batterie mort.
+  // PV80 — l'échéancier « comptant / échelonné » a été retiré de la page (aucune
+  // mensualité, aucun crédit) : son import client `installmentSplit` disparaît
+  // avec lui. `formatMAD` reste importé ici — le curseur batterie le réutilise.
   import {
     buildContactBody,
-    installmentSplit,
     formatMAD,
-    type InstallmentMonths,
     type ContactChannel,
   } from '../../lib/proposition';
   // WJ120 — moteur du simulateur batterie (PUR) importé ES pour un recalcul 100 %
@@ -3994,60 +4079,6 @@ const signConfig = ok
       if (document.visibilityState === 'visible') setPdfLoading(false);
     });
   }
-
-  // ── WJ53 — Toggle « payer comptant / paiement échelonné », recalcul en
-  // direct (aucun appel réseau : simple division du TTC déjà connu côté
-  // client via data-installment-ttc). Utilise installmentSplit (même fonction
-  // PURE que testée sous vitest) pour garantir zéro divergence de calcul.
-  // Regroupé dans CE script (voir la note WJ34 ci-dessus sur le 4ᵉ <script>
-  // sans import ES qui perdait son chunk client) — un <script> supplémentaire
-  // isolé sur cette route reste un risque connu, pas seulement historique.
-  (function setupInstallmentToggle(): void {
-    const installmentSection = document.querySelector<HTMLElement>('[data-installment-ttc]');
-    if (!installmentSection) return;
-    const ttc = Number(installmentSection.dataset.installmentTtc || '0');
-    const cashBtn = document.getElementById('installment-cash-btn');
-    const splitBtn = document.getElementById('installment-split-btn');
-    const cashView = document.getElementById('installment-cash-view');
-    const splitView = document.getElementById('installment-split-view');
-    const monthsSelect = document.getElementById('installment-months') as HTMLSelectElement | null;
-    const monthlyValueEl = document.getElementById('installment-monthly-value');
-
-    function setMode(mode: 'cash' | 'split'): void {
-      const isCash = mode === 'cash';
-      if (cashView) cashView.hidden = !isCash;
-      if (splitView) splitView.hidden = isCash;
-      cashBtn?.setAttribute('aria-pressed', String(isCash));
-      splitBtn?.setAttribute('aria-pressed', String(!isCash));
-      if (cashBtn) {
-        cashBtn.setAttribute(
-          'style',
-          isCash
-            ? 'background: var(--color-brass-400); color: var(--color-nuit); border-color: var(--color-brass-400)'
-            : '',
-        );
-      }
-      if (splitBtn) {
-        splitBtn.setAttribute(
-          'style',
-          !isCash
-            ? 'background: var(--color-brass-400); color: var(--color-nuit); border-color: var(--color-brass-400)'
-            : '',
-        );
-      }
-    }
-    cashBtn?.addEventListener('click', () => setMode('cash'));
-    splitBtn?.addEventListener('click', () => setMode('split'));
-
-    function recompute(): void {
-      if (!monthsSelect || !monthlyValueEl) return;
-      const months = (Number(monthsSelect.value) || 12) as InstallmentMonths;
-      const split = installmentSplit(ttc, months);
-      if (split) monthlyValueEl.textContent = formatMAD(split.monthly);
-    }
-    monthsSelect?.addEventListener('change', recompute);
-    recompute();
-  })();
 
   // ── WJ56 — « Partager sur WhatsApp » : Web Share API native quand disponible
   // (feuille de partage système — la meilleure expérience sur mobile/tablette,
@@ -4588,6 +4619,16 @@ const signConfig = ok
     });
   })();
 </script>
+
+<style is:global>
+  /* Fondateur 2026-08-15 — « retirer tout crédit/financement pour l'instant » :
+     sur CETTE page uniquement, les entrées de navigation du site vers
+     /financement (en-tête ×2 + pied de page) sont masquées ; le composant
+     global Header/Footer reste intact pour tout le reste du site. */
+  a[href='/financement'] {
+    display: none !important;
+  }
+</style>
 
 <style>
   /* P2 — réserve le ratio du graphe (viewBox 360×150 = 2.4:1) AVANT le rendu du

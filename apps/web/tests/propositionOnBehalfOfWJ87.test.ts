@@ -9,7 +9,7 @@ import { buildAcceptBodyRich, buildAcceptBody } from '../src/lib/proposition';
 
 const root = (rel: string) => fileURLToPath(new URL(rel, import.meta.url));
 const read = (rel: string) => readFileSync(root(rel), 'utf-8');
-const PROPOSITION = read('../src/pages/proposition/[token].astro');
+const PROPOSITION = read('../src/pages/proposition/[...token].astro');
 
 describe('WJ87 — buildAcceptBodyRich : on_behalf_of additif', () => {
   it('ajoute on_behalf_of quand fourni et non vide (trim appliqué)', () => {

@@ -48,10 +48,87 @@ class Qx13ClientLinksTests(TestCase):
             client_links.proposition_path('X'): 'proposition',
         }
         for _path, folder in checks.items():
-            candidate = WEB_PAGES / folder / '[token].astro'
+            # PV84 — la route est devenue un attrape-tout ``[...token].astro``
+            # (elle accepte /proposition/<token> ET /proposition/<slug>/<token>,
+            # le token = dernier segment). L'ancien nom reste accepté pour ne
+            # pas re-rougir si la page redevenait un paramètre simple.
+            candidats = [WEB_PAGES / folder / '[...token].astro',
+                         WEB_PAGES / folder / '[token].astro']
             self.assertTrue(
-                candidate.exists(),
-                f'Route site manquante pour {folder} : {candidate}')
+                any(c.exists() for c in candidats),
+                f'Route site manquante pour {folder} : {candidats}')
+
+
+class Pv84CheminPropositionSlugTests(TestCase):
+    """PV84 — le lien client porte le NOM du client : ``chemin_proposition``
+    produit ``/proposition/<slug-client>/<token>``. Le slug est PUREMENT
+    cosmétique (jamais vérifié côté serveur) — seul le token reste le secret ;
+    ces tests vérifient uniquement la FORME du slug produit."""
+
+    def setUp(self):
+        self.company = Company.objects.create(nom='PV84 Co')
+
+    def _devis(self, nom='', prenom='', lead=None):
+        client = Client.objects.create(
+            company=self.company, nom=nom, prenom=prenom,
+            email=f'pv84-{nom}-{prenom}-{Client.objects.count()}@ex.com')
+        return Devis.objects.create(
+            company=self.company, reference=f'DEV-PV84-{Devis.objects.count()}',
+            client=client, lead=lead, taux_tva=Decimal('20'),
+            statut=Devis.Statut.BROUILLON)
+
+    def test_accents_translitteres_en_ascii(self):
+        # « Aït Benhaddou Éléonore » → 'ait-benhaddou-eleonore' (NFKD de
+        # django.utils.text.slugify retire les accents sans dictionnaire ad hoc).
+        devis = self._devis(nom='Aït Benhaddou', prenom='Éléonore')
+        self.assertEqual(
+            client_links.chemin_proposition(devis, 'tok'),
+            '/proposition/ait-benhaddou-eleonore/tok')
+
+    def test_forme_complete_du_chemin(self):
+        devis = self._devis(nom='Alaoui', prenom='Karim')
+        self.assertEqual(
+            client_links.chemin_proposition(devis, 'tok'),
+            '/proposition/alaoui-karim/tok')
+
+    def test_slug_borne_a_40_caracteres(self):
+        devis = self._devis(nom='A' * 80, prenom='')
+        slug = client_links.chemin_proposition(devis, 'tok').split('/')[2]
+        self.assertLessEqual(len(slug), client_links.SLUG_MAX_LEN)
+        self.assertEqual(slug, 'a' * client_links.SLUG_MAX_LEN)
+
+    def test_client_sans_nom_replie_sur_proposition_jamais_vide(self):
+        devis = self._devis(nom='', prenom='')
+        self.assertEqual(
+            client_links.chemin_proposition(devis, 'tok'),
+            '/proposition/proposition/tok')
+
+    def test_replie_sur_le_lead_quand_le_client_est_sans_nom(self):
+        lead = Lead.objects.create(
+            company=self.company, nom='Fallback', prenom='Lead')
+        devis = self._devis(nom='', prenom='', lead=lead)
+        self.assertEqual(
+            client_links.chemin_proposition(devis, 'tok'),
+            '/proposition/fallback-lead/tok')
+
+    def test_slug_ne_porte_jamais_de_telephone_ou_email(self):
+        devis = self._devis(nom='Karim', prenom='Alaoui')
+        devis.client.telephone = '+212600000000'
+        devis.client.save(update_fields=['telephone'])
+        slug = client_links.chemin_proposition(devis, 'tok').split('/')[2]
+        self.assertNotIn('600000000', slug)
+        self.assertNotIn('@', slug)
+
+    def test_token_reste_le_seul_secret_slug_jamais_verifie(self):
+        # Un chemin SANS slug (l'ancien ``proposition_path``) reste une forme
+        # valide — le slug de ``chemin_proposition`` est un AJOUT cosmétique,
+        # jamais une condition d'accès : les deux chemins portent le MÊME
+        # token et donnent donc accès au MÊME ShareLink.
+        devis = self._devis(nom='Alaoui', prenom='Karim')
+        ancien = client_links.proposition_path('tok')
+        nouveau = client_links.chemin_proposition(devis, 'tok')
+        self.assertTrue(nouveau.endswith('/tok'))
+        self.assertIn('tok', ancien)
 
 
 @override_settings(CACHES={'default': {

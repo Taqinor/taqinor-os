@@ -957,7 +957,7 @@
 - frontend/src/api/ventesApi.js :: setVarianteConfig -> /api/django/ventes/devis/variante-config
     detail:texte, variante_pct:texte
 - frontend/src/api/ventesApi.js :: shareLinkDevis -> /api/django/ventes/devis/<>/share-link
-    path:texte, token:inconnu
+    path:inconnu, token:inconnu
 - frontend/src/api/ventesApi.js :: simulerEtudeDevis -> /api/django/ventes/devis/<>/simuler
     detail:texte, job_id:inconnu, status:texte, status_url:inconnu, zones:nombre
 - frontend/src/api/ventesApi.js :: superiorContactStatus -> /api/django/ventes/devis/<>/superior-contact-status

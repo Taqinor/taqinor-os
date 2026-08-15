@@ -38,6 +38,9 @@ from apps.roles.permissions import (  # noqa: F401
     IsInternalWriterOrPortalClientOwner, is_portal_user, portal_scope_id,
 )
 from core.viewsets import CompanyScopedModelViewSet  # noqa: F401  ARC5
+# PV84 — builder UNIQUE du chemin proposition (nom-client inclus dans l'URL) ;
+# jamais de f'/proposition/{token}' en dur ailleurs dans ce fichier.
+from ..utils.client_links import chemin_proposition  # noqa: F401
 from core.entite_scoping import EntiteScopeMixin  # noqa: F401  NTADM2
 from core.idempotency import IdempotentCreateMixin  # noqa: F401  YAPIC9
 from ..utils.references import create_with_reference  # noqa: F401
@@ -409,7 +412,7 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
                     'reference': existing.reference,
                     'statut': existing.statut,
                     'proposal_token': link.token,
-                    'proposal_path': f'/proposition/{link.token}',
+                    'proposal_path': chemin_proposition(existing, link.token),
                     'deduplicated': True,
                 },
                 status=status.HTTP_200_OK)
@@ -437,7 +440,7 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
                 'reference': devis.reference,
                 'statut': devis.statut,
                 'proposal_token': link.token,
-                'proposal_path': f'/proposition/{link.token}',
+                'proposal_path': chemin_proposition(devis, link.token),
             },
             status=status.HTTP_201_CREATED)
 
@@ -957,7 +960,7 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
                 'kwc': (devis.etude_params or {}).get('puissance_kwc'),
                 'nb_lignes': devis.lignes.count(),
                 'proposal_token': link.token,
-                'proposal_path': f'/proposition/{link.token}',
+                'proposal_path': chemin_proposition(devis, link.token),
             },
             status=status.HTTP_201_CREATED)
 
@@ -972,7 +975,7 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
         devis = self.get_object()
         link = ShareLink.for_devis(devis)
         return Response(
-            {'token': link.token, 'path': f'/proposition/{link.token}'},
+            {'token': link.token, 'path': chemin_proposition(devis, link.token)},
             status=status.HTTP_200_OK)
 
     @action(detail=True, methods=['post'], url_path='envoyer-email',
@@ -1018,7 +1021,7 @@ class DevisViewSet(IdempotentCreateMixin, EntiteScopeMixin,
 
         # Ajoute le lien de proposition tokenisé dans le corps si fourni.
         link = ShareLink.for_devis(devis)
-        proposal_url = f'/proposition/{link.token}'
+        proposal_url = chemin_proposition(devis, link.token)
         # ZSAL5 — gabarit ``envoi_devis`` (EmailTemplate) : sujet/corps
         # explicitement fournis dans le corps de requête restent prioritaires
         # (comportement historique) ; sinon on rend le gabarit effectif de la

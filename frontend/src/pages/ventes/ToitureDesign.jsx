@@ -73,8 +73,10 @@ function dataUrlToBlob(dataUrl) {
   return new Blob([bytes], { type: mime })
 }
 
-// Le proposal_path renvoyé par le backend est /proposition/<token> ; le lien
-// client vit sur le site public taqinor.ma (configurable via VITE_PUBLIC_SITE_URL).
+// PV84 — le proposal_path renvoyé par le backend est /proposition/<slug-client>/
+// <token> (slug cosmétique, jamais vérifié côté serveur — voir chemin_proposition
+// côté backend) ; le lien client vit sur le site public taqinor.ma (configurable
+// via VITE_PUBLIC_SITE_URL). Consommé TEL QUEL — jamais reconstruit ici.
 const PUBLIC_SITE_URL = import.meta.env.VITE_PUBLIC_SITE_URL || 'https://taqinor.ma'
 
 // Le builder s'hydrate depuis un payload `LeadPayload` (roof_point/roof_outline/

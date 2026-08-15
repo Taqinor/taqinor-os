@@ -22,7 +22,7 @@ const TESTIMONIAL_CAROUSEL = read('../src/components/TestimonialCarousel.astro')
 const INSTALL_COUNTER = read('../src/components/InstallCounter.astro');
 const CERT_LOGO_ROW = read('../src/components/CertLogoRow.astro');
 const MON_TOIT = read('../src/pages/devis/mon-toit.astro');
-const PROPOSITION = read('../src/pages/proposition/[token].astro');
+const PROPOSITION = read('../src/pages/proposition/[...token].astro');
 
 describe('WJ35/WN6 — StarRating : jamais de note/avis fabriqués, jamais un scaffold "bientôt"', () => {
   it('ne rend une note QUE si GOOGLE_RATING est réel (hasRating())', () => {
