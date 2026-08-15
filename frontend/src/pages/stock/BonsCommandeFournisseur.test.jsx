@@ -28,6 +28,9 @@ vi.mock('../../api/stockApi', () => ({
     rouvrirBcf: vi.fn(),
     dupliquerBcf: vi.fn(),
     facturerBcf: vi.fn(),
+    // WIR191 — révision (seul chemin de modification après envoi).
+    reviserBcf: vi.fn(),
+    updateBonCommandeFournisseur: vi.fn(),
   },
 }))
 
@@ -336,5 +339,52 @@ describe('ZPUR1 — facturer directement (politique sur commande)', () => {
     fireEvent.click(btn)
     await waitFor(() => expect(stockApi.facturerBcf).toHaveBeenCalledWith(42))
     expect(await screen.findByText(/FF-2026-0001/)).toBeInTheDocument()
+  })
+})
+
+// ── WIR191 / XPUR18 — révision d'un BCF envoyé/reçu ─────────────────────────
+describe('WIR191 — réviser un BCF envoyé (seul chemin de modification)', () => {
+  const bcfEnvoye = {
+    ...bcf,
+    statut: 'envoye',
+    revision: 1,
+    date_commande: '2026-08-01',
+    date_livraison_prevue: '2026-08-20',
+    note: 'Note initiale',
+    lignes: [{ id: 5, produit: 7, produit_nom: 'Panneau', quantite: 2, prix_achat_unitaire: 100 }],
+  }
+
+  it('le bouton « Enregistrer » standard est ABSENT à ce statut (jamais d\'update)', () => {
+    renderDetail({ bcf: bcfEnvoye })
+    expect(screen.queryByRole('button', { name: 'Enregistrer' })).toBeNull()
+    expect(screen.getByRole('button', { name: /Réviser/ })).toBeInTheDocument()
+    expect(stockApi.updateBonCommandeFournisseur).not.toHaveBeenCalled()
+  })
+
+  it('la Note est verrouillée hors mode révision (la saisie n\'était jamais enregistrée)', () => {
+    renderDetail({ bcf: bcfEnvoye })
+    expect(screen.getByLabelText('Note')).toBeDisabled()
+    fireEvent.click(screen.getByRole('button', { name: /Réviser/ }))
+    expect(screen.getByLabelText('Note')).not.toBeDisabled()
+  })
+
+  it('« Enregistrer la révision » poste lignes + dates + note à reviser et signale la ré-approbation', async () => {
+    stockApi.reviserBcf.mockResolvedValue({
+      data: { ...bcfEnvoye, revision: 2, reapprobation_requise: true },
+    })
+    renderDetail({ bcf: bcfEnvoye })
+    fireEvent.click(screen.getByRole('button', { name: /Réviser/ }))
+
+    fireEvent.change(screen.getByLabelText('Note'), { target: { value: 'Révisée' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Enregistrer la révision' }))
+
+    await waitFor(() => expect(stockApi.reviserBcf).toHaveBeenCalledWith(42, {
+      date_commande: '2026-08-01',
+      date_livraison_prevue: '2026-08-20',
+      note: 'Révisée',
+      lignes: [{ id: 5, quantite: 2, prix_achat_unitaire: 100 }],
+    }))
+    expect(await screen.findByText(/NOUVELLE APPROBATION est requise/)).toBeInTheDocument()
+    expect(stockApi.updateBonCommandeFournisseur).not.toHaveBeenCalled()
   })
 })

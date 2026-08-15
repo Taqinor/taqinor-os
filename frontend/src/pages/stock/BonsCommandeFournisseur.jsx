@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import {
   Plus, FileText, Undo2, Package, Trash2, Copy, RotateCcw, Receipt, LayoutTemplate, ClipboardList,
+  Pencil,
 } from 'lucide-react'
 import stockApi from '../../api/stockApi'
 import messagesApi from '../../api/messagesApi'
@@ -218,12 +219,22 @@ export function BcfDetail({ bcf, fournisseurs, produits, onClose, onSaved }) {
   const isNew = !bcf?.id
   const statut = bcf?.statut ?? 'brouillon'
   const editableLignes = isNew || statut === 'brouillon'
+  // WIR191 / XPUR18 — un BCF ENVOYE/RECU ne se modifie QUE par l'action
+  // `reviser` (l'update direct est refusé en 400 côté serveur). Le mode
+  // « Réviser » déverrouille lignes/dates/note SANS jamais réactiver le
+  // bouton « Enregistrer » standard (qui, lui, appelle update).
+  const [modeRevision, setModeRevision] = useState(false)
+  const peutReviser = !isNew && (statut === 'envoye' || statut === 'recu')
+  const champsEditables = editableLignes || modeRevision
   // QS2 — « + Nouveau produit » : réservé à Directeur + Commercial responsable
   // (hook QG5 ; backend QG4 est la garde qui compte). Réutilise la modale QG6.
   const canCreateProduit = useCanCreateProduit()
 
   const [fournisseur, setFournisseur] = useState(bcf?.fournisseur ?? '')
   const [dateCommande, setDateCommande] = useState(bcf?.date_commande ?? '')
+  // WIR191 — date de livraison DEMANDÉE (révisable ; la date CONFIRMÉE par le
+  // fournisseur est un axe distinct, posé uniquement par l'action `confirmer`).
+  const [dateLivraison, setDateLivraison] = useState(bcf?.date_livraison_prevue ?? '')
   const [note, setNote] = useState(bcf?.note ?? '')
   const [lignes, setLignes] = useState(
     (bcf?.lignes ?? []).map((l) => ({ ...l })))
@@ -352,6 +363,7 @@ export function BcfDetail({ bcf, fournisseurs, produits, onClose, onSaved }) {
   const buildPayload = () => ({
     fournisseur: fournisseur || null,
     date_commande: dateCommande || null,
+    date_livraison_prevue: dateLivraison || null,
     note: note || null,
     // ZPUR8 — « Other Information » : acheteur, réf. fournisseur, note de
     // bas de page + report incoterm (édité au document, jamais recalculé).
@@ -385,6 +397,36 @@ export function BcfDetail({ bcf, fournisseurs, produits, onClose, onSaved }) {
       onClose()
     } catch (err) {
       setError(frBcfError(err, "L'enregistrement du bon de commande a échoué."))
+    } finally { setBusy(false) }
+  }
+
+  // WIR191 / XPUR18 — enregistre la révision d'un BCF ENVOYE/RECU. N'appelle
+  // JAMAIS update (refusé en 400 à ces statuts) : seules les lignes EXISTANTES
+  // (id connu) sont révisables, le serveur journalise chaque changement.
+  const enregistrerRevision = async () => {
+    setBusy(true); setError(null); setInfo(null)
+    try {
+      const r = await stockApi.reviserBcf(bcf.id, {
+        date_commande: dateCommande || null,
+        date_livraison_prevue: dateLivraison || null,
+        note: note ?? '',
+        lignes: lignes.filter((l) => l.id).map((l) => ({
+          id: l.id,
+          quantite: Number(l.quantite) || 0,
+          prix_achat_unitaire: l.prix_achat_unitaire === '' || l.prix_achat_unitaire == null
+            ? 0 : Number(l.prix_achat_unitaire),
+        })),
+      })
+      const rev = r?.data?.revision
+      setInfo(
+        (r?.data?.reapprobation_requise
+          ? 'Révision enregistrée — le montant a augmenté : une NOUVELLE APPROBATION est requise.'
+          : 'Révision enregistrée.')
+        + (rev != null ? ` (révision n° ${rev})` : ''))
+      setModeRevision(false)
+      onSaved?.()
+    } catch (err) {
+      setError(frBcfError(err, "L'enregistrement de la révision a échoué."))
     } finally { setBusy(false) }
   }
 
@@ -566,6 +608,17 @@ export function BcfDetail({ bcf, fournisseurs, produits, onClose, onSaved }) {
             {isNew ? 'Nouveau bon de commande fournisseur'
               : `Bon de commande — ${bcf.reference ?? ''}`}
             {!isNew && <StatusPill status={statut} label={bcfStatutLabel(statut)} />}
+            {/* WIR191 — compteur de révisions (n'avance que par `reviser`). */}
+            {!isNew && (bcf?.revision ?? 0) > 0 && (
+              <span className="inline-flex items-center gap-1 rounded-md border border-border bg-muted px-2 py-0.5 text-xs font-normal text-muted-foreground">
+                Révision n° {bcf.revision}
+              </span>
+            )}
+            {modeRevision && (
+              <span className="inline-flex items-center gap-1 rounded-md border border-warning/30 bg-warning/10 px-2 py-0.5 text-xs font-normal text-warning">
+                Mode révision
+              </span>
+            )}
             {chantierRef && (
               <span className="inline-flex items-center gap-1 rounded-md border border-info/30 bg-info/10 px-2 py-0.5 text-xs font-normal text-info">
                 <Package className="size-3" /> Chantier {chantierRef}
@@ -593,8 +646,17 @@ export function BcfDetail({ bcf, fournisseurs, produits, onClose, onSaved }) {
           <div className="flex flex-col gap-1.5">
             <label className="text-sm font-medium" htmlFor="bcf-date">Date de commande</label>
             <Input id="bcf-date" type="date" value={dateCommande ?? ''}
-                   disabled={!editableLignes}
+                   disabled={!champsEditables}
                    onChange={(e) => setDateCommande(e.target.value)} />
+          </div>
+          {/* WIR191 — livraison DEMANDÉE : révisable en mode « Réviser ». */}
+          <div className="flex flex-col gap-1.5">
+            <label className="text-sm font-medium" htmlFor="bcf-date-livraison">
+              Livraison prévue (demandée)
+            </label>
+            <Input id="bcf-date-livraison" type="date" value={dateLivraison ?? ''}
+                   disabled={!champsEditables}
+                   onChange={(e) => setDateLivraison(e.target.value)} />
           </div>
         </div>
 
@@ -729,14 +791,14 @@ export function BcfDetail({ bcf, fournisseurs, produits, onClose, onSaved }) {
                         )}
                       </td>
                       <td className="px-3 py-2">
-                        {editableLignes ? (
+                        {champsEditables ? (
                           <Input type="number" step="any" inputMode="decimal" className="h-9 w-24"
                                  value={l.quantite ?? ''}
                                  onChange={(e) => setLigne(idx, { quantite: e.target.value })} />
                         ) : l.quantite}
                       </td>
                       <td className="px-3 py-2">
-                        {editableLignes ? (
+                        {champsEditables ? (
                           <>
                             <Input type="number" step="any" inputMode="decimal" className="h-9 w-32"
                                    value={l.prix_achat_unitaire ?? ''}
@@ -782,8 +844,12 @@ export function BcfDetail({ bcf, fournisseurs, produits, onClose, onSaved }) {
 
         <div className="flex flex-col gap-1.5">
           <label className="text-sm font-medium" htmlFor="bcf-note">Note</label>
+          {/* WIR191 — la Note était éditable sur un BCF « envoyé » alors
+              qu'AUCUN bouton n'enregistrait à ce statut : la saisie était
+              perdue. Elle n'est désormais déverrouillée qu'en brouillon ou en
+              mode « Réviser » (qui, lui, la persiste via `reviser`). */}
           <Textarea id="bcf-note" rows={2} value={note ?? ''}
-                    disabled={!editableLignes && statut !== 'envoye'}
+                    disabled={!champsEditables}
                     onChange={(e) => setNote(e.target.value)} />
         </div>
 
@@ -850,6 +916,24 @@ export function BcfDetail({ bcf, fournisseurs, produits, onClose, onSaved }) {
                         : 'Ce fournisseur n\'a pas d\'adresse email'}
                       onClick={envoyerEmail}>
                 Envoyer par email
+              </Button>
+            </>
+          )}
+          {/* WIR191 / XPUR18 — « Réviser » : SEUL chemin de modification après
+              envoi. Le bouton « Enregistrer » standard reste, lui, réservé au
+              brouillon (il appelle update, refusé en 400 à ces statuts). */}
+          {peutReviser && !modeRevision && (
+            <Button type="button" variant="outline" onClick={() => setModeRevision(true)}>
+              <Pencil /> Réviser
+            </Button>
+          )}
+          {peutReviser && modeRevision && (
+            <>
+              <Button type="button" variant="ghost" onClick={() => setModeRevision(false)}>
+                Quitter la révision
+              </Button>
+              <Button type="button" loading={busy} onClick={enregistrerRevision}>
+                {busy ? '…' : 'Enregistrer la révision'}
               </Button>
             </>
           )}

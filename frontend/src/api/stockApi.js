@@ -131,6 +131,13 @@ const stockApi = {
       { motif_annulation: motifAnnulation }),
   rouvrirBcf: (id) =>
     api.post(`/stock/bons-commande-fournisseur/${id}/rouvrir/`),
+  // XPUR18 / WIR191 — SEUL chemin de modification d'un BCF déjà ENVOYE/RECU
+  // (l'update direct est refusé en 400 à ces statuts) : journalise chaque
+  // changement, incrémente `revision` et renvoie `reapprobation_requise`.
+  // Corps : {lignes:[{id, quantite, prix_achat_unitaire, designation}],
+  // date_commande, date_livraison_prevue, note}.
+  reviserBcf: (id, data) =>
+    api.post(`/stock/bons-commande-fournisseur/${id}/reviser/`, data ?? {}),
   // ZPUR4 — clone en nouveau BROUILLON (quantités reçues à zéro).
   dupliquerBcf: (id) =>
     api.post(`/stock/bons-commande-fournisseur/${id}/dupliquer/`),
