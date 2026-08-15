@@ -188,7 +188,7 @@ export const FICHES: Fiche[] = [
     modele: 'Coffret AC + coffret DC — composition selon étude',
     categorie: 'Protection & câblage',
     resume:
-      "Le poste qu'on ne regarde jamais et qui protège tout le reste : couper, isoler, encaisser la surtension — avant l'onduleur, avant la maison.",
+      'Le poste qu’on ne regarde jamais et qui protège tout le reste : couper, isoler, encaisser la surtension — avant l’onduleur, avant la maison.',
     faits: [
       'Côté AC : disjoncteur dédié + dispositif différentiel de type A au minimum, selon ce qu’exige l’onduleur',
       'Côté AC : parafoudre de type 2 lorsque l’exposition du site l’impose',
@@ -215,7 +215,7 @@ export const FICHES: Fiche[] = [
     modele: 'Câble H1Z2Z2-K · connecteurs MC4 · cheminement',
     categorie: 'Protection & câblage',
     resume:
-      "La ligne la moins racontée du devis, et celle qui décide de la tenue de tout le reste : ce qui relie les panneaux à l'onduleur reste en plein soleil toute la vie de l'installation.",
+      'La ligne la moins racontée du devis, et celle qui décide de la tenue de tout le reste : ce qui relie les panneaux à l’onduleur reste en plein soleil toute la vie de l’installation.',
     faits: [
       'Câble solaire H1Z2Z2-K (norme NF EN 50618) : double isolation, tenue UV et intempéries, pour la partie continue',
       'Connecteurs PV de type MC4 (norme CEI 62852) : mâle et femelle du MÊME fabricant — jamais deux marques accouplées',
