@@ -47,7 +47,7 @@ test('XPAI9 — rejeterLigneVirement / reemettreLigneVirement', () => {
 
 test('XPAI12/XPAI13 — dépôt BDS complémentaire + XML SIMPL-IR', () => {
   assert.match(src, /deposerBdsComplementaire:[\s\S]*?api\.post\(`\/paie\/periodes\/\$\{id\}\/deposer-bds-complementaire\/`, data\)/)
-  assert.match(src, /etatIrAnnuelXml:[\s\S]*?api\.get\('\/paie\/periodes\/etat-ir-annuel-xml\/', \{ params: \{ annee \} \}\)/)
+  assert.match(src, /etatIrAnnuelXml:[\s\S]*?api\.get\('\/paie\/periodes\/etat-ir-annuel-xml\/', \{ params: \{ annee \}, responseType: 'blob' \}\)/)
 })
 
 test('XPAI16 — brutPourNet (simulateur net/brut)', () => {

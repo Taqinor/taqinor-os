@@ -40,7 +40,7 @@ const paieApi = {
   etatIrAnnuel: (annee) =>
     api.get('/paie/periodes/etat-ir-annuel/', { params: { annee } }),
   etatIrAnnuelXml: (annee) =>
-    api.get('/paie/periodes/etat-ir-annuel-xml/', { params: { annee } }),
+    api.get('/paie/periodes/etat-ir-annuel-xml/', { params: { annee }, responseType: 'blob' }),
   runGratification: (id, data) =>
     api.post(`/paie/periodes/${id}/run-gratification/`, data),
   reporterElements: (id) =>
