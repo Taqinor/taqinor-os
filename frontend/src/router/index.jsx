@@ -93,6 +93,9 @@ const PortalClientLayout = lazy(() => import('../features/portail/client/PortalC
 const PortailClientAccueil = lazy(() => import('../features/portail/client/PortailClientAccueil'))
 const PortailClientDevis = lazy(() => import('../features/portail/client/PortailClientDevis'))
 const PortailClientFactures = lazy(() => import('../features/portail/client/PortailClientFactures'))
+// WIR216/XSTK22 — « Mes livraisons » : le lien de l'email de transition
+// pointait vers une route qui n'a jamais existé côté frontend.
+const PortailClientLivraisons = lazy(() => import('../features/portail/client/PortailClientLivraisons'))
 // NTPRT20 — shell + tableau de bord du PORTAIL FOURNISSEUR.
 const PortalFournisseurLayout = lazy(() => import('../features/portail/fournisseur/PortalFournisseurLayout'))
 const PortailFournisseurAccueil = lazy(() => import('../features/portail/fournisseur/PortailFournisseurAccueil'))
@@ -380,6 +383,13 @@ const router = createBrowserRouter([
     path: '/portail/client/factures',
     loader: portalLoader(PORTEE_CLIENT),
     element: <WithPortal shell={PortalClientLayout}><PortailClientFactures /></WithPortal>,
+  },
+  // WIR216/XSTK22 — « Mes livraisons » : jusqu'ici le lien envoyé par email à
+  // chaque expédition renvoyait un 404 systématique (aucune route montée).
+  {
+    path: '/portail/client/livraisons',
+    loader: portalLoader(PORTEE_CLIENT),
+    element: <WithPortal shell={PortalClientLayout}><PortailClientLivraisons /></WithPortal>,
   },
   // NTPRT20 — PORTAIL FOURNISSEUR : garde SYMÉTRIQUE (portée exacte
   // `portail_fournisseur`), shell dédié, jamais la coquille ERP.

@@ -20,6 +20,9 @@ const NAV_CLIENT = [
   { to: '/portail/client', label: 'Tableau de bord', end: true },
   { to: '/portail/client/devis', label: 'Devis' },
   { to: '/portail/client/factures', label: 'Commandes & Factures' },
+  // WIR216/XSTK22 — le lien de l'email de transition de livraison pointait
+  // vers une section inexistante ; elle existe maintenant et rejoint le menu.
+  { to: '/portail/client/livraisons', label: 'Livraisons' },
 ]
 
 export default function PortalClientLayout({ children }) {

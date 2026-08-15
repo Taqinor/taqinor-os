@@ -32,6 +32,14 @@ const portailApi = {
     detail: (id) => api.get(`/portail/mes-factures/${id}/`),
     payer: (id) => api.post(`/portail/mes-factures/${id}/payer/`, {}),
   },
+  // WIR216/XSTK22 — « Mes livraisons » : le lien de l'email de transition
+  // (livraison_en_transit/livree) pointait vers une route qui n'a jamais
+  // existé côté frontend (404 garanti). Scopée au compte connecté côté
+  // serveur — jamais un client_id envoyé ici.
+  livraisons: {
+    liste: () => api.get('/portail/mes-livraisons/'),
+    detail: (id) => api.get(`/portail/mes-livraisons/${id}/`),
+  },
   // NTPRT20/NTPRT27 — portails FOURNISSEUR et PARTENAIRE. Même principe que
   // ci-dessus : aucun identifiant d'entité n'est envoyé, le serveur borne au
   // rattachement du compte connecté.

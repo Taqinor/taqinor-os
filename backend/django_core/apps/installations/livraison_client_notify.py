@@ -25,9 +25,14 @@ def _nom_complet(client):
 
 
 def _livraison_lien(livraison, request=None):
-    """Lien indicatif vers la section Livraisons du portail (pas de token
-    dédié ici — le portail est déjà authentifié côté client, FG228)."""
-    path = f'/portail/livraisons/{livraison.id}'
+    """Lien vers la section « Mes livraisons » du portail client (pas de
+    token dédié ici — le portail est déjà authentifié côté client, FG228).
+
+    WIR216 — pointait vers ``/portail/livraisons/<id>``, une route qui n'a
+    JAMAIS existé côté frontend (404 garanti à chaque expédition). La vraie
+    route est ``/portail/client/livraisons`` (liste, sous le shell client
+    authentifié — jamais une fiche par id sans session)."""
+    path = '/portail/client/livraisons'
     if request is not None:
         return request.build_absolute_uri(path)
     return path
