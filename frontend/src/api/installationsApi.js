@@ -511,6 +511,14 @@ const installationsApi = {
   deleteLigneAssemblage: (id) =>
     api.delete(`/installations/ordre-assemblage-lignes/${id}/`),
 
+  // WIR248/XMFG11 — rebut de production rattaché à un ordre (SORTIE typée
+  // REBUT, motivée) + mini-rapport agrégé par produit sur une période. Les
+  // deux actions serveur existaient sans aucun consommateur.
+  declarerRebutAssemblage: (id, data) =>
+    api.post(`/installations/ordres-assemblage/${id}/declarer-rebut/`, data),
+  getRapportRebuts: (params) =>
+    api.get('/installations/ordres-assemblage/rapport-rebuts/', { params }),
+
   // XMFG12 — ordres de démontage (unbuild) : composite → composants.
   getOrdresDemontage: (params) =>
     api.get('/installations/ordres-demontage/', { params }),

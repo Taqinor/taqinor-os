@@ -432,6 +432,8 @@
     non_rendus:inconnu, tool_returns:inconnu
 - frontend/src/api/installationsApi.js :: creerInterventionsStandard -> /api/django/installations/chantiers/<>/creer-interventions-standard
     created:inconnu, detail:texte, existants:inconnu
+- frontend/src/api/installationsApi.js :: declarerRebutAssemblage -> /api/django/installations/ordres-assemblage/<>/declarer-rebut
+    id:inconnu, motif_rebut:inconnu, produit:inconnu, quantite:inconnu, reference:inconnu
 - frontend/src/api/installationsApi.js :: deletePaiementSousTraitant -> /api/django/installations/paiements-sous-traitant/<>
     detail:texte
 - frontend/src/api/installationsApi.js :: envoyerConsultationsRFQ -> /api/django/installations/rfq/<>/envoyer-consultations
