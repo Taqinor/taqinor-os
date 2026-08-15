@@ -1388,10 +1388,13 @@ const signConfig = ok
           <p class="tech-label rule-brass text-brass-300" data-i18n
             data-fr="Votre production" data-en="Your production" data-ar="إنتاجكم">Votre production</p>
           <div class="cine-card mt-5 rounded-2xl p-5 sm:p-6">
-            {/* Sélecteur d'échelle — masqué quand une seule vue est rendue. */}
+            {/* Sélecteur d'échelle — masqué quand une seule vue est rendue.
+                Fondateur 2026-08-15 : la JOURNÉE d'abord (onglet ET défaut —
+                availableViews la classe en tête), l'année en second.
+                Ce commentaire vit AU-DESSUS de l'expression : un `{/* … */}`
+                placé en PREMIER ENFANT d'un `&& (` casse le build Astro
+                (« Expected ")" but found … ») — il l'a réellement cassé ici. */}
             {prodLayers.showViewTabs && (
-              {/* Fondateur 2026-08-15 : la JOURNÉE d'abord (onglet ET défaut —
-                  availableViews la classe en tête), l'année en second. */}
               <div class="mb-4 flex flex-wrap items-center gap-2" role="group" aria-label="Échelle du graphique">
                 <button type="button" id="prod-view-journee" data-prod-view-btn="journee" aria-pressed={prodLayers.monthly ? 'false' : 'true'}
                   class="btn-pill px-3 py-1 text-xs"
