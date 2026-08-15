@@ -301,6 +301,41 @@ const qhseApi = {
     api.get(`/qhse/causeries/${causerieId}/pdf/`, {
       params, responseType: 'blob',
     }),
+
+  // ── WIR275/276 — Registres ISO jusqu'ici sans écran (campagnes de rappel,
+  //    certifications + audits externes, programme d'audit interne,
+  //    réunions/revues de direction, objectifs 6.2). ─────────────────────
+  campagnesRappel: {
+    ...crud('campagnes-rappel'),
+    peupler: (id) => api.post(`/qhse/campagnes-rappel/${id}/peupler/`),
+    notifier: (id) => api.post(`/qhse/campagnes-rappel/${id}/notifier/`),
+    cloturer: (id, data) =>
+      api.post(`/qhse/campagnes-rappel/${id}/cloturer/`, data),
+  },
+  elementsRappel: crud('elements-rappel'),
+  certifications: crud('certifications'),
+  auditsCertification: {
+    ...crud('audits-certification'),
+    leverNcr: (id) => api.post(`/qhse/audits-certification/${id}/lever-ncr/`),
+  },
+  programmesAudit: crud('programmes-audit'),
+  auditsPlanifies: {
+    ...crud('audits-planifies'),
+    // Matérialise l'Audit réel une fois l'audit planifié tenu (idempotent).
+    instancier: (id) => api.post(`/qhse/audits-planifies/${id}/instancier/`),
+  },
+  clausesNorme: crud('clauses-norme'),
+  reunionsQhse: {
+    ...crud('reunions'),
+    cloturer: (id) => api.post(`/qhse/reunions/${id}/cloturer/`),
+  },
+  decisionsReunion: {
+    ...crud('decisions-reunion'),
+    creerCapa: (id, data) =>
+      api.post(`/qhse/decisions-reunion/${id}/creer-capa/`, data),
+  },
+  objectifsQhse: crud('objectifs'),
+  revuesObjectif: crud('revues-objectif'),
 }
 
 // ── XQHS2/XQHS23 — actions complémentaires sur `nonConformites` (UX30) ────
@@ -320,6 +355,9 @@ qhseApi.nonConformites.tauxDefaillanceProduit = () =>
 // complète (merge sur les disciplines fournies).
 qhseApi.nonConformites.analyse = (id, data) =>
   api.post(`/qhse/non-conformites/${id}/analyse/`, data ?? {})
+// WIR276 — PDF imprimable de l'analyse (5-Pourquoi/8D) d'une NCR.
+qhseApi.nonConformites.analysePdf = (id) =>
+  api.get(`/qhse/non-conformites/${id}/analyse/pdf/`, { responseType: 'blob' })
 
 // ── WIR115 — Check-in sécurité (technicien seul sur site) ────────────────────
 qhseApi.checkinsSecurite = {

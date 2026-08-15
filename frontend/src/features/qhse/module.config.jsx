@@ -5,6 +5,7 @@
 import { lazy } from 'react'
 import {
   ShieldCheck, AlertOctagon, ClipboardCheck, ShieldAlert, Leaf, Star, UserCheck,
+  BadgeCheck,
 } from 'lucide-react'
 import { appGlyph } from '../../lib/apps/appGlyph'
 
@@ -29,6 +30,9 @@ const Environnement = lazy(() => import('./Environnement'))
 const NotationFinChantier = lazy(() => import('./NotationFinChantier'))
 // WIR115 — check-in sécurité (technicien seul sur site) + SCAR fournisseur.
 const CheckinsSecurite = lazy(() => import('./CheckinsSecurite'))
+// WIR276 — registres ISO (rappels produit, certifications, programme
+// d'audit, réunions/revues de direction, objectifs 6.2), exposés par WIR275.
+const RegistresIso = lazy(() => import('./RegistresIso'))
 
 const ROLES = ['responsable', 'admin']
 // WIR171 — sémantique serveur `HasPermissionOrLegacy('qhse_voir')`.
@@ -57,6 +61,7 @@ const config = {
       { to: '/qhse/environnement', label: 'Environnement & ESG', icon: <Leaf size={17} strokeWidth={1.75} aria-hidden="true" />, ...LECTURE },
       { to: '/qhse/notations', label: 'Notation fin de chantier', icon: <Star size={17} strokeWidth={1.75} aria-hidden="true" />, ...LECTURE },
       { to: '/qhse/checkins-securite', label: 'Check-ins sécurité', icon: <UserCheck size={17} strokeWidth={1.75} aria-hidden="true" />, ...LECTURE },
+      { to: '/qhse/registres-iso', label: 'Registres ISO', icon: <BadgeCheck size={17} strokeWidth={1.75} aria-hidden="true" />, ...LECTURE },
     ],
   },
   // routes.meta — du plus spécifique au plus général.
@@ -67,6 +72,7 @@ const config = {
     ['/qhse/environnement', 'Environnement & ESG — QHSE'],
     ['/qhse/notations', 'Notation fin de chantier — QHSE'],
     ['/qhse/checkins-securite', 'Check-ins sécurité — QHSE'],
+    ['/qhse/registres-iso', 'Registres ISO — QHSE'],
     ['/qhse', 'Cockpit QHSE'],
   ],
   sectionLabels: { qhse: 'QHSE' },
@@ -78,6 +84,7 @@ const config = {
     { path: '/qhse/environnement', component: Environnement, ...LECTURE },
     { path: '/qhse/notations', component: NotationFinChantier, ...LECTURE },
     { path: '/qhse/checkins-securite', component: CheckinsSecurite, ...LECTURE },
+    { path: '/qhse/registres-iso', component: RegistresIso, ...LECTURE },
   ],
 }
 

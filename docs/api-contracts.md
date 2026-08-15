@@ -766,8 +766,12 @@
     criteres:inconnu, nb_criteres:nombre, nb_criteres_sans_donnee:nombre, niveau:inconnu, score_global:inconnu
 - frontend/src/api/qhseApi.js :: moyenne -> /api/django/qhse/retours-client/moyenne
     moyenne:inconnu, total:nombre
+- frontend/src/api/qhseApi.js :: notifier -> /api/django/qhse/campagnes-rappel/<>/notifier
+    notifies:nombre
 - frontend/src/api/qhseApi.js :: paretoDefauts -> /api/django/qhse/pareto-defauts
     pareto:inconnu, premier_passage:objet
+- frontend/src/api/qhseApi.js :: peupler -> /api/django/qhse/campagnes-rappel/<>/peupler
+    crees:nombre, elements:inconnu
 - frontend/src/api/qhseApi.js :: peutCloturer -> /api/django/qhse/notations-fin-chantier/peut-cloturer
     chantier_id:inconnu, detail:texte, peut_cloturer:inconnu
 - frontend/src/api/qhseApi.js :: relancerNotifications -> /api/django/qhse/incidents/relancer-notifications
