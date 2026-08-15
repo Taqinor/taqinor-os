@@ -132,3 +132,15 @@ export const ECHEANCE_TYPE_LABELS = {
   epi_peremption: 'Péremption EPI',
   epi_controle: 'Contrôle EPI',
 }
+
+/* WIR241 (XRH31) — bandes de risque d'attrition, FACTORISÉES depuis
+   `RhCockpit.jsx` : la fiche employé affiche désormais le même score, et deux
+   copies des mêmes clés auraient divergé au premier changement. Clés RÉELLES
+   de `core/attrition_risk.py` (faible / moyen / élevé — accentué côté serveur,
+   ne jamais les réécrire). */
+export const ATTRITION_BAND_LABELS = {
+  faible: 'Faible', moyen: 'Moyen', 'élevé': 'Élevé',
+}
+export const ATTRITION_BAND_TONES = {
+  faible: 'success', moyen: 'warning', 'élevé': 'danger',
+}

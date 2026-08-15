@@ -19,6 +19,8 @@ vi.mock('../../api/rhApi', () => {
       createPermisConduire: vi.fn(),
       createAffectationVehicule: vi.fn(),
       terminerAffectationVehicule: vi.fn(),
+      // WIR241 — permis expirant sous 30 jours (bandeau + badge de ligne).
+      getPermisExpirantBientot: vi.fn(empty),
     },
   }
 })
@@ -80,5 +82,38 @@ describe('VehiculesPermis (PACT81)', () => {
     fireEvent.click(screen.getAllByRole('button', { name: 'Enregistrer' })[0])
 
     expect((await screen.findAllByText(/Affectation refusée : ce conducteur n'a pas de permis/)).length).toBeGreaterThan(0)
+  })
+})
+
+/* WIR241 — un permis à échéance ne se voyait qu'une fois DÉJÀ expiré (donc
+   après un refus d'affectation serveur). Le rapprochement se fait par ID. */
+describe('VehiculesPermis — WIR241 : permis expirant bientôt', () => {
+  const PERMIS = {
+    id: 15, employe: 9, employe_nom: 'Bennani Youssef',
+    categorie: 'B', categorie_display: 'B — Véhicules légers',
+    numero: 'AB12345', date_expiration: '2026-09-01', valide: true,
+  }
+
+  beforeEach(() => vi.clearAllMocks())
+
+  it('affiche le bandeau 30 jours et le badge « Expire bientôt » sur la ligne', async () => {
+    rhApi.getPermisConduire.mockResolvedValueOnce({ data: [PERMIS] })
+    rhApi.getPermisExpirantBientot.mockResolvedValueOnce({ data: [PERMIS] })
+    renderScreen()
+    await screen.findAllByText('Véhicules & permis')
+
+    expect(await screen.findByText(/1 permis expire\(nt\) dans les 30 prochains jours/))
+      .toBeInTheDocument()
+    expect((await screen.findAllByText('Expire bientôt'))[0]).toBeInTheDocument()
+  })
+
+  it('un permis valide hors fenêtre reste « Valide »', async () => {
+    rhApi.getPermisConduire.mockResolvedValueOnce({ data: [PERMIS] })
+    rhApi.getPermisExpirantBientot.mockResolvedValueOnce({ data: [] })
+    renderScreen()
+    await screen.findAllByText('Véhicules & permis')
+
+    expect((await screen.findAllByText('Valide'))[0]).toBeInTheDocument()
+    expect(screen.queryByText('Expire bientôt')).toBeNull()
   })
 })

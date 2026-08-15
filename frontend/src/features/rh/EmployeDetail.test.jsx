@@ -56,6 +56,8 @@ vi.mock('../../api/rhApi', () => {
       attribuerBadge: vi.fn(() => Promise.resolve({ data: {} })),
       // WIR240 — composeur de note du fil du dossier (XRH6).
       noterEmploye: vi.fn(),
+      // WIR241 — score de risque d'attrition (XRH31), échec NON bloquant.
+      getRisqueAttrition: vi.fn(() => Promise.resolve({ data: null })),
     },
   }
 })
@@ -233,6 +235,40 @@ describe('EmployeDetail — offboarding (YHIRE2/ZRH12)', () => {
     expect(screen.getByText('Domicile')).toBeInTheDocument()
     expect(screen.getByText('Terrain')).toBeInTheDocument()
     expect(screen.getAllByText('Bureau').length).toBe(5)
+  })
+})
+
+/* WIR241 — le score de risque d'attrition (XRH31) existait côté serveur sans
+   jamais apparaître sur la fiche. Il entre dans le `allSettled` : son échec
+   (appel gaté RH) laisse la fiche parfaitement saine. */
+describe('EmployeDetail — WIR241 : risque d’attrition', () => {
+  beforeEach(() => vi.clearAllMocks())
+
+  it('rend la bande de risque avec les mêmes libellés que le cockpit', async () => {
+    rhApi.getEmploye.mockResolvedValue({
+      data: { id: 7, nom: 'Bennani', prenom: 'Youssef', matricule: 'M007', statut: 'actif' },
+    })
+    rhApi.getRisqueAttrition.mockResolvedValue({
+      data: { employe_id: 7, score: 72, band: 'élevé' },
+    })
+    renderDetail()
+    await screen.findByRole('heading', { name: 'Bennani Youssef' })
+
+    await waitFor(() => expect(rhApi.getRisqueAttrition).toHaveBeenCalledWith('7'))
+    expect(await screen.findByText('Risque d’attrition')).toBeInTheDocument()
+    expect(screen.getByText('72/100')).toBeInTheDocument()
+    expect(screen.getByText('Élevé')).toBeInTheDocument()
+  })
+
+  it('un échec de l’appel laisse la fiche saine (non bloquant)', async () => {
+    rhApi.getEmploye.mockResolvedValue({
+      data: { id: 7, nom: 'Bennani', prenom: 'Youssef', matricule: 'M007', statut: 'actif' },
+    })
+    rhApi.getRisqueAttrition.mockRejectedValue({ response: { status: 403 } })
+    renderDetail()
+
+    expect(await screen.findByRole('heading', { name: 'Bennani Youssef' })).toBeInTheDocument()
+    expect(screen.queryByText('Risque d’attrition')).toBeNull()
   })
 })
 

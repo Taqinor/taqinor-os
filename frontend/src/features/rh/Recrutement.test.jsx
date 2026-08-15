@@ -67,6 +67,9 @@ vi.mock('../../api/rhApi', () => {
       noterCandidature: vi.fn(),
       getEntretiensRecrutement: vi.fn(empty),
       noterEntretienRecrutement: vi.fn(),
+      // WIR241 — dédup des candidatures (avertissement + fusion).
+      checkDuplicatesCandidature: vi.fn(empty),
+      fusionnerCandidature: vi.fn(),
       createDotationEpi: vi.fn(),
       restituerDotationEpi: vi.fn(),
       emargerDotationEpi: vi.fn(),
@@ -174,6 +177,57 @@ describe('Recrutement — ATS (XRH17-23)', () => {
     await waitFor(() => expect(rhApi.createRetourFeedback360).toHaveBeenCalledWith({
       evaluation: 9, repondant: 12, relation: 'pair',
     }))
+  })
+})
+
+/* WIR241 — dédup des candidatures : avertissement NON bloquant à la saisie
+   (check-duplicates) + fusion d'une candidature source dans une cible. */
+describe('Recrutement — WIR241 : doublons de candidature', () => {
+  beforeEach(() => { vi.clearAllMocks(); armerStatistiques() })
+
+  it('avertit d’un doublon SANS bloquer la création', async () => {
+    rhApi.getOuverturesPoste.mockResolvedValue({ data: [{ id: 5, intitule: 'Technicien PV' }] })
+    rhApi.checkDuplicatesCandidature.mockResolvedValue({
+      data: [{ id: 4, nom: 'Yassine Amrani', email: 'y@example.ma', telephone: '0600', etape: 'recu' }],
+    })
+    renderRecrutement()
+    await screen.findAllByText('EPI, recrutement & évaluations')
+    fireEvent.click(screen.getByRole('radio', { name: 'Recrutement' }))
+    fireEvent.click((await screen.findAllByRole('button', { name: /Nouveau candidat/ }))[0])
+    await screen.findByRole('dialog')
+
+    fireEvent.change(screen.getByLabelText('Email'), { target: { value: 'y@example.ma' } })
+
+    // Anti-rafale de 400 ms côté écran : on attend l'appel réel.
+    await waitFor(() => expect(rhApi.checkDuplicatesCandidature).toHaveBeenCalledWith(
+      { email: 'y@example.ma' },
+    ), { timeout: 3000 })
+    expect(await screen.findByText(/Doublon possible/)).toBeInTheDocument()
+    // NON bloquant : le bouton de création reste utilisable.
+    fireEvent.change(screen.getByLabelText('Poste visé'), { target: { value: '5' } })
+    fireEvent.change(screen.getByLabelText('Nom du candidat'), { target: { value: 'Yassine Amrani' } })
+    expect(screen.getAllByRole('button', { name: 'Créer la candidature' })[0]).toBeEnabled()
+  })
+
+  it('fusionne une candidature source dans la cible', async () => {
+    rhApi.getCandidatures.mockResolvedValue({
+      data: [
+        { id: 7, nom: 'Yassine Amrani', email: 'y@example.ma', etape: 'recu', etape_display: 'Reçu' },
+        { id: 8, nom: 'Y. Amrani', email: 'y2@example.ma', etape: 'recu', etape_display: 'Reçu' },
+      ],
+    })
+    rhApi.fusionnerCandidature.mockResolvedValueOnce({ data: { id: 7 } })
+    renderRecrutement()
+    await screen.findAllByText('EPI, recrutement & évaluations')
+    fireEvent.click(screen.getByRole('radio', { name: 'Recrutement' }))
+    await screen.findAllByText('Yassine Amrani')
+
+    fireEvent.click((await screen.findAllByRole('button', { name: 'Fusionner dans…' }))[0])
+    expect(await screen.findByRole('dialog')).toBeInTheDocument()
+    fireEvent.change(screen.getByLabelText('Candidature à absorber'), { target: { value: '8' } })
+    fireEvent.click(screen.getAllByRole('button', { name: 'Fusionner' })[0])
+
+    await waitFor(() => expect(rhApi.fusionnerCandidature).toHaveBeenCalledWith(7, { source: 8 }))
   })
 })
 

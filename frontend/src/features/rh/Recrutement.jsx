@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import {
   UserPlus, Ban, ScanText, Star, BarChart3, FileSignature, CalendarClock, Users,
   ShieldCheck, PenLine, Undo2, History, Send, Check, X, Lock, Briefcase,
-  MessageSquare,
+  MessageSquare, Merge,
 } from 'lucide-react'
 import ChatterTimeline from '../../components/ChatterTimeline'
 import { ListShell } from '../../ui/module'
@@ -85,6 +85,8 @@ export default function Recrutement() {
   const [modeleOpen, setModeleOpen] = useState(false)
   // WIR131 — invitations feedback 360° d'une évaluation.
   const [feedbackFor, setFeedbackFor] = useState(null)
+  // WIR241 — fusion d'une candidature source dans une candidature cible.
+  const [fusionFor, setFusionFor] = useState(null)
   // WIR240 — panneau « Activité » d'une candidature (chatter + notation).
   const [activiteFor, setActiviteFor] = useState(null)
   // WIR196 — création d'une ouverture de poste + refus motivé.
@@ -388,6 +390,9 @@ export default function Recrutement() {
     if (!c.vivier) {
       actions.push({ id: 'vivier', label: 'Mettre au vivier', icon: Star, onClick: () => mettreAuVivier(c) })
     }
+    // WIR241 — fusion des doublons : CETTE candidature devient la cible, on
+    // choisit la source à absorber.
+    actions.push({ id: 'fusion', label: 'Fusionner dans…', icon: Merge, onClick: () => setFusionFor(c) })
     return actions
   }
   // XRH15 — candidats INTERNES d'une ouverture : classement des employés par
@@ -547,6 +552,14 @@ export default function Recrutement() {
         <FeedbackDialog
           evaluation={feedbackFor}
           onClose={() => setFeedbackFor(null)}
+        />
+      )}
+      {fusionFor && (
+        <FusionCandidatureDialog
+          cible={fusionFor}
+          candidatures={candidatures}
+          onClose={() => setFusionFor(null)}
+          onSaved={() => { setFusionFor(null); recharger() }}
         />
       )}
       {activiteFor && (
@@ -1511,6 +1524,27 @@ function CandidatDialog({ ouvertures, onClose, onSaved }) {
   const [cv, setCv] = useState(null)
   const [saving, setSaving] = useState(false)
   const [serverError, setServerError] = useState(null)
+  // WIR241 — doublons détectés par le serveur sur email/téléphone. AVERTISSEMENT
+  // NON BLOQUANT : la création reste possible (deux personnes peuvent partager
+  // un téléphone familial) — on informe, on n'interdit pas.
+  const [doublons, setDoublons] = useState([])
+
+  useEffect(() => {
+    const tel = telephone.trim()
+    const mail = email.trim()
+    if (!tel && !mail) { setDoublons([]); return undefined }
+    let vivant = true
+    // Anti-rafale : on interroge après une courte pause de frappe.
+    const t = setTimeout(() => {
+      rhApi.checkDuplicatesCandidature({
+        ...(tel ? { telephone: tel } : {}),
+        ...(mail ? { email: mail } : {}),
+      })
+        .then((res) => { if (vivant) setDoublons(unwrap(res.data)) })
+        .catch(() => { /* non bloquant — pas d'avertissement, c'est tout */ })
+    }, 400)
+    return () => { vivant = false; clearTimeout(t) }
+  }, [email, telephone])
 
   // VX168 — garde de fermeture : dialogue de création, initial = tout vide.
   const dirty = Boolean(ouverture || nom || email || telephone || source || cv)
@@ -1583,6 +1617,12 @@ function CandidatDialog({ ouvertures, onClose, onSaved }) {
               <Input id="cd-telephone" value={telephone} onChange={(e) => setTelephone(e.target.value)} />
             </div>
           </div>
+          {doublons.length > 0 && (
+            <p className="text-sm text-warning" role="status">
+              Doublon possible : {doublons.map((d) => d.nom).join(', ')} —
+              vous pouvez créer quand même, puis fusionner depuis la liste.
+            </p>
+          )}
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="cd-source">Source (LinkedIn, ANAPEC, cooptation…)</Label>
             <Input id="cd-source" value={source} onChange={(e) => setSource(e.target.value)} />
@@ -1596,6 +1636,61 @@ function CandidatDialog({ ouvertures, onClose, onSaved }) {
             <Button type="button" variant="outline" onClick={closeIfConfirmed}>Annuler</Button>
             <Button type="submit" disabled={!valide || saving}>
               {saving ? 'Création…' : 'Créer la candidature'}
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+/* ── WIR241 (XRH18) — Fusionner une candidature SOURCE dans CETTE cible ───────
+   Le serveur choisit ce qui est conservé (`services.fusionner_candidatures`) et
+   refuse en 400/404 les cas impossibles — ce message est affiché tel quel. */
+function FusionCandidatureDialog({ cible, candidatures, onClose, onSaved }) {
+  const [source, setSource] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [serverError, setServerError] = useState(null)
+  const candidats = candidatures.filter((c) => c.id !== cible.id)
+
+  const submit = async (e) => {
+    e.preventDefault()
+    if (!source) return
+    setSaving(true)
+    setServerError(null)
+    try {
+      await rhApi.fusionnerCandidature(cible.id, { source: Number(source) })
+      toast.success('Candidatures fusionnées.')
+      onSaved?.()
+    } catch (err) {
+      setServerError(err?.response?.data?.detail ?? 'Fusion impossible.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <Dialog open onOpenChange={(o) => { if (!o) onClose?.() }}>
+      <DialogContent className="max-w-lg">
+        <DialogHeader>
+          <DialogTitle>Fusionner dans — {cible.nom}</DialogTitle>
+        </DialogHeader>
+        <form onSubmit={submit} className="flex flex-col gap-4" noValidate>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="fu-source">Candidature à absorber</Label>
+            <select id="fu-source" value={source} onChange={(e) => setSource(e.target.value)}
+              className="h-9 rounded-md border border-border bg-card px-3 text-sm">
+              <option value="">— Choisir —</option>
+              {candidats.map((c) => (
+                <option key={c.id} value={c.id}>{c.nom}{c.email ? ` — ${c.email}` : ''}</option>
+              ))}
+            </select>
+          </div>
+          {serverError && <p className="text-sm text-destructive" role="alert">{serverError}</p>}
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={onClose}>Annuler</Button>
+            <Button type="submit" disabled={!source || saving}>
+              {saving ? 'Fusion…' : 'Fusionner'}
             </Button>
           </DialogFooter>
         </form>
