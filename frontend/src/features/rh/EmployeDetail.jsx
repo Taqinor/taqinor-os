@@ -99,6 +99,9 @@ export default function EmployeDetail() {
   const [formation, setFormation] = useState(null)
   const [integration, setIntegration] = useState(null)
   const [chatter, setChatter] = useState([])
+  // WIR240 — composeur de note du fil (XRH6).
+  const [noteTexte, setNoteTexte] = useState('')
+  const [noteSaving, setNoteSaving] = useState(false)
   // WIR131 — badges reçus (ZRH14) + catalogue société pour le formulaire.
   const [badgesRecus, setBadgesRecus] = useState([])
   const [badgesCatalogue, setBadgesCatalogue] = useState([])
@@ -446,26 +449,61 @@ export default function EmployeDetail() {
     </div>
   )
 
+  /* WIR240 (XRH6) — le fil du dossier rendait DÉJÀ la branche `type='note'`,
+     mais aucune note ne pouvait être écrite : `rhApi.noterEmploye` n'avait
+     aucun appelant. Le composeur ci-dessous la crée, puis RECHARGE le fil
+     depuis le serveur (jamais d'optimisme local : l'auteur et l'horodatage
+     sont posés côté serveur, seul le serveur dit la vérité). */
+  const publierNote = async (e) => {
+    e.preventDefault()
+    if (!noteTexte.trim()) return
+    setNoteSaving(true)
+    try {
+      await rhApi.noterEmploye(id, { message: noteTexte.trim() })
+      setNoteTexte('')
+      toast.success('Note ajoutée au fil.')
+      recharger()
+    } catch (err) {
+      toast.error(err?.response?.data?.message
+        ?? err?.response?.data?.detail ?? 'Ajout de la note impossible.')
+    } finally {
+      setNoteSaving(false)
+    }
+  }
+
   // XRH6 — chatter (timeline d'activité : logs automatiques + notes).
   const chatterTab = (
-    <Liste
-      rows={chatter}
-      loading={subLoading}
-      empty="Aucune activité enregistrée."
-      renderRow={(a) => (
-        <div className="min-w-0">
-          <p className="text-sm">
-            {a.type === 'note' || a.type === 'NOTE'
-              ? (a.message || '—')
-              : `${a.field || 'Champ'} : ${a.old_value ?? '—'} → ${a.new_value ?? '—'}`}
-          </p>
-          <p className="text-xs text-muted-foreground">
-            {a.auteur_nom || a.auteur || 'Système'}
-            {a.date_creation ? ` · ${formatDate(a.date_creation)}` : ''}
-          </p>
+    <div className="flex flex-col gap-3">
+      <form onSubmit={publierNote} className="flex flex-col gap-2" noValidate>
+        <Label htmlFor="ed-note">Ajouter une note</Label>
+        <Textarea id="ed-note" rows={2} value={noteTexte}
+          onChange={(e) => setNoteTexte(e.target.value)}
+          placeholder="Note libre — visible dans le fil du dossier" />
+        <div className="flex justify-end">
+          <Button type="submit" size="sm" disabled={!noteTexte.trim() || noteSaving}>
+            {noteSaving ? 'Envoi…' : 'Publier la note'}
+          </Button>
         </div>
-      )}
-    />
+      </form>
+      <Liste
+        rows={chatter}
+        loading={subLoading}
+        empty="Aucune activité enregistrée."
+        renderRow={(a) => (
+          <div className="min-w-0">
+            <p className="text-sm">
+              {a.type === 'note' || a.type === 'NOTE'
+                ? (a.message || '—')
+                : `${a.field || 'Champ'} : ${a.old_value ?? '—'} → ${a.new_value ?? '—'}`}
+            </p>
+            <p className="text-xs text-muted-foreground">
+              {a.auteur_nom || a.auteur || 'Système'}
+              {a.date_creation ? ` · ${formatDate(a.date_creation)}` : ''}
+            </p>
+          </div>
+        )}
+      />
+    </div>
   )
 
   // WIR131 — badges de reconnaissance (ZRH14) reçus par ce dossier.

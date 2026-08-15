@@ -62,6 +62,11 @@ vi.mock('../../api/rhApi', () => {
       approuverOuverturePoste: vi.fn(),
       refuserOuverturePoste: vi.fn(),
       cloturerCampagneEvaluation: vi.fn(),
+      // WIR240 — chatter candidature + grille de notation d'entretien.
+      getHistoriqueCandidature: vi.fn(empty),
+      noterCandidature: vi.fn(),
+      getEntretiensRecrutement: vi.fn(empty),
+      noterEntretienRecrutement: vi.fn(),
       createDotationEpi: vi.fn(),
       restituerDotationEpi: vi.fn(),
       emargerDotationEpi: vi.fn(),
@@ -168,6 +173,80 @@ describe('Recrutement — ATS (XRH17-23)', () => {
 
     await waitFor(() => expect(rhApi.createRetourFeedback360).toHaveBeenCalledWith({
       evaluation: 9, repondant: 12, relation: 'pair',
+    }))
+  })
+})
+
+/* WIR240 — le chatter d'une candidature journalisait les transitions d'étape
+   sans qu'aucun écran ne les lise, et la grille de notation d'entretien
+   n'avait aucun appelant (colonne Note + comparatif condamnés à rester
+   vides). */
+describe('Recrutement — WIR240 : chatter candidature & notation d’entretien', () => {
+  const CANDIDATURE = {
+    id: 7, nom: 'Yassine Amrani', email: 'y@example.ma',
+    ouverture: 5, ouverture_intitule: 'Technicien PV',
+    etape: 'entretien', etape_display: 'Entretien',
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    armerStatistiques()
+    rhApi.getCandidatures.mockResolvedValue({ data: [CANDIDATURE] })
+  })
+
+  const ouvrirActivite = async () => {
+    renderRecrutement()
+    await screen.findAllByText('EPI, recrutement & évaluations')
+    fireEvent.click(screen.getByRole('radio', { name: 'Recrutement' }))
+    await screen.findAllByText('Yassine Amrani')
+    fireEvent.click((await screen.findAllByRole('button', { name: 'Activité' }))[0])
+  }
+
+  it('rend le fil (transitions journalisées) et publie une note', async () => {
+    rhApi.getHistoriqueCandidature.mockResolvedValue({
+      data: [{
+        id: 1, candidature: 7, type: 'log', type_display: 'Transition',
+        field: 'etape', old_value: 'Présélection', new_value: 'Entretien',
+        message: '', auteur: 2, auteur_nom: 'rh1',
+        date_creation: '2026-08-12T09:00:00Z',
+      }],
+    })
+    rhApi.noterCandidature.mockResolvedValueOnce({ data: { id: 2 } })
+    await ouvrirActivite()
+
+    await waitFor(() => expect(rhApi.getHistoriqueCandidature).toHaveBeenCalledWith(7))
+    // La transition d'étape est désormais LISIBLE dans le fil.
+    expect((await screen.findAllByText(/Entretien/)).length).toBeGreaterThan(0)
+
+    fireEvent.change(screen.getByLabelText('Ajouter une note'), {
+      target: { value: 'Bon profil, à revoir' },
+    })
+    fireEvent.click(screen.getAllByRole('button', { name: 'Publier la note' })[0])
+
+    await waitFor(() => expect(rhApi.noterCandidature).toHaveBeenCalledWith(
+      7, { message: 'Bon profil, à revoir' },
+    ))
+  })
+
+  it('note un entretien via rhApi.noterEntretienRecrutement', async () => {
+    rhApi.getEntretiensRecrutement.mockResolvedValue({
+      data: [{
+        id: 33, candidature: 7, date_heure: '2026-08-14T10:00:00Z',
+        type_entretien: 'technique', type_display: 'Technique', notes: [],
+      }],
+    })
+    rhApi.noterEntretienRecrutement.mockResolvedValueOnce({ data: { id: 4 } })
+    await ouvrirActivite()
+
+    await waitFor(() => expect(rhApi.getEntretiensRecrutement).toHaveBeenCalledWith({ candidature: 7 }))
+    fireEvent.change(await screen.findByLabelText('Technique (1–5)'), { target: { value: '4' } })
+    fireEvent.change(screen.getByLabelText('Avis'), { target: { value: 'favorable' } })
+    fireEvent.click(screen.getAllByRole('button', { name: 'Enregistrer la notation' })[0])
+
+    await waitFor(() => expect(rhApi.noterEntretienRecrutement).toHaveBeenCalledWith(33, {
+      notes_criteres: { Technique: 4 },
+      commentaire: '',
+      avis: 'favorable',
     }))
   })
 })

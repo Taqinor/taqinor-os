@@ -2,7 +2,9 @@ import { useEffect, useMemo, useState } from 'react'
 import {
   UserPlus, Ban, ScanText, Star, BarChart3, FileSignature, CalendarClock, Users,
   ShieldCheck, PenLine, Undo2, History, Send, Check, X, Lock, Briefcase,
+  MessageSquare,
 } from 'lucide-react'
+import ChatterTimeline from '../../components/ChatterTimeline'
 import { ListShell } from '../../ui/module'
 import {
   Segmented, Badge, toast, Card, Stat,
@@ -83,6 +85,8 @@ export default function Recrutement() {
   const [modeleOpen, setModeleOpen] = useState(false)
   // WIR131 — invitations feedback 360° d'une évaluation.
   const [feedbackFor, setFeedbackFor] = useState(null)
+  // WIR240 — panneau « Activité » d'une candidature (chatter + notation).
+  const [activiteFor, setActiviteFor] = useState(null)
   // WIR196 — création d'une ouverture de poste + refus motivé.
   const [ouvertureOpen, setOuvertureOpen] = useState(false)
   const [refusFor, setRefusFor] = useState(null)
@@ -371,6 +375,12 @@ export default function Recrutement() {
     if (c.etape !== 'embauche' && c.etape !== 'rejete') {
       actions.push({ id: 'embaucher', label: 'Embaucher', icon: UserPlus, onClick: () => embaucher(c) })
     }
+    // WIR240 — chatter de la candidature : les transitions d'étape étaient
+    // journalisées côté serveur sans jamais être lisibles, et aucune note ne
+    // pouvait être écrite. Le panneau porte aussi la grille de notation
+    // d'entretien, sans laquelle la colonne Note et le comparatif restaient
+    // vides quoi qu'on fasse.
+    actions.push({ id: 'activite', label: 'Activité', icon: MessageSquare, onClick: () => setActiviteFor(c) })
     actions.push({ id: 'entretien', label: 'Planifier un entretien', icon: CalendarClock, onClick: () => setEntretienFor(c) })
     actions.push({ id: 'promesse', label: 'Promesse d’embauche', icon: FileSignature, onClick: () => setPromesseFor(c) })
     actions.push({ id: 'comparatif', label: 'Comparer les candidats', icon: BarChart3, onClick: () => setComparatifFor(c) })
@@ -539,6 +549,12 @@ export default function Recrutement() {
           onClose={() => setFeedbackFor(null)}
         />
       )}
+      {activiteFor && (
+        <ActiviteCandidatureDialog
+          candidature={activiteFor}
+          onClose={() => setActiviteFor(null)}
+        />
+      )}
       {ouvertureOpen && (
         <OuverturePosteDialog
           onClose={() => setOuvertureOpen(false)}
@@ -574,6 +590,211 @@ export default function Recrutement() {
         />
       )}
     </div>
+  )
+}
+
+/* ── WIR240 (XRH17/XRH18) — Activité d'une candidature : chatter + notation ───
+   Deux trous fermés d'un coup :
+     * le chatter (`historique`/`noter`) journalisait les transitions d'étape
+       côté serveur sans qu'aucun écran ne les lise, et aucune note manuelle
+       n'était possible ;
+     * la grille d'entretien (`noterEntretienRecrutement`) n'avait aucun
+       appelant, donc la colonne « Note » et le comparatif des candidats
+       restaient vides QUOI QU'ON FASSE.
+   L'auteur, la société et l'horodatage sont posés côté serveur ; la note
+   publiée est RELUE du serveur, jamais ajoutée optimistement au fil. */
+const AVIS_ENTRETIEN = [
+  { value: 'favorable', label: 'Favorable' },
+  { value: 'reserve', label: 'Réservé' },
+  { value: 'defavorable', label: 'Défavorable' },
+]
+
+// Critères de la grille — miroir des clés libres de `notes_criteres` (JSON
+// serveur). Un critère = une note 1–5 ; la moyenne est calculée par le serveur
+// (`moyenne_criteres`), jamais ici.
+const CRITERES_ENTRETIEN = ['Technique', 'Communication', 'Motivation']
+
+function ActiviteCandidatureDialog({ candidature, onClose }) {
+  const [entrees, setEntrees] = useState([])
+  const [entretiens, setEntretiens] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [note, setNote] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [serverError, setServerError] = useState(null)
+  const [reloadTick, setReloadTick] = useState(0)
+
+  useEffect(() => {
+    let vivant = true
+    Promise.allSettled([
+      rhApi.getHistoriqueCandidature(candidature.id),
+      rhApi.getEntretiensRecrutement({ candidature: candidature.id }),
+    ]).then(([hist, ent]) => {
+      if (!vivant) return
+      if (hist.status === 'fulfilled') setEntrees(unwrap(hist.value.data))
+      if (ent.status === 'fulfilled') setEntretiens(unwrap(ent.value.data))
+      setLoading(false)
+    })
+    return () => { vivant = false }
+  }, [candidature.id, reloadTick])
+
+  const publier = async (e) => {
+    e.preventDefault()
+    if (!note.trim()) return
+    setSaving(true)
+    setServerError(null)
+    try {
+      await rhApi.noterCandidature(candidature.id, { message: note.trim() })
+      setNote('')
+      setReloadTick((t) => t + 1)
+      toast.success('Note ajoutée au fil.')
+    } catch (err) {
+      const data = err?.response?.data
+      setServerError(data?.message || data?.detail || 'Ajout de la note impossible.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <Dialog open onOpenChange={(o) => { if (!o) onClose?.() }}>
+      <DialogContent className="max-w-2xl">
+        <DialogHeader>
+          <DialogTitle>Activité — {candidature.nom}</DialogTitle>
+        </DialogHeader>
+        <div className="flex flex-col gap-4">
+          <form onSubmit={publier} className="flex flex-col gap-2">
+            <Label htmlFor="ac-note">Ajouter une note</Label>
+            <Textarea id="ac-note" rows={2} value={note}
+              onChange={(e) => setNote(e.target.value)}
+              placeholder="Note libre — visible dans le fil de la candidature" />
+            <div className="flex justify-end">
+              <Button type="submit" size="sm" disabled={!note.trim() || saving}>
+                {saving ? 'Envoi…' : 'Publier la note'}
+              </Button>
+            </div>
+          </form>
+          {serverError && <p className="text-sm text-destructive" role="alert">{serverError}</p>}
+
+          {loading
+            ? <p className="text-sm text-muted-foreground">Chargement…</p>
+            : (
+              <ChatterTimeline
+                entries={entrees.map(versEntreeChatter)}
+                emptyLabel="Aucune activité sur cette candidature."
+              />
+            )}
+
+          {entretiens.length > 0 && (
+            <div className="flex flex-col gap-3">
+              <h3 className="text-sm font-medium">Entretiens — grille de notation</h3>
+              {entretiens.map((en) => (
+                <GrilleEntretien
+                  key={en.id}
+                  entretien={en}
+                  onSaved={() => setReloadTick((t) => t + 1)}
+                />
+              ))}
+            </div>
+          )}
+        </div>
+        <DialogFooter>
+          <Button type="button" variant="outline" onClick={onClose}>Fermer</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+/* Adapte la forme RH (`CandidatureActivity` : type/message/field/date_creation)
+   à celle attendue par `ChatterTimeline` (kind/body/user_nom/created_at). Aucun
+   champ n'est inventé : `log` porte un couple old→new, `note` un message. */
+function versEntreeChatter(a) {
+  return {
+    id: a.id,
+    kind: a.type === 'note' ? 'note' : 'modification',
+    body: a.message || '',
+    field_label: a.field || 'Étape',
+    old_value: a.old_value ?? '—',
+    new_value: a.new_value ?? '—',
+    user_nom: a.auteur_nom || '',
+    created_at: a.date_creation,
+  }
+}
+
+function GrilleEntretien({ entretien, onSaved }) {
+  const maNote = Array.isArray(entretien.notes) && entretien.notes.length > 0
+    ? entretien.notes[entretien.notes.length - 1] : null
+  const [criteres, setCriteres] = useState(
+    () => ({ ...(maNote?.notes_criteres || {}) }))
+  const [commentaire, setCommentaire] = useState(maNote?.commentaire || '')
+  const [avis, setAvis] = useState(maNote?.avis || 'reserve')
+  const [saving, setSaving] = useState(false)
+  const [erreur, setErreur] = useState(null)
+
+  const soumettre = async (e) => {
+    e.preventDefault()
+    setSaving(true)
+    setErreur(null)
+    try {
+      // Seuls les critères réellement saisis partent : un champ vide ne doit
+      // pas devenir un 0 qui fausserait la moyenne serveur.
+      const notes = {}
+      CRITERES_ENTRETIEN.forEach((c) => {
+        const v = criteres[c]
+        if (v !== undefined && v !== '') notes[c] = Number(v)
+      })
+      await rhApi.noterEntretienRecrutement(entretien.id, {
+        notes_criteres: notes,
+        commentaire: commentaire || '',
+        avis,
+      })
+      toast.success('Entretien noté.')
+      onSaved?.()
+    } catch (err) {
+      setErreur(err?.response?.data?.detail ?? 'Notation impossible.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <form onSubmit={soumettre} className="flex flex-col gap-2 rounded-lg border border-border bg-card p-3">
+      <p className="text-sm font-medium">
+        {entretien.type_display || entretien.type_entretien || 'Entretien'}
+        {entretien.date_heure ? ` — ${formatDate(entretien.date_heure)}` : ''}
+      </p>
+      <div className="grid grid-cols-3 gap-3">
+        {CRITERES_ENTRETIEN.map((c) => (
+          <div key={c} className="flex flex-col gap-1.5">
+            <Label htmlFor={`gr-${entretien.id}-${c}`}>{c} (1–5)</Label>
+            <Input id={`gr-${entretien.id}-${c}`} type="number" step="any"
+              value={criteres[c] ?? ''}
+              onChange={(e) => setCriteres((p) => ({ ...p, [c]: e.target.value }))} />
+          </div>
+        ))}
+      </div>
+      <div className="flex flex-col gap-1.5">
+        <Label htmlFor={`gr-${entretien.id}-avis`}>Avis</Label>
+        <select id={`gr-${entretien.id}-avis`} value={avis}
+          onChange={(e) => setAvis(e.target.value)}
+          className="h-9 rounded-md border border-border bg-card px-3 text-sm">
+          {AVIS_ENTRETIEN.map((a) => (
+            <option key={a.value} value={a.value}>{a.label}</option>
+          ))}
+        </select>
+      </div>
+      <div className="flex flex-col gap-1.5">
+        <Label htmlFor={`gr-${entretien.id}-com`}>Commentaire</Label>
+        <Input id={`gr-${entretien.id}-com`} value={commentaire}
+          onChange={(e) => setCommentaire(e.target.value)} />
+      </div>
+      {erreur && <p className="text-sm text-destructive" role="alert">{erreur}</p>}
+      <div className="flex justify-end">
+        <Button type="submit" size="sm" disabled={saving}>
+          {saving ? 'Enregistrement…' : 'Enregistrer la notation'}
+        </Button>
+      </div>
+    </form>
   )
 }
 

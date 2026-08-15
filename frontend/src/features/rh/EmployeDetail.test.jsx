@@ -54,6 +54,8 @@ vi.mock('../../api/rhApi', () => {
         data: [{ id: 3, nom: 'Esprit d’équipe', icone: '🤝', actif: true }],
       })),
       attribuerBadge: vi.fn(() => Promise.resolve({ data: {} })),
+      // WIR240 — composeur de note du fil du dossier (XRH6).
+      noterEmploye: vi.fn(),
     },
   }
 })
@@ -231,5 +233,37 @@ describe('EmployeDetail — offboarding (YHIRE2/ZRH12)', () => {
     expect(screen.getByText('Domicile')).toBeInTheDocument()
     expect(screen.getByText('Terrain')).toBeInTheDocument()
     expect(screen.getAllByText('Bureau').length).toBe(5)
+  })
+})
+
+/* WIR240 — le fil du dossier rendait déjà la branche `type='note'`, mais
+   aucune note ne pouvait être écrite : `rhApi.noterEmploye` n'avait aucun
+   appelant. La note publiée est RELUE du serveur. */
+describe('EmployeDetail — WIR240 : composeur de note du fil', () => {
+  beforeEach(() => vi.clearAllMocks())
+
+  it('publie une note via rhApi.noterEmploye et recharge le fil', async () => {
+    rhApi.getEmploye.mockResolvedValue({
+      data: { id: 7, nom: 'Bennani', prenom: 'Youssef', matricule: 'M007', statut: 'actif' },
+    })
+    rhApi.getHistoriqueEmploye.mockResolvedValue({ data: [] })
+    rhApi.noterEmploye.mockResolvedValueOnce({ data: { id: 1, type: 'note' } })
+    const { default: userEvent } = await import('@testing-library/user-event')
+    renderDetail()
+    await screen.findByRole('heading', { name: 'Bennani Youssef' })
+
+    // Onglet Radix : activation au focus → userEvent (cf. l'onglet Badges).
+    await userEvent.click(screen.getByRole('tab', { name: /Activité/ }))
+    fireEvent.change(await screen.findByLabelText('Ajouter une note'), {
+      target: { value: 'Entretien annuel planifié' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Publier la note' }))
+
+    await waitFor(() => expect(rhApi.noterEmploye).toHaveBeenCalledWith(
+      '7', { message: 'Entretien annuel planifié' },
+    ))
+    // Le fil est relu du serveur (jamais d'ajout optimiste local).
+    await waitFor(() => expect(rhApi.getHistoriqueEmploye.mock.calls.length)
+      .toBeGreaterThan(1))
   })
 })
