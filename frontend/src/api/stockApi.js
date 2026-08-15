@@ -217,6 +217,20 @@ const stockApi = {
     api.get('/stock/factures-fournisseur/comptes-a-payer/', { params }),
   ajouterPaiementFournisseur: (factureId, data) =>
     api.post(`/stock/factures-fournisseur/${factureId}/paiements/`, data),
+  // XPUR10 / WIR192 — rapprochement 3 voies : une facture hors tolérance passe
+  // en `statut_controle='exception'` et le paiement est REFUSÉ tant qu'elle
+  // n'est pas résolue. Sans ces wrappers, la file d'exceptions et l'action de
+  // levée n'avaient aucune UI (blocage sans issue visible).
+  facturesFournisseurEnException: () =>
+    api.get('/stock/factures-fournisseur/en-exception/'),
+  resoudreExceptionFactureFournisseur: (id, commentaire) =>
+    api.post(`/stock/factures-fournisseur/${id}/resoudre-exception/`,
+      { commentaire: commentaire ?? '' }),
+  // XPUR6 — échéancier multi-tranches d'une facture fournisseur.
+  getEcheancierFactureFournisseur: (id) =>
+    api.get(`/stock/factures-fournisseur/${id}/echeancier/`),
+  creerEcheancierFactureFournisseur: (id, tranches) =>
+    api.post(`/stock/factures-fournisseur/${id}/echeancier/`, { tranches }),
   // XACC36 — SINK OCR → brouillon de facture d'achat. `file` optionnel (le
   // scan d'origine, rattaché en pièce jointe côté serveur).
   factureFournisseurDepuisOcr: ({ fields, file }) => {

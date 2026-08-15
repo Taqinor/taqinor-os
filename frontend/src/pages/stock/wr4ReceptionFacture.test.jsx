@@ -1,6 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { Provider } from 'react-redux'
+import { configureStore } from '@reduxjs/toolkit'
 import { ThemeProvider } from '../../design/ThemeProvider.jsx'
+import authReducer from '../../features/auth/store/authSlice'
 
 /* ============================================================================
    WR4 — « facturer une réception » (FG56) + PDF facture fournisseur (FG55).
@@ -14,6 +17,8 @@ vi.mock('../../api/stockApi', () => ({
     factureFournisseurPdf: vi.fn(),
     ajouterPaiementFournisseur: vi.fn(),
     receptionEtiquettes: vi.fn(),
+    // WIR192 — exception de rapprochement 3 voies (XPUR10).
+    resoudreExceptionFactureFournisseur: vi.fn(),
   },
 }))
 
@@ -41,8 +46,26 @@ import comptaApi from '../../api/comptaApi'
 import { ReceptionDetail } from './ReceptionsFournisseur.jsx'
 import { FactureDetail } from './FacturesFournisseur.jsx'
 
-function wrap(node) {
-  return render(<ThemeProvider>{node}</ThemeProvider>)
+// WIR192 — `FactureDetail` consulte désormais le rôle (levée d'exception de
+// rapprochement réservée responsable/admin) → Provider Redux requis.
+function makeStore({ role = 'admin', permissions = [] } = {}) {
+  return configureStore({
+    reducer: { auth: authReducer },
+    preloadedState: {
+      auth: {
+        user: { id: 1 }, role, role_nom: role, permissions,
+        isAuthenticated: true, loading: false,
+      },
+    },
+  })
+}
+
+function wrap(node, authState) {
+  return render(
+    <Provider store={makeStore(authState)}>
+      <ThemeProvider>{node}</ThemeProvider>
+    </Provider>,
+  )
 }
 
 beforeEach(() => {
@@ -173,5 +196,59 @@ describe('XACC33 — capitaliser une ligne de facture fournisseur (bouton « Imm
     wrap(<FactureDetail facture={facture} onClose={() => {}} onSaved={() => {}} />)
     fireEvent.click(screen.getByRole('button', { name: /Immobiliser/ }))
     expect(comptaApi.immobilisations.depuisFactureFournisseur).not.toHaveBeenCalled()
+  })
+})
+
+// ── WIR192 / XPUR10 — exception de rapprochement 3 voies ────────────────────
+describe('WIR192 — exception de rapprochement 3 voies (paiement bloqué)', () => {
+  const factureException = {
+    id: 12, reference: 'FF-2026-08-0012', statut: 'a_payer',
+    fournisseur_nom: 'JA Solar', montant_ttc: '6000', total_paye: '0',
+    solde_du: '6000', paiements: [],
+    statut_controle: 'exception',
+    statut_controle_display: 'En exception',
+    motif_ecart: 'Prix facturé 120,00 vs 100,00 commandé (écart 20 %).',
+  }
+
+  it('affiche le motif d\'écart et l\'action de levée pour un responsable', () => {
+    wrap(<FactureDetail facture={factureException} onClose={() => {}} onSaved={() => {}} />)
+    expect(screen.getByText(/écart 20 %/)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Résoudre l'exception/ })).toBeInTheDocument()
+  })
+
+  it('« Résoudre l\'exception » poste le commentaire et sort la facture de la file', async () => {
+    stockApi.resoudreExceptionFactureFournisseur.mockResolvedValue({
+      data: { ...factureException, statut_controle: 'resolue', motif_ecart: '' },
+    })
+    const onSaved = vi.fn()
+    wrap(<FactureDetail facture={factureException} onClose={() => {}} onSaved={onSaved} />)
+    fireEvent.change(screen.getByLabelText('Commentaire (tracé)'),
+      { target: { value: 'Écart accepté (remise négociée).' } })
+    fireEvent.click(screen.getByRole('button', { name: /Résoudre l'exception/ }))
+
+    await waitFor(() => expect(stockApi.resoudreExceptionFactureFournisseur)
+      .toHaveBeenCalledWith(12, 'Écart accepté (remise négociée).'))
+    await waitFor(() => expect(onSaved).toHaveBeenCalled())
+    // La facture n'est plus en exception : le bandeau bloquant disparaît.
+    await waitFor(() => expect(
+      screen.queryByRole('button', { name: /Résoudre l'exception/ })).toBeNull())
+  })
+
+  it('un rôle non responsable voit le blocage expliqué mais AUCUNE action', () => {
+    wrap(<FactureDetail facture={factureException} onClose={() => {}} onSaved={() => {}} />,
+      { role: 'normal' })
+    expect(screen.getByText(/paiement bloqué/)).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Résoudre l'exception/ })).toBeNull()
+  })
+
+  it('un refus de paiement pointe vers l\'action qui le débloque', async () => {
+    stockApi.ajouterPaiementFournisseur.mockRejectedValue({
+      response: { data: { detail: 'Paiement bloqué : facture en exception de rapprochement.' } },
+    })
+    wrap(<FactureDetail facture={factureException} onClose={() => {}} onSaved={() => {}} />)
+    fireEvent.change(screen.getByLabelText('Montant'), { target: { value: '100' } })
+    fireEvent.click(screen.getByRole('button', { name: /Ajouter le paiement/ }))
+
+    expect(await screen.findByText(/Levez d'abord l'exception/)).toBeInTheDocument()
   })
 })
