@@ -139,6 +139,12 @@ const kbApi = {
     api.post('/kb/lectures-obligatoires/', data),
   removeLectureObligatoire: (id) =>
     api.delete(`/kb/lectures-obligatoires/${id}/`),
+  /* WIR250 / XKB7 — rapport de conformité de lecture d'un article :
+     `{article, lus: [...], non_lus: [...]}`, chaque entrée portant
+     `utilisateur`, `nom` et `echeance`. Il existait côté serveur sans aucun
+     appelant : l'écran affichait « N lecteurs » sans jamais dire QUI n'avait
+     pas lu, ni avant quand. Réservé aux gestionnaires (`canEdit`). */
+  rapportConformite: (id) => api.get(`/kb/articles/${id}/rapport-conformite/`),
 }
 
 export default kbApi
