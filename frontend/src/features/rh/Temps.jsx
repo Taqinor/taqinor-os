@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import {
-  LogOut, Upload, Download, Pencil, MonitorSmartphone, Ban, History,
+  LogOut, Upload, Download, Pencil, MonitorSmartphone, Ban, History, ShieldCheck,
 } from 'lucide-react'
 import { ListShell } from '../../ui/module'
 import {
@@ -30,6 +30,10 @@ const VUES = [
   { value: 'devices', label: 'Kiosque' },
   // ZRH6 — absents non justifiés du jour ; ZRH18 — rapport de présence.
   { value: 'absents', label: 'Absents du jour' },
+  // WIR195 — les incidents (FG171) étaient un trou noir d'écriture : créés
+  // depuis « Absents du jour », jamais relisibles ni justifiables. Ils ont
+  // désormais leur vue, avec la régularisation par motif.
+  { value: 'incidents', label: 'Incidents de présence' },
   { value: 'rapport', label: 'Rapport de présence' },
 ]
 
@@ -70,6 +74,10 @@ export default function Temps() {
   // ZRH6 — absents non justifiés du jour ; ZRH18 — rapport de présence.
   const [absents, setAbsents] = useState([])
   const [rapport, setRapport] = useState(null)
+  // WIR195 — incidents de présence (FG171) + compteur par employé.
+  const [incidents, setIncidents] = useState([])
+  const [compteurIncidents, setCompteurIncidents] = useState([])
+  const [justifierFor, setJustifierFor] = useState(null)
   const [nouveauToken, setNouveauToken] = useState(null)
   const fileRef = useRef(null)
 
@@ -85,9 +93,14 @@ export default function Temps() {
       rhApi.getDevicesKiosque(),
       rhApi.getAbsentsNonJustifies(),
       rhApi.getRapportPresence({ debut: debutMois(), fin: aujourdHui() }),
+      // WIR195 — incidents de présence + compteur (période serveur par défaut).
+      rhApi.getIncidentsPresence(),
+      rhApi.getCompteurIncidentsPresence(),
     ])
-      .then(([pRes, rRes, prRes, hRes, dRes, aRes, rapRes]) => {
+      .then(([pRes, rRes, prRes, hRes, dRes, aRes, rapRes, incRes, cptRes]) => {
         if (!vivant) return
+        setIncidents(unwrap(incRes?.data))
+        setCompteurIncidents(unwrap(cptRes?.data))
         setPointages(unwrap(pRes.data))
         setRoster(unwrap(rRes.data))
         setPresences(unwrap(prRes.data))
@@ -257,10 +270,27 @@ export default function Temps() {
       await rhApi.genererIncidentAbsence({ employe: a.employe_id })
       toast.success('Incident d’absence créé.')
       recharger()
+      // WIR195 — bascule sur la vue qui montre ce qui vient d'être créé : un
+      // incident écrit sans être relu était le trou noir de cet écran.
+      setVue('incidents')
     } catch (err) {
       toast.error(err?.response?.data?.detail ?? 'Création impossible.')
     }
   }
+
+  // WIR195 — colonnes des incidents de présence (clés du sérialiseur serveur).
+  const incidentColumns = useMemo(() => [
+    { id: 'employe', header: 'Employé', width: 180, accessor: (i) => i.employe_nom || String(i.employe || ''), cell: (v) => <span className="font-medium">{v || '—'}</span> },
+    { id: 'type', header: 'Type', width: 160, accessor: (i) => i.type_incident_display || i.type_incident || '', cell: (v) => v || '—' },
+    { id: 'date', header: 'Date', width: 120, searchable: false, accessor: (i) => i.date || '', cell: (v) => (v ? formatDate(v) : '—') },
+    { id: 'retard', header: 'Retard (min)', width: 120, align: 'right', numeric: true, searchable: false, accessor: (i) => Number(i.minutes_retard ?? 0), cell: (v) => (v ? v : '—') },
+    { id: 'motif', header: 'Motif', width: 200, accessor: (i) => i.motif || '', cell: (v) => v || '—' },
+    { id: 'justifie', header: 'Statut', width: 130, accessor: (i) => (i.justifie ? 'justifie' : 'a justifier'), cell: (_v, i) => (i.justifie ? <Badge tone="success">Justifié</Badge> : <Badge tone="warning">À justifier</Badge>) },
+  ], [])
+
+  const incidentActions = (i) => (i.justifie
+    ? []
+    : [{ id: 'justifier', label: 'Justifier', icon: ShieldCheck, onClick: () => setJustifierFor(i) }])
 
   const absentColumns = useMemo(() => [
     { id: 'nom', header: 'Employé', width: 220, accessor: (a) => a.nom || '', cell: (v) => <span className="font-medium">{v || '—'}</span> },
@@ -350,6 +380,8 @@ export default function Temps() {
       actions: <Button variant="outline" onClick={emettreDevice}><MonitorSmartphone size={15} strokeWidth={1.75} aria-hidden="true" />Émettre un device</Button> },
     // ZRH6 — absents non justifiés du jour (aucun pointage NI congé validé).
     absents: { title: 'Absents non justifiés (aujourd’hui)', columns: absentColumns, rows: absents, rowActions: absentActions, exportName: 'absents-non-justifies' },
+    // WIR195 — incidents de présence : relisibles ET régularisables.
+    incidents: { title: 'Incidents de présence', columns: incidentColumns, rows: incidents, rowActions: incidentActions, exportName: 'incidents-presence' },
     // ZRH18 — rapport de présence & heures supp. du mois en cours.
     rapport: { title: 'Rapport de présence (mois en cours)', columns: rapportColumns, rows: rapport?.par_employe ?? [], exportName: 'rapport-presence' },
   }[vue]
@@ -361,6 +393,25 @@ export default function Temps() {
       </div>
 
       <Segmented options={VUES} value={vue} onChange={setVue} aria-label="Vue temps & présence" />
+
+      {/* WIR195 — compteur d'incidents par employé (serveur, 90 j par défaut) :
+          le pilotage disciplinaire lit une agrégation, jamais un calcul client. */}
+      {vue === 'incidents' && compteurIncidents.length > 0 && (
+        <div className="rounded-lg border border-border bg-card px-3 py-2 text-sm">
+          <p className="font-medium">Incidents non justifiés par employé (90 derniers jours)</p>
+          {/* Le sélecteur `compteur_incidents` renvoie employe_id + total (pas
+              de nom) : le libellé vient des incidents DÉJÀ chargés, jamais
+              d'un nom inventé. */}
+          <ul className="mt-1 flex flex-wrap gap-2 text-xs text-muted-foreground">
+            {compteurIncidents.map((c) => (
+              <li key={c.employe_id}>
+                {(incidents.find((i) => i.employe === c.employe_id)?.employe_nom)
+                  || `Employé #${c.employe_id}`} : <Badge tone="warning">{c.total ?? 0}</Badge>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       <ListShell
         title={config.title}
@@ -387,6 +438,13 @@ export default function Temps() {
         <HistoriqueCorrectionsDialog
           pointage={historiqueFor}
           onClose={() => setHistoriqueFor(null)}
+        />
+      )}
+      {justifierFor && (
+        <JustifierIncidentDialog
+          incident={justifierFor}
+          onClose={() => setJustifierFor(null)}
+          onSaved={() => { setJustifierFor(null); recharger() }}
         />
       )}
       {nouveauToken && (
@@ -511,6 +569,55 @@ function CorrectionDialog({ pointage, onClose, onSaved }) {
           <DialogFooter>
             <Button type="button" variant="outline" onClick={onClose}>Annuler</Button>
             <Button type="submit" disabled={saving}>{saving ? 'Enregistrement…' : 'Corriger'}</Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+/* ── WIR195 (FG171) — Justifier un incident de présence (motif) ───────────────
+   `justifie`, `justifie_par` et `justifie_le` sont posés CÔTÉ SERVEUR par
+   l'action ; seul le motif remonte du client. */
+function JustifierIncidentDialog({ incident, onClose, onSaved }) {
+  const [motif, setMotif] = useState(incident.motif || '')
+  const [saving, setSaving] = useState(false)
+  const [serverError, setServerError] = useState(null)
+
+  const submit = async (e) => {
+    e.preventDefault()
+    if (!motif.trim()) { setServerError('Un motif est obligatoire.'); return }
+    setSaving(true)
+    setServerError(null)
+    try {
+      await rhApi.justifierIncidentPresence(incident.id, { motif: motif.trim() })
+      toast.success('Incident justifié.')
+      onSaved?.()
+    } catch (err) {
+      setServerError(err?.response?.data?.detail ?? 'Régularisation impossible.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <Dialog open onOpenChange={(o) => { if (!o) onClose?.() }}>
+      <DialogContent className="max-w-lg">
+        <DialogHeader>
+          <DialogTitle>
+            Justifier l’incident — {incident.employe_nom || `#${incident.id}`}
+          </DialogTitle>
+        </DialogHeader>
+        <form onSubmit={submit} className="flex flex-col gap-4" noValidate>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="ji-motif">Motif de la régularisation</Label>
+            <Input id="ji-motif" autoFocus value={motif} onChange={(e) => setMotif(e.target.value)}
+              placeholder="Ex. Justificatif médical fourni" />
+          </div>
+          {serverError && <p className="text-sm text-destructive" role="alert">{serverError}</p>}
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={onClose}>Annuler</Button>
+            <Button type="submit" disabled={saving}>{saving ? 'Enregistrement…' : 'Justifier'}</Button>
           </DialogFooter>
         </form>
       </DialogContent>

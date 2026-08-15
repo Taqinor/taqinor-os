@@ -28,6 +28,10 @@ vi.mock('../../api/rhApi', () => {
       getAbsentsNonJustifies: vi.fn(empty),
       genererIncidentAbsence: vi.fn(() => Promise.resolve({ data: {} })),
       getRapportPresence: vi.fn(() => Promise.resolve({ data: { par_employe: [], totaux_departement: [] } })),
+      // WIR195 — incidents de présence : liste, régularisation et compteur.
+      getIncidentsPresence: vi.fn(empty),
+      getCompteurIncidentsPresence: vi.fn(empty),
+      justifierIncidentPresence: vi.fn(),
     },
   }
 })
@@ -143,6 +147,10 @@ describe('Temps — ZRH6/ZRH18 : absents non justifiés & rapport de présence',
 
     fireEvent.click((await screen.findAllByRole('button', { name: 'Créer un incident d’absence' }))[0])
     await waitFor(() => expect(rhApi.genererIncidentAbsence).toHaveBeenCalledWith({ employe: 9 }))
+    // WIR195 — l'écran bascule sur la vue qui montre ce qui vient d'être créé.
+    await waitFor(() => expect(
+      screen.getByRole('radio', { name: 'Incidents de présence' }),
+    ).toBeChecked())
   })
 
   it('affiche le rapport de présence du mois (ZRH18)', async () => {
@@ -162,5 +170,74 @@ describe('Temps — ZRH6/ZRH18 : absents non justifiés & rapport de présence',
     fireEvent.click(screen.getByRole('radio', { name: 'Rapport de présence' }))
     expect((await screen.findAllByText('Bennani Youssef'))[0]).toBeInTheDocument()
     expect(screen.getAllByText('90,0 %').length).toBeGreaterThan(0)
+  })
+})
+
+/* WIR195 — un incident de présence créé n'était relisible NULLE PART : ni
+   liste, ni régularisation. La vue « Incidents de présence » les affiche et
+   les fait passer en « Justifié » via l'@action serveur. */
+describe('Temps — WIR195 : incidents de présence relisibles et justifiables', () => {
+  const INCIDENT = {
+    id: 42, employe: 9, employe_nom: 'Bennani Youssef',
+    type_incident: 'absence_injustifiee',
+    type_incident_display: 'Absence injustifiée',
+    date: '2026-08-12', minutes_retard: 0, justifie: false, motif: '',
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    rhApi.getIncidentsPresence.mockResolvedValue({ data: [INCIDENT] })
+    rhApi.getCompteurIncidentsPresence.mockResolvedValue({
+      data: [{
+        employe_id: 9, retards: 0, absences: 1,
+        departs_anticipes: 0, total: 1, minutes_retard_total: 0,
+      }],
+    })
+  })
+
+  it('charge la liste + le compteur et rend l’onglet', async () => {
+    renderTemps()
+    await screen.findAllByText('Temps & présence')
+    expect(rhApi.getIncidentsPresence).toHaveBeenCalled()
+    expect(rhApi.getCompteurIncidentsPresence).toHaveBeenCalled()
+
+    fireEvent.click(screen.getByRole('radio', { name: 'Incidents de présence' }))
+    expect((await screen.findAllByText('Absence injustifiée'))[0]).toBeInTheDocument()
+    // Le compteur serveur est rendu sous le nom résolu depuis la liste.
+    expect(screen.getByText(/Incidents non justifiés par employé/)).toBeInTheDocument()
+  })
+
+  it('justifie un incident via rhApi.justifierIncidentPresence (motif requis)', async () => {
+    rhApi.justifierIncidentPresence.mockResolvedValueOnce({
+      data: { ...INCIDENT, justifie: true, motif: 'Certificat médical' },
+    })
+    renderTemps()
+    await screen.findAllByText('Temps & présence')
+    fireEvent.click(screen.getByRole('radio', { name: 'Incidents de présence' }))
+
+    fireEvent.click((await screen.findAllByRole('button', { name: 'Justifier' }))[0])
+    expect(await screen.findByRole('dialog')).toBeInTheDocument()
+
+    fireEvent.change(screen.getByLabelText('Motif de la régularisation'), {
+      target: { value: 'Certificat médical' },
+    })
+    const valider = screen.getAllByRole('button', { name: 'Justifier' })
+      .find((b) => b.getAttribute('type') === 'submit')
+    fireEvent.click(valider)
+
+    await waitFor(() => expect(rhApi.justifierIncidentPresence).toHaveBeenCalledWith(
+      42, { motif: 'Certificat médical' },
+    ))
+  })
+
+  it('un incident déjà justifié n’expose plus l’action', async () => {
+    rhApi.getIncidentsPresence.mockResolvedValue({
+      data: [{ ...INCIDENT, justifie: true, motif: 'Certificat médical' }],
+    })
+    renderTemps()
+    await screen.findAllByText('Temps & présence')
+    fireEvent.click(screen.getByRole('radio', { name: 'Incidents de présence' }))
+    expect((await screen.findAllByText('Justifié'))[0]).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Justifier' })).toBeNull()
   })
 })

@@ -164,6 +164,14 @@ const rhApi = {
   getRoster: (params) => api.get('/rh/roster/', { params }),
   getPresencesChantier: (params) => api.get('/rh/presences-chantier/', { params }),
   getIncidentsPresence: (params) => api.get('/rh/incidents-presence/', { params }),
+  // WIR195 — les incidents créés depuis « Absents du jour » n'étaient relus
+  // nulle part : la liste + la régularisation (motif) + le compteur par
+  // employé sont désormais consommés. `justifie_par`/`justifie_le` restent
+  // posés côté serveur.
+  justifierIncidentPresence: (id, data) =>
+    api.post(`/rh/incidents-presence/${id}/justifier/`, data ?? {}),
+  getCompteurIncidentsPresence: (params) =>
+    api.get('/rh/incidents-presence/compteur/', { params }),
   // XRH11 — correction d'un pointage (motif obligatoire) + audit immuable.
   updatePointage: (id, data) => api.patch(`/rh/pointages/${id}/`, data),
   getCorrectionsPointage: (id) =>
