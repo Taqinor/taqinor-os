@@ -436,6 +436,8 @@
     detail:texte
 - frontend/src/api/installationsApi.js :: envoyerConsultationsRFQ -> /api/django/installations/rfq/<>/envoyer-consultations
     resultats:inconnu
+- frontend/src/api/installationsApi.js :: get -> /api/django/public/installations/rfq/<>
+    cloturee:booleen, date_limite_reponse:inconnu, detail:texte, fournisseur_nom:inconnu, objet:inconnu, offre:inconnu, reference:inconnu
 - frontend/src/api/installationsApi.js :: getAffectabiliteSousTraitant -> /api/django/installations/attestations-sous-traitant/affectabilite
     actif:inconnu, affectable:inconnu, date:texte, detail:texte, pieces_expirees:inconnu, sous_traitant:inconnu
 - frontend/src/api/installationsApi.js :: getChantierCout -> /api/django/installations/chantiers/<>/cout

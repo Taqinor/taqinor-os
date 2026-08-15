@@ -78,6 +78,8 @@ const EquipementSignalerPage = lazy(() => import('../pages/sav/EquipementSignale
 const TicketSuiviPage = lazy(() => import('../pages/sav/TicketSuiviPage'))
 // XKB19 — page publique de consultation d'un article KB partagé (lien tokenisé).
 const PublicArticlePage = lazy(() => import('../pages/kb/PublicArticlePage'))
+// WIR215/XPUR21 — reponse fournisseur publique a une demande de prix (RFQ).
+const RfqReponsePubliquePage = lazy(() => import('../pages/installations/RfqReponsePubliquePage'))
 const ChatPage = lazy(() => import('../pages/messaging/ChatPage'))
 const DocumentsPage = lazy(() => import('../pages/ged/DocumentsPage'))
 // VX78 — Écran 404 déjà construit (ui/NotFound.jsx), jusqu'ici jamais importé
@@ -360,6 +362,8 @@ const router = createBrowserRouter([
   { path: '/dashboards-tv', loader: authLoader, element: <RouteErrorBoundary><Suspense fallback={<Fallback />}><DashboardsTvPage /></Suspense></RouteErrorBoundary> },
   // XKB19 — consultation publique d'un article KB partagé (sans login, sans layout ERP).
   { path: '/kb/public/:token', element: <RouteErrorBoundary><Suspense fallback={<Fallback />}><PublicArticlePage /></Suspense></RouteErrorBoundary> },
+  // WIR215 — page publique de reponse a une RFQ (le lien wa.me/email pointe ici).
+  { path: '/rfq/:token', element: <RouteErrorBoundary><Suspense fallback={<Fallback />}><RfqReponsePubliquePage /></Suspense></RouteErrorBoundary> },
 
   // NTPRT8 — PORTAIL CLIENT authentifié. Shell dédié (jamais le shell ERP) ;
   // `portalLoader` exige la portée EXACTE `portail_client` et renvoie tout

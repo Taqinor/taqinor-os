@@ -109,6 +109,31 @@ class TestConsulterEtEnvoi(TestCase):
         self.assertEqual(len(mail.outbox), 1)
         self.assertIn(self.rfq.reference, mail.outbox[0].subject)
 
+    def test_lien_envoye_pointe_sur_la_page_pas_sur_l_endpoint_json(self):
+        """WIR215 — le lien envoyé au fournisseur pointait sur l'endpoint JSON
+        ``/api/django/public/installations/rfq/<token>/`` : cliquer dedans
+        depuis WhatsApp affichait un objet brut au lieu d'un formulaire. Il
+        doit pointer sur la PAGE ``/rfq/<token>``, et l'email doit le porter
+        aussi (il n'avait jusqu'ici aucun lien)."""
+        from urllib.parse import unquote
+
+        f = make_fournisseur(
+            self.company, email='fournisseur@example.com',
+            telephone='0612345678')
+        consultation = RFQConsultation.objects.create(
+            company=self.company, rfq=self.rfq, fournisseur=f)
+        r = self.api.post(
+            f'{BASE}/rfq/{self.rfq.id}/envoyer-consultations/', {})
+        self.assertEqual(r.status_code, 200, r.data)
+
+        wa_url = unquote(r.data['resultats'][0]['whatsapp']['url'])
+        self.assertIn(f'/rfq/{consultation.token}', wa_url)
+        self.assertNotIn('/api/django/public/installations/rfq/', wa_url)
+
+        corps = mail.outbox[0].body
+        self.assertIn(f'/rfq/{consultation.token}', corps)
+        self.assertNotIn('/api/django/public/installations/rfq/', corps)
+
     def test_envoi_sans_coordonnees_grise(self):
         """Fournisseur sans email ni téléphone → aucun canal envoyé, raison
         explicite, jamais d'exception."""

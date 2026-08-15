@@ -28,9 +28,16 @@ logger = logging.getLogger(__name__)
 
 
 def _public_rfq_url(request, token):
-    """URL absolue publique de la page de réponse fournisseur (XPUR21)."""
+    """URL absolue publique de la PAGE de réponse fournisseur (XPUR21).
+
+    WIR215 — ce lien pointait sur l'endpoint JSON
+    ``/api/django/public/installations/rfq/<token>/`` : le fournisseur qui
+    cliquait dans son WhatsApp recevait un objet brut au lieu d'un formulaire.
+    Il pointe désormais sur la PAGE ``/rfq/<token>`` (frontend), qui consomme
+    ce même endpoint. L'API n'a pas bougé — seul le lien envoyé change.
+    """
     base = getattr(settings, 'PUBLIC_BASE_URL', '') or ''
-    path = f'/api/django/public/installations/rfq/{token}/'
+    path = f'/rfq/{token}'
     if base:
         return base.rstrip('/') + path
     if request is not None:
@@ -82,11 +89,16 @@ def envoyer_consultation(consultation, request=None):
     else:
         pdf_bytes = rfq_pdf.rfq_pdf_bytes(rfq)
         sujet = f'Demande de prix {rfq.reference}'
+        # WIR215 — l'email ne portait AUCUN lien : le fournisseur n'avait que
+        # le PDF et aucun moyen de répondre en ligne. Il pointe désormais sur
+        # la même page publique que le message WhatsApp.
         corps = (
             f'Bonjour,\n\nVeuillez trouver ci-joint notre demande de prix '
             f'{rfq.reference} ({rfq.objet}).\n'
             'Merci de nous transmettre votre meilleure offre avant la date '
-            'limite indiquée dans le document joint.\n\nCordialement.')
+            'limite indiquée dans le document joint.\n\n'
+            'Vous pouvez répondre directement ici : '
+            f'{_public_rfq_url(request, consultation.token)}\n\nCordialement.')
         ok, err = _send_email(
             email, sujet, corps, pdf_bytes, f'{rfq.reference}.pdf')
         result['email']['envoye'] = ok

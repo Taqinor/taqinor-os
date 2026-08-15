@@ -803,4 +803,20 @@ const installationsApi = {
     api.patch(`/installations/controle-qualite-modeles/${id}/`, data),
 }
 
+/* ============================================================================
+   WIR215/XPUR21 — Réponse fournisseur PUBLIQUE à une demande de prix (RFQ),
+   sans login, résolue par le token de consultation. Le lien WhatsApp/email
+   envoyé au fournisseur pointait jusqu'ici sur cet endpoint JSON : le
+   fournisseur recevait un objet brut au lieu d'un formulaire.
+   Le POST est IDEMPOTENT tant que la RFQ n'est pas clôturée (il crée l'offre
+   puis la met à jour) ; un token invalide/expiré/révoqué renvoie 404 — jamais
+   403, pour ne pas confirmer l'existence d'un token à un tiers.
+   ========================================================================== */
+export const rfqPublicApi = {
+  get: (token) =>
+    api.get(`/public/installations/rfq/${encodeURIComponent(token)}/`),
+  repondre: (token, data) =>
+    api.post(`/public/installations/rfq/${encodeURIComponent(token)}/`, data),
+}
+
 export default installationsApi
