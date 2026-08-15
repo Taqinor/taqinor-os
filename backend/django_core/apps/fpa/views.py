@@ -2,8 +2,11 @@ from rest_framework import filters, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
+from authentication.permissions import HasPermissionOrLegacy
 from core.mixins import TenantMixin
 from core.viewsets import CompanyScopedModelViewSet
+
+from .permissions import FPA_ADMINISTRER, FpaScopedMixin, LECTURE_FPA
 
 from .models import (
     CommentaireVariance, CycleBudgetaire, Departement, HypotheseRecrutement,
@@ -21,7 +24,7 @@ from .serializers import (
 )
 
 
-class DepartementViewSet(CompanyScopedModelViewSet):
+class DepartementViewSet(FpaScopedMixin, CompanyScopedModelViewSet):
     """NTFPA1 — CRUD des départements FP&A, scopé société."""
 
     queryset = Departement.objects.select_related('responsable', 'parent').all()
@@ -55,7 +58,7 @@ class DepartementViewSet(CompanyScopedModelViewSet):
         return super().list(request, *args, **kwargs)
 
 
-class CycleBudgetaireViewSet(CompanyScopedModelViewSet):
+class CycleBudgetaireViewSet(FpaScopedMixin, CompanyScopedModelViewSet):
     """NTFPA2 — Cycles budgétaires : machine d'états gardée (brouillon →
     ouvert_saisie → en_validation → clos), transitions illégales refusées
     (400)."""
@@ -66,7 +69,9 @@ class CycleBudgetaireViewSet(CompanyScopedModelViewSet):
     search_fields = ['nom']
     ordering_fields = ['date_debut', 'nom']
 
-    @action(detail=True, methods=['post'], url_path='ouvrir-saisie')
+    # WIR173 — piloter le CYCLE est un acte d'administration FP&A.
+    @action(detail=True, methods=['post'], url_path='ouvrir-saisie',
+            permission_classes=[HasPermissionOrLegacy(FPA_ADMINISTRER)])
     def ouvrir_saisie(self, request, pk=None):
         cycle = self.get_object()
         if cycle.statut != CycleBudgetaire.Statut.BROUILLON:
@@ -79,7 +84,9 @@ class CycleBudgetaireViewSet(CompanyScopedModelViewSet):
         notifier_ouverture_cycle(cycle)
         return Response(CycleBudgetaireSerializer(cycle).data)
 
-    @action(detail=True, methods=['post'], url_path='clore')
+    # WIR173 — piloter le CYCLE est un acte d'administration FP&A.
+    @action(detail=True, methods=['post'], url_path='clore',
+            permission_classes=[HasPermissionOrLegacy(FPA_ADMINISTRER)])
     def clore(self, request, pk=None):
         cycle = self.get_object()
         if cycle.statut not in (
@@ -92,7 +99,10 @@ class CycleBudgetaireViewSet(CompanyScopedModelViewSet):
         clore_cycle(cycle)
         return Response(CycleBudgetaireSerializer(cycle).data)
 
-    @action(detail=True, methods=['get'], url_path='export')
+    # WIR173 — l'export XLSX sort TOUTE la synthèse budgétaire de la
+    # société : réservé à l'administration FP&A.
+    @action(detail=True, methods=['get'], url_path='export',
+            permission_classes=[HasPermissionOrLegacy(FPA_ADMINISTRER)])
     def export(self, request, pk=None):
         cycle = self.get_object()
         from django.http import HttpResponse
@@ -110,7 +120,9 @@ class CycleBudgetaireViewSet(CompanyScopedModelViewSet):
         resp['Content-Disposition'] = f'attachment; filename="{nom}"'
         return resp
 
-    @action(detail=True, methods=['post'], url_path='dupliquer')
+    # WIR173 — piloter le CYCLE est un acte d'administration FP&A.
+    @action(detail=True, methods=['post'], url_path='dupliquer',
+            permission_classes=[HasPermissionOrLegacy(FPA_ADMINISTRER)])
     def dupliquer(self, request, pk=None):
         cycle_source = self.get_object()
         nouveau_nom = request.data.get('nouveau_nom') or f'{cycle_source.nom} (copie)'
@@ -122,7 +134,7 @@ class CycleBudgetaireViewSet(CompanyScopedModelViewSet):
             status=status.HTTP_201_CREATED)
 
 
-class LigneBudgetDepartementViewSet(CompanyScopedModelViewSet):
+class LigneBudgetDepartementViewSet(FpaScopedMixin, CompanyScopedModelViewSet):
     """NTFPA3 — Lignes de budget départemental (saisie mensuelle par
     catégorie). NTFPA6 — un cycle clos refuse toute écriture (400, via le
     ``ValidationError`` levé par ``LigneBudgetDepartement.save()``)."""
@@ -236,7 +248,8 @@ class LigneBudgetDepartementViewSet(CompanyScopedModelViewSet):
         return Response(SoumissionBudgetDepartementSerializer(soumission).data)
 
 
-class SoumissionBudgetDepartementViewSet(TenantMixin, viewsets.ReadOnlyModelViewSet):
+class SoumissionBudgetDepartementViewSet(
+        FpaScopedMixin, TenantMixin, viewsets.ReadOnlyModelViewSet):
     """NTFPA5 — lecture des soumissions + chatter (historique/note)."""
 
     queryset = SoumissionBudgetDepartement.objects.select_related(
@@ -264,7 +277,7 @@ class SoumissionBudgetDepartementViewSet(TenantMixin, viewsets.ReadOnlyModelView
         return Response(ChatterActivitySerializer(activite).data)
 
 
-class PrevisionGlissanteViewSet(CompanyScopedModelViewSet):
+class PrevisionGlissanteViewSet(FpaScopedMixin, CompanyScopedModelViewSet):
     """NTFPA8 — Prévisions glissantes (rolling forecast 12-18 mois) +
     génération depuis la moyenne des 3 derniers mois réels (compta)."""
 
@@ -304,7 +317,8 @@ class PrevisionGlissanteViewSet(CompanyScopedModelViewSet):
         return Response(PrevisionGlissanteSerializer(prevision).data)
 
 
-class LignePrevisionGlissanteViewSet(CompanyScopedModelViewSet):
+class LignePrevisionGlissanteViewSet(
+        FpaScopedMixin, CompanyScopedModelViewSet):
     """NTFPA8 — édition directe des points d'une prévision glissante (une
     modification manuelle pose ``source='manuel'``, jamais réécrasée)."""
 
@@ -318,7 +332,7 @@ class LignePrevisionGlissanteViewSet(CompanyScopedModelViewSet):
         return qs
 
 
-class ScenarioBudgetaireViewSet(CompanyScopedModelViewSet):
+class ScenarioBudgetaireViewSet(FpaScopedMixin, CompanyScopedModelViewSet):
     """NTFPA15/16/17/18 — Scénarios what-if : deltas appliqués en lecture,
     comparaison côte-à-côte, promotion en base, analyse de sensibilité."""
 
@@ -382,7 +396,7 @@ class ScenarioBudgetaireViewSet(CompanyScopedModelViewSet):
         return Response({'variable': variable, 'points': points})
 
 
-class LigneScenarioViewSet(CompanyScopedModelViewSet):
+class LigneScenarioViewSet(FpaScopedMixin, CompanyScopedModelViewSet):
     """NTFPA15 — deltas d'un scénario (jamais écrits dans le cycle réel)."""
 
     queryset = LigneScenario.objects.all()
@@ -395,7 +409,8 @@ class LigneScenarioViewSet(CompanyScopedModelViewSet):
         return qs
 
 
-class HypotheseRecrutementViewSet(CompanyScopedModelViewSet):
+class HypotheseRecrutementViewSet(
+        FpaScopedMixin, CompanyScopedModelViewSet):
     """NTFPA10 — Hypothèses de recrutement/départ (alimente le driver masse
     salariale NTFPA9)."""
 
@@ -415,7 +430,7 @@ class HypotheseRecrutementViewSet(CompanyScopedModelViewSet):
         return qs
 
 
-class ConsolidationViewSet(viewsets.ViewSet):
+class ConsolidationViewSet(FpaScopedMixin, viewsets.ViewSet):
     """NTFPA23 — consolidation multi-département (P&L prévisionnel simplifié)."""
 
     def list(self, request):
@@ -440,7 +455,7 @@ class ConsolidationViewSet(viewsets.ViewSet):
         })
 
 
-class VarianceViewSet(viewsets.ViewSet):
+class VarianceViewSet(FpaScopedMixin, viewsets.ViewSet):
     """NTFPA19 — analyse des écarts (variance) prévu/réel/forecast, en lecture."""
 
     def list(self, request):
@@ -463,7 +478,8 @@ class VarianceViewSet(viewsets.ViewSet):
         return Response(payload)
 
 
-class MappingCategorieCompteViewSet(CompanyScopedModelViewSet):
+class MappingCategorieCompteViewSet(
+        FpaScopedMixin, CompanyScopedModelViewSet):
     """NTFPA21 — mapping catégorie FP&A ↔ préfixe de compte CGNC (utilisé par
     la variance NTFPA19 pour traduire les catégories vers les classes
     comptables réelles sans coder en dur le plan CGNC)."""
@@ -478,7 +494,8 @@ class MappingCategorieCompteViewSet(CompanyScopedModelViewSet):
         return qs
 
 
-class CommentaireVarianceViewSet(CompanyScopedModelViewSet):
+class CommentaireVarianceViewSet(
+        FpaScopedMixin, CompanyScopedModelViewSet):
     """NTFPA20 — commentaires de variance (un par cellule, historique complet)."""
 
     queryset = CommentaireVariance.objects.select_related('auteur').all()
@@ -497,9 +514,16 @@ class CommentaireVarianceViewSet(CompanyScopedModelViewSet):
             company=self.request.user.company, auteur=self.request.user)
 
 
-class DriversViewSet(viewsets.ViewSet):
+class DriversViewSet(FpaScopedMixin, viewsets.ViewSet):
     """NTFPA9/11/12 — drivers de planning (endpoints de calcul, aucun modèle
     propre). Company scopée via ``request.user.company``."""
+
+    # WIR173 — ces endpoints CALCULENT et n'écrivent rien (le POST de
+    # ``masse-salariale/projeter`` ne persiste aucune ligne) : le côté
+    # « écriture » reste donc sur la liste de LECTURE — un porteur
+    # ``fpa_consulter_tout`` doit pouvoir projeter. La garde reste réelle : un
+    # rôle sans aucun code FP&A reçoit 403.
+    write_permission = LECTURE_FPA
 
     @action(detail=False, methods=['post'], url_path='masse-salariale/projeter')
     def masse_salariale_projeter(self, request):

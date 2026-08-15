@@ -209,6 +209,19 @@ ALL_PERMISSIONS = [
     # hérités sans rôle fin (repli légacy ``is_responsable``).
     'rh_voir',
     'rh_gerer',
+    # ── WIR173 — FP&A (apps/fpa) : les 14 ViewSets (cycles budgétaires, export
+    # XLSX de la synthèse, scénarios, masse salariale) ne portaient AUCUNE
+    # ``permission_classes`` — tout utilisateur authentifié lisait ET écrivait.
+    # ``apps/fpa/permissions.py`` déclarait déjà ces quatre codes et notait leur
+    # enregistrement au catalogue comme « à faire par le run plateforme » :
+    # c'est fait ici. Aucun n'est mappé sur un rôle Responsable/Commercial/
+    # Technicien/Utilisateur — la planification financière reste à la direction
+    # (Directeur/Administrateur, par héritage d'ALL_PERMISSIONS) et aux rôles
+    # personnalisés que l'admin crée explicitement. Repli légacy inchangé.
+    'fpa_saisir',
+    'fpa_valider',
+    'fpa_consulter_tout',
+    'fpa_administrer',
     # ── AOF2 — Appels d'offres (apps/ao) : correction d'une régression de
     # confidentialité EXISTANTE. Les 8 ViewSets AO héritaient d'une base gardée
     # par le grossier ``IsResponsableOrAdmin`` : tout le palier Responsable
