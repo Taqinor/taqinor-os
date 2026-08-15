@@ -4501,23 +4501,39 @@ const signConfig = ok
       viewportEl.dataset.panning = 'false';
       // Double-tap/double-clic UNIQUEMENT si ce pointeur n'a quasiment pas
       // bougé (un pan/pincement qui se termine près d'un point ne doit pas
-      // se faire passer pour un tap) et n'a pas traîné trop longtemps.
+      // se faire passer pour un tap) et n'a pas traîné trop longtemps. Le
+      // viewport occupe TOUT l'espace sous l'en-tête (aucun « fond » nu
+      // n'entoure l'en-tête ou les boutons flottants) : un simple tap qui
+      // tombe HORS du rectangle actuel du schéma (translate/scale connus) EST
+      // le « clic sur le fond » qui doit fermer la visionneuse — un tap SUR
+      // le schéma continue de suivre la logique double-tap ci-dessous.
       const p = pointFromEvent(e);
       const wasPan = gestureKind === 'pan';
       const movedFar = tapDownPoint ? pointDistance(tapDownPoint, p) > 10 : true;
       const tookTooLong = e.timeStamp - tapDownTime > 500;
       if (wasPan && !movedFar && !tookTooLong) {
-        const tap: TapRecord = { x: p.x, y: p.y, time: e.timeStamp };
-        if (isDoubleTap(lastTap, tap)) {
+        const withinContent =
+          !!contentSize &&
+          p.x >= translate.x &&
+          p.x <= translate.x + contentSize.width * scale &&
+          p.y >= translate.y &&
+          p.y <= translate.y + contentSize.height * scale;
+        if (!withinContent) {
           lastTap = null;
-          const next = doubleTapScale(scale, fitScaleValue);
-          if (Math.abs(next - fitScaleValue) < 0.001) {
-            resetToFit();
-          } else {
-            setScale(next, p);
-          }
+          close();
         } else {
-          lastTap = tap;
+          const tap: TapRecord = { x: p.x, y: p.y, time: e.timeStamp };
+          if (isDoubleTap(lastTap, tap)) {
+            lastTap = null;
+            const next = doubleTapScale(scale, fitScaleValue);
+            if (Math.abs(next - fitScaleValue) < 0.001) {
+              resetToFit();
+            } else {
+              setScale(next, p);
+            }
+          } else {
+            lastTap = tap;
+          }
         }
       } else {
         lastTap = null;
