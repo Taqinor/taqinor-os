@@ -232,6 +232,11 @@ export default function FiscalitePage() {
   const [dialog, setDialog] = useState(null)
   const [exercice, setExercice] = useState('')
   const [exercices, setExercices] = useState([])
+  // WIR181 — bordereau de versement (période) + attestation annuelle (tiers/année) RAS.
+  const [raDebut, setRaDebut] = useState('')
+  const [raFin, setRaFin] = useState('')
+  const [raTiersId, setRaTiersId] = useState('')
+  const [raAnnee, setRaAnnee] = useState(String(new Date().getFullYear()))
 
   const isEcheances = tab === 'echeances'
   const list = useComptaList(
@@ -295,10 +300,17 @@ export default function FiscalitePage() {
         { id: 'edit', label: 'Éditer', icon: Pencil, onClick: () => setDialog({ row }) },
       ]
     }
-    if (tab === 'retenuesSource' && row.statut !== 'versee') {
+    if (tab === 'retenuesSource') {
       return [
-        { id: 'verser', label: 'Marquer versée', icon: Send,
-          onClick: () => act(() => comptaApi.retenuesSource.verser(row.id), 'Retenue marquée versée.') },
+        ...(row.statut !== 'versee' ? [{
+          id: 'verser', label: 'Marquer versée', icon: Send,
+          onClick: () => act(() => comptaApi.retenuesSource.verser(row.id), 'Retenue marquée versée.'),
+        }] : []),
+        // WIR181 — attestation PDF de RAS pour cette pièce.
+        { id: 'attestation', label: 'Attestation PDF', icon: FileText,
+          onClick: () => download(
+            () => comptaApi.retenuesSource.attestation(row.id),
+            `attestation_ras_${row.reference || row.id}.pdf`) },
         { id: 'edit', label: 'Éditer', icon: Pencil, onClick: () => setDialog({ row }) },
       ]
     }
@@ -341,6 +353,47 @@ export default function FiscalitePage() {
     retenuesSource: 'retenue',
     timbresFiscaux: 'timbre',
   }[tab]), [tab])
+
+  // WIR181 — tiers distincts (tiers_id + tiers_nom) présents dans les RAS
+  // chargées, pour le sélecteur d'attestation annuelle.
+  const tiersRas = useMemo(() => {
+    if (tab !== 'retenuesSource') return []
+    const seen = new Map()
+    for (const r of list.rows || []) {
+      if (r.tiers_id && !seen.has(r.tiers_id)) seen.set(r.tiers_id, r.tiers_nom || `#${r.tiers_id}`)
+    }
+    return Array.from(seen, ([id, nom]) => ({ id, nom }))
+  }, [tab, list.rows])
+
+  const telechargerBordereauRas = async () => {
+    try {
+      const params = {}
+      if (raDebut) params.date_debut = raDebut
+      if (raFin) params.date_fin = raFin
+      const res = await comptaApi.retenuesSource.bordereau({ ...params, export: 'csv' })
+      const blob = res.data instanceof Blob ? res.data : new Blob([res.data])
+      comptaApi.downloadBlob(blob, stampedFilename('bordereau-versement-ras', 'csv'))
+      toast.success('Bordereau téléchargé.')
+    } catch {
+      toast.error('Bordereau indisponible.')
+    }
+  }
+
+  const telechargerAttestationAnnuelle = async () => {
+    if (!raTiersId || !raAnnee) {
+      toast.error('Sélectionnez un tiers et une année.')
+      return
+    }
+    try {
+      const res = await comptaApi.retenuesSource.attestationAnnuelle({ tiers: raTiersId, annee: raAnnee })
+      const blob = res.data instanceof Blob ? res.data : new Blob([res.data])
+      comptaApi.downloadBlob(blob, `attestation_ras_annuelle_${raTiersId}_${raAnnee}.pdf`)
+      toast.success('Attestation annuelle téléchargée.')
+    } catch (err) {
+      const d = err?.response?.data
+      toast.error(typeof d === 'string' ? d : (d?.detail || 'Attestation annuelle indisponible.'))
+    }
+  }
 
   return (
     <div className="page">
@@ -424,6 +477,58 @@ export default function FiscalitePage() {
                 ))}
               </div>
             </div>
+          </div>
+        </Card>
+      )}
+
+      {/* WIR181 — bordereau de versement (période) + attestation annuelle (tiers/année). */}
+      {tab === 'retenuesSource' && (
+        <Card className="mt-4 p-4 sm:p-5">
+          <h3 className="mb-3 font-display text-base font-semibold">
+            Bordereau de versement & attestations RAS
+          </h3>
+          <div className="flex flex-wrap items-end gap-3">
+            <div className="flex flex-col gap-1">
+              <Label htmlFor="ra-debut">Du</Label>
+              <input
+                id="ra-debut" type="date" value={raDebut} onChange={(e) => setRaDebut(e.target.value)}
+                className="h-[var(--control-h)] rounded-md border border-input bg-card px-[var(--control-px)] text-sm"
+              />
+            </div>
+            <div className="flex flex-col gap-1">
+              <Label htmlFor="ra-fin">Au</Label>
+              <input
+                id="ra-fin" type="date" value={raFin} onChange={(e) => setRaFin(e.target.value)}
+                className="h-[var(--control-h)] rounded-md border border-input bg-card px-[var(--control-px)] text-sm"
+              />
+            </div>
+            <Button variant="outline" onClick={telechargerBordereauRas}>
+              <Download className="size-4" /> Bordereau de versement (CSV)
+            </Button>
+          </div>
+          <div className="mt-4 flex flex-wrap items-end gap-3 border-t border-border pt-4">
+            <div className="flex flex-col gap-1 sm:max-w-xs">
+              <Label htmlFor="ra-tiers">Tiers</Label>
+              <select
+                id="ra-tiers" value={raTiersId} onChange={(e) => setRaTiersId(e.target.value)}
+                className="h-[var(--control-h)] rounded-md border border-input bg-card px-[var(--control-px)] text-sm"
+              >
+                <option value="">—</option>
+                {tiersRas.map((t) => (
+                  <option key={t.id} value={t.id}>{t.nom}</option>
+                ))}
+              </select>
+            </div>
+            <div className="flex flex-col gap-1">
+              <Label htmlFor="ra-annee">Année</Label>
+              <input
+                id="ra-annee" type="number" value={raAnnee} onChange={(e) => setRaAnnee(e.target.value)}
+                className="h-[var(--control-h)] w-24 rounded-md border border-input bg-card px-[var(--control-px)] text-sm"
+              />
+            </div>
+            <Button variant="outline" onClick={telechargerAttestationAnnuelle}>
+              <FileText className="size-4" /> Attestation annuelle (PDF)
+            </Button>
           </div>
         </Card>
       )}

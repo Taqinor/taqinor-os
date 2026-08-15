@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeAll } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, fireEvent } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { Provider } from 'react-redux'
 import { configureStore } from '@reduxjs/toolkit'
@@ -191,6 +191,20 @@ describe('FiscalitePage — onglet Échéances fiscales (XACC9)', () => {
     expect(screen.getByText('Échéances fiscales')).toBeInTheDocument()
     // WIR180 — SIMPL-IS proposé dans le bloc exports (exercice requis).
     expect(screen.getByText('Export SIMPL-IS')).toBeInTheDocument()
+  }, 30000)
+
+  it('affiche le bordereau de versement RAS sur l’onglet Retenues à la source', async () => {
+    const { default: FiscalitePage } = await import('./pages/FiscalitePage.jsx')
+    mount(<FiscalitePage />)
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: /Fiscalité & déclarations/ })).toBeInTheDocument()
+    })
+    // WIR181 — le bloc bordereau/attestations n'apparaît que sous l'onglet
+    // Retenues à la source (pas l'onglet par défaut) : on bascule dessus.
+    fireEvent.click(screen.getByText('Retenues à la source'))
+    await waitFor(() => {
+      expect(screen.getByText('Bordereau de versement & attestations RAS')).toBeInTheDocument()
+    })
   }, 30000)
 })
 
