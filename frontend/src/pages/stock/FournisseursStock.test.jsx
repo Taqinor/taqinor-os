@@ -40,6 +40,8 @@ vi.mock('../../api/stockApi', () => ({
       ],
     })),
     unarchiveFournisseur: vi.fn(() => Promise.resolve({ data: {} })),
+    // WIR219 — décision sur une candidature portail (NTPRT25).
+    deciderCandidatureFournisseur: vi.fn(() => Promise.resolve({ data: {} })),
     forceDeleteFournisseur: vi.fn(() => Promise.resolve({ data: {} })),
     performanceFournisseur: vi.fn(() => Promise.resolve({ data: {} })),
     // WIR108 — référentiel catégories fournisseur.
@@ -220,5 +222,49 @@ describe('FournisseursStock — archivage par repli PROTECT (WIR190)', () => {
       within(archivedGrid).getByRole('button', { name: 'Supprimer définitivement' }))
 
     expect(await screen.findByText(/Suppression définitive refusée/)).toBeInTheDocument()
+  })
+})
+
+describe('FournisseursStock — candidatures portail (WIR219)', () => {
+  const avecCandidature = [
+    { id: 1, nom: 'Actif SARL', statut: 'actif', statut_validation: 'valide' },
+    { id: 4, nom: 'Candidat SARL', statut: 'actif', statut_validation: 'en_attente_validation' },
+  ]
+
+  it('affiche le badge « En attente », filtre la file et valide la candidature', async () => {
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
+    stockApi.getFournisseurs.mockResolvedValue({ data: avecCandidature })
+    renderPage()
+    const grid = await screen.findByRole('grid', { name: 'Fournisseurs' })
+    expect(within(grid).getByText('En attente de validation')).toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: /Candidatures en attente/ }))
+    const filtre = await screen.findByRole('grid', { name: 'Fournisseurs' })
+    expect(within(filtre).queryByText('Actif SARL')).not.toBeInTheDocument()
+
+    const row = within(filtre).getByText('Candidat SARL').closest('tr')
+    await userEvent.click(within(row).getByRole('button', { name: 'Valider' }))
+    await waitFor(() => expect(stockApi.deciderCandidatureFournisseur)
+      .toHaveBeenCalledWith(4, true))
+  })
+
+  it('un non-admin ne voit AUCUNE action de décision', async () => {
+    stockApi.getFournisseurs.mockResolvedValue({ data: avecCandidature })
+    renderPage(makeStore({ role: 'responsable', permissions: ['stock_modifier'] }))
+    const grid = await screen.findByRole('grid', { name: 'Fournisseurs' })
+    expect(within(grid).getByText('En attente de validation')).toBeInTheDocument()
+    expect(within(grid).queryByRole('button', { name: 'Valider' })).toBeNull()
+  })
+
+  it('affiche le 403 serveur en français quand la décision est refusée', async () => {
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
+    stockApi.getFournisseurs.mockResolvedValue({ data: avecCandidature })
+    stockApi.deciderCandidatureFournisseur.mockRejectedValueOnce({ response: { status: 403 } })
+    renderPage()
+    const grid = await screen.findByRole('grid', { name: 'Fournisseurs' })
+    const row = within(grid).getByText('Candidat SARL').closest('tr')
+    await userEvent.click(within(row).getByRole('button', { name: 'Rejeter' }))
+
+    expect(await screen.findByText(/Réservé à l'administrateur/)).toBeInTheDocument()
   })
 })

@@ -18,6 +18,9 @@ import authReducer from '../../features/auth/store/authSlice'
 vi.mock('../../api/stockApi', () => ({
   default: {
     getFournisseur360: vi.fn(),
+    // WIR219 — fiche fournisseur (candidature portail) + décision admin.
+    getFournisseur: vi.fn(),
+    deciderCandidatureFournisseur: vi.fn(),
     // NTP2P8 — badge de score de risque en tête de fiche.
     getScoreRisqueFournisseur: vi.fn(),
     performanceFournisseur: vi.fn(),
@@ -75,6 +78,11 @@ beforeEach(() => {
   // NTP2P8 — défaut neutre : le badge de score ne doit jamais faire échouer
   // un test qui ne le concerne pas (chaque test peut le surcharger).
   stockApi.getScoreRisqueFournisseur.mockResolvedValue({ data: null })
+  // WIR219 — défaut neutre : fournisseur historique (candidature déjà validée),
+  // aucun bandeau — les tests qui la concernent surchargent ce mock.
+  stockApi.getFournisseur.mockResolvedValue({
+    data: { id: 7, nom: 'JA Solar', statut_validation: 'valide' },
+  })
 })
 
 describe('XPUR25 — panneau résumé (agrégat vue-360, BLOCKED côté serveur)', () => {
@@ -312,5 +320,47 @@ describe('XPUR25 — garde de rôle', () => {
       </Provider>,
     )
     expect(screen.getByText('Fournisseur introuvable.')).toBeInTheDocument()
+  })
+})
+
+// ── NTPRT25 / WIR219 — candidature portail en attente ───────────────────────
+describe('WIR219 — candidature d\'auto-inscription au portail', () => {
+  const enAttente = {
+    data: { id: 7, nom: 'Nouveau Candidat SARL', statut_validation: 'en_attente_validation' },
+  }
+
+  it('un admin peut valider la candidature depuis la fiche', async () => {
+    stockApi.getFournisseur360.mockImplementation(rejectNotFound)
+    stockApi.getFournisseur.mockResolvedValue(enAttente)
+    stockApi.deciderCandidatureFournisseur.mockResolvedValue({
+      data: { id: 7, statut_validation: 'valide' },
+    })
+    renderPage()
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Valider la candidature' }))
+    await waitFor(() => expect(stockApi.deciderCandidatureFournisseur)
+      .toHaveBeenCalledWith('7', true))
+    // Validée : le bandeau bloquant disparaît.
+    await waitFor(() => expect(
+      screen.queryByRole('button', { name: 'Valider la candidature' })).toBeNull())
+  })
+
+  it('un responsable non-admin voit le blocage mais AUCUNE action de décision', async () => {
+    stockApi.getFournisseur360.mockImplementation(rejectNotFound)
+    stockApi.getFournisseur.mockResolvedValue(enAttente)
+    renderPage({ authState: { role: 'responsable', permissions: [] } })
+
+    expect(await screen.findByText(/Candidature en attente de validation/)).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Valider la candidature' })).toBeNull()
+  })
+
+  it('affiche le 403 serveur en français si la décision est refusée', async () => {
+    stockApi.getFournisseur360.mockImplementation(rejectNotFound)
+    stockApi.getFournisseur.mockResolvedValue(enAttente)
+    stockApi.deciderCandidatureFournisseur.mockRejectedValue({ response: { status: 403 } })
+    renderPage()
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Valider la candidature' }))
+    expect(await screen.findByText(/Réservé à l'administrateur/)).toBeInTheDocument()
   })
 })

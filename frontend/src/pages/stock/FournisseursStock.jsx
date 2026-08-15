@@ -33,6 +33,20 @@ const STATUT_OPTIONS = [
   { value: 'bloque_total', label: 'Bloqué (total)' },
 ]
 const STATUT_LABELS = Object.fromEntries(STATUT_OPTIONS.map((o) => [o.value, o.label]))
+
+// NTPRT25 / WIR219 — validation d'une CANDIDATURE d'auto-inscription au
+// portail fournisseur. Axe strictement SÉPARÉ de `statut` (blocage commercial
+// XPUR4) — miroir de `Fournisseur.StatutValidation`, aucune règle dupliquée.
+// source-choix: stock.Fournisseur.statut_validation
+const VALIDATION_LABELS = {
+  valide: 'Validé',
+  en_attente_validation: 'En attente de validation',
+  rejete: 'Rejeté',
+}
+const VALIDATION_TONE = {
+  valide: 'success', en_attente_validation: 'warning', rejete: 'danger',
+}
+const EN_ATTENTE = 'en_attente_validation'
 const STATUT_TONE = {
   actif: 'success',
   bloque_commandes: 'warning',
@@ -414,6 +428,8 @@ export default function FournisseursStock() {
   const [archiveNotif, setArchiveNotif] = useState(null)
   const [showArchived, setShowArchived] = useState(false)
   const [archives, setArchives] = useState([])
+  // WIR219 — file des candidatures portail en attente de décision.
+  const [candidaturesSeules, setCandidaturesSeules] = useState(false)
   const isAdmin = canDelete
 
   // setState n'arrive que dans les callbacks asynchrones (jamais synchrone dans
@@ -493,6 +509,23 @@ export default function FournisseursStock() {
     }
   }
 
+  // WIR219 — décision sur une candidature portail (ADMIN uniquement côté
+  // serveur : un 403 est affiché en clair, jamais avalé).
+  const deciderCandidature = async (f, valider) => {
+    if (!window.confirm(valider
+      ? `Valider la candidature de « ${f.nom} » ? Le fournisseur entrera dans le sourcing.`
+      : `Rejeter la candidature de « ${f.nom} » ?`)) return
+    setError(null)
+    try {
+      await stockApi.deciderCandidatureFournisseur(f.id, valider)
+      reload()
+    } catch (err) {
+      setError(err?.response?.status === 403
+        ? "Réservé à l'administrateur : seule la direction peut faire entrer un tiers dans le référentiel."
+        : frErr(err, 'Décision impossible.'))
+    }
+  }
+
   const archivedColumns = useMemo(() => [
     { id: 'nom', header: 'Nom', minWidth: 180, accessor: (f) => f.nom ?? '',
       cell: (v) => <span className="line-through">{v}</span> },
@@ -531,6 +564,16 @@ export default function FournisseursStock() {
           {STATUT_LABELS[f.statut] ?? 'Actif'}
         </Badge>
       ) },
+    // NTPRT25/WIR219 — validation de candidature portail (axe séparé du
+    // blocage commercial). Rendu SEULEMENT hors « validé » : les fournisseurs
+    // historiques (défaut `valide`) gardent une liste inchangée.
+    { id: 'statut_validation', header: 'Candidature', width: 170, searchable: false,
+      accessor: (f) => f.statut_validation ?? 'valide',
+      cell: (v) => (v === 'valide' ? <span className="text-muted-foreground">—</span> : (
+        <Badge tone={VALIDATION_TONE[v] ?? 'warning'}>
+          {VALIDATION_LABELS[v] ?? v}
+        </Badge>
+      )) },
     // XPUR5/WIR108 — catégorie assignée (référentiel « Catégories »).
     { id: 'categorie_nom', header: 'Catégorie', minWidth: 120,
       accessor: (f) => f.categorie_nom ?? '',
@@ -548,9 +591,24 @@ export default function FournisseursStock() {
       accessor: (f) => f.nb_produits ?? 0 },
     { id: 'nb_bons_commande', header: 'BCF', align: 'right', width: 80, searchable: false,
       accessor: (f) => f.nb_bons_commande ?? 0 },
-    { id: 'actions', header: '', width: 180, searchable: false, sortable: false,
+    { id: 'actions', header: '', width: 260, searchable: false, sortable: false,
       cell: (_v, f) => (
         <div className="flex items-center justify-end gap-1">
+          {/* WIR219 — décision sur une candidature portail : ADMIN seulement
+              (la garde qui compte est serveur — IsAdminRole). */}
+          {isAdmin && f.statut_validation === EN_ATTENTE && (
+            <>
+              <Button size="sm" variant="outline"
+                      onClick={(e) => { e.stopPropagation(); deciderCandidature(f, true) }}>
+                Valider
+              </Button>
+              <Button size="sm" variant="ghost"
+                      className="text-destructive hover:text-destructive"
+                      onClick={(e) => { e.stopPropagation(); deciderCandidature(f, false) }}>
+                Rejeter
+              </Button>
+            </>
+          )}
           {/* XPUR25/WIR27 — fiche 360 (BCF/factures/retours/conformité/
               accords de prix) — jusqu'ici construite mais routée nulle part. */}
           <IconButton asChild size="md" variant="ghost" label="Fiche 360"
@@ -582,6 +640,16 @@ export default function FournisseursStock() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   ], [canDelete])
 
+  // WIR219 — file « candidatures en attente » (filtre local : la liste est
+  // déjà chargée, aucun aller-retour de plus).
+  const nbCandidatures = useMemo(
+    () => items.filter((f) => f.statut_validation === EN_ATTENTE).length, [items])
+  const visibles = useMemo(
+    () => (candidaturesSeules
+      ? items.filter((f) => f.statut_validation === EN_ATTENTE)
+      : items),
+    [items, candidaturesSeules])
+
   return (
     <div className="ui-root flex flex-col gap-4 px-4 py-5 sm:px-5">
       <PageHeader
@@ -597,6 +665,12 @@ export default function FournisseursStock() {
                 listes : cette bascule est le SEUL chemin pour les revoir. */}
             <Button variant="outline" onClick={() => setShowArchived((v) => !v)}>
               <Archive /> {showArchived ? 'Masquer les archivés' : 'Voir les archivés'}
+            </Button>
+            {/* WIR219 — les candidatures déposées depuis le portail public
+                arrivaient dans la liste sans jamais pouvoir être tranchées. */}
+            <Button variant={candidaturesSeules ? 'secondary' : 'outline'}
+                    onClick={() => setCandidaturesSeules((v) => !v)}>
+              Candidatures en attente{nbCandidatures > 0 ? ` (${nbCandidatures})` : ''}
             </Button>
             {/* XPUR5/WIR108 — CRUD du référentiel catégories fournisseur. */}
             <Button variant="outline" onClick={() => setShowCategories(true)}>
@@ -636,7 +710,7 @@ export default function FournisseursStock() {
       )}
 
       <DataTable
-        data={items}
+        data={visibles}
         columns={columns}
         loading={loading}
         getRowId={(f) => f.id}

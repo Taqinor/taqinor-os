@@ -51,6 +51,10 @@ const stockApi = {
 
   // Fournisseurs
   getFournisseurs: (params) => api.get('/stock/fournisseurs/', { params }),
+  // WIR219 — la fiche 360 appelait déjà `stockApi.getFournisseur(id)` (onglet
+  // Onboarding) alors que le wrapper n'existait PAS : l'appel levait un
+  // TypeError synchrone que le `.catch` de la promesse ne rattrapait pas.
+  getFournisseur: (id) => api.get(`/stock/fournisseurs/${id}/`),
   createFournisseur: (data) => api.post('/stock/fournisseurs/', data),
   updateFournisseur: (id, data) => api.put(`/stock/fournisseurs/${id}/`, data),
   deleteFournisseur: (id) => api.delete(`/stock/fournisseurs/${id}/`),
@@ -63,6 +67,12 @@ const stockApi = {
   getFournisseursArchived: (params) =>
     api.get('/stock/fournisseurs/', { params: { ...params, show_archived: 'true' } }),
   unarchiveFournisseur: (id) => api.patch(`/stock/fournisseurs/${id}/unarchive/`),
+  // NTPRT25 / WIR219 — candidature d'auto-inscription au portail fournisseur :
+  // `valider` est OBLIGATOIRE et sans défaut côté serveur (un corps vide ne
+  // doit jamais faire entrer un tiers dans le référentiel par accident).
+  // RÉSERVÉ ADMIN (403 sinon). N'a AUCUN effet sur `statut` (blocage XPUR4).
+  deciderCandidatureFournisseur: (id, valider) =>
+    api.post(`/stock/fournisseurs/${id}/decider-candidature/`, { valider }),
   forceDeleteFournisseur: (id) => api.delete(`/stock/fournisseurs/${id}/force-delete/`),
 
   // Mouvements

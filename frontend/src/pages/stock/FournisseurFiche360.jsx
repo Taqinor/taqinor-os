@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { useSelector } from 'react-redux'
-import { useHasPermission, useIsAdminOrResponsable } from '../../hooks/useHasPermission'
+import { useHasPermission, useIsAdmin, useIsAdminOrResponsable } from '../../hooks/useHasPermission'
 import {
   BarChart3, FileWarning, PackageCheck, Receipt, Wallet,
   Undo2, ShieldCheck, Tags, CreditCard, FileMinus2, Users, Plus,
@@ -869,6 +869,34 @@ export default function FournisseurFiche360({
     return () => { active = false }
   }, [fournisseurId, canView])
 
+  // NTPRT25 / WIR219 — candidature d'auto-inscription portail : tant qu'elle
+  // n'est pas tranchée, ce fournisseur reste hors sourcing. La décision est
+  // ADMIN-only (garde serveur `IsAdminRole`) ; un 403 est affiché en clair.
+  const isAdmin = useIsAdmin()
+  const [fiche, setFiche] = useState(null)
+  const [decisionErreur, setDecisionErreur] = useState(null)
+  const [decisionBusy, setDecisionBusy] = useState(false)
+  useEffect(() => {
+    if (!fournisseurId || !canView) return undefined
+    let active = true
+    stockApi.getFournisseur(fournisseurId)
+      .then((r) => { if (active) setFiche(r.data ?? null) })
+      .catch(() => { if (active) setFiche(null) })
+    return () => { active = false }
+  }, [fournisseurId, canView])
+
+  const deciderCandidature = async (valider) => {
+    setDecisionBusy(true); setDecisionErreur(null)
+    try {
+      const r = await stockApi.deciderCandidatureFournisseur(fournisseurId, valider)
+      setFiche((f) => ({ ...(f ?? {}), ...(r.data ?? {}) }))
+    } catch (err) {
+      setDecisionErreur(err?.response?.status === 403
+        ? "Réservé à l'administrateur : seule la direction peut faire entrer un tiers dans le référentiel."
+        : (err?.response?.data?.detail ?? 'Décision impossible.'))
+    } finally { setDecisionBusy(false) }
+  }
+
   // NTP2P8 — score de risque (0-100) affiché en badge sous le titre. En cas
   // d'échec on laisse `null` : le badge disparaît plutôt que d'afficher un
   // score faux.
@@ -954,6 +982,34 @@ export default function FournisseurFiche360({
           />
         )}
       </PageHeader>
+
+      {/* NTPRT25 / WIR219 — candidature portail en attente de décision. */}
+      {fiche?.statut_validation === 'en_attente_validation' && (
+        <div role="alert" className="flex flex-col gap-2 rounded-lg border border-warning/40 bg-warning/10 p-3 text-sm">
+          <span className="font-semibold">
+            Candidature en attente de validation — ce fournisseur reste hors du sourcing.
+          </span>
+          {isAdmin ? (
+            <div className="flex flex-wrap gap-2">
+              <Button size="sm" loading={decisionBusy}
+                      onClick={() => deciderCandidature(true)}>
+                Valider la candidature
+              </Button>
+              <Button size="sm" variant="ghost" className="text-destructive hover:text-destructive"
+                      loading={decisionBusy} onClick={() => deciderCandidature(false)}>
+                Rejeter
+              </Button>
+            </div>
+          ) : (
+            <span className="text-xs text-muted-foreground">
+              Seul un administrateur peut trancher cette candidature.
+            </span>
+          )}
+          {decisionErreur && (
+            <span className="text-xs text-destructive">{decisionErreur}</span>
+          )}
+        </div>
+      )}
 
       <Card>
         <CardHeader>
