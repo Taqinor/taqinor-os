@@ -1258,6 +1258,7 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     try:
         from django.conf import settings
         from apps.ventes.models import ShareLink
+        from apps.ventes.utils.client_links import chemin_proposition
         _pk = getattr(devis, "pk", None)
         if _pk is not None:
             _share = ShareLink.for_devis(devis)
@@ -1267,7 +1268,8 @@ def build_quote_data(devis, pdf_options=None) -> dict:
                 # Repli plateforme : settings.SITE_URL (SCA29 — jamais de marque
                 # en dur ici ; le défaut vit dans settings.base, configurable).
                 _signer_base = (getattr(settings, "SITE_URL", "") or "").rstrip("/")
-            links["signer"] = f"{_signer_base}/proposition/{_share.token}"
+            # PV84 — chemin partagé, nom du client inclus (cosmétique).
+            links["signer"] = f"{_signer_base}{chemin_proposition(devis, _share.token)}"
     except Exception:  # noqa: BLE001 — un PDF ne doit jamais casser là-dessus
         links = {}
 

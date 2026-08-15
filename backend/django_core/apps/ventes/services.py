@@ -3050,6 +3050,7 @@ def installation_share_link(devis, *, base_url=''):
     from django.conf import settings
 
     from .models import Devis, ShareLink
+    from .utils.client_links import chemin_proposition
 
     if devis is None or devis.statut != Devis.Statut.ACCEPTE:
         return None, ''
@@ -3058,7 +3059,7 @@ def installation_share_link(devis, *, base_url=''):
     query = (
         'utm_source=client&utm_medium=whatsapp'
         f'&utm_campaign={INSTALLATION_SHARE_UTM_CAMPAIGN}')
-    path = f'/proposition/{link.token}?{query}'
+    path = f'{chemin_proposition(devis, link.token)}?{query}'
     url = (base.rstrip('/') + path) if base else path
     return link, url
 
@@ -5029,11 +5030,12 @@ def send_devis_followup_nudges():
 
             # Build the public share link for the seller to use.
             # QX13 — via le builder UNIQUE client_links (chemin /proposition/,
-            # jamais /proposal/ qui 404 sur le site).
+            # jamais /proposal/ qui 404 sur le site). PV84 — nom du client
+            # inclus dans l'URL (cosmétique, token toujours seul secret).
             try:
                 share_link = ShareLink.for_devis(devis)
-                from apps.ventes.utils.client_links import proposition_url
-                proposal_url = proposition_url(share_link.token)
+                from apps.ventes.utils.client_links import url_proposition
+                proposal_url = url_proposition(devis, share_link.token)
             except Exception:
                 proposal_url = ''
 
