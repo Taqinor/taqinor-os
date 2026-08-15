@@ -160,6 +160,32 @@ const stockApi = {
   bcfPdf: (id) =>
     api.get(`/stock/bons-commande-fournisseur/${id}/pdf/`, { responseType: 'blob' }),
 
+  // ── XPUR7/XPUR11/XPUR13 / WIR220 — accusé fournisseur + 4 rapports achats ──
+  // `confirmer` = ACCUSÉ DE COMMANDE du fournisseur (date confirmée + n°). La
+  // date DEMANDÉE (`date_livraison_prevue`) n'est JAMAIS écrasée : c'est ce
+  // couple promis-vs-confirmé qui fait vivre le score OTD.
+  confirmerBcf: (id, data) =>
+    api.post(`/stock/bons-commande-fournisseur/${id}/confirmer/`, data ?? {}),
+  // BCF envoyés en retard (prévue/confirmée dépassée, réception incomplète).
+  bcfEnRetard: () => api.get('/stock/bons-commande-fournisseur/en-retard/'),
+  // BCF ouverts similaires du même fournisseur (aide anti-doublon, jamais
+  // bloquant). `produits` = ids séparés par des virgules.
+  bcfSimilaires: (fournisseurId, produitIds) =>
+    api.get('/stock/bons-commande-fournisseur/bcf-similaires/', {
+      params: {
+        fournisseur: fournisseurId,
+        ...(produitIds?.length ? { produits: produitIds.join(',') } : {}),
+      },
+    }),
+  // Historique des prix d'achat d'un produit (toutes sources). INTERNE.
+  historiquePrixBcf: (produitId, fournisseurId) =>
+    api.get('/stock/bons-commande-fournisseur/historique-prix/', {
+      params: { produit: produitId, ...(fournisseurId ? { fournisseur: fournisseurId } : {}) },
+    }),
+  // Rapport « achats hors contrat » (prix saisi > prix convenu en vigueur).
+  achatsHorsContrat: (params) =>
+    api.get('/stock/bons-commande-fournisseur/achats-hors-contrat/', { params }),
+
   // ZPUR3 — modèles de BCF réutilisables (« purchase templates »).
   getModelesBcf: (params) => api.get('/stock/modeles-bcf/', { params }),
   getModeleBcf: (id) => api.get(`/stock/modeles-bcf/${id}/`),

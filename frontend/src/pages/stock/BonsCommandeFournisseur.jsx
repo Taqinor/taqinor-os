@@ -252,6 +252,14 @@ export function BcfDetail({ bcf, fournisseurs, produits, onClose, onSaved }) {
   const [showRetour, setShowRetour] = useState(false)
   const [showAnnuler, setShowAnnuler] = useState(false)
   const [info, setInfo] = useState(null)
+  // WIR220 / XPUR7 — accusé de commande fournisseur (date CONFIRMÉE + n°).
+  const [dateConfirmee, setDateConfirmee] = useState(bcf?.date_confirmee_fournisseur ?? '')
+  const [numeroConfirmation, setNumeroConfirmation] = useState(
+    bcf?.numero_confirmation_fournisseur ?? '')
+  // WIR220 / XPUR11 — BCF ouverts similaires du même fournisseur (anti-doublon).
+  const [similaires, setSimilaires] = useState([])
+  // WIR220 / XPUR13 — historique des prix d'une ligne (popover).
+  const [histLigne, setHistLigne] = useState(null)
   // VX240(g) — focus la ligne fraîchement ajoutée (réplique le patron VX90).
   const linesTableRef = useRef(null)
   const [pendingFocusKey, setPendingFocusKey] = useState(null)
@@ -398,6 +406,47 @@ export function BcfDetail({ bcf, fournisseurs, produits, onClose, onSaved }) {
     } catch (err) {
       setError(frBcfError(err, "L'enregistrement du bon de commande a échoué."))
     } finally { setBusy(false) }
+  }
+
+  // WIR220 / XPUR11 — à la CRÉATION, signale les BCF déjà ouverts chez ce
+  // fournisseur. Purement informatif : ne bloque jamais la création.
+  useEffect(() => {
+    if (!isNew || !fournisseur) { setSimilaires([]); return undefined }
+    let active = true
+    stockApi.bcfSimilaires?.(fournisseur)
+      ?.then((r) => { if (active) setSimilaires(r.data ?? []) })
+      ?.catch(() => { if (active) setSimilaires([]) })
+    return () => { active = false }
+  }, [isNew, fournisseur])
+
+  // WIR220 / XPUR7 — enregistre l'accusé de commande du fournisseur.
+  const confirmerAccuse = async () => {
+    if (!dateConfirmee) {
+      setError('Saisissez la date confirmée par le fournisseur.'); return
+    }
+    setBusy(true); setError(null); setInfo(null)
+    try {
+      await stockApi.confirmerBcf(bcf.id, {
+        date_confirmee_fournisseur: dateConfirmee,
+        numero_confirmation_fournisseur: numeroConfirmation || '',
+      })
+      setInfo('Accusé de commande enregistré (la date demandée reste inchangée).')
+      onSaved?.()
+    } catch (err) {
+      setError(frBcfError(err, "L'enregistrement de l'accusé a échoué."))
+    } finally { setBusy(false) }
+  }
+
+  // WIR220 / XPUR13 — historique des prix d'achat de la ligne (popover).
+  const ouvrirHistoriquePrix = async (ligne) => {
+    if (!ligne?.produit) return
+    setHistLigne({ ligne, lignes: null, erreur: null })
+    try {
+      const r = await stockApi.historiquePrixBcf(ligne.produit, fournisseur || undefined)
+      setHistLigne({ ligne, lignes: r.data ?? [], erreur: null })
+    } catch {
+      setHistLigne({ ligne, lignes: [], erreur: 'Historique indisponible.' })
+    }
   }
 
   // WIR191 / XPUR18 — enregistre la révision d'un BCF ENVOYE/RECU. N'appelle
@@ -660,6 +709,50 @@ export function BcfDetail({ bcf, fournisseurs, produits, onClose, onSaved }) {
           </div>
         </div>
 
+        {/* WIR220 / XPUR11 — BCF déjà ouverts chez ce fournisseur : évite le
+            doublon de commande. Purement informatif, jamais bloquant. */}
+        {isNew && similaires.length > 0 && (
+          <div role="status" className="rounded-lg border border-warning/40 bg-warning/10 p-3 text-sm">
+            <span className="font-semibold">
+              {similaires.length} bon(s) de commande déjà ouvert(s) chez ce fournisseur :
+            </span>
+            <ul className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs">
+              {similaires.map((s) => (
+                <li key={s.id}>
+                  {s.reference} — {bcfStatutLabel(s.statut)} ({s.nombre_lignes} ligne(s))
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        {/* WIR220 / XPUR7 — accusé de commande du fournisseur. La date
+            DEMANDÉE n'est jamais écrasée : le score OTD compare les deux. */}
+        {!isNew && statut === 'envoye' && (
+          <div className="grid gap-3 rounded-lg border border-border p-3 sm:grid-cols-3">
+            <span className="text-sm font-semibold sm:col-span-3">Accusé de commande</span>
+            <div className="flex flex-col gap-1.5">
+              <label className="text-xs font-medium" htmlFor="bcf-date-confirmee">
+                Date confirmée par le fournisseur
+              </label>
+              <Input id="bcf-date-confirmee" type="date" className="h-9" value={dateConfirmee ?? ''}
+                     onChange={(e) => setDateConfirmee(e.target.value)} />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <label className="text-xs font-medium" htmlFor="bcf-num-confirmation">
+                N° de confirmation
+              </label>
+              <Input id="bcf-num-confirmation" className="h-9" value={numeroConfirmation ?? ''}
+                     onChange={(e) => setNumeroConfirmation(e.target.value)} />
+            </div>
+            <div className="flex items-end">
+              <Button type="button" size="sm" loading={busy} onClick={confirmerAccuse}>
+                {busy ? '…' : "Enregistrer l'accusé"}
+              </Button>
+            </div>
+          </div>
+        )}
+
         {/* ── ZPUR8 — « Other Information » : acheteur, réf. fournisseur,
             note de bas de page, incoterm (imprimés sur le PDF BCF). ── */}
         <div className="grid gap-4 rounded-lg border border-border p-3 sm:grid-cols-2">
@@ -810,6 +903,15 @@ export function BcfDetail({ bcf, fournisseurs, produits, onClose, onSaved }) {
                             )}
                           </>
                         ) : fmtMad(l.prix_achat_unitaire)}
+                        {/* WIR220 / XPUR13 — historique des prix payés pour
+                            ce produit (rapport jusqu'ici sans aucune UI). */}
+                        {l.produit && (
+                          <button type="button"
+                                  className="mt-1 block text-xs text-primary underline"
+                                  onClick={() => ouvrirHistoriquePrix(l)}>
+                            Historique des prix
+                          </button>
+                        )}
                       </td>
                       <td className="px-3 py-2 tabular-nums">{fmtMad(lineTotal)}</td>
                       {!isNew && <td className="px-3 py-2 tabular-nums">{l.quantite_recue ?? 0}</td>}
@@ -970,6 +1072,48 @@ export function BcfDetail({ bcf, fournisseurs, produits, onClose, onSaved }) {
                                onClose={() => setShowAnnuler(false)}
                                onConfirm={annuler} />
       )}
+      {/* WIR220 / XPUR13 — historique des prix d'achat de la ligne. */}
+      {histLigne && (
+        <Dialog open onOpenChange={(o) => { if (!o) setHistLigne(null) }}>
+          <DialogContent className="max-h-[80vh] max-w-lg overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle>
+                Historique des prix — {histLigne.ligne.produit_nom ?? histLigne.ligne.designation ?? 'produit'}
+              </DialogTitle>
+              <DialogDescription>
+                Derniers achats (prix d&apos;achat INTERNE, jamais client-facing).
+              </DialogDescription>
+            </DialogHeader>
+            {histLigne.lignes == null && (
+              <p className="text-sm text-muted-foreground">Chargement…</p>
+            )}
+            {histLigne.erreur && (
+              <p role="alert" className="text-sm text-destructive">{histLigne.erreur}</p>
+            )}
+            {histLigne.lignes?.length === 0 && !histLigne.erreur && (
+              <p className="text-sm text-muted-foreground">Aucun achat antérieur.</p>
+            )}
+            {histLigne.lignes?.length > 0 && (
+              <ul className="flex flex-col gap-1 text-sm">
+                {histLigne.lignes.map((h) => (
+                  <li key={`${h.bon_commande_id}-${h.reference}`}
+                      className="flex justify-between gap-3 border-b border-border py-1">
+                    <span>{h.reference} · {h.fournisseur_nom ?? '—'}</span>
+                    <span className="tabular-nums">
+                      {fmtMad(h.prix_achat_unitaire)} × {h.quantite}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setHistLigne(null)}>
+                Fermer
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
       {/* QS2 — création rapide de produit (réutilise la modale QG6) puis dépôt
           sur la ligne du BCF avec pré-remplissage du prix d'achat interne. */}
       {canCreateProduit && (
@@ -979,6 +1123,122 @@ export function BcfDetail({ bcf, fournisseurs, produits, onClose, onSaved }) {
           onCreated={onProduitCreatedForLine}
         />
       )}
+    </Dialog>
+  )
+}
+
+// ── WIR220 / XPUR13 — rapport « achats hors contrat » ───────────────────────
+// Lignes de BCF dont le prix SAISI dépasse le prix CONVENU du contrat en
+// vigueur, filtrables fournisseur + période. INTERNE (prix d'achat), jamais
+// un document client. Export nommé : testé directement.
+export function AchatsHorsContratModal({ fournisseurs, onClose }) {
+  const [fournisseur, setFournisseur] = useState('')
+  const [dateDebut, setDateDebut] = useState('')
+  const [dateFin, setDateFin] = useState('')
+  const [lignes, setLignes] = useState(null)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState(null)
+
+  const lancer = async () => {
+    setBusy(true); setError(null)
+    try {
+      const r = await stockApi.achatsHorsContrat({
+        ...(fournisseur ? { fournisseur } : {}),
+        ...(dateDebut ? { date_debut: dateDebut } : {}),
+        ...(dateFin ? { date_fin: dateFin } : {}),
+      })
+      setLignes(r.data ?? [])
+    } catch (err) {
+      setError(frBcfError(err, 'Le rapport est indisponible.'))
+    } finally { setBusy(false) }
+  }
+
+  return (
+    <Dialog open onOpenChange={(o) => { if (!o) onClose() }}>
+      <DialogContent className="max-h-[90vh] max-w-3xl overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>Achats hors contrat</DialogTitle>
+          <DialogDescription>
+            Lignes payées au-dessus du prix convenu en vigueur. Donnée
+            INTERNE : jamais reprise sur un document client.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="grid gap-3 sm:grid-cols-4">
+          <div className="flex flex-col gap-1.5 sm:col-span-2">
+            <label className="text-xs font-medium" htmlFor="hc-fou">Fournisseur</label>
+            <Select value={fournisseur ? String(fournisseur) : '__all'}
+                    onValueChange={(v) => setFournisseur(v === '__all' ? '' : v)}>
+              <SelectTrigger id="hc-fou" className="h-9"><SelectValue placeholder="Tous" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__all">Tous les fournisseurs</SelectItem>
+                {(fournisseurs ?? []).map((f) => (
+                  <SelectItem key={f.id} value={String(f.id)}>{f.nom}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <label className="text-xs font-medium" htmlFor="hc-debut">Du</label>
+            <Input id="hc-debut" type="date" className="h-9" value={dateDebut}
+                   onChange={(e) => setDateDebut(e.target.value)} />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <label className="text-xs font-medium" htmlFor="hc-fin">Au</label>
+            <Input id="hc-fin" type="date" className="h-9" value={dateFin}
+                   onChange={(e) => setDateFin(e.target.value)} />
+          </div>
+        </div>
+
+        {error && (
+          <div role="alert" className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
+            {error}
+          </div>
+        )}
+
+        {lignes?.length === 0 && (
+          <p className="text-sm text-muted-foreground">
+            Aucun dépassement sur ce périmètre.
+          </p>
+        )}
+        {lignes?.length > 0 && (
+          <div className="overflow-x-auto rounded-lg border border-border">
+            <table className="w-full text-sm">
+              <thead className="bg-muted/60 text-xs uppercase tracking-wide text-muted-foreground">
+                <tr>
+                  <th className="px-3 py-2 text-left font-semibold">BCF</th>
+                  <th className="px-3 py-2 text-left font-semibold">Fournisseur</th>
+                  <th className="px-3 py-2 text-left font-semibold">Produit</th>
+                  <th className="px-3 py-2 text-right font-semibold">Convenu</th>
+                  <th className="px-3 py-2 text-right font-semibold">Payé</th>
+                  <th className="px-3 py-2 text-right font-semibold">Écart</th>
+                </tr>
+              </thead>
+              <tbody>
+                {lignes.map((l) => (
+                  <tr key={l.ligne_id} className="border-t border-border">
+                    <td className="px-3 py-2">{l.reference}</td>
+                    <td className="px-3 py-2">{l.fournisseur_nom ?? '—'}</td>
+                    <td className="px-3 py-2">{l.produit_nom ?? '—'}</td>
+                    <td className="px-3 py-2 text-right tabular-nums">{fmtMad(l.prix_convenu)}</td>
+                    <td className="px-3 py-2 text-right tabular-nums">{fmtMad(l.prix_saisi)}</td>
+                    <td className="px-3 py-2 text-right font-semibold tabular-nums text-destructive">
+                      {fmtMad(l.ecart)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        <DialogFooter>
+          <Button type="button" variant="ghost" onClick={onClose}>Fermer</Button>
+          <Button type="button" loading={busy} onClick={lancer}>
+            {busy ? '…' : 'Lancer le rapport'}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
     </Dialog>
   )
 }
@@ -993,6 +1253,12 @@ export default function BonsCommandeFournisseur() {
   const [statutFiltre, setStatutFiltre] = useState('')
   const [fusionInfo, setFusionInfo] = useState(null)
   const [fusionError, setFusionError] = useState(null)
+  // WIR220 / XPUR7 — file « En retard » (calculée SERVEUR : prévue OU
+  // confirmée dépassée sans réception complète — jamais recalculée ici).
+  const [enRetardSeul, setEnRetardSeul] = useState(false)
+  const [enRetard, setEnRetard] = useState([])
+  // WIR220 / XPUR13 — rapport « achats hors contrat » (couvre aussi XPUR13).
+  const [showHorsContrat, setShowHorsContrat] = useState(false)
   // Réapprovisionnement (706) : un BCF brouillon pré-rempli demandé via l'état
   // de navigation depuis le catalogue ouvre directement le détail.
   const prefill = location.state?.prefillBcf ?? null
@@ -1038,9 +1304,21 @@ export default function BonsCommandeFournisseur() {
 
   // Le filtre statut reste local (Select dédié) ; la recherche texte
   // (référence / fournisseur) est gérée par le DataTable via globalColumns.
-  const rows = useMemo(() => (
-    statutFiltre ? items.filter((b) => b.statut === statutFiltre) : items
-  ), [items, statutFiltre])
+  // WIR220 — la file « En retard » vient du serveur (jamais d'un recalcul
+  // client qui divergerait de la définition d'OTD).
+  useEffect(() => {
+    if (!enRetardSeul) return undefined
+    let active = true
+    stockApi.bcfEnRetard?.()
+      ?.then((r) => { if (active) setEnRetard(r.data?.results ?? r.data ?? []) })
+      ?.catch(() => { if (active) setEnRetard([]) })
+    return () => { active = false }
+  }, [enRetardSeul])
+
+  const rows = useMemo(() => {
+    if (enRetardSeul) return enRetard
+    return statutFiltre ? items.filter((b) => b.statut === statutFiltre) : items
+  }, [items, statutFiltre, enRetardSeul, enRetard])
   // BCF envoyés en attente de réception (raccourci de filtrage en un clic).
   const attenteReception = useMemo(() => nbEnvoyesNonRecus(items), [items])
 
@@ -1137,8 +1415,20 @@ export default function BonsCommandeFournisseur() {
             En attente de réception ({attenteReception})
           </Button>
         )}
-        {statutFiltre && (
-          <Button variant="ghost" size="sm" onClick={() => setStatutFiltre('')}>
+        {/* WIR220 / XPUR7 — BCF envoyés en RETARD (date promise ou confirmée
+            dépassée). Le score OTD s'appuie sur la même définition serveur. */}
+        <Button variant={enRetardSeul ? 'secondary' : 'outline'} size="sm"
+                onClick={() => setEnRetardSeul((v) => !v)}
+                title="Bons de commande envoyés dont la date promise/confirmée est dépassée">
+          En retard{enRetardSeul ? ' (actif)' : ''}
+        </Button>
+        {/* WIR220 / XPUR13 — rapport « achats hors contrat ». */}
+        <Button variant="outline" size="sm" onClick={() => setShowHorsContrat(true)}>
+          Achats hors contrat
+        </Button>
+        {(statutFiltre || enRetardSeul) && (
+          <Button variant="ghost" size="sm"
+                  onClick={() => { setStatutFiltre(''); setEnRetardSeul(false) }}>
             Réinitialiser
           </Button>
         )}
@@ -1178,6 +1468,10 @@ export default function BonsCommandeFournisseur() {
       {selected && (
         <BcfDetail bcf={selected} fournisseurs={fournisseurs} produits={produits}
                    onClose={() => setSelected(null)} onSaved={reload} />
+      )}
+      {showHorsContrat && (
+        <AchatsHorsContratModal fournisseurs={fournisseurs}
+                                onClose={() => setShowHorsContrat(false)} />
       )}
     </div>
   )
