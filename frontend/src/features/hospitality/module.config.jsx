@@ -22,6 +22,8 @@ import { appGlyph } from '../../lib/apps/appGlyph'
 
 const Dashboard = lazy(() => import('./Dashboard'))
 const PlanChambres = lazy(() => import('./PlanChambres'))
+// WIR211/NTHOT1+NTHOT2 — referentiel : types de chambre, chambres, plans tarifaires.
+const ReferentielChambres = lazy(() => import('./ReferentielChambres'))
 const CalendrierReservations = lazy(() => import('./CalendrierReservations'))
 const MainCourante = lazy(() => import('./MainCourante'))
 const Menage = lazy(() => import('./Menage'))
@@ -57,6 +59,12 @@ const config = {
       {
         to: '/hospitality/chambres',
         label: 'Plan des chambres',
+        icon: <BedDouble size={17} strokeWidth={1.75} aria-hidden="true" />,
+        roles: ROLES,
+      },
+      {
+        to: '/hospitality/referentiel',
+        label: 'Référentiel chambres',
         icon: <BedDouble size={17} strokeWidth={1.75} aria-hidden="true" />,
         roles: ROLES,
       },
@@ -112,6 +120,7 @@ const config = {
   routes: [
     { path: '/hospitality', component: Dashboard, roles: ROLES },
     { path: '/hospitality/chambres', component: PlanChambres, roles: ROLES },
+    { path: '/hospitality/referentiel', component: ReferentielChambres, roles: ROLES },
     { path: '/hospitality/reservations', component: CalendrierReservations, roles: ROLES },
     { path: '/hospitality/main-courante', component: MainCourante, roles: ROLES },
     { path: '/hospitality/menage', component: Menage, roles: ROLES },

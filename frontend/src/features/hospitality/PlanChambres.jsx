@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { Card, Badge, EmptyState, Spinner } from '../../ui'
 import hospitalityApi from '../../api/hospitalityApi'
 
@@ -53,12 +54,22 @@ export default function PlanChambres() {
       <EmptyState
         title="Aucune chambre"
         description="Créez un type de chambre puis une chambre pour démarrer."
+        // WIR211 — l'état vide DISAIT quoi faire sans jamais y mener : le
+        // référentiel (types / chambres / plans tarifaires) n'était atteignable
+        // par aucun lien. On y renvoie maintenant.
+        action={<Link to="/hospitality/referentiel">Ouvrir le référentiel</Link>}
       />
     )
   }
 
   return (
     <div className="flex flex-col gap-4">
+      {/* WIR211 — accès permanent au référentiel (types, chambres, plans). */}
+      <div className="text-sm">
+        <Link to="/hospitality/referentiel" className="text-info hover:underline">
+          Référentiel chambres
+        </Link>
+      </div>
       <div className="flex flex-wrap gap-2 text-sm">
         {['', 'libre', 'occupee', 'sale', 'en_nettoyage', 'hors_service'].map((s) => (
           <button
