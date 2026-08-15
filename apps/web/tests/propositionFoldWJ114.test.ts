@@ -21,7 +21,7 @@ import { sellerNote, type ProposalResponse } from '../src/lib/proposition';
 
 const root = (rel: string) => fileURLToPath(new URL(rel, import.meta.url));
 const read = (rel: string) => readFileSync(root(rel), 'utf-8');
-const PROPOSITION = read('../src/pages/proposition/[token].astro');
+const PROPOSITION = read('../src/pages/proposition/[...token].astro');
 
 function makeProposal(over: Partial<ProposalResponse> = {}): ProposalResponse {
   const base: ProposalResponse = {

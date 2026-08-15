@@ -15,7 +15,7 @@ const root = (rel: string) => fileURLToPath(new URL(rel, import.meta.url));
 const read = (rel: string) => readFileSync(root(rel), 'utf-8');
 
 const MON_TOIT = read('../src/pages/devis/mon-toit.astro');
-const PROPOSITION = read('../src/pages/proposition/[token].astro');
+const PROPOSITION = read('../src/pages/proposition/[...token].astro');
 const GLOBAL_CSS = read('../src/styles/global.css');
 
 describe('WJ17/WJ43 — proposition/[token].astro : le switcher FR/EN/عربي est câblé (pas juste des boutons morts)', () => {

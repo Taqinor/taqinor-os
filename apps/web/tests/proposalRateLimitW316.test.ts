@@ -156,7 +156,7 @@ describe('W316 — buckets DISTINCTS par endpoint (une IP épuisant roof-yield n
 });
 
 describe('W316 — /proposition/[token] SSR : rate-limit câblé (lecture source)', () => {
-  const PROPOSITION = read('../src/pages/proposition/[token].astro');
+  const PROPOSITION = read('../src/pages/proposition/[...token].astro');
 
   it('importe rateLimit/clientIpFromRequest et gate le SSR AVANT le fetch backend', () => {
     expect(PROPOSITION).toContain("import { clientIpFromRequest, rateLimit } from '../../lib/rateLimit'");

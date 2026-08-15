@@ -14,7 +14,7 @@ import { fileURLToPath } from 'node:url';
 const root = (rel: string) => fileURLToPath(new URL(rel, import.meta.url));
 const read = (rel: string) => readFileSync(root(rel), 'utf-8');
 
-const PROPOSITION = read('../src/pages/proposition/[token].astro');
+const PROPOSITION = read('../src/pages/proposition/[...token].astro');
 
 describe('WJ81 — SSR fetch : timeout + repli honnête (jamais un blanc)', () => {
   it('le fetch de la proposition est borné par un AbortController', () => {

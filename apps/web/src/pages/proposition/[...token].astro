@@ -111,6 +111,15 @@ import {
   HOURS_PER_DAY,
 } from '../../lib/batterySim';
 import { renderProposalChart, resolveSeries } from '../../lib/proposalChart';
+// PV80 — logique PURE de la refonte : route catch-all (token = dernier segment)
+// et machine à états du graphique fusionné « Votre production ».
+import {
+  type ProductionAvailability,
+  tokenFromSegments,
+  hasProductionBlock,
+  initialProductionState,
+  productionLayers,
+} from '../../lib/propositionPage';
 import { clientIpFromRequest, rateLimit } from '../../lib/rateLimit';
 // W342 — « installation la plus proche » : haversine sur un point GPS réel
 // (premier sommet du premier pan de toiture, quand roof_layout est exposé) ou,
@@ -118,7 +127,14 @@ import { clientIpFromRequest, rateLimit } from '../../lib/rateLimit';
 import { nearestRealisation, nearestRealisationByCityText } from '../../lib/realisations';
 
 const API_BASE = (import.meta.env.PUBLIC_API_BASE as string | undefined) ?? 'https://api.taqinor.ma';
-const { token } = Astro.params as { token: string };
+// ── PV80 — ROUTE CATCH-ALL : /proposition/<token> ET /proposition/<slug>/<token>.
+// Le lien envoyé au client peut désormais porter son nom (« se lit » dans un
+// message WhatsApp) sans rien changer à la sécurité : le segment décoratif
+// n'est ni validé ni transmis, le TOKEN est TOUJOURS le DERNIER segment
+// (tokenFromSegments, testé sous vitest). Tout ce qui suit — fetch serveur,
+// signature, OTP, télémétrie, contact, révision, PDF — utilise cette SEULE
+// variable, donc hérite de l'extraction sans autre changement.
+const token = tokenFromSegments((Astro.params as { token?: string | string[] }).token);
 
 // ── Lecture serveur de la proposition ────────────────────────────────────────
 // WJ81 — la page la plus commercialement critique du site ne doit JAMAIS
