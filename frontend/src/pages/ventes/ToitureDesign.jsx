@@ -29,6 +29,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import api from '../../api/axios'
 import ventesApi from '../../api/ventesApi'
+import crmApi from '../../api/crmApi'
 import { toastInfo } from '../../lib/toast'
 import '../../styles/roofbuilder.css'
 
@@ -60,6 +61,19 @@ function designMailto(email, name, proposalUrl) {
     `Cordialement,\nL'équipe Taqinor`
   )
   return `mailto:${email}?subject=${subject}&body=${body}`
+}
+
+// WIR227/QJ25 — `GET /crm/leads/<id>/roof-footprint/` renvoie
+// `polygon: [{lat, lng}, …]` (contrat backend, `apps/crm/roof_views.py`) ;
+// le builder attend `roof_outline: Array<[lat, lng]>` (LeadPayload,
+// `apps/web/src/scripts/roofPro11/types.ts` — jamais modifié depuis cette
+// lane). Seule cette projection convertit entre les deux formes.
+function polygonToRoofOutline(polygon) {
+  if (!Array.isArray(polygon)) return null
+  const pairs = polygon
+    .filter((p) => p && Number.isFinite(Number(p.lat)) && Number.isFinite(Number(p.lng)))
+    .map((p) => [Number(p.lat), Number(p.lng)])
+  return pairs.length >= 3 ? pairs : null
 }
 
 // Convertit un data URL PNG en Blob (upload multipart de la 3D).
@@ -184,6 +198,11 @@ export default function ToitureDesign({ mode = 'lead' }) {
       : 'Aucun lead indiqué (identifiant manquant).'
   })
   const [lead, setLead] = useState(null)
+  // WIR227/QJ25 — contour OSM du bâtiment épinglé (best-effort, jamais
+  // bloquant) : message serveur affiché quand aucun bâtiment n'est trouvé, et
+  // état de la relance manuelle (le tracé manuel n'est JAMAIS cassé par ceci).
+  const [footprintMessage, setFootprintMessage] = useState('')
+  const [footprintLoading, setFootprintLoading] = useState(false)
   // PV20 — contexte agrégé du devis (mode devis uniquement) : identité, cible,
   // `modifiable` + `raison_lecture_seule`. Toujours null en mode lead.
   const [contexte, setContexte] = useState(null)
@@ -244,6 +263,28 @@ export default function ToitureDesign({ mode = 'lead' }) {
       }
       if (cancelled) return
       setLead(leadData)
+
+      // WIR227/QJ25 — le contour OSM du bâtiment épinglé n'était jamais
+      // consommé par l'atelier toiture : si le lead a un repère mais pas
+      // encore de contour, on l'hydrate depuis l'endpoint dédié AVANT de
+      // booter le builder (best-effort — un échec/absence de bâtiment ne
+      // bloque jamais le tracé manuel).
+      const hasOutline = Array.isArray(leadData.roof_outline) && leadData.roof_outline.length >= 3
+      if (!hasOutline && leadData.roof_point) {
+        try {
+          const fp = await crmApi.getRoofFootprint(leadId)
+          const outline = polygonToRoofOutline(fp.data?.polygon)
+          if (outline) {
+            leadData = { ...leadData, roof_outline: outline }
+            setLead(leadData)
+          } else if (fp.data?.message) {
+            setFootprintMessage(fp.data.message)
+          }
+        } catch {
+          /* best-effort : le tracé manuel reste disponible */
+        }
+      }
+      if (cancelled) return
 
       // Clé carte (même origine, session cookie) — sans elle, pas de carte.
       let maptilerKey = ''
@@ -349,6 +390,31 @@ export default function ToitureDesign({ mode = 'lead' }) {
     else boot()
     return () => { cancelled = true }
   }, [cibleId, devisId, leadId, estDevis, reducedMotion])
+
+  // WIR227/QJ25 — relance manuelle du contour OSM (ex. le lead vient d'être
+  // épinglé plus précisément). Un contour trouvé est persisté sur le lead
+  // (`updateLead`) puis la page recharge dur : le builder n'a pas d'API de
+  // re-semis post-boot (`onApiReady` ne l'expose pas) et cet écran ne
+  // modifie jamais `apps/web/src/scripts`. Sans bâtiment trouvé, seul le
+  // message serveur change — le tracé manuel en cours n'est jamais perdu.
+  const relancerDetectionContour = async () => {
+    if (!leadId || footprintLoading) return
+    setFootprintLoading(true)
+    try {
+      const fp = await crmApi.getRoofFootprint(leadId)
+      const outline = polygonToRoofOutline(fp.data?.polygon)
+      if (outline) {
+        await api.patch(`/crm/leads/${encodeURIComponent(leadId)}/`, { roof_outline: outline })
+        window.location.reload()
+        return
+      }
+      setFootprintMessage(fp.data?.message || 'Aucun bâtiment trouvé — tracez le contour manuellement.')
+    } catch {
+      setFootprintMessage('Détection du contour indisponible pour le moment — tracez le contour manuellement.')
+    } finally {
+      setFootprintLoading(false)
+    }
+  }
 
   // ── UN SEUL BOUTON : devis + snapshot + livraison ──────────────────────────
   const generer = async () => {
@@ -670,6 +736,22 @@ export default function ToitureDesign({ mode = 'lead' }) {
 
         {loadError && (
           <p className="mt-3 text-sm text-alert-300" role="alert">{loadError}</p>
+        )}
+
+        {/* WIR227/QJ25 — le contour OSM est best-effort : message serveur exact
+            + relance manuelle, jamais un blocage du tracé manuel. */}
+        {!estDevis && footprintMessage && (
+          <div className="mt-3 flex flex-wrap items-center gap-3 text-sm text-lune-faint" data-testid="wir227-footprint-message">
+            <span role="status">{footprintMessage}</span>
+            <button
+              type="button"
+              onClick={relancerDetectionContour}
+              disabled={footprintLoading}
+              className="border border-white/25 px-3 py-1.5 text-xs font-semibold text-lune-soft disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {footprintLoading ? 'Recherche…' : 'Relancer la détection du contour'}
+            </button>
+          </div>
         )}
 
         {/* PV20 — LECTURE SEULE : le motif vient du serveur, jamais rédigé ici. */}
