@@ -422,6 +422,46 @@ export default function Environnement() {
   const [reloadNonce, setReloadNonce] = useState(0)
   const bumpReload = () => setReloadNonce((n) => n + 1)
 
+  // WIR234 — BSD (loi 28-00) : emis → enleve → traite, jusqu'ici jamais
+  // avançable depuis l'écran (registre lecture/création seule).
+  const enleverBsd = async (r) => {
+    try {
+      await qhseApi.bordereauxDechets.enlever(r.id, {})
+      toast.success('Bordereau marqué enlevé.')
+      bumpReload()
+    } catch (e) {
+      toast.error(e?.response?.data?.detail || 'Action impossible.')
+    }
+  }
+  const traiterBsd = async (r) => {
+    try {
+      await qhseApi.bordereauxDechets.traiter(r.id, {})
+      toast.success('Bordereau marqué traité.')
+      bumpReload()
+    } catch (e) {
+      toast.error(e?.response?.data?.detail || 'Action impossible.')
+    }
+  }
+  // WIR234 — recyclage modules PV : collecte → transporte → recycle.
+  const transporterRecyclage = async (r) => {
+    try {
+      await qhseApi.recyclageModules.transporter(r.id)
+      toast.success('Lot marqué transporté.')
+      bumpReload()
+    } catch (e) {
+      toast.error(e?.response?.data?.detail || 'Action impossible.')
+    }
+  }
+  const recyclerRecyclage = async (r) => {
+    try {
+      await qhseApi.recyclageModules.recycler(r.id, {})
+      toast.success('Lot marqué recyclé.')
+      bumpReload()
+    } catch (e) {
+      toast.error(e?.response?.data?.detail || 'Action impossible.')
+    }
+  }
+
   const dechetsCols = useMemo(() => [
     { id: 'libelle', header: 'Déchet', accessor: (r) => r.libelle },
     { id: 'code', header: 'Code', width: 120, accessor: (r) => r.code || '—' },
@@ -613,6 +653,14 @@ export default function Environnement() {
             exportName="qhse-bsd"
             deps={[reloadNonce]}
             actions={<CreerButton onClick={() => setCreateKey('bordereauxDechets')} label="Nouveau BSD" />}
+            rowActions={(r) => [
+              ...(r.statut === 'emis'
+                ? [{ id: 'enlever', label: 'Enlever', onClick: () => enleverBsd(r) }]
+                : []),
+              ...(r.statut === 'emis' || r.statut === 'enleve'
+                ? [{ id: 'traiter', label: 'Traiter', onClick: () => traiterBsd(r) }]
+                : []),
+            ]}
           />
         </TabsContent>
 
@@ -625,6 +673,14 @@ export default function Environnement() {
             exportName="qhse-recyclage-modules"
             deps={[reloadNonce]}
             actions={<CreerButton onClick={() => setCreateKey('recyclageModules')} label="Nouveau recyclage" />}
+            rowActions={(r) => [
+              ...(r.statut === 'collecte'
+                ? [{ id: 'transporter', label: 'Transporter', onClick: () => transporterRecyclage(r) }]
+                : []),
+              ...(r.statut === 'collecte' || r.statut === 'transporte'
+                ? [{ id: 'recycler', label: 'Recycler', onClick: () => recyclerRecyclage(r) }]
+                : []),
+            ]}
           />
         </TabsContent>
 

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import {
   Plus, Eye, CheckCircle2, RefreshCw, ClipboardCheck, Gavel, Sparkles,
-  Wrench, ShieldAlert,
+  Wrench, ShieldAlert, MessageSquare,
 } from 'lucide-react'
 import qhseApi from '../../api/qhseApi'
 import { ListShell, DetailShell } from '../../ui/module'
@@ -17,7 +17,7 @@ import {
   NcrStatutPill, CapaStatutPill, GravitePill,
 } from './qhsePills'
 import { GRAVITE } from './qhseStatus'
-import NcrChatter from './NcrChatter'
+import NcrChatter, { CapaChatter } from './NcrChatter'
 
 /* ============================================================================
    UX30 — Non-conformités (NCR) & actions correctives/préventives (CAPA).
@@ -897,9 +897,26 @@ function VerifierDialog({ capa, onClose, onDone }) {
   )
 }
 
+// WIR234 — panneau détail CAPA : jumeau minimal de NcrDetail, seul but est
+// de monter le chatter CAPA (historique + note) — `capa.historique`/`noter`
+// n'avaient aucun appelant côté écran.
+function CapaDetailDialog({ capa, onClose }) {
+  return (
+    <Dialog open onOpenChange={(o) => { if (!o) onClose() }}>
+      <DialogContent className="max-w-lg">
+        <DialogTitle>
+          CAPA — {capa.description || `#${capa.id}`}
+        </DialogTitle>
+        <CapaChatter capaId={capa.id} />
+      </DialogContent>
+    </Dialog>
+  )
+}
+
 function CapaRegister() {
   const [onlyLate, setOnlyLate] = useState(false)
   const [verifying, setVerifying] = useState(null)
+  const [detailCapa, setDetailCapa] = useState(null)
   const { rows, loading, error, reload } = useQhseList(
     () => (onlyLate ? qhseApi.capa.enRetard() : qhseApi.capa.list()),
     [onlyLate],
@@ -960,6 +977,12 @@ function CapaRegister() {
             icon: ClipboardCheck,
             onClick: () => setVerifying(r),
           },
+          {
+            id: 'historique',
+            label: 'Historique & notes',
+            icon: MessageSquare,
+            onClick: () => setDetailCapa(r),
+          },
         ]}
         actions={
           <div className="flex items-center gap-2">
@@ -981,6 +1004,9 @@ function CapaRegister() {
           onClose={() => setVerifying(null)}
           onDone={reload}
         />
+      )}
+      {detailCapa && (
+        <CapaDetailDialog capa={detailCapa} onClose={() => setDetailCapa(null)} />
       )}
     </>
   )
