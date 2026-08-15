@@ -48,10 +48,15 @@ class Qx13ClientLinksTests(TestCase):
             client_links.proposition_path('X'): 'proposition',
         }
         for _path, folder in checks.items():
-            candidate = WEB_PAGES / folder / '[token].astro'
+            # PV84 — la route est devenue un attrape-tout ``[...token].astro``
+            # (elle accepte /proposition/<token> ET /proposition/<slug>/<token>,
+            # le token = dernier segment). L'ancien nom reste accepté pour ne
+            # pas re-rougir si la page redevenait un paramètre simple.
+            candidats = [WEB_PAGES / folder / '[...token].astro',
+                         WEB_PAGES / folder / '[token].astro']
             self.assertTrue(
-                candidate.exists(),
-                f'Route site manquante pour {folder} : {candidate}')
+                any(c.exists() for c in candidats),
+                f'Route site manquante pour {folder} : {candidats}')
 
 
 class Pv84CheminPropositionSlugTests(TestCase):
