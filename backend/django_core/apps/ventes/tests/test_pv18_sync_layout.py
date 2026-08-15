@@ -25,7 +25,7 @@ from apps.ventes.services import layout_hash
 User = get_user_model()
 
 CLES_REPONSE = {'inchange', 'panneaux', 'kwc', 'scenario', 'batterie',
-                'lignes_modifiees', 'avertissements'}
+                'lignes_modifiees', 'lignes_ajoutees', 'avertissements'}
 
 
 def make_company(slug):
@@ -411,3 +411,352 @@ class TestSyncLayout(TestCase):
         devis = self._devis(panneaux=12)
         resp = self._post(devis, layout(panels=16))
         self.assertNotIn('prix_achat', str(resp.data))
+
+
+# ── PVHEAL — la resynchronisation COMPLÈTE le kit manquant ──────────────────
+#
+# Les devis nés avant PVKIT sont des SQUELETTES : panneau + onduleur, parfois
+# une pose. Le client, lui, reçoit des structures, des socles et un tableau de
+# protection AC/DC que le devis ne mentionne nulle part. Ces tests verrouillent
+# la guérison — et surtout ses trois interdits : ne rien modifier, ne rien
+# dupliquer, ne rien inventer en silence.
+
+#: Le catalogue COMPLET, aux désignations exactes de ``seed_catalogue`` (c'est
+#: par elles que le classifieur partagé range les produits). Prix de vente HT.
+CATALOGUE_KIT = [
+    ('Panneau Jinko 550W', 'HEAL-PAN', '1100'),
+    ('Onduleur réseau Huawei 5kW', 'HEAL-ONDR', '14000'),
+    ('Onduleur hybride Deye 5kW', 'HEAL-ONDH', '17000'),
+    ('Batterie Deyness 5 kWh', 'HEAL-BAT', '16000'),
+    ('Structures acier', 'HEAL-STR', '500'),
+    ('Socles', 'HEAL-SOC', '80'),
+    ('Smart Meter', 'HEAL-SMART', '1800'),
+    ('Wifi Dongle', 'HEAL-WIFI', '1200'),
+    ('Accessoires', 'HEAL-ACC', '2000'),
+    ('Tableau De Protection AC/DC', 'HEAL-TAB', '2000'),
+    ('Installation', 'HEAL-INST', '4800'),
+    ('Transport', 'HEAL-TRANS', '1000'),
+]
+
+#: Les huit classes que la complétion sait ajouter, par leur désignation
+#: catalogue — l'ordre n'a pas d'importance ici, la présence si.
+KIT_ATTENDU = ('Smart Meter', 'Wifi Dongle', 'Structures acier', 'Socles',
+               'Accessoires', 'Tableau De Protection AC/DC', 'Installation',
+               'Transport')
+
+
+class TestCompletionDuKit(TestCase):
+    """Un devis SQUELETTE resynchronisé repart avec le kit réellement vendu."""
+
+    def setUp(self):
+        self.company = make_company('pvheal-co')
+        self.user = User.objects.create_user(
+            username='pvhealuser', password='x', role_legacy='responsable',
+            company=self.company)
+        self.api = auth_client(self.user)
+        self.client_obj = Client.objects.create(
+            company=self.company, nom='Client PVHEAL')
+        self.compteur = 0
+
+    def _catalogue(self, *, sans=()):
+        """Sème le catalogue, éventuellement AMPUTÉ de certains produits."""
+        self.produits = {}
+        for nom, sku, prix in CATALOGUE_KIT:
+            if nom in sans:
+                continue
+            self.produits[nom] = Produit.objects.create(
+                company=self.company, nom=nom, sku=sku,
+                prix_vente=Decimal(prix), prix_achat=Decimal('1'),
+                quantite_stock=500)
+        return self.produits
+
+    def _squelette(self, *, panneaux=12, onduleur='Onduleur réseau Huawei 5kW',
+                   prix_onduleur='13500'):
+        """Le devis d'hier : un panneau à prix NÉGOCIÉ + un onduleur. Rien de
+        plus — ni structure, ni socle, ni tableau."""
+        self.compteur += 1
+        devis = Devis.objects.create(
+            company=self.company, reference='DEV-HEAL-%s' % self.compteur,
+            client=self.client_obj, statut=Devis.Statut.BROUILLON,
+            created_by=self.user)
+        devis.lignes.create(
+            produit=self.produits['Panneau Jinko 550W'],
+            designation='Panneau Jinko 550W',
+            quantite=Decimal(str(panneaux)), prix_unitaire=Decimal('980'),
+            remise=Decimal('5'), ordre=1)
+        devis.lignes.create(
+            produit=self.produits[onduleur], designation=onduleur,
+            quantite=Decimal('1'), prix_unitaire=Decimal(prix_onduleur),
+            ordre=2)
+        return devis
+
+    def _post(self, devis, corps):
+        return self.api.post(
+            '/api/django/ventes/devis/%s/sync-layout/' % devis.id,
+            corps, format='json')
+
+    def _par_designation(self, devis):
+        return {ligne.designation: ligne for ligne in devis.lignes.all()}
+
+    # ── (a) Le kit COMPLET est ajouté, l'existant n'est pas touché ──────────
+    def test_le_kit_manquant_est_ajoute_avec_les_bonnes_quantites(self):
+        self._catalogue()
+        devis = self._squelette(panneaux=12)
+        # Empreinte de l'onduleur AVANT : il ne doit pas bouger d'un octet.
+        onduleur_avant = devis.lignes.get(designation__icontains='Onduleur')
+
+        resp = self._post(devis, layout(panels=16, kwc=8.8))
+        self.assertEqual(resp.status_code, 200, resp.content)
+        self.assertEqual(set(resp.data), CLES_REPONSE)
+
+        lignes = self._par_designation(devis)
+        for designation in KIT_ATTENDU:
+            self.assertIn(designation, lignes,
+                          '%s manque au kit' % designation)
+        self.assertEqual(resp.data['lignes_ajoutees'], len(KIT_ATTENDU))
+        self.assertEqual(resp.data['avertissements'], [])
+
+        # Quantités : une structure par panneau, DEUX socles par panneau, et
+        # les forfaits à l'unité (16 panneaux de 550 Wc = 8,8 kWc → 2 blocs).
+        self.assertEqual(int(lignes['Structures acier'].quantite), 16)
+        self.assertEqual(int(lignes['Socles'].quantite), 32)
+        self.assertEqual(int(lignes['Accessoires'].quantite), 1)
+        self.assertEqual(int(lignes['Smart Meter'].quantite), 1)
+
+        # Prix des forfaits : le simulateur les exprime en TTC par bloc de
+        # 5 kWc, le devis stocke du HT (TVA 20 %).
+        self.assertEqual(lignes['Accessoires'].prix_unitaire,
+                         Decimal('1666.67'))   # 2 × 1000 TTC
+        self.assertEqual(lignes['Tableau De Protection AC/DC'].prix_unitaire,
+                         Decimal('2500.00'))   # 2 × 1500 TTC
+        self.assertEqual(lignes['Installation'].prix_unitaire,
+                         Decimal('6000.00'))   # (2+1) × 2400 TTC
+        # …et un produit non forfaitaire garde son prix catalogue.
+        self.assertEqual(lignes['Structures acier'].prix_unitaire,
+                         Decimal('500.00'))
+
+        # L'EXISTANT est intact : prix négocié, remise et ordre du panneau
+        # (seule sa quantité suit le calepinage), onduleur inchangé.
+        panneau = lignes['Panneau Jinko 550W']
+        self.assertEqual(int(panneau.quantite), 16)
+        self.assertEqual(panneau.prix_unitaire, Decimal('980.00'))
+        self.assertEqual(panneau.remise, Decimal('5.00'))
+        self.assertEqual(panneau.ordre, 1)
+        onduleur_apres = devis.lignes.get(pk=onduleur_avant.pk)
+        self.assertEqual(onduleur_apres.prix_unitaire, Decimal('13500.00'))
+        self.assertEqual(onduleur_apres.produit_id, onduleur_avant.produit_id)
+        self.assertEqual(int(onduleur_apres.quantite), 1)
+        # Les ajouts se rangent APRÈS l'existant.
+        self.assertGreater(lignes['Structures acier'].ordre, panneau.ordre)
+
+    def test_le_smart_meter_ne_suit_que_huawei(self):
+        """Derrière un Deye, le duo Smart Meter + Wifi ne se vend pas — et son
+        absence n'est donc PAS un avertissement."""
+        self._catalogue()
+        devis = self._squelette(onduleur='Onduleur hybride Deye 5kW')
+        resp = self._post(devis, layout(panels=16, kwc=8.8,
+                                        scenario='avec_batterie'))
+        self.assertEqual(resp.status_code, 200)
+        lignes = self._par_designation(devis)
+        self.assertNotIn('Smart Meter', lignes)
+        self.assertNotIn('Wifi Dongle', lignes)
+        self.assertEqual(resp.data['avertissements'], [])
+        # Le reste du kit, lui, est bien là.
+        self.assertIn('Tableau De Protection AC/DC', lignes)
+
+    def test_le_duo_huawei_suit_l_onduleur_DU_DEVIS_pas_celui_compose(self):
+        """Le devis porte un onduleur Huawei, la composition choisirait un Deye
+        (plus gros palier) : le Smart Meter est bien dû, et son absence de la
+        composition ne doit PAS passer pour une absence du catalogue."""
+        self._catalogue()
+        Produit.objects.create(
+            company=self.company, nom='Onduleur hybride Deye 10kW',
+            sku='HEAL-ONDH10', prix_vente=Decimal('30000'),
+            prix_achat=Decimal('1'), quantite_stock=5)
+        self.produits['Onduleur hybride Huawei 5kW'] = Produit.objects.create(
+            company=self.company, nom='Onduleur hybride Huawei 5kW',
+            sku='HEAL-ONDH-HW', prix_vente=Decimal('18000'),
+            prix_achat=Decimal('1'), quantite_stock=5)
+        devis = self._squelette(onduleur='Onduleur hybride Huawei 5kW',
+                                prix_onduleur='18000')
+
+        resp = self._post(devis, layout(panels=16, kwc=8.8,
+                                        scenario='avec_batterie'))
+        self.assertEqual(resp.status_code, 200)
+        lignes = self._par_designation(devis)
+        self.assertIn('Smart Meter', lignes)
+        self.assertIn('Wifi Dongle', lignes)
+        self.assertEqual(int(lignes['Smart Meter'].quantite), 1)
+        self.assertEqual(lignes['Smart Meter'].prix_unitaire,
+                         Decimal('1800.00'))
+        self.assertEqual(resp.data['avertissements'], [])
+
+    def test_une_classe_deja_presente_n_est_jamais_dupliquee(self):
+        """La présence se lit au CLASSIFIEUR, pas au libellé : une pose
+        rebaptisée à la main compte quand même comme l'installation."""
+        self._catalogue()
+        devis = self._squelette()
+        devis.lignes.create(
+            produit=self.produits['Installation'],
+            designation='Pose et mise en service',
+            quantite=Decimal('1'), prix_unitaire=Decimal('7500'), ordre=3)
+
+        resp = self._post(devis, layout(panels=16, kwc=8.8))
+        self.assertEqual(resp.status_code, 200)
+        self.assertFalse(
+            devis.lignes.filter(designation='Installation').exists())
+        pose = devis.lignes.get(designation='Pose et mise en service')
+        self.assertEqual(pose.prix_unitaire, Decimal('7500.00'))
+        self.assertEqual(resp.data['lignes_ajoutees'], len(KIT_ATTENDU) - 1)
+
+    # ── (b) Catalogue amputé : on saute ET on le DIT ────────────────────────
+    def test_sans_structure_au_catalogue_on_avertit_et_on_ajoute_le_reste(self):
+        self._catalogue(sans=('Structures acier',))
+        devis = self._squelette()
+        resp = self._post(devis, layout(panels=16, kwc=8.8))
+        self.assertEqual(resp.status_code, 200)
+
+        lignes = self._par_designation(devis)
+        self.assertNotIn('Structures acier', lignes)
+        self.assertEqual(resp.data['lignes_ajoutees'], len(KIT_ATTENDU) - 1)
+        # Un avertissement FRANÇAIS, explicite, affichable tel quel.
+        self.assertEqual(len(resp.data['avertissements']), 1)
+        message = resp.data['avertissements'][0]
+        self.assertIn('Structure de fixation', message)
+        self.assertIn('ligne non ajoutée', message)
+        # Tout le reste du kit est bien entré.
+        for designation in KIT_ATTENDU:
+            if designation == 'Structures acier':
+                continue
+            self.assertIn(designation, lignes)
+
+    def test_un_produit_sans_prix_est_traite_comme_absent(self):
+        """Un tableau de protection à 0 MAD n'est pas coté — il est annoncé."""
+        self._catalogue()
+        Produit.objects.filter(
+            pk=self.produits['Tableau De Protection AC/DC'].pk).update(
+            prix_vente=Decimal('0'))
+        devis = self._squelette()
+        resp = self._post(devis, layout(panels=16, kwc=8.8))
+        self.assertEqual(resp.status_code, 200)
+        self.assertFalse(devis.lignes.filter(
+            designation='Tableau De Protection AC/DC').exists())
+        self.assertTrue(any('Tableau de protection' in a
+                            for a in resp.data['avertissements']))
+
+    # ── (c) Re-synchro immédiate : rien ne se répète ────────────────────────
+    def test_resynchro_immediate_inchange_et_zero_ajout(self):
+        self._catalogue()
+        devis = self._squelette()
+        corps = layout(panels=16, kwc=8.8)
+        premier = self._post(devis, corps)
+        self.assertEqual(premier.data['lignes_ajoutees'], len(KIT_ATTENDU))
+        compte = devis.lignes.count()
+
+        second = self._post(devis, corps)
+        self.assertEqual(second.status_code, 200)
+        self.assertTrue(second.data['inchange'])
+        self.assertEqual(second.data['lignes_ajoutees'], 0)
+        self.assertEqual(second.data['lignes_modifiees'], 0)
+        self.assertEqual(devis.lignes.count(), compte)
+
+    def test_un_layout_different_ne_redouble_pas_le_kit(self):
+        """Même sans le court-circuit d'empreinte, le kit ne revient pas : les
+        classes sont désormais présentes."""
+        self._catalogue()
+        devis = self._squelette()
+        self._post(devis, layout(panels=16, kwc=8.8))
+        compte = devis.lignes.count()
+
+        resp = self._post(devis, layout(panels=18, kwc=9.9))
+        self.assertEqual(resp.status_code, 200)
+        self.assertFalse(resp.data['inchange'])
+        self.assertEqual(resp.data['lignes_ajoutees'], 0)
+        self.assertEqual(devis.lignes.count(), compte)
+
+    # ── (d) L'artefact « deux onduleurs » ───────────────────────────────────
+    def test_deux_onduleurs_l_intrus_au_prix_catalogue_est_retire(self):
+        self._catalogue()
+        devis = self._squelette(onduleur='Onduleur hybride Deye 5kW',
+                                prix_onduleur='17000')
+        # L'artefact : un SECOND onduleur, réseau, resté au prix catalogue.
+        devis.lignes.create(
+            produit=self.produits['Onduleur réseau Huawei 5kW'],
+            designation='Onduleur réseau Huawei 5kW',
+            quantite=Decimal('1'), prix_unitaire=Decimal('14000'),
+            remise=Decimal('0'), ordre=3)
+
+        resp = self._post(devis, layout(panels=16, kwc=8.8,
+                                        scenario='avec_batterie'))
+        self.assertEqual(resp.status_code, 200)
+        self.assertFalse(devis.lignes.filter(
+            designation='Onduleur réseau Huawei 5kW').exists())
+        hybride = devis.lignes.get(designation='Onduleur hybride Deye 5kW')
+        self.assertEqual(hybride.prix_unitaire, Decimal('17000.00'))
+        devis.refresh_from_db()
+        self.assertEqual(devis.etude_params['scenario'], 'Avec batterie')
+
+    def test_deux_onduleurs_l_intrus_a_prix_modifie_est_conserve(self):
+        self._catalogue()
+        devis = self._squelette(onduleur='Onduleur hybride Deye 5kW',
+                                prix_onduleur='17000')
+        devis.lignes.create(
+            produit=self.produits['Onduleur réseau Huawei 5kW'],
+            designation='Onduleur réseau Huawei 5kW',
+            quantite=Decimal('1'), prix_unitaire=Decimal('11900'),
+            remise=Decimal('0'), ordre=3)
+
+        resp = self._post(devis, layout(panels=16, kwc=8.8,
+                                        scenario='avec_batterie'))
+        self.assertEqual(resp.status_code, 200)
+        # Rien n'est supprimé en silence : la ligne reste, l'écran est prévenu.
+        reseau = devis.lignes.get(designation='Onduleur réseau Huawei 5kW')
+        self.assertEqual(reseau.prix_unitaire, Decimal('11900.00'))
+        self.assertTrue(any('DEUX onduleurs' in a
+                            for a in resp.data['avertissements']),
+                        resp.data['avertissements'])
+
+    def test_une_remise_protege_l_intrus_de_la_suppression(self):
+        """Prix catalogue MAIS remise posée à la main : c'est négocié aussi."""
+        self._catalogue()
+        devis = self._squelette(onduleur='Onduleur hybride Deye 5kW',
+                                prix_onduleur='17000')
+        devis.lignes.create(
+            produit=self.produits['Onduleur réseau Huawei 5kW'],
+            designation='Onduleur réseau Huawei 5kW',
+            quantite=Decimal('1'), prix_unitaire=Decimal('14000'),
+            remise=Decimal('10'), ordre=3)
+
+        resp = self._post(devis, layout(panels=16, kwc=8.8,
+                                        scenario='avec_batterie'))
+        self.assertEqual(resp.status_code, 200)
+        self.assertTrue(devis.lignes.filter(
+            designation='Onduleur réseau Huawei 5kW').exists())
+        self.assertTrue(any('DEUX onduleurs' in a
+                            for a in resp.data['avertissements']))
+
+    # ── Les devis dont le kit ne se déduit pas d'une composition résidentielle
+    def test_devis_agricole_aucun_kit_de_toiture(self):
+        self._catalogue()
+        devis = self._squelette()
+        Devis.objects.filter(pk=devis.pk).update(
+            mode_installation=Devis.ModeInstallation.AGRICOLE)
+        resp = self._post(devis, layout(panels=16, kwc=8.8))
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.data['lignes_ajoutees'], 0)
+        self.assertFalse(devis.lignes.filter(designation='Socles').exists())
+
+    def test_devis_multi_villa_le_kit_n_est_pas_devine(self):
+        self._catalogue()
+        devis = self._squelette()
+        devis.lignes.create(
+            produit=self.produits['Panneau Jinko 550W'],
+            designation='Panneau Jinko 550W', quantite=Decimal('4'),
+            prix_unitaire=Decimal('1100'), ordre=3, groupe_index=1,
+            groupe_label='Villa B')
+        resp = self._post(devis, layout(panels=20, kwc=11.0))
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.data['lignes_ajoutees'], 0)
+        self.assertTrue(any('chaque villa a le sien' in a
+                            for a in resp.data['avertissements']),
+                        resp.data['avertissements'])

@@ -44,8 +44,8 @@ BASELINE_ALLOWLIST = {
     # kWc du chemin sync (duplication assumee du calcul d'affichage).
     "backend/django_core/apps/ventes/services.py:397",
     "backend/django_core/apps/ventes/services.py:400",
-    "backend/django_core/apps/ventes/services.py:1630",
-    "backend/django_core/apps/ventes/services.py:1758",
+    "backend/django_core/apps/ventes/services.py:1822",
+    "backend/django_core/apps/ventes/services.py:1979",
     "backend/django_core/apps/ventes/quote_engine/builder.py:592",
     "backend/django_core/apps/ventes/quote_engine/builder.py:594",
     "backend/django_core/apps/ventes/quote_engine/builder.py:645",
