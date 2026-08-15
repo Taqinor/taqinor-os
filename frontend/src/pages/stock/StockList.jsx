@@ -16,7 +16,7 @@ import {
   forceDeleteArchivedProduit,
 } from '../../features/stock/store/stockSlice'
 import ProduitForm from './ProduitForm'
-import ProduitDetail from './ProduitDetail'
+import ProduitDetail, { RebutModal, MOTIFS_REBUT } from './ProduitDetail'
 import { CatalogueTable } from './CatalogueTable'
 import PilotageStock from './PilotageStock'
 import BulkProductBar from './BulkProductBar'
@@ -184,6 +184,97 @@ function InventaireModal({ produits, onClose, onDone }) {
 }
 
 // ── N18 — Valorisation du stock par emplacement (coût moyen d'achat, INTERNE) ──
+/* XSTK10 / WIR221 — rapport « Pertes de la période » : quantités et VALEUR au
+   coût moyen, agrégées par produit puis par motif. Admin-only, donnée INTERNE
+   (le coût d'achat ne sort jamais vers un document client). */
+function PertesModal({ onClose }) {
+  const [dateDebut, setDateDebut] = useState('')
+  const [dateFin, setDateFin] = useState('')
+  const [lignes, setLignes] = useState(null)
+  const [error, setError] = useState(null)
+  const [busy, setBusy] = useState(false)
+
+  const motifLabel = (code) => (
+    MOTIFS_REBUT.find((m) => m.value === code)?.label ?? code)
+
+  const lancer = async () => {
+    setBusy(true); setError(null)
+    try {
+      const r = await stockApi.rapportPertes({
+        ...(dateDebut ? { date_debut: dateDebut } : {}),
+        ...(dateFin ? { date_fin: dateFin } : {}),
+      })
+      setLignes(r.data ?? [])
+    } catch (err) {
+      setError(err?.response?.data?.detail ?? 'Rapport indisponible.')
+    } finally { setBusy(false) }
+  }
+
+  return (
+    <Dialog open onOpenChange={(o) => { if (!o) onClose() }}>
+      <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>Pertes de la période</DialogTitle>
+          <DialogDescription>
+            Rebuts agrégés par produit puis par motif, valorisés au coût moyen
+            d&apos;achat. Donnée interne — jamais un document client.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="grid gap-3 sm:grid-cols-2">
+          <div className="flex flex-col gap-1.5">
+            <label className="text-sm font-medium" htmlFor="pertes-debut">Du</label>
+            <Input id="pertes-debut" type="date" className="h-9" value={dateDebut}
+                   onChange={(e) => setDateDebut(e.target.value)} />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <label className="text-sm font-medium" htmlFor="pertes-fin">Au</label>
+            <Input id="pertes-fin" type="date" className="h-9" value={dateFin}
+                   onChange={(e) => setDateFin(e.target.value)} />
+          </div>
+        </div>
+
+        {error && (
+          <div role="alert" className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
+            {error}
+          </div>
+        )}
+        {lignes?.length === 0 && (
+          <p className="text-sm text-muted-foreground">Aucune perte sur la période.</p>
+        )}
+        {lignes?.length > 0 && (
+          <ul className="flex flex-col gap-2">
+            {lignes.map((l) => (
+              <li key={l.produit_id} className="rounded-md border border-border p-2 text-sm">
+                <div className="flex justify-between gap-3 font-medium">
+                  <span>{l.produit_nom}</span>
+                  <span className="tabular-nums">
+                    {l.quantite_totale} u. · {formatMAD(l.valeur_totale)}
+                  </span>
+                </div>
+                <div className="mt-1 flex flex-wrap gap-2 text-xs text-muted-foreground">
+                  {Object.entries(l.par_motif ?? {}).map(([motif, v]) => (
+                    <span key={motif}>
+                      {motifLabel(motif)} : {v.quantite} u. ({formatMAD(v.valeur)})
+                    </span>
+                  ))}
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+
+        <DialogFooter>
+          <Button type="button" variant="ghost" onClick={onClose}>Fermer</Button>
+          <Button type="button" loading={busy} onClick={lancer}>
+            {busy ? '…' : 'Lancer le rapport'}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
 function ValorisationModal({ onClose }) {
   const [data, setData] = useState(null)
   const [error, setError] = useState(null)
@@ -646,6 +737,9 @@ export default function StockList() {
   const [invMsg, setInvMsg] = useState(null)
   const [showTransfert, setShowTransfert] = useState(false)
   const [showValorisation, setShowValorisation] = useState(false)
+  // XSTK10 / WIR221 — mise au rebut + rapport « pertes de la période ».
+  const [showRebut, setShowRebut] = useState(false)
+  const [showPertes, setShowPertes] = useState(false)
   // VX33 — panneau « Pilotage stock » (analytics + auto-BCF) : la tour de
   // contrôle du stock, ouverte PAR DÉFAUT (le bouton reste pour la masquer).
   const [showPilotage, setShowPilotage] = useState(true)
@@ -1038,6 +1132,20 @@ export default function StockList() {
                 <Truck /> Transférer
               </Button>
             )}
+            {/* XSTK10 / WIR221 — casse/vol/péremption : le mouvement existait
+                côté serveur sans aucun écran pour le déclencher. */}
+            {canWrite && (
+              <Button variant="outline" size="sm" onClick={() => setShowRebut(true)}
+                      title="Sortir du stock une quantité perdue (casse, vol, péremption…)">
+                Mettre au rebut
+              </Button>
+            )}
+            {canDelete && (
+              <Button variant="outline" size="sm" onClick={() => setShowPertes(true)}
+                      title="Rapport des pertes de la période, agrégé par motif (interne)">
+                Pertes de la période
+              </Button>
+            )}
             <Button variant="outline" size="sm" onClick={() => setScanOpen(v => !v)}
                     title="Scanner un code QR / code-barres et ouvrir la fiche">
               <ScanLine /> Scanner
@@ -1176,6 +1284,16 @@ export default function StockList() {
 
       {showValorisation && (
         <ValorisationModal onClose={() => setShowValorisation(false)} />
+      )}
+
+      {/* XSTK10 / WIR221 — mise au rebut + rapport des pertes. */}
+      {showRebut && (
+        <RebutModal produits={produits}
+                    onClose={() => setShowRebut(false)}
+                    onDone={() => dispatch(fetchProduits())} />
+      )}
+      {showPertes && (
+        <PertesModal onClose={() => setShowPertes(false)} />
       )}
 
       {archiveNotif && (

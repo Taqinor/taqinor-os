@@ -17,11 +17,13 @@ vi.mock('../../api/stockApi', () => ({
     produitPrevisionnel: vi.fn(),
     // PV8 — badge de complétude datasheet (onglet « Fiche technique »).
     getFichesTechniques: vi.fn(),
+    // XSTK10 / WIR221 — mise au rebut.
+    rebuterProduit: vi.fn(),
   },
 }))
 
 import stockApi from '../../api/stockApi'
-import { ProduitDetail } from './ProduitDetail.jsx'
+import { ProduitDetail, RebutModal } from './ProduitDetail.jsx'
 // APX21 — la lecture de la courbe vit avec les règles de catalogue.
 import { pointsCourbePompe } from '../../features/stock/catalogue'
 
@@ -273,5 +275,51 @@ describe('APX21 — rendu du graphe dans l\'onglet Fiche technique', () => {
     await userEvent.click(screen.getByRole('tab', { name: 'Fiche technique' }))
     await screen.findByTestId('pdet-fiche-technique')
     expect(screen.queryByTestId('pdet-courbe-pompe')).toBeNull()
+  })
+})
+
+// ── XSTK10 / WIR221 — mise au rebut ─────────────────────────────────────────
+describe('WIR221 — mise au rebut d\'un produit', () => {
+  const storeAdmin = configureStore({
+    reducer: { auth: (s = { role: 'admin', role_nom: 'Directeur', permissions: ['stock_modifier'] }) => s },
+  })
+  function wrapperAdmin({ children }) {
+    return (
+      <Provider store={storeAdmin}>
+        <MemoryRouter><ThemeProvider>{children}</ThemeProvider></MemoryRouter>
+      </Provider>
+    )
+  }
+
+  it('refuse d\'envoyer sans motif (garde serveur reprise côté écran)', async () => {
+    render(<RebutModal produit={produit} onClose={() => {}} />, { wrapper: wrapperAdmin })
+    await userEvent.type(screen.getByLabelText('Quantité'), '3')
+    await userEvent.click(screen.getByRole('button', { name: 'Mettre au rebut' }))
+    expect(await screen.findByText('Le motif est obligatoire.')).toBeInTheDocument()
+    expect(stockApi.rebuterProduit).not.toHaveBeenCalled()
+  })
+
+  it('rebuter 3 unités poste quantité + motif et affiche la valeur perdue', async () => {
+    stockApi.rebuterProduit.mockResolvedValue({
+      data: { mouvement_id: 88, valeur_perdue: '1350.00' },
+    })
+    const onDone = vi.fn()
+    render(<RebutModal produit={produit} onClose={() => {}} onDone={onDone} />,
+      { wrapper: wrapperAdmin })
+
+    await userEvent.type(screen.getByLabelText('Quantité'), '3')
+    await userEvent.selectOptions(screen.getByLabelText('Motif (obligatoire)'), 'casse')
+    await userEvent.click(screen.getByRole('button', { name: 'Mettre au rebut' }))
+
+    await waitFor(() => expect(stockApi.rebuterProduit).toHaveBeenCalledWith(
+      7, { quantite: 3, motif: 'casse' }))
+    expect(await screen.findByText(/1350\.00/)).toBeInTheDocument()
+    expect(onDone).toHaveBeenCalled()
+  })
+
+  it('la fiche produit expose l\'action pour un rôle habilité', () => {
+    stockApi.produitPrevisionnel.mockResolvedValue({ data: null })
+    render(<ProduitDetail produit={produit} onClose={() => {}} />, { wrapper: wrapperAdmin })
+    expect(screen.getByRole('button', { name: 'Mettre au rebut' })).toBeInTheDocument()
   })
 })

@@ -22,6 +22,13 @@ const stockApi = {
   simulerBudgetDisponible: (montant, config) =>
     api.get('/stock/budgets-departement/disponible/',
       { params: { montant }, ...config }),
+  // XSTK10 / WIR221 — mise au rebut (casse/obsolète/périmé/vol/défaut/erreur/
+  // autre). Le MOTIF est obligatoire côté serveur ; l'action crée le mouvement
+  // de sortie, décrémente le stock et renvoie la VALEUR perdue au coût moyen.
+  rebuterProduit: (id, data) => api.post(`/stock/produits/${id}/rebuter/`, data),
+  // Rapport « pertes de la période » agrégé par produit puis par motif (admin).
+  rapportPertes: (params) =>
+    api.get('/stock/produits/rapport-pertes/', { params }),
   unarchiveProduit: (id) => api.patch(`/stock/produits/${id}/unarchive/`),
   forceDeleteProduit: (id) => api.delete(`/stock/produits/${id}/force-delete/`),
   // QP2 — clone serveur (nouveau nom, SKU frais, prix d'achat copié côté
