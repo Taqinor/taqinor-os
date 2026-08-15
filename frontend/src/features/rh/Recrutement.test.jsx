@@ -53,6 +53,12 @@ vi.mock('../../api/rhApi', () => {
       createRetourFeedback360: vi.fn(() => Promise.resolve({ data: { id: 1 } })),
       // XRH15 — candidats internes classés par couverture du profil requis.
       getCandidatsInternes: vi.fn(empty),
+      // WIR194 — écriture des dotations EPI (create / restituer / emarger /
+      // emargements) : quatre routes serveur jusqu'ici sans aucun appelant.
+      createDotationEpi: vi.fn(),
+      restituerDotationEpi: vi.fn(),
+      emargerDotationEpi: vi.fn(),
+      getEmargementsDotationEpi: vi.fn(empty),
     },
   }
 })
@@ -156,6 +162,108 @@ describe('Recrutement — ATS (XRH17-23)', () => {
     await waitFor(() => expect(rhApi.createRetourFeedback360).toHaveBeenCalledWith({
       evaluation: 9, repondant: 12, relation: 'pair',
     }))
+  })
+})
+
+/* WIR194 — les dotations EPI étaient 100 % lecture seule : ni remise, ni
+   restitution, ni émargement (la preuve exigible en contrôle CNSS). Les trois
+   écritures sont désormais jouables depuis l'onglet EPI. */
+describe('Recrutement — WIR194 : écriture des dotations EPI', () => {
+  const DOTATION = {
+    id: 77,
+    employe: 3,
+    employe_nom: 'Bennani Youssef',
+    epi: 8,
+    epi_designation: 'Casque de chantier',
+    taille: 'L',
+    date_dotation: '2026-05-04',
+    accuse_remise: false,
+    restituee: false,
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    armerStatistiques()
+    rhApi.getDotationsEpi.mockResolvedValue({ data: [DOTATION] })
+    rhApi.getEpiCatalogue.mockResolvedValue({
+      data: [{ id: 8, designation: 'Casque de chantier', actif: true }],
+    })
+  })
+
+  const ouvrirEpi = async () => {
+    renderRecrutement()
+    await screen.findAllByText('EPI, recrutement & évaluations')
+    await screen.findAllByText('Casque de chantier')
+  }
+
+  it('crée une dotation via rhApi.createDotationEpi (jamais de company au corps)', async () => {
+    rhApi.createDotationEpi.mockResolvedValueOnce({ data: { id: 78 } })
+    await ouvrirEpi()
+
+    fireEvent.click(screen.getAllByRole('button', { name: /Nouvelle dotation/ })[0])
+    expect(await screen.findByRole('dialog')).toBeInTheDocument()
+
+    fireEvent.change(screen.getByLabelText('Employé'), { target: { value: '12' } })
+    fireEvent.change(screen.getByLabelText('EPI (catalogue)'), { target: { value: '8' } })
+    fireEvent.change(screen.getByLabelText('Taille'), { target: { value: 'L' } })
+    fireEvent.click(screen.getAllByRole('button', { name: 'Enregistrer la dotation' })[0])
+
+    await waitFor(() => expect(rhApi.createDotationEpi).toHaveBeenCalledWith(
+      expect.objectContaining({ employe: '12', epi: '8', taille: 'L' }),
+    ))
+    expect(rhApi.createDotationEpi.mock.calls[0][0]).not.toHaveProperty('company')
+  })
+
+  it('émarge la remise (nom obligatoire) via rhApi.emargerDotationEpi', async () => {
+    rhApi.emargerDotationEpi.mockResolvedValueOnce({ data: { accuse_remise: true } })
+    await ouvrirEpi()
+
+    fireEvent.click(screen.getAllByRole('button', { name: 'Émarger' })[0])
+    expect(await screen.findByRole('dialog')).toBeInTheDocument()
+
+    // Nom vide → le bouton reste désactivé : le nom dactylographié fait foi.
+    const valider = screen.getAllByRole('button', { name: 'Émarger' })
+      .find((b) => b.getAttribute('type') === 'submit')
+    expect(valider).toBeDisabled()
+
+    fireEvent.change(screen.getByLabelText('Nom du signataire'), {
+      target: { value: 'Bennani Youssef' },
+    })
+    fireEvent.click(valider)
+
+    await waitFor(() => expect(rhApi.emargerDotationEpi).toHaveBeenCalledWith(77, {
+      signataire_nom: 'Bennani Youssef',
+      role_signataire: 'employe',
+      methode: 'typed',
+      mention: '',
+    }))
+  })
+
+  it('restitue une dotation via rhApi.restituerDotationEpi', async () => {
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
+    rhApi.restituerDotationEpi.mockResolvedValueOnce({ data: { restituee: true } })
+    await ouvrirEpi()
+
+    fireEvent.click(screen.getAllByRole('button', { name: 'Restituer' })[0])
+
+    await waitFor(() => expect(rhApi.restituerDotationEpi).toHaveBeenCalledWith(77))
+  })
+
+  it('affiche l’historique des émargements (preuve CNSS)', async () => {
+    rhApi.getEmargementsDotationEpi.mockResolvedValueOnce({
+      data: [{
+        id: 1, signataire_nom: 'Bennani Youssef',
+        role_signataire: 'employe', role_signataire_display: 'Employé',
+        date_signature: '2026-05-04',
+      }],
+    })
+    await ouvrirEpi()
+
+    fireEvent.click(screen.getAllByRole('button', { name: 'Historique' })[0])
+    await waitFor(() => expect(rhApi.getEmargementsDotationEpi).toHaveBeenCalledWith(77))
+    expect(
+      (await screen.findAllByText(/Émargements — Casque de chantier/)).length,
+    ).toBeGreaterThan(0)
   })
 })
 

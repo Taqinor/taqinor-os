@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import {
   UserPlus, Ban, ScanText, Star, BarChart3, FileSignature, CalendarClock, Users,
+  ShieldCheck, PenLine, Undo2, History,
 } from 'lucide-react'
 import { ListShell } from '../../ui/module'
 import {
@@ -23,6 +24,15 @@ import {
    vivier (talent pool), statistiques recrutement (XRH22), gabarits d'email
    (XRH19) & modèles d'évaluation (ZRH7). Toutes les transitions passent par les
    @actions serveur ; la société est toujours posée côté serveur.
+
+   WIR194 — les dotations EPI n'étaient QUE lues : ni remise, ni restitution,
+   ni émargement, alors que les quatre routes serveur existent
+   (`/rh/dotations-epi/` POST, `.../restituer/`, `.../emarger/`,
+   `.../emargements/`). L'onglet EPI porte désormais « Nouvelle dotation » et
+   trois actions de ligne (Restituer, Émarger, Historique) : l'émargement est
+   la PREUVE de remise exigible en contrôle CNSS / accident du travail, il ne
+   pouvait pas rester injouable. Aucun bloc d'échéances ici — il vit déjà au
+   Cockpit RH, le dupliquer serait un second endroit à maintenir.
 
    WIR131 — l'action « Feedback 360° » (par ligne d'évaluation) invite des
    répondants (`createRetourFeedback360`) et affiche la synthèse agrégée
@@ -48,6 +58,8 @@ export default function Recrutement() {
 
   const [epiCat, setEpiCat] = useState([])
   const [dotations, setDotations] = useState([])
+  // WIR194 — employés du référentiel : cible d'une nouvelle dotation EPI.
+  const [employes, setEmployes] = useState([])
   const [postes, setPostes] = useState([])
   const [candidatures, setCandidatures] = useState([])
   const [vivier, setVivier] = useState([])
@@ -71,6 +83,10 @@ export default function Recrutement() {
   const [modeleOpen, setModeleOpen] = useState(false)
   // WIR131 — invitations feedback 360° d'une évaluation.
   const [feedbackFor, setFeedbackFor] = useState(null)
+  // WIR194 — écriture des dotations EPI.
+  const [dotationOpen, setDotationOpen] = useState(false)
+  const [emargerFor, setEmargerFor] = useState(null)
+  const [emargementsFor, setEmargementsFor] = useState(null)
 
   const recharger = () => {
     let vivant = true
@@ -88,11 +104,14 @@ export default function Recrutement() {
       rhApi.getCampagnesEvaluation(),
       rhApi.getEvaluationsEmploye(),
       rhApi.getSanctions(),
+      // WIR194 — référentiel employés (cible d'une dotation EPI).
+      rhApi.getEmployes(),
     ])
-      .then(([ec, dt, op, ca, vv, st, gb, me, cp, ev, sa]) => {
+      .then(([ec, dt, op, ca, vv, st, gb, me, cp, ev, sa, em]) => {
         if (!vivant) return
         setEpiCat(unwrap(ec.data))
         setDotations(unwrap(dt.data))
+        setEmployes(unwrap(em?.data))
         setPostes(unwrap(op.data))
         setCandidatures(unwrap(ca.data))
         setVivier(unwrap(vv.data))
@@ -129,6 +148,26 @@ export default function Recrutement() {
       recharger()
     } catch (err) {
       toast.error(err?.response?.data?.detail ?? 'Embauche impossible (matricule/contrat requis).')
+    }
+  }
+
+  // WIR194 — restitution d'une dotation EPI (YHIRE13). Le serveur refuse une
+  // dotation déjà restituée avec un 400 { detail } : on l'affiche TEL QUEL,
+  // jamais reformulé.
+  const restituerDotation = async (d) => {
+    const ok = await confirm({
+      title: 'Restituer cet EPI ?',
+      description: 'La dotation sera marquée restituée ; le stock est réintégré si l’EPI est lié à un produit.',
+      confirmLabel: 'Restituer',
+      destructive: false,
+    })
+    if (!ok) return
+    try {
+      await rhApi.restituerDotationEpi(d.id)
+      toast.success('EPI restitué.')
+      recharger()
+    } catch (err) {
+      toast.error(err?.response?.data?.detail ?? 'Restitution impossible.')
     }
   }
 
@@ -222,7 +261,22 @@ export default function Recrutement() {
     { id: 'taille', header: 'Taille', width: 90, accessor: (d) => d.taille || '', cell: (v) => v || '—' },
     { id: 'dotation', header: 'Remis le', width: 120, searchable: false, accessor: (d) => d.date_dotation || '', cell: (v) => formatDate(v) },
     { id: 'etat', header: 'État', width: 120, accessor: (d) => (d.perime ? 'perime' : d.a_controler ? 'controle' : 'ok'), cell: (_v, d) => (d.perime ? <Badge tone="danger">Périmé</Badge> : d.a_controler ? <Badge tone="warning">À contrôler</Badge> : <Badge tone="success">OK</Badge>) },
+    // WIR194 — l'accusé de remise (FG180) est la preuve exigible en contrôle :
+    // il doit être VISIBLE sur la ligne, pas seulement stocké.
+    { id: 'accuse', header: 'Accusé', width: 110, accessor: (d) => (d.accuse_remise ? 'oui' : 'non'), cell: (_v, d) => (d.accuse_remise ? <Badge tone="success">Émargé</Badge> : <Badge tone="warning">Non émargé</Badge>) },
+    { id: 'restituee', header: 'Restituée', width: 110, accessor: (d) => (d.restituee ? 'oui' : 'non'), cell: (_v, d) => (d.restituee ? <Badge tone="neutral">Restituée</Badge> : <Badge tone="info">En service</Badge>) },
   ], [])
+
+  // WIR194 — actions de ligne d'une dotation EPI. « Restituer » disparaît une
+  // fois la dotation restituée (le serveur répondrait 400) ; « Émarger » et
+  // « Historique » restent toujours disponibles (ré-émargement possible).
+  const dotationActions = (d) => [
+    ...(d.restituee
+      ? []
+      : [{ id: 'restituer', label: 'Restituer', icon: Undo2, onClick: () => restituerDotation(d) }]),
+    { id: 'emarger', label: 'Émarger', icon: PenLine, onClick: () => setEmargerFor(d) },
+    { id: 'emargements', label: 'Historique', icon: History, onClick: () => setEmargementsFor(d) },
+  ]
 
   const posteColumns = useMemo(() => [
     { id: 'intitule', header: 'Intitulé', width: 220, accessor: (p) => p.intitule || '', cell: (v) => <span className="font-medium">{v || '—'}</span> },
@@ -325,7 +379,9 @@ export default function Recrutement() {
           <ListShell title="Catalogue EPI" columns={epiColumns} rows={epiCat} loading={loading} error={error}
             searchable exportName="epi-catalogue" emptyTitle="Aucun EPI" emptyDescription="Catalogue EPI vide." />
           <ListShell title="Dotations EPI" columns={dotationColumns} rows={dotations} loading={loading} error={error}
-            searchable exportName="dotations-epi" emptyTitle="Aucune dotation" emptyDescription="Aucune dotation enregistrée." />
+            searchable rowActions={dotationActions} exportName="dotations-epi"
+            actions={<Button onClick={() => setDotationOpen(true)}><ShieldCheck size={15} strokeWidth={1.75} aria-hidden="true" />Nouvelle dotation</Button>}
+            emptyTitle="Aucune dotation" emptyDescription="Aucune dotation enregistrée." />
         </div>
       )}
       {vue === 'recrutement' && (
@@ -424,7 +480,256 @@ export default function Recrutement() {
           onClose={() => setFeedbackFor(null)}
         />
       )}
+      {dotationOpen && (
+        <DotationEpiDialog
+          employes={employes}
+          catalogue={epiCat}
+          onClose={() => setDotationOpen(false)}
+          onSaved={() => { setDotationOpen(false); recharger() }}
+        />
+      )}
+      {emargerFor && (
+        <EmargerDotationDialog
+          dotation={emargerFor}
+          onClose={() => setEmargerFor(null)}
+          onSaved={() => { setEmargerFor(null); recharger() }}
+        />
+      )}
+      {emargementsFor && (
+        <EmargementsDialog
+          dotation={emargementsFor}
+          onClose={() => setEmargementsFor(null)}
+        />
+      )}
     </div>
+  )
+}
+
+/* ── WIR194 (FG178) — Remettre un EPI à un employé (nouvelle dotation) ────────
+   `company` n'est JAMAIS envoyée : le serveur la pose dans `perform_create`.
+   Les échéances dérivées (péremption, prochain contrôle) sont calculées côté
+   serveur à partir du catalogue — le formulaire ne les propose pas. */
+function DotationEpiDialog({ employes, catalogue, onClose, onSaved }) {
+  const [employe, setEmploye] = useState('')
+  const [epi, setEpi] = useState('')
+  const [taille, setTaille] = useState('')
+  const [dateDotation, setDateDotation] = useState('')
+  const [quantite, setQuantite] = useState('1')
+  const [saving, setSaving] = useState(false)
+  const [serverError, setServerError] = useState(null)
+
+  const dirty = Boolean(employe || epi || taille || dateDotation)
+  const closeIfConfirmed = () => { if (confirmLeaveIfDirty(dirty)) onClose?.() }
+  const valide = Boolean(employe && epi)
+
+  const submit = async (e) => {
+    e.preventDefault()
+    if (!valide) return
+    setSaving(true)
+    setServerError(null)
+    try {
+      await rhApi.createDotationEpi({
+        employe,
+        epi,
+        taille: taille || '',
+        date_dotation: dateDotation || undefined,
+        quantite: Number(quantite) || 1,
+      })
+      toast.success('Dotation EPI enregistrée.')
+      onSaved?.()
+    } catch (err) {
+      const data = err?.response?.data
+      setServerError(data?.detail || data?.employe || data?.epi
+        || 'Création de la dotation impossible.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <Dialog open onOpenChange={(o) => { if (!o) closeIfConfirmed() }}>
+      <DialogContent className="max-w-lg">
+        <DialogHeader>
+          <DialogTitle>Nouvelle dotation EPI</DialogTitle>
+        </DialogHeader>
+        <form onSubmit={submit} className="flex flex-col gap-4" noValidate>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="do-employe">Employé</Label>
+            <select id="do-employe" value={employe} onChange={(e) => setEmploye(e.target.value)}
+              className="h-9 rounded-md border border-border bg-card px-3 text-sm">
+              <option value="">— Choisir —</option>
+              {employes.map((em) => (
+                <option key={em.id} value={em.id}>{em.nom} {em.prenom}</option>
+              ))}
+            </select>
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="do-epi">EPI (catalogue)</Label>
+            <select id="do-epi" value={epi} onChange={(e) => setEpi(e.target.value)}
+              className="h-9 rounded-md border border-border bg-card px-3 text-sm">
+              <option value="">— Choisir —</option>
+              {catalogue.map((c) => (
+                <option key={c.id} value={c.id}>{c.designation}</option>
+              ))}
+            </select>
+          </div>
+          <div className="grid grid-cols-3 gap-3">
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="do-taille">Taille</Label>
+              <Input id="do-taille" value={taille} onChange={(e) => setTaille(e.target.value)} placeholder="Ex. 42, L" />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="do-date">Remis le</Label>
+              <Input id="do-date" type="date" value={dateDotation} onChange={(e) => setDateDotation(e.target.value)} />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="do-qte">Quantité</Label>
+              <Input id="do-qte" type="number" step="any" value={quantite} onChange={(e) => setQuantite(e.target.value)} />
+            </div>
+          </div>
+          {serverError && <p className="text-sm text-destructive" role="alert">{serverError}</p>}
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={closeIfConfirmed}>Annuler</Button>
+            <Button type="submit" disabled={!valide || saving}>
+              {saving ? 'Enregistrement…' : 'Enregistrer la dotation'}
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+/* ── WIR194 (FG180) — Émarger la remise : accusé de réception signé ───────────
+   Le nom dactylographié fait foi (loi 53-05) et est OBLIGATOIRE côté client
+   comme côté serveur. L'utilisateur agissant, la société, l'IP et le user
+   agent sont posés par le serveur — jamais envoyés d'ici. */
+const ROLES_EMARGEMENT = [
+  { value: 'employe', label: 'Employé (bénéficiaire)' },
+  { value: 'remettant', label: 'Remettant' },
+  { value: 'temoin', label: 'Témoin' },
+]
+
+function EmargerDotationDialog({ dotation, onClose, onSaved }) {
+  const [nom, setNom] = useState('')
+  const [role, setRole] = useState('employe')
+  const [mention, setMention] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [serverError, setServerError] = useState(null)
+
+  const dirty = Boolean(nom || mention)
+  const closeIfConfirmed = () => { if (confirmLeaveIfDirty(dirty)) onClose?.() }
+  const valide = Boolean(nom.trim())
+
+  const submit = async (e) => {
+    e.preventDefault()
+    if (!valide) return
+    setSaving(true)
+    setServerError(null)
+    try {
+      await rhApi.emargerDotationEpi(dotation.id, {
+        signataire_nom: nom.trim(),
+        role_signataire: role,
+        methode: 'typed',
+        mention: mention || '',
+      })
+      toast.success('Émargement enregistré — remise accusée.')
+      onSaved?.()
+    } catch (err) {
+      const data = err?.response?.data
+      setServerError(data?.detail || data?.signataire_nom
+        || 'Émargement impossible.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <Dialog open onOpenChange={(o) => { if (!o) closeIfConfirmed() }}>
+      <DialogContent className="max-w-lg">
+        <DialogHeader>
+          <DialogTitle>
+            Émarger la remise — {dotation.epi_designation || `Dotation #${dotation.id}`}
+          </DialogTitle>
+        </DialogHeader>
+        <form onSubmit={submit} className="flex flex-col gap-4" noValidate>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="em-nom">Nom du signataire</Label>
+            <Input id="em-nom" autoFocus value={nom} onChange={(e) => setNom(e.target.value)}
+              placeholder="Nom dactylographié — fait foi (loi 53-05)" />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="em-role">Rôle du signataire</Label>
+            <select id="em-role" value={role} onChange={(e) => setRole(e.target.value)}
+              className="h-9 rounded-md border border-border bg-card px-3 text-sm">
+              {ROLES_EMARGEMENT.map((r) => (
+                <option key={r.value} value={r.value}>{r.label}</option>
+              ))}
+            </select>
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="em-mention">Mention (optionnelle)</Label>
+            <Input id="em-mention" value={mention} onChange={(e) => setMention(e.target.value)}
+              placeholder="Ex. Reçu en bon état" />
+          </div>
+          {serverError && <p className="text-sm text-destructive" role="alert">{serverError}</p>}
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={closeIfConfirmed}>Annuler</Button>
+            <Button type="submit" disabled={!valide || saving}>
+              {saving ? 'Enregistrement…' : 'Émarger'}
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+/* ── WIR194 (FG180) — Historique des émargements d'une dotation (lecture) ── */
+function EmargementsDialog({ dotation, onClose }) {
+  const [rows, setRows] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(null)
+
+  useEffect(() => {
+    let vivant = true
+    rhApi.getEmargementsDotationEpi(dotation.id)
+      .then((res) => { if (vivant) setRows(unwrap(res.data)) })
+      .catch(() => { if (vivant) setError('Historique indisponible.') })
+      .finally(() => { if (vivant) setLoading(false) })
+    return () => { vivant = false }
+  }, [dotation.id])
+
+  return (
+    <Dialog open onOpenChange={(o) => { if (!o) onClose?.() }}>
+      <DialogContent className="max-w-lg">
+        <DialogHeader>
+          <DialogTitle>Émargements — {dotation.epi_designation || `Dotation #${dotation.id}`}</DialogTitle>
+        </DialogHeader>
+        {loading && <p className="text-sm text-muted-foreground">Chargement…</p>}
+        {error && <p className="text-sm text-destructive">{error}</p>}
+        {!loading && !error && (
+          rows.length === 0
+            ? <p className="text-sm text-muted-foreground">Aucun émargement enregistré pour cette dotation.</p>
+            : (
+              <ul className="flex flex-col gap-2">
+                {rows.map((r) => (
+                  <li key={r.id} className="flex items-center justify-between rounded-lg border border-border bg-card px-3 py-2 text-sm">
+                    <span className="font-medium">{r.signataire_nom}</span>
+                    <span className="flex items-center gap-2 text-xs text-muted-foreground">
+                      {r.role_signataire_display || r.role_signataire}
+                      <Badge tone="info">{formatDate(r.date_signature)}</Badge>
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )
+        )}
+        <DialogFooter>
+          <Button type="button" variant="outline" onClick={onClose}>Fermer</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   )
 }
 

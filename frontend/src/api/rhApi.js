@@ -242,6 +242,17 @@ const rhApi = {
   // ── UX26 — EPI, recrutement & évaluations ──
   getEpiCatalogue: (params) => api.get('/rh/epi-catalogue/', { params }),
   getDotationsEpi: (params) => api.get('/rh/dotations-epi/', { params }),
+  // WIR194 — écriture des dotations EPI : la remise (create), la restitution
+  // (YHIRE13, réintègre le stock), l'émargement signé (FG180, preuve CNSS) et
+  // l'historique des émargements. `company`, l'utilisateur agissant et les
+  // preuves (IP, user agent) sont TOUJOURS posés côté serveur.
+  createDotationEpi: (data) => api.post('/rh/dotations-epi/', data),
+  restituerDotationEpi: (id) =>
+    api.post(`/rh/dotations-epi/${id}/restituer/`, {}),
+  emargerDotationEpi: (id, data) =>
+    api.post(`/rh/dotations-epi/${id}/emarger/`, data ?? {}),
+  getEmargementsDotationEpi: (id) =>
+    api.get(`/rh/dotations-epi/${id}/emargements/`),
   getOuverturesPoste: (params) => api.get('/rh/ouvertures-poste/', { params }),
   createOuverturePoste: (data) => api.post('/rh/ouvertures-poste/', data),
   getCandidatures: (params) => api.get('/rh/candidatures/', { params }),
