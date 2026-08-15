@@ -6,6 +6,7 @@ société côté serveur ; la non-conformité enregistre aussi son signaleur
 """
 from drf_spectacular.utils import extend_schema
 
+from django.contrib.auth import get_user_model
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from rest_framework import filters, status, viewsets
@@ -18,7 +19,9 @@ from rest_framework.throttling import SimpleRateThrottle
 
 from authentication.mixins import TenantMixin
 from authentication.permissions import HasPermissionOrLegacy
-from core.permissions import ScopedPermission, WriteScopedPermissionMixin
+from core.permissions import (
+    ScopedPermission, WriteScopedPermissionMixin, _user_has_or_legacy,
+)
 
 from apps.ventes.utils.references import create_with_reference
 
@@ -50,6 +53,8 @@ from .models import (
     AuditCertification, AuditPlanifie, CampagneRappel, Certification,
     ClauseNorme, DecisionReunion, ElementRappel, ObjectifQhse,
     ProgrammeAudit, ReunionQhse, RevueObjectif,
+    # WIR277 — contexte SMQ ISO 4 + diffusion des procédures.
+    ContexteOrganisation, DiffusionProcedure, PartieInteressee,
 )
 from .serializers import (
     # WIR275 — registres ISO.
@@ -58,6 +63,9 @@ from .serializers import (
     DecisionReunionSerializer, ElementRappelSerializer,
     ObjectifQhseSerializer, ProgrammeAuditSerializer, ReunionQhseSerializer,
     RevueObjectifSerializer,
+    # WIR277 — contexte SMQ + diffusion.
+    ContexteOrganisationSerializer, DiffusionProcedureSerializer,
+    PartieInteresseeSerializer,
     AccuseLectureSerializer,
     ActionCorrectivePreventiveSerializer, AnalyseIncidentSerializer,
     AnalyseNcrSerializer,
@@ -955,6 +963,110 @@ class ProcedureQualiteViewSet(_QhseBaseViewSet):
         qs = lectures_en_attente(request.user).filter(
             company=request.user.company)
         return Response(AccuseLectureSerializer(qs, many=True).data)
+
+    # ── WIR277 (XQHS15) — diffusion d'une version + accusés de lecture ──
+    # `diffuser_procedure` existait sans aucun appelant : une procédure
+    # pouvait être « en vigueur » sans qu'aucun destinataire n'en soit
+    # informé, et « mes lectures en attente » restait vide pour toujours.
+
+    @extend_schema(responses=DiffusionProcedureSerializer)
+    @action(detail=True, methods=['post'])
+    def diffuser(self, request, pk=None):
+        """Diffuse CETTE version à une population d'utilisateurs.
+
+        Corps : ``{"user_ids": [1, 2, 3]}``. La population est VALIDÉE
+        SERVEUR : seuls des utilisateurs de la MÊME société sont retenus (un
+        id étranger est ignoré, jamais diffusé). Un accusé de lecture par
+        destinataire (contrainte unique — jamais de doublon).
+        """
+        from .services import diffuser_procedure
+
+        procedure = self.get_object()
+        ids = request.data.get('user_ids') or []
+        if not isinstance(ids, (list, tuple)) or not ids:
+            return Response(
+                {'detail': 'user_ids (liste non vide) est requis.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        users = list(
+            get_user_model().objects.filter(
+                id__in=ids, company=request.user.company))
+        if not users:
+            return Response(
+                {'detail': 'Aucun destinataire valide dans cette société.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        diffusion = diffuser_procedure(procedure, users)
+        return Response(
+            DiffusionProcedureSerializer(diffusion).data,
+            status=status.HTTP_201_CREATED)
+
+
+class DiffusionProcedureViewSet(
+        WriteScopedPermissionMixin, TenantMixin, viewsets.ReadOnlyModelViewSet):
+    """WIR277 (XQHS15) — diffusions de procédure, en LECTURE SEULE.
+
+    Une diffusion se crée UNIQUEMENT par ``procedures/<id>/diffuser/`` (qui
+    matérialise un accusé par destinataire) ; ``ajouter-lecteurs/`` élargit
+    une diffusion existante (idempotent) et ``marquer-lu/`` n'accuse la
+    lecture QUE pour l'utilisateur COURANT — jamais pour un tiers.
+    """
+    read_permission = 'qhse_voir'
+    write_permission = 'qhse_gerer'
+    queryset = DiffusionProcedure.objects.select_related('procedure').all()
+    serializer_class = DiffusionProcedureSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['id', 'date_diffusion']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        procedure = self.request.query_params.get('procedure')
+        if procedure not in (None, ''):
+            qs = qs.filter(procedure_id=procedure)
+        return qs
+
+    @action(detail=True, methods=['get'], url_path='accuses')
+    def accuses(self, request, pk=None):
+        """Accusés de lecture de cette diffusion (qui a lu, qui n'a pas)."""
+        diffusion = self.get_object()
+        return Response(AccuseLectureSerializer(
+            diffusion.accuses_lecture.select_related('user').all(),
+            many=True).data)
+
+    @action(detail=True, methods=['post'], url_path='ajouter-lecteurs')
+    def ajouter_lecteurs(self, request, pk=None):
+        """Élargit la population de CETTE diffusion (idempotent)."""
+        from .services import ajouter_lecteurs_diffusion
+
+        diffusion = self.get_object()
+        ids = request.data.get('user_ids') or []
+        if not isinstance(ids, (list, tuple)) or not ids:
+            return Response(
+                {'detail': 'user_ids (liste non vide) est requis.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        users = list(
+            get_user_model().objects.filter(
+                id__in=ids, company=request.user.company))
+        ajoutes = ajouter_lecteurs_diffusion(diffusion, users)
+        diffusion.refresh_from_db()
+        return Response({
+            'ajoutes': len(ajoutes),
+            'diffusion': DiffusionProcedureSerializer(diffusion).data,
+        })
+
+    @action(detail=True, methods=['post'], url_path='marquer-lu',
+            permission_classes=[ScopedPermission])
+    def marquer_lu(self, request, pk=None):
+        """Accuse la lecture pour l'utilisateur COURANT — et lui seul.
+
+        Un accusé de lecture est une SIGNATURE : personne ne peut la poser à
+        la place d'un tiers, même un administrateur. Aucun ``user`` n'est donc
+        lu du corps de la requête. ``lu_le`` est daté serveur, et la première
+        lecture fait foi (idempotent).
+        """
+        from .services import accuser_lecture
+
+        diffusion = self.get_object()
+        accuse = accuser_lecture(diffusion, request.user)
+        return Response(AccuseLectureSerializer(accuse).data)
 
 
 class RetourClientQualiteViewSet(_QhseBaseViewSet):
@@ -3498,3 +3610,66 @@ class RevueObjectifViewSet(_QhseBaseViewSet):
         if objectif not in (None, ''):
             qs = qs.filter(objectif_id=objectif)
         return qs
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# WIR277 — Contexte SMQ ISO 4.1/4.2
+# ══════════════════════════════════════════════════════════════════════════
+
+
+class PartieInteresseeViewSet(_QhseBaseViewSet):
+    """XQHS14 / WIR277 — parties intéressées pertinentes (ISO 4.2).
+
+    Filtre ``?pertinence=forte|moyenne|faible`` : la revue de direction ne
+    regarde en pratique que les parties FORTES, mais rien n'est masqué par
+    défaut (le filtre est explicite, jamais implicite).
+    """
+    queryset = PartieInteressee.objects.all()
+    serializer_class = PartieInteresseeSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['partie', 'attentes']
+    ordering_fields = ['id', 'partie', 'date_creation']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        pertinence = self.request.query_params.get('pertinence')
+        if pertinence:
+            qs = qs.filter(pertinence=pertinence)
+        return qs
+
+
+@extend_schema(request=ContexteOrganisationSerializer,
+               responses=ContexteOrganisationSerializer)
+@api_view(['GET', 'PUT'])
+def contexte_organisation(request):
+    """XQHS14 / WIR277 — contexte de l'organisation (ISO 4.1), SINGLETON.
+
+    Il n'y a QU'UN contexte par société (``OneToOneField``) : exposer un CRUD
+    par id inviterait à en créer un second, puis à se demander lequel fait foi.
+    La surface est donc volontairement réduite à ``GET`` (crée l'enregistrement
+    vide au premier appel) et ``PUT`` (enregistre SWOT + périmètre du SMQ).
+
+    ``company`` n'est JAMAIS lue du corps : elle vient de l'utilisateur, donc
+    une société ne peut pas lire ni écrire le contexte d'une autre.
+    """
+    contexte, _ = ContexteOrganisation.objects.get_or_create(
+        company=request.user.company)
+    if request.method == 'GET':
+        if not _user_has_or_legacy(request.user, 'qhse_voir'):
+            return Response(
+                {'detail': "Vous n'avez pas la permission d'effectuer cette "
+                           'action.'},
+                status=status.HTTP_403_FORBIDDEN)
+        return Response(ContexteOrganisationSerializer(contexte).data)
+
+    if not _user_has_or_legacy(request.user, 'qhse_gerer'):
+        return Response(
+            {'detail': "Vous n'avez pas la permission d'effectuer cette "
+                       'action.'},
+            status=status.HTTP_403_FORBIDDEN)
+    serializer = ContexteOrganisationSerializer(
+        contexte, data=request.data, partial=True)
+    serializer.is_valid(raise_exception=True)
+    # `company` n'est pas dans `fields` : impossible de l'injecter par le corps.
+    serializer.save()
+    return Response(serializer.data)

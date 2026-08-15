@@ -37,6 +37,8 @@ from .models import (
     AuditCertification, AuditPlanifie, CampagneRappel, Certification,
     ClauseNorme, DecisionReunion, ElementRappel, ObjectifQhse,
     ProgrammeAudit, ReunionQhse, RevueObjectif,
+    # WIR277 — contexte SMQ ISO 4 + diffusion des procédures.
+    ContexteOrganisation, DiffusionProcedure, PartieInteressee,
 )
 
 
@@ -1844,3 +1846,66 @@ class ObjectifQhseSerializer(serializers.ModelSerializer):
 
     def validate_indicateur_esg(self, value):
         return _meme_societe(self, value, 'Indicateur ESG')
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# WIR277 — Contexte SMQ ISO 4.1/4.2 + diffusion des procédures qualité
+# ══════════════════════════════════════════════════════════════════════════
+
+
+class PartieInteresseeSerializer(serializers.ModelSerializer):
+    """Partie intéressée pertinente pour le SMQ (ISO 4.2)."""
+    pertinence_display = serializers.CharField(
+        source='get_pertinence_display', read_only=True)
+
+    class Meta:
+        model = PartieInteressee
+        fields = [
+            'id', 'partie', 'attentes', 'pertinence', 'pertinence_display',
+            'date_creation',
+        ]
+        read_only_fields = ['date_creation']
+
+
+class ContexteOrganisationSerializer(serializers.ModelSerializer):
+    """Contexte / enjeux de l'organisation (ISO 4.1) — UN par société.
+
+    C'est un SINGLETON : `company` est un OneToOne posé côté serveur, jamais
+    accepté du corps (sinon une société pourrait écrire le contexte d'une
+    autre)."""
+
+    class Meta:
+        model = ContexteOrganisation
+        fields = ['id', 'swot', 'perimetre_smq', 'date_modification']
+        read_only_fields = ['id', 'date_modification']
+
+
+class DiffusionProcedureSerializer(serializers.ModelSerializer):
+    """Diffusion d'une version de procédure — LECTURE SEULE.
+
+    Une diffusion ne se crée QUE par l'action `procedures/<id>/diffuser/`
+    (qui matérialise un accusé par destinataire) : un POST direct laisserait
+    une diffusion sans aucun accusé, donc sans traçabilité."""
+    procedure_reference = serializers.CharField(
+        source='procedure.reference', read_only=True)
+    procedure_titre = serializers.CharField(
+        source='procedure.titre', read_only=True)
+    procedure_version = serializers.IntegerField(
+        source='procedure.version', read_only=True)
+    nb_destinataires = serializers.SerializerMethodField()
+    nb_lus = serializers.SerializerMethodField()
+
+    class Meta:
+        model = DiffusionProcedure
+        fields = [
+            'id', 'procedure', 'procedure_reference', 'procedure_titre',
+            'procedure_version', 'population_cible', 'nb_destinataires',
+            'nb_lus', 'date_diffusion',
+        ]
+        read_only_fields = fields
+
+    def get_nb_destinataires(self, obj):
+        return obj.accuses_lecture.count()
+
+    def get_nb_lus(self, obj):
+        return obj.accuses_lecture.filter(lu_le__isnull=False).count()

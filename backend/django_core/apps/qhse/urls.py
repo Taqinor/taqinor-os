@@ -45,6 +45,8 @@ from .views import (
     CertificationViewSet, ClauseNormeViewSet, DecisionReunionViewSet,
     ElementRappelViewSet, ObjectifQhseViewSet, ProgrammeAuditViewSet,
     ReunionQhseViewSet, RevueObjectifViewSet,
+    # WIR277 — contexte SMQ ISO 4 + diffusion des procédures.
+    contexte_organisation, DiffusionProcedureViewSet, PartieInteresseeViewSet,
 )
 
 router = DefaultRouter()
@@ -132,8 +134,18 @@ router.register(r'reunions', ReunionQhseViewSet)
 router.register(r'decisions-reunion', DecisionReunionViewSet)
 router.register(r'objectifs', ObjectifQhseViewSet)
 router.register(r'revues-objectif', RevueObjectifViewSet)
+# WIR277 — contexte SMQ ISO 4.2 (parties intéressées) + diffusions de
+# procédure en LECTURE SEULE (une diffusion se crée par
+# `procedures/<id>/diffuser/`, jamais par un POST direct).
+router.register(r'parties-interessees', PartieInteresseeViewSet)
+router.register(r'diffusions-procedure', DiffusionProcedureViewSet)
 
 urlpatterns = [
+    # WIR277 — contexte de l'organisation (ISO 4.1) : SINGLETON par société,
+    # GET (crée l'enregistrement vide au premier appel) / PUT. Déclaré AVANT
+    # le router pour rester un chemin sans identifiant.
+    path('contexte-organisation/', contexte_organisation,
+         name='qhse-contexte-organisation'),
     path('', include(router.urls)),
     # XQHS16 — endpoint PUBLIC tokenisé (sans login), en dehors du router
     # authentifié. Le préfixe `public/` ne doit jamais être capté par une
