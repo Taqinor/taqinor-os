@@ -192,6 +192,29 @@ ALL_PERMISSIONS = [
     'litige_gerer',
     'kb_voir',
     'kb_gerer',
+    # ── WIR169 — BTP/chantier (apps/btp_chantier) & assurances
+    # (apps/assurances). Les ViewSets de ces DEUX apps déclarent déjà
+    # ``read_permission``/``write_permission`` (``btp_voir``/``btp_gerer``,
+    # ``assurances_voir``/``assurances_gerer``) et sont gardés par
+    # ``core.permissions.ScopedPermission`` — mais AUCUN de ces quatre codes
+    # n'existait dans ce catalogue. Conséquence mesurée : tout compte portant
+    # un Role fin (Directeur INCLUS, qui hérite d'ALL_PERMISSIONS) recevait
+    # 403 sur les 7 routes BTP et sur les assurances ; seuls les comptes
+    # LÉGACY sans rôle fin (repli ``_user_has_or_legacy``) et les superusers
+    # passaient. Ajout PUREMENT additif — aucune permission n'est retirée.
+    'btp_voir',
+    'btp_gerer',
+    'assurances_voir',
+    'assurances_gerer',
+    # WIR169 (suite) — la garde GÉNÉRIQUE ajoutée par cette tâche
+    # (``apps/roles/tests_wir169_catalogue_complet.py``) a révélé DEUX autres
+    # codes de la même classe : ``transport_responsable``
+    # (``apps.transport.views.ParametresTransportViewSet``, NTLOG35) et
+    # ``douane_responsable`` (``apps.douane.permissions``). Tous deux gardent
+    # l'ÉCRITURE de réglages réels sans exister au catalogue — mêmes 403 pour
+    # tout porteur de rôle fin. Enregistrement additif, aucun retrait.
+    'transport_responsable',
+    'douane_responsable',
     # ── AOF2 — Appels d'offres (apps/ao) : correction d'une régression de
     # confidentialité EXISTANTE. Les 8 ViewSets AO héritaient d'une base gardée
     # par le grossier ``IsResponsableOrAdmin`` : tout le palier Responsable
@@ -363,6 +386,12 @@ RESPONSABLE_PERMISSIONS = [
     'contrat_voir', 'contrat_gerer',
     'litige_voir', 'litige_gerer',
     'kb_voir', 'kb_gerer',
+    # WIR169 — comportement historique préservé : un compte Responsable SANS
+    # rôle fin passait déjà le repli ``_user_has_or_legacy`` sur les routes
+    # BTP et assurances (lecture ET écriture). Le rôle fin le porte donc aussi.
+    'btp_voir', 'btp_gerer',
+    'assurances_voir', 'assurances_gerer',
+    'transport_responsable', 'douane_responsable',
     # ENG — accès complet au moteur de publicités (y compris approbation).
     'adsengine_view', 'adsengine_manage', 'adsengine_approve',
     # VAO12 — veille AO : lecture ET réglage (mots-clés, sources, règles).
@@ -442,6 +471,10 @@ COMMERCIAL_RESP_PERMISSIONS = [
     'contrat_voir', 'contrat_gerer',
     'litige_voir', 'litige_gerer',
     'kb_voir', 'kb_gerer',
+    # WIR169 — même préservation historique (palier responsable).
+    'btp_voir', 'btp_gerer',
+    'assurances_voir', 'assurances_gerer',
+    'transport_responsable', 'douane_responsable',
     # ENG — gestion des campagnes (l'approbation reste au palier admin).
     'adsengine_view', 'adsengine_manage',
     # ADSENG47 — gestion des plans de vol (palier responsable). L'ACTIVATION de
@@ -502,6 +535,11 @@ TECHNICIEN_RESP_PERMISSIONS = [
     'contrat_voir', 'contrat_gerer',
     'litige_voir', 'litige_gerer',
     'kb_voir', 'kb_gerer',
+    # WIR169 — le BTP/chantier est le cœur du métier terrain de ce rôle ;
+    # comportement historique préservé (palier responsable).
+    'btp_voir', 'btp_gerer',
+    'assurances_voir', 'assurances_gerer',
+    'transport_responsable', 'douane_responsable',
     # ENG — gestion des campagnes (l'approbation reste au palier admin).
     'adsengine_view', 'adsengine_manage',
     # ADSENG47 — gestion des plans de vol (palier responsable). L'ACTIVATION de
@@ -525,6 +563,10 @@ TECHNICIEN_PERMISSIONS = [
     'contrat_voir', 'contrat_gerer',
     'litige_voir', 'litige_gerer',
     'kb_voir', 'kb_gerer',
+    # WIR169 — le technicien terrain lève les réserves, tient le journal de
+    # chantier et ouvre des RFI : lecture ET écriture BTP. Les assurances ne
+    # sont PAS de son ressort (aucun code ``assurances_*`` ici).
+    'btp_voir', 'btp_gerer',
     # ENG — gestion des campagnes (l'approbation reste au palier admin).
     'adsengine_view', 'adsengine_manage',
     SCOPE_TEAM,
@@ -544,6 +586,9 @@ VIEWER_PERMISSIONS = [
     'contrat_voir',
     'litige_voir',
     'kb_voir',
+    # WIR169 — lecture seule du chantier BTP (jamais de ``btp_gerer`` pour ce
+    # rôle). Les assurances restent hors de sa portée.
+    'btp_voir',
     # ENG — accès en lecture seule (pas de gestion ni approbation).
     'adsengine_view',
     SCOPE_TEAM,
