@@ -132,7 +132,7 @@ export const FICHES: Fiche[] = [
     slug: 'onduleur-deye-hybride',
     nom: 'Onduleur hybride Deye',
     marque: 'Deye',
-    modele: 'SUN-…-SG04LP3 / SG04LP1',
+    modele: 'SUN-…-SG05LP3 / SG05LP1',
     categorie: 'Onduleurs hybrides',
     resume:
       "Le chef d'orchestre de l'installation : il arbitre en temps réel entre panneaux, batterie et réseau.",
@@ -144,8 +144,11 @@ export const FICHES: Fiche[] = [
     garantie: 'Garantie 10 ans',
     warranty: { years: 10 },
     pairsWith: ['Panneaux photovoltaïques', 'Batteries', 'Supervision & comptage'],
+    // Fondateur 2026-08-15 : génération réellement en pose = SG05 (10 kW =
+    // SUN-10K-SG05LP3-EU-SM2 confirmé, mono = gamme SG05LP1) — l'ancien lien
+    // pointait vers la datasheet SG04LP3, une génération dépassée.
     datasheet:
-      'https://www.deyeinverter.com/deyeinverter/2024/10/21/datasheet_sun-5-12k-sg04lp3_241021_en.pdf',
+      'https://www.deyeinverter.com/deyeinverter/2024/09/27/datasheet_sun-3-12k-sg05lp3-eu-sm2_240927_en.pdf',
     pdf: '/fiches/onduleur-deye-hybride.pdf',
   },
   {
