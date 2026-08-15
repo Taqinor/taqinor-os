@@ -19,6 +19,97 @@ const PAIEMENT_MODES = [
   { value: 'tiers_payant', label: 'Tiers payant' },
 ]
 
+// WIR273 — NTSAN28 : actes les plus facturés (volume + CA) et répartition du
+// CA par convention. Filtre de période optionnel ; sans lui, tout l'historique.
+function StatistiquesActesConventions() {
+  const [dateDebut, setDateDebut] = useState('')
+  const [dateFin, setDateFin] = useState('')
+  const [stats, setStats] = useState(null)
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    let actif = true
+    setLoading(true)
+    const params = {}
+    if (dateDebut) params.date_debut = dateDebut
+    if (dateFin) params.date_fin = dateFin
+    santeApi.facturesSante.statistiques(params)
+      .then((res) => { if (actif) setStats(res.data) })
+      .catch(() => { if (actif) setStats(null) })
+      .finally(() => { if (actif) setLoading(false) })
+    return () => { actif = false }
+  }, [dateDebut, dateFin])
+
+  const parActe = stats?.par_acte ?? []
+  const parConvention = stats?.par_convention ?? []
+
+  return (
+    <div style={{ marginBottom: 24 }}>
+      <h2 style={{ fontSize: 15, fontWeight: 600 }}>Statistiques</h2>
+      <div style={{ display: 'flex', gap: 8, marginBottom: 8, flexWrap: 'wrap' }}>
+        <label>
+          Du{' '}
+          <input type="date" value={dateDebut} onChange={(e) => setDateDebut(e.target.value)}
+            aria-label="Date de début des statistiques" />
+        </label>
+        <label>
+          Au{' '}
+          <input type="date" value={dateFin} onChange={(e) => setDateFin(e.target.value)}
+            aria-label="Date de fin des statistiques" />
+        </label>
+      </div>
+
+      {loading ? <p>Chargement…</p> : (
+        <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap' }}>
+          <div>
+            <h3 style={{ fontSize: 13, fontWeight: 600 }}>Actes les plus facturés</h3>
+            {parActe.length === 0 ? (
+              <p style={{ color: '#64748b' }}>Aucun acte sur cette période.</p>
+            ) : (
+              <table style={{ borderCollapse: 'collapse' }} aria-label="Actes les plus facturés">
+                <thead>
+                  <tr><th>Acte</th><th>Volume</th><th>Chiffre d’affaires</th></tr>
+                </thead>
+                <tbody>
+                  {parActe.map((l) => (
+                    <tr key={l.acte_id}>
+                      <td>{l.acte__libelle || `Acte #${l.acte_id}`}</td>
+                      <td>{l.volume}</td>
+                      <td>{l.chiffre_affaires}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+          <div>
+            <h3 style={{ fontSize: 13, fontWeight: 600 }}>Répartition du CA par convention</h3>
+            {parConvention.length === 0 ? (
+              <p style={{ color: '#64748b' }}>Aucune convention facturée sur cette période.</p>
+            ) : (
+              <table style={{ borderCollapse: 'collapse' }} aria-label="Répartition du CA par convention">
+                <thead>
+                  <tr><th>Convention</th><th>Factures</th><th>CA tiers payant</th><th>CA total</th></tr>
+                </thead>
+                <tbody>
+                  {parConvention.map((l) => (
+                    <tr key={l.convention_id ?? 'aucune'}>
+                      <td>{l.convention__nom || 'Sans convention (cash)'}</td>
+                      <td>{l.nb_factures}</td>
+                      <td>{l.ca_tiers_payant}</td>
+                      <td>{l.ca_total}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 export default function FacturationScreen() {
   const [factures, setFactures] = useState([])
   const [admissions, setAdmissions] = useState([])
@@ -177,6 +268,8 @@ export default function FacturationScreen() {
           </tbody>
         </table>
       )}
+
+      <StatistiquesActesConventions />
 
       <h2 style={{ fontSize: 15, fontWeight: 600 }}>Encaissement</h2>
       <form onSubmit={encaisser} style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
