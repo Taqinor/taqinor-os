@@ -82,9 +82,15 @@ const monitoringApi = {
   // ── WIR123 — Abonnements de supervision (revenu récurrent, FG244) ──
   getAbonnements: (params) => api.get('/monitoring/abonnements-monitoring/', { params }),
   createAbonnement: (data) => api.post('/monitoring/abonnements-monitoring/', data),
-  renouvelerAbonnement: (id) => api.post(`/monitoring/abonnements-monitoring/${id}/renouveler/`, {}),
+  // WIR237 — `renouvelerAbonnement` (POST .../renouveler/) a été RETIRÉ : il
+  // n'avait aucun appelant, et « avancer l'échéance sans facturer » n'est plus
+  // une opération d'écran depuis que `facturer` enchaîne lui-même le
+  // renouvellement (comme le beat). L'action serveur `renouveler` reste, pour
+  // le beat et les correctifs de données.
   facturerAbonnement: (id) => api.post(`/monitoring/abonnements-monitoring/${id}/facturer/`, {}),
   suspendreAbonnement: (id) => api.post(`/monitoring/abonnements-monitoring/${id}/suspendre/`, {}),
+  // WIR237 — reprise d'un abonnement suspendu (suspendu → actif seulement).
+  reactiverAbonnement: (id) => api.post(`/monitoring/abonnements-monitoring/${id}/reactiver/`, {}),
   resilierAbonnement: (id, motif) =>
     api.post(`/monitoring/abonnements-monitoring/${id}/resilier/`, { motif }),
 }

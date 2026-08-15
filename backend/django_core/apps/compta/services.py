@@ -10054,6 +10054,35 @@ def suspendre_abonnement_monitoring(abonnement):
     return abonnement
 
 
+def reactiver_abonnement_monitoring(abonnement):
+    """WIR237 — Reprend un abonnement SUSPENDU (suspendu → actif).
+
+    La suspension était IRRÉVERSIBLE : ``suspendre`` existait, rien ne
+    ramenait jamais l'abonnement en ``actif`` (et le PATCH direct du statut
+    est proscrit depuis YSUBS4 — les transitions passent par le service).
+
+    Transition STRICTE et idempotente :
+      - ``suspendu`` → ``actif`` (seule transition écrite) ;
+      - ``actif``    → no-op (rappel sans effet, aucune écriture) ;
+      - ``resilie``  → refusé (``AbonnementMonitoringError``) : une
+        résiliation reste définitive, c'est tout l'intérêt de son motif
+        obligatoire.
+
+    N'avance PAS l'échéance : reprendre n'est pas facturer. Renvoie
+    l'abonnement.
+    """
+    from .models import AbonnementMonitoring
+
+    if abonnement.statut == AbonnementMonitoring.Statut.RESILIE:
+        raise AbonnementMonitoringError(
+            "Un abonnement résilié ne peut pas être réactivé.")
+    if abonnement.statut == AbonnementMonitoring.Statut.ACTIF:
+        return abonnement
+    abonnement.statut = AbonnementMonitoring.Statut.ACTIF
+    abonnement.save(update_fields=['statut'])
+    return abonnement
+
+
 def resilier_abonnement_monitoring(abonnement, *, motif, user=None):
     """YSUBS4 — Résilie un abonnement (transition gardée, motif OBLIGATOIRE
     — capturé sur ``motif_resiliation``, jamais perdu comme avec l'ancien

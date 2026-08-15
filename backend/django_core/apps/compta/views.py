@@ -7902,7 +7902,8 @@ class AbonnementMonitoringViewSet(_ComptaBaseViewSet):
     posée côté serveur ; la 1re échéance est calculée à la création ;
     ``renouveler`` avance SEULEMENT l'échéance (YSUBS3 : découplé de la
     facturation) ; ``facturer`` émet la facture standard de la période due
-    (YSUBS3) ; ``suspendre`` / ``resilier`` passent par les transitions
+    PUIS avance l'échéance (WIR237 — même fonction que le beat quotidien) ;
+    ``suspendre`` / ``reactiver`` / ``resilier`` passent par les transitions
     gardées de service (YSUBS4 — jamais un PATCH direct de ``statut``) ;
     ``a_echeance`` liste les abonnements arrivant à échéance."""
     queryset = AbonnementMonitoring.objects.all()
@@ -7925,7 +7926,9 @@ class AbonnementMonitoringViewSet(_ComptaBaseViewSet):
             return [IsResponsableOrAdmin()]
         if self.action == 'renouveler':
             return [HasPermissionOrLegacy('compta_saisir')()]
-        if self.action in ('facturer', 'suspendre', 'resilier'):
+        # WIR237 — ``reactiver`` est la transition symétrique de ``suspendre``
+        # (reprise d'une facturation récurrente) : même garde.
+        if self.action in ('facturer', 'suspendre', 'resilier', 'reactiver'):
             return [HasPermissionOrLegacy('compta_valider')()]
         return super().get_permissions()
 
@@ -7939,10 +7942,32 @@ class AbonnementMonitoringViewSet(_ComptaBaseViewSet):
     def facturer(self, request, pk=None):
         """YSUBS3 — Émet la facture standard de la période due (garde
         d'idempotence par ``derniere_facturation`` — refuse de re-facturer
-        la même période)."""
+        la même période).
+
+        WIR237 — puis AVANCE l'échéance, exactement comme le beat quotidien
+        (``facturer_abonnement_monitoring_beat``). Avant, l'action HTTP
+        appelait la facturation SEULE : ``prochaine_echeance`` ne bougeait
+        jamais, si bien qu'un abonnement facturé à la main restait
+        éternellement « dû » pour le sélecteur
+        ``abonnements_monitoring_dus_facturation`` tout en étant à jamais
+        bloqué par sa propre garde d'idempotence — un abonnement GELÉ. Les
+        deux chemins (écran et beat) partagent désormais la MÊME fonction :
+        aucune divergence possible.
+        """
         abonnement = self.get_object()
+        # WIR237 — l'échéance avançant désormais à chaque facturation, un
+        # second clic facturerait la période SUIVANTE (pas encore due) : la
+        # garde d'idempotence par période ne suffit plus à l'empêcher. On
+        # aligne donc le bouton sur le périmètre du beat — « facturer la
+        # période DUE » — et rien d'autre.
+        echeance = abonnement.prochaine_echeance
+        if echeance and echeance > timezone.localdate():
+            return Response(
+                {'detail': "La prochaine période n'est pas encore due "
+                           f"(échéance le {echeance})."},
+                status=status.HTTP_400_BAD_REQUEST)
         try:
-            facture = services.facturer_abonnement_monitoring(
+            facture = services.facturer_abonnement_monitoring_beat(
                 abonnement, user=request.user)
         except DjangoValidationError as exc:
             return Response(
@@ -7957,6 +7982,22 @@ class AbonnementMonitoringViewSet(_ComptaBaseViewSet):
     def suspendre(self, request, pk=None):
         abonnement = self.get_object()
         services.suspendre_abonnement_monitoring(abonnement)
+        return Response(self.get_serializer(abonnement).data)
+
+    @action(detail=True, methods=['post'])
+    def reactiver(self, request, pk=None):
+        """WIR237 — Reprend un abonnement SUSPENDU (suspendu → actif).
+
+        La suspension n'avait aucune porte de sortie. Transition stricte et
+        idempotente côté service ; un abonnement RÉSILIÉ est refusé en 400 FR
+        (la résiliation reste définitive)."""
+        abonnement = self.get_object()
+        try:
+            services.reactiver_abonnement_monitoring(abonnement)
+        except DjangoValidationError as exc:
+            return Response(
+                {'detail': exc.messages[0] if exc.messages else str(exc)},
+                status=status.HTTP_400_BAD_REQUEST)
         return Response(self.get_serializer(abonnement).data)
 
     @action(detail=True, methods=['post'])
