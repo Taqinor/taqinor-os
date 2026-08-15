@@ -74,7 +74,18 @@ function simulerMobile() {
 // module (un seul appel réseau par session, NTDMO14) — voulu en production,
 // mais ce cache doit être invalidé entre chaque test sinon les tests suivants
 // réutilisent silencieusement la réponse mockée du premier test.
-beforeEach(() => { vi.clearAllMocks(); invalidateToursCache() })
+// `clearAllMocks` vide `mock.calls` mais NE DRAINE PAS les files
+// `mockResolvedValueOnce`. Or plusieurs tests d'ici en empilent une SANS
+// que le composant la consomme (utilisateur ancien / tour déjà vu : aucun
+// appel réseau). La valeur survivait alors au test suivant, qui lisait la
+// réponse du précédent — d'où un échec MOUVANT (un test différent à chaque
+// exécution, tous verts en isolation). `mockReset` draine la file.
+beforeEach(() => {
+  vi.clearAllMocks()
+  api.get.mockReset()
+  api.post.mockReset()
+  invalidateToursCache()
+})
 afterEach(() => cleanup())
 
 describe('ProductTour (NTDMO15)', () => {
