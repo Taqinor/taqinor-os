@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   LogOut, Upload, Download, Pencil, MonitorSmartphone, Ban, History, ShieldCheck,
+  CalendarPlus,
 } from 'lucide-react'
 import { ListShell } from '../../ui/module'
 import {
@@ -74,6 +75,11 @@ export default function Temps() {
   // ZRH6 — absents non justifiés du jour ; ZRH18 — rapport de présence.
   const [absents, setAbsents] = useState([])
   const [rapport, setRapport] = useState(null)
+  // WIR238 — écriture du roster + conflits de congé des 30 prochains jours.
+  const [employes, setEmployes] = useState([])
+  const [conflitsRoster, setConflitsRoster] = useState([])
+  const [affectationFor, setAffectationFor] = useState(null)
+  const [affectationOpen, setAffectationOpen] = useState(false)
   // WIR195 — incidents de présence (FG171) + compteur par employé.
   const [incidents, setIncidents] = useState([])
   const [compteurIncidents, setCompteurIncidents] = useState([])
@@ -96,11 +102,18 @@ export default function Temps() {
       // WIR195 — incidents de présence + compteur (période serveur par défaut).
       rhApi.getIncidentsPresence(),
       rhApi.getCompteurIncidentsPresence(),
+      // WIR238 — conflits de congé du roster (fenêtre serveur : 30 jours) +
+      // référentiel employés (cible d'une nouvelle affectation).
+      rhApi.getConflitsRoster(),
+      rhApi.getEmployes(),
     ])
-      .then(([pRes, rRes, prRes, hRes, dRes, aRes, rapRes, incRes, cptRes]) => {
+      .then(([pRes, rRes, prRes, hRes, dRes, aRes, rapRes, incRes, cptRes,
+        cfRes, empRes]) => {
         if (!vivant) return
         setIncidents(unwrap(incRes?.data))
         setCompteurIncidents(unwrap(cptRes?.data))
+        setConflitsRoster(unwrap(cfRes?.data))
+        setEmployes(unwrap(empRes?.data))
         setPointages(unwrap(pRes.data))
         setRoster(unwrap(rRes.data))
         setPresences(unwrap(prRes.data))
@@ -320,7 +333,25 @@ export default function Temps() {
     { id: 'equipe', header: 'Équipe', width: 140, accessor: (r) => r.equipe || '', cell: (v) => v || '—' },
     { id: 'date', header: 'Date', width: 120, searchable: false, accessor: (r) => r.date || '', cell: (v) => formatDate(v) },
     { id: 'creneau', header: 'Créneau', width: 120, accessor: (r) => r.creneau_display || r.creneau || '', cell: (v) => v || '—' },
+    // WIR238 — `conflit_conge` est calculé par le serveur à chaque écriture
+    // (congé VALIDÉ couvrant le jour) : l'afficher est la seule façon de voir
+    // qu'on planifie quelqu'un en congé.
+    {
+      id: 'conflit',
+      header: 'Conflit congé',
+      width: 140,
+      accessor: (r) => (r.conflit_conge ? 'conflit' : ''),
+      cell: (_v, r) => (r.conflit_conge
+        ? <Badge tone="danger">Congé validé</Badge>
+        : '—'),
+    },
   ], [])
+
+  // WIR238 — une affectation existante s'édite (le serveur recalcule semaine
+  // et conflit à chaque mise à jour).
+  const rosterActions = (r) => [
+    { id: 'editer', label: 'Modifier', icon: Pencil, onClick: () => setAffectationFor(r) },
+  ]
 
   const presenceColumns = useMemo(() => [
     { id: 'employe', header: 'Employé', width: 180, accessor: (p) => p.employe_nom || String(p.employe || ''), cell: (v) => <span className="font-medium">{v || '—'}</span> },
@@ -372,7 +403,13 @@ export default function Temps() {
   const config = {
     pointages: { title: 'Pointages', columns: pointageColumns, rows: pointages, rowActions: pointageActions, exportName: 'pointages',
       actions: pointagesActions },
-    roster: { title: 'Roster', columns: rosterColumns, rows: roster, exportName: 'roster' },
+    roster: { title: 'Roster', columns: rosterColumns, rows: roster, rowActions: rosterActions, exportName: 'roster',
+      actions: (
+        <Button onClick={() => setAffectationOpen(true)}>
+          <CalendarPlus size={15} strokeWidth={1.75} aria-hidden="true" />
+          Nouvelle affectation
+        </Button>
+      ) },
     presences: { title: 'Présences chantier', columns: presenceColumns, rows: presences, exportName: 'presences-chantier' },
     heures_supp: { title: 'Heures supplémentaires', columns: heuresColumns, rows: heuresSupp, exportName: 'heures-supp',
       actions: heuresSuppActions },
@@ -393,6 +430,24 @@ export default function Temps() {
       </div>
 
       <Segmented options={VUES} value={vue} onChange={setVue} aria-label="Vue temps & présence" />
+
+      {/* WIR238 — bandeau des conflits de congé sur les 30 jours à venir
+          (`/rh/roster/conflits/`, fenêtre posée par le serveur) : planifier
+          quelqu'un sur un congé VALIDÉ ne peut pas rester silencieux. */}
+      {vue === 'roster' && conflitsRoster.length > 0 && (
+        <div className="rounded-lg border border-danger/40 bg-card px-3 py-2 text-sm" role="alert">
+          <p className="font-medium">
+            {conflitsRoster.length} affectation(s) en conflit de congé sur les 30 prochains jours
+          </p>
+          <ul className="mt-1 flex flex-wrap gap-2 text-xs text-muted-foreground">
+            {conflitsRoster.map((c) => (
+              <li key={c.id}>
+                {c.employe_nom || `Employé #${c.employe}`} — {formatDate(c.date)}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       {/* WIR195 — compteur d'incidents par employé (serveur, 90 j par défaut) :
           le pilotage disciplinaire lit une agrégation, jamais un calcul client. */}
@@ -438,6 +493,14 @@ export default function Temps() {
         <HistoriqueCorrectionsDialog
           pointage={historiqueFor}
           onClose={() => setHistoriqueFor(null)}
+        />
+      )}
+      {(affectationOpen || affectationFor) && (
+        <AffectationRosterDialog
+          affectation={affectationFor}
+          employes={employes}
+          onClose={() => { setAffectationOpen(false); setAffectationFor(null) }}
+          onSaved={() => { setAffectationOpen(false); setAffectationFor(null); recharger() }}
         />
       )}
       {justifierFor && (
@@ -569,6 +632,107 @@ function CorrectionDialog({ pointage, onClose, onSaved }) {
           <DialogFooter>
             <Button type="button" variant="outline" onClick={onClose}>Annuler</Button>
             <Button type="submit" disabled={saving}>{saving ? 'Enregistrement…' : 'Corriger'}</Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+/* ── WIR238 (FG169) — Créer / modifier une affectation roster ─────────────────
+   Le corps ne porte QUE ce que le client sait : employé, équipe, date,
+   créneau, note. `semaine_du` et `conflit_conge` sont calculés par
+   `services.appliquer_roster` à chaque écriture — les envoyer d'ici
+   fabriquerait un conflit qui n'existe pas. `company` reste serveur. */
+const CRENEAUX_ROSTER = [
+  { value: 'journee', label: 'Journée' },
+  { value: 'matin', label: 'Matin' },
+  { value: 'apres_midi', label: 'Après-midi' },
+]
+
+function AffectationRosterDialog({ affectation, employes, onClose, onSaved }) {
+  const edition = Boolean(affectation)
+  const [employe, setEmploye] = useState(
+    affectation?.employe != null ? String(affectation.employe) : '')
+  const [equipe, setEquipe] = useState(affectation?.equipe || '')
+  const [date, setDate] = useState(affectation?.date || '')
+  const [creneau, setCreneau] = useState(affectation?.creneau || 'journee')
+  const [note, setNote] = useState(affectation?.note || '')
+  const [saving, setSaving] = useState(false)
+  const [serverError, setServerError] = useState(null)
+
+  const valide = Boolean(employe && equipe.trim() && date)
+
+  const submit = async (e) => {
+    e.preventDefault()
+    if (!valide) return
+    setSaving(true)
+    setServerError(null)
+    try {
+      const payload = {
+        employe, equipe: equipe.trim(), date, creneau, note: note || '',
+      }
+      if (edition) await rhApi.updateAffectationRoster(affectation.id, payload)
+      else await rhApi.createAffectationRoster(payload)
+      toast.success(edition ? 'Affectation mise à jour.' : 'Affectation créée.')
+      onSaved?.()
+    } catch (err) {
+      const data = err?.response?.data
+      setServerError(data?.detail || data?.equipe || data?.employe
+        || 'Enregistrement de l’affectation impossible.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <Dialog open onOpenChange={(o) => { if (!o) onClose?.() }}>
+      <DialogContent className="max-w-lg">
+        <DialogHeader>
+          <DialogTitle>
+            {edition ? 'Modifier l’affectation' : 'Nouvelle affectation'}
+          </DialogTitle>
+        </DialogHeader>
+        <form onSubmit={submit} className="flex flex-col gap-4" noValidate>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="ar-employe">Employé</Label>
+            <select id="ar-employe" value={employe} onChange={(e) => setEmploye(e.target.value)}
+              className="h-9 rounded-md border border-border bg-card px-3 text-sm">
+              <option value="">— Choisir —</option>
+              {employes.map((em) => (
+                <option key={em.id} value={em.id}>{em.nom} {em.prenom}</option>
+              ))}
+            </select>
+          </div>
+          <div className="grid grid-cols-3 gap-3">
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="ar-equipe">Équipe</Label>
+              <Input id="ar-equipe" value={equipe} onChange={(e) => setEquipe(e.target.value)} placeholder="Ex. Camionnette 2" />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="ar-date">Date</Label>
+              <Input id="ar-date" type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="ar-creneau">Créneau</Label>
+              <select id="ar-creneau" value={creneau} onChange={(e) => setCreneau(e.target.value)}
+                className="h-9 rounded-md border border-border bg-card px-3 text-sm">
+                {CRENEAUX_ROSTER.map((c) => (
+                  <option key={c.value} value={c.value}>{c.label}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="ar-note">Note</Label>
+            <Input id="ar-note" value={note} onChange={(e) => setNote(e.target.value)} />
+          </div>
+          {serverError && <p className="text-sm text-destructive" role="alert">{serverError}</p>}
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={onClose}>Annuler</Button>
+            <Button type="submit" disabled={!valide || saving}>
+              {saving ? 'Enregistrement…' : 'Enregistrer'}
+            </Button>
           </DialogFooter>
         </form>
       </DialogContent>

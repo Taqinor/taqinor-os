@@ -162,6 +162,12 @@ const rhApi = {
   getFeuillesTemps: (params) => api.get('/rh/feuilles-temps/', { params }),
   getHeuresSupp: (params) => api.get('/rh/heures-supp/', { params }),
   getRoster: (params) => api.get('/rh/roster/', { params }),
+  // WIR238 — écriture du roster (FG169). `semaine_du` et `conflit_conge` sont
+  // CALCULÉS côté serveur (`services.appliquer_roster`) : ils ne sont JAMAIS
+  // envoyés depuis le client, sous peine d'inventer un conflit.
+  createAffectationRoster: (data) => api.post('/rh/roster/', data),
+  updateAffectationRoster: (id, data) => api.patch(`/rh/roster/${id}/`, data),
+  getConflitsRoster: (params) => api.get('/rh/roster/conflits/', { params }),
   getPresencesChantier: (params) => api.get('/rh/presences-chantier/', { params }),
   getIncidentsPresence: (params) => api.get('/rh/incidents-presence/', { params }),
   // WIR195 — les incidents créés depuis « Absents du jour » n'étaient relus
